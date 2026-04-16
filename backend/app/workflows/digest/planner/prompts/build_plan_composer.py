@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from app.workflows.digest.common.models import DigestMaterialContext
-from app.workflows.digest.planner.lib.research_probe import (
+from app.workflows.digest.planner.lib.models import (
     EvidenceBrief,
     LearningIntentProfile,
     PlanSketch,
@@ -13,7 +13,7 @@ from app.workflows.digest.planner.lib.research_probe import (
 )
 from app.workflows.digest.planner.prompts.examples import render_composer_examples
 
-_MAX_DIGEST_CHARS = 2400
+_MAX_DIGEST_CHARS = 5000
 
 
 def _render_material_digest(material_context: DigestMaterialContext) -> str:
@@ -69,7 +69,8 @@ def build_plan_composer_messages(
     )
     digest = _render_material_digest(material_context)
     prompt = (
-        "请综合草稿、用户意图和证据摘要，生成一份可确认的知识文档构建计划。\n\n"
+        "请综合思考过程、用户意图和外部证据摘要，生成一份可确认的知识文档构建计划。\n"
+        "输出要短、清楚、分点，方便前端直接展示成几条计划大纲。\n\n"
         f"主题：{subject}\n"
         f"用户目标：{user_goal}\n"
         f"模式：{digest_mode}\n"
@@ -84,7 +85,7 @@ def build_plan_composer_messages(
         f"成功标准：{'；'.join(intent_profile.success_criteria)}\n"
         f"证据摘要：{evidence_brief.concept_briefing}\n"
         f"核心概念：{core_concepts}\n"
-        f"已打开来源：{sources}\n\n"
+        f"已打开本地来源：{sources}\n\n"
         f"章节级证据提示：{evidence_hints}\n\n"
         "你不是在把草稿、意图和证据逐段拼接。你需要先完成真正的综合：\n"
         "1. 判断资料到底在讲哪几个知识簇；\n"
@@ -94,13 +95,14 @@ def build_plan_composer_messages(
         "输出必须符合 BuildPlannerDraft 结构。章节标题要具体，"
         "每章要包含 objective、required_elements、search_queries、writing_instructions、media_hints。\n\n"
         "硬约束：\n"
-        "1. 章节标题要像后续详细知识文档的真实目录。\n"
+        "1. 章节标题要像后续详细知识文档的真实目录，整体控制在 3-6 章。\n"
         "2. 优先把草稿里的“暂定章节”改写成更自然的总结型标题，而不是完全重起炉灶。\n"
         "3. 如果证据提示已经体现主题边界，章节标题要反映这些证据，而不是重复用户原句。\n"
-        "4. search_queries 必须能直接驱动后续 research / docgen。\n"
-        "5. required_elements 必须是该章真正要覆盖的知识元素，而不是空泛标签。\n"
+        "4. search_queries 围绕外部检索校准和当前主题写，每章 1-2 条即可。\n"
+        "5. required_elements 必须是该章真正要覆盖的知识元素，每章 3-5 条即可。\n"
         "6. 不要把来源标题、网站名、作者名写入 title、objective、search_queries。\n"
-        "7. sprint 模式更聚焦考点/题型/公式/易错点；systematic 模式更强调概念主线、结构、方法和应用。\n\n"
+        "7. objective 用一句话说明这一点为什么要学，尽量不超过 45 个中文字符。\n"
+        "8. sprint 模式更聚焦考点/题型/公式/易错点；systematic 模式更强调概念主线、结构、方法和应用。\n\n"
         "请参考这些 few-shot 规律：\n"
         f"{render_composer_examples()}"
     )

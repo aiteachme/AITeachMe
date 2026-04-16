@@ -8,7 +8,6 @@ from app.workflows.digest.planner.prompts.build_plan_composer import build_plan_
 from app.workflows.digest.planner.prompts.examples import render_composer_examples, render_plan_sketch_examples
 from app.workflows.digest.planner.prompts.learning_intent import build_learning_intent_messages
 from app.workflows.digest.planner.prompts.plan_sketch import build_plan_sketch_prompt
-from app.workflows.digest.planner.prompts.source_triage import build_source_triage_prompt
 
 __all__ = [
     "build_learning_intent_messages",
@@ -16,7 +15,6 @@ __all__ = [
     "build_plan_sketch_prompt",
     "build_planner_chapter_title_messages",
     "build_planner_prompt",
-    "build_source_triage_prompt",
     "render_composer_examples",
     "render_plan_sketch_examples",
 ]

@@ -14,7 +14,7 @@ import time
 
 import structlog
 
-from app.shared.infra.settings import get_settings
+from app.shared.infra.settings import DEFAULT_PROJECT_SETTINGS_FILENAME, get_settings
 from app.shared.infra.env_support import get_env
 from app.shared.infra.exceptions import LLMCallError, MissingLLMApiKeyError
 from app.shared.infra.llm_support.litellm_loader import load_litellm
@@ -83,7 +83,7 @@ async def _call_embedding(
             raise LLMCallError(
                 reason=(
                     f"Embedding 模型 `{configured_model}` 在当前供应商不可用或无权限。"
-                    "请在项目根目录 settings_default.yaml 的 `models.embedding` 中改为账号可用模型后重启后端。"
+                    f"请在项目根目录 {DEFAULT_PROJECT_SETTINGS_FILENAME} 的 `models.embedding` 中改为账号可用模型后重启后端。"
                     f"当前 LLM_BASE_URL={api_base}。"
                     "常见可选：`text-embedding-3-small`（OpenAI 兼容）或 `text-embedding-v4`（DashScope）。"
                 )

@@ -59,9 +59,9 @@ def _planner_status_detail(payload: dict[str, object]) -> str:
     if node_name:
         node_label = {
             "prepare_material_context": "准备资料理解包",
-            "generate_plan_preview": "生成规划预览",
-            "probe_supporting_evidence": "探测支撑证据",
-            "compose_plan_contract": "合成计划大纲",
+            "bootstrap_plan_brief": "生成思考过程",
+            "probe_evidence": "外部证据检索",
+            "compose_build_plan": "提炼计划大纲",
             "finalize_plan_contract": "整理最终方案",
         }.get(node_name, node_name)
         if status == "failed":

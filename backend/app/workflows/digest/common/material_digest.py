@@ -18,9 +18,9 @@ from app.workflows.digest.common.models import DigestMaterialContext, SourcePack
 
 logger = structlog.get_logger(__name__)
 
-SHORT_THRESHOLD_CHARS = 10_000
-CHUNK_SIZE_CHARS = 10_000
-MAX_CHUNKS = 10
+SHORT_THRESHOLD_CHARS = 20_000
+CHUNK_SIZE_CHARS = 12_000
+MAX_CHUNKS = 12
 
 
 @dataclass(frozen=True)
@@ -65,7 +65,7 @@ def _summary_prompt(chunk: str, *, chunk_index: int, chunk_total: int) -> str:
         "你是学习资料速览员。请用中文对下面这段用户上传的学习资料做极简要点摘要。"
         f"{position}\n"
         "约束：\n"
-        "1. 150-250 字，不要罗列原文句子。\n"
+        "1. 350-500 字，不要罗列原文句子。\n"
         "2. 只输出要点型段落，不要小标题/列表/引用/代码块。\n"
         "3. 覆盖：核心主题、关键概念或公式、出现的题型或方法、难度线索。\n"
         "4. 不要推测未给出的内容，不要写学习建议。\n\n"
@@ -81,7 +81,7 @@ async def _summarize_chunk(chunk: str, *, chunk_index: int, chunk_total: int) ->
             task_type=TaskType.SUMMARIZE,
             tier_override="light",
             temperature=0.2,
-            max_tokens=360,
+            max_tokens=720,
         )
     except Exception:
         logger.exception(

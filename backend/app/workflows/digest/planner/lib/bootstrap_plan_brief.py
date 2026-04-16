@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 
-from app.workflows.digest.planner.lib.research_probe import PlanSketch
+from app.workflows.digest.planner.lib.models import PlanSketch
 
 _TASK_LINE_RE = re.compile(r"^\s*(?:[-*]|\(?\d+[).、])\s*(.+)$")
 _HEADING_RE = re.compile(r"^##\s+(.+)$")
@@ -38,7 +38,12 @@ def _extract_first_blockquote_summary(text: str) -> str:
 def parse_plan_sketch_text(text: str, *, fallback: PlanSketch) -> PlanSketch:
     cleaned_lines = [line.strip() for line in str(text or "").replace("\r", "").splitlines() if line.strip()]
     tasks: list[str] = []
-    for line in _extract_section_lines(text, "研究任务") or cleaned_lines:
+    task_lines = (
+        _extract_section_lines(text, "思考重点")
+        or _extract_section_lines(text, "研究任务")
+        or cleaned_lines
+    )
+    for line in task_lines:
         match = _TASK_LINE_RE.match(line)
         if match:
             candidate = match.group(1).strip()
@@ -48,7 +53,8 @@ def parse_plan_sketch_text(text: str, *, fallback: PlanSketch) -> PlanSketch:
             break
 
     chapters = []
-    for line in _extract_section_lines(text, "暂定章节"):
+    chapter_lines = _extract_section_lines(text, "计划大纲") or _extract_section_lines(text, "暂定章节")
+    for line in chapter_lines:
         match = _TASK_LINE_RE.match(line.strip())
         if match:
             chapters.append(match.group(1).strip())

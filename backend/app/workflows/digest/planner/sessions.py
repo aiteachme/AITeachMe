@@ -173,16 +173,16 @@ def _resolve_planner_preview_markdown(final_state: dict[str, Any] | None, plan_p
         if isinstance(item, dict) and str((item or {}).get("title") or "").strip()
     ]
     lines = [
-        "# 构建方案",
+        "# 计划大纲",
         "",
         f"> 模式：{str(plan_payload.get('digest_mode') or 'systematic')}",
         f"> 一句话摘要：{summary or '已生成一份可确认的构建方案。'}",
         "",
-        "## 研究任务",
-        *[f"{index}. {item}" for index, item in enumerate(tasks[:8], start=1)],
-        "",
-        "## 暂定章节",
+        "## 几点安排",
         *[f"{index}. {item}" for index, item in enumerate(chapters[:8], start=1)],
+        "",
+        "## 外部检索校准重点",
+        *[f"{index}. {item}" for index, item in enumerate(tasks[:6], start=1)],
     ]
     return "\n".join(lines).strip()
 
@@ -196,16 +196,16 @@ def _render_final_plan_markdown(plan_payload: dict[str, Any]) -> str:
         if isinstance(item, dict) and str((item or {}).get("title") or "").strip()
     ]
     lines = [
-        "# 构建方案",
+        "# 计划大纲",
         "",
         f"> 模式：{str(plan_payload.get('digest_mode') or 'systematic')}",
         f"> 一句话摘要：{summary or '已生成一份可确认的构建方案。'}",
         "",
-        "## 研究任务",
-        *[f"{index}. {item}" for index, item in enumerate(tasks[:8], start=1)],
-        "",
-        "## 暂定章节",
+        "## 几点安排",
         *[f"{index}. {item}" for index, item in enumerate(chapters[:8], start=1)],
+        "",
+        "## 外部检索校准重点",
+        *[f"{index}. {item}" for index, item in enumerate(tasks[:6], start=1)],
     ]
     return "\n".join(lines).strip()
 
@@ -218,9 +218,9 @@ def _runtime_stats_response(final_state: dict[str, Any] | None) -> BuildPlannerR
     for name, field_name in (
         ("prepare_material_context", "prepare_ms"),
         ("summarize_material_digest", "digest_ms"),
-        ("generate_plan_preview", "preview_ms"),
-        ("probe_supporting_evidence", "probe_ms"),
-        ("compose_plan_contract", "compose_ms"),
+        ("bootstrap_plan_brief", "preview_ms"),
+        ("probe_evidence", "probe_ms"),
+        ("compose_build_plan", "compose_ms"),
         ("finalize_plan_contract", "finalize_ms"),
     ):
         elapsed_ms = int(final_state.get(field_name, 0) or 0)

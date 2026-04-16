@@ -8,6 +8,7 @@ from app.api.deps import CurrentUserContext, get_current_user_context
 from app.api.openapi import build_error_responses
 from app.schemas.common import ApiResponse, ok_response
 from app.schemas.system import InitData, InitRequest, SettingsOverviewData
+from app.shared.infra.settings import DEFAULT_PROJECT_SETTINGS_FILENAME
 from app.workflows.support.system import build_init_data, build_settings_overview_data
 
 router = APIRouter(prefix="/api/v1/system", tags=["system"])
@@ -41,7 +42,7 @@ async def init_system(
     "/settings",
     response_model=ApiResponse[SettingsOverviewData],
     summary="读取后端设置总览",
-    description="返回环境变量与 settings_default.yaml 合并后的只读设置概览。",
+    description=f"返回环境变量与 {DEFAULT_PROJECT_SETTINGS_FILENAME} 合并后的只读设置概览。",
     responses=build_error_responses([500]),
 )
 async def get_system_settings(

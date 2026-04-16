@@ -210,7 +210,7 @@ Requirements:
   - options (only for single_choice)
   - answer
   - explanation
-  - knowledge_node_id (pick the best matching node when possible)
+  - knowledge_unit_id (pick the best matching node when possible)
 
 Knowledge packet:
 {{ knowledge_packet }}

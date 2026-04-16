@@ -1,31 +1,31 @@
-"""Probe local/web evidence for Planner V3."""
+"""Probe evidence for Planner V3."""
 
 from __future__ import annotations
+
+import asyncio
 
 import structlog
 
 from app.shared.infra.execution import TracedExecutionContext
 from app.shared.infra.search import SourceCurator
-from app.shared.infra.search.factory import get_external_retriever_names
+from app.shared.infra.search.factory import get_configured_retriever_names
 from app.shared.infra.search.types import SearchResult
 from app.shared.infra.settings import get_settings
 from app.shared.infra.tools.builtin.web_reading import read_urls
 from app.shared.infra.workflow.context import WorkflowContext
-from app.workflows.digest.planner.lib.evidence_probe import (
+from app.workflows.digest.planner.lib.probe_evidence import (
     build_evidence_brief,
-    fallback_local_queries,
+    fallback_probe_queries,
+    rule_based_source_triage,
     safe_search,
     source_preview,
 )
 from app.workflows.digest.planner.lib.planner_events import emit_planner_event
-from app.workflows.digest.planner.lib.research_probe import (
-    LearningIntentProfile,
+from app.workflows.digest.planner.lib.models import (
     PlanSketch,
     PlannerOpenedSource,
     PlannerSelectedSource,
-    ResearchProbePlan,
 )
-from app.workflows.digest.planner.lib.source_triage import rule_based_source_triage
 from app.workflows.digest.planner.state import BuildPlannerState
 
 logger = structlog.get_logger(__name__)
@@ -34,90 +34,88 @@ logger = structlog.get_logger(__name__)
 def build_probe_evidence_node(*, context: WorkflowContext):
     async def probe_evidence_node(state: BuildPlannerState) -> dict:
         material_context = state["material_context"]
-        intent = LearningIntentProfile.model_validate(state.get("learning_intent_profile") or {})
-        probe_plan = ResearchProbePlan.model_validate(
-            state.get("research_probe_plan") or intent.research_probe_plan.model_dump()
-        )
         plan_sketch = PlanSketch.model_validate(state.get("plan_sketch") or {})
+        queries = fallback_probe_queries(material_context, plan_sketch=plan_sketch)
+        if not queries:
+            fallback_query = str(state.get("user_goal") or state["subject"]).strip()
+            queries = [fallback_query] if fallback_query else []
+        queries = list(dict.fromkeys(queries))[:4]
         local_sections = list(material_context.material_sections)
+        retriever_names = get_configured_retriever_names(
+            profile=state.get("retrieval_profile"),
+            include_local_rag=True,
+            include_fallback=True,
+        )
         logger.info(
             "planner_probe_started",
             planner_session_id=state.get("planner_session_id") or "",
             subject=state["subject"],
             local_sections_count=len(local_sections),
-            local_query_count=len(probe_plan.local_queries),
-            web_query_count=len(probe_plan.web_queries),
+            query_count=len(queries),
+            retriever_names=retriever_names,
         )
         await emit_planner_event(
             state,
             event="planner.probe.started",
-            detail="正在检索本地资料和少量外部概念来源...",
+            detail="正在调用全部可用检索器，校准概念边界和大纲结构...",
             payload={
-                "local_query_count": len(probe_plan.local_queries),
-                "web_query_count": len(probe_plan.web_queries),
+                "query_count": len(queries),
+                "retriever_count": len(retriever_names),
+                "retriever_names": retriever_names,
                 "local_sections_count": len(local_sections),
-                "local_queries": [query.query for query in probe_plan.local_queries[:4]],
-                "web_queries": [query.query for query in probe_plan.web_queries[:3]],
+                "queries": queries,
+                "local_queries": queries,
+                "web_queries": queries,
             },
         )
 
         local_results: list[SearchResult] = []
-        for query in probe_plan.local_queries[:4]:
-            local_results.extend(
-                await safe_search(
-                    "local_rag",
-                    query=query.query,
+        web_results: list[SearchResult] = []
+        if retriever_names:
+            async def _run_search(retriever_name: str, query: str) -> tuple[str, list[SearchResult]]:
+                return retriever_name, await safe_search(
+                    retriever_name,
+                    query=query,
                     subject=state["subject"],
                     local_sections=local_sections,
                 )
-            )
-        if not local_results and local_sections:
-            fallback_queries = fallback_local_queries(material_context, plan_sketch=plan_sketch)
-            logger.info(
-                "planner_probe_retrying_local_queries",
-                planner_session_id=state.get("planner_session_id") or "",
-                subject=state["subject"],
-                fallback_queries=fallback_queries,
-            )
-            for query in fallback_queries:
-                local_results.extend(
-                    await safe_search(
-                        "local_rag",
-                        query=query,
-                        subject=state["subject"],
-                        local_sections=local_sections,
-                    )
-                )
 
-        web_results: list[SearchResult] = []
-        if get_settings().planner.allow_external_search and probe_plan.source_policy != "local_only":
-            external_names = get_external_retriever_names(profile=state.get("retrieval_profile"))
-            for query in probe_plan.web_queries[:2]:
-                for retriever_name in external_names[:2]:
-                    hits = await safe_search(
-                        retriever_name,
-                        query=query.query,
-                        subject=state["subject"],
-                        local_sections=local_sections,
-                    )
-                    if hits:
-                        web_results.extend(hits)
-                        break
+            search_jobs = [
+                _run_search(retriever_name, query)
+                for query in queries
+                for retriever_name in retriever_names
+            ]
+            search_results = await asyncio.gather(*search_jobs, return_exceptions=True)
+            for result in search_results:
+                if not isinstance(result, tuple):
+                    continue
+                retriever_name, hits = result
+                if retriever_name in {"local_rag", "rag"}:
+                    local_results.extend(hits)
+                else:
+                    web_results.extend(hits)
 
         curator_meta: dict[str, object] = {}
-        try:
-            curator = SourceCurator(TracedExecutionContext(subject=state["subject"], workflow_context=context))
-            curated_web, curator_meta = await curator.curate_sources(
-                query=" ".join(query.query for query in probe_plan.web_queries[:2]),
-                sources=web_results,
-                max_results=2,
-            )
-        except Exception:
-            curated_web = web_results[:2]
-        selected_sources: list[PlannerSelectedSource] = [
-            *rule_based_source_triage(local_results, limit=4, source_type="local"),
-            *rule_based_source_triage(curated_web, limit=2, source_type="web"),
-        ]
+        curated_web: list[SearchResult] = []
+        if web_results:
+            try:
+                curator = SourceCurator(TracedExecutionContext(subject=state["subject"], workflow_context=context))
+                curated_web, curator_meta = await curator.curate_sources(
+                    query=" ".join(queries[:2]),
+                    sources=web_results,
+                    max_results=4,
+                )
+            except Exception:
+                curated_web = web_results[:4]
+        selected_sources: list[PlannerSelectedSource] = rule_based_source_triage(
+            local_results,
+            limit=4,
+            source_type="local",
+        ) + rule_based_source_triage(
+            curated_web,
+            limit=4,
+            source_type="web",
+        )
         await emit_planner_event(
             state,
             event="planner.sources.triaged",
@@ -171,10 +169,11 @@ def build_probe_evidence_node(*, context: WorkflowContext):
         await emit_planner_event(
             state,
             event="planner.evidence.ready",
-            detail=f"证据探测完成，本地命中 {len(local_results)}，外部命中 {len(web_results)}。",
+            detail=f"检索证据整理完成，本地命中 {len(local_results)} 条，外部命中 {len(web_results)} 条。",
             payload={
                 "local_hit_count": len(local_results),
                 "web_hit_count": len(web_results),
+                "retriever_names": retriever_names,
                 "opened_source_count": len(opened_sources),
                 "selected_source_titles": [source.title for source in opened_sources[:4] if source.title],
                 "core_concepts": evidence.core_concepts[:6],
