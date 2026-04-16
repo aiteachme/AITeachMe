@@ -1,4 +1,4 @@
-"""Tool loader for transitional YAML metadata and real external toolpacks."""
+"""Tool loader for executable external toolpacks."""
 
 from __future__ import annotations
 
@@ -15,14 +15,6 @@ from app.shared.infra.tools.definition import ToolDefinition
 from app.shared.infra.tools.registry import ToolRegistry, get_tool_registry
 
 logger = structlog.get_logger(__name__)
-
-
-def _get_project_tools_dir() -> Path:
-    return Path(__file__).parent.parent.parent.parent.parent / "tools"
-
-
-def _get_user_tools_dir() -> Path:
-    return Path.home() / ".atm" / "tools"
 
 
 def _get_project_toolpacks_dir() -> Path:
@@ -99,31 +91,6 @@ def _parse_yaml(path: Path) -> dict[str, Any] | None:
     if current_key and current_dict is not None:
         result[current_key] = current_dict
     return result
-
-
-def load_tool_definitions(extra_dirs: list[Path] | None = None) -> list[dict]:
-    """Load legacy YAML-only tool metadata.
-
-    This remains transitional documentation support and is not the canonical runtime
-    extension mechanism.
-    """
-
-    dirs = [_get_project_tools_dir(), _get_user_tools_dir()]
-    if extra_dirs:
-        dirs.extend(extra_dirs)
-
-    loaded: dict[str, dict] = {}
-    for tool_dir in dirs:
-        if not tool_dir.exists():
-            continue
-        for yaml_file in sorted(tool_dir.glob("*.yaml")):
-            try:
-                parsed = _parse_yaml(yaml_file)
-                if parsed and "name" in parsed:
-                    loaded[str(parsed["name"])] = parsed
-            except Exception as exc:
-                logger.warning("tool_yaml_parse_failed", file=str(yaml_file), error=str(exc))
-    return list(loaded.values())
 
 
 def _iter_toolpack_dirs(
@@ -278,6 +245,5 @@ def load_external_toolpacks(
 
 __all__ = [
     "load_external_toolpacks",
-    "load_tool_definitions",
     "load_toolpack_manifests",
 ]

@@ -41,7 +41,7 @@ api/knowledge_docs.py
 | --- | --- | --- |
 | 搜索 | `app.shared.infra.search` | 本地 RAG、外部 retriever、reader、source curation |
 | 向量状态 | `app.shared.infra.subject` | 判断学科向量是否可检索，并处理构建前向量配置确认 |
-| 工具 | `app.shared.infra.tools` | 统一工具注册表与执行入口 |
+| 工具 | `app.shared.infra.tools` | 统一工具注册表、内置工具与 toolpack 执行入口 |
 | 技能 | `app.shared.infra.skills` | skillpack 渲染、推荐 tags |
 | workflow 支撑 | `app.shared.infra.workflow` | workflow root / node / progress |
 | 执行契约 | `app.shared.infra.execution` | 长执行单元共享边界 |
@@ -162,8 +162,8 @@ workflow 作者通常不需要从这里直接导入。
 | `search/` | 本地检索、retriever、reader、source curation |
 | `subject/` | 学科向量配置、查询能力与构建前 precheck |
 | `mcp/` | MCP 协议接入与外部工具服务管理 |
-| `tools/` | 工具注册、执行、toolpack 加载 |
-| `skills/` | `SKILL.md` 风格技能包渲染与推荐 |
+| `tools/` | 运行时工具注册、执行、内置工具、toolpack 加载 |
+| `skills/` | `SKILL.md` 风格 prompt 策略包渲染与推荐 |
 | `memory/` | 共享记忆与学习档案 |
 | `workflow/` | workflow authoring/runtime/progress 公共支撑 |
 | `execution/` | 共享执行契约与安全边界 |
@@ -206,3 +206,9 @@ workflow 作者通常不需要从这里直接导入。
 ## 一句话总结
 
 `infra` 是共享能力接入层。它要尽量稳定、可复用、无业务反向依赖，为 planner / docgen 等上层链路提供可靠底座，但不替它们决定教学策略或流程顺序。
+
+## 根目录能力包说明
+
+- `backend/tools/` 已删除。旧 YAML-only 工具说明不会注册运行时工具，后续不要恢复这套机制。
+- `backend/toolpacks/` 是开发者/管理员使用的可执行工具扩展点，必须提供 `manifest.yaml + handler.py`。
+- `backend/skills/` 是内置 prompt 策略包目录，只通过 `selected_skillpacks` 和 `prompt_scope` 影响 prompt，不执行代码。

@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from app.shared.infra.tools import get_tool_registry
+from app.shared.infra.tools import tool_loader
 from app.shared.infra.tools.tool_loader import load_external_toolpacks, load_toolpack_manifests
 
 _FIXTURE_ROOT = Path(__file__).parent / "fixtures"
@@ -43,3 +44,7 @@ def test_disabled_or_broken_toolpacks_do_not_crash_loading() -> None:
     assert "disabled_pack" not in loaded
     assert "broken_pack" not in loaded
     assert registry.get("ignored_tool") is None
+
+
+def test_legacy_yaml_tool_loader_is_removed() -> None:
+    assert not hasattr(tool_loader, "load_tool_definitions")
