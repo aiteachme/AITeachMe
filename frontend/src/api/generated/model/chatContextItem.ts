@@ -20,4 +20,18 @@ export interface ChatContextItem {
   header_path: string;
   /** Retrieval score. */
   score: number;
+  /** Linked KnowledgeUnit ID. */
+  knowledge_unit_id?: number | null;
+  /** Linked KnowledgeUnit name. */
+  knowledge_unit_name?: string | null;
+  /** Linked KnowledgeUnit type. */
+  knowledge_unit_type?: string | null;
+  /** KG path explanation used for retrieval. */
+  relation_path?: string | null;
+  /** Evidence quote used for text backtracking. */
+  evidence_quote?: string | null;
+  /** Current user's mastery score for this KnowledgeUnit. */
+  mastery_score?: number | null;
+  /** Retrieval source: knowledge_unit or vector. */
+  retrieval_source?: string;
 }

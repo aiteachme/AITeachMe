@@ -1,4 +1,4 @@
-"""Helpers for loading project runtime configuration from `settings.yaml`."""
+"""Helpers for loading project runtime configuration from `settings_default.yaml`."""
 
 from __future__ import annotations
 
@@ -93,7 +93,7 @@ def parse_yaml_scalar(value: str) -> Any:
 
 
 def parse_yaml_mapping(text: str) -> dict[str, Any]:
-    """Parse the small repo-root `settings.yaml` mapping."""
+    """Parse the small repo-root `settings_default.yaml` mapping."""
 
     try:
         import yaml  # type: ignore

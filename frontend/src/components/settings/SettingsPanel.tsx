@@ -78,7 +78,7 @@ const DEFAULT_PROVIDER_BASE_URL = "https://api.openai.com/v1";
 
 const SECTIONS: SectionConfig[] = [
   { id: "credentials", label: "后端与凭证", description: ".env 生效状态与本机连接", icon: KeyRound },
-  { id: "models", label: "模型配置", description: "settings.yaml 当前模型", icon: Bot },
+  { id: "models", label: "模型配置", description: "settings_default.yaml 当前模型", icon: Bot },
   { id: "parser", label: "解析与检索", description: "Ingest / Search 配置", icon: Wrench },
   { id: "generation", label: "生成参数", description: "本机实验参数", icon: SlidersHorizontal },
   { id: "runtime", label: "运行与调试", description: "存储、观测与本机偏好", icon: Server },
@@ -281,7 +281,7 @@ function displaySettingValue(entry: SettingEntry): string {
 }
 
 function SettingSourcePill({ source }: { source: SettingSource }) {
-  const label = source === "env" ? ".env" : source === "settings" ? "settings.yaml" : "runtime";
+  const label = source === "env" ? ".env" : source === "settings" ? "settings_default.yaml" : "runtime";
   return (
     <span className="rounded-md bg-white border border-zinc-200 px-2 py-0.5 text-[11px] font-semibold text-zinc-500">
       {label}
@@ -314,7 +314,7 @@ function BackendSettingList({
   error: string | null;
 }) {
   if (loading) {
-    return <InfoCard text="正在读取后端 .env 与 settings.yaml 当前生效配置..." />;
+    return <InfoCard text="正在读取后端 .env 与 settings_default.yaml 当前生效配置..." />;
   }
   if (error) {
     return <InfoCard text={error} variant="warning" />;
@@ -495,7 +495,7 @@ export function SettingsPanel({ isOpen, onClose }: SettingsModalProps) {
       />
 
       <SectionDivider label="本机旧版直连设置" />
-      <InfoCard text="下面几项仅保存在当前浏览器，当前主要后端流程不会写回 .env 或 settings.yaml。" variant="warning" />
+      <InfoCard text="下面几项仅保存在当前浏览器，当前主要后端流程不会写回 .env 或 settings_default.yaml。" variant="warning" />
 
       <FieldGroup label="模型服务地址（Base URL）">
         <TextInput
@@ -562,7 +562,7 @@ export function SettingsPanel({ isOpen, onClose }: SettingsModalProps) {
 
   const renderModels = () => (
     <div className="space-y-6">
-      <InfoCard text="后端实际使用的模型来自 settings.yaml。修改这些值请编辑 settings.yaml 并重启后端。" />
+      <InfoCard text="后端实际使用的模型来自 settings_default.yaml。修改这些值请编辑 settings_default.yaml 并重启后端。" />
       <BackendSettingList
         entries={getBackendEntries("models").filter((entry) =>
           [
@@ -606,7 +606,7 @@ export function SettingsPanel({ isOpen, onClose }: SettingsModalProps) {
 
   const renderParser = () => (
     <div className="space-y-6">
-      <InfoCard text="资料解析和检索的全局默认值来自后端 settings.yaml；上传时可用本机偏好临时指定 MinerU 参数。" />
+      <InfoCard text="资料解析和检索的全局默认值来自后端 settings_default.yaml；上传时可用本机偏好临时指定 MinerU 参数。" />
       <BackendSettingList
         entries={getBackendEntries("ingest", "search").filter((entry) =>
           [
@@ -734,7 +734,7 @@ export function SettingsPanel({ isOpen, onClose }: SettingsModalProps) {
 
   const renderGeneration = () => (
     <div className="space-y-6">
-      <InfoCard text="这些生成参数目前是浏览器本机实验偏好；后端主流程的模型路由、温度和重试策略仍以代码与 settings.yaml 为准。" variant="warning" />
+      <InfoCard text="这些生成参数目前是浏览器本机实验偏好；后端主流程的模型路由、温度和重试策略仍以代码与 settings_default.yaml 为准。" variant="warning" />
       <SliderInput label="采样温度（Temperature）" value={draft.generationTemperature} onChange={(v) => patch("generationTemperature", v)} min={0} max={2} step={0.05} />
       <SliderInput label="核心采样（Top-P）" value={draft.generationTopP} onChange={(v) => patch("generationTopP", v)} min={0} max={1} step={0.01} />
 
@@ -765,7 +765,7 @@ export function SettingsPanel({ isOpen, onClose }: SettingsModalProps) {
 
   const renderRuntime = () => (
     <div className="space-y-6">
-      <InfoCard text="存储、数据库、LangSmith、缓存和安全护栏由后端环境变量与 settings.yaml 控制；下面先展示当前生效状态。" />
+      <InfoCard text="存储、数据库、LangSmith、缓存和安全护栏由后端环境变量与 settings_default.yaml 控制；下面先展示当前生效状态。" />
       <BackendSettingList
         entries={getBackendEntries("storage", "observability")}
         loading={isOverviewLoading}

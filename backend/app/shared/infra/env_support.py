@@ -104,7 +104,7 @@ def get_project_root() -> Path:
 def resolve_project_settings_path() -> Path:
     configured = (get_env("PROJECT_SETTINGS_PATH") or "").strip()
     if not configured:
-        configured = "settings.yaml"
+        configured = "settings_default.yaml"
     path = Path(configured)
     if path.is_absolute():
         return path

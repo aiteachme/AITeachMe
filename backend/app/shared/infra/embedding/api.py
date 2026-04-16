@@ -83,7 +83,7 @@ async def _call_embedding(
             raise LLMCallError(
                 reason=(
                     f"Embedding 模型 `{configured_model}` 在当前供应商不可用或无权限。"
-                    "请在项目根目录 settings.yaml 的 `models.embedding` 中改为账号可用模型后重启后端。"
+                    "请在项目根目录 settings_default.yaml 的 `models.embedding` 中改为账号可用模型后重启后端。"
                     f"当前 LLM_BASE_URL={api_base}。"
                     "常见可选：`text-embedding-3-small`（OpenAI 兼容）或 `text-embedding-v4`（DashScope）。"
                 )
@@ -100,7 +100,7 @@ async def aembed_texts(
 
     Args:
         texts: 待向量化的文本列表。
-        batch_size: 每批大小（默认从 `settings.yaml` 读取）。
+        batch_size: 每批大小（默认从 `settings_default.yaml` 读取）。
     """
 
     if not texts:

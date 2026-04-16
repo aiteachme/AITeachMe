@@ -1,4 +1,4 @@
-"""Runtime settings loaded from project `settings.yaml`."""
+"""Runtime settings loaded from project `settings_default.yaml`."""
 
 from __future__ import annotations
 
@@ -26,7 +26,7 @@ class _SettingsModel(BaseModel):
 
 
 class ModelsSettings(_SettingsModel):
-    """Model names exactly shaped like `settings.yaml: models`."""
+    """Model names exactly shaped like `settings_default.yaml: models`."""
 
     reason: str | None = None
     primary: str = "qwen-plus"
@@ -206,11 +206,11 @@ class GenerationSettings(_SettingsModel):
 class Settings(_SettingsModel):
     """Project-level runtime settings.
 
-    The public shape mirrors repo-root `settings.yaml`, e.g.
+    The public shape mirrors repo-root `settings_default.yaml`, e.g.
     `settings.models.reason` or `settings.search.provider_timeout_s`.
 
     The settings object intentionally does not mirror legacy flat names; call
-    sites should use the same nested paths as `settings.yaml`.
+    sites should use the same nested paths as `settings_default.yaml`.
     """
 
     models: ModelsSettings = Field(default_factory=ModelsSettings)

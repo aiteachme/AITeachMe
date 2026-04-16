@@ -55,6 +55,8 @@ ingest/
 - `deep_enhance/` 是 Phase 2 后台增强链路。
 - `common/parsing/` 放两条链路共享的分类、策略、解析器、Markdown 规范化与 OCR 实现。
 
+当前真实运行主线以 `fast_parse/lib/runtime.py::run_parse_file_workflow()` 和 `deep_enhance/lib/background.py::_run_deep_enhance_background()` 为准；`fast_parse/graph.py` 与 `deep_enhance/graph.py` 主要用于 LangGraph dev/export 和后续节点化收口，避免把 graph 与手写 runtime 当成两套同时维护的业务入口。
+
 ## 对外入口
 
 上层业务只应该调用模块稳定入口：

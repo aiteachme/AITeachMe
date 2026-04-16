@@ -16,7 +16,7 @@ export interface SettingEntry {
   key: string;
   /** 展示名称。 */
   label: string;
-  /** 配置来源：env/config/runtime。 */
+  /** 配置来源：env/settings/runtime。 */
   source: SettingEntrySource;
   /** 可安全展示的当前值。 */
   value?: unknown | null;

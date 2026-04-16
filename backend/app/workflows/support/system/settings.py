@@ -132,7 +132,7 @@ def _runtime_entry(
 
 
 def build_settings_overview_data() -> SettingsOverviewData:
-    """Build a safe read-only overview of env/settings.yaml effective settings."""
+    """Build a safe read-only overview of env/settings_default.yaml effective settings."""
 
     settings = get_settings()
     mode = resolve_app_mode()
@@ -148,13 +148,13 @@ def build_settings_overview_data() -> SettingsOverviewData:
                 _env_entry("runtime.app_mode_raw", "APP_MODE", "APP_MODE", "未设置时按本地优先策略解析。"),
                 _runtime_entry("runtime.version", "应用版本", get_app_version()),
                 _env_entry("auth.enabled", "AUTH_ENABLED", "AUTH_ENABLED", "控制账号鉴权能力。", value=get_env_bool("AUTH_ENABLED", True)),
-                _runtime_entry("settings.path", "settings.yaml 路径", str(settings_path)),
+                _runtime_entry("settings.path", "settings_default.yaml 路径", str(settings_path)),
             ],
         ),
         SettingSection(
             id="models",
             label="模型与密钥",
-            description="模型名来自 settings.yaml，服务地址和密钥来自环境变量。",
+            description="模型名来自 settings_default.yaml，服务地址和密钥来自环境变量。",
             entries=[
                 _env_entry("llm.base_url", "LLM_BASE_URL", "LLM_BASE_URL", "OpenAI-compatible 上游地址。"),
                 _env_entry("llm.api_key", "LLM_API_KEY", "LLM_API_KEY", "模型访问密钥，只显示是否配置。", secret=True),
@@ -253,7 +253,7 @@ def build_settings_overview_data() -> SettingsOverviewData:
         mode=mode,
         sections=sections,
         notes=[
-            "页面只展示后端当前生效配置；环境变量和 settings.yaml 需要在部署环境或文件中修改。",
+            "页面只展示后端当前生效配置；环境变量和 settings_default.yaml 需要在部署环境或文件中修改。",
             "敏感字段只显示是否已配置，不返回明文。",
             "浏览器本地偏好只影响当前设备，不会写回后端配置。",
         ],

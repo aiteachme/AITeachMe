@@ -68,7 +68,7 @@ def _start_parse_for_files(
 
 async def run_parse_files_background(*, subject: str, file_ids: list[int]) -> None:
     settings = get_settings()
-    concurrency = max(settings.ingest_parse_concurrency, 1)
+    concurrency = max(settings.ingest.parse_concurrency, 1)
     batch_logger = logger.bind(subject=subject, file_ids=file_ids)
     batch_logger.info(
         "file_parse_background_started",
