@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
-
 from app.shared.infra.llm_support import acompletion_with_fallback
 from app.shared.infra.llm_support.routing import TaskType
 from app.shared.infra.workflow.context import WorkflowContext
@@ -15,6 +13,8 @@ from app.workflows.digest.planner.state import BuildPlannerState
 
 
 def build_compose_build_plan_node(*, context: WorkflowContext):
+    del context
+
     async def compose_build_plan_node(state: BuildPlannerState) -> dict:
         material_context = state["material_context"]
         plan_sketch = PlanSketch.model_validate(state.get("plan_sketch") or {})
@@ -43,6 +43,8 @@ def build_compose_build_plan_node(*, context: WorkflowContext):
                     plan_sketch=plan_sketch,
                     intent_profile=intent,
                     evidence_brief=evidence,
+                    message_history=list(state.get("message_history", [])),
+                    latest_plan=state.get("latest_plan"),
                 ),
                 task_type=TaskType.REASONING,
                 model="reason",

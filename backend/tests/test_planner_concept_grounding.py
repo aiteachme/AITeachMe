@@ -6,15 +6,24 @@ from unittest.mock import AsyncMock
 
 from app.shared.infra.search.types import ScrapedPage, SearchResult
 from app.shared.infra.workflow.context import create_langgraph_dev_context
-from app.workflows.digest.planner.lib.research_probe import LearningIntentProfile, ResearchProbePlan, PlannerQuery
+from app.workflows.digest.planner.lib.research_probe import (
+    EvidenceBrief,
+    LearningIntentProfile,
+    PlanSketch,
+    PlannerQuery,
+    ResearchProbePlan,
+)
 from app.workflows.digest.planner.lib.plans import build_fallback_plan
 from app.workflows.digest.planner.lib.research_probe import build_fallback_plan_sketch
 from app.workflows.digest.planner.lib.grounding import (
     build_planner_concept_queries,
     collect_planner_concept_briefing,
 )
+from app.workflows.digest.planner.lib.planner_events import emit_planner_event, emit_planner_token
 from app.workflows.digest.planner.graph import build_planner_graph
+from app.workflows.digest.planner import nodes as planner_nodes
 from app.workflows.digest.planner.nodes.generate_plan_preview import build_generate_plan_preview_node
+from app.workflows.digest.planner.prompts import build_plan_composer_messages
 from app.workflows.digest.planner.state import BuildPlannerGraphInput
 from app.workflows.digest.common.models import DigestMaterialContext, FastTopicHints, SectionPacket, SharedInputs, SubjectProfile
 
@@ -207,6 +216,44 @@ def test_planner_input_schema_keeps_stream_callbacks() -> None:
     assert "planner_session_id" in annotations
 
 
+def test_planner_node_aliases_point_to_current_implementations() -> None:
+    assert planner_nodes.build_generate_plan_preview_node is planner_nodes.build_bootstrap_plan_brief_node
+    assert planner_nodes.build_probe_supporting_evidence_node is planner_nodes.build_probe_evidence_node
+    assert planner_nodes.build_compose_plan_contract_node is planner_nodes.build_compose_build_plan_node
+
+
+def test_planner_event_helpers_support_sync_and_async_callbacks() -> None:
+    events: list[dict] = []
+    tokens: list[str] = []
+
+    async def progress_callback(payload: dict) -> None:
+        events.append(payload)
+
+    def token_callback(token: str) -> None:
+        tokens.append(token)
+
+    asyncio.run(
+        emit_planner_event(
+            {"progress_callback": progress_callback},
+            event="planner.test",
+            detail="测试事件",
+            payload={"count": 1},
+        )
+    )
+    asyncio.run(emit_planner_token({"token_callback": token_callback}, "草稿"))
+
+    assert events == [
+        {
+            "stage": "planner.test",
+            "step": "planner.test",
+            "event": "planner.test",
+            "detail": "测试事件",
+            "count": 1,
+        }
+    ]
+    assert tokens == ["草稿"]
+
+
 def test_generate_plan_preview_streams_sketch_and_extracts_intent(monkeypatch) -> None:
     async def fake_stream(*_args, **_kwargs):
         for token in ["高等数学规划\n", "1. 梳理极限核心概念\n"]:
@@ -253,6 +300,36 @@ def test_generate_plan_preview_streams_sketch_and_extracts_intent(monkeypatch) -
     assert result["learning_intent_profile"]["goal_type"] == "systematic_learning"
     assert result["research_probe_plan"]["local_queries"][0]["query"] == "极限 核心概念"
     assert any(event["event"] == "planner.intent.ready" for event in events)
+
+
+def test_plan_composer_prompt_keeps_revision_context() -> None:
+    messages = build_plan_composer_messages(
+        subject="subj_math",
+        user_goal="系统学习极限",
+        digest_mode="systematic",
+        tone="encouraging",
+        material_context=_build_shared_inputs(),
+        plan_sketch=PlanSketch(
+            research_tasks=["梳理极限和连续的关系"],
+            provisional_chapters=["极限与连续"],
+        ),
+        intent_profile=LearningIntentProfile(
+            goal_type="systematic_learning",
+            success_criteria=["形成清晰大纲"],
+        ),
+        evidence_brief=EvidenceBrief(concept_briefing="本地资料覆盖极限定义。"),
+        message_history=["第一版太泛", "请更偏考试重点"],
+        latest_plan={
+            "plan_summary": "上一版偏系统综述。",
+            "chapter_plan": [{"title": "泛化章节"}],
+        },
+    )
+
+    prompt = messages[-1]["content"]
+
+    assert "请更偏考试重点" in prompt
+    assert "上一版偏系统综述" in prompt
+    assert "上一版章节数：1" in prompt
 
 
 def test_fallback_plan_sketch_uses_markdown_contract() -> None:

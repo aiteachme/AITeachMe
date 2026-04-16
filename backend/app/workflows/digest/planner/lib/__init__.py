@@ -1,5 +1,7 @@
 """Planner lane-local helpers."""
 
+# Legacy concept-grounding helpers are kept importable for tests and external
+# callers. The active graph uses `nodes.probe_evidence` for Planner V3.2.
 from app.workflows.digest.planner.lib.grounding import (
     PlannerConceptBriefing,
     PlannerConceptEvidence,

@@ -1,4 +1,9 @@
-"""Lightweight concept grounding for planner outline quality."""
+"""Legacy lightweight concept grounding helpers.
+
+The active Planner graph now uses `nodes.probe_evidence`; this module is kept
+for compatibility with existing imports and tests while the V4 grounding shape
+is still settling.
+"""
 
 from __future__ import annotations
 
@@ -27,7 +32,6 @@ logger = structlog.get_logger(__name__)
 
 _CJK_RE = re.compile(r"[\u3400-\u9fff]")
 _TITLE_SPLIT_RE = re.compile(r"\s*[-—|｜:：]\s*")
-_SPACE_SPLIT_RE = re.compile(r"\s+")
 _PLANNER_WEB_READ_LIMIT = 2
 _PLANNER_PAGE_PREVIEW_CHARS = 180
 
