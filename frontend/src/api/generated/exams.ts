@@ -68,7 +68,7 @@ export const examsOfflineRootApiV1SubjectsSubjectExamsPost = async (subject: str
   return orvalApiClient<examsOfflineRootApiV1SubjectsSubjectExamsPostResponse>(getExamsOfflineRootApiV1SubjectsSubjectExamsPostUrl(subject),
   {      
     ...options,
-    method: 'PATCH'
+    method: 'PUT'
     
     
   }
@@ -163,7 +163,7 @@ export const examsOfflinePathApiV1SubjectsSubjectExamsPathPost = async (subject:
   return orvalApiClient<examsOfflinePathApiV1SubjectsSubjectExamsPathPostResponse>(getExamsOfflinePathApiV1SubjectsSubjectExamsPathPostUrl(subject,path),
   {      
     ...options,
-    method: 'PATCH'
+    method: 'PUT'
     
     
   }

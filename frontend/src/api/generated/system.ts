@@ -17,6 +17,7 @@ import type {
 
 import type {
   ApiResponseInitData,
+  ApiResponseSettingsOverviewData,
   ErrorResponse,
   HTTPValidationError,
   InitRequest
@@ -124,5 +125,100 @@ export const useInitSystemApiV1SystemInitPost = <TError = HTTPValidationError | 
         TContext
       > => {
       return useMutation(getInitSystemApiV1SystemInitPostMutationOptions(options), queryClient);
+    }
+    /**
+ * 返回环境变量与 config.yaml 合并后的只读设置概览。
+ * @summary 读取后端设置总览
+ */
+export type getSystemSettingsApiV1SystemSettingsPostResponse200 = {
+  data: ApiResponseSettingsOverviewData
+  status: 200
+}
+
+export type getSystemSettingsApiV1SystemSettingsPostResponse422 = {
+  data: HTTPValidationError
+  status: 422
+}
+
+export type getSystemSettingsApiV1SystemSettingsPostResponse500 = {
+  data: ErrorResponse
+  status: 500
+}
+
+export type getSystemSettingsApiV1SystemSettingsPostResponseSuccess = (getSystemSettingsApiV1SystemSettingsPostResponse200) & {
+  headers: Headers;
+};
+export type getSystemSettingsApiV1SystemSettingsPostResponseError = (getSystemSettingsApiV1SystemSettingsPostResponse422 | getSystemSettingsApiV1SystemSettingsPostResponse500) & {
+  headers: Headers;
+};
+
+export type getSystemSettingsApiV1SystemSettingsPostResponse = (getSystemSettingsApiV1SystemSettingsPostResponseSuccess | getSystemSettingsApiV1SystemSettingsPostResponseError)
+
+export const getGetSystemSettingsApiV1SystemSettingsPostUrl = () => {
+
+
+  
+
+  return `/api/v1/system/settings`
+}
+
+export const getSystemSettingsApiV1SystemSettingsPost = async (initRequest: InitRequest, options?: RequestInit): Promise<getSystemSettingsApiV1SystemSettingsPostResponse> => {
+  
+  return orvalApiClient<getSystemSettingsApiV1SystemSettingsPostResponse>(getGetSystemSettingsApiV1SystemSettingsPostUrl(),
+  {      
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      initRequest,)
+  }
+);}
+  
+
+
+
+export const getGetSystemSettingsApiV1SystemSettingsPostMutationOptions = <TError = HTTPValidationError | ErrorResponse,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof getSystemSettingsApiV1SystemSettingsPost>>, TError,{data: InitRequest}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
+): UseMutationOptions<Awaited<ReturnType<typeof getSystemSettingsApiV1SystemSettingsPost>>, TError,{data: InitRequest}, TContext> => {
+
+const mutationKey = ['getSystemSettingsApiV1SystemSettingsPost'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+      
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof getSystemSettingsApiV1SystemSettingsPost>>, {data: InitRequest}> = (props) => {
+          const {data} = props ?? {};
+
+          return  getSystemSettingsApiV1SystemSettingsPost(data,requestOptions)
+        }
+
+
+
+        
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type GetSystemSettingsApiV1SystemSettingsPostMutationResult = NonNullable<Awaited<ReturnType<typeof getSystemSettingsApiV1SystemSettingsPost>>>
+    export type GetSystemSettingsApiV1SystemSettingsPostMutationBody = InitRequest
+    export type GetSystemSettingsApiV1SystemSettingsPostMutationError = HTTPValidationError | ErrorResponse
+
+    /**
+ * @summary 读取后端设置总览
+ */
+export const useGetSystemSettingsApiV1SystemSettingsPost = <TError = HTTPValidationError | ErrorResponse,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof getSystemSettingsApiV1SystemSettingsPost>>, TError,{data: InitRequest}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof getSystemSettingsApiV1SystemSettingsPost>>,
+        TError,
+        {data: InitRequest},
+        TContext
+      > => {
+      return useMutation(getGetSystemSettingsApiV1SystemSettingsPostMutationOptions(options), queryClient);
     }
     

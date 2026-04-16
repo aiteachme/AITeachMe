@@ -33,13 +33,13 @@ export interface KnowledgeBuildRequestInput {
 
 interface KnowledgeBuildRequestPayload extends KnowledgeBuildRequestInput {
   embedding_resolution?: KnowledgeBuildResolution;
-  build_type?: "docs" | "graph" | "all";
+  build_type?: "docs" | "graph";
 }
 
 interface UseKnowledgeBuildFlowOptions {
   subjectId: string;
   buildRequest: () => KnowledgeBuildRequestInput;
-  buildType?: "docs" | "graph" | "all";
+  buildType?: "docs" | "graph";
   fallbackErrorMessage?: string;
   onSuccess?: (data: DocGenBuildData) => void;
 }
@@ -71,7 +71,7 @@ async function triggerKnowledgeBuild(
 export function useKnowledgeBuildFlow({
   subjectId,
   buildRequest,
-  buildType = "all",
+  buildType = "docs",
   fallbackErrorMessage = "知识构建失败，请稍后重试。",
   onSuccess,
 }: UseKnowledgeBuildFlowOptions) {

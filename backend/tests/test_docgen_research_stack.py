@@ -17,7 +17,7 @@ from app.workflows.digest.docgen.lib.query_planning import (
     generate_gap_queries,
     generate_sub_queries,
 )
-from app.workflows.digest.docgen.graph import build_finalize_titles_node, build_research_chapters_node
+from app.workflows.digest.docgen.graph import build_craft_sends, build_finalize_titles_node, build_research_chapters_node
 
 
 class FakeRetriever:
@@ -539,7 +539,34 @@ def test_finalize_titles_node_generates_resolved_title_from_research_context() -
     ):
         result = asyncio.run(node(state))
 
-    assert result["chapter_materials"][0]["resolved_title"] == "多元函数的变化率直觉"
+    assert result["title_resolved_chapter_materials"][0]["resolved_title"] == "多元函数的变化率直觉"
+
+
+def test_build_craft_sends_prefers_resolved_materials_without_duplicates() -> None:
+    sends = build_craft_sends(
+        {
+            "subject": "demo",
+            "requested_at": datetime.utcnow(),
+            "chapter_materials": [
+                {
+                    "chapter_index": 1,
+                    "title": "第 1 章",
+                    "dense_context": "旧上下文",
+                }
+            ],
+            "title_resolved_chapter_materials": [
+                {
+                    "chapter_index": 1,
+                    "title": "第 1 章",
+                    "resolved_title": "偏导数直觉",
+                    "dense_context": "新上下文",
+                }
+            ],
+        }
+    )
+
+    assert len(sends) == 1
+    assert sends[0].arg["chapter_material"]["resolved_title"] == "偏导数直觉"
 
 
 def test_finalize_titles_node_raises_when_llm_fails() -> None:

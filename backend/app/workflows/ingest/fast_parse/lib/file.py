@@ -21,11 +21,11 @@ from app.utils.path_helpers import (
     build_temp_dir,
 )
 from app.shared.infra.workflow.context import WorkflowContext
-from app.workflows.ingest.events import IngestFileClassifiedEvent
+from app.workflows.ingest.application.events import IngestFileClassifiedEvent
 from app.workflows.ingest.fast_parse.lib.common import workflow_logger
-from app.workflows.ingest.shared.parsing.classifier import classify_file
-from app.workflows.ingest.shared.parsing.strategy import build_parse_plan
-from app.workflows.ingest.state import IngestParseState
+from app.workflows.ingest.common.parsing.classifier import classify_file
+from app.workflows.ingest.common.parsing.strategy import build_parse_plan
+from app.workflows.ingest.fast_parse.state import IngestParseState
 
 
 async def _load_raw_file_state(state: IngestParseState) -> IngestParseState:

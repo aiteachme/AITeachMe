@@ -1,4 +1,4 @@
-"""FastAPI 应用入口。"""
+﻿"""FastAPI 应用入口。"""
 
 from __future__ import annotations
 
@@ -85,7 +85,7 @@ def _log_infra_diagnostics(settings) -> None:
 
     import os
     from app.shared.infra.database import get_engine, is_postgres, is_sqlite, is_vec_ready
-    from app.workflows.digest._shared.runtime_config import get_teaching_runtime_config_path
+    from app.workflows.digest.common.runtime_config import get_teaching_runtime_config_path
 
     engine = get_engine()
     dialect = engine.dialect.name
@@ -329,3 +329,4 @@ def create_app() -> FastAPI:
 
 
 app = create_app()
+

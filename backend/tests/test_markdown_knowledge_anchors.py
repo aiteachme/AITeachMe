@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 
 from app.workflows.digest.knowledge_graph.lib.extractor import extract_candidates
-from app.workflows.digest.shared.markdown_knowledge_anchors import (
+from app.workflows.digest.common.markdown_knowledge_anchors import (
     ensure_markdown_knowledge_unit_anchors,
     extract_markdown_knowledge_units,
     validate_knowledge_unit_anchors,

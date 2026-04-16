@@ -2,7 +2,7 @@
 
 扫描路径（按优先级）：
 1. 项目内置: ``backend/skills/``
-2. 用户自定义: ``~/.atm/skills/``
+2. 本机/部署方自定义: ``~/.atm/skills/``
 
 OpenClaw 规范：
 - 每个 Skill 是一个目录，包含 SKILL.md 文件
@@ -19,7 +19,7 @@ OpenClaw 规范：
     └── review_mistakes/
         └── SKILL.md
 
-    ~/.atm/skills/                ← 用户自定义
+    ~/.atm/skills/                ← 本机/部署方自定义
     └── my_custom_skill/
         └── SKILL.md
 """
@@ -46,7 +46,7 @@ def _get_project_skills_dir() -> Path:
 
 
 def _get_user_skills_dir() -> Path:
-    """用户自定义 skills 目录: ~/.atm/skills/"""
+    """本机/部署方自定义 skills 目录: ~/.atm/skills/"""
     return Path.home() / ".atm" / "skills"
 
 
@@ -54,7 +54,7 @@ def get_all_skill_dirs() -> list[Path]:
     """返回所有 skill 扫描路径（按优先级）。
 
     Returns:
-        [项目内置目录, 用户自定义目录]
+        [项目内置目录, 本机/部署方自定义目录]
         只返回实际存在的目录。
     """
     dirs = [
@@ -231,7 +231,7 @@ def load_all_skill_definitions(
     2. ``~/.atm/skills/``（用户自定义）
     3. ``extra_dirs``（额外指定路径）
 
-    同名 Skill 后加载的覆盖先加载的（用户 > 项目）。
+    同名 Skill 后加载的覆盖先加载的（本机/部署方 > 项目）。
 
     Returns:
         解析后的 Skill 定义列表（去重后）。

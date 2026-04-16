@@ -31,6 +31,7 @@ class DocGenState(TypedDict, total=False):
     subject_profile: dict[str, Any] | None
     chapter_assignments: list[dict[str, Any]]
     chapter_materials: Annotated[list[dict[str, Any]], operator.add]
+    title_resolved_chapter_materials: list[dict[str, Any]]
     research_sources: Annotated[list[str], operator.add]
     chapter_drafts: Annotated[list[dict[str, Any]], operator.add]
     chapter_metadatas: list[dict[str, Any]]

@@ -764,7 +764,7 @@ export function BuildPlanPage() {
 
   const knowledgeBuild = useKnowledgeBuildFlow({
     subjectId,
-    buildType: readyFileUids.length > 0 ? "all" : "docs",
+    buildType: "docs",
     buildRequest: () => ({
       file_uids: readyFileUids.length > 0 ? readyFileUids : undefined,
       prompt: currentPlanRef.current?.user_goal ?? undefined,

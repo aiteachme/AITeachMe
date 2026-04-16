@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any, TypedDict
 
 from app.shared.infra.workflow import project_typed_dict_schema
-from app.workflows.digest.shared.models import SharedInputs
+from app.workflows.digest.common.models import SharedInputs
 
 
 class BuildPlannerState(TypedDict, total=False):
@@ -80,3 +80,4 @@ __all__ = [
     "BuildPlannerGraphOutput",
     "BuildPlannerState",
 ]
+

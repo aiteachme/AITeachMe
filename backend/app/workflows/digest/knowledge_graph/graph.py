@@ -16,15 +16,14 @@ from app.workflows.digest.knowledge_graph.nodes import (
     resolve_edges_node,
     resolve_nodes_node,
 )
-from app.workflows.digest.knowledge_graph.routes import route_after_lock, route_after_prepare, route_after_step
-from app.workflows.digest.knowledge_graph.state import KnowledgeDigestState
+from app.workflows.digest.knowledge_graph.lib.routes import route_after_lock, route_after_prepare, route_after_step
+from app.workflows.digest.knowledge_graph.state import KGDigestState, KnowledgeDigestState
 
-def build_knowledge_digest_graph(
-) -> StateGraph:
+def build_kg_digest_graph() -> StateGraph:
     """Build the LangGraph workflow for digest graph construction."""
 
-    workflow = StateGraph(KnowledgeDigestState)
-    trace = workflow_tracer(workflow="digest.graph", lane="knowledge")
+    workflow = StateGraph(KGDigestState)
+    trace = workflow_tracer(workflow="digest.graph", lane="kg")
     workflow.add_node(
         "acquire_lock",
         trace.node(
@@ -159,12 +158,17 @@ def build_knowledge_digest_graph(
     workflow.add_edge("fail", END)
     return workflow
 
+
+build_knowledge_digest_graph = build_kg_digest_graph
+
+
 def create_graph_digest_initial_state(
     *,
     subject: str,
     file_ids: list[int],
     job_id: int,
     build_session_id: str | None = None,
+    user_prompt: str | None = None,
     doc_chapter_metadatas: list[dict[str, object]] | None = None,
 ) -> KnowledgeDigestState:
     """Create the initial state for digest graph building."""
@@ -174,6 +178,7 @@ def create_graph_digest_initial_state(
         "file_ids": file_ids,
         "job_id": job_id,
         "build_session_id": build_session_id or "",
+        "user_prompt": user_prompt,
         "doc_chapter_metadatas": list(doc_chapter_metadatas or []),
         "shared_inputs": None,
         "chunk_ids": [],
@@ -198,8 +203,8 @@ def create_graph_digest_initial_state(
 
 
 __all__ = [
+    "build_kg_digest_graph",
     "build_knowledge_digest_graph",
     "create_graph_digest_initial_state",
 ]
-
 

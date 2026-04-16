@@ -123,3 +123,13 @@ KNOWLEDGE_PROMPTS: dict[str, str] = {
     "knowledge_theme_tree_system": SYSTEM_PROMPT_KNOWLEDGE_THEME_TREE,
     "knowledge_theme_tree_user": USER_PROMPT_KNOWLEDGE_THEME_TREE,
 }
+
+KG_PROMPTS = KNOWLEDGE_PROMPTS
+
+
+__all__ = [
+    "KG_PROMPTS",
+    "KNOWLEDGE_PROMPTS",
+    "SYSTEM_PROMPT_KNOWLEDGE_EXTRACT",
+    "USER_PROMPT_KNOWLEDGE_EXTRACT",
+]

@@ -196,9 +196,13 @@ class _MermaidPlaceholderRuntime(BaseTracedExecution):
                 **llm_kwargs,
             )
             body = _sanitize_mindmap_body(str(response), topic=topic)
-        except Exception:
-            raise
-        return TracedExecutionResult(content=f"```mermaid\n{body}\n```")
+        except Exception as exc:
+            body = self._fallback_mermaid(topic, context)
+            return TracedExecutionResult(
+                content=f"```mermaid\n{body}\n```",
+                metadata={"fallback_used": True, "error": str(exc)[:240]},
+            )
+        return TracedExecutionResult(content=f"```mermaid\n{body}\n```", metadata={"fallback_used": False})
 
     async def process_placeholders(self, markdown: str) -> str:
         output = markdown

@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from typing import Literal, TypedDict
+from typing import Literal
+
+from typing_extensions import TypedDict
 
 SYSTEM: Literal["system"] = "system"
 USER: Literal["user"] = "user"
@@ -20,4 +22,3 @@ class ChatMessage(TypedDict, total=False):
     tool_call_id: str          # role="tool" 时必填
     tool_calls: list[dict]     # role="assistant" 且有工具调用时
     name: str                  # 工具名称（可选）
-

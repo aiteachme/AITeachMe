@@ -19,7 +19,7 @@ class DocGenBuildRequest(BaseModel):
                 "file_uids": ["file_xxx", "file_yyy"],
                 "prompt": "Generate review-oriented notes",
                 "embedding_resolution": "rebuild",
-                "build_type": "all",
+                "build_type": "docs",
             }
         }
     )
@@ -42,17 +42,16 @@ class DocGenBuildRequest(BaseModel):
         default=None,
         description="Optional subject-level embedding resolution chosen after a precheck conflict.",
     )
-    build_type: Literal["docs", "graph", "all"] = Field(
-        default="all",
+    build_type: Literal["docs", "graph"] = Field(
+        default="docs",
         description=(
-            "Build type: 'docs' for knowledge documents only, 'graph' for knowledge graph only, "
-            "'all' for unified build."
+            "Build type: 'docs' for knowledge documents only, 'graph' for knowledge graph only."
         ),
     )
     confirmed_plan_id: str | None = Field(
         default=None,
         description=(
-            "Planner-generated and confirmed build plan ID. `docs` and `all` builds require this field; "
+            "Planner-generated and confirmed build plan ID. `docs` builds require this field; "
             "when provided, the build uses the frozen file selection, chapter plan, and user goal."
         ),
     )

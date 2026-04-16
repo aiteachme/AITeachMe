@@ -6,7 +6,6 @@ import math
 import re
 from collections import Counter
 
-from app.shared.infra.embedding import aembed_texts
 from app.shared.infra.search.cache import get_compression_runtime_cache
 from app.shared.infra.execution import BaseTracedExecution, TracedExecutionResult
 
@@ -239,6 +238,8 @@ class ContextCompressor(BaseTracedExecution):
             )
 
         try:
+            from app.shared.infra.embedding import aembed_texts
+
             embeddings = await aembed_texts([focus_query or query.strip() or "context", *passages])
             query_embedding = embeddings[0]
             scored: list[tuple[float, float, float, str]] = []

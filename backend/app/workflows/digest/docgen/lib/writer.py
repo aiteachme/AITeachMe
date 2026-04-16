@@ -1,4 +1,4 @@
-"""Workflow-local writer runtime for digest DocGen."""
+﻿"""Workflow-local writer runtime for digest DocGen."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from app.shared.infra.execution import BaseTracedExecution, TracedExecutionResul
 from app.shared.infra.llm_support.routing import TaskType
 from app.shared.infra.skills import collect_recommended_tool_tags, render_prompt_scoped_skillpacks
 from app.shared.infra.tools.builtin.markdown_processing import count_words
-from app.workflows.digest._shared.pedagogy import (
+from app.workflows.digest.common.pedagogy import (
     analyze_chapter_heading_quality,
     ensure_chapter_learning_scaffold,
     resolve_effective_chapter_title,
@@ -485,3 +485,4 @@ class DocGenWriterRuntime(BaseTracedExecution):
 
 
 __all__ = ["DocGenWriterRuntime"]
+

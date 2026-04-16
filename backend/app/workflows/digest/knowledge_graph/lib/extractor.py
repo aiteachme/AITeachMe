@@ -21,14 +21,14 @@ from app.models.knowledge_taxonomy import (
     validate_relation_direction,
 )
 from app.workflows.digest.knowledge_graph.prompts import SYSTEM_PROMPT_KNOWLEDGE_EXTRACT, USER_PROMPT_KNOWLEDGE_EXTRACT
-from app.workflows.digest.shared.semantic_titles import (
+from app.workflows.digest.common.semantic_titles import (
     DEFAULT_QUESTION_TOPIC,
     choose_semantic_topic_path,
     clean_semantic_title,
     is_generic_semantic_title,
     normalize_semantic_whitespace,
 )
-from app.workflows.digest.shared.markdown_knowledge_anchors import extract_markdown_knowledge_units
+from app.workflows.digest.common.markdown_knowledge_anchors import extract_markdown_knowledge_units
 
 logger = structlog.get_logger()
 
@@ -980,5 +980,4 @@ __all__ = [
     "extract_candidates",
     "has_conceptual_content",
 ]
-
 

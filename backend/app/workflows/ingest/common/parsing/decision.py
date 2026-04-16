@@ -1,0 +1,137 @@
+﻿"""Parse route decisions for ingest workflows."""
+
+from __future__ import annotations
+
+from app.workflows.ingest.common.parsing.formats import normalize_extension
+from app.workflows.ingest.common.parsing.provider_contracts import ParseDecision, ProviderCapability
+
+
+# Conservative defaults for MinerU Cloud-style document parsing. Deployments may
+# expose a wider or narrower list; later provider discovery can replace this.
+DEFAULT_MINERU_EXTENSIONS = frozenset(
+    {
+        ".pdf",
+        ".doc",
+        ".docx",
+        ".ppt",
+        ".pptx",
+        ".xls",
+        ".xlsx",
+        ".png",
+        ".jpg",
+        ".jpeg",
+        ".html",
+        ".htm",
+    }
+)
+
+
+def build_mineru_capability(*, available: bool) -> ProviderCapability:
+    return ProviderCapability(
+        name="mineru",
+        available=available,
+        supported_extensions=set(DEFAULT_MINERU_EXTENSIONS),
+        features={"layout", "ocr", "table", "formula", "markdown", "assets"},
+        quality_level="high",
+        latency_level="slow",
+        cost_level="external",
+    )
+
+
+def build_parse_decision(
+    *,
+    extension: str,
+    requested_provider: str | None,
+    mineru_available: bool,
+    strict: bool = False,
+) -> ParseDecision:
+    """Choose the primary parsing provider for the current file.
+
+    This is intentionally small for the first landing:
+    - explicit MinerU wins when the extension is supported;
+    - unsupported explicit MinerU falls back to local unless strict is true;
+    - auto/default stays local for now.
+    """
+
+    normalized_extension = normalize_extension(extension)
+    normalized_request = (requested_provider or "").strip().lower() or None
+    mineru = build_mineru_capability(available=mineru_available)
+
+    if normalized_request == "mineru":
+        mineru_supports_extension = mineru.supports(normalized_extension)
+        if mineru.available and mineru_supports_extension:
+            return ParseDecision(
+                requested_provider="mineru",
+                primary_provider="mineru",
+                primary_reason=(
+                    "用户显式选择 MinerU，且当前 MinerU capability 支持该文件类型。"
+                ),
+                fallback_chain=["local", "ocr", "multimodal"],
+                can_preview_before_primary=False,
+                metadata={
+                    "extension": normalized_extension,
+                    "mineru_supported": True,
+                    "mineru_available": True,
+                },
+            )
+        if not mineru.available:
+            return ParseDecision(
+                requested_provider="mineru",
+                primary_provider="local",
+                primary_reason=(
+                    "用户显式选择 MinerU，但当前 MinerU 未配置或不可用；"
+                    "按 fallback 策略改用本地解析。"
+                ),
+                fallback_chain=["ocr", "multimodal"],
+                requested_provider_unavailable=True,
+                metadata={
+                    "extension": normalized_extension,
+                    "mineru_supported": mineru_supports_extension,
+                    "mineru_available": False,
+                },
+            )
+        if strict:
+            return ParseDecision(
+                requested_provider="mineru",
+                primary_provider="mineru",
+                primary_reason="用户显式选择 MinerU，但当前 MinerU capability 不支持该文件类型。",
+                strict=True,
+                unsupported_requested_provider=True,
+                can_preview_before_primary=False,
+                metadata={
+                    "extension": normalized_extension,
+                    "mineru_supported": mineru.supports(normalized_extension),
+                    "mineru_available": mineru.available,
+                },
+            )
+        return ParseDecision(
+            requested_provider="mineru",
+            primary_provider="local",
+            primary_reason=(
+                "用户显式选择 MinerU，但当前 MinerU capability 不支持该文件类型；"
+                "按 fallback 策略改用本地解析。"
+            ),
+            fallback_chain=["ocr", "multimodal"],
+            unsupported_requested_provider=True,
+            metadata={
+                "extension": normalized_extension,
+                "mineru_supported": mineru_supports_extension,
+                "mineru_available": mineru.available,
+            },
+        )
+
+    return ParseDecision(
+        requested_provider=normalized_request,
+        primary_provider="local",
+        primary_reason="未选择外部解析 provider，使用本地解析作为主路径。",
+        fallback_chain=["ocr", "multimodal"],
+        metadata={"extension": normalized_extension},
+    )
+
+
+__all__ = [
+    "DEFAULT_MINERU_EXTENSIONS",
+    "build_mineru_capability",
+    "build_parse_decision",
+]
+

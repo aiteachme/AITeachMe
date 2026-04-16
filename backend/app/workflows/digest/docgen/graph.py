@@ -211,7 +211,9 @@ def build_research_sends(state: DocGenState) -> list[Send]:
 
 def build_craft_sends(state: DocGenState) -> list[Send]:
     materials = sorted(
-        list(state.get("chapter_materials", [])),
+        _dedupe_chapter_items(
+            list(state.get("title_resolved_chapter_materials", []) or state.get("chapter_materials", []))
+        ),
         key=lambda item: item.get("chapter_index", 0),
     )
     total = len(materials)
@@ -239,6 +241,27 @@ def build_craft_sends(state: DocGenState) -> list[Send]:
     ]
 
 
+def _chapter_item_score(item: dict[str, Any]) -> tuple[int, int, int, int]:
+    return (
+        1 if str(item.get("resolved_title") or "").strip() else 0,
+        1 if str(item.get("dense_context") or "").strip() else 0,
+        len(list(item.get("sources") or [])),
+        len(str(item.get("research_summary") or "")),
+    )
+
+
+def _dedupe_chapter_items(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    best_by_index: dict[int, dict[str, Any]] = {}
+    for item in items:
+        chapter_index = int(item.get("chapter_index", 0) or 0)
+        if chapter_index <= 0:
+            continue
+        existing = best_by_index.get(chapter_index)
+        if existing is None or _chapter_item_score(item) >= _chapter_item_score(existing):
+            best_by_index[chapter_index] = item
+    return [best_by_index[index] for index in sorted(best_by_index)]
+
+
 def get_langgraph_dev_docgen_graph() -> StateGraph:
     """Create the DocGen graph used by ``langgraph dev``."""
 
@@ -264,5 +287,3 @@ __all__ = [
     "route_after_step",
     "update_knowledge_build_status",
 ]
-
-

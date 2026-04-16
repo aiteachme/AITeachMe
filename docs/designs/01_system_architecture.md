@@ -102,8 +102,8 @@
 
 ### 5.2 Digest（织网引擎）
 
-- 入口：`api/knowledge_docs.py` + `workflows/digest/application/knowledge_docs` + `workflows/digest/unified/runtime.py`
-- 核心：shared prepare、doc/kg 并行、consistency、repair、curriculum、统一发布
+- 入口：`api/knowledge_docs.py` + `workflows/digest/application/knowledge_docs` + `workflows/digest/application/runtime.py`
+- 核心：Planner 生成 confirmed plan；DocGen 独立生成知识文档；Knowledge Graph 独立生成图谱并触发 curriculum
 - 产物：`knowledge_document`、`knowledge_node/edge`、`curriculum/theme_tree_node/unit_dependency`
 
 ### 5.3 Interact（伴读引擎）
@@ -147,7 +147,7 @@
 应用级长任务由 `BackgroundTaskRegistry` 托管：
 
 - `files/upload` 触发后台 parse；
-- `knowledge/build` 触发后台 unified digest；
+- `knowledge/build` 按 `build_type` 触发后台 docs 或 graph 构建；
 - 进程关闭时统一取消与回收。
 
 这让“长流程执行”与“HTTP 接口返回”解耦，但没有新增复杂 job API 面。

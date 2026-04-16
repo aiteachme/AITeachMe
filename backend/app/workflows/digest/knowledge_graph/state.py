@@ -16,7 +16,7 @@ class KnowledgeDigestState(TypedDict, total=False):
     file_ids: list[int]
     job_id: int
     build_session_id: str
-    doc_chapter_metadatas: list[dict[str, Any]]
+    user_prompt: str | None
     shared_inputs: Any
     chunk_ids: list[int]
     chunk_uid_to_chunk_id: dict[str, int]
@@ -55,9 +55,6 @@ class KnowledgeDigestState(TypedDict, total=False):
     llm_extract_chunk_count: int
     success_chunk_count: int
     failed_chunk_count: int
-    doc_summary_extraction_count: int
-    doc_summary_node_count: int
-    doc_summary_edge_count: int
     no_match_count: int
     secondary_no_match_count: int
     unresolved_endpoint_count: int
@@ -66,3 +63,9 @@ class KnowledgeDigestState(TypedDict, total=False):
     token_summary: dict[str, Any]
     lock_acquired: bool
     error: str | None
+
+
+KGDigestState = KnowledgeDigestState
+
+
+__all__ = ["KnowledgeDigestState", "KGDigestState"]

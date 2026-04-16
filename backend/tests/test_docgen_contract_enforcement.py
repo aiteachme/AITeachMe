@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import asyncio
 import inspect
@@ -18,9 +18,9 @@ from app.workflows.digest.docgen.lib.publish import (
     publish_staged_knowledge_docs,
 )
 from app.workflows.digest.docgen.lib.reporting import build_docgen_lane_summary
-from app.workflows.digest.shared.metrics import DigestTokenSummary
-from app.workflows.digest.shared.contracts import parse_digest_confirmed_plan_contract
-from app.workflows.digest.shared.models import FastTopicHints, SharedInputs, SourcePacket, SubjectProfile
+from app.workflows.digest.common.metrics import DigestTokenSummary
+from app.workflows.digest.common.contracts import parse_digest_confirmed_plan_contract
+from app.workflows.digest.common.models import FastTopicHints, SharedInputs, SourcePacket, SubjectProfile
 
 
 def _build_shared_inputs() -> SharedInputs:
@@ -429,3 +429,4 @@ def test_publish_staged_knowledge_docs_creates_new_version_and_supersedes_old(se
     assert "demo/knowledge_markdowns/merged_knowledge_base.md" in fake_store.text
     assert captured_manifest["demo"].version_no == 2
     assert captured_manifest["demo"].chapter_titles == ["Rate of Change Intuition"]
+

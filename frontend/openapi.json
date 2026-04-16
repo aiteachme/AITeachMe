@@ -90,6 +90,58 @@
         }
       }
     },
+    "/api/v1/system/settings": {
+      "post": {
+        "tags": [
+          "system"
+        ],
+        "summary": "读取后端设置总览",
+        "description": "返回环境变量与 config.yaml 合并后的只读设置概览。",
+        "operationId": "get_system_settings_api_v1_system_settings_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InitRequest",
+                "default": {}
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_SettingsOverviewData_"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务内部异常。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/auth/email/send-code": {
       "post": {
         "tags": [
@@ -2921,54 +2973,6 @@
           }
         }
       },
-      "put": {
-        "tags": [
-          "exams"
-        ],
-        "summary": "Exams feature offline",
-        "operationId": "exams_offline_root_api_v1_subjects__subject__exams__post",
-        "parameters": [
-          {
-            "name": "subject",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Subject"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
-          },
-          "404": {
-            "description": "资源不存在。",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      },
       "get": {
         "tags": [
           "exams"
@@ -3066,6 +3070,54 @@
         }
       },
       "patch": {
+        "tags": [
+          "exams"
+        ],
+        "summary": "Exams feature offline",
+        "operationId": "exams_offline_root_api_v1_subjects__subject__exams__post",
+        "parameters": [
+          {
+            "name": "subject",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Subject"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
         "tags": [
           "exams"
         ],
@@ -3172,63 +3224,6 @@
           }
         }
       },
-      "put": {
-        "tags": [
-          "exams"
-        ],
-        "summary": "Exams feature offline",
-        "operationId": "exams_offline_path_api_v1_subjects__subject__exams__path__post",
-        "parameters": [
-          {
-            "name": "subject",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Subject"
-            }
-          },
-          {
-            "name": "path",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Path"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
-          },
-          "404": {
-            "description": "资源不存在。",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      },
       "get": {
         "tags": [
           "exams"
@@ -3344,6 +3339,63 @@
         }
       },
       "patch": {
+        "tags": [
+          "exams"
+        ],
+        "summary": "Exams feature offline",
+        "operationId": "exams_offline_path_api_v1_subjects__subject__exams__path__post",
+        "parameters": [
+          {
+            "name": "subject",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Subject"
+            }
+          },
+          {
+            "name": "path",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Path"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
         "tags": [
           "exams"
         ],
@@ -3450,54 +3502,6 @@
           }
         }
       },
-      "put": {
-        "tags": [
-          "profile"
-        ],
-        "summary": "Profile feature offline",
-        "operationId": "profile_offline_root_api_v1_subjects__subject__profile__post",
-        "parameters": [
-          {
-            "name": "subject",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Subject"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
-          },
-          "404": {
-            "description": "资源不存在。",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      },
       "get": {
         "tags": [
           "profile"
@@ -3595,6 +3599,54 @@
         }
       },
       "patch": {
+        "tags": [
+          "profile"
+        ],
+        "summary": "Profile feature offline",
+        "operationId": "profile_offline_root_api_v1_subjects__subject__profile__post",
+        "parameters": [
+          {
+            "name": "subject",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Subject"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
         "tags": [
           "profile"
         ],
@@ -3701,63 +3753,6 @@
           }
         }
       },
-      "put": {
-        "tags": [
-          "profile"
-        ],
-        "summary": "Profile feature offline",
-        "operationId": "profile_offline_path_api_v1_subjects__subject__profile__path__post",
-        "parameters": [
-          {
-            "name": "subject",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Subject"
-            }
-          },
-          {
-            "name": "path",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Path"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
-          },
-          "404": {
-            "description": "资源不存在。",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      },
       "get": {
         "tags": [
           "profile"
@@ -3873,6 +3868,63 @@
         }
       },
       "patch": {
+        "tags": [
+          "profile"
+        ],
+        "summary": "Profile feature offline",
+        "operationId": "profile_offline_path_api_v1_subjects__subject__profile__path__post",
+        "parameters": [
+          {
+            "name": "subject",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Subject"
+            }
+          },
+          {
+            "name": "path",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Path"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
         "tags": [
           "profile"
         ],
@@ -5109,6 +5161,40 @@
         },
         "type": "object",
         "title": "ApiResponse[SendEmailCodeData]",
+        "example": {
+          "code": 0,
+          "data": {},
+          "message": "ok"
+        }
+      },
+      "ApiResponse_SettingsOverviewData_": {
+        "properties": {
+          "code": {
+            "type": "integer",
+            "title": "Code",
+            "description": "业务码，0 表示成功。",
+            "default": 0
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "响应消息。",
+            "default": "ok"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SettingsOverviewData"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "业务数据。"
+          }
+        },
+        "type": "object",
+        "title": "ApiResponse[SettingsOverviewData]",
         "example": {
           "code": 0,
           "data": {},
@@ -9029,6 +9115,170 @@
         "example": {
           "email": "user@example.com"
         }
+      },
+      "SettingEntry": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key",
+            "description": "稳定设置键。"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label",
+            "description": "展示名称。"
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "env",
+              "config",
+              "runtime"
+            ],
+            "title": "Source",
+            "description": "配置来源：env/config/runtime。"
+          },
+          "value": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value",
+            "description": "可安全展示的当前值。"
+          },
+          "display_value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Value",
+            "description": "格式化展示值。"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "configured",
+              "missing",
+              "default",
+              "disabled",
+              "enabled",
+              "runtime"
+            ],
+            "title": "Status",
+            "description": "当前配置状态。"
+          },
+          "secret": {
+            "type": "boolean",
+            "title": "Secret",
+            "description": "是否为敏感配置。",
+            "default": false
+          },
+          "editable": {
+            "type": "boolean",
+            "title": "Editable",
+            "description": "是否可在页面直接编辑。",
+            "default": false
+          },
+          "restart_required": {
+            "type": "boolean",
+            "title": "Restart Required",
+            "description": "修改后是否需要重启后端。",
+            "default": true
+          },
+          "description": {
+            "type": "string",
+            "title": "Description",
+            "description": "说明。",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "label",
+          "source",
+          "status"
+        ],
+        "title": "SettingEntry",
+        "description": "单个后端设置项的展示模型。"
+      },
+      "SettingSection": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id",
+            "description": "分组 ID。"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label",
+            "description": "分组名称。"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description",
+            "description": "分组说明。"
+          },
+          "entries": {
+            "items": {
+              "$ref": "#/components/schemas/SettingEntry"
+            },
+            "type": "array",
+            "title": "Entries",
+            "description": "设置项。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "label",
+          "description"
+        ],
+        "title": "SettingSection",
+        "description": "设置分组。"
+      },
+      "SettingsOverviewData": {
+        "properties": {
+          "config_path": {
+            "type": "string",
+            "title": "Config Path",
+            "description": "当前项目配置文件路径。"
+          },
+          "mode": {
+            "type": "string",
+            "title": "Mode",
+            "description": "运行模式。"
+          },
+          "sections": {
+            "items": {
+              "$ref": "#/components/schemas/SettingSection"
+            },
+            "type": "array",
+            "title": "Sections",
+            "description": "设置分组。"
+          },
+          "notes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Notes",
+            "description": "设置说明。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "config_path",
+          "mode"
+        ],
+        "title": "SettingsOverviewData",
+        "description": "后端设置总览。"
       },
       "StudyPlanItemResponse": {
         "properties": {

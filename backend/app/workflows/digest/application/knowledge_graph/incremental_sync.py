@@ -14,7 +14,7 @@ from app.models.knowledge_taxonomy import normalize_knowledge_unit_type, normali
 from app.repositories import knowledge_relation_repo, knowledge_unit_repo
 from app.utils.knowledge_helpers import normalize_name
 from app.utils.time import utcnow
-from app.workflows.digest.shared.markdown_knowledge_anchors import (
+from app.workflows.digest.common.markdown_knowledge_anchors import (
     MarkdownKnowledgeUnit,
     extract_markdown_knowledge_units,
     validate_knowledge_unit_anchors,

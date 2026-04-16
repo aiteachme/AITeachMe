@@ -12,15 +12,15 @@ from pydantic import BaseModel, Field
 from app.models.knowledge_doc import KnowledgeDoc
 from app.repositories.knowledge import docgen_repo
 from app.shared.infra.database import managed_session
-from app.workflows.digest._shared.pedagogy import resolve_effective_chapter_title
-from app.workflows.digest._shared.pedagogy import build_document_overview as build_learning_document_overview
+from app.workflows.digest.common.pedagogy import resolve_effective_chapter_title
+from app.workflows.digest.common.pedagogy import build_document_overview as build_learning_document_overview
 from app.shared.infra.storage import get_content_store, run_store_sync
 from app.shared.infra.tools.builtin.markdown_processing import (
     build_reference_section,
     count_words,
     normalize_source_details,
 )
-from app.workflows.digest.shared.markdown_knowledge_anchors import (
+from app.workflows.digest.common.markdown_knowledge_anchors import (
     ensure_markdown_knowledge_unit_anchors,
     validate_knowledge_unit_anchors,
 )

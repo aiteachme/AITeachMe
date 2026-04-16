@@ -1,4 +1,4 @@
-"""Planner models, fallback builders, and plan normalization helpers."""
+﻿"""Planner models, fallback builders, and plan normalization helpers."""
 
 from __future__ import annotations
 
@@ -9,15 +9,15 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from app.shared.infra.config import get_settings
-from app.workflows.digest._shared.pedagogy import (
+from app.workflows.digest.common.pedagogy import (
     clean_generated_chapter_title,
     is_usable_resolved_chapter_title,
 )
-from app.workflows.digest._shared.runtime_config import (
+from app.workflows.digest.common.runtime_config import (
     get_planner_mode_runtime_config,
     get_teaching_runtime_config,
 )
-from app.workflows.digest.shared.models import FastTopicHints, SharedInputs, SubjectProfile
+from app.workflows.digest.common.models import FastTopicHints, SharedInputs, SubjectProfile
 
 MEDIA_HINT_KEYS = ("images", "mermaid", "interactive")
 _CJK_RE = re.compile(r"[\u3400-\u9fff]")
@@ -1027,3 +1027,4 @@ __all__ = [
     "normalize_planner_draft",
     "normalize_planner_payload",
 ]
+

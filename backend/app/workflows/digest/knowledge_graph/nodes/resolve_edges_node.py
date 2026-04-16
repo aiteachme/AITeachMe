@@ -40,7 +40,7 @@ from app.workflows.digest.knowledge_graph.lib.resolver import (
     resolve_edge,
 )
 from app.workflows.digest.knowledge_graph.state import KnowledgeDigestState
-from app.workflows.digest.knowledge_graph.support import workflow_logger
+from app.workflows.digest.knowledge_graph.lib.support import workflow_logger
 
 async def resolve_edges_node(state: KnowledgeDigestState) -> KnowledgeDigestState:
     """Resolve candidate edges against the current graph."""
@@ -166,6 +166,5 @@ async def resolve_edges_node(state: KnowledgeDigestState) -> KnowledgeDigestStat
             return {**state, "error": f"resolve_edges_failed: {exc}"}
 
 __all__ = ["resolve_edges_node"]
-
 
 

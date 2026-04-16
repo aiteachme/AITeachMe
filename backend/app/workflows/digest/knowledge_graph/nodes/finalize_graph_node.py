@@ -14,10 +14,9 @@ from app.utils.job_helpers import (
     update_job_progress,
 )
 from app.workflows.digest.knowledge_graph.state import KnowledgeDigestState
-from app.workflows.digest.knowledge_graph.support import workflow_logger
+from app.workflows.digest.knowledge_graph.lib.support import workflow_logger
 from app.models.knowledge_taxonomy import normalize_knowledge_unit_type
-from app.workflows.digest.unified.models import TopicAnchor, TopicAnchorSnapshot
-from app.workflows.digest.unified.session import get_unified_build_session
+from app.workflows.digest.common.models import TopicAnchor, TopicAnchorSnapshot
 
 
 def _build_topic_snapshot(state: KnowledgeDigestState) -> TopicAnchorSnapshot:
@@ -73,7 +72,6 @@ def build_finalize_graph_node():
             try:
                 job_id = state["job_id"]
                 subject = state["subject"]
-                build_session_id = state.get("build_session_id", "")
                 topic_snapshot = _build_topic_snapshot(state)
                 resolved_node_count = max(
                     len(state.get("candidate_lookup_to_resolved_node_id", {})),
@@ -104,10 +102,6 @@ def build_finalize_graph_node():
                     session=session,
                     subject=subject,
                 )
-                if build_session_id:
-                    unified_session = get_unified_build_session(build_session_id)
-                    unified_session.publish_topic_anchor_snapshot(topic_snapshot)
-
                 knowledge_build_repo.release_subject_build_lock(session, subject)
                 knowledge_build_repo.update_digest_job(
                     session,
@@ -146,4 +140,3 @@ def build_finalize_graph_node():
     return finalize_graph_node
 
 __all__ = ["build_finalize_graph_node"]
-

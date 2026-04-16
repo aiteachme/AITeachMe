@@ -5,8 +5,8 @@ from __future__ import annotations
 from importlib import import_module
 from typing import Any
 
-from app.workflows.digest._shared.pedagogy import resolve_effective_chapter_title
-from app.workflows.digest.shared.contracts import (
+from app.workflows.digest.common.pedagogy import resolve_effective_chapter_title
+from app.workflows.digest.common.contracts import (
     DigestChapterContract,
     DigestConfirmedPlanContract,
     parse_digest_confirmed_plan_contract,
@@ -160,4 +160,5 @@ __all__ = [
     "resolve_docgen_retrieval_profile",
     "serialize_section",
 ]
+
 

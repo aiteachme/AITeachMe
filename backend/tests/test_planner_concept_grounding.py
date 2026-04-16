@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import asyncio
 from types import SimpleNamespace
@@ -11,7 +11,7 @@ from app.workflows.digest.planner.lib.grounding import (
 )
 from app.workflows.digest.planner.graph import build_planner_graph
 from app.workflows.digest.planner.state import BuildPlannerGraphInput
-from app.workflows.digest.shared.models import FastTopicHints, SectionPacket, SharedInputs, SubjectProfile
+from app.workflows.digest.common.models import FastTopicHints, SectionPacket, SharedInputs, SubjectProfile
 
 
 def _build_shared_inputs() -> SharedInputs:
@@ -176,3 +176,4 @@ def test_planner_input_schema_keeps_stream_callbacks() -> None:
     assert "progress_callback" in annotations
     assert "token_callback" in annotations
     assert "planner_session_id" in annotations
+

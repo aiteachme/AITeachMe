@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import asyncio
 import uuid
@@ -37,9 +37,8 @@ from app.utils.job_helpers import cleanup_pending_by_subject
 from app.utils.path_helpers import build_merged_knowledge_base_build_path, build_merged_knowledge_base_path
 from app.utils.presenters import require_id, require_uid
 from app.utils.time import utcnow
-from app.workflows.digest.shared.metrics import build_token_summary
-from app.workflows.digest.shared.contracts import normalize_digest_confirmed_plan_payload
-from app.workflows.digest.unified import run_unified_digest_build
+from app.workflows.digest.common.metrics import build_token_summary
+from app.workflows.digest.common.contracts import normalize_digest_confirmed_plan_payload
 from app.shared.infra.subject import inspect_subject_build_precheck, resolve_subject_build_vector_status
 
 logger = structlog.get_logger()
@@ -59,17 +58,17 @@ def _sanitize_build_error_message(error_message: str | None) -> str | None:
     if not text:
         return None
     if text == "build_cancelled":
-        return "鐭ヨ瘑鏋勫缓宸插彇娑堛€?
+        return "知识构建已取消。"
     if text == "build_crashed":
-        return "鐭ヨ瘑鏋勫缓寮傚父澶辫触銆?
+        return "知识构建异常失败。"
     if text == "no_ready_digest_inputs":
-        return "褰撳墠娌℃湁鍙敤浜庢瀯寤虹殑宸茶В鏋愯祫鏂欍€?
+        return "当前没有可用于构建的已解析资料。"
     if text == "confirmed_plan_required":
-        return "鐭ヨ瘑鏂囨。鏋勫缓蹇呴』鍩轰簬宸茬‘璁ょ殑鏋勫缓鏂规鎵ц锛岃鍏堝畬鎴?planner 纭銆?
+        return "知识文档构建必须基于已确认的构建方案执行，请先完成 planner 确认。"
     if "Dimension mismatch" in text or "sqlite3.OperationalError" in text or ("chunk_embeddings" in text and "embedding" in text):
-        return "Embedding 閰嶇疆宸插彉鍖栵紝璇峰厛閲嶅缓鍚戦噺鍚庡啀缁х画銆?
+        return "Embedding 配置已变化，请先重建向量后再继续。"
     if "[SQL:" in text or "parameters:" in text or "Traceback" in text or len(text) > 240:
-        return "鐭ヨ瘑鏋勫缓寮傚父澶辫触銆?
+        return "知识构建异常失败。"
     return text
 
 
@@ -192,7 +191,7 @@ def _resolve_preview_chapter_titles(*, draft_markdown: str, manifest) -> list[st
         if not stripped.startswith("#"):
             continue
         title = stripped.lstrip("#").strip()
-        if title and title.lower() not in {"knowledge document overview", "鐭ヨ瘑鏂囨。鎬昏"}:
+        if title and title.lower() not in {"knowledge document overview", "知识文档总览"}:
             titles.append(title)
         if len(titles) >= 4:
             break
@@ -207,7 +206,7 @@ def _build_initial_chapter_progress(plan: ConfirmedBuildPlan) -> list[dict[str, 
         progress.append(
             {
                 "chapter_index": chapter_index,
-                "title": str(chapter.get("title") or f"绗?{chapter_index} 绔?).strip() or f"绗?{chapter_index} 绔?,
+                "title": str(chapter.get("title") or f"第 {chapter_index} 章").strip() or f"第 {chapter_index} 章",
                 "status": "planned",
                 "source_count": 0,
                 "local_hits": 0,
@@ -284,7 +283,7 @@ def _load_confirmed_plan_payload(*, subject: str, user_id: str, confirmed_plan_i
     return plan, _build_confirmed_plan_payload(plan)
 
 
-def trigger_docgen_build(session: Session, *, subject: Subject, user_id: str, file_uids: list[str] | None, prompt: str | None, embedding_resolution: str | None, confirmed_plan_id: str | None, build_type: str = "all") -> tuple[DocGenBuildData, list[int]]:
+def trigger_docgen_build(session: Session, *, subject: Subject, user_id: str, file_uids: list[str] | None, prompt: str | None, embedding_resolution: str | None, confirmed_plan_id: str | None, build_type: str = "docs") -> tuple[DocGenBuildData, list[int]]:
     conflict = inspect_subject_build_precheck(session, subject=subject)
     vector_status = resolve_subject_build_vector_status(session, subject=subject, embedding_resolution=embedding_resolution)
     force_full_rebuild = bool(conflict is not None and conflict.requires_full_rebuild and vector_status.mode != "disabled")
@@ -312,7 +311,7 @@ def trigger_docgen_build(session: Session, *, subject: Subject, user_id: str, fi
                 "stage": "build_accepted",
                 "chapter_index": None,
                 "title": None,
-                "summary": f"鏂规宸茬‘璁わ紝鍏?{len(chapter_progress)} 绔狅紝鏋勫缓璇锋眰宸插彈鐞嗐€?,
+                "summary": f"方案已确认，共 {len(chapter_progress)} 章，构建请求已受理。",
                 "created_at": utcnow(),
             }
         ]
@@ -348,7 +347,7 @@ def trigger_docgen_build(session: Session, *, subject: Subject, user_id: str, fi
                 "stage": "search_only_mode",
                 "chapter_index": None,
                 "title": None,
-                "summary": "褰撳墠娌℃湁宸茶В鏋愯祫鏂欙紝鏈疆灏嗕互澶栭儴妫€绱负涓荤敓鎴愮煡璇嗘枃妗ｃ€?,
+                "summary": "当前没有已解析资料，本轮将以外部检索为主生成知识文档。",
                 "created_at": utcnow(),
             }
         )
@@ -374,9 +373,9 @@ def trigger_docgen_build(session: Session, *, subject: Subject, user_id: str, fi
         chapter_progress=chapter_progress,
         recent_events=recent_events,
         current_stage_description=(
-            "鏂规宸茬‘璁わ紝褰撳墠娌℃湁鏈湴璧勬枡锛屽皢浼樺厛鎵ц鑱旂綉鐮旂┒銆?
+            "方案已确认，当前没有本地资料，将优先执行联网研究。"
             if search_only_mode
-            else ("鏂规宸茬‘璁わ紝姝ｅ湪鎺掗槦鍚姩鏋勫缓銆? if confirmed_plan_id else None)
+            else ("方案已确认，正在排队启动构建。" if confirmed_plan_id else None)
         ),
     )
     logger.info(
@@ -456,55 +455,6 @@ async def run_docgen_background(*, subject: str, file_ids: list[int], prompt: st
         release_knowledge_build_lock(subject)
 
 
-async def run_unified_build_background(*, subject: str, file_ids: list[int], prompt: str | None, requested_at: datetime, planner_session_id: str | None = None, confirmed_plan_id: str | None = None, user_id: str | None = None) -> None:
-    build_session_id = _new_build_session_id()
-    confirmed_plan_payload = None
-    resolved_digest_mode = None
-    resolved_tone = None
-    if not confirmed_plan_id or not user_id:
-        _write_build_status(subject, requested_at=requested_at, status="failed", stage="failed", build_session_id=build_session_id, planner_session_id=planner_session_id, confirmed_plan_id=confirmed_plan_id, digest_mode=resolved_digest_mode, error_message="confirmed_plan_required", draft_available=False, staged_chapter_count=0)
-        logger.error("knowledge_unified_build_failed_missing_confirmed_plan", subject=subject)
-        release_knowledge_build_lock(subject)
-        return
-    if confirmed_plan_id and user_id:
-        plan, confirmed_plan_payload = _load_confirmed_plan_payload(subject=subject, user_id=user_id, confirmed_plan_id=confirmed_plan_id)
-        planner_session_id = planner_session_id or plan.planner_session_id
-        resolved_digest_mode = plan.digest_mode
-        resolved_tone = plan.tone
-        with managed_session() as session:
-            mark_confirmed_build_plan_status(session, subject=subject, user_id=user_id, plan_id=confirmed_plan_id, status="building")
-    try:
-        _clear_docgen_staging_safely(subject)
-        _write_build_status(subject, requested_at=requested_at, status="running", stage="prepare_shared", build_session_id=build_session_id, planner_session_id=planner_session_id, confirmed_plan_id=confirmed_plan_id, digest_mode=resolved_digest_mode, error_message=None, draft_available=False, source_file_ids=file_ids, prompt=prompt)
-        _cleanup_pending_digest_outputs(subject)
-        result = await run_unified_digest_build(subject=subject, file_ids=file_ids, user_prompt=prompt, requested_at=requested_at, build_session_id=build_session_id, confirmed_plan=confirmed_plan_payload, planner_session_id=planner_session_id, confirmed_plan_id=confirmed_plan_id, digest_mode=resolved_digest_mode, tone=resolved_tone)
-        if not result.success:
-            _clear_docgen_staging_safely(subject)
-            _write_build_status(subject, requested_at=requested_at, status="failed", stage="failed", build_session_id=build_session_id, planner_session_id=planner_session_id, confirmed_plan_id=confirmed_plan_id, digest_mode=resolved_digest_mode, error_message=result.error, draft_available=False, staged_chapter_count=0)
-            if confirmed_plan_id and user_id:
-                with managed_session() as session:
-                    mark_confirmed_build_plan_status(session, subject=subject, user_id=user_id, plan_id=confirmed_plan_id, status="failed")
-            logger.error("knowledge_unified_build_failed", subject=subject, error=result.error)
-            return
-        _write_build_status(subject, requested_at=requested_at, status="completed", stage="completed", build_session_id=build_session_id, planner_session_id=planner_session_id, confirmed_plan_id=confirmed_plan_id, digest_mode=resolved_digest_mode, error_message=None, draft_available=False, published_doc_count=result.doc_count)
-        if confirmed_plan_id and user_id:
-            with managed_session() as session:
-                mark_confirmed_build_plan_status(session, subject=subject, user_id=user_id, plan_id=confirmed_plan_id, status="completed")
-    except asyncio.CancelledError:
-        _clear_docgen_staging_safely(subject)
-        _write_build_status(subject, requested_at=requested_at, status="cancelled", stage="cancelled", build_session_id=build_session_id, planner_session_id=planner_session_id, confirmed_plan_id=confirmed_plan_id, digest_mode=resolved_digest_mode, error_message="build_cancelled", draft_available=False, staged_chapter_count=0)
-        raise
-    except Exception:
-        _clear_docgen_staging_safely(subject)
-        _write_build_status(subject, requested_at=requested_at, status="failed", stage="failed", build_session_id=build_session_id, planner_session_id=planner_session_id, confirmed_plan_id=confirmed_plan_id, digest_mode=resolved_digest_mode, error_message="build_crashed", draft_available=False, staged_chapter_count=0)
-        if confirmed_plan_id and user_id:
-            with managed_session() as session:
-                mark_confirmed_build_plan_status(session, subject=subject, user_id=user_id, plan_id=confirmed_plan_id, status="failed")
-        logger.exception("knowledge_unified_build_failed", subject=subject)
-        return
-    finally:
-        release_knowledge_build_lock(subject)
-
 async def run_graph_build_background(*, subject: str, file_ids: list[int], prompt: str | None, requested_at: datetime) -> None:
     from app.workflows.digest import run_graph_digest_workflow
     build_session_id = _new_build_session_id()
@@ -515,6 +465,7 @@ async def run_graph_build_background(*, subject: str, file_ids: list[int], promp
             subject=subject,
             job_id=_new_graph_run_id(),
             file_ids=file_ids,
+            user_prompt=prompt,
             build_session_id=build_session_id,
         )
         if result.failed:
@@ -552,4 +503,4 @@ def get_docgen_result(session: Session, *, subject: str) -> DocGenGetResponse:
     return DocGenGetResponse(exists=bool(merged_path.exists() and markdown.strip()), markdown=markdown, updated_at=updated_at, source_file_uids=source_file_uids, prompt=(manifest.prompt if manifest is not None else None), draft_markdown=draft_markdown, draft_updated_at=draft_updated_at, build=build_response, build_preview=build_preview, build_metrics=build_metrics, vector_status=get_subject_vector_status_by_slug(session, subject), planner_session_id=(build_response.planner_session_id if build_response is not None else None), confirmed_plan_id=(build_response.confirmed_plan_id if build_response is not None else None), digest_mode=(build_response.digest_mode if build_response is not None else None))
 
 
-__all__ = ["get_docgen_result", "run_docgen_background", "run_graph_build_background", "run_graph_digest_background", "run_unified_build_background", "trigger_docgen_build"]
+__all__ = ["get_docgen_result", "run_docgen_background", "run_graph_build_background", "run_graph_digest_background", "trigger_docgen_build"]

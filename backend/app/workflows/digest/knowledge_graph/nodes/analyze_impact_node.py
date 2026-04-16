@@ -39,7 +39,7 @@ from app.workflows.digest.knowledge_graph.lib.resolver import (
     resolve_edge,
 )
 from app.workflows.digest.knowledge_graph.state import KnowledgeDigestState
-from app.workflows.digest.knowledge_graph.support import workflow_logger
+from app.workflows.digest.knowledge_graph.lib.support import workflow_logger
 
 async def analyze_impact_node(state: KnowledgeDigestState) -> KnowledgeDigestState:
     """Compute graph-local impact scope from graph changes."""
@@ -73,6 +73,5 @@ async def analyze_impact_node(state: KnowledgeDigestState) -> KnowledgeDigestSta
             return {**state, "error": f"analyze_impact_failed: {exc}"}
 
 __all__ = ["analyze_impact_node"]
-
 
 

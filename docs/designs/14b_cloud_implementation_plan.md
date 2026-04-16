@@ -1,4 +1,4 @@
-# AITeachMe 云端部署实施计划：PostgreSQL + DogeCloud OSS
+﻿# AITeachMe 云端部署实施计划：PostgreSQL + DogeCloud OSS
 
 ## Context
 
@@ -864,7 +864,7 @@ Render 创建 PostgreSQL 后：
 
 - `backend/app/shared/infra/subject_embeddings.py` — vec 表管理逻辑
 - `backend/app/repositories/profile_repo.py` — 可能有 SQLite 特有 SQL
-- `backend/app/workflows/digest/shared/prepare.py` — 文件读取
+- `backend/app/workflows/digest/common/prepare.py` — 文件读取
 - `backend/app/workflows/digest/kg/support.py` — 可能读取本地文件
 - `backend/app/workflows/interact/chat/nodes/` — 知识文档读取
 
@@ -909,3 +909,4 @@ EMBEDDING_MODEL=text-embedding-v4
 # ── 前端 ──
 VITE_API_URL=http://localhost:8000
 ```
+

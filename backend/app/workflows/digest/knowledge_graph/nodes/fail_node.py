@@ -6,7 +6,7 @@ from app.shared.infra.database import managed_session
 from app.repositories import knowledge_build_repo
 from app.utils.job_helpers import cleanup_pending_by_job
 from app.workflows.digest.knowledge_graph.state import KnowledgeDigestState
-from app.workflows.digest.knowledge_graph.support import workflow_logger
+from app.workflows.digest.knowledge_graph.lib.support import workflow_logger
 
 
 async def fail_node(state: KnowledgeDigestState) -> KnowledgeDigestState:
@@ -68,5 +68,4 @@ def _resolve_failure_step(error_message: str) -> str:
 
 
 __all__ = ["fail_node"]
-
 

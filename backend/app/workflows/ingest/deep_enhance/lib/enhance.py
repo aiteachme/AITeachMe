@@ -19,10 +19,10 @@ from app.shared.infra.storage import get_content_store, run_store_sync
 from app.models import IngestStatus
 from app.repositories.files_repo import get_raw_file_by_id, update_raw_file
 from app.utils.path_helpers import resolve_storage_key_path
-from app.workflows.ingest.shared.parsing.classifier import ClassificationResult
-from app.workflows.ingest.shared.parsing.orchestrator import deep_enhance_file
-from app.workflows.ingest.shared.parsing.strategy import ParsePlan
-from app.workflows.ingest.state import IngestEnhanceState
+from app.workflows.ingest.common.parsing.classifier import ClassificationResult
+from app.workflows.ingest.common.parsing.orchestrator import deep_enhance_file
+from app.workflows.ingest.common.parsing.strategy import ParsePlan
+from app.workflows.ingest.deep_enhance.state import IngestEnhanceState
 
 logger = structlog.get_logger()
 
@@ -52,7 +52,7 @@ def build_load_enhance_context_node():
                     try:
                         meta = json.loads(raw_file.parse_metadata_json)
                         # Reconstruct minimal parse plan from metadata
-                        from app.workflows.ingest.shared.parsing.strategy import build_parse_plan
+                        from app.workflows.ingest.common.parsing.strategy import build_parse_plan
                         parse_plan = build_parse_plan(
                             file_path=file_path,
                             filetype=raw_file.file_ext,
@@ -69,7 +69,7 @@ def build_load_enhance_context_node():
 
                 # If we still have no parse_plan, build one from scratch
                 if parse_plan is None:
-                    from app.workflows.ingest.shared.parsing.strategy import build_parse_plan
+                    from app.workflows.ingest.common.parsing.strategy import build_parse_plan
                     parse_plan = build_parse_plan(
                         file_path=file_path,
                         filetype=raw_file.file_ext,
@@ -273,3 +273,4 @@ def build_finalize_enhance_failure_node():
         return state
 
     return finalize_enhance_failure_node
+

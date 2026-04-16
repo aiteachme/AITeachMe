@@ -1,4 +1,4 @@
-"""Knowledge graph extract node."""
+﻿"""Knowledge graph extract node."""
 
 
 from __future__ import annotations
@@ -13,21 +13,18 @@ from app.shared.infra.config import get_settings
 from app.shared.infra.database import managed_session
 from app.models import RetrievalChunk
 from app.utils.job_helpers import update_job_progress
-from app.workflows.digest.knowledge_graph.lib.candidate_identity import candidate_lookup_keys
-from app.workflows.digest.knowledge_graph.lib.clusterer import cluster_candidates
 from app.workflows.digest.knowledge_graph.lib.extractor import (
     CandidateEdge,
     ChunkExtractionResult,
     extract_candidates,
     has_conceptual_content,
 )
-from app.workflows.digest.shared.metrics import add_slow_item
+from app.workflows.digest.common.metrics import add_slow_item
 from app.workflows.digest.knowledge_graph.state import KnowledgeDigestState
-from app.workflows.digest.knowledge_graph.support import workflow_logger
+from app.workflows.digest.knowledge_graph.lib.support import workflow_logger
 from app.models.knowledge_taxonomy import normalize_knowledge_unit_type
 from app.shared.infra.workflow.runtime import cancel_tasks_and_drain
-from app.workflows.digest.unified.models import ChapterPriors, TopicAnchor, TopicAnchorSnapshot
-from app.workflows.digest.unified.session import get_unified_build_session
+from app.workflows.digest.common.models import TopicAnchor, TopicAnchorSnapshot
 
 def _resolve_extract_parallelism(chunk_count: int = 0) -> int:
     settings = get_settings()
@@ -46,7 +43,7 @@ def _resolve_extract_parallelism(chunk_count: int = 0) -> int:
     return max(1, min(adaptive, configured, ceiling))
 
 
-def _build_taxonomy_hints(chapter_priors: ChapterPriors | None) -> set[str]:
+def _build_taxonomy_hints(chapter_priors: Any | None) -> set[str]:
     if chapter_priors is None:
         return set()
 
@@ -137,11 +134,11 @@ def _build_doc_summary_content(chapter: dict[str, object]) -> str:
     tags = [str(tag).strip() for tag in list(chapter.get("tags") or []) if str(tag).strip()]
     parts: list[str] = []
     if summary:
-        parts.append(f"章节总结：{summary}")
+        parts.append(f"Chapter summary: {summary}")
     if research_summary:
-        parts.append(f"研究补充：{research_summary}")
+        parts.append(f"Research supplement: {research_summary}")
     if tags:
-        parts.append(f"关键词：{'、'.join(tags[:8])}")
+        parts.append(f"Keywords: {', '.join(tags[:8])}")
     return "\n\n".join(parts).strip()
 
 
@@ -196,7 +193,7 @@ async def _extract_doc_summary_candidates(
         target_index = chunk_id_to_index.get(chunk_id)
         if target_index is None:
             continue
-        chapter_title = str(chapter.get("title") or "").strip() or f"章节{int(chapter.get('chapter_index', 0) or 0)}"
+        chapter_title = str(chapter.get("title") or "").strip() or f"绔犺妭{int(chapter.get('chapter_index', 0) or 0)}"
         summary_jobs.append((target_index, chunk_id, chapter_title, content))
 
     if not summary_jobs:
@@ -256,27 +253,20 @@ async def extract_node(state: KnowledgeDigestState) -> KnowledgeDigestState:
         try:
             chunk_ids = list(state.get("chunk_ids", []))
             extract_parallelism = _resolve_extract_parallelism(len(chunk_ids))
-            build_session_id = state.get("build_session_id", "")
-            chapter_priors: ChapterPriors | None = None
+            chapter_priors: Any | None = None
             subject_context = ""
-            shared_inputs = None
+            shared_inputs = state.get("shared_inputs")
             digest_mode = ""
             sibling_topics = ""
             chapter_topic_hints: list[str] = []
             doc_chapter_metadatas = _normalize_doc_chapter_metadatas(
                 state.get("doc_chapter_metadatas", [])
             )
-            if build_session_id:
-                unified_session = get_unified_build_session(build_session_id)
-                shared_inputs = unified_session.shared_inputs
-                settings = get_settings()
-                chapter_priors = await unified_session.wait_for_chapter_priors(
-                    timeout_ms=settings.digest_chapter_priors_timeout_ms
-                )
-                if unified_session.shared_inputs and unified_session.shared_inputs.subject_profile:
-                    subject_context = unified_session.shared_inputs.subject_profile.build_context_string()
+            if shared_inputs is not None:
+                if getattr(shared_inputs, "subject_profile", None):
+                    subject_context = shared_inputs.subject_profile.build_context_string()
                 # Resolve digest mode for prompt context
-                if shared_inputs and shared_inputs.digest_mode_decision:
+                if getattr(shared_inputs, "digest_mode_decision", None):
                     digest_mode = shared_inputs.digest_mode_decision.mode.value
                 # Build sibling topics hint from chapter priors
                 if chapter_priors:
@@ -285,7 +275,7 @@ async def extract_node(state: KnowledgeDigestState) -> KnowledgeDigestState:
                         chapter_topic_hints.append(ch.title)
                         chapter_topic_hints.extend(ch.section_titles[:3])
                         all_terms.extend(ch.key_terms[:3])
-                    sibling_topics = "、".join(all_terms[:15])
+                    sibling_topics = ", ".join(all_terms[:15])
 
             taxonomy_hints = _build_taxonomy_hints(chapter_priors)
             digest_logger.info(
@@ -609,4 +599,3 @@ async def extract_node(state: KnowledgeDigestState) -> KnowledgeDigestState:
             return {**state, "error": f"extract_failed: {exc}"}
 
 __all__ = ["extract_node"]
-
