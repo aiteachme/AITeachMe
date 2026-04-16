@@ -1,4 +1,0 @@
-name: exam_helpers
-description: toolpack tool
-entrypoint: handler.py:register_toolpack
-enabled: true

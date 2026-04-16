@@ -90,7 +90,7 @@ shared/infra/search/
 2. `search.factory.get_retrievers_for_subject()`
    按 profile 把名字解析成 retriever 实例。
 3. workflow 调用 retriever
-   `planner/runtime/grounding.py` 和 `digest/docgen/runtime/chapter_context.py` 会逐个执行 retriever。
+   `digest/planner/nodes/probe_evidence.py` 和 `digest/docgen/lib/chapter_context.py` 会逐个执行 retriever。
 4. `readers/`
    当 retriever 返回外部 URL 后，再由 `read_urls()` 选择合适 reader 把网页 / PDF / DOCX / PPTX 读出来。
 
@@ -98,9 +98,9 @@ shared/infra/search/
 
 ### planner
 
-- `collect_planner_concept_briefing()`
+- `probe_evidence` 节点
   先用 `local_rag` 找上传资料里的 section。
-- 如果本地命中不够，再按 profile 顺序尝试外部 retriever。
+- 如果本地命中不够，再用资料主题和草稿章节做少量本地补查；如允许外部搜索，再按 profile 顺序尝试外部 retriever。
 - 当前 planner 更偏“概念锚点补充”，不会像 docgen 那样做完整 deep research。
 - 外部结果会先经过一轮轻量 `SourceCurator` 排序，再对少量高优先级 URL 做 `read_urls()`，避免只靠搜索 snippet 或首条结果就直接生成章节脉络。
 

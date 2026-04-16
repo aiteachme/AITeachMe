@@ -9,17 +9,14 @@ from app.shared.infra.workflow.context import WorkflowContext, create_langgraph_
 from app.shared.infra.workflow.result import WorkflowResult
 from app.shared.infra.workflow.runtime import run_state_graph
 from app.workflows.digest.planner.nodes import (
-    build_compose_plan_contract_node,
+    build_bootstrap_plan_brief_node,
+    build_compose_build_plan_node,
     build_finalize_plan_contract_node,
-    build_generate_plan_preview_node,
     build_prepare_material_context_node,
-    build_probe_supporting_evidence_node,
+    build_probe_evidence_node,
 )
 from app.workflows.digest.planner.state import BuildPlannerState
-from app.workflows.digest.common.contracts import (
-    resolve_digest_course_type,
-    resolve_planner_retrieval_profile,
-)
+from app.workflows.digest.common.contracts import resolve_planner_retrieval_profile
 
 
 def build_planner_graph(*, context: WorkflowContext) -> StateGraph:
@@ -30,31 +27,27 @@ def build_planner_graph(*, context: WorkflowContext) -> StateGraph:
         trace.node(
             build_prepare_material_context_node(context=context),
             name="prepare_material_context",
-            timing_field="prepare_ms",
         ),
     )
     workflow.add_node(
         "generate_plan_preview",
         trace.node(
-            build_generate_plan_preview_node(context=context),
+            build_bootstrap_plan_brief_node(context=context),
             name="generate_plan_preview",
-            timing_field="bootstrap_ms",
         ),
     )
     workflow.add_node(
         "probe_supporting_evidence",
         trace.node(
-            build_probe_supporting_evidence_node(context=context),
+            build_probe_evidence_node(context=context),
             name="probe_supporting_evidence",
-            timing_field="probe_ms",
         ),
     )
     workflow.add_node(
         "compose_plan_contract",
         trace.node(
-            build_compose_plan_contract_node(context=context),
+            build_compose_build_plan_node(context=context),
             name="compose_plan_contract",
-            timing_field="compose_ms",
         ),
     )
     workflow.add_node(
@@ -62,7 +55,6 @@ def build_planner_graph(*, context: WorkflowContext) -> StateGraph:
         trace.node(
             build_finalize_plan_contract_node(context=context),
             name="finalize_plan_contract",
-            timing_field="finalize_ms",
         ),
     )
     workflow.set_entry_point("prepare_material_context")
@@ -92,15 +84,12 @@ def create_planner_initial_state(
     progress_callback: object | None = None,
     token_callback: object | None = None,
 ) -> BuildPlannerState:
-    course_type = resolve_digest_course_type(digest_mode)
     return {
         "subject": subject,
         "file_ids": file_ids,
         "user_goal": user_goal,
         "digest_mode": digest_mode,
-        "course_type": course_type,
         "retrieval_profile": resolve_planner_retrieval_profile(),
-        "teaching_action": "plan_course",
         "tone": tone,
         "selected_skillpacks": list(selected_skillpacks),
         "planner_session_id": planner_session_id,

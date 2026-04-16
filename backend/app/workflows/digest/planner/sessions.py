@@ -162,7 +162,7 @@ def _normalized_plan_payload(plan: dict[str, Any]) -> dict[str, Any]:
 
 def _resolve_planner_preview_markdown(final_state: dict[str, Any] | None, plan_payload: dict[str, Any]) -> str:
     if isinstance(final_state, dict):
-        preview = str(final_state.get("plan_sketch_markdown") or final_state.get("plan_sketch_text") or "").strip()
+        preview = str(final_state.get("plan_sketch_markdown") or "").strip()
         if preview:
             return preview
     summary = str(plan_payload.get("plan_summary") or "").strip()
@@ -214,28 +214,9 @@ def _runtime_stats_response(final_state: dict[str, Any] | None) -> BuildPlannerR
     if not isinstance(final_state, dict):
         return None
 
-    steps: list[BuildPlannerStepStatsResponse] = []
-    for name, field_name in (
-        ("prepare_material_context", "prepare_ms"),
-        ("generate_plan_preview", "bootstrap_ms"),
-        ("probe_supporting_evidence", "probe_ms"),
-        ("compose_plan_contract", "compose_ms"),
-        ("finalize_plan_contract", "finalize_ms"),
-    ):
-        elapsed_ms = int(final_state.get(field_name, 0) or 0)
-        if elapsed_ms <= 0:
-            continue
-        steps.append(
-            BuildPlannerStepStatsResponse(
-                name=name,
-                elapsed_ms=elapsed_ms,
-                status="ok",
-            )
-        )
-
     return BuildPlannerRuntimeStatsResponse(
         elapsed_ms=int(final_state.get("workflow_elapsed_ms", 0) or 0),
-        steps=steps,
+        steps=[],
         generation_mode=str(final_state.get("planner_generation_mode") or "").strip() or None,
     )
 
@@ -385,7 +366,7 @@ async def create_build_planner_session_service(
         digest_mode=digest_mode,
         tone=tone,
         selected_skillpacks=list(payload.selected_skillpacks or []),
-        shared_inputs=final_state.get("material_context") or final_state.get("shared_inputs"),
+        shared_inputs=final_state.get("material_context"),
     )
     record.latest_plan_json = plan
     record.latest_summary = str(plan.get("plan_summary") or final_state.get("plan_summary") or "")
@@ -483,7 +464,7 @@ async def append_build_planner_message_service(
         digest_mode=record.digest_mode,
         tone=record.tone,
         selected_skillpacks=selected_skillpacks,
-        shared_inputs=final_state.get("material_context") or final_state.get("shared_inputs"),
+        shared_inputs=final_state.get("material_context"),
         latest_plan=record.latest_plan_json,
     )
     record.latest_plan_json = plan
