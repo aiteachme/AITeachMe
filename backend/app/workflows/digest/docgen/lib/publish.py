@@ -20,6 +20,10 @@ from app.shared.infra.tools.builtin.markdown_processing import (
     count_words,
     normalize_source_details,
 )
+from app.workflows.digest.shared.markdown_knowledge_anchors import (
+    ensure_markdown_knowledge_unit_anchors,
+    validate_knowledge_unit_anchors,
+)
 from app.utils.docgen_store import (
     KnowledgeDocsManifest,
     clear_current_published_knowledge_docs_files,
@@ -100,6 +104,17 @@ def _dedupe_chapter_metadatas(chapters: list[dict]) -> list[dict]:
     return [best_by_index[index] for index in sorted(best_by_index)]
 
 
+def _prepare_chapter_markdown(markdown: str) -> str:
+    anchored = ensure_markdown_knowledge_unit_anchors(markdown)
+    validation = validate_knowledge_unit_anchors(anchored)
+    if not validation.ok:
+        raise ValueError(
+            "Invalid KnowledgeUnit anchors: "
+            f"duplicates={validation.duplicate_anchors}, invalid={validation.invalid_anchors}"
+        )
+    return anchored
+
+
 
 def build_merged_markdown(
     chapters: list[dict],
@@ -124,7 +139,7 @@ def build_merged_markdown(
     body: list[str] = [overview.strip()]
     all_source_details: list[dict[str, object]] = []
     for chapter in deduped_chapters:
-        markdown = str(chapter.get("markdown", "")).strip()
+        markdown = _prepare_chapter_markdown(str(chapter.get("markdown", "")).strip())
         chapter_index = int(chapter.get("chapter_index", 0) or 0) or None
         chapter_title = resolve_effective_chapter_title(chapter, chapter_index=chapter_index)
         curriculum_path = _dedupe_curriculum_path(
@@ -245,7 +260,7 @@ async def stage_knowledge_docs(
     for index, chapter in enumerate(sorted_chapters, start=1):
         chapter_index = int(chapter.get("chapter_index", index))
         chapter_title = resolve_effective_chapter_title(chapter, chapter_index=chapter_index)
-        chapter_markdown = str(chapter.get("markdown") or "")
+        chapter_markdown = _prepare_chapter_markdown(str(chapter.get("markdown") or ""))
         staging_key = _staging_chapter_key(subject, chapter_index, chapter_title)
         write_tasks.append(asyncio.create_task(cs.write_text(staging_key, chapter_markdown)))
         built_paths.append((chapter_index, chapter_title))
@@ -303,7 +318,7 @@ def publish_staged_knowledge_docs(
     for index, chapter in enumerate(sorted_chapters):
         chapter_index = int(chapter.get("chapter_index", index + 1))
         chapter_title = resolve_effective_chapter_title(chapter, chapter_index=chapter_index)
-        chapter_markdown = str(chapter.get("markdown") or "")
+        chapter_markdown = _prepare_chapter_markdown(str(chapter.get("markdown") or ""))
         summary = str(chapter.get("summary") or "")
         tags = list(chapter.get("tags") or [])
         source_file_ids = list(chapter.get("source_file_ids") or [])

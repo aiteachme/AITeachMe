@@ -75,6 +75,42 @@ class KnowledgeUnitDetailRequest(BaseModel):
         return self
 
 
+class KnowledgeUnitRelationsRequest(BaseModel):
+    """KnowledgeUnit relation query."""
+
+    knowledge_unit_id: int = Field(description="KnowledgeUnit ID.")
+    direction: Literal["both", "incoming", "outgoing"] = Field(default="both")
+    edge_type: str | None = Field(default=None, description="Optional relation type filter.")
+
+
+class KnowledgeUnitPathRequest(BaseModel):
+    """KnowledgeUnit path query."""
+
+    source_knowledge_unit_id: int = Field(description="Path start KnowledgeUnit ID.")
+    target_knowledge_unit_id: int = Field(description="Path target KnowledgeUnit ID.")
+    edge_type: str | None = Field(default=None, description="Optional relation type filter.")
+    max_depth: int = Field(default=4, ge=1, le=8)
+
+
+class KnowledgeSubgraphRequest(BaseModel):
+    """Focus subgraph query."""
+
+    center_knowledge_unit_id: int | None = Field(default=None, description="Optional center KnowledgeUnit ID.")
+    topic: str | None = Field(default=None, description="Optional topic/name text filter.")
+    edge_type: str | None = Field(default=None, description="Optional relation type filter.")
+    hops: int = Field(default=1, ge=0, le=3)
+    limit: int = Field(default=80, ge=1, le=300)
+
+
+class KnowledgeRelationExplanationRequest(BaseModel):
+    """Explain a relation path with evidence snippets."""
+
+    source_knowledge_unit_id: int
+    target_knowledge_unit_id: int
+    edge_type: str | None = None
+    max_depth: int = Field(default=3, ge=1, le=6)
+
+
 class KnowledgeOverviewRequest(BaseModel):
     """Aggregated knowledge overview query."""
 
@@ -357,11 +393,62 @@ class GraphEdgeResponse(BaseModel):
     confidence: float
 
 
+class KnowledgeRelationResponse(BaseModel):
+    """Knowledge relation with endpoint metadata."""
+
+    id: int
+    subject: str
+    source_node_id: int
+    source_node_name: str
+    source_node_type: str
+    target_node_id: int
+    target_node_name: str
+    target_node_type: str
+    edge_type: str
+    description: str = ""
+    weight: float
+    confidence: float
+
+
 class FullGraphResponse(BaseModel):
     """Full graph payload for force-graph visualization."""
 
     nodes: list[KnowledgeUnitResponse] = Field(default_factory=list)
     edges: list[GraphEdgeResponse] = Field(default_factory=list)
+
+
+class KnowledgePathResponse(BaseModel):
+    """A path through the knowledge graph."""
+
+    found: bool = False
+    nodes: list[KnowledgeUnitResponse] = Field(default_factory=list)
+    edges: list[KnowledgeRelationResponse] = Field(default_factory=list)
+
+
+class KnowledgeSubgraphResponse(BaseModel):
+    """Focused subgraph payload."""
+
+    nodes: list[KnowledgeUnitResponse] = Field(default_factory=list)
+    edges: list[KnowledgeRelationResponse] = Field(default_factory=list)
+    center_knowledge_unit_id: int | None = None
+
+
+class KnowledgeRelationEvidenceItem(BaseModel):
+    """Evidence surfaced for one relation path step."""
+
+    edge_id: int
+    edge_type: str
+    source_node_id: int
+    target_node_id: int
+    description: str = ""
+    evidence: list[EvidenceSummary] = Field(default_factory=list)
+
+
+class KnowledgeRelationExplanationResponse(BaseModel):
+    """Explainable relation path result."""
+
+    path: KnowledgePathResponse
+    evidence: list[KnowledgeRelationEvidenceItem] = Field(default_factory=list)
 
 
 class KnowledgeOverviewStats(BaseModel):

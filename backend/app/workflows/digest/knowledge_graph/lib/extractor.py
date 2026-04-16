@@ -28,6 +28,7 @@ from app.workflows.digest.shared.semantic_titles import (
     is_generic_semantic_title,
     normalize_semantic_whitespace,
 )
+from app.workflows.digest.shared.markdown_knowledge_anchors import extract_markdown_knowledge_units
 
 logger = structlog.get_logger()
 
@@ -100,6 +101,7 @@ class CandidateNode(BaseModel):
     """A candidate knowledge node extracted from a chunk."""
 
     candidate_id: str = Field(default="", description="Internal stable candidate id.")
+    anchor_id: str = Field(default="", description="Markdown-carried KnowledgeUnit anchor id.")
     name: str = Field(description="KnowledgeUnit name.")
     node_type: Literal[
         "concept",
@@ -586,6 +588,80 @@ def _build_topic_fallback(
     return ChunkExtractionResult(nodes=nodes, edges=edges)
 
 
+def _build_markdown_anchor_result(
+    *,
+    chunk_content: str,
+    chunk_title: str,
+    header_path: str,
+) -> ChunkExtractionResult | None:
+    """Build candidates from explicit Markdown KnowledgeUnit anchors."""
+
+    units = extract_markdown_knowledge_units(chunk_content)
+    if not units:
+        return None
+
+    nodes: list[CandidateNode] = []
+    edges: list[CandidateEdge] = []
+    known_names: set[str] = set()
+    fallback_topic = clean_semantic_title(chunk_title) or clean_semantic_title(header_path) or ""
+
+    def _ensure_concept(name: str) -> None:
+        if not name or name in known_names:
+            return
+        known_names.add(name)
+        nodes.append(
+            CandidateNode(
+                name=name,
+                node_type="concept",
+                type_source="manual",
+                type_confidence=0.9,
+                local_summary=f"Markdown tag referenced concept: {name}.",
+                taxonomy_hint=fallback_topic,
+            )
+        )
+
+    for unit in units:
+        if unit.name in known_names:
+            continue
+        known_names.add(unit.name)
+        nodes.append(
+            CandidateNode(
+                candidate_id=unit.anchor,
+                anchor_id=unit.anchor,
+                name=unit.name,
+                node_type=unit.node_type,
+                type_source="manual",
+                type_confidence=1.0,
+                local_summary=unit.summary or unit.name,
+                taxonomy_hint=fallback_topic,
+            )
+        )
+
+    for unit in units:
+        for prerequisite in unit.prerequisites:
+            _ensure_concept(prerequisite)
+            edges.append(
+                CandidateEdge(
+                    source_name=prerequisite,
+                    target_name=unit.name,
+                    edge_type="prerequisite",
+                    description=f"{prerequisite} is a prerequisite for {unit.name}.",
+                )
+            )
+        for related in unit.related:
+            _ensure_concept(related)
+            edges.append(
+                CandidateEdge(
+                    source_name=unit.name,
+                    target_name=related,
+                    edge_type="similar",
+                    description=f"{unit.name} is related to {related}.",
+                )
+            )
+
+    return ChunkExtractionResult(nodes=nodes, edges=edges)
+
+
 async def _build_question_fallback(
     *,
     chunk_content: str,
@@ -759,6 +835,30 @@ async def extract_candidates(
     chapter_topic_hints: list[str] | None = None,
 ) -> ChunkExtractionResult:
     """Extract candidate nodes and edges from one chunk."""
+
+    markdown_anchor_result = _build_markdown_anchor_result(
+        chunk_content=chunk_content,
+        chunk_title=chunk_title,
+        header_path=header_path,
+    )
+    if markdown_anchor_result is not None:
+        result = _sanitize_candidate_graph(
+            markdown_anchor_result,
+            chunk_title=chunk_title,
+            header_path=header_path,
+            chapter_topic_hints=chapter_topic_hints,
+            subject_context=subject_context,
+            question_mode=False,
+        )
+        result = _assign_candidate_ids_and_edge_types(result)
+        logger.info(
+            "knowledge_extract_markdown_anchors_used",
+            chunk_title=chunk_title,
+            header_path=header_path,
+            node_count=len(result.nodes),
+            edge_count=len(result.edges),
+        )
+        return result
 
     user_content = populate_prompt(
         USER_PROMPT_KNOWLEDGE_EXTRACT,

@@ -7,7 +7,7 @@
 
 1. **P0 命名统一：KnowledgeNode -> KnowledgeUnit（最高优先级）**
 2. **P1 KnowledgeUnit 类型体系与 KG 关系类型体系对齐**
-3. **P2 Markdown 锚点 + KnowledgeUnit 双向定位**
+3. **P2 Markdown 内嵌 KnowledgeUnit 锚点**
 4. **P3 KnowledgeUnit/KG 查询与子图能力 API 化**
 5. **P4 学习路径、出题、评估、掌握度闭环**
 6. **P5 KG + RAG 主流程改造**
@@ -52,29 +52,29 @@
 
 ---
 
-## P2 Markdown 锚点与 KnowledgeUnit 双向定位
+## P2 Markdown 内嵌 KnowledgeUnit 锚点
 
-- [ ] 引入显式锚点规范 `{#ku_xxx}` 作为稳定外部标识。
-- [ ] 为 `KnowledgeUnit` 落库 `content_ref`（`doc_id + anchor`）。
-- [ ] 建立 Markdown -> `KnowledgeUnit` 抽取器（支持 `[type:] [prerequisite:] [related:]` 标签）。
-- [ ] 建立 `KnowledgeUnit` -> Markdown 回溯能力（定位、高亮、上下文提取）。
-- [ ] 设计锚点变更策略（rename/move/split/merge）。
+- [x] 引入显式锚点规范 `{#ku_xxx}`，由 Markdown 原文直接承载 `KnowledgeUnit` 稳定外部标识。
+- [x] DocGen 生成 Markdown 时，在可成为 `KnowledgeUnit` 的标题、定义、公式、例题、练习等块上写入锚点。
+- [x] 建立 Markdown -> `KnowledgeUnit` 抽取器（支持 `[type:] [prerequisite:] [related:]` 标签）。
+- [x] 建立锚点校验器：同一文档内锚点唯一，跨增量构建尽量保持稳定。
+- [x] 设计锚点变更策略（rename/move/split/merge），以 Markdown 锚点为身份变更依据。
 
 **验收标准**
-- [ ] 任一 `KnowledgeUnit` 都可稳定回指 Markdown 原文位置。
-- [ ] 同一锚点在增量构建中保持身份稳定。
+- [x] Markdown 中可成为知识单元的内容块都带有稳定 `KnowledgeUnit` 锚点。
+- [x] 同一锚点在增量构建中保持身份稳定。
 
 ---
 
 ## P3 KnowledgeUnit/KG 查询能力与子图 API
 
-- [ ] 增加 `KnowledgeUnit` 列表/详情/关系查询 API。
-- [ ] 增加路径查询 API（前置依赖展开、最短学习路径）。
-- [ ] 增加子图 API（按主题、薄弱点、目标 `KnowledgeUnit` 生成 focus subgraph）。
-- [ ] 增加关系解释 API（返回路径证据与来源片段）。
+- [x] 增加 `KnowledgeUnit` 列表/详情/关系查询 API。
+- [x] 增加路径查询 API（前置依赖展开、最短学习路径）。
+- [x] 增加子图 API（按主题、薄弱点、目标 `KnowledgeUnit` 生成 focus subgraph）。
+- [x] 增加关系解释 API（返回路径证据与来源片段）。
 
 **验收标准**
-- [ ] 前端可基于 API 展示“书 + 图 + 坐标”的统一视图。
+- [x] 前端可基于 API 展示“书 + 图 + 坐标”的统一视图。
 
 ---
 

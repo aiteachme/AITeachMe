@@ -16,6 +16,10 @@ from app.schemas.knowledge import (
     DocGenBuildData,
     DocGenGetResponse,
     FullGraphResponse,
+    KnowledgePathResponse,
+    KnowledgeRelationExplanationResponse,
+    KnowledgeRelationResponse,
+    KnowledgeSubgraphResponse,
     KnowledgeUnitDetailResponse,
     KnowledgeUnitResponse,
 )
@@ -89,6 +93,74 @@ class KnowledgeGraphModule:
 
     def get_full_graph(self, *, subject: str) -> FullGraphResponse:
         return self._query.get_full_graph(subject=subject)
+
+    def list_knowledge_unit_relations(
+        self,
+        *,
+        subject: str,
+        knowledge_unit_id: int,
+        direction: str = "both",
+        edge_type: str | None = None,
+    ) -> list[KnowledgeRelationResponse]:
+        return self._query.list_knowledge_unit_relations(
+            subject=subject,
+            knowledge_unit_id=knowledge_unit_id,
+            direction=direction,
+            edge_type=edge_type,
+        )
+
+    def find_knowledge_path(
+        self,
+        *,
+        subject: str,
+        source_knowledge_unit_id: int,
+        target_knowledge_unit_id: int,
+        edge_type: str | None = None,
+        max_depth: int = 4,
+    ) -> KnowledgePathResponse:
+        return self._query.find_knowledge_path(
+            subject=subject,
+            source_knowledge_unit_id=source_knowledge_unit_id,
+            target_knowledge_unit_id=target_knowledge_unit_id,
+            edge_type=edge_type,
+            max_depth=max_depth,
+        )
+
+    def get_focus_subgraph(
+        self,
+        *,
+        subject: str,
+        center_knowledge_unit_id: int | None = None,
+        topic: str | None = None,
+        edge_type: str | None = None,
+        hops: int = 1,
+        limit: int = 80,
+    ) -> KnowledgeSubgraphResponse:
+        return self._query.get_focus_subgraph(
+            subject=subject,
+            center_knowledge_unit_id=center_knowledge_unit_id,
+            topic=topic,
+            edge_type=edge_type,
+            hops=hops,
+            limit=limit,
+        )
+
+    def explain_relation_path(
+        self,
+        *,
+        subject: str,
+        source_knowledge_unit_id: int,
+        target_knowledge_unit_id: int,
+        edge_type: str | None = None,
+        max_depth: int = 3,
+    ) -> KnowledgeRelationExplanationResponse:
+        return self._query.explain_relation_path(
+            subject=subject,
+            source_knowledge_unit_id=source_knowledge_unit_id,
+            target_knowledge_unit_id=target_knowledge_unit_id,
+            edge_type=edge_type,
+            max_depth=max_depth,
+        )
 
     def get_chunk_context(
         self,
