@@ -10,6 +10,6 @@
 
 ## Files
 
-- `commands.py` contains API-facing subject commands and simple queries.
-- `queries.py` re-exports read-oriented helpers for callers that prefer query imports.
+- `catalog.py` contains subject create/list/detail/update use cases.
+- `deletion.py` contains delete preview and delete execution use cases.
 - `lib/deletion.py` contains deletion internals and artifact cleanup.

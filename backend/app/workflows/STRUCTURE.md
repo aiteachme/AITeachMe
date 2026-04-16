@@ -49,17 +49,25 @@ workflows/
 workflows/<module>/
   __init__.py
   README.md
-  application/
+  events.py                 # 可选，模块级事件
+  exports.py                # 可选，LangGraph dev/export 入口
+  <use_case_a>.py           # 可选，模块级聚合用例
   <lane_a>/
   <lane_b>/
   common/                  # 仅当 >=2 条链路真实复用时才建立
+  application/             # 仅迁移兼容时保留
 ```
 
-`application/` 的职责：
+模块根用例文件 / `events.py` / `exports.py` 的职责：
 
-- 承接面向 API 的业务用例
+- 承接模块级 API-facing 用例
 - 组合多条链路
 - 处理 build lock、background task、SSE 事件装配、状态汇总与结果返回等模块级协调
+
+`application/` 的职责现在只剩两种：
+
+- 历史迁移兼容
+- 把旧导入路径转发到新的 canonical 模块根或 lane 文件
 
 模块根禁止新增：
 
@@ -112,8 +120,8 @@ workflows/<module>/<lane>/
 workflows/support/<module>/
   __init__.py
   README.md
-  commands.py
-  queries.py
+  <use_case_a>.py
+  <use_case_b>.py
   streams.py               # 可选
   lib/                     # 可选
 ```
@@ -131,6 +139,8 @@ workflows/support/<module>/
 - support 模块默认不用 LangGraph
 - 如果需要长链 AI 流程，只调用已有 engine 链路
 - 不在 support 里平行复制五大引擎的能力
+- 新代码优先按用例命名文件，例如 `catalog.py`、`uploads.py`、`deletion.py`
+- 不保留无调用方的旧兼容壳；如确需兼容，必须先有真实外部调用方
 
 ## 6. Teaching Tool 规则
 
@@ -182,7 +192,10 @@ teaching tool 不是新的独立教学层。当前通用实现是内置 tool，�
 digest/
   __init__.py
   README.md
-  application/
+  events.py
+  exports.py
+  overview.py
+  study_plan.py
   planner/
   docgen/
   knowledge_graph/
@@ -191,7 +204,9 @@ digest/
 
 说明：
 
-- `application/` 承接 knowledge_docs / knowledge_graph 的 API-facing 用例
+- `events.py`、`exports.py` 是 Digest 模块根入口
+- `docgen/__init__.py`、`knowledge_graph/__init__.py` 提供 workflow runner 入口
+- `overview.py`、`study_plan.py` 是 Digest 跨 lane 聚合用例
 - `planner/` 与 `docgen/` 是当前优先维护的主链路
 - `knowledge_graph/` 是独立图谱构建链路
 - `common/` 是当前真实跨链路共享层，承载 contracts / models / prepare / material_profile / metrics / runtime_config / pedagogy 等复用能力
@@ -203,7 +218,10 @@ digest/
 ingest/
   __init__.py
   README.md
-  application/
+  events.py
+  exports.py
+  parse_files.py
+  recovery.py
   fast_parse/
   deep_enhance/
   common/
@@ -212,7 +230,7 @@ ingest/
 
 说明：
 
-- `application/` 是 ingest 模块级入口，承接 runtime / recovery / exports
+- `parse_files.py`、`recovery.py`、`events.py`、`exports.py` 是 ingest 模块根用例和模块级入口
 - `fast_parse/` 与 `deep_enhance/` 是真实链路
 - `common/parsing/` 是当前两条链路共享的解析实现
 
@@ -277,8 +295,6 @@ support/
 
 ## 11. 一句话总结
 
-- 五大引擎：`application + lanes + common`
+- 五大引擎：`module root use cases + lanes + common`
 - Digest 教学语义：`common/runtime_config.py + common/pedagogy/`
-- 支撑业务：`support/<module> = commands + queries (+ streams/lib)`
-
-
+- 支撑业务：`support/<module> = use-case files (+ streams/lib)`

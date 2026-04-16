@@ -231,6 +231,7 @@ async def _llm_extract_concepts_from_questions(
             response_model=_ConceptExtractResult,
             messages=messages,
             task_type=TaskType.DOCGEN_LIGHT,
+            model="light",
         )
         return [
             (item.name.strip(), item.knowledge_unit_type)
@@ -909,6 +910,7 @@ async def extract_candidates(
             response_model=ChunkExtractionResult,
             messages=messages,
             task_type=TaskType.EXTRACT,
+            model="extract",
         )
     except Exception:
         if question_fallback is not None:
@@ -980,4 +982,3 @@ __all__ = [
     "extract_candidates",
     "has_conceptual_content",
 ]
-

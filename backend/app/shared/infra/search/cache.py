@@ -12,7 +12,7 @@ from typing import Any, Awaitable, Callable, TypeVar
 
 import structlog
 
-from app.shared.infra.config import get_settings
+from app.shared.infra.settings import get_settings
 
 logger = structlog.get_logger(__name__)
 
@@ -38,13 +38,13 @@ class SearchRuntimeCache:
         self._misses = 0
 
     def _enabled(self) -> bool:
-        return bool(get_settings().search_runtime_cache_enabled)
+        return bool(get_settings().search.runtime_cache_enabled)
 
     def _ttl_s(self) -> int:
-        return max(1, int(get_settings().search_runtime_cache_ttl_s))
+        return max(1, int(get_settings().search.runtime_cache_ttl_s))
 
     def _max_entries(self) -> int:
-        return max(1, int(get_settings().search_runtime_cache_max_entries))
+        return max(1, int(get_settings().search.runtime_cache_max_entries))
 
     def _is_expired(self, entry: _CacheEntry) -> bool:
         age_s = (datetime.now(timezone.utc) - entry.created_at).total_seconds()

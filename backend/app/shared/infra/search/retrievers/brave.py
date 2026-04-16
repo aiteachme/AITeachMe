@@ -5,7 +5,7 @@ from __future__ import annotations
 import httpx
 import structlog
 
-from app.shared.infra.config import get_settings
+from app.shared.infra.settings import get_settings
 from app.shared.infra.env_support import get_env
 from app.shared.infra.search.retrievers.base import BaseRetriever
 from app.shared.infra.search.types import SearchResult
@@ -16,6 +16,16 @@ _BRAVE_SEARCH_ENDPOINT = "https://api.search.brave.com/res/v1/web/search"
 
 
 class BraveRetriever(BaseRetriever):
+    @classmethod
+    def is_available(cls) -> bool:
+        return bool((get_env("BRAVE_SEARCH_API_KEY") or "").strip())
+
+    @classmethod
+    def availability_reason(cls) -> str | None:
+        if cls.is_available():
+            return None
+        return "missing `BRAVE_SEARCH_API_KEY`"
+
     @property
     def name(self) -> str:
         return "brave"
@@ -27,7 +37,7 @@ class BraveRetriever(BaseRetriever):
             return []
 
         try:
-            async with httpx.AsyncClient(timeout=settings.search_provider_timeout_s, follow_redirects=True) as client:
+            async with httpx.AsyncClient(timeout=settings.search.provider_timeout_s, follow_redirects=True) as client:
                 response = await client.get(
                     _BRAVE_SEARCH_ENDPOINT,
                     params={"q": query, "count": max_results, "text_decorations": False, "spellcheck": False},

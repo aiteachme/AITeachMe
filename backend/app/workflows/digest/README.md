@@ -10,7 +10,10 @@
 digest/
   __init__.py
   README.md
-  application/
+  events.py
+  exports.py
+  overview.py
+  study_plan.py
   planner/
   docgen/
   knowledge_graph/
@@ -22,8 +25,10 @@ digest/
 - `planner/` 负责生成 confirmed plan
 - `docgen/` 负责按 confirmed plan 生成知识文档
 - `knowledge_graph/` 负责独立知识图谱链路
-- `application/` 是 Digest 模块级 API-facing 用例落点
-- `application/runtime.py`、`application/events.py`、`application/exports.py` 是模块级 canonical 入口
+- `events.py`、`exports.py` 是 Digest 模块根的 canonical 入口
+- `docgen/__init__.py`、`knowledge_graph/__init__.py` 提供 workflow runner 入口
+- `overview.py`、`study_plan.py` 是跨 lane 的聚合用例
+- `planner/sessions.py`、`docgen/builds.py`、`docgen/cleanup.py`、`knowledge_graph/{build.py,builds.py,module.py,query.py}` 是当前 digest 业务用例主落点
 - `common/` 是跨链路共用的 contracts / models / prepare / material_profile / metrics / runtime_config / pedagogy 实现层
 - 各链路自己的构建摘要放在对应链路 `lib/reporting.py`，不要再新增顶层 observability 伪链路
 
@@ -39,11 +44,9 @@ from app.workflows.digest.planner import run_build_planner_workflow
 ## 迁移约定
 
 - 模块根只做聚合
-- 模块级 API-facing 用例进入 `application/`
-- 模块根 `runtime.py`、`events.py`、`exports.py` 仅保留兼容 shim
+- 新的模块级 API-facing 用例优先直接进入模块根文件或对应 lane
+- 不再单独保留 `runtime.py`
 - 新 prompt 放各自链路 `prompts/`
 - 新 helper 放各自链路 `lib/`
 - 跨链路共享能力走 `common/`
 - Digest 文档教学语义走 `common/runtime_config.py` 与 `common/pedagogy/`
-- 旧模块级兼容文件暂时保留，但新代码优先走各链路目录
-

@@ -1,4 +1,4 @@
-﻿"""Retrieval node builders for the interact workflow.
+"""Retrieval node builders for the interact workflow.
 
 Reads DB: KnowledgeUnit/KG/evidence tables and subject-scoped vector tables as fallback.
 Writes DB: none.
@@ -13,7 +13,7 @@ from typing import Generator
 
 from sqlmodel import Session
 
-from app.shared.infra.config import get_settings
+from app.shared.infra.settings import get_settings
 from app.shared.infra.database import managed_session
 from app.shared.infra.workflow.context import WorkflowContext
 from app.workflows.interact.chat.state import InteractWorkflowState
@@ -41,8 +41,8 @@ def build_retrieve_context_node(*, context: WorkflowContext, session: Session | 
                 session=db_session,
                 query=state["question"],
                 subject=state["subject"],
-                top_k=settings.rag_top_k,
-                similarity_threshold=settings.rag_similarity_threshold,
+                top_k=settings.rag.top_k,
+                similarity_threshold=settings.rag.similarity_threshold,
                 user_id=state["user_id"],
             )
         contexts = [item.to_context_item() for item in retrieval_results] or None

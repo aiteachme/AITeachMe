@@ -9,7 +9,7 @@ from __future__ import annotations
 import structlog
 from sqlmodel import Session
 
-from app.shared.infra.config import get_settings
+from app.shared.infra.settings import get_settings
 from app.shared.infra.database import get_engine
 from app.repositories.knowledge.knowledge_repo import get_chunk_by_id
 from app.shared.infra.search.knowledge import RetrievedChunk
@@ -65,7 +65,7 @@ async def search_knowledge(
         return []
 
     settings = get_settings()
-    should_rerank = enable_rerank and bool(settings.rag_rerank_model)
+    should_rerank = enable_rerank and bool(settings.rag.rerank_model)
 
     try:
         from app.shared.infra.search.llamaindex_index import retrieve_subject_chunks

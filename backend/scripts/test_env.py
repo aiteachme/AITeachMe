@@ -12,18 +12,21 @@ import litellm
 
 async def main() -> None:
     # 加载配置
-    from app.shared.infra.config import get_settings
+    from app.shared.infra.settings import get_settings
+    from app.shared.infra.env_support import get_env
 
     settings = get_settings()
+    llm_base_url = get_env("LLM_BASE_URL")
+    llm_api_key = get_env("LLM_API_KEY") or ""
 
     print("=" * 60)
     print("📋 当前 .env 配置")
     print("=" * 60)
-    print(f"  LLM_BASE_URL      : {settings.llm_base_url}")
-    print(f"  LLM_MODEL         : {settings.llm_model}")
-    print(f"  EMBEDDING_MODEL   : {settings.embedding_model}")
+    print(f"  LLM_BASE_URL      : {llm_base_url}")
+    print(f"  LLM_MODEL         : {settings.models.primary}")
+    print(f"  EMBEDDING_MODEL   : {settings.models.embedding}")
     print(f"  EMBEDDING_DIM     : {settings.embedding_dim}")
-    print(f"  LLM_API_KEY       : {settings.llm_api_key[:8]}...{settings.llm_api_key[-4:]}")
+    print(f"  LLM_API_KEY       : {llm_api_key[:8]}...{llm_api_key[-4:]}")
     print()
 
     # ---------- 测试 LLM ----------
@@ -33,10 +36,10 @@ async def main() -> None:
     try:
         start = time.monotonic()
         response = await litellm.acompletion(
-            model=f"openai/{settings.llm_model}",
+            model=f"openai/{settings.models.primary}",
             messages=[{"role": "user", "content": "用一句话介绍你自己"}],
-            api_base=settings.llm_base_url,
-            api_key=settings.llm_api_key,
+            api_base=llm_base_url,
+            api_key=llm_api_key,
             max_tokens=100,
         )
         elapsed = time.monotonic() - start
@@ -58,10 +61,10 @@ async def main() -> None:
     try:
         start = time.monotonic()
         response = await litellm.aembedding(
-            model=f"openai/{settings.embedding_model}",
+            model=f"openai/{settings.models.embedding}",
             input=["这是一段测试文本，用于验证 embedding 模型是否正常工作。"],
-            api_base=settings.llm_base_url,
-            api_key=settings.llm_api_key,
+            api_base=llm_base_url,
+            api_key=llm_api_key,
         )
         elapsed = time.monotonic() - start
 

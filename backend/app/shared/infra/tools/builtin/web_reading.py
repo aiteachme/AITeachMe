@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Mapping
 
-from app.shared.infra.config import get_settings
+from app.shared.infra.settings import get_settings
 from app.shared.infra.observability.trace import sanitize_langsmith_input, traceable_with_context
 from app.shared.infra.search.factory import get_reader_for_url
 from app.shared.infra.search.types import ScrapedPage
@@ -90,12 +90,12 @@ async def read_urls(
         return []
 
     settings = get_settings()
-    worker_count = max(1, int(max_workers or settings.docgen_io_parallelism or 1))
+    worker_count = max(1, int(max_workers or settings.docgen.io_parallelism or 1))
     payload = await _run_traced_read_urls(
         ordered_urls,
         max_workers=worker_count,
         preferred_reader=preferred_reader,
-        timeout_s=timeout_s or settings.search_read_timeout_s,
+        timeout_s=timeout_s or settings.search.read_timeout_s,
     )
     return list(payload.get("pages") or [])
 

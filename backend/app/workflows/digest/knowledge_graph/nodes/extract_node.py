@@ -1,4 +1,4 @@
-﻿"""Knowledge graph extract node."""
+"""Knowledge graph extract node."""
 
 
 from __future__ import annotations
@@ -9,7 +9,7 @@ from typing import Any
 
 from sqlmodel import select
 
-from app.shared.infra.config import get_settings
+from app.shared.infra.settings import get_settings
 from app.shared.infra.database import managed_session
 from app.models import RetrievalChunk
 from app.utils.job_helpers import update_job_progress
@@ -28,8 +28,8 @@ from app.workflows.digest.common.models import TopicAnchor, TopicAnchorSnapshot
 
 def _resolve_extract_parallelism(chunk_count: int = 0) -> int:
     settings = get_settings()
-    ceiling = settings.llm_concurrency_limit
-    configured = settings.knowledge_extract_max_parallelism
+    ceiling = settings.runtime.llm_concurrency_limit
+    configured = settings.knowledge_graph.extract_max_parallelism
     # Adaptive: scale parallelism with chunk count so small jobs don't
     # over-subscribe and large jobs saturate the concurrency budget.
     if chunk_count <= 0:

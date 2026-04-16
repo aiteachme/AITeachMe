@@ -44,22 +44,20 @@ async def acompletion_structured(
     messages: list[ChatMessage],
     *,
     task_type: TaskType = TaskType.DEFAULT,
-    tier_override: str | None = None,
-    model_override: str | None = None,
+    model: str | None = None,
     **kwargs,
 ) -> T:
     """Async structured completion."""
 
     context = build_completion_context(
         task_type,
-        tier_override=tier_override,
-        model_override=model_override,
+        model=model,
     )
     use_instructor = instructor is not None
     client = instructor.from_litellm(litellm.acompletion) if use_instructor else None
     last_error: Exception | None = None
     call_started_at = time.monotonic()
-    tracked_model = context.profile.model
+    tracked_model = context.model
 
     if not use_instructor:
         logger.warning(
@@ -81,7 +79,7 @@ async def acompletion_structured(
             )
             call_model, provider, tracked_model = _resolved_trace_model(
                 call_kwargs,
-                context.profile.model,
+                context.model,
             )
             logger.info(
                 "llm_structured_started",

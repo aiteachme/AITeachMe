@@ -81,10 +81,10 @@ def build_token_summary(
 ) -> DigestTokenSummary:
     """Build a typed token summary from the shared LLM tracker."""
 
-    from app.shared.infra.config import get_settings
+    from app.shared.infra.settings import get_settings
     from app.shared.infra.observability.llm_stats import get_tracker
 
-    if not get_settings().digest_token_summary_enabled:
+    if not get_settings().digest.token_summary_enabled:
         return DigestTokenSummary()
     raw_summary = get_tracker().get_summary(
         build_session_id=build_session_id,
@@ -220,11 +220,11 @@ def build_lane_llm_rollup(token_summary: DigestTokenSummary) -> dict[str, Any]:
 
 
 def _top_k(value: int | None = None) -> int:
-    from app.shared.infra.config import get_settings
+    from app.shared.infra.settings import get_settings
 
     if value is not None:
         return max(1, int(value))
-    return max(1, int(get_settings().digest_timing_top_k))
+    return max(1, int(get_settings().digest.timing_top_k))
 
 
 __all__ = [

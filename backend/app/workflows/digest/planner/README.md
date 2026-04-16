@@ -121,7 +121,9 @@ Planner 现在通过 `planner/prompts/examples.py` 注入示例。
 
 ### `generate_plan_preview`
 
-文件：`planner/nodes/generate_plan_preview.py`
+节点名：`generate_plan_preview`
+
+实现文件：`planner/nodes/bootstrap_plan_brief.py`
 
 内部并行：
 
@@ -135,7 +137,9 @@ Planner 现在通过 `planner/prompts/examples.py` 注入示例。
 
 ### `probe_supporting_evidence`
 
-文件：`planner/nodes/probe_supporting_evidence.py`
+节点名：`probe_supporting_evidence`
+
+实现文件：`planner/nodes/probe_evidence.py`
 
 做什么：
 
@@ -146,7 +150,9 @@ Planner 现在通过 `planner/prompts/examples.py` 注入示例。
 
 ### `compose_plan_contract`
 
-文件：`planner/nodes/compose_plan_contract.py`
+节点名：`compose_plan_contract`
+
+实现文件：`planner/nodes/compose_build_plan.py`
 
 做什么：
 

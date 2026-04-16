@@ -28,8 +28,8 @@ Digest（织网引擎）是 AITeachMe 的**知识加工中枢**，负责把 Inge
 
 | 层 | 模块路径 | 职责 |
 |---|---|---|
-| Application | `backend/app/workflows/digest/application/knowledge_docs/digest_service.py` | Digest 构建入口、后台任务调度 |
-| 模块入口 | `backend/app/workflows/digest/runtime.py` / `graph.py` | 历史兼容入口，指向真实链路 |
+| DocGen Build | `backend/app/workflows/digest/docgen/builds.py` | Digest 构建入口、后台任务调度 |
+| 模块入口 | `backend/app/workflows/digest/__init__.py` | 稳定导入面，指向真实链路 |
 | Planner | `backend/app/workflows/digest/planner/` | confirmed plan 生成链路 |
 | DocGen | `backend/app/workflows/digest/docgen/` | 文档生成链路 |
 | Knowledge Graph | `backend/app/workflows/digest/knowledge_graph/` | 知识图谱链路 |
@@ -120,7 +120,7 @@ graph TD
      - chunk_count ≤ 20 → parallelism = min(chunk_count, 10)
      - chunk_count ≤ 100 → min(chunk_count, 20)
      - chunk_count > 100 → min(chunk_count, 30)
-     - 受限于 settings.kg_extract_max_parallelism 和 settings.llm_concurrency_limit
+     - 受限于 `settings.knowledge_graph.extract_max_parallelism` 和 `settings.runtime.llm_concurrency_limit`
   2. 从 shared_inputs 的 subject_profile / fast_hints 生成 taxonomy_hint 和 sibling_topics
   3. 对每个 chunk 并行调用 extract_candidates():
      ┌─ 快速通道判断: 试卷类材料 + question_block_count ≥ 3 + 无概念性内容 → 跳过 LLM
@@ -773,4 +773,3 @@ LangSmith metadata 只保留少量关键字段和计数摘要，不再默认 dum
 3. Docs Lane 的 fan-out 使用 `langgraph.types.Send()` 原语，编集自带并发
 4. 语义匹配阈值 (Primary=0.80, Secondary=0.85) 是硬编码常量，未来可配置化
 5. 文档审校通过率偏高时 (passed=True)，缺少自动 rewrite 循环
-

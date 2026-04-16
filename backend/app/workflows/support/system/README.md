@@ -10,5 +10,5 @@
 
 ## Files
 
-- `queries.py` contains read-oriented use cases.
-- `commands.py` may be added later if system write operations appear.
+- `init.py` contains the frontend runtime init entrypoint.
+- `settings.py` contains settings overview and shared system data builders.

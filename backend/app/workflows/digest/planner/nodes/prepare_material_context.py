@@ -12,10 +12,7 @@ from app.shared.infra.database import managed_session
 from app.shared.infra.workflow.context import WorkflowContext
 from app.workflows.digest.planner.lib.planner_events import emit_planner_event
 from app.workflows.digest.planner.state import BuildPlannerState
-from app.workflows.digest.common.contracts import (
-    resolve_digest_course_type,
-    resolve_planner_retrieval_profile,
-)
+from app.workflows.digest.common.contracts import resolve_planner_retrieval_profile
 from app.workflows.digest.common.models import DigestMaterialContext, FastTopicHints, SourcePacket, SubjectProfile
 from app.workflows.digest.common.prepare import prepare_material_context
 
@@ -134,11 +131,8 @@ def build_prepare_material_context_node(*, context: WorkflowContext):
         )
         return {
             "material_context": material_context,
-            "shared_inputs": material_context,
             "digest_mode": digest_mode,
-            "course_type": resolve_digest_course_type(digest_mode),
             "retrieval_profile": resolve_planner_retrieval_profile(),
-            "teaching_action": "plan_course",
             "tone": state.get("tone") or "encouraging",
         }
 

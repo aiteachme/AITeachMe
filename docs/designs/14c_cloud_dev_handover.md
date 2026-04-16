@@ -1,4 +1,4 @@
-﻿# 云端部署改造 — 开发交接文档
+# 云端部署改造 — 开发交接文档
 
 > 本文档供后续开发者（或 AI agent）接手继续改造使用。
 > 最后更新：2026-04-04
@@ -23,7 +23,7 @@
 
 | 文件 | 改动内容 |
 |------|----------|
-| `backend/app/shared/infra/config.py` | 新增 `database_url`, `storage_backend`, `s3_bucket`, `s3_endpoint`, `s3_access_key`, `s3_secret_key`, `s3_region`, `s3_public_base_url` 字段；新增 `storage_is_s3` 属性 |
+| `backend/app/shared/infra/settings/settings.py` | 新增 `database_url`, `storage_backend`, `s3_bucket`, `s3_endpoint`, `s3_access_key`, `s3_secret_key`, `s3_region`, `s3_public_base_url` 字段；新增 `storage_is_s3` 属性 |
 | `backend/app/shared/infra/storage/__init__.py` | **新建** — `get_artifact_store()` 工厂，全局单例 |
 | `backend/app/shared/infra/storage/base.py` | **新建** — `ArtifactStore` 抽象基类 |
 | `backend/app/shared/infra/storage/local_store.py` | **新建** — `LocalArtifactStore` 本地实现 |
@@ -44,7 +44,7 @@
 
 | 文件 | 改动内容 |
 |------|----------|
-| `backend/app/workflows/support/files/commands.py` | `save_uploaded_file()` 已添加 cloud 分支（上传到 OSS，file_path 存 storage_key）；`delete_files()` 已改为 async 并添加 cloud 分支（从 OSS 删除）；`_read_markdown()` cloud 模式返回空串；已导入 `get_artifact_store` |
+| `backend/app/workflows/support/files/uploads.py` | `save_uploaded_file()` 已添加 cloud 分支（上传到 OSS，file_path 存 storage_key）；`delete_files()` 已改为 async 并添加 cloud 分支（从 OSS 删除）；`_read_markdown()` cloud 模式返回空串；已导入 `get_artifact_store` |
 | `backend/app/workflows/support/subjects/lib/deletion.py` | `delete_subject_with_all_content()` cloud 模式跳过本地目录删除；新增 `delete_subject_artifacts_async()` 异步删除 OSS prefix |
 | `backend/app/main.py` | `_register_static_mounts()` 仅在 local 模式挂载 `/_assets` 静态文件 |
 
@@ -85,7 +85,7 @@
 
 **改造模式统一为：**
 ```python
-from app.shared.infra.config import get_settings
+from app.shared.infra.settings import get_settings
 from app.shared.infra.storage import get_artifact_store
 
 settings = get_settings()
@@ -111,7 +111,7 @@ else:
 
 ### 3.4 改造 Export/Import（未开始）
 
-**`backend/app/workflows/support/export_import/commands.py`**
+**`backend/app/workflows/support/export_import/exports.py`**
 
 - Export 时读取文件：cloud 模式用 `store.read_bytes(storage_key)` + `zf.writestr(arcname, data)`
 - Import 时写入文件：cloud 模式用 `store.write_file(storage_key, extracted_path)`

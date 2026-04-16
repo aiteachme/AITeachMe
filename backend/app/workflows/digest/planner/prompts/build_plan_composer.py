@@ -2,9 +2,28 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from app.workflows.digest.planner.prompts.examples import render_composer_examples
 from app.workflows.digest.planner.lib.research_probe import EvidenceBrief, LearningIntentProfile, PlanSketch, material_topic_hints
 from app.workflows.digest.common.models import DigestMaterialContext
+
+
+def _compact_message_history(message_history: list[str] | None) -> str:
+    cleaned = [str(item).strip() for item in message_history or [] if str(item).strip()]
+    if not cleaned:
+        return "暂无补充修改意见"
+    return "\n".join(f"- {item}" for item in cleaned[-6:])
+
+
+def _compact_latest_plan(latest_plan: dict[str, Any] | None) -> str:
+    if not latest_plan:
+        return "暂无上一版方案"
+    plan_summary = str(latest_plan.get("plan_summary") or "").strip()
+    chapter_count = len(list(latest_plan.get("chapter_plan") or []))
+    if plan_summary:
+        return f"上一版摘要：{plan_summary}\n上一版章节数：{chapter_count}"
+    return f"上一版章节数：{chapter_count}"
 
 
 def build_plan_composer_messages(
@@ -17,6 +36,8 @@ def build_plan_composer_messages(
     plan_sketch: PlanSketch,
     intent_profile: LearningIntentProfile,
     evidence_brief: EvidenceBrief,
+    message_history: list[str] | None = None,
+    latest_plan: dict[str, Any] | None = None,
 ) -> list[dict[str, str]]:
     topics = "、".join(material_topic_hints(material_context, limit=10)) or "暂无明显主题"
     sources = "；".join(source.title for source in evidence_brief.opened_sources[:4]) or "暂无打开来源"
@@ -34,6 +55,8 @@ def build_plan_composer_messages(
         f"模式：{digest_mode}\n"
         f"语气：{tone}\n"
         f"资料主题：{topics}\n\n"
+        f"最近对话与修改意见：\n{_compact_message_history(message_history)}\n\n"
+        f"上一版方案：\n{_compact_latest_plan(latest_plan)}\n\n"
         f"草稿任务：{sketch_tasks}\n\n"
         f"草稿暂定章节：{provisional_chapters}\n\n"
         f"意图类型：{intent_profile.goal_type}\n"

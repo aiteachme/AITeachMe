@@ -1,4 +1,4 @@
-﻿# 04. Ingest 引擎 — 透视引擎技术文档
+# 04. Ingest 引擎 — 透视引擎技术文档
 
 > **最后更新**: 2026-04-16 · 基于 `backend/app/workflows/ingest/` 代码实现
 
@@ -26,7 +26,7 @@ Ingest（透视引擎）是 AITeachMe 数据流的**入口**，负责把用户�
 |---|---|---|
 | 前端页面 | `frontend/src/pages/FilesPage.tsx` | 文件上传、预览、状态展示 |
 | API | `backend/app/api/files.py` | 上传接口、状态查询 |
-| Application | `backend/app/workflows/support/files/commands.py` / `queries.py` | 上传编排、后台任务派发、列表与删除 |
+| Support Files | `backend/app/workflows/support/files/uploads.py` / `catalog.py` / `parsing.py` / `deletion.py` | 上传编排、后台任务派发、列表与删除 |
 | Workflow Graph | `backend/app/workflows/ingest/graph.py` | LangGraph 图定义 |
 | Workflow Runtime | `backend/app/workflows/ingest/runtime.py` | 两阶段运行入口 |
 | Workflow State | `backend/app/workflows/ingest/state.py` | 状态类型定义 |
@@ -161,7 +161,7 @@ graph TD
 
 ### 4.3 实际运行方式说明
 
-> **重要**：当前实际运行入口 `runtime.py` 中的 `run_parse_file_workflow()` 并没有通过 `graph.compile().ainvoke()` 来执行这两张图，而是**直接在 runtime 函数中内联执行每一步**。`graph.py` 中的图定义主要用于：
+> **重要**：当前实际运行入口 `fast_parse/lib/runtime.py` 中的 `run_parse_file_workflow()` 并没有通过 `graph.compile().ainvoke()` 来执行这两张图，而是**直接在 runtime 函数中内联执行每一步**。`graph.py` 中的图定义主要用于：
 > - 导出可视化流程图
 > - 保持与 LangGraph 骨架约定的一致性
 > - 为未来迁移到 LangGraph 运行时做准备
@@ -763,4 +763,3 @@ raw_file → raw_markdowns (ContentStore) → retrieval_chunk
 2. 考虑统一通过 `graph.compile().ainvoke()` 执行，减少 runtime.py 的内联代码量
 3. 增加增量解析能力（文件内容未变化时跳过重解析）
 4. 为解析质量增加基于 LLM 的自动评估
-

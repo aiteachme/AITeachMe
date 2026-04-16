@@ -1,4 +1,4 @@
-﻿"""Workflow-local writer runtime for digest DocGen."""
+"""Workflow-local writer runtime for digest DocGen."""
 
 from __future__ import annotations
 
@@ -89,7 +89,7 @@ class DocGenWriterRuntime(BaseTracedExecution):
         markdown = await llm(
             messages,
             task_type=TaskType.DOCGEN,
-            tier="reason" if digest_mode == "systematic" else "primary",
+            model="reason" if digest_mode == "systematic" else "primary",
             extra_metadata=self.context.trace_metadata(chapter_index=self.context.chapter_index),
         )
 
@@ -206,7 +206,7 @@ class DocGenWriterRuntime(BaseTracedExecution):
             repaired = await llm(
                 messages,
                 task_type=TaskType.DOCGEN_LIGHT,
-                tier="light",
+                model="light",
                 extra_metadata=self.context.trace_metadata(
                     chapter_index=chapter_index,
                     substep="heading_repair",
@@ -485,4 +485,3 @@ class DocGenWriterRuntime(BaseTracedExecution):
 
 
 __all__ = ["DocGenWriterRuntime"]
-

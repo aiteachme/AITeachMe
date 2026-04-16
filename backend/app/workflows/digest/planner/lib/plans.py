@@ -1,4 +1,4 @@
-﻿"""Planner models, fallback builders, and plan normalization helpers."""
+"""Planner models, fallback builders, and plan normalization helpers."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from app.shared.infra.config import get_settings
+from app.shared.infra.settings import get_settings
 from app.workflows.digest.common.pedagogy import (
     clean_generated_chapter_title,
     is_usable_resolved_chapter_title,

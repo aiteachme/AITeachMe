@@ -113,6 +113,14 @@ class BaseRetriever(ABC):
             return canonical
         return self.__class__.factory_names()[0]
 
+    @classmethod
+    def is_available(cls) -> bool:
+        return True
+
+    @classmethod
+    def availability_reason(cls) -> str | None:
+        return None if cls.is_available() else "retriever is not available in the current runtime"
+
     @abstractmethod
     async def search(self, query: str, *, max_results: int = 5) -> list[SearchResult]:
         raise NotImplementedError

@@ -106,33 +106,33 @@ def build_subject_delete_preview(session: Session, *, subject: Subject) -> Subje
     impact_items = [
         SubjectDeleteImpactItem(
             key="files",
-            label="涓婁紶鏂囦欢涓庡垏鍧?,
+            label="上传文件与切块",
             count=detail_counts["raw_file"] + detail_counts["retrieval_chunk"],
-            description="浼氬垹闄ゅ師濮嬫枃浠惰褰曘€佸垏鍧椾笌鍚戦噺绱㈠紩銆?,
+            description="会删除原始文件记录、切块与向量索引。",
         ),
         SubjectDeleteImpactItem(
             key="knowledge",
-            label="鐭ヨ瘑缁撴瀯涓庤涔?,
+            label="知识结构与讲义",
             count=_sum_counts(detail_counts, _KNOWLEDGE_KEYS),
-            description="浼氬垹闄ょ煡璇嗘枃妗ｃ€佸浘璋便€佽绋嬫爲涓庝緷璧栫粨鏋勩€?,
+            description="会删除知识文档、图谱、课程树与依赖结构。",
         ),
         SubjectDeleteImpactItem(
             key="exam",
             label="鑰冭瘯璁板綍",
             count=_sum_counts(detail_counts, _EXAM_KEYS),
-            description="浼氬垹闄ら妯℃澘銆佽瘯鍗蜂笌璇曞嵎棰樼洰蹇収銆?,
+            description="会删除题模板、试卷与试卷题目快照。",
         ),
         SubjectDeleteImpactItem(
             key="chat",
             label="瀵硅瘽璁板綍",
             count=detail_counts["chat_message"] + detail_counts["chat_session"],
-            description="浼氬垹闄よ瀛︾涓嬬殑浼氳瘽涓庤亰澶╂秷鎭€?,
+            description="会删除该学科下的会话与聊天消息。",
         ),
         SubjectDeleteImpactItem(
             key="profile",
             label="瀛︿範鐢诲儚",
             count=_sum_counts(detail_counts, _PROFILE_KEYS),
-            description="浼氬垹闄?mastery 涓庡涔犵姸鎬併€?,
+            description="会删除 mastery 与复习状态。",
         ),
     ]
     return SubjectDeletePreviewData(
@@ -154,7 +154,8 @@ def delete_subject_with_all_content(session: Session, *, subject: Subject) -> di
     _delete_documents_and_chunks(session, subject=subject.slug)
     _delete_raw_files_and_artifacts(session, subject=subject.slug)
 
-    # 鏈湴鐩綍娓呯悊锛坈loud 鏂囦欢鐢?delete_subject_artifacts_async 澶勭悊锛?    _delete_subject_directory(subject.slug)
+    # Local directory cleanup; cloud artifacts are handled by delete_subject_artifacts_async.
+    _delete_subject_directory(subject.slug)
 
     delete_subject(session, subject)
 
@@ -164,11 +165,12 @@ def delete_subject_with_all_content(session: Session, *, subject: Subject) -> di
 
 
 async def delete_subject_artifacts_async(subject_slug: str) -> None:
-    """寮傛鍒犻櫎璇?subject 鐨勬墍鏈夊瓨鍌ㄦ枃浠讹紙local 鍜?cloud 鍧囪蛋 ContentStore锛夈€?""
+    """Delete all stored files for one subject through ContentStore."""
 
     cs = get_content_store()
     await cs.delete_prefix(cs.subject_prefix(subject_slug))
-    # 鏈湴鐩綍涔熸竻鐞嗭紙濡傛灉瀛樺湪锛?    _delete_subject_directory(subject_slug)
+    # Also clean local runtime directories when present.
+    _delete_subject_directory(subject_slug)
 
 
 def _delete_exam_records(session: Session, *, subject: str) -> None:
@@ -254,7 +256,8 @@ def _delete_raw_files_and_artifacts(session: Session, *, subject: str) -> None:
 
     for raw_file in raw_files:
         if is_local_mode():
-            # local 妯″紡锛氬師鏈夐€昏緫锛屽垹闄ゆ湰鍦版枃浠?            for path_value in [raw_file.file_path, raw_file.markdown_path]:
+            # Local mode keeps the original direct file cleanup.
+            for path_value in [raw_file.file_path, raw_file.markdown_path]:
                 if path_value:
                     Path(path_value).unlink(missing_ok=True)
             delete_asset_files(
@@ -265,7 +268,7 @@ def _delete_raw_files_and_artifacts(session: Session, *, subject: str) -> None:
                     file_id=raw_file.id,
                 ),
             )
-        # cloud 妯″紡锛氭枃浠舵竻鐞嗙敱 delete_subject_artifacts_async() 缁熶竴澶勭悊
+        # Cloud artifact cleanup is handled by delete_subject_artifacts_async().
         session.delete(raw_file)
     session.commit()
 

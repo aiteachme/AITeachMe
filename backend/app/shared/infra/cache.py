@@ -8,7 +8,7 @@ from hashlib import md5
 
 import structlog
 
-from app.shared.infra.config import get_settings
+from app.shared.infra.settings import get_settings
 
 logger = structlog.get_logger()
 
@@ -40,8 +40,8 @@ class SemanticCache:
         max_entries: int | None = None,
     ) -> None:
         settings = get_settings()
-        self._ttl_s = ttl_s or settings.llm_cache_ttl_s
-        self._max_entries = max_entries or settings.llm_cache_max_entries
+        self._ttl_s = ttl_s or settings.cache.ttl_s
+        self._max_entries = max_entries or settings.cache.max_entries
         self._cache: dict[str, CacheEntry] = {}
         self._hits = 0
         self._misses = 0
@@ -54,7 +54,7 @@ class SemanticCache:
         """查找缓存。"""
 
         settings = get_settings()
-        if not settings.llm_cache_enabled:
+        if not settings.cache.enabled:
             return None
 
         key = self._hash(f"{model}:{task_type}:{query}")
@@ -87,7 +87,7 @@ class SemanticCache:
         """存入缓存。"""
 
         settings = get_settings()
-        if not settings.llm_cache_enabled:
+        if not settings.cache.enabled:
             return
 
         # 如果超过容量上限，清理最旧的条目

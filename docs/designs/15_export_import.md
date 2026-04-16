@@ -274,7 +274,7 @@ POST /api/v1/subjects/import   — 上传并导入 .atmx 文件
 | 类型 | 文件 | 职责 |
 | --- | --- | --- |
 | **[NEW]** | `app/schemas/export_import.py` | API 请求/响应 Schema（仅 API 面） |
-| **[NEW]** | `app/workflows/support/export_import/commands.py` | 核心业务逻辑 + manifest 内部模型 + TABLE_REGISTRY |
+| **[NEW]** | `app/workflows/support/export_import/exports.py` | 核心业务逻辑 + manifest 内部模型 + TABLE_REGISTRY |
 | **[NEW]** | `app/api/export_import.py` | API 路由（导出预览 / 导出下载 / 导入上传） |
 | **[MODIFY]** | `app/main.py` | 注册新 router |
 

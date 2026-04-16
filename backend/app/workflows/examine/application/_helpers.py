@@ -204,11 +204,11 @@ def _choose_preferred_question_types(
 ) -> list[str]:
     prompt = (user_prompt or "").lower()
     picked: list[str] = []
-    if any(key in prompt for key in ["閫夋嫨", "鍗曢€?, "choice", "mcq"]):
+    if any(key in prompt for key in ["选择", "单选", "choice", "mcq"]):
         picked.append(QuestionType.SINGLE_CHOICE.value)
-    if any(key in prompt for key in ["濉┖", "blank"]):
+    if any(key in prompt for key in ["填空", "blank"]):
         picked.append(QuestionType.FILL_BLANK.value)
-    if any(key in prompt for key in ["绠€绛?, "闂瓟", "瑙ｇ瓟", "鍒嗘瀽", "璁鸿堪", "essay"]):
+    if any(key in prompt for key in ["简答", "问答", "解答", "分析", "论述", "essay"]):
         picked.append(QuestionType.SHORT_ANSWER.value)
 
     if picked:
@@ -261,7 +261,7 @@ async def _acquire_exam_generate_lock(*, subject: str, user_id: str) -> asyncio.
 
     if lock.locked():
         _raise_conflict(
-            "褰撳墠宸叉湁璇曞嵎鐢熸垚浠诲姟杩涜涓紝璇风◢鍚庡啀璇曘€?,
+            "当前已有试卷生成任务进行中，请稍后再试。",
             error_code="EXAM_GENERATE_JOB_ACTIVE",
         )
     await lock.acquire()
@@ -334,11 +334,11 @@ async def _sync_exam_learning_memory(
     total_count: int,
 ) -> None:
     summary = (
-        f"{paper.subject} 瀹屾垚{('鑰冭瘯鍗? if is_paper_exam_mode(paper.exam_mode) else '鍦ㄧ嚎娴嬮獙')}锛?
-        f"寰楀垎 {correct_count}/{total_count}锛坽score_percent:.1f} 鍒嗭級"
+        f"{paper.subject} 完成{('考试卷' if is_paper_exam_mode(paper.exam_mode) else '在线测验')}，"
+        f"得分 {correct_count}/{total_count}（{score_percent:.1f} 分）"
     )
     note_line = f"- {summary}"
-    advice_line = f"- {paper.subject}锛氭渶杩戜竴娆′綔绛斿緱鍒?{score_percent:.1f} 鍒嗭紝鍙嵁姝よ皟鏁翠笅涓€杞瑙ｄ笌缁冧範闅惧害銆?
+    advice_line = f"- {paper.subject}：最近一次作答得到 {score_percent:.1f} 分，可据此调整下一轮讲解与练习难度。"
 
     await log_learning_event(
         paper.user_id,
@@ -356,12 +356,12 @@ async def _sync_exam_learning_memory(
     await sync_profile_to_doc(paper.user_id)
     await append_to_learner_section(
         paper.user_id,
-        "鏈€杩戝涔犱富棰?,
+        "最近学习主题",
         note_line,
     )
     await append_to_learner_section(
         paper.user_id,
-        "鏁欏澶囨敞",
+        "教学备注",
         advice_line,
     )
 
@@ -593,4 +593,3 @@ def _resolve_template_knowledge_points(
         deduped = list(dict.fromkeys(name for name in names if name))
         result[template_id] = deduped
     return result
-
