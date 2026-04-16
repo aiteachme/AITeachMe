@@ -19,16 +19,16 @@ __all__ = [
 ]
 
 _ATTR_TO_MODULE = {
-    "DocGenState": "app.workflows.digest.state",
-    "KGDigestState": "app.workflows.digest.state",
-    "build_docgen_graph": "app.workflows.digest.graph",
-    "build_kg_digest_graph": "app.workflows.digest.graph",
+    "DocGenState": "app.workflows.digest.docgen.state",
+    "KGDigestState": "app.workflows.digest.knowledge_graph.state",
+    "build_docgen_graph": "app.workflows.digest.docgen.graph",
+    "build_kg_digest_graph": "app.workflows.digest.knowledge_graph.graph",
     "build_unified_digest_graph": "app.workflows.digest.unified.graph",
-    "create_docgen_initial_state": "app.workflows.digest.runtime",
-    "create_graph_digest_initial_state": "app.workflows.digest.runtime",
+    "create_docgen_initial_state": "app.workflows.digest.application.runtime",
+    "create_graph_digest_initial_state": "app.workflows.digest.application.runtime",
     "create_unified_initial_state": "app.workflows.digest.unified.graph",
-    "run_docgen_workflow": "app.workflows.digest.runtime",
-    "run_graph_digest_workflow": "app.workflows.digest.runtime",
+    "run_docgen_workflow": "app.workflows.digest.application.runtime",
+    "run_graph_digest_workflow": "app.workflows.digest.application.runtime",
     "run_unified_digest_build": "app.workflows.digest.unified.runtime",
 }
 

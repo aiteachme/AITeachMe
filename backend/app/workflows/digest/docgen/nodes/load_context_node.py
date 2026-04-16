@@ -22,7 +22,7 @@ from app.workflows.digest.docgen.nodes.common import (
     serialize_section,
 )
 from app.workflows.digest.docgen.state import DocGenState
-from app.workflows.digest.shared.prepare import prepare_shared_inputs
+from app.workflows.digest.common.prepare import prepare_shared_inputs
 
 
 def build_load_context_node(*, context: WorkflowContext):
@@ -191,5 +191,6 @@ def build_load_context_node(*, context: WorkflowContext):
 
 
 __all__ = ["build_load_context_node"]
+
 
 

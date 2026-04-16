@@ -1,4 +1,4 @@
-"""DocGen lane reporting helpers."""
+﻿"""DocGen lane reporting helpers."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ from collections.abc import Mapping, Sequence
 from typing import Any
 
 from app.shared.infra.tools.builtin.markdown_processing import count_words
-from app.workflows.digest.shared.metrics import (
+from app.workflows.digest.common.metrics import (
     DigestTokenSummary,
     build_lane_llm_rollup,
     build_slow_items,
@@ -346,3 +346,4 @@ def _sum_count_maps(items: Sequence[Mapping[str, Any]]) -> dict[str, int]:
 
 
 __all__ = ["build_docgen_lane_summary"]
+

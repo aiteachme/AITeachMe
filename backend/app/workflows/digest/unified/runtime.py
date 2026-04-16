@@ -10,7 +10,7 @@ import structlog
 from app.shared.infra.workflow.context import WorkflowContext
 from app.shared.infra.workflow.events import InProcessEventBus
 from app.shared.infra.workflow.runtime import run_state_graph
-from app.workflows.digest.shared.metrics import build_token_summary
+from app.workflows.digest.common.metrics import build_token_summary
 from app.workflows.digest.unified.lib.reporting import build_unified_timing_report
 from app.workflows.digest.unified.events import (
     UnifiedBuildCompletedEvent,
@@ -201,3 +201,4 @@ async def run_unified_digest_build(
         total_tokens=unified_token_summary.total_tokens,
     )
     return unified_result
+

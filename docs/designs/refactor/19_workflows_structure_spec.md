@@ -1,4 +1,4 @@
-# 19. Workflows 结构规范
+﻿# 19. Workflows 结构规范
 
 最后更新：2026-04-16
 
@@ -38,7 +38,7 @@ workflows/<module>/
   application/
   <lane_a>/
   <lane_b>/
-  _shared/          # 可选，仅在真实跨链路复用时建立
+  common/           # 可选，仅在真实跨链路复用时建立
 ```
 
 ### 2.1 `application/` 的职责
@@ -143,12 +143,12 @@ teaching tool 不是独立教学层。当前通用实现是内置 tool，不再�
 - 注册、枚举、执行与 registry sync 归 `shared.infra.tools.teaching_registry`
 - 通用内置教学工具实现归 `shared.infra.tools.builtin.teaching_tools`
 - 单条链路私有教学逻辑归对应 lane 的 `nodes/` 或 `lib/`
-- Digest 文档生成专属教学表达归 `digest/_shared/pedagogy`
+- Digest 文档生成专属教学表达归 `digest/common/pedagogy`
 - 不恢复 `backend/app/teaching` 作为正式层或兼容层
 
-## 5. `_shared/` 规则
+## 5. `common/` 规则
 
-只有真实被两条及以上链路复用的内容，才允许进入模块 `_shared/`
+只有真实被两条及以上链路复用的内容，才允许进入模块 `common/`
 
 允许的典型内容：
 
@@ -192,7 +192,7 @@ digest/
     nodes/
     prompts/
     lib/
-  _shared/
+  common/
 ```
 
 - `planner/` 只承接图和链路内部逻辑
@@ -209,14 +209,14 @@ digest/
     nodes/
     prompts/
     lib/
-  _shared/
+  common/
     runtime_config.py
     pedagogy/
 ```
 
 - `docgen/` 只承接 research / writer / publish 等链路内部逻辑
 - build trigger / result / cleanup / overview 进入 `digest/application/*`
-- 教学语义统一从 `_shared/runtime_config.py` 与 `_shared/pedagogy/` 进入
+- 教学语义统一从 `common/runtime_config.py` 与 `common/pedagogy/` 进入
 
 ## 8. 兼容策略
 
@@ -229,5 +229,7 @@ digest/
 
 新的 workflows 结构只有两个关键词：
 
-- 五大引擎：`application + lanes + _shared`
+- 五大引擎：`application + lanes + common`
 - 支撑模块：`commands + queries (+ streams/lib)`
+
+

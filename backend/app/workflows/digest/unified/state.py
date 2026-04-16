@@ -1,4 +1,4 @@
-"""State and result models for unified digest builds."""
+﻿"""State and result models for unified digest builds."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ from typing import Any, TypedDict
 
 from pydantic import BaseModel, Field
 
-from app.workflows.digest.shared.models import SharedInputs
+from app.workflows.digest.common.models import SharedInputs
 from app.workflows.digest.unified.models import MaterializedSections
 
 
@@ -67,3 +67,4 @@ class UnifiedBuildResult(BaseModel):
     kg_lane_ms: int = 0
     timing_report: dict[str, Any] | None = None
     token_summary: dict[str, Any] | None = None
+

@@ -1,4 +1,4 @@
-"""Ground planner concepts with light retrieval before drafting."""
+﻿"""Ground planner concepts with light retrieval before drafting."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ from app.shared.infra.workflow import emit_progress
 from app.shared.infra.workflow.context import WorkflowContext
 from app.workflows.digest.planner.lib.grounding import collect_planner_concept_briefing
 from app.workflows.digest.planner.state import BuildPlannerState
-from app.workflows.digest.shared.models import SharedInputs
+from app.workflows.digest.common.models import SharedInputs
 
 
 def _merge_planner_topic_hints(shared_inputs: SharedInputs, topic_hints: list[str]) -> SharedInputs:
@@ -69,3 +69,4 @@ def build_ground_concepts_node(*, context: WorkflowContext):
 
 
 __all__ = ["build_ground_concepts_node"]
+

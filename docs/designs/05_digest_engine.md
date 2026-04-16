@@ -35,7 +35,7 @@ Digest（织网引擎）是 AITeachMe 的**知识加工中枢**，负责把 Inge
 | DocGen | `backend/app/workflows/digest/docgen/` | 文档生成链路 |
 | Knowledge Graph | `backend/app/workflows/digest/knowledge_graph/` | 知识图谱链路 |
 | Unified | `backend/app/workflows/digest/unified/` | 共享准备、DocGen 与 Knowledge Graph 编排 |
-| Shared | `backend/app/workflows/digest/shared/` | contracts / models / prepare / material_profile / metrics |
+| Shared | `backend/app/workflows/digest/common/` | contracts / models / prepare / material_profile / metrics |
 | DocGen Prompt | `backend/app/workflows/digest/docgen/prompts/` | 研究、标题、写作、资产 prompt |
 | KG Prompt | `backend/app/workflows/digest/knowledge_graph/prompts/` | 抽取/对齐/命名/主题树 prompt |
 | Reporting | 各链路 `lib/reporting.py` | 构建摘要与 token/timing 诊断 |
@@ -790,3 +790,4 @@ LangSmith metadata 只保留少量关键字段和计数摘要，不再默认 dum
 3. Docs Lane 的 fan-out 使用 `langgraph.types.Send()` 原语，编集自带并发
 4. 语义匹配阈值 (Primary=0.80, Secondary=0.85) 是硬编码常量，未来可配置化
 5. 文档审校通过率偏高时 (passed=True)，缺少自动 rewrite 循环
+

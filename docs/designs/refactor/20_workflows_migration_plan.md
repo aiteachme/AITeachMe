@@ -1,4 +1,4 @@
-# 20. Workflows 单层化迁移计划
+﻿# 20. Workflows 单层化迁移计划
 
 最后更新：2026-04-16
 
@@ -26,21 +26,21 @@
 - 新增 `shared.infra.tools.teaching_registry`
 - 把 tool module 自动加载入口从 `app.teaching.tools` 切到 `app.shared.infra.tools.builtin.teaching_tools`
 - 新增 `digest/application/`
-- 新增 `digest/_shared/runtime_config.py`
-- 新增 `digest/_shared/pedagogy/`
+- 新增 `digest/common/runtime_config.py`
+- 新增 `digest/common/pedagogy/`
 
 `teaching_tools` 的长期分类规则：
 
 - registry / sync / execution 机制归 `shared.infra.tools.teaching_registry`
 - 通用内置教学工具归 `shared.infra.tools.builtin.teaching_tools`
 - 单条链路私有教学逻辑归对应 lane 的 `nodes/` 或 `lib/`
-- Digest 文档专属教学表达归 `digest/_shared/pedagogy`
+- Digest 文档专属教学表达归 `digest/common/pedagogy`
 
 ### Phase 2: 清理 workflow 反向依赖
 
 - 去掉 `workflows -> app.services.*`
 - 去掉 `workflows -> app.teaching.*`
-- 统一改走 `shared.infra` 或 `digest._shared` facade
+- 统一改走 `shared.infra` 或 `digest.common` facade
 
 ### Phase 3: Digest 应用用例迁移
 
@@ -69,7 +69,7 @@
 
 1. 文档规范
 2. `shared.infra.tools.builtin.teaching_tools`
-3. `digest/_shared/runtime_config` 与 `digest/_shared/pedagogy`
+3. `digest/common/runtime_config` 与 `digest/common/pedagogy`
 4. `digest/planner` 与 `digest/docgen` 的应用用例迁移
 
 原因：
@@ -93,8 +93,8 @@
 | `services/system_service.py` | `workflows/support/system` | 已迁入 support 模块 |
 | `services/export_import_service.py` | `workflows/support/export_import` | 已迁入 support 模块 |
 | `services/subject_embedding_service.py` | `shared.infra.subject.build_precheck` | 已迁入 infra subject |
-| `teaching/runtime_config.py` | `workflows/digest/_shared/runtime_config.py` | 已迁为真实实现 |
-| `teaching/documents/*` | `workflows/digest/_shared/pedagogy/*` | 已迁为真实实现 |
+| `teaching/runtime_config.py` | `workflows/digest/common/runtime_config.py` | 已迁为真实实现 |
+| `teaching/documents/*` | `workflows/digest/common/pedagogy/*` | 已迁为真实实现 |
 | `teaching/teaching.py` | `shared.infra.tools.teaching_registry` | 已先落地 |
 | `teaching/tools.py` | `shared.infra.tools.builtin.teaching_tools` | 已迁为通用内置工具 |
 
@@ -167,3 +167,5 @@
 - 再立 canonical 落点
 - 再逐块把旧逻辑挪过去
 - 最后清 shim
+
+

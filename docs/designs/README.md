@@ -1,4 +1,4 @@
-# AITeachMe 开发设计文档
+﻿# AITeachMe 开发设计文档
 
 ## 1. 文档定位
 
@@ -76,7 +76,7 @@
 这轮代码合并后的文档口径必须统一为：
 
 - 后端业务层已经收口为 `api -> workflows -> repositories / shared.infra / models / schemas`
-- `backend/app/services` 与 `backend/app/teaching` 不再作为源码层存在；原能力已迁入 `workflows/*/application`、`workflows/support`、`workflows/digest/_shared` 或 `shared.infra.tools`
+- `backend/app/services` 与 `backend/app/teaching` 不再作为源码层存在；原能力已迁入 `workflows/*/application`、`workflows/support`、`workflows/digest/common` 或 `shared.infra.tools`
 - ingest 方法层采用两阶段加速
 - 数据库主线采用 `curriculum` 单表版本语义
 - 知识文档和知识图谱在同一轮 digest 中共享版本
@@ -95,3 +95,4 @@
 - 哪些对象是长期真相
 - 哪些状态只是运行时实现
 - 在不增加 API 复杂度前提下，未来优先演进哪些能力
+

@@ -15,7 +15,7 @@ from app.schemas.llm import ChatMessage, SYSTEM, USER
 from app.workflows.digest.knowledge_graph.lib.candidate_identity import build_candidate_stable_id
 from app.workflows.digest.knowledge_graph.lib.chunker import QuestionBlock, parse_question_blocks
 from app.workflows.digest.knowledge_graph.prompts import SYSTEM_PROMPT_KG_EXTRACT, USER_PROMPT_KG_EXTRACT
-from app.workflows.digest.shared.semantic_titles import (
+from app.workflows.digest.common.semantic_titles import (
     DEFAULT_QUESTION_TOPIC,
     choose_semantic_topic_path,
     clean_semantic_title,
@@ -839,3 +839,4 @@ __all__ = [
     "extract_candidates",
     "has_conceptual_content",
 ]
+

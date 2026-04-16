@@ -1,4 +1,4 @@
-# 云端部署改造 — 开发交接文档
+﻿# 云端部署改造 — 开发交接文档
 
 > 本文档供后续开发者（或 AI agent）接手继续改造使用。
 > 最后更新：2026-04-04
@@ -106,7 +106,7 @@ else:
 2. **`backend/app/workflows/digest/docs/publish.py`** — 发布知识文档
    - 发布产物写入走 store
 
-3. **`backend/app/workflows/digest/shared/prepare.py`** — 准备阶段
+3. **`backend/app/workflows/digest/common/prepare.py`** — 准备阶段
    - 读取 raw_markdowns 走 store
 
 ### 3.4 改造 Export/Import（未开始）
@@ -224,3 +224,4 @@ else:
 | 数据库架构 | `docs/designs/11_database_and_storage_architecture.md` | 当前数据库和存储架构 |
 | 数据库 Schema | `docs/designs/13_database_schema_inventory.md` | 完整的18张表 Schema |
 | Export/Import | `docs/designs/15_export_import.md` | 导出导入功能设计 |
+

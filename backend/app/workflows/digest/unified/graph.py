@@ -13,12 +13,12 @@ from app.shared.infra.workflow import workflow_tracer
 from app.shared.infra.workflow.context import WorkflowContext, create_langgraph_dev_context
 from app.shared.infra.workflow.result import WorkflowResult
 from app.workflows.digest.docgen.lib.publish import publish_staged_knowledge_docs
-from app.workflows.digest.runtime import (
+from app.workflows.digest.application.runtime import (
     run_docgen_workflow,
     run_graph_digest_workflow,
 )
-from app.workflows.digest.shared.prepare import prepare_shared_inputs
-from app.workflows.digest.shared.models import DigestMode
+from app.workflows.digest.common.prepare import prepare_shared_inputs
+from app.workflows.digest.common.models import DigestMode
 from app.workflows.digest.unified.materialize import materialize_shared_inputs
 from app.workflows.digest.unified.session import (
     create_unified_build_session,
@@ -436,3 +436,4 @@ def get_langgraph_dev_unified_graph() -> StateGraph:
     return build_unified_digest_graph(
         context=create_langgraph_dev_context("digest.unified.langgraph_dev"),
     )
+

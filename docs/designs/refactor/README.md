@@ -20,6 +20,7 @@ api -> workflows -> repositories / shared.infra / models / schemas
 | `18_workflows_layer_consolidation.md` | Workflows 单层化边界收敛 — 为什么收缩 `services` / `teaching`，以及总映射表 |
 | `19_workflows_structure_spec.md` | Workflows 结构规范 — engine/support 模板、命名规则、Digest 示例 |
 | `20_workflows_migration_plan.md` | Workflows 单层化迁移计划 — 分阶段执行顺序、模块映射、风险与验收 |
+| `21_ingest_deepdoc_comparison.md` | Ingest v2 全流程设计 — Provider 优先级、转换层、质量仲裁、多格式支持与教学证据层 |
 | `02_landed_decisions.md` | 已落地的关键决策（架构边界、扩展模型、LLM 策略、DocGen 骨架、tracing） |
 | `05_document_modes.md` | 知识文档模式契约 — 待完成的章节结构、资产配额、质量门槛、交互内容 |
 | `06_retrieval_strategy.md` | 检索策略 — 待完成的学科化 profile、持久化缓存、本地语料库 |

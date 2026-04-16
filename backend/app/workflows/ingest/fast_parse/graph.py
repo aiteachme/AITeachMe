@@ -73,5 +73,14 @@ def get_langgraph_dev_fast_parse_graph() -> StateGraph:
     )
 
 
-__all__ = ["build_fast_parse_graph", "get_langgraph_dev_fast_parse_graph"]
+def build_parse_file_graph(*, context: WorkflowContext) -> StateGraph:
+    """Legacy alias kept at lane level so the module root can disappear."""
 
+    return build_fast_parse_graph(context=context)
+
+
+__all__ = [
+    "build_fast_parse_graph",
+    "build_parse_file_graph",
+    "get_langgraph_dev_fast_parse_graph",
+]

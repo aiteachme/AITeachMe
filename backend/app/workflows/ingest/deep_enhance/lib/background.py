@@ -14,15 +14,15 @@ from app.shared.infra.storage import get_content_store, run_store_sync
 from app.models import IngestStatus
 from app.repositories.files_repo import get_raw_file_by_id, update_raw_file
 from app.utils.path_helpers import build_asset_name_prefix
-from app.workflows.ingest.events import (
+from app.workflows.ingest.application.events import (
     IngestFileEnhanceFailedEvent,
     IngestFileEnhanceStartedEvent,
     IngestFileReadyForDigestEvent,
 )
-from app.workflows.ingest.shared.parsing.classifier import ClassificationResult
-from app.workflows.ingest.shared.parsing.orchestrator import deep_enhance_file
-from app.workflows.ingest.shared.parsing.strategy import build_parse_plan
-from app.workflows.ingest.shared.parsing.types import ParserRunOptions
+from app.workflows.ingest.common.parsing.classifier import ClassificationResult
+from app.workflows.ingest.common.parsing.orchestrator import deep_enhance_file
+from app.workflows.ingest.common.parsing.strategy import build_parse_plan
+from app.workflows.ingest.common.parsing.types import ParserRunOptions
 
 logger = structlog.get_logger()
 
@@ -123,9 +123,9 @@ async def _run_deep_enhance_background(
         # MinerU already returns a high-quality markdown; avoid overriding it here.
         if extension == ".pdf" and raw_file.parser_used != "mineru":
             try:
-                from app.workflows.ingest.shared.parsing.pdf import parse_pdf_with_pymupdf4llm, PDF_PYMUPDF4LLM_AVAILABLE
-                from app.workflows.ingest.shared.parsing.types import ParserRunOptions
-                from app.workflows.ingest.shared.parsing.canonicalizer import canonicalize_markdown
+                from app.workflows.ingest.common.parsing.pdf import parse_pdf_with_pymupdf4llm, PDF_PYMUPDF4LLM_AVAILABLE
+                from app.workflows.ingest.common.parsing.types import ParserRunOptions
+                from app.workflows.ingest.common.parsing.canonicalizer import canonicalize_markdown
 
                 if PDF_PYMUPDF4LLM_AVAILABLE:
                     quality_options = ParserRunOptions(
@@ -178,7 +178,7 @@ async def _run_deep_enhance_background(
                 hint="Set OCR_MODEL in .env to enable LLM OCR (e.g. OCR_MODEL=qwen-vl-max)",
             )
             # Create a dummy result — no OCR was done
-            from app.workflows.ingest.shared.parsing.orchestrator import DeepEnhanceResult
+            from app.workflows.ingest.common.parsing.orchestrator import DeepEnhanceResult
             enhance_result = DeepEnhanceResult(markdown=markdown)
 
         # Overwrite markdown with enhanced version
@@ -243,3 +243,4 @@ async def _run_deep_enhance_background(
                 )
         except Exception:
             enhance_logger.exception("deep_enhance_failure_update_error")
+

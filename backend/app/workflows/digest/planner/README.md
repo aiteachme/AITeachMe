@@ -1,4 +1,4 @@
-# Planner 构建方案链路说明
+﻿# Planner 构建方案链路说明
 
 最后更新：2026-04-16
 
@@ -35,7 +35,7 @@ raw_file / raw_markdown
 
 ### 它从哪里来
 
-主要由 `digest/shared/prepare.py::prepare_shared_inputs(...)` 生成。
+主要由 `digest/common/prepare.py::prepare_shared_inputs(...)` 生成。
 
 生成过程：
 
@@ -195,10 +195,10 @@ draft_plan
 - `app.shared.infra.database.managed_session`
 - `app.repositories.files_repo.list_raw_files_by_ids`
 - `app.models.subject.Subject`
-- `app.workflows.digest.shared.prepare.prepare_shared_inputs`
-- `app.workflows.digest.shared.models.SharedInputs`
-- `app.workflows.digest.shared.contracts.resolve_digest_course_type`
-- `app.workflows.digest.shared.contracts.resolve_planner_retrieval_profile`
+- `app.workflows.digest.common.prepare.prepare_shared_inputs`
+- `app.workflows.digest.common.models.SharedInputs`
+- `app.workflows.digest.common.contracts.resolve_digest_course_type`
+- `app.workflows.digest.common.contracts.resolve_planner_retrieval_profile`
 
 ### 2. `ground_concepts`
 
@@ -258,8 +258,8 @@ draft_plan
 - `app.shared.infra.search.SourceCurator`
 - `app.shared.infra.tools.builtin.web_reading.read_urls`
 - `app.shared.infra.execution.TracedExecutionContext`
-- `app.workflows.digest._shared.runtime_config.get_teaching_runtime_config`
-- `app.workflows.digest.shared.contracts.resolve_planner_retrieval_profile`
+- `app.workflows.digest.common.runtime_config.get_teaching_runtime_config`
+- `app.workflows.digest.common.contracts.resolve_planner_retrieval_profile`
 
 ### 3. `draft_plan`
 
@@ -343,7 +343,7 @@ draft_plan
 - `app.workflows.digest.planner.prompts.build_planner_chapter_title_messages`
 - `app.workflows.digest.planner.lib.plans.build_fallback_plan`
 - `app.workflows.digest.planner.lib.plans.normalize_planner_draft`
-- `app.workflows.digest._shared.pedagogy.coerce_resolved_chapter_title`
+- `app.workflows.digest.common.pedagogy.coerce_resolved_chapter_title`
 
 ### 4. confirm
 
@@ -510,3 +510,4 @@ load_context
 ## 一句话总结
 
 Planner 是一条短链路，但它决定 DocGen 的执行合同。当前最佳维护策略是：先保证 `confirmed_plan` 结构稳定，再逐步增强失败降级、状态解释和用户反馈的可控性。
+

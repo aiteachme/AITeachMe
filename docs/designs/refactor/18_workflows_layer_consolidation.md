@@ -1,4 +1,4 @@
-# 18. Workflows 单层化边界收敛
+﻿# 18. Workflows 单层化边界收敛
 
 最后更新：2026-04-16
 
@@ -54,7 +54,7 @@ api -> workflows -> repositories / shared.infra / models / schemas
 
 因此新的拆分方向是：
 
-- Digest 专属教学语义 -> `app.workflows.digest._shared.*`
+- Digest 专属教学语义 -> `app.workflows.digest.common.*`
 - 教学工具注册语义 -> `app.shared.infra.tools.teaching_registry`
 - 通用教学工具实现 -> `app.shared.infra.tools.builtin.teaching_tools`
 - checker/memory/skill_tools -> 删除正式角色；如确需兼容，落到测试或 infra-local facade，不恢复 `app.teaching`
@@ -86,8 +86,8 @@ api -> workflows -> repositories / shared.infra / models / schemas
 | `app.services.system_service` | `app.workflows.support.system` |
 | `app.services.export_import_service` | `app.workflows.support.export_import` |
 | `app.services.subject_embedding_service` | `app.shared.infra.subject.*` |
-| `app.teaching.runtime_config` | `app.workflows.digest._shared.runtime_config` |
-| `app.teaching.documents.*` | `app.workflows.digest._shared.pedagogy.*` |
+| `app.teaching.runtime_config` | `app.workflows.digest.common.runtime_config` |
+| `app.teaching.documents.*` | `app.workflows.digest.common.pedagogy.*` |
 | `app.teaching.teaching` | `app.shared.infra.tools.teaching_registry` |
 | `app.teaching.tools` | `app.shared.infra.tools.builtin.teaching_tools` |
 | `app.teaching.checker` / `memory` / `skill_tools` | 已删除正式入口；需要的能力改走 `shared.infra` 或测试专用导入 |
@@ -99,8 +99,8 @@ api -> workflows -> repositories / shared.infra / models / schemas
 - `shared.infra.tools.api` 的 project tool module 加载入口已经切到 `app.shared.infra.tools.builtin.teaching_tools`
 - 新增 `app.shared.infra.tools.teaching_registry`
 - 新增 `app.shared.infra.tools.builtin.teaching_tools`
-- 新增 `app.workflows.digest._shared.runtime_config`
-- 新增 `app.workflows.digest._shared.pedagogy`
+- 新增 `app.workflows.digest.common.runtime_config`
+- 新增 `app.workflows.digest.common.pedagogy`
 - 删除旧 `backend/app/teaching` 源层
 - `app.services.system_service` 已迁入 `app.workflows.support.system`
 - `app.services.auth_service` 已迁入 `app.workflows.support.auth`
@@ -114,7 +114,7 @@ api -> workflows -> repositories / shared.infra / models / schemas
 - `app.services.knowledge_docs.*` 与 `app.services.knowledge_graph.*` 已迁入 `app.workflows.digest.application.*`
 - 删除旧 `backend/app/services` 源层
 - 所有 workflow 与 API 代码已消除对 `app.services` 的直接 import
-- Digest workflow 已消除对 `app.teaching` 的直接 import，统一改走 `_shared` 真实实现
+- Digest workflow 已消除对 `app.teaching` 的直接 import，统一改走 `common` 真实实现
 
 注意：
 
@@ -129,3 +129,5 @@ api -> workflows -> repositories / shared.infra / models / schemas
 - `workflows` 只管业务
 - `shared.infra` 只管能力
 - `services` 和 `teaching` 均已完成源层退场
+
+

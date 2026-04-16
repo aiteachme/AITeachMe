@@ -22,7 +22,7 @@ from app.workflows.digest.knowledge_graph.lib.extractor import (
     extract_candidates,
     has_conceptual_content,
 )
-from app.workflows.digest.shared.metrics import add_slow_item
+from app.workflows.digest.common.metrics import add_slow_item
 from app.workflows.digest.knowledge_graph.state import KGDigestState
 from app.workflows.digest.knowledge_graph.support import workflow_logger
 from app.shared.infra.workflow.runtime import cancel_tasks_and_drain
@@ -56,3 +56,4 @@ async def acquire_lock_node(state: KGDigestState) -> KGDigestState:
         return {**state, "lock_acquired": True}
 
 __all__ = ["acquire_lock_node"]
+

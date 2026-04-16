@@ -1,4 +1,4 @@
-"""Planner graph definition and lane-local runtime entrypoints."""
+﻿"""Planner graph definition and lane-local runtime entrypoints."""
 
 from __future__ import annotations
 
@@ -18,7 +18,7 @@ from app.workflows.digest.planner.state import (
     BuildPlannerGraphOutput,
     BuildPlannerState,
 )
-from app.workflows.digest.shared.contracts import (
+from app.workflows.digest.common.contracts import (
     resolve_digest_course_type,
     resolve_planner_retrieval_profile,
 )
@@ -155,3 +155,4 @@ __all__ = [
     "route_after_step",
     "run_build_planner_workflow",
 ]
+

@@ -1,4 +1,4 @@
-# Workflows 说明
+﻿# Workflows 说明
 
 最后更新：2026-04-16
 
@@ -44,9 +44,9 @@
 
 - `digest/application/`
   Digest 模块根下的 API-facing use case 落点
-- `digest/_shared/runtime_config.py`
+- `digest/common/runtime_config.py`
   Digest 教学运行时配置 facade
-- `digest/_shared/pedagogy/`
+- `digest/common/pedagogy/`
   Digest 教学语义 facade
 - `support/system/`
   系统初始化查询的 canonical 位置，承接原 `app.services.system_service`
@@ -87,6 +87,7 @@ api -> workflows -> repositories / shared.infra / models / schemas
 - `app/services` 源层已移除，不再作为代码落点或兼容入口
 - `app/teaching` 源层已移除
 - `workflows` 内新业务代码禁止再直接 import `app.services.*` 与 `app.teaching.*`
-- 教学语义统一从 `digest/_shared`、具体 workflow lane 与 `shared.infra.tools` 进入
+- 教学语义统一从 `digest/common`、具体 workflow lane 与 `shared.infra.tools` 进入
 
 具体结构规则请统一看 [STRUCTURE.md](./STRUCTURE.md)。
+

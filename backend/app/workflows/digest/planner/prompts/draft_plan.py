@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from langsmith import traceable
-from app.workflows.digest.shared.models import SharedInputs
+from app.workflows.digest.common.models import SharedInputs
 
 
 def _mode_contract(digest_mode: str) -> str:
@@ -201,4 +201,5 @@ def build_planner_chapter_title_messages(
 
 
 __all__ = ["build_planner_chapter_title_messages", "build_planner_prompt"]
+
 

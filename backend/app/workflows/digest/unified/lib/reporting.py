@@ -1,4 +1,4 @@
-"""Unified digest reporting helpers."""
+﻿"""Unified digest reporting helpers."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ from typing import Any
 
 from app.workflows.digest.docgen.lib.reporting import build_docgen_lane_summary
 from app.workflows.digest.knowledge_graph.lib.reporting import build_kg_lane_summary
-from app.workflows.digest.shared.metrics import (
+from app.workflows.digest.common.metrics import (
     DigestTimingReport,
     DigestTokenSummary,
     build_lane_step_slow_items,
@@ -123,3 +123,4 @@ def _default_lane_status(state: Mapping[str, Any], *, final_status: str) -> str 
 
 
 __all__ = ["build_unified_timing_report"]
+

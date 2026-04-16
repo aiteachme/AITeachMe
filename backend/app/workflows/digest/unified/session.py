@@ -1,4 +1,4 @@
-"""In-memory mailbox for single-process unified digest builds."""
+﻿"""In-memory mailbox for single-process unified digest builds."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from threading import RLock
 from uuid import uuid4
 
 from app.utils.time import utcnow
-from app.workflows.digest.shared.models import SharedInputs
+from app.workflows.digest.common.models import SharedInputs
 from app.workflows.digest.unified.models import (
     ChapterPriors,
     MaterializedSections,
@@ -114,3 +114,4 @@ def pop_unified_build_session(build_session_id: str) -> UnifiedBuildSession | No
 
     with _LOCK:
         return _SESSIONS.pop(build_session_id, None)
+

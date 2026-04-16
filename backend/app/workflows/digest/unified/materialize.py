@@ -22,7 +22,7 @@ from app.shared.infra.subject import (
     get_subject_vector_capability,
     should_generate_subject_embeddings,
 )
-from app.workflows.digest.shared.models import SharedInputs
+from app.workflows.digest.common.models import SharedInputs
 from app.workflows.digest.unified.models import MaterializedSections
 
 logger = structlog.get_logger()
@@ -339,4 +339,5 @@ async def materialize_shared_inputs(
         deleted_chunk_count=deleted_chunks,
     )
     return materialized
+
 

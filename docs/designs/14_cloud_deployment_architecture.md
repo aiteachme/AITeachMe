@@ -1,4 +1,4 @@
-# 14. Render 上中心化 PostgreSQL + DogeCloud OSS 实施方案
+﻿# 14. Render 上中心化 PostgreSQL + DogeCloud OSS 实施方案
 
 **状态**: 阶段 1 + 阶段 3 已完成（ContentStore 统一抽象 + OSS 接入）  
 **最后更新**: 2026-04-04  
@@ -554,7 +554,7 @@ SELECT extname FROM pg_extension WHERE extname = 'vector';
 - [`enhance.py`](/c:/Project/Project1GIT/AITeachMe1/backend/app/workflows/ingest/deep_enhance/lib/enhance.py)
 - [`finalize.py`](/c:/Project/Project1GIT/AITeachMe1/backend/app/workflows/ingest/fast_parse/lib/finalize.py)
 - [`publish.py`](/c:/Project/Project1GIT/AITeachMe1/backend/app/workflows/digest/docs/publish.py)
-- [`prepare.py`](/c:/Project/Project1GIT/AITeachMe1/backend/app/workflows/digest/shared/prepare.py)
+- [`prepare.py`](/c:/Project/Project1GIT/AITeachMe1/backend/app/workflows/digest/common/prepare.py)
 - [`support.py`](/c:/Project/Project1GIT/AITeachMe1/backend/app/workflows/digest/kg/support.py)
 
 这一步需要特别注意两类代码：
@@ -773,3 +773,4 @@ VITE_API_URL=https://<backend-domain>
 ---
 
 **文档结束**
+
