@@ -76,7 +76,7 @@ def test_acompletion_with_fallback_structured_raises_after_single_primary_call()
     assert failing_structured_completion.await_count == 1
 
 
-def test_acompletion_with_fallback_passes_reason_tier_override_to_text_completion() -> None:
+def test_acompletion_with_fallback_passes_model_selector_to_text_completion() -> None:
     successful_completion = AsyncMock(return_value="ok")
 
     with patch(
@@ -93,27 +93,59 @@ def test_acompletion_with_fallback_passes_reason_tier_override_to_text_completio
             acompletion_with_fallback(
                 [{"role": "user", "content": "hello"}],
                 task_type=TaskType.DOCGEN_LIGHT,
-                tier="reason",
+                model="reason",
             )
         )
 
     assert result == "ok"
-    assert successful_completion.await_args.kwargs["tier_override"] == "reason"
+    assert successful_completion.await_args.kwargs["model"] == "reason"
 
 
-def test_build_completion_context_uses_reason_model_when_tier_overridden() -> None:
+def test_build_completion_context_uses_reason_model_when_model_selected() -> None:
     fake_settings = SimpleNamespace(
-        llm_model="primary-model",
-        llm_model_reason="reason-model",
-        llm_model_light="light-model",
-        llm_model_extract=None,
-        model_overrides={},
+        models=SimpleNamespace(
+            primary="primary-model",
+            reason="reason-model",
+            light="light-model",
+            extract=None,
+            overrides={},
+        ),
     )
 
     with patch("app.shared.infra.llm_support.common.get_settings", return_value=fake_settings), patch(
-        "app.shared.infra.llm_support.routing.get_settings",
-        return_value=fake_settings,
-    ), patch("app.shared.infra.llm_support.common.get_env", return_value="test-key"):
-        context = build_completion_context(TaskType.DOCGEN_LIGHT, tier_override="reason")
+        "app.shared.infra.llm_support.common.get_env",
+        return_value="test-key",
+    ):
+        context = build_completion_context(TaskType.DOCGEN_LIGHT, model="reason")
 
-    assert context.profile.model == "reason-model"
+    assert context.model == "reason-model"
+
+
+def test_settings_exposes_yaml_shaped_models() -> None:
+    from app.shared.infra.settings import Settings
+
+    settings = Settings(
+        models={
+            "primary": "primary-model",
+            "reason": "reason-model",
+            "light": "light-model",
+            "extract": "extract-model",
+            "embedding": "embedding-model",
+        },
+    )
+
+    assert settings.models.primary == "primary-model"
+    assert settings.models.reason == "reason-model"
+    assert settings.models.light == "light-model"
+    assert settings.models.fast == "light-model"
+    assert settings.models.extract == "extract-model"
+    assert settings.models.embedding == "embedding-model"
+
+
+def test_settings_rejects_legacy_flat_model_fields() -> None:
+    from pydantic import ValidationError
+
+    from app.shared.infra.settings import Settings
+
+    with pytest.raises(ValidationError):
+        Settings(llm_model="legacy-model")

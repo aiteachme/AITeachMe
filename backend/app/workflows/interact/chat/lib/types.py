@@ -33,7 +33,7 @@ class MistakeSummary(BaseModel):
 
 
 class RetrievedContext(BaseModel):
-    """One retrieved chunk formatted for prompting and citations."""
+    """One retrieved KnowledgeUnit-backed context formatted for prompting and citations."""
 
     chunk_id: int
     document_id: int
@@ -42,6 +42,13 @@ class RetrievedContext(BaseModel):
     content: str
     score: float
     low_relevance: bool
+    knowledge_unit_id: int | None = None
+    knowledge_unit_name: str | None = None
+    knowledge_unit_type: str | None = None
+    relation_path: str | None = None
+    evidence_quote: str | None = None
+    mastery_score: float | None = None
+    retrieval_source: str = "vector"
 
     def to_context_item(self) -> ChatContextItem:
         """Convert the retrieval record into the stored chat citation payload."""
@@ -52,4 +59,11 @@ class RetrievedContext(BaseModel):
             title=self.title,
             header_path=self.header_path,
             score=round(self.score, 4),
+            knowledge_unit_id=self.knowledge_unit_id,
+            knowledge_unit_name=self.knowledge_unit_name,
+            knowledge_unit_type=self.knowledge_unit_type,
+            relation_path=self.relation_path,
+            evidence_quote=self.evidence_quote,
+            mastery_score=None if self.mastery_score is None else round(self.mastery_score, 4),
+            retrieval_source=self.retrieval_source,
         )

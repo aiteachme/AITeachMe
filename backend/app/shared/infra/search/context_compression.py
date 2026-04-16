@@ -6,9 +6,9 @@ import math
 import re
 from collections import Counter
 
-from app.shared.infra.embedding import aembed_texts
 from app.shared.infra.search.cache import get_compression_runtime_cache
 from app.shared.infra.execution import BaseTracedExecution, TracedExecutionResult
+from app.shared.infra.embedding import aembed_texts
 
 _FAST_PATH_CHAR_LIMIT = 2400
 _DEFAULT_PASSAGE_MAX_CHARS = 900

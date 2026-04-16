@@ -18,7 +18,7 @@ from langsmith import trace as langsmith_trace_run
 from langsmith import traceable
 from langsmith import tracing_context
 
-from app.shared.infra.config import get_settings
+from app.shared.infra.settings import get_settings
 from app.shared.infra.env_support import get_env, get_env_bool, get_env_int, get_env_optional_bool
 from app.shared.infra.runtime import get_app_version, is_local_mode
 
@@ -153,7 +153,7 @@ def langsmith_tracing_enabled() -> bool:
 
     settings = get_settings()
     return (
-        settings.tracing_enabled
+        settings.observability.tracing_enabled
         and langsmith_tracing_requested()
         and _langsmith_api_key_present()
         and _langsmith_endpoint_reachable()

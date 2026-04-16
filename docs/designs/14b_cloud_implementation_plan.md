@@ -25,7 +25,7 @@ AITeachMe 当前仅支持本地部署（SQLite + 本地文件系统）。需要�
 
 ### Step 1.1 — 扩展 config.py 配置字段
 
-**文件**: `backend/app/shared/infra/config.py`
+**文件**: `backend/app/shared/infra/settings/settings.py`
 
 在 `Settings` 类中新增：
 
@@ -835,7 +835,7 @@ Render 创建 PostgreSQL 后：
 
 | 文件 | 改动内容 |
 |------|----------|
-| `backend/app/shared/infra/config.py` | 新增云端配置字段 |
+| `backend/app/shared/infra/settings/settings.py` | 新增云端配置字段 |
 | `backend/app/shared/infra/database/core.py` | 双数据库引擎 + pgvector 初始化 |
 | `backend/app/shared/infra/runtime/paths.py` | cloud 模式下 data_dir 处理 |
 | `backend/app/utils/path_helpers.py` | 确保 storage_key 在 cloud 模式下正确 |

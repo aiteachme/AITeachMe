@@ -13,7 +13,7 @@ import structlog
 from llama_index.core.postprocessor.types import BaseNodePostprocessor
 from llama_index.core.schema import MetadataMode, NodeWithScore, QueryBundle, TextNode
 
-from app.shared.infra.config import get_settings
+from app.shared.infra.settings import get_settings
 from app.shared.infra.search.knowledge import RetrievedChunk, rerank_chunks
 
 logger = structlog.get_logger(__name__)
@@ -48,7 +48,7 @@ class ATMReranker(BaseNodePostprocessor):
         """Run litellm rerank and return re-scored nodes."""
 
         settings = get_settings()
-        if not settings.rag_rerank_model or not nodes:
+        if not settings.rag.rerank_model or not nodes:
             return nodes
 
         query_str = query_bundle.query_str if query_bundle else ""
@@ -97,7 +97,7 @@ class ATMReranker(BaseNodePostprocessor):
             "llamaindex_rerank_done",
             input_count=len(nodes),
             output_count=len(result),
-            model=settings.rag_rerank_model,
+            model=settings.rag.rerank_model,
         )
         return result
 

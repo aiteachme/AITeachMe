@@ -1,11 +1,11 @@
-"""Exam read queries: history, question bank, detail, delete."""
+﻿"""Exam read queries: history, question bank, detail, delete."""
 
 from __future__ import annotations
 
 import structlog
 from sqlmodel import Session, select
 
-from app.models import ExamPaperItem, KnowledgeNode, QuestionTemplate
+from app.models import ExamPaperItem, KnowledgeUnit, QuestionTemplate
 from app.repositories import exams_repo
 from app.schemas.common import PaginatedData, build_paginated_data
 

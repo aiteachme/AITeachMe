@@ -41,7 +41,7 @@ async def init_system(
     "/settings",
     response_model=ApiResponse[SettingsOverviewData],
     summary="读取后端设置总览",
-    description="返回环境变量与 config.yaml 合并后的只读设置概览。",
+    description="返回环境变量与 settings.yaml 合并后的只读设置概览。",
     responses=build_error_responses([500]),
 )
 async def get_system_settings(

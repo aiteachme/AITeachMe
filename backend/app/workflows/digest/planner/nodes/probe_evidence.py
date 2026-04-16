@@ -7,7 +7,7 @@ import re
 
 import structlog
 
-from app.shared.infra.config import get_settings
+from app.shared.infra.settings import get_settings
 from app.shared.infra.execution import TracedExecutionContext
 from app.shared.infra.search import SourceCurator
 from app.shared.infra.search.factory import get_retriever
@@ -39,7 +39,7 @@ async def _safe_search(retriever_name: str, *, query: str, subject: str, local_s
         )
         return await asyncio.wait_for(
             retriever.traced_search(query, max_results=2),
-            timeout=max(0.1, float(settings.search_provider_timeout_s)),
+            timeout=max(0.1, float(settings.search.provider_timeout_s)),
         )
     except Exception:
         return []
@@ -161,7 +161,7 @@ def build_probe_evidence_node(*, context: WorkflowContext):
                 )
 
         web_results: list[SearchResult] = []
-        if get_settings().planner_allow_external_search and probe_plan.source_policy != "local_only":
+        if get_settings().planner.allow_external_search and probe_plan.source_policy != "local_only":
             external_names = [
                 name
                 for name in get_settings().parse_retrievers(
@@ -225,7 +225,7 @@ def build_probe_evidence_node(*, context: WorkflowContext):
         web_urls = [source.url for source in selected_sources if source.source_type == "web" and source.url][:2]
         if web_urls:
             try:
-                pages = await read_urls(web_urls, max_workers=2, timeout_s=float(get_settings().search_read_timeout_s))
+                pages = await read_urls(web_urls, max_workers=2, timeout_s=float(get_settings().search.read_timeout_s))
                 for page in pages:
                     opened_sources.append(
                         PlannerOpenedSource(

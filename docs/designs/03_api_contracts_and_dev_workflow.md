@@ -165,7 +165,7 @@
 - Examine 用例：`workflows/examine/application/*`
 - Profile 用例：`workflows/profile/application/*`
 
-`POST /api/v1/system/settings` 是只读配置总览接口，用于前端展示 `.env` 与 `config.yaml` 的当前生效状态；敏感字段只返回是否已配置，不返回明文。
+`POST /api/v1/system/settings` 是只读配置总览接口，用于前端展示 `.env` 与 `settings.yaml` 的当前生效状态；敏感字段只返回是否已配置，不返回明文。
 
 ### 6.2 当前仍是同步请求的链路
 

@@ -22,7 +22,7 @@ from app.models import (
     ThemeTreeNode,
     is_paper_exam_mode,
     is_web_practice_mode,
-    normalize_exam_mode,
+    exam_mode_value,
 )
 from app.models.curriculum import CurriculumSnapshot
 from app.repositories import exams_repo, profile_repo
@@ -87,8 +87,8 @@ def shuffle_single_choice_options(
     return json.dumps(shuffled, ensure_ascii=False), answer_value
 
 
-def _normalize_exam_mode(exam_mode: ExamMode | str) -> str:
-    return normalize_exam_mode(exam_mode)
+def _exam_mode_value(exam_mode: ExamMode | str) -> str:
+    return exam_mode_value(exam_mode)
 
 
 def _is_placeholder_template(template: QuestionTemplate) -> bool:
@@ -362,7 +362,7 @@ def assemble_paper(
     scope_locked: bool = False,
     as_of: datetime | None = None,
 ) -> ExamPaper:
-    mode = _normalize_exam_mode(exam_mode)
+    mode = _exam_mode_value(exam_mode)
     now = as_of or utcnow()
     question_type_filter = {item for item in (preferred_question_types or []) if item}
     resolved_difficulty = _normalize_preferred_difficulty(preferred_difficulty)
@@ -727,7 +727,7 @@ def assemble_paper(
                 answer_snapshot=answer_snapshot,
                 explanation_snapshot=template.explanation,
                 teaching_unit_id=template.teaching_unit_id,
-                node_refs_json=template.node_refs_json or "[]",
+                knowledge_unit_refs_json=template.knowledge_unit_refs_json or "[]",
                 difficulty=template.difficulty,
                 question_type=template.question_type,
                 score=1.0,

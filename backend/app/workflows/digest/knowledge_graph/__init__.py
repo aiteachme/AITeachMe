@@ -17,11 +17,29 @@ from app.workflows.digest.knowledge_graph.builds import (
     run_graph_build_background,
     run_graph_digest_background,
 )
-from app.workflows.digest.knowledge_graph.graph import build_kg_digest_graph, create_graph_digest_initial_state
+from app.workflows.digest.knowledge_graph.graph import (
+    build_kg_digest_graph,
+    build_knowledge_digest_graph,
+    create_graph_digest_initial_state,
+)
+from app.workflows.digest.knowledge_graph.incremental_sync import (
+    KnowledgeSyncReport,
+    sync_markdown_knowledge_graph,
+)
 from app.workflows.digest.knowledge_graph.lib.reporting import build_kg_lane_summary
+from app.workflows.digest.knowledge_graph.migration import (
+    KnowledgeGraphMigrationReport,
+    normalize_knowledge_graph,
+)
 from app.workflows.digest.knowledge_graph.module import KnowledgeGraphModule
 from app.workflows.digest.knowledge_graph.query import KnowledgeGraphQueryService
-from app.workflows.digest.knowledge_graph.state import KGDigestState
+from app.workflows.digest.knowledge_graph.release import (
+    KnowledgeGraphReleaseSnapshot,
+    enable_computable_textbook_rollout,
+    get_release_snapshot,
+    rollback_computable_textbook_rollout,
+)
+from app.workflows.digest.knowledge_graph.state import KGDigestState, KnowledgeDigestState
 
 
 async def run_graph_digest_workflow(
@@ -32,7 +50,7 @@ async def run_graph_digest_workflow(
     user_prompt: str | None = None,
     event_bus: InProcessEventBus | None = None,
     build_session_id: str | None = None,
-) -> WorkflowResult[KGDigestState]:
+) -> WorkflowResult[KnowledgeDigestState]:
     bus = event_bus or InProcessEventBus()
     await bus.publish(DigestBuildRequestedEvent(subject=subject, job_id=job_id, file_ids=file_ids))
 
@@ -115,12 +133,22 @@ async def run_graph_digest_workflow(
 
 __all__ = [
     "KGDigestState",
+    "KnowledgeDigestState",
     "KnowledgeGraphBuildService",
+    "KnowledgeGraphMigrationReport",
     "KnowledgeGraphModule",
     "KnowledgeGraphQueryService",
+    "KnowledgeGraphReleaseSnapshot",
+    "KnowledgeSyncReport",
     "build_kg_digest_graph",
+    "build_knowledge_digest_graph",
     "create_graph_digest_initial_state",
+    "enable_computable_textbook_rollout",
+    "get_release_snapshot",
+    "normalize_knowledge_graph",
+    "rollback_computable_textbook_rollout",
     "run_graph_build_background",
     "run_graph_digest_background",
     "run_graph_digest_workflow",
+    "sync_markdown_knowledge_graph",
 ]

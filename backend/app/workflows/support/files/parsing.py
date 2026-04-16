@@ -7,7 +7,7 @@ import asyncio
 import structlog
 from sqlmodel import Session
 
-from app.shared.infra.config import get_settings
+from app.shared.infra.settings import get_settings
 from app.shared.infra.exceptions import InvalidRawFileStateError
 from app.models import IngestStatus, RawFile, TaskStatus
 from app.repositories.files_repo import update_raw_file

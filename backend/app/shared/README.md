@@ -30,7 +30,7 @@ api -> workflows -> repositories / shared.infra / models / schemas
 | 目录 | 作用 | 当前典型内容 |
 | --- | --- | --- |
 | `app.shared.kernel` | 最底层原语层 | 异常、时间、ID、领域事件 |
-| `app.shared.infra` | 共享基础设施层 | 配置、数据库、存储、LLM、检索、工具、记忆、trace / track、workflow 共用支撑 |
+| `app.shared.infra` | 共享基础设施层 | 设置、数据库、存储、LLM、检索、工具、记忆、trace / track、workflow 共用支撑 |
 
 可以把它理解成：
 
@@ -60,7 +60,7 @@ infra  = 已经接上外部系统的共享能力
 
 `app.shared.infra` 是共享基础设施层，负责：
 
-- 读取 `.env` 和 `config.yaml`
+- 读取 `.env` 和 `settings.yaml`
 - 初始化数据库与运行时路径
 - 封装本地存储 / S3 存储
 - 提供 LLM、trace / track、Prompt、Embedding 等 AI 基础能力
@@ -148,5 +148,4 @@ infra  = 已经接上外部系统的共享能力
 - `kernel` 放原语。
 - `infra` 放共享基础设施。
 - `workflows` 放业务用例、引擎编排，以及“怎么教”的业务语义。
-
 

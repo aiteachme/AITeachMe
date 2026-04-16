@@ -23,7 +23,7 @@
 
 | 文件 | 改动内容 |
 |------|----------|
-| `backend/app/shared/infra/config.py` | 新增 `database_url`, `storage_backend`, `s3_bucket`, `s3_endpoint`, `s3_access_key`, `s3_secret_key`, `s3_region`, `s3_public_base_url` 字段；新增 `storage_is_s3` 属性 |
+| `backend/app/shared/infra/settings/settings.py` | 新增 `database_url`, `storage_backend`, `s3_bucket`, `s3_endpoint`, `s3_access_key`, `s3_secret_key`, `s3_region`, `s3_public_base_url` 字段；新增 `storage_is_s3` 属性 |
 | `backend/app/shared/infra/storage/__init__.py` | **新建** — `get_artifact_store()` 工厂，全局单例 |
 | `backend/app/shared/infra/storage/base.py` | **新建** — `ArtifactStore` 抽象基类 |
 | `backend/app/shared/infra/storage/local_store.py` | **新建** — `LocalArtifactStore` 本地实现 |
@@ -85,7 +85,7 @@
 
 **改造模式统一为：**
 ```python
-from app.shared.infra.config import get_settings
+from app.shared.infra.settings import get_settings
 from app.shared.infra.storage import get_artifact_store
 
 settings = get_settings()

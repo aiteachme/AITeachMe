@@ -6,7 +6,7 @@ import hashlib
 import json
 import re
 
-from app.models import normalize_exam_mode
+from app.models import exam_mode_value
 
 
 def truncate_text(text: str, *, max_chars: int) -> str:
@@ -105,7 +105,7 @@ def build_template_context_signature(
 ) -> str:
     payload = {
         "curriculum_version_id": int(curriculum_version_id or 0),
-        "exam_mode": normalize_exam_mode(exam_mode),
+        "exam_mode": exam_mode_value(exam_mode),
         "preferred_question_types": _unique_strings(preferred_question_types or []),
         "difficulty_focus": normalize_difficulty_focus(difficulty_focus),
         "context_locked": context_locked,

@@ -67,7 +67,7 @@ def _extract_node_ids(raw_refs: str | None) -> list[int]:
     for item in decoded:
         if not isinstance(item, dict):
             continue
-        raw_node_id = item.get("knowledge_node_id")
+        raw_node_id = item.get("knowledge_unit_id")
         if isinstance(raw_node_id, int) and raw_node_id > 0:
             node_ids.append(raw_node_id)
         elif isinstance(raw_node_id, str) and raw_node_id.isdigit():
@@ -86,7 +86,7 @@ def _build_knowledge_context(
         session,
         subject=exam_paper.subject,
         teaching_unit_id=exam_paper_item.teaching_unit_id,
-        node_ids=_extract_node_ids(exam_paper_item.node_refs_json),
+        node_ids=_extract_node_ids(exam_paper_item.knowledge_unit_refs_json),
         knowledge_doc_text=knowledge_doc_text,
     )
 

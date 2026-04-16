@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from app.shared.infra.config.settings import Settings
+from app.shared.infra.settings import Settings
 
 
 def test_default_retriever_profiles_do_not_include_wikipedia() -> None:

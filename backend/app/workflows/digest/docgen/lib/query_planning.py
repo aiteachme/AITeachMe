@@ -176,6 +176,7 @@ async def generate_sub_queries(
             recommended_tool_tags=recommended_tool_tags or [],
         ),
         task_type=TaskType.REASONING,
+        model="reason",
         response_model=ResearchSubQueryPlan,
         extra_metadata={
             "query_tool": "generate_sub_queries",
@@ -224,6 +225,7 @@ async def generate_gap_queries(
             domain=domain,
         ),
         task_type=TaskType.REASONING,
+        model="reason",
         response_model=ResearchSubQueryPlan,
         extra_metadata={
             "query_tool": "generate_gap_queries",

@@ -178,7 +178,7 @@ def build_knowledge_build_lock_path(subject: str) -> Path:
     return build_knowledge_markdown_dir(subject) / ".build.lock"
 
 
-def build_knowledge_node_embedding_cache_path(subject: str) -> Path:
+def build_knowledge_unit_embedding_cache_path(subject: str) -> Path:
     """Return the persistent node-embedding cache path."""
 
     return build_knowledge_markdown_dir(subject) / "node_embedding_cache.json"

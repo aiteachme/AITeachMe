@@ -210,7 +210,7 @@ def _build_runtime_preview(*, build_status, draft_markdown: str, manifest) -> Kn
     sample_nodes = []
     sample_cards = []
     if build_status is not None:
-        sample_nodes = [BuildPreviewNodeResponse(name=str(item.get("name", "")).strip(), node_type=str(item.get("type", "Topic")).strip() or "Topic") for item in build_status.sample_nodes if str(item.get("name", "")).strip()][:6]
+        sample_nodes = [BuildPreviewNodeResponse(name=str(item.get("name", "")).strip(), knowledge_unit_type=str(item.get("type", "concept")).strip() or "concept") for item in build_status.sample_nodes if str(item.get("name", "")).strip()][:6]
         sample_cards = [{"title": str(item.get("title", "")).strip(), "card_type": str(item.get("card_type", "")).strip() or "topic", "summary": str(item.get("summary", "")).strip()} for item in build_status.sample_cards if str(item.get("title", "")).strip() and str(item.get("summary", "")).strip()]
     chapter_progress = [
         BuildPreviewChapterProgressResponse.model_validate(item)

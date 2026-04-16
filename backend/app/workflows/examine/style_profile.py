@@ -14,7 +14,7 @@ from app.models import (
     RawFile,
     TaskStatus,
     is_paper_exam_mode,
-    normalize_exam_mode,
+    exam_mode_value,
 )
 from app.repositories.files_repo import list_raw_files_by_uids
 from app.workflows.examine.context_helpers import (
@@ -257,7 +257,7 @@ def _build_profile_notes(
         )
         if subject_profile.focus_teaching_unit_ids:
             notes.append("Keep more questions on current weak teaching units.")
-        if subject_profile.focus_node_ids:
+        if subject_profile.focus_knowledge_unit_ids:
             notes.append("Anchor explanations to current weak knowledge nodes.")
     if user_profile is not None:
         notes.append(f"User explanation style: {user_profile.explanation_style}.")
@@ -293,7 +293,7 @@ def build_exam_style_profile(
     difficulty: str | None = None,
     exam_mode: str = "web_practice",
 ) -> ExamStyleProfile:
-    mode = normalize_exam_mode(exam_mode)
+    mode = exam_mode_value(exam_mode)
     sample_files = _load_sample_files(
         session,
         subject=subject,
@@ -373,7 +373,7 @@ def build_exam_style_profile(
             else []
         ),
         focus_node_ids=(
-            list(subject_profile.focus_node_ids[:12])
+            list(subject_profile.focus_knowledge_unit_ids[:12])
             if subject_profile is not None
             else []
         ),

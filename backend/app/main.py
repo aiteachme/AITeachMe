@@ -1,4 +1,4 @@
-﻿"""FastAPI 应用入口。"""
+"""FastAPI 应用入口。"""
 
 from __future__ import annotations
 
@@ -12,11 +12,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from app.shared.infra.config import get_settings
+from app.shared.infra.settings import get_settings
 from app.shared.infra.database import init_db
 from app.shared.infra.env_support import get_env, get_env_bool
 from app.shared.infra.logger import configure_logging
-from app.shared.infra.runtime import get_runtime_data_dir, log_legacy_runtime_path_warnings
+from app.shared.infra.runtime import get_runtime_data_dir
 from app.shared.infra.runtime import (
     get_app_version,
     is_local_mode,
@@ -85,11 +85,11 @@ def _log_infra_diagnostics(settings) -> None:
 
     import os
     from app.shared.infra.database import get_engine, is_postgres, is_sqlite, is_vec_ready
-    from app.workflows.digest.common.runtime_config import get_teaching_runtime_config_path
+    from app.workflows.digest.common.runtime_config import get_teaching_runtime_settings_path
 
     engine = get_engine()
     dialect = engine.dialect.name
-    project_config_path = get_teaching_runtime_config_path()
+    project_settings_path = get_teaching_runtime_settings_path()
 
     app_mode = resolve_app_mode()
     storage_backend = get_storage_backend()
@@ -107,7 +107,7 @@ def _log_infra_diagnostics(settings) -> None:
         f"    APP_MODE (resolved)    : {app_mode}",
         f"    DATABASE_URL           : {'SET' if os.environ.get('DATABASE_URL') else '!! NOT_SET !!'}",
         f"    STORAGE_BACKEND        : {os.environ.get('STORAGE_BACKEND', '!! NOT_SET !!')}",
-        f"    PROJECT_CONFIG_PATH    : {project_config_path}",
+        f"    PROJECT_SETTINGS_PATH  : {project_settings_path}",
         f"    RENDER                 : {os.environ.get('RENDER', 'NOT_SET')}",
         "",
         "  [DATABASE]",
@@ -166,20 +166,20 @@ def _log_infra_diagnostics(settings) -> None:
 
     lines.append("")
     lines.append("  [TEACHING]")
-    lines.append(f"    Reason Model           : {settings.llm_model_reason or settings.llm_model}")
-    lines.append(f"    Primary Model          : {settings.llm_model}")
-    lines.append(f"    Light Model            : {settings.llm_model_light or settings.llm_model}")
-    lines.append(f"    Extract Override       : {settings.llm_model_extract or '(uses light)'}")
-    lines.append(f"    Embedding Model        : {settings.embedding_model}")
-    lines.append(f"    OCR Model              : {settings.ocr_model or settings.llm_model}")
+    lines.append(f"    Reason Model           : {settings.models.reason or settings.models.primary}")
+    lines.append(f"    Primary Model          : {settings.models.primary}")
+    lines.append(f"    Light Model            : {settings.models.light or settings.models.primary}")
+    lines.append(f"    Extract Override       : {settings.models.extract or '(uses light)'}")
+    lines.append(f"    Embedding Model        : {settings.models.embedding}")
+    lines.append(f"    OCR Model              : {settings.models.ocr or settings.models.primary}")
     lines.append(
         f"    MinerU Server Token    : {'SET' if get_env('MINERU_API_TOKEN') else 'not set'}"
     )
     lines.append(
-        f"    Mermaid Model          : {settings.mermaid_generation_model or 'disabled'}"
+        f"    Mermaid Model          : {settings.models.mermaid_generation or 'disabled'}"
     )
     lines.append(
-        f"    Image Model            : {settings.image_generation_model or 'disabled'}"
+        f"    Image Model            : {settings.models.image_generation or 'disabled'}"
     )
 
     lines.append("")
@@ -256,7 +256,6 @@ def _register_middlewares(app: FastAPI) -> None:
 
 def _register_static_mounts(app: FastAPI) -> None:
     if is_local_mode():
-        log_legacy_runtime_path_warnings()
         data_dir = get_runtime_data_dir()
         app.mount("/_assets", StaticFiles(directory=data_dir), name="runtime-assets")
 
@@ -330,4 +329,3 @@ def create_app() -> FastAPI:
 
 
 app = create_app()
-

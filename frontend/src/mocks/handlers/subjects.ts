@@ -81,7 +81,7 @@ export const subjectHandlers = [
           raw_file: 1,
           document: 1,
           document_chunk: 3,
-          knowledge_node: 2,
+          knowledge_unit: 2,
           knowledge_edge: 1,
           theme_tree_version: 1,
           chat_message: 3,

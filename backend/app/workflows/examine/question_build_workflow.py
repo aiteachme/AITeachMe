@@ -1,4 +1,4 @@
-﻿"""Question build workflow based on LangGraph.
+"""Question build workflow based on LangGraph.
 
 Reads DB: teaching units and graph-backed teaching context.
 Writes DB: question_template via downstream builder.
@@ -17,7 +17,7 @@ from sqlmodel import Session, select
 
 from app.shared.infra.database import managed_session
 from app.models import QuestionTemplate
-from app.repositories.knowledge import curriculum_repo, kg_repo
+from app.repositories.knowledge import curriculum_repo, knowledge_unit_repo
 from app.shared.infra.workflow import workflow_tracer
 from app.shared.infra.workflow.runtime import invoke_state_graph
 from app.workflows.examine.question_builder import build_question_templates
@@ -72,7 +72,7 @@ async def load_units_node(
                     continue
 
                 has_node_context = any(
-                    kg_repo.get_node_with_current_revision(session, membership.knowledge_node_id) is not None
+                    knowledge_unit_repo.get_knowledge_unit_with_current_revision(session, membership.knowledge_unit_id) is not None
                     for membership in memberships
                 )
                 if not has_node_context:
@@ -373,6 +373,4 @@ class QuestionBuildWorkflow:
             focus_node_ids=focus_node_ids,
             session=session,
         )
-
-
 

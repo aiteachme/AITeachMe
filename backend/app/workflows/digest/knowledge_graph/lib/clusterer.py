@@ -1,4 +1,4 @@
-﻿"""批内候选聚类：基于 normalized_name + embedding 相似度的批内去重聚类。"""
+"""批内候选聚类：基于 normalized_name + embedding 相似度的批内去重聚类。"""
 
 from __future__ import annotations
 
@@ -15,11 +15,15 @@ from app.workflows.digest.knowledge_graph.lib.candidate_identity import (
     token_bucket,
 )
 from app.workflows.digest.knowledge_graph.lib.extractor import CandidateNode
+from app.models.knowledge_taxonomy import (
+    SECONDARY_KNOWLEDGE_UNIT_TYPES,
+    normalize_knowledge_unit_type,
+)
 from app.shared.infra.embedding import aembed_texts
-from app.utils.kg_helpers import normalize_name
+from app.utils.knowledge_helpers import normalize_name
 
 logger = structlog.get_logger()
-_SECONDARY_NODE_TYPES = {"Definition", "Example"}
+_SECONDARY_NODE_TYPES = SECONDARY_KNOWLEDGE_UNIT_TYPES
 
 
 @dataclass
@@ -61,8 +65,8 @@ async def cluster_candidates(
     """对同一批次抽取的候选节点进行批内去重聚类。
 
     聚类策略：
-    1. 按 (node_type, normalized_name) 精确分组——名称完全一致的直接合并。
-    2. 同 node_type 内，对名称不同的候选计算 embedding 相似度，
+    1. 按 (knowledge_unit_type, normalized_name) 精确分组——名称完全一致的直接合并。
+    2. 同 knowledge_unit_type 内，对名称不同的候选计算 embedding 相似度，
        超过 similarity_threshold 的合并到同一簇。
 
     Args:
@@ -77,28 +81,29 @@ async def cluster_candidates(
     if not candidates:
         return [], {}
 
-    # ── Step 1: 按 (node_type, normalized_name) 精确分组 ──
+    # ── Step 1: 按 (knowledge_unit_type, normalized_name) 精确分组 ──
     group_key_to_members: dict[tuple[str, str], list[tuple[CandidateNode, int]]] = defaultdict(list)
     for cand, chunk_id in candidates:
-        scope_key = bucket_scope(cand) if cand.node_type in _SECONDARY_NODE_TYPES else ""
-        key = (cand.node_type, f"{normalize_name(cand.name)}::{scope_key}")
+        cand.knowledge_unit_type = normalize_knowledge_unit_type(cand.knowledge_unit_type)
+        scope_key = bucket_scope(cand) if cand.knowledge_unit_type in _SECONDARY_NODE_TYPES else ""
+        key = (cand.knowledge_unit_type, f"{normalize_name(cand.name)}::{scope_key}")
         group_key_to_members[key].append((cand, chunk_id))
 
     # 构建初始簇列表
     proto_clusters: list[list[tuple[CandidateNode, int]]] = list(group_key_to_members.values())
 
-    # ── Step 2: 同 node_type 内 embedding 相似度合并 ──
+    # ── Step 2: 同 knowledge_unit_type 内 embedding 相似度合并 ──
     # 为每个簇的代表生成 embedding
     repr_texts = [cluster[0][0].name + "：" + cluster[0][0].local_summary for cluster in proto_clusters]
     embeddings = await aembed_texts(repr_texts)
 
-    # 按 node_type + taxonomy bucket + token bucket 分桶，避免 O(n²) 扫整类。
+    # 按 knowledge_unit_type + taxonomy bucket + token bucket 分桶，避免 O(n2) 扫整类。
     bucket_to_indices: dict[tuple[str, str, str], list[int]] = defaultdict(list)
     for idx, cluster in enumerate(proto_clusters):
         representative = cluster[0][0]
         bucket_to_indices[
             (
-                representative.node_type,
+                representative.knowledge_unit_type,
                 bucket_scope(representative),
                 token_bucket(representative.name),
             )
@@ -159,10 +164,11 @@ async def cluster_candidates(
                 candidate_lookup_to_cluster_id[lookup_key] = cluster_idx
 
     logger.info(
-        "kg_cluster_complete",
+        "knowledge_cluster_complete",
         input_count=len(candidates),
         cluster_count=len(clustered),
         compared_pairs=compared_pairs,
         bucket_count=len(bucket_to_indices),
     )
     return clustered, candidate_lookup_to_cluster_id
+

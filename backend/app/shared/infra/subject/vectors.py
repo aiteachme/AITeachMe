@@ -7,7 +7,7 @@ from sqlmodel import Session, select
 
 from app.models.subject import Subject
 from app.schemas.knowledge import SubjectVectorStatusResponse
-from app.shared.infra.config import get_settings
+from app.shared.infra.settings import get_settings
 from app.shared.infra.env_support import get_env
 from app.shared.infra.runtime import is_cloud_mode
 from app.shared.infra.subject.settings import (
@@ -21,9 +21,7 @@ SUBJECT_VECTOR_PRECHECK_DETAIL_MAP: dict[str, str] = {
     "embedding_api_key_missing": "当前后端缺少 embedding 所需的 API Key，请选择关闭当前学科的向量能力，或补全配置后再重建。",
     "vector_extension_unavailable": "当前运行环境不可用向量索引，请先关闭当前学科的向量能力，或修复环境后再重建。",
     "llamaindex_postgres_unavailable": "当前云端环境缺少 LlamaIndex Postgres 索引依赖，请先补全依赖后再重建。",
-    "subject_not_bound": "当前学科尚未绑定 embedding 模型，请先确认是全量重建当前学科向量，还是继续以非向量模式构建。",
-    "legacy_vector_table": "当前学科仍在使用旧的全局向量表，请先全量重建当前学科向量，或继续以非向量模式构建。",
-    "embedding_model_mismatch": "当前运行时 embedding 模型与学科已绑定模型不一致，请全量重建当前学科向量，或继续以非向量模式构建。",
+    "subject_not_bound": "当前学科尚未绑定 embedding 模型，请先确认是全量重建当前学科向量，还是继续以非向量模式构建。",    "embedding_model_mismatch": "当前运行时 embedding 模型与学科已绑定模型不一致，请全量重建当前学科向量，或继续以非向量模式构建。",
     "embedding_dimension_mismatch": "当前运行时 embedding 维度与学科已绑定维度不一致，请全量重建当前学科向量，或继续以非向量模式构建。",
     "vector_table_missing": "当前学科缺少可用的向量表，请全量重建当前学科向量，或继续以非向量模式构建。",
     "vector_table_dimension_mismatch": "当前学科向量表维度与学科绑定配置不一致，请全量重建当前学科向量，或继续以非向量模式构建。",

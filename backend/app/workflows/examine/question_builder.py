@@ -45,7 +45,7 @@ class _GeneratedTemplateItem(BaseModel):
     options: list[str] | None = None
     answer: str
     explanation: str
-    knowledge_node_id: int | None = None
+    knowledge_unit_id: int | None = None
 
 
 class _GeneratedTemplatePayload(BaseModel):
@@ -178,7 +178,7 @@ def _build_single_choice_template(
         options=options,
         answer=options[0],
         explanation=f"依据知识文档与图谱锚点，{node.node_name} 的核心信息可概括为：{reference}",
-        knowledge_node_id=node.node_id,
+        knowledge_unit_id=node.node_id,
     )
 
 
@@ -201,7 +201,7 @@ def _build_fill_blank_template(
         stem=stem,
         answer=answer,
         explanation=f"空缺处对应的核心知识点是 {node.node_name}。",
-        knowledge_node_id=node.node_id,
+        knowledge_unit_id=node.node_id,
     )
 
 
@@ -228,7 +228,7 @@ def _build_short_answer_template(
             f"联系、区别或使用场景。参考线索：{reference}"
         ),
         explanation="评分关注三个点：概念是否准确、关系是否说清、是否结合资料中的关键线索。",
-        knowledge_node_id=node.node_id,
+        knowledge_unit_id=node.node_id,
     )
 
 
@@ -349,7 +349,7 @@ def _build_weighted_node_refs(node_contexts: list[NodeExamContext]) -> str:
         return json.dumps(
             [
                 {
-                    "knowledge_node_id": node_contexts[0].node_id,
+                    "knowledge_unit_id": node_contexts[0].node_id,
                     "coverage_weight": 1.0,
                     "role": "primary",
                 }
@@ -371,7 +371,7 @@ def _build_weighted_node_refs(node_contexts: list[NodeExamContext]) -> str:
             normalized_weight = round(max(0.0, 1.0 - running_weight), 4)
         payload.append(
             {
-                "knowledge_node_id": node_context.node_id,
+                "knowledge_unit_id": node_context.node_id,
                 "coverage_weight": normalized_weight,
                 "role": ("primary" if index == 0 else "related"),
             }
@@ -380,7 +380,7 @@ def _build_weighted_node_refs(node_contexts: list[NodeExamContext]) -> str:
     return json.dumps(payload, ensure_ascii=False)
 
 
-def _build_node_refs_json(
+def _build_knowledge_unit_refs_json(
     context: UnitExamContext,
     *,
     preferred_node_id: int | None,
@@ -535,7 +535,7 @@ def _prepare_template_drafts(
         existing_hashes.add(stem_hash)
 
         fallback_node_id = context.node_contexts[index % len(context.node_contexts)].node_id if context.node_contexts else None
-        preferred_node_id = draft.knowledge_node_id if draft.knowledge_node_id is not None else fallback_node_id
+        preferred_node_id = draft.knowledge_unit_id if draft.knowledge_unit_id is not None else fallback_node_id
         prepared.append(
             QuestionTemplate(
                 subject=context.subject,
@@ -547,7 +547,7 @@ def _prepare_template_drafts(
                 options_json=options_json,
                 answer=answer,
                 explanation=explanation,
-                node_refs_json=_build_node_refs_json(
+                knowledge_unit_refs_json=_build_knowledge_unit_refs_json(
                     context,
                     preferred_node_id=preferred_node_id,
                     fallback_node_id=fallback_node_id,

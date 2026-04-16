@@ -12,7 +12,7 @@ from pathlib import Path
 from fastapi import UploadFile
 from sqlmodel import Session
 
-from app.shared.infra.config import get_settings
+from app.shared.infra.settings import get_settings
 from app.shared.infra.exceptions import FileParseError, FileTooLargeError
 from app.shared.infra.runtime import is_cloud_mode
 from app.shared.infra.storage import get_artifact_store, get_content_store

@@ -1,4 +1,4 @@
-﻿"""Targeted research node for the DocGen lane."""
+"""Targeted research node for the DocGen lane."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ from copy import deepcopy
 from time import perf_counter
 from urllib.parse import urlparse
 
-from app.shared.infra.config import get_settings
+from app.shared.infra.settings import get_settings
 from app.shared.infra.execution import TracedExecutionContext
 from app.shared.infra.tools.builtin.markdown_processing import build_draft_excerpt
 from app.utils.docgen_store import append_knowledge_build_recent_event, upsert_knowledge_build_chapter_progress
@@ -117,7 +117,7 @@ def build_research_chapters_node(*, context: WorkflowContext):
         if not queries:
             queries = [chapter_title]
         result = await chapter_context_builder.run(
-            queries=queries[: max(1, int(get_settings().docgen_max_research_queries))],
+            queries=queries[: max(1, int(get_settings().docgen.max_research_queries))],
             local_rag_subject=state["subject"],
             local_sections=section_packets,
             chapter_title=chapter_title,

@@ -120,7 +120,7 @@ graph TD
      - chunk_count ≤ 20 → parallelism = min(chunk_count, 10)
      - chunk_count ≤ 100 → min(chunk_count, 20)
      - chunk_count > 100 → min(chunk_count, 30)
-     - 受限于 settings.kg_extract_max_parallelism 和 settings.llm_concurrency_limit
+     - 受限于 `settings.knowledge_graph.extract_max_parallelism` 和 `settings.runtime.llm_concurrency_limit`
   2. 从 shared_inputs 的 subject_profile / fast_hints 生成 taxonomy_hint 和 sibling_topics
   3. 对每个 chunk 并行调用 extract_candidates():
      ┌─ 快速通道判断: 试卷类材料 + question_block_count ≥ 3 + 无概念性内容 → 跳过 LLM

@@ -45,7 +45,7 @@ def build_compose_build_plan_node(*, context: WorkflowContext):
                     evidence_brief=evidence,
                 ),
                 task_type=TaskType.REASONING,
-                tier="reason",
+                model="reason",
                 response_model=BuildPlannerDraft,
                 temperature=0.15,
                 max_tokens=1800,

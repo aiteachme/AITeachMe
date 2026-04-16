@@ -2,7 +2,7 @@
 
 This adapter allows LlamaIndex components (VectorStoreIndex, retrievers,
 etc.) to use the same embedding model and API configuration already
-defined in ``config.yaml`` and the ``aembed_texts()`` helper.
+defined in ``settings.yaml`` and the ``aembed_texts()`` helper.
 
 No new embedding dependencies are introduced — all calls go through
 ``app.shared.infra.embedding.aembed_texts``.
@@ -15,7 +15,7 @@ from typing import Any
 from llama_index.core.embeddings import BaseEmbedding
 from pydantic import Field, PrivateAttr
 
-from app.shared.infra.config import get_settings
+from app.shared.infra.settings import get_settings
 
 
 class ATMEmbedding(BaseEmbedding):

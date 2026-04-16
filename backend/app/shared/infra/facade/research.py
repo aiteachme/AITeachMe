@@ -6,7 +6,7 @@ import asyncio
 from dataclasses import dataclass, field
 from typing import Any
 
-from app.shared.infra.config import get_settings
+from app.shared.infra.settings import get_settings
 from app.shared.infra.execution import TracedExecutionContext
 from app.shared.infra.search import ContextCompressor, SourceCurator
 from app.shared.infra.search.factory import get_configured_retriever_names, get_retrievers_for_subject
@@ -101,7 +101,7 @@ async def build_research_context(
     if not query_text:
         return ResearchContext(query="")
 
-    per_query = max_results_per_query or settings.search_max_results_per_query
+    per_query = max_results_per_query or settings.search.max_results_per_query
     retrievers = get_retrievers_for_subject(
         subject=ctx.subject,
         local_sections=local_sections,
@@ -124,7 +124,7 @@ async def build_research_context(
             retriever,
             query_text,
             max_results=per_query,
-            timeout_s=float(settings.search_provider_timeout_s),
+            timeout_s=float(settings.search.provider_timeout_s),
         )
         retriever_stats[retriever.name] = {
             "query_count": 1,
@@ -133,7 +133,7 @@ async def build_research_context(
         all_results.extend(results)
         if retriever.name == "local_rag":
             local_hits += len(results)
-            if local_hits >= settings.local_rag_min_results:
+            if local_hits >= settings.local_rag.min_results:
                 break
             continue
         web_hits += len(results)
@@ -156,8 +156,8 @@ async def build_research_context(
         await read_sources(
             ctx.with_node("facade.research.read"),
             external_urls,
-            max_workers=min(len(external_urls), settings.docgen_io_parallelism) if external_urls else None,
-            timeout_s=float(settings.search_read_timeout_s),
+            max_workers=min(len(external_urls), settings.docgen.io_parallelism) if external_urls else None,
+            timeout_s=float(settings.search.read_timeout_s),
         )
         if read and external_urls
         else []

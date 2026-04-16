@@ -28,6 +28,7 @@ async def call_llm_text(
     messages: list[ChatMessage],
     *,
     task_type: TaskType = TaskType.DEFAULT,
+    model: str | None = None,
     **kwargs,
 ) -> LLMTextResult:
     """Call the configured text model with ambient trace context."""
@@ -39,7 +40,7 @@ async def call_llm_text(
         lane=ctx.lane,
         node=ctx.node,
     ):
-        content = await acompletion(messages, task_type=task_type, **kwargs)
+        content = await acompletion(messages, task_type=task_type, model=model, **kwargs)
     return LLMTextResult(content=content, task_type=task_type.value)
 
 
@@ -49,6 +50,7 @@ async def call_llm_structured(
     messages: list[ChatMessage],
     *,
     task_type: TaskType = TaskType.DEFAULT,
+    model: str | None = None,
     **kwargs,
 ) -> T:
     """Call the configured model and parse the response into ``response_model``."""
@@ -60,7 +62,7 @@ async def call_llm_structured(
         lane=ctx.lane,
         node=ctx.node,
     ):
-        return await acompletion_structured(response_model, messages, task_type=task_type, **kwargs)
+        return await acompletion_structured(response_model, messages, task_type=task_type, model=model, **kwargs)
 
 
 async def stream_llm_text(
@@ -68,6 +70,7 @@ async def stream_llm_text(
     messages: list[ChatMessage],
     *,
     task_type: TaskType = TaskType.DEFAULT,
+    model: str | None = None,
     **kwargs,
 ) -> AsyncIterator[str]:
     """Stream text chunks from the configured model."""
@@ -79,7 +82,7 @@ async def stream_llm_text(
         lane=ctx.lane,
         node=ctx.node,
     ):
-        async for chunk in acompletion_stream(messages, task_type=task_type, **kwargs):
+        async for chunk in acompletion_stream(messages, task_type=task_type, model=model, **kwargs):
             yield chunk
 
 

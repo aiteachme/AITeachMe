@@ -11,7 +11,7 @@ from urllib.parse import urlparse
 
 from langsmith import traceable
 
-from app.shared.infra.config import get_settings
+from app.shared.infra.settings import get_settings
 from app.shared.infra.execution import BaseTracedExecution, TracedExecutionResult
 from app.shared.infra.llm_support.routing import TaskType
 from app.shared.infra.search import ContextCompressor, SourceCurator
@@ -82,10 +82,10 @@ class DocGenChapterContextRuntime(BaseTracedExecution):
         max_results_per_query: int | None = None,
     ) -> TracedExecutionResult:
         settings = get_settings()
-        query_limit = max_results_per_query or settings.search_max_results_per_query
+        query_limit = max_results_per_query or settings.search.max_results_per_query
         strategy = self._resolve_strategy(digest_mode)
         query_cap = max(
-            max(1, int(settings.docgen_max_research_queries)),
+            max(1, int(settings.docgen.max_research_queries)),
             int(strategy["query_cap"]),
         )
         base_queries = dedupe_queries(queries, limit=query_cap)
@@ -176,8 +176,8 @@ class DocGenChapterContextRuntime(BaseTracedExecution):
         previous_score = 0.0
         previous_curated_count = 0
         retrieval_started_at = time.monotonic()
-        retrieval_budget_s = max(1.0, float(settings.docgen_retrieval_timeout_s))
-        provider_budget_s = max(0.5, float(settings.search_provider_timeout_s))
+        retrieval_budget_s = max(1.0, float(settings.docgen.retrieval_timeout_s))
+        provider_budget_s = max(0.5, float(settings.search.provider_timeout_s))
 
         for round_index in range(1, int(strategy["max_rounds"]) + 1):
             if time.monotonic() - retrieval_started_at >= retrieval_budget_s:
@@ -229,7 +229,7 @@ class DocGenChapterContextRuntime(BaseTracedExecution):
             documents, read_url_count = await self._collect_documents(
                 curated_results,
                 page_cache=page_cache,
-                read_timeout_s=float(settings.docgen_read_timeout_s),
+                read_timeout_s=float(settings.docgen.read_timeout_s),
             )
             if not documents:
                 documents = [item.to_text() for item in curated_results if item.to_text().strip()]
@@ -404,7 +404,7 @@ class DocGenChapterContextRuntime(BaseTracedExecution):
             round_local_hits += len(local_results)
             combined_results = list(local_results)
 
-            if len(local_results) < settings.local_rag_min_results:
+            if len(local_results) < settings.local_rag.min_results:
                 fallback_queries_total.append(query)
                 round_fallback_queries.append(query)
                 expanded_queries = enrich_queries_for_education([query], domain=search_domain)
@@ -507,7 +507,7 @@ class DocGenChapterContextRuntime(BaseTracedExecution):
         if urls_to_fetch:
             pages = await read_urls(
                 urls_to_fetch,
-                max_workers=min(len(urls_to_fetch), get_settings().docgen_io_parallelism),
+                max_workers=min(len(urls_to_fetch), get_settings().docgen.io_parallelism),
                 timeout_s=read_timeout_s,
             )
             for page in pages:
@@ -555,6 +555,7 @@ class DocGenChapterContextRuntime(BaseTracedExecution):
                     recommended_tool_tags=recommended_tool_tags or [],
                 ),
                 task_type=TaskType.DOCGEN_LIGHT,
+                model="light",
                 extra_metadata=self.context.trace_metadata(
                     runtime_name=self.name,
                     research_stage="purify_material",
