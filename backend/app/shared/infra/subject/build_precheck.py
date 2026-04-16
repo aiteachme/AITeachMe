@@ -3,9 +3,8 @@
 from __future__ import annotations
 
 import structlog
-from sqlmodel import Session, select
+from sqlmodel import Session
 
-from app.models.knowledge import RetrievalChunk
 from app.models.subject import Subject
 from app.repositories.subject_repo import save_subject
 from app.schemas.knowledge import (
@@ -22,7 +21,6 @@ from app.shared.infra.subject.settings import (
     SubjectEmbeddingMode,
     build_disabled_binding,
     build_enabled_binding,
-    get_legacy_vector_table_name,
     get_subject_embedding_binding,
     set_subject_embedding_binding,
 )
@@ -49,59 +47,6 @@ _LLAMAINDEX_REF_PREFIX = "llamaindex://"
 
 def _is_llamaindex_index_ref(value: str | None) -> bool:
     return bool(value and value.startswith(_LLAMAINDEX_REF_PREFIX))
-
-
-def _count_rows_for_chunk_ids(
-    session: Session,
-    *,
-    table_name: str,
-    chunk_ids: list[int],
-) -> int:
-    if not chunk_ids:
-        return 0
-
-    connection = session.connection()
-    if not vector_table_exists(connection, table_name):
-        return 0
-
-    placeholders = ", ".join(
-        f":chunk_id_{index}" for index in range(len(chunk_ids))
-    )
-    params = {
-        f"chunk_id_{index}": chunk_id for index, chunk_id in enumerate(chunk_ids)
-    }
-    row = connection.exec_driver_sql(
-        f'SELECT COUNT(*) FROM "{table_name}" WHERE chunk_id IN ({placeholders})',
-        params,
-    ).first()
-    return int(row[0]) if row is not None else 0
-
-
-def subject_uses_legacy_vector_storage(session: Session, subject_slug: str) -> bool:
-    """Check whether the subject still relies on the legacy global vector table."""
-
-    chunks = list(
-        session.exec(
-            select(RetrievalChunk).where(RetrievalChunk.subject == subject_slug)
-        ).all()
-    )
-    chunk_ids = [chunk.id for chunk in chunks if chunk.id is not None]
-    if not chunk_ids:
-        return False
-
-    legacy_table = get_legacy_vector_table_name()
-    connection = session.connection()
-    if not vector_table_exists(connection, legacy_table):
-        return False
-
-    if any((chunk.vector_ref or legacy_table) == legacy_table for chunk in chunks):
-        return True
-
-    return _count_rows_for_chunk_ids(
-        session,
-        table_name=legacy_table,
-        chunk_ids=chunk_ids,
-    ) > 0
 
 
 def _build_precheck_conflict(
@@ -134,8 +79,6 @@ def inspect_subject_build_precheck(
     if binding is not None and binding.mode == SubjectEmbeddingMode.DISABLED:
         return None
 
-    legacy_in_use = subject_uses_legacy_vector_storage(session, subject.slug)
-
     if not runtime.configured:
         return _build_precheck_conflict(
             reason="embedding_not_configured",
@@ -152,14 +95,7 @@ def inspect_subject_build_precheck(
         )
     if binding is None:
         return _build_precheck_conflict(
-            reason="legacy_vector_table" if legacy_in_use else "subject_not_bound",
-            binding=binding,
-            runtime=runtime,
-            requires_full_rebuild=True,
-        )
-    if legacy_in_use:
-        return _build_precheck_conflict(
-            reason="legacy_vector_table",
+            reason="subject_not_bound",
             binding=binding,
             runtime=runtime,
             requires_full_rebuild=True,
@@ -242,7 +178,6 @@ def resolve_subject_build_vector_status(
         "embedding_dimension_mismatch",
         "vector_table_missing",
         "vector_table_dimension_mismatch",
-        "legacy_vector_table",
     }
     if (
         embedding_resolution is None
@@ -308,9 +243,7 @@ def resolve_subject_build_vector_status(
             "embedding_model_mismatch": f"检测到 embedding 模型变更，已自动切换到 {runtime.embedding_model} 并重建向量索引。",
             "embedding_dimension_mismatch": "检测到 embedding 维度变更，已自动重建向量索引。",
             "vector_table_missing": "向量表缺失，已自动重建。",
-            "vector_table_dimension_mismatch": "向量表维度不一致，已自动重建。",
-            "legacy_vector_table": "已从旧版全局向量表迁移到学科独立向量表。",
-        }
+            "vector_table_dimension_mismatch": "向量表维度不一致，已自动重建。",        }
         status.notice = auto_rebuild_notices.get(auto_rebuild_reason)
 
     return status
@@ -329,5 +262,4 @@ __all__ = [
     "inspect_subject_build_precheck",
     "resolve_subject_build_vector_status",
     "should_generate_subject_embeddings",
-    "subject_uses_legacy_vector_storage",
 ]

@@ -1,10 +1,10 @@
-"""Shared semantic title normalization helpers for digest lanes."""
+﻿"""Shared semantic title normalization helpers for digest lanes."""
 
 from __future__ import annotations
 
 import re
 
-from app.utils.kg_helpers import normalize_name
+from app.utils.knowledge_helpers import normalize_name
 
 _SPACE_RE = re.compile(r"\s+")
 _HEADER_PATH_SPLIT_RE = re.compile(r"\s*>\s*")
@@ -13,27 +13,22 @@ _QUESTION_RANGE_SUFFIX_RE = re.compile(
     re.IGNORECASE,
 )
 _NUMBER_PREFIX_RE = re.compile(
-    r"^\s*(?:第[一二三四五六七八九十百千万0-9]+[章节讲部分]|[0-9]+(?:\.[0-9]+){0,2}|[一二三四五六七八九十]+)[、.．\s:：-]+"
+    r"^\s*(?:[0-9]+(?:\.[0-9]+){0,2}|[ivxlcdm]+)[.)\s:-]+",
+    re.IGNORECASE,
 )
 _QUESTION_TITLE_RE = re.compile(
-    r"^(?:question\s*\d+|questions?\s*\d+(?:-\d+)?|q\s*\d+|第\s*\d+\s*题|\d+\s*[.)、．])",
+    r"^(?:question\s*\d+|questions?\s*\d+(?:-\d+)?|q\s*\d+|\d+\s*[.)])",
     re.IGNORECASE,
 )
 _PROCEDURAL_HINTS = (
-    "考试",
-    "试卷",
-    "答题",
-    "注意",
-    "须知",
-    "说明",
-    "规则",
-    "分值",
-    "满分",
-    "考生",
-    "作答",
-    "答题纸",
-    "准考证号",
-    "条形码",
+    "exam",
+    "paper",
+    "answer",
+    "notice",
+    "instruction",
+    "rule",
+    "score",
+    "candidate",
     "page ocr",
     "page",
     "ocr",
@@ -52,14 +47,14 @@ _GENERIC_TITLES = {
 }
 _PUNCT_ONLY_RE = re.compile(r"^[\W_]+$")
 
-DEFAULT_QUESTION_TOPIC = "典型题与综合应用"
-DEFAULT_STUDY_TOPIC = "核心知识梳理"
+DEFAULT_QUESTION_TOPIC = "Typical Questions and Applications"
+DEFAULT_STUDY_TOPIC = "Core Knowledge Overview"
 
 
 def normalize_semantic_whitespace(text: str) -> str:
     """Normalize lightweight markdown-like formatting and whitespace."""
 
-    cleaned = text.strip().strip("-").strip(":").strip("：").strip()
+    cleaned = text.strip().strip("-").strip(":;").strip()
     cleaned = re.sub(r"[#*_`>]+", " ", cleaned)
     return _SPACE_RE.sub(" ", cleaned).strip()
 
@@ -151,14 +146,15 @@ def extract_semantic_path_segments(
 def _extract_subject_label(subject_context: str | None) -> str:
     if not subject_context:
         return ""
+    prefixes = ("subject:", "domain:", "\u5b66\u79d1\uff1a", "\u9886\u57df\uff1a")
     for line in subject_context.splitlines():
         normalized = normalize_semantic_whitespace(line)
         if not normalized:
             continue
-        if normalized.startswith("学科："):
-            return normalized.split("：", 1)[1].strip()[:20]
-        if normalized.startswith("领域："):
-            return normalized.split("：", 1)[1].split(">")[0].strip()[:20]
+        lowered = normalized.lower()
+        for prefix in prefixes:
+            if lowered.startswith(prefix.lower()):
+                return normalized[len(prefix) :].split(">")[0].strip()[:20]
     return ""
 
 
@@ -171,7 +167,7 @@ def choose_semantic_topic_path(
     subject_context: str | None = None,
     question_mode: bool = False,
 ) -> list[str]:
-    """Choose a usable semantic topic path for docs/KG fallbacks."""
+    """Choose a usable semantic topic path for docs/knowledge graph fallbacks."""
 
     segments = extract_semantic_path_segments(
         header_path,
@@ -180,18 +176,12 @@ def choose_semantic_topic_path(
     if segments:
         return segments
 
-    hint_segments = [
-        clean_semantic_title(hint)
-        for hint in chapter_topic_hints or []
-    ]
+    hint_segments = [clean_semantic_title(hint) for hint in chapter_topic_hints or []]
     hint_segments = [hint for hint in hint_segments if hint]
     if hint_segments:
         return [hint_segments[0]]
 
-    cleaned_terms = [
-        clean_semantic_title(term)
-        for term in extracted_terms or []
-    ]
+    cleaned_terms = [clean_semantic_title(term) for term in extracted_terms or []]
     cleaned_terms = [term for term in cleaned_terms if term]
     if cleaned_terms:
         return [cleaned_terms[0]]

@@ -2155,14 +2155,14 @@
         }
       }
     },
-    "/api/v1/subjects/{subject}/knowledge/graph/nodes/detail": {
+    "/api/v1/subjects/{subject}/knowledge/graph/knowledge-units/detail": {
       "post": {
         "tags": [
           "knowledge",
           "knowledge"
         ],
-        "summary": "Fetch knowledge node detail",
-        "operationId": "graph_node_detail_api_v1_subjects__subject__knowledge_graph_nodes_detail_post",
+        "summary": "Fetch KnowledgeUnit detail",
+        "operationId": "graph_knowledge_unit_detail_api_v1_subjects__subject__knowledge_graph_knowledge_units_detail_post",
         "parameters": [
           {
             "name": "subject",
@@ -2179,7 +2179,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/GraphNodeDetailRequest"
+                  "$ref": "#/components/schemas/KnowledgeUnitDetailRequest"
               }
             }
           }
@@ -2190,7 +2190,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ApiResponse_KnowledgeNodeDetailResponse_"
+                  "$ref": "#/components/schemas/ApiResponse_KnowledgeUnitDetailResponse_"
                 }
               }
             }
@@ -4929,7 +4929,7 @@
           "message": "ok"
         }
       },
-      "ApiResponse_KnowledgeNodeDetailResponse_": {
+      "ApiResponse_KnowledgeUnitDetailResponse_": {
         "properties": {
           "code": {
             "type": "integer",
@@ -4946,7 +4946,7 @@
           "data": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/KnowledgeNodeDetailResponse"
+                "$ref": "#/components/schemas/KnowledgeUnitDetailResponse"
               },
               {
                 "type": "null"
@@ -4956,7 +4956,7 @@
           }
         },
         "type": "object",
-        "title": "ApiResponse[KnowledgeNodeDetailResponse]",
+        "title": "ApiResponse[KnowledgeUnitDetailResponse]",
         "example": {
           "code": 0,
           "data": {},
@@ -6216,16 +6216,16 @@
             "type": "string",
             "title": "Name"
           },
-          "node_type": {
+          "knowledge_unit_type": {
             "type": "string",
             "title": "Node Type",
-            "description": "Topic / Concept / Method / Definition / Example"
+            "description": "Standard KnowledgeUnit type"
           }
         },
         "type": "object",
         "required": [
           "name",
-          "node_type"
+          "knowledge_unit_type"
         ],
         "title": "BuildPreviewNodeResponse",
         "description": "One lightweight node preview surfaced during digest polling."
@@ -7500,7 +7500,7 @@
             "title": "Knowledge Document Count",
             "default": 0
           },
-          "knowledge_node_count": {
+          "knowledge_unit_count": {
             "type": "integer",
             "title": "Knowledge Node Count",
             "default": 0
@@ -7976,7 +7976,7 @@
         "properties": {
           "nodes": {
             "items": {
-              "$ref": "#/components/schemas/KnowledgeNodeResponse"
+              "$ref": "#/components/schemas/KnowledgeUnitResponse"
             },
             "type": "array",
             "title": "Nodes"
@@ -8032,20 +8032,20 @@
         "title": "GraphEdgeResponse",
         "description": "Graph edge item used by full-graph query."
       },
-      "GraphNodeDetailRequest": {
+      "KnowledgeUnitDetailRequest": {
         "properties": {
-          "node_id": {
+          "knowledge_unit_id": {
             "type": "integer",
-            "title": "Node Id",
-            "description": "Knowledge node ID."
+            "title": "Knowledge Unit Id",
+            "description": "KnowledgeUnit ID."
           }
         },
         "type": "object",
         "required": [
-          "node_id"
+          "knowledge_unit_id"
         ],
-        "title": "GraphNodeDetailRequest",
-        "description": "Node detail query."
+        "title": "KnowledgeUnitDetailRequest",
+        "description": "KnowledgeUnit detail query."
       },
       "HTTPValidationError": {
         "properties": {
@@ -8479,7 +8479,7 @@
         "title": "KnowledgeBuildStatusResponse",
         "description": "Minimal runtime metadata exposed to clients for docs polling."
       },
-      "KnowledgeNodeDetailResponse": {
+      "KnowledgeUnitDetailResponse": {
         "properties": {
           "id": {
             "type": "integer",
@@ -8489,7 +8489,7 @@
             "type": "string",
             "title": "Subject"
           },
-          "node_type": {
+          "knowledge_unit_type": {
             "type": "string",
             "title": "Node Type"
           },
@@ -8508,6 +8508,16 @@
           "confidence": {
             "type": "number",
             "title": "Confidence"
+          },
+          "type_confidence": {
+            "type": "number",
+            "title": "Type Confidence",
+            "default": 1.0
+          },
+          "type_source": {
+            "type": "string",
+            "title": "Type Source",
+            "default": "llm"
           },
           "current_revision": {
             "anyOf": [
@@ -8555,7 +8565,7 @@
         "required": [
           "id",
           "subject",
-          "node_type",
+          "knowledge_unit_type",
           "canonical_name",
           "normalized_name",
           "status",
@@ -8563,10 +8573,10 @@
           "created_at",
           "updated_at"
         ],
-        "title": "KnowledgeNodeDetailResponse",
-        "description": "Knowledge node detail response."
+        "title": "KnowledgeUnitDetailResponse",
+        "description": "KnowledgeUnit detail response."
       },
-      "KnowledgeNodeResponse": {
+      "KnowledgeUnitResponse": {
         "properties": {
           "id": {
             "type": "integer",
@@ -8576,7 +8586,7 @@
             "type": "string",
             "title": "Subject"
           },
-          "node_type": {
+          "knowledge_unit_type": {
             "type": "string",
             "title": "Node Type"
           },
@@ -8591,6 +8601,16 @@
           "confidence": {
             "type": "number",
             "title": "Confidence"
+          },
+          "type_confidence": {
+            "type": "number",
+            "title": "Type Confidence",
+            "default": 1.0
+          },
+          "type_source": {
+            "type": "string",
+            "title": "Type Source",
+            "default": "llm"
           },
           "created_at": {
             "type": "string",
@@ -8607,15 +8627,15 @@
         "required": [
           "id",
           "subject",
-          "node_type",
+          "knowledge_unit_type",
           "canonical_name",
           "status",
           "confidence",
           "created_at",
           "updated_at"
         ],
-        "title": "KnowledgeNodeResponse",
-        "description": "Knowledge node list item."
+        "title": "KnowledgeUnitResponse",
+        "description": "KnowledgeUnit list item."
       },
       "KnowledgeOverviewRequest": {
         "properties": {

@@ -18,6 +18,13 @@ class ChatContextItem(BaseModel):
     title: str = Field(description="Chunk title.")
     header_path: str = Field(description="Chunk header path.")
     score: float = Field(description="Retrieval score.")
+    knowledge_unit_id: int | None = Field(default=None, description="Linked KnowledgeUnit ID.")
+    knowledge_unit_name: str | None = Field(default=None, description="Linked KnowledgeUnit name.")
+    knowledge_unit_type: str | None = Field(default=None, description="Linked KnowledgeUnit type.")
+    relation_path: str | None = Field(default=None, description="KG path explanation used for retrieval.")
+    evidence_quote: str | None = Field(default=None, description="Evidence quote used for text backtracking.")
+    mastery_score: float | None = Field(default=None, description="Current user's mastery score for this KnowledgeUnit.")
+    retrieval_source: str = Field(default="vector", description="Retrieval source: knowledge_unit or vector.")
 
 
 class ChatSendRequest(BaseModel):

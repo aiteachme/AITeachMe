@@ -306,4 +306,4 @@ def test_build_merged_markdown_dedupes_curriculum_path_tail_title() -> None:
 
     assert "## 代数基础" in merged
     assert "\n## 线性方程组求解的完整路径\n" not in merged
-    assert "\n### 线性方程组求解的完整路径\n" in merged
+    assert "\n### 线性方程组求解的完整路径 {#ku_线性方程组求解的完整路径}\n" in merged

@@ -24,7 +24,7 @@ class ExportPreviewStats(BaseModel):
     raw_file_count: int = 0
     total_raw_file_size_bytes: int = 0
     knowledge_document_count: int = 0
-    knowledge_node_count: int = 0
+    knowledge_unit_count: int = 0
     knowledge_edge_count: int = 0
     question_template_count: int = 0
     exam_paper_count: int = 0

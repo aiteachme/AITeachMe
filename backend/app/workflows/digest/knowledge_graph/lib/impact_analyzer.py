@@ -1,4 +1,4 @@
-"""Impact analysis for graph-only incremental rebuilds."""
+﻿"""Impact analysis for graph-only incremental rebuilds."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 import structlog
 from sqlmodel import Session, or_, select
 
-from app.models.knowledge_graph import KnowledgeEdge
+from app.models.knowledge_relation import KnowledgeEdge
 
 logger = structlog.get_logger(__name__)
 
@@ -99,3 +99,4 @@ def _compute_graph_layer(session: Session, subject: str, impact: ImpactSet) -> N
     impact.candidate_recompute_node_ids = (
         one_hop_neighbor_ids | second_hop_node_ids
     ) - impact.changed_node_ids
+

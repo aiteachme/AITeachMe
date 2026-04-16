@@ -34,7 +34,6 @@ RETRIEVER_PROFILES: dict[str, list[str]] = {
     "docgen_systematic": ["local_rag", "searxng", "tavily", "arxiv", "semantic_scholar", "duckduckgo"],
 }
 
-
 def split_csv_names(value: str | None) -> list[str]:
     if not value:
         return []

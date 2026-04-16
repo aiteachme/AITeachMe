@@ -9,7 +9,6 @@ from sqlmodel import Session, SQLModel, create_engine
 from app.shared.infra.subject import (
     RuntimeEmbeddingConfig,
     build_subject_vector_status,
-    get_legacy_vector_table_name,
     get_subject_embedding_binding,
     inspect_subject_build_precheck,
     resolve_subject_build_vector_status,
@@ -79,13 +78,13 @@ def _seed_chunk(session: Session, *, subject_slug: str, vector_ref: str | None) 
     return chunk
 
 
-def test_inspect_subject_build_precheck_returns_legacy_conflict() -> None:
+def test_inspect_subject_build_precheck_returns_unbound_conflict() -> None:
     session = _make_session()
-    subject = _seed_subject(session, subject_slug="subj_embed_legacy")
+    subject = _seed_subject(session, subject_slug="subj_embed_unbound")
     _seed_chunk(
         session,
         subject_slug=subject.slug,
-        vector_ref=get_legacy_vector_table_name(),
+        vector_ref=None,
     )
 
     runtime = RuntimeEmbeddingConfig(
@@ -105,7 +104,7 @@ def test_inspect_subject_build_precheck_returns_legacy_conflict() -> None:
         conflict = inspect_subject_build_precheck(session, subject=subject)
 
     assert conflict is not None
-    assert conflict.reason == "legacy_vector_table"
+    assert conflict.reason == "subject_not_bound"
     assert conflict.runtime_model == "text-embedding-v4"
     assert conflict.runtime_dim == 1024
     assert conflict.requires_full_rebuild is True

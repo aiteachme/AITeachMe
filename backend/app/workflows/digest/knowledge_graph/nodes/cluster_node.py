@@ -1,4 +1,4 @@
-﻿"""Knowledge graph cluster node."""
+"""Knowledge graph cluster node."""
 
 
 from __future__ import annotations
@@ -6,16 +6,18 @@ from __future__ import annotations
 from app.shared.infra.database import managed_session
 from app.utils.job_helpers import update_job_progress
 from app.workflows.digest.knowledge_graph.lib.clusterer import cluster_candidates
+from app.models.knowledge_taxonomy import normalize_knowledge_unit_type
+from app.workflows.digest.knowledge_graph.state import KnowledgeDigestState
+from app.workflows.digest.knowledge_graph.lib.support import workflow_logger
 from app.workflows.digest.common.models import TopicAnchor, TopicAnchorSnapshot
-from app.workflows.digest.knowledge_graph.state import KGDigestState
-from app.workflows.digest.knowledge_graph.support import workflow_logger
 
-def _build_early_topic_snapshot(state: KGDigestState, clustered_candidates) -> TopicAnchorSnapshot:
+def _build_early_topic_snapshot(state: KnowledgeDigestState, clustered_candidates) -> TopicAnchorSnapshot:
     chunk_id_to_chunk_uid = state.get("chunk_id_to_chunk_uid", {})
     anchors: list[TopicAnchor] = []
     for cluster in clustered_candidates[:80]:
         representative = cluster.representative
-        if not representative.name or representative.node_type not in {"Topic", "Concept", "Method"}:
+        representative.knowledge_unit_type = normalize_knowledge_unit_type(representative.knowledge_unit_type)
+        if not representative.name or representative.knowledge_unit_type not in {"concept", "method"}:
             continue
         chunk_uids = [
             chunk_id_to_chunk_uid[chunk_id]
@@ -27,14 +29,14 @@ def _build_early_topic_snapshot(state: KGDigestState, clustered_candidates) -> T
         anchors.append(
             TopicAnchor(
                 topic_name=representative.name,
-                node_type=representative.node_type,
+                knowledge_unit_type=representative.knowledge_unit_type,
                 confidence=min(0.9, 0.5 + 0.06 * len(cluster.members)),
                 chunk_uids=list(dict.fromkeys(chunk_uids)),
             )
         )
     return TopicAnchorSnapshot(anchors=anchors)
 
-async def cluster_node(state: KGDigestState) -> KGDigestState:
+async def cluster_node(state: KnowledgeDigestState) -> KnowledgeDigestState:
     """Cluster candidate nodes within the current batch."""
 
     with managed_session() as session:
@@ -43,7 +45,7 @@ async def cluster_node(state: KGDigestState) -> KGDigestState:
             results = state.get("candidates", [])
             chunk_ids = state.get("chunk_ids", [])
             digest_logger.info(
-                "kg_cluster_started",
+                "knowledge_cluster_started",
                 result_count=len(results),
                 chunk_count=len(chunk_ids),
             )
@@ -78,7 +80,7 @@ async def cluster_node(state: KGDigestState) -> KGDigestState:
                 current_step="cluster",
             )
             digest_logger.info(
-                "kg_workflow_cluster_complete",
+                "knowledge_workflow_cluster_complete",
                 input_candidates=len(all_pairs),
                 cluster_count=len(clustered),
                 early_topic_anchor_count=len(early_snapshot.anchors),
@@ -90,8 +92,7 @@ async def cluster_node(state: KGDigestState) -> KGDigestState:
                 "topic_anchor_snapshot": early_snapshot,
             }
         except Exception as exc:
-            digest_logger.error("kg_workflow_cluster_failed", error=str(exc), exc_info=True)
+            digest_logger.error("knowledge_workflow_cluster_failed", error=str(exc), exc_info=True)
             return {**state, "error": f"cluster_failed: {exc}"}
 
 __all__ = ["cluster_node"]
-

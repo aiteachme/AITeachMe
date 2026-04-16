@@ -1,10 +1,10 @@
-"""Grading knowledge context builder."""
+﻿"""Grading knowledge context builder."""
 
 from __future__ import annotations
 
 from sqlmodel import Session
 
-from app.repositories.knowledge import curriculum_repo, kg_repo
+from app.repositories.knowledge import curriculum_repo
 from app.workflows.examine.context_helpers import (
     _extract_doc_excerpt,
     read_knowledge_doc_text,

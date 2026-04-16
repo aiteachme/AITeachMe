@@ -1,4 +1,4 @@
-﻿"""User-level profile aggregation shared by profile and examine services."""
+"""User-level profile aggregation shared by profile and examine services."""
 
 from __future__ import annotations
 
@@ -16,7 +16,7 @@ from app.models import (
     Subject,
     User,
     UserKnowledgeState,
-    normalize_exam_mode,
+    exam_mode_value,
 )
 from app.utils.time import is_at_or_after, is_at_or_before, utcnow
 from app.workflows.profile.subject_profile import SubjectProfileSummary
@@ -212,7 +212,7 @@ def build_user_profile_summary(
 
     question_type_totals = Counter(item.question_type for item in recent_items if item.question_type)
     exam_mode_totals = Counter(
-        normalize_exam_mode(paper.exam_mode)
+        exam_mode_value(paper.exam_mode)
         for paper in recent_papers
         if paper.exam_mode
     )

@@ -13,7 +13,6 @@ from app.shared.infra.runtime.paths import (
     get_backend_root,
     get_runtime_data_dir,
     get_sqlite_db_path,
-    log_legacy_runtime_path_warnings,
 )
 from app.shared.infra.runtime.tasks import BackgroundTaskRegistry, ManagedTaskRecord
 
@@ -27,7 +26,6 @@ __all__ = [
     "get_sqlite_db_path",
     "is_cloud_mode",
     "is_local_mode",
-    "log_legacy_runtime_path_warnings",
     "resolve_app_mode",
     "resolve_guest_cookie_samesite",
     "resolve_guest_cookie_secure",

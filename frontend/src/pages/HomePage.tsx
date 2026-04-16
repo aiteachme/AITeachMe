@@ -96,7 +96,7 @@ interface ExportPreviewStats {
   raw_file_count: number;
   total_raw_file_size_bytes: number;
   knowledge_document_count: number;
-  knowledge_node_count: number;
+  knowledge_unit_count: number;
   knowledge_edge_count: number;
   question_template_count: number;
   exam_paper_count: number;
@@ -373,7 +373,7 @@ function ExportModal({
                 {[
                   { label: "上传文件", value: stats.raw_file_count, show: true },
                   { label: "知识文档", value: stats.knowledge_document_count, show: true },
-                  { label: "知识图谱节点", value: stats.knowledge_node_count, show: true },
+                  { label: "知识图谱节点", value: stats.knowledge_unit_count, show: true },
                   { label: "知识图谱边", value: stats.knowledge_edge_count, show: true },
                   { label: "题目模板", value: stats.question_template_count, show: stats.question_template_count > 0 },
                   { label: "考试记录", value: stats.exam_paper_count, show: stats.exam_paper_count > 0 },
@@ -1310,9 +1310,9 @@ export function HomePage() {
 
                               {/* Stats chips */}
                               <div className="flex flex-wrap gap-1.5 mb-4">
-                                {course.stats.knowledge_node_count > 0 && (
+                                {course.stats.knowledge_unit_count > 0 && (
                                   <span className="text-[10px] font-medium text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">
-                                    {course.stats.knowledge_node_count} 知识点
+                                    {course.stats.knowledge_unit_count} 知识点
                                   </span>
                                 )}
                                 {course.stats.raw_file_count > 0 && (

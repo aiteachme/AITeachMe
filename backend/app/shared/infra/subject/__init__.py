@@ -14,7 +14,6 @@ from app.shared.infra.subject.settings import (
     build_subject_index_ref,
     build_subject_vector_table_name,
     dump_subject_settings,
-    get_legacy_vector_table_name,
     get_postgres_vector_ref,
     get_subject_embedding_binding,
     load_subject_settings,
@@ -25,7 +24,6 @@ if TYPE_CHECKING:
     from app.shared.infra.subject.build_precheck import (
         inspect_subject_build_precheck,
         resolve_subject_build_vector_status,
-        subject_uses_legacy_vector_storage,
     )
     from app.shared.infra.subject.vectors import (
         RuntimeEmbeddingConfig,
@@ -57,7 +55,6 @@ _VECTOR_EXPORTS = {
 _BUILD_PRECHECK_EXPORTS = {
     "inspect_subject_build_precheck",
     "resolve_subject_build_vector_status",
-    "subject_uses_legacy_vector_storage",
 }
 
 
@@ -89,7 +86,6 @@ __all__ = [
     "build_subject_vector_status",
     "build_subject_vector_table_name",
     "dump_subject_settings",
-    "get_legacy_vector_table_name",
     "get_postgres_vector_ref",
     "get_runtime_embedding_config",
     "get_subject_embedding_binding",
@@ -103,5 +99,4 @@ __all__ = [
     "resolve_subject_build_vector_status",
     "set_subject_embedding_binding",
     "should_generate_subject_embeddings",
-    "subject_uses_legacy_vector_storage",
 ]

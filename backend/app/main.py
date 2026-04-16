@@ -16,7 +16,7 @@ from app.shared.infra.settings import get_settings
 from app.shared.infra.database import init_db
 from app.shared.infra.env_support import get_env, get_env_bool
 from app.shared.infra.logger import configure_logging
-from app.shared.infra.runtime import get_runtime_data_dir, log_legacy_runtime_path_warnings
+from app.shared.infra.runtime import get_runtime_data_dir
 from app.shared.infra.runtime import (
     get_app_version,
     is_local_mode,
@@ -256,7 +256,6 @@ def _register_middlewares(app: FastAPI) -> None:
 
 def _register_static_mounts(app: FastAPI) -> None:
     if is_local_mode():
-        log_legacy_runtime_path_warnings()
         data_dir = get_runtime_data_dir()
         app.mount("/_assets", StaticFiles(directory=data_dir), name="runtime-assets")
 

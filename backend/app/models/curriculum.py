@@ -38,7 +38,7 @@ class TeachingUnit(SQLModel, table=True):
     member_signature: str = Field(default="", index=True)
     summary: str = ""
     body_markdown: str = ""
-    member_node_refs_json: str = Field(default="[]")
+    member_knowledge_unit_refs_json: str = Field(default="[]")
     learning_objectives_json: str = Field(default="[]")
     status: str = Field(default="active", index=True)
     created_at: datetime = Field(default_factory=utcnow)
@@ -62,7 +62,7 @@ class ThemeTreeNode(SQLModel, table=True):
     anchor_id: int | None = Field(default=None, index=True)
     parent_tree_node_id: int | None = Field(default=None, index=True)
     title: str
-    node_type: str = Field(default="theme", index=True)
+    knowledge_unit_type: str = Field(default="theme", index=True)
     unit_refs_json: str = Field(default="[]")
     order_index: int = Field(default=0)
     created_at: datetime = Field(default_factory=utcnow)

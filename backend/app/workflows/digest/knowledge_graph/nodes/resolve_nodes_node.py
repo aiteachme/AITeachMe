@@ -1,4 +1,4 @@
-﻿"""Knowledge graph resolve-nodes node."""
+"""Knowledge graph resolve-nodes node."""
 
 
 from __future__ import annotations
@@ -11,15 +11,16 @@ from sqlmodel import select
 
 from app.shared.infra.database import managed_session
 from app.shared.infra.embedding import aembed_texts
-from app.models.knowledge_graph import EdgeRevision, KnowledgeEdge, KnowledgeNode
-from app.repositories import kg_repo
+from app.models.knowledge_relation import EdgeRevision, KnowledgeEdge
+from app.models.knowledge_unit import KnowledgeUnit
+from app.repositories import knowledge_build_repo
 from app.utils.job_helpers import update_job_progress
-from app.utils.kg_helpers import normalize_name
+from app.utils.knowledge_helpers import normalize_name
 from app.utils.time import utcnow
 from app.workflows.digest.knowledge_graph.mutations import (
     create_alias_if_new,
     create_edge_evidence,
-    create_new_node,
+    create_new_knowledge_unit,
     create_node_evidence,
     create_updated_revision,
 )
@@ -39,16 +40,22 @@ from app.workflows.digest.knowledge_graph.lib.resolver import (
     compute_edge_confidence,
     resolve_edge,
 )
-from app.workflows.digest.knowledge_graph.state import KGDigestState
-from app.workflows.digest.knowledge_graph.support import workflow_logger
+from app.models.knowledge_taxonomy import (
+    PARENT_KNOWLEDGE_UNIT_TYPES,
+    PRIMARY_KNOWLEDGE_UNIT_TYPES,
+    SECONDARY_KNOWLEDGE_UNIT_TYPES,
+    normalize_knowledge_unit_type,
+)
+from app.workflows.digest.knowledge_graph.state import KnowledgeDigestState
+from app.workflows.digest.knowledge_graph.lib.support import workflow_logger
 
-_PRIMARY_NODE_TYPES = {"Topic", "Concept", "Method"}
-_SECONDARY_NODE_TYPES = {"Definition", "Example"}
+_PRIMARY_NODE_TYPES = PRIMARY_KNOWLEDGE_UNIT_TYPES
+_SECONDARY_NODE_TYPES = SECONDARY_KNOWLEDGE_UNIT_TYPES
 _PRIMARY_SIMILARITY_THRESHOLD = 0.80
 _SECONDARY_SIMILARITY_THRESHOLD = 0.85
 
 class ExistingNodeRecord:
-    node: KnowledgeNode
+    node: KnowledgeUnit
     summary: str
     embedding: list[float]
 
@@ -95,9 +102,9 @@ async def _build_resolution_index(subject: str) -> ResolutionIndex:
     with managed_session() as session:
         nodes = list(
             session.exec(
-                select(KnowledgeNode).where(
-                    KnowledgeNode.subject == subject,
-                    KnowledgeNode.status.in_(["active", "pending"]),
+                select(KnowledgeUnit).where(
+                    KnowledgeUnit.subject == subject,
+                    KnowledgeUnit.status.in_(["active", "pending"]),
                 )
             ).all()
         )
@@ -162,8 +169,9 @@ async def _build_resolution_index(subject: str) -> ResolutionIndex:
         embedding = embedding_by_node_id.get(node.id, [])
         record = ExistingNodeRecord(node=node, summary=node.summary, embedding=embedding)
         record_by_node_id[node.id] = record
-        index.normalized_map[(node.node_type, node.normalized_name)] = record
-        index.records_by_type.setdefault(node.node_type, []).append(record)
+        knowledge_unit_type = normalize_knowledge_unit_type(node.knowledge_unit_type)
+        index.normalized_map[(knowledge_unit_type, node.normalized_name)] = record
+        index.records_by_type.setdefault(knowledge_unit_type, []).append(record)
 
         for alias_entry in _load_alias_entries(node.aliases_json):
             if str(alias_entry.get("status", "active")) != "active":
@@ -171,30 +179,30 @@ async def _build_resolution_index(subject: str) -> ResolutionIndex:
             normalized_alias = str(alias_entry.get("normalized_alias", "")).strip()
             if not normalized_alias:
                 continue
-            index.alias_map[(node.node_type, normalized_alias)] = record
+            index.alias_map[(knowledge_unit_type, normalized_alias)] = record
 
     for edge in edges:
         parent_id: int | None = None
         child_id: int | None = None
         child_type: str | None = None
-        if edge.edge_type == "defined_by":
-            parent_id = edge.source_node_id
-            child_id = edge.target_node_id
-            child_type = "Definition"
-        elif edge.edge_type == "illustrated_by":
-            parent_id = edge.source_node_id
-            child_id = edge.target_node_id
-            child_type = "Example"
-        elif edge.edge_type == "belongs_to_topic":
+        if edge.edge_type == "derivation":
             parent_id = edge.target_node_id
             child_id = edge.source_node_id
-            child_type = "Example"
+            child_type = "definition"
+        elif edge.edge_type == "example_of":
+            parent_id = edge.target_node_id
+            child_id = edge.source_node_id
+            child_type = "example"
+        elif edge.edge_type == "application":
+            parent_id = edge.target_node_id
+            child_id = edge.source_node_id
+            child_type = "exercise"
 
         if parent_id is None or child_id is None or child_type is None:
             continue
 
         child_record = record_by_node_id.get(child_id)
-        if child_record is None or child_record.node.node_type != child_type:
+        if child_record is None or normalize_knowledge_unit_type(child_record.node.knowledge_unit_type) != child_type:
             continue
         children_by_type = index.children_by_parent.setdefault(parent_id, {})
         children_by_type.setdefault(child_type, []).append(child_record)
@@ -256,7 +264,7 @@ def _resolve_parent_node_id(
     index: ResolutionIndex,
 ) -> int | None:
     scope = normalize_scope_name(taxonomy_hint)
-    for parent_type in ("Topic", "Concept", "Method"):
+    for parent_type in PARENT_KNOWLEDGE_UNIT_TYPES:
         for lookup_key in (
             build_candidate_name_key(parent_type, parent_name, scope=scope),
             build_candidate_name_key(parent_type, parent_name, scope=None),
@@ -266,7 +274,7 @@ def _resolve_parent_node_id(
                 return mapped_parent_id
 
     normalized_parent = normalize_name(parent_name)
-    for parent_type in ("Topic", "Concept", "Method"):
+    for parent_type in PARENT_KNOWLEDGE_UNIT_TYPES:
         record = index.normalized_map.get((parent_type, normalized_parent))
         if record is not None:
             return record.node.id
@@ -318,7 +326,7 @@ def _match_secondary_candidate(
     )
 
 
-async def resolve_nodes_node(state: KGDigestState) -> KGDigestState:
+async def resolve_nodes_node(state: KnowledgeDigestState) -> KnowledgeDigestState:
     """Resolve clustered candidates against existing graph nodes."""
 
     with managed_session() as session:
@@ -331,7 +339,7 @@ async def resolve_nodes_node(state: KGDigestState) -> KGDigestState:
             resolution_index = await _build_resolution_index(subject)
             resolution_index_ms = int((perf_counter() - resolution_index_started_at) * 1000)
             digest_logger.info(
-                "kg_resolution_index_built",
+                "knowledge_resolution_index_built",
                 cluster_count=len(clustered_candidates),
                 indexed_type_count=len(resolution_index.records_by_type),
                 indexed_node_count=sum(
@@ -371,23 +379,24 @@ async def resolve_nodes_node(state: KGDigestState) -> KGDigestState:
 
             for cluster_index, clustered_candidate in enumerate(clustered_candidates):
                 representative = clustered_candidate.representative
+                representative.knowledge_unit_type = normalize_knowledge_unit_type(representative.knowledge_unit_type)
                 candidate_embedding = (
                     candidate_embeddings[cluster_index]
                     if cluster_index < len(candidate_embeddings)
                     else []
                 )
-                if representative.node_type in _PRIMARY_NODE_TYPES:
+                if representative.knowledge_unit_type in _PRIMARY_NODE_TYPES:
                     result = _match_primary_candidate(
                         representative.name,
-                        representative.node_type,
+                        representative.knowledge_unit_type,
                         clustered_candidate.merged_summary,
                         candidate_embedding,
                         resolution_index,
                     )
-                elif representative.node_type in _SECONDARY_NODE_TYPES:
+                elif representative.knowledge_unit_type in _SECONDARY_NODE_TYPES:
                     result = _match_secondary_candidate(
                         representative_name=representative.name,
-                        representative_type=representative.node_type,
+                        representative_type=representative.knowledge_unit_type,
                         parent_name=representative.parent_entity_name or representative.taxonomy_hint,
                         taxonomy_hint=representative.taxonomy_hint,
                         candidate_summary=clustered_candidate.merged_summary,
@@ -435,7 +444,7 @@ async def resolve_nodes_node(state: KGDigestState) -> KGDigestState:
                         pending_write_count += 1
                         updated_node_ids.append(node_id)
                 else:
-                    node = create_new_node(
+                    node = create_new_knowledge_unit(
                         session,
                         subject=subject,
                         clustered_candidate=clustered_candidate,
@@ -465,13 +474,13 @@ async def resolve_nodes_node(state: KGDigestState) -> KGDigestState:
 
                 if result.decision == "no_match":
                     no_match_count += 1
-                    if representative.node_type in _SECONDARY_NODE_TYPES:
+                    if representative.knowledge_unit_type in _SECONDARY_NODE_TYPES:
                         secondary_no_match_count += 1
-                if result.decision != "no_match" or representative.node_type not in _SECONDARY_NODE_TYPES:
+                if result.decision != "no_match" or representative.knowledge_unit_type not in _SECONDARY_NODE_TYPES:
                     digest_logger.info(
                         "resolve_node_complete",
                         name=representative.name,
-                        node_type=representative.node_type,
+                        knowledge_unit_type=representative.knowledge_unit_type,
                         decision=result.decision,
                         matched_node_id=result.matched_node_id,
                     )
@@ -495,7 +504,7 @@ async def resolve_nodes_node(state: KGDigestState) -> KGDigestState:
                 progress=65,
                 current_step="resolve_nodes",
             )
-            kg_repo.update_digest_job(
+            knowledge_build_repo.update_digest_job(
                 session,
                 job_id,
                 nodes_added=len(new_node_ids),
@@ -503,7 +512,7 @@ async def resolve_nodes_node(state: KGDigestState) -> KGDigestState:
                 nodes_merged=len(merged_node_ids),
             )
             digest_logger.info(
-                "kg_workflow_resolve_nodes_complete",
+                "knowledge_workflow_resolve_nodes_complete",
                 new_nodes=len(new_node_ids),
                 updated_nodes=len(updated_node_ids),
                 total_resolved=len(candidate_lookup_to_resolved_node_id),
@@ -522,7 +531,7 @@ async def resolve_nodes_node(state: KGDigestState) -> KGDigestState:
                 "secondary_no_match_count": secondary_no_match_count,
             }
         except Exception as exc:
-            digest_logger.error("kg_workflow_resolve_nodes_failed", error=str(exc), exc_info=True)
+            digest_logger.error("knowledge_workflow_resolve_nodes_failed", error=str(exc), exc_info=True)
             return {**state, "error": f"resolve_nodes_failed: {exc}"}
 
 __all__ = ["resolve_nodes_node"]

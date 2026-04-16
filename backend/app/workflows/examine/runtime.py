@@ -20,7 +20,7 @@ class GeneratedQuestion(BaseModel):
     options: list[str] | None = None
     answer: str
     explanation: str
-    knowledge_node_id: int | None = None
+    knowledge_unit_id: int | None = None
 
 
 class GeneratedExam(BaseModel):

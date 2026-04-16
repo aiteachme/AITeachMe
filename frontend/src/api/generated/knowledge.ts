@@ -22,7 +22,7 @@ import type {
   ApiResponseClearKnowledgeResponse,
   ApiResponseDocGenBuildData,
   ApiResponseDocGenGetResponse,
-  ApiResponseKnowledgeNodeDetailResponse,
+  ApiResponseKnowledgeUnitDetailResponse,
   ApiResponseKnowledgeOverviewResponse,
   ApiResponseStudyPlanResponse,
   ApiResponseUnionBuildPlannerSessionResponseNoneType,
@@ -31,9 +31,9 @@ import type {
   ChunkContextRequest,
   DocGenBuildRequest,
   ErrorResponse,
-  GraphNodeDetailRequest,
   HTTPValidationError,
   KnowledgeOverviewRequest,
+  KnowledgeUnitDetailRequest,
   StudyPlanRequest
 } from './model';
 
@@ -1209,71 +1209,71 @@ export const useKnowledgeClearApiV1SubjectsSubjectKnowledgeClearPost = <TError =
       return useMutation(getKnowledgeClearApiV1SubjectsSubjectKnowledgeClearPostMutationOptions(options), queryClient);
     }
     /**
- * @summary Fetch knowledge node detail
+ * @summary Fetch KnowledgeUnit detail
  */
-export type graphNodeDetailApiV1SubjectsSubjectKnowledgeGraphNodesDetailPostResponse200 = {
-  data: ApiResponseKnowledgeNodeDetailResponse
+export type graphKnowledgeUnitDetailApiV1SubjectsSubjectKnowledgeGraphKnowledgeUnitsDetailPostResponse200 = {
+  data: ApiResponseKnowledgeUnitDetailResponse
   status: 200
 }
 
-export type graphNodeDetailApiV1SubjectsSubjectKnowledgeGraphNodesDetailPostResponse400 = {
+export type graphKnowledgeUnitDetailApiV1SubjectsSubjectKnowledgeGraphKnowledgeUnitsDetailPostResponse400 = {
   data: ErrorResponse
   status: 400
 }
 
-export type graphNodeDetailApiV1SubjectsSubjectKnowledgeGraphNodesDetailPostResponse404 = {
+export type graphKnowledgeUnitDetailApiV1SubjectsSubjectKnowledgeGraphKnowledgeUnitsDetailPostResponse404 = {
   data: ErrorResponse
   status: 404
 }
 
-export type graphNodeDetailApiV1SubjectsSubjectKnowledgeGraphNodesDetailPostResponse422 = {
+export type graphKnowledgeUnitDetailApiV1SubjectsSubjectKnowledgeGraphKnowledgeUnitsDetailPostResponse422 = {
   data: HTTPValidationError
   status: 422
 }
 
-export type graphNodeDetailApiV1SubjectsSubjectKnowledgeGraphNodesDetailPostResponse500 = {
+export type graphKnowledgeUnitDetailApiV1SubjectsSubjectKnowledgeGraphKnowledgeUnitsDetailPostResponse500 = {
   data: ErrorResponse
   status: 500
 }
 
-export type graphNodeDetailApiV1SubjectsSubjectKnowledgeGraphNodesDetailPostResponseSuccess = (graphNodeDetailApiV1SubjectsSubjectKnowledgeGraphNodesDetailPostResponse200) & {
+export type graphKnowledgeUnitDetailApiV1SubjectsSubjectKnowledgeGraphKnowledgeUnitsDetailPostResponseSuccess = (graphKnowledgeUnitDetailApiV1SubjectsSubjectKnowledgeGraphKnowledgeUnitsDetailPostResponse200) & {
   headers: Headers;
 };
-export type graphNodeDetailApiV1SubjectsSubjectKnowledgeGraphNodesDetailPostResponseError = (graphNodeDetailApiV1SubjectsSubjectKnowledgeGraphNodesDetailPostResponse400 | graphNodeDetailApiV1SubjectsSubjectKnowledgeGraphNodesDetailPostResponse404 | graphNodeDetailApiV1SubjectsSubjectKnowledgeGraphNodesDetailPostResponse422 | graphNodeDetailApiV1SubjectsSubjectKnowledgeGraphNodesDetailPostResponse500) & {
+export type graphKnowledgeUnitDetailApiV1SubjectsSubjectKnowledgeGraphKnowledgeUnitsDetailPostResponseError = (graphKnowledgeUnitDetailApiV1SubjectsSubjectKnowledgeGraphKnowledgeUnitsDetailPostResponse400 | graphKnowledgeUnitDetailApiV1SubjectsSubjectKnowledgeGraphKnowledgeUnitsDetailPostResponse404 | graphKnowledgeUnitDetailApiV1SubjectsSubjectKnowledgeGraphKnowledgeUnitsDetailPostResponse422 | graphKnowledgeUnitDetailApiV1SubjectsSubjectKnowledgeGraphKnowledgeUnitsDetailPostResponse500) & {
   headers: Headers;
 };
 
-export type graphNodeDetailApiV1SubjectsSubjectKnowledgeGraphNodesDetailPostResponse = (graphNodeDetailApiV1SubjectsSubjectKnowledgeGraphNodesDetailPostResponseSuccess | graphNodeDetailApiV1SubjectsSubjectKnowledgeGraphNodesDetailPostResponseError)
+export type graphKnowledgeUnitDetailApiV1SubjectsSubjectKnowledgeGraphKnowledgeUnitsDetailPostResponse = (graphKnowledgeUnitDetailApiV1SubjectsSubjectKnowledgeGraphKnowledgeUnitsDetailPostResponseSuccess | graphKnowledgeUnitDetailApiV1SubjectsSubjectKnowledgeGraphKnowledgeUnitsDetailPostResponseError)
 
-export const getGraphNodeDetailApiV1SubjectsSubjectKnowledgeGraphNodesDetailPostUrl = (subject: string,) => {
+export const getGraphKnowledgeUnitDetailApiV1SubjectsSubjectKnowledgeGraphKnowledgeUnitsDetailPostUrl = (subject: string,) => {
 
 
   
 
-  return `/api/v1/subjects/${subject}/knowledge/graph/nodes/detail`
+  return `/api/v1/subjects/${subject}/knowledge/graph/knowledge-units/detail`
 }
 
-export const graphNodeDetailApiV1SubjectsSubjectKnowledgeGraphNodesDetailPost = async (subject: string,
-    graphNodeDetailRequest: GraphNodeDetailRequest, options?: RequestInit): Promise<graphNodeDetailApiV1SubjectsSubjectKnowledgeGraphNodesDetailPostResponse> => {
+export const graphKnowledgeUnitDetailApiV1SubjectsSubjectKnowledgeGraphKnowledgeUnitsDetailPost = async (subject: string,
+    knowledgeUnitDetailRequest: KnowledgeUnitDetailRequest, options?: RequestInit): Promise<graphKnowledgeUnitDetailApiV1SubjectsSubjectKnowledgeGraphKnowledgeUnitsDetailPostResponse> => {
   
-  return orvalApiClient<graphNodeDetailApiV1SubjectsSubjectKnowledgeGraphNodesDetailPostResponse>(getGraphNodeDetailApiV1SubjectsSubjectKnowledgeGraphNodesDetailPostUrl(subject),
+  return orvalApiClient<graphKnowledgeUnitDetailApiV1SubjectsSubjectKnowledgeGraphKnowledgeUnitsDetailPostResponse>(getGraphKnowledgeUnitDetailApiV1SubjectsSubjectKnowledgeGraphKnowledgeUnitsDetailPostUrl(subject),
   {      
     ...options,
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...options?.headers },
     body: JSON.stringify(
-      graphNodeDetailRequest,)
+      knowledgeUnitDetailRequest,)
   }
 );}
   
 
 
 
-export const getGraphNodeDetailApiV1SubjectsSubjectKnowledgeGraphNodesDetailPostMutationOptions = <TError = ErrorResponse | HTTPValidationError,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof graphNodeDetailApiV1SubjectsSubjectKnowledgeGraphNodesDetailPost>>, TError,{subject: string;data: GraphNodeDetailRequest}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
-): UseMutationOptions<Awaited<ReturnType<typeof graphNodeDetailApiV1SubjectsSubjectKnowledgeGraphNodesDetailPost>>, TError,{subject: string;data: GraphNodeDetailRequest}, TContext> => {
+export const getGraphKnowledgeUnitDetailApiV1SubjectsSubjectKnowledgeGraphKnowledgeUnitsDetailPostMutationOptions = <TError = ErrorResponse | HTTPValidationError,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof graphKnowledgeUnitDetailApiV1SubjectsSubjectKnowledgeGraphKnowledgeUnitsDetailPost>>, TError,{subject: string;data: KnowledgeUnitDetailRequest}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
+): UseMutationOptions<Awaited<ReturnType<typeof graphKnowledgeUnitDetailApiV1SubjectsSubjectKnowledgeGraphKnowledgeUnitsDetailPost>>, TError,{subject: string;data: KnowledgeUnitDetailRequest}, TContext> => {
 
-const mutationKey = ['graphNodeDetailApiV1SubjectsSubjectKnowledgeGraphNodesDetailPost'];
+const mutationKey = ['graphKnowledgeUnitDetailApiV1SubjectsSubjectKnowledgeGraphKnowledgeUnitsDetailPost'];
 const {mutation: mutationOptions, request: requestOptions} = options ?
       options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
       options
@@ -1283,10 +1283,10 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       
 
 
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof graphNodeDetailApiV1SubjectsSubjectKnowledgeGraphNodesDetailPost>>, {subject: string;data: GraphNodeDetailRequest}> = (props) => {
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof graphKnowledgeUnitDetailApiV1SubjectsSubjectKnowledgeGraphKnowledgeUnitsDetailPost>>, {subject: string;data: KnowledgeUnitDetailRequest}> = (props) => {
           const {subject,data} = props ?? {};
 
-          return  graphNodeDetailApiV1SubjectsSubjectKnowledgeGraphNodesDetailPost(subject,data,requestOptions)
+          return  graphKnowledgeUnitDetailApiV1SubjectsSubjectKnowledgeGraphKnowledgeUnitsDetailPost(subject,data,requestOptions)
         }
 
 
@@ -1296,22 +1296,22 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
   return  { mutationFn, ...mutationOptions }}
 
-    export type GraphNodeDetailApiV1SubjectsSubjectKnowledgeGraphNodesDetailPostMutationResult = NonNullable<Awaited<ReturnType<typeof graphNodeDetailApiV1SubjectsSubjectKnowledgeGraphNodesDetailPost>>>
-    export type GraphNodeDetailApiV1SubjectsSubjectKnowledgeGraphNodesDetailPostMutationBody = GraphNodeDetailRequest
-    export type GraphNodeDetailApiV1SubjectsSubjectKnowledgeGraphNodesDetailPostMutationError = ErrorResponse | HTTPValidationError
+    export type GraphKnowledgeUnitDetailApiV1SubjectsSubjectKnowledgeGraphKnowledgeUnitsDetailPostMutationResult = NonNullable<Awaited<ReturnType<typeof graphKnowledgeUnitDetailApiV1SubjectsSubjectKnowledgeGraphKnowledgeUnitsDetailPost>>>
+    export type GraphKnowledgeUnitDetailApiV1SubjectsSubjectKnowledgeGraphKnowledgeUnitsDetailPostMutationBody = KnowledgeUnitDetailRequest
+    export type GraphKnowledgeUnitDetailApiV1SubjectsSubjectKnowledgeGraphKnowledgeUnitsDetailPostMutationError = ErrorResponse | HTTPValidationError
 
     /**
- * @summary Fetch knowledge node detail
+ * @summary Fetch KnowledgeUnit detail
  */
-export const useGraphNodeDetailApiV1SubjectsSubjectKnowledgeGraphNodesDetailPost = <TError = ErrorResponse | HTTPValidationError,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof graphNodeDetailApiV1SubjectsSubjectKnowledgeGraphNodesDetailPost>>, TError,{subject: string;data: GraphNodeDetailRequest}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
+export const useGraphKnowledgeUnitDetailApiV1SubjectsSubjectKnowledgeGraphKnowledgeUnitsDetailPost = <TError = ErrorResponse | HTTPValidationError,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof graphKnowledgeUnitDetailApiV1SubjectsSubjectKnowledgeGraphKnowledgeUnitsDetailPost>>, TError,{subject: string;data: KnowledgeUnitDetailRequest}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
  , queryClient?: QueryClient): UseMutationResult<
-        Awaited<ReturnType<typeof graphNodeDetailApiV1SubjectsSubjectKnowledgeGraphNodesDetailPost>>,
+        Awaited<ReturnType<typeof graphKnowledgeUnitDetailApiV1SubjectsSubjectKnowledgeGraphKnowledgeUnitsDetailPost>>,
         TError,
-        {subject: string;data: GraphNodeDetailRequest},
+        {subject: string;data: KnowledgeUnitDetailRequest},
         TContext
       > => {
-      return useMutation(getGraphNodeDetailApiV1SubjectsSubjectKnowledgeGraphNodesDetailPostMutationOptions(options), queryClient);
+      return useMutation(getGraphKnowledgeUnitDetailApiV1SubjectsSubjectKnowledgeGraphKnowledgeUnitsDetailPostMutationOptions(options), queryClient);
     }
     /**
  * @summary Fetch source chunk context

@@ -13,7 +13,6 @@ from app.shared.infra.settings import get_settings
 from app.shared.infra.database import get_engine
 from app.repositories.knowledge.knowledge_repo import get_chunk_by_id
 from app.shared.infra.search.knowledge import RetrievedChunk
-from app.shared.infra.search.llamaindex_index import retrieve_subject_chunks
 from app.shared.infra.search.types import SearchResult
 from app.shared.infra.subject import get_subject_vector_search_notice
 from app.shared.infra.search.web import dispatch_web_search
@@ -69,6 +68,8 @@ async def search_knowledge(
     should_rerank = enable_rerank and bool(settings.rag.rerank_model)
 
     try:
+        from app.shared.infra.search.llamaindex_index import retrieve_subject_chunks
+
         hits = await retrieve_subject_chunks(
             normalized_subject,
             normalized_query,

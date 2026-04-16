@@ -22,7 +22,7 @@ from app.models import (
     Difficulty,
     ExamPaper,
     ExamPaperItem,
-    KnowledgeNode,
+    KnowledgeUnit,
     QuestionTemplate,
     TeachingUnit,
     ThemeTreeNode,
@@ -39,15 +39,15 @@ def _create_curriculum_graph(session):
     curriculum = Curriculum(subject="math", version_no=1, status="published", is_current=True)
     unit_1 = TeachingUnit(
         subject="math",
-        canonical_name="函数单元",
-        normalized_name="函数单元",
+        canonical_name="鍑芥暟鍗曞厓",
+        normalized_name="鍑芥暟鍗曞厓",
         member_signature="assembly-unit-1",
         status="active",
     )
     unit_2 = TeachingUnit(
         subject="math",
-        canonical_name="导数单元",
-        normalized_name="导数单元",
+        canonical_name="瀵兼暟鍗曞厓",
+        normalized_name="瀵兼暟鍗曞厓",
         member_signature="assembly-unit-2",
         status="active",
     )
@@ -58,7 +58,7 @@ def _create_curriculum_graph(session):
         subject="math",
         tree_version_id=curriculum.id,
         title="root",
-        node_type="theme",
+        knowledge_unit_type="theme",
         unit_refs_json=json.dumps(
             [
                 {"teaching_unit_id": unit_1.id},
@@ -123,7 +123,7 @@ def test_assemble_paper_scope_locked_does_not_fallback_outside_scope(session) ->
     )
     session.commit()
 
-    with pytest.raises(ValueError, match="指定范围内可用题目不足"):
+    with pytest.raises(ValueError, match="可用题目不足"):
         assemble_paper(
             session,
             subject="math",
@@ -201,23 +201,23 @@ def test_update_mastery_from_exam_only_updates_linked_nodes(session) -> None:
     curriculum = Curriculum(subject="math", version_no=1, status="published", is_current=True)
     unit = TeachingUnit(
         subject="math",
-        canonical_name="函数单元",
-        normalized_name="函数单元",
+        canonical_name="鍑芥暟鍗曞厓",
+        normalized_name="鍑芥暟鍗曞厓",
         member_signature="profile-unit",
         status="active",
     )
-    node_1 = KnowledgeNode(
+    node_1 = KnowledgeUnit(
         subject="math",
-        node_type="concept",
-        canonical_name="函数",
-        normalized_name="函数",
+        knowledge_unit_type="concept",
+        canonical_name="鍑芥暟",
+        normalized_name="鍑芥暟",
         status="active",
     )
-    node_2 = KnowledgeNode(
+    node_2 = KnowledgeUnit(
         subject="math",
-        node_type="concept",
-        canonical_name="导数",
-        normalized_name="导数",
+        knowledge_unit_type="concept",
+        canonical_name="瀵兼暟",
+        normalized_name="瀵兼暟",
         status="active",
     )
     session.add_all([curriculum, unit, node_1, node_2])
@@ -241,8 +241,8 @@ def test_update_mastery_from_exam_only_updates_linked_nodes(session) -> None:
         answer_snapshot="A",
         explanation_snapshot="exp",
         teaching_unit_id=unit.id,
-        node_refs_json=json.dumps(
-            [{"knowledge_node_id": node_1.id, "coverage_weight": 1.0, "role": "primary"}],
+        knowledge_unit_refs_json=json.dumps(
+            [{"knowledge_unit_id": node_1.id, "coverage_weight": 1.0, "role": "primary"}],
             ensure_ascii=False,
         ),
         difficulty=Difficulty.MEDIUM.value,
@@ -264,13 +264,13 @@ def test_update_mastery_from_exam_only_updates_linked_nodes(session) -> None:
         session,
         user_id="local",
         subject="math",
-        knowledge_node_id=node_1.id,
+        knowledge_unit_id=node_1.id,
     )
     node_2_state = profile_repo.get_knowledge_state(
         session,
         user_id="local",
         subject="math",
-        knowledge_node_id=node_2.id,
+        knowledge_unit_id=node_2.id,
     )
 
     assert result.states_updated == 2
@@ -306,7 +306,7 @@ def test_grade_paper_raises_when_short_answer_llm_grading_fails(session) -> None
         answer_snapshot="A derivative is a rate of change.",
         explanation_snapshot="exp",
         teaching_unit_id=unit.id,
-        node_refs_json=json.dumps([], ensure_ascii=False),
+        knowledge_unit_refs_json=json.dumps([], ensure_ascii=False),
         difficulty=Difficulty.MEDIUM.value,
         question_type="short_answer",
         answer_content="It is something else.",
