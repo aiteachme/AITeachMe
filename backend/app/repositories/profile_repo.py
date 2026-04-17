@@ -13,33 +13,22 @@ from app.shared.infra.database import is_postgres
 from app.utils.time import utcnow
 
 
-def _validate_target_ref(
-    *,
-    teaching_unit_id: int | None = None,
-    knowledge_unit_id: int | None = None,
-) -> tuple[str, int]:
-    if teaching_unit_id is not None:
-        return "unit", teaching_unit_id
+def _validate_target_ref(*, knowledge_unit_id: int | None = None) -> int:
     if knowledge_unit_id is not None:
-        return "knowledge_unit", knowledge_unit_id
-    raise ValueError("teaching_unit_id or knowledge_unit_id must be provided.")
+        return knowledge_unit_id
+    raise ValueError("knowledge_unit_id must be provided.")
 
 
 def _apply_state_target_filter(
     stmt,
     *,
-    teaching_unit_id: int | None = None,
     knowledge_unit_id: int | None = None,
     target_kind: str | None = None,
 ):
-    if teaching_unit_id is not None:
-        return stmt.where(UserKnowledgeState.teaching_unit_id == teaching_unit_id)
     if knowledge_unit_id is not None:
         return stmt.where(UserKnowledgeState.knowledge_unit_id == knowledge_unit_id)
     if target_kind == "knowledge_unit":
         return stmt.where(UserKnowledgeState.knowledge_unit_id.is_not(None))
-    if target_kind == "unit":
-        return stmt.where(UserKnowledgeState.teaching_unit_id.is_not(None))
     return stmt
 
 
@@ -50,14 +39,10 @@ def upsert_knowledge_state(
     auto_commit: bool = True,
 ) -> UserKnowledgeState:
     now = utcnow()
-    target_kind, target_ref_id = _validate_target_ref(
-        teaching_unit_id=state.teaching_unit_id,
-        knowledge_unit_id=state.knowledge_unit_id,
-    )
+    target_ref_id = _validate_target_ref(knowledge_unit_id=state.knowledge_unit_id)
     insert_values = {
         "user_id": state.user_id,
         "subject": state.subject,
-        "teaching_unit_id": state.teaching_unit_id,
         "knowledge_unit_id": state.knowledge_unit_id,
         "mastery_score": state.mastery_score,
         "confidence_score": state.confidence_score,
@@ -83,15 +68,11 @@ def upsert_knowledge_state(
     set_values = {
         key: value
         for key, value in insert_values.items()
-        if key not in {"user_id", "subject", "teaching_unit_id", "knowledge_unit_id"}
+        if key not in {"user_id", "subject", "knowledge_unit_id"}
     }
 
-    if target_kind == "unit":
-        conflict_columns = ["user_id", "subject", "teaching_unit_id"]
-        conflict_where = "teaching_unit_id IS NOT NULL"
-    else:
-        conflict_columns = ["user_id", "subject", "knowledge_unit_id"]
-        conflict_where = "knowledge_unit_id IS NOT NULL"
+    conflict_columns = ["user_id", "subject", "knowledge_unit_id"]
+    conflict_where = "knowledge_unit_id IS NOT NULL"
 
     if is_postgres():
         from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -121,8 +102,7 @@ def upsert_knowledge_state(
         session,
         user_id=state.user_id,
         subject=state.subject,
-        teaching_unit_id=(target_ref_id if target_kind == "unit" else None),
-        knowledge_unit_id=(target_ref_id if target_kind == "knowledge_unit" else None),
+        knowledge_unit_id=target_ref_id,
     )
     if persisted is None:
         raise ValueError("UserKnowledgeState upsert failed.")
@@ -134,7 +114,6 @@ def get_knowledge_state(
     *,
     user_id: str,
     subject: str,
-    teaching_unit_id: int | None = None,
     knowledge_unit_id: int | None = None,
 ) -> UserKnowledgeState | None:
     stmt = select(UserKnowledgeState).where(
@@ -143,7 +122,6 @@ def get_knowledge_state(
     )
     stmt = _apply_state_target_filter(
         stmt,
-        teaching_unit_id=teaching_unit_id,
         knowledge_unit_id=knowledge_unit_id,
     )
     return session.exec(stmt).first()
@@ -261,7 +239,6 @@ def list_recent_wrong_attempt_summaries(
     *,
     user_id: str,
     subject: str,
-    teaching_unit_id: int | None = None,
     knowledge_unit_ids: list[int] | None = None,
     limit: int = 5,
 ) -> list[dict[str, str]]:
@@ -271,7 +248,7 @@ def list_recent_wrong_attempt_summaries(
         for knowledge_unit_id in (knowledge_unit_ids or [])
         if int(knowledge_unit_id) > 0
     }
-    if teaching_unit_id is not None or target_knowledge_unit_ids:
+    if target_knowledge_unit_ids:
         candidate_limit = max(candidate_limit * 8, 20)
 
     stmt = (
@@ -292,8 +269,6 @@ def list_recent_wrong_attempt_summaries(
         .order_by(ExamPaperItem.answered_at.desc(), ExamPaperItem.id.desc())
         .limit(candidate_limit)
     )
-    if teaching_unit_id is not None:
-        stmt = stmt.where(ExamPaperItem.teaching_unit_id == teaching_unit_id)
     rows = session.exec(stmt).all()
 
     ordered_rows = list(rows)
@@ -332,13 +307,9 @@ def find_pending_review(
     *,
     user_id: str,
     subject: str,
-    teaching_unit_id: int | None = None,
     knowledge_unit_id: int | None = None,
 ) -> UserKnowledgeState | None:
-    _validate_target_ref(
-        teaching_unit_id=teaching_unit_id,
-        knowledge_unit_id=knowledge_unit_id,
-    )
+    _validate_target_ref(knowledge_unit_id=knowledge_unit_id)
     stmt = select(UserKnowledgeState).where(
         UserKnowledgeState.user_id == user_id,
         UserKnowledgeState.subject == subject,
@@ -346,7 +317,6 @@ def find_pending_review(
     )
     stmt = _apply_state_target_filter(
         stmt,
-        teaching_unit_id=teaching_unit_id,
         knowledge_unit_id=knowledge_unit_id,
     )
     return session.exec(stmt).first()

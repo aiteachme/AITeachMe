@@ -29,14 +29,6 @@ from app.models.enums import (
 )
 from app.models.email_verification import EmailVerificationCode
 from app.models.exam import ExamPaper, ExamPaperItem, QuestionTemplate
-from app.models.curriculum import (
-    Curriculum,
-    CurriculumSnapshot,
-    TaxonomyAnchor,
-    TeachingUnit,
-    ThemeTreeNode,
-    UnitDependency,
-)
 from app.models.knowledge import RetrievalChunk
 from app.models.knowledge_doc import KnowledgeDoc, KnowledgeDocument
 from app.models.knowledge_relation import EdgeRevision, EvidenceLink, KnowledgeEdge
@@ -54,8 +46,6 @@ __all__ = [
     "ChatMessage",
     "ChatSession",
     "ConfirmedBuildPlan",
-    "Curriculum",
-    "CurriculumSnapshot",
     "Difficulty",
     "DigestStep",
     "DocGenStep",
@@ -89,11 +79,7 @@ __all__ = [
     "Subject",
     "SystemSettingsSnapshot",
     "TaskStatus",
-    "TaxonomyAnchor",
-    "TeachingUnit",
     "TemplateNodeRole",
-    "ThemeTreeNode",
-    "UnitDependency",
     "User",
     "UserKnowledgeState",
     "WeaknessReason",
@@ -102,4 +88,3 @@ __all__ = [
     "is_web_practice_mode",
     "validate_status_transition",
 ]
-

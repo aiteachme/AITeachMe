@@ -8,15 +8,10 @@ from datetime import datetime
 from sqlmodel import Session, func, select
 
 from app.models import (
-    Curriculum,
     ExamPaper,
     ExamPaperItem,
     QuestionTemplate,
-    TeachingUnit,
-    ThemeTreeNode,
-    UnitDependency,
 )
-from app.repositories.knowledge import curriculum_repo
 
 
 def _load_json_list(payload: str) -> list[dict[str, object]]:
@@ -72,7 +67,7 @@ def find_templates_by_unit(
     *,
     status: str = "active",
 ) -> list[QuestionTemplate]:
-    stmt = select(QuestionTemplate).where(QuestionTemplate.teaching_unit_id == unit_id)
+    stmt = select(QuestionTemplate).where(QuestionTemplate.knowledge_unit_id == unit_id)
     if status:
         stmt = stmt.where(QuestionTemplate.status == status)
     return list(session.exec(stmt.order_by(QuestionTemplate.id)).all())
@@ -104,7 +99,7 @@ def find_template_by_stem_hash(
 ) -> QuestionTemplate | None:
     stmt = select(QuestionTemplate).where(
         QuestionTemplate.subject == subject,
-        QuestionTemplate.teaching_unit_id == unit_id,
+        QuestionTemplate.knowledge_unit_id == unit_id,
         QuestionTemplate.stem_hash == stem_hash,
     )
     return session.exec(stmt).first()
@@ -187,19 +182,6 @@ def list_exam_papers(
     return rows, total
 
 
-def list_teaching_unit_ids_by_subject(
-    session: Session,
-    *,
-    subject: str,
-    status: str | None = "active",
-) -> list[int]:
-    stmt = select(TeachingUnit.id).where(TeachingUnit.subject == subject)
-    if status is not None:
-        stmt = stmt.where(TeachingUnit.status == status)
-    stmt = stmt.order_by(TeachingUnit.id)
-    return [int(item) for item in session.exec(stmt).all() if item is not None]
-
-
 def count_active_question_templates(
     session: Session,
     *,
@@ -226,7 +208,6 @@ def list_active_question_templates(
     session: Session,
     *,
     subject: str,
-    curriculum_version_id: int | None = None,
     unit_ids: set[int] | None = None,
     question_types: set[str] | None = None,
     difficulty: str | None = None,
@@ -235,10 +216,8 @@ def list_active_question_templates(
         QuestionTemplate.subject == subject,
         QuestionTemplate.status == "active",
     )
-    if curriculum_version_id is not None:
-        stmt = stmt.where(QuestionTemplate.curriculum_version_id == curriculum_version_id)
     if unit_ids:
-        stmt = stmt.where(QuestionTemplate.teaching_unit_id.in_(unit_ids))
+        stmt = stmt.where(QuestionTemplate.knowledge_unit_id.in_(unit_ids))
     if question_types:
         stmt = stmt.where(QuestionTemplate.question_type.in_(question_types))
     if difficulty:
@@ -281,51 +260,6 @@ def delete_exam_paper_cascade(session: Session, *, paper_id: int) -> bool:
     session.delete(paper)
     session.commit()
     return True
-
-
-def get_published_curriculum_version(
-    session: Session,
-    subject: str,
-) -> Curriculum | None:
-    return curriculum_repo.get_current_curriculum_snapshot(session, subject)
-
-
-def resolve_teaching_units_from_theme_tree_node(
-    session: Session,
-    theme_tree_node_id: int,
-) -> list[int]:
-    node = session.get(ThemeTreeNode, theme_tree_node_id)
-    if node is None:
-        return []
-
-    teaching_unit_ids: list[int] = []
-    for item in _load_json_list(node.unit_refs_json):
-        raw_unit_id = item.get("teaching_unit_id")
-        if isinstance(raw_unit_id, int):
-            teaching_unit_ids.append(raw_unit_id)
-    return sorted(set(teaching_unit_ids))
-
-
-def list_prereq_units(session: Session, unit_id: int) -> list[int]:
-    unit = session.get(TeachingUnit, unit_id)
-    if unit is None:
-        return []
-
-    curriculum = get_published_curriculum_version(session, unit.subject)
-    if curriculum is None or curriculum.id is None:
-        return []
-
-    stmt = (
-        select(UnitDependency.source_unit_id)
-        .where(
-            UnitDependency.dag_version_id == curriculum.id,
-            UnitDependency.target_unit_id == unit_id,
-            UnitDependency.dependency_type == "prerequisite",
-        )
-        .distinct()
-        .order_by(UnitDependency.source_unit_id)
-    )
-    return [int(item) for item in session.exec(stmt).all()]
 
 
 def list_recent_exam_template_ids_for_user(

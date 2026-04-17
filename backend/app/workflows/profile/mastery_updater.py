@@ -257,7 +257,6 @@ def _upsert_state_from_attempts(
     *,
     user_id: str,
     subject: str,
-    teaching_unit_id: int | None = None,
     knowledge_unit_id: int | None = None,
     attempts: list[_WeightedAttempt],
     now: datetime,
@@ -266,14 +265,13 @@ def _upsert_state_from_attempts(
 ) -> UserKnowledgeState | None:
     if not attempts:
         return None
-    if (teaching_unit_id is None) == (knowledge_unit_id is None):
-        raise ValueError("Exactly one mastery target must be provided.")
+    if knowledge_unit_id is None:
+        raise ValueError("knowledge_unit_id must be provided.")
 
     existing = profile_repo.get_knowledge_state(
         session,
         user_id=user_id,
         subject=subject,
-        teaching_unit_id=teaching_unit_id,
         knowledge_unit_id=knowledge_unit_id,
     )
 
@@ -301,7 +299,6 @@ def _upsert_state_from_attempts(
     state = UserKnowledgeState(
         user_id=user_id,
         subject=subject,
-        teaching_unit_id=teaching_unit_id,
         knowledge_unit_id=knowledge_unit_id,
         mastery_score=mastery_score,
         confidence_score=confidence_score,
@@ -344,7 +341,6 @@ def update_mastery_from_exam(
 
     items = exams_repo.list_items_by_paper(session, exam_paper_id)
 
-    unit_attempts: dict[int, list[_WeightedAttempt]] = {}
     node_attempts: dict[int, list[_WeightedAttempt]] = {}
 
     for item in items:
@@ -362,9 +358,6 @@ def update_mastery_from_exam(
             confidence_self_report=item.confidence_self_report,
             error_cause_label=item.error_cause_label,
         )
-        if item.teaching_unit_id is not None:
-            unit_attempts.setdefault(item.teaching_unit_id, []).append(base)
-
         knowledge_unit_links = _parse_knowledge_unit_links(item.knowledge_unit_refs_json)
         if not knowledge_unit_links and item.knowledge_unit_id is not None:
             knowledge_unit_links = [(item.knowledge_unit_id, 1.0)]
@@ -385,20 +378,6 @@ def update_mastery_from_exam(
 
     now = utcnow()
     updated_state_ids: list[int] = []
-
-    for target_id, target_attempts in unit_attempts.items():
-        persisted = _upsert_state_from_attempts(
-            session,
-            user_id=exam_paper.user_id,
-            subject=exam_paper.subject,
-            teaching_unit_id=target_id,
-            attempts=target_attempts,
-            now=now,
-            source_exam_paper_id=exam_paper_id,
-            auto_commit=auto_commit,
-        )
-        if persisted is not None and persisted.id is not None:
-            updated_state_ids.append(persisted.id)
 
     for target_id, target_attempts in node_attempts.items():
         persisted = _upsert_state_from_attempts(

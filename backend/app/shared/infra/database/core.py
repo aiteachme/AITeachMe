@@ -86,6 +86,19 @@ _EXPECTED_SCHEMA_COLUMNS = {
 }
 _ALLOWED_SQLITE_RUNTIME_TABLES = {"sqlite_sequence"}
 _ALLOWED_SQLITE_RUNTIME_PREFIXES = ("chunk_embeddings_",)
+_LEGACY_POSTGRES_TABLES = (
+    "unit_dependency",
+    "theme_tree_node",
+    "taxonomy_anchor",
+    "teaching_unit",
+    "curriculum",
+)
+_LEGACY_POSTGRES_COLUMNS = {
+    "question_template": ("curriculum_version_id",),
+    "exam_paper": ("curriculum_version_id", "theme_tree_node_id"),
+}
+_LEGACY_SQLITE_TABLES = _LEGACY_POSTGRES_TABLES
+_LEGACY_SQLITE_COLUMNS = _LEGACY_POSTGRES_COLUMNS
 
 
 def _set_vec_status(ready: bool, error: str | None = None) -> None:
@@ -211,11 +224,44 @@ def _remove_sqlite_files(db_path: Path) -> None:
         Path(f"{db_path}{suffix}").unlink(missing_ok=True)
 
 
+def _drop_sqlite_legacy_schema(engine: sa.Engine) -> None:
+    inspector = sa.inspect(engine)
+    existing_tables = set(inspector.get_table_names())
+    if not existing_tables:
+        return
+
+    with engine.begin() as connection:
+        connection.execute(sa.text("PRAGMA foreign_keys = OFF"))
+        try:
+            for table_name, column_names in _LEGACY_SQLITE_COLUMNS.items():
+                if table_name not in existing_tables:
+                    continue
+                existing_columns = {
+                    column["name"]
+                    for column in inspector.get_columns(table_name)
+                }
+                for column_name in column_names:
+                    if column_name not in existing_columns:
+                        continue
+                    connection.execute(
+                        sa.text(f"ALTER TABLE {quote_sqlite_identifier(table_name)} DROP COLUMN {quote_sqlite_identifier(column_name)}")
+                    )
+
+            for table_name in _LEGACY_SQLITE_TABLES:
+                if table_name in existing_tables:
+                    connection.execute(
+                        sa.text(f"DROP TABLE IF EXISTS {quote_sqlite_identifier(table_name)}")
+                    )
+        finally:
+            connection.execute(sa.text("PRAGMA foreign_keys = ON"))
+
+
 def _ensure_local_sqlite_schema(engine: sa.Engine) -> sa.Engine:
     db_path = _get_db_path()
     if not db_path.exists():
         return engine
 
+    _drop_sqlite_legacy_schema(engine)
     drift = _inspect_sqlite_schema_drift(engine)
     if drift is None:
         return engine
@@ -442,6 +488,22 @@ def _ensure_postgres_embedding_column(
     )
 
 
+def _drop_postgres_legacy_schema(connection: sa.Connection) -> None:
+    for table_name, column_names in _LEGACY_POSTGRES_COLUMNS.items():
+        if not _postgres_table_exists(connection, table_name):
+            continue
+        for column_name in column_names:
+            if _postgres_column_exists(connection, table_name=table_name, column_name=column_name):
+                connection.execute(
+                    sa.text(
+                        f"ALTER TABLE {table_name} DROP COLUMN IF EXISTS {column_name}"
+                    )
+                )
+
+    for table_name in _LEGACY_POSTGRES_TABLES:
+        connection.execute(sa.text(f"DROP TABLE IF EXISTS {table_name} CASCADE"))
+
+
 def vector_table_exists(connection: sa.Connection, table_name: str) -> bool:
     """Check whether one vector table exists."""
 
@@ -645,6 +707,7 @@ def _init_postgres_db(settings) -> None:
     # 确保 pgvector 扩展可用
     with engine.begin() as conn:
         conn.execute(sa.text("CREATE EXTENSION IF NOT EXISTS vector"))
+        _drop_postgres_legacy_schema(conn)
 
     SQLModel.metadata.create_all(engine, tables=_SCHEMA_TABLES)
     _upsert_settings_snapshot(engine, settings)
@@ -683,4 +746,3 @@ def managed_session() -> Generator[Session, None, None]:
         raise
     finally:
         session.close()
-

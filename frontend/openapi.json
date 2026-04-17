@@ -96,7 +96,11 @@
           "system"
         ],
         "summary": "读取后端设置总览",
+<<<<<<< HEAD
+        "description": "返回环境变量与 settings.yaml 合并后的只读设置概览。",
+=======
         "description": "返回环境变量与 settings_default.yaml 合并后的只读设置概览。",
+>>>>>>> origin/main
         "operationId": "get_system_settings_api_v1_system_settings_post",
         "requestBody": {
           "content": {
@@ -8042,6 +8046,8 @@
             ],
             "title": "Num Questions",
             "description": "Optional target question count."
+<<<<<<< HEAD
+=======
           },
           "theme_tree_node_id": {
             "anyOf": [
@@ -8069,6 +8075,7 @@
             ],
             "title": "Teaching Unit Ids",
             "description": "Optional teaching unit scope."
+>>>>>>> origin/main
           }
         },
         "type": "object",
@@ -8136,6 +8143,8 @@
             ],
             "title": "Exam Paper Id"
           },
+<<<<<<< HEAD
+=======
           "theme_tree_node_id": {
             "anyOf": [
               {
@@ -8154,6 +8163,7 @@
             "type": "array",
             "title": "Teaching Unit Ids"
           },
+>>>>>>> origin/main
           "sample_file_uids": {
             "items": {
               "type": "string"
@@ -8533,10 +8543,13 @@
             "type": "string",
             "title": "Explanation"
           },
+<<<<<<< HEAD
+=======
           "teaching_unit_id": {
             "type": "integer",
             "title": "Teaching Unit Id"
           },
+>>>>>>> origin/main
           "knowledge_unit_links": {
             "items": {
               "$ref": "#/components/schemas/ExamNodeLinkResponse"
@@ -8608,8 +8621,12 @@
           "question_type",
           "difficulty",
           "stem",
+<<<<<<< HEAD
+          "explanation"
+=======
           "explanation",
           "teaching_unit_id"
+>>>>>>> origin/main
         ],
         "title": "ExamPaperItemResponse"
       },
@@ -10451,14 +10468,19 @@
             "type": "string",
             "title": "User Id"
           },
+<<<<<<< HEAD
+=======
           "weak_unit_count": {
             "type": "integer",
             "title": "Weak Unit Count"
           },
+>>>>>>> origin/main
           "weak_knowledge_unit_count": {
             "type": "integer",
             "title": "Weak Knowledge Unit Count"
           },
+<<<<<<< HEAD
+=======
           "unit_states": {
             "items": {
               "$ref": "#/components/schemas/MasteryStateResponse"
@@ -10466,6 +10488,7 @@
             "type": "array",
             "title": "Unit States"
           },
+>>>>>>> origin/main
           "knowledge_unit_states": {
             "items": {
               "$ref": "#/components/schemas/MasteryStateResponse"
@@ -10498,7 +10521,10 @@
         "required": [
           "subject",
           "user_id",
+<<<<<<< HEAD
+=======
           "weak_unit_count",
+>>>>>>> origin/main
           "weak_knowledge_unit_count"
         ],
         "title": "MasteryOverviewResponse"
@@ -10509,6 +10535,34 @@
             "type": "integer",
             "title": "Id"
           },
+<<<<<<< HEAD
+          "knowledge_unit_id": {
+            "type": "integer",
+            "title": "Knowledge Unit Id"
+          },
+          "knowledge_unit_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Knowledge Unit Name"
+          },
+          "knowledge_unit_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Knowledge Unit Type"
+          },
+=======
           "target_kind": {
             "type": "string",
             "title": "Target Kind"
@@ -10535,6 +10589,7 @@
             ],
             "title": "Knowledge Unit Id"
           },
+>>>>>>> origin/main
           "mastery_score": {
             "type": "number",
             "title": "Mastery Score"
@@ -10596,7 +10651,11 @@
         "type": "object",
         "required": [
           "id",
+<<<<<<< HEAD
+          "knowledge_unit_id",
+=======
           "target_kind",
+>>>>>>> origin/main
           "mastery_score",
           "confidence_score",
           "stability_score",
@@ -10945,6 +11004,34 @@
             "type": "string",
             "title": "Subject"
           },
+<<<<<<< HEAD
+          "knowledge_unit_id": {
+            "type": "integer",
+            "title": "Knowledge Unit Id"
+          },
+          "knowledge_unit_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Knowledge Unit Name"
+          },
+          "knowledge_unit_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Knowledge Unit Type"
+          },
+=======
           "target_kind": {
             "type": "string",
             "title": "Target Kind"
@@ -10971,6 +11058,7 @@
             ],
             "title": "Knowledge Unit Id"
           },
+>>>>>>> origin/main
           "priority": {
             "type": "number",
             "title": "Priority"
@@ -11036,7 +11124,11 @@
           "id",
           "user_id",
           "subject",
+<<<<<<< HEAD
+          "knowledge_unit_id",
+=======
           "target_kind",
+>>>>>>> origin/main
           "priority",
           "status",
           "interval_days",
@@ -11787,7 +11879,11 @@
             "format": "date-time",
             "title": "Generated At"
           },
+<<<<<<< HEAD
+          "avg_mastery": {
+=======
           "avg_unit_mastery": {
+>>>>>>> origin/main
             "anyOf": [
               {
                 "type": "number"
@@ -11796,6 +11892,9 @@
                 "type": "null"
               }
             ],
+<<<<<<< HEAD
+            "title": "Avg Mastery"
+=======
             "title": "Avg Unit Mastery"
           },
           "avg_knowledge_unit_mastery": {
@@ -11813,6 +11912,7 @@
             "type": "integer",
             "title": "Weak Unit Count",
             "default": 0
+>>>>>>> origin/main
           },
           "weak_knowledge_unit_count": {
             "type": "integer",
@@ -11864,6 +11964,8 @@
             "title": "Difficulty Focus",
             "default": "medium"
           },
+<<<<<<< HEAD
+=======
           "focus_teaching_unit_ids": {
             "items": {
               "type": "integer"
@@ -11871,6 +11973,7 @@
             "type": "array",
             "title": "Focus Teaching Unit Ids"
           },
+>>>>>>> origin/main
           "focus_knowledge_unit_ids": {
             "items": {
               "type": "integer"
