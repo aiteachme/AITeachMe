@@ -1,6 +1,6 @@
 # Ingest 透视引擎链路说明
 
-最后更新：2026-04-16
+最后更新：2026-04-17
 
 `ingest/` 负责把用户上传的原始文件变成 Digest 可以消费的标准化 Markdown 与资产目录。它不做教学规划、不生成知识文档、不构建知识图谱，只保证“资料可读、可预览、可检索、可继续增强”。
 
@@ -19,8 +19,8 @@ Ingest 做的事就是：把上传的 PDF、Word、PPT、图片或文本先快�
 | 4 | 制定解析计划 | 根据分类结果生成 `ParsePlan`，包括解析模式、parser chain、OCR 和资产参数 | 明确本次应该用哪些解析器、按什么顺序尝试、失败怎么 fallback | `build_parse_plan`、`ParsePlan`、`ParserRunOptions` |
 | 5 | Phase 1 fast parse | 按 parser chain 快速解析，规范 Markdown 图片引用，抽取资产；MinerU 分支会走外部解析再 canonicalize | 尽快产出一版可预览、可被 Digest 消费的基础 Markdown | `fast_parse_file`、`parse_file_to_dir`、`canonicalize_markdown` |
 | 6 | Phase 1 持久化 | 写 raw markdown、资产目录、`raw_file_asset` 和解析元数据 | 让前端能预览，让 Digest 能读取，让失败恢复有依据 | `cs.write_text`、`cs.upload_dir`、`replace_raw_file_assets`、`update_raw_file` |
-| 7 | Phase 2 deep enhance | 后台尝试 PDF 质量重解析和 Vision OCR，成功后覆盖 Markdown，失败则保留 Phase 1 结果 | 在不阻塞用户预览的前提下，提高复杂资料的可读性和可检索性 | `_run_deep_enhance_background`、`deep_enhance_file`、`parse_pdf_with_pymupdf4llm` |
-| 8 | 增强恢复 | 服务启动后扫描 `fast_parsed` / `enhancing` 文件并重新派发增强任务 | 减少服务重启导致的后台增强任务丢失 | `recover_stalled_enhancements`、`_background_tasks` |
+| 7 | Phase 2 deep enhance | 后台尝试 PDF 质量重解析和 Vision OCR，成功后覆盖 Markdown 与资产，失败则保留 Phase 1 结果 | 在不阻塞用户预览的前提下，提高复杂资料的可读性和可检索性 | `_run_deep_enhance_background`、`deep_enhance_file`、`parse_pdf_with_pymupdf4llm` |
+| 8 | 增强恢复 | 服务启动后扫描 `fast_parsed` / `enhancing` 文件并重新派发增强任务 | 减少服务重启导致的后台增强任务丢失 | `recover_stalled_enhancements`、`background_task_registry` |
 
 ## 当前 canonical 结构
 
@@ -79,7 +79,7 @@ from app.workflows.ingest import run_parse_file_workflow
   -> background_task_registry.spawn(run_parse_files_background)
   -> run_parse_file_workflow
   -> Phase 1 fast parse
-  -> 必要时 asyncio task 派发 Phase 2 deep enhance
+  -> 必要时 background_task_registry 派发 Phase 2 deep enhance
   -> raw_file.ingest_status 进入 Digest 可消费态
 ```
 
@@ -222,16 +222,17 @@ Digest 当前允许消费以下状态：
 
 真实入口是 `deep_enhance/lib/background.py::_run_deep_enhance_background()`。
 
-Phase 2 在 `asyncio.create_task()` 中后台执行。主解析请求会先返回，前端可以立即预览 Phase 1 Markdown。
+Phase 2 在 `background_task_registry` 中后台执行。主解析请求会先返回，前端可以立即预览 Phase 1 Markdown；脚本或非 API 调用场景仍保留 `_background_tasks` 兜底引用，避免 task 被回收。
 
 ### 1. 加载增强上下文
 
 1. 读取 `raw_file`。
 2. 物化原始文件。
 3. 读取 Phase 1 Markdown。
-4. 从 `classification_json` 恢复分类结果。
-5. 重建 `ParsePlan`。
-6. 设置 `ingest_status = enhancing`。
+4. 从 ContentStore 物化 Phase 1 已提取资产到临时工作目录，确保后续 OCR 能看到真实图片。
+5. 从 `classification_json` 恢复分类结果。
+6. 重建 `ParsePlan`。
+7. 设置 `ingest_status = enhancing`。
 
 ### 2. PDF 质量重解析
 
@@ -255,6 +256,8 @@ Phase 2 在 `asyncio.create_task()` 中后台执行。主解析请求会先返�
 成功后：
 
 - 覆盖 raw Markdown。
+- 上传增强阶段工作目录中的资产到 `ContentStore.asset_prefix(subject, file_id)`。
+- 刷新 `image_count` 与资产元数据。
 - 更新 `parse_metadata_json` 中的 OCR 统计。
 - `ingest_status = ready_for_digest`
 - `digest_current_step = ingest.enhance.completed`
@@ -274,18 +277,20 @@ Phase 2 在 `asyncio.create_task()` 中后台执行。主解析请求会先返�
 - `fast_parsed`
 - `enhancing`
 
-并重新派发 Phase 2。恢复任务现在也会加入 `_background_tasks` 集合，避免后台 task 被提前回收。
+并在 FastAPI 启动生命周期中重新派发 Phase 2。API 运行时恢复任务会进入 `background_task_registry`，脚本调用时才回退到 `_background_tasks` 集合。
 
 ## 当前明显优化点
 
 ### 已处理
 
-- Phase 2 正常派发和服务启动恢复都保留 task 引用，降低后台增强任务被 GC 回收的风险。
+- 上传触发的 Phase 2 和启动恢复任务都接入 `background_task_registry`，脚本调用保留 `_background_tasks` 兜底。
+- Phase 2 会先物化 Phase 1 资产，增强后重新上传资产并同步 `image_count`，避免 Markdown 图片引用悬空。
+- Phase 2 临时目录改为上下文管理，增强结束后自动清理工作目录。
 
 ### 建议优先级 P0/P1
 
 1. **把 Phase 2 从内存 task 迁移到持久化队列**
-   现在重启后可以扫描恢复，但正在执行的上下文、失败次数、重试退避都不够完整。建议后续引入 DB job / Redis queue / Celery / Dramatiq 一类持久化任务层。
+   现在启动后可以扫描恢复，但正在执行的上下文、失败次数、重试退避都不够完整。建议后续引入 DB job / Redis queue / Celery / Dramatiq 一类持久化任务层。
 
 2. **收敛 runtime 内联逻辑与 LangGraph 节点实现**
    当前 `fast_parse/graph.py` 和 `deep_enhance/graph.py` 能编译、能可视化，但真实运行主逻辑在 runtime 中内联执行。后续如果要强化可观测性和节点级调试，应逐步让 runtime 调 `run_state_graph(...)`。
@@ -293,8 +298,8 @@ Phase 2 在 `asyncio.create_task()` 中后台执行。主解析请求会先返�
 3. **增加基于 content_hash 的幂等跳过**
    已有 `content_hash`，但当前上传后仍会进入解析。可以在同 subject 下发现同 hash 产物时复用 Markdown 与资产，减少重复解析成本。
 
-4. **统一临时目录清理策略**
-   当前解析阶段会创建临时目录，建议补充集中清理或 `try/finally` 清理，避免大量文件解析后系统临时目录膨胀。
+4. **统一 Phase 1 临时目录清理策略**
+   Phase 2 已用上下文清理工作目录；Phase 1 仍会创建临时目录，建议后续补充集中清理或 `try/finally` 清理，避免大量文件解析后系统临时目录膨胀。
 
 5. **把解析质量评估从启发式升级为可解释评分**
    当前 `quality_score` 是简单规则。后续可增加 Markdown 结构、图片覆盖、公式/表格保真度、OCR 低置信段落等维度。

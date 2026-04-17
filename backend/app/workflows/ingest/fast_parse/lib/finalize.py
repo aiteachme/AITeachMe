@@ -1,4 +1,4 @@
-﻿"""Finalize nodes for ingest workflows.
+"""Finalize nodes for ingest workflows.
 
 Reads DB: ``raw_file``.
 Writes DB: final ``raw_file`` success / failure state and ingest readiness.
@@ -21,7 +21,6 @@ from app.utils.path_helpers import to_storage_key
 from app.workflows.ingest.common.events import (
     IngestFileFastParsedEvent,
     IngestFileParseFailedEvent,
-    IngestFileReadyForDigestEvent,
 )
 from app.workflows.ingest.fast_parse.lib.common import workflow_logger
 from app.workflows.ingest.fast_parse.state import IngestParseState

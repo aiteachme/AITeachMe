@@ -208,6 +208,14 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     settings = get_settings()
     _log_infra_diagnostics(settings)
 
+    from app.workflows.ingest.deep_enhance.lib.recovery import recover_stalled_enhancements
+
+    app.state.background_task_registry.spawn(
+        recover_stalled_enhancements(task_registry=app.state.background_task_registry),
+        kind="ingest.recovery",
+        name="ingest.recovery",
+    )
+
     logger.info(
         "app_started",
         app_mode=resolve_app_mode(),
