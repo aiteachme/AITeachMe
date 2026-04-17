@@ -32,6 +32,30 @@ def build_publish_document_node(*, context: WorkflowContext):
         )
         chapter_assignments = list(state.get("chapter_assignments", []))
         document_context = dict(state.get("document_context") or {})
+        docgen_artifacts = {
+            "docgen_context": dict(state.get("docgen_context") or {}),
+            "intent_profile": dict(state.get("intent_profile") or {}),
+            "file_summaries": list(state.get("file_summaries") or []),
+            "chapter_generation_plan": dict(state.get("chapter_generation_plan") or {}),
+            "enhanced_chapter_drafts": list(state.get("enhanced_chapter_drafts") or []),
+            "research_traces": list(state.get("research_traces") or []),
+            "evidence_ledgers": list(state.get("evidence_ledgers") or []),
+            "asset_manifest": {
+                "assets": [
+                    asset
+                    for manifest in list(state.get("asset_manifests") or [])
+                    for asset in list((manifest or {}).get("assets") or [])
+                ]
+            },
+            "practice_manifest": {
+                "questions": [
+                    question
+                    for manifest in list(state.get("practice_manifests") or [])
+                    for question in list((manifest or {}).get("questions") or [])
+                ]
+            },
+            "merge_review_report": dict(state.get("merge_review_report") or {}),
+        }
         user_prompt = state.get("user_prompt")
         requested_at = state["requested_at"]
         standalone = True
@@ -50,6 +74,7 @@ def build_publish_document_node(*, context: WorkflowContext):
             subject=subject,
             chapter_metadatas=chapter_metadatas,
             document_context=document_context,
+            docgen_artifacts=docgen_artifacts,
         )
 
         doc_ids: list[int] = []
@@ -63,6 +88,7 @@ def build_publish_document_node(*, context: WorkflowContext):
                 requested_at=requested_at,
                 version_no=1,
                 build_session_id=state.get("build_session_id"),
+                docgen_artifacts=docgen_artifacts,
             )
             node_logger.info("docgen_standalone_publish_completed", doc_count=len(doc_ids))
 

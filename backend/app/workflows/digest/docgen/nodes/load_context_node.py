@@ -21,6 +21,7 @@ from app.workflows.digest.docgen.nodes.common import (
     publish_docgen_progress,
     serialize_section,
 )
+from app.workflows.digest.docgen.lib.models import DocGenContext
 from app.workflows.digest.docgen.state import DocGenState
 from app.workflows.digest.common.prepare import prepare_shared_inputs
 
@@ -98,6 +99,23 @@ def build_load_context_node(*, context: WorkflowContext):
                 },
             ),
         }
+        docgen_context = DocGenContext(
+            subject=state["subject"],
+            subject_display_name=str(getattr(shared_inputs.subject_profile, "subject_name", "") or state["subject"]),
+            digest_mode=digest_mode,
+            course_type=course_type,
+            retrieval_profile=retrieval_profile,
+            tone=tone,
+            user_goal=str(plan_contract.user_goal or state.get("user_prompt") or ""),
+            plan_summary=str(plan_contract.plan_summary or ""),
+            source_strategy="local_first" if has_local_materials else "web_first",
+            include_sources=bool((plan_payload.get("build_constraints") or {}).get("include_sources", True)),
+            selected_skillpacks=selected_skillpacks,
+            skillpack_guidance=str(document_context.get("skillpack_guidance") or ""),
+            recommended_tool_tags=list(document_context.get("recommended_tool_tags") or []),
+            local_source_count=len(shared_inputs.source_packets),
+            section_count=len(shared_inputs.section_packets),
+        )
 
         update_knowledge_build_status(
             state["subject"],
@@ -168,6 +186,7 @@ def build_load_context_node(*, context: WorkflowContext):
             "subject_profile": shared_inputs.subject_profile.model_dump(mode="json"),
             "chapter_assignments": assignments,
             "confirmed_plan": plan_payload,
+            "docgen_context": docgen_context.model_dump(mode="json"),
             "digest_mode": digest_mode,
             "course_type": course_type,
             "retrieval_profile": retrieval_profile,

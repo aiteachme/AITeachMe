@@ -1,8 +1,10 @@
-﻿# Workflows 说明
+# Workflows 说明
 
-最后更新：2026-04-16
+最后更新：2026-04-17
 
-`backend/app/workflows/` 现在是 AITeachMe 后端的唯一业务层。这里不仅负责五大引擎的图编排，也负责承接面向 API 的业务用例和非引擎业务模块。
+`backend/app/workflows/` 是 AITeachMe 后端当前唯一的业务层。
+
+这里既承接五大引擎的 workflow 编排，也承接直接面向 API 的业务用例。
 
 ## 先看什么
 
@@ -25,12 +27,11 @@
 
 - `support`
 
-`support/` 用来承接原本不属于五大 AI 引擎、但仍然属于后端业务层的模块，例如 `system`、`auth` 与 `subjects`
+`support/` 用来承接不属于五大引擎、但仍属于后端业务层的模块，例如 `system`、`auth`、`subjects`、`knowledge_graph`
 
 ## 当前 canonical 链路
 
 - `ingest/fast_parse`
-- `ingest/deep_enhance`
 - `digest/planner`
 - `digest/docgen`
 - `digest/kg_file_ingest`
@@ -43,13 +44,13 @@
 ## 当前已落地的单层化示例
 
 - `ingest/__init__.py`、`digest/__init__.py`
-  引擎模块根只保留稳定导入面，不再承载业务实现
-- `ingest/fast_parse/graph.py`、`ingest/deep_enhance/graph.py`
-  Ingest 图定义与 workflow export 声明落点
+  引擎模块根只保留稳定导入面，不承载业务实现
+- `ingest/fast_parse/graph.py`
+  Ingest 图定义与 workflow export 落点
+- `ingest/fast_parse/lib/enhance.py`、`ingest/fast_parse/lib/recovery.py`
+  Ingest 后台增强与增强恢复落点
 - `digest/common/events.py`、`digest/common/exports.py`
   Digest 跨链路事件与 workflow export 落点
-- `support/knowledge_graph/overview.py`、`support/knowledge_graph/study_plan.py`
-  基于知识图谱的总览与学习计划用例
 - `digest/docgen/__init__.py`、`digest/kg_file_ingest/__init__.py`、`digest/kg_docs_sync/__init__.py`
   Digest workflow runner 的 lane 入口
 - `digest/planner/__init__.py`、`digest/planner/graph.py`
@@ -60,6 +61,8 @@
   Digest 教学运行时配置 facade
 - `digest/common/pedagogy/`
   Digest 教学语义 facade
+- `support/knowledge_graph/overview.py`、`support/knowledge_graph/study_plan.py`
+  基于知识图谱的总览与学习计划用例
 - `support/system/init.py`、`support/system/settings.py`
   系统初始化与设置总览的 canonical 位置
 - `support/files/catalog.py`、`support/files/uploads.py`、`support/files/parsing.py`、`support/files/deletion.py`

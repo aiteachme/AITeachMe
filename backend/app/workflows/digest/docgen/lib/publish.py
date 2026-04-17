@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 from datetime import datetime
+from typing import Any
 from urllib.parse import urlparse
 
 from pydantic import BaseModel, Field
@@ -178,6 +179,14 @@ def _build_versioned_merged_key(subject: str, version_no: int) -> str:
     return f"{subject}/knowledge_markdowns/versions/v{version_no:04d}/merged_knowledge_base.md"
 
 
+def _build_versioned_docgen_manifest_key(subject: str, version_no: int) -> str:
+    return f"{subject}/knowledge_markdowns/versions/v{version_no:04d}/docgen_manifest.json"
+
+
+def _build_current_docgen_manifest_key(subject: str) -> str:
+    return f"{subject}/knowledge_markdowns/docgen_manifest.json"
+
+
 
 def _staging_chapter_key(subject: str, chapter_index: int, title: str) -> str:
     safe_title = sanitize_doc_title(title)
@@ -215,6 +224,11 @@ def _build_chapter_manifest(chapter: dict) -> dict[str, object]:
         "read_url_count": int(chapter.get("read_url_count", 0) or 0),
         "document_count": int(chapter.get("document_count", 0) or 0),
         "purify_used": bool(chapter.get("purify_used", False)),
+        "evidence_ledger": dict(chapter.get("evidence_ledger") or {}),
+        "quality_signals": dict(chapter.get("quality_signals") or {}),
+        "asset_ids": list(chapter.get("asset_ids") or []),
+        "practice_ids": list(chapter.get("practice_ids") or []),
+        "warnings": list(chapter.get("warnings") or []),
     }
 
 
@@ -244,6 +258,7 @@ async def stage_knowledge_docs(
     subject: str,
     chapter_metadatas: list[dict],
     document_context: dict[str, object] | None = None,
+    docgen_artifacts: dict[str, Any] | None = None,
 ) -> StagedKnowledgeDocs:
     """Write chapter markdown into staging storage."""
 
@@ -274,6 +289,8 @@ async def stage_knowledge_docs(
 
     merged_markdown = build_merged_markdown(sorted_chapters, document_context=document_context)
     await cs.write_text(f"{subject}/knowledge_markdowns/_build/merged_knowledge_base.md", merged_markdown)
+    if docgen_artifacts is not None:
+        await cs.write_json_raw(f"{subject}/knowledge_markdowns/_build/docgen_manifest.json", docgen_artifacts)
 
     update_knowledge_build_status(
         subject,
@@ -297,6 +314,7 @@ def publish_staged_knowledge_docs(
     requested_at: datetime,
     version_no: int = 1,
     build_session_id: str | None = None,
+    docgen_artifacts: dict[str, Any] | None = None,
 ) -> list[int]:
     """Promote staged chapter markdown to live outputs and persist metadata."""
 
@@ -362,6 +380,11 @@ def publish_staged_knowledge_docs(
     merged_markdown = build_merged_markdown(sorted_chapters, document_context=document_context)
     run_store_sync(cs.write_text, _build_versioned_merged_key(subject, resolved_version_no), merged_markdown)
     run_store_sync(cs.write_text, cs.knowledge_doc_key(subject, "merged_knowledge_base.md"), merged_markdown)
+    if docgen_artifacts is not None:
+        versioned_manifest_key = _build_versioned_docgen_manifest_key(subject, resolved_version_no)
+        current_manifest_key = _build_current_docgen_manifest_key(subject)
+        run_store_sync(cs.write_json_raw, versioned_manifest_key, docgen_artifacts)
+        run_store_sync(cs.write_json_raw, current_manifest_key, docgen_artifacts)
     run_store_sync(cs.delete_prefix, cs.knowledge_build_prefix(subject), default=0)
 
     manifest = KnowledgeDocsManifest(
@@ -384,6 +407,9 @@ def publish_staged_knowledge_docs(
             for chapter in sorted_chapters
         ],
     )
+    if docgen_artifacts is not None:
+        manifest.docgen_manifest_key = _build_versioned_docgen_manifest_key(subject, resolved_version_no)
+        manifest.merge_review_report = dict(docgen_artifacts.get("merge_review_report") or {})
     write_knowledge_manifest(subject, manifest)
     update_knowledge_build_status(
         subject,

@@ -31,7 +31,7 @@ const NODE_COLORS: Record<string, { fill: string; dark: string; label: string }>
   remark:     { fill: "#7f8c8d", dark: "#566573", label: "备注" },
 };
 
-const DEFAULT_COLOR = { fill: "#aab7b8", dark: "#717d7e", label: "鍏朵粬" };
+const DEFAULT_COLOR = { fill: "#aab7b8", dark: "#717d7e", label: "其他" };
 
 // 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€ Interfaces 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 
@@ -77,7 +77,7 @@ function NodeDetailSidebar({
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-8 text-slate-400">
-        <Loader2 className="mr-2 h-4 w-4 animate-spin" />鍔犺浇涓?..
+        <Loader2 className="mr-2 h-4 w-4 animate-spin" />加载中...
       </div>
     );
   }
@@ -104,7 +104,7 @@ function NodeDetailSidebar({
               {color.label}
             </span>
           </div>
-          <p className="text-xs text-slate-400">缃俊搴︼細{Math.round(data.confidence * 100)}%</p>
+          <p className="text-xs text-slate-400">置信度：{Math.round(data.confidence * 100)}%</p>
         </div>
         <button onClick={onClose} className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600">
           <X className="h-4 w-4" />
@@ -129,7 +129,7 @@ function NodeDetailSidebar({
       {aliases.length > 0 && (
         <div>
           <div className="mb-2 flex items-center gap-1.5 text-xs font-medium text-slate-500">
-            <Tag className="h-3 w-3" />鍒悕
+            <Tag className="h-3 w-3" />别名
           </div>
           <div className="flex flex-wrap gap-1.5">
             {aliases.map((a: { id: number; is_primary: boolean; alias: string }) => (
@@ -144,7 +144,7 @@ function NodeDetailSidebar({
       {incidentEdges.length > 0 && (
         <div>
           <div className="mb-2 flex items-center gap-1.5 text-xs font-medium text-slate-500">
-            <Link2 className="h-3 w-3" />鍏宠仈杈?({incidentEdges.length})
+            <Link2 className="h-3 w-3" />关联边 ({incidentEdges.length})
           </div>
           <div className="max-h-40 space-y-1 overflow-y-auto">
             {incidentEdges.map((edge: { id: number; other_node_id: number; direction: string; other_node_name: string; edge_type: string }) => (
@@ -163,7 +163,7 @@ function NodeDetailSidebar({
       {evidenceList.length > 0 && (
         <div>
           <div className="mb-2 flex items-center gap-1.5 text-xs font-medium text-slate-500">
-            <FileText className="h-3 w-3" />鏉ユ簮璇佹嵁 ({evidenceList.length})
+            <FileText className="h-3 w-3" />来源证据 ({evidenceList.length})
           </div>
           <div className="max-h-40 space-y-1.5 overflow-y-auto">
             {evidenceList.map((ev: { id: number; chunk_id: number; quote_text: string; evidence_role: string; confidence: number }) => (
@@ -455,7 +455,7 @@ export function ForceGraphView({
     return (
       <div className="flex h-full flex-col items-center justify-center text-slate-400">
         <NetworkIcon className="mb-2 h-8 w-8 text-slate-300" />
-        <p className="text-sm">鏆傛棤鍙睍绀虹殑鍥捐氨鏁版嵁</p>
+        <p className="text-sm">暂无可展示的图谱数据</p>
       </div>
     );
   }
