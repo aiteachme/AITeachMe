@@ -17,7 +17,7 @@ from app.models.subject import Subject
 from app.schemas.knowledge import BuildPlannerCreateRequest, BuildPlannerMessageRequest, BuildPlannerSessionResponse
 from app.shared.infra.workflow import workflow_tracer
 from app.shared.infra.workflow.context import WorkflowContext, create_langgraph_dev_context
-from app.shared.infra.workflow.result import WorkflowResult
+from app.shared.infra.workflow.result import WorkflowError, WorkflowResult
 from app.shared.infra.workflow.runtime import run_state_graph
 from app.workflows.digest.common.runtime_config import get_teaching_runtime_config
 from app.workflows.digest.planner.lib.store import (
@@ -39,7 +39,27 @@ from app.workflows.digest.planner.state import (
 logger = structlog.get_logger(__name__)
 
 
+def _require_success_state(result: WorkflowResult[BuildPlannerState]) -> BuildPlannerState:
+    state = result.require_value()
+    error = str(state.get("error") or "").strip()
+    if error:
+        logger.warning(
+            "planner_workflow_state_failed",
+            planner_session_id=state.get("planner_session_id", ""),
+            subject=state.get("subject", ""),
+            error=error,
+        )
+        raise WorkflowError(code="planner_failed", detail=error)
+    return state
+
+
 def build_planner_graph(*, context: WorkflowContext) -> StateGraph:
+    logger.info(
+        "planner_graph_building",
+        workflow=context.workflow_name,
+        subject=context.subject,
+        build_session_id=context.metadata.get("build_session_id", ""),
+    )
     trace = workflow_tracer(context=context, lane="planner")
     workflow = StateGraph(
         BuildPlannerState,
@@ -108,7 +128,14 @@ def build_planner_graph(*, context: WorkflowContext) -> StateGraph:
 
 
 def route_after_step(state: BuildPlannerState) -> str:
-    return "fail" if state.get("error") else "continue"
+    route = "fail" if state.get("error") else "continue"
+    logger.info(
+        "planner_route_after_step",
+        route=route,
+        planner_session_id=state.get("planner_session_id", ""),
+        error=state.get("error"),
+    )
+    return route
 
 
 def create_planner_initial_state(
@@ -181,6 +208,16 @@ async def run_build_planner_workflow(
 ) -> WorkflowResult[BuildPlannerState]:
     """Run the planner lane and return the final workflow state."""
 
+    logger.info(
+        "planner_workflow_starting",
+        subject=subject,
+        planner_session_id=planner_session_id,
+        planner_operation=planner_operation,
+        file_id_count=len(file_ids),
+        requested_file_uid_count=len(requested_file_uids or []),
+        digest_mode=digest_mode,
+        user_goal_preview=user_goal[:80],
+    )
     context = WorkflowContext(
         workflow_name="digest.planner",
         subject=subject,
@@ -191,7 +228,7 @@ async def run_build_planner_workflow(
             "digest_mode": digest_mode,
         },
     )
-    return await run_state_graph(
+    result = await run_state_graph(
         workflow_name="digest.planner",
         graph_builder=lambda: build_planner_graph(context=context),
         initial_state=create_planner_initial_state(
@@ -215,6 +252,16 @@ async def run_build_planner_workflow(
         ),
         context=context,
     )
+    logger.info(
+        "planner_workflow_finished",
+        subject=subject,
+        planner_session_id=planner_session_id,
+        failed=result.failed,
+        error=str(result.error) if result.error else "",
+        has_value=result.value is not None,
+        state_error=(result.value or {}).get("error") if isinstance(result.value, dict) else "",
+    )
+    return result
 
 
 async def create_build_planner_session(
@@ -232,6 +279,16 @@ async def create_build_planner_session(
     user_goal = payload.user_goal.strip()
     digest_mode = (payload.digest_mode or planner_defaults.default_digest_mode).strip() or planner_defaults.default_digest_mode
     tone = (payload.tone or planner_defaults.default_tone).strip() or planner_defaults.default_tone
+    logger.info(
+        "planner_create_session_starting",
+        subject=subject.slug,
+        user_id=user_id,
+        planner_session_id=session_id,
+        file_uid_count=len(payload.file_uids or []),
+        digest_mode=digest_mode,
+        tone=tone,
+        user_goal_preview=user_goal[:80],
+    )
     result = await run_build_planner_workflow(
         subject=subject.slug,
         user_id=user_id,
@@ -250,7 +307,19 @@ async def create_build_planner_session(
     )
     if result.failed:
         _mark_planner_session_failed(subject=subject.slug, user_id=user_id, session_id=session_id)
-    response = planner_session_response_from_state(result.require_value())
+    try:
+        final_state = _require_success_state(result)
+    except Exception:
+        _mark_planner_session_failed(subject=subject.slug, user_id=user_id, session_id=session_id)
+        raise
+    logger.info(
+        "planner_create_session_state_ready",
+        subject=subject.slug,
+        planner_session_id=session_id,
+        has_plan=bool(final_state.get("plan")),
+        state_error=final_state.get("error"),
+    )
+    response = planner_session_response_from_state(final_state)
     _log_planner_runtime(subject=subject.slug, response=response)
     return response
 
@@ -266,6 +335,14 @@ async def append_build_planner_message(
 ) -> BuildPlannerSessionResponse:
     # 追加反馈也只是同一条 graph run。
     # load_planner_materials 会读取上一版 session/plan 并追加用户 turn。
+    logger.info(
+        "planner_append_message_starting",
+        subject=subject.slug,
+        user_id=user_id,
+        planner_session_id=session_id,
+        message_preview=payload.message[:80],
+        selected_skillpacks_override=payload.selected_skillpacks is not None,
+    )
     result = await run_build_planner_workflow(
         subject=subject.slug,
         user_id=user_id,
@@ -284,7 +361,19 @@ async def append_build_planner_message(
     )
     if result.failed:
         _mark_planner_session_failed(subject=subject.slug, user_id=user_id, session_id=session_id)
-    response = planner_session_response_from_state(result.require_value())
+    try:
+        final_state = _require_success_state(result)
+    except Exception:
+        _mark_planner_session_failed(subject=subject.slug, user_id=user_id, session_id=session_id)
+        raise
+    logger.info(
+        "planner_append_message_state_ready",
+        subject=subject.slug,
+        planner_session_id=session_id,
+        has_plan=bool(final_state.get("plan")),
+        state_error=final_state.get("error"),
+    )
+    response = planner_session_response_from_state(final_state)
     _log_planner_runtime(subject=subject.slug, response=response)
     return response
 

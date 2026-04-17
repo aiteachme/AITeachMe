@@ -10,6 +10,7 @@ import uuid
 from collections.abc import Mapping
 from typing import Any
 
+import structlog
 from sqlmodel import Session
 
 from app.models import IngestStatus, TaskStatus
@@ -48,6 +49,8 @@ from app.utils.presenters import require_id, require_uid
 from app.utils.time import utcnow
 from app.workflows.digest.common.runtime_config import get_teaching_runtime_config
 from app.workflows.digest.planner.lib.plans import normalize_planner_payload
+
+logger = structlog.get_logger(__name__)
 
 
 def _markdown_ready(raw_file: RawFile) -> bool:
@@ -179,11 +182,19 @@ def _runtime_stats_response(final_state: Mapping[str, Any] | None) -> BuildPlann
 
 def planner_session_response_from_state(final_state: Mapping[str, Any]) -> BuildPlannerSessionResponse:
     record = dict(final_state.get("planner_record") or {})
-    plan = dict(final_state.get("plan") or record.get("latest_plan_json") or {})
+    plan = dict(final_state.get("plan") or {})
     turns = [dict(turn) for turn in list(final_state.get("planner_turns") or [])]
     subject = str(record.get("subject") or final_state.get("subject") or "")
     session_id = str(record.get("id") or final_state.get("planner_session_id") or "")
     status = str(record.get("status") or "draft")
+    logger.info(
+        "planner_response_from_state",
+        planner_session_id=session_id,
+        has_state_plan=bool(final_state.get("plan")),
+        has_record_latest_plan=bool(record.get("latest_plan_json")),
+        state_error=final_state.get("error"),
+        plan_chapter_count=len(list(plan.get("chapter_plan") or [])),
+    )
     return BuildPlannerSessionResponse(
         session_id=session_id,
         subject=subject,
@@ -338,7 +349,15 @@ def prepare_planner_run(state: Mapping[str, Any]) -> dict[str, Any]:
     """
 
     operation = _operation(state)
+    logger.info(
+        "planner_prepare_run_started",
+        operation=operation,
+        subject=state.get("subject"),
+        planner_session_id=state.get("planner_session_id"),
+        requested_file_uid_count=len(state.get("requested_file_uids") or []),
+    )
     if operation == "generate_only":
+        logger.info("planner_prepare_run_skipped_for_generate_only")
         return {}
 
     subject_slug = str(state["subject"])
@@ -392,6 +411,14 @@ def prepare_planner_run(state: Mapping[str, Any]) -> dict[str, Any]:
                     content=user_goal,
                 ),
             )
+            logger.info(
+                "planner_prepare_run_created_session",
+                subject=subject_slug,
+                planner_session_id=record.id,
+                selected_file_count=len(selected_file_ids),
+                workflow_file_count=len(workflow_file_ids),
+                selected_file_uids=selected_file_uids,
+            )
             return {
                 "file_ids": workflow_file_ids,
                 "selected_file_ids": selected_file_ids,
@@ -416,6 +443,13 @@ def prepare_planner_run(state: Mapping[str, Any]) -> dict[str, Any]:
             )
             if record is None:
                 raise BuildPlannerSessionNotFoundError(str(state["planner_session_id"]))
+            logger.info(
+                "planner_prepare_run_loaded_session",
+                subject=subject_slug,
+                planner_session_id=record.id,
+                has_latest_plan=bool(record.latest_plan_json),
+                selected_file_count=len(record.selected_file_ids_json or []),
+            )
 
             record.status = "planning"
             record.confirmed_plan_id = None
@@ -469,6 +503,7 @@ def save_planner_result(
     """Persist final planner output from the normal finalize node."""
 
     if _operation(state) == "generate_only":
+        logger.info("planner_save_skipped_for_generate_only", planner_session_id=state.get("planner_session_id"))
         return {}
 
     # graph 已经生成稳定 plan 合同；这里只负责写持久化状态，并返回 API 需要的快照。
@@ -484,6 +519,13 @@ def save_planner_result(
         if record is None:
             raise BuildPlannerSessionNotFoundError(str(state["planner_session_id"]))
 
+        logger.info(
+            "planner_save_started",
+            subject=subject_slug,
+            planner_session_id=record.id,
+            input_chapter_count=len(list((plan or {}).get("chapter_plan") or [])),
+            has_previous_plan=bool(record.latest_plan_json),
+        )
         persisted_plan = _normalize_persisted_plan(
             plan,
             subject=subject_slug,
@@ -514,6 +556,13 @@ def save_planner_result(
             ),
         )
         turns = list_planner_turns(session, session_id=record.id)
+        logger.info(
+            "planner_save_finished",
+            subject=subject_slug,
+            planner_session_id=record.id,
+            persisted_chapter_count=len(list(persisted_plan.get("chapter_plan") or [])),
+            turn_count=len(turns),
+        )
         return {
             "plan": persisted_plan,
             "plan_summary": str(persisted_plan.get("plan_summary") or ""),
@@ -638,9 +687,19 @@ def get_latest_planner_session(
 ) -> BuildPlannerSessionResponse | None:
     record = repo_get_latest_planner_session(session, subject=subject.slug, user_id=user_id)
     if record is None:
+        logger.info("planner_latest_none", subject=subject.slug, user_id=user_id)
         return None
     turns = list_planner_turns(session, session_id=record.id)
     plan_payload = dict(record.latest_plan_json or {})
+    logger.info(
+        "planner_latest_found",
+        subject=subject.slug,
+        user_id=user_id,
+        planner_session_id=record.id,
+        turn_count=len(turns),
+        has_latest_plan=bool(plan_payload),
+        chapter_count=len(list(plan_payload.get("chapter_plan") or [])),
+    )
     return _planner_session_response(
         record,
         subject=subject.slug,

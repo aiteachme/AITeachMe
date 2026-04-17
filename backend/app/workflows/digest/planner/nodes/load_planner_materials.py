@@ -6,6 +6,8 @@ import re
 from collections import Counter
 from pathlib import Path
 
+import structlog
+
 from app.models.subject import Subject
 from app.repositories.files_repo import list_raw_files_by_ids
 from app.shared.infra.database import managed_session
@@ -18,6 +20,7 @@ from app.workflows.digest.planner.lib.store import prepare_planner_run
 from app.workflows.digest.planner.state import BuildPlannerState
 
 _SUBJECT_SLUG_RE = re.compile(r"^subj_[a-z0-9]+$", re.IGNORECASE)
+logger = structlog.get_logger(__name__)
 
 
 def _guess_topic_hints_from_filenames(
@@ -92,11 +95,27 @@ def _build_seed_material_context(*, subject: str, file_ids: list[int], user_goal
 
 def build_load_planner_materials_node(*, context: WorkflowContext):
     async def load_planner_materials_node(state: BuildPlannerState) -> dict:
+        logger.info(
+            "planner_load_materials_started",
+            planner_session_id=state.get("planner_session_id", ""),
+            subject=state.get("subject", ""),
+            operation=state.get("planner_operation", ""),
+            file_id_count=len(state.get("file_ids", []) or []),
+            requested_file_uid_count=len(state.get("requested_file_uids", []) or []),
+        )
         # This node is intentionally the only entry-side persistence point.
         # It turns API create/append requests into a complete graph state:
         # selected files, history, latest plan, and the parsed material package.
         session_update = prepare_planner_run(state)
         working_state = {**state, **session_update}
+        logger.info(
+            "planner_load_materials_session_prepared",
+            planner_session_id=working_state.get("planner_session_id", ""),
+            selected_file_id_count=len(working_state.get("selected_file_ids", []) or []),
+            workflow_file_id_count=len(working_state.get("file_ids", []) or []),
+            message_count=len(working_state.get("message_history", []) or []),
+            has_latest_plan=bool(working_state.get("latest_plan")),
+        )
         await emit_planner_event(
             working_state,
             event="planner.material.loading",
@@ -106,6 +125,13 @@ def build_load_planner_materials_node(*, context: WorkflowContext):
             working_state["subject"],
             working_state.get("file_ids", []),
             user_prompt=working_state.get("user_goal"),
+        )
+        logger.info(
+            "planner_load_materials_context_loaded",
+            planner_session_id=working_state.get("planner_session_id", ""),
+            source_document_count=len(material_context.source_documents),
+            section_count=len(material_context.material_sections),
+            digest_chars=len(material_context.material_digest or ""),
         )
         if not material_context.source_documents:
             # 刚上传后 parsed markdown 可能还没准备好。seed context 让 planner
@@ -120,6 +146,12 @@ def build_load_planner_materials_node(*, context: WorkflowContext):
                 file_ids=list(working_state.get("file_ids", [])),
                 user_goal=working_state.get("user_goal"),
             )
+            logger.warning(
+                "planner_load_materials_seed_context_used",
+                planner_session_id=working_state.get("planner_session_id", ""),
+                source_document_count=len(material_context.source_documents),
+                topic_hints=list(material_context.material_hints.chapter_candidates),
+            )
 
         digest_mode = working_state.get("digest_mode") or material_context.course_mode_decision.mode.value
         if material_context.source_documents:
@@ -130,6 +162,14 @@ def build_load_planner_materials_node(*, context: WorkflowContext):
             )
             digest_result = await build_material_digest(material_context)
             material_context = material_context.model_copy(update={"material_digest": digest_result.digest})
+            logger.info(
+                "planner_load_materials_digest_ready",
+                planner_session_id=working_state.get("planner_session_id", ""),
+                total_chars=digest_result.total_chars,
+                total_tokens=digest_result.total_tokens,
+                source_count=digest_result.source_count,
+                truncated=digest_result.truncated,
+            )
             await emit_planner_event(
                 working_state,
                 event="planner.context.ready",
@@ -159,12 +199,20 @@ def build_load_planner_materials_node(*, context: WorkflowContext):
                 "topic_hints": list(material_context.material_hints.chapter_candidates),
             },
         )
-        return {
+        result = {
             **session_update,
             "material_context": material_context,
             "digest_mode": digest_mode,
             "tone": working_state.get("tone") or "encouraging",
         }
+        logger.info(
+            "planner_load_materials_completed",
+            planner_session_id=working_state.get("planner_session_id", ""),
+            digest_mode=digest_mode,
+            tone=result["tone"],
+            material_digest_chars=len(material_context.material_digest or ""),
+        )
+        return result
 
     return load_planner_materials_node
 

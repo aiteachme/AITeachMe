@@ -122,6 +122,14 @@ async def _stream_composer_response(
     visible_closed = False
     try:
         await emit_planner_token(state, "\n\n")
+        logger.info(
+            "planner_compose_llm_starting",
+            planner_session_id=state.get("planner_session_id") or "",
+            subject=state.get("subject", ""),
+            material_digest_chars=len(material_context.material_digest or ""),
+            brief_chars=len(planner_brief.markdown or ""),
+            goal_type=intent.goal_type,
+        )
         stream = acompletion_stream(
             build_plan_composer_messages(
                 subject=state["subject"],
@@ -184,13 +192,27 @@ async def _stream_composer_response(
             detail="计划大纲生成中...",
             payload={"token": pending_visible},
         )
-    return "".join(tokens).strip()
+    text = "".join(tokens).strip()
+    logger.info(
+        "planner_compose_llm_completed",
+        planner_session_id=state.get("planner_session_id") or "",
+        subject=state.get("subject", ""),
+        token_count=len(tokens),
+        response_chars=len(text),
+        visible_closed=visible_closed,
+    )
+    return text
 
 
 def build_stream_and_parse_plan_draft_node(*, context: WorkflowContext):
     del context
 
     async def stream_and_parse_plan_draft_node(state: BuildPlannerState) -> dict:
+        logger.info(
+            "planner_compose_node_started",
+            planner_session_id=state.get("planner_session_id", ""),
+            subject=state.get("subject", ""),
+        )
         material_context = state["material_context"]
         planner_brief = PlannerBrief.model_validate(state.get("planner_brief") or {})
         intent = LearningIntent.model_validate(state.get("learning_intent") or {})
@@ -209,6 +231,13 @@ def build_stream_and_parse_plan_draft_node(*, context: WorkflowContext):
         try:
             sketch = _parse_outline_sketch(raw_response)
             draft_payload = _validate_plan_payload(_sketch_to_plan_payload(sketch))
+            logger.info(
+                "planner_compose_parse_completed",
+                planner_session_id=state.get("planner_session_id", ""),
+                plan_text_chars=len(sketch.plan_text or ""),
+                chapter_count=len(sketch.chapters),
+                visible_outline_chars=len(visible_outline),
+            )
         except Exception:
             logger.exception(
                 "planner_composer_parse_failed",
@@ -224,10 +253,17 @@ def build_stream_and_parse_plan_draft_node(*, context: WorkflowContext):
                 "error": "最终大纲合成失败，模型没有返回可用章节，请调整目标后重试。",
                 "plan_outline_markdown": visible_outline,
             }
-        return {
+        result = {
             "build_plan_draft": draft_payload,
             "plan_outline_markdown": visible_outline,
         }
+        logger.info(
+            "planner_compose_node_completed",
+            planner_session_id=state.get("planner_session_id", ""),
+            chapter_count=len(draft_payload.get("chapter_plan") or []),
+            plan_summary_chars=len(str(draft_payload.get("plan_summary") or "")),
+        )
+        return result
 
     return stream_and_parse_plan_draft_node
 
