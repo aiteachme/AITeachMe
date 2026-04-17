@@ -25,7 +25,6 @@ class QuestionTemplate(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
     subject: str = Field(index=True)
     curriculum_version_id: int | None = Field(default=None, index=True)
-    teaching_unit_id: int | None = Field(default=None, index=True)
     knowledge_unit_id: int | None = Field(default=None, foreign_key="knowledge_unit.id", index=True)
     question_type: str
     difficulty: str
@@ -53,7 +52,6 @@ class ExamPaper(SQLModel, table=True):
     exam_mode: str
     curriculum_version_id: int | None = Field(default=None, index=True)
     theme_tree_node_id: int | None = Field(default=None, index=True)
-    teaching_unit_ids_json: str = Field(default="[]")
     status: str = Field(default="draft", index=True)
     total_items: int = Field(default=0, ge=0)
     submitted_at: datetime | None = Field(default=None)
@@ -83,7 +81,6 @@ class ExamPaperItem(SQLModel, table=True):
     answer_snapshot: str
     explanation_snapshot: str
     knowledge_unit_id: int | None = Field(default=None, foreign_key="knowledge_unit.id", index=True)
-    teaching_unit_id: int | None = Field(default=None, index=True)
     knowledge_unit_refs_json: str = Field(default="[]")
     difficulty: str
     question_type: str
@@ -101,6 +98,3 @@ class ExamPaperItem(SQLModel, table=True):
     graded_at: datetime | None = Field(default=None)
     created_at: datetime = Field(default_factory=utcnow)
     updated_at: datetime = Field(default_factory=utcnow)
-
-    
-# TODO --teaching   api-> services -> workflows -> infra

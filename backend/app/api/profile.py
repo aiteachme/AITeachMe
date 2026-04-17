@@ -28,10 +28,14 @@ def _ensure_subject(session: Session, subject: str, user_id: str) -> Subject:
 
 
 def _state_response(state) -> MasteryStateResponse:
+    if state.knowledge_unit_id is None:
+        raise AITeachMeError(
+            detail="Encountered legacy unit-level mastery state.",
+            error_code="LEGACY_MASTERY_STATE",
+            status_code=500,
+        )
     return MasteryStateResponse(
         id=state.id,
-        target_kind="knowledge_unit" if state.knowledge_unit_id is not None else "unit",
-        teaching_unit_id=state.teaching_unit_id,
         knowledge_unit_id=state.knowledge_unit_id,
         mastery_score=state.mastery_score,
         confidence_score=state.confidence_score,
@@ -47,12 +51,16 @@ def _state_response(state) -> MasteryStateResponse:
 
 
 def _review_response(state) -> ReviewTaskResponse:
+    if state.knowledge_unit_id is None:
+        raise AITeachMeError(
+            detail="Encountered legacy unit-level review task.",
+            error_code="LEGACY_REVIEW_TASK",
+            status_code=500,
+        )
     return ReviewTaskResponse(
         id=state.id,
         user_id=state.user_id,
         subject=state.subject,
-        target_kind="knowledge_unit" if state.knowledge_unit_id is not None else "unit",
-        teaching_unit_id=state.teaching_unit_id,
         knowledge_unit_id=state.knowledge_unit_id,
         priority=state.review_priority,
         scheduled_at=state.scheduled_review_at,
@@ -79,12 +87,6 @@ async def mastery_overview(
 ) -> ApiResponse[MasteryOverviewResponse]:
     normalized = normalize_subject_slug(subject)
     _ensure_subject(session, normalized, user.user_id)
-    unit_states = profile_repo.list_knowledge_states(
-        session,
-        user_id=user.user_id,
-        subject=normalized,
-        target_kind="unit",
-    )
     knowledge_unit_states = profile_repo.list_knowledge_states(
         session,
         user_id=user.user_id,
@@ -95,9 +97,7 @@ async def mastery_overview(
         MasteryOverviewResponse(
             subject=normalized,
             user_id=user.user_id,
-            weak_unit_count=sum(1 for item in unit_states if item.mastery_score < 0.8),
             weak_knowledge_unit_count=sum(1 for item in knowledge_unit_states if item.mastery_score < 0.8),
-            unit_states=[_state_response(item) for item in unit_states],
             knowledge_unit_states=[_state_response(item) for item in knowledge_unit_states],
         )
     )

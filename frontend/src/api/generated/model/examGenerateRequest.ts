@@ -26,6 +26,4 @@ export interface ExamGenerateRequest {
   num_questions?: number | null;
   /** Optional theme tree node scope. */
   theme_tree_node_id?: number | null;
-  /** Optional teaching unit scope. */
-  teaching_unit_ids?: number[] | null;
 }

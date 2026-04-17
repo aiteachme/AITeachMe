@@ -17,7 +17,6 @@ export interface ExamPaperItemResponse {
   options?: string[] | null;
   correct_answer?: string | null;
   explanation: string;
-  teaching_unit_id: number;
   knowledge_unit_links?: ExamNodeLinkResponse[];
   user_answer?: string | null;
   is_correct?: boolean | null;

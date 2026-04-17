@@ -12,9 +12,7 @@ from app.workflows.profile.user_profile import UserProfileSummary
 
 class MasteryStateResponse(BaseModel):
     id: int
-    target_kind: str
-    teaching_unit_id: int | None = None
-    knowledge_unit_id: int | None = None
+    knowledge_unit_id: int
     mastery_score: float
     confidence_score: float
     stability_score: float
@@ -30,9 +28,7 @@ class MasteryStateResponse(BaseModel):
 class MasteryOverviewResponse(BaseModel):
     subject: str
     user_id: str
-    weak_unit_count: int
     weak_knowledge_unit_count: int
-    unit_states: list[MasteryStateResponse] = Field(default_factory=list)
     knowledge_unit_states: list[MasteryStateResponse] = Field(default_factory=list)
     subject_profile: SubjectProfileSummary | None = None
     user_profile: UserProfileSummary | None = None
@@ -42,9 +38,7 @@ class ReviewTaskResponse(BaseModel):
     id: int
     user_id: str
     subject: str
-    target_kind: str
-    teaching_unit_id: int | None = None
-    knowledge_unit_id: int | None = None
+    knowledge_unit_id: int
     priority: float
     scheduled_at: datetime | None = None
     status: str

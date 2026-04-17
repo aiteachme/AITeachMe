@@ -103,7 +103,6 @@ def _template_for_unit(
         return existing
     template = QuestionTemplate(
         subject=subject,
-        teaching_unit_id=None,
         knowledge_unit_id=unit.id,
         question_type="short_answer",
         difficulty=difficulty,
@@ -130,7 +129,6 @@ def _paper_item_response(item: ExamPaperItem) -> ExamPaperItemResponse:
         options=json.loads(item.options_snapshot_json) if item.options_snapshot_json else None,
         correct_answer=item.answer_snapshot,
         explanation=item.explanation_snapshot,
-        teaching_unit_id=item.teaching_unit_id or 0,
         knowledge_unit_links=[
             {
                 "knowledge_unit_id": int(ref.get("knowledge_unit_id", 0) or 0),
@@ -257,7 +255,6 @@ async def generate_exam(
             status="ready",
             total_items=len(units),
             total_score=float(len(units)),
-            teaching_unit_ids_json=json.dumps([], ensure_ascii=False),
             selection_context_json=json.dumps(
                 {
                     "source": "knowledge_unit",
@@ -281,7 +278,6 @@ async def generate_exam(
                 answer_snapshot=template.answer,
                 explanation_snapshot=template.explanation,
                 knowledge_unit_id=unit.id,
-                teaching_unit_id=None,
                 knowledge_unit_refs_json=template.knowledge_unit_refs_json,
                 difficulty=template.difficulty,
                 question_type=template.question_type,
@@ -302,7 +298,6 @@ async def generate_exam(
             num_questions=len(items),
             exam_paper_id=paper.id,
             theme_tree_node_id=body.theme_tree_node_id,
-            teaching_unit_ids=body.teaching_unit_ids or [],
             sample_file_uids=body.sample_file_uids or [],
         )
     )

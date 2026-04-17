@@ -20,9 +20,7 @@ _RECENT_EXAM_ITEM_LIMIT = 200
 class SubjectProfileSummary(BaseModel):
     subject: str
     generated_at: datetime
-    avg_unit_mastery: float | None = None
-    avg_knowledge_unit_mastery: float | None = None
-    weak_unit_count: int = 0
+    avg_mastery: float | None = None
     weak_knowledge_unit_count: int = 0
     pending_review_count: int = 0
     due_review_count: int = 0
@@ -31,7 +29,6 @@ class SubjectProfileSummary(BaseModel):
     recommended_exam_mode: str = ExamMode.WEB_PRACTICE.value
     recommended_question_count: int | None = None
     difficulty_focus: str = "medium"
-    focus_teaching_unit_ids: list[int] = Field(default_factory=list)
     focus_knowledge_unit_ids: list[int] = Field(default_factory=list)
     question_type_accuracy: dict[str, float] = Field(default_factory=dict)
     difficulty_accuracy: dict[str, float] = Field(default_factory=dict)
@@ -96,18 +93,17 @@ def _pick_recommended_question_types(
 
 def _pick_recommended_exam_mode(
     *,
-    avg_unit_mastery: float | None,
-    weak_unit_count: int,
+    avg_mastery: float | None,
     weak_knowledge_unit_count: int,
     due_review_count: int,
 ) -> str:
     if due_review_count >= 2:
         return ExamMode.WEB_PRACTICE.value
-    if avg_unit_mastery is None or avg_unit_mastery < 0.35:
+    if avg_mastery is None or avg_mastery < 0.35:
         return ExamMode.WEB_PRACTICE.value
-    if weak_unit_count >= 3 or weak_knowledge_unit_count >= 6:
+    if weak_knowledge_unit_count >= 6:
         return ExamMode.WEB_PRACTICE.value
-    if avg_unit_mastery >= 0.72 and weak_unit_count <= 1 and weak_knowledge_unit_count <= 2:
+    if avg_mastery >= 0.72 and weak_knowledge_unit_count <= 2:
         return ExamMode.PAPER_EXAM.value
     return ExamMode.WEB_PRACTICE.value
 
@@ -115,44 +111,28 @@ def _pick_recommended_exam_mode(
 def _pick_recommended_question_count(
     *,
     recommended_exam_mode: str,
-    weak_unit_count: int,
+    weak_knowledge_unit_count: int,
     due_review_count: int,
 ) -> int:
     if recommended_exam_mode == ExamMode.PAPER_EXAM.value:
         return 24
     if due_review_count >= 2:
         return max(8, min(14, due_review_count * 2))
-    return max(10, min(16, weak_unit_count * 2 if weak_unit_count > 0 else 10))
+    return max(10, min(16, weak_knowledge_unit_count * 2 if weak_knowledge_unit_count > 0 else 10))
 
 
 def _pick_difficulty_focus(
     *,
-    avg_unit_mastery: float | None,
+    avg_mastery: float | None,
     difficulty_accuracy: dict[str, float],
 ) -> str:
-    if avg_unit_mastery is None or avg_unit_mastery < 0.35:
+    if avg_mastery is None or avg_mastery < 0.35:
         return "easy"
     if difficulty_accuracy.get("hard", 1.0) < 0.5:
         return "medium"
-    if avg_unit_mastery >= 0.75:
+    if avg_mastery >= 0.75:
         return "mixed"
     return "medium"
-
-
-def _pick_focus_unit_ids(unit_states: list[UserKnowledgeState]) -> list[int]:
-    ordered = sorted(
-        [
-            state
-            for state in unit_states
-            if state.teaching_unit_id is not None
-        ],
-        key=lambda state: (
-            state.mastery_score,
-            -state.review_priority,
-            state.teaching_unit_id or 0,
-        ),
-    )
-    return [int(state.teaching_unit_id) for state in ordered[:6] if state.teaching_unit_id is not None]
 
 
 def _pick_focus_knowledge_unit_ids(knowledge_unit_states: list[UserKnowledgeState]) -> list[int]:
@@ -173,7 +153,6 @@ def _pick_focus_knowledge_unit_ids(knowledge_unit_states: list[UserKnowledgeStat
 
 def _build_notes(
     *,
-    weak_unit_count: int,
     weak_knowledge_unit_count: int,
     due_review_count: int,
     recommended_exam_mode: str,
@@ -181,15 +160,12 @@ def _build_notes(
     difficulty_focus: str,
 ) -> list[str]:
     notes = [
-        f"Weak units: {weak_unit_count}",
         f"Weak KnowledgeUnits: {weak_knowledge_unit_count}",
         f"Due reviews: {due_review_count}",
         f"Recommended exam mode: {recommended_exam_mode}",
     ]
     if recommended_question_types:
-        notes.append(
-            "Recommended question types: " + ", ".join(recommended_question_types)
-        )
+        notes.append("Recommended question types: " + ", ".join(recommended_question_types))
     notes.append(f"Difficulty focus: {difficulty_focus}")
     return notes
 
@@ -220,12 +196,6 @@ def build_subject_profile_summary(
     subject: str,
     user_id: str,
 ) -> SubjectProfileSummary:
-    unit_states = profile_repo.list_knowledge_states(
-        session,
-        user_id=user_id,
-        subject=subject,
-        target_kind="unit",
-    )
     knowledge_unit_states = profile_repo.list_knowledge_states(
         session,
         user_id=user_id,
@@ -260,9 +230,7 @@ def build_subject_profile_summary(
             type_correct[item.question_type] += 1
             difficulty_correct[item.difficulty] += 1
 
-    avg_unit_mastery = _average_mastery(unit_states)
-    avg_knowledge_unit_mastery = _average_mastery(knowledge_unit_states)
-    weak_unit_count = sum(1 for state in unit_states if state.mastery_score < _WEAK_THRESHOLD)
+    avg_mastery = _average_mastery(knowledge_unit_states)
     weak_knowledge_unit_count = sum(1 for state in knowledge_unit_states if state.mastery_score < _WEAK_THRESHOLD)
     question_type_accuracy = _to_accuracy_map(type_totals, type_correct)
     difficulty_accuracy = _to_accuracy_map(difficulty_totals, difficulty_correct)
@@ -272,22 +240,19 @@ def build_subject_profile_summary(
         question_type_accuracy,
     )
     recommended_exam_mode = _pick_recommended_exam_mode(
-        avg_unit_mastery=avg_unit_mastery,
-        weak_unit_count=weak_unit_count,
+        avg_mastery=avg_mastery,
         weak_knowledge_unit_count=weak_knowledge_unit_count,
         due_review_count=due_review_count,
     )
     difficulty_focus = _pick_difficulty_focus(
-        avg_unit_mastery=avg_unit_mastery,
+        avg_mastery=avg_mastery,
         difficulty_accuracy=difficulty_accuracy,
     )
 
     return SubjectProfileSummary(
         subject=subject,
         generated_at=now,
-        avg_unit_mastery=avg_unit_mastery,
-        avg_knowledge_unit_mastery=avg_knowledge_unit_mastery,
-        weak_unit_count=weak_unit_count,
+        avg_mastery=avg_mastery,
         weak_knowledge_unit_count=weak_knowledge_unit_count,
         pending_review_count=len(pending_reviews),
         due_review_count=due_review_count,
@@ -296,16 +261,14 @@ def build_subject_profile_summary(
         recommended_exam_mode=recommended_exam_mode,
         recommended_question_count=_pick_recommended_question_count(
             recommended_exam_mode=recommended_exam_mode,
-            weak_unit_count=weak_unit_count,
+            weak_knowledge_unit_count=weak_knowledge_unit_count,
             due_review_count=due_review_count,
         ),
         difficulty_focus=difficulty_focus,
-        focus_teaching_unit_ids=_pick_focus_unit_ids(unit_states),
         focus_knowledge_unit_ids=_pick_focus_knowledge_unit_ids(knowledge_unit_states),
         question_type_accuracy=question_type_accuracy,
         difficulty_accuracy=difficulty_accuracy,
         notes=_build_notes(
-            weak_unit_count=weak_unit_count,
             weak_knowledge_unit_count=weak_knowledge_unit_count,
             due_review_count=due_review_count,
             recommended_exam_mode=recommended_exam_mode,
