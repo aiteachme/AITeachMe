@@ -28,7 +28,6 @@ shared.infra -> shared.kernel
 
 ```text
 api/knowledge_docs.py
--> workflows/digest/planner/sessions.py
 -> app.workflows.digest.planner
 -> confirmed_plan
 -> workflows/digest/docgen/builds.py

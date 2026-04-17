@@ -11,13 +11,7 @@ import type { SubjectProfileSummaryQuestionTypeAccuracy } from './subjectProfile
 export interface SubjectProfileSummary {
   subject: string;
   generated_at: string;
-<<<<<<< HEAD
   avg_mastery?: number | null;
-=======
-  avg_unit_mastery?: number | null;
-  avg_knowledge_unit_mastery?: number | null;
-  weak_unit_count?: number;
->>>>>>> origin/main
   weak_knowledge_unit_count?: number;
   pending_review_count?: number;
   due_review_count?: number;
@@ -26,10 +20,6 @@ export interface SubjectProfileSummary {
   recommended_exam_mode?: string;
   recommended_question_count?: number | null;
   difficulty_focus?: string;
-<<<<<<< HEAD
-=======
-  focus_teaching_unit_ids?: number[];
->>>>>>> origin/main
   focus_knowledge_unit_ids?: number[];
   question_type_accuracy?: SubjectProfileSummaryQuestionTypeAccuracy;
   difficulty_accuracy?: SubjectProfileSummaryDifficultyAccuracy;

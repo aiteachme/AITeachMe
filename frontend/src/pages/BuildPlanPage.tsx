@@ -174,6 +174,8 @@ function formatPlannerNodeLabel(stepName: string): string {
   switch (stepName) {
     case "prepare_material_context":
       return "准备资料理解包";
+    case "summarize_material_digest":
+      return "提炼资料要点";
     case "bootstrap_plan_brief":
       return "思考目标和资料";
     case "probe_evidence":
@@ -357,8 +359,14 @@ function buildPlannerStreamDetails(payload: Record<string, unknown>): string[] {
       if (coreConcepts.length) {
         details.push(`证据提炼：${coreConcepts.join("、")}`);
       }
-      if (typeof payload.concept_briefing === "string" && payload.concept_briefing.trim()) {
-        details.push(payload.concept_briefing.trim());
+      const summary =
+        typeof payload.summary === "string" && payload.summary.trim()
+          ? payload.summary.trim()
+          : typeof payload.concept_briefing === "string" && payload.concept_briefing.trim()
+            ? payload.concept_briefing.trim()
+            : "";
+      if (summary) {
+        details.push(summary);
       }
       return details;
     }

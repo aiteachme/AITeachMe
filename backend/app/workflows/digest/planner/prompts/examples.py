@@ -1,4 +1,4 @@
-"""Few-shot example packs for Planner V3.2."""
+"""Few-shot example packs for Planner."""
 
 from __future__ import annotations
 

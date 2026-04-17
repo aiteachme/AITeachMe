@@ -24,8 +24,8 @@ from app.schemas.knowledge import (
     KnowledgeBuildPreviewResponse,
     KnowledgeBuildStatusResponse,
 )
-from app.workflows.digest.planner.sessions import (
-    get_confirmed_build_plan_service,
+from app.workflows.digest.planner import (
+    get_confirmed_build_plan,
     mark_confirmed_build_plan_status,
 )
 from app.shared.infra.exceptions import ConfirmedBuildPlanRequiredError, NoReadyFilesForDocGenError, RawFileNotFoundError, SubjectBuildLockConflictError
@@ -264,7 +264,7 @@ def _build_confirmed_plan_payload(plan: ConfirmedBuildPlan) -> dict[str, Any]:
 
 def _load_confirmed_plan_payload(*, subject: str, user_id: str, confirmed_plan_id: str) -> tuple[ConfirmedBuildPlan, dict[str, Any]]:
     with managed_session() as session:
-        plan = get_confirmed_build_plan_service(session, subject=subject, user_id=user_id, plan_id=confirmed_plan_id)
+        plan = get_confirmed_build_plan(session, subject=subject, user_id=user_id, plan_id=confirmed_plan_id)
     return plan, _build_confirmed_plan_payload(plan)
 
 
@@ -318,7 +318,7 @@ def trigger_docgen_build(session: Session, *, subject: Subject, user_id: str, fi
     if build_type != "graph" and not confirmed_plan_id:
         raise ConfirmedBuildPlanRequiredError(build_type)
     if confirmed_plan_id:
-        plan = get_confirmed_build_plan_service(session, subject=subject.slug, user_id=user_id, plan_id=confirmed_plan_id)
+        plan = get_confirmed_build_plan(session, subject=subject.slug, user_id=user_id, plan_id=confirmed_plan_id)
         if plan.status == "building":
             raise SubjectBuildLockConflictError(subject.slug)
         planner_session_id = plan.planner_session_id

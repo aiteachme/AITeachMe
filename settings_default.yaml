@@ -14,8 +14,8 @@ models:
   light: qwen-turbo
   extract: ""
   ocr: ""
-  # embedding: text-embedding-v4
-  embedding: ""
+  embedding: text-embedding-v4
+  # embedding: ""
   image_generation: ""
   mermaid_generation: qwen-plus-latest
   overrides: {}
