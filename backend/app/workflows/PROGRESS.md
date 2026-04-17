@@ -58,7 +58,6 @@ await emit_progress(
 planner 仍可返回弱兼容的 `runtime_stats`，但它只允许保留顶层摘要：
 
 - `elapsed_ms`
-- `generation_mode`
 - `steps`
 
 其中 `steps` 只允许是顶层 node，例如：

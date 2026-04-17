@@ -12,12 +12,11 @@ from app.shared.infra.llm_support.routing import TaskType
 from app.shared.infra.workflow.context import WorkflowContext
 from app.workflows.digest.planner.lib.plan_sketch import parse_planner_brief_text
 from app.workflows.digest.planner.lib.planner_events import emit_planner_event, emit_planner_token
-from app.workflows.digest.planner.lib.plans import _resolve_subject_display_name, build_fallback_plan
+from app.workflows.digest.planner.lib.plans import _resolve_subject_display_name
 from app.workflows.digest.planner.lib.models import (
     LearningIntent,
     PlannerBrief,
-    build_default_intent,
-    build_fallback_planner_brief,
+    build_empty_planner_brief,
 )
 from app.workflows.digest.planner.prompts import build_learning_intent_messages, build_plan_sketch_prompt
 from app.workflows.digest.planner.state import BuildPlannerState
@@ -83,30 +82,22 @@ async def _stream_planner_brief(state: BuildPlannerState, fallback: PlannerBrief
         )
         await emit_planner_event(
             state,
-            event="planner.fallback.used",
-            detail="思考过程生成失败，已使用规则摘要继续。",
+            event="planner.thinking.failed",
+            detail="思考过程生成失败，未得到可展示的规划判断。",
         )
-        if not tokens:
-            for line in fallback.markdown.splitlines(keepends=True):
-                await emit_planner_token(state, line)
         return fallback
     if not tokens:
         await emit_planner_event(
             state,
-            event="planner.fallback.used",
-            detail="思考过程未返回任何增量内容，已使用规则摘要继续。",
+            event="planner.thinking.empty",
+            detail="思考过程未返回任何增量内容。",
         )
-        for line in fallback.markdown.splitlines(keepends=True):
-            await emit_planner_token(state, line)
         return fallback
     return parse_planner_brief_text("".join(tokens).strip(), fallback=fallback)
 
 
 async def _extract_learning_intent(state: BuildPlannerState) -> LearningIntent:
     material_context = state["material_context"]
-    fallback = build_default_intent(
-        digest_mode=state.get("digest_mode") or material_context.course_mode_decision.mode.value,
-    )
     try:
         intent = await acompletion_with_fallback(
             build_learning_intent_messages(
@@ -135,23 +126,15 @@ async def _extract_learning_intent(state: BuildPlannerState) -> LearningIntent:
         )
         await emit_planner_event(
             state,
-            event="planner.fallback.used",
-            detail="意图识别失败，已使用规则意图继续。",
+            event="planner.intent.failed",
+            detail="意图识别失败，请调整目标后重试。",
         )
-        return fallback
+        raise
 
 
 def build_stream_brief_and_extract_intent_node(*, context: WorkflowContext):
     async def stream_brief_and_extract_intent_node(state: BuildPlannerState) -> dict:
-        material_context = state["material_context"]
-        fallback_plan = build_fallback_plan(
-            subject=state["subject"],
-            user_goal=state.get("user_goal") or "",
-            digest_mode=state.get("digest_mode") or material_context.course_mode_decision.mode.value,
-            tone=state.get("tone") or "encouraging",
-            shared_inputs=material_context,
-        )
-        fallback_brief = build_fallback_planner_brief(fallback_plan)
+        fallback_brief = build_empty_planner_brief()
         # Keep the first visible response fast: reason streams a compact brief
         # while primary extracts intent from the same context.
         brief, intent = await asyncio.gather(

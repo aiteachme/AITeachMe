@@ -174,7 +174,6 @@ def _runtime_stats_response(final_state: Mapping[str, Any] | None) -> BuildPlann
     return BuildPlannerRuntimeStatsResponse(
         elapsed_ms=int(final_state.get("workflow_elapsed_ms", 0) or 0),
         steps=steps,
-        generation_mode=str(final_state.get("generation_mode") or "").strip() or None,
     )
 
 

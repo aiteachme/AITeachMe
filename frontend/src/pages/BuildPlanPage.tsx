@@ -74,7 +74,6 @@ interface PlannerRuntimeStep {
 interface PlannerRuntimeStats {
   elapsed_ms?: number;
   steps?: PlannerRuntimeStep[];
-  generation_mode?: string | null;
 }
 
 interface PlannerStreamEvent {
