@@ -120,6 +120,12 @@ export function normalizeDomainLabel(input: string): string {
   }
 }
 
+export function cleanKnowledgeMarkdownForDisplay(markdown: string): string {
+  return String(markdown ?? "")
+    .replace(/\s*\{#ku_[A-Za-z0-9_-]+\}/g, "")
+    .replace(/[ \t]+\n/g, "\n");
+}
+
 /* ---- Markdown Helpers ---- */
 
 export function extractFirstMarkdownHeading(markdown: string): string | null {
@@ -288,6 +294,10 @@ export function resolveFileProgressScore(file: { error_message?: string | null; 
 export function buildChapterStatusLabel(status: string | undefined): string {
   switch ((status ?? "").trim()) {
     case "planned": return "待执行";
+    case "generating": return "写作中";
+    case "generated": return "初稿完成";
+    case "enhancing": return "增强中";
+    case "enhanced": return "增强完成";
     case "researching": return "检索中";
     case "researched": return "研究完成";
     case "drafting": return "写作中";
@@ -300,8 +310,11 @@ export function buildChapterStatusLabel(status: string | undefined): string {
 export function chapterStatusClasses(status: string | undefined): string {
   switch ((status ?? "").trim()) {
     case "completed": return "bg-emerald-500";
+    case "enhanced":
     case "drafted":
     case "drafting": return "bg-sky-500";
+    case "generated":
+    case "enhancing":
     case "researched":
     case "researching": return "bg-amber-500";
     default: return "bg-slate-300";

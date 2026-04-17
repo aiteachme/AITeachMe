@@ -414,8 +414,9 @@ export function MarkdownViewer({
           const codeText = extractText(children).replace(/\n$/, "");
           const language = className?.replace(/^language-/, "").trim().toLowerCase() ?? "";
           const isBlock = Boolean(className) || codeText.includes("\n");
+          const looksLikeMermaid = /^(mindmap|flowchart|graph|sequenceDiagram|classDiagram|stateDiagram|erDiagram|gantt)\b/i.test(codeText.trim());
 
-          if (language === "mermaid") {
+          if (language === "mermaid" || (!language && looksLikeMermaid)) {
             return <MermaidBlock chart={codeText} variant={variant === "planner" ? "default" : variant} />;
           }
 
