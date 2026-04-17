@@ -39,8 +39,6 @@ ingest/
     nodes/
     lib/
   common/
-    events.py
-    exports.py
     parsing/
 ```
 
@@ -51,10 +49,15 @@ ingest/
 - `fast_parse/lib/runtime.py` 是单文件 parse workflow runner 的真实落点。
 - `deep_enhance/` 是 Phase 2 后台增强链路。
 - `deep_enhance/lib/recovery.py` 承接增强恢复。
-- `common/events.py`、`common/exports.py` 承接跨链路事件与 workflow export。
 - `common/parsing/` 放两条链路共享的分类、策略、解析器、Markdown 规范化与 OCR 实现。
 
 当前真实运行主线以 `fast_parse/lib/runtime.py::run_parse_file_workflow()` 和 `deep_enhance/lib/background.py::_run_deep_enhance_background()` 为准；`fast_parse/graph.py` 与 `deep_enhance/graph.py` 主要用于 LangGraph dev/export 和后续节点化收口，避免把 graph 与手写 runtime 当成两套同时维护的业务入口。
+
+## 容易误会的功能
+
+- workflow export 不再放 `common/exports.py`。各 lane 的 `graph.py` 自己声明 `WORKFLOW_EXPORTS`，根 `ingest.__init__` 只做聚合，供 LangGraph Studio 和 `backend/scripts/generate_workflow_diagrams.py` 使用。
+- Ingest 不再保留事件层。当前没有明确订阅方，状态推进、`digest_current_step` 和日志已经覆盖运行时观测需求。
+- `common/parsing/provider_contracts.py` 只保留当前 `ParseDecision` 需要的 provider 能力与路由契约。未来 `ParsedBlock / PageMap / ParseReport` 仍在设计文档中，不提前放进代码主线。
 
 ## 对外入口
 
@@ -261,14 +264,12 @@ Phase 2 在 `background_task_registry` 中后台执行。主解析请求会先�
 - 更新 `parse_metadata_json` 中的 OCR 统计。
 - `ingest_status = ready_for_digest`
 - `digest_current_step = ingest.enhance.completed`
-- 发布 `IngestFileReadyForDigestEvent`
 
 失败后：
 
 - 保留 Phase 1 Markdown。
 - `ingest_status = enhance_failed`
 - `digest_current_step = ingest.enhance.failed`
-- 发布 `IngestFileEnhanceFailedEvent`
 
 ## 恢复链路
 
