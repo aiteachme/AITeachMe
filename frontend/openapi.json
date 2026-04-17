@@ -6484,17 +6484,6 @@
             },
             "type": "array",
             "title": "Steps"
-          },
-          "generation_mode": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Generation Mode"
           }
         },
         "type": "object",

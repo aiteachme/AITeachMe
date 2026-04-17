@@ -151,7 +151,6 @@ def create_planner_initial_state(
         "latest_plan": latest_plan,
         "progress_callback": progress_callback,
         "token_callback": token_callback,
-        "generation_mode": "raw_context_three_call_no_retrieval_v6",
         "error": None,
     }
 
@@ -300,7 +299,6 @@ def _log_planner_runtime(*, subject: str, response: BuildPlannerSessionResponse)
         planner_session_id=response.session_id,
         elapsed_ms=runtime_stats.elapsed_ms,
         steps=[step.model_dump(mode="json") for step in runtime_stats.steps],
-        generation_mode=runtime_stats.generation_mode,
     )
 
 

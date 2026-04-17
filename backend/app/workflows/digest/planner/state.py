@@ -43,7 +43,6 @@ class BuildPlannerState(TypedDict, total=False):
     # Stable graph output
     plan: dict[str, Any]
     plan_summary: str
-    generation_mode: str
     planner_record: dict[str, Any]
     planner_turns: list[dict[str, Any]]
 
@@ -92,7 +91,6 @@ BuildPlannerGraphOutput = project_typed_dict_schema(
         "plan",
         "plan_summary",
         "digest_mode",
-        "generation_mode",
         "selected_file_uids",
         "planner_record",
         "planner_turns",

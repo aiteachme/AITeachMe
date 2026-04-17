@@ -91,10 +91,13 @@ Planner 当前事件：
 - `planner.context.ready`
 - `planner.thinking.started`
 - `planner.thinking.delta`
+- `planner.thinking.failed`
+- `planner.thinking.empty`
 - `planner.intent.ready`
+- `planner.intent.failed`
 - `planner.plan.composing`
 - `planner.plan.delta`
 - `planner.plan.ready`
-- `planner.fallback.used`
+- `planner.plan.failed`
 
 旧 `status/token/done` 仍保持兼容。
