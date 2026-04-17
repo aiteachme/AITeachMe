@@ -424,6 +424,15 @@ async def run_docgen_background(*, subject: str, file_ids: list[int], prompt: st
     resolved_tone = None
     kg_ingest_task: asyncio.Task[dict[str, int]] | None = None
     graph_seed_chapter_metadatas: list[dict[str, object]] = []
+    logger.info(
+        "knowledge_build_background_started",
+        subject=subject,
+        requested_at=requested_at.isoformat(),
+        file_count=len(file_ids),
+        planner_session_id=planner_session_id,
+        confirmed_plan_id=confirmed_plan_id,
+        user_id=user_id,
+    )
     if not confirmed_plan_id or not user_id:
         _write_build_status(subject, requested_at=requested_at, status="failed", stage="failed", build_session_id=build_session_id, planner_session_id=planner_session_id, confirmed_plan_id=confirmed_plan_id, digest_mode=resolved_digest_mode, error_message="confirmed_plan_required", draft_available=False)
         logger.error("knowledge_build_failed_missing_confirmed_plan", subject=subject)
