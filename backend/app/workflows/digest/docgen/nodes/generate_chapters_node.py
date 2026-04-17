@@ -1,0 +1,271 @@
+"""Generate one DocGen chapter from a ChapterGenerationTask."""
+
+from __future__ import annotations
+
+from time import perf_counter
+
+from app.shared.infra.execution import TracedExecutionContext
+from app.shared.infra.tools.builtin.markdown_processing import build_draft_excerpt, count_words
+from app.utils.docgen_store import append_knowledge_build_recent_event, upsert_knowledge_build_chapter_progress
+from app.utils.time import utcnow
+from app.shared.infra.workflow.context import WorkflowContext
+from app.workflows.digest.docgen.lib import DocGenChapterContextRuntime, DocGenWriterRuntime
+from app.workflows.digest.docgen.lib.chapter_critic import critique_chapter, maybe_rewrite_chapter
+from app.workflows.digest.docgen.lib.chapter_generation import build_fallback_chapter_markdown
+from app.workflows.digest.docgen.lib.evidence import build_evidence_ledger, mark_evidence_used
+from app.workflows.digest.docgen.lib.models import (
+    ChapterDraft,
+    ChapterGenerationTask,
+    ChapterQualitySignals,
+    ChapterResearchTrace,
+)
+from app.workflows.digest.docgen.nodes.common import (
+    ensure_chapter_heading,
+    publish_docgen_progress,
+    resolve_docgen_course_type,
+    resolve_docgen_retrieval_profile,
+)
+from app.workflows.digest.docgen.state import DocGenState
+
+
+def _chapter_plan_for_writer(task: ChapterGenerationTask, *, total_chapters: int) -> dict:
+    media_hints = {"mermaid": [], "images": [], "interactive": []}
+    for item in task.placeholder_requests:
+        kind = str(item.get("kind") or "").strip().lower()
+        description = str(item.get("description") or "").strip()
+        if not description:
+            continue
+        if kind == "mermaid":
+            media_hints["mermaid"].append(description)
+        elif kind in {"image", "images"}:
+            media_hints["images"].append(description)
+        elif kind in {"interactive", "interactive_html"}:
+            media_hints["interactive"].append(description)
+    required = [
+        *task.content_points,
+        *task.concept_targets,
+        *task.definition_targets,
+        *task.formula_targets,
+        *task.example_targets,
+        *task.pitfall_targets,
+    ]
+    return {
+        "chapter_index": task.chapter_index,
+        "total_chapters": total_chapters,
+        "title": task.confirmed_title,
+        "resolved_title": task.enhanced_title,
+        "objective": task.objective,
+        "required_elements": list(dict.fromkeys(required))[:16],
+        "search_queries": task.retrieval_queries,
+        "writing_instructions": "\n".join([*task.teaching_outline, *task.writing_rules]),
+        "media_hints": media_hints,
+        "execution_contract": {
+            "target_word_count": task.target_word_count,
+            "min_word_count": task.min_word_count,
+            "coverage_requirements": list(dict.fromkeys(required))[:16],
+            "min_coverage_score": 0.62,
+            "repair_enabled": True,
+            "media_quota": {
+                "mermaid": len(media_hints["mermaid"]),
+                "images": len(media_hints["images"]),
+                "interactive_html": len(media_hints["interactive"]),
+            },
+        },
+        "source_file_ids": task.priority_file_ids,
+        "placeholder_requests": task.placeholder_requests,
+    }
+
+
+def _source_scope(source_details: list[dict]) -> dict:
+    local = [item for item in source_details if str(item.get("url") or "").startswith("local://")]
+    web = [item for item in source_details if str(item.get("url") or "") and not str(item.get("url") or "").startswith("local://")]
+    return {
+        "source_count": len(source_details),
+        "local_source_count": len(local),
+        "web_source_count": len(web),
+    }
+
+
+def build_generate_chapters_node(*, context: WorkflowContext):
+    async def generate_chapters_node(state: DocGenState) -> dict:
+        started_at = perf_counter()
+        task = ChapterGenerationTask.model_validate(state["chapter_task"])
+        total_chapters = int(state.get("total_chapters", 0) or 0)
+        title = task.enhanced_title or task.confirmed_title
+        upsert_knowledge_build_chapter_progress(
+            state["subject"],
+            requested_at=state["requested_at"],
+            chapter_progress={"chapter_index": task.chapter_index, "title": title, "status": "generating"},
+        )
+        append_knowledge_build_recent_event(
+            state["subject"],
+            requested_at=state["requested_at"],
+            event={
+                "stage": "chapter_generating",
+                "chapter_index": task.chapter_index,
+                "title": title,
+                "summary": f"{title} 开始执行章节生成：检索、证据整理、写作和审校。",
+                "created_at": utcnow(),
+            },
+        )
+        traced_context = TracedExecutionContext(
+            subject=state["subject"],
+            build_session_id=state.get("build_session_id", ""),
+            workflow_context=context,
+            planner_session_id=state.get("planner_session_id", ""),
+            confirmed_plan_id=state.get("confirmed_plan_id", ""),
+            digest_mode=state.get("digest_mode", ""),
+            course_type=resolve_docgen_course_type(state.get("course_type") or state.get("digest_mode")),
+            retrieval_profile=str(state.get("retrieval_profile") or resolve_docgen_retrieval_profile(state.get("digest_mode"))),
+            teaching_action="chapter_generate",
+            chapter_index=task.chapter_index,
+        )
+        dense_context = ""
+        sources: list[str] = []
+        source_details: list[dict] = []
+        research_trace = ChapterResearchTrace(chapter_index=task.chapter_index)
+        fallback_used = False
+        try:
+            shared_inputs = state.get("shared_inputs")
+            runtime = DocGenChapterContextRuntime(traced_context)
+            research = await runtime.run(
+                queries=task.retrieval_queries[: max(1, task.budget_policy.max_local_queries + task.budget_policy.max_web_queries)],
+                local_rag_subject=state["subject"],
+                local_sections=list(getattr(shared_inputs, "section_packets", []) or []),
+                chapter_title=title,
+                objective=task.objective,
+                required_elements=task.content_points or task.concept_targets,
+                digest_mode=state.get("digest_mode") or "",
+                retrieval_profile=traced_context.retrieval_profile,
+                selected_skillpacks=list(state.get("selected_skillpacks") or []),
+                user_goal=str((state.get("docgen_context") or {}).get("user_goal") or ""),
+            )
+            dense_context = research.content.strip()
+            sources = list(research.sources)
+            source_details = list(research.metadata.get("source_details", []) or [])
+            research_trace = ChapterResearchTrace(
+                chapter_index=task.chapter_index,
+                rounds=list(research.metadata.get("research_rounds", []) or []),
+                executed_queries=list(research.metadata.get("executed_queries", []) or []),
+                opened_contexts=source_details[: task.budget_policy.max_opened_urls],
+                stop_reason=str(research.metadata.get("stop_reason") or ""),
+                budget_used={
+                    "query_count": int(research.metadata.get("query_count", 0) or 0),
+                    "read_url_count": int(research.metadata.get("read_url_count", 0) or 0),
+                    "document_count": int(research.metadata.get("document_count", 0) or 0),
+                },
+                coverage_score=float(research.metadata.get("coverage_score", 0.0) or 0.0),
+                gap_notes=list(research.metadata.get("gaps_remaining", []) or []),
+            )
+        except Exception as exc:
+            fallback_used = True
+            research_trace.stop_reason = f"research_failed:{str(exc)[:160]}"
+
+        targets = [
+            *task.content_points,
+            *task.concept_targets,
+            *task.definition_targets,
+            *task.formula_targets,
+            *task.example_targets,
+            *task.pitfall_targets,
+        ]
+        evidence_ledger = build_evidence_ledger(
+            chapter_index=task.chapter_index,
+            dense_context=dense_context,
+            source_details=source_details,
+            targets=targets,
+        )
+        writer_markdown = ""
+        try:
+            writer = DocGenWriterRuntime(traced_context)
+            writer_result = await writer.run(
+                chapter_plan=_chapter_plan_for_writer(task, total_chapters=total_chapters),
+                dense_context=dense_context,
+                tone=state.get("tone") or "encouraging",
+                digest_mode=state.get("digest_mode") or "systematic",
+                selected_skillpacks=list(state.get("selected_skillpacks") or []),
+                user_goal=str((state.get("docgen_context") or {}).get("user_goal") or ""),
+            )
+            writer_markdown = ensure_chapter_heading(title, writer_result.content)
+        except Exception as exc:
+            fallback_used = True
+            writer_markdown = build_fallback_chapter_markdown(
+                task=task,
+                digest_mode=state.get("digest_mode") or "systematic",
+                reason=f"writer_failed:{str(exc)[:120]}",
+            )
+        quality = critique_chapter(
+            markdown=writer_markdown,
+            required_points=targets,
+            digest_mode=state.get("digest_mode") or "systematic",
+            source_count=len(source_details),
+            min_word_count=task.min_word_count,
+        )
+        try:
+            writer = DocGenWriterRuntime(traced_context)
+            writer_markdown, quality = await maybe_rewrite_chapter(
+                llm=writer.context.resolve_llm_caller(),
+                markdown=writer_markdown,
+                title=title,
+                digest_mode=state.get("digest_mode") or "systematic",
+                required_points=targets,
+                dense_context=dense_context,
+                quality=quality,
+                max_retries=task.budget_policy.max_writer_retries,
+                extra_metadata=traced_context.trace_metadata(chapter_index=task.chapter_index),
+            )
+        except Exception:
+            pass
+        evidence_ledger = mark_evidence_used(evidence_ledger, writer_markdown)
+        elapsed_ms = int((perf_counter() - started_at) * 1000)
+        draft = ChapterDraft(
+            chapter_index=task.chapter_index,
+            title=title,
+            markdown=writer_markdown,
+            summary_draft=build_draft_excerpt(writer_markdown, max_chars=260),
+            research_trace=research_trace,
+            evidence_ledger=evidence_ledger,
+            source_scope=_source_scope(source_details),
+            quality_signals=quality,
+            placeholder_requests=task.placeholder_requests,
+            sources=sources,
+            source_details=source_details,
+            fallback_used=fallback_used,
+        )
+        upsert_knowledge_build_chapter_progress(
+            state["subject"],
+            requested_at=state["requested_at"],
+            chapter_progress={
+                "chapter_index": task.chapter_index,
+                "title": title,
+                "status": "generated",
+                "source_count": len(source_details),
+                "word_count": count_words(writer_markdown),
+                "fallback_used": fallback_used,
+            },
+        )
+        await publish_docgen_progress(
+            context,
+            state=state,
+            stage="chapter_generated",
+            payload={
+                "chapter_index": task.chapter_index,
+                "title": title,
+                "word_count": count_words(writer_markdown),
+                "quality_score": quality.quality_score,
+                "fallback_used": fallback_used,
+            },
+        )
+        return {
+            "chapter_drafts": [draft.model_dump(mode="json")],
+            "research_traces": [research_trace.model_dump(mode="json")],
+            "evidence_ledgers": [evidence_ledger.model_dump(mode="json")],
+            "research_sources": sources,
+            "draft_ms": elapsed_ms,
+            "llm_calls_total": 2 + (1 if quality.rewrite_used else 0),
+        }
+
+    return generate_chapters_node
+
+
+__all__ = ["build_generate_chapters_node"]

@@ -1,148 +1,171 @@
-# DocGen 链路设计
+# DocGen 重构流程设计
 
 最后更新：2026-04-17
 
-这份文档只写目标流程，不解释当前代码。
+这份文档只讨论 `digest/docgen` 后续应该怎么生成高质量知识文档。它不是当前代码说明，当前实现细节仍以 `README.md`、`graph.py` 和各节点代码为准。
 
----
+## 一句话结论
 
-## 1. DocGen 是做什么的
+DocGen 不应该拿到 confirmed plan 后立刻逐章写正文。
 
-输入：
+更稳的流程应该是：
+
+```text
+先把计划大纲、用户意图、文件材料统一吃透
+  -> 再生成每章可执行的详细生成计划
+  -> 再分发给章节生成
+  -> 再做章节增强
+  -> 最后合并检查和必要回改
+```
+
+简单说：
+
+```text
+planner 定方向，docgen 定细节并真正写完。
+```
+
+## 1. DocGen 的输入和输出
+
+### 输入
+
+DocGen 至少消费：
 
 - 用户上传并解析好的文件内容
-- 用户历史对话记录
-- planner 已确认的计划大纲
+- confirmed plan，也就是用户确认后的计划大纲
+- 用户目标和 Planner 会话摘要
+- 用户历史对话摘要或关键修改意见
+- `digest_mode`：`sprint` 或 `systematic`
+- `tone`
+- `selected_skillpacks`
 
-输出：
+注意：不建议把完整历史对话直接塞给 DocGen。更合适的是 Planner 固化一份 `conversation_summary` 或 `docgen_history_brief`，只保留和文档生成有关的要求。
+
+### 输出
+
+DocGen 至少产出：
 
 - 分章节知识文档
 - 拼接后的完整知识文档
-- 章节摘要
+- 每章摘要
 - 练习与自检内容
-- 资产结果与发布结果
+- 资产增强结果
+- manifest
 
-一句话：
+后续更理想的产物：
 
-```text
-planner 负责定大纲
-docgen 负责把大纲真正展开成完整知识文档
-```
+- `chapter_generation_plan`
+- `chapter_summaries`
+- `merge_review_report`
+- `revision_tasks`
+- `evidence_ledger`
+- `asset_manifest`
+- `practice_manifest`
 
----
+## 2. 设计原则
 
-## 2. 参考 GPT / Gemini 后，这条链路应该怎么理解
+### 2.1 先统一章节格式
 
-从 GPT Deep Research 和 Gemini Deep Research 官方流程里，可以先抽出几个共同点：
+速成课和系统课先不要拆成两套完全不同的章节模板。
 
-```text
-先给计划
--> 再执行
--> 执行过程可见
--> 最后产出长结果
--> 结果还能继续迭代
-```
-
-对 DocGen 的直接启发是：
-
-1. 不能 planner 一出大纲就直接写正文
-2. 正式写之前要先把章节执行计划定细
-3. 生成过程中要允许继续检索和补内容
-4. 结果出来后要能继续回改，而不是一次性结束
-
-但你们又不只是通用 research 产品，而是教育产品，所以还应该比它们更强：
-
-1. 更强的本地资料绑定
-   - 每章明确主要依赖哪些文件、哪些 section
-
-2. 更强的章节级生成计划
-   - 每章讲什么
-   - 先讲什么
-   - 后讲什么
-   - 概念/例题/总结占比
-
-3. 更强的教学后处理
-   - 章节摘要
-   - 术语提取
-   - 小测题
-   - 易错点卡片
-   - 公式推导展开器
-
-4. 更强的章节级回改
-   - 只重写某一章
-   - 只增强某一章例题
-   - 只补某一章概念解释
-
-所以 DocGen 不是“研究完直接写报告”，而应该是：
+推荐先统一成：
 
 ```text
-大纲变细
--> 章节计划确认
--> 逐章生成
--> 逐章增强
--> 全局检查
--> 回改
--> 发布
+# 章节标题
+
+> 章节导读
+
+## 1. 概念、定义与结论
+
+## 2. 方法、步骤与适用条件
+
+## 3. 例子或例题
+
+## 4. 关键提醒与易错点
+
+## 5. 本章小结
+
+## 本章摘要
 ```
 
----
+`sprint` 和 `systematic` 的差异先体现在：
 
-## 3. Planner 需要提供什么
+- 内容密度
+- 解释深度
+- 例题比例
+- 检索偏好
+- 复盘方式
+- 易错点权重
 
-DocGen 不重新规划课程，所以 planner 必须先把宏观结构定住。
-
-### 3.1 全局信息
-
-至少要有：
+具体理解：
 
 ```text
-subject
-user_goal
-digest_mode
-tone
-selected_skillpacks
-plan_summary
-confirmed_plan_id
-planner_session_id
+sprint：更像突击课，重考点、题型、步骤、易错点、速查。
+systematic：更像系统课，重概念、定义、推导、前置关系、迁移理解。
 ```
 
-### 3.2 章节大纲
+### 2.2 正文生成前先把每章写什么定细
 
-至少要有：
+confirmed plan 只是大方向，不能直接当章节写作输入。
+
+DocGen 应该先补三层理解：
 
 ```text
-chapter_index
-chapter_title
-chapter_objective
-required_elements
-search_queries
-writing_instructions
-source_file_ids
+计划大纲增强
+意图识别
+文件摘要
 ```
 
-### 3.3 最好额外给的研究结果
+然后再统一生成每章的 `chapter_generation_plan`。
 
-最好 planner 再给一份更偏“规划侧”的研究摘要：
+### 2.3 章节生成允许继续检索
+
+章节生成不能只依赖一次 research 结果。
+
+更合理的是：
 
 ```text
-planner_grounding
-  - summary
-  - core_concepts
-  - chapter_hints
-  - gap_notes
+读本章计划
+  -> 检索本地材料
+  -> 必要时外部补充
+  -> 写概念定义
+  -> 写例题例子
+  -> 发现缺口继续补检索
+  -> 留下增强标识符
+  -> 生成章节稿
 ```
 
-这部分不是直接写正文，而是让 DocGen 一开始就知道：
+### 2.4 正文生成和增强分开
 
-- 每章大概要写什么
-- 哪些概念最重要
-- 哪些地方可能还虚
+章节生成负责把内容讲清楚。
 
----
+章节增强负责处理：
 
-## 4. 总时序
+- 图表
+- 交互块
+- Mermaid
+- 图片建议或图片生成
+- 样式统一
+- 章节摘要
+- 练习入口
 
-推荐总时序：
+不要让一个 writer 节点同时背所有职责。
+
+### 2.5 合并后必须再检查
+
+单章写得好，不代表整本就好。
+
+合并后必须检查：
+
+- 章节之间是否重复
+- 是否有知识断裂
+- 是否和计划大纲不一致
+- 是否风格漂移
+- 是否某些章节太浅或太长
+- 是否需要回改某些章节
+
+## 3. 推荐总流程
+
+推荐目标流程：
 
 ```text
 0A. 计划大纲增强
@@ -171,596 +194,722 @@ planner_grounding
 并行关系：
 
 ```text
-阶段 0 的三个节点可以并行
-阶段 2 的章节生成可以按章并行
-阶段 3 的章节增强可以按章并行
-阶段 4 是全局单点检查
-阶段 5 是最终单点发布
+阶段 0A / 0B / 0C 可以并行
+阶段 2 按章并行
+阶段 3 按章并行
+阶段 4 是全局检查
+阶段 5 是最终发布
 ```
 
-### 为什么这样编排
+## 4. 目标 Graph 形状
 
-1. 先把全局想清楚，再开始写章节
-2. 正文生成和后处理拆开，避免一个节点背太多事
-3. 章节按章并行，吞吐高
-4. 合并检查放最后，专门处理冲突、重复、缺内容和回改
-
----
-
-## 5. 总体设计原则
-
-### 5.1 速成课 / 系统课先不拆成两套章节模板
-
-先统一章节结构，先把链路跑顺。
-
-统一章节格式先定成：
+概念上可以理解成：
 
 ```text
-章节导读
--> 概念 / 定义 / 结论
--> 例子 / 例题
--> 关键提醒 / 易错点
--> 本章小结
--> 本章摘要
+load_context
+  -> prepare_parallel_inputs
+       ├─ enhance_plan_outline
+       ├─ infer_docgen_intent
+       └─ summarize_files
+  -> confirm_and_dispatch
+  -> generate_chapters (Send x N)
+  -> enhance_chapters
+  -> merge_review
+  -> publish_document
 ```
 
-速成课和系统课先只在这些地方做差异：
+当前实现已经按这个形状重构完成。
 
-- 内容密度
-- 写作语气
-- 例题比例
-- 解释深度
-- 检索偏好
-
-### 5.2 正文生成前，必须先把“每章到底写什么”定细
-
-不能 planner 一出粗大纲就直接写正文。
-
-必须先补三层：
-
-1. 大纲增强
-2. 意图深化
-3. 文件摘要
-
-然后统一确认，再正式分发。
-
-### 5.3 单章生成时允许继续检索和补内容
-
-每章不应该只吃一次 research 结果。
-
-更合理的是：
+当前 graph：
 
 ```text
-边生成
--> 边补检索
--> 边补内容
--> 边埋后续增强标识符
--> 直到本章完成
+load_context
+  -> prepare_parallel_inputs      # 内部并行承接 0A/0B/0C
+  -> confirm_and_dispatch         # 内部确认和分发
+  -> generate_chapters (Send x N)
+  -> enhance_chapters             # fan-in 后内部并发增强全部章节
+  -> merge_review
+  -> publish_document
 ```
 
-### 5.4 合并后必须再回查
+旧 `research_chapters / merge_research / finalize_titles / write_chapters / merge_drafts / enrich_assets / append_practice` 顶层节点已移除。底层可复用 runtime 仍可保留，例如章节研究、writer 和资产处理 runtime。
 
-章节单独写完，不代表整本文档就没问题。
+## 5. Node 0A：计划大纲增强
 
-最后必须拿着：
+### 做什么
 
-- 章节大纲
-- 内容要点
-- 生成计划
-- 章节摘要
+根据 confirmed plan 的章节大纲，结合本地资料和检索结果，把每章展开成更细的内容要点和章节小纲。
 
-去检查：
-
-- 哪些章节还缺
-- 哪些章节冲突
-- 哪些章节需要回改
-
----
-
-## 6. 节点设计
-
-下面每个节点都回答 5 个问题：
-
-1. 干什么
-2. 输入
-3. 输出
-4. 需要什么工具
-5. 编排上怎么想
-
----
-
-## Node 0A. 计划大纲增强
-
-### 干什么
-
-根据 planner 大纲内容，经过检索和聚合，把每个章节展开成更细的大纲和内容要点。
-
-不是重新规划课程。
-
-是把 planner 的粗大纲变成“每章具体要写什么”。
+它不是重新规划课程，而是把 Planner 的粗大纲变成 DocGen 可执行的章节蓝图。
 
 ### 输入
 
-- planner 计划大纲
+- confirmed plan
 - 用户上传文件内容
-- 用户历史对话记录
+- Planner grounding 信息
+- 用户历史对话摘要
 
 ### 输出
 
-- `enhanced_outline`
+`enhanced_outline`
 
-每章至少输出：
+每章至少包含：
 
 ```text
-章节标题
-章节内容要点
-章节细化大纲
+chapter_index
+title
+目标
+细化章节大纲
+内容要点
 重点概念
 重点定义
-重点例题方向
-重点提醒
+重点公式或结论
+例题方向
+易错提醒
 建议检索方向
+可能缺口
 ```
 
-### 需要什么工具
+### 模型和工具
 
 - 本地检索
 - 外部检索
 - `primary` 模型
 
-### 编排上怎么想
+### 编排建议
 
-这一步放在最前面，因为 planner 大纲太粗，直接拿去分发会冲突很多。
+可以按章并行增强，但最后要做一次全局去重，避免两个章节争同一个主题。
 
-可以按章并行增强，但最后必须做一次全局去重和统一。
+## 6. Node 0B：意图识别
 
----
+### 做什么
 
-## Node 0B. 意图识别
+根据文件、对话、计划大纲，再深度判断用户真正需要什么样的知识文档。
 
-### 干什么
-
-根据：
-
-- 文件
-- 对话
-- 计划大纲
-
-再做一次更深的用户需求理解。
-
-这里不是简单分类，而是要想清楚：
-
-- 用户真正想要的知识文档是什么样
-- 每个章节最终应该是什么风格
-- 内容深度应该多深
-- 用户到底更想看概念讲解、例题讲解还是总结式讲义
+Planner 的意图识别主要服务于“定大纲”；DocGen 的意图识别服务于“定文档长相”。
 
 ### 输入
 
-- 用户上传文件内容
-- 用户历史对话记录
-- planner 计划大纲
+- 用户目标
+- 用户历史对话摘要
+- confirmed plan
+- 文件摘要或资料速览
 
 ### 输出
 
-- `docgen_intent_profile`
+`docgen_intent_profile`
 
-至少包含：
+建议字段：
 
 ```text
-用户要的文档风格
-用户更关心什么
-整体深度
-每章希望偏什么
-是否偏讲解
-是否偏例题
-是否偏总结
+document_style
+depth_level
+primary_need
+secondary_need
+chapter_style_hints
+example_preference
+definition_depth
+exam_orientation
+review_orientation
+avoid_list
 ```
 
-### 需要什么工具
+例子：
+
+```text
+primary_need: "考前突击"
+example_preference: "多例题和题型步骤"
+definition_depth: "只保留必要定义，不做长推导"
+avoid_list: ["不要写太长背景", "不要重复原文"]
+```
+
+### 模型和工具
 
 - `primary` 模型
 
-### 编排上怎么想
+### 编排建议
 
-这一步必须独立出来。
+这一步可以和 0A、0C 并行。
 
-planner 阶段的意图识别是为了定大纲；
-docgen 阶段的意图识别是为了定文档长相。
+失败时回退到 confirmed plan 中的 `digest_mode`、`tone` 和默认文档风格。
 
-这两个层次不是一回事。
+## 7. Node 0C：文件摘要
 
-它和“计划大纲增强”“文件摘要”并行。
+### 做什么
 
----
+对每个文件做更细的摘要，形成文件级材料画像。
 
-## Node 0C. 文件摘要
-
-### 干什么
-
-把每个文件做成细致摘要，形成后续生成能直接用的“文件级材料画像”。
-
-目标不是一句话摘要，而是知道：
-
-- 这个文件主要讲什么
-- 它更适合支撑哪些章节
-- 它哪些段落更有价值
+这不是一句话摘要，而是为后续“每章该吃哪些文件、哪些 section”做准备。
 
 ### 输入
 
-- 用户上传并解析好的文件内容
+- 用户上传并解析后的文件内容
+- 文件元信息
+- 章节大纲
 
 ### 输出
 
-- `file_summaries`
+`file_summaries`
 
-每个文件至少输出：
+每个文件至少包含：
 
 ```text
+file_id
+filename
 文件摘要
 主要概念
 主要定义
+主要公式或结论
 主要例题 / 题型
-主要结论
 适合支撑哪些章节
-高信息密度段落
-噪音段落
+高信息密度 section
+噪音 section
+是否适合做例题来源
+是否适合做定义来源
 ```
 
-### 需要什么工具
+### 模型和工具
 
 - `primary` 模型
+- 长文件可先切片，再汇总
 
-### 编排上怎么想
+### 编排建议
 
-这一步必须独立出来，因为：
+文件之间可以并行。
 
-- 确认和分发时要知道“每章应该主要吃哪些文件”
-- 章节生成时也需要知道优先看哪些文件
+失败时保留规则摘要：
 
-文件之间可以并行摘要。
+```text
+文件名 + fast hints + section preview
+```
 
----
+## 8. Node 1：确认和分发
 
-## Node 1. 确认和分发
+### 做什么
 
-### 干什么
+把 0A、0B、0C 统一起来，生成真正给章节生成用的详细计划。
 
-把前面三份全局结果统一起来：
+这一步很关键，因为三个前置结果可能会各说各话：
 
-- 大纲增强结果
-- 意图识别结果
-- 文件摘要结果
+```text
+大纲增强认为章节 A 要讲定义
+意图识别认为用户更想看例题
+文件摘要发现例题主要在文件 B
+```
 
-最后生成一份更细致、更统一的章节执行计划，再把各章分发给后续章节生成模块。
+必须由一个全局节点统一收口。
 
 ### 输入
 
 - `enhanced_outline`
 - `docgen_intent_profile`
 - `file_summaries`
-- planner 原始大纲
+- confirmed plan
 
 ### 输出
 
-- `chapter_generation_plan`
+`chapter_generation_plan`
 
-每章至少输出：
-
-```text
-章节标题
-章节大纲
-章节内容要点
-该章公共生成计划
-该章主要依赖哪些文件
-该章优先使用哪些 section
-该章例题比重
-该章解释深度
-该章允许继续检索的方向
-```
-
-同时输出一份全局计划：
+全局计划：
 
 ```text
-全局文档风格
-全局章节统一格式
-各章之间的边界
-避免冲突的统一规则
-公共写作规则
-公共标识符规范
+global_style
+chapter_format
+mode_policy
+source_policy
+placeholder_policy
+writing_rules
+conflict_rules
 ```
 
-### 需要什么工具
+每章计划：
+
+```text
+chapter_index
+title
+chapter_outline
+content_points
+main_file_ids
+priority_section_ids
+definition_targets
+example_targets
+formula_targets
+pitfall_targets
+retrieval_queries
+allowed_web_queries
+example_ratio
+explanation_depth
+min_word_count
+target_word_count
+placeholder_requests
+```
+
+### 模型和工具
 
 - `primary` 模型
-- 可选 `reason`
-  - 用来做全局冲突检查
+- 复杂课程可用 `reason` 做全局冲突检查
 
-### 编排上怎么想
+### 编排建议
 
-这一步很关键。
+这是单点全局节点，不建议按章分开生成。
 
-如果没有这一层，前面三个 0 阶段的结果会各说各话：
+它的产物是后续所有章节生成的执行合同。
 
-- 大纲增强想这么写
-- 意图识别想那么写
-- 文件摘要又支持另一套写法
+## 9. Node 2：章节生成
 
-所以必须先统一确认，再分发。
+### 做什么
 
-它必须是单点全局节点。
+根据每章的详细计划、对应材料、公共生成规则，生成章节正文。
 
----
-
-## Node 2. 章节生成
-
-### 干什么
-
-根据章节大纲、内容要点、公共生成计划、对应章节材料，深度生成每个章节正文。
-
-生成过程中允许继续检索和增强，直到该章完成。
+章节生成过程中允许继续检索和补充内容。
 
 ### 输入
 
 - `chapter_generation_plan`
-- 该章对应的文件摘要
-- 该章对应的 section / 原文材料
-- 全局公共生成计划
+- 本章 `file_summaries`
+- 本章优先 sections
+- 本章本地检索结果
+- 本章外部补充结果
+- global writing rules
 
 ### 输出
 
-- `chapter_drafts`
+`chapter_drafts`
 
-每章至少输出：
+每章至少包含：
 
 ```text
-章节正文 markdown
-概念定义部分
-例题部分
-本章小结部分
-后续增强标识符
-章节生成摘要
+markdown
+chapter_summary_draft
+used_sources
+evidence_notes
+placeholder_requests
+generation_notes
+quality_signals
 ```
 
-### 需要什么工具
+### 模型和工具
 
-- `reason` 模型
-  - 主生成
+- `reason`：系统课、复杂推导、复杂章节
+- `primary`：速成课、结构明确章节
 - 本地检索
 - 外部检索
 - web reader
-- 内容增强工具
+- context compression
 
-### 编排上怎么想
+### 编排建议
 
-这是主干节点，必须按章并行。
+按章并行。
 
-每章内部推荐时序：
-
-```text
-1. 读取该章公共计划
-2. 读取该章优先文件和优先 section
-3. 生成概念 / 定义
-4. 生成例题 / 例子
-5. 发现缺内容就继续检索
-6. 把需要后续处理的地方埋标识符
-7. 生成章节完成稿
-```
-
-章节生成内部可以进一步拆成两个子模块：
+每章内部建议拆成三个小步骤：
 
 ```text
-章节生成：概念、定义
-章节生成：例题
+2.1 章节材料补强
+2.2 概念、定义、结论生成
+2.3 例题、易错点、小结生成
 ```
 
-它们可以串行，也可以轻并行后再合并。
+### 2.1 章节材料补强
 
----
+先根据本章计划检索：
 
-## Node 3. 章节生成增强
+- 本地 section
+- 相关已发布知识文档
+- 必要的外部资料
 
-### 干什么
+然后压缩成本章 `chapter_context_pack`。
 
-根据章节生成时留下的标识符，回头增强原有内容，并统一样式，还要生成章节摘要。
+### 2.2 概念、定义、结论生成
+
+负责写：
+
+- 概念解释
+- 定义
+- 公式或结论
+- 方法步骤
+- 适用条件
+
+这部分要求稳，不要编造。
+
+### 2.3 例题、易错点、小结生成
+
+负责写：
+
+- 例子
+- 例题
+- 题型步骤
+- 易错点
+- 本章小结
+- 后续增强标识符
+
+例题优先来自用户资料。如果资料没有，再用外部检索或模型生成，但要标记来源类型。
+
+## 10. 章节增强标识符
+
+章节生成时可以留下标识符，让后续增强节点处理。
+
+建议先统一成 HTML comment，避免影响 Markdown 展示：
+
+```text
+<!-- ATM_ENHANCE:MERMAID id="ch01_m01" hint="本章概念关系图" -->
+<!-- ATM_ENHANCE:IMAGE id="ch01_i01" hint="行列式几何意义示意图" -->
+<!-- ATM_ENHANCE:INTERACTIVE id="ch01_x01" hint="公式条件自检卡" -->
+<!-- ATM_ENHANCE:EXAMPLE id="ch01_e01" hint="补一个中等难度例题" -->
+<!-- ATM_ENHANCE:CHECK id="ch01_c01" hint="检查定义是否覆盖 required elements" -->
+```
+
+标识符至少要包含：
+
+```text
+kind
+id
+hint
+chapter_index
+```
+
+后续 `enhance_chapters` 只处理这些标识符，不重新发明整章结构。
+
+## 11. Node 3：章节生成增强
+
+### 做什么
+
+根据章节里的增强标识符，回头增强章节内容，并统一样式，生成章节摘要。
 
 ### 输入
 
 - `chapter_drafts`
-- 章节中的增强标识符
-- 全局公共生成计划
+- `placeholder_requests`
+- `chapter_generation_plan`
+- global writing rules
 
 ### 输出
 
-- `enhanced_chapter_drafts`
-- `chapter_summaries`
+`enhanced_chapter_drafts`
 
-每章至少输出：
+每章至少包含：
 
 ```text
-增强后的章节内容
-替换后的图表 / 交互 / 提醒块
-统一样式后的章节
-章节摘要
+markdown
+chapter_summary
+assets
+practice_seeds
+style_warnings
+enhance_actions
 ```
 
-### 需要什么工具
+### 模型和工具
 
 - `primary` 模型
-- Mermaid / image / interactive 生成工具
-- markdown 样式检查工具
-- 章节摘要生成工具
+- Mermaid 生成
+- 图片建议或图片生成
+- interactive block 生成
+- markdown style checker
+- summary generator
 
-### 编排上怎么想
+### 编排建议
 
-这一步必须和“章节生成”分开。
+按章并行。
 
-原因：
+失败时保留原章正文，记录 `enhance_failed`，不要拖垮整轮。
 
-1. 正文生成和后处理是两件事
-2. 章节生成时不应该背太多额外负担
-3. 标识符机制可以让后面扩展资产增强更方便
+## 12. Node 4：合并检查
 
-各章并行。
+### 做什么
 
----
-
-## Node 4. 合并检查
-
-### 干什么
-
-拿着：
-
-- 章节大纲
-- 内容要点
-- 生成计划
-- 章节摘要
-
-去检查整套文档还有哪些地方需要改。
+合并所有章节后，全局检查整本文档是否需要回改。
 
 ### 输入
 
 - `chapter_generation_plan`
 - `enhanced_chapter_drafts`
 - `chapter_summaries`
+- global writing rules
 
 ### 输出
 
-- `merged_markdown`
-- `merge_review_report`
-- 可选 `revision_tasks`
+`merged_markdown`
 
-至少输出：
+`merge_review_report`
 
-```text
-整本文档
-哪些章节需要改
-为什么要改
-是否缺内容
-是否章节冲突
-是否风格漂移
-是否大纲和正文不一致
-```
-
-### 需要什么工具
-
-- `primary` 模型
-- 可选 `reason`
-  - 用于全局检查
-- markdown merge 工具
-
-### 编排上怎么想
-
-这一步必须是单点全局节点。
-
-因为只有把所有章节放到一起，才能发现：
-
-- 章节重复
-- 章节断裂
-- 章节标题和内容不一致
-- 某章讲太多、某章讲太少
-
-必要时，这一步可以再生成：
+可选：
 
 ```text
 revision_tasks
 ```
 
-把需要修改的章节再丢回章节生成或章节增强节点。
+### 检查内容
 
-也就是说，这一步可以成为轻量回路入口。
+至少检查：
 
----
+- 章节是否齐全
+- 章节标题和正文是否一致
+- required elements 是否覆盖
+- 章节之间是否重复
+- 章节之间是否断裂
+- sprint/systematic 风格是否一致
+- 文档是否过长或过短
+- 例题是否太少
+- 摘要是否能代表章节内容
 
-## Node 5. 发布输出
+### revision_tasks
 
-### 干什么
+如果发现问题，输出回改任务：
 
-把最终结果落盘，并生成前端展示需要的拼接内容。
+```text
+revision_tasks:
+  - chapter_index
+    target_node: generate_chapters / enhance_chapters
+    reason
+    instruction
+    priority
+```
+
+第一版可以不真的回路执行，只把报告写入 manifest。
+
+第二版再支持最多一轮回改：
+
+```text
+merge_review
+  -> selected revision_tasks
+  -> regenerate/enhance selected chapters
+  -> merge_review again
+```
+
+## 13. Node 5：发布输出
+
+### 做什么
+
+把最终结果落盘，并提供前端展示需要的完整文档。
 
 ### 输入
 
 - `merged_markdown`
 - `enhanced_chapter_drafts`
 - `merge_review_report`
+- `asset_manifest`
+- `practice_manifest`
 
 ### 输出
 
-- 分章节 markdown
-- 合并后的 markdown
-- 展示用拼接结果
+- 分章节 Markdown
+- 合并 Markdown
+- 展示用 Markdown
 - manifest
+- `KnowledgeDoc` DB 记录
 
-### 需要什么工具
+### 发布要求
 
-- storage writer
-- manifest writer
-- markdown merge / split 工具
+发布时同时保留：
 
-### 编排上怎么想
+```text
+章节级产物
+整本展示产物
+构建 manifest
+构建状态
+```
 
-发布输出必须最后做。
+因为后续系统既要整本展示，也要按章引用、问答、练习和 profile 更新。
 
-而且这里要同时保留两种结果：
+## 14. 推荐状态模型
 
-1. 分章节结果
-2. 拼接后的展示结果
+先不要求一次全做，但新增字段建议按这些模型靠拢。
 
-因为系统既需要章节级能力，也需要前端整份展示能力。
+### `DocGenIntentProfile`
 
----
+```text
+document_style
+depth_level
+primary_need
+chapter_style_hints
+example_preference
+definition_depth
+avoid_list
+```
 
-## 7. 失败策略
+### `FileMaterialSummary`
 
-必须按“单章失败不拖垮整轮”设计。
+```text
+file_id
+filename
+summary
+concepts
+definitions
+formulas
+examples
+chapter_affinity
+high_value_sections
+noise_sections
+```
+
+### `EnhancedChapterOutline`
+
+```text
+chapter_index
+title
+outline
+content_points
+concept_targets
+definition_targets
+example_targets
+gap_notes
+```
+
+### `ChapterGenerationPlan`
+
+```text
+global_plan
+chapters[]
+```
+
+### `ChapterDraft`
+
+```text
+chapter_index
+markdown
+chapter_summary_draft
+used_sources
+placeholder_requests
+quality_signals
+```
+
+### `MergeReviewReport`
+
+```text
+passed
+issues
+revision_tasks
+coverage_summary
+style_summary
+```
+
+## 15. 失败策略
+
+必须按“局部失败不拖垮整轮”设计。
 
 ### 必须有的降级
 
-1. 文件摘要失败时，至少保留原文件和粗粒度摘要
-2. 大纲增强失败时，回退到 planner 原始大纲
-3. 意图识别失败时，回退到 planner 意图 + 默认文档风格
-4. 单章生成失败时，保留其他章节继续
-5. 章节增强失败时，保留章节原稿
-6. 合并检查失败时，至少输出已完成章节拼接稿
+1. 文件摘要失败：回退到规则摘要和 section preview。
+2. 大纲增强失败：回退到 confirmed plan 原始章节。
+3. 意图识别失败：回退到 confirmed plan 的模式和默认文档风格。
+4. 单章生成失败：记录失败，其他章节继续。
+5. 章节增强失败：保留原稿。
+6. 合并检查失败：至少输出已完成章节拼接稿。
+7. 练习生成失败：回退到规则练习。
 
-### 只有这几类情况才整轮失败
+### 才应该整轮失败的情况
 
-- confirmed plan 无效
-- 所有章节都生成失败
-- 最终发布失败且 staging 也没保住
+- confirmed plan 无效。
+- 所有章节都生成失败。
+- 最终发布失败且 staging 也没保住。
 
----
+## 16. 和当前实现的对应关系
 
-## 8. 最小落地顺序
-
-按这个顺序落最稳：
-
-```text
-1. 先补 文件摘要 节点
-2. 再补 大纲增强 节点
-3. 再补 意图识别 节点
-4. 做 确认和分发 节点
-5. 章节生成改成吃 chapter_generation_plan
-6. 章节增强从章节生成中拆出来
-7. 合并检查支持 revision_tasks
-8. 最后补完整的发布结果和 manifest
-```
-
----
-
-## 9. 一句话总结
-
-这条链路本质上是：
+当前实现：
 
 ```text
-先把 planner 大纲和用户真正想要的文档长相想清楚
-再把文件材料吃透
-然后统一确认每章到底该怎么写
-再逐章生成
-再逐章增强
-最后整体验证和回改
-再发布
+load_context
+  -> prepare_parallel_inputs
+  -> confirm_and_dispatch
+  -> generate_chapters
+  -> enhance_chapters
+  -> merge_review
+  -> publish_document
 ```
 
-它比“直接根据 confirmed plan 一章章写”更重，
-但更接近真正高质量知识文档生成。
+目标流程映射：
+
+| 目标阶段 | 当前对应 | 状态 |
+| --- | --- | --- |
+| 0A/0B/0C | `prepare_parallel_inputs` | 已落地，内部并行执行 |
+| 1. 确认和分发 | `confirm_and_dispatch` | 已落地，产出 `ChapterGenerationPlan` |
+| 2. 章节生成 | `generate_chapters` | 已落地，章节 fan-out |
+| 3. 章节增强 | `enhance_chapters` | 已落地，fan-in 后内部并发增强 |
+| 4. 合并检查 | `merge_review` | 已落地，第一版只产出 warning/report |
+| 5. 发布输出 | `publish_document` | 已扩展结构化 manifest |
+
+## 17. 最小落地顺序
+
+建议按这个顺序做，不要一次大改。
+
+### Phase 1：准备计划层
+
+```text
+1. 新增 FileMaterialSummary 生成逻辑
+2. 新增 DocGenIntentProfile
+3. 新增 EnhancedChapterOutline
+4. 新增 prepare_parallel_inputs 节点
+5. 新增 confirm_and_dispatch 节点生成 ChapterGenerationPlan
+```
+
+### Phase 2：增强章节生成
+
+```text
+1. generate_chapters 消费更细的章节计划
+2. writer prompt 区分概念/定义、例题、易错点、小结
+3. 统一 ATM_ENHANCE 标识符
+4. 章节输出 chapter_summary_draft
+```
+
+### Phase 3：章节增强独立化
+
+```text
+1. enhance_chapters 按章处理
+2. 生成 chapter_summary
+3. 生成 asset_manifest
+4. 生成 practice_manifest，并在每章追加本章自检
+```
+
+### Phase 4：合并检查和回改
+
+```text
+1. 新增 merge_review
+2. 输出 merge_review_report
+3. 第一版只记录 revision_tasks
+4. 第二版支持最多一轮选中章节回改
+```
+
+### Phase 5：产物闭环
+
+```text
+1. manifest 写入 chapter_generation_plan
+2. manifest 写入 chapter_summaries
+3. manifest 写入 merge_review_report
+4. manifest 写入 asset_manifest / practice_manifest
+5. 后续接 Examine / Interact / Profile
+```
+
+## 18. 近期不要做什么
+
+先不要做：
+
+- 不把 DocGen 改成完整多 Agent 动态队列。
+- 不让 DocGen 自动推翻 confirmed plan。
+- 不一上来做递归 deep research。
+- 不恢复 `app/teaching` 旧层。
+- 不新建第二套 search/tool registry。
+- 不把所有原文一次性塞进 writer prompt。
+
+继续遵守：
+
+```text
+api -> workflows -> repositories / shared.infra / models / schemas
+```
+
+新能力优先复用：
+
+- `app.shared.infra.search`
+- `app.shared.infra.facade.research`
+- `app.shared.infra.workflow`
+- `digest/common`
+
+## 19. 一句话收束
+
+DocGen 的下一步不是更会“写”，而是更会“组织生成”：
+
+```text
+先把大纲、意图、文件材料统一成章节生成计划，
+再逐章深度生成，
+再按标识符增强，
+最后全局检查和必要回改，
+最终发布分章节和整本两套产物。
+```

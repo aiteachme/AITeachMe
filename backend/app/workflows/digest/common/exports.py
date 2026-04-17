@@ -15,9 +15,12 @@ PLANNER_PROMPTS = {
 }
 
 DOCGEN_PROMPTS = {
-    "research_purify_prompt": "Research purification prompt used by docgen.",
-    "writer_prompt": "Chapter writing prompt used by docgen.",
-    "mermaid_prompt": "Mindmap rendering prompt used by docgen.",
+    "outline_enhance_prompt": "DocGen execution-level outline enhancement prompt.",
+    "intent_prompt": "DocGen writing-intent inference prompt.",
+    "file_summary_prompt": "DocGen file material summary prompt.",
+    "writer_prompt": "Chapter writing prompt used by DocGen.",
+    "chapter_critic_prompt": "Bounded chapter rewrite prompt.",
+    "mermaid_prompt": "Mindmap rendering prompt used by DocGen.",
 }
 
 
@@ -31,12 +34,10 @@ def _build_docgen_graph_for_export():
 
 
 _DOCGEN_SEND_EDGES = (
-    "load_context -. Send xN .-> research_chapters",
-    "finalize_titles -. Send xN .-> write_chapters",
-    "write_chapters --> merge_drafts",
-    "merge_drafts --> enrich_assets",
-    "enrich_assets --> append_practice",
-    "append_practice --> publish_document",
+    "confirm_and_dispatch -. Send xN .-> generate_chapters",
+    "generate_chapters --> enhance_chapters",
+    "enhance_chapters --> merge_review",
+    "merge_review --> publish_document",
     "publish_document --> __end__",
 )
 

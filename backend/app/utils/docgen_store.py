@@ -66,6 +66,8 @@ class KnowledgeDocsManifest(BaseModel):
     prompt: str | None = None
     chapter_count: int = 0
     chapter_titles: list[str] = Field(default_factory=list)
+    docgen_manifest_key: str | None = None
+    merge_review_report: dict[str, object] = Field(default_factory=dict)
 
 
 class KnowledgeBuildLock(BaseModel):
