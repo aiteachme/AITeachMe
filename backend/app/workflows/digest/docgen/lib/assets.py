@@ -165,7 +165,7 @@ class _ImagePlaceholderRuntime(BaseTracedExecution):
         model_name = (settings.models.image_generation or "").strip()
         if not settings.image_generation_enabled:
             return TracedExecutionResult(
-                content=f"> [!NOTE]\n> 未配置文生图模型，暂以配图建议占位：{description}",
+                content="",
                 metadata={"asset_enabled": False},
             )
         return TracedExecutionResult(

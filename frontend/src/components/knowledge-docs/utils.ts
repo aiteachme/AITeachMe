@@ -121,9 +121,136 @@ export function normalizeDomainLabel(input: string): string {
 }
 
 export function cleanKnowledgeMarkdownForDisplay(markdown: string): string {
-  return String(markdown ?? "")
+  return repairMalformedMermaidFencesForRender(String(markdown ?? ""))
     .replace(/\s*\{#ku_[A-Za-z0-9_-]+\}/g, "")
+    .replace(/\s*<!--\s*ATM_KU:\s*ku_[A-Za-z0-9_-]+\s*-->/g, "")
     .replace(/[ \t]+\n/g, "\n");
+}
+
+function isMarkdownBoundary(line: string): boolean {
+  return /^(#{1,6}\s+\S|[-*+]\s+\S|\d+\.\s+\S|>\s*\[!|\|.+\||---\s*$)/.test(line.trim());
+}
+
+function isIndentedContextEcho(line: string): boolean {
+  if (!/^( {4,}|\t)/.test(line)) return false;
+  const trimmed = line.trim();
+  return Boolean(trimmed) && (
+    trimmed.startsWith("#") ||
+    trimmed.startsWith("**") ||
+    trimmed.startsWith(">") ||
+    trimmed.startsWith("|") ||
+    trimmed.length > 18
+  );
+}
+
+function looksLikeMermaidLine(line: string): boolean {
+  const trimmed = line.trim();
+  if (!trimmed) return true;
+  if (/^(mindmap|graph|flowchart|sequenceDiagram|classDiagram|stateDiagram(?:-v2)?|erDiagram|gantt|pie|journey|timeline|gitGraph)\b/i.test(trimmed)) return true;
+  if (/^\s/.test(line)) return true;
+  return /-->|---|==>|\||\[|\]|\(|\)|\{|\}/.test(trimmed);
+}
+
+function isMalformedMermaidFence(line: string): boolean {
+  const match = line.match(/^\s*```\s*(.+)$/);
+  return Boolean(match?.[1] && looksLikeMermaidLine(match[1]));
+}
+
+/**
+ * ReactMarkdown parses fenced code before our `code` renderer runs.
+ * If DocGen outputs a malformed Mermaid fence, the parser may swallow
+ * following headings into one giant code block. This is a frontend-only
+ * render guard: it normalizes broken Mermaid fences before Markdown parse.
+ */
+function repairMalformedMermaidFencesForRender(markdown: string): string {
+  if (!markdown.includes("```")) return markdown;
+
+  const lines = markdown.replace(/\r\n?/g, "\n").split("\n");
+  const output: string[] = [];
+  let inMermaid = false;
+  let afterMermaidClose = false;
+  let skippingArtifact = false;
+  let mermaidLines: string[] = [];
+
+  const flushMermaid = () => {
+    while (mermaidLines.length > 0 && !mermaidLines[0].trim()) mermaidLines.shift();
+    while (mermaidLines.length > 0 && !mermaidLines[mermaidLines.length - 1].trim()) mermaidLines.pop();
+    if (mermaidLines.length > 0) {
+      output.push("```mermaid", ...mermaidLines, "```");
+    }
+    mermaidLines = [];
+  };
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
+    const trimmed = line.trim();
+
+    if (skippingArtifact) {
+      if (!trimmed) continue;
+      if (isIndentedContextEcho(line) || isMalformedMermaidFence(line)) continue;
+      if (trimmed.startsWith("```")) {
+        skippingArtifact = false;
+        afterMermaidClose = false;
+        continue;
+      }
+      if (isMarkdownBoundary(line)) {
+        skippingArtifact = false;
+        afterMermaidClose = false;
+        index -= 1;
+        continue;
+      }
+      continue;
+    }
+
+    if (!inMermaid) {
+      if (afterMermaidClose) {
+        if (isIndentedContextEcho(line) || isMalformedMermaidFence(line)) {
+          skippingArtifact = true;
+          continue;
+        }
+        afterMermaidClose = false;
+      }
+
+      const start = line.match(/^\s*```\s*(mermaid|mindmap|graph|flowchart|sequenceDiagram|classDiagram|stateDiagram(?:-v2)?|erDiagram|gantt|pie|journey|timeline|gitGraph)\s*$/i);
+      if (start?.[1]) {
+        const lang = start[1];
+        inMermaid = true;
+        mermaidLines = lang.toLowerCase() === "mermaid" ? [] : [lang];
+        continue;
+      }
+
+      output.push(line);
+      continue;
+    }
+
+    if (trimmed.startsWith("```")) {
+      flushMermaid();
+      inMermaid = false;
+      afterMermaidClose = true;
+      continue;
+    }
+
+    if (mermaidLines.length > 0 && isMarkdownBoundary(line)) {
+      flushMermaid();
+      inMermaid = false;
+      afterMermaidClose = false;
+      index -= 1;
+      continue;
+    }
+
+    if (mermaidLines.length > 0 && !looksLikeMermaidLine(line)) {
+      flushMermaid();
+      inMermaid = false;
+      afterMermaidClose = false;
+      index -= 1;
+      continue;
+    }
+
+    mermaidLines.push(line.replace(/^(>\s*)+/, "").trimEnd());
+  }
+
+  if (inMermaid) flushMermaid();
+  return output.join("\n");
 }
 
 /* ---- Markdown Helpers ---- */
