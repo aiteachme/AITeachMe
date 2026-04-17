@@ -135,7 +135,6 @@ def create_planner_initial_state(
     file_ids: list[int],
     user_goal: str,
     digest_mode: str,
-    tone: str,
     selected_skillpacks: list[str],
     planner_session_id: str,
     message_history: list[str],
@@ -156,7 +155,6 @@ def create_planner_initial_state(
         "file_ids": file_ids,
         "user_goal": user_goal,
         "digest_mode": digest_mode,
-        "tone": tone,
         "selected_skillpacks": list(selected_skillpacks),
         "planner_session_id": planner_session_id,
         "message_history": message_history,
@@ -178,7 +176,6 @@ async def run_build_planner_workflow(
     user_goal: str,
     planner_session_id: str,
     digest_mode: str,
-    tone: str,
     selected_skillpacks: list[str],
     message_history: list[str],
     user_id: str = "",
@@ -227,7 +224,6 @@ async def run_build_planner_workflow(
             file_ids=file_ids,
             user_goal=user_goal,
             digest_mode=digest_mode,
-            tone=tone,
             selected_skillpacks=selected_skillpacks,
             planner_session_id=planner_session_id,
             message_history=message_history,
@@ -263,7 +259,6 @@ async def create_build_planner_session(
     session_id = uuid.uuid4().hex
     user_goal = payload.user_goal.strip()
     digest_mode = (payload.digest_mode or planner_defaults.default_digest_mode).strip() or planner_defaults.default_digest_mode
-    tone = (payload.tone or planner_defaults.default_tone).strip() or planner_defaults.default_tone
     logger.info(
         "planner_create_session_starting",
         subject=subject.slug,
@@ -271,7 +266,6 @@ async def create_build_planner_session(
         planner_session_id=session_id,
         file_uid_count=len(payload.file_uids or []),
         digest_mode=digest_mode,
-        tone=tone,
         user_goal_preview=user_goal[:80],
     )
     result = await run_build_planner_workflow(
@@ -284,7 +278,6 @@ async def create_build_planner_session(
         user_goal=user_goal,
         planner_session_id=session_id,
         digest_mode=digest_mode,
-        tone=tone,
         selected_skillpacks=list(payload.selected_skillpacks or []),
         message_history=[user_goal],
         progress_callback=progress_callback,
@@ -338,7 +331,6 @@ async def append_build_planner_message(
         user_goal="",
         planner_session_id=session_id,
         digest_mode="",
-        tone="",
         selected_skillpacks=list(payload.selected_skillpacks or []),
         message_history=[],
         progress_callback=progress_callback,

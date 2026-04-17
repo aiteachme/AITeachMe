@@ -27,7 +27,6 @@ class BuildPlannerState(TypedDict, total=False):
     selected_file_uids: list[str]
     user_goal: str
     digest_mode: str
-    tone: str
     selected_skillpacks: list[str]
     planner_session_id: str
     message_history: list[str]
@@ -73,7 +72,6 @@ BuildPlannerGraphInput = project_typed_dict_schema(
         "file_ids",
         "user_goal",
         "digest_mode",
-        "tone",
         "selected_skillpacks",
         "planner_session_id",
         "message_history",

@@ -52,6 +52,7 @@ from app.workflows.digest.planner.lib.plans import normalize_planner_payload
 from app.workflows.digest.planner.lib.steps import STEP_TIMING_FIELDS
 
 logger = structlog.get_logger(__name__)
+LEGACY_PLAN_TONE = "encouraging"
 
 
 def _markdown_ready(raw_file: RawFile) -> bool:
@@ -141,7 +142,7 @@ def _plan_response(
         selected_file_uids=selected_file_uids,
         user_goal=str(plan.get("user_goal") or ""),
         digest_mode=str(plan.get("digest_mode") or "systematic"),
-        tone=str(plan.get("tone") or "encouraging"),
+        tone=str(plan.get("tone") or LEGACY_PLAN_TONE),
         selected_skillpacks=list(plan.get("selected_skillpacks") or []),
         chapter_plan=list(plan.get("chapter_plan") or []),
         research_queries=list(plan.get("research_queries") or []),
@@ -310,7 +311,6 @@ def _normalize_persisted_plan(
     subject: str,
     user_goal: str,
     digest_mode: str,
-    tone: str,
     selected_skillpacks: list[str] | None = None,
     material_context: Any | None = None,
     latest_plan: dict[str, Any] | None = None,
@@ -320,7 +320,6 @@ def _normalize_persisted_plan(
         subject=subject,
         user_goal=user_goal,
         requested_digest_mode=digest_mode,
-        requested_tone=tone,
         selected_skillpacks=selected_skillpacks,
         shared_inputs=material_context,
         latest_plan=latest_plan,
@@ -363,7 +362,6 @@ def prepare_planner_run(state: Mapping[str, Any]) -> dict[str, Any]:
         # 第一轮规划：创建 DB session、绑定文件选择，只返回后续 graph 需要的字段。
         planner_defaults = get_teaching_runtime_config().planner
         user_goal = str(state.get("user_goal") or "").strip()
-        tone = (state.get("tone") or planner_defaults.default_tone).strip() or planner_defaults.default_tone
         digest_mode = (
             state.get("digest_mode") or planner_defaults.default_digest_mode
         ).strip() or planner_defaults.default_digest_mode
@@ -393,7 +391,7 @@ def prepare_planner_run(state: Mapping[str, Any]) -> dict[str, Any]:
                     status="planning",
                     user_goal=user_goal,
                     digest_mode=digest_mode,
-                    tone=tone,
+                    tone=LEGACY_PLAN_TONE,
                     selected_file_ids_json=selected_file_ids,
                 ),
             )
@@ -421,7 +419,6 @@ def prepare_planner_run(state: Mapping[str, Any]) -> dict[str, Any]:
                 "selected_file_uids": selected_file_uids,
                 "user_goal": user_goal,
                 "digest_mode": digest_mode,
-                "tone": tone,
                 "message_history": [user_goal],
                 "planner_record": _record_snapshot(record),
                 "planner_turns": [_turn_snapshot(user_turn)],
@@ -479,7 +476,6 @@ def prepare_planner_run(state: Mapping[str, Any]) -> dict[str, Any]:
                 "selected_file_uids": selected_file_uids,
                 "user_goal": record.user_goal,
                 "digest_mode": record.digest_mode,
-                "tone": record.tone,
                 "selected_skillpacks": selected_skillpacks,
                 "message_history": [turn.content for turn in turns if turn.content.strip()],
                 "latest_plan": record.latest_plan_json,
@@ -527,7 +523,6 @@ def save_planner_result(
             subject=subject_slug,
             user_goal=record.user_goal,
             digest_mode=record.digest_mode,
-            tone=record.tone,
             selected_skillpacks=list(state.get("selected_skillpacks") or []),
             material_context=material_context,
             latest_plan=record.latest_plan_json,
@@ -535,7 +530,6 @@ def save_planner_result(
         record.latest_plan_json = persisted_plan
         record.latest_summary = str(persisted_plan.get("plan_summary") or state.get("plan_summary") or "")
         record.digest_mode = str(persisted_plan.get("digest_mode") or record.digest_mode)
-        record.tone = str(persisted_plan.get("tone") or record.tone)
         record.status = "draft"
         record.confirmed_plan_id = None
         record.updated_at = utcnow()
@@ -563,7 +557,6 @@ def save_planner_result(
             "plan": persisted_plan,
             "plan_summary": str(persisted_plan.get("plan_summary") or ""),
             "digest_mode": str(persisted_plan.get("digest_mode") or state.get("digest_mode") or ""),
-            "tone": str(persisted_plan.get("tone") or state.get("tone") or ""),
             "selected_file_ids": list(record.selected_file_ids_json),
             "selected_file_uids": _file_uids_from_ids(
                 session,

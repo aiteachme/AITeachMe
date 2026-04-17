@@ -31,7 +31,6 @@ class BuildPlannerDraft(BaseModel):
     subject: str
     user_goal: str
     digest_mode: str = "systematic"
-    tone: str = "encouraging"
     selected_skillpacks: list[str] = Field(default_factory=list)
     chapter_plan: list[PlannerChapterPlan] = Field(default_factory=list)
     # Kept for API/DB compatibility. DocGen derives retrieval queries from chapter content.
@@ -85,10 +84,6 @@ def _positive_int(value: Any) -> int | None:
 def _normalize_digest_mode(value: Any) -> str:
     mode = _text(value or get_teaching_runtime_config().planner.default_digest_mode).lower()
     return "sprint" if mode == "sprint" else "systematic"
-
-
-def _normalize_tone(value: Any) -> str:
-    return _text(value) or get_teaching_runtime_config().planner.default_tone
 
 
 def _minimal_shared_inputs(subject: str) -> SharedInputs:
@@ -162,7 +157,6 @@ def normalize_planner_draft(
     subject: str,
     user_goal: str,
     requested_digest_mode: str,
-    requested_tone: str,
     selected_skillpacks: list[str] | None = None,
     shared_inputs: SharedInputs | None = None,
     latest_plan: BuildPlannerDraft | Mapping[str, Any] | None = None,
@@ -171,7 +165,6 @@ def normalize_planner_draft(
     current = _mapping(draft)
     previous = _mapping(latest_plan)
     mode = _normalize_digest_mode(requested_digest_mode or current.get("digest_mode") or previous.get("digest_mode"))
-    tone = _normalize_tone(requested_tone or current.get("tone") or previous.get("tone"))
     display_subject = _resolve_subject_display_name(subject, shared_inputs=shared, user_goal=user_goal)
 
     current_chapters = _chapter_items(current.get("chapter_plan"))
@@ -194,7 +187,6 @@ def normalize_planner_draft(
         subject=display_subject,
         user_goal=user_goal,
         digest_mode=mode,
-        tone=tone,
         selected_skillpacks=_strings(skillpacks),
         chapter_plan=chapters,
         research_queries=[],
@@ -210,7 +202,6 @@ def normalize_planner_payload(
     subject: str,
     user_goal: str,
     requested_digest_mode: str,
-    requested_tone: str,
     selected_skillpacks: list[str] | None = None,
     shared_inputs: SharedInputs | None = None,
     latest_plan: BuildPlannerDraft | Mapping[str, Any] | None = None,
@@ -220,7 +211,6 @@ def normalize_planner_payload(
         subject=subject,
         user_goal=user_goal,
         requested_digest_mode=requested_digest_mode,
-        requested_tone=requested_tone,
         selected_skillpacks=selected_skillpacks,
         shared_inputs=shared_inputs,
         latest_plan=latest_plan,

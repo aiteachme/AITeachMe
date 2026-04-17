@@ -26,7 +26,6 @@ def build_plan_composer_messages(
     subject: str,
     user_goal: str,
     digest_mode: str,
-    tone: str,
     material_context: DigestMaterialContext,
     planner_brief: PlannerBrief,
     learning_intent: LearningIntent,
@@ -41,7 +40,6 @@ def build_plan_composer_messages(
         f"主题：{subject}\n"
         f"用户目标：{user_goal}\n"
         f"模式：{digest_mode}\n"
-        f"语气：{tone}\n"
         f"资料画像：\n{render_material_overview(material_context)}\n\n"
         f"资料上下文：\n{render_material_digest(material_context)}\n\n"
         f"最近对话与修改意见：\n{render_message_history(message_history, limit=6)}\n\n"
@@ -64,7 +62,7 @@ def build_plan_composer_messages(
         "不要复述“我会阅读文档/检索来源/根据资料生成”，不要列来源标题。\n"
         "这一段会通过 SSE 展示给用户，所以要自然、清楚、短。\n\n"
         f"第二段必须从单独一行 {PLAN_JSON_MARKER} 开始，随后输出一个合法 JSON 对象，最后以 {PLAN_JSON_END_MARKER} 结束。\n"
-        "JSON 只输出你新生成的信息，不要重复题目、目标、模式、语气等上下文字段。\n"
+        "JSON 只输出你新生成的信息，不要重复题目、目标、模式等上下文字段。\n"
         "JSON 只有两个字段：plan_text 和 chapters。\n\n"
         "JSON 形状：\n"
         "{\n"

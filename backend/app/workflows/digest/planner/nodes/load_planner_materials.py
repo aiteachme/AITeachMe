@@ -200,13 +200,11 @@ def build_load_planner_materials_node(*, context: WorkflowContext):
             **session_update,
             "material_context": material_context,
             "digest_mode": digest_mode,
-            "tone": working_state.get("tone") or "encouraging",
         }
         logger.info(
             "planner_load_materials_completed",
             planner_session_id=working_state.get("planner_session_id", ""),
             digest_mode=digest_mode,
-            tone=result["tone"],
             material_digest_chars=len(material_context.material_digest or ""),
         )
         return result

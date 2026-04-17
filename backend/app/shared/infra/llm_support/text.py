@@ -7,7 +7,7 @@ import time
 
 from app.schemas.llm import ChatMessage
 from app.shared.infra.exceptions import LLMTimeoutError
-from app.shared.infra.llm_support.routing import TaskType
+from app.shared.infra.llm_support.routing import LLMCallPurpose
 from app.shared.infra.observability.trace import langsmith_trace
 
 from .litellm_loader import load_litellm
@@ -30,14 +30,16 @@ litellm = load_litellm()
 async def acompletion(
     messages: list[ChatMessage],
     *,
-    task_type: TaskType = TaskType.DEFAULT,
+    call_purpose: LLMCallPurpose | None = None,
+    task_type: LLMCallPurpose | None = None,
     model: str | None = None,
     **kwargs,
 ) -> str:
     """Async text completion."""
 
     context = build_completion_context(
-        task_type,
+        task_type=task_type,
+        call_purpose=call_purpose,
         model=model,
     )
     last_error: Exception | None = None

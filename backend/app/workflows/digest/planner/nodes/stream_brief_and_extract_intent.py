@@ -8,7 +8,7 @@ import time
 import structlog
 
 from app.shared.infra.llm_support import acompletion_stream, acompletion_with_fallback
-from app.shared.infra.llm_support.routing import TaskType
+from app.shared.infra.llm_support.routing import LLMCallPurpose
 from app.shared.infra.workflow.context import WorkflowContext
 from app.workflows.digest.planner.lib.plan_sketch import parse_planner_brief_text
 from app.workflows.digest.planner.lib.planner_events import emit_planner_event, emit_planner_token
@@ -35,7 +35,6 @@ async def _stream_planner_brief(state: BuildPlannerState, fallback: PlannerBrief
         subject=subject_name,
         user_goal=state.get("user_goal") or "",
         digest_mode=state.get("digest_mode") or material_context.course_mode_decision.mode.value,
-        tone=state.get("tone") or "encouraging",
         material_context=material_context,
         message_history=list(state.get("message_history", [])),
     )
@@ -53,9 +52,8 @@ async def _stream_planner_brief(state: BuildPlannerState, fallback: PlannerBrief
     try:
         stream = acompletion_stream(
             [{"role": "user", "content": prompt}],
-            task_type=TaskType.REASONING,
-            model="reason",
-            temperature=0.2,
+            call_purpose=LLMCallPurpose.GENERATE,
+            model="light",
             max_tokens=780,
             extra_metadata={
                 "planner_session_id": state.get("planner_session_id") or "",
@@ -128,10 +126,9 @@ async def _extract_learning_intent(state: BuildPlannerState) -> LearningIntent:
                 material_context=material_context,
                 message_history=list(state.get("message_history", [])),
             ),
-            task_type=TaskType.CLASSIFY,
-            model="primary",
+            call_purpose=LLMCallPurpose.CLASSIFY,
+            model="light",
             response_model=LearningIntent,
-            temperature=0.1,
             max_tokens=900,
             extra_metadata={
                 "planner_session_id": state.get("planner_session_id") or "",

@@ -10,7 +10,7 @@ import structlog
 from pydantic import BaseModel, Field
 
 from app.shared.infra.llm_support import acompletion_stream
-from app.shared.infra.llm_support.routing import TaskType
+from app.shared.infra.llm_support.routing import LLMCallPurpose
 from app.shared.infra.workflow.context import WorkflowContext
 from app.workflows.digest.planner.lib.planner_events import emit_planner_event, emit_planner_token
 from app.workflows.digest.planner.lib.models import LearningIntent, PlannerBrief
@@ -133,16 +133,14 @@ async def _stream_composer_response(
                 subject=state["subject"],
                 user_goal=state.get("user_goal") or "",
                 digest_mode=state.get("digest_mode") or material_context.course_mode_decision.mode.value,
-                tone=state.get("tone") or "encouraging",
                 material_context=material_context,
                 planner_brief=planner_brief,
                 learning_intent=intent,
                 message_history=list(state.get("message_history", [])),
                 latest_plan=state.get("latest_plan"),
             ),
-            task_type=TaskType.REASONING,
-            model="reason",
-            temperature=0.15,
+            call_purpose=LLMCallPurpose.GENERATE,
+            model="light",
             max_tokens=3200,
             extra_metadata={
                 "planner_session_id": state.get("planner_session_id") or "",
