@@ -1,4 +1,4 @@
-"""Probe evidence for the planner graph."""
+"""Retrieve and compact evidence for planner composition."""
 
 from __future__ import annotations
 
@@ -7,8 +7,6 @@ import asyncio
 import structlog
 
 from app.shared.infra.execution import TracedExecutionContext
-from app.shared.infra.llm_support import acompletion_with_fallback
-from app.shared.infra.llm_support.routing import TaskType
 from app.shared.infra.search import SourceCurator
 from app.shared.infra.search.factory import get_configured_retriever_names
 from app.shared.infra.search.types import SearchResult
@@ -23,9 +21,8 @@ from app.workflows.digest.planner.lib.evidence_probe import (
     source_preview,
     triage_sources,
 )
-from app.workflows.digest.planner.lib.models import EvidenceQuerySet, EvidenceSource, PlannerBrief
+from app.workflows.digest.planner.lib.models import EvidenceSource, LearningIntent, PlannerBrief
 from app.workflows.digest.planner.lib.planner_events import emit_planner_event
-from app.workflows.digest.planner.prompts import build_evidence_query_messages
 from app.workflows.digest.planner.state import BuildPlannerState
 
 logger = structlog.get_logger(__name__)
@@ -48,40 +45,22 @@ def _normalize_probe_queries(value: list[str], *, limit: int) -> list[str]:
     return queries
 
 
-async def _generate_probe_queries(state: BuildPlannerState, *, planner_brief: PlannerBrief) -> list[str]:
+def _resolve_probe_queries(
+    state: BuildPlannerState,
+    *,
+    planner_brief: PlannerBrief,
+    intent: LearningIntent,
+) -> list[str]:
     settings = get_settings()
     query_count = max(1, int(settings.planner.evidence_query_count))
     material_context = state["material_context"]
-    fallback_queries = fallback_probe_queries(material_context, planner_brief=planner_brief)
-    try:
-        generated = await acompletion_with_fallback(
-            build_evidence_query_messages(
-                subject=state["subject"],
-                user_goal=state.get("user_goal") or "",
-                material_context=material_context,
-                planner_brief=planner_brief,
-                query_count=query_count,
-            ),
-            task_type=TaskType.CLASSIFY,
-            model="light",
-            response_model=EvidenceQuerySet,
-            temperature=0.1,
-            max_tokens=420,
-            extra_metadata={
-                "planner_session_id": state.get("planner_session_id") or "",
-                "substep": "generate_probe_queries",
-            },
-        )
-        queries = _normalize_probe_queries(generated.queries, limit=query_count)
-        if queries:
-            return queries
-    except Exception:
-        logger.exception(
-            "planner_probe_query_generation_failed",
-            planner_session_id=state.get("planner_session_id") or "",
-            subject=state["subject"],
-        )
-    return _normalize_probe_queries(fallback_queries, limit=query_count)
+    intent_queries = _normalize_probe_queries(intent.evidence_queries, limit=query_count)
+    if intent_queries:
+        return intent_queries
+    return _normalize_probe_queries(
+        fallback_probe_queries(material_context, planner_brief=planner_brief),
+        limit=query_count,
+    )
 
 
 def _opened_local_sources(selected_sources: list[EvidenceSource]) -> list[EvidenceSource]:
@@ -123,11 +102,12 @@ async def _opened_web_sources(selected_sources: list[EvidenceSource]) -> list[Ev
     ]
 
 
-def build_probe_evidence_node(*, context: WorkflowContext):
-    async def probe_evidence_node(state: BuildPlannerState) -> dict:
+def build_retrieve_planning_evidence_node(*, context: WorkflowContext):
+    async def retrieve_planning_evidence_node(state: BuildPlannerState) -> dict:
         material_context = state["material_context"]
         planner_brief = PlannerBrief.model_validate(state.get("planner_brief") or {})
-        queries = await _generate_probe_queries(state, planner_brief=planner_brief)
+        intent = LearningIntent.model_validate(state.get("learning_intent") or {})
+        queries = _resolve_probe_queries(state, planner_brief=planner_brief, intent=intent)
         if not queries:
             fallback_query = str(state.get("user_goal") or state["subject"]).strip()
             queries = [fallback_query] if fallback_query else []
@@ -165,6 +145,8 @@ def build_probe_evidence_node(*, context: WorkflowContext):
         local_results: list[SearchResult] = []
         web_results: list[SearchResult] = []
         if retriever_names:
+            # Retrieval is fan-out only. Query generation already happened in
+            # the intent node, so this node has no hidden LLM dependency.
             async def _run_search(retriever_name: str, query: str) -> tuple[str, list[SearchResult]]:
                 return retriever_name, await safe_search(
                     retriever_name,
@@ -258,7 +240,7 @@ def build_probe_evidence_node(*, context: WorkflowContext):
         )
         return {"evidence_brief": evidence.model_dump(mode="json")}
 
-    return probe_evidence_node
+    return retrieve_planning_evidence_node
 
 
-__all__ = ["build_probe_evidence_node"]
+__all__ = ["build_retrieve_planning_evidence_node"]

@@ -1,9 +1,9 @@
 """Planner graph definition and public workflow entrypoints.
 
 Planner 只有一条真实业务链路：
-prepare material -> summarize -> brief/intent -> evidence -> compose -> finalize。
+load materials -> pack raw context -> brief/intent -> retrieve evidence -> stream/parse plan -> persist。
 create/append API 只负责装配初始 state 并启动这条图；session DB 读写发生在
-prepare/finalize 这两个真实节点里，通过极简 store API 完成。
+load/persist 这两个真实节点里，通过极简 store API 完成。
 """
 
 from __future__ import annotations
@@ -26,12 +26,12 @@ from app.workflows.digest.planner.lib.store import (
     planner_session_response_from_state,
 )
 from app.workflows.digest.planner.nodes import (
-    build_bootstrap_plan_brief_node,
-    build_compose_build_plan_node,
-    build_finalize_plan_contract_node,
-    build_prepare_material_context_node,
-    build_probe_evidence_node,
-    build_summarize_material_digest_node,
+    build_load_planner_materials_node,
+    build_normalize_and_persist_plan_node,
+    build_pack_raw_material_context_node,
+    build_retrieve_planning_evidence_node,
+    build_stream_and_parse_plan_draft_node,
+    build_stream_brief_and_extract_intent_node,
 )
 from app.workflows.digest.planner.state import (
     BuildPlannerGraphInput,
@@ -50,92 +50,91 @@ def build_planner_graph(*, context: WorkflowContext) -> StateGraph:
         output_schema=BuildPlannerGraphOutput,
     )
 
-    # API create/append 场景下，资料准备节点也是第一处持久化点：
-    # 先创建或读取 planner session，再准备 material_context。
+    # Entry-side persistence and material loading live together here:
+    # the node turns an API create/append request into a complete planner state.
     workflow.add_node(
-        "prepare_material_context",
+        "load_planner_materials",
         trace.node(
-            build_prepare_material_context_node(context=context),
-            name="prepare_material_context",
+            build_load_planner_materials_node(context=context),
+            name="load_planner_materials",
             timing_field="prepare_ms",
         ),
     )
     workflow.add_node(
-        "summarize_material_digest",
+        "pack_raw_material_context",
         trace.node(
-            build_summarize_material_digest_node(context=context),
-            name="summarize_material_digest",
-            timing_field="digest_ms",
+            build_pack_raw_material_context_node(context=context),
+            name="pack_raw_material_context",
+            timing_field="context_ms",
         ),
     )
 
-    # 规划展示层：一边流式输出用户可见 planning brief，
-    # 一边并行抽取极简 learning intent。
+    # First two LLM calls run in parallel: reason streams a visible brief,
+    # primary extracts intent and retrieval queries.
     workflow.add_node(
-        "bootstrap_plan_brief",
+        "stream_brief_and_extract_intent",
         trace.node(
-            build_bootstrap_plan_brief_node(context=context),
-            name="bootstrap_plan_brief",
+            build_stream_brief_and_extract_intent_node(context=context),
+            name="stream_brief_and_extract_intent",
             timing_field="bootstrap_ms",
         ),
     )
 
-    # 证据探测层：把检索细节压缩成 EvidenceBrief，
-    # 避免 composer 直接吃一堆 raw hits。
+    # Pure retrieval step: no LLM call, only fan-out search and evidence compaction.
     workflow.add_node(
-        "probe_evidence",
+        "retrieve_planning_evidence",
         trace.node(
-            build_probe_evidence_node(context=context),
-            name="probe_evidence",
+            build_retrieve_planning_evidence_node(context=context),
+            name="retrieve_planning_evidence",
             timing_field="evidence_ms",
         ),
     )
     workflow.add_node(
-        "compose_build_plan",
+        "stream_and_parse_plan_draft",
         trace.node(
-            build_compose_build_plan_node(context=context),
-            name="compose_build_plan",
+            build_stream_and_parse_plan_draft_node(context=context),
+            name="stream_and_parse_plan_draft",
             timing_field="compose_ms",
         ),
     )
 
-    # 合同收口层：normalize BuildPlannerDraft，并在 API create/append 场景下
-    # 保存 latest_plan。不要再额外拆 service/session 节点。
+    # Exit-side persistence: normalize the draft before saving latest_plan
+    # and the assistant turn. Store stays tiny; business decisions stay here.
     workflow.add_node(
-        "finalize_plan_contract",
+        "normalize_and_persist_plan",
         trace.node(
-            build_finalize_plan_contract_node(context=context),
-            name="finalize_plan_contract",
+            build_normalize_and_persist_plan_node(context=context),
+            name="normalize_and_persist_plan",
             timing_field="finalize_ms",
         ),
     )
-    workflow.set_entry_point("prepare_material_context")
+    workflow.set_entry_point("load_planner_materials")
     workflow.add_conditional_edges(
-        "prepare_material_context",
+        "load_planner_materials",
         route_after_step,
-        {"continue": "summarize_material_digest", "fail": END},
+        {"continue": "pack_raw_material_context", "fail": END},
     )
     workflow.add_conditional_edges(
-        "summarize_material_digest",
+        "pack_raw_material_context",
         route_after_step,
-        {"continue": "bootstrap_plan_brief", "fail": END},
+        {"continue": "stream_brief_and_extract_intent", "fail": END},
     )
     workflow.add_conditional_edges(
-        "bootstrap_plan_brief",
+        "stream_brief_and_extract_intent",
         route_after_step,
-        {"continue": "probe_evidence", "fail": END},
+        {"continue": "retrieve_planning_evidence", "fail": END},
     )
     workflow.add_conditional_edges(
-        "probe_evidence",
+        "retrieve_planning_evidence",
         route_after_step,
-        {"continue": "compose_build_plan", "fail": END},
+        {"continue": "stream_and_parse_plan_draft", "fail": END},
     )
     workflow.add_conditional_edges(
-        "compose_build_plan",
+        "stream_and_parse_plan_draft",
         route_after_step,
-        {"continue": "finalize_plan_contract", "fail": END},
+        {"continue": "normalize_and_persist_plan", "fail": END},
     )
-    workflow.add_edge("finalize_plan_contract", END)
+    workflow.add_edge("normalize_and_persist_plan", END)
     return workflow
 
 
@@ -184,7 +183,7 @@ def create_planner_initial_state(
         "latest_plan": latest_plan,
         "progress_callback": progress_callback,
         "token_callback": token_callback,
-        "generation_mode": "research_surface_v4",
+        "generation_mode": "raw_context_three_call_v5",
         "error": None,
     }
 
@@ -299,7 +298,7 @@ async def append_build_planner_message(
     token_callback: object | None = None,
 ) -> BuildPlannerSessionResponse:
     # 追加反馈也只是同一条 graph run。
-    # prepare_material_context 会读取上一版 session/plan 并追加用户 turn。
+    # load_planner_materials 会读取上一版 session/plan 并追加用户 turn。
     result = await run_build_planner_workflow(
         subject=subject.slug,
         user_id=user_id,

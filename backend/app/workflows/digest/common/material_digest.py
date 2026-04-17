@@ -1,27 +1,29 @@
-"""Produce a light, per-file digest of uploaded material."""
+"""Build raw planner material context from uploaded material."""
 
 from __future__ import annotations
 
-import asyncio
 from dataclasses import dataclass
 
 import structlog
 
-from app.shared.infra.llm_support import acompletion
-from app.shared.infra.llm_support.routing import TaskType
+from app.shared.infra.llm_support.common import resolve_settings_model
+from app.shared.infra.llm_support.context_window import ContextWindowManager
+from app.shared.infra.llm_support.litellm_loader import load_litellm
+from app.shared.infra.settings import get_settings
 from app.workflows.digest.common.models import DigestMaterialContext, SourcePacket
 
 logger = structlog.get_logger(__name__)
 
-FILE_CONTEXT_CHARS = 10_000
+FILE_CONTEXT_TOKENS = 10_000
 
 
 @dataclass(frozen=True)
 class MaterialDigestResult:
-    """Outcome of the light digest pass."""
+    """Outcome of the raw context packing pass."""
 
     digest: str
     total_chars: int
+    total_tokens: int
     source_count: int
     llm_used: bool
     truncated: bool
@@ -31,66 +33,66 @@ def _source_label(packet: SourcePacket, *, index: int) -> str:
     return packet.filename or f"file_{packet.file_id or index + 1}"
 
 
-def _summary_prompt(packet: SourcePacket, *, content: str, index: int, total: int, truncated: bool) -> str:
-    label = _source_label(packet, index=index)
-    truncation_note = "这份资料较长，下面只截取前 10000 字用于速览。" if truncated else "下面是这份资料的全文或主要正文。"
-    return (
-        "你是学习资料速览员。请用中文单独概括下面这一份用户上传资料。"
-        f"（共 {total} 份，这是第 {index + 1} 份：{label}）\n"
-        f"{truncation_note}\n"
-        "约束：\n"
-        "1. 350-500 字，不要罗列原文句子。\n"
-        "2. 只输出要点型段落，不要小标题/列表/引用/代码块。\n"
-        "3. 覆盖：核心主题、关键概念或公式、出现的题型或方法、难度线索、明显缺口。\n"
-        "4. 不要推测未给出的内容，不要写学习建议。\n\n"
-        f"资料内容：\n{content}"
-    )
+def _planner_token_model() -> str:
+    try:
+        model, _selector = resolve_settings_model(get_settings(), "reason")
+    except Exception:  # pragma: no cover - defensive local fallback
+        return "gpt-4o-mini"
+    return model or "gpt-4o-mini"
 
 
-async def _summarize_packet(packet: SourcePacket, *, index: int, total: int) -> tuple[str, bool]:
+def _truncate_text_by_tokens(text: str, *, max_tokens: int) -> tuple[str, int, bool]:
+    """Return the first ``max_tokens`` tokens, with a char estimate fallback."""
+
+    if not text.strip():
+        return "", 0, False
+    model = _planner_token_model()
+    try:
+        litellm = load_litellm()
+        tokens = list(litellm.encode(model=model, text=text))
+        token_count = len(tokens)
+        if token_count <= max_tokens:
+            return text, token_count, False
+        return litellm.decode(model=model, tokens=tokens[:max_tokens]), token_count, True
+    except Exception:
+        manager = ContextWindowManager()
+        estimated = manager.estimate_tokens(text)
+        if estimated <= max_tokens:
+            return text, estimated, False
+        logger.exception(
+            "planner_material_token_truncate_fallback_used",
+            max_tokens=max_tokens,
+            estimated_tokens=estimated,
+        )
+        return manager.truncate_text(text, max_tokens), estimated, True
+
+
+def _render_packet_context(packet: SourcePacket, *, index: int, total: int) -> tuple[str, int, bool]:
     content = (packet.normalized_content or "").strip()
     if not content:
-        return "", False
-    truncated = len(content) > FILE_CONTEXT_CHARS
-    context = content[:FILE_CONTEXT_CHARS]
-    try:
-        text = await acompletion(
-            [
-                {
-                    "role": "user",
-                    "content": _summary_prompt(
-                        packet,
-                        content=context,
-                        index=index,
-                        total=total,
-                        truncated=truncated,
-                    ),
-                }
-            ],
-            task_type=TaskType.SUMMARIZE,
-            tier_override="light",
-            temperature=0.2,
-            max_tokens=720,
-        )
-    except Exception:
-        logger.exception(
-            "material_digest_source_failed",
-            source_index=index,
-            source_total=total,
-            filename=packet.filename,
-        )
-        return context, truncated
-    summary = (text or "").strip()
-    return summary or context, truncated
+        return "", 0, False
+    excerpt, token_count, truncated = _truncate_text_by_tokens(content, max_tokens=FILE_CONTEXT_TOKENS)
+    label = _source_label(packet, index=index)
+    token_note = (
+        f"本资料已按前 {FILE_CONTEXT_TOKENS} tokens 截断；原文约 {token_count} tokens。"
+        if truncated
+        else f"本资料约 {token_count} tokens，未截断。"
+    )
+    section = (
+        f"===== 资料 {index + 1}/{total}：{label} =====\n"
+        f"{token_note}\n"
+        f"{excerpt}"
+    ).strip()
+    return section, token_count, truncated
 
 
 async def build_material_digest(
     material_context: DigestMaterialContext,
 ) -> MaterialDigestResult:
-    """Return a compact digest of uploaded material.
+    """Return concatenated raw context for planner prompts.
 
-    每个文件独立进入 light 模型摘要，并行执行；不再先拼接所有文件。
-    单个文件最多给模型前 FILE_CONTEXT_CHARS 字，避免超长文件拖垮 planner。
+    Planner 不再先走摘要模型。这里直接拼接每份资料的原文片段，
+    且每份资料最多保留前 ``FILE_CONTEXT_TOKENS`` tokens。
     """
 
     packets = [
@@ -99,31 +101,33 @@ async def build_material_digest(
         if (packet.normalized_content or "").strip()
     ]
     if not packets:
-        return MaterialDigestResult(digest="", total_chars=0, source_count=0, llm_used=False, truncated=False)
+        return MaterialDigestResult(
+            digest="",
+            total_chars=0,
+            total_tokens=0,
+            source_count=0,
+            llm_used=False,
+            truncated=False,
+        )
 
     total_chars = sum(len((packet.normalized_content or "").strip()) for packet in packets)
-    results = await asyncio.gather(
-        *(
-            _summarize_packet(packet, index=index, total=len(packets))
-            for index, packet in enumerate(packets)
-        )
-    )
-    sections = [
-        f"资料{index + 1}（{_source_label(packet, index=index)}）：{summary}"
-        for index, (packet, (summary, _truncated)) in enumerate(zip(packets, results, strict=False))
-        if summary
+    results = [
+        _render_packet_context(packet, index=index, total=len(packets))
+        for index, packet in enumerate(packets)
     ]
+    sections = [section for section, _token_count, _truncated in results if section]
     return MaterialDigestResult(
         digest="\n\n".join(sections),
         total_chars=total_chars,
+        total_tokens=sum(token_count for _section, token_count, _truncated in results),
         source_count=len(packets),
-        llm_used=True,
-        truncated=any(truncated for _summary, truncated in results),
+        llm_used=False,
+        truncated=any(truncated for _section, _token_count, truncated in results),
     )
 
 
 __all__ = [
-    "FILE_CONTEXT_CHARS",
+    "FILE_CONTEXT_TOKENS",
     "MaterialDigestResult",
     "build_material_digest",
 ]

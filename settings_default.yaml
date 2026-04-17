@@ -8,7 +8,7 @@ models:
   # light   - 轻量模型，批量抽取、分类、摘要；留空则回退到 primary。
   reason: qwen3-max
   primary: qwen-plus-latest
-  light: qwen-turbo
+  light: qwen-flash
   # reason: qwen-turbo
   # primary: qwen-turbo
   # light: qwen-turbo

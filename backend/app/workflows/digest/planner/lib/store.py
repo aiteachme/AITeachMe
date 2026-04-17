@@ -156,12 +156,12 @@ def _runtime_stats_response(final_state: Mapping[str, Any] | None) -> BuildPlann
 
     steps: list[BuildPlannerStepStatsResponse] = []
     for name, field_name in (
-        ("prepare_material_context", "prepare_ms"),
-        ("summarize_material_digest", "digest_ms"),
-        ("bootstrap_plan_brief", "bootstrap_ms"),
-        ("probe_evidence", "evidence_ms"),
-        ("compose_build_plan", "compose_ms"),
-        ("finalize_plan_contract", "finalize_ms"),
+        ("load_planner_materials", "prepare_ms"),
+        ("pack_raw_material_context", "context_ms"),
+        ("stream_brief_and_extract_intent", "bootstrap_ms"),
+        ("retrieve_planning_evidence", "evidence_ms"),
+        ("stream_and_parse_plan_draft", "compose_ms"),
+        ("normalize_and_persist_plan", "finalize_ms"),
     ):
         elapsed_ms = int(final_state.get(field_name, 0) or 0)
         if elapsed_ms <= 0:
@@ -336,7 +336,7 @@ def _selected_skillpacks_for_append(state: Mapping[str, Any], record: BuildPlann
 def prepare_planner_run(state: Mapping[str, Any]) -> dict[str, Any]:
     """Prepare persisted planner run data before material loading.
 
-    Called by the normal `prepare_material_context` node. This keeps session DB
+    Called by the normal `load_planner_materials` node. This keeps session DB
     IO inside the real workflow path without adding a separate "session node".
     """
 

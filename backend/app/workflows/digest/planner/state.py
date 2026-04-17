@@ -52,7 +52,7 @@ class BuildPlannerState(TypedDict, total=False):
     # Top-level runtime summary for the existing frontend contract
     workflow_elapsed_ms: int
     prepare_ms: int
-    digest_ms: int
+    context_ms: int
     bootstrap_ms: int
     evidence_ms: int
     compose_ms: int
@@ -102,7 +102,7 @@ BuildPlannerGraphOutput = project_typed_dict_schema(
         "planner_turns",
         "workflow_elapsed_ms",
         "prepare_ms",
-        "digest_ms",
+        "context_ms",
         "bootstrap_ms",
         "evidence_ms",
         "compose_ms",

@@ -1,4 +1,4 @@
-"""Finalize and normalize the planner plan contract."""
+"""Normalize the plan contract and persist planner session state."""
 
 from __future__ import annotations
 
@@ -15,8 +15,8 @@ from app.workflows.digest.planner.lib.store import save_planner_result
 from app.workflows.digest.planner.state import BuildPlannerState
 
 
-def build_finalize_plan_contract_node(*, context: WorkflowContext):
-    async def finalize_plan_contract_node(state: BuildPlannerState) -> dict:
+def build_normalize_and_persist_plan_node(*, context: WorkflowContext):
+    async def normalize_and_persist_plan_node(state: BuildPlannerState) -> dict:
         material_context = state["material_context"]
         planner_brief = PlannerBrief.model_validate(state.get("planner_brief") or {})
         digest_mode = state.get("digest_mode") or material_context.course_mode_decision.mode.value
@@ -70,7 +70,7 @@ def build_finalize_plan_contract_node(*, context: WorkflowContext):
             "retrieval_profile": resolve_planner_retrieval_profile(),
             "tone": draft.tone,
             "selected_skillpacks": list(draft.selected_skillpacks),
-            "generation_mode": state.get("generation_mode") or "research_surface_v4",
+            "generation_mode": state.get("generation_mode") or "raw_context_three_call_v5",
         }
         # 只有最终 plan 合同稳定后才落库。直接调图调试会跳过 DB 写入；
         # API create/append 会保存 latest_plan 和 assistant turn。
@@ -81,7 +81,7 @@ def build_finalize_plan_contract_node(*, context: WorkflowContext):
         )
         return {**result, **persist_update}
 
-    return finalize_plan_contract_node
+    return normalize_and_persist_plan_node
 
 
-__all__ = ["build_finalize_plan_contract_node"]
+__all__ = ["build_normalize_and_persist_plan_node"]

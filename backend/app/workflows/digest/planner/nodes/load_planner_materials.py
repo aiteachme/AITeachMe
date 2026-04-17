@@ -1,4 +1,4 @@
-"""Prepare Digest material context for Planner."""
+"""Load persisted planner session data and parsed source materials."""
 
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ from app.workflows.digest.planner.lib.store import prepare_planner_run
 from app.workflows.digest.planner.state import BuildPlannerState
 from app.workflows.digest.common.contracts import resolve_planner_retrieval_profile
 from app.workflows.digest.common.models import DigestMaterialContext, FastTopicHints, SourcePacket, SubjectProfile
-from app.workflows.digest.common.prepare import prepare_material_context
+from app.workflows.digest.common.prepare import prepare_material_context as build_digest_material_context
 
 _SUBJECT_SLUG_RE = re.compile(r"^subj_[a-z0-9]+$", re.IGNORECASE)
 
@@ -92,11 +92,11 @@ def _build_seed_material_context(*, subject: str, file_ids: list[int], user_goal
     )
 
 
-def build_prepare_material_context_node(*, context: WorkflowContext):
-    async def prepare_material_context_node(state: BuildPlannerState) -> dict:
-        # API create/append 场景下，这里顺手做 session 侧准备：
-        # 创建/读取 session、追加 user turn、解析文件选择，并补齐
-        # message_history/latest_plan。直接调图调试时返回空 dict。
+def build_load_planner_materials_node(*, context: WorkflowContext):
+    async def load_planner_materials_node(state: BuildPlannerState) -> dict:
+        # This node is intentionally the only entry-side persistence point.
+        # It turns API create/append requests into a complete graph state:
+        # selected files, history, latest plan, and the parsed material package.
         session_update = prepare_planner_run(state)
         working_state = {**state, **session_update}
         await emit_planner_event(
@@ -104,7 +104,7 @@ def build_prepare_material_context_node(*, context: WorkflowContext):
             event="planner.material.loading",
             detail="正在读取学习目标和资料理解包...",
         )
-        material_context = await prepare_material_context(
+        material_context = await build_digest_material_context(
             working_state["subject"],
             working_state.get("file_ids", []),
             user_prompt=working_state.get("user_goal"),
@@ -145,6 +145,6 @@ def build_prepare_material_context_node(*, context: WorkflowContext):
             "tone": working_state.get("tone") or "encouraging",
         }
 
-    return prepare_material_context_node
+    return load_planner_materials_node
 
-__all__ = ["build_prepare_material_context_node"]
+__all__ = ["build_load_planner_materials_node"]

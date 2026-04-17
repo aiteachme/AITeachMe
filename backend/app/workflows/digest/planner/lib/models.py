@@ -33,13 +33,9 @@ class LearningIntent(BaseModel):
     success_criteria: list[str] = Field(default_factory=list)
     constraints: list[str] = Field(default_factory=list)
     clarifying_questions: list[str] = Field(default_factory=list)
+    evidence_queries: list[str] = Field(default_factory=list)
+    focus_concepts: list[str] = Field(default_factory=list)
     confidence: float = 0.6
-
-
-class EvidenceQuerySet(BaseModel):
-    """Structured output for evidence query generation."""
-
-    queries: list[str] = Field(default_factory=list)
 
 
 class EvidenceSource(BaseModel):
@@ -122,7 +118,6 @@ def build_fallback_planner_brief(draft: BuildPlannerDraft) -> PlannerBrief:
 
 __all__ = [
     "EvidenceBrief",
-    "EvidenceQuerySet",
     "EvidenceSource",
     "LearningIntent",
     "PlannerBrief",

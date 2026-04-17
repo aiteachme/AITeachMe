@@ -173,16 +173,23 @@ function formatElapsedMs(value: number | undefined): string {
 function formatPlannerNodeLabel(stepName: string): string {
   switch (stepName) {
     case "prepare_material_context":
+    case "load_planner_materials":
       return "准备资料理解包";
     case "summarize_material_digest":
-      return "提炼资料要点";
+    case "pack_material_context":
+    case "pack_raw_material_context":
+      return "拼接资料上下文";
     case "bootstrap_plan_brief":
+    case "stream_brief_and_extract_intent":
       return "思考目标和资料";
     case "probe_evidence":
+    case "retrieve_planning_evidence":
       return "外部证据检索";
     case "compose_build_plan":
+    case "stream_and_parse_plan_draft":
       return "提炼计划大纲";
     case "finalize_plan_contract":
+    case "normalize_and_persist_plan":
       return "整理最终方案";
     default:
       return stepName;
