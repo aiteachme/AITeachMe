@@ -80,7 +80,7 @@
    - 找到写入 markdown 和 assets 的地方
    - cloud 模式下用 `store.write_bytes()` 写 markdown，`store.write_file()` 写 assets
 
-3. **`backend/app/workflows/ingest/deep_enhance/lib/enhance.py`** — OCR 增强
+3. **`backend/app/workflows/ingest/fast_parse/lib/enhance.py`** — 后台 OCR 增强
    - 同样需要 `materialize_to_temp()` 获取本地副本
 
 **改造模式统一为：**
@@ -224,4 +224,3 @@ else:
 | 数据库架构 | `docs/designs/11_database_and_storage_architecture.md` | 当前数据库和存储架构 |
 | 数据库 Schema | `docs/designs/13_database_schema_inventory.md` | 完整的18张表 Schema |
 | Export/Import | `docs/designs/15_export_import.md` | 导出导入功能设计 |
-

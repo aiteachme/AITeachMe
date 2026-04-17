@@ -122,6 +122,12 @@ export function useKnowledgeBuildFlow({
       build_type: buildType,
     } satisfies KnowledgeBuildRequestPayload;
 
+    if (buildType === "docs" && !requestPayload.confirmed_plan_id) {
+      setErrorMessage("知识文档构建必须先在构建方案页确认计划。请先生成并确认方案，再开始构建。");
+      setPrecheckConflict(null);
+      return;
+    }
+
     pendingRequestRef.current = requestPayload;
     setErrorMessage("");
     setPrecheckConflict(null);

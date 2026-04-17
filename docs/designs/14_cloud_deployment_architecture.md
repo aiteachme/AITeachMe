@@ -551,7 +551,7 @@ SELECT extname FROM pg_extension WHERE extname = 'vector';
 - [`docgen_store.py`](/c:/Project/Project1GIT/AITeachMe1/backend/app/utils/docgen_store.py)
 - [`runtime.py`](/c:/Project/Project1GIT/AITeachMe1/backend/app/workflows/ingest/fast_parse/lib/runtime.py)
 - [`file.py`](/c:/Project/Project1GIT/AITeachMe1/backend/app/workflows/ingest/fast_parse/lib/file.py)
-- [`enhance.py`](/c:/Project/Project1GIT/AITeachMe1/backend/app/workflows/ingest/deep_enhance/lib/enhance.py)
+- [`enhance.py`](/c:/Project/Project1GIT/AITeachMe1/backend/app/workflows/ingest/fast_parse/lib/enhance.py)
 - [`finalize.py`](/c:/Project/Project1GIT/AITeachMe1/backend/app/workflows/ingest/fast_parse/lib/finalize.py)
 - [`publish.py`](/c:/Project/Project1GIT/AITeachMe1/backend/app/workflows/digest/docs/publish.py)
 - [`prepare.py`](/c:/Project/Project1GIT/AITeachMe1/backend/app/workflows/digest/common/prepare.py)

@@ -27,13 +27,12 @@ Ingest（透视引擎）是 AITeachMe 数据流的**入口**，负责把用户�
 | 前端页面 | `frontend/src/pages/FilesPage.tsx` | 文件上传、预览、状态展示 |
 | API | `backend/app/api/files.py` | 上传接口、状态查询 |
 | Support Files | `backend/app/workflows/support/files/uploads.py` / `catalog.py` / `parsing.py` / `deletion.py` | 上传编排、后台任务派发、列表与删除 |
-| Workflow Graph | `backend/app/workflows/ingest/fast_parse/graph.py` / `deep_enhance/graph.py` | LangGraph dev/export 图定义 |
-| Workflow Runtime | `backend/app/workflows/ingest/fast_parse/lib/runtime.py` / `deep_enhance/lib/background.py` | 两阶段真实运行入口 |
-| Workflow State | `backend/app/workflows/ingest/fast_parse/state.py` / `deep_enhance/state.py` | 状态类型定义 |
+| Workflow Graph | `backend/app/workflows/ingest/fast_parse/graph.py` | LangGraph dev/export 图定义 |
+| Workflow Runtime | `backend/app/workflows/ingest/fast_parse/lib/runtime.py` / `fast_parse/lib/enhance.py` | 两阶段真实运行入口 |
+| Workflow State | `backend/app/workflows/ingest/fast_parse/state.py` | Fast Parse 图状态类型 |
 | Fast Parse 节点 | `backend/app/workflows/ingest/fast_parse/nodes/` | Phase 1 LangGraph 节点 |
 | Fast Parse Helper | `backend/app/workflows/ingest/fast_parse/lib/` | Phase 1 节点内部实现 |
-| Deep Enhance 节点 | `backend/app/workflows/ingest/deep_enhance/nodes/` | Phase 2 LangGraph 节点 |
-| Deep Enhance Helper | `backend/app/workflows/ingest/deep_enhance/lib/` | Phase 2 节点内部实现 |
+| 后台增强 | `backend/app/workflows/ingest/fast_parse/lib/enhance.py` | Phase 2 后台增强 worker |
 | 解析分类器 | `backend/app/workflows/ingest/common/parsing/classifier.py` | 文件分类 |
 | 解析策略 | `backend/app/workflows/ingest/common/parsing/strategy.py` | 解析计划生成 |
 | 解析编排器 | `backend/app/workflows/ingest/common/parsing/orchestrator.py` | Phase 1 / Phase 2 路由 |
@@ -73,7 +72,7 @@ Ingest（透视引擎）是 AITeachMe 数据流的**入口**，负责把用户�
              │ (如果 needs_enhance = true)
              ▼
 ┌─────────────────────────────────┐
-│  Phase 2: Deep Enhance（后台）   │  background.py → orchestrator.py
+│  Phase 2: 后台增强               │  enhance.py → orchestrator.py
 │  - pymupdf4llm 质量重解析        │
 │  - LLM Vision OCR 图片识别       │
 │  - 覆盖同一份 Markdown           │
@@ -86,9 +85,9 @@ Ingest（透视引擎）是 AITeachMe 数据流的**入口**，负责把用户�
 
 ## 4. LangGraph 图定义
 
-> 文件: `backend/app/workflows/ingest/fast_parse/graph.py` 与 `backend/app/workflows/ingest/deep_enhance/graph.py`
+> 文件: `backend/app/workflows/ingest/fast_parse/graph.py`
 
-Ingest 定义了**两张独立的 LangGraph 图**，分别对应两个阶段。
+Ingest 当前只保留**一张 LangGraph 图**，对应 Phase 1 Fast Parse。Phase 2 后台增强不是独立 workflow lane，而是 Fast Parse 完成后派发的后台补强任务。
 
 ### 4.1 Phase 1: Fast Parse Graph
 
@@ -132,35 +131,20 @@ graph TD
 - `None` → `"continue"` 进入下一节点
 - 非空 → `"fail"` 跳转到 `finalize_failure`
 
-### 4.2 Phase 2: Deep Enhance Graph
+### 4.2 Phase 2: 后台增强说明
 
-```mermaid
-graph TD
-    START([START]) --> load_enhance_context
-    load_enhance_context -->|error?| ROUTE_1{route}
-    ROUTE_1 -->|continue| deep_enhance_file
-    ROUTE_1 -->|fail| finalize_enhance_failure
-    deep_enhance_file -->|error?| ROUTE_2{route}
-    ROUTE_2 -->|continue| finalize_deep_enhance
-    ROUTE_2 -->|fail| finalize_enhance_failure
-    finalize_deep_enhance -->|error?| ROUTE_3{route}
-    ROUTE_3 -->|continue| END_NODE([END])
-    ROUTE_3 -->|fail| finalize_enhance_failure
-    finalize_enhance_failure --> END_NODE
-```
+Phase 2 的真实入口是 `fast_parse/lib/enhance.py::_run_deep_enhance_background()`。它负责：
 
-**节点清单：**
+- 读取 Phase 1 Markdown 和 assets。
+- 对 PDF 做 best-effort 质量重解析。
+- 在配置 OCR 模型时做 Vision OCR 增强。
+- 回写 Markdown、assets、`parse_metadata_json` 和 `ingest_status`。
 
-| 节点 | 构建函数 | 源文件 |
-|---|---|---|
-| `load_enhance_context` | `build_load_enhance_context_node()` | `nodes/enhance.py` |
-| `deep_enhance_file` | `build_deep_enhance_file_node()` | `nodes/enhance.py` |
-| `finalize_deep_enhance` | `build_finalize_deep_enhance_node()` | `nodes/enhance.py` |
-| `finalize_enhance_failure` | `build_finalize_enhance_failure_node()` | `nodes/enhance.py` |
+它不再维护独立 LangGraph 图，避免和真实后台实现形成两套主线。
 
 ### 4.3 实际运行方式说明
 
-> **重要**：当前实际运行入口 `fast_parse/lib/runtime.py` 中的 `run_parse_file_workflow()` 并没有通过 `graph.compile().ainvoke()` 来执行这两张图，而是**直接在 runtime 函数中内联执行每一步**。`graph.py` 中的图定义主要用于：
+> **重要**：当前实际运行入口 `fast_parse/lib/runtime.py` 中的 `run_parse_file_workflow()` 并没有通过 `graph.compile().ainvoke()` 来执行 Fast Parse 图，而是**直接在 runtime 函数中内联执行每一步**。`graph.py` 中的图定义主要用于：
 > - 导出可视化流程图
 > - 保持与 LangGraph 骨架约定的一致性
 > - 为未来迁移到 LangGraph 运行时做准备
@@ -169,7 +153,7 @@ graph TD
 
 ## 5. State 类型定义
 
-> 文件: `backend/app/workflows/ingest/fast_parse/state.py` 与 `backend/app/workflows/ingest/deep_enhance/state.py`
+> 文件: `backend/app/workflows/ingest/fast_parse/state.py`
 
 ### 5.1 `IngestParseState` — Phase 1 状态
 
@@ -203,23 +187,9 @@ graph TD
 | `appended_asset_images` | `int` | 追加到正文的资产图片数 |
 | `error` | `str \| None` | 错误信息，非空则表示失败 |
 
-### 5.2 `IngestEnhanceState` — Phase 2 状态
+### 5.2 Phase 2 状态
 
-| 字段 | 类型 | 说明 |
-|---|---|---|
-| `subject` | `str` | 学科 slug |
-| `file_id` | `int` | raw_file 主键 |
-| `file_path` | `str` | 原始文件路径 |
-| `filetype` | `str` | 文件扩展名 |
-| `markdown_path` | `str` | Phase 1 产出的 Markdown 路径 |
-| `asset_dir` | `str` | 资产目录路径 |
-| `asset_name_prefix` | `str` | 资产文件名前缀 |
-| `classification` | `ClassificationResult \| None` | Phase 1 的分类结果 |
-| `parse_plan` | `ParsePlan \| None` | Phase 1 的解析计划 |
-| `asset_ocr_images` | `int` | OCR 处理的图片数 |
-| `asset_ocr_replacements` | `int` | OCR 替换的占位符数 |
-| `enhanced_markdown` | `str \| None` | 增强后的 Markdown |
-| `error` | `str \| None` | 错误信息 |
+Phase 2 后台增强不维护独立 `State` 类型。它通过 DB 中的 `raw_file`、ContentStore 中的 Markdown/assets，以及 `parse_metadata_json` 恢复上下文并持久化结果。
 
 ---
 
@@ -478,7 +448,7 @@ needs_enhance = (
 
 ### 7.3 Phase 2: Deep Enhance 后台执行
 
-> 函数: `_run_deep_enhance_background()`
+> 函数: `fast_parse/lib/enhance.py::_run_deep_enhance_background()`
 
 Phase 2 在后台任务中执行，不阻塞 HTTP 响应。API 运行时通过 `background_task_registry` 追踪任务，脚本调用时回退到 `_background_tasks` 引用集合。
 

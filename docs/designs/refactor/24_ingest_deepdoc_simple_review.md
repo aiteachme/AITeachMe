@@ -14,7 +14,7 @@
 
 它不应该在 MVP 阶段被重构成一个很重的文档理解平台。真正需要优先处理的是代码结构里已经出现的“两套真相”：
 
-1. `fast_parse/graph.py`、`deep_enhance/graph.py` 看起来是 canonical LangGraph。
+1. 旧结构里快速解析和后台增强都看起来像 canonical LangGraph。
 2. 真实运行入口 `run_parse_file_workflow()` 却主要走 `fast_parse/lib/runtime.py` 里的手写流程。
 3. `nodes/*.py` 多数只是转发到 `lib/*` 的兼容 wrapper。
 4. `deep_enhance` 也同时存在 graph/node 实现和 `lib/background.py` 后台实现。
@@ -125,19 +125,14 @@ MinerU 已经接进主流程，但 `providers.py` 里的 `ProviderRegistry / Min
 ```text
 ingest/
   __init__.py
-  parse_files.py              # 唯一对外 runner
-  recovery.py
   README.md
   fast_parse/
     state.py
     graph.py                  # 只做 dev/export 壳，或后续真正接管 runtime
     lib/
       runtime.py              # 现阶段唯一真实 Phase 1 主流程
-  deep_enhance/
-    state.py
-    graph.py                  # 只做 dev/export 壳，或后续真正接管 runtime
-    lib/
-      background.py           # 现阶段唯一真实 Phase 2 主流程
+      enhance.py              # Phase 2 后台增强 worker
+      recovery.py             # 增强恢复
   common/
     parsing/
       classifier.py
@@ -152,16 +147,16 @@ ingest/
 
 明确规则：
 
-- `parse_files.py` 是唯一稳定入口。
-- `fast_parse/lib/runtime.py` 是 Phase 1 唯一真实实现。
-- `deep_enhance/lib/background.py` 是 Phase 2 唯一真实实现。
-- `nodes/` wrapper 后续要么删除，要么等切到 LangGraph 真执行时再恢复。
+- `app.workflows.ingest.__init__` 提供唯一稳定导入面。
+- `fast_parse/lib/runtime.py` 是 Phase 1 唯一真实实现，并派发后台增强。
+- `fast_parse/lib/enhance.py` 是 Phase 2 后台增强唯一真实实现。
+- 不单独保留 `deep_enhance/` lane，避免形成第二套 graph/state/nodes 主线。
 - `common/parsing` 只放真实被 Phase 1 / Phase 2 复用的解析能力。
 
 ## 6. 后续小步修改顺序
 
 1. 先修运行时 bug 和配置路径，不动大结构。
-2. 给 `ingest/README.md` 补一句：当前真实运行主线以 runtime/background 为准，graph 主要用于 dev/export。
+2. 给 `ingest/README.md` 补一句：当前真实运行主线以 `fast_parse/lib/runtime.py` 和 `fast_parse/lib/enhance.py` 为准，graph 主要用于 dev/export。
 3. 清理未使用的 `providers.py` 占位抽象，或者标记为实验代码。
 4. 统一临时目录生命周期，优先把 `mkdtemp()` 包成上下文或 finally 清理。
 5. 如果之后要做 DeepDoc 能力，只新增一个明确 provider 或 parser adapter，不改整个业务链路。

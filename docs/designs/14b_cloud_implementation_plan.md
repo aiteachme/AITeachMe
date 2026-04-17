@@ -462,7 +462,7 @@ async def read_file_bytes(raw_file: RawFile) -> bytes:
 
 **关键文件**:
 - `backend/app/workflows/ingest/fast_parse/lib/file.py` — 加载原始文件
-- `backend/app/workflows/ingest/deep_enhance/lib/enhance.py` — OCR增强
+- `backend/app/workflows/ingest/fast_parse/lib/enhance.py` — 后台 OCR 增强
 
 Ingest 需要本地 Path 来调用解析器（markitdown, pymupdf4llm）。
 
