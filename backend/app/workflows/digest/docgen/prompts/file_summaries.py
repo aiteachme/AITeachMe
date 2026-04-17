@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+from langsmith import traceable
 
+
+@traceable(name="digest.docgen.file_summary_prompt", run_type="prompt")
 def build_file_summary_messages(
     *,
     filename: str,

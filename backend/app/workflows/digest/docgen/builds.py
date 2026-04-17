@@ -24,6 +24,7 @@ from app.schemas.knowledge import (
     KnowledgeBuildPreviewResponse,
     KnowledgeBuildStatusResponse,
 )
+from app.shared.infra.database import managed_session
 from app.workflows.digest.planner import (
     get_confirmed_build_plan,
     mark_confirmed_build_plan_status,
@@ -412,7 +413,6 @@ def trigger_docgen_build(session: Session, *, subject: Subject, user_id: str, fi
 
 async def run_docgen_background(*, subject: str, file_ids: list[int], prompt: str | None, requested_at: datetime, planner_session_id: str | None = None, confirmed_plan_id: str | None = None, user_id: str | None = None) -> None:
     from app.workflows.digest import run_docgen_workflow
-    from app.shared.infra.database import managed_session
     from app.utils.docgen_store import release_knowledge_build_lock
     from app.workflows.support.knowledge_graph import (
         run_graph_docs_sync_after_doc_build,

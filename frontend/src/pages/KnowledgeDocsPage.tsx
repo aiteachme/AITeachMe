@@ -24,9 +24,8 @@ import { getApiErrorMessage, postSseJson } from "../api/client";
 import { apiClient } from "../api/client";
 import { useSubjectAiAssistant } from "../components/ai/SubjectAiAssistant";
 import {
+  BuildView,
   type DocViewMode,
-  type KnowledgeBuildMetrics,
-  type KnowledgeBuildPreview,
   useDocBuildProgress,
   useDocMarkdown,
 } from "../components/knowledge-docs";
@@ -524,122 +523,6 @@ function DocBuildProgress({
   );
 }
 
-function DocGeneratingState({
-  isFetching,
-  progress,
-  statusText,
-  buildPreview,
-  buildMetrics,
-}: {
-  isFetching: boolean;
-  progress: number;
-  statusText: string;
-  buildPreview?: KnowledgeBuildPreview | null;
-  buildMetrics?: KnowledgeBuildMetrics | null;
-}) {
-  const sampleCards = buildPreview?.sample_cards ?? [];
-  const sampleNodes = buildPreview?.sample_nodes ?? [];
-  const chapterTitles = buildPreview?.latest_chapter_titles ?? [];
-  const draftExcerpt = buildPreview?.draft_excerpt?.trim() ?? "";
-  const chunkLabel =
-    (buildPreview?.total_chunks ?? 0) > 0
-      ? `${buildPreview?.processed_chunks ?? 0}/${buildPreview?.total_chunks ?? 0} chunks`
-      : null;
-  const nodeLabel =
-    (buildPreview?.discovered_node_count ?? 0) > 0
-      ? `${buildPreview?.discovered_node_count ?? 0} nodes`
-      : null;
-  const llmLabel = (buildMetrics?.llm_total_calls ?? 0) > 0 ? `${buildMetrics?.llm_total_calls ?? 0} LLM calls` : null;
-  const avgLatency =
-    buildMetrics?.llm_avg_latency_ms && buildMetrics.llm_avg_latency_ms > 0
-      ? buildMetrics.llm_avg_latency_ms < 1000
-        ? `${Math.round(buildMetrics.llm_avg_latency_ms)}ms`
-        : `${(buildMetrics.llm_avg_latency_ms / 1000).toFixed(1)}s`
-      : null;
-
-  return (
-    <section className="rounded-3xl border border-stone-200 bg-gradient-to-b from-white via-stone-50 to-stone-100 p-7 md:p-9 shadow-[0_30px_70px_-45px_rgba(28,25,23,0.2)]">
-      <div className="flex items-start gap-3">
-        <div className="mt-0.5 flex h-10 w-10 items-center justify-center rounded-2xl bg-stone-100 text-stone-700">
-          {isFetching ? <Loader2 className="h-5 w-5 animate-spin" /> : <Sparkles className="h-5 w-5" />}
-        </div>
-        <div className="space-y-1">
-          <h2 className="text-lg font-semibold text-slate-900">知识文档构建中</h2>
-          <p className="text-sm text-slate-600">等待期间会持续显示已提取结构和草稿片段，减少空白等待。</p>
-        </div>
-      </div>
-
-      <div className="mt-5">
-        <DocBuildProgress
-          progress={progress}
-          statusText={buildPreview?.current_stage_description?.trim() || statusText}
-          isFetching={isFetching}
-        />
-      </div>
-
-      {chunkLabel || nodeLabel || llmLabel || avgLatency ? (
-        <div className="mt-3 flex flex-wrap gap-2 text-[11px] text-slate-600">
-          {chunkLabel ? <span className="rounded-full bg-white/80 px-2.5 py-1">{chunkLabel}</span> : null}
-          {nodeLabel ? <span className="rounded-full bg-white/80 px-2.5 py-1">{nodeLabel}</span> : null}
-          {llmLabel ? <span className="rounded-full bg-white/80 px-2.5 py-1">{llmLabel}</span> : null}
-          {avgLatency ? <span className="rounded-full bg-white/80 px-2.5 py-1">avg {avgLatency}</span> : null}
-        </div>
-      ) : null}
-
-      {sampleCards.length > 0 ? (
-        <div className="mt-5 grid gap-3 md:grid-cols-2">
-          {sampleCards.slice(0, 4).map((card) => (
-            <article key={`${card.card_type}-${card.title}`} className="rounded-xl border border-slate-200 bg-white px-3 py-3">
-              <div className="flex items-center justify-between gap-2">
-                <p className="text-sm font-medium text-slate-900">{card.title}</p>
-                <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] uppercase tracking-wide text-slate-500">
-                  {card.card_type}
-                </span>
-              </div>
-              <p className="mt-2 text-xs leading-5 text-slate-600">{card.summary}</p>
-            </article>
-          ))}
-        </div>
-      ) : sampleNodes.length > 0 ? (
-        <div className="mt-5 rounded-xl border border-slate-200 bg-white px-3 py-3">
-          <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Discovered Nodes</p>
-          <div className="mt-2 flex flex-wrap gap-2">
-            {sampleNodes.slice(0, 6).map((node) => (
-              <span
-                key={`${node.knowledge_unit_type}-${node.name}`}
-                className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] text-slate-600"
-              >
-                {node.knowledge_unit_type}: {node.name}
-              </span>
-            ))}
-          </div>
-        </div>
-      ) : null}
-
-      {chapterTitles.length > 0 || draftExcerpt ? (
-        <div className="mt-5 rounded-xl border border-slate-200 bg-white px-3 py-3">
-          {chapterTitles.length > 0 ? (
-            <>
-              <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Draft Outline</p>
-              <div className="mt-2 flex flex-wrap gap-2">
-                {chapterTitles.slice(0, 4).map((title) => (
-                  <span key={title} className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] text-slate-600">
-                    {title}
-                  </span>
-                ))}
-              </div>
-            </>
-          ) : null}
-          {draftExcerpt ? (
-            <pre className="mt-3 overflow-hidden whitespace-pre-wrap rounded-lg bg-slate-950 px-3 py-3 text-[11px] leading-5 text-slate-100">
-              {draftExcerpt}
-            </pre>
-          ) : null}
-        </div>
-      ) : null}
-    </section>
-  );
-}
 function DocUpdatingBanner({
   progress,
   statusText,
@@ -984,6 +867,8 @@ export function KnowledgeDocsPage() {
     showDocBuildFailureState,
     showDocEmptyState,
     showDocUpdatingBanner,
+    sourceFiles,
+    sourceFilesFetching,
   } = useDocMarkdown();
   const { buildProgress, buildStatusText } = useDocBuildProgress({
     buildMeta,
@@ -2772,7 +2657,16 @@ export function KnowledgeDocsPage() {
                       }}
                     />
                   ) : showDocGeneratingState ? (
-                    <DocGeneratingState isFetching={docMarkdownQuery.isFetching} progress={buildProgress} statusText={buildStatusText} buildPreview={buildPreview} buildMetrics={buildMetrics} />
+                    <BuildView
+                      isFetching={docMarkdownQuery.isFetching}
+                      progress={buildProgress}
+                      statusText={buildPreview?.current_stage_description?.trim() || buildStatusText}
+                      buildPreview={buildPreview}
+                      buildMetrics={buildMetrics}
+                      sourceFiles={sourceFiles}
+                      sourceFilesFetching={sourceFilesFetching}
+                      buildStage={buildMeta?.stage}
+                    />
                   ) : showDocBuildFailureState ? (
                     <DocLoadErrorState
                       message={buildStatusText}

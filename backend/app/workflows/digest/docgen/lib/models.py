@@ -68,6 +68,8 @@ class DocGenContext(DocGenBaseModel):
     tone: str = "encouraging"
     user_goal: str = ""
     plan_summary: str = ""
+    docgen_history_brief: str = ""
+    planner_context: dict[str, Any] = Field(default_factory=dict)
     source_strategy: Literal["local_first", "web_first"] = "local_first"
     include_sources: bool = True
     selected_skillpacks: list[str] = Field(default_factory=list)
@@ -85,6 +87,7 @@ class DocGenContext(DocGenBaseModel):
         "tone",
         "user_goal",
         "plan_summary",
+        "docgen_history_brief",
         "skillpack_guidance",
         mode="before",
     )

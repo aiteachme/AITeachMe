@@ -85,9 +85,16 @@ const TIMELINE_STEPS = [
 
 const STAGE_TO_STEP_INDEX: Record<string, number> = {
   build_accepted: 0,
+  planner_confirmed: 0,
   prepare_shared: 0,
-  doc_lane_staged: 2,
-  graph_ready: 3,
+  preparing_docgen_context: 1,
+  generating_chapters: 2,
+  enhancing_chapters: 3,
+  chapters_enhanced: 3,
+  merge_reviewed: 4,
+  doc_lane_staged: 4,
+  docgen_finalized: 4,
+  graph_ready: 4,
   publishing: 4,
   completed: 5,
 };

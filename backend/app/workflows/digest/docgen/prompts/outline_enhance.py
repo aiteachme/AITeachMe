@@ -5,7 +5,10 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from typing import Any
 
+from langsmith import traceable
 
+
+@traceable(name="digest.docgen.outline_enhance_prompt", run_type="prompt")
 def build_outline_enhance_messages(
     *,
     subject: str,
@@ -13,6 +16,7 @@ def build_outline_enhance_messages(
     user_goal: str,
     plan_summary: str,
     chapters: Sequence[Mapping[str, Any]],
+    docgen_history_brief: str = "",
 ) -> list[dict[str, str]]:
     chapter_lines = []
     for chapter in chapters:
@@ -36,6 +40,7 @@ def build_outline_enhance_messages(
 模式：{digest_mode}
 用户目标：{user_goal or "未提供"}
 计划摘要：{plan_summary or "未提供"}
+Planner 对话与修改摘要：{docgen_history_brief or "暂无"}
 
 已确认章节：
 {chr(10).join(chapter_lines)}
