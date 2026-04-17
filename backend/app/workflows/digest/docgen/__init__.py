@@ -53,6 +53,7 @@ async def run_docgen_workflow(
         event_bus=bus,
         metadata={
             "requested_at": requested_at.isoformat(),
+            "lane": "docgen",
             "build_session_id": build_session_id or "",
             "planner_session_id": planner_session_id or "",
             "confirmed_plan_id": confirmed_plan_id or "",
