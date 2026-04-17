@@ -55,7 +55,6 @@ def build_summarize_material_digest_node(*, context: WorkflowContext):
         )
         return {
             "material_context": updated_context,
-            "shared_inputs": updated_context,
         }
 
     return summarize_material_digest_node

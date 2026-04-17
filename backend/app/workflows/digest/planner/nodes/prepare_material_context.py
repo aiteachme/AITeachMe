@@ -1,4 +1,4 @@
-"""Prepare Digest material context for Planner V3."""
+"""Prepare Digest material context for Planner."""
 
 from __future__ import annotations
 

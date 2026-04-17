@@ -174,6 +174,8 @@ function formatPlannerNodeLabel(stepName: string): string {
   switch (stepName) {
     case "prepare_material_context":
       return "准备资料理解包";
+    case "summarize_material_digest":
+      return "提炼资料要点";
     case "bootstrap_plan_brief":
       return "思考目标和资料";
     case "probe_evidence":

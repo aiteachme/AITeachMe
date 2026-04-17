@@ -7,8 +7,8 @@ from typing import Any
 from app.workflows.digest.common.models import DigestMaterialContext
 from app.workflows.digest.planner.lib.models import (
     EvidenceBrief,
-    LearningIntentProfile,
-    PlanSketch,
+    LearningIntent,
+    PlannerBrief,
     material_topic_hints,
 )
 from app.workflows.digest.planner.prompts.examples import render_composer_examples
@@ -49,24 +49,19 @@ def build_plan_composer_messages(
     digest_mode: str,
     tone: str,
     material_context: DigestMaterialContext,
-    plan_sketch: PlanSketch,
-    intent_profile: LearningIntentProfile,
+    planner_brief: PlannerBrief,
+    learning_intent: LearningIntent,
     evidence_brief: EvidenceBrief,
     message_history: list[str] | None = None,
     latest_plan: dict[str, Any] | None = None,
 ) -> list[dict[str, str]]:
     topics = "、".join(material_topic_hints(material_context, limit=10)) or "暂无明显主题"
-    sources = "；".join(source.title for source in evidence_brief.opened_sources[:4]) or "暂无打开来源"
-    sketch_tasks = "；".join(plan_sketch.research_tasks[:8]) or plan_sketch.raw_text
-    provisional_chapters = "；".join(plan_sketch.provisional_chapters[:8]) or "暂无暂定章节"
+    opened_sources = [source for source in evidence_brief.sources if source.opened]
+    sources = "；".join(source.title for source in opened_sources[:4]) or "暂无打开来源"
+    sketch_tasks = "；".join(planner_brief.focus_points[:8]) or planner_brief.markdown
+    provisional_chapters = "；".join(planner_brief.outline_items[:8]) or "暂无暂定章节"
     core_concepts = "、".join(evidence_brief.core_concepts[:10]) or "暂无明确概念清单"
-    evidence_hints = (
-        "；".join(
-            f"{item.chapter_hint}=>{item.evidence_summary}"
-            for item in evidence_brief.chapter_evidence_hints[:6]
-        )
-        or "暂无章节级证据提示"
-    )
+    evidence_hints = "；".join(evidence_brief.chapter_hints[:6]) or "暂无章节级证据提示"
     digest = _render_material_digest(material_context)
     prompt = (
         "请综合思考过程、用户意图和外部证据摘要，生成一份可确认的知识文档构建计划。\n"
@@ -81,11 +76,13 @@ def build_plan_composer_messages(
         f"上一版方案：\n{_compact_latest_plan(latest_plan)}\n\n"
         f"草稿任务：{sketch_tasks}\n\n"
         f"草稿暂定章节：{provisional_chapters}\n\n"
-        f"意图类型：{intent_profile.goal_type}\n"
-        f"成功标准：{'；'.join(intent_profile.success_criteria)}\n"
-        f"证据摘要：{evidence_brief.concept_briefing}\n"
+        f"意图类型：{learning_intent.goal_type}\n"
+        f"目标受众：{learning_intent.audience}\n"
+        f"成功标准：{'；'.join(learning_intent.success_criteria)}\n"
+        f"约束：{'；'.join(learning_intent.constraints)}\n"
+        f"证据摘要：{evidence_brief.summary}\n"
         f"核心概念：{core_concepts}\n"
-        f"已打开本地来源：{sources}\n\n"
+        f"已打开来源：{sources}\n\n"
         f"章节级证据提示：{evidence_hints}\n\n"
         "你不是在把草稿、意图和证据逐段拼接。你需要先完成真正的综合：\n"
         "1. 判断资料到底在讲哪几个知识簇；\n"

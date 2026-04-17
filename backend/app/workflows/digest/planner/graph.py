@@ -8,10 +8,7 @@ from app.shared.infra.workflow import workflow_tracer
 from app.shared.infra.workflow.context import WorkflowContext, create_langgraph_dev_context
 from app.shared.infra.workflow.result import WorkflowResult
 from app.shared.infra.workflow.runtime import run_state_graph
-from app.workflows.digest.common.contracts import (
-    resolve_digest_course_type,
-    resolve_planner_retrieval_profile,
-)
+from app.workflows.digest.common.contracts import resolve_planner_retrieval_profile
 from app.workflows.digest.planner.nodes import (
     build_bootstrap_plan_brief_node,
     build_compose_build_plan_node,
@@ -55,7 +52,7 @@ def build_planner_graph(*, context: WorkflowContext) -> StateGraph:
         trace.node(
             build_bootstrap_plan_brief_node(context=context),
             name="bootstrap_plan_brief",
-            timing_field="preview_ms",
+            timing_field="bootstrap_ms",
         ),
     )
     workflow.add_node(
@@ -63,7 +60,7 @@ def build_planner_graph(*, context: WorkflowContext) -> StateGraph:
         trace.node(
             build_probe_evidence_node(context=context),
             name="probe_evidence",
-            timing_field="probe_ms",
+            timing_field="evidence_ms",
         ),
     )
     workflow.add_node(
@@ -130,15 +127,12 @@ def create_planner_initial_state(
     progress_callback: object | None = None,
     token_callback: object | None = None,
 ) -> BuildPlannerState:
-    course_type = resolve_digest_course_type(digest_mode)
     return {
         "subject": subject,
         "file_ids": file_ids,
         "user_goal": user_goal,
         "digest_mode": digest_mode,
-        "course_type": course_type,
         "retrieval_profile": resolve_planner_retrieval_profile(),
-        "teaching_action": "plan_course",
         "tone": tone,
         "selected_skillpacks": list(selected_skillpacks),
         "planner_session_id": planner_session_id,
@@ -146,7 +140,7 @@ def create_planner_initial_state(
         "latest_plan": latest_plan,
         "progress_callback": progress_callback,
         "token_callback": token_callback,
-        "planner_generation_mode": "deep_research_v3",
+        "generation_mode": "research_surface_v4",
         "error": None,
     }
 
@@ -175,6 +169,8 @@ async def run_build_planner_workflow(
         workflow_name="digest.planner",
         subject=subject,
         metadata={
+            "build_session_id": planner_session_id,
+            "lane": "planner",
             "planner_session_id": planner_session_id,
             "digest_mode": digest_mode,
         },

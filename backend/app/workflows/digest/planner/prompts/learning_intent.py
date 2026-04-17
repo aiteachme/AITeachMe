@@ -37,8 +37,9 @@ def build_learning_intent_messages(
         f"资料主题提示：{topics}\n"
         f"资料摘要：\n{digest}\n\n"
         f"最近对话：\n{history}\n\n"
-        "只需要判断目标类型、受众、成功标准、约束和是否需要追问。"
+        "只需要判断 goal_type、audience、success_criteria、constraints、clarifying_questions 和 confidence。"
         "不要决定检索器、检索词或工具调用策略；证据探测由后端代码根据资料画像统一处理。"
+        "constraints 请输出短句列表，不要输出嵌套对象。"
     )
     return [
         {"role": "system", "content": "你是学习目标分析器，只输出结构化结果。"},

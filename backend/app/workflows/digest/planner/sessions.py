@@ -160,33 +160,6 @@ def _normalized_plan_payload(plan: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _resolve_planner_preview_markdown(final_state: dict[str, Any] | None, plan_payload: dict[str, Any]) -> str:
-    if isinstance(final_state, dict):
-        preview = str(final_state.get("plan_sketch_markdown") or "").strip()
-        if preview:
-            return preview
-    summary = str(plan_payload.get("plan_summary") or "").strip()
-    tasks = [str(item).strip() for item in list(plan_payload.get("research_queries") or []) if str(item).strip()]
-    chapters = [
-        str((item or {}).get("title") or "").strip()
-        for item in list(plan_payload.get("chapter_plan") or [])
-        if isinstance(item, dict) and str((item or {}).get("title") or "").strip()
-    ]
-    lines = [
-        "# 计划大纲",
-        "",
-        f"> 模式：{str(plan_payload.get('digest_mode') or 'systematic')}",
-        f"> 一句话摘要：{summary or '已生成一份可确认的构建方案。'}",
-        "",
-        "## 几点安排",
-        *[f"{index}. {item}" for index, item in enumerate(chapters[:8], start=1)],
-        "",
-        "## 外部检索校准重点",
-        *[f"{index}. {item}" for index, item in enumerate(tasks[:6], start=1)],
-    ]
-    return "\n".join(lines).strip()
-
-
 def _render_final_plan_markdown(plan_payload: dict[str, Any]) -> str:
     summary = str(plan_payload.get("plan_summary") or "").strip()
     tasks = [str(item).strip() for item in list(plan_payload.get("research_queries") or []) if str(item).strip()]
@@ -218,8 +191,8 @@ def _runtime_stats_response(final_state: dict[str, Any] | None) -> BuildPlannerR
     for name, field_name in (
         ("prepare_material_context", "prepare_ms"),
         ("summarize_material_digest", "digest_ms"),
-        ("bootstrap_plan_brief", "preview_ms"),
-        ("probe_evidence", "probe_ms"),
+        ("bootstrap_plan_brief", "bootstrap_ms"),
+        ("probe_evidence", "evidence_ms"),
         ("compose_build_plan", "compose_ms"),
         ("finalize_plan_contract", "finalize_ms"),
     ):
@@ -236,7 +209,7 @@ def _runtime_stats_response(final_state: dict[str, Any] | None) -> BuildPlannerR
     return BuildPlannerRuntimeStatsResponse(
         elapsed_ms=int(final_state.get("workflow_elapsed_ms", 0) or 0),
         steps=steps,
-        generation_mode=str(final_state.get("planner_generation_mode") or "").strip() or None,
+        generation_mode=str(final_state.get("generation_mode") or "").strip() or None,
     )
 
 
