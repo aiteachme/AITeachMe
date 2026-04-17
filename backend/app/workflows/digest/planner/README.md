@@ -26,12 +26,12 @@ load_planner_materials
 
 ```mermaid
 flowchart TD
-    A["load_planner_materials<br/>读取会话、文件、历史<br/>生成并打包资料上下文"]
-    B["stream_brief_and_extract_intent<br/>并行生成可见判断和结构化意图"]
-    B1["stream_planner_brief<br/>reason 模型<br/>SSE 输出给前端"]
-    B2["extract_learning_intent<br/>primary 模型<br/>只识别目标和约束"]
-    C["stream_and_parse_plan_draft<br/>reason 模型<br/>SSE 输出大纲过程<br/>解析极简 JSON"]
-    D["normalize_and_persist_plan<br/>后端补齐稳定 plan<br/>保存 planner session"]
+    A["读取并打包资料<br/>load_planner_materials"]
+    B["并行理解目标<br/>stream_brief_and_extract_intent"]
+    B1["生成可见判断<br/>stream_planner_brief"]
+    B2["识别学习意图<br/>extract_learning_intent"]
+    C["合成计划大纲<br/>stream_and_parse_plan_draft"]
+    D["规范化并保存<br/>normalize_and_persist_plan"]
 
     A --> B
     B --> B1

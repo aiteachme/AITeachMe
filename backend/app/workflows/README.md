@@ -89,6 +89,12 @@ from app.workflows.interact import stream_chat_workflow
 
 如果要调图结构，再进入各链路目录看 `graph.py`
 
+## 图和命名
+
+- 代码里的 LangGraph 节点 id 保持英文 snake_case，方便 tracing、runtime_stats、文件定位和长期兼容。
+- 文档、手写 Mermaid 和前端进度文案优先用中文展示名。
+- 如果一个节点需要同时给研发定位和给产品/用户阅读，建议写成“中文展示名 + 英文节点 id”。
+
 ## 目录边界
 
 新的推荐依赖方向：
