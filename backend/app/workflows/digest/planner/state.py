@@ -39,6 +39,7 @@ class BuildPlannerState(TypedDict, total=False):
     planner_brief: dict[str, Any]
     learning_intent: dict[str, Any]
     evidence_brief: dict[str, Any]
+    plan_outline_markdown: str
     build_plan_draft: dict[str, Any]
 
     # Stable graph output

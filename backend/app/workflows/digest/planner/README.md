@@ -248,6 +248,7 @@ title / url / source_type / reason / preview / opened
 - `planner.sources.triaged`
 - `planner.evidence.ready`
 - `planner.plan.composing`
+- `planner.plan.delta`
 - `planner.plan.ready`
 - `planner.fallback.used`
 

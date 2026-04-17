@@ -310,6 +310,7 @@ function buildPlannerStreamDetails(payload: Record<string, unknown>): string[] {
   switch (stage) {
     case "planner.thinking.started":
     case "planner.thinking.delta":
+    case "planner.plan.delta":
       return [];
     case "planner.intent.ready": {
       const details: string[] = [];

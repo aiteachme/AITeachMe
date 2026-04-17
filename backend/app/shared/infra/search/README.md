@@ -69,7 +69,7 @@ shared/infra/search/
 - `local_rag`
   优先基于当前 subject 的本地 section / chunk 做检索，是上传资料驱动场景的第一入口。
 - `wikipedia`
-  基于官方 MediaWiki Search API 的免 key 检索。当前仍保留实现，但默认 profile 已不再启用；如果确实需要，建议显式配置后再打开。
+  基于官方 MediaWiki Search API 的免 key 检索。默认 profile 会启用，用于补充百科定义与中英术语解释。
 - `duckduckgo`
   通用 Web 搜索，优先尝试 `duckduckgo_search` 包，缺包时退回 DuckDuckGo HTML / Lite 页面解析。
 - `searxng`
@@ -80,6 +80,16 @@ shared/infra/search/
   这些属于 API 型检索器，适合补充高质量通用 Web 结果或语义搜索结果。
 - `arxiv` / `semantic_scholar`
   这两类更偏学术资料补充，不适合作为中文通用搜索引擎的完全替代。
+- `baidu_baike` / `zhihu`
+  复用 DuckDuckGo 的站点限定搜索，用于中文百科定义与经验型讨论补充。
+
+所有 retriever 的输入统一为：
+
+```python
+search(query: str, *, max_results: int = 5) -> list[SearchResult]
+```
+
+所有输出统一收敛为 `SearchResult(url, title, snippet, score, source)`；provider 原始字段清洗、空值过滤和数量裁剪在 retriever 内完成。
 
 ## 检索调用链
 
@@ -163,6 +173,6 @@ search:
 - 想继续提升稳定性但不想买 API：
   再加一个自建或可信公共 `SearXNG` 实例。
 - 已有商业 key：
-  再打开 `tavily / brave / exa / bing`，把它们放到 profile 前面即可。
+  再打开 `tavily / bocha / brave / exa / bing`，把它们放到 profile 前面即可。
 - 网页正文读取质量差：
   打开 `JINA_READER_ENABLED=true`，必要时配置 `JINA_API_KEY` 提高限额。

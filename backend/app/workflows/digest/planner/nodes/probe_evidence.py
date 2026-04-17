@@ -15,6 +15,7 @@ from app.shared.infra.search.types import SearchResult
 from app.shared.infra.settings import get_settings
 from app.shared.infra.tools.builtin.web_reading import read_urls
 from app.shared.infra.workflow.context import WorkflowContext
+from app.workflows.digest.common.runtime_config import get_teaching_runtime_config
 from app.workflows.digest.planner.lib.evidence_probe import (
     build_evidence_brief,
     fallback_probe_queries,
@@ -135,6 +136,7 @@ def build_probe_evidence_node(*, context: WorkflowContext):
         retriever_names = get_configured_retriever_names(
             profile=state.get("retrieval_profile"),
             include_local_rag=True,
+            include_external=get_teaching_runtime_config().planner.allow_external_search,
             include_fallback=True,
         )
         logger.info(

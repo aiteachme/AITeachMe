@@ -6,12 +6,12 @@ models:
   # reason  - 推理模型，深度推理和规划；留空则回退到 primary。
   # primary - 常用模型，教学、出题、批改、对话。
   # light   - 轻量模型，批量抽取、分类、摘要；留空则回退到 primary。
-  # reason: qwen3-max
-  # primary: qwen-plus-latest
-  # light: qwen-turbo
-  reason: qwen-turbo
-  primary: qwen-turbo
+  reason: qwen3-max
+  primary: qwen-plus-latest
   light: qwen-turbo
+  # reason: qwen-turbo
+  # primary: qwen-turbo
+  # light: qwen-turbo
   extract: ""
   ocr: ""
   # embedding: text-embedding-v4
@@ -77,8 +77,8 @@ search:
   runtime_cache_max_entries: 256
   searxng_base_url: ""
   # retriever_profiles:
-  #   planner_grounding: [local_rag, duckduckgo]
-  #   docgen_systematic: [local_rag, tavily, arxiv, semantic_scholar, duckduckgo]
+  #   planner_grounding: [local_rag, bocha, wikipedia, baidu_baike, zhihu, arxiv, semantic_scholar, duckduckgo]
+  #   docgen_systematic: [local_rag, tavily, bocha, brave, exa, bing, wikipedia, arxiv, semantic_scholar, duckduckgo]
 
 web_search:
   retriever: duckduckgo

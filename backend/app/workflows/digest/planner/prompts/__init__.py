@@ -1,6 +1,9 @@
 """Planner lane prompts."""
 
-from app.workflows.digest.planner.prompts.build_plan_composer import build_plan_composer_messages
+from app.workflows.digest.planner.prompts.build_plan_composer import (
+    build_plan_composer_messages,
+    build_plan_outline_stream_prompt,
+)
 from app.workflows.digest.planner.prompts.evidence_queries import build_evidence_query_messages
 from app.workflows.digest.planner.prompts.examples import render_composer_examples, render_plan_sketch_examples
 from app.workflows.digest.planner.prompts.learning_intent import build_learning_intent_messages
@@ -10,6 +13,7 @@ __all__ = [
     "build_learning_intent_messages",
     "build_evidence_query_messages",
     "build_plan_composer_messages",
+    "build_plan_outline_stream_prompt",
     "build_plan_sketch_prompt",
     "render_composer_examples",
     "render_plan_sketch_examples",

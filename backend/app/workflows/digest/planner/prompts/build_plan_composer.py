@@ -110,4 +110,43 @@ def build_plan_composer_messages(
     ]
 
 
-__all__ = ["build_plan_composer_messages"]
+def build_plan_outline_stream_prompt(
+    *,
+    subject: str,
+    user_goal: str,
+    digest_mode: str,
+    material_context: DigestMaterialContext,
+    planner_brief: PlannerBrief,
+    learning_intent: LearningIntent,
+    evidence_brief: EvidenceBrief,
+) -> str:
+    topics = "、".join(material_topic_hints(material_context, limit=10)) or "暂无明显主题"
+    sketch_tasks = "；".join(planner_brief.focus_points[:8]) or planner_brief.markdown
+    provisional_chapters = "；".join(planner_brief.outline_items[:8]) or "暂无暂定章节"
+    core_concepts = "、".join(evidence_brief.core_concepts[:10]) or "暂无明确概念清单"
+    evidence_hints = "；".join(evidence_brief.chapter_hints[:6]) or evidence_brief.summary or "暂无章节级证据提示"
+    digest = _render_material_digest(material_context)
+    return (
+        "你是 AITeachMe 的学习规划助手。请生成给用户看的“计划大纲生成过程”。\n"
+        "这是可见规划摘要，不要输出隐藏推理链，不要输出 JSON，不要写代码块。\n\n"
+        f"主题：{subject}\n"
+        f"用户目标：{user_goal}\n"
+        f"模式：{digest_mode}\n"
+        f"资料主题：{topics}\n"
+        f"资料摘要：\n{digest}\n\n"
+        f"前置关注重点：{sketch_tasks}\n"
+        f"前置暂定章节：{provisional_chapters}\n"
+        f"意图类型：{learning_intent.goal_type}\n"
+        f"核心概念：{core_concepts}\n"
+        f"证据提示：{evidence_hints}\n\n"
+        "请严格按下面格式输出，控制在 260 字以内：\n"
+        "3. 计划大纲整理：用 4-6 个短句说明将如何合并、拆分和排序章节。\n"
+        "4. 暂定章节方向：用分号列出 4-8 个章节标题方向，每个标题要具体。\n\n"
+        "硬约束：\n"
+        "1. 只输出第 3、4 两条编号内容。\n"
+        "2. 标题方向必须贴近资料中的知识对象、题型、公式、方法或易错边界。\n"
+        "3. 不要写“基础知识”“综合提升”“学习资料”等空泛词。"
+    )
+
+
+__all__ = ["build_plan_composer_messages", "build_plan_outline_stream_prompt"]

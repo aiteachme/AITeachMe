@@ -9,6 +9,7 @@ import structlog
 
 from app.shared.infra.settings import get_settings
 from app.shared.infra.search.retrievers.base import BaseRetriever
+from app.shared.infra.search.retrievers.common import clamp_max_results, clean_text, normalize_query
 from app.shared.infra.search.types import SearchResult
 
 logger = structlog.get_logger(__name__)
@@ -24,7 +25,7 @@ _REQUEST_HEADERS = {
 
 
 def _clean_text(value: str) -> str:
-    return " ".join(str(value or "").split()).strip()
+    return clean_text(value)
 
 
 def _resolve_result_url(raw_url: str) -> str:
@@ -129,6 +130,10 @@ class DuckDuckGoRetriever(BaseRetriever):
         return "duckduckgo"
 
     async def search(self, query: str, *, max_results: int = 5) -> list[SearchResult]:
+        normalized_query = normalize_query(query)
+        if not normalized_query:
+            return []
+        count = clamp_max_results(max_results, upper=50)
         try:
             from duckduckgo_search import AsyncDDGS
         except ImportError:
@@ -136,7 +141,7 @@ class DuckDuckGoRetriever(BaseRetriever):
         else:
             try:
                 async with AsyncDDGS() as ddgs:
-                    payload = await ddgs.atext(query, max_results=max_results)
+                    payload = await ddgs.atext(normalized_query, max_results=count)
                 results = [
                     SearchResult(
                         url=str(item.get("href") or ""),
@@ -148,11 +153,11 @@ class DuckDuckGoRetriever(BaseRetriever):
                     if item.get("href")
                 ]
                 if results:
-                    return results[:max_results]
+                    return results[:count]
             except Exception as exc:  # pragma: no cover - network/provider behavior
-                logger.warning("duckduckgo_search_failed", error=str(exc), query=query)
+                logger.warning("duckduckgo_search_failed", error=str(exc), query=normalized_query)
 
-        return await self._search_via_html(query, max_results=max_results)
+        return await self._search_via_html(normalized_query, max_results=count)
 
     async def _search_via_html(self, query: str, *, max_results: int) -> list[SearchResult]:
         settings = get_settings()
@@ -189,4 +194,3 @@ class DuckDuckGoRetriever(BaseRetriever):
 
 
 __all__ = ["DuckDuckGoRetriever", "_parse_duckduckgo_html_results"]
-

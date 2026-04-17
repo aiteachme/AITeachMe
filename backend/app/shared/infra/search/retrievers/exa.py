@@ -8,6 +8,7 @@ import structlog
 from app.shared.infra.settings import get_settings
 from app.shared.infra.env_support import get_env
 from app.shared.infra.search.retrievers.base import BaseRetriever
+from app.shared.infra.search.retrievers.common import clamp_max_results, clean_text, make_search_result, normalize_query
 from app.shared.infra.search.types import SearchResult
 
 logger = structlog.get_logger(__name__)
@@ -31,14 +32,18 @@ class ExaRetriever(BaseRetriever):
         return "exa"
 
     async def search(self, query: str, *, max_results: int = 5) -> list[SearchResult]:
+        normalized_query = normalize_query(query)
+        if not normalized_query:
+            return []
         settings = get_settings()
         api_key = (get_env("EXA_API_KEY") or "").strip()
         if not api_key:
             return []
+        count = clamp_max_results(max_results, upper=50)
 
         payload = {
-            "query": query,
-            "numResults": max_results,
+            "query": normalized_query,
+            "numResults": count,
             "contents": {"text": {"maxCharacters": 600}},
             "type": "auto",
         }
@@ -55,19 +60,22 @@ class ExaRetriever(BaseRetriever):
                 )
                 response.raise_for_status()
         except Exception as exc:  # pragma: no cover - provider behavior
-            logger.warning("exa_search_failed", error=str(exc), query=query)
+            logger.warning("exa_search_failed", error=str(exc), query=normalized_query)
             return []
 
         values = (response.json() or {}).get("results") or []
         results: list[SearchResult] = []
         for item in values:
-            url = str(item.get("url") or "").strip()
-            title = " ".join(str(item.get("title") or "").split()).strip()
-            snippet = self._build_snippet(item)
-            if not url or not title:
-                continue
-            results.append(SearchResult(url=url, title=title, snippet=snippet, source=self.name))
-            if len(results) >= max_results:
+            result = make_search_result(
+                url=item.get("url"),
+                title=item.get("title"),
+                snippet=self._build_snippet(item),
+                source=self.name,
+                snippet_limit=600,
+            )
+            if result is not None:
+                results.append(result)
+            if len(results) >= count:
                 break
         return results
 
@@ -85,7 +93,7 @@ class ExaRetriever(BaseRetriever):
             elif isinstance(text_payload, str):
                 candidates.append(text_payload)
         for candidate in candidates:
-            text = " ".join(str(candidate or "").split()).strip()
+            text = clean_text(candidate)
             if text:
                 return text[:600]
         return ""
