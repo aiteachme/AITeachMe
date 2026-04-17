@@ -24,8 +24,8 @@ from app.schemas.knowledge import (
     KnowledgeBuildPreviewResponse,
     KnowledgeBuildStatusResponse,
 )
-from app.workflows.digest.planner.sessions import (
-    get_confirmed_build_plan_service,
+from app.workflows.digest.planner import (
+    get_confirmed_build_plan,
     mark_confirmed_build_plan_status,
 )
 from app.shared.infra.exceptions import ConfirmedBuildPlanRequiredError, NoReadyFilesForDocGenError, RawFileNotFoundError, SubjectBuildLockConflictError
@@ -264,8 +264,42 @@ def _build_confirmed_plan_payload(plan: ConfirmedBuildPlan) -> dict[str, Any]:
 
 def _load_confirmed_plan_payload(*, subject: str, user_id: str, confirmed_plan_id: str) -> tuple[ConfirmedBuildPlan, dict[str, Any]]:
     with managed_session() as session:
-        plan = get_confirmed_build_plan_service(session, subject=subject, user_id=user_id, plan_id=confirmed_plan_id)
+        plan = get_confirmed_build_plan(session, subject=subject, user_id=user_id, plan_id=confirmed_plan_id)
     return plan, _build_confirmed_plan_payload(plan)
+
+
+def _build_graph_seed_chapter_metadatas(confirmed_plan_payload: dict[str, Any] | None) -> list[dict[str, object]]:
+    if not isinstance(confirmed_plan_payload, dict):
+        return []
+
+    normalized: list[dict[str, object]] = []
+    for index, chapter in enumerate(list(confirmed_plan_payload.get("chapter_plan") or []), start=1):
+        if not isinstance(chapter, dict):
+            continue
+        title = str(chapter.get("title") or "").strip()
+        objective = str(chapter.get("objective") or "").strip()
+        required_elements = [
+            str(item).strip()
+            for item in list(chapter.get("required_elements") or [])
+            if str(item).strip()
+        ]
+        summary_parts = [objective]
+        if required_elements:
+            summary_parts.append("重点覆盖：" + "、".join(required_elements[:6]))
+        summary = "\n".join(part for part in summary_parts if part).strip()
+        if not title or not summary:
+            continue
+        normalized.append(
+            {
+                "chapter_index": int(chapter.get("chapter_index", index) or index),
+                "title": title,
+                "summary": summary,
+                "research_summary": "",
+                "tags": required_elements[:8],
+                "source_file_ids": list(confirmed_plan_payload.get("selected_file_ids") or []),
+            }
+        )
+    return normalized
 
 
 def trigger_docgen_build(session: Session, *, subject: Subject, user_id: str, file_uids: list[str] | None, prompt: str | None, embedding_resolution: str | None, confirmed_plan_id: str | None, build_type: str = "docs") -> tuple[DocGenBuildData, list[int]]:
@@ -284,7 +318,7 @@ def trigger_docgen_build(session: Session, *, subject: Subject, user_id: str, fi
     if build_type != "graph" and not confirmed_plan_id:
         raise ConfirmedBuildPlanRequiredError(build_type)
     if confirmed_plan_id:
-        plan = get_confirmed_build_plan_service(session, subject=subject.slug, user_id=user_id, plan_id=confirmed_plan_id)
+        plan = get_confirmed_build_plan(session, subject=subject.slug, user_id=user_id, plan_id=confirmed_plan_id)
         if plan.status == "building":
             raise SubjectBuildLockConflictError(subject.slug)
         planner_session_id = plan.planner_session_id
@@ -380,10 +414,16 @@ async def run_docgen_background(*, subject: str, file_ids: list[int], prompt: st
     from app.workflows.digest import run_docgen_workflow
     from app.shared.infra.database import managed_session
     from app.utils.docgen_store import release_knowledge_build_lock
+    from app.workflows.support.knowledge_graph import (
+        run_graph_docs_sync_after_doc_build,
+        run_graph_file_ingest_background,
+    )
     build_session_id = _new_build_session_id()
     confirmed_plan_payload = None
     resolved_digest_mode = None
     resolved_tone = None
+    kg_ingest_task: asyncio.Task[dict[str, int]] | None = None
+    graph_seed_chapter_metadatas: list[dict[str, object]] = []
     if not confirmed_plan_id or not user_id:
         _write_build_status(subject, requested_at=requested_at, status="failed", stage="failed", build_session_id=build_session_id, planner_session_id=planner_session_id, confirmed_plan_id=confirmed_plan_id, digest_mode=resolved_digest_mode, error_message="confirmed_plan_required", draft_available=False)
         logger.error("knowledge_build_failed_missing_confirmed_plan", subject=subject)
@@ -394,13 +434,31 @@ async def run_docgen_background(*, subject: str, file_ids: list[int], prompt: st
         planner_session_id = planner_session_id or plan.planner_session_id
         resolved_digest_mode = plan.digest_mode
         resolved_tone = plan.tone
+        graph_seed_chapter_metadatas = _build_graph_seed_chapter_metadatas(confirmed_plan_payload)
         with managed_session() as session:
             mark_confirmed_build_plan_status(session, subject=subject, user_id=user_id, plan_id=confirmed_plan_id, status="building")
     try:
         _clear_docgen_staging_safely(subject)
         _write_build_status(subject, requested_at=requested_at, status="running", stage="prepare_shared", build_session_id=build_session_id, planner_session_id=planner_session_id, confirmed_plan_id=confirmed_plan_id, digest_mode=resolved_digest_mode, error_message=None, draft_available=False, source_file_ids=file_ids, prompt=prompt)
+        if file_ids:
+            kg_ingest_task = asyncio.create_task(
+                run_graph_file_ingest_background(
+                    subject=subject,
+                    file_ids=file_ids,
+                    prompt=prompt,
+                    requested_at=requested_at,
+                    build_session_id=build_session_id,
+                    doc_chapter_metadatas=graph_seed_chapter_metadatas,
+                )
+            )
         result = await run_docgen_workflow(subject=subject, file_ids=file_ids, user_prompt=prompt, requested_at=requested_at, build_session_id=build_session_id, confirmed_plan=confirmed_plan_payload, planner_session_id=planner_session_id, confirmed_plan_id=confirmed_plan_id, digest_mode=resolved_digest_mode, tone=resolved_tone)
         if result.failed:
+            if kg_ingest_task is not None and not kg_ingest_task.done():
+                kg_ingest_task.cancel()
+                try:
+                    await kg_ingest_task
+                except asyncio.CancelledError:
+                    pass
             _clear_docgen_staging_safely(subject)
             _write_build_status(subject, requested_at=requested_at, status="failed", stage="failed", build_session_id=build_session_id, planner_session_id=planner_session_id, confirmed_plan_id=confirmed_plan_id, digest_mode=resolved_digest_mode, error_message=result.error.detail, draft_available=False)
             if confirmed_plan_id and user_id:
@@ -408,14 +466,51 @@ async def run_docgen_background(*, subject: str, file_ids: list[int], prompt: st
                     mark_confirmed_build_plan_status(session, subject=subject, user_id=user_id, plan_id=confirmed_plan_id, status="failed")
             logger.error("knowledge_build_failed", subject=subject, error=result.error.detail)
             return
+        ingest_metrics = {"processed_chunks": 0}
+        if kg_ingest_task is not None:
+            ingest_metrics = await kg_ingest_task
+        doc_sync_metrics = run_graph_docs_sync_after_doc_build(
+            subject=subject,
+            requested_at=requested_at,
+            build_session_id=build_session_id,
+            file_ids=file_ids,
+            prompt=prompt,
+        )
+        _write_build_status(
+            subject,
+            requested_at=requested_at,
+            status="completed",
+            stage="completed",
+            build_session_id=build_session_id,
+            planner_session_id=planner_session_id,
+            confirmed_plan_id=confirmed_plan_id,
+            digest_mode=resolved_digest_mode,
+            error_message=None,
+            draft_available=False,
+            processed_chunks=int(ingest_metrics.get("processed_chunks", 0) or 0),
+            current_stage_description="知识文档与知识图谱已同步完成。",
+            **doc_sync_metrics,
+        )
         if confirmed_plan_id and user_id:
             with managed_session() as session:
                 mark_confirmed_build_plan_status(session, subject=subject, user_id=user_id, plan_id=confirmed_plan_id, status="completed")
     except asyncio.CancelledError:
+        if kg_ingest_task is not None and not kg_ingest_task.done():
+            kg_ingest_task.cancel()
+            try:
+                await kg_ingest_task
+            except asyncio.CancelledError:
+                pass
         _clear_docgen_staging_safely(subject)
         _write_build_status(subject, requested_at=requested_at, status="cancelled", stage="cancelled", build_session_id=build_session_id, planner_session_id=planner_session_id, confirmed_plan_id=confirmed_plan_id, digest_mode=resolved_digest_mode, error_message="build_cancelled", draft_available=False)
         raise
     except Exception:
+        if kg_ingest_task is not None and not kg_ingest_task.done():
+            kg_ingest_task.cancel()
+            try:
+                await kg_ingest_task
+            except asyncio.CancelledError:
+                pass
         _clear_docgen_staging_safely(subject)
         _write_build_status(subject, requested_at=requested_at, status="failed", stage="failed", build_session_id=build_session_id, planner_session_id=planner_session_id, confirmed_plan_id=confirmed_plan_id, digest_mode=resolved_digest_mode, error_message="build_crashed", draft_available=False)
         if confirmed_plan_id and user_id:

@@ -8,26 +8,20 @@ from app.workflows.digest.planner.lib.plans import (
     normalize_planner_payload,
 )
 from app.workflows.digest.planner.lib.planner_events import emit_planner_event, emit_planner_token
-from app.workflows.digest.planner.lib.research_probe import (
+from app.workflows.digest.planner.lib.models import (
     EvidenceBrief,
-    LearningIntentProfile,
-    PlanSketch,
-    PlannerOpenedSource,
-    PlannerQuery,
-    PlannerSelectedSource,
-    ResearchProbePlan,
+    EvidenceSource,
+    LearningIntent,
+    PlannerBrief,
 )
 
 __all__ = [
     "BuildPlannerDraft",
     "PlannerChapterPlan",
     "EvidenceBrief",
-    "LearningIntentProfile",
-    "PlanSketch",
-    "PlannerOpenedSource",
-    "PlannerQuery",
-    "PlannerSelectedSource",
-    "ResearchProbePlan",
+    "EvidenceSource",
+    "LearningIntent",
+    "PlannerBrief",
     "build_fallback_plan",
     "emit_planner_event",
     "emit_planner_token",

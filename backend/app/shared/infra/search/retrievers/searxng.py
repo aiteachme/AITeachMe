@@ -8,6 +8,7 @@ import structlog
 from app.shared.infra.settings import get_settings
 from app.shared.infra.env_support import get_env
 from app.shared.infra.search.retrievers.base import BaseRetriever
+from app.shared.infra.search.retrievers.common import clamp_max_results, make_search_result, normalize_query
 from app.shared.infra.search.types import SearchResult
 
 logger = structlog.get_logger(__name__)
@@ -39,43 +40,43 @@ class SearXngRetriever(BaseRetriever):
         return "searxng"
 
     async def search(self, query: str, *, max_results: int = 5) -> list[SearchResult]:
+        normalized_query = normalize_query(query)
+        if not normalized_query:
+            return []
         settings = get_settings()
         base_url = self._base_url()
         if not base_url:
             return []
+        count = clamp_max_results(max_results, upper=50)
 
         try:
             async with httpx.AsyncClient(timeout=settings.search.provider_timeout_s, follow_redirects=True) as client:
                 response = await client.get(
                     f"{base_url}/search",
                     params={
-                        "q": query,
+                        "q": normalized_query,
                         "format": "json",
                         "language": "zh-CN",
+                        "safesearch": 1,
                     },
                 )
                 response.raise_for_status()
         except Exception as exc:  # pragma: no cover - provider behavior
-            logger.warning("searxng_search_failed", query=query, base_url=base_url, error=str(exc))
+            logger.warning("searxng_search_failed", query=normalized_query, base_url=base_url, error=str(exc))
             return []
 
         values = (response.json() or {}).get("results") or []
         results: list[SearchResult] = []
         for item in values:
-            url = str(item.get("url") or "").strip()
-            title = " ".join(str(item.get("title") or "").split()).strip()
-            snippet = " ".join(str(item.get("content") or "").split()).strip()
-            if not url or not title:
-                continue
-            results.append(
-                SearchResult(
-                    url=url,
-                    title=title,
-                    snippet=snippet,
-                    source=self.name,
-                )
+            result = make_search_result(
+                url=item.get("url"),
+                title=item.get("title"),
+                snippet=item.get("content"),
+                source=self.name,
             )
-            if len(results) >= max_results:
+            if result is not None:
+                results.append(result)
+            if len(results) >= count:
                 break
         return results
 

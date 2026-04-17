@@ -1,48 +1,42 @@
-﻿# Digest 模块说明
+﻿# Digest Module
 
-最后更新：2026-04-16
+`digest/` contains workflow lanes only.
 
-`digest/` 负责把资料从“可检索内容”进一步编排成 confirmed plan、知识文档和知识图谱。它也是本轮 workflows 单层化重构的第一落地区域。
-
-## 当前 canonical 结构
+## Current Layout
 
 ```text
 digest/
   __init__.py
   README.md
-  events.py
-  exports.py
-  overview.py
-  study_plan.py
   planner/
   docgen/
-  knowledge_graph/
+  kg_file_ingest/
+  kg_docs_sync/
   common/
+  application/
+  shared/
+  unified/
 ```
 
-说明：
+## Notes
 
-- `planner/` 负责生成 confirmed plan
-- `docgen/` 负责按 confirmed plan 生成知识文档
-- `knowledge_graph/` 负责独立知识图谱链路
-- `events.py`、`exports.py` 是 Digest 模块根的 canonical 入口
-- `docgen/__init__.py`、`knowledge_graph/__init__.py` 提供 workflow runner 入口
-- `overview.py`、`study_plan.py` 是跨 lane 的聚合用例
-- `planner/sessions.py`、`docgen/builds.py`、`docgen/cleanup.py`、`knowledge_graph/{build.py,builds.py,module.py,query.py}` 是当前 digest 业务用例主落点
-- `common/` 是跨链路共用的 contracts / models / prepare / material_profile / metrics / runtime_config / pedagogy 实现层
-- 各链路自己的构建摘要放在对应链路 `lib/reporting.py`，不要再新增顶层 observability 伪链路
-- `planner/DOCGEN_ARCHITECTURE_REVIEW.md` 记录 DocGen 当前架构评估、重大问题、外部项目参考和后续重构顺序，后续改 DocGen 前应优先阅读
+- `planner/` 负责生成 confirmed plan；API-facing 入口在 `planner/__init__.py`，workflow runner 在 `planner/graph.py`。
+- `docgen/` 负责按 confirmed plan 生成知识文档；构建触发和后台编排在 `docgen/builds.py`。
+- `kg_file_ingest/` 与 `kg_docs_sync/` 是两个独立知识图谱 workflow lane，并遵循 lane skeleton。
+- 非 workflow 的知识图谱业务服务已迁到 `workflows/support/knowledge_graph/`。
+- 跨链路共享代码放在 `digest/common/`，包括 events、exports、contracts、prepare、material profile、metrics、runtime config 和 pedagogy。
+- 各链路自己的构建摘要放在对应链路 `lib/reporting.py`，不要新增顶层 observability 伪链路。
 
-## 对外入口
+## Public Entrypoints
 
 上层优先使用：
 
 ```python
-from app.workflows.digest import run_docgen_workflow, run_graph_digest_workflow
-from app.workflows.digest.planner import run_build_planner_workflow
+from app.workflows.digest import run_docgen_workflow
+from app.workflows.digest.planner import create_build_planner_session, run_build_planner_workflow
 ```
 
-## 迁移约定
+## Migration Rules
 
 - 模块根只做聚合
 - 新的模块级 API-facing 用例优先直接进入模块根文件或对应 lane

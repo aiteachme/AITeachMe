@@ -1,159 +1,133 @@
-"""Produce a light, LLM-assisted digest of uploaded material.
-
-The digest is reused by planner and docgen to keep prompt context short
-while still giving the reason/primary tiers a faithful view of the real
-document content instead of filenames and rule-based hints alone.
-"""
+"""Build raw planner material context from uploaded material."""
 
 from __future__ import annotations
 
-import asyncio
 from dataclasses import dataclass
 
 import structlog
 
-from app.shared.infra.llm_support import acompletion
-from app.shared.infra.llm_support.routing import TaskType
+from app.shared.infra.llm_support.common import resolve_settings_model
+from app.shared.infra.llm_support.context_window import ContextWindowManager
+from app.shared.infra.llm_support.litellm_loader import load_litellm
+from app.shared.infra.settings import get_settings
 from app.workflows.digest.common.models import DigestMaterialContext, SourcePacket
 
 logger = structlog.get_logger(__name__)
 
-SHORT_THRESHOLD_CHARS = 10_000
-CHUNK_SIZE_CHARS = 10_000
-MAX_CHUNKS = 10
+FILE_CONTEXT_TOKENS = 10_000
 
 
 @dataclass(frozen=True)
 class MaterialDigestResult:
-    """Outcome of the light digest pass."""
+    """Outcome of the raw context packing pass."""
 
     digest: str
     total_chars: int
-    chunk_count: int
+    total_tokens: int
+    source_count: int
     llm_used: bool
     truncated: bool
 
 
-def _render_concatenated_source(packets: list[SourcePacket]) -> str:
-    parts: list[str] = []
-    for packet in packets:
-        content = (packet.normalized_content or "").strip()
-        if not content:
-            continue
-        header = f"===== {packet.filename or f'file_{packet.file_id}'} ====="
-        parts.append(f"{header}\n{content}")
-    return "\n\n".join(parts).strip()
+def _source_label(packet: SourcePacket, *, index: int) -> str:
+    return packet.filename or f"file_{packet.file_id or index + 1}"
 
 
-def _split_into_chunks(text: str, *, size: int, limit: int) -> list[str]:
-    chunks: list[str] = []
-    total = len(text)
-    for start in range(0, total, size):
-        if len(chunks) >= limit:
-            break
-        chunks.append(text[start : start + size])
-    return chunks
-
-
-def _summary_prompt(chunk: str, *, chunk_index: int, chunk_total: int) -> str:
-    position = (
-        f"（共 {chunk_total} 段，这是第 {chunk_index + 1} 段）"
-        if chunk_total > 1
-        else ""
-    )
-    return (
-        "你是学习资料速览员。请用中文对下面这段用户上传的学习资料做极简要点摘要。"
-        f"{position}\n"
-        "约束：\n"
-        "1. 150-250 字，不要罗列原文句子。\n"
-        "2. 只输出要点型段落，不要小标题/列表/引用/代码块。\n"
-        "3. 覆盖：核心主题、关键概念或公式、出现的题型或方法、难度线索。\n"
-        "4. 不要推测未给出的内容，不要写学习建议。\n\n"
-        "资料片段：\n"
-        f"{chunk}"
-    )
-
-
-async def _summarize_chunk(chunk: str, *, chunk_index: int, chunk_total: int) -> str:
+def _planner_token_model() -> str:
     try:
-        text = await acompletion(
-            [{"role": "user", "content": _summary_prompt(chunk, chunk_index=chunk_index, chunk_total=chunk_total)}],
-            task_type=TaskType.SUMMARIZE,
-            tier_override="light",
-            temperature=0.2,
-            max_tokens=360,
-        )
+        model, _selector = resolve_settings_model(get_settings(), "reason")
+    except Exception:  # pragma: no cover - defensive local fallback
+        return "gpt-4o-mini"
+    return model or "gpt-4o-mini"
+
+
+def _truncate_text_by_tokens(text: str, *, max_tokens: int) -> tuple[str, int, bool]:
+    """Return the first ``max_tokens`` tokens, with a char estimate fallback."""
+
+    if not text.strip():
+        return "", 0, False
+    model = _planner_token_model()
+    try:
+        litellm = load_litellm()
+        tokens = list(litellm.encode(model=model, text=text))
+        token_count = len(tokens)
+        if token_count <= max_tokens:
+            return text, token_count, False
+        return litellm.decode(model=model, tokens=tokens[:max_tokens]), token_count, True
     except Exception:
+        manager = ContextWindowManager()
+        estimated = manager.estimate_tokens(text)
+        if estimated <= max_tokens:
+            return text, estimated, False
         logger.exception(
-            "material_digest_chunk_failed",
-            chunk_index=chunk_index,
-            chunk_total=chunk_total,
+            "planner_material_token_truncate_fallback_used",
+            max_tokens=max_tokens,
+            estimated_tokens=estimated,
         )
-        return ""
-    return (text or "").strip()
+        return manager.truncate_text(text, max_tokens), estimated, True
+
+
+def _render_packet_context(packet: SourcePacket, *, index: int, total: int) -> tuple[str, int, bool]:
+    content = (packet.normalized_content or "").strip()
+    if not content:
+        return "", 0, False
+    excerpt, token_count, truncated = _truncate_text_by_tokens(content, max_tokens=FILE_CONTEXT_TOKENS)
+    label = _source_label(packet, index=index)
+    token_note = (
+        f"本资料已按前 {FILE_CONTEXT_TOKENS} tokens 截断；原文约 {token_count} tokens。"
+        if truncated
+        else f"本资料约 {token_count} tokens，未截断。"
+    )
+    section = (
+        f"===== 资料 {index + 1}/{total}：{label} =====\n"
+        f"{token_note}\n"
+        f"{excerpt}"
+    ).strip()
+    return section, token_count, truncated
 
 
 async def build_material_digest(
     material_context: DigestMaterialContext,
 ) -> MaterialDigestResult:
-    """Return a compact digest of the uploaded material.
+    """Return concatenated raw context for planner prompts.
 
-    短路策略：总字符数 < SHORT_THRESHOLD_CHARS 时直接拼原文；
-    超过阈值则按 CHUNK_SIZE_CHARS 分片，最多 MAX_CHUNKS 片并行走 light 模型。
+    Planner 不再先走摘要模型。这里直接拼接每份资料的原文片段，
+    且每份资料最多保留前 ``FILE_CONTEXT_TOKENS`` tokens。
     """
 
-    concatenated = _render_concatenated_source(list(material_context.source_documents))
-    total = len(concatenated)
-    if not concatenated:
-        return MaterialDigestResult(digest="", total_chars=0, chunk_count=0, llm_used=False, truncated=False)
-
-    if total < SHORT_THRESHOLD_CHARS:
+    packets = [
+        packet
+        for packet in list(material_context.source_documents)
+        if (packet.normalized_content or "").strip()
+    ]
+    if not packets:
         return MaterialDigestResult(
-            digest=concatenated,
-            total_chars=total,
-            chunk_count=1,
+            digest="",
+            total_chars=0,
+            total_tokens=0,
+            source_count=0,
             llm_used=False,
             truncated=False,
         )
 
-    chunks = _split_into_chunks(concatenated, size=CHUNK_SIZE_CHARS, limit=MAX_CHUNKS)
-    truncated = total > len(chunks) * CHUNK_SIZE_CHARS
-    summaries = await asyncio.gather(
-        *(
-            _summarize_chunk(chunk, chunk_index=index, chunk_total=len(chunks))
-            for index, chunk in enumerate(chunks)
-        )
-    )
-    kept = [summary for summary in summaries if summary]
-    if not kept:
-        fallback = concatenated[: CHUNK_SIZE_CHARS]
-        return MaterialDigestResult(
-            digest=fallback,
-            total_chars=total,
-            chunk_count=len(chunks),
-            llm_used=True,
-            truncated=True,
-        )
-
-    if len(kept) == 1:
-        digest_text = kept[0]
-    else:
-        digest_text = "\n\n".join(
-            f"段{index + 1}：{summary}" for index, summary in enumerate(kept)
-        )
+    total_chars = sum(len((packet.normalized_content or "").strip()) for packet in packets)
+    results = [
+        _render_packet_context(packet, index=index, total=len(packets))
+        for index, packet in enumerate(packets)
+    ]
+    sections = [section for section, _token_count, _truncated in results if section]
     return MaterialDigestResult(
-        digest=digest_text,
-        total_chars=total,
-        chunk_count=len(chunks),
-        llm_used=True,
-        truncated=truncated,
+        digest="\n\n".join(sections),
+        total_chars=total_chars,
+        total_tokens=sum(token_count for _section, token_count, _truncated in results),
+        source_count=len(packets),
+        llm_used=False,
+        truncated=any(truncated for _section, _token_count, truncated in results),
     )
 
 
 __all__ = [
-    "CHUNK_SIZE_CHARS",
-    "MAX_CHUNKS",
+    "FILE_CONTEXT_TOKENS",
     "MaterialDigestResult",
-    "SHORT_THRESHOLD_CHARS",
     "build_material_digest",
 ]

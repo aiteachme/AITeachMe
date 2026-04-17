@@ -31,10 +31,10 @@ from app.schemas.knowledge import (
     StudyPlanResponse,
 )
 from app.workflows.digest.planner import (
-    append_build_planner_message_service,
-    confirm_build_planner_session_service,
-    create_build_planner_session_service,
-    get_latest_planner_session_service,
+    append_build_planner_message,
+    confirm_build_planner_session,
+    create_build_planner_session,
+    get_latest_planner_session,
 )
 from app.workflows.support.auth import set_guest_cookie_for_user
 from app.workflows.digest.docgen import (
@@ -43,9 +43,11 @@ from app.workflows.digest.docgen import (
     run_docgen_background,
     trigger_docgen_build,
 )
-from app.workflows.digest.knowledge_graph import run_graph_build_background
-from app.workflows.digest.overview import get_knowledge_overview
-from app.workflows.digest.study_plan import handle_study_plan_request
+from app.workflows.support.knowledge_graph import (
+    get_knowledge_overview,
+    handle_study_plan_request,
+    run_graph_build_background,
+)
 from app.workflows.support.subjects import get_subject_record
 from app.workflows.interact.chat.lib.streaming import SSEEventEmitter
 
@@ -59,9 +61,9 @@ def _planner_status_detail(payload: dict[str, object]) -> str:
     if node_name:
         node_label = {
             "prepare_material_context": "准备资料理解包",
-            "generate_plan_preview": "生成规划预览",
-            "probe_supporting_evidence": "探测支撑证据",
-            "compose_plan_contract": "合成计划大纲",
+            "bootstrap_plan_brief": "生成思考过程",
+            "probe_evidence": "外部证据检索",
+            "compose_build_plan": "提炼计划大纲",
             "finalize_plan_contract": "整理最终方案",
         }.get(node_name, node_name)
         if status == "failed":
@@ -158,8 +160,7 @@ async def knowledge_build_plan_create(
 ) -> ApiResponse[BuildPlannerSessionResponse]:
     normalized = normalize_subject_slug(subject)
     subject_record = get_subject_record(session, normalized, owner_user_id=user.user_id)
-    data = await create_build_planner_session_service(
-        session,
+    data = await create_build_planner_session(
         subject=subject_record,
         user_id=user.user_id,
         payload=body,
@@ -180,7 +181,7 @@ def knowledge_build_plan_latest(
 ) -> ApiResponse[BuildPlannerSessionResponse | None]:
     normalized = normalize_subject_slug(subject)
     subject_record = get_subject_record(session, normalized, owner_user_id=user.user_id)
-    data = get_latest_planner_session_service(
+    data = get_latest_planner_session(
         session,
         subject=subject_record,
         user_id=user.user_id,
@@ -205,8 +206,7 @@ async def knowledge_build_plan_create_stream(
     return _planner_stream_response(
         request=request,
         user_id=user.user_id,
-        runner=lambda progress_callback, token_callback: create_build_planner_session_service(
-            session,
+        runner=lambda progress_callback, token_callback: create_build_planner_session(
             subject=subject_record,
             user_id=user.user_id,
             payload=body,
@@ -231,8 +231,7 @@ async def knowledge_build_plan_message(
 ) -> ApiResponse[BuildPlannerSessionResponse]:
     normalized = normalize_subject_slug(subject)
     subject_record = get_subject_record(session, normalized, owner_user_id=user.user_id)
-    data = await append_build_planner_message_service(
-        session,
+    data = await append_build_planner_message(
         subject=subject_record,
         user_id=user.user_id,
         session_id=session_id,
@@ -259,8 +258,7 @@ async def knowledge_build_plan_message_stream(
     return _planner_stream_response(
         request=request,
         user_id=user.user_id,
-        runner=lambda progress_callback, token_callback: append_build_planner_message_service(
-            session,
+        runner=lambda progress_callback, token_callback: append_build_planner_message(
             subject=subject_record,
             user_id=user.user_id,
             session_id=session_id,
@@ -285,7 +283,7 @@ def knowledge_build_plan_confirm(
 ) -> ApiResponse[BuildPlannerConfirmResponse]:
     normalized = normalize_subject_slug(subject)
     subject_record = get_subject_record(session, normalized, owner_user_id=user.user_id)
-    data = confirm_build_planner_session_service(
+    data = confirm_build_planner_session(
         session,
         subject=subject_record,
         user_id=user.user_id,
@@ -429,3 +427,4 @@ async def knowledge_clear(
     get_subject_record(session, normalized, owner_user_id=user.user_id)
     counts = clear_subject_knowledge(session, subject=normalized)
     return ok_response(ClearKnowledgeResponse(subject=normalized, deleted_counts=counts))
+

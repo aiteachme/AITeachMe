@@ -1,4 +1,4 @@
-"""Helpers for loading project runtime configuration from `settings.yaml`."""
+"""Helpers for loading project runtime configuration from `settings_default.yaml`."""
 
 from __future__ import annotations
 
@@ -19,6 +19,8 @@ EMBEDDING_DIM_BY_MODEL: dict[str, int] = {
     "qwen3-embedding-0.6b": 1024,
 }
 DEFAULT_EMBEDDING_DIM = 1536
+DEFAULT_PROJECT_SETTINGS_FILENAME = "settings_default.yaml"
+PROJECT_SETTINGS_ENV_NAME = "PROJECT_SETTINGS_PATH"
 DEFAULT_RETRIEVER_FALLBACK = "duckduckgo"
 RETRIEVER_ALIASES: dict[str, str] = {
     "ddg": "duckduckgo",
@@ -34,6 +36,9 @@ DEFAULT_RETRIEVERS: list[str] = [
     "brave",
     "exa",
     "bing",
+    "wikipedia",
+    "baidu_baike",
+    "zhihu",
     "arxiv",
     "semantic_scholar",
     "duckduckgo",
@@ -93,7 +98,7 @@ def parse_yaml_scalar(value: str) -> Any:
 
 
 def parse_yaml_mapping(text: str) -> dict[str, Any]:
-    """Parse the small repo-root `settings.yaml` mapping."""
+    """Parse the small repo-root `settings_default.yaml` mapping."""
 
     try:
         import yaml  # type: ignore
@@ -202,6 +207,8 @@ def get_retriever_profiles(path: Path | None = None) -> dict[str, list[str]]:
 
 __all__ = [
     "DEFAULT_EMBEDDING_DIM",
+    "DEFAULT_PROJECT_SETTINGS_FILENAME",
+    "PROJECT_SETTINGS_ENV_NAME",
     "DEFAULT_RETRIEVER_FALLBACK",
     "DEFAULT_RETRIEVER_PROFILES",
     "DEFAULT_RETRIEVERS",

@@ -103,6 +103,14 @@ class FileTooLargeError(AITeachMeError):
         super().__init__(detail=f"上传文件超过 {max_size_mb} MB 限制。")
 
 
+class FileCountLimitError(AITeachMeError):
+    error_code = "FILE_COUNT_LIMIT_EXCEEDED"
+    status_code = HTTPStatus.REQUEST_ENTITY_TOO_LARGE
+
+    def __init__(self, max_files: int) -> None:
+        super().__init__(detail=f"单次最多上传 {max_files} 个文件。")
+
+
 class UnsupportedFileTypeError(AITeachMeError):
     error_code = "UNSUPPORTED_FILE_TYPE"
     status_code = HTTPStatus.UNPROCESSABLE_ENTITY
@@ -210,46 +218,6 @@ class KnowledgeUnitNotFoundError(AITeachMeError):
         super().__init__(detail=f"知识单元 `{knowledge_unit_id}` 不存在。")
 
 
-class TeachingUnitNotFoundError(AITeachMeError):
-    error_code = "TEACHING_UNIT_NOT_FOUND"
-    status_code = HTTPStatus.NOT_FOUND
-
-    def __init__(self, unit_id: int) -> None:
-        super().__init__(detail=f"教学单元 `{unit_id}` 不存在。")
-
-
-class ThemeTreeNodeNotFoundError(AITeachMeError):
-    error_code = "THEME_TREE_NODE_NOT_FOUND"
-    status_code = HTTPStatus.NOT_FOUND
-
-    def __init__(self, node_id: int) -> None:
-        super().__init__(detail=f"主题树节点 `{node_id}` 不存在。")
-
-
-class NoPublishedTreeError(AITeachMeError):
-    error_code = "NO_PUBLISHED_TREE"
-    status_code = HTTPStatus.CONFLICT
-
-    def __init__(self, subject: str) -> None:
-        super().__init__(detail=f"学科 `{subject}` 暂无已发布的主题树，请先完成 digest 并发布当前课程结构。")
-
-
-class NoPublishedDagError(AITeachMeError):
-    error_code = "NO_PUBLISHED_DAG"
-    status_code = HTTPStatus.CONFLICT
-
-    def __init__(self, subject: str) -> None:
-        super().__init__(detail=f"学科 `{subject}` 暂无已发布的先修 DAG，请先完成 digest 并发布当前课程结构。")
-
-
-class NoPublishedCurriculumSnapshotError(AITeachMeError):
-    error_code = "NO_PUBLISHED_CURRICULUM_SNAPSHOT"
-    status_code = HTTPStatus.CONFLICT
-
-    def __init__(self, subject: str) -> None:
-        super().__init__(detail=f"学科 `{subject}` 暂无已发布的课程快照，请先完成 digest 再生成测验或考试。")
-
-
 class NoReadyFilesForDocGenError(AITeachMeError):
     error_code = "NO_READY_FILES_FOR_DOCGEN"
     status_code = HTTPStatus.UNPROCESSABLE_ENTITY
@@ -283,22 +251,6 @@ class KnowledgeBuildPrecheckConflictError(AITeachMeError):
 
     def __init__(self, detail: str, *, data: Any | None = None) -> None:
         super().__init__(detail=detail, data=data)
-
-
-class TreeVersionConflictError(AITeachMeError):
-    error_code = "TREE_VERSION_CONFLICT"
-    status_code = HTTPStatus.CONFLICT
-
-    def __init__(self, subject: str) -> None:
-        super().__init__(detail=f"学科 `{subject}` 树版本乐观锁冲突，请重试。")
-
-
-class DagVersionConflictError(AITeachMeError):
-    error_code = "DAG_VERSION_CONFLICT"
-    status_code = HTTPStatus.CONFLICT
-
-    def __init__(self, subject: str) -> None:
-        super().__init__(detail=f"学科 `{subject}` DAG 版本乐观锁冲突，请重试。")
 
 
 class EvidenceNotFoundError(AITeachMeError):

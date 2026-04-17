@@ -1,4 +1,4 @@
-﻿"""Finalize nodes for ingest workflows.
+"""Finalize nodes for ingest workflows.
 
 Reads DB: ``raw_file``.
 Writes DB: final ``raw_file`` success / failure state and ingest readiness.
@@ -18,11 +18,6 @@ from app.models import IngestStatus, RawFileAsset, TaskStatus
 from app.repositories.files_repo import get_raw_file_by_id, replace_raw_file_assets, update_raw_file
 from app.shared.infra.workflow.context import WorkflowContext
 from app.utils.path_helpers import to_storage_key
-from app.workflows.ingest.events import (
-    IngestFileFastParsedEvent,
-    IngestFileParseFailedEvent,
-    IngestFileReadyForDigestEvent,
-)
 from app.workflows.ingest.fast_parse.lib.common import workflow_logger
 from app.workflows.ingest.fast_parse.state import IngestParseState
 
@@ -157,16 +152,6 @@ def build_finalize_success_node(*, context: WorkflowContext):
                     asset_dir=str(asset_dir),
                 )
 
-            # Publish Phase 1 completion event
-            await context.event_bus.publish(
-                IngestFileFastParsedEvent(
-                    subject=state["subject"],
-                    file_id=state["file_id"],
-                    parser_used=state.get("parser_used") or "",
-                    markdown_chars=state.get("markdown_chars", 0),
-                    image_count=state.get("image_count", 0),
-                )
-            )
             logger.info(
                 "ingest_file_fast_parse_finalized",
                 parser_used=state.get("parser_used"),
@@ -204,13 +189,6 @@ def build_finalize_failure_node(*, context: WorkflowContext):
                     ingest_status=IngestStatus.FAILED.value,
                     digest_current_step="ingest.parse.failed",
                 )
-        await context.event_bus.publish(
-            IngestFileParseFailedEvent(
-                subject=state["subject"],
-                file_id=state["file_id"],
-                error_message=error_message,
-            )
-        )
         logger.error("ingest_file_finalize_failed", error=error_message)
         return state
 

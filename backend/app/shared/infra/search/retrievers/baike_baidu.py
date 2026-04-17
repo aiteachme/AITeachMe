@@ -5,6 +5,7 @@ from __future__ import annotations
 import structlog
 
 from app.shared.infra.search.retrievers.duckduckgo import DuckDuckGoRetriever
+from app.shared.infra.search.retrievers.common import clamp_max_results, normalize_query
 from app.shared.infra.search.types import SearchResult
 
 logger = structlog.get_logger(__name__)
@@ -20,9 +21,10 @@ class BaiduBaikeRetriever(DuckDuckGoRetriever):
         return "baidu_baike"
 
     async def search(self, query: str, *, max_results: int = 5) -> list[SearchResult]:
-        normalized_query = str(query or "").strip()
+        normalized_query = normalize_query(query)
         if not normalized_query:
             return []
+        count = clamp_max_results(max_results, upper=20)
 
         # Append site constraint to lock the search to Baidu Baike
         site_query = f"{normalized_query} site:baike.baidu.com"
@@ -30,7 +32,7 @@ class BaiduBaikeRetriever(DuckDuckGoRetriever):
         logger.info("baidu_baike_search_started", original_query=normalized_query)
 
         # Call the parent DuckDuckGo search logic with the constrained query
-        results = await super().search(site_query, max_results=max_results)
+        results = await super().search(site_query, max_results=count)
 
         # Optional: Further post-process to strip Baidu Baike suffixes from titles for cleaner snippets
         cleaned_results: list[SearchResult] = []

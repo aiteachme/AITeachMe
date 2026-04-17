@@ -7,13 +7,13 @@
  */
 
 /**
- * 配置来源：env/config/runtime。
+ * 配置来源：env/settings/runtime。
  */
 export type SettingEntrySource = typeof SettingEntrySource[keyof typeof SettingEntrySource];
 
 
 export const SettingEntrySource = {
   env: 'env',
-  config: 'config',
+  settings: 'settings',
   runtime: 'runtime',
 } as const;

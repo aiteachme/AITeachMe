@@ -10,6 +10,7 @@ import structlog
 from app.shared.infra.search.knowledge import RetrievedChunk
 from app.shared.infra.search.api import get_knowledge_search_notice, search_knowledge
 from app.shared.infra.search.retrievers.base import BaseRetriever
+from app.shared.infra.search.retrievers.common import clamp_max_results, normalize_query
 from app.shared.infra.search.types import SearchResult
 
 logger = structlog.get_logger(__name__)
@@ -56,34 +57,38 @@ class LocalRAGRetriever(BaseRetriever):
         return "local_rag"
 
     async def search(self, query: str, *, max_results: int = 5) -> list[SearchResult]:
+        normalized_query = normalize_query(query)
+        if not normalized_query:
+            return []
+        count = clamp_max_results(max_results, upper=50)
         results: list[SearchResult] = []
         if self.local_sections:
-            results.extend(self._section_fallback(query, max_results=max_results))
+            results.extend(self._section_fallback(normalized_query, max_results=count))
             if results:
-                return results[:max_results]
+                return results[:count]
 
         should_try_vector = bool(self.subject)
         if should_try_vector and self.local_sections:
             should_try_vector = await self._refresh_vector_search_availability()
         if should_try_vector and self.subject:
             try:
-                vector_results = await search_knowledge(query, self.subject, top_k=max_results)
+                vector_results = await search_knowledge(normalized_query, self.subject, top_k=count)
             except Exception:
                 vector_results = []
             results.extend(self._from_chunks(vector_results))
 
-        if len(results) >= max_results or not self.local_sections:
-            return results[:max_results]
+        if len(results) >= count or not self.local_sections:
+            return results[:count]
 
         seen_urls = {item.url for item in results}
-        for item in self._section_fallback(query, max_results=max_results * 2):
+        for item in self._section_fallback(normalized_query, max_results=count * 2):
             if item.url in seen_urls:
                 continue
             seen_urls.add(item.url)
             results.append(item)
-            if len(results) >= max_results:
+            if len(results) >= count:
                 break
-        return results[:max_results]
+        return results[:count]
 
     async def _refresh_vector_search_availability(self) -> bool:
         if self._vector_search_available is not None:

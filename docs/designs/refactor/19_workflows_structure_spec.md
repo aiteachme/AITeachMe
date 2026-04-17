@@ -35,22 +35,21 @@ workflows/
 workflows/<module>/
   __init__.py
   README.md
-  events.py
-  exports.py
-  <use_case_a>.py
   <lane_a>/
   <lane_b>/
   common/           # 可选，仅在真实跨链路复用时建立
 ```
 
-### 2.1 模块根用例文件的职责
+### 2.1 模块根职责
 
-- 承接面向 API 的业务用例
-- 组合多条链路
-- 处理 build lock、background task、SSE、状态装配等模块级协调
+- 只保留 `__init__.py` 稳定导入面
+- 懒加载并转发到真实 lane 或 `common/`
+- 不承载业务实现
 
 明确禁止：
 
+- 新增模块根 use-case `.py`
+- 新增模块根 `events.py` / `exports.py`
 - 不把底层数据库能力直接下沉成 infra 杂项
 
 ### 2.2 模块根不再新增
@@ -187,8 +186,7 @@ teaching tool 不是独立教学层。当前通用实现是内置 tool，不再�
 
 ```text
 digest/
-  events.py
-  exports.py
+  __init__.py
   planner/
     graph.py
     state.py
@@ -199,16 +197,13 @@ digest/
 ```
 
 - `planner/` 只承接图和链路内部逻辑
-- planner session create / append / confirm 进入 `digest/planner/sessions.py`
+- planner session create / append / confirm 进入 `app.workflows.digest.planner` 公共入口
 
 ### 7.2 docgen
 
 ```text
 digest/
-  events.py
-  exports.py
-  overview.py
-  study_plan.py
+  __init__.py
   docgen/
     graph.py
     state.py
@@ -216,13 +211,16 @@ digest/
     prompts/
     lib/
   common/
+    events.py
+    exports.py
     runtime_config.py
     pedagogy/
 ```
 
 - `docgen/` 只承接 research / writer / publish 等链路内部逻辑
 - build trigger / result / cleanup 进入 `digest/docgen/*`
-- overview / study plan 进入 `digest/{overview.py,study_plan.py}`
+- overview / study plan 进入 `digest/knowledge_graph/{overview.py,study_plan.py}`
+- events / exports 进入 `digest/common/{events.py,exports.py}`
 - 教学语义统一从 `common/runtime_config.py` 与 `common/pedagogy/` 进入
 
 ## 8. 兼容策略
@@ -236,5 +234,5 @@ digest/
 
 新的 workflows 结构只有两个关键词：
 
-- 五大引擎：`module root use cases + lanes + common`
+- 五大引擎：`module root stable exports + lanes + common`
 - 支撑模块：`use-case files (+ streams/lib)`

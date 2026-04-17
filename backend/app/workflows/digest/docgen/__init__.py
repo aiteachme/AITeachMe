@@ -22,7 +22,7 @@ from app.workflows.digest.docgen.graph import (
 )
 from app.workflows.digest.docgen.lib.reporting import build_docgen_lane_summary
 from app.workflows.digest.docgen.state import DocGenState
-from app.workflows.digest.events import (
+from app.workflows.digest.common.events import (
     DocGenCompletedEvent,
     DocGenFailedEvent,
     DocGenRequestedEvent,

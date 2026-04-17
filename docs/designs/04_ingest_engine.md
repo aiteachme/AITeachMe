@@ -27,9 +27,9 @@ Ingest（透视引擎）是 AITeachMe 数据流的**入口**，负责把用户�
 | 前端页面 | `frontend/src/pages/FilesPage.tsx` | 文件上传、预览、状态展示 |
 | API | `backend/app/api/files.py` | 上传接口、状态查询 |
 | Support Files | `backend/app/workflows/support/files/uploads.py` / `catalog.py` / `parsing.py` / `deletion.py` | 上传编排、后台任务派发、列表与删除 |
-| Workflow Graph | `backend/app/workflows/ingest/graph.py` | LangGraph 图定义 |
-| Workflow Runtime | `backend/app/workflows/ingest/runtime.py` | 两阶段运行入口 |
-| Workflow State | `backend/app/workflows/ingest/state.py` | 状态类型定义 |
+| Workflow Graph | `backend/app/workflows/ingest/fast_parse/graph.py` / `deep_enhance/graph.py` | LangGraph dev/export 图定义 |
+| Workflow Runtime | `backend/app/workflows/ingest/fast_parse/lib/runtime.py` / `deep_enhance/lib/background.py` | 两阶段真实运行入口 |
+| Workflow State | `backend/app/workflows/ingest/fast_parse/state.py` / `deep_enhance/state.py` | 状态类型定义 |
 | Fast Parse 节点 | `backend/app/workflows/ingest/fast_parse/nodes/` | Phase 1 LangGraph 节点 |
 | Fast Parse Helper | `backend/app/workflows/ingest/fast_parse/lib/` | Phase 1 节点内部实现 |
 | Deep Enhance 节点 | `backend/app/workflows/ingest/deep_enhance/nodes/` | Phase 2 LangGraph 节点 |
@@ -41,7 +41,6 @@ Ingest（透视引擎）是 AITeachMe 数据流的**入口**，负责把用户�
 | Markdown 规范化 | `backend/app/workflows/ingest/common/parsing/canonicalizer.py` | 图片引用重写、嵌入图提取 |
 | OCR 增强 | `backend/app/workflows/ingest/common/parsing/asset_ocr.py` | LLM Vision OCR |
 | Prompt 模板 | `backend/app/workflows/ingest/common/parsing/prompts.py` | OCR prompt 中/英文版 |
-| 事件定义 | `backend/app/workflows/ingest/events.py` | 领域事件 |
 | 主要业务表 | `raw_file` + `raw_file_asset` | 文件元数据与资产记录 |
 
 ---
@@ -74,7 +73,7 @@ Ingest（透视引擎）是 AITeachMe 数据流的**入口**，负责把用户�
              │ (如果 needs_enhance = true)
              ▼
 ┌─────────────────────────────────┐
-│  Phase 2: Deep Enhance（后台）   │  runtime.py → orchestrator.py
+│  Phase 2: Deep Enhance（后台）   │  background.py → orchestrator.py
 │  - pymupdf4llm 质量重解析        │
 │  - LLM Vision OCR 图片识别       │
 │  - 覆盖同一份 Markdown           │
@@ -87,7 +86,7 @@ Ingest（透视引擎）是 AITeachMe 数据流的**入口**，负责把用户�
 
 ## 4. LangGraph 图定义
 
-> 文件: `backend/app/workflows/ingest/graph.py`
+> 文件: `backend/app/workflows/ingest/fast_parse/graph.py` 与 `backend/app/workflows/ingest/deep_enhance/graph.py`
 
 Ingest 定义了**两张独立的 LangGraph 图**，分别对应两个阶段。
 
@@ -170,7 +169,7 @@ graph TD
 
 ## 5. State 类型定义
 
-> 文件: `backend/app/workflows/ingest/state.py`
+> 文件: `backend/app/workflows/ingest/fast_parse/state.py` 与 `backend/app/workflows/ingest/deep_enhance/state.py`
 
 ### 5.1 `IngestParseState` — Phase 1 状态
 
@@ -324,7 +323,7 @@ Phase 2 补: pymupdf4llm 质量重解析 → LLM Vision OCR
 
 ## 7. 运行时执行详解（节点级）
 
-> 文件: `backend/app/workflows/ingest/runtime.py`
+> 文件: `backend/app/workflows/ingest/fast_parse/lib/runtime.py`
 
 `run_parse_file_workflow()` 是 Ingest 的唯一入口。以下是**逐步骤**的详细执行流程：
 
@@ -472,8 +471,8 @@ needs_enhance = (
 ```
 条件: needs_enhance == True
 操作:
-  1. asyncio.create_task(_run_deep_enhance_background(...))
-  2. 将 task 加入 _background_tasks 集合 (防止 GC 回收)
+  1. 优先通过 `background_task_registry` 派发 `_run_deep_enhance_background(...)`
+  2. 非 API 调用场景回退到 `_background_tasks` 集合 (防止 GC 回收)
   3. 立即返回 Phase 1 结果给调用方 (前端可预览)
 ```
 
@@ -481,7 +480,7 @@ needs_enhance = (
 
 > 函数: `_run_deep_enhance_background()`
 
-Phase 2 在后台 asyncio Task 中执行，不阻塞 HTTP 响应。
+Phase 2 在后台任务中执行，不阻塞 HTTP 响应。API 运行时通过 `background_task_registry` 追踪任务，脚本调用时回退到 `_background_tasks` 引用集合。
 
 ```
 输入: subject, file_id
@@ -491,9 +490,10 @@ Phase 2 在后台 asyncio Task 中执行，不阻塞 HTTP 响应。
     1. 从 DB 读取 raw_file
     2. 从 ContentStore 物化原始文件到临时目录
     3. 读取 Phase 1 的 Markdown
-    4. 从 raw_file.classification_json 恢复 ClassificationResult
-    5. 重建 ParsePlan
-    6. 置 ingest_status = ENHANCING
+    4. 物化 Phase 1 已持久化资产到增强工作目录
+    5. 从 raw_file.classification_json 恢复 ClassificationResult
+    6. 重建 ParsePlan
+    7. 置 ingest_status = ENHANCING
 
   Step 2.2: 质量重解析 (仅 PDF)
     条件: extension == ".pdf" && pymupdf4llm 可用
@@ -519,17 +519,19 @@ Phase 2 在后台 asyncio Task 中执行，不阻塞 HTTP 响应。
 
   Step 2.4: 结果持久化
     1. 覆盖 ContentStore 中的 Markdown
-    2. 更新 raw_file:
+    2. 上传增强工作目录中的 assets，避免 Markdown 图片引用悬空
+    3. 更新 raw_file:
        ├── parsed_markdown = <enhanced_markdown>
        ├── parse_metadata_json += ocr 统计
+       ├── image_count = <enhanced asset count>
        ├── ingest_status = READY_FOR_DIGEST
        └── digest_current_step = "ingest.enhance.completed"
-    3. 发布 IngestFileReadyForDigestEvent
+    4. 记录完成日志
 
   失败处理:
     1. 保留 Phase 1 产物 (不回滚 Markdown)
     2. 置 ingest_status = ENHANCE_FAILED
-    3. 发布 IngestFileEnhanceFailedEvent
+    3. 记录失败日志
 ```
 
 ---
@@ -607,19 +609,14 @@ Output Format:
 
 ## 9. 事件系统
 
-> 文件: `backend/app/workflows/ingest/events.py`
+Ingest 当前不保留单独事件层。原因是当前没有明确订阅方，运行时观测主要依赖：
 
-| 事件类 | 事件名 | 触发时机 | 携带数据 |
-|---|---|---|---|
-| `IngestParseRequestedEvent` | `ingest.file.parse.requested` | 解析任务排队时 | `subject, file_id` |
-| `IngestFileClassifiedEvent` | `ingest.file.classified` | 分类完成 | `subject, file_id, file_category, recommended_parser, detected_language` |
-| `IngestFileFastParsedEvent` | `ingest.file.fast_parsed` | Phase 1 完成 | `subject, file_id, parser_used, markdown_chars, image_count` |
-| `IngestFileEnhanceStartedEvent` | `ingest.file.enhance.started` | Phase 2 启动 | `subject, file_id` |
-| `IngestFileReadyForDigestEvent` | `ingest.file.ready_for_digest` | Phase 2 完成 | `subject, file_id` |
-| `IngestFileEnhanceFailedEvent` | `ingest.file.enhance.failed` | Phase 2 失败 | `subject, file_id, error_message` |
-| `IngestFileParseFailedEvent` | `ingest.file.parse.failed` | Phase 1 失败 | `subject, file_id, error_message` |
+- `raw_file.ingest_status`
+- `raw_file.digest_current_step`
+- `parse_metadata_json`
+- `structlog` 日志
 
-所有事件通过 `InProcessEventBus` 发布，当前用于日志记录和内部协调。
+后续如果出现真实订阅方，再按具体 lane 增加事件类型，不提前保留空事件层。
 
 ---
 
@@ -659,7 +656,7 @@ stateDiagram-v2
 | Phase 2 LLM Vision OCR 失败 | 保留 Phase 1 Markdown，标记 `enhance_failed` |
 | Phase 2 未配置 OCR_MODEL | 跳过 OCR，仅做质量重解析，最终仍为 `ready_for_digest` |
 | ContentStore 文件物化失败 | 标记 `FAILED`，记录错误信息 |
-| 后台 Task 被 GC 回收 | `_background_tasks` 集合保持引用（RISK-2 修复） |
+| 后台 Task 被 GC 回收 | API 运行时由 `background_task_registry` 追踪；脚本调用由 `_background_tasks` 集合兜底 |
 
 ### 10.3 Digest 可消费态
 
@@ -744,7 +741,7 @@ raw_file → raw_markdowns (ContentStore) → retrieval_chunk
 
 - Ingest 不直接产出知识图谱、教学单元、课程结构
 - Ingest 不感知 Digest、Examine、Profile 的存在
-- Ingest 通过事件通知感兴趣的监听方，但当前事件仅用于日志
+- Ingest 当前不通过事件层通知下游；下游通过状态字段和 ContentStore 产物读取结果
 
 ---
 
@@ -753,7 +750,7 @@ raw_file → raw_markdowns (ContentStore) → retrieval_chunk
 ### 当前边界
 
 1. `graph.py` 中定义的 LangGraph 图当前不通过 `app.ainvoke()` 执行，runtime 是内联实现
-2. Phase 2 后台任务使用 `asyncio.create_task()` 而非作业队列，重启会丢失正在执行的增强任务
+2. Phase 2 后台任务使用进程内任务注册表而非持久化作业队列，重启会丢失正在执行的增强任务上下文
 3. `quality_score` 是基于简单规则的启发式计算，不涉及 LLM
 4. 音频转写需要 `pydub + ffmpeg`，环境缺失时压缩音频格式会直接报错
 

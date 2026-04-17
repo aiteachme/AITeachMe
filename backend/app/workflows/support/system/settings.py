@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from app.schemas.system import InitData, RuntimeUser, SettingEntry, SettingSection, SettingsOverviewData
-from app.shared.infra.settings import get_settings
+from app.shared.infra.settings import DEFAULT_PROJECT_SETTINGS_FILENAME, get_settings
 from app.shared.infra.env_support import get_env, get_env_bool, resolve_project_settings_path
 from app.shared.infra.runtime import get_app_version, resolve_app_mode
 from app.shared.infra.storage.config import (
@@ -132,7 +132,7 @@ def _runtime_entry(
 
 
 def build_settings_overview_data() -> SettingsOverviewData:
-    """Build a safe read-only overview of env/settings.yaml effective settings."""
+    """Build a safe read-only overview of env/project settings effective settings."""
 
     settings = get_settings()
     mode = resolve_app_mode()
@@ -148,13 +148,13 @@ def build_settings_overview_data() -> SettingsOverviewData:
                 _env_entry("runtime.app_mode_raw", "APP_MODE", "APP_MODE", "未设置时按本地优先策略解析。"),
                 _runtime_entry("runtime.version", "应用版本", get_app_version()),
                 _env_entry("auth.enabled", "AUTH_ENABLED", "AUTH_ENABLED", "控制账号鉴权能力。", value=get_env_bool("AUTH_ENABLED", True)),
-                _runtime_entry("settings.path", "settings.yaml 路径", str(settings_path)),
+                _runtime_entry("settings.path", f"{DEFAULT_PROJECT_SETTINGS_FILENAME} 路径", str(settings_path)),
             ],
         ),
         SettingSection(
             id="models",
             label="模型与密钥",
-            description="模型名来自 settings.yaml，服务地址和密钥来自环境变量。",
+            description=f"模型名来自 {DEFAULT_PROJECT_SETTINGS_FILENAME}，服务地址和密钥来自环境变量。",
             entries=[
                 _env_entry("llm.base_url", "LLM_BASE_URL", "LLM_BASE_URL", "OpenAI-compatible 上游地址。"),
                 _env_entry("llm.api_key", "LLM_API_KEY", "LLM_API_KEY", "模型访问密钥，只显示是否配置。", secret=True),
@@ -175,6 +175,7 @@ def build_settings_overview_data() -> SettingsOverviewData:
             description="上传限制、解析并发、解析超时和外部解析服务状态。",
             entries=[
                 _settings_entry("files.max_upload_size_mb", "最大上传大小", settings.files.max_upload_size_mb),
+                _settings_entry("files.max_files_per_upload", "单次最大文件数", settings.files.max_files_per_upload),
                 _settings_entry("ingest.parse_concurrency", "解析并发", settings.ingest.parse_concurrency),
                 _settings_entry("ingest.parser_timeout_s", "解析超时", settings.ingest.parser_timeout_s),
                 _env_entry("mineru.api_token", "MINERU_API_TOKEN", "MINERU_API_TOKEN", "服务端 MinerU Token，只显示是否配置。", secret=True),
@@ -253,7 +254,7 @@ def build_settings_overview_data() -> SettingsOverviewData:
         mode=mode,
         sections=sections,
         notes=[
-            "页面只展示后端当前生效配置；环境变量和 settings.yaml 需要在部署环境或文件中修改。",
+            f"页面只展示后端当前生效配置；环境变量和 {DEFAULT_PROJECT_SETTINGS_FILENAME} 需要在部署环境或文件中修改。",
             "敏感字段只显示是否已配置，不返回明文。",
             "浏览器本地偏好只影响当前设备，不会写回后端配置。",
         ],

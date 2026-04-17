@@ -28,7 +28,6 @@ shared.infra -> shared.kernel
 
 ```text
 api/knowledge_docs.py
--> workflows/digest/planner/sessions.py
 -> app.workflows.digest.planner
 -> confirmed_plan
 -> workflows/digest/docgen/builds.py
@@ -92,7 +91,7 @@ from app.shared.infra.facade import (
 
 这层是新增推荐入口，不要求一次性迁移旧代码；新代码优先从 facade 进入。
 
-注意：文档解析不放在 infra facade 中。解析链路归 `app.workflows.ingest`，新增 Docling、MinerU、Marker 等 provider 时应接入 ingest 的 `parsing/providers.py`、`parsing/strategy.py` 与 `parsing/orchestrator.py`，由 ingest 继续负责状态推进、资产产物和 fallback。
+注意：文档解析不放在 infra facade 中。解析链路归 `app.workflows.ingest`，新增 Docling、MinerU、Marker 等 provider 时应接入 ingest 的 `parsing/provider_contracts.py`、`parsing/decision.py`、`parsing/strategy.py` 与 `parsing/orchestrator.py`，由 ingest 继续负责状态推进、资产产物和 fallback。
 
 ### `app.shared.infra.workflow`
 
@@ -179,7 +178,7 @@ await acompletion_with_fallback(messages, model="primary")
 await acompletion_with_fallback(messages, model="light")
 ```
 
-这些逻辑名直接对应 `settings.yaml` 的 `models.reason / primary / light / extract`。也可以传具体模型名。`task_type` 仍可用于默认温度、超时、重试和观测归类，但不应再作为业务代码选择模型的主要方式。
+这些逻辑名直接对应 `settings_default.yaml` 的 `models.reason / primary / light / extract`。也可以传具体模型名。`task_type` 仍可用于默认温度、超时、重试和观测归类，但不应再作为业务代码选择模型的主要方式。
 
 ## 什么不该放进 Infra
 

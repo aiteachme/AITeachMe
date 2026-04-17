@@ -1,4 +1,9 @@
-"""Planner state definitions."""
+"""Planner graph state.
+
+The planner state intentionally stays small. LangSmith already records node
+timing and nested LLM calls, so this graph only carries the business artifacts
+needed by later nodes.
+"""
 
 from __future__ import annotations
 
@@ -9,45 +14,51 @@ from app.workflows.digest.common.models import DigestMaterialContext
 
 
 class BuildPlannerState(TypedDict, total=False):
+    # Stable graph input
     subject: str
+    user_id: str
+    planner_operation: str
+    requested_file_uids: list[str]
+    session_title: str
+    feedback_message: str
+    selected_skillpacks_override: bool
     file_ids: list[int]
+    selected_file_ids: list[int]
+    selected_file_uids: list[str]
     user_goal: str
     digest_mode: str
-    course_type: str
     retrieval_profile: str
-    teaching_action: str
     tone: str
     selected_skillpacks: list[str]
     planner_session_id: str
     message_history: list[str]
     latest_plan: dict[str, Any] | None
+
+    # Planner working artifacts
     material_context: DigestMaterialContext
-    shared_inputs: DigestMaterialContext
-    plan_sketch_markdown: str
-    plan_sketch_text: str
-    plan_sketch: dict[str, Any]
-    learning_intent_profile: dict[str, Any]
-    research_probe_plan: dict[str, Any]
-    selected_sources: list[dict[str, Any]]
-    opened_sources: list[dict[str, Any]]
+    planner_brief: dict[str, Any]
+    learning_intent: dict[str, Any]
     evidence_brief: dict[str, Any]
-    build_plan_contract: dict[str, Any]
-    fallback_reason: str | None
-    concept_queries: list[str]
-    concept_briefing: str
-    concept_topic_hints: list[str]
-    concept_local_hit_count: int
-    concept_web_hit_count: int
+    plan_outline_markdown: str
+    build_plan_draft: dict[str, Any]
+
+    # Stable graph output
     plan: dict[str, Any]
     plan_summary: str
+    generation_mode: str
+    planner_record: dict[str, Any]
+    planner_turns: list[dict[str, Any]]
+
+    # Top-level runtime summary for the existing frontend contract
     workflow_elapsed_ms: int
     prepare_ms: int
-    digest_ms: int
-    preview_ms: int
-    probe_ms: int
+    context_ms: int
+    bootstrap_ms: int
+    evidence_ms: int
     compose_ms: int
     finalize_ms: int
-    planner_generation_mode: str
+
+    # Runtime callbacks and failure marker
     progress_callback: Any
     token_callback: Any
     error: str | None
@@ -58,6 +69,12 @@ BuildPlannerGraphInput = project_typed_dict_schema(
     name="BuildPlannerGraphInput",
     fields=[
         "subject",
+        "user_id",
+        "planner_operation",
+        "requested_file_uids",
+        "session_title",
+        "feedback_message",
+        "selected_skillpacks_override",
         "file_ids",
         "user_goal",
         "digest_mode",
@@ -79,12 +96,15 @@ BuildPlannerGraphOutput = project_typed_dict_schema(
         "plan",
         "plan_summary",
         "digest_mode",
-        "planner_generation_mode",
+        "generation_mode",
+        "selected_file_uids",
+        "planner_record",
+        "planner_turns",
         "workflow_elapsed_ms",
         "prepare_ms",
-        "digest_ms",
-        "preview_ms",
-        "probe_ms",
+        "context_ms",
+        "bootstrap_ms",
+        "evidence_ms",
         "compose_ms",
         "finalize_ms",
         "error",

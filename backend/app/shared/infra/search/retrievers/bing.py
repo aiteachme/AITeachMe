@@ -8,6 +8,7 @@ import structlog
 from app.shared.infra.settings import get_settings
 from app.shared.infra.env_support import get_env
 from app.shared.infra.search.retrievers.base import BaseRetriever
+from app.shared.infra.search.retrievers.common import clamp_max_results, make_search_result, normalize_query
 from app.shared.infra.search.types import SearchResult
 
 logger = structlog.get_logger(__name__)
@@ -29,32 +30,39 @@ class BingRetriever(BaseRetriever):
         return "bing"
 
     async def search(self, query: str, *, max_results: int = 5) -> list[SearchResult]:
+        normalized_query = normalize_query(query)
+        if not normalized_query:
+            return []
         settings = get_settings()
         api_key = (get_env("BING_API_KEY") or "").strip()
         if not api_key:
             return []
+        count = clamp_max_results(max_results, upper=50)
         try:
             async with httpx.AsyncClient(timeout=settings.search.provider_timeout_s) as client:
                 response = await client.get(
                     "https://api.bing.microsoft.com/v7.0/search",
-                    params={"q": query, "count": max_results},
+                    params={"q": normalized_query, "count": count},
                     headers={"Ocp-Apim-Subscription-Key": api_key},
                 )
                 response.raise_for_status()
         except Exception as exc:  # pragma: no cover - provider behavior
-            logger.warning("bing_search_failed", error=str(exc), query=query)
+            logger.warning("bing_search_failed", error=str(exc), query=normalized_query)
             return []
         values = (response.json().get("webPages") or {}).get("value") or []
-        return [
-            SearchResult(
-                url=str(item.get("url") or ""),
-                title=str(item.get("name") or ""),
-                snippet=str(item.get("snippet") or ""),
+        results: list[SearchResult] = []
+        for item in values:
+            result = make_search_result(
+                url=item.get("url"),
+                title=item.get("name"),
+                snippet=item.get("snippet"),
                 source=self.name,
             )
-            for item in values
-            if item.get("url")
-        ]
+            if result is not None:
+                results.append(result)
+            if len(results) >= count:
+                break
+        return results
 
 
 __all__ = ["BingRetriever"]

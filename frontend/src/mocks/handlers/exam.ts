@@ -11,7 +11,7 @@ type QuestionTemplateSeed = {
   options: string[] | null;
   answer: string;
   explanation: string;
-  teaching_unit_id: number;
+  knowledge_unit_id: number;
 };
 
 type InternalItem = {
@@ -23,7 +23,7 @@ type InternalItem = {
   stem: string;
   options: string[] | null;
   explanation: string;
-  teaching_unit_id: number;
+  knowledge_unit_id: number;
   correct_answer: string;
   user_answer: string | null;
   is_correct: boolean | null;
@@ -83,7 +83,7 @@ const QUESTION_BANK: Record<QuestionType, QuestionTemplateSeed[]> = {
       options: ["2", "4", "6", "8"],
       answer: "4",
       explanation: "f'(x)=2x, so at x=2 it is 4.",
-      teaching_unit_id: 101,
+      knowledge_unit_id: 101,
     },
     {
       id: 1002,
@@ -93,7 +93,7 @@ const QUESTION_BANK: Record<QuestionType, QuestionTemplateSeed[]> = {
       options: ["x^2", "|x|", "sin x", "e^x"],
       answer: "|x|",
       explanation: "|x| has different one-sided derivatives at 0.",
-      teaching_unit_id: 101,
+      knowledge_unit_id: 101,
     },
   ],
   fill_blank: [
@@ -105,7 +105,7 @@ const QUESTION_BANK: Record<QuestionType, QuestionTemplateSeed[]> = {
       options: null,
       answer: "7",
       explanation: "Substitute x=2.",
-      teaching_unit_id: 103,
+      knowledge_unit_id: 103,
     },
     {
       id: 2002,
@@ -115,7 +115,7 @@ const QUESTION_BANK: Record<QuestionType, QuestionTemplateSeed[]> = {
       options: null,
       answer: "14",
       explanation: "a5 = a1 + 4d = 14.",
-      teaching_unit_id: 104,
+      knowledge_unit_id: 104,
     },
   ],
   short_answer: [
@@ -127,7 +127,7 @@ const QUESTION_BANK: Record<QuestionType, QuestionTemplateSeed[]> = {
       options: null,
       answer: "x=-1 and x=1",
       explanation: "y'=3x^2-3=0 gives x=±1.",
-      teaching_unit_id: 105,
+      knowledge_unit_id: 105,
     },
     {
       id: 3002,
@@ -137,7 +137,7 @@ const QUESTION_BANK: Record<QuestionType, QuestionTemplateSeed[]> = {
       options: null,
       answer: "2pi",
       explanation: "The fundamental period of sin x is 2pi.",
-      teaching_unit_id: 107,
+      knowledge_unit_id: 107,
     },
   ],
 };
@@ -221,7 +221,7 @@ function createPaper(subject: string, mode: ExamMode, prompt: string | undefined
     stem: template.stem,
     options: template.options,
     explanation: template.explanation,
-    teaching_unit_id: template.teaching_unit_id,
+    knowledge_unit_id: template.knowledge_unit_id,
     correct_answer: template.answer,
     user_answer: null,
     is_correct: null,
@@ -283,8 +283,15 @@ function toPublicPaper(paper: InternalPaper): Record<string, unknown> {
       stem: item.stem,
       options: item.options,
       explanation: item.explanation,
-      teaching_unit_id: item.teaching_unit_id,
-      knowledge_unit_links: [],
+      knowledge_unit_links: [
+        {
+          knowledge_unit_id: item.knowledge_unit_id,
+          knowledge_unit_name: `KU-${item.knowledge_unit_id}`,
+          coverage_weight: 1,
+          role: "primary",
+          mastery_score: null,
+        },
+      ],
       user_answer: item.user_answer,
       is_correct: item.is_correct,
       score_obtained: item.score_obtained,
@@ -309,7 +316,7 @@ function buildQuestionBank(subject: string): Array<Record<string, unknown>> {
           stem: item.stem,
           question_type: item.question_type,
           difficulty: item.difficulty,
-          teaching_unit_id: item.teaching_unit_id,
+          knowledge_unit_id: item.knowledge_unit_id,
           times_asked: 1,
           last_asked_at: paper.created_at,
           last_exam_paper_id: paper.id,
@@ -344,7 +351,7 @@ const seededPaper: InternalPaper = {
       stem: QUESTION_BANK.single_choice[0].stem,
       options: QUESTION_BANK.single_choice[0].options,
       explanation: QUESTION_BANK.single_choice[0].explanation,
-      teaching_unit_id: 101,
+      knowledge_unit_id: 101,
       correct_answer: "4",
       user_answer: "4",
       is_correct: true,
@@ -361,7 +368,7 @@ const seededPaper: InternalPaper = {
       stem: QUESTION_BANK.single_choice[1].stem,
       options: QUESTION_BANK.single_choice[1].options,
       explanation: QUESTION_BANK.single_choice[1].explanation,
-      teaching_unit_id: 101,
+      knowledge_unit_id: 101,
       correct_answer: "|x|",
       user_answer: "|x|",
       is_correct: true,
@@ -378,7 +385,7 @@ const seededPaper: InternalPaper = {
       stem: QUESTION_BANK.short_answer[0].stem,
       options: null,
       explanation: QUESTION_BANK.short_answer[0].explanation,
-      teaching_unit_id: 105,
+      knowledge_unit_id: 105,
       correct_answer: "x=-1 and x=1",
       user_answer: "x=1",
       is_correct: false,

@@ -7,10 +7,10 @@ from http import HTTPStatus
 
 from sqlmodel import Session
 
-from app.shared.infra.exceptions import AITeachMeError
 from app.models import UserKnowledgeState
 from app.repositories.profile_repo import complete_review_task as complete_review_task_repo
 from app.repositories.profile_repo import get_knowledge_state, list_knowledge_states, list_pending_reviews
+from app.shared.infra.exceptions import AITeachMeError
 from app.workflows.profile.subject_profile import (
     SubjectProfileSummary,
     load_subject_profile_summary,
@@ -27,9 +27,7 @@ from app.workflows.profile.user_profile import (
 class MasteryOverview:
     subject: str
     user_id: str
-    unit_states: list[UserKnowledgeState]
     knowledge_unit_states: list[UserKnowledgeState]
-    weak_unit_count: int
     weak_knowledge_unit_count: int
     subject_profile: SubjectProfileSummary | None
     user_profile: UserProfileSummary | None
@@ -85,12 +83,6 @@ async def get_mastery_overview(
     subject: str,
     user_id: str,
 ) -> MasteryOverview:
-    unit_states = list_knowledge_states(
-        session,
-        user_id=user_id,
-        subject=subject,
-        target_kind="unit",
-    )
     knowledge_unit_states = list_knowledge_states(
         session,
         user_id=user_id,
@@ -100,34 +92,11 @@ async def get_mastery_overview(
     return MasteryOverview(
         subject=subject,
         user_id=user_id,
-        unit_states=unit_states,
         knowledge_unit_states=knowledge_unit_states,
-        weak_unit_count=sum(1 for item in unit_states if item.mastery_score < 0.8),
         weak_knowledge_unit_count=sum(1 for item in knowledge_unit_states if item.mastery_score < 0.8),
         subject_profile=_load_or_refresh_subject_profile(session, subject=subject),
         user_profile=_load_or_refresh_user_profile(session, user_id=user_id),
     )
-
-
-async def get_unit_mastery_detail(
-    session: Session,
-    *,
-    subject: str,
-    user_id: str,
-    teaching_unit_id: int,
-) -> UserKnowledgeState:
-    state = get_knowledge_state(
-        session,
-        user_id=user_id,
-        subject=subject,
-        teaching_unit_id=teaching_unit_id,
-    )
-    if state is None:
-        _raise_not_found(
-            f"未找到掌握度记录：user_id={user_id}, subject={subject}, teaching_unit_id={teaching_unit_id}。",
-            error_code="MASTERY_STATE_NOT_FOUND",
-        )
-    return state
 
 
 async def get_knowledge_unit_mastery_detail(
@@ -145,7 +114,7 @@ async def get_knowledge_unit_mastery_detail(
     )
     if state is None:
         _raise_not_found(
-            f"未找到掌握度记录：user_id={user_id}, subject={subject}, knowledge_unit_id={knowledge_unit_id}。",
+            f"Mastery state not found: user_id={user_id}, subject={subject}, knowledge_unit_id={knowledge_unit_id}.",
             error_code="MASTERY_STATE_NOT_FOUND",
         )
     return state
@@ -175,7 +144,7 @@ async def complete_review_task(
         auto_commit=False,
     )
     if task is None:
-        _raise_not_found(f"复习任务 `{task_id}` 不存在。", error_code="REVIEW_TASK_NOT_FOUND")
+        _raise_not_found(f"Review task `{task_id}` not found.", error_code="REVIEW_TASK_NOT_FOUND")
 
     refresh_subject_profile_summary(
         session,

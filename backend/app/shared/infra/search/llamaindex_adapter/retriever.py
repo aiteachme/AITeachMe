@@ -102,7 +102,7 @@ def build_knowledge_retriever(
         subject: The subject slug to search within.
         top_k: Number of final results to return.
         enable_rerank: Override rerank behaviour. ``None`` means auto-detect
-            from ``settings.yaml`` (``rag.rerank_model``).
+            from ``settings_default.yaml`` (``rag.rerank_model``).
 
     Returns:
         An ``ATMKnowledgeRetriever`` instance.

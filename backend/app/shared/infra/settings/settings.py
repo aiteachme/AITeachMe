@@ -1,4 +1,4 @@
-"""Runtime settings loaded from project `settings.yaml`."""
+"""Runtime settings loaded from project `settings_default.yaml`."""
 
 from __future__ import annotations
 
@@ -26,7 +26,7 @@ class _SettingsModel(BaseModel):
 
 
 class ModelsSettings(_SettingsModel):
-    """Model names exactly shaped like `settings.yaml: models`."""
+    """Model names exactly shaped like `settings_default.yaml: models`."""
 
     reason: str | None = None
     primary: str = "qwen-plus"
@@ -46,7 +46,8 @@ class ModelsSettings(_SettingsModel):
 
 
 class FilesSettings(_SettingsModel):
-    max_upload_size_mb: int = 50
+    max_upload_size_mb: int = 10
+    max_files_per_upload: int = 10
 
 
 class ChatSettings(_SettingsModel):
@@ -67,6 +68,8 @@ class PlannerSettings(_SettingsModel):
     sketch_timeout_s: float = 30.0
     intent_timeout_s: float = 20.0
     compose_timeout_s: float = 45.0
+    evidence_query_count: int = 4
+    evidence_open_source_limit: int = 4
     sprint: PlannerModeSettings = Field(
         default_factory=lambda: PlannerModeSettings(
             min_chapters=3,
@@ -206,11 +209,11 @@ class GenerationSettings(_SettingsModel):
 class Settings(_SettingsModel):
     """Project-level runtime settings.
 
-    The public shape mirrors repo-root `settings.yaml`, e.g.
+    The public shape mirrors repo-root `settings_default.yaml`, e.g.
     `settings.models.reason` or `settings.search.provider_timeout_s`.
 
     The settings object intentionally does not mirror legacy flat names; call
-    sites should use the same nested paths as `settings.yaml`.
+    sites should use the same nested paths as `settings_default.yaml`.
     """
 
     models: ModelsSettings = Field(default_factory=ModelsSettings)
@@ -267,6 +270,7 @@ class Settings(_SettingsModel):
         *,
         profile: str | None = None,
         include_local_rag: bool | None = None,
+        include_external: bool = True,
         include_fallback: bool = True,
         fallback_retriever: str = DEFAULT_RETRIEVER_FALLBACK,
     ) -> list[str]:
@@ -314,10 +318,12 @@ class Settings(_SettingsModel):
         for item in candidate_names:
             if include_local_rag is False and item in {"local_rag", "rag"}:
                 continue
+            if not include_external and item not in {"local_rag", "rag"}:
+                continue
             _append(item)
 
         fallback_name = normalize_retriever_name(fallback_retriever)
-        if include_fallback and fallback_name and any(name != "local_rag" for name in normalized):
+        if include_fallback and include_external and fallback_name and any(name != "local_rag" for name in normalized):
             _append(fallback_name)
 
         return normalized

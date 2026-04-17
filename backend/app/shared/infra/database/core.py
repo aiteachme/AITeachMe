@@ -86,8 +86,6 @@ _EXPECTED_SCHEMA_COLUMNS = {
 }
 _ALLOWED_SQLITE_RUNTIME_TABLES = {"sqlite_sequence"}
 _ALLOWED_SQLITE_RUNTIME_PREFIXES = ("chunk_embeddings_",)
-
-
 def _set_vec_status(ready: bool, error: str | None = None) -> None:
     global _vec_ready, _vec_error
     _vec_ready = ready
@@ -683,4 +681,3 @@ def managed_session() -> Generator[Session, None, None]:
         raise
     finally:
         session.close()
-

@@ -8,6 +8,7 @@ import structlog
 from app.shared.infra.settings import get_settings
 from app.shared.infra.env_support import get_env
 from app.shared.infra.search.retrievers.base import BaseRetriever
+from app.shared.infra.search.retrievers.common import clamp_max_results, make_search_result, normalize_query
 from app.shared.infra.search.types import SearchResult
 
 logger = structlog.get_logger(__name__)
@@ -31,16 +32,20 @@ class BraveRetriever(BaseRetriever):
         return "brave"
 
     async def search(self, query: str, *, max_results: int = 5) -> list[SearchResult]:
+        normalized_query = normalize_query(query)
+        if not normalized_query:
+            return []
         settings = get_settings()
         api_key = (get_env("BRAVE_SEARCH_API_KEY") or "").strip()
         if not api_key:
             return []
+        count = clamp_max_results(max_results, upper=20)
 
         try:
             async with httpx.AsyncClient(timeout=settings.search.provider_timeout_s, follow_redirects=True) as client:
                 response = await client.get(
                     _BRAVE_SEARCH_ENDPOINT,
-                    params={"q": query, "count": max_results, "text_decorations": False, "spellcheck": False},
+                    params={"q": normalized_query, "count": count, "text_decorations": False, "spellcheck": False},
                     headers={
                         "Accept": "application/json",
                         "X-Subscription-Token": api_key,
@@ -48,19 +53,21 @@ class BraveRetriever(BaseRetriever):
                 )
                 response.raise_for_status()
         except Exception as exc:  # pragma: no cover - provider behavior
-            logger.warning("brave_search_failed", error=str(exc), query=query)
+            logger.warning("brave_search_failed", error=str(exc), query=normalized_query)
             return []
 
         values = ((response.json() or {}).get("web") or {}).get("results") or []
         results: list[SearchResult] = []
         for item in values:
-            url = str(item.get("url") or "").strip()
-            title = " ".join(str(item.get("title") or "").split()).strip()
-            snippet = " ".join(str(item.get("description") or item.get("snippet") or "").split()).strip()
-            if not url or not title:
-                continue
-            results.append(SearchResult(url=url, title=title, snippet=snippet, source=self.name))
-            if len(results) >= max_results:
+            result = make_search_result(
+                url=item.get("url"),
+                title=item.get("title"),
+                snippet=item.get("description") or item.get("snippet"),
+                source=self.name,
+            )
+            if result is not None:
+                results.append(result)
+            if len(results) >= count:
                 break
         return results
 

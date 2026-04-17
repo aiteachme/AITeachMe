@@ -6,7 +6,6 @@ from app.workflows.profile.application.mastery import (
     get_mastery_overview,
     get_knowledge_unit_mastery_detail,
     get_review_tasks,
-    get_unit_mastery_detail,
 )
 
 __all__ = [
@@ -15,5 +14,4 @@ __all__ = [
     "get_mastery_overview",
     "get_knowledge_unit_mastery_detail",
     "get_review_tasks",
-    "get_unit_mastery_detail",
 ]
