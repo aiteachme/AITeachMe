@@ -31,10 +31,10 @@ from app.schemas.knowledge import (
     StudyPlanResponse,
 )
 from app.workflows.digest.planner import (
-    append_build_planner_message_service,
-    confirm_build_planner_session_service,
-    create_build_planner_session_service,
-    get_latest_planner_session_service,
+    append_build_planner_message,
+    confirm_build_planner_session,
+    create_build_planner_session,
+    get_latest_planner_session,
 )
 from app.workflows.support.auth import set_guest_cookie_for_user
 from app.workflows.digest.docgen import (
@@ -158,8 +158,7 @@ async def knowledge_build_plan_create(
 ) -> ApiResponse[BuildPlannerSessionResponse]:
     normalized = normalize_subject_slug(subject)
     subject_record = get_subject_record(session, normalized, owner_user_id=user.user_id)
-    data = await create_build_planner_session_service(
-        session,
+    data = await create_build_planner_session(
         subject=subject_record,
         user_id=user.user_id,
         payload=body,
@@ -180,7 +179,7 @@ def knowledge_build_plan_latest(
 ) -> ApiResponse[BuildPlannerSessionResponse | None]:
     normalized = normalize_subject_slug(subject)
     subject_record = get_subject_record(session, normalized, owner_user_id=user.user_id)
-    data = get_latest_planner_session_service(
+    data = get_latest_planner_session(
         session,
         subject=subject_record,
         user_id=user.user_id,
@@ -205,8 +204,7 @@ async def knowledge_build_plan_create_stream(
     return _planner_stream_response(
         request=request,
         user_id=user.user_id,
-        runner=lambda progress_callback, token_callback: create_build_planner_session_service(
-            session,
+        runner=lambda progress_callback, token_callback: create_build_planner_session(
             subject=subject_record,
             user_id=user.user_id,
             payload=body,
@@ -231,8 +229,7 @@ async def knowledge_build_plan_message(
 ) -> ApiResponse[BuildPlannerSessionResponse]:
     normalized = normalize_subject_slug(subject)
     subject_record = get_subject_record(session, normalized, owner_user_id=user.user_id)
-    data = await append_build_planner_message_service(
-        session,
+    data = await append_build_planner_message(
         subject=subject_record,
         user_id=user.user_id,
         session_id=session_id,
@@ -259,8 +256,7 @@ async def knowledge_build_plan_message_stream(
     return _planner_stream_response(
         request=request,
         user_id=user.user_id,
-        runner=lambda progress_callback, token_callback: append_build_planner_message_service(
-            session,
+        runner=lambda progress_callback, token_callback: append_build_planner_message(
             subject=subject_record,
             user_id=user.user_id,
             session_id=session_id,
@@ -285,7 +281,7 @@ def knowledge_build_plan_confirm(
 ) -> ApiResponse[BuildPlannerConfirmResponse]:
     normalized = normalize_subject_slug(subject)
     subject_record = get_subject_record(session, normalized, owner_user_id=user.user_id)
-    data = confirm_build_planner_session_service(
+    data = confirm_build_planner_session(
         session,
         subject=subject_record,
         user_id=user.user_id,

@@ -199,7 +199,7 @@ digest/
 ```
 
 - `planner/` 只承接图和链路内部逻辑
-- planner session create / append / confirm 进入 `digest/planner/sessions.py`
+- planner session create / append / confirm 进入 `app.workflows.digest.planner` 公共入口
 
 ### 7.2 docgen
 

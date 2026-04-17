@@ -11,6 +11,7 @@ from app.workflows.digest.planner.lib.plans import (
     normalize_planner_draft,
 )
 from app.workflows.digest.planner.lib.models import PlannerBrief
+from app.workflows.digest.planner.lib.store import save_planner_result
 from app.workflows.digest.planner.state import BuildPlannerState
 
 
@@ -60,7 +61,7 @@ def build_finalize_plan_contract_node(*, context: WorkflowContext):
                 "outline_items": outline_items,
             },
         )
-        return {
+        result = {
             "plan": plan,
             "plan_summary": draft.plan_summary,
             "digest_mode": draft.digest_mode,
@@ -69,6 +70,12 @@ def build_finalize_plan_contract_node(*, context: WorkflowContext):
             "selected_skillpacks": list(draft.selected_skillpacks),
             "generation_mode": state.get("generation_mode") or "research_surface_v4",
         }
+        persist_update = save_planner_result(
+            {**state, **result},
+            plan=plan,
+            material_context=material_context,
+        )
+        return {**result, **persist_update}
 
     return finalize_plan_contract_node
 

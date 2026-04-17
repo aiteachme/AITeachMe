@@ -45,8 +45,8 @@
   Digest 模块根下的跨 lane 聚合用例
 - `digest/docgen/__init__.py`、`digest/knowledge_graph/__init__.py`
   Digest workflow runner 的模块级入口
-- `digest/planner/sessions.py`
-  Planner session 的 API-facing use case 落点
+- `digest/planner/__init__.py`、`digest/planner/graph.py`
+  Planner 的 API-facing 入口与 workflow runner 落点
 - `digest/docgen/builds.py`
   DocGen 构建触发、状态装配与后台编排入口
 - `digest/common/runtime_config.py`

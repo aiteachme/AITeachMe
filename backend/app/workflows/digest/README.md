@@ -28,7 +28,7 @@ digest/
 - `events.py`、`exports.py` 是 Digest 模块根的 canonical 入口
 - `docgen/__init__.py`、`knowledge_graph/__init__.py` 提供 workflow runner 入口
 - `overview.py`、`study_plan.py` 是跨 lane 的聚合用例
-- `planner/sessions.py`、`docgen/builds.py`、`docgen/cleanup.py`、`knowledge_graph/{build.py,builds.py,module.py,query.py}` 是当前 digest 业务用例主落点
+- `planner/__init__.py`、`planner/graph.py`、`docgen/builds.py`、`docgen/cleanup.py`、`knowledge_graph/{build.py,builds.py,module.py,query.py}` 是当前 digest 业务用例主落点
 - `common/` 是跨链路共用的 contracts / models / prepare / material_profile / metrics / runtime_config / pedagogy 实现层
 - 各链路自己的构建摘要放在对应链路 `lib/reporting.py`，不要再新增顶层 observability 伪链路
 

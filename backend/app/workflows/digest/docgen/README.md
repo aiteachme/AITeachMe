@@ -12,7 +12,7 @@ DocGen 做的事就是：拿已经确认的构建方案，逐章找资料、写�
 
 | 顺序 | 步骤 | 具体做什么 | 目的 | 主要模块/工具 |
 | --- | --- | --- | --- | --- |
-| 0 | 触发构建 | API 校验 `confirmed_plan_id`、获取构建锁、选择 ready 文件或进入 search-only 模式 | 保证同一学科不会并发乱写，并确认本次构建有明确方案 | `trigger_docgen_build`、`KnowledgeBuildLock`、`get_confirmed_build_plan_service` |
+| 0 | 触发构建 | API 校验 `confirmed_plan_id`、获取构建锁、选择 ready 文件或进入 search-only 模式 | 保证同一学科不会并发乱写，并确认本次构建有明确方案 | `trigger_docgen_build`、`KnowledgeBuildLock`、`get_confirmed_build_plan` |
 | 1 | `load_context` | 读取 confirmed plan，转换成 `chapter_assignments`，准备 `shared_inputs` 和 `document_context` | 把“用户确认的方案”变成图里可执行的章节任务 | `normalize_confirmed_plan_contract`、`prepare_shared_inputs`、`resolve_skillpacks` |
 | 2 | `research_chapters` | 每章并行做本地 RAG、外部检索、网页读取、来源筛选和上下文压缩 | 给每章准备足够可靠的写作材料，而不是让 LLM 凭空写 | `DocGenChapterContextRuntime`、`LocalRAGRetriever`、`SourceCurator`、`ContextCompressor`、`read_urls` |
 | 3 | `merge_research` | 等所有章节研究结束，汇总研究结果和进度 | 确认资料已收齐，准备进入标题收口和写作 | `update_knowledge_build_status`、`publish_docgen_progress` |

@@ -16,7 +16,15 @@ from app.workflows.digest.common.models import DigestMaterialContext
 class BuildPlannerState(TypedDict, total=False):
     # Stable graph input
     subject: str
+    user_id: str
+    planner_operation: str
+    requested_file_uids: list[str]
+    session_title: str
+    feedback_message: str
+    selected_skillpacks_override: bool
     file_ids: list[int]
+    selected_file_ids: list[int]
+    selected_file_uids: list[str]
     user_goal: str
     digest_mode: str
     retrieval_profile: str
@@ -37,6 +45,8 @@ class BuildPlannerState(TypedDict, total=False):
     plan: dict[str, Any]
     plan_summary: str
     generation_mode: str
+    planner_record: dict[str, Any]
+    planner_turns: list[dict[str, Any]]
 
     # Top-level runtime summary for the existing frontend contract
     workflow_elapsed_ms: int
@@ -58,6 +68,12 @@ BuildPlannerGraphInput = project_typed_dict_schema(
     name="BuildPlannerGraphInput",
     fields=[
         "subject",
+        "user_id",
+        "planner_operation",
+        "requested_file_uids",
+        "session_title",
+        "feedback_message",
+        "selected_skillpacks_override",
         "file_ids",
         "user_goal",
         "digest_mode",
@@ -80,6 +96,9 @@ BuildPlannerGraphOutput = project_typed_dict_schema(
         "plan_summary",
         "digest_mode",
         "generation_mode",
+        "selected_file_uids",
+        "planner_record",
+        "planner_turns",
         "workflow_elapsed_ms",
         "prepare_ms",
         "digest_ms",

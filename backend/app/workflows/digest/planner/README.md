@@ -15,26 +15,26 @@ Planner V4 做的事是：先准备资料理解包，再快速提炼资料摘要
 ## 当前流程
 
 ```text
-prepare_material_context
+prepare_material_context      # create/append 时顺手落库并装配文件与历史
   -> summarize_material_digest     # light 摘要，短路直拼，长文分片并行
   -> bootstrap_plan_brief
        ├─ stream_planner_brief     # reason + SSE
        └─ extract_learning_intent   # light 结构化
   -> probe_evidence                # 生成查询问题 + 全部可用检索器
   -> compose_build_plan
-  -> finalize_plan_contract
+  -> finalize_plan_contract        # normalize 后顺手保存 latest_plan 和 assistant turn
 ```
 
 ## 步骤总览
 
 | 顺序 | 节点 | 具体做什么 | 目的 | 主要模块/工具 |
 | --- | --- | --- | --- | --- |
-| 1 | `prepare_material_context` | 读取 parsed markdown，生成 `DigestMaterialContext`；没有正文时退化成 seed context | 给后续所有规划步骤一份共享"资料理解包" | `prepare_material_context`、`DigestMaterialContext` |
+| 1 | `prepare_material_context` | create 时创建 session/user turn；append 时追加 user turn 并读取历史与文件；随后读取 parsed markdown，生成 `DigestMaterialContext` | 把会话落库纳入真实业务节点，而不是单独 session 节点或 API 外壳后处理 | `prepare_planner_run`、`prepare_material_context` |
 | 2 | `summarize_material_digest` | 拼接资料原文，总字数 < 10k 直接透传；≥ 10k 按 10k 切片并行走 light 模型摘要（最多 10 片） | 让 sketch/intent/compose 都能基于真实资料内容，而不是只看文件名和 hints | `build_material_digest`、`acompletion` (tier=light) |
 | 3 | `bootstrap_plan_brief` | 内部并行跑 `stream_planner_brief` 和 `extract_learning_intent` | 让前端尽快看到格式稳定的可见思考过程，同时产出极简结构化意图 | `PlannerBrief`、`LearningIntent` |
 | 4 | `probe_evidence` | light 模型生成检索问题，调用全部可用检索器；筛选并按配置打开来源 | 给最终大纲提供概念边界、标准定义和本地资料命中校准 | `EvidenceQuerySet`、`EvidenceBrief` |
 | 5 | `compose_build_plan` | 综合思考过程、意图、证据和资料理解包，生成结构化 `BuildPlannerDraft` | 一次性生成后续 DocGen 可用的大纲合同 | `BuildPlannerDraft`、`build_plan_composer_messages` |
-| 6 | `finalize_plan_contract` | normalize、fallback merge、标题去重、字段补齐 | 保持外部 API 与 ConfirmedBuildPlan 合同稳定 | `normalize_planner_draft`、`build_fallback_plan` |
+| 6 | `finalize_plan_contract` | normalize、fallback merge、标题去重、字段补齐；随后保存 latest plan、assistant turn 与会话状态快照 | 保持外部 API 与 ConfirmedBuildPlan 合同稳定，同时让最终落库发生在真实 finalize 节点内 | `normalize_planner_draft`、`save_planner_result` |
 
 ## State 合同
 
@@ -48,6 +48,7 @@ Planner graph state 只保留这些业务字段：
 | `evidence_brief` | 证据包：`queries / sources / summary / core_concepts / chapter_hints / gap_notes / hit counts` |
 | `build_plan_draft` | compose 节点输出的未最终 normalize 草案 |
 | `plan` | 对外稳定的最终计划 payload |
+| `planner_record / planner_turns` | create/append 工作流返回给 API 的会话快照，不再由 API 层重新拼装 |
 
 已经删除的旧 state 字段：
 
@@ -66,6 +67,30 @@ Planner graph state 只保留这些业务字段：
 - `evidence_ms`
 - `compose_ms`
 - `finalize_ms`
+
+## 持久化接口原则
+
+Planner 节点只调用两个极简 store 接口：
+
+- `prepare_planner_run(state)`
+  在 `prepare_material_context` 开头执行，负责 create/append 场景下的 session、user turn、文件选择和历史消息装配。
+- `save_planner_result(state, plan, material_context)`
+  在 `finalize_plan_contract` 末尾执行，负责保存 latest plan、assistant turn 和会话快照。
+
+约定：
+
+- 不再新增 `sessions.py`、`workflow.py`、`*_service` 或独立 session 节点。
+- SQL / repo 细节只放在 `planner/lib/store.py`。
+- 真实业务节点负责决定什么时候读写，store 只负责怎么读写。
+
+## Emit 与数据库
+
+两者都保留，但分工不同：
+
+- `emit_planner_event` / token stream：给当前 SSE 连接用，适合展示即时阶段、模型 token、检索进度和临时提示。
+- 数据库：保存可恢复的事实状态，例如 session、turn、latest plan、confirmed plan 和构建结果。
+
+不要用数据库轮询替代 token streaming。前端运行中优先看 emit；页面刷新、历史恢复和最终状态读取数据库。
 
 ## 可见思考输出合同
 
@@ -106,6 +131,9 @@ Planner 现在通过 `planner/prompts/examples.py` 注入示例。
 
 做什么：
 
+- 调 `planner/lib/store.py::prepare_planner_run(...)`
+  - create：创建 planner session 和 user turn，并选择可用于规划的文件
+  - append：追加 user turn，读取历史消息、上一版 plan 和文件选择
 - 调 `digest/common/prepare.py::prepare_material_context(...)`
 - 生成 `material_context`
 - 无正文时生成 seed context
@@ -184,6 +212,7 @@ title / url / source_type / reason / preview / opened
 - fallback merge
 - 标题去重
 - 默认值补齐
+- 调 `planner/lib/store.py::save_planner_result(...)` 保存 latest plan 和 assistant turn
 
 不会再额外调用一次标题 LLM。
 
