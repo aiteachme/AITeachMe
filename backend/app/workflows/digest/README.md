@@ -1,6 +1,6 @@
 ﻿# Digest 模块说明
 
-最后更新：2026-04-16
+最后更新：2026-04-17
 
 `digest/` 负责把资料从“可检索内容”进一步编排成 confirmed plan、知识文档和知识图谱。它也是本轮 workflows 单层化重构的第一落地区域。
 
@@ -24,7 +24,8 @@ digest/
 - `__init__.py` 只提供稳定导入面，不承载业务实现
 - `common/events.py`、`common/exports.py` 是 Digest 跨链路事件与 workflow export 入口
 - `docgen/__init__.py`、`knowledge_graph/__init__.py` 提供 workflow runner 入口
-- `planner/sessions.py`、`docgen/builds.py`、`docgen/cleanup.py`、`knowledge_graph/{build.py,builds.py,module.py,query.py,overview.py,study_plan.py}` 是当前 digest 业务用例主落点
+- `overview.py`、`study_plan.py` 是跨 lane 的聚合用例
+- `planner/__init__.py`、`planner/graph.py`、`docgen/builds.py`、`docgen/cleanup.py`、`knowledge_graph/{build.py,builds.py,module.py,query.py}` 是当前 digest 业务用例主落点
 - `common/` 是跨链路共用的 contracts / models / prepare / material_profile / metrics / runtime_config / pedagogy 实现层
 - 各链路自己的构建摘要放在对应链路 `lib/reporting.py`，不要再新增顶层 observability 伪链路
 
