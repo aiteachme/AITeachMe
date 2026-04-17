@@ -179,7 +179,7 @@ await acompletion_with_fallback(messages, model="primary")
 await acompletion_with_fallback(messages, model="light")
 ```
 
-这些逻辑名直接对应 `settings.yaml` 的 `models.reason / primary / light / extract`。也可以传具体模型名。`task_type` 仍可用于默认温度、超时、重试和观测归类，但不应再作为业务代码选择模型的主要方式。
+这些逻辑名直接对应 `settings_default.yaml` 的 `models.reason / primary / light / extract`。也可以传具体模型名。`task_type` 仍可用于默认温度、超时、重试和观测归类，但不应再作为业务代码选择模型的主要方式。
 
 ## 什么不该放进 Infra
 

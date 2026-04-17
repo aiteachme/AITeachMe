@@ -11,9 +11,10 @@ from app.shared.infra.llm_support import acompletion_stream, acompletion_with_fa
 from app.shared.infra.llm_support.routing import TaskType
 from app.shared.infra.workflow.context import WorkflowContext
 from app.workflows.digest.planner.lib.plan_sketch import parse_plan_sketch_text
+from app.workflows.digest.planner.lib.evidence_probe import fallback_probe_queries
 from app.workflows.digest.planner.lib.planner_events import emit_planner_event, emit_planner_token
 from app.workflows.digest.planner.lib.plans import _resolve_subject_display_name, build_fallback_plan
-from app.workflows.digest.planner.lib.research_probe import (
+from app.workflows.digest.planner.lib.models import (
     LearningIntentProfile,
     PlanSketch,
     build_default_intent_profile,
@@ -43,17 +44,17 @@ async def _stream_plan_sketch(state: BuildPlannerState, fallback: PlanSketch) ->
     tokens: list[str] = []
     started_at = time.monotonic()
     first_token_ms: int | None = None
-    await emit_planner_event(state, event="planner.sketch.started", detail="正在生成可视化规划草稿...")
+    await emit_planner_event(state, event="planner.thinking.started", detail="正在理解资料边界和学习目标...")
     try:
         stream = acompletion_stream(
             [{"role": "user", "content": prompt}],
             task_type=TaskType.REASONING,
             model="reason",
             temperature=0.2,
-            max_tokens=420,
+            max_tokens=780,
             extra_metadata={
                 "planner_session_id": state.get("planner_session_id") or "",
-                "substep": "stream_plan_sketch",
+                "substep": "stream_visible_thinking",
             },
         )
         async for token in stream:
@@ -69,8 +70,8 @@ async def _stream_plan_sketch(state: BuildPlannerState, fallback: PlanSketch) ->
             await emit_planner_token(state, token)
             await emit_planner_event(
                 state,
-                event="planner.sketch.delta",
-                detail="规划草稿生成中...",
+                event="planner.thinking.delta",
+                detail="思考过程生成中...",
                 payload={"token": token},
             )
     except Exception:
@@ -84,7 +85,7 @@ async def _stream_plan_sketch(state: BuildPlannerState, fallback: PlanSketch) ->
         await emit_planner_event(
             state,
             event="planner.fallback.used",
-            detail="规划草稿生成失败，已使用规则草稿继续。",
+            detail="思考过程生成失败，已使用规则摘要继续。",
         )
         if not tokens:
             for line in fallback.raw_text.splitlines(keepends=True):
@@ -94,7 +95,7 @@ async def _stream_plan_sketch(state: BuildPlannerState, fallback: PlanSketch) ->
         await emit_planner_event(
             state,
             event="planner.fallback.used",
-            detail="规划草稿未返回任何增量内容，已使用规则草稿继续。",
+            detail="思考过程未返回任何增量内容，已使用规则摘要继续。",
         )
         for line in fallback.raw_text.splitlines(keepends=True):
             await emit_planner_token(state, line)
@@ -110,7 +111,7 @@ async def _extract_learning_intent(state: BuildPlannerState) -> LearningIntentPr
         digest_mode=state.get("digest_mode") or material_context.course_mode_decision.mode.value,
     )
     try:
-        return await acompletion_with_fallback(
+        intent = await acompletion_with_fallback(
             build_learning_intent_messages(
                 subject=state["subject"],
                 user_goal=state.get("user_goal") or "",
@@ -118,16 +119,17 @@ async def _extract_learning_intent(state: BuildPlannerState) -> LearningIntentPr
                 material_context=material_context,
                 message_history=list(state.get("message_history", [])),
             ),
-            task_type=TaskType.DOCGEN_LIGHT,
-            model="primary",
+            task_type=TaskType.CLASSIFY,
+            model="light",
             response_model=LearningIntentProfile,
             temperature=0.1,
-            max_tokens=650,
+            max_tokens=420,
             extra_metadata={
                 "planner_session_id": state.get("planner_session_id") or "",
                 "substep": "extract_learning_intent",
             },
         )
+        return intent
     except Exception:
         logger.exception(
             "planner_intent_failed",
@@ -160,24 +162,21 @@ def build_bootstrap_plan_brief_node(*, context: WorkflowContext):
         await emit_planner_event(
             state,
             event="planner.intent.ready",
-            detail=f"已识别学习目标：{intent.goal_type}。",
+            detail=f"已识别学习目标：{intent.goal_type}，准备调用全部可用检索器校准大纲。",
             payload={
                 "goal_type": intent.goal_type,
-                "source_policy": intent.source_policy,
-                "local_query_count": len(intent.research_probe_plan.local_queries),
-                "web_query_count": len(intent.research_probe_plan.web_queries),
-                "local_queries": [query.query for query in intent.research_probe_plan.local_queries[:4]],
-                "web_queries": [query.query for query in intent.research_probe_plan.web_queries[:3]],
+                "source_policy": "all_available",
                 "success_criteria": list(intent.success_criteria[:3]),
             },
         )
+        concept_queries = fallback_probe_queries(material_context, plan_sketch=sketch)
         return {
             "plan_sketch_markdown": sketch.raw_text,
             "plan_sketch_text": sketch.raw_text,
             "plan_sketch": sketch.model_dump(mode="json"),
             "learning_intent_profile": intent.model_dump(mode="json"),
             "research_probe_plan": intent.research_probe_plan.model_dump(mode="json"),
-            "concept_queries": [query.query for query in intent.research_probe_plan.local_queries],
+            "concept_queries": concept_queries,
         }
 
     return bootstrap_plan_brief_node

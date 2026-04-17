@@ -13,7 +13,7 @@ from fastapi import UploadFile
 from sqlmodel import Session
 
 from app.shared.infra.settings import get_settings
-from app.shared.infra.exceptions import FileParseError, FileTooLargeError
+from app.shared.infra.exceptions import FileCountLimitError, FileParseError, FileTooLargeError
 from app.shared.infra.runtime import is_cloud_mode
 from app.shared.infra.storage import get_artifact_store, get_content_store
 from app.models import IngestStatus, RawFile, TaskStatus
@@ -51,6 +51,10 @@ async def _save_uploaded_raw_files(
     files: list[UploadFile],
     parse_request_metadata: dict[str, object] | None = None,
 ) -> list[RawFile]:
+    max_files = get_settings().files.max_files_per_upload
+    if len(files) > max_files:
+        raise FileCountLimitError(max_files)
+
     saved: list[RawFile] = []
     for file in files:
         saved.append(
@@ -75,8 +79,9 @@ async def save_uploaded_file(
     store = get_artifact_store()
     normalized_subject = validate_subject(subject)
     content = await file.read()
-    if len(content) > settings.files.max_upload_size_mb * 1024 * 1024:
-        raise FileTooLargeError(settings.files.max_upload_size_mb)
+    max_upload_size_mb = settings.files.max_upload_size_mb
+    if len(content) > max_upload_size_mb * 1024 * 1024:
+        raise FileTooLargeError(max_upload_size_mb)
 
     filename = file.filename or "unknown"
     extension = Path(filename).suffix.lower()

@@ -9,13 +9,43 @@ from app.shared.infra.search.factory import get_retriever
 from app.shared.infra.search.types import SearchResult
 from app.shared.infra.settings import get_settings
 from app.workflows.digest.common.models import DigestMaterialContext
-from app.workflows.digest.planner.lib.research_probe import (
+from app.workflows.digest.planner.lib.models import (
     ChapterEvidenceHint,
     EvidenceBrief,
     PlanSketch,
     PlannerOpenedSource,
     PlannerSelectedSource,
 )
+
+
+def rule_based_source_triage(
+    results: list[SearchResult],
+    *,
+    limit: int,
+    source_type: str,
+    target_chapters: list[str] | None = None,
+) -> list[PlannerSelectedSource]:
+    selected: list[PlannerSelectedSource] = []
+    seen: set[str] = set()
+    for result in results:
+        key = result.url or f"{result.title}::{result.snippet[:80]}"
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        selected.append(
+            PlannerSelectedSource(
+                title=result.title or result.url,
+                url=result.url,
+                source_type=source_type,
+                reason="与本轮学习目标和检索词相关。",
+                target_chapters=list(target_chapters or []),
+                should_open=True,
+                snippet=result.snippet,
+            )
+        )
+        if len(selected) >= limit:
+            break
+    return selected
 
 _CJK_RE = re.compile(r"[\u3400-\u9fff]{2,16}")
 
@@ -43,7 +73,7 @@ async def safe_search(
         return []
 
 
-def fallback_local_queries(
+def fallback_probe_queries(
     material_context: DigestMaterialContext,
     *,
     plan_sketch: PlanSketch,
@@ -63,7 +93,7 @@ def fallback_local_queries(
         if key in seen:
             continue
         seen.add(key)
-        queries.append(text)
+        queries.append(f"{text} 核心概念 学习重点")
         if len(queries) >= 4:
             break
     return queries
@@ -158,7 +188,8 @@ def build_evidence_brief(
 
 __all__ = [
     "build_evidence_brief",
-    "fallback_local_queries",
+    "fallback_probe_queries",
+    "rule_based_source_triage",
     "safe_search",
     "source_preview",
 ]

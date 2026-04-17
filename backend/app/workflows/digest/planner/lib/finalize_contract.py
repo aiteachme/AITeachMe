@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 
 from app.workflows.digest.planner.lib.plans import BuildPlannerDraft, _dedupe_chapter_plan_titles
-from app.workflows.digest.planner.lib.research_probe import PlanSketch
+from app.workflows.digest.planner.lib.models import PlanSketch
 
 _GENERIC_TITLE_MARKERS = (
     "当前主题",

@@ -6,7 +6,7 @@ import structlog
 
 from app.shared.infra.workflow.context import WorkflowContext
 from app.workflows.digest.common.material_digest import (
-    SHORT_THRESHOLD_CHARS,
+    FILE_CONTEXT_CHARS,
     build_material_digest,
 )
 from app.workflows.digest.planner.lib.planner_events import emit_planner_event
@@ -33,14 +33,14 @@ def build_summarize_material_digest_node(*, context: WorkflowContext):
             planner_session_id=state.get("planner_session_id") or "",
             subject=state.get("subject") or "",
             total_chars=result.total_chars,
-            chunk_count=result.chunk_count,
+            source_count=result.source_count,
             llm_used=result.llm_used,
             truncated=result.truncated,
-            short_threshold=SHORT_THRESHOLD_CHARS,
+            file_context_chars=FILE_CONTEXT_CHARS,
         )
         detail = (
             f"资料摘要已生成（{result.total_chars} 字，"
-            f"{'直接拼接' if not result.llm_used else f'分片{result.chunk_count}段并行'}）。"
+            f"{result.source_count} 份资料并行摘要）。"
         )
         await emit_planner_event(
             state,
@@ -48,7 +48,7 @@ def build_summarize_material_digest_node(*, context: WorkflowContext):
             detail=detail,
             payload={
                 "total_chars": result.total_chars,
-                "chunk_count": result.chunk_count,
+                "source_count": result.source_count,
                 "llm_used": result.llm_used,
                 "truncated": result.truncated,
             },

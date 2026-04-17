@@ -191,12 +191,12 @@ backend/app/api/knowledge_docs.py
 
 - 仓库根 `.env`
 - 仓库根 `.env.sample`
-- 仓库根 `settings.yaml`
+- 仓库根 `settings_default.yaml`
 
 使用口径：
 
 - 环境变量由 `backend/app/shared/infra/env_support.py` 读取
-- 项目级运行配置由 `backend/app/shared/infra/settings/` 从 `settings.yaml` 读取
+- 项目级运行配置由 `backend/app/shared/infra/settings/` 从 `settings_default.yaml` 读取
 
 ### 7.2 后端运行时根目录
 

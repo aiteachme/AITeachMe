@@ -1,4 +1,4 @@
-"""Planner V3 research probe models and helpers."""
+"""Planner lane-local models and fallback builders."""
 
 from __future__ import annotations
 
@@ -18,9 +18,13 @@ class PlannerQuery(BaseModel):
 
 
 class ResearchProbePlan(BaseModel):
-    source_policy: str = "local_first"
+    source_policy: str = "all_available"
     local_queries: list[PlannerQuery] = Field(default_factory=list)
     web_queries: list[PlannerQuery] = Field(default_factory=list)
+
+
+class PlannerProbeQuerySet(BaseModel):
+    queries: list[str] = Field(default_factory=list)
 
 
 class PlanSketch(BaseModel):
@@ -38,7 +42,7 @@ class LearningIntentProfile(BaseModel):
     target_audience: str = "learner"
     success_criteria: list[str] = Field(default_factory=list)
     constraints: dict[str, Any] = Field(default_factory=dict)
-    source_policy: str = "local_first"
+    source_policy: str = "all_available"
     research_probe_plan: ResearchProbePlan = Field(default_factory=ResearchProbePlan)
     clarifying_questions: list[str] = Field(default_factory=list)
     confidence: float = 0.6
@@ -107,33 +111,25 @@ def build_default_research_probe_plan(
 ) -> ResearchProbePlan:
     topic_hints = material_topic_hints(material_context, limit=4)
     base = str(user_goal or "").strip() or "当前学习主题"
-    local_queries = [
+    queries = [
         PlannerQuery(
             query=f"{topic} 核心概念 学习重点",
-            purpose=f"从本地资料校准 {topic} 的知识边界。",
-            expected_signal="核心定义、方法、题型或易错点",
-            source_scope="local",
+            purpose=f"用本地资料和外部资料一起校准 {topic} 的知识边界。",
+            expected_signal="资料命中、权威定义、学习路径、方法结构或常见误区",
+            source_scope="all",
         )
         for topic in topic_hints
     ]
-    if not local_queries:
-        local_queries = [
+    if not queries:
+        queries = [
             PlannerQuery(
                 query=f"{base} 基础概念 知识框架",
-                purpose="从本地资料提取最基础的学习框架。",
-                expected_signal="核心概念与章节结构",
-                source_scope="local",
+                purpose="用本地资料和外部资料一起校准最基础的学习框架。",
+                expected_signal="资料命中、核心概念、章节结构或权威定义",
+                source_scope="all",
             )
         ]
-    web_queries = [
-        PlannerQuery(
-            query=f"{base} 基础概念 知识框架",
-            purpose="当本地资料不足时，用外部资料校准概念范围。",
-            expected_signal="权威定义、学习路径或通用框架",
-            source_scope="web",
-        )
-    ]
-    return ResearchProbePlan(local_queries=local_queries[:4], web_queries=web_queries[:2])
+    return ResearchProbePlan(source_policy="all_available", local_queries=queries[:4], web_queries=queries[:4])
 
 
 def build_default_intent_profile(
@@ -153,7 +149,7 @@ def build_default_intent_profile(
         target_audience="当前学习者",
         success_criteria=["形成可确认的知识文档大纲", "明确每章检索与写作目标"],
         constraints={"digest_mode": normalized_mode or "systematic"},
-        source_policy="local_first",
+        source_policy="all_available",
         research_probe_plan=probe_plan,
         confidence=0.55,
     )
@@ -166,22 +162,8 @@ def build_fallback_plan_sketch(draft: BuildPlannerDraft) -> PlanSketch:
     missing_clarifications = ["如需更聚焦，可继续补充章节方向、难度或题型偏好。"]
     raw_text = "\n".join(
         [
-            "# 构建方案",
-            "",
-            f"> 模式：{draft.digest_mode}",
-            f"> 一句话摘要：{draft.plan_summary}",
-            "",
-            "## 研究任务",
-            *[f"{index}. {item}" for index, item in enumerate(research_tasks, start=1)],
-            "",
-            "## 暂定章节",
-            *[f"{index}. {item}" for index, item in enumerate(provisional_chapters, start=1)],
-            "",
-            "## 规划假设",
-            *[f"- {item}" for item in assumptions],
-            "",
-            "## 待确认点",
-            *[f"- {item}" for item in missing_clarifications],
+            "1. 关注重点：" + "；".join(research_tasks[:6] or assumptions),
+            "2. 预计计划大纲：" + "；".join(provisional_chapters[:8] or missing_clarifications),
         ]
     ).strip()
     return PlanSketch(
@@ -201,6 +183,7 @@ __all__ = [
     "LearningIntentProfile",
     "PlanSketch",
     "PlannerOpenedSource",
+    "PlannerProbeQuerySet",
     "PlannerQuery",
     "PlannerSelectedSource",
     "ResearchProbePlan",

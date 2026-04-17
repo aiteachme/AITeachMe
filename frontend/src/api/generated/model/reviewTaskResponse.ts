@@ -10,9 +10,15 @@ export interface ReviewTaskResponse {
   id: number;
   user_id: string;
   subject: string;
+<<<<<<< HEAD
   knowledge_unit_id: number;
   knowledge_unit_name?: string | null;
   knowledge_unit_type?: string | null;
+=======
+  target_kind: string;
+  teaching_unit_id?: number | null;
+  knowledge_unit_id?: number | null;
+>>>>>>> origin/main
   priority: number;
   scheduled_at?: string | null;
   status: string;

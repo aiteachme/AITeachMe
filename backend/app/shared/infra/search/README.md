@@ -143,7 +143,7 @@ LangSmith 侧会在 retriever / reader / traced execution span 输出：
 3. 多 provider 结果使用轻量 RRF（Reciprocal Rank Fusion）变体融合；重复 URL 会合并，多个 provider 同时命中的来源会获得更高分。
 4. 下游仍由 `SourceCurator`、reader、`ContextCompressor` 继续完成来源质量排序、正文读取和上下文压缩。
 
-相关配置可放在 `settings.yaml`：
+相关配置可放在 `settings_default.yaml`：
 
 ```yaml
 search:

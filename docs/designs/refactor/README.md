@@ -23,6 +23,7 @@ api -> workflows -> repositories / shared.infra / models / schemas
 | `21_planner_deep_research_flow.md` | Planner Deep Research 风格改造计划 — 草稿流、意图识别、概念增强、最终合成与前端可视化 |
 | `22_planner_v4_research_surface_plan.md` | Planner V4 改造计划 — 对齐 OpenAI / Gemini Deep Research 的研究面板、概念增强、证据开读与前端可视化 |
 | `21_ingest_deepdoc_comparison.md` | Ingest v2 全流程设计 — Provider 优先级、转换层、质量仲裁、多格式支持与教学证据层 |
+| `24_ingest_deepdoc_simple_review.md` | Ingest 与 DeepDoc 简版对比 — 当前结构问题、`common` 取舍和小步收口顺序 |
 | `02_landed_decisions.md` | 已落地的关键决策（架构边界、扩展模型、LLM 策略、DocGen 骨架、tracing） |
 | `05_document_modes.md` | 知识文档模式契约 — 待完成的章节结构、资产配额、质量门槛、交互内容 |
 | `06_retrieval_strategy.md` | 检索策略 — 待完成的学科化 profile、持久化缓存、本地语料库 |
