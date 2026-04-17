@@ -71,12 +71,6 @@ async def _stream_planner_brief(state: BuildPlannerState, fallback: PlannerBrief
                 )
             tokens.append(token)
             await emit_planner_token(state, token)
-            await emit_planner_event(
-                state,
-                event="planner.thinking.delta",
-                detail="思考过程生成中...",
-                payload={"token": token},
-            )
     except Exception:
         logger.exception(
             "planner_brief_failed",
@@ -166,8 +160,6 @@ def build_stream_brief_and_extract_intent_node(*, context: WorkflowContext):
             subject=state.get("subject", ""),
         )
         fallback_brief = build_empty_planner_brief()
-        # Keep the first visible response fast: reason streams a compact brief
-        # while primary extracts intent from the same context.
         brief, intent = await asyncio.gather(
             _stream_planner_brief(state, fallback_brief),
             _extract_learning_intent(state),

@@ -167,12 +167,6 @@ async def _stream_composer_response(
                 pending_visible = pending_visible[safe_length:]
             if safe_text:
                 await emit_planner_token(state, safe_text)
-                await emit_planner_event(
-                    state,
-                    event="planner.plan.delta",
-                    detail="计划大纲生成中...",
-                    payload={"token": safe_text},
-                )
     except Exception:
         logger.exception(
             "planner_composer_stream_failed",
@@ -182,12 +176,6 @@ async def _stream_composer_response(
         return ""
     if pending_visible and not visible_closed:
         await emit_planner_token(state, pending_visible)
-        await emit_planner_event(
-            state,
-            event="planner.plan.delta",
-            detail="计划大纲生成中...",
-            payload={"token": pending_visible},
-        )
     text = "".join(tokens).strip()
     logger.info(
         "planner_compose_llm_completed",

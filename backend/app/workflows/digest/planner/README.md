@@ -90,14 +90,13 @@ Planner 当前事件：
 - `planner.context.started`
 - `planner.context.ready`
 - `planner.thinking.started`
-- `planner.thinking.delta`
 - `planner.thinking.failed`
 - `planner.thinking.empty`
 - `planner.intent.ready`
 - `planner.intent.failed`
 - `planner.plan.composing`
-- `planner.plan.delta`
 - `planner.plan.ready`
 - `planner.plan.failed`
 
+可见文本增量统一走 `token` SSE；`status` 只承载阶段变化和结构化结果。
 旧 `status/token/done` 仍保持兼容。
