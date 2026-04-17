@@ -59,6 +59,19 @@ def _strings(value: Any) -> list[str]:
     return cleaned
 
 
+def _topic_strings(shared_inputs: SharedInputs, *, user_goal: str, subject: str) -> list[str]:
+    values: list[Any] = [
+        *shared_inputs.fast_hints.chapter_candidates,
+        *[name for name, _count in shared_inputs.fast_hints.high_freq_terms],
+        *shared_inputs.subject_profile.key_topics,
+        shared_inputs.subject_profile.sub_discipline,
+        shared_inputs.subject_profile.discipline,
+        user_goal,
+        subject,
+    ]
+    return _strings(values)
+
+
 def _mapping(value: Any) -> dict[str, Any]:
     if isinstance(value, BaseModel):
         return value.model_dump(mode="json")
@@ -128,6 +141,84 @@ def _merge_chapter(raw: Mapping[str, Any], index: int) -> PlannerChapterPlan:
     )
 
 
+def _build_supplement_chapter(
+    *,
+    index: int,
+    topic: str,
+    digest_mode: str,
+    user_goal: str,
+) -> PlannerChapterPlan:
+    title = _text(topic) or f"补充章节 {index}"
+    normalized_mode = _normalize_digest_mode(digest_mode)
+    if normalized_mode == "sprint":
+        required = _strings([f"{title} 的高频考点", f"{title} 的典型题型", f"{title} 的易错点"])
+        objective = f"把《{title}》整理成考前可快速复盘的考点、题型和易错清单。"
+        writing = "按速成课写法组织：先给抓手，再讲题型和易错点。"
+    else:
+        required = _strings([f"{title} 的核心概念", f"{title} 的关键结构", f"{title} 的例子与迁移"])
+        objective = f"系统讲清《{title}》的概念边界、结构关系和典型应用。"
+        writing = "按系统课写法组织：先讲定义和结构，再展开推理、例子与迁移。"
+    if user_goal:
+        required = _strings([*required, user_goal])
+    return PlannerChapterPlan(
+        chapter_index=index,
+        title=title,
+        objective=objective,
+        required_elements=required[:6],
+        search_queries=_strings([title, *required])[:6],
+        writing_instructions=writing,
+        media_hints={"images": [], "mermaid": [f"{title} 的知识结构图"], "interactive": []},
+    )
+
+
+def _pad_chapters_to_minimum(
+    chapters: list[PlannerChapterPlan],
+    *,
+    digest_mode: str,
+    shared_inputs: SharedInputs,
+    user_goal: str,
+    subject: str,
+) -> list[PlannerChapterPlan]:
+    config = get_planner_mode_runtime_config(digest_mode)
+    if len(chapters) >= config.min_chapters:
+        return chapters
+
+    existing_titles = {_text(chapter.title).casefold() for chapter in chapters}
+    topics = [
+        topic
+        for topic in _topic_strings(shared_inputs, user_goal=user_goal, subject=subject)
+        if topic.casefold() not in existing_titles
+    ]
+    if not topics:
+        topics = [
+            "核心概念总览",
+            "关键结构与流程",
+            "典型例题与应用",
+            "易错点与复盘",
+            "综合练习",
+        ]
+
+    padded = list(chapters)
+    topic_index = 0
+    while len(padded) < config.min_chapters:
+        topic = topics[topic_index % len(topics)]
+        topic_index += 1
+        title_key = topic.casefold()
+        if title_key in existing_titles:
+            topic = f"{topic}（补充）"
+            title_key = topic.casefold()
+        existing_titles.add(title_key)
+        padded.append(
+            _build_supplement_chapter(
+                index=len(padded) + 1,
+                topic=topic,
+                digest_mode=digest_mode,
+                user_goal=user_goal,
+            )
+        )
+    return padded
+
+
 def _media_plan() -> dict[str, Any]:
     settings = get_settings()
     return {
@@ -174,6 +265,13 @@ def normalize_planner_draft(
         raise ValueError("planner plan is missing chapters")
 
     chapters = [_merge_chapter(raw, index) for index, raw in enumerate(raw_chapters, start=1)]
+    chapters = _pad_chapters_to_minimum(
+        chapters,
+        digest_mode=mode,
+        shared_inputs=shared,
+        user_goal=user_goal,
+        subject=display_subject,
+    )
     plan_summary = _text(current.get("plan_summary") or previous.get("plan_summary"))
     if not plan_summary:
         raise ValueError("planner plan is missing plan_summary")

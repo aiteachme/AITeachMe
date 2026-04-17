@@ -94,18 +94,32 @@ const ACTIVE_BUILD_STATUSES = new Set(["accepted", "running", "publishing"]);
 
 const STAGE_PROGRESS_FLOOR: Record<string, number> = {
   build_accepted: 8,
+  planner_confirmed: 16,
   prepare_shared: 22,
-  doc_lane_staged: 58,
-  graph_ready: 74,
+  preparing_docgen_context: 30,
+  generating_chapters: 46,
+  enhancing_chapters: 62,
+  chapters_enhanced: 72,
+  merge_reviewed: 82,
+  doc_lane_staged: 90,
+  docgen_finalized: 94,
+  graph_ready: 96,
   publishing: 93,
   completed: 100,
 };
 
 const STAGE_PROGRESS_CAP: Record<string, number> = {
   build_accepted: 20,
+  planner_confirmed: 28,
   prepare_shared: 42,
-  doc_lane_staged: 76,
-  graph_ready: 88,
+  preparing_docgen_context: 42,
+  generating_chapters: 66,
+  enhancing_chapters: 78,
+  chapters_enhanced: 84,
+  merge_reviewed: 90,
+  doc_lane_staged: 94,
+  docgen_finalized: 97,
+  graph_ready: 98,
   publishing: 98,
   completed: 100,
 };
@@ -113,8 +127,15 @@ const STAGE_PROGRESS_CAP: Record<string, number> = {
 const STAGE_TEXT: Record<string, string> = {
   idle: "等待新的知识构建任务",
   build_accepted: "已接收构建请求，正在准备资料",
+  planner_confirmed: "已读取确认方案",
   prepare_shared: "正在分析资料结构并准备共享输入",
-  doc_lane_staged: "知识文档草稿已生成，等待统一发布",
+  preparing_docgen_context: "正在增强大纲、识别写法并摘要材料",
+  generating_chapters: "正在并行生成章节",
+  enhancing_chapters: "正在增强章节图示、例题和小结",
+  chapters_enhanced: "章节增强已完成",
+  merge_reviewed: "整本文档检查完成，准备发布",
+  doc_lane_staged: "知识文档草稿已生成，正在发布正式版",
+  docgen_finalized: "知识文档已发布，正在同步知识图谱",
   graph_ready: "知识图谱已就绪，正在推导课程结构",
   publishing: "正在发布正式版知识文档",
   completed: "最新知识文档已发布",
@@ -543,7 +564,6 @@ export function DigestBuildButton() {
       queryClient.invalidateQueries({ queryKey: ["knowledge-doc-build", subject] });
       queryClient.invalidateQueries({ queryKey: ["knowledge-overview", subject] });
       queryClient.invalidateQueries({ queryKey: ["docgen-content", subject] });
-      queryClient.invalidateQueries({ queryKey: ["study-plan", subject] });
       setShowFileSelect(false);
       setSelectedFileUids(new Set());
       setLastBuildError("");
@@ -609,7 +629,7 @@ export function DigestBuildButton() {
       <Modal open={showFileSelect} onClose={closeModal} title="选择本轮知识构建使用的文件">
         <div className="space-y-4">
           <p className="text-sm leading-6 text-slate-500">
-            这里选中的已解析文件会进入本轮 digest，系统会同步刷新知识文档、知识图谱和学习计划。
+            这里选中的已解析文件会进入本轮 digest，系统会同步刷新知识文档和知识图谱。
           </p>
 
           {filesLoading ? (

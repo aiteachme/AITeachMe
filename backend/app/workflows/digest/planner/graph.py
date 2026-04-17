@@ -42,6 +42,8 @@ from app.workflows.digest.planner.state import (
 
 logger = structlog.get_logger(__name__)
 
+RUN_NAME_PLANNER = "规划引擎：生成构建方案"
+
 
 def _require_success_state(result: WorkflowResult[BuildPlannerState]) -> BuildPlannerState:
     state = result.require_value()
@@ -81,7 +83,6 @@ def build_planner_graph(*, context: WorkflowContext) -> StateGraph:
             timing_field="bootstrap_ms",
         ),
     )
-
     workflow.add_node(
         STEP_COMPOSE_PLAN,
         trace.node(
@@ -90,7 +91,6 @@ def build_planner_graph(*, context: WorkflowContext) -> StateGraph:
             timing_field="compose_ms",
         ),
     )
-
     workflow.add_node(
         STEP_SAVE_PLAN,
         trace.node(
@@ -102,17 +102,17 @@ def build_planner_graph(*, context: WorkflowContext) -> StateGraph:
     workflow.set_entry_point(STEP_LOAD_MATERIALS)
     workflow.add_conditional_edges(
         STEP_LOAD_MATERIALS,
-        route_after_step,
+        route_after_step_for_trace,
         {"continue": STEP_UNDERSTAND_GOAL, "fail": END},
     )
     workflow.add_conditional_edges(
         STEP_UNDERSTAND_GOAL,
-        route_after_step,
+        route_after_step_for_trace,
         {"continue": STEP_COMPOSE_PLAN, "fail": END},
     )
     workflow.add_conditional_edges(
         STEP_COMPOSE_PLAN,
-        route_after_step,
+        route_after_step_for_trace,
         {"continue": STEP_SAVE_PLAN, "fail": END},
     )
     workflow.add_edge(STEP_SAVE_PLAN, END)
@@ -121,6 +121,14 @@ def build_planner_graph(*, context: WorkflowContext) -> StateGraph:
 
 def route_after_step(state: BuildPlannerState) -> str:
     return "fail" if state.get("error") else "continue"
+
+
+def route_after_step_for_trace(state: BuildPlannerState) -> str:
+    return route_after_step(state)
+
+
+route_after_step_for_trace.__name__ = "检查是否继续"
+route_after_step_for_trace.__qualname__ = "检查是否继续"
 
 
 def create_planner_initial_state(
@@ -206,6 +214,7 @@ async def run_build_planner_workflow(
         metadata={
             "build_session_id": planner_session_id,
             "lane": "planner",
+            "langsmith_run_name": RUN_NAME_PLANNER,
             "planner_session_id": planner_session_id,
             "digest_mode": digest_mode,
         },

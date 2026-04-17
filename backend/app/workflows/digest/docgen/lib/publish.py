@@ -20,10 +20,7 @@ from app.shared.infra.tools.builtin.markdown_processing import (
     build_reference_section,
     count_words,
     normalize_source_details,
-)
-from app.workflows.digest.common.markdown_knowledge_anchors import (
-    ensure_markdown_knowledge_unit_anchors,
-    validate_knowledge_unit_anchors,
+    normalize_mermaid_blocks,
 )
 from app.utils.docgen_store import (
     KnowledgeDocsManifest,
@@ -106,14 +103,35 @@ def _dedupe_chapter_metadatas(chapters: list[dict]) -> list[dict]:
 
 
 def _prepare_chapter_markdown(markdown: str) -> str:
-    anchored = ensure_markdown_knowledge_unit_anchors(markdown)
-    validation = validate_knowledge_unit_anchors(anchored)
-    if not validation.ok:
-        raise ValueError(
-            "Invalid KnowledgeUnit anchors: "
-            f"duplicates={validation.duplicate_anchors}, invalid={validation.invalid_anchors}"
-        )
-    return anchored
+    return _ensure_chapter_structure(normalize_mermaid_blocks(markdown))
+
+
+def _ensure_chapter_structure(markdown: str) -> str:
+    """Keep published docs readable: one h1, at least one h2."""
+
+    cleaned = str(markdown or "").strip()
+    if not cleaned:
+        return ""
+
+    lines = cleaned.splitlines()
+    first_heading_index = next(
+        (index for index, line in enumerate(lines) if line.lstrip().startswith("#")),
+        None,
+    )
+    if first_heading_index is None:
+        lines.insert(0, "# 本章内容")
+    elif not lines[first_heading_index].lstrip().startswith("# "):
+        title = lines[first_heading_index].lstrip("#").strip() or "本章内容"
+        lines[first_heading_index] = f"# {title}"
+
+    if not any(line.startswith("## ") for line in lines):
+        insert_at = 1
+        while insert_at < len(lines) and not lines[insert_at].strip():
+            insert_at += 1
+        lines.insert(insert_at, "## 核心内容")
+        lines.insert(insert_at + 1, "")
+
+    return "\n".join(lines).strip() + "\n"
 
 
 
@@ -126,7 +144,8 @@ def build_merged_markdown(
 
     deduped_chapters = _dedupe_chapter_metadatas(chapters)
     include_sources = bool((document_context or {}).get("include_sources", True))
-    overview = build_learning_document_overview(
+    overview = _ensure_document_overview_structure(
+        build_learning_document_overview(
         subject=str((document_context or {}).get("subject") or "未命名学科"),
         subject_display_name=str((document_context or {}).get("subject_display_name") or ""),
         digest_mode=str((document_context or {}).get("digest_mode") or ""),
@@ -135,6 +154,7 @@ def build_merged_markdown(
         plan_summary=str((document_context or {}).get("plan_summary") or ""),
         source_strategy=str((document_context or {}).get("source_strategy") or ""),
         chapters=deduped_chapters,
+        )
     )
     separator = "\n\n---\n\n"
     body: list[str] = [overview.strip()]
@@ -161,7 +181,19 @@ def build_merged_markdown(
         reference_block = build_reference_section(all_source_details).strip()
         if reference_block:
             body.append(reference_block)
-    return separator.join(body).strip() + "\n"
+    return normalize_mermaid_blocks(separator.join(body).strip()) + "\n"
+
+
+def _ensure_document_overview_structure(markdown: str) -> str:
+    cleaned = str(markdown or "").strip()
+    if not cleaned.startswith("# "):
+        cleaned = "# 知识文档总览\n\n" + cleaned.lstrip("# \n")
+    if "\n## " not in cleaned:
+        lines = cleaned.splitlines()
+        lines.insert(2 if len(lines) > 1 else len(lines), "## 这份文档怎么读")
+        lines.insert(3 if len(lines) > 2 else len(lines), "")
+        cleaned = "\n".join(lines)
+    return cleaned.strip()
 
 
 

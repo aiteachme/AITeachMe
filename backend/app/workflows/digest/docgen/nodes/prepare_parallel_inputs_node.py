@@ -67,6 +67,7 @@ def build_prepare_parallel_inputs_node(*, context: WorkflowContext):
                 user_goal=docgen_context.user_goal,
                 plan_summary=docgen_context.plan_summary or str(confirmed_plan.get("plan_summary") or ""),
                 chapters=chapters,
+                docgen_history_brief=docgen_context.docgen_history_brief,
                 extra_metadata=extra,
             ),
             infer_docgen_intent(
@@ -76,6 +77,7 @@ def build_prepare_parallel_inputs_node(*, context: WorkflowContext):
                 plan_summary=docgen_context.plan_summary or str(confirmed_plan.get("plan_summary") or ""),
                 material_profile=material_profile,
                 chapters=chapters,
+                docgen_history_brief=docgen_context.docgen_history_brief,
                 extra_metadata=extra,
             ),
             summarize_files(

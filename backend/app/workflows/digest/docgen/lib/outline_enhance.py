@@ -118,6 +118,7 @@ async def enhance_plan_outline(
     user_goal: str,
     plan_summary: str,
     chapters: Sequence[Mapping[str, Any]],
+    docgen_history_brief: str = "",
     extra_metadata: Mapping[str, Any] | None = None,
 ) -> tuple[list[EnhancedChapterOutline], list[str]]:
     fallback = fallback_enhance_plan_outline(chapters, digest_mode=digest_mode)
@@ -129,6 +130,7 @@ async def enhance_plan_outline(
                 user_goal=user_goal,
                 plan_summary=plan_summary,
                 chapters=chapters,
+                docgen_history_brief=docgen_history_brief,
             ),
             task_type=TaskType.REASONING,
             model="reason",

@@ -315,7 +315,7 @@ export function BuildView({
             <div>
               {isDesktop ? (
                 <div className="text-[11px] font-medium text-stone-400">
-                  研究详情 路 {chapters.length} 章{events.length > 0 ? ` 路 ${events.length} 条来源` : ""}
+                  研究详情：共 {chapters.length} 章{events.length > 0 ? `，${events.length} 条进展` : ""}
                 </div>
               ) : (
                 <button
@@ -325,8 +325,8 @@ export function BuildView({
                 >
                   {showDetailPanels ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
                   {showDetailPanels ? "收起详情" : "查看研究详情"}
-                  {chapters.length > 0 ? <span className="text-stone-300">路 {chapters.length} 章</span> : null}
-                  {events.length > 0 ? <span className="text-stone-300">路 {events.length} 条来源</span> : null}
+                  {chapters.length > 0 ? <span className="text-stone-300">共 {chapters.length} 章</span> : null}
+                  {events.length > 0 ? <span className="text-stone-300">{events.length} 条进展</span> : null}
                 </button>
               )}
 

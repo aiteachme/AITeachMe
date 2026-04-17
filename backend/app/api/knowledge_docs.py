@@ -28,8 +28,6 @@ from app.schemas.knowledge import (
     DocGenGetResponse,
     KnowledgeOverviewRequest,
     KnowledgeOverviewResponse,
-    StudyPlanRequest,
-    StudyPlanResponse,
 )
 from app.workflows.digest.planner import (
     append_build_planner_message,
@@ -46,7 +44,6 @@ from app.workflows.digest.docgen import (
 )
 from app.workflows.support.knowledge_graph import (
     get_knowledge_overview,
-    handle_study_plan_request,
     run_graph_build_background,
 )
 from app.workflows.support.subjects import get_subject_record
@@ -472,23 +469,6 @@ async def knowledge_overview(
             full=body.full,
         )
     )
-
-
-@router.post(
-    "/study-plan",
-    response_model=ApiResponse[StudyPlanResponse],
-    summary="Fetch or update the learner study plan",
-    responses=build_error_responses([400, 404, 422, 500]),
-)
-async def knowledge_study_plan(
-    subject: str = Path(...),
-    body: StudyPlanRequest = Body(default=StudyPlanRequest()),
-    user: CurrentUserContext = Depends(get_current_user_context),
-    session: Session = Depends(get_db),
-) -> ApiResponse[StudyPlanResponse]:
-    normalized = normalize_subject_slug(subject)
-    get_subject_record(session, normalized, owner_user_id=user.user_id)
-    return ok_response(handle_study_plan_request(session, subject=normalized, user_id=user.user_id, payload=body))
 
 
 @router.post(

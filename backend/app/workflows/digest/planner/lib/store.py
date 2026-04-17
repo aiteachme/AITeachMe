@@ -305,6 +305,46 @@ def _render_final_plan_markdown(plan_payload: dict[str, Any]) -> str:
     return "\n".join(lines).strip()
 
 
+def _compact_planner_text(value: Any, *, max_chars: int = 900) -> str:
+    text = " ".join(str(value or "").split())
+    if len(text) <= max_chars:
+        return text
+    return text[: max_chars - 3].rstrip() + "..."
+
+
+def _build_docgen_history_brief(turns: list[BuildPlannerTurn]) -> str:
+    lines: list[str] = []
+    for turn in turns[-10:]:
+        role = "用户" if turn.role == "user" else "规划器"
+        content = _compact_planner_text(
+            turn.content,
+            max_chars=520 if turn.role == "user" else 720,
+        )
+        if content:
+            lines.append(f"{role}: {content}")
+    return "\n".join(lines)
+
+
+def _build_planner_context_payload(
+    record: BuildPlannerSession,
+    *,
+    turns: list[BuildPlannerTurn],
+    plan: dict[str, Any],
+) -> dict[str, Any]:
+    assistant_turns = [turn for turn in turns if turn.role == "assistant"]
+    user_turns = [turn for turn in turns if turn.role == "user"]
+    latest_outline = assistant_turns[-1].content if assistant_turns else _render_final_plan_markdown(plan)
+    return {
+        "planner_session_id": record.id,
+        "planner_turn_count": len(turns),
+        "user_revision_count": max(0, len(user_turns) - 1),
+        "assistant_revision_count": len(assistant_turns),
+        "latest_plan_summary": str(plan.get("plan_summary") or record.latest_summary or ""),
+        "planner_outline_markdown": _compact_planner_text(latest_outline, max_chars=1800),
+        "docgen_history_brief": _build_docgen_history_brief(turns),
+    }
+
+
 def _normalize_persisted_plan(
     plan: dict[str, Any] | None,
     *,
@@ -568,19 +608,78 @@ def save_planner_result(
         }
 
 
-def _normalized_plan_payload(plan: dict[str, Any]) -> dict[str, Any]:
-    return {
+def _normalized_plan_payload(
+    plan: dict[str, Any],
+    *,
+    planner_context: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    build_constraints = dict(plan.get("build_constraints") or {})
+    chapter_plan = _ensure_min_chapter_payload(
+        list(plan.get("chapter_plan") or []),
+        min_chapters=int(build_constraints.get("min_chapters", 0) or 0),
+        digest_mode=str(plan.get("digest_mode") or ""),
+        user_goal=str(plan.get("user_goal") or ""),
+    )
+    payload = {
         "subject": str(plan.get("subject") or ""),
         "user_goal": str(plan.get("user_goal") or ""),
         "digest_mode": str(plan.get("digest_mode") or ""),
         "tone": str(plan.get("tone") or ""),
         "selected_skillpacks": list(plan.get("selected_skillpacks") or []),
-        "chapter_plan": list(plan.get("chapter_plan") or []),
+        "chapter_plan": chapter_plan,
         "research_queries": list(plan.get("research_queries") or []),
         "media_plan": dict(plan.get("media_plan") or {}),
-        "build_constraints": dict(plan.get("build_constraints") or {}),
+        "build_constraints": build_constraints,
         "plan_summary": str(plan.get("plan_summary") or ""),
     }
+    context_payload = dict(planner_context or plan.get("planner_context") or {})
+    if context_payload:
+        payload["planner_context"] = context_payload
+        payload["docgen_history_brief"] = str(context_payload.get("docgen_history_brief") or "")
+    return payload
+
+
+def _ensure_min_chapter_payload(
+    chapters: list[Any],
+    *,
+    min_chapters: int,
+    digest_mode: str,
+    user_goal: str,
+) -> list[dict[str, Any]]:
+    normalized = [dict(item) for item in chapters if isinstance(item, dict)]
+    if min_chapters <= 0 or len(normalized) >= min_chapters:
+        return normalized
+    existing_titles = {
+        str(item.get("title") or "").strip().casefold()
+        for item in normalized
+        if str(item.get("title") or "").strip()
+    }
+    supplements = ["核心概念总览", "关键结构与流程", "典型例题与应用", "易错点与复盘", "综合练习"]
+    mode = str(digest_mode or "").strip().lower()
+    while len(normalized) < min_chapters:
+        index = len(normalized) + 1
+        title = supplements[(index - 1) % len(supplements)]
+        if title.casefold() in existing_titles:
+            title = f"{title} {index}"
+        existing_titles.add(title.casefold())
+        if mode == "sprint":
+            required = [f"{title} 的高频考点", f"{title} 的典型题型", f"{title} 的易错点"]
+        else:
+            required = [f"{title} 的核心概念", f"{title} 的关键结构", f"{title} 的例子与迁移"]
+        if user_goal:
+            required.append(user_goal)
+        normalized.append(
+            {
+                "chapter_index": index,
+                "title": title,
+                "objective": "；".join(required[:3]),
+                "required_elements": required[:6],
+                "search_queries": [title, *required[:3]],
+                "writing_instructions": "按用户确认的课程模式补齐本章讲解，保持和前文章节风格一致。",
+                "media_hints": {"images": [], "mermaid": [f"{title} 的知识结构图"], "interactive": []},
+            }
+        )
+    return normalized
 
 
 def mark_planner_session_failed(*, subject: str, user_id: str, session_id: str) -> None:
@@ -606,7 +705,16 @@ def confirm_planner_session(
     if not record.latest_plan_json:
         raise BuildPlannerEmptyPlanError(session_id)
 
-    plan_payload = _normalized_plan_payload(dict(record.latest_plan_json))
+    turns = list_planner_turns(session, session_id=record.id)
+    planner_context = _build_planner_context_payload(
+        record,
+        turns=turns,
+        plan=dict(record.latest_plan_json),
+    )
+    plan_payload = _normalized_plan_payload(
+        dict(record.latest_plan_json),
+        planner_context=planner_context,
+    )
     record.latest_plan_json = plan_payload
     current_confirmed = None
     if record.confirmed_plan_id:

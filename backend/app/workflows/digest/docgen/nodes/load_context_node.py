@@ -68,6 +68,12 @@ def build_load_context_node(*, context: WorkflowContext):
         plan_payload["course_type"] = course_type
         plan_payload["retrieval_profile"] = retrieval_profile
         plan_payload["selected_skillpacks"] = selected_skillpacks
+        planner_context = dict(plan_payload.get("planner_context") or {})
+        docgen_history_brief = str(
+            plan_payload.get("docgen_history_brief")
+            or planner_context.get("docgen_history_brief")
+            or ""
+        ).strip()
 
         has_local_materials = bool(shared_inputs.source_packets)
         document_context = {
@@ -80,6 +86,8 @@ def build_load_context_node(*, context: WorkflowContext):
             "tone": tone,
             "user_goal": str(plan_contract.user_goal or state.get("user_prompt") or ""),
             "plan_summary": str(plan_contract.plan_summary or ""),
+            "docgen_history_brief": docgen_history_brief,
+            "planner_context": planner_context,
             "source_strategy": "local_first" if has_local_materials else "web_first",
             "include_sources": bool((plan_payload.get("build_constraints") or {}).get("include_sources", True)),
             "selected_skillpacks": selected_skillpacks,
@@ -108,6 +116,8 @@ def build_load_context_node(*, context: WorkflowContext):
             tone=tone,
             user_goal=str(plan_contract.user_goal or state.get("user_prompt") or ""),
             plan_summary=str(plan_contract.plan_summary or ""),
+            docgen_history_brief=docgen_history_brief,
+            planner_context=planner_context,
             source_strategy="local_first" if has_local_materials else "web_first",
             include_sources=bool((plan_payload.get("build_constraints") or {}).get("include_sources", True)),
             selected_skillpacks=selected_skillpacks,
@@ -201,6 +211,5 @@ def build_load_context_node(*, context: WorkflowContext):
 
 
 __all__ = ["build_load_context_node"]
-
 
 

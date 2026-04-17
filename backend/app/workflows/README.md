@@ -61,8 +61,8 @@
   Digest 教学运行时配置 facade
 - `digest/common/pedagogy/`
   Digest 教学语义 facade
-- `support/knowledge_graph/overview.py`、`support/knowledge_graph/study_plan.py`
-  基于知识图谱的总览与学习计划用例
+- `support/knowledge_graph/overview.py`
+  基于知识图谱的总览用例
 - `support/system/init.py`、`support/system/settings.py`
   系统初始化与设置总览的 canonical 位置
 - `support/files/catalog.py`、`support/files/uploads.py`、`support/files/parsing.py`、`support/files/deletion.py`

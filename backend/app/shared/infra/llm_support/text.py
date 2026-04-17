@@ -67,7 +67,7 @@ async def acompletion(
             )
             try:
                 with langsmith_trace(
-                    name="llm.acompletion",
+                    name="LLM：文本生成",
                     run_type="llm",
                     **_langsmith_trace_kwargs(
                         task_type=context.task_type,

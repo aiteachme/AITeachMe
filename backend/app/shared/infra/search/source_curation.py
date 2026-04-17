@@ -67,6 +67,14 @@ def _domain_from_url(url: str) -> str:
 
 
 class SourceCurator(BaseTracedExecution):
+    @property
+    def trace_namespace(self) -> str:
+        return "检索后处理"
+
+    @property
+    def trace_name(self) -> str:
+        return "筛选引用来源"
+
     async def execute(
         self,
         *,

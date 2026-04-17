@@ -94,7 +94,7 @@ def _log_current_user_context(
     has_bearer_token: bool,
     has_guest_token: bool,
 ) -> None:
-    logger.info(
+    logger.debug(
         "current_user_context_resolved",
         path=request.url.path,
         method=request.method,

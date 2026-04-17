@@ -154,18 +154,18 @@ def _sanitize_mindmap_body(body: str, *, topic: str) -> str:
 class _ImagePlaceholderRuntime(BaseTracedExecution):
     @property
     def trace_namespace(self) -> str:
-        return "workflow_runtime.docgen.assets"
+        return "DocGen资产"
 
     @property
     def trace_name(self) -> str:
-        return "image_placeholder"
+        return "图片占位处理"
 
     async def execute(self, *, description: str) -> TracedExecutionResult:
         settings = get_settings()
         model_name = (settings.models.image_generation or "").strip()
         if not settings.image_generation_enabled:
             return TracedExecutionResult(
-                content=f"> [!NOTE]\n> 未配置文生图模型，暂以配图建议占位：{description}",
+                content="",
                 metadata={"asset_enabled": False},
             )
         return TracedExecutionResult(
@@ -184,11 +184,11 @@ class _ImagePlaceholderRuntime(BaseTracedExecution):
 class _MermaidPlaceholderRuntime(BaseTracedExecution):
     @property
     def trace_namespace(self) -> str:
-        return "workflow_runtime.docgen.assets"
+        return "DocGen资产"
 
     @property
     def trace_name(self) -> str:
-        return "mermaid_placeholder"
+        return "图示占位处理"
 
     async def execute(self, *, topic: str, context: str = "") -> TracedExecutionResult:
         settings = get_settings()
@@ -233,11 +233,11 @@ class _MermaidPlaceholderRuntime(BaseTracedExecution):
 class _InteractivePlaceholderRuntime(BaseTracedExecution):
     @property
     def trace_namespace(self) -> str:
-        return "workflow_runtime.docgen.assets"
+        return "DocGen资产"
 
     @property
     def trace_name(self) -> str:
-        return "interactive_placeholder"
+        return "交互块占位处理"
 
     async def execute(self, *, description: str, context: str = "", digest_mode: str = "") -> TracedExecutionResult:
         template_kind = self._resolve_template_kind(description=description, digest_mode=digest_mode)

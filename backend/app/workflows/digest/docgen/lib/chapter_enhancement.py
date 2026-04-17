@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 
+from app.shared.infra.settings import get_settings
 from app.shared.infra.execution import TracedExecutionContext
 from app.shared.infra.tools.builtin.latex_processing import normalize_math_delimiters, validate_latex
 from app.shared.infra.tools.builtin.markdown_processing import build_draft_excerpt, normalize_mermaid_blocks
@@ -40,7 +41,7 @@ def _ensure_requested_placeholders(markdown: str, requests: list[dict]) -> str:
         if kind == "mermaid" and description_key not in existing["mermaid"]:
             additions.append(_placeholder_comment("MERMAID", description))
             existing["mermaid"].add(description_key)
-        elif kind in {"image", "images"} and description_key not in existing["image"]:
+        elif kind in {"image", "images"} and get_settings().image_generation_enabled and description_key not in existing["image"]:
             additions.append(_placeholder_comment("IMAGE", description))
             existing["image"].add(description_key)
         elif kind in {"interactive", "interactive_html"} and description_key not in existing["interactive"]:
@@ -101,6 +102,8 @@ async def enhance_chapter_draft(
     digest_mode: str,
 ) -> tuple[EnhancedChapterDraft, AssetManifest, PracticeManifest]:
     markdown = _ensure_requested_placeholders(draft.markdown, draft.placeholder_requests)
+    if not get_settings().image_generation_enabled:
+        markdown = _IMAGE_PLACEHOLDER_RE.sub("", markdown)
     mermaid_placeholders = [item.strip() for item in _MERMAID_PLACEHOLDER_RE.findall(markdown)]
     image_placeholders = [item.strip() for item in _IMAGE_PLACEHOLDER_RE.findall(markdown)]
     interactive_placeholders = [item.strip() for item in _INTERACTIVE_PLACEHOLDER_RE.findall(markdown)]

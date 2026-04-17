@@ -76,7 +76,7 @@ async def acompletion_with_tools(
             )
             try:
                 with langsmith_trace(
-                    name="llm.acompletion_with_tools",
+                    name="LLM：工具调用",
                     run_type="llm",
                     **_langsmith_trace_kwargs(
                         task_type=context.task_type,

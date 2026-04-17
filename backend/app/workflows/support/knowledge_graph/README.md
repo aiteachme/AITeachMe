@@ -5,7 +5,7 @@ This support module hosts non-workflow knowledge-graph business services.
 ## Scope
 - Build orchestration services and status updates
 - Graph query/use-case services
-- Overview and study-plan aggregation
+- Overview aggregation
 - Incremental markdown sync helpers
 - Release/rollback and migration utilities
 

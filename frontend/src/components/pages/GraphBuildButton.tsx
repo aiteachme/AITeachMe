@@ -95,7 +95,6 @@ export function GraphBuildButton({
       queryClient.invalidateQueries({ queryKey: ["knowledge-overview", subject] });
       queryClient.invalidateQueries({ queryKey: ["graph-node-detail", subject] });
       queryClient.invalidateQueries({ queryKey: ["docgen-content", subject] });
-      queryClient.invalidateQueries({ queryKey: ["study-plan", subject] });
       setShowFileSelect(false);
       setSelectedFileUids(new Set());
       setLastBuildError("");

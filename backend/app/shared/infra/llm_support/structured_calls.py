@@ -102,7 +102,7 @@ async def acompletion_structured(
                     trace_messages = _build_structured_fallback_messages(response_model, messages)
                     call_kwargs["messages"] = trace_messages
                 with langsmith_trace(
-                    name="llm.acompletion_structured",
+                    name="LLM：结构化生成",
                     run_type="llm",
                     **_langsmith_trace_kwargs(
                         task_type=context.task_type,

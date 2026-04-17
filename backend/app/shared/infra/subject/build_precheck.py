@@ -43,6 +43,12 @@ logger = structlog.get_logger()
 _USER_DISABLED_REASON = "user_selected_disable_after_precheck"
 _PRECHECK_DETAIL_MAP = SUBJECT_VECTOR_PRECHECK_DETAIL_MAP
 _LLAMAINDEX_REF_PREFIX = "llamaindex://"
+_RUNTIME_UNAVAILABLE_REASONS = {
+    "embedding_not_configured",
+    "embedding_api_key_missing",
+    "vector_extension_unavailable",
+    "llamaindex_postgres_unavailable",
+}
 
 
 def _is_llamaindex_index_ref(value: str | None) -> bool:
@@ -196,6 +202,19 @@ def resolve_subject_build_vector_status(
         )
         auto_rebuild_reason = conflict.reason
         embedding_resolution = "rebuild"
+
+    if embedding_resolution is None and conflict.reason in _RUNTIME_UNAVAILABLE_REASONS:
+        logger.info(
+            "embedding_unavailable_build_continues_without_vectors",
+            subject=subject.slug,
+            reason=conflict.reason,
+            runtime_model=conflict.runtime_model,
+            runtime_dim=conflict.runtime_dim,
+            detail=_PRECHECK_DETAIL_MAP.get(conflict.reason, ""),
+        )
+        status = get_subject_vector_status(session, subject)
+        status.notice = _PRECHECK_DETAIL_MAP.get(conflict.reason, status.notice)
+        return status
 
     if embedding_resolution is None:
         _raise_precheck_conflict(conflict)

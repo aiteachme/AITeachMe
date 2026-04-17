@@ -73,7 +73,7 @@ async def acompletion_stream(
             usage = (0, 0, 0)
             first_token_seen = False
             with langsmith_trace(
-                name="llm.acompletion_stream",
+                name="LLM：流式生成",
                 run_type="llm",
                 **_langsmith_trace_kwargs(
                     task_type=context.task_type,

@@ -60,11 +60,11 @@ _MODE_RESEARCH_STRATEGIES = {
 class DocGenChapterContextRuntime(BaseTracedExecution):
     @property
     def trace_namespace(self) -> str:
-        return "workflow_runtime.docgen"
+        return "DocGen"
 
     @property
     def trace_name(self) -> str:
-        return "chapter_context"
+        return "章节研究上下文"
 
     async def execute(
         self,
@@ -165,6 +165,7 @@ class DocGenChapterContextRuntime(BaseTracedExecution):
                 include_external=external_search_enabled,
             )
             if retriever.name != local_retriever.name
+            and retriever.name in self._docgen_external_retriever_allowlist()
         ]
         configured_retrievers = get_configured_retriever_names(
             profile=resolved_retrieval_profile or None,
@@ -235,6 +236,7 @@ class DocGenChapterContextRuntime(BaseTracedExecution):
             round_local_hits = int(round_result["round_local_hits"])
             round_web_hits = int(round_result["round_web_hits"])
             round_fallback_queries = list(round_result["round_fallback_queries"])
+            round_external_queries = list(round_result.get("round_external_queries", []) or [])
 
             merged_results = self._dedupe_results(
                 self._filter_search_results(all_results),
@@ -288,6 +290,7 @@ class DocGenChapterContextRuntime(BaseTracedExecution):
                     "executed_queries": list(round_queries),
                     "local_hits": round_local_hits,
                     "web_hits": round_web_hits,
+                    "external_queries": list(dict.fromkeys(round_external_queries)),
                     "fallback_queries": list(dict.fromkeys(round_fallback_queries)),
                     "coverage_score": coverage_score,
                     "gaps_remaining": list(gaps_remaining),
@@ -376,7 +379,7 @@ class DocGenChapterContextRuntime(BaseTracedExecution):
             },
         )
 
-    @traceable(name="docgen.chapter_context.research_round", run_type="chain")
+    @traceable(name="DocGen：执行一轮章节检索", run_type="chain")
     async def _run_research_round(
         self,
         *,
@@ -400,6 +403,9 @@ class DocGenChapterContextRuntime(BaseTracedExecution):
         round_local_hits = 0
         round_web_hits = 0
         round_fallback_queries: list[str] = []
+        round_external_queries: list[str] = []
+        external_attempts = 0
+        external_attempt_budget = max(1, min(2, len(round_queries))) if other_retrievers else 0
 
         for query in round_queries:
             executed_queries.append(query)
@@ -423,9 +429,16 @@ class DocGenChapterContextRuntime(BaseTracedExecution):
             round_local_hits += len(local_results)
             combined_results = list(local_results)
 
-            if len(local_results) < settings.local_rag.min_results:
-                fallback_queries_total.append(query)
-                round_fallback_queries.append(query)
+            should_query_external = bool(other_retrievers) and (
+                len(local_results) < settings.local_rag.min_results
+                or external_attempts < external_attempt_budget
+            )
+            if should_query_external:
+                external_attempts += 1
+                round_external_queries.append(query)
+                if len(local_results) < settings.local_rag.min_results:
+                    fallback_queries_total.append(query)
+                    round_fallback_queries.append(query)
                 expanded_queries = enrich_queries_for_education([query], domain=search_domain)
                 for retriever in other_retrievers:
                     for expanded_query in expanded_queries:
@@ -454,6 +467,10 @@ class DocGenChapterContextRuntime(BaseTracedExecution):
                     if len(self._dedupe_results(combined_results)) >= query_limit:
                         break
 
+            if len(local_results) < settings.local_rag.min_results and not should_query_external:
+                fallback_queries_total.append(query)
+                round_fallback_queries.append(query)
+
             all_results.extend(self._dedupe_results(combined_results, max_results=query_limit))
 
         return {
@@ -462,6 +479,7 @@ class DocGenChapterContextRuntime(BaseTracedExecution):
             "round_local_hits": round_local_hits,
             "round_web_hits": round_web_hits,
             "round_fallback_queries": round_fallback_queries,
+            "round_external_queries": round_external_queries,
         }
 
     async def _search_with_budget(
@@ -475,7 +493,13 @@ class DocGenChapterContextRuntime(BaseTracedExecution):
         retrieval_budget_s: float,
     ) -> list[SearchResult]:
         remaining = retrieval_budget_s - (time.monotonic() - retrieval_started_at)
-        if remaining <= 0:
+        if remaining < 1.2:
+            self.logger.info(
+                "docgen_retriever_skipped_budget_low",
+                retriever=retriever.name,
+                query=query,
+                remaining_s=round(max(0.0, remaining), 3),
+            )
             return []
         try:
             return await asyncio.wait_for(
@@ -483,7 +507,7 @@ class DocGenChapterContextRuntime(BaseTracedExecution):
                 timeout=max(0.1, min(provider_budget_s, remaining)),
             )
         except TimeoutError:
-            self.logger.warning(
+            self.logger.info(
                 "docgen_retriever_timeout",
                 retriever=retriever.name,
                 query=query,
@@ -517,6 +541,12 @@ class DocGenChapterContextRuntime(BaseTracedExecution):
                     documents.append(text)
                 continue
             if not item.url or item.url in seen_urls:
+                continue
+            domain = urlparse(item.url).netloc.lower()
+            if "wikipedia.org" in domain:
+                text = item.to_text()
+                if text.strip():
+                    documents.append(text)
                 continue
             seen_urls.add(item.url)
             external_results.append(item)
@@ -642,6 +672,22 @@ class DocGenChapterContextRuntime(BaseTracedExecution):
         if query not in queries:
             queries.append(query)
         entry["queries"] = queries[:8]
+
+    def _docgen_external_retriever_allowlist(self) -> set[str]:
+        # Keep DocGen web research stable and low-noise. Site-specific DDG
+        # wrappers such as Zhihu/Baidu Baike and paper-only sources often
+        # timeout or drift for basic course writing; users can still opt into
+        # them by configuring dedicated retriever profiles later.
+        return {
+            "bocha",
+            "tavily",
+            "brave",
+            "exa",
+            "bing",
+            "searxng",
+            "wikipedia",
+            "duckduckgo",
+        }
 
     def _resolve_strategy(self, digest_mode: str) -> dict[str, Any]:
         normalized = str(digest_mode or "").strip().lower()
