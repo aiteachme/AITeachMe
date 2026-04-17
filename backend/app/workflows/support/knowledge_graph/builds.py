@@ -59,6 +59,110 @@ def _cleanup_pending_digest_outputs(subject: str) -> None:
         logger.exception("knowledge_pending_cleanup_failed", subject=subject)
 
 
+def run_graph_docs_sync_after_doc_build(
+    *,
+    subject: str,
+    requested_at: datetime,
+    build_session_id: str,
+    file_ids: list[int],
+    prompt: str | None,
+) -> dict[str, int | str]:
+    """Re-sync graph anchors from the latest knowledge document after doc publish."""
+
+    from app.workflows.digest.kg_docs_sync import run_graph_docs_sync_workflow
+
+    knowledge_doc_markdown, knowledge_doc_source = load_knowledge_doc_markdown(subject)
+    doc_chapter_metadatas = extract_doc_chapter_metadatas(knowledge_doc_markdown)
+    if not knowledge_doc_markdown.strip():
+        return {
+            "knowledge_doc_source": knowledge_doc_source,
+            "knowledge_doc_chapter_count": len(doc_chapter_metadatas),
+            "doc_sync_unit_changes": 0,
+            "doc_sync_edge_changes": 0,
+            "doc_sync_elapsed_ms": 0,
+        }
+
+    _write_build_status(
+        subject,
+        requested_at=requested_at,
+        status="running",
+        stage="graph_docs_sync",
+        build_session_id=build_session_id,
+        error_message=None,
+        draft_available=False,
+        source_file_ids=file_ids,
+        prompt=prompt,
+        graph_input_paths=resolve_graph_input_paths(
+            file_ids=file_ids,
+            knowledge_doc_markdown=knowledge_doc_markdown,
+        ),
+        knowledge_doc_source=knowledge_doc_source,
+        knowledge_doc_chapter_count=len(doc_chapter_metadatas),
+        current_stage_description="Syncing KnowledgeUnits and relations from the latest knowledge markdown.",
+    )
+    sync_result = run_graph_docs_sync_workflow(
+        subject=subject,
+        markdown=knowledge_doc_markdown,
+    )
+    if sync_result.failed:
+        raise RuntimeError(sync_result.error.detail)
+
+    sync_report = sync_result.require_value()
+    return {
+        "knowledge_doc_source": knowledge_doc_source,
+        "knowledge_doc_chapter_count": len(doc_chapter_metadatas),
+        "doc_sync_unit_changes": sync_report.unit_change_count,
+        "doc_sync_edge_changes": sync_report.edge_change_count,
+        "doc_sync_elapsed_ms": sync_report.elapsed_ms,
+    }
+
+
+async def run_graph_file_ingest_background(
+    *,
+    subject: str,
+    file_ids: list[int],
+    prompt: str | None,
+    requested_at: datetime,
+    build_session_id: str,
+    doc_chapter_metadatas: list[dict[str, object]] | None = None,
+) -> dict[str, int]:
+    """Build graph candidates from parsed files without owning the outer build lock."""
+
+    from app.workflows.digest.kg_file_ingest import run_graph_file_ingest_workflow
+
+    if not file_ids:
+        return {"processed_chunks": 0}
+
+    _write_build_status(
+        subject,
+        requested_at=requested_at,
+        status="running",
+        stage="graph_file_ingest",
+        build_session_id=build_session_id,
+        error_message=None,
+        draft_available=False,
+        source_file_ids=file_ids,
+        prompt=prompt,
+        current_stage_description="Extracting candidates from parsed files and building the graph.",
+    )
+    _cleanup_pending_digest_outputs(subject)
+    result = await run_graph_file_ingest_workflow(
+        subject=subject,
+        job_id=_new_graph_run_id(),
+        file_ids=file_ids,
+        user_prompt=prompt,
+        build_session_id=build_session_id,
+        doc_chapter_metadatas=doc_chapter_metadatas,
+    )
+    if result.failed:
+        raise RuntimeError(result.error.detail)
+
+    final_state = result.require_value()
+    return {
+        "processed_chunks": len(final_state.get("chunk_ids", [])),
+    }
+
+
 async def run_graph_build_background(
     *,
     subject: str,
@@ -66,16 +170,17 @@ async def run_graph_build_background(
     prompt: str | None,
     requested_at: datetime,
 ) -> None:
-    from app.workflows.digest.kg_docs_sync import run_graph_docs_sync_workflow
-    from app.workflows.digest.kg_file_ingest import run_graph_file_ingest_workflow
-
     build_session_id = _new_build_session_id()
     try:
-        knowledge_doc_markdown, knowledge_doc_source = load_knowledge_doc_markdown(subject)
+        knowledge_doc_markdown, _knowledge_doc_source = load_knowledge_doc_markdown(subject)
         doc_chapter_metadatas = extract_doc_chapter_metadatas(knowledge_doc_markdown)
-        doc_sync_unit_changes = 0
-        doc_sync_edge_changes = 0
-        doc_sync_elapsed_ms = 0
+        doc_sync_metrics: dict[str, int | str] = {
+            "knowledge_doc_source": "none",
+            "knowledge_doc_chapter_count": len(doc_chapter_metadatas),
+            "doc_sync_unit_changes": 0,
+            "doc_sync_edge_changes": 0,
+            "doc_sync_elapsed_ms": 0,
+        }
         if not file_ids and not knowledge_doc_markdown.strip():
             _write_build_status(
                 subject,
@@ -89,47 +194,13 @@ async def run_graph_build_background(
             return
 
         if knowledge_doc_markdown:
-            _write_build_status(
-                subject,
-                requested_at=requested_at,
-                status="running",
-                stage="graph_docs_sync",
-                build_session_id=build_session_id,
-                error_message=None,
-                draft_available=False,
-                source_file_ids=file_ids,
-                prompt=prompt,
-                graph_input_paths=resolve_graph_input_paths(
-                    file_ids=file_ids,
-                    knowledge_doc_markdown=knowledge_doc_markdown,
-                ),
-                knowledge_doc_source=knowledge_doc_source,
-                knowledge_doc_chapter_count=len(doc_chapter_metadatas),
-                current_stage_description="Syncing KnowledgeUnits and relations from knowledge markdown.",
-            )
-            sync_result = run_graph_docs_sync_workflow(
+            doc_sync_metrics = run_graph_docs_sync_after_doc_build(
                 subject=subject,
-                markdown=knowledge_doc_markdown,
+                requested_at=requested_at,
+                build_session_id=build_session_id,
+                file_ids=file_ids,
+                prompt=prompt,
             )
-            if sync_result.failed:
-                _write_build_status(
-                    subject=subject,
-                    requested_at=requested_at,
-                    status="failed",
-                    stage="failed",
-                    build_session_id=build_session_id,
-                    error_message=sync_result.error.detail,
-                )
-                logger.error(
-                    "knowledge_graph_doc_sync_failed",
-                    subject=subject,
-                    error=sync_result.error.detail,
-                )
-                return
-            sync_report = sync_result.require_value()
-            doc_sync_unit_changes = sync_report.unit_change_count
-            doc_sync_edge_changes = sync_report.edge_change_count
-            doc_sync_elapsed_ms = sync_report.elapsed_ms
 
         _write_build_status(
             subject,
@@ -145,41 +216,21 @@ async def run_graph_build_background(
                 file_ids=file_ids,
                 knowledge_doc_markdown=knowledge_doc_markdown,
             ),
-            knowledge_doc_source=knowledge_doc_source,
-            knowledge_doc_chapter_count=len(doc_chapter_metadatas),
-            doc_sync_unit_changes=doc_sync_unit_changes,
-            doc_sync_edge_changes=doc_sync_edge_changes,
-            doc_sync_elapsed_ms=doc_sync_elapsed_ms,
+            **doc_sync_metrics,
             current_stage_description=(
                 "Extracting candidates from parsed files and building the graph."
                 if file_ids
                 else "Skipped file-ingest workflow (no files); keeping docs-sync results only."
             ),
         )
-        _cleanup_pending_digest_outputs(subject)
-        processed_chunks = 0
-        if file_ids:
-            result = await run_graph_file_ingest_workflow(
-                subject=subject,
-                job_id=_new_graph_run_id(),
-                file_ids=file_ids,
-                user_prompt=prompt,
-                build_session_id=build_session_id,
-                doc_chapter_metadatas=doc_chapter_metadatas,
-            )
-            if result.failed:
-                _write_build_status(
-                    subject,
-                    requested_at=requested_at,
-                    status="failed",
-                    stage="failed",
-                    build_session_id=build_session_id,
-                    error_message=result.error.detail,
-                )
-                logger.error("knowledge_graph_build_failed", subject=subject, error=result.error.detail)
-                return
-            final_state = result.require_value()
-            processed_chunks = len(final_state.get("chunk_ids", []))
+        ingest_metrics = await run_graph_file_ingest_background(
+            subject=subject,
+            file_ids=file_ids,
+            prompt=prompt,
+            requested_at=requested_at,
+            build_session_id=build_session_id,
+            doc_chapter_metadatas=doc_chapter_metadatas,
+        )
 
         _write_build_status(
             subject,
@@ -188,16 +239,12 @@ async def run_graph_build_background(
             stage="completed",
             build_session_id=build_session_id,
             error_message=None,
-            processed_chunks=processed_chunks,
+            processed_chunks=int(ingest_metrics.get("processed_chunks", 0) or 0),
             graph_input_paths=resolve_graph_input_paths(
                 file_ids=file_ids,
                 knowledge_doc_markdown=knowledge_doc_markdown,
             ),
-            knowledge_doc_source=knowledge_doc_source,
-            knowledge_doc_chapter_count=len(doc_chapter_metadatas),
-            doc_sync_unit_changes=doc_sync_unit_changes,
-            doc_sync_edge_changes=doc_sync_edge_changes,
-            doc_sync_elapsed_ms=doc_sync_elapsed_ms,
+            **doc_sync_metrics,
         )
     except asyncio.CancelledError:
         _write_build_status(
@@ -224,7 +271,11 @@ async def run_graph_build_background(
         release_knowledge_build_lock(subject)
 
 
-__all__ = ["run_graph_build_background"]
+__all__ = [
+    "run_graph_build_background",
+    "run_graph_docs_sync_after_doc_build",
+    "run_graph_file_ingest_background",
+]
 
 
 

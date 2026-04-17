@@ -4,7 +4,11 @@ from __future__ import annotations
 
 from app.workflows.digest.kg_docs_sync import run_graph_docs_sync_workflow
 from app.workflows.digest.kg_file_ingest import run_graph_file_ingest_workflow
-from app.workflows.support.knowledge_graph.builds import run_graph_build_background
+from app.workflows.support.knowledge_graph.builds import (
+    run_graph_build_background,
+    run_graph_docs_sync_after_doc_build,
+    run_graph_file_ingest_background,
+)
 from app.workflows.support.knowledge_graph.incremental_sync import (
     KnowledgeSyncReport,
     sync_markdown_knowledge_graph,
@@ -39,6 +43,8 @@ __all__ = [
     "get_knowledge_units",
     "handle_study_plan_request",
     "run_graph_build_background",
+    "run_graph_docs_sync_after_doc_build",
+    "run_graph_file_ingest_background",
     "run_graph_docs_sync_workflow",
     "run_graph_file_ingest_workflow",
     "sync_markdown_knowledge_graph",
