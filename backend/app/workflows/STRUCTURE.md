@@ -222,7 +222,7 @@ ingest/
 - `fast_parse/` 与 `deep_enhance/` 是真实链路
 - `fast_parse/lib/runtime.py` 是单文件解析 workflow runner 的真实落点
 - `deep_enhance/lib/recovery.py` 承接增强恢复
-- `common/events.py` 与 `common/exports.py` 承接跨链路事件与 workflow export
+- Ingest workflow export 跟随各自 lane 的 `graph.py`，由模块根 `__init__.py` 聚合
 - `common/parsing/` 是当前两条链路共享的解析实现
 
 ### 9.3 interact

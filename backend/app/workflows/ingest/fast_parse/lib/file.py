@@ -21,7 +21,6 @@ from app.utils.path_helpers import (
     build_temp_dir,
 )
 from app.shared.infra.workflow.context import WorkflowContext
-from app.workflows.ingest.common.events import IngestFileClassifiedEvent
 from app.workflows.ingest.fast_parse.lib.common import workflow_logger
 from app.workflows.ingest.common.parsing.classifier import classify_file
 from app.workflows.ingest.common.parsing.strategy import build_parse_plan
@@ -132,15 +131,6 @@ def build_classify_file_node(*, context: WorkflowContext):
                     ingest_status=IngestStatus.FAST_PARSING.value,
                     digest_current_step="ingest.fast_parse.running",
                 )
-            await context.event_bus.publish(
-                IngestFileClassifiedEvent(
-                    subject=state["subject"],
-                    file_id=state["file_id"],
-                    file_category=classification.file_category,
-                    recommended_parser=classification.recommended_parser,
-                    detected_language=classification.detected_language,
-                )
-            )
             logger.info(
                 "ingest_file_classified",
                 category=classification.file_category,

@@ -21,8 +21,52 @@ def update_job_progress(
     job_type: Literal["graph"],
     progress: int,
     current_step: str,
+    subject: str | None = None,
 ) -> None:
-    del session, job_id, job_type, progress, current_step
+    from app.repositories.knowledge import knowledge_build_repo
+    from app.utils.docgen_store import update_knowledge_build_status
+
+    normalized_progress = max(0, min(int(progress), 100))
+    safe_step = str(current_step or "").strip() or "running"
+    stage_descriptions = {
+        "acquire_lock": "正在获取图构建锁。",
+        "prepare": "正在准备可构建的知识片段。",
+        "extract": "正在抽取 KnowledgeUnit 候选。",
+        "cluster": "正在聚类与合并候选 KnowledgeUnit。",
+        "resolve_nodes": "正在解析并落库 KnowledgeUnit。",
+        "resolve_edges": "正在解析并落库 KnowledgeEdge。",
+        "analyze_impact": "正在分析图谱变更影响。",
+        "finalize_graph": "正在完成图谱发布。",
+    }
+
+    resolved_subject = subject
+    if resolved_subject:
+        knowledge_build_repo.update_digest_job(
+            session,
+            job_id,
+            subject=resolved_subject,
+            status="processing",
+            progress=normalized_progress,
+            current_step=safe_step,
+            job_type=job_type,
+        )
+        update_knowledge_build_status(
+            resolved_subject,
+            status="running",
+            stage=safe_step,
+            progress_pct=normalized_progress,
+            current_stage_description=stage_descriptions.get(safe_step, "知识图谱构建进行中。"),
+        )
+        return
+
+    knowledge_build_repo.update_digest_job(
+        session,
+        job_id,
+        status="processing",
+        progress=normalized_progress,
+        current_step=safe_step,
+        job_type=job_type,
+    )
 
 
 def cleanup_pending_by_job(

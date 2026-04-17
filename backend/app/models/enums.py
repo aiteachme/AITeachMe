@@ -150,14 +150,6 @@ class TreeVersionStatus(str, Enum):
     ARCHIVED = "archived"
 
 
-class ThemeTreeNodeType(str, Enum):
-    CHAPTER = "chapter"
-    SECTION = "section"
-    THEME = "theme"
-    UNIT_BUCKET = "unit_bucket"
-    UNCATEGORIZED = "uncategorized"
-
-
 class UnitTreeMembershipRole(str, Enum):
     PRIMARY = "primary"
     SECONDARY = "secondary"
@@ -312,4 +304,3 @@ class IngestStatus(str, Enum):
     # Backward-compatible aliases for older persisted values.
     PARSING = "fast_parsing"
     VALIDATING = "fast_parsed"
-

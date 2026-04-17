@@ -43,8 +43,8 @@
 
 - `ingest/__init__.py`、`digest/__init__.py`
   引擎模块根只保留稳定导入面，不再承载业务实现
-- `ingest/common/events.py`、`ingest/common/exports.py`
-  Ingest 跨链路事件与 workflow export 落点
+- `ingest/fast_parse/graph.py`、`ingest/deep_enhance/graph.py`
+  Ingest 图定义与 workflow export 声明落点
 - `digest/common/events.py`、`digest/common/exports.py`
   Digest 跨链路事件与 workflow export 落点
 - `digest/knowledge_graph/overview.py`、`digest/knowledge_graph/study_plan.py`

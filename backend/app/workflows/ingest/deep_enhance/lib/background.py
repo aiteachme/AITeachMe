@@ -14,11 +14,6 @@ from app.shared.infra.storage import get_content_store, run_store_sync
 from app.models import IngestStatus
 from app.repositories.files_repo import get_raw_file_by_id, replace_raw_file_assets, update_raw_file
 from app.utils.path_helpers import build_asset_name_prefix
-from app.workflows.ingest.common.events import (
-    IngestFileEnhanceFailedEvent,
-    IngestFileEnhanceStartedEvent,
-    IngestFileReadyForDigestEvent,
-)
 from app.workflows.ingest.common.parsing.classifier import ClassificationResult
 from app.workflows.ingest.common.parsing.orchestrator import deep_enhance_file
 from app.workflows.ingest.common.parsing.strategy import build_parse_plan
@@ -55,7 +50,6 @@ async def _run_deep_enhance_background(
     *,
     subject: str,
     file_id: int,
-    event_bus=None,
 ) -> None:
     """Background Phase 2: LLM Vision OCR enhancement.
 
@@ -130,12 +124,6 @@ async def _run_deep_enhance_background(
                 "deep_enhance_assets_materialized",
                 asset_count=materialized_asset_count,
             )
-
-            # Publish enhance started event
-            if event_bus is not None:
-                await event_bus.publish(
-                    IngestFileEnhanceStartedEvent(subject=subject, file_id=file_id)
-                )
 
             # Read Phase 1 markdown
             if not markdown_path.exists():
@@ -258,11 +246,6 @@ async def _run_deep_enhance_background(
                         digest_current_step="ingest.enhance.completed",
                     )
 
-            # Publish ready event
-            if event_bus is not None:
-                await event_bus.publish(
-                    IngestFileReadyForDigestEvent(subject=subject, file_id=file_id)
-                )
             enhance_logger.info(
                 "deep_enhance_background_completed",
                 ocr_images=enhance_result.asset_ocr_images,
@@ -284,11 +267,5 @@ async def _run_deep_enhance_background(
                         digest_current_step="ingest.enhance.failed",
                         parse_error_message=f"Phase 2 enhance failed: {exc}",
                     )
-            if event_bus is not None:
-                await event_bus.publish(
-                    IngestFileEnhanceFailedEvent(
-                        subject=subject, file_id=file_id, error_message=str(exc)
-                    )
-                )
         except Exception:
             enhance_logger.exception("deep_enhance_failure_update_error")

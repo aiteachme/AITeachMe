@@ -18,8 +18,6 @@ class ExamGenerateRequest(BaseModel):
     focus_prompt: str | None = Field(default=None, description="Optional prompt describing key focus areas.")
     sample_file_uids: list[str] | None = Field(default=None, description="Optional uploaded sample-paper file UIDs.")
     num_questions: int | None = Field(default=None, ge=1, le=200, description="Optional target question count.")
-    theme_tree_node_id: int | None = Field(default=None, description="Optional theme tree node scope.")
-    teaching_unit_ids: list[int] | None = Field(default=None, description="Optional teaching unit scope.")
 
 
 class ExamSubmitAnswerItem(BaseModel):
@@ -52,8 +50,6 @@ class ExamGenerateResponse(RuntimeStatusResponse):
     exam_mode: str
     num_questions: int
     exam_paper_id: int | None = None
-    theme_tree_node_id: int | None = None
-    teaching_unit_ids: list[int] = Field(default_factory=list)
     sample_file_uids: list[str] = Field(default_factory=list)
 
 
@@ -89,7 +85,7 @@ class QuestionBankItemResponse(BaseModel):
     stem: str
     question_type: str
     difficulty: str
-    teaching_unit_id: int
+    knowledge_unit_id: int
     times_asked: int
     last_asked_at: datetime
     last_exam_paper_id: int
@@ -115,7 +111,6 @@ class ExamPaperItemResponse(BaseModel):
     options: list[str] | None = None
     correct_answer: str | None = None
     explanation: str
-    teaching_unit_id: int
     knowledge_unit_links: list[ExamNodeLinkResponse] = Field(default_factory=list)
     user_answer: str | None = None
     is_correct: bool | None = None

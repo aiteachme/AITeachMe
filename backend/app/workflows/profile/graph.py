@@ -72,7 +72,7 @@ def _serialize_mastery_result(result: MasteryUpdateResult) -> dict[str, object]:
 def _serialize_weaknesses(items: list[WeaknessItem]) -> list[dict[str, object]]:
     return [
         {
-            "teaching_unit_id": item.teaching_unit_id,
+            "knowledge_unit_id": item.knowledge_unit_id,
             "priority": item.priority,
             "reason": item.reason,
             "mastery_score": item.mastery_score,
@@ -403,6 +403,5 @@ __all__ = [
     "build_profile_workflow_graph",
     "create_profile_initial_state",
 ]
-
 
 

@@ -33,7 +33,7 @@
 但当前 `common/parsing` 里有两类东西不该继续膨胀：
 
 - `providers.py` 这类未来式 provider registry，目前没有接入真实主流程，容易误导读代码的人。
-- `provider_contracts.py` 同时放当前 `ParseDecision` 和未来 `ParsedBlock` / `QualitySignals`，概念跨度偏大。
+- `provider_contracts.py` 不应继续混入未来 `ParsedBlock` / `QualitySignals`；这些应留在设计文档，等真正落地证据层时再进代码。
 
 建议：`common` 保留，未来收口成“解析共享库”，不要把未落地的大平台抽象继续堆进去。
 

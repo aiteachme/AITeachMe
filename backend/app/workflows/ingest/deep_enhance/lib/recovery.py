@@ -66,7 +66,6 @@ async def recover_stalled_enhancements(*, task_registry=None) -> int:
                 enhance_coro = _run_deep_enhance_background(
                     subject=subject,
                     file_id=raw_file.id,
-                    event_bus=None,
                 )
                 if task_registry is not None:
                     task_registry.spawn(

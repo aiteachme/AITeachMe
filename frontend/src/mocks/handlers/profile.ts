@@ -52,14 +52,10 @@ const mockUnitItems = [
 const mockMasteryOverview = {
   subject: "mock",
   user_id: "local",
-  weak_unit_count: 0,
   weak_knowledge_unit_count: 2,
-  unit_states: [],
   knowledge_unit_states: [
     {
       id: 1,
-      target_kind: "knowledge_unit",
-      teaching_unit_id: null,
       knowledge_unit_id: 101,
       mastery_score: 0.95,
       confidence_score: 0.9,
@@ -74,8 +70,6 @@ const mockMasteryOverview = {
     },
     {
       id: 2,
-      target_kind: "knowledge_unit",
-      teaching_unit_id: null,
       knowledge_unit_id: 102,
       mastery_score: 0.82,
       confidence_score: 0.8,
@@ -90,8 +84,6 @@ const mockMasteryOverview = {
     },
     {
       id: 3,
-      target_kind: "knowledge_unit",
-      teaching_unit_id: null,
       knowledge_unit_id: 103,
       mastery_score: 0.6,
       confidence_score: 0.62,
@@ -106,8 +98,6 @@ const mockMasteryOverview = {
     },
     {
       id: 4,
-      target_kind: "knowledge_unit",
-      teaching_unit_id: null,
       knowledge_unit_id: 104,
       mastery_score: 0.3,
       confidence_score: 0.45,
@@ -122,8 +112,6 @@ const mockMasteryOverview = {
     },
     {
       id: 5,
-      target_kind: "knowledge_unit",
-      teaching_unit_id: null,
       knowledge_unit_id: 105,
       mastery_score: 0.65,
       confidence_score: 0.6,
@@ -144,9 +132,6 @@ const mockReviewTasks = [
     id: 11,
     user_id: "local",
     subject: "mock",
-    task_type: "review_knowledge_unit",
-    target_kind: "knowledge_unit",
-    teaching_unit_id: null,
     knowledge_unit_id: 104,
     priority: 0.95,
     scheduled_at: nowIso,
@@ -155,19 +140,12 @@ const mockReviewTasks = [
     ease_factor: 2.5,
     repetition_count: 0,
     reason: "repeated_wrong",
-    source_state_id: 4,
     source_exam_paper_id: null,
-    created_at: nowIso,
-    completed_at: null,
-    expired_at: null,
   },
   {
     id: 12,
     user_id: "local",
     subject: "mock",
-    task_type: "review_knowledge_unit",
-    target_kind: "knowledge_unit",
-    teaching_unit_id: null,
     knowledge_unit_id: 103,
     priority: 0.82,
     scheduled_at: nowIso,
@@ -176,11 +154,7 @@ const mockReviewTasks = [
     ease_factor: 2.5,
     repetition_count: 1,
     reason: "forgetting_due",
-    source_state_id: 3,
     source_exam_paper_id: null,
-    created_at: nowIso,
-    completed_at: null,
-    expired_at: null,
   },
 ];
 
@@ -236,4 +210,3 @@ export const profileHandlers = [
     });
   }),
 ];
-

@@ -1,10 +1,12 @@
-﻿# Digest 模块说明
+﻿# Digest Module
 
+<<<<<<< HEAD
 最后更新：2026-04-17
+=======
+`digest/` contains workflow lanes only.
+>>>>>>> f022e165e2fb089f91f95f4a60321570adbf68e5
 
-`digest/` 负责把资料从“可检索内容”进一步编排成 confirmed plan、知识文档和知识图谱。它也是本轮 workflows 单层化重构的第一落地区域。
-
-## 当前 canonical 结构
+## Current Layout
 
 ```text
 digest/
@@ -12,10 +14,15 @@ digest/
   README.md
   planner/
   docgen/
-  knowledge_graph/
+  kg_file_ingest/
+  kg_docs_sync/
   common/
+  application/
+  shared/
+  unified/
 ```
 
+<<<<<<< HEAD
 说明：
 
 - `planner/` 负责生成 confirmed plan
@@ -47,3 +54,9 @@ from app.workflows.digest.planner import run_build_planner_workflow
 - 新 helper 放各自链路 `lib/`
 - 跨链路共享能力走 `common/`
 - Digest 文档教学语义走 `common/runtime_config.py` 与 `common/pedagogy/`
+=======
+## Notes
+- `kg_file_ingest/` and `kg_docs_sync/` are independent workflows and follow the lane skeleton.
+- Non-workflow knowledge-graph business services were moved to `workflows/support/knowledge_graph/`.
+- Cross-lane shared code stays in `digest/common/`.
+>>>>>>> f022e165e2fb089f91f95f4a60321570adbf68e5
