@@ -24,14 +24,8 @@ from app.workflows.support.knowledge_graph.query import (
     get_knowledge_unit_relations,
     get_knowledge_units,
 )
-from app.workflows.support.knowledge_graph.study_plan import (
-    build_study_plan,
-    handle_study_plan_request,
-)
-
 __all__ = [
     "KnowledgeSyncReport",
-    "build_study_plan",
     "explain_relation_path",
     "find_knowledge_path",
     "get_chunk_context",
@@ -41,7 +35,6 @@ __all__ = [
     "get_knowledge_unit_detail",
     "get_knowledge_unit_relations",
     "get_knowledge_units",
-    "handle_study_plan_request",
     "run_graph_build_background",
     "run_graph_docs_sync_after_doc_build",
     "run_graph_file_ingest_background",

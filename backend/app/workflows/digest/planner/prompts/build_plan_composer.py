@@ -8,7 +8,12 @@ from app.workflows.digest.common.models import DigestMaterialContext
 from app.workflows.digest.planner.lib.models import (
     LearningIntent,
     PlannerBrief,
-    material_topic_hints,
+)
+from app.workflows.digest.planner.prompts.context import (
+    render_latest_plan,
+    render_material_digest,
+    render_material_overview,
+    render_message_history,
 )
 from app.workflows.digest.planner.prompts.examples import render_composer_examples
 
@@ -16,60 +21,30 @@ PLAN_JSON_MARKER = "<PLAN_JSON>"
 PLAN_JSON_END_MARKER = "</PLAN_JSON>"
 
 
-def _render_material_context(material_context: DigestMaterialContext) -> str:
-    digest = (material_context.material_digest or "").strip()
-    if not digest:
-        return "暂无资料正文上下文"
-    return digest
-
-
-def _compact_message_history(message_history: list[str] | None) -> str:
-    cleaned = [str(item).strip() for item in message_history or [] if str(item).strip()]
-    if not cleaned:
-        return "暂无补充修改意见"
-    return "\n".join(f"- {item}" for item in cleaned[-6:])
-
-
-def _compact_latest_plan(latest_plan: dict[str, Any] | None) -> str:
-    if not latest_plan:
-        return "暂无上一版方案"
-    plan_summary = str(latest_plan.get("plan_summary") or "").strip()
-    chapter_count = len(list(latest_plan.get("chapter_plan") or []))
-    if plan_summary:
-        return f"上一版摘要：{plan_summary}\n上一版章节数：{chapter_count}"
-    return f"上一版章节数：{chapter_count}"
-
-
 def build_plan_composer_messages(
     *,
     subject: str,
     user_goal: str,
     digest_mode: str,
-    tone: str,
     material_context: DigestMaterialContext,
     planner_brief: PlannerBrief,
     learning_intent: LearningIntent,
     message_history: list[str] | None = None,
     latest_plan: dict[str, Any] | None = None,
 ) -> list[dict[str, str]]:
-    topics = "、".join(material_topic_hints(material_context)) or "暂无明显主题"
-    sketch_tasks = "；".join(planner_brief.focus_points) or planner_brief.markdown
-    provisional_chapters = "；".join(planner_brief.outline_items) or "暂无暂定章节"
+    sketch = planner_brief.markdown.strip() or "暂无可见规划判断"
     focus_concepts = "、".join(learning_intent.focus_concepts) or "暂无明确概念清单"
-    material_excerpt = _render_material_context(material_context)
     prompt = (
         "请综合用户意图、可见思考过程和资料上下文，生成一份高度概括的知识文档构建计划。\n"
         "你这一次输出两段：先给用户看的计划大纲，再给后端看的极简 JSON。\n\n"
         f"主题：{subject}\n"
         f"用户目标：{user_goal}\n"
         f"模式：{digest_mode}\n"
-        f"语气：{tone}\n"
-        f"资料主题：{topics}\n\n"
-        f"资料上下文：\n{material_excerpt}\n\n"
-        f"最近对话与修改意见：\n{_compact_message_history(message_history)}\n\n"
-        f"上一版方案：\n{_compact_latest_plan(latest_plan)}\n\n"
-        f"草稿任务：{sketch_tasks}\n\n"
-        f"草稿暂定章节：{provisional_chapters}\n\n"
+        f"资料画像：\n{render_material_overview(material_context)}\n\n"
+        f"资料上下文：\n{render_material_digest(material_context)}\n\n"
+        f"最近对话与修改意见：\n{render_message_history(message_history, limit=6)}\n\n"
+        f"上一版方案：\n{render_latest_plan(latest_plan)}\n\n"
+        f"可见规划判断：\n{sketch}\n\n"
         f"意图类型：{learning_intent.goal_type}\n"
         f"目标受众：{learning_intent.audience}\n"
         f"成功标准：{'；'.join(learning_intent.success_criteria)}\n"
@@ -87,7 +62,7 @@ def build_plan_composer_messages(
         "不要复述“我会阅读文档/检索来源/根据资料生成”，不要列来源标题。\n"
         "这一段会通过 SSE 展示给用户，所以要自然、清楚、短。\n\n"
         f"第二段必须从单独一行 {PLAN_JSON_MARKER} 开始，随后输出一个合法 JSON 对象，最后以 {PLAN_JSON_END_MARKER} 结束。\n"
-        "JSON 只输出你新生成的信息，不要重复题目、目标、模式、语气等上下文字段。\n"
+        "JSON 只输出你新生成的信息，不要重复题目、目标、模式等上下文字段。\n"
         "JSON 只有两个字段：plan_text 和 chapters。\n\n"
         "JSON 形状：\n"
         "{\n"

@@ -17,25 +17,46 @@ export const ACTIVE_DOC_BUILD_STATUSES = new Set(["accepted", "running", "publis
 
 export const DOC_BUILD_STAGE_PROGRESS: Record<string, number> = {
   build_accepted: 8,
+  planner_confirmed: 16,
   prepare_shared: 24,
-  doc_lane_staged: 62,
-  graph_ready: 74,
+  preparing_docgen_context: 30,
+  generating_chapters: 46,
+  enhancing_chapters: 62,
+  chapters_enhanced: 72,
+  merge_reviewed: 82,
+  doc_lane_staged: 90,
+  docgen_finalized: 94,
+  graph_ready: 96,
   publishing: 94,
   completed: 100,
 };
 
 export const DOC_BUILD_STAGE_CAP: Record<string, number> = {
   build_accepted: 20,
+  planner_confirmed: 28,
   prepare_shared: 48,
-  doc_lane_staged: 76,
-  graph_ready: 86,
+  preparing_docgen_context: 42,
+  generating_chapters: 66,
+  enhancing_chapters: 78,
+  chapters_enhanced: 84,
+  merge_reviewed: 90,
+  doc_lane_staged: 94,
+  docgen_finalized: 97,
+  graph_ready: 98,
   publishing: 97,
 };
 
 export const DOC_BUILD_STAGE_TEXT: Record<string, string> = {
   build_accepted: "已接收知识构建请求",
+  planner_confirmed: "已读取确认方案",
   prepare_shared: "正在分析材料结构与内容画像",
-  doc_lane_staged: "文档草稿已生成，正在等待统一发布",
+  preparing_docgen_context: "正在增强大纲、识别写法并摘要材料",
+  generating_chapters: "正在并行生成章节",
+  enhancing_chapters: "正在增强章节图示、例题和小结",
+  chapters_enhanced: "章节增强已完成",
+  merge_reviewed: "整本文档检查完成，准备发布",
+  doc_lane_staged: "文档草稿已生成，正在发布正式版",
+  docgen_finalized: "知识文档已发布，正在同步知识图谱",
   graph_ready: "知识图谱已就绪",
   publishing: "正在发布正式版知识文档",
   completed: "最新知识文档已发布",
@@ -97,6 +118,139 @@ export function normalizeDomainLabel(input: string): string {
   } catch {
     return input.replace(/^https?:\/\//, "").split("/")[0] || input;
   }
+}
+
+export function cleanKnowledgeMarkdownForDisplay(markdown: string): string {
+  return repairMalformedMermaidFencesForRender(String(markdown ?? ""))
+    .replace(/\s*\{#ku_[A-Za-z0-9_-]+\}/g, "")
+    .replace(/\s*<!--\s*ATM_KU:\s*ku_[A-Za-z0-9_-]+\s*-->/g, "")
+    .replace(/[ \t]+\n/g, "\n");
+}
+
+function isMarkdownBoundary(line: string): boolean {
+  return /^(#{1,6}\s+\S|[-*+]\s+\S|\d+\.\s+\S|>\s*\[!|\|.+\||---\s*$)/.test(line.trim());
+}
+
+function isIndentedContextEcho(line: string): boolean {
+  if (!/^( {4,}|\t)/.test(line)) return false;
+  const trimmed = line.trim();
+  return Boolean(trimmed) && (
+    trimmed.startsWith("#") ||
+    trimmed.startsWith("**") ||
+    trimmed.startsWith(">") ||
+    trimmed.startsWith("|") ||
+    trimmed.length > 18
+  );
+}
+
+function looksLikeMermaidLine(line: string): boolean {
+  const trimmed = line.trim();
+  if (!trimmed) return true;
+  if (/^(mindmap|graph|flowchart|sequenceDiagram|classDiagram|stateDiagram(?:-v2)?|erDiagram|gantt|pie|journey|timeline|gitGraph)\b/i.test(trimmed)) return true;
+  if (/^\s/.test(line)) return true;
+  return /-->|---|==>|\||\[|\]|\(|\)|\{|\}/.test(trimmed);
+}
+
+function isMalformedMermaidFence(line: string): boolean {
+  const match = line.match(/^\s*```\s*(.+)$/);
+  return Boolean(match?.[1] && looksLikeMermaidLine(match[1]));
+}
+
+/**
+ * ReactMarkdown parses fenced code before our `code` renderer runs.
+ * If DocGen outputs a malformed Mermaid fence, the parser may swallow
+ * following headings into one giant code block. This is a frontend-only
+ * render guard: it normalizes broken Mermaid fences before Markdown parse.
+ */
+function repairMalformedMermaidFencesForRender(markdown: string): string {
+  if (!markdown.includes("```")) return markdown;
+
+  const lines = markdown.replace(/\r\n?/g, "\n").split("\n");
+  const output: string[] = [];
+  let inMermaid = false;
+  let afterMermaidClose = false;
+  let skippingArtifact = false;
+  let mermaidLines: string[] = [];
+
+  const flushMermaid = () => {
+    while (mermaidLines.length > 0 && !mermaidLines[0].trim()) mermaidLines.shift();
+    while (mermaidLines.length > 0 && !mermaidLines[mermaidLines.length - 1].trim()) mermaidLines.pop();
+    if (mermaidLines.length > 0) {
+      output.push("```mermaid", ...mermaidLines, "```");
+    }
+    mermaidLines = [];
+  };
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
+    const trimmed = line.trim();
+
+    if (skippingArtifact) {
+      if (!trimmed) continue;
+      if (isIndentedContextEcho(line) || isMalformedMermaidFence(line)) continue;
+      if (trimmed.startsWith("```")) {
+        skippingArtifact = false;
+        afterMermaidClose = false;
+        continue;
+      }
+      if (isMarkdownBoundary(line)) {
+        skippingArtifact = false;
+        afterMermaidClose = false;
+        index -= 1;
+        continue;
+      }
+      continue;
+    }
+
+    if (!inMermaid) {
+      if (afterMermaidClose) {
+        if (isIndentedContextEcho(line) || isMalformedMermaidFence(line)) {
+          skippingArtifact = true;
+          continue;
+        }
+        afterMermaidClose = false;
+      }
+
+      const start = line.match(/^\s*```\s*(mermaid|mindmap|graph|flowchart|sequenceDiagram|classDiagram|stateDiagram(?:-v2)?|erDiagram|gantt|pie|journey|timeline|gitGraph)\s*$/i);
+      if (start?.[1]) {
+        const lang = start[1];
+        inMermaid = true;
+        mermaidLines = lang.toLowerCase() === "mermaid" ? [] : [lang];
+        continue;
+      }
+
+      output.push(line);
+      continue;
+    }
+
+    if (trimmed.startsWith("```")) {
+      flushMermaid();
+      inMermaid = false;
+      afterMermaidClose = true;
+      continue;
+    }
+
+    if (mermaidLines.length > 0 && isMarkdownBoundary(line)) {
+      flushMermaid();
+      inMermaid = false;
+      afterMermaidClose = false;
+      index -= 1;
+      continue;
+    }
+
+    if (mermaidLines.length > 0 && !looksLikeMermaidLine(line)) {
+      flushMermaid();
+      inMermaid = false;
+      afterMermaidClose = false;
+      index -= 1;
+      continue;
+    }
+
+    mermaidLines.push(line.replace(/^(>\s*)+/, "").trimEnd());
+  }
+
+  if (inMermaid) flushMermaid();
+  return output.join("\n");
 }
 
 /* ---- Markdown Helpers ---- */
@@ -267,6 +421,10 @@ export function resolveFileProgressScore(file: { error_message?: string | null; 
 export function buildChapterStatusLabel(status: string | undefined): string {
   switch ((status ?? "").trim()) {
     case "planned": return "待执行";
+    case "generating": return "写作中";
+    case "generated": return "初稿完成";
+    case "enhancing": return "增强中";
+    case "enhanced": return "增强完成";
     case "researching": return "检索中";
     case "researched": return "研究完成";
     case "drafting": return "写作中";
@@ -279,8 +437,11 @@ export function buildChapterStatusLabel(status: string | undefined): string {
 export function chapterStatusClasses(status: string | undefined): string {
   switch ((status ?? "").trim()) {
     case "completed": return "bg-emerald-500";
+    case "enhanced":
     case "drafted":
     case "drafting": return "bg-sky-500";
+    case "generated":
+    case "enhancing":
     case "researched":
     case "researching": return "bg-amber-500";
     default: return "bg-slate-300";

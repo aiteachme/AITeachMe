@@ -50,6 +50,7 @@ interface ChatMessage {
 }
 
 interface PersistedPlannerState {
+  version?: number;
   messages: ChatMessage[];
   plannerSessionId: string | null;
   currentPlan: BuildPlannerPlanResponse | null;
@@ -59,11 +60,16 @@ interface PersistedPlannerState {
 
 const ACCEPT = ".pdf,.docx,.doc,.ppt,.pptx,.md,.markdown,.txt,.png,.jpg,.jpeg,.webp";
 const STORAGE_PREFIX = "aiteachme:files-page-planner";
+const PLANNER_STATE_VERSION = 4;
 
 let messageCounter = 0;
 
 const nextMessageId = () => `msg_${Date.now()}_${++messageCounter}`;
 const storageKey = (subjectId: string) => `${STORAGE_PREFIX}:${subjectId}`;
+
+function logPlannerDebug(event: string, payload: Record<string, unknown> = {}) {
+  console.info(`[planner] ${event}`, payload);
+}
 
 interface PlannerRuntimeStep {
   name: string;
@@ -74,7 +80,6 @@ interface PlannerRuntimeStep {
 interface PlannerRuntimeStats {
   elapsed_ms?: number;
   steps?: PlannerRuntimeStep[];
-  generation_mode?: string | null;
 }
 
 interface PlannerStreamEvent {
@@ -126,10 +131,39 @@ function readPersistedPlannerState(subjectId: string): PersistedPlannerState | n
     const raw =
       window.localStorage.getItem(key) ??
       window.sessionStorage.getItem(key);
-    return raw ? (JSON.parse(raw) as PersistedPlannerState) : null;
+    logPlannerDebug("read_persisted_state", { subjectId, hasRaw: Boolean(raw) });
+    if (!raw) {
+      return null;
+    }
+    const parsed = JSON.parse(raw) as PersistedPlannerState;
+    if (parsed.version !== PLANNER_STATE_VERSION || isLegacyPlannerPlan(parsed.currentPlan)) {
+      logPlannerDebug("ignore_persisted_state", {
+        subjectId,
+        version: parsed.version,
+        isLegacyPlan: isLegacyPlannerPlan(parsed.currentPlan),
+      });
+      return null;
+    }
+    return parsed;
   } catch {
+    logPlannerDebug("read_persisted_state_failed", { subjectId });
     return null;
   }
+}
+
+function isLegacyPlannerPlan(plan: BuildPlannerPlanResponse | null | undefined): boolean {
+  const legacyMarkers = [
+    "核心概念与高频考点",
+    "公式与速判技巧",
+    "高频题型突破",
+    "易错点辨析",
+    "综合变式与迁移",
+    "考前速查清单",
+  ];
+  return (plan?.chapter_plan ?? []).some((chapter) => {
+    const title = String(chapter.title ?? "");
+    return legacyMarkers.some((marker) => title.includes(marker));
+  });
 }
 
 function persistPlannerState(subjectId: string, value: PersistedPlannerState) {
@@ -137,9 +171,16 @@ function persistPlannerState(subjectId: string, value: PersistedPlannerState) {
     return;
   }
   const key = storageKey(subjectId);
-  const serialized = JSON.stringify(value);
+  const serialized = JSON.stringify({ ...value, version: PLANNER_STATE_VERSION });
   window.localStorage.setItem(key, serialized);
   window.sessionStorage.setItem(key, serialized);
+  logPlannerDebug("persist_state", {
+    subjectId,
+    messageCount: value.messages.length,
+    plannerSessionId: value.plannerSessionId,
+    hasCurrentPlan: Boolean(value.currentPlan),
+    plannerNeedsRefresh: value.plannerNeedsRefresh,
+  });
 }
 
 function sameStringSet(left: string[], right: string[]) {
@@ -764,6 +805,12 @@ export function BuildPlanPage() {
     // 先尝试恢复本地缓存，但只有存在真实 planner session 时才信任。
     const persisted = readPersistedPlannerState(subjectId);
     if (persisted?.plannerSessionId && persisted.messages?.length) {
+      logPlannerDebug("restore_from_local_storage", {
+        subjectId,
+        plannerSessionId: persisted.plannerSessionId,
+        messageCount: persisted.messages.length,
+        hasCurrentPlan: Boolean(persisted.currentPlan),
+      });
       setMessages(persisted.messages);
       setPlannerSessionId(persisted.plannerSessionId);
       setCurrentPlan(persisted.currentPlan ?? null);
@@ -778,13 +825,19 @@ export function BuildPlanPage() {
     // 本地没有可用缓存时，从后端恢复最近一次 planner 会话。
     async function restoreFromServer() {
       try {
+        logPlannerDebug("restore_latest_request", { subjectId });
         const response = await apiClient<ApiResponse<BuildPlannerSessionResponse | null>>({
           method: "POST",
           url: `/api/v1/subjects/${subjectId}/knowledge/build/plans/latest`,
         });
         if (cancelled) return;
         const session = response.data;
-        if (!session || !session.turns?.length) {
+        if (!session || !session.turns?.length || isLegacyPlannerPlan(session.latest_plan)) {
+          logPlannerDebug("restore_latest_empty", {
+            subjectId,
+            found: Boolean(session),
+            isLegacyPlan: Boolean(session && isLegacyPlannerPlan(session.latest_plan)),
+          });
           // No server history either — fresh start
           setMessages([createWelcomeMessage()]);
           setPlannerSessionId(null);
@@ -798,6 +851,13 @@ export function BuildPlanPage() {
         }
 
         // 用后端 turns 重建聊天记录。
+        logPlannerDebug("restore_latest_success", {
+          subjectId,
+          plannerSessionId: session.session_id,
+          turnCount: session.turns.length,
+          hasLatestPlan: Boolean(session.latest_plan),
+          chapterCount: session.latest_plan?.chapter_plan?.length ?? 0,
+        });
         const restored: ChatMessage[] = [createWelcomeMessage()];
         for (const turn of session.turns) {
           restored.push(createMessage(
@@ -818,6 +878,7 @@ export function BuildPlanPage() {
       } catch {
         // 后端恢复失败时，回到一个干净的新会话。
         if (cancelled) return;
+        logPlannerDebug("restore_latest_failed", { subjectId });
         setMessages([createWelcomeMessage()]);
         setPlannerSessionId(null);
         setCurrentPlan(null);
@@ -1018,10 +1079,15 @@ export function BuildPlanPage() {
   }, []);
 
   const handleContinueAdjust = useCallback(() => {
+    logPlannerDebug("click_adjust_plan", {
+      subjectId,
+      plannerSessionId,
+      hasCurrentPlan: Boolean(currentPlan),
+    });
     setIsRevisingPlan(true);
     setInputValue((prev) => (prev.trim() ? prev : "请帮我调整方案："));
     focusComposer();
-  }, [focusComposer]);
+  }, [currentPlan, focusComposer, plannerSessionId, subjectId]);
 
   const appendPlannerResponse = useCallback(
     (response: BuildPlannerSessionResponse, fallbackContent: string, contentOverride?: string | null) => {
@@ -1083,11 +1149,26 @@ export function BuildPlanPage() {
 
   const handleSend = useCallback(async () => {
     const text = inputValue.trim();
+    logPlannerDebug("click_send_plan_message", {
+      subjectId,
+      hasText: Boolean(text),
+      isPlannerPending,
+      isBuilding,
+      plannerSessionId,
+      hasCurrentPlan: Boolean(currentPlan),
+      plannerNeedsRefresh,
+      plannerFileCount: plannerFileUids.length,
+      readyFileCount: readyFileUids.length,
+    });
     if (!text || isPlannerPending || isBuilding) {
+      logPlannerDebug("send_plan_message_blocked", {
+        reason: !text ? "empty_text" : isPlannerPending ? "planner_pending" : "building",
+      });
       return;
     }
 
     if (plannerFileUids.length > 0 && readyFileUids.length === 0) {
+      logPlannerDebug("send_plan_message_blocked", { reason: "no_ready_files" });
       setMessages((prev) => [
         ...prev,
         createMessage("user", text),
@@ -1098,6 +1179,12 @@ export function BuildPlanPage() {
     }
 
     const shouldCreateSession = !plannerSessionId || !currentPlan || plannerNeedsRefresh;
+    logPlannerDebug("send_plan_message_start", {
+      subjectId,
+      mode: shouldCreateSession ? "create" : "revise",
+      plannerSessionId,
+      effectiveFileCount: plannerEffectiveFileUids.length,
+    });
     setMessages((prev) => [...prev, createMessage("user", text)]);
     setInputValue("");
     setIsRevisingPlan(false);
@@ -1131,6 +1218,12 @@ export function BuildPlanPage() {
             },
           },
         );
+        logPlannerDebug("create_planner_response", {
+          subjectId,
+          plannerSessionId: response.session_id,
+          chapterCount: response.latest_plan?.chapter_plan?.length ?? 0,
+          runtimeSteps: response.runtime_stats?.steps?.map((step) => step.name) ?? [],
+        });
         appendPlannerResponse(
           response,
           "我已经根据当前目标和资料整理了一版计划大纲。",
@@ -1149,12 +1242,22 @@ export function BuildPlanPage() {
           setPlannerStreamingPreview(plannerStreamingRawRef.current.replace(/\r/g, "").trim());
         },
       });
+      logPlannerDebug("revise_planner_response", {
+        subjectId,
+        plannerSessionId: response.session_id,
+        chapterCount: response.latest_plan?.chapter_plan?.length ?? 0,
+        runtimeSteps: response.runtime_stats?.steps?.map((step) => step.name) ?? [],
+      });
       appendPlannerResponse(
         response,
         "我已经按你的新要求更新了计划大纲。",
         plannerStreamingPreview || plannerStreamingRawRef.current.replace(/\r/g, "").trim(),
       );
     } catch (error) {
+      logPlannerDebug("send_plan_message_failed", {
+        subjectId,
+        error: getApiErrorMessage(error, "unknown"),
+      });
       setMessages((prev) => [
         ...prev,
         createMessage("system", getApiErrorMessage(error, "主模型调用失败，未生成结果，请修改设置后重试。")),
@@ -1181,11 +1284,24 @@ export function BuildPlanPage() {
   ]);
 
   const handleConfirmBuild = useCallback(async () => {
+    logPlannerDebug("click_confirm_build", {
+      subjectId,
+      plannerSessionId,
+      hasCurrentPlan: Boolean(currentPlan),
+      isPlannerPending,
+      isBuilding,
+      plannerNeedsRefresh,
+      readyFileCount: readyFileUids.length,
+    });
     if (!plannerSessionId || !currentPlan || isPlannerPending || isBuilding) {
+      logPlannerDebug("confirm_build_blocked", {
+        reason: !plannerSessionId ? "missing_session" : !currentPlan ? "missing_plan" : isPlannerPending ? "planner_pending" : "building",
+      });
       return;
     }
 
     if (plannerNeedsRefresh) {
+      logPlannerDebug("confirm_build_blocked", { reason: "planner_needs_refresh" });
       setMessages((prev) => [
         ...prev,
         createMessage("system", "资料列表已经变化，请先发一句新要求，让我基于最新资料重新规划。"),
@@ -1195,6 +1311,11 @@ export function BuildPlanPage() {
 
     try {
       const response = await confirmPlannerMutation.mutateAsync(plannerSessionId);
+      logPlannerDebug("confirm_build_response", {
+        subjectId,
+        plannerSessionId,
+        confirmedPlanId: response.confirmed_plan_id,
+      });
       setCurrentPlan(currentPlanRef.current);
       setIsRevisingPlan(false);
       const buildAcceptedMessage =
@@ -1209,6 +1330,10 @@ export function BuildPlanPage() {
         prompt: response.user_goal,
       });
     } catch (error) {
+      logPlannerDebug("confirm_build_failed", {
+        subjectId,
+        error: getApiErrorMessage(error, "unknown"),
+      });
       setMessages((prev) => [
         ...prev,
         createMessage("system", getApiErrorMessage(error, "确认方案失败，请稍后重试。")),

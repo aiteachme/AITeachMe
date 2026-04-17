@@ -30,11 +30,11 @@ _PLACEHOLDER_TOKEN_MAP = {
 class DocGenWriterRuntime(BaseTracedExecution):
     @property
     def trace_namespace(self) -> str:
-        return "workflow_runtime.docgen"
+        return "DocGen"
 
     @property
     def trace_name(self) -> str:
-        return "writer"
+        return "章节写作"
 
     async def execute(
         self,

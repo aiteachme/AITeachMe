@@ -8,7 +8,7 @@ from typing import AsyncGenerator
 
 from app.schemas.llm import ChatMessage
 from app.shared.infra.exceptions import LLMCallError, LLMTimeoutError
-from app.shared.infra.llm_support.routing import TaskType
+from app.shared.infra.llm_support.routing import LLMCallPurpose
 from app.shared.infra.observability.trace import langsmith_trace
 
 from .litellm_loader import load_litellm
@@ -36,14 +36,16 @@ litellm = load_litellm()
 async def acompletion_stream(
     messages: list[ChatMessage],
     *,
-    task_type: TaskType = TaskType.DEFAULT,
+    call_purpose: LLMCallPurpose | None = None,
+    task_type: LLMCallPurpose | None = None,
     model: str | None = None,
     **kwargs,
 ) -> AsyncGenerator[str, None]:
     """Async streaming completion."""
 
     context = build_completion_context(
-        task_type,
+        task_type=task_type,
+        call_purpose=call_purpose,
         model=model,
     )
     start = time.monotonic()
@@ -71,7 +73,7 @@ async def acompletion_stream(
             usage = (0, 0, 0)
             first_token_seen = False
             with langsmith_trace(
-                name="llm.acompletion_stream",
+                name="LLM：流式生成",
                 run_type="llm",
                 **_langsmith_trace_kwargs(
                     task_type=context.task_type,

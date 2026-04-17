@@ -28,8 +28,6 @@ from app.schemas.knowledge import (
     DocGenGetResponse,
     KnowledgeOverviewRequest,
     KnowledgeOverviewResponse,
-    StudyPlanRequest,
-    StudyPlanResponse,
 )
 from app.workflows.digest.planner import (
     append_build_planner_message,
@@ -46,7 +44,6 @@ from app.workflows.digest.docgen import (
 )
 from app.workflows.support.knowledge_graph import (
     get_knowledge_overview,
-    handle_study_plan_request,
     run_graph_build_background,
 )
 from app.workflows.support.subjects import get_subject_record
@@ -83,6 +80,7 @@ def _planner_stream_response(
     emitter = SSEEventEmitter()
 
     async def workflow_task() -> None:
+        logger.info("planner_stream_task_started", user_id=user_id)
         try:
             await emitter.emit_event(
                 "status",
@@ -102,6 +100,12 @@ def _planner_stream_response(
                 await emitter.emit_token(token)
 
             response = await runner(progress_callback, token_callback)
+            logger.info(
+                "planner_stream_runner_completed",
+                user_id=user_id,
+                session_id=getattr(response, "session_id", ""),
+                status=getattr(response, "status", ""),
+            )
             runtime_stats = getattr(response, "runtime_stats", None)
             elapsed_ms = 0
             if runtime_stats is not None:
@@ -125,10 +129,13 @@ def _planner_stream_response(
             await emitter.emit_event("done", {"session": response.model_dump(mode="json")})
         except asyncio.CancelledError:
             # Client disconnected or the SSE stream was intentionally aborted.
+            logger.info("planner_stream_task_cancelled", user_id=user_id)
             pass
         except Exception as exc:
+            logger.exception("planner_stream_task_failed", user_id=user_id, error=str(exc))
             await emitter.emit_error(detail=str(exc), error_code="planner_stream_failed")
         finally:
+            logger.info("planner_stream_task_closed", user_id=user_id)
             await emitter.close()
 
     async def event_stream():
@@ -182,11 +189,19 @@ def knowledge_build_plan_latest(
     session: Session = Depends(get_db),
 ) -> ApiResponse[BuildPlannerSessionResponse | None]:
     normalized = normalize_subject_slug(subject)
+    logger.info("planner_latest_requested", subject=normalized, user_id=user.user_id)
     subject_record = get_subject_record(session, normalized, owner_user_id=user.user_id)
     data = get_latest_planner_session(
         session,
         subject=subject_record,
         user_id=user.user_id,
+    )
+    logger.info(
+        "planner_latest_completed",
+        subject=normalized,
+        user_id=user.user_id,
+        found=bool(data),
+        session_id=getattr(data, "session_id", "") if data else "",
     )
     return ok_response(data)
 
@@ -204,6 +219,13 @@ async def knowledge_build_plan_create_stream(
     session: Session = Depends(get_db),
 ) -> StreamingResponse:
     normalized = normalize_subject_slug(subject)
+    logger.info(
+        "planner_create_stream_requested",
+        subject=normalized,
+        user_id=user.user_id,
+        file_uid_count=len(body.file_uids or []),
+        user_goal_preview=(body.user_goal or "")[:80],
+    )
     subject_record = get_subject_record(session, normalized, owner_user_id=user.user_id)
     return _planner_stream_response(
         request=request,
@@ -256,6 +278,13 @@ async def knowledge_build_plan_message_stream(
     session: Session = Depends(get_db),
 ) -> StreamingResponse:
     normalized = normalize_subject_slug(subject)
+    logger.info(
+        "planner_message_stream_requested",
+        subject=normalized,
+        session_id=session_id,
+        user_id=user.user_id,
+        message_preview=(body.message or "")[:80],
+    )
     subject_record = get_subject_record(session, normalized, owner_user_id=user.user_id)
     return _planner_stream_response(
         request=request,
@@ -440,23 +469,6 @@ async def knowledge_overview(
             full=body.full,
         )
     )
-
-
-@router.post(
-    "/study-plan",
-    response_model=ApiResponse[StudyPlanResponse],
-    summary="Fetch or update the learner study plan",
-    responses=build_error_responses([400, 404, 422, 500]),
-)
-async def knowledge_study_plan(
-    subject: str = Path(...),
-    body: StudyPlanRequest = Body(default=StudyPlanRequest()),
-    user: CurrentUserContext = Depends(get_current_user_context),
-    session: Session = Depends(get_db),
-) -> ApiResponse[StudyPlanResponse]:
-    normalized = normalize_subject_slug(subject)
-    get_subject_record(session, normalized, owner_user_id=user.user_id)
-    return ok_response(handle_study_plan_request(session, subject=normalized, user_id=user.user_id, payload=body))
 
 
 @router.post(

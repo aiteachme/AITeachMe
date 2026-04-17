@@ -152,6 +152,14 @@ def _build_compression_cache_payload(
 
 
 class ContextCompressor(BaseTracedExecution):
+    @property
+    def trace_namespace(self) -> str:
+        return "检索后处理"
+
+    @property
+    def trace_name(self) -> str:
+        return "压缩上下文"
+
     async def execute(
         self,
         *,

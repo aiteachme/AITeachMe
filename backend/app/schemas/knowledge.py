@@ -480,51 +480,6 @@ class ClearKnowledgeResponse(BaseModel):
     deleted_counts: dict[str, int] = Field(default_factory=dict)
 
 
-class StudyPlanRequest(BaseModel):
-    """Read or update the persisted study plan in one POST request."""
-
-    item_id: str | None = None
-    completed: bool | None = None
-
-
-class StudyPlanItemResponse(BaseModel):
-    """One actionable study checklist item."""
-
-    id: str
-    title: str
-    summary: str
-    duration_minutes: int = 0
-    depends_on_ids: list[str] = Field(default_factory=list)
-    theme_titles: list[str] = Field(default_factory=list)
-    unit_ids: list[int] = Field(default_factory=list)
-    doc_anchor: str | None = None
-    completed: bool = False
-
-
-class StudyPlanPhaseResponse(BaseModel):
-    """A grouped phase in the learner-facing study plan."""
-
-    id: str
-    title: str
-    summary: str
-    duration_minutes: int = 0
-    completed_items: int = 0
-    total_items: int = 0
-    items: list[StudyPlanItemResponse] = Field(default_factory=list)
-
-
-class StudyPlanResponse(BaseModel):
-    """Derived study plan and checklist snapshot."""
-
-    subject: str
-    generated_at: datetime
-    digest_mode: str | None = None
-    mode_reason: str | None = None
-    total_items: int = 0
-    completed_items: int = 0
-    phases: list[StudyPlanPhaseResponse] = Field(default_factory=list)
-
-
 class BuildPlannerCreateRequest(BaseModel):
     """Create a new planner session and generate the first plan draft."""
 
@@ -575,7 +530,6 @@ class BuildPlannerStepStatsResponse(BaseModel):
 class BuildPlannerRuntimeStatsResponse(BaseModel):
     elapsed_ms: int = 0
     steps: list[BuildPlannerStepStatsResponse] = Field(default_factory=list)
-    generation_mode: str | None = None
 
 
 class BuildPlannerPlanResponse(BaseModel):

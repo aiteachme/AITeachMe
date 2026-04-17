@@ -30,7 +30,6 @@ import type {
   ApiResponseKnowledgeUnitDetailResponse,
   ApiResponseListKnowledgeRelationResponse,
   ApiResponsePaginatedDataKnowledgeUnitResponse,
-  ApiResponseStudyPlanResponse,
   ApiResponseUnionBuildPlannerSessionResponseNoneType,
   BuildPlannerCreateRequest,
   BuildPlannerMessageRequest,
@@ -44,8 +43,7 @@ import type {
   KnowledgeUnitDetailRequest,
   KnowledgeUnitPathRequest,
   KnowledgeUnitRelationsRequest,
-  KnowledgeUnitsQueryRequest,
-  StudyPlanRequest
+  KnowledgeUnitsQueryRequest
 } from './model';
 
 import { orvalApiClient } from '../client';
@@ -1005,111 +1003,6 @@ export const useKnowledgeOverviewApiV1SubjectsSubjectKnowledgeOverviewPost = <TE
         TContext
       > => {
       return useMutation(getKnowledgeOverviewApiV1SubjectsSubjectKnowledgeOverviewPostMutationOptions(options), queryClient);
-    }
-    /**
- * @summary Fetch or update the learner study plan
- */
-export type knowledgeStudyPlanApiV1SubjectsSubjectKnowledgeStudyPlanPostResponse200 = {
-  data: ApiResponseStudyPlanResponse
-  status: 200
-}
-
-export type knowledgeStudyPlanApiV1SubjectsSubjectKnowledgeStudyPlanPostResponse400 = {
-  data: ErrorResponse
-  status: 400
-}
-
-export type knowledgeStudyPlanApiV1SubjectsSubjectKnowledgeStudyPlanPostResponse404 = {
-  data: ErrorResponse
-  status: 404
-}
-
-export type knowledgeStudyPlanApiV1SubjectsSubjectKnowledgeStudyPlanPostResponse422 = {
-  data: ErrorResponse
-  status: 422
-}
-
-export type knowledgeStudyPlanApiV1SubjectsSubjectKnowledgeStudyPlanPostResponse500 = {
-  data: ErrorResponse
-  status: 500
-}
-
-export type knowledgeStudyPlanApiV1SubjectsSubjectKnowledgeStudyPlanPostResponseSuccess = (knowledgeStudyPlanApiV1SubjectsSubjectKnowledgeStudyPlanPostResponse200) & {
-  headers: Headers;
-};
-export type knowledgeStudyPlanApiV1SubjectsSubjectKnowledgeStudyPlanPostResponseError = (knowledgeStudyPlanApiV1SubjectsSubjectKnowledgeStudyPlanPostResponse400 | knowledgeStudyPlanApiV1SubjectsSubjectKnowledgeStudyPlanPostResponse404 | knowledgeStudyPlanApiV1SubjectsSubjectKnowledgeStudyPlanPostResponse422 | knowledgeStudyPlanApiV1SubjectsSubjectKnowledgeStudyPlanPostResponse500) & {
-  headers: Headers;
-};
-
-export type knowledgeStudyPlanApiV1SubjectsSubjectKnowledgeStudyPlanPostResponse = (knowledgeStudyPlanApiV1SubjectsSubjectKnowledgeStudyPlanPostResponseSuccess | knowledgeStudyPlanApiV1SubjectsSubjectKnowledgeStudyPlanPostResponseError)
-
-export const getKnowledgeStudyPlanApiV1SubjectsSubjectKnowledgeStudyPlanPostUrl = (subject: string,) => {
-
-
-  
-
-  return `/api/v1/subjects/${subject}/knowledge/study-plan`
-}
-
-export const knowledgeStudyPlanApiV1SubjectsSubjectKnowledgeStudyPlanPost = async (subject: string,
-    studyPlanRequest: StudyPlanRequest, options?: RequestInit): Promise<knowledgeStudyPlanApiV1SubjectsSubjectKnowledgeStudyPlanPostResponse> => {
-  
-  return orvalApiClient<knowledgeStudyPlanApiV1SubjectsSubjectKnowledgeStudyPlanPostResponse>(getKnowledgeStudyPlanApiV1SubjectsSubjectKnowledgeStudyPlanPostUrl(subject),
-  {      
-    ...options,
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...options?.headers },
-    body: JSON.stringify(
-      studyPlanRequest,)
-  }
-);}
-  
-
-
-
-export const getKnowledgeStudyPlanApiV1SubjectsSubjectKnowledgeStudyPlanPostMutationOptions = <TError = ErrorResponse,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof knowledgeStudyPlanApiV1SubjectsSubjectKnowledgeStudyPlanPost>>, TError,{subject: string;data: StudyPlanRequest}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
-): UseMutationOptions<Awaited<ReturnType<typeof knowledgeStudyPlanApiV1SubjectsSubjectKnowledgeStudyPlanPost>>, TError,{subject: string;data: StudyPlanRequest}, TContext> => {
-
-const mutationKey = ['knowledgeStudyPlanApiV1SubjectsSubjectKnowledgeStudyPlanPost'];
-const {mutation: mutationOptions, request: requestOptions} = options ?
-      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
-      options
-      : {...options, mutation: {...options.mutation, mutationKey}}
-      : {mutation: { mutationKey, }, request: undefined};
-
-      
-
-
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof knowledgeStudyPlanApiV1SubjectsSubjectKnowledgeStudyPlanPost>>, {subject: string;data: StudyPlanRequest}> = (props) => {
-          const {subject,data} = props ?? {};
-
-          return  knowledgeStudyPlanApiV1SubjectsSubjectKnowledgeStudyPlanPost(subject,data,requestOptions)
-        }
-
-
-
-        
-
-
-  return  { mutationFn, ...mutationOptions }}
-
-    export type KnowledgeStudyPlanApiV1SubjectsSubjectKnowledgeStudyPlanPostMutationResult = NonNullable<Awaited<ReturnType<typeof knowledgeStudyPlanApiV1SubjectsSubjectKnowledgeStudyPlanPost>>>
-    export type KnowledgeStudyPlanApiV1SubjectsSubjectKnowledgeStudyPlanPostMutationBody = StudyPlanRequest
-    export type KnowledgeStudyPlanApiV1SubjectsSubjectKnowledgeStudyPlanPostMutationError = ErrorResponse
-
-    /**
- * @summary Fetch or update the learner study plan
- */
-export const useKnowledgeStudyPlanApiV1SubjectsSubjectKnowledgeStudyPlanPost = <TError = ErrorResponse,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof knowledgeStudyPlanApiV1SubjectsSubjectKnowledgeStudyPlanPost>>, TError,{subject: string;data: StudyPlanRequest}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
- , queryClient?: QueryClient): UseMutationResult<
-        Awaited<ReturnType<typeof knowledgeStudyPlanApiV1SubjectsSubjectKnowledgeStudyPlanPost>>,
-        TError,
-        {subject: string;data: StudyPlanRequest},
-        TContext
-      > => {
-      return useMutation(getKnowledgeStudyPlanApiV1SubjectsSubjectKnowledgeStudyPlanPostMutationOptions(options), queryClient);
     }
     /**
  * @summary Clear knowledge artifacts for one subject

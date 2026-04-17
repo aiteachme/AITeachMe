@@ -5,7 +5,10 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from typing import Any
 
+from langsmith import traceable
 
+
+@traceable(name="DocGen：增强章节大纲提示词", run_type="prompt")
 def build_outline_enhance_messages(
     *,
     subject: str,
@@ -13,6 +16,7 @@ def build_outline_enhance_messages(
     user_goal: str,
     plan_summary: str,
     chapters: Sequence[Mapping[str, Any]],
+    docgen_history_brief: str = "",
 ) -> list[dict[str, str]]:
     chapter_lines = []
     for chapter in chapters:
@@ -36,6 +40,7 @@ def build_outline_enhance_messages(
 模式：{digest_mode}
 用户目标：{user_goal or "未提供"}
 计划摘要：{plan_summary or "未提供"}
+Planner 对话与修改摘要：{docgen_history_brief or "暂无"}
 
 已确认章节：
 {chr(10).join(chapter_lines)}
@@ -56,7 +61,7 @@ def build_outline_enhance_messages(
       "example_targets": ["..."],
       "pitfall_targets": ["..."],
       "summary_targets": ["..."],
-      "media_requests": [{{"kind": "mermaid|image|interactive", "description": "..."}}],
+      "media_requests": [{{"kind": "mermaid|interactive", "description": "..."}}],
       "practice_seed_policy": {{"style": "..."}},
       "retrieval_queries": ["..."],
       "plan_mismatch_warnings": []
@@ -69,7 +74,7 @@ def build_outline_enhance_messages(
 1. chapters 数量和 chapter_index 必须与已确认章节完全一致。
 2. enhanced_title 可以更具体，但不要偏离 confirmed_title。
 3. systematic 偏定义、结构、推理、迁移；sprint 偏考点、题型、速判、易错。
-4. 如果某章适合配图，必须用 media_requests 输出 image 占位描述；后续增强阶段会根据该占位生成图片建议或真实图片资产。
+4. 如果某章适合图示，优先输出 mermaid 占位描述；不要主动输出 image 占位，除非上游明确给了图片生成能力和图片需求。
 5. 如果某章涉及公式、推导、证明或计算，优先输出 interactive 占位描述。
 6. 所有内容都服务后续写作，不写解释性废话。
 """.strip()

@@ -76,7 +76,7 @@ def _build_mode_contract(
     )
 
 
-@traceable(name="digest.docgen.writer_prompt", run_type="prompt")
+@traceable(name="DocGen：章节写作提示词", run_type="prompt")
 def build_docgen_writer_messages(
     *,
     title: str,
@@ -148,7 +148,7 @@ def build_docgen_writer_messages(
 1. 只输出中文 Markdown。
 2. 一级标题必须是 `# {title}`。
 3. 二级标题必须服从模式契约，覆盖关键模块，但标题文案可以自行命名，不要整章复制固定模板标题。
-4. 如果需要图示，请使用 `<!-- [MERMAID: 描述] -->` 或 `<!-- [IMAGE: 描述] -->` 占位。
+4. 如果需要图示，优先使用 `<!-- [MERMAID: 描述] -->` 占位；只有图片配额大于 0 时才允许使用 `<!-- [IMAGE: 描述] -->`。
 5. 如果执行合同要求交互块，请使用 `<!-- [INTERACTIVE: 描述] -->` 占位。
 6. 如果需要公式，必须使用 `$...$` 或 `$$...$$`。
 7. 不允许编造引用、文献、实验结果或材料中不存在的事实。
@@ -167,7 +167,7 @@ def build_docgen_writer_messages(
     ]
 
 
-@traceable(name="digest.docgen.heading_repair_prompt", run_type="prompt")
+@traceable(name="DocGen：修复章节标题提示词", run_type="prompt")
 def build_docgen_heading_repair_messages(
     *,
     title: str,
@@ -213,7 +213,7 @@ def build_docgen_heading_repair_messages(
 5. 尽量保留已有正文、例子和公式，除非确实重复或跑题，不要大删内容。
 6. 如果结构不完整，可以补少量过渡句、总结句或提示句，但不要凭空编造来源事实。
 7. 如果涉及公式，继续使用 `$...$` 或 `$$...$$`。
-8. 如果需要图示占位，继续保留或补充 `<!-- [MERMAID: 描述] -->`、`<!-- [IMAGE: 描述] -->`、`<!-- [INTERACTIVE: 描述] -->`。
+8. 如果需要图示占位，继续保留或补充 `<!-- [MERMAID: 描述] -->`、`<!-- [INTERACTIVE: 描述] -->`；只有原文已有图片占位或图片配额大于 0 时才保留 `<!-- [IMAGE: 描述] -->`。
 9. 删除或改写任何草稿痕迹：`重点补全`、`结构补全`、`研究材料重组`、`可直接回看这些研究线索`、`研究笔记`、原始来源堆砌、` ```markdown `。
 10. 如果正文太像聊天式安慰、流程说明或研究摘录，要改成更像课堂讲义的表达。
 
@@ -235,7 +235,7 @@ def build_docgen_heading_repair_messages(
     ]
 
 
-@traceable(name="digest.docgen.research_purify_prompt", run_type="prompt")
+@traceable(name="DocGen：清洗研究材料提示词", run_type="prompt")
 def build_docgen_research_purify_messages(
     *,
     dense_context: str,
@@ -283,7 +283,7 @@ def build_docgen_research_purify_messages(
     ]
 
 
-@traceable(name="digest.docgen.mermaid_prompt", run_type="prompt")
+@traceable(name="DocGen：生成图示提示词", run_type="prompt")
 def build_docgen_mermaid_prompt(*, topic: str, context: str) -> str:
     return f"""
 请根据下面内容生成 Mermaid mindmap 语法。
@@ -301,7 +301,7 @@ def build_docgen_mermaid_prompt(*, topic: str, context: str) -> str:
 """.strip()
 
 
-@traceable(name="digest.docgen.sub_query_prompt", run_type="prompt")
+@traceable(name="DocGen：规划检索问题提示词", run_type="prompt")
 def build_docgen_sub_query_messages(
     *,
     query: str,
@@ -355,7 +355,7 @@ def build_docgen_sub_query_messages(
     ]
 
 
-@traceable(name="digest.docgen.gap_query_prompt", run_type="prompt")
+@traceable(name="DocGen：补齐缺口检索提示词", run_type="prompt")
 def build_docgen_gap_query_messages(
     *,
     dense_context: str,
@@ -398,4 +398,3 @@ __all__ = [
     "build_docgen_gap_query_messages",
     "build_docgen_writer_messages",
 ]
-

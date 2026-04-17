@@ -9,7 +9,7 @@ from typing import Any
 from pydantic import BaseModel
 
 from app.schemas.llm import ChatMessage
-from app.shared.infra.llm_support.routing import TaskType
+from app.shared.infra.llm_support.routing import LLMCallPurpose
 from app.shared.infra.observability.trace import (
     get_llm_trace_context,
     langsmith_capture_inputs_enabled,
@@ -225,7 +225,7 @@ def _end_langsmith_trace(
 
 def _langsmith_llm_metadata(
     *,
-    task_type: TaskType,
+    task_type: LLMCallPurpose,
     provider: str,
     model_name: str,
     invocation_params: Mapping[str, Any] | None = None,
@@ -233,6 +233,7 @@ def _langsmith_llm_metadata(
     mode: str,
 ) -> dict[str, Any]:
     metadata: dict[str, Any] = {
+        "call_purpose": task_type.value,
         "task_type": task_type.value,
         "mode": mode,
         "model": model_name,
@@ -255,7 +256,7 @@ def _langsmith_llm_metadata(
 
 def _langsmith_trace_kwargs(
     *,
-    task_type: TaskType,
+    task_type: LLMCallPurpose,
     call_model: str,
     provider: str,
     model_name: str,
@@ -282,5 +283,5 @@ def _langsmith_trace_kwargs(
             attempt=attempt,
             mode=mode,
         ),
-        "extra_tags": [f"task:{task_type.value}"],
+        "extra_tags": [f"purpose:{task_type.value}", f"task:{task_type.value}"],
     }

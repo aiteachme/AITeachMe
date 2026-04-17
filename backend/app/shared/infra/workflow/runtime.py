@@ -24,6 +24,7 @@ logger = structlog.get_logger(__name__)
 def _build_graph_config(
     *,
     workflow_name: str,
+    run_name: str | None = None,
     subject: str = "",
     build_session_id: str = "",
     lane: str = "",
@@ -44,7 +45,7 @@ def _build_graph_config(
     )
 
     config: dict[str, Any] = {
-        "run_name": workflow_name,
+        "run_name": str(run_name or workflow_name),
         "tags": tags,
         "metadata": metadata,
     }
@@ -79,6 +80,7 @@ async def invoke_state_graph(
 
     config = _build_graph_config(
         workflow_name=workflow_name,
+        run_name=str((extra_metadata or {}).get("langsmith_run_name") or workflow_name),
         subject=subject,
         build_session_id=build_session_id,
         lane=lane,
@@ -112,6 +114,7 @@ async def run_state_graph(
     lane = str(context.metadata.get("lane", "") or "")
     config = _build_graph_config(
         workflow_name=workflow_name,
+        run_name=str(context.metadata.get("langsmith_run_name") or workflow_name),
         subject=context.subject,
         build_session_id=build_session_id,
         lane=lane,
@@ -152,4 +155,3 @@ async def run_state_graph(
             str(exc),
             metadata={"workflow_name": workflow_name},
         )
-

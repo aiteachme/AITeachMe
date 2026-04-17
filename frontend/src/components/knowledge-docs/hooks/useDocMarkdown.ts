@@ -24,6 +24,7 @@ import {
   formatDocTimestamp,
   extractFirstMarkdownHeading,
   extractFirstMarkdownParagraph,
+  cleanKnowledgeMarkdownForDisplay,
 } from "../utils";
 import {
   MOCK_DOCUMENT_CHAPTERS,
@@ -134,8 +135,8 @@ export function useDocMarkdown(): DocMarkdownState {
     },
   });
 
-  const liveMarkdown = docMarkdownQuery.data?.markdown ?? "";
-  const draftMarkdown = docMarkdownQuery.data?.draft_markdown ?? "";
+  const liveMarkdown = cleanKnowledgeMarkdownForDisplay(docMarkdownQuery.data?.markdown ?? "");
+  const draftMarkdown = cleanKnowledgeMarkdownForDisplay(docMarkdownQuery.data?.draft_markdown ?? "");
   const buildMeta = docMarkdownQuery.data?.build ?? null;
   const buildPreview = docMarkdownQuery.data?.build_preview ?? null;
   const buildMetrics = docMarkdownQuery.data?.build_metrics ?? null;

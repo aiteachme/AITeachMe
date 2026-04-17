@@ -61,8 +61,8 @@
   Digest 教学运行时配置 facade
 - `digest/common/pedagogy/`
   Digest 教学语义 facade
-- `support/knowledge_graph/overview.py`、`support/knowledge_graph/study_plan.py`
-  基于知识图谱的总览与学习计划用例
+- `support/knowledge_graph/overview.py`
+  基于知识图谱的总览用例
 - `support/system/init.py`、`support/system/settings.py`
   系统初始化与设置总览的 canonical 位置
 - `support/files/catalog.py`、`support/files/uploads.py`、`support/files/parsing.py`、`support/files/deletion.py`
@@ -88,6 +88,12 @@ from app.workflows.interact import stream_chat_workflow
 ```
 
 如果要调图结构，再进入各链路目录看 `graph.py`
+
+## 图和命名
+
+- 代码里的 LangGraph 节点 id 保持英文 snake_case，方便 tracing、runtime_stats、文件定位和长期兼容。
+- 文档、手写 Mermaid 和前端进度文案优先用中文展示名。
+- 如果一个节点需要同时给研发定位和给产品/用户阅读，建议写成“中文展示名 + 英文节点 id”。
 
 ## 目录边界
 

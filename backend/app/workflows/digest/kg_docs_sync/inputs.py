@@ -11,6 +11,7 @@ _HEADING_RE = re.compile(r"^\s*#{1,6}\s+(?P<title>.+?)\s*$")
 
 def _clean_heading_title(raw: str) -> str:
     title = re.sub(r"\{#ku_[A-Za-z0-9_-]+\}", "", raw).strip()
+    title = re.sub(r"<!--\s*ATM_KU:\s*ku_[A-Za-z0-9_-]+\s*-->", "", title).strip()
     title = re.sub(r"\[(type|prerequisite|related):[^\]]+\]", "", title, flags=re.IGNORECASE).strip()
     return title
 
@@ -87,4 +88,3 @@ __all__ = [
     "load_knowledge_doc_markdown",
     "resolve_graph_input_paths",
 ]
-

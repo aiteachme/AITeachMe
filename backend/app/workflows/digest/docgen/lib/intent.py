@@ -52,6 +52,7 @@ async def infer_docgen_intent(
     plan_summary: str,
     material_profile: Mapping[str, Any],
     chapters: Sequence[Mapping[str, Any]],
+    docgen_history_brief: str = "",
     extra_metadata: Mapping[str, Any] | None = None,
 ) -> DocGenIntentProfile:
     fallback = fallback_intent_profile(digest_mode=digest_mode, chapter_count=len(chapters))
@@ -64,6 +65,7 @@ async def infer_docgen_intent(
                 plan_summary=plan_summary,
                 material_profile=material_profile,
                 chapters=chapters,
+                docgen_history_brief=docgen_history_brief,
             ),
             task_type=TaskType.CLASSIFY,
             model="primary",

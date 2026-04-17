@@ -27,7 +27,6 @@ class BuildPlannerState(TypedDict, total=False):
     selected_file_uids: list[str]
     user_goal: str
     digest_mode: str
-    tone: str
     selected_skillpacks: list[str]
     planner_session_id: str
     message_history: list[str]
@@ -43,7 +42,6 @@ class BuildPlannerState(TypedDict, total=False):
     # Stable graph output
     plan: dict[str, Any]
     plan_summary: str
-    generation_mode: str
     planner_record: dict[str, Any]
     planner_turns: list[dict[str, Any]]
 
@@ -74,7 +72,6 @@ BuildPlannerGraphInput = project_typed_dict_schema(
         "file_ids",
         "user_goal",
         "digest_mode",
-        "tone",
         "selected_skillpacks",
         "planner_session_id",
         "message_history",
@@ -92,7 +89,6 @@ BuildPlannerGraphOutput = project_typed_dict_schema(
         "plan",
         "plan_summary",
         "digest_mode",
-        "generation_mode",
         "selected_file_uids",
         "planner_record",
         "planner_turns",

@@ -10,6 +10,7 @@ import uuid
 from collections.abc import Mapping
 from typing import Any
 
+import structlog
 from sqlmodel import Session
 
 from app.models import IngestStatus, TaskStatus
@@ -48,6 +49,10 @@ from app.utils.presenters import require_id, require_uid
 from app.utils.time import utcnow
 from app.workflows.digest.common.runtime_config import get_teaching_runtime_config
 from app.workflows.digest.planner.lib.plans import normalize_planner_payload
+from app.workflows.digest.planner.lib.steps import STEP_TIMING_FIELDS
+
+logger = structlog.get_logger(__name__)
+LEGACY_PLAN_TONE = "encouraging"
 
 
 def _markdown_ready(raw_file: RawFile) -> bool:
@@ -137,7 +142,7 @@ def _plan_response(
         selected_file_uids=selected_file_uids,
         user_goal=str(plan.get("user_goal") or ""),
         digest_mode=str(plan.get("digest_mode") or "systematic"),
-        tone=str(plan.get("tone") or "encouraging"),
+        tone=str(plan.get("tone") or LEGACY_PLAN_TONE),
         selected_skillpacks=list(plan.get("selected_skillpacks") or []),
         chapter_plan=list(plan.get("chapter_plan") or []),
         research_queries=list(plan.get("research_queries") or []),
@@ -155,12 +160,7 @@ def _runtime_stats_response(final_state: Mapping[str, Any] | None) -> BuildPlann
         return None
 
     steps: list[BuildPlannerStepStatsResponse] = []
-    for name, field_name in (
-        ("load_planner_materials", "prepare_ms"),
-        ("stream_brief_and_extract_intent", "bootstrap_ms"),
-        ("stream_and_parse_plan_draft", "compose_ms"),
-        ("normalize_and_persist_plan", "finalize_ms"),
-    ):
+    for name, field_name in STEP_TIMING_FIELDS:
         elapsed_ms = int(final_state.get(field_name, 0) or 0)
         if elapsed_ms <= 0:
             continue
@@ -174,17 +174,24 @@ def _runtime_stats_response(final_state: Mapping[str, Any] | None) -> BuildPlann
     return BuildPlannerRuntimeStatsResponse(
         elapsed_ms=int(final_state.get("workflow_elapsed_ms", 0) or 0),
         steps=steps,
-        generation_mode=str(final_state.get("generation_mode") or "").strip() or None,
     )
 
 
 def planner_session_response_from_state(final_state: Mapping[str, Any]) -> BuildPlannerSessionResponse:
     record = dict(final_state.get("planner_record") or {})
-    plan = dict(final_state.get("plan") or record.get("latest_plan_json") or {})
+    plan = dict(final_state.get("plan") or {})
     turns = [dict(turn) for turn in list(final_state.get("planner_turns") or [])]
     subject = str(record.get("subject") or final_state.get("subject") or "")
     session_id = str(record.get("id") or final_state.get("planner_session_id") or "")
     status = str(record.get("status") or "draft")
+    logger.info(
+        "planner_response_from_state",
+        planner_session_id=session_id,
+        has_state_plan=bool(final_state.get("plan")),
+        has_record_latest_plan=bool(record.get("latest_plan_json")),
+        state_error=final_state.get("error"),
+        plan_chapter_count=len(list(plan.get("chapter_plan") or [])),
+    )
     return BuildPlannerSessionResponse(
         session_id=session_id,
         subject=subject,
@@ -277,11 +284,10 @@ def _record_snapshot(record: BuildPlannerSession) -> dict[str, Any]:
 
 def _render_final_plan_markdown(plan_payload: dict[str, Any]) -> str:
     summary = str(plan_payload.get("plan_summary") or "").strip()
-    tasks = [str(item).strip() for item in list(plan_payload.get("research_queries") or []) if str(item).strip()]
     chapters = [
-        str((item or {}).get("title") or "").strip()
+        item
         for item in list(plan_payload.get("chapter_plan") or [])
-        if isinstance(item, dict) and str((item or {}).get("title") or "").strip()
+        if isinstance(item, dict) and str(item.get("title") or "").strip()
     ]
     lines = [
         "# 计划大纲",
@@ -289,13 +295,54 @@ def _render_final_plan_markdown(plan_payload: dict[str, Any]) -> str:
         f"> 模式：{str(plan_payload.get('digest_mode') or 'systematic')}",
         f"> 一句话摘要：{summary or '已生成一份可确认的构建方案。'}",
         "",
-        "## 几点安排",
-        *[f"{index}. {item}" for index, item in enumerate(chapters, start=1)],
-        "",
-        "## 后续写作抓手",
-        *[f"{index}. {item}" for index, item in enumerate(tasks, start=1)],
+        "## 章节安排",
+        *[
+            f"{index}. {str(chapter.get('title') or '').strip()}："
+            f"{'；'.join(str(item).strip() for item in list(chapter.get('required_elements') or [])[:3] if str(item).strip())}"
+            for index, chapter in enumerate(chapters, start=1)
+        ],
     ]
     return "\n".join(lines).strip()
+
+
+def _compact_planner_text(value: Any, *, max_chars: int = 900) -> str:
+    text = " ".join(str(value or "").split())
+    if len(text) <= max_chars:
+        return text
+    return text[: max_chars - 3].rstrip() + "..."
+
+
+def _build_docgen_history_brief(turns: list[BuildPlannerTurn]) -> str:
+    lines: list[str] = []
+    for turn in turns[-10:]:
+        role = "用户" if turn.role == "user" else "规划器"
+        content = _compact_planner_text(
+            turn.content,
+            max_chars=520 if turn.role == "user" else 720,
+        )
+        if content:
+            lines.append(f"{role}: {content}")
+    return "\n".join(lines)
+
+
+def _build_planner_context_payload(
+    record: BuildPlannerSession,
+    *,
+    turns: list[BuildPlannerTurn],
+    plan: dict[str, Any],
+) -> dict[str, Any]:
+    assistant_turns = [turn for turn in turns if turn.role == "assistant"]
+    user_turns = [turn for turn in turns if turn.role == "user"]
+    latest_outline = assistant_turns[-1].content if assistant_turns else _render_final_plan_markdown(plan)
+    return {
+        "planner_session_id": record.id,
+        "planner_turn_count": len(turns),
+        "user_revision_count": max(0, len(user_turns) - 1),
+        "assistant_revision_count": len(assistant_turns),
+        "latest_plan_summary": str(plan.get("plan_summary") or record.latest_summary or ""),
+        "planner_outline_markdown": _compact_planner_text(latest_outline, max_chars=1800),
+        "docgen_history_brief": _build_docgen_history_brief(turns),
+    }
 
 
 def _normalize_persisted_plan(
@@ -304,7 +351,6 @@ def _normalize_persisted_plan(
     subject: str,
     user_goal: str,
     digest_mode: str,
-    tone: str,
     selected_skillpacks: list[str] | None = None,
     material_context: Any | None = None,
     latest_plan: dict[str, Any] | None = None,
@@ -314,7 +360,6 @@ def _normalize_persisted_plan(
         subject=subject,
         user_goal=user_goal,
         requested_digest_mode=digest_mode,
-        requested_tone=tone,
         selected_skillpacks=selected_skillpacks,
         shared_inputs=material_context,
         latest_plan=latest_plan,
@@ -339,7 +384,15 @@ def prepare_planner_run(state: Mapping[str, Any]) -> dict[str, Any]:
     """
 
     operation = _operation(state)
+    logger.info(
+        "planner_prepare_run_started",
+        operation=operation,
+        subject=state.get("subject"),
+        planner_session_id=state.get("planner_session_id"),
+        requested_file_uid_count=len(state.get("requested_file_uids") or []),
+    )
     if operation == "generate_only":
+        logger.info("planner_prepare_run_skipped_for_generate_only")
         return {}
 
     subject_slug = str(state["subject"])
@@ -349,7 +402,6 @@ def prepare_planner_run(state: Mapping[str, Any]) -> dict[str, Any]:
         # 第一轮规划：创建 DB session、绑定文件选择，只返回后续 graph 需要的字段。
         planner_defaults = get_teaching_runtime_config().planner
         user_goal = str(state.get("user_goal") or "").strip()
-        tone = (state.get("tone") or planner_defaults.default_tone).strip() or planner_defaults.default_tone
         digest_mode = (
             state.get("digest_mode") or planner_defaults.default_digest_mode
         ).strip() or planner_defaults.default_digest_mode
@@ -379,7 +431,7 @@ def prepare_planner_run(state: Mapping[str, Any]) -> dict[str, Any]:
                     status="planning",
                     user_goal=user_goal,
                     digest_mode=digest_mode,
-                    tone=tone,
+                    tone=LEGACY_PLAN_TONE,
                     selected_file_ids_json=selected_file_ids,
                 ),
             )
@@ -393,13 +445,20 @@ def prepare_planner_run(state: Mapping[str, Any]) -> dict[str, Any]:
                     content=user_goal,
                 ),
             )
+            logger.info(
+                "planner_prepare_run_created_session",
+                subject=subject_slug,
+                planner_session_id=record.id,
+                selected_file_count=len(selected_file_ids),
+                workflow_file_count=len(workflow_file_ids),
+                selected_file_uids=selected_file_uids,
+            )
             return {
                 "file_ids": workflow_file_ids,
                 "selected_file_ids": selected_file_ids,
                 "selected_file_uids": selected_file_uids,
                 "user_goal": user_goal,
                 "digest_mode": digest_mode,
-                "tone": tone,
                 "message_history": [user_goal],
                 "planner_record": _record_snapshot(record),
                 "planner_turns": [_turn_snapshot(user_turn)],
@@ -417,6 +476,13 @@ def prepare_planner_run(state: Mapping[str, Any]) -> dict[str, Any]:
             )
             if record is None:
                 raise BuildPlannerSessionNotFoundError(str(state["planner_session_id"]))
+            logger.info(
+                "planner_prepare_run_loaded_session",
+                subject=subject_slug,
+                planner_session_id=record.id,
+                has_latest_plan=bool(record.latest_plan_json),
+                selected_file_count=len(record.selected_file_ids_json or []),
+            )
 
             record.status = "planning"
             record.confirmed_plan_id = None
@@ -450,7 +516,6 @@ def prepare_planner_run(state: Mapping[str, Any]) -> dict[str, Any]:
                 "selected_file_uids": selected_file_uids,
                 "user_goal": record.user_goal,
                 "digest_mode": record.digest_mode,
-                "tone": record.tone,
                 "selected_skillpacks": selected_skillpacks,
                 "message_history": [turn.content for turn in turns if turn.content.strip()],
                 "latest_plan": record.latest_plan_json,
@@ -470,6 +535,7 @@ def save_planner_result(
     """Persist final planner output from the normal finalize node."""
 
     if _operation(state) == "generate_only":
+        logger.info("planner_save_skipped_for_generate_only", planner_session_id=state.get("planner_session_id"))
         return {}
 
     # graph 已经生成稳定 plan 合同；这里只负责写持久化状态，并返回 API 需要的快照。
@@ -485,12 +551,18 @@ def save_planner_result(
         if record is None:
             raise BuildPlannerSessionNotFoundError(str(state["planner_session_id"]))
 
+        logger.info(
+            "planner_save_started",
+            subject=subject_slug,
+            planner_session_id=record.id,
+            input_chapter_count=len(list((plan or {}).get("chapter_plan") or [])),
+            has_previous_plan=bool(record.latest_plan_json),
+        )
         persisted_plan = _normalize_persisted_plan(
             plan,
             subject=subject_slug,
             user_goal=record.user_goal,
             digest_mode=record.digest_mode,
-            tone=record.tone,
             selected_skillpacks=list(state.get("selected_skillpacks") or []),
             material_context=material_context,
             latest_plan=record.latest_plan_json,
@@ -498,7 +570,6 @@ def save_planner_result(
         record.latest_plan_json = persisted_plan
         record.latest_summary = str(persisted_plan.get("plan_summary") or state.get("plan_summary") or "")
         record.digest_mode = str(persisted_plan.get("digest_mode") or record.digest_mode)
-        record.tone = str(persisted_plan.get("tone") or record.tone)
         record.status = "draft"
         record.confirmed_plan_id = None
         record.updated_at = utcnow()
@@ -515,11 +586,17 @@ def save_planner_result(
             ),
         )
         turns = list_planner_turns(session, session_id=record.id)
+        logger.info(
+            "planner_save_finished",
+            subject=subject_slug,
+            planner_session_id=record.id,
+            persisted_chapter_count=len(list(persisted_plan.get("chapter_plan") or [])),
+            turn_count=len(turns),
+        )
         return {
             "plan": persisted_plan,
             "plan_summary": str(persisted_plan.get("plan_summary") or ""),
             "digest_mode": str(persisted_plan.get("digest_mode") or state.get("digest_mode") or ""),
-            "tone": str(persisted_plan.get("tone") or state.get("tone") or ""),
             "selected_file_ids": list(record.selected_file_ids_json),
             "selected_file_uids": _file_uids_from_ids(
                 session,
@@ -531,19 +608,78 @@ def save_planner_result(
         }
 
 
-def _normalized_plan_payload(plan: dict[str, Any]) -> dict[str, Any]:
-    return {
+def _normalized_plan_payload(
+    plan: dict[str, Any],
+    *,
+    planner_context: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    build_constraints = dict(plan.get("build_constraints") or {})
+    chapter_plan = _ensure_min_chapter_payload(
+        list(plan.get("chapter_plan") or []),
+        min_chapters=int(build_constraints.get("min_chapters", 0) or 0),
+        digest_mode=str(plan.get("digest_mode") or ""),
+        user_goal=str(plan.get("user_goal") or ""),
+    )
+    payload = {
         "subject": str(plan.get("subject") or ""),
         "user_goal": str(plan.get("user_goal") or ""),
         "digest_mode": str(plan.get("digest_mode") or ""),
         "tone": str(plan.get("tone") or ""),
         "selected_skillpacks": list(plan.get("selected_skillpacks") or []),
-        "chapter_plan": list(plan.get("chapter_plan") or []),
+        "chapter_plan": chapter_plan,
         "research_queries": list(plan.get("research_queries") or []),
         "media_plan": dict(plan.get("media_plan") or {}),
-        "build_constraints": dict(plan.get("build_constraints") or {}),
+        "build_constraints": build_constraints,
         "plan_summary": str(plan.get("plan_summary") or ""),
     }
+    context_payload = dict(planner_context or plan.get("planner_context") or {})
+    if context_payload:
+        payload["planner_context"] = context_payload
+        payload["docgen_history_brief"] = str(context_payload.get("docgen_history_brief") or "")
+    return payload
+
+
+def _ensure_min_chapter_payload(
+    chapters: list[Any],
+    *,
+    min_chapters: int,
+    digest_mode: str,
+    user_goal: str,
+) -> list[dict[str, Any]]:
+    normalized = [dict(item) for item in chapters if isinstance(item, dict)]
+    if min_chapters <= 0 or len(normalized) >= min_chapters:
+        return normalized
+    existing_titles = {
+        str(item.get("title") or "").strip().casefold()
+        for item in normalized
+        if str(item.get("title") or "").strip()
+    }
+    supplements = ["核心概念总览", "关键结构与流程", "典型例题与应用", "易错点与复盘", "综合练习"]
+    mode = str(digest_mode or "").strip().lower()
+    while len(normalized) < min_chapters:
+        index = len(normalized) + 1
+        title = supplements[(index - 1) % len(supplements)]
+        if title.casefold() in existing_titles:
+            title = f"{title} {index}"
+        existing_titles.add(title.casefold())
+        if mode == "sprint":
+            required = [f"{title} 的高频考点", f"{title} 的典型题型", f"{title} 的易错点"]
+        else:
+            required = [f"{title} 的核心概念", f"{title} 的关键结构", f"{title} 的例子与迁移"]
+        if user_goal:
+            required.append(user_goal)
+        normalized.append(
+            {
+                "chapter_index": index,
+                "title": title,
+                "objective": "；".join(required[:3]),
+                "required_elements": required[:6],
+                "search_queries": [title, *required[:3]],
+                "writing_instructions": "按用户确认的课程模式补齐本章讲解，保持和前文章节风格一致。",
+                "media_hints": {"images": [], "mermaid": [f"{title} 的知识结构图"], "interactive": []},
+            }
+        )
+    return normalized
 
 
 def mark_planner_session_failed(*, subject: str, user_id: str, session_id: str) -> None:
@@ -569,7 +705,16 @@ def confirm_planner_session(
     if not record.latest_plan_json:
         raise BuildPlannerEmptyPlanError(session_id)
 
-    plan_payload = _normalized_plan_payload(dict(record.latest_plan_json))
+    turns = list_planner_turns(session, session_id=record.id)
+    planner_context = _build_planner_context_payload(
+        record,
+        turns=turns,
+        plan=dict(record.latest_plan_json),
+    )
+    plan_payload = _normalized_plan_payload(
+        dict(record.latest_plan_json),
+        planner_context=planner_context,
+    )
     record.latest_plan_json = plan_payload
     current_confirmed = None
     if record.confirmed_plan_id:
@@ -639,9 +784,19 @@ def get_latest_planner_session(
 ) -> BuildPlannerSessionResponse | None:
     record = repo_get_latest_planner_session(session, subject=subject.slug, user_id=user_id)
     if record is None:
+        logger.info("planner_latest_none", subject=subject.slug, user_id=user_id)
         return None
     turns = list_planner_turns(session, session_id=record.id)
     plan_payload = dict(record.latest_plan_json or {})
+    logger.info(
+        "planner_latest_found",
+        subject=subject.slug,
+        user_id=user_id,
+        planner_session_id=record.id,
+        turn_count=len(turns),
+        has_latest_plan=bool(plan_payload),
+        chapter_count=len(list(plan_payload.get("chapter_plan") or [])),
+    )
     return _planner_session_response(
         record,
         subject=subject.slug,

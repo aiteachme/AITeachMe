@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+from langsmith import traceable
 
+
+@traceable(name="DocGen：摘要文件材料提示词", run_type="prompt")
 def build_file_summary_messages(
     *,
     filename: str,

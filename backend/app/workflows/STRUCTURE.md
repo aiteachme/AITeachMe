@@ -171,7 +171,10 @@ teaching tool 不是新的独立教学层。当前通用实现是内置 tool，�
 - graph builder：`build_<lane>_graph`
 - workflow runner：`run_<lane>_workflow`
 - application 文件：按 use case 命名，例如 `build_plans.py`、`builds.py`
-- 节点名与节点文件名使用小写蛇形，例如 `load_context.py`
+- LangGraph 节点 id、节点文件名、函数名使用小写蛇形英文，例如 `load_context.py`
+- README、手写 Mermaid、前端进度文案优先使用中文展示名，例如“读取上下文”“生成章节”“发布文档”
+- 手写 Mermaid 推荐写成“中文展示名 + 英文节点 id”的形式，既方便阅读，也方便回到代码定位
+- 不建议把真实 LangGraph 节点 id 改成中文；这些 id 会进入 LangSmith、runtime_stats、图导出和前端兼容逻辑，保持英文更稳定
 - prompt 文件名使用业务主题，例如 `write_chapters.py`
 - `lib/` 文件按主题命名，例如 `publish.py`、`writer.py`、`grounding.py`
 - planner SSE 进度主通路是 `emit_progress(...)`
@@ -198,7 +201,7 @@ digest/
 - `__init__.py` 只提供稳定导入面，不承载业务实现
 - `docgen/__init__.py`、`knowledge_graph/__init__.py` 提供 lane 入口
 - `planner/` 与 `docgen/` 是当前优先维护的主链路
-- `knowledge_graph/` 是独立图谱构建链路，同时承接图谱总览与基于图谱的学习计划查询
+- `knowledge_graph/` 是独立图谱构建链路，同时承接图谱总览查询
 - `common/` 是当前真实跨链路共享层，承载 contracts / models / prepare / material_profile / metrics / runtime_config / pedagogy / events / exports 等复用能力
 
 

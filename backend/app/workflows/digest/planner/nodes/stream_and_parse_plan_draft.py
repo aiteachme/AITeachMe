@@ -10,10 +10,9 @@ import structlog
 from pydantic import BaseModel, Field
 
 from app.shared.infra.llm_support import acompletion_stream
-from app.shared.infra.llm_support.routing import TaskType
+from app.shared.infra.llm_support.routing import LLMCallPurpose
 from app.shared.infra.workflow.context import WorkflowContext
 from app.workflows.digest.planner.lib.planner_events import emit_planner_event, emit_planner_token
-from app.workflows.digest.planner.lib.plans import build_fallback_plan
 from app.workflows.digest.planner.lib.models import LearningIntent, PlannerBrief
 from app.workflows.digest.planner.prompts import PLAN_JSON_END_MARKER, PLAN_JSON_MARKER, build_plan_composer_messages
 from app.workflows.digest.planner.state import BuildPlannerState
@@ -74,15 +73,16 @@ def _sketch_to_plan_payload(sketch: PlannerOutlineSketch) -> dict[str, Any]:
     for index, chapter in enumerate(sketch.chapters, start=1):
         title = chapter.title.strip()
         key_points = [item.strip() for item in chapter.key_points if item.strip()]
-        if not title and not key_points:
-            continue
+        if not title:
+            raise ValueError(f"planner outline chapter #{index} is missing title")
+        if not key_points:
+            raise ValueError(f"planner outline chapter `{title}` is missing key_points")
         chapters.append(
             {
                 "chapter_index": index,
-                "title": title or f"第 {index} 章",
+                "title": title,
                 "objective": "；".join(key_points),
                 "required_elements": key_points,
-                "search_queries": [],
                 "writing_instructions": "围绕本章知识点生成清晰讲解。",
                 "media_hints": {"images": [], "mermaid": [], "interactive": []},
             }
@@ -90,8 +90,15 @@ def _sketch_to_plan_payload(sketch: PlannerOutlineSketch) -> dict[str, Any]:
     return {
         "plan_summary": sketch.plan_text.strip(),
         "chapter_plan": chapters,
-        "research_queries": [],
     }
+
+
+def _validate_plan_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    if not str(payload.get("plan_summary") or "").strip():
+        raise ValueError("planner outline is missing plan_text")
+    if not list(payload.get("chapter_plan") or []):
+        raise ValueError("planner outline is missing chapters")
+    return payload
 
 
 def _visible_outline_from_response(raw_text: str) -> str:
@@ -113,25 +120,31 @@ async def _stream_composer_response(
     visible_closed = False
     try:
         await emit_planner_token(state, "\n\n")
+        logger.info(
+            "planner_compose_llm_starting",
+            planner_session_id=state.get("planner_session_id") or "",
+            subject=state.get("subject", ""),
+            material_digest_chars=len(material_context.material_digest or ""),
+            brief_chars=len(planner_brief.markdown or ""),
+            goal_type=intent.goal_type,
+        )
         stream = acompletion_stream(
             build_plan_composer_messages(
                 subject=state["subject"],
                 user_goal=state.get("user_goal") or "",
                 digest_mode=state.get("digest_mode") or material_context.course_mode_decision.mode.value,
-                tone=state.get("tone") or "encouraging",
                 material_context=material_context,
                 planner_brief=planner_brief,
                 learning_intent=intent,
                 message_history=list(state.get("message_history", [])),
                 latest_plan=state.get("latest_plan"),
             ),
-            task_type=TaskType.REASONING,
-            model="reason",
-            temperature=0.15,
+            call_purpose=LLMCallPurpose.GENERATE,
+            model="light",
             max_tokens=3200,
             extra_metadata={
                 "planner_session_id": state.get("planner_session_id") or "",
-                "substep": "stream_and_parse_plan_draft",
+                "substep": "合成计划大纲",
             },
         )
         async for token in stream:
@@ -154,12 +167,6 @@ async def _stream_composer_response(
                 pending_visible = pending_visible[safe_length:]
             if safe_text:
                 await emit_planner_token(state, safe_text)
-                await emit_planner_event(
-                    state,
-                    event="planner.plan.delta",
-                    detail="计划大纲生成中...",
-                    payload={"token": safe_text},
-                )
     except Exception:
         logger.exception(
             "planner_composer_stream_failed",
@@ -169,29 +176,30 @@ async def _stream_composer_response(
         return ""
     if pending_visible and not visible_closed:
         await emit_planner_token(state, pending_visible)
-        await emit_planner_event(
-            state,
-            event="planner.plan.delta",
-            detail="计划大纲生成中...",
-            payload={"token": pending_visible},
-        )
-    return "".join(tokens).strip()
+    text = "".join(tokens).strip()
+    logger.info(
+        "planner_compose_llm_completed",
+        planner_session_id=state.get("planner_session_id") or "",
+        subject=state.get("subject", ""),
+        token_count=len(tokens),
+        response_chars=len(text),
+        visible_closed=visible_closed,
+    )
+    return text
 
 
 def build_stream_and_parse_plan_draft_node(*, context: WorkflowContext):
     del context
 
     async def stream_and_parse_plan_draft_node(state: BuildPlannerState) -> dict:
+        logger.info(
+            "planner_compose_node_started",
+            planner_session_id=state.get("planner_session_id", ""),
+            subject=state.get("subject", ""),
+        )
         material_context = state["material_context"]
         planner_brief = PlannerBrief.model_validate(state.get("planner_brief") or {})
         intent = LearningIntent.model_validate(state.get("learning_intent") or {})
-        fallback = build_fallback_plan(
-            subject=state["subject"],
-            user_goal=state.get("user_goal") or "",
-            digest_mode=state.get("digest_mode") or material_context.course_mode_decision.mode.value,
-            tone=state.get("tone") or "encouraging",
-            shared_inputs=material_context,
-        )
         await emit_planner_event(
             state,
             event="planner.plan.composing",
@@ -206,7 +214,14 @@ def build_stream_and_parse_plan_draft_node(*, context: WorkflowContext):
         visible_outline = _visible_outline_from_response(raw_response)
         try:
             sketch = _parse_outline_sketch(raw_response)
-            draft_payload = _sketch_to_plan_payload(sketch)
+            draft_payload = _validate_plan_payload(_sketch_to_plan_payload(sketch))
+            logger.info(
+                "planner_compose_parse_completed",
+                planner_session_id=state.get("planner_session_id", ""),
+                plan_text_chars=len(sketch.plan_text or ""),
+                chapter_count=len(sketch.chapters),
+                visible_outline_chars=len(visible_outline),
+            )
         except Exception:
             logger.exception(
                 "planner_composer_parse_failed",
@@ -215,15 +230,24 @@ def build_stream_and_parse_plan_draft_node(*, context: WorkflowContext):
             )
             await emit_planner_event(
                 state,
-                event="planner.fallback.used",
-                detail="最终大纲合成解析失败，已使用规则构建方案继续。",
+                event="planner.plan.failed",
+                detail="最终大纲合成失败，模型没有返回可用章节，请调整目标后重试。",
             )
-            draft_payload = fallback.model_dump(mode="json")
-        return {
+            return {
+                "error": "最终大纲合成失败，模型没有返回可用章节，请调整目标后重试。",
+                "plan_outline_markdown": visible_outline,
+            }
+        result = {
             "build_plan_draft": draft_payload,
             "plan_outline_markdown": visible_outline,
-            "generation_mode": "raw_context_three_call_no_retrieval_v6",
         }
+        logger.info(
+            "planner_compose_node_completed",
+            planner_session_id=state.get("planner_session_id", ""),
+            chapter_count=len(draft_payload.get("chapter_plan") or []),
+            plan_summary_chars=len(str(draft_payload.get("plan_summary") or "")),
+        )
+        return result
 
     return stream_and_parse_plan_draft_node
 

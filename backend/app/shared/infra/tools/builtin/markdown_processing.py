@@ -9,13 +9,20 @@ from urllib.parse import urlparse
 MERMAID_PLACEHOLDER_PATTERN = re.compile(r"<!--\s*\[MERMAID:\s*(.+?)\]\s*-->")
 IMAGE_PLACEHOLDER_PATTERN = re.compile(r"<!--\s*\[IMAGE:\s*(.+?)\]\s*-->")
 HEADER_PATTERN = re.compile(r"^(#{1,6})\s+(.+?)\s*$", re.MULTILINE)
-MERMAID_START_PATTERN = re.compile(r"^(?P<prefix>(?:>\s*)*)```mermaid\s*$", re.IGNORECASE)
+KNOWLEDGE_ANCHOR_PATTERN = re.compile(
+    r"\s*(?:\{#ku_[A-Za-z0-9_-]+\}|<!--\s*ATM_KU:\s*ku_[A-Za-z0-9_-]+\s*-->)"
+)
+MERMAID_START_PATTERN = re.compile(
+    r"^(?P<prefix>(?:>\s*)*)```\s*(?P<lang>mermaid|mindmap|graph|flowchart|sequenceDiagram|classDiagram|stateDiagram(?:-v2)?|erDiagram|gantt|pie|journey|timeline|gitGraph)?\s*$",
+    re.IGNORECASE,
+)
 MERMAID_FENCE_PATTERN = re.compile(r"^```(?P<trailing>.*)$")
 MARKDOWN_BOUNDARY_PATTERN = re.compile(r"^(#{1,6}\s+\S|[-*+]\s+\S|\d+\.\s+\S|>\s*\[!|\|.+\||---\s*$)")
 MERMAID_KEYWORD_PATTERN = re.compile(
     r"^(mindmap|graph|flowchart|sequencediagram|classdiagram|statediagram(?:-v2)?|erdiagram|gantt|pie|journey|timeline|gitgraph)\b",
     re.IGNORECASE,
 )
+MALFORMED_MERMAID_FENCE_PATTERN = re.compile(r"^\s*```\s*(?P<trailing>.+)$")
 
 
 
@@ -63,6 +70,29 @@ def _looks_like_mermaid_garbage(line: str) -> bool:
     return any(token in stripped for token in ("-->", "[", "]", "classDef", "subgraph"))
 
 
+def _is_indented_context_echo(line: str) -> bool:
+    if not line.startswith(("    ", "\t")):
+        return False
+    stripped = line.strip()
+    if not stripped:
+        return False
+    return (
+        stripped.startswith("#")
+        or stripped.startswith(("**", "✅", "🔥", ">", "|"))
+        or len(stripped) > 18
+    )
+
+
+def _is_malformed_mermaid_fence(line: str) -> bool:
+    match = MALFORMED_MERMAID_FENCE_PATTERN.match(line)
+    if match is None:
+        return False
+    trailing = (match.group("trailing") or "").strip()
+    if not trailing:
+        return False
+    return _looks_like_mermaid_line(trailing) or _looks_like_mermaid_garbage(trailing)
+
+
 def _append_mermaid_block(output_lines: list[str], block_lines: list[str]) -> None:
     body_lines = list(block_lines)
     while body_lines and not body_lines[0].strip():
@@ -78,7 +108,7 @@ def _append_mermaid_block(output_lines: list[str], block_lines: list[str]) -> No
 
 def normalize_mermaid_blocks(markdown: str) -> str:
     text = str(markdown or "")
-    if "```mermaid" not in text and "> ```mermaid" not in text:
+    if "```" not in text:
         return text
 
     original_has_trailing_newline = text.endswith("\n")
@@ -87,16 +117,47 @@ def normalize_mermaid_blocks(markdown: str) -> str:
     mermaid_lines: list[str] = []
     mermaid_prefix = ""
     in_mermaid = False
+    after_mermaid_close = False
+    skipping_artifact = False
     index = 0
 
     while index < len(lines):
         line = lines[index]
+        stripped_line = line.strip()
+
+        if skipping_artifact:
+            if not stripped_line:
+                index += 1
+                continue
+            if _is_indented_context_echo(line) or _is_malformed_mermaid_fence(line):
+                index += 1
+                continue
+            if stripped_line.startswith("```"):
+                skipping_artifact = False
+                after_mermaid_close = False
+                index += 1
+                continue
+            if MARKDOWN_BOUNDARY_PATTERN.match(stripped_line):
+                skipping_artifact = False
+                after_mermaid_close = False
+                continue
+            index += 1
+            continue
+
         if not in_mermaid:
+            if after_mermaid_close:
+                if _is_indented_context_echo(line) or _is_malformed_mermaid_fence(line):
+                    skipping_artifact = True
+                    index += 1
+                    continue
+                after_mermaid_close = False
             start_match = MERMAID_START_PATTERN.match(line)
-            if start_match:
+            lang = (start_match.group("lang") if start_match is not None else "") or ""
+            if start_match and lang:
                 in_mermaid = True
                 mermaid_prefix = start_match.group("prefix") or ""
-                mermaid_lines = []
+                normalized_lang = lang.strip()
+                mermaid_lines = [] if normalized_lang.lower() == "mermaid" else [normalized_lang]
                 index += 1
                 continue
             normalized_lines.append(line)
@@ -113,6 +174,7 @@ def normalize_mermaid_blocks(markdown: str) -> str:
             mermaid_lines = []
             mermaid_prefix = ""
             in_mermaid = False
+            after_mermaid_close = True
             index += 1
             continue
 
@@ -121,6 +183,7 @@ def normalize_mermaid_blocks(markdown: str) -> str:
             mermaid_lines = []
             mermaid_prefix = ""
             in_mermaid = False
+            after_mermaid_close = False
             continue
 
         if mermaid_lines and not _looks_like_mermaid_line(cleaned_line):
@@ -128,6 +191,7 @@ def normalize_mermaid_blocks(markdown: str) -> str:
             mermaid_lines = []
             mermaid_prefix = ""
             in_mermaid = False
+            after_mermaid_close = False
             continue
 
         mermaid_lines.append(cleaned_line)
@@ -161,7 +225,7 @@ def extract_markdown_headers(
         level = len(hashes)
         if level < min_level or level > max_level:
             continue
-        cleaned_title = title.strip()
+        cleaned_title = KNOWLEDGE_ANCHOR_PATTERN.sub("", title).strip()
         lowered = cleaned_title.lower()
         if lowered in {"table of contents", "knowledge document overview", "目录", "知识文档总览"}:
             continue
@@ -176,7 +240,7 @@ def extract_markdown_headers(
 
 
 def slugify_markdown_anchor(text: str) -> str:
-    cleaned = text.strip().lower()
+    cleaned = KNOWLEDGE_ANCHOR_PATTERN.sub("", text).strip().lower()
     cleaned = re.sub(r"[^\w\s-]", "", cleaned)
     cleaned = re.sub(r"\s+", "-", cleaned)
     cleaned = re.sub(r"-{2,}", "-", cleaned)

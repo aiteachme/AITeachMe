@@ -26,6 +26,38 @@ load_context
 
 注意：`enhance_chapters` 当前在 `generate_chapters` fan-in 后一次性并发处理全部章节草稿。这样可以保持章节增强并行，同时避免在 LangGraph branch state 中传递临时章节任务。
 
+## 手写流程图
+
+```mermaid
+flowchart TD
+    A["读取构建上下文<br/>load_context"]
+
+    B["并行准备写作输入<br/>prepare_parallel_inputs"]
+    B1["增强章节大纲<br/>enhance_plan_outline"]
+    B2["识别写作意图<br/>infer_docgen_intent"]
+    B3["提炼文件摘要<br/>summarize_files"]
+
+    C["确认并派发章节任务<br/>confirm_and_dispatch"]
+    D{"按章节并行<br/>Send x N"}
+    E["生成章节草稿<br/>generate_chapters"]
+    F["增强章节内容<br/>enhance_chapters"]
+    G["合并并整本检查<br/>merge_review"]
+    H["发布文档产物<br/>publish_document"]
+
+    A --> B
+    B --> B1
+    B --> B2
+    B --> B3
+    B1 --> C
+    B2 --> C
+    B3 --> C
+    C --> D
+    D --> E
+    E --> F
+    F --> G
+    G --> H
+```
+
 ## 步骤总览
 
 | 顺序 | 节点 | 做什么 |

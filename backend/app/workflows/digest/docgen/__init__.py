@@ -16,6 +16,7 @@ from app.workflows.digest.docgen.builds import (
 )
 from app.workflows.digest.docgen.cleanup import clear_subject_knowledge
 from app.workflows.digest.docgen.graph import (
+    RUN_NAME_DOCGEN,
     build_docgen_graph,
     create_docgen_initial_state,
     get_langgraph_dev_docgen_graph,
@@ -54,6 +55,7 @@ async def run_docgen_workflow(
         metadata={
             "requested_at": requested_at.isoformat(),
             "lane": "docgen",
+            "langsmith_run_name": RUN_NAME_DOCGEN,
             "build_session_id": build_session_id or "",
             "planner_session_id": planner_session_id or "",
             "confirmed_plan_id": confirmed_plan_id or "",

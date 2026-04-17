@@ -6,7 +6,11 @@ import asyncio
 from time import perf_counter
 
 from app.shared.infra.execution import TracedExecutionContext
-from app.utils.docgen_store import append_knowledge_build_recent_event, upsert_knowledge_build_chapter_progress
+from app.utils.docgen_store import (
+    append_knowledge_build_recent_event,
+    update_knowledge_build_status,
+    upsert_knowledge_build_chapter_progress,
+)
 from app.utils.time import utcnow
 from app.shared.infra.workflow.context import WorkflowContext
 from app.workflows.digest.docgen.lib.chapter_enhancement import enhance_chapter_draft
@@ -27,6 +31,14 @@ def build_enhance_chapters_node(*, context: WorkflowContext):
         ]
         if not drafts:
             return {"error": "没有可增强的章节草稿。"}
+        update_knowledge_build_status(
+            state["subject"],
+            requested_at=state["requested_at"],
+            status="running",
+            stage="enhancing_chapters",
+            digest_mode=state.get("digest_mode") or None,
+            current_stage_description=f"章节初稿已生成，正在并行增强 {len(drafts)} 个章节。",
+        )
 
         async def _enhance_one(draft: ChapterDraft):
             traced_context = TracedExecutionContext(
@@ -78,6 +90,14 @@ def build_enhance_chapters_node(*, context: WorkflowContext):
         enhanced_items = [item[0] for item in results]
         asset_manifests = [item[1] for item in results]
         practice_manifests = [item[2] for item in results]
+        update_knowledge_build_status(
+            state["subject"],
+            requested_at=state["requested_at"],
+            status="running",
+            stage="chapters_enhanced",
+            digest_mode=state.get("digest_mode") or None,
+            current_stage_description=f"章节增强完成，共生成 {len(enhanced_items)} 个章节草稿。",
+        )
         await publish_docgen_progress(
             context,
             state=state,

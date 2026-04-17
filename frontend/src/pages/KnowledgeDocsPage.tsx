@@ -24,13 +24,11 @@ import { getApiErrorMessage, postSseJson } from "../api/client";
 import { apiClient } from "../api/client";
 import { useSubjectAiAssistant } from "../components/ai/SubjectAiAssistant";
 import {
+  BuildView,
   type DocViewMode,
-  type KnowledgeBuildMetrics,
-  type KnowledgeBuildPreview,
   useDocBuildProgress,
   useDocMarkdown,
 } from "../components/knowledge-docs";
-import { StudyPlanPanel } from "../components/pages/StudyPlanPanel";
 import { SubjectVectorNotice } from "../components/pages/SubjectVectorNotice";
 import { MermaidBlock } from "../components/ui/MermaidBlock";
 import { preprocessLaTeX } from "../components/ui/MarkdownViewer";
@@ -221,6 +219,18 @@ function compactTocItems(items: TocItem[]): TocItem[] {
     compacted.push(item);
   }
   return compacted;
+}
+
+function buildDefaultCollapsedTocIds(items: TocItem[]): Set<string> {
+  const collapsed = new Set<string>();
+  for (let index = 0; index < items.length; index += 1) {
+    const item = items[index];
+    const next = items[index + 1];
+    if (item.level === 2 && next && next.level > item.level) {
+      collapsed.add(item.id);
+    }
+  }
+  return collapsed;
 }
 
 /** Recursively extract plain text from React children */
@@ -440,7 +450,8 @@ const DocMarkdown = memo(function DocMarkdown({ content }: { content: string }) 
           const codeText = extractText(children).replace(/\n$/, "");
           const language = className?.replace(/^language-/, "").trim().toLowerCase() ?? "";
           const isBlock = Boolean(className) || codeText.includes("\n");
-          if (language === "mermaid") {
+          const looksLikeMermaid = /^(mindmap|flowchart|graph|sequenceDiagram|classDiagram|stateDiagram|erDiagram|gantt)\b/i.test(codeText.trim());
+          if (language === "mermaid" || (!language && looksLikeMermaid)) {
             return <MermaidBlock chart={codeText} />;
           }
           if (isBlock) {
@@ -524,122 +535,6 @@ function DocBuildProgress({
   );
 }
 
-function DocGeneratingState({
-  isFetching,
-  progress,
-  statusText,
-  buildPreview,
-  buildMetrics,
-}: {
-  isFetching: boolean;
-  progress: number;
-  statusText: string;
-  buildPreview?: KnowledgeBuildPreview | null;
-  buildMetrics?: KnowledgeBuildMetrics | null;
-}) {
-  const sampleCards = buildPreview?.sample_cards ?? [];
-  const sampleNodes = buildPreview?.sample_nodes ?? [];
-  const chapterTitles = buildPreview?.latest_chapter_titles ?? [];
-  const draftExcerpt = buildPreview?.draft_excerpt?.trim() ?? "";
-  const chunkLabel =
-    (buildPreview?.total_chunks ?? 0) > 0
-      ? `${buildPreview?.processed_chunks ?? 0}/${buildPreview?.total_chunks ?? 0} chunks`
-      : null;
-  const nodeLabel =
-    (buildPreview?.discovered_node_count ?? 0) > 0
-      ? `${buildPreview?.discovered_node_count ?? 0} nodes`
-      : null;
-  const llmLabel = (buildMetrics?.llm_total_calls ?? 0) > 0 ? `${buildMetrics?.llm_total_calls ?? 0} LLM calls` : null;
-  const avgLatency =
-    buildMetrics?.llm_avg_latency_ms && buildMetrics.llm_avg_latency_ms > 0
-      ? buildMetrics.llm_avg_latency_ms < 1000
-        ? `${Math.round(buildMetrics.llm_avg_latency_ms)}ms`
-        : `${(buildMetrics.llm_avg_latency_ms / 1000).toFixed(1)}s`
-      : null;
-
-  return (
-    <section className="rounded-3xl border border-stone-200 bg-gradient-to-b from-white via-stone-50 to-stone-100 p-7 md:p-9 shadow-[0_30px_70px_-45px_rgba(28,25,23,0.2)]">
-      <div className="flex items-start gap-3">
-        <div className="mt-0.5 flex h-10 w-10 items-center justify-center rounded-2xl bg-stone-100 text-stone-700">
-          {isFetching ? <Loader2 className="h-5 w-5 animate-spin" /> : <Sparkles className="h-5 w-5" />}
-        </div>
-        <div className="space-y-1">
-          <h2 className="text-lg font-semibold text-slate-900">知识文档构建中</h2>
-          <p className="text-sm text-slate-600">等待期间会持续显示已提取结构和草稿片段，减少空白等待。</p>
-        </div>
-      </div>
-
-      <div className="mt-5">
-        <DocBuildProgress
-          progress={progress}
-          statusText={buildPreview?.current_stage_description?.trim() || statusText}
-          isFetching={isFetching}
-        />
-      </div>
-
-      {chunkLabel || nodeLabel || llmLabel || avgLatency ? (
-        <div className="mt-3 flex flex-wrap gap-2 text-[11px] text-slate-600">
-          {chunkLabel ? <span className="rounded-full bg-white/80 px-2.5 py-1">{chunkLabel}</span> : null}
-          {nodeLabel ? <span className="rounded-full bg-white/80 px-2.5 py-1">{nodeLabel}</span> : null}
-          {llmLabel ? <span className="rounded-full bg-white/80 px-2.5 py-1">{llmLabel}</span> : null}
-          {avgLatency ? <span className="rounded-full bg-white/80 px-2.5 py-1">avg {avgLatency}</span> : null}
-        </div>
-      ) : null}
-
-      {sampleCards.length > 0 ? (
-        <div className="mt-5 grid gap-3 md:grid-cols-2">
-          {sampleCards.slice(0, 4).map((card) => (
-            <article key={`${card.card_type}-${card.title}`} className="rounded-xl border border-slate-200 bg-white px-3 py-3">
-              <div className="flex items-center justify-between gap-2">
-                <p className="text-sm font-medium text-slate-900">{card.title}</p>
-                <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] uppercase tracking-wide text-slate-500">
-                  {card.card_type}
-                </span>
-              </div>
-              <p className="mt-2 text-xs leading-5 text-slate-600">{card.summary}</p>
-            </article>
-          ))}
-        </div>
-      ) : sampleNodes.length > 0 ? (
-        <div className="mt-5 rounded-xl border border-slate-200 bg-white px-3 py-3">
-          <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Discovered Nodes</p>
-          <div className="mt-2 flex flex-wrap gap-2">
-            {sampleNodes.slice(0, 6).map((node) => (
-              <span
-                key={`${node.knowledge_unit_type}-${node.name}`}
-                className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] text-slate-600"
-              >
-                {node.knowledge_unit_type}: {node.name}
-              </span>
-            ))}
-          </div>
-        </div>
-      ) : null}
-
-      {chapterTitles.length > 0 || draftExcerpt ? (
-        <div className="mt-5 rounded-xl border border-slate-200 bg-white px-3 py-3">
-          {chapterTitles.length > 0 ? (
-            <>
-              <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Draft Outline</p>
-              <div className="mt-2 flex flex-wrap gap-2">
-                {chapterTitles.slice(0, 4).map((title) => (
-                  <span key={title} className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] text-slate-600">
-                    {title}
-                  </span>
-                ))}
-              </div>
-            </>
-          ) : null}
-          {draftExcerpt ? (
-            <pre className="mt-3 overflow-hidden whitespace-pre-wrap rounded-lg bg-slate-950 px-3 py-3 text-[11px] leading-5 text-slate-100">
-              {draftExcerpt}
-            </pre>
-          ) : null}
-        </div>
-      ) : null}
-    </section>
-  );
-}
 function DocUpdatingBanner({
   progress,
   statusText,
@@ -984,6 +879,8 @@ export function KnowledgeDocsPage() {
     showDocBuildFailureState,
     showDocEmptyState,
     showDocUpdatingBanner,
+    sourceFiles,
+    sourceFilesFetching,
   } = useDocMarkdown();
   const { buildProgress, buildStatusText } = useDocBuildProgress({
     buildMeta,
@@ -1037,6 +934,7 @@ export function KnowledgeDocsPage() {
   const threadRefs = useRef(new Map<string, HTMLDivElement>());
   const headingFlashTimersRef = useRef(new Map<string, number>());
   const tocNavRef = useRef<HTMLElement>(null);
+  const tocDefaultInitializedRef = useRef(false);
   const streamControllersRef = useRef(new Map<string, AbortController>());
 
   const isTocVisible = isCompactPanels ? activeDrawer === "toc" : !isTocCollapsed;
@@ -1101,6 +999,7 @@ export function KnowledgeDocsPage() {
   }, [activeHeading]);
 
   useEffect(() => {
+    tocDefaultInitializedRef.current = false;
     const rafId = window.requestAnimationFrame(() => {
       const container = scrollRef.current;
       if (!container) return;
@@ -1110,12 +1009,16 @@ export function KnowledgeDocsPage() {
           const id = node.getAttribute("data-heading-id") ?? node.id;
           if (!id) return null;
           const level = Number(node.tagName.replace("H", ""));
-          if (!Number.isInteger(level) || level < 1 || level > 6) return null;
+          if (!Number.isInteger(level) || level < 1 || level > 3) return null;
           const text = node.textContent?.trim() || id;
           return { id, text, level };
         })
         .filter((item): item is TocItem => item !== null));
       setToc((prev) => (tocEqual(prev, nextToc) ? prev : nextToc));
+      if (!tocDefaultInitializedRef.current && nextToc.length > 0) {
+        tocDefaultInitializedRef.current = true;
+        setCollapsedTocIds(buildDefaultCollapsedTocIds(nextToc));
+      }
     });
     return () => window.cancelAnimationFrame(rafId);
   }, [renderedMarkdown]);
@@ -2761,9 +2664,6 @@ export function KnowledgeDocsPage() {
                   className="min-w-0 flex-1 px-6 py-8 md:px-10 md:py-10"
                 >
                   <SubjectVectorNotice status={docMarkdownQuery.data?.vector_status} className="mb-6" />
-                  {subjectId ? (
-                    <StudyPlanPanel subject={subjectId} className="mb-6" />
-                  ) : null}
                   {docMarkdownQuery.isError ? (
                     <DocLoadErrorState
                       message={getApiErrorMessage(docMarkdownQuery.error, "获取知识文档失败，请稍后重试。")}
@@ -2772,7 +2672,16 @@ export function KnowledgeDocsPage() {
                       }}
                     />
                   ) : showDocGeneratingState ? (
-                    <DocGeneratingState isFetching={docMarkdownQuery.isFetching} progress={buildProgress} statusText={buildStatusText} buildPreview={buildPreview} buildMetrics={buildMetrics} />
+                    <BuildView
+                      isFetching={docMarkdownQuery.isFetching}
+                      progress={buildProgress}
+                      statusText={buildPreview?.current_stage_description?.trim() || buildStatusText}
+                      buildPreview={buildPreview}
+                      buildMetrics={buildMetrics}
+                      sourceFiles={sourceFiles}
+                      sourceFilesFetching={sourceFilesFetching}
+                      buildStage={buildMeta?.stage}
+                    />
                   ) : showDocBuildFailureState ? (
                     <DocLoadErrorState
                       message={buildStatusText}

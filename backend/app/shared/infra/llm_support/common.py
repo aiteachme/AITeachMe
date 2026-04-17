@@ -14,7 +14,7 @@ from app.schemas.llm import ChatMessage
 from app.shared.infra.settings import Settings, get_settings
 from app.shared.infra.env_support import get_env
 from app.shared.infra.exceptions import LLMCallError, LLMTimeoutError, MissingLLMApiKeyError
-from app.shared.infra.llm_support.routing import TaskProfile, TaskType, get_task_profile
+from app.shared.infra.llm_support.routing import LLMCallProfile, LLMCallPurpose, get_call_profile
 from app.shared.infra.observability.trace import get_llm_trace_context
 from app.shared.infra.observability.llm_stats import LLMCallRecord, get_tracker
 
@@ -28,12 +28,18 @@ _LLM_SEMAPHORE: asyncio.Semaphore | None = None
 class CompletionContext:
     """Resolved configuration shared by one LLM helper invocation."""
 
-    task_type: TaskType
+    call_purpose: LLMCallPurpose
     settings: Settings
     api_key: str
-    profile: TaskProfile
+    profile: LLMCallProfile
     model: str
     model_selector: str
+
+    @property
+    def task_type(self) -> LLMCallPurpose:
+        """Backward-compatible alias for older logging code."""
+
+        return self.call_purpose
 
 
 def normalize_model_selector(value: str | None) -> str | None:
@@ -64,23 +70,35 @@ def resolve_settings_model(settings: Settings, model: str | None = None) -> tupl
     return selector, selector
 
 
-def build_completion_context(
-    task_type: TaskType = TaskType.DEFAULT,
+def resolve_call_purpose(
     *,
+    call_purpose: LLMCallPurpose | None = None,
+    task_type: LLMCallPurpose | None = None,
+) -> LLMCallPurpose:
+    """Resolve the new ``call_purpose`` name and legacy ``task_type`` name."""
+
+    return call_purpose or task_type or LLMCallPurpose.DEFAULT
+
+
+def build_completion_context(
+    task_type: LLMCallPurpose | None = None,
+    *,
+    call_purpose: LLMCallPurpose | None = None,
     model: str | None = None,
 ) -> CompletionContext:
     """Resolve config and credentials for one task-scoped LLM call."""
 
+    resolved_purpose = resolve_call_purpose(call_purpose=call_purpose, task_type=task_type)
     settings = get_settings()
     api_key = (get_env("LLM_API_KEY") or "").strip()
     if not api_key:
         raise MissingLLMApiKeyError()
     resolved_model, model_selector = resolve_settings_model(settings, model)
     return CompletionContext(
-        task_type=task_type,
+        call_purpose=resolved_purpose,
         settings=settings,
         api_key=api_key,
-        profile=get_task_profile(task_type),
+        profile=get_call_profile(resolved_purpose),
         model=resolved_model,
         model_selector=model_selector,
     )
@@ -199,7 +217,7 @@ def build_completion_kwargs(
 
 def track_call(
     *,
-    task_type: TaskType,
+    task_type: LLMCallPurpose,
     model: str,
     start: float,
     success: bool,

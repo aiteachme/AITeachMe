@@ -1,9 +1,6 @@
 """Planner graph definition and public workflow entrypoints.
 
-Planner 只有一条真实业务链路：
-load materials -> brief/intent -> stream/parse plan -> persist。
-create/append API 只负责装配初始 state 并启动这条图；session DB 读写发生在
-load/persist 这两个真实节点里，通过极简 store API 完成。
+真实链路只有四步：读取资料 -> 理解目标 -> 合成大纲 -> 保存方案。
 """
 
 from __future__ import annotations
@@ -17,12 +14,19 @@ from app.models.subject import Subject
 from app.schemas.knowledge import BuildPlannerCreateRequest, BuildPlannerMessageRequest, BuildPlannerSessionResponse
 from app.shared.infra.workflow import workflow_tracer
 from app.shared.infra.workflow.context import WorkflowContext, create_langgraph_dev_context
-from app.shared.infra.workflow.result import WorkflowResult
+from app.shared.infra.workflow.result import WorkflowError, WorkflowResult
 from app.shared.infra.workflow.runtime import run_state_graph
 from app.workflows.digest.common.runtime_config import get_teaching_runtime_config
 from app.workflows.digest.planner.lib.store import (
     mark_planner_session_failed,
     planner_session_response_from_state,
+)
+from app.workflows.digest.planner.lib.steps import (
+    STEP_COMPOSE_PLAN,
+    STEP_LOAD_MATERIALS,
+    STEP_SAVE_PLAN,
+    STEP_TRACE_NAMES,
+    STEP_UNDERSTAND_GOAL,
 )
 from app.workflows.digest.planner.nodes import (
     build_load_planner_materials_node,
@@ -38,6 +42,22 @@ from app.workflows.digest.planner.state import (
 
 logger = structlog.get_logger(__name__)
 
+RUN_NAME_PLANNER = "规划引擎：生成构建方案"
+
+
+def _require_success_state(result: WorkflowResult[BuildPlannerState]) -> BuildPlannerState:
+    state = result.require_value()
+    error = str(state.get("error") or "").strip()
+    if error:
+        logger.warning(
+            "planner_workflow_state_failed",
+            planner_session_id=state.get("planner_session_id", ""),
+            subject=state.get("subject", ""),
+            error=error,
+        )
+        raise WorkflowError(code="planner_failed", detail=error)
+    return state
+
 
 def build_planner_graph(*, context: WorkflowContext) -> StateGraph:
     trace = workflow_tracer(context=context, lane="planner")
@@ -47,68 +67,68 @@ def build_planner_graph(*, context: WorkflowContext) -> StateGraph:
         output_schema=BuildPlannerGraphOutput,
     )
 
-    # Entry-side persistence and material loading live together here:
-    # the node turns an API create/append request into a complete planner state.
     workflow.add_node(
-        "load_planner_materials",
+        STEP_LOAD_MATERIALS,
         trace.node(
             build_load_planner_materials_node(context=context),
-            name="load_planner_materials",
+            name=STEP_TRACE_NAMES[STEP_LOAD_MATERIALS],
             timing_field="prepare_ms",
         ),
     )
-    # First two LLM calls run in parallel: reason streams a visible brief,
-    # primary extracts compact learning intent.
     workflow.add_node(
-        "stream_brief_and_extract_intent",
+        STEP_UNDERSTAND_GOAL,
         trace.node(
             build_stream_brief_and_extract_intent_node(context=context),
-            name="stream_brief_and_extract_intent",
+            name=STEP_TRACE_NAMES[STEP_UNDERSTAND_GOAL],
             timing_field="bootstrap_ms",
         ),
     )
-
     workflow.add_node(
-        "stream_and_parse_plan_draft",
+        STEP_COMPOSE_PLAN,
         trace.node(
             build_stream_and_parse_plan_draft_node(context=context),
-            name="stream_and_parse_plan_draft",
+            name=STEP_TRACE_NAMES[STEP_COMPOSE_PLAN],
             timing_field="compose_ms",
         ),
     )
-
-    # Exit-side persistence: normalize the draft before saving latest_plan
-    # and the assistant turn. Store stays tiny; business decisions stay here.
     workflow.add_node(
-        "normalize_and_persist_plan",
+        STEP_SAVE_PLAN,
         trace.node(
             build_normalize_and_persist_plan_node(context=context),
-            name="normalize_and_persist_plan",
+            name=STEP_TRACE_NAMES[STEP_SAVE_PLAN],
             timing_field="finalize_ms",
         ),
     )
-    workflow.set_entry_point("load_planner_materials")
+    workflow.set_entry_point(STEP_LOAD_MATERIALS)
     workflow.add_conditional_edges(
-        "load_planner_materials",
-        route_after_step,
-        {"continue": "stream_brief_and_extract_intent", "fail": END},
+        STEP_LOAD_MATERIALS,
+        route_after_step_for_trace,
+        {"continue": STEP_UNDERSTAND_GOAL, "fail": END},
     )
     workflow.add_conditional_edges(
-        "stream_brief_and_extract_intent",
-        route_after_step,
-        {"continue": "stream_and_parse_plan_draft", "fail": END},
+        STEP_UNDERSTAND_GOAL,
+        route_after_step_for_trace,
+        {"continue": STEP_COMPOSE_PLAN, "fail": END},
     )
     workflow.add_conditional_edges(
-        "stream_and_parse_plan_draft",
-        route_after_step,
-        {"continue": "normalize_and_persist_plan", "fail": END},
+        STEP_COMPOSE_PLAN,
+        route_after_step_for_trace,
+        {"continue": STEP_SAVE_PLAN, "fail": END},
     )
-    workflow.add_edge("normalize_and_persist_plan", END)
+    workflow.add_edge(STEP_SAVE_PLAN, END)
     return workflow
 
 
 def route_after_step(state: BuildPlannerState) -> str:
     return "fail" if state.get("error") else "continue"
+
+
+def route_after_step_for_trace(state: BuildPlannerState) -> str:
+    return route_after_step(state)
+
+
+route_after_step_for_trace.__name__ = "检查是否继续"
+route_after_step_for_trace.__qualname__ = "检查是否继续"
 
 
 def create_planner_initial_state(
@@ -123,7 +143,6 @@ def create_planner_initial_state(
     file_ids: list[int],
     user_goal: str,
     digest_mode: str,
-    tone: str,
     selected_skillpacks: list[str],
     planner_session_id: str,
     message_history: list[str],
@@ -144,14 +163,12 @@ def create_planner_initial_state(
         "file_ids": file_ids,
         "user_goal": user_goal,
         "digest_mode": digest_mode,
-        "tone": tone,
         "selected_skillpacks": list(selected_skillpacks),
         "planner_session_id": planner_session_id,
         "message_history": message_history,
         "latest_plan": latest_plan,
         "progress_callback": progress_callback,
         "token_callback": token_callback,
-        "generation_mode": "raw_context_three_call_no_retrieval_v6",
         "error": None,
     }
 
@@ -167,7 +184,6 @@ async def run_build_planner_workflow(
     user_goal: str,
     planner_session_id: str,
     digest_mode: str,
-    tone: str,
     selected_skillpacks: list[str],
     message_history: list[str],
     user_id: str = "",
@@ -182,17 +198,28 @@ async def run_build_planner_workflow(
 ) -> WorkflowResult[BuildPlannerState]:
     """Run the planner lane and return the final workflow state."""
 
+    logger.info(
+        "planner_workflow_starting",
+        subject=subject,
+        planner_session_id=planner_session_id,
+        planner_operation=planner_operation,
+        file_id_count=len(file_ids),
+        requested_file_uid_count=len(requested_file_uids or []),
+        digest_mode=digest_mode,
+        user_goal_preview=user_goal[:80],
+    )
     context = WorkflowContext(
         workflow_name="digest.planner",
         subject=subject,
         metadata={
             "build_session_id": planner_session_id,
             "lane": "planner",
+            "langsmith_run_name": RUN_NAME_PLANNER,
             "planner_session_id": planner_session_id,
             "digest_mode": digest_mode,
         },
     )
-    return await run_state_graph(
+    result = await run_state_graph(
         workflow_name="digest.planner",
         graph_builder=lambda: build_planner_graph(context=context),
         initial_state=create_planner_initial_state(
@@ -206,7 +233,6 @@ async def run_build_planner_workflow(
             file_ids=file_ids,
             user_goal=user_goal,
             digest_mode=digest_mode,
-            tone=tone,
             selected_skillpacks=selected_skillpacks,
             planner_session_id=planner_session_id,
             message_history=message_history,
@@ -216,6 +242,16 @@ async def run_build_planner_workflow(
         ),
         context=context,
     )
+    logger.info(
+        "planner_workflow_finished",
+        subject=subject,
+        planner_session_id=planner_session_id,
+        failed=result.failed,
+        error=str(result.error) if result.error else "",
+        has_value=result.value is not None,
+        state_error=(result.value or {}).get("error") if isinstance(result.value, dict) else "",
+    )
+    return result
 
 
 async def create_build_planner_session(
@@ -232,7 +268,15 @@ async def create_build_planner_session(
     session_id = uuid.uuid4().hex
     user_goal = payload.user_goal.strip()
     digest_mode = (payload.digest_mode or planner_defaults.default_digest_mode).strip() or planner_defaults.default_digest_mode
-    tone = (payload.tone or planner_defaults.default_tone).strip() or planner_defaults.default_tone
+    logger.info(
+        "planner_create_session_starting",
+        subject=subject.slug,
+        user_id=user_id,
+        planner_session_id=session_id,
+        file_uid_count=len(payload.file_uids or []),
+        digest_mode=digest_mode,
+        user_goal_preview=user_goal[:80],
+    )
     result = await run_build_planner_workflow(
         subject=subject.slug,
         user_id=user_id,
@@ -243,7 +287,6 @@ async def create_build_planner_session(
         user_goal=user_goal,
         planner_session_id=session_id,
         digest_mode=digest_mode,
-        tone=tone,
         selected_skillpacks=list(payload.selected_skillpacks or []),
         message_history=[user_goal],
         progress_callback=progress_callback,
@@ -251,7 +294,19 @@ async def create_build_planner_session(
     )
     if result.failed:
         _mark_planner_session_failed(subject=subject.slug, user_id=user_id, session_id=session_id)
-    response = planner_session_response_from_state(result.require_value())
+    try:
+        final_state = _require_success_state(result)
+    except Exception:
+        _mark_planner_session_failed(subject=subject.slug, user_id=user_id, session_id=session_id)
+        raise
+    logger.info(
+        "planner_create_session_state_ready",
+        subject=subject.slug,
+        planner_session_id=session_id,
+        has_plan=bool(final_state.get("plan")),
+        state_error=final_state.get("error"),
+    )
+    response = planner_session_response_from_state(final_state)
     _log_planner_runtime(subject=subject.slug, response=response)
     return response
 
@@ -267,6 +322,14 @@ async def append_build_planner_message(
 ) -> BuildPlannerSessionResponse:
     # 追加反馈也只是同一条 graph run。
     # load_planner_materials 会读取上一版 session/plan 并追加用户 turn。
+    logger.info(
+        "planner_append_message_starting",
+        subject=subject.slug,
+        user_id=user_id,
+        planner_session_id=session_id,
+        message_preview=payload.message[:80],
+        selected_skillpacks_override=payload.selected_skillpacks is not None,
+    )
     result = await run_build_planner_workflow(
         subject=subject.slug,
         user_id=user_id,
@@ -277,7 +340,6 @@ async def append_build_planner_message(
         user_goal="",
         planner_session_id=session_id,
         digest_mode="",
-        tone="",
         selected_skillpacks=list(payload.selected_skillpacks or []),
         message_history=[],
         progress_callback=progress_callback,
@@ -285,7 +347,19 @@ async def append_build_planner_message(
     )
     if result.failed:
         _mark_planner_session_failed(subject=subject.slug, user_id=user_id, session_id=session_id)
-    response = planner_session_response_from_state(result.require_value())
+    try:
+        final_state = _require_success_state(result)
+    except Exception:
+        _mark_planner_session_failed(subject=subject.slug, user_id=user_id, session_id=session_id)
+        raise
+    logger.info(
+        "planner_append_message_state_ready",
+        subject=subject.slug,
+        planner_session_id=session_id,
+        has_plan=bool(final_state.get("plan")),
+        state_error=final_state.get("error"),
+    )
+    response = planner_session_response_from_state(final_state)
     _log_planner_runtime(subject=subject.slug, response=response)
     return response
 
@@ -300,7 +374,6 @@ def _log_planner_runtime(*, subject: str, response: BuildPlannerSessionResponse)
         planner_session_id=response.session_id,
         elapsed_ms=runtime_stats.elapsed_ms,
         steps=[step.model_dump(mode="json") for step in runtime_stats.steps],
-        generation_mode=runtime_stats.generation_mode,
     )
 
 

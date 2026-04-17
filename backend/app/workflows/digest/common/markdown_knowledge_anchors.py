@@ -1,7 +1,7 @@
 """Markdown-carried KnowledgeUnit anchor helpers.
 
 The P2 contract keeps the stable identity in Markdown itself. A knowledge
-unit anchor is written as ``{#ku_xxx}`` on a heading or labeled content block.
+unit anchor is written as a hidden HTML comment on a heading or labeled block.
 Optional inline tags such as ``[type: definition]`` and
 ``[prerequisite: Linear function]`` can guide graph extraction.
 """
@@ -14,8 +14,11 @@ import re
 from app.models.knowledge_taxonomy import normalize_knowledge_unit_type
 
 ANCHOR_PREFIX = "ku_"
+ANCHOR_COMMENT_PREFIX = "ATM_KU:"
 
-_ANCHOR_RE = re.compile(r"\{#(?P<anchor>ku_[A-Za-z0-9_-]+)\}")
+_INLINE_ANCHOR_RE = re.compile(r"\{#(?P<anchor>ku_[A-Za-z0-9_-]+)\}")
+_COMMENT_ANCHOR_RE = re.compile(r"<!--\s*ATM_KU:\s*(?P<anchor>ku_[A-Za-z0-9_-]+)\s*-->")
+_ANCHOR_RE = re.compile(r"(?:\{#(?P<inline>ku_[A-Za-z0-9_-]+)\}|<!--\s*ATM_KU:\s*(?P<comment>ku_[A-Za-z0-9_-]+)\s*-->)")
 _HEADING_RE = re.compile(r"^(?P<prefix>\s{0,3}#{1,6}\s+)(?P<title>.+?)(?P<trailing>\s*)$")
 _TAG_RE = re.compile(r"\[(?P<key>type|prerequisite|related):\s*(?P<value>[^\]]+)\]", re.IGNORECASE)
 _LABEL_RE = re.compile(
@@ -90,12 +93,12 @@ def build_knowledge_unit_anchor(text: str, *, used: set[str] | None = None) -> s
 
 
 def ensure_markdown_knowledge_unit_anchors(markdown: str) -> str:
-    """Add ``{#ku_xxx}`` anchors to headings and typed labeled blocks."""
+    """Add hidden ``ATM_KU`` anchors to headings and typed labeled blocks."""
 
     used = set(extract_knowledge_unit_anchor_ids(markdown))
     output: list[str] = []
     for line in markdown.splitlines():
-        if _ANCHOR_RE.search(line):
+        if _extract_anchor_from_line(line):
             output.append(line)
             continue
 
@@ -106,12 +109,12 @@ def ensure_markdown_knowledge_unit_anchors(markdown: str) -> str:
                 output.append(line)
                 continue
             anchor = build_knowledge_unit_anchor(title, used=used)
-            output.append(f"{heading.group('prefix')}{title} {{#{anchor}}}{heading.group('trailing')}")
+            output.append(f"{heading.group('prefix')}{title} <!-- {ANCHOR_COMMENT_PREFIX} {anchor} -->{heading.group('trailing')}")
             continue
 
         if _LABEL_RE.match(line):
             anchor = build_knowledge_unit_anchor(line, used=used)
-            output.append(line.rstrip() + f" {{#{anchor}}}")
+            output.append(line.rstrip() + f" <!-- {ANCHOR_COMMENT_PREFIX} {anchor} -->")
             continue
 
         output.append(line)
@@ -121,7 +124,7 @@ def ensure_markdown_knowledge_unit_anchors(markdown: str) -> str:
 def validate_knowledge_unit_anchors(markdown: str) -> AnchorValidationResult:
     """Check uniqueness and prefix validity for Markdown KnowledgeUnit anchors."""
 
-    all_anchors = re.findall(r"\{#([^}]+)\}", markdown)
+    all_anchors = extract_all_anchor_ids(markdown)
     seen: set[str] = set()
     duplicates: list[str] = []
     invalid: list[str] = []
@@ -142,7 +145,23 @@ def validate_knowledge_unit_anchors(markdown: str) -> AnchorValidationResult:
 def extract_knowledge_unit_anchor_ids(markdown: str) -> list[str]:
     """Return all explicit KnowledgeUnit anchor ids."""
 
-    return [match.group("anchor") for match in _ANCHOR_RE.finditer(markdown)]
+    return [anchor for anchor in extract_all_anchor_ids(markdown) if anchor.startswith(ANCHOR_PREFIX)]
+
+
+def extract_all_anchor_ids(markdown: str) -> list[str]:
+    """Return all inline/comment KnowledgeUnit anchor declarations."""
+
+    anchors: list[str] = []
+    for match in _ANCHOR_RE.finditer(markdown):
+        anchor = match.group("inline") or match.group("comment") or ""
+        if anchor:
+            anchors.append(anchor)
+    anchors.extend(
+        anchor
+        for anchor in re.findall(r"\{#([^}]+)\}", markdown)
+        if not anchor.startswith(ANCHOR_PREFIX)
+    )
+    return anchors
 
 
 def extract_markdown_knowledge_units(markdown: str) -> list[MarkdownKnowledgeUnit]:
@@ -151,8 +170,8 @@ def extract_markdown_knowledge_units(markdown: str) -> list[MarkdownKnowledgeUni
     lines = markdown.splitlines()
     units: list[MarkdownKnowledgeUnit] = []
     for index, line in enumerate(lines):
-        anchor_match = _ANCHOR_RE.search(line)
-        if anchor_match is None:
+        anchor = _extract_anchor_from_line(line)
+        if anchor is None:
             continue
 
         name = _extract_unit_name(line)
@@ -164,7 +183,7 @@ def extract_markdown_knowledge_units(markdown: str) -> list[MarkdownKnowledgeUni
         summary = _build_summary(lines, index)
         units.append(
             MarkdownKnowledgeUnit(
-                anchor=anchor_match.group("anchor"),
+                anchor=anchor,
                 name=name,
                 knowledge_unit_type=knowledge_unit_type,
                 summary=summary,
@@ -178,9 +197,18 @@ def extract_markdown_knowledge_units(markdown: str) -> list[MarkdownKnowledgeUni
 
 def _strip_tags_and_anchor(text: str) -> str:
     text = _ANCHOR_RE.sub("", text)
+    text = _INLINE_ANCHOR_RE.sub("", text)
+    text = _COMMENT_ANCHOR_RE.sub("", text)
     text = _TAG_RE.sub("", text)
     text = _MARKDOWN_DECORATION_RE.sub(" ", text)
     return _MULTISPACE_RE.sub(" ", text).strip()
+
+
+def _extract_anchor_from_line(line: str) -> str | None:
+    match = _ANCHOR_RE.search(line)
+    if match is None:
+        return None
+    return match.group("inline") or match.group("comment")
 
 
 def _slugify_anchor(text: str) -> str:
@@ -254,6 +282,7 @@ __all__ = [
     "MarkdownKnowledgeUnit",
     "build_knowledge_unit_anchor",
     "ensure_markdown_knowledge_unit_anchors",
+    "extract_all_anchor_ids",
     "extract_knowledge_unit_anchor_ids",
     "extract_markdown_knowledge_units",
     "validate_knowledge_unit_anchors",
