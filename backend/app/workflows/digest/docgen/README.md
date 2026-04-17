@@ -41,6 +41,8 @@ from app.workflows.digest import run_docgen_workflow
 
 DocGen 的后续流程设计统一维护在 [FLOW_DESIGN.md](./FLOW_DESIGN.md)。这份文档按 `systematic / sprint` 两种课程形态，说明每个阶段的输入、输出、模型调用、检索内容和具体步骤。
 
+后续智能体做 DocGen 重构前，还应先读 `backend/app/workflows/digest/planner/DOCGEN_ARCHITECTURE_REVIEW.md`。该文档记录当前主线判断、重大风险、开源项目参考和推荐改造顺序，避免重复评估或误把局部优化做成大重写。
+
 ## 目录结构
 
 ```text

@@ -69,8 +69,9 @@ api -> workflows -> repositories / shared.infra / models / schemas
 1. `18_workflows_layer_consolidation.md`
 2. `19_workflows_structure_spec.md`
 3. `20_workflows_migration_plan.md`
-4. `backend/app/workflows/STRUCTURE.md`
-5. 再回头读 Digest 的历史设计文档
+4. `backend/app/workflows/digest/planner/DOCGEN_ARCHITECTURE_REVIEW.md`
+5. `backend/app/workflows/STRUCTURE.md`
+6. 再回头读 Digest 的历史设计文档
 
 ## 权威性说明
 

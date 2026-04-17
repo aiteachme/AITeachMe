@@ -31,6 +31,7 @@ digest/
 - `planner/sessions.py`、`docgen/builds.py`、`docgen/cleanup.py`、`knowledge_graph/{build.py,builds.py,module.py,query.py}` 是当前 digest 业务用例主落点
 - `common/` 是跨链路共用的 contracts / models / prepare / material_profile / metrics / runtime_config / pedagogy 实现层
 - 各链路自己的构建摘要放在对应链路 `lib/reporting.py`，不要再新增顶层 observability 伪链路
+- `planner/DOCGEN_ARCHITECTURE_REVIEW.md` 记录 DocGen 当前架构评估、重大问题、外部项目参考和后续重构顺序，后续改 DocGen 前应优先阅读
 
 ## 对外入口
 
