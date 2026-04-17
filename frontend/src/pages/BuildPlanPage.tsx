@@ -175,16 +175,9 @@ function formatPlannerNodeLabel(stepName: string): string {
     case "prepare_material_context":
     case "load_planner_materials":
       return "准备资料理解包";
-    case "summarize_material_digest":
-    case "pack_material_context":
-    case "pack_raw_material_context":
-      return "拼接资料上下文";
     case "bootstrap_plan_brief":
     case "stream_brief_and_extract_intent":
       return "思考目标和资料";
-    case "probe_evidence":
-    case "retrieve_planning_evidence":
-      return "外部证据检索";
     case "compose_build_plan":
     case "stream_and_parse_plan_draft":
       return "提炼计划大纲";
@@ -225,21 +218,6 @@ function plannerGoalTypeLabel(value: string): string {
       return "系统学习";
     case "knowledge_doc":
       return "知识文档规划";
-    default:
-      return value;
-  }
-}
-
-function plannerSourcePolicyLabel(value: string): string {
-  switch (value) {
-    case "local_only":
-      return "只看本地资料";
-    case "local_first":
-      return "本地优先";
-    case "web_only":
-      return "外部检索校准";
-    case "all_available":
-      return "全部可用检索器";
     default:
       return value;
   }
@@ -303,10 +281,6 @@ function plannerPayloadOutlineDetails(payload: Record<string, unknown>): string[
     .slice(0, 8);
 }
 
-function plannerRetrieverNames(value: unknown): string[] {
-  return plannerStringList(value, 12);
-}
-
 function buildPlannerStreamDetails(payload: Record<string, unknown>): string[] {
   const stage = typeof payload.event === "string"
     ? payload.event.trim()
@@ -324,51 +298,9 @@ function buildPlannerStreamDetails(payload: Record<string, unknown>): string[] {
       if (typeof payload.goal_type === "string" && payload.goal_type.trim()) {
         details.push(`目标类型：${plannerGoalTypeLabel(payload.goal_type.trim())}`);
       }
-      if (typeof payload.source_policy === "string" && payload.source_policy.trim()) {
-        details.push(`检索策略：${plannerSourcePolicyLabel(payload.source_policy.trim())}`);
-      }
-      const localQueries = plannerStringList(payload.local_queries);
-      if (localQueries.length) {
-        details.push(`本地资料查询：${localQueries.join("；")}`);
-      }
-      const webQueries = plannerStringList(payload.web_queries, 4);
-      if (webQueries.length) {
-        details.push(`外部检索校准：${webQueries.join("；")}`);
-      }
-      return details;
-    }
-    case "planner.probe.started": {
-      const details: string[] = [];
-      const localQueries = plannerStringList(payload.local_queries);
-      if (localQueries.length) {
-        details.push(`正在查本地资料：${localQueries.join("；")}`);
-      }
-      const webQueries = plannerStringList(payload.web_queries, 4);
-      if (webQueries.length) {
-        details.push(`正在检索外部资料：${webQueries.join("；")}`);
-      }
-      return details;
-    }
-    case "planner.sources.triaged": {
-      const titles = plannerStringList(payload.selected_source_titles);
-      return titles.length ? [`候选来源：${titles.join("；")}`] : [];
-    }
-    case "planner.evidence.ready": {
-      const details: string[] = [];
-      const titles = plannerStringList(payload.selected_source_titles);
-      if (titles.length) {
-        details.push(`已打开证据：${titles.join("；")}`);
-      }
-      const retrieverNames = plannerRetrieverNames(payload.retriever_names);
-      if (retrieverNames.length) {
-        details.push(`已调用检索器：${retrieverNames.join("、")}`);
-      }
-      const coreConcepts = plannerStringList(payload.core_concepts, 6);
-      if (coreConcepts.length) {
-        details.push(`证据提炼：${coreConcepts.join("、")}`);
-      }
-      if (typeof payload.concept_briefing === "string" && payload.concept_briefing.trim()) {
-        details.push(payload.concept_briefing.trim());
+      const focusConcepts = plannerStringList(payload.focus_concepts, 6);
+      if (focusConcepts.length) {
+        details.push(`关注概念：${focusConcepts.join("、")}`);
       }
       return details;
     }
@@ -1316,7 +1248,7 @@ export function BuildPlanPage() {
   const inputPlaceholder = currentPlan
     ? isRevisingPlan
       ? "例如：压缩为 4 章，强化真题变式，并增加公式推导和图示"
-      : "继续补充你想调整的章节、风格、重点或检索方向"
+      : "继续补充你想调整的章节、风格、重点或题型"
     : "直接输入学习目标，也可以先上传资料再一起规划";
 
   const canOpenKnowledgeDocs =
@@ -1511,8 +1443,8 @@ export function BuildPlanPage() {
                     </div>
                   ) : null}
                   {plannerStreamingPreview.trim() ? (
-                    <div className="mb-3 whitespace-pre-wrap text-sm leading-7 text-zinc-700">
-                      {plannerStreamingPreview}
+                    <div className="mb-3">
+                      <PlannerPreviewMarkdown markdown={plannerStreamingPreview} />
                     </div>
                   ) : null}
                   {!plannerStreaming || !plannerStreamingPreview.trim() ? (
@@ -1564,7 +1496,7 @@ export function BuildPlanPage() {
               <div className="mb-2 flex items-center justify-between gap-3 rounded-2xl border border-violet-200 bg-violet-50 px-4 py-3 text-sm text-violet-700">
                 <div className="flex items-center gap-2">
                   <RefreshCw className="h-4 w-4" />
-                  <span>调整模式已开启，直接告诉我你想改哪些章节、风格、难度、题型或检索方向。</span>
+                  <span>调整模式已开启，直接告诉我你想改哪些章节、风格、难度、题型或重点。</span>
                 </div>
                 <button
                   type="button"
@@ -1683,7 +1615,7 @@ export function BuildPlanPage() {
             </div>
 
             <p className="mt-2 text-center text-[11px] text-zinc-400">
-              不上传资料也可以先构建知识文档；如果你上传了资料，规划阶段会先理解上传内容，再用外部检索校准大纲。
+              不上传资料也可以先构建知识文档；如果你上传了资料，规划阶段会先理解上传内容，再给出可确认的大纲。
             </p>
 
             <p className="mt-1 text-center text-[11px] text-zinc-400">

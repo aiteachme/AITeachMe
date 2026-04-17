@@ -9,9 +9,9 @@ from app.shared.infra.llm_support.routing import TaskType
 from app.shared.infra.execution import BaseTracedExecution, TracedExecutionContext, TracedExecutionResult
 from app.workflows.digest.docgen.prompts import build_docgen_mermaid_prompt
 
-_IMAGE_PLACEHOLDER_PATTERN = re.compile(r"<!--\s*\[IMAGE:\s*(.+?)\]\s*-->")
-_MERMAID_PLACEHOLDER_PATTERN = re.compile(r"<!--\s*\[MERMAID:\s*(.+?)\]\s*-->")
-_INTERACTIVE_PLACEHOLDER_PATTERN = re.compile(r"<!--\s*\[INTERACTIVE:\s*(.+?)\]\s*-->")
+_IMAGE_PLACEHOLDER_PATTERN = re.compile(r"<!--\s*\[IMAGE:\s*(.+?)\]\s*-->", re.IGNORECASE | re.DOTALL)
+_MERMAID_PLACEHOLDER_PATTERN = re.compile(r"<!--\s*\[MERMAID:\s*(.+?)\]\s*-->", re.IGNORECASE | re.DOTALL)
+_INTERACTIVE_PLACEHOLDER_PATTERN = re.compile(r"<!--\s*\[INTERACTIVE:\s*(.+?)\]\s*-->", re.IGNORECASE | re.DOTALL)
 _MERMAID_FENCE_BLOCK_RE = re.compile(r"```(?:mermaid)?\s*(.*?)```", re.IGNORECASE | re.DOTALL)
 _MINDMAP_ROOT_RE = re.compile(r"^root\(\((.+)\)\)$", re.IGNORECASE)
 _MINDMAP_MIXED_SYNTAX_RE = re.compile(
@@ -97,6 +97,18 @@ def _build_simple_mindmap(topic: str, source_text: str) -> str:
     return "\n".join(lines)
 
 
+async def _replace_placeholders(markdown: str, pattern: re.Pattern[str], renderer) -> str:
+    output: list[str] = []
+    last_index = 0
+    for match in pattern.finditer(markdown):
+        output.append(markdown[last_index : match.start()])
+        description = str(match.group(1) or "").strip()
+        output.append(await renderer(description))
+        last_index = match.end()
+    output.append(markdown[last_index:])
+    return "".join(output)
+
+
 def _sanitize_mindmap_body(body: str, *, topic: str) -> str:
     normalized = _extract_mermaid_body(body)
     if not normalized.lower().startswith("mindmap"):
@@ -162,11 +174,11 @@ class _ImagePlaceholderRuntime(BaseTracedExecution):
         )
 
     async def process_placeholders(self, markdown: str) -> str:
-        output = markdown
-        for placeholder in _IMAGE_PLACEHOLDER_PATTERN.findall(markdown):
+        async def render(placeholder: str) -> str:
             result = await self.run(description=placeholder)
-            output = output.replace(f"<!-- [IMAGE: {placeholder}] -->", result.content)
-        return output
+            return result.content
+
+        return await _replace_placeholders(markdown, _IMAGE_PLACEHOLDER_PATTERN, render)
 
 
 class _MermaidPlaceholderRuntime(BaseTracedExecution):
@@ -205,11 +217,11 @@ class _MermaidPlaceholderRuntime(BaseTracedExecution):
         return TracedExecutionResult(content=f"```mermaid\n{body}\n```", metadata={"fallback_used": False})
 
     async def process_placeholders(self, markdown: str) -> str:
-        output = markdown
-        for placeholder in _MERMAID_PLACEHOLDER_PATTERN.findall(markdown):
+        async def render(placeholder: str) -> str:
             result = await self.run(topic=placeholder, context=markdown)
-            output = output.replace(f"<!-- [MERMAID: {placeholder}] -->", result.content)
-        return output
+            return result.content
+
+        return await _replace_placeholders(markdown, _MERMAID_PLACEHOLDER_PATTERN, render)
 
     def _fallback_mermaid(self, topic: str, context: str) -> str:
         fallback_source = "\n".join(
@@ -242,11 +254,11 @@ class _InteractivePlaceholderRuntime(BaseTracedExecution):
         )
 
     async def process_placeholders(self, markdown: str, *, digest_mode: str = "") -> str:
-        output = markdown
-        for placeholder in _INTERACTIVE_PLACEHOLDER_PATTERN.findall(markdown):
+        async def render(placeholder: str) -> str:
             result = await self.run(description=placeholder, context=markdown, digest_mode=digest_mode)
-            output = output.replace(f"<!-- [INTERACTIVE: {placeholder}] -->", result.content)
-        return output
+            return result.content
+
+        return await _replace_placeholders(markdown, _INTERACTIVE_PLACEHOLDER_PATTERN, render)
 
     def _resolve_template_kind(self, *, description: str, digest_mode: str) -> str:
         text = f"{description} {digest_mode}".lower()

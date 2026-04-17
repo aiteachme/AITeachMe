@@ -27,7 +27,6 @@
 当前主要图：
 
 - `ingest_fast_parse`
-- `ingest_deep_enhance`
 - `digest_planner`
 - `digest_docgen`
 - `digest_kg`

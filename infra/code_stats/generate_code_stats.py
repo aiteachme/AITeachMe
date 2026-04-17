@@ -31,7 +31,7 @@ def run_git_command(cmd: List[str], ignore_errors: bool = False) -> str:
             text=True,
             check=not ignore_errors,
             encoding='utf-8',
-            errors='replace',  # 遇到无法解码的字符时替换为 �
+            errors='replace',  # 遇到无法解码的字符时使用替换字符
             timeout=30  # 30秒超时
         )
         return result.stdout.strip() if result.stdout else ""

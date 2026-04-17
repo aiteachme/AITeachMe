@@ -66,6 +66,8 @@ class KnowledgeDocsManifest(BaseModel):
     prompt: str | None = None
     chapter_count: int = 0
     chapter_titles: list[str] = Field(default_factory=list)
+    docgen_manifest_key: str | None = None
+    merge_review_report: dict[str, object] = Field(default_factory=dict)
 
 
 class KnowledgeBuildLock(BaseModel):
@@ -508,6 +510,7 @@ def clear_published_knowledge_docs_files(subject: str) -> None:
         if (
             filename.startswith("chapter_")
             or filename == "merged_knowledge_base.md"
+            or filename == "docgen_manifest.json"
             or relative.startswith("versions/")
         ):
             run_store_sync(cs.delete, key, default=None)
@@ -523,7 +526,7 @@ def clear_current_published_knowledge_docs_files(subject: str) -> None:
         if relative.startswith("versions/"):
             continue
         filename = relative.rsplit("/", 1)[-1] if "/" in relative else relative
-        if filename.startswith("chapter_") or filename == "merged_knowledge_base.md":
+        if filename.startswith("chapter_") or filename in {"merged_knowledge_base.md", "docgen_manifest.json"}:
             run_store_sync(cs.delete, key, default=None)
 
 

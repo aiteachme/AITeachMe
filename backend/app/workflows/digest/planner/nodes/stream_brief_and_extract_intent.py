@@ -9,7 +9,6 @@ import structlog
 
 from app.shared.infra.llm_support import acompletion_stream, acompletion_with_fallback
 from app.shared.infra.llm_support.routing import TaskType
-from app.shared.infra.settings import get_settings
 from app.shared.infra.workflow.context import WorkflowContext
 from app.workflows.digest.planner.lib.plan_sketch import parse_planner_brief_text
 from app.workflows.digest.planner.lib.planner_events import emit_planner_event, emit_planner_token
@@ -108,8 +107,6 @@ async def _extract_learning_intent(state: BuildPlannerState) -> LearningIntent:
     fallback = build_default_intent(
         digest_mode=state.get("digest_mode") or material_context.course_mode_decision.mode.value,
     )
-    settings = get_settings()
-    query_count = max(1, int(settings.planner.evidence_query_count))
     try:
         intent = await acompletion_with_fallback(
             build_learning_intent_messages(
@@ -118,7 +115,6 @@ async def _extract_learning_intent(state: BuildPlannerState) -> LearningIntent:
                 digest_mode=state.get("digest_mode") or material_context.course_mode_decision.mode.value,
                 material_context=material_context,
                 message_history=list(state.get("message_history", [])),
-                query_count=query_count,
             ),
             task_type=TaskType.CLASSIFY,
             model="primary",
@@ -157,25 +153,20 @@ def build_stream_brief_and_extract_intent_node(*, context: WorkflowContext):
         )
         fallback_brief = build_fallback_planner_brief(fallback_plan)
         # Keep the first visible response fast: reason streams a compact brief
-        # while primary extracts intent and retrieval queries from the same context.
+        # while primary extracts intent from the same context.
         brief, intent = await asyncio.gather(
             _stream_planner_brief(state, fallback_brief),
             _extract_learning_intent(state),
         )
-        query_count = max(1, int(get_settings().planner.evidence_query_count))
         await emit_planner_event(
             state,
             event="planner.intent.ready",
-            detail=f"已识别学习目标：{intent.goal_type}，准备按 {len(intent.evidence_queries)} 条查询校准大纲。",
+            detail=f"已识别学习目标：{intent.goal_type}，准备直接合成计划大纲。",
             payload={
                 "goal_type": intent.goal_type,
-                "source_policy": "all_available",
-                "success_criteria": list(intent.success_criteria[:3]),
-                "constraints": list(intent.constraints[:4]),
-                "focus_concepts": list(intent.focus_concepts[:8]),
-                "queries": list(intent.evidence_queries[:query_count]),
-                "local_queries": list(intent.evidence_queries[:query_count]),
-                "web_queries": list(intent.evidence_queries[:query_count]),
+                "success_criteria": list(intent.success_criteria),
+                "constraints": list(intent.constraints),
+                "focus_concepts": list(intent.focus_concepts),
             },
         )
         return {

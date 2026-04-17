@@ -1,4 +1,4 @@
-"""Subject-level export/import support commands.
+﻿"""Subject-level export/import support commands.
 
 The table registry drives export/import order and foreign-key remapping.
 """
@@ -66,7 +66,7 @@ SUPPORTED_FORMAT_VERSIONS = {"1.0"}
 
 
 # ---------------------------------------------------------------------------
-# Manifest 鍐呴儴妯″瀷锛堜粎鐢ㄤ簬 .atmx 鏂囦欢锛屼笉璧?API锛?# ---------------------------------------------------------------------------
+# Manifest 内部模型（仅用于 .atmx 文件，不走 API）
 
 
 class _ManifestSubject(BaseModel):
@@ -96,7 +96,7 @@ class _ExportManifest(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# Table Registry 鈥?瀵煎叆瀵煎嚭鐨勫敮涓€閰嶇疆婧?# ---------------------------------------------------------------------------
+# Table Registry — 导入导出的唯一配置源
 
 
 @dataclass
@@ -105,17 +105,17 @@ class _TableSpec:
 
     name: str
     model: type[SQLModel]
-    # 濡備綍鎸?subject 杩囨护锛氬瓧娈靛悕 | "slug" (Subject 鏈韩) | None (閫氳繃鐖惰〃杩囨护)
+    # How to filter by subject: field name | "slug" (Subject itself) | None (filter via parent table)
     subject_field: str | None = "subject"
     id_field: str = "id"
-    # id 绫诲瀷锛?auto" (鑷) | "uuid" (瀛楃涓?UUID)
+    # id 类型："auto" (自增) | "uuid" (字符串 UUID)
     id_type: str = "auto"
-    # 澶栭敭閲嶆槧灏? {瀛楁鍚? 寮曠敤鐨勮〃鍚峿
+    # Foreign-key remapping: {field_name: referenced_table_name}
     fk_remap: dict[str, str] = dc_field(default_factory=dict)
-    # 閫氳繃鐖惰〃杩囨护 (鐢ㄤ簬娌℃湁 subject 瀛楁鐨勮〃)
+    # Filter via parent table (for tables without a subject field)
     parent_fk: str | None = None
     parent_table: str | None = None
-    # 鍙€夊鍑哄垎缁? "chat" | "exam" | "profile" | None(蹇呴』瀵煎嚭)
+    # Optional export group: "chat" | "exam" | "profile" | None (always export)
     optional_group: str | None = None
 
 
@@ -469,7 +469,7 @@ def _import_table(
     warnings: list[str],
 ) -> int:
     table_id_map: dict[Any, Any] = {}
-    id_map[spec.name] = table_id_map  # 鎻愬墠娉ㄥ唽锛屾敮鎸佽嚜寮曠敤澶栭敭
+    id_map[spec.name] = table_id_map  # Register early to support self-referencing foreign keys
 
     for record_data in records:
         old_id = record_data.get(spec.id_field)
@@ -480,7 +480,7 @@ def _import_table(
         elif spec.id_type == "uuid":
             record_data[spec.id_field] = str(uuid.uuid4())
 
-        # 鏇存柊 subject
+        # 更新 subject
         if spec.name == "subject":
             record_data["slug"] = new_slug
             record_data["name"] = new_name
@@ -488,16 +488,16 @@ def _import_table(
         elif spec.subject_field and spec.subject_field != "slug":
             record_data[spec.subject_field] = new_slug
 
-        # 鏇存柊 user_id
+        # 更新 user_id
         if "user_id" in record_data:
             record_data["user_id"] = user_id
 
         # 澶栭敭閲嶆槧灏?        for fk_field, ref_table in spec.fk_remap.items():
             _remap_fk(record_data, fk_field, ref_table, id_map, spec.name, warnings)
 
-        # 娓呴櫎缁濆璺緞瀛楁锛堝鍏ュ悗閲嶅缓锛?        if spec.name == "raw_file":
-            record_data["uid"] = str(uuid.uuid4())  # 闃叉鍞竴绾︽潫鍐茬獊
-            record_data["file_path"] = "__importing__"
+        # Clear absolute-path fields so they can be rebuilt during import
+        if spec.name == "raw_file":
+            record_data["uid"] = str(uuid.uuid4())  # Prevent unique-constraint conflicts
             record_data["markdown_path"] = None
             record_data["asset_dir"] = None
             record_data["storage_uri"] = None
@@ -517,7 +517,7 @@ def _import_table(
 
         new_id = getattr(instance, spec.id_field)
 
-        # 璺緞閲嶅缓锛堢粺涓€璧?ContentStore key锛?        cs = get_content_store()
+        # 路径重建（统一走 ContentStore key）        cs = get_content_store()
         if spec.name == "raw_file" and isinstance(new_id, int):
             ext = instance.filetype if instance.filetype.startswith(".") else f".{instance.filetype}"
             instance.file_path = f"{new_slug}/raw_files/{new_id}{ext}"
@@ -549,7 +549,7 @@ def _remap_fk(
         record[fk_field] = None
         return
     new_fk = ref_map.get(old_fk)
-    # 灏濊瘯 int/str 浜掕浆鏌ユ壘
+    # Try int/str cross-lookup when remapping foreign keys
     if new_fk is None and isinstance(old_fk, str) and old_fk.isdigit():
         new_fk = ref_map.get(int(old_fk))
     if new_fk is None and isinstance(old_fk, int):
@@ -626,7 +626,7 @@ def _unpack_files(extract_dir: Path, new_slug: str, file_id_map: dict[Any, Any])
     _upload_remapped(extract_dir / "files/raw_files", "raw_files")
     _upload_remapped(extract_dir / "files/raw_markdowns", "raw_markdowns")
 
-    # 璧勪骇鐩綍鎸?file_id 閲嶅懡鍚嶄笂浼?    src_assets = extract_dir / "files" / "assets"
+    # Upload asset directories after remapping file IDs
     if src_assets.exists():
         for old_dir in src_assets.iterdir():
             if not old_dir.is_dir():
@@ -707,3 +707,4 @@ def _read_manifest(extract_dir: Path) -> _ExportManifest:
             f"Supported: {SUPPORTED_FORMAT_VERSIONS}"
         )
     return manifest
+

@@ -9,8 +9,6 @@ from app.workflows.digest.planner.lib.plans import (
 )
 from app.workflows.digest.planner.lib.planner_events import emit_planner_event, emit_planner_token
 from app.workflows.digest.planner.lib.models import (
-    EvidenceBrief,
-    EvidenceSource,
     LearningIntent,
     PlannerBrief,
 )
@@ -18,8 +16,6 @@ from app.workflows.digest.planner.lib.models import (
 __all__ = [
     "BuildPlannerDraft",
     "PlannerChapterPlan",
-    "EvidenceBrief",
-    "EvidenceSource",
     "LearningIntent",
     "PlannerBrief",
     "build_fallback_plan",

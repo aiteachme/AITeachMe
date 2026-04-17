@@ -64,12 +64,6 @@ class PlannerSettings(_SettingsModel):
     default_digest_mode: str = "sprint"
     default_tone: str = "encouraging"
     allow_external_search: bool = True
-    grounding_timeout_s: float = 10.0
-    sketch_timeout_s: float = 30.0
-    intent_timeout_s: float = 20.0
-    compose_timeout_s: float = 45.0
-    evidence_query_count: int = 4
-    evidence_open_source_limit: int = 4
     sprint: PlannerModeSettings = Field(
         default_factory=lambda: PlannerModeSettings(
             min_chapters=3,

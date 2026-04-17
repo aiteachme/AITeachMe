@@ -19,7 +19,7 @@ Ingest 做的事就是：把上传的 PDF、Word、PPT、图片或文本先快�
 | 4 | 制定解析计划 | 根据分类结果生成 `ParsePlan`，包括解析模式、parser chain、OCR 和资产参数 | 明确本次应该用哪些解析器、按什么顺序尝试、失败怎么 fallback | `build_parse_plan`、`ParsePlan`、`ParserRunOptions` |
 | 5 | Phase 1 fast parse | 按 parser chain 快速解析，规范 Markdown 图片引用，抽取资产；MinerU 分支会走外部解析再 canonicalize | 尽快产出一版可预览、可被 Digest 消费的基础 Markdown | `fast_parse_file`、`parse_file_to_dir`、`canonicalize_markdown` |
 | 6 | Phase 1 持久化 | 写 raw markdown、资产目录、`raw_file_asset` 和解析元数据 | 让前端能预览，让 Digest 能读取，让失败恢复有依据 | `cs.write_text`、`cs.upload_dir`、`replace_raw_file_assets`、`update_raw_file` |
-| 7 | Phase 2 deep enhance | 后台尝试 PDF 质量重解析和 Vision OCR，成功后覆盖 Markdown 与资产，失败则保留 Phase 1 结果 | 在不阻塞用户预览的前提下，提高复杂资料的可读性和可检索性 | `_run_deep_enhance_background`、`deep_enhance_file`、`parse_pdf_with_pymupdf4llm` |
+| 7 | 后台增强 | 后台尝试 PDF 质量重解析和 Vision OCR，成功后覆盖 Markdown 与资产，失败则保留 Phase 1 结果 | 在不阻塞用户预览的前提下，提高复杂资料的可读性和可检索性 | `_run_deep_enhance_background`、`deep_enhance_file`、`parse_pdf_with_pymupdf4llm` |
 | 8 | 增强恢复 | 服务启动后扫描 `fast_parsed` / `enhancing` 文件并重新派发增强任务 | 减少服务重启导致的后台增强任务丢失 | `recover_stalled_enhancements`、`background_task_registry` |
 
 ## 当前 canonical 结构
@@ -33,11 +33,8 @@ ingest/
     state.py
     nodes/
     lib/
-  deep_enhance/
-    graph.py
-    state.py
-    nodes/
-    lib/
+      enhance.py
+      recovery.py
   common/
     parsing/
 ```
@@ -46,12 +43,12 @@ ingest/
 
 - `__init__.py` 只提供稳定导入面，不承载业务实现。
 - `fast_parse/` 是 Phase 1 快速解析链路。
-- `fast_parse/lib/runtime.py` 是单文件 parse workflow runner 的真实落点。
-- `deep_enhance/` 是 Phase 2 后台增强链路。
-- `deep_enhance/lib/recovery.py` 承接增强恢复。
+- `fast_parse/lib/runtime.py` 是单文件 parse workflow runner 的真实落点，并负责派发后台增强。
+- `fast_parse/lib/enhance.py` 承接 Phase 2 后台增强 worker。
+- `fast_parse/lib/recovery.py` 承接增强恢复。
 - `common/parsing/` 放两条链路共享的分类、策略、解析器、Markdown 规范化与 OCR 实现。
 
-当前真实运行主线以 `fast_parse/lib/runtime.py::run_parse_file_workflow()` 和 `deep_enhance/lib/background.py::_run_deep_enhance_background()` 为准；`fast_parse/graph.py` 与 `deep_enhance/graph.py` 主要用于 LangGraph dev/export 和后续节点化收口，避免把 graph 与手写 runtime 当成两套同时维护的业务入口。
+当前真实运行主线以 `fast_parse/lib/runtime.py::run_parse_file_workflow()` 和 `fast_parse/lib/enhance.py::_run_deep_enhance_background()` 为准。Ingest 只有 `fast_parse` 一条 workflow graph；后台增强只是 parse 完成后的异步补强步骤，不再作为第二条 LangGraph lane。
 
 ## 容易误会的功能
 
@@ -70,7 +67,6 @@ from app.workflows.ingest import run_parse_file_workflow
 如果只看图结构，可以看：
 
 - `app.workflows.ingest.fast_parse.graph`
-- `app.workflows.ingest.deep_enhance.graph`
 
 ## 端到端链路
 
@@ -221,9 +217,9 @@ Digest 当前允许消费以下状态：
 - `ready_for_digest`
 - `enhance_failed`
 
-## Phase 2：Deep Enhance 后台增强
+## Phase 2：后台增强
 
-真实入口是 `deep_enhance/lib/background.py::_run_deep_enhance_background()`。
+真实入口是 `fast_parse/lib/enhance.py::_run_deep_enhance_background()`。
 
 Phase 2 在 `background_task_registry` 中后台执行。主解析请求会先返回，前端可以立即预览 Phase 1 Markdown；脚本或非 API 调用场景仍保留 `_background_tasks` 兜底引用，避免 task 被回收。
 
@@ -273,7 +269,7 @@ Phase 2 在 `background_task_registry` 中后台执行。主解析请求会先�
 
 ## 恢复链路
 
-`deep_enhance/lib/recovery.py::recover_stalled_enhancements()` 会扫描：
+`fast_parse/lib/recovery.py::recover_stalled_enhancements()` 会扫描：
 
 - `fast_parsed`
 - `enhancing`
@@ -293,8 +289,8 @@ Phase 2 在 `background_task_registry` 中后台执行。主解析请求会先�
 1. **把 Phase 2 从内存 task 迁移到持久化队列**
    现在启动后可以扫描恢复，但正在执行的上下文、失败次数、重试退避都不够完整。建议后续引入 DB job / Redis queue / Celery / Dramatiq 一类持久化任务层。
 
-2. **收敛 runtime 内联逻辑与 LangGraph 节点实现**
-   当前 `fast_parse/graph.py` 和 `deep_enhance/graph.py` 能编译、能可视化，但真实运行主逻辑在 runtime 中内联执行。后续如果要强化可观测性和节点级调试，应逐步让 runtime 调 `run_state_graph(...)`。
+2. **判断是否让 fast_parse graph 接管真实运行**
+   当前真实主逻辑仍在 `fast_parse/lib/runtime.py` 手写执行；`fast_parse/graph.py` 主要用于 dev/export。后续如果要强化节点级观测，再考虑让 runtime 调 `run_state_graph(...)`。
 
 3. **增加基于 content_hash 的幂等跳过**
    已有 `content_hash`，但当前上传后仍会进入解析。可以在同 subject 下发现同 hash 产物时复用 Markdown 与资产，减少重复解析成本。

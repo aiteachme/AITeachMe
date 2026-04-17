@@ -1,4 +1,4 @@
-"""Recovery helpers for the deep-enhance lane."""
+"""Recovery helpers for stalled ingest background enhancement."""
 
 from __future__ import annotations
 
@@ -23,7 +23,7 @@ async def recover_stalled_enhancements(*, task_registry=None) -> int:
     from sqlmodel import select
 
     from app.models.raw_file import RawFile
-    from app.workflows.ingest.deep_enhance.lib.background import _run_deep_enhance_background
+    from app.workflows.ingest.fast_parse.lib.enhance import _run_deep_enhance_background
     from app.workflows.ingest.fast_parse.lib.runtime_helpers import _background_tasks
 
     dispatched = 0

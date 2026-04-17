@@ -27,7 +27,6 @@ class BuildPlannerState(TypedDict, total=False):
     selected_file_uids: list[str]
     user_goal: str
     digest_mode: str
-    retrieval_profile: str
     tone: str
     selected_skillpacks: list[str]
     planner_session_id: str
@@ -38,7 +37,6 @@ class BuildPlannerState(TypedDict, total=False):
     material_context: DigestMaterialContext
     planner_brief: dict[str, Any]
     learning_intent: dict[str, Any]
-    evidence_brief: dict[str, Any]
     plan_outline_markdown: str
     build_plan_draft: dict[str, Any]
 
@@ -52,9 +50,7 @@ class BuildPlannerState(TypedDict, total=False):
     # Top-level runtime summary for the existing frontend contract
     workflow_elapsed_ms: int
     prepare_ms: int
-    context_ms: int
     bootstrap_ms: int
-    evidence_ms: int
     compose_ms: int
     finalize_ms: int
 
@@ -102,9 +98,7 @@ BuildPlannerGraphOutput = project_typed_dict_schema(
         "planner_turns",
         "workflow_elapsed_ms",
         "prepare_ms",
-        "context_ms",
         "bootstrap_ms",
-        "evidence_ms",
         "compose_ms",
         "finalize_ms",
         "error",

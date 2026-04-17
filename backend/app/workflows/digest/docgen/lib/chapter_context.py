@@ -81,15 +81,30 @@ class DocGenChapterContextRuntime(BaseTracedExecution):
         user_goal: str = "",
         search_domain: str = "zh",
         max_results_per_query: int | None = None,
+        max_research_rounds: int | None = None,
+        max_context_chars: int | None = None,
+        query_cap: int | None = None,
+        queries_per_round: int | None = None,
+        max_gap_queries_per_round: int | None = None,
     ) -> TracedExecutionResult:
         settings = get_settings()
         query_limit = max_results_per_query or settings.search.max_results_per_query
         strategy = self._resolve_strategy(digest_mode)
-        query_cap = max(
+        if max_research_rounds is not None:
+            strategy["max_rounds"] = max(1, int(max_research_rounds))
+        if max_context_chars is not None:
+            strategy["max_total_chars"] = max(1000, int(max_context_chars))
+        if queries_per_round is not None:
+            strategy["queries_per_round"] = max(1, int(queries_per_round))
+        if max_gap_queries_per_round is not None:
+            strategy["max_gap_queries_per_round"] = max(1, int(max_gap_queries_per_round))
+        resolved_query_cap = max(
             max(1, int(settings.docgen.max_research_queries)),
             int(strategy["query_cap"]),
         )
-        base_queries = dedupe_queries(queries, limit=query_cap)
+        if query_cap is not None:
+            resolved_query_cap = max(1, int(query_cap))
+        base_queries = dedupe_queries(queries, limit=resolved_query_cap)
         if not base_queries and str(chapter_title).strip():
             base_queries = [str(chapter_title).strip()]
         if not base_queries:
@@ -127,7 +142,7 @@ class DocGenChapterContextRuntime(BaseTracedExecution):
                     if str(item).strip()
                 ],
             ],
-            max_queries=query_cap,
+            max_queries=resolved_query_cap,
             domain=search_domain,
             llm_caller=self.context.resolve_llm_caller(),
             extra_metadata=self.context.trace_metadata(
@@ -137,7 +152,7 @@ class DocGenChapterContextRuntime(BaseTracedExecution):
             skillpack_guidance=skillpack_guidance,
             recommended_tool_tags=recommended_tool_tags,
         )
-        pending_queries = dedupe_queries([*base_queries, *planned_queries], limit=query_cap)
+        pending_queries = dedupe_queries([*base_queries, *planned_queries], limit=resolved_query_cap)
         resolved_retrieval_profile = str(retrieval_profile or self.context.retrieval_profile or "").strip()
         external_search_enabled = get_teaching_runtime_config().planner.allow_external_search
         local_retriever = LocalRAGRetriever(subject=local_rag_subject, local_sections=local_sections)
@@ -264,7 +279,7 @@ class DocGenChapterContextRuntime(BaseTracedExecution):
                 digest_mode=digest_mode,
                 max_queries=int(strategy["max_gap_queries_per_round"]),
             )
-            newly_enqueued = self._enqueue_gap_queries(pending_queries, gap_queries, limit=query_cap)
+            newly_enqueued = self._enqueue_gap_queries(pending_queries, gap_queries, limit=resolved_query_cap)
             score_gain = coverage_score - previous_score
             curated_growth = len(curated_results) - previous_curated_count
             research_rounds.append(
@@ -304,7 +319,7 @@ class DocGenChapterContextRuntime(BaseTracedExecution):
                 for round_item in research_rounds
                 for query in list(round_item.get("enqueued_gap_queries", []) or [])
             ],
-            limit=query_cap,
+            limit=resolved_query_cap,
         )
         purify_used = False
         if dense_context:

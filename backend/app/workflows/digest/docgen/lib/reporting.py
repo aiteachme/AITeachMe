@@ -26,9 +26,10 @@ def build_docgen_lane_summary(
     resolved_error = _resolve_error_message(state, error_message=error_message)
     chapter_materials = list(state.get("chapter_materials", []))
     chapter_drafts = list(state.get("chapter_drafts", []))
+    enhanced_chapter_drafts = list(state.get("enhanced_chapter_drafts", []))
     chapter_metadatas = list(state.get("chapter_metadatas", []))
     document_context = dict(state.get("document_context", {}) or {})
-    chapter_count = max(len(chapter_metadatas), len(chapter_drafts), len(chapter_materials))
+    chapter_count = max(len(chapter_metadatas), len(enhanced_chapter_drafts), len(chapter_drafts), len(chapter_materials))
     research_items = build_slow_items(
         state.get("slowest_research_chapters")
         or [
@@ -64,6 +65,11 @@ def build_docgen_lane_summary(
             *[
                 source
                 for chapter in chapter_metadatas
+                for source in chapter.get("sources", [])
+            ],
+            *[
+                source
+                for chapter in enhanced_chapter_drafts
                 for source in chapter.get("sources", [])
             ],
         ]
@@ -165,6 +171,16 @@ def build_docgen_lane_summary(
     source_class_breakdown = _sum_count_maps(
         [dict(chapter.get("source_class_breakdown", {}) or {}) for chapter in chapter_materials]
     )
+    asset_items = [
+        asset
+        for manifest in list(state.get("asset_manifests", []) or [])
+        for asset in list((manifest or {}).get("assets") or [])
+    ]
+    practice_items = [
+        question
+        for manifest in list(state.get("practice_manifests", []) or [])
+        for question in list((manifest or {}).get("questions") or [])
+    ]
     interactive_block_count = int(state.get("interactive_block_count", 0) or 0) or sum(
         int(chapter.get("interactive_block_count", 0) or 0)
         for chapter in [*chapter_drafts, *chapter_metadatas]
@@ -183,9 +199,9 @@ def build_docgen_lane_summary(
             for chapter in chapter_metadatas
         )
     asset_summary = {
-        "mermaid": mermaid_block_count,
-        "image": image_block_count,
-        "interactive_html": interactive_block_count,
+        "mermaid": mermaid_block_count or sum(1 for asset in asset_items if asset.get("kind") == "mermaid"),
+        "image": image_block_count or sum(1 for asset in asset_items if asset.get("kind") == "image"),
+        "interactive_html": interactive_block_count or sum(1 for asset in asset_items if asset.get("kind") == "interactive_html"),
         "animation": int(
             ((state.get("asset_summary") or {}) if isinstance(state.get("asset_summary"), Mapping) else {}).get(
                 "animation", 0
@@ -197,18 +213,27 @@ def build_docgen_lane_summary(
     practice_count = int(state.get("practice_count", 0) or 0) or sum(
         int(chapter.get("practice_count", 0) or 0)
         for chapter in chapter_metadatas
-    ) or len(state.get("exam_questions", []))
+    ) or len(practice_items) or len(state.get("exam_questions", []))
+
+    def _quality_mapping(chapter: Mapping[str, Any]) -> Mapping[str, Any]:
+        nested = chapter.get("quality_signals")
+        return nested if isinstance(nested, Mapping) else chapter
+
     coverage_scores = [
-        float(chapter.get("coverage_score", 0.0) or 0.0)
-        for chapter in [*chapter_drafts, *chapter_materials]
-        if float(chapter.get("coverage_score", 0.0) or 0.0) > 0
+        float(_quality_mapping(chapter).get("coverage_score", 0.0) or 0.0)
+        for chapter in [*chapter_drafts, *enhanced_chapter_drafts, *chapter_materials]
+        if float(_quality_mapping(chapter).get("coverage_score", 0.0) or 0.0) > 0
     ]
     quality_scores = [
-        float(chapter.get("quality_score", 0.0) or 0.0)
-        for chapter in chapter_drafts
-        if float(chapter.get("quality_score", 0.0) or 0.0) > 0
+        float(_quality_mapping(chapter).get("quality_score", 0.0) or 0.0)
+        for chapter in [*chapter_drafts, *enhanced_chapter_drafts]
+        if float(_quality_mapping(chapter).get("quality_score", 0.0) or 0.0) > 0
     ]
-    repaired_chapter_count = sum(1 for chapter in chapter_drafts if bool(chapter.get("repair_applied", False)))
+    repaired_chapter_count = sum(
+        1
+        for chapter in [*chapter_drafts, *enhanced_chapter_drafts]
+        if bool(_quality_mapping(chapter).get("rewrite_used", False) or chapter.get("repair_applied", False))
+    )
     selected_skillpacks = sorted(
         {
             str(item).strip()

@@ -2,13 +2,6 @@
 
 > 文件上传 → 快速传统解析 → 后台深度 OCR 增强，为下游 Digest 提供高质量文本素材。
 
-**本模块包含以下子工作流：**
-
-1. [Ingest File Parse Workflow](#ingest-parse)
-2. [Ingest Deep Enhance Workflow](#ingest-deep-enhance)
-
----
-
 ## Ingest File Parse Workflow
 
 > Single-file ingest parsing workflow.
@@ -71,57 +64,6 @@ flowchart TD
 | Parse File | 🔀 条件路由 | `fail` -> Finalize Failure / `continue` -> Finalize Success |
 | Finalize Success | 🔀 条件路由 | `continue` -> END / `fail` -> Finalize Failure |
 | Finalize Failure | ❌ 错误处理 | → END |
-
-## Ingest Deep Enhance Workflow
-
-> Background deep OCR and enhancement workflow.
-
-📊 **4** 个处理节点 · **8** 条边
-
-```mermaid
-flowchart TD
-    __start__(["▶ START"])
-    load_enhance_context["❶ Load Enhance Context"]
-    deep_enhance_file["❷ Deep Enhance File"]
-    finalize_deep_enhance(["❸ Finalize Deep Enhance"])
-    __end__(["⏹ END"])
-
-    subgraph error_zone ["⚠ 错误处理"]
-    direction TB
-        finalize_enhance_failure["⚠ Finalize Enhance Failure"]
-    end
-
-    __start__ --> load_enhance_context
-    deep_enhance_file -->|"✓"| finalize_deep_enhance
-    deep_enhance_file -. "✗ fail" .-> finalize_enhance_failure
-    finalize_deep_enhance -->|"✓"| __end__
-    finalize_deep_enhance -. "✗ fail" .-> finalize_enhance_failure
-    load_enhance_context -->|"✓"| deep_enhance_file
-    load_enhance_context -. "✗ fail" .-> finalize_enhance_failure
-    finalize_enhance_failure --> __end__
-
-    %% ── Styling ──
-    classDef startCls fill:#064e3b,stroke:#10b981,stroke-width:2px,color:#a7f3d0
-    classDef endCls fill:#7f1d1d,stroke:#ef4444,stroke-width:2px,color:#fecaca
-    classDef failCls fill:#4c0519,stroke:#f43f5e,stroke-width:2px,color:#fecdd3
-    classDef termCls fill:#1e3a5f,stroke:#3b82f6,stroke-width:2px,color:#93c5fd
-    classDef default fill:#1e293b,stroke:#475569,stroke-width:1px,color:#e2e8f0
-    style error_zone fill:#1a0a0e,stroke:#f43f5e,stroke-width:1px,color:#fecdd3,stroke-dasharray:5
-    class __start__ startCls
-    class finalize_deep_enhance termCls
-    class finalize_enhance_failure failCls
-    class __end__ endCls
-    linkStyle 2,4,6 stroke:#f43f5e,stroke-dasharray:5
-```
-
-**节点参考：**
-
-| 节点 | 角色 | 路由 |
-|------|------|------|
-| Load Enhance Context | 🔀 条件路由 | `continue` -> Deep Enhance File / `fail` -> Finalize Enhance Failure |
-| Deep Enhance File | 🔀 条件路由 | `continue` -> Finalize Deep Enhance / `fail` -> Finalize Enhance Failure |
-| Finalize Deep Enhance | 🔀 条件路由 | `continue` -> END / `fail` -> Finalize Enhance Failure |
-| Finalize Enhance Failure | ❌ 错误处理 | → END |
 
 ---
 
