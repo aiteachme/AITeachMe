@@ -6,7 +6,6 @@ from langgraph.graph import END, StateGraph
 
 from app.shared.infra.workflow import workflow_tracer
 from app.shared.infra.workflow.context import WorkflowContext, create_langgraph_dev_context
-from app.shared.infra.workflow.events import InProcessEventBus
 from app.shared.infra.workflow.graph_export import WorkflowGraphExport
 from app.workflows.ingest.common.parsing.prompts import PROMPTS
 from app.workflows.ingest.fast_parse.nodes import (
@@ -83,13 +82,9 @@ def build_parse_file_graph(*, context: WorkflowContext) -> StateGraph:
 
 
 def _build_export_graph() -> StateGraph:
-    context = WorkflowContext(
-        workflow_name="ingest.fast_parse.export",
-        subject="diagram-preview",
-        event_bus=InProcessEventBus(),
-        metadata={},
+    return build_fast_parse_graph(
+        context=create_langgraph_dev_context("ingest.fast_parse.export"),
     )
-    return build_fast_parse_graph(context=context)
 
 
 WORKFLOW_EXPORTS = (

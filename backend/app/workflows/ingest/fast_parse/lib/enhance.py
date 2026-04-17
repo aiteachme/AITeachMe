@@ -1,4 +1,4 @@
-"""Phase 2 background task: deep OCR enhancement of parsed files."""
+"""Background enhancement for parsed ingest files."""
 
 from __future__ import annotations
 

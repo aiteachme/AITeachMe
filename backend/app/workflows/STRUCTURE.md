@@ -209,21 +209,24 @@ ingest/
   __init__.py
   README.md
   fast_parse/
-  deep_enhance/
+    graph.py
+    state.py
+    nodes/
+    lib/
+      enhance.py
+      recovery.py
   common/
-    events.py
-    exports.py
     parsing/
 ```
 
 说明：
 
 - `__init__.py` 只提供稳定导入面，不承载业务实现
-- `fast_parse/` 与 `deep_enhance/` 是真实链路
-- `fast_parse/lib/runtime.py` 是单文件解析 workflow runner 的真实落点
-- `deep_enhance/lib/recovery.py` 承接增强恢复
-- Ingest workflow export 跟随各自 lane 的 `graph.py`，由模块根 `__init__.py` 聚合
-- `common/parsing/` 是当前两条链路共享的解析实现
+- `fast_parse/` 是唯一真实 workflow graph，负责 Phase 1 快速解析并派发后台增强
+- `fast_parse/lib/enhance.py` 承接 Phase 2 后台增强 worker
+- `fast_parse/lib/recovery.py` 承接增强恢复
+- Ingest workflow export 跟随 `fast_parse/graph.py`，由模块根 `__init__.py` 聚合
+- `common/parsing/` 是解析共享实现
 
 ### 9.3 interact
 

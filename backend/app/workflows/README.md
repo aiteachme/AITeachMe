@@ -30,7 +30,6 @@
 ## 当前 canonical 链路
 
 - `ingest/fast_parse`
-- `ingest/deep_enhance`
 - `digest/planner`
 - `digest/docgen`
 - `digest/knowledge_graph`
@@ -43,8 +42,10 @@
 
 - `ingest/__init__.py`、`digest/__init__.py`
   引擎模块根只保留稳定导入面，不再承载业务实现
-- `ingest/fast_parse/graph.py`、`ingest/deep_enhance/graph.py`
+- `ingest/fast_parse/graph.py`
   Ingest 图定义与 workflow export 声明落点
+- `ingest/fast_parse/lib/enhance.py`、`ingest/fast_parse/lib/recovery.py`
+  Ingest 后台增强与增强恢复落点
 - `digest/common/events.py`、`digest/common/exports.py`
   Digest 跨链路事件与 workflow export 落点
 - `digest/knowledge_graph/overview.py`、`digest/knowledge_graph/study_plan.py`

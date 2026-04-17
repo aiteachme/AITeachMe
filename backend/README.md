@@ -64,7 +64,6 @@ uvicorn app.main:app --reload --port 8000
 鍚庣鐜板湪棰濆鎻愪緵浜嗕竴缁勫彧鐢ㄤ簬璋冭瘯鐨?LangGraph 鍏ュ彛锛岄厤缃枃浠跺湪 `backend/langgraph.json`銆?
 鍙皟璇曠殑 graph 鍖呮嫭锛?
 - `ingest_fast_parse`
-- `ingest_deep_enhance`
 - `digest_kg`
 - `digest_docgen`
 - `digest_unified`
@@ -106,4 +105,3 @@ LANGSMITH_CAPTURE_OUTPUTS=true
 - [docs/manual-testing.md](./docs/manual-testing.md)
 - [docs/implementation-log.md](./docs/implementation-log.md)
 - [playground/README.md](./playground/README.md)
-

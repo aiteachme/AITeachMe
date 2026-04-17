@@ -38,7 +38,7 @@ from app.workflows.ingest.fast_parse.lib.runtime_helpers import (
     _build_asset_rows,
     _compute_quality_score,
 )
-from app.workflows.ingest.deep_enhance.lib.background import _run_deep_enhance_background
+from app.workflows.ingest.fast_parse.lib.enhance import _run_deep_enhance_background
 
 logger = structlog.get_logger()
 
