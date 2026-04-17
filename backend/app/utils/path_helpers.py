@@ -190,12 +190,6 @@ def build_knowledge_chunk_manifest_path(subject: str) -> Path:
     return build_knowledge_markdown_dir(subject) / "chunk_manifest.json"
 
 
-def build_knowledge_study_plan_progress_path(subject: str) -> Path:
-    """Return the persisted study-plan checklist progress path."""
-
-    return build_knowledge_markdown_dir(subject) / "study_plan_progress.json"
-
-
 def build_docgen_intermediate_dir(subject: str) -> Path:
     """Return the docgen intermediate directory."""
 
@@ -303,4 +297,3 @@ def build_courses_dir() -> Path:
     """
 
     return get_data_dir() / "_courses"
-

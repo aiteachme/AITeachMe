@@ -564,7 +564,6 @@ export function DigestBuildButton() {
       queryClient.invalidateQueries({ queryKey: ["knowledge-doc-build", subject] });
       queryClient.invalidateQueries({ queryKey: ["knowledge-overview", subject] });
       queryClient.invalidateQueries({ queryKey: ["docgen-content", subject] });
-      queryClient.invalidateQueries({ queryKey: ["study-plan", subject] });
       setShowFileSelect(false);
       setSelectedFileUids(new Set());
       setLastBuildError("");
@@ -630,7 +629,7 @@ export function DigestBuildButton() {
       <Modal open={showFileSelect} onClose={closeModal} title="选择本轮知识构建使用的文件">
         <div className="space-y-4">
           <p className="text-sm leading-6 text-slate-500">
-            这里选中的已解析文件会进入本轮 digest，系统会同步刷新知识文档、知识图谱和学习计划。
+            这里选中的已解析文件会进入本轮 digest，系统会同步刷新知识文档和知识图谱。
           </p>
 
           {filesLoading ? (

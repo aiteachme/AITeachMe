@@ -21,7 +21,6 @@ import {
   DigestBuildProgress,
   DigestBuildProvider,
 } from "./DigestBuildPanel";
-import { StudyPlanPanel } from "./StudyPlanPanel";
 import { SubjectVectorNotice } from "./SubjectVectorNotice";
 import { Button } from "../ui/Button";
 import { Modal } from "../ui/Modal";
@@ -94,7 +93,6 @@ export function KnowledgeGraphSidePanel({
       queryClient.invalidateQueries({ queryKey: ["graph-node-detail", subjectId] });
       queryClient.invalidateQueries({ queryKey: ["docgen-content", subjectId] });
       queryClient.invalidateQueries({ queryKey: ["knowledge-doc-build", subjectId] });
-      queryClient.invalidateQueries({ queryKey: ["study-plan", subjectId] });
       setShowClearConfirm(false);
     },
   });
@@ -145,7 +143,6 @@ export function KnowledgeGraphSidePanel({
 
         <div className="grid gap-3 border-b border-slate-200 bg-slate-50/70 p-3">
           <DigestBuildProgress compact />
-          <StudyPlanPanel subject={subjectId} compact />
           <SubjectVectorNotice status={overview?.vector_status} />
         </div>
 

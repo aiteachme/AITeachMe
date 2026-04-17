@@ -201,7 +201,7 @@ digest/
 - `__init__.py` 只提供稳定导入面，不承载业务实现
 - `docgen/__init__.py`、`knowledge_graph/__init__.py` 提供 lane 入口
 - `planner/` 与 `docgen/` 是当前优先维护的主链路
-- `knowledge_graph/` 是独立图谱构建链路，同时承接图谱总览与基于图谱的学习计划查询
+- `knowledge_graph/` 是独立图谱构建链路，同时承接图谱总览查询
 - `common/` 是当前真实跨链路共享层，承载 contracts / models / prepare / material_profile / metrics / runtime_config / pedagogy / events / exports 等复用能力
 
 

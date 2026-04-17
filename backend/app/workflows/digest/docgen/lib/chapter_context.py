@@ -165,6 +165,7 @@ class DocGenChapterContextRuntime(BaseTracedExecution):
                 include_external=external_search_enabled,
             )
             if retriever.name != local_retriever.name
+            and retriever.name in self._docgen_external_retriever_allowlist()
         ]
         configured_retrievers = get_configured_retriever_names(
             profile=resolved_retrieval_profile or None,
@@ -492,7 +493,13 @@ class DocGenChapterContextRuntime(BaseTracedExecution):
         retrieval_budget_s: float,
     ) -> list[SearchResult]:
         remaining = retrieval_budget_s - (time.monotonic() - retrieval_started_at)
-        if remaining <= 0:
+        if remaining < 1.2:
+            self.logger.info(
+                "docgen_retriever_skipped_budget_low",
+                retriever=retriever.name,
+                query=query,
+                remaining_s=round(max(0.0, remaining), 3),
+            )
             return []
         try:
             return await asyncio.wait_for(
@@ -500,7 +507,7 @@ class DocGenChapterContextRuntime(BaseTracedExecution):
                 timeout=max(0.1, min(provider_budget_s, remaining)),
             )
         except TimeoutError:
-            self.logger.warning(
+            self.logger.info(
                 "docgen_retriever_timeout",
                 retriever=retriever.name,
                 query=query,
@@ -534,6 +541,12 @@ class DocGenChapterContextRuntime(BaseTracedExecution):
                     documents.append(text)
                 continue
             if not item.url or item.url in seen_urls:
+                continue
+            domain = urlparse(item.url).netloc.lower()
+            if "wikipedia.org" in domain:
+                text = item.to_text()
+                if text.strip():
+                    documents.append(text)
                 continue
             seen_urls.add(item.url)
             external_results.append(item)
@@ -659,6 +672,22 @@ class DocGenChapterContextRuntime(BaseTracedExecution):
         if query not in queries:
             queries.append(query)
         entry["queries"] = queries[:8]
+
+    def _docgen_external_retriever_allowlist(self) -> set[str]:
+        # Keep DocGen web research stable and low-noise. Site-specific DDG
+        # wrappers such as Zhihu/Baidu Baike and paper-only sources often
+        # timeout or drift for basic course writing; users can still opt into
+        # them by configuring dedicated retriever profiles later.
+        return {
+            "bocha",
+            "tavily",
+            "brave",
+            "exa",
+            "bing",
+            "searxng",
+            "wikipedia",
+            "duckduckgo",
+        }
 
     def _resolve_strategy(self, digest_mode: str) -> dict[str, Any]:
         normalized = str(digest_mode or "").strip().lower()

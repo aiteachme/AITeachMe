@@ -29,7 +29,6 @@ import {
   useDocBuildProgress,
   useDocMarkdown,
 } from "../components/knowledge-docs";
-import { StudyPlanPanel } from "../components/pages/StudyPlanPanel";
 import { SubjectVectorNotice } from "../components/pages/SubjectVectorNotice";
 import { MermaidBlock } from "../components/ui/MermaidBlock";
 import { preprocessLaTeX } from "../components/ui/MarkdownViewer";
@@ -996,7 +995,7 @@ export function KnowledgeDocsPage() {
           const id = node.getAttribute("data-heading-id") ?? node.id;
           if (!id) return null;
           const level = Number(node.tagName.replace("H", ""));
-          if (!Number.isInteger(level) || level < 1 || level > 6) return null;
+          if (!Number.isInteger(level) || level < 1 || level > 2) return null;
           const text = node.textContent?.trim() || id;
           return { id, text, level };
         })
@@ -2647,9 +2646,6 @@ export function KnowledgeDocsPage() {
                   className="min-w-0 flex-1 px-6 py-8 md:px-10 md:py-10"
                 >
                   <SubjectVectorNotice status={docMarkdownQuery.data?.vector_status} className="mb-6" />
-                  {subjectId ? (
-                    <StudyPlanPanel subject={subjectId} className="mb-6" />
-                  ) : null}
                   {docMarkdownQuery.isError ? (
                     <DocLoadErrorState
                       message={getApiErrorMessage(docMarkdownQuery.error, "获取知识文档失败，请稍后重试。")}
