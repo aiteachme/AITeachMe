@@ -49,6 +49,7 @@ from app.utils.presenters import require_id, require_uid
 from app.utils.time import utcnow
 from app.workflows.digest.common.runtime_config import get_teaching_runtime_config
 from app.workflows.digest.planner.lib.plans import normalize_planner_payload
+from app.workflows.digest.planner.lib.steps import STEP_TIMING_FIELDS
 
 logger = structlog.get_logger(__name__)
 
@@ -158,12 +159,7 @@ def _runtime_stats_response(final_state: Mapping[str, Any] | None) -> BuildPlann
         return None
 
     steps: list[BuildPlannerStepStatsResponse] = []
-    for name, field_name in (
-        ("load_planner_materials", "prepare_ms"),
-        ("stream_brief_and_extract_intent", "bootstrap_ms"),
-        ("stream_and_parse_plan_draft", "compose_ms"),
-        ("normalize_and_persist_plan", "finalize_ms"),
-    ):
+    for name, field_name in STEP_TIMING_FIELDS:
         elapsed_ms = int(final_state.get(field_name, 0) or 0)
         if elapsed_ms <= 0:
             continue
@@ -287,11 +283,10 @@ def _record_snapshot(record: BuildPlannerSession) -> dict[str, Any]:
 
 def _render_final_plan_markdown(plan_payload: dict[str, Any]) -> str:
     summary = str(plan_payload.get("plan_summary") or "").strip()
-    tasks = [str(item).strip() for item in list(plan_payload.get("research_queries") or []) if str(item).strip()]
     chapters = [
-        str((item or {}).get("title") or "").strip()
+        item
         for item in list(plan_payload.get("chapter_plan") or [])
-        if isinstance(item, dict) and str((item or {}).get("title") or "").strip()
+        if isinstance(item, dict) and str(item.get("title") or "").strip()
     ]
     lines = [
         "# 计划大纲",
@@ -299,11 +294,12 @@ def _render_final_plan_markdown(plan_payload: dict[str, Any]) -> str:
         f"> 模式：{str(plan_payload.get('digest_mode') or 'systematic')}",
         f"> 一句话摘要：{summary or '已生成一份可确认的构建方案。'}",
         "",
-        "## 几点安排",
-        *[f"{index}. {item}" for index, item in enumerate(chapters, start=1)],
-        "",
-        "## 后续写作抓手",
-        *[f"{index}. {item}" for index, item in enumerate(tasks, start=1)],
+        "## 章节安排",
+        *[
+            f"{index}. {str(chapter.get('title') or '').strip()}："
+            f"{'；'.join(str(item).strip() for item in list(chapter.get('required_elements') or [])[:3] if str(item).strip())}"
+            for index, chapter in enumerate(chapters, start=1)
+        ],
     ]
     return "\n".join(lines).strip()
 

@@ -1,9 +1,6 @@
 """Planner graph definition and public workflow entrypoints.
 
-Planner 只有一条真实业务链路：
-load materials -> brief/intent -> stream/parse plan -> persist。
-create/append API 只负责装配初始 state 并启动这条图；session DB 读写发生在
-load/persist 这两个真实节点里，通过极简 store API 完成。
+真实链路只有四步：读取资料 -> 理解目标 -> 合成大纲 -> 保存方案。
 """
 
 from __future__ import annotations
@@ -23,6 +20,13 @@ from app.workflows.digest.common.runtime_config import get_teaching_runtime_conf
 from app.workflows.digest.planner.lib.store import (
     mark_planner_session_failed,
     planner_session_response_from_state,
+)
+from app.workflows.digest.planner.lib.steps import (
+    STEP_COMPOSE_PLAN,
+    STEP_LOAD_MATERIALS,
+    STEP_SAVE_PLAN,
+    STEP_TRACE_NAMES,
+    STEP_UNDERSTAND_GOAL,
 )
 from app.workflows.digest.planner.nodes import (
     build_load_planner_materials_node,
@@ -54,12 +58,6 @@ def _require_success_state(result: WorkflowResult[BuildPlannerState]) -> BuildPl
 
 
 def build_planner_graph(*, context: WorkflowContext) -> StateGraph:
-    logger.info(
-        "planner_graph_building",
-        workflow=context.workflow_name,
-        subject=context.subject,
-        build_session_id=context.metadata.get("build_session_id", ""),
-    )
     trace = workflow_tracer(context=context, lane="planner")
     workflow = StateGraph(
         BuildPlannerState,
@@ -67,75 +65,62 @@ def build_planner_graph(*, context: WorkflowContext) -> StateGraph:
         output_schema=BuildPlannerGraphOutput,
     )
 
-    # Entry-side persistence and material loading live together here:
-    # the node turns an API create/append request into a complete planner state.
     workflow.add_node(
-        "load_planner_materials",
+        STEP_LOAD_MATERIALS,
         trace.node(
             build_load_planner_materials_node(context=context),
-            name="load_planner_materials",
+            name=STEP_TRACE_NAMES[STEP_LOAD_MATERIALS],
             timing_field="prepare_ms",
         ),
     )
-    # First two LLM calls run in parallel: reason streams a visible brief,
-    # primary extracts compact learning intent.
     workflow.add_node(
-        "stream_brief_and_extract_intent",
+        STEP_UNDERSTAND_GOAL,
         trace.node(
             build_stream_brief_and_extract_intent_node(context=context),
-            name="stream_brief_and_extract_intent",
+            name=STEP_TRACE_NAMES[STEP_UNDERSTAND_GOAL],
             timing_field="bootstrap_ms",
         ),
     )
 
     workflow.add_node(
-        "stream_and_parse_plan_draft",
+        STEP_COMPOSE_PLAN,
         trace.node(
             build_stream_and_parse_plan_draft_node(context=context),
-            name="stream_and_parse_plan_draft",
+            name=STEP_TRACE_NAMES[STEP_COMPOSE_PLAN],
             timing_field="compose_ms",
         ),
     )
 
-    # Exit-side persistence: normalize the draft before saving latest_plan
-    # and the assistant turn. Store stays tiny; business decisions stay here.
     workflow.add_node(
-        "normalize_and_persist_plan",
+        STEP_SAVE_PLAN,
         trace.node(
             build_normalize_and_persist_plan_node(context=context),
-            name="normalize_and_persist_plan",
+            name=STEP_TRACE_NAMES[STEP_SAVE_PLAN],
             timing_field="finalize_ms",
         ),
     )
-    workflow.set_entry_point("load_planner_materials")
+    workflow.set_entry_point(STEP_LOAD_MATERIALS)
     workflow.add_conditional_edges(
-        "load_planner_materials",
+        STEP_LOAD_MATERIALS,
         route_after_step,
-        {"continue": "stream_brief_and_extract_intent", "fail": END},
+        {"continue": STEP_UNDERSTAND_GOAL, "fail": END},
     )
     workflow.add_conditional_edges(
-        "stream_brief_and_extract_intent",
+        STEP_UNDERSTAND_GOAL,
         route_after_step,
-        {"continue": "stream_and_parse_plan_draft", "fail": END},
+        {"continue": STEP_COMPOSE_PLAN, "fail": END},
     )
     workflow.add_conditional_edges(
-        "stream_and_parse_plan_draft",
+        STEP_COMPOSE_PLAN,
         route_after_step,
-        {"continue": "normalize_and_persist_plan", "fail": END},
+        {"continue": STEP_SAVE_PLAN, "fail": END},
     )
-    workflow.add_edge("normalize_and_persist_plan", END)
+    workflow.add_edge(STEP_SAVE_PLAN, END)
     return workflow
 
 
 def route_after_step(state: BuildPlannerState) -> str:
-    route = "fail" if state.get("error") else "continue"
-    logger.info(
-        "planner_route_after_step",
-        route=route,
-        planner_session_id=state.get("planner_session_id", ""),
-        error=state.get("error"),
-    )
-    return route
+    return "fail" if state.get("error") else "continue"
 
 
 def create_planner_initial_state(

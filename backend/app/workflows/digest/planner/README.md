@@ -14,24 +14,24 @@
 ## 当前流程
 
 ```text
-load_planner_materials
-  -> stream_brief_and_extract_intent
+读取资料
+  -> 理解目标
        ├─ stream_planner_brief
        └─ extract_learning_intent
-  -> stream_and_parse_plan_draft
-  -> normalize_and_persist_plan
+  -> 合成大纲
+  -> 保存方案
 ```
 
 ## 手写流程图
 
 ```mermaid
 flowchart TD
-    A["读取并打包资料<br/>load_planner_materials"]
-    B["并行理解目标<br/>stream_brief_and_extract_intent"]
+    A["读取资料<br/>load_planner_materials"]
+    B["理解目标<br/>stream_brief_and_extract_intent"]
     B1["生成可见判断<br/>stream_planner_brief"]
     B2["识别学习意图<br/>extract_learning_intent"]
-    C["合成计划大纲<br/>stream_and_parse_plan_draft"]
-    D["规范化并保存<br/>normalize_and_persist_plan"]
+    C["合成大纲<br/>stream_and_parse_plan_draft"]
+    D["保存方案<br/>normalize_and_persist_plan"]
 
     A --> B
     B --> B1
@@ -43,12 +43,12 @@ flowchart TD
 
 ## 节点职责
 
-| 节点 | 做什么 |
-| --- | --- |
-| `load_planner_materials` | 读取会话、文件和历史消息，生成并打包 `DigestMaterialContext` |
-| `stream_brief_and_extract_intent` | 并行做两件事：流式输出可见规划判断；结构化识别学习目标 |
-| `stream_and_parse_plan_draft` | 一次 reason 流式调用，同时输出可见大纲和 `<PLAN_JSON>` |
-| `normalize_and_persist_plan` | 规范化 plan，保存 planner session 和 assistant turn |
+| LangSmith 展示名 | 代码定位 | 做什么 |
+| --- | --- | --- |
+| `读取资料` | `load_planner_materials` | 读取会话、文件和历史消息，生成并打包 `DigestMaterialContext` |
+| `理解目标` | `stream_brief_and_extract_intent` | 并行做两件事：流式输出可见规划判断；结构化识别学习目标 |
+| `合成大纲` | `stream_and_parse_plan_draft` | 一次 reason 流式调用，同时输出可见大纲和 `<PLAN_JSON>` |
+| `保存方案` | `normalize_and_persist_plan` | 规范化 plan，保存 planner session 和 assistant turn |
 
 ## LLM 调用
 

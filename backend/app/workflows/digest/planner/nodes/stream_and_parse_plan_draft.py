@@ -83,7 +83,6 @@ def _sketch_to_plan_payload(sketch: PlannerOutlineSketch) -> dict[str, Any]:
                 "title": title,
                 "objective": "；".join(key_points),
                 "required_elements": key_points,
-                "search_queries": [],
                 "writing_instructions": "围绕本章知识点生成清晰讲解。",
                 "media_hints": {"images": [], "mermaid": [], "interactive": []},
             }
@@ -91,7 +90,6 @@ def _sketch_to_plan_payload(sketch: PlannerOutlineSketch) -> dict[str, Any]:
     return {
         "plan_summary": sketch.plan_text.strip(),
         "chapter_plan": chapters,
-        "research_queries": [],
     }
 
 
@@ -148,7 +146,7 @@ async def _stream_composer_response(
             max_tokens=3200,
             extra_metadata={
                 "planner_session_id": state.get("planner_session_id") or "",
-                "substep": "stream_and_parse_plan_draft",
+                "substep": "合成计划大纲",
             },
         )
         async for token in stream:

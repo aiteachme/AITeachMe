@@ -17,6 +17,7 @@ class PlannerChapterPlan(BaseModel):
     title: str
     objective: str = ""
     required_elements: list[str] = Field(default_factory=list)
+    # Kept for the public confirmed-plan contract; Planner no longer invents queries.
     search_queries: list[str] = Field(default_factory=list)
     writing_instructions: str = ""
     media_hints: dict[str, list[str]] = Field(
@@ -33,6 +34,7 @@ class BuildPlannerDraft(BaseModel):
     tone: str = "encouraging"
     selected_skillpacks: list[str] = Field(default_factory=list)
     chapter_plan: list[PlannerChapterPlan] = Field(default_factory=list)
+    # Kept for API/DB compatibility. DocGen derives retrieval queries from chapter content.
     research_queries: list[str] = Field(default_factory=list)
     media_plan: dict[str, Any] = Field(default_factory=dict)
     build_constraints: dict[str, Any] = Field(default_factory=dict)
@@ -126,7 +128,6 @@ def _merge_chapter(raw: Mapping[str, Any], index: int) -> PlannerChapterPlan:
         title=title,
         objective=_text(raw.get("objective")) or "；".join(key_points),
         required_elements=key_points,
-        search_queries=_strings(raw.get("search_queries")),
         writing_instructions=_text(raw.get("writing_instructions")) or "围绕本章知识点生成清晰讲解。",
         media_hints={"images": [], "mermaid": [], "interactive": []},
     )
@@ -196,7 +197,7 @@ def normalize_planner_draft(
         tone=tone,
         selected_skillpacks=_strings(skillpacks),
         chapter_plan=chapters,
-        research_queries=_strings(current.get("research_queries") or previous.get("research_queries") or []),
+        research_queries=[],
         media_plan=_media_plan(),
         build_constraints=_build_constraints(digest_mode=mode, chapter_count=len(chapters), shared_inputs=shared),
         plan_summary=plan_summary,

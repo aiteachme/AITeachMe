@@ -23,7 +23,7 @@ _SUBJECT_SLUG_RE = re.compile(r"^subj_[a-z0-9]+$", re.IGNORECASE)
 logger = structlog.get_logger(__name__)
 
 
-def _guess_topic_hints_from_filenames(
+def _seed_titles_from_goal_and_files(
     filenames: list[str],
     *,
     subject: str,
@@ -38,7 +38,8 @@ def _guess_topic_hints_from_filenames(
             seeds.append(stem.replace("_", " ").replace("-", " ").strip())
     if subject and not _SUBJECT_SLUG_RE.fullmatch(subject.strip()):
         seeds.append(subject)
-    deduped: list[str] = []
+
+    titles: list[str] = []
     seen: set[str] = set()
     for item in seeds:
         text = item.strip()
@@ -46,8 +47,8 @@ def _guess_topic_hints_from_filenames(
         if not text or key in seen:
             continue
         seen.add(key)
-        deduped.append(text)
-    return deduped
+        titles.append(text)
+    return titles
 
 
 def _build_seed_material_context(*, subject: str, file_ids: list[int], user_goal: str | None) -> DigestMaterialContext:
@@ -56,7 +57,7 @@ def _build_seed_material_context(*, subject: str, file_ids: list[int], user_goal
         subject_row = session.query(Subject).filter(Subject.slug == subject).first()
 
     filenames = [raw_file.original_filename for raw_file in raw_files if raw_file.original_filename]
-    topic_hints = _guess_topic_hints_from_filenames(filenames, subject=subject, user_goal=user_goal)
+    seed_titles = _seed_titles_from_goal_and_files(filenames, subject=subject, user_goal=user_goal)
     discipline_counts = Counter(str(raw_file.detected_discipline).strip() for raw_file in raw_files if raw_file.detected_discipline)
     sub_discipline_counts = Counter(str(raw_file.detected_sub_discipline).strip() for raw_file in raw_files if raw_file.detected_sub_discipline)
     content_type_counts = Counter(str(raw_file.detected_content_type).strip() for raw_file in raw_files if raw_file.detected_content_type)
@@ -81,14 +82,14 @@ def _build_seed_material_context(*, subject: str, file_ids: list[int], user_goal
 
     return DigestMaterialContext(
         source_documents=source_documents,
-        material_hints=FastTopicHints(chapter_candidates=topic_hints),
+        material_hints=FastTopicHints(chapter_candidates=seed_titles),
         learning_domain_profile=SubjectProfile(
             subject_slug=subject,
             subject_name=(subject_row.name or "").strip() if subject_row is not None else "",
             discipline=(discipline_counts.most_common(1)[0][0] if discipline_counts else ""),
             sub_discipline=(sub_discipline_counts.most_common(1)[0][0] if sub_discipline_counts else ""),
             content_type=(content_type_counts.most_common(1)[0][0] if content_type_counts else ""),
-            key_topics=topic_hints,
+            key_topics=seed_titles,
         ),
     )
 
@@ -103,9 +104,6 @@ def build_load_planner_materials_node(*, context: WorkflowContext):
             file_id_count=len(state.get("file_ids", []) or []),
             requested_file_uid_count=len(state.get("requested_file_uids", []) or []),
         )
-        # This node is intentionally the only entry-side persistence point.
-        # It turns API create/append requests into a complete graph state:
-        # selected files, history, latest plan, and the parsed material package.
         session_update = prepare_planner_run(state)
         working_state = {**state, **session_update}
         logger.info(
@@ -150,7 +148,7 @@ def build_load_planner_materials_node(*, context: WorkflowContext):
                 "planner_load_materials_seed_context_used",
                 planner_session_id=working_state.get("planner_session_id", ""),
                 source_document_count=len(material_context.source_documents),
-                topic_hints=list(material_context.material_hints.chapter_candidates),
+                seed_titles=list(material_context.material_hints.chapter_candidates),
             )
 
         digest_mode = working_state.get("digest_mode") or material_context.course_mode_decision.mode.value
@@ -196,7 +194,6 @@ def build_load_planner_materials_node(*, context: WorkflowContext):
             payload={
                 "source_count": len(material_context.source_documents),
                 "section_count": len(material_context.material_sections),
-                "topic_hints": list(material_context.material_hints.chapter_candidates),
             },
         )
         result = {

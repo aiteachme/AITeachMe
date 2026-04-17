@@ -59,7 +59,7 @@ async def _stream_planner_brief(state: BuildPlannerState, fallback: PlannerBrief
             max_tokens=780,
             extra_metadata={
                 "planner_session_id": state.get("planner_session_id") or "",
-                "substep": "stream_visible_thinking",
+                "substep": "生成可见判断",
             },
         )
         async for token in stream:
@@ -135,7 +135,7 @@ async def _extract_learning_intent(state: BuildPlannerState) -> LearningIntent:
             max_tokens=900,
             extra_metadata={
                 "planner_session_id": state.get("planner_session_id") or "",
-                "substep": "extract_learning_intent",
+                "substep": "识别学习意图",
             },
         )
         logger.info(
