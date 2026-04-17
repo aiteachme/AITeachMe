@@ -30,19 +30,19 @@ load_context
 
 ```mermaid
 flowchart TD
-    A["load_context<br/>读取 confirmed plan<br/>装配 DocGenContext"]
+    A["读取构建上下文<br/>load_context"]
 
-    B["prepare_parallel_inputs<br/>并行准备写作输入"]
-    B1["enhance_plan_outline<br/>把 confirmed plan 细化成执行大纲"]
-    B2["infer_docgen_intent<br/>识别写作目标、语气、讲解重点"]
-    B3["summarize_files<br/>按文件提炼可用资料摘要"]
+    B["并行准备写作输入<br/>prepare_parallel_inputs"]
+    B1["增强章节大纲<br/>enhance_plan_outline"]
+    B2["识别写作意图<br/>infer_docgen_intent"]
+    B3["提炼文件摘要<br/>summarize_files"]
 
-    C["confirm_and_dispatch<br/>收口并生成 ChapterGenerationTask"]
-    D{"按章节 fan-out<br/>Send x N"}
-    E["generate_chapters<br/>每章并行研究、取证、写初稿、critic/rewrite"]
-    F["enhance_chapters<br/>每章并行增强图示、练习、公式和自检"]
-    G["merge_review<br/>合并整本文档并做整体检查"]
-    H["publish_document<br/>发布 Markdown、KnowledgeDoc 和 manifest"]
+    C["确认并派发章节任务<br/>confirm_and_dispatch"]
+    D{"按章节并行<br/>Send x N"}
+    E["生成章节草稿<br/>generate_chapters"]
+    F["增强章节内容<br/>enhance_chapters"]
+    G["合并并整本检查<br/>merge_review"]
+    H["发布文档产物<br/>publish_document"]
 
     A --> B
     B --> B1

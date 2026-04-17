@@ -21,7 +21,7 @@ digest/
 ## 各目录做什么
 
 - `planner/`
-  负责根据文件内容、历史对话和检索结果生成 confirmed plan
+  负责根据文件内容和历史对话生成 confirmed plan
 - `docgen/`
   负责根据 confirmed plan 生成知识文档
 - `kg_file_ingest/`
