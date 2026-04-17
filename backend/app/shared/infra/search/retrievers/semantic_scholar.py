@@ -8,6 +8,7 @@ import structlog
 from app.shared.infra.settings import get_settings
 from app.shared.infra.env_support import get_env
 from app.shared.infra.search.retrievers.base import BaseRetriever
+from app.shared.infra.search.retrievers.common import clamp_max_results, clean_text, make_search_result, normalize_query
 from app.shared.infra.search.types import SearchResult
 
 logger = structlog.get_logger(__name__)
@@ -21,10 +22,14 @@ class SemanticScholarRetriever(BaseRetriever):
         return "semantic_scholar"
 
     async def search(self, query: str, *, max_results: int = 5) -> list[SearchResult]:
+        normalized_query = normalize_query(query)
+        if not normalized_query:
+            return []
         settings = get_settings()
+        count = clamp_max_results(max_results, upper=50)
         params = {
-            "query": query,
-            "limit": max_results,
+            "query": normalized_query,
+            "limit": count,
             "fields": "title,abstract,url,openAccessPdf,isOpenAccess,year,venue",
         }
         headers: dict[str, str] = {}
@@ -36,35 +41,33 @@ class SemanticScholarRetriever(BaseRetriever):
                 response = await client.get(_SEMANTIC_SCHOLAR_URL, params=params, headers=headers)
                 response.raise_for_status()
         except Exception as exc:  # pragma: no cover - provider behavior
-            logger.warning("semantic_scholar_search_failed", error=str(exc), query=query)
+            logger.warning("semantic_scholar_search_failed", error=str(exc), query=normalized_query)
             return []
 
         values = response.json().get("data") or []
         results: list[SearchResult] = []
         for item in values:
-            title = " ".join(str(item.get("title") or "").split()).strip()
-            snippet = " ".join(str(item.get("abstract") or "").split()).strip()
+            snippet = clean_text(item.get("abstract"), limit=1000)
             open_access_pdf = item.get("openAccessPdf") or {}
             url = str(open_access_pdf.get("url") or item.get("url") or "").strip()
-            if not url:
-                continue
-            venue = " ".join(str(item.get("venue") or "").split()).strip()
-            year = str(item.get("year") or "").strip()
+            venue = clean_text(item.get("venue"))
+            year = clean_text(item.get("year"))
             suffix = ", ".join(bit for bit in [venue, year] if bit)
             if suffix and snippet:
                 snippet = f"{snippet} [{suffix}]"
             elif suffix:
                 snippet = suffix
-            results.append(
-                SearchResult(
-                    url=url,
-                    title=title,
-                    snippet=snippet,
-                    source=self.name,
-                )
+            result = make_search_result(
+                url=url,
+                title=item.get("title"),
+                snippet=snippet,
+                source=self.name,
             )
+            if result is not None:
+                results.append(result)
+            if len(results) >= count:
+                break
         return results
 
 
 __all__ = ["SemanticScholarRetriever"]
-

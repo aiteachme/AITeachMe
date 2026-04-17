@@ -1,8 +1,7 @@
 """Tiny persistence API for the planner workflow.
 
-Only the public functions in ``__all__`` are meant to be used outside this
-module. Planner nodes should call one small store function and keep the actual
-workflow logic readable.
+只有 ``__all__`` 里的函数给外部用。Planner 节点只调用一个很小的 store
+函数，避免业务节点里直接铺满 SQL/repo 细节。
 """
 
 from __future__ import annotations
@@ -157,12 +156,12 @@ def _runtime_stats_response(final_state: Mapping[str, Any] | None) -> BuildPlann
 
     steps: list[BuildPlannerStepStatsResponse] = []
     for name, field_name in (
-        ("prepare_material_context", "prepare_ms"),
-        ("summarize_material_digest", "digest_ms"),
-        ("bootstrap_plan_brief", "bootstrap_ms"),
-        ("probe_evidence", "evidence_ms"),
-        ("compose_build_plan", "compose_ms"),
-        ("finalize_plan_contract", "finalize_ms"),
+        ("load_planner_materials", "prepare_ms"),
+        ("pack_raw_material_context", "context_ms"),
+        ("stream_brief_and_extract_intent", "bootstrap_ms"),
+        ("retrieve_planning_evidence", "evidence_ms"),
+        ("stream_and_parse_plan_draft", "compose_ms"),
+        ("normalize_and_persist_plan", "finalize_ms"),
     ):
         elapsed_ms = int(final_state.get(field_name, 0) or 0)
         if elapsed_ms <= 0:
@@ -337,7 +336,7 @@ def _selected_skillpacks_for_append(state: Mapping[str, Any], record: BuildPlann
 def prepare_planner_run(state: Mapping[str, Any]) -> dict[str, Any]:
     """Prepare persisted planner run data before material loading.
 
-    Called by the normal `prepare_material_context` node. This keeps session DB
+    Called by the normal `load_planner_materials` node. This keeps session DB
     IO inside the real workflow path without adding a separate "session node".
     """
 
@@ -349,6 +348,7 @@ def prepare_planner_run(state: Mapping[str, Any]) -> dict[str, Any]:
     user_id = str(state.get("user_id") or "local")
 
     if operation == "create":
+        # 第一轮规划：创建 DB session、绑定文件选择，只返回后续 graph 需要的字段。
         planner_defaults = get_teaching_runtime_config().planner
         user_goal = str(state.get("user_goal") or "").strip()
         tone = (state.get("tone") or planner_defaults.default_tone).strip() or planner_defaults.default_tone
@@ -408,6 +408,7 @@ def prepare_planner_run(state: Mapping[str, Any]) -> dict[str, Any]:
             }
 
     if operation == "append":
+        # 修订规划：读取已有 session，追加用户反馈，并补齐 latest_plan/message_history。
         feedback = str(state.get("feedback_message") or "").strip()
         with managed_session() as session:
             record = get_planner_session(
@@ -473,6 +474,7 @@ def save_planner_result(
     if _operation(state) == "generate_only":
         return {}
 
+    # graph 已经生成稳定 plan 合同；这里只负责写持久化状态，并返回 API 需要的快照。
     subject_slug = str(state["subject"])
     user_id = str(state.get("user_id") or "local")
     with managed_session() as session:

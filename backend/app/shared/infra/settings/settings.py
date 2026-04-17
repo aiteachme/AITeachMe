@@ -270,6 +270,7 @@ class Settings(_SettingsModel):
         *,
         profile: str | None = None,
         include_local_rag: bool | None = None,
+        include_external: bool = True,
         include_fallback: bool = True,
         fallback_retriever: str = DEFAULT_RETRIEVER_FALLBACK,
     ) -> list[str]:
@@ -317,10 +318,12 @@ class Settings(_SettingsModel):
         for item in candidate_names:
             if include_local_rag is False and item in {"local_rag", "rag"}:
                 continue
+            if not include_external and item not in {"local_rag", "rag"}:
+                continue
             _append(item)
 
         fallback_name = normalize_retriever_name(fallback_retriever)
-        if include_fallback and fallback_name and any(name != "local_rag" for name in normalized):
+        if include_fallback and include_external and fallback_name and any(name != "local_rag" for name in normalized):
             _append(fallback_name)
 
         return normalized

@@ -1,62 +1,68 @@
-﻿# Digest Module
+# Digest 模块说明
 
-<<<<<<< HEAD
 最后更新：2026-04-17
-=======
-`digest/` contains workflow lanes only.
->>>>>>> f022e165e2fb089f91f95f4a60321570adbf68e5
 
-## Current Layout
+`digest/` 负责把原始学习材料组织成可教学、可生成、可追踪的知识产物。
+
+## 当前目录
 
 ```text
 digest/
   __init__.py
   README.md
+  common/
   planner/
   docgen/
   kg_file_ingest/
   kg_docs_sync/
-  common/
-  application/
-  shared/
-  unified/
+  knowledge_graph/
 ```
 
-<<<<<<< HEAD
-说明：
+## 各目录做什么
 
-- `planner/` 负责生成 confirmed plan
-- `docgen/` 负责按 confirmed plan 生成知识文档
-- `knowledge_graph/` 负责独立知识图谱链路，也承接知识总览与基于图谱的学习计划
-- `__init__.py` 只提供稳定导入面，不承载业务实现
-- `common/events.py`、`common/exports.py` 是 Digest 跨链路事件与 workflow export 入口
-- `docgen/__init__.py`、`knowledge_graph/__init__.py` 提供 workflow runner 入口
-- `overview.py`、`study_plan.py` 是跨 lane 的聚合用例
-- `planner/__init__.py`、`planner/graph.py`、`docgen/builds.py`、`docgen/cleanup.py`、`knowledge_graph/{build.py,builds.py,module.py,query.py}` 是当前 digest 业务用例主落点
-- `common/` 是跨链路共用的 contracts / models / prepare / material_profile / metrics / runtime_config / pedagogy 实现层
-- 各链路自己的构建摘要放在对应链路 `lib/reporting.py`，不要再新增顶层 observability 伪链路
+- `planner/`
+  负责根据文件内容、历史对话和检索结果生成 confirmed plan
+- `docgen/`
+  负责根据 confirmed plan 生成知识文档
+- `kg_file_ingest/`
+  负责知识图谱文件入图链路
+- `kg_docs_sync/`
+  负责知识文档和知识图谱的同步链路
+- `common/`
+  放跨 lane 共用能力，例如 events、exports、contracts、prepare、material profile、metrics、runtime config、pedagogy
+- `knowledge_graph/`
+  当前仓库里仍保留的历史目录；不是新的 canonical lane 入口，后续以 `kg_file_ingest/` 和 `kg_docs_sync/` 为主
 
-## 对外入口
+## 当前公开入口
 
-上层优先使用：
+上层优先使用稳定导入面，不直接从深层文件拼装：
 
 ```python
-from app.workflows.digest import run_docgen_workflow, run_graph_digest_workflow
-from app.workflows.digest.planner import run_build_planner_workflow
+from app.workflows.digest import run_docgen_workflow
+from app.workflows.digest import run_graph_docs_sync_workflow
+from app.workflows.digest import run_graph_file_ingest_workflow
+from app.workflows.digest.planner import (
+    create_build_planner_session,
+    run_build_planner_workflow,
+)
 ```
 
-## 迁移约定
+## 目录约束
 
-- 模块根只做聚合
-- 新的 API-facing 用例必须进入对应 lane 或 `common/`，不要新增模块根 `.py`
-- 不再单独保留 `runtime.py`
+- 模块根只做聚合，不承载业务实现
+- 新的 API-facing 用例必须进入具体 lane 或 `common/`
 - 新 prompt 放各自链路 `prompts/`
 - 新 helper 放各自链路 `lib/`
-- 跨链路共享能力走 `common/`
-- Digest 文档教学语义走 `common/runtime_config.py` 与 `common/pedagogy/`
-=======
-## Notes
-- `kg_file_ingest/` and `kg_docs_sync/` are independent workflows and follow the lane skeleton.
-- Non-workflow knowledge-graph business services were moved to `workflows/support/knowledge_graph/`.
-- Cross-lane shared code stays in `digest/common/`.
->>>>>>> f022e165e2fb089f91f95f4a60321570adbf68e5
+- 跨链路共享能力统一放 `common/`
+- 各链路自己的构建摘要放在对应链路 `lib/reporting.py`
+- 不要再新增顶层伪链路，例如 `runtime.py`、`observability.py`
+
+## 当前理解
+
+当前 digest 的 canonical 主线是：
+
+- `planner -> docgen`
+- `kg_file_ingest`
+- `kg_docs_sync`
+
+如果要看具体编排，优先进入各链路下的 `graph.py`、`builds.py`、`state.py`

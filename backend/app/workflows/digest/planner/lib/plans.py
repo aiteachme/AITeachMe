@@ -66,6 +66,12 @@ class PlannerChapterPlan(BaseModel):
 
 
 class BuildPlannerDraft(BaseModel):
+    """Draft emitted by the composer before final contract cleanup.
+
+    这个结构刻意贴近最终持久化 payload，但不能直接保存。
+    下游必须先经过 normalize_planner_draft 做兜底、去重和字段收口。
+    """
+
     subject: str
     user_goal: str
     digest_mode: str = "systematic"
@@ -165,6 +171,8 @@ def _dedupe_chapter_plan_titles(
     for chapter in chapter_plan:
         title = clean_generated_chapter_title(chapter.title) or f"第 {chapter.chapter_index} 章"
         if _title_key(title) in seen_keys:
+            # LLM 很容易给多个章节起同名标题。这里优先用该章节自己的
+            # query/required/objective 里的焦点短语改名，再退回编号兜底。
             topic, suffix = _split_title_components(title)
             for focus in _chapter_focus_candidates(chapter, subject_display_name=subject_display_name):
                 if focus == topic:
@@ -612,6 +620,8 @@ def build_fallback_plan(
     selected_skillpacks: list[str] | None = None,
     target_count: int | None = None,
 ) -> BuildPlannerDraft:
+    # fallback 不只是异常兜底，也是 normalize_planner_draft 用来补齐
+    # LLM 弱字段/缺字段的基准合同。
     normalized_mode = _normalize_digest_mode(digest_mode)
     normalized_tone = _normalize_tone(tone)
     display_subject = _resolve_subject_display_name(subject, shared_inputs=shared_inputs, user_goal=user_goal)
@@ -776,6 +786,10 @@ def normalize_planner_draft(
     shared_inputs: SharedInputs | None = None,
     latest_plan: BuildPlannerDraft | Mapping[str, Any] | None = None,
 ) -> BuildPlannerDraft:
+    # 三层合并顺序：
+    # 1. 当前 LLM draft；
+    # 2. latest_plan，保证用户修订时延续上一版结构；
+    # 3. deterministic fallback，补齐仍缺失或过于泛化的字段。
     shared = shared_inputs or _minimal_shared_inputs(subject)
     current_raw = _coerce_mapping(draft)
     previous_raw = _coerce_mapping(latest_plan)

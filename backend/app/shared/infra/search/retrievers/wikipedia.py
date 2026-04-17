@@ -10,6 +10,7 @@ import structlog
 
 from app.shared.infra.settings import get_settings
 from app.shared.infra.search.retrievers.base import BaseRetriever
+from app.shared.infra.search.retrievers.common import clamp_max_results, make_search_result, normalize_query
 from app.shared.infra.search.types import SearchResult
 
 logger = structlog.get_logger(__name__)
@@ -47,9 +48,10 @@ class WikipediaRetriever(BaseRetriever):
         return "wikipedia"
 
     async def search(self, query: str, *, max_results: int = 5) -> list[SearchResult]:
-        normalized_query = str(query or "").strip()
+        normalized_query = normalize_query(query)
         if not normalized_query:
             return []
+        count = clamp_max_results(max_results, upper=50)
 
         languages = ["zh", "en"] if _contains_cjk(normalized_query) else ["en", "zh"]
         settings = get_settings()
@@ -66,16 +68,16 @@ class WikipediaRetriever(BaseRetriever):
                     client,
                     query=normalized_query,
                     lang=lang,
-                    max_results=max_results,
+                    max_results=count,
                 )
                 for item in payload:
                     if item.url in seen_urls:
                         continue
                     seen_urls.add(item.url)
                     results.append(item)
-                    if len(results) >= max_results:
-                        return results[:max_results]
-        return results[:max_results]
+                    if len(results) >= count:
+                        return results[:count]
+        return results[:count]
 
     async def _search_language(
         self,
@@ -113,16 +115,15 @@ class WikipediaRetriever(BaseRetriever):
             snippet = _clean_snippet(item.get("snippet") or "")
             if lang == "en" and snippet:
                 snippet = f"{snippet} [Wikipedia EN]"
-            results.append(
-                SearchResult(
-                    url=url,
-                    title=title,
-                    snippet=snippet,
-                    source=self.name,
-                )
+            result = make_search_result(
+                url=url,
+                title=title,
+                snippet=snippet,
+                source=self.name,
             )
+            if result is not None:
+                results.append(result)
         return results
 
 
 __all__ = ["WikipediaRetriever"]
-

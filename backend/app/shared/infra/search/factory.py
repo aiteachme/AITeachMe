@@ -53,6 +53,7 @@ def get_configured_retriever_names(
     *,
     profile: str | None = None,
     include_local_rag: bool | None = None,
+    include_external: bool = True,
     include_fallback: bool = True,
 ) -> list[str]:
     """Return configured retriever names that are actually registered."""
@@ -61,6 +62,7 @@ def get_configured_retriever_names(
     configured = settings.parse_retrievers(
         profile=profile,
         include_local_rag=include_local_rag,
+        include_external=include_external,
         include_fallback=include_fallback,
     )
     registered_names = get_registered_retriever_types()
@@ -88,6 +90,7 @@ def get_retrievers_for_subject(
     local_sections: list[object] | None = None,
     profile: str | None = None,
     include_local_rag: bool | None = None,
+    include_external: bool = True,
     include_fallback: bool = True,
 ) -> list[BaseRetriever]:
     """Build retriever instances for one subject / runtime context."""
@@ -100,6 +103,7 @@ def get_retrievers_for_subject(
     for name in get_configured_retriever_names(
         profile=profile,
         include_local_rag=should_include_local_rag,
+        include_external=include_external,
         include_fallback=include_fallback,
     ):
         try:

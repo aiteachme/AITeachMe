@@ -20,6 +20,7 @@ from app.shared.infra.search.retrievers.local_rag import LocalRAGRetriever
 from app.shared.infra.search.types import ScrapedPage, SearchResult
 from app.shared.infra.skills import collect_recommended_tool_tags, render_prompt_scoped_skillpacks
 from app.shared.infra.tools.builtin.web_reading import read_urls
+from app.workflows.digest.common.runtime_config import get_teaching_runtime_config
 from app.workflows.digest.docgen.lib.query_planning import (
     build_research_focus_text,
     dedupe_queries,
@@ -138,6 +139,7 @@ class DocGenChapterContextRuntime(BaseTracedExecution):
         )
         pending_queries = dedupe_queries([*base_queries, *planned_queries], limit=query_cap)
         resolved_retrieval_profile = str(retrieval_profile or self.context.retrieval_profile or "").strip()
+        external_search_enabled = get_teaching_runtime_config().planner.allow_external_search
         local_retriever = LocalRAGRetriever(subject=local_rag_subject, local_sections=local_sections)
         other_retrievers = [
             retriever
@@ -145,12 +147,14 @@ class DocGenChapterContextRuntime(BaseTracedExecution):
                 subject=local_rag_subject,
                 local_sections=local_sections,
                 profile=resolved_retrieval_profile or None,
+                include_external=external_search_enabled,
             )
             if retriever.name != local_retriever.name
         ]
         configured_retrievers = get_configured_retriever_names(
             profile=resolved_retrieval_profile or None,
             include_local_rag=bool(local_rag_subject or local_sections),
+            include_external=external_search_enabled,
             include_fallback=True,
         )
         compressor = ContextCompressor(self.context)

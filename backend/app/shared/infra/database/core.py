@@ -285,8 +285,6 @@ def _drop_sqlite_legacy_schema(engine: sa.Engine) -> None:
                     )
         finally:
             connection.execute(sa.text("PRAGMA foreign_keys = ON"))
-
-
 def _ensure_local_sqlite_schema(engine: sa.Engine) -> sa.Engine:
     db_path = _get_db_path()
     if not db_path.exists():
