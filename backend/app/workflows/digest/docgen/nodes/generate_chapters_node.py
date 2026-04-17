@@ -16,7 +16,6 @@ from app.workflows.digest.docgen.lib.evidence import build_evidence_ledger, mark
 from app.workflows.digest.docgen.lib.models import (
     ChapterDraft,
     ChapterGenerationTask,
-    ChapterQualitySignals,
     ChapterResearchTrace,
 )
 from app.workflows.digest.docgen.nodes.common import (
@@ -139,6 +138,11 @@ def build_generate_chapters_node(*, context: WorkflowContext):
                 retrieval_profile=traced_context.retrieval_profile,
                 selected_skillpacks=list(state.get("selected_skillpacks") or []),
                 user_goal=str((state.get("docgen_context") or {}).get("user_goal") or ""),
+                max_research_rounds=task.budget_policy.max_research_rounds,
+                max_context_chars=task.budget_policy.max_context_chars,
+                query_cap=max(1, task.budget_policy.max_local_queries + task.budget_policy.max_web_queries),
+                queries_per_round=max(1, task.budget_policy.max_local_queries),
+                max_gap_queries_per_round=max(1, task.budget_policy.max_web_queries),
             )
             dense_context = research.content.strip()
             sources = list(research.sources)
