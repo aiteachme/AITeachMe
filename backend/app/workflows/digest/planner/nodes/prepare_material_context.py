@@ -1,4 +1,4 @@
-"""Prepare Digest material context for Planner V3."""
+"""Prepare Digest material context for Planner."""
 
 from __future__ import annotations
 
@@ -11,6 +11,7 @@ from app.repositories.files_repo import list_raw_files_by_ids
 from app.shared.infra.database import managed_session
 from app.shared.infra.workflow.context import WorkflowContext
 from app.workflows.digest.planner.lib.planner_events import emit_planner_event
+from app.workflows.digest.planner.lib.store import prepare_planner_run
 from app.workflows.digest.planner.state import BuildPlannerState
 from app.workflows.digest.common.contracts import resolve_planner_retrieval_profile
 from app.workflows.digest.common.models import DigestMaterialContext, FastTopicHints, SourcePacket, SubjectProfile
@@ -93,31 +94,33 @@ def _build_seed_material_context(*, subject: str, file_ids: list[int], user_goal
 
 def build_prepare_material_context_node(*, context: WorkflowContext):
     async def prepare_material_context_node(state: BuildPlannerState) -> dict:
+        session_update = prepare_planner_run(state)
+        working_state = {**state, **session_update}
         await emit_planner_event(
-            state,
+            working_state,
             event="planner.material.loading",
             detail="正在读取学习目标和资料理解包...",
         )
         material_context = await prepare_material_context(
-            state["subject"],
-            state.get("file_ids", []),
-            user_prompt=state.get("user_goal"),
+            working_state["subject"],
+            working_state.get("file_ids", []),
+            user_prompt=working_state.get("user_goal"),
         )
         if not material_context.source_documents:
             await emit_planner_event(
-                state,
+                working_state,
                 event="planner.material.pending",
                 detail="当前资料正文尚未解析完成，本轮将先依据文件名和用户目标生成临时方案。",
             )
             material_context = _build_seed_material_context(
-                subject=state["subject"],
-                file_ids=list(state.get("file_ids", [])),
-                user_goal=state.get("user_goal"),
+                subject=working_state["subject"],
+                file_ids=list(working_state.get("file_ids", [])),
+                user_goal=working_state.get("user_goal"),
             )
 
-        digest_mode = state.get("digest_mode") or material_context.course_mode_decision.mode.value
+        digest_mode = working_state.get("digest_mode") or material_context.course_mode_decision.mode.value
         await emit_planner_event(
-            state,
+            working_state,
             event="planner.material.ready",
             detail=(
                 f"已读取 {len(material_context.source_documents)} 个资料文件，"
@@ -130,10 +133,11 @@ def build_prepare_material_context_node(*, context: WorkflowContext):
             },
         )
         return {
+            **session_update,
             "material_context": material_context,
             "digest_mode": digest_mode,
             "retrieval_profile": resolve_planner_retrieval_profile(),
-            "tone": state.get("tone") or "encouraging",
+            "tone": working_state.get("tone") or "encouraging",
         }
 
     return prepare_material_context_node

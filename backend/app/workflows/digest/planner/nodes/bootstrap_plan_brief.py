@@ -1,4 +1,4 @@
-"""Bootstrap a visible plan sketch and structured learning intent in parallel."""
+"""Bootstrap a visible planner brief and structured learning intent in parallel."""
 
 from __future__ import annotations
 
@@ -10,15 +10,14 @@ import structlog
 from app.shared.infra.llm_support import acompletion_stream, acompletion_with_fallback
 from app.shared.infra.llm_support.routing import TaskType
 from app.shared.infra.workflow.context import WorkflowContext
-from app.workflows.digest.planner.lib.plan_sketch import parse_plan_sketch_text
-from app.workflows.digest.planner.lib.evidence_probe import fallback_probe_queries
+from app.workflows.digest.planner.lib.plan_sketch import parse_planner_brief_text
 from app.workflows.digest.planner.lib.planner_events import emit_planner_event, emit_planner_token
 from app.workflows.digest.planner.lib.plans import _resolve_subject_display_name, build_fallback_plan
 from app.workflows.digest.planner.lib.models import (
-    LearningIntentProfile,
-    PlanSketch,
-    build_default_intent_profile,
-    build_fallback_plan_sketch,
+    LearningIntent,
+    PlannerBrief,
+    build_default_intent,
+    build_fallback_planner_brief,
 )
 from app.workflows.digest.planner.prompts import build_learning_intent_messages, build_plan_sketch_prompt
 from app.workflows.digest.planner.state import BuildPlannerState
@@ -26,7 +25,7 @@ from app.workflows.digest.planner.state import BuildPlannerState
 logger = structlog.get_logger(__name__)
 
 
-async def _stream_plan_sketch(state: BuildPlannerState, fallback: PlanSketch) -> PlanSketch:
+async def _stream_planner_brief(state: BuildPlannerState, fallback: PlannerBrief) -> PlannerBrief:
     material_context = state["material_context"]
     subject_name = _resolve_subject_display_name(
         state["subject"],
@@ -61,7 +60,7 @@ async def _stream_plan_sketch(state: BuildPlannerState, fallback: PlanSketch) ->
             if first_token_ms is None:
                 first_token_ms = int((time.monotonic() - started_at) * 1000)
                 logger.info(
-                    "planner_sketch_first_token_received",
+                    "planner_brief_first_token_received",
                     planner_session_id=state.get("planner_session_id") or "",
                     subject=state["subject"],
                     first_token_ms=first_token_ms,
@@ -76,7 +75,7 @@ async def _stream_plan_sketch(state: BuildPlannerState, fallback: PlanSketch) ->
             )
     except Exception:
         logger.exception(
-            "planner_sketch_failed",
+            "planner_brief_failed",
             planner_session_id=state.get("planner_session_id") or "",
             subject=state["subject"],
             token_count=len(tokens),
@@ -88,7 +87,7 @@ async def _stream_plan_sketch(state: BuildPlannerState, fallback: PlanSketch) ->
             detail="思考过程生成失败，已使用规则摘要继续。",
         )
         if not tokens:
-            for line in fallback.raw_text.splitlines(keepends=True):
+            for line in fallback.markdown.splitlines(keepends=True):
                 await emit_planner_token(state, line)
         return fallback
     if not tokens:
@@ -97,17 +96,15 @@ async def _stream_plan_sketch(state: BuildPlannerState, fallback: PlanSketch) ->
             event="planner.fallback.used",
             detail="思考过程未返回任何增量内容，已使用规则摘要继续。",
         )
-        for line in fallback.raw_text.splitlines(keepends=True):
+        for line in fallback.markdown.splitlines(keepends=True):
             await emit_planner_token(state, line)
         return fallback
-    return parse_plan_sketch_text("".join(tokens).strip(), fallback=fallback)
+    return parse_planner_brief_text("".join(tokens).strip(), fallback=fallback)
 
 
-async def _extract_learning_intent(state: BuildPlannerState) -> LearningIntentProfile:
+async def _extract_learning_intent(state: BuildPlannerState) -> LearningIntent:
     material_context = state["material_context"]
-    fallback = build_default_intent_profile(
-        material_context=material_context,
-        user_goal=state.get("user_goal") or "",
+    fallback = build_default_intent(
         digest_mode=state.get("digest_mode") or material_context.course_mode_decision.mode.value,
     )
     try:
@@ -121,7 +118,7 @@ async def _extract_learning_intent(state: BuildPlannerState) -> LearningIntentPr
             ),
             task_type=TaskType.CLASSIFY,
             model="light",
-            response_model=LearningIntentProfile,
+            response_model=LearningIntent,
             temperature=0.1,
             max_tokens=420,
             extra_metadata={
@@ -154,9 +151,9 @@ def build_bootstrap_plan_brief_node(*, context: WorkflowContext):
             tone=state.get("tone") or "encouraging",
             shared_inputs=material_context,
         )
-        fallback_sketch = build_fallback_plan_sketch(fallback_plan)
-        sketch, intent = await asyncio.gather(
-            _stream_plan_sketch(state, fallback_sketch),
+        fallback_brief = build_fallback_planner_brief(fallback_plan)
+        brief, intent = await asyncio.gather(
+            _stream_planner_brief(state, fallback_brief),
             _extract_learning_intent(state),
         )
         await emit_planner_event(
@@ -167,16 +164,12 @@ def build_bootstrap_plan_brief_node(*, context: WorkflowContext):
                 "goal_type": intent.goal_type,
                 "source_policy": "all_available",
                 "success_criteria": list(intent.success_criteria[:3]),
+                "constraints": list(intent.constraints[:4]),
             },
         )
-        concept_queries = fallback_probe_queries(material_context, plan_sketch=sketch)
         return {
-            "plan_sketch_markdown": sketch.raw_text,
-            "plan_sketch_text": sketch.raw_text,
-            "plan_sketch": sketch.model_dump(mode="json"),
-            "learning_intent_profile": intent.model_dump(mode="json"),
-            "research_probe_plan": intent.research_probe_plan.model_dump(mode="json"),
-            "concept_queries": concept_queries,
+            "planner_brief": brief.model_dump(mode="json"),
+            "learning_intent": intent.model_dump(mode="json"),
         }
 
     return bootstrap_plan_brief_node

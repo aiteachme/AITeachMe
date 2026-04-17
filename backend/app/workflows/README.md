@@ -1,6 +1,6 @@
 ﻿# Workflows 说明
 
-最后更新：2026-04-16
+最后更新：2026-04-17
 
 `backend/app/workflows/` 现在是 AITeachMe 后端的唯一业务层。这里不仅负责五大引擎的图编排，也负责承接面向 API 的业务用例和非引擎业务模块。
 
@@ -43,16 +43,16 @@
 
 - `ingest/__init__.py`、`digest/__init__.py`
   引擎模块根只保留稳定导入面，不再承载业务实现
-- `ingest/common/events.py`、`ingest/common/exports.py`
-  Ingest 跨链路事件与 workflow export 落点
+- `ingest/fast_parse/graph.py`、`ingest/deep_enhance/graph.py`
+  Ingest 图定义与 workflow export 声明落点
 - `digest/common/events.py`、`digest/common/exports.py`
   Digest 跨链路事件与 workflow export 落点
 - `digest/knowledge_graph/overview.py`、`digest/knowledge_graph/study_plan.py`
   基于知识图谱的总览与学习计划用例
 - `digest/docgen/__init__.py`、`digest/knowledge_graph/__init__.py`
-  Digest workflow runner 的 lane 入口
-- `digest/planner/sessions.py`
-  Planner session 的 API-facing use case 落点
+  Digest workflow runner 的模块级入口
+- `digest/planner/__init__.py`、`digest/planner/graph.py`
+  Planner 的 API-facing 入口与 workflow runner 落点
 - `digest/docgen/builds.py`
   DocGen 构建触发、状态装配与后台编排入口
 - `digest/common/runtime_config.py`

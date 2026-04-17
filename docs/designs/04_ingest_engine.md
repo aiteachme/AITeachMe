@@ -41,7 +41,6 @@ Ingest（透视引擎）是 AITeachMe 数据流的**入口**，负责把用户�
 | Markdown 规范化 | `backend/app/workflows/ingest/common/parsing/canonicalizer.py` | 图片引用重写、嵌入图提取 |
 | OCR 增强 | `backend/app/workflows/ingest/common/parsing/asset_ocr.py` | LLM Vision OCR |
 | Prompt 模板 | `backend/app/workflows/ingest/common/parsing/prompts.py` | OCR prompt 中/英文版 |
-| 事件定义 | `backend/app/workflows/ingest/common/events.py` | 领域事件 |
 | 主要业务表 | `raw_file` + `raw_file_asset` | 文件元数据与资产记录 |
 
 ---
@@ -527,12 +526,12 @@ Phase 2 在后台任务中执行，不阻塞 HTTP 响应。API 运行时通过 `
        ├── image_count = <enhanced asset count>
        ├── ingest_status = READY_FOR_DIGEST
        └── digest_current_step = "ingest.enhance.completed"
-    4. 发布 IngestFileReadyForDigestEvent
+    4. 记录完成日志
 
   失败处理:
     1. 保留 Phase 1 产物 (不回滚 Markdown)
     2. 置 ingest_status = ENHANCE_FAILED
-    3. 发布 IngestFileEnhanceFailedEvent
+    3. 记录失败日志
 ```
 
 ---
@@ -610,19 +609,14 @@ Output Format:
 
 ## 9. 事件系统
 
-> 文件: `backend/app/workflows/ingest/common/events.py`
+Ingest 当前不保留单独事件层。原因是当前没有明确订阅方，运行时观测主要依赖：
 
-| 事件类 | 事件名 | 触发时机 | 携带数据 |
-|---|---|---|---|
-| `IngestParseRequestedEvent` | `ingest.file.parse.requested` | 解析任务排队时 | `subject, file_id` |
-| `IngestFileClassifiedEvent` | `ingest.file.classified` | 分类完成 | `subject, file_id, file_category, recommended_parser, detected_language` |
-| `IngestFileFastParsedEvent` | `ingest.file.fast_parsed` | Phase 1 完成 | `subject, file_id, parser_used, markdown_chars, image_count` |
-| `IngestFileEnhanceStartedEvent` | `ingest.file.enhance.started` | Phase 2 启动 | `subject, file_id` |
-| `IngestFileReadyForDigestEvent` | `ingest.file.ready_for_digest` | Phase 2 完成 | `subject, file_id` |
-| `IngestFileEnhanceFailedEvent` | `ingest.file.enhance.failed` | Phase 2 失败 | `subject, file_id, error_message` |
-| `IngestFileParseFailedEvent` | `ingest.file.parse.failed` | Phase 1 失败 | `subject, file_id, error_message` |
+- `raw_file.ingest_status`
+- `raw_file.digest_current_step`
+- `parse_metadata_json`
+- `structlog` 日志
 
-所有事件通过 `InProcessEventBus` 发布，当前用于日志记录和内部协调。
+后续如果出现真实订阅方，再按具体 lane 增加事件类型，不提前保留空事件层。
 
 ---
 
@@ -747,7 +741,7 @@ raw_file → raw_markdowns (ContentStore) → retrieval_chunk
 
 - Ingest 不直接产出知识图谱、教学单元、课程结构
 - Ingest 不感知 Digest、Examine、Profile 的存在
-- Ingest 通过事件通知感兴趣的监听方，但当前事件仅用于日志
+- Ingest 当前不通过事件层通知下游；下游通过状态字段和 ContentStore 产物读取结果
 
 ---
 

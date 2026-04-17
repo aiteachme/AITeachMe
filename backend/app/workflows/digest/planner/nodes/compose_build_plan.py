@@ -7,7 +7,7 @@ from app.shared.infra.llm_support.routing import TaskType
 from app.shared.infra.workflow.context import WorkflowContext
 from app.workflows.digest.planner.lib.planner_events import emit_planner_event
 from app.workflows.digest.planner.lib.plans import BuildPlannerDraft, build_fallback_plan
-from app.workflows.digest.planner.lib.models import EvidenceBrief, LearningIntentProfile, PlanSketch
+from app.workflows.digest.planner.lib.models import EvidenceBrief, LearningIntent, PlannerBrief
 from app.workflows.digest.planner.prompts import build_plan_composer_messages
 from app.workflows.digest.planner.state import BuildPlannerState
 
@@ -17,8 +17,8 @@ def build_compose_build_plan_node(*, context: WorkflowContext):
 
     async def compose_build_plan_node(state: BuildPlannerState) -> dict:
         material_context = state["material_context"]
-        plan_sketch = PlanSketch.model_validate(state.get("plan_sketch") or {})
-        intent = LearningIntentProfile.model_validate(state.get("learning_intent_profile") or {})
+        planner_brief = PlannerBrief.model_validate(state.get("planner_brief") or {})
+        intent = LearningIntent.model_validate(state.get("learning_intent") or {})
         evidence = EvidenceBrief.model_validate(state.get("evidence_brief") or {})
         fallback = build_fallback_plan(
             subject=state["subject"],
@@ -40,8 +40,8 @@ def build_compose_build_plan_node(*, context: WorkflowContext):
                     digest_mode=state.get("digest_mode") or material_context.course_mode_decision.mode.value,
                     tone=state.get("tone") or "encouraging",
                     material_context=material_context,
-                    plan_sketch=plan_sketch,
-                    intent_profile=intent,
+                    planner_brief=planner_brief,
+                    learning_intent=intent,
                     evidence_brief=evidence,
                     message_history=list(state.get("message_history", [])),
                     latest_plan=state.get("latest_plan"),
@@ -64,8 +64,8 @@ def build_compose_build_plan_node(*, context: WorkflowContext):
             )
             draft = fallback
         return {
-            "build_plan_contract": draft.model_dump(mode="json"),
-            "planner_generation_mode": "deep_research_v3",
+            "build_plan_draft": draft.model_dump(mode="json"),
+            "generation_mode": "research_surface_v4",
         }
 
     return compose_build_plan_node

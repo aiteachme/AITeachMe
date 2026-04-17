@@ -47,7 +47,6 @@ async def run_parse_file_workflow(
     *,
     subject: str,
     file_id: int,
-    event_bus=None,
     background_task_registry=None,
 ) -> WorkflowResult[IngestParseState]:
     """Two-phase ingest workflow entry point.
@@ -565,7 +564,6 @@ async def run_parse_file_workflow(
             enhance_coro = _run_deep_enhance_background(
                 subject=subject,
                 file_id=file_id,
-                event_bus=event_bus,
             )
             if background_task_registry is not None:
                 background_task_registry.spawn(

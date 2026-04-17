@@ -56,44 +56,8 @@ class ParseDecision(BaseModel):
         return self.primary_provider == "mineru"
 
 
-class ParsedBlock(BaseModel):
-    """Normalized content block produced by a parser/provider.
-
-    This is the future evidence contract. Current code can persist markdown
-    first and add block persistence incrementally.
-    """
-
-    block_id: str
-    type: str = "text"
-    text: str = ""
-    page: int | None = None
-    bbox: tuple[float, float, float, float] | None = None
-    reading_order: int | None = None
-    asset_name: str | None = None
-    confidence: float | None = None
-    provider: str = "local"
-    metadata: dict[str, Any] = Field(default_factory=dict)
-
-
-class ProviderQualitySignals(BaseModel):
-    """Quality signals used by future arbitration and reporting."""
-
-    chars: int = 0
-    block_count: int = 0
-    table_count: int = 0
-    figure_count: int = 0
-    equation_count: int = 0
-    pages_with_text: int = 0
-    pages_with_ocr: int = 0
-    suspected_garbled_pages: list[int] = Field(default_factory=list)
-    missing_page_ratio: float = 0.0
-    avg_ocr_confidence: float | None = None
-
-
 __all__ = [
     "ParseDecision",
-    "ParsedBlock",
     "ProviderCapability",
     "ProviderName",
-    "ProviderQualitySignals",
 ]

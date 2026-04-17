@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 
 from app.workflows.digest.planner.lib.plans import BuildPlannerDraft, _dedupe_chapter_plan_titles
-from app.workflows.digest.planner.lib.models import PlanSketch
+from app.workflows.digest.planner.lib.models import PlannerBrief
 
 _GENERIC_TITLE_MARKERS = (
     "当前主题",
@@ -62,19 +62,19 @@ def _looks_fallback_query(query: str) -> bool:
     return False
 
 
-def apply_plan_sketch_preferences(
+def apply_planner_brief_preferences(
     draft: BuildPlannerDraft,
     *,
-    plan_sketch: PlanSketch,
+    planner_brief: PlannerBrief,
     user_goal: str,
     subject_display_name: str,
 ) -> BuildPlannerDraft:
-    if plan_sketch.provisional_chapters:
+    if planner_brief.outline_items:
         next_plan = []
         for index, chapter in enumerate(draft.chapter_plan):
             sketch_title = (
-                str(plan_sketch.provisional_chapters[index]).strip()
-                if index < len(plan_sketch.provisional_chapters)
+                str(planner_brief.outline_items[index]).strip()
+                if index < len(planner_brief.outline_items)
                 else ""
             )
             current_title = str(chapter.title or "").strip()
@@ -91,10 +91,10 @@ def apply_plan_sketch_preferences(
             }
         )
 
-    if plan_sketch.research_tasks:
+    if planner_brief.focus_points:
         existing = list(draft.research_queries)
         if not existing or all(_looks_fallback_query(query) for query in existing):
-            draft = draft.model_copy(update={"research_queries": list(plan_sketch.research_tasks[:8])})
+            draft = draft.model_copy(update={"research_queries": list(planner_brief.focus_points[:8])})
 
     return draft.model_copy(
         update={
@@ -106,4 +106,4 @@ def apply_plan_sketch_preferences(
     )
 
 
-__all__ = ["apply_plan_sketch_preferences"]
+__all__ = ["apply_planner_brief_preferences"]

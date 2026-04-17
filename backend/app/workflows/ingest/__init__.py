@@ -21,7 +21,6 @@ __all__ = [
 _ATTR_TO_MODULE = {
     "IngestEnhanceState": "app.workflows.ingest.deep_enhance.state",
     "IngestParseState": "app.workflows.ingest.fast_parse.state",
-    "WORKFLOW_EXPORTS": "app.workflows.ingest.common.exports",
     "build_deep_enhance_graph": "app.workflows.ingest.deep_enhance.graph",
     "build_fast_parse_graph": "app.workflows.ingest.fast_parse.graph",
     "build_parse_file_graph": "app.workflows.ingest.fast_parse.graph",
@@ -33,7 +32,21 @@ _ATTR_TO_MODULE = {
 }
 
 
+def _load_workflow_exports():
+    fast_parse_graph = import_module("app.workflows.ingest.fast_parse.graph")
+    deep_enhance_graph = import_module("app.workflows.ingest.deep_enhance.graph")
+    return (
+        *getattr(fast_parse_graph, "WORKFLOW_EXPORTS"),
+        *getattr(deep_enhance_graph, "WORKFLOW_EXPORTS"),
+    )
+
+
 def __getattr__(name: str):
+    if name == "WORKFLOW_EXPORTS":
+        value = _load_workflow_exports()
+        globals()[name] = value
+        return value
+
     module_name = _ATTR_TO_MODULE.get(name)
     if module_name is None:
         raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from app.workflows.digest.common.models import DigestMaterialContext
-from app.workflows.digest.planner.lib.models import PlanSketch, material_topic_hints
+from app.workflows.digest.planner.lib.models import PlannerBrief, material_topic_hints
 
 _MAX_DIGEST_CHARS = 3600
 
@@ -22,12 +22,12 @@ def build_evidence_query_messages(
     subject: str,
     user_goal: str,
     material_context: DigestMaterialContext,
-    plan_sketch: PlanSketch,
+    planner_brief: PlannerBrief,
     query_count: int,
 ) -> list[dict[str, str]]:
     topics = "、".join(material_topic_hints(material_context, limit=10)) or "暂无明显主题"
-    focus = "；".join(plan_sketch.research_tasks[:8]) or "暂无关注重点"
-    outline = "；".join(plan_sketch.provisional_chapters[:8]) or "暂无预计大纲"
+    focus = "；".join(planner_brief.focus_points[:8]) or "暂无关注重点"
+    outline = "；".join(planner_brief.outline_items[:8]) or "暂无预计大纲"
     digest = _render_material_digest(material_context)
     prompt = (
         "请为 Planner 证据探测生成少量高质量检索问题。\n"
