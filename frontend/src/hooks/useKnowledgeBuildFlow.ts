@@ -12,6 +12,7 @@ import type {
   SubjectVectorStatusResponse,
 } from "../api/generated/model";
 import type { ApiResponse } from "../api/types";
+import { useToast } from "../components/ui/Toast";
 
 export type KnowledgeBuildResolution = "rebuild" | "disable";
 
@@ -55,6 +56,28 @@ function isKnowledgeBuildPrecheckConflictData(
   return typeof record.reason === "string" && record.reason.trim().length > 0;
 }
 
+const AUTO_DISABLE_PRECHECK_REASONS = new Set([
+  "embedding_not_configured",
+  "embedding_api_key_missing",
+  "vector_extension_unavailable",
+  "llamaindex_postgres_unavailable",
+]);
+
+function buildVectorSkipNotice(reason?: string) {
+  switch (reason) {
+    case "embedding_api_key_missing":
+      return "当前后端缺少 embedding 调用凭证，本轮不会写入 embedding，也不会使用向量检索和 RAG。";
+    case "embedding_not_configured":
+      return "当前后端未配置 embedding 模型，本轮不会写入 embedding，也不会使用向量检索和 RAG。";
+    case "vector_extension_unavailable":
+      return "当前环境暂时不可用向量索引，本轮不会写入 embedding，也不会使用向量检索和 RAG。";
+    case "llamaindex_postgres_unavailable":
+      return "当前云端环境缺少向量索引依赖，本轮不会写入 embedding，也不会使用向量检索和 RAG。";
+    default:
+      return "当前向量能力不可用，本轮会跳过 embedding 写入、向量检索和 RAG。";
+  }
+}
+
 async function triggerKnowledgeBuild(
   subjectId: string,
   payload: KnowledgeBuildRequestPayload,
@@ -75,7 +98,9 @@ export function useKnowledgeBuildFlow({
   fallbackErrorMessage = "知识构建失败，请稍后重试。",
   onSuccess,
 }: UseKnowledgeBuildFlowOptions) {
+  const { toast } = useToast();
   const pendingRequestRef = useRef<KnowledgeBuildRequestPayload | null>(null);
+  const vectorNoticeShownRef = useRef("");
   const [errorMessage, setErrorMessage] = useState("");
   const [precheckConflict, setPrecheckConflict] =
     useState<KnowledgeBuildPrecheckConflictData | null>(null);
@@ -90,6 +115,16 @@ export function useKnowledgeBuildFlow({
       setPrecheckConflict(null);
       setErrorMessage("");
       setLatestVectorStatus(data.vector_status ?? null);
+      const notice = data.vector_status?.notice?.trim();
+      if (notice && notice !== vectorNoticeShownRef.current) {
+        vectorNoticeShownRef.current = notice;
+        toast({
+          title: "已跳过向量能力",
+          description: notice,
+          variant: "warning",
+          duration: 7000,
+        });
+      }
       onSuccess?.(data);
     },
     onError: (error) => {
@@ -100,6 +135,27 @@ export function useKnowledgeBuildFlow({
         errorCode === "KNOWLEDGE_BUILD_PRECHECK_CONFLICT" &&
         isKnowledgeBuildPrecheckConflictData(errorData)
       ) {
+        if (AUTO_DISABLE_PRECHECK_REASONS.has(errorData.reason)) {
+          const basePayload =
+            pendingRequestRef.current ?? { ...buildRequest(), build_type: buildType };
+          const nextPayload = {
+            ...basePayload,
+            embedding_resolution: "disable",
+          } satisfies KnowledgeBuildRequestPayload;
+          const notice = buildVectorSkipNotice(errorData.reason);
+          vectorNoticeShownRef.current = notice;
+          toast({
+            title: "已跳过向量能力",
+            description: `${notice} 知识文档、图谱和课程结构会继续构建。`,
+            variant: "warning",
+            duration: 7000,
+          });
+          setErrorMessage("");
+          setPrecheckConflict(null);
+          pendingRequestRef.current = basePayload;
+          buildMutation.mutate(nextPayload);
+          return;
+        }
         setErrorMessage("");
         setPrecheckConflict(errorData);
         return;
