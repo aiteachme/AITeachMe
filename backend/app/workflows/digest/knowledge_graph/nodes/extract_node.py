@@ -291,6 +291,7 @@ async def extract_node(state: KnowledgeDigestState) -> KnowledgeDigestState:
                 job_type="graph",
                 progress=15,
                 current_step="extract",
+                subject=state["subject"],
             )
 
             if not chunk_ids:
@@ -300,6 +301,7 @@ async def extract_node(state: KnowledgeDigestState) -> KnowledgeDigestState:
                     job_type="graph",
                     progress=40,
                     current_step="extract",
+                    subject=state["subject"],
                 )
                 return {
                     **state,
@@ -461,6 +463,7 @@ async def extract_node(state: KnowledgeDigestState) -> KnowledgeDigestState:
                             job_type="graph",
                             progress=min(progress, 40),
                             current_step="extract",
+                            subject=state["subject"],
                         )
                         # Update runtime status with discovered node stats
                         total_nodes = sum(len(r.nodes) for r in ordered_results)
@@ -523,6 +526,7 @@ async def extract_node(state: KnowledgeDigestState) -> KnowledgeDigestState:
                 job_type="graph",
                 progress=40,
                 current_step="extract",
+                subject=state["subject"],
             )
             try:
                 from app.utils.docgen_store import update_knowledge_build_status

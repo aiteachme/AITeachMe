@@ -62,6 +62,7 @@ async def cluster_node(state: KnowledgeDigestState) -> KnowledgeDigestState:
                     job_type="graph",
                     progress=50,
                     current_step="cluster",
+                    subject=state["subject"],
                 )
                 return {
                     **state,
@@ -78,6 +79,7 @@ async def cluster_node(state: KnowledgeDigestState) -> KnowledgeDigestState:
                 job_type="graph",
                 progress=50,
                 current_step="cluster",
+                subject=state["subject"],
             )
             digest_logger.info(
                 "knowledge_workflow_cluster_complete",

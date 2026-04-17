@@ -45,6 +45,7 @@ async def prepare_node(state: KnowledgeDigestState) -> KnowledgeDigestState:
                 job_type="graph",
                 progress=10,
                 current_step="prepare",
+                subject=state["subject"],
             )
             digest_logger.info(
                 "knowledge_workflow_prepare_complete",

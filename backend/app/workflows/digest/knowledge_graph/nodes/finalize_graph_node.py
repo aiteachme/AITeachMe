@@ -106,6 +106,7 @@ def build_finalize_graph_node():
                 knowledge_build_repo.update_digest_job(
                     session,
                     job_id,
+                    subject=subject,
                     status="completed",
                 )
                 update_job_progress(
@@ -114,6 +115,7 @@ def build_finalize_graph_node():
                     job_type="graph",
                     progress=100,
                     current_step="finalize_graph",
+                    subject=subject,
                 )
                 digest_logger.info(
                     "knowledge_workflow_finalize_complete",

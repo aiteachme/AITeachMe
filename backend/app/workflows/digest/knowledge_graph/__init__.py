@@ -55,6 +55,7 @@ async def run_graph_digest_workflow(
     user_prompt: str | None = None,
     event_bus: InProcessEventBus | None = None,
     build_session_id: str | None = None,
+    doc_chapter_metadatas: list[dict[str, object]] | None = None,
 ) -> WorkflowResult[KnowledgeDigestState]:
     bus = event_bus or InProcessEventBus()
     await bus.publish(DigestBuildRequestedEvent(subject=subject, job_id=job_id, file_ids=file_ids))
@@ -74,6 +75,7 @@ async def run_graph_digest_workflow(
             job_id=job_id,
             build_session_id=build_session_id,
             user_prompt=user_prompt,
+            doc_chapter_metadatas=doc_chapter_metadatas,
         ),
         context=context,
     )

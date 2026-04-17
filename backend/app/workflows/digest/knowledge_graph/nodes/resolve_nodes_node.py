@@ -493,6 +493,7 @@ async def resolve_nodes_node(state: KnowledgeDigestState) -> KnowledgeDigestStat
                         job_type="graph",
                         progress=min(progress, 65),
                         current_step="resolve_nodes",
+                        subject=subject,
                     )
 
             _commit_pending_writes()
@@ -503,10 +504,12 @@ async def resolve_nodes_node(state: KnowledgeDigestState) -> KnowledgeDigestStat
                 job_type="graph",
                 progress=65,
                 current_step="resolve_nodes",
+                subject=subject,
             )
             knowledge_build_repo.update_digest_job(
                 session,
                 job_id,
+                subject=subject,
                 nodes_added=len(new_node_ids),
                 nodes_updated=len(updated_node_ids),
                 nodes_merged=len(merged_node_ids),

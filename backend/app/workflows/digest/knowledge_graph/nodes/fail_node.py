@@ -29,6 +29,7 @@ async def fail_node(state: KnowledgeDigestState) -> KnowledgeDigestState:
             knowledge_build_repo.update_digest_job(
                 session,
                 job_id,
+                subject=state["subject"],
                 status="failed",
                 error_message=error_message,
                 current_step=_resolve_failure_step(error_message),
@@ -68,4 +69,3 @@ def _resolve_failure_step(error_message: str) -> str:
 
 
 __all__ = ["fail_node"]
-

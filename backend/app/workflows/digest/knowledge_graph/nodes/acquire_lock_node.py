@@ -30,8 +30,14 @@ async def acquire_lock_node(state: KnowledgeDigestState) -> KnowledgeDigestState
             job_type="graph",
             progress=5,
             current_step="acquire_lock",
+            subject=state["subject"],
         )
-        knowledge_build_repo.update_digest_job(session, state["job_id"], status="processing")
+        knowledge_build_repo.update_digest_job(
+            session,
+            state["job_id"],
+            subject=state["subject"],
+            status="processing",
+        )
         digest_logger.info("knowledge_workflow_acquire_lock_completed")
         return {**state, "lock_acquired": True}
 

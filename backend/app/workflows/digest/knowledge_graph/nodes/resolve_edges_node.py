@@ -142,10 +142,12 @@ async def resolve_edges_node(state: KnowledgeDigestState) -> KnowledgeDigestStat
                 job_type="graph",
                 progress=75,
                 current_step="resolve_edges",
+                subject=subject,
             )
             knowledge_build_repo.update_digest_job(
                 session,
                 job_id,
+                subject=subject,
                 edges_added=len(new_edge_ids),
                 edges_updated=len(updated_edge_ids),
             )
@@ -166,5 +168,4 @@ async def resolve_edges_node(state: KnowledgeDigestState) -> KnowledgeDigestStat
             return {**state, "error": f"resolve_edges_failed: {exc}"}
 
 __all__ = ["resolve_edges_node"]
-
 

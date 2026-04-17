@@ -61,6 +61,7 @@ async def analyze_impact_node(state: KnowledgeDigestState) -> KnowledgeDigestSta
                 job_type="graph",
                 progress=85,
                 current_step="analyze_impact",
+                subject=state["subject"],
             )
             digest_logger.info(
                 "knowledge_workflow_impact_complete",
@@ -73,5 +74,4 @@ async def analyze_impact_node(state: KnowledgeDigestState) -> KnowledgeDigestSta
             return {**state, "error": f"analyze_impact_failed: {exc}"}
 
 __all__ = ["analyze_impact_node"]
-
 
