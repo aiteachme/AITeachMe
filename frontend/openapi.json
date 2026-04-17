@@ -8042,18 +8042,6 @@
             ],
             "title": "Num Questions",
             "description": "Optional target question count."
-          },
-          "theme_tree_node_id": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Theme Tree Node Id",
-            "description": "Optional theme tree node scope."
           }
         },
         "type": "object",
@@ -8120,17 +8108,6 @@
               }
             ],
             "title": "Exam Paper Id"
-          },
-          "theme_tree_node_id": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Theme Tree Node Id"
           },
           "sample_file_uids": {
             "items": {
@@ -10474,6 +10451,28 @@
             "type": "integer",
             "title": "Knowledge Unit Id"
           },
+          "knowledge_unit_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Knowledge Unit Name"
+          },
+          "knowledge_unit_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Knowledge Unit Type"
+          },
           "mastery_score": {
             "type": "number",
             "title": "Mastery Score"
@@ -10887,6 +10886,28 @@
           "knowledge_unit_id": {
             "type": "integer",
             "title": "Knowledge Unit Id"
+          },
+          "knowledge_unit_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Knowledge Unit Name"
+          },
+          "knowledge_unit_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Knowledge Unit Type"
           },
           "priority": {
             "type": "number",

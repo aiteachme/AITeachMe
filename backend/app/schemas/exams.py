@@ -18,7 +18,6 @@ class ExamGenerateRequest(BaseModel):
     focus_prompt: str | None = Field(default=None, description="Optional prompt describing key focus areas.")
     sample_file_uids: list[str] | None = Field(default=None, description="Optional uploaded sample-paper file UIDs.")
     num_questions: int | None = Field(default=None, ge=1, le=200, description="Optional target question count.")
-    theme_tree_node_id: int | None = Field(default=None, description="Optional theme tree node scope.")
 
 
 class ExamSubmitAnswerItem(BaseModel):
@@ -51,7 +50,6 @@ class ExamGenerateResponse(RuntimeStatusResponse):
     exam_mode: str
     num_questions: int
     exam_paper_id: int | None = None
-    theme_tree_node_id: int | None = None
     sample_file_uids: list[str] = Field(default_factory=list)
 
 

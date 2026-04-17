@@ -24,7 +24,6 @@ class QuestionTemplate(SQLModel, table=True):
 
     id: int | None = Field(default=None, primary_key=True)
     subject: str = Field(index=True)
-    curriculum_version_id: int | None = Field(default=None, index=True)
     knowledge_unit_id: int | None = Field(default=None, foreign_key="knowledge_unit.id", index=True)
     question_type: str
     difficulty: str
@@ -50,8 +49,6 @@ class ExamPaper(SQLModel, table=True):
     subject: str = Field(index=True)
     user_id: str = Field(default="local", index=True)
     exam_mode: str
-    curriculum_version_id: int | None = Field(default=None, index=True)
-    theme_tree_node_id: int | None = Field(default=None, index=True)
     status: str = Field(default="draft", index=True)
     total_items: int = Field(default=0, ge=0)
     submitted_at: datetime | None = Field(default=None)

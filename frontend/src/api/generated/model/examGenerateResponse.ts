@@ -17,6 +17,5 @@ export interface ExamGenerateResponse {
   exam_mode: string;
   num_questions: number;
   exam_paper_id?: number | null;
-  theme_tree_node_id?: number | null;
   sample_file_uids?: string[];
 }

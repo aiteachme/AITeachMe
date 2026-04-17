@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import random
 
 from fastapi import APIRouter, Body, Depends, Path
 from sqlmodel import Session, select
@@ -14,6 +15,7 @@ from app.models import ExamPaper, ExamPaperItem, QuestionTemplate, exam_mode_val
 from app.models.knowledge_unit import KnowledgeUnit
 from app.models.subject import Subject
 from app.repositories import exams_repo
+from app.repositories import profile_repo
 from app.schemas.common import ApiResponse, PageParams, PaginatedData, build_paginated_data, ok_response
 from app.schemas.exams import (
     ExamGenerateRequest,
@@ -58,7 +60,9 @@ def _raise_not_found(detail: str, error_code: str = "EXAM_NOT_FOUND") -> None:
 def _pick_knowledge_units(
     session: Session,
     *,
+    user_id: str,
     subject: str,
+    exam_mode: str,
     focus_prompt: str | None,
     limit: int,
 ) -> list[KnowledgeUnit]:
@@ -67,18 +71,90 @@ def _pick_knowledge_units(
         KnowledgeUnit.status == "active",
     )
     units = list(session.exec(stmt.order_by(KnowledgeUnit.id)).all())
+    units_by_id = {unit.id: unit for unit in units if unit.id is not None}
+    ordered_units: list[KnowledgeUnit] = []
+
+    if exam_mode == "web_practice":
+        due_states = profile_repo.list_due_knowledge_states(
+            session,
+            user_id=user_id,
+            subject=subject,
+            as_of=utcnow(),
+            target_kind="knowledge_unit",
+        )
+        weak_states = profile_repo.list_weak_knowledge_states(
+            session,
+            user_id=user_id,
+            subject=subject,
+            target_kind="knowledge_unit",
+        )
+        for state in [*due_states, *weak_states]:
+            knowledge_unit_id = state.knowledge_unit_id
+            if knowledge_unit_id is None:
+                continue
+            unit = units_by_id.get(int(knowledge_unit_id))
+            if unit is not None and unit not in ordered_units:
+                ordered_units.append(unit)
+
+    if exam_mode == "paper_exam":
+        weak_states = profile_repo.list_weak_knowledge_states(
+            session,
+            user_id=user_id,
+            subject=subject,
+            target_kind="knowledge_unit",
+        )
+        weak_ids = {
+            int(state.knowledge_unit_id)
+            for state in weak_states
+            if state.knowledge_unit_id is not None
+        }
+        strong_units = [unit for unit in units if unit.id not in weak_ids]
+        weak_units = [unit for unit in units if unit.id in weak_ids]
+        ordered_units.extend(weak_units[: max(1, limit // 2)])
+        ordered_units.extend([unit for unit in strong_units if unit not in ordered_units])
+
+    if not ordered_units:
+        ordered_units = units[:]
+
     focus = (focus_prompt or "").strip().casefold()
     if focus:
         focused = [
             unit
-            for unit in units
+            for unit in ordered_units
             if focus in unit.canonical_name.casefold()
             or focus in unit.summary.casefold()
             or focus in unit.knowledge_unit_type.casefold()
         ]
         if focused:
-            units = focused
-    return units[: max(1, limit)]
+            ordered_units = focused
+
+    deduped: list[KnowledgeUnit] = []
+    seen_ids: set[int] = set()
+    for unit in ordered_units:
+        if unit.id is None or unit.id in seen_ids:
+            continue
+        seen_ids.add(unit.id)
+        deduped.append(unit)
+    return deduped[: max(1, limit)]
+
+
+def _sanitize_summary(summary: str | None, fallback: str) -> str:
+    cleaned = " ".join((summary or "").split())
+    if cleaned:
+        return cleaned.rstrip(".")
+    return fallback
+
+
+def _question_type_for_order(*, exam_mode: str, difficulty: str, item_order: int) -> str:
+    if exam_mode == "paper_exam":
+        cycle = ["single_choice", "fill_blank", "short_answer"]
+    elif difficulty == "easy":
+        cycle = ["single_choice", "fill_blank"]
+    elif difficulty == "hard":
+        cycle = ["short_answer", "fill_blank", "single_choice"]
+    else:
+        cycle = ["single_choice", "short_answer", "fill_blank"]
+    return cycle[(item_order - 1) % len(cycle)]
 
 
 def _template_for_unit(
@@ -87,9 +163,33 @@ def _template_for_unit(
     subject: str,
     unit: KnowledgeUnit,
     difficulty: str,
+    question_type: str,
+    distractor_units: list[KnowledgeUnit],
 ) -> QuestionTemplate:
-    stem = f"Explain the key idea of {unit.canonical_name}."
-    answer = unit.summary.strip() or unit.canonical_name
+    summary = _sanitize_summary(unit.summary, unit.canonical_name)
+    answer = unit.canonical_name
+    options: list[str] | None = None
+
+    if question_type == "single_choice":
+        candidate_names = [
+            other.canonical_name
+            for other in distractor_units
+            if other.id != unit.id and other.canonical_name != unit.canonical_name
+        ]
+        rng = random.Random(f"{subject}:{unit.id}:{difficulty}:{question_type}")
+        rng.shuffle(candidate_names)
+        options = [unit.canonical_name, *candidate_names[:3]]
+        rng.shuffle(options)
+        stem = f"Which KnowledgeUnit best matches this description: {summary}?"
+        answer = unit.canonical_name
+    elif question_type == "fill_blank":
+        stem = f"Fill in the blank: {summary}. This idea is called ____."
+        answer = unit.canonical_name
+    else:
+        stem = f"Explain the key idea of {unit.canonical_name} and when you would use it."
+        answer = unit.summary.strip() or unit.canonical_name
+        question_type = "short_answer"
+
     stem_hash = _hash_stem(stem)
     existing = session.exec(
         select(QuestionTemplate).where(
@@ -104,12 +204,13 @@ def _template_for_unit(
     template = QuestionTemplate(
         subject=subject,
         knowledge_unit_id=unit.id,
-        question_type="short_answer",
+        question_type=question_type,
         difficulty=difficulty,
         stem=stem,
         stem_hash=stem_hash,
         answer=answer,
         explanation=f"Review the definition and usage of {unit.canonical_name}.",
+        options_json=json.dumps(options, ensure_ascii=False) if options else None,
         knowledge_unit_refs_json=json.dumps(
             [{"knowledge_unit_id": unit.id, "coverage_weight": 1.0, "role": "primary"}],
             ensure_ascii=False,
@@ -118,7 +219,12 @@ def _template_for_unit(
     return exams_repo.create_question_template(session, template)
 
 
-def _paper_item_response(item: ExamPaperItem) -> ExamPaperItemResponse:
+def _paper_item_response(
+    item: ExamPaperItem,
+    *,
+    knowledge_unit_by_id: dict[int, KnowledgeUnit],
+    mastery_by_unit_id: dict[int, float],
+) -> ExamPaperItemResponse:
     return ExamPaperItemResponse(
         id=item.id,
         item_order=item.item_order,
@@ -131,13 +237,19 @@ def _paper_item_response(item: ExamPaperItem) -> ExamPaperItemResponse:
         explanation=item.explanation_snapshot,
         knowledge_unit_links=[
             {
-                "knowledge_unit_id": int(ref.get("knowledge_unit_id", 0) or 0),
-                "knowledge_unit_name": "",
+                "knowledge_unit_id": knowledge_unit_id,
+                "knowledge_unit_name": (
+                    knowledge_unit_by_id[knowledge_unit_id].canonical_name
+                    if knowledge_unit_id in knowledge_unit_by_id
+                    else ""
+                ),
                 "coverage_weight": float(ref.get("coverage_weight", 1.0) or 1.0),
                 "role": str(ref.get("role", "primary")),
-                "mastery_score": None,
+                "mastery_score": mastery_by_unit_id.get(knowledge_unit_id),
             }
             for ref in _json_list(item.knowledge_unit_refs_json)
+            for knowledge_unit_id in [int(ref.get("knowledge_unit_id", 0) or 0)]
+            if knowledge_unit_id > 0
         ],
         user_answer=item.answer_content or None,
         is_correct=item.is_correct,
@@ -149,6 +261,30 @@ def _paper_item_response(item: ExamPaperItem) -> ExamPaperItemResponse:
 
 def _paper_detail(session: Session, paper: ExamPaper) -> ExamPaperDetailResponse:
     items = exams_repo.list_items_by_paper(session, paper.id or 0)
+    knowledge_unit_ids = {
+        knowledge_unit_id
+        for item in items
+        for ref in _json_list(item.knowledge_unit_refs_json)
+        for knowledge_unit_id in [int(ref.get("knowledge_unit_id", 0) or 0)]
+        if knowledge_unit_id > 0
+    }
+    knowledge_unit_by_id = {
+        unit.id: unit
+        for unit in session.exec(
+            select(KnowledgeUnit).where(KnowledgeUnit.id.in_(knowledge_unit_ids))
+        ).all()
+        if unit.id is not None
+    } if knowledge_unit_ids else {}
+    mastery_by_unit_id = {
+        int(state.knowledge_unit_id): state.mastery_score
+        for state in profile_repo.list_knowledge_states(
+            session,
+            user_id=paper.user_id,
+            subject=paper.subject,
+            target_kind="knowledge_unit",
+        )
+        if state.knowledge_unit_id is not None
+    }
     return ExamPaperDetailResponse(
         id=paper.id,
         subject=paper.subject,
@@ -162,7 +298,14 @@ def _paper_detail(session: Session, paper: ExamPaper) -> ExamPaperDetailResponse
         graded_at=paper.graded_at,
         created_at=paper.created_at,
         selection_context=json.loads(paper.selection_context_json or "{}"),
-        items=[_paper_item_response(item) for item in items],
+        items=[
+            _paper_item_response(
+                item,
+                knowledge_unit_by_id=knowledge_unit_by_id,
+                mastery_by_unit_id=mastery_by_unit_id,
+            )
+            for item in items
+        ],
     )
 
 
@@ -233,7 +376,9 @@ async def generate_exam(
     question_count = max(1, int(body.num_questions or 5))
     units = _pick_knowledge_units(
         session,
+        user_id=user.user_id,
         subject=normalized,
+        exam_mode=body.exam_mode,
         focus_prompt=body.focus_prompt,
         limit=question_count,
     )
@@ -267,7 +412,19 @@ async def generate_exam(
     )
     items: list[ExamPaperItem] = []
     for order, unit in enumerate(units, start=1):
-        template = _template_for_unit(session, subject=normalized, unit=unit, difficulty=difficulty)
+        question_type = _question_type_for_order(
+            exam_mode=mode,
+            difficulty=difficulty,
+            item_order=order,
+        )
+        template = _template_for_unit(
+            session,
+            subject=normalized,
+            unit=unit,
+            difficulty=difficulty,
+            question_type=question_type,
+            distractor_units=units,
+        )
         items.append(
             ExamPaperItem(
                 exam_paper_id=paper.id or 0,
@@ -297,7 +454,6 @@ async def generate_exam(
             exam_mode=paper.exam_mode,
             num_questions=len(items),
             exam_paper_id=paper.id,
-            theme_tree_node_id=body.theme_tree_node_id,
             sample_file_uids=body.sample_file_uids or [],
         )
     )

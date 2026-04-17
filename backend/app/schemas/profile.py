@@ -13,6 +13,8 @@ from app.workflows.profile.user_profile import UserProfileSummary
 class MasteryStateResponse(BaseModel):
     id: int
     knowledge_unit_id: int
+    knowledge_unit_name: str | None = None
+    knowledge_unit_type: str | None = None
     mastery_score: float
     confidence_score: float
     stability_score: float
@@ -39,6 +41,8 @@ class ReviewTaskResponse(BaseModel):
     user_id: str
     subject: str
     knowledge_unit_id: int
+    knowledge_unit_name: str | None = None
+    knowledge_unit_type: str | None = None
     priority: float
     scheduled_at: datetime | None = None
     status: str

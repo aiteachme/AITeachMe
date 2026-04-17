@@ -196,46 +196,6 @@ class KnowledgeUnitNotFoundError(AITeachMeError):
         super().__init__(detail=f"KnowledgeUnit `{unit_id}` does not exist.")
 
 
-class TeachingUnitNotFoundError(AITeachMeError):
-    error_code = "TEACHING_UNIT_NOT_FOUND"
-    status_code = HTTPStatus.NOT_FOUND
-
-    def __init__(self, unit_id: int) -> None:
-        super().__init__(detail=f"TeachingUnit `{unit_id}` does not exist.")
-
-
-class ThemeTreeNodeNotFoundError(AITeachMeError):
-    error_code = "THEME_TREE_NODE_NOT_FOUND"
-    status_code = HTTPStatus.NOT_FOUND
-
-    def __init__(self, tree_node_id: int) -> None:
-        super().__init__(detail=f"ThemeTreeNode `{tree_node_id}` does not exist.")
-
-
-class NoPublishedTreeError(AITeachMeError):
-    error_code = "NO_PUBLISHED_TREE"
-    status_code = HTTPStatus.CONFLICT
-
-    def __init__(self, subject: str) -> None:
-        super().__init__(detail=f"Subject `{subject}` has no published theme tree.")
-
-
-class NoPublishedDagError(AITeachMeError):
-    error_code = "NO_PUBLISHED_DAG"
-    status_code = HTTPStatus.CONFLICT
-
-    def __init__(self, subject: str) -> None:
-        super().__init__(detail=f"Subject `{subject}` has no published prerequisite DAG.")
-
-
-class NoPublishedCurriculumSnapshotError(AITeachMeError):
-    error_code = "NO_PUBLISHED_CURRICULUM_SNAPSHOT"
-    status_code = HTTPStatus.CONFLICT
-
-    def __init__(self, subject: str) -> None:
-        super().__init__(detail=f"Subject `{subject}` has no published curriculum snapshot.")
-
-
 class NoReadyFilesForDocGenError(AITeachMeError):
     error_code = "NO_READY_FILES_FOR_DOCGEN"
     status_code = HTTPStatus.UNPROCESSABLE_ENTITY
@@ -266,22 +226,6 @@ class KnowledgeBuildPrecheckConflictError(AITeachMeError):
 
     def __init__(self, detail: str, *, data: Any | None = None) -> None:
         super().__init__(detail=detail, data=data)
-
-
-class TreeVersionConflictError(AITeachMeError):
-    error_code = "TREE_VERSION_CONFLICT"
-    status_code = HTTPStatus.CONFLICT
-
-    def __init__(self, subject: str) -> None:
-        super().__init__(detail=f"Subject `{subject}` theme tree version conflict.")
-
-
-class DagVersionConflictError(AITeachMeError):
-    error_code = "DAG_VERSION_CONFLICT"
-    status_code = HTTPStatus.CONFLICT
-
-    def __init__(self, subject: str) -> None:
-        super().__init__(detail=f"Subject `{subject}` DAG version conflict.")
 
 
 class EvidenceNotFoundError(AITeachMeError):

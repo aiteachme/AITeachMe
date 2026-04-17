@@ -7,11 +7,14 @@ from sqlmodel import Session, select
 
 from app.api.deps import CurrentUserContext, get_current_user_context, get_db, normalize_subject_slug
 from app.api.openapi import build_error_responses
+from app.models.knowledge_unit import KnowledgeUnit
 from app.models.subject import Subject
 from app.repositories import profile_repo
 from app.schemas.common import ApiResponse, ok_response
 from app.schemas.profile import MasteryOverviewResponse, MasteryStateResponse, ReviewTaskResponse
 from app.shared.infra.exceptions import AITeachMeError
+from app.workflows.profile.subject_profile import build_subject_profile_summary
+from app.workflows.profile.user_profile import build_user_profile_summary
 
 router = APIRouter(prefix="/api/v1/subjects/{subject}/profile", tags=["profile"])
 
@@ -27,7 +30,25 @@ def _ensure_subject(session: Session, subject: str, user_id: str) -> Subject:
     return record
 
 
-def _state_response(state) -> MasteryStateResponse:
+def _knowledge_unit_map(
+    session: Session,
+    *,
+    subject: str,
+    knowledge_unit_ids: list[int],
+) -> dict[int, KnowledgeUnit]:
+    ids = sorted({knowledge_unit_id for knowledge_unit_id in knowledge_unit_ids if knowledge_unit_id > 0})
+    if not ids:
+        return {}
+    units = session.exec(
+        select(KnowledgeUnit).where(
+            KnowledgeUnit.subject == subject,
+            KnowledgeUnit.id.in_(ids),
+        )
+    ).all()
+    return {unit.id: unit for unit in units if unit.id is not None}
+
+
+def _state_response(state, knowledge_unit: KnowledgeUnit | None = None) -> MasteryStateResponse:
     if state.knowledge_unit_id is None:
         raise AITeachMeError(
             detail="Encountered legacy unit-level mastery state.",
@@ -37,6 +58,8 @@ def _state_response(state) -> MasteryStateResponse:
     return MasteryStateResponse(
         id=state.id,
         knowledge_unit_id=state.knowledge_unit_id,
+        knowledge_unit_name=knowledge_unit.canonical_name if knowledge_unit is not None else None,
+        knowledge_unit_type=knowledge_unit.knowledge_unit_type if knowledge_unit is not None else None,
         mastery_score=state.mastery_score,
         confidence_score=state.confidence_score,
         stability_score=state.stability_score,
@@ -50,7 +73,7 @@ def _state_response(state) -> MasteryStateResponse:
     )
 
 
-def _review_response(state) -> ReviewTaskResponse:
+def _review_response(state, knowledge_unit: KnowledgeUnit | None = None) -> ReviewTaskResponse:
     if state.knowledge_unit_id is None:
         raise AITeachMeError(
             detail="Encountered legacy unit-level review task.",
@@ -62,6 +85,8 @@ def _review_response(state) -> ReviewTaskResponse:
         user_id=state.user_id,
         subject=state.subject,
         knowledge_unit_id=state.knowledge_unit_id,
+        knowledge_unit_name=knowledge_unit.canonical_name if knowledge_unit is not None else None,
+        knowledge_unit_type=knowledge_unit.knowledge_unit_type if knowledge_unit is not None else None,
         priority=state.review_priority,
         scheduled_at=state.scheduled_review_at,
         status=state.review_status,
@@ -93,12 +118,33 @@ async def mastery_overview(
         subject=normalized,
         target_kind="knowledge_unit",
     )
+    knowledge_unit_by_id = _knowledge_unit_map(
+        session,
+        subject=normalized,
+        knowledge_unit_ids=[
+            int(item.knowledge_unit_id)
+            for item in knowledge_unit_states
+            if item.knowledge_unit_id is not None
+        ],
+    )
     return ok_response(
         MasteryOverviewResponse(
             subject=normalized,
             user_id=user.user_id,
             weak_knowledge_unit_count=sum(1 for item in knowledge_unit_states if item.mastery_score < 0.8),
-            knowledge_unit_states=[_state_response(item) for item in knowledge_unit_states],
+            knowledge_unit_states=[
+                _state_response(item, knowledge_unit_by_id.get(int(item.knowledge_unit_id)))
+                for item in knowledge_unit_states
+            ],
+            subject_profile=build_subject_profile_summary(
+                session,
+                subject=normalized,
+                user_id=user.user_id,
+            ),
+            user_profile=build_user_profile_summary(
+                session,
+                user_id=user.user_id,
+            ),
         )
     )
 
@@ -117,7 +163,21 @@ async def review_tasks(
     normalized = normalize_subject_slug(subject)
     _ensure_subject(session, normalized, user.user_id)
     tasks = profile_repo.list_pending_reviews(session, user_id=user.user_id, subject=normalized)
-    return ok_response([_review_response(item) for item in tasks])
+    knowledge_unit_by_id = _knowledge_unit_map(
+        session,
+        subject=normalized,
+        knowledge_unit_ids=[
+            int(item.knowledge_unit_id)
+            for item in tasks
+            if item.knowledge_unit_id is not None
+        ],
+    )
+    return ok_response(
+        [
+            _review_response(item, knowledge_unit_by_id.get(int(item.knowledge_unit_id)))
+            for item in tasks
+        ]
+    )
 
 
 @router.post(
@@ -146,4 +206,7 @@ async def complete_review(
             error_code="REVIEW_TASK_NOT_FOUND",
             status_code=404,
         )
-    return ok_response(_review_response(task))
+    knowledge_unit = None
+    if task.knowledge_unit_id is not None:
+        knowledge_unit = session.get(KnowledgeUnit, int(task.knowledge_unit_id))
+    return ok_response(_review_response(task, knowledge_unit))
