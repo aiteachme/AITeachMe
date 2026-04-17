@@ -96,7 +96,7 @@
           "system"
         ],
         "summary": "读取后端设置总览",
-        "description": "返回环境变量与 config.yaml 合并后的只读设置概览。",
+        "description": "返回环境变量与 settings.yaml 合并后的只读设置概览。",
         "operationId": "get_system_settings_api_v1_system_settings_post",
         "requestBody": {
           "content": {
@@ -2155,6 +2155,88 @@
         }
       }
     },
+    "/api/v1/subjects/{subject}/knowledge/graph/knowledge-units": {
+      "post": {
+        "tags": [
+          "knowledge",
+          "knowledge"
+        ],
+        "summary": "List KnowledgeUnits",
+        "operationId": "graph_knowledge_units_api_v1_subjects__subject__knowledge_graph_knowledge_units_post",
+        "parameters": [
+          {
+            "name": "subject",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Subject"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/KnowledgeUnitsQueryRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_PaginatedData_KnowledgeUnitResponse__"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数不合法。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务内部异常。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/subjects/{subject}/knowledge/graph/knowledge-units/detail": {
       "post": {
         "tags": [
@@ -2179,7 +2261,7 @@
           "content": {
             "application/json": {
               "schema": {
-                  "$ref": "#/components/schemas/KnowledgeUnitDetailRequest"
+                "$ref": "#/components/schemas/KnowledgeUnitDetailRequest"
               }
             }
           }
@@ -2191,6 +2273,410 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ApiResponse_KnowledgeUnitDetailResponse_"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数不合法。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务内部异常。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/subjects/{subject}/knowledge/graph/knowledge-units/relations": {
+      "post": {
+        "tags": [
+          "knowledge",
+          "knowledge"
+        ],
+        "summary": "List KnowledgeUnit relations",
+        "operationId": "graph_knowledge_unit_relations_api_v1_subjects__subject__knowledge_graph_knowledge_units_relations_post",
+        "parameters": [
+          {
+            "name": "subject",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Subject"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/KnowledgeUnitRelationsRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_list_KnowledgeRelationResponse__"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数不合法。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务内部异常。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/subjects/{subject}/knowledge/graph/knowledge-units/path": {
+      "post": {
+        "tags": [
+          "knowledge",
+          "knowledge"
+        ],
+        "summary": "Find a KnowledgeUnit path",
+        "operationId": "graph_knowledge_unit_path_api_v1_subjects__subject__knowledge_graph_knowledge_units_path_post",
+        "parameters": [
+          {
+            "name": "subject",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Subject"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/KnowledgeUnitPathRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_KnowledgePathResponse_"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数不合法。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务内部异常。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/subjects/{subject}/knowledge/graph/subgraph": {
+      "post": {
+        "tags": [
+          "knowledge",
+          "knowledge"
+        ],
+        "summary": "Fetch a focused knowledge subgraph",
+        "operationId": "graph_focus_subgraph_api_v1_subjects__subject__knowledge_graph_subgraph_post",
+        "parameters": [
+          {
+            "name": "subject",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Subject"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/KnowledgeSubgraphRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_KnowledgeSubgraphResponse_"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数不合法。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务内部异常。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/subjects/{subject}/knowledge/graph/relations/explain": {
+      "post": {
+        "tags": [
+          "knowledge",
+          "knowledge"
+        ],
+        "summary": "Explain a relation path with evidence",
+        "operationId": "graph_relation_explanation_api_v1_subjects__subject__knowledge_graph_relations_explain_post",
+        "parameters": [
+          {
+            "name": "subject",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Subject"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/KnowledgeRelationExplanationRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_KnowledgeRelationExplanationResponse_"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数不合法。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务内部异常。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/subjects/{subject}/knowledge/graph/full": {
+      "post": {
+        "tags": [
+          "knowledge",
+          "knowledge"
+        ],
+        "summary": "Fetch full knowledge graph",
+        "operationId": "graph_full_api_v1_subjects__subject__knowledge_graph_full_post",
+        "parameters": [
+          {
+            "name": "subject",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Subject"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_FullGraphResponse_"
                 }
               }
             }
@@ -2924,13 +3410,13 @@
         }
       }
     },
-    "/api/v1/subjects/{subject}/exams/": {
+    "/api/v1/subjects/{subject}/exams/generate": {
       "post": {
         "tags": [
           "exams"
         ],
-        "summary": "Exams feature offline",
-        "operationId": "exams_offline_root_api_v1_subjects__subject__exams__post",
+        "summary": "Generate an exam from KnowledgeUnits",
+        "operationId": "generate_exam_api_v1_subjects__subject__exams_generate_post",
         "parameters": [
           {
             "name": "subject",
@@ -2942,12 +3428,34 @@
             }
           }
         ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExamGenerateRequest"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_ExamGenerateResponse_"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数不合法。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
               }
             }
           },
@@ -2961,46 +3469,8 @@
               }
             }
           },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      },
-      "delete": {
-        "tags": [
-          "exams"
-        ],
-        "summary": "Exams feature offline",
-        "operationId": "exams_offline_root_api_v1_subjects__subject__exams__post",
-        "parameters": [
-          {
-            "name": "subject",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Subject"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
-          },
-          "404": {
-            "description": "资源不存在。",
+          "409": {
+            "description": "当前资源状态不允许执行该操作。",
             "content": {
               "application/json": {
                 "schema": {
@@ -3009,142 +3479,8 @@
               }
             }
           },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      },
-      "get": {
-        "tags": [
-          "exams"
-        ],
-        "summary": "Exams feature offline",
-        "operationId": "exams_offline_root_api_v1_subjects__subject__exams__post",
-        "parameters": [
-          {
-            "name": "subject",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Subject"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
-          },
-          "404": {
-            "description": "资源不存在。",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      },
-      "put": {
-        "tags": [
-          "exams"
-        ],
-        "summary": "Exams feature offline",
-        "operationId": "exams_offline_root_api_v1_subjects__subject__exams__post",
-        "parameters": [
-          {
-            "name": "subject",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Subject"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
-          },
-          "404": {
-            "description": "资源不存在。",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      },
-      "patch": {
-        "tags": [
-          "exams"
-        ],
-        "summary": "Exams feature offline",
-        "operationId": "exams_offline_root_api_v1_subjects__subject__exams__post",
-        "parameters": [
-          {
-            "name": "subject",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Subject"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
-          },
-          "404": {
-            "description": "资源不存在。",
+          "500": {
+            "description": "服务内部异常。",
             "content": {
               "application/json": {
                 "schema": {
@@ -3166,127 +3502,13 @@
         }
       }
     },
-    "/api/v1/subjects/{subject}/exams/{path}": {
-      "post": {
-        "tags": [
-          "exams"
-        ],
-        "summary": "Exams feature offline",
-        "operationId": "exams_offline_path_api_v1_subjects__subject__exams__path__post",
-        "parameters": [
-          {
-            "name": "subject",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Subject"
-            }
-          },
-          {
-            "name": "path",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Path"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
-          },
-          "404": {
-            "description": "资源不存在。",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      },
-      "delete": {
-        "tags": [
-          "exams"
-        ],
-        "summary": "Exams feature offline",
-        "operationId": "exams_offline_path_api_v1_subjects__subject__exams__path__post",
-        "parameters": [
-          {
-            "name": "subject",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Subject"
-            }
-          },
-          {
-            "name": "path",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Path"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
-          },
-          "404": {
-            "description": "资源不存在。",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      },
+    "/api/v1/subjects/{subject}/exams/history": {
       "get": {
         "tags": [
           "exams"
         ],
-        "summary": "Exams feature offline",
-        "operationId": "exams_offline_path_api_v1_subjects__subject__exams__path__post",
+        "summary": "List exam history",
+        "operationId": "exam_history_api_v1_subjects__subject__exams_history_get",
         "parameters": [
           {
             "name": "subject",
@@ -3298,12 +3520,23 @@
             }
           },
           {
-            "name": "path",
-            "in": "path",
-            "required": true,
+            "name": "page",
+            "in": "query",
+            "required": false,
             "schema": {
-              "type": "string",
-              "title": "Path"
+              "type": "integer",
+              "default": 1,
+              "title": "Page"
+            }
+          },
+          {
+            "name": "size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 20,
+              "title": "Size"
             }
           }
         ],
@@ -3312,7 +3545,19 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_PaginatedData_ExamHistoryItem__"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数不合法。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
               }
             }
           },
@@ -3326,112 +3571,8 @@
               }
             }
           },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      },
-      "put": {
-        "tags": [
-          "exams"
-        ],
-        "summary": "Exams feature offline",
-        "operationId": "exams_offline_path_api_v1_subjects__subject__exams__path__post",
-        "parameters": [
-          {
-            "name": "subject",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Subject"
-            }
-          },
-          {
-            "name": "path",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Path"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
-          },
-          "404": {
-            "description": "资源不存在。",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      },
-      "patch": {
-        "tags": [
-          "exams"
-        ],
-        "summary": "Exams feature offline",
-        "operationId": "exams_offline_path_api_v1_subjects__subject__exams__path__post",
-        "parameters": [
-          {
-            "name": "subject",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Subject"
-            }
-          },
-          {
-            "name": "path",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Path"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
-          },
-          "404": {
-            "description": "资源不存在。",
+          "500": {
+            "description": "服务内部异常。",
             "content": {
               "application/json": {
                 "schema": {
@@ -3453,109 +3594,13 @@
         }
       }
     },
-    "/api/v1/subjects/{subject}/profile/": {
-      "post": {
-        "tags": [
-          "profile"
-        ],
-        "summary": "Profile feature offline",
-        "operationId": "profile_offline_root_api_v1_subjects__subject__profile__post",
-        "parameters": [
-          {
-            "name": "subject",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Subject"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
-          },
-          "404": {
-            "description": "资源不存在。",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      },
-      "delete": {
-        "tags": [
-          "profile"
-        ],
-        "summary": "Profile feature offline",
-        "operationId": "profile_offline_root_api_v1_subjects__subject__profile__post",
-        "parameters": [
-          {
-            "name": "subject",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Subject"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
-          },
-          "404": {
-            "description": "资源不存在。",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      },
+    "/api/v1/subjects/{subject}/exams/{exam_paper_id}": {
       "get": {
         "tags": [
-          "profile"
+          "exams"
         ],
-        "summary": "Profile feature offline",
-        "operationId": "profile_offline_root_api_v1_subjects__subject__profile__post",
+        "summary": "Fetch exam detail",
+        "operationId": "exam_detail_api_v1_subjects__subject__exams__exam_paper_id__get",
         "parameters": [
           {
             "name": "subject",
@@ -3565,6 +3610,15 @@
               "type": "string",
               "title": "Subject"
             }
+          },
+          {
+            "name": "exam_paper_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Exam Paper Id"
+            }
           }
         ],
         "responses": {
@@ -3572,7 +3626,19 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_ExamPaperDetailResponse_"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数不合法。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
               }
             }
           },
@@ -3586,94 +3652,8 @@
               }
             }
           },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      },
-      "put": {
-        "tags": [
-          "profile"
-        ],
-        "summary": "Profile feature offline",
-        "operationId": "profile_offline_root_api_v1_subjects__subject__profile__post",
-        "parameters": [
-          {
-            "name": "subject",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Subject"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
-          },
-          "404": {
-            "description": "资源不存在。",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      },
-      "patch": {
-        "tags": [
-          "profile"
-        ],
-        "summary": "Profile feature offline",
-        "operationId": "profile_offline_root_api_v1_subjects__subject__profile__post",
-        "parameters": [
-          {
-            "name": "subject",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Subject"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
-          },
-          "404": {
-            "description": "资源不存在。",
+          "500": {
+            "description": "服务内部异常。",
             "content": {
               "application/json": {
                 "schema": {
@@ -3695,13 +3675,13 @@
         }
       }
     },
-    "/api/v1/subjects/{subject}/profile/{path}": {
+    "/api/v1/subjects/{subject}/exams/{exam_paper_id}/submit": {
       "post": {
         "tags": [
-          "profile"
+          "exams"
         ],
-        "summary": "Profile feature offline",
-        "operationId": "profile_offline_path_api_v1_subjects__subject__profile__path__post",
+        "summary": "Submit answers and update KnowledgeUnit mastery",
+        "operationId": "submit_exam_api_v1_subjects__subject__exams__exam_paper_id__submit_post",
         "parameters": [
           {
             "name": "subject",
@@ -3713,26 +3693,68 @@
             }
           },
           {
-            "name": "path",
+            "name": "exam_paper_id",
             "in": "path",
             "required": true,
             "schema": {
-              "type": "string",
-              "title": "Path"
+              "type": "integer",
+              "title": "Exam Paper Id"
             }
           }
         ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExamSubmitRequest"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_ExamGradeResponse_"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数不合法。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
               }
             }
           },
           "404": {
             "description": "资源不存在。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "当前资源状态不允许执行该操作。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务内部异常。",
             "content": {
               "application/json": {
                 "schema": {
@@ -3752,70 +3774,15 @@
             }
           }
         }
-      },
-      "delete": {
-        "tags": [
-          "profile"
-        ],
-        "summary": "Profile feature offline",
-        "operationId": "profile_offline_path_api_v1_subjects__subject__profile__path__post",
-        "parameters": [
-          {
-            "name": "subject",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Subject"
-            }
-          },
-          {
-            "name": "path",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Path"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
-          },
-          "404": {
-            "description": "资源不存在。",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      },
+      }
+    },
+    "/api/v1/subjects/{subject}/profile/mastery": {
       "get": {
         "tags": [
           "profile"
         ],
-        "summary": "Profile feature offline",
-        "operationId": "profile_offline_path_api_v1_subjects__subject__profile__path__post",
+        "summary": "Fetch mastery overview",
+        "operationId": "mastery_overview_api_v1_subjects__subject__profile_mastery_get",
         "parameters": [
           {
             "name": "subject",
@@ -3825,15 +3792,6 @@
               "type": "string",
               "title": "Subject"
             }
-          },
-          {
-            "name": "path",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Path"
-            }
           }
         ],
         "responses": {
@@ -3841,12 +3799,34 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_MasteryOverviewResponse_"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数不合法。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
               }
             }
           },
           "404": {
             "description": "资源不存在。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务内部异常。",
             "content": {
               "application/json": {
                 "schema": {
@@ -3866,13 +3846,15 @@
             }
           }
         }
-      },
-      "put": {
+      }
+    },
+    "/api/v1/subjects/{subject}/profile/reviews": {
+      "get": {
         "tags": [
           "profile"
         ],
-        "summary": "Profile feature offline",
-        "operationId": "profile_offline_path_api_v1_subjects__subject__profile__path__post",
+        "summary": "Fetch pending review tasks",
+        "operationId": "review_tasks_api_v1_subjects__subject__profile_reviews_get",
         "parameters": [
           {
             "name": "subject",
@@ -3882,15 +3864,6 @@
               "type": "string",
               "title": "Subject"
             }
-          },
-          {
-            "name": "path",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Path"
-            }
           }
         ],
         "responses": {
@@ -3898,12 +3871,34 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_list_ReviewTaskResponse__"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数不合法。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
               }
             }
           },
           "404": {
             "description": "资源不存在。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务内部异常。",
             "content": {
               "application/json": {
                 "schema": {
@@ -3923,13 +3918,15 @@
             }
           }
         }
-      },
-      "patch": {
+      }
+    },
+    "/api/v1/subjects/{subject}/profile/reviews/{task_id}/complete": {
+      "post": {
         "tags": [
           "profile"
         ],
-        "summary": "Profile feature offline",
-        "operationId": "profile_offline_path_api_v1_subjects__subject__profile__path__post",
+        "summary": "Mark one review task as completed",
+        "operationId": "complete_review_api_v1_subjects__subject__profile_reviews__task_id__complete_post",
         "parameters": [
           {
             "name": "subject",
@@ -3941,12 +3938,12 @@
             }
           },
           {
-            "name": "path",
+            "name": "task_id",
             "in": "path",
             "required": true,
             "schema": {
-              "type": "string",
-              "title": "Path"
+              "type": "integer",
+              "title": "Task Id"
             }
           }
         ],
@@ -3955,12 +3952,34 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_ReviewTaskResponse_"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数不合法。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
               }
             }
           },
           "404": {
             "description": "资源不存在。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务内部异常。",
             "content": {
               "application/json": {
                 "schema": {
@@ -4691,6 +4710,108 @@
           "message": "ok"
         }
       },
+      "ApiResponse_ExamGenerateResponse_": {
+        "properties": {
+          "code": {
+            "type": "integer",
+            "title": "Code",
+            "description": "业务码，0 表示成功。",
+            "default": 0
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "响应消息。",
+            "default": "ok"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ExamGenerateResponse"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "业务数据。"
+          }
+        },
+        "type": "object",
+        "title": "ApiResponse[ExamGenerateResponse]",
+        "example": {
+          "code": 0,
+          "data": {},
+          "message": "ok"
+        }
+      },
+      "ApiResponse_ExamGradeResponse_": {
+        "properties": {
+          "code": {
+            "type": "integer",
+            "title": "Code",
+            "description": "业务码，0 表示成功。",
+            "default": 0
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "响应消息。",
+            "default": "ok"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ExamGradeResponse"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "业务数据。"
+          }
+        },
+        "type": "object",
+        "title": "ApiResponse[ExamGradeResponse]",
+        "example": {
+          "code": 0,
+          "data": {},
+          "message": "ok"
+        }
+      },
+      "ApiResponse_ExamPaperDetailResponse_": {
+        "properties": {
+          "code": {
+            "type": "integer",
+            "title": "Code",
+            "description": "业务码，0 表示成功。",
+            "default": 0
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "响应消息。",
+            "default": "ok"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ExamPaperDetailResponse"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "业务数据。"
+          }
+        },
+        "type": "object",
+        "title": "ApiResponse[ExamPaperDetailResponse]",
+        "example": {
+          "code": 0,
+          "data": {},
+          "message": "ok"
+        }
+      },
       "ApiResponse_ExportPreviewData_": {
         "properties": {
           "code": {
@@ -4827,6 +4948,40 @@
           "message": "ok"
         }
       },
+      "ApiResponse_FullGraphResponse_": {
+        "properties": {
+          "code": {
+            "type": "integer",
+            "title": "Code",
+            "description": "业务码，0 表示成功。",
+            "default": 0
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "响应消息。",
+            "default": "ok"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FullGraphResponse"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "业务数据。"
+          }
+        },
+        "type": "object",
+        "title": "ApiResponse[FullGraphResponse]",
+        "example": {
+          "code": 0,
+          "data": {},
+          "message": "ok"
+        }
+      },
       "ApiResponse_HealthData_": {
         "properties": {
           "code": {
@@ -4929,6 +5084,142 @@
           "message": "ok"
         }
       },
+      "ApiResponse_KnowledgeOverviewResponse_": {
+        "properties": {
+          "code": {
+            "type": "integer",
+            "title": "Code",
+            "description": "业务码，0 表示成功。",
+            "default": 0
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "响应消息。",
+            "default": "ok"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/KnowledgeOverviewResponse"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "业务数据。"
+          }
+        },
+        "type": "object",
+        "title": "ApiResponse[KnowledgeOverviewResponse]",
+        "example": {
+          "code": 0,
+          "data": {},
+          "message": "ok"
+        }
+      },
+      "ApiResponse_KnowledgePathResponse_": {
+        "properties": {
+          "code": {
+            "type": "integer",
+            "title": "Code",
+            "description": "业务码，0 表示成功。",
+            "default": 0
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "响应消息。",
+            "default": "ok"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/KnowledgePathResponse"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "业务数据。"
+          }
+        },
+        "type": "object",
+        "title": "ApiResponse[KnowledgePathResponse]",
+        "example": {
+          "code": 0,
+          "data": {},
+          "message": "ok"
+        }
+      },
+      "ApiResponse_KnowledgeRelationExplanationResponse_": {
+        "properties": {
+          "code": {
+            "type": "integer",
+            "title": "Code",
+            "description": "业务码，0 表示成功。",
+            "default": 0
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "响应消息。",
+            "default": "ok"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/KnowledgeRelationExplanationResponse"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "业务数据。"
+          }
+        },
+        "type": "object",
+        "title": "ApiResponse[KnowledgeRelationExplanationResponse]",
+        "example": {
+          "code": 0,
+          "data": {},
+          "message": "ok"
+        }
+      },
+      "ApiResponse_KnowledgeSubgraphResponse_": {
+        "properties": {
+          "code": {
+            "type": "integer",
+            "title": "Code",
+            "description": "业务码，0 表示成功。",
+            "default": 0
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "响应消息。",
+            "default": "ok"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/KnowledgeSubgraphResponse"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "业务数据。"
+          }
+        },
+        "type": "object",
+        "title": "ApiResponse[KnowledgeSubgraphResponse]",
+        "example": {
+          "code": 0,
+          "data": {},
+          "message": "ok"
+        }
+      },
       "ApiResponse_KnowledgeUnitDetailResponse_": {
         "properties": {
           "code": {
@@ -4963,7 +5254,7 @@
           "message": "ok"
         }
       },
-      "ApiResponse_KnowledgeOverviewResponse_": {
+      "ApiResponse_MasteryOverviewResponse_": {
         "properties": {
           "code": {
             "type": "integer",
@@ -4980,7 +5271,7 @@
           "data": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/KnowledgeOverviewResponse"
+                "$ref": "#/components/schemas/MasteryOverviewResponse"
               },
               {
                 "type": "null"
@@ -4990,7 +5281,7 @@
           }
         },
         "type": "object",
-        "title": "ApiResponse[KnowledgeOverviewResponse]",
+        "title": "ApiResponse[MasteryOverviewResponse]",
         "example": {
           "code": 0,
           "data": {},
@@ -5099,6 +5390,74 @@
           "message": "ok"
         }
       },
+      "ApiResponse_PaginatedData_ExamHistoryItem__": {
+        "properties": {
+          "code": {
+            "type": "integer",
+            "title": "Code",
+            "description": "业务码，0 表示成功。",
+            "default": 0
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "响应消息。",
+            "default": "ok"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PaginatedData_ExamHistoryItem_"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "业务数据。"
+          }
+        },
+        "type": "object",
+        "title": "ApiResponse[PaginatedData[ExamHistoryItem]]",
+        "example": {
+          "code": 0,
+          "data": {},
+          "message": "ok"
+        }
+      },
+      "ApiResponse_PaginatedData_KnowledgeUnitResponse__": {
+        "properties": {
+          "code": {
+            "type": "integer",
+            "title": "Code",
+            "description": "业务码，0 表示成功。",
+            "default": 0
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "响应消息。",
+            "default": "ok"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PaginatedData_KnowledgeUnitResponse_"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "业务数据。"
+          }
+        },
+        "type": "object",
+        "title": "ApiResponse[PaginatedData[KnowledgeUnitResponse]]",
+        "example": {
+          "code": 0,
+          "data": {},
+          "message": "ok"
+        }
+      },
       "ApiResponse_PaginatedData_SubjectItem__": {
         "properties": {
           "code": {
@@ -5127,6 +5486,40 @@
         },
         "type": "object",
         "title": "ApiResponse[PaginatedData[SubjectItem]]",
+        "example": {
+          "code": 0,
+          "data": {},
+          "message": "ok"
+        }
+      },
+      "ApiResponse_ReviewTaskResponse_": {
+        "properties": {
+          "code": {
+            "type": "integer",
+            "title": "Code",
+            "description": "业务码，0 表示成功。",
+            "default": 0
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "响应消息。",
+            "default": "ok"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ReviewTaskResponse"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "业务数据。"
+          }
+        },
+        "type": "object",
+        "title": "ApiResponse[ReviewTaskResponse]",
         "example": {
           "code": 0,
           "data": {},
@@ -5437,6 +5830,82 @@
         },
         "type": "object",
         "title": "ApiResponse[list[CoursePackageItem]]",
+        "example": {
+          "code": 0,
+          "data": {},
+          "message": "ok"
+        }
+      },
+      "ApiResponse_list_KnowledgeRelationResponse__": {
+        "properties": {
+          "code": {
+            "type": "integer",
+            "title": "Code",
+            "description": "业务码，0 表示成功。",
+            "default": 0
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "响应消息。",
+            "default": "ok"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/KnowledgeRelationResponse"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Data",
+            "description": "业务数据。"
+          }
+        },
+        "type": "object",
+        "title": "ApiResponse[list[KnowledgeRelationResponse]]",
+        "example": {
+          "code": 0,
+          "data": {},
+          "message": "ok"
+        }
+      },
+      "ApiResponse_list_ReviewTaskResponse__": {
+        "properties": {
+          "code": {
+            "type": "integer",
+            "title": "Code",
+            "description": "业务码，0 表示成功。",
+            "default": 0
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "响应消息。",
+            "default": "ok"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/ReviewTaskResponse"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Data",
+            "description": "业务数据。"
+          }
+        },
+        "type": "object",
+        "title": "ApiResponse[list[ReviewTaskResponse]]",
         "example": {
           "code": 0,
           "data": {},
@@ -6218,7 +6687,7 @@
           },
           "knowledge_unit_type": {
             "type": "string",
-            "title": "Node Type",
+            "title": "Knowledge Unit Type",
             "description": "Standard KnowledgeUnit type"
           }
         },
@@ -6402,6 +6871,84 @@
             "type": "number",
             "title": "Score",
             "description": "Retrieval score."
+          },
+          "knowledge_unit_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Knowledge Unit Id",
+            "description": "Linked KnowledgeUnit ID."
+          },
+          "knowledge_unit_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Knowledge Unit Name",
+            "description": "Linked KnowledgeUnit name."
+          },
+          "knowledge_unit_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Knowledge Unit Type",
+            "description": "Linked KnowledgeUnit type."
+          },
+          "relation_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Relation Path",
+            "description": "KG path explanation used for retrieval."
+          },
+          "evidence_quote": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evidence Quote",
+            "description": "Evidence quote used for text backtracking."
+          },
+          "mastery_score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mastery Score",
+            "description": "Current user's mastery score for this KnowledgeUnit."
+          },
+          "retrieval_source": {
+            "type": "string",
+            "title": "Retrieval Source",
+            "description": "Retrieval source: knowledge_unit or vector.",
+            "default": "vector"
           }
         },
         "type": "object",
@@ -7412,6 +7959,715 @@
         "title": "EvidenceSummary",
         "description": "Evidence summary used in node detail."
       },
+      "ExamGenerateRequest": {
+        "properties": {
+          "exam_mode": {
+            "type": "string",
+            "title": "Exam Mode",
+            "description": "Exam mode: web_practice | paper_exam (legacy values are compatible)."
+          },
+          "difficulty": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Difficulty",
+            "description": "Optional difficulty override: easy | medium | hard | mixed. Omit for auto/profile-driven difficulty."
+          },
+          "user_prompt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User Prompt",
+            "description": "Optional user prompt for general generation hints."
+          },
+          "style_prompt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Style Prompt",
+            "description": "Optional prompt that describes the desired paper style."
+          },
+          "focus_prompt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Focus Prompt",
+            "description": "Optional prompt describing key focus areas."
+          },
+          "sample_file_uids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sample File Uids",
+            "description": "Optional uploaded sample-paper file UIDs."
+          },
+          "num_questions": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 200.0,
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Num Questions",
+            "description": "Optional target question count."
+          },
+          "theme_tree_node_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Theme Tree Node Id",
+            "description": "Optional theme tree node scope."
+          },
+          "teaching_unit_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "integer"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Teaching Unit Ids",
+            "description": "Optional teaching unit scope."
+          }
+        },
+        "type": "object",
+        "required": [
+          "exam_mode"
+        ],
+        "title": "ExamGenerateRequest",
+        "description": "Trigger exam generation request."
+      },
+      "ExamGenerateResponse": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "error_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Message"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          },
+          "subject": {
+            "type": "string",
+            "title": "Subject"
+          },
+          "user_id": {
+            "type": "string",
+            "title": "User Id"
+          },
+          "exam_mode": {
+            "type": "string",
+            "title": "Exam Mode"
+          },
+          "num_questions": {
+            "type": "integer",
+            "title": "Num Questions"
+          },
+          "exam_paper_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exam Paper Id"
+          },
+          "theme_tree_node_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Theme Tree Node Id"
+          },
+          "teaching_unit_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "title": "Teaching Unit Ids"
+          },
+          "sample_file_uids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Sample File Uids"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "status",
+          "created_at",
+          "updated_at",
+          "subject",
+          "user_id",
+          "exam_mode",
+          "num_questions"
+        ],
+        "title": "ExamGenerateResponse"
+      },
+      "ExamGradeResponse": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "error_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Message"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          },
+          "exam_paper_id": {
+            "type": "integer",
+            "title": "Exam Paper Id"
+          },
+          "score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Score"
+          },
+          "states_updated": {
+            "type": "integer",
+            "title": "States Updated"
+          },
+          "tasks_created": {
+            "type": "integer",
+            "title": "Tasks Created"
+          },
+          "mastery_consumed": {
+            "type": "boolean",
+            "title": "Mastery Consumed"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "status",
+          "created_at",
+          "updated_at",
+          "exam_paper_id",
+          "states_updated",
+          "tasks_created",
+          "mastery_consumed"
+        ],
+        "title": "ExamGradeResponse"
+      },
+      "ExamHistoryItem": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "subject": {
+            "type": "string",
+            "title": "Subject"
+          },
+          "user_id": {
+            "type": "string",
+            "title": "User Id"
+          },
+          "exam_mode": {
+            "type": "string",
+            "title": "Exam Mode"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "total_items": {
+            "type": "integer",
+            "title": "Total Items"
+          },
+          "score_obtained": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Score Obtained"
+          },
+          "total_score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Score"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "submitted_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Submitted At"
+          },
+          "graded_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Graded At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "subject",
+          "user_id",
+          "exam_mode",
+          "status",
+          "total_items",
+          "created_at"
+        ],
+        "title": "ExamHistoryItem"
+      },
+      "ExamNodeLinkResponse": {
+        "properties": {
+          "knowledge_unit_id": {
+            "type": "integer",
+            "title": "Knowledge Unit Id"
+          },
+          "knowledge_unit_name": {
+            "type": "string",
+            "title": "Knowledge Unit Name"
+          },
+          "coverage_weight": {
+            "type": "number",
+            "title": "Coverage Weight"
+          },
+          "role": {
+            "type": "string",
+            "title": "Role"
+          },
+          "mastery_score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mastery Score"
+          }
+        },
+        "type": "object",
+        "required": [
+          "knowledge_unit_id",
+          "knowledge_unit_name",
+          "coverage_weight",
+          "role"
+        ],
+        "title": "ExamNodeLinkResponse"
+      },
+      "ExamPaperDetailResponse": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "subject": {
+            "type": "string",
+            "title": "Subject"
+          },
+          "user_id": {
+            "type": "string",
+            "title": "User Id"
+          },
+          "exam_mode": {
+            "type": "string",
+            "title": "Exam Mode"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "total_items": {
+            "type": "integer",
+            "title": "Total Items"
+          },
+          "score_obtained": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Score Obtained"
+          },
+          "total_score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Score"
+          },
+          "submitted_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Submitted At"
+          },
+          "graded_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Graded At"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "selection_context": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Selection Context"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ExamPaperItemResponse"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "subject",
+          "user_id",
+          "exam_mode",
+          "status",
+          "total_items",
+          "created_at"
+        ],
+        "title": "ExamPaperDetailResponse"
+      },
+      "ExamPaperItemResponse": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "item_order": {
+            "type": "integer",
+            "title": "Item Order"
+          },
+          "question_template_id": {
+            "type": "integer",
+            "title": "Question Template Id"
+          },
+          "question_type": {
+            "type": "string",
+            "title": "Question Type"
+          },
+          "difficulty": {
+            "type": "string",
+            "title": "Difficulty"
+          },
+          "stem": {
+            "type": "string",
+            "title": "Stem"
+          },
+          "options": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Options"
+          },
+          "correct_answer": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Correct Answer"
+          },
+          "explanation": {
+            "type": "string",
+            "title": "Explanation"
+          },
+          "teaching_unit_id": {
+            "type": "integer",
+            "title": "Teaching Unit Id"
+          },
+          "knowledge_unit_links": {
+            "items": {
+              "$ref": "#/components/schemas/ExamNodeLinkResponse"
+            },
+            "type": "array",
+            "title": "Knowledge Unit Links"
+          },
+          "user_answer": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User Answer"
+          },
+          "is_correct": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Correct"
+          },
+          "score_obtained": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Score Obtained"
+          },
+          "score_max": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Score Max"
+          },
+          "error_cause_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Cause Label"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "item_order",
+          "question_template_id",
+          "question_type",
+          "difficulty",
+          "stem",
+          "explanation",
+          "teaching_unit_id"
+        ],
+        "title": "ExamPaperItemResponse"
+      },
+      "ExamSubmitAnswerItem": {
+        "properties": {
+          "exam_paper_item_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exam Paper Item Id",
+            "description": "Exam paper item ID."
+          },
+          "item_order": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Item Order",
+            "description": "Fallback key: item order."
+          },
+          "answer": {
+            "type": "string",
+            "title": "Answer",
+            "description": "User answer."
+          }
+        },
+        "type": "object",
+        "required": [
+          "answer"
+        ],
+        "title": "ExamSubmitAnswerItem",
+        "description": "One submitted answer item."
+      },
+      "ExamSubmitRequest": {
+        "properties": {
+          "answers": {
+            "items": {
+              "$ref": "#/components/schemas/ExamSubmitAnswerItem"
+            },
+            "type": "array",
+            "title": "Answers",
+            "description": "Submitted answers."
+          }
+        },
+        "type": "object",
+        "title": "ExamSubmitRequest",
+        "description": "Submit exam answers request."
+      },
       "ExportOptions": {
         "properties": {
           "include_raw_files": {
@@ -7502,7 +8758,7 @@
           },
           "knowledge_unit_count": {
             "type": "integer",
-            "title": "Knowledge Node Count",
+            "title": "Knowledge Unit Count",
             "default": 0
           },
           "knowledge_edge_count": {
@@ -8032,21 +9288,6 @@
         "title": "GraphEdgeResponse",
         "description": "Graph edge item used by full-graph query."
       },
-      "KnowledgeUnitDetailRequest": {
-        "properties": {
-          "knowledge_unit_id": {
-            "type": "integer",
-            "title": "Knowledge Unit Id",
-            "description": "KnowledgeUnit ID."
-          }
-        },
-        "type": "object",
-        "required": [
-          "knowledge_unit_id"
-        ],
-        "title": "KnowledgeUnitDetailRequest",
-        "description": "KnowledgeUnit detail query."
-      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -8479,164 +9720,6 @@
         "title": "KnowledgeBuildStatusResponse",
         "description": "Minimal runtime metadata exposed to clients for docs polling."
       },
-      "KnowledgeUnitDetailResponse": {
-        "properties": {
-          "id": {
-            "type": "integer",
-            "title": "Id"
-          },
-          "subject": {
-            "type": "string",
-            "title": "Subject"
-          },
-          "knowledge_unit_type": {
-            "type": "string",
-            "title": "Node Type"
-          },
-          "canonical_name": {
-            "type": "string",
-            "title": "Canonical Name"
-          },
-          "normalized_name": {
-            "type": "string",
-            "title": "Normalized Name"
-          },
-          "status": {
-            "type": "string",
-            "title": "Status"
-          },
-          "confidence": {
-            "type": "number",
-            "title": "Confidence"
-          },
-          "type_confidence": {
-            "type": "number",
-            "title": "Type Confidence",
-            "default": 1.0
-          },
-          "type_source": {
-            "type": "string",
-            "title": "Type Source",
-            "default": "llm"
-          },
-          "current_revision": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/NodeRevisionItem"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "aliases": {
-            "items": {
-              "$ref": "#/components/schemas/AliasItem"
-            },
-            "type": "array",
-            "title": "Aliases"
-          },
-          "evidence": {
-            "items": {
-              "$ref": "#/components/schemas/EvidenceSummary"
-            },
-            "type": "array",
-            "title": "Evidence"
-          },
-          "incident_edges": {
-            "items": {
-              "$ref": "#/components/schemas/IncidentEdgeItem"
-            },
-            "type": "array",
-            "title": "Incident Edges"
-          },
-          "created_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Created At"
-          },
-          "updated_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Updated At"
-          }
-        },
-        "type": "object",
-        "required": [
-          "id",
-          "subject",
-          "knowledge_unit_type",
-          "canonical_name",
-          "normalized_name",
-          "status",
-          "confidence",
-          "created_at",
-          "updated_at"
-        ],
-        "title": "KnowledgeUnitDetailResponse",
-        "description": "KnowledgeUnit detail response."
-      },
-      "KnowledgeUnitResponse": {
-        "properties": {
-          "id": {
-            "type": "integer",
-            "title": "Id"
-          },
-          "subject": {
-            "type": "string",
-            "title": "Subject"
-          },
-          "knowledge_unit_type": {
-            "type": "string",
-            "title": "Node Type"
-          },
-          "canonical_name": {
-            "type": "string",
-            "title": "Canonical Name"
-          },
-          "status": {
-            "type": "string",
-            "title": "Status"
-          },
-          "confidence": {
-            "type": "number",
-            "title": "Confidence"
-          },
-          "type_confidence": {
-            "type": "number",
-            "title": "Type Confidence",
-            "default": 1.0
-          },
-          "type_source": {
-            "type": "string",
-            "title": "Type Source",
-            "default": "llm"
-          },
-          "created_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Created At"
-          },
-          "updated_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Updated At"
-          }
-        },
-        "type": "object",
-        "required": [
-          "id",
-          "subject",
-          "knowledge_unit_type",
-          "canonical_name",
-          "status",
-          "confidence",
-          "created_at",
-          "updated_at"
-        ],
-        "title": "KnowledgeUnitResponse",
-        "description": "KnowledgeUnit list item."
-      },
       "KnowledgeOverviewRequest": {
         "properties": {
           "include": {
@@ -8755,6 +9838,576 @@
         "title": "KnowledgeOverviewStats",
         "description": "Knowledge overview stats."
       },
+      "KnowledgePathResponse": {
+        "properties": {
+          "found": {
+            "type": "boolean",
+            "title": "Found",
+            "default": false
+          },
+          "nodes": {
+            "items": {
+              "$ref": "#/components/schemas/KnowledgeUnitResponse"
+            },
+            "type": "array",
+            "title": "Nodes"
+          },
+          "edges": {
+            "items": {
+              "$ref": "#/components/schemas/KnowledgeRelationResponse"
+            },
+            "type": "array",
+            "title": "Edges"
+          }
+        },
+        "type": "object",
+        "title": "KnowledgePathResponse",
+        "description": "A path through the knowledge graph."
+      },
+      "KnowledgeRelationEvidenceItem": {
+        "properties": {
+          "edge_id": {
+            "type": "integer",
+            "title": "Edge Id"
+          },
+          "edge_type": {
+            "type": "string",
+            "title": "Edge Type"
+          },
+          "source_node_id": {
+            "type": "integer",
+            "title": "Source Node Id"
+          },
+          "target_node_id": {
+            "type": "integer",
+            "title": "Target Node Id"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description",
+            "default": ""
+          },
+          "evidence": {
+            "items": {
+              "$ref": "#/components/schemas/EvidenceSummary"
+            },
+            "type": "array",
+            "title": "Evidence"
+          }
+        },
+        "type": "object",
+        "required": [
+          "edge_id",
+          "edge_type",
+          "source_node_id",
+          "target_node_id"
+        ],
+        "title": "KnowledgeRelationEvidenceItem",
+        "description": "Evidence surfaced for one relation path step."
+      },
+      "KnowledgeRelationExplanationRequest": {
+        "properties": {
+          "source_knowledge_unit_id": {
+            "type": "integer",
+            "title": "Source Knowledge Unit Id"
+          },
+          "target_knowledge_unit_id": {
+            "type": "integer",
+            "title": "Target Knowledge Unit Id"
+          },
+          "edge_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Edge Type"
+          },
+          "max_depth": {
+            "type": "integer",
+            "maximum": 6.0,
+            "minimum": 1.0,
+            "title": "Max Depth",
+            "default": 3
+          }
+        },
+        "type": "object",
+        "required": [
+          "source_knowledge_unit_id",
+          "target_knowledge_unit_id"
+        ],
+        "title": "KnowledgeRelationExplanationRequest",
+        "description": "Explain a relation path with evidence snippets."
+      },
+      "KnowledgeRelationExplanationResponse": {
+        "properties": {
+          "path": {
+            "$ref": "#/components/schemas/KnowledgePathResponse"
+          },
+          "evidence": {
+            "items": {
+              "$ref": "#/components/schemas/KnowledgeRelationEvidenceItem"
+            },
+            "type": "array",
+            "title": "Evidence"
+          }
+        },
+        "type": "object",
+        "required": [
+          "path"
+        ],
+        "title": "KnowledgeRelationExplanationResponse",
+        "description": "Explainable relation path result."
+      },
+      "KnowledgeRelationResponse": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "subject": {
+            "type": "string",
+            "title": "Subject"
+          },
+          "source_node_id": {
+            "type": "integer",
+            "title": "Source Node Id"
+          },
+          "source_node_name": {
+            "type": "string",
+            "title": "Source Node Name"
+          },
+          "source_node_type": {
+            "type": "string",
+            "title": "Source Node Type"
+          },
+          "target_node_id": {
+            "type": "integer",
+            "title": "Target Node Id"
+          },
+          "target_node_name": {
+            "type": "string",
+            "title": "Target Node Name"
+          },
+          "target_node_type": {
+            "type": "string",
+            "title": "Target Node Type"
+          },
+          "edge_type": {
+            "type": "string",
+            "title": "Edge Type"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description",
+            "default": ""
+          },
+          "weight": {
+            "type": "number",
+            "title": "Weight"
+          },
+          "confidence": {
+            "type": "number",
+            "title": "Confidence"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "subject",
+          "source_node_id",
+          "source_node_name",
+          "source_node_type",
+          "target_node_id",
+          "target_node_name",
+          "target_node_type",
+          "edge_type",
+          "weight",
+          "confidence"
+        ],
+        "title": "KnowledgeRelationResponse",
+        "description": "Knowledge relation with endpoint metadata."
+      },
+      "KnowledgeSubgraphRequest": {
+        "properties": {
+          "center_knowledge_unit_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Center Knowledge Unit Id",
+            "description": "Optional center KnowledgeUnit ID."
+          },
+          "topic": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Topic",
+            "description": "Optional topic/name text filter."
+          },
+          "edge_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Edge Type",
+            "description": "Optional relation type filter."
+          },
+          "hops": {
+            "type": "integer",
+            "maximum": 3.0,
+            "minimum": 0.0,
+            "title": "Hops",
+            "default": 1
+          },
+          "limit": {
+            "type": "integer",
+            "maximum": 300.0,
+            "minimum": 1.0,
+            "title": "Limit",
+            "default": 80
+          }
+        },
+        "type": "object",
+        "title": "KnowledgeSubgraphRequest",
+        "description": "Focus subgraph query."
+      },
+      "KnowledgeSubgraphResponse": {
+        "properties": {
+          "nodes": {
+            "items": {
+              "$ref": "#/components/schemas/KnowledgeUnitResponse"
+            },
+            "type": "array",
+            "title": "Nodes"
+          },
+          "edges": {
+            "items": {
+              "$ref": "#/components/schemas/KnowledgeRelationResponse"
+            },
+            "type": "array",
+            "title": "Edges"
+          },
+          "center_knowledge_unit_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Center Knowledge Unit Id"
+          }
+        },
+        "type": "object",
+        "title": "KnowledgeSubgraphResponse",
+        "description": "Focused subgraph payload."
+      },
+      "KnowledgeUnitDetailRequest": {
+        "properties": {
+          "knowledge_unit_id": {
+            "type": "integer",
+            "title": "Knowledge Unit Id",
+            "description": "KnowledgeUnit ID."
+          }
+        },
+        "type": "object",
+        "required": [
+          "knowledge_unit_id"
+        ],
+        "title": "KnowledgeUnitDetailRequest",
+        "description": "KnowledgeUnit detail query."
+      },
+      "KnowledgeUnitDetailResponse": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "subject": {
+            "type": "string",
+            "title": "Subject"
+          },
+          "knowledge_unit_type": {
+            "type": "string",
+            "title": "Knowledge Unit Type"
+          },
+          "canonical_name": {
+            "type": "string",
+            "title": "Canonical Name"
+          },
+          "normalized_name": {
+            "type": "string",
+            "title": "Normalized Name"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "confidence": {
+            "type": "number",
+            "title": "Confidence"
+          },
+          "type_confidence": {
+            "type": "number",
+            "title": "Type Confidence",
+            "default": 1.0
+          },
+          "type_source": {
+            "type": "string",
+            "title": "Type Source",
+            "default": "llm"
+          },
+          "current_revision": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/NodeRevisionItem"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "aliases": {
+            "items": {
+              "$ref": "#/components/schemas/AliasItem"
+            },
+            "type": "array",
+            "title": "Aliases"
+          },
+          "evidence": {
+            "items": {
+              "$ref": "#/components/schemas/EvidenceSummary"
+            },
+            "type": "array",
+            "title": "Evidence"
+          },
+          "incident_edges": {
+            "items": {
+              "$ref": "#/components/schemas/IncidentEdgeItem"
+            },
+            "type": "array",
+            "title": "Incident Edges"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "subject",
+          "knowledge_unit_type",
+          "canonical_name",
+          "normalized_name",
+          "status",
+          "confidence",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "KnowledgeUnitDetailResponse",
+        "description": "KnowledgeUnit detail response."
+      },
+      "KnowledgeUnitPathRequest": {
+        "properties": {
+          "source_knowledge_unit_id": {
+            "type": "integer",
+            "title": "Source Knowledge Unit Id",
+            "description": "Path start KnowledgeUnit ID."
+          },
+          "target_knowledge_unit_id": {
+            "type": "integer",
+            "title": "Target Knowledge Unit Id",
+            "description": "Path target KnowledgeUnit ID."
+          },
+          "edge_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Edge Type",
+            "description": "Optional relation type filter."
+          },
+          "max_depth": {
+            "type": "integer",
+            "maximum": 8.0,
+            "minimum": 1.0,
+            "title": "Max Depth",
+            "default": 4
+          }
+        },
+        "type": "object",
+        "required": [
+          "source_knowledge_unit_id",
+          "target_knowledge_unit_id"
+        ],
+        "title": "KnowledgeUnitPathRequest",
+        "description": "KnowledgeUnit path query."
+      },
+      "KnowledgeUnitRelationsRequest": {
+        "properties": {
+          "knowledge_unit_id": {
+            "type": "integer",
+            "title": "Knowledge Unit Id",
+            "description": "KnowledgeUnit ID."
+          },
+          "direction": {
+            "type": "string",
+            "enum": [
+              "both",
+              "incoming",
+              "outgoing"
+            ],
+            "title": "Direction",
+            "default": "both"
+          },
+          "edge_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Edge Type",
+            "description": "Optional relation type filter."
+          }
+        },
+        "type": "object",
+        "required": [
+          "knowledge_unit_id"
+        ],
+        "title": "KnowledgeUnitRelationsRequest",
+        "description": "KnowledgeUnit relation query."
+      },
+      "KnowledgeUnitResponse": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "subject": {
+            "type": "string",
+            "title": "Subject"
+          },
+          "knowledge_unit_type": {
+            "type": "string",
+            "title": "Knowledge Unit Type"
+          },
+          "canonical_name": {
+            "type": "string",
+            "title": "Canonical Name"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "confidence": {
+            "type": "number",
+            "title": "Confidence"
+          },
+          "type_confidence": {
+            "type": "number",
+            "title": "Type Confidence",
+            "default": 1.0
+          },
+          "type_source": {
+            "type": "string",
+            "title": "Type Source",
+            "default": "llm"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "subject",
+          "knowledge_unit_type",
+          "canonical_name",
+          "status",
+          "confidence",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "KnowledgeUnitResponse",
+        "description": "KnowledgeUnit list item."
+      },
+      "KnowledgeUnitsQueryRequest": {
+        "properties": {
+          "page": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Page",
+            "description": "页码，从 1 开始。",
+            "default": 1
+          },
+          "size": {
+            "type": "integer",
+            "maximum": 100.0,
+            "minimum": 1.0,
+            "title": "Size",
+            "description": "每页数量。",
+            "default": 20
+          },
+          "knowledge_unit_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Knowledge Unit Type",
+            "description": "Optional KnowledgeUnit type filter."
+          }
+        },
+        "type": "object",
+        "title": "KnowledgeUnitsQueryRequest",
+        "description": "Paginated KnowledgeUnit query.",
+        "example": {
+          "page": 1,
+          "size": 20
+        }
+      },
       "LoginRequest": {
         "properties": {
           "email": {
@@ -8787,6 +10440,173 @@
         "title": "LogoutRequest",
         "description": "登出请求。",
         "example": {}
+      },
+      "MasteryOverviewResponse": {
+        "properties": {
+          "subject": {
+            "type": "string",
+            "title": "Subject"
+          },
+          "user_id": {
+            "type": "string",
+            "title": "User Id"
+          },
+          "weak_unit_count": {
+            "type": "integer",
+            "title": "Weak Unit Count"
+          },
+          "weak_knowledge_unit_count": {
+            "type": "integer",
+            "title": "Weak Knowledge Unit Count"
+          },
+          "unit_states": {
+            "items": {
+              "$ref": "#/components/schemas/MasteryStateResponse"
+            },
+            "type": "array",
+            "title": "Unit States"
+          },
+          "knowledge_unit_states": {
+            "items": {
+              "$ref": "#/components/schemas/MasteryStateResponse"
+            },
+            "type": "array",
+            "title": "Knowledge Unit States"
+          },
+          "subject_profile": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SubjectProfileSummary"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "user_profile": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UserProfileSummary"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "subject",
+          "user_id",
+          "weak_unit_count",
+          "weak_knowledge_unit_count"
+        ],
+        "title": "MasteryOverviewResponse"
+      },
+      "MasteryStateResponse": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "target_kind": {
+            "type": "string",
+            "title": "Target Kind"
+          },
+          "teaching_unit_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Teaching Unit Id"
+          },
+          "knowledge_unit_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Knowledge Unit Id"
+          },
+          "mastery_score": {
+            "type": "number",
+            "title": "Mastery Score"
+          },
+          "confidence_score": {
+            "type": "number",
+            "title": "Confidence Score"
+          },
+          "stability_score": {
+            "type": "number",
+            "title": "Stability Score"
+          },
+          "forgetting_due_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Forgetting Due At"
+          },
+          "review_priority": {
+            "type": "number",
+            "title": "Review Priority"
+          },
+          "total_attempts": {
+            "type": "integer",
+            "title": "Total Attempts"
+          },
+          "correct_attempts": {
+            "type": "integer",
+            "title": "Correct Attempts"
+          },
+          "last_attempt_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Attempt At"
+          },
+          "state_version": {
+            "type": "integer",
+            "title": "State Version"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "target_kind",
+          "mastery_score",
+          "confidence_score",
+          "stability_score",
+          "review_priority",
+          "total_attempts",
+          "correct_attempts",
+          "state_version",
+          "updated_at"
+        ],
+        "title": "MasteryStateResponse"
       },
       "NodeRevisionItem": {
         "properties": {
@@ -8944,6 +10764,94 @@
         ],
         "title": "PaginatedData[ChatThreadTurnItem]"
       },
+      "PaginatedData_ExamHistoryItem_": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ExamHistoryItem"
+            },
+            "type": "array",
+            "title": "Items",
+            "description": "当前页数据。"
+          },
+          "page": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Page",
+            "description": "当前页码。"
+          },
+          "size": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Size",
+            "description": "每页数量。"
+          },
+          "total": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Total",
+            "description": "总条数。"
+          },
+          "pages": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Pages",
+            "description": "总页数。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "page",
+          "size",
+          "total",
+          "pages"
+        ],
+        "title": "PaginatedData[ExamHistoryItem]"
+      },
+      "PaginatedData_KnowledgeUnitResponse_": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/KnowledgeUnitResponse"
+            },
+            "type": "array",
+            "title": "Items",
+            "description": "当前页数据。"
+          },
+          "page": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Page",
+            "description": "当前页码。"
+          },
+          "size": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Size",
+            "description": "每页数量。"
+          },
+          "total": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Total",
+            "description": "总条数。"
+          },
+          "pages": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Pages",
+            "description": "总页数。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "page",
+          "size",
+          "total",
+          "pages"
+        ],
+        "title": "PaginatedData[KnowledgeUnitResponse]"
+      },
       "PaginatedData_SubjectItem_": {
         "properties": {
           "items": {
@@ -9022,6 +10930,121 @@
           "password": "change-me",
           "verification_code": "123456"
         }
+      },
+      "ReviewTaskResponse": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "user_id": {
+            "type": "string",
+            "title": "User Id"
+          },
+          "subject": {
+            "type": "string",
+            "title": "Subject"
+          },
+          "target_kind": {
+            "type": "string",
+            "title": "Target Kind"
+          },
+          "teaching_unit_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Teaching Unit Id"
+          },
+          "knowledge_unit_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Knowledge Unit Id"
+          },
+          "priority": {
+            "type": "number",
+            "title": "Priority"
+          },
+          "scheduled_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scheduled At"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "interval_days": {
+            "type": "integer",
+            "title": "Interval Days"
+          },
+          "ease_factor": {
+            "type": "number",
+            "title": "Ease Factor"
+          },
+          "repetition_count": {
+            "type": "integer",
+            "title": "Repetition Count"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "source_exam_paper_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Exam Paper Id"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "user_id",
+          "subject",
+          "target_kind",
+          "priority",
+          "status",
+          "interval_days",
+          "ease_factor",
+          "repetition_count",
+          "updated_at"
+        ],
+        "title": "ReviewTaskResponse"
       },
       "RuntimeUser": {
         "properties": {
@@ -9131,11 +11154,11 @@
             "type": "string",
             "enum": [
               "env",
-              "config",
+              "settings",
               "runtime"
             ],
             "title": "Source",
-            "description": "配置来源：env/config/runtime。"
+            "description": "配置来源：env/settings/runtime。"
           },
           "value": {
             "anyOf": [
@@ -9244,10 +11267,10 @@
       },
       "SettingsOverviewData": {
         "properties": {
-          "config_path": {
+          "settings_path": {
             "type": "string",
-            "title": "Config Path",
-            "description": "当前项目配置文件路径。"
+            "title": "Settings Path",
+            "description": "当前项目设置文件路径。"
           },
           "mode": {
             "type": "string",
@@ -9273,7 +11296,7 @@
         },
         "type": "object",
         "required": [
-          "config_path",
+          "settings_path",
           "mode"
         ],
         "title": "SettingsOverviewData",
@@ -9753,6 +11776,137 @@
         ],
         "title": "SubjectNameSuggestionResponse"
       },
+      "SubjectProfileSummary": {
+        "properties": {
+          "subject": {
+            "type": "string",
+            "title": "Subject"
+          },
+          "generated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Generated At"
+          },
+          "avg_unit_mastery": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avg Unit Mastery"
+          },
+          "avg_knowledge_unit_mastery": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avg Knowledge Unit Mastery"
+          },
+          "weak_unit_count": {
+            "type": "integer",
+            "title": "Weak Unit Count",
+            "default": 0
+          },
+          "weak_knowledge_unit_count": {
+            "type": "integer",
+            "title": "Weak Knowledge Unit Count",
+            "default": 0
+          },
+          "pending_review_count": {
+            "type": "integer",
+            "title": "Pending Review Count",
+            "default": 0
+          },
+          "due_review_count": {
+            "type": "integer",
+            "title": "Due Review Count",
+            "default": 0
+          },
+          "preferred_question_types": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Preferred Question Types"
+          },
+          "recommended_question_types": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Recommended Question Types"
+          },
+          "recommended_exam_mode": {
+            "type": "string",
+            "title": "Recommended Exam Mode",
+            "default": "web_practice"
+          },
+          "recommended_question_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recommended Question Count"
+          },
+          "difficulty_focus": {
+            "type": "string",
+            "title": "Difficulty Focus",
+            "default": "medium"
+          },
+          "focus_teaching_unit_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "title": "Focus Teaching Unit Ids"
+          },
+          "focus_knowledge_unit_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "title": "Focus Knowledge Unit Ids"
+          },
+          "question_type_accuracy": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "type": "object",
+            "title": "Question Type Accuracy"
+          },
+          "difficulty_accuracy": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "type": "object",
+            "title": "Difficulty Accuracy"
+          },
+          "notes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Notes"
+          }
+        },
+        "type": "object",
+        "required": [
+          "subject",
+          "generated_at"
+        ],
+        "title": "SubjectProfileSummary"
+      },
       "SubjectUpdateRequest": {
         "properties": {
           "subject_id": {
@@ -9833,6 +11987,95 @@
         ],
         "title": "TaskStatusValue",
         "description": "任务状态。"
+      },
+      "UserProfileSummary": {
+        "properties": {
+          "user_id": {
+            "type": "string",
+            "title": "User Id"
+          },
+          "generated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Generated At"
+          },
+          "active_subject_count": {
+            "type": "integer",
+            "title": "Active Subject Count",
+            "default": 0
+          },
+          "active_subject_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Active Subject Ids"
+          },
+          "recent_subject_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Recent Subject Ids"
+          },
+          "preferred_question_types": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Preferred Question Types"
+          },
+          "preferred_exam_modes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Preferred Exam Modes"
+          },
+          "dominant_exam_mode": {
+            "type": "string",
+            "title": "Dominant Exam Mode",
+            "default": "web_practice"
+          },
+          "explanation_style": {
+            "type": "string",
+            "title": "Explanation Style",
+            "default": "balanced"
+          },
+          "pace_preference": {
+            "type": "string",
+            "title": "Pace Preference",
+            "default": "steady"
+          },
+          "consistency_level": {
+            "type": "string",
+            "title": "Consistency Level",
+            "default": "building"
+          },
+          "pending_review_count": {
+            "type": "integer",
+            "title": "Pending Review Count",
+            "default": 0
+          },
+          "due_review_count": {
+            "type": "integer",
+            "title": "Due Review Count",
+            "default": 0
+          },
+          "notes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Notes"
+          }
+        },
+        "type": "object",
+        "required": [
+          "user_id",
+          "generated_at"
+        ],
+        "title": "UserProfileSummary"
       },
       "ValidationError": {
         "properties": {

@@ -40,6 +40,7 @@ from app.models.knowledge import RetrievalChunk
 from app.models.knowledge_doc import KnowledgeDocument
 from app.models.knowledge_relation import KnowledgeEdge
 from app.models.knowledge_unit import KnowledgeUnit
+from app.models.curriculum import Curriculum, TaxonomyAnchor, TeachingUnit, ThemeTreeNode, UnitDependency
 from app.models.profile import UserKnowledgeState
 from app.models.raw_file import RawFile
 from app.models.subject import Subject
@@ -71,6 +72,11 @@ _SCHEMA_MODELS = (
     KnowledgeDocument,
     KnowledgeUnit,
     KnowledgeEdge,
+    Curriculum,
+    TeachingUnit,
+    ThemeTreeNode,
+    TaxonomyAnchor,
+    UnitDependency,
     QuestionTemplate,
     ExamPaper,
     ExamPaperItem,
@@ -683,4 +689,3 @@ def managed_session() -> Generator[Session, None, None]:
         raise
     finally:
         session.close()
-

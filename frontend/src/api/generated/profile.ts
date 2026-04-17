@@ -6,16 +6,28 @@
  * OpenAPI spec version: 0.2.0
  */
 import {
-  useMutation
+  useMutation,
+  useQuery
 } from '@tanstack/react-query';
 import type {
+  DataTag,
+  DefinedInitialDataOptions,
+  DefinedUseQueryResult,
   MutationFunction,
   QueryClient,
+  QueryFunction,
+  QueryKey,
+  UndefinedInitialDataOptions,
   UseMutationOptions,
-  UseMutationResult
+  UseMutationResult,
+  UseQueryOptions,
+  UseQueryResult
 } from '@tanstack/react-query';
 
 import type {
+  ApiResponseListReviewTaskResponse,
+  ApiResponseMasteryOverviewResponse,
+  ApiResponseReviewTaskResponse,
   ErrorResponse,
   HTTPValidationError
 } from './model';
@@ -29,46 +41,56 @@ type SecondParameter<T extends (...args: never) => unknown> = Parameters<T>[1];
 
 
 /**
- * @summary Profile feature offline
+ * @summary Fetch mastery overview
  */
-export type profileOfflineRootApiV1SubjectsSubjectProfilePostResponse200 = {
-  data: unknown
+export type masteryOverviewApiV1SubjectsSubjectProfileMasteryGetResponse200 = {
+  data: ApiResponseMasteryOverviewResponse
   status: 200
 }
 
-export type profileOfflineRootApiV1SubjectsSubjectProfilePostResponse404 = {
+export type masteryOverviewApiV1SubjectsSubjectProfileMasteryGetResponse400 = {
+  data: ErrorResponse
+  status: 400
+}
+
+export type masteryOverviewApiV1SubjectsSubjectProfileMasteryGetResponse404 = {
   data: ErrorResponse
   status: 404
 }
 
-export type profileOfflineRootApiV1SubjectsSubjectProfilePostResponse422 = {
+export type masteryOverviewApiV1SubjectsSubjectProfileMasteryGetResponse422 = {
   data: HTTPValidationError
   status: 422
 }
 
-export type profileOfflineRootApiV1SubjectsSubjectProfilePostResponseSuccess = (profileOfflineRootApiV1SubjectsSubjectProfilePostResponse200) & {
-  headers: Headers;
-};
-export type profileOfflineRootApiV1SubjectsSubjectProfilePostResponseError = (profileOfflineRootApiV1SubjectsSubjectProfilePostResponse404 | profileOfflineRootApiV1SubjectsSubjectProfilePostResponse422) & {
-  headers: Headers;
-};
-
-export type profileOfflineRootApiV1SubjectsSubjectProfilePostResponse = (profileOfflineRootApiV1SubjectsSubjectProfilePostResponseSuccess | profileOfflineRootApiV1SubjectsSubjectProfilePostResponseError)
-
-export const getProfileOfflineRootApiV1SubjectsSubjectProfilePostUrl = (subject: string,) => {
-
-
-  
-
-  return `/api/v1/subjects/${subject}/profile/`
+export type masteryOverviewApiV1SubjectsSubjectProfileMasteryGetResponse500 = {
+  data: ErrorResponse
+  status: 500
 }
 
-export const profileOfflineRootApiV1SubjectsSubjectProfilePost = async (subject: string, options?: RequestInit): Promise<profileOfflineRootApiV1SubjectsSubjectProfilePostResponse> => {
+export type masteryOverviewApiV1SubjectsSubjectProfileMasteryGetResponseSuccess = (masteryOverviewApiV1SubjectsSubjectProfileMasteryGetResponse200) & {
+  headers: Headers;
+};
+export type masteryOverviewApiV1SubjectsSubjectProfileMasteryGetResponseError = (masteryOverviewApiV1SubjectsSubjectProfileMasteryGetResponse400 | masteryOverviewApiV1SubjectsSubjectProfileMasteryGetResponse404 | masteryOverviewApiV1SubjectsSubjectProfileMasteryGetResponse422 | masteryOverviewApiV1SubjectsSubjectProfileMasteryGetResponse500) & {
+  headers: Headers;
+};
+
+export type masteryOverviewApiV1SubjectsSubjectProfileMasteryGetResponse = (masteryOverviewApiV1SubjectsSubjectProfileMasteryGetResponseSuccess | masteryOverviewApiV1SubjectsSubjectProfileMasteryGetResponseError)
+
+export const getMasteryOverviewApiV1SubjectsSubjectProfileMasteryGetUrl = (subject: string,) => {
+
+
   
-  return orvalApiClient<profileOfflineRootApiV1SubjectsSubjectProfilePostResponse>(getProfileOfflineRootApiV1SubjectsSubjectProfilePostUrl(subject),
+
+  return `/api/v1/subjects/${subject}/profile/mastery`
+}
+
+export const masteryOverviewApiV1SubjectsSubjectProfileMasteryGet = async (subject: string, options?: RequestInit): Promise<masteryOverviewApiV1SubjectsSubjectProfileMasteryGetResponse> => {
+  
+  return orvalApiClient<masteryOverviewApiV1SubjectsSubjectProfileMasteryGetResponse>(getMasteryOverviewApiV1SubjectsSubjectProfileMasteryGetUrl(subject),
   {      
     ...options,
-    method: 'PATCH'
+    method: 'GET'
     
     
   }
@@ -77,93 +99,130 @@ export const profileOfflineRootApiV1SubjectsSubjectProfilePost = async (subject:
 
 
 
-export const getProfileOfflineRootApiV1SubjectsSubjectProfilePostMutationOptions = <TError = ErrorResponse | HTTPValidationError,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof profileOfflineRootApiV1SubjectsSubjectProfilePost>>, TError,{subject: string}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
-): UseMutationOptions<Awaited<ReturnType<typeof profileOfflineRootApiV1SubjectsSubjectProfilePost>>, TError,{subject: string}, TContext> => {
 
-const mutationKey = ['profileOfflineRootApiV1SubjectsSubjectProfilePost'];
-const {mutation: mutationOptions, request: requestOptions} = options ?
-      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
-      options
-      : {...options, mutation: {...options.mutation, mutationKey}}
-      : {mutation: { mutationKey, }, request: undefined};
-
-      
-
-
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof profileOfflineRootApiV1SubjectsSubjectProfilePost>>, {subject: string}> = (props) => {
-          const {subject} = props ?? {};
-
-          return  profileOfflineRootApiV1SubjectsSubjectProfilePost(subject,requestOptions)
-        }
-
-
-
-        
-
-
-  return  { mutationFn, ...mutationOptions }}
-
-    export type ProfileOfflineRootApiV1SubjectsSubjectProfilePostMutationResult = NonNullable<Awaited<ReturnType<typeof profileOfflineRootApiV1SubjectsSubjectProfilePost>>>
-    
-    export type ProfileOfflineRootApiV1SubjectsSubjectProfilePostMutationError = ErrorResponse | HTTPValidationError
-
-    /**
- * @summary Profile feature offline
- */
-export const useProfileOfflineRootApiV1SubjectsSubjectProfilePost = <TError = ErrorResponse | HTTPValidationError,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof profileOfflineRootApiV1SubjectsSubjectProfilePost>>, TError,{subject: string}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
- , queryClient?: QueryClient): UseMutationResult<
-        Awaited<ReturnType<typeof profileOfflineRootApiV1SubjectsSubjectProfilePost>>,
-        TError,
-        {subject: string},
-        TContext
-      > => {
-      return useMutation(getProfileOfflineRootApiV1SubjectsSubjectProfilePostMutationOptions(options), queryClient);
+export const getMasteryOverviewApiV1SubjectsSubjectProfileMasteryGetQueryKey = (subject: string,) => {
+    return [
+    `/api/v1/subjects/${subject}/profile/mastery`
+    ] as const;
     }
-    /**
- * @summary Profile feature offline
+
+    
+export const getMasteryOverviewApiV1SubjectsSubjectProfileMasteryGetQueryOptions = <TData = Awaited<ReturnType<typeof masteryOverviewApiV1SubjectsSubjectProfileMasteryGet>>, TError = ErrorResponse | HTTPValidationError>(subject: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof masteryOverviewApiV1SubjectsSubjectProfileMasteryGet>>, TError, TData>>, request?: SecondParameter<typeof orvalApiClient>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getMasteryOverviewApiV1SubjectsSubjectProfileMasteryGetQueryKey(subject);
+
+  
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof masteryOverviewApiV1SubjectsSubjectProfileMasteryGet>>> = ({ signal }) => masteryOverviewApiV1SubjectsSubjectProfileMasteryGet(subject, { signal, ...requestOptions });
+
+      
+
+      
+
+   return  { queryKey, queryFn, enabled: !!(subject), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof masteryOverviewApiV1SubjectsSubjectProfileMasteryGet>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type MasteryOverviewApiV1SubjectsSubjectProfileMasteryGetQueryResult = NonNullable<Awaited<ReturnType<typeof masteryOverviewApiV1SubjectsSubjectProfileMasteryGet>>>
+export type MasteryOverviewApiV1SubjectsSubjectProfileMasteryGetQueryError = ErrorResponse | HTTPValidationError
+
+
+export function useMasteryOverviewApiV1SubjectsSubjectProfileMasteryGet<TData = Awaited<ReturnType<typeof masteryOverviewApiV1SubjectsSubjectProfileMasteryGet>>, TError = ErrorResponse | HTTPValidationError>(
+ subject: string, options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof masteryOverviewApiV1SubjectsSubjectProfileMasteryGet>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof masteryOverviewApiV1SubjectsSubjectProfileMasteryGet>>,
+          TError,
+          Awaited<ReturnType<typeof masteryOverviewApiV1SubjectsSubjectProfileMasteryGet>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof orvalApiClient>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useMasteryOverviewApiV1SubjectsSubjectProfileMasteryGet<TData = Awaited<ReturnType<typeof masteryOverviewApiV1SubjectsSubjectProfileMasteryGet>>, TError = ErrorResponse | HTTPValidationError>(
+ subject: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof masteryOverviewApiV1SubjectsSubjectProfileMasteryGet>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof masteryOverviewApiV1SubjectsSubjectProfileMasteryGet>>,
+          TError,
+          Awaited<ReturnType<typeof masteryOverviewApiV1SubjectsSubjectProfileMasteryGet>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof orvalApiClient>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useMasteryOverviewApiV1SubjectsSubjectProfileMasteryGet<TData = Awaited<ReturnType<typeof masteryOverviewApiV1SubjectsSubjectProfileMasteryGet>>, TError = ErrorResponse | HTTPValidationError>(
+ subject: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof masteryOverviewApiV1SubjectsSubjectProfileMasteryGet>>, TError, TData>>, request?: SecondParameter<typeof orvalApiClient>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * @summary Fetch mastery overview
  */
-export type profileOfflinePathApiV1SubjectsSubjectProfilePathPostResponse200 = {
-  data: unknown
+
+export function useMasteryOverviewApiV1SubjectsSubjectProfileMasteryGet<TData = Awaited<ReturnType<typeof masteryOverviewApiV1SubjectsSubjectProfileMasteryGet>>, TError = ErrorResponse | HTTPValidationError>(
+ subject: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof masteryOverviewApiV1SubjectsSubjectProfileMasteryGet>>, TError, TData>>, request?: SecondParameter<typeof orvalApiClient>}
+ , queryClient?: QueryClient 
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getMasteryOverviewApiV1SubjectsSubjectProfileMasteryGetQueryOptions(subject,options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+/**
+ * @summary Fetch pending review tasks
+ */
+export type reviewTasksApiV1SubjectsSubjectProfileReviewsGetResponse200 = {
+  data: ApiResponseListReviewTaskResponse
   status: 200
 }
 
-export type profileOfflinePathApiV1SubjectsSubjectProfilePathPostResponse404 = {
+export type reviewTasksApiV1SubjectsSubjectProfileReviewsGetResponse400 = {
+  data: ErrorResponse
+  status: 400
+}
+
+export type reviewTasksApiV1SubjectsSubjectProfileReviewsGetResponse404 = {
   data: ErrorResponse
   status: 404
 }
 
-export type profileOfflinePathApiV1SubjectsSubjectProfilePathPostResponse422 = {
+export type reviewTasksApiV1SubjectsSubjectProfileReviewsGetResponse422 = {
   data: HTTPValidationError
   status: 422
 }
 
-export type profileOfflinePathApiV1SubjectsSubjectProfilePathPostResponseSuccess = (profileOfflinePathApiV1SubjectsSubjectProfilePathPostResponse200) & {
-  headers: Headers;
-};
-export type profileOfflinePathApiV1SubjectsSubjectProfilePathPostResponseError = (profileOfflinePathApiV1SubjectsSubjectProfilePathPostResponse404 | profileOfflinePathApiV1SubjectsSubjectProfilePathPostResponse422) & {
-  headers: Headers;
-};
-
-export type profileOfflinePathApiV1SubjectsSubjectProfilePathPostResponse = (profileOfflinePathApiV1SubjectsSubjectProfilePathPostResponseSuccess | profileOfflinePathApiV1SubjectsSubjectProfilePathPostResponseError)
-
-export const getProfileOfflinePathApiV1SubjectsSubjectProfilePathPostUrl = (subject: string,
-    path: string,) => {
-
-
-  
-
-  return `/api/v1/subjects/${subject}/profile/${path}`
+export type reviewTasksApiV1SubjectsSubjectProfileReviewsGetResponse500 = {
+  data: ErrorResponse
+  status: 500
 }
 
-export const profileOfflinePathApiV1SubjectsSubjectProfilePathPost = async (subject: string,
-    path: string, options?: RequestInit): Promise<profileOfflinePathApiV1SubjectsSubjectProfilePathPostResponse> => {
+export type reviewTasksApiV1SubjectsSubjectProfileReviewsGetResponseSuccess = (reviewTasksApiV1SubjectsSubjectProfileReviewsGetResponse200) & {
+  headers: Headers;
+};
+export type reviewTasksApiV1SubjectsSubjectProfileReviewsGetResponseError = (reviewTasksApiV1SubjectsSubjectProfileReviewsGetResponse400 | reviewTasksApiV1SubjectsSubjectProfileReviewsGetResponse404 | reviewTasksApiV1SubjectsSubjectProfileReviewsGetResponse422 | reviewTasksApiV1SubjectsSubjectProfileReviewsGetResponse500) & {
+  headers: Headers;
+};
+
+export type reviewTasksApiV1SubjectsSubjectProfileReviewsGetResponse = (reviewTasksApiV1SubjectsSubjectProfileReviewsGetResponseSuccess | reviewTasksApiV1SubjectsSubjectProfileReviewsGetResponseError)
+
+export const getReviewTasksApiV1SubjectsSubjectProfileReviewsGetUrl = (subject: string,) => {
+
+
   
-  return orvalApiClient<profileOfflinePathApiV1SubjectsSubjectProfilePathPostResponse>(getProfileOfflinePathApiV1SubjectsSubjectProfilePathPostUrl(subject,path),
+
+  return `/api/v1/subjects/${subject}/profile/reviews`
+}
+
+export const reviewTasksApiV1SubjectsSubjectProfileReviewsGet = async (subject: string, options?: RequestInit): Promise<reviewTasksApiV1SubjectsSubjectProfileReviewsGetResponse> => {
+  
+  return orvalApiClient<reviewTasksApiV1SubjectsSubjectProfileReviewsGetResponse>(getReviewTasksApiV1SubjectsSubjectProfileReviewsGetUrl(subject),
   {      
     ...options,
-    method: 'PATCH'
+    method: 'GET'
     
     
   }
@@ -172,11 +231,145 @@ export const profileOfflinePathApiV1SubjectsSubjectProfilePathPost = async (subj
 
 
 
-export const getProfileOfflinePathApiV1SubjectsSubjectProfilePathPostMutationOptions = <TError = ErrorResponse | HTTPValidationError,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof profileOfflinePathApiV1SubjectsSubjectProfilePathPost>>, TError,{subject: string;path: string}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
-): UseMutationOptions<Awaited<ReturnType<typeof profileOfflinePathApiV1SubjectsSubjectProfilePathPost>>, TError,{subject: string;path: string}, TContext> => {
 
-const mutationKey = ['profileOfflinePathApiV1SubjectsSubjectProfilePathPost'];
+export const getReviewTasksApiV1SubjectsSubjectProfileReviewsGetQueryKey = (subject: string,) => {
+    return [
+    `/api/v1/subjects/${subject}/profile/reviews`
+    ] as const;
+    }
+
+    
+export const getReviewTasksApiV1SubjectsSubjectProfileReviewsGetQueryOptions = <TData = Awaited<ReturnType<typeof reviewTasksApiV1SubjectsSubjectProfileReviewsGet>>, TError = ErrorResponse | HTTPValidationError>(subject: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof reviewTasksApiV1SubjectsSubjectProfileReviewsGet>>, TError, TData>>, request?: SecondParameter<typeof orvalApiClient>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getReviewTasksApiV1SubjectsSubjectProfileReviewsGetQueryKey(subject);
+
+  
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof reviewTasksApiV1SubjectsSubjectProfileReviewsGet>>> = ({ signal }) => reviewTasksApiV1SubjectsSubjectProfileReviewsGet(subject, { signal, ...requestOptions });
+
+      
+
+      
+
+   return  { queryKey, queryFn, enabled: !!(subject), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof reviewTasksApiV1SubjectsSubjectProfileReviewsGet>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type ReviewTasksApiV1SubjectsSubjectProfileReviewsGetQueryResult = NonNullable<Awaited<ReturnType<typeof reviewTasksApiV1SubjectsSubjectProfileReviewsGet>>>
+export type ReviewTasksApiV1SubjectsSubjectProfileReviewsGetQueryError = ErrorResponse | HTTPValidationError
+
+
+export function useReviewTasksApiV1SubjectsSubjectProfileReviewsGet<TData = Awaited<ReturnType<typeof reviewTasksApiV1SubjectsSubjectProfileReviewsGet>>, TError = ErrorResponse | HTTPValidationError>(
+ subject: string, options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof reviewTasksApiV1SubjectsSubjectProfileReviewsGet>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof reviewTasksApiV1SubjectsSubjectProfileReviewsGet>>,
+          TError,
+          Awaited<ReturnType<typeof reviewTasksApiV1SubjectsSubjectProfileReviewsGet>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof orvalApiClient>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useReviewTasksApiV1SubjectsSubjectProfileReviewsGet<TData = Awaited<ReturnType<typeof reviewTasksApiV1SubjectsSubjectProfileReviewsGet>>, TError = ErrorResponse | HTTPValidationError>(
+ subject: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof reviewTasksApiV1SubjectsSubjectProfileReviewsGet>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof reviewTasksApiV1SubjectsSubjectProfileReviewsGet>>,
+          TError,
+          Awaited<ReturnType<typeof reviewTasksApiV1SubjectsSubjectProfileReviewsGet>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof orvalApiClient>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useReviewTasksApiV1SubjectsSubjectProfileReviewsGet<TData = Awaited<ReturnType<typeof reviewTasksApiV1SubjectsSubjectProfileReviewsGet>>, TError = ErrorResponse | HTTPValidationError>(
+ subject: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof reviewTasksApiV1SubjectsSubjectProfileReviewsGet>>, TError, TData>>, request?: SecondParameter<typeof orvalApiClient>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * @summary Fetch pending review tasks
+ */
+
+export function useReviewTasksApiV1SubjectsSubjectProfileReviewsGet<TData = Awaited<ReturnType<typeof reviewTasksApiV1SubjectsSubjectProfileReviewsGet>>, TError = ErrorResponse | HTTPValidationError>(
+ subject: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof reviewTasksApiV1SubjectsSubjectProfileReviewsGet>>, TError, TData>>, request?: SecondParameter<typeof orvalApiClient>}
+ , queryClient?: QueryClient 
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getReviewTasksApiV1SubjectsSubjectProfileReviewsGetQueryOptions(subject,options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+/**
+ * @summary Mark one review task as completed
+ */
+export type completeReviewApiV1SubjectsSubjectProfileReviewsTaskIdCompletePostResponse200 = {
+  data: ApiResponseReviewTaskResponse
+  status: 200
+}
+
+export type completeReviewApiV1SubjectsSubjectProfileReviewsTaskIdCompletePostResponse400 = {
+  data: ErrorResponse
+  status: 400
+}
+
+export type completeReviewApiV1SubjectsSubjectProfileReviewsTaskIdCompletePostResponse404 = {
+  data: ErrorResponse
+  status: 404
+}
+
+export type completeReviewApiV1SubjectsSubjectProfileReviewsTaskIdCompletePostResponse422 = {
+  data: HTTPValidationError
+  status: 422
+}
+
+export type completeReviewApiV1SubjectsSubjectProfileReviewsTaskIdCompletePostResponse500 = {
+  data: ErrorResponse
+  status: 500
+}
+
+export type completeReviewApiV1SubjectsSubjectProfileReviewsTaskIdCompletePostResponseSuccess = (completeReviewApiV1SubjectsSubjectProfileReviewsTaskIdCompletePostResponse200) & {
+  headers: Headers;
+};
+export type completeReviewApiV1SubjectsSubjectProfileReviewsTaskIdCompletePostResponseError = (completeReviewApiV1SubjectsSubjectProfileReviewsTaskIdCompletePostResponse400 | completeReviewApiV1SubjectsSubjectProfileReviewsTaskIdCompletePostResponse404 | completeReviewApiV1SubjectsSubjectProfileReviewsTaskIdCompletePostResponse422 | completeReviewApiV1SubjectsSubjectProfileReviewsTaskIdCompletePostResponse500) & {
+  headers: Headers;
+};
+
+export type completeReviewApiV1SubjectsSubjectProfileReviewsTaskIdCompletePostResponse = (completeReviewApiV1SubjectsSubjectProfileReviewsTaskIdCompletePostResponseSuccess | completeReviewApiV1SubjectsSubjectProfileReviewsTaskIdCompletePostResponseError)
+
+export const getCompleteReviewApiV1SubjectsSubjectProfileReviewsTaskIdCompletePostUrl = (subject: string,
+    taskId: number,) => {
+
+
+  
+
+  return `/api/v1/subjects/${subject}/profile/reviews/${taskId}/complete`
+}
+
+export const completeReviewApiV1SubjectsSubjectProfileReviewsTaskIdCompletePost = async (subject: string,
+    taskId: number, options?: RequestInit): Promise<completeReviewApiV1SubjectsSubjectProfileReviewsTaskIdCompletePostResponse> => {
+  
+  return orvalApiClient<completeReviewApiV1SubjectsSubjectProfileReviewsTaskIdCompletePostResponse>(getCompleteReviewApiV1SubjectsSubjectProfileReviewsTaskIdCompletePostUrl(subject,taskId),
+  {      
+    ...options,
+    method: 'POST'
+    
+    
+  }
+);}
+  
+
+
+
+export const getCompleteReviewApiV1SubjectsSubjectProfileReviewsTaskIdCompletePostMutationOptions = <TError = ErrorResponse | HTTPValidationError,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof completeReviewApiV1SubjectsSubjectProfileReviewsTaskIdCompletePost>>, TError,{subject: string;taskId: number}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
+): UseMutationOptions<Awaited<ReturnType<typeof completeReviewApiV1SubjectsSubjectProfileReviewsTaskIdCompletePost>>, TError,{subject: string;taskId: number}, TContext> => {
+
+const mutationKey = ['completeReviewApiV1SubjectsSubjectProfileReviewsTaskIdCompletePost'];
 const {mutation: mutationOptions, request: requestOptions} = options ?
       options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
       options
@@ -186,10 +379,10 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       
 
 
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof profileOfflinePathApiV1SubjectsSubjectProfilePathPost>>, {subject: string;path: string}> = (props) => {
-          const {subject,path} = props ?? {};
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof completeReviewApiV1SubjectsSubjectProfileReviewsTaskIdCompletePost>>, {subject: string;taskId: number}> = (props) => {
+          const {subject,taskId} = props ?? {};
 
-          return  profileOfflinePathApiV1SubjectsSubjectProfilePathPost(subject,path,requestOptions)
+          return  completeReviewApiV1SubjectsSubjectProfileReviewsTaskIdCompletePost(subject,taskId,requestOptions)
         }
 
 
@@ -199,21 +392,21 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
   return  { mutationFn, ...mutationOptions }}
 
-    export type ProfileOfflinePathApiV1SubjectsSubjectProfilePathPostMutationResult = NonNullable<Awaited<ReturnType<typeof profileOfflinePathApiV1SubjectsSubjectProfilePathPost>>>
+    export type CompleteReviewApiV1SubjectsSubjectProfileReviewsTaskIdCompletePostMutationResult = NonNullable<Awaited<ReturnType<typeof completeReviewApiV1SubjectsSubjectProfileReviewsTaskIdCompletePost>>>
     
-    export type ProfileOfflinePathApiV1SubjectsSubjectProfilePathPostMutationError = ErrorResponse | HTTPValidationError
+    export type CompleteReviewApiV1SubjectsSubjectProfileReviewsTaskIdCompletePostMutationError = ErrorResponse | HTTPValidationError
 
     /**
- * @summary Profile feature offline
+ * @summary Mark one review task as completed
  */
-export const useProfileOfflinePathApiV1SubjectsSubjectProfilePathPost = <TError = ErrorResponse | HTTPValidationError,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof profileOfflinePathApiV1SubjectsSubjectProfilePathPost>>, TError,{subject: string;path: string}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
+export const useCompleteReviewApiV1SubjectsSubjectProfileReviewsTaskIdCompletePost = <TError = ErrorResponse | HTTPValidationError,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof completeReviewApiV1SubjectsSubjectProfileReviewsTaskIdCompletePost>>, TError,{subject: string;taskId: number}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
  , queryClient?: QueryClient): UseMutationResult<
-        Awaited<ReturnType<typeof profileOfflinePathApiV1SubjectsSubjectProfilePathPost>>,
+        Awaited<ReturnType<typeof completeReviewApiV1SubjectsSubjectProfileReviewsTaskIdCompletePost>>,
         TError,
-        {subject: string;path: string},
+        {subject: string;taskId: number},
         TContext
       > => {
-      return useMutation(getProfileOfflinePathApiV1SubjectsSubjectProfilePathPostMutationOptions(options), queryClient);
+      return useMutation(getCompleteReviewApiV1SubjectsSubjectProfileReviewsTaskIdCompletePostMutationOptions(options), queryClient);
     }
     

@@ -43,7 +43,7 @@ from app.workflows.digest.docgen import (
     run_docgen_background,
     trigger_docgen_build,
 )
-from app.workflows.digest.knowledge_graph import (
+from app.workflows.support.knowledge_graph import (
     get_knowledge_overview,
     handle_study_plan_request,
     run_graph_build_background,
@@ -431,3 +431,4 @@ async def knowledge_clear(
     get_subject_record(session, normalized, owner_user_id=user.user_id)
     counts = clear_subject_knowledge(session, subject=normalized)
     return ok_response(ClearKnowledgeResponse(subject=normalized, deleted_counts=counts))
+

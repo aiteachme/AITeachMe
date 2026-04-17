@@ -1,4 +1,4 @@
-"""Workflow export definitions shared by digest lanes."""
+﻿"""Workflow export definitions shared by digest lanes."""
 
 from __future__ import annotations
 
@@ -6,18 +6,18 @@ from app.shared.infra.workflow.context import WorkflowContext
 from app.shared.infra.workflow.events import InProcessEventBus
 from app.shared.infra.workflow.graph_export import WorkflowGraphExport
 from app.workflows.digest.docgen.graph import build_docgen_graph
-from app.workflows.digest.knowledge_graph.graph import build_kg_digest_graph
-from app.workflows.digest.knowledge_graph.prompts import KG_PROMPTS
+from app.workflows.digest.kg_file_ingest.graph import build_kg_digest_graph
+from app.workflows.digest.kg_file_ingest.prompts import KG_PROMPTS
 from app.workflows.digest.planner.graph import get_langgraph_dev_planner_graph
 
 PLANNER_PROMPTS = {
-    "planner_prompt": "构建方案规划提示词：负责输出全中文、可直接确认的章节方案。",
+    "planner_prompt": "Build-plan prompt used by the planner lane.",
 }
 
 DOCGEN_PROMPTS = {
-    "research_purify_prompt": "研究提纯提示词：负责把资料压缩为面向章节写作的中文研究笔记。",
-    "writer_prompt": "章节写作提示词：负责按 sprint / systematic 契约生成教学化 Markdown。",
-    "mermaid_prompt": "Mermaid 生成提示词：负责把章节知识关系转成中文 Mermaid mindmap。",
+    "research_purify_prompt": "Research purification prompt used by docgen.",
+    "writer_prompt": "Chapter writing prompt used by docgen.",
+    "mermaid_prompt": "Mindmap rendering prompt used by docgen.",
 }
 
 

@@ -6,17 +6,33 @@
  * OpenAPI spec version: 0.2.0
  */
 import {
-  useMutation
+  useMutation,
+  useQuery
 } from '@tanstack/react-query';
 import type {
+  DataTag,
+  DefinedInitialDataOptions,
+  DefinedUseQueryResult,
   MutationFunction,
   QueryClient,
+  QueryFunction,
+  QueryKey,
+  UndefinedInitialDataOptions,
   UseMutationOptions,
-  UseMutationResult
+  UseMutationResult,
+  UseQueryOptions,
+  UseQueryResult
 } from '@tanstack/react-query';
 
 import type {
+  ApiResponseExamGenerateResponse,
+  ApiResponseExamGradeResponse,
+  ApiResponseExamPaperDetailResponse,
+  ApiResponsePaginatedDataExamHistoryItem,
   ErrorResponse,
+  ExamGenerateRequest,
+  ExamHistoryApiV1SubjectsSubjectExamsHistoryGetParams,
+  ExamSubmitRequest,
   HTTPValidationError
 } from './model';
 
@@ -29,59 +45,76 @@ type SecondParameter<T extends (...args: never) => unknown> = Parameters<T>[1];
 
 
 /**
- * @summary Exams feature offline
+ * @summary Generate an exam from KnowledgeUnits
  */
-export type examsOfflineRootApiV1SubjectsSubjectExamsPostResponse200 = {
-  data: unknown
+export type generateExamApiV1SubjectsSubjectExamsGeneratePostResponse200 = {
+  data: ApiResponseExamGenerateResponse
   status: 200
 }
 
-export type examsOfflineRootApiV1SubjectsSubjectExamsPostResponse404 = {
+export type generateExamApiV1SubjectsSubjectExamsGeneratePostResponse400 = {
+  data: ErrorResponse
+  status: 400
+}
+
+export type generateExamApiV1SubjectsSubjectExamsGeneratePostResponse404 = {
   data: ErrorResponse
   status: 404
 }
 
-export type examsOfflineRootApiV1SubjectsSubjectExamsPostResponse422 = {
+export type generateExamApiV1SubjectsSubjectExamsGeneratePostResponse409 = {
+  data: ErrorResponse
+  status: 409
+}
+
+export type generateExamApiV1SubjectsSubjectExamsGeneratePostResponse422 = {
   data: HTTPValidationError
   status: 422
 }
 
-export type examsOfflineRootApiV1SubjectsSubjectExamsPostResponseSuccess = (examsOfflineRootApiV1SubjectsSubjectExamsPostResponse200) & {
-  headers: Headers;
-};
-export type examsOfflineRootApiV1SubjectsSubjectExamsPostResponseError = (examsOfflineRootApiV1SubjectsSubjectExamsPostResponse404 | examsOfflineRootApiV1SubjectsSubjectExamsPostResponse422) & {
-  headers: Headers;
-};
-
-export type examsOfflineRootApiV1SubjectsSubjectExamsPostResponse = (examsOfflineRootApiV1SubjectsSubjectExamsPostResponseSuccess | examsOfflineRootApiV1SubjectsSubjectExamsPostResponseError)
-
-export const getExamsOfflineRootApiV1SubjectsSubjectExamsPostUrl = (subject: string,) => {
-
-
-  
-
-  return `/api/v1/subjects/${subject}/exams/`
+export type generateExamApiV1SubjectsSubjectExamsGeneratePostResponse500 = {
+  data: ErrorResponse
+  status: 500
 }
 
-export const examsOfflineRootApiV1SubjectsSubjectExamsPost = async (subject: string, options?: RequestInit): Promise<examsOfflineRootApiV1SubjectsSubjectExamsPostResponse> => {
+export type generateExamApiV1SubjectsSubjectExamsGeneratePostResponseSuccess = (generateExamApiV1SubjectsSubjectExamsGeneratePostResponse200) & {
+  headers: Headers;
+};
+export type generateExamApiV1SubjectsSubjectExamsGeneratePostResponseError = (generateExamApiV1SubjectsSubjectExamsGeneratePostResponse400 | generateExamApiV1SubjectsSubjectExamsGeneratePostResponse404 | generateExamApiV1SubjectsSubjectExamsGeneratePostResponse409 | generateExamApiV1SubjectsSubjectExamsGeneratePostResponse422 | generateExamApiV1SubjectsSubjectExamsGeneratePostResponse500) & {
+  headers: Headers;
+};
+
+export type generateExamApiV1SubjectsSubjectExamsGeneratePostResponse = (generateExamApiV1SubjectsSubjectExamsGeneratePostResponseSuccess | generateExamApiV1SubjectsSubjectExamsGeneratePostResponseError)
+
+export const getGenerateExamApiV1SubjectsSubjectExamsGeneratePostUrl = (subject: string,) => {
+
+
   
-  return orvalApiClient<examsOfflineRootApiV1SubjectsSubjectExamsPostResponse>(getExamsOfflineRootApiV1SubjectsSubjectExamsPostUrl(subject),
+
+  return `/api/v1/subjects/${subject}/exams/generate`
+}
+
+export const generateExamApiV1SubjectsSubjectExamsGeneratePost = async (subject: string,
+    examGenerateRequest: ExamGenerateRequest, options?: RequestInit): Promise<generateExamApiV1SubjectsSubjectExamsGeneratePostResponse> => {
+  
+  return orvalApiClient<generateExamApiV1SubjectsSubjectExamsGeneratePostResponse>(getGenerateExamApiV1SubjectsSubjectExamsGeneratePostUrl(subject),
   {      
     ...options,
-    method: 'PATCH'
-    
-    
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      examGenerateRequest,)
   }
 );}
   
 
 
 
-export const getExamsOfflineRootApiV1SubjectsSubjectExamsPostMutationOptions = <TError = ErrorResponse | HTTPValidationError,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof examsOfflineRootApiV1SubjectsSubjectExamsPost>>, TError,{subject: string}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
-): UseMutationOptions<Awaited<ReturnType<typeof examsOfflineRootApiV1SubjectsSubjectExamsPost>>, TError,{subject: string}, TContext> => {
+export const getGenerateExamApiV1SubjectsSubjectExamsGeneratePostMutationOptions = <TError = ErrorResponse | HTTPValidationError,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof generateExamApiV1SubjectsSubjectExamsGeneratePost>>, TError,{subject: string;data: ExamGenerateRequest}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
+): UseMutationOptions<Awaited<ReturnType<typeof generateExamApiV1SubjectsSubjectExamsGeneratePost>>, TError,{subject: string;data: ExamGenerateRequest}, TContext> => {
 
-const mutationKey = ['examsOfflineRootApiV1SubjectsSubjectExamsPost'];
+const mutationKey = ['generateExamApiV1SubjectsSubjectExamsGeneratePost'];
 const {mutation: mutationOptions, request: requestOptions} = options ?
       options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
       options
@@ -91,10 +124,10 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       
 
 
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof examsOfflineRootApiV1SubjectsSubjectExamsPost>>, {subject: string}> = (props) => {
-          const {subject} = props ?? {};
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof generateExamApiV1SubjectsSubjectExamsGeneratePost>>, {subject: string;data: ExamGenerateRequest}> = (props) => {
+          const {subject,data} = props ?? {};
 
-          return  examsOfflineRootApiV1SubjectsSubjectExamsPost(subject,requestOptions)
+          return  generateExamApiV1SubjectsSubjectExamsGeneratePost(subject,data,requestOptions)
         }
 
 
@@ -104,66 +137,83 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
   return  { mutationFn, ...mutationOptions }}
 
-    export type ExamsOfflineRootApiV1SubjectsSubjectExamsPostMutationResult = NonNullable<Awaited<ReturnType<typeof examsOfflineRootApiV1SubjectsSubjectExamsPost>>>
-    
-    export type ExamsOfflineRootApiV1SubjectsSubjectExamsPostMutationError = ErrorResponse | HTTPValidationError
+    export type GenerateExamApiV1SubjectsSubjectExamsGeneratePostMutationResult = NonNullable<Awaited<ReturnType<typeof generateExamApiV1SubjectsSubjectExamsGeneratePost>>>
+    export type GenerateExamApiV1SubjectsSubjectExamsGeneratePostMutationBody = ExamGenerateRequest
+    export type GenerateExamApiV1SubjectsSubjectExamsGeneratePostMutationError = ErrorResponse | HTTPValidationError
 
     /**
- * @summary Exams feature offline
+ * @summary Generate an exam from KnowledgeUnits
  */
-export const useExamsOfflineRootApiV1SubjectsSubjectExamsPost = <TError = ErrorResponse | HTTPValidationError,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof examsOfflineRootApiV1SubjectsSubjectExamsPost>>, TError,{subject: string}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
+export const useGenerateExamApiV1SubjectsSubjectExamsGeneratePost = <TError = ErrorResponse | HTTPValidationError,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof generateExamApiV1SubjectsSubjectExamsGeneratePost>>, TError,{subject: string;data: ExamGenerateRequest}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
  , queryClient?: QueryClient): UseMutationResult<
-        Awaited<ReturnType<typeof examsOfflineRootApiV1SubjectsSubjectExamsPost>>,
+        Awaited<ReturnType<typeof generateExamApiV1SubjectsSubjectExamsGeneratePost>>,
         TError,
-        {subject: string},
+        {subject: string;data: ExamGenerateRequest},
         TContext
       > => {
-      return useMutation(getExamsOfflineRootApiV1SubjectsSubjectExamsPostMutationOptions(options), queryClient);
+      return useMutation(getGenerateExamApiV1SubjectsSubjectExamsGeneratePostMutationOptions(options), queryClient);
     }
     /**
- * @summary Exams feature offline
+ * @summary List exam history
  */
-export type examsOfflinePathApiV1SubjectsSubjectExamsPathPostResponse200 = {
-  data: unknown
+export type examHistoryApiV1SubjectsSubjectExamsHistoryGetResponse200 = {
+  data: ApiResponsePaginatedDataExamHistoryItem
   status: 200
 }
 
-export type examsOfflinePathApiV1SubjectsSubjectExamsPathPostResponse404 = {
+export type examHistoryApiV1SubjectsSubjectExamsHistoryGetResponse400 = {
+  data: ErrorResponse
+  status: 400
+}
+
+export type examHistoryApiV1SubjectsSubjectExamsHistoryGetResponse404 = {
   data: ErrorResponse
   status: 404
 }
 
-export type examsOfflinePathApiV1SubjectsSubjectExamsPathPostResponse422 = {
+export type examHistoryApiV1SubjectsSubjectExamsHistoryGetResponse422 = {
   data: HTTPValidationError
   status: 422
 }
 
-export type examsOfflinePathApiV1SubjectsSubjectExamsPathPostResponseSuccess = (examsOfflinePathApiV1SubjectsSubjectExamsPathPostResponse200) & {
-  headers: Headers;
-};
-export type examsOfflinePathApiV1SubjectsSubjectExamsPathPostResponseError = (examsOfflinePathApiV1SubjectsSubjectExamsPathPostResponse404 | examsOfflinePathApiV1SubjectsSubjectExamsPathPostResponse422) & {
-  headers: Headers;
-};
-
-export type examsOfflinePathApiV1SubjectsSubjectExamsPathPostResponse = (examsOfflinePathApiV1SubjectsSubjectExamsPathPostResponseSuccess | examsOfflinePathApiV1SubjectsSubjectExamsPathPostResponseError)
-
-export const getExamsOfflinePathApiV1SubjectsSubjectExamsPathPostUrl = (subject: string,
-    path: string,) => {
-
-
-  
-
-  return `/api/v1/subjects/${subject}/exams/${path}`
+export type examHistoryApiV1SubjectsSubjectExamsHistoryGetResponse500 = {
+  data: ErrorResponse
+  status: 500
 }
 
-export const examsOfflinePathApiV1SubjectsSubjectExamsPathPost = async (subject: string,
-    path: string, options?: RequestInit): Promise<examsOfflinePathApiV1SubjectsSubjectExamsPathPostResponse> => {
+export type examHistoryApiV1SubjectsSubjectExamsHistoryGetResponseSuccess = (examHistoryApiV1SubjectsSubjectExamsHistoryGetResponse200) & {
+  headers: Headers;
+};
+export type examHistoryApiV1SubjectsSubjectExamsHistoryGetResponseError = (examHistoryApiV1SubjectsSubjectExamsHistoryGetResponse400 | examHistoryApiV1SubjectsSubjectExamsHistoryGetResponse404 | examHistoryApiV1SubjectsSubjectExamsHistoryGetResponse422 | examHistoryApiV1SubjectsSubjectExamsHistoryGetResponse500) & {
+  headers: Headers;
+};
+
+export type examHistoryApiV1SubjectsSubjectExamsHistoryGetResponse = (examHistoryApiV1SubjectsSubjectExamsHistoryGetResponseSuccess | examHistoryApiV1SubjectsSubjectExamsHistoryGetResponseError)
+
+export const getExamHistoryApiV1SubjectsSubjectExamsHistoryGetUrl = (subject: string,
+    params?: ExamHistoryApiV1SubjectsSubjectExamsHistoryGetParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/v1/subjects/${subject}/exams/history?${stringifiedParams}` : `/api/v1/subjects/${subject}/exams/history`
+}
+
+export const examHistoryApiV1SubjectsSubjectExamsHistoryGet = async (subject: string,
+    params?: ExamHistoryApiV1SubjectsSubjectExamsHistoryGetParams, options?: RequestInit): Promise<examHistoryApiV1SubjectsSubjectExamsHistoryGetResponse> => {
   
-  return orvalApiClient<examsOfflinePathApiV1SubjectsSubjectExamsPathPostResponse>(getExamsOfflinePathApiV1SubjectsSubjectExamsPathPostUrl(subject,path),
+  return orvalApiClient<examHistoryApiV1SubjectsSubjectExamsHistoryGetResponse>(getExamHistoryApiV1SubjectsSubjectExamsHistoryGetUrl(subject,params),
   {      
     ...options,
-    method: 'PATCH'
+    method: 'GET'
     
     
   }
@@ -172,11 +222,298 @@ export const examsOfflinePathApiV1SubjectsSubjectExamsPathPost = async (subject:
 
 
 
-export const getExamsOfflinePathApiV1SubjectsSubjectExamsPathPostMutationOptions = <TError = ErrorResponse | HTTPValidationError,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof examsOfflinePathApiV1SubjectsSubjectExamsPathPost>>, TError,{subject: string;path: string}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
-): UseMutationOptions<Awaited<ReturnType<typeof examsOfflinePathApiV1SubjectsSubjectExamsPathPost>>, TError,{subject: string;path: string}, TContext> => {
 
-const mutationKey = ['examsOfflinePathApiV1SubjectsSubjectExamsPathPost'];
+export const getExamHistoryApiV1SubjectsSubjectExamsHistoryGetQueryKey = (subject: string,
+    params?: ExamHistoryApiV1SubjectsSubjectExamsHistoryGetParams,) => {
+    return [
+    `/api/v1/subjects/${subject}/exams/history`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+    
+export const getExamHistoryApiV1SubjectsSubjectExamsHistoryGetQueryOptions = <TData = Awaited<ReturnType<typeof examHistoryApiV1SubjectsSubjectExamsHistoryGet>>, TError = ErrorResponse | HTTPValidationError>(subject: string,
+    params?: ExamHistoryApiV1SubjectsSubjectExamsHistoryGetParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof examHistoryApiV1SubjectsSubjectExamsHistoryGet>>, TError, TData>>, request?: SecondParameter<typeof orvalApiClient>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getExamHistoryApiV1SubjectsSubjectExamsHistoryGetQueryKey(subject,params);
+
+  
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof examHistoryApiV1SubjectsSubjectExamsHistoryGet>>> = ({ signal }) => examHistoryApiV1SubjectsSubjectExamsHistoryGet(subject,params, { signal, ...requestOptions });
+
+      
+
+      
+
+   return  { queryKey, queryFn, enabled: !!(subject), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof examHistoryApiV1SubjectsSubjectExamsHistoryGet>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type ExamHistoryApiV1SubjectsSubjectExamsHistoryGetQueryResult = NonNullable<Awaited<ReturnType<typeof examHistoryApiV1SubjectsSubjectExamsHistoryGet>>>
+export type ExamHistoryApiV1SubjectsSubjectExamsHistoryGetQueryError = ErrorResponse | HTTPValidationError
+
+
+export function useExamHistoryApiV1SubjectsSubjectExamsHistoryGet<TData = Awaited<ReturnType<typeof examHistoryApiV1SubjectsSubjectExamsHistoryGet>>, TError = ErrorResponse | HTTPValidationError>(
+ subject: string,
+    params: undefined |  ExamHistoryApiV1SubjectsSubjectExamsHistoryGetParams, options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof examHistoryApiV1SubjectsSubjectExamsHistoryGet>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof examHistoryApiV1SubjectsSubjectExamsHistoryGet>>,
+          TError,
+          Awaited<ReturnType<typeof examHistoryApiV1SubjectsSubjectExamsHistoryGet>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof orvalApiClient>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useExamHistoryApiV1SubjectsSubjectExamsHistoryGet<TData = Awaited<ReturnType<typeof examHistoryApiV1SubjectsSubjectExamsHistoryGet>>, TError = ErrorResponse | HTTPValidationError>(
+ subject: string,
+    params?: ExamHistoryApiV1SubjectsSubjectExamsHistoryGetParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof examHistoryApiV1SubjectsSubjectExamsHistoryGet>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof examHistoryApiV1SubjectsSubjectExamsHistoryGet>>,
+          TError,
+          Awaited<ReturnType<typeof examHistoryApiV1SubjectsSubjectExamsHistoryGet>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof orvalApiClient>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useExamHistoryApiV1SubjectsSubjectExamsHistoryGet<TData = Awaited<ReturnType<typeof examHistoryApiV1SubjectsSubjectExamsHistoryGet>>, TError = ErrorResponse | HTTPValidationError>(
+ subject: string,
+    params?: ExamHistoryApiV1SubjectsSubjectExamsHistoryGetParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof examHistoryApiV1SubjectsSubjectExamsHistoryGet>>, TError, TData>>, request?: SecondParameter<typeof orvalApiClient>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * @summary List exam history
+ */
+
+export function useExamHistoryApiV1SubjectsSubjectExamsHistoryGet<TData = Awaited<ReturnType<typeof examHistoryApiV1SubjectsSubjectExamsHistoryGet>>, TError = ErrorResponse | HTTPValidationError>(
+ subject: string,
+    params?: ExamHistoryApiV1SubjectsSubjectExamsHistoryGetParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof examHistoryApiV1SubjectsSubjectExamsHistoryGet>>, TError, TData>>, request?: SecondParameter<typeof orvalApiClient>}
+ , queryClient?: QueryClient 
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getExamHistoryApiV1SubjectsSubjectExamsHistoryGetQueryOptions(subject,params,options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+/**
+ * @summary Fetch exam detail
+ */
+export type examDetailApiV1SubjectsSubjectExamsExamPaperIdGetResponse200 = {
+  data: ApiResponseExamPaperDetailResponse
+  status: 200
+}
+
+export type examDetailApiV1SubjectsSubjectExamsExamPaperIdGetResponse400 = {
+  data: ErrorResponse
+  status: 400
+}
+
+export type examDetailApiV1SubjectsSubjectExamsExamPaperIdGetResponse404 = {
+  data: ErrorResponse
+  status: 404
+}
+
+export type examDetailApiV1SubjectsSubjectExamsExamPaperIdGetResponse422 = {
+  data: HTTPValidationError
+  status: 422
+}
+
+export type examDetailApiV1SubjectsSubjectExamsExamPaperIdGetResponse500 = {
+  data: ErrorResponse
+  status: 500
+}
+
+export type examDetailApiV1SubjectsSubjectExamsExamPaperIdGetResponseSuccess = (examDetailApiV1SubjectsSubjectExamsExamPaperIdGetResponse200) & {
+  headers: Headers;
+};
+export type examDetailApiV1SubjectsSubjectExamsExamPaperIdGetResponseError = (examDetailApiV1SubjectsSubjectExamsExamPaperIdGetResponse400 | examDetailApiV1SubjectsSubjectExamsExamPaperIdGetResponse404 | examDetailApiV1SubjectsSubjectExamsExamPaperIdGetResponse422 | examDetailApiV1SubjectsSubjectExamsExamPaperIdGetResponse500) & {
+  headers: Headers;
+};
+
+export type examDetailApiV1SubjectsSubjectExamsExamPaperIdGetResponse = (examDetailApiV1SubjectsSubjectExamsExamPaperIdGetResponseSuccess | examDetailApiV1SubjectsSubjectExamsExamPaperIdGetResponseError)
+
+export const getExamDetailApiV1SubjectsSubjectExamsExamPaperIdGetUrl = (subject: string,
+    examPaperId: number,) => {
+
+
+  
+
+  return `/api/v1/subjects/${subject}/exams/${examPaperId}`
+}
+
+export const examDetailApiV1SubjectsSubjectExamsExamPaperIdGet = async (subject: string,
+    examPaperId: number, options?: RequestInit): Promise<examDetailApiV1SubjectsSubjectExamsExamPaperIdGetResponse> => {
+  
+  return orvalApiClient<examDetailApiV1SubjectsSubjectExamsExamPaperIdGetResponse>(getExamDetailApiV1SubjectsSubjectExamsExamPaperIdGetUrl(subject,examPaperId),
+  {      
+    ...options,
+    method: 'GET'
+    
+    
+  }
+);}
+  
+
+
+
+
+export const getExamDetailApiV1SubjectsSubjectExamsExamPaperIdGetQueryKey = (subject: string,
+    examPaperId: number,) => {
+    return [
+    `/api/v1/subjects/${subject}/exams/${examPaperId}`
+    ] as const;
+    }
+
+    
+export const getExamDetailApiV1SubjectsSubjectExamsExamPaperIdGetQueryOptions = <TData = Awaited<ReturnType<typeof examDetailApiV1SubjectsSubjectExamsExamPaperIdGet>>, TError = ErrorResponse | HTTPValidationError>(subject: string,
+    examPaperId: number, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof examDetailApiV1SubjectsSubjectExamsExamPaperIdGet>>, TError, TData>>, request?: SecondParameter<typeof orvalApiClient>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getExamDetailApiV1SubjectsSubjectExamsExamPaperIdGetQueryKey(subject,examPaperId);
+
+  
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof examDetailApiV1SubjectsSubjectExamsExamPaperIdGet>>> = ({ signal }) => examDetailApiV1SubjectsSubjectExamsExamPaperIdGet(subject,examPaperId, { signal, ...requestOptions });
+
+      
+
+      
+
+   return  { queryKey, queryFn, enabled: !!(subject && examPaperId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof examDetailApiV1SubjectsSubjectExamsExamPaperIdGet>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type ExamDetailApiV1SubjectsSubjectExamsExamPaperIdGetQueryResult = NonNullable<Awaited<ReturnType<typeof examDetailApiV1SubjectsSubjectExamsExamPaperIdGet>>>
+export type ExamDetailApiV1SubjectsSubjectExamsExamPaperIdGetQueryError = ErrorResponse | HTTPValidationError
+
+
+export function useExamDetailApiV1SubjectsSubjectExamsExamPaperIdGet<TData = Awaited<ReturnType<typeof examDetailApiV1SubjectsSubjectExamsExamPaperIdGet>>, TError = ErrorResponse | HTTPValidationError>(
+ subject: string,
+    examPaperId: number, options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof examDetailApiV1SubjectsSubjectExamsExamPaperIdGet>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof examDetailApiV1SubjectsSubjectExamsExamPaperIdGet>>,
+          TError,
+          Awaited<ReturnType<typeof examDetailApiV1SubjectsSubjectExamsExamPaperIdGet>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof orvalApiClient>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useExamDetailApiV1SubjectsSubjectExamsExamPaperIdGet<TData = Awaited<ReturnType<typeof examDetailApiV1SubjectsSubjectExamsExamPaperIdGet>>, TError = ErrorResponse | HTTPValidationError>(
+ subject: string,
+    examPaperId: number, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof examDetailApiV1SubjectsSubjectExamsExamPaperIdGet>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof examDetailApiV1SubjectsSubjectExamsExamPaperIdGet>>,
+          TError,
+          Awaited<ReturnType<typeof examDetailApiV1SubjectsSubjectExamsExamPaperIdGet>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof orvalApiClient>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useExamDetailApiV1SubjectsSubjectExamsExamPaperIdGet<TData = Awaited<ReturnType<typeof examDetailApiV1SubjectsSubjectExamsExamPaperIdGet>>, TError = ErrorResponse | HTTPValidationError>(
+ subject: string,
+    examPaperId: number, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof examDetailApiV1SubjectsSubjectExamsExamPaperIdGet>>, TError, TData>>, request?: SecondParameter<typeof orvalApiClient>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * @summary Fetch exam detail
+ */
+
+export function useExamDetailApiV1SubjectsSubjectExamsExamPaperIdGet<TData = Awaited<ReturnType<typeof examDetailApiV1SubjectsSubjectExamsExamPaperIdGet>>, TError = ErrorResponse | HTTPValidationError>(
+ subject: string,
+    examPaperId: number, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof examDetailApiV1SubjectsSubjectExamsExamPaperIdGet>>, TError, TData>>, request?: SecondParameter<typeof orvalApiClient>}
+ , queryClient?: QueryClient 
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getExamDetailApiV1SubjectsSubjectExamsExamPaperIdGetQueryOptions(subject,examPaperId,options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+/**
+ * @summary Submit answers and update KnowledgeUnit mastery
+ */
+export type submitExamApiV1SubjectsSubjectExamsExamPaperIdSubmitPostResponse200 = {
+  data: ApiResponseExamGradeResponse
+  status: 200
+}
+
+export type submitExamApiV1SubjectsSubjectExamsExamPaperIdSubmitPostResponse400 = {
+  data: ErrorResponse
+  status: 400
+}
+
+export type submitExamApiV1SubjectsSubjectExamsExamPaperIdSubmitPostResponse404 = {
+  data: ErrorResponse
+  status: 404
+}
+
+export type submitExamApiV1SubjectsSubjectExamsExamPaperIdSubmitPostResponse409 = {
+  data: ErrorResponse
+  status: 409
+}
+
+export type submitExamApiV1SubjectsSubjectExamsExamPaperIdSubmitPostResponse422 = {
+  data: HTTPValidationError
+  status: 422
+}
+
+export type submitExamApiV1SubjectsSubjectExamsExamPaperIdSubmitPostResponse500 = {
+  data: ErrorResponse
+  status: 500
+}
+
+export type submitExamApiV1SubjectsSubjectExamsExamPaperIdSubmitPostResponseSuccess = (submitExamApiV1SubjectsSubjectExamsExamPaperIdSubmitPostResponse200) & {
+  headers: Headers;
+};
+export type submitExamApiV1SubjectsSubjectExamsExamPaperIdSubmitPostResponseError = (submitExamApiV1SubjectsSubjectExamsExamPaperIdSubmitPostResponse400 | submitExamApiV1SubjectsSubjectExamsExamPaperIdSubmitPostResponse404 | submitExamApiV1SubjectsSubjectExamsExamPaperIdSubmitPostResponse409 | submitExamApiV1SubjectsSubjectExamsExamPaperIdSubmitPostResponse422 | submitExamApiV1SubjectsSubjectExamsExamPaperIdSubmitPostResponse500) & {
+  headers: Headers;
+};
+
+export type submitExamApiV1SubjectsSubjectExamsExamPaperIdSubmitPostResponse = (submitExamApiV1SubjectsSubjectExamsExamPaperIdSubmitPostResponseSuccess | submitExamApiV1SubjectsSubjectExamsExamPaperIdSubmitPostResponseError)
+
+export const getSubmitExamApiV1SubjectsSubjectExamsExamPaperIdSubmitPostUrl = (subject: string,
+    examPaperId: number,) => {
+
+
+  
+
+  return `/api/v1/subjects/${subject}/exams/${examPaperId}/submit`
+}
+
+export const submitExamApiV1SubjectsSubjectExamsExamPaperIdSubmitPost = async (subject: string,
+    examPaperId: number,
+    examSubmitRequest: ExamSubmitRequest, options?: RequestInit): Promise<submitExamApiV1SubjectsSubjectExamsExamPaperIdSubmitPostResponse> => {
+  
+  return orvalApiClient<submitExamApiV1SubjectsSubjectExamsExamPaperIdSubmitPostResponse>(getSubmitExamApiV1SubjectsSubjectExamsExamPaperIdSubmitPostUrl(subject,examPaperId),
+  {      
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      examSubmitRequest,)
+  }
+);}
+  
+
+
+
+export const getSubmitExamApiV1SubjectsSubjectExamsExamPaperIdSubmitPostMutationOptions = <TError = ErrorResponse | HTTPValidationError,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof submitExamApiV1SubjectsSubjectExamsExamPaperIdSubmitPost>>, TError,{subject: string;examPaperId: number;data: ExamSubmitRequest}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
+): UseMutationOptions<Awaited<ReturnType<typeof submitExamApiV1SubjectsSubjectExamsExamPaperIdSubmitPost>>, TError,{subject: string;examPaperId: number;data: ExamSubmitRequest}, TContext> => {
+
+const mutationKey = ['submitExamApiV1SubjectsSubjectExamsExamPaperIdSubmitPost'];
 const {mutation: mutationOptions, request: requestOptions} = options ?
       options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
       options
@@ -186,10 +523,10 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       
 
 
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof examsOfflinePathApiV1SubjectsSubjectExamsPathPost>>, {subject: string;path: string}> = (props) => {
-          const {subject,path} = props ?? {};
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof submitExamApiV1SubjectsSubjectExamsExamPaperIdSubmitPost>>, {subject: string;examPaperId: number;data: ExamSubmitRequest}> = (props) => {
+          const {subject,examPaperId,data} = props ?? {};
 
-          return  examsOfflinePathApiV1SubjectsSubjectExamsPathPost(subject,path,requestOptions)
+          return  submitExamApiV1SubjectsSubjectExamsExamPaperIdSubmitPost(subject,examPaperId,data,requestOptions)
         }
 
 
@@ -199,21 +536,21 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
   return  { mutationFn, ...mutationOptions }}
 
-    export type ExamsOfflinePathApiV1SubjectsSubjectExamsPathPostMutationResult = NonNullable<Awaited<ReturnType<typeof examsOfflinePathApiV1SubjectsSubjectExamsPathPost>>>
-    
-    export type ExamsOfflinePathApiV1SubjectsSubjectExamsPathPostMutationError = ErrorResponse | HTTPValidationError
+    export type SubmitExamApiV1SubjectsSubjectExamsExamPaperIdSubmitPostMutationResult = NonNullable<Awaited<ReturnType<typeof submitExamApiV1SubjectsSubjectExamsExamPaperIdSubmitPost>>>
+    export type SubmitExamApiV1SubjectsSubjectExamsExamPaperIdSubmitPostMutationBody = ExamSubmitRequest
+    export type SubmitExamApiV1SubjectsSubjectExamsExamPaperIdSubmitPostMutationError = ErrorResponse | HTTPValidationError
 
     /**
- * @summary Exams feature offline
+ * @summary Submit answers and update KnowledgeUnit mastery
  */
-export const useExamsOfflinePathApiV1SubjectsSubjectExamsPathPost = <TError = ErrorResponse | HTTPValidationError,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof examsOfflinePathApiV1SubjectsSubjectExamsPathPost>>, TError,{subject: string;path: string}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
+export const useSubmitExamApiV1SubjectsSubjectExamsExamPaperIdSubmitPost = <TError = ErrorResponse | HTTPValidationError,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof submitExamApiV1SubjectsSubjectExamsExamPaperIdSubmitPost>>, TError,{subject: string;examPaperId: number;data: ExamSubmitRequest}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
  , queryClient?: QueryClient): UseMutationResult<
-        Awaited<ReturnType<typeof examsOfflinePathApiV1SubjectsSubjectExamsPathPost>>,
+        Awaited<ReturnType<typeof submitExamApiV1SubjectsSubjectExamsExamPaperIdSubmitPost>>,
         TError,
-        {subject: string;path: string},
+        {subject: string;examPaperId: number;data: ExamSubmitRequest},
         TContext
       > => {
-      return useMutation(getExamsOfflinePathApiV1SubjectsSubjectExamsPathPostMutationOptions(options), queryClient);
+      return useMutation(getSubmitExamApiV1SubjectsSubjectExamsExamPaperIdSubmitPostMutationOptions(options), queryClient);
     }
     
