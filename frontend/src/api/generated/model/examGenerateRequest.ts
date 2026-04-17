@@ -24,11 +24,4 @@ export interface ExamGenerateRequest {
   sample_file_uids?: string[] | null;
   /** Optional target question count. */
   num_questions?: number | null;
-<<<<<<< HEAD
-=======
-  /** Optional theme tree node scope. */
-  theme_tree_node_id?: number | null;
-  /** Optional teaching unit scope. */
-  teaching_unit_ids?: number[] | null;
->>>>>>> origin/main
 }

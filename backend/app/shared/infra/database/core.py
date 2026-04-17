@@ -224,6 +224,25 @@ def _remove_sqlite_files(db_path: Path) -> None:
         Path(f"{db_path}{suffix}").unlink(missing_ok=True)
 
 
+def _drop_sqlite_indexes_for_columns(
+    connection: sa.Connection,
+    inspector: sa.Inspector,
+    *,
+    table_name: str,
+    column_names: set[str],
+) -> None:
+    for index in inspector.get_indexes(table_name):
+        indexed_columns = set(index.get("column_names") or ())
+        index_name = index.get("name")
+        if not index_name or indexed_columns.isdisjoint(column_names):
+            continue
+        connection.execute(
+            sa.text(
+                f"DROP INDEX IF EXISTS {quote_sqlite_identifier(index_name)}"
+            )
+        )
+
+
 def _drop_sqlite_legacy_schema(engine: sa.Engine) -> None:
     inspector = sa.inspect(engine)
     existing_tables = set(inspector.get_table_names())
@@ -240,6 +259,18 @@ def _drop_sqlite_legacy_schema(engine: sa.Engine) -> None:
                     column["name"]
                     for column in inspector.get_columns(table_name)
                 }
+                legacy_columns = {
+                    column_name
+                    for column_name in column_names
+                    if column_name in existing_columns
+                }
+                if legacy_columns:
+                    _drop_sqlite_indexes_for_columns(
+                        connection,
+                        inspector,
+                        table_name=table_name,
+                        column_names=legacy_columns,
+                    )
                 for column_name in column_names:
                     if column_name not in existing_columns:
                         continue
