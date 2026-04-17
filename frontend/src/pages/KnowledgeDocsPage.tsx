@@ -221,6 +221,18 @@ function compactTocItems(items: TocItem[]): TocItem[] {
   return compacted;
 }
 
+function buildDefaultCollapsedTocIds(items: TocItem[]): Set<string> {
+  const collapsed = new Set<string>();
+  for (let index = 0; index < items.length; index += 1) {
+    const item = items[index];
+    const next = items[index + 1];
+    if (item.level === 2 && next && next.level > item.level) {
+      collapsed.add(item.id);
+    }
+  }
+  return collapsed;
+}
+
 /** Recursively extract plain text from React children */
 function extractText(node: React.ReactNode): string {
   if (typeof node === "string") return node;
@@ -922,6 +934,7 @@ export function KnowledgeDocsPage() {
   const threadRefs = useRef(new Map<string, HTMLDivElement>());
   const headingFlashTimersRef = useRef(new Map<string, number>());
   const tocNavRef = useRef<HTMLElement>(null);
+  const tocDefaultInitializedRef = useRef(false);
   const streamControllersRef = useRef(new Map<string, AbortController>());
 
   const isTocVisible = isCompactPanels ? activeDrawer === "toc" : !isTocCollapsed;
@@ -986,6 +999,7 @@ export function KnowledgeDocsPage() {
   }, [activeHeading]);
 
   useEffect(() => {
+    tocDefaultInitializedRef.current = false;
     const rafId = window.requestAnimationFrame(() => {
       const container = scrollRef.current;
       if (!container) return;
@@ -995,12 +1009,16 @@ export function KnowledgeDocsPage() {
           const id = node.getAttribute("data-heading-id") ?? node.id;
           if (!id) return null;
           const level = Number(node.tagName.replace("H", ""));
-          if (!Number.isInteger(level) || level < 1 || level > 2) return null;
+          if (!Number.isInteger(level) || level < 1 || level > 3) return null;
           const text = node.textContent?.trim() || id;
           return { id, text, level };
         })
         .filter((item): item is TocItem => item !== null));
       setToc((prev) => (tocEqual(prev, nextToc) ? prev : nextToc));
+      if (!tocDefaultInitializedRef.current && nextToc.length > 0) {
+        tocDefaultInitializedRef.current = true;
+        setCollapsedTocIds(buildDefaultCollapsedTocIds(nextToc));
+      }
     });
     return () => window.cancelAnimationFrame(rafId);
   }, [renderedMarkdown]);
