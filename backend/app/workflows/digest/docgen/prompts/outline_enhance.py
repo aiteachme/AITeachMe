@@ -8,7 +8,7 @@ from typing import Any
 from langsmith import traceable
 
 
-@traceable(name="digest.docgen.outline_enhance_prompt", run_type="prompt")
+@traceable(name="DocGen：增强章节大纲提示词", run_type="prompt")
 def build_outline_enhance_messages(
     *,
     subject: str,

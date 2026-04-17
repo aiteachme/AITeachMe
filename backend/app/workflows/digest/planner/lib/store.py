@@ -624,16 +624,23 @@ def _normalized_plan_payload(
     *,
     planner_context: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
+    build_constraints = dict(plan.get("build_constraints") or {})
+    chapter_plan = _ensure_min_chapter_payload(
+        list(plan.get("chapter_plan") or []),
+        min_chapters=int(build_constraints.get("min_chapters", 0) or 0),
+        digest_mode=str(plan.get("digest_mode") or ""),
+        user_goal=str(plan.get("user_goal") or ""),
+    )
     payload = {
         "subject": str(plan.get("subject") or ""),
         "user_goal": str(plan.get("user_goal") or ""),
         "digest_mode": str(plan.get("digest_mode") or ""),
         "tone": str(plan.get("tone") or ""),
         "selected_skillpacks": list(plan.get("selected_skillpacks") or []),
-        "chapter_plan": list(plan.get("chapter_plan") or []),
+        "chapter_plan": chapter_plan,
         "research_queries": list(plan.get("research_queries") or []),
         "media_plan": dict(plan.get("media_plan") or {}),
-        "build_constraints": dict(plan.get("build_constraints") or {}),
+        "build_constraints": build_constraints,
         "plan_summary": str(plan.get("plan_summary") or ""),
     }
     context_payload = dict(planner_context or plan.get("planner_context") or {})
@@ -641,6 +648,49 @@ def _normalized_plan_payload(
         payload["planner_context"] = context_payload
         payload["docgen_history_brief"] = str(context_payload.get("docgen_history_brief") or "")
     return payload
+
+
+def _ensure_min_chapter_payload(
+    chapters: list[Any],
+    *,
+    min_chapters: int,
+    digest_mode: str,
+    user_goal: str,
+) -> list[dict[str, Any]]:
+    normalized = [dict(item) for item in chapters if isinstance(item, dict)]
+    if min_chapters <= 0 or len(normalized) >= min_chapters:
+        return normalized
+    existing_titles = {
+        str(item.get("title") or "").strip().casefold()
+        for item in normalized
+        if str(item.get("title") or "").strip()
+    }
+    supplements = ["核心概念总览", "关键结构与流程", "典型例题与应用", "易错点与复盘", "综合练习"]
+    mode = str(digest_mode or "").strip().lower()
+    while len(normalized) < min_chapters:
+        index = len(normalized) + 1
+        title = supplements[(index - 1) % len(supplements)]
+        if title.casefold() in existing_titles:
+            title = f"{title} {index}"
+        existing_titles.add(title.casefold())
+        if mode == "sprint":
+            required = [f"{title} 的高频考点", f"{title} 的典型题型", f"{title} 的易错点"]
+        else:
+            required = [f"{title} 的核心概念", f"{title} 的关键结构", f"{title} 的例子与迁移"]
+        if user_goal:
+            required.append(user_goal)
+        normalized.append(
+            {
+                "chapter_index": index,
+                "title": title,
+                "objective": "；".join(required[:3]),
+                "required_elements": required[:6],
+                "search_queries": [title, *required[:3]],
+                "writing_instructions": "按用户确认的课程模式补齐本章讲解，保持和前文章节风格一致。",
+                "media_hints": {"images": [], "mermaid": [f"{title} 的知识结构图"], "interactive": []},
+            }
+        )
+    return normalized
 
 
 def mark_planner_session_failed(*, subject: str, user_id: str, session_id: str) -> None:

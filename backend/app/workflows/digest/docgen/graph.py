@@ -23,6 +23,15 @@ from app.workflows.digest.docgen.nodes import (
 from app.workflows.digest.docgen.nodes.common import resolve_docgen_course_type, resolve_docgen_retrieval_profile
 from app.workflows.digest.docgen.state import DocGenState
 
+NODE_LOAD_CONTEXT = "读取确认方案"
+NODE_PREPARE_CONTEXT = "并行准备写作上下文"
+NODE_DISPATCH = "确认章节生成计划"
+NODE_GENERATE_CHAPTERS = "生成章节草稿"
+NODE_ENHANCE_CHAPTERS = "增强章节内容"
+NODE_MERGE_REVIEW = "合并检查整本文档"
+NODE_PUBLISH = "发布知识文档"
+RUN_NAME_DOCGEN = "织网引擎：生成知识文档"
+
 
 def build_docgen_graph(*, context: WorkflowContext) -> StateGraph:
     """Build the rewritten DocGen graph."""
@@ -30,66 +39,66 @@ def build_docgen_graph(*, context: WorkflowContext) -> StateGraph:
     workflow = StateGraph(DocGenState)
     trace = workflow_tracer(context=context, lane="docgen")
     workflow.add_node(
-        "load_context",
-        trace.node(build_load_context_node(context=context), name="load_context", timing_field="load_ms"),
+        NODE_LOAD_CONTEXT,
+        trace.node(build_load_context_node(context=context), name=NODE_LOAD_CONTEXT, timing_field="load_ms"),
     )
     workflow.add_node(
-        "prepare_parallel_inputs",
+        NODE_PREPARE_CONTEXT,
         trace.node(
             build_prepare_parallel_inputs_node(context=context),
-            name="prepare_parallel_inputs",
+            name=NODE_PREPARE_CONTEXT,
             timing_field="prepare_ms",
         ),
     )
     workflow.add_node(
-        "confirm_and_dispatch",
+        NODE_DISPATCH,
         trace.node(
             build_confirm_and_dispatch_node(context=context),
-            name="confirm_and_dispatch",
+            name=NODE_DISPATCH,
             timing_field="dispatch_ms",
         ),
     )
     workflow.add_node(
-        "generate_chapters",
-        trace.node(build_generate_chapters_node(context=context), name="generate_chapters"),
+        NODE_GENERATE_CHAPTERS,
+        trace.node(build_generate_chapters_node(context=context), name=NODE_GENERATE_CHAPTERS),
     )
     workflow.add_node(
-        "enhance_chapters",
-        trace.node(build_enhance_chapters_node(context=context), name="enhance_chapters"),
+        NODE_ENHANCE_CHAPTERS,
+        trace.node(build_enhance_chapters_node(context=context), name=NODE_ENHANCE_CHAPTERS),
     )
     workflow.add_node(
-        "merge_review",
-        trace.node(build_merge_review_node(context=context), name="merge_review", timing_field="merge_review_ms"),
+        NODE_MERGE_REVIEW,
+        trace.node(build_merge_review_node(context=context), name=NODE_MERGE_REVIEW, timing_field="merge_review_ms"),
     )
     workflow.add_node(
-        "publish_document",
-        trace.node(build_publish_document_node(context=context), name="publish_document"),
+        NODE_PUBLISH,
+        trace.node(build_publish_document_node(context=context), name=NODE_PUBLISH),
     )
 
-    workflow.set_entry_point("load_context")
+    workflow.set_entry_point(NODE_LOAD_CONTEXT)
     workflow.add_conditional_edges(
-        "load_context",
-        route_after_step,
-        {"continue": "prepare_parallel_inputs", "fail": END},
+        NODE_LOAD_CONTEXT,
+        route_after_step_for_trace,
+        {"continue": NODE_PREPARE_CONTEXT, "fail": END},
     )
     workflow.add_conditional_edges(
-        "prepare_parallel_inputs",
-        route_after_step,
-        {"continue": "confirm_and_dispatch", "fail": END},
+        NODE_PREPARE_CONTEXT,
+        route_after_step_for_trace,
+        {"continue": NODE_DISPATCH, "fail": END},
     )
     workflow.add_conditional_edges(
-        "confirm_and_dispatch",
-        build_generation_sends,
+        NODE_DISPATCH,
+        build_generation_sends_for_trace,
         {"fail": END},
     )
-    workflow.add_edge("generate_chapters", "enhance_chapters")
-    workflow.add_edge("enhance_chapters", "merge_review")
+    workflow.add_edge(NODE_GENERATE_CHAPTERS, NODE_ENHANCE_CHAPTERS)
+    workflow.add_edge(NODE_ENHANCE_CHAPTERS, NODE_MERGE_REVIEW)
     workflow.add_conditional_edges(
-        "merge_review",
-        route_after_step,
-        {"continue": "publish_document", "fail": END},
+        NODE_MERGE_REVIEW,
+        route_after_step_for_trace,
+        {"continue": NODE_PUBLISH, "fail": END},
     )
-    workflow.add_edge("publish_document", END)
+    workflow.add_edge(NODE_PUBLISH, END)
     return workflow
 
 
@@ -137,6 +146,14 @@ def route_after_step(state: DocGenState) -> Literal["fail", "continue"]:
     return "fail" if state.get("error") else "continue"
 
 
+def route_after_step_for_trace(state: DocGenState) -> Literal["fail", "continue"]:
+    return route_after_step(state)
+
+
+route_after_step_for_trace.__name__ = "检查是否继续"
+route_after_step_for_trace.__qualname__ = "检查是否继续"
+
+
 def build_generation_sends(state: DocGenState) -> list[Send] | Literal["fail"]:
     if state.get("error"):
         return "fail"
@@ -149,7 +166,7 @@ def build_generation_sends(state: DocGenState) -> list[Send] | Literal["fail"]:
     total = len(tasks)
     return [
         Send(
-            "generate_chapters",
+            NODE_GENERATE_CHAPTERS,
             {
                 "subject": state["subject"],
                 "requested_at": state["requested_at"],
@@ -171,6 +188,14 @@ def build_generation_sends(state: DocGenState) -> list[Send] | Literal["fail"]:
         )
         for task in tasks
     ]
+
+
+def build_generation_sends_for_trace(state: DocGenState) -> list[Send] | Literal["fail"]:
+    return build_generation_sends(state)
+
+
+build_generation_sends_for_trace.__name__ = "按章节分发生成任务"
+build_generation_sends_for_trace.__qualname__ = "按章节分发生成任务"
 
 
 def get_langgraph_dev_docgen_graph() -> StateGraph:

@@ -38,6 +38,12 @@ from app.workflows.digest.planner.state import (
 
 logger = structlog.get_logger(__name__)
 
+NODE_LOAD_MATERIALS = "读取资料与会话"
+NODE_BRIEF_AND_INTENT = "生成规划思路并识别意图"
+NODE_PARSE_PLAN = "生成并解析计划大纲"
+NODE_PERSIST_PLAN = "规范化并保存方案"
+RUN_NAME_PLANNER = "规划引擎：生成构建方案"
+
 
 def _require_success_state(result: WorkflowResult[BuildPlannerState]) -> BuildPlannerState:
     state = result.require_value()
@@ -70,29 +76,29 @@ def build_planner_graph(*, context: WorkflowContext) -> StateGraph:
     # Entry-side persistence and material loading live together here:
     # the node turns an API create/append request into a complete planner state.
     workflow.add_node(
-        "load_planner_materials",
+        NODE_LOAD_MATERIALS,
         trace.node(
             build_load_planner_materials_node(context=context),
-            name="load_planner_materials",
+            name=NODE_LOAD_MATERIALS,
             timing_field="prepare_ms",
         ),
     )
     # First two LLM calls run in parallel: reason streams a visible brief,
     # primary extracts compact learning intent.
     workflow.add_node(
-        "stream_brief_and_extract_intent",
+        NODE_BRIEF_AND_INTENT,
         trace.node(
             build_stream_brief_and_extract_intent_node(context=context),
-            name="stream_brief_and_extract_intent",
+            name=NODE_BRIEF_AND_INTENT,
             timing_field="bootstrap_ms",
         ),
     )
 
     workflow.add_node(
-        "stream_and_parse_plan_draft",
+        NODE_PARSE_PLAN,
         trace.node(
             build_stream_and_parse_plan_draft_node(context=context),
-            name="stream_and_parse_plan_draft",
+            name=NODE_PARSE_PLAN,
             timing_field="compose_ms",
         ),
     )
@@ -100,30 +106,30 @@ def build_planner_graph(*, context: WorkflowContext) -> StateGraph:
     # Exit-side persistence: normalize the draft before saving latest_plan
     # and the assistant turn. Store stays tiny; business decisions stay here.
     workflow.add_node(
-        "normalize_and_persist_plan",
+        NODE_PERSIST_PLAN,
         trace.node(
             build_normalize_and_persist_plan_node(context=context),
-            name="normalize_and_persist_plan",
+            name=NODE_PERSIST_PLAN,
             timing_field="finalize_ms",
         ),
     )
-    workflow.set_entry_point("load_planner_materials")
+    workflow.set_entry_point(NODE_LOAD_MATERIALS)
     workflow.add_conditional_edges(
-        "load_planner_materials",
-        route_after_step,
-        {"continue": "stream_brief_and_extract_intent", "fail": END},
+        NODE_LOAD_MATERIALS,
+        route_after_step_for_trace,
+        {"continue": NODE_BRIEF_AND_INTENT, "fail": END},
     )
     workflow.add_conditional_edges(
-        "stream_brief_and_extract_intent",
-        route_after_step,
-        {"continue": "stream_and_parse_plan_draft", "fail": END},
+        NODE_BRIEF_AND_INTENT,
+        route_after_step_for_trace,
+        {"continue": NODE_PARSE_PLAN, "fail": END},
     )
     workflow.add_conditional_edges(
-        "stream_and_parse_plan_draft",
-        route_after_step,
-        {"continue": "normalize_and_persist_plan", "fail": END},
+        NODE_PARSE_PLAN,
+        route_after_step_for_trace,
+        {"continue": NODE_PERSIST_PLAN, "fail": END},
     )
-    workflow.add_edge("normalize_and_persist_plan", END)
+    workflow.add_edge(NODE_PERSIST_PLAN, END)
     return workflow
 
 
@@ -136,6 +142,14 @@ def route_after_step(state: BuildPlannerState) -> str:
         error=state.get("error"),
     )
     return route
+
+
+def route_after_step_for_trace(state: BuildPlannerState) -> str:
+    return route_after_step(state)
+
+
+route_after_step_for_trace.__name__ = "检查是否继续"
+route_after_step_for_trace.__qualname__ = "检查是否继续"
 
 
 def create_planner_initial_state(
@@ -224,6 +238,7 @@ async def run_build_planner_workflow(
         metadata={
             "build_session_id": planner_session_id,
             "lane": "planner",
+            "langsmith_run_name": RUN_NAME_PLANNER,
             "planner_session_id": planner_session_id,
             "digest_mode": digest_mode,
         },

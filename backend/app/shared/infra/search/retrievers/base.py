@@ -15,6 +15,21 @@ from app.shared.infra.observability.trace import (
 )
 
 _REGISTERED_RETRIEVER_TYPES: dict[str, type["BaseRetriever"]] = {}
+_RETRIEVER_TRACE_LABELS = {
+    "local_rag": "检索：本地资料RAG",
+    "duckduckgo": "检索：DuckDuckGo网页",
+    "wikipedia": "检索：维基百科",
+    "baidu_baike": "检索：百度百科",
+    "zhihu": "检索：知乎",
+    "bocha": "检索：博查网页",
+    "tavily": "检索：Tavily网页",
+    "brave": "检索：Brave网页",
+    "exa": "检索：Exa网页",
+    "bing": "检索：Bing网页",
+    "arxiv": "检索：arXiv论文",
+    "semantic_scholar": "检索：Semantic Scholar",
+    "searxng": "检索：SearXNG",
+}
 
 
 def _search_result_preview(results: list[SearchResult], *, limit: int = 3) -> list[dict[str, object]]:
@@ -45,6 +60,11 @@ def _retriever_trace_outputs(payload: object) -> dict[str, object]:
     if isinstance(trace, dict):
         return dict(trace)
     return {}
+
+
+def _retriever_trace_name(retriever: "BaseRetriever") -> str:
+    name = retriever.name
+    return _RETRIEVER_TRACE_LABELS.get(name, f"检索：{name}")
 
 
 def _normalize_registry_name(value: str) -> str:
@@ -130,7 +150,7 @@ class BaseRetriever(ABC):
         run_type="retriever",
         process_inputs=_retriever_trace_inputs,
         process_outputs=_retriever_trace_outputs,
-        name_factory=lambda self, query, max_results=5: f"retriever.{self.name}",
+        name_factory=lambda self, query, max_results=5: _retriever_trace_name(self),
         metadata_factory=lambda self, query, max_results=5: {"retriever_name": self.name},
         tags_factory=lambda self, query, max_results=5: [f"retriever:{self.name}"],
     )

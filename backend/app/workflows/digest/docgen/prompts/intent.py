@@ -8,7 +8,7 @@ from typing import Any
 from langsmith import traceable
 
 
-@traceable(name="digest.docgen.intent_prompt", run_type="prompt")
+@traceable(name="DocGen：识别写作意图提示词", run_type="prompt")
 def build_intent_messages(
     *,
     subject: str,

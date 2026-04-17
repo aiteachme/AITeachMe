@@ -9,6 +9,7 @@ from urllib.parse import urlparse
 MERMAID_PLACEHOLDER_PATTERN = re.compile(r"<!--\s*\[MERMAID:\s*(.+?)\]\s*-->")
 IMAGE_PLACEHOLDER_PATTERN = re.compile(r"<!--\s*\[IMAGE:\s*(.+?)\]\s*-->")
 HEADER_PATTERN = re.compile(r"^(#{1,6})\s+(.+?)\s*$", re.MULTILINE)
+KNOWLEDGE_ANCHOR_PATTERN = re.compile(r"\s*\{#ku_[A-Za-z0-9_-]+\}")
 MERMAID_START_PATTERN = re.compile(r"^(?P<prefix>(?:>\s*)*)```mermaid\s*$", re.IGNORECASE)
 MERMAID_FENCE_PATTERN = re.compile(r"^```(?P<trailing>.*)$")
 MARKDOWN_BOUNDARY_PATTERN = re.compile(r"^(#{1,6}\s+\S|[-*+]\s+\S|\d+\.\s+\S|>\s*\[!|\|.+\||---\s*$)")
@@ -161,7 +162,7 @@ def extract_markdown_headers(
         level = len(hashes)
         if level < min_level or level > max_level:
             continue
-        cleaned_title = title.strip()
+        cleaned_title = KNOWLEDGE_ANCHOR_PATTERN.sub("", title).strip()
         lowered = cleaned_title.lower()
         if lowered in {"table of contents", "knowledge document overview", "目录", "知识文档总览"}:
             continue
@@ -176,7 +177,7 @@ def extract_markdown_headers(
 
 
 def slugify_markdown_anchor(text: str) -> str:
-    cleaned = text.strip().lower()
+    cleaned = KNOWLEDGE_ANCHOR_PATTERN.sub("", text).strip().lower()
     cleaned = re.sub(r"[^\w\s-]", "", cleaned)
     cleaned = re.sub(r"\s+", "-", cleaned)
     cleaned = re.sub(r"-{2,}", "-", cleaned)
