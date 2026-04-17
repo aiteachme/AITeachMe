@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 
+import structlog
 from fastapi import APIRouter, Body, Depends, Path, Request
 from fastapi.responses import StreamingResponse
 from sqlmodel import Session
@@ -52,6 +53,7 @@ from app.workflows.support.subjects import get_subject_record
 from app.workflows.interact.chat.lib.streaming import SSEEventEmitter
 
 router = APIRouter(tags=["knowledge"])
+logger = structlog.get_logger(__name__)
 
 
 def _planner_status_detail(payload: dict[str, object]) -> str:
@@ -282,12 +284,25 @@ def knowledge_build_plan_confirm(
     session: Session = Depends(get_db),
 ) -> ApiResponse[BuildPlannerConfirmResponse]:
     normalized = normalize_subject_slug(subject)
+    logger.info(
+        "knowledge_build_plan_confirm_requested",
+        subject=normalized,
+        session_id=session_id,
+        user_id=user.user_id,
+    )
     subject_record = get_subject_record(session, normalized, owner_user_id=user.user_id)
     data = confirm_build_planner_session(
         session,
         subject=subject_record,
         user_id=user.user_id,
         session_id=session_id,
+    )
+    logger.info(
+        "knowledge_build_plan_confirm_completed",
+        subject=normalized,
+        session_id=session_id,
+        confirmed_plan_id=data.confirmed_plan_id,
+        user_id=user.user_id,
     )
     return ok_response(data)
 
@@ -306,6 +321,14 @@ async def knowledge_build(
     session: Session = Depends(get_db),
 ) -> ApiResponse[DocGenBuildData]:
     normalized = normalize_subject_slug(subject)
+    logger.info(
+        "knowledge_build_request_received",
+        subject=normalized,
+        user_id=user.user_id,
+        build_type=body.build_type or "docs",
+        confirmed_plan_id=body.confirmed_plan_id,
+        file_uid_count=len(body.file_uids or []),
+    )
     subject_record = get_subject_record(
         session,
         normalized,
@@ -326,6 +349,14 @@ async def knowledge_build(
     build_type = body.build_type or "docs"
 
     if build_type == "docs":
+        logger.info(
+            "knowledge_build_docs_background_spawning",
+            subject=normalized,
+            user_id=user.user_id,
+            confirmed_plan_id=data.confirmed_plan_id,
+            accepted_file_count=len(accepted_file_ids),
+            requested_at=data.requested_at.isoformat(),
+        )
         request.app.state.background_task_registry.spawn(
             run_docgen_background(
                 subject=normalized,
@@ -341,6 +372,13 @@ async def knowledge_build(
             name=f"knowledge.build.docs:{normalized}",
         )
     elif build_type == "graph":
+        logger.info(
+            "knowledge_build_graph_background_spawning",
+            subject=normalized,
+            user_id=user.user_id,
+            accepted_file_count=len(accepted_file_ids),
+            requested_at=data.requested_at.isoformat(),
+        )
         request.app.state.background_task_registry.spawn(
             run_graph_build_background(
                 subject=normalized,
@@ -352,6 +390,15 @@ async def knowledge_build(
             subject=normalized,
             name=f"knowledge.build.graph:{normalized}",
         )
+    logger.info(
+        "knowledge_build_request_accepted",
+        subject=normalized,
+        user_id=user.user_id,
+        build_type=build_type,
+        confirmed_plan_id=data.confirmed_plan_id,
+        accepted_file_count=len(accepted_file_ids),
+        requested_at=data.requested_at.isoformat(),
+    )
     return ok_response(data)
 
 
@@ -427,4 +474,3 @@ async def knowledge_clear(
     get_subject_record(session, normalized, owner_user_id=user.user_id)
     counts = clear_subject_knowledge(session, subject=normalized)
     return ok_response(ClearKnowledgeResponse(subject=normalized, deleted_counts=counts))
-
