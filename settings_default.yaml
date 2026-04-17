@@ -6,8 +6,11 @@ models:
   # reason  - 推理模型，深度推理和规划；留空则回退到 primary。
   # primary - 常用模型，教学、出题、批改、对话。
   # light   - 轻量模型，批量抽取、分类、摘要；留空则回退到 primary。
-  reason: qwen3-max
-  primary: qwen-plus-latest
+  # reason: qwen3-max
+  # primary: qwen-plus-latest
+  # light: qwen-flash
+  reason: qwen-flash
+  primary: qwen-flash
   light: qwen-flash
   # reason: qwen-turbo
   # primary: qwen-turbo
