@@ -4,21 +4,33 @@ from __future__ import annotations
 
 import json
 import re
+from typing import Any
 
 import structlog
+from pydantic import BaseModel, Field
 
 from app.shared.infra.llm_support import acompletion_stream
 from app.shared.infra.llm_support.routing import TaskType
 from app.shared.infra.workflow.context import WorkflowContext
 from app.workflows.digest.planner.lib.planner_events import emit_planner_event, emit_planner_token
-from app.workflows.digest.planner.lib.plans import BuildPlannerDraft, build_fallback_plan
-from app.workflows.digest.planner.lib.models import EvidenceBrief, LearningIntent, PlannerBrief
+from app.workflows.digest.planner.lib.plans import build_fallback_plan
+from app.workflows.digest.planner.lib.models import LearningIntent, PlannerBrief
 from app.workflows.digest.planner.prompts import PLAN_JSON_END_MARKER, PLAN_JSON_MARKER, build_plan_composer_messages
 from app.workflows.digest.planner.state import BuildPlannerState
 
 logger = structlog.get_logger(__name__)
 
 _JSON_FENCE_RE = re.compile(r"```(?:json)?\s*(.*?)```", re.IGNORECASE | re.DOTALL)
+
+
+class PlannerChapterSketch(BaseModel):
+    title: str = ""
+    key_points: list[str] = Field(default_factory=list)
+
+
+class PlannerOutlineSketch(BaseModel):
+    plan_text: str = ""
+    chapters: list[PlannerChapterSketch] = Field(default_factory=list)
 
 
 def _marker_holdback_length(text: str, marker: str) -> int:
@@ -52,9 +64,34 @@ def _extract_plan_json(raw_text: str) -> str:
     raise ValueError("composer response did not contain a JSON object")
 
 
-def _parse_build_plan_draft(raw_text: str) -> BuildPlannerDraft:
+def _parse_outline_sketch(raw_text: str) -> PlannerOutlineSketch:
     payload = json.loads(_extract_plan_json(raw_text))
-    return BuildPlannerDraft.model_validate(payload)
+    return PlannerOutlineSketch.model_validate(payload)
+
+
+def _sketch_to_plan_payload(sketch: PlannerOutlineSketch) -> dict[str, Any]:
+    chapters: list[dict[str, Any]] = []
+    for index, chapter in enumerate(sketch.chapters, start=1):
+        title = chapter.title.strip()
+        key_points = [item.strip() for item in chapter.key_points if item.strip()]
+        if not title and not key_points:
+            continue
+        chapters.append(
+            {
+                "chapter_index": index,
+                "title": title or f"第 {index} 章",
+                "objective": "；".join(key_points),
+                "required_elements": key_points,
+                "search_queries": [],
+                "writing_instructions": "围绕本章知识点生成清晰讲解。",
+                "media_hints": {"images": [], "mermaid": [], "interactive": []},
+            }
+        )
+    return {
+        "plan_summary": sketch.plan_text.strip(),
+        "chapter_plan": chapters,
+        "research_queries": [],
+    }
 
 
 def _visible_outline_from_response(raw_text: str) -> str:
@@ -70,7 +107,6 @@ async def _stream_composer_response(
     material_context,
     planner_brief: PlannerBrief,
     intent: LearningIntent,
-    evidence: EvidenceBrief,
 ) -> str:
     tokens: list[str] = []
     pending_visible = ""
@@ -86,7 +122,6 @@ async def _stream_composer_response(
                 material_context=material_context,
                 planner_brief=planner_brief,
                 learning_intent=intent,
-                evidence_brief=evidence,
                 message_history=list(state.get("message_history", [])),
                 latest_plan=state.get("latest_plan"),
             ),
@@ -150,7 +185,6 @@ def build_stream_and_parse_plan_draft_node(*, context: WorkflowContext):
         material_context = state["material_context"]
         planner_brief = PlannerBrief.model_validate(state.get("planner_brief") or {})
         intent = LearningIntent.model_validate(state.get("learning_intent") or {})
-        evidence = EvidenceBrief.model_validate(state.get("evidence_brief") or {})
         fallback = build_fallback_plan(
             subject=state["subject"],
             user_goal=state.get("user_goal") or "",
@@ -168,11 +202,11 @@ def build_stream_and_parse_plan_draft_node(*, context: WorkflowContext):
             material_context=material_context,
             planner_brief=planner_brief,
             intent=intent,
-            evidence=evidence,
         )
         visible_outline = _visible_outline_from_response(raw_response)
         try:
-            draft = _parse_build_plan_draft(raw_response)
+            sketch = _parse_outline_sketch(raw_response)
+            draft_payload = _sketch_to_plan_payload(sketch)
         except Exception:
             logger.exception(
                 "planner_composer_parse_failed",
@@ -184,11 +218,11 @@ def build_stream_and_parse_plan_draft_node(*, context: WorkflowContext):
                 event="planner.fallback.used",
                 detail="最终大纲合成解析失败，已使用规则构建方案继续。",
             )
-            draft = fallback
+            draft_payload = fallback.model_dump(mode="json")
         return {
-            "build_plan_draft": draft.model_dump(mode="json"),
+            "build_plan_draft": draft_payload,
             "plan_outline_markdown": visible_outline,
-            "generation_mode": "raw_context_three_call_v5",
+            "generation_mode": "raw_context_three_call_no_retrieval_v6",
         }
 
     return stream_and_parse_plan_draft_node

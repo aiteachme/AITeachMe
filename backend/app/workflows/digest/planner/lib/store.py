@@ -157,9 +157,7 @@ def _runtime_stats_response(final_state: Mapping[str, Any] | None) -> BuildPlann
     steps: list[BuildPlannerStepStatsResponse] = []
     for name, field_name in (
         ("load_planner_materials", "prepare_ms"),
-        ("pack_raw_material_context", "context_ms"),
         ("stream_brief_and_extract_intent", "bootstrap_ms"),
-        ("retrieve_planning_evidence", "evidence_ms"),
         ("stream_and_parse_plan_draft", "compose_ms"),
         ("normalize_and_persist_plan", "finalize_ms"),
     ):
@@ -292,10 +290,10 @@ def _render_final_plan_markdown(plan_payload: dict[str, Any]) -> str:
         f"> 一句话摘要：{summary or '已生成一份可确认的构建方案。'}",
         "",
         "## 几点安排",
-        *[f"{index}. {item}" for index, item in enumerate(chapters[:8], start=1)],
+        *[f"{index}. {item}" for index, item in enumerate(chapters, start=1)],
         "",
-        "## 外部检索校准重点",
-        *[f"{index}. {item}" for index, item in enumerate(tasks[:6], start=1)],
+        "## 后续写作抓手",
+        *[f"{index}. {item}" for index, item in enumerate(tasks, start=1)],
     ]
     return "\n".join(lines).strip()
 
@@ -370,7 +368,7 @@ def prepare_planner_run(state: Mapping[str, Any]) -> dict[str, Any]:
             selected_file_ids = _file_ids(planner_files)
             workflow_file_ids = _file_ids(workflow_files)
             selected_file_uids = _file_uids(planner_files)
-            session_title = str(state.get("session_title") or user_goal or getattr(subject_row, "name", "") or subject_slug)[:120]
+            session_title = str(state.get("session_title") or user_goal or getattr(subject_row, "name", "") or subject_slug)
             record = create_planner_session(
                 session,
                 BuildPlannerSession(

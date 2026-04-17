@@ -94,7 +94,7 @@ def apply_planner_brief_preferences(
     if planner_brief.focus_points:
         existing = list(draft.research_queries)
         if not existing or all(_looks_fallback_query(query) for query in existing):
-            draft = draft.model_copy(update={"research_queries": list(planner_brief.focus_points[:8])})
+            draft = draft.model_copy(update={"research_queries": list(planner_brief.focus_points)})
 
     return draft.model_copy(
         update={

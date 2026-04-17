@@ -6,9 +6,15 @@ models:
   # reason  - 推理模型，深度推理和规划；留空则回退到 primary。
   # primary - 常用模型，教学、出题、批改、对话。
   # light   - 轻量模型，批量抽取、分类、摘要；留空则回退到 primary。
-  reason: qwen3-max
-  primary: qwen-plus-latest
+
+  # reason: qwen3-max
+  # primary: qwen-plus-latest
+  # light: qwen-flash
+
+  reason: qwen-flash
+  primary: qwen-flash
   light: qwen-flash
+
   # reason: qwen-turbo
   # primary: qwen-turbo
   # light: qwen-turbo
@@ -31,12 +37,6 @@ planner:
   default_digest_mode: sprint
   default_tone: encouraging
   allow_external_search: true
-  grounding_timeout_s: 10.0
-  sketch_timeout_s: 30.0
-  intent_timeout_s: 20.0
-  compose_timeout_s: 45.0
-  evidence_query_count: 4
-  evidence_open_source_limit: 4
   sprint:
     min_chapters: 3
     max_chapters: 6

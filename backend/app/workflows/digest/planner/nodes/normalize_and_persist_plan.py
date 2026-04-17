@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from app.shared.infra.workflow.context import WorkflowContext
-from app.workflows.digest.common.contracts import resolve_planner_retrieval_profile
 from app.workflows.digest.planner.lib.finalize_contract import apply_planner_brief_preferences
 from app.workflows.digest.planner.lib.planner_events import emit_planner_event
 from app.workflows.digest.planner.lib.plans import (
@@ -50,7 +49,7 @@ def build_normalize_and_persist_plan_node(*, context: WorkflowContext):
                 "title": chapter.title,
                 "objective": chapter.objective,
             }
-            for chapter in draft.chapter_plan[:8]
+            for chapter in draft.chapter_plan
         ]
         await emit_planner_event(
             state,
@@ -67,10 +66,9 @@ def build_normalize_and_persist_plan_node(*, context: WorkflowContext):
             "plan": plan,
             "plan_summary": draft.plan_summary,
             "digest_mode": draft.digest_mode,
-            "retrieval_profile": resolve_planner_retrieval_profile(),
             "tone": draft.tone,
             "selected_skillpacks": list(draft.selected_skillpacks),
-            "generation_mode": state.get("generation_mode") or "raw_context_three_call_v5",
+            "generation_mode": state.get("generation_mode") or "raw_context_three_call_no_retrieval_v6",
         }
         # 只有最终 plan 合同稳定后才落库。直接调图调试会跳过 DB 写入；
         # API create/append 会保存 latest_plan 和 assistant turn。

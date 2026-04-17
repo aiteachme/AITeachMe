@@ -5,7 +5,6 @@ They are short-lived artifacts used to make the planner trace readable:
 
 - ``PlannerBrief``: user-visible planning sketch from the streaming model.
 - ``LearningIntent``: compact goal classification.
-- ``EvidenceBrief``: the evidence actually used by the composer.
 """
 
 from __future__ import annotations
@@ -33,36 +32,11 @@ class LearningIntent(BaseModel):
     success_criteria: list[str] = Field(default_factory=list)
     constraints: list[str] = Field(default_factory=list)
     clarifying_questions: list[str] = Field(default_factory=list)
-    evidence_queries: list[str] = Field(default_factory=list)
     focus_concepts: list[str] = Field(default_factory=list)
     confidence: float = 0.6
 
 
-class EvidenceSource(BaseModel):
-    """One source selected for planner grounding."""
-
-    title: str = ""
-    url: str = ""
-    source_type: str = "local"
-    reason: str = ""
-    preview: str = ""
-    opened: bool = False
-
-
-class EvidenceBrief(BaseModel):
-    """Compact grounding pack for final plan composition."""
-
-    queries: list[str] = Field(default_factory=list)
-    sources: list[EvidenceSource] = Field(default_factory=list)
-    summary: str = ""
-    core_concepts: list[str] = Field(default_factory=list)
-    chapter_hints: list[str] = Field(default_factory=list)
-    gap_notes: list[str] = Field(default_factory=list)
-    local_hit_count: int = 0
-    web_hit_count: int = 0
-
-
-def material_topic_hints(material_context: DigestMaterialContext, *, limit: int = 8) -> list[str]:
+def material_topic_hints(material_context: DigestMaterialContext) -> list[str]:
     hints: list[str] = []
     seen: set[str] = set()
     for item in [
@@ -77,8 +51,6 @@ def material_topic_hints(material_context: DigestMaterialContext, *, limit: int 
             continue
         seen.add(key)
         hints.append(text)
-        if len(hints) >= limit:
-            break
     return hints
 
 
@@ -98,14 +70,15 @@ def build_default_intent(
 
 
 def build_fallback_planner_brief(draft: BuildPlannerDraft) -> PlannerBrief:
-    focus_points = list(draft.research_queries[:8])
+    focus_points = list(draft.research_queries)
     outline_items = [chapter.title for chapter in draft.chapter_plan]
     fallback_focus = focus_points or ["优先依据用户目标和已上传资料生成可确认大纲"]
     fallback_outline = outline_items or ["继续补充章节方向、难度或题型偏好"]
     markdown = "\n".join(
         [
-            "1. 关注重点：" + "；".join(fallback_focus[:6]),
-            "2. 预计计划大纲：" + "；".join(fallback_outline[:8]),
+            "我会先按用户目标和资料主题收敛一版可确认规划。",
+            "重点线索：" + "；".join(fallback_focus) + "。",
+            "暂定方向：" + "；".join(fallback_outline) + "。",
         ]
     ).strip()
     return PlannerBrief(
@@ -117,8 +90,6 @@ def build_fallback_planner_brief(draft: BuildPlannerDraft) -> PlannerBrief:
 
 
 __all__ = [
-    "EvidenceBrief",
-    "EvidenceSource",
     "LearningIntent",
     "PlannerBrief",
     "build_default_intent",

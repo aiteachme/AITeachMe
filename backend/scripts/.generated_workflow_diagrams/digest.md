@@ -14,31 +14,25 @@
 
 > Planner-first workflow that drafts a confirmed Chinese build plan before DocGen starts.
 
-📊 **6** 个处理节点 · **12** 条边
+📊 **4** 个处理节点 · **8** 条边
 
 ```mermaid
 flowchart TD
     __start__(["▶ START"])
-    prepare_material_context["❶ Prepare Material Context"]
-    summarize_material_digest["❷ Summarize Material Digest"]
-    bootstrap_plan_brief["❸ Bootstrap Plan Brief"]
-    probe_evidence["❹ Probe Evidence"]
-    compose_build_plan["❺ Compose Build Plan"]
-    finalize_plan_contract(["❻ Finalize Plan Contract"])
+    load_planner_materials["❶ Load Planner Materials"]
+    stream_brief_and_extract_intent["❷ Stream Brief And Extract Intent"]
+    stream_and_parse_plan_draft["❸ Stream And Parse Plan Draft"]
+    normalize_and_persist_plan["❹ Normalize And Persist Plan"]
     __end__(["⏹ END"])
 
-    __start__ --> prepare_material_context
-    bootstrap_plan_brief -. "✗ fail" .-> __end__
-    bootstrap_plan_brief -->|"✓"| probe_evidence
-    compose_build_plan -. "✗ fail" .-> __end__
-    compose_build_plan -->|"✓"| finalize_plan_contract
-    prepare_material_context -. "✗ fail" .-> __end__
-    prepare_material_context -->|"✓"| summarize_material_digest
-    probe_evidence -. "✗ fail" .-> __end__
-    probe_evidence -->|"✓"| compose_build_plan
-    summarize_material_digest -. "✗ fail" .-> __end__
-    summarize_material_digest -->|"✓"| bootstrap_plan_brief
-    finalize_plan_contract --> __end__
+    __start__ --> load_planner_materials
+    load_planner_materials -. "✗ fail" .-> __end__
+    load_planner_materials -->|"✓"| stream_brief_and_extract_intent
+    stream_and_parse_plan_draft -. "✗ fail" .-> __end__
+    stream_and_parse_plan_draft -->|"✓"| normalize_and_persist_plan
+    stream_brief_and_extract_intent -. "✗ fail" .-> __end__
+    stream_brief_and_extract_intent -->|"✓"| stream_and_parse_plan_draft
+    normalize_and_persist_plan --> __end__
 
     %% ── Styling ──
     classDef startCls fill:#064e3b,stroke:#10b981,stroke-width:2px,color:#a7f3d0
@@ -48,21 +42,18 @@ flowchart TD
     classDef default fill:#1e293b,stroke:#475569,stroke-width:1px,color:#e2e8f0
     style error_zone fill:#1a0a0e,stroke:#f43f5e,stroke-width:1px,color:#fecdd3,stroke-dasharray:5
     class __start__ startCls
-    class finalize_plan_contract termCls
     class __end__ endCls
-    linkStyle 1,3,5,7,9 stroke:#f43f5e,stroke-dasharray:5
+    linkStyle 1,3,5 stroke:#f43f5e,stroke-dasharray:5
 ```
 
 **节点参考：**
 
 | 节点 | 角色 | 路由 |
 |------|------|------|
-| Prepare Material Context | 🔀 条件路由 | `fail` -> END / `continue` -> Summarize Material Digest |
-| Summarize Material Digest | 🔀 条件路由 | `fail` -> END / `continue` -> Bootstrap Plan Brief |
-| Bootstrap Plan Brief | 🔀 条件路由 | `fail` -> END / `continue` -> Probe Evidence |
-| Probe Evidence | 🔀 条件路由 | `fail` -> END / `continue` -> Compose Build Plan |
-| Compose Build Plan | 🔀 条件路由 | `fail` -> END / `continue` -> Finalize Plan Contract |
-| Finalize Plan Contract | ✅ 终结节点 | → END |
+| Load Planner Materials | 🔀 条件路由 | `fail` -> END / `continue` -> Stream Brief And Extract Intent |
+| Stream Brief And Extract Intent | 🔀 条件路由 | `fail` -> END / `continue` -> Stream And Parse Plan Draft |
+| Stream And Parse Plan Draft | 🔀 条件路由 | `fail` -> END / `continue` -> Normalize And Persist Plan |
+| Normalize And Persist Plan | ⚙ 处理节点 | → END |
 
 ## Digest DocGen Workflow
 
@@ -207,7 +198,7 @@ flowchart TD
 <summary><b>Planner Prompt</b> (<code>planner_prompt</code>)</summary>
 
 ```
-构建方案规划提示词：负责输出全中文、可直接确认的章节方案。
+Build-plan prompt used by the planner lane.
 ```
 
 </details>
@@ -216,7 +207,7 @@ flowchart TD
 <summary><b>Research Purify Prompt</b> (<code>research_purify_prompt</code>)</summary>
 
 ```
-研究提纯提示词：负责把资料压缩为面向章节写作的中文研究笔记。
+Research purification prompt used by docgen.
 ```
 
 </details>
@@ -225,7 +216,7 @@ flowchart TD
 <summary><b>Writer Prompt</b> (<code>writer_prompt</code>)</summary>
 
 ```
-章节写作提示词：负责按 sprint / systematic 契约生成教学化 Markdown。
+Chapter writing prompt used by docgen.
 ```
 
 </details>
@@ -234,7 +225,7 @@ flowchart TD
 <summary><b>Mermaid Prompt</b> (<code>mermaid_prompt</code>)</summary>
 
 ```
-Mermaid 生成提示词：负责把章节知识关系转成中文 Mermaid mindmap。
+Mindmap rendering prompt used by docgen.
 ```
 
 </details>

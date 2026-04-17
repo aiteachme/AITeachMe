@@ -1,7 +1,7 @@
 """Planner graph definition and public workflow entrypoints.
 
 Planner 只有一条真实业务链路：
-load materials -> pack raw context -> brief/intent -> retrieve evidence -> stream/parse plan -> persist。
+load materials -> brief/intent -> stream/parse plan -> persist。
 create/append API 只负责装配初始 state 并启动这条图；session DB 读写发生在
 load/persist 这两个真实节点里，通过极简 store API 完成。
 """
@@ -19,7 +19,6 @@ from app.shared.infra.workflow import workflow_tracer
 from app.shared.infra.workflow.context import WorkflowContext, create_langgraph_dev_context
 from app.shared.infra.workflow.result import WorkflowResult
 from app.shared.infra.workflow.runtime import run_state_graph
-from app.workflows.digest.common.contracts import resolve_planner_retrieval_profile
 from app.workflows.digest.common.runtime_config import get_teaching_runtime_config
 from app.workflows.digest.planner.lib.store import (
     mark_planner_session_failed,
@@ -28,8 +27,6 @@ from app.workflows.digest.planner.lib.store import (
 from app.workflows.digest.planner.nodes import (
     build_load_planner_materials_node,
     build_normalize_and_persist_plan_node,
-    build_pack_raw_material_context_node,
-    build_retrieve_planning_evidence_node,
     build_stream_and_parse_plan_draft_node,
     build_stream_brief_and_extract_intent_node,
 )
@@ -60,17 +57,8 @@ def build_planner_graph(*, context: WorkflowContext) -> StateGraph:
             timing_field="prepare_ms",
         ),
     )
-    workflow.add_node(
-        "pack_raw_material_context",
-        trace.node(
-            build_pack_raw_material_context_node(context=context),
-            name="pack_raw_material_context",
-            timing_field="context_ms",
-        ),
-    )
-
     # First two LLM calls run in parallel: reason streams a visible brief,
-    # primary extracts intent and retrieval queries.
+    # primary extracts compact learning intent.
     workflow.add_node(
         "stream_brief_and_extract_intent",
         trace.node(
@@ -80,15 +68,6 @@ def build_planner_graph(*, context: WorkflowContext) -> StateGraph:
         ),
     )
 
-    # Pure retrieval step: no LLM call, only fan-out search and evidence compaction.
-    workflow.add_node(
-        "retrieve_planning_evidence",
-        trace.node(
-            build_retrieve_planning_evidence_node(context=context),
-            name="retrieve_planning_evidence",
-            timing_field="evidence_ms",
-        ),
-    )
     workflow.add_node(
         "stream_and_parse_plan_draft",
         trace.node(
@@ -112,20 +91,10 @@ def build_planner_graph(*, context: WorkflowContext) -> StateGraph:
     workflow.add_conditional_edges(
         "load_planner_materials",
         route_after_step,
-        {"continue": "pack_raw_material_context", "fail": END},
-    )
-    workflow.add_conditional_edges(
-        "pack_raw_material_context",
-        route_after_step,
         {"continue": "stream_brief_and_extract_intent", "fail": END},
     )
     workflow.add_conditional_edges(
         "stream_brief_and_extract_intent",
-        route_after_step,
-        {"continue": "retrieve_planning_evidence", "fail": END},
-    )
-    workflow.add_conditional_edges(
-        "retrieve_planning_evidence",
         route_after_step,
         {"continue": "stream_and_parse_plan_draft", "fail": END},
     )
@@ -175,7 +144,6 @@ def create_planner_initial_state(
         "file_ids": file_ids,
         "user_goal": user_goal,
         "digest_mode": digest_mode,
-        "retrieval_profile": resolve_planner_retrieval_profile(),
         "tone": tone,
         "selected_skillpacks": list(selected_skillpacks),
         "planner_session_id": planner_session_id,
@@ -183,7 +151,7 @@ def create_planner_initial_state(
         "latest_plan": latest_plan,
         "progress_callback": progress_callback,
         "token_callback": token_callback,
-        "generation_mode": "raw_context_three_call_v5",
+        "generation_mode": "raw_context_three_call_no_retrieval_v6",
         "error": None,
     }
 
@@ -270,7 +238,7 @@ async def create_build_planner_session(
         user_id=user_id,
         planner_operation="create",
         requested_file_uids=list(payload.file_uids or []),
-        session_title=(payload.title or user_goal or subject.name)[:120],
+        session_title=payload.title or user_goal or subject.name,
         file_ids=[],
         user_goal=user_goal,
         planner_session_id=session_id,

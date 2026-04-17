@@ -10,12 +10,12 @@ from app.models.subject import Subject
 from app.repositories.files_repo import list_raw_files_by_ids
 from app.shared.infra.database import managed_session
 from app.shared.infra.workflow.context import WorkflowContext
+from app.workflows.digest.common.material_digest import FILE_CONTEXT_TOKENS, build_material_digest
+from app.workflows.digest.common.models import DigestMaterialContext, FastTopicHints, SourcePacket, SubjectProfile
+from app.workflows.digest.common.prepare import prepare_material_context as build_digest_material_context
 from app.workflows.digest.planner.lib.planner_events import emit_planner_event
 from app.workflows.digest.planner.lib.store import prepare_planner_run
 from app.workflows.digest.planner.state import BuildPlannerState
-from app.workflows.digest.common.contracts import resolve_planner_retrieval_profile
-from app.workflows.digest.common.models import DigestMaterialContext, FastTopicHints, SourcePacket, SubjectProfile
-from app.workflows.digest.common.prepare import prepare_material_context as build_digest_material_context
 
 _SUBJECT_SLUG_RE = re.compile(r"^subj_[a-z0-9]+$", re.IGNORECASE)
 
@@ -44,8 +44,6 @@ def _guess_topic_hints_from_filenames(
             continue
         seen.add(key)
         deduped.append(text)
-        if len(deduped) >= 8:
-            break
     return deduped
 
 
@@ -124,6 +122,30 @@ def build_load_planner_materials_node(*, context: WorkflowContext):
             )
 
         digest_mode = working_state.get("digest_mode") or material_context.course_mode_decision.mode.value
+        if material_context.source_documents:
+            await emit_planner_event(
+                working_state,
+                event="planner.context.started",
+                detail="正在拼接资料上下文...",
+            )
+            digest_result = await build_material_digest(material_context)
+            material_context = material_context.model_copy(update={"material_digest": digest_result.digest})
+            await emit_planner_event(
+                working_state,
+                event="planner.context.ready",
+                detail=(
+                    f"资料上下文已拼接（{digest_result.source_count} 份资料，"
+                    f"每份最多前 {FILE_CONTEXT_TOKENS} tokens）。"
+                ),
+                payload={
+                    "total_chars": digest_result.total_chars,
+                    "total_tokens": digest_result.total_tokens,
+                    "source_count": digest_result.source_count,
+                    "truncated": digest_result.truncated,
+                    "file_context_tokens": FILE_CONTEXT_TOKENS,
+                },
+            )
+
         await emit_planner_event(
             working_state,
             event="planner.material.ready",
@@ -134,17 +156,17 @@ def build_load_planner_materials_node(*, context: WorkflowContext):
             payload={
                 "source_count": len(material_context.source_documents),
                 "section_count": len(material_context.material_sections),
-                "topic_hints": list(material_context.material_hints.chapter_candidates[:8]),
+                "topic_hints": list(material_context.material_hints.chapter_candidates),
             },
         )
         return {
             **session_update,
             "material_context": material_context,
             "digest_mode": digest_mode,
-            "retrieval_profile": resolve_planner_retrieval_profile(),
             "tone": working_state.get("tone") or "encouraging",
         }
 
     return load_planner_materials_node
+
 
 __all__ = ["build_load_planner_materials_node"]
