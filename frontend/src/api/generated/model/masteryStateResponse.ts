@@ -8,9 +8,9 @@
 
 export interface MasteryStateResponse {
   id: number;
-  target_kind: string;
-  teaching_unit_id?: number | null;
-  knowledge_unit_id?: number | null;
+  knowledge_unit_id: number;
+  knowledge_unit_name?: string | null;
+  knowledge_unit_type?: string | null;
   mastery_score: number;
   confidence_score: number;
   stability_score: number;

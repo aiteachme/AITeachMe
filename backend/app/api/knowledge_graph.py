@@ -30,7 +30,16 @@ from app.schemas.knowledge import (
     KnowledgeUnitRelationsRequest,
     KnowledgeUnitResponse,
 )
-from app.workflows.digest.knowledge_graph import KnowledgeGraphModule
+from app.workflows.support.knowledge_graph import (
+    explain_relation_path,
+    find_knowledge_path,
+    get_chunk_context,
+    get_focus_subgraph,
+    get_full_graph,
+    get_knowledge_unit_detail,
+    get_knowledge_unit_relations,
+    get_knowledge_units,
+)
 from app.workflows.support.subjects import get_subject_record
 
 router = APIRouter(tags=["knowledge"])
@@ -50,9 +59,9 @@ async def graph_knowledge_units(
 ) -> ApiResponse[PaginatedData[KnowledgeUnitResponse]]:
     normalized = normalize_subject_slug(subject)
     get_subject_record(session, normalized, owner_user_id=user.user_id)
-    knowledge_module = KnowledgeGraphModule(session=session)
     return ok_response(
-        knowledge_module.list_knowledge_units(
+        get_knowledge_units(
+            session,
             subject=normalized,
             knowledge_unit_type=body.knowledge_unit_type,
             page=body.page,
@@ -75,9 +84,9 @@ async def graph_knowledge_unit_detail(
 ) -> ApiResponse[KnowledgeUnitDetailResponse]:
     normalized = normalize_subject_slug(subject)
     get_subject_record(session, normalized, owner_user_id=user.user_id)
-    knowledge_module = KnowledgeGraphModule(session=session)
     return ok_response(
-        knowledge_module.get_knowledge_unit_detail(
+        get_knowledge_unit_detail(
+            session,
             subject=normalized,
             knowledge_unit_id=body.knowledge_unit_id,
         )
@@ -98,9 +107,9 @@ async def graph_knowledge_unit_relations(
 ) -> ApiResponse[list[KnowledgeRelationResponse]]:
     normalized = normalize_subject_slug(subject)
     get_subject_record(session, normalized, owner_user_id=user.user_id)
-    knowledge_module = KnowledgeGraphModule(session=session)
     return ok_response(
-        knowledge_module.list_knowledge_unit_relations(
+        get_knowledge_unit_relations(
+            session,
             subject=normalized,
             knowledge_unit_id=body.knowledge_unit_id,
             direction=body.direction,
@@ -123,9 +132,9 @@ async def graph_knowledge_unit_path(
 ) -> ApiResponse[KnowledgePathResponse]:
     normalized = normalize_subject_slug(subject)
     get_subject_record(session, normalized, owner_user_id=user.user_id)
-    knowledge_module = KnowledgeGraphModule(session=session)
     return ok_response(
-        knowledge_module.find_knowledge_path(
+        find_knowledge_path(
+            session,
             subject=normalized,
             source_knowledge_unit_id=body.source_knowledge_unit_id,
             target_knowledge_unit_id=body.target_knowledge_unit_id,
@@ -149,9 +158,9 @@ async def graph_focus_subgraph(
 ) -> ApiResponse[KnowledgeSubgraphResponse]:
     normalized = normalize_subject_slug(subject)
     get_subject_record(session, normalized, owner_user_id=user.user_id)
-    knowledge_module = KnowledgeGraphModule(session=session)
     return ok_response(
-        knowledge_module.get_focus_subgraph(
+        get_focus_subgraph(
+            session,
             subject=normalized,
             center_knowledge_unit_id=body.center_knowledge_unit_id,
             topic=body.topic,
@@ -176,9 +185,9 @@ async def graph_relation_explanation(
 ) -> ApiResponse[KnowledgeRelationExplanationResponse]:
     normalized = normalize_subject_slug(subject)
     get_subject_record(session, normalized, owner_user_id=user.user_id)
-    knowledge_module = KnowledgeGraphModule(session=session)
     return ok_response(
-        knowledge_module.explain_relation_path(
+        explain_relation_path(
+            session,
             subject=normalized,
             source_knowledge_unit_id=body.source_knowledge_unit_id,
             target_knowledge_unit_id=body.target_knowledge_unit_id,
@@ -201,8 +210,7 @@ async def graph_full(
 ) -> ApiResponse[FullGraphResponse]:
     normalized = normalize_subject_slug(subject)
     get_subject_record(session, normalized, owner_user_id=user.user_id)
-    knowledge_module = KnowledgeGraphModule(session=session)
-    return ok_response(knowledge_module.get_full_graph(subject=normalized))
+    return ok_response(get_full_graph(session, subject=normalized))
 
 
 @router.post(
@@ -219,5 +227,5 @@ async def chunk_context(
 ) -> ApiResponse[ChunkContextResponse]:
     normalized = normalize_subject_slug(subject)
     get_subject_record(session, normalized, owner_user_id=user.user_id)
-    knowledge_module = KnowledgeGraphModule(session=session)
-    return ok_response(knowledge_module.get_chunk_context(subject=normalized, chunk_id=body.chunk_id))
+    return ok_response(get_chunk_context(session, subject=normalized, chunk_id=body.chunk_id))
+

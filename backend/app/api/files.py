@@ -71,6 +71,7 @@ async def upload_files(
             run_parse_files_background(
                 subject=normalized_subject,
                 file_ids=parse_file_ids,
+                background_task_registry=request.app.state.background_task_registry,
             ),
             kind="files.parse",
             subject=normalized_subject,

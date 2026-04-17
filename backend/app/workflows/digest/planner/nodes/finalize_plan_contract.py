@@ -21,6 +21,8 @@ def build_finalize_plan_contract_node(*, context: WorkflowContext):
         planner_brief = PlannerBrief.model_validate(state.get("planner_brief") or {})
         digest_mode = state.get("digest_mode") or material_context.course_mode_decision.mode.value
         tone = state.get("tone") or "encouraging"
+        # LLM 输出只当草稿看。normalize_planner_draft 会合并 latest_plan /
+        # fallback，并收敛成稳定的 ConfirmedPlan 形状。
         draft = normalize_planner_draft(
             state.get("build_plan_draft") or {},
             subject=state["subject"],
@@ -70,6 +72,8 @@ def build_finalize_plan_contract_node(*, context: WorkflowContext):
             "selected_skillpacks": list(draft.selected_skillpacks),
             "generation_mode": state.get("generation_mode") or "research_surface_v4",
         }
+        # 只有最终 plan 合同稳定后才落库。直接调图调试会跳过 DB 写入；
+        # API create/append 会保存 latest_plan 和 assistant turn。
         persist_update = save_planner_result(
             {**state, **result},
             plan=plan,

@@ -1,4 +1,10 @@
-"""Planner graph definition and lane-local runtime entrypoints."""
+"""Planner graph definition and public workflow entrypoints.
+
+Planner 只有一条真实业务链路：
+prepare material -> summarize -> brief/intent -> evidence -> compose -> finalize。
+create/append API 只负责装配初始 state 并启动这条图；session DB 读写发生在
+prepare/finalize 这两个真实节点里，通过极简 store API 完成。
+"""
 
 from __future__ import annotations
 
@@ -43,6 +49,9 @@ def build_planner_graph(*, context: WorkflowContext) -> StateGraph:
         input_schema=BuildPlannerGraphInput,
         output_schema=BuildPlannerGraphOutput,
     )
+
+    # API create/append 场景下，资料准备节点也是第一处持久化点：
+    # 先创建或读取 planner session，再准备 material_context。
     workflow.add_node(
         "prepare_material_context",
         trace.node(
@@ -59,6 +68,9 @@ def build_planner_graph(*, context: WorkflowContext) -> StateGraph:
             timing_field="digest_ms",
         ),
     )
+
+    # 规划展示层：一边流式输出用户可见 planning brief，
+    # 一边并行抽取极简 learning intent。
     workflow.add_node(
         "bootstrap_plan_brief",
         trace.node(
@@ -67,6 +79,9 @@ def build_planner_graph(*, context: WorkflowContext) -> StateGraph:
             timing_field="bootstrap_ms",
         ),
     )
+
+    # 证据探测层：把检索细节压缩成 EvidenceBrief，
+    # 避免 composer 直接吃一堆 raw hits。
     workflow.add_node(
         "probe_evidence",
         trace.node(
@@ -83,6 +98,9 @@ def build_planner_graph(*, context: WorkflowContext) -> StateGraph:
             timing_field="compose_ms",
         ),
     )
+
+    # 合同收口层：normalize BuildPlannerDraft，并在 API create/append 场景下
+    # 保存 latest_plan。不要再额外拆 service/session 节点。
     workflow.add_node(
         "finalize_plan_contract",
         trace.node(
@@ -145,6 +163,8 @@ def create_planner_initial_state(
     progress_callback: object | None = None,
     token_callback: object | None = None,
 ) -> BuildPlannerState:
+    # planner_operation 只区分“直接调图调试”和“API create/append”；
+    # 不管哪种入口，下面跑的都是同一条 graph。
     return {
         "subject": subject,
         "user_id": user_id,
@@ -239,6 +259,8 @@ async def create_build_planner_session(
     progress_callback: object | None = None,
     token_callback: object | None = None,
 ) -> BuildPlannerSessionResponse:
+    # API 友好入口：只装配 state、启动 graph、把最终 state 转成既有响应结构。
+    # 真正业务逻辑仍在 graph nodes 里。
     planner_defaults = get_teaching_runtime_config().planner
     session_id = uuid.uuid4().hex
     user_goal = payload.user_goal.strip()
@@ -276,6 +298,8 @@ async def append_build_planner_message(
     progress_callback: object | None = None,
     token_callback: object | None = None,
 ) -> BuildPlannerSessionResponse:
+    # 追加反馈也只是同一条 graph run。
+    # prepare_material_context 会读取上一版 session/plan 并追加用户 turn。
     result = await run_build_planner_workflow(
         subject=subject.slug,
         user_id=user_id,

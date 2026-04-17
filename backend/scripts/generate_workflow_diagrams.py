@@ -192,14 +192,20 @@ def discover_workflow_exports() -> tuple[WorkflowGraphExport, ...]:
             continue
         if module_dir.name.startswith("_") or module_dir.name == "common":
             continue
-        if not (module_dir / "exports.py").exists():
-            continue
-        module_name = f"app.workflows.{module_dir.name}.exports"
+
+        module_name = f"app.workflows.{module_dir.name}"
         try:
             module = import_module(module_name)
         except Exception as exc:
             raise RuntimeError(f"Failed to import {module_name}: {exc}") from exc
         module_exports = getattr(module, "WORKFLOW_EXPORTS", None)
+        if module_exports is None and (module_dir / "exports.py").exists():
+            exports_module_name = f"{module_name}.exports"
+            try:
+                exports_module = import_module(exports_module_name)
+            except Exception as exc:
+                raise RuntimeError(f"Failed to import {exports_module_name}: {exc}") from exc
+            module_exports = getattr(exports_module, "WORKFLOW_EXPORTS", None)
         if module_exports:
             exports.extend(module_exports)
     return tuple(exports)

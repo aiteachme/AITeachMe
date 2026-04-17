@@ -94,6 +94,9 @@ def _build_seed_material_context(*, subject: str, file_ids: list[int], user_goal
 
 def build_prepare_material_context_node(*, context: WorkflowContext):
     async def prepare_material_context_node(state: BuildPlannerState) -> dict:
+        # API create/append 场景下，这里顺手做 session 侧准备：
+        # 创建/读取 session、追加 user turn、解析文件选择，并补齐
+        # message_history/latest_plan。直接调图调试时返回空 dict。
         session_update = prepare_planner_run(state)
         working_state = {**state, **session_update}
         await emit_planner_event(
@@ -107,6 +110,8 @@ def build_prepare_material_context_node(*, context: WorkflowContext):
             user_prompt=working_state.get("user_goal"),
         )
         if not material_context.source_documents:
+            # 刚上传后 parsed markdown 可能还没准备好。seed context 让 planner
+            # 至少可以基于文件名和用户目标先给出临时方案。
             await emit_planner_event(
                 working_state,
                 event="planner.material.pending",

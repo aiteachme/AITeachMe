@@ -166,8 +166,8 @@ backend/app/api/knowledge_docs.py
 
 `backend/app/workflows/digest/` 下面还有：
 
-- `events.py`、`exports.py`
-  Digest 模块根级别入口。
+- `common/events.py`、`common/exports.py`
+  Digest 跨链路事件与 workflow export 入口。
 - `docgen/__init__.py`、`knowledge_graph/__init__.py`
   Digest workflow runner 入口。
 - `planner/`

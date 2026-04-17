@@ -6,6 +6,8 @@ from langgraph.graph import END, StateGraph
 
 from app.shared.infra.workflow import workflow_tracer
 from app.shared.infra.workflow.context import WorkflowContext, create_langgraph_dev_context
+from app.shared.infra.workflow.graph_export import WorkflowGraphExport
+from app.workflows.ingest.common.parsing.prompts import PROMPTS
 from app.workflows.ingest.deep_enhance.nodes import (
     build_deep_enhance_file_node,
     build_finalize_deep_enhance_node,
@@ -56,5 +58,25 @@ def get_langgraph_dev_deep_enhance_graph() -> StateGraph:
     )
 
 
-__all__ = ["build_deep_enhance_graph", "get_langgraph_dev_deep_enhance_graph"]
+def _build_export_graph() -> StateGraph:
+    return build_deep_enhance_graph(
+        context=create_langgraph_dev_context("ingest.deep_enhance.export"),
+    )
 
+
+WORKFLOW_EXPORTS = (
+    WorkflowGraphExport(
+        key="ingest_deep_enhance",
+        title="Ingest Deep Enhance Workflow",
+        description="Background deep OCR and enhancement workflow.",
+        build_graph=_build_export_graph,
+        prompts=PROMPTS,
+    ),
+)
+
+
+__all__ = [
+    "WORKFLOW_EXPORTS",
+    "build_deep_enhance_graph",
+    "get_langgraph_dev_deep_enhance_graph",
+]

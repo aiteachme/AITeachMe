@@ -43,9 +43,11 @@ from app.workflows.digest.docgen import (
     run_docgen_background,
     trigger_docgen_build,
 )
-from app.workflows.digest.knowledge_graph import run_graph_build_background
-from app.workflows.digest.overview import get_knowledge_overview
-from app.workflows.digest.study_plan import handle_study_plan_request
+from app.workflows.support.knowledge_graph import (
+    get_knowledge_overview,
+    handle_study_plan_request,
+    run_graph_build_background,
+)
 from app.workflows.support.subjects import get_subject_record
 from app.workflows.interact.chat.lib.streaming import SSEEventEmitter
 
@@ -425,3 +427,4 @@ async def knowledge_clear(
     get_subject_record(session, normalized, owner_user_id=user.user_id)
     counts = clear_subject_knowledge(session, subject=normalized)
     return ok_response(ClearKnowledgeResponse(subject=normalized, deleted_counts=counts))
+

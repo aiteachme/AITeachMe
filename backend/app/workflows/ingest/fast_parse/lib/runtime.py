@@ -47,7 +47,7 @@ async def run_parse_file_workflow(
     *,
     subject: str,
     file_id: int,
-    event_bus=None,
+    background_task_registry=None,
 ) -> WorkflowResult[IngestParseState]:
     """Two-phase ingest workflow entry point.
 
@@ -561,16 +561,22 @@ async def run_parse_file_workflow(
 
         if parse_result.needs_enhance:
             logger.info("dispatching_deep_enhance_background", subject=subject, file_id=file_id)
-            # RISK-2 fix: track task reference to prevent GC collection
-            task = asyncio.create_task(
-                _run_deep_enhance_background(
-                    subject=subject,
-                    file_id=file_id,
-                    event_bus=event_bus,
-                )
+            enhance_coro = _run_deep_enhance_background(
+                subject=subject,
+                file_id=file_id,
             )
-            _background_tasks.add(task)
-            task.add_done_callback(_background_tasks.discard)
+            if background_task_registry is not None:
+                background_task_registry.spawn(
+                    enhance_coro,
+                    kind="ingest.enhance",
+                    subject=subject,
+                    name=f"ingest.enhance:{subject}:{file_id}",
+                )
+            else:
+                # Fallback for non-API callers: keep an in-process task reference.
+                task = asyncio.create_task(enhance_coro)
+                _background_tasks.add(task)
+                task.add_done_callback(_background_tasks.discard)
 
         return ok_result(
             {
@@ -613,4 +619,3 @@ async def run_parse_file_workflow(
         except Exception:
             logger.exception("ingest_workflow_error_recovery_failed", file_id=file_id)
         return err_result("ingest_unhandled_error", str(exc), metadata={"subject": subject, "file_id": file_id})
-

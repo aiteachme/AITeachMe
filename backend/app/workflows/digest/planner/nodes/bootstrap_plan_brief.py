@@ -120,7 +120,7 @@ async def _extract_learning_intent(state: BuildPlannerState) -> LearningIntent:
             model="light",
             response_model=LearningIntent,
             temperature=0.1,
-            max_tokens=420,
+            max_tokens=600,
             extra_metadata={
                 "planner_session_id": state.get("planner_session_id") or "",
                 "substep": "extract_learning_intent",

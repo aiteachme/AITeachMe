@@ -25,7 +25,7 @@
 - 新增 `workflows/support/`
 - 新增 `shared.infra.tools.teaching_registry`
 - 把 tool module 自动加载入口从 `app.teaching.tools` 切到 `app.shared.infra.tools.builtin.teaching_tools`
-- 新增 `digest/events.py`、`digest/exports.py`
+- 新增 `digest/common/events.py`、`digest/common/exports.py`
 - 新增 `digest/common/runtime_config.py`
 - 新增 `digest/common/pedagogy/`
 
@@ -46,7 +46,7 @@
 
 - `app.services.knowledge_docs.build_planner_service` -> `app.workflows.digest.planner`
 - `app.services.knowledge_docs.digest_service` -> `digest/docgen/builds.py`
-- `app.services.knowledge_docs.overview_service` -> `digest/overview.py`
+- `app.services.knowledge_docs.overview_service` -> `digest/knowledge_graph/overview.py`
 - `app.services.knowledge_docs.cleanup_service` -> `digest/docgen/cleanup.py`
 - `app.services.knowledge_graph.*` -> `digest/knowledge_graph/*`
 
@@ -82,7 +82,7 @@
 
 | 当前模块 | 迁移方向 | 备注 |
 | --- | --- | --- |
-| `services/knowledge_docs/*` | `workflows/digest/planner/*`、`workflows/digest/docgen/*`、`workflows/digest/{overview.py,study_plan.py}` | 已迁入 Digest workflows |
+| `services/knowledge_docs/*` | `workflows/digest/planner/*`、`workflows/digest/docgen/*`、`workflows/digest/knowledge_graph/{overview.py,study_plan.py}` | 已迁入 Digest workflows |
 | `services/knowledge_graph/*` | `workflows/digest/knowledge_graph/*` | 已迁入 Digest workflows |
 | `services/chats_service.py` | `workflows/interact/application/chats.py` | 已迁入 interact application，SSE 口径不变 |
 | `services/exams_service/*` | `workflows/examine/application/*` | 已迁入 examine application |
@@ -151,6 +151,7 @@
 - `backend/app/services` 不存在，且不再通过 shim 恢复
 - 已迁移的 `auth_service / chats_service / exams_service / export_import_service / file_service / profile_service / subject_service / subject_deletion_service / subject_embedding_service / system_service` 不再出现旧路径 import
 - 新规范里 Digest / Ingest 不再保留 `application/`
+- 新规范里 Digest / Ingest 不在模块根保留业务 `.py`，根目录只保留 `__init__.py` 与 `README.md`
 - support 模块与 engine 模块边界清晰
 
 ### 行为验收

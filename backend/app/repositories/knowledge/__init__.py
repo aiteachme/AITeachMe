@@ -5,7 +5,6 @@ from __future__ import annotations
 from importlib import import_module
 
 __all__ = [
-    "curriculum_repo",
     "docgen_repo",
     "knowledge_relation_repo",
     "knowledge_build_repo",
@@ -14,7 +13,6 @@ __all__ = [
 ]
 
 _ATTR_TO_MODULE = {
-    "curriculum_repo": "app.repositories.knowledge.curriculum_repo",
     "docgen_repo": "app.repositories.knowledge.docgen_repo",
     "knowledge_relation_repo": "app.repositories.knowledge.knowledge_relation_repo",
     "knowledge_build_repo": "app.repositories.knowledge.knowledge_build_repo",
@@ -31,4 +29,3 @@ def __getattr__(name: str):
     module = import_module(module_name)
     globals()[name] = module
     return module
-

@@ -91,7 +91,7 @@ from app.shared.infra.facade import (
 
 这层是新增推荐入口，不要求一次性迁移旧代码；新代码优先从 facade 进入。
 
-注意：文档解析不放在 infra facade 中。解析链路归 `app.workflows.ingest`，新增 Docling、MinerU、Marker 等 provider 时应接入 ingest 的 `parsing/providers.py`、`parsing/strategy.py` 与 `parsing/orchestrator.py`，由 ingest 继续负责状态推进、资产产物和 fallback。
+注意：文档解析不放在 infra facade 中。解析链路归 `app.workflows.ingest`，新增 Docling、MinerU、Marker 等 provider 时应接入 ingest 的 `parsing/provider_contracts.py`、`parsing/decision.py`、`parsing/strategy.py` 与 `parsing/orchestrator.py`，由 ingest 继续负责状态推进、资产产物和 fallback。
 
 ### `app.shared.infra.workflow`
 
