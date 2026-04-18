@@ -606,7 +606,7 @@ export function SettingsPanel({ isOpen, onClose }: SettingsModalProps) {
 
   const renderParser = () => (
     <div className="space-y-6">
-      <InfoCard text="资料解析和检索的全局默认值来自后端 settings_default.yaml；上传时可用本机偏好临时指定 MinerU 参数。" />
+      <InfoCard text="资料解析和检索的全局默认值来自后端 settings_default.yaml；上传时可用本机偏好临时指定 MarkItDown 或 MinerU 解析方案。" />
       <BackendSettingList
         entries={getBackendEntries("ingest", "search").filter((entry) =>
           [
@@ -647,6 +647,7 @@ export function SettingsPanel({ isOpen, onClose }: SettingsModalProps) {
             { value: "docling", label: "Docling" },
             { value: "unstructured", label: "Unstructured" },
             { value: "mineru", label: "MinerU" },
+            { value: "markitdown", label: "MarkItDown" },
           ]}
         />
       </FieldGroup>

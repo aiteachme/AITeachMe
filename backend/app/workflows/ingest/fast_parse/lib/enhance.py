@@ -145,8 +145,9 @@ async def _run_deep_enhance_background(
             # Phase 1 used pymupdf_native for speed. Now re-parse with pymupdf4llm
             # for better markdown formatting (tables, headings, formula rendering).
             extension = Path(str(file_path)).suffix.lower()
-            # MinerU already returns a high-quality markdown; avoid overriding it here.
-            if extension == ".pdf" and original_parser_used != "mineru":
+            # Explicit external/local document providers already returned their chosen markdown;
+            # avoid overriding them with the fallback quality parser here.
+            if extension == ".pdf" and original_parser_used not in {"mineru", "markitdown"}:
                 try:
                     from app.workflows.ingest.common.parsing.pdf import parse_pdf_with_pymupdf4llm, PDF_PYMUPDF4LLM_AVAILABLE
                     from app.workflows.ingest.common.parsing.canonicalizer import canonicalize_markdown

@@ -1,6 +1,6 @@
 import { useCallback, useSyncExternalStore } from "react";
 
-export type ParserProvider = "docling" | "unstructured" | "mineru";
+export type ParserProvider = "docling" | "unstructured" | "mineru" | "markitdown";
 export type ParserMode = "balanced" | "quality" | "speed";
 export type OcrProvider = "none" | "tesseract" | "azure-document-intelligence";
 export type MinerUModelVersion = "vlm" | "pipeline";
@@ -114,6 +114,9 @@ function normalizeParserProvider(value: unknown): ParserProvider {
   }
   if (value === "mineru") {
     return "mineru";
+  }
+  if (value === "markitdown") {
+    return "markitdown";
   }
   return "docling";
 }
