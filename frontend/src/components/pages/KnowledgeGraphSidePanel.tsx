@@ -16,11 +16,8 @@ import {
   buildKnowledgeOverviewQueryKey,
   fetchKnowledgeOverview,
 } from "../../lib/knowledgeOverview";
-import {
-  DigestBuildButton,
-  DigestBuildProgress,
-  DigestBuildProvider,
-} from "./DigestBuildPanel";
+import { DigestBuildProgress } from "./DigestBuildPanel";
+import { GraphBuildButton } from "./GraphBuildButton";
 import { SubjectVectorNotice } from "./SubjectVectorNotice";
 import { Button } from "../ui/Button";
 import { Modal } from "../ui/Modal";
@@ -105,9 +102,8 @@ export function KnowledgeGraphSidePanel({
   }, [subjectId]);
 
   return (
-    <DigestBuildProvider subject={subjectId}>
-      <div className="flex h-full w-full flex-col bg-white">
-        <div className="flex items-center justify-between gap-3 border-b border-slate-200 bg-white px-3 py-2">
+    <div className="flex h-full w-full flex-col bg-white">
+      <div className="flex items-center justify-between gap-3 border-b border-slate-200 bg-white px-3 py-2">
           <div className="flex items-center gap-1 rounded-lg bg-slate-100 p-1">
             {VIEW_TABS.map((tab) => (
               <button
@@ -128,7 +124,7 @@ export function KnowledgeGraphSidePanel({
           </div>
 
           <div className="flex items-center gap-1.5">
-            <DigestBuildButton />
+            <GraphBuildButton subject={subjectId} />
             <div className="mx-1 h-4 w-px bg-slate-200" />
             <button
               type="button"
@@ -141,12 +137,12 @@ export function KnowledgeGraphSidePanel({
           </div>
         </div>
 
-        <div className="grid gap-3 border-b border-slate-200 bg-slate-50/70 p-3">
-          <DigestBuildProgress compact />
+      <div className="grid gap-3 border-b border-slate-200 bg-slate-50/70 p-3">
+          <DigestBuildProgress subject={subjectId} compact />
           <SubjectVectorNotice status={overview?.vector_status} />
         </div>
 
-        <div className="flex-1 overflow-auto bg-white p-3">
+      <div className="flex-1 overflow-auto bg-white p-3">
           {overviewLoading ? (
             <div className="flex min-h-full items-center justify-center px-6 py-10 text-sm text-slate-500">
               <Loader2 className="mr-2 h-5 w-5 animate-spin" />
@@ -187,7 +183,7 @@ export function KnowledgeGraphSidePanel({
           ) : null}
         </div>
 
-        <Modal open={showClearConfirm} onClose={() => setShowClearConfirm(false)} title="确认清空知识数据">
+      <Modal open={showClearConfirm} onClose={() => setShowClearConfirm(false)} title="确认清空知识数据">
           <div className="space-y-4">
             <div className="flex items-start gap-3 rounded-lg bg-rose-50 p-3">
               <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-rose-500" />
@@ -219,8 +215,7 @@ export function KnowledgeGraphSidePanel({
               </Button>
             </div>
           </div>
-        </Modal>
-      </div>
-    </DigestBuildProvider>
+      </Modal>
+    </div>
   );
 }

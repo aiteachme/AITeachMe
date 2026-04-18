@@ -15,7 +15,6 @@ digest/
   docgen/
   kg_file_ingest/
   kg_docs_sync/
-  knowledge_graph/
 ```
 
 ## 各目录做什么
@@ -28,10 +27,10 @@ digest/
   负责知识图谱文件入图链路
 - `kg_docs_sync/`
   负责知识文档和知识图谱的同步链路
+- `support/knowledge_graph/`
+  负责图谱触发、状态更新、总览和查询
 - `common/`
   放跨 lane 共用能力，例如 events、exports、contracts、prepare、material profile、metrics、runtime config、pedagogy
-- `knowledge_graph/`
-  当前仓库里仍保留的历史目录；不是新的 canonical lane 入口，后续以 `kg_file_ingest/` 和 `kg_docs_sync/` 为主
 
 ## 当前公开入口
 

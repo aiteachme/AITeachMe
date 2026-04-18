@@ -102,8 +102,8 @@
 
 ### 5.2 Digest（织网引擎）
 
-- 入口：`api/knowledge_docs.py` + `workflows/digest/planner` + `workflows/digest/docgen` + `workflows/digest/knowledge_graph`
-- 核心：Planner 生成 confirmed plan；DocGen 独立生成知识文档；Knowledge Graph 独立生成图谱并触发 curriculum
+- 入口：`api/knowledge_docs.py` + `workflows/digest/planner` + `workflows/digest/docgen` + `workflows/digest/kg_file_ingest` + `workflows/digest/kg_docs_sync` + `workflows/support/knowledge_graph`
+- 核心：Planner 生成 confirmed plan；DocGen 生成知识文档；KG File Ingest / KG Docs Sync 维护图谱结构
 - 产物：`knowledge_document`、`knowledge_node/edge`、`curriculum/theme_tree_node/unit_dependency`
 
 ### 5.3 Interact（伴读引擎）

@@ -205,7 +205,7 @@ def init_db() -> None:
 
 def _init_local_sqlite_db(settings) -> None:
     """当前 init_db() 逻辑原样搬入。"""
-    log_legacy_runtime_path_warnings()
+    log_runtime_path_warnings()
     engine = _ensure_local_sqlite_schema(get_engine())
     SQLModel.metadata.create_all(engine, tables=_SCHEMA_TABLES)
     _ensure_default_local_user(engine)

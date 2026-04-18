@@ -46,9 +46,9 @@
 
 - `app.services.knowledge_docs.build_planner_service` -> `app.workflows.digest.planner`
 - `app.services.knowledge_docs.digest_service` -> `digest/docgen/builds.py`
-- `app.services.knowledge_docs.overview_service` -> `digest/knowledge_graph/overview.py`
+- `app.services.knowledge_docs.overview_service` -> `workflows/support/knowledge_graph/overview.py`
 - `app.services.knowledge_docs.cleanup_service` -> `digest/docgen/cleanup.py`
-- `app.services.knowledge_graph.*` -> `digest/knowledge_graph/*`
+- `app.services.knowledge_graph.*` -> `digest/kg_file_ingest/*`、`digest/kg_docs_sync/*`、`workflows/support/knowledge_graph/*`
 
 ### Phase 4: 其他引擎迁移
 
@@ -82,8 +82,8 @@
 
 | 当前模块 | 迁移方向 | 备注 |
 | --- | --- | --- |
-| `services/knowledge_docs/*` | `workflows/digest/planner/*`、`workflows/digest/docgen/*`、`workflows/digest/knowledge_graph/{overview.py,study_plan.py}` | 已迁入 Digest workflows |
-| `services/knowledge_graph/*` | `workflows/digest/knowledge_graph/*` | 已迁入 Digest workflows |
+| `services/knowledge_docs/*` | `workflows/digest/planner/*`、`workflows/digest/docgen/*`、`workflows/support/knowledge_graph/overview.py` | 已迁入 workflows |
+| `services/knowledge_graph/*` | `workflows/digest/kg_file_ingest/*`、`workflows/digest/kg_docs_sync/*`、`workflows/support/knowledge_graph/*` | 已迁入 workflows |
 | `services/chats_service.py` | `workflows/interact/application/chats.py` | 已迁入 interact application，SSE 口径不变 |
 | `services/exams_service/*` | `workflows/examine/application/*` | 已迁入 examine application |
 | `services/profile_service.py` | `workflows/profile/application/mastery.py` | 已迁入 profile application |

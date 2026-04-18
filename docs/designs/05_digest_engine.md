@@ -15,7 +15,8 @@ Digest（织网引擎）是 AITeachMe 的**知识加工中枢**，负责把 Inge
 |---|---|---|---|
 | **Planner Lane** | `digest.planner` | confirmed plan 草案 | 用户确认构建方案前触发 |
 | **DocGen Lane** | `digest.docgen` | 知识文档（多章节 Markdown） | docs 构建 |
-| **Knowledge Graph Lane** | `digest.knowledge_graph` | 知识节点 + 知识边 + 证据链 | graph 构建 |
+| **KG File Ingest Lane** | `digest.kg_file_ingest` | 文件来源的知识节点 + 知识边 + 证据链 | graph 构建 / docs 构建并行触发 |
+| **KG Docs Sync Lane** | `digest.kg_docs_sync` | 文档锚点同步后的知识节点与关系 | docs 发布后触发 |
 
 **Digest 不做：**
 - ❌ 不处理原始文件（那是 Ingest 的事）
@@ -32,10 +33,12 @@ Digest（织网引擎）是 AITeachMe 的**知识加工中枢**，负责把 Inge
 | 模块入口 | `backend/app/workflows/digest/__init__.py` | 稳定导入面，指向真实链路 |
 | Planner | `backend/app/workflows/digest/planner/` | confirmed plan 生成链路 |
 | DocGen | `backend/app/workflows/digest/docgen/` | 文档生成链路 |
-| Knowledge Graph | `backend/app/workflows/digest/knowledge_graph/` | 知识图谱链路 |
+| KG File Ingest | `backend/app/workflows/digest/kg_file_ingest/` | parsed markdown 入图链路 |
+| KG Docs Sync | `backend/app/workflows/digest/kg_docs_sync/` | 知识文档锚点同步链路 |
+| KG Support | `backend/app/workflows/support/knowledge_graph/` | 图谱触发、状态、总览与查询 |
 | Shared | `backend/app/workflows/digest/common/` | contracts / models / prepare / material_profile / metrics |
 | DocGen Prompt | `backend/app/workflows/digest/docgen/prompts/` | 研究、标题、写作、资产 prompt |
-| KG Prompt | `backend/app/workflows/digest/knowledge_graph/prompts/` | 抽取/对齐/命名/主题树 prompt |
+| KG Prompt | `backend/app/workflows/digest/kg_file_ingest/prompts/` | 抽取/对齐/命名 prompt |
 | Reporting | 各链路 `lib/reporting.py` | 构建摘要与 token/timing 诊断 |
 
 ---
@@ -45,13 +48,14 @@ Digest（织网引擎）是 AITeachMe 的**知识加工中枢**，负责把 Inge
 ```
 Ingest 产物 (raw_markdowns) 就绪
     │
-    ├── docs 构建  -> DocGen Lane -> KnowledgeDoc
+    ├── confirmed plan -> DocGen Lane -> KnowledgeDoc
+    │                      ├── 并行触发 KG File Ingest
+    │                      └── 发布后触发 KG Docs Sync
     │
-    └── graph 构建 -> KG Lane     -> KnowledgeGraph -> Curriculum
+    └── graph-only 调试 -> KG File Ingest / KG Docs Sync
 ```
 
-DocGen 与 Knowledge Graph 是两条独立构建链路，不再通过统一构建层编排。二者可以复用
-`digest/common` 中的 shared input、chunk 物化、材料画像等基础能力，但不互相等待、不互相发布中间产物。
+当前主线是 `planner -> confirmed plan -> docgen`。图谱能力拆成文件入图和文档同步两条小 lane；API-facing 的触发、状态、查询放在 `support/knowledge_graph`。
 
 ---
 

@@ -168,14 +168,16 @@ backend/app/api/knowledge_docs.py
 
 - `common/events.py`、`common/exports.py`
   Digest 跨链路事件与 workflow export 入口。
-- `docgen/__init__.py`、`knowledge_graph/__init__.py`
+- `docgen/__init__.py`、`kg_file_ingest/__init__.py`、`kg_docs_sync/__init__.py`
   Digest workflow runner 入口。
 - `planner/`
   负责确认式构建方案生成。
 - `docgen/`
   负责知识文档生成，真实 helper 位于 `docgen/lib/`，旧 `docgen/internal/` 已删除。
-- `knowledge_graph/`
-  负责知识图谱 lane，内部共享能力收口到 `knowledge_graph/lib/`。
+- `kg_file_ingest/`、`kg_docs_sync/`
+  分别负责解析文件入图、知识文档同步图谱。
+- `workflows/support/knowledge_graph/`
+  负责图谱构建触发、状态更新、总览和查询。
 - `common/`
   Digest 跨链路通用材料准备、模型、指标，以及教学语义入口（如 `runtime_config.py`、`pedagogy/`）。
 
