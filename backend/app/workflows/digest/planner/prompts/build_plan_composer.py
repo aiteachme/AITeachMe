@@ -20,6 +20,14 @@ from app.workflows.digest.planner.prompts.examples import render_composer_exampl
 PLAN_JSON_MARKER = "<PLAN_JSON>"
 PLAN_JSON_END_MARKER = "</PLAN_JSON>"
 COMPOSER_MESSAGE_HISTORY_BUDGET = 6
+DEFAULT_PLAN_INTENT = "围绕用户目标和资料主线，先整理资料边界，再生成可调整的初步大纲。"
+
+
+def _render_plan_queries(plan_intent: PlanIntent) -> str:
+    queries = [item.strip() for item in plan_intent.plan_queries if item.strip()]
+    if not queries:
+        return "- 暂无明确规划抓手"
+    return "\n".join(f"- {item}" for item in queries)
 
 
 def build_plan_composer_messages(
@@ -34,11 +42,16 @@ def build_plan_composer_messages(
     latest_plan: dict[str, Any] | None = None,
 ) -> list[dict[str, str]]:
     sketch = planner_brief.markdown.strip() or "暂无可见规划判断"
-    plan_queries = "\n".join(f"- {item}" for item in plan_intent.plan_queries if item.strip()) or "- 暂无明确规划抓手"
-    # 第一段会被 SSE 展示给用户；第二段是后端解析合同，两个协议不能混在一起写。
+    plan_queries = _render_plan_queries(plan_intent)
+    plan_intent_text = plan_intent.plan_intent.strip() or DEFAULT_PLAN_INTENT
+    # 第一段是用户会看到的 plan_text；JSON 是机器合同。这里把协议写清楚，
+    # 避免模型把 hidden JSON 当成 Markdown 继续流给前端。
     prompt = f"""
-请综合用户意图、资料上下文、思考过程和内部规划抓手，生成“计划说明 + 初步大纲”。
-这份大纲是初稿，后续用户可以继续调整。
+你要生成一份构建前计划，分成两层：
+1. 计划说明：像深度研究开始前的行动计划，说明接下来会如何整理资料、拆分问题、形成初步大纲。
+2. 计划步骤和初步大纲：计划步骤拆出可检查动作；初步大纲给出可以继续调整的章节草案。
+
+注意：Planner 阶段不会真实执行外部检索，不要编造来源、网站、论文或证据标题。
 
 主题：{subject}
 用户目标：{user_goal}
@@ -60,35 +73,27 @@ def build_plan_composer_messages(
 {sketch}
 
 内部规划意图：
-{plan_intent.plan_intent or "围绕用户目标和资料主线生成一份可调整的初步计划。"}
+{plan_intent_text}
 
 内部规划抓手：
 {plan_queries}
 
-Planner 阶段不会做本地/外部检索；不要编造来源、网站、论文或证据标题。
+可见输出要求：
+- 先立即输出一段计划说明，不要标题、编号、项目符号。
+- 计划说明控制在 140-320 字，重点写“我会先……再……最后……”，不要把所有章节和知识点挤进去。
+- 计划说明要表达这是初步方案，后续可以调整。
 
-综合任务：
-1. 用一段自然语言说明本计划要怎么组织资料和学习路线。
-2. 生成一个可调整的初步大纲，不要暗示它已经最终确定。
-3. 大纲章节要具体，key_points 要落到知识点、题型、方法或易错边界。
-
-第一段：给用户看的计划说明
-- 必须立即输出一段自然语言，不要使用标题、项目符号或编号。
-- 风格类似：“本计划以三年级数学核心考点为主线，分四章推进：……”
-- 必须说明组织主线和推进顺序，但不要列来源标题、网站名或检索词。
-- 这一段会通过 SSE 展示给用户，所以要短、具体、有方向感。
-
-第二段：给后端解析的 JSON 合同
-- 必须从单独一行 {PLAN_JSON_MARKER} 开始。
-- 随后输出一个合法 JSON 对象。
-- 最后以 {PLAN_JSON_END_MARKER} 结束。
-- JSON 只输出你新生成的信息，不要重复题目、目标、模式等上下文字段。
-- JSON 只有两个字段：plan_text 和 chapters。
-- plan_text 必须与第一段计划说明语义一致。
+隐藏 JSON 要求：
+- 计划说明结束后，从单独一行 {PLAN_JSON_MARKER} 开始。
+- 输出合法 JSON 对象，最后以 {PLAN_JSON_END_MARKER} 结束。
+- JSON 只有 plan_text、plan_steps、chapters 三个字段。
+- plan_text 与可见计划说明语义一致。
+- plan_steps 是 3-5 条动作步骤，用来解释本计划会如何整理资料、判断优先级和形成大纲。
 
 JSON 形状：
 {{
   "plan_text": "一小段计划概括",
+  "plan_steps": ["先做什么", "再做什么", "最后产出什么"],
   "chapters": [
     {{
       "title": "具体章节标题",
@@ -98,16 +103,20 @@ JSON 形状：
 }}
 
 硬约束：
-1. chapters 只写章节标题和知识点列表。
-2. 不要输出检索词、来源、媒体计划、构建约束或后端已有字段。
-3. JSON 段只能输出 JSON，不要放 Markdown 代码块、注释或尾随逗号。
-4. 不要把初步大纲写成不可更改的最终目录。
+1. plan_steps 只写动作，不写章节名堆叠，也不要写“搜索网站/查论文”等外部检索承诺。
+2. chapters 只写章节标题和知识点列表。
+3. chapters 要具体，key_points 落到知识点、题型、方法或易错边界。
+4. 不要输出检索词、来源、媒体计划、构建约束或后端已有字段。
+5. JSON 段只能输出 JSON，不要放 Markdown 代码块、注释或尾随逗号。
+6. 不要把初步大纲写成不可更改的最终目录。
+7. 不要在输出中提到 Deep Research、OpenAI、Gemini 等产品名。
+8. 如果某个知识点只是在内部抓手里出现，但资料上下文不支持，降低确定性表达。
 
-请参考这些 few-shot 规律：
+few-shot 规律：
 {render_composer_examples()}
 """.strip()
     return [
-        {"role": "system", "content": "你是 AITeachMe 的构建计划合成器，必须同时输出可见规划摘要和可解析 JSON。"},
+        {"role": "system", "content": "你是 AITeachMe 的构建计划合成器，必须同时输出可见计划说明和可解析 JSON。"},
         {"role": "user", "content": prompt},
     ]
 

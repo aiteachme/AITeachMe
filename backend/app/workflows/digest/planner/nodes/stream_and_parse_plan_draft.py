@@ -29,6 +29,7 @@ class PlannerChapterSketch(BaseModel):
 
 class PlannerOutlineSketch(BaseModel):
     plan_text: str = ""
+    plan_steps: list[str] = Field(default_factory=list)
     chapters: list[PlannerChapterSketch] = Field(default_factory=list)
 
 
@@ -89,6 +90,7 @@ def _sketch_to_plan_payload(sketch: PlannerOutlineSketch) -> dict[str, Any]:
         )
     return {
         "plan_summary": sketch.plan_text.strip(),
+        "plan_steps": [item.strip() for item in sketch.plan_steps if item.strip()],
         "chapter_plan": chapters,
     }
 
@@ -224,6 +226,7 @@ def build_stream_and_parse_plan_draft_node(*, context: WorkflowContext):
                 "planner_compose_parse_completed",
                 planner_session_id=state.get("planner_session_id", ""),
                 plan_text_chars=len(sketch.plan_text or ""),
+                plan_step_count=len(sketch.plan_steps),
                 chapter_count=len(sketch.chapters),
                 visible_outline_chars=len(visible_outline),
             )
@@ -250,6 +253,7 @@ def build_stream_and_parse_plan_draft_node(*, context: WorkflowContext):
             "planner_compose_node_completed",
             planner_session_id=state.get("planner_session_id", ""),
             chapter_count=len(draft_payload.get("chapter_plan") or []),
+            plan_step_count=len(draft_payload.get("plan_steps") or []),
             plan_summary_chars=len(str(draft_payload.get("plan_summary") or "")),
         )
         return result

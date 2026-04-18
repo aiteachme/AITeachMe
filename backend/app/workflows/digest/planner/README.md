@@ -64,12 +64,12 @@ stream_and_parse_plan_draft
   输入：material_context / planner_brief / plan_intent / latest_plan / user_goal / message_history
   输出：plan_outline_markdown / build_plan_draft
     - plan_outline_markdown：给用户看的计划大纲文本。
-    - build_plan_draft：从 `<PLAN_JSON>` 解析出的极简章节草稿。
+    - build_plan_draft：从 `<PLAN_JSON>` 解析出的计划说明、动作步骤和章节草稿。
   作用：一次 reason 流式调用，同时生成可见计划说明和机器可解析 JSON 初步大纲。
   内部步骤：
     1. 先流式输出用户可见 Markdown。
     2. 遇到 `<PLAN_JSON>` 后停止向前端透出机器合同。
-    3. 解析 `plan_text / chapters`。
+    3. 解析 `plan_text / plan_steps / chapters`。
     4. 转成待 normalize 的 `chapter_plan`。
 
 normalize_and_persist_plan
@@ -96,6 +96,7 @@ confirmed_plan
   media_plan：Mermaid / 图片 / 交互块能力开关
   build_constraints：章节数、目标长度、是否含练习和来源等约束
   plan_summary：方案摘要
+  plan_steps：方案动作步骤，给调试、聊天镜像和未来 UI 复用
   selected_file_ids：DocGen 读取资料和检索本地切片的文件范围
   planner_context：Planner 会话摘要、最新大纲、修订次数
   docgen_history_brief：给 DocGen 的精简历史修改意见

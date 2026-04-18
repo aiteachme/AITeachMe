@@ -38,6 +38,9 @@ class BuildPlannerDraft(BaseModel):
     media_plan: dict[str, Any] = Field(default_factory=dict)
     build_constraints: dict[str, Any] = Field(default_factory=dict)
     plan_summary: str = ""
+    # Internal/action-plan metadata. API cards may ignore it, but DB plan_json
+    # keeps it for later debugging, chat mirror, and future UI reuse.
+    plan_steps: list[str] = Field(default_factory=list)
 
 
 def _text(value: Any) -> str:
@@ -275,6 +278,7 @@ def normalize_planner_draft(
     plan_summary = _text(current.get("plan_summary") or previous.get("plan_summary"))
     if not plan_summary:
         raise ValueError("planner plan is missing plan_summary")
+    plan_steps = _strings(current.get("plan_steps") or previous.get("plan_steps"))
 
     skillpacks = (
         selected_skillpacks
@@ -291,6 +295,7 @@ def normalize_planner_draft(
         media_plan=_media_plan(),
         build_constraints=_build_constraints(digest_mode=mode, chapter_count=len(chapters), shared_inputs=shared),
         plan_summary=plan_summary,
+        plan_steps=plan_steps,
     )
 
 

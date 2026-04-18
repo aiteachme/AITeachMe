@@ -1,4 +1,8 @@
-"""Prompt rendering helpers for the planner lane."""
+"""Tiny text renderers shared by planner prompts.
+
+这里不做规划判断，只把 workflow state 里的上下文转成 prompt 文本。
+保留这一层是为了避免三个 prompt 文件重复拼接资料、历史和上一版方案。
+"""
 
 from __future__ import annotations
 
@@ -6,45 +10,53 @@ from typing import Any
 
 from app.workflows.digest.common.models import DigestMaterialContext
 
+EMPTY_DIGEST = "暂无资料正文上下文"
+EMPTY_HISTORY = "暂无补充意见"
+EMPTY_LATEST_PLAN = "暂无上一版方案"
+EMPTY_FILES = "暂无已解析文件"
+
+
+def _clean(value: Any) -> str:
+    return str(value or "").strip()
+
 
 def render_material_digest(material_context: DigestMaterialContext) -> str:
-    digest = (material_context.material_digest or "").strip()
-    return digest or "暂无资料正文上下文"
+    return _clean(material_context.material_digest) or EMPTY_DIGEST
 
 
 def render_material_overview(material_context: DigestMaterialContext) -> str:
     profile = material_context.learning_domain_profile.build_context_string()
-    files = [
-        doc.filename
-        for doc in material_context.source_documents
-        if str(doc.filename or "").strip()
-    ]
+    files: list[str] = []
+    for doc in material_context.source_documents:
+        filename = _clean(doc.filename)
+        if filename:
+            files.append(filename)
+
     stats = material_context.material_stats_profile.stats
-    source_count = stats.total_sources or len(material_context.source_documents)
-    section_count = stats.total_sections or len(material_context.material_sections)
     lines = [
         profile,
-        f"资料文件：{'、'.join(files) if files else '暂无已解析文件'}",
-        f"资料规模：{source_count} 个文件，{section_count} 个片段",
+        f"资料文件：{'、'.join(files) if files else EMPTY_FILES}",
+        f"资料规模：{stats.total_sources or len(material_context.source_documents)} 个文件，"
+        f"{stats.total_sections or len(material_context.material_sections)} 个片段",
     ]
     return "\n".join(line for line in lines if line.strip())
 
 
 def render_message_history(message_history: list[str] | None, *, limit: int = 4) -> str:
-    cleaned = [str(item).strip() for item in message_history or [] if str(item).strip()]
-    if not cleaned:
-        return "暂无补充意见"
-    return "\n".join(f"- {item}" for item in cleaned[-limit:])
+    history = [_clean(item) for item in message_history or [] if _clean(item)]
+    return "\n".join(f"- {item}" for item in history[-limit:]) if history else EMPTY_HISTORY
 
 
 def render_latest_plan(latest_plan: dict[str, Any] | None) -> str:
     if not latest_plan:
-        return "暂无上一版方案"
-    plan_summary = str(latest_plan.get("plan_summary") or "").strip()
+        return EMPTY_LATEST_PLAN
+    plan_summary = _clean(latest_plan.get("plan_summary"))
     chapter_count = len(list(latest_plan.get("chapter_plan") or []))
-    lines = [f"上一版章节数：{chapter_count}"]
-    if plan_summary:
-        lines.insert(0, f"上一版摘要：{plan_summary}")
+    step_count = len(list(latest_plan.get("plan_steps") or []))
+    lines = [f"上一版摘要：{plan_summary}"] if plan_summary else []
+    if step_count:
+        lines.append(f"上一版计划步骤数：{step_count}")
+    lines.append(f"上一版章节数：{chapter_count}")
     return "\n".join(lines)
 
 

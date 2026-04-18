@@ -38,6 +38,7 @@ def build_normalize_and_persist_plan_node(*, context: WorkflowContext):
             "planner_normalize_completed",
             planner_session_id=state.get("planner_session_id", ""),
             chapter_count=len(draft.chapter_plan),
+            plan_step_count=len(draft.plan_steps),
             digest_mode=draft.digest_mode,
             plan_summary_chars=len(draft.plan_summary or ""),
         )

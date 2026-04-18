@@ -182,8 +182,10 @@ def _fallback_plan_queries(state: BuildPlannerState) -> list[str]:
 
 
 def _fallback_plan_intent(state: BuildPlannerState) -> str:
+    material_context = state["material_context"]
     goal = str(state.get("user_goal") or "").strip()
-    return f"围绕{goal or '当前学习目标'}和已上传资料，先归纳知识主线，再生成可调整的初步大纲。"
+    mode = str(state.get("digest_mode") or material_context.course_mode_decision.mode.value)
+    return f"用户意图暂按 {mode} 学习处理；围绕{goal or '当前学习目标'}和已上传资料，先识别资料主线，再生成可调整的初步大纲。"
 
 
 def build_stream_brief_and_extract_intent_node(*, context: WorkflowContext):

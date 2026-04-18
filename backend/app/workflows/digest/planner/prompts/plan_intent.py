@@ -8,6 +8,10 @@ from app.workflows.digest.planner.prompts.context import (
     render_material_overview,
     render_message_history,
 )
+from app.workflows.digest.planner.prompts.examples import render_plan_intent_examples
+
+PLAN_QUERY_MIN = 3
+PLAN_QUERY_MAX = 8
 
 
 def build_plan_intent_messages(
@@ -18,10 +22,11 @@ def build_plan_intent_messages(
     material_context: DigestMaterialContext,
     message_history: list[str],
 ) -> list[dict[str, str]]:
-    # 这个 prompt 只生成内部抓手，用户最终只看到综合节点生成的计划和初步大纲。
+    # 这里只产出内部意图识别结果。它不直接展示给用户，只帮助 composer
+    # 确定“用户想怎么学”和“该按什么问题去整理资料”。
     prompt = f"""
-请把用户学习目标和资料上下文整理成内部规划意图。
-Planner 阶段不会真实执行外部检索；这里的 queries 是后续综合大纲时使用的“整理/搜索抓手”。
+请先识别用户学习意图，再把结果整理成内部 PlanIntent。
+PlanIntent 不是最终展示内容，也不是外部检索承诺；它只用于后续生成“计划说明 + 初步大纲”。
 
 学科/主题：{subject}
 用户目标：{user_goal}
@@ -36,17 +41,25 @@ Planner 阶段不会真实执行外部检索；这里的 queries 是后续综合
 最近对话：
 {render_message_history(message_history)}
 
-请只输出合法 JSON：
+只输出合法 JSON：
 {{
   "plan_intent": "一小段内部规划意图",
-  "plan_queries": ["3-8 条用于后续综合大纲的整理抓手"]
+  "plan_queries": ["{PLAN_QUERY_MIN}-{PLAN_QUERY_MAX} 条用于后续综合大纲的整理抓手"]
 }}
 
 字段要求：
-1. plan_intent 不超过 120 字，必须说明本次计划主要按什么主线组织。
-2. plan_queries 输出 3-8 条，必须具体到知识簇、题型、方法、易错边界或应用场景。
-3. plan_queries 不是对用户展示的最终内容，也不是承诺真实检索；它们只是综合节点的内部抓手。
-4. 不要输出来源名单、网站名、论文名、长解释或重复内容。
+1. plan_intent 不超过 140 字，必须同时说明：
+   - 用户意图：冲刺复习、系统学习、题型突破、速查复盘、入门理解等；
+   - 产出用途：用来备考、复习、补弱、建立体系或快速查漏；
+   - 组织主线：资料应该按知识簇、题型、概念依赖、易错点或应用场景来整理。
+2. plan_queries 输出 {PLAN_QUERY_MIN}-{PLAN_QUERY_MAX} 条，是给 composer 的内部拆题抓手。
+3. plan_queries 要服务意图识别结果，可以写知识簇、题型、方法、易错边界、应用场景或大纲拆分问题。
+4. plan_queries 不要写成网站搜索词、来源列表或最终章节标题。
+5. 如果用户意图不明确，就从资料形态和请求模式推断，但要保守表达。
+6. 不要输出来源名单、网站名、论文名、长解释或重复内容。
+
+few-shot 示例：
+{render_plan_intent_examples()}
 """.strip()
     return [
         {"role": "system", "content": "你是学习规划意图分析器，只输出合法 JSON。"},

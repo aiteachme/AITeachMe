@@ -379,6 +379,7 @@ def _record_snapshot(record: BuildPlannerSession) -> dict[str, Any]:
 
 def _render_final_plan_markdown(plan_payload: dict[str, Any]) -> str:
     summary = str(plan_payload.get("plan_summary") or "").strip()
+    plan_steps = [str(item).strip() for item in list(plan_payload.get("plan_steps") or []) if str(item).strip()]
     chapters = [
         item
         for item in list(plan_payload.get("chapter_plan") or [])
@@ -389,14 +390,21 @@ def _render_final_plan_markdown(plan_payload: dict[str, Any]) -> str:
         "",
         f"> 模式：{str(plan_payload.get('digest_mode') or 'systematic')}",
         f"> 一句话摘要：{summary or '已生成一份可确认的构建方案。'}",
-        "",
-        "## 章节安排",
-        *[
-            f"{index}. {str(chapter.get('title') or '').strip()}："
-            f"{'；'.join(str(item).strip() for item in list(chapter.get('required_elements') or [])[:3] if str(item).strip())}"
-            for index, chapter in enumerate(chapters, start=1)
-        ],
     ]
+    if plan_steps:
+        lines.extend(["", "## 计划步骤"])
+        lines.extend(f"{index}. {item}" for index, item in enumerate(plan_steps, start=1))
+    lines.extend(
+        [
+            "",
+            "## 章节安排",
+            *[
+                f"{index}. {str(chapter.get('title') or '').strip()}："
+                f"{'；'.join(str(item).strip() for item in list(chapter.get('required_elements') or [])[:3] if str(item).strip())}"
+                for index, chapter in enumerate(chapters, start=1)
+            ],
+        ]
+    )
     return "\n".join(lines).strip()
 
 
@@ -729,6 +737,7 @@ def _normalized_plan_payload(
         "media_plan": dict(plan.get("media_plan") or {}),
         "build_constraints": build_constraints,
         "plan_summary": str(plan.get("plan_summary") or ""),
+        "plan_steps": [str(item).strip() for item in list(plan.get("plan_steps") or []) if str(item).strip()],
     }
     context_payload = dict(planner_context or plan.get("planner_context") or {})
     if context_payload:
