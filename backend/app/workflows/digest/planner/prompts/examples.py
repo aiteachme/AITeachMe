@@ -1,56 +1,95 @@
-"""Few-shot example packs for Planner."""
+"""Few-shot example packs for Planner prompts."""
 
 from __future__ import annotations
 
 
 PLAN_SKETCH_EXAMPLES = [
     {
-        "label": "sprint_exam_thinking",
-        "input": "用户想考前冲刺《高数试题精讲》，本地资料以题目、答案和考点总结为主。",
-        "output": """这批资料更像考前题目和考点包，先按极限、导数、积分的题型簇拆开，不照题号流水账。
-大纲会围绕题眼、公式适用条件、常见变式和易错步骤组织，每章尽量压成“考点判断 + 例题路径 + 易错速查”。
-""",
+        "label": "primary_math_resource",
+        "input": "用户说“三年级数学”，资料包含教材目录、练习题、易错题和课堂讲义。",
+        "output": """这批资料更像小学数学阶段性资源包，不适合按文件顺序整理，而要先把计算、图形、分数时间和应用题分成几条稳定主线。
+我会先识别哪些内容是课堂必学概念，哪些是题型训练和易错点，再把每一块压成学生能直接复习的章节抓手。
+初步大纲会控制在少数几章里，每章都尽量对应一类学习动作：会算、会换算、会读题、会建模。""",
     },
     {
-        "label": "sprint_concept_thinking",
-        "input": "用户上传的是零散计算机基础题库，希望快速补基础概念，必要时可用外部资料校准。",
-        "output": """这份资料是计算机基础选择题题库，主线集中在硬件/软件术语、CPU、ROM/RAM、单位换算、编码和设备分类。
-大纲会按“概念辨析 + 题型识别”收束：系统组成、存储体系、编码表示、输入输出、安全启动，最后做易错速查。
-""",
+        "label": "sprint_exam_bank",
+        "input": "用户想考前冲刺高数，资料是历年题、答案解析和公式速记。",
+        "output": """这批资料重点不是系统铺开教材，而是从题目里反推高频考点和得分路径。
+我会先把题目按极限、导数、积分、级数和综合应用归簇，再看每一簇常用公式、题眼变化和最容易错的计算步骤。
+初步大纲会以“题型识别—公式使用—易错修正”为核心，不把每套试卷机械拆成章节。""",
     },
     {
-        "label": "systematic_textbook_thinking",
-        "input": "用户上传教材和讲义，希望系统学习线性代数。",
-        "output": """这组资料更像教材加讲义，线性代数需要按依赖关系走，不能只挑零散考点。
-章节会从对象与表示开始，再到矩阵方程组、向量空间、行列式与秩、线性变换、特征值对角化，最后补证明辨析和综合应用。
-""",
-    },
-    {
-        "label": "systematic_mixed_notes_thinking",
-        "input": "用户上传零散笔记和课件，希望系统整理计算机网络基础，允许外部资料补齐缺口。",
-        "output": """这些笔记和课件比较零散，先用 OSI/TCP-IP 分层把边界理顺，再放回寻址、路由、可靠传输、DNS、HTTP 和 TCP 连接管理。
-大纲会按分层术语、数据链路、IP 路由、TCP/UDP、DNS/HTTP、拥塞重传和故障排查组织，缺口再用外部资料校准。
-""",
+        "label": "systematic_textbook",
+        "input": "用户上传线性代数教材和课堂笔记，希望系统学习。",
+        "output": """这组资料明显有前后依赖，不能只按考点碎片化处理。
+我会先建立对象主线：矩阵、方程组、向量空间、线性变换和特征值，再把证明、计算和应用放到对应章节里。
+初步大纲会更像系统课程目录，每章先讲概念边界，再讲方法成立条件，最后落到例题和迁移。""",
     },
 ]
 
 
 COMPOSER_EXAMPLES = [
     {
-        "label": "sprint_exam_contract",
-        "summary": "冲刺型计划里章节少而聚焦，标题要像真实讲义目录，key_points 要落到考点、题型和易错步骤。",
+        "label": "小学数学资源",
+        "plan_text": "本计划以三年级数学核心考点为主线，分四章推进：先稳住口算与竖式计算，再梳理图形和单位换算，随后处理分数与时间初步，最后集中训练应用题读题和建模。每章都保留典型题型与易错点，方便后续继续按课堂或家庭复习目标调整。",
+        "chapters": [
+            {
+                "title": "口算与竖式计算",
+                "key_points": ["三位数加减法竖式计算（含进位与退位）", "乘法口诀快速应用（1~9×1~9）", "常见口算错误归因与纠正"],
+            },
+            {
+                "title": "图形与单位换算",
+                "key_points": ["长方形、正方形周长公式及应用", "元角分、厘米米之间的单位换算", "图形特征辨识与测量单位选择"],
+            },
+            {
+                "title": "分数与时间初步",
+                "key_points": ["分数的初步认识（如 1/2、1/4 的含义）", "钟面读写与时间间隔计算", "生活情境中的时间表达与推算"],
+            },
+            {
+                "title": "应用题解题路径",
+                "key_points": ["审题关键词识别（如一共、多少、还剩）", "列表建模与数量关系图构建", "数形结合解决实际问题"],
+            },
+        ],
     },
     {
-        "label": "sprint_concept_contract",
-        "summary": "概念补基础的冲刺计划要先对齐定义，再连接题型和易错点，不要只有刷题口号。",
+        "label": "考前冲刺题库",
+        "plan_text": "本计划按题型簇而不是试卷顺序组织内容，先提炼高频题眼，再把公式适用条件、解题步骤和易错环节放到同一章里。初步大纲会聚焦最容易提分的题型，后续可以继续按考试范围删减或加深。",
+        "chapters": [
+            {
+                "title": "极限与连续题眼",
+                "key_points": ["等价无穷小与洛必达适用条件", "分段函数连续性判断", "常见极限变式的第一步选择"],
+            },
+            {
+                "title": "导数与单调性应用",
+                "key_points": ["导数定义与几何意义", "单调区间和极值判断", "切线方程与参数题常见坑"],
+            },
+            {
+                "title": "积分计算与面积模型",
+                "key_points": ["换元积分和分部积分选择", "定积分几何意义", "面积/体积应用题建模"],
+            },
+        ],
     },
     {
-        "label": "systematic_textbook_contract",
-        "summary": "系统型计划要体现知识主线、依赖关系、方法结构和应用，不要只是把目录原样抄出来。",
-    },
-    {
-        "label": "systematic_mixed_contract",
-        "summary": "当资料比较零散时，计划要先建立章节主线，不要把文件名、来源名或检索动作写进章节标题。",
+        "label": "系统教材讲义",
+        "plan_text": "本计划按概念依赖关系组织课程，先建立基础对象和符号，再推进到方法、定理和应用。初步大纲不会照搬教材目录，而会把相邻知识合并成更适合学习的模块，后续可以按课时或考试重点继续调整。",
+        "chapters": [
+            {
+                "title": "矩阵对象与基本运算",
+                "key_points": ["矩阵的定义、行列结构与记号", "加法、数乘、乘法的成立条件", "初等变换和等价关系"],
+            },
+            {
+                "title": "方程组与秩",
+                "key_points": ["线性方程组的矩阵表示", "秩与解的存在唯一性", "消元法的步骤和边界条件"],
+            },
+            {
+                "title": "向量空间与线性相关",
+                "key_points": ["向量组、张成空间和基", "线性相关/无关判断", "维数与坐标表示"],
+            },
+            {
+                "title": "特征值与对角化",
+                "key_points": ["特征值和特征向量定义", "相似矩阵与对角化条件", "典型计算题和应用解释"],
+            },
+        ],
     },
 ]
 
@@ -59,7 +98,7 @@ def render_plan_sketch_examples() -> str:
     blocks: list[str] = []
     for index, item in enumerate(PLAN_SKETCH_EXAMPLES, start=1):
         blocks.append(
-            f"示例 {index}\n"
+            f"示例 {index}：{item['label']}\n"
             f"输入场景：{item['input']}\n"
             f"目标输出：\n{item['output']}"
         )
@@ -67,10 +106,18 @@ def render_plan_sketch_examples() -> str:
 
 
 def render_composer_examples() -> str:
-    return "\n".join(
-        f"- {item['label']}：{item['summary']}"
-        for item in COMPOSER_EXAMPLES
-    )
+    blocks: list[str] = []
+    for index, item in enumerate(COMPOSER_EXAMPLES, start=1):
+        chapters = "\n".join(
+            f"  - {chapter['title']}：{'；'.join(chapter['key_points'])}"
+            for chapter in item["chapters"]
+        )
+        blocks.append(
+            f"示例 {index}：{item['label']}\n"
+            f"plan_text：{item['plan_text']}\n"
+            f"chapters：\n{chapters}"
+        )
+    return "\n\n".join(blocks)
 
 
 __all__ = ["render_composer_examples", "render_plan_sketch_examples"]

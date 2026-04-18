@@ -6,7 +6,7 @@ from typing import Any
 
 from app.workflows.digest.common.models import DigestMaterialContext
 from app.workflows.digest.planner.lib.models import (
-    LearningIntent,
+    PlanIntent,
     PlannerBrief,
 )
 from app.workflows.digest.planner.prompts.context import (
@@ -29,16 +29,16 @@ def build_plan_composer_messages(
     digest_mode: str,
     material_context: DigestMaterialContext,
     planner_brief: PlannerBrief,
-    learning_intent: LearningIntent,
+    plan_intent: PlanIntent,
     message_history: list[str] | None = None,
     latest_plan: dict[str, Any] | None = None,
 ) -> list[dict[str, str]]:
     sketch = planner_brief.markdown.strip() or "暂无可见规划判断"
-    focus_concepts = "、".join(learning_intent.focus_concepts) or "暂无明确概念清单"
+    plan_queries = "\n".join(f"- {item}" for item in plan_intent.plan_queries if item.strip()) or "- 暂无明确规划抓手"
     # 第一段会被 SSE 展示给用户；第二段是后端解析合同，两个协议不能混在一起写。
     prompt = f"""
-请综合用户意图、可见思考过程和资料上下文，生成一份高度概括的知识文档构建计划。
-你这一次输出两段：先给用户看的计划大纲，再给后端看的极简 JSON。
+请综合用户意图、资料上下文、思考过程和内部规划抓手，生成“计划说明 + 初步大纲”。
+这份大纲是初稿，后续用户可以继续调整。
 
 主题：{subject}
 用户目标：{user_goal}
@@ -59,25 +59,24 @@ def build_plan_composer_messages(
 可见规划判断：
 {sketch}
 
-意图类型：{learning_intent.goal_type}
-目标受众：{learning_intent.audience}
-成功标准：{'；'.join(learning_intent.success_criteria)}
-约束：{'；'.join(learning_intent.constraints)}
-意图识别出的核心概念：{focus_concepts}
+内部规划意图：
+{plan_intent.plan_intent or "围绕用户目标和资料主线生成一份可调整的初步计划。"}
+
+内部规划抓手：
+{plan_queries}
 
 Planner 阶段不会做本地/外部检索；不要编造来源、网站、论文或证据标题。
 
 综合任务：
-1. 判断资料到底在讲哪几个知识簇；
-2. 判断哪些知识簇应该合并成一章，哪些应该拆开；
-3. 判断每章应该更偏概念总结、题型突破、易错辨析还是速查复盘；
-4. 直接产出用户想要的知识文档主线和章节安排。
+1. 用一段自然语言说明本计划要怎么组织资料和学习路线。
+2. 生成一个可调整的初步大纲，不要暗示它已经最终确定。
+3. 大纲章节要具体，key_points 要落到知识点、题型、方法或易错边界。
 
-第一段：给用户看的 Markdown 摘要
-- 必须立即开始输出，不要先铺垫自然段。
-- 用几条普通项目符号或编号列表说明知识文档主线、章节安排和每章抓手。
-- 不要复述“我会阅读文档/检索来源/根据资料生成”，不要列来源标题。
-- 这一段会通过 SSE 展示给用户，所以要自然、清楚、短。
+第一段：给用户看的计划说明
+- 必须立即输出一段自然语言，不要使用标题、项目符号或编号。
+- 风格类似：“本计划以三年级数学核心考点为主线，分四章推进：……”
+- 必须说明组织主线和推进顺序，但不要列来源标题、网站名或检索词。
+- 这一段会通过 SSE 展示给用户，所以要短、具体、有方向感。
 
 第二段：给后端解析的 JSON 合同
 - 必须从单独一行 {PLAN_JSON_MARKER} 开始。
@@ -85,6 +84,7 @@ Planner 阶段不会做本地/外部检索；不要编造来源、网站、论�
 - 最后以 {PLAN_JSON_END_MARKER} 结束。
 - JSON 只输出你新生成的信息，不要重复题目、目标、模式等上下文字段。
 - JSON 只有两个字段：plan_text 和 chapters。
+- plan_text 必须与第一段计划说明语义一致。
 
 JSON 形状：
 {{
@@ -101,6 +101,7 @@ JSON 形状：
 1. chapters 只写章节标题和知识点列表。
 2. 不要输出检索词、来源、媒体计划、构建约束或后端已有字段。
 3. JSON 段只能输出 JSON，不要放 Markdown 代码块、注释或尾随逗号。
+4. 不要把初步大纲写成不可更改的最终目录。
 
 请参考这些 few-shot 规律：
 {render_composer_examples()}

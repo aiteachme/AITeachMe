@@ -201,16 +201,6 @@ function parsePlannerRuntimeStats(response: BuildPlannerSessionResponse): Planne
   return candidate ?? null;
 }
 
-function formatElapsedMs(value: number | undefined): string {
-  if (!value || value <= 0) {
-    return "0 ms";
-  }
-  if (value < 1000) {
-    return `${value} ms`;
-  }
-  return `${(value / 1000).toFixed(1)} s`;
-}
-
 function formatPlannerNodeLabel(stepName: string): string {
   switch (stepName) {
     case "load_planner_materials":
@@ -226,13 +216,6 @@ function formatPlannerNodeLabel(stepName: string): string {
   }
 }
 
-function listPlannerNodeTimings(runtimeStats: PlannerRuntimeStats | null | undefined): Array<[string, number]> {
-  if (!runtimeStats) {
-    return [];
-  }
-  return (runtimeStats.steps ?? []).slice(0, 3).map((step) => [step.name, step.elapsed_ms]);
-}
-
 function resolvePlannerStatusText(payload: unknown): string {
   if (!isRecord(payload)) {
     return "正在思考目标与资料...";
@@ -245,29 +228,6 @@ function resolvePlannerStatusText(payload: unknown): string {
     return `${label} 进行中...`;
   }
   return "正在思考目标与资料...";
-}
-
-function plannerGoalTypeLabel(value: string): string {
-  switch (value) {
-    case "exam_sprint":
-      return "考前冲刺";
-    case "systematic_learning":
-      return "系统学习";
-    case "knowledge_doc":
-      return "知识文档规划";
-    default:
-      return value;
-  }
-}
-
-function plannerStringList(value: unknown, limit = 4): string[] {
-  if (!Array.isArray(value)) {
-    return [];
-  }
-  return value
-    .map((item) => (typeof item === "string" ? item.trim() : ""))
-    .filter(Boolean)
-    .slice(0, limit);
 }
 
 function buildPlannerOutlineItems(plan: BuildPlannerPlanResponse | null | undefined, limit = 8): PlannerOutlineItem[] {
@@ -286,21 +246,6 @@ function buildPlannerOutlineItems(plan: BuildPlannerPlanResponse | null | undefi
     .map((query) => ({ title: String(query ?? "").trim() }))
     .filter((item) => item.title)
     .slice(0, limit);
-}
-
-function buildPlannerFocusItems(plan: BuildPlannerPlanResponse | null | undefined, limit = 6): string[] {
-  const elements = (plan?.chapter_plan ?? []).flatMap((chapter) => chapter.required_elements ?? []);
-  const deduped: string[] = [];
-  for (const item of [...elements, ...(plan?.research_queries ?? [])]) {
-    const cleaned = String(item ?? "").trim();
-    if (cleaned && !deduped.includes(cleaned)) {
-      deduped.push(cleaned);
-    }
-    if (deduped.length >= limit) {
-      break;
-    }
-  }
-  return deduped;
 }
 
 function plannerPayloadOutlineDetails(payload: Record<string, unknown>): string[] {
@@ -328,19 +273,10 @@ function buildPlannerStreamDetails(payload: Record<string, unknown>): string[] {
   switch (stage) {
     case "planner.thinking.started":
       return [];
-    case "planner.intent.ready": {
-      const details: string[] = [];
-      if (typeof payload.goal_type === "string" && payload.goal_type.trim()) {
-        details.push(`目标类型：${plannerGoalTypeLabel(payload.goal_type.trim())}`);
-      }
-      const focusConcepts = plannerStringList(payload.focus_concepts, 6);
-      if (focusConcepts.length) {
-        details.push(`关注概念：${focusConcepts.join("、")}`);
-      }
-      return details;
-    }
+    case "planner.intent.ready":
+      return [];
     case "planner.plan.composing":
-      return ["正在把思考过程压缩成几条可确认的计划大纲。"];
+      return ["正在生成计划说明和可调整的初步大纲。"];
     case "planner.plan.finalizing":
       return ["正在校验计划结构，并写入草稿记录。"];
     case "planner.plan.ready":
@@ -395,8 +331,6 @@ function appendPlannerStreamEvent(events: PlannerStreamEvent[], payload: unknown
 
 function PlannerOutlineCard({
   plan,
-  runtimeStats,
-  messageId,
   needsRefresh,
   isDisabled,
   isBuilding,
@@ -404,8 +338,6 @@ function PlannerOutlineCard({
   onAdjust,
 }: {
   plan: BuildPlannerPlanResponse;
-  runtimeStats?: PlannerRuntimeStats | null;
-  messageId: string;
   needsRefresh: boolean;
   isDisabled: boolean;
   isBuilding: boolean;
@@ -413,39 +345,14 @@ function PlannerOutlineCard({
   onAdjust: () => void;
 }) {
   const outlineItems = buildPlannerOutlineItems(plan);
-  const focusItems = buildPlannerFocusItems(plan);
 
   return (
     <div className="rounded-lg border border-zinc-200 bg-white px-5 py-5 shadow-sm">
-      <div className="flex flex-wrap items-center gap-2">
-        <h3 className="text-base font-semibold text-zinc-950">
-          {plan.plan_summary?.trim() || "计划大纲"}
-        </h3>
-        <span className="rounded-full border border-zinc-200 px-2 py-0.5 text-[11px] text-zinc-500">
-          {plan.digest_mode}
-        </span>
-        {needsRefresh ? (
-          <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] text-amber-700">
-            资料已变化
-          </span>
-        ) : null}
+      <div>
+        <p className="text-base font-semibold leading-7 text-zinc-950">
+          {plan.plan_summary?.trim() || "我会先整理资料主线，再生成一份可继续调整的初步大纲。"}
+        </p>
       </div>
-
-      {runtimeStats ? (
-        <div className="mt-3 flex flex-wrap gap-2">
-          <span className="rounded-full border border-zinc-200 bg-zinc-50 px-2 py-0.5 text-[10px] text-zinc-600">
-            总耗时 {formatElapsedMs(runtimeStats.elapsed_ms)}
-          </span>
-          {listPlannerNodeTimings(runtimeStats).map(([nodeName, elapsedMs]) => (
-            <span
-              key={`${messageId}-${nodeName}`}
-              className="rounded-full border border-zinc-200 bg-white px-2 py-0.5 text-[10px] text-zinc-500"
-            >
-              {formatPlannerNodeLabel(nodeName)} {formatElapsedMs(elapsedMs)}
-            </span>
-          ))}
-        </div>
-      ) : null}
 
       <div className="mt-5 space-y-4">
         {outlineItems.map((item, index) => (
@@ -461,17 +368,15 @@ function PlannerOutlineCard({
         ))}
       </div>
 
-      {focusItems.length ? (
-        <div className="mt-5 flex flex-wrap gap-2">
-          {focusItems.map((item) => (
-            <span key={item} className="rounded-full bg-zinc-100 px-2.5 py-1 text-xs text-zinc-600">
-              {item}
-            </span>
-          ))}
-        </div>
-      ) : null}
-
       <div className="mt-6 flex items-center gap-3">
+        <span className="rounded-full border border-zinc-200 px-2 py-0.5 text-[11px] text-zinc-500">
+          {plan.digest_mode}
+        </span>
+        {needsRefresh ? (
+          <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] text-amber-700">
+            资料已变化
+          </span>
+        ) : null}
         <div className="flex-1" />
         <button
           type="button"
@@ -1496,8 +1401,6 @@ export function BuildPlanPage() {
                       {message.plan ? (
                         <PlannerOutlineCard
                           plan={message.plan}
-                          runtimeStats={message.runtimeStats}
-                          messageId={message.id}
                           needsRefresh={plannerNeedsRefresh}
                           isDisabled={isBuilding || isPlannerPending}
                           isBuilding={isBuilding || isPlannerPending}

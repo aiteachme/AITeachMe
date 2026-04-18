@@ -11,14 +11,11 @@ class PlannerBrief(BaseModel):
     markdown: str = ""
 
 
-class LearningIntent(BaseModel):
-    """Compact user-goal interpretation for planning."""
+class PlanIntent(BaseModel):
+    """Internal planning intent used to steer the final composer."""
 
-    goal_type: str = "knowledge_doc"
-    audience: str = "当前学习者"
-    success_criteria: list[str] = Field(default_factory=list)
-    constraints: list[str] = Field(default_factory=list)
-    focus_concepts: list[str] = Field(default_factory=list)
+    plan_intent: str = ""
+    plan_queries: list[str] = Field(default_factory=list)
 
 
 def build_empty_planner_brief() -> PlannerBrief:
@@ -26,7 +23,7 @@ def build_empty_planner_brief() -> PlannerBrief:
 
 
 __all__ = [
-    "LearningIntent",
+    "PlanIntent",
     "PlannerBrief",
     "build_empty_planner_brief",
 ]

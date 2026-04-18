@@ -35,7 +35,7 @@ class BuildPlannerState(TypedDict, total=False):
     # Planner working artifacts
     material_context: DigestMaterialContext
     planner_brief: dict[str, Any]
-    learning_intent: dict[str, Any]
+    plan_intent: dict[str, Any]
     plan_outline_markdown: str
     build_plan_draft: dict[str, Any]
 

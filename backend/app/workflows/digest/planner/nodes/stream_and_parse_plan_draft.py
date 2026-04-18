@@ -13,7 +13,7 @@ from app.shared.infra.llm_support import acompletion_stream
 from app.shared.infra.llm_support.routing import LLMCallPurpose
 from app.shared.infra.workflow.context import WorkflowContext
 from app.workflows.digest.planner.lib.planner_events import emit_planner_event, emit_planner_token
-from app.workflows.digest.planner.lib.models import LearningIntent, PlannerBrief
+from app.workflows.digest.planner.lib.models import PlanIntent, PlannerBrief
 from app.workflows.digest.planner.prompts import PLAN_JSON_END_MARKER, PLAN_JSON_MARKER, build_plan_composer_messages
 from app.workflows.digest.planner.state import BuildPlannerState
 
@@ -113,7 +113,7 @@ async def _stream_composer_response(
     *,
     material_context,
     planner_brief: PlannerBrief,
-    intent: LearningIntent,
+    plan_intent: PlanIntent,
 ) -> str:
     tokens: list[str] = []
     pending_visible = ""
@@ -126,7 +126,7 @@ async def _stream_composer_response(
             subject=state.get("subject", ""),
             material_digest_chars=len(material_context.material_digest or ""),
             brief_chars=len(planner_brief.markdown or ""),
-            goal_type=intent.goal_type,
+            query_count=len(plan_intent.plan_queries),
         )
         stream = acompletion_stream(
             build_plan_composer_messages(
@@ -135,7 +135,7 @@ async def _stream_composer_response(
                 digest_mode=state.get("digest_mode") or material_context.course_mode_decision.mode.value,
                 material_context=material_context,
                 planner_brief=planner_brief,
-                learning_intent=intent,
+                plan_intent=plan_intent,
                 message_history=list(state.get("message_history", [])),
                 latest_plan=state.get("latest_plan"),
             ),
@@ -204,17 +204,17 @@ def build_stream_and_parse_plan_draft_node(*, context: WorkflowContext):
         )
         material_context = state["material_context"]
         planner_brief = PlannerBrief.model_validate(state.get("planner_brief") or {})
-        intent = LearningIntent.model_validate(state.get("learning_intent") or {})
+        plan_intent = PlanIntent.model_validate(state.get("plan_intent") or {})
         await emit_planner_event(
             state,
             event="planner.plan.composing",
-            detail="正在把思考过程提炼成几条可确认的计划大纲...",
+            detail="正在生成计划说明和可调整的初步大纲...",
         )
         raw_response = await _stream_composer_response(
             state,
             material_context=material_context,
             planner_brief=planner_brief,
-            intent=intent,
+            plan_intent=plan_intent,
         )
         visible_outline = _visible_outline_from_response(raw_response)
         try:

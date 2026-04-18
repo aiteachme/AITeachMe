@@ -23,7 +23,7 @@
 load_planner_materials              # 读取资料
   -> stream_brief_and_extract_intent # 理解目标
        ├─ stream_planner_brief
-       └─ extract_learning_intent
+       └─ extract_plan_intent
   -> stream_and_parse_plan_draft     # 合成大纲
   -> normalize_and_persist_plan      # 保存方案
 ```
@@ -52,20 +52,20 @@ stream_brief_and_extract_intent
   ├─ stream_planner_brief
   │    输入：material_context / user_goal / digest_mode / message_history
   │    输出：planner_brief
-  │      - planner_brief：用户可见的资料边界和规划判断。
+  │      - planner_brief：用户可见的资料边界和思考过程。
   │    作用：流式输出“我理解到什么”，给前端即时可见内容。
-  └─ extract_learning_intent
+  └─ extract_plan_intent
        输入：material_context / user_goal / digest_mode / message_history
-       输出：learning_intent
-         - learning_intent：目标类型、受众、成功标准、约束、核心概念。
-       作用：把用户目标转成结构化规划信号。
+       输出：plan_intent
+         - plan_intent：一小段内部规划意图和 3-8 条 plan_queries。
+       作用：把用户目标转成后续综合计划用的内部抓手。
 
 stream_and_parse_plan_draft
-  输入：material_context / planner_brief / learning_intent / latest_plan / user_goal / message_history
+  输入：material_context / planner_brief / plan_intent / latest_plan / user_goal / message_history
   输出：plan_outline_markdown / build_plan_draft
     - plan_outline_markdown：给用户看的计划大纲文本。
     - build_plan_draft：从 `<PLAN_JSON>` 解析出的极简章节草稿。
-  作用：一次 reason 流式调用，同时生成可见大纲和机器可解析 JSON。
+  作用：一次 reason 流式调用，同时生成可见计划说明和机器可解析 JSON 初步大纲。
   内部步骤：
     1. 先流式输出用户可见 Markdown。
     2. 遇到 `<PLAN_JSON>` 后停止向前端透出机器合同。
@@ -114,7 +114,7 @@ flowchart TD
     A["读取资料<br/>load_planner_materials"]
     B["理解目标<br/>stream_brief_and_extract_intent"]
     B1["生成可见判断<br/>stream_planner_brief"]
-    B2["识别学习意图<br/>extract_learning_intent"]
+    B2["生成规划抓手<br/>extract_plan_intent"]
     C["合成大纲<br/>stream_and_parse_plan_draft"]
     D["保存方案<br/>normalize_and_persist_plan"]
 
@@ -131,8 +131,8 @@ flowchart TD
 | LangGraph 节点 id | 中文展示名 | 代码定位 | 做什么 |
 | --- | --- | --- | --- |
 | `load_planner_materials` | 读取资料 | `nodes/load_planner_materials.py` | 读取会话、文件和历史消息，生成并打包 `DigestMaterialContext` |
-| `stream_brief_and_extract_intent` | 理解目标 | `nodes/stream_brief_and_extract_intent.py` | 并行做两件事：流式输出可见规划判断；结构化识别学习目标 |
-| `stream_and_parse_plan_draft` | 合成大纲 | `nodes/stream_and_parse_plan_draft.py` | 一次 reason 流式调用，同时输出可见大纲和 `<PLAN_JSON>` |
+| `stream_brief_and_extract_intent` | 理解目标 | `nodes/stream_brief_and_extract_intent.py` | 并行做两件事：流式输出思考过程；生成内部 `plan_intent / plan_queries` |
+| `stream_and_parse_plan_draft` | 合成大纲 | `nodes/stream_and_parse_plan_draft.py` | 一次 reason 流式调用，输出可见计划说明和 `<PLAN_JSON>` 初步大纲 |
 | `normalize_and_persist_plan` | 保存方案 | `nodes/normalize_and_persist_plan.py` | 规范化 plan，保存 planner session 和 assistant turn |
 
 ## LLM 调用
@@ -141,9 +141,9 @@ flowchart TD
 
 | 顺序 | 步骤 | 模型 | 产物 |
 | --- | --- | --- | --- |
-| 1 | `stream_planner_brief` | `reason` | 用户可见的简短规划判断 |
-| 2 | `extract_learning_intent` | `primary` | `LearningIntent` |
-| 3 | `stream_and_parse_plan_draft` | `reason` | 可见大纲 + 极简 JSON 草稿 |
+| 1 | `stream_planner_brief` | `reason` | 用户可见的思考过程 |
+| 2 | `extract_plan_intent` | `primary` | `PlanIntent` |
+| 3 | `stream_and_parse_plan_draft` | `reason` | 可见计划说明 + 极简 JSON 初步大纲 |
 
 ## State
 
@@ -152,9 +152,9 @@ flowchart TD
 | 字段 | 作用 |
 | --- | --- |
 | `material_context` | 资料上下文、切片、主题画像 |
-| `planner_brief` | 用户可见的规划判断原文 |
-| `learning_intent` | 用户目标、成功标准、约束、核心概念 |
-| `plan_outline_markdown` | 最终合成阶段展示给前端的大纲文本 |
+| `planner_brief` | 用户可见的思考过程原文 |
+| `plan_intent` | 内部规划意图与 plan_queries |
+| `plan_outline_markdown` | 最终合成阶段展示给前端的计划说明 |
 | `build_plan_draft` | 由极简 JSON 草稿转成的待 normalize plan |
 | `plan` | 对外返回和持久化的最终 plan |
 
