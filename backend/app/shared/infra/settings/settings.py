@@ -111,6 +111,7 @@ class PlannerSettings(_SettingsModel):
 
 
 class DocgenSettings(_SettingsModel):
+    allow_external_search: bool = True
     max_parallel_chapters: int = 20
     io_parallelism: int = 20
     max_research_queries: int = 3

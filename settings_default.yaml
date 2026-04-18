@@ -36,7 +36,6 @@ chat:
 planner:
   default_digest_mode: sprint
   default_tone: encouraging
-  allow_external_search: true
   sprint:
     min_chapters: 3
     max_chapters: 6
@@ -47,6 +46,7 @@ planner:
     target_length: "10000-15000字"
 
 docgen:
+  allow_external_search: true
   max_parallel_chapters: 20
   io_parallelism: 20
   max_research_queries: 3

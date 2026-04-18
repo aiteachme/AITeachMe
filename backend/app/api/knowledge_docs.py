@@ -53,24 +53,6 @@ router = APIRouter(tags=["knowledge"])
 logger = structlog.get_logger(__name__)
 
 
-def _planner_status_detail(payload: dict[str, object]) -> str:
-    node_name = str(payload.get("node_name") or "").strip()
-    elapsed_ms = int(payload.get("elapsed_ms", 0) or 0)
-    status = str(payload.get("status") or "ok").strip() or "ok"
-    if node_name:
-        node_label = {
-            "prepare_material_context": "准备资料理解包",
-            "bootstrap_plan_brief": "生成思考过程",
-            "probe_evidence": "外部证据检索",
-            "compose_build_plan": "提炼计划大纲",
-            "finalize_plan_contract": "整理最终方案",
-        }.get(node_name, node_name)
-        if status == "failed":
-            return f"{node_label}失败，用时 {elapsed_ms} ms。"
-        return f"{node_label}完成，用时 {elapsed_ms} ms。"
-    return "正在生成构建方案..."
-
-
 def _planner_stream_response(
     *,
     request: Request,

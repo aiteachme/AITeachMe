@@ -59,6 +59,7 @@ class DocGenState(TypedDict, total=False):
     load_ms: int
     prepare_ms: Annotated[int, operator.add]
     dispatch_ms: int
+    research_ms: Annotated[int, operator.add]
     draft_ms: Annotated[int, operator.add]
     enhance_ms: Annotated[int, operator.add]
     merge_review_ms: int

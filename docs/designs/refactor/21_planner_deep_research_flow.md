@@ -2,6 +2,10 @@
 
 最后更新：2026-04-16
 
+> 状态说明：本文记录的是历史 V3.2 / V4 探索方向。当前代码已经收敛为
+> `digest/planner/README.md` 所描述的轻量 Planner：Planner 只理解资料、
+> 识别目标并合成计划，不再承担本地 RAG 或外部 Web 检索。
+
 ## 一句话结论
 
 Planner V3.2 现在已经按“先预览、再探测、再合成”的方向落地，并补上了真正的 reason 模型路由、few-shot 示例合同和前端 Markdown 正确渲染。

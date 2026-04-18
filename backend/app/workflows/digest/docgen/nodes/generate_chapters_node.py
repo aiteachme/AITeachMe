@@ -123,6 +123,9 @@ def build_generate_chapters_node(*, context: WorkflowContext):
         sources: list[str] = []
         source_details: list[dict] = []
         research_trace = ChapterResearchTrace(chapter_index=task.chapter_index)
+        local_hit_count = 0
+        web_hit_count = 0
+        research_started_at = perf_counter()
         fallback_used = False
         try:
             shared_inputs = state.get("shared_inputs")
@@ -147,6 +150,8 @@ def build_generate_chapters_node(*, context: WorkflowContext):
             dense_context = research.content.strip()
             sources = list(research.sources)
             source_details = list(research.metadata.get("source_details", []) or [])
+            local_hit_count = int(research.metadata.get("local_hits", 0) or 0)
+            web_hit_count = int(research.metadata.get("web_hits", 0) or 0)
             research_trace = ChapterResearchTrace(
                 chapter_index=task.chapter_index,
                 rounds=list(research.metadata.get("research_rounds", []) or []),
@@ -155,6 +160,8 @@ def build_generate_chapters_node(*, context: WorkflowContext):
                 stop_reason=str(research.metadata.get("stop_reason") or ""),
                 budget_used={
                     "query_count": int(research.metadata.get("query_count", 0) or 0),
+                    "local_hits": local_hit_count,
+                    "web_hits": web_hit_count,
                     "read_url_count": int(research.metadata.get("read_url_count", 0) or 0),
                     "document_count": int(research.metadata.get("document_count", 0) or 0),
                 },
@@ -164,6 +171,7 @@ def build_generate_chapters_node(*, context: WorkflowContext):
         except Exception as exc:
             fallback_used = True
             research_trace.stop_reason = f"research_failed:{str(exc)[:160]}"
+        research_ms = int((perf_counter() - research_started_at) * 1000)
 
         targets = [
             *task.content_points,
@@ -222,6 +230,16 @@ def build_generate_chapters_node(*, context: WorkflowContext):
             pass
         evidence_ledger = mark_evidence_used(evidence_ledger, writer_markdown)
         elapsed_ms = int((perf_counter() - started_at) * 1000)
+        source_scope = _source_scope(source_details)
+        source_scope.update(
+            {
+                "local_hits": local_hit_count,
+                "web_hits": web_hit_count,
+                "query_count": len(research_trace.executed_queries),
+                "read_url_count": int(research_trace.budget_used.get("read_url_count", 0) or 0),
+                "document_count": int(research_trace.budget_used.get("document_count", 0) or 0),
+            }
+        )
         draft = ChapterDraft(
             chapter_index=task.chapter_index,
             title=title,
@@ -229,7 +247,7 @@ def build_generate_chapters_node(*, context: WorkflowContext):
             summary_draft=build_draft_excerpt(writer_markdown, max_chars=260),
             research_trace=research_trace,
             evidence_ledger=evidence_ledger,
-            source_scope=_source_scope(source_details),
+            source_scope=source_scope,
             quality_signals=quality,
             placeholder_requests=task.placeholder_requests,
             sources=sources,
@@ -244,6 +262,9 @@ def build_generate_chapters_node(*, context: WorkflowContext):
                 "title": title,
                 "status": "generated",
                 "source_count": len(source_details),
+                "local_hits": local_hit_count,
+                "web_hits": web_hit_count,
+                "query_count": len(research_trace.executed_queries),
                 "word_count": count_words(writer_markdown),
                 "fallback_used": fallback_used,
             },
@@ -265,6 +286,7 @@ def build_generate_chapters_node(*, context: WorkflowContext):
             "research_traces": [research_trace.model_dump(mode="json")],
             "evidence_ledgers": [evidence_ledger.model_dump(mode="json")],
             "research_sources": sources,
+            "research_ms": research_ms,
             "draft_ms": elapsed_ms,
             "llm_calls_total": 2 + (1 if quality.rewrite_used else 0),
         }

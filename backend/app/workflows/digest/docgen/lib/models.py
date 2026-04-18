@@ -417,11 +417,13 @@ class EnhancedChapterDraft(DocGenBaseModel):
     summary: str = ""
     evidence_ledger: EvidenceLedger = Field(default_factory=EvidenceLedger)
     quality_signals: ChapterQualitySignals = Field(default_factory=ChapterQualitySignals)
+    source_scope: dict[str, Any] = Field(default_factory=dict)
     sources: list[str] = Field(default_factory=list)
     source_details: list[dict[str, Any]] = Field(default_factory=list)
     asset_ids: list[str] = Field(default_factory=list)
     practice_ids: list[str] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
+    fallback_used: bool = False
 
 
 class AssetManifest(DocGenBaseModel):

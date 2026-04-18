@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from time import perf_counter
 
-from app.shared.infra.tools.builtin.markdown_processing import prepend_table_of_contents
+from app.shared.infra.tools.builtin.markdown_processing import count_words, prepend_table_of_contents
 from app.utils.docgen_store import append_knowledge_build_recent_event, update_knowledge_build_status
 from app.utils.time import utcnow
 from app.shared.infra.workflow.context import WorkflowContext
@@ -25,6 +25,7 @@ def _dedupe_enhanced(chapters: list[EnhancedChapterDraft]) -> list[EnhancedChapt
 
 
 def _chapter_metadata(chapter: EnhancedChapterDraft, *, digest_mode: str) -> dict:
+    source_scope = dict(chapter.source_scope or {})
     return {
         "chapter_index": chapter.chapter_index,
         "title": chapter.title,
@@ -36,12 +37,19 @@ def _chapter_metadata(chapter: EnhancedChapterDraft, *, digest_mode: str) -> dic
         "source_file_ids": [],
         "sources": list(chapter.sources),
         "source_details": list(chapter.source_details),
+        "source_scope": source_scope,
+        "local_hits": int(source_scope.get("local_hits", 0) or 0),
+        "web_hits": int(source_scope.get("web_hits", 0) or 0),
+        "query_count": int(source_scope.get("query_count", 0) or 0),
+        "read_url_count": int(source_scope.get("read_url_count", 0) or 0),
+        "document_count": int(source_scope.get("document_count", 0) or 0),
+        "fallback_used": bool(chapter.fallback_used),
         "evidence_ledger": chapter.evidence_ledger.model_dump(mode="json"),
         "quality_signals": chapter.quality_signals.model_dump(mode="json"),
         "asset_ids": list(chapter.asset_ids),
         "practice_ids": list(chapter.practice_ids),
         "warnings": list(chapter.warnings),
-        "word_count": len(chapter.markdown),
+        "word_count": count_words(chapter.markdown),
     }
 
 

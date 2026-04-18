@@ -24,7 +24,7 @@ def build_publish_document_node(*, context: WorkflowContext):
 
     async def publish_document_node(state: DocGenState) -> dict:
         started_at = perf_counter()
-        node_logger = context.get_logger().bind(node="finalize_assemble")
+        node_logger = context.get_logger().bind(node="publish_document")
         subject = state["subject"]
         chapter_metadatas = sorted(
             list(state.get("chapter_metadatas", [])),

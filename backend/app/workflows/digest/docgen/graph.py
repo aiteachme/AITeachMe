@@ -8,7 +8,6 @@ from typing import Any, Literal
 from langgraph.graph import END, StateGraph
 from langgraph.types import Send
 
-from app.utils.docgen_store import update_knowledge_build_status
 from app.shared.infra.workflow import workflow_tracer
 from app.shared.infra.workflow.context import WorkflowContext, create_langgraph_dev_context
 from app.workflows.digest.docgen.nodes import (
@@ -210,5 +209,4 @@ __all__ = [
     "create_docgen_initial_state",
     "get_langgraph_dev_docgen_graph",
     "route_after_step",
-    "update_knowledge_build_status",
 ]

@@ -164,11 +164,13 @@ async def enhance_chapter_draft(
         summary=build_draft_excerpt(markdown, max_chars=260),
         evidence_ledger=draft.evidence_ledger,
         quality_signals=draft.quality_signals,
+        source_scope=draft.source_scope,
         sources=draft.sources,
         source_details=draft.source_details,
         asset_ids=[str(item.get("asset_id")) for item in assets],
         practice_ids=[str(item.get("practice_id")) for item in questions],
         warnings=warnings,
+        fallback_used=draft.fallback_used,
     )
     return enhanced, AssetManifest(assets=assets), PracticeManifest(questions=questions)
 
