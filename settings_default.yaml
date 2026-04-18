@@ -1,5 +1,5 @@
 # 项目级运行配置。
-# 密钥、连接串、SMTP、对象存储、LangSmith 等环境相关参数放 `.env` / 进程环境变量。
+# 密钥、连接串、SMTP、对象存储、LangSmith 凭证与端点等环境相关参数放 `.env` / 进程环境变量。
 
 models:
   # 三层模型策略：
@@ -108,6 +108,10 @@ knowledge_graph:
 observability:
   llm_observability_enabled: true
   tracing_enabled: true
+  # null 表示自动策略：APP_MODE=local 时保留输入/输出预览，非本地模式默认脱敏。
+  # 如需强制覆盖，可改为 true 或 false；严格隐私场景可额外使用官方 LANGSMITH_HIDE_INPUTS / LANGSMITH_HIDE_OUTPUTS。
+  langsmith_capture_inputs: null
+  langsmith_capture_outputs: null
   langsmith_max_text_chars: 2000
   llm_observability_max_records: 5000
 

@@ -52,9 +52,12 @@ pip install -e .
 
 ```env
 LLM_API_KEY=sk-your-api-key-here
+LLM_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
 APP_MODE=local
 AUTH_ENABLED=false
 ```
+
+`LLM_API_KEY / LLM_BASE_URL` 是统一模型接入口，会被对话、规划、出题、批改、Embedding、Vision OCR 等模型能力复用。更换供应商时优先改这两个环境变量，再在仓库根 `settings_default.yaml` 里调整 `models.*` 模型名。
 
 ### 3. 启动服务
 
@@ -107,12 +110,12 @@ langgraph dev --config langgraph.json
 LANGSMITH_TRACING=true
 LANGSMITH_API_KEY=lsv2_xxx
 LANGSMITH_PROJECT=AITeachMe
-LANGSMITH_CAPTURE_INPUTS=true
-LANGSMITH_CAPTURE_OUTPUTS=true
+# 自建或 EU 区域实例时再配置：
+# LANGSMITH_ENDPOINT=https://api.smith.langchain.com
 ```
 
 当前约定下，workflow 统一运行入口和共享 infra trace 边界会自动继承 tracing 上下文，因此不需要在每个业务节点里重复手写观测代码。
-`LANGSMITH_CAPTURE_INPUTS / LANGSMITH_CAPTURE_OUTPUTS` 现在不仅影响 LLM span，也会影响 retriever / reader / tool / runtime 的输入输出预览；在 `APP_MODE=local` 下默认开启，显式配置只用于覆盖默认策略。
+trace 内容预览策略统一放在仓库根 `settings_default.yaml` 的 `observability.langsmith_capture_inputs / langsmith_capture_outputs / langsmith_max_text_chars`，避免和环境变量重复；`null` 表示 `APP_MODE=local` 时保留输入/输出预览，非本地模式默认脱敏。严格隐私场景可额外使用 LangSmith 官方 `LANGSMITH_HIDE_INPUTS / LANGSMITH_HIDE_OUTPUTS`。
 
 ## 手动验证
 

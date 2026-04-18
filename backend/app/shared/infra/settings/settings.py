@@ -181,6 +181,8 @@ class KnowledgeGraphSettings(_SettingsModel):
 class ObservabilitySettings(_SettingsModel):
     llm_observability_enabled: bool = True
     tracing_enabled: bool = True
+    langsmith_capture_inputs: bool | None = None
+    langsmith_capture_outputs: bool | None = None
     langsmith_max_text_chars: int = 2000
     llm_observability_max_records: int = 5000
 

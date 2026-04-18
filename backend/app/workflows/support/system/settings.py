@@ -154,7 +154,7 @@ def build_settings_overview_data() -> SettingsOverviewData:
         SettingSection(
             id="models",
             label="模型与密钥",
-            description=f"模型名来自 {DEFAULT_PROJECT_SETTINGS_FILENAME}，服务地址和密钥来自环境变量。",
+            description=f"模型名来自 {DEFAULT_PROJECT_SETTINGS_FILENAME}，LLM 服务地址和密钥统一来自 LLM_API_KEY / LLM_BASE_URL。",
             entries=[
                 _env_entry("llm.base_url", "LLM_BASE_URL", "LLM_BASE_URL", "OpenAI-compatible 上游地址。"),
                 _env_entry("llm.api_key", "LLM_API_KEY", "LLM_API_KEY", "模型访问密钥，只显示是否配置。", secret=True),
@@ -164,7 +164,7 @@ def build_settings_overview_data() -> SettingsOverviewData:
                 _settings_entry("models.extract", "Extract 模型", settings.models.extract, "知识抽取专用；空值时回退到 Light/Primary。"),
                 _settings_entry("models.embedding", "Embedding 模型", settings.models.embedding),
                 _runtime_entry("models.embedding_dim", "Embedding 维度", settings.embedding_dim),
-                _settings_entry("models.ocr", "OCR 模型", settings.models.ocr),
+                _settings_entry("models.ocr", "Vision OCR 模型", settings.models.ocr, "空值时使用 Primary 模型；密钥和服务地址复用 LLM 接入配置。"),
                 _settings_entry("models.mermaid", "Mermaid 模型", settings.models.mermaid_generation),
                 _settings_entry("models.image_generation", "文生图模型", settings.models.image_generation),
             ],
@@ -179,8 +179,6 @@ def build_settings_overview_data() -> SettingsOverviewData:
                 _settings_entry("ingest.parse_concurrency", "解析并发", settings.ingest.parse_concurrency),
                 _settings_entry("ingest.parser_timeout_s", "解析超时", settings.ingest.parser_timeout_s),
                 _env_entry("mineru.api_token", "MINERU_API_TOKEN", "MINERU_API_TOKEN", "服务端 MinerU Token，只显示是否配置。", secret=True),
-                _env_entry("ocr.api_key", "OCR_API_KEY", "OCR_API_KEY", "外部 OCR 服务密钥，只显示是否配置。", secret=True),
-                _env_entry("ocr.base_url", "OCR_BASE_URL", "OCR_BASE_URL", "外部 OCR 服务地址。"),
             ],
         ),
         SettingSection(
@@ -239,6 +237,24 @@ def build_settings_overview_data() -> SettingsOverviewData:
                 _env_entry("langsmith.tracing", "LANGSMITH_TRACING", "LANGSMITH_TRACING"),
                 _env_entry("langsmith.api_key", "LANGSMITH_API_KEY", "LANGSMITH_API_KEY", secret=True),
                 _env_entry("langsmith.project", "LANGSMITH_PROJECT", "LANGSMITH_PROJECT"),
+                _env_entry("langsmith.endpoint", "LANGSMITH_ENDPOINT", "LANGSMITH_ENDPOINT"),
+                _settings_entry(
+                    "observability.langsmith_capture_inputs",
+                    "Trace 输入预览",
+                    settings.observability.langsmith_capture_inputs,
+                    "空值表示按 APP_MODE 自动：local 开启，非本地关闭。",
+                ),
+                _settings_entry(
+                    "observability.langsmith_capture_outputs",
+                    "Trace 输出预览",
+                    settings.observability.langsmith_capture_outputs,
+                    "空值表示按 APP_MODE 自动：local 开启，非本地关闭。",
+                ),
+                _settings_entry(
+                    "observability.langsmith_max_text_chars",
+                    "Trace 文本预览上限",
+                    settings.observability.langsmith_max_text_chars,
+                ),
                 _settings_entry("observability.llm_observability_enabled", "LLM 调用统计", settings.observability.llm_observability_enabled),
                 _settings_entry("runtime.llm_concurrency_limit", "LLM 并发限制", settings.runtime.llm_concurrency_limit),
                 _settings_entry("safety.guardrails_enabled", "Guardrails", settings.safety.guardrails_enabled),
