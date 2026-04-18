@@ -239,7 +239,7 @@ def build_settings_overview_data() -> SettingsOverviewData:
         SettingSection(
             id="observability",
             label="观测与安全",
-            description="LangSmith、LLM 统计、缓存、安全护栏与并发控制。",
+            description="LangSmith、LLM 统计、安全护栏与并发控制。",
             entries=[
                 _settings_entry("observability.tracing_enabled", "Tracing 总开关", settings.observability.tracing_enabled),
                 _settings_entry("observability.llm_token_summary_enabled", "LLM Token 摘要", settings.observability.llm_token_summary_enabled),
