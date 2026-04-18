@@ -7,6 +7,8 @@ from typing import Any
 
 from langsmith import traceable
 
+INTENT_CHAPTER_TITLE_BUDGET = 24
+
 
 @traceable(name="DocGen：识别写作意图提示词", run_type="prompt")
 def build_intent_messages(
@@ -19,9 +21,10 @@ def build_intent_messages(
     chapters: Sequence[Mapping[str, Any]],
     docgen_history_brief: str = "",
 ) -> list[dict[str, str]]:
+    # 写作意图只需要章节名快照；完整章节合同仍在后续 plan/state 里流转。
     chapter_titles = "、".join(
         str(chapter.get("title") or chapter.get("resolved_title") or "").strip()
-        for chapter in chapters[:12]
+        for chapter in chapters[:INTENT_CHAPTER_TITLE_BUDGET]
         if str(chapter.get("title") or chapter.get("resolved_title") or "").strip()
     )
     prompt = f"""

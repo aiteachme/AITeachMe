@@ -84,7 +84,7 @@ def build_token_summary(
     from app.shared.infra.settings import get_settings
     from app.shared.infra.observability.llm_stats import get_tracker
 
-    if not get_settings().digest.token_summary_enabled:
+    if not get_settings().observability.llm_token_summary_enabled:
         return DigestTokenSummary()
     raw_summary = get_tracker().get_summary(
         build_session_id=build_session_id,
@@ -224,7 +224,7 @@ def _top_k(value: int | None = None) -> int:
 
     if value is not None:
         return max(1, int(value))
-    return max(1, int(get_settings().digest.timing_top_k))
+    return max(1, int(get_settings().observability.timing_top_k))
 
 
 __all__ = [

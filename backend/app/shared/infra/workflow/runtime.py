@@ -56,6 +56,20 @@ def _build_graph_config(
     return config
 
 
+def _apply_graph_runtime_limits(config: dict[str, Any], metadata: dict[str, Any]) -> None:
+    """Apply optional LangGraph runtime limits carried by workflow metadata."""
+
+    raw_max_concurrency = metadata.get("max_concurrency")
+    if raw_max_concurrency in (None, "", 0):
+        return
+    try:
+        max_concurrency = int(raw_max_concurrency)
+    except (TypeError, ValueError):
+        return
+    if max_concurrency > 0:
+        config["max_concurrency"] = max_concurrency
+
+
 async def cancel_tasks_and_drain(tasks: list[asyncio.Task[Any]]) -> None:
     """Cancel spawned tasks and await their termination."""
 
@@ -86,6 +100,7 @@ async def invoke_state_graph(
         lane=lane,
         extra_metadata=extra_metadata,
     )
+    _apply_graph_runtime_limits(config, extra_metadata or {})
     with llm_trace_scope(
         subject=subject,
         build_session_id=build_session_id,
@@ -120,6 +135,7 @@ async def run_state_graph(
         lane=lane,
         extra_metadata={"context_metadata": dict(context.metadata)},
     )
+    _apply_graph_runtime_limits(config, dict(context.metadata))
 
     try:
         with llm_trace_scope(

@@ -8,6 +8,7 @@ from app.shared.infra.workflow.context import WorkflowContext
 from app.shared.infra.workflow.events import InProcessEventBus
 from app.shared.infra.workflow.result import WorkflowResult, err_result
 from app.shared.infra.workflow.runtime import run_state_graph
+from app.shared.infra.settings import get_settings
 from app.workflows.digest.common.metrics import build_token_summary
 from app.workflows.digest.docgen.builds import (
     get_docgen_result,
@@ -45,6 +46,7 @@ async def run_docgen_workflow(
     digest_mode: str | None = None,
 ) -> WorkflowResult[DocGenState]:
     bus = event_bus or InProcessEventBus()
+    settings = get_settings()
     await bus.publish(DocGenRequestedEvent(subject=subject, requested_at=requested_at, file_ids=file_ids))
 
     context = WorkflowContext(
@@ -59,6 +61,7 @@ async def run_docgen_workflow(
             "planner_session_id": planner_session_id or "",
             "confirmed_plan_id": confirmed_plan_id or "",
             "digest_mode": digest_mode or "",
+            "max_concurrency": max(1, int(settings.docgen.max_parallel_chapters)),
         },
     )
     result = await run_state_graph(

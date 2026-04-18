@@ -5,8 +5,8 @@ from __future__ import annotations
 import httpx
 import structlog
 
-from app.shared.infra.settings import get_settings
 from app.shared.infra.env_support import get_env
+from app.shared.infra.settings import get_settings
 from app.shared.infra.search.retrievers.base import BaseRetriever
 from app.shared.infra.search.retrievers.common import clamp_max_results, make_search_result, normalize_query
 from app.shared.infra.search.types import SearchResult
@@ -19,11 +19,7 @@ class SearXngRetriever(BaseRetriever):
 
     @classmethod
     def _base_url(cls) -> str:
-        settings = get_settings()
-        return (
-            str(getattr(settings.search, "searxng_base_url", "") or "").strip()
-            or (get_env("SEARXNG_BASE_URL") or "").strip()
-        ).rstrip("/")
+        return (get_env("SEARXNG_BASE_URL") or "").strip().rstrip("/")
 
     @classmethod
     def is_available(cls) -> bool:
@@ -33,7 +29,7 @@ class SearXngRetriever(BaseRetriever):
     def availability_reason(cls) -> str | None:
         if cls.is_available():
             return None
-        return "missing `SEARXNG_BASE_URL` or `search.searxng_base_url`"
+        return "missing `SEARXNG_BASE_URL`"
 
     @property
     def name(self) -> str:

@@ -4,6 +4,9 @@ from __future__ import annotations
 
 from langsmith import traceable
 
+FILE_SUMMARY_CHAPTER_TITLE_BUDGET = 24
+FILE_SUMMARY_EXCERPT_BUDGET = 18000
+
 
 @traceable(name="DocGen：摘要文件材料提示词", run_type="prompt")
 def build_file_summary_messages(
@@ -13,15 +16,16 @@ def build_file_summary_messages(
     chapter_titles: list[str],
     excerpt: str,
 ) -> list[dict[str, str]]:
+    # 文件原文只作为 LLM 摘要样本输入；完整内容仍保留在原始资料和分片里。
     prompt = f"""
 你是 AITeachMe 的学习资料摘要器。请为 DocGen 写作阶段提取这个文件中最有用的内容。
 
 文件：{filename}
 模式：{digest_mode}
-目标章节：{"、".join(chapter_titles[:12]) or "未提供"}
+目标章节：{"、".join(chapter_titles[:FILE_SUMMARY_CHAPTER_TITLE_BUDGET]) or "未提供"}
 
 文件片段：
-{excerpt[:18000]}
+{excerpt[:FILE_SUMMARY_EXCERPT_BUDGET]}
 
 请输出 JSON：
 {{
