@@ -42,7 +42,6 @@ class EventType:
     REVIEW_STARTED = "review_started"       # 开始复习
     REVIEW_COMPLETED = "review_completed"   # 复习完成
     MATERIAL_UPLOADED = "material_uploaded" # 上传了资料
-    SKILL_PRACTICED = "skill_practiced"     # 练习了技能
     SESSION_STARTED = "session_started"     # 学习会话开始
     SESSION_ENDED = "session_ended"         # 学习会话结束
 
