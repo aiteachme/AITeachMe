@@ -37,6 +37,7 @@ const MODULES = [
   { id: "knowledge-docs", name: "知识库", icon: BookOpen },
   { id: "exams", name: "考试", icon: FileText },
   { id: "profile", name: "学习画像", icon: BarChart3 },
+  { id: "knowledge-debug", name: "知识调试", icon: BookOpen },
 ] as const;
 
 const COLOR_CLASSES = [

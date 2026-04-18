@@ -239,8 +239,9 @@ export function ForceGraphView({
     const el = containerRef.current;
     if (!el) return;
     const measure = () => {
-      const w = el.clientWidth;
-      const h = el.clientHeight;
+      const rect = el.getBoundingClientRect();
+      const w = Math.round(rect.width || el.clientWidth || 0);
+      const h = Math.round(rect.height || el.clientHeight || 0);
       if (w > 0 && h > 0) setDimensions({ width: w, height: h });
     };
     measure();
@@ -461,9 +462,9 @@ export function ForceGraphView({
   }
 
   return (
-    <div className="flex h-full min-h-0 gap-0">
+    <div className="flex h-full min-h-[640px] gap-0">
       {/* 鈹€鈹€ Graph Panel 鈹€鈹€ */}
-      <div className="relative flex-1 min-w-0">
+      <div className="relative flex-1 min-w-0 min-h-[640px]">
         <div ref={containerRef} className="absolute inset-0">
           <svg ref={svgRef} className="h-full w-full" />
         </div>

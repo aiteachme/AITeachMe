@@ -46,6 +46,7 @@ _LLAMAINDEX_REF_PREFIX = "llamaindex://"
 _RUNTIME_UNAVAILABLE_REASONS = {
     "embedding_not_configured",
     "embedding_api_key_missing",
+    "llamaindex_unavailable",
     "vector_extension_unavailable",
     "llamaindex_postgres_unavailable",
 }

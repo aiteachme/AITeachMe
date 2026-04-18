@@ -26,6 +26,8 @@ from app.schemas.knowledge import (
     DocGenBuildData,
     DocGenBuildRequest,
     DocGenGetResponse,
+    KnowledgeDebugTriggerRequest,
+    KnowledgeDebugTriggerResponse,
     KnowledgeOverviewRequest,
     KnowledgeOverviewResponse,
 )
@@ -43,11 +45,17 @@ from app.workflows.digest.docgen import (
     trigger_docgen_build,
 )
 from app.workflows.support.knowledge_graph import (
+    clear_subject_graph_entities,
     get_knowledge_overview,
     run_graph_build_background,
+    run_graph_docs_sync_debug_background,
+    run_graph_file_ingest_debug_background,
 )
 from app.workflows.support.subjects import get_subject_record
 from app.workflows.interact.chat.lib.streaming import SSEEventEmitter
+from app.utils.docgen_store import KnowledgeBuildLock, acquire_knowledge_build_lock, update_knowledge_build_status
+from app.utils.time import utcnow
+from app.shared.infra.exceptions import SubjectBuildLockConflictError
 
 router = APIRouter(tags=["knowledge"])
 logger = structlog.get_logger(__name__)
@@ -157,6 +165,119 @@ async def knowledge_build_plan_create(
         payload=body,
     )
     return ok_response(data)
+
+
+@router.post(
+    "/debug/kg-file-ingest",
+    response_model=ApiResponse[KnowledgeDebugTriggerResponse],
+    summary="Trigger kg_file_ingest only for debugging",
+    responses=build_error_responses([400, 404, 409, 422, 500]),
+)
+async def knowledge_debug_kg_file_ingest(
+    request: Request,
+    subject: str = Path(...),
+    body: KnowledgeDebugTriggerRequest = Body(default=KnowledgeDebugTriggerRequest()),
+    user: CurrentUserContext = Depends(get_current_user_context),
+    session: Session = Depends(get_db),
+) -> ApiResponse[KnowledgeDebugTriggerResponse]:
+    normalized = normalize_subject_slug(subject)
+    subject_record = get_subject_record(session, normalized, owner_user_id=user.user_id)
+    data, accepted_file_ids = trigger_docgen_build(
+        session,
+        subject=subject_record,
+        user_id=user.user_id,
+        file_uids=body.file_uids,
+        prompt=body.prompt,
+        embedding_resolution=body.embedding_resolution,
+        confirmed_plan_id=None,
+        build_type="graph",
+    )
+    request.app.state.background_task_registry.spawn(
+        run_graph_file_ingest_debug_background(
+            subject=normalized,
+            file_ids=accepted_file_ids,
+            prompt=data.prompt,
+            requested_at=data.requested_at,
+        ),
+        kind="knowledge.debug.kg_file_ingest",
+        subject=normalized,
+        name=f"knowledge.debug.kg_file_ingest:{normalized}",
+    )
+    return ok_response(
+        KnowledgeDebugTriggerResponse(
+            action="kg_file_ingest",
+            requested_at=data.requested_at,
+            accepted_file_uids=data.accepted_file_uids,
+            message=f"已触发 kg_file_ingest，本轮纳入 {len(data.accepted_file_uids)} 份已解析资料。",
+        )
+    )
+
+
+@router.post(
+    "/debug/kg-docs-sync",
+    response_model=ApiResponse[KnowledgeDebugTriggerResponse],
+    summary="Trigger kg_docs_sync only for debugging",
+    responses=build_error_responses([400, 404, 409, 500]),
+)
+async def knowledge_debug_kg_docs_sync(
+    request: Request,
+    subject: str = Path(...),
+    body: KnowledgeDebugTriggerRequest = Body(default=KnowledgeDebugTriggerRequest()),
+    user: CurrentUserContext = Depends(get_current_user_context),
+    session: Session = Depends(get_db),
+) -> ApiResponse[KnowledgeDebugTriggerResponse]:
+    normalized = normalize_subject_slug(subject)
+    get_subject_record(session, normalized, owner_user_id=user.user_id)
+    requested_at = utcnow()
+    if not acquire_knowledge_build_lock(
+        normalized,
+        KnowledgeBuildLock(requested_at=requested_at, source_file_ids=[], prompt=body.prompt),
+    ):
+        raise SubjectBuildLockConflictError(normalized)
+    update_knowledge_build_status(
+        normalized,
+        requested_at=requested_at,
+        status="accepted",
+        stage="graph_docs_sync",
+        prompt=body.prompt,
+        source_file_ids=[],
+        current_stage_description="已接收 kg_docs_sync 调试请求，正在排队启动。",
+    )
+    request.app.state.background_task_registry.spawn(
+        run_graph_docs_sync_debug_background(
+            subject=normalized,
+            prompt=body.prompt,
+            requested_at=requested_at,
+        ),
+        kind="knowledge.debug.kg_docs_sync",
+        subject=normalized,
+        name=f"knowledge.debug.kg_docs_sync:{normalized}",
+    )
+    return ok_response(
+        KnowledgeDebugTriggerResponse(
+            action="kg_docs_sync",
+            requested_at=requested_at,
+            accepted_file_uids=[],
+            message="已触发 kg_docs_sync，将基于当前已发布知识文档同步知识图谱。",
+        )
+    )
+
+
+@router.post(
+    "/debug/clear-graph",
+    response_model=ApiResponse[ClearKnowledgeResponse],
+    summary="Clear knowledge units and graph edges only for debugging",
+    responses=build_error_responses([400, 404, 409, 500]),
+)
+async def knowledge_debug_clear_graph(
+    subject: str = Path(...),
+    user: CurrentUserContext = Depends(get_current_user_context),
+    session: Session = Depends(get_db),
+) -> ApiResponse[ClearKnowledgeResponse]:
+    normalized = normalize_subject_slug(subject)
+    get_subject_record(session, normalized, owner_user_id=user.user_id)
+    counts = clear_subject_graph_entities(session, subject=normalized)
+    return ok_response(ClearKnowledgeResponse(subject=normalized, deleted_counts=counts))
 
 
 @router.post(
