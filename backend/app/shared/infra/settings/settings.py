@@ -45,12 +45,7 @@ class ModelsSettings(_SettingsModel):
         return self.light
 
 
-class FilesSettings(_SettingsModel):
-    max_upload_size_mb: int = 10
-    max_files_per_upload: int = 10
-
-
-class ChatSettings(_SettingsModel):
+class InteractSettings(_SettingsModel):
     history_turns: int = 10
 
 
@@ -119,6 +114,8 @@ class DocgenSettings(_SettingsModel):
 
 
 class IngestSettings(_SettingsModel):
+    max_upload_size_mb: int = 10
+    max_files_per_upload: int = 10
     parse_concurrency: int = 5
     parser_timeout_s: int = 90
 
@@ -131,6 +128,8 @@ class RagSettings(_SettingsModel):
 
 
 class SearchSettings(_SettingsModel):
+    retrievers: str = ""
+    retriever_profile: str = ""
     max_results_per_query: int = 5
     scrape_timeout_s: int = 20
     provider_timeout_s: float = 6.0
@@ -142,14 +141,6 @@ class SearchSettings(_SettingsModel):
     runtime_cache_enabled: bool = True
     runtime_cache_ttl_s: int = 900
     runtime_cache_max_entries: int = 256
-    searxng_base_url: str = ""
-    retriever_profiles: dict[str, list[str] | str] = Field(default_factory=dict)
-
-
-class WebSearchSettings(_SettingsModel):
-    retriever: str = "duckduckgo"
-    retrievers: str = ""
-    retriever_profile: str = ""
     retriever_profiles: dict[str, list[str] | str] = Field(default_factory=dict)
 
 
@@ -168,18 +159,14 @@ class EmbeddingSettings(_SettingsModel):
     batch_delay_s: float = 0.1
 
 
-class DigestSettings(_SettingsModel):
-    timing_top_k: int = 5
-    token_summary_enabled: bool = True
-    chapter_priors_timeout_ms: int = 0
-
-
 class KnowledgeGraphSettings(_SettingsModel):
     extract_max_parallelism: int = 20
 
 
 class ObservabilitySettings(_SettingsModel):
     llm_observability_enabled: bool = True
+    llm_token_summary_enabled: bool = True
+    timing_top_k: int = 5
     tracing_enabled: bool = True
     langsmith_capture_inputs: bool | None = None
     langsmith_capture_outputs: bool | None = None
@@ -189,17 +176,6 @@ class ObservabilitySettings(_SettingsModel):
 
 class SafetySettings(_SettingsModel):
     guardrails_enabled: bool = True
-
-
-class CacheSettings(_SettingsModel):
-    enabled: bool = False
-    ttl_s: int = 3600
-    max_entries: int = 1000
-
-
-class GenerationSettings(_SettingsModel):
-    enable_image_generation: bool = False
-    enable_mermaid_generation: bool = True
 
 
 class Settings(_SettingsModel):
@@ -213,23 +189,18 @@ class Settings(_SettingsModel):
     """
 
     models: ModelsSettings = Field(default_factory=ModelsSettings)
-    files: FilesSettings = Field(default_factory=FilesSettings)
-    chat: ChatSettings = Field(default_factory=ChatSettings)
+    interact: InteractSettings = Field(default_factory=InteractSettings)
     planner: PlannerSettings = Field(default_factory=PlannerSettings)
     docgen: DocgenSettings = Field(default_factory=DocgenSettings)
     ingest: IngestSettings = Field(default_factory=IngestSettings)
     rag: RagSettings = Field(default_factory=RagSettings)
     search: SearchSettings = Field(default_factory=SearchSettings)
-    web_search: WebSearchSettings = Field(default_factory=WebSearchSettings)
     local_rag: LocalRagSettings = Field(default_factory=LocalRagSettings)
     runtime: RuntimeSettings = Field(default_factory=RuntimeSettings)
     embedding: EmbeddingSettings = Field(default_factory=EmbeddingSettings)
-    digest: DigestSettings = Field(default_factory=DigestSettings)
     knowledge_graph: KnowledgeGraphSettings = Field(default_factory=KnowledgeGraphSettings)
     observability: ObservabilitySettings = Field(default_factory=ObservabilitySettings)
     safety: SafetySettings = Field(default_factory=SafetySettings)
-    cache: CacheSettings = Field(default_factory=CacheSettings)
-    generation: GenerationSettings = Field(default_factory=GenerationSettings)
 
     @property
     def embedding_dim(self) -> int:
@@ -255,11 +226,11 @@ class Settings(_SettingsModel):
 
     @property
     def image_generation_enabled(self) -> bool:
-        return bool((self.models.image_generation or "").strip()) or self.generation.enable_image_generation
+        return bool((self.models.image_generation or "").strip())
 
     @property
     def mermaid_generation_enabled(self) -> bool:
-        return bool((self.models.mermaid_generation or "").strip()) or self.generation.enable_mermaid_generation
+        return bool((self.models.mermaid_generation or "").strip())
 
     def parse_retrievers(
         self,
@@ -272,26 +243,19 @@ class Settings(_SettingsModel):
     ) -> list[str]:
         explicit_names = [
             normalize_retriever_name(item)
-            for item in split_csv_names(self.web_search.retrievers)
+            for item in split_csv_names(self.search.retrievers)
         ]
         resolved_profile = normalize_retriever_name(
-            profile or self.web_search.retriever_profile
+            profile or self.search.retriever_profile
         )
         profile_names = [
             normalize_retriever_name(item)
             for item in get_retriever_profiles().get(resolved_profile, [])
         ]
-        legacy_names = [
-            normalize_retriever_name(item)
-            for item in split_csv_names(self.web_search.retriever)
-        ]
-
         if explicit_names:
             candidate_names = explicit_names
         elif profile_names:
             candidate_names = profile_names
-        elif legacy_names:
-            candidate_names = legacy_names
         else:
             candidate_names = [DEFAULT_RETRIEVER_FALLBACK]
 
@@ -331,14 +295,10 @@ def get_settings() -> Settings:
 
 
 __all__ = [
-    "CacheSettings",
-    "ChatSettings",
-    "DigestSettings",
     "DocgenSettings",
     "EmbeddingSettings",
-    "FilesSettings",
-    "GenerationSettings",
     "IngestSettings",
+    "InteractSettings",
     "KnowledgeGraphSettings",
     "LocalRagSettings",
     "ModelsSettings",
@@ -350,6 +310,5 @@ __all__ = [
     "SafetySettings",
     "SearchSettings",
     "Settings",
-    "WebSearchSettings",
     "get_settings",
 ]

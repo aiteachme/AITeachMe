@@ -173,15 +173,9 @@ def _normalize_profile_entries(value: Any) -> list[str]:
 
 def _iter_retriever_profile_override_blocks(raw: dict[str, Any]) -> list[dict[str, Any]]:
     blocks: list[dict[str, Any]] = []
-    for key in ("retriever_profiles",):
-        candidate = raw.get(key)
-        if isinstance(candidate, dict):
-            blocks.append(candidate)
-    for scope_key in ("search", "web_search"):
-        scope_value = raw.get(scope_key)
-        if not isinstance(scope_value, dict):
-            continue
-        candidate = scope_value.get("retriever_profiles")
+    search_value = raw.get("search")
+    if isinstance(search_value, dict):
+        candidate = search_value.get("retriever_profiles")
         if isinstance(candidate, dict):
             blocks.append(candidate)
     return blocks
