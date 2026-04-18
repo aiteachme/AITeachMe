@@ -1,513 +1,463 @@
-# DocGen 架构评估与后续重构计划
+# DocGen 架构评估与后续重构判断
 
-> 最后更新：2026-04-17  
-> 适用范围：`backend/app/workflows/digest/docgen/`、`backend/app/workflows/digest/planner/`、`backend/app/workflows/digest/common/contracts.py`
+最后更新：2026-04-19
 
-## 1. 本文档目的
-
-本文档记录一次针对 `digest/docgen` 的架构评估结论、关键风险、外部项目参考和后续改造顺序，供后续智能体接手时快速建立上下文。
-
-本文档不记录不可复用的隐藏推理链，只记录可验证、可执行、可维护的工程结论。
-
-如果本文档与当前代码冲突，优先以当前代码和 `backend/app/workflows/digest/docgen/README.md`、`backend/app/workflows/digest/docgen/FLOW_DESIGN.md` 为准。
-
-## 2. 当前主线判断
-
-当前知识文档生成主线已经基本正确，不建议推倒重来。
-
-真实主线是：
+适用范围：
 
 ```text
-api/knowledge_docs.py
-  -> workflows/digest/planner/graph.py
-  -> confirmed_plan
-  -> workflows/digest/docgen/builds.py
-  -> workflows/digest.run_docgen_workflow
-  -> workflows/digest/docgen graph
+backend/app/workflows/digest/docgen/
+backend/app/workflows/digest/planner/
+backend/app/workflows/digest/common/contracts.py
+backend/app/shared/infra/
 ```
 
-DocGen 的职责也已经基本收口：
+本文档记录当前 `digest/docgen` 的架构评估结论。它不是隐藏推理记录，只保留可验证、可执行、可维护的工程判断。
+
+如果本文档与代码冲突，优先以当前代码和 `README.md`、`FLOW_DESIGN.md` 为准。
+
+## 1. 总体结论
+
+当前 DocGen 主线不需要推倒重来。
+
+真实主线已经从旧的“研究、写作、增强、练习”线性节点，演进成：
 
 ```text
-confirmed_plan
-  -> load_context
-  -> research_chapters
-  -> merge_research
+load_context
+  -> prepare_parallel_inputs
+  -> confirm_and_dispatch
+  -> build_document_backbone
+  -> generate_chapters (Send x N)
+  -> enhance_chapters
+  -> review_content
+  -> repair_or_route
+  -> merge_review
   -> finalize_titles
-  -> write_chapters
-  -> merge_drafts
-  -> enrich_assets
-  -> append_practice
   -> publish_document
 ```
 
-这个设计比“单 prompt 写全文”更稳，因为它先用 Planner 固化章节合同，再让 DocGen 按章节研究、写作、增强和发布。
+这条线的方向是对的：先用 Planner 固化用户确认方案，再由 DocGen 细化执行合同、构建知识骨架、按章研究写作、增强表现层、复核、发布结构化产物。
 
-## 3. 当前值得保留的设计
+现在不建议做“大拆大建”。更合理的路线是继续补四个闭环：
 
-### 3.1 Planner 与 DocGen 分离
+```text
+状态闭环：局部失败和局部修补不污染整本产物
+证据闭环：每章主张、证据、来源可追踪
+质量闭环：复核后能有限修补，而不是只记录 warning
+产物闭环：markdown 之外有 manifest 支撑其他引擎复用
+```
 
-`planner` 负责生成可确认的构建方案，`docgen` 只消费已确认方案。这个边界是正确的。
+## 2. 当前值得保留的设计
+
+### 2.1 Planner 与 DocGen 分离
+
+Planner 负责用户确认级计划，DocGen 只消费 confirmed plan。
 
 保留理由：
 
 - 用户确认前后状态清晰。
-- DocGen 不再承担“临时想大纲”的职责。
-- 构建失败时可以回溯到具体 `confirmed_plan_id`。
-- 后续可以在 Planner 侧增强 research surface，而不打乱 DocGen 图结构。
+- DocGen 不再临时改方向。
+- 构建失败可以回溯到 `confirmed_plan_id`。
+- 后续增强 Planner research surface 不会打乱 DocGen 执行图。
 
 关键入口：
 
-- `backend/app/workflows/digest/planner/graph.py`
-- `backend/app/workflows/digest/docgen/builds.py`
-- `backend/app/workflows/digest/docgen/__init__.py`
-
-### 3.2 confirmed plan 合同层
-
-`backend/app/workflows/digest/common/contracts.py` 已经把章节计划扩展为执行合同，包括：
-
-- `DigestChapterContract`
-- `DigestChapterExecutionContract`
-- `DigestMediaQuota`
-- `DigestPracticeQuota`
-- `DigestBuildConstraints`
-
-这层是 Planner 和 DocGen 之间最重要的稳定边界，后续改动应优先扩展合同，而不是在节点 dict 上继续隐式加字段。
-
-### 3.3 分阶段生成而不是全文生成
-
-当前 DocGen 已经拆成：
-
 ```text
-context_pack
-chapter_research
-mode_outline
-chapter_write
-enrich_and_test
-publish
+backend/app/api/knowledge_docs.py
+backend/app/workflows/digest/planner/
+backend/app/workflows/digest/docgen/builds.py
+backend/app/workflows/digest/docgen/graph.py
 ```
 
-这个方向正确。后续不应重新退回“一个 prompt 写全文”的做法。
+### 2.2 confirmed plan 合同层
 
-### 3.4 本地优先、外部补充
+`digest/common/contracts.py` 仍是 Planner 和 DocGen 之间最重要的边界。
 
-`DocGenChapterContextRuntime` 当前已经做到：
+后续扩展应优先考虑：
 
-- 本地 RAG 优先。
-- 本地命中不足才启用外部 retriever。
-- 外部 URL 会经过读取与压缩。
-- 覆盖不足时会追加 gap queries。
+- 是否属于用户确认合同。
+- 是否属于 DocGen 内部执行合同。
+- 是否只是节点运行时 trace。
 
-这符合 AITeachMe 的产品定位：用户资料是第一优先级，联网研究是补充和校准。
+不要把需要长期维护的字段只塞进节点 dict。
 
-## 4. 重大问题清单
+### 2.3 整本文档知识骨架
 
-下面只列值得优先处理的问题。普通样式、命名或局部 prompt 优化不在本节展开。
+`build_document_backbone` 已经成为当前主线的一部分。它把章节 seed、文件摘要和高置信证据候选收束为：
 
-### P0. `finalize_titles` 缺少单章失败降级
+- `canonical_glossary`
+- `concept_dependency_graph`
+- `notation_registry`
+- `canonical_claim_pool`
+- `confusion_map`
+- `source_trust_summary`
+
+这层值得保留，因为它把“按章并行写作”拉回整本一致性，不会让每章各说各话。
+
+### 2.4 主张、证据和冲突账本
+
+当前 `generate_chapters` 已经输出：
+
+- `EvidenceLedger`
+- `ClaimLedger`
+- `ClaimEvidenceMap`
+- `ConflictReport`
+- `ChapterResearchTrace`
+
+这比单纯保存 `dense_context` 更有价值。后续 Interact / Examine / Profile 可以复用这些结构，而不是解析 Markdown。
+
+### 2.5 发布级 manifest
+
+`publish_document` 已经把 DocGen artifacts 写入：
+
+```text
+knowledge_markdowns/_build/docgen_manifest.json
+knowledge_markdowns/docgen_manifest.json
+knowledge_markdowns/versions/vXXXX/docgen_manifest.json
+```
+
+这是后续跨引擎复用的关键产物，不应因为前端暂时不用而删除。
+
+## 3. 当前重大问题清单
+
+这里只列值得优先关注的问题，普通命名、提示词和样式优化不展开。
+
+### P0. 文档与代码漂移
 
 现状：
 
-- `finalize_titles_node.py` 中 `_resolve_material_title(...)` 会调用轻量模型生成章节标题。
-- 外层使用 `asyncio.gather(...)` 并发处理全部章节。
-- 任何单章标题 LLM 失败，都可能导致整批失败。
+- 旧 README 和架构评估曾把旧主线当作当前主线。
+- 当前 graph 已经包含 `build_document_backbone`、`review_content`、`repair_or_route`、`finalize_titles`。
+- 如果接手者按旧文档开发，很容易把新逻辑补到错误阶段。
 
 影响：
 
-- 标题收口属于低价值增强步骤，不应该拖垮整次文档构建。
-- search-only 或外部模型波动时，构建稳定性会明显下降。
+- 架构沟通成本高。
+- 后续智能体或开发者容易重复造节点。
+- repair loop、manifest、asset 等下一步改造容易走偏。
+
+处理：
+
+- 本次已同步 `README.md`、`FLOW_DESIGN.md`、`REFACTOR_PLAN.md` 和本文档。
+
+验收：
+
+- 文档主线与 `graph.py` 一致。
+- 文档明确当前 MVP 缺口，而不是描述已经过时的流程。
+
+### P1. repair_or_route 还不是质量闭环
+
+现状：
+
+- `review_content` 已经能产出 `ReviewAction`。
+- `repair_or_route` 当前只做 MVP：轻动作标记、重动作记录 warning。
+- graph 仍是一次性路径：
+
+```text
+review_content -> repair_or_route -> merge_review
+```
+
+影响：
+
+- 复核发现的问题多数不能自动消化。
+- `review_actions` 对最终文档质量的提升有限。
+- 后续如果直接加循环，state append 字段会带来重复产物风险。
 
 建议：
 
+先做两步：
+
+1. 修正 action 状态语义，不真实 patch 就不要标 `applied`。
+2. 扩展 `ReviewAction` 合同，再引入 `RepairLoopState` 和最多两轮路由。
+
+### P1. ReviewAction 合同不足
+
+现状：
+
+`ReviewAction` 主要字段是：
+
 ```text
-单章标题解析失败
-  -> 记录 warning / progress event
-  -> resolved_title 回退到 planner title
-  -> 整体继续进入 write_chapters
+action_id
+action_type
+chapter_index
+severity
+reason
+status
 ```
-
-验收：
-
-- mock 单章 `acompletion_with_fallback` 抛异常时，最终仍能进入 `write_chapters`。
-- 构建状态里能看到 fallback_used 或 title_resolution_failed_count。
-
-### P0. 缺少可复用的 `evidence_ledger`
-
-现状：
-
-- research 阶段有 `source_details`、`dense_context`、`coverage_score`。
-- 但没有记录“关键定义 / 公式 / 例题 / 方法分别来自哪些来源”的细粒度证据账本。
 
 影响：
 
-- 文档可核验性不足。
-- 后续 Examine 难以基于证据生成题目。
-- Interact 难以引用“这段讲义来自哪条材料”。
-- KG 难以复用 DocGen 的研究结果。
+- repair 层需要靠自然语言 reason 猜修哪里。
+- 证据不足被映射成 `regenerate_chapter`，粒度过重。
+- 无法稳定实现 targeted patch。
 
-建议新增章节级 `evidence_ledger`：
+建议新增：
 
-```json
-{
-  "chapter_index": 1,
-  "items": [
-    {
-      "kind": "definition",
-      "claim": "行列式是...",
-      "source_url": "local://...",
-      "source_title": "线性代数讲义",
-      "source_span": "section_3",
-      "confidence": 0.82
-    }
-  ]
-}
+```text
+target_anchor
+instruction
+constraints
+expected_effect
 ```
 
-第一阶段只写入 manifest 或 chapter metadata，不强改前端展示。
+并补充 `evidence_patch`、`record_only` 类型。
 
-验收：
-
-- 每章至少能产出若干 `definition / formula / method / example` 类型证据项。
-- `publish_staged_knowledge_docs(...)` 能把 ledger 写入 chapter manifest。
-- writer prompt 可以消费 ledger 摘要，但不强制逐句引用。
-
-### P1. DocGen state 与章节 payload 过重
+### P1. state reducer 与 repair loop 不兼容
 
 现状：
 
-- `chapter_materials`、`title_resolved_chapter_materials`、`chapter_drafts`、`chapter_metadatas` 都是 dict。
-- 很多字段在多个阶段重复复制。
-- `merged_markdown` 和 `enriched_markdown` 同时保存在 state 里。
+多个章节产物字段使用 `operator.add`：
+
+```text
+chapter_drafts
+enhanced_chapter_drafts
+research_traces
+evidence_ledgers
+claim_ledgers
+claim_evidence_maps
+conflict_reports
+asset_manifests
+practice_manifests
+```
+
+这对一次性 fan-out 很合适，但对 repair loop 和 regenerate chapter 有风险。
 
 影响：
 
-- 后续加 critic、evidence、asset、practice 后，state 会继续膨胀。
-- 同名字段在不同阶段语义容易漂移。
-- Debug 时很难判断字段来自哪个阶段。
+- 重修后的章节可能和旧章节同时存在。
+- `merge_review` 如果只按长度或顺序选，很难保证选中最新版本。
+- manifest 历史与最终 active 版本容易混淆。
 
 建议：
 
-先不要大拆 graph。可以分阶段引入 typed record：
+- 给产物加 `artifact_version` 或 `repair_round`。
+- `merge_review` 只消费每章 latest active artifact。
+- manifest 同时保留 latest 和 history。
 
-```text
-ChapterResearchRecord
-ChapterTitleRecord
-ChapterDraftRecord
-ChapterPublishRecord
-AssetManifest
-PracticeManifest
-```
-
-第一阶段可以继续用 dict 序列化进 LangGraph state，但节点内部优先使用 Pydantic model。
-
-验收：
-
-- 新增字段优先进入 typed model。
-- `chapter_metadatas` 只保留发布所需字段。
-- research-only 字段不再无差别复制到 publish payload。
-
-### P1. Writer 缺少真正的 critic / rewrite loop
+### P1. 图片 disabled manifest 缺失
 
 现状：
 
-- writer 已有标题结构修复。
-- writer 已有 scaffold fallback。
-- writer 已有 coverage / length repair。
-- 但这些主要是格式与覆盖修补，不是内容审校。
+- image generation 未启用时，image 请求可能在 plan 阶段被移除。
+- `enhance_chapters` 会 strip image 占位。
+- `AssetManifest` 看不到 disabled 记录。
 
 影响：
 
-- 章节可能结构完整，但事实稳健性和教学质量不稳定。
-- systematic / sprint 的风格可能被格式修复拉平。
+- 用户看到没有图片，但系统无法说明是 disabled、failed 还是 skipped。
+- 后续前端或重跑任务缺少资产决策依据。
 
 建议：
 
-增加轻量 critic：
+- 保留 image intent，但不泄露内部占位符。
+- `AssetManifest` 记录：
 
 ```text
-write_chapter
-  -> critic_chapter
-      - 是否符合 digest_mode
-      - 是否使用了 dense_context
-      - 是否有明显编造
-      - 是否缺核心 required_elements
-  -> 不通过时最多 rewrite 一次
-  -> 仍不通过则保留原稿并标记 quality_warning
+kind: image
+status: disabled
+reason: image_generation_disabled
 ```
 
-验收：
-
-- 单章最多额外 1 次 rewrite。
-- 成本和时延可控。
-- `quality_score` 与 `quality_warning` 能进入 lane summary。
-
-### P1. 引用重复与引用层级不清
+### P2. final_merge_patch 尚未实现
 
 现状：
 
-- `enrich_assets` 会按章追加 reference section。
-- `build_merged_markdown(...)` 又会追加全局 reference block。
+- 合并后才暴露的小问题由 `merge_review` / `finalize_titles` 间接处理。
+- 没有独立节点记录 final merge patch。
 
 影响：
 
-- 成品文档可能重复出现来源。
-- 前端后续做 citation UI 时难以区分章节引用和全局引用。
+- 目录重复、跨章过渡、重复摘要、manifest 小缺字段等问题缺少明确收口点。
 
 建议：
 
-先收口为一种策略：
+新增 `final_merge_patch`，只修发布级小问题，不检索、不重写章节、不改 claim/evidence。
 
-```text
-默认只保留全局 reference block。
-章节级来源进入 chapter manifest / evidence_ledger。
-如需章节内显示，后续由前端基于 manifest 渲染。
-```
-
-验收：
-
-- 同一 URL 不在正文中重复出现多次 reference section。
-- `include_sources=false` 时章节和全局都不追加来源块。
-- `include_sources=true` 时至少全局来源完整。
-
-### P1. Practice layer 仍是规则生成
+### P2. 研究预算仍偏静态
 
 现状：
 
-- `append_practice_node.py` 通过规则生成“练习与自检”。
-- 尚未接入 `workflows/examine/question_build`。
+- `ChapterBudgetPolicy` 主要按 `sprint/systematic` 默认值生成。
+- 还没有充分利用 local coverage、evidence gap、章节难度动态决策。
 
 影响：
 
-- 练习质量稳定但不够个性化。
-- 难以体现 AITeachMe 的“诊断引擎”价值。
+- 资料覆盖充足的章节可能过度检索。
+- 证据不足的章节可能检索预算不够精细。
 
 建议：
 
+新增 `ResearchBudgetDecision`，并写入 `research_trace`。
+
+## 4. 不建议现在做的大改
+
+### 4.1 不建议重写整张 DocGen graph
+
+当前阶段边界已经合理。问题主要在回流、合同、manifest 和 state 语义，不在 graph 主线。
+
+### 4.2 不建议把 DocGen 并回 Planner
+
+Planner 是确认面，DocGen 是执行面。二者合并会让确认流程、构建锁、失败恢复和前端状态都变复杂。
+
+### 4.3 不建议优先做完整多 Agent deep research
+
+AITeachMe 的 DocGen 需要的是可控教学文档生成，不是开放式研究代理。多 Agent 动态队列会放大成本、时延和可解释性问题。
+
+### 4.4 不建议让 enhance 修核心知识
+
+`enhance_chapters` 只能处理 Mermaid、图片、交互占位、公式、Markdown 和自检题。核心知识修补必须回到 review/repair。
+
+### 4.5 不建议新增第二套工具系统
+
+检索、reader、tool、workflow、observability 都应继续使用 `shared.infra` 的稳定入口。
+
+## 5. 推荐改造顺序
+
+### Phase 0：文档基线
+
+状态：已完成。
+
+目标：
+
+- 文档与当前 graph 对齐。
+- 明确下一步不是补新主线，而是补回流和产物合同。
+
+### Phase 1：修正 repair 状态语义
+
+目标：
+
+- 不真实修改正文时，不标记 `applied`。
+- 最小 `repair_trace` 进入 manifest。
+
+收益：
+
+- 低风险。
+- 立刻提升调试可信度。
+
+### Phase 2：扩展 ReviewAction
+
+目标：
+
+- 让 action 能驱动定向修补。
+- 新增 `evidence_patch` / `record_only`。
+
+收益：
+
+- 为 repair loop 打基础。
+- 不强制立刻改 graph。
+
+### Phase 3：有限 repair loop
+
+目标：
+
+- 新增 `RepairLoopState`。
+- `review_content` 根据 `review_decision` 路由到 repair 或 merge。
+- 最多两轮。
+
+风险：
+
+- 必须先处理 state append 语义，否则容易重复产物。
+
+### Phase 4：章节产物版本化
+
+目标：
+
+- 分清 active artifact 和 history artifact。
+- 修补或重写后只发布 latest。
+
+### Phase 5：局部 patch 与 evidence patch
+
+目标：
+
+- 先做 surface / section patch。
+- 再做 targeted evidence patch。
+- 最后做单章 regenerate。
+
+### Phase 6：asset manifest 收口
+
+目标：
+
+- image disabled / failed / skipped / rendered 状态全部可追踪。
+
+### Phase 7：final_merge_patch
+
+目标：
+
+- 合并后小问题有独立节点收口。
+
+### Phase 8：动态研究预算
+
+目标：
+
+- 按资料覆盖度、证据缺口和章节难度分配预算。
+
+## 6. 修改代码前的检查清单
+
+改 DocGen 前先确认：
+
+- 是否改变 confirmed plan 的章节数量、顺序或语义。
+- 是否新增长期字段，是否应放进 `lib/models.py`。
+- 是否会影响 `operator.add` fan-in 字段。
+- 是否需要写入 `docgen_manifest.json`。
+- 是否影响 `KnowledgeDoc.manifest_json`。
+- 是否会让 `enhance_chapters` 承担核心知识修补。
+- 是否需要更新 `README.md`、`FLOW_DESIGN.md`、`REFACTOR_PLAN.md`。
+- 是否触碰前端 Orval 生成目录。
+
+## 7. 验证建议
+
+文档改动：
+
 ```text
-append_practice
-  -> try Examine question_build
-  -> 成功：写入结构化 questions + markdown
-  -> 失败：保留当前规则 fallback
+git diff --check
 ```
 
-验收：
-
-- Examine 失败不影响 DocGen 发布。
-- 题目能按 `digest_mode` 和章节证据生成。
-- `practice_manifest` 记录题目来源、题型、章节归属。
-
-## 5. 不建议现在做的大改
-
-### 5.1 不建议重写整张 DocGen graph
-
-当前图的阶段边界是合理的。问题主要在降级、证据、产物合同和质量闭环，不在 graph 形状。
-
-### 5.2 不建议把 DocGen 重新并回 Planner
-
-Planner 负责计划，DocGen 负责执行。二者合并会让确认流程、构建锁、失败恢复和前端状态都变复杂。
-
-### 5.3 不建议优先做真实图片生成
-
-图片生成需要 asset 存储、manifest、前端渲染、失败兜底和成本控制。当前更应该先定义 `asset_manifest`，再接真实 image generation。
-
-### 5.4 不建议把所有来源直接塞进 writer prompt
-
-writer 应消费压缩后的 `dense_context` 和证据摘要。直接塞全部来源会增加成本，并削弱可控性。
-
-## 6. 外部项目参考
-
-以下项目只作为架构参考，不作为直接迁移目标。
-
-### 6.1 Stanford STORM
-
-参考地址：
-
-- https://github.com/stanford-oval/storm
-
-可参考点：
-
-- 先 research，再 outline，再 long-form article generation。
-- 强调 citation 和来源支撑。
-- 适合参考“研究后再写作”的总体节奏。
-
-对 AITeachMe 的启发：
-
-- DocGen 当前方向是对的。
-- 需要补的是 evidence/citation 的显式账本，而不是再增加一个全能 agent。
-
-### 6.2 LangChain Open Deep Research
-
-参考地址：
-
-- https://github.com/langchain-ai/open_deep_research
-- https://www.langchain.com/blog/open-deep-research
-
-可参考点：
-
-- 流程按 `Scope -> Research -> Write` 划分。
-- 多 agent 主要用于 research 阶段。
-- 报告写作阶段需要统一收束，不能让并行写作无限发散。
-
-对 AITeachMe 的启发：
-
-- Planner 对应 Scope。
-- DocGen research 对应 Research。
-- `merge_drafts / enrich / publish` 对应 Write 收束。
-- 后续重点应放在 research 结果的结构化收束和最终质量审校。
-
-### 6.3 GPT Researcher
-
-参考地址：
-
-- https://docs.gptr.dev/docs/gpt-researcher/getting-started/introduction
-- https://docs.gptr.dev/docs/gpt-researcher/context/local-docs
-
-可参考点：
-
-- planner 生成研究任务。
-- execution agents 搜索与阅读。
-- 最终 report 聚合。
-- 支持 local docs 与 web hybrid。
-
-对 AITeachMe 的启发：
-
-- `local_first / web_first` 是正确方向。
-- 需要更清楚地区分“检索候选”“实际打开阅读”“进入写作的证据包”。
-
-### 6.4 LlamaIndex Agentic Report / Citation Workflow
-
-参考地址：
-
-- https://developers.llamaindex.ai/python/examples/agent/nvidia_document_research_assistant_for_blog_creation/
-- https://developers.llamaindex.ai/python/examples/workflow/citation_query_engine/
-
-可参考点：
-
-- outline、research question、parallel research、writer、critic、iterative refinement 的分工。
-- citation workflow 会把来源切成更细粒度 source nodes。
-
-对 AITeachMe 的启发：
-
-- 可以补 `critic / rewrite`。
-- `evidence_ledger` 应尽量记录到 source span，而不是只记录 URL。
-
-### 6.5 Microsoft GraphRAG
-
-参考地址：
-
-- https://microsoft.github.io/graphrag/query/overview/
-
-可参考点：
-
-- local search、global search、DRIFT search、question generation 面向不同查询场景。
-
-对 AITeachMe 的启发：
-
-- GraphRAG 更适合作为 Planner / DocGen 的上游增强能力。
-- 不应把 DocGen 改造成 GraphRAG；应让 KG 的全局视角反哺章节计划和证据检索。
-
-## 7. 推荐改造顺序
-
-### Phase 1：稳定性与低风险质量提升
-
-目标：不改 API，不改前端主流程，不大改 graph。
-
-任务：
-
-1. `finalize_titles` 单章失败 fallback。
-2. 引用策略收口，避免章节和全局 reference 重复。
-3. `append_practice` 保留规则 fallback，但为后续 `practice_manifest` 预留结构。
-4. 给 research 输出增加最小 `evidence_ledger`，先写 manifest。
-
-验收：
-
-- LLM 局部失败不会拖垮整次构建。
-- 发布文档来源显示不重复。
-- 每章 manifest 能看到证据摘要。
-
-### Phase 2：内容质量闭环
-
-目标：让章节不只是“格式完整”，还要“内容可学、可核验”。
-
-任务：
-
-1. 增加 `critic_chapter` 或 writer 内部 critic。
-2. 不通过时最多 rewrite 一次。
-3. 将 `quality_warning` 写入 chapter metadata。
-4. `coverage_score` 增加 `example_density / formula_presence / source_quality_score`。
-
-验收：
-
-- systematic 章节更像系统课。
-- sprint 章节更像突击课。
-- 质量不过线时有可追踪标记。
-
-### Phase 3：产物合同收口
-
-目标：减少 dict 漂移，给后续前端和其他引擎可消费的 manifest。
-
-任务：
-
-1. 引入章节级 typed record。
-2. 引入 `asset_manifest`。
-3. 引入 `practice_manifest`。
-4. 将 research/draft/publish 字段分层，避免无差别复制。
-
-验收：
-
-- publish manifest 能独立描述文档、章节、证据、资产和练习。
-- 后续前端无需解析 markdown 就能展示来源、资产和练习。
-
-### Phase 4：跨引擎整合
-
-目标：让 DocGen 产物真正进入 AITeachMe 的五大引擎闭环。
-
-任务：
-
-1. `append_practice` 接入 `examine/question_build`。
-2. `evidence_ledger` 供 Interact 引用。
-3. DocGen evidence 与 KG evidence 对齐。
-4. Profile 可使用 practice 结果更新掌握度。
-
-验收：
-
-- 文档生成后可以自然进入练习、问答和掌握度更新。
-
-## 8. 后续智能体接手时的阅读顺序
-
-建议按下面顺序读：
+代码改动：
+
+```text
+conda run -n atm python -m compileall backend/app/workflows/digest/docgen
+```
+
+关键改动额外验证：
+
+```text
+graph compile smoke test
+小资料 sprint 构建
+小资料 systematic 构建
+无本地资料 web-first fallback
+manifest 字段检查
+```
+
+优先补测试的位置：
+
+- `ReviewAction` validate。
+- `repair_or_route` 状态语义。
+- `asset disabled manifest`。
+- `merge_review` latest artifact selection。
+- `publish_document` manifest snapshot。
+
+## 8. 后续接手阅读顺序
 
 1. `backend/app/workflows/README.md`
 2. `backend/app/workflows/digest/README.md`
-3. `backend/app/workflows/digest/planner/DOCGEN_ARCHITECTURE_REVIEW.md`
+3. `backend/app/workflows/digest/planner/README.md`
 4. `backend/app/workflows/digest/docgen/README.md`
 5. `backend/app/workflows/digest/docgen/FLOW_DESIGN.md`
 6. `backend/app/workflows/digest/docgen/graph.py`
 7. `backend/app/workflows/digest/docgen/state.py`
-8. `backend/app/workflows/digest/docgen/nodes/*.py`
-9. `backend/app/workflows/digest/docgen/lib/*.py`
-10. `backend/app/workflows/digest/common/contracts.py`
+8. `backend/app/workflows/digest/docgen/lib/models.py`
+9. `backend/app/workflows/digest/docgen/nodes/*.py`
+10. `backend/app/workflows/digest/docgen/REFACTOR_PLAN.md`
 
-## 9. 修改代码前的检查清单
+## 9. 一句话收束
 
-改 DocGen 前先确认：
-
-- 是否仍然必须消费 `confirmed_plan`。
-- 是否会修改 `chapter_materials` 这类 `operator.add` fan-in 字段。
-- 是否需要新增合同字段，而不是只在 dict 上临时加字段。
-- 是否有失败降级。
-- 是否会影响 `ContentStore` 写入路径。
-- 是否会影响 `KnowledgeDoc` DB 记录。
-- 是否会影响前端 `build_preview` 展示。
-- 是否需要 Orval 重新生成。
-
-## 10. 一句话收束
-
-DocGen 当前不是要推倒重来，而是要补上四个闭环：
+DocGen 当前最重要的不是再发明一条流程，而是把已经成型的主线继续做扎实：
 
 ```text
-稳定性闭环：局部失败不拖垮整次构建
-证据闭环：每章讲了什么、依据什么可以追踪
-质量闭环：写完后能审校、必要时有限重写
-产物闭环：markdown 之外有 manifest 支撑前端和其他引擎
+confirmed plan
+  -> execution contract
+  -> document backbone
+  -> evidence-backed chapter generation
+  -> content review
+  -> bounded repair
+  -> publishable manifest
 ```
