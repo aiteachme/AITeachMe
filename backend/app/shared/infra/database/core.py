@@ -43,7 +43,7 @@ from app.models.knowledge_unit import KnowledgeUnit
 from app.models.profile import UserKnowledgeState
 from app.models.raw_file import RawFile
 from app.models.subject import Subject
-from app.models.system import SystemSettingsSnapshot
+from app.models.system import SystemSettingsSnapshot, UserRuntimeSettings
 from app.models.user import User
 
 logger = structlog.get_logger()
@@ -78,6 +78,7 @@ _SCHEMA_MODELS = (
     ChatSession,
     ChatMessage,
     SystemSettingsSnapshot,
+    UserRuntimeSettings,
 )
 _SCHEMA_TABLES = [model.__table__ for model in _SCHEMA_MODELS]
 _EXPECTED_SCHEMA_COLUMNS = {
