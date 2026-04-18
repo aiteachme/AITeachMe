@@ -99,13 +99,26 @@ def build_docgen_writer_messages(
     execution_contract = dict(execution_contract or {})
     media_quota = dict(execution_contract.get("media_quota") or {})
     practice_quota = dict(execution_contract.get("practice_quota") or {})
+    claim_targets = [
+        str(item).strip()
+        for item in list(execution_contract.get("claim_targets") or [])
+        if str(item).strip()
+    ][:8]
+    conflict_warnings = [
+        str(item).strip()
+        for item in list(execution_contract.get("conflict_warnings") or [])
+        if str(item).strip()
+    ][:6]
     contract_summary = (
         f"- 目标字数：{execution_contract.get('target_word_count') or '未指定'}\n"
         f"- 最低字数：{execution_contract.get('min_word_count') or '未指定'}\n"
         f"- 最低覆盖分：{execution_contract.get('min_coverage_score') or '未指定'}\n"
+        f"- 最低证据支撑：{execution_contract.get('min_evidence_support') or '未指定'}\n"
         f"- 解释深度：{execution_contract.get('explanation_depth') or '未指定'}\n"
-        f"- 媒体配额：Mermaid {media_quota.get('mermaid', 0)} / 图片 {media_quota.get('images', 0)} / 交互块 {media_quota.get('interactive_html', 0)}\n"
-        f"- 练习配额：简答 {practice_quota.get('short_answer', 0)} / 自检 {practice_quota.get('self_check', 0)} / 推理 {practice_quota.get('reasoning', 0)} / 应用 {practice_quota.get('application', 0)}"
+        f"- 媒体配额：Mermaid {media_quota.get('mermaid', 0)} / 图片 {media_quota.get('images', 0)}\n"
+        f"- 练习配额：简答 {practice_quota.get('short_answer', 0)} / 自检 {practice_quota.get('self_check', 0)} / 推理 {practice_quota.get('reasoning', 0)} / 应用 {practice_quota.get('application', 0)}\n"
+        f"- 本章主张目标：{'；'.join(claim_targets) if claim_targets else '按章节合同覆盖'}\n"
+        f"- 需谨慎处理的冲突/低证据点：{'；'.join(conflict_warnings) if conflict_warnings else '无'}"
     )
     system_prompt = (
         "你是 AITeachMe 的中文教学文档作者。"
@@ -149,7 +162,7 @@ def build_docgen_writer_messages(
 2. 一级标题必须是 `# {title}`。
 3. 二级标题必须服从模式契约，覆盖关键模块，但标题文案可以自行命名，不要整章复制固定模板标题。
 4. 如果需要图示，优先使用 `<!-- [MERMAID: 描述] -->` 占位；只有图片配额大于 0 时才允许使用 `<!-- [IMAGE: 描述] -->`。
-5. 如果执行合同要求交互块，请使用 `<!-- [INTERACTIVE: 描述] -->` 占位。
+5. 只输出标准 Markdown；不要输出 HTML、CSS、`<style>`、`<div>`、`<details>` 或内联样式。
 6. 如果需要公式，必须使用 `$...$` 或 `$$...$$`。
 7. 不允许编造引用、文献、实验结果或材料中不存在的事实。
 8. 不要把研究材料原样贴出来，要改写成适合学生学习的讲义。
@@ -213,9 +226,10 @@ def build_docgen_heading_repair_messages(
 5. 尽量保留已有正文、例子和公式，除非确实重复或跑题，不要大删内容。
 6. 如果结构不完整，可以补少量过渡句、总结句或提示句，但不要凭空编造来源事实。
 7. 如果涉及公式，继续使用 `$...$` 或 `$$...$$`。
-8. 如果需要图示占位，继续保留或补充 `<!-- [MERMAID: 描述] -->`、`<!-- [INTERACTIVE: 描述] -->`；只有原文已有图片占位或图片配额大于 0 时才保留 `<!-- [IMAGE: 描述] -->`。
-9. 删除或改写任何草稿痕迹：`重点补全`、`结构补全`、`研究材料重组`、`可直接回看这些研究线索`、`研究笔记`、原始来源堆砌、` ```markdown `。
-10. 如果正文太像聊天式安慰、流程说明或研究摘录，要改成更像课堂讲义的表达。
+8. 如果需要图示占位，继续保留或补充 `<!-- [MERMAID: 描述] -->`；只有原文已有图片占位或图片配额大于 0 时才保留 `<!-- [IMAGE: 描述] -->`。
+9. 只输出标准 Markdown；不要输出 HTML、CSS、`<style>`、`<div>`、`<details>` 或内联样式。
+10. 删除或改写任何草稿痕迹：`重点补全`、`结构补全`、`研究材料重组`、`可直接回看这些研究线索`、`研究笔记`、原始来源堆砌、` ```markdown `。
+11. 如果正文太像聊天式安慰、流程说明或研究摘录，要改成更像课堂讲义的表达。
 
 风格提醒：
 {tone_hint}

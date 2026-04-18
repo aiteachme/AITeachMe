@@ -9,13 +9,18 @@ from app.shared.infra.settings import get_settings
 from app.shared.infra.tools.builtin.markdown_processing import count_words
 from app.workflows.digest.common.pedagogy import resolve_effective_chapter_title
 from app.workflows.digest.docgen.lib.models import (
+    BackboneResearchAgenda,
     ChapterBudgetPolicy,
     ChapterGenerationPlan,
+    ChapterGenerationPlanSeed,
     ChapterGenerationTask,
+    ChapterGenerationTaskSeed,
     DocGenContext,
     DocGenIntentProfile,
     EnhancedChapterOutline,
     FileMaterialSummary,
+    HighConfidenceEvidenceUnit,
+    SourceAffinityByChapter,
     clean_string_list,
 )
 
@@ -79,6 +84,17 @@ def _priority_files_for_chapter(
     return file_ids, list(dict.fromkeys(section_refs))[:10]
 
 
+def _affinity_for_chapter(
+    *,
+    chapter_index: int,
+    source_affinity_by_chapter: Sequence[SourceAffinityByChapter] | None,
+) -> SourceAffinityByChapter | None:
+    for item in list(source_affinity_by_chapter or []):
+        if int(item.chapter_index or 0) == int(chapter_index):
+            return item
+    return None
+
+
 def _placeholder_requests_from_confirmed_chapter(chapter: Mapping[str, Any]) -> list[dict[str, str]]:
     media_hints = chapter.get("media_hints")
     if hasattr(media_hints, "model_dump"):
@@ -88,7 +104,6 @@ def _placeholder_requests_from_confirmed_chapter(chapter: Mapping[str, Any]) -> 
     for kind, field_names in {
         "mermaid": ("mermaid",),
         "image": ("images", "image"),
-        "interactive": ("interactive", "interactive_html"),
     }.items():
         for field_name in field_names:
             for description in clean_string_list(media_hints.get(field_name), limit=6):
@@ -106,8 +121,6 @@ def _dedupe_placeholder_requests(requests: Sequence[Mapping[str, Any]]) -> list[
             continue
         if kind in {"images", "image"}:
             kind = "image"
-        elif kind in {"interactive_html", "interactive"}:
-            kind = "interactive"
         elif kind != "mermaid":
             continue
         key = (kind, description.casefold())
@@ -125,6 +138,7 @@ def compose_chapter_generation_plan(
     enhanced_outlines: Sequence[EnhancedChapterOutline],
     intent_profile: DocGenIntentProfile,
     file_summaries: Sequence[FileMaterialSummary],
+    source_affinity_by_chapter: Sequence[SourceAffinityByChapter] | None = None,
     plan_mismatch_warnings: Sequence[str] | None = None,
 ) -> ChapterGenerationPlan:
     outline_by_index = {int(outline.chapter_index): outline for outline in enhanced_outlines}
@@ -159,6 +173,13 @@ def compose_chapter_generation_plan(
             chapter_index=chapter_index,
             file_summaries=file_summaries,
         )
+        affinity = _affinity_for_chapter(
+            chapter_index=chapter_index,
+            source_affinity_by_chapter=source_affinity_by_chapter,
+        )
+        if affinity is not None:
+            priority_file_ids = affinity.file_ids or priority_file_ids
+            priority_section_refs = affinity.section_refs or priority_section_refs
         min_words, target_words = _chapter_word_budget(
             digest_mode=docgen_context.digest_mode,
             chapter_count=chapter_count,
@@ -208,6 +229,10 @@ def compose_chapter_generation_plan(
             ],
             placeholder_requests=placeholder_requests,
             practice_seed_policy=dict(outline.practice_seed_policy),
+            coverage_threshold=float((chapter.get("execution_contract") or {}).get("min_coverage_score") or (0.6 if normalized_mode == "sprint" else 0.72)),
+            evidence_support_threshold=0.48 if normalized_mode == "sprint" else 0.56,
+            repetition_tolerance=0.45 if normalized_mode == "sprint" else 0.3,
+            patch_tolerance=0.45 if normalized_mode == "sprint" else 0.32,
             min_word_count=min_words,
             target_word_count=target_words,
             budget_policy=ChapterBudgetPolicy(
@@ -235,6 +260,117 @@ def compose_chapter_generation_plan(
         chapters=tasks,
         plan_mismatch_warnings=clean_string_list(plan_mismatch_warnings or [], limit=16),
     )
+
+
+def build_plan_seed_and_backbone_agenda(
+    *,
+    generation_plan: ChapterGenerationPlan,
+    high_confidence_evidence_units: Sequence[HighConfidenceEvidenceUnit] | None = None,
+    file_summaries: Sequence[FileMaterialSummary] | None = None,
+) -> tuple[ChapterGenerationPlanSeed, list[ChapterGenerationTaskSeed], BackboneResearchAgenda]:
+    evidence_units = list(high_confidence_evidence_units or [])
+    summaries = list(file_summaries or [])
+    task_seeds: list[ChapterGenerationTaskSeed] = []
+    for task in generation_plan.chapters:
+        preferred_sources = [
+            f"local://file/{file_id}"
+            for file_id in task.priority_file_ids[:8]
+        ]
+        preferred_sources.extend(
+            unit.source_ref
+            for unit in evidence_units
+            if task.chapter_index in unit.chapter_affinity
+        )
+        allowed_assets = clean_string_list(
+            [str(item.get("kind") or "") for item in task.placeholder_requests if isinstance(item, dict)],
+            limit=8,
+        )
+        task_seeds.append(
+            ChapterGenerationTaskSeed(
+                chapter_index=task.chapter_index,
+                confirmed_title=task.confirmed_title,
+                enhanced_title=task.enhanced_title,
+                chapter_goal=task.objective,
+                mode=generation_plan.digest_mode,
+                required_elements=task.required_elements,
+                forbidden_scope=task.forbidden_scope,
+                retrieval_queries=task.retrieval_queries,
+                priority_section_refs=task.priority_section_refs,
+                preferred_sources=preferred_sources,
+                fallback_policy=task.fallback_policy,
+                target_length=task.target_word_count,
+                style_rules=task.style_rules or task.writing_rules,
+                citation_policy=task.citation_policy,
+                uncertainty_policy=task.uncertainty_policy,
+                allowed_assets=allowed_assets,
+            )
+        )
+
+    topics = clean_string_list(
+        [
+            *[task.enhanced_title for task in generation_plan.chapters],
+            *[
+                item
+                for task in generation_plan.chapters
+                for item in [*task.concept_targets, *task.required_elements]
+            ],
+        ],
+        limit=80,
+    )
+    glossary_candidates = clean_string_list(
+        [
+            *[
+                item
+                for summary in summaries
+                for item in [*summary.definitions, *summary.concepts]
+            ],
+            *[
+                item
+                for task in generation_plan.chapters
+                for item in task.concept_targets
+            ],
+        ],
+        limit=80,
+    )
+    notation_candidates = clean_string_list(
+        [
+            item
+            for summary in summaries
+            for item in summary.formulas
+        ],
+        limit=60,
+    )
+    confusion_candidates = clean_string_list(
+        [
+            item
+            for task in generation_plan.chapters
+            for item in task.pitfall_targets
+        ],
+        limit=60,
+    )
+    agenda = BackboneResearchAgenda(
+        topics=topics,
+        section_refs=clean_string_list(
+            [ref for task in generation_plan.chapters for ref in task.priority_section_refs],
+            limit=80,
+        ),
+        evidence_unit_ids=[unit.evidence_id for unit in evidence_units[:80]],
+        glossary_candidates=glossary_candidates,
+        notation_candidates=notation_candidates,
+        confusion_candidates=confusion_candidates,
+    )
+    plan_seed = ChapterGenerationPlanSeed(
+        subject=generation_plan.subject,
+        digest_mode=generation_plan.digest_mode,
+        tone=generation_plan.tone,
+        source_policy=generation_plan.source_policy,
+        writing_rules=generation_plan.writing_rules,
+        chapter_format=generation_plan.chapter_format,
+        budget_policy=generation_plan.budget_policy,
+        chapters=task_seeds,
+        plan_mismatch_warnings=generation_plan.plan_mismatch_warnings,
+    )
+    return plan_seed, task_seeds, agenda
 
 
 def build_fallback_chapter_markdown(
@@ -303,6 +439,7 @@ def estimate_quality_from_markdown(markdown: str, *, required_points: Sequence[s
 
 
 __all__ = [
+    "build_plan_seed_and_backbone_agenda",
     "build_fallback_chapter_markdown",
     "compose_chapter_generation_plan",
     "estimate_quality_from_markdown",

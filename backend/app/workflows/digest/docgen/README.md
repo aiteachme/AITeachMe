@@ -80,13 +80,17 @@ docgen/
   builds.py
   cleanup.py
   nodes/
-    load_context_node.py
-    prepare_parallel_inputs_node.py
-    confirm_and_dispatch_node.py
-    generate_chapters_node.py
-    enhance_chapters_node.py
-    merge_review_node.py
-    publish_document_node.py
+    load_context.py
+    prepare_parallel_inputs.py
+    confirm_and_dispatch.py
+    build_document_backbone.py
+    generate_chapters.py
+    enhance_chapters.py
+    review_content.py
+    repair_or_route.py
+    merge_review.py
+    finalize_titles.py
+    publish_document.py
   lib/
     models.py
     outline_enhance.py
@@ -100,6 +104,12 @@ docgen/
     publish.py
   prompts/
 ```
+
+说明：
+
+- `nodes/` 内文件名与 Planner 对齐，不再使用 `_node.py` 后缀；函数名仍保留 `build_xxx_node`，和 Planner 的节点 builder 风格一致。
+- `builds.py` 与 `cleanup.py` 不是 LangGraph 节点。它们是 docgen lane 的 API-facing 用例入口：前者负责构建触发、状态装配和后台任务编排，后者负责清理当前学科的知识文档产物。
+- 真正的图执行逻辑只放在 `graph.py`、`state.py`、`nodes/`、`lib/`、`prompts/` 这几层。
 
 ## 核心合同
 

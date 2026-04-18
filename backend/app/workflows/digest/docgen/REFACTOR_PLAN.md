@@ -48,13 +48,13 @@ load_context
 ```text
 graph.py
 state.py
-nodes/load_context_node.py
-nodes/prepare_parallel_inputs_node.py
-nodes/confirm_and_dispatch_node.py
-nodes/generate_chapters_node.py
-nodes/enhance_chapters_node.py
-nodes/merge_review_node.py
-nodes/publish_document_node.py
+nodes/load_context.py
+nodes/prepare_parallel_inputs.py
+nodes/confirm_and_dispatch.py
+nodes/generate_chapters.py
+nodes/enhance_chapters.py
+nodes/merge_review.py
+nodes/publish_document.py
 lib/models.py
 lib/chapter_context.py
 lib/chapter_generation.py
@@ -73,7 +73,7 @@ lib/publish.py
 ```text
 lib/models.py
 lib/file_summaries.py
-nodes/prepare_parallel_inputs_node.py
+nodes/prepare_parallel_inputs.py
 prompts/file_summaries.py
 ```
 
@@ -127,7 +127,7 @@ high_confidence_evidence_units
 ```text
 lib/models.py
 lib/chapter_generation.py
-nodes/confirm_and_dispatch_node.py
+nodes/confirm_and_dispatch.py
 prompts/outline_enhance.py
 ```
 
@@ -206,7 +206,7 @@ chapter_assignments
 ```text
 graph.py
 state.py
-nodes/build_document_backbone_node.py
+nodes/build_document_backbone.py
 nodes/__init__.py
 lib/models.py
 lib/document_backbone.py
@@ -280,7 +280,7 @@ backbone_conflict_warnings
 ```text
 lib/models.py
 lib/chapter_generation.py
-nodes/generate_chapters_node.py
+nodes/generate_chapters.py
 prompts/outline_enhance.py
 prompts/common.py
 ```
@@ -318,7 +318,7 @@ lib/claims.py
 lib/evidence.py
 lib/conflicts.py
 lib/writer.py
-nodes/generate_chapters_node.py
+nodes/generate_chapters.py
 prompts/claims.py
 prompts/common.py
 ```
@@ -372,7 +372,7 @@ chapter_drafts
 ```text
 lib/chapter_enhancement.py
 lib/assets.py
-nodes/enhance_chapters_node.py
+nodes/enhance_chapters.py
 lib/models.py
 ```
 
@@ -406,7 +406,7 @@ fallback_used
 ```text
 graph.py
 state.py
-nodes/review_content_node.py
+nodes/review_content.py
 nodes/__init__.py
 lib/chapter_review.py
 lib/document_consistency.py
@@ -459,7 +459,7 @@ MVP：只记录 ReviewAction，不自动回流。
 ```text
 graph.py
 state.py
-nodes/repair_or_route_node.py
+nodes/repair_or_route.py
 lib/repair.py
 lib/models.py
 ```
@@ -490,9 +490,9 @@ unresolved_warnings
 ### 需要改的文件
 
 ```text
-nodes/merge_review_node.py
-nodes/finalize_titles_node.py
-nodes/publish_document_node.py
+nodes/merge_review.py
+nodes/finalize_titles.py
+nodes/publish_document.py
 lib/merge_review.py
 lib/publish.py
 lib/models.py

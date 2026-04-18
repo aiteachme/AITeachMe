@@ -12,11 +12,17 @@ from app.shared.infra.workflow.context import WorkflowContext
 from app.workflows.digest.docgen.lib import DocGenChapterContextRuntime, DocGenWriterRuntime
 from app.workflows.digest.docgen.lib.chapter_critic import critique_chapter, maybe_rewrite_chapter
 from app.workflows.digest.docgen.lib.chapter_generation import build_fallback_chapter_markdown
+from app.workflows.digest.docgen.lib.claims import align_claim_evidence, build_claim_ledger
+from app.workflows.digest.docgen.lib.conflicts import resolve_conflicts_for_chapter
 from app.workflows.digest.docgen.lib.evidence import build_evidence_ledger, mark_evidence_used
 from app.workflows.digest.docgen.lib.models import (
     ChapterDraft,
     ChapterGenerationTask,
     ChapterResearchTrace,
+    ClaimEvidenceMap,
+    ClaimLedger,
+    ConflictReport,
+    DocumentBackbone,
 )
 from app.workflows.digest.docgen.nodes.common import (
     ensure_chapter_heading,
@@ -27,8 +33,15 @@ from app.workflows.digest.docgen.nodes.common import (
 from app.workflows.digest.docgen.state import DocGenState
 
 
-def _chapter_plan_for_writer(task: ChapterGenerationTask, *, total_chapters: int) -> dict:
-    media_hints = {"mermaid": [], "images": [], "interactive": []}
+def _chapter_plan_for_writer(
+    task: ChapterGenerationTask,
+    *,
+    total_chapters: int,
+    claim_ledger: ClaimLedger | None = None,
+    claim_evidence_map: ClaimEvidenceMap | None = None,
+    conflict_report: ConflictReport | None = None,
+) -> dict:
+    media_hints = {"mermaid": [], "images": []}
     for item in task.placeholder_requests:
         kind = str(item.get("kind") or "").strip().lower()
         description = str(item.get("description") or "").strip()
@@ -38,8 +51,6 @@ def _chapter_plan_for_writer(task: ChapterGenerationTask, *, total_chapters: int
             media_hints["mermaid"].append(description)
         elif kind in {"image", "images"}:
             media_hints["images"].append(description)
-        elif kind in {"interactive", "interactive_html"}:
-            media_hints["interactive"].append(description)
     required = [
         *task.content_points,
         *task.concept_targets,
@@ -62,12 +73,22 @@ def _chapter_plan_for_writer(task: ChapterGenerationTask, *, total_chapters: int
             "target_word_count": task.target_word_count,
             "min_word_count": task.min_word_count,
             "coverage_requirements": list(dict.fromkeys(required))[:16],
-            "min_coverage_score": 0.62,
+            "min_coverage_score": task.coverage_threshold,
+            "min_evidence_support": task.evidence_support_threshold,
+            "claim_targets": [item.claim_text for item in list((claim_ledger or ClaimLedger()).items or [])[:10]],
+            "evidence_bindings": [
+                binding.model_dump(mode="json")
+                for binding in list((claim_evidence_map or ClaimEvidenceMap()).bindings or [])[:10]
+            ],
+            "conflict_warnings": [
+                item.detail
+                for item in list((conflict_report or ConflictReport()).items or [])
+                if item.severity in {"warning", "error"}
+            ][:8],
             "repair_enabled": True,
             "media_quota": {
                 "mermaid": len(media_hints["mermaid"]),
                 "images": len(media_hints["images"]),
-                "interactive_html": len(media_hints["interactive"]),
             },
         },
         "source_file_ids": task.priority_file_ids,
@@ -89,6 +110,7 @@ def build_generate_chapters_node(*, context: WorkflowContext):
     async def generate_chapters_node(state: DocGenState) -> dict:
         started_at = perf_counter()
         task = ChapterGenerationTask.model_validate(state["chapter_task"])
+        document_backbone = DocumentBackbone.model_validate(state.get("document_backbone") or {})
         total_chapters = int(state.get("total_chapters", 0) or 0)
         title = task.enhanced_title or task.confirmed_title
         upsert_knowledge_build_chapter_progress(
@@ -187,11 +209,47 @@ def build_generate_chapters_node(*, context: WorkflowContext):
             source_details=source_details,
             targets=targets,
         )
+        try:
+            claim_ledger = build_claim_ledger(
+                task=task,
+                evidence_ledger=evidence_ledger,
+                document_backbone=document_backbone,
+            )
+            claim_ledger, claim_evidence_map = align_claim_evidence(
+                claim_ledger=claim_ledger,
+                evidence_ledger=evidence_ledger,
+            )
+        except Exception:
+            claim_ledger = ClaimLedger(
+                chapter_index=task.chapter_index,
+                fallback_used=True,
+            )
+            claim_evidence_map = ClaimEvidenceMap(
+                chapter_index=task.chapter_index,
+                fallback_used=True,
+            )
+        try:
+            conflict_report = resolve_conflicts_for_chapter(
+                task=task,
+                evidence_ledger=evidence_ledger,
+                document_backbone=document_backbone,
+            )
+        except Exception:
+            conflict_report = ConflictReport(
+                chapter_index=task.chapter_index,
+                fallback_used=True,
+            )
         writer_markdown = ""
         try:
             writer = DocGenWriterRuntime(traced_context)
             writer_result = await writer.run(
-                chapter_plan=_chapter_plan_for_writer(task, total_chapters=total_chapters),
+                chapter_plan=_chapter_plan_for_writer(
+                    task,
+                    total_chapters=total_chapters,
+                    claim_ledger=claim_ledger,
+                    claim_evidence_map=claim_evidence_map,
+                    conflict_report=conflict_report,
+                ),
                 dense_context=dense_context,
                 tone=state.get("tone") or "encouraging",
                 digest_mode=state.get("digest_mode") or "systematic",
@@ -229,6 +287,10 @@ def build_generate_chapters_node(*, context: WorkflowContext):
         except Exception:
             pass
         evidence_ledger = mark_evidence_used(evidence_ledger, writer_markdown)
+        claim_ledger, claim_evidence_map = align_claim_evidence(
+            claim_ledger=claim_ledger,
+            evidence_ledger=evidence_ledger,
+        )
         elapsed_ms = int((perf_counter() - started_at) * 1000)
         source_scope = _source_scope(source_details)
         source_scope.update(
@@ -247,6 +309,8 @@ def build_generate_chapters_node(*, context: WorkflowContext):
             summary_draft=build_draft_excerpt(writer_markdown, max_chars=260),
             research_trace=research_trace,
             evidence_ledger=evidence_ledger,
+            claim_ledger_ref=f"ch{task.chapter_index:02d}_claim_ledger",
+            conflict_warning_refs=[item.conflict_id for item in conflict_report.items if item.severity in {"warning", "error"}],
             source_scope=source_scope,
             quality_signals=quality,
             placeholder_requests=task.placeholder_requests,
@@ -285,6 +349,9 @@ def build_generate_chapters_node(*, context: WorkflowContext):
             "chapter_drafts": [draft.model_dump(mode="json")],
             "research_traces": [research_trace.model_dump(mode="json")],
             "evidence_ledgers": [evidence_ledger.model_dump(mode="json")],
+            "claim_ledgers": [claim_ledger.model_dump(mode="json")],
+            "claim_evidence_maps": [claim_evidence_map.model_dump(mode="json")],
+            "conflict_reports": [conflict_report.model_dump(mode="json")],
             "research_sources": sources,
             "research_ms": research_ms,
             "draft_ms": elapsed_ms,

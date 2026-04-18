@@ -2,6 +2,9 @@
 
 from app.workflows.digest.docgen.prompts.assets import build_docgen_mermaid_prompt
 from app.workflows.digest.docgen.prompts.chapter_critic import build_chapter_rewrite_messages
+from app.workflows.digest.docgen.prompts.chapter_review import build_chapter_review_messages
+from app.workflows.digest.docgen.prompts.document_backbone import build_document_backbone_messages
+from app.workflows.digest.docgen.prompts.document_consistency import build_document_consistency_messages
 from app.workflows.digest.docgen.prompts.finalize_titles import (
     build_docgen_gap_query_messages,
     build_docgen_sub_query_messages,
@@ -23,6 +26,9 @@ __all__ = [
     "build_docgen_sub_query_messages",
     "build_docgen_writer_messages",
     "build_chapter_rewrite_messages",
+    "build_chapter_review_messages",
+    "build_document_backbone_messages",
+    "build_document_consistency_messages",
     "build_file_summary_messages",
     "build_intent_messages",
     "build_outline_enhance_messages",

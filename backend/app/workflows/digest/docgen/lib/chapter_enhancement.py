@@ -12,6 +12,8 @@ from app.workflows.digest.docgen.lib.assets import DocGenAssetRuntime
 from app.workflows.digest.docgen.lib.models import (
     AssetManifest,
     ChapterDraft,
+    ClaimLedger,
+    DocumentBackbone,
     EnhancedChapterDraft,
     PracticeManifest,
 )
@@ -44,24 +46,34 @@ def _ensure_requested_placeholders(markdown: str, requests: list[dict]) -> str:
         elif kind in {"image", "images"} and get_settings().image_generation_enabled and description_key not in existing["image"]:
             additions.append(_placeholder_comment("IMAGE", description))
             existing["image"].add(description_key)
-        elif kind in {"interactive", "interactive_html"} and description_key not in existing["interactive"]:
-            additions.append(_placeholder_comment("INTERACTIVE", description))
-            existing["interactive"].add(description_key)
     if not additions:
         return markdown
     return markdown.rstrip() + "\n\n" + "\n\n".join(additions) + "\n"
 
 
-def _build_practice_questions(draft: ChapterDraft, *, digest_mode: str) -> list[dict]:
+def _build_practice_questions(
+    draft: ChapterDraft,
+    *,
+    digest_mode: str,
+    claim_ledger: ClaimLedger | None = None,
+    document_backbone: DocumentBackbone | None = None,
+) -> list[dict]:
     title = draft.title
     normalized_mode = str(digest_mode or "").strip().lower()
+    claim_items = list((claim_ledger or ClaimLedger(chapter_index=draft.chapter_index)).items or [])
+    claim_prompts = [item.claim_text for item in claim_items if item.claim_text][:3]
+    confusion_items = [
+        item.topic or item.contrast
+        for item in list((document_backbone or DocumentBackbone()).confusion_map or [])
+        if (not item.target_chapters or draft.chapter_index in item.target_chapters)
+    ][:2]
     if normalized_mode == "sprint":
-        return [
+        questions = [
             {
                 "practice_id": f"ch{draft.chapter_index:02d}_p01",
                 "chapter_index": draft.chapter_index,
                 "type": "pattern_check",
-                "question": f"《{title}》最容易考成哪类题？请写出题眼、方法和易错点。",
+                "question": f"围绕《{title}》中“{claim_prompts[0] if claim_prompts else '核心抓手'}”，写出题眼、方法和易错点。",
             },
             {
                 "practice_id": f"ch{draft.chapter_index:02d}_p02",
@@ -70,20 +82,40 @@ def _build_practice_questions(draft: ChapterDraft, *, digest_mode: str) -> list[
                 "question": f"不看正文，用 60 秒复盘《{title}》的核心抓手。",
             },
         ]
-    return [
+        if confusion_items:
+            questions.append(
+                {
+                    "practice_id": f"ch{draft.chapter_index:02d}_p03",
+                    "chapter_index": draft.chapter_index,
+                    "type": "pitfall_check",
+                    "question": f"辨析“{confusion_items[0]}”：什么时候能用，什么时候不能硬套？",
+                }
+            )
+        return questions
+    questions = [
         {
             "practice_id": f"ch{draft.chapter_index:02d}_p01",
             "chapter_index": draft.chapter_index,
             "type": "comprehension",
-            "question": f"请用自己的话解释《{title}》解决的核心问题。",
+            "question": f"请用自己的话解释《{title}》中“{claim_prompts[0] if claim_prompts else '核心概念'}”解决的核心问题。",
         },
         {
             "practice_id": f"ch{draft.chapter_index:02d}_p02",
             "chapter_index": draft.chapter_index,
             "type": "transfer",
-            "question": f"把《{title}》中的一个方法迁移到新场景，并说明适用条件。",
+            "question": f"把《{title}》中的一个主张或方法迁移到新场景，并说明适用条件。",
         },
     ]
+    if confusion_items:
+        questions.append(
+            {
+                "practice_id": f"ch{draft.chapter_index:02d}_p03",
+                "chapter_index": draft.chapter_index,
+                "type": "boundary",
+                "question": f"说明“{confusion_items[0]}”的边界条件，并举一个容易混淆的反例或场景。",
+            }
+        )
+    return questions
 
 
 def _append_practice_section(markdown: str, questions: list[dict]) -> str:
@@ -100,6 +132,8 @@ async def enhance_chapter_draft(
     *,
     traced_context: TracedExecutionContext,
     digest_mode: str,
+    claim_ledger: ClaimLedger | None = None,
+    document_backbone: DocumentBackbone | None = None,
 ) -> tuple[EnhancedChapterDraft, AssetManifest, PracticeManifest]:
     markdown = _ensure_requested_placeholders(draft.markdown, draft.placeholder_requests)
     if not get_settings().image_generation_enabled:
@@ -138,24 +172,19 @@ async def enhance_chapter_draft(
                 for index, description in enumerate(image_placeholders, start=1)
             )
         if interactive_placeholders:
-            traced_context.asset_kind = "interactive_html"
-            markdown = await asset_runtime.process_interactive_placeholders(markdown, digest_mode=digest_mode)
-            assets.extend(
-                {
-                    "asset_id": f"ch{draft.chapter_index:02d}_interactive_{index:02d}",
-                    "chapter_index": draft.chapter_index,
-                    "kind": "interactive_html",
-                    "source_placeholder": description,
-                    "status": "rendered_html",
-                }
-                for index, description in enumerate(interactive_placeholders, start=1)
-            )
+            markdown = _INTERACTIVE_PLACEHOLDER_RE.sub("", markdown)
+            warnings.append("已移除交互占位；后端仅发布标准 Markdown，交互展示交给前端能力处理。")
     except Exception as exc:
         warnings.append(f"章节增强失败，已保留原始正文：{str(exc)[:120]}")
     markdown = normalize_math_delimiters(markdown)
     markdown = validate_latex(markdown)
     markdown = normalize_mermaid_blocks(markdown)
-    questions = _build_practice_questions(draft, digest_mode=digest_mode)
+    questions = _build_practice_questions(
+        draft,
+        digest_mode=digest_mode,
+        claim_ledger=claim_ledger,
+        document_backbone=document_backbone,
+    )
     markdown = _append_practice_section(markdown, questions)
     enhanced = EnhancedChapterDraft(
         chapter_index=draft.chapter_index,
@@ -163,6 +192,8 @@ async def enhance_chapter_draft(
         markdown=markdown,
         summary=build_draft_excerpt(markdown, max_chars=260),
         evidence_ledger=draft.evidence_ledger,
+        claim_ledger_ref=draft.claim_ledger_ref,
+        conflict_warning_refs=draft.conflict_warning_refs,
         quality_signals=draft.quality_signals,
         source_scope=draft.source_scope,
         sources=draft.sources,

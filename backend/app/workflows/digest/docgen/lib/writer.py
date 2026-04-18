@@ -23,7 +23,6 @@ from app.workflows.digest.docgen.prompts import (
 _PLACEHOLDER_TOKEN_MAP = {
     "mermaid": "[MERMAID:",
     "images": "[IMAGE:",
-    "interactive_html": "[INTERACTIVE:",
 }
 
 
@@ -232,19 +231,11 @@ class DocGenWriterRuntime(BaseTracedExecution):
         additions: list[str] = []
         mermaid_hints = [str(item) for item in media_hints.get("mermaid", []) if str(item).strip()]
         image_hints = [str(item) for item in media_hints.get("images", []) if str(item).strip()]
-        interactive_hints = [str(item) for item in media_hints.get("interactive", []) if str(item).strip()]
         quotas = dict(execution_contract.get("media_quota") or {})
         if int(quotas.get("mermaid", 0) or 0) > 0 and "[MERMAID:" not in markdown:
             additions.append(f"<!-- [MERMAID: {(mermaid_hints[:1] or [f'{title} 的关键结构关系图'])[0]}] -->")
         if int(quotas.get("images", 0) or 0) > 0 and "[IMAGE:" not in markdown:
             additions.append(f"<!-- [IMAGE: {(image_hints[:1] or [f'{title} 的讲义配图建议'])[0]}] -->")
-        if int(quotas.get("interactive_html", 0) or 0) > 0 and "[INTERACTIVE:" not in markdown:
-            default_interactive_hint = (
-                f"{title} 的公式推导展开器"
-                if "公式" in "".join(interactive_hints) or "推导" in "".join(interactive_hints) or digest_mode == "systematic"
-                else f"{title} 的概念对比自检块"
-            )
-            additions.append(f"<!-- [INTERACTIVE: {(interactive_hints[:1] or [default_interactive_hint])[0]}] -->")
         if not additions:
             return markdown
         return markdown.rstrip() + "\n\n" + "\n\n".join(additions) + "\n"
