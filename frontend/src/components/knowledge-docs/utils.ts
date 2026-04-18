@@ -77,7 +77,7 @@ export const DOC_BUILD_STAGE_TEXT: Record<string, string> = {
   merge_reviewed: "整本文档检查完成，准备标题收口",
   titles_finalized: "章节标题已收口，准备发布",
   doc_lane_staged: "文档草稿已生成，正在发布正式版",
-  docgen_finalized: "知识文档已发布，正在同步知识图谱",
+  docgen_finalized: "知识文档已发布",
   graph_ready: "知识图谱已就绪",
   publishing: "正在发布正式版知识文档",
   completed: "最新知识文档已发布",
@@ -149,7 +149,7 @@ export function cleanKnowledgeMarkdownForDisplay(markdown: string): string {
 }
 
 function isMarkdownBoundary(line: string): boolean {
-  return /^(#{1,6}\s+\S|[-*+]\s+\S|\d+\.\s+\S|>\s*\[!|\|.+\||---\s*$)/.test(line.trim());
+  return /^(#{1,6}\s+\S|[-*+]\s+\S|\d+\.\s+\S|>\s*\S|\|.+\||---\s*$)/.test(line.trim());
 }
 
 function isIndentedContextEcho(line: string): boolean {
@@ -177,6 +177,12 @@ function isMalformedMermaidFence(line: string): boolean {
   return Boolean(match?.[1] && looksLikeMermaidLine(match[1]));
 }
 
+function malformedMermaidFenceBody(line: string): string | null {
+  const match = line.match(/^\s*```\s*(.+)$/);
+  const body = match?.[1]?.trim() ?? "";
+  return body && looksLikeMermaidLine(body) ? body : null;
+}
+
 /**
  * ReactMarkdown parses fenced code before our `code` renderer runs.
  * If DocGen outputs a malformed Mermaid fence, the parser may swallow
@@ -197,6 +203,12 @@ function repairMalformedMermaidFencesForRender(markdown: string): string {
     while (mermaidLines.length > 0 && !mermaidLines[0].trim()) mermaidLines.shift();
     while (mermaidLines.length > 0 && !mermaidLines[mermaidLines.length - 1].trim()) mermaidLines.pop();
     if (mermaidLines.length > 0) {
+      if (
+        !/^(mindmap|graph|flowchart|sequenceDiagram|classDiagram|stateDiagram(?:-v2)?|erDiagram|gantt|pie|journey|timeline|gitGraph)\b/i.test(mermaidLines[0].trim()) &&
+        mermaidLines.some((line) => /-->|==>/.test(line))
+      ) {
+        mermaidLines.unshift("flowchart TD");
+      }
       output.push("```mermaid", ...mermaidLines, "```");
     }
     mermaidLines = [];
@@ -237,6 +249,13 @@ function repairMalformedMermaidFencesForRender(markdown: string): string {
         const lang = start[1];
         inMermaid = true;
         mermaidLines = lang.toLowerCase() === "mermaid" ? [] : [lang];
+        continue;
+      }
+
+      const malformedBody = malformedMermaidFenceBody(line);
+      if (malformedBody) {
+        inMermaid = true;
+        mermaidLines = [malformedBody];
         continue;
       }
 

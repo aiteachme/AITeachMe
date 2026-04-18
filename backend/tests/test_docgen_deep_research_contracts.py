@@ -3,6 +3,7 @@ from app.workflows.digest.docgen.lib.document_backbone import (
     build_document_backbone,
     fallback_document_backbone,
 )
+from app.shared.infra.tools.builtin.markdown_processing import normalize_mermaid_blocks
 from app.workflows.digest.docgen.lib.models import (
     BackboneResearchAgenda,
     ChapterGenerationPlan,
@@ -83,3 +84,23 @@ def test_document_backbone_fallback_is_non_blocking():
     assert backbone.fallback_used
     assert backbone.canonical_claim_pool[0].claim_text == "兜底目标"
     assert warnings[0].warning_id == "bb_fallback_used"
+
+
+def test_mermaid_normalization_does_not_swallow_following_markdown():
+    markdown = """```mermaid
+mindmap
+  root((TD))
+---
+``` A --> B[节点]
+> [!NOTE]
+> 建议配图：不要进入 Mermaid 块
+### 再讲正文
+正文
+"""
+
+    normalized = normalize_mermaid_blocks(markdown)
+
+    assert "```mermaid\nmindmap\n  root((TD))\n```" in normalized
+    assert "```mermaid\nflowchart TD\nA --> B[节点]\n```" in normalized
+    assert "> [!NOTE]" in normalized
+    assert "### 再讲正文" in normalized

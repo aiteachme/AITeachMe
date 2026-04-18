@@ -25,6 +25,7 @@ from app.schemas.knowledge import (
     KnowledgeBuildStatusResponse,
 )
 from app.shared.infra.database import managed_session
+from app.shared.infra.settings import get_settings
 from app.workflows.digest.planner import (
     get_confirmed_build_plan,
     mark_confirmed_build_plan_status,
@@ -424,6 +425,7 @@ async def run_docgen_background(*, subject: str, file_ids: list[int], prompt: st
     resolved_tone = None
     kg_ingest_task: asyncio.Task[dict[str, int]] | None = None
     graph_seed_chapter_metadatas: list[dict[str, object]] = []
+    sync_graph_after_docgen = bool(get_settings().knowledge_graph.sync_after_docgen)
     logger.info(
         "knowledge_build_background_started",
         subject=subject,
@@ -449,7 +451,7 @@ async def run_docgen_background(*, subject: str, file_ids: list[int], prompt: st
     try:
         _clear_docgen_staging_safely(subject)
         _write_build_status(subject, requested_at=requested_at, status="running", stage="prepare_shared", build_session_id=build_session_id, planner_session_id=planner_session_id, confirmed_plan_id=confirmed_plan_id, digest_mode=resolved_digest_mode, error_message=None, draft_available=False, source_file_ids=file_ids, prompt=prompt)
-        if file_ids:
+        if sync_graph_after_docgen and file_ids:
             kg_ingest_task = asyncio.create_task(
                 run_graph_file_ingest_background(
                     subject=subject,
@@ -478,13 +480,21 @@ async def run_docgen_background(*, subject: str, file_ids: list[int], prompt: st
         ingest_metrics = {"processed_chunks": 0}
         if kg_ingest_task is not None:
             ingest_metrics = await kg_ingest_task
-        doc_sync_metrics = run_graph_docs_sync_after_doc_build(
-            subject=subject,
-            requested_at=requested_at,
-            build_session_id=build_session_id,
-            file_ids=file_ids,
-            prompt=prompt,
-        )
+        doc_sync_metrics: dict[str, int | str] = {
+            "knowledge_doc_source": "not_synced",
+            "knowledge_doc_chapter_count": 0,
+            "doc_sync_unit_changes": 0,
+            "doc_sync_edge_changes": 0,
+            "doc_sync_elapsed_ms": 0,
+        }
+        if sync_graph_after_docgen:
+            doc_sync_metrics = run_graph_docs_sync_after_doc_build(
+                subject=subject,
+                requested_at=requested_at,
+                build_session_id=build_session_id,
+                file_ids=file_ids,
+                prompt=prompt,
+            )
         _write_build_status(
             subject,
             requested_at=requested_at,
@@ -497,7 +507,11 @@ async def run_docgen_background(*, subject: str, file_ids: list[int], prompt: st
             error_message=None,
             draft_available=False,
             processed_chunks=int(ingest_metrics.get("processed_chunks", 0) or 0),
-            current_stage_description="知识文档与知识图谱已同步完成。",
+            current_stage_description=(
+                "知识文档与知识图谱已同步完成。"
+                if sync_graph_after_docgen
+                else "知识文档已发布完成。"
+            ),
             **doc_sync_metrics,
         )
         if confirmed_plan_id and user_id:

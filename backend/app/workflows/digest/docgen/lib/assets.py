@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import re
 
-from app.shared.infra.settings import get_settings
 from app.shared.infra.llm_support.routing import TaskType
 from app.shared.infra.execution import BaseTracedExecution, TracedExecutionContext, TracedExecutionResult
+from app.shared.infra.settings import get_settings
 from app.workflows.digest.docgen.prompts import build_docgen_mermaid_prompt
 
 _IMAGE_PLACEHOLDER_PATTERN = re.compile(r"<!--\s*\[IMAGE:\s*(.+?)\]\s*-->", re.IGNORECASE | re.DOTALL)
@@ -151,36 +151,6 @@ def _sanitize_mindmap_body(body: str, *, topic: str) -> str:
     return "\n".join(output)
 
 
-class _ImagePlaceholderRuntime(BaseTracedExecution):
-    @property
-    def trace_namespace(self) -> str:
-        return "DocGen资产"
-
-    @property
-    def trace_name(self) -> str:
-        return "图片占位处理"
-
-    async def execute(self, *, description: str) -> TracedExecutionResult:
-        settings = get_settings()
-        model_name = (settings.models.image_generation or "").strip()
-        if not settings.image_generation_enabled:
-            return TracedExecutionResult(
-                content="",
-                metadata={"asset_enabled": False},
-            )
-        return TracedExecutionResult(
-            content=f"> [!NOTE]\n> 建议配图：{description}\n>\n> 已配置文生图模型：`{model_name or 'legacy-boolean-enabled'}`",
-            metadata={"asset_enabled": True, "model": model_name or None},
-        )
-
-    async def process_placeholders(self, markdown: str) -> str:
-        async def render(placeholder: str) -> str:
-            result = await self.run(description=placeholder)
-            return result.content
-
-        return await _replace_placeholders(markdown, _IMAGE_PLACEHOLDER_PATTERN, render)
-
-
 class _MermaidPlaceholderRuntime(BaseTracedExecution):
     @property
     def trace_namespace(self) -> str:
@@ -239,8 +209,7 @@ class DocGenAssetRuntime:
         return await generator.process_placeholders(markdown)
 
     async def process_image_placeholders(self, markdown: str) -> str:
-        generator = _ImagePlaceholderRuntime(self.context)
-        return await generator.process_placeholders(markdown)
+        return _IMAGE_PLACEHOLDER_PATTERN.sub("", markdown)
 
     async def process_interactive_placeholders(self, markdown: str, *, digest_mode: str = "") -> str:
         del digest_mode

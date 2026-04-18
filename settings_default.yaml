@@ -22,7 +22,7 @@ models:
   ocr: ""
   embedding: text-embedding-v4
   # embedding: ""
-  image_generation: ""
+  image_generation: "DESCRIBE"
   mermaid_generation: qwen-plus-latest
   overrides: {}
 
@@ -104,6 +104,8 @@ digest:
 
 knowledge_graph:
   extract_max_parallelism: 20
+  # 文档构建默认只生成知识文档；图谱构建请走 build_type=graph。
+  sync_after_docgen: false
 
 observability:
   llm_observability_enabled: true

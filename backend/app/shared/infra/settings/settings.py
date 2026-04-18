@@ -177,6 +177,7 @@ class DigestSettings(_SettingsModel):
 
 class KnowledgeGraphSettings(_SettingsModel):
     extract_max_parallelism: int = 20
+    sync_after_docgen: bool = False
 
 
 class ObservabilitySettings(_SettingsModel):
