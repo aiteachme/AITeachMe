@@ -2,14 +2,16 @@
 
 from __future__ import annotations
 
+import importlib.util
+
 from pydantic import BaseModel
 from sqlmodel import Session, select
 
 from app.models.subject import Subject
 from app.schemas.knowledge import SubjectVectorStatusResponse
-from app.shared.infra.settings import get_settings
 from app.shared.infra.env_support import get_env
 from app.shared.infra.runtime import is_cloud_mode
+from app.shared.infra.settings import get_settings
 from app.shared.infra.subject.settings import (
     SubjectEmbeddingBinding,
     SubjectEmbeddingMode,
@@ -20,8 +22,10 @@ SUBJECT_VECTOR_PRECHECK_DETAIL_MAP: dict[str, str] = {
     "embedding_not_configured": "当前后端未配置 embedding 模型，本轮会跳过 embedding 写入、向量检索和 RAG，知识文档与图谱仍会继续构建。",
     "embedding_api_key_missing": "当前后端缺少 embedding 所需的 API Key，本轮会跳过 embedding 写入、向量检索和 RAG，知识文档与图谱仍会继续构建。",
     "vector_extension_unavailable": "当前运行环境不可用向量索引，本轮会跳过 embedding 写入、向量检索和 RAG，知识文档与图谱仍会继续构建。",
+    "llamaindex_unavailable": "当前环境缺少 LlamaIndex 依赖，本轮会跳过 embedding 写入、向量检索和 RAG，知识文档与图谱仍会继续构建。",
     "llamaindex_postgres_unavailable": "当前云端环境缺少 LlamaIndex Postgres 索引依赖，本轮会跳过 embedding 写入、向量检索和 RAG，知识文档与图谱仍会继续构建。",
-    "subject_not_bound": "当前学科尚未绑定 embedding 模型，请先确认是全量重建当前学科向量，还是继续以非向量模式构建。",    "embedding_model_mismatch": "当前运行时 embedding 模型与学科已绑定模型不一致，请全量重建当前学科向量，或继续以非向量模式构建。",
+    "subject_not_bound": "当前学科尚未绑定 embedding 模型，请先确认是全量重建当前学科向量，还是继续以非向量模式构建。",
+    "embedding_model_mismatch": "当前运行时 embedding 模型与学科已绑定模型不一致，请全量重建当前学科向量，或继续以非向量模式构建。",
     "embedding_dimension_mismatch": "当前运行时 embedding 维度与学科已绑定维度不一致，请全量重建当前学科向量，或继续以非向量模式构建。",
     "vector_table_missing": "当前学科缺少可用的向量表，请全量重建当前学科向量，或继续以非向量模式构建。",
     "vector_table_dimension_mismatch": "当前学科向量表维度与学科绑定配置不一致，请全量重建当前学科向量，或继续以非向量模式构建。",
@@ -65,9 +69,20 @@ def get_runtime_embedding_config() -> RuntimeEmbeddingConfig:
             embedding_dim=embedding_dim,
             reason="embedding_api_key_missing",
         )
-    if is_cloud_mode():
-        import importlib.util
 
+    try:
+        llamaindex_core_spec = importlib.util.find_spec("llama_index.core")
+    except ModuleNotFoundError:
+        llamaindex_core_spec = None
+    if llamaindex_core_spec is None:
+        return RuntimeEmbeddingConfig(
+            configured=True,
+            embedding_model=model,
+            embedding_dim=embedding_dim,
+            reason="llamaindex_unavailable",
+        )
+
+    if is_cloud_mode():
         try:
             postgres_store_spec = importlib.util.find_spec("llama_index.vector_stores.postgres")
         except ModuleNotFoundError:
@@ -79,7 +94,8 @@ def get_runtime_embedding_config() -> RuntimeEmbeddingConfig:
                 embedding_dim=embedding_dim,
                 reason="llamaindex_postgres_unavailable",
             )
-    if embedding_dim <= 0:
+
+    if embedding_dim is None or embedding_dim <= 0:
         return RuntimeEmbeddingConfig(
             configured=True,
             embedding_model=model,
@@ -158,6 +174,7 @@ def get_subject_vector_capability(
 ) -> SubjectVectorCapability:
     """Return the subject vector status plus whether vector search can run now."""
 
+    del session
     binding = get_subject_embedding_binding(subject)
     runtime = get_runtime_embedding_config()
     status = build_subject_vector_status(binding, runtime=runtime)
@@ -226,10 +243,7 @@ def get_subject_vector_search_notice(
     capability = get_subject_vector_capability(session, subject)
     if capability.queryable:
         return None
-    if (
-        capability.binding is not None
-        and capability.binding.mode == SubjectEmbeddingMode.DISABLED
-    ):
+    if capability.binding is not None and capability.binding.mode == SubjectEmbeddingMode.DISABLED:
         return _DISABLED_SEARCH_NOTICE
     if capability.status.notice:
         return capability.status.notice

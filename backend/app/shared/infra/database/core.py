@@ -274,15 +274,33 @@ def _drop_sqlite_legacy_schema(engine: sa.Engine) -> None:
                 for column_name in column_names:
                     if column_name not in existing_columns:
                         continue
-                    connection.execute(
-                        sa.text(f"ALTER TABLE {quote_sqlite_identifier(table_name)} DROP COLUMN {quote_sqlite_identifier(column_name)}")
-                    )
+                    try:
+                        connection.execute(
+                            sa.text(
+                                f"ALTER TABLE {quote_sqlite_identifier(table_name)} "
+                                f"DROP COLUMN {quote_sqlite_identifier(column_name)}"
+                            )
+                        )
+                    except Exception as exc:
+                        logger.warning(
+                            "sqlite_legacy_column_drop_failed",
+                            table_name=table_name,
+                            column_name=column_name,
+                            error=str(exc),
+                        )
 
             for table_name in _LEGACY_SQLITE_TABLES:
                 if table_name in existing_tables:
-                    connection.execute(
-                        sa.text(f"DROP TABLE IF EXISTS {quote_sqlite_identifier(table_name)}")
-                    )
+                    try:
+                        connection.execute(
+                            sa.text(f"DROP TABLE IF EXISTS {quote_sqlite_identifier(table_name)}")
+                        )
+                    except Exception as exc:
+                        logger.warning(
+                            "sqlite_legacy_table_drop_failed",
+                            table_name=table_name,
+                            error=str(exc),
+                        )
         finally:
             connection.execute(sa.text("PRAGMA foreign_keys = ON"))
 def _ensure_local_sqlite_schema(engine: sa.Engine) -> sa.Engine:

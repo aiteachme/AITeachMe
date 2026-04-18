@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 from pathlib import Path
 
 import structlog
@@ -21,6 +22,13 @@ from app.shared.infra.subject import (
 from app.workflows.digest.kg_file_ingest.state import KGDigestState
 
 logger = structlog.get_logger()
+
+
+def _build_digest_chunk_uid(*, raw_file_id: int, chunk_index: int, title: str, content: str) -> str:
+    uid_hash = hashlib.md5(
+        f"{raw_file_id}:{chunk_index}:{title}:{content.strip()}".encode("utf-8")
+    ).hexdigest()[:10]
+    return f"rf_{raw_file_id}_sec_{chunk_index:03d}_{uid_hash}"
 
 
 def workflow_logger(state: KGDigestState) -> structlog.stdlib.BoundLogger:
@@ -119,6 +127,12 @@ async def ensure_retrieval_chunks_for_file(
                 level=chunk.level,
                 header_path=chunk.header_path,
                 chunk_index=chunk.chunk_index,
+                digest_chunk_uid=_build_digest_chunk_uid(
+                    raw_file_id=raw_file_id,
+                    chunk_index=chunk.chunk_index,
+                    title=chunk.title,
+                    content=chunk.content,
+                ),
                 content=chunk.content,
             )
             for chunk in chunks
@@ -216,5 +230,4 @@ __all__ = [
     "prepare_chunk_ids_for_files",
     "workflow_logger",
 ]
-
 

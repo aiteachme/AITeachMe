@@ -57,6 +57,32 @@ class DocGenBuildRequest(BaseModel):
     )
 
 
+class KnowledgeDebugTriggerRequest(BaseModel):
+    """Trigger one knowledge debug lane directly."""
+
+    file_uids: list[str] | None = Field(
+        default=None,
+        description="Optional parsed raw file UIDs used by kg_file_ingest; omitted means auto-pick all ready files.",
+    )
+    prompt: str | None = Field(
+        default=None,
+        description="Optional debug prompt passed through to the workflow.",
+    )
+    embedding_resolution: Literal["rebuild", "disable"] | None = Field(
+        default=None,
+        description="Optional subject-level embedding resolution chosen after a precheck conflict.",
+    )
+
+
+class KnowledgeDebugTriggerResponse(BaseModel):
+    """Accepted debug lane trigger result."""
+
+    action: Literal["kg_docs_sync", "kg_file_ingest"]
+    requested_at: datetime
+    accepted_file_uids: list[str] = Field(default_factory=list)
+    message: str = ""
+
+
 class KnowledgeUnitsQueryRequest(PageParams):
     """Paginated KnowledgeUnit query."""
 

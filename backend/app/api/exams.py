@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import random
+import re
 
 from fastapi import APIRouter, Body, Depends, Path
 from sqlmodel import Session, select
@@ -33,6 +34,21 @@ from app.workflows.profile.review_scheduler import schedule_reviews
 
 router = APIRouter(prefix="/api/v1/subjects/{subject}/exams", tags=["exams"])
 
+_HTML_COMMENT_RE = re.compile(r"<!--.*?-->", re.DOTALL)
+_WHITESPACE_RE = re.compile(r"\s+")
+_EXAM_NOISE_PATTERNS = (
+    "普通高等学校招生全国统一考试",
+    "考生注意",
+    "试卷",
+    "答题纸",
+    "黑色字迹钢笔",
+    "第1页",
+    "第2页",
+    "第3页",
+    "第4页",
+    "page:",
+)
+
 
 def _ensure_subject(session: Session, subject: str, user_id: str) -> Subject:
     record = session.exec(select(Subject).where(Subject.slug == subject, Subject.user_id == user_id)).first()
@@ -57,6 +73,51 @@ def _raise_not_found(detail: str, error_code: str = "EXAM_NOT_FOUND") -> None:
     raise AITeachMeError(detail=detail, error_code=error_code, status_code=404)
 
 
+def _clean_exam_text(value: str | None) -> str:
+    text = str(value or "")
+    text = _HTML_COMMENT_RE.sub(" ", text)
+    text = text.replace("·", " ").replace("•", " ")
+    text = _WHITESPACE_RE.sub(" ", text).strip()
+    return text
+
+
+def _looks_like_exam_noise(value: str) -> bool:
+    if not value:
+        return True
+    lowered = value.casefold()
+    if any(pattern.casefold() in lowered for pattern in _EXAM_NOISE_PATTERNS):
+        return True
+    if len(value) > 80:
+        return True
+    return False
+
+
+def _clean_unit_name(value: str | None) -> str:
+    cleaned = _clean_exam_text(value)
+    cleaned = cleaned.strip("：:;；,.，。、()（）[]【】")
+    return cleaned
+
+
+def _build_exam_summary(unit: KnowledgeUnit) -> str:
+    summary = _clean_exam_text(unit.summary)
+    name = _clean_unit_name(unit.canonical_name)
+    if summary and not _looks_like_exam_noise(summary):
+        return summary.rstrip("。.;；")
+    return f"从题目中识别的核心知识点：{name}"
+
+
+def _is_exam_eligible_unit(unit: KnowledgeUnit) -> bool:
+    name = _clean_unit_name(unit.canonical_name)
+    summary = _clean_exam_text(unit.summary)
+    if not name or _looks_like_exam_noise(name):
+        return False
+    if len(name) <= 1:
+        return False
+    if summary and _looks_like_exam_noise(summary) and len(name) >= 12:
+        return False
+    return True
+
+
 def _pick_knowledge_units(
     session: Session,
     *,
@@ -71,6 +132,7 @@ def _pick_knowledge_units(
         KnowledgeUnit.status == "active",
     )
     units = list(session.exec(stmt.order_by(KnowledgeUnit.id)).all())
+    units = [unit for unit in units if _is_exam_eligible_unit(unit)]
     units_by_id = {unit.id: unit for unit in units if unit.id is not None}
     ordered_units: list[KnowledgeUnit] = []
 
@@ -139,10 +201,10 @@ def _pick_knowledge_units(
 
 
 def _sanitize_summary(summary: str | None, fallback: str) -> str:
-    cleaned = " ".join((summary or "").split())
+    cleaned = _clean_exam_text(summary)
     if cleaned:
         return cleaned.rstrip(".")
-    return fallback
+    return _clean_unit_name(fallback)
 
 
 def _question_type_for_order(*, exam_mode: str, difficulty: str, item_order: int) -> str:
@@ -166,28 +228,30 @@ def _template_for_unit(
     question_type: str,
     distractor_units: list[KnowledgeUnit],
 ) -> QuestionTemplate:
-    summary = _sanitize_summary(unit.summary, unit.canonical_name)
-    answer = unit.canonical_name
+    unit_name = _clean_unit_name(unit.canonical_name)
+    summary = _build_exam_summary(unit)
+    answer = unit_name
     options: list[str] | None = None
 
     if question_type == "single_choice":
         candidate_names = [
-            other.canonical_name
+            _clean_unit_name(other.canonical_name)
             for other in distractor_units
-            if other.id != unit.id and other.canonical_name != unit.canonical_name
+            if other.id != unit.id
         ]
+        candidate_names = [name for name in candidate_names if name and name != unit_name and not _looks_like_exam_noise(name)]
         rng = random.Random(f"{subject}:{unit.id}:{difficulty}:{question_type}")
         rng.shuffle(candidate_names)
-        options = [unit.canonical_name, *candidate_names[:3]]
+        options = [unit_name, *candidate_names[:3]]
         rng.shuffle(options)
-        stem = f"Which KnowledgeUnit best matches this description: {summary}?"
-        answer = unit.canonical_name
+        stem = f"下列哪个知识点最符合这段描述？{summary}"
+        answer = unit_name
     elif question_type == "fill_blank":
-        stem = f"Fill in the blank: {summary}. This idea is called ____."
-        answer = unit.canonical_name
+        stem = f"填空：{summary}。这个知识点是 ____。"
+        answer = unit_name
     else:
-        stem = f"Explain the key idea of {unit.canonical_name} and when you would use it."
-        answer = unit.summary.strip() or unit.canonical_name
+        stem = f"请简要说明“{unit_name}”的核心思想，并说明它通常在什么情况下使用。"
+        answer = summary or unit_name
         question_type = "short_answer"
 
     stem_hash = _hash_stem(stem)
@@ -209,7 +273,7 @@ def _template_for_unit(
         stem=stem,
         stem_hash=stem_hash,
         answer=answer,
-        explanation=f"Review the definition and usage of {unit.canonical_name}.",
+        explanation=f"请回顾“{unit_name}”的定义、典型特征和常见用法。",
         options_json=json.dumps(options, ensure_ascii=False) if options else None,
         knowledge_unit_refs_json=json.dumps(
             [{"knowledge_unit_id": unit.id, "coverage_weight": 1.0, "role": "primary"}],
