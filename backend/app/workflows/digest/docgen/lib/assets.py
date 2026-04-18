@@ -6,7 +6,6 @@ import re
 
 from app.shared.infra.llm_support.routing import TaskType
 from app.shared.infra.execution import BaseTracedExecution, TracedExecutionContext, TracedExecutionResult
-from app.shared.infra.settings import get_settings
 from app.workflows.digest.docgen.lib.asset_requests import replace_asset_requests, strip_asset_requests
 from app.workflows.digest.docgen.prompts import build_docgen_mermaid_prompt
 
@@ -239,21 +238,13 @@ class _MermaidPlaceholderRuntime(BaseTracedExecution):
                 },
             )
 
-        settings = get_settings()
-        if not settings.mermaid_generation_enabled:
-            return TracedExecutionResult(content=f"```mermaid\n{self._fallback_mermaid(topic, context)}\n```")
-
         llm = self.context.resolve_llm_caller()
-        llm_kwargs = {}
-        if (settings.models.mermaid_generation or "").strip():
-            llm_kwargs["model"] = settings.models.mermaid_generation.strip()
         try:
             response = await llm(
                 [{"role": "user", "content": build_docgen_mermaid_prompt(topic=topic, context=context)}],
                 task_type=TaskType.DOCGEN_LIGHT,
                 model="light",
                 extra_metadata=self.context.trace_metadata(chapter_index=self.context.chapter_index),
-                **llm_kwargs,
             )
             raw_body = _extract_mermaid_body(str(response))
             body = _sanitize_mermaid_body(str(response), topic=topic)

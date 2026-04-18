@@ -89,7 +89,6 @@ const MODEL_KEYS = new Set([
   "models.extract",
   "models.embedding",
   "models.ocr",
-  "models.mermaid_generation",
   "models.image_generation",
 ]);
 
