@@ -40,6 +40,22 @@ DocGen 至少消费：
 
 注意：不建议把完整历史对话直接塞给 DocGen。更合适的是 Planner 固化一份 `conversation_summary` 或 `docgen_history_brief`，只保留和文档生成有关的要求。
 
+### Planner 交接字段
+
+DocGen 从 `confirmed_plan` 中读取这些字段：
+
+```text
+chapter_plan：用户确认的章节合同，是 DocGen 的章节边界
+user_goal / plan_summary：写作目标和整体方向
+digest_mode / tone：决定章节写作风格
+selected_skillpacks：加载 DocGen prompt 策略
+selected_file_ids：限制本地资料范围
+media_plan / build_constraints：控制资产、练习、章节长度和来源策略
+planner_context / docgen_history_brief：Planner 会话摘要和修改意见
+```
+
+DocGen 可以细化 `chapter_plan`，但不能静默推翻 confirmed plan。
+
 ### 输出
 
 DocGen 至少产出：
@@ -165,72 +181,147 @@ DocGen 应该先补三层理解：
 
 ## 3. 推荐总流程
 
-推荐目标流程：
-
-```text
-0A. 计划大纲增强
-0B. 意图识别
-0C. 文件摘要
-1.  确认和分发
-2.  章节生成
-3.  章节生成增强
-4.  合并检查
-5.  发布输出
-```
-
-依赖关系：
-
-```text
-0A 计划大纲增强
-0B 意图识别
-0C 文件摘要
-        -> 1 确认和分发
-        -> 2 章节生成
-        -> 3 章节生成增强
-        -> 4 合并检查
-        -> 5 发布输出
-```
-
-并行关系：
-
-```text
-阶段 0A / 0B / 0C 可以并行
-阶段 2 按章并行
-阶段 3 按章并行
-阶段 4 是全局检查
-阶段 5 是最终发布
-```
-
-## 4. 目标 Graph 形状
-
-概念上可以理解成：
+目标流程直接按下面理解。图上 `generate_draft / enhance / review_content` 都是章节模板节点，运行时按 `ChapterGenerationTask[]` 展开成 N 路并行。
 
 ```text
 load_context
-  -> prepare_parallel_inputs
-       ├─ enhance_plan_outline
-       ├─ infer_docgen_intent
-       └─ summarize_files
-  -> confirm_and_dispatch
-  -> generate_chapters (Send x N)
-  -> enhance_chapters
-  -> merge_review
-  -> publish_document
+  输入：confirmed_plan / shared_inputs / selected_skillpacks / planner_context
+    - confirmed plan：用户确认后的构建合同，包含章节、模式、目标、约束。
+    - shared_inputs：资料理解包，包含文件、切片、画像、统计、资产索引。
+    - selected_skillpacks：用户选择的提示词策略包名称。
+    - planner_context：confirmed_plan 中固化的 Planner 会话摘要和修改意见。
+  输出：DocGenContext / chapter_assignments / document_context
+    - DocGenContext：DocGen 全局运行上下文。
+    - chapter_assignments：confirmed plan 章节转成的执行章节列表。
+    - document_context：发布和写作共用的文档级上下文。
+  作用：确认用户已确认的章节合同，补齐资料上下文、模式、语气、技能包和构建状态。
+
+prepare_context
+  ├─ enhance_plan_outline
+  │    输入：chapter_assignments / material_stats_profile / material_sections / planner_context
+  │      - confirmed chapters：用户确认的章节列表。
+  │      - material_stats_profile：资料类型、题目密度、公式密度、学科画像等统计。
+  │      - material_sections：切片级正文，可抽取高信息密度片段。
+  │    输出：EnhancedChapterOutline[] / plan_mismatch_warnings[]
+  │      - EnhancedChapterOutline：每章执行级小纲和重点目标。
+  │      - plan_mismatch_warnings：模型输出和 confirmed plan 不一致时的 warning。
+  │    作用：执行级细化章节，不新增、不删除、不重排 confirmed plan。
+  │    注意：这里只做轻量 grounding，不做完整 Web research。
+  ├─ infer_docgen_intent
+  │    输入：user_goal / plan_summary / digest_mode / chapter_assignments / docgen_history_brief
+  │      - user_goal：用户最终学习目标。
+  │      - plan_summary：Planner 生成的方案摘要。
+  │      - digest_mode：sprint 或 systematic。
+  │      - docgen_history_brief：和文档生成有关的历史修改摘要。
+  │    输出：DocGenIntentProfile
+  │      - DocGenIntentProfile：写作风格、深度、例子偏好、考试倾向、避让项。
+  │    作用：识别写作深度、考试倾向、例子偏好、定义粒度、避让项。
+  └─ summarize_files
+       输入：source_packets / section_packets / chapter_assignments
+         - source_packets：文件级正文包。
+         - section_packets：切片级正文包。
+         - chapters：章节目标，用于判断文件和章节亲和度。
+       输出：FileMaterialSummary[]
+         - FileMaterialSummary：文件摘要、核心概念、公式、例题、高价值 section、章节亲和度。
+       作用：为章节生成提供文件摘要、章节亲和度、高价值 section。
+
+merge_and_dispatch
+  输入：EnhancedChapterOutline[] / DocGenIntentProfile / FileMaterialSummary[] / chapter_assignments
+  输出：ChapterGenerationPlan / ChapterGenerationTask[]
+    - ChapterGenerationPlan：整轮写作规则、格式、预算、章节任务集合。
+    - ChapterGenerationTask：单章执行合同，包含标题、目标、检索词、写作规则、预算。
+  作用：合并 prepare_context 的三路结果，形成每章唯一执行合同。
+
+generate_draft
+  ├─ generate_chapter 0
+  ├─ generate_chapter 1
+  └─ generate_chapter N
+  输入：单章 ChapterGenerationTask / shared_inputs / DocGenContext / retrieval_profile / selected_skillpacks
+  输出：ChapterDraft[] / ChapterResearchTrace[] / EvidenceLedger[]
+    - ChapterDraft：章节初稿、摘要草稿、占位符、质量信号。
+    - ChapterResearchTrace：检索轮次、执行 query、打开上下文、覆盖率。
+    - EvidenceLedger：正文中可追溯的证据条目。
+  作用：每章执行检索、压缩上下文、evidence ledger、写正文草稿。
+  generate_chapter 内部步骤：
+    1. 取本章 retrieval_queries / priority_section_refs。
+    2. 本地检索资料切片，不足时按 docgen.allow_external_search 做外部补充。
+    3. 读取命中内容并压缩为 dense_context。
+    4. 构建 evidence ledger，标记来源和覆盖目标。
+    5. 按 sprint/systematic 策略写章节草稿，留下增强占位符。
+  模式差异：sprint/systematic 的核心差异主要在这里体现。
+    - sprint：短、密、题型导向，强调考点、速判、易错点、复盘清单。
+    - systematic：长、稳、结构导向，强调定义、推理、例子、迁移和前置关系。
+
+enhance
+  ├─ enhance_chapter 0
+  ├─ enhance_chapter 1
+  └─ enhance_chapter N
+  输入：ChapterDraft / placeholder_requests / asset settings / digest_mode
+  输出：EnhancedChapterDraft[] / AssetManifest[] / PracticeManifest[]
+    - EnhancedChapterDraft：增强后的章节正文。
+    - AssetManifest：Mermaid、图片、交互块等资产清单。
+    - PracticeManifest：本章自检题和练习种子。
+  作用：处理 Mermaid、图片占位、交互块、公式清洗、本章自检。
+  enhance_chapter 内部步骤：
+    1. 解析章节中的 Mermaid / image / interactive 占位符。
+    2. 生成或降级处理对应资产。
+    3. 统一公式、Mermaid、Markdown 结构。
+    4. 追加本章自检题。
+    5. 产出 asset / practice manifest。
+
+review_content
+  ├─ review_chapter 0
+  ├─ review_chapter 1
+  └─ review_chapter N
+  输入：EnhancedChapterDraft / ChapterGenerationTask / EvidenceLedger / DocGenIntentProfile
+  输出：ReviewedChapterDraft[] / ChapterReviewReport[]
+    - ReviewedChapterDraft：最终可合并章节稿。
+    - ChapterReviewReport：覆盖率、质量分、缺失点、修补记录、warning。
+  作用：复核增强后的最终章节，执行 coverage / quality / bounded patch。
+  review_chapter 内部步骤：
+    1. 检查 required elements 是否覆盖。
+    2. 检查 evidence ledger 是否支撑关键说法。
+    3. 检查章节结构、长度、风格和模式要求。
+    4. 必要时做小范围 patch，不整章重写。
+    5. 输出 review report，保留 warning。
+  约束：不改变章节边界，不新增章节，不破坏增强块。
+
+merge_review
+  输入：ReviewedChapterDraft[] / ChapterGenerationPlan / research_traces / evidence_ledgers / asset_manifests / practice_manifests
+  输出：merged_markdown / chapter_metadatas / MergeReviewReport
+    - merged_markdown：整本文档 Markdown。
+    - chapter_metadatas：发布和 manifest 使用的章节元数据。
+    - MergeReviewReport：整本结构、重复、缺口、风格和来源检查报告。
+  作用：合并章节，检查整本结构、重复、缺章、风格断裂、来源覆盖。
+
+finalize_titles
+  输入：chapter_metadatas / confirmed_plan.chapter_plan / enhanced titles / merge_review_report
+  输出：final_chapter_titles / updated chapter_metadatas / title_review_report
+  作用：标题收口，保持 chapter_index 和 confirmed plan 映射。
+  约束：只统一标题表达，不推翻用户确认过的章节语义。
+
+publish_document
+  输入：merged_markdown / chapter_metadatas / docgen_artifacts / document_context
+  输出：markdown files / docgen_manifest.json / KnowledgeDoc rows / version archive
+    - docgen_artifacts：DocGenContext、计划、章节、证据、资产、练习、review 报告。
+  作用：发布章节 Markdown、整本 Markdown、manifest、数据库记录和版本归档。
 ```
 
-当前实现已经按这个形状重构完成。
+## 4. 当前实现映射
 
-当前 graph：
+当前 graph 还不是完全按上面的 vNext 形态拆开的，主要差异如下：
 
-```text
-load_context
-  -> prepare_parallel_inputs      # 内部并行承接 0A/0B/0C
-  -> confirm_and_dispatch         # 内部确认和分发
-  -> generate_chapters (Send x N)
-  -> enhance_chapters             # fan-in 后内部并发增强全部章节
-  -> merge_review
-  -> publish_document
-```
+| 目标阶段 | 当前对应 | 状态 |
+| --- | --- | --- |
+| `load_context` | `load_context` | 已落地 |
+| `prepare_context` | `prepare_parallel_inputs` | 已落地，内部并行执行三路准备 |
+| `merge_and_dispatch` | `confirm_and_dispatch` | 已落地 |
+| `generate_draft` | `generate_chapters` | 已落地，章节 fan-out |
+| `enhance` | `enhance_chapters` | 已落地，fan-in 后内部并发增强 |
+| `review_content` | `generate_chapters` 内部 critic/rewrite | 待移到 enhance 后并拆独立节点 |
+| `merge_review` | `merge_review` | 已落地 |
+| `finalize_titles` | 分散在 generation / merge / publish 中 | 待补独立节点 |
+| `publish_document` | `publish_document` | 已落地 |
 
 旧 `research_chapters / merge_research / finalize_titles / write_chapters / merge_drafts / enrich_assets / append_practice` 顶层节点已移除。底层可复用 runtime 仍可保留，例如章节研究、writer 和资产处理 runtime。
 
@@ -238,14 +329,15 @@ load_context
 
 ### 做什么
 
-根据 confirmed plan 的章节大纲，结合本地资料和检索结果，把每章展开成更细的内容要点和章节小纲。
+根据 confirmed plan 的章节大纲，结合资料画像、文件摘要和高价值 section，把每章展开成更细的内容要点和章节小纲。
 
 它不是重新规划课程，而是把 Planner 的粗大纲变成 DocGen 可执行的章节蓝图。
 
 ### 输入
 
 - confirmed plan
-- 用户上传文件内容
+- 用户上传文件的资料画像、章节候选和高价值 section
+- 文件摘要或规则摘要
 - Planner grounding 信息
 - 用户历史对话摘要
 
@@ -272,13 +364,15 @@ title
 
 ### 模型和工具
 
-- 本地检索
-- 外部检索
-- `primary` 模型
+- `reason` 模型
+- 本地 section grounding
+- 文件摘要和 material profile
 
 ### 编排建议
 
 可以按章并行增强，但最后要做一次全局去重，避免两个章节争同一个主题。
+
+这一步不做完整 Web research；外部检索放在后续 `generate_draft` 的章节研究阶段。
 
 ## 6. Node 0B：意图识别
 
@@ -820,12 +914,15 @@ load_context
 
 | 目标阶段 | 当前对应 | 状态 |
 | --- | --- | --- |
-| 0A/0B/0C | `prepare_parallel_inputs` | 已落地，内部并行执行 |
-| 1. 确认和分发 | `confirm_and_dispatch` | 已落地，产出 `ChapterGenerationPlan` |
-| 2. 章节生成 | `generate_chapters` | 已落地，章节 fan-out |
-| 3. 章节增强 | `enhance_chapters` | 已落地，fan-in 后内部并发增强 |
-| 4. 合并检查 | `merge_review` | 已落地，第一版只产出 warning/report |
-| 5. 发布输出 | `publish_document` | 已扩展结构化 manifest |
+| `load_context` | `load_context` | 已落地 |
+| `prepare_context` | `prepare_parallel_inputs` | 已落地，内部并行执行 0A/0B/0C |
+| `merge_and_dispatch` | `confirm_and_dispatch` | 已落地，产出 `ChapterGenerationPlan` |
+| `generate_draft` | `generate_chapters` | 已落地，章节 fan-out |
+| `enhance` | `enhance_chapters` | 已落地，fan-in 后内部并发增强；后续可改 Send x N |
+| `review_content` | `generate_chapters` 内部 critic/rewrite | 待移到 enhance 后并拆成独立节点 |
+| `merge_review` | `merge_review` | 已落地，第一版只产出 warning/report |
+| `finalize_titles` | 分散在 chapter plan / merge / publish 中 | 待补独立标题收口节点 |
+| `publish_document` | `publish_document` | 已扩展结构化 manifest |
 
 ## 17. 最小落地顺序
 
@@ -859,16 +956,27 @@ load_context
 4. 生成 practice_manifest，并在每章追加本章自检
 ```
 
-### Phase 4：合并检查和回改
+### Phase 4：章节复核独立化
+
+```text
+1. 从 generate_chapters 中移出 critic/rewrite
+2. 在 enhance_chapters 后新增 review_content
+3. 复用 critique_chapter / maybe_rewrite_chapter，但只做 bounded patch
+4. 输出 ChapterReviewReport
+5. review 失败时保留增强稿和 warning
+```
+
+### Phase 5：合并检查、标题收口和回改
 
 ```text
 1. 新增 merge_review
 2. 输出 merge_review_report
-3. 第一版只记录 revision_tasks
-4. 第二版支持最多一轮选中章节回改
+3. 新增 finalize_titles，只做标题收口，不推翻 confirmed plan
+4. 第一版只记录 revision_tasks
+5. 第二版支持最多一轮选中章节回改
 ```
 
-### Phase 5：产物闭环
+### Phase 6：产物闭环
 
 ```text
 1. manifest 写入 chapter_generation_plan

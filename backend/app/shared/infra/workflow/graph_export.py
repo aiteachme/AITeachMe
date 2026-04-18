@@ -23,6 +23,7 @@ class WorkflowGraphExport:
     # Declare any manual Mermaid edges here, for example:
     # ``"src --> dst"`` or ``"src -. label .-> dst"``.
     extra_edges: tuple[str, ...] = field(default=())
+    node_labels: dict[str, str] = field(default_factory=dict)
     prompts: dict[str, str] = field(default_factory=dict)
 
 

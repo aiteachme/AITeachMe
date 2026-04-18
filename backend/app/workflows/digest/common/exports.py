@@ -5,9 +5,17 @@ from __future__ import annotations
 from app.shared.infra.workflow.context import WorkflowContext
 from app.shared.infra.workflow.events import InProcessEventBus
 from app.shared.infra.workflow.graph_export import WorkflowGraphExport
-from app.workflows.digest.docgen.graph import build_docgen_graph
+from app.workflows.digest.docgen.graph import (
+    NODE_DISPATCH,
+    NODE_ENHANCE_CHAPTERS,
+    NODE_GENERATE_CHAPTERS,
+    NODE_MERGE_REVIEW,
+    NODE_PUBLISH,
+    build_docgen_graph,
+)
 from app.workflows.digest.kg_file_ingest.graph import build_kg_digest_graph
 from app.workflows.digest.kg_file_ingest.prompts import KG_PROMPTS
+from app.workflows.digest.planner.lib.steps import STEP_DISPLAY_NAMES
 from app.workflows.digest.planner.graph import get_langgraph_dev_planner_graph
 
 PLANNER_PROMPTS = {
@@ -34,11 +42,11 @@ def _build_docgen_graph_for_export():
 
 
 _DOCGEN_SEND_EDGES = (
-    "confirm_and_dispatch -. Send xN .-> generate_chapters",
-    "generate_chapters --> enhance_chapters",
-    "enhance_chapters --> merge_review",
-    "merge_review --> publish_document",
-    "publish_document --> __end__",
+    f"{NODE_DISPATCH} -. Send xN .-> {NODE_GENERATE_CHAPTERS}",
+    f"{NODE_GENERATE_CHAPTERS} --> {NODE_ENHANCE_CHAPTERS}",
+    f"{NODE_ENHANCE_CHAPTERS} --> {NODE_MERGE_REVIEW}",
+    f"{NODE_MERGE_REVIEW} --> {NODE_PUBLISH}",
+    f"{NODE_PUBLISH} --> __end__",
 )
 
 
@@ -48,6 +56,7 @@ WORKFLOW_EXPORTS = (
         title="Digest Planner Workflow",
         description="Planner-first workflow that drafts a confirmed Chinese build plan before DocGen starts.",
         build_graph=get_langgraph_dev_planner_graph,
+        node_labels=STEP_DISPLAY_NAMES,
         prompts=PLANNER_PROMPTS,
     ),
     WorkflowGraphExport(

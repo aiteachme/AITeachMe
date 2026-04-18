@@ -19,20 +19,20 @@
 ```mermaid
 flowchart TD
     __start__(["▶ START"])
-    读取资料["❶ 读取资料"]
-    理解目标["❷ 理解目标"]
-    合成大纲["❸ 合成大纲"]
-    保存方案["❹ 保存方案"]
+    load_planner_materials["❶ 读取资料"]
+    stream_brief_and_extract_intent["❷ 理解目标"]
+    stream_and_parse_plan_draft["❸ 合成大纲"]
+    normalize_and_persist_plan["❹ 保存方案"]
     __end__(["⏹ END"])
 
-    __start__ --> 读取资料
-    合成大纲 -. "✗ fail" .-> __end__
-    合成大纲 -->|"✓"| 保存方案
-    理解目标 -. "✗ fail" .-> __end__
-    理解目标 -->|"✓"| 合成大纲
-    读取资料 -. "✗ fail" .-> __end__
-    读取资料 -->|"✓"| 理解目标
-    保存方案 --> __end__
+    __start__ --> load_planner_materials
+    load_planner_materials -. "✗ fail" .-> __end__
+    load_planner_materials -->|"✓"| stream_brief_and_extract_intent
+    stream_and_parse_plan_draft -. "✗ fail" .-> __end__
+    stream_and_parse_plan_draft -->|"✓"| normalize_and_persist_plan
+    stream_brief_and_extract_intent -. "✗ fail" .-> __end__
+    stream_brief_and_extract_intent -->|"✓"| stream_and_parse_plan_draft
+    normalize_and_persist_plan --> __end__
 
     %% ── Styling ──
     classDef startCls fill:#064e3b,stroke:#10b981,stroke-width:2px,color:#a7f3d0
@@ -40,7 +40,6 @@ flowchart TD
     classDef failCls fill:#4c0519,stroke:#f43f5e,stroke-width:2px,color:#fecdd3
     classDef termCls fill:#1e3a5f,stroke:#3b82f6,stroke-width:2px,color:#93c5fd
     classDef default fill:#1e293b,stroke:#475569,stroke-width:1px,color:#e2e8f0
-    style error_zone fill:#1a0a0e,stroke:#f43f5e,stroke-width:1px,color:#fecdd3,stroke-dasharray:5
     class __start__ startCls
     class __end__ endCls
     linkStyle 1,3,5 stroke:#f43f5e,stroke-dasharray:5
@@ -67,10 +66,10 @@ flowchart TD
     读取确认方案["❶ 读取确认方案"]
     并行准备写作上下文["❷ 并行准备写作上下文"]
     确认章节生成计划["❸ 确认章节生成计划"]
-    生成章节草稿["生成章节草稿"]
-    增强章节内容["增强章节内容"]
-    合并检查整本文档["合并检查整本文档"]
-    发布知识文档["发布知识文档"]
+    生成章节草稿["❹ 生成章节草稿"]
+    增强章节内容["❺ 增强章节内容"]
+    合并检查整本文档["❻ 合并检查整本文档"]
+    发布知识文档["❼ 发布知识文档"]
     __end__(["⏹ END"])
 
     __start__ --> 读取确认方案
@@ -79,11 +78,11 @@ flowchart TD
     确认章节生成计划 -. "✗ fail" .-> __end__
     读取确认方案 -. "✗ fail" .-> __end__
     读取确认方案 -->|"✓"| 并行准备写作上下文
-    confirm_and_dispatch -. "Send xN" .-> generate_chapters
-    generate_chapters --> enhance_chapters
-    enhance_chapters --> merge_review
-    merge_review --> publish_document
-    publish_document --> __end__
+    确认章节生成计划 -. "Send xN" .-> 生成章节草稿
+    生成章节草稿 --> 增强章节内容
+    增强章节内容 --> 合并检查整本文档
+    合并检查整本文档 --> 发布知识文档
+    发布知识文档 --> __end__
 
     %% ── Styling ──
     classDef startCls fill:#064e3b,stroke:#10b981,stroke-width:2px,color:#a7f3d0
@@ -91,7 +90,6 @@ flowchart TD
     classDef failCls fill:#4c0519,stroke:#f43f5e,stroke-width:2px,color:#fecdd3
     classDef termCls fill:#1e3a5f,stroke:#3b82f6,stroke-width:2px,color:#93c5fd
     classDef default fill:#1e293b,stroke:#475569,stroke-width:1px,color:#e2e8f0
-    style error_zone fill:#1a0a0e,stroke:#f43f5e,stroke-width:1px,color:#fecdd3,stroke-dasharray:5
     class __start__ startCls
     class __end__ endCls
     linkStyle 1,3,4 stroke:#f43f5e,stroke-dasharray:5
@@ -103,11 +101,11 @@ flowchart TD
 |------|------|------|
 | 读取确认方案 | 🔀 条件路由 | `fail` -> END / `continue` -> 并行准备写作上下文 |
 | 并行准备写作上下文 | 🔀 条件路由 | `fail` -> END / `continue` -> 确认章节生成计划 |
-| 确认章节生成计划 | ⚙ 处理节点 | `fail` -> END |
-| 生成章节草稿 | ⚙ 处理节点 |  |
-| 增强章节内容 | ⚙ 处理节点 |  |
-| 合并检查整本文档 | ⚙ 处理节点 |  |
-| 发布知识文档 | ⚙ 处理节点 |  |
+| 确认章节生成计划 | 🔀 条件路由 | `fail` -> END / `Send xN` -> 生成章节草稿 |
+| 生成章节草稿 | ⚙ 处理节点 | → 增强章节内容 |
+| 增强章节内容 | ⚙ 处理节点 | → 合并检查整本文档 |
+| 合并检查整本文档 | ⚙ 处理节点 | → 发布知识文档 |
+| 发布知识文档 | ⚙ 处理节点 | → END |
 
 ## Digest Graph Workflow
 
