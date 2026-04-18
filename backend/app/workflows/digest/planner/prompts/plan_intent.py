@@ -8,7 +8,7 @@ from app.workflows.digest.planner.prompts.context import (
     render_material_overview,
     render_message_history,
 )
-from app.workflows.digest.planner.prompts.examples import render_plan_intent_examples
+from app.workflows.digest.planner.prompts.examples import DEFAULT_INTENT_EXAMPLE_LIMIT, render_plan_intent_examples
 
 PLAN_QUERY_MIN = 3
 PLAN_QUERY_MAX = 8
@@ -56,10 +56,11 @@ PlanIntent 不是最终展示内容，也不是外部检索承诺；它只用于
 3. plan_queries 要服务意图识别结果，可以写知识簇、题型、方法、易错边界、应用场景或大纲拆分问题。
 4. plan_queries 不要写成网站搜索词、来源列表或最终章节标题。
 5. 如果用户意图不明确，就从资料形态和请求模式推断，但要保守表达。
-6. 不要输出来源名单、网站名、论文名、长解释或重复内容。
+6. 如果没有上传资料，就基于用户目标做通用意图识别，不要说“已上传资料显示/资料中包含”。
+7. 不要输出来源名单、网站名、论文名、长解释、subject id 或重复内容。
 
 few-shot 示例：
-{render_plan_intent_examples()}
+{render_plan_intent_examples(limit=DEFAULT_INTENT_EXAMPLE_LIMIT)}
 """.strip()
     return [
         {"role": "system", "content": "你是学习规划意图分析器，只输出合法 JSON。"},

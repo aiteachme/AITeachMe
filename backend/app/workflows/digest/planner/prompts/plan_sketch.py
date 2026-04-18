@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from app.workflows.digest.planner.prompts.examples import render_plan_sketch_examples
+from app.workflows.digest.planner.prompts.examples import DEFAULT_SKETCH_EXAMPLE_LIMIT, render_plan_sketch_examples
 from app.workflows.digest.common.models import DigestMaterialContext
 from app.workflows.digest.planner.prompts.context import (
     render_material_digest,
@@ -50,10 +50,11 @@ def build_plan_sketch_prompt(
 3. 不要写空泛表达，例如“梳理基础”“强化理解”“提升能力”；要落到资料里的具体对象或学习动作。
 4. 不要列正式章节目录；最终计划和初步大纲会在下一步单独生成。
 5. 全文控制在 260-520 字以内，宁可把判断原因讲清楚，不要铺陈。
+6. 如果没有上传资料，只能基于用户目标和学科常识判断，不要写“这批资料显示/资料里包含”。
 
 请参考下面这些 few-shot 示例的自然表达，注意它们都是“思考过程”示例，不是最终方案：
 
-{render_plan_sketch_examples()}
+{render_plan_sketch_examples(limit=DEFAULT_SKETCH_EXAMPLE_LIMIT)}
 """.strip()
 
 

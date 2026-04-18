@@ -57,14 +57,14 @@ planner:
     # 冲刺模式默认最多章节数。
     max_chapters: 6
     # 冲刺模式目标全文长度提示。
-    target_length: "3000-5000字"
+    target_length: "3000-10000字"
   systematic:
     # 系统模式默认最少章节数。
     min_chapters: 5
     # 系统模式默认最多章节数。
     max_chapters: 12
     # 系统模式目标全文长度提示。
-    target_length: "10000-15000字"
+    target_length: "10000-30000字"
 
 docgen:
   # DocGen 章节生成的 LangGraph 最大并发数。
@@ -146,7 +146,7 @@ observability:
   # Trace 输出预览策略；null 表示 APP_MODE=local 时保留，非本地模式默认脱敏。
   langsmith_capture_outputs: null
   # Trace 文本预览最大字符数。
-  langsmith_max_text_chars: 2000
+  langsmith_max_text_chars: 100000
   # 进程内 LLM 调用统计最多保留记录数。
   llm_observability_max_records: 5000
 

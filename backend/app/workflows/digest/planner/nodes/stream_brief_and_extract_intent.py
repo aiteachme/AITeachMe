@@ -24,13 +24,20 @@ from app.workflows.digest.planner.state import BuildPlannerState
 logger = structlog.get_logger(__name__)
 
 
-async def _stream_planner_brief(state: BuildPlannerState, fallback: PlannerBrief) -> PlannerBrief:
+def _subject_for_prompt(state: BuildPlannerState) -> str:
+    """Return a human-readable subject; never leak subj_* ids into prompts."""
+
     material_context = state["material_context"]
-    subject_name = _resolve_subject_display_name(
+    return _resolve_subject_display_name(
         state["subject"],
         shared_inputs=material_context,
         user_goal=state.get("user_goal") or "",
     )
+
+
+async def _stream_planner_brief(state: BuildPlannerState, fallback: PlannerBrief) -> PlannerBrief:
+    material_context = state["material_context"]
+    subject_name = _subject_for_prompt(state)
     prompt = build_plan_sketch_prompt(
         subject=subject_name,
         user_goal=state.get("user_goal") or "",
@@ -114,7 +121,7 @@ async def _extract_plan_intent(state: BuildPlannerState) -> PlanIntent:
         )
         plan_intent = await acompletion_with_fallback(
             build_plan_intent_messages(
-                subject=state["subject"],
+                subject=_subject_for_prompt(state),
                 user_goal=state.get("user_goal") or "",
                 digest_mode=state.get("digest_mode") or material_context.course_mode_decision.mode.value,
                 material_context=material_context,
@@ -171,12 +178,13 @@ def _normalize_plan_queries(queries: list[str]) -> list[str]:
 def _fallback_plan_queries(state: BuildPlannerState) -> list[str]:
     material_context = state["material_context"]
     goal = str(state.get("user_goal") or "").strip()
+    subject = _subject_for_prompt(state)
     mode = str(state.get("digest_mode") or material_context.course_mode_decision.mode.value)
     candidates = [
         f"{goal or '当前主题'} 核心知识簇",
         f"{goal or '当前主题'} 题型与易错点",
         f"{goal or '当前主题'} 初步大纲拆分",
-        f"{state.get('subject', '')} {mode} 学习计划",
+        f"{subject} {mode} 学习计划",
     ]
     return [item for item in candidates if item.strip()]
 

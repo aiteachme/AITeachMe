@@ -15,7 +15,7 @@ from app.workflows.digest.planner.prompts.context import (
     render_material_overview,
     render_message_history,
 )
-from app.workflows.digest.planner.prompts.examples import render_composer_examples
+from app.workflows.digest.planner.prompts.examples import DEFAULT_COMPOSER_EXAMPLE_LIMIT, render_composer_examples
 
 PLAN_JSON_MARKER = "<PLAN_JSON>"
 PLAN_JSON_END_MARKER = "</PLAN_JSON>"
@@ -44,14 +44,17 @@ def build_plan_composer_messages(
     sketch = planner_brief.markdown.strip() or "暂无可见规划判断"
     plan_queries = _render_plan_queries(plan_intent)
     plan_intent_text = plan_intent.plan_intent.strip() or DEFAULT_PLAN_INTENT
-    # 第一段是用户会看到的 plan_text；JSON 是机器合同。这里把协议写清楚，
-    # 避免模型把 hidden JSON 当成 Markdown 继续流给前端。
+    # 第一段是用户会看到的 plan_text；JSON 是机器合同。这里允许写
+    # “拟查询/对照/搜集”的研究动作，但不能写成已经完成检索。
     prompt = f"""
-你要生成一份构建前计划，分成两层：
-1. 计划说明：像深度研究开始前的行动计划，说明接下来会如何整理资料、拆分问题、形成初步大纲。
-2. 计划步骤和初步大纲：计划步骤拆出可检查动作；初步大纲给出可以继续调整的章节草案。
+你要生成一份构建前研究计划，分成三层：
+1. 计划说明：用一段话说明接下来会如何查找、对照、整理和判断，不要提前展开章节内容。
+2. 计划步骤：拆出 4-7 条可检查动作，可以包含“查询、对照、搜集、调研、归并、筛选、整理”等动作。
+3. 初步大纲：只给粗颗粒章节骨架，后续还会继续调整，不要写得像最终目录。
 
-注意：Planner 阶段不会真实执行外部检索，不要编造来源、网站、论文或证据标题。
+重要边界：
+- Planner 现在只制定研究/整理计划，不代表已经执行检索。
+- 可以写“后续会查询/对照/搜集哪些方向”，不要写“已经查到/来源显示/某网站或某论文指出”。
 
 主题：{subject}
 用户目标：{user_goal}
@@ -80,40 +83,41 @@ def build_plan_composer_messages(
 
 可见输出要求：
 - 先立即输出一段计划说明，不要标题、编号、项目符号。
-- 计划说明控制在 140-320 字，重点写“我会先……再……最后……”，不要把所有章节和知识点挤进去。
-- 计划说明要表达这是初步方案，后续可以调整。
+- 计划说明控制在 140-320 字，重点写“我会先查什么/对照什么，再怎么整理和判断”。
+- 计划说明不要列章节标题，不要提前写大纲内容；只表达研究路线和判断方法。
 
 隐藏 JSON 要求：
 - 计划说明结束后，从单独一行 {PLAN_JSON_MARKER} 开始。
 - 输出合法 JSON 对象，最后以 {PLAN_JSON_END_MARKER} 结束。
 - JSON 只有 plan_text、plan_steps、chapters 三个字段。
 - plan_text 与可见计划说明语义一致。
-- plan_steps 是 3-5 条动作步骤，用来解释本计划会如何整理资料、判断优先级和形成大纲。
+- plan_steps 是 4-7 条动作步骤，用来解释本计划会查询什么、整理什么、判断什么、如何形成大纲。
+- chapters 是很初步的粗颗粒骨架，不追求完整和细节。
 
 JSON 形状：
 {{
   "plan_text": "一小段计划概括",
-  "plan_steps": ["先做什么", "再做什么", "最后产出什么"],
+  "plan_steps": ["查询或对照什么", "归并或筛选什么", "整理什么", "形成什么"],
   "chapters": [
     {{
-      "title": "具体章节标题",
-      "key_points": ["本章要覆盖的知识点"]
+      "title": "高度概括的章节方向",
+      "key_points": ["本章后续要继续细化的方向"]
     }}
   ]
 }}
 
-硬约束：
-1. plan_steps 只写动作，不写章节名堆叠，也不要写“搜索网站/查论文”等外部检索承诺。
-2. chapters 只写章节标题和知识点列表。
-3. chapters 要具体，key_points 落到知识点、题型、方法或易错边界。
-4. 不要输出检索词、来源、媒体计划、构建约束或后端已有字段。
-5. JSON 段只能输出 JSON，不要放 Markdown 代码块、注释或尾随逗号。
-6. 不要把初步大纲写成不可更改的最终目录。
-7. 不要在输出中提到 Deep Research、OpenAI、Gemini 等产品名。
-8. 如果某个知识点只是在内部抓手里出现，但资料上下文不支持，降低确定性表达。
+格式约束：
+- JSON 段只能输出 JSON，不要放 Markdown 代码块、注释或尾随逗号。
+- chapters 只写高度概括的章节方向和 key_points，不要放来源、媒体计划、构建约束或后端字段。
+
+内容边界：
+- plan_steps 可以写“查询/对照/搜集/调研”的计划动作，但不能说已经完成检索。
+- plan_text 和 plan_steps 是重点，不能被 chapters 反客为主。
+- 没有上传资料时，基于用户目标生成通用初步计划，不要声称读过具体文件。
+- 初步大纲保持概括，key_points 控制为 2-4 个方向，不要塞满细碎知识点。
 
 few-shot 规律：
-{render_composer_examples()}
+{render_composer_examples(limit=DEFAULT_COMPOSER_EXAMPLE_LIMIT)}
 """.strip()
     return [
         {"role": "system", "content": "你是 AITeachMe 的构建计划合成器，必须同时输出可见计划说明和可解析 JSON。"},

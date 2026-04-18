@@ -14,12 +14,22 @@ from app.shared.infra.llm_support.routing import LLMCallPurpose
 from app.shared.infra.workflow.context import WorkflowContext
 from app.workflows.digest.planner.lib.planner_events import emit_planner_event, emit_planner_token
 from app.workflows.digest.planner.lib.models import PlanIntent, PlannerBrief
+from app.workflows.digest.planner.lib.plans import _resolve_subject_display_name
 from app.workflows.digest.planner.prompts import PLAN_JSON_END_MARKER, PLAN_JSON_MARKER, build_plan_composer_messages
 from app.workflows.digest.planner.state import BuildPlannerState
 
 logger = structlog.get_logger(__name__)
 
 _JSON_FENCE_RE = re.compile(r"```(?:json)?\s*(.*?)```", re.IGNORECASE | re.DOTALL)
+
+
+def _subject_for_prompt(state: BuildPlannerState) -> str:
+    material_context = state["material_context"]
+    return _resolve_subject_display_name(
+        state["subject"],
+        shared_inputs=material_context,
+        user_goal=state.get("user_goal") or "",
+    )
 
 
 class PlannerChapterSketch(BaseModel):
@@ -132,7 +142,7 @@ async def _stream_composer_response(
         )
         stream = acompletion_stream(
             build_plan_composer_messages(
-                subject=state["subject"],
+                subject=_subject_for_prompt(state),
                 user_goal=state.get("user_goal") or "",
                 digest_mode=state.get("digest_mode") or material_context.course_mode_decision.mode.value,
                 material_context=material_context,

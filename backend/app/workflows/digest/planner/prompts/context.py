@@ -14,6 +14,7 @@ EMPTY_DIGEST = "暂无资料正文上下文"
 EMPTY_HISTORY = "暂无补充意见"
 EMPTY_LATEST_PLAN = "暂无上一版方案"
 EMPTY_FILES = "暂无已解析文件"
+NO_MATERIAL_NOTE = "资料状态：当前没有可用的上传资料正文，只能基于用户目标生成通用初步计划，不能假装已经读取了具体文件。"
 
 
 def _clean(value: Any) -> str:
@@ -21,7 +22,7 @@ def _clean(value: Any) -> str:
 
 
 def render_material_digest(material_context: DigestMaterialContext) -> str:
-    return _clean(material_context.material_digest) or EMPTY_DIGEST
+    return _clean(material_context.material_digest) or f"{EMPTY_DIGEST}；{NO_MATERIAL_NOTE}"
 
 
 def render_material_overview(material_context: DigestMaterialContext) -> str:
@@ -39,6 +40,8 @@ def render_material_overview(material_context: DigestMaterialContext) -> str:
         f"资料规模：{stats.total_sources or len(material_context.source_documents)} 个文件，"
         f"{stats.total_sections or len(material_context.material_sections)} 个片段",
     ]
+    if not files and not _clean(material_context.material_digest):
+        lines.append(NO_MATERIAL_NOTE)
     return "\n".join(line for line in lines if line.strip())
 
 
