@@ -19,7 +19,7 @@ from langsmith import traceable
 from langsmith import tracing_context
 
 from app.shared.infra.settings import get_settings
-from app.shared.infra.env_support import get_env, get_env_bool, get_env_int, get_env_optional_bool
+from app.shared.infra.env_support import get_env, get_env_bool
 from app.shared.infra.runtime import get_app_version, is_local_mode
 
 LangSmithRunType = Literal["tool", "chain", "llm", "retriever", "embedding", "prompt", "parser"]
@@ -80,7 +80,7 @@ def get_langsmith_project_name() -> str | None:
 
 
 def get_langsmith_max_text_chars() -> int:
-    return max(32, get_env_int("LANGSMITH_MAX_TEXT_CHARS", 2000))
+    return max(32, int(get_settings().observability.langsmith_max_text_chars or 2000))
 
 
 def get_langsmith_endpoint() -> str:
@@ -105,24 +105,21 @@ def get_langsmith_probe_ttl_s() -> float:
 
 
 def langsmith_capture_inputs_enabled() -> bool:
-    explicit_value = get_env_optional_bool("LANGSMITH_CAPTURE_INPUTS")
-    if explicit_value is not None:
-        return explicit_value
+    settings_value = get_settings().observability.langsmith_capture_inputs
+    if settings_value is not None:
+        return settings_value
     return is_local_mode()
 
 
 def langsmith_capture_outputs_enabled() -> bool:
-    explicit_value = get_env_optional_bool("LANGSMITH_CAPTURE_OUTPUTS")
-    if explicit_value is not None:
-        return explicit_value
+    settings_value = get_settings().observability.langsmith_capture_outputs
+    if settings_value is not None:
+        return settings_value
     return is_local_mode()
 
 
 def _langsmith_api_key_present() -> bool:
-    for env_key in ("LANGSMITH_API_KEY", "LANGCHAIN_API_KEY"):
-        if os.getenv(env_key, "").strip():
-            return True
-    return False
+    return bool(os.getenv("LANGSMITH_API_KEY", "").strip())
 
 
 def _langsmith_endpoint_reachable() -> bool:
