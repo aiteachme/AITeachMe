@@ -8,17 +8,20 @@ from typing import Any, Literal
 from langgraph.graph import END, StateGraph
 from langgraph.types import Send
 
-from app.utils.docgen_store import update_knowledge_build_status
 from app.shared.infra.workflow import workflow_tracer
 from app.shared.infra.workflow.context import WorkflowContext, create_langgraph_dev_context
 from app.workflows.digest.docgen.nodes import (
     build_confirm_and_dispatch_node,
+    build_document_backbone_node,
     build_enhance_chapters_node,
+    build_finalize_titles_node,
     build_generate_chapters_node,
     build_load_context_node,
     build_merge_review_node,
     build_prepare_parallel_inputs_node,
     build_publish_document_node,
+    build_repair_or_route_node,
+    build_review_content_node,
 )
 from app.workflows.digest.docgen.nodes.common import resolve_docgen_course_type, resolve_docgen_retrieval_profile
 from app.workflows.digest.docgen.state import DocGenState
@@ -26,9 +29,13 @@ from app.workflows.digest.docgen.state import DocGenState
 NODE_LOAD_CONTEXT = "读取确认方案"
 NODE_PREPARE_CONTEXT = "并行准备写作上下文"
 NODE_DISPATCH = "确认章节生成计划"
+NODE_BUILD_BACKBONE = "构建文档知识骨架"
 NODE_GENERATE_CHAPTERS = "生成章节草稿"
 NODE_ENHANCE_CHAPTERS = "增强章节内容"
+NODE_REVIEW_CONTENT = "复核章节与整本一致性"
+NODE_REPAIR_OR_ROUTE = "记录复核回流动作"
 NODE_MERGE_REVIEW = "合并检查整本文档"
+NODE_FINALIZE_TITLES = "收口章节标题"
 NODE_PUBLISH = "发布知识文档"
 RUN_NAME_DOCGEN = "织网引擎：生成知识文档"
 
@@ -59,6 +66,14 @@ def build_docgen_graph(*, context: WorkflowContext) -> StateGraph:
         ),
     )
     workflow.add_node(
+        NODE_BUILD_BACKBONE,
+        trace.node(
+            build_document_backbone_node(context=context),
+            name=NODE_BUILD_BACKBONE,
+            timing_field="backbone_ms",
+        ),
+    )
+    workflow.add_node(
         NODE_GENERATE_CHAPTERS,
         trace.node(build_generate_chapters_node(context=context), name=NODE_GENERATE_CHAPTERS),
     )
@@ -67,8 +82,20 @@ def build_docgen_graph(*, context: WorkflowContext) -> StateGraph:
         trace.node(build_enhance_chapters_node(context=context), name=NODE_ENHANCE_CHAPTERS),
     )
     workflow.add_node(
+        NODE_REVIEW_CONTENT,
+        trace.node(build_review_content_node(context=context), name=NODE_REVIEW_CONTENT, timing_field="review_ms"),
+    )
+    workflow.add_node(
+        NODE_REPAIR_OR_ROUTE,
+        trace.node(build_repair_or_route_node(context=context), name=NODE_REPAIR_OR_ROUTE, timing_field="repair_ms"),
+    )
+    workflow.add_node(
         NODE_MERGE_REVIEW,
         trace.node(build_merge_review_node(context=context), name=NODE_MERGE_REVIEW, timing_field="merge_review_ms"),
+    )
+    workflow.add_node(
+        NODE_FINALIZE_TITLES,
+        trace.node(build_finalize_titles_node(context=context), name=NODE_FINALIZE_TITLES, timing_field="finalize_ms"),
     )
     workflow.add_node(
         NODE_PUBLISH,
@@ -88,13 +115,33 @@ def build_docgen_graph(*, context: WorkflowContext) -> StateGraph:
     )
     workflow.add_conditional_edges(
         NODE_DISPATCH,
+        route_after_step_for_trace,
+        {"continue": NODE_BUILD_BACKBONE, "fail": END},
+    )
+    workflow.add_conditional_edges(
+        NODE_BUILD_BACKBONE,
         build_generation_sends_for_trace,
         {"fail": END},
     )
     workflow.add_edge(NODE_GENERATE_CHAPTERS, NODE_ENHANCE_CHAPTERS)
-    workflow.add_edge(NODE_ENHANCE_CHAPTERS, NODE_MERGE_REVIEW)
+    workflow.add_edge(NODE_ENHANCE_CHAPTERS, NODE_REVIEW_CONTENT)
+    workflow.add_conditional_edges(
+        NODE_REVIEW_CONTENT,
+        route_after_step_for_trace,
+        {"continue": NODE_REPAIR_OR_ROUTE, "fail": END},
+    )
+    workflow.add_conditional_edges(
+        NODE_REPAIR_OR_ROUTE,
+        route_after_step_for_trace,
+        {"continue": NODE_MERGE_REVIEW, "fail": END},
+    )
     workflow.add_conditional_edges(
         NODE_MERGE_REVIEW,
+        route_after_step_for_trace,
+        {"continue": NODE_FINALIZE_TITLES, "fail": END},
+    )
+    workflow.add_conditional_edges(
+        NODE_FINALIZE_TITLES,
         route_after_step_for_trace,
         {"continue": NODE_PUBLISH, "fail": END},
     )
@@ -114,7 +161,6 @@ def create_docgen_initial_state(
     planner_session_id: str | None = None,
     confirmed_plan_id: str | None = None,
     digest_mode: str | None = None,
-    tone: str | None = None,
     selected_skillpacks: list[str] | None = None,
 ) -> DocGenState:
     """Create initial state for the DocGen graph."""
@@ -134,7 +180,6 @@ def create_docgen_initial_state(
         "course_type": course_type,
         "retrieval_profile": resolve_docgen_retrieval_profile(course_type),
         "teaching_action": "docgen_build",
-        "tone": tone or "",
         "selected_skillpacks": list(selected_skillpacks or []),
         "document_context": None,
         "docgen_context": {},
@@ -177,11 +222,11 @@ def build_generation_sends(state: DocGenState) -> list[Send] | Literal["fail"]:
                 "course_type": state.get("course_type", ""),
                 "retrieval_profile": state.get("retrieval_profile", ""),
                 "teaching_action": "chapter_generate",
-                "tone": state.get("tone", ""),
                 "selected_skillpacks": list(state.get("selected_skillpacks", []) or []),
                 "shared_inputs": state.get("shared_inputs"),
                 "document_context": state.get("document_context"),
                 "docgen_context": state.get("docgen_context"),
+                "document_backbone": state.get("document_backbone"),
                 "chapter_task": task,
                 "total_chapters": total,
             },
@@ -210,5 +255,4 @@ __all__ = [
     "create_docgen_initial_state",
     "get_langgraph_dev_docgen_graph",
     "route_after_step",
-    "update_knowledge_build_status",
 ]

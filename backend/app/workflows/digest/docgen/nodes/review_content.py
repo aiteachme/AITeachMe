@@ -1,0 +1,121 @@
+"""Review enhanced DocGen content before merge."""
+
+from __future__ import annotations
+
+from time import perf_counter
+
+from app.shared.infra.workflow.context import WorkflowContext
+from app.utils.docgen_store import append_knowledge_build_recent_event, update_knowledge_build_status
+from app.utils.time import utcnow
+from app.workflows.digest.docgen.lib.chapter_review import review_chapter
+from app.workflows.digest.docgen.lib.document_consistency import review_document_consistency
+from app.workflows.digest.docgen.lib.models import (
+    ChapterGenerationTask,
+    ClaimEvidenceMap,
+    ClaimLedger,
+    ConflictReport,
+    DocumentBackbone,
+    EnhancedChapterDraft,
+)
+from app.workflows.digest.docgen.nodes.common import publish_docgen_progress
+from app.workflows.digest.docgen.state import DocGenState
+
+
+def build_review_content_node(*, context: WorkflowContext):
+    async def review_content_node(state: DocGenState) -> dict:
+        started_at = perf_counter()
+        enhanced = [
+            EnhancedChapterDraft.model_validate(item)
+            for item in sorted(
+                list(state.get("enhanced_chapter_drafts") or []),
+                key=lambda raw: int((raw or {}).get("chapter_index", 0) or 0),
+            )
+        ]
+        if not enhanced:
+            return {"error": "没有可复核的增强章节。"}
+        # 先把章节相关合同按 chapter_index 对齐，后面逐章复核时就不会靠列表顺序碰运气。
+        tasks_by_chapter = {
+            int(item.get("chapter_index", 0) or 0): ChapterGenerationTask.model_validate(item)
+            for item in list(state.get("chapter_tasks") or [])
+        }
+        claim_ledgers_by_chapter = {
+            int(item.get("chapter_index", 0) or 0): ClaimLedger.model_validate(item)
+            for item in list(state.get("claim_ledgers") or [])
+        }
+        claim_maps_by_chapter = {
+            int(item.get("chapter_index", 0) or 0): ClaimEvidenceMap.model_validate(item)
+            for item in list(state.get("claim_evidence_maps") or [])
+        }
+        conflict_reports_by_chapter = {
+            int(item.get("chapter_index", 0) or 0): ConflictReport.model_validate(item)
+            for item in list(state.get("conflict_reports") or [])
+        }
+        document_backbone = DocumentBackbone.model_validate(state.get("document_backbone") or {})
+        update_knowledge_build_status(
+            state["subject"],
+            requested_at=state["requested_at"],
+            status="running",
+            stage="reviewing_content",
+            digest_mode=state.get("digest_mode") or None,
+            current_stage_description=f"正在复核 {len(enhanced)} 个章节的覆盖、证据和一致性。",
+        )
+        reviewed = []
+        reports = []
+        actions = []
+        # 章节复核只看单章的覆盖、证据和冲突；整本文档一致性放在所有章节复核之后统一判断。
+        for draft in enhanced:
+            reviewed_draft, report, chapter_actions = review_chapter(
+                draft=draft,
+                task=tasks_by_chapter.get(draft.chapter_index),
+                claim_ledger=claim_ledgers_by_chapter.get(draft.chapter_index),
+                claim_evidence_map=claim_maps_by_chapter.get(draft.chapter_index),
+                conflict_report=conflict_reports_by_chapter.get(draft.chapter_index),
+            )
+            reviewed.append(reviewed_draft)
+            reports.append(report)
+            actions.extend(chapter_actions)
+        consistency_report = review_document_consistency(
+            reviewed_chapters=reviewed,
+            document_backbone=document_backbone,
+            expected_chapter_count=len(list(state.get("chapter_tasks") or [])),
+        )
+        elapsed_ms = int((perf_counter() - started_at) * 1000)
+        update_knowledge_build_status(
+            state["subject"],
+            requested_at=state["requested_at"],
+            status="running",
+            stage="content_reviewed",
+            digest_mode=state.get("digest_mode") or None,
+            current_stage_description=f"内容复核完成，记录 {len(actions)} 条回流建议。",
+        )
+        append_knowledge_build_recent_event(
+            state["subject"],
+            requested_at=state["requested_at"],
+            event={
+                "stage": "content_reviewed",
+                "summary": f"章节复核和整本一致性检查完成，回流建议 {len(actions)} 条。",
+                "created_at": utcnow(),
+            },
+        )
+        await publish_docgen_progress(
+            context,
+            state=state,
+            stage="content_reviewed",
+            payload={
+                "chapter_count": len(reviewed),
+                "review_action_count": len(actions),
+                "document_issue_count": len(consistency_report.issues),
+            },
+        )
+        return {
+            "reviewed_chapter_drafts": [item.model_dump(mode="json") for item in reviewed],
+            "chapter_review_reports": [item.model_dump(mode="json") for item in reports],
+            "document_consistency_report": consistency_report.model_dump(mode="json"),
+            "review_actions": [item.model_dump(mode="json") for item in actions],
+            "review_ms": elapsed_ms,
+        }
+
+    return review_content_node
+
+
+__all__ = ["build_review_content_node"]

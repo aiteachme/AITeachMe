@@ -140,8 +140,8 @@ async def _stream_composer_response(
                 latest_plan=state.get("latest_plan"),
             ),
             call_purpose=LLMCallPurpose.GENERATE,
-            model="light",
-            max_tokens=3200,
+            model="reason",
+            max_tokens=5000,
             extra_metadata={
                 "planner_session_id": state.get("planner_session_id") or "",
                 "substep": "合成计划大纲",

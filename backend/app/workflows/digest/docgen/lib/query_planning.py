@@ -36,6 +36,9 @@ EDUCATION_SITE_FILTERS: dict[str, list[str]] = {
     ],
 }
 
+QUERY_CONTEXT_ITEM_CHAR_BUDGET = 200
+QUERY_CONTEXT_ITEM_COUNT_BUDGET = 24
+
 
 class ResearchSubQueryPlan(BaseModel):
     queries: list[str] = Field(default_factory=list, description="围绕当前章节主题拆解出的研究子查询")
@@ -99,6 +102,7 @@ def build_research_focus_text(
 
 
 def _serialize_query_context(context: Sequence[str | Mapping[str, Any]] | None) -> list[dict[str, str]]:
+    # 这里只压缩“给 LLM 看的上下文摘要”，不改变上游保存的查询或证据数据。
     serialized: list[dict[str, str]] = []
     for item in context or []:
         if isinstance(item, Mapping):
@@ -109,8 +113,8 @@ def _serialize_query_context(context: Sequence[str | Mapping[str, Any]] | None) 
             text = str(item or "").strip()
         if not text:
             continue
-        serialized.append({"text": text[:200]})
-        if len(serialized) >= 8:
+        serialized.append({"text": text[:QUERY_CONTEXT_ITEM_CHAR_BUDGET]})
+        if len(serialized) >= QUERY_CONTEXT_ITEM_COUNT_BUDGET:
             break
     return serialized
 
@@ -130,7 +134,7 @@ def _fallback_sub_queries(
         f"{normalized_query} 公式 推导 适用条件",
         f"{normalized_query} 例题 应用 易错点",
     ]
-    for hint in hints[:2]:
+    for hint in hints:
         candidates.append(f"{normalized_query} {hint}")
     return [
         item

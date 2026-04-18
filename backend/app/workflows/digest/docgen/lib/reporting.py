@@ -24,12 +24,19 @@ def build_docgen_lane_summary(
 
     resolved_status = _resolve_status(state, status=status, error_message=error_message)
     resolved_error = _resolve_error_message(state, error_message=error_message)
-    chapter_materials = list(state.get("chapter_materials", []))
+    legacy_chapter_materials = list(state.get("chapter_materials", []))
     chapter_drafts = list(state.get("chapter_drafts", []))
     enhanced_chapter_drafts = list(state.get("enhanced_chapter_drafts", []))
     chapter_metadatas = list(state.get("chapter_metadatas", []))
+    research_traces = list(state.get("research_traces", []))
+    research_records = legacy_chapter_materials or chapter_metadatas or enhanced_chapter_drafts or chapter_drafts
     document_context = dict(state.get("document_context", {}) or {})
-    chapter_count = max(len(chapter_metadatas), len(enhanced_chapter_drafts), len(chapter_drafts), len(chapter_materials))
+    chapter_count = max(
+        len(chapter_metadatas),
+        len(enhanced_chapter_drafts),
+        len(chapter_drafts),
+        len(legacy_chapter_materials),
+    )
     research_items = build_slow_items(
         state.get("slowest_research_chapters")
         or [
@@ -38,10 +45,10 @@ def build_docgen_lane_summary(
                 "title": str(material.get("title", "")),
                 "elapsed_ms": int(material.get("research_ms", 0)),
                 "source_count": len(material.get("sources", [])),
-                "local_hits": int(material.get("local_hits", 0)),
-                "web_hits": int(material.get("web_hits", 0)),
+                "local_hits": _research_metric(material, "local_hits"),
+                "web_hits": _research_metric(material, "web_hits"),
             }
-            for index, material in enumerate(chapter_materials, start=1)
+            for index, material in enumerate(research_records, start=1)
         ]
     )
     draft_items = build_slow_items(
@@ -77,17 +84,17 @@ def build_docgen_lane_summary(
     ]
     total_sources = len(dict.fromkeys(source_urls))
     placeholder_count = sum(int(chapter.get("placeholder_count", 0)) for chapter in chapter_drafts)
-    local_hit_count = sum(int(chapter.get("local_hits", 0) or 0) for chapter in chapter_materials)
-    web_hit_count = sum(int(chapter.get("web_hits", 0) or 0) for chapter in chapter_materials)
+    local_hit_count = sum(_research_metric(chapter, "local_hits") for chapter in research_records)
+    web_hit_count = sum(_research_metric(chapter, "web_hits") for chapter in research_records)
     fallback_chapter_count = sum(
-        1 for chapter in chapter_materials if bool(chapter.get("fallback_used", False))
+        1 for chapter in research_records if bool(chapter.get("fallback_used", False))
     )
-    curated_source_count = sum(int(chapter.get("curated_source_count", 0) or 0) for chapter in chapter_materials)
-    trusted_source_count = sum(int(chapter.get("trusted_source_count", 0) or 0) for chapter in chapter_materials)
+    curated_source_count = sum(int(chapter.get("curated_source_count", 0) or 0) for chapter in research_records)
+    trusted_source_count = sum(int(chapter.get("trusted_source_count", 0) or 0) for chapter in research_records)
     retrieval_profiles = sorted(
         {
             str(chapter.get("retrieval_profile") or "").strip()
-            for chapter in chapter_materials
+            for chapter in research_records
             if str(chapter.get("retrieval_profile") or "").strip()
         }
     )
@@ -96,21 +103,33 @@ def build_docgen_lane_summary(
     teaching_actions = sorted(
         {
             str(item.get("teaching_action") or "").strip()
-            for item in [*chapter_materials, *chapter_drafts]
+            for item in [*research_records, *chapter_drafts]
             if str(item.get("teaching_action") or "").strip()
         }
     )
     if not teaching_actions and str(state.get("teaching_action") or "").strip():
         teaching_actions = [str(state.get("teaching_action") or "").strip()]
-    planned_query_count = sum(len(chapter.get("planned_queries", []) or []) for chapter in chapter_materials)
-    executed_query_count = sum(len(chapter.get("executed_queries", []) or []) for chapter in chapter_materials)
-    read_url_count = sum(int(chapter.get("read_url_count", 0) or 0) for chapter in chapter_materials)
-    research_document_count = sum(int(chapter.get("document_count", 0) or 0) for chapter in chapter_materials)
-    purify_chapter_count = sum(1 for chapter in chapter_materials if bool(chapter.get("purify_used", False)))
+    planned_query_count = (
+        sum(len(task.get("retrieval_queries", []) or []) for task in list(state.get("chapter_tasks", []) or []))
+        or sum(len(chapter.get("planned_queries", []) or []) for chapter in research_records)
+    )
+    executed_query_count = (
+        sum(len(trace.get("executed_queries", []) or []) for trace in research_traces)
+        or sum(len(chapter.get("executed_queries", []) or []) for chapter in research_records)
+    )
+    read_url_count = (
+        sum(int((trace.get("budget_used") or {}).get("read_url_count", 0) or 0) for trace in research_traces)
+        or sum(_research_metric(chapter, "read_url_count") for chapter in research_records)
+    )
+    research_document_count = (
+        sum(int((trace.get("budget_used") or {}).get("document_count", 0) or 0) for trace in research_traces)
+        or sum(_research_metric(chapter, "document_count") for chapter in research_records)
+    )
+    purify_chapter_count = sum(1 for chapter in research_records if bool(chapter.get("purify_used", False)))
     retriever_names = sorted(
         {
             str(retriever_name)
-            for chapter in chapter_materials
+            for chapter in research_records
             for retriever_name in dict(chapter.get("retriever_stats", {}) or {}).keys()
             if str(retriever_name).strip()
         }
@@ -118,7 +137,7 @@ def build_docgen_lane_summary(
     active_retriever_names = sorted(
         {
             str(retriever_name).strip()
-            for chapter in chapter_materials
+            for chapter in research_records
             for retriever_name in list(chapter.get("active_retrievers", []) or [])
             if str(retriever_name).strip()
         }
@@ -126,7 +145,7 @@ def build_docgen_lane_summary(
     configured_retriever_names = sorted(
         {
             str(retriever_name).strip()
-            for chapter in chapter_materials
+            for chapter in research_records
             for retriever_name in list(chapter.get("configured_retrievers", []) or [])
             if str(retriever_name).strip()
         }
@@ -134,42 +153,58 @@ def build_docgen_lane_summary(
     applied_retrieval_profiles = sorted(
         {
             str(chapter.get("applied_retrieval_profile") or "").strip()
-            for chapter in chapter_materials
+            for chapter in research_records
             if str(chapter.get("applied_retrieval_profile") or "").strip()
         }
     )
     requested_profiles = sorted(
         {
             str(chapter.get("requested_profile") or chapter.get("requested_retrieval_profile") or "").strip()
-            for chapter in chapter_materials
+            for chapter in research_records
             if str(chapter.get("requested_profile") or chapter.get("requested_retrieval_profile") or "").strip()
         }
     )
     applied_profiles = sorted(
         {
             str(chapter.get("applied_profile") or chapter.get("applied_retrieval_profile") or "").strip()
-            for chapter in chapter_materials
+            for chapter in research_records
             if str(chapter.get("applied_profile") or chapter.get("applied_retrieval_profile") or "").strip()
         }
     )
-    research_rounds = [
+    title_by_chapter = {
+        int(chapter.get("chapter_index", 0) or 0): str(chapter.get("resolved_title") or chapter.get("title") or "")
+        for chapter in research_records
+    }
+    research_rounds = _research_round_summaries(research_traces, title_by_chapter=title_by_chapter) or [
         {
             "chapter_index": int(chapter.get("chapter_index", 0) or 0),
             "title": str(chapter.get("resolved_title") or chapter.get("title") or ""),
             "round_count": int(chapter.get("research_round_count", 0) or len(chapter.get("research_rounds", []) or [])),
         }
-        for chapter in chapter_materials
+        for chapter in research_records
     ]
     gaps_remaining = sorted(
         {
             str(gap).strip()
-            for chapter in chapter_materials
+            for trace in research_traces
+            for gap in list(trace.get("gap_notes", []) or [])
+            if str(gap).strip()
+        }
+    )[:12] or sorted(
+        {
+            str(gap).strip()
+            for chapter in research_records
             for gap in list(chapter.get("gaps_remaining", []) or [])
             if str(gap).strip()
         }
     )[:12]
     source_class_breakdown = _sum_count_maps(
-        [dict(chapter.get("source_class_breakdown", {}) or {}) for chapter in chapter_materials]
+        [
+            dict(round_item.get("source_class_breakdown", {}) or {})
+            for trace in research_traces
+            for round_item in list(trace.get("rounds", []) or [])
+        ]
+        or [dict(chapter.get("source_class_breakdown", {}) or {}) for chapter in research_records]
     )
     asset_items = [
         asset
@@ -201,7 +236,6 @@ def build_docgen_lane_summary(
     asset_summary = {
         "mermaid": mermaid_block_count or sum(1 for asset in asset_items if asset.get("kind") == "mermaid"),
         "image": image_block_count or sum(1 for asset in asset_items if asset.get("kind") == "image"),
-        "interactive_html": interactive_block_count or sum(1 for asset in asset_items if asset.get("kind") == "interactive_html"),
         "animation": int(
             ((state.get("asset_summary") or {}) if isinstance(state.get("asset_summary"), Mapping) else {}).get(
                 "animation", 0
@@ -221,8 +255,12 @@ def build_docgen_lane_summary(
 
     coverage_scores = [
         float(_quality_mapping(chapter).get("coverage_score", 0.0) or 0.0)
-        for chapter in [*chapter_drafts, *enhanced_chapter_drafts, *chapter_materials]
+        for chapter in [*chapter_drafts, *enhanced_chapter_drafts, *research_records]
         if float(_quality_mapping(chapter).get("coverage_score", 0.0) or 0.0) > 0
+    ] + [
+        float(trace.get("coverage_score", 0.0) or 0.0)
+        for trace in research_traces
+        if float(trace.get("coverage_score", 0.0) or 0.0) > 0
     ]
     quality_scores = [
         float(_quality_mapping(chapter).get("quality_score", 0.0) or 0.0)
@@ -242,7 +280,7 @@ def build_docgen_lane_summary(
                 + list(document_context.get("selected_skillpacks", []) or [])
                 + [
                     skill
-                    for chapter in [*chapter_materials, *chapter_drafts]
+                    for chapter in [*research_records, *chapter_drafts]
                     for skill in list(chapter.get("selected_skillpacks", []) or [])
                 ]
             )
@@ -271,7 +309,8 @@ def build_docgen_lane_summary(
         "planner_ms": int(state.get("planner_ms", 0)),
         "research_ms": int(state.get("research_ms", 0)),
         "draft_ms": int(state.get("draft_ms", 0)),
-        "enrich_ms": int(state.get("enrich_ms", 0)),
+        "enrich_ms": int(state.get("enrich_ms", 0) or state.get("enhance_ms", 0) or 0),
+        "enhance_ms": int(state.get("enhance_ms", 0)),
         "examine_ms": int(state.get("examine_ms", 0)),
         "finalize_ms": int(state.get("finalize_ms", 0)),
         "research_avg_ms": round(int(state.get("research_ms", 0)) / chapter_count, 2) if chapter_count else 0.0,
@@ -359,6 +398,33 @@ def _resolve_error_message(state: Mapping[str, Any], *, error_message: str | Non
     return resolved or None
 
 
+def _research_metric(chapter: Mapping[str, Any], key: str) -> int:
+    scope = chapter.get("source_scope")
+    if isinstance(scope, Mapping) and key in scope:
+        return int(scope.get(key, 0) or 0)
+    return int(chapter.get(key, 0) or 0)
+
+
+def _research_round_summaries(
+    traces: Sequence[Mapping[str, Any]],
+    *,
+    title_by_chapter: Mapping[int, str],
+) -> list[dict[str, Any]]:
+    summaries: list[dict[str, Any]] = []
+    for trace in traces:
+        chapter_index = int(trace.get("chapter_index", 0) or 0)
+        if chapter_index <= 0:
+            continue
+        summaries.append(
+            {
+                "chapter_index": chapter_index,
+                "title": str(title_by_chapter.get(chapter_index) or ""),
+                "round_count": len(list(trace.get("rounds", []) or [])),
+            }
+        )
+    return summaries
+
+
 def _sum_count_maps(items: Sequence[Mapping[str, Any]]) -> dict[str, int]:
     totals: dict[str, int] = {}
     for item in items:
@@ -371,4 +437,3 @@ def _sum_count_maps(items: Sequence[Mapping[str, Any]]) -> dict[str, int]:
 
 
 __all__ = ["build_docgen_lane_summary"]
-

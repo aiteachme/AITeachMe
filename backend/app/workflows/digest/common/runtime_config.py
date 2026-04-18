@@ -25,7 +25,6 @@ class PlannerRuntimeConfig:
 
     default_tone: str
     default_digest_mode: str
-    allow_external_search: bool
     sprint: PlannerModeRuntimeConfig
     systematic: PlannerModeRuntimeConfig
 
@@ -53,7 +52,6 @@ def get_teaching_runtime_config() -> TeachingRuntimeConfig:
         planner=PlannerRuntimeConfig(
             default_tone=settings.planner.default_tone,
             default_digest_mode=settings.planner.default_digest_mode,
-            allow_external_search=settings.planner.allow_external_search,
             sprint=PlannerModeRuntimeConfig(
                 min_chapters=settings.planner.sprint.min_chapters,
                 max_chapters=max(

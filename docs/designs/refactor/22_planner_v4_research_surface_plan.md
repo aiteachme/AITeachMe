@@ -2,6 +2,9 @@
 
 > 最后更新：2026-04-16
 > 适用范围：`backend/app/workflows/digest/planner/` 与 `frontend/src/pages/BuildPlanPage.tsx`
+> 状态说明：本文是历史探索方案。当前 Planner 已收敛为
+> `digest/planner/README.md` 中的轻量四步链路，不在 Planner 阶段做本地
+> RAG 或外部 Web 检索；检索与证据增强由 DocGen 负责。
 
 ## 一句话结论
 

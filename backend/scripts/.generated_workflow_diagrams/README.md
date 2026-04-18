@@ -21,7 +21,6 @@
 | 模块 | 文件 | 包含的子工作流 |
 |------|------|----------------|
 | 🧬 Digest Engine · 消化引擎 | [digest.md](digest.md) | Digest Planner Workflow / Digest DocGen Workflow / Digest Graph Workflow |
-| 📝 Examine Engine · 诊断引擎 | [examine.md](examine.md) | Examine Question Build Workflow / Examine Exam Grade Workflow / Examine Workflow |
-| 📥 Ingest Engine · 摄入引擎 | [ingest.md](ingest.md) | Ingest File Parse Workflow / Ingest Deep Enhance Workflow |
+| 📥 Ingest Engine · 摄入引擎 | [ingest.md](ingest.md) | Ingest File Parse Workflow |
 | 💬 Interact Engine · 伴读引擎 | [interact.md](interact.md) | Interact Workflow |
 | 📊 Profile Engine · 显影引擎 | [profile.md](profile.md) | Profile Pipeline Workflow / Profile Workflow |

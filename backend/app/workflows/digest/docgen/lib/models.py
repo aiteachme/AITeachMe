@@ -65,7 +65,6 @@ class DocGenContext(DocGenBaseModel):
     digest_mode: str = "systematic"
     course_type: str = "systematic"
     retrieval_profile: str = ""
-    tone: str = "encouraging"
     user_goal: str = ""
     plan_summary: str = ""
     docgen_history_brief: str = ""
@@ -84,7 +83,6 @@ class DocGenContext(DocGenBaseModel):
         "digest_mode",
         "course_type",
         "retrieval_profile",
-        "tone",
         "user_goal",
         "plan_summary",
         "docgen_history_brief",
@@ -212,6 +210,65 @@ class FileMaterialSummaryBatch(DocGenBaseModel):
     files: list[FileMaterialSummary] = Field(default_factory=list)
 
 
+class HighConfidenceEvidenceUnit(DocGenBaseModel):
+    evidence_id: str = ""
+    source_ref: str = ""
+    source_type: str = "local"
+    evidence_type: str = "background"
+    text: str = ""
+    chapter_affinity: dict[int, float] = Field(default_factory=dict)
+    confidence: float = 0.5
+    source_title: str = ""
+    source_span: str = ""
+
+    @field_validator("evidence_id", "source_ref", "source_type", "evidence_type", "text", "source_title", "source_span", mode="before")
+    @classmethod
+    def _text(cls, value: Any) -> str:
+        return clean_text(value)
+
+    @field_validator("chapter_affinity", mode="before")
+    @classmethod
+    def _affinity(cls, value: Any) -> dict[int, float]:
+        if not isinstance(value, dict):
+            return {}
+        result: dict[int, float] = {}
+        for key, raw_score in value.items():
+            try:
+                index = int(key)
+            except (TypeError, ValueError):
+                continue
+            if index > 0:
+                result[index] = clean_unit_float(raw_score)
+        return result
+
+    @field_validator("confidence", mode="before")
+    @classmethod
+    def _confidence(cls, value: Any) -> float:
+        return clean_unit_float(value, default=0.5)
+
+
+class SourceAffinityByChapter(DocGenBaseModel):
+    chapter_index: int = 1
+    file_ids: list[int] = Field(default_factory=list)
+    section_refs: list[str] = Field(default_factory=list)
+    reason: str = ""
+
+    @field_validator("file_ids", mode="before")
+    @classmethod
+    def _file_ids(cls, value: Any) -> list[int]:
+        return clean_int_list(value)
+
+    @field_validator("section_refs", mode="before")
+    @classmethod
+    def _section_refs(cls, value: Any) -> list[str]:
+        return clean_string_list(value)
+
+    @field_validator("reason", mode="before")
+    @classmethod
+    def _text(cls, value: Any) -> str:
+        return clean_text(value)
+
+
 class EnhancedChapterOutline(DocGenBaseModel):
     chapter_index: int = 1
     confirmed_title: str = ""
@@ -251,7 +308,7 @@ class EnhancedChapterOutline(DocGenBaseModel):
     )
     @classmethod
     def _lists(cls, value: Any) -> list[str]:
-        return clean_string_list(value, limit=16)
+        return clean_string_list(value)
 
 
 class EnhancedChapterOutlineBatch(DocGenBaseModel):
@@ -261,7 +318,7 @@ class EnhancedChapterOutlineBatch(DocGenBaseModel):
     @field_validator("plan_mismatch_warnings", mode="before")
     @classmethod
     def _warnings(cls, value: Any) -> list[str]:
-        return clean_string_list(value, limit=12)
+        return clean_string_list(value)
 
 
 class ChapterBudgetPolicy(DocGenBaseModel):
@@ -271,6 +328,99 @@ class ChapterBudgetPolicy(DocGenBaseModel):
     max_opened_urls: int = 4
     max_context_chars: int = 6000
     max_writer_retries: int = 1
+
+
+class ChapterGenerationTaskSeed(DocGenBaseModel):
+    chapter_index: int = 1
+    confirmed_title: str = ""
+    enhanced_title: str = ""
+    chapter_goal: str = ""
+    mode: str = "systematic"
+    required_elements: list[str] = Field(default_factory=list)
+    forbidden_scope: list[str] = Field(default_factory=list)
+    retrieval_queries: list[str] = Field(default_factory=list)
+    priority_section_refs: list[str] = Field(default_factory=list)
+    preferred_sources: list[str] = Field(default_factory=list)
+    fallback_policy: str = "publish_readable_markdown"
+    target_length: int = 1200
+    style_rules: list[str] = Field(default_factory=list)
+    citation_policy: str = "global_reference_block"
+    uncertainty_policy: str = "state_uncertainty_and_avoid_fabrication"
+    allowed_assets: list[str] = Field(default_factory=list)
+
+    @field_validator("confirmed_title", "enhanced_title", "chapter_goal", "mode", "fallback_policy", "citation_policy", "uncertainty_policy", mode="before")
+    @classmethod
+    def _text(cls, value: Any) -> str:
+        return clean_text(value)
+
+    @field_validator(
+        "required_elements",
+        "forbidden_scope",
+        "retrieval_queries",
+        "priority_section_refs",
+        "preferred_sources",
+        "style_rules",
+        "allowed_assets",
+        mode="before",
+    )
+    @classmethod
+    def _lists(cls, value: Any) -> list[str]:
+        return clean_string_list(value)
+
+    @model_validator(mode="after")
+    def _finish(self) -> "ChapterGenerationTaskSeed":
+        if not self.enhanced_title:
+            self.enhanced_title = self.confirmed_title or f"第 {self.chapter_index} 章"
+        if not self.confirmed_title:
+            self.confirmed_title = self.enhanced_title
+        if not self.retrieval_queries:
+            self.retrieval_queries = clean_string_list([self.enhanced_title, *self.required_elements])
+        if self.target_length <= 0:
+            self.target_length = 1200
+        return self
+
+
+class ChapterGenerationPlanSeed(DocGenBaseModel):
+    subject: str = ""
+    digest_mode: str = "systematic"
+    source_policy: str = "local_first"
+    writing_rules: list[str] = Field(default_factory=list)
+    chapter_format: list[str] = Field(default_factory=list)
+    budget_policy: dict[str, Any] = Field(default_factory=dict)
+    chapters: list[ChapterGenerationTaskSeed] = Field(default_factory=list)
+    plan_mismatch_warnings: list[str] = Field(default_factory=list)
+
+    @field_validator("subject", "digest_mode", "source_policy", mode="before")
+    @classmethod
+    def _text(cls, value: Any) -> str:
+        return clean_text(value)
+
+    @field_validator("writing_rules", "chapter_format", "plan_mismatch_warnings", mode="before")
+    @classmethod
+    def _lists(cls, value: Any) -> list[str]:
+        return clean_string_list(value)
+
+
+class BackboneResearchAgenda(DocGenBaseModel):
+    topics: list[str] = Field(default_factory=list)
+    section_refs: list[str] = Field(default_factory=list)
+    evidence_unit_ids: list[str] = Field(default_factory=list)
+    glossary_candidates: list[str] = Field(default_factory=list)
+    notation_candidates: list[str] = Field(default_factory=list)
+    confusion_candidates: list[str] = Field(default_factory=list)
+
+    @field_validator(
+        "topics",
+        "section_refs",
+        "evidence_unit_ids",
+        "glossary_candidates",
+        "notation_candidates",
+        "confusion_candidates",
+        mode="before",
+    )
+    @classmethod
+    def _lists(cls, value: Any) -> list[str]:
+        return clean_string_list(value)
 
 
 class ChapterGenerationTask(DocGenBaseModel):
@@ -289,6 +439,22 @@ class ChapterGenerationTask(DocGenBaseModel):
     priority_section_refs: list[str] = Field(default_factory=list)
     retrieval_queries: list[str] = Field(default_factory=list)
     writing_rules: list[str] = Field(default_factory=list)
+    required_elements: list[str] = Field(default_factory=list)
+    forbidden_scope: list[str] = Field(default_factory=list)
+    preferred_sources: list[str] = Field(default_factory=list)
+    fallback_policy: str = "publish_readable_markdown"
+    style_rules: list[str] = Field(default_factory=list)
+    citation_policy: str = "global_reference_block"
+    uncertainty_policy: str = "state_uncertainty_and_avoid_fabrication"
+    allowed_assets: list[str] = Field(default_factory=list)
+    dependency_refs: list[str] = Field(default_factory=list)
+    forward_refs: list[str] = Field(default_factory=list)
+    claim_targets: list[str] = Field(default_factory=list)
+    confusion_targets: list[str] = Field(default_factory=list)
+    coverage_threshold: float = 0.62
+    evidence_support_threshold: float = 0.5
+    repetition_tolerance: float = 0.35
+    patch_tolerance: float = 0.35
     placeholder_requests: list[dict[str, Any]] = Field(default_factory=list)
     practice_seed_policy: dict[str, Any] = Field(default_factory=dict)
     min_word_count: int = 700
@@ -311,16 +477,35 @@ class ChapterGenerationTask(DocGenBaseModel):
         "priority_section_refs",
         "retrieval_queries",
         "writing_rules",
+        "required_elements",
+        "forbidden_scope",
+        "preferred_sources",
+        "style_rules",
+        "allowed_assets",
+        "dependency_refs",
+        "forward_refs",
+        "claim_targets",
+        "confusion_targets",
         mode="before",
     )
     @classmethod
     def _lists(cls, value: Any) -> list[str]:
-        return clean_string_list(value, limit=18)
+        return clean_string_list(value)
+
+    @field_validator("fallback_policy", "citation_policy", "uncertainty_policy", mode="before")
+    @classmethod
+    def _policy_text(cls, value: Any) -> str:
+        return clean_text(value)
+
+    @field_validator("coverage_threshold", "evidence_support_threshold", "repetition_tolerance", "patch_tolerance", mode="before")
+    @classmethod
+    def _unit_float(cls, value: Any) -> float:
+        return clean_unit_float(value, default=0.5)
 
     @field_validator("priority_file_ids", mode="before")
     @classmethod
     def _int_list(cls, value: Any) -> list[int]:
-        return clean_int_list(value, limit=12)
+        return clean_int_list(value)
 
     @model_validator(mode="after")
     def _finish(self) -> "ChapterGenerationTask":
@@ -329,7 +514,26 @@ class ChapterGenerationTask(DocGenBaseModel):
         if not self.confirmed_title:
             self.confirmed_title = self.enhanced_title
         if not self.retrieval_queries:
-            self.retrieval_queries = clean_string_list([self.enhanced_title, *self.content_points], limit=6)
+            self.retrieval_queries = clean_string_list([self.enhanced_title, *self.content_points])
+        if not self.required_elements:
+            self.required_elements = clean_string_list(
+                [
+                    *self.content_points,
+                    *self.concept_targets,
+                    *self.definition_targets,
+                    *self.formula_targets,
+                    *self.example_targets,
+                    *self.pitfall_targets,
+                ],
+            )
+        if not self.style_rules:
+            self.style_rules = list(self.writing_rules)
+        if not self.claim_targets:
+            self.claim_targets = clean_string_list([*self.required_elements, *self.concept_targets])
+        if not self.allowed_assets:
+            self.allowed_assets = clean_string_list(
+                [str(item.get("kind") or "") for item in self.placeholder_requests if isinstance(item, dict)],
+            )
         if self.min_word_count <= 0:
             self.min_word_count = 700
         if self.target_word_count < self.min_word_count:
@@ -340,7 +544,6 @@ class ChapterGenerationTask(DocGenBaseModel):
 class ChapterGenerationPlan(DocGenBaseModel):
     subject: str = ""
     digest_mode: str = "systematic"
-    tone: str = "encouraging"
     source_policy: str = "local_first"
     writing_rules: list[str] = Field(default_factory=list)
     chapter_format: list[str] = Field(default_factory=list)
@@ -348,7 +551,7 @@ class ChapterGenerationPlan(DocGenBaseModel):
     chapters: list[ChapterGenerationTask] = Field(default_factory=list)
     plan_mismatch_warnings: list[str] = Field(default_factory=list)
 
-    @field_validator("subject", "digest_mode", "tone", "source_policy", mode="before")
+    @field_validator("subject", "digest_mode", "source_policy", mode="before")
     @classmethod
     def _text(cls, value: Any) -> str:
         return clean_text(value)
@@ -356,7 +559,124 @@ class ChapterGenerationPlan(DocGenBaseModel):
     @field_validator("writing_rules", "chapter_format", "plan_mismatch_warnings", mode="before")
     @classmethod
     def _lists(cls, value: Any) -> list[str]:
-        return clean_string_list(value, limit=16)
+        return clean_string_list(value)
+
+
+class CanonicalGlossaryItem(DocGenBaseModel):
+    term: str = ""
+    aliases: list[str] = Field(default_factory=list)
+    definition: str = ""
+    source_hint: str = ""
+    target_chapters: list[int] = Field(default_factory=list)
+
+    @field_validator("term", "definition", "source_hint", mode="before")
+    @classmethod
+    def _text(cls, value: Any) -> str:
+        return clean_text(value)
+
+    @field_validator("aliases", mode="before")
+    @classmethod
+    def _aliases(cls, value: Any) -> list[str]:
+        return clean_string_list(value, limit=8)
+
+    @field_validator("target_chapters", mode="before")
+    @classmethod
+    def _chapters(cls, value: Any) -> list[int]:
+        return clean_int_list(value, limit=12)
+
+
+class ConceptDependencyEdge(DocGenBaseModel):
+    from_concept: str = ""
+    to_concept: str = ""
+    relation: str = "prerequisite"
+    reason: str = ""
+
+    @field_validator("from_concept", "to_concept", "relation", "reason", mode="before")
+    @classmethod
+    def _text(cls, value: Any) -> str:
+        return clean_text(value)
+
+
+class NotationItem(DocGenBaseModel):
+    symbol: str = ""
+    meaning: str = ""
+    target_chapters: list[int] = Field(default_factory=list)
+    source_hint: str = ""
+
+    @field_validator("symbol", "meaning", "source_hint", mode="before")
+    @classmethod
+    def _text(cls, value: Any) -> str:
+        return clean_text(value)
+
+    @field_validator("target_chapters", mode="before")
+    @classmethod
+    def _chapters(cls, value: Any) -> list[int]:
+        return clean_int_list(value, limit=12)
+
+
+class CanonicalClaim(DocGenBaseModel):
+    claim_id: str = ""
+    claim_type: str = "background"
+    claim_text: str = ""
+    target_chapter: int | None = None
+    importance: float = 0.5
+    requires_evidence: bool = True
+    source_hint: str = ""
+
+    @field_validator("claim_id", "claim_type", "claim_text", "source_hint", mode="before")
+    @classmethod
+    def _text(cls, value: Any) -> str:
+        return clean_text(value)
+
+    @field_validator("importance", mode="before")
+    @classmethod
+    def _importance(cls, value: Any) -> float:
+        return clean_unit_float(value, default=0.5)
+
+
+class ConfusionItem(DocGenBaseModel):
+    confusion_id: str = ""
+    topic: str = ""
+    contrast: str = ""
+    resolution_hint: str = ""
+    target_chapters: list[int] = Field(default_factory=list)
+
+    @field_validator("confusion_id", "topic", "contrast", "resolution_hint", mode="before")
+    @classmethod
+    def _text(cls, value: Any) -> str:
+        return clean_text(value)
+
+    @field_validator("target_chapters", mode="before")
+    @classmethod
+    def _chapters(cls, value: Any) -> list[int]:
+        return clean_int_list(value, limit=12)
+
+
+class BackboneConflictWarning(DocGenBaseModel):
+    warning_id: str = ""
+    severity: Literal["info", "warning", "error"] = "warning"
+    detail: str = ""
+    chapter_refs: list[int] = Field(default_factory=list)
+
+    @field_validator("warning_id", "detail", mode="before")
+    @classmethod
+    def _text(cls, value: Any) -> str:
+        return clean_text(value)
+
+    @field_validator("chapter_refs", mode="before")
+    @classmethod
+    def _chapters(cls, value: Any) -> list[int]:
+        return clean_int_list(value, limit=12)
+
+
+class DocumentBackbone(DocGenBaseModel):
+    canonical_glossary: list[CanonicalGlossaryItem] = Field(default_factory=list)
+    concept_dependency_graph: list[ConceptDependencyEdge] = Field(default_factory=list)
+    notation_registry: list[NotationItem] = Field(default_factory=list)
+    canonical_claim_pool: list[CanonicalClaim] = Field(default_factory=list)
+    confusion_map: list[ConfusionItem] = Field(default_factory=list)
+    source_trust_summary: dict[str, Any] = Field(default_factory=dict)
+    fallback_used: bool = False
 
 
 class ChapterResearchTrace(DocGenBaseModel):
@@ -387,6 +707,113 @@ class EvidenceLedger(DocGenBaseModel):
     items: list[EvidenceItem] = Field(default_factory=list)
 
 
+class EvidenceUnit(DocGenBaseModel):
+    evidence_id: str = ""
+    chapter_index: int = 1
+    evidence_type: str = "background"
+    text: str = ""
+    source_ref: str = ""
+    source_span: str = ""
+    confidence: float = 0.5
+
+    @field_validator("evidence_id", "evidence_type", "text", "source_ref", "source_span", mode="before")
+    @classmethod
+    def _text(cls, value: Any) -> str:
+        return clean_text(value)
+
+    @field_validator("confidence", mode="before")
+    @classmethod
+    def _confidence(cls, value: Any) -> float:
+        return clean_unit_float(value, default=0.5)
+
+
+class ClaimItem(DocGenBaseModel):
+    claim_id: str = ""
+    chapter_index: int = 1
+    claim_type: str = "background"
+    claim_text: str = ""
+    importance: float = 0.5
+    requires_evidence: bool = True
+    source_hint: str = ""
+    evidence_ids: list[str] = Field(default_factory=list)
+
+    @field_validator("claim_id", "claim_type", "claim_text", "source_hint", mode="before")
+    @classmethod
+    def _text(cls, value: Any) -> str:
+        return clean_text(value)
+
+    @field_validator("evidence_ids", mode="before")
+    @classmethod
+    def _evidence_ids(cls, value: Any) -> list[str]:
+        return clean_string_list(value, limit=12)
+
+    @field_validator("importance", mode="before")
+    @classmethod
+    def _importance(cls, value: Any) -> float:
+        return clean_unit_float(value, default=0.5)
+
+
+class ClaimLedger(DocGenBaseModel):
+    chapter_index: int = 1
+    items: list[ClaimItem] = Field(default_factory=list)
+    fallback_used: bool = False
+
+
+class ClaimEvidenceBinding(DocGenBaseModel):
+    claim_id: str = ""
+    evidence_ids: list[str] = Field(default_factory=list)
+    support_level: float = 0.0
+    notes: str = ""
+
+    @field_validator("claim_id", "notes", mode="before")
+    @classmethod
+    def _text(cls, value: Any) -> str:
+        return clean_text(value)
+
+    @field_validator("evidence_ids", mode="before")
+    @classmethod
+    def _evidence_ids(cls, value: Any) -> list[str]:
+        return clean_string_list(value, limit=12)
+
+    @field_validator("support_level", mode="before")
+    @classmethod
+    def _support_level(cls, value: Any) -> float:
+        return clean_unit_float(value, default=0.0)
+
+
+class ClaimEvidenceMap(DocGenBaseModel):
+    chapter_index: int = 1
+    bindings: list[ClaimEvidenceBinding] = Field(default_factory=list)
+    fallback_used: bool = False
+
+
+class ConflictItem(DocGenBaseModel):
+    conflict_id: str = ""
+    chapter_index: int = 1
+    conflict_type: str = "scope"
+    severity: Literal["info", "warning", "error"] = "warning"
+    detail: str = ""
+    resolution: str = ""
+    source_refs: list[str] = Field(default_factory=list)
+
+    @field_validator("conflict_id", "conflict_type", "detail", "resolution", mode="before")
+    @classmethod
+    def _text(cls, value: Any) -> str:
+        return clean_text(value)
+
+    @field_validator("source_refs", mode="before")
+    @classmethod
+    def _source_refs(cls, value: Any) -> list[str]:
+        return clean_string_list(value, limit=12)
+
+
+class ConflictReport(DocGenBaseModel):
+    chapter_index: int = 1
+    items: list[ConflictItem] = Field(default_factory=list)
+    unresolved_count: int = 0
+    fallback_used: bool = False
+
+
 class ChapterQualitySignals(DocGenBaseModel):
     coverage_score: float = 0.0
     quality_score: float = 0.0
@@ -402,6 +829,8 @@ class ChapterDraft(DocGenBaseModel):
     summary_draft: str = ""
     research_trace: ChapterResearchTrace = Field(default_factory=ChapterResearchTrace)
     evidence_ledger: EvidenceLedger = Field(default_factory=EvidenceLedger)
+    claim_ledger_ref: str = ""
+    conflict_warning_refs: list[str] = Field(default_factory=list)
     source_scope: dict[str, Any] = Field(default_factory=dict)
     quality_signals: ChapterQualitySignals = Field(default_factory=ChapterQualitySignals)
     placeholder_requests: list[dict[str, Any]] = Field(default_factory=list)
@@ -416,12 +845,21 @@ class EnhancedChapterDraft(DocGenBaseModel):
     markdown: str = ""
     summary: str = ""
     evidence_ledger: EvidenceLedger = Field(default_factory=EvidenceLedger)
+    claim_ledger_ref: str = ""
+    conflict_warning_refs: list[str] = Field(default_factory=list)
     quality_signals: ChapterQualitySignals = Field(default_factory=ChapterQualitySignals)
+    source_scope: dict[str, Any] = Field(default_factory=dict)
     sources: list[str] = Field(default_factory=list)
     source_details: list[dict[str, Any]] = Field(default_factory=list)
     asset_ids: list[str] = Field(default_factory=list)
     practice_ids: list[str] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
+    fallback_used: bool = False
+
+
+class ReviewedChapterDraft(EnhancedChapterDraft):
+    review_report_ref: str = ""
+    patched: bool = False
 
 
 class AssetManifest(DocGenBaseModel):
@@ -449,14 +887,80 @@ class MergeReviewReport(DocGenBaseModel):
     source_summary: dict[str, Any] = Field(default_factory=dict)
 
 
+class ChapterReviewReport(DocGenBaseModel):
+    report_id: str = ""
+    chapter_index: int = 1
+    passed: bool = True
+    coverage_score: float = 0.0
+    evidence_support_score: float = 0.0
+    quality_score: float = 0.0
+    missing_elements: list[str] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+    fallback_used: bool = False
+
+    @field_validator("report_id", mode="before")
+    @classmethod
+    def _text(cls, value: Any) -> str:
+        return clean_text(value)
+
+    @field_validator("missing_elements", "warnings", mode="before")
+    @classmethod
+    def _lists(cls, value: Any) -> list[str]:
+        return clean_string_list(value, limit=18)
+
+
+class DocumentConsistencyReport(DocGenBaseModel):
+    passed: bool = True
+    issues: list[dict[str, Any]] = Field(default_factory=list)
+    glossary_warnings: list[str] = Field(default_factory=list)
+    source_summary: dict[str, Any] = Field(default_factory=dict)
+    fallback_used: bool = False
+
+    @field_validator("glossary_warnings", mode="before")
+    @classmethod
+    def _warnings(cls, value: Any) -> list[str]:
+        return clean_string_list(value, limit=24)
+
+
+class ReviewAction(DocGenBaseModel):
+    action_id: str = ""
+    action_type: Literal["surface_patch", "section_patch", "regenerate_chapter", "re_dispatch", "rebuild_backbone"] = "surface_patch"
+    chapter_index: int | None = None
+    severity: Literal["info", "warning", "error"] = "warning"
+    reason: str = ""
+    status: Literal["recorded", "applied", "skipped"] = "recorded"
+
+    @field_validator("action_id", "reason", mode="before")
+    @classmethod
+    def _text(cls, value: Any) -> str:
+        return clean_text(value)
+
+
 __all__ = [
     "AssetManifest",
+    "BackboneConflictWarning",
+    "BackboneResearchAgenda",
+    "CanonicalClaim",
+    "CanonicalGlossaryItem",
     "ChapterBudgetPolicy",
     "ChapterDraft",
+    "ChapterGenerationPlanSeed",
     "ChapterGenerationPlan",
+    "ChapterGenerationTaskSeed",
     "ChapterGenerationTask",
     "ChapterQualitySignals",
+    "ChapterReviewReport",
     "ChapterResearchTrace",
+    "ClaimEvidenceBinding",
+    "ClaimEvidenceMap",
+    "ClaimItem",
+    "ClaimLedger",
+    "ConceptDependencyEdge",
+    "ConfusionItem",
+    "ConflictItem",
+    "ConflictReport",
+    "DocumentBackbone",
+    "DocumentConsistencyReport",
     "DocGenContext",
     "DocGenIntentProfile",
     "EnhancedChapterDraft",
@@ -464,11 +968,17 @@ __all__ = [
     "EnhancedChapterOutlineBatch",
     "EvidenceItem",
     "EvidenceLedger",
+    "EvidenceUnit",
     "FileMaterialSummary",
     "FileMaterialSummaryBatch",
+    "HighConfidenceEvidenceUnit",
     "MergeReviewIssue",
     "MergeReviewReport",
+    "NotationItem",
     "PracticeManifest",
+    "ReviewAction",
+    "ReviewedChapterDraft",
+    "SourceAffinityByChapter",
     "clean_int_list",
     "clean_string_list",
     "clean_text",

@@ -8,7 +8,7 @@ from time import perf_counter
 from app.utils.docgen_store import append_knowledge_build_recent_event, update_knowledge_build_status
 from app.utils.time import utcnow
 from app.shared.infra.workflow.context import WorkflowContext
-from app.workflows.digest.docgen.lib.file_summaries import summarize_files
+from app.workflows.digest.docgen.lib.file_summaries import derive_source_affinity_and_evidence, summarize_files
 from app.workflows.digest.docgen.lib.intent import infer_docgen_intent
 from app.workflows.digest.docgen.lib.models import DocGenContext
 from app.workflows.digest.docgen.lib.outline_enhance import enhance_plan_outline
@@ -88,6 +88,14 @@ def build_prepare_parallel_inputs_node(*, context: WorkflowContext):
             ) if shared_inputs is not None else asyncio.sleep(0, result=[]),
         )
         enhanced_outlines, mismatch_warnings = outline_result
+        if shared_inputs is not None:
+            source_affinity, evidence_units = derive_source_affinity_and_evidence(
+                shared_inputs,
+                summaries=file_summaries,
+                chapters=chapters,
+            )
+        else:
+            source_affinity, evidence_units = [], []
         elapsed_ms = int((perf_counter() - started_at) * 1000)
         await publish_docgen_progress(
             context,
@@ -96,6 +104,7 @@ def build_prepare_parallel_inputs_node(*, context: WorkflowContext):
             payload={
                 "chapter_count": len(enhanced_outlines),
                 "file_summary_count": len(file_summaries),
+                "evidence_candidate_count": len(evidence_units),
                 "intent_fallback_used": bool(intent_profile.fallback_used),
                 "mismatch_warning_count": len(mismatch_warnings),
             },
@@ -104,6 +113,8 @@ def build_prepare_parallel_inputs_node(*, context: WorkflowContext):
             "enhanced_chapter_outlines": [item.model_dump(mode="json") for item in enhanced_outlines],
             "intent_profile": intent_profile.model_dump(mode="json"),
             "file_summaries": [item.model_dump(mode="json") for item in file_summaries],
+            "source_affinity_by_chapter": [item.model_dump(mode="json") for item in source_affinity],
+            "high_confidence_evidence_units": [item.model_dump(mode="json") for item in evidence_units],
             "plan_mismatch_warnings": list(mismatch_warnings),
             "prepare_ms": elapsed_ms,
             "llm_calls_total": 2 + len(file_summaries),

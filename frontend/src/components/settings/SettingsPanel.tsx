@@ -81,7 +81,7 @@ const SECTIONS: SectionConfig[] = [
   { id: "models", label: "模型配置", description: "settings_default.yaml 当前模型", icon: Bot },
   { id: "parser", label: "解析与检索", description: "Ingest / Search 配置", icon: Wrench },
   { id: "generation", label: "生成参数", description: "本机实验参数", icon: SlidersHorizontal },
-  { id: "runtime", label: "运行与调试", description: "存储、观测与本机偏好", icon: Server },
+  { id: "runtime", label: "运行与调试", description: "对话、存储、观测与本机偏好", icon: Server },
 ];
 
 function clamp(value: number, min: number, max: number): number {
@@ -610,27 +610,30 @@ export function SettingsPanel({ isOpen, onClose }: SettingsModalProps) {
       <BackendSettingList
         entries={getBackendEntries("ingest", "search").filter((entry) =>
           [
-            "files.max_upload_size_mb",
-            "files.max_files_per_upload",
+            "ingest.max_upload_size_mb",
+            "ingest.max_files_per_upload",
             "ingest.parse_concurrency",
             "ingest.parser_timeout_s",
             "mineru.api_token",
-            "ocr.api_key",
             "rag.top_k",
             "rag.similarity_threshold",
             "rag.rerank_model",
+            "rag.rerank_api_key",
             "local_rag.priority",
             "local_rag.min_results",
-            "web_search.retriever_profile",
-            "web_search.retrievers",
+            "search.retriever_profile",
+            "search.retrievers",
             "search.parallel_retrievers",
             "search.max_parallel_retrievers",
             "search.fusion_k",
             "search.tavily_key",
             "search.brave_key",
             "search.exa_key",
+            "search.bing_key",
+            "search.bocha_key",
             "search.searxng_url",
             "reader.jina_enabled",
+            "reader.jina_key",
           ].includes(entry.key),
         )}
         loading={isOverviewLoading}
@@ -766,9 +769,9 @@ export function SettingsPanel({ isOpen, onClose }: SettingsModalProps) {
 
   const renderRuntime = () => (
     <div className="space-y-6">
-      <InfoCard text="存储、数据库、LangSmith、缓存和安全护栏由后端环境变量与 settings_default.yaml 控制；下面先展示当前生效状态。" />
+      <InfoCard text="伴读对话、存储、数据库、LangSmith、观测和安全护栏由后端环境变量与 settings_default.yaml 控制；下面先展示当前生效状态。" />
       <BackendSettingList
-        entries={getBackendEntries("storage", "observability")}
+        entries={getBackendEntries("interact", "storage", "observability")}
         loading={isOverviewLoading}
         error={overviewError}
       />

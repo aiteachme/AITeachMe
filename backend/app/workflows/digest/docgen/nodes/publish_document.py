@@ -24,7 +24,7 @@ def build_publish_document_node(*, context: WorkflowContext):
 
     async def publish_document_node(state: DocGenState) -> dict:
         started_at = perf_counter()
-        node_logger = context.get_logger().bind(node="finalize_assemble")
+        node_logger = context.get_logger().bind(node="publish_document")
         subject = state["subject"]
         chapter_metadatas = sorted(
             list(state.get("chapter_metadatas", [])),
@@ -32,14 +32,32 @@ def build_publish_document_node(*, context: WorkflowContext):
         )
         chapter_assignments = list(state.get("chapter_assignments", []))
         document_context = dict(state.get("document_context") or {})
+        # 这份快照给后续调试、问答/出题复用和失败追踪用；不要只因为前端暂时不用就删。
         docgen_artifacts = {
             "docgen_context": dict(state.get("docgen_context") or {}),
             "intent_profile": dict(state.get("intent_profile") or {}),
             "file_summaries": list(state.get("file_summaries") or []),
+            "source_affinity_by_chapter": list(state.get("source_affinity_by_chapter") or []),
+            "high_confidence_evidence_units": list(state.get("high_confidence_evidence_units") or []),
+            "chapter_generation_plan_seed": dict(state.get("chapter_generation_plan_seed") or {}),
+            "chapter_task_seeds": list(state.get("chapter_task_seeds") or []),
+            "backbone_research_agenda": dict(state.get("backbone_research_agenda") or {}),
+            "document_backbone_snapshot": dict(state.get("document_backbone") or {}),
+            "backbone_conflict_warnings": list(state.get("backbone_conflict_warnings") or []),
             "chapter_generation_plan": dict(state.get("chapter_generation_plan") or {}),
+            "chapter_drafts": list(state.get("chapter_drafts") or []),
             "enhanced_chapter_drafts": list(state.get("enhanced_chapter_drafts") or []),
+            "reviewed_chapter_drafts": list(state.get("reviewed_chapter_drafts") or []),
             "research_traces": list(state.get("research_traces") or []),
             "evidence_ledgers": list(state.get("evidence_ledgers") or []),
+            "claim_ledgers": list(state.get("claim_ledgers") or []),
+            "claim_evidence_maps": list(state.get("claim_evidence_maps") or []),
+            "conflict_reports": list(state.get("conflict_reports") or []),
+            "chapter_review_reports": list(state.get("chapter_review_reports") or []),
+            "document_consistency_report": dict(state.get("document_consistency_report") or {}),
+            "review_actions": list(state.get("review_actions") or []),
+            "unresolved_warnings": list(state.get("unresolved_warnings") or []),
+            "source_trust_summary": dict((state.get("document_backbone") or {}).get("source_trust_summary") or {}),
             "asset_manifest": {
                 "assets": [
                     asset
@@ -55,6 +73,8 @@ def build_publish_document_node(*, context: WorkflowContext):
                 ]
             },
             "merge_review_report": dict(state.get("merge_review_report") or {}),
+            "final_chapter_titles": list(state.get("final_chapter_titles") or []),
+            "title_review_report": dict(state.get("title_review_report") or {}),
         }
         user_prompt = state.get("user_prompt")
         requested_at = state["requested_at"]

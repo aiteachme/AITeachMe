@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from time import perf_counter
 
-from app.shared.infra.tools.builtin.markdown_processing import prepend_table_of_contents
+from app.shared.infra.tools.builtin.markdown_processing import count_words, prepend_table_of_contents
 from app.utils.docgen_store import append_knowledge_build_recent_event, update_knowledge_build_status
 from app.utils.time import utcnow
 from app.shared.infra.workflow.context import WorkflowContext
@@ -24,7 +24,17 @@ def _dedupe_enhanced(chapters: list[EnhancedChapterDraft]) -> list[EnhancedChapt
     return [best[index] for index in sorted(best)]
 
 
-def _chapter_metadata(chapter: EnhancedChapterDraft, *, digest_mode: str) -> dict:
+def _chapter_metadata(
+    chapter: EnhancedChapterDraft,
+    *,
+    digest_mode: str,
+    claim_ledger: dict | None = None,
+    claim_evidence_map: dict | None = None,
+    conflict_report: dict | None = None,
+    chapter_review_report: dict | None = None,
+) -> dict:
+    # 这里是发布 manifest 的结构化收口，不改写正文；内容修复必须发生在更早的 review/repair 阶段。
+    source_scope = dict(chapter.source_scope or {})
     return {
         "chapter_index": chapter.chapter_index,
         "title": chapter.title,
@@ -36,22 +46,36 @@ def _chapter_metadata(chapter: EnhancedChapterDraft, *, digest_mode: str) -> dic
         "source_file_ids": [],
         "sources": list(chapter.sources),
         "source_details": list(chapter.source_details),
+        "source_scope": source_scope,
+        "local_hits": int(source_scope.get("local_hits", 0) or 0),
+        "web_hits": int(source_scope.get("web_hits", 0) or 0),
+        "query_count": int(source_scope.get("query_count", 0) or 0),
+        "read_url_count": int(source_scope.get("read_url_count", 0) or 0),
+        "document_count": int(source_scope.get("document_count", 0) or 0),
+        "fallback_used": bool(chapter.fallback_used),
         "evidence_ledger": chapter.evidence_ledger.model_dump(mode="json"),
+        "claim_ledger_ref": chapter.claim_ledger_ref,
+        "claim_ledger": dict(claim_ledger or {}),
+        "claim_evidence_map": dict(claim_evidence_map or {}),
+        "conflict_report": dict(conflict_report or {}),
+        "chapter_review_report": dict(chapter_review_report or {}),
+        "conflict_warning_refs": list(chapter.conflict_warning_refs),
         "quality_signals": chapter.quality_signals.model_dump(mode="json"),
         "asset_ids": list(chapter.asset_ids),
         "practice_ids": list(chapter.practice_ids),
         "warnings": list(chapter.warnings),
-        "word_count": len(chapter.markdown),
+        "word_count": count_words(chapter.markdown),
     }
 
 
 def build_merge_review_node(*, context: WorkflowContext):
     async def merge_review_node(state: DocGenState) -> dict:
         started_at = perf_counter()
+        raw_chapters = list(state.get("reviewed_chapter_drafts") or []) or list(state.get("enhanced_chapter_drafts") or [])
         enhanced = _dedupe_enhanced(
             [
                 EnhancedChapterDraft.model_validate(item)
-                for item in list(state.get("enhanced_chapter_drafts") or [])
+                for item in raw_chapters
             ]
         )
         if not enhanced:
@@ -62,10 +86,34 @@ def build_merge_review_node(*, context: WorkflowContext):
             expected_chapter_count=expected_chapter_count,
             plan_summary=str((state.get("docgen_context") or {}).get("plan_summary") or ""),
         )
-        chapter_metadatas = [
-            _chapter_metadata(chapter, digest_mode=state.get("digest_mode") or "")
-            for chapter in enhanced
-        ]
+        claim_ledgers_by_chapter = {
+            int(item.get("chapter_index", 0) or 0): item
+            for item in list(state.get("claim_ledgers") or [])
+        }
+        claim_maps_by_chapter = {
+            int(item.get("chapter_index", 0) or 0): item
+            for item in list(state.get("claim_evidence_maps") or [])
+        }
+        conflict_reports_by_chapter = {
+            int(item.get("chapter_index", 0) or 0): item
+            for item in list(state.get("conflict_reports") or [])
+        }
+        review_reports_by_chapter = {
+            int(item.get("chapter_index", 0) or 0): item
+            for item in list(state.get("chapter_review_reports") or [])
+        }
+        chapter_metadatas = []
+        for chapter in enhanced:
+            chapter_metadatas.append(
+                _chapter_metadata(
+                    chapter,
+                    digest_mode=state.get("digest_mode") or "",
+                    claim_ledger=claim_ledgers_by_chapter.get(chapter.chapter_index),
+                    claim_evidence_map=claim_maps_by_chapter.get(chapter.chapter_index),
+                    conflict_report=conflict_reports_by_chapter.get(chapter.chapter_index),
+                    chapter_review_report=review_reports_by_chapter.get(chapter.chapter_index),
+                )
+            )
         merged_markdown = prepend_table_of_contents(
             build_merged_markdown(
                 chapter_metadatas,

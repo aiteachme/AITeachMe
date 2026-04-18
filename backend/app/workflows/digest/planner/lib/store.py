@@ -52,7 +52,7 @@ from app.workflows.digest.planner.lib.plans import normalize_planner_payload
 from app.workflows.digest.planner.lib.steps import STEP_TIMING_FIELDS
 
 logger = structlog.get_logger(__name__)
-LEGACY_PLAN_TONE = "encouraging"
+DEFAULT_PLAN_TONE = "encouraging"
 
 
 def _markdown_ready(raw_file: RawFile) -> bool:
@@ -142,7 +142,7 @@ def _plan_response(
         selected_file_uids=selected_file_uids,
         user_goal=str(plan.get("user_goal") or ""),
         digest_mode=str(plan.get("digest_mode") or "systematic"),
-        tone=str(plan.get("tone") or LEGACY_PLAN_TONE),
+        tone=str(plan.get("tone") or DEFAULT_PLAN_TONE),
         selected_skillpacks=list(plan.get("selected_skillpacks") or []),
         chapter_plan=list(plan.get("chapter_plan") or []),
         research_queries=list(plan.get("research_queries") or []),
@@ -431,7 +431,7 @@ def prepare_planner_run(state: Mapping[str, Any]) -> dict[str, Any]:
                     status="planning",
                     user_goal=user_goal,
                     digest_mode=digest_mode,
-                    tone=LEGACY_PLAN_TONE,
+                    tone=DEFAULT_PLAN_TONE,
                     selected_file_ids_json=selected_file_ids,
                 ),
             )

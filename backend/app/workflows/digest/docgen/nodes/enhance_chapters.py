@@ -14,7 +14,7 @@ from app.utils.docgen_store import (
 from app.utils.time import utcnow
 from app.shared.infra.workflow.context import WorkflowContext
 from app.workflows.digest.docgen.lib.chapter_enhancement import enhance_chapter_draft
-from app.workflows.digest.docgen.lib.models import ChapterDraft
+from app.workflows.digest.docgen.lib.models import ChapterDraft, ClaimLedger, DocumentBackbone
 from app.workflows.digest.docgen.nodes.common import publish_docgen_progress, resolve_docgen_course_type
 from app.workflows.digest.docgen.state import DocGenState
 
@@ -31,6 +31,11 @@ def build_enhance_chapters_node(*, context: WorkflowContext):
         ]
         if not drafts:
             return {"error": "没有可增强的章节草稿。"}
+        claim_ledgers_by_chapter = {
+            int(item.get("chapter_index", 0) or 0): ClaimLedger.model_validate(item)
+            for item in list(state.get("claim_ledgers") or [])
+        }
+        document_backbone = DocumentBackbone.model_validate(state.get("document_backbone") or {})
         update_knowledge_build_status(
             state["subject"],
             requested_at=state["requested_at"],
@@ -61,6 +66,8 @@ def build_enhance_chapters_node(*, context: WorkflowContext):
                 draft,
                 traced_context=traced_context,
                 digest_mode=state.get("digest_mode") or "systematic",
+                claim_ledger=claim_ledgers_by_chapter.get(draft.chapter_index),
+                document_backbone=document_backbone,
             )
             upsert_knowledge_build_chapter_progress(
                 state["subject"],

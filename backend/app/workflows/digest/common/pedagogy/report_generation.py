@@ -262,7 +262,6 @@ def build_document_overview(
     subject: str,
     subject_display_name: str = "",
     digest_mode: str,
-    tone: str,
     user_goal: str,
     plan_summary: str,
     source_strategy: str = "",

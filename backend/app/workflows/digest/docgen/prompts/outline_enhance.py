@@ -7,6 +7,9 @@ from typing import Any
 
 from langsmith import traceable
 
+OUTLINE_CHAPTER_REQUIRED_BUDGET = 12
+OUTLINE_CHAPTER_QUERY_BUDGET = 8
+
 
 @traceable(name="DocGen：增强章节大纲提示词", run_type="prompt")
 def build_outline_enhance_messages(
@@ -19,6 +22,7 @@ def build_outline_enhance_messages(
     docgen_history_brief: str = "",
 ) -> list[dict[str, str]]:
     chapter_lines = []
+    # 已确认章节可能很长；这里仅压缩 prompt 摘要，不改变 confirmed plan 本身。
     for chapter in chapters:
         chapter_lines.append(
             "\n".join(
@@ -26,8 +30,8 @@ def build_outline_enhance_messages(
                     f"- chapter_index: {chapter.get('chapter_index')}",
                     f"  title: {chapter.get('title') or chapter.get('resolved_title')}",
                     f"  objective: {chapter.get('objective')}",
-                    f"  required_elements: {', '.join(str(item) for item in chapter.get('required_elements', [])[:8])}",
-                    f"  search_queries: {', '.join(str(item) for item in chapter.get('search_queries', [])[:6])}",
+                    f"  required_elements: {', '.join(str(item) for item in chapter.get('required_elements', [])[:OUTLINE_CHAPTER_REQUIRED_BUDGET])}",
+                    f"  search_queries: {', '.join(str(item) for item in chapter.get('search_queries', [])[:OUTLINE_CHAPTER_QUERY_BUDGET])}",
                 ]
             )
         )

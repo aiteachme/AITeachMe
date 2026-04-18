@@ -37,7 +37,6 @@ def build_load_context_node(*, context: WorkflowContext):
             )
 
         digest_mode = state.get("digest_mode") or shared_inputs.digest_mode_decision.mode.value
-        tone = str(state.get("tone") or "").strip()
         raw_plan_payload = deepcopy(state.get("confirmed_plan") or {})
         if not raw_plan_payload:
             return {"error": "DocGen 缺少已确认的构建方案，不能直接进入文档生成。"}
@@ -58,7 +57,6 @@ def build_load_context_node(*, context: WorkflowContext):
         retrieval_profile = plan_contract.resolve_retrieval_profile()
         selected_skillpacks = [definition.name for definition in resolve_skillpacks(plan_contract.selected_skillpacks)]
         skillpack_defaults = collect_skillpack_defaults(selected_skillpacks, prompt_scope="digest.docgen")
-        tone = str(plan_contract.tone or tone or skillpack_defaults.get("tone") or "encouraging")
         assignments = plan_contract.to_chapter_assignments(
             default_source_file_ids=list(state.get("file_ids", [])),
         )
@@ -83,7 +81,6 @@ def build_load_context_node(*, context: WorkflowContext):
             "course_type": course_type,
             "retrieval_profile": retrieval_profile,
             "teaching_action": str(state.get("teaching_action") or "docgen_build"),
-            "tone": tone,
             "user_goal": str(plan_contract.user_goal or state.get("user_prompt") or ""),
             "plan_summary": str(plan_contract.plan_summary or ""),
             "docgen_history_brief": docgen_history_brief,
@@ -113,7 +110,6 @@ def build_load_context_node(*, context: WorkflowContext):
             digest_mode=digest_mode,
             course_type=course_type,
             retrieval_profile=retrieval_profile,
-            tone=tone,
             user_goal=str(plan_contract.user_goal or state.get("user_prompt") or ""),
             plan_summary=str(plan_contract.plan_summary or ""),
             docgen_history_brief=docgen_history_brief,
@@ -201,7 +197,6 @@ def build_load_context_node(*, context: WorkflowContext):
             "course_type": course_type,
             "retrieval_profile": retrieval_profile,
             "teaching_action": str(state.get("teaching_action") or "docgen_build"),
-            "tone": tone,
             "selected_skillpacks": selected_skillpacks,
             "document_context": document_context,
             "planner_ms": 0,
@@ -211,5 +206,4 @@ def build_load_context_node(*, context: WorkflowContext):
 
 
 __all__ = ["build_load_context_node"]
-
 

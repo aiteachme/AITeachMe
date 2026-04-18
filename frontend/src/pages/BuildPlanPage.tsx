@@ -213,16 +213,12 @@ function formatElapsedMs(value: number | undefined): string {
 
 function formatPlannerNodeLabel(stepName: string): string {
   switch (stepName) {
-    case "prepare_material_context":
     case "load_planner_materials":
       return "准备资料理解包";
-    case "bootstrap_plan_brief":
     case "stream_brief_and_extract_intent":
       return "思考目标和资料";
-    case "compose_build_plan":
     case "stream_and_parse_plan_draft":
       return "提炼计划大纲";
-    case "finalize_plan_contract":
     case "normalize_and_persist_plan":
       return "整理最终方案";
     default:
@@ -331,8 +327,6 @@ function buildPlannerStreamDetails(payload: Record<string, unknown>): string[] {
 
   switch (stage) {
     case "planner.thinking.started":
-    case "planner.thinking.delta":
-    case "planner.plan.delta":
       return [];
     case "planner.intent.ready": {
       const details: string[] = [];
@@ -1164,17 +1158,6 @@ export function BuildPlanPage() {
       logPlannerDebug("send_plan_message_blocked", {
         reason: !text ? "empty_text" : isPlannerPending ? "planner_pending" : "building",
       });
-      return;
-    }
-
-    if (plannerFileUids.length > 0 && readyFileUids.length === 0) {
-      logPlannerDebug("send_plan_message_blocked", { reason: "no_ready_files" });
-      setMessages((prev) => [
-        ...prev,
-        createMessage("user", text),
-        createMessage("system", "资料还在解析中，至少等一份资料完成正文解析后，再基于上传内容生成计划大纲。"),
-      ]);
-      setInputValue("");
       return;
     }
 

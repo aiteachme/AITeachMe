@@ -1,124 +1,155 @@
 # 项目级运行配置。
-# 密钥、连接串、SMTP、对象存储、LangSmith 等环境相关参数放 `.env` / 进程环境变量。
+# 这里放“项目运行策略”和“模型选择”；密钥、连接串、SMTP、对象存储、LangSmith 凭证与端点等环境相关参数放 `.env` / 进程环境变量。
+# 代码入口：backend/app/shared/infra/settings/settings.py
 
 models:
-  # 三层模型策略：
-  # reason  - 推理模型，深度推理和规划；留空则回退到 primary。
-  # primary - 常用模型，教学、出题、批改、对话。
-  # light   - 轻量模型，批量抽取、分类、摘要；留空则回退到 primary。
-
-  # reason: qwen3-max
-  # primary: qwen-plus-latest
-  # light: qwen-flash
-
+  # 深度推理与规划模型；留空则回退到 primary。
   reason: qwen-flash
+  # 主要生成模型；用于教学、对话、出题、批改和多数通用生成任务。
   primary: qwen-flash
+  # 轻量模型；用于分类、摘要、批量抽取等低成本任务；留空则回退到 primary。
   light: qwen-flash
-
-  # reason: qwen-turbo
-  # primary: qwen-turbo
-  # light: qwen-turbo
+  # 知识抽取专用模型；留空则按 light -> primary 回退。
   extract: ""
+  # Vision OCR / 图片理解模型；留空则使用 primary。
   ocr: ""
+  # Embedding 模型；当前默认匹配 DashScope compatible-mode。
   embedding: text-embedding-v4
-  # embedding: ""
+  # 文生图模型；留空表示不启用真实图片生成。
   image_generation: ""
+  # Mermaid 图示生成模型；留空则禁用 LLM 图示生成。
   mermaid_generation: qwen-plus-latest
+  # 预留模型别名覆盖表；例如将某些业务标签映射到特定模型名。
   overrides: {}
 
-files:
-  max_upload_size_mb: 10
-  max_files_per_upload: 10
-
-chat:
-  history_turns: 10
-
-planner:
-  default_digest_mode: sprint
-  default_tone: encouraging
-  allow_external_search: true
-  sprint:
-    min_chapters: 3
-    max_chapters: 6
-    target_length: "3000-5000字"
-  systematic:
-    min_chapters: 5
-    max_chapters: 12
-    target_length: "10000-15000字"
-
-docgen:
-  max_parallel_chapters: 20
-  io_parallelism: 20
-  max_research_queries: 3
-  retrieval_timeout_s: 18.0
-  read_timeout_s: 12.0
-
-ingest:
-  parse_concurrency: 5
-  parser_timeout_s: 90
-
-rag:
-  top_k: 5
-  similarity_threshold: 0.3
-  rerank_model: ""
-  rerank_top_k: 3
-
-search:
-  max_results_per_query: 5
-  scrape_timeout_s: 20
-  provider_timeout_s: 6.0
-  total_timeout_s: 12.0
-  read_timeout_s: 10.0
-  parallel_retrievers: true
-  max_parallel_retrievers: 4
-  fusion_k: 60
-  runtime_cache_enabled: true
-  runtime_cache_ttl_s: 900
-  runtime_cache_max_entries: 256
-  searxng_base_url: ""
-  # retriever_profiles:
-  #   planner_grounding: [local_rag, bocha, wikipedia, baidu_baike, zhihu, arxiv, semantic_scholar, duckduckgo]
-  #   docgen_systematic: [local_rag, tavily, bocha, brave, exa, bing, wikipedia, arxiv, semantic_scholar, duckduckgo]
-
-web_search:
-  retriever: duckduckgo
-  retrievers: ""
-  retriever_profile: ""
-
-local_rag:
-  priority: true
-  min_results: 2
-
 runtime:
+  # 全局 LLM 并发限制。
   llm_concurrency_limit: 20
+  # 默认上下文 token 预算，用于聊天上下文窗口裁剪。
   default_token_budget: 4000
 
 embedding:
+  # Embedding 每批文本数量。
   batch_size: 10
+  # Embedding 批次之间的轻微延迟，单位秒。
   batch_delay_s: 0.1
 
-digest:
-  timing_top_k: 5
-  token_summary_enabled: true
-  chapter_priors_timeout_ms: 0
+ingest:
+  # 单文件上传大小上限，单位 MB。
+  max_upload_size_mb: 10
+  # 单次上传允许的最大文件数。
+  max_files_per_upload: 10
+  # 上传文件解析后台任务并发数。
+  parse_concurrency: 5
+  # 单个解析器调用超时，单位秒。
+  parser_timeout_s: 90
+
+planner:
+  # 默认知识文档模式：sprint 为冲刺讲义，systematic 为系统讲义。
+  default_digest_mode: sprint
+  # 默认写作语气；当前 prompt 支持 encouraging / casual / professional / concise 等。
+  default_tone: encouraging
+  # Planner 阶段是否允许外部检索补充资料。
+  allow_external_search: true
+  sprint:
+    # 冲刺模式默认最少章节数。
+    min_chapters: 3
+    # 冲刺模式默认最多章节数。
+    max_chapters: 6
+    # 冲刺模式目标全文长度提示。
+    target_length: "3000-5000字"
+  systematic:
+    # 系统模式默认最少章节数。
+    min_chapters: 5
+    # 系统模式默认最多章节数。
+    max_chapters: 12
+    # 系统模式目标全文长度提示。
+    target_length: "10000-15000字"
+
+docgen:
+  # DocGen 章节生成的 LangGraph 最大并发数。
+  max_parallel_chapters: 20
+  # DocGen 读取网页 / 文件等 I/O 密集任务的并发数。
+  io_parallelism: 20
+  # 每章最多生成的研究检索 query 数。
+  max_research_queries: 3
+  # 每章研究检索阶段总超时预算，单位秒。
+  retrieval_timeout_s: 18.0
+  # 单次网页读取超时，单位秒。
+  read_timeout_s: 12.0
+
+interact:
+  # 伴读聊天进入上下文的最近对话轮数。
+  history_turns: 10
 
 knowledge_graph:
+  # 知识图谱抽取节点最大并发数。
   extract_max_parallelism: 20
 
+rag:
+  # 本地 RAG 默认召回条数。
+  top_k: 5
+  # 本地 RAG 最低相似度阈值。
+  similarity_threshold: 0.3
+  # Rerank 模型；留空表示不启用 rerank。
+  rerank_model: ""
+  # Rerank 后保留的结果条数。
+  rerank_top_k: 3
+
+local_rag:
+  # 外部检索前是否优先使用本地资料。
+  priority: true
+  # 本地命中达到该数量时，部分链路会减少或跳过外部检索。
+  min_results: 2
+
+search:
+  # 显式 retriever 列表，逗号分隔；为空时使用 retriever_profile 或调用方传入的 profile，仍为空则回退到 duckduckgo。
+  retrievers: ""
+  # 默认命名检索 profile；空值表示由调用方决定，调用方也未指定时回退到 duckduckgo。
+  retriever_profile: ""
+  # 每个外部检索 query 最多返回结果数。
+  max_results_per_query: 5
+  # 通用网页抓取超时，单位秒。
+  scrape_timeout_s: 20
+  # 单个外部检索 provider 超时，单位秒。
+  provider_timeout_s: 6.0
+  # 一轮外部检索总超时预算，单位秒。
+  total_timeout_s: 12.0
+  # reader 读取网页正文超时，单位秒。
+  read_timeout_s: 10.0
+  # 是否并发调用多个 retriever。
+  parallel_retrievers: true
+  # 并发检索时最多同时调用的 retriever 数量。
+  max_parallel_retrievers: 4
+  # Reciprocal Rank Fusion 的融合参数。
+  fusion_k: 60
+  # 是否启用进程内检索缓存。
+  runtime_cache_enabled: true
+  # 进程内检索缓存 TTL，单位秒。
+  runtime_cache_ttl_s: 900
+  # 进程内检索缓存最大条目数。
+  runtime_cache_max_entries: 256
+  # 检索 profile 覆盖表；空对象表示使用代码内置 profile。
+  retriever_profiles: {}
+
 observability:
+  # 是否启用进程内 LLM 调用统计。
   llm_observability_enabled: true
+  # 是否在 Digest 等长链路运行摘要中汇总 LLM token 用量。
+  llm_token_summary_enabled: true
+  # 运行摘要中展示耗时最高步骤的数量。
+  timing_top_k: 5
+  # LangSmith tracing 总开关；仍需 `.env` 中 LANGSMITH_TRACING=true 和 LANGSMITH_API_KEY。
   tracing_enabled: true
+  # Trace 输入预览策略；null 表示 APP_MODE=local 时保留，非本地模式默认脱敏。
+  langsmith_capture_inputs: null
+  # Trace 输出预览策略；null 表示 APP_MODE=local 时保留，非本地模式默认脱敏。
+  langsmith_capture_outputs: null
+  # Trace 文本预览最大字符数。
   langsmith_max_text_chars: 2000
+  # 进程内 LLM 调用统计最多保留记录数。
   llm_observability_max_records: 5000
 
 safety:
+  # 是否启用共享 guardrails 管线。
   guardrails_enabled: true
-
-cache:
-  enabled: false
-  ttl_s: 3600
-  max_entries: 1000
-
-generation:
-  enable_image_generation: false
-  enable_mermaid_generation: true

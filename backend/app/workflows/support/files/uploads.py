@@ -51,7 +51,7 @@ async def _save_uploaded_raw_files(
     files: list[UploadFile],
     parse_request_metadata: dict[str, object] | None = None,
 ) -> list[RawFile]:
-    max_files = get_settings().files.max_files_per_upload
+    max_files = get_settings().ingest.max_files_per_upload
     if len(files) > max_files:
         raise FileCountLimitError(max_files)
 
@@ -79,7 +79,7 @@ async def save_uploaded_file(
     store = get_artifact_store()
     normalized_subject = validate_subject(subject)
     content = await file.read()
-    max_upload_size_mb = settings.files.max_upload_size_mb
+    max_upload_size_mb = settings.ingest.max_upload_size_mb
     if len(content) > max_upload_size_mb * 1024 * 1024:
         raise FileTooLargeError(max_upload_size_mb)
 
