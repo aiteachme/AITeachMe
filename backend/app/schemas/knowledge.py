@@ -493,7 +493,6 @@ class BuildPlannerCreateRequest(BaseModel):
     user_goal: str = Field(description="Learner goal or requested document target.")
     digest_mode: Literal["sprint", "systematic"] | None = Field(default=None, description="Optional requested digest mode.")
     tone: str | None = Field(default=None, description="Optional requested writing tone.")
-    selected_skillpacks: list[str] | None = Field(default=None, description="Optional prompt skillpacks selected for planner/docgen.")
     title: str | None = Field(default=None, description="Optional planner session title.")
 
 
@@ -501,7 +500,6 @@ class BuildPlannerMessageRequest(BaseModel):
     """Append one planner revision message."""
 
     message: str = Field(description="User feedback used to revise the current plan draft.")
-    selected_skillpacks: list[str] | None = Field(default=None, description="Optional updated skillpack selection for the next draft.")
 
 
 class BuildPlannerTurnResponse(BaseModel):
@@ -538,7 +536,6 @@ class BuildPlannerPlanResponse(BaseModel):
     user_goal: str
     digest_mode: str
     tone: str
-    selected_skillpacks: list[str] = Field(default_factory=list)
     chapter_plan: list[BuildPlannerChapterPlanResponse] = Field(default_factory=list)
     research_queries: list[str] = Field(default_factory=list)
     media_plan: dict[str, object] = Field(default_factory=dict)
@@ -581,7 +578,6 @@ class BuildPlannerConfirmResponse(BaseModel):
     plan_summary: str
     chapter_plan: list[BuildPlannerChapterPlanResponse] = Field(default_factory=list)
     research_queries: list[str] = Field(default_factory=list)
-    selected_skillpacks: list[str] = Field(default_factory=list)
     media_plan: dict[str, object] = Field(default_factory=dict)
     build_constraints: dict[str, object] = Field(default_factory=dict)
     plan_json: dict[str, object] = Field(default_factory=dict)

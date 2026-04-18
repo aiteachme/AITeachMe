@@ -62,7 +62,7 @@ flowchart TD
 
 | 顺序 | 节点 | 做什么 |
 | --- | --- | --- |
-| 0 | `load_context` | 读取 confirmed plan、shared inputs、skillpacks、文档上下文，生成基础 `DocGenContext` |
+| 0 | `load_context` | 读取 confirmed plan、shared inputs、Planner 上下文和文档上下文，生成基础 `DocGenContext` |
 | 0A/0B/0C | `prepare_parallel_inputs` | 并行执行计划大纲增强、DocGen 写作意图识别、文件摘要 |
 | 1 | `confirm_and_dispatch` | 内部收口 0A/0B/0C，生成唯一 `ChapterGenerationPlan` 和每章 `ChapterGenerationTask` |
 | 2 | `generate_chapters` | 每章并行检索、压缩材料、生成 evidence ledger、写正文、critic 和最多一次 rewrite |

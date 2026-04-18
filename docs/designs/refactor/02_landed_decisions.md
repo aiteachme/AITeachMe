@@ -5,14 +5,13 @@
 
 ## 架构边界（已固定）
 
-- `shared/infra` = 基础设施（LLM / observability / storage / search / tools / skills / workflow support）
+- `shared/infra` = 基础设施（LLM / observability / storage / search / tools / workflow support）
 - `workflows` = 唯一业务层，承接五大业务引擎、graph 编排主体与教学语义
 - `support` = `workflows` 下的非引擎业务模块区
 
 ## 扩展模型（已固定）
 
 - `tool`：原子动作，统一注册到 canonical tool registry
-- `skillpack`：`SKILL.md` prompt strategy package，不执行代码
 - `toolpack`：`manifest.yaml + handler.py`，向 canonical registry 注册真实可执行工具
 
 ## 三级模型策略（已落地）
@@ -31,7 +30,7 @@
 
 - Workflow-local runtime：`workflows/digest/docgen/runtime/` (chapter_context, writer, assets)
 - Confirmed plan contract：typed contract 从 planner 贯通到 docgen
-- Skillpack：`selected_skillpacks` 已打通 planner → confirmed plan → docgen
+- Prompt 扩展层：已决定移除独立策略层；教学策略回收到 Planner、DocGen 节点和 confirmed plan
 - Research：已升级为受控 micro-loop（seed → retrieve → assess → gap → stop）
 - Asset sidecar：Mermaid / image / interactive HTML 最小执行链已落地
 - Mode awareness：`sprint / systematic` 已进入 contract、research、writer、practice layer

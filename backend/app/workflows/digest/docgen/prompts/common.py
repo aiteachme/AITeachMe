@@ -88,8 +88,6 @@ def build_docgen_writer_messages(
     chapter_index: int | None = None,
     chapter_count: int | None = None,
     execution_contract: dict[str, object] | None = None,
-    skillpack_guidance: str = "",
-    recommended_tool_tags: list[str] | None = None,
 ) -> list[dict[str, str]]:
     normalized_mode = _normalize_mode(digest_mode)
     required_text = "、".join(required_elements) if required_elements else "核心概念、推理过程、典型例子"
@@ -147,12 +145,6 @@ def build_docgen_writer_messages(
 
 推荐章节骨架：
 {_chapter_shape_hint(digest_mode=normalized_mode)}
-
-策略包约束：
-{skillpack_guidance.strip() or "无额外策略包约束。"}
-
-推荐工具标签：
-{", ".join(recommended_tool_tags or []) or "无"}
 
 输出硬约束：
 1. 只输出中文 Markdown。
@@ -252,8 +244,6 @@ def build_docgen_research_purify_messages(
     objective: str,
     required_elements: list[str],
     digest_mode: str,
-    skillpack_guidance: str = "",
-    recommended_tool_tags: list[str] | None = None,
 ) -> list[dict[str, str]]:
     must_cover = "、".join(required_elements) if required_elements else "与本章最相关的核心知识"
     normalized_mode = _normalize_mode(digest_mode)
@@ -273,12 +263,6 @@ def build_docgen_research_purify_messages(
 5. 不能补充素材中没有出现的事实。
 6. 如果是 `sprint`，优先保留高频考点、题型线索和易错点。
 7. 如果是 `systematic`，优先保留定义、推导、适用条件和结构关系。
-
-策略包约束：
-{skillpack_guidance.strip() or "无额外策略包约束。"}
-
-推荐工具标签：
-{", ".join(recommended_tool_tags or []) or "无"}
 
 原始素材：
 {dense_context[:DENSE_CONTEXT_PURIFY_BUDGET]}
@@ -319,8 +303,6 @@ def build_docgen_sub_query_messages(
     max_queries: int,
     domain: str,
     fallback_queries: list[str],
-    skillpack_guidance: str = "",
-    recommended_tool_tags: list[str] | None = None,
 ) -> list[dict[str, str]]:
     context_lines = "\n".join(
         f"- {item['text']}"
@@ -346,12 +328,6 @@ def build_docgen_sub_query_messages(
 5. 如果主题更偏冲刺课，可适当补“真题”“高频题型”“防坑提醒”。
 6. 所有查询必须使用中文。
 7. 如果你判断信息不足，也请尽量基于主题稳健拆解，不要返回空列表。
-
-策略包约束：
-{skillpack_guidance.strip() or "无额外策略包约束。"}
-
-推荐工具标签：
-{", ".join(recommended_tool_tags or []) or "无"}
 
 可参考但不要机械照抄的兜底方向：
 {fallback_lines}

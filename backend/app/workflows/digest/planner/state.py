@@ -21,13 +21,11 @@ class BuildPlannerState(TypedDict, total=False):
     requested_file_uids: list[str]
     session_title: str
     feedback_message: str
-    selected_skillpacks_override: bool
     file_ids: list[int]
     selected_file_ids: list[int]
     selected_file_uids: list[str]
     user_goal: str
     digest_mode: str
-    selected_skillpacks: list[str]
     planner_session_id: str
     message_history: list[str]
     latest_plan: dict[str, Any] | None
@@ -68,11 +66,9 @@ BuildPlannerGraphInput = project_typed_dict_schema(
         "requested_file_uids",
         "session_title",
         "feedback_message",
-        "selected_skillpacks_override",
         "file_ids",
         "user_goal",
         "digest_mode",
-        "selected_skillpacks",
         "planner_session_id",
         "message_history",
         "latest_plan",

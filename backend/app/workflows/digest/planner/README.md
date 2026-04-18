@@ -73,7 +73,7 @@ stream_and_parse_plan_draft
     4. 转成待 normalize 的 `chapter_plan`。
 
 normalize_and_persist_plan
-  输入：build_plan_draft / material_context / latest_plan / selected_skillpacks
+  输入：build_plan_draft / material_context / latest_plan
   输出：plan / plan_summary / planner_record / planner_turns
     - plan：API、确认接口和 DocGen 消费的最终 plan payload。
     - plan_summary：计划摘要。
@@ -91,7 +91,6 @@ confirmed_plan
   user_goal：用户学习目标
   digest_mode：sprint / systematic
   tone：写作语气
-  selected_skillpacks：传给 DocGen 的提示词策略包
   chapter_plan：用户确认的章节合同，DocGen 不默认新增、删除、重排
   media_plan：Mermaid / 图片 / 交互块能力开关
   build_constraints：章节数、目标长度、是否含练习和来源等约束

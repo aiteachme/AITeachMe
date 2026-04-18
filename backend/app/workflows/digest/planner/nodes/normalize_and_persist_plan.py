@@ -30,7 +30,6 @@ def build_normalize_and_persist_plan_node(*, context: WorkflowContext):
             subject=state["subject"],
             user_goal=state.get("user_goal") or "",
             requested_digest_mode=digest_mode,
-            selected_skillpacks=list(state.get("selected_skillpacks") or []),
             shared_inputs=material_context,
             latest_plan=state.get("latest_plan"),
         )
@@ -65,7 +64,6 @@ def build_normalize_and_persist_plan_node(*, context: WorkflowContext):
             "plan": plan,
             "plan_summary": draft.plan_summary,
             "digest_mode": draft.digest_mode,
-            "selected_skillpacks": list(draft.selected_skillpacks),
         }
         persist_update = save_planner_result(
             {**state, **result},

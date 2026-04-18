@@ -272,21 +272,6 @@ def build_docgen_lane_summary(
         for chapter in [*chapter_drafts, *enhanced_chapter_drafts]
         if bool(_quality_mapping(chapter).get("rewrite_used", False) or chapter.get("repair_applied", False))
     )
-    selected_skillpacks = sorted(
-        {
-            str(item).strip()
-            for item in (
-                list(state.get("selected_skillpacks", []) or [])
-                + list(document_context.get("selected_skillpacks", []) or [])
-                + [
-                    skill
-                    for chapter in [*research_records, *chapter_drafts]
-                    for skill in list(chapter.get("selected_skillpacks", []) or [])
-                ]
-            )
-            if str(item).strip()
-        }
-    )
     return {
         "status": resolved_status,
         "error_message": resolved_error,
@@ -300,7 +285,6 @@ def build_docgen_lane_summary(
             or ""
         ),
         "source_strategy": str(document_context.get("source_strategy", "") or ""),
-        "selected_skillpacks": selected_skillpacks,
         "retrieval_profiles": retrieval_profiles,
         "teaching_actions": teaching_actions,
         "chapter_count": chapter_count,

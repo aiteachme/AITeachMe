@@ -8,7 +8,6 @@ from typing import Any
 
 from app.shared.infra.execution import BaseTracedExecution, TracedExecutionResult
 from app.shared.infra.llm_support.routing import TaskType
-from app.shared.infra.skills import collect_recommended_tool_tags, render_prompt_scoped_skillpacks
 from app.shared.infra.tools.builtin.markdown_processing import count_words
 from app.workflows.digest.common.pedagogy import (
     analyze_chapter_heading_quality,
@@ -46,8 +45,6 @@ class DocGenWriterRuntime(BaseTracedExecution):
         chapter_plan: Mapping[str, Any],
         dense_context: str,
         digest_mode: str,
-        selected_skillpacks: list[str] | None = None,
-        user_goal: str = "",
     ) -> TracedExecutionResult:
         llm = self.context.resolve_llm_caller()
         title = resolve_effective_chapter_title(chapter_plan, fallback_title="Untitled Chapter")
@@ -59,21 +56,6 @@ class DocGenWriterRuntime(BaseTracedExecution):
         source_count = len(list(chapter_plan.get("source_details") or []))
         chapter_index = int(chapter_plan.get("chapter_index", 0) or 0) or None
         chapter_count = int(chapter_plan.get("total_chapters", 0) or 0) or None
-        skillpack_guidance = render_prompt_scoped_skillpacks(
-            selected_skillpacks,
-            prompt_scope="digest.docgen.writer",
-            bindings={
-                "subject": self.context.subject,
-                "user_goal": user_goal,
-                "chapter_title": title,
-                "topic": title,
-                "concept": title,
-            },
-        )
-        recommended_tool_tags = collect_recommended_tool_tags(
-            selected_skillpacks,
-            prompt_scope="digest.docgen.writer",
-        )
         messages = build_docgen_writer_messages(
             title=title,
             objective=objective,
@@ -85,8 +67,6 @@ class DocGenWriterRuntime(BaseTracedExecution):
             chapter_index=chapter_index,
             chapter_count=chapter_count,
             execution_contract=execution_contract,
-            skillpack_guidance=skillpack_guidance,
-            recommended_tool_tags=recommended_tool_tags,
         )
         markdown = await llm(
             messages,
@@ -169,8 +149,6 @@ class DocGenWriterRuntime(BaseTracedExecution):
                 "heading_repair_applied": heading_repair_applied,
                 "scaffold_fallback_applied": scaffold_fallback_applied,
                 "heading_missing_module_count": len(list(heading_quality.get("missing_modules") or [])),
-                "selected_skillpacks": list(selected_skillpacks or []),
-                "recommended_tool_tags": recommended_tool_tags,
             },
         )
 

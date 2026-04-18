@@ -97,7 +97,7 @@ Planner 定方向
 
 ### 1.2 有限迭代回流设计
 
-这一节描述目标设计，不要求完全兼容当前实现。当前代码已经有 `review_content`、`repair_or_route`、`review_actions`、`unresolved_warnings`、`selected_skillpacks`、章节检索 runtime 和网页打开链路，但 graph 仍是 `review_content -> repair_or_route -> merge_review` 的一次性路径。下一步重构要把它改成“复核判定 -> 最多两轮修补 -> 再复核”的闭环。
+这一节描述目标设计，不要求完全兼容当前实现。当前代码已经有 `review_content`、`repair_or_route`、`review_actions`、`unresolved_warnings`、章节检索 runtime 和网页打开链路，但 graph 仍是 `review_content -> repair_or_route -> merge_review` 的一次性路径。下一步重构要把它改成“复核判定 -> 最多两轮修补 -> 再复核”的闭环。
 
 推荐主流程：
 
@@ -133,7 +133,7 @@ load_context
 generate_draft
   当前/目标能力：
     - 按章并行执行本地 RAG、文件切片读取、外部检索、网页打开、正文压缩。
-    - 使用 selected_skillpacks 影响检索重点和写作表达。
+    - 根据 confirmed plan、digest_mode、planner_context 和章节缺口决定检索重点和写作表达。
     - 生成 dense_context、research_trace、evidence_ledger、claim_ledger、conflict_report 和章节草稿。
   可以调用工具：
     - 可以使用 shared.infra.search、web_reading.read_urls、ContextCompressor、SourceCurator。
@@ -145,7 +145,7 @@ generate_draft
 enhance
   当前/目标能力：
     - 按章并行处理 Mermaid、图片请求、交互占位、公式清洗、Markdown 结构和本章自检。
-    - 使用 selected_skillpacks 影响图示、练习和表现层策略。
+    - 根据 asset settings、digest_mode 和章节合同决定图示、练习和表现层策略。
   可以调用工具：
     - 可以调用 Mermaid / image / markdown / latex / teaching block 这类表现层工具。
     - 如果图片或图示需要额外事实支撑，不能在 enhance 里直接补新知识；应生成 warning 或交给 repair_or_route 的 evidence_patch。
@@ -167,7 +167,7 @@ review_content
 repair_or_route
   目标能力：
     - 读取 ReviewAction，按严重度决定 no_action、apply_patch、evidence_patch、regenerate_chapter 或 record_only。
-    - 可以补检索、打开网页、调用工具、使用 selected_skillpacks，但动作必须写入 repair_trace。
+    - 可以补检索、打开网页、调用工具，但动作必须写入 repair_trace。
     - 每次执行后回到 review_content，由复核节点重新判定。
   不能做：
     - 不能无限循环。
@@ -175,13 +175,14 @@ repair_or_route
     - 不能在没有本地资料、已打开网页正文或明确 snippet fallback 的情况下补新断言。
 ```
 
-`selected_skillpacks` 的定位要写清楚：它是项目内 prompt 策略包，不是任意执行代码的插件。它适合影响三类事情：
+DocGen 不再保留独立 prompt 扩展层。策略来源只保留四类：
 
-- 检索和研究关注点：例如考试题型、定义解释、图示化、例题优先。
-- writer / patch 表达策略：例如 `sprint` 更短更密，`systematic` 更稳更完整。
-- enhance 表现策略：例如 Mermaid 优先、练习优先、互动块优先。
+- `confirmed plan`：用户确认过的目标、模式、章节和约束。
+- `planner_context`：Planner 过程中的计划摘要、计划步骤、修订记录和用户反馈。
+- `digest_mode` / `retrieval_profile`：决定速成课或系统课的检索深度、章节密度和写作风格。
+- `review_actions`：复核阶段发现的具体缺口和修补动作。
 
-运行时工具仍然走 `shared.infra.tools`、`shared.infra.search`、`shared.infra.tools.builtin.*` 等基础能力。skillpack 可以推荐工具标签或提示策略，但不直接绕过 workflow 状态机执行工具。
+运行时工具统一走 `shared.infra.tools`、`shared.infra.search`、`shared.infra.tools.builtin.*` 等基础能力。是否调用工具只由 workflow 节点显式决定，不能再通过外置 prompt 片段绕过状态机。
 
 建议新增一个显式的回流状态：
 
@@ -273,10 +274,9 @@ review_content
 
 ```text
 load_context
-  输入：confirmed_plan / shared_inputs / selected_skillpacks / planner_context
+  输入：confirmed_plan / shared_inputs / planner_context
     - confirmed_plan：用户确认后的构建合同，包含章节、模式、目标、约束。
     - shared_inputs：资料理解包，包含文件、切片、画像、统计、资产索引。
-    - selected_skillpacks：用户选择的提示词策略包名称。
     - planner_context：confirmed_plan 中固化的 Planner 会话摘要和修改意见。
   输出：DocumentContract / SourcePack / DocGenContext / chapter_assignments / document_context
     - DocumentContract：confirmed_plan 的执行语义，不允许静默漂移。
@@ -284,7 +284,7 @@ load_context
     - DocGenContext：DocGen 全局运行上下文。
     - chapter_assignments：confirmed plan 章节转成的执行章节列表。
     - document_context：发布和写作共用的文档级上下文。
-  作用：确认用户已确认的章节合同，补齐资料上下文、模式、语气、技能包和构建状态。
+  作用：确认用户已确认的章节合同，补齐资料上下文、模式、语气和构建状态。
 
 prepare_context
   ├─ enhance_plan_outline
@@ -358,7 +358,7 @@ generate_draft
   ├─ generate_chapter 0
   ├─ generate_chapter 1
   └─ generate_chapter N
-  输入：单章 ChapterGenerationTask / SourcePack / DocumentBackbone / DocGenContext / retrieval_profile / selected_skillpacks
+  输入：单章 ChapterGenerationTask / SourcePack / DocumentBackbone / DocGenContext / retrieval_profile
   输出：ChapterDraft[] / ChapterResearchTrace[] / ClaimLedger[] / ClaimEvidenceMap[] / EvidenceLedger[] / ConflictReport[]
     - ChapterDraft：章节初稿、摘要草稿、占位符、质量信号。
     - ChapterResearchTrace：检索轮次、执行 query、打开上下文、覆盖率。

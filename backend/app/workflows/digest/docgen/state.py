@@ -22,7 +22,6 @@ class DocGenState(TypedDict, total=False):
     course_type: str
     retrieval_profile: str
     teaching_action: str
-    selected_skillpacks: list[str]
     shared_inputs: Any
     raw_chunks: list[dict[str, Any]]
     subject_profile: dict[str, Any] | None

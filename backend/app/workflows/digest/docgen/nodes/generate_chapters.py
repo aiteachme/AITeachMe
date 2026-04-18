@@ -204,8 +204,6 @@ def build_generate_chapters_node(*, context: WorkflowContext):
                 required_elements=task.content_points or task.concept_targets,
                 digest_mode=state.get("digest_mode") or "",
                 retrieval_profile=traced_context.retrieval_profile,
-                selected_skillpacks=list(state.get("selected_skillpacks") or []),
-                user_goal=str((state.get("docgen_context") or {}).get("user_goal") or ""),
                 max_research_rounds=task.budget_policy.max_research_rounds,
                 max_context_chars=task.budget_policy.max_context_chars,
                 query_cap=max(1, task.budget_policy.max_local_queries + task.budget_policy.max_web_queries),
@@ -295,8 +293,6 @@ def build_generate_chapters_node(*, context: WorkflowContext):
                 ),
                 dense_context=dense_context,
                 digest_mode=state.get("digest_mode") or "systematic",
-                selected_skillpacks=list(state.get("selected_skillpacks") or []),
-                user_goal=str((state.get("docgen_context") or {}).get("user_goal") or ""),
             )
             writer_markdown = ensure_chapter_heading(title, writer_result.content)
         except Exception as exc:

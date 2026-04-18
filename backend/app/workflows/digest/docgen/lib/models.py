@@ -71,9 +71,6 @@ class DocGenContext(DocGenBaseModel):
     planner_context: dict[str, Any] = Field(default_factory=dict)
     source_strategy: Literal["local_first", "web_first"] = "local_first"
     include_sources: bool = True
-    selected_skillpacks: list[str] = Field(default_factory=list)
-    skillpack_guidance: str = ""
-    recommended_tool_tags: list[str] = Field(default_factory=list)
     local_source_count: int = 0
     section_count: int = 0
 
@@ -86,17 +83,11 @@ class DocGenContext(DocGenBaseModel):
         "user_goal",
         "plan_summary",
         "docgen_history_brief",
-        "skillpack_guidance",
         mode="before",
     )
     @classmethod
     def _text(cls, value: Any) -> str:
         return clean_text(value)
-
-    @field_validator("selected_skillpacks", "recommended_tool_tags", mode="before")
-    @classmethod
-    def _string_list(cls, value: Any) -> list[str]:
-        return clean_string_list(value)
 
 
 class DocGenIntentProfile(DocGenBaseModel):

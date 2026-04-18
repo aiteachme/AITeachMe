@@ -37,7 +37,7 @@ enabled: true
 
 同名 toolpack 后加载者覆盖先加载者，因此本机或部署方可以覆盖项目内实现。
 
-## 与 Skill 的区别
+## 与 Prompt 策略的区别
 
 - toolpack：注册可执行工具，适合搜索、计算、系统集成、MCP 桥接等动作。
-- skill：渲染 prompt 策略，不执行代码，见 `backend/skills/README.md`。
+- prompt 策略：由 Planner、DocGen 节点和 confirmed plan 显式组织，不再通过独立 prompt 扩展目录维护。

@@ -274,7 +274,6 @@ class DigestConfirmedPlanContract(BaseModel):
     user_goal: str = ""
     digest_mode: str = DEFAULT_COURSE_TYPE
     tone: str = "encouraging"
-    selected_skillpacks: list[str] = Field(default_factory=list)
     chapter_plan: list[DigestChapterContract] = Field(default_factory=list)
     research_queries: list[str] = Field(default_factory=list)
     media_plan: dict[str, Any] = Field(default_factory=dict)
@@ -303,11 +302,6 @@ class DigestConfirmedPlanContract(BaseModel):
     @field_validator("research_queries", mode="before")
     @classmethod
     def _normalize_research_queries(cls, value: Any) -> list[str]:
-        return _clean_string_list(value)
-
-    @field_validator("selected_skillpacks", mode="before")
-    @classmethod
-    def _normalize_selected_skillpacks(cls, value: Any) -> list[str]:
         return _clean_string_list(value)
 
     @field_validator("selected_file_ids", mode="before")

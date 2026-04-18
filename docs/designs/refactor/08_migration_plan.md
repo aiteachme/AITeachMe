@@ -7,7 +7,7 @@
 | Phase | 目标 | 状态 |
 | --- | --- | --- |
 | Phase 0 | 冻结边界与术语 | ✅ 已完成 |
-| Phase 1 | skillpack 进入主流程 | ✅ 已完成 |
+| Phase 1 | 移除独立 prompt 扩展层，策略回收到 workflow | ✅ 已完成 |
 | Phase 2 | toolpack 变成真实扩展点 | ✅ 已完成 |
 | Phase 3 | DocGen runtime 回归 workflows | ✅ 已完成 |
 | Phase 4 | DocGen 质量增强 | ⚠️ 进行中 |
@@ -35,7 +35,7 @@
 
 ## Phase 5 — 跨引擎合同收敛（待启动）
 
-- Interact 复用 Digest 的 `selected_skillpacks` 与课程合同语义
+- Interact 复用 Digest 的课程合同、Planner 上下文和章节上下文
 - Examine 共享 Digest 章节研究上下文与教学动作信息
 - Profile 统一消费课程产物、练习结果和交互行为作为画像输入
 

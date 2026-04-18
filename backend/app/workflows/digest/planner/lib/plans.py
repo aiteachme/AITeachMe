@@ -31,7 +31,6 @@ class BuildPlannerDraft(BaseModel):
     subject: str
     user_goal: str
     digest_mode: str = "systematic"
-    selected_skillpacks: list[str] = Field(default_factory=list)
     chapter_plan: list[PlannerChapterPlan] = Field(default_factory=list)
     # Kept for API/DB compatibility. DocGen derives retrieval queries from chapter content.
     research_queries: list[str] = Field(default_factory=list)
@@ -251,7 +250,6 @@ def normalize_planner_draft(
     subject: str,
     user_goal: str,
     requested_digest_mode: str,
-    selected_skillpacks: list[str] | None = None,
     shared_inputs: SharedInputs | None = None,
     latest_plan: BuildPlannerDraft | Mapping[str, Any] | None = None,
 ) -> BuildPlannerDraft:
@@ -280,16 +278,10 @@ def normalize_planner_draft(
         raise ValueError("planner plan is missing plan_summary")
     plan_steps = _strings(current.get("plan_steps") or previous.get("plan_steps"))
 
-    skillpacks = (
-        selected_skillpacks
-        if selected_skillpacks is not None
-        else current.get("selected_skillpacks") or previous.get("selected_skillpacks") or []
-    )
     return BuildPlannerDraft(
         subject=display_subject,
         user_goal=user_goal,
         digest_mode=mode,
-        selected_skillpacks=_strings(skillpacks),
         chapter_plan=chapters,
         research_queries=[],
         media_plan=_media_plan(),
@@ -305,7 +297,6 @@ def normalize_planner_payload(
     subject: str,
     user_goal: str,
     requested_digest_mode: str,
-    selected_skillpacks: list[str] | None = None,
     shared_inputs: SharedInputs | None = None,
     latest_plan: BuildPlannerDraft | Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
@@ -314,7 +305,6 @@ def normalize_planner_payload(
         subject=subject,
         user_goal=user_goal,
         requested_digest_mode=requested_digest_mode,
-        selected_skillpacks=selected_skillpacks,
         shared_inputs=shared_inputs,
         latest_plan=latest_plan,
     ).model_dump(mode="json")

@@ -6,12 +6,6 @@ from copy import deepcopy
 
 from pydantic import ValidationError
 
-from app.shared.infra.skills import (
-    collect_recommended_tool_tags,
-    collect_skillpack_defaults,
-    render_prompt_scoped_skillpacks,
-    resolve_skillpacks,
-)
 from app.utils.docgen_store import append_knowledge_build_recent_event, update_knowledge_build_status
 from app.utils.time import utcnow
 from app.shared.infra.workflow.context import WorkflowContext
@@ -55,8 +49,6 @@ def build_load_context_node(*, context: WorkflowContext):
         digest_mode = str(plan_contract.digest_mode or digest_mode)
         course_type = plan_contract.resolve_course_type()
         retrieval_profile = plan_contract.resolve_retrieval_profile()
-        selected_skillpacks = [definition.name for definition in resolve_skillpacks(plan_contract.selected_skillpacks)]
-        skillpack_defaults = collect_skillpack_defaults(selected_skillpacks, prompt_scope="digest.docgen")
         assignments = plan_contract.to_chapter_assignments(
             default_source_file_ids=list(state.get("file_ids", [])),
         )
@@ -65,7 +57,6 @@ def build_load_context_node(*, context: WorkflowContext):
         plan_payload = plan_contract.to_payload()
         plan_payload["course_type"] = course_type
         plan_payload["retrieval_profile"] = retrieval_profile
-        plan_payload["selected_skillpacks"] = selected_skillpacks
         planner_context = dict(plan_payload.get("planner_context") or {})
         docgen_history_brief = str(
             plan_payload.get("docgen_history_brief")
@@ -87,22 +78,6 @@ def build_load_context_node(*, context: WorkflowContext):
             "planner_context": planner_context,
             "source_strategy": "local_first" if has_local_materials else "web_first",
             "include_sources": bool((plan_payload.get("build_constraints") or {}).get("include_sources", True)),
-            "selected_skillpacks": selected_skillpacks,
-            "skillpack_defaults": skillpack_defaults,
-            "recommended_tool_tags": collect_recommended_tool_tags(
-                selected_skillpacks,
-                prompt_scope="digest.docgen",
-            ),
-            "skillpack_guidance": render_prompt_scoped_skillpacks(
-                selected_skillpacks,
-                prompt_scope="digest.docgen",
-                bindings={
-                    "subject": state["subject"],
-                    "user_goal": str(plan_contract.user_goal or state.get("user_prompt") or ""),
-                    "topic": state["subject"],
-                    "concept": state["subject"],
-                },
-            ),
         }
         docgen_context = DocGenContext(
             subject=state["subject"],
@@ -116,9 +91,6 @@ def build_load_context_node(*, context: WorkflowContext):
             planner_context=planner_context,
             source_strategy="local_first" if has_local_materials else "web_first",
             include_sources=bool((plan_payload.get("build_constraints") or {}).get("include_sources", True)),
-            selected_skillpacks=selected_skillpacks,
-            skillpack_guidance=str(document_context.get("skillpack_guidance") or ""),
-            recommended_tool_tags=list(document_context.get("recommended_tool_tags") or []),
             local_source_count=len(shared_inputs.source_packets),
             section_count=len(shared_inputs.section_packets),
         )
@@ -197,7 +169,6 @@ def build_load_context_node(*, context: WorkflowContext):
             "course_type": course_type,
             "retrieval_profile": retrieval_profile,
             "teaching_action": str(state.get("teaching_action") or "docgen_build"),
-            "selected_skillpacks": selected_skillpacks,
             "document_context": document_context,
             "planner_ms": 0,
         }
@@ -206,4 +177,3 @@ def build_load_context_node(*, context: WorkflowContext):
 
 
 __all__ = ["build_load_context_node"]
-
