@@ -71,7 +71,7 @@ async def infer_docgen_intent(
             model="primary",
             response_model=DocGenIntentProfile,
             temperature=0.1,
-            max_tokens=900,
+            max_tokens=1200,
             extra_metadata={"docgen_stage": "infer_docgen_intent", **dict(extra_metadata or {})},
         )
     except Exception as exc:

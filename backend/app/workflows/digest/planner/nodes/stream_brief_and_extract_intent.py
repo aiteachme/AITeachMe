@@ -54,7 +54,7 @@ async def _stream_planner_brief(state: BuildPlannerState, fallback: PlannerBrief
             [{"role": "user", "content": prompt}],
             call_purpose=LLMCallPurpose.GENERATE,
             model="reason",
-            max_tokens=780,
+            max_tokens=1000,
             extra_metadata={
                 "planner_session_id": state.get("planner_session_id") or "",
                 "substep": "生成可见判断",
@@ -123,7 +123,7 @@ async def _extract_learning_intent(state: BuildPlannerState) -> LearningIntent:
             call_purpose=LLMCallPurpose.CLASSIFY,
             model="primary",
             response_model=LearningIntent,
-            max_tokens=900,
+            max_tokens=1000,
             extra_metadata={
                 "planner_session_id": state.get("planner_session_id") or "",
                 "substep": "识别学习意图",

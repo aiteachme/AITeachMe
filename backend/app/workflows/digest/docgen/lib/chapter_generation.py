@@ -73,15 +73,15 @@ def _priority_files_for_chapter(
         ],
         reverse=True,
     )
-    file_ids = [file_id for score, _quality, file_id, _sections in scored if score > 0][:5]
+    file_ids = [file_id for score, _quality, file_id, _sections in scored if score > 0]
     if not file_ids:
-        file_ids = [file_id for _score, _quality, file_id, _sections in scored[:3]]
+        file_ids = [file_id for _score, _quality, file_id, _sections in scored]
     section_refs = [
         section
-        for _score, _quality, _file_id, sections in scored[:4]
-        for section in sections[:3]
+        for _score, _quality, _file_id, sections in scored
+        for section in sections
     ]
-    return file_ids, list(dict.fromkeys(section_refs))[:10]
+    return file_ids, list(dict.fromkeys(section_refs))
 
 
 def _affinity_for_chapter(
@@ -106,7 +106,7 @@ def _placeholder_requests_from_confirmed_chapter(chapter: Mapping[str, Any]) -> 
         "image": ("images", "image"),
     }.items():
         for field_name in field_names:
-            for description in clean_string_list(media_hints.get(field_name), limit=6):
+            for description in clean_string_list(media_hints.get(field_name)):
                 requests.append({"kind": kind, "description": description})
     return requests
 
@@ -128,7 +128,7 @@ def _dedupe_placeholder_requests(requests: Sequence[Mapping[str, Any]]) -> list[
             continue
         seen.add(key)
         deduped.append({"kind": kind, "description": description})
-    return deduped[:8]
+    return deduped
 
 
 def compose_chapter_generation_plan(
@@ -165,8 +165,8 @@ def compose_chapter_generation_plan(
             confirmed_title=confirmed_title,
             enhanced_title=confirmed_title,
             objective=str(chapter.get("objective") or ""),
-            content_points=clean_string_list(chapter.get("required_elements", []), limit=10),
-            retrieval_queries=clean_string_list([*chapter.get("search_queries", []), confirmed_title], limit=8),
+            content_points=clean_string_list(chapter.get("required_elements", [])),
+            retrieval_queries=clean_string_list([*chapter.get("search_queries", []), confirmed_title]),
             fallback_used=True,
         )
         priority_file_ids, priority_section_refs = _priority_files_for_chapter(
@@ -185,7 +185,7 @@ def compose_chapter_generation_plan(
             chapter_count=chapter_count,
             intent=intent_profile,
         )
-        required = clean_string_list(chapter.get("required_elements", []), limit=10)
+        required = clean_string_list(chapter.get("required_elements", []))
         placeholder_requests = _dedupe_placeholder_requests(
             [
                 *list(outline.media_requests),
@@ -214,15 +214,15 @@ def compose_chapter_generation_plan(
             enhanced_title=outline.enhanced_title or confirmed_title,
             objective=outline.objective or str(chapter.get("objective") or ""),
             teaching_outline=outline.teaching_outline,
-            content_points=clean_string_list([*outline.content_points, *required], limit=14),
-            concept_targets=clean_string_list([*outline.concept_targets, *required], limit=12),
+            content_points=clean_string_list([*outline.content_points, *required]),
+            concept_targets=clean_string_list([*outline.concept_targets, *required]),
             definition_targets=outline.definition_targets,
             formula_targets=outline.formula_targets,
             example_targets=outline.example_targets,
             pitfall_targets=outline.pitfall_targets,
-            priority_file_ids=priority_file_ids or clean_string_list(chapter.get("source_file_ids", []), limit=8),
+            priority_file_ids=priority_file_ids or clean_string_list(chapter.get("source_file_ids", [])),
             priority_section_refs=priority_section_refs,
-            retrieval_queries=clean_string_list([*outline.retrieval_queries, *chapter.get("search_queries", [])], limit=8),
+            retrieval_queries=clean_string_list([*outline.retrieval_queries, *chapter.get("search_queries", [])]),
             writing_rules=[
                 *global_rules,
                 intent_profile.chapter_style_hints.get(chapter_index, ""),
@@ -249,7 +249,6 @@ def compose_chapter_generation_plan(
     return ChapterGenerationPlan(
         subject=docgen_context.subject,
         digest_mode=docgen_context.digest_mode,
-        tone=docgen_context.tone,
         source_policy=docgen_context.source_strategy,
         writing_rules=global_rules,
         chapter_format=chapter_format,
@@ -258,7 +257,7 @@ def compose_chapter_generation_plan(
             "max_writer_retries": 1,
         },
         chapters=tasks,
-        plan_mismatch_warnings=clean_string_list(plan_mismatch_warnings or [], limit=16),
+        plan_mismatch_warnings=clean_string_list(plan_mismatch_warnings or []),
     )
 
 
@@ -274,7 +273,7 @@ def build_plan_seed_and_backbone_agenda(
     for task in generation_plan.chapters:
         preferred_sources = [
             f"local://file/{file_id}"
-            for file_id in task.priority_file_ids[:8]
+            for file_id in task.priority_file_ids
         ]
         preferred_sources.extend(
             unit.source_ref
@@ -283,7 +282,6 @@ def build_plan_seed_and_backbone_agenda(
         )
         allowed_assets = clean_string_list(
             [str(item.get("kind") or "") for item in task.placeholder_requests if isinstance(item, dict)],
-            limit=8,
         )
         task_seeds.append(
             ChapterGenerationTaskSeed(
@@ -315,7 +313,6 @@ def build_plan_seed_and_backbone_agenda(
                 for item in [*task.concept_targets, *task.required_elements]
             ],
         ],
-        limit=80,
     )
     glossary_candidates = clean_string_list(
         [
@@ -330,7 +327,6 @@ def build_plan_seed_and_backbone_agenda(
                 for item in task.concept_targets
             ],
         ],
-        limit=80,
     )
     notation_candidates = clean_string_list(
         [
@@ -338,7 +334,6 @@ def build_plan_seed_and_backbone_agenda(
             for summary in summaries
             for item in summary.formulas
         ],
-        limit=60,
     )
     confusion_candidates = clean_string_list(
         [
@@ -346,15 +341,13 @@ def build_plan_seed_and_backbone_agenda(
             for task in generation_plan.chapters
             for item in task.pitfall_targets
         ],
-        limit=60,
     )
     agenda = BackboneResearchAgenda(
         topics=topics,
         section_refs=clean_string_list(
             [ref for task in generation_plan.chapters for ref in task.priority_section_refs],
-            limit=80,
         ),
-        evidence_unit_ids=[unit.evidence_id for unit in evidence_units[:80]],
+        evidence_unit_ids=[unit.evidence_id for unit in evidence_units],
         glossary_candidates=glossary_candidates,
         notation_candidates=notation_candidates,
         confusion_candidates=confusion_candidates,
@@ -362,7 +355,6 @@ def build_plan_seed_and_backbone_agenda(
     plan_seed = ChapterGenerationPlanSeed(
         subject=generation_plan.subject,
         digest_mode=generation_plan.digest_mode,
-        tone=generation_plan.tone,
         source_policy=generation_plan.source_policy,
         writing_rules=generation_plan.writing_rules,
         chapter_format=generation_plan.chapter_format,
@@ -380,7 +372,7 @@ def build_fallback_chapter_markdown(
     reason: str,
 ) -> str:
     title = task.enhanced_title or task.confirmed_title or f"第 {task.chapter_index} 章"
-    points = task.content_points[:6] or task.concept_targets[:6] or [task.objective or title]
+    points = task.content_points or task.concept_targets or [task.objective or title]
     if str(digest_mode or "").strip().lower() == "sprint":
         lines = [
             f"# {title}",

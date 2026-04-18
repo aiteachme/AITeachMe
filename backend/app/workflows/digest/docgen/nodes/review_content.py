@@ -33,6 +33,7 @@ def build_review_content_node(*, context: WorkflowContext):
         ]
         if not enhanced:
             return {"error": "没有可复核的增强章节。"}
+        # 先把章节相关合同按 chapter_index 对齐，后面逐章复核时就不会靠列表顺序碰运气。
         tasks_by_chapter = {
             int(item.get("chapter_index", 0) or 0): ChapterGenerationTask.model_validate(item)
             for item in list(state.get("chapter_tasks") or [])
@@ -61,6 +62,7 @@ def build_review_content_node(*, context: WorkflowContext):
         reviewed = []
         reports = []
         actions = []
+        # 章节复核只看单章的覆盖、证据和冲突；整本文档一致性放在所有章节复核之后统一判断。
         for draft in enhanced:
             reviewed_draft, report, chapter_actions = review_chapter(
                 draft=draft,

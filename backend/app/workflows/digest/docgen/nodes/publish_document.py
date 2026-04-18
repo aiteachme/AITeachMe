@@ -32,6 +32,7 @@ def build_publish_document_node(*, context: WorkflowContext):
         )
         chapter_assignments = list(state.get("chapter_assignments", []))
         document_context = dict(state.get("document_context") or {})
+        # 这份快照给后续调试、问答/出题复用和失败追踪用；不要只因为前端暂时不用就删。
         docgen_artifacts = {
             "docgen_context": dict(state.get("docgen_context") or {}),
             "intent_profile": dict(state.get("intent_profile") or {}),

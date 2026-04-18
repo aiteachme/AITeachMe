@@ -40,46 +40,6 @@ class StagedKnowledgeDocs(BaseModel):
     built_paths: list[tuple[int, str]] = Field(default_factory=list)
 
 
-
-def _demote_markdown_headings(markdown: str, *, levels: int) -> str:
-    lines: list[str] = []
-    for line in markdown.splitlines():
-        stripped = line.lstrip()
-        if not stripped.startswith("#"):
-            lines.append(line)
-            continue
-        prefix = line[: len(line) - len(stripped)]
-        hashes, _, title = stripped.partition(" ")
-        if not title:
-            lines.append(line)
-            continue
-        demoted_level = min(6, len(hashes) + levels)
-        lines.append(f"{prefix}{'#' * demoted_level} {title}")
-    return "\n".join(lines).strip()
-
-
-def _normalize_heading_text(value: str) -> str:
-    return " ".join(str(value or "").split()).strip().casefold()
-
-
-def _dedupe_curriculum_path(curriculum_path: list[str], *, chapter_title: str) -> list[str]:
-    deduped: list[str] = []
-    seen_texts: set[str] = set()
-    normalized_chapter_title = _normalize_heading_text(chapter_title)
-    for item in curriculum_path:
-        cleaned = " ".join(str(item or "").split()).strip()
-        if not cleaned:
-            continue
-        normalized = _normalize_heading_text(cleaned)
-        if normalized in seen_texts:
-            continue
-        deduped.append(cleaned)
-        seen_texts.add(normalized)
-    if deduped and _normalize_heading_text(deduped[-1]) == normalized_chapter_title:
-        deduped.pop()
-    return deduped
-
-
 def _chapter_merge_score(chapter: dict) -> tuple[int, int, int, int]:
     markdown = str(chapter.get("markdown") or "")
     summary = str(chapter.get("summary") or "")
@@ -149,7 +109,6 @@ def build_merged_markdown(
         subject=str((document_context or {}).get("subject") or "未命名学科"),
         subject_display_name=str((document_context or {}).get("subject_display_name") or ""),
         digest_mode=str((document_context or {}).get("digest_mode") or ""),
-        tone=str((document_context or {}).get("tone") or ""),
         user_goal=str((document_context or {}).get("user_goal") or ""),
         plan_summary=str((document_context or {}).get("plan_summary") or ""),
         source_strategy=str((document_context or {}).get("source_strategy") or ""),
@@ -161,22 +120,9 @@ def build_merged_markdown(
     all_source_details: list[dict[str, object]] = []
     for chapter in deduped_chapters:
         markdown = _prepare_chapter_markdown(str(chapter.get("markdown", "")).strip())
-        chapter_index = int(chapter.get("chapter_index", 0) or 0) or None
-        chapter_title = resolve_effective_chapter_title(chapter, chapter_index=chapter_index)
-        curriculum_path = _dedupe_curriculum_path(
-            [str(item).strip() for item in chapter.get("curriculum_path", []) if str(item).strip()],
-            chapter_title=chapter_title,
-        )
         all_source_details.extend(list(chapter.get("source_details") or []))
-        if curriculum_path:
-            body.extend(
-                f"{'#' * min(6, index + 2)} {section}"
-                for index, section in enumerate(curriculum_path)
-            )
-            body.append("")
-            body.append(_demote_markdown_headings(markdown, levels=len(curriculum_path) + 1))
-        else:
-            body.append(_demote_markdown_headings(markdown, levels=1))
+        if markdown:
+            body.append(markdown)
     if include_sources:
         reference_block = build_reference_section(all_source_details).strip()
         if reference_block:

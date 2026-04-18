@@ -260,7 +260,7 @@ async def _summarize_one_file(
             model="light",
             response_model=FileMaterialSummary,
             temperature=0.1,
-            max_tokens=1200,
+            max_tokens=5000,
             extra_metadata={
                 "docgen_stage": "summarize_file",
                 "file_id": packet.file_id,

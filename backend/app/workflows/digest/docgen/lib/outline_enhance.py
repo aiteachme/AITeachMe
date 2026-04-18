@@ -136,7 +136,7 @@ async def enhance_plan_outline(
             model="reason",
             response_model=EnhancedChapterOutlineBatch,
             temperature=0.15,
-            max_tokens=2600,
+            max_tokens=5000,
             extra_metadata={"docgen_stage": "enhance_plan_outline", **dict(extra_metadata or {})},
         )
     except Exception as exc:

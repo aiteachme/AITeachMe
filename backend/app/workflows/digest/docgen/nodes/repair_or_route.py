@@ -34,6 +34,7 @@ def build_repair_or_route_node(*, context: WorkflowContext):
             digest_mode=state.get("digest_mode") or None,
             current_stage_description="正在处理复核回流动作：MVP 只执行安全表层修补，其余记录为 warning。",
         )
+        # MVP 不在这里自动重写章节；复杂回流先结构化记录，避免修复阶段引入新的内容污染。
         repaired, updated_actions, unresolved = repair_or_route_review_actions(
             reviewed_chapters=reviewed,
             review_actions=actions,

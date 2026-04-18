@@ -33,6 +33,7 @@ def _chapter_metadata(
     conflict_report: dict | None = None,
     chapter_review_report: dict | None = None,
 ) -> dict:
+    # 这里是发布 manifest 的结构化收口，不改写正文；内容修复必须发生在更早的 review/repair 阶段。
     source_scope = dict(chapter.source_scope or {})
     return {
         "chapter_index": chapter.chapter_index,

@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import re
 
-from app.shared.infra.settings import get_settings
 from app.shared.infra.execution import TracedExecutionContext
 from app.shared.infra.tools.builtin.latex_processing import normalize_math_delimiters, validate_latex
 from app.shared.infra.tools.builtin.markdown_processing import build_draft_excerpt, normalize_mermaid_blocks
+from app.workflows.digest.docgen.lib.asset_requests import build_asset_request_block, extract_asset_request_descriptions, strip_asset_requests
 from app.workflows.digest.docgen.lib.assets import DocGenAssetRuntime
 from app.workflows.digest.docgen.lib.models import (
     AssetManifest,
@@ -18,21 +18,12 @@ from app.workflows.digest.docgen.lib.models import (
     PracticeManifest,
 )
 
-_MERMAID_PLACEHOLDER_RE = re.compile(r"<!--\s*\[MERMAID:\s*(.+?)\]\s*-->", re.IGNORECASE | re.DOTALL)
-_IMAGE_PLACEHOLDER_RE = re.compile(r"<!--\s*\[IMAGE:\s*(.+?)\]\s*-->", re.IGNORECASE | re.DOTALL)
-_INTERACTIVE_PLACEHOLDER_RE = re.compile(r"<!--\s*\[INTERACTIVE:\s*(.+?)\]\s*-->", re.IGNORECASE | re.DOTALL)
-
-
-def _placeholder_comment(kind: str, description: str) -> str:
-    return f"<!-- [{kind}: {description}] -->"
-
-
 def _ensure_requested_placeholders(markdown: str, requests: list[dict]) -> str:
     additions: list[str] = []
     existing = {
-        "mermaid": {item.strip().casefold() for item in _MERMAID_PLACEHOLDER_RE.findall(markdown)},
-        "image": {item.strip().casefold() for item in _IMAGE_PLACEHOLDER_RE.findall(markdown)},
-        "interactive": {item.strip().casefold() for item in _INTERACTIVE_PLACEHOLDER_RE.findall(markdown)},
+        "mermaid": {item.strip().casefold() for item in extract_asset_request_descriptions(markdown, kind="mermaid")},
+        "image": {item.strip().casefold() for item in extract_asset_request_descriptions(markdown, kind="image")},
+        "interactive": {item.strip().casefold() for item in extract_asset_request_descriptions(markdown, kind="interactive")},
     }
     for item in requests:
         kind = str(item.get("kind") or "").strip().lower()
@@ -41,11 +32,8 @@ def _ensure_requested_placeholders(markdown: str, requests: list[dict]) -> str:
             continue
         description_key = description.casefold()
         if kind == "mermaid" and description_key not in existing["mermaid"]:
-            additions.append(_placeholder_comment("MERMAID", description))
+            additions.append(build_asset_request_block("mermaid", description))
             existing["mermaid"].add(description_key)
-        elif kind in {"image", "images"} and get_settings().image_generation_enabled and description_key not in existing["image"]:
-            additions.append(_placeholder_comment("IMAGE", description))
-            existing["image"].add(description_key)
     if not additions:
         return markdown
     return markdown.rstrip() + "\n\n" + "\n\n".join(additions) + "\n"
@@ -136,18 +124,18 @@ async def enhance_chapter_draft(
     document_backbone: DocumentBackbone | None = None,
 ) -> tuple[EnhancedChapterDraft, AssetManifest, PracticeManifest]:
     markdown = _ensure_requested_placeholders(draft.markdown, draft.placeholder_requests)
-    if not get_settings().image_generation_enabled:
-        markdown = _IMAGE_PLACEHOLDER_RE.sub("", markdown)
-    mermaid_placeholders = [item.strip() for item in _MERMAID_PLACEHOLDER_RE.findall(markdown)]
-    image_placeholders = [item.strip() for item in _IMAGE_PLACEHOLDER_RE.findall(markdown)]
-    interactive_placeholders = [item.strip() for item in _INTERACTIVE_PLACEHOLDER_RE.findall(markdown)]
+    markdown = strip_asset_requests(markdown, kinds={"image"})
+    mermaid_placeholders = [item.strip() for item in extract_asset_request_descriptions(markdown, kind="mermaid")]
+    image_placeholders: list[str] = []
+    interactive_placeholders = [item.strip() for item in extract_asset_request_descriptions(markdown, kind="interactive")]
     asset_runtime = DocGenAssetRuntime(traced_context)
     assets: list[dict] = []
+    mermaid_render_reports: list[dict[str, object]] = []
     warnings: list[str] = []
     try:
         if mermaid_placeholders:
             traced_context.asset_kind = "mermaid"
-            markdown = await asset_runtime.process_mermaid_placeholders(markdown)
+            markdown, mermaid_render_reports = await asset_runtime.process_mermaid_placeholders_with_reports(markdown)
             assets.extend(
                 {
                     "asset_id": f"ch{draft.chapter_index:02d}_mermaid_{index:02d}",
@@ -155,6 +143,7 @@ async def enhance_chapter_draft(
                     "kind": "mermaid",
                     "source_placeholder": description,
                     "status": "rendered_markdown",
+                    "render_report": mermaid_render_reports[index - 1] if index - 1 < len(mermaid_render_reports) else {},
                 }
                 for index, description in enumerate(mermaid_placeholders, start=1)
             )
@@ -172,10 +161,11 @@ async def enhance_chapter_draft(
                 for index, description in enumerate(image_placeholders, start=1)
             )
         if interactive_placeholders:
-            markdown = _INTERACTIVE_PLACEHOLDER_RE.sub("", markdown)
+            markdown = strip_asset_requests(markdown, kinds={"interactive"})
             warnings.append("已移除交互占位；后端仅发布标准 Markdown，交互展示交给前端能力处理。")
     except Exception as exc:
         warnings.append(f"章节增强失败，已保留原始正文：{str(exc)[:120]}")
+    markdown = strip_asset_requests(markdown)
     markdown = normalize_math_delimiters(markdown)
     markdown = validate_latex(markdown)
     markdown = normalize_mermaid_blocks(markdown)

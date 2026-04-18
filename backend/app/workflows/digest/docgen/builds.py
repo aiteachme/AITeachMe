@@ -252,7 +252,6 @@ def _build_confirmed_plan_payload(plan: ConfirmedBuildPlan) -> dict[str, Any]:
     payload.setdefault("subject", plan.subject)
     payload.setdefault("user_goal", plan.user_goal)
     payload.setdefault("digest_mode", plan.digest_mode)
-    payload.setdefault("tone", plan.tone)
     payload.setdefault("chapter_plan", list(plan.chapter_plan_json))
     payload.setdefault("research_queries", list(plan.research_queries_json))
     payload.setdefault("media_plan", dict(plan.media_plan_json))
@@ -422,7 +421,6 @@ async def run_docgen_background(*, subject: str, file_ids: list[int], prompt: st
     build_session_id = _new_build_session_id()
     confirmed_plan_payload = None
     resolved_digest_mode = None
-    resolved_tone = None
     kg_ingest_task: asyncio.Task[dict[str, int]] | None = None
     graph_seed_chapter_metadatas: list[dict[str, object]] = []
     sync_graph_after_docgen = bool(get_settings().knowledge_graph.sync_after_docgen)
@@ -444,7 +442,6 @@ async def run_docgen_background(*, subject: str, file_ids: list[int], prompt: st
         plan, confirmed_plan_payload = _load_confirmed_plan_payload(subject=subject, user_id=user_id, confirmed_plan_id=confirmed_plan_id)
         planner_session_id = planner_session_id or plan.planner_session_id
         resolved_digest_mode = plan.digest_mode
-        resolved_tone = plan.tone
         graph_seed_chapter_metadatas = _build_graph_seed_chapter_metadatas(confirmed_plan_payload)
         with managed_session() as session:
             mark_confirmed_build_plan_status(session, subject=subject, user_id=user_id, plan_id=confirmed_plan_id, status="building")
@@ -462,7 +459,7 @@ async def run_docgen_background(*, subject: str, file_ids: list[int], prompt: st
                     doc_chapter_metadatas=graph_seed_chapter_metadatas,
                 )
             )
-        result = await run_docgen_workflow(subject=subject, file_ids=file_ids, user_prompt=prompt, requested_at=requested_at, build_session_id=build_session_id, confirmed_plan=confirmed_plan_payload, planner_session_id=planner_session_id, confirmed_plan_id=confirmed_plan_id, digest_mode=resolved_digest_mode, tone=resolved_tone)
+        result = await run_docgen_workflow(subject=subject, file_ids=file_ids, user_prompt=prompt, requested_at=requested_at, build_session_id=build_session_id, confirmed_plan=confirmed_plan_payload, planner_session_id=planner_session_id, confirmed_plan_id=confirmed_plan_id, digest_mode=resolved_digest_mode)
         if result.failed:
             if kg_ingest_task is not None and not kg_ingest_task.done():
                 kg_ingest_task.cancel()

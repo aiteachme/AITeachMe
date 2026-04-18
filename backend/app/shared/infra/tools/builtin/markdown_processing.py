@@ -78,7 +78,7 @@ def _is_indented_context_echo(line: str) -> bool:
         return False
     return (
         stripped.startswith("#")
-        or stripped.startswith(("**", "✅", "🔥", ">", "|"))
+        or stripped.startswith(("```", "**", "✅", "🔥", ">", "|", "---"))
         or len(stripped) > 18
     )
 
@@ -151,7 +151,7 @@ def normalize_mermaid_blocks(markdown: str) -> str:
 
         if not in_mermaid:
             if after_mermaid_close:
-                if _is_indented_context_echo(line) or _is_malformed_mermaid_fence(line):
+                if stripped_line == "```" or _is_indented_context_echo(line) or _is_malformed_mermaid_fence(line):
                     skipping_artifact = True
                     index += 1
                     continue
@@ -182,7 +182,7 @@ def normalize_mermaid_blocks(markdown: str) -> str:
             mermaid_lines = []
             mermaid_prefix = ""
             in_mermaid = False
-            after_mermaid_close = False
+            after_mermaid_close = True
             continue
 
         cleaned_line = _strip_blockquote_prefix(line, prefix=mermaid_prefix).rstrip()

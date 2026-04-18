@@ -33,16 +33,13 @@ from app.workflows.digest.docgen.nodes.common import (
 from app.workflows.digest.docgen.state import DocGenState
 
 
-def _chapter_plan_for_writer(
-    task: ChapterGenerationTask,
-    *,
-    total_chapters: int,
-    claim_ledger: ClaimLedger | None = None,
-    claim_evidence_map: ClaimEvidenceMap | None = None,
-    conflict_report: ConflictReport | None = None,
-) -> dict:
+def _unique_strings(values: list[str]) -> list[str]:
+    return list(dict.fromkeys(item for item in values if str(item).strip()))
+
+
+def _media_hints_from_requests(requests: list[dict]) -> dict[str, list[str]]:
     media_hints = {"mermaid": [], "images": []}
-    for item in task.placeholder_requests:
+    for item in requests:
         kind = str(item.get("kind") or "").strip().lower()
         description = str(item.get("description") or "").strip()
         if not description:
@@ -51,46 +48,92 @@ def _chapter_plan_for_writer(
             media_hints["mermaid"].append(description)
         elif kind in {"image", "images"}:
             media_hints["images"].append(description)
-    required = [
-        *task.content_points,
-        *task.concept_targets,
-        *task.definition_targets,
-        *task.formula_targets,
-        *task.example_targets,
-        *task.pitfall_targets,
+    return media_hints
+
+
+def _claim_targets_for_writer(claim_ledger: ClaimLedger | None) -> list[str]:
+    return [item.claim_text for item in list((claim_ledger or ClaimLedger()).items or []) if item.claim_text]
+
+
+def _evidence_bindings_for_writer(claim_evidence_map: ClaimEvidenceMap | None) -> list[dict]:
+    return [
+        binding.model_dump(mode="json")
+        for binding in list((claim_evidence_map or ClaimEvidenceMap()).bindings or [])
     ]
+
+
+def _conflict_warnings_for_writer(conflict_report: ConflictReport | None) -> list[str]:
+    return [
+        item.detail
+        for item in list((conflict_report or ConflictReport()).items or [])
+        if item.severity in {"warning", "error"} and item.detail
+    ]
+
+
+def _execution_contract_for_writer(
+    task: ChapterGenerationTask,
+    *,
+    required_elements: list[str],
+    media_hints: dict[str, list[str]],
+    claim_ledger: ClaimLedger | None,
+    claim_evidence_map: ClaimEvidenceMap | None,
+    conflict_report: ConflictReport | None,
+) -> dict:
+    return {
+        "target_word_count": task.target_word_count,
+        "min_word_count": task.min_word_count,
+        "coverage_requirements": required_elements,
+        "min_coverage_score": task.coverage_threshold,
+        "min_evidence_support": task.evidence_support_threshold,
+        "claim_targets": _claim_targets_for_writer(claim_ledger),
+        "evidence_bindings": _evidence_bindings_for_writer(claim_evidence_map),
+        "conflict_warnings": _conflict_warnings_for_writer(conflict_report),
+        "repair_enabled": True,
+        "media_quota": {
+            "mermaid": len(media_hints["mermaid"]),
+            "images": len(media_hints["images"]),
+        },
+    }
+
+
+def _chapter_plan_for_writer(
+    task: ChapterGenerationTask,
+    *,
+    total_chapters: int,
+    claim_ledger: ClaimLedger | None = None,
+    claim_evidence_map: ClaimEvidenceMap | None = None,
+    conflict_report: ConflictReport | None = None,
+) -> dict:
+    # Writer plan 是给写作器看的合同快照；结构化证据不在这里静默截断。
+    media_hints = _media_hints_from_requests(task.placeholder_requests)
+    required_elements = _unique_strings(
+        [
+            *task.content_points,
+            *task.concept_targets,
+            *task.definition_targets,
+            *task.formula_targets,
+            *task.example_targets,
+            *task.pitfall_targets,
+        ]
+    )
     return {
         "chapter_index": task.chapter_index,
         "total_chapters": total_chapters,
         "title": task.confirmed_title,
         "resolved_title": task.enhanced_title,
         "objective": task.objective,
-        "required_elements": list(dict.fromkeys(required))[:16],
+        "required_elements": required_elements,
         "search_queries": task.retrieval_queries,
         "writing_instructions": "\n".join([*task.teaching_outline, *task.writing_rules]),
         "media_hints": media_hints,
-        "execution_contract": {
-            "target_word_count": task.target_word_count,
-            "min_word_count": task.min_word_count,
-            "coverage_requirements": list(dict.fromkeys(required))[:16],
-            "min_coverage_score": task.coverage_threshold,
-            "min_evidence_support": task.evidence_support_threshold,
-            "claim_targets": [item.claim_text for item in list((claim_ledger or ClaimLedger()).items or [])[:10]],
-            "evidence_bindings": [
-                binding.model_dump(mode="json")
-                for binding in list((claim_evidence_map or ClaimEvidenceMap()).bindings or [])[:10]
-            ],
-            "conflict_warnings": [
-                item.detail
-                for item in list((conflict_report or ConflictReport()).items or [])
-                if item.severity in {"warning", "error"}
-            ][:8],
-            "repair_enabled": True,
-            "media_quota": {
-                "mermaid": len(media_hints["mermaid"]),
-                "images": len(media_hints["images"]),
-            },
-        },
+        "execution_contract": _execution_contract_for_writer(
+            task,
+            required_elements=required_elements,
+            media_hints=media_hints,
+            claim_ledger=claim_ledger,
+            claim_evidence_map=claim_evidence_map,
+            conflict_report=conflict_report,
+        ),
         "source_file_ids": task.priority_file_ids,
         "placeholder_requests": task.placeholder_requests,
     }
@@ -251,7 +294,6 @@ def build_generate_chapters_node(*, context: WorkflowContext):
                     conflict_report=conflict_report,
                 ),
                 dense_context=dense_context,
-                tone=state.get("tone") or "encouraging",
                 digest_mode=state.get("digest_mode") or "systematic",
                 selected_skillpacks=list(state.get("selected_skillpacks") or []),
                 user_goal=str((state.get("docgen_context") or {}).get("user_goal") or ""),

@@ -161,7 +161,6 @@ def create_docgen_initial_state(
     planner_session_id: str | None = None,
     confirmed_plan_id: str | None = None,
     digest_mode: str | None = None,
-    tone: str | None = None,
     selected_skillpacks: list[str] | None = None,
 ) -> DocGenState:
     """Create initial state for the DocGen graph."""
@@ -181,7 +180,6 @@ def create_docgen_initial_state(
         "course_type": course_type,
         "retrieval_profile": resolve_docgen_retrieval_profile(course_type),
         "teaching_action": "docgen_build",
-        "tone": tone or "",
         "selected_skillpacks": list(selected_skillpacks or []),
         "document_context": None,
         "docgen_context": {},
@@ -224,7 +222,6 @@ def build_generation_sends(state: DocGenState) -> list[Send] | Literal["fail"]:
                 "course_type": state.get("course_type", ""),
                 "retrieval_profile": state.get("retrieval_profile", ""),
                 "teaching_action": "chapter_generate",
-                "tone": state.get("tone", ""),
                 "selected_skillpacks": list(state.get("selected_skillpacks", []) or []),
                 "shared_inputs": state.get("shared_inputs"),
                 "document_context": state.get("document_context"),

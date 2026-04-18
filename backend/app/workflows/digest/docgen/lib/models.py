@@ -65,7 +65,6 @@ class DocGenContext(DocGenBaseModel):
     digest_mode: str = "systematic"
     course_type: str = "systematic"
     retrieval_profile: str = ""
-    tone: str = "encouraging"
     user_goal: str = ""
     plan_summary: str = ""
     docgen_history_brief: str = ""
@@ -84,7 +83,6 @@ class DocGenContext(DocGenBaseModel):
         "digest_mode",
         "course_type",
         "retrieval_profile",
-        "tone",
         "user_goal",
         "plan_summary",
         "docgen_history_brief",
@@ -258,12 +256,12 @@ class SourceAffinityByChapter(DocGenBaseModel):
     @field_validator("file_ids", mode="before")
     @classmethod
     def _file_ids(cls, value: Any) -> list[int]:
-        return clean_int_list(value, limit=12)
+        return clean_int_list(value)
 
     @field_validator("section_refs", mode="before")
     @classmethod
     def _section_refs(cls, value: Any) -> list[str]:
-        return clean_string_list(value, limit=16)
+        return clean_string_list(value)
 
     @field_validator("reason", mode="before")
     @classmethod
@@ -310,7 +308,7 @@ class EnhancedChapterOutline(DocGenBaseModel):
     )
     @classmethod
     def _lists(cls, value: Any) -> list[str]:
-        return clean_string_list(value, limit=16)
+        return clean_string_list(value)
 
 
 class EnhancedChapterOutlineBatch(DocGenBaseModel):
@@ -320,7 +318,7 @@ class EnhancedChapterOutlineBatch(DocGenBaseModel):
     @field_validator("plan_mismatch_warnings", mode="before")
     @classmethod
     def _warnings(cls, value: Any) -> list[str]:
-        return clean_string_list(value, limit=12)
+        return clean_string_list(value)
 
 
 class ChapterBudgetPolicy(DocGenBaseModel):
@@ -367,7 +365,7 @@ class ChapterGenerationTaskSeed(DocGenBaseModel):
     )
     @classmethod
     def _lists(cls, value: Any) -> list[str]:
-        return clean_string_list(value, limit=20)
+        return clean_string_list(value)
 
     @model_validator(mode="after")
     def _finish(self) -> "ChapterGenerationTaskSeed":
@@ -376,7 +374,7 @@ class ChapterGenerationTaskSeed(DocGenBaseModel):
         if not self.confirmed_title:
             self.confirmed_title = self.enhanced_title
         if not self.retrieval_queries:
-            self.retrieval_queries = clean_string_list([self.enhanced_title, *self.required_elements], limit=8)
+            self.retrieval_queries = clean_string_list([self.enhanced_title, *self.required_elements])
         if self.target_length <= 0:
             self.target_length = 1200
         return self
@@ -385,7 +383,6 @@ class ChapterGenerationTaskSeed(DocGenBaseModel):
 class ChapterGenerationPlanSeed(DocGenBaseModel):
     subject: str = ""
     digest_mode: str = "systematic"
-    tone: str = "encouraging"
     source_policy: str = "local_first"
     writing_rules: list[str] = Field(default_factory=list)
     chapter_format: list[str] = Field(default_factory=list)
@@ -393,7 +390,7 @@ class ChapterGenerationPlanSeed(DocGenBaseModel):
     chapters: list[ChapterGenerationTaskSeed] = Field(default_factory=list)
     plan_mismatch_warnings: list[str] = Field(default_factory=list)
 
-    @field_validator("subject", "digest_mode", "tone", "source_policy", mode="before")
+    @field_validator("subject", "digest_mode", "source_policy", mode="before")
     @classmethod
     def _text(cls, value: Any) -> str:
         return clean_text(value)
@@ -401,7 +398,7 @@ class ChapterGenerationPlanSeed(DocGenBaseModel):
     @field_validator("writing_rules", "chapter_format", "plan_mismatch_warnings", mode="before")
     @classmethod
     def _lists(cls, value: Any) -> list[str]:
-        return clean_string_list(value, limit=20)
+        return clean_string_list(value)
 
 
 class BackboneResearchAgenda(DocGenBaseModel):
@@ -423,7 +420,7 @@ class BackboneResearchAgenda(DocGenBaseModel):
     )
     @classmethod
     def _lists(cls, value: Any) -> list[str]:
-        return clean_string_list(value, limit=80)
+        return clean_string_list(value)
 
 
 class ChapterGenerationTask(DocGenBaseModel):
@@ -493,7 +490,7 @@ class ChapterGenerationTask(DocGenBaseModel):
     )
     @classmethod
     def _lists(cls, value: Any) -> list[str]:
-        return clean_string_list(value, limit=18)
+        return clean_string_list(value)
 
     @field_validator("fallback_policy", "citation_policy", "uncertainty_policy", mode="before")
     @classmethod
@@ -508,7 +505,7 @@ class ChapterGenerationTask(DocGenBaseModel):
     @field_validator("priority_file_ids", mode="before")
     @classmethod
     def _int_list(cls, value: Any) -> list[int]:
-        return clean_int_list(value, limit=12)
+        return clean_int_list(value)
 
     @model_validator(mode="after")
     def _finish(self) -> "ChapterGenerationTask":
@@ -517,7 +514,7 @@ class ChapterGenerationTask(DocGenBaseModel):
         if not self.confirmed_title:
             self.confirmed_title = self.enhanced_title
         if not self.retrieval_queries:
-            self.retrieval_queries = clean_string_list([self.enhanced_title, *self.content_points], limit=6)
+            self.retrieval_queries = clean_string_list([self.enhanced_title, *self.content_points])
         if not self.required_elements:
             self.required_elements = clean_string_list(
                 [
@@ -528,16 +525,14 @@ class ChapterGenerationTask(DocGenBaseModel):
                     *self.example_targets,
                     *self.pitfall_targets,
                 ],
-                limit=18,
             )
         if not self.style_rules:
             self.style_rules = list(self.writing_rules)
         if not self.claim_targets:
-            self.claim_targets = clean_string_list([*self.required_elements, *self.concept_targets], limit=18)
+            self.claim_targets = clean_string_list([*self.required_elements, *self.concept_targets])
         if not self.allowed_assets:
             self.allowed_assets = clean_string_list(
                 [str(item.get("kind") or "") for item in self.placeholder_requests if isinstance(item, dict)],
-                limit=8,
             )
         if self.min_word_count <= 0:
             self.min_word_count = 700
@@ -549,7 +544,6 @@ class ChapterGenerationTask(DocGenBaseModel):
 class ChapterGenerationPlan(DocGenBaseModel):
     subject: str = ""
     digest_mode: str = "systematic"
-    tone: str = "encouraging"
     source_policy: str = "local_first"
     writing_rules: list[str] = Field(default_factory=list)
     chapter_format: list[str] = Field(default_factory=list)
@@ -557,7 +551,7 @@ class ChapterGenerationPlan(DocGenBaseModel):
     chapters: list[ChapterGenerationTask] = Field(default_factory=list)
     plan_mismatch_warnings: list[str] = Field(default_factory=list)
 
-    @field_validator("subject", "digest_mode", "tone", "source_policy", mode="before")
+    @field_validator("subject", "digest_mode", "source_policy", mode="before")
     @classmethod
     def _text(cls, value: Any) -> str:
         return clean_text(value)
@@ -565,7 +559,7 @@ class ChapterGenerationPlan(DocGenBaseModel):
     @field_validator("writing_rules", "chapter_format", "plan_mismatch_warnings", mode="before")
     @classmethod
     def _lists(cls, value: Any) -> list[str]:
-        return clean_string_list(value, limit=16)
+        return clean_string_list(value)
 
 
 class CanonicalGlossaryItem(DocGenBaseModel):

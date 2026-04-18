@@ -19,10 +19,15 @@ from app.workflows.digest.docgen.prompts import (
     build_docgen_heading_repair_messages,
     build_docgen_writer_messages,
 )
+from app.workflows.digest.docgen.lib.asset_requests import (
+    ASSET_REQUEST_LANGUAGE,
+    build_asset_request_block,
+    has_asset_request,
+    strip_asset_requests,
+)
 
 _PLACEHOLDER_TOKEN_MAP = {
-    "mermaid": "[MERMAID:",
-    "images": "[IMAGE:",
+    "asset_request": ASSET_REQUEST_LANGUAGE,
 }
 
 
@@ -40,7 +45,6 @@ class DocGenWriterRuntime(BaseTracedExecution):
         *,
         chapter_plan: Mapping[str, Any],
         dense_context: str,
-        tone: str,
         digest_mode: str,
         selected_skillpacks: list[str] | None = None,
         user_goal: str = "",
@@ -73,7 +77,6 @@ class DocGenWriterRuntime(BaseTracedExecution):
         messages = build_docgen_writer_messages(
             title=title,
             objective=objective,
-            tone=tone,
             digest_mode=digest_mode,
             required_elements=required_elements,
             writing_instructions=writing_instructions,
@@ -92,7 +95,7 @@ class DocGenWriterRuntime(BaseTracedExecution):
             extra_metadata=self.context.trace_metadata(chapter_index=self.context.chapter_index),
         )
 
-        markdown = str(markdown).strip()
+        markdown = strip_asset_requests(str(markdown).strip())
         heading_quality = analyze_chapter_heading_quality(
             markdown,
             digest_mode=digest_mode,
@@ -102,7 +105,6 @@ class DocGenWriterRuntime(BaseTracedExecution):
             repaired_markdown = await self._repair_heading_structure(
                 title=title,
                 objective=objective,
-                tone=tone,
                 digest_mode=digest_mode,
                 required_elements=required_elements,
                 writing_instructions=writing_instructions,
@@ -177,7 +179,6 @@ class DocGenWriterRuntime(BaseTracedExecution):
         *,
         title: str,
         objective: str,
-        tone: str,
         digest_mode: str,
         required_elements: list[str],
         writing_instructions: str,
@@ -191,7 +192,6 @@ class DocGenWriterRuntime(BaseTracedExecution):
         messages = build_docgen_heading_repair_messages(
             title=title,
             objective=objective,
-            tone=tone,
             digest_mode=digest_mode,
             required_elements=required_elements,
             writing_instructions=writing_instructions,
@@ -232,10 +232,10 @@ class DocGenWriterRuntime(BaseTracedExecution):
         mermaid_hints = [str(item) for item in media_hints.get("mermaid", []) if str(item).strip()]
         image_hints = [str(item) for item in media_hints.get("images", []) if str(item).strip()]
         quotas = dict(execution_contract.get("media_quota") or {})
-        if int(quotas.get("mermaid", 0) or 0) > 0 and "[MERMAID:" not in markdown:
-            additions.append(f"<!-- [MERMAID: {(mermaid_hints[:1] or [f'{title} 的关键结构关系图'])[0]}] -->")
-        if int(quotas.get("images", 0) or 0) > 0 and "[IMAGE:" not in markdown:
-            additions.append(f"<!-- [IMAGE: {(image_hints[:1] or [f'{title} 的讲义配图建议'])[0]}] -->")
+        if int(quotas.get("mermaid", 0) or 0) > 0 and "```mermaid" not in markdown and not has_asset_request(markdown, kind="mermaid"):
+            additions.append(build_asset_request_block("mermaid", (mermaid_hints[:1] or [f"{title} 的关键结构关系图"])[0]))
+        if int(quotas.get("images", 0) or 0) > 0 and not has_asset_request(markdown, kind="image"):
+            additions.append(build_asset_request_block("image", (image_hints[:1] or [f"{title} 的讲义配图建议"])[0]))
         if not additions:
             return markdown
         return markdown.rstrip() + "\n\n" + "\n\n".join(additions) + "\n"

@@ -43,7 +43,6 @@ async def run_docgen_workflow(
     planner_session_id: str | None = None,
     confirmed_plan_id: str | None = None,
     digest_mode: str | None = None,
-    tone: str | None = None,
 ) -> WorkflowResult[DocGenState]:
     bus = event_bus or InProcessEventBus()
     await bus.publish(DocGenRequestedEvent(subject=subject, requested_at=requested_at, file_ids=file_ids))
@@ -76,7 +75,6 @@ async def run_docgen_workflow(
             planner_session_id=planner_session_id,
             confirmed_plan_id=confirmed_plan_id,
             digest_mode=digest_mode,
-            tone=tone,
         ),
         context=context,
     )
