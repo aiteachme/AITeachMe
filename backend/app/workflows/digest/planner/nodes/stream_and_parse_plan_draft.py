@@ -160,6 +160,11 @@ async def _stream_composer_response(
                 safe_text = pending_visible[:marker_index]
                 visible_closed = True
                 pending_visible = ""
+                await emit_planner_event(
+                    state,
+                    event="planner.plan.finalizing",
+                    detail="计划大纲已生成，正在校验结构并保存草稿...",
+                )
             else:
                 holdback = _marker_holdback_length(pending_visible, PLAN_JSON_MARKER)
                 safe_length = len(pending_visible) - holdback

@@ -28,6 +28,12 @@ from app.repositories.build_planner_repo import (
     update_confirmed_plan,
     update_planner_session,
 )
+from app.repositories.chats_repo import (
+    create_chat_message,
+    create_chat_session,
+    get_chat_session,
+    touch_chat_session,
+)
 from app.repositories.files_repo import list_all_raw_files_by_subject, list_raw_files_by_ids, list_raw_files_by_uids
 from app.shared.infra.database import managed_session
 from app.schemas.knowledge import (
@@ -53,6 +59,7 @@ from app.workflows.digest.planner.lib.steps import STEP_TIMING_FIELDS
 
 logger = structlog.get_logger(__name__)
 DEFAULT_PLAN_TONE = "encouraging"
+PLANNER_CHAT_SOURCE = "build_planner"
 
 
 def _markdown_ready(raw_file: RawFile) -> bool:
@@ -263,6 +270,94 @@ def _turn_snapshot(turn: BuildPlannerTurn) -> dict[str, Any]:
     }
 
 
+def _planner_chat_meta(record: BuildPlannerSession, *, plan: dict[str, Any] | None = None) -> dict[str, Any]:
+    return {
+        "source": PLANNER_CHAT_SOURCE,
+        "planner_session_id": record.id,
+        "planner_status": record.status,
+        "confirmed_plan_id": record.confirmed_plan_id,
+        "digest_mode": record.digest_mode,
+        "selected_file_ids": list(record.selected_file_ids_json or []),
+        "plan_summary": str((plan or record.latest_plan_json or {}).get("plan_summary") or record.latest_summary or ""),
+    }
+
+
+def _ensure_planner_chat_session(
+    session: Session,
+    record: BuildPlannerSession,
+    *,
+    plan: dict[str, Any] | None = None,
+) -> None:
+    meta = _planner_chat_meta(record, plan=plan)
+    existing = get_chat_session(
+        session,
+        subject=record.subject,
+        session_id=record.id,
+        user_id=record.user_id,
+    )
+    if existing is None:
+        create_chat_session(
+            session,
+            subject=record.subject,
+            user_id=record.user_id,
+            session_id=record.id,
+            title=record.title,
+            source=PLANNER_CHAT_SOURCE,
+            meta_json=meta,
+        )
+        return
+
+    existing.title = record.title
+    existing.source = PLANNER_CHAT_SOURCE
+    existing.meta_json = meta
+    existing.updated_at = utcnow()
+    session.add(existing)
+    session.commit()
+    session.refresh(existing)
+
+
+def _planner_chat_turn_id(turn: BuildPlannerTurn) -> str:
+    suffix = turn.id if turn.id is not None else uuid.uuid4().hex
+    return f"planner:{turn.session_id}:{suffix}"
+
+
+def _mirror_planner_turn_to_chat(
+    session: Session,
+    *,
+    record: BuildPlannerSession,
+    turn: BuildPlannerTurn,
+    plan: dict[str, Any] | None = None,
+) -> None:
+    _ensure_planner_chat_session(session, record, plan=plan)
+    create_chat_message(
+        session,
+        subject=record.subject,
+        user_id=record.user_id,
+        session_id=record.id,
+        role=turn.role,
+        content=turn.content,
+        turn_id=_planner_chat_turn_id(turn),
+        source=PLANNER_CHAT_SOURCE,
+        anchor_id=record.id,
+        meta_json={
+            "source": PLANNER_CHAT_SOURCE,
+            "message_kind": "planner_plan" if turn.role == "assistant" else "planner_user_request",
+            "planner_session_id": record.id,
+            "planner_turn_id": turn.id,
+            "plan_json": plan if turn.role == "assistant" else None,
+            "plan_summary": str((plan or {}).get("plan_summary") or ""),
+        },
+    )
+    touch_chat_session(
+        session,
+        subject=record.subject,
+        user_id=record.user_id,
+        session_id=record.id,
+        title=record.title,
+        touched_at=turn.created_at,
+    )
+
+
 def _record_snapshot(record: BuildPlannerSession) -> dict[str, Any]:
     return {
         "id": record.id,
@@ -445,6 +540,7 @@ def prepare_planner_run(state: Mapping[str, Any]) -> dict[str, Any]:
                     content=user_goal,
                 ),
             )
+            _mirror_planner_turn_to_chat(session, record=record, turn=user_turn)
             logger.info(
                 "planner_prepare_run_created_session",
                 subject=subject_slug,
@@ -488,7 +584,7 @@ def prepare_planner_run(state: Mapping[str, Any]) -> dict[str, Any]:
             record.confirmed_plan_id = None
             record.updated_at = utcnow()
             update_planner_session(session, record)
-            create_planner_turn(
+            user_turn = create_planner_turn(
                 session,
                 BuildPlannerTurn(
                     subject=subject_slug,
@@ -498,6 +594,7 @@ def prepare_planner_run(state: Mapping[str, Any]) -> dict[str, Any]:
                     content=feedback,
                 ),
             )
+            _mirror_planner_turn_to_chat(session, record=record, turn=user_turn)
             turns = list_planner_turns(session, session_id=record.id)
             selected_skillpacks = _selected_skillpacks_for_append(state, record)
             raw_files = list_raw_files_by_ids(session, subject_slug, list(record.selected_file_ids_json))
@@ -574,7 +671,7 @@ def save_planner_result(
         record.confirmed_plan_id = None
         record.updated_at = utcnow()
         record = update_planner_session(session, record)
-        create_planner_turn(
+        assistant_turn = create_planner_turn(
             session,
             BuildPlannerTurn(
                 subject=subject_slug,
@@ -585,6 +682,7 @@ def save_planner_result(
                 plan_json=persisted_plan,
             ),
         )
+        _mirror_planner_turn_to_chat(session, record=record, turn=assistant_turn, plan=persisted_plan)
         turns = list_planner_turns(session, session_id=record.id)
         logger.info(
             "planner_save_finished",

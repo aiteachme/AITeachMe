@@ -24,6 +24,7 @@ def build_normalize_and_persist_plan_node(*, context: WorkflowContext):
         )
         material_context = state["material_context"]
         digest_mode = state.get("digest_mode") or material_context.course_mode_decision.mode.value
+        # 上一个节点已经完成“生成”；这里把极简 JSON 合同补齐成 API/DocGen 稳定结构并落库。
         draft = normalize_planner_draft(
             state.get("build_plan_draft") or {},
             subject=state["subject"],

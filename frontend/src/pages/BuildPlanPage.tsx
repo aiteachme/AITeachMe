@@ -341,6 +341,8 @@ function buildPlannerStreamDetails(payload: Record<string, unknown>): string[] {
     }
     case "planner.plan.composing":
       return ["正在把思考过程压缩成几条可确认的计划大纲。"];
+    case "planner.plan.finalizing":
+      return ["正在校验计划结构，并写入草稿记录。"];
     case "planner.plan.ready":
       return plannerPayloadOutlineDetails(payload);
     default:
