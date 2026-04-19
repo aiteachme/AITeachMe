@@ -140,8 +140,7 @@ infra  = 已经接上外部系统的共享能力
 
 1. 本文件，先建立 `kernel / infra` 的边界。
 2. [infra/README.md](/c:/Project/Project0GIT/aiteachme/AiTeachMe-main/backend/app/shared/infra/README.md)，看共享基础设施怎么分层。
-3. [workflows/STRUCTURE.md](/c:/Project/Project0GIT/aiteachme/AiTeachMe-main/backend/app/workflows/STRUCTURE.md)，看业务层如何分区。
-4. [workflows/README.md](/c:/Project/Project0GIT/aiteachme/AiTeachMe-main/backend/app/workflows/README.md)，看真正的业务流程怎么编排。
+3. [workflows/README.md](/c:/Project/Project0GIT/aiteachme/AiTeachMe-main/backend/app/workflows/README.md)，看业务层如何分区、怎么编排、怎么接 LangSmith。
 
 ## 9. 一句话总结
 

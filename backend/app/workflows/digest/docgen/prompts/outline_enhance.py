@@ -5,6 +5,8 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from typing import Any
 
+from app.workflows.digest.docgen.prompts.tracing import trace_prompt_build
+
 OUTLINE_CHAPTER_REQUIRED_BUDGET = 12
 
 
@@ -77,10 +79,20 @@ Planner 对话与修改摘要：{docgen_history_brief or "暂无"}
 5. 如果某章涉及公式、推导、证明或计算，优先输出 interactive 占位描述。
 6. 所有内容都服务后续写作，不写解释性废话。
 """.strip()
-    return [
+    messages = [
         {"role": "system", "content": "你只输出合法 JSON，不输出 Markdown。"},
         {"role": "user", "content": prompt},
     ]
+    return trace_prompt_build(
+        "outline_enhance",
+        inputs={
+            "subject": subject,
+            "digest_mode": digest_mode,
+            "chapter_count": len(chapters),
+            "has_history": bool(docgen_history_brief),
+        },
+        output=messages,
+    )
 
 
 __all__ = ["build_outline_enhance_messages"]

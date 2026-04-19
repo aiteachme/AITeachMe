@@ -7,7 +7,6 @@ from collections.abc import Sequence
 from app.shared.infra.llm_support import acompletion_with_fallback
 from app.shared.infra.llm_support.routing import TaskType
 from app.shared.infra.tools.builtin.markdown_processing import count_words, find_markdown_rendering_issues
-from app.workflows.digest.docgen.lib.claims import evidence_support_score
 from app.workflows.digest.docgen.lib.models import (
     ChapterGenerationTask,
     ChapterReviewReport,
@@ -20,6 +19,7 @@ from app.workflows.digest.docgen.lib.models import (
     ReviewedChapterDraft,
     clean_string_list,
 )
+from app.workflows.digest.docgen.lib.quality import evidence_support_score
 from app.workflows.digest.docgen.prompts import build_chapter_review_messages
 
 

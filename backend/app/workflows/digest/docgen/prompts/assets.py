@@ -1,6 +1,7 @@
 ﻿"""Prompt builders used by DocGen asset enrichment."""
 
 from app.workflows.digest.docgen.prompts.common import build_docgen_mermaid_prompt
+from app.workflows.digest.docgen.prompts.tracing import trace_prompt_build
 
 
 def build_docgen_image_prompt(*, topic: str, context: str = "") -> str:
@@ -9,7 +10,7 @@ def build_docgen_image_prompt(*, topic: str, context: str = "") -> str:
     context_hint = str(context or "").strip()
     if len(context_hint) > 1200:
         context_hint = context_hint[:1200].rstrip() + "\n...[已截断]"
-    return f"""
+    prompt = f"""
 生成一张用于中文学习讲义的教育配图。
 
 主题：{str(topic or '').strip()}
@@ -23,6 +24,11 @@ def build_docgen_image_prompt(*, topic: str, context: str = "") -> str:
 - 不要包含大段文字；如需文字，只使用少量中文标签。
 - 优先表现概念关系、学习场景、结构示意或例题情境。
 """.strip()
+    return trace_prompt_build(
+        "docgen_image",
+        inputs={"topic": topic, "context_chars": len(context_hint)},
+        output=prompt,
+    )
 
 
 __all__ = ["build_docgen_image_prompt", "build_docgen_mermaid_prompt"]

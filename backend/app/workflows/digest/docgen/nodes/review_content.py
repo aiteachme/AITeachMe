@@ -8,7 +8,6 @@ from app.shared.infra.workflow.context import WorkflowContext
 from app.utils.docgen_store import append_knowledge_build_recent_event, update_knowledge_build_status
 from app.utils.time import utcnow
 from app.workflows.digest.docgen.lib.chapter_review import review_chapter
-from app.workflows.digest.docgen.lib.document_consistency import review_document_consistency
 from app.workflows.digest.docgen.lib.models import (
     ChapterGenerationTask,
     ClaimEvidenceMap,
@@ -20,6 +19,7 @@ from app.workflows.digest.docgen.lib.models import (
     ReviewedChapterDraft,
 )
 from app.workflows.digest.docgen.nodes.common import publish_docgen_progress
+from app.workflows.digest.docgen.lib.quality import review_document_consistency
 from app.workflows.digest.docgen.state import DocGenState
 
 

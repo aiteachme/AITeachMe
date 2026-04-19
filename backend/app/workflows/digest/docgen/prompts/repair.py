@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from app.workflows.digest.docgen.prompts.tracing import trace_prompt_build
+
 PATCH_MARKDOWN_BUDGET = 12000
 
 
@@ -39,10 +41,20 @@ ReviewAction：
 3. 只改 ReviewAction 指向的问题，不做风格大改。
 4. 如果无法安全修补，原样返回 Markdown。
 """.strip()
-    return [
+    messages = [
         {"role": "system", "content": system_prompt},
         {"role": "user", "content": user_prompt},
     ]
+    return trace_prompt_build(
+        "chapter_patch",
+        inputs={
+            "chapter_title": chapter_title,
+            "action_type": str(action.get("action_type") or ""),
+            "chapter_index": action.get("chapter_index"),
+            "markdown_chars": len(markdown),
+        },
+        output=messages,
+    )
 
 
 __all__ = ["build_chapter_patch_messages"]

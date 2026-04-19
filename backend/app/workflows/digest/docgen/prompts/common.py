@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from app.workflows.digest.docgen.prompts.tracing import trace_prompt_build
+
 DENSE_CONTEXT_WRITER_BUDGET = 14000
 DENSE_CONTEXT_REPAIR_BUDGET = 4000
 DENSE_CONTEXT_PURIFY_BUDGET = 12000
@@ -166,10 +168,23 @@ def build_docgen_writer_messages(
 研究材料：
 {dense_context[:DENSE_CONTEXT_WRITER_BUDGET]}
 """.strip()
-    return [
+    messages = [
         {"role": "system", "content": system_prompt},
         {"role": "user", "content": user_prompt},
     ]
+    return trace_prompt_build(
+        "docgen_writer",
+        inputs={
+            "title": title,
+            "digest_mode": digest_mode,
+            "required_count": len(required_elements),
+            "source_count": source_count,
+            "dense_context_chars": len(dense_context),
+            "chapter_index": chapter_index,
+            "chapter_count": chapter_count,
+        },
+        output=messages,
+    )
 
 
 def build_docgen_heading_repair_messages(
@@ -232,10 +247,23 @@ def build_docgen_heading_repair_messages(
 当前 Markdown：
 {markdown[:MARKDOWN_REPAIR_BUDGET]}
 """.strip()
-    return [
+    messages = [
         {"role": "system", "content": system_prompt},
         {"role": "user", "content": user_prompt},
     ]
+    return trace_prompt_build(
+        "docgen_heading_repair",
+        inputs={
+            "title": title,
+            "digest_mode": digest_mode,
+            "required_count": len(required_elements),
+            "markdown_chars": len(markdown),
+            "dense_context_chars": len(dense_context),
+            "chapter_index": chapter_index,
+            "chapter_count": chapter_count,
+        },
+        output=messages,
+    )
 
 
 def build_docgen_research_purify_messages(
@@ -268,17 +296,27 @@ def build_docgen_research_purify_messages(
 原始素材：
 {dense_context[:DENSE_CONTEXT_PURIFY_BUDGET]}
 """.strip()
-    return [
+    messages = [
         {
             "role": "system",
             "content": "你是 AITeachMe 的研究整理助手，负责把杂乱素材提纯成适合教学写作的中文研究笔记。",
         },
         {"role": "user", "content": user_prompt},
     ]
+    return trace_prompt_build(
+        "docgen_research_purify",
+        inputs={
+            "chapter_title": chapter_title,
+            "digest_mode": digest_mode,
+            "required_count": len(required_elements),
+            "dense_context_chars": len(dense_context),
+        },
+        output=messages,
+    )
 
 
 def build_docgen_mermaid_prompt(*, topic: str, context: str) -> str:
-    return f"""
+    prompt = f"""
 请根据下面内容生成一段干净、可渲染的 Mermaid 语法。
 
 要求：
@@ -293,6 +331,11 @@ def build_docgen_mermaid_prompt(*, topic: str, context: str) -> str:
 主题：{topic}
 上下文：{context[:MERMAID_CONTEXT_BUDGET]}
 """.strip()
+    return trace_prompt_build(
+        "docgen_mermaid",
+        inputs={"topic": topic, "context_chars": len(context)},
+        output=prompt,
+    )
 
 
 def build_docgen_sub_query_messages(
@@ -331,13 +374,24 @@ def build_docgen_sub_query_messages(
 可参考但不要机械照抄的兜底方向：
 {fallback_lines}
 """.strip()
-    return [
+    messages = [
         {
             "role": "system",
             "content": "你是 AITeachMe 的研究规划助手，负责把单个教学主题拆成可检索、可抓取、可用于知识整理的中文子查询。",
         },
         {"role": "user", "content": user_prompt},
     ]
+    return trace_prompt_build(
+        "docgen_sub_queries",
+        inputs={
+            "query": query,
+            "domain": domain,
+            "max_queries": max_queries,
+            "context_count": len(context_summary),
+            "fallback_query_count": len(fallback_queries),
+        },
+        output=messages,
+    )
 
 
 def build_docgen_gap_query_messages(
@@ -365,13 +419,23 @@ def build_docgen_gap_query_messages(
 4. 只返回查询语句列表（按行分割或JSON均可，系统会自动提取其中有意义的文本），不要解释。
 5. 如果现有素材已经足够完美，无需补充，你可以返回空结果。
 """.strip()
-    return [
+    messages = [
         {
             "role": "system",
             "content": "你是 AITeachMe 的研究分析引擎，负责寻找现有资料的盲区，并生成补充检索的查询语句以完善知识闭环。",
         },
         {"role": "user", "content": user_prompt},
     ]
+    return trace_prompt_build(
+        "docgen_gap_queries",
+        inputs={
+            "dense_context_chars": len(dense_context),
+            "required_count": len(required_elements),
+            "max_queries": max_queries,
+            "domain": domain,
+        },
+        output=messages,
+    )
 
 
 __all__ = [

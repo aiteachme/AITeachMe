@@ -106,10 +106,10 @@ flowchart TD
 ```text
 docgen/
   __init__.py              # lane 稳定导入面
-  graph.py                 # LangGraph 定义、初始 state、Send 分发
+  graph.py                 # LangGraph 定义、初始 state、Send 分发、单次运行入口
   state.py                 # DocGenState TypedDict
   nodes/                   # 顶层图节点
-  lib/                     # 节点内部复用逻辑和 Pydantic 合同
+  lib/                     # 节点内部复用逻辑和 Pydantic 合同；小质量模块已收口到 quality.py
   prompts/                 # prompt builder / template
   README.md
   FLOW_DESIGN.md
@@ -119,10 +119,13 @@ docgen/
 
 说明：
 
+- `graph.py` 承接单次 DocGen 图运行；`__init__.py` 只保留稳定导出。
 - `lib/build_lifecycle.py` 承接 DocGen lane 的构建触发、状态装配、后台任务编排和查询结果组装。
+- `graph.get_langgraph_dev_docgen_graph()` 只服务 `langgraph dev` / 图可视化调试，不是业务运行入口。
 - 知识产物清理已收口到 `digest/common/cleanup.py`，因为它清理的是 Digest 级知识产物，而不是 DocGen 私有中间状态。
 - 新增节点优先放 `nodes/`，节点内部可复用逻辑放 `lib/`。
 - 不新增 `runtime/`、`internal/`、`services/`、第二套 search/tool registry。
+- `prompts/tracing.py` 会把 prompt builder 输出作为 LangSmith `prompt` 子 run 记录，便于从链路里直接检查提示词拼装。
 
 ## 6. 核心合同
 

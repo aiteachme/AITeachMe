@@ -1,4 +1,9 @@
-﻿"""DocGen LangGraph definition."""
+"""DocGen graph definition and runtime entrypoint.
+
+这个文件对齐 Planner 的组织方式：上半部分定义 LangGraph 节点与
+fan-out/fan-in 路由，下半部分提供单次 `run_docgen_workflow` 运行入口。
+构建锁、后台任务和 API 装配仍在 `lib/build_lifecycle.py`。
+"""
 
 from __future__ import annotations
 
@@ -8,8 +13,19 @@ from typing import Any, Literal
 from langgraph.graph import END, StateGraph
 from langgraph.types import Send
 
+from app.shared.infra.settings import get_settings
 from app.shared.infra.workflow import workflow_tracer
 from app.shared.infra.workflow.context import WorkflowContext, create_langgraph_dev_context
+from app.shared.infra.workflow.events import InProcessEventBus
+from app.shared.infra.workflow.result import WorkflowResult, err_result
+from app.shared.infra.workflow.runtime import run_state_graph
+from app.workflows.digest.common.events import (
+    DocGenCompletedEvent,
+    DocGenFailedEvent,
+    DocGenRequestedEvent,
+)
+from app.workflows.digest.common.metrics import build_token_summary
+from app.workflows.digest.docgen.lib.reporting import build_docgen_lane_summary
 from app.workflows.digest.docgen.nodes import (
     build_confirm_and_dispatch_node,
     build_document_backbone_node,
@@ -40,6 +56,14 @@ NODE_MERGE_REVIEW = "合并检查整本文档"
 NODE_FINALIZE_TITLES = "收口章节标题"
 NODE_PUBLISH = "发布知识文档"
 RUN_NAME_DOCGEN = "织网引擎：生成知识文档"
+
+
+def _named_route(fn, name: str):
+    """给 LangGraph 条件路由函数设置可读名称，方便图导出和 LangSmith 展示。"""
+
+    fn.__name__ = name
+    fn.__qualname__ = name
+    return fn
 
 
 def build_docgen_graph(*, context: WorkflowContext) -> StateGraph:
@@ -206,8 +230,7 @@ def route_after_step_for_trace(state: DocGenState) -> Literal["fail", "continue"
     return route_after_step(state)
 
 
-route_after_step_for_trace.__name__ = "检查是否继续"
-route_after_step_for_trace.__qualname__ = "检查是否继续"
+route_after_step_for_trace = _named_route(route_after_step_for_trace, "检查是否继续")
 
 
 def build_generation_sends(state: DocGenState) -> list[Send] | Literal["fail"]:
@@ -248,8 +271,7 @@ def build_generation_sends_for_trace(state: DocGenState) -> list[Send] | Literal
     return build_generation_sends(state)
 
 
-build_generation_sends_for_trace.__name__ = "按章节分发生成任务"
-build_generation_sends_for_trace.__qualname__ = "按章节分发生成任务"
+build_generation_sends_for_trace = _named_route(build_generation_sends_for_trace, "按章节分发生成任务")
 
 
 def build_review_sends(state: DocGenState) -> list[Send] | Literal["fail"]:
@@ -290,14 +312,131 @@ def build_review_sends_for_trace(state: DocGenState) -> list[Send] | Literal["fa
     return build_review_sends(state)
 
 
-build_review_sends_for_trace.__name__ = "按章节分发复核任务"
-build_review_sends_for_trace.__qualname__ = "按章节分发复核任务"
+build_review_sends_for_trace = _named_route(build_review_sends_for_trace, "按章节分发复核任务")
 
 
 def get_langgraph_dev_docgen_graph() -> StateGraph:
-    """Create the DocGen graph used by ``langgraph dev``."""
+    """Create the DocGen graph used only by ``langgraph dev`` / graph visualization."""
 
     return build_docgen_graph(context=create_langgraph_dev_context("digest.docgen.langgraph_dev"))
+
+
+async def run_docgen_workflow(
+    *,
+    subject: str,
+    file_ids: list[int],
+    user_prompt: str | None = None,
+    requested_at: datetime,
+    event_bus: InProcessEventBus | None = None,
+    build_session_id: str | None = None,
+    shared_inputs: object | None = None,
+    confirmed_plan: dict | None = None,
+    planner_session_id: str | None = None,
+    confirmed_plan_id: str | None = None,
+    digest_mode: str | None = None,
+) -> WorkflowResult[DocGenState]:
+    """运行一次 DocGen LangGraph。
+
+    这里只负责创建 workflow context、装配初始 state、执行图、汇总 token /
+    timing 并发布完成或失败事件。构建锁、文件选择和后台任务生命周期不在
+    这里处理，而是在 `lib.build_lifecycle`。
+    """
+
+    bus = event_bus or InProcessEventBus()
+    settings = get_settings()
+    await bus.publish(DocGenRequestedEvent(subject=subject, requested_at=requested_at, file_ids=file_ids))
+
+    context = WorkflowContext(
+        workflow_name="digest.docgen",
+        subject=subject,
+        event_bus=bus,
+        metadata={
+            "requested_at": requested_at.isoformat(),
+            "lane": "docgen",
+            "langsmith_run_name": RUN_NAME_DOCGEN,
+            "build_session_id": build_session_id or "",
+            "planner_session_id": planner_session_id or "",
+            "confirmed_plan_id": confirmed_plan_id or "",
+            "digest_mode": digest_mode or "",
+            "max_concurrency": max(1, int(settings.docgen.max_parallel_chapters)),
+        },
+    )
+    result = await run_state_graph(
+        workflow_name="digest.docgen",
+        graph_builder=lambda: build_docgen_graph(context=context),
+        initial_state=create_docgen_initial_state(
+            subject=subject,
+            file_ids=file_ids,
+            user_prompt=user_prompt,
+            requested_at=requested_at,
+            build_session_id=build_session_id,
+            shared_inputs=shared_inputs,
+            confirmed_plan=confirmed_plan,
+            planner_session_id=planner_session_id,
+            confirmed_plan_id=confirmed_plan_id,
+            digest_mode=digest_mode,
+        ),
+        context=context,
+    )
+    if result.failed:
+        token_summary = build_token_summary(build_session_id=build_session_id or None, lane="docgen")
+        context.get_logger().bind(node="runtime").info(
+            "docgen_timing_summary",
+            **build_docgen_lane_summary(
+                {},
+                token_summary=token_summary,
+                status="failed",
+                error_message=result.error.detail,
+            ),
+        )
+        await bus.publish(
+            DocGenFailedEvent(
+                subject=subject,
+                requested_at=requested_at,
+                error_message=result.error.detail,
+            )
+        )
+        return result
+
+    final_state = result.require_value()
+    docgen_token_summary = build_token_summary(
+        build_session_id=final_state.get("build_session_id") or build_session_id or None,
+        lane="docgen",
+    )
+    final_state["token_summary"] = docgen_token_summary.model_dump()
+    final_state["timing_summary"] = build_docgen_lane_summary(
+        final_state,
+        token_summary=docgen_token_summary,
+    )
+    context.get_logger().bind(node="runtime").info(
+        "docgen_timing_summary",
+        **final_state["timing_summary"],
+    )
+    error_message = final_state.get("error")
+    if error_message:
+        await bus.publish(
+            DocGenFailedEvent(
+                subject=subject,
+                requested_at=requested_at,
+                error_message=error_message,
+            )
+        )
+        return err_result(
+            "digest_docgen_failed",
+            error_message,
+            metadata={"requested_at": requested_at.isoformat(), "subject": subject},
+        )
+
+    await bus.publish(
+        DocGenCompletedEvent(
+            subject=subject,
+            requested_at=requested_at,
+            staged_chapter_count=len(final_state.get("chapter_metadatas", [])),
+            draft_available=bool(str(final_state.get("merged_markdown", "")).strip()),
+            published_doc_count=len(final_state.get("doc_ids", [])),
+        )
+    )
+    return result
 
 
 __all__ = [
@@ -307,4 +446,5 @@ __all__ = [
     "create_docgen_initial_state",
     "get_langgraph_dev_docgen_graph",
     "route_after_step",
+    "run_docgen_workflow",
 ]

@@ -1,4 +1,9 @@
-﻿"""Typed state for the rewritten DocGen lane."""
+"""DocGen graph state contract.
+
+这里集中描述 LangGraph 节点之间传递的 state 字段，包括 Send fan-out
+临时字段、reducer 聚合字段和最终发布字段。HTTP schema / DB model 不在
+这里定义。
+"""
 
 from __future__ import annotations
 

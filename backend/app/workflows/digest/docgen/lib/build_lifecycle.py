@@ -1,4 +1,11 @@
-﻿from __future__ import annotations
+"""DocGen build lifecycle around the graph runtime.
+
+这个模块负责 API 触发后的外围生命周期：文件选择、confirmed plan 读取、
+构建锁、后台任务、状态查询和结果组装。真正的 LangGraph 定义与单次
+运行入口在 `docgen/graph.py`。
+"""
+
+from __future__ import annotations
 
 import asyncio
 import uuid

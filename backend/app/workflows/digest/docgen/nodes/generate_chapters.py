@@ -12,9 +12,6 @@ from app.shared.infra.workflow.context import WorkflowContext
 from app.workflows.digest.docgen.lib import DocGenChapterContextRuntime, DocGenWriterRuntime
 from app.workflows.digest.docgen.lib.chapter_critic import critique_chapter, maybe_rewrite_chapter
 from app.workflows.digest.docgen.lib.chapter_generation import build_fallback_chapter_markdown
-from app.workflows.digest.docgen.lib.claims import align_claim_evidence, build_claim_ledger
-from app.workflows.digest.docgen.lib.conflicts import resolve_conflicts_for_chapter
-from app.workflows.digest.docgen.lib.evidence import build_evidence_ledger, mark_evidence_used
 from app.workflows.digest.docgen.lib.models import (
     ChapterDraft,
     ChapterGenerationTask,
@@ -23,6 +20,13 @@ from app.workflows.digest.docgen.lib.models import (
     ClaimLedger,
     ConflictReport,
     DocumentBackbone,
+)
+from app.workflows.digest.docgen.lib.quality import (
+    align_claim_evidence,
+    build_claim_ledger,
+    build_evidence_ledger,
+    mark_evidence_used,
+    resolve_conflicts_for_chapter,
 )
 from app.workflows.digest.docgen.nodes.common import (
     ensure_chapter_heading,

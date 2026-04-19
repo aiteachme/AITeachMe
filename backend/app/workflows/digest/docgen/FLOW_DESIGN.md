@@ -59,7 +59,7 @@ prepare_context / 当前 prepare_parallel_inputs
   三路结果 fan-in 后进入派发阶段。
   |
   v
-merge_and_dispatch / 当前 confirm_and_dispatch
+confirm_and_dispatch
   合并 prepare_context 的三路结果。
   生成 ChapterGenerationPlanSeed、ChapterGenerationTaskSeed 和 backbone_research_agenda。
   同时生成当前章节 fan-out 使用的 ChapterGenerationPlan / ChapterGenerationTask。
@@ -79,7 +79,7 @@ generate_chapters
   所有章节草稿 fan-in 为 chapter_drafts、research_traces、claim/evidence/conflict ledgers。
   |
   v
-当前 enhance_chapters
+enhance_chapters
   按章并行增强：
     ├─ enhance_chapter 1
     ├─ enhance_chapter 2

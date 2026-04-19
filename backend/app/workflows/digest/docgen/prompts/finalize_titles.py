@@ -4,12 +4,13 @@ from app.workflows.digest.docgen.prompts.common import (
     build_docgen_gap_query_messages,
     build_docgen_sub_query_messages,
 )
+from app.workflows.digest.docgen.prompts.tracing import trace_prompt_build
 
 
 def build_finalize_chapter_titles_messages(*, digest_mode: str, chapters: list[dict]) -> list[dict[str, str]]:
     """Build messages for final chapter title review."""
 
-    return [
+    messages = [
         {
             "role": "system",
             "content": (
@@ -33,6 +34,11 @@ def build_finalize_chapter_titles_messages(*, digest_mode: str, chapters: list[d
             ),
         },
     ]
+    return trace_prompt_build(
+        "finalize_chapter_titles",
+        inputs={"digest_mode": digest_mode, "chapter_count": len(chapters)},
+        output=messages,
+    )
 
 
 __all__ = [
