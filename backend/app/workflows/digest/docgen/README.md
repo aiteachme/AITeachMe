@@ -35,7 +35,8 @@ load_context
   -> build_document_backbone
   -> generate_chapters (Send x N)
   -> enhance_chapters
-  -> review_content
+  -> review_chapter (Send x N)
+  -> document_consistency_review
   -> repair_or_route
   -> merge_review
   -> finalize_titles
@@ -43,7 +44,7 @@ load_context
   -> END
 ```
 
-其中 `generate_chapters` 是 LangGraph `Send` fan-out：每章独立研究、整理证据、写草稿；`enhance_chapters` 在章节 fan-in 后一次性并发处理全部草稿。
+其中 `generate_chapters` 和 `review_chapter` 都是 LangGraph `Send` fan-out：生成阶段每章独立研究、整理证据、写草稿；复核阶段每章独立做 LLM 结构化 review，再 fan-in 到整本一致性检查。
 
 ## 3. 当前流程图
 
@@ -58,7 +59,8 @@ flowchart TD
     D["build_document_backbone<br/>构建整本文档知识骨架"]
     E{"generate_chapters<br/>Send x N"}
     F["enhance_chapters<br/>表现层增强"]
-    G["review_content<br/>章节复核与整本一致性检查"]
+    G1{"review_chapter<br/>Send x N"}
+    G2["document_consistency_review<br/>整本一致性检查"]
     H["repair_or_route<br/>安全修补或记录 warning"]
     I["merge_review<br/>合并与发布前检查"]
     J["finalize_titles<br/>标题收口"]
@@ -74,8 +76,9 @@ flowchart TD
     C --> D
     D --> E
     E --> F
-    F --> G
-    G --> H
+    F --> G1
+    G1 --> G2
+    G2 --> H
     H --> I
     I --> J
     J --> K
@@ -91,11 +94,12 @@ flowchart TD
 | 3 | `build_document_backbone` | 构建术语、概念依赖、主张池、符号表、易混点；失败时降级为 seed 弱骨架 |
 | 4 | `generate_chapters` | 每章检索、读取/压缩上下文、生成 evidence ledger、claim ledger、claim/evidence map、conflict report，并写草稿 |
 | 5 | `enhance_chapters` | 处理 Mermaid、图片/交互占位降级、公式清洗、Markdown 结构和本章自检题 |
-| 6 | `review_content` | 逐章执行 LLM 结构化内容复核，并用规则复核兜底；同时做整本术语/标题/章节数一致性检查 |
-| 7 | `repair_or_route` | 对 `surface_patch` / `section_patch` 执行局部 Markdown patch，对证据补强和重写类动作结构化记录 |
-| 8 | `merge_review` | 按章去重排序，生成章节 metadata，合并 Markdown，做发布前完整性检查 |
-| 9 | `finalize_titles` | 用 LLM 复核并优化最终章节标题，同步改写章节 Markdown 一级标题，并重建整本 Markdown |
-| 10 | `publish_document` | 写 `_build`、当前发布文件、版本归档、`docgen_manifest.json` 和 `KnowledgeDoc` rows |
+| 6 | `review_chapter` | LangGraph `Send x N` 按章并行执行 LLM 结构化内容复核，并用规则复核兜底 |
+| 7 | `document_consistency_review` | 章节 review fan-in 后检查整本术语、标题、章节数、重复和风格一致性 |
+| 8 | `repair_or_route` | 对 `surface_patch` / `section_patch` 执行局部 Markdown patch，对证据补强和重写类动作结构化记录 |
+| 9 | `merge_review` | 按章去重排序，生成章节 metadata，合并 Markdown，做发布前完整性检查 |
+| 10 | `finalize_titles` | 用 LLM 复核并优化最终章节标题，同步改写章节 Markdown 一级标题，并重建整本 Markdown |
+| 11 | `publish_document` | 写 `_build`、当前发布文件、版本归档、`docgen_manifest.json` 和 `KnowledgeDoc` rows |
 
 ## 5. 目录结构
 

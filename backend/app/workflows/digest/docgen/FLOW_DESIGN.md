@@ -88,7 +88,7 @@ generate_chapters
   增强稿 fan-in 为 enhanced_chapter_drafts、asset_manifests、practice_manifests。
   |
   v
-review_content
+review_content / 当前 review_chapter Send x N + document_consistency_review
   按章并行复核：
     ├─ review_chapter 1
     ├─ review_chapter 2
@@ -291,7 +291,7 @@ enhance_chapters
     - 不自行引入新结论。
     - 不改变 claim / evidence 关系。
 
-review_content
+review_content / 当前 review_chapter Send x N + document_consistency_review
   ├─ review_chapter 1
   ├─ review_chapter 2
   ├─ review_chapter N
@@ -317,7 +317,8 @@ review_content
     5. 整本风格是否断裂。
   当前实现补充：
     - review_chapter 使用 LLM 结构化复核 + 规则 guardrail。
-    - review_chapter 当前已按章并行执行。
+    - review_chapter 当前通过 LangGraph Send 按章 fan-out，在 LangSmith 中可见为并行章节复核分支。
+    - document_consistency_review 在章节 fan-in 后执行，不调工具、不检索、不改正文。
 
 repair_or_route
   输入：ReviewAction[] / ReviewedChapterDraft[] / EnhancedChapterDraft[] / ChapterGenerationTask[] / DocumentBackbone
@@ -390,8 +391,8 @@ publish_document
 | `build_document_backbone` | `build_document_backbone` | 已落地，含 fallback backbone |
 | `generate_draft` | `generate_chapters` | 已落地，已输出 trace / evidence / claim / conflict |
 | `enhance` | `enhance_chapters` | 已落地，需补 asset disabled manifest |
-| `review_content.review_chapter` | `review_content` 内部 | 已落地，LLM review + 规则兜底 |
-| `review_content.document_consistency_review` | `review_content` 内部 | 已落地 |
+| `review_content.review_chapter` | `review_chapter` / `复核章节内容` | 已落地，LangGraph Send x N，LLM review + 规则兜底 |
+| `review_content.document_consistency_review` | `document_consistency_review` / `复核整本一致性` | 已落地，章节 review fan-in 后执行 |
 | `repair_or_route` | `repair_or_route` | 已落地局部 patch：可执行 surface/section patch；待补 evidence/regenerate 和真实 repair loop |
 | `merge_review` | `merge_review` | 已落地 |
 | `final_merge_patch` | 无 | 待新增，只处理合并后小问题 |

@@ -13,6 +13,7 @@ from app.shared.infra.workflow.context import WorkflowContext, create_langgraph_
 from app.workflows.digest.docgen.nodes import (
     build_confirm_and_dispatch_node,
     build_document_backbone_node,
+    build_document_consistency_review_node,
     build_enhance_chapters_node,
     build_finalize_titles_node,
     build_generate_chapters_node,
@@ -21,7 +22,7 @@ from app.workflows.digest.docgen.nodes import (
     build_prepare_parallel_inputs_node,
     build_publish_document_node,
     build_repair_or_route_node,
-    build_review_content_node,
+    build_review_chapter_node,
 )
 from app.workflows.digest.docgen.nodes.common import resolve_docgen_retrieval_profile
 from app.workflows.digest.docgen.state import DocGenState
@@ -32,7 +33,8 @@ NODE_DISPATCH = "确认章节生成计划"
 NODE_BUILD_BACKBONE = "构建文档知识骨架"
 NODE_GENERATE_CHAPTERS = "生成章节草稿"
 NODE_ENHANCE_CHAPTERS = "增强章节内容"
-NODE_REVIEW_CONTENT = "复核章节与整本一致性"
+NODE_REVIEW_CHAPTERS = "复核章节内容"
+NODE_DOCUMENT_CONSISTENCY_REVIEW = "复核整本一致性"
 NODE_REPAIR_OR_ROUTE = "记录复核回流动作"
 NODE_MERGE_REVIEW = "合并检查整本文档"
 NODE_FINALIZE_TITLES = "收口章节标题"
@@ -82,8 +84,16 @@ def build_docgen_graph(*, context: WorkflowContext) -> StateGraph:
         trace.node(build_enhance_chapters_node(context=context), name=NODE_ENHANCE_CHAPTERS),
     )
     workflow.add_node(
-        NODE_REVIEW_CONTENT,
-        trace.node(build_review_content_node(context=context), name=NODE_REVIEW_CONTENT, timing_field="review_ms"),
+        NODE_REVIEW_CHAPTERS,
+        trace.node(build_review_chapter_node(context=context), name=NODE_REVIEW_CHAPTERS, timing_field="review_ms"),
+    )
+    workflow.add_node(
+        NODE_DOCUMENT_CONSISTENCY_REVIEW,
+        trace.node(
+            build_document_consistency_review_node(context=context),
+            name=NODE_DOCUMENT_CONSISTENCY_REVIEW,
+            timing_field="review_ms",
+        ),
     )
     workflow.add_node(
         NODE_REPAIR_OR_ROUTE,
@@ -124,9 +134,14 @@ def build_docgen_graph(*, context: WorkflowContext) -> StateGraph:
         {"fail": END},
     )
     workflow.add_edge(NODE_GENERATE_CHAPTERS, NODE_ENHANCE_CHAPTERS)
-    workflow.add_edge(NODE_ENHANCE_CHAPTERS, NODE_REVIEW_CONTENT)
     workflow.add_conditional_edges(
-        NODE_REVIEW_CONTENT,
+        NODE_ENHANCE_CHAPTERS,
+        build_review_sends_for_trace,
+        {"fail": END},
+    )
+    workflow.add_edge(NODE_REVIEW_CHAPTERS, NODE_DOCUMENT_CONSISTENCY_REVIEW)
+    workflow.add_conditional_edges(
+        NODE_DOCUMENT_CONSISTENCY_REVIEW,
         route_after_step_for_trace,
         {"continue": NODE_REPAIR_OR_ROUTE, "fail": END},
     )
@@ -237,6 +252,48 @@ build_generation_sends_for_trace.__name__ = "按章节分发生成任务"
 build_generation_sends_for_trace.__qualname__ = "按章节分发生成任务"
 
 
+def build_review_sends(state: DocGenState) -> list[Send] | Literal["fail"]:
+    if state.get("error"):
+        return "fail"
+    enhanced = sorted(
+        list(state.get("enhanced_chapter_drafts", [])),
+        key=lambda item: int(item.get("chapter_index", 0) or 0),
+    )
+    if not enhanced:
+        return "fail"
+    total = len(enhanced)
+    return [
+        Send(
+            NODE_REVIEW_CHAPTERS,
+            {
+                "subject": state["subject"],
+                "requested_at": state["requested_at"],
+                "build_session_id": state.get("build_session_id", ""),
+                "planner_session_id": state.get("planner_session_id", ""),
+                "confirmed_plan_id": state.get("confirmed_plan_id", ""),
+                "digest_mode": state.get("digest_mode", ""),
+                "retrieval_profile": state.get("retrieval_profile", ""),
+                "teaching_action": "chapter_review",
+                "enhanced_chapter_draft": draft,
+                "chapter_tasks": list(state.get("chapter_tasks") or []),
+                "claim_ledgers": list(state.get("claim_ledgers") or []),
+                "claim_evidence_maps": list(state.get("claim_evidence_maps") or []),
+                "conflict_reports": list(state.get("conflict_reports") or []),
+                "total_chapters": total,
+            },
+        )
+        for draft in enhanced
+    ]
+
+
+def build_review_sends_for_trace(state: DocGenState) -> list[Send] | Literal["fail"]:
+    return build_review_sends(state)
+
+
+build_review_sends_for_trace.__name__ = "按章节分发复核任务"
+build_review_sends_for_trace.__qualname__ = "按章节分发复核任务"
+
+
 def get_langgraph_dev_docgen_graph() -> StateGraph:
     """Create the DocGen graph used by ``langgraph dev``."""
 
@@ -246,6 +303,7 @@ def get_langgraph_dev_docgen_graph() -> StateGraph:
 __all__ = [
     "build_docgen_graph",
     "build_generation_sends",
+    "build_review_sends",
     "create_docgen_initial_state",
     "get_langgraph_dev_docgen_graph",
     "route_after_step",
