@@ -45,6 +45,13 @@ async def run_docgen_workflow(
     confirmed_plan_id: str | None = None,
     digest_mode: str | None = None,
 ) -> WorkflowResult[DocGenState]:
+    """运行一次 DocGen LangGraph。
+
+    这里只负责创建 workflow context、装配初始 state、执行图、汇总 token /
+    timing 并发布完成或失败事件。构建锁、文件选择和后台任务生命周期不在
+    这里处理，而是在 `lib.build_lifecycle`。
+    """
+
     bus = event_bus or InProcessEventBus()
     settings = get_settings()
     await bus.publish(DocGenRequestedEvent(subject=subject, requested_at=requested_at, file_ids=file_ids))

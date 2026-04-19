@@ -81,6 +81,14 @@ class DocGenChapterContextRuntime(BaseTracedExecution):
         queries_per_round: int | None = None,
         max_gap_queries_per_round: int | None = None,
     ) -> TracedExecutionResult:
+        """执行单章研究上下文构建。
+
+        这一步负责把章节任务里的检索意图变成可写作的 dense_context：
+        先规划子查询，再按预算执行本地 RAG 和外部检索，随后打开网页、
+        压缩材料并判断是否还需要补 gap query。返回值是给 writer 和
+        evidence/claim 账本消费的研究包，而不是最终正文。
+        """
+
         settings = get_settings()
         query_limit = max_results_per_query or settings.search.max_results_per_query
         strategy = self._resolve_strategy(digest_mode)
@@ -372,6 +380,12 @@ class DocGenChapterContextRuntime(BaseTracedExecution):
         retrieval_budget_s: float,
         provider_budget_s: float,
     ) -> dict[str, Any]:
+        """执行一轮章节检索并累计检索状态。
+
+        每轮会先跑本地 retriever，再按剩余预算跑外部 retriever；结果会追加
+        到 all_results，并更新 query、hit、retriever_stats 等跨轮累计状态。
+        """
+
         round_local_hits = 0
         round_web_hits = 0
         round_fallback_queries: list[str] = []
@@ -502,6 +516,12 @@ class DocGenChapterContextRuntime(BaseTracedExecution):
         page_cache: dict[str, ScrapedPage] | None = None,
         read_timeout_s: float | None = None,
     ) -> tuple[list[str], int]:
+        """把检索结果转换成可压缩文档。
+
+        local:// 结果直接使用切片文本；外部 URL 先通过 reader 打开正文。
+        如果 reader 失败但搜索 snippet 可用，则保留 snippet 作为降级材料。
+        """
+
         documents: list[str] = []
         external_results: list[SearchResult] = []
         seen_urls: set[str] = set()
@@ -556,6 +576,12 @@ class DocGenChapterContextRuntime(BaseTracedExecution):
         required_elements: list[str],
         digest_mode: str,
     ) -> tuple[str, bool]:
+        """用轻量模型清洗过长或噪声较多的研究材料。
+
+        短文本直接返回；长文本会要求模型去掉导航、广告、重复片段，保留
+        对章节写作有价值的概念、例子、公式和证据。
+        """
+
         if not dense_context.strip():
             return "", False
         if len(dense_context) < 900 and not required_elements and not objective.strip():

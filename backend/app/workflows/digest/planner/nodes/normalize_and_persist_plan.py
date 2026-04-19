@@ -14,7 +14,15 @@ logger = structlog.get_logger(__name__)
 
 
 def build_normalize_and_persist_plan_node(*, context: WorkflowContext):
+    """构建 Planner 保存节点。
+
+    负责把模型输出的 build_plan_draft 规范化成稳定合同，并写入 planner
+    session / chat mirror。这里是 Planner 图的最后一步。
+    """
+
     async def normalize_and_persist_plan_node(state: BuildPlannerState) -> dict:
+        """保存当前 Planner 草稿并返回 API 响应所需状态。"""
+
         logger.info(
             "planner_normalize_started",
             planner_session_id=state.get("planner_session_id", ""),

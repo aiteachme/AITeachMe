@@ -20,7 +20,15 @@ from app.workflows.digest.docgen.state import DocGenState
 
 
 def build_enhance_chapters_node(*, context: WorkflowContext):
+    """构建章节增强节点。
+
+    该节点在所有章节草稿 fan-in 后运行，但内部会并行增强每章。增强只
+    处理表现层：资产占位、公式、Markdown 结构和自检题，不负责修核心知识。
+    """
+
     async def enhance_chapters_node(state: DocGenState) -> dict:
+        """并行增强章节草稿并产出资产/练习 manifest。"""
+
         started_at = perf_counter()
         drafts = [
             ChapterDraft.model_validate(item)

@@ -39,7 +39,16 @@ def _review_decision(actions: list, *, document_issue_count: int) -> str:
 
 
 def build_review_content_node(*, context: WorkflowContext):
+    """构建内容复核节点。
+
+    章节级 review 按章并行执行，先由 LLM 做结构化复核，再叠加规则兜底；
+    所有章节 review fan-in 后再做整本文档一致性检查，并输出
+    review_decision 与 ReviewAction 给 repair 阶段使用。
+    """
+
     async def review_content_node(state: DocGenState) -> dict:
+        """复核增强后的章节集合并生成回流动作。"""
+
         started_at = perf_counter()
         enhanced = [
             EnhancedChapterDraft.model_validate(item)

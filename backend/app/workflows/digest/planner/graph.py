@@ -62,6 +62,13 @@ def _require_success_state(result: WorkflowResult[BuildPlannerState]) -> BuildPl
 
 
 def build_planner_graph(*, context: WorkflowContext) -> StateGraph:
+    """构建 Planner 的四步 LangGraph。
+
+    Planner 只负责生成和修订可确认的构建方案：读取资料、理解目标、
+    合成大纲、保存方案。不要在这里做 DocGen 的检索写作，也不要把
+    API 持久化细节塞进节点之外的地方。
+    """
+
     trace = workflow_tracer(context=context, lane="planner")
     workflow = StateGraph(
         BuildPlannerState,
@@ -256,6 +263,8 @@ async def create_build_planner_session(
     progress_callback: object | None = None,
     token_callback: object | None = None,
 ) -> BuildPlannerSessionResponse:
+    """创建一次新的 Planner 会话并流式生成首版方案。"""
+
     # API 友好入口：只装配 state、启动 graph、把最终 state 转成既有响应结构。
     # 真正业务逻辑仍在 graph nodes 里。
     planner_defaults = get_teaching_runtime_config().planner
@@ -317,6 +326,8 @@ async def append_build_planner_message(
     progress_callback: object | None = None,
     token_callback: object | None = None,
 ) -> BuildPlannerSessionResponse:
+    """在已有 Planner 会话中追加用户反馈并重新生成方案。"""
+
     # 追加反馈也只是同一条 graph run。
     # load_planner_materials 会读取上一版 session/plan 并追加用户 turn。
     logger.info(

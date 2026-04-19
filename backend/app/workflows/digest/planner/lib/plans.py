@@ -253,6 +253,12 @@ def normalize_planner_draft(
     shared_inputs: SharedInputs | None = None,
     latest_plan: BuildPlannerDraft | Mapping[str, Any] | None = None,
 ) -> BuildPlannerDraft:
+    """把模型草稿规范化成稳定 Planner 合同。
+
+    这里会校验章节、补齐最少章节数、统一 subject 展示名、生成 media plan
+    和 build constraints。输出会被保存为 latest_plan，并最终冻结给 DocGen。
+    """
+
     shared = shared_inputs or _minimal_shared_inputs(subject)
     current = _mapping(draft)
     previous = _mapping(latest_plan)

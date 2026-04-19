@@ -86,6 +86,12 @@ def build_docgen_writer_messages(
     chapter_count: int | None = None,
     execution_contract: dict[str, object] | None = None,
 ) -> list[dict[str, str]]:
+    """构造章节 writer 提示词。
+
+    Writer prompt 只消费压缩后的 dense_context 和章节执行合同，禁止输出
+    内部资产协议或引用区块；资产、自检和来源统一由后续节点处理。
+    """
+
     normalized_mode = _normalize_mode(digest_mode)
     required_text = "、".join(required_elements) if required_elements else "核心概念、推理过程、典型例子"
     execution_contract = dict(execution_contract or {})

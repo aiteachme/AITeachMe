@@ -141,6 +141,13 @@ def compose_chapter_generation_plan(
     source_affinity_by_chapter: Sequence[SourceAffinityByChapter] | None = None,
     plan_mismatch_warnings: Sequence[str] | None = None,
 ) -> ChapterGenerationPlan:
+    """把 confirmed plan 和准备阶段结果合成章节执行计划。
+
+    这里是 DocGen 内部“任务派发合同”的收口点：只细化用户确认过的
+    章节，不改变章节数量和顺序；同时把 intent、文件摘要、章节亲和度、
+    资产意图和预算策略合并成每章可执行的 ChapterGenerationTask。
+    """
+
     outline_by_index = {int(outline.chapter_index): outline for outline in enhanced_outlines}
     chapter_count = len(confirmed_chapters)
     normalized_mode = str(docgen_context.digest_mode or "").strip().lower()
@@ -265,6 +272,13 @@ def build_plan_seed_and_backbone_agenda(
     high_confidence_evidence_units: Sequence[HighConfidenceEvidenceUnit] | None = None,
     file_summaries: Sequence[FileMaterialSummary] | None = None,
 ) -> tuple[ChapterGenerationPlanSeed, list[ChapterGenerationTaskSeed], BackboneResearchAgenda]:
+    """从章节执行计划派生 seed 和全局骨架议程。
+
+    seed 给 `build_document_backbone` 做整本文档建模；兼容的
+    ChapterGenerationPlan 继续给章节 fan-out 使用。这样可以先形成
+    稳定的全书语义中心，再把术语、主张和易混点回填到每章任务。
+    """
+
     evidence_units = list(high_confidence_evidence_units or [])
     summaries = list(file_summaries or [])
     task_seeds: list[ChapterGenerationTaskSeed] = []

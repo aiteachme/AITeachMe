@@ -127,6 +127,12 @@ async def _stream_composer_response(
     planner_brief: PlannerBrief,
     plan_intent: PlanIntent,
 ) -> str:
+    """流式生成可见计划说明，同时隐藏机器 JSON 合同。
+
+    前端只看到 `<PLAN_JSON>` 之前的自然语言计划说明；完整响应会保留在
+    后端用于解析 plan_text / plan_steps / chapters，避免机器合同泄露到 UI。
+    """
+
     tokens: list[str] = []
     pending_visible = ""
     visible_closed = False
@@ -206,9 +212,17 @@ async def _stream_composer_response(
 
 
 def build_stream_and_parse_plan_draft_node(*, context: WorkflowContext):
+    """构建计划合成节点。
+
+    负责调用 reason 模型流式输出计划说明，解析隐藏 JSON 大纲，并把结果
+    转成待 normalize 的 planner draft。
+    """
+
     del context
 
     async def stream_and_parse_plan_draft_node(state: BuildPlannerState) -> dict:
+        """合成并解析当前 Planner 草稿。"""
+
         logger.info(
             "planner_compose_node_started",
             planner_session_id=state.get("planner_session_id", ""),

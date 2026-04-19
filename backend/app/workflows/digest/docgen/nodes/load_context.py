@@ -21,7 +21,15 @@ from app.workflows.digest.common.prepare import prepare_shared_inputs
 
 
 def build_load_context_node(*, context: WorkflowContext):
+    """构建 DocGen 上下文加载节点。
+
+    这是 DocGen 图的入口：读取 confirmed plan 和 shared_inputs，校验章节
+    合同，解析 digest mode / retrieval profile，并初始化前端可见的构建状态。
+    """
+
     async def load_context_node(state: DocGenState) -> dict:
+        """把构建请求转换成 DocGen 后续节点可消费的基础状态。"""
+
         shared_inputs = state.get("shared_inputs")
         if shared_inputs is None:
             shared_inputs = await prepare_shared_inputs(

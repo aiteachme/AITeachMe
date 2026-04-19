@@ -37,6 +37,13 @@ async def _apply_patch_action(
     chapter: ReviewedChapterDraft,
     action: ReviewAction,
 ) -> tuple[ReviewedChapterDraft, RepairTraceItem, ReviewAction, str | None]:
+    """对单章执行一次安全局部 patch。
+
+    只处理 review action 指向的小范围问题；LLM 必须返回完整章节
+    Markdown。若返回空、无变化或失败，就记录 skipped/downgraded，
+    不假装已经修复。
+    """
+
     try:
         patched_markdown = await acompletion_with_fallback(
             build_chapter_patch_messages(

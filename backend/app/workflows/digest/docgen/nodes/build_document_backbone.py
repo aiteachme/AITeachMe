@@ -24,7 +24,15 @@ from app.workflows.digest.docgen.state import DocGenState
 
 
 def build_document_backbone_node(*, context: WorkflowContext):
+    """构建文档级知识骨架节点。
+
+    读取章节 seed、资料摘要和高置信证据候选，生成整本文档的术语、
+    主张、概念依赖和易混点，再把这些全局约束回填到每章任务。
+    """
+
     async def document_backbone_node(state: DocGenState) -> dict:
+        """生成 DocumentBackbone 并更新章节执行合同。"""
+
         started_at = perf_counter()
         task_seeds = [
             ChapterGenerationTaskSeed.model_validate(item)

@@ -150,7 +150,16 @@ def _source_scope(source_details: list[dict]) -> dict:
 
 
 def build_generate_chapters_node(*, context: WorkflowContext):
+    """构建单章生成节点。
+
+    该节点通过 LangGraph Send 按章 fan-out 运行。每次调用只处理一个
+    ChapterGenerationTask：检索和读取资料、构造 evidence/claim/conflict
+    账本、调用 writer 生成草稿，并把单章产物通过 reducer fan-in 回主图。
+    """
+
     async def generate_chapters_node(state: DocGenState) -> dict:
+        """生成一个章节的草稿和研究账本。"""
+
         started_at = perf_counter()
         task = ChapterGenerationTask.model_validate(state["chapter_task"])
         document_backbone = DocumentBackbone.model_validate(state.get("document_backbone") or {})

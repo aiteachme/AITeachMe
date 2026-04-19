@@ -14,7 +14,15 @@ from app.workflows.digest.docgen.state import DocGenState
 
 
 def build_repair_or_route_node(*, context: WorkflowContext):
+    """构建复核回流处理节点。
+
+    当前只自动执行安全的 surface/section patch；证据补强、整章重写和
+    重派发动作会进入 unresolved_warnings，等待有限回流阶段继续实现。
+    """
+
     async def repair_or_route_node(state: DocGenState) -> dict:
+        """根据 ReviewAction 修补或记录章节问题。"""
+
         started_at = perf_counter()
         reviewed = [
             ReviewedChapterDraft.model_validate(item)

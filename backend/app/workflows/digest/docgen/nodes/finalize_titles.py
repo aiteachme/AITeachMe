@@ -139,7 +139,16 @@ async def _resolve_titles_with_llm(
 
 
 def build_finalize_titles_node(*, context: WorkflowContext):
+    """构建最终标题收口节点。
+
+    在整本合并检查之后，统一复核章节标题，保证 metadata 标题和每章
+    Markdown 一级标题一致。标题可以优化表达，但不能改变 confirmed plan
+    的章节数量、顺序和语义边界。
+    """
+
     async def finalize_titles_node(state: DocGenState) -> dict:
+        """复核最终章节标题并重建整本 Markdown。"""
+
         started_at = perf_counter()
         chapter_metadatas = sorted(
             list(state.get("chapter_metadatas") or []),

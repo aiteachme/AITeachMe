@@ -42,6 +42,12 @@ def build_plan_composer_messages(
     message_history: list[str] | None = None,
     latest_plan: dict[str, Any] | None = None,
 ) -> list[dict[str, str]]:
+    """构造 Planner 最终大纲合成提示词。
+
+    输出协议分两层：先流式给用户可见的计划说明，再在隐藏 JSON 中返回
+    plan_text / plan_steps / chapters。前端只展示 marker 之前的内容。
+    """
+
     sketch = planner_brief.markdown.strip() or "暂无可见规划判断"
     plan_queries = _render_plan_queries(plan_intent)
     plan_intent_text = plan_intent.plan_intent.strip() or DEFAULT_PLAN_INTENT

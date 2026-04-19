@@ -67,6 +67,12 @@ def _rule_review_chapter(
     claim_evidence_map: ClaimEvidenceMap | None,
     conflict_report: ConflictReport | None,
 ) -> tuple[ReviewedChapterDraft, ChapterReviewReport, list[ReviewAction]]:
+    """执行无需 LLM 的章节复核兜底。
+
+    规则复核只检查合同覆盖、证据支撑、长度和冲突信号。它既是 LLM
+    review 失败时的 fallback，也是 LLM 结果的 guardrail。
+    """
+
     task = task or ChapterGenerationTask(chapter_index=draft.chapter_index, confirmed_title=draft.title)
     targets = clean_string_list([*task.required_elements, *task.claim_targets], limit=18)
     coverage_score, missing = _coverage(draft.markdown, targets)

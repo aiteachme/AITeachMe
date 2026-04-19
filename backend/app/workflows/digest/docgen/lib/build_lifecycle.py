@@ -304,6 +304,13 @@ def _build_graph_seed_chapter_metadatas(confirmed_plan_payload: dict[str, Any] |
 
 
 def trigger_docgen_build(session: Session, *, subject: Subject, user_id: str, file_uids: list[str] | None, prompt: str | None, embedding_resolution: str | None, confirmed_plan_id: str | None, build_type: str = "docs") -> tuple[DocGenBuildData, list[int]]:
+    """处理知识文档构建请求的同步前置阶段。
+
+    这里还没有启动 LangGraph。它只负责确认 plan、选择可用文件、处理向量
+    precheck、写 build lock / status，并把后台任务需要的 file_ids 和响应
+    数据交给 API 层。
+    """
+
     conflict = inspect_subject_build_precheck(session, subject=subject)
     vector_status = resolve_subject_build_vector_status(session, subject=subject, embedding_resolution=embedding_resolution)
     force_full_rebuild = bool(conflict is not None and conflict.requires_full_rebuild and vector_status.mode != "disabled")
@@ -412,6 +419,14 @@ def trigger_docgen_build(session: Session, *, subject: Subject, user_id: str, fi
     return DocGenBuildData(accepted_file_uids=accepted_file_uids, ready_file_count=ready_file_count, prompt=cleaned_prompt, requested_at=requested_at, vector_status=vector_status, planner_session_id=planner_session_id, confirmed_plan_id=confirmed_plan_id, digest_mode=digest_mode), accepted_file_ids
 
 async def run_docgen_background(*, subject: str, file_ids: list[int], prompt: str | None, requested_at: datetime, planner_session_id: str | None = None, confirmed_plan_id: str | None = None, user_id: str | None = None) -> None:
+    """后台执行 DocGen 构建生命周期。
+
+    负责把 API 接受的构建请求转成一次真实 workflow run：加载 confirmed
+    plan、可选并发触发 KG ingest、运行 `run_docgen_workflow`、同步文档到
+    KG、更新状态并释放构建锁。异常处理也集中在这里，避免 API 层持有
+    长任务细节。
+    """
+
     from app.workflows.digest import run_docgen_workflow
     from app.utils.docgen_store import release_knowledge_build_lock
     from app.workflows.support.knowledge_graph import (
@@ -543,6 +558,12 @@ async def run_docgen_background(*, subject: str, file_ids: list[int], prompt: st
 
 
 def get_docgen_result(session: Session, *, subject: str) -> DocGenGetResponse:
+    """组装知识文档页面轮询所需的当前状态。
+
+    读取已发布 Markdown、构建中草稿、manifest、build status、preview 和
+    LLM 统计；该函数不触发构建，只服务 `/knowledge/docs` 轮询查询。
+    """
+
     merged_path = build_merged_knowledge_base_path(subject)
     draft_path = build_merged_knowledge_base_build_path(subject)
     manifest = read_knowledge_manifest(subject)

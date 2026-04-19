@@ -123,6 +123,13 @@ async def enhance_chapter_draft(
     claim_ledger: ClaimLedger | None = None,
     document_backbone: DocumentBackbone | None = None,
 ) -> tuple[EnhancedChapterDraft, AssetManifest, PracticeManifest]:
+    """增强单章草稿的表现层内容。
+
+    这里只处理资产、公式、Markdown 结构和自检题。它不能修核心定义、
+    新增知识结论或改变 claim/evidence 关系；这些问题必须走 review /
+    repair 回流。
+    """
+
     markdown = _ensure_requested_placeholders(draft.markdown, draft.placeholder_requests)
     mermaid_placeholders = [item.strip() for item in extract_asset_request_descriptions(markdown, kind="mermaid")]
     image_placeholders = [item.strip() for item in extract_asset_request_descriptions(markdown, kind="image")]

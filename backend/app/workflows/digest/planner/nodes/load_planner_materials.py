@@ -95,7 +95,16 @@ def _build_seed_material_context(*, subject: str, file_ids: list[int], user_goal
 
 
 def build_load_planner_materials_node(*, context: WorkflowContext):
+    """构建 Planner 资料准备节点。
+
+    负责把 API create/append 输入转成统一的 material_context。它会读取
+    或创建 planner session，选择本轮可用资料，并为后续意图识别和大纲
+    合成提供轻量资料摘要。
+    """
+
     async def load_planner_materials_node(state: BuildPlannerState) -> dict:
+        """读取 Planner 会话状态和资料理解包。"""
+
         logger.info(
             "planner_load_materials_started",
             planner_session_id=state.get("planner_session_id", ""),

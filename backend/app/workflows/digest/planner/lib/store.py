@@ -804,6 +804,8 @@ def confirm_planner_session(
     user_id: str,
     session_id: str,
 ) -> BuildPlannerConfirmResponse:
+    """确认当前 Planner 草稿，并冻结成 DocGen 可执行的 confirmed plan。"""
+
     record = get_planner_session(session, subject=subject.slug, session_id=session_id, user_id=user_id)
     if record is None:
         raise BuildPlannerSessionNotFoundError(session_id)

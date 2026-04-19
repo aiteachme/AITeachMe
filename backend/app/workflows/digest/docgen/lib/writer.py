@@ -46,6 +46,13 @@ class DocGenWriterRuntime(BaseTracedExecution):
         dense_context: str,
         digest_mode: str,
     ) -> TracedExecutionResult:
+        """根据章节执行合同和 dense_context 生成学生可读草稿。
+
+        Writer 只负责把研究材料写成一章 Markdown：先调用主模型生成正文，
+        再执行标题、结构、字数和学生可见内容清理。事实检索和证据账本不在
+        这里做，避免写作器越权补知识。
+        """
+
         llm = self.context.resolve_llm_caller()
         title = resolve_effective_chapter_title(chapter_plan, fallback_title="Untitled Chapter")
         objective = str(chapter_plan.get("objective") or "")
