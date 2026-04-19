@@ -7,9 +7,6 @@
  */
 
 export interface SubjectCreateRequest {
-  /**
-   * 展示名称。
-   * @minLength 1
-   */
-  name: string;
+  /** 展示名称。可留空，Planner 会在首次对话后自动命名。 */
+  name?: string;
 }

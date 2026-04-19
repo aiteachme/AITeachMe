@@ -54,6 +54,7 @@ from app.workflows.digest.planner.lib.steps import STEP_TIMING_FIELDS
 
 logger = structlog.get_logger(__name__)
 PLANNER_CHAT_SOURCE = "build_planner"
+_AUTO_TITLE_PLACEHOLDERS = {"", "untitled subject", "新学科", "无标题", "未命名", "未命名学科"}
 
 
 def _markdown_ready(raw_file: RawFile) -> bool:
@@ -165,6 +166,36 @@ def _planner_session_meta(
         "latest_summary": latest_summary,
         "confirmed_plan_id": confirmed_plan_id,
     }
+
+
+def _needs_auto_subject_name(value: str | None) -> bool:
+    return str(value or "").strip().casefold() in _AUTO_TITLE_PLACEHOLDERS
+
+
+def _maybe_update_subject_name(
+    session: Session,
+    *,
+    subject: str,
+    user_id: str,
+    generated_name: str,
+) -> None:
+    title = " ".join(str(generated_name or "").strip().split())[:16]
+    if not title or title.casefold() in _AUTO_TITLE_PLACEHOLDERS:
+        return
+    subject_row = session.exec(
+        select(Subject).where(Subject.slug == subject, Subject.user_id == user_id)
+    ).first()
+    if subject_row is None or not _needs_auto_subject_name(subject_row.name):
+        return
+    subject_row.name = title
+    subject_row.updated_at = utcnow()
+    session.add(subject_row)
+    session.commit()
+    logger.info(
+        "planner_subject_auto_named",
+        subject=subject,
+        generated_name=title,
+    )
 
 
 def _update_planner_session_meta(
@@ -697,6 +728,12 @@ def save_planner_result(
             digest_mode=str(meta.get("digest_mode") or ""),
             material_context=material_context,
             latest_plan=_planner_plan(record),
+        )
+        _maybe_update_subject_name(
+            session,
+            subject=subject_slug,
+            user_id=user_id,
+            generated_name=str(state.get("generated_subject_name") or ""),
         )
         record = _update_planner_session_meta(
             session,

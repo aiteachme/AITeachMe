@@ -7,8 +7,6 @@ from collections import Counter
 
 import structlog
 
-from app.shared.infra.database import managed_session
-from app.models.subject import Subject
 from app.workflows.digest.common.models import (
     FastTopicHints,
     SectionPacket,
@@ -86,43 +84,29 @@ def recognize_subject_profile(
     section_packets: list[SectionPacket],
     fast_hints: FastTopicHints,
 ) -> SubjectProfile:
-    """Build a SubjectProfile from DB metadata + content signals."""
+    """Build a SubjectProfile from material content signals.
 
-    # 1. Load subject metadata from DB
-    subject_name = ""
-    try:
-        with managed_session() as session:
-            subject_row = session.query(Subject).filter(Subject.slug == subject_slug).first()
-            if subject_row:
-                subject_name = subject_row.name or ""
-    except Exception:
-        logger.warning("subject_profile_db_lookup_failed", subject=subject_slug)
+    Subject display names are intentionally ignored here. They are UI labels,
+    not evidence about the material's discipline or learning target.
+    """
 
-    # 2. Build content sample for analysis
     content_sample = _build_content_sample(source_packets, section_packets)
 
-    # 3. Detect discipline
     discipline, sub_discipline = _detect_discipline(
         content_sample=content_sample,
-        subject_name=subject_name,
         fast_hints=fast_hints,
     )
 
-    # 4. Detect content type
     content_type = _detect_content_type(content_sample, section_packets)
 
-    # 5. Detect difficulty
     difficulty_level = _detect_difficulty(content_sample, section_packets)
 
-    # 6. Extract key topics
     key_topics = _extract_key_topics(fast_hints, section_packets, discipline)
 
-    # 7. Detect content characteristics
     has_heavy_formulas = fast_hints.question_density < 0.5 and len(fast_hints.formula_patterns) > 5
     has_heavy_questions = fast_hints.question_density > 0.3
     has_heavy_diagrams = sum(1 for p in source_packets if p.has_images) > len(source_packets) * 0.5
 
-    # 8. Build teaching style hint
     teaching_style_hint = _build_teaching_style_hint(
         discipline=discipline,
         content_type=content_type,
@@ -132,7 +116,7 @@ def recognize_subject_profile(
 
     profile = SubjectProfile(
         subject_slug=subject_slug,
-        subject_name=subject_name,
+        subject_name="",
         discipline=discipline,
         sub_discipline=sub_discipline,
         content_type=content_type,
@@ -174,13 +158,11 @@ def _build_content_sample(
 def _detect_discipline(
     *,
     content_sample: str,
-    subject_name: str,
     fast_hints: FastTopicHints,
 ) -> tuple[str, str]:
     """Detect primary discipline and sub-discipline."""
 
-    # Combine all text signals
-    combined = f"{subject_name} {content_sample}".lower()
+    combined = content_sample.lower()
     for term, _ in fast_hints.high_freq_terms[:20]:
         combined += f" {term.lower()}"
 
@@ -328,4 +310,3 @@ def _build_teaching_style_hint(
         hints.append("讲义/笔记内容，补充必要的上下文和过渡，使内容自成体系")
 
     return "；".join(hints) if hints else ""
-

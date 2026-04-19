@@ -51,6 +51,7 @@ def _strings(value: Any) -> list[str]:
 
 
 def _topic_strings(shared_inputs: SharedInputs, *, user_prompt: str, subject: str) -> list[str]:
+    subject_hint = "" if _text(subject).lower().startswith("subj_") else subject
     values: list[Any] = [
         *shared_inputs.fast_hints.chapter_candidates,
         *[name for name, _count in shared_inputs.fast_hints.high_freq_terms],
@@ -58,7 +59,7 @@ def _topic_strings(shared_inputs: SharedInputs, *, user_prompt: str, subject: st
         shared_inputs.subject_profile.sub_discipline,
         shared_inputs.subject_profile.discipline,
         user_prompt,
-        subject,
+        subject_hint,
     ]
     return _strings(values)
 
@@ -105,8 +106,11 @@ def _resolve_subject_display_name(
 ) -> str:
     shared = shared_inputs or _minimal_shared_inputs(subject)
     for candidate in [
-        shared.subject_profile.subject_name,
         user_prompt,
+        *shared.fast_hints.chapter_candidates[:3],
+        *shared.subject_profile.key_topics[:3],
+        shared.subject_profile.sub_discipline,
+        shared.subject_profile.discipline,
         subject if not _text(subject).lower().startswith("subj_") else "",
     ]:
         text = _text(candidate)

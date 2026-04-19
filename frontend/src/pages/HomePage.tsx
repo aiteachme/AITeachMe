@@ -172,21 +172,6 @@ async function importSubject(file: File, newName?: string): Promise<ImportResult
 
 const ACCEPT_TEXT = ".pdf,.docx,.doc,.ppt,.pptx,.md,.markdown,.txt,.png,.jpg,.jpeg,.webp";
 
-function generateSubjectName(files: File[], prompt: string): string {
-  if (files.length > 0) {
-    const baseName = files[0].name.replace(/\.[^/.]+$/, "").trim();
-    if (baseName) return baseName;
-  }
-  const trimmed = prompt.trim();
-  if (trimmed) {
-    const firstLine = trimmed.split(/[\r\n]/)[0].trim();
-    return firstLine.length > 20 ? firstLine.slice(0, 20) + "…" : firstLine;
-  }
-  const now = new Date();
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `学科_${pad(now.getMonth() + 1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}`;
-}
-
 function formatFileSize(bytes?: number | null): string {
   if (bytes == null || !Number.isFinite(bytes)) return "未知";
   const units = ["B", "KB", "MB", "GB"];
@@ -623,9 +608,9 @@ export function HomePage() {
 
   // ── Mutations ──
   const createMutation = useMutation({
-    mutationFn: async ({ name }: { name: string }) => {
+    mutationFn: async () => {
       const created = unwrapOrvalResponse(
-        await createSubjectApiApiV1SubjectsAddPost({ name })
+        await createSubjectApiApiV1SubjectsAddPost({ name: "" })
       );
       if (!created) throw new Error("创建学科失败");
       return created;
@@ -664,24 +649,7 @@ export function HomePage() {
   const handleGenerate = async () => {
     if (!canGenerate) return;
     setError(null);
-
-    // Try AI name suggestion first
-    let name: string;
-    try {
-      const suggestResponse = await apiClient<{ data: { name: string } }>({
-        method: "POST",
-        url: "/api/v1/subjects/suggest-name",
-        data: {
-          prompt: prompt.trim() || undefined,
-          filenames: pendingFiles.length > 0 ? pendingFiles.map((f) => f.name) : undefined,
-        },
-      });
-      name = suggestResponse.data?.name || generateSubjectName(pendingFiles, prompt);
-    } catch {
-      name = generateSubjectName(pendingFiles, prompt);
-    }
-
-    createMutation.mutate({ name });
+    createMutation.mutate();
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -972,12 +940,12 @@ export function HomePage() {
                           <div className="group/card relative flex h-full flex-col overflow-hidden rounded-2xl border border-zinc-200/80 bg-white p-5 shadow-[0_2px_8px_rgba(0,0,0,0.04)] transition-all duration-300 hover:-translate-y-1 hover:border-zinc-300 hover:shadow-[0_8px_24px_rgba(0,0,0,0.08)]">
                             <div className="relative z-10 mb-4 flex items-start justify-between">
                               <h3 className="line-clamp-1 flex-1 mr-2 text-[15px] font-semibold tracking-tight text-zinc-900 transition-colors group-hover/card:text-zinc-800">
-                                {subject.name}
+                                {subject.name?.trim() || "无标题"}
                               </h3>
                               <div className="flex items-center gap-1 pointer-events-auto">
                                 <SubjectMenu
                                   subjectId={subject.subject_id}
-                                  subjectName={subject.name}
+                                  subjectName={subject.name?.trim() || "无标题"}
                                   onExport={(id: string) => setExportSubjectId(id)}
                                   onRename={(id: string, name: string) => setRenameTarget({ id, name })}
                                 />

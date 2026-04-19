@@ -11617,18 +11617,15 @@
         "properties": {
           "name": {
             "type": "string",
-            "minLength": 1,
             "title": "Name",
-            "description": "展示名称。"
+            "description": "展示名称。可留空，Planner 会在首次对话后自动命名。",
+            "default": ""
           }
         },
         "type": "object",
-        "required": [
-          "name"
-        ],
         "title": "SubjectCreateRequest",
         "example": {
-          "name": "高等数学"
+          "name": ""
         }
       },
       "SubjectDeleteData": {

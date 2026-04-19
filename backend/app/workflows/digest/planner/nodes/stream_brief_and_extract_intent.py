@@ -22,6 +22,7 @@ from app.workflows.digest.planner.prompts import build_plan_intent_messages, bui
 from app.workflows.digest.planner.state import BuildPlannerState
 
 logger = structlog.get_logger(__name__)
+_AUTO_TITLE_PLACEHOLDERS = {"", "untitled subject", "新学科", "无标题", "未命名", "未命名学科"}
 
 
 def _subject_for_prompt(state: BuildPlannerState) -> str:
@@ -33,6 +34,59 @@ def _subject_for_prompt(state: BuildPlannerState) -> str:
         shared_inputs=material_context,
         user_prompt=state.get("user_prompt") or "",
     )
+
+
+def _needs_auto_subject_name(state: BuildPlannerState) -> bool:
+    return str(state.get("planner_operation") or "") == "create"
+
+
+async def _generate_subject_name(state: BuildPlannerState) -> str:
+    if not _needs_auto_subject_name(state):
+        return ""
+    material_context = state["material_context"]
+    filenames = [
+        packet.filename
+        for packet in list(material_context.source_packets or [])[:5]
+        if str(packet.filename or "").strip()
+    ]
+    prompt = "\n".join(
+        [
+            "请根据用户学习目标和资料线索，生成一个中文学习空间标题。",
+            "要求：",
+            "- 2 到 10 个汉字为佳，最多 16 个字。",
+            "- 像 ChatGPT/Gemini 对话标题一样简洁自然。",
+            "- 不要输出引号、编号、解释、标点。",
+            "- 不要写“新学科”“未命名”“学习资料”。",
+            "",
+            f"用户提示：{state.get('user_prompt') or '未提供'}",
+            f"资料名：{'、'.join(filenames) or '暂无'}",
+            f"模式：{state.get('digest_mode') or material_context.course_mode_decision.mode.value}",
+        ]
+    )
+    try:
+        title = await acompletion_with_fallback(
+            [{"role": "user", "content": prompt}],
+            call_purpose=LLMCallPurpose.CLASSIFY,
+            model="primary",
+            max_tokens=40,
+            temperature=0.2,
+            extra_metadata={
+                "planner_session_id": state.get("planner_session_id") or "",
+                "substep": "生成学科标题",
+            },
+        )
+    except Exception:
+        logger.exception(
+            "planner_subject_name_generation_failed",
+            planner_session_id=state.get("planner_session_id") or "",
+            subject=state.get("subject") or "",
+        )
+        return ""
+    cleaned = str(title or "").strip().strip("\"'“”‘’`，。；;:： ")
+    cleaned = " ".join(cleaned.split())
+    if not cleaned or cleaned.casefold() in _AUTO_TITLE_PLACEHOLDERS:
+        return ""
+    return cleaned[:16]
 
 
 async def _stream_planner_brief(state: BuildPlannerState, fallback: PlannerBrief) -> PlannerBrief:
@@ -204,9 +258,10 @@ def build_stream_brief_and_extract_intent_node(*, context: WorkflowContext):
             subject=state.get("subject", ""),
         )
         fallback_brief = build_empty_planner_brief()
-        brief, plan_intent = await asyncio.gather(
+        brief, plan_intent, generated_subject_name = await asyncio.gather(
             _stream_planner_brief(state, fallback_brief),
             _extract_plan_intent(state),
+            _generate_subject_name(state),
         )
         await emit_planner_event(
             state,
@@ -219,6 +274,7 @@ def build_stream_brief_and_extract_intent_node(*, context: WorkflowContext):
         result = {
             "planner_brief": brief.model_dump(mode="json"),
             "plan_intent": plan_intent.model_dump(mode="json"),
+            "generated_subject_name": generated_subject_name,
         }
         logger.info(
             "planner_brief_intent_node_completed",

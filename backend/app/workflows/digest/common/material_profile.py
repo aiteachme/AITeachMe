@@ -217,9 +217,16 @@ def build_material_profile(
     """
     stats = compute_material_stats(section_packets)
     material_types = _estimate_content_type(source_packets, stats)
+    semantic_subject = ""
+    if subject_profile is not None:
+        semantic_subject = (
+            subject_profile.sub_discipline
+            or subject_profile.discipline
+            or (subject_profile.key_topics[0] if subject_profile.key_topics else "")
+        )
 
     profile = MaterialProfile(
-        subject=subject_profile.subject_name if subject_profile else "",
+        subject=semantic_subject,
         sub_subjects=subject_profile.key_topics[:5] if subject_profile else [],
         material_types=material_types,
         stats=stats,
@@ -244,4 +251,3 @@ __all__ = [
     "compute_material_stats",
     "decide_digest_mode",
 ]
-

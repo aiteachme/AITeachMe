@@ -401,6 +401,77 @@ function PlannerOutlineCard({
   );
 }
 
+function BuildInProgressBubble({
+  progress,
+  statusText,
+  isActive,
+  isCancelling,
+  onOpen,
+  onCancel,
+}: {
+  progress: number;
+  statusText: string;
+  isActive: boolean;
+  isCancelling: boolean;
+  onOpen: () => void;
+  onCancel: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      className="w-full rounded-lg border border-zinc-200 bg-white px-4 py-4 text-left shadow-sm transition hover:border-zinc-300 hover:shadow-md"
+    >
+      <div className="flex items-start gap-3">
+        <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-zinc-950 text-white">
+          <Loader2 className="h-4 w-4 animate-spin" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="text-sm font-semibold text-zinc-950">知识库正在构建</p>
+              <p className="mt-1 text-xs leading-5 text-zinc-500">点击查看完整构建进度</p>
+            </div>
+            <span className="shrink-0 text-xs font-semibold text-zinc-700">{Math.round(progress)}%</span>
+          </div>
+          <p className="mt-3 line-clamp-2 text-sm leading-6 text-zinc-600">
+            {statusText || "正在启动知识文档构建..."}
+          </p>
+          <div className="mt-4 h-1.5 overflow-hidden rounded-full bg-zinc-100">
+            <div
+              className="h-full rounded-full bg-zinc-950 transition-all duration-500"
+              style={{ width: `${Math.max(8, Math.min(100, progress))}%` }}
+            />
+          </div>
+          {isActive ? (
+            <div className="mt-4 flex justify-end">
+              <span
+                role="button"
+                tabIndex={0}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onCancel();
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    onCancel();
+                  }
+                }}
+                className="inline-flex items-center gap-1.5 rounded-md border border-red-200 bg-red-50 px-2.5 py-1.5 text-xs font-medium text-red-700"
+              >
+                {isCancelling ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <X className="h-3.5 w-3.5" />}
+                终止构建
+              </span>
+            </div>
+          ) : null}
+        </div>
+      </div>
+    </button>
+  );
+}
+
 function fileMeta(file: FileRecord) {
   if (file.markdown_ready) {
     return { label: "已就绪", dot: "bg-emerald-500" };
@@ -707,10 +778,7 @@ export function BuildPlanPage() {
     !isRequestedBuildReady &&
     !isBuildFailure &&
     (isBuildActive || hasDraftDocMarkdown);
-  const shouldShowBuildView =
-    isBuildActive ||
-    isWaitingForRequestedBuild ||
-    (Boolean(requestedAt) && (isRequestedBuildReady || isBuildFailure || hasDraftDocMarkdown || hasLiveDocMarkdown));
+  const shouldShowBuildView = false;
   const buildStage = buildMeta?.stage ?? null;
   const { buildProgress, buildStatusText } = useDocBuildProgress({
     buildMeta,
@@ -986,6 +1054,7 @@ export function BuildPlanPage() {
 
   const isPlannerPending = plannerStreaming || confirmPlannerMutation.isPending;
   const isBuilding = knowledgeBuild.isPending || isBuildActive;
+  const shouldShowBuildDialog = isBuilding || isWaitingForRequestedBuild;
 
   const focusComposer = useCallback(() => {
     const focusInput = () => {
@@ -1037,6 +1106,7 @@ export function BuildPlanPage() {
       setCurrentPlan(response.latest_plan);
       setPlannerNeedsRefresh(false);
       setIsRevisingPlan(false);
+      void queryClient.invalidateQueries({ queryKey: ["subjects"] });
       setMessages((prev) => [
         ...prev,
         createMessage(
@@ -1047,7 +1117,7 @@ export function BuildPlanPage() {
         ),
       ]);
     },
-    [],
+    [queryClient],
   );
 
   const handleOpenKnowledgeGraph = useCallback(() => {
@@ -1547,13 +1617,20 @@ export function BuildPlanPage() {
               </div>
             ) : null}
 
-            {isBuilding ? (
+            {shouldShowBuildDialog ? (
               <div className="flex gap-3">
                 <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-violet-500 to-indigo-600 shadow-sm">
                   <Sparkles className="h-4 w-4 text-white" />
                 </div>
-                <div className="rounded-2xl rounded-tl-md border border-zinc-100 bg-white px-4 py-3 text-sm text-zinc-700 shadow-sm">
-                  方案已确认，正在发起正式构建。当前页面会在后端受理后继续展示真实的检索、研究与写作进度。
+                <div className="w-full max-w-[85%]">
+                  <BuildInProgressBubble
+                    progress={buildProgress}
+                    statusText={buildPreview?.current_stage_description?.trim() || buildStatusText}
+                    isActive={isBuildActive}
+                    isCancelling={cancelBuildMutation.isPending}
+                    onOpen={handleOpenKnowledgeDocs}
+                    onCancel={handleCancelBuild}
+                  />
                 </div>
               </div>
             ) : null}

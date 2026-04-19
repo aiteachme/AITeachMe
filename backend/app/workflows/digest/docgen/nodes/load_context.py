@@ -72,9 +72,10 @@ def build_load_context_node(*, context: WorkflowContext):
         ).strip()
 
         has_local_materials = bool(shared_inputs.source_packets)
+        plan_subject_label = str(plan_contract.subject or plan_contract.user_prompt or "").strip()
         document_context = {
             "subject": state["subject"],
-            "subject_display_name": str(getattr(shared_inputs.subject_profile, "subject_name", "") or state["subject"]),
+            "subject_display_name": plan_subject_label,
             "digest_mode": digest_mode,
             "retrieval_profile": retrieval_profile,
             "teaching_action": str(state.get("teaching_action") or "docgen_build"),
@@ -87,7 +88,7 @@ def build_load_context_node(*, context: WorkflowContext):
         }
         docgen_context = DocGenContext(
             subject=state["subject"],
-            subject_display_name=str(getattr(shared_inputs.subject_profile, "subject_name", "") or state["subject"]),
+            subject_display_name=plan_subject_label,
             digest_mode=digest_mode,
             retrieval_profile=retrieval_profile,
             user_prompt=str(plan_contract.user_prompt or state.get("user_prompt") or ""),
