@@ -24,18 +24,18 @@ def build_docgen_lane_summary(
 
     resolved_status = _resolve_status(state, status=status, error_message=error_message)
     resolved_error = _resolve_error_message(state, error_message=error_message)
-    legacy_chapter_materials = list(state.get("chapter_materials", []))
+    previous_chapter_materials = list(state.get("chapter_materials", []))
     chapter_drafts = list(state.get("chapter_drafts", []))
     enhanced_chapter_drafts = list(state.get("enhanced_chapter_drafts", []))
     chapter_metadatas = list(state.get("chapter_metadatas", []))
     research_traces = list(state.get("research_traces", []))
-    research_records = legacy_chapter_materials or chapter_metadatas or enhanced_chapter_drafts or chapter_drafts
+    research_records = previous_chapter_materials or chapter_metadatas or enhanced_chapter_drafts or chapter_drafts
     document_context = dict(state.get("document_context", {}) or {})
     chapter_count = max(
         len(chapter_metadatas),
         len(enhanced_chapter_drafts),
         len(chapter_drafts),
-        len(legacy_chapter_materials),
+        len(previous_chapter_materials),
     )
     research_items = build_slow_items(
         state.get("slowest_research_chapters")

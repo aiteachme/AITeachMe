@@ -273,7 +273,6 @@ class DigestConfirmedPlanContract(BaseModel):
     subject: str = ""
     user_goal: str = ""
     digest_mode: str = DEFAULT_COURSE_TYPE
-    tone: str = "encouraging"
     chapter_plan: list[DigestChapterContract] = Field(default_factory=list)
     research_queries: list[str] = Field(default_factory=list)
     media_plan: dict[str, Any] = Field(default_factory=dict)
@@ -288,7 +287,6 @@ class DigestConfirmedPlanContract(BaseModel):
         "subject",
         "user_goal",
         "digest_mode",
-        "tone",
         "plan_summary",
         "planner_session_id",
         "confirmed_plan_id",

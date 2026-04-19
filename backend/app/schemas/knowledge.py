@@ -492,7 +492,6 @@ class BuildPlannerCreateRequest(BaseModel):
     )
     user_goal: str = Field(description="Learner goal or requested document target.")
     digest_mode: Literal["sprint", "systematic"] | None = Field(default=None, description="Optional requested digest mode.")
-    tone: str | None = Field(default=None, description="Optional requested writing tone.")
     title: str | None = Field(default=None, description="Optional planner session title.")
 
 
@@ -535,7 +534,6 @@ class BuildPlannerPlanResponse(BaseModel):
     selected_file_uids: list[str] = Field(default_factory=list)
     user_goal: str
     digest_mode: str
-    tone: str
     chapter_plan: list[BuildPlannerChapterPlanResponse] = Field(default_factory=list)
     research_queries: list[str] = Field(default_factory=list)
     media_plan: dict[str, object] = Field(default_factory=dict)
@@ -571,7 +569,6 @@ class BuildPlannerConfirmResponse(BaseModel):
     subject: str
     status: str
     digest_mode: str
-    tone: str
     selected_file_uids: list[str] = Field(default_factory=list)
     selected_file_ids: list[int] = Field(default_factory=list)
     user_goal: str

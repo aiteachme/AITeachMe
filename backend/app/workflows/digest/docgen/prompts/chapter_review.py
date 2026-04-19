@@ -1,8 +1,6 @@
-"""Prompt builders for DocGen content review."""
+﻿"""Prompt builders for DocGen content review."""
 
 from __future__ import annotations
-
-from langsmith import traceable
 
 REVIEW_MARKDOWN_BUDGET = 9000
 REVIEW_LEDGER_BUDGET = 5000
@@ -15,7 +13,6 @@ def _clip(value: object, *, limit: int) -> str:
     return text[:limit].rstrip() + "\n...[已截断]"
 
 
-@traceable(name="DocGen：章节内容复核提示词", run_type="prompt")
 def build_chapter_review_messages(
     *,
     chapter_title: str,

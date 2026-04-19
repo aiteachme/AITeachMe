@@ -90,7 +90,6 @@ confirmed_plan
   subject：展示用主题名
   user_goal：用户学习目标
   digest_mode：sprint / systematic
-  tone：写作语气
   chapter_plan：用户确认的章节合同，DocGen 不默认新增、删除、重排
   media_plan：Mermaid / 图片 / 交互块能力开关
   build_constraints：章节数、目标长度、是否含练习和来源等约束

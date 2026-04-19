@@ -18,7 +18,6 @@ from .support import (
     split_csv_names,
 )
 
-
 class _SettingsModel(BaseModel):
     """Base model for settings-shaped runtime sections."""
 
@@ -56,12 +55,11 @@ class PlannerModeSettings(_SettingsModel):
 
 class PlannerSettings(_SettingsModel):
     default_digest_mode: str = "sprint"
-    default_tone: str = "encouraging"
     allow_external_search: bool = True
     sprint: PlannerModeSettings = Field(
         default_factory=lambda: PlannerModeSettings(
-            min_chapters=3,
-            max_chapters=6,
+            min_chapters=4,
+            max_chapters=7,
             target_length="3000-5000字",
         )
     )
@@ -88,8 +86,8 @@ class PlannerSettings(_SettingsModel):
         merge_mode(
             "sprint",
             {
-                "min_chapters": 3,
-                "max_chapters": 6,
+                "min_chapters": 4,
+                "max_chapters": 7,
                 "target_length": "3000-5000字",
             },
         )
@@ -185,7 +183,7 @@ class Settings(_SettingsModel):
     The public shape mirrors repo-root `settings_default.yaml`, e.g.
     `settings.models.reason` or `settings.search.provider_timeout_s`.
 
-    The settings object intentionally does not mirror legacy flat names; call
+    The settings object intentionally does not mirror old flat names; call
     sites should use the same nested paths as `settings_default.yaml`.
     """
 
@@ -227,7 +225,8 @@ class Settings(_SettingsModel):
 
     @property
     def image_generation_enabled(self) -> bool:
-        return bool((self.models.image_generation or "").strip())
+        value = (self.models.image_generation or "").strip()
+        return bool(value)
 
     def parse_retrievers(
         self,

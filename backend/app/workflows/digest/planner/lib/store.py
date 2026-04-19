@@ -58,7 +58,6 @@ from app.workflows.digest.planner.lib.plans import normalize_planner_payload
 from app.workflows.digest.planner.lib.steps import STEP_TIMING_FIELDS
 
 logger = structlog.get_logger(__name__)
-DEFAULT_PLAN_TONE = "encouraging"
 PLANNER_CHAT_SOURCE = "build_planner"
 
 
@@ -149,7 +148,6 @@ def _plan_response(
         selected_file_uids=selected_file_uids,
         user_goal=str(plan.get("user_goal") or ""),
         digest_mode=str(plan.get("digest_mode") or "systematic"),
-        tone=str(plan.get("tone") or DEFAULT_PLAN_TONE),
         chapter_plan=list(plan.get("chapter_plan") or []),
         research_queries=list(plan.get("research_queries") or []),
         media_plan=dict(plan.get("media_plan") or {}),
@@ -366,7 +364,6 @@ def _record_snapshot(record: BuildPlannerSession) -> dict[str, Any]:
         "status": record.status,
         "user_goal": record.user_goal,
         "digest_mode": record.digest_mode,
-        "tone": record.tone,
         "selected_file_ids_json": list(record.selected_file_ids_json or []),
         "latest_plan_json": dict(record.latest_plan_json or {}),
         "latest_summary": record.latest_summary,
@@ -525,7 +522,6 @@ def prepare_planner_run(state: Mapping[str, Any]) -> dict[str, Any]:
                     status="planning",
                     user_goal=user_goal,
                     digest_mode=digest_mode,
-                    tone=DEFAULT_PLAN_TONE,
                     selected_file_ids_json=selected_file_ids,
                 ),
             )
@@ -718,7 +714,6 @@ def _normalized_plan_payload(
         "subject": str(plan.get("subject") or ""),
         "user_goal": str(plan.get("user_goal") or ""),
         "digest_mode": str(plan.get("digest_mode") or ""),
-        "tone": str(plan.get("tone") or ""),
         "chapter_plan": chapter_plan,
         "research_queries": list(plan.get("research_queries") or []),
         "media_plan": dict(plan.get("media_plan") or {}),
@@ -831,7 +826,6 @@ def confirm_planner_session(
                 status="confirmed",
                 user_goal=record.user_goal,
                 digest_mode=str(plan_payload.get("digest_mode") or record.digest_mode),
-                tone=str(plan_payload.get("tone") or record.tone),
                 selected_file_ids_json=list(record.selected_file_ids_json),
                 chapter_plan_json=list(plan_payload.get("chapter_plan") or []),
                 research_queries_json=list(plan_payload.get("research_queries") or []),
@@ -853,7 +847,6 @@ def confirm_planner_session(
         subject=subject.slug,
         status=record.status,
         digest_mode=confirmed.digest_mode,
-        tone=confirmed.tone,
         selected_file_uids=file_uids,
         selected_file_ids=list(confirmed.selected_file_ids_json),
         user_goal=confirmed.user_goal,

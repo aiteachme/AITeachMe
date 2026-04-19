@@ -94,7 +94,7 @@ flowchart TD
 | 6 | `review_content` | 逐章执行 LLM 结构化内容复核，并用规则复核兜底；同时做整本术语/标题/章节数一致性检查 |
 | 7 | `repair_or_route` | 对 `surface_patch` / `section_patch` 执行局部 Markdown patch，对证据补强和重写类动作结构化记录 |
 | 8 | `merge_review` | 按章去重排序，生成章节 metadata，合并 Markdown，做发布前完整性检查 |
-| 9 | `finalize_titles` | 保持 confirmed plan 映射的前提下统一最终标题，并重建整本 Markdown |
+| 9 | `finalize_titles` | 用 LLM 复核并优化最终章节标题，同步改写章节 Markdown 一级标题，并重建整本 Markdown |
 | 10 | `publish_document` | 写 `_build`、当前发布文件、版本归档、`docgen_manifest.json` 和 `KnowledgeDoc` rows |
 
 ## 5. 目录结构
@@ -105,7 +105,6 @@ docgen/
   graph.py                 # LangGraph 定义、初始 state、Send 分发
   state.py                 # DocGenState TypedDict
   builds.py                # API-facing 构建触发、状态装配、后台任务编排
-  cleanup.py               # 清理当前学科知识文档产物
   nodes/                   # 顶层图节点
   lib/                     # 节点内部复用逻辑和 Pydantic 合同
   prompts/                 # prompt builder / template
@@ -117,7 +116,8 @@ docgen/
 
 说明：
 
-- `builds.py` 与 `cleanup.py` 不是 LangGraph 节点，而是 DocGen lane 的 API-facing 用例入口。
+- `builds.py` 不是 LangGraph 节点，而是 DocGen lane 的 API-facing 构建入口。
+- 知识产物清理已收口到 `digest/common/cleanup.py`，因为它清理的是 Digest 级知识产物，而不是 DocGen 私有中间状态。
 - 新增节点优先放 `nodes/`，节点内部可复用逻辑放 `lib/`。
 - 不新增 `runtime/`、`internal/`、`services/`、第二套 search/tool registry。
 

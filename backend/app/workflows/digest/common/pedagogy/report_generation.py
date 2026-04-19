@@ -12,10 +12,10 @@ from app.workflows.digest.common.pedagogy.content_blocks import (
 )
 
 _TITLE_PREFIX_RE = re.compile(r"^\s*(?:第\s*\d+\s*章[\s：:、.-]*)?(?:\d+[\).、：:\-\s]+)?(.+?)\s*$")
-_LEGACY_TEMPLATE_SUFFIX_RE = re.compile(
+_GENERIC_TEMPLATE_SUFFIX_RE = re.compile(
     r"[:：]\s*(核心概念|公式方法|题型突破|易错辨析|综合迁移|考前速查|主题导入|概念定义|结构公式|方法推理|例题应用|边界辨析|总结延伸)\s*$"
 )
-_LEGACY_TEMPLATE_TITLES = {
+_GENERIC_TEMPLATE_TITLES = {
     "全景导论",
     "总结与延展",
     "主题导入",
@@ -120,13 +120,13 @@ def clean_generated_chapter_title(raw_title: str) -> str:
     return cleaned.strip("：:，,。；; ")
 
 
-def looks_like_legacy_template_title(title: str) -> bool:
+def looks_like_generic_template_title(title: str) -> bool:
     cleaned = clean_generated_chapter_title(title)
     if not cleaned:
         return False
-    if cleaned in _LEGACY_TEMPLATE_TITLES:
+    if cleaned in _GENERIC_TEMPLATE_TITLES:
         return True
-    return bool(_LEGACY_TEMPLATE_SUFFIX_RE.search(cleaned))
+    return bool(_GENERIC_TEMPLATE_SUFFIX_RE.search(cleaned))
 
 
 def is_usable_resolved_chapter_title(title: str) -> bool:
@@ -137,7 +137,7 @@ def is_usable_resolved_chapter_title(title: str) -> bool:
         return False
     if not re.search(r"[\u3400-\u9fffA-Za-z]", cleaned):
         return False
-    if looks_like_legacy_template_title(cleaned):
+    if looks_like_generic_template_title(cleaned):
         return False
     if re.fullmatch(r"第\s*\d+\s*章", cleaned):
         return False
@@ -444,7 +444,7 @@ def analyze_chapter_heading_quality(markdown: str, *, digest_mode: str) -> dict[
     heading_titles = _extract_heading_titles(markdown, min_level=2, max_level=3)
     cleaned_titles = [clean_generated_chapter_title(title) for title in heading_titles if clean_generated_chapter_title(title)]
     duplicates = list(dict.fromkeys(title for title in cleaned_titles if cleaned_titles.count(title) > 1))
-    generic_titles = [title for title in cleaned_titles if looks_like_legacy_template_title(title)]
+    generic_titles = [title for title in cleaned_titles if looks_like_generic_template_title(title)]
     missing_modules = [
         key
         for key, keywords in heading_keywords.items()
@@ -940,6 +940,6 @@ __all__ = [
     "build_document_overview",
     "ensure_chapter_learning_scaffold",
     "is_usable_resolved_chapter_title",
-    "looks_like_legacy_template_title",
+    "looks_like_generic_template_title",
     "resolve_effective_chapter_title",
 ]

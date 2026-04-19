@@ -1,8 +1,6 @@
-"""Prompt builders for DocGen repair patches."""
+﻿"""Prompt builders for DocGen repair patches."""
 
 from __future__ import annotations
-
-from langsmith import traceable
 
 PATCH_MARKDOWN_BUDGET = 12000
 
@@ -14,7 +12,6 @@ def _clip(value: object, *, limit: int) -> str:
     return text[:limit].rstrip() + "\n...[已截断]"
 
 
-@traceable(name="DocGen：章节局部修补提示词", run_type="prompt")
 def build_chapter_patch_messages(
     *,
     chapter_title: str,

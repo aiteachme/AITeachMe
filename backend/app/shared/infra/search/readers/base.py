@@ -15,6 +15,14 @@ from app.shared.infra.observability.trace import (
 )
 
 _REGISTERED_READER_TYPES: dict[str, type["BaseReader"]] = {}
+_CONTENT_PREVIEW_CHARS = 900
+
+
+def _content_preview(content: str) -> str:
+    text = " ".join(str(content or "").split())
+    if len(text) <= _CONTENT_PREVIEW_CHARS:
+        return text
+    return text[:_CONTENT_PREVIEW_CHARS].rstrip() + "..."
 
 
 def _scraped_page_preview(page: ScrapedPage) -> dict[str, object]:
@@ -23,6 +31,7 @@ def _scraped_page_preview(page: ScrapedPage) -> dict[str, object]:
         "title": page.title,
         "content_type": page.content_type,
         "content_length": len(page.content),
+        "content_preview": _content_preview(page.content),
         "reader_name": page.reader_name,
         "success": page.success,
         "error": page.error or "",
@@ -160,6 +169,10 @@ class BaseReader(ABC):
             "trace": {
                 "success": result.success,
                 "content_length": len(result.content),
+                "content_preview": sanitize_langsmith_output(
+                    _content_preview(result.content),
+                    field_name="content_preview",
+                ),
                 "content_type": result.content_type,
                 "reader_name": result.reader_name,
                 "error": result.error or "",

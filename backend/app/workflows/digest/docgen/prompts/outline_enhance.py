@@ -1,17 +1,14 @@
-"""Prompts for DocGen execution-level outline enhancement."""
+﻿"""Prompts for DocGen execution-level outline enhancement."""
 
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from typing import Any
 
-from langsmith import traceable
-
 OUTLINE_CHAPTER_REQUIRED_BUDGET = 12
 OUTLINE_CHAPTER_QUERY_BUDGET = 8
 
 
-@traceable(name="DocGen：增强章节大纲提示词", run_type="prompt")
 def build_outline_enhance_messages(
     *,
     subject: str,

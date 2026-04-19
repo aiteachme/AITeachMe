@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from langsmith import traceable
-
 DENSE_CONTEXT_WRITER_BUDGET = 14000
 DENSE_CONTEXT_REPAIR_BUDGET = 4000
 DENSE_CONTEXT_PURIFY_BUDGET = 12000
@@ -75,7 +73,6 @@ def _build_mode_contract(
 """.strip()
 
 
-@traceable(name="DocGen：章节写作提示词", run_type="prompt")
 def build_docgen_writer_messages(
     *,
     title: str,
@@ -169,7 +166,6 @@ def build_docgen_writer_messages(
     ]
 
 
-@traceable(name="DocGen：修复章节标题提示词", run_type="prompt")
 def build_docgen_heading_repair_messages(
     *,
     title: str,
@@ -236,7 +232,6 @@ def build_docgen_heading_repair_messages(
     ]
 
 
-@traceable(name="DocGen：清洗研究材料提示词", run_type="prompt")
 def build_docgen_research_purify_messages(
     *,
     dense_context: str,
@@ -276,7 +271,6 @@ def build_docgen_research_purify_messages(
     ]
 
 
-@traceable(name="DocGen：生成图示提示词", run_type="prompt")
 def build_docgen_mermaid_prompt(*, topic: str, context: str) -> str:
     return f"""
 请根据下面内容生成一段干净、可渲染的 Mermaid 语法。
@@ -295,7 +289,6 @@ def build_docgen_mermaid_prompt(*, topic: str, context: str) -> str:
 """.strip()
 
 
-@traceable(name="DocGen：规划检索问题提示词", run_type="prompt")
 def build_docgen_sub_query_messages(
     *,
     query: str,
@@ -341,7 +334,6 @@ def build_docgen_sub_query_messages(
     ]
 
 
-@traceable(name="DocGen：补齐缺口检索提示词", run_type="prompt")
 def build_docgen_gap_query_messages(
     *,
     dense_context: str,

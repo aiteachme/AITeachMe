@@ -30,6 +30,7 @@ digest/
   负责知识文档和知识图谱的同步链路
 - `common/`
   放跨 lane 共用能力，例如 events、exports、contracts、prepare、material profile、metrics、runtime config、pedagogy
+  以及 subject 级知识产物清理 `cleanup.py`
 - `knowledge_graph/`
   当前仓库里仍保留的历史目录；不是新的 canonical lane 入口，后续以 `kg_file_ingest/` 和 `kg_docs_sync/` 为主
 

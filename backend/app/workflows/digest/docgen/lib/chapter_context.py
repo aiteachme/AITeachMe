@@ -1,4 +1,4 @@
-"""Workflow-local chapter context runtime for digest DocGen."""
+﻿"""Workflow-local chapter context runtime for digest DocGen."""
 
 from __future__ import annotations
 
@@ -8,8 +8,6 @@ import time
 from collections.abc import Iterable
 from typing import Any
 from urllib.parse import urlparse
-
-from langsmith import traceable
 
 from app.shared.infra.settings import get_settings
 from app.shared.infra.execution import BaseTracedExecution, TracedExecutionResult
@@ -354,7 +352,6 @@ class DocGenChapterContextRuntime(BaseTracedExecution):
             },
         )
 
-    @traceable(name="DocGen：执行一轮章节检索", run_type="chain")
     async def _run_research_round(
         self,
         *,

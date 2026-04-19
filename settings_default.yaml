@@ -45,15 +45,13 @@ ingest:
 planner:
   # 默认知识文档模式：sprint 为冲刺讲义，systematic 为系统讲义。
   default_digest_mode: sprint
-  # 默认写作语气；当前 prompt 支持 encouraging / casual / professional / concise 等。
-  default_tone: encouraging
   # Planner 阶段是否允许外部检索补充资料。
   allow_external_search: true
   sprint:
     # 冲刺模式默认最少章节数。
-    min_chapters: 3
+    min_chapters: 4
     # 冲刺模式默认最多章节数。
-    max_chapters: 6
+    max_chapters: 7
     # 冲刺模式目标全文长度提示。
     target_length: "3000-10000字"
   systematic:

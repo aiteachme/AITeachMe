@@ -15,7 +15,7 @@ from app.workflows.digest.docgen.builds import (
     run_docgen_background,
     trigger_docgen_build,
 )
-from app.workflows.digest.docgen.cleanup import clear_subject_knowledge
+from app.workflows.digest.common.cleanup import clear_subject_knowledge
 from app.workflows.digest.docgen.graph import (
     RUN_NAME_DOCGEN,
     build_docgen_graph,
