@@ -14,7 +14,6 @@ export interface BuildPlannerPlanResponse {
   selected_file_uids?: string[];
   user_goal: string;
   digest_mode: string;
-  tone: string;
   chapter_plan?: BuildPlannerChapterPlanResponse[];
   research_queries?: string[];
   media_plan?: BuildPlannerPlanResponseMediaPlan;

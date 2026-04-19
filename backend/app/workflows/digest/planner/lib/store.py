@@ -11,22 +11,16 @@ from collections.abc import Mapping
 from typing import Any
 
 import structlog
-from sqlmodel import Session
+from sqlmodel import Session, select
 
-from app.models import IngestStatus, TaskStatus
-from app.models.build_planner import BuildPlannerSession, BuildPlannerTurn, ConfirmedBuildPlan
+from app.models import ChatMessage, ChatSession, IngestStatus, TaskStatus
+from app.models.build_planner import ConfirmedBuildPlan
 from app.models.raw_file import RawFile
 from app.models.subject import Subject
-from app.repositories.build_planner_repo import (
+from app.repositories.confirmed_plan_repo import (
     create_confirmed_plan,
-    create_planner_session,
-    create_planner_turn,
     get_confirmed_plan,
-    get_latest_planner_session as repo_get_latest_planner_session,
-    get_planner_session,
-    list_planner_turns,
     update_confirmed_plan,
-    update_planner_session,
 )
 from app.repositories.chats_repo import (
     create_chat_message,
@@ -117,15 +111,6 @@ def _file_uids_from_ids(session: Session, *, subject: str, file_ids: list[int]) 
     return [by_id[file_id] for file_id in file_ids if file_id in by_id]
 
 
-def _turn_response(turn: BuildPlannerTurn) -> BuildPlannerTurnResponse:
-    return BuildPlannerTurnResponse(
-        id=turn.id,
-        role=turn.role,
-        content=turn.content,
-        created_at=turn.created_at,
-    )
-
-
 def _turn_response_from_snapshot(turn: Mapping[str, Any]) -> BuildPlannerTurnResponse:
     return BuildPlannerTurnResponse(
         id=turn.get("id"),
@@ -133,6 +118,110 @@ def _turn_response_from_snapshot(turn: Mapping[str, Any]) -> BuildPlannerTurnRes
         content=str(turn.get("content") or ""),
         created_at=turn["created_at"],
     )
+
+
+def _planner_meta(session_item: ChatSession) -> dict[str, Any]:
+    return dict(session_item.meta_json or {})
+
+
+def _planner_status(session_item: ChatSession) -> str:
+    return str(_planner_meta(session_item).get("planner_status") or "draft")
+
+
+def _planner_plan(session_item: ChatSession) -> dict[str, Any]:
+    return dict(_planner_meta(session_item).get("latest_plan") or {})
+
+
+def _planner_selected_file_ids(session_item: ChatSession) -> list[int]:
+    values = _planner_meta(session_item).get("selected_file_ids") or []
+    result: list[int] = []
+    for value in values:
+        try:
+            result.append(int(value))
+        except (TypeError, ValueError):
+            continue
+    return result
+
+
+def _planner_session_meta(
+    *,
+    session_id: str,
+    status: str,
+    user_goal: str,
+    digest_mode: str,
+    selected_file_ids: list[int],
+    latest_plan: dict[str, Any] | None = None,
+    latest_summary: str = "",
+    confirmed_plan_id: str | None = None,
+) -> dict[str, Any]:
+    return {
+        "source": PLANNER_CHAT_SOURCE,
+        "planner_session_id": session_id,
+        "planner_status": status,
+        "user_goal": user_goal,
+        "digest_mode": digest_mode,
+        "selected_file_ids": list(selected_file_ids),
+        "latest_plan": dict(latest_plan or {}),
+        "latest_summary": latest_summary,
+        "confirmed_plan_id": confirmed_plan_id,
+    }
+
+
+def _update_planner_session_meta(
+    session: Session,
+    session_item: ChatSession,
+    **updates: Any,
+) -> ChatSession:
+    meta = _planner_meta(session_item)
+    meta.update({key: value for key, value in updates.items() if value is not None})
+    session_item.meta_json = meta
+    session_item.updated_at = utcnow()
+    session_item.last_message_at = session_item.updated_at
+    session.add(session_item)
+    session.commit()
+    session.refresh(session_item)
+    return session_item
+
+
+def _get_planner_session(
+    session: Session,
+    *,
+    subject: str,
+    session_id: str,
+    user_id: str,
+) -> ChatSession | None:
+    item = get_chat_session(session, subject=subject, session_id=session_id, user_id=user_id)
+    if item is None or item.source != PLANNER_CHAT_SOURCE:
+        return None
+    return item
+
+
+def _get_latest_planner_session(session: Session, *, subject: str, user_id: str) -> ChatSession | None:
+    stmt = (
+        select(ChatSession)
+        .where(
+            ChatSession.subject == subject,
+            ChatSession.user_id == user_id,
+            ChatSession.source == PLANNER_CHAT_SOURCE,
+        )
+        .order_by(ChatSession.updated_at.desc(), ChatSession.created_at.desc())
+        .limit(1)
+    )
+    return session.exec(stmt).first()
+
+
+def _list_planner_turns(session: Session, *, session_id: str, subject: str, user_id: str) -> list[ChatMessage]:
+    stmt = (
+        select(ChatMessage)
+        .where(
+            ChatMessage.session_id == session_id,
+            ChatMessage.subject == subject,
+            ChatMessage.user_id == user_id,
+            ChatMessage.source == PLANNER_CHAT_SOURCE,
+        )
+        .order_by(ChatMessage.created_at.asc(), ChatMessage.id.asc())
+    )
+    return list(session.exec(stmt).all())
 
 
 def _plan_response(
@@ -219,28 +308,29 @@ def planner_session_response_from_state(final_state: Mapping[str, Any]) -> Build
 
 
 def _planner_session_response(
-    record: BuildPlannerSession,
+    record: ChatSession,
     *,
     subject: str,
     selected_file_uids: list[str],
     plan: dict[str, Any],
-    turns: list[BuildPlannerTurn],
+    turns: list[ChatMessage],
 ) -> BuildPlannerSessionResponse:
+    meta = _planner_meta(record)
     return BuildPlannerSessionResponse(
         session_id=record.id,
         subject=subject,
         title=record.title,
-        status=record.status,
+        status=_planner_status(record),
         revision=len(turns),
         latest_plan=_plan_response(
             subject=subject,
             selected_file_uids=selected_file_uids,
             session_id=record.id,
-            confirmed_plan_id=record.confirmed_plan_id,
-            status=record.status,
+            confirmed_plan_id=meta.get("confirmed_plan_id"),
+            status=_planner_status(record),
             plan=plan,
         ),
-        turns=[_turn_response(turn) for turn in turns],
+        turns=[_turn_response_from_snapshot(_turn_snapshot(turn)) for turn in turns],
         runtime_stats=None,
         created_at=record.created_at,
         updated_at=record.updated_at,
@@ -258,91 +348,39 @@ def _workflow_files_or_raise(
     return workflow_files
 
 
-def _turn_snapshot(turn: BuildPlannerTurn) -> dict[str, Any]:
+def _turn_snapshot(turn: ChatMessage) -> dict[str, Any]:
     return {
         "id": turn.id,
         "role": turn.role,
         "content": turn.content,
         "created_at": turn.created_at,
-        "plan_json": turn.plan_json,
+        "plan_json": dict((turn.meta_json or {}).get("plan_json") or {}),
     }
 
 
-def _planner_chat_meta(record: BuildPlannerSession, *, plan: dict[str, Any] | None = None) -> dict[str, Any]:
-    return {
-        "source": PLANNER_CHAT_SOURCE,
-        "planner_session_id": record.id,
-        "planner_status": record.status,
-        "confirmed_plan_id": record.confirmed_plan_id,
-        "digest_mode": record.digest_mode,
-        "selected_file_ids": list(record.selected_file_ids_json or []),
-        "plan_summary": str((plan or record.latest_plan_json or {}).get("plan_summary") or record.latest_summary or ""),
-    }
-
-
-def _ensure_planner_chat_session(
-    session: Session,
-    record: BuildPlannerSession,
-    *,
-    plan: dict[str, Any] | None = None,
-) -> None:
-    meta = _planner_chat_meta(record, plan=plan)
-    existing = get_chat_session(
-        session,
-        subject=record.subject,
-        session_id=record.id,
-        user_id=record.user_id,
-    )
-    if existing is None:
-        create_chat_session(
-            session,
-            subject=record.subject,
-            user_id=record.user_id,
-            session_id=record.id,
-            title=record.title,
-            source=PLANNER_CHAT_SOURCE,
-            meta_json=meta,
-        )
-        return
-
-    existing.title = record.title
-    existing.source = PLANNER_CHAT_SOURCE
-    existing.meta_json = meta
-    existing.updated_at = utcnow()
-    session.add(existing)
-    session.commit()
-    session.refresh(existing)
-
-
-def _planner_chat_turn_id(turn: BuildPlannerTurn) -> str:
-    suffix = turn.id if turn.id is not None else uuid.uuid4().hex
-    return f"planner:{turn.session_id}:{suffix}"
-
-
-def _mirror_planner_turn_to_chat(
+def _create_planner_message(
     session: Session,
     *,
-    record: BuildPlannerSession,
-    turn: BuildPlannerTurn,
+    record: ChatSession,
+    role: str,
+    content: str,
     plan: dict[str, Any] | None = None,
-) -> None:
-    _ensure_planner_chat_session(session, record, plan=plan)
-    create_chat_message(
+) -> ChatMessage:
+    message = create_chat_message(
         session,
         subject=record.subject,
         user_id=record.user_id,
         session_id=record.id,
-        role=turn.role,
-        content=turn.content,
-        turn_id=_planner_chat_turn_id(turn),
+        role=role,
+        content=content,
+        turn_id=f"planner:{record.id}:{uuid.uuid4().hex}",
         source=PLANNER_CHAT_SOURCE,
         anchor_id=record.id,
         meta_json={
             "source": PLANNER_CHAT_SOURCE,
-            "message_kind": "planner_plan" if turn.role == "assistant" else "planner_user_request",
+            "message_kind": "planner_plan" if role == "assistant" else "planner_user_request",
             "planner_session_id": record.id,
-            "planner_turn_id": turn.id,
-            "plan_json": plan if turn.role == "assistant" else None,
+            "plan_json": plan if role == "assistant" else None,
             "plan_summary": str((plan or {}).get("plan_summary") or ""),
         },
     )
@@ -352,23 +390,25 @@ def _mirror_planner_turn_to_chat(
         user_id=record.user_id,
         session_id=record.id,
         title=record.title,
-        touched_at=turn.created_at,
+        touched_at=message.created_at,
     )
+    return message
 
 
-def _record_snapshot(record: BuildPlannerSession) -> dict[str, Any]:
+def _record_snapshot(record: ChatSession) -> dict[str, Any]:
+    meta = _planner_meta(record)
     return {
         "id": record.id,
         "subject": record.subject,
         "user_id": record.user_id,
         "title": record.title,
-        "status": record.status,
-        "user_goal": record.user_goal,
-        "digest_mode": record.digest_mode,
-        "selected_file_ids_json": list(record.selected_file_ids_json or []),
-        "latest_plan_json": dict(record.latest_plan_json or {}),
-        "latest_summary": record.latest_summary,
-        "confirmed_plan_id": record.confirmed_plan_id,
+        "status": _planner_status(record),
+        "user_goal": str(meta.get("user_goal") or ""),
+        "digest_mode": str(meta.get("digest_mode") or ""),
+        "selected_file_ids_json": _planner_selected_file_ids(record),
+        "latest_plan_json": _planner_plan(record),
+        "latest_summary": str(meta.get("latest_summary") or ""),
+        "confirmed_plan_id": meta.get("confirmed_plan_id"),
         "created_at": record.created_at,
         "updated_at": record.updated_at,
     }
@@ -412,7 +452,7 @@ def _compact_planner_text(value: Any, *, max_chars: int = 900) -> str:
     return text[: max_chars - 3].rstrip() + "..."
 
 
-def _build_docgen_history_brief(turns: list[BuildPlannerTurn]) -> str:
+def _build_docgen_history_brief(turns: list[ChatMessage]) -> str:
     lines: list[str] = []
     for turn in turns[-10:]:
         role = "用户" if turn.role == "user" else "规划器"
@@ -426,11 +466,12 @@ def _build_docgen_history_brief(turns: list[BuildPlannerTurn]) -> str:
 
 
 def _build_planner_context_payload(
-    record: BuildPlannerSession,
+    record: ChatSession,
     *,
-    turns: list[BuildPlannerTurn],
+    turns: list[ChatMessage],
     plan: dict[str, Any],
 ) -> dict[str, Any]:
+    meta = _planner_meta(record)
     assistant_turns = [turn for turn in turns if turn.role == "assistant"]
     user_turns = [turn for turn in turns if turn.role == "user"]
     latest_outline = assistant_turns[-1].content if assistant_turns else _render_final_plan_markdown(plan)
@@ -439,7 +480,7 @@ def _build_planner_context_payload(
         "planner_turn_count": len(turns),
         "user_revision_count": max(0, len(user_turns) - 1),
         "assistant_revision_count": len(assistant_turns),
-        "latest_plan_summary": str(plan.get("plan_summary") or record.latest_summary or ""),
+        "latest_plan_summary": str(plan.get("plan_summary") or meta.get("latest_summary") or ""),
         "planner_outline_markdown": _compact_planner_text(latest_outline, max_chars=1800),
         "docgen_history_brief": _build_docgen_history_brief(turns),
     }
@@ -500,8 +541,8 @@ def prepare_planner_run(state: Mapping[str, Any]) -> dict[str, Any]:
 
         with managed_session() as session:
             subject_row = session.query(Subject).filter(Subject.slug == subject_slug).first()
-            latest = repo_get_latest_planner_session(session, subject=subject_slug, user_id=user_id)
-            if latest is not None and latest.status == "planning":
+            latest = _get_latest_planner_session(session, subject=subject_slug, user_id=user_id)
+            if latest is not None and _planner_status(latest) == "planning":
                 raise BuildPlannerSessionBusyError(latest.id)
             planner_files = _select_planner_files(
                 session,
@@ -516,30 +557,27 @@ def prepare_planner_run(state: Mapping[str, Any]) -> dict[str, Any]:
             workflow_file_ids = _file_ids(workflow_files)
             selected_file_uids = _file_uids(planner_files)
             session_title = str(state.get("session_title") or user_goal or getattr(subject_row, "name", "") or subject_slug)
-            record = create_planner_session(
+            record = create_chat_session(
                 session,
-                BuildPlannerSession(
-                    id=str(state["planner_session_id"]),
-                    subject=subject_slug,
-                    user_id=user_id,
-                    title=session_title,
+                subject=subject_slug,
+                user_id=user_id,
+                session_id=str(state["planner_session_id"]),
+                title=session_title,
+                source=PLANNER_CHAT_SOURCE,
+                meta_json=_planner_session_meta(
+                    session_id=str(state["planner_session_id"]),
                     status="planning",
                     user_goal=user_goal,
                     digest_mode=digest_mode,
-                    selected_file_ids_json=selected_file_ids,
+                    selected_file_ids=selected_file_ids,
                 ),
             )
-            user_turn = create_planner_turn(
+            user_turn = _create_planner_message(
                 session,
-                BuildPlannerTurn(
-                    subject=subject_slug,
-                    user_id=user_id,
-                    session_id=record.id,
-                    role="user",
-                    content=user_goal,
-                ),
+                record=record,
+                role="user",
+                content=user_goal,
             )
-            _mirror_planner_turn_to_chat(session, record=record, turn=user_turn)
             logger.info(
                 "planner_prepare_run_created_session",
                 subject=subject_slug,
@@ -563,7 +601,7 @@ def prepare_planner_run(state: Mapping[str, Any]) -> dict[str, Any]:
         # 修订规划：读取已有 session，追加用户反馈，并补齐 latest_plan/message_history。
         feedback = str(state.get("feedback_message") or "").strip()
         with managed_session() as session:
-            record = get_planner_session(
+            record = _get_planner_session(
                 session,
                 subject=subject_slug,
                 session_id=str(state["planner_session_id"]),
@@ -571,36 +609,35 @@ def prepare_planner_run(state: Mapping[str, Any]) -> dict[str, Any]:
             )
             if record is None:
                 raise BuildPlannerSessionNotFoundError(str(state["planner_session_id"]))
-            if record.status == "planning":
+            if _planner_status(record) == "planning":
                 raise BuildPlannerSessionBusyError(record.id)
+            meta = _planner_meta(record)
             logger.info(
                 "planner_prepare_run_loaded_session",
                 subject=subject_slug,
                 planner_session_id=record.id,
-                has_latest_plan=bool(record.latest_plan_json),
-                selected_file_count=len(record.selected_file_ids_json or []),
+                has_latest_plan=bool(meta.get("latest_plan")),
+                selected_file_count=len(_planner_selected_file_ids(record)),
             )
 
-            record.status = "planning"
-            record.confirmed_plan_id = None
-            record.updated_at = utcnow()
-            update_planner_session(session, record)
-            user_turn = create_planner_turn(
+            record = _update_planner_session_meta(
                 session,
-                BuildPlannerTurn(
-                    subject=subject_slug,
-                    user_id=user_id,
-                    session_id=record.id,
-                    role="user",
-                    content=feedback,
-                ),
+                record,
+                planner_status="planning",
+                confirmed_plan_id=None,
             )
-            _mirror_planner_turn_to_chat(session, record=record, turn=user_turn)
-            turns = list_planner_turns(session, session_id=record.id)
-            raw_files = list_raw_files_by_ids(session, subject_slug, list(record.selected_file_ids_json))
+            _create_planner_message(
+                session,
+                record=record,
+                role="user",
+                content=feedback,
+            )
+            turns = _list_planner_turns(session, session_id=record.id, subject=subject_slug, user_id=user_id)
+            selected_file_ids = _planner_selected_file_ids(record)
+            raw_files = list_raw_files_by_ids(session, subject_slug, selected_file_ids)
             workflow_files = _select_planner_workflow_files(raw_files)
             workflow_file_ids = [require_id(item.id, "RawFile.id") for item in workflow_files]
-            if record.selected_file_ids_json and not workflow_file_ids:
+            if selected_file_ids and not workflow_file_ids:
                 raise PlannerMaterialsNotReadyError(subject_slug)
             selected_file_uids = [
                 require_uid(item.uid, "RawFile.uid")
@@ -609,12 +646,12 @@ def prepare_planner_run(state: Mapping[str, Any]) -> dict[str, Any]:
             ]
             return {
                 "file_ids": workflow_file_ids,
-                "selected_file_ids": list(record.selected_file_ids_json),
+                "selected_file_ids": selected_file_ids,
                 "selected_file_uids": selected_file_uids,
-                "user_goal": record.user_goal,
-                "digest_mode": record.digest_mode,
+                "user_goal": str(meta.get("user_goal") or ""),
+                "digest_mode": str(meta.get("digest_mode") or ""),
                 "message_history": [turn.content for turn in turns if turn.content.strip()],
-                "latest_plan": record.latest_plan_json,
+                "latest_plan": _planner_plan(record),
                 "planner_record": _record_snapshot(record),
                 "planner_turns": [_turn_snapshot(turn) for turn in turns],
             }
@@ -638,7 +675,7 @@ def save_planner_result(
     subject_slug = str(state["subject"])
     user_id = str(state.get("user_id") or "local")
     with managed_session() as session:
-        record = get_planner_session(
+        record = _get_planner_session(
             session,
             subject=subject_slug,
             session_id=str(state["planner_session_id"]),
@@ -646,42 +683,41 @@ def save_planner_result(
         )
         if record is None:
             raise BuildPlannerSessionNotFoundError(str(state["planner_session_id"]))
+        meta = _planner_meta(record)
 
         logger.info(
             "planner_save_started",
             subject=subject_slug,
             planner_session_id=record.id,
             input_chapter_count=len(list((plan or {}).get("chapter_plan") or [])),
-            has_previous_plan=bool(record.latest_plan_json),
+            has_previous_plan=bool(meta.get("latest_plan")),
         )
         persisted_plan = _normalize_persisted_plan(
             plan,
             subject=subject_slug,
-            user_goal=record.user_goal,
-            digest_mode=record.digest_mode,
+            user_goal=str(meta.get("user_goal") or ""),
+            digest_mode=str(meta.get("digest_mode") or ""),
             material_context=material_context,
-            latest_plan=record.latest_plan_json,
+            latest_plan=_planner_plan(record),
         )
-        record.latest_plan_json = persisted_plan
-        record.latest_summary = str(persisted_plan.get("plan_summary") or state.get("plan_summary") or "")
-        record.digest_mode = str(persisted_plan.get("digest_mode") or record.digest_mode)
-        record.status = "draft"
-        record.confirmed_plan_id = None
-        record.updated_at = utcnow()
-        record = update_planner_session(session, record)
-        assistant_turn = create_planner_turn(
+        record = _update_planner_session_meta(
             session,
-            BuildPlannerTurn(
-                subject=subject_slug,
-                user_id=user_id,
-                session_id=record.id,
-                role="assistant",
-                content=_render_final_plan_markdown(persisted_plan),
-                plan_json=persisted_plan,
-            ),
+            record,
+            latest_plan=persisted_plan,
+            latest_summary=str(persisted_plan.get("plan_summary") or state.get("plan_summary") or ""),
+            digest_mode=str(persisted_plan.get("digest_mode") or meta.get("digest_mode") or ""),
+            planner_status="draft",
+            confirmed_plan_id=None,
         )
-        _mirror_planner_turn_to_chat(session, record=record, turn=assistant_turn, plan=persisted_plan)
-        turns = list_planner_turns(session, session_id=record.id)
+        _create_planner_message(
+            session,
+            record=record,
+            role="assistant",
+            content=_render_final_plan_markdown(persisted_plan),
+            plan=persisted_plan,
+        )
+        turns = _list_planner_turns(session, session_id=record.id, subject=subject_slug, user_id=user_id)
+        selected_file_ids = _planner_selected_file_ids(record)
         logger.info(
             "planner_save_finished",
             subject=subject_slug,
@@ -693,11 +729,11 @@ def save_planner_result(
             "plan": persisted_plan,
             "plan_summary": str(persisted_plan.get("plan_summary") or ""),
             "digest_mode": str(persisted_plan.get("digest_mode") or state.get("digest_mode") or ""),
-            "selected_file_ids": list(record.selected_file_ids_json),
+            "selected_file_ids": selected_file_ids,
             "selected_file_uids": _file_uids_from_ids(
                 session,
                 subject=subject_slug,
-                file_ids=list(record.selected_file_ids_json),
+                file_ids=selected_file_ids,
             ),
             "planner_record": _record_snapshot(record),
             "planner_turns": [_turn_snapshot(turn) for turn in turns],
@@ -779,22 +815,18 @@ def _ensure_min_chapter_payload(
 
 def mark_planner_session_failed(*, subject: str, user_id: str, session_id: str) -> None:
     with managed_session() as session:
-        record = get_planner_session(session, subject=subject, session_id=session_id, user_id=user_id)
+        record = _get_planner_session(session, subject=subject, session_id=session_id, user_id=user_id)
         if record is None:
             return
-        record.status = "failed"
-        record.updated_at = utcnow()
-        update_planner_session(session, record)
+        _update_planner_session_meta(session, record, planner_status="failed")
 
 
 def mark_planner_session_draft(*, subject: str, user_id: str, session_id: str) -> None:
     with managed_session() as session:
-        record = get_planner_session(session, subject=subject, session_id=session_id, user_id=user_id)
+        record = _get_planner_session(session, subject=subject, session_id=session_id, user_id=user_id)
         if record is None:
             return
-        record.status = "draft"
-        record.updated_at = utcnow()
-        update_planner_session(session, record)
+        _update_planner_session_meta(session, record, planner_status="draft")
 
 
 def confirm_planner_session(
@@ -806,29 +838,30 @@ def confirm_planner_session(
 ) -> BuildPlannerConfirmResponse:
     """确认当前 Planner 草稿，并冻结成 DocGen 可执行的 confirmed plan。"""
 
-    record = get_planner_session(session, subject=subject.slug, session_id=session_id, user_id=user_id)
+    record = _get_planner_session(session, subject=subject.slug, session_id=session_id, user_id=user_id)
     if record is None:
         raise BuildPlannerSessionNotFoundError(session_id)
-    if not record.latest_plan_json:
+    meta = _planner_meta(record)
+    latest_plan = _planner_plan(record)
+    if not latest_plan:
         raise BuildPlannerEmptyPlanError(session_id)
 
-    turns = list_planner_turns(session, session_id=record.id)
+    turns = _list_planner_turns(session, session_id=record.id, subject=subject.slug, user_id=user_id)
     planner_context = _build_planner_context_payload(
         record,
         turns=turns,
-        plan=dict(record.latest_plan_json),
+        plan=latest_plan,
     )
     plan_payload = _normalized_plan_payload(
-        dict(record.latest_plan_json),
+        latest_plan,
         planner_context=planner_context,
     )
-    record.latest_plan_json = plan_payload
     current_confirmed = None
-    if record.confirmed_plan_id:
+    if meta.get("confirmed_plan_id"):
         current_confirmed = get_confirmed_plan(
             session,
             subject=subject.slug,
-            plan_id=record.confirmed_plan_id,
+            plan_id=str(meta.get("confirmed_plan_id")),
             user_id=user_id,
         )
     if current_confirmed is not None and _normalized_plan_payload(dict(current_confirmed.plan_json or {})) == plan_payload:
@@ -842,28 +875,33 @@ def confirm_planner_session(
                 planner_session_id=session_id,
                 user_id=user_id,
                 status="confirmed",
-                user_goal=record.user_goal,
-                digest_mode=str(plan_payload.get("digest_mode") or record.digest_mode),
-                selected_file_ids_json=list(record.selected_file_ids_json),
+                user_goal=str(meta.get("user_goal") or ""),
+                digest_mode=str(plan_payload.get("digest_mode") or meta.get("digest_mode") or ""),
+                selected_file_ids_json=_planner_selected_file_ids(record),
                 chapter_plan_json=list(plan_payload.get("chapter_plan") or []),
                 research_queries_json=list(plan_payload.get("research_queries") or []),
                 media_plan_json=dict(plan_payload.get("media_plan") or {}),
                 build_constraints_json=dict(plan_payload.get("build_constraints") or {}),
-                plan_summary=str(plan_payload.get("plan_summary") or record.latest_summary),
+                plan_summary=str(plan_payload.get("plan_summary") or meta.get("latest_summary") or ""),
                 plan_json=plan_payload,
             ),
         )
 
-    record.confirmed_plan_id = confirmed.id
-    record.status = "confirmed"
-    record.updated_at = utcnow()
-    record = update_planner_session(session, record)
-    file_uids = _file_uids_from_ids(session, subject=subject.slug, file_ids=list(record.selected_file_ids_json))
+    record = _update_planner_session_meta(
+        session,
+        record,
+        latest_plan=plan_payload,
+        latest_summary=str(plan_payload.get("plan_summary") or ""),
+        confirmed_plan_id=confirmed.id,
+        planner_status="confirmed",
+    )
+    selected_file_ids = _planner_selected_file_ids(record)
+    file_uids = _file_uids_from_ids(session, subject=subject.slug, file_ids=selected_file_ids)
     return BuildPlannerConfirmResponse(
         planner_session_id=record.id,
         confirmed_plan_id=confirmed.id,
         subject=subject.slug,
-        status=record.status,
+        status=_planner_status(record),
         digest_mode=confirmed.digest_mode,
         selected_file_uids=file_uids,
         selected_file_ids=list(confirmed.selected_file_ids_json),
@@ -874,7 +912,7 @@ def confirm_planner_session(
         media_plan=dict(plan_payload.get("media_plan") or {}),
         build_constraints=dict(plan_payload.get("build_constraints") or {}),
         plan_json=plan_payload,
-        status_history=[confirmed.status, record.status],
+        status_history=[confirmed.status, _planner_status(record)],
         created_at=confirmed.created_at,
         updated_at=confirmed.updated_at,
     )
@@ -886,12 +924,12 @@ def get_latest_planner_session(
     subject: Subject,
     user_id: str,
 ) -> BuildPlannerSessionResponse | None:
-    record = repo_get_latest_planner_session(session, subject=subject.slug, user_id=user_id)
+    record = _get_latest_planner_session(session, subject=subject.slug, user_id=user_id)
     if record is None:
         logger.info("planner_latest_none", subject=subject.slug, user_id=user_id)
         return None
-    turns = list_planner_turns(session, session_id=record.id)
-    plan_payload = dict(record.latest_plan_json or {})
+    turns = _list_planner_turns(session, session_id=record.id, subject=subject.slug, user_id=user_id)
+    plan_payload = _planner_plan(record)
     logger.info(
         "planner_latest_found",
         subject=subject.slug,
@@ -904,7 +942,7 @@ def get_latest_planner_session(
     return _planner_session_response(
         record,
         subject=subject.slug,
-        selected_file_uids=_file_uids_from_ids(session, subject=subject.slug, file_ids=list(record.selected_file_ids_json or [])),
+        selected_file_uids=_file_uids_from_ids(session, subject=subject.slug, file_ids=_planner_selected_file_ids(record)),
         plan=plan_payload,
         turns=turns,
     )
@@ -938,16 +976,14 @@ def mark_confirmed_plan_status(
     plan.updated_at = utcnow()
     update_confirmed_plan(session, plan)
     if plan.planner_session_id:
-        planner_session = get_planner_session(
+        planner_session = _get_planner_session(
             session,
             subject=subject,
             session_id=plan.planner_session_id,
             user_id=user_id,
         )
-        if planner_session is not None and planner_session.confirmed_plan_id == plan.id:
-            planner_session.status = status
-            planner_session.updated_at = utcnow()
-            update_planner_session(session, planner_session)
+        if planner_session is not None and _planner_meta(planner_session).get("confirmed_plan_id") == plan.id:
+            _update_planner_session_meta(session, planner_session, planner_status=status)
 
 
 __all__ = [

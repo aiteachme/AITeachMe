@@ -172,7 +172,7 @@ load_context
     - document_context：发布和写作共用的文档级上下文。
   作用：确认用户已确认的章节合同，补齐资料上下文、模式、语气、技能包和构建状态。
 
-prepare_context / 当前 prepare_parallel_inputs
+prepare_parallel_inputs
   ├─ enhance_plan_outline
   │    输入：chapter_assignments / material_stats_profile / material_sections / planner_context
   │      - chapter_assignments：用户确认的章节列表。
@@ -210,7 +210,7 @@ prepare_context / 当前 prepare_parallel_inputs
          - high_confidence_evidence_units：高置信证据单元。
        作用：为章节生成提供文件摘要、章节亲和度、高价值 section 和候选证据。
 
-merge_and_dispatch / 当前 confirm_and_dispatch
+confirm_and_dispatch
   输入：EnhancedChapterOutline[] / DocGenIntentProfile / FileMaterialSummary[] / source_affinity_by_chapter / high_confidence_evidence_units / chapter_assignments
   输出：ChapterGenerationPlanSeed / ChapterGenerationTaskSeed[] / backbone_research_agenda
     - ChapterGenerationPlanSeed：整轮写作规则、格式、预算、章节任务初稿。

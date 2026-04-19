@@ -6096,10 +6096,6 @@
             "type": "string",
             "title": "Digest Mode"
           },
-          "tone": {
-            "type": "string",
-            "title": "Tone"
-          },
           "selected_file_uids": {
             "items": {
               "type": "string"
@@ -6176,7 +6172,6 @@
           "subject",
           "status",
           "digest_mode",
-          "tone",
           "user_goal",
           "plan_summary",
           "created_at",
@@ -6221,18 +6216,6 @@
             ],
             "title": "Digest Mode",
             "description": "Optional requested digest mode."
-          },
-          "tone": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Tone",
-            "description": "Optional requested writing tone."
           },
           "title": {
             "anyOf": [
@@ -6289,10 +6272,6 @@
           "digest_mode": {
             "type": "string",
             "title": "Digest Mode"
-          },
-          "tone": {
-            "type": "string",
-            "title": "Tone"
           },
           "chapter_plan": {
             "items": {
@@ -6355,8 +6334,7 @@
         "required": [
           "subject",
           "user_goal",
-          "digest_mode",
-          "tone"
+          "digest_mode"
         ],
         "title": "BuildPlannerPlanResponse"
       },

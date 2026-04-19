@@ -37,6 +37,7 @@ def build_load_context_node(*, context: WorkflowContext):
                 state.get("file_ids", []),
                 user_prompt=state.get("user_prompt"),
             )
+        
 
         digest_mode = state.get("digest_mode") or shared_inputs.digest_mode_decision.mode.value
         raw_plan_payload = deepcopy(state.get("confirmed_plan") or {})

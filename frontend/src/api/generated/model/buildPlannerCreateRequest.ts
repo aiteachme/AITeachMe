@@ -16,8 +16,6 @@ export interface BuildPlannerCreateRequest {
   user_goal: string;
   /** Optional requested digest mode. */
   digest_mode?: 'sprint' | 'systematic' | null;
-  /** Optional requested writing tone. */
-  tone?: string | null;
   /** Optional planner session title. */
   title?: string | null;
 }
