@@ -3,6 +3,8 @@ import { AnimatePresence, motion } from "framer-motion";
 import {
   Bot,
   CheckCircle2,
+  Eye,
+  EyeOff,
   KeyRound,
   Loader2,
   RefreshCcw,
@@ -65,15 +67,151 @@ interface ApiResponse<T> {
 }
 
 const DEFAULT_PROVIDER_BASE_URL = "https://api.openai.com/v1";
-const ENV_TEXT_PLACEHOLDER = [
-  "LLM_API_KEY=sk-...",
-  "LLM_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1",
-  "MINERU_API_TOKEN=",
-  "TAVILY_API_KEY=",
-  "DATABASE_URL=",
-  "VITE_API_URL=http://localhost:8000",
-  "VITE_USE_MOCK=false",
-].join("\n");
+
+interface LocalEnvField {
+  key: string;
+  label: string;
+  placeholder?: string;
+  secret?: boolean;
+}
+
+interface LocalEnvGroup {
+  id: string;
+  label: string;
+  fields: LocalEnvField[];
+}
+
+const LOCAL_ENV_GROUPS: LocalEnvGroup[] = [
+  {
+    id: "llm",
+    label: "LLM 接入",
+    fields: [
+      { key: "LLM_API_KEY", label: "LLM API Key", placeholder: "sk-...", secret: true },
+      { key: "LLM_BASE_URL", label: "LLM Base URL", placeholder: "https://dashscope.aliyuncs.com/compatible-mode/v1" },
+    ],
+  },
+  {
+    id: "parsing-search",
+    label: "解析 / 搜索 / Rerank",
+    fields: [
+      { key: "MINERU_API_TOKEN", label: "MinerU Token", secret: true },
+      { key: "TAVILY_API_KEY", label: "Tavily API Key", secret: true },
+      { key: "BING_API_KEY", label: "Bing API Key", secret: true },
+      { key: "BOCHA_API_KEY", label: "Bocha API Key", secret: true },
+      { key: "BOCHA_FRESHNESS", label: "Bocha Freshness", placeholder: "noLimit" },
+      { key: "BRAVE_SEARCH_API_KEY", label: "Brave Search API Key", secret: true },
+      { key: "EXA_API_KEY", label: "Exa API Key", secret: true },
+      { key: "JINA_SEARCH_ENRICH", label: "Jina Search Enrich", placeholder: "false" },
+      { key: "SEMANTIC_SCHOLAR_API_KEY", label: "Semantic Scholar API Key", secret: true },
+      { key: "SERPER_API_KEY", label: "Serper API Key", secret: true },
+      { key: "SERPER_SEARCH_MODE", label: "Serper Mode", placeholder: "search" },
+      { key: "SERPER_GL", label: "Serper Country", placeholder: "us" },
+      { key: "SERPER_HL", label: "Serper Language", placeholder: "en" },
+      { key: "SERPER_AUTOCORRECT", label: "Serper Autocorrect", placeholder: "true" },
+      { key: "SEARXNG_BASE_URL", label: "SearXNG Base URL" },
+      { key: "JINA_READER_ENABLED", label: "Jina Reader Enabled", placeholder: "false" },
+      { key: "JINA_API_KEY", label: "Jina API Key", secret: true },
+      { key: "PERPLEXITY_API_KEY", label: "Perplexity API Key", secret: true },
+      { key: "PERPLEXITY_SEARCH_MODEL", label: "Perplexity Model", placeholder: "sonar" },
+      { key: "OPENROUTER_API_KEY", label: "OpenRouter API Key", secret: true },
+      { key: "OPENROUTER_BASE_URL", label: "OpenRouter Base URL", placeholder: "https://openrouter.ai/api/v1" },
+      { key: "OPENROUTER_SEARCH_MODEL", label: "OpenRouter Search Model", placeholder: "perplexity/sonar" },
+      { key: "OPENROUTER_HTTP_REFERER", label: "OpenRouter Referer", placeholder: "http://localhost" },
+      { key: "OPENROUTER_APP_TITLE", label: "OpenRouter App Title", placeholder: "AITeachMe" },
+      { key: "BAIDU_AI_SEARCH_API_KEY", label: "Baidu AI Search API Key", secret: true },
+      { key: "BAIDU_AI_SEARCH_MODEL", label: "Baidu AI Search Model", placeholder: "ernie-4.5-turbo-32k" },
+      { key: "BAIDU_AI_SEARCH_SOURCE", label: "Baidu Search Source", placeholder: "baidu_search_v2" },
+      { key: "BAIDU_AI_SEARCH_DEEP", label: "Baidu Deep Search", placeholder: "false" },
+      { key: "RAG_RERANK_API_KEY", label: "Rerank API Key", secret: true },
+      { key: "RAG_RERANK_BASE_URL", label: "Rerank Base URL" },
+    ],
+  },
+  {
+    id: "frontend",
+    label: "前端开发",
+    fields: [
+      { key: "VITE_API_URL", label: "FastAPI 地址", placeholder: "http://localhost:8000" },
+      { key: "VITE_USE_MOCK", label: "本地 Mock", placeholder: "false" },
+    ],
+  },
+  {
+    id: "runtime-auth",
+    label: "运行模式 / 鉴权",
+    fields: [
+      { key: "APP_MODE", label: "运行模式", placeholder: "local" },
+      { key: "AUTH_ENABLED", label: "启用鉴权", placeholder: "false" },
+      { key: "AUTH_TOKEN_SECRET", label: "Auth Token Secret", secret: true },
+      { key: "AUTH_TOKEN_TTL_HOURS", label: "Auth Token TTL", placeholder: "720" },
+      { key: "GUEST_TOKEN_TTL_HOURS", label: "Guest Token TTL", placeholder: "720" },
+      { key: "GUEST_COOKIE_NAME", label: "Guest Cookie Name", placeholder: "atm_guest_token" },
+      { key: "GUEST_COOKIE_SECURE", label: "Guest Cookie Secure" },
+      { key: "GUEST_COOKIE_SAMESITE", label: "Guest Cookie SameSite", placeholder: "auto" },
+      { key: "APP_VERSION", label: "应用版本", placeholder: "0.2.0" },
+    ],
+  },
+  {
+    id: "langsmith",
+    label: "LangSmith",
+    fields: [
+      { key: "LANGSMITH_TRACING", label: "Tracing", placeholder: "false" },
+      { key: "LANGSMITH_API_KEY", label: "API Key", secret: true },
+      { key: "LANGSMITH_PROJECT", label: "Project", placeholder: "AITeachMe" },
+      { key: "LANGSMITH_ENDPOINT", label: "Endpoint", placeholder: "https://api.smith.langchain.com" },
+    ],
+  },
+  {
+    id: "smtp",
+    label: "SMTP / 邮箱验证码",
+    fields: [
+      { key: "SMTP_HOST", label: "SMTP Host" },
+      { key: "SMTP_PORT", label: "SMTP Port", placeholder: "465" },
+      { key: "SMTP_USERNAME", label: "SMTP Username" },
+      { key: "SMTP_PASSWORD", label: "SMTP Password", secret: true },
+      { key: "SMTP_FROM_EMAIL", label: "From Email" },
+      { key: "SMTP_FROM_NAME", label: "From Name", placeholder: "AITeachMe" },
+      { key: "SMTP_USE_SSL", label: "Use SSL", placeholder: "true" },
+      { key: "SMTP_USE_STARTTLS", label: "Use StartTLS", placeholder: "false" },
+      { key: "SMTP_ADDRESS_FAMILY", label: "Address Family", placeholder: "ipv4" },
+      { key: "SMTP_TIMEOUT_S", label: "Timeout Seconds", placeholder: "15" },
+      { key: "AUTH_EMAIL_CODE_TTL_S", label: "验证码 TTL", placeholder: "600" },
+      { key: "AUTH_EMAIL_CODE_RESEND_INTERVAL_S", label: "重发间隔", placeholder: "60" },
+      { key: "AUTH_EMAIL_CODE_MAX_ATTEMPTS", label: "最大尝试次数", placeholder: "5" },
+    ],
+  },
+  {
+    id: "database-storage",
+    label: "数据库 / 对象存储",
+    fields: [
+      { key: "DATABASE_URL", label: "Database URL", secret: true },
+      { key: "STORAGE_BACKEND", label: "Storage Backend", placeholder: "local" },
+      { key: "S3_BUCKET", label: "S3 Bucket" },
+      { key: "S3_ENDPOINT", label: "S3 Endpoint" },
+      { key: "S3_ACCESS_KEY", label: "S3 Access Key", secret: true },
+      { key: "S3_SECRET_KEY", label: "S3 Secret Key", secret: true },
+      { key: "S3_SESSION_TOKEN", label: "S3 Session Token", secret: true },
+      { key: "S3_REGION", label: "S3 Region" },
+      { key: "S3_PUBLIC_BASE_URL", label: "S3 Public Base URL" },
+      { key: "S3_ADDRESSING_STYLE", label: "S3 Addressing Style", placeholder: "virtual" },
+      { key: "S3_CREDENTIAL_MODE", label: "S3 Credential Mode", placeholder: "auto" },
+      { key: "DOGECLOUD_API_ACCESS_KEY", label: "DogeCloud Access Key", secret: true },
+      { key: "DOGECLOUD_API_SECRET_KEY", label: "DogeCloud Secret Key", secret: true },
+      { key: "DOGECLOUD_API_BASE_URL", label: "DogeCloud Base URL", placeholder: "https://api.dogecloud.com" },
+      { key: "DOGECLOUD_SPACE_NAME", label: "DogeCloud Space" },
+      { key: "DOGECLOUD_TMP_TOKEN_PATH", label: "DogeCloud Token Path", placeholder: "/auth/tmp_token.json" },
+      { key: "DOGECLOUD_TMP_TOKEN_CHANNEL", label: "DogeCloud Token Channel", placeholder: "OSS_FULL" },
+      { key: "DOGECLOUD_TMP_TOKEN_SCOPE", label: "DogeCloud Token Scope", placeholder: "*" },
+    ],
+  },
+  {
+    id: "misc",
+    label: "其他",
+    fields: [
+      { key: "PROJECT_SETTINGS_PATH", label: "Settings 文件路径", placeholder: "settings_default.yaml" },
+      { key: "EXPORT_OPENAPI_ON_STARTUP", label: "启动导出 OpenAPI", placeholder: "false" },
+      { key: "CORS_ALLOWED_ORIGINS", label: "CORS 来源" },
+    ],
+  },
+];
 
 const SECTIONS = [
   { id: "env", label: "环境变量", description: "本机 .env 草稿", icon: KeyRound },
@@ -107,46 +245,19 @@ const RUNTIME_ENV_KEYS = new Set([
   "search.exa_key",
   "search.bing_key",
   "search.bocha_key",
+  "search.jina_key",
+  "search.serper_key",
+  "search.perplexity_key",
+  "search.openrouter_key",
+  "search.baidu_ai_key",
   "search.searxng_url",
   "reader.jina_enabled",
-  "reader.jina_key",
   "database.url",
   "langsmith.tracing",
   "langsmith.api_key",
   "langsmith.project",
   "langsmith.endpoint",
 ]);
-
-function envMapToText(env: Record<string, string>): string {
-  return Object.entries(env)
-    .filter(([key]) => key.trim())
-    .map(([key, value]) => `${key}=${value ?? ""}`)
-    .join("\n");
-}
-
-function envTextToMap(text: string): Record<string, string> {
-  const env: Record<string, string> = {};
-  text.split(/\r?\n/).forEach((rawLine) => {
-    const line = rawLine.trim();
-    if (!line || line.startsWith("#") || !line.includes("=")) {
-      return;
-    }
-    const [rawKey, ...rawValueParts] = line.split("=");
-    const key = rawKey.trim();
-    if (!key) {
-      return;
-    }
-    let value = rawValueParts.join("=").trim();
-    if (
-      (value.startsWith('"') && value.endsWith('"')) ||
-      (value.startsWith("'") && value.endsWith("'"))
-    ) {
-      value = value.slice(1, -1);
-    }
-    env[key] = value;
-  });
-  return env;
-}
 
 function isPrimitive(value: unknown): value is SettingPrimitive {
   return value === null || ["string", "number", "boolean"].includes(typeof value);
@@ -257,6 +368,49 @@ function TextInput({
       placeholder={placeholder}
       className="w-full rounded-lg border border-zinc-200 bg-white px-3.5 py-2.5 text-[13px] text-zinc-900 placeholder:text-zinc-300 outline-none transition focus:border-zinc-400 focus:ring-4 focus:ring-zinc-900/5"
     />
+  );
+}
+
+function EnvInput({
+  field,
+  value,
+  onChange,
+}: {
+  field: LocalEnvField;
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  const [showSecret, setShowSecret] = useState(false);
+  return (
+    <div className="space-y-2">
+      <label className="text-[13px] font-semibold text-zinc-700">{field.label}</label>
+      <div className="relative">
+        <input
+          type={field.secret && !showSecret ? "password" : "text"}
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          placeholder={field.placeholder || field.key}
+          autoComplete={field.secret ? "new-password" : "off"}
+          autoCapitalize="none"
+          autoCorrect="off"
+          spellCheck={false}
+          className={`w-full rounded-lg border border-zinc-200 bg-white px-3.5 py-2.5 text-[13px] text-zinc-900 placeholder:text-zinc-300 outline-none transition focus:border-zinc-400 focus:ring-4 focus:ring-zinc-900/5 ${
+            field.secret ? "pr-10" : ""
+          }`}
+        />
+        {field.secret ? (
+          <button
+            type="button"
+            onClick={() => setShowSecret((value) => !value)}
+            className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1 text-zinc-400 transition hover:bg-zinc-100 hover:text-zinc-700"
+            aria-label={showSecret ? "隐藏密钥" : "显示密钥"}
+          >
+            {showSecret ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+          </button>
+        ) : null}
+      </div>
+      <p className="font-mono text-[11px] text-zinc-400">{field.key}</p>
+    </div>
   );
 }
 
@@ -434,7 +588,6 @@ const contentVariants = {
 export function SettingsPanel({ isOpen, onClose }: SettingsModalProps) {
   const { settings, updateSettings } = useSettings();
   const [draft, setDraft] = useState<AppSettings>({ ...settings });
-  const [envText, setEnvText] = useState(envMapToText(settings.localEnv));
   const [activeSection, setActiveSection] = useState<SectionType>("env");
   const [saveState, setSaveState] = useState<SaveState>("idle");
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -451,7 +604,6 @@ export function SettingsPanel({ isOpen, onClose }: SettingsModalProps) {
   useEffect(() => {
     if (!isOpen) return;
     setDraft({ ...settings });
-    setEnvText(envMapToText(settings.localEnv));
     setActiveSection("env");
     setSaveState("idle");
     setSaveError(null);
@@ -525,15 +677,16 @@ export function SettingsPanel({ isOpen, onClose }: SettingsModalProps) {
     setDraft((prev) => ({ ...prev, [key]: value }));
   };
 
-  const patchEnvText = (text: string) => {
-    const localEnv = envTextToMap(text);
-    setEnvText(text);
+  const patchEnvVar = (key: string, value: string) => {
     setDraft((prev) => ({
       ...prev,
-      localEnv,
-      apiUrl: localEnv.VITE_API_URL || prev.apiUrl,
-      useMock: localEnv.VITE_USE_MOCK ? localEnv.VITE_USE_MOCK.trim().toLowerCase() === "true" : prev.useMock,
-      mineruApiToken: localEnv.MINERU_API_TOKEN ?? prev.mineruApiToken,
+      localEnv: {
+        ...prev.localEnv,
+        [key]: value,
+      },
+      apiUrl: key === "VITE_API_URL" ? value : prev.apiUrl,
+      useMock: key === "VITE_USE_MOCK" ? value.trim().toLowerCase() === "true" : prev.useMock,
+      mineruApiToken: key === "MINERU_API_TOKEN" ? value : prev.mineruApiToken,
     }));
   };
 
@@ -602,13 +755,21 @@ export function SettingsPanel({ isOpen, onClose }: SettingsModalProps) {
   const renderEnv = () => (
     <div className="space-y-5">
       <InfoCard text="本机环境变量只保存在当前浏览器。密钥、连接串、SMTP、对象存储等都写在这里，不写入后端用户 settings。" />
-      <textarea
-        value={envText}
-        onChange={(event) => patchEnvText(event.target.value)}
-        placeholder={ENV_TEXT_PLACEHOLDER}
-        spellCheck={false}
-        className="min-h-[260px] w-full resize-y rounded-lg border border-zinc-200 bg-white px-3.5 py-3 font-mono text-[12px] leading-6 text-zinc-900 outline-none transition placeholder:text-zinc-300 focus:border-zinc-400 focus:ring-4 focus:ring-zinc-900/5"
-      />
+      {LOCAL_ENV_GROUPS.map((group) => (
+        <div key={group.id} className="space-y-3">
+          <SectionDivider label={group.label} />
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            {group.fields.map((field) => (
+              <EnvInput
+                key={field.key}
+                field={field}
+                value={draft.localEnv[field.key] ?? ""}
+                onChange={(value) => patchEnvVar(field.key, value)}
+              />
+            ))}
+          </div>
+        </div>
+      ))}
       <div className="flex flex-wrap items-center gap-2">
         <button
           type="button"
@@ -689,12 +850,7 @@ export function SettingsPanel({ isOpen, onClose }: SettingsModalProps) {
             <TextInput
               type="password"
               value={draft.mineruApiToken}
-              onChange={(value) => {
-                patch("mineruApiToken", value);
-                const localEnv = { ...draft.localEnv, MINERU_API_TOKEN: value };
-                patch("localEnv", localEnv);
-                setEnvText(envMapToText(localEnv));
-              }}
+              onChange={(value) => patchEnvVar("MINERU_API_TOKEN", value)}
               placeholder="MINERU_API_TOKEN"
             />
             <SelectInput
@@ -727,12 +883,7 @@ export function SettingsPanel({ isOpen, onClose }: SettingsModalProps) {
       <SectionDivider label="前端本机" />
       <TextInput
         value={draft.apiUrl}
-        onChange={(value) => {
-          patch("apiUrl", value);
-          const localEnv = { ...draft.localEnv, VITE_API_URL: value };
-          patch("localEnv", localEnv);
-          setEnvText(envMapToText(localEnv));
-        }}
+        onChange={(value) => patchEnvVar("VITE_API_URL", value)}
         placeholder="http://localhost:8000"
       />
       <SwitchRow
@@ -741,10 +892,7 @@ export function SettingsPanel({ isOpen, onClose }: SettingsModalProps) {
         enabled={draft.useMock}
         onToggle={() => {
           const nextValue = !draft.useMock;
-          patch("useMock", nextValue);
-          const localEnv = { ...draft.localEnv, VITE_USE_MOCK: String(nextValue) };
-          patch("localEnv", localEnv);
-          setEnvText(envMapToText(localEnv));
+          patchEnvVar("VITE_USE_MOCK", String(nextValue));
         }}
       />
       <SwitchRow title="调试模式" description="只影响当前浏览器。" enabled={draft.debugMode} onToggle={() => patch("debugMode", !draft.debugMode)} />
@@ -881,7 +1029,6 @@ export function SettingsPanel({ isOpen, onClose }: SettingsModalProps) {
                     onClick={() => {
                       const nextDraft = { ...DEFAULT_SETTINGS };
                       setDraft(nextDraft);
-                      setEnvText(envMapToText(nextDraft.localEnv));
                       setSettingsDraft(defaultSettingsDraft);
                       setSaveError(null);
                     }}

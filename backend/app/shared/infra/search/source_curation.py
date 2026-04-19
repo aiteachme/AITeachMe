@@ -67,6 +67,13 @@ def _domain_from_url(url: str) -> str:
 
 
 class SourceCurator(BaseTracedExecution):
+    """Rank and filter search results before expensive URL reading.
+
+    Search providers often return noisy duplicates or low-quality mirrors. This
+    traced execution keeps the filtering heuristic centralized so planner and
+    DocGen do not each grow their own source-ranking rules.
+    """
+
     @property
     def trace_namespace(self) -> str:
         return "检索后处理"
@@ -82,6 +89,13 @@ class SourceCurator(BaseTracedExecution):
         sources: list[SearchResult],
         max_results: int = 10,
     ) -> TracedExecutionResult:
+        """Curate candidate search results and expose trace metadata.
+
+        The returned ``content`` is unused; selected sources are serialized into
+        metadata so callers can reconstruct ``SearchResult`` objects while
+        LangSmith still gets a compact summary of why the source set changed.
+        """
+
         filtered = self._filter_sources(sources)
         ranked = self._rank_sources(query=query, sources=filtered)
         curated = ranked[:max_results]
@@ -114,6 +128,8 @@ class SourceCurator(BaseTracedExecution):
         sources: list[SearchResult],
         max_results: int = 10,
     ) -> tuple[list[SearchResult], dict[str, object]]:
+        """Return curated sources plus diagnostic metadata for workflow code."""
+
         result = await self.run(query=query, sources=sources, max_results=max_results)
         curated = [
             SearchResult(
@@ -130,6 +146,8 @@ class SourceCurator(BaseTracedExecution):
         return curated, metadata
 
     def _filter_sources(self, sources: list[SearchResult]) -> list[SearchResult]:
+        """Deduplicate sources and remove known low-value domains."""
+
         deduped: list[SearchResult] = []
         seen: set[str] = set()
         for item in sources:
@@ -145,6 +163,8 @@ class SourceCurator(BaseTracedExecution):
         return deduped
 
     def _rank_sources(self, *, query: str, sources: list[SearchResult]) -> list[SearchResult]:
+        """Rank sources by relevance, phrase match, credibility, and local priority."""
+
         query_tokens = Counter(_tokenize(query))
 
         def score(item: SearchResult) -> tuple[float, float, float, float, int, str]:
@@ -161,6 +181,8 @@ class SourceCurator(BaseTracedExecution):
         return sorted(sources, key=score, reverse=True)
 
     def _credibility_score(self, url: str, *, domain: str) -> float:
+        """Return a coarse source-quality score used only as a ranking feature."""
+
         if url.startswith("local://"):
             return 1.0
         if not domain:
@@ -172,6 +194,8 @@ class SourceCurator(BaseTracedExecution):
         return 0.5
 
     def _lexical_score(self, query_tokens: Counter[str], item: SearchResult) -> float:
+        """Measure token overlap between query and title/snippet."""
+
         if not query_tokens:
             return 0.0
         title_tokens = Counter(_tokenize(item.title))
@@ -182,6 +206,8 @@ class SourceCurator(BaseTracedExecution):
         return min(1.0, weighted_overlap / max(1.0, float(sum(query_tokens.values()))))
 
     def _phrase_match_score(self, query: str, item: SearchResult) -> float:
+        """Reward direct phrase or key-term matches, including CJK n-grams."""
+
         normalized_query = _normalize_text(query)
         if len(normalized_query) < 2:
             return 0.0

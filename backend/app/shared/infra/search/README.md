@@ -36,6 +36,22 @@ shared/infra/search/
 └── readers/               # URL 内容读取层
 ```
 
+这套结构暂时不建议继续拆成更多顶层包。
+
+原因是当前复杂度主要来自“搜索完整链路”本身，而不是目录混乱：
+
+- `api.py` 是工作流优先使用的薄入口。
+- `web.py` 是内部调度器，承载本地优先、并发、超时和融合。
+- `factory.py` 是注册表解析层，隔离“配置名字 -> 可用实例”的细节。
+- `retrievers/` 与 `readers/` 的边界清楚：前者找 URL，后者读 URL。
+- `knowledge.py` 与 `llamaindex_index/` 只服务本地 subject 知识检索。
+
+如果继续重构，推荐方向不是移动文件，而是减少 workflow 直接接触底层参数：
+
+- 普通 workflow 只调用 `app.shared.infra.search.web_search()`。
+- 只有 search 层内部或专门测试才直接调用 `dispatch_web_search()`。
+- 只有需要列出可用 provider / reader 时才进入 `factory.py`。
+
 ## 命名约定
 
 - `retriever`
@@ -76,8 +92,12 @@ shared/infra/search/
   可选的 metasearch retriever，需要配置 `SEARXNG_BASE_URL`。
 - `tavily` / `bing` / `bocha`
   这些属于 API 型检索器，需要用户提供 key。
-- `brave` / `exa`
+- `brave` / `exa` / `jina_search`
   这些属于 API 型检索器，适合补充高质量通用 Web 结果或语义搜索结果。
+- `perplexity` / `openrouter_search` / `baidu_ai_search`
+  这些属于答案型搜索 API。当前 search 层只抽取其返回的 citations / references 为 `SearchResult`，不在 search 层直接消费最终答案。
+- `serper`
+  Google SERP / Scholar API 检索器，可通过 `SERPER_SEARCH_MODE=search|scholar` 切换普通搜索和学术搜索。
 - `arxiv` / `semantic_scholar`
   这两类更偏学术资料补充，不适合作为中文通用搜索引擎的完全替代。
 - `baidu_baike` / `zhihu`
@@ -103,6 +123,34 @@ search(query: str, *, max_results: int = 5) -> list[SearchResult]
    `digest/planner/nodes/retrieve_planning_evidence.py` 和 `digest/docgen/lib/chapter_context.py` 会逐个执行 retriever。
 4. `readers/`
    当 retriever 返回外部 URL 后，再由 `read_urls()` 选择合适 reader 把网页 / PDF / DOCX / PPTX 读出来。
+
+## `dispatch_web_search()` 参数说明
+
+`dispatch_web_search()` 是底层调度器，参数看起来多，是为了让不同 workflow 共用一套调度逻辑。
+
+日常业务代码不应该优先调用它，而应该用 `api.py` 暴露的 `web_search()`。
+
+| 参数 | 作用 | 是否常用 |
+| --- | --- | --- |
+| `query` | 搜索 query。空字符串会直接返回空列表。 | 必填 |
+| `top_k` | 最终返回多少条融合后的结果。每个 provider 也最多请求这个数量。 | 常用 |
+| `subject` | 当前学科 slug。传了以后 `local_rag` 才能查 subject 的本地向量索引。 | Digest / Chat 常用 |
+| `local_sections` | 还没进入向量索引的本地片段，用于 planner 草稿、临时材料等场景。 | 少量 workflow 用 |
+| `profile` | 检索 profile 名，决定启用哪些 retriever 和顺序。为空则使用 settings 默认逻辑。 | 高级场景 |
+| `total_timeout_s` | 本次搜索总预算。为空走 `settings.search.total_timeout_s`。 | 测试/特殊链路 |
+| `provider_timeout_s` | 单个 provider 最多等多久。为空走 `settings.search.provider_timeout_s`。 | 测试/特殊链路 |
+
+这些参数不是每个调用点都该传。
+
+推荐用法：
+
+```python
+from app.shared.infra.search import web_search
+
+results = await web_search(query, top_k=5, subject=subject)
+```
+
+只有需要覆盖 profile 或 timeout 时，才从 `search.web` 直接调度。
 
 ## 两条典型链路
 

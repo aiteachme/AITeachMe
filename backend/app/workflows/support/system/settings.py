@@ -323,9 +323,13 @@ def build_settings_overview_data(
                 _env_entry("search.exa_key", "EXA_API_KEY", "EXA_API_KEY", "Exa 语义搜索密钥。", secret=True),
                 _env_entry("search.bing_key", "BING_API_KEY", "BING_API_KEY", "Bing Search 密钥。", secret=True),
                 _env_entry("search.bocha_key", "BOCHA_API_KEY", "BOCHA_API_KEY", "Bocha 搜索密钥。", secret=True),
+                _env_entry("search.jina_key", "JINA_API_KEY", "JINA_API_KEY", "Jina Search / Reader 共用密钥。", secret=True),
+                _env_entry("search.serper_key", "SERPER_API_KEY", "SERPER_API_KEY", "Serper Google / Scholar 检索密钥。", secret=True),
+                _env_entry("search.perplexity_key", "PERPLEXITY_API_KEY", "PERPLEXITY_API_KEY", "Perplexity Sonar 检索密钥。", secret=True),
+                _env_entry("search.openrouter_key", "OPENROUTER_API_KEY", "OPENROUTER_API_KEY", "OpenRouter 搜索模型密钥。", secret=True),
+                _env_entry("search.baidu_ai_key", "BAIDU_AI_SEARCH_API_KEY", "BAIDU_AI_SEARCH_API_KEY", "百度千帆 AI Search 密钥。", secret=True),
                 _env_entry("search.searxng_url", "SEARXNG_BASE_URL", "SEARXNG_BASE_URL", "自建/可信 SearXNG 地址。"),
                 _env_entry("reader.jina_enabled", "JINA_READER_ENABLED", "JINA_READER_ENABLED", "是否启用 Jina Reader。"),
-                _env_entry("reader.jina_key", "JINA_API_KEY", "JINA_API_KEY", "Jina Reader 密钥。", secret=True),
             ],
         ),
         SettingSection(
@@ -384,7 +388,6 @@ def build_settings_overview_data(
                 se("runtime.default_token_budget", "默认上下文预算", settings.runtime.default_token_budget, base_settings.runtime.default_token_budget),
                 se("embedding.batch_size", "Embedding 批大小", settings.embedding.batch_size, base_settings.embedding.batch_size),
                 se("embedding.batch_delay_s", "Embedding 批延迟", settings.embedding.batch_delay_s, base_settings.embedding.batch_delay_s),
-                se("safety.guardrails_enabled", "Guardrails", settings.safety.guardrails_enabled, base_settings.safety.guardrails_enabled),
             ],
         ),
     ]
