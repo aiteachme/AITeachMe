@@ -62,6 +62,14 @@ interface PersistedPlannerState {
 const ACCEPT = ".pdf,.docx,.doc,.ppt,.pptx,.md,.markdown,.txt,.png,.jpg,.jpeg,.webp";
 const STORAGE_PREFIX = "aiteachme:files-page-planner";
 const PLANNER_STATE_VERSION = 4;
+const WELCOME_MESSAGE_CONTENT =
+  "可以直接告诉我你的学习目标，也可以先上传资料。我会先思考资料边界，再给出几条计划大纲，你确认后再正式开始知识文档构建。";
+
+interface BuildPlanLocationState {
+  initialFiles?: File[];
+  initialPrompt?: string;
+  autoStart?: boolean;
+}
 
 let messageCounter = 0;
 
@@ -116,10 +124,28 @@ function createMessage(
 }
 
 function createWelcomeMessage() {
-  return createMessage(
-    "assistant",
-    "可以直接告诉我你的学习目标，也可以先上传资料。我会先思考资料边界，再给出几条计划大纲，你确认后再正式开始知识文档构建。",
-  );
+  return createMessage("assistant", WELCOME_MESSAGE_CONTENT);
+}
+
+function shouldStartWithoutWelcome(state: BuildPlanLocationState | null | undefined): boolean {
+  return Boolean(state?.autoStart && state.initialPrompt?.trim());
+}
+
+function createInitialMessages(state: BuildPlanLocationState | null | undefined = null): ChatMessage[] {
+  return shouldStartWithoutWelcome(state) ? [] : [createWelcomeMessage()];
+}
+
+function replaceWelcomeWithUserMessage(messages: ChatMessage[], prompt: string): ChatMessage[] {
+  const userMessage = createMessage("user", prompt);
+  if (
+    messages.length === 1 &&
+    messages[0]?.role === "assistant" &&
+    messages[0]?.content === WELCOME_MESSAGE_CONTENT &&
+    !messages[0]?.plan
+  ) {
+    return [userMessage];
+  }
+  return [...messages, userMessage];
 }
 
 function readPersistedPlannerState(subjectId: string): PersistedPlannerState | null {
@@ -666,7 +692,7 @@ export function BuildPlanPage() {
   const queryClient = useQueryClient();
   useSettings();
 
-  const navState = location.state as { initialFiles?: File[]; initialPrompt?: string; autoStart?: boolean } | null;
+  const navState = location.state as BuildPlanLocationState | null;
   const requestedAt = useMemo(
     () => new URLSearchParams(location.search).get("requested_at"),
     [location.search],
@@ -680,7 +706,7 @@ export function BuildPlanPage() {
   const plannerAbortControllerRef = useRef<AbortController | null>(null);
   const autoStartFiredRef = useRef(false);
 
-  const [messages, setMessages] = useState<ChatMessage[]>([createWelcomeMessage()]);
+  const [messages, setMessages] = useState<ChatMessage[]>(() => createInitialMessages(navState));
   const [plannerSessionId, setPlannerSessionId] = useState<string | null>(null);
   const [currentPlan, setCurrentPlan] = useState<BuildPlannerPlanResponse | null>(null);
   const [inputValue, setInputValue] = useState(navState?.initialPrompt ?? "");
@@ -833,7 +859,7 @@ export function BuildPlanPage() {
             found: Boolean(session),
           });
           // No server history either — fresh start
-          setMessages([createWelcomeMessage()]);
+          setMessages(createInitialMessages(navState));
           setPlannerSessionId(null);
           setCurrentPlan(null);
           setInputValue(navState?.initialPrompt ?? "");
@@ -873,7 +899,7 @@ export function BuildPlanPage() {
         // 后端恢复失败时，回到一个干净的新会话。
         if (cancelled) return;
         logPlannerDebug("restore_latest_failed", { subjectId });
-        setMessages([createWelcomeMessage()]);
+        setMessages(createInitialMessages(navState));
         setPlannerSessionId(null);
         setCurrentPlan(null);
         setInputValue(navState?.initialPrompt ?? "");
@@ -936,8 +962,8 @@ export function BuildPlanPage() {
     }
     autoStartFiredRef.current = true;
 
-    // Fire the planner immediately — capture the prompt before clearing navState
-    setMessages((prev) => [...prev, createMessage("user", prompt)]);
+    // Fire the planner immediately — capture the prompt before clearing navState.
+    setMessages((prev) => replaceWelcomeWithUserMessage(prev, prompt));
     setInputValue("");
     setPlannerStreaming(true);
     plannerStreamingRawRef.current = "";
@@ -1409,13 +1435,18 @@ export function BuildPlanPage() {
         disabled={uploadMutation.isPending}
       />
 
-      <div className="flex h-full w-full flex-col bg-zinc-50">
-        <div className="flex items-center justify-center pb-2 pt-6">
-          <div className="inline-flex items-center gap-2 rounded-full border border-zinc-200/80 bg-white px-3 py-1.5 text-[11px] font-semibold uppercase tracking-widest text-zinc-500 shadow-sm">
-            <Sparkles className="h-3 w-3" />
-            方案规划
-          </div>
+      <div className="relative flex h-full w-full flex-col overflow-hidden bg-zinc-50">
+        <div className="pointer-events-none absolute inset-0 z-0 flex justify-center overflow-hidden">
+          <div className="h-full w-full bg-[linear-gradient(to_right,#e4e4e7_1px,transparent_1px),linear-gradient(to_bottom,#e4e4e7_1px,transparent_1px)] bg-[size:32px_32px] [mask-image:radial-gradient(ellipse_120%_100%_at_50%_0%,#000_50%,transparent_100%)]" />
         </div>
+
+        <div className="relative z-10 flex h-full w-full flex-col">
+          <div className="flex items-center justify-center pb-2 pt-6">
+            <div className="inline-flex items-center gap-2 rounded-full border border-zinc-200/80 bg-white px-3 py-1.5 text-[11px] font-semibold uppercase tracking-widest text-zinc-500 shadow-sm">
+              <Sparkles className="h-3 w-3" />
+              方案规划
+            </div>
+          </div>
 
         {shouldShowBuildView ? (
           <div className="flex-1 overflow-y-auto px-4 pb-6 md:px-8 lg:px-16">
@@ -1794,6 +1825,7 @@ export function BuildPlanPage() {
               先生成方案，再确认构建。确认后会留在当前 build 页面，持续展示真实的构建过程与检索来源。
             </p>
           </div>
+        </div>
         </div>
       </div>
 

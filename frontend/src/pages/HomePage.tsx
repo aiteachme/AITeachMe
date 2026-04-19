@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -565,6 +565,7 @@ function RenameModal({
 
 export function HomePage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const queryClient = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -581,6 +582,18 @@ export function HomePage() {
 
   // Section tab: "recent" | "courses"
   const [sectionTab, setSectionTab] = useState<"recent" | "courses">("recent");
+  const newEntryAt = (location.state as { newEntryAt?: number } | null)?.newEntryAt;
+
+  useEffect(() => {
+    if (!newEntryAt) {
+      return;
+    }
+    setPrompt("");
+    setPendingFiles([]);
+    setError(null);
+    navigate("/", { replace: true, state: null });
+    window.requestAnimationFrame(() => textareaRef.current?.focus());
+  }, [navigate, newEntryAt]);
 
   // ── Courses query ──
   const { data: courses = [], isLoading: coursesLoading } = useQuery({
@@ -971,7 +984,7 @@ export function HomePage() {
                     ))}
                     {!subjectsLoading && subjects.length === 0 && (
                       <div className="col-span-full py-12 text-center text-slate-400 text-sm">
-                        暂无学习空间，上方创建或导入课程开始学习
+                        暂无学习空间，上方输入目标或导入课程开始学习
                       </div>
                     )}
                   </div>

@@ -20,7 +20,6 @@ import {
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import {
-  createSubjectApiApiV1SubjectsAddPost,
   deleteSubjectApiApiV1SubjectsDeletePost,
   listSubjectsApiApiV1SubjectsListPost,
   previewDeleteSubjectApiApiV1SubjectsDeletePreviewPost,
@@ -179,25 +178,6 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
     setIsCollapsed(false);
   }, [location.pathname]);
 
-  const createMutation = useMutation({
-    mutationFn: async () => {
-      const created = unwrapOrvalResponse(await createSubjectApiApiV1SubjectsAddPost({ name: "" }));
-      if (!created) {
-        throw new Error("创建学科失败");
-      }
-      return created;
-    },
-    onSuccess: (created) => {
-      void queryClient.invalidateQueries({ queryKey: ["subjects"] });
-      setExpandedSubjects((prev) => new Set([...prev, created.subject_id]));
-      setSubjectActionError(undefined);
-      navigate(`/subject/${created.subject_id}/build`);
-    },
-    onError: (error) => {
-      setSubjectActionError(getApiErrorMessage(error, "创建失败，请重试"));
-    },
-  });
-
   const deletePreviewMutation = useMutation({
     mutationFn: async (subjectId: string) =>
       unwrapOrvalResponse(
@@ -302,16 +282,16 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
             variant="outline"
             className={cn(effectiveCollapsed ? "mx-auto h-10 w-10 px-0" : "w-full justify-start")}
             onClick={() => {
-              if (effectiveCollapsed) {
-                setIsCollapsed(false);
-                return;
-              }
-              createMutation.mutate();
+              setSubjectActionError(undefined);
+              setOpenMenuId(null);
+              setIsMobileOpen(false);
+              navigate("/", {
+                state: { newEntryAt: Date.now() },
+              });
             }}
             title={effectiveCollapsed ? "新建学科" : undefined}
-            disabled={createMutation.isPending}
           >
-            {createMutation.isPending ? <Loader2 className="h-4 w-4 shrink-0 animate-spin" /> : <Plus className="h-4 w-4 shrink-0" />}
+            <Plus className="h-4 w-4 shrink-0" />
             {!effectiveCollapsed ? <span className="ml-2">新建学科</span> : null}
           </Button>
 
