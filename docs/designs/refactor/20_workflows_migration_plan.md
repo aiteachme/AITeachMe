@@ -45,7 +45,7 @@
 ### Phase 3: Digest 应用用例迁移
 
 - `app.services.knowledge_docs.build_planner_service` -> `app.workflows.digest.planner`
-- `app.services.knowledge_docs.digest_service` -> `digest/docgen/builds.py`
+- `app.services.knowledge_docs.digest_service` -> `digest/docgen/lib/build_lifecycle.py`
 - `app.services.knowledge_docs.overview_service` -> `digest/knowledge_graph/overview.py`
 - `app.services.knowledge_docs.cleanup_service` -> `digest/docgen/cleanup.py`
 - `app.services.knowledge_graph.*` -> `digest/knowledge_graph/*`

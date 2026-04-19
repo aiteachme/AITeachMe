@@ -6136,13 +6136,6 @@
             "type": "array",
             "title": "Research Queries"
           },
-          "selected_skillpacks": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Selected Skillpacks"
-          },
           "media_plan": {
             "additionalProperties": true,
             "type": "object",
@@ -6241,21 +6234,6 @@
             "title": "Tone",
             "description": "Optional requested writing tone."
           },
-          "selected_skillpacks": {
-            "anyOf": [
-              {
-                "items": {
-                  "type": "string"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Selected Skillpacks",
-            "description": "Optional prompt skillpacks selected for planner/docgen."
-          },
           "title": {
             "anyOf": [
               {
@@ -6282,21 +6260,6 @@
             "type": "string",
             "title": "Message",
             "description": "User feedback used to revise the current plan draft."
-          },
-          "selected_skillpacks": {
-            "anyOf": [
-              {
-                "items": {
-                  "type": "string"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Selected Skillpacks",
-            "description": "Optional updated skillpack selection for the next draft."
           }
         },
         "type": "object",
@@ -6330,13 +6293,6 @@
           "tone": {
             "type": "string",
             "title": "Tone"
-          },
-          "selected_skillpacks": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Selected Skillpacks"
           },
           "chapter_plan": {
             "items": {

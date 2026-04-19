@@ -18,8 +18,6 @@ export interface BuildPlannerCreateRequest {
   digest_mode?: 'sprint' | 'systematic' | null;
   /** Optional requested writing tone. */
   tone?: string | null;
-  /** Optional prompt skillpacks selected for planner/docgen. */
-  selected_skillpacks?: string[] | null;
   /** Optional planner session title. */
   title?: string | null;
 }

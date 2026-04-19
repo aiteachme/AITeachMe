@@ -1,4 +1,4 @@
-﻿"""Knowledge cleanup commands."""
+"""Digest-wide knowledge cleanup commands."""
 
 from __future__ import annotations
 
@@ -6,7 +6,6 @@ import sqlalchemy as sa
 import structlog
 from sqlmodel import Session, func, select
 
-from app.shared.infra.exceptions import KnowledgeClearConflictError, SubjectBuildLockConflictError
 from app.models import (
     ChatMessage,
     ChatSession,
@@ -20,6 +19,7 @@ from app.models import (
     UserKnowledgeState,
 )
 import app.repositories.knowledge.knowledge_repo as knowledge_repo
+from app.shared.infra.exceptions import KnowledgeClearConflictError, SubjectBuildLockConflictError
 from app.utils.docgen_store import clear_knowledge_runtime_artifacts, is_knowledge_build_locked
 
 logger = structlog.get_logger()
@@ -86,6 +86,8 @@ def _ensure_knowledge_can_be_cleared(session: Session, *, subject: str) -> None:
 
 
 def clear_subject_knowledge(session: Session, *, subject: str) -> dict[str, int]:
+    """Clear all digest knowledge artifacts for one subject."""
+
     _ensure_knowledge_can_be_cleared(session, subject=subject)
 
     counts: dict[str, int] = {}

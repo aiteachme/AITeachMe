@@ -1,4 +1,4 @@
-"""Workflow-local chapter context runtime for digest DocGen."""
+﻿"""Workflow-local chapter context runtime for digest DocGen."""
 
 from __future__ import annotations
 
@@ -9,8 +9,6 @@ from collections.abc import Iterable
 from typing import Any
 from urllib.parse import urlparse
 
-from langsmith import traceable
-
 from app.shared.infra.settings import get_settings
 from app.shared.infra.execution import BaseTracedExecution, TracedExecutionResult
 from app.shared.infra.llm_support.routing import TaskType
@@ -18,7 +16,6 @@ from app.shared.infra.search import ContextCompressor, SourceCurator
 from app.shared.infra.search.factory import get_configured_retriever_names, get_retrievers_for_subject
 from app.shared.infra.search.retrievers.local_rag import LocalRAGRetriever
 from app.shared.infra.search.types import ScrapedPage, SearchResult
-from app.shared.infra.skills import collect_recommended_tool_tags, render_prompt_scoped_skillpacks
 from app.shared.infra.tools.builtin.web_reading import read_urls
 from app.workflows.digest.docgen.lib.query_planning import (
     build_research_focus_text,
@@ -76,8 +73,6 @@ class DocGenChapterContextRuntime(BaseTracedExecution):
         required_elements: list[str] | None = None,
         digest_mode: str = "",
         retrieval_profile: str | None = None,
-        selected_skillpacks: list[str] | None = None,
-        user_goal: str = "",
         search_domain: str = "zh",
         max_results_per_query: int | None = None,
         max_research_rounds: int | None = None,
@@ -115,21 +110,6 @@ class DocGenChapterContextRuntime(BaseTracedExecution):
             required_elements=required_elements,
             digest_mode=digest_mode,
         )
-        skillpack_guidance = render_prompt_scoped_skillpacks(
-            selected_skillpacks,
-            prompt_scope="digest.docgen.research",
-            bindings={
-                "subject": self.context.subject,
-                "user_goal": user_goal,
-                "chapter_title": chapter_title or base_queries[0],
-                "topic": chapter_title or base_queries[0],
-                "concept": chapter_title or base_queries[0],
-            },
-        )
-        recommended_tool_tags = collect_recommended_tool_tags(
-            selected_skillpacks,
-            prompt_scope="digest.docgen.research",
-        )
         planned_queries = await generate_sub_queries(
             focus_text or base_queries[0],
             context=[
@@ -148,8 +128,6 @@ class DocGenChapterContextRuntime(BaseTracedExecution):
                 runtime_name=self.name,
                 research_stage="plan_sub_queries",
             ),
-            skillpack_guidance=skillpack_guidance,
-            recommended_tool_tags=recommended_tool_tags,
         )
         pending_queries = dedupe_queries([*base_queries, *planned_queries], limit=resolved_query_cap)
         resolved_retrieval_profile = str(retrieval_profile or self.context.retrieval_profile or "").strip()
@@ -331,8 +309,6 @@ class DocGenChapterContextRuntime(BaseTracedExecution):
                 objective=objective,
                 required_elements=list(required_elements or []),
                 digest_mode=digest_mode,
-                skillpack_guidance=skillpack_guidance,
-                recommended_tool_tags=recommended_tool_tags,
             )
             dense_context = purified_context.strip() or dense_context
 
@@ -373,12 +349,9 @@ class DocGenChapterContextRuntime(BaseTracedExecution):
                 "source_class_breakdown": self._classify_source_breakdown(curated_results),
                 "stop_reason": stop_reason,
                 "source_details": [item.to_dict() for item in curated_results],
-                "selected_skillpacks": list(selected_skillpacks or []),
-                "recommended_tool_tags": recommended_tool_tags,
             },
         )
 
-    @traceable(name="DocGen：执行一轮章节检索", run_type="chain")
     async def _run_research_round(
         self,
         *,
@@ -582,8 +555,6 @@ class DocGenChapterContextRuntime(BaseTracedExecution):
         objective: str,
         required_elements: list[str],
         digest_mode: str,
-        skillpack_guidance: str = "",
-        recommended_tool_tags: list[str] | None = None,
     ) -> tuple[str, bool]:
         if not dense_context.strip():
             return "", False
@@ -599,8 +570,6 @@ class DocGenChapterContextRuntime(BaseTracedExecution):
                     objective=objective,
                     required_elements=required_elements,
                     digest_mode=digest_mode,
-                    skillpack_guidance=skillpack_guidance,
-                    recommended_tool_tags=recommended_tool_tags or [],
                 ),
                 task_type=TaskType.DOCGEN_LIGHT,
                 model="light",

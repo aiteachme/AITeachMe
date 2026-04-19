@@ -72,7 +72,7 @@
 
 ### 3.5 Shared Infra / Utils
 
-- `shared/infra/*`：配置、数据库、存储、LLM、embedding、search、tools、skills、MCP、memory、workflow 支撑、observability 等共享基础能力。
+- `shared/infra/*`：配置、数据库、存储、LLM、embedding、search、tools、MCP、memory、workflow 支撑、observability 等共享基础能力。
 - `shared/kernel/*`：异常、时间、ID、事件等最底层原语。
 - `utils/*`：路径、展示、时间等跨层纯工具（如 `path_helpers`、`docgen_store`）。
 
@@ -178,7 +178,7 @@
 
 ### 9.1 规范分层补充说明
 
-- `infra/` 是 `llm_support`、`tracing`、`tools`、`skills`、`prompt_loader` 这类基础模块的规范归属位置；`llm_support/routing.py` 是当前模型路由的唯一推荐入口。
+- `infra/` 是 `llm_support`、`tracing`、`tools`、`prompt_loader` 这类基础模块的规范归属位置；`llm_support/routing.py` 是当前模型路由的唯一推荐入口。
 - `utils/` 负责跨层纯工具能力，例如 `path_helpers`、`presenters`、`docgen_store`。
 - 不新增顶层 `app/common` 目录；共享 workflow 编排辅助能力统一放在 `shared/infra/workflow`。
 - 不再恢复 `services/` 或 `teaching/` 源层；规范导入应直接指向 `app.workflows.*`、`app.shared.infra.*` 与 `app.utils.*`。

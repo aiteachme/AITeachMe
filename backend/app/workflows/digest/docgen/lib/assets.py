@@ -2,12 +2,18 @@
 
 from __future__ import annotations
 
+import base64
+import hashlib
 import re
+from urllib.parse import quote
 
+from app.shared.infra.llm_support import agenerate_image
 from app.shared.infra.llm_support.routing import TaskType
 from app.shared.infra.execution import BaseTracedExecution, TracedExecutionContext, TracedExecutionResult
+from app.shared.infra.settings import get_settings
+from app.shared.infra.storage import get_content_store
 from app.workflows.digest.docgen.lib.asset_requests import replace_asset_requests, strip_asset_requests
-from app.workflows.digest.docgen.prompts import build_docgen_mermaid_prompt
+from app.workflows.digest.docgen.prompts import build_docgen_image_prompt, build_docgen_mermaid_prompt
 
 _MERMAID_LANG_PATTERN = (
     r"mermaid|mindmap|graph|flowchart|sequenceDiagram|classDiagram|"
@@ -168,6 +174,10 @@ async def _replace_mermaid_placeholders(markdown: str, renderer) -> str:
     return await replace_asset_requests(markdown, kind="mermaid", renderer=renderer)
 
 
+async def _replace_image_placeholders(markdown: str, renderer) -> str:
+    return await replace_asset_requests(markdown, kind="image", renderer=renderer)
+
+
 def _sanitize_mindmap_body(body: str, *, topic: str) -> str:
     normalized = _extract_mermaid_body(body)
     if not normalized.lower().startswith("mindmap"):
@@ -295,6 +305,126 @@ class _MermaidPlaceholderRuntime(BaseTracedExecution):
         return _build_simple_mindmap(topic, fallback_source)
 
 
+def _sanitize_alt_text(value: str, *, max_length: int = 48) -> str:
+    cleaned = re.sub(r"[\[\]\(\)`*_#<>]+", " ", str(value or ""))
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+    return (cleaned or "学习配图")[:max_length].rstrip("，,。；;：: ")
+
+
+def _image_ext(mime_type: str) -> str:
+    normalized = str(mime_type or "").lower()
+    if "jpeg" in normalized or "jpg" in normalized:
+        return "jpg"
+    if "webp" in normalized:
+        return "webp"
+    return "png"
+
+
+class _ImagePlaceholderRuntime(BaseTracedExecution):
+    @property
+    def trace_namespace(self) -> str:
+        return "DocGen资产"
+
+    @property
+    def trace_name(self) -> str:
+        return "图片占位处理"
+
+    async def execute(self, *, topic: str, context: str = "") -> TracedExecutionResult:
+        settings = get_settings()
+        if not settings.image_generation_enabled:
+            return TracedExecutionResult(
+                content="",
+                metadata={
+                    "status": "disabled",
+                    "reason": "image_generation_disabled",
+                    "source_placeholder": topic,
+                },
+            )
+        prompt = build_docgen_image_prompt(topic=topic, context=context)
+        try:
+            generated = await agenerate_image(
+                prompt,
+                model="image_generation",
+                n=1,
+                response_format="b64_json",
+                extra_metadata=self.context.trace_metadata(chapter_index=self.context.chapter_index),
+            )
+            image = generated.images[0]
+            storage_key = ""
+            url = image.url
+            if image.b64_json:
+                raw = base64.b64decode(image.b64_json)
+                digest = hashlib.sha256(raw[:4096] + prompt.encode("utf-8")).hexdigest()[:16]
+                ext = _image_ext(image.mime_type)
+                chapter_part = f"ch{int(self.context.chapter_index or 0):02d}"
+                storage_key = f"{self.context.subject}/assets/docgen/{chapter_part}/image_{digest}.{ext}"
+                await get_content_store().write_bytes(storage_key, raw)
+                asset_path = storage_key.split("/", 1)[1] if "/" in storage_key else storage_key
+                url = get_content_store().public_url(storage_key) or (
+                    f"/api/v1/subjects/{quote(self.context.subject, safe='')}/files/assets/{quote(asset_path, safe='/')}"
+                )
+            if not url:
+                return TracedExecutionResult(
+                    content="",
+                    metadata={
+                        "status": "failed",
+                        "reason": "image_generation_returned_no_url_or_b64",
+                        "source_placeholder": topic,
+                    },
+                )
+            alt = _sanitize_alt_text(topic)
+            return TracedExecutionResult(
+                content=f"![{alt}]({url})",
+                metadata={
+                    "status": "generated",
+                    "source_placeholder": topic,
+                    "storage_key": storage_key,
+                    "url": url,
+                    "mime_type": image.mime_type,
+                    "revised_prompt": image.revised_prompt,
+                },
+                images=[
+                    {
+                        "storage_key": storage_key,
+                        "url": url,
+                        "mime_type": image.mime_type,
+                        "revised_prompt": image.revised_prompt,
+                    }
+                ],
+            )
+        except Exception as exc:
+            return TracedExecutionResult(
+                content="",
+                metadata={
+                    "status": "failed",
+                    "reason": str(exc)[:240],
+                    "source_placeholder": topic,
+                },
+            )
+
+    async def process_placeholders_with_reports(self, markdown: str) -> tuple[str, list[dict[str, object]]]:
+        reports: list[dict[str, object]] = []
+
+        async def render(placeholder: str) -> str:
+            result = await self.run(topic=placeholder, context=markdown)
+            metadata = dict(result.metadata or {})
+            reports.append(
+                {
+                    "source_placeholder": placeholder,
+                    "status": str(metadata.get("status") or ""),
+                    "reason": str(metadata.get("reason") or "")[:240],
+                    "storage_key": str(metadata.get("storage_key") or ""),
+                    "url": str(metadata.get("url") or ""),
+                    "mime_type": str(metadata.get("mime_type") or ""),
+                    "revised_prompt": str(metadata.get("revised_prompt") or "")[:240],
+                }
+            )
+            return result.content
+
+        processed = await _replace_image_placeholders(markdown, render)
+        return processed, reports
+
+
 class DocGenAssetRuntime:
     def __init__(self, context: TracedExecutionContext) -> None:
         self.context = context
@@ -308,7 +438,12 @@ class DocGenAssetRuntime:
         return await generator.process_placeholders_with_reports(markdown)
 
     async def process_image_placeholders(self, markdown: str) -> str:
-        return strip_asset_requests(markdown, kinds={"image"})
+        processed, _reports = await self.process_image_placeholders_with_reports(markdown)
+        return processed
+
+    async def process_image_placeholders_with_reports(self, markdown: str) -> tuple[str, list[dict[str, object]]]:
+        generator = _ImagePlaceholderRuntime(self.context)
+        return await generator.process_placeholders_with_reports(markdown)
 
     async def process_interactive_placeholders(self, markdown: str, *, digest_mode: str = "") -> str:
         del digest_mode

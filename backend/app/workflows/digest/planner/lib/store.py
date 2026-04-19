@@ -46,6 +46,7 @@ from app.schemas.knowledge import (
 )
 from app.shared.infra.exceptions import (
     BuildPlannerEmptyPlanError,
+    BuildPlannerSessionBusyError,
     BuildPlannerSessionNotFoundError,
     ConfirmedBuildPlanNotFoundError,
     PlannerMaterialsNotReadyError,
@@ -58,7 +59,6 @@ from app.workflows.digest.planner.lib.plans import normalize_planner_payload
 from app.workflows.digest.planner.lib.steps import STEP_TIMING_FIELDS
 
 logger = structlog.get_logger(__name__)
-DEFAULT_PLAN_TONE = "encouraging"
 PLANNER_CHAT_SOURCE = "build_planner"
 
 
@@ -149,8 +149,6 @@ def _plan_response(
         selected_file_uids=selected_file_uids,
         user_goal=str(plan.get("user_goal") or ""),
         digest_mode=str(plan.get("digest_mode") or "systematic"),
-        tone=str(plan.get("tone") or DEFAULT_PLAN_TONE),
-        selected_skillpacks=list(plan.get("selected_skillpacks") or []),
         chapter_plan=list(plan.get("chapter_plan") or []),
         research_queries=list(plan.get("research_queries") or []),
         media_plan=dict(plan.get("media_plan") or {}),
@@ -367,7 +365,6 @@ def _record_snapshot(record: BuildPlannerSession) -> dict[str, Any]:
         "status": record.status,
         "user_goal": record.user_goal,
         "digest_mode": record.digest_mode,
-        "tone": record.tone,
         "selected_file_ids_json": list(record.selected_file_ids_json or []),
         "latest_plan_json": dict(record.latest_plan_json or {}),
         "latest_summary": record.latest_summary,
@@ -454,7 +451,6 @@ def _normalize_persisted_plan(
     subject: str,
     user_goal: str,
     digest_mode: str,
-    selected_skillpacks: list[str] | None = None,
     material_context: Any | None = None,
     latest_plan: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
@@ -463,7 +459,6 @@ def _normalize_persisted_plan(
         subject=subject,
         user_goal=user_goal,
         requested_digest_mode=digest_mode,
-        selected_skillpacks=selected_skillpacks,
         shared_inputs=material_context,
         latest_plan=latest_plan,
     )
@@ -471,12 +466,6 @@ def _normalize_persisted_plan(
 
 def _operation(state: Mapping[str, Any]) -> str:
     return str(state.get("planner_operation") or "generate_only").strip().lower() or "generate_only"
-
-
-def _selected_skillpacks_for_append(state: Mapping[str, Any], record: BuildPlannerSession) -> list[str]:
-    if bool(state.get("selected_skillpacks_override")):
-        return list(state.get("selected_skillpacks") or [])
-    return list((record.latest_plan_json or {}).get("selected_skillpacks") or [])
 
 
 def prepare_planner_run(state: Mapping[str, Any]) -> dict[str, Any]:
@@ -511,6 +500,9 @@ def prepare_planner_run(state: Mapping[str, Any]) -> dict[str, Any]:
 
         with managed_session() as session:
             subject_row = session.query(Subject).filter(Subject.slug == subject_slug).first()
+            latest = repo_get_latest_planner_session(session, subject=subject_slug, user_id=user_id)
+            if latest is not None and latest.status == "planning":
+                raise BuildPlannerSessionBusyError(latest.id)
             planner_files = _select_planner_files(
                 session,
                 subject=subject_slug,
@@ -534,7 +526,6 @@ def prepare_planner_run(state: Mapping[str, Any]) -> dict[str, Any]:
                     status="planning",
                     user_goal=user_goal,
                     digest_mode=digest_mode,
-                    tone=DEFAULT_PLAN_TONE,
                     selected_file_ids_json=selected_file_ids,
                 ),
             )
@@ -580,6 +571,8 @@ def prepare_planner_run(state: Mapping[str, Any]) -> dict[str, Any]:
             )
             if record is None:
                 raise BuildPlannerSessionNotFoundError(str(state["planner_session_id"]))
+            if record.status == "planning":
+                raise BuildPlannerSessionBusyError(record.id)
             logger.info(
                 "planner_prepare_run_loaded_session",
                 subject=subject_slug,
@@ -604,7 +597,6 @@ def prepare_planner_run(state: Mapping[str, Any]) -> dict[str, Any]:
             )
             _mirror_planner_turn_to_chat(session, record=record, turn=user_turn)
             turns = list_planner_turns(session, session_id=record.id)
-            selected_skillpacks = _selected_skillpacks_for_append(state, record)
             raw_files = list_raw_files_by_ids(session, subject_slug, list(record.selected_file_ids_json))
             workflow_files = _select_planner_workflow_files(raw_files)
             workflow_file_ids = [require_id(item.id, "RawFile.id") for item in workflow_files]
@@ -621,7 +613,6 @@ def prepare_planner_run(state: Mapping[str, Any]) -> dict[str, Any]:
                 "selected_file_uids": selected_file_uids,
                 "user_goal": record.user_goal,
                 "digest_mode": record.digest_mode,
-                "selected_skillpacks": selected_skillpacks,
                 "message_history": [turn.content for turn in turns if turn.content.strip()],
                 "latest_plan": record.latest_plan_json,
                 "planner_record": _record_snapshot(record),
@@ -668,7 +659,6 @@ def save_planner_result(
             subject=subject_slug,
             user_goal=record.user_goal,
             digest_mode=record.digest_mode,
-            selected_skillpacks=list(state.get("selected_skillpacks") or []),
             material_context=material_context,
             latest_plan=record.latest_plan_json,
         )
@@ -730,8 +720,6 @@ def _normalized_plan_payload(
         "subject": str(plan.get("subject") or ""),
         "user_goal": str(plan.get("user_goal") or ""),
         "digest_mode": str(plan.get("digest_mode") or ""),
-        "tone": str(plan.get("tone") or ""),
-        "selected_skillpacks": list(plan.get("selected_skillpacks") or []),
         "chapter_plan": chapter_plan,
         "research_queries": list(plan.get("research_queries") or []),
         "media_plan": dict(plan.get("media_plan") or {}),
@@ -799,6 +787,16 @@ def mark_planner_session_failed(*, subject: str, user_id: str, session_id: str) 
         update_planner_session(session, record)
 
 
+def mark_planner_session_draft(*, subject: str, user_id: str, session_id: str) -> None:
+    with managed_session() as session:
+        record = get_planner_session(session, subject=subject, session_id=session_id, user_id=user_id)
+        if record is None:
+            return
+        record.status = "draft"
+        record.updated_at = utcnow()
+        update_planner_session(session, record)
+
+
 def confirm_planner_session(
     session: Session,
     *,
@@ -844,7 +842,6 @@ def confirm_planner_session(
                 status="confirmed",
                 user_goal=record.user_goal,
                 digest_mode=str(plan_payload.get("digest_mode") or record.digest_mode),
-                tone=str(plan_payload.get("tone") or record.tone),
                 selected_file_ids_json=list(record.selected_file_ids_json),
                 chapter_plan_json=list(plan_payload.get("chapter_plan") or []),
                 research_queries_json=list(plan_payload.get("research_queries") or []),
@@ -866,14 +863,12 @@ def confirm_planner_session(
         subject=subject.slug,
         status=record.status,
         digest_mode=confirmed.digest_mode,
-        tone=confirmed.tone,
         selected_file_uids=file_uids,
         selected_file_ids=list(confirmed.selected_file_ids_json),
         user_goal=confirmed.user_goal,
         plan_summary=confirmed.plan_summary,
         chapter_plan=list(plan_payload.get("chapter_plan") or []),
         research_queries=list(plan_payload.get("research_queries") or []),
-        selected_skillpacks=list(plan_payload.get("selected_skillpacks") or []),
         media_plan=dict(plan_payload.get("media_plan") or {}),
         build_constraints=dict(plan_payload.get("build_constraints") or {}),
         plan_json=plan_payload,
@@ -958,6 +953,7 @@ __all__ = [
     "get_confirmed_plan_or_raise",
     "get_latest_planner_session",
     "mark_confirmed_plan_status",
+    "mark_planner_session_draft",
     "mark_planner_session_failed",
     "prepare_planner_run",
     "planner_session_response_from_state",

@@ -168,7 +168,7 @@ teaching tool 不是独立教学层。当前通用实现是内置 tool，不再�
 
 - graph builder：`build_<lane>_graph`
 - workflow runner：`run_<lane>_workflow`
-- application command/query 文件名：按 use case 命名，例如 `build_plans.py`、`builds.py`
+- application command/query 文件名：按 use case 命名，例如 `build_plans.py`、`lifecycle.py`
 
 ### 6.2 节点与文件
 

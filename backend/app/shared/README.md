@@ -65,7 +65,7 @@ infra  = 已经接上外部系统的共享能力
 - 封装本地存储 / S3 存储
 - 提供 LLM、trace / track、Prompt、Embedding 等 AI 基础能力
 - 提供 Search、Reader、Retriever、Context Compression
-- 提供 Tool Registry、Toolpack、Skillpack
+- 提供 Tool Registry 与 Toolpack
 - 提供共享 Memory、事件日志、通用执行契约
 
 更细的目录导航见：

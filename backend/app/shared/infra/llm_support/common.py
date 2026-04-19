@@ -67,6 +67,8 @@ def resolve_settings_model(settings: Settings, model: str | None = None) -> tupl
         return models.light or fallback_model, "light"
     if normalized == "extract":
         return models.extract or models.light or fallback_model, "extract"
+    if normalized == "image_generation":
+        return models.image_generation or fallback_model, "image_generation"
     return selector, selector
 
 

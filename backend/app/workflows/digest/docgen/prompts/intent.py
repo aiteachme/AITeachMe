@@ -1,16 +1,13 @@
-"""Prompts for DocGen writing intent inference."""
+﻿"""Prompts for DocGen writing intent inference."""
 
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from typing import Any
 
-from langsmith import traceable
-
 INTENT_CHAPTER_TITLE_BUDGET = 24
 
 
-@traceable(name="DocGen：识别写作意图提示词", run_type="prompt")
 def build_intent_messages(
     *,
     subject: str,

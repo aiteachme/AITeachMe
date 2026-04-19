@@ -16,7 +16,7 @@ models:
   # Embedding 模型；当前默认匹配 DashScope compatible-mode。
   embedding: text-embedding-v4
   # 文生图模型；留空表示不启用真实图片生成。
-  image_generation: ""
+  image_generation: "DESCRIBE"
   # 预留模型别名覆盖表；例如将某些业务标签映射到特定模型名。
   overrides: {}
 
@@ -45,15 +45,13 @@ ingest:
 planner:
   # 默认知识文档模式：sprint 为冲刺讲义，systematic 为系统讲义。
   default_digest_mode: sprint
-  # 默认写作语气；当前 prompt 支持 encouraging / casual / professional / concise 等。
-  default_tone: encouraging
   # Planner 阶段是否允许外部检索补充资料。
   allow_external_search: true
   sprint:
     # 冲刺模式默认最少章节数。
-    min_chapters: 3
+    min_chapters: 4
     # 冲刺模式默认最多章节数。
-    max_chapters: 6
+    max_chapters: 7
     # 冲刺模式目标全文长度提示。
     target_length: "3000-10000字"
   systematic:

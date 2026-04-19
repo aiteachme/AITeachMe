@@ -50,7 +50,7 @@ api -> workflows -> repositories / shared.infra / models / schemas
 1. **前端暴露粒度**：`course_type` / `retrieval_profile` 前端要暴露到多细？当前推荐由 planner 推断，前端只做简单模式切换。
 2. **research cache 持久化**：缓存放置层、过期策略和跨用户隔离粒度待定。当前先保持 runtime 内存缓存。
 3. **interactive_html 渲染契约**：前端最终支持"简单 HTML 模板"还是"更强交互组件协议"？当前保持 backend-first 最小模板。
-4. **skillpack 扩展到 Interact / Examine**：先接哪个引擎？最小共享字段范围？当前先把 Digest 合同做稳。
+4. **跨引擎策略复用**：Interact / Examine 复用 confirmed plan、Planner 上下文和章节产物，不再通过独立 prompt 扩展层传递策略。
 5. **animation 准入标准**：教育价值验收标准和首批适用学科待定。当前保持 contract/trace 预留位。
 6. **本地教育语料库**：第一批学科和语料生产/审核流程待定。
 

@@ -17,7 +17,7 @@
 
 1. 把 `execution_mode` 暴露到 trace summary
 2. 给 `plan_execute` 扩展 tool whitelist（不只 `search_kb`）
-3. 让 Interact 复用 Digest 的 `selected_skillpacks` 和章节上下文
+3. 让 Interact 复用 Digest 的课程合同、Planner 上下文和章节上下文
 4. 评估是否需要 query rewrite / hybrid retrieval / LlamaIndex adapter
 
 ## LlamaIndex 态度

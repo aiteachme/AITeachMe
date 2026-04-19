@@ -28,7 +28,7 @@ Digest（织网引擎）是 AITeachMe 的**知识加工中枢**，负责把 Inge
 
 | 层 | 模块路径 | 职责 |
 |---|---|---|
-| DocGen Build | `backend/app/workflows/digest/docgen/builds.py` | Digest 构建入口、后台任务调度 |
+| DocGen Build | `backend/app/workflows/digest/docgen/lib/build_lifecycle.py` | Digest 构建入口、后台任务调度 |
 | 模块入口 | `backend/app/workflows/digest/__init__.py` | 稳定导入面，指向真实链路 |
 | Planner | `backend/app/workflows/digest/planner/` | confirmed plan 生成链路 |
 | DocGen | `backend/app/workflows/digest/docgen/` | 文档生成链路 |

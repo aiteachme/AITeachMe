@@ -35,7 +35,7 @@ def build_repair_or_route_node(*, context: WorkflowContext):
             current_stage_description="正在处理复核回流动作：MVP 只执行安全表层修补，其余记录为 warning。",
         )
         # MVP 不在这里自动重写章节；复杂回流先结构化记录，避免修复阶段引入新的内容污染。
-        repaired, updated_actions, unresolved = repair_or_route_review_actions(
+        repaired, updated_actions, unresolved, repair_trace = await repair_or_route_review_actions(
             reviewed_chapters=reviewed,
             review_actions=actions,
         )
@@ -46,14 +46,14 @@ def build_repair_or_route_node(*, context: WorkflowContext):
             status="running",
             stage="repair_routed",
             digest_mode=state.get("digest_mode") or None,
-            current_stage_description=f"复核回流处理完成，未自动回流项 {len(unresolved)} 条。",
+            current_stage_description=f"复核回流处理完成，已应用 {sum(1 for item in repair_trace if item.changed)} 项修补，待后续闭环处理 {len(unresolved)} 条。",
         )
         append_knowledge_build_recent_event(
             state["subject"],
             requested_at=state["requested_at"],
             event={
                 "stage": "repair_routed",
-                "summary": f"复核回流动作已记录，未自动处理 {len(unresolved)} 条。",
+                "summary": f"复核回流动作已处理，实际修补 {sum(1 for item in repair_trace if item.changed)} 项，保留 warning {len(unresolved)} 条。",
                 "created_at": utcnow(),
             },
         )
@@ -64,13 +64,16 @@ def build_repair_or_route_node(*, context: WorkflowContext):
             payload={
                 "review_action_count": len(updated_actions),
                 "unresolved_warning_count": len(unresolved),
+                "repair_trace_count": len(repair_trace),
             },
         )
         return {
             "reviewed_chapter_drafts": [item.model_dump(mode="json") for item in repaired],
             "review_actions": [item.model_dump(mode="json") for item in updated_actions],
             "unresolved_warnings": unresolved,
+            "repair_trace": [item.model_dump(mode="json") for item in repair_trace],
             "repair_ms": elapsed_ms,
+            "llm_calls_total": sum(1 for item in actions if item.action_type in {"surface_patch", "section_patch"}),
         }
 
     return repair_or_route_node

@@ -47,6 +47,7 @@ from app.workflows.digest.common.material_profile import (
     decide_digest_mode,
 )
 from app.workflows.digest.common.prepare import prepare_material_context, prepare_shared_inputs
+from app.workflows.digest.common.cleanup import clear_subject_knowledge
 
 __all__ = [
     "AssetItem",
@@ -80,6 +81,7 @@ __all__ = [
     "build_material_profile",
     "build_slow_items",
     "build_token_summary",
+    "clear_subject_knowledge",
     "compute_material_stats",
     "decide_digest_mode",
     "prepare_shared_inputs",

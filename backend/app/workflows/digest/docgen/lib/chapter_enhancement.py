@@ -124,9 +124,8 @@ async def enhance_chapter_draft(
     document_backbone: DocumentBackbone | None = None,
 ) -> tuple[EnhancedChapterDraft, AssetManifest, PracticeManifest]:
     markdown = _ensure_requested_placeholders(draft.markdown, draft.placeholder_requests)
-    markdown = strip_asset_requests(markdown, kinds={"image"})
     mermaid_placeholders = [item.strip() for item in extract_asset_request_descriptions(markdown, kind="mermaid")]
-    image_placeholders: list[str] = []
+    image_placeholders = [item.strip() for item in extract_asset_request_descriptions(markdown, kind="image")]
     interactive_placeholders = [item.strip() for item in extract_asset_request_descriptions(markdown, kind="interactive")]
     asset_runtime = DocGenAssetRuntime(traced_context)
     assets: list[dict] = []
@@ -149,14 +148,15 @@ async def enhance_chapter_draft(
             )
         if image_placeholders:
             traced_context.asset_kind = "image"
-            markdown = await asset_runtime.process_image_placeholders(markdown)
+            markdown, image_render_reports = await asset_runtime.process_image_placeholders_with_reports(markdown)
             assets.extend(
                 {
                     "asset_id": f"ch{draft.chapter_index:02d}_image_{index:02d}",
                     "chapter_index": draft.chapter_index,
                     "kind": "image",
                     "source_placeholder": description,
-                    "status": "placeholder_processed",
+                    "status": str((image_render_reports[index - 1] if index - 1 < len(image_render_reports) else {}).get("status") or "unknown"),
+                    "render_report": image_render_reports[index - 1] if index - 1 < len(image_render_reports) else {},
                 }
                 for index, description in enumerate(image_placeholders, start=1)
             )

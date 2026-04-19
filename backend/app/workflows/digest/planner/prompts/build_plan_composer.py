@@ -9,6 +9,7 @@ from app.workflows.digest.planner.lib.models import (
     PlanIntent,
     PlannerBrief,
 )
+from app.workflows.digest.common.runtime_config import get_planner_mode_runtime_config
 from app.workflows.digest.planner.prompts.context import (
     render_latest_plan,
     render_material_digest,
@@ -44,6 +45,12 @@ def build_plan_composer_messages(
     sketch = planner_brief.markdown.strip() or "暂无可见规划判断"
     plan_queries = _render_plan_queries(plan_intent)
     plan_intent_text = plan_intent.plan_intent.strip() or DEFAULT_PLAN_INTENT
+    mode_config = get_planner_mode_runtime_config(digest_mode)
+    chapter_count_hint = (
+        f"章节数量必须在 {mode_config.min_chapters}-{mode_config.max_chapters} 章之间。"
+        f"不要为了粗颗粒而压成少于 {mode_config.min_chapters} 章；"
+        "如果资料覆盖多个知识簇、题型或学习阶段，应主动拆到更细的 5-7 章。"
+    )
     # 第一段是用户会看到的 plan_text；JSON 是机器合同。这里允许写
     # “拟查询/对照/搜集”的研究动作，但不能写成已经完成检索。
     prompt = f"""
@@ -93,6 +100,7 @@ def build_plan_composer_messages(
 - plan_text 与可见计划说明语义一致。
 - plan_steps 是 4-7 条动作步骤，用来解释本计划会查询什么、整理什么、判断什么、如何形成大纲。
 - chapters 是很初步的粗颗粒骨架，不追求完整和细节。
+- {chapter_count_hint}
 
 JSON 形状：
 {{
@@ -109,6 +117,7 @@ JSON 形状：
 格式约束：
 - JSON 段只能输出 JSON，不要放 Markdown 代码块、注释或尾随逗号。
 - chapters 只写高度概括的章节方向和 key_points，不要放来源、媒体计划、构建约束或后端字段。
+- chapters 数量必须符合上面的章节数量要求；每章标题要体现学习任务，不要只写“核心模块”“复盘安排”这类过泛标题。
 
 内容边界：
 - plan_steps 可以写“查询/对照/搜集/调研”的计划动作，但不能说已经完成检索。

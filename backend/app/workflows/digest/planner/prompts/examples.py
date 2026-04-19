@@ -286,7 +286,8 @@ def _render_style_notes() -> str:
         "- plan_steps 是给系统保留的动作清单，把 plan_text 里的动作拆成 4-7 个可检查步骤。\n"
         "- plan_steps 可以写查询、对照、搜集、调研、归并、筛选，但不要说已经完成检索。\n"
         "- plan_text 和 plan_steps 是重点，不要在里面展开章节标题或细碎大纲。\n"
-        "- chapters 只是粗颗粒初步骨架，key_points 写后续要细化的方向，不写成最终目录。"
+        "- chapters 只是粗颗粒初步骨架，key_points 写后续要细化的方向，不写成最终目录。\n"
+        "- chapters 通常不要少于 4 章；如果用户上传了多类资料或目标较复杂，优先拆成 5-7 章。"
     )
 
 

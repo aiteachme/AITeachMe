@@ -30,14 +30,14 @@
 
 ## 批次 D：cross-engine convergence
 
-- Interact 共享 `selected_skillpacks` 与课程合同
+- Interact 共享课程合同、Planner 上下文和章节上下文
 - Examine 共享 Digest 章节研究上下文
 - Profile 对齐 Digest / Examine / Interact 的关键合同字段
 - 统一学习画像输入（课程产物 + 练习结果 + 交互行为）
 
 ## 验证要求
 
-- skillpack / toolpack 合同测试继续稳定
+- toolpack 合同测试继续稳定
 - workflow runtime trace 测试覆盖关键路径
 - docgen research / writer / asset / practice 回归测试存在
 - 非 Digest 引擎行为不被破坏

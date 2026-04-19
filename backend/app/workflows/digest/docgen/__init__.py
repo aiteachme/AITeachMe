@@ -10,12 +10,12 @@ from app.shared.infra.workflow.result import WorkflowResult, err_result
 from app.shared.infra.workflow.runtime import run_state_graph
 from app.shared.infra.settings import get_settings
 from app.workflows.digest.common.metrics import build_token_summary
-from app.workflows.digest.docgen.builds import (
+from app.workflows.digest.docgen.lib.build_lifecycle import (
     get_docgen_result,
     run_docgen_background,
     trigger_docgen_build,
 )
-from app.workflows.digest.docgen.cleanup import clear_subject_knowledge
+from app.workflows.digest.common.cleanup import clear_subject_knowledge
 from app.workflows.digest.docgen.graph import (
     RUN_NAME_DOCGEN,
     build_docgen_graph,

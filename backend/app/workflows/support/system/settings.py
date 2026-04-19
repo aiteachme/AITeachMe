@@ -308,7 +308,6 @@ def build_settings_overview_data(
                 se("ingest.parser_timeout_s", "解析超时", settings.ingest.parser_timeout_s, base_settings.ingest.parser_timeout_s),
                 _env_entry("mineru.api_token", "MINERU_API_TOKEN", "MINERU_API_TOKEN", "服务端 MinerU Token，只显示是否配置。", secret=True),
                 se("planner.default_digest_mode", "默认 Digest 模式", settings.planner.default_digest_mode, base_settings.planner.default_digest_mode),
-                se("planner.default_tone", "默认写作语气", settings.planner.default_tone, base_settings.planner.default_tone),
                 se("planner.allow_external_search", "Planner 允许外部检索", settings.planner.allow_external_search, base_settings.planner.allow_external_search),
                 se("planner.sprint.min_chapters", "冲刺最少章节", settings.planner.sprint.min_chapters, base_settings.planner.sprint.min_chapters),
                 se("planner.sprint.max_chapters", "冲刺最多章节", settings.planner.sprint.max_chapters, base_settings.planner.sprint.max_chapters),

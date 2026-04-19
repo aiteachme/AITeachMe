@@ -308,7 +308,7 @@ def _traced_execution_inputs(kwargs: Mapping[str, Any]) -> dict[str, Any]:
         if title:
             inputs["chapter_title"] = title
 
-    for field_name in ("digest_mode", "tone", "template_kind", "asset_kind"):
+    for field_name in ("digest_mode", "template_kind", "asset_kind"):
         value = kwargs.get(field_name)
         if value not in (None, "", [], {}):
             inputs[field_name] = value
