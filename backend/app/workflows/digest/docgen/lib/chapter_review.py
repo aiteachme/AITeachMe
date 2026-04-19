@@ -6,7 +6,7 @@ from collections.abc import Sequence
 
 from app.shared.infra.llm_support import acompletion_with_fallback
 from app.shared.infra.llm_support.routing import TaskType
-from app.shared.infra.tools.builtin.markdown_processing import count_words
+from app.shared.infra.tools.builtin.markdown_processing import count_words, find_markdown_rendering_issues
 from app.workflows.digest.docgen.lib.claims import evidence_support_score
 from app.workflows.digest.docgen.lib.models import (
     ChapterGenerationTask,
@@ -81,6 +81,26 @@ def _rule_review_chapter(
     word_count = count_words(draft.markdown)
     warnings: list[str] = []
     actions: list[ReviewAction] = []
+    rendering_issues = find_markdown_rendering_issues(draft.markdown)
+    if rendering_issues:
+        warnings.extend(rendering_issues)
+        actions.append(
+            ReviewAction(
+                action_id=f"review_ch{draft.chapter_index:02d}_surface_rendering",
+                action_type="surface_patch",
+                chapter_index=draft.chapter_index,
+                severity="warning",
+                reason="Markdown 渲染结构异常：" + "；".join(rendering_issues),
+                target_anchor=_chapter_anchor(draft),
+                instruction="只修复 Markdown 结构，包括 blockquote、代码块和 display math 的分隔，不改正文知识内容。",
+                constraints=[
+                    "不得新增或删除知识点。",
+                    "不得改变章节标题和章节顺序。",
+                    "只允许调整 Markdown 标记、空行和 fenced block 边界。",
+                ],
+                expected_effect="章节 Markdown 可以稳定渲染，代码块和公式不被引用块污染。",
+            )
+        )
     if missing:
         warnings.append("章节未完全覆盖执行合同中的关键点。")
         actions.append(

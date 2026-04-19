@@ -6,7 +6,11 @@ import re
 
 from app.shared.infra.execution import TracedExecutionContext
 from app.shared.infra.tools.builtin.latex_processing import normalize_math_delimiters, validate_latex
-from app.shared.infra.tools.builtin.markdown_processing import build_draft_excerpt, normalize_mermaid_blocks
+from app.shared.infra.tools.builtin.markdown_processing import (
+    build_draft_excerpt,
+    normalize_markdown_rendering,
+    normalize_mermaid_blocks,
+)
 from app.workflows.digest.docgen.lib.asset_requests import build_asset_request_block, extract_asset_request_descriptions, strip_asset_requests
 from app.workflows.digest.docgen.lib.assets import DocGenAssetRuntime
 from app.workflows.digest.docgen.lib.models import (
@@ -175,6 +179,7 @@ async def enhance_chapter_draft(
     markdown = strip_asset_requests(markdown)
     markdown = normalize_math_delimiters(markdown)
     markdown = validate_latex(markdown)
+    markdown = normalize_markdown_rendering(markdown)
     markdown = normalize_mermaid_blocks(markdown)
     questions = _build_practice_questions(
         draft,

@@ -92,7 +92,7 @@ DOCGEN_ARCHITECTURE_REVIEW.md
 
 验收：
 
-- 文档中不再把旧 `research_chapters / write_chapters / enrich_assets / append_practice` 当作当前主线。
+- 文档中不再把已经移除的 `research_chapters / write_chapters / enrich_assets / append_practice` 当作当前主线。
 - 文档中明确 `build_document_backbone`、`review_content`、`repair_or_route`、`finalize_titles` 已在当前 graph。
 - 后续重构重点清楚指向 repair loop、ReviewAction、state reducer、asset manifest 和 final merge patch。
 
@@ -206,7 +206,7 @@ rebuild_backbone
 
 - 每条 action 都有可定位的 `target_anchor` 或明确章节级范围。
 - repair 层不需要解析自然语言 reason 才知道要改哪里。
-- 旧 manifest 可兼容读取。
+- manifest 读取按当前 schema 收口。
 
 ## 5. Phase 3：新增 RepairLoopState 与路由
 
@@ -674,7 +674,7 @@ docs: 更新 DocGen manifest 跨引擎复用说明
 - 不让 DocGen 修改用户确认章节。
 - 不把所有 review action 都交给 LLM 自由发挥。
 - 不把 `repair_or_route` 变成第二个 writer。
-- 不恢复旧 prompt 扩展层。
+- 不恢复已移除的 prompt 扩展层。
 - 不新建 parallel search/tool registry。
 
 ## 17. 最小下一步建议

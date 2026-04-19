@@ -91,7 +91,6 @@ confirmed_plan
   user_prompt：用户学习提示
   digest_mode：sprint / systematic
   chapter_plan：用户确认的章节合同，DocGen 不默认新增、删除、重排
-  media_plan：Mermaid / 图片 / 交互块能力开关
   build_constraints：章节数、目标长度、是否含练习和来源等约束
   plan_summary：方案摘要
   plan_steps：方案动作步骤，给调试、聊天镜像和未来 UI 复用
@@ -182,5 +181,4 @@ Planner 当前事件：
 - `planner.plan.ready`
 - `planner.plan.failed`
 
-可见文本增量统一走 `token` SSE；`status` 只承载阶段变化和结构化结果。
-旧 `status/token/done` 仍保持兼容。
+可见文本增量统一走 `token` SSE；`status` 只承载阶段变化和结构化结果；`done` 表示本次提交结束。

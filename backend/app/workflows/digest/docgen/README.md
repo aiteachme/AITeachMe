@@ -87,7 +87,7 @@ flowchart TD
 | --- | --- | --- |
 | 0 | `load_context` | 校验 `confirmed_plan`，准备 `shared_inputs`、`chapter_assignments`、`DocGenContext`、`document_context` |
 | 1 | `prepare_parallel_inputs` | 并行增强章节大纲、识别写作意图、摘要文件，并派生章节来源亲和度与高置信证据候选 |
-| 2 | `confirm_and_dispatch` | 生成 `ChapterGenerationPlanSeed`、`ChapterGenerationTaskSeed`、`BackboneResearchAgenda`，同时保留兼容的 `ChapterGenerationPlan` / `ChapterGenerationTask` |
+| 2 | `confirm_and_dispatch` | 生成 `ChapterGenerationPlanSeed`、`ChapterGenerationTaskSeed`、`BackboneResearchAgenda`，同时生成章节 fan-out 使用的 `ChapterGenerationPlan` / `ChapterGenerationTask` |
 | 3 | `build_document_backbone` | 构建术语、概念依赖、主张池、符号表、易混点；失败时降级为 seed 弱骨架 |
 | 4 | `generate_chapters` | 每章检索、读取/压缩上下文、生成 evidence ledger、claim ledger、claim/evidence map、conflict report，并写草稿 |
 | 5 | `enhance_chapters` | 处理 Mermaid、图片/交互占位降级、公式清洗、Markdown 结构和本章自检题 |

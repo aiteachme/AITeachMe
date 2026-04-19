@@ -62,7 +62,7 @@ prepare_context / 当前 prepare_parallel_inputs
 merge_and_dispatch / 当前 confirm_and_dispatch
   合并 prepare_context 的三路结果。
   生成 ChapterGenerationPlanSeed、ChapterGenerationTaskSeed 和 backbone_research_agenda。
-  同时保留当前章节 fan-out 使用的 ChapterGenerationPlan / ChapterGenerationTask。
+  同时生成当前章节 fan-out 使用的 ChapterGenerationPlan / ChapterGenerationTask。
   |
   v
 build_document_backbone
@@ -155,22 +155,21 @@ repair_or_route
 
 ### 1.2 长流程执行合同
 
-这一节是 DocGen 的详细执行合同。它允许包含目标抽象，但必须标清当前代码对应关系。
+这一节是 DocGen 的详细执行合同。字段以当前 state/model 为准，已经删掉长期为空或不生效的 Planner 伪字段。
 
 ```text
 load_context
-  输入：confirmed_plan / shared_inputs / selected_skillpacks / planner_context
+  输入：confirmed_plan / shared_inputs / planner_context
     - confirmed_plan：用户确认后的构建合同，包含章节、模式、目标、约束。
     - shared_inputs：资料理解包，包含文件、切片、画像、统计、资产索引。
-    - selected_skillpacks：目标字段，表示用户选择的提示词策略包名称；当前代码尚未完整接入。
     - planner_context：confirmed_plan 中固化的 Planner 会话摘要和修改意见。
-  输出：DocumentContract / SourcePack / DocGenContext / chapter_assignments / document_context
-    - DocumentContract：目标抽象，表示 confirmed_plan 的执行语义，不允许静默漂移；当前代码主要对应 confirmed_plan payload 和 chapter_assignments。
-    - SourcePack：目标抽象，表示资料包和“从哪里找材料”；当前代码主要对应 shared_inputs / source_packets / section_packets。
+  输出：confirmed_plan payload / shared_inputs / DocGenContext / chapter_assignments / document_context
+    - confirmed_plan payload：用户确认语义的冻结快照，不允许静默漂移。
+    - shared_inputs：DocGen 的资料包，负责说明“从哪里找材料”。
     - DocGenContext：DocGen 全局运行上下文。
     - chapter_assignments：confirmed plan 章节转成的执行章节列表。
     - document_context：发布和写作共用的文档级上下文。
-  作用：确认用户已确认的章节合同，补齐资料上下文、模式、语气、技能包和构建状态。
+  作用：确认用户已确认的章节合同，补齐资料上下文、模式和构建状态。
 
 prepare_parallel_inputs
   ├─ enhance_plan_outline
@@ -223,11 +222,11 @@ confirm_and_dispatch
     - retrieval_queries / priority_section_refs / preferred_sources / fallback_policy
     - target_length / style_rules / citation_policy / uncertainty_policy / allowed_assets
   当前实现补充：
-    - 同时生成兼容 fan-out 的 ChapterGenerationPlan / ChapterGenerationTask。
+    - 同时生成章节 fan-out 使用的 ChapterGenerationPlan / ChapterGenerationTask。
     - 当前代码节点名为 confirm_and_dispatch。
 
 build_document_backbone
-  输入：ChapterGenerationPlanSeed / ChapterGenerationTaskSeed[] / SourcePack / high_confidence_evidence_units / backbone_research_agenda
+  输入：ChapterGenerationPlanSeed / ChapterGenerationTaskSeed[] / shared_inputs / high_confidence_evidence_units / backbone_research_agenda
   输出：DocumentBackbone / ChapterGenerationPlan / ChapterGenerationTask[] / backbone_conflict_warnings
     - DocumentBackbone：整本文档的全局知识骨架。
     - ChapterGenerationPlan：吸收 backbone 后的最终整轮执行计划。
@@ -249,7 +248,7 @@ generate_chapters
   ├─ generate_chapter 1
   ├─ generate_chapter 2
   └─ generate_chapter N
-  输入：单章 ChapterGenerationTask / SourcePack / DocumentBackbone / DocGenContext / retrieval_profile / selected_skillpacks
+  输入：单章 ChapterGenerationTask / shared_inputs / DocumentBackbone / DocGenContext / retrieval_profile
   输出：ChapterDraft[] / ChapterResearchTrace[] / ClaimLedger[] / ClaimEvidenceMap[] / EvidenceLedger[] / ConflictReport[]
     - ChapterDraft：章节初稿、摘要草稿、占位符、质量信号。
     - ChapterResearchTrace：检索轮次、执行 query、打开上下文、覆盖率。
@@ -585,10 +584,10 @@ repair_trace
 
 | 优先级 | 问题 | 为什么重要 |
 | --- | --- | --- |
-| P0 | 文档与代码漂移 | 新人会按旧 README / 旧架构评估理解当前 graph，后续改动容易补错位置 |
+| P0 | 文档与代码漂移 | 新人会按过期 README / 架构评估理解当前 graph，后续改动容易补错位置 |
 | P1 | repair loop 还没形成闭环 | 复核只能记录，不能真正按问题级别修补 |
 | P1 | evidence patch 尚未接入 | 证据不足目前只能结构化记录，不能定向补检索、补阅读、补 evidence binding |
-| P1 | state append reducer 与回流不兼容 | 引入循环后容易重复发布旧章节或重复 manifest |
+| P1 | state append reducer 与回流冲突 | 引入循环后容易重复发布过期章节或重复 manifest |
 | P1 | image 生成已接入，仍缺前端展示和失败重试策略 | 用户能拿到 manifest，但图片资产体验还需收口 |
 | P2 | `final_merge_patch` 未实现 | 合并后小问题只能靠人工或间接收口 |
 | P2 | research budget 仍偏静态 | 还没充分根据覆盖度、证据缺口和章节难度动态调度 |

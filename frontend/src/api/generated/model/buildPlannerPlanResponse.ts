@@ -7,7 +7,6 @@
  */
 import type { BuildPlannerChapterPlanResponse } from './buildPlannerChapterPlanResponse';
 import type { BuildPlannerPlanResponseBuildConstraints } from './buildPlannerPlanResponseBuildConstraints';
-import type { BuildPlannerPlanResponseMediaPlan } from './buildPlannerPlanResponseMediaPlan';
 
 export interface BuildPlannerPlanResponse {
   subject: string;
@@ -15,8 +14,6 @@ export interface BuildPlannerPlanResponse {
   user_prompt: string;
   digest_mode: string;
   chapter_plan?: BuildPlannerChapterPlanResponse[];
-  research_queries?: string[];
-  media_plan?: BuildPlannerPlanResponseMediaPlan;
   build_constraints?: BuildPlannerPlanResponseBuildConstraints;
   plan_summary?: string;
   status?: string;

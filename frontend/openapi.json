@@ -6044,27 +6044,10 @@
             "type": "array",
             "title": "Required Elements"
           },
-          "search_queries": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Search Queries"
-          },
           "writing_instructions": {
             "type": "string",
             "title": "Writing Instructions",
             "default": ""
-          },
-          "media_hints": {
-            "additionalProperties": {
-              "items": {
-                "type": "string"
-              },
-              "type": "array"
-            },
-            "type": "object",
-            "title": "Media Hints"
           }
         },
         "type": "object",
@@ -6124,18 +6107,6 @@
             },
             "type": "array",
             "title": "Chapter Plan"
-          },
-          "research_queries": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Research Queries"
-          },
-          "media_plan": {
-            "additionalProperties": true,
-            "type": "object",
-            "title": "Media Plan"
           },
           "build_constraints": {
             "additionalProperties": true,
@@ -6279,18 +6250,6 @@
             },
             "type": "array",
             "title": "Chapter Plan"
-          },
-          "research_queries": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Research Queries"
-          },
-          "media_plan": {
-            "additionalProperties": true,
-            "type": "object",
-            "title": "Media Plan"
           },
           "build_constraints": {
             "additionalProperties": true,

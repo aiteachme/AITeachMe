@@ -509,9 +509,7 @@ class BuildPlannerChapterPlanResponse(BaseModel):
     title: str
     objective: str = ""
     required_elements: list[str] = Field(default_factory=list)
-    search_queries: list[str] = Field(default_factory=list)
     writing_instructions: str = ""
-    media_hints: dict[str, list[str]] = Field(default_factory=dict)
 
 
 class BuildPlannerStepStatsResponse(BaseModel):
@@ -531,8 +529,6 @@ class BuildPlannerPlanResponse(BaseModel):
     user_prompt: str
     digest_mode: str
     chapter_plan: list[BuildPlannerChapterPlanResponse] = Field(default_factory=list)
-    research_queries: list[str] = Field(default_factory=list)
-    media_plan: dict[str, object] = Field(default_factory=dict)
     build_constraints: dict[str, object] = Field(default_factory=dict)
     plan_summary: str = ""
     status: str = "draft"
@@ -564,8 +560,6 @@ class BuildPlannerConfirmResponse(BaseModel):
     user_prompt: str
     plan_summary: str
     chapter_plan: list[BuildPlannerChapterPlanResponse] = Field(default_factory=list)
-    research_queries: list[str] = Field(default_factory=list)
-    media_plan: dict[str, object] = Field(default_factory=dict)
     build_constraints: dict[str, object] = Field(default_factory=dict)
     plan_json: dict[str, object] = Field(default_factory=dict)
     status_history: list[str] = Field(default_factory=list)

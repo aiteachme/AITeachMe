@@ -8,7 +8,7 @@ from typing import Any
 
 from app.shared.infra.execution import BaseTracedExecution, TracedExecutionResult
 from app.shared.infra.llm_support.routing import TaskType
-from app.shared.infra.tools.builtin.markdown_processing import count_words
+from app.shared.infra.tools.builtin.markdown_processing import count_words, normalize_markdown_rendering
 from app.workflows.digest.common.pedagogy import (
     analyze_chapter_heading_quality,
     ensure_chapter_learning_scaffold,
@@ -411,6 +411,7 @@ class DocGenWriterRuntime(BaseTracedExecution):
             previous = line
 
         cleaned = "\n".join(lines)
+        cleaned = normalize_markdown_rendering(cleaned)
         cleaned = re.sub(r"\n{3,}", "\n\n", cleaned).strip()
         if not cleaned.startswith("#"):
             cleaned = f"# {title}\n\n{cleaned}".strip()

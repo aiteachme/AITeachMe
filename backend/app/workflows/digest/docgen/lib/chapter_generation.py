@@ -95,22 +95,6 @@ def _affinity_for_chapter(
     return None
 
 
-def _placeholder_requests_from_confirmed_chapter(chapter: Mapping[str, Any]) -> list[dict[str, str]]:
-    media_hints = chapter.get("media_hints")
-    if hasattr(media_hints, "model_dump"):
-        media_hints = media_hints.model_dump(mode="json")
-    media_hints = dict(media_hints or {})
-    requests: list[dict[str, str]] = []
-    for kind, field_names in {
-        "mermaid": ("mermaid",),
-        "image": ("images", "image"),
-    }.items():
-        for field_name in field_names:
-            for description in clean_string_list(media_hints.get(field_name)):
-                requests.append({"kind": kind, "description": description})
-    return requests
-
-
 def _dedupe_placeholder_requests(requests: Sequence[Mapping[str, Any]]) -> list[dict[str, str]]:
     deduped: list[dict[str, str]] = []
     seen: set[tuple[str, str]] = set()
@@ -173,7 +157,7 @@ def compose_chapter_generation_plan(
             enhanced_title=confirmed_title,
             objective=str(chapter.get("objective") or ""),
             content_points=clean_string_list(chapter.get("required_elements", [])),
-            retrieval_queries=clean_string_list([*chapter.get("search_queries", []), confirmed_title]),
+            retrieval_queries=clean_string_list([confirmed_title, *chapter.get("required_elements", [])]),
             fallback_used=True,
         )
         priority_file_ids, priority_section_refs = _priority_files_for_chapter(
@@ -196,7 +180,6 @@ def compose_chapter_generation_plan(
         placeholder_requests = _dedupe_placeholder_requests(
             [
                 *list(outline.media_requests),
-                *_placeholder_requests_from_confirmed_chapter(chapter),
             ]
         )
         image_generation_enabled = get_settings().image_generation_enabled
@@ -227,14 +210,14 @@ def compose_chapter_generation_plan(
             pitfall_targets=outline.pitfall_targets,
             priority_file_ids=priority_file_ids or clean_string_list(chapter.get("source_file_ids", [])),
             priority_section_refs=priority_section_refs,
-            retrieval_queries=clean_string_list([*outline.retrieval_queries, *chapter.get("search_queries", [])]),
+            retrieval_queries=clean_string_list(outline.retrieval_queries),
             writing_rules=[
                 *global_rules,
                 intent_profile.chapter_style_hints.get(chapter_index, ""),
             ],
             placeholder_requests=placeholder_requests,
             practice_seed_policy=dict(outline.practice_seed_policy),
-            coverage_threshold=float((chapter.get("execution_contract") or {}).get("min_coverage_score") or (0.6 if normalized_mode == "sprint" else 0.72)),
+            coverage_threshold=0.6 if normalized_mode == "sprint" else 0.72,
             evidence_support_threshold=0.48 if normalized_mode == "sprint" else 0.56,
             repetition_tolerance=0.45 if normalized_mode == "sprint" else 0.3,
             patch_tolerance=0.45 if normalized_mode == "sprint" else 0.32,
@@ -274,8 +257,8 @@ def build_plan_seed_and_backbone_agenda(
 ) -> tuple[ChapterGenerationPlanSeed, list[ChapterGenerationTaskSeed], BackboneResearchAgenda]:
     """从章节执行计划派生 seed 和全局骨架议程。
 
-    seed 给 `build_document_backbone` 做整本文档建模；兼容的
-    ChapterGenerationPlan 继续给章节 fan-out 使用。这样可以先形成
+    seed 给 `build_document_backbone` 做整本文档建模；ChapterGenerationPlan
+    继续给章节 fan-out 使用。这样可以先形成
     稳定的全书语义中心，再把术语、主张和易混点回填到每章任务。
     """
 

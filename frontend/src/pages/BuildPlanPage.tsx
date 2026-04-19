@@ -1,4 +1,4 @@
-﻿import { type ChangeEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { type ChangeEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -246,10 +246,7 @@ function buildPlannerOutlineItems(plan: BuildPlannerPlanResponse | null | undefi
     return chapters.slice(0, limit);
   }
 
-  return (plan?.research_queries ?? [])
-    .map((query) => ({ title: String(query ?? "").trim() }))
-    .filter((item) => item.title)
-    .slice(0, limit);
+  return [];
 }
 
 function plannerPayloadOutlineDetails(payload: Record<string, unknown>): string[] {

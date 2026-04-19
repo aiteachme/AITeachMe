@@ -95,7 +95,6 @@ def _sketch_to_plan_payload(sketch: PlannerOutlineSketch) -> dict[str, Any]:
                 "objective": "；".join(key_points),
                 "required_elements": key_points,
                 "writing_instructions": "围绕本章知识点生成清晰讲解。",
-                "media_hints": {"images": [], "mermaid": [], "interactive": []},
             }
         )
     return {

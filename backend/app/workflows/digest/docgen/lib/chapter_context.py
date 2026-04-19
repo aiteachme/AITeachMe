@@ -390,8 +390,6 @@ class DocGenChapterContextRuntime(BaseTracedExecution):
         round_web_hits = 0
         round_fallback_queries: list[str] = []
         round_external_queries: list[str] = []
-        external_attempts = 0
-        external_attempt_budget = max(1, min(2, len(round_queries))) if other_retrievers else 0
 
         for query in round_queries:
             executed_queries.append(query)
@@ -415,12 +413,8 @@ class DocGenChapterContextRuntime(BaseTracedExecution):
             round_local_hits += len(local_results)
             combined_results = list(local_results)
 
-            should_query_external = bool(other_retrievers) and (
-                len(local_results) < settings.local_rag.min_results
-                or external_attempts < external_attempt_budget
-            )
+            should_query_external = bool(other_retrievers) and len(local_results) < settings.local_rag.min_results
             if should_query_external:
-                external_attempts += 1
                 round_external_queries.append(query)
                 if len(local_results) < settings.local_rag.min_results:
                     fallback_queries_total.append(query)
@@ -729,7 +723,12 @@ class DocGenChapterContextRuntime(BaseTracedExecution):
         curated_results: list[SearchResult],
     ) -> dict[str, Any]:
         normalized_context = self._normalize_text_blob(dense_context)
-        normalized_titles = self._normalize_text_blob("\n".join(item.title for item in curated_results))
+        normalized_sources = self._normalize_text_blob(
+            "\n".join(
+                "\n".join([item.title, item.snippet])
+                for item in curated_results
+            )
+        )
         coverage_targets = self._coverage_targets(
             required_elements=required_elements,
             objective=objective,
@@ -744,8 +743,11 @@ class DocGenChapterContextRuntime(BaseTracedExecution):
         hits = 0
         gaps_remaining: list[str] = []
         for target in coverage_targets:
-            needle = self._normalize_text_blob(target)
-            if needle and (needle in normalized_context or needle in normalized_titles):
+            if self._target_is_covered(
+                target,
+                normalized_context=normalized_context,
+                normalized_sources=normalized_sources,
+            ):
                 hits += 1
                 continue
             gaps_remaining.append(target)
@@ -768,6 +770,31 @@ class DocGenChapterContextRuntime(BaseTracedExecution):
         if not targets:
             return []
         return dedupe_queries(targets, limit=8)
+
+    def _target_is_covered(
+        self,
+        target: str,
+        *,
+        normalized_context: str,
+        normalized_sources: str,
+    ) -> bool:
+        needle = self._normalize_text_blob(target)
+        if not needle:
+            return True
+        haystack = normalized_context + normalized_sources
+        if needle in haystack:
+            return True
+        terms = [
+            self._normalize_text_blob(term)
+            for term in _TERM_SPLIT_RE.split(str(target or ""))
+            if len(self._normalize_text_blob(term)) >= 2
+        ]
+        if not terms:
+            return False
+        hits = sum(1 for term in terms if term and term in haystack)
+        if hits >= max(1, int(len(terms) * 0.6 + 0.5)):
+            return True
+        return any(len(term) >= 6 and term in haystack for term in terms)
 
     def _extract_objective_terms(self, objective: str) -> list[str]:
         fragments: list[str] = []

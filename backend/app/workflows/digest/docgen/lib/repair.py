@@ -6,6 +6,7 @@ import re
 
 from app.shared.infra.llm_support import acompletion_with_fallback
 from app.shared.infra.llm_support.routing import TaskType
+from app.shared.infra.tools.builtin.markdown_processing import normalize_markdown_rendering
 from app.workflows.digest.docgen.lib.models import RepairTraceItem, ReviewAction, ReviewedChapterDraft
 from app.workflows.digest.docgen.prompts import build_chapter_patch_messages
 
@@ -44,6 +45,37 @@ async def _apply_patch_action(
     不假装已经修复。
     """
 
+    if action.action_type == "surface_patch" and "Markdown 渲染结构异常" in action.reason:
+        patched = normalize_markdown_rendering(chapter.markdown)
+        if patched and patched != chapter.markdown:
+            updated = chapter.model_copy(
+                update={
+                    "markdown": patched,
+                    "patched": True,
+                    "warnings": [
+                        *chapter.warnings,
+                        f"已执行确定性 Markdown 渲染修补：{action.reason}",
+                    ],
+                }
+            )
+            updated_action = action.model_copy(update={"status": "applied"})
+            return (
+                updated,
+                RepairTraceItem(
+                    trace_id=f"repair_trace_{action.action_id or action.action_type}",
+                    action_id=action.action_id,
+                    action_type=action.action_type,
+                    chapter_index=action.chapter_index,
+                    status="applied",
+                    reason=action.reason,
+                    target_anchor=action.target_anchor,
+                    changed=True,
+                    detail="Applied deterministic markdown rendering normalization.",
+                ),
+                updated_action,
+                None,
+            )
+
     try:
         patched_markdown = await acompletion_with_fallback(
             build_chapter_patch_messages(
@@ -59,7 +91,7 @@ async def _apply_patch_action(
                 "repair_action_type": action.action_type,
             },
         )
-        patched = _strip_markdown_fence(str(patched_markdown))
+        patched = normalize_markdown_rendering(_strip_markdown_fence(str(patched_markdown)))
         if not patched or patched == chapter.markdown:
             updated_action = action.model_copy(update={"status": "skipped"})
             return (
@@ -181,7 +213,7 @@ async def repair_or_route_review_actions(
                 action=action,
             )
             chapters_by_index[patched_chapter.chapter_index] = patched_chapter
-            if trace_item.changed:
+            if trace_item.changed and "Markdown 渲染结构异常" not in action.reason:
                 patched_chapter_indexes.add(patched_chapter.chapter_index)
             updated_actions.append(updated_action)
             repair_trace.append(trace_item)

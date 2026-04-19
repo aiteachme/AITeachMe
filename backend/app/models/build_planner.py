@@ -25,8 +25,6 @@ class ConfirmedBuildPlan(SQLModel, table=True):
     digest_mode: str = Field(default="sprint", index=True)
     selected_file_ids_json: list[int] = Field(default_factory=list, sa_column=Column(sa.JSON))
     chapter_plan_json: list[dict[str, Any]] = Field(default_factory=list, sa_column=Column(sa.JSON))
-    research_queries_json: list[str] = Field(default_factory=list, sa_column=Column(sa.JSON))
-    media_plan_json: dict[str, Any] = Field(default_factory=dict, sa_column=Column(sa.JSON))
     build_constraints_json: dict[str, Any] = Field(default_factory=dict, sa_column=Column(sa.JSON))
     plan_summary: str = Field(default="")
     plan_json: dict[str, Any] = Field(default_factory=dict, sa_column=Column(sa.JSON))

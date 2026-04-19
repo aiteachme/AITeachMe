@@ -65,7 +65,7 @@ def fallback_enhance_plan_outline(
                 summary_targets=["用一句话说清本章主线", "列出最容易遗忘或混淆的点"],
                 media_requests=media_requests,
                 practice_seed_policy={"style": "exam" if normalized_mode == "sprint" else "reasoning"},
-                retrieval_queries=clean_string_list([*chapter.get("search_queries", []), title, *required], limit=8),
+                retrieval_queries=clean_string_list([title, *required], limit=8),
                 fallback_used=True,
             )
         )

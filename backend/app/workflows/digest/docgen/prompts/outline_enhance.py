@@ -6,7 +6,6 @@ from collections.abc import Mapping, Sequence
 from typing import Any
 
 OUTLINE_CHAPTER_REQUIRED_BUDGET = 12
-OUTLINE_CHAPTER_QUERY_BUDGET = 8
 
 
 def build_outline_enhance_messages(
@@ -28,7 +27,6 @@ def build_outline_enhance_messages(
                     f"  title: {chapter.get('title') or chapter.get('resolved_title')}",
                     f"  objective: {chapter.get('objective')}",
                     f"  required_elements: {', '.join(str(item) for item in chapter.get('required_elements', [])[:OUTLINE_CHAPTER_REQUIRED_BUDGET])}",
-                    f"  search_queries: {', '.join(str(item) for item in chapter.get('search_queries', [])[:OUTLINE_CHAPTER_QUERY_BUDGET])}",
                 ]
             )
         )

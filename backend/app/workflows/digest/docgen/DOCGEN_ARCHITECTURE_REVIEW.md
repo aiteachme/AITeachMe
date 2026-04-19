@@ -134,7 +134,7 @@ knowledge_markdowns/versions/vXXXX/docgen_manifest.json
 
 现状：
 
-- 旧 README 和架构评估曾把旧主线当作当前主线。
+- 过期 README 和架构评估曾把已移除主线当作当前主线。
 - 当前 graph 已经包含 `build_document_backbone`、`review_content`、`repair_or_route`、`finalize_titles`。
 - 如果接手者按旧文档开发，很容易把新逻辑补到错误阶段。
 
@@ -214,7 +214,7 @@ status
 
 当前 `record_only` 与基础 `repair_trace` 已接入 manifest。
 
-### P1. state reducer 与 repair loop 不兼容
+### P1. state reducer 与 repair loop 冲突
 
 现状：
 

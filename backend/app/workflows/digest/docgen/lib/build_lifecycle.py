@@ -253,8 +253,6 @@ def _build_confirmed_plan_payload(plan: ConfirmedBuildPlan) -> dict[str, Any]:
     payload.setdefault("user_prompt", plan.user_prompt)
     payload.setdefault("digest_mode", plan.digest_mode)
     payload.setdefault("chapter_plan", list(plan.chapter_plan_json))
-    payload.setdefault("research_queries", list(plan.research_queries_json))
-    payload.setdefault("media_plan", dict(plan.media_plan_json))
     payload.setdefault("build_constraints", dict(plan.build_constraints_json))
     payload.setdefault("plan_summary", plan.plan_summary)
     payload["selected_file_ids"] = list(plan.selected_file_ids_json)

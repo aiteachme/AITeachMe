@@ -19,6 +19,7 @@ from app.shared.infra.storage import get_content_store, run_store_sync
 from app.shared.infra.tools.builtin.markdown_processing import (
     build_reference_section,
     count_words,
+    normalize_markdown_rendering,
     normalize_source_details,
     normalize_mermaid_blocks,
 )
@@ -63,7 +64,7 @@ def _dedupe_chapter_metadatas(chapters: list[dict]) -> list[dict]:
 
 
 def _prepare_chapter_markdown(markdown: str) -> str:
-    return _ensure_chapter_structure(normalize_mermaid_blocks(markdown))
+    return _ensure_chapter_structure(normalize_mermaid_blocks(normalize_markdown_rendering(markdown)))
 
 
 def _ensure_chapter_structure(markdown: str) -> str:

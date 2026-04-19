@@ -7,7 +7,6 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from app.shared.infra.settings import get_settings
 from app.workflows.digest.common.runtime_config import get_planner_mode_runtime_config, get_teaching_runtime_config
 from app.workflows.digest.common.models import FastTopicHints, SharedInputs, SubjectProfile
 
@@ -17,12 +16,7 @@ class PlannerChapterPlan(BaseModel):
     title: str
     objective: str = ""
     required_elements: list[str] = Field(default_factory=list)
-    # Kept for the public confirmed-plan contract; Planner no longer invents queries.
-    search_queries: list[str] = Field(default_factory=list)
     writing_instructions: str = ""
-    media_hints: dict[str, list[str]] = Field(
-        default_factory=lambda: {"images": [], "mermaid": [], "interactive": []}
-    )
 
 
 class BuildPlannerDraft(BaseModel):
@@ -32,13 +26,8 @@ class BuildPlannerDraft(BaseModel):
     user_prompt: str
     digest_mode: str = "systematic"
     chapter_plan: list[PlannerChapterPlan] = Field(default_factory=list)
-    # Kept for API/DB compatibility. DocGen derives retrieval queries from chapter content.
-    research_queries: list[str] = Field(default_factory=list)
-    media_plan: dict[str, Any] = Field(default_factory=dict)
     build_constraints: dict[str, Any] = Field(default_factory=dict)
     plan_summary: str = ""
-    # Internal/action-plan metadata. API cards may ignore it, but DB plan_json
-    # keeps it for later debugging, chat mirror, and future UI reuse.
     plan_steps: list[str] = Field(default_factory=list)
 
 
@@ -139,7 +128,6 @@ def _merge_chapter(raw: Mapping[str, Any], index: int) -> PlannerChapterPlan:
         objective=_text(raw.get("objective")) or "；".join(key_points),
         required_elements=key_points,
         writing_instructions=_text(raw.get("writing_instructions")) or "围绕本章知识点生成清晰讲解。",
-        media_hints={"images": [], "mermaid": [], "interactive": []},
     )
 
 
@@ -167,9 +155,7 @@ def _build_supplement_chapter(
         title=title,
         objective=objective,
         required_elements=required[:6],
-        search_queries=_strings([title, *required])[:6],
         writing_instructions=writing,
-        media_hints={"images": [], "mermaid": [f"{title} 的知识结构图"], "interactive": []},
     )
 
 
@@ -219,15 +205,6 @@ def _pad_chapters_to_minimum(
             )
         )
     return padded
-
-
-def _media_plan() -> dict[str, Any]:
-    settings = get_settings()
-    return {
-        "enable_mermaid": True,
-        "enable_images": settings.image_generation_enabled,
-        "enable_interactive_html": False,
-    }
 
 
 def _build_constraints(*, digest_mode: str, chapter_count: int, shared_inputs: SharedInputs) -> dict[str, Any]:
@@ -289,8 +266,6 @@ def normalize_planner_draft(
         user_prompt=user_prompt,
         digest_mode=mode,
         chapter_plan=chapters,
-        research_queries=[],
-        media_plan=_media_plan(),
         build_constraints=_build_constraints(digest_mode=mode, chapter_count=len(chapters), shared_inputs=shared),
         plan_summary=plan_summary,
         plan_steps=plan_steps,
