@@ -23,7 +23,6 @@ export interface BuildPlannerConfirmResponse {
   plan_summary: string;
   chapter_plan?: BuildPlannerChapterPlanResponse[];
   research_queries?: string[];
-  selected_skillpacks?: string[];
   media_plan?: BuildPlannerConfirmResponseMediaPlan;
   build_constraints?: BuildPlannerConfirmResponseBuildConstraints;
   plan_json?: BuildPlannerConfirmResponsePlanJson;

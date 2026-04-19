@@ -129,7 +129,8 @@ async def repair_or_route_review_actions(
     updated_actions: list[ReviewAction] = []
     unresolved: list[str] = []
     repair_trace: list[RepairTraceItem] = []
-    for action in review_actions:
+    patched_chapter_indexes: set[int] = set()
+    for action_index, action in enumerate(review_actions, start=1):
         if action.action_type in {"surface_patch", "section_patch"}:
             chapter = chapters_by_index.get(int(action.chapter_index or 0))
             if chapter is None:
@@ -150,11 +151,31 @@ async def repair_or_route_review_actions(
                     )
                 )
                 continue
+            if chapter.chapter_index in patched_chapter_indexes:
+                updated_action = action.model_copy(update={"status": "skipped"})
+                updated_actions.append(updated_action)
+                unresolved.append(_unresolved_message(updated_action, status="skipped"))
+                repair_trace.append(
+                    RepairTraceItem(
+                        trace_id=f"repair_trace_{action_index:03d}_{action.action_id or action.action_type}",
+                        action_id=action.action_id,
+                        action_type=action.action_type,
+                        chapter_index=action.chapter_index,
+                        status="skipped",
+                        reason=action.reason,
+                        target_anchor=action.target_anchor,
+                        changed=False,
+                        detail="Skipped because another patch was already applied to this chapter in the same repair pass.",
+                    )
+                )
+                continue
             patched_chapter, trace_item, updated_action, unresolved_message = await _apply_patch_action(
                 chapter=chapter,
                 action=action,
             )
             chapters_by_index[patched_chapter.chapter_index] = patched_chapter
+            if trace_item.changed:
+                patched_chapter_indexes.add(patched_chapter.chapter_index)
             updated_actions.append(updated_action)
             repair_trace.append(trace_item)
             if unresolved_message:
@@ -171,7 +192,7 @@ async def repair_or_route_review_actions(
         unresolved.append(_unresolved_message(updated_action, status=status))
         repair_trace.append(
             RepairTraceItem(
-                trace_id=f"repair_trace_{index:03d}_{action.action_id or action.action_type}",
+                trace_id=f"repair_trace_{action_index:03d}_{action.action_id or action.action_type}",
                 action_id=action.action_id,
                 action_type=action.action_type,
                 chapter_index=action.chapter_index,

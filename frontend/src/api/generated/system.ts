@@ -20,7 +20,8 @@ import type {
   ApiResponseSettingsOverviewData,
   ErrorResponse,
   HTTPValidationError,
-  InitRequest
+  InitRequest,
+  UpdateUserSettingsRequest
 } from './model';
 
 import { orvalApiClient } from '../client';
@@ -220,5 +221,100 @@ export const useGetSystemSettingsApiV1SystemSettingsPost = <TError = HTTPValidat
         TContext
       > => {
       return useMutation(getGetSystemSettingsApiV1SystemSettingsPostMutationOptions(options), queryClient);
+    }
+    /**
+ * 保存当前用户的非敏感 settings_default.yaml 同构 settings 覆盖；密钥类环境变量不通过此接口保存。
+ * @summary 更新当前用户 settings
+ */
+export type updateSystemSettingsApiV1SystemSettingsPatchResponse200 = {
+  data: ApiResponseSettingsOverviewData
+  status: 200
+}
+
+export type updateSystemSettingsApiV1SystemSettingsPatchResponse422 = {
+  data: ErrorResponse
+  status: 422
+}
+
+export type updateSystemSettingsApiV1SystemSettingsPatchResponse500 = {
+  data: ErrorResponse
+  status: 500
+}
+
+export type updateSystemSettingsApiV1SystemSettingsPatchResponseSuccess = (updateSystemSettingsApiV1SystemSettingsPatchResponse200) & {
+  headers: Headers;
+};
+export type updateSystemSettingsApiV1SystemSettingsPatchResponseError = (updateSystemSettingsApiV1SystemSettingsPatchResponse422 | updateSystemSettingsApiV1SystemSettingsPatchResponse500) & {
+  headers: Headers;
+};
+
+export type updateSystemSettingsApiV1SystemSettingsPatchResponse = (updateSystemSettingsApiV1SystemSettingsPatchResponseSuccess | updateSystemSettingsApiV1SystemSettingsPatchResponseError)
+
+export const getUpdateSystemSettingsApiV1SystemSettingsPatchUrl = () => {
+
+
+  
+
+  return `/api/v1/system/settings`
+}
+
+export const updateSystemSettingsApiV1SystemSettingsPatch = async (updateUserSettingsRequest: UpdateUserSettingsRequest, options?: RequestInit): Promise<updateSystemSettingsApiV1SystemSettingsPatchResponse> => {
+  
+  return orvalApiClient<updateSystemSettingsApiV1SystemSettingsPatchResponse>(getUpdateSystemSettingsApiV1SystemSettingsPatchUrl(),
+  {      
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      updateUserSettingsRequest,)
+  }
+);}
+  
+
+
+
+export const getUpdateSystemSettingsApiV1SystemSettingsPatchMutationOptions = <TError = ErrorResponse,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateSystemSettingsApiV1SystemSettingsPatch>>, TError,{data: UpdateUserSettingsRequest}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateSystemSettingsApiV1SystemSettingsPatch>>, TError,{data: UpdateUserSettingsRequest}, TContext> => {
+
+const mutationKey = ['updateSystemSettingsApiV1SystemSettingsPatch'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+      
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateSystemSettingsApiV1SystemSettingsPatch>>, {data: UpdateUserSettingsRequest}> = (props) => {
+          const {data} = props ?? {};
+
+          return  updateSystemSettingsApiV1SystemSettingsPatch(data,requestOptions)
+        }
+
+
+
+        
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateSystemSettingsApiV1SystemSettingsPatchMutationResult = NonNullable<Awaited<ReturnType<typeof updateSystemSettingsApiV1SystemSettingsPatch>>>
+    export type UpdateSystemSettingsApiV1SystemSettingsPatchMutationBody = UpdateUserSettingsRequest
+    export type UpdateSystemSettingsApiV1SystemSettingsPatchMutationError = ErrorResponse
+
+    /**
+ * @summary 更新当前用户 settings
+ */
+export const useUpdateSystemSettingsApiV1SystemSettingsPatch = <TError = ErrorResponse,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateSystemSettingsApiV1SystemSettingsPatch>>, TError,{data: UpdateUserSettingsRequest}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof updateSystemSettingsApiV1SystemSettingsPatch>>,
+        TError,
+        {data: UpdateUserSettingsRequest},
+        TContext
+      > => {
+      return useMutation(getUpdateSystemSettingsApiV1SystemSettingsPatchMutationOptions(options), queryClient);
     }
     

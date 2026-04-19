@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from time import perf_counter
 
 from app.shared.infra.workflow.context import WorkflowContext
@@ -75,19 +76,26 @@ def build_review_content_node(*, context: WorkflowContext):
             digest_mode=state.get("digest_mode") or None,
             current_stage_description=f"正在复核 {len(enhanced)} 个章节的覆盖、证据和一致性。",
         )
+        review_parallelism = max(1, min(6, len(enhanced)))
+        review_sem = asyncio.Semaphore(review_parallelism)
+
+        async def _review_one(draft: EnhancedChapterDraft):
+            async with review_sem:
+                return await review_chapter(
+                    draft=draft,
+                    task=tasks_by_chapter.get(draft.chapter_index),
+                    claim_ledger=claim_ledgers_by_chapter.get(draft.chapter_index),
+                    claim_evidence_map=claim_maps_by_chapter.get(draft.chapter_index),
+                    conflict_report=conflict_reports_by_chapter.get(draft.chapter_index),
+                    digest_mode=state.get("digest_mode") or "",
+                )
+
+        # 章节复核按章并行；整本文档一致性放在所有章节复核之后统一判断。
+        review_results = await asyncio.gather(*(_review_one(draft) for draft in enhanced))
         reviewed = []
         reports = []
         actions = []
-        # 章节复核只看单章的覆盖、证据和冲突；整本文档一致性放在所有章节复核之后统一判断。
-        for draft in enhanced:
-            reviewed_draft, report, chapter_actions = await review_chapter(
-                draft=draft,
-                task=tasks_by_chapter.get(draft.chapter_index),
-                claim_ledger=claim_ledgers_by_chapter.get(draft.chapter_index),
-                claim_evidence_map=claim_maps_by_chapter.get(draft.chapter_index),
-                conflict_report=conflict_reports_by_chapter.get(draft.chapter_index),
-                digest_mode=state.get("digest_mode") or "",
-            )
+        for reviewed_draft, report, chapter_actions in review_results:
             reviewed.append(reviewed_draft)
             reports.append(report)
             actions.extend(chapter_actions)
@@ -124,6 +132,7 @@ def build_review_content_node(*, context: WorkflowContext):
             stage="content_reviewed",
             payload={
                 "chapter_count": len(reviewed),
+                "review_parallelism": review_parallelism,
                 "review_decision": review_decision,
                 "review_action_count": len(actions),
                 "document_issue_count": len(consistency_report.issues),

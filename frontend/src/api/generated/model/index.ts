@@ -192,6 +192,8 @@ export * from './subjectProfileSummaryQuestionTypeAccuracy';
 export * from './subjectUpdateRequest';
 export * from './subjectVectorStatusResponse';
 export * from './taskStatusValue';
+export * from './updateUserSettingsRequest';
+export * from './updateUserSettingsRequestSettings';
 export * from './userProfileSummary';
 export * from './validationError';
 export * from './validationErrorCtx';
