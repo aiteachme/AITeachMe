@@ -6,6 +6,7 @@ from collections.abc import Mapping
 from typing import Any
 
 from pydantic import ValidationError
+import structlog
 from sqlmodel import Session
 
 from app.repositories.user_settings_repo import (
@@ -25,6 +26,7 @@ from app.shared.infra.storage.config import (
 )
 
 _MISSING = object()
+logger = structlog.get_logger(__name__)
 
 
 def build_init_data(
@@ -106,9 +108,35 @@ def _project_by_override_keys(
     return projected
 
 
+def _project_known_settings_keys(
+    schema_payload: Mapping[str, Any],
+    raw_override: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Keep only user setting keys still recognized by the current schema.
+
+    User settings are persisted in the database and may outlive config schema
+    refactors. Unknown keys from older releases should not make the settings
+    page fail to load after a deploy.
+    """
+
+    projected: dict[str, Any] = {}
+    for key, raw_value in raw_override.items():
+        if key not in schema_payload:
+            continue
+        schema_value = schema_payload[key]
+        if isinstance(raw_value, Mapping) and isinstance(schema_value, Mapping):
+            child = _project_known_settings_keys(schema_value, raw_value)
+            if child:
+                projected[key] = child
+            continue
+        projected[key] = raw_value
+    return projected
+
+
 def _normalize_user_settings_payload(raw_payload: Mapping[str, Any]) -> dict[str, Any]:
     base_payload = get_settings().model_dump(mode="json")
-    candidate_payload = _deep_merge(base_payload, raw_payload)
+    known_payload = _project_known_settings_keys(base_payload, raw_payload)
+    candidate_payload = _deep_merge(base_payload, known_payload)
     try:
         effective = Settings.model_validate(candidate_payload)
     except ValidationError as exc:
@@ -118,13 +146,18 @@ def _normalize_user_settings_payload(raw_payload: Mapping[str, Any]) -> dict[str
             status_code=422,
             data=exc.errors(),
         ) from exc
-    return _project_by_override_keys(effective.model_dump(mode="json"), raw_payload)
+    return _project_by_override_keys(effective.model_dump(mode="json"), known_payload)
 
 
 def _merge_user_settings(base_settings: Settings, user_payload: Mapping[str, Any]) -> Settings:
     if not user_payload:
         return base_settings
-    merged_payload = _deep_merge(base_settings.model_dump(mode="json"), user_payload)
+    try:
+        normalized_payload = _normalize_user_settings_payload(user_payload)
+    except AITeachMeError as exc:
+        logger.warning("invalid_user_settings_ignored", error=str(exc), error_code=exc.error_code)
+        normalized_payload = {}
+    merged_payload = _deep_merge(base_settings.model_dump(mode="json"), normalized_payload)
     return Settings.model_validate(merged_payload)
 
 
@@ -328,6 +361,13 @@ def build_settings_overview_data(
                 _env_entry("search.perplexity_key", "PERPLEXITY_API_KEY", "PERPLEXITY_API_KEY", "Perplexity Sonar 检索密钥。", secret=True),
                 _env_entry("search.openrouter_key", "OPENROUTER_API_KEY", "OPENROUTER_API_KEY", "OpenRouter 搜索模型密钥。", secret=True),
                 _env_entry("search.baidu_ai_key", "BAIDU_AI_SEARCH_API_KEY", "BAIDU_AI_SEARCH_API_KEY", "百度千帆 AI Search 密钥。", secret=True),
+                _env_entry("search.google_key", "GOOGLE_API_KEY", "GOOGLE_API_KEY", "Google Custom Search API Key。", secret=True),
+                _env_entry("search.google_cx", "GOOGLE_CX_KEY", "GOOGLE_CX_KEY", "Google Custom Search Engine ID。", secret=True),
+                _env_entry("search.searchapi_key", "SEARCHAPI_API_KEY", "SEARCHAPI_API_KEY", "SearchApi.io 检索密钥。", secret=True),
+                _env_entry("search.serpapi_key", "SERPAPI_API_KEY", "SERPAPI_API_KEY", "SerpApi 检索密钥。", secret=True),
+                _env_entry("search.ncbi_key", "NCBI_API_KEY", "NCBI_API_KEY", "NCBI / PubMed API Key，可选。", secret=True),
+                _env_entry("search.custom_endpoint", "CUSTOM_RETRIEVER_ENDPOINT", "CUSTOM_RETRIEVER_ENDPOINT", "自定义检索 HTTP 端点。"),
+                _env_entry("search.mcp_tool", "MCP_SEARCH_TOOL", "MCP_SEARCH_TOOL", "用于检索的 MCP 工具名。"),
                 _env_entry("search.searxng_url", "SEARXNG_BASE_URL", "SEARXNG_BASE_URL", "自建/可信 SearXNG 地址。"),
                 _env_entry("reader.jina_enabled", "JINA_READER_ENABLED", "JINA_READER_ENABLED", "是否启用 Jina Reader。"),
             ],

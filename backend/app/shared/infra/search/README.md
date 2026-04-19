@@ -94,12 +94,20 @@ shared/infra/search/
   这些属于 API 型检索器，需要用户提供 key。
 - `brave` / `exa` / `jina_search`
   这些属于 API 型检索器，适合补充高质量通用 Web 结果或语义搜索结果。
+- `google_cse` / `searchapi` / `serpapi`
+  Google 搜索结果 API。三者能力重叠，通常按已有账号选择一个即可。
 - `perplexity` / `openrouter_search` / `baidu_ai_search`
   这些属于答案型搜索 API。当前 search 层只抽取其返回的 citations / references 为 `SearchResult`，不在 search 层直接消费最终答案。
 - `serper`
   Google SERP / Scholar API 检索器，可通过 `SERPER_SEARCH_MODE=search|scholar` 切换普通搜索和学术搜索。
 - `arxiv` / `semantic_scholar`
   这两类更偏学术资料补充，不适合作为中文通用搜索引擎的完全替代。
+- `pubmed_central`
+  PubMed / PMC 文献全文检索，适合医学、生命科学、药学等资料补充。
+- `custom_endpoint`
+  自定义 HTTP 检索端点，适合接企业/学校已有搜索系统。返回 JSON 中的 `results/items/data/documents` 会被规整为 `SearchResult`。
+- `mcp_search`
+  调用已连接 MCP 工具做检索，需要配置 `MCP_SEARCH_TOOL`。它只是工具结果适配器，不会启动额外的研究 agent。
 - `baidu_baike` / `zhihu`
   复用 DuckDuckGo 的站点限定搜索，用于中文百科定义与经验型讨论补充。
 
@@ -221,6 +229,10 @@ search:
 - 想继续提升稳定性但不想买 API：
   再加一个自建或可信公共 `SearXNG` 实例。
 - 已有商业 key：
-  再打开 `tavily / bocha / brave / exa / bing`，把它们放到 profile 前面即可。
+  再打开 `tavily / bocha / brave / exa / bing / google_cse / serper / serpapi / searchapi`，把它们放到 profile 前面即可。
+- 医学/生命科学资料：
+  打开 `pubmed_central`，必要时配置 `NCBI_API_KEY` 提高请求限额。
+- 已有内部搜索系统：
+  配置 `CUSTOM_RETRIEVER_ENDPOINT`，并让端点返回 `url/title/snippet` 或兼容字段。
 - 网页正文读取质量差：
   打开 `JINA_READER_ENABLED=true`，必要时配置 `JINA_API_KEY` 提高限额。
