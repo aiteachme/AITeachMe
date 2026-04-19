@@ -63,8 +63,8 @@ load_context
 | 优先级 | 差距 | 当前影响 |
 | --- | --- | --- |
 | P0 | 文档落后代码 | 接手者容易按旧流程改错位置 |
-| P1 | `repair_or_route` 没有真实闭环 | 复核建议只能记录，不能完成有限修补 |
-| P1 | `ReviewAction` 结构不足 | 无法稳定驱动 section patch / evidence patch / regenerate |
+| P1 | `repair_or_route` 没有真实闭环 | 局部 patch 可执行，但证据补强、重写和二次复核还没闭环 |
+| P1 | `ReviewAction` 已驱动局部 patch，但证据补强和重写未闭环 | section patch 已可执行，evidence patch / regenerate 仍只是记录 |
 | P1 | 循环下 state append 字段会重复 | 后续一旦回流，旧章节和新章节可能一起进入 manifest |
 | P1 | 图片 disabled 状态不显式 | 资产降级不可追踪 |
 | P2 | `final_merge_patch` 缺失 | 合并后小瑕疵没有独立收口点 |
@@ -98,14 +98,17 @@ DOCGEN_ARCHITECTURE_REVIEW.md
 
 ## 3. Phase 1：修正 repair 动作语义
 
+状态：已落地基础版。
+
 目标：
 
 在没有引入循环前，先让 `repair_or_route` 的记录语义真实可信。
 
 当前问题：
 
-- `surface_patch` 会被标记为 `applied`，但当前没有真正改正文。
-- `review_chapter` 对“章节偏短”生成 `surface_patch`，reason 又写着“仅记录并发布”，状态语义不一致。
+- patch 类动作不再被标记为 `applied`。
+- `review_chapter` 对“章节偏短”使用 `record_only`，不会让 repair 层误以为需要执行表层 patch。
+- `repair_or_route` 已输出基础 `repair_trace`。
 
 建议改动：
 
@@ -148,6 +151,8 @@ repair_trace:
 
 ## 4. Phase 2：扩展 ReviewAction 合同
 
+状态：已落地合同字段，`surface_patch` / `section_patch` 已接入 repair 执行，证据补强和重写仍待后续阶段接入。
+
 目标：
 
 让复核结果能直接驱动安全修补，而不是只有一段 reason。
@@ -162,7 +167,7 @@ nodes/review_content.py
 lib/repair.py
 ```
 
-新增或扩展字段：
+已新增或扩展字段：
 
 ```text
 ReviewAction:
@@ -178,7 +183,7 @@ ReviewAction:
   status
 ```
 
-`action_type` 建议改为：
+`action_type` 已扩展为：
 
 ```text
 surface_patch
@@ -329,9 +334,11 @@ chapter_artifact_versions
 
 ## 7. Phase 5：实现安全 section patch
 
+状态：已落地基础版。
+
 目标：
 
-先让 `repair_or_route` 真正能做小范围文本修补。
+让 `repair_or_route` 真正能做小范围文本修补。
 
 涉及文件：
 
@@ -429,11 +436,13 @@ lib/repair.py
 - 其他章节不重新生成。
 - 每章最多 regenerate 一次。
 
-## 10. Phase 8：AssetManifest disabled 状态收口
+## 10. Phase 8：AssetManifest 与文生图收口
+
+状态：已落地基础版，仍需前端展示和失败重试。
 
 目标：
 
-图片模型未启用、图片请求被降级或跳过时，manifest 必须解释原因。
+图片模型未启用、图片请求被降级或跳过时，manifest 必须解释原因；图片模型启用时，DocGen 应生成图片、写入存储并回填 Markdown。
 
 涉及文件：
 
@@ -445,15 +454,17 @@ lib/models.py
 nodes/enhance_chapters.py
 ```
 
-当前问题：
+已处理：
 
-- image generation disabled 时，部分 image 请求在 plan 生成阶段被移除。
-- `AssetManifest` 看不到“原本请求过图片但被 disabled”的事实。
+- `shared.infra.llm_support.agenerate_image` 已作为统一文生图入口。
+- DocGen image 占位会生成图片、写入 `assets/docgen/...`，并回填 Markdown 图片链接。
+- disabled / failed / generated 状态会进入 `AssetManifest`。
 
-建议：
+后续建议：
 
-1. 保留 `allowed_assets` / `placeholder_requests` 中的 image intent，但标注 `disabled_by_settings`。
-2. `enhance_chapter_draft` 输出 asset：
+1. 前端基于 `AssetManifest` 做图片展示和错误解释。
+2. 针对 transient failure 增加一次轻量重试或手动重跑。
+3. 继续保持正文不泄露内部 image 占位符。
 
 ```text
 kind: image

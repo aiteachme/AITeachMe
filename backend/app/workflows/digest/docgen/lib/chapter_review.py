@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+
+from app.shared.infra.llm_support import acompletion_with_fallback
+from app.shared.infra.llm_support.routing import TaskType
 from app.shared.infra.tools.builtin.markdown_processing import count_words
 from app.workflows.digest.docgen.lib.claims import evidence_support_score
 from app.workflows.digest.docgen.lib.models import (
@@ -11,10 +15,12 @@ from app.workflows.digest.docgen.lib.models import (
     ClaimLedger,
     ConflictReport,
     EnhancedChapterDraft,
+    LLMChapterReviewResult,
     ReviewAction,
     ReviewedChapterDraft,
     clean_string_list,
 )
+from app.workflows.digest.docgen.prompts import build_chapter_review_messages
 
 
 def _coverage(markdown: str, targets: list[str]) -> tuple[float, list[str]]:
@@ -32,7 +38,28 @@ def _coverage(markdown: str, targets: list[str]) -> tuple[float, list[str]]:
     return round(hits / max(1, len(targets)), 4), missing
 
 
-def review_chapter(
+def _chapter_anchor(draft: EnhancedChapterDraft) -> str:
+    return draft.title or f"chapter:{draft.chapter_index}"
+
+
+def _dedupe_actions(actions: Sequence[ReviewAction]) -> list[ReviewAction]:
+    deduped: list[ReviewAction] = []
+    seen: set[tuple[str, int | None, str, str]] = set()
+    for action in actions:
+        key = (
+            action.action_type,
+            action.chapter_index,
+            action.target_anchor.casefold(),
+            action.reason.casefold(),
+        )
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(action)
+    return deduped
+
+
+def _rule_review_chapter(
     *,
     draft: EnhancedChapterDraft,
     task: ChapterGenerationTask | None,
@@ -57,6 +84,14 @@ def review_chapter(
                 chapter_index=draft.chapter_index,
                 severity="warning",
                 reason="缺少关键覆盖点：" + "、".join(missing[:5]),
+                target_anchor=_chapter_anchor(draft),
+                instruction="补齐章节中缺失的关键覆盖点：" + "、".join(missing[:8]),
+                constraints=[
+                    "不得新增、删除或重排 confirmed plan 章节。",
+                    "只允许修改本章相关小节。",
+                    "不得引入没有证据支撑的新断言。",
+                ],
+                expected_effect="章节正文能覆盖执行合同中的关键点，且不改变章节边界。",
             )
         )
     if support_score < task.evidence_support_threshold and list((claim_ledger or ClaimLedger()).items or []):
@@ -64,10 +99,18 @@ def review_chapter(
         actions.append(
             ReviewAction(
                 action_id=f"review_ch{draft.chapter_index:02d}_evidence",
-                action_type="regenerate_chapter",
+                action_type="evidence_patch",
                 chapter_index=draft.chapter_index,
                 severity="warning",
                 reason="主张证据支撑低于阈值。",
+                target_anchor=_chapter_anchor(draft),
+                instruction="针对证据支撑不足的主张补充可追踪来源，并只局部改写相关小节。",
+                constraints=[
+                    "必须优先使用本地资料或已打开网页正文。",
+                    "不得只依据搜索标题补新断言。",
+                    "补充来源和 claim/evidence 映射必须写入 manifest。",
+                ],
+                expected_effect="低支撑主张获得新的 evidence binding，章节正文只做必要局部调整。",
             )
         )
     if word_count < task.min_word_count:
@@ -75,16 +118,27 @@ def review_chapter(
         actions.append(
             ReviewAction(
                 action_id=f"review_ch{draft.chapter_index:02d}_surface_length",
-                action_type="surface_patch",
+                action_type="record_only",
                 chapter_index=draft.chapter_index,
                 severity="info",
-                reason="章节偏短，MVP 仅记录并发布。",
+                reason="章节偏短；当前阶段仅记录，后续可由有限回流决定是否扩写。",
+                target_anchor=_chapter_anchor(draft),
+                instruction="记录章节长度偏短，不在 MVP repair 中自动扩写。",
+                constraints=[
+                    "不因长度原因自动新增事实内容。",
+                    "不改变当前发布正文。",
+                ],
+                expected_effect="manifest 中保留长度风险，发布流程不中断。",
             )
         )
     unresolved_conflicts = int((conflict_report or ConflictReport()).unresolved_count or 0)
     if unresolved_conflicts > 0:
         warnings.append("仍存在未解决的低证据或冲突提示。")
-    passed = not any(action.action_type in {"regenerate_chapter", "re_dispatch", "rebuild_backbone"} for action in actions)
+    passed = not any(
+        action.action_type in {"section_patch", "evidence_patch", "regenerate_chapter", "re_dispatch", "rebuild_backbone"}
+        and action.severity in {"warning", "error"}
+        for action in actions
+    )
     report = ChapterReviewReport(
         report_id=f"ch{draft.chapter_index:02d}_review",
         chapter_index=draft.chapter_index,
@@ -105,6 +159,126 @@ def review_chapter(
         }
     )
     return reviewed, report, actions
+
+
+def _llm_actions_to_review_actions(
+    *,
+    draft: EnhancedChapterDraft,
+    suggestions: Sequence,
+) -> list[ReviewAction]:
+    actions: list[ReviewAction] = []
+    for index, suggestion in enumerate(suggestions, start=1):
+        action_type = suggestion.action_type
+        if action_type == "regenerate_chapter" and suggestion.reason and "证据" in suggestion.reason:
+            action_type = "evidence_patch"
+        actions.append(
+            ReviewAction(
+                action_id=f"llm_review_ch{draft.chapter_index:02d}_{index:02d}_{action_type}",
+                action_type=action_type,
+                chapter_index=draft.chapter_index,
+                severity=suggestion.severity,
+                reason=suggestion.reason,
+                target_anchor=suggestion.target_anchor or _chapter_anchor(draft),
+                instruction=suggestion.instruction,
+                constraints=suggestion.constraints,
+                expected_effect=suggestion.expected_effect,
+            )
+        )
+    return actions
+
+
+async def review_chapter(
+    *,
+    draft: EnhancedChapterDraft,
+    task: ChapterGenerationTask | None,
+    claim_ledger: ClaimLedger | None,
+    claim_evidence_map: ClaimEvidenceMap | None,
+    conflict_report: ConflictReport | None,
+    digest_mode: str = "",
+) -> tuple[ReviewedChapterDraft, ChapterReviewReport, list[ReviewAction]]:
+    """Run LLM content review with deterministic guardrail fallback."""
+
+    rule_reviewed, rule_report, rule_actions = _rule_review_chapter(
+        draft=draft,
+        task=task,
+        claim_ledger=claim_ledger,
+        claim_evidence_map=claim_evidence_map,
+        conflict_report=conflict_report,
+    )
+    task = task or ChapterGenerationTask(chapter_index=draft.chapter_index, confirmed_title=draft.title)
+    try:
+        llm_result = await acompletion_with_fallback(
+            build_chapter_review_messages(
+                chapter_title=draft.title,
+                digest_mode=digest_mode,
+                chapter_task=task.model_dump(mode="json"),
+                markdown=draft.markdown,
+                claim_ledger=(claim_ledger or ClaimLedger(chapter_index=draft.chapter_index)).model_dump(mode="json"),
+                claim_evidence_map=(claim_evidence_map or ClaimEvidenceMap(chapter_index=draft.chapter_index)).model_dump(mode="json"),
+                conflict_report=(conflict_report or ConflictReport(chapter_index=draft.chapter_index)).model_dump(mode="json"),
+                rule_review=rule_report.model_dump(mode="json"),
+            ),
+            task_type=TaskType.DOCGEN,
+            model="reason",
+            response_model=LLMChapterReviewResult,
+            extra_metadata={"chapter_index": draft.chapter_index, "review_mode": "docgen_content_review"},
+        )
+        assert isinstance(llm_result, LLMChapterReviewResult)
+    except Exception as exc:
+        fallback_report = rule_report.model_copy(
+            update={
+                "warnings": [
+                    *rule_report.warnings,
+                    f"LLM 内容复核失败，已使用规则复核兜底：{str(exc)[:120]}",
+                ],
+                "fallback_used": True,
+                "review_mode": "rule_fallback_after_llm_error",
+            }
+        )
+        fallback_reviewed = ReviewedChapterDraft.model_validate(
+            {
+                **rule_reviewed.model_dump(mode="json"),
+                "warnings": clean_string_list([*draft.warnings, *fallback_report.warnings], limit=32),
+                "review_report_ref": fallback_report.report_id,
+            }
+        )
+        return fallback_reviewed, fallback_report, rule_actions
+
+    llm_actions = _llm_actions_to_review_actions(
+        draft=draft,
+        suggestions=llm_result.actions,
+    )
+    merged_actions = _dedupe_actions([*rule_actions, *llm_actions])
+    missing = clean_string_list([*rule_report.missing_elements, *llm_result.missing_elements], limit=18)
+    warnings = clean_string_list([*rule_report.warnings, *llm_result.warnings], limit=24)
+    blocking_types = {"section_patch", "evidence_patch", "regenerate_chapter", "re_dispatch", "rebuild_backbone"}
+    passed = llm_result.passed and not any(
+        action.action_type in blocking_types and action.severity in {"warning", "error"}
+        for action in merged_actions
+    )
+    report = ChapterReviewReport(
+        report_id=rule_report.report_id,
+        chapter_index=draft.chapter_index,
+        passed=passed,
+        coverage_score=min(rule_report.coverage_score or 1.0, llm_result.coverage_score),
+        evidence_support_score=min(rule_report.evidence_support_score or 1.0, llm_result.evidence_support_score),
+        quality_score=min(rule_report.quality_score or 1.0, llm_result.quality_score),
+        missing_elements=missing,
+        warnings=warnings,
+        fallback_used=False,
+        review_mode="llm_structured_with_rule_guardrails",
+        llm_action_count=len(llm_actions),
+        rule_action_count=len(rule_actions),
+    )
+    reviewed = ReviewedChapterDraft.model_validate(
+        {
+            **draft.model_dump(mode="json"),
+            "review_report_ref": report.report_id,
+            "warnings": [*draft.warnings, *warnings],
+            "patched": False,
+        }
+    )
+    return reviewed, report, merged_actions
 
 
 __all__ = ["review_chapter"]

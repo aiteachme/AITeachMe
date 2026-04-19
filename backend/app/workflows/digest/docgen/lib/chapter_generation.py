@@ -193,8 +193,6 @@ def compose_chapter_generation_plan(
             ]
         )
         image_generation_enabled = get_settings().image_generation_enabled
-        if not image_generation_enabled:
-            placeholder_requests = [item for item in placeholder_requests if item["kind"] != "image"]
 
         visual_terms = " ".join([confirmed_title, *required, *outline.content_points])
         if not image_generation_enabled and not any(item["kind"] == "mermaid" for item in placeholder_requests):

@@ -2,10 +2,20 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import Any
 
+from pydantic import ValidationError
+from sqlmodel import Session
+
+from app.repositories.user_settings_repo import (
+    clear_user_runtime_settings,
+    get_user_runtime_settings_payload,
+    upsert_user_runtime_settings_payload,
+)
 from app.schemas.system import InitData, RuntimeUser, SettingEntry, SettingSection, SettingsOverviewData
-from app.shared.infra.settings import DEFAULT_PROJECT_SETTINGS_FILENAME, get_settings
+from app.shared.infra.exceptions import AITeachMeError
+from app.shared.infra.settings import DEFAULT_PROJECT_SETTINGS_FILENAME, Settings, get_settings
 from app.shared.infra.env_support import get_env, get_env_bool, resolve_project_settings_path
 from app.shared.infra.runtime import get_app_version, resolve_app_mode
 from app.shared.infra.storage.config import (
@@ -13,6 +23,8 @@ from app.shared.infra.storage.config import (
     resolve_s3_addressing_style,
     resolve_s3_credential_mode,
 )
+
+_MISSING = object()
 
 
 def build_init_data(
@@ -66,23 +78,87 @@ def _display(value: Any) -> str:
     return text if text.strip() else "空"
 
 
-def _settings_entry(
+def _deep_merge(base: dict[str, Any], override: Mapping[str, Any]) -> dict[str, Any]:
+    merged = dict(base)
+    for key, value in override.items():
+        if isinstance(value, Mapping) and isinstance(merged.get(key), dict):
+            merged[key] = _deep_merge(merged[key], value)
+        else:
+            merged[key] = value
+    return merged
+
+
+def _project_by_override_keys(
+    effective_payload: Mapping[str, Any],
+    raw_override: Mapping[str, Any],
+) -> dict[str, Any]:
+    projected: dict[str, Any] = {}
+    for key, raw_value in raw_override.items():
+        if key not in effective_payload:
+            continue
+        effective_value = effective_payload[key]
+        if isinstance(raw_value, Mapping) and isinstance(effective_value, Mapping):
+            child = _project_by_override_keys(effective_value, raw_value)
+            if child:
+                projected[key] = child
+            continue
+        projected[key] = effective_value
+    return projected
+
+
+def _normalize_user_settings_payload(raw_payload: Mapping[str, Any]) -> dict[str, Any]:
+    base_payload = get_settings().model_dump(mode="json")
+    candidate_payload = _deep_merge(base_payload, raw_payload)
+    try:
+        effective = Settings.model_validate(candidate_payload)
+    except ValidationError as exc:
+        raise AITeachMeError(
+            detail="用户 settings 配置格式不合法，请检查字段名和字段类型。",
+            error_code="INVALID_USER_SETTINGS",
+            status_code=422,
+            data=exc.errors(),
+        ) from exc
+    return _project_by_override_keys(effective.model_dump(mode="json"), raw_payload)
+
+
+def _merge_user_settings(base_settings: Settings, user_payload: Mapping[str, Any]) -> Settings:
+    if not user_payload:
+        return base_settings
+    merged_payload = _deep_merge(base_settings.model_dump(mode="json"), user_payload)
+    return Settings.model_validate(merged_payload)
+
+
+def _lookup_path(payload: Mapping[str, Any], dotted_key: str) -> tuple[bool, Any]:
+    current: Any = payload
+    for part in dotted_key.split("."):
+        if not isinstance(current, Mapping) or part not in current:
+            return False, _MISSING
+        current = current[part]
+    return True, current
+
+
+def _editable_settings_entry(
     key: str,
     label: str,
     value: Any,
+    default_value: Any,
+    user_payload: Mapping[str, Any],
     description: str = "",
-    *,
-    restart_required: bool = True,
 ) -> SettingEntry:
-    status = "default" if value in (None, "", [], {}) else "configured"
+    has_user_value, user_value = _lookup_path(user_payload, key)
+    source = "user_settings" if has_user_value else "settings"
+    status = "configured" if has_user_value or value not in (None, "", [], {}) else "default"
     return SettingEntry(
         key=key,
         label=label,
-        source="settings",
+        source=source,
         value=value,
+        default_value=default_value,
+        user_value=None if user_value is _MISSING else user_value,
         display_value=_display(value),
         status=status,
-        restart_required=restart_required,
+        editable=True,
+        restart_required=False,
         description=description,
     )
 
@@ -131,18 +207,38 @@ def _runtime_entry(
     )
 
 
-def build_settings_overview_data() -> SettingsOverviewData:
-    """Build a safe read-only overview of env/project settings effective settings."""
+def build_settings_overview_data(
+    *,
+    session: Session | None = None,
+    user_id: str | None = None,
+) -> SettingsOverviewData:
+    """Build a safe overview of env, project defaults, and user settings."""
 
-    settings = get_settings()
+    base_settings = get_settings()
+    user_payload = (
+        get_user_runtime_settings_payload(session, user_id)
+        if session is not None and user_id
+        else {}
+    )
+    settings = _merge_user_settings(base_settings, user_payload)
     mode = resolve_app_mode()
     settings_path = resolve_project_settings_path()
+
+    def se(key: str, label: str, value: Any, default_value: Any, description: str = "") -> SettingEntry:
+        return _editable_settings_entry(
+            key,
+            label,
+            value,
+            default_value,
+            user_payload,
+            description,
+        )
 
     sections = [
         SettingSection(
             id="runtime",
             label="运行与部署",
-            description="后端模式、鉴权、配置文件路径与运行版本。",
+            description="后端模式、鉴权、配置文件路径与运行版本。环境变量只读展示，密钥不返回明文。",
             entries=[
                 _runtime_entry("runtime.mode", "运行模式", mode, "由 APP_MODE 解析得到。"),
                 _env_entry("runtime.app_mode_raw", "APP_MODE", "APP_MODE", "未设置时按本地优先策略解析。"),
@@ -153,40 +249,48 @@ def build_settings_overview_data() -> SettingsOverviewData:
         ),
         SettingSection(
             id="models",
-            label="模型与密钥",
-            description=f"模型名来自 {DEFAULT_PROJECT_SETTINGS_FILENAME}，LLM 服务地址和密钥统一来自 LLM_API_KEY / LLM_BASE_URL。",
+            label="模型路由",
+            description=f"模型名默认来自 {DEFAULT_PROJECT_SETTINGS_FILENAME}，页面修改会保存为当前用户的非敏感 settings 覆盖。",
             entries=[
                 _env_entry("llm.base_url", "LLM_BASE_URL", "LLM_BASE_URL", "OpenAI-compatible 上游地址。"),
                 _env_entry("llm.api_key", "LLM_API_KEY", "LLM_API_KEY", "模型访问密钥，只显示是否配置。", secret=True),
-                _settings_entry("models.primary", "Primary 模型", settings.models.primary, "主要生成、对话、批改任务。"),
-                _settings_entry("models.reason", "Reason 模型", settings.models.reason, "深度推理与规划；空值时回退到 Primary。"),
-                _settings_entry("models.light", "Light 模型", settings.models.light, "分类、摘要和批量轻任务；空值时回退到 Primary。"),
-                _settings_entry("models.extract", "Extract 模型", settings.models.extract, "知识抽取专用；空值时回退到 Light/Primary。"),
-                _settings_entry("models.embedding", "Embedding 模型", settings.models.embedding),
+                se("models.primary", "Primary 模型", settings.models.primary, base_settings.models.primary, "主要生成、对话、批改任务。"),
+                se("models.reason", "Reason 模型", settings.models.reason, base_settings.models.reason, "深度推理与规划；空值时回退到 Primary。"),
+                se("models.light", "Light 模型", settings.models.light, base_settings.models.light, "分类、摘要和批量轻任务；空值时回退到 Primary。"),
+                se("models.extract", "Extract 模型", settings.models.extract, base_settings.models.extract, "知识抽取专用；空值时回退到 Light/Primary。"),
+                se("models.embedding", "Embedding 模型", settings.models.embedding, base_settings.models.embedding),
                 _runtime_entry("models.embedding_dim", "Embedding 维度", settings.embedding_dim),
-                _settings_entry("models.ocr", "Vision OCR 模型", settings.models.ocr, "空值时使用 Primary 模型；密钥和服务地址复用 LLM 接入配置。"),
-                _settings_entry("models.mermaid", "Mermaid 模型", settings.models.mermaid_generation),
-                _settings_entry("models.image_generation", "文生图模型", settings.models.image_generation),
+                se("models.ocr", "Vision OCR 模型", settings.models.ocr, base_settings.models.ocr, "空值时使用 Primary 模型；密钥和服务地址复用 LLM 接入配置。"),
+                se("models.image_generation", "文生图模型", settings.models.image_generation, base_settings.models.image_generation),
             ],
         ),
         SettingSection(
-            id="interact",
-            label="伴读对话",
-            description="Interact 伴读引擎的上下文与历史记录策略。",
+            id="learning_engines",
+            label="学习引擎",
+            description="Ingest / Digest / Interact / Profile 相关的非敏感运行策略。",
             entries=[
-                _settings_entry("interact.history_turns", "历史对话轮数", settings.interact.history_turns),
-            ],
-        ),
-        SettingSection(
-            id="ingest",
-            label="资料解析",
-            description="上传限制、解析并发、解析超时和外部解析服务状态。",
-            entries=[
-                _settings_entry("ingest.max_upload_size_mb", "最大上传大小", settings.ingest.max_upload_size_mb),
-                _settings_entry("ingest.max_files_per_upload", "单次最大文件数", settings.ingest.max_files_per_upload),
-                _settings_entry("ingest.parse_concurrency", "解析并发", settings.ingest.parse_concurrency),
-                _settings_entry("ingest.parser_timeout_s", "解析超时", settings.ingest.parser_timeout_s),
+                se("ingest.max_upload_size_mb", "最大上传大小", settings.ingest.max_upload_size_mb, base_settings.ingest.max_upload_size_mb),
+                se("ingest.max_files_per_upload", "单次最大文件数", settings.ingest.max_files_per_upload, base_settings.ingest.max_files_per_upload),
+                se("ingest.parse_concurrency", "解析并发", settings.ingest.parse_concurrency, base_settings.ingest.parse_concurrency),
+                se("ingest.parser_timeout_s", "解析超时", settings.ingest.parser_timeout_s, base_settings.ingest.parser_timeout_s),
                 _env_entry("mineru.api_token", "MINERU_API_TOKEN", "MINERU_API_TOKEN", "服务端 MinerU Token，只显示是否配置。", secret=True),
+                se("planner.default_digest_mode", "默认 Digest 模式", settings.planner.default_digest_mode, base_settings.planner.default_digest_mode),
+                se("planner.default_tone", "默认写作语气", settings.planner.default_tone, base_settings.planner.default_tone),
+                se("planner.allow_external_search", "Planner 允许外部检索", settings.planner.allow_external_search, base_settings.planner.allow_external_search),
+                se("planner.sprint.min_chapters", "冲刺最少章节", settings.planner.sprint.min_chapters, base_settings.planner.sprint.min_chapters),
+                se("planner.sprint.max_chapters", "冲刺最多章节", settings.planner.sprint.max_chapters, base_settings.planner.sprint.max_chapters),
+                se("planner.sprint.target_length", "冲刺目标长度", settings.planner.sprint.target_length, base_settings.planner.sprint.target_length),
+                se("planner.systematic.min_chapters", "系统最少章节", settings.planner.systematic.min_chapters, base_settings.planner.systematic.min_chapters),
+                se("planner.systematic.max_chapters", "系统最多章节", settings.planner.systematic.max_chapters, base_settings.planner.systematic.max_chapters),
+                se("planner.systematic.target_length", "系统目标长度", settings.planner.systematic.target_length, base_settings.planner.systematic.target_length),
+                se("docgen.max_parallel_chapters", "DocGen 章节并发", settings.docgen.max_parallel_chapters, base_settings.docgen.max_parallel_chapters),
+                se("docgen.io_parallelism", "DocGen I/O 并发", settings.docgen.io_parallelism, base_settings.docgen.io_parallelism),
+                se("docgen.max_research_queries", "每章研究 Query 数", settings.docgen.max_research_queries, base_settings.docgen.max_research_queries),
+                se("docgen.retrieval_timeout_s", "研究检索预算", settings.docgen.retrieval_timeout_s, base_settings.docgen.retrieval_timeout_s),
+                se("docgen.read_timeout_s", "网页读取超时", settings.docgen.read_timeout_s, base_settings.docgen.read_timeout_s),
+                se("interact.history_turns", "伴读历史轮数", settings.interact.history_turns, base_settings.interact.history_turns),
+                se("knowledge_graph.extract_max_parallelism", "图谱抽取并发", settings.knowledge_graph.extract_max_parallelism, base_settings.knowledge_graph.extract_max_parallelism),
+                se("knowledge_graph.sync_after_docgen", "DocGen 后同步图谱", settings.knowledge_graph.sync_after_docgen, base_settings.knowledge_graph.sync_after_docgen),
             ],
         ),
         SettingSection(
@@ -194,20 +298,26 @@ def build_settings_overview_data() -> SettingsOverviewData:
             label="检索与联网",
             description="本地 RAG、外部搜索 provider、reader 与 rerank 配置。",
             entries=[
-                _settings_entry("rag.top_k", "RAG Top-K", settings.rag.top_k),
-                _settings_entry("rag.similarity_threshold", "相似度阈值", settings.rag.similarity_threshold),
-                _settings_entry("rag.rerank_model", "Rerank 模型", settings.rag.rerank_model),
+                se("rag.top_k", "RAG Top-K", settings.rag.top_k, base_settings.rag.top_k),
+                se("rag.similarity_threshold", "相似度阈值", settings.rag.similarity_threshold, base_settings.rag.similarity_threshold),
+                se("rag.rerank_model", "Rerank 模型", settings.rag.rerank_model, base_settings.rag.rerank_model),
+                se("rag.rerank_top_k", "Rerank 保留条数", settings.rag.rerank_top_k, base_settings.rag.rerank_top_k),
                 _env_entry("rag.rerank_api_key", "RAG_RERANK_API_KEY", "RAG_RERANK_API_KEY", "Rerank 服务密钥。", secret=True),
-                _settings_entry("local_rag.priority", "本地资料优先", settings.local_rag.priority),
-                _settings_entry("local_rag.min_results", "本地命中阈值", settings.local_rag.min_results),
-                _settings_entry("search.retriever_profile", "检索 Profile", settings.search.retriever_profile),
-                _settings_entry("search.retrievers", "显式 Retrievers", settings.search.retrievers),
-                _settings_entry("search.max_results_per_query", "单 query 最大结果数", settings.search.max_results_per_query),
-                _settings_entry("search.provider_timeout_s", "Provider 超时", settings.search.provider_timeout_s),
-                _settings_entry("search.total_timeout_s", "总检索预算", settings.search.total_timeout_s),
-                _settings_entry("search.parallel_retrievers", "并发检索", settings.search.parallel_retrievers),
-                _settings_entry("search.max_parallel_retrievers", "最大并发 Provider", settings.search.max_parallel_retrievers),
-                _settings_entry("search.fusion_k", "融合参数 K", settings.search.fusion_k),
+                se("local_rag.priority", "本地资料优先", settings.local_rag.priority, base_settings.local_rag.priority),
+                se("local_rag.min_results", "本地命中阈值", settings.local_rag.min_results, base_settings.local_rag.min_results),
+                se("search.retriever_profile", "检索 Profile", settings.search.retriever_profile, base_settings.search.retriever_profile),
+                se("search.retrievers", "显式 Retrievers", settings.search.retrievers, base_settings.search.retrievers),
+                se("search.max_results_per_query", "单 query 最大结果数", settings.search.max_results_per_query, base_settings.search.max_results_per_query),
+                se("search.scrape_timeout_s", "网页抓取超时", settings.search.scrape_timeout_s, base_settings.search.scrape_timeout_s),
+                se("search.provider_timeout_s", "Provider 超时", settings.search.provider_timeout_s, base_settings.search.provider_timeout_s),
+                se("search.total_timeout_s", "总检索预算", settings.search.total_timeout_s, base_settings.search.total_timeout_s),
+                se("search.read_timeout_s", "Reader 超时", settings.search.read_timeout_s, base_settings.search.read_timeout_s),
+                se("search.parallel_retrievers", "并发检索", settings.search.parallel_retrievers, base_settings.search.parallel_retrievers),
+                se("search.max_parallel_retrievers", "最大并发 Provider", settings.search.max_parallel_retrievers, base_settings.search.max_parallel_retrievers),
+                se("search.fusion_k", "融合参数 K", settings.search.fusion_k, base_settings.search.fusion_k),
+                se("search.runtime_cache_enabled", "检索运行时缓存", settings.search.runtime_cache_enabled, base_settings.search.runtime_cache_enabled),
+                se("search.runtime_cache_ttl_s", "检索缓存 TTL", settings.search.runtime_cache_ttl_s, base_settings.search.runtime_cache_ttl_s),
+                se("search.runtime_cache_max_entries", "检索缓存容量", settings.search.runtime_cache_max_entries, base_settings.search.runtime_cache_max_entries),
                 _env_entry("search.tavily_key", "TAVILY_API_KEY", "TAVILY_API_KEY", "Tavily 检索密钥。", secret=True),
                 _env_entry("search.brave_key", "BRAVE_SEARCH_API_KEY", "BRAVE_SEARCH_API_KEY", "Brave Search 密钥。", secret=True),
                 _env_entry("search.exa_key", "EXA_API_KEY", "EXA_API_KEY", "Exa 语义搜索密钥。", secret=True),
@@ -241,34 +351,40 @@ def build_settings_overview_data() -> SettingsOverviewData:
             label="观测与安全",
             description="LangSmith、LLM 统计、安全护栏与并发控制。",
             entries=[
-                _settings_entry("observability.tracing_enabled", "Tracing 总开关", settings.observability.tracing_enabled),
-                _settings_entry("observability.llm_token_summary_enabled", "LLM Token 摘要", settings.observability.llm_token_summary_enabled),
-                _settings_entry("observability.timing_top_k", "慢步骤展示数量", settings.observability.timing_top_k),
+                se("observability.tracing_enabled", "Tracing 总开关", settings.observability.tracing_enabled, base_settings.observability.tracing_enabled),
+                se("observability.llm_token_summary_enabled", "LLM Token 摘要", settings.observability.llm_token_summary_enabled, base_settings.observability.llm_token_summary_enabled),
+                se("observability.timing_top_k", "慢步骤展示数量", settings.observability.timing_top_k, base_settings.observability.timing_top_k),
                 _env_entry("langsmith.tracing", "LANGSMITH_TRACING", "LANGSMITH_TRACING"),
                 _env_entry("langsmith.api_key", "LANGSMITH_API_KEY", "LANGSMITH_API_KEY", secret=True),
                 _env_entry("langsmith.project", "LANGSMITH_PROJECT", "LANGSMITH_PROJECT"),
                 _env_entry("langsmith.endpoint", "LANGSMITH_ENDPOINT", "LANGSMITH_ENDPOINT"),
-                _settings_entry(
+                se(
                     "observability.langsmith_capture_inputs",
                     "Trace 输入预览",
                     settings.observability.langsmith_capture_inputs,
+                    base_settings.observability.langsmith_capture_inputs,
                     "空值表示按 APP_MODE 自动：local 开启，非本地关闭。",
                 ),
-                _settings_entry(
+                se(
                     "observability.langsmith_capture_outputs",
                     "Trace 输出预览",
                     settings.observability.langsmith_capture_outputs,
+                    base_settings.observability.langsmith_capture_outputs,
                     "空值表示按 APP_MODE 自动：local 开启，非本地关闭。",
                 ),
-                _settings_entry(
+                se(
                     "observability.langsmith_max_text_chars",
                     "Trace 文本预览上限",
                     settings.observability.langsmith_max_text_chars,
+                    base_settings.observability.langsmith_max_text_chars,
                 ),
-                _settings_entry("observability.llm_observability_enabled", "LLM 调用统计", settings.observability.llm_observability_enabled),
-                _settings_entry("runtime.llm_concurrency_limit", "LLM 并发限制", settings.runtime.llm_concurrency_limit),
-                _settings_entry("safety.guardrails_enabled", "Guardrails", settings.safety.guardrails_enabled),
-                _settings_entry("search.runtime_cache_enabled", "检索运行时缓存", settings.search.runtime_cache_enabled),
+                se("observability.llm_observability_enabled", "LLM 调用统计", settings.observability.llm_observability_enabled, base_settings.observability.llm_observability_enabled),
+                se("observability.llm_observability_max_records", "LLM 统计保留条数", settings.observability.llm_observability_max_records, base_settings.observability.llm_observability_max_records),
+                se("runtime.llm_concurrency_limit", "LLM 并发限制", settings.runtime.llm_concurrency_limit, base_settings.runtime.llm_concurrency_limit),
+                se("runtime.default_token_budget", "默认上下文预算", settings.runtime.default_token_budget, base_settings.runtime.default_token_budget),
+                se("embedding.batch_size", "Embedding 批大小", settings.embedding.batch_size, base_settings.embedding.batch_size),
+                se("embedding.batch_delay_s", "Embedding 批延迟", settings.embedding.batch_delay_s, base_settings.embedding.batch_delay_s),
+                se("safety.guardrails_enabled", "Guardrails", settings.safety.guardrails_enabled, base_settings.safety.guardrails_enabled),
             ],
         ),
     ]
@@ -278,8 +394,29 @@ def build_settings_overview_data() -> SettingsOverviewData:
         mode=mode,
         sections=sections,
         notes=[
-            f"页面只展示后端当前生效配置；环境变量和 {DEFAULT_PROJECT_SETTINGS_FILENAME} 需要在部署环境或文件中修改。",
-            "敏感字段只显示是否已配置，不返回明文。",
-            "浏览器本地偏好只影响当前设备，不会写回后端配置。",
+            f"{DEFAULT_PROJECT_SETTINGS_FILENAME} 作为项目默认值保留；页面保存的是当前用户的非敏感 settings 覆盖。",
+            "环境变量与密钥只展示后端是否配置；前端填写的 .env.sample 类字段只保存在当前浏览器。",
+            "敏感字段不返回后端明文，也不会写入用户 settings 数据库。",
         ],
     )
+
+
+def update_user_settings_overview_data(
+    *,
+    session: Session,
+    user_id: str,
+    settings_payload: Mapping[str, Any],
+    reset: bool = False,
+) -> SettingsOverviewData:
+    """Persist current user's non-secret settings and return fresh overview."""
+
+    if reset:
+        clear_user_runtime_settings(session, user_id=user_id)
+    else:
+        normalized_payload = _normalize_user_settings_payload(settings_payload)
+        upsert_user_runtime_settings_payload(
+            session,
+            user_id=user_id,
+            payload=normalized_payload,
+        )
+    return build_settings_overview_data(session=session, user_id=user_id)

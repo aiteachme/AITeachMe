@@ -35,7 +35,6 @@ class ModelsSettings(_SettingsModel):
     ocr: str | None = None
     embedding: str = "text-embedding-v3"
     image_generation: str | None = None
-    mermaid_generation: str | None = None
     overrides: dict[str, str] = Field(default_factory=dict)
 
     @property
@@ -229,10 +228,6 @@ class Settings(_SettingsModel):
     @property
     def image_generation_enabled(self) -> bool:
         return bool((self.models.image_generation or "").strip())
-
-    @property
-    def mermaid_generation_enabled(self) -> bool:
-        return bool((self.models.mermaid_generation or "").strip())
 
     def parse_retrievers(
         self,

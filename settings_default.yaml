@@ -17,8 +17,6 @@ models:
   embedding: text-embedding-v4
   # 文生图模型；留空表示不启用真实图片生成。
   image_generation: "DESCRIBE"
-  # Mermaid 图示生成模型；留空则禁用 LLM 图示生成。
-  mermaid_generation: qwen-plus-latest
   # 预留模型别名覆盖表；例如将某些业务标签映射到特定模型名。
   overrides: {}
 

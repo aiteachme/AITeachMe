@@ -105,7 +105,16 @@ backend/app/workflows/digest/docgen/graph.py
 
 这比单纯保存 `dense_context` 更有价值。后续 Interact / Examine / Profile 可以复用这些结构，而不是解析 Markdown。
 
-### 2.5 发布级 manifest
+### 2.5 LLM 内容复核与局部修补
+
+`review_content` 现在不是纯规则检查。每章会先走 LLM 结构化复核，再叠加规则 guardrail；`repair_or_route` 已能对安全的 `surface_patch` / `section_patch` 执行局部 Markdown patch。
+
+这层要继续保持两个边界：
+
+- review 是裁判，只输出结构化判断和 action。
+- repair 是执行者，只按 action 做局部修补，并把动作写入 `repair_trace`。
+
+### 2.6 发布级 manifest
 
 `publish_document` 已经把 DocGen artifacts 写入：
 
@@ -144,12 +153,13 @@ knowledge_markdowns/versions/vXXXX/docgen_manifest.json
 - 文档主线与 `graph.py` 一致。
 - 文档明确当前 MVP 缺口，而不是描述已经过时的流程。
 
-### P1. repair_or_route 还不是质量闭环
+### P1. repair_or_route 已能局部修补，但还不是质量闭环
 
 现状：
 
-- `review_content` 已经能产出 `ReviewAction`。
-- `repair_or_route` 当前只做 MVP：轻动作标记、重动作记录 warning。
+- `review_content` 已经能产出带目标锚点和修补指令的 `ReviewAction`。
+- `repair_or_route` 已能执行 `surface_patch` / `section_patch`。
+- `evidence_patch`、`regenerate_chapter` 和二次复核闭环还没有接上。
 - graph 仍是一次性路径：
 
 ```text
@@ -158,8 +168,8 @@ review_content -> repair_or_route -> merge_review
 
 影响：
 
-- 复核发现的问题多数不能自动消化。
-- `review_actions` 对最终文档质量的提升有限。
+- 一部分局部问题已经能自动消化。
+- 证据缺口和严重章节失败仍只能结构化记录。
 - 后续如果直接加循环，state append 字段会带来重复产物风险。
 
 建议：
@@ -169,11 +179,11 @@ review_content -> repair_or_route -> merge_review
 1. 修正 action 状态语义，不真实 patch 就不要标 `applied`。
 2. 扩展 `ReviewAction` 合同，再引入 `RepairLoopState` 和最多两轮路由。
 
-### P1. ReviewAction 合同不足
+### P1. ReviewAction 已驱动局部 patch，但证据补强和重写未闭环
 
 现状：
 
-`ReviewAction` 主要字段是：
+`ReviewAction` 已经扩展为能描述修补目标和约束：
 
 ```text
 action_id
@@ -181,25 +191,28 @@ action_type
 chapter_index
 severity
 reason
+target_anchor
+instruction
+constraints
+expected_effect
 status
 ```
 
 影响：
 
-- repair 层需要靠自然语言 reason 猜修哪里。
-- 证据不足被映射成 `regenerate_chapter`，粒度过重。
-- 无法稳定实现 targeted patch。
+- repair 层已经不需要只靠自然语言 reason 猜修哪里。
+- 证据不足已可以表达为 `evidence_patch`，不必默认整章重写。
+- 当前 `repair_or_route` 已经能消费 `surface_patch` / `section_patch` 执行局部 Markdown patch。
+- `evidence_patch` 和 `regenerate_chapter` 仍只结构化记录，等待有限回流阶段接入。
 
-建议新增：
+后续建议：
 
 ```text
-target_anchor
-instruction
-constraints
-expected_effect
+继续让 repair_or_route 消费 target_anchor / instruction / constraints / expected_effect，
+下一步实现 evidence_patch 和单章 regenerate。
 ```
 
-并补充 `evidence_patch`、`record_only` 类型。
+当前 `record_only` 与基础 `repair_trace` 已接入 manifest。
 
 ### P1. state reducer 与 repair loop 不兼容
 
@@ -233,29 +246,23 @@ practice_manifests
 - `merge_review` 只消费每章 latest active artifact。
 - manifest 同时保留 latest 和 history。
 
-### P1. 图片 disabled manifest 缺失
+### P1. 文生图已接入，资产体验仍需收口
 
 现状：
 
-- image generation 未启用时，image 请求可能在 plan 阶段被移除。
-- `enhance_chapters` 会 strip image 占位。
-- `AssetManifest` 看不到 disabled 记录。
+- `shared.infra.llm_support.agenerate_image` 已提供文生图统一入口。
+- DocGen image 占位已能生成图片、写入 `assets/docgen/...`，并把图片链接回填 Markdown。
+- `AssetManifest` 会记录 `generated` / `disabled` / `failed` 状态。
 
 影响：
 
-- 用户看到没有图片，但系统无法说明是 disabled、failed 还是 skipped。
-- 后续前端或重跑任务缺少资产决策依据。
+- 后端侧已经能解释图片状态。
+- 前端展示、失败重试和人工重跑策略还需要继续收口。
 
 建议：
 
-- 保留 image intent，但不泄露内部占位符。
-- `AssetManifest` 记录：
-
-```text
-kind: image
-status: disabled
-reason: image_generation_disabled
-```
+- 前端读取 `asset_manifest.assets` 渲染图片状态。
+- 对 transient failure 增加一次轻量重试或人工重跑入口。
 
 ### P2. final_merge_patch 尚未实现
 
@@ -323,6 +330,8 @@ AITeachMe 的 DocGen 需要的是可控教学文档生成，不是开放式研�
 
 ### Phase 1：修正 repair 状态语义
 
+状态：已落地基础版。
+
 目标：
 
 - 不真实修改正文时，不标记 `applied`。
@@ -334,6 +343,8 @@ AITeachMe 的 DocGen 需要的是可控教学文档生成，不是开放式研�
 - 立刻提升调试可信度。
 
 ### Phase 2：扩展 ReviewAction
+
+状态：已落地合同字段，`surface_patch` / `section_patch` 已接入 repair 执行；证据补强和重写仍待接入。
 
 目标：
 

@@ -55,8 +55,11 @@ def build_publish_document_node(*, context: WorkflowContext):
             "conflict_reports": list(state.get("conflict_reports") or []),
             "chapter_review_reports": list(state.get("chapter_review_reports") or []),
             "document_consistency_report": dict(state.get("document_consistency_report") or {}),
+            "review_decision": str(state.get("review_decision") or ""),
             "review_actions": list(state.get("review_actions") or []),
             "unresolved_warnings": list(state.get("unresolved_warnings") or []),
+            "repair_loop_state": dict(state.get("repair_loop_state") or {}),
+            "repair_trace": list(state.get("repair_trace") or []),
             "source_trust_summary": dict((state.get("document_backbone") or {}).get("source_trust_summary") or {}),
             "asset_manifest": {
                 "assets": [

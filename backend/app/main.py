@@ -176,9 +176,6 @@ def _log_infra_diagnostics(settings) -> None:
         f"    MinerU Server Token    : {'SET' if get_env('MINERU_API_TOKEN') else 'not set'}"
     )
     lines.append(
-        f"    Mermaid Model          : {settings.models.mermaid_generation or 'disabled'}"
-    )
-    lines.append(
         f"    Image Model            : {settings.models.image_generation or 'disabled'}"
     )
 

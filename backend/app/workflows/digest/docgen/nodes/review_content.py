@@ -21,6 +21,22 @@ from app.workflows.digest.docgen.nodes.common import publish_docgen_progress
 from app.workflows.digest.docgen.state import DocGenState
 
 
+def _review_decision(actions: list, *, document_issue_count: int) -> str:
+    blocking_types = {"section_patch", "evidence_patch", "regenerate_chapter", "re_dispatch", "rebuild_backbone"}
+    has_blocking_action = any(
+        action.action_type in blocking_types and action.severity in {"warning", "error"}
+        for action in actions
+    )
+    has_error_action = any(action.severity == "error" for action in actions)
+    if has_error_action:
+        return "fail"
+    if has_blocking_action:
+        return "needs_repair"
+    if actions or document_issue_count:
+        return "publish_with_warnings"
+    return "good"
+
+
 def build_review_content_node(*, context: WorkflowContext):
     async def review_content_node(state: DocGenState) -> dict:
         started_at = perf_counter()
@@ -64,12 +80,13 @@ def build_review_content_node(*, context: WorkflowContext):
         actions = []
         # 章节复核只看单章的覆盖、证据和冲突；整本文档一致性放在所有章节复核之后统一判断。
         for draft in enhanced:
-            reviewed_draft, report, chapter_actions = review_chapter(
+            reviewed_draft, report, chapter_actions = await review_chapter(
                 draft=draft,
                 task=tasks_by_chapter.get(draft.chapter_index),
                 claim_ledger=claim_ledgers_by_chapter.get(draft.chapter_index),
                 claim_evidence_map=claim_maps_by_chapter.get(draft.chapter_index),
                 conflict_report=conflict_reports_by_chapter.get(draft.chapter_index),
+                digest_mode=state.get("digest_mode") or "",
             )
             reviewed.append(reviewed_draft)
             reports.append(report)
@@ -79,6 +96,10 @@ def build_review_content_node(*, context: WorkflowContext):
             document_backbone=document_backbone,
             expected_chapter_count=len(list(state.get("chapter_tasks") or [])),
         )
+        review_decision = _review_decision(
+            actions,
+            document_issue_count=len(consistency_report.issues),
+        )
         elapsed_ms = int((perf_counter() - started_at) * 1000)
         update_knowledge_build_status(
             state["subject"],
@@ -86,14 +107,14 @@ def build_review_content_node(*, context: WorkflowContext):
             status="running",
             stage="content_reviewed",
             digest_mode=state.get("digest_mode") or None,
-            current_stage_description=f"内容复核完成，记录 {len(actions)} 条回流建议。",
+            current_stage_description=f"内容复核完成，决策 {review_decision}，记录 {len(actions)} 条回流建议。",
         )
         append_knowledge_build_recent_event(
             state["subject"],
             requested_at=state["requested_at"],
             event={
                 "stage": "content_reviewed",
-                "summary": f"章节复核和整本一致性检查完成，回流建议 {len(actions)} 条。",
+                "summary": f"章节复核和整本一致性检查完成，决策 {review_decision}，回流建议 {len(actions)} 条。",
                 "created_at": utcnow(),
             },
         )
@@ -103,6 +124,7 @@ def build_review_content_node(*, context: WorkflowContext):
             stage="content_reviewed",
             payload={
                 "chapter_count": len(reviewed),
+                "review_decision": review_decision,
                 "review_action_count": len(actions),
                 "document_issue_count": len(consistency_report.issues),
             },
@@ -111,8 +133,10 @@ def build_review_content_node(*, context: WorkflowContext):
             "reviewed_chapter_drafts": [item.model_dump(mode="json") for item in reviewed],
             "chapter_review_reports": [item.model_dump(mode="json") for item in reports],
             "document_consistency_report": consistency_report.model_dump(mode="json"),
+            "review_decision": review_decision,
             "review_actions": [item.model_dump(mode="json") for item in actions],
             "review_ms": elapsed_ms,
+            "llm_calls_total": len(enhanced),
         }
 
     return review_content_node

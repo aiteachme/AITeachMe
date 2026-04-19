@@ -260,8 +260,9 @@ summarize_files
 处理：
 
 - `review_chapter`：检查单章合同覆盖、证据支撑、质量信号、长度和冲突风险。
+- `review_chapter` 必须先调用 LLM 做结构化内容复核，再叠加规则复核兜底，避免只靠字符串覆盖率判断质量。
 - `review_document_consistency`：检查章节数量、重复标题、骨架术语覆盖和整本来源摘要。
-- 只做判断，不检索、不打开网页、不调工具、不改正文。
+- 只做判断，不检索、不打开网页、不改正文。
 
 输出：
 
@@ -273,8 +274,8 @@ summarize_files
 
 当前缺口：
 
-- 还没有显式 `review_decision` 字段。
-- `ReviewAction` 只能粗分 `surface_patch`、`section_patch`、`regenerate_chapter`、`re_dispatch`、`rebuild_backbone`，尚不能直接驱动定向修补。
+- 已有 `review_decision` 字段，用于表达 `good` / `needs_repair` / `publish_with_warnings` / `fail`。
+- `ReviewAction` 已扩展出 `evidence_patch`、`record_only`、目标锚点、修补指令、约束和预期效果；repair 层已消费 `surface_patch` / `section_patch`，下一步是接入 `evidence_patch` 和 regenerate 闭环。
 
 ### 2.8 `repair_or_route`
 
@@ -285,9 +286,11 @@ summarize_files
 
 当前处理：
 
-- 对 `surface_patch` 标记 `applied`。
-- 对 `section_patch`、`regenerate_chapter`、`re_dispatch`、`rebuild_backbone` 记录为 unresolved warning。
+- 对 `surface_patch` / `section_patch` 调用 LLM 执行局部 Markdown patch。
+- 对 `evidence_patch` / `regenerate_chapter` / redispatch 类动作降级为结构化记录。
+- 对 `record_only` 类动作保持记录状态。
 - 不自动重新检索、不重写章节、不回到 `review_content`。
+- 输出 `repair_trace`，明确记录每个动作是否修改正文、失败原因和降级状态。
 
 输出：
 
@@ -298,8 +301,8 @@ summarize_files
 
 当前缺口：
 
-- `surface_patch` 的状态语义偏乐观，因为当前没有真正修改正文。
-- 尚无 `RepairLoopState`、`repair_trace`。
+- patch 类动作已能修改正文，但尚未进入二次 review。
+- 尚无可执行的 `RepairLoopState` 路由逻辑。
 - 尚未实现 `review_content <-> repair_or_route` 的最多两轮闭环。
 
 ### 2.9 `merge_review`
@@ -419,7 +422,7 @@ summarize_files
 | `enhance` | `enhance_chapters` | 已落地，需补 asset disabled manifest |
 | `review_content.review_chapter` | `review_content` 内部 | 已落地 |
 | `review_content.document_consistency_review` | `review_content` 内部 | 已落地 |
-| `repair_or_route` | `repair_or_route` | 已落地 MVP：记录或标记轻动作；待补真实 repair loop |
+| `repair_or_route` | `repair_or_route` | 已落地局部 patch：可执行 surface/section patch；待补 evidence/regenerate 和真实 repair loop |
 | `merge_review` | `merge_review` | 已落地 |
 | `final_merge_patch` | 无 | 待新增，只处理合并后小问题 |
 | `finalize_titles` | `finalize_titles` | 已落地 |
@@ -615,7 +618,7 @@ repair_trace
 | P1 | repair loop 还没形成闭环 | 复核只能记录，不能真正按问题级别修补 |
 | P1 | `ReviewAction` 合同不足 | 无法驱动定向 patch、补证据和局部重写 |
 | P1 | state append reducer 与回流不兼容 | 引入循环后容易重复发布旧章节或重复 manifest |
-| P1 | image disabled manifest 缺失 | 用户和后续系统看不到图片降级原因 |
+| P1 | image 生成已接入，仍缺前端展示和失败重试策略 | 用户能拿到 manifest，但图片资产体验还需收口 |
 | P2 | `final_merge_patch` 未实现 | 合并后小问题只能靠人工或间接收口 |
 | P2 | research budget 仍偏静态 | 还没充分根据覆盖度、证据缺口和章节难度动态调度 |
 

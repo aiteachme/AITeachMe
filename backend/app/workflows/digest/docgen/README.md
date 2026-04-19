@@ -91,8 +91,8 @@ flowchart TD
 | 3 | `build_document_backbone` | 构建术语、概念依赖、主张池、符号表、易混点；失败时降级为 seed 弱骨架 |
 | 4 | `generate_chapters` | 每章检索、读取/压缩上下文、生成 evidence ledger、claim ledger、claim/evidence map、conflict report，并写草稿 |
 | 5 | `enhance_chapters` | 处理 Mermaid、图片/交互占位降级、公式清洗、Markdown 结构和本章自检题 |
-| 6 | `review_content` | 逐章检查合同覆盖、证据支撑、质量信号，并做整本术语/标题/章节数一致性检查 |
-| 7 | `repair_or_route` | MVP 只处理安全表层动作和记录重动作 warning；当前还不是完整 repair loop |
+| 6 | `review_content` | 逐章执行 LLM 结构化内容复核，并用规则复核兜底；同时做整本术语/标题/章节数一致性检查 |
+| 7 | `repair_or_route` | 对 `surface_patch` / `section_patch` 执行局部 Markdown patch，对证据补强和重写类动作结构化记录 |
 | 8 | `merge_review` | 按章去重排序，生成章节 metadata，合并 Markdown，做发布前完整性检查 |
 | 9 | `finalize_titles` | 保持 confirmed plan 映射的前提下统一最终标题，并重建整本 Markdown |
 | 10 | `publish_document` | 写 `_build`、当前发布文件、版本归档、`docgen_manifest.json` 和 `KnowledgeDoc` rows |
@@ -214,11 +214,11 @@ title_review_report
 
 当前主线不需要推倒重来，但有几处需要后续优先收口：
 
-- `repair_or_route` 还是一次性 MVP，没有 `review_content <-> repair_or_route` 两轮闭环。
-- `ReviewAction` 结构偏弱，缺少 `evidence_patch`、`target_anchor`、`instruction`、`constraints`、`expected_effect` 等能驱动定向修补的字段。
-- `surface_patch` 当前更像“记录通过”，还没有真正 patch 正文，状态语义需要先校准。
+- `repair_or_route` 还是一次性路径，没有 `review_content <-> repair_or_route` 两轮闭环。
+- `ReviewAction` 已扩展出 `evidence_patch`、`target_anchor`、`instruction`、`constraints`、`expected_effect`，repair 层已消费 `surface_patch` / `section_patch` 执行局部修补，`evidence_patch` 和 `regenerate_chapter` 仍待闭环阶段接入。
+- patch 类动作只有真实修改正文才会标记为 `applied`；未执行的动作会进入 `repair_trace`。
 - 如果后续引入 repair loop，`chapter_drafts` / `enhanced_chapter_drafts` 这类 `operator.add` fan-in 字段需要版本化或按章替换，否则容易累积旧草稿。
-- 图片生成未启用时，当前更偏向移除 image 请求；后续应在 `AssetManifest` 显式记录 `disabled`，避免 manifest 看不出降级原因。
+- 文生图已接入 infra `agenerate_image` 和 DocGen image 占位处理；后续还需要补更细的前端展示与失败重试策略。
 - `final_merge_patch` 尚未独立实现，合并后才暴露的小问题只能由 `merge_review` / `finalize_titles` 间接收口。
 
 这些问题都不要求立刻大改 graph，但应该按 `REFACTOR_PLAN.md` 的顺序小步处理。

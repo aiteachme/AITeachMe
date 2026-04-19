@@ -224,7 +224,7 @@ def _pad_chapters_to_minimum(
 def _media_plan() -> dict[str, Any]:
     settings = get_settings()
     return {
-        "enable_mermaid": settings.mermaid_generation_enabled,
+        "enable_mermaid": True,
         "enable_images": settings.image_generation_enabled,
         "enable_interactive_html": False,
     }

@@ -900,6 +900,54 @@ class ChapterReviewReport(DocGenBaseModel):
         return clean_string_list(value, limit=18)
 
 
+class ChapterReviewActionSuggestion(DocGenBaseModel):
+    action_type: Literal[
+        "surface_patch",
+        "section_patch",
+        "evidence_patch",
+        "regenerate_chapter",
+        "record_only",
+        "re_dispatch",
+        "rebuild_backbone",
+    ] = "record_only"
+    severity: Literal["info", "warning", "error"] = "warning"
+    reason: str = ""
+    target_anchor: str = ""
+    instruction: str = ""
+    constraints: list[str] = Field(default_factory=list)
+    expected_effect: str = ""
+
+    @field_validator("reason", "target_anchor", "instruction", "expected_effect", mode="before")
+    @classmethod
+    def _text(cls, value: Any) -> str:
+        return clean_text(value)
+
+    @field_validator("constraints", mode="before")
+    @classmethod
+    def _constraints(cls, value: Any) -> list[str]:
+        return clean_string_list(value, limit=12)
+
+
+class LLMChapterReviewResult(DocGenBaseModel):
+    passed: bool = True
+    coverage_score: float = 1.0
+    evidence_support_score: float = 1.0
+    quality_score: float = 1.0
+    missing_elements: list[str] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+    actions: list[ChapterReviewActionSuggestion] = Field(default_factory=list)
+
+    @field_validator("coverage_score", "evidence_support_score", "quality_score", mode="before")
+    @classmethod
+    def _unit_float(cls, value: Any) -> float:
+        return clean_unit_float(value, default=0.0)
+
+    @field_validator("missing_elements", "warnings", mode="before")
+    @classmethod
+    def _lists(cls, value: Any) -> list[str]:
+        return clean_string_list(value, limit=18)
+
+
 class DocumentConsistencyReport(DocGenBaseModel):
     passed: bool = True
     issues: list[dict[str, Any]] = Field(default_factory=list)
@@ -915,13 +963,47 @@ class DocumentConsistencyReport(DocGenBaseModel):
 
 class ReviewAction(DocGenBaseModel):
     action_id: str = ""
-    action_type: Literal["surface_patch", "section_patch", "regenerate_chapter", "re_dispatch", "rebuild_backbone"] = "surface_patch"
+    action_type: Literal[
+        "surface_patch",
+        "section_patch",
+        "evidence_patch",
+        "regenerate_chapter",
+        "record_only",
+        "re_dispatch",
+        "rebuild_backbone",
+    ] = "surface_patch"
     chapter_index: int | None = None
     severity: Literal["info", "warning", "error"] = "warning"
     reason: str = ""
-    status: Literal["recorded", "applied", "skipped"] = "recorded"
+    target_anchor: str = ""
+    instruction: str = ""
+    constraints: list[str] = Field(default_factory=list)
+    expected_effect: str = ""
+    status: Literal["recorded", "applied", "skipped", "downgraded"] = "recorded"
 
-    @field_validator("action_id", "reason", mode="before")
+    @field_validator("action_id", "reason", "target_anchor", "instruction", "expected_effect", mode="before")
+    @classmethod
+    def _text(cls, value: Any) -> str:
+        return clean_text(value)
+
+    @field_validator("constraints", mode="before")
+    @classmethod
+    def _constraints(cls, value: Any) -> list[str]:
+        return clean_string_list(value, limit=12)
+
+
+class RepairTraceItem(DocGenBaseModel):
+    trace_id: str = ""
+    action_id: str = ""
+    action_type: str = ""
+    chapter_index: int | None = None
+    status: Literal["recorded", "applied", "skipped", "downgraded"] = "recorded"
+    reason: str = ""
+    target_anchor: str = ""
+    changed: bool = False
+    detail: str = ""
+
+    @field_validator("trace_id", "action_id", "action_type", "reason", "target_anchor", "detail", mode="before")
     @classmethod
     def _text(cls, value: Any) -> str:
         return clean_text(value)
@@ -940,6 +1022,7 @@ __all__ = [
     "ChapterGenerationTaskSeed",
     "ChapterGenerationTask",
     "ChapterQualitySignals",
+    "ChapterReviewActionSuggestion",
     "ChapterReviewReport",
     "ChapterResearchTrace",
     "ClaimEvidenceBinding",
@@ -963,10 +1046,12 @@ __all__ = [
     "FileMaterialSummary",
     "FileMaterialSummaryBatch",
     "HighConfidenceEvidenceUnit",
+    "LLMChapterReviewResult",
     "MergeReviewIssue",
     "MergeReviewReport",
     "NotationItem",
     "PracticeManifest",
+    "RepairTraceItem",
     "ReviewAction",
     "ReviewedChapterDraft",
     "SourceAffinityByChapter",
