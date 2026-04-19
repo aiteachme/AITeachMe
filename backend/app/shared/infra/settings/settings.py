@@ -18,7 +18,6 @@ from .support import (
     split_csv_names,
 )
 
-
 class _SettingsModel(BaseModel):
     """Base model for settings-shaped runtime sections."""
 
@@ -35,7 +34,6 @@ class ModelsSettings(_SettingsModel):
     ocr: str | None = None
     embedding: str = "text-embedding-v3"
     image_generation: str | None = None
-    mermaid_generation: str | None = None
     overrides: dict[str, str] = Field(default_factory=dict)
 
     @property
@@ -57,12 +55,11 @@ class PlannerModeSettings(_SettingsModel):
 
 class PlannerSettings(_SettingsModel):
     default_digest_mode: str = "sprint"
-    default_tone: str = "encouraging"
     allow_external_search: bool = True
     sprint: PlannerModeSettings = Field(
         default_factory=lambda: PlannerModeSettings(
-            min_chapters=3,
-            max_chapters=6,
+            min_chapters=4,
+            max_chapters=7,
             target_length="3000-5000字",
         )
     )
@@ -89,8 +86,8 @@ class PlannerSettings(_SettingsModel):
         merge_mode(
             "sprint",
             {
-                "min_chapters": 3,
-                "max_chapters": 6,
+                "min_chapters": 4,
+                "max_chapters": 7,
                 "target_length": "3000-5000字",
             },
         )
@@ -176,17 +173,13 @@ class ObservabilitySettings(_SettingsModel):
     llm_observability_max_records: int = 5000
 
 
-class SafetySettings(_SettingsModel):
-    guardrails_enabled: bool = True
-
-
 class Settings(_SettingsModel):
     """Project-level runtime settings.
 
     The public shape mirrors repo-root `settings_default.yaml`, e.g.
     `settings.models.reason` or `settings.search.provider_timeout_s`.
 
-    The settings object intentionally does not mirror legacy flat names; call
+    The settings object intentionally does not mirror old flat names; call
     sites should use the same nested paths as `settings_default.yaml`.
     """
 
@@ -202,7 +195,6 @@ class Settings(_SettingsModel):
     embedding: EmbeddingSettings = Field(default_factory=EmbeddingSettings)
     knowledge_graph: KnowledgeGraphSettings = Field(default_factory=KnowledgeGraphSettings)
     observability: ObservabilitySettings = Field(default_factory=ObservabilitySettings)
-    safety: SafetySettings = Field(default_factory=SafetySettings)
 
     @property
     def embedding_dim(self) -> int:
@@ -228,11 +220,8 @@ class Settings(_SettingsModel):
 
     @property
     def image_generation_enabled(self) -> bool:
-        return bool((self.models.image_generation or "").strip())
-
-    @property
-    def mermaid_generation_enabled(self) -> bool:
-        return bool((self.models.mermaid_generation or "").strip())
+        value = (self.models.image_generation or "").strip()
+        return bool(value)
 
     def parse_retrievers(
         self,
@@ -309,7 +298,6 @@ __all__ = [
     "PlannerSettings",
     "RagSettings",
     "RuntimeSettings",
-    "SafetySettings",
     "SearchSettings",
     "Settings",
     "get_settings",

@@ -1,4 +1,4 @@
-"""Planner SSE/progress helpers."""
+﻿"""Planner SSE/progress helpers."""
 
 from __future__ import annotations
 

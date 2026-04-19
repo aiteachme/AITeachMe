@@ -36,6 +36,21 @@ def _read_urls_trace_outputs(payload: object) -> dict[str, object]:
     return {}
 
 
+def _page_trace_preview(page: ScrapedPage) -> dict[str, object]:
+    content_preview = " ".join(str(page.content or "").split())
+    if len(content_preview) > 360:
+        content_preview = content_preview[:360].rstrip() + "..."
+    return {
+        "url": page.url,
+        "title": page.title,
+        "success": page.success,
+        "reader_name": page.reader_name,
+        "content_length": len(page.content),
+        "content_preview": content_preview,
+        "error": page.error or "",
+    }
+
+
 @traceable_with_context(
     name="tool.read_urls",
     run_type="tool",
@@ -72,6 +87,7 @@ async def _run_traced_read_urls(
         "trace": {
             "page_count": len(pages),
             "success_count": sum(1 for page in pages if page.success),
+            "pages_preview": [_page_trace_preview(page) for page in pages[:5]],
         },
     }
 

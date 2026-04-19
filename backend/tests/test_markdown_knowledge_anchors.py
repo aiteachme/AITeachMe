@@ -1,0 +1,35 @@
+from app.workflows.digest.common.markdown_knowledge_anchors import (
+    ensure_markdown_knowledge_unit_anchors,
+    extract_markdown_knowledge_units,
+)
+
+
+def test_docs_sync_ignores_teaching_scaffold_headings():
+    markdown = ensure_markdown_knowledge_unit_anchors(
+        """
+# 极限的定义
+
+## 章节路线图
+
+## 洛必达法则
+
+### 再把关键点压实一遍
+
+### 这几项不能漏
+
+### 本章自检
+
+## 等价无穷小替换
+""".strip()
+    )
+
+    units = extract_markdown_knowledge_units(markdown)
+    names = [unit.name for unit in units]
+
+    assert "极限的定义" in names
+    assert "洛必达法则" in names
+    assert "等价无穷小替换" in names
+    assert "章节路线图" not in names
+    assert "再把关键点压实一遍" not in names
+    assert "这几项不能漏" not in names
+    assert "本章自检" not in names

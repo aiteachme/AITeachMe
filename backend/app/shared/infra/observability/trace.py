@@ -35,6 +35,7 @@ LANGSMITH_RUN_TYPES: tuple[LangSmithRunType, ...] = (
 
 _SAFE_LANGSMITH_FIELDS = {
     "content_type",
+    "content_preview",
     "finish_reason",
     "id",
     "model",

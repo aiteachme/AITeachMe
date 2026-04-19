@@ -7,7 +7,6 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from app.shared.infra.settings import get_settings
 from app.workflows.digest.common.runtime_config import get_planner_mode_runtime_config, get_teaching_runtime_config
 from app.workflows.digest.common.models import FastTopicHints, SharedInputs, SubjectProfile
 
@@ -17,27 +16,19 @@ class PlannerChapterPlan(BaseModel):
     title: str
     objective: str = ""
     required_elements: list[str] = Field(default_factory=list)
-    # Kept for the public confirmed-plan contract; Planner no longer invents queries.
-    search_queries: list[str] = Field(default_factory=list)
     writing_instructions: str = ""
-    media_hints: dict[str, list[str]] = Field(
-        default_factory=lambda: {"images": [], "mermaid": [], "interactive": []}
-    )
 
 
 class BuildPlannerDraft(BaseModel):
     """Stable planner payload consumed by API and DocGen."""
 
     subject: str
-    user_goal: str
+    user_prompt: str
     digest_mode: str = "systematic"
-    selected_skillpacks: list[str] = Field(default_factory=list)
     chapter_plan: list[PlannerChapterPlan] = Field(default_factory=list)
-    # Kept for API/DB compatibility. DocGen derives retrieval queries from chapter content.
-    research_queries: list[str] = Field(default_factory=list)
-    media_plan: dict[str, Any] = Field(default_factory=dict)
     build_constraints: dict[str, Any] = Field(default_factory=dict)
     plan_summary: str = ""
+    plan_steps: list[str] = Field(default_factory=list)
 
 
 def _text(value: Any) -> str:
@@ -59,14 +50,14 @@ def _strings(value: Any) -> list[str]:
     return cleaned
 
 
-def _topic_strings(shared_inputs: SharedInputs, *, user_goal: str, subject: str) -> list[str]:
+def _topic_strings(shared_inputs: SharedInputs, *, user_prompt: str, subject: str) -> list[str]:
     values: list[Any] = [
         *shared_inputs.fast_hints.chapter_candidates,
         *[name for name, _count in shared_inputs.fast_hints.high_freq_terms],
         *shared_inputs.subject_profile.key_topics,
         shared_inputs.subject_profile.sub_discipline,
         shared_inputs.subject_profile.discipline,
-        user_goal,
+        user_prompt,
         subject,
     ]
     return _strings(values)
@@ -110,12 +101,12 @@ def _resolve_subject_display_name(
     subject: str,
     *,
     shared_inputs: SharedInputs | None,
-    user_goal: str = "",
+    user_prompt: str = "",
 ) -> str:
     shared = shared_inputs or _minimal_shared_inputs(subject)
     for candidate in [
         shared.subject_profile.subject_name,
-        user_goal,
+        user_prompt,
         subject if not _text(subject).lower().startswith("subj_") else "",
     ]:
         text = _text(candidate)
@@ -137,7 +128,6 @@ def _merge_chapter(raw: Mapping[str, Any], index: int) -> PlannerChapterPlan:
         objective=_text(raw.get("objective")) or "；".join(key_points),
         required_elements=key_points,
         writing_instructions=_text(raw.get("writing_instructions")) or "围绕本章知识点生成清晰讲解。",
-        media_hints={"images": [], "mermaid": [], "interactive": []},
     )
 
 
@@ -146,7 +136,7 @@ def _build_supplement_chapter(
     index: int,
     topic: str,
     digest_mode: str,
-    user_goal: str,
+    user_prompt: str,
 ) -> PlannerChapterPlan:
     title = _text(topic) or f"补充章节 {index}"
     normalized_mode = _normalize_digest_mode(digest_mode)
@@ -158,16 +148,14 @@ def _build_supplement_chapter(
         required = _strings([f"{title} 的核心概念", f"{title} 的关键结构", f"{title} 的例子与迁移"])
         objective = f"系统讲清《{title}》的概念边界、结构关系和典型应用。"
         writing = "按系统课写法组织：先讲定义和结构，再展开推理、例子与迁移。"
-    if user_goal:
-        required = _strings([*required, user_goal])
+    if user_prompt:
+        required = _strings([*required, user_prompt])
     return PlannerChapterPlan(
         chapter_index=index,
         title=title,
         objective=objective,
         required_elements=required[:6],
-        search_queries=_strings([title, *required])[:6],
         writing_instructions=writing,
-        media_hints={"images": [], "mermaid": [f"{title} 的知识结构图"], "interactive": []},
     )
 
 
@@ -176,7 +164,7 @@ def _pad_chapters_to_minimum(
     *,
     digest_mode: str,
     shared_inputs: SharedInputs,
-    user_goal: str,
+    user_prompt: str,
     subject: str,
 ) -> list[PlannerChapterPlan]:
     config = get_planner_mode_runtime_config(digest_mode)
@@ -186,7 +174,7 @@ def _pad_chapters_to_minimum(
     existing_titles = {_text(chapter.title).casefold() for chapter in chapters}
     topics = [
         topic
-        for topic in _topic_strings(shared_inputs, user_goal=user_goal, subject=subject)
+        for topic in _topic_strings(shared_inputs, user_prompt=user_prompt, subject=subject)
         if topic.casefold() not in existing_titles
     ]
     if not topics:
@@ -213,19 +201,10 @@ def _pad_chapters_to_minimum(
                 index=len(padded) + 1,
                 topic=topic,
                 digest_mode=digest_mode,
-                user_goal=user_goal,
+                user_prompt=user_prompt,
             )
         )
     return padded
-
-
-def _media_plan() -> dict[str, Any]:
-    settings = get_settings()
-    return {
-        "enable_mermaid": settings.mermaid_generation_enabled,
-        "enable_images": settings.image_generation_enabled,
-        "enable_interactive_html": False,
-    }
 
 
 def _build_constraints(*, digest_mode: str, chapter_count: int, shared_inputs: SharedInputs) -> dict[str, Any]:
@@ -246,17 +225,24 @@ def normalize_planner_draft(
     draft: BuildPlannerDraft | Mapping[str, Any] | None,
     *,
     subject: str,
-    user_goal: str,
+    user_prompt: str | None = None,
+    user_goal: str | None = None,
     requested_digest_mode: str,
-    selected_skillpacks: list[str] | None = None,
     shared_inputs: SharedInputs | None = None,
     latest_plan: BuildPlannerDraft | Mapping[str, Any] | None = None,
 ) -> BuildPlannerDraft:
+    """把模型草稿规范化成稳定 Planner 合同。
+
+    这里会校验章节、补齐最少章节数、统一 subject 展示名、生成 media plan
+    和 build constraints。输出会被保存为 latest_plan，并最终冻结给 DocGen。
+    """
+
     shared = shared_inputs or _minimal_shared_inputs(subject)
+    resolved_user_prompt = _text(user_prompt or user_goal)
     current = _mapping(draft)
     previous = _mapping(latest_plan)
     mode = _normalize_digest_mode(requested_digest_mode or current.get("digest_mode") or previous.get("digest_mode"))
-    display_subject = _resolve_subject_display_name(subject, shared_inputs=shared, user_goal=user_goal)
+    display_subject = _resolve_subject_display_name(subject, shared_inputs=shared, user_prompt=resolved_user_prompt)
 
     current_chapters = _chapter_items(current.get("chapter_plan"))
     previous_chapters = _chapter_items(previous.get("chapter_plan"))
@@ -269,28 +255,22 @@ def normalize_planner_draft(
         chapters,
         digest_mode=mode,
         shared_inputs=shared,
-        user_goal=user_goal,
+        user_prompt=resolved_user_prompt,
         subject=display_subject,
     )
     plan_summary = _text(current.get("plan_summary") or previous.get("plan_summary"))
     if not plan_summary:
         raise ValueError("planner plan is missing plan_summary")
+    plan_steps = _strings(current.get("plan_steps") or previous.get("plan_steps"))
 
-    skillpacks = (
-        selected_skillpacks
-        if selected_skillpacks is not None
-        else current.get("selected_skillpacks") or previous.get("selected_skillpacks") or []
-    )
     return BuildPlannerDraft(
         subject=display_subject,
-        user_goal=user_goal,
+        user_prompt=resolved_user_prompt,
         digest_mode=mode,
-        selected_skillpacks=_strings(skillpacks),
         chapter_plan=chapters,
-        research_queries=[],
-        media_plan=_media_plan(),
         build_constraints=_build_constraints(digest_mode=mode, chapter_count=len(chapters), shared_inputs=shared),
         plan_summary=plan_summary,
+        plan_steps=plan_steps,
     )
 
 
@@ -298,18 +278,18 @@ def normalize_planner_payload(
     payload: BuildPlannerDraft | Mapping[str, Any] | None,
     *,
     subject: str,
-    user_goal: str,
+    user_prompt: str | None = None,
+    user_goal: str | None = None,
     requested_digest_mode: str,
-    selected_skillpacks: list[str] | None = None,
     shared_inputs: SharedInputs | None = None,
     latest_plan: BuildPlannerDraft | Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     return normalize_planner_draft(
         payload,
         subject=subject,
+        user_prompt=user_prompt,
         user_goal=user_goal,
         requested_digest_mode=requested_digest_mode,
-        selected_skillpacks=selected_skillpacks,
         shared_inputs=shared_inputs,
         latest_plan=latest_plan,
     ).model_dump(mode="json")

@@ -5,14 +5,11 @@
  * 本地优先的 AI 助教后端服务。
  * OpenAPI spec version: 0.2.0
  */
-import type { BuildPlannerChapterPlanResponseMediaHints } from './buildPlannerChapterPlanResponseMediaHints';
 
 export interface BuildPlannerChapterPlanResponse {
   chapter_index: number;
   title: string;
   objective?: string;
   required_elements?: string[];
-  search_queries?: string[];
   writing_instructions?: string;
-  media_hints?: BuildPlannerChapterPlanResponseMediaHints;
 }

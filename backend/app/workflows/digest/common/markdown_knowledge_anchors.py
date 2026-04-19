@@ -15,52 +15,78 @@ from app.models.knowledge_taxonomy import normalize_knowledge_unit_type
 ANCHOR_PREFIX = "ku_"
 ANCHOR_COMMENT_PREFIX = "ATM_KU:"
 
-_INLINE_ANCHOR_RE = re.compile(r"\{#(?P<anchor>ku_[A-Za-z0-9_-]+)\}")
-_COMMENT_ANCHOR_RE = re.compile(r"<!--\s*ATM_KU:\s*(?P<anchor>ku_[A-Za-z0-9_-]+)\s*-->")
-_ANCHOR_RE = re.compile(r"(?:\{#(?P<inline>ku_[A-Za-z0-9_-]+)\}|<!--\s*ATM_KU:\s*(?P<comment>ku_[A-Za-z0-9_-]+)\s*-->)")
+_ANCHOR_ID_PATTERN = r"ku_[\w-]+"
+_INLINE_ANCHOR_RE = re.compile(rf"\{{#(?P<anchor>{_ANCHOR_ID_PATTERN})\}}")
+_COMMENT_ANCHOR_RE = re.compile(rf"<!--\s*ATM_KU:\s*(?P<anchor>{_ANCHOR_ID_PATTERN})\s*-->")
+_ANCHOR_RE = re.compile(rf"(?:\{{#(?P<inline>{_ANCHOR_ID_PATTERN})\}}|<!--\s*ATM_KU:\s*(?P<comment>{_ANCHOR_ID_PATTERN})\s*-->)")
 _HEADING_RE = re.compile(r"^(?P<prefix>\s{0,3}#{1,6}\s+)(?P<title>.+?)(?P<trailing>\s*)$")
 _TAG_RE = re.compile(r"\[(?P<key>type|prerequisite|related):\s*(?P<value>[^\]]+)\]", re.IGNORECASE)
 _IMAGE_RE = re.compile(r"!\[(?P<alt>[^\]]*)\]\((?P<url>[^)]+)\)")
 _LABEL_RE = re.compile(
     r"^\s*(?:[-*]\s*)?(?:\*\*)?"
-    r"(?P<label>定义|定理|公式|例题|示例|练习|证明|备注|Definition|Theorem|Formula|Example|Exercise|Proof|Remark)"
-    r"(?:\*\*)?\s*[:：]",
+    r"(?P<label>\u5b9a\u4e49|\u5b9a\u7406|\u516c\u5f0f|\u4f8b\u9898|\u793a\u4f8b|\u7ec3\u4e60|\u8bc1\u660e|\u5907\u6ce8|Definition|Theorem|Formula|Example|Exercise|Proof|Remark)"
+    r"(?:\*\*)?\s*[:\uff1a]",
     re.IGNORECASE,
 )
 _MARKDOWN_DECORATION_RE = re.compile(r"[#*_`>{}\[\]()]")
 _MULTISPACE_RE = re.compile(r"\s+")
 _SKIPPABLE_HEADING_PATTERNS = (
     re.compile(
-        r"(?:^|[\s:：-])(how to read|how to use|reading guide|user guide|overview|learning goals?|learning objectives?)(?:$|[\s:：-])",
+        r"(?:^|[\s:\uff1a-])(how to read|how to use|reading guide|user guide|overview|learning goals?|learning objectives?)(?:$|[\s:\uff1a-])",
         re.IGNORECASE,
     ),
-    re.compile(r"怎么读"),
-    re.compile(r"如何阅读"),
-    re.compile(r"阅读指南"),
-    re.compile(r"使用说明"),
-    re.compile(r"如何使用"),
-    re.compile(r"学习目标"),
-    re.compile(r"学习建议"),
-    re.compile(r"本章导读"),
-    re.compile(r"章节导读"),
-    re.compile(r"先看什么"),
+    re.compile(r"\u600e\u4e48\u8bfb"),
+    re.compile(r"\u5982\u4f55\u9605\u8bfb"),
+    re.compile(r"\u9605\u8bfb\u6307\u5357"),
+    re.compile(r"\u4f7f\u7528\u8bf4\u660e"),
+    re.compile(r"\u5982\u4f55\u4f7f\u7528"),
+    re.compile(r"\u5b66\u4e60\u76ee\u6807"),
+    re.compile(r"\u5b66\u4e60\u5efa\u8bae"),
+    re.compile(r"\u672c\u7ae0\u5bfc\u8bfb"),
+    re.compile(r"\u7ae0\u8282\u5bfc\u8bfb"),
+    re.compile(r"\u5148\u770b\u4ec0\u4e48"),
+)
+_SKIPPABLE_HEADING_EXACT = {
+    "table of contents",
+    "knowledge document overview",
+    "\u76ee\u5f55",
+    "\u77e5\u8bc6\u6587\u6863\u603b\u89c8",
+    "\u53c2\u8003\u8d44\u6599\u4e0e\u5ef6\u4f38\u9605\u8bfb",
+    "\u8fd9\u4efd\u6587\u6863\u600e\u4e48\u8bfb",
+    "\u7ae0\u8282\u8def\u7ebf\u56fe",
+    "\u672c\u7ae0\u81ea\u68c0",
+    "\u8fd9\u51e0\u9879\u4e0d\u80fd\u6f0f",
+    "\u56de\u770b\u65f6\u4f18\u5148\u95ee\u81ea\u5df1",
+}
+_SKIPPABLE_HEADING_PREFIXES = (
+    "\u8003\u524d\u6700\u540e",
+    "\u518d\u628a\u5173\u952e\u70b9\u538b\u5b9e",
+    "\u518d\u628a\u5173\u952e\u7ed3\u6784\u8865\u7a33",
+    "\u6700\u7ec8\u56de\u987e",
+    "\u4e34\u8003\u901f\u8bb0",
+    "\u672c\u7ae0\u5728\u8003\u4ec0\u4e48",
+    "\u672c\u7ae0\u6838\u5fc3\u8003\u70b9",
+    "\u672c\u7ae0\u6838\u5fc3\u5730\u4f4d",
+    "\u672c\u7ae0\u4e3a\u4f55",
+    "\u6613\u9519\u70b9\u590d\u76d8",
+    "\u9ad8\u9891\u9677\u9631",
 )
 
 _LABEL_TYPE_MAP = {
-    "定义": "definition",
+    "\u5b9a\u4e49": "definition",
     "definition": "definition",
-    "定理": "theorem",
+    "\u5b9a\u7406": "theorem",
     "theorem": "theorem",
-    "公式": "formula",
+    "\u516c\u5f0f": "formula",
     "formula": "formula",
-    "例题": "example",
-    "示例": "example",
+    "\u4f8b\u9898": "example",
+    "\u793a\u4f8b": "example",
     "example": "example",
-    "练习": "exercise",
+    "\u7ec3\u4e60": "exercise",
     "exercise": "exercise",
-    "证明": "proof_step",
+    "\u8bc1\u660e": "proof_step",
     "proof": "proof_step",
-    "备注": "remark",
+    "\u5907\u6ce8": "remark",
     "remark": "remark",
 }
 
@@ -294,13 +320,9 @@ def _slugify_anchor(text: str) -> str:
 
 def _is_skippable_heading(title: str) -> bool:
     lowered = _strip_tags_and_anchor(title).casefold()
-    if lowered in {
-        "table of contents",
-        "knowledge document overview",
-        "目录",
-        "知识文档总览",
-        "参考资料与延伸阅读",
-    }:
+    if lowered in _SKIPPABLE_HEADING_EXACT:
+        return True
+    if any(lowered.startswith(prefix.casefold()) for prefix in _SKIPPABLE_HEADING_PREFIXES):
         return True
     return any(pattern.search(lowered) for pattern in _SKIPPABLE_HEADING_PATTERNS)
 

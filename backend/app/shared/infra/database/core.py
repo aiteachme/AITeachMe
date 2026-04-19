@@ -32,7 +32,7 @@ from app.shared.infra.subject import (
     build_subject_vector_table_name,
     get_postgres_vector_ref,
 )
-from app.models.build_planner import BuildPlannerSession, BuildPlannerTurn, ConfirmedBuildPlan
+from app.models.build_planner import ConfirmedBuildPlan
 from app.models.chat import ChatMessage, ChatSession
 from app.models.email_verification import EmailVerificationCode
 from app.models.exam import ExamPaper, ExamPaperItem, QuestionTemplate
@@ -43,7 +43,7 @@ from app.models.knowledge_unit import KnowledgeUnit
 from app.models.profile import UserKnowledgeState
 from app.models.raw_file import RawFile
 from app.models.subject import Subject
-from app.models.system import SystemSettingsSnapshot
+from app.models.system import SystemSettingsSnapshot, UserRuntimeSettings
 from app.models.user import User
 
 logger = structlog.get_logger()
@@ -64,8 +64,6 @@ _SCHEMA_MODELS = (
     EmailVerificationCode,
     Subject,
     RawFile,
-    BuildPlannerSession,
-    BuildPlannerTurn,
     ConfirmedBuildPlan,
     RetrievalChunk,
     KnowledgeDocument,
@@ -78,6 +76,7 @@ _SCHEMA_MODELS = (
     ChatSession,
     ChatMessage,
     SystemSettingsSnapshot,
+    UserRuntimeSettings,
 )
 _SCHEMA_TABLES = [model.__table__ for model in _SCHEMA_MODELS]
 _EXPECTED_SCHEMA_COLUMNS = {
@@ -86,19 +85,21 @@ _EXPECTED_SCHEMA_COLUMNS = {
 }
 _ALLOWED_SQLITE_RUNTIME_TABLES = {"sqlite_sequence"}
 _ALLOWED_SQLITE_RUNTIME_PREFIXES = ("chunk_embeddings_",)
-_LEGACY_POSTGRES_TABLES = (
+_REMOVED_POSTGRES_TABLES = (
     "unit_dependency",
     "theme_tree_node",
     "taxonomy_anchor",
     "teaching_unit",
     "curriculum",
+    "build_planner_turn",
+    "build_planner_session",
 )
-_LEGACY_POSTGRES_COLUMNS = {
+_REMOVED_POSTGRES_COLUMNS = {
     "question_template": ("curriculum_version_id",),
     "exam_paper": ("curriculum_version_id", "theme_tree_node_id"),
 }
-_LEGACY_SQLITE_TABLES = _LEGACY_POSTGRES_TABLES
-_LEGACY_SQLITE_COLUMNS = _LEGACY_POSTGRES_COLUMNS
+_REMOVED_SQLITE_TABLES = _REMOVED_POSTGRES_TABLES
+_REMOVED_SQLITE_COLUMNS = _REMOVED_POSTGRES_COLUMNS
 
 
 def _set_vec_status(ready: bool, error: str | None = None) -> None:
@@ -243,7 +244,7 @@ def _drop_sqlite_indexes_for_columns(
         )
 
 
-def _drop_sqlite_legacy_schema(engine: sa.Engine) -> None:
+def _drop_sqlite_removed_schema(engine: sa.Engine) -> None:
     inspector = sa.inspect(engine)
     existing_tables = set(inspector.get_table_names())
     if not existing_tables:
@@ -252,24 +253,24 @@ def _drop_sqlite_legacy_schema(engine: sa.Engine) -> None:
     with engine.begin() as connection:
         connection.execute(sa.text("PRAGMA foreign_keys = OFF"))
         try:
-            for table_name, column_names in _LEGACY_SQLITE_COLUMNS.items():
+            for table_name, column_names in _REMOVED_SQLITE_COLUMNS.items():
                 if table_name not in existing_tables:
                     continue
                 existing_columns = {
                     column["name"]
                     for column in inspector.get_columns(table_name)
                 }
-                legacy_columns = {
+                removed_columns = {
                     column_name
                     for column_name in column_names
                     if column_name in existing_columns
                 }
-                if legacy_columns:
+                if removed_columns:
                     _drop_sqlite_indexes_for_columns(
                         connection,
                         inspector,
                         table_name=table_name,
-                        column_names=legacy_columns,
+                        column_names=removed_columns,
                     )
                 for column_name in column_names:
                     if column_name not in existing_columns:
@@ -289,7 +290,7 @@ def _drop_sqlite_legacy_schema(engine: sa.Engine) -> None:
                             error=str(exc),
                         )
 
-            for table_name in _LEGACY_SQLITE_TABLES:
+            for table_name in _REMOVED_SQLITE_TABLES:
                 if table_name in existing_tables:
                     try:
                         connection.execute(
@@ -308,7 +309,7 @@ def _ensure_local_sqlite_schema(engine: sa.Engine) -> sa.Engine:
     if not db_path.exists():
         return engine
 
-    _drop_sqlite_legacy_schema(engine)
+    _drop_sqlite_removed_schema(engine)
     drift = _inspect_sqlite_schema_drift(engine)
     if drift is None:
         return engine
@@ -535,8 +536,8 @@ def _ensure_postgres_embedding_column(
     )
 
 
-def _drop_postgres_legacy_schema(connection: sa.Connection) -> None:
-    for table_name, column_names in _LEGACY_POSTGRES_COLUMNS.items():
+def _drop_postgres_removed_schema(connection: sa.Connection) -> None:
+    for table_name, column_names in _REMOVED_POSTGRES_COLUMNS.items():
         if not _postgres_table_exists(connection, table_name):
             continue
         for column_name in column_names:
@@ -547,7 +548,7 @@ def _drop_postgres_legacy_schema(connection: sa.Connection) -> None:
                     )
                 )
 
-    for table_name in _LEGACY_POSTGRES_TABLES:
+    for table_name in _REMOVED_POSTGRES_TABLES:
         connection.execute(sa.text(f"DROP TABLE IF EXISTS {table_name} CASCADE"))
 
 
@@ -754,7 +755,7 @@ def _init_postgres_db(settings) -> None:
     # 确保 pgvector 扩展可用
     with engine.begin() as conn:
         conn.execute(sa.text("CREATE EXTENSION IF NOT EXISTS vector"))
-        _drop_postgres_legacy_schema(conn)
+        _drop_postgres_removed_schema(conn)
 
     SQLModel.metadata.create_all(engine, tables=_SCHEMA_TABLES)
     _upsert_settings_snapshot(engine, settings)

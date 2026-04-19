@@ -55,7 +55,7 @@
   Digest workflow runner 的 lane 入口
 - `digest/planner/__init__.py`、`digest/planner/graph.py`
   Planner 的 API-facing 入口与 workflow runner 落点
-- `digest/docgen/builds.py`
+- `digest/docgen/lib/build_lifecycle.py`
   DocGen 构建触发、状态装配与后台编排入口
 - `digest/common/runtime_config.py`
   Digest 教学运行时配置 facade

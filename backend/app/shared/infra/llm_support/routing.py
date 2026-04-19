@@ -29,6 +29,7 @@ class LLMCallPurpose(str, Enum):
     REASONING = "reasoning"
     DOCGEN = "docgen"
     DOCGEN_LIGHT = "docgen_light"
+    IMAGE_GENERATION = "image_generation"
     DEFAULT = "default"
 
 
@@ -53,6 +54,7 @@ _DEFAULT_PROFILES: dict[LLMCallPurpose, LLMCallProfile] = {
     LLMCallPurpose.REASONING: LLMCallProfile(temperature=0.2, timeout_s=120, max_retries=2),
     LLMCallPurpose.DOCGEN: LLMCallProfile(temperature=0.5, timeout_s=120, max_retries=1),
     LLMCallPurpose.DOCGEN_LIGHT: LLMCallProfile(temperature=0.1, timeout_s=60, max_retries=2),
+    LLMCallPurpose.IMAGE_GENERATION: LLMCallProfile(temperature=0.7, timeout_s=180, max_retries=1),
     LLMCallPurpose.DEFAULT: LLMCallProfile(),
 }
 

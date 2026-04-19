@@ -1,4 +1,4 @@
-"""Claim ledger and evidence alignment helpers for DocGen."""
+﻿"""Claim ledger and evidence alignment helpers for DocGen."""
 
 from __future__ import annotations
 

@@ -1,4 +1,4 @@
-"""Workflow-local chapter context runtime for digest DocGen."""
+﻿"""Workflow-local chapter context runtime for digest DocGen."""
 
 from __future__ import annotations
 
@@ -9,8 +9,6 @@ from collections.abc import Iterable
 from typing import Any
 from urllib.parse import urlparse
 
-from langsmith import traceable
-
 from app.shared.infra.settings import get_settings
 from app.shared.infra.execution import BaseTracedExecution, TracedExecutionResult
 from app.shared.infra.llm_support.routing import TaskType
@@ -18,7 +16,6 @@ from app.shared.infra.search import ContextCompressor, SourceCurator
 from app.shared.infra.search.factory import get_configured_retriever_names, get_retrievers_for_subject
 from app.shared.infra.search.retrievers.local_rag import LocalRAGRetriever
 from app.shared.infra.search.types import ScrapedPage, SearchResult
-from app.shared.infra.skills import collect_recommended_tool_tags, render_prompt_scoped_skillpacks
 from app.shared.infra.tools.builtin.web_reading import read_urls
 from app.workflows.digest.docgen.lib.query_planning import (
     build_research_focus_text,
@@ -76,8 +73,6 @@ class DocGenChapterContextRuntime(BaseTracedExecution):
         required_elements: list[str] | None = None,
         digest_mode: str = "",
         retrieval_profile: str | None = None,
-        selected_skillpacks: list[str] | None = None,
-        user_goal: str = "",
         search_domain: str = "zh",
         max_results_per_query: int | None = None,
         max_research_rounds: int | None = None,
@@ -86,6 +81,14 @@ class DocGenChapterContextRuntime(BaseTracedExecution):
         queries_per_round: int | None = None,
         max_gap_queries_per_round: int | None = None,
     ) -> TracedExecutionResult:
+        """执行单章研究上下文构建。
+
+        这一步负责把章节任务里的检索意图变成可写作的 dense_context：
+        先规划子查询，再按预算执行本地 RAG 和外部检索，随后打开网页、
+        压缩材料并判断是否还需要补 gap query。返回值是给 writer 和
+        evidence/claim 账本消费的研究包，而不是最终正文。
+        """
+
         settings = get_settings()
         query_limit = max_results_per_query or settings.search.max_results_per_query
         strategy = self._resolve_strategy(digest_mode)
@@ -115,21 +118,6 @@ class DocGenChapterContextRuntime(BaseTracedExecution):
             required_elements=required_elements,
             digest_mode=digest_mode,
         )
-        skillpack_guidance = render_prompt_scoped_skillpacks(
-            selected_skillpacks,
-            prompt_scope="digest.docgen.research",
-            bindings={
-                "subject": self.context.subject,
-                "user_goal": user_goal,
-                "chapter_title": chapter_title or base_queries[0],
-                "topic": chapter_title or base_queries[0],
-                "concept": chapter_title or base_queries[0],
-            },
-        )
-        recommended_tool_tags = collect_recommended_tool_tags(
-            selected_skillpacks,
-            prompt_scope="digest.docgen.research",
-        )
         planned_queries = await generate_sub_queries(
             focus_text or base_queries[0],
             context=[
@@ -148,8 +136,6 @@ class DocGenChapterContextRuntime(BaseTracedExecution):
                 runtime_name=self.name,
                 research_stage="plan_sub_queries",
             ),
-            skillpack_guidance=skillpack_guidance,
-            recommended_tool_tags=recommended_tool_tags,
         )
         pending_queries = dedupe_queries([*base_queries, *planned_queries], limit=resolved_query_cap)
         resolved_retrieval_profile = str(retrieval_profile or self.context.retrieval_profile or "").strip()
@@ -331,8 +317,6 @@ class DocGenChapterContextRuntime(BaseTracedExecution):
                 objective=objective,
                 required_elements=list(required_elements or []),
                 digest_mode=digest_mode,
-                skillpack_guidance=skillpack_guidance,
-                recommended_tool_tags=recommended_tool_tags,
             )
             dense_context = purified_context.strip() or dense_context
 
@@ -373,12 +357,9 @@ class DocGenChapterContextRuntime(BaseTracedExecution):
                 "source_class_breakdown": self._classify_source_breakdown(curated_results),
                 "stop_reason": stop_reason,
                 "source_details": [item.to_dict() for item in curated_results],
-                "selected_skillpacks": list(selected_skillpacks or []),
-                "recommended_tool_tags": recommended_tool_tags,
             },
         )
 
-    @traceable(name="DocGen：执行一轮章节检索", run_type="chain")
     async def _run_research_round(
         self,
         *,
@@ -399,12 +380,16 @@ class DocGenChapterContextRuntime(BaseTracedExecution):
         retrieval_budget_s: float,
         provider_budget_s: float,
     ) -> dict[str, Any]:
+        """执行一轮章节检索并累计检索状态。
+
+        每轮会先跑本地 retriever，再按剩余预算跑外部 retriever；结果会追加
+        到 all_results，并更新 query、hit、retriever_stats 等跨轮累计状态。
+        """
+
         round_local_hits = 0
         round_web_hits = 0
         round_fallback_queries: list[str] = []
         round_external_queries: list[str] = []
-        external_attempts = 0
-        external_attempt_budget = max(1, min(2, len(round_queries))) if other_retrievers else 0
 
         for query in round_queries:
             executed_queries.append(query)
@@ -428,12 +413,8 @@ class DocGenChapterContextRuntime(BaseTracedExecution):
             round_local_hits += len(local_results)
             combined_results = list(local_results)
 
-            should_query_external = bool(other_retrievers) and (
-                len(local_results) < settings.local_rag.min_results
-                or external_attempts < external_attempt_budget
-            )
+            should_query_external = bool(other_retrievers) and len(local_results) < settings.local_rag.min_results
             if should_query_external:
-                external_attempts += 1
                 round_external_queries.append(query)
                 if len(local_results) < settings.local_rag.min_results:
                     fallback_queries_total.append(query)
@@ -529,6 +510,12 @@ class DocGenChapterContextRuntime(BaseTracedExecution):
         page_cache: dict[str, ScrapedPage] | None = None,
         read_timeout_s: float | None = None,
     ) -> tuple[list[str], int]:
+        """把检索结果转换成可压缩文档。
+
+        local:// 结果直接使用切片文本；外部 URL 先通过 reader 打开正文。
+        如果 reader 失败但搜索 snippet 可用，则保留 snippet 作为降级材料。
+        """
+
         documents: list[str] = []
         external_results: list[SearchResult] = []
         seen_urls: set[str] = set()
@@ -582,9 +569,13 @@ class DocGenChapterContextRuntime(BaseTracedExecution):
         objective: str,
         required_elements: list[str],
         digest_mode: str,
-        skillpack_guidance: str = "",
-        recommended_tool_tags: list[str] | None = None,
     ) -> tuple[str, bool]:
+        """用轻量模型清洗过长或噪声较多的研究材料。
+
+        短文本直接返回；长文本会要求模型去掉导航、广告、重复片段，保留
+        对章节写作有价值的概念、例子、公式和证据。
+        """
+
         if not dense_context.strip():
             return "", False
         if len(dense_context) < 900 and not required_elements and not objective.strip():
@@ -599,8 +590,6 @@ class DocGenChapterContextRuntime(BaseTracedExecution):
                     objective=objective,
                     required_elements=required_elements,
                     digest_mode=digest_mode,
-                    skillpack_guidance=skillpack_guidance,
-                    recommended_tool_tags=recommended_tool_tags or [],
                 ),
                 task_type=TaskType.DOCGEN_LIGHT,
                 model="light",
@@ -734,7 +723,12 @@ class DocGenChapterContextRuntime(BaseTracedExecution):
         curated_results: list[SearchResult],
     ) -> dict[str, Any]:
         normalized_context = self._normalize_text_blob(dense_context)
-        normalized_titles = self._normalize_text_blob("\n".join(item.title for item in curated_results))
+        normalized_sources = self._normalize_text_blob(
+            "\n".join(
+                "\n".join([item.title, item.snippet])
+                for item in curated_results
+            )
+        )
         coverage_targets = self._coverage_targets(
             required_elements=required_elements,
             objective=objective,
@@ -749,8 +743,11 @@ class DocGenChapterContextRuntime(BaseTracedExecution):
         hits = 0
         gaps_remaining: list[str] = []
         for target in coverage_targets:
-            needle = self._normalize_text_blob(target)
-            if needle and (needle in normalized_context or needle in normalized_titles):
+            if self._target_is_covered(
+                target,
+                normalized_context=normalized_context,
+                normalized_sources=normalized_sources,
+            ):
                 hits += 1
                 continue
             gaps_remaining.append(target)
@@ -773,6 +770,31 @@ class DocGenChapterContextRuntime(BaseTracedExecution):
         if not targets:
             return []
         return dedupe_queries(targets, limit=8)
+
+    def _target_is_covered(
+        self,
+        target: str,
+        *,
+        normalized_context: str,
+        normalized_sources: str,
+    ) -> bool:
+        needle = self._normalize_text_blob(target)
+        if not needle:
+            return True
+        haystack = normalized_context + normalized_sources
+        if needle in haystack:
+            return True
+        terms = [
+            self._normalize_text_blob(term)
+            for term in _TERM_SPLIT_RE.split(str(target or ""))
+            if len(self._normalize_text_blob(term)) >= 2
+        ]
+        if not terms:
+            return False
+        hits = sum(1 for term in terms if term and term in haystack)
+        if hits >= max(1, int(len(terms) * 0.6 + 0.5)):
+            return True
+        return any(len(term) >= 6 and term in haystack for term in terms)
 
     def _extract_objective_terms(self, objective: str) -> list[str]:
         fragments: list[str] = []

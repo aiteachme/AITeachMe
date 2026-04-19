@@ -1,4 +1,4 @@
-"""Evidence ledger extraction for DocGen chapters."""
+﻿"""Evidence ledger extraction for DocGen chapters."""
 
 from __future__ import annotations
 

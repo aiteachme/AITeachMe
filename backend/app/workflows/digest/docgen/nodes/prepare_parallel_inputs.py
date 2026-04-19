@@ -1,4 +1,4 @@
-"""Prepare DocGen 0A/0B/0C inputs in parallel."""
+﻿"""Prepare DocGen 0A/0B/0C inputs in parallel."""
 
 from __future__ import annotations
 
@@ -17,7 +17,15 @@ from app.workflows.digest.docgen.state import DocGenState
 
 
 def build_prepare_parallel_inputs_node(*, context: WorkflowContext):
+    """构建 DocGen 准备阶段节点。
+
+    该阶段同时做三件事：增强 confirmed plan 大纲、识别写作意图、摘要
+    文件材料。三路结果共同决定后续章节任务 seed 和全局 backbone agenda。
+    """
+
     async def prepare_parallel_inputs_node(state: DocGenState) -> dict:
+        """并行准备章节写作和证据构建需要的上下文。"""
+
         started_at = perf_counter()
         docgen_context = DocGenContext.model_validate(state.get("docgen_context") or {})
         confirmed_plan = dict(state.get("confirmed_plan") or {})
@@ -64,7 +72,7 @@ def build_prepare_parallel_inputs_node(*, context: WorkflowContext):
             enhance_plan_outline(
                 subject=state["subject"],
                 digest_mode=docgen_context.digest_mode,
-                user_goal=docgen_context.user_goal,
+                user_prompt=docgen_context.user_prompt,
                 plan_summary=docgen_context.plan_summary or str(confirmed_plan.get("plan_summary") or ""),
                 chapters=chapters,
                 docgen_history_brief=docgen_context.docgen_history_brief,
@@ -73,7 +81,7 @@ def build_prepare_parallel_inputs_node(*, context: WorkflowContext):
             infer_docgen_intent(
                 subject=state["subject"],
                 digest_mode=docgen_context.digest_mode,
-                user_goal=docgen_context.user_goal,
+                user_prompt=docgen_context.user_prompt,
                 plan_summary=docgen_context.plan_summary or str(confirmed_plan.get("plan_summary") or ""),
                 material_profile=material_profile,
                 chapters=chapters,

@@ -6,42 +6,73 @@ from typing import Any
 
 from app.workflows.digest.common.models import DigestMaterialContext
 from app.workflows.digest.planner.lib.models import (
-    LearningIntent,
+    PlanIntent,
     PlannerBrief,
 )
+from app.workflows.digest.common.runtime_config import get_planner_mode_runtime_config
 from app.workflows.digest.planner.prompts.context import (
     render_latest_plan,
     render_material_digest,
     render_material_overview,
     render_message_history,
 )
-from app.workflows.digest.planner.prompts.examples import render_composer_examples
+from app.workflows.digest.planner.prompts.examples import DEFAULT_COMPOSER_EXAMPLE_LIMIT, render_composer_examples
 
 PLAN_JSON_MARKER = "<PLAN_JSON>"
 PLAN_JSON_END_MARKER = "</PLAN_JSON>"
 COMPOSER_MESSAGE_HISTORY_BUDGET = 6
+DEFAULT_PLAN_INTENT = "围绕用户提示和资料主线，先整理资料边界，再生成可调整的初步大纲。"
+
+
+def _render_plan_queries(plan_intent: PlanIntent) -> str:
+    queries = [item.strip() for item in plan_intent.plan_queries if item.strip()]
+    if not queries:
+        return "- 暂无明确规划抓手"
+    return "\n".join(f"- {item}" for item in queries)
 
 
 def build_plan_composer_messages(
     *,
     subject: str,
-    user_goal: str,
+    user_prompt: str | None = None,
+    user_goal: str | None = None,
     digest_mode: str,
     material_context: DigestMaterialContext,
     planner_brief: PlannerBrief,
-    learning_intent: LearningIntent,
+    plan_intent: PlanIntent,
     message_history: list[str] | None = None,
     latest_plan: dict[str, Any] | None = None,
 ) -> list[dict[str, str]]:
+    """构造 Planner 最终大纲合成提示词。
+
+    输出协议分两层：先流式给用户可见的计划说明，再在隐藏 JSON 中返回
+    plan_text / plan_steps / chapters。前端只展示 marker 之前的内容。
+    """
+
+    resolved_user_prompt = (user_prompt or user_goal or "").strip()
     sketch = planner_brief.markdown.strip() or "暂无可见规划判断"
-    focus_concepts = "、".join(learning_intent.focus_concepts) or "暂无明确概念清单"
-    # 第一段会被 SSE 展示给用户；第二段是后端解析合同，两个协议不能混在一起写。
+    plan_queries = _render_plan_queries(plan_intent)
+    plan_intent_text = plan_intent.plan_intent.strip() or DEFAULT_PLAN_INTENT
+    mode_config = get_planner_mode_runtime_config(digest_mode)
+    chapter_count_hint = (
+        f"章节数量必须在 {mode_config.min_chapters}-{mode_config.max_chapters} 章之间。"
+        f"不要为了粗颗粒而压成少于 {mode_config.min_chapters} 章；"
+        "如果资料覆盖多个知识簇、题型或学习阶段，应主动拆到更细的 5-7 章。"
+    )
+    # 第一段是用户会看到的 plan_text；JSON 是机器合同。这里允许写
+    # “拟查询/对照/搜集”的研究动作，但不能写成已经完成检索。
     prompt = f"""
-请综合用户意图、可见思考过程和资料上下文，生成一份高度概括的知识文档构建计划。
-你这一次输出两段：先给用户看的计划大纲，再给后端看的极简 JSON。
+你要生成一份构建前研究计划，分成三层：
+1. 计划说明：用一段话说明接下来会如何查找、对照、整理和判断，不要提前展开章节内容。
+2. 计划步骤：拆出 4-7 条可检查动作，可以包含“查询、对照、搜集、调研、归并、筛选、整理”等动作。
+3. 初步大纲：只给粗颗粒章节骨架，后续还会继续调整，不要写得像最终目录。
+
+重要边界：
+- Planner 现在只制定研究/整理计划，不代表已经执行检索。
+- 可以写“后续会查询/对照/搜集哪些方向”，不要写“已经查到/来源显示/某网站或某论文指出”。
 
 主题：{subject}
-用户目标：{user_goal}
+用户提示：{resolved_user_prompt}
 模式：{digest_mode}
 
 资料画像：
@@ -59,54 +90,54 @@ def build_plan_composer_messages(
 可见规划判断：
 {sketch}
 
-意图类型：{learning_intent.goal_type}
-目标受众：{learning_intent.audience}
-成功标准：{'；'.join(learning_intent.success_criteria)}
-约束：{'；'.join(learning_intent.constraints)}
-意图识别出的核心概念：{focus_concepts}
+内部规划意图：
+{plan_intent_text}
 
-Planner 阶段不会做本地/外部检索；不要编造来源、网站、论文或证据标题。
+内部规划抓手：
+{plan_queries}
 
-综合任务：
-1. 判断资料到底在讲哪几个知识簇；
-2. 判断哪些知识簇应该合并成一章，哪些应该拆开；
-3. 判断每章应该更偏概念总结、题型突破、易错辨析还是速查复盘；
-4. 直接产出用户想要的知识文档主线和章节安排。
+可见输出要求：
+- 先立即输出一段计划说明，不要标题、编号、项目符号。
+- 计划说明控制在 140-320 字，重点写“我会先查什么/对照什么，再怎么整理和判断”。
+- 计划说明不要列章节标题，不要提前写大纲内容；只表达研究路线和判断方法。
 
-第一段：给用户看的 Markdown 摘要
-- 必须立即开始输出，不要先铺垫自然段。
-- 用几条普通项目符号或编号列表说明知识文档主线、章节安排和每章抓手。
-- 不要复述“我会阅读文档/检索来源/根据资料生成”，不要列来源标题。
-- 这一段会通过 SSE 展示给用户，所以要自然、清楚、短。
-
-第二段：给后端解析的 JSON 合同
-- 必须从单独一行 {PLAN_JSON_MARKER} 开始。
-- 随后输出一个合法 JSON 对象。
-- 最后以 {PLAN_JSON_END_MARKER} 结束。
-- JSON 只输出你新生成的信息，不要重复题目、目标、模式等上下文字段。
-- JSON 只有两个字段：plan_text 和 chapters。
+隐藏 JSON 要求：
+- 计划说明结束后，从单独一行 {PLAN_JSON_MARKER} 开始。
+- 输出合法 JSON 对象，最后以 {PLAN_JSON_END_MARKER} 结束。
+- JSON 只有 plan_text、plan_steps、chapters 三个字段。
+- plan_text 与可见计划说明语义一致。
+- plan_steps 是 4-7 条动作步骤，用来解释本计划会查询什么、整理什么、判断什么、如何形成大纲。
+- chapters 是很初步的粗颗粒骨架，不追求完整和细节。
+- {chapter_count_hint}
 
 JSON 形状：
 {{
   "plan_text": "一小段计划概括",
+  "plan_steps": ["查询或对照什么", "归并或筛选什么", "整理什么", "形成什么"],
   "chapters": [
     {{
-      "title": "具体章节标题",
-      "key_points": ["本章要覆盖的知识点"]
+      "title": "高度概括的章节方向",
+      "key_points": ["本章后续要继续细化的方向"]
     }}
   ]
 }}
 
-硬约束：
-1. chapters 只写章节标题和知识点列表。
-2. 不要输出检索词、来源、媒体计划、构建约束或后端已有字段。
-3. JSON 段只能输出 JSON，不要放 Markdown 代码块、注释或尾随逗号。
+格式约束：
+- JSON 段只能输出 JSON，不要放 Markdown 代码块、注释或尾随逗号。
+- chapters 只写高度概括的章节方向和 key_points，不要放来源、媒体计划、构建约束或后端字段。
+- chapters 数量必须符合上面的章节数量要求；每章标题要体现学习任务，不要只写“核心模块”“复盘安排”这类过泛标题。
 
-请参考这些 few-shot 规律：
-{render_composer_examples()}
+内容边界：
+- plan_steps 可以写“查询/对照/搜集/调研”的计划动作，但不能说已经完成检索。
+- plan_text 和 plan_steps 是重点，不能被 chapters 反客为主。
+- 没有上传资料时，基于用户提示生成通用初步计划，不要声称读过具体文件。
+- 初步大纲保持概括，key_points 控制为 2-4 个方向，不要塞满细碎知识点。
+
+few-shot 规律：
+{render_composer_examples(limit=DEFAULT_COMPOSER_EXAMPLE_LIMIT)}
 """.strip()
     return [
-        {"role": "system", "content": "你是 AITeachMe 的构建计划合成器，必须同时输出可见规划摘要和可解析 JSON。"},
+        {"role": "system", "content": "你是 AITeachMe 的构建计划合成器，必须同时输出可见计划说明和可解析 JSON。"},
         {"role": "user", "content": prompt},
     ]
 

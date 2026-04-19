@@ -1,22 +1,18 @@
-"""Prompts for DocGen execution-level outline enhancement."""
+﻿"""Prompts for DocGen execution-level outline enhancement."""
 
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from typing import Any
 
-from langsmith import traceable
-
 OUTLINE_CHAPTER_REQUIRED_BUDGET = 12
-OUTLINE_CHAPTER_QUERY_BUDGET = 8
 
 
-@traceable(name="DocGen：增强章节大纲提示词", run_type="prompt")
 def build_outline_enhance_messages(
     *,
     subject: str,
     digest_mode: str,
-    user_goal: str,
+    user_prompt: str,
     plan_summary: str,
     chapters: Sequence[Mapping[str, Any]],
     docgen_history_brief: str = "",
@@ -31,7 +27,6 @@ def build_outline_enhance_messages(
                     f"  title: {chapter.get('title') or chapter.get('resolved_title')}",
                     f"  objective: {chapter.get('objective')}",
                     f"  required_elements: {', '.join(str(item) for item in chapter.get('required_elements', [])[:OUTLINE_CHAPTER_REQUIRED_BUDGET])}",
-                    f"  search_queries: {', '.join(str(item) for item in chapter.get('search_queries', [])[:OUTLINE_CHAPTER_QUERY_BUDGET])}",
                 ]
             )
         )
@@ -42,7 +37,7 @@ def build_outline_enhance_messages(
 
 主题：{subject}
 模式：{digest_mode}
-用户目标：{user_goal or "未提供"}
+用户提示：{user_prompt or "未提供"}
 计划摘要：{plan_summary or "未提供"}
 Planner 对话与修改摘要：{docgen_history_brief or "暂无"}
 

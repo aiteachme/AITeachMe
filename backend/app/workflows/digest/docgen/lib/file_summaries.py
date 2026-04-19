@@ -1,4 +1,4 @@
-"""DocGen-oriented source file summaries."""
+﻿"""DocGen-oriented source file summaries."""
 
 from __future__ import annotations
 

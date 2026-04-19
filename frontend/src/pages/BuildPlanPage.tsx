@@ -136,11 +136,10 @@ function readPersistedPlannerState(subjectId: string): PersistedPlannerState | n
       return null;
     }
     const parsed = JSON.parse(raw) as PersistedPlannerState;
-    if (parsed.version !== PLANNER_STATE_VERSION || isLegacyPlannerPlan(parsed.currentPlan)) {
+    if (parsed.version !== PLANNER_STATE_VERSION) {
       logPlannerDebug("ignore_persisted_state", {
         subjectId,
         version: parsed.version,
-        isLegacyPlan: isLegacyPlannerPlan(parsed.currentPlan),
       });
       return null;
     }
@@ -149,21 +148,6 @@ function readPersistedPlannerState(subjectId: string): PersistedPlannerState | n
     logPlannerDebug("read_persisted_state_failed", { subjectId });
     return null;
   }
-}
-
-function isLegacyPlannerPlan(plan: BuildPlannerPlanResponse | null | undefined): boolean {
-  const legacyMarkers = [
-    "核心概念与高频考点",
-    "公式与速判技巧",
-    "高频题型突破",
-    "易错点辨析",
-    "综合变式与迁移",
-    "考前速查清单",
-  ];
-  return (plan?.chapter_plan ?? []).some((chapter) => {
-    const title = String(chapter.title ?? "");
-    return legacyMarkers.some((marker) => title.includes(marker));
-  });
 }
 
 function persistPlannerState(subjectId: string, value: PersistedPlannerState) {
@@ -196,19 +180,29 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
+function plannerUserPrompt(plan: BuildPlannerPlanResponse | null | undefined): string {
+  if (!isRecord(plan)) {
+    return "";
+  }
+  const value = plan.user_prompt;
+  return typeof value === "string" ? value : "";
+}
+
+function confirmedUserPrompt(response: BuildPlannerConfirmResponse | null | undefined): string {
+  if (!isRecord(response)) {
+    return "";
+  }
+  const value = response.user_prompt;
+  return typeof value === "string" ? value : "";
+}
+
+function isAbortError(error: unknown): boolean {
+  return error instanceof Error && error.name === "AbortError";
+}
+
 function parsePlannerRuntimeStats(response: BuildPlannerSessionResponse): PlannerRuntimeStats | null {
   const candidate = (response as PlannerSessionWithRuntime).runtime_stats;
   return candidate ?? null;
-}
-
-function formatElapsedMs(value: number | undefined): string {
-  if (!value || value <= 0) {
-    return "0 ms";
-  }
-  if (value < 1000) {
-    return `${value} ms`;
-  }
-  return `${(value / 1000).toFixed(1)} s`;
 }
 
 function formatPlannerNodeLabel(stepName: string): string {
@@ -226,13 +220,6 @@ function formatPlannerNodeLabel(stepName: string): string {
   }
 }
 
-function listPlannerNodeTimings(runtimeStats: PlannerRuntimeStats | null | undefined): Array<[string, number]> {
-  if (!runtimeStats) {
-    return [];
-  }
-  return (runtimeStats.steps ?? []).slice(0, 3).map((step) => [step.name, step.elapsed_ms]);
-}
-
 function resolvePlannerStatusText(payload: unknown): string {
   if (!isRecord(payload)) {
     return "正在思考目标与资料...";
@@ -247,29 +234,6 @@ function resolvePlannerStatusText(payload: unknown): string {
   return "正在思考目标与资料...";
 }
 
-function plannerGoalTypeLabel(value: string): string {
-  switch (value) {
-    case "exam_sprint":
-      return "考前冲刺";
-    case "systematic_learning":
-      return "系统学习";
-    case "knowledge_doc":
-      return "知识文档规划";
-    default:
-      return value;
-  }
-}
-
-function plannerStringList(value: unknown, limit = 4): string[] {
-  if (!Array.isArray(value)) {
-    return [];
-  }
-  return value
-    .map((item) => (typeof item === "string" ? item.trim() : ""))
-    .filter(Boolean)
-    .slice(0, limit);
-}
-
 function buildPlannerOutlineItems(plan: BuildPlannerPlanResponse | null | undefined, limit = 8): PlannerOutlineItem[] {
   const chapters = (plan?.chapter_plan ?? [])
     .map((chapter) => ({
@@ -282,25 +246,7 @@ function buildPlannerOutlineItems(plan: BuildPlannerPlanResponse | null | undefi
     return chapters.slice(0, limit);
   }
 
-  return (plan?.research_queries ?? [])
-    .map((query) => ({ title: String(query ?? "").trim() }))
-    .filter((item) => item.title)
-    .slice(0, limit);
-}
-
-function buildPlannerFocusItems(plan: BuildPlannerPlanResponse | null | undefined, limit = 6): string[] {
-  const elements = (plan?.chapter_plan ?? []).flatMap((chapter) => chapter.required_elements ?? []);
-  const deduped: string[] = [];
-  for (const item of [...elements, ...(plan?.research_queries ?? [])]) {
-    const cleaned = String(item ?? "").trim();
-    if (cleaned && !deduped.includes(cleaned)) {
-      deduped.push(cleaned);
-    }
-    if (deduped.length >= limit) {
-      break;
-    }
-  }
-  return deduped;
+  return [];
 }
 
 function plannerPayloadOutlineDetails(payload: Record<string, unknown>): string[] {
@@ -328,19 +274,12 @@ function buildPlannerStreamDetails(payload: Record<string, unknown>): string[] {
   switch (stage) {
     case "planner.thinking.started":
       return [];
-    case "planner.intent.ready": {
-      const details: string[] = [];
-      if (typeof payload.goal_type === "string" && payload.goal_type.trim()) {
-        details.push(`目标类型：${plannerGoalTypeLabel(payload.goal_type.trim())}`);
-      }
-      const focusConcepts = plannerStringList(payload.focus_concepts, 6);
-      if (focusConcepts.length) {
-        details.push(`关注概念：${focusConcepts.join("、")}`);
-      }
-      return details;
-    }
+    case "planner.intent.ready":
+      return [];
     case "planner.plan.composing":
-      return ["正在把思考过程压缩成几条可确认的计划大纲。"];
+      return ["正在生成计划说明和可调整的初步大纲。"];
+    case "planner.plan.finalizing":
+      return ["正在校验计划结构，并写入草稿记录。"];
     case "planner.plan.ready":
       return plannerPayloadOutlineDetails(payload);
     default:
@@ -393,8 +332,6 @@ function appendPlannerStreamEvent(events: PlannerStreamEvent[], payload: unknown
 
 function PlannerOutlineCard({
   plan,
-  runtimeStats,
-  messageId,
   needsRefresh,
   isDisabled,
   isBuilding,
@@ -402,8 +339,6 @@ function PlannerOutlineCard({
   onAdjust,
 }: {
   plan: BuildPlannerPlanResponse;
-  runtimeStats?: PlannerRuntimeStats | null;
-  messageId: string;
   needsRefresh: boolean;
   isDisabled: boolean;
   isBuilding: boolean;
@@ -411,39 +346,14 @@ function PlannerOutlineCard({
   onAdjust: () => void;
 }) {
   const outlineItems = buildPlannerOutlineItems(plan);
-  const focusItems = buildPlannerFocusItems(plan);
 
   return (
     <div className="rounded-lg border border-zinc-200 bg-white px-5 py-5 shadow-sm">
-      <div className="flex flex-wrap items-center gap-2">
-        <h3 className="text-base font-semibold text-zinc-950">
-          {plan.plan_summary?.trim() || "计划大纲"}
-        </h3>
-        <span className="rounded-full border border-zinc-200 px-2 py-0.5 text-[11px] text-zinc-500">
-          {plan.digest_mode}
-        </span>
-        {needsRefresh ? (
-          <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] text-amber-700">
-            资料已变化
-          </span>
-        ) : null}
+      <div>
+        <p className="text-base font-semibold leading-7 text-zinc-950">
+          {plan.plan_summary?.trim() || "我会先整理资料主线，再生成一份可继续调整的初步大纲。"}
+        </p>
       </div>
-
-      {runtimeStats ? (
-        <div className="mt-3 flex flex-wrap gap-2">
-          <span className="rounded-full border border-zinc-200 bg-zinc-50 px-2 py-0.5 text-[10px] text-zinc-600">
-            总耗时 {formatElapsedMs(runtimeStats.elapsed_ms)}
-          </span>
-          {listPlannerNodeTimings(runtimeStats).map(([nodeName, elapsedMs]) => (
-            <span
-              key={`${messageId}-${nodeName}`}
-              className="rounded-full border border-zinc-200 bg-white px-2 py-0.5 text-[10px] text-zinc-500"
-            >
-              {formatPlannerNodeLabel(nodeName)} {formatElapsedMs(elapsedMs)}
-            </span>
-          ))}
-        </div>
-      ) : null}
 
       <div className="mt-5 space-y-4">
         {outlineItems.map((item, index) => (
@@ -459,17 +369,15 @@ function PlannerOutlineCard({
         ))}
       </div>
 
-      {focusItems.length ? (
-        <div className="mt-5 flex flex-wrap gap-2">
-          {focusItems.map((item) => (
-            <span key={item} className="rounded-full bg-zinc-100 px-2.5 py-1 text-xs text-zinc-600">
-              {item}
-            </span>
-          ))}
-        </div>
-      ) : null}
-
       <div className="mt-6 flex items-center gap-3">
+        <span className="rounded-full border border-zinc-200 px-2 py-0.5 text-[11px] text-zinc-500">
+          {plan.digest_mode}
+        </span>
+        {needsRefresh ? (
+          <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] text-amber-700">
+            资料已变化
+          </span>
+        ) : null}
         <div className="flex-1" />
         <button
           type="button"
@@ -577,6 +485,7 @@ async function streamPlannerSession(
   url: string,
   body: object,
   options: {
+    signal?: AbortSignal;
     onStatus?: (payload: unknown) => void;
     onToken?: (token: string) => void;
   } = {},
@@ -585,6 +494,7 @@ async function streamPlannerSession(
   let streamError: string | null = null;
 
   const result = await postSseJson(url, body, {
+    signal: options.signal,
     onToken: ({ content }) => {
       options.onToken?.(content);
     },
@@ -608,6 +518,11 @@ async function streamPlannerSession(
   if (!streamError && isRecord(result.errorPayload) && typeof result.errorPayload.detail === "string") {
     streamError = result.errorPayload.detail;
   }
+  if (result.aborted) {
+    const error = new Error("已停止生成。");
+    error.name = "AbortError";
+    throw error;
+  }
   if (streamError) {
     throw new Error(streamError);
   }
@@ -619,8 +534,9 @@ async function streamPlannerSession(
 
 async function createPlannerSessionStream(
   subject: string,
-  payload: { file_uids: string[]; user_goal: string },
+  payload: { file_uids: string[]; user_prompt: string },
   options: {
+    signal?: AbortSignal;
     onStatus?: (payload: unknown) => void;
     onToken?: (token: string) => void;
   } = {},
@@ -637,6 +553,7 @@ async function revisePlannerSessionStream(
   sessionId: string,
   message: string,
   options: {
+    signal?: AbortSignal;
     onStatus?: (payload: unknown) => void;
     onToken?: (token: string) => void;
   } = {},
@@ -675,6 +592,7 @@ export function BuildPlanPage() {
   const currentPlanRef = useRef<BuildPlannerPlanResponse | null>(null);
   const loadedSubjectRef = useRef<string | null>(null);
   const plannerStreamingRawRef = useRef("");
+  const plannerAbortControllerRef = useRef<AbortController | null>(null);
   const autoStartFiredRef = useRef(false);
 
   const [messages, setMessages] = useState<ChatMessage[]>([createWelcomeMessage()]);
@@ -826,11 +744,10 @@ export function BuildPlanPage() {
         });
         if (cancelled) return;
         const session = response.data;
-        if (!session || !session.turns?.length || isLegacyPlannerPlan(session.latest_plan)) {
+        if (!session || !session.turns?.length) {
           logPlannerDebug("restore_latest_empty", {
             subjectId,
             found: Boolean(session),
-            isLegacyPlan: Boolean(session && isLegacyPlannerPlan(session.latest_plan)),
           });
           // No server history either — fresh start
           setMessages([createWelcomeMessage()]);
@@ -951,7 +868,7 @@ export function BuildPlanPage() {
       try {
         const response = await createPlannerSessionStream(
           subjectId,
-          { file_uids: plannerEffectiveFileUids, user_goal: prompt },
+          { file_uids: plannerEffectiveFileUids, user_prompt: prompt },
           {
             onStatus: (payload) => {
               setPlannerStreamingStatus(resolvePlannerStatusText(payload));
@@ -1014,7 +931,7 @@ export function BuildPlanPage() {
     buildType: "docs",
     buildRequest: () => ({
       file_uids: readyFileUids.length > 0 ? readyFileUids : undefined,
-      prompt: currentPlanRef.current?.user_goal ?? undefined,
+      prompt: plannerUserPrompt(currentPlanRef.current) || undefined,
       confirmed_plan_id: currentPlanRef.current?.confirmed_plan_id ?? undefined,
     }),
     fallbackErrorMessage: "知识文档构建失败。",
@@ -1083,6 +1000,14 @@ export function BuildPlanPage() {
     focusComposer();
   }, [currentPlan, focusComposer, plannerSessionId, subjectId]);
 
+  const handleStopPlannerStream = useCallback(() => {
+    logPlannerDebug("click_stop_plan_message", {
+      subjectId,
+      plannerSessionId,
+    });
+    plannerAbortControllerRef.current?.abort();
+  }, [plannerSessionId, subjectId]);
+
   const appendPlannerResponse = useCallback(
     (response: BuildPlannerSessionResponse, fallbackContent: string, contentOverride?: string | null) => {
       const runtimeStats = parsePlannerRuntimeStats(response);
@@ -1142,6 +1067,10 @@ export function BuildPlanPage() {
   }, [navigate, subjectId]);
 
   const handleSend = useCallback(async () => {
+    if (plannerStreaming) {
+      handleStopPlannerStream();
+      return;
+    }
     const text = inputValue.trim();
     logPlannerDebug("click_send_plan_message", {
       subjectId,
@@ -1172,6 +1101,8 @@ export function BuildPlanPage() {
     setInputValue("");
     setIsRevisingPlan(false);
     setPlannerStreaming(true);
+    const controller = new AbortController();
+    plannerAbortControllerRef.current = controller;
     plannerStreamingRawRef.current = "";
     setPlannerStreamingPreview("");
     const initialStatus = shouldCreateSession
@@ -1188,9 +1119,10 @@ export function BuildPlanPage() {
           subjectId,
           {
             file_uids: plannerEffectiveFileUids,
-            user_goal: text,
+            user_prompt: text,
           },
           {
+            signal: controller.signal,
             onStatus: (payload) => {
               setPlannerStreamingStatus(resolvePlannerStatusText(payload));
               setPlannerStreamingEvents((prev) => appendPlannerStreamEvent(prev, payload));
@@ -1216,6 +1148,7 @@ export function BuildPlanPage() {
       }
 
       const response = await revisePlannerSessionStream(subjectId, plannerSessionId, text, {
+        signal: controller.signal,
         onStatus: (payload) => {
           setPlannerStreamingStatus(resolvePlannerStatusText(payload));
           setPlannerStreamingEvents((prev) => appendPlannerStreamEvent(prev, payload));
@@ -1237,6 +1170,11 @@ export function BuildPlanPage() {
         plannerStreamingPreview || plannerStreamingRawRef.current.replace(/\r/g, "").trim(),
       );
     } catch (error) {
+      if (isAbortError(error)) {
+        logPlannerDebug("send_plan_message_aborted", { subjectId });
+        setMessages((prev) => [...prev, createMessage("system", "已停止生成，你可以继续输入新的调整。")]);
+        return;
+      }
       logPlannerDebug("send_plan_message_failed", {
         subjectId,
         error: getApiErrorMessage(error, "unknown"),
@@ -1246,6 +1184,7 @@ export function BuildPlanPage() {
         createMessage("system", getApiErrorMessage(error, "主模型调用失败，未生成结果，请修改设置后重试。")),
       ]);
     } finally {
+      plannerAbortControllerRef.current = null;
       setPlannerStreaming(false);
       plannerStreamingRawRef.current = "";
       setPlannerStreamingPreview("");
@@ -1255,6 +1194,7 @@ export function BuildPlanPage() {
   }, [
     appendPlannerResponse,
     currentPlan,
+    handleStopPlannerStream,
     inputValue,
     isBuilding,
     isPlannerPending,
@@ -1262,6 +1202,7 @@ export function BuildPlanPage() {
     plannerFileUids,
     plannerNeedsRefresh,
     plannerSessionId,
+    plannerStreaming,
     readyFileUids.length,
     subjectId,
   ]);
@@ -1310,7 +1251,7 @@ export function BuildPlanPage() {
       knowledgeBuild.submitBuild({
         confirmed_plan_id: response.confirmed_plan_id,
         file_uids: readyFileUids.length > 0 ? readyFileUids : undefined,
-        prompt: response.user_goal,
+        prompt: confirmedUserPrompt(response),
       });
     } catch (error) {
       logPlannerDebug("confirm_build_failed", {
@@ -1494,8 +1435,6 @@ export function BuildPlanPage() {
                       {message.plan ? (
                         <PlannerOutlineCard
                           plan={message.plan}
-                          runtimeStats={message.runtimeStats}
-                          messageId={message.id}
                           needsRefresh={plannerNeedsRefresh}
                           isDisabled={isBuilding || isPlannerPending}
                           isBuilding={isBuilding || isPlannerPending}
@@ -1627,8 +1566,8 @@ export function BuildPlanPage() {
                     void handleSend();
                   }
                 }}
-                disabled={isBuilding}
-                placeholder={inputPlaceholder}
+                disabled={isBuilding || plannerStreaming}
+                placeholder={plannerStreaming ? "正在生成方案，点击右侧按钮可停止当前生成" : inputPlaceholder}
                 rows={1}
                 className="flex-1 resize-none border-0 bg-transparent text-sm leading-relaxed text-zinc-800 placeholder:text-zinc-400 focus:outline-none"
                 style={{ minHeight: "24px", maxHeight: "120px" }}
@@ -1641,10 +1580,14 @@ export function BuildPlanPage() {
               <button
                 type="button"
                 onClick={() => void handleSend()}
-                disabled={!inputValue.trim() || isPlannerPending || isBuilding}
-                className="flex h-9 w-9 items-center justify-center rounded-xl bg-zinc-900 text-white disabled:bg-zinc-200 disabled:text-zinc-400"
+                disabled={isBuilding || (!plannerStreaming && (!inputValue.trim() || confirmPlannerMutation.isPending))}
+                className={
+                  plannerStreaming
+                    ? "flex h-9 w-9 items-center justify-center rounded-xl bg-red-600 text-white hover:bg-red-700"
+                    : "flex h-9 w-9 items-center justify-center rounded-xl bg-zinc-900 text-white disabled:bg-zinc-200 disabled:text-zinc-400"
+                }
               >
-                <ArrowUp className="h-4 w-4" />
+                {plannerStreaming ? <X className="h-4 w-4" /> : <ArrowUp className="h-4 w-4" />}
               </button>
             </div>
 

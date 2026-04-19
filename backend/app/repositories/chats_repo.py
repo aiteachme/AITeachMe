@@ -18,21 +18,61 @@ def create_chat_session(
     subject: str,
     title: str,
     source: str | None = None,
+    session_id: str | None = None,
+    meta_json: Any | None = None,
     user_id: str = "local",
 ) -> ChatSession:
     """Create one chat session."""
 
     now = utcnow()
     item = ChatSession(
-        id=str(uuid.uuid4()),
+        id=session_id or str(uuid.uuid4()),
         subject=subject,
         user_id=user_id,
         title=title,
         source=source,
-        meta_json=None,
+        meta_json=meta_json,
         created_at=now,
         updated_at=now,
         last_message_at=now,
+    )
+    session.add(item)
+    session.commit()
+    session.refresh(item)
+    return item
+
+
+def create_chat_message(
+    session: Session,
+    *,
+    subject: str,
+    session_id: str,
+    role: str,
+    content: str,
+    turn_id: str | None = None,
+    source: str | None = None,
+    anchor_id: str | None = None,
+    selected_text: str | None = None,
+    source_chunk_id: int | None = None,
+    contexts: Any | None = None,
+    meta_json: Any | None = None,
+    user_id: str = "local",
+) -> ChatMessage:
+    """Create one chat message when a workflow writes turns one side at a time."""
+
+    item = ChatMessage(
+        subject=subject,
+        user_id=user_id,
+        session_id=session_id,
+        turn_id=turn_id or str(uuid.uuid4()),
+        source=source,
+        anchor_id=anchor_id,
+        selected_text=selected_text,
+        source_chunk_id=source_chunk_id,
+        role=role,
+        content=content,
+        contexts_json=contexts,
+        meta_json=meta_json,
     )
     session.add(item)
     session.commit()

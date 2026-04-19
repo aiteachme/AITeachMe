@@ -16,10 +16,14 @@ export interface SettingEntry {
   key: string;
   /** 展示名称。 */
   label: string;
-  /** 配置来源：env/settings/runtime。 */
+  /** 配置来源：env/settings/user_settings/runtime。 */
   source: SettingEntrySource;
   /** 可安全展示的当前值。 */
   value?: unknown | null;
+  /** 项目默认值。 */
+  default_value?: unknown | null;
+  /** 当前用户覆盖值。 */
+  user_value?: unknown | null;
   /** 格式化展示值。 */
   display_value?: string | null;
   /** 当前配置状态。 */

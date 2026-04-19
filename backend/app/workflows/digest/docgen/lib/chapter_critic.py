@@ -1,4 +1,4 @@
-"""Bounded chapter critique and rewrite for DocGen."""
+﻿"""Bounded chapter critique and rewrite for DocGen."""
 
 from __future__ import annotations
 

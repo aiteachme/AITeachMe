@@ -1,4 +1,4 @@
-"""Generate one DocGen chapter from a ChapterGenerationTask."""
+﻿"""Generate one DocGen chapter from a ChapterGenerationTask."""
 
 from __future__ import annotations
 
@@ -27,7 +27,6 @@ from app.workflows.digest.docgen.lib.models import (
 from app.workflows.digest.docgen.nodes.common import (
     ensure_chapter_heading,
     publish_docgen_progress,
-    resolve_docgen_course_type,
     resolve_docgen_retrieval_profile,
 )
 from app.workflows.digest.docgen.state import DocGenState
@@ -150,7 +149,16 @@ def _source_scope(source_details: list[dict]) -> dict:
 
 
 def build_generate_chapters_node(*, context: WorkflowContext):
+    """构建单章生成节点。
+
+    该节点通过 LangGraph Send 按章 fan-out 运行。每次调用只处理一个
+    ChapterGenerationTask：检索和读取资料、构造 evidence/claim/conflict
+    账本、调用 writer 生成草稿，并把单章产物通过 reducer fan-in 回主图。
+    """
+
     async def generate_chapters_node(state: DocGenState) -> dict:
+        """生成一个章节的草稿和研究账本。"""
+
         started_at = perf_counter()
         task = ChapterGenerationTask.model_validate(state["chapter_task"])
         document_backbone = DocumentBackbone.model_validate(state.get("document_backbone") or {})
@@ -179,7 +187,6 @@ def build_generate_chapters_node(*, context: WorkflowContext):
             planner_session_id=state.get("planner_session_id", ""),
             confirmed_plan_id=state.get("confirmed_plan_id", ""),
             digest_mode=state.get("digest_mode", ""),
-            course_type=resolve_docgen_course_type(state.get("course_type") or state.get("digest_mode")),
             retrieval_profile=str(state.get("retrieval_profile") or resolve_docgen_retrieval_profile(state.get("digest_mode"))),
             teaching_action="chapter_generate",
             chapter_index=task.chapter_index,
@@ -204,8 +211,6 @@ def build_generate_chapters_node(*, context: WorkflowContext):
                 required_elements=task.content_points or task.concept_targets,
                 digest_mode=state.get("digest_mode") or "",
                 retrieval_profile=traced_context.retrieval_profile,
-                selected_skillpacks=list(state.get("selected_skillpacks") or []),
-                user_goal=str((state.get("docgen_context") or {}).get("user_goal") or ""),
                 max_research_rounds=task.budget_policy.max_research_rounds,
                 max_context_chars=task.budget_policy.max_context_chars,
                 query_cap=max(1, task.budget_policy.max_local_queries + task.budget_policy.max_web_queries),
@@ -295,8 +300,6 @@ def build_generate_chapters_node(*, context: WorkflowContext):
                 ),
                 dense_context=dense_context,
                 digest_mode=state.get("digest_mode") or "systematic",
-                selected_skillpacks=list(state.get("selected_skillpacks") or []),
-                user_goal=str((state.get("docgen_context") or {}).get("user_goal") or ""),
             )
             writer_markdown = ensure_chapter_heading(title, writer_result.content)
         except Exception as exc:

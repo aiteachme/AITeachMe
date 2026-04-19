@@ -1,4 +1,4 @@
-"""Typed state for the rewritten DocGen lane."""
+﻿"""Typed state for the rewritten DocGen lane."""
 
 from __future__ import annotations
 
@@ -19,10 +19,8 @@ class DocGenState(TypedDict, total=False):
     confirmed_plan_id: str
     confirmed_plan: dict[str, Any] | None
     digest_mode: str
-    course_type: str
     retrieval_profile: str
     teaching_action: str
-    selected_skillpacks: list[str]
     shared_inputs: Any
     raw_chunks: list[dict[str, Any]]
     subject_profile: dict[str, Any] | None
@@ -59,8 +57,11 @@ class DocGenState(TypedDict, total=False):
     research_sources: Annotated[list[str], operator.add]
     chapter_review_reports: list[dict[str, Any]]
     document_consistency_report: dict[str, Any]
+    review_decision: str
     review_actions: list[dict[str, Any]]
     unresolved_warnings: list[str]
+    repair_loop_state: dict[str, Any]
+    repair_trace: Annotated[list[dict[str, Any]], operator.add]
 
     final_chapter_titles: list[dict[str, Any]]
     title_review_report: dict[str, Any]

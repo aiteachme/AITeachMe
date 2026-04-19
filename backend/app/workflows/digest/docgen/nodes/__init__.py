@@ -1,4 +1,4 @@
-"""DocGen top-level graph nodes."""
+﻿"""DocGen top-level graph nodes."""
 
 from .build_document_backbone import build_document_backbone_node
 from .confirm_and_dispatch import build_confirm_and_dispatch_node

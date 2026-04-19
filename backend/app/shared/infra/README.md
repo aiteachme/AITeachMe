@@ -30,7 +30,7 @@ shared.infra -> shared.kernel
 api/knowledge_docs.py
 -> app.workflows.digest.planner
 -> confirmed_plan
--> workflows/digest/docgen/builds.py
+-> workflows/digest/docgen/lib/build_lifecycle.py
 -> app.workflows.digest.run_docgen_workflow
 ```
 
@@ -41,7 +41,6 @@ api/knowledge_docs.py
 | 搜索 | `app.shared.infra.search` | 本地 RAG、外部 retriever、reader、source curation |
 | 向量状态 | `app.shared.infra.subject` | 判断学科向量是否可检索，并处理构建前向量配置确认 |
 | 工具 | `app.shared.infra.tools` | 统一工具注册表、内置工具与 toolpack 执行入口 |
-| 技能 | `app.shared.infra.skills` | skillpack 渲染、推荐 tags |
 | workflow 支撑 | `app.shared.infra.workflow` | workflow root / node / progress |
 | 执行契约 | `app.shared.infra.execution` | 长执行单元共享边界 |
 | 存储 | `app.shared.infra.storage` | 统一文件读写与内容存储 |
@@ -56,42 +55,27 @@ api/knowledge_docs.py
 
 现在 workflow 相关公开接口已经极简收口。
 
-## 推荐业务入口：`app.shared.infra.facade`
+## 公开入口约定
 
-新增业务友好的门面层：
+`infra` 不再保留一个总的 `facade/` 目录。
 
-```python
-from app.shared.infra.facade import (
-    InfraRuntime,
-    build_infra_context,
-    build_research_context,
-    call_llm_structured,
-    call_llm_text,
-    get_runtime_summary,
-    list_tools,
-    read_sources,
-    run_rag_eval,
-    run_tool,
-    stream_llm_text,
-)
-```
+之前的 `app.shared.infra.facade` 只是预留门面层，没有被 workflow/API 实际调用，反而让入口变得不清楚。现在按能力包直接导入稳定入口：
+
+| 能力 | 推荐入口 |
+| --- | --- |
+| LLM | `app.shared.infra.llm_support` |
+| 搜索 / 资料读取 | `app.shared.infra.search` |
+| 工具 | `app.shared.infra.tools` |
+| 技能 | `app.shared.infra.skills` |
+| workflow runtime | `app.shared.infra.workflow` |
+| 执行安全 / 沙箱 | `app.shared.infra.execution` |
+| 观测 | `app.shared.infra.observability` |
 
 使用约定：
 
-- workflow / application 可以调用 facade；API 层不要直接调用。
-- facade 只组合 LLM、检索、解析、工具、评测和观测能力，不承载业务状态机。
-- `InfraContext` 只携带 `subject / user_id / workflow / lane / node / build_session_id / request_id / permissions / metadata`，不放 DB session、graph state 或教学策略。
-- 复杂节点可实例化 `InfraRuntime`；简单调用优先用门面函数。
-
-当前新增的底层能力包括：
-
-- `facade/research.py`：统一组合 retriever、reader、source curation、context compression。
-- `facade/tools.py`：统一工具列表和执行入口，支持 risk/scopes/approval 元数据。
-- `facade/evals.py`：离线轻量评测入口，后续可接 Phoenix / Ragas / DeepEval。
-
-这层是新增推荐入口，不要求一次性迁移旧代码；新代码优先从 facade 进入。
-
-注意：文档解析不放在 infra facade 中。解析链路归 `app.workflows.ingest`，新增 Docling、MinerU、Marker 等 provider 时应接入 ingest 的 `parsing/provider_contracts.py`、`parsing/decision.py`、`parsing/strategy.py` 与 `parsing/orchestrator.py`，由 ingest 继续负责状态推进、资产产物和 fallback。
+- workflow / application 可以调用各能力包的稳定入口。
+- API 层优先调用 workflows，不直接拼装 infra 能力。
+- 文档解析不放在 infra 公共门面中。解析链路归 `app.workflows.ingest`，新增 Docling、MinerU、Marker 等 provider 时应接入 ingest 的 `parsing/provider_contracts.py`、`parsing/decision.py`、`parsing/strategy.py` 与 `parsing/orchestrator.py`，由 ingest 继续负责状态推进、资产产物和 fallback。
 
 ### `app.shared.infra.workflow`
 
@@ -162,7 +146,6 @@ workflow 作者通常不需要从这里直接导入。
 | `subject/` | 学科向量配置、查询能力与构建前 precheck |
 | `mcp/` | MCP 协议接入与外部工具服务管理 |
 | `tools/` | 运行时工具注册、执行、内置工具、toolpack 加载 |
-| `skills/` | `SKILL.md` 风格 prompt 策略包渲染与推荐 |
 | `memory/` | 共享记忆与学习档案 |
 | `workflow/` | workflow authoring/runtime/progress 公共支撑 |
 | `execution/` | 共享执行契约与安全边界 |
@@ -222,4 +205,4 @@ await acompletion_with_fallback(messages, model="light")
 
 - `backend/tools/` 已删除。旧 YAML-only 工具说明不会注册运行时工具，后续不要恢复这套机制。
 - `backend/toolpacks/` 是开发者/管理员使用的可执行工具扩展点，必须提供 `manifest.yaml + handler.py`。
-- `backend/skills/` 是内置 prompt 策略包目录，只通过 `selected_skillpacks` 和 `prompt_scope` 影响 prompt，不执行代码。
+- 独立 prompt 扩展层已删除。后续教学策略由 Planner、DocGen 节点和 confirmed plan 显式决定。

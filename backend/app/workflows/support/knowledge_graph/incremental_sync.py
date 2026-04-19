@@ -23,6 +23,7 @@ from app.workflows.digest.common.markdown_knowledge_anchors import build_knowled
 from app.workflows.digest.common.markdown_knowledge_anchors import (
     MarkdownKnowledgeUnit,
     extract_markdown_section_chunks,
+    validate_knowledge_unit_anchors,
 )
 from app.workflows.digest.kg_file_ingest.lib.extractor import extract_candidates
 
@@ -83,6 +84,13 @@ def sync_markdown_knowledge_graph(
     """Synchronize knowledge units and knowledge images from Markdown into the graph."""
 
     started_at = perf_counter()
+    validation = validate_knowledge_unit_anchors(markdown)
+    if not validation.ok:
+        raise ValueError(
+            "invalid Markdown KnowledgeUnit anchors: "
+            f"duplicates={validation.duplicate_anchors}, invalid={validation.invalid_anchors}"
+        )
+
     revision_no = build_revision_no or _next_revision_no(session, subject)
     units, extracted_edges = _extract_markdown_graph_items(markdown)
     report = KnowledgeSyncReport(

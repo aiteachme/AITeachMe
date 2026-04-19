@@ -7,18 +7,13 @@
  */
 import type { BuildPlannerChapterPlanResponse } from './buildPlannerChapterPlanResponse';
 import type { BuildPlannerPlanResponseBuildConstraints } from './buildPlannerPlanResponseBuildConstraints';
-import type { BuildPlannerPlanResponseMediaPlan } from './buildPlannerPlanResponseMediaPlan';
 
 export interface BuildPlannerPlanResponse {
   subject: string;
   selected_file_uids?: string[];
-  user_goal: string;
+  user_prompt: string;
   digest_mode: string;
-  tone: string;
-  selected_skillpacks?: string[];
   chapter_plan?: BuildPlannerChapterPlanResponse[];
-  research_queries?: string[];
-  media_plan?: BuildPlannerPlanResponseMediaPlan;
   build_constraints?: BuildPlannerPlanResponseBuildConstraints;
   plan_summary?: string;
   status?: string;

@@ -1,4 +1,4 @@
-"""Planner graph node ids, display names, and runtime timing fields."""
+﻿"""Planner graph node ids, display names, and runtime timing fields."""
 
 from __future__ import annotations
 

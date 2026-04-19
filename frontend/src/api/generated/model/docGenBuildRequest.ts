@@ -19,6 +19,6 @@ export interface DocGenBuildRequest {
   embedding_resolution?: 'rebuild' | 'disable' | null;
   /** Build type: 'docs' for knowledge documents only, 'graph' for knowledge graph only. */
   build_type?: DocGenBuildRequestBuildType;
-  /** Planner-generated and confirmed build plan ID. `docs` builds require this field; when provided, the build uses the frozen file selection, chapter plan, and user goal. */
+  /** Planner-generated and confirmed build plan ID. `docs` builds require this field; when provided, the build uses the frozen file selection, chapter plan, and User prompt. */
   confirmed_plan_id?: string | null;
 }

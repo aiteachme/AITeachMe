@@ -1,4 +1,4 @@
-import { Children, useMemo, type ReactNode } from "react";
+import { Children, useEffect, useMemo, useState, type ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
@@ -272,8 +272,13 @@ function encodePathSegments(path: string): string {
 
 function extractSubjectAssetPath(src: string): string | null {
   const normalized = src.split("#")[0]?.split("?")[0]?.replace(/\\/g, "/").trim() ?? "";
-  if (!normalized || isAbsoluteAssetUrl(normalized)) {
+  if (!normalized || /^(https?:)?\/\//i.test(normalized) || normalized.startsWith("data:")) {
     return null;
+  }
+
+  const localStaticMatch = normalized.match(/^\/_assets\/[^/]+\/assets\/(.+)$/);
+  if (localStaticMatch?.[1]) {
+    return localStaticMatch[1].replace(/^\/+/, "");
   }
 
   const assetMatch = normalized.match(/(?:^|\/)assets\/(.+)$/);
@@ -329,6 +334,84 @@ function resolveMarkdownImageSrc(
   }
 
   return `${assetBaseUrl.replace(/\/$/, "")}/${encodeURIComponent(filename)}`;
+}
+
+function shouldFetchAuthorizedAsset(src: string | undefined): src is string {
+  return typeof src === "string" && src.startsWith("/api/v1/subjects/") && src.includes("/files/assets/");
+}
+
+function getBearerToken(): string {
+  try {
+    return window.localStorage.getItem("token") ?? "";
+  } catch {
+    return "";
+  }
+}
+
+function MarkdownImage({
+  src,
+  alt,
+  styles,
+}: {
+  src: string | undefined;
+  alt: string | undefined;
+  styles: ViewerStyles;
+}) {
+  const [blobSrc, setBlobSrc] = useState("");
+
+  useEffect(() => {
+    if (!shouldFetchAuthorizedAsset(src)) {
+      setBlobSrc("");
+      return;
+    }
+    const token = getBearerToken();
+    if (!token) {
+      setBlobSrc("");
+      return;
+    }
+
+    const controller = new AbortController();
+    let objectUrl = "";
+    fetch(src, {
+      credentials: "include",
+      headers: { Authorization: `Bearer ${token}` },
+      signal: controller.signal,
+    })
+      .then((response) => {
+        if (!response.ok) {
+          throw new Error(`asset fetch failed: ${response.status}`);
+        }
+        return response.blob();
+      })
+      .then((blob) => {
+        objectUrl = URL.createObjectURL(blob);
+        setBlobSrc(objectUrl);
+      })
+      .catch(() => {
+        setBlobSrc("");
+      });
+
+    return () => {
+      controller.abort();
+      if (objectUrl) {
+        URL.revokeObjectURL(objectUrl);
+      }
+    };
+  }, [src]);
+
+  return (
+    <figure className={styles.imageShell}>
+      <div className={styles.imageFrame}>
+        <img
+          src={blobSrc || src}
+          alt={alt ?? ""}
+          className={styles.image}
+          loading="lazy"
+        />
+      </div>
+      {alt ? <figcaption className={styles.imageCaption}>{alt}</figcaption> : null}
+    </figure>
+  );
 }
 
 function parseCallout(children: ReactNode): { kind: CalloutKind; body: ReactNode[] } | null {
@@ -459,17 +542,11 @@ export function MarkdownViewer({
           });
 
           return (
-            <figure className={styles.imageShell}>
-              <div className={styles.imageFrame}>
-                <img
-                  src={resolvedSrc}
-                  alt={alt ?? ""}
-                  className={styles.image}
-                  loading="lazy"
-                />
-              </div>
-              {alt ? <figcaption className={styles.imageCaption}>{alt}</figcaption> : null}
-            </figure>
+            <MarkdownImage
+              src={resolvedSrc}
+              alt={alt}
+              styles={styles}
+            />
           );
         },
       }}

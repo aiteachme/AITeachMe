@@ -10,7 +10,7 @@ MERMAID_PLACEHOLDER_PATTERN = re.compile(r"<!--\s*\[MERMAID:\s*(.+?)\]\s*-->")
 IMAGE_PLACEHOLDER_PATTERN = re.compile(r"<!--\s*\[IMAGE:\s*(.+?)\]\s*-->")
 HEADER_PATTERN = re.compile(r"^(#{1,6})\s+(.+?)\s*$", re.MULTILINE)
 KNOWLEDGE_ANCHOR_PATTERN = re.compile(
-    r"\s*(?:\{#ku_[A-Za-z0-9_-]+\}|<!--\s*ATM_KU:\s*ku_[A-Za-z0-9_-]+\s*-->)"
+    r"\s*(?:\{#ku_[\w-]+\}|<!--\s*ATM_KU:\s*ku_[\w-]+\s*-->)"
 )
 MERMAID_START_PATTERN = re.compile(
     r"^(?P<prefix>(?:>\s*)*)```\s*(?P<lang>mermaid|mindmap|graph|flowchart|sequenceDiagram|classDiagram|stateDiagram(?:-v2)?|erDiagram|gantt|pie|journey|timeline|gitGraph)?\s*$",
@@ -23,6 +23,9 @@ MERMAID_KEYWORD_PATTERN = re.compile(
     re.IGNORECASE,
 )
 MALFORMED_MERMAID_FENCE_PATTERN = re.compile(r"^\s*```\s*(?P<trailing>.+)$")
+INLINE_FENCE_PATTERN = re.compile(r"^(?P<prefix>.*\S)\s*```\s*(?P<lang>[A-Za-z0-9_-]*)\s*$")
+BLOCKQUOTE_PREFIX_PATTERN = re.compile(r"^\s*>\s?")
+MATH_FENCE_PATTERN = re.compile(r"^\s*(?:>\s*)?\$\$\s*$")
 
 
 
@@ -219,6 +222,95 @@ def normalize_mermaid_blocks(markdown: str) -> str:
     return normalized
 
 
+def _strip_quote_prefix(line: str) -> str:
+    return BLOCKQUOTE_PREFIX_PATTERN.sub("", str(line or ""), count=1).rstrip()
+
+
+def normalize_markdown_rendering(markdown: str) -> str:
+    """修复学生文档里最容易破坏渲染的 Markdown 结构。
+
+    LLM 常见问题是把 display math 或 fenced code 混进 blockquote，
+    例如 ``> ```dos`` 或 ``$$`` 内部行仍带 ``>``。这里做确定性清洗，
+    不改知识内容，只修可渲染结构。
+    """
+
+    text = str(markdown or "").replace("\r\n", "\n").replace("\r", "\n")
+    if not text:
+        return ""
+
+    lines = text.split("\n")
+    fixed: list[str] = []
+    in_math = False
+    in_fence = False
+
+    for raw_line in lines:
+        line = raw_line.rstrip()
+        stripped = line.strip()
+
+        if in_math:
+            if MATH_FENCE_PATTERN.match(line):
+                fixed.append("$$")
+                in_math = False
+                continue
+            cleaned_math_line = _strip_quote_prefix(line) if BLOCKQUOTE_PREFIX_PATTERN.match(line) else line
+            if not cleaned_math_line.strip():
+                continue
+            fixed.append(cleaned_math_line)
+            continue
+
+        if in_fence:
+            if stripped.startswith("```"):
+                fixed.append("```")
+                in_fence = False
+                continue
+            fixed.append(_strip_quote_prefix(line) if BLOCKQUOTE_PREFIX_PATTERN.match(line) else line)
+            continue
+
+        inline_fence = INLINE_FENCE_PATTERN.match(line)
+        if inline_fence and not stripped.startswith("```"):
+            prefix = inline_fence.group("prefix").rstrip()
+            lang = inline_fence.group("lang").strip()
+            if prefix:
+                fixed.append(prefix)
+            fixed.append(f"```{lang}".rstrip())
+            in_fence = True
+            continue
+
+        if MATH_FENCE_PATTERN.match(line):
+            if fixed and fixed[-1].strip() == ">":
+                fixed[-1] = ""
+            fixed.append("$$")
+            in_math = True
+            continue
+
+        if stripped.startswith("> ```"):
+            fixed.append("```" + stripped.removeprefix("> ```").strip())
+            in_fence = True
+            continue
+
+        fixed.append(line)
+
+    normalized = "\n".join(fixed)
+    normalized = re.sub(r"\n{3,}", "\n\n", normalized).strip()
+    return normalized + ("\n" if normalized else "")
+
+
+def find_markdown_rendering_issues(markdown: str) -> list[str]:
+    """返回会影响 Markdown 渲染的结构问题。"""
+
+    text = str(markdown or "").replace("\r\n", "\n").replace("\r", "\n")
+    issues: list[str] = []
+    if re.search(r"(?m)^>\s*.*```\s*[A-Za-z0-9_-]*\s*$", text):
+        issues.append("代码块起始符被放在引用行内。")
+    if re.search(r"(?m)^>\s*$\n\$\$", text) or re.search(r"(?m)^\$\$\n>\s*", text):
+        issues.append("display math 内混入 blockquote 前缀。")
+    if text.count("```") % 2 != 0:
+        issues.append("Markdown fenced code block 数量不成对。")
+    if text.count("$$") % 2 != 0:
+        issues.append("display math 分隔符数量不成对。")
+    return list(dict.fromkeys(issues))
+
+
 
 def build_draft_excerpt(markdown: str, *, max_chars: int = 420) -> str:
     cleaned = re.sub(r"\s+", " ", markdown).strip()
@@ -378,6 +470,8 @@ __all__ = [
     "extract_image_placeholders",
     "extract_markdown_headers",
     "extract_mermaid_placeholders",
+    "find_markdown_rendering_issues",
+    "normalize_markdown_rendering",
     "normalize_source_details",
     "normalize_mermaid_blocks",
     "prepend_table_of_contents",

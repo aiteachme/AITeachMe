@@ -10,7 +10,6 @@ from app.workflows.digest.common.contracts import (
     DigestChapterContract,
     DigestConfirmedPlanContract,
     parse_digest_confirmed_plan_contract,
-    resolve_digest_course_type,
     resolve_digest_retrieval_profile,
 )
 from app.shared.infra.workflow.context import WorkflowContext
@@ -69,10 +68,6 @@ def resolve_docgen_dependency(name: str, default: Any, *, owner_module: str | No
     except Exception:
         return default
     return getattr(module, name, default)
-
-
-def resolve_docgen_course_type(digest_mode: str | None) -> str:
-    return resolve_digest_course_type(digest_mode)
 
 
 def resolve_docgen_retrieval_profile(digest_mode: str | None) -> str:
@@ -156,9 +151,7 @@ __all__ = [
     "normalize_confirmed_plan_contract",
     "publish_docgen_progress",
     "resolve_docgen_dependency",
-    "resolve_docgen_course_type",
     "resolve_docgen_retrieval_profile",
     "serialize_section",
 ]
-
 

@@ -1,4 +1,4 @@
-"""Confirm DocGen internal execution plan and prepare chapter fan-out."""
+﻿"""Confirm DocGen internal execution plan and prepare chapter fan-out."""
 
 from __future__ import annotations
 
@@ -24,7 +24,15 @@ from app.workflows.digest.docgen.state import DocGenState
 
 
 def build_confirm_and_dispatch_node(*, context: WorkflowContext):
+    """构建 DocGen 内部派发节点。
+
+    该节点把 prepare_context 的大纲、意图、文件摘要和证据候选合并成
+    章节执行计划 seed，并生成后续 build_document_backbone 需要的议程。
+    """
+
     async def confirm_and_dispatch_node(state: DocGenState) -> dict:
+        """收口准备阶段产物，生成章节任务和骨架研究议程。"""
+
         started_at = perf_counter()
         docgen_context = DocGenContext.model_validate(state.get("docgen_context") or {})
         intent_profile = DocGenIntentProfile.model_validate(state.get("intent_profile") or {})
