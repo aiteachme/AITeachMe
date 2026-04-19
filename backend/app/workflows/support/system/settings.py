@@ -108,6 +108,24 @@ def _project_by_override_keys(
     return projected
 
 
+def _diff_from_base(base_payload: Mapping[str, Any], payload: Mapping[str, Any]) -> dict[str, Any]:
+    """Return only values in ``payload`` that differ from project defaults."""
+
+    diff: dict[str, Any] = {}
+    for key, value in payload.items():
+        if key not in base_payload:
+            continue
+        base_value = base_payload[key]
+        if isinstance(value, Mapping) and isinstance(base_value, Mapping):
+            child = _diff_from_base(base_value, value)
+            if child:
+                diff[key] = child
+            continue
+        if value != base_value:
+            diff[key] = value
+    return diff
+
+
 def _project_known_settings_keys(
     schema_payload: Mapping[str, Any],
     raw_override: Mapping[str, Any],
@@ -134,6 +152,13 @@ def _project_known_settings_keys(
 
 
 def _normalize_user_settings_payload(raw_payload: Mapping[str, Any]) -> dict[str, Any]:
+    """Validate and shrink a user settings override payload.
+
+    The database should store only user-changed, non-secret settings. Defaults
+    remain in ``settings_default.yaml``; secrets remain in ``.env`` / process
+    environment or browser-local draft fields.
+    """
+
     base_payload = get_settings().model_dump(mode="json")
     known_payload = _project_known_settings_keys(base_payload, raw_payload)
     candidate_payload = _deep_merge(base_payload, known_payload)
@@ -146,17 +171,24 @@ def _normalize_user_settings_payload(raw_payload: Mapping[str, Any]) -> dict[str
             status_code=422,
             data=exc.errors(),
         ) from exc
-    return _project_by_override_keys(effective.model_dump(mode="json"), known_payload)
+    projected_payload = _project_by_override_keys(effective.model_dump(mode="json"), known_payload)
+    return _diff_from_base(base_payload, projected_payload)
+
+
+def _safe_user_settings_payload(raw_payload: Mapping[str, Any]) -> dict[str, Any]:
+    """Normalize persisted user settings without letting stale rows break reads."""
+
+    try:
+        return _normalize_user_settings_payload(raw_payload)
+    except AITeachMeError as exc:
+        logger.warning("invalid_user_settings_ignored", error=str(exc), error_code=exc.error_code)
+        return {}
 
 
 def _merge_user_settings(base_settings: Settings, user_payload: Mapping[str, Any]) -> Settings:
     if not user_payload:
         return base_settings
-    try:
-        normalized_payload = _normalize_user_settings_payload(user_payload)
-    except AITeachMeError as exc:
-        logger.warning("invalid_user_settings_ignored", error=str(exc), error_code=exc.error_code)
-        normalized_payload = {}
+    normalized_payload = _safe_user_settings_payload(user_payload)
     merged_payload = _deep_merge(base_settings.model_dump(mode="json"), normalized_payload)
     return Settings.model_validate(merged_payload)
 
@@ -248,11 +280,12 @@ def build_settings_overview_data(
     """Build a safe overview of env, project defaults, and user settings."""
 
     base_settings = get_settings()
-    user_payload = (
+    raw_user_payload = (
         get_user_runtime_settings_payload(session, user_id)
         if session is not None and user_id
         else {}
     )
+    user_payload = _safe_user_settings_payload(raw_user_payload)
     settings = _merge_user_settings(base_settings, user_payload)
     mode = resolve_app_mode()
     settings_path = resolve_project_settings_path()
