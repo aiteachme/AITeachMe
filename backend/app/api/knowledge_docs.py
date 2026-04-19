@@ -276,7 +276,7 @@ async def knowledge_debug_kg_docs_sync(
             action="kg_docs_sync",
             requested_at=requested_at,
             accepted_file_uids=[],
-            message="已触发 kg_docs_sync，将基于当前已发布知识文档同步知识图谱。",
+            message="已触发 kg_docs_sync，将基于当前已发布知识文档同步知识单元、知识图片与图谱关系。",
         )
     )
 

@@ -1,9 +1,8 @@
-"""Markdown-carried KnowledgeUnit anchor helpers.
+"""Markdown-carried KnowledgeUnit extraction helpers.
 
-The P2 contract keeps the stable identity in Markdown itself. A knowledge
-unit anchor is written as a hidden HTML comment on a heading or labeled block.
-Optional inline tags such as ``[type: definition]`` and
-``[prerequisite: Linear function]`` can guide graph extraction.
+The stable identity is still carried by Markdown anchors internally, while the
+workflow extracts richer KnowledgeUnit content from the knowledge document
+itself, including body markdown and inline knowledge images.
 """
 
 from __future__ import annotations
@@ -21,6 +20,7 @@ _COMMENT_ANCHOR_RE = re.compile(r"<!--\s*ATM_KU:\s*(?P<anchor>ku_[A-Za-z0-9_-]+)
 _ANCHOR_RE = re.compile(r"(?:\{#(?P<inline>ku_[A-Za-z0-9_-]+)\}|<!--\s*ATM_KU:\s*(?P<comment>ku_[A-Za-z0-9_-]+)\s*-->)")
 _HEADING_RE = re.compile(r"^(?P<prefix>\s{0,3}#{1,6}\s+)(?P<title>.+?)(?P<trailing>\s*)$")
 _TAG_RE = re.compile(r"\[(?P<key>type|prerequisite|related):\s*(?P<value>[^\]]+)\]", re.IGNORECASE)
+_IMAGE_RE = re.compile(r"!\[(?P<alt>[^\]]*)\]\((?P<url>[^)]+)\)")
 _LABEL_RE = re.compile(
     r"^\s*(?:[-*]\s*)?(?:\*\*)?"
     r"(?P<label>定义|定理|公式|例题|示例|练习|证明|备注|Definition|Theorem|Formula|Example|Exercise|Proof|Remark)"
@@ -51,15 +51,18 @@ _LABEL_TYPE_MAP = {
 
 @dataclass(frozen=True)
 class MarkdownKnowledgeUnit:
-    """A KnowledgeUnit candidate declared by a Markdown anchor."""
+    """A KnowledgeUnit candidate extracted from knowledge markdown."""
 
     anchor: str
     name: str
     knowledge_unit_type: str = "concept"
     summary: str = ""
+    body_markdown: str = ""
+    knowledge_images: list[str] = field(default_factory=list)
     prerequisites: list[str] = field(default_factory=list)
     related: list[str] = field(default_factory=list)
     line_no: int = 0
+    heading_level: int = 1
 
 
 @dataclass(frozen=True)
@@ -165,31 +168,44 @@ def extract_all_anchor_ids(markdown: str) -> list[str]:
 
 
 def extract_markdown_knowledge_units(markdown: str) -> list[MarkdownKnowledgeUnit]:
-    """Extract KnowledgeUnit candidates from Markdown anchor declarations."""
+    """Extract KnowledgeUnit candidates from Markdown sections."""
 
     lines = markdown.splitlines()
     units: list[MarkdownKnowledgeUnit] = []
-    for index, line in enumerate(lines):
-        anchor = _extract_anchor_from_line(line)
-        if anchor is None:
-            continue
+    used_anchors = set(extract_knowledge_unit_anchor_ids(markdown))
+    heading_indexes = [
+        index
+        for index, line in enumerate(lines)
+        if _HEADING_RE.match(line) and not _is_skippable_heading(_HEADING_RE.match(line).group("title"))  # type: ignore[union-attr]
+    ]
 
+    for position, index in enumerate(heading_indexes):
+        line = lines[index]
+        heading_match = _HEADING_RE.match(line)
+        prefix = heading_match.group("prefix") if heading_match else "# "
+        heading_level = max(1, min(6, prefix.count("#")))
         name = _extract_unit_name(line)
         if not name:
             continue
-
+        anchor = _extract_anchor_from_line(line) or build_knowledge_unit_anchor(name, used=used_anchors)
         tags = _extract_tags(line)
         knowledge_unit_type = _infer_node_type(line, tags.get("type", ""))
-        summary = _build_summary(lines, index)
+        next_index = heading_indexes[position + 1] if position + 1 < len(heading_indexes) else len(lines)
+        section_lines = lines[index:next_index]
+        body_markdown = _build_body_markdown(section_lines)
+        summary = _build_summary(section_lines)
         units.append(
             MarkdownKnowledgeUnit(
                 anchor=anchor,
                 name=name,
                 knowledge_unit_type=knowledge_unit_type,
                 summary=summary,
+                body_markdown=body_markdown,
+                knowledge_images=_extract_knowledge_images(body_markdown),
                 prerequisites=_split_tag_values(tags.get("prerequisite", "")),
                 related=_split_tag_values(tags.get("related", "")),
                 line_no=index + 1,
+                heading_level=heading_level,
             )
         )
     return units
@@ -267,12 +283,42 @@ def _infer_node_type(line: str, explicit_type: str) -> str:
     return "concept"
 
 
-def _build_summary(lines: list[str], index: int) -> str:
+def _collect_unit_section_lines(lines: list[str], index: int) -> list[str]:
+    section: list[str] = [lines[index]]
+    for line in lines[index + 1 :]:
+        if _extract_anchor_from_line(line):
+            break
+        section.append(line)
+    return section
+
+
+def _build_body_markdown(lines: list[str]) -> str:
+    body = "\n".join(line.rstrip() for line in lines).strip()
+    return body[:8000]
+
+
+def _extract_knowledge_images(body_markdown: str) -> list[str]:
+    seen: set[str] = set()
+    images: list[str] = []
+    for match in _IMAGE_RE.finditer(body_markdown):
+        image_markdown = match.group(0).strip()
+        if image_markdown and image_markdown not in seen:
+            seen.add(image_markdown)
+            images.append(image_markdown)
+    return images
+
+
+def _build_summary(lines: list[str]) -> str:
     parts: list[str] = []
-    for line in lines[index : index + 4]:
+    for line in lines:
         stripped = _strip_tags_and_anchor(line)
-        if stripped:
-            parts.append(stripped)
+        if not stripped:
+            continue
+        if _IMAGE_RE.search(line):
+            continue
+        parts.append(stripped)
+        if len(" ".join(parts)) >= 500:
+            break
     return " ".join(parts)[:500]
 
 

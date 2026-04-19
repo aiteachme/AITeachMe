@@ -11,6 +11,7 @@ from sqlmodel import select
 
 from app.shared.infra.database import managed_session
 from app.shared.infra.embedding import aembed_texts
+from app.shared.infra.search.api import search_knowledge
 from app.models.knowledge_relation import EdgeRevision, KnowledgeEdge
 from app.models.knowledge_unit import KnowledgeUnit
 from app.repositories import knowledge_build_repo
@@ -53,6 +54,7 @@ _PRIMARY_NODE_TYPES = PRIMARY_KNOWLEDGE_UNIT_TYPES
 _SECONDARY_NODE_TYPES = SECONDARY_KNOWLEDGE_UNIT_TYPES
 _PRIMARY_SIMILARITY_THRESHOLD = 0.80
 _SECONDARY_SIMILARITY_THRESHOLD = 0.85
+_RAG_DEDUP_TOP_K = 6
 
 class ExistingNodeRecord:
     node: KnowledgeUnit
@@ -96,6 +98,34 @@ def _has_content_update(candidate_summary: str, existing_summary: str) -> bool:
     existing_chars = set(existing_summary)
     new_chars = sum(1 for char in candidate_summary if char not in existing_chars)
     return new_chars > len(candidate_summary) * 0.3
+
+
+async def _has_rag_candidate_signal(
+    *,
+    subject: str,
+    representative_name: str,
+    candidate_summary: str,
+    rag_cache: dict[str, bool],
+) -> bool:
+    query = "\n".join(
+        part.strip()
+        for part in [representative_name, candidate_summary]
+        if part and part.strip()
+    ).strip()
+    if not query:
+        return False
+    cached = rag_cache.get(query)
+    if cached is not None:
+        return cached
+    hits = await search_knowledge(
+        query,
+        subject,
+        top_k=_RAG_DEDUP_TOP_K,
+        enable_rerank=False,
+    )
+    matched = bool(hits)
+    rag_cache[query] = matched
+    return matched
 
 
 async def _build_resolution_index(subject: str) -> ResolutionIndex:
@@ -216,6 +246,8 @@ def _match_primary_candidate(
     candidate_summary: str,
     candidate_embedding: list[float],
     index: ResolutionIndex,
+    *,
+    allow_semantic_match: bool = True,
 ) -> ResolveResult:
     normalized_name = normalize_name(representative_name)
     exact_match = index.normalized_map.get((representative_type, normalized_name))
@@ -235,7 +267,7 @@ def _match_primary_candidate(
             new_aliases=[representative_name],
         )
 
-    if not candidate_embedding:
+    if not allow_semantic_match or not candidate_embedding:
         return ResolveResult(decision="no_match")
 
     same_type_records = index.records_by_type.get(representative_type, [])
@@ -294,8 +326,9 @@ def _match_secondary_candidate(
     candidate_embedding: list[float],
     index: ResolutionIndex,
     candidate_lookup_to_resolved_node_id: dict[str, int],
+    allow_semantic_match: bool = True,
 ) -> ResolveResult:
-    if not parent_name or not candidate_embedding:
+    if not parent_name or not allow_semantic_match or not candidate_embedding:
         return ResolveResult(decision="no_match")
 
     parent_node_id = _resolve_parent_node_id(
@@ -357,6 +390,9 @@ async def resolve_nodes_node(state: KnowledgeDigestState) -> KnowledgeDigestStat
             persist_started_at = perf_counter()
             no_match_count = 0
             secondary_no_match_count = 0
+            rag_cache: dict[str, bool] = {}
+            rag_checked_count = 0
+            rag_hit_count = 0
 
             def _commit_pending_writes() -> None:
                 nonlocal pending_write_count
@@ -392,7 +428,26 @@ async def resolve_nodes_node(state: KnowledgeDigestState) -> KnowledgeDigestStat
                         clustered_candidate.merged_summary,
                         candidate_embedding,
                         resolution_index,
+                        allow_semantic_match=False,
                     )
+                    if result.decision == "no_match":
+                        rag_checked_count += 1
+                        has_rag_signal = await _has_rag_candidate_signal(
+                            subject=subject,
+                            representative_name=representative.name,
+                            candidate_summary=clustered_candidate.merged_summary,
+                            rag_cache=rag_cache,
+                        )
+                        if has_rag_signal:
+                            rag_hit_count += 1
+                            result = _match_primary_candidate(
+                                representative.name,
+                                representative.knowledge_unit_type,
+                                clustered_candidate.merged_summary,
+                                candidate_embedding,
+                                resolution_index,
+                                allow_semantic_match=True,
+                            )
                 elif representative.knowledge_unit_type in _SECONDARY_NODE_TYPES:
                     result = _match_secondary_candidate(
                         representative_name=representative.name,
@@ -403,7 +458,29 @@ async def resolve_nodes_node(state: KnowledgeDigestState) -> KnowledgeDigestStat
                         candidate_embedding=candidate_embedding,
                         index=resolution_index,
                         candidate_lookup_to_resolved_node_id=candidate_lookup_to_resolved_node_id,
+                        allow_semantic_match=False,
                     )
+                    if result.decision == "no_match":
+                        rag_checked_count += 1
+                        has_rag_signal = await _has_rag_candidate_signal(
+                            subject=subject,
+                            representative_name=representative.name,
+                            candidate_summary=clustered_candidate.merged_summary,
+                            rag_cache=rag_cache,
+                        )
+                        if has_rag_signal:
+                            rag_hit_count += 1
+                            result = _match_secondary_candidate(
+                                representative_name=representative.name,
+                                representative_type=representative.knowledge_unit_type,
+                                parent_name=representative.parent_entity_name or representative.taxonomy_hint,
+                                taxonomy_hint=representative.taxonomy_hint,
+                                candidate_summary=clustered_candidate.merged_summary,
+                                candidate_embedding=candidate_embedding,
+                                index=resolution_index,
+                                candidate_lookup_to_resolved_node_id=candidate_lookup_to_resolved_node_id,
+                                allow_semantic_match=True,
+                            )
                 else:
                     result = ResolveResult(decision="no_match")
 
@@ -519,6 +596,8 @@ async def resolve_nodes_node(state: KnowledgeDigestState) -> KnowledgeDigestStat
                 new_nodes=len(new_node_ids),
                 updated_nodes=len(updated_node_ids),
                 total_resolved=len(candidate_lookup_to_resolved_node_id),
+                rag_checked_count=rag_checked_count,
+                rag_hit_count=rag_hit_count,
             )
             return {
                 **state,
@@ -532,11 +611,11 @@ async def resolve_nodes_node(state: KnowledgeDigestState) -> KnowledgeDigestStat
                 "node_persist_ms": node_persist_ms,
                 "no_match_count": no_match_count,
                 "secondary_no_match_count": secondary_no_match_count,
+                "rag_checked_count": rag_checked_count,
+                "rag_hit_count": rag_hit_count,
             }
         except Exception as exc:
             digest_logger.error("knowledge_workflow_resolve_nodes_failed", error=str(exc), exc_info=True)
             return {**state, "error": f"resolve_nodes_failed: {exc}"}
 
 __all__ = ["resolve_nodes_node"]
-
-

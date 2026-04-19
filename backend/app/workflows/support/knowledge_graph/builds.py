@@ -115,7 +115,7 @@ def run_graph_docs_sync_after_doc_build(
     file_ids: list[int],
     prompt: str | None,
 ) -> dict[str, int | str]:
-    """Re-sync graph anchors from the latest knowledge document after doc publish."""
+    """Re-sync knowledge units and knowledge images from the latest knowledge document."""
 
     from app.workflows.digest.kg_docs_sync import run_graph_docs_sync_workflow
 
@@ -146,7 +146,7 @@ def run_graph_docs_sync_after_doc_build(
         ),
         knowledge_doc_source=knowledge_doc_source,
         knowledge_doc_chapter_count=len(doc_chapter_metadatas),
-        current_stage_description="Syncing KnowledgeUnits and relations from the latest knowledge markdown.",
+        current_stage_description="Syncing KnowledgeUnits, knowledge images, and relations from the latest knowledge markdown.",
     )
     sync_result = run_graph_docs_sync_workflow(
         subject=subject,
