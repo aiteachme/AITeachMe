@@ -391,6 +391,17 @@ function buildSettingsPayload(draft: Record<string, SettingPrimitive>, entries: 
   return root;
 }
 
+function buildChangedSettingsPayload(
+  draft: Record<string, SettingPrimitive>,
+  defaults: Record<string, SettingPrimitive>,
+  entries: SettingEntry[],
+) {
+  const changedDraft = Object.fromEntries(
+    Object.entries(draft).filter(([key, value]) => value !== defaults[key]),
+  ) as Record<string, SettingPrimitive>;
+  return buildSettingsPayload(changedDraft, entries);
+}
+
 function parseInputValue(raw: string, currentValue: SettingPrimitive): SettingPrimitive {
   if (typeof currentValue === "number") {
     const next = Number(raw);
@@ -814,7 +825,7 @@ export function SettingsPanel({ isOpen, onClose }: SettingsModalProps) {
         url: "/api/v1/system/settings",
         method: "PATCH",
         data: {
-          settings: reset ? {} : buildSettingsPayload(settingsDraft, allEditableEntries),
+          settings: reset ? {} : buildChangedSettingsPayload(settingsDraft, defaultSettingsDraft, allEditableEntries),
           reset,
         },
       });
