@@ -148,9 +148,9 @@ function resolveBuildStatusLabel(
     return "进行中";
   }
 
-  if (status === "completed") return "已完成";
-  if (status === "failed") return "失败";
-  if (status === "cancelled") return "已取消";
+  if (status === "completed") return description || "???";
+  if (status === "failed") return description || "??";
+  if (status === "cancelled") return description || "???";
 
   return description || stage || "空闲";
 }

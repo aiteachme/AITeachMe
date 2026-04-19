@@ -29,6 +29,22 @@ _LABEL_RE = re.compile(
 )
 _MARKDOWN_DECORATION_RE = re.compile(r"[#*_`>{}\[\]()]")
 _MULTISPACE_RE = re.compile(r"\s+")
+_SKIPPABLE_HEADING_PATTERNS = (
+    re.compile(
+        r"(?:^|[\s:：-])(how to read|how to use|reading guide|user guide|overview|learning goals?|learning objectives?)(?:$|[\s:：-])",
+        re.IGNORECASE,
+    ),
+    re.compile(r"怎么读"),
+    re.compile(r"如何阅读"),
+    re.compile(r"阅读指南"),
+    re.compile(r"使用说明"),
+    re.compile(r"如何使用"),
+    re.compile(r"学习目标"),
+    re.compile(r"学习建议"),
+    re.compile(r"本章导读"),
+    re.compile(r"章节导读"),
+    re.compile(r"先看什么"),
+)
 
 _LABEL_TYPE_MAP = {
     "定义": "definition",
@@ -61,6 +77,20 @@ class MarkdownKnowledgeUnit:
     knowledge_images: list[str] = field(default_factory=list)
     prerequisites: list[str] = field(default_factory=list)
     related: list[str] = field(default_factory=list)
+    line_no: int = 0
+    heading_level: int = 1
+
+
+@dataclass(frozen=True)
+class MarkdownSectionChunk:
+    """A heading-scoped markdown chunk used for downstream extraction."""
+
+    title: str
+    anchor: str
+    header_path: str
+    body_markdown: str = ""
+    summary: str = ""
+    knowledge_images: list[str] = field(default_factory=list)
     line_no: int = 0
     heading_level: int = 1
 
@@ -170,45 +200,72 @@ def extract_all_anchor_ids(markdown: str) -> list[str]:
 def extract_markdown_knowledge_units(markdown: str) -> list[MarkdownKnowledgeUnit]:
     """Extract KnowledgeUnit candidates from Markdown sections."""
 
+    chunks = extract_markdown_section_chunks(markdown)
+    return [
+        MarkdownKnowledgeUnit(
+            anchor=chunk.anchor,
+            name=chunk.title,
+            knowledge_unit_type="concept",
+            summary=chunk.summary,
+            body_markdown=chunk.body_markdown,
+            knowledge_images=chunk.knowledge_images,
+            prerequisites=[],
+            related=[],
+            line_no=chunk.line_no,
+            heading_level=chunk.heading_level,
+        )
+        for chunk in chunks
+    ]
+
+
+def extract_markdown_section_chunks(markdown: str) -> list[MarkdownSectionChunk]:
+    """Extract heading-scoped markdown chunks for chunk-level knowledge parsing."""
+
     lines = markdown.splitlines()
-    units: list[MarkdownKnowledgeUnit] = []
+    chunks: list[MarkdownSectionChunk] = []
     used_anchors = set(extract_knowledge_unit_anchor_ids(markdown))
     heading_indexes = [
         index
         for index, line in enumerate(lines)
         if _HEADING_RE.match(line) and not _is_skippable_heading(_HEADING_RE.match(line).group("title"))  # type: ignore[union-attr]
     ]
+    heading_meta: list[tuple[int, str, int, str]] = []
 
-    for position, index in enumerate(heading_indexes):
+    path_stack: list[tuple[int, str]] = []
+    for index in heading_indexes:
         line = lines[index]
         heading_match = _HEADING_RE.match(line)
         prefix = heading_match.group("prefix") if heading_match else "# "
         heading_level = max(1, min(6, prefix.count("#")))
-        name = _extract_unit_name(line)
-        if not name:
+        title = _extract_unit_name(line)
+        if not title:
             continue
-        anchor = _extract_anchor_from_line(line) or build_knowledge_unit_anchor(name, used=used_anchors)
-        tags = _extract_tags(line)
-        knowledge_unit_type = _infer_node_type(line, tags.get("type", ""))
-        next_index = heading_indexes[position + 1] if position + 1 < len(heading_indexes) else len(lines)
+        while path_stack and path_stack[-1][0] >= heading_level:
+            path_stack.pop()
+        path_stack.append((heading_level, title))
+        header_path = " > ".join(part for _, part in path_stack)
+        heading_meta.append((index, title, heading_level, header_path))
+
+    for position, (index, title, heading_level, header_path) in enumerate(heading_meta):
+        line = lines[index]
+        anchor = _extract_anchor_from_line(line) or build_knowledge_unit_anchor(title, used=used_anchors)
+        next_index = heading_meta[position + 1][0] if position + 1 < len(heading_meta) else len(lines)
         section_lines = lines[index:next_index]
         body_markdown = _build_body_markdown(section_lines)
         summary = _build_summary(section_lines)
-        units.append(
-            MarkdownKnowledgeUnit(
+        chunks.append(
+            MarkdownSectionChunk(
+                title=title,
                 anchor=anchor,
-                name=name,
-                knowledge_unit_type=knowledge_unit_type,
+                header_path=header_path,
                 summary=summary,
                 body_markdown=body_markdown,
                 knowledge_images=_extract_knowledge_images(body_markdown),
-                prerequisites=_split_tag_values(tags.get("prerequisite", "")),
-                related=_split_tag_values(tags.get("related", "")),
                 line_no=index + 1,
                 heading_level=heading_level,
             )
         )
-    return units
+    return chunks
 
 
 def _strip_tags_and_anchor(text: str) -> str:
@@ -237,13 +294,15 @@ def _slugify_anchor(text: str) -> str:
 
 def _is_skippable_heading(title: str) -> bool:
     lowered = _strip_tags_and_anchor(title).casefold()
-    return lowered in {
+    if lowered in {
         "table of contents",
         "knowledge document overview",
         "目录",
         "知识文档总览",
         "参考资料与延伸阅读",
-    }
+    }:
+        return True
+    return any(pattern.search(lowered) for pattern in _SKIPPABLE_HEADING_PATTERNS)
 
 
 def _extract_tags(line: str) -> dict[str, str]:
@@ -325,11 +384,13 @@ def _build_summary(lines: list[str]) -> str:
 __all__ = [
     "ANCHOR_PREFIX",
     "AnchorValidationResult",
+    "MarkdownSectionChunk",
     "MarkdownKnowledgeUnit",
     "build_knowledge_unit_anchor",
     "ensure_markdown_knowledge_unit_anchors",
     "extract_all_anchor_ids",
     "extract_knowledge_unit_anchor_ids",
+    "extract_markdown_section_chunks",
     "extract_markdown_knowledge_units",
     "validate_knowledge_unit_anchors",
 ]

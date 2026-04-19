@@ -6,7 +6,9 @@ import asyncio
 import json
 from dataclasses import dataclass, field
 from time import perf_counter
+import threading
 
+import structlog
 from sqlmodel import Session, select
 
 from app.models.knowledge_relation import KnowledgeEdge
@@ -17,15 +19,23 @@ from app.shared.infra.embedding import aembed_texts
 from app.shared.infra.search.api import search_knowledge
 from app.utils.knowledge_helpers import normalize_name
 from app.utils.time import utcnow
+from app.workflows.digest.common.markdown_knowledge_anchors import build_knowledge_unit_anchor
 from app.workflows.digest.common.markdown_knowledge_anchors import (
     MarkdownKnowledgeUnit,
-    extract_markdown_knowledge_units,
+    extract_markdown_section_chunks,
 )
+from app.workflows.digest.kg_file_ingest.lib.extractor import extract_candidates
 
 _ANCHOR_ALIAS_SOURCE = "markdown_anchor"
 _SYNC_EDGE_MARKER = "markdown_anchor_sync"
 _RAG_DEDUP_TOP_K = 6
 _RAG_DEDUP_SIMILARITY_THRESHOLD = 0.82
+_ASYNC_BRIDGE_LOCK = threading.Lock()
+_ASYNC_BRIDGE_READY = threading.Event()
+_ASYNC_BRIDGE_LOOP: asyncio.AbstractEventLoop | None = None
+_ASYNC_BRIDGE_THREAD: threading.Thread | None = None
+
+logger = structlog.get_logger()
 
 
 @dataclass(slots=True)
@@ -53,6 +63,16 @@ class KnowledgeSyncReport:
         return len(self.created_edge_ids) + len(self.updated_edge_ids) + len(self.deprecated_edge_ids)
 
 
+@dataclass(slots=True)
+class MarkdownExtractedEdge:
+    """Chunk-level extracted edge resolved to markdown-sync anchors."""
+
+    source_anchor: str
+    target_anchor: str
+    edge_type: str
+    description: str
+
+
 def sync_markdown_knowledge_graph(
     session: Session,
     *,
@@ -64,7 +84,7 @@ def sync_markdown_knowledge_graph(
 
     started_at = perf_counter()
     revision_no = build_revision_no or _next_revision_no(session, subject)
-    units = extract_markdown_knowledge_units(markdown)
+    units, extracted_edges = _extract_markdown_graph_items(markdown)
     report = KnowledgeSyncReport(
         subject=subject,
         build_revision_no=revision_no,
@@ -84,75 +104,23 @@ def sync_markdown_knowledge_graph(
             report.updated_unit_ids.append(unit.id)
 
     seen_edge_keys: set[tuple[int, int, str]] = set()
-    for item in units:
-        target = unit_by_anchor.get(item.anchor)
-        if target is None or target.id is None:
+    for extracted_edge in extracted_edges:
+        source = unit_by_anchor.get(extracted_edge.source_anchor)
+        target = unit_by_anchor.get(extracted_edge.target_anchor)
+        if source is None or target is None or source.id is None or target.id is None:
             continue
-        structural_parent = _find_structural_parent_item(units, item)
-        if structural_parent is not None:
-            parent_unit = unit_by_anchor.get(structural_parent.anchor)
-            if parent_unit is not None and parent_unit.id is not None:
-                structural_edge = _build_structural_edge(
-                    item=item,
-                    item_unit=target,
-                    parent_item=structural_parent,
-                    parent_unit=parent_unit,
-                )
-                if structural_edge is not None:
-                    edge, created = _upsert_edge(
-                        session,
-                        subject=subject,
-                        source_node_id=structural_edge["source_node_id"],
-                        target_node_id=structural_edge["target_node_id"],
-                        edge_type=str(structural_edge["edge_type"]),
-                        description=str(structural_edge["description"]),
-                        build_revision_no=revision_no,
-                    )
-                    if edge.id is not None:
-                        seen_edge_keys.add((edge.source_node_id, edge.target_node_id, edge.edge_type))
-                        (report.created_edge_ids if created else report.updated_edge_ids).append(edge.id)
-        for prerequisite_name in item.prerequisites:
-            source = _ensure_related_concept(
-                session,
-                subject=subject,
-                name=prerequisite_name,
-                build_revision_no=revision_no,
-            )
-            if source.id is None:
-                continue
-            edge, created = _upsert_edge(
-                session,
-                subject=subject,
-                source_node_id=source.id,
-                target_node_id=target.id,
-                edge_type="prerequisite",
-                description=f"{source.canonical_name} is a prerequisite for {target.canonical_name}.",
-                build_revision_no=revision_no,
-            )
-            if edge.id is not None:
-                seen_edge_keys.add((edge.source_node_id, edge.target_node_id, edge.edge_type))
-                (report.created_edge_ids if created else report.updated_edge_ids).append(edge.id)
-        for related_name in item.related:
-            related = _ensure_related_concept(
-                session,
-                subject=subject,
-                name=related_name,
-                build_revision_no=revision_no,
-            )
-            if related.id is None:
-                continue
-            edge, created = _upsert_edge(
-                session,
-                subject=subject,
-                source_node_id=target.id,
-                target_node_id=related.id,
-                edge_type="similar",
-                description=f"{target.canonical_name} is related to {related.canonical_name}.",
-                build_revision_no=revision_no,
-            )
-            if edge.id is not None:
-                seen_edge_keys.add((edge.source_node_id, edge.target_node_id, edge.edge_type))
-                (report.created_edge_ids if created else report.updated_edge_ids).append(edge.id)
+        edge, created = _upsert_edge(
+            session,
+            subject=subject,
+            source_node_id=source.id,
+            target_node_id=target.id,
+            edge_type=extracted_edge.edge_type,
+            description=extracted_edge.description,
+            build_revision_no=revision_no,
+        )
+        if edge.id is not None:
+            seen_edge_keys.add((edge.source_node_id, edge.target_node_id, edge.edge_type))
+            (report.created_edge_ids if created else report.updated_edge_ids).append(edge.id)
 
     report.deprecated_unit_ids.extend(
         _deprecate_removed_anchor_units(
@@ -184,6 +152,144 @@ def _next_revision_no(session: Session, subject: str) -> int:
         + [int(item.build_revision_no or 0) for item in edges]
     )
     return current + 1
+
+
+def _extract_markdown_graph_items(markdown: str) -> tuple[list[MarkdownKnowledgeUnit], list[MarkdownExtractedEdge]]:
+    sections = extract_markdown_section_chunks(markdown)
+    if not sections:
+        return [], []
+
+    async def _extract_all_sections() -> list[tuple[list[MarkdownKnowledgeUnit], list[MarkdownExtractedEdge]]]:
+        return await asyncio.gather(*[_extract_section_graph_items(section) for section in sections])
+
+    results = _run_async(_extract_all_sections()) or []
+    units: list[MarkdownKnowledgeUnit] = []
+    edges: list[MarkdownExtractedEdge] = []
+    for section_units, section_edges in results:
+        units.extend(section_units)
+        edges.extend(section_edges)
+    return units, edges
+
+
+async def _extract_section_graph_items(section) -> tuple[list[MarkdownKnowledgeUnit], list[MarkdownExtractedEdge]]:
+    result = await extract_candidates(
+        chunk_content=section.body_markdown,
+        chunk_title=section.title,
+        header_path=section.header_path,
+        doc_source_type="knowledge_doc_markdown",
+        prefer_fast_path=False,
+    )
+
+    used_anchors: set[str] = set()
+    units: list[MarkdownKnowledgeUnit] = []
+    anchor_by_candidate_id: dict[str, str] = {}
+    anchor_by_name: dict[str, str] = {}
+    anchors_by_normalized_name: dict[str, list[str]] = {}
+    body_markdown = section.body_markdown[:8000]
+    knowledge_images = list(section.knowledge_images)
+
+    for node in result.nodes:
+        anchor_seed = node.anchor_id or node.candidate_id or f"{section.anchor}-{node.knowledge_unit_type}-{node.name}"
+        anchor = build_knowledge_unit_anchor(anchor_seed, used=used_anchors)
+        unit = MarkdownKnowledgeUnit(
+            anchor=anchor,
+            name=node.name,
+            knowledge_unit_type=node.knowledge_unit_type,
+            summary=node.local_summary or node.name,
+            body_markdown=body_markdown,
+            knowledge_images=knowledge_images,
+            prerequisites=[],
+            related=[],
+            line_no=section.line_no,
+            heading_level=section.heading_level,
+        )
+        units.append(unit)
+        if node.candidate_id:
+            anchor_by_candidate_id[node.candidate_id] = anchor
+        anchor_by_name.setdefault(node.name, anchor)
+        normalized_name = normalize_name(node.name)
+        if normalized_name:
+            anchors_by_normalized_name.setdefault(normalized_name, []).append(anchor)
+
+    edges: list[MarkdownExtractedEdge] = []
+    seen_edge_keys: set[tuple[str, str, str]] = set()
+    for edge in result.edges:
+        source_anchor = _resolve_edge_anchor(
+            candidate_id=edge.source_candidate_id,
+            endpoint_name=edge.source_name,
+            anchor_by_candidate_id=anchor_by_candidate_id,
+            anchor_by_name=anchor_by_name,
+            anchors_by_normalized_name=anchors_by_normalized_name,
+        )
+        target_anchor = _resolve_edge_anchor(
+            candidate_id=edge.target_candidate_id,
+            endpoint_name=edge.target_name,
+            anchor_by_candidate_id=anchor_by_candidate_id,
+            anchor_by_name=anchor_by_name,
+            anchors_by_normalized_name=anchors_by_normalized_name,
+        )
+        if not source_anchor or not target_anchor or source_anchor == target_anchor:
+            logger.info(
+                "knowledge_graph_edge_skipped_unresolved_endpoint",
+                chunk_title=section.title,
+                edge_type=edge.edge_type,
+                source_name=edge.source_name,
+                target_name=edge.target_name,
+                source_candidate_id=edge.source_candidate_id,
+                target_candidate_id=edge.target_candidate_id,
+                source_resolved=bool(source_anchor),
+                target_resolved=bool(target_anchor),
+            )
+            continue
+        key = (source_anchor, target_anchor, edge.edge_type)
+        if key in seen_edge_keys:
+            continue
+        seen_edge_keys.add(key)
+        edges.append(
+            MarkdownExtractedEdge(
+                source_anchor=source_anchor,
+                target_anchor=target_anchor,
+                edge_type=edge.edge_type,
+                description=edge.description,
+            )
+        )
+
+    return units, edges
+
+
+def _resolve_edge_anchor(
+    *,
+    candidate_id: str | None,
+    endpoint_name: str,
+    anchor_by_candidate_id: dict[str, str],
+    anchor_by_name: dict[str, str],
+    anchors_by_normalized_name: dict[str, list[str]],
+) -> str | None:
+    if candidate_id:
+        anchor = anchor_by_candidate_id.get(candidate_id)
+        if anchor:
+            return anchor
+
+    anchor = anchor_by_name.get(endpoint_name)
+    if anchor:
+        return anchor
+
+    normalized_name = normalize_name(endpoint_name)
+    if not normalized_name:
+        return None
+
+    normalized_matches = anchors_by_normalized_name.get(normalized_name, [])
+    if len(normalized_matches) == 1:
+        return normalized_matches[0]
+
+    fuzzy_matches = [
+        matches[0]
+        for key, matches in anchors_by_normalized_name.items()
+        if len(matches) == 1 and (normalized_name in key or key in normalized_name)
+    ]
+    if len(fuzzy_matches) == 1:
+        return fuzzy_matches[0]
+    return None
 
 
 def _upsert_unit(
@@ -237,87 +343,6 @@ def _upsert_unit(
         session.add(unit)
     session.flush()
     return unit, created
-
-
-def _ensure_related_concept(
-    session: Session,
-    *,
-    subject: str,
-    name: str,
-    build_revision_no: int,
-) -> KnowledgeUnit:
-    normalized_name = normalize_name(name)
-    existing = knowledge_unit_repo.find_knowledge_unit_by_normalized_name(
-        session,
-        subject,
-        normalized_name,
-        "concept",
-    )
-    if existing is not None:
-        existing.status = "active"
-        existing.build_revision_no = build_revision_no
-        existing.updated_at = utcnow()
-        session.add(existing)
-        session.flush()
-        return existing
-    return knowledge_unit_repo.create_knowledge_unit(
-        session,
-        KnowledgeUnit(
-            subject=subject,
-            knowledge_unit_type="concept",
-            canonical_name=name,
-            normalized_name=normalized_name,
-            summary=f"Markdown referenced concept: {name}.",
-            type_source="manual",
-            type_confidence=0.9,
-            status="active",
-            build_revision_no=build_revision_no,
-        ),
-        auto_commit=False,
-    )
-
-
-def _find_structural_parent_item(
-    units: list[MarkdownKnowledgeUnit],
-    item: MarkdownKnowledgeUnit,
-) -> MarkdownKnowledgeUnit | None:
-    parent: MarkdownKnowledgeUnit | None = None
-    for candidate in units:
-        if candidate.line_no >= item.line_no:
-            break
-        if candidate.heading_level >= item.heading_level:
-            continue
-        parent = candidate
-    return parent
-
-
-def _build_structural_edge(
-    *,
-    item: MarkdownKnowledgeUnit,
-    item_unit: KnowledgeUnit,
-    parent_item: MarkdownKnowledgeUnit,
-    parent_unit: KnowledgeUnit,
-) -> dict[str, object] | None:
-    if item_unit.id is None or parent_unit.id is None or item_unit.id == parent_unit.id:
-        return None
-
-    item_type = normalize_knowledge_unit_type(item.knowledge_unit_type)
-    parent_type = normalize_knowledge_unit_type(parent_item.knowledge_unit_type)
-
-    if item_type in {"example", "exercise"} and parent_type in {"concept", "method", "theorem", "formula"}:
-        return {
-            "source_node_id": item_unit.id,
-            "target_node_id": parent_unit.id,
-            "edge_type": "example_of",
-            "description": f"{item_unit.canonical_name} exemplifies {parent_unit.canonical_name}.",
-        }
-
-    return {
-        "source_node_id": item_unit.id,
-        "target_node_id": parent_unit.id,
-        "edge_type": "derivation",
-        "description": f"{item_unit.canonical_name} is a subtopic of {parent_unit.canonical_name}.",
-    }
 
 
 def _upsert_edge(
@@ -444,33 +469,45 @@ def _cosine_similarity(a: list[float], b: list[float]) -> float:
 
 
 def _run_async(coro):
-    try:
-        asyncio.get_running_loop()
-    except RuntimeError:
-        return asyncio.run(coro)
+    loop = _get_async_bridge_loop()
+    future = asyncio.run_coroutine_threadsafe(coro, loop)
+    return future.result()
 
-    result: list[object] = []
-    error: list[BaseException] = []
 
-    def _runner() -> None:
-        loop = asyncio.new_event_loop()
-        try:
+def _get_async_bridge_loop() -> asyncio.AbstractEventLoop:
+    global _ASYNC_BRIDGE_LOOP, _ASYNC_BRIDGE_THREAD
+
+    loop = _ASYNC_BRIDGE_LOOP
+    if loop is not None and loop.is_running():
+        return loop
+
+    with _ASYNC_BRIDGE_LOCK:
+        loop = _ASYNC_BRIDGE_LOOP
+        if loop is not None and loop.is_running():
+            return loop
+
+        _ASYNC_BRIDGE_READY.clear()
+
+        def _runner() -> None:
+            global _ASYNC_BRIDGE_LOOP
+
+            loop = asyncio.new_event_loop()
+            _ASYNC_BRIDGE_LOOP = loop
             asyncio.set_event_loop(loop)
-            result.append(loop.run_until_complete(coro))
-        except BaseException as exc:  # pragma: no cover - defensive bridge
-            error.append(exc)
-        finally:
-            asyncio.set_event_loop(None)
-            loop.close()
+            _ASYNC_BRIDGE_READY.set()
+            loop.run_forever()
 
-    import threading
+        _ASYNC_BRIDGE_THREAD = threading.Thread(
+            target=_runner,
+            name="knowledge-graph-async-bridge",
+            daemon=True,
+        )
+        _ASYNC_BRIDGE_THREAD.start()
 
-    thread = threading.Thread(target=_runner, daemon=True)
-    thread.start()
-    thread.join()
-    if error:
-        raise error[0]
-    return result[0] if result else None
+    _ASYNC_BRIDGE_READY.wait()
+    if _ASYNC_BRIDGE_LOOP is None:  # pragma: no cover - defensive guard
+        raise RuntimeError("knowledge_graph_async_bridge_unavailable")
+    return _ASYNC_BRIDGE_LOOP
 
 
 def _add_anchor_alias(raw_aliases: str, anchor: str) -> str:
