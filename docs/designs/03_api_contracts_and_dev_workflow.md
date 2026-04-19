@@ -160,7 +160,8 @@
 当前后端已移除 `backend/app/services` 源层。API 层直接调用 `workflows` 下的用例入口：
 
 - 通用支撑业务：`workflows/support/*`
-- Digest 用例：`workflows/digest/planner/*`、`workflows/digest/docgen/*`、`workflows/digest/knowledge_graph/*`
+- Digest 用例：`workflows/digest/planner/*`、`workflows/digest/docgen/*`、`workflows/digest/kg_file_ingest/*`、`workflows/digest/kg_docs_sync/*`
+- 知识图谱支撑：`workflows/support/knowledge_graph/*`
 - Interact 用例：`workflows/interact/application/*`
 - Examine 用例：`workflows/examine/application/*`
 - Profile 用例：`workflows/profile/application/*`

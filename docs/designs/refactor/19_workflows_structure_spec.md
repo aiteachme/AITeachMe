@@ -219,7 +219,8 @@ digest/
 
 - `docgen/` 只承接 research / writer / publish 等链路内部逻辑
 - build trigger / result / cleanup 进入 `digest/docgen/*`
-- overview / study plan 进入 `digest/knowledge_graph/{overview.py,study_plan.py}`
+- 图谱入图进入 `digest/kg_file_ingest`，文档同步进入 `digest/kg_docs_sync`
+- 图谱总览和查询进入 `workflows/support/knowledge_graph`
 - events / exports 进入 `digest/common/{events.py,exports.py}`
 - 教学语义统一从 `common/runtime_config.py` 与 `common/pedagogy/` 进入
 

@@ -8,7 +8,6 @@ __all__ = [
     "IngestParseState",
     "WORKFLOW_EXPORTS",
     "build_fast_parse_graph",
-    "build_parse_file_graph",
     "create_parse_file_initial_state",
     "get_langgraph_dev_fast_parse_graph",
     "recover_stalled_enhancements",
@@ -18,7 +17,6 @@ __all__ = [
 _ATTR_TO_MODULE = {
     "IngestParseState": "app.workflows.ingest.fast_parse.state",
     "build_fast_parse_graph": "app.workflows.ingest.fast_parse.graph",
-    "build_parse_file_graph": "app.workflows.ingest.fast_parse.graph",
     "create_parse_file_initial_state": "app.workflows.ingest.fast_parse.lib.runtime_helpers",
     "get_langgraph_dev_fast_parse_graph": "app.workflows.ingest.fast_parse.graph",
     "recover_stalled_enhancements": "app.workflows.ingest.fast_parse.lib.recovery",

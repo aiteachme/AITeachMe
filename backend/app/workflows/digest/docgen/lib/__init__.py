@@ -3,9 +3,11 @@
 from app.workflows.digest.docgen.lib.assets import DocGenAssetRuntime
 from app.workflows.digest.docgen.lib.chapter_generation import compose_chapter_generation_plan
 from app.workflows.digest.docgen.lib.chapter_context import DocGenChapterContextRuntime
+from app.workflows.digest.docgen.lib.document_backbone import build_document_backbone
 from app.workflows.digest.docgen.lib.models import (
     ChapterGenerationPlan,
     ChapterGenerationTask,
+    DocumentBackbone,
     DocGenContext,
     DocGenIntentProfile,
     EnhancedChapterDraft,
@@ -35,6 +37,7 @@ __all__ = [
     "DocGenWriterRuntime",
     "ChapterGenerationPlan",
     "ChapterGenerationTask",
+    "DocumentBackbone",
     "DocGenContext",
     "DocGenIntentProfile",
     "EnhancedChapterDraft",
@@ -44,6 +47,7 @@ __all__ = [
     "MergeReviewReport",
     "build_merged_markdown",
     "build_docgen_lane_summary",
+    "build_document_backbone",
     "build_research_focus_text",
     "compose_chapter_generation_plan",
     "dedupe_queries",

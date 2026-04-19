@@ -17,7 +17,7 @@ MERMAID_START_PATTERN = re.compile(
     re.IGNORECASE,
 )
 MERMAID_FENCE_PATTERN = re.compile(r"^```(?P<trailing>.*)$")
-MARKDOWN_BOUNDARY_PATTERN = re.compile(r"^(#{1,6}\s+\S|[-*+]\s+\S|\d+\.\s+\S|>\s*\[!|\|.+\||---\s*$)")
+MARKDOWN_BOUNDARY_PATTERN = re.compile(r"^(#{1,6}\s+\S|[-*+]\s+\S|\d+\.\s+\S|>\s*\S|\|.+\||---\s*$)")
 MERMAID_KEYWORD_PATTERN = re.compile(
     r"^(mindmap|graph|flowchart|sequencediagram|classdiagram|statediagram(?:-v2)?|erdiagram|gantt|pie|journey|timeline|gitgraph)\b",
     re.IGNORECASE,
@@ -78,7 +78,7 @@ def _is_indented_context_echo(line: str) -> bool:
         return False
     return (
         stripped.startswith("#")
-        or stripped.startswith(("**", "✅", "🔥", ">", "|"))
+        or stripped.startswith(("```", "**", "✅", "🔥", ">", "|", "---"))
         or len(stripped) > 18
     )
 
@@ -101,6 +101,11 @@ def _append_mermaid_block(output_lines: list[str], block_lines: list[str]) -> No
         body_lines.pop()
     if not body_lines:
         return
+    first_line = body_lines[0].strip()
+    if not MERMAID_KEYWORD_PATTERN.match(first_line) and any(
+        token in "\n".join(body_lines) for token in ("-->", "==>")
+    ):
+        body_lines.insert(0, "flowchart TD")
     output_lines.append("```mermaid")
     output_lines.extend(body_lines)
     output_lines.append("```")
@@ -146,7 +151,7 @@ def normalize_mermaid_blocks(markdown: str) -> str:
 
         if not in_mermaid:
             if after_mermaid_close:
-                if _is_indented_context_echo(line) or _is_malformed_mermaid_fence(line):
+                if stripped_line == "```" or _is_indented_context_echo(line) or _is_malformed_mermaid_fence(line):
                     skipping_artifact = True
                     index += 1
                     continue
@@ -160,8 +165,24 @@ def normalize_mermaid_blocks(markdown: str) -> str:
                 mermaid_lines = [] if normalized_lang.lower() == "mermaid" else [normalized_lang]
                 index += 1
                 continue
+            malformed_match = MALFORMED_MERMAID_FENCE_PATTERN.match(line)
+            malformed_trailing = (malformed_match.group("trailing") if malformed_match is not None else "") or ""
+            if malformed_match is not None and _looks_like_mermaid_line(malformed_trailing):
+                in_mermaid = True
+                mermaid_prefix = ""
+                mermaid_lines = [malformed_trailing.strip()]
+                index += 1
+                continue
             normalized_lines.append(line)
             index += 1
+            continue
+
+        if mermaid_lines and MARKDOWN_BOUNDARY_PATTERN.match(stripped_line):
+            _append_mermaid_block(normalized_lines, mermaid_lines)
+            mermaid_lines = []
+            mermaid_prefix = ""
+            in_mermaid = False
+            after_mermaid_close = True
             continue
 
         cleaned_line = _strip_blockquote_prefix(line, prefix=mermaid_prefix).rstrip()
@@ -176,14 +197,6 @@ def normalize_mermaid_blocks(markdown: str) -> str:
             in_mermaid = False
             after_mermaid_close = True
             index += 1
-            continue
-
-        if mermaid_lines and MARKDOWN_BOUNDARY_PATTERN.match(cleaned_line.strip()):
-            _append_mermaid_block(normalized_lines, mermaid_lines)
-            mermaid_lines = []
-            mermaid_prefix = ""
-            in_mermaid = False
-            after_mermaid_close = False
             continue
 
         if mermaid_lines and not _looks_like_mermaid_line(cleaned_line):

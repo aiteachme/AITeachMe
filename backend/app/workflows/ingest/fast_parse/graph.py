@@ -75,12 +75,6 @@ def get_langgraph_dev_fast_parse_graph() -> StateGraph:
     )
 
 
-def build_parse_file_graph(*, context: WorkflowContext) -> StateGraph:
-    """Legacy alias kept at lane level so the module root can disappear."""
-
-    return build_fast_parse_graph(context=context)
-
-
 def _build_export_graph() -> StateGraph:
     return build_fast_parse_graph(
         context=create_langgraph_dev_context("ingest.fast_parse.export"),
@@ -101,6 +95,5 @@ WORKFLOW_EXPORTS = (
 __all__ = [
     "WORKFLOW_EXPORTS",
     "build_fast_parse_graph",
-    "build_parse_file_graph",
     "get_langgraph_dev_fast_parse_graph",
 ]

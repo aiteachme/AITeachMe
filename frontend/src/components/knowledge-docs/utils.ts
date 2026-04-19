@@ -20,10 +20,17 @@ export const DOC_BUILD_STAGE_PROGRESS: Record<string, number> = {
   planner_confirmed: 16,
   prepare_shared: 24,
   preparing_docgen_context: 30,
+  dispatch_ready: 34,
+  building_document_backbone: 38,
   generating_chapters: 46,
   enhancing_chapters: 62,
   chapters_enhanced: 72,
-  merge_reviewed: 82,
+  reviewing_content: 76,
+  content_reviewed: 80,
+  repairing_or_routing: 82,
+  repair_routed: 84,
+  merge_reviewed: 86,
+  titles_finalized: 88,
   doc_lane_staged: 90,
   docgen_finalized: 94,
   graph_ready: 96,
@@ -36,10 +43,17 @@ export const DOC_BUILD_STAGE_CAP: Record<string, number> = {
   planner_confirmed: 28,
   prepare_shared: 48,
   preparing_docgen_context: 42,
+  dispatch_ready: 46,
+  building_document_backbone: 52,
   generating_chapters: 66,
   enhancing_chapters: 78,
   chapters_enhanced: 84,
+  reviewing_content: 86,
+  content_reviewed: 88,
+  repairing_or_routing: 89,
+  repair_routed: 90,
   merge_reviewed: 90,
+  titles_finalized: 92,
   doc_lane_staged: 94,
   docgen_finalized: 97,
   graph_ready: 98,
@@ -51,12 +65,19 @@ export const DOC_BUILD_STAGE_TEXT: Record<string, string> = {
   planner_confirmed: "已读取确认方案",
   prepare_shared: "正在分析材料结构与内容画像",
   preparing_docgen_context: "正在增强大纲、识别写法并摘要材料",
-  generating_chapters: "正在并行生成章节",
+  dispatch_ready: "正在收口章节执行计划",
+  building_document_backbone: "正在构建整本文档知识骨架",
+  generating_chapters: "正在并行研究并生成章节",
   enhancing_chapters: "正在增强章节图示、例题和小结",
   chapters_enhanced: "章节增强已完成",
-  merge_reviewed: "整本文档检查完成，准备发布",
+  reviewing_content: "正在复核章节覆盖和证据",
+  content_reviewed: "内容复核已完成",
+  repairing_or_routing: "正在记录复核回流建议",
+  repair_routed: "复核回流建议已记录",
+  merge_reviewed: "整本文档检查完成，准备标题收口",
+  titles_finalized: "章节标题已收口，准备发布",
   doc_lane_staged: "文档草稿已生成，正在发布正式版",
-  docgen_finalized: "知识文档已发布，正在同步知识图谱",
+  docgen_finalized: "知识文档已发布",
   graph_ready: "知识图谱已就绪",
   publishing: "正在发布正式版知识文档",
   completed: "最新知识文档已发布",
@@ -128,7 +149,7 @@ export function cleanKnowledgeMarkdownForDisplay(markdown: string): string {
 }
 
 function isMarkdownBoundary(line: string): boolean {
-  return /^(#{1,6}\s+\S|[-*+]\s+\S|\d+\.\s+\S|>\s*\[!|\|.+\||---\s*$)/.test(line.trim());
+  return /^(#{1,6}\s+\S|[-*+]\s+\S|\d+\.\s+\S|>\s*\S|\|.+\||---\s*$)/.test(line.trim());
 }
 
 function isIndentedContextEcho(line: string): boolean {
@@ -156,6 +177,12 @@ function isMalformedMermaidFence(line: string): boolean {
   return Boolean(match?.[1] && looksLikeMermaidLine(match[1]));
 }
 
+function malformedMermaidFenceBody(line: string): string | null {
+  const match = line.match(/^\s*```\s*(.+)$/);
+  const body = match?.[1]?.trim() ?? "";
+  return body && looksLikeMermaidLine(body) ? body : null;
+}
+
 /**
  * ReactMarkdown parses fenced code before our `code` renderer runs.
  * If DocGen outputs a malformed Mermaid fence, the parser may swallow
@@ -176,6 +203,12 @@ function repairMalformedMermaidFencesForRender(markdown: string): string {
     while (mermaidLines.length > 0 && !mermaidLines[0].trim()) mermaidLines.shift();
     while (mermaidLines.length > 0 && !mermaidLines[mermaidLines.length - 1].trim()) mermaidLines.pop();
     if (mermaidLines.length > 0) {
+      if (
+        !/^(mindmap|graph|flowchart|sequenceDiagram|classDiagram|stateDiagram(?:-v2)?|erDiagram|gantt|pie|journey|timeline|gitGraph)\b/i.test(mermaidLines[0].trim()) &&
+        mermaidLines.some((line) => /-->|==>/.test(line))
+      ) {
+        mermaidLines.unshift("flowchart TD");
+      }
       output.push("```mermaid", ...mermaidLines, "```");
     }
     mermaidLines = [];
@@ -216,6 +249,13 @@ function repairMalformedMermaidFencesForRender(markdown: string): string {
         const lang = start[1];
         inMermaid = true;
         mermaidLines = lang.toLowerCase() === "mermaid" ? [] : [lang];
+        continue;
+      }
+
+      const malformedBody = malformedMermaidFenceBody(line);
+      if (malformedBody) {
+        inMermaid = true;
+        mermaidLines = [malformedBody];
         continue;
       }
 

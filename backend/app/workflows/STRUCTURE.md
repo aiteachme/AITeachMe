@@ -192,16 +192,19 @@ digest/
   README.md
   planner/
   docgen/
-  knowledge_graph/
+  kg_file_ingest/
+  kg_docs_sync/
   common/
 ```
 
 说明：
 
 - `__init__.py` 只提供稳定导入面，不承载业务实现
-- `docgen/__init__.py`、`knowledge_graph/__init__.py` 提供 lane 入口
-- `planner/` 与 `docgen/` 是当前优先维护的主链路
-- `knowledge_graph/` 是独立图谱构建链路，同时承接图谱总览查询
+- `planner/` 生成并确认构建方案
+- `docgen/` 按 confirmed plan 生成知识文档
+- `kg_file_ingest/` 从解析文件抽取知识图谱候选
+- `kg_docs_sync/` 从已发布知识文档同步知识节点与关系
+- 图谱查询和后台编排放在 `workflows/support/knowledge_graph`
 - `common/` 是当前真实跨链路共享层，承载 contracts / models / prepare / material_profile / metrics / runtime_config / pedagogy / events / exports 等复用能力
 
 

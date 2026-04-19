@@ -50,7 +50,7 @@ def build_load_history_state_node(*, context: WorkflowContext, session: Session 
                     db_session,
                     state["subject"],
                     user_id=state["user_id"],
-                    n_turns=settings.chat.history_turns,
+                    n_turns=settings.interact.history_turns,
                     session_id=state.get("session_id"),
                 )
             ]
@@ -89,4 +89,3 @@ def build_load_history_state_node(*, context: WorkflowContext, session: Session 
         }
 
     return load_history_state
-

@@ -23,9 +23,9 @@ from app.workflows.digest.planner.lib.store import (
 )
 from app.workflows.digest.planner.lib.steps import (
     STEP_COMPOSE_PLAN,
+    STEP_DISPLAY_NAMES,
     STEP_LOAD_MATERIALS,
     STEP_SAVE_PLAN,
-    STEP_TRACE_NAMES,
     STEP_UNDERSTAND_GOAL,
 )
 from app.workflows.digest.planner.nodes import (
@@ -71,7 +71,7 @@ def build_planner_graph(*, context: WorkflowContext) -> StateGraph:
         STEP_LOAD_MATERIALS,
         trace.node(
             build_load_planner_materials_node(context=context),
-            name=STEP_TRACE_NAMES[STEP_LOAD_MATERIALS],
+            name=STEP_DISPLAY_NAMES[STEP_LOAD_MATERIALS],
             timing_field="prepare_ms",
         ),
     )
@@ -79,7 +79,7 @@ def build_planner_graph(*, context: WorkflowContext) -> StateGraph:
         STEP_UNDERSTAND_GOAL,
         trace.node(
             build_stream_brief_and_extract_intent_node(context=context),
-            name=STEP_TRACE_NAMES[STEP_UNDERSTAND_GOAL],
+            name=STEP_DISPLAY_NAMES[STEP_UNDERSTAND_GOAL],
             timing_field="bootstrap_ms",
         ),
     )
@@ -87,7 +87,7 @@ def build_planner_graph(*, context: WorkflowContext) -> StateGraph:
         STEP_COMPOSE_PLAN,
         trace.node(
             build_stream_and_parse_plan_draft_node(context=context),
-            name=STEP_TRACE_NAMES[STEP_COMPOSE_PLAN],
+            name=STEP_DISPLAY_NAMES[STEP_COMPOSE_PLAN],
             timing_field="compose_ms",
         ),
     )
@@ -95,7 +95,7 @@ def build_planner_graph(*, context: WorkflowContext) -> StateGraph:
         STEP_SAVE_PLAN,
         trace.node(
             build_normalize_and_persist_plan_node(context=context),
-            name=STEP_TRACE_NAMES[STEP_SAVE_PLAN],
+            name=STEP_DISPLAY_NAMES[STEP_SAVE_PLAN],
             timing_field="finalize_ms",
         ),
     )

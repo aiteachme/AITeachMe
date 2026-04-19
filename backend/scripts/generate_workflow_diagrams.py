@@ -138,12 +138,12 @@ class DisplayEdge:
 def _parse_extra_edge(edge_str: str) -> DisplayEdge:
     """Parse a manually-declared display edge."""
 
-    dashed_match = re.fullmatch(r"\s*(\w+)\s+-\.\s*(.*?)\s*\.\->\s*(\w+)\s*", edge_str)
+    dashed_match = re.fullmatch(r"\s*(\S+)\s+-\.\s*(.*?)\s*\.\->\s*(\S+)\s*", edge_str)
     if dashed_match:
         src, label, tgt = dashed_match.groups()
         return DisplayEdge(source=src, target=tgt, label=label.strip() or None, dashed=True)
 
-    plain_match = re.fullmatch(r"\s*(\w+)\s+-->\s*(\w+)\s*", edge_str)
+    plain_match = re.fullmatch(r"\s*(\S+)\s+-->\s*(\S+)\s*", edge_str)
     if plain_match:
         src, tgt = plain_match.groups()
         return DisplayEdge(source=src, target=tgt)
@@ -345,6 +345,7 @@ def _analyze_graph(export: WorkflowGraphExport) -> dict:
         "edges": edges,
         "out_edges": out_edges,
         "in_edges": in_edges,
+        "node_labels": dict(export.node_labels or {}),
         "node_roles": node_roles,
         "happy_step": happy_step,
         "fail_nodes": fail_nodes,
@@ -369,6 +370,7 @@ def build_mermaid(export: WorkflowGraphExport, analysis: dict) -> str:
     is_linear = analysis["is_linear"]
     happy_step = analysis["happy_step"]
     fail_nodes = analysis["fail_nodes"]
+    node_labels = analysis["node_labels"]
 
     lines: list[str] = []
 
@@ -379,7 +381,7 @@ def build_mermaid(export: WorkflowGraphExport, analysis: dict) -> str:
     for nid in node_ids:
         if nid in fail_nodes:
             continue  # declared inside subgraph below
-        label = _humanize(nid)
+        label = node_labels.get(nid) or _humanize(nid)
         # Add step number for happy-path nodes
         step = happy_step.get(nid)
         if step and step <= len(_STEP_ICONS):
@@ -394,7 +396,7 @@ def build_mermaid(export: WorkflowGraphExport, analysis: dict) -> str:
         lines.append('    subgraph error_zone ["⚠ 错误处理"]')
         lines.append("    direction TB")
         for nid in fail_nodes:
-            label = _humanize(nid)
+            label = node_labels.get(nid) or _humanize(nid)
             decl = _node_shape(nid, label)
             lines.append(f"        {decl}")
         lines.append("    end")
@@ -432,7 +434,8 @@ def build_mermaid(export: WorkflowGraphExport, analysis: dict) -> str:
     lines.append("    classDef failCls fill:#4c0519,stroke:#f43f5e,stroke-width:2px,color:#fecdd3")
     lines.append("    classDef termCls fill:#1e3a5f,stroke:#3b82f6,stroke-width:2px,color:#93c5fd")
     lines.append("    classDef default fill:#1e293b,stroke:#475569,stroke-width:1px,color:#e2e8f0")
-    lines.append("    style error_zone fill:#1a0a0e,stroke:#f43f5e,stroke-width:1px,color:#fecdd3,stroke-dasharray:5")
+    if fail_nodes:
+        lines.append("    style error_zone fill:#1a0a0e,stroke:#f43f5e,stroke-width:1px,color:#fecdd3,stroke-dasharray:5")
 
     # Assign classes
     for nid in node_ids:
@@ -457,6 +460,7 @@ def build_node_table(analysis: dict) -> str:
     node_ids = analysis["node_ids"]
     node_roles = analysis["node_roles"]
     out_edges = analysis["out_edges"]
+    node_labels = analysis["node_labels"]
 
     rows = []
     for nid in node_ids:
@@ -464,7 +468,7 @@ def build_node_table(analysis: dict) -> str:
             continue
 
         role = node_roles.get(nid, "⚙ 处理节点")
-        label = _humanize(nid)
+        label = node_labels.get(nid) or _humanize(nid)
 
         # Determine routing behavior from out-edges
         outs = out_edges.get(nid, [])
@@ -473,7 +477,7 @@ def build_node_table(analysis: dict) -> str:
             labels = [str(edge.label) for edge in outs if edge.label]
             if labels:
                 route_desc = " / ".join(
-                    f"`{edge.label}` -> {'END' if edge.target == '__end__' else _humanize(edge.target)}"
+                    f"`{edge.label}` -> {'END' if edge.target == '__end__' else node_labels.get(edge.target) or _humanize(edge.target)}"
                     if edge.label
                     else f"-> {'END' if edge.target == '__end__' else _humanize(edge.target)}"
                     for edge in outs
@@ -482,20 +486,20 @@ def build_node_table(analysis: dict) -> str:
             if labels is not None and labels:
                 route_desc = " → ".join(f"`{l}`" for l in labels)
             elif labels is not None:
-                targets = [_humanize(edge.target) for edge in outs]
+                targets = [node_labels.get(edge.target) or _humanize(edge.target) for edge in outs]
                 route_desc = " / ".join(targets)
         elif len(outs) == 1:
             edge = outs[0]
             tgt = edge.target
             lbl = edge.label
-            target_label = "END" if tgt == "__end__" else _humanize(tgt)
+            target_label = "END" if tgt == "__end__" else node_labels.get(tgt) or _humanize(tgt)
             if lbl:
                 route_desc = f"`{lbl}` -> {target_label}"
                 lbl = None
             elif edge.target == "__end__":
                 route_desc = "→ END"
             else:
-                route_desc = f"→ {_humanize(tgt)}"
+                route_desc = f"→ {node_labels.get(tgt) or _humanize(tgt)}"
 
         rows.append(f"| {label} | {role} | {route_desc} |")
 

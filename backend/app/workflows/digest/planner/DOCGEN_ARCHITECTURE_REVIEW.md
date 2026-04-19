@@ -19,7 +19,7 @@
 
 ```text
 api/knowledge_docs.py
-  -> workflows/digest/planner/sessions.py
+  -> workflows/digest/planner/graph.py
   -> confirmed_plan
   -> workflows/digest/docgen/builds.py
   -> workflows/digest.run_docgen_workflow
@@ -58,7 +58,7 @@ confirmed_plan
 
 关键入口：
 
-- `backend/app/workflows/digest/planner/sessions.py`
+- `backend/app/workflows/digest/planner/graph.py`
 - `backend/app/workflows/digest/docgen/builds.py`
 - `backend/app/workflows/digest/docgen/__init__.py`
 
@@ -511,4 +511,3 @@ DocGen 当前不是要推倒重来，而是要补上四个闭环：
 质量闭环：写完后能审校、必要时有限重写
 产物闭环：markdown 之外有 manifest 支撑前端和其他引擎
 ```
-

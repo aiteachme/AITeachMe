@@ -76,7 +76,7 @@ api -> workflows -> repositories / shared.infra / models / schemas
 | 旧位置 | 新位置 |
 | --- | --- |
 | `app.services.knowledge_docs.*` | `app.workflows.digest.planner.*` / `app.workflows.digest.docgen.*` / `app.workflows.digest.*` |
-| `app.services.knowledge_graph.*` | `app.workflows.digest.knowledge_graph.*` |
+| `app.services.knowledge_graph.*` | `app.workflows.digest.kg_file_ingest.*` / `app.workflows.digest.kg_docs_sync.*` / `app.workflows.support.knowledge_graph.*` |
 | `app.services.chats_service` | `app.workflows.interact.application.*` |
 | `app.services.exams_service.*` | `app.workflows.examine.application.*` |
 | `app.services.profile_service` | `app.workflows.profile.application.*` |
@@ -129,4 +129,3 @@ api -> workflows -> repositories / shared.infra / models / schemas
 - `workflows` 只管业务
 - `shared.infra` 只管能力
 - `services` 和 `teaching` 均已完成源层退场
-

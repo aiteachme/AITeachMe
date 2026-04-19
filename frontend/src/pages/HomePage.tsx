@@ -1,13 +1,10 @@
-import { useState, useRef, useCallback, useMemo, useEffect } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  ArrowRight,
   ArrowUp,
   BookOpen,
-  CheckCircle2,
-  AlertCircle,
   ChevronDown,
   Clock,
   Download,
@@ -16,11 +13,7 @@ import {
   MessageSquare,
   MoreVertical,
   FileText,
-  FileImage,
-  FileCode,
-  FileType,
   Paperclip,
-  Trash2,
   Upload,
   X,
   FileUp,
@@ -31,28 +24,15 @@ import { listSubjectsApiApiV1SubjectsListPost, createSubjectApiApiV1SubjectsAddP
 import { apiClient } from "../api/client";
 import { unwrapOrvalResponse } from "../lib/unwrapOrvalResponse";
 import { getApiErrorMessage } from "../api/client";
-import { KnowledgeBuildResolutionModal } from "../components/pages/KnowledgeBuildResolutionModal";
-import { SubjectVectorNotice } from "../components/pages/SubjectVectorNotice";
 import { cn } from "../lib/utils";
 import { HeroAnimation } from "../components/ui/HeroAnimation";
 import { FullPageDropOverlay } from "../components/ui/FullPageDropOverlay";
-import { useKnowledgeBuildFlow } from "../hooks/useKnowledgeBuildFlow";
-import { fetchKnowledgeDocState, buildKnowledgeDocStateQueryKey } from "../lib/knowledgeDocs";
-import { formatMinerUErrorForUser } from "../lib/mineruErrors";
-import type { FileRecord, FilesData, FilesUploadData } from "../types/files";
+import type { FilesUploadData } from "../types/files";
 import { getStoredAppSettings } from "../hooks/useSettings";
 
 /* ── API helpers (same as BuildPlanPage) ── */
 
 interface ApiResponse<T> { code: number; data: T; }
-
-async function fetchFiles(subject: string): Promise<FilesData> {
-  const response = await apiClient<ApiResponse<FilesData>>({
-    method: "GET",
-    url: `/api/v1/subjects/${subject}/files`,
-  });
-  return response.data;
-}
 
 async function uploadFiles(subject: string, files: File[]): Promise<FilesUploadData> {
   const formData = new FormData();
@@ -80,14 +60,6 @@ async function uploadFiles(subject: string, files: File[]): Promise<FilesUploadD
     headers: { "Content-Type": "multipart/form-data" },
   });
   return response.data;
-}
-
-async function deleteFile(subject: string, fileUid: string): Promise<void> {
-  await apiClient<ApiResponse<{ deleted_file_uids: string[] }>>({
-    method: "POST",
-    url: `/api/v1/subjects/${subject}/files/delete`,
-    data: { file_uid: fileUid },
-  });
 }
 
 /* ── Export / Import API helpers ── */
@@ -213,28 +185,6 @@ function generateSubjectName(files: File[], prompt: string): string {
   const now = new Date();
   const pad = (n: number) => String(n).padStart(2, "0");
   return `学科_${pad(now.getMonth() + 1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}`;
-}
-
-function getFileStatusMeta(file: FileRecord) {
-  if (file.markdown_ready)
-    return { label: "已完成", tone: "text-emerald-600 bg-emerald-50 border-emerald-200", dotColor: "bg-emerald-500", icon: <CheckCircle2 className="h-4 w-4 text-emerald-500" /> };
-  if (file.status === "failed")
-    return { label: "解析失败", tone: "text-red-600 bg-red-50 border-red-200", dotColor: "bg-red-500", icon: <AlertCircle className="h-4 w-4 text-red-500" /> };
-  const stageLabels: Record<string, string> = { classifying: "分类中…", fast_parsing: "解析中…", fast_parsed: "已解析", enhancing: "优化中…", ready_for_digest: "就绪" };
-  if (new Set(["pending", "processing", "running"]).has(file.status) || file.ingest_status !== "pending") {
-    return { label: stageLabels[file.ingest_status] ?? "处理中…", tone: "text-slate-700 bg-slate-50 border-slate-200", dotColor: "bg-sky-500 animate-pulse", icon: <Loader2 className="h-4 w-4 animate-spin text-slate-500" /> };
-  }
-  return { label: "等待处理", tone: "text-amber-600 bg-amber-50 border-amber-200", dotColor: "bg-amber-500 animate-pulse", icon: <Loader2 className="h-4 w-4 animate-spin text-amber-500" /> };
-}
-
-function getFileIcon(file: FileRecord) {
-  const ext = file.filetype?.toLowerCase();
-  if (ext === "pdf") return <FileText className="h-5 w-5 text-red-400" />;
-  if (["png", "jpg", "jpeg", "webp"].includes(ext ?? "")) return <FileImage className="h-5 w-5 text-emerald-400" />;
-  if (["md", "markdown"].includes(ext ?? "")) return <FileCode className="h-5 w-5 text-violet-400" />;
-  if (["docx", "doc"].includes(ext ?? "")) return <FileText className="h-5 w-5 text-blue-400" />;
-  if (["ppt", "pptx"].includes(ext ?? "")) return <FileType className="h-5 w-5 text-orange-400" />;
-  return <FileText className="h-5 w-5 text-slate-400" />;
 }
 
 function formatFileSize(bytes?: number | null): string {
@@ -626,61 +576,6 @@ function RenameModal({
   );
 }
 
-/* ── File Card ── */
-
-function HomeFileCard({ file, onDelete, isDeleting }: { file: FileRecord; onDelete: () => void; isDeleting: boolean }) {
-  const meta = getFileStatusMeta(file);
-  const failureReason = useMemo(() => {
-    if (file.status !== "failed" || !file.error_message) return null;
-    const mapped = formatMinerUErrorForUser(file.error_message);
-    if (mapped) return mapped;
-    if (/mineru/i.test(file.error_message)) return "MinerU 解析失败。建议：请稍后重试，或在调试模式查看详细错误。";
-    return file.error_message;
-  }, [file.error_message, file.status]);
-  return (
-    <motion.div
-      layout
-      initial={{ opacity: 0, scale: 0.95 }}
-      animate={{ opacity: 1, scale: 1 }}
-      exit={{ opacity: 0, scale: 0.95 }}
-      className="group flex items-center gap-3 rounded-xl border border-zinc-200/80 bg-white px-3 py-2 shadow-[0_1px_2px_rgba(0,0,0,0.02)] transition-all hover:border-zinc-300 hover:shadow-[0_4px_12px_rgba(0,0,0,0.04)]"
-    >
-      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-zinc-50 border border-zinc-100/80">
-        {getFileIcon(file)}
-      </div>
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2">
-          <p className="truncate text-[13px] font-semibold text-zinc-900">{file.filename}</p>
-          <span className={cn("inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium leading-none", meta.tone)}>
-            <span className={cn("h-1.5 w-1.5 rounded-full", meta.dotColor)} />
-            {meta.label}
-          </span>
-        </div>
-        <div className="mt-0.5 flex items-center gap-3 text-xs text-zinc-400">
-          <span>{file.filetype ? file.filetype.toUpperCase() : "未知"}</span>
-          <span>·</span>
-          <span>{formatFileSize(file.file_size_bytes)}</span>
-          {file.estimated_pages != null && (<><span>·</span><span>{file.estimated_pages} 页</span></>)}
-        </div>
-        {failureReason ? (
-          <p className="mt-1 truncate text-xs text-red-600" title={failureReason}>
-            失败原因：{failureReason}
-          </p>
-        ) : null}
-      </div>
-      <button
-        type="button"
-        onClick={onDelete}
-        disabled={isDeleting}
-        className="shrink-0 rounded-lg p-1.5 text-zinc-300 opacity-0 transition-all hover:bg-red-50 hover:text-red-500 group-hover:opacity-100 disabled:opacity-30"
-        title="删除文件"
-      >
-        <Trash2 className="h-4 w-4" />
-      </button>
-    </motion.div>
-  );
-}
-
 /* ── Main HomePage ── */
 
 export function HomePage() {
@@ -689,10 +584,6 @@ export function HomePage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  // activeSubjectId powers the "Phase 2" inline file list on HomePage.
-  // After createMutation we now navigate to BuildPlanPage, so the setter
-  // is not called; prefix with underscore to satisfy noUnusedLocals.
-  const [activeSubjectId, _setActiveSubjectId] = useState<string | null>(null);
   const [prompt, setPrompt] = useState("");
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
   const [recentOpen, setRecentOpen] = useState(true);
@@ -730,53 +621,6 @@ export function HomePage() {
       )?.items ?? [],
   });
 
-  // ── Files query ──
-  const { data: filesData, error: filesError } = useQuery({
-    queryKey: ["files", activeSubjectId],
-    queryFn: () => fetchFiles(activeSubjectId!),
-    enabled: Boolean(activeSubjectId),
-    refetchInterval: (query) => {
-      const items = query.state.data?.items ?? [];
-      return items.some((item) => !item.markdown_ready && item.status !== "failed") ? 1500 : false;
-    },
-  });
-
-  const { data: knowledgeDocState, error: knowledgeDocStateError } = useQuery({
-    queryKey: buildKnowledgeDocStateQueryKey(activeSubjectId ?? ""),
-    queryFn: () => fetchKnowledgeDocState(activeSubjectId!),
-    enabled: Boolean(activeSubjectId),
-    retry: false,
-  });
-
-  const files = filesData?.items ?? [];
-  const readyFiles = useMemo(() => files.filter((f) => f.markdown_ready), [files]);
-
-  useEffect(() => {
-    if (!activeSubjectId) {
-      return;
-    }
-
-    if (filesError) {
-      setError(getApiErrorMessage(filesError, "学科创建后读取资料失败"));
-      return;
-    }
-
-    if (knowledgeDocStateError) {
-      setError(getApiErrorMessage(knowledgeDocStateError, "学科创建后读取知识状态失败"));
-      return;
-    }
-
-    setError((currentError) => {
-      if (
-        currentError === "学科创建后读取资料失败" ||
-        currentError === "学科创建后读取知识状态失败"
-      ) {
-        return null;
-      }
-      return currentError;
-    });
-  }, [activeSubjectId, filesError, knowledgeDocStateError]);
-
   // ── Mutations ──
   const createMutation = useMutation({
     mutationFn: async ({ name }: { name: string }) => {
@@ -811,27 +655,6 @@ export function HomePage() {
     },
     onError: (err: unknown) => {
       setError(getApiErrorMessage(err, "创建失败，请重试"));
-    },
-  });
-
-  const uploadMutation = useMutation({
-    mutationFn: (selectedFiles: File[]) => uploadFiles(activeSubjectId!, selectedFiles),
-    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["files", activeSubjectId] }),
-  });
-
-  const deleteMutation = useMutation({
-    mutationFn: (fileUid: string) => deleteFile(activeSubjectId!, fileUid),
-    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["files", activeSubjectId] }),
-  });
-
-  const knowledgeBuild = useKnowledgeBuildFlow({
-    subjectId: activeSubjectId ?? "",
-    buildRequest: () => ({
-      prompt: prompt.trim() || undefined,
-    }),
-    fallbackErrorMessage: "知识构建失败，请重试。",
-    onSuccess: (data) => {
-      navigate(`/subject/${activeSubjectId}/knowledge-docs?requested_at=${encodeURIComponent(data.requested_at)}`);
     },
   });
 
@@ -872,12 +695,7 @@ export function HomePage() {
     const newFiles = Array.from(e.target.files ?? []);
     if (fileInputRef.current) fileInputRef.current.value = "";
     if (newFiles.length === 0) return;
-
-    if (activeSubjectId) {
-      uploadMutation.mutate(newFiles);
-    } else {
-      setPendingFiles(prev => [...prev, ...newFiles]);
-    }
+    setPendingFiles(prev => [...prev, ...newFiles]);
   };
 
   const handleFileDrop = useCallback((droppedFiles: File[]) => {
@@ -895,11 +713,7 @@ export function HomePage() {
     <>
     <FullPageDropOverlay
       onDrop={(droppedFiles) => {
-        if (activeSubjectId) {
-          uploadMutation.mutate(droppedFiles);
-        } else {
-          handleFileDrop(droppedFiles);
-        }
+        handleFileDrop(droppedFiles);
       }}
       disabled={isWorking}
     />
@@ -916,7 +730,7 @@ export function HomePage() {
         transition={{ duration: 0.6, ease: "easeOut" }}
         className={cn(
           "relative z-20 w-full max-w-[800px] flex flex-col items-center",
-          !activeSubjectId && subjects.length === 0 ? "justify-center min-h-[calc(100dvh-12rem)]" : "mt-[5vh]"
+          subjects.length === 0 ? "justify-center min-h-[calc(100dvh-12rem)]" : "mt-[5vh]"
         )}
       >
         {/* ── Logo & Title ── */}
@@ -950,11 +764,8 @@ export function HomePage() {
           <div className="w-full rounded-2xl border border-zinc-200/60 bg-white shadow-[0_2px_8px_rgba(0,0,0,0.04)] transition-all focus-within:border-zinc-300 focus-within:shadow-[0_4px_16px_rgba(0,0,0,0.06)] focus-within:ring-4 focus-within:ring-zinc-900/5">
             <div className="relative z-20 flex items-start justify-between px-4 pt-4">
               <span className="text-[13px] font-semibold text-zinc-700 tracking-tight">
-                {activeSubjectId ? "📂 学习空间已就绪" : "你好，学习者 👋"}
+                你好，学习者 👋
               </span>
-              {activeSubjectId && (
-                <span className="text-[11px] font-medium text-zinc-400">可继续添加文件或开始构建</span>
-              )}
             </div>
 
             <textarea
@@ -963,14 +774,14 @@ export function HomePage() {
               className="w-full min-h-[120px] max-h-[250px] resize-none border-0 bg-transparent px-4 pb-3 pt-4 text-[14px] leading-[1.8] text-zinc-800 focus:outline-none placeholder:text-zinc-400"
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
-              onKeyDown={!activeSubjectId ? handleKeyDown : undefined}
+              onKeyDown={handleKeyDown}
               rows={3}
               disabled={isWorking}
             />
 
             <div className="px-3 pb-3 flex flex-col gap-2">
               {/* File chips (Phase 1) */}
-              {!activeSubjectId && pendingFiles.length > 0 && (
+              {pendingFiles.length > 0 && (
                 <div className="flex flex-wrap gap-2 px-1 py-3 border-t border-zinc-100">
                   {pendingFiles.map((file, idx) => (
                     <div key={idx} className="group flex items-center gap-1.5 rounded-lg border border-zinc-200/60 bg-zinc-50 px-2.5 py-1.5 text-[13px] text-zinc-700 transition-colors hover:bg-white hover:border-zinc-300 hover:shadow-sm">
@@ -1007,61 +818,35 @@ export function HomePage() {
                     <Paperclip className="h-4 w-4" />
                     上传文件资料
                   </button>
-                  {(isWorking || uploadMutation.isPending) && (
+                  {isWorking && (
                     <span className="ml-2 flex items-center text-[13px] font-medium text-zinc-500">
                       <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
-                      {isWorking ? "正在准备学习空间..." : "正在上传..."}
+                      正在准备学习空间...
                     </span>
                   )}
                 </div>
 
-                {!activeSubjectId ? (
-                  <button
-                    onClick={handleGenerate}
-                    disabled={!canGenerate || isWorking}
-                    className={cn(
-                      "flex h-10 shrink-0 items-center justify-center gap-1.5 rounded-lg px-5 transition-all focus:outline-none focus:ring-4 focus:ring-zinc-900/10 active:scale-[0.98]",
-                      canGenerate && !isWorking
-                        ? "bg-zinc-900 text-white shadow-sm hover:bg-zinc-800"
-                        : "cursor-not-allowed bg-zinc-100 text-zinc-300"
-                    )}
-                  >
-                    <span className="text-[14px] font-medium">开始学习</span>
-                    <ArrowUp className="ml-0.5 h-3.5 w-3.5" />
-                  </button>
-                ) : (
-                  <button
-                    onClick={() => knowledgeBuild.submitBuild()}
-                    disabled={readyFiles.length === 0 || knowledgeBuild.isPending}
-                    className={cn(
-                      "flex h-10 shrink-0 items-center justify-center gap-1.5 rounded-lg px-5 transition-all focus:outline-none focus:ring-4 focus:ring-zinc-900/10 active:scale-[0.98]",
-                      readyFiles.length > 0 && !knowledgeBuild.isPending
-                        ? "bg-zinc-900 text-white shadow-sm hover:bg-zinc-800"
-                        : "cursor-not-allowed bg-zinc-100 text-zinc-300"
-                    )}
-                  >
-                    {knowledgeBuild.isPending ? (
-                      <><Loader2 className="h-3.5 w-3.5 animate-spin" /> <span className="text-[14px] font-medium">正在提交…</span></>
-                    ) : (
-                      <><span className="text-[14px] font-medium">构建知识产物</span><ArrowRight className="ml-0.5 h-3.5 w-3.5" /></>
-                    )}
-                  </button>
-                )}
+                <button
+                  onClick={handleGenerate}
+                  disabled={!canGenerate || isWorking}
+                  className={cn(
+                    "flex h-10 shrink-0 items-center justify-center gap-1.5 rounded-lg px-5 transition-all focus:outline-none focus:ring-4 focus:ring-zinc-900/10 active:scale-[0.98]",
+                    canGenerate && !isWorking
+                      ? "bg-zinc-900 text-white shadow-sm hover:bg-zinc-800"
+                      : "cursor-not-allowed bg-zinc-100 text-zinc-300"
+                  )}
+                >
+                  <span className="text-[14px] font-medium">开始学习</span>
+                  <ArrowUp className="ml-0.5 h-3.5 w-3.5" />
+                </button>
               </div>
             </div>
           </div>
         </motion.div>
 
-        {activeSubjectId ? (
-          <SubjectVectorNotice
-            status={knowledgeBuild.latestVectorStatus ?? knowledgeDocState?.vector_status}
-            className="mt-4 w-full"
-          />
-        ) : null}
-
         {/* ── Error ── */}
         <AnimatePresence>
-          {(error || uploadMutation.isError || knowledgeBuild.errorMessage) && (
+          {error && (
             <motion.div
               initial={{ opacity: 0, height: 0 }}
               animate={{ opacity: 1, height: "auto" }}
@@ -1069,60 +854,15 @@ export function HomePage() {
               className="mt-4 w-full p-4 bg-red-50 border border-red-100 rounded-xl"
             >
               <p className="text-sm text-red-600 font-medium text-center">
-                {error || knowledgeBuild.errorMessage || getApiErrorMessage(uploadMutation.error, "操作失败")}
+                {error}
               </p>
             </motion.div>
           )}
         </AnimatePresence>
       </motion.div>
 
-      {/* ═══ Phase 2: File List ═══ */}
-      {activeSubjectId && files.length > 0 && (
-        <motion.div
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="relative z-10 mt-6 w-full max-w-[800px]"
-        >
-          <details className="group rounded-[1.25rem] border border-zinc-200/80 bg-white/70 shadow-[0_2px_8px_rgba(0,0,0,0.02)] transition-all open:bg-white/95 backdrop-blur-xl overflow-hidden" open>
-            <summary className="flex cursor-pointer list-none items-center justify-between px-5 py-4 outline-none [&::-webkit-details-marker]:hidden border-b border-transparent group-open:border-zinc-100">
-              <div className="flex flex-wrap items-center gap-3">
-                <h2 className="text-[14px] font-semibold tracking-tight text-zinc-900">已上传资料</h2>
-                <span className="rounded-full bg-zinc-100 px-2.5 py-0.5 text-[11px] font-semibold text-zinc-600 shadow-[inset_0_1px_2px_rgba(0,0,0,0.02)]">
-                  {files.length} 份
-                </span>
-                {readyFiles.length > 0 && (
-                  <span className="rounded-full bg-emerald-50 px-2.5 py-0.5 text-xs font-medium text-emerald-600">
-                    {readyFiles.length} 份已就绪
-                  </span>
-                )}
-                {files.some((f) => !f.markdown_ready && f.status !== "failed") && (
-                  <span className="flex items-center gap-1.5 rounded-full bg-sky-50 px-2.5 py-0.5 text-xs font-medium text-sky-600">
-                    <Loader2 className="h-3 w-3 animate-spin" />
-                    解析中
-                  </span>
-                )}
-              </div>
-              <ChevronDown className="h-4 w-4 text-zinc-400 transition-transform duration-200 group-open:rotate-180" />
-            </summary>
-
-            <div className="max-h-[420px] overflow-y-auto p-3 space-y-2 toc-scroll bg-zinc-50/50">
-              <AnimatePresence>
-                {files.map((file) => (
-                  <HomeFileCard
-                    key={file.uid}
-                    file={file}
-                    onDelete={() => deleteMutation.mutate(file.uid)}
-                    isDeleting={deleteMutation.isPending}
-                  />
-                ))}
-              </AnimatePresence>
-            </div>
-          </details>
-        </motion.div>
-      )}
-
       {/* ═══ Recent Classrooms / Import Courses ═══ */}
-      {!activeSubjectId && (subjects.length > 0 || courses.length > 0) && (
+      {(subjects.length > 0 || courses.length > 0) && (
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
@@ -1365,14 +1105,6 @@ export function HomePage() {
         AITeachMe Open Source Project
       </div>
     </div>
-    <KnowledgeBuildResolutionModal
-      open={knowledgeBuild.precheckConflict !== null}
-      conflict={knowledgeBuild.precheckConflict}
-      isSubmitting={knowledgeBuild.isPending}
-      onClose={knowledgeBuild.closePrecheckConflict}
-      onResolve={knowledgeBuild.resolvePrecheckConflict}
-    />
-
     {/* ═══ Modals ═══ */}
     <AnimatePresence>
       {exportSubjectId && (

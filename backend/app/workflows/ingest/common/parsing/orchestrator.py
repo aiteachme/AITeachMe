@@ -48,21 +48,6 @@ class DeepEnhanceResult(BaseModel):
     asset_ocr_replacements: int = 0
 
 
-# Legacy compat alias
-class ParseExecutionResult(BaseModel):
-    """Structured output of the parser routing layer (legacy compat)."""
-
-    markdown: str
-    parser_used: str
-    attempted_parsers: list[str] = Field(default_factory=list)
-    parser_elapsed_s: dict[str, float] = Field(default_factory=dict)
-    rewritten_image_refs: int = 0
-    extracted_data_images: int = 0
-    appended_asset_images: int = 0
-    asset_ocr_images: int = 0
-    asset_ocr_replacements: int = 0
-
-
 async def fast_parse_file(
     file_path: str | Path,
     asset_dir: str | Path,
@@ -272,72 +257,3 @@ async def deep_enhance_file(
         asset_ocr_images=total_ocr_images,
         asset_ocr_replacements=total_replacements,
     )
-
-
-# ── Legacy compat: full single-pass parse (used by runtime.py fallback) ──
-
-async def parse_file(
-    file_path: str | Path,
-    asset_dir: str | Path,
-    *,
-    classification: ClassificationResult | None = None,
-    parse_plan: ParsePlan | None = None,
-    asset_link_prefix: str = "../assets",
-) -> ParseExecutionResult:
-    """Legacy single-pass parse: runs Phase 1 + Phase 2 in one call.
-
-    Kept for backwards compatibility with runtime.py. New code should
-    use fast_parse_file() + deep_enhance_file() separately.
-    """
-
-    path = Path(file_path)
-    assets = Path(asset_dir)
-    extension = path.suffix.lower()
-
-    plan = parse_plan or build_parse_plan(
-        file_path=path,
-        filetype=extension,
-        file_size_bytes=path.stat().st_size if path.exists() else None,
-        classification=classification,
-    )
-
-    # Phase 1
-    fast_result = await fast_parse_file(
-        file_path=path,
-        asset_dir=assets,
-        classification=classification,
-        parse_plan=plan,
-        asset_link_prefix=asset_link_prefix,
-    )
-
-    # Phase 2
-    if fast_result.needs_enhance:
-        enhance_result = await deep_enhance_file(
-            fast_result.markdown,
-            file_path=path,
-            asset_dir=assets,
-            asset_link_prefix=asset_link_prefix,
-            asset_name_prefix=plan.options.asset_name_prefix,
-            parse_plan=plan,
-            classification=classification,
-        )
-        final_markdown = enhance_result.markdown
-        ocr_images = enhance_result.asset_ocr_images
-        ocr_replacements = enhance_result.asset_ocr_replacements
-    else:
-        final_markdown = fast_result.markdown
-        ocr_images = 0
-        ocr_replacements = 0
-
-    return ParseExecutionResult(
-        markdown=final_markdown,
-        parser_used=fast_result.parser_used,
-        attempted_parsers=fast_result.attempted_parsers,
-        parser_elapsed_s=fast_result.parser_elapsed_s,
-        rewritten_image_refs=fast_result.rewritten_image_refs,
-        extracted_data_images=fast_result.extracted_data_images,
-        appended_asset_images=fast_result.appended_asset_images,
-        asset_ocr_images=ocr_images,
-        asset_ocr_replacements=ocr_replacements,
-    )
-
