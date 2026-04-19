@@ -543,6 +543,9 @@ async def run_docgen_background(*, subject: str, file_ids: list[int], prompt: st
                 pass
         _clear_docgen_staging_safely(subject)
         _write_build_status(subject, requested_at=requested_at, status="cancelled", stage="cancelled", build_session_id=build_session_id, planner_session_id=planner_session_id, confirmed_plan_id=confirmed_plan_id, digest_mode=resolved_digest_mode, error_message="build_cancelled", draft_available=False)
+        if confirmed_plan_id and user_id:
+            with managed_session() as session:
+                mark_confirmed_build_plan_status(session, subject=subject, user_id=user_id, plan_id=confirmed_plan_id, status="cancelled")
         raise
     except Exception:
         if kg_ingest_task is not None and not kg_ingest_task.done():

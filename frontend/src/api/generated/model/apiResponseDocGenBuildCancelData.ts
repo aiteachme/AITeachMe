@@ -5,13 +5,13 @@
  * 本地优先的 AI 助教后端服务。
  * OpenAPI spec version: 0.2.0
  */
-import type { SubjectItem } from './subjectItem';
+import type { DocGenBuildCancelData } from './docGenBuildCancelData';
 
-export interface ApiResponseSubjectItem {
+export interface ApiResponseDocGenBuildCancelData {
   /** 业务码，0 表示成功。 */
   code?: number;
   /** 响应消息。 */
   message?: string;
   /** 业务数据。 */
-  data?: SubjectItem | null;
+  data?: DocGenBuildCancelData | null;
 }

@@ -2150,6 +2150,79 @@
         }
       }
     },
+    "/api/v1/subjects/{subject}/knowledge/build/cancel": {
+      "post": {
+        "tags": [
+          "knowledge",
+          "knowledge"
+        ],
+        "summary": "Cancel the active digest build for this subject",
+        "operationId": "knowledge_build_cancel_api_v1_subjects__subject__knowledge_build_cancel_post",
+        "parameters": [
+          {
+            "name": "subject",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Subject"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_DocGenBuildCancelData_"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数不合法。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务内部异常。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/subjects/{subject}/knowledge/docs": {
       "post": {
         "tags": [
@@ -4872,6 +4945,40 @@
         },
         "type": "object",
         "title": "ApiResponse[ClearKnowledgeResponse]",
+        "example": {
+          "code": 0,
+          "data": {},
+          "message": "ok"
+        }
+      },
+      "ApiResponse_DocGenBuildCancelData_": {
+        "properties": {
+          "code": {
+            "type": "integer",
+            "title": "Code",
+            "description": "业务码，0 表示成功。",
+            "default": 0
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "响应消息。",
+            "default": "ok"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DocGenBuildCancelData"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "业务数据。"
+          }
+        },
+        "type": "object",
+        "title": "ApiResponse[DocGenBuildCancelData]",
         "example": {
           "code": 0,
           "data": {},
@@ -7675,6 +7782,47 @@
         ],
         "title": "CoursePackageItem",
         "description": "One `.atmx` package listed from shared courses folder."
+      },
+      "DocGenBuildCancelData": {
+        "properties": {
+          "subject": {
+            "type": "string",
+            "title": "Subject"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status",
+            "default": "cancelled"
+          },
+          "cancelled_task_count": {
+            "type": "integer",
+            "title": "Cancelled Task Count",
+            "default": 0
+          },
+          "requested_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Requested At"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "default": "已终止当前知识构建。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "subject"
+        ],
+        "title": "DocGenBuildCancelData",
+        "description": "Result of cancelling the active knowledge build."
       },
       "DocGenBuildData": {
         "properties": {

@@ -23,6 +23,7 @@ import type {
   BuildPlannerConfirmResponse,
   BuildPlannerPlanResponse,
   BuildPlannerSessionResponse,
+  DocGenBuildCancelData,
   DocGenBuildData,
   FileRecord as ApiFileRecord,
 } from "../api/generated/model";
@@ -481,6 +482,19 @@ async function confirmPlannerSession(subject: string, sessionId: string) {
   return response.data;
 }
 
+async function cancelKnowledgeBuild(subject: string): Promise<DocGenBuildCancelData> {
+  const response = await apiClient<ApiResponse<DocGenBuildCancelData>>({
+    method: "POST",
+    url: `/api/v1/subjects/${subject}/knowledge/build/cancel`,
+  });
+  return response.data ?? {
+    subject,
+    status: "cancelled",
+    cancelled_task_count: 0,
+    message: "已终止当前知识构建。",
+  };
+}
+
 async function streamPlannerSession(
   url: string,
   body: object,
@@ -694,8 +708,9 @@ export function BuildPlanPage() {
     !isBuildFailure &&
     (isBuildActive || hasDraftDocMarkdown);
   const shouldShowBuildView =
-    Boolean(requestedAt) &&
-    (isBuildActive || isWaitingForRequestedBuild || isRequestedBuildReady || isBuildFailure || hasDraftDocMarkdown || hasLiveDocMarkdown);
+    isBuildActive ||
+    isWaitingForRequestedBuild ||
+    (Boolean(requestedAt) && (isRequestedBuildReady || isBuildFailure || hasDraftDocMarkdown || hasLiveDocMarkdown));
   const buildStage = buildMeta?.stage ?? null;
   const { buildProgress, buildStatusText } = useDocBuildProgress({
     buildMeta,
@@ -926,6 +941,13 @@ export function BuildPlanPage() {
     mutationFn: (sessionId: string) => confirmPlannerSession(subjectId, sessionId),
   });
 
+  const cancelBuildMutation = useMutation({
+    mutationFn: () => cancelKnowledgeBuild(subjectId),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: buildKnowledgeDocStateQueryKey(subjectId) });
+    },
+  });
+
   const knowledgeBuild = useKnowledgeBuildFlow({
     subjectId,
     buildType: "docs",
@@ -963,7 +985,7 @@ export function BuildPlanPage() {
   });
 
   const isPlannerPending = plannerStreaming || confirmPlannerMutation.isPending;
-  const isBuilding = knowledgeBuild.isPending;
+  const isBuilding = knowledgeBuild.isPending || isBuildActive;
 
   const focusComposer = useCallback(() => {
     const focusInput = () => {
@@ -1049,6 +1071,13 @@ export function BuildPlanPage() {
     }
     navigate(`/subject/${subjectId}/knowledge-docs${location.search}`);
   }, [location.search, navigate, subjectId]);
+
+  const handleCancelBuild = useCallback(() => {
+    if (!subjectId || cancelBuildMutation.isPending) {
+      return;
+    }
+    cancelBuildMutation.mutate();
+  }, [cancelBuildMutation, subjectId]);
 
   const handleReturnToPlanner = useCallback(() => {
     if (!subjectId) {
@@ -1348,6 +1377,21 @@ export function BuildPlanPage() {
                     >
                       <BookOpen className="h-4 w-4" />
                       进入知识文档
+                    </button>
+                  ) : null}
+                  {isBuildActive ? (
+                    <button
+                      type="button"
+                      onClick={handleCancelBuild}
+                      disabled={cancelBuildMutation.isPending}
+                      className="inline-flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-2.5 text-sm font-semibold text-red-700 disabled:opacity-60"
+                    >
+                      {cancelBuildMutation.isPending ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <X className="h-4 w-4" />
+                      )}
+                      终止当前构建
                     </button>
                   ) : null}
                   <button

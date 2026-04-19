@@ -201,6 +201,16 @@ class DocGenBuildData(BaseModel):
     digest_mode: str | None = Field(default=None, description="Digest mode frozen in the confirmed build plan.")
 
 
+class DocGenBuildCancelData(BaseModel):
+    """Result of cancelling the active knowledge build."""
+
+    subject: str
+    status: str = "cancelled"
+    cancelled_task_count: int = 0
+    requested_at: datetime | None = None
+    message: str = "已终止当前知识构建。"
+
+
 class BuildSampleCardResponse(BaseModel):
     """Lightweight preview card shown while digest is building."""
 
