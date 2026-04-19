@@ -1,4 +1,4 @@
-"""Chapter-level review for enhanced DocGen drafts."""
+﻿"""Chapter-level review for enhanced DocGen drafts."""
 
 from __future__ import annotations
 

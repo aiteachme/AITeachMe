@@ -1,4 +1,4 @@
-"""Load persisted planner session data and parsed source materials."""
+﻿"""Load persisted planner session data and parsed source materials."""
 
 from __future__ import annotations
 
@@ -27,11 +27,11 @@ def _seed_titles_from_goal_and_files(
     filenames: list[str],
     *,
     subject: str,
-    user_goal: str | None,
+    user_prompt: str | None,
 ) -> list[str]:
     seeds: list[str] = []
-    if user_goal and user_goal.strip():
-        seeds.append(user_goal.strip())
+    if user_prompt and user_prompt.strip():
+        seeds.append(user_prompt.strip())
     for filename in filenames:
         stem = Path(filename).stem.strip()
         if stem:
@@ -51,13 +51,13 @@ def _seed_titles_from_goal_and_files(
     return titles
 
 
-def _build_seed_material_context(*, subject: str, file_ids: list[int], user_goal: str | None) -> DigestMaterialContext:
+def _build_seed_material_context(*, subject: str, file_ids: list[int], user_prompt: str | None) -> DigestMaterialContext:
     with managed_session() as session:
         raw_files = list_raw_files_by_ids(session, subject, file_ids)
         subject_row = session.query(Subject).filter(Subject.slug == subject).first()
 
     filenames = [raw_file.original_filename for raw_file in raw_files if raw_file.original_filename]
-    seed_titles = _seed_titles_from_goal_and_files(filenames, subject=subject, user_goal=user_goal)
+    seed_titles = _seed_titles_from_goal_and_files(filenames, subject=subject, user_prompt=user_prompt)
     discipline_counts = Counter(str(raw_file.detected_discipline).strip() for raw_file in raw_files if raw_file.detected_discipline)
     sub_discipline_counts = Counter(str(raw_file.detected_sub_discipline).strip() for raw_file in raw_files if raw_file.detected_sub_discipline)
     content_type_counts = Counter(str(raw_file.detected_content_type).strip() for raw_file in raw_files if raw_file.detected_content_type)
@@ -131,7 +131,7 @@ def build_load_planner_materials_node(*, context: WorkflowContext):
         material_context = await build_digest_material_context(
             working_state["subject"],
             working_state.get("file_ids", []),
-            user_prompt=working_state.get("user_goal"),
+            user_prompt=working_state.get("user_prompt"),
         )
         logger.info(
             "planner_load_materials_context_loaded",
@@ -142,16 +142,16 @@ def build_load_planner_materials_node(*, context: WorkflowContext):
         )
         if not material_context.source_documents:
             # 刚上传后 parsed markdown 可能还没准备好。seed context 让 planner
-            # 至少可以基于文件名和用户目标先给出临时方案。
+            # 至少可以基于文件名和用户提示先给出临时方案。
             await emit_planner_event(
                 working_state,
                 event="planner.material.pending",
-                detail="当前资料正文尚未解析完成，本轮将先依据文件名和用户目标生成临时方案。",
+                detail="当前资料正文尚未解析完成，本轮将先依据文件名和用户提示生成临时方案。",
             )
             material_context = _build_seed_material_context(
                 subject=working_state["subject"],
                 file_ids=list(working_state.get("file_ids", [])),
-                user_goal=working_state.get("user_goal"),
+                user_prompt=working_state.get("user_prompt"),
             )
             logger.warning(
                 "planner_load_materials_seed_context_used",

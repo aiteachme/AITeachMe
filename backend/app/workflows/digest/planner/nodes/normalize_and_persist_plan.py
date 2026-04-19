@@ -1,4 +1,4 @@
-"""Normalize the plan contract and persist planner session state."""
+﻿"""Normalize the plan contract and persist planner session state."""
 
 from __future__ import annotations
 
@@ -36,7 +36,7 @@ def build_normalize_and_persist_plan_node(*, context: WorkflowContext):
         draft = normalize_planner_draft(
             state.get("build_plan_draft") or {},
             subject=state["subject"],
-            user_goal=state.get("user_goal") or "",
+            user_prompt=state.get("user_prompt") or "",
             requested_digest_mode=digest_mode,
             shared_inputs=material_context,
             latest_plan=state.get("latest_plan"),

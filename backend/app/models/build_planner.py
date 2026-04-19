@@ -1,4 +1,4 @@
-"""Persistent confirmed build plan model."""
+﻿"""Persistent confirmed build plan model."""
 
 from __future__ import annotations
 
@@ -21,7 +21,7 @@ class ConfirmedBuildPlan(SQLModel, table=True):
     planner_session_id: str | None = Field(default=None, index=True)
     user_id: str = Field(default="local", index=True)
     status: str = Field(default="confirmed", index=True)
-    user_goal: str = Field(default="")
+    user_prompt: str = Field(default="")
     digest_mode: str = Field(default="sprint", index=True)
     selected_file_ids_json: list[int] = Field(default_factory=list, sa_column=Column(sa.JSON))
     chapter_plan_json: list[dict[str, Any]] = Field(default_factory=list, sa_column=Column(sa.JSON))

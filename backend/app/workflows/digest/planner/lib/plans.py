@@ -29,7 +29,7 @@ class BuildPlannerDraft(BaseModel):
     """Stable planner payload consumed by API and DocGen."""
 
     subject: str
-    user_goal: str
+    user_prompt: str
     digest_mode: str = "systematic"
     chapter_plan: list[PlannerChapterPlan] = Field(default_factory=list)
     # Kept for API/DB compatibility. DocGen derives retrieval queries from chapter content.
@@ -61,14 +61,14 @@ def _strings(value: Any) -> list[str]:
     return cleaned
 
 
-def _topic_strings(shared_inputs: SharedInputs, *, user_goal: str, subject: str) -> list[str]:
+def _topic_strings(shared_inputs: SharedInputs, *, user_prompt: str, subject: str) -> list[str]:
     values: list[Any] = [
         *shared_inputs.fast_hints.chapter_candidates,
         *[name for name, _count in shared_inputs.fast_hints.high_freq_terms],
         *shared_inputs.subject_profile.key_topics,
         shared_inputs.subject_profile.sub_discipline,
         shared_inputs.subject_profile.discipline,
-        user_goal,
+        user_prompt,
         subject,
     ]
     return _strings(values)
@@ -112,12 +112,12 @@ def _resolve_subject_display_name(
     subject: str,
     *,
     shared_inputs: SharedInputs | None,
-    user_goal: str = "",
+    user_prompt: str = "",
 ) -> str:
     shared = shared_inputs or _minimal_shared_inputs(subject)
     for candidate in [
         shared.subject_profile.subject_name,
-        user_goal,
+        user_prompt,
         subject if not _text(subject).lower().startswith("subj_") else "",
     ]:
         text = _text(candidate)
@@ -148,7 +148,7 @@ def _build_supplement_chapter(
     index: int,
     topic: str,
     digest_mode: str,
-    user_goal: str,
+    user_prompt: str,
 ) -> PlannerChapterPlan:
     title = _text(topic) or f"补充章节 {index}"
     normalized_mode = _normalize_digest_mode(digest_mode)
@@ -160,8 +160,8 @@ def _build_supplement_chapter(
         required = _strings([f"{title} 的核心概念", f"{title} 的关键结构", f"{title} 的例子与迁移"])
         objective = f"系统讲清《{title}》的概念边界、结构关系和典型应用。"
         writing = "按系统课写法组织：先讲定义和结构，再展开推理、例子与迁移。"
-    if user_goal:
-        required = _strings([*required, user_goal])
+    if user_prompt:
+        required = _strings([*required, user_prompt])
     return PlannerChapterPlan(
         chapter_index=index,
         title=title,
@@ -178,7 +178,7 @@ def _pad_chapters_to_minimum(
     *,
     digest_mode: str,
     shared_inputs: SharedInputs,
-    user_goal: str,
+    user_prompt: str,
     subject: str,
 ) -> list[PlannerChapterPlan]:
     config = get_planner_mode_runtime_config(digest_mode)
@@ -188,7 +188,7 @@ def _pad_chapters_to_minimum(
     existing_titles = {_text(chapter.title).casefold() for chapter in chapters}
     topics = [
         topic
-        for topic in _topic_strings(shared_inputs, user_goal=user_goal, subject=subject)
+        for topic in _topic_strings(shared_inputs, user_prompt=user_prompt, subject=subject)
         if topic.casefold() not in existing_titles
     ]
     if not topics:
@@ -215,7 +215,7 @@ def _pad_chapters_to_minimum(
                 index=len(padded) + 1,
                 topic=topic,
                 digest_mode=digest_mode,
-                user_goal=user_goal,
+                user_prompt=user_prompt,
             )
         )
     return padded
@@ -248,7 +248,7 @@ def normalize_planner_draft(
     draft: BuildPlannerDraft | Mapping[str, Any] | None,
     *,
     subject: str,
-    user_goal: str,
+    user_prompt: str,
     requested_digest_mode: str,
     shared_inputs: SharedInputs | None = None,
     latest_plan: BuildPlannerDraft | Mapping[str, Any] | None = None,
@@ -263,7 +263,7 @@ def normalize_planner_draft(
     current = _mapping(draft)
     previous = _mapping(latest_plan)
     mode = _normalize_digest_mode(requested_digest_mode or current.get("digest_mode") or previous.get("digest_mode"))
-    display_subject = _resolve_subject_display_name(subject, shared_inputs=shared, user_goal=user_goal)
+    display_subject = _resolve_subject_display_name(subject, shared_inputs=shared, user_prompt=user_prompt)
 
     current_chapters = _chapter_items(current.get("chapter_plan"))
     previous_chapters = _chapter_items(previous.get("chapter_plan"))
@@ -276,7 +276,7 @@ def normalize_planner_draft(
         chapters,
         digest_mode=mode,
         shared_inputs=shared,
-        user_goal=user_goal,
+        user_prompt=user_prompt,
         subject=display_subject,
     )
     plan_summary = _text(current.get("plan_summary") or previous.get("plan_summary"))
@@ -286,7 +286,7 @@ def normalize_planner_draft(
 
     return BuildPlannerDraft(
         subject=display_subject,
-        user_goal=user_goal,
+        user_prompt=user_prompt,
         digest_mode=mode,
         chapter_plan=chapters,
         research_queries=[],
@@ -301,7 +301,7 @@ def normalize_planner_payload(
     payload: BuildPlannerDraft | Mapping[str, Any] | None,
     *,
     subject: str,
-    user_goal: str,
+    user_prompt: str,
     requested_digest_mode: str,
     shared_inputs: SharedInputs | None = None,
     latest_plan: BuildPlannerDraft | Mapping[str, Any] | None = None,
@@ -309,7 +309,7 @@ def normalize_planner_payload(
     return normalize_planner_draft(
         payload,
         subject=subject,
-        user_goal=user_goal,
+        user_prompt=user_prompt,
         requested_digest_mode=requested_digest_mode,
         shared_inputs=shared_inputs,
         latest_plan=latest_plan,

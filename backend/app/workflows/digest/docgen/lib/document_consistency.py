@@ -1,4 +1,4 @@
-"""Whole-document consistency review for DocGen."""
+﻿"""Whole-document consistency review for DocGen."""
 
 from __future__ import annotations
 

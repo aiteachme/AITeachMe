@@ -1,4 +1,4 @@
-"""Digest DocGen workflow package."""
+﻿"""Digest DocGen workflow package."""
 
 from __future__ import annotations
 

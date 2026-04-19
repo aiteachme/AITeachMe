@@ -1,4 +1,4 @@
-"""Knowledge-domain API schemas."""
+﻿"""Knowledge-domain API schemas."""
 
 from __future__ import annotations
 
@@ -52,7 +52,7 @@ class DocGenBuildRequest(BaseModel):
         default=None,
         description=(
             "Planner-generated and confirmed build plan ID. `docs` builds require this field; "
-            "when provided, the build uses the frozen file selection, chapter plan, and user goal."
+            "when provided, the build uses the frozen file selection, chapter plan, and User prompt."
         ),
     )
 
@@ -258,10 +258,6 @@ class KnowledgeBuildStatusResponse(BaseModel):
     digest_mode: str | None = Field(default=None, description="Digest mode for the current build.")
     mode_reason: str | None = Field(default=None, description="Reason for the current digest mode.")
     current_stage_description: str | None = Field(default=None, description="Friendly description of the current build stage.")
-
-
-class DocGenBuildStatusResponse(KnowledgeBuildStatusResponse):
-    """Backward-compatible alias used by existing docs responses."""
 
 
 class DocGenGetResponse(BaseModel):
@@ -490,7 +486,7 @@ class BuildPlannerCreateRequest(BaseModel):
             "planner prefers parsed content and falls back to filenames/metadata when needed."
         ),
     )
-    user_goal: str = Field(description="Learner goal or requested document target.")
+    user_prompt: str = Field(description="Learner prompt or requested document target.")
     digest_mode: Literal["sprint", "systematic"] | None = Field(default=None, description="Optional requested digest mode.")
     title: str | None = Field(default=None, description="Optional planner session title.")
 
@@ -532,7 +528,7 @@ class BuildPlannerRuntimeStatsResponse(BaseModel):
 class BuildPlannerPlanResponse(BaseModel):
     subject: str
     selected_file_uids: list[str] = Field(default_factory=list)
-    user_goal: str
+    user_prompt: str
     digest_mode: str
     chapter_plan: list[BuildPlannerChapterPlanResponse] = Field(default_factory=list)
     research_queries: list[str] = Field(default_factory=list)
@@ -556,12 +552,6 @@ class BuildPlannerSessionResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
 
-    @property
-    def plan(self) -> BuildPlannerPlanResponse:
-        """Backward-compatible alias for older callers."""
-
-        return self.latest_plan
-
 
 class BuildPlannerConfirmResponse(BaseModel):
     planner_session_id: str
@@ -571,7 +561,7 @@ class BuildPlannerConfirmResponse(BaseModel):
     digest_mode: str
     selected_file_uids: list[str] = Field(default_factory=list)
     selected_file_ids: list[int] = Field(default_factory=list)
-    user_goal: str
+    user_prompt: str
     plan_summary: str
     chapter_plan: list[BuildPlannerChapterPlanResponse] = Field(default_factory=list)
     research_queries: list[str] = Field(default_factory=list)
@@ -581,15 +571,3 @@ class BuildPlannerConfirmResponse(BaseModel):
     status_history: list[str] = Field(default_factory=list)
     created_at: datetime
     updated_at: datetime
-
-    @property
-    def session_id(self) -> str:
-        """Backward-compatible alias for older callers."""
-
-        return self.planner_session_id
-
-    @property
-    def plan_id(self) -> str:
-        """Backward-compatible alias for older callers."""
-
-        return self.confirmed_plan_id

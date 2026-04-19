@@ -12,7 +12,7 @@ import type { BuildPlannerPlanResponseMediaPlan } from './buildPlannerPlanRespon
 export interface BuildPlannerPlanResponse {
   subject: string;
   selected_file_uids?: string[];
-  user_goal: string;
+  user_prompt: string;
   digest_mode: string;
   chapter_plan?: BuildPlannerChapterPlanResponse[];
   research_queries?: string[];

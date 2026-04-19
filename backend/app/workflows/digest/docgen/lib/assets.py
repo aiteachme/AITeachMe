@@ -1,4 +1,4 @@
-"""Workflow-local asset runtime for digest DocGen enrichment."""
+﻿"""Workflow-local asset runtime for digest DocGen enrichment."""
 
 from __future__ import annotations
 

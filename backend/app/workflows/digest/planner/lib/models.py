@@ -1,4 +1,4 @@
-"""Small planner-only data contracts."""
+﻿"""Small planner-only data contracts."""
 
 from __future__ import annotations
 

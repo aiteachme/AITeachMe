@@ -1,4 +1,4 @@
-"""Stream visible thinking while generating internal plan intent."""
+﻿"""Stream visible thinking while generating internal plan intent."""
 
 from __future__ import annotations
 
@@ -31,7 +31,7 @@ def _subject_for_prompt(state: BuildPlannerState) -> str:
     return _resolve_subject_display_name(
         state["subject"],
         shared_inputs=material_context,
-        user_goal=state.get("user_goal") or "",
+        user_prompt=state.get("user_prompt") or "",
     )
 
 
@@ -40,7 +40,7 @@ async def _stream_planner_brief(state: BuildPlannerState, fallback: PlannerBrief
     subject_name = _subject_for_prompt(state)
     prompt = build_plan_sketch_prompt(
         subject=subject_name,
-        user_goal=state.get("user_goal") or "",
+        user_prompt=state.get("user_prompt") or "",
         digest_mode=state.get("digest_mode") or material_context.course_mode_decision.mode.value,
         material_context=material_context,
         message_history=list(state.get("message_history", [])),
@@ -122,7 +122,7 @@ async def _extract_plan_intent(state: BuildPlannerState) -> PlanIntent:
         plan_intent = await acompletion_with_fallback(
             build_plan_intent_messages(
                 subject=_subject_for_prompt(state),
-                user_goal=state.get("user_goal") or "",
+                user_prompt=state.get("user_prompt") or "",
                 digest_mode=state.get("digest_mode") or material_context.course_mode_decision.mode.value,
                 material_context=material_context,
                 message_history=list(state.get("message_history", [])),
@@ -177,7 +177,7 @@ def _normalize_plan_queries(queries: list[str]) -> list[str]:
 
 def _fallback_plan_queries(state: BuildPlannerState) -> list[str]:
     material_context = state["material_context"]
-    goal = str(state.get("user_goal") or "").strip()
+    goal = str(state.get("user_prompt") or "").strip()
     subject = _subject_for_prompt(state)
     mode = str(state.get("digest_mode") or material_context.course_mode_decision.mode.value)
     candidates = [
@@ -191,7 +191,7 @@ def _fallback_plan_queries(state: BuildPlannerState) -> list[str]:
 
 def _fallback_plan_intent(state: BuildPlannerState) -> str:
     material_context = state["material_context"]
-    goal = str(state.get("user_goal") or "").strip()
+    goal = str(state.get("user_prompt") or "").strip()
     mode = str(state.get("digest_mode") or material_context.course_mode_decision.mode.value)
     return f"用户意图暂按 {mode} 学习处理；围绕{goal or '当前学习目标'}和已上传资料，先识别资料主线，再生成可调整的初步大纲。"
 

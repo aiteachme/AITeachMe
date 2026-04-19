@@ -1,4 +1,4 @@
-"""Chapter-level enhancement, assets, and practice seeds."""
+﻿"""Chapter-level enhancement, assets, and practice seeds."""
 
 from __future__ import annotations
 

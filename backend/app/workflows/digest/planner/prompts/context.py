@@ -1,4 +1,4 @@
-"""Tiny text renderers shared by planner prompts.
+﻿"""Tiny text renderers shared by planner prompts.
 
 这里不做规划判断，只把 workflow state 里的上下文转成 prompt 文本。
 保留这一层是为了避免三个 prompt 文件重复拼接资料、历史和上一版方案。
@@ -14,7 +14,7 @@ EMPTY_DIGEST = "暂无资料正文上下文"
 EMPTY_HISTORY = "暂无补充意见"
 EMPTY_LATEST_PLAN = "暂无上一版方案"
 EMPTY_FILES = "暂无已解析文件"
-NO_MATERIAL_NOTE = "资料状态：当前没有可用的上传资料正文，只能基于用户目标生成通用初步计划，不能假装已经读取了具体文件。"
+NO_MATERIAL_NOTE = "资料状态：当前没有可用的上传资料正文，只能基于用户提示生成通用初步计划，不能假装已经读取了具体文件。"
 
 
 def _clean(value: Any) -> str:

@@ -1,4 +1,4 @@
-"""Typed state for the rewritten DocGen lane."""
+﻿"""Typed state for the rewritten DocGen lane."""
 
 from __future__ import annotations
 
@@ -19,7 +19,6 @@ class DocGenState(TypedDict, total=False):
     confirmed_plan_id: str
     confirmed_plan: dict[str, Any] | None
     digest_mode: str
-    course_type: str
     retrieval_profile: str
     teaching_action: str
     shared_inputs: Any

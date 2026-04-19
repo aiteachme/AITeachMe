@@ -1,4 +1,4 @@
-"""Chapter generation planning and fallback drafting."""
+﻿"""Chapter generation planning and fallback drafting."""
 
 from __future__ import annotations
 

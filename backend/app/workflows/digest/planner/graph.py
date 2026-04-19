@@ -1,4 +1,4 @@
-"""Planner graph definition and public workflow entrypoints.
+﻿"""Planner graph definition and public workflow entrypoints.
 
 真实链路只有四步：读取资料 -> 理解目标 -> 合成大纲 -> 保存方案。
 """
@@ -149,7 +149,7 @@ def create_planner_initial_state(
     session_title: str = "",
     feedback_message: str = "",
     file_ids: list[int],
-    user_goal: str,
+    user_prompt: str,
     digest_mode: str,
     planner_session_id: str,
     message_history: list[str],
@@ -167,7 +167,7 @@ def create_planner_initial_state(
         "session_title": session_title,
         "feedback_message": feedback_message,
         "file_ids": file_ids,
-        "user_goal": user_goal,
+        "user_prompt": user_prompt,
         "digest_mode": digest_mode,
         "planner_session_id": planner_session_id,
         "message_history": message_history,
@@ -186,7 +186,7 @@ async def run_build_planner_workflow(
     *,
     subject: str,
     file_ids: list[int],
-    user_goal: str,
+    user_prompt: str,
     planner_session_id: str,
     digest_mode: str,
     message_history: list[str],
@@ -209,7 +209,7 @@ async def run_build_planner_workflow(
         file_id_count=len(file_ids),
         requested_file_uid_count=len(requested_file_uids or []),
         digest_mode=digest_mode,
-        user_goal_preview=user_goal[:80],
+        user_prompt_preview=user_prompt[:80],
     )
     context = WorkflowContext(
         workflow_name="digest.planner",
@@ -233,7 +233,7 @@ async def run_build_planner_workflow(
             session_title=session_title,
             feedback_message=feedback_message,
             file_ids=file_ids,
-            user_goal=user_goal,
+            user_prompt=user_prompt,
             digest_mode=digest_mode,
             planner_session_id=planner_session_id,
             message_history=message_history,
@@ -269,7 +269,7 @@ async def create_build_planner_session(
     # 真正业务逻辑仍在 graph nodes 里。
     planner_defaults = get_teaching_runtime_config().planner
     session_id = uuid.uuid4().hex
-    user_goal = payload.user_goal.strip()
+    user_prompt = payload.user_prompt.strip()
     digest_mode = (payload.digest_mode or planner_defaults.default_digest_mode).strip() or planner_defaults.default_digest_mode
     logger.info(
         "planner_create_session_starting",
@@ -278,7 +278,7 @@ async def create_build_planner_session(
         planner_session_id=session_id,
         file_uid_count=len(payload.file_uids or []),
         digest_mode=digest_mode,
-        user_goal_preview=user_goal[:80],
+        user_prompt_preview=user_prompt[:80],
     )
     try:
         result = await run_build_planner_workflow(
@@ -286,12 +286,12 @@ async def create_build_planner_session(
             user_id=user_id,
             planner_operation="create",
             requested_file_uids=list(payload.file_uids or []),
-            session_title=payload.title or user_goal or subject.name,
+            session_title=payload.title or user_prompt or subject.name,
             file_ids=[],
-            user_goal=user_goal,
+            user_prompt=user_prompt,
             planner_session_id=session_id,
             digest_mode=digest_mode,
-            message_history=[user_goal],
+            message_history=[user_prompt],
             progress_callback=progress_callback,
             token_callback=token_callback,
         )
@@ -344,7 +344,7 @@ async def append_build_planner_message(
             planner_operation="append",
             feedback_message=payload.message.strip(),
             file_ids=[],
-            user_goal="",
+            user_prompt="",
             planner_session_id=session_id,
             digest_mode="",
             message_history=[],

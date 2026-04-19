@@ -1,4 +1,4 @@
-"""DocGen lane-local helper exports."""
+﻿"""DocGen lane-local helper exports."""
 
 from app.workflows.digest.docgen.lib.assets import DocGenAssetRuntime
 from app.workflows.digest.docgen.lib.chapter_generation import compose_chapter_generation_plan

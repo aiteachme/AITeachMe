@@ -1,4 +1,4 @@
-"""DocGen lane-local prompt exports."""
+﻿"""DocGen lane-local prompt exports."""
 
 from app.workflows.digest.docgen.prompts.assets import build_docgen_image_prompt, build_docgen_mermaid_prompt
 from app.workflows.digest.docgen.prompts.chapter_review import build_chapter_review_messages

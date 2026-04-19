@@ -1,4 +1,4 @@
-"""Few-shot examples for planner prompts.
+﻿"""Few-shot examples for planner prompts.
 
 示例统一写成 input -> output，贴近 prompt 里的真实学习方式：
 - sketch output 是流式思考过程。

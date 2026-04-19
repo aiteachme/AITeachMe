@@ -1,4 +1,4 @@
-"""Workflow-local query planning helpers for DocGen research."""
+﻿"""Workflow-local query planning helpers for DocGen research."""
 
 from __future__ import annotations
 

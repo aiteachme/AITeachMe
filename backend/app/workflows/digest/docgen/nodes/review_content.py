@@ -1,4 +1,4 @@
-"""Review enhanced DocGen content before merge."""
+﻿"""Review enhanced DocGen content before merge."""
 
 from __future__ import annotations
 

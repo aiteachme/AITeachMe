@@ -1,4 +1,4 @@
-"""Merge enhanced chapters and run whole-document review."""
+﻿"""Merge enhanced chapters and run whole-document review."""
 
 from __future__ import annotations
 

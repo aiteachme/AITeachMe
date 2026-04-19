@@ -1,4 +1,4 @@
-"""Internal asset request placeholders for DocGen.
+﻿"""Internal asset request placeholders for DocGen.
 
 These blocks are not user-facing Markdown. They are an internal protocol
 inserted by DocGen code after the writer returns, then consumed during the

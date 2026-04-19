@@ -1,4 +1,4 @@
-"""Prompts for composing final planner build plans."""
+﻿"""Prompts for composing final planner build plans."""
 
 from __future__ import annotations
 
@@ -21,7 +21,7 @@ from app.workflows.digest.planner.prompts.examples import DEFAULT_COMPOSER_EXAMP
 PLAN_JSON_MARKER = "<PLAN_JSON>"
 PLAN_JSON_END_MARKER = "</PLAN_JSON>"
 COMPOSER_MESSAGE_HISTORY_BUDGET = 6
-DEFAULT_PLAN_INTENT = "围绕用户目标和资料主线，先整理资料边界，再生成可调整的初步大纲。"
+DEFAULT_PLAN_INTENT = "围绕用户提示和资料主线，先整理资料边界，再生成可调整的初步大纲。"
 
 
 def _render_plan_queries(plan_intent: PlanIntent) -> str:
@@ -34,7 +34,7 @@ def _render_plan_queries(plan_intent: PlanIntent) -> str:
 def build_plan_composer_messages(
     *,
     subject: str,
-    user_goal: str,
+    user_prompt: str,
     digest_mode: str,
     material_context: DigestMaterialContext,
     planner_brief: PlannerBrief,
@@ -70,7 +70,7 @@ def build_plan_composer_messages(
 - 可以写“后续会查询/对照/搜集哪些方向”，不要写“已经查到/来源显示/某网站或某论文指出”。
 
 主题：{subject}
-用户目标：{user_goal}
+用户提示：{user_prompt}
 模式：{digest_mode}
 
 资料画像：
@@ -128,7 +128,7 @@ JSON 形状：
 内容边界：
 - plan_steps 可以写“查询/对照/搜集/调研”的计划动作，但不能说已经完成检索。
 - plan_text 和 plan_steps 是重点，不能被 chapters 反客为主。
-- 没有上传资料时，基于用户目标生成通用初步计划，不要声称读过具体文件。
+- 没有上传资料时，基于用户提示生成通用初步计划，不要声称读过具体文件。
 - 初步大纲保持概括，key_points 控制为 2-4 个方向，不要塞满细碎知识点。
 
 few-shot 规律：

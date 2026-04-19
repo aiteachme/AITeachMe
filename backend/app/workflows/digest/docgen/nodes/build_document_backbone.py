@@ -1,4 +1,4 @@
-"""Build the document-level knowledge backbone."""
+﻿"""Build the document-level knowledge backbone."""
 
 from __future__ import annotations
 

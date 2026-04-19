@@ -250,7 +250,7 @@ def _resolve_runtime_build_status(*, subject: str) -> KnowledgeBuildStatusRespon
 def _build_confirmed_plan_payload(plan: ConfirmedBuildPlan) -> dict[str, Any]:
     payload = dict(plan.plan_json or {})
     payload.setdefault("subject", plan.subject)
-    payload.setdefault("user_goal", plan.user_goal)
+    payload.setdefault("user_prompt", plan.user_prompt)
     payload.setdefault("digest_mode", plan.digest_mode)
     payload.setdefault("chapter_plan", list(plan.chapter_plan_json))
     payload.setdefault("research_queries", list(plan.research_queries_json))
@@ -348,7 +348,7 @@ def trigger_docgen_build(session: Session, *, subject: Subject, user_id: str, fi
             file_ids=list(plan.selected_file_ids_json),
             allow_empty=allow_search_only,
         )
-        plan_prompt = _clean_prompt(plan.user_goal) or _clean_prompt(plan.plan_summary)
+        plan_prompt = _clean_prompt(plan.user_prompt) or _clean_prompt(plan.plan_summary)
         if file_uids:
             logger.warning(
                 "knowledge_build_file_selection_ignored_for_confirmed_plan",

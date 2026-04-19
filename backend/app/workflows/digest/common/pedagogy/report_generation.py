@@ -262,7 +262,7 @@ def build_document_overview(
     subject: str,
     subject_display_name: str = "",
     digest_mode: str,
-    user_goal: str,
+    user_prompt: str,
     plan_summary: str,
     source_strategy: str = "",
     chapters: list[Mapping[str, object]],
@@ -274,7 +274,7 @@ def build_document_overview(
     note_kind = "TIP" if normalized_mode == "sprint" else "IMPORTANT"
     display_subject = _resolve_subject_display_name(subject=subject, subject_display_name=subject_display_name)
     deduped_chapters = _dedupe_chapters_for_overview(chapters)
-    goal_line = user_goal.strip() or f"围绕 {display_subject} 生成一份结构化学习文档。"
+    goal_line = user_prompt.strip() or f"围绕 {display_subject} 生成一份结构化学习文档。"
     summary_line = plan_summary.strip() or _default_plan_summary(
         subject=display_subject,
         digest_mode=normalized_mode,

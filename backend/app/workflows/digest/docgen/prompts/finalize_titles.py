@@ -1,4 +1,4 @@
-"""Prompt builders used by DocGen planning/finalization helpers."""
+﻿"""Prompt builders used by DocGen planning/finalization helpers."""
 
 from app.workflows.digest.docgen.prompts.common import (
     build_docgen_gap_query_messages,

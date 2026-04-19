@@ -1,4 +1,4 @@
-"""Tiny persistence API for the planner workflow.
+﻿"""Tiny persistence API for the planner workflow.
 
 只有 ``__all__`` 里的函数给外部用。Planner 节点只调用一个很小的 store
 函数，避免业务节点里直接铺满 SQL/repo 细节。
@@ -147,7 +147,7 @@ def _planner_session_meta(
     *,
     session_id: str,
     status: str,
-    user_goal: str,
+    user_prompt: str,
     digest_mode: str,
     selected_file_ids: list[int],
     latest_plan: dict[str, Any] | None = None,
@@ -158,7 +158,7 @@ def _planner_session_meta(
         "source": PLANNER_CHAT_SOURCE,
         "planner_session_id": session_id,
         "planner_status": status,
-        "user_goal": user_goal,
+        "user_prompt": user_prompt,
         "digest_mode": digest_mode,
         "selected_file_ids": list(selected_file_ids),
         "latest_plan": dict(latest_plan or {}),
@@ -236,7 +236,7 @@ def _plan_response(
     return BuildPlannerPlanResponse(
         subject=subject,
         selected_file_uids=selected_file_uids,
-        user_goal=str(plan.get("user_goal") or ""),
+        user_prompt=str(plan.get("user_prompt") or ""),
         digest_mode=str(plan.get("digest_mode") or "systematic"),
         chapter_plan=list(plan.get("chapter_plan") or []),
         research_queries=list(plan.get("research_queries") or []),
@@ -403,7 +403,7 @@ def _record_snapshot(record: ChatSession) -> dict[str, Any]:
         "user_id": record.user_id,
         "title": record.title,
         "status": _planner_status(record),
-        "user_goal": str(meta.get("user_goal") or ""),
+        "user_prompt": str(meta.get("user_prompt") or ""),
         "digest_mode": str(meta.get("digest_mode") or ""),
         "selected_file_ids_json": _planner_selected_file_ids(record),
         "latest_plan_json": _planner_plan(record),
@@ -490,7 +490,7 @@ def _normalize_persisted_plan(
     plan: dict[str, Any] | None,
     *,
     subject: str,
-    user_goal: str,
+    user_prompt: str,
     digest_mode: str,
     material_context: Any | None = None,
     latest_plan: dict[str, Any] | None = None,
@@ -498,7 +498,7 @@ def _normalize_persisted_plan(
     return normalize_planner_payload(
         plan or {},
         subject=subject,
-        user_goal=user_goal,
+        user_prompt=user_prompt,
         requested_digest_mode=digest_mode,
         shared_inputs=material_context,
         latest_plan=latest_plan,
@@ -534,7 +534,7 @@ def prepare_planner_run(state: Mapping[str, Any]) -> dict[str, Any]:
     if operation == "create":
         # 第一轮规划：创建 DB session、绑定文件选择，只返回后续 graph 需要的字段。
         planner_defaults = get_teaching_runtime_config().planner
-        user_goal = str(state.get("user_goal") or "").strip()
+        user_prompt = str(state.get("user_prompt") or "").strip()
         digest_mode = (
             state.get("digest_mode") or planner_defaults.default_digest_mode
         ).strip() or planner_defaults.default_digest_mode
@@ -556,7 +556,7 @@ def prepare_planner_run(state: Mapping[str, Any]) -> dict[str, Any]:
             selected_file_ids = _file_ids(planner_files)
             workflow_file_ids = _file_ids(workflow_files)
             selected_file_uids = _file_uids(planner_files)
-            session_title = str(state.get("session_title") or user_goal or getattr(subject_row, "name", "") or subject_slug)
+            session_title = str(state.get("session_title") or user_prompt or getattr(subject_row, "name", "") or subject_slug)
             record = create_chat_session(
                 session,
                 subject=subject_slug,
@@ -567,7 +567,7 @@ def prepare_planner_run(state: Mapping[str, Any]) -> dict[str, Any]:
                 meta_json=_planner_session_meta(
                     session_id=str(state["planner_session_id"]),
                     status="planning",
-                    user_goal=user_goal,
+                    user_prompt=user_prompt,
                     digest_mode=digest_mode,
                     selected_file_ids=selected_file_ids,
                 ),
@@ -576,7 +576,7 @@ def prepare_planner_run(state: Mapping[str, Any]) -> dict[str, Any]:
                 session,
                 record=record,
                 role="user",
-                content=user_goal,
+                content=user_prompt,
             )
             logger.info(
                 "planner_prepare_run_created_session",
@@ -590,9 +590,9 @@ def prepare_planner_run(state: Mapping[str, Any]) -> dict[str, Any]:
                 "file_ids": workflow_file_ids,
                 "selected_file_ids": selected_file_ids,
                 "selected_file_uids": selected_file_uids,
-                "user_goal": user_goal,
+                "user_prompt": user_prompt,
                 "digest_mode": digest_mode,
-                "message_history": [user_goal],
+                "message_history": [user_prompt],
                 "planner_record": _record_snapshot(record),
                 "planner_turns": [_turn_snapshot(user_turn)],
             }
@@ -648,7 +648,7 @@ def prepare_planner_run(state: Mapping[str, Any]) -> dict[str, Any]:
                 "file_ids": workflow_file_ids,
                 "selected_file_ids": selected_file_ids,
                 "selected_file_uids": selected_file_uids,
-                "user_goal": str(meta.get("user_goal") or ""),
+                "user_prompt": str(meta.get("user_prompt") or ""),
                 "digest_mode": str(meta.get("digest_mode") or ""),
                 "message_history": [turn.content for turn in turns if turn.content.strip()],
                 "latest_plan": _planner_plan(record),
@@ -695,7 +695,7 @@ def save_planner_result(
         persisted_plan = _normalize_persisted_plan(
             plan,
             subject=subject_slug,
-            user_goal=str(meta.get("user_goal") or ""),
+            user_prompt=str(meta.get("user_prompt") or ""),
             digest_mode=str(meta.get("digest_mode") or ""),
             material_context=material_context,
             latest_plan=_planner_plan(record),
@@ -750,11 +750,11 @@ def _normalized_plan_payload(
         list(plan.get("chapter_plan") or []),
         min_chapters=int(build_constraints.get("min_chapters", 0) or 0),
         digest_mode=str(plan.get("digest_mode") or ""),
-        user_goal=str(plan.get("user_goal") or ""),
+        user_prompt=str(plan.get("user_prompt") or ""),
     )
     payload = {
         "subject": str(plan.get("subject") or ""),
-        "user_goal": str(plan.get("user_goal") or ""),
+        "user_prompt": str(plan.get("user_prompt") or ""),
         "digest_mode": str(plan.get("digest_mode") or ""),
         "chapter_plan": chapter_plan,
         "research_queries": list(plan.get("research_queries") or []),
@@ -775,7 +775,7 @@ def _ensure_min_chapter_payload(
     *,
     min_chapters: int,
     digest_mode: str,
-    user_goal: str,
+    user_prompt: str,
 ) -> list[dict[str, Any]]:
     normalized = [dict(item) for item in chapters if isinstance(item, dict)]
     if min_chapters <= 0 or len(normalized) >= min_chapters:
@@ -797,8 +797,8 @@ def _ensure_min_chapter_payload(
             required = [f"{title} 的高频考点", f"{title} 的典型题型", f"{title} 的易错点"]
         else:
             required = [f"{title} 的核心概念", f"{title} 的关键结构", f"{title} 的例子与迁移"]
-        if user_goal:
-            required.append(user_goal)
+        if user_prompt:
+            required.append(user_prompt)
         normalized.append(
             {
                 "chapter_index": index,
@@ -875,7 +875,7 @@ def confirm_planner_session(
                 planner_session_id=session_id,
                 user_id=user_id,
                 status="confirmed",
-                user_goal=str(meta.get("user_goal") or ""),
+                user_prompt=str(meta.get("user_prompt") or ""),
                 digest_mode=str(plan_payload.get("digest_mode") or meta.get("digest_mode") or ""),
                 selected_file_ids_json=_planner_selected_file_ids(record),
                 chapter_plan_json=list(plan_payload.get("chapter_plan") or []),
@@ -905,7 +905,7 @@ def confirm_planner_session(
         digest_mode=confirmed.digest_mode,
         selected_file_uids=file_uids,
         selected_file_ids=list(confirmed.selected_file_ids_json),
-        user_goal=confirmed.user_goal,
+        user_prompt=confirmed.user_prompt,
         plan_summary=confirmed.plan_summary,
         chapter_plan=list(plan_payload.get("chapter_plan") or []),
         research_queries=list(plan_payload.get("research_queries") or []),

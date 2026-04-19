@@ -1,4 +1,4 @@
-"""Prompts for planner plan sketch streaming."""
+﻿"""Prompts for planner plan sketch streaming."""
 
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ from app.workflows.digest.planner.prompts.context import (
 def build_plan_sketch_prompt(
     *,
     subject: str,
-    user_goal: str,
+    user_prompt: str,
     digest_mode: str,
     material_context: DigestMaterialContext,
     message_history: list[str],
@@ -26,7 +26,7 @@ def build_plan_sketch_prompt(
 不要输出正式计划，不要输出初步大纲，也不要写知识文档正文。
 
 学科/主题：{subject}
-用户目标：{user_goal}
+用户提示：{user_prompt}
 模式：{digest_mode}
 
 资料画像：
@@ -50,7 +50,7 @@ def build_plan_sketch_prompt(
 3. 不要写空泛表达，例如“梳理基础”“强化理解”“提升能力”；要落到资料里的具体对象或学习动作。
 4. 不要列正式章节目录；最终计划和初步大纲会在下一步单独生成。
 5. 全文控制在 260-520 字以内，宁可把判断原因讲清楚，不要铺陈。
-6. 如果没有上传资料，只能基于用户目标和学科常识判断，不要写“这批资料显示/资料里包含”。
+6. 如果没有上传资料，只能基于用户提示和学科常识判断，不要写“这批资料显示/资料里包含”。
 
 请参考下面这些 few-shot 示例的自然表达，注意它们都是“思考过程”示例，不是最终方案：
 

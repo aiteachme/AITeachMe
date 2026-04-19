@@ -1,4 +1,4 @@
-"""Workflow-local writer runtime for digest DocGen."""
+﻿"""Workflow-local writer runtime for digest DocGen."""
 
 from __future__ import annotations
 

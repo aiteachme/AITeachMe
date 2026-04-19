@@ -12,8 +12,8 @@
 export interface BuildPlannerCreateRequest {
   /** Optional uploaded file UIDs to bind to the planner session. Files may still be parsing; planner prefers parsed content and falls back to filenames/metadata when needed. */
   file_uids?: string[] | null;
-  /** Learner goal or requested document target. */
-  user_goal: string;
+  /** Learner prompt or requested document target. */
+  user_prompt: string;
   /** Optional requested digest mode. */
   digest_mode?: 'sprint' | 'systematic' | null;
   /** Optional planner session title. */

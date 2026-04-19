@@ -1,4 +1,4 @@
-"""Document-level knowledge backbone for DocGen."""
+﻿"""Document-level knowledge backbone for DocGen."""
 
 from __future__ import annotations
 

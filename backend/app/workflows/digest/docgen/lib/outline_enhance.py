@@ -1,4 +1,4 @@
-"""Execution-level outline enhancement for DocGen."""
+﻿"""Execution-level outline enhancement for DocGen."""
 
 from __future__ import annotations
 
@@ -115,7 +115,7 @@ async def enhance_plan_outline(
     *,
     subject: str,
     digest_mode: str,
-    user_goal: str,
+    user_prompt: str,
     plan_summary: str,
     chapters: Sequence[Mapping[str, Any]],
     docgen_history_brief: str = "",
@@ -127,7 +127,7 @@ async def enhance_plan_outline(
             build_outline_enhance_messages(
                 subject=subject,
                 digest_mode=digest_mode,
-                user_goal=user_goal,
+                user_prompt=user_prompt,
                 plan_summary=plan_summary,
                 chapters=chapters,
                 docgen_history_brief=docgen_history_brief,

@@ -1,4 +1,4 @@
-"""Prompts for planner intent and query-grab generation."""
+﻿"""Prompts for planner intent and query-grab generation."""
 
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ PLAN_QUERY_MAX = 8
 def build_plan_intent_messages(
     *,
     subject: str,
-    user_goal: str,
+    user_prompt: str,
     digest_mode: str,
     material_context: DigestMaterialContext,
     message_history: list[str],
@@ -29,7 +29,7 @@ def build_plan_intent_messages(
 PlanIntent 不是最终展示内容，也不是外部检索承诺；它只用于后续生成“计划说明 + 初步大纲”。
 
 学科/主题：{subject}
-用户目标：{user_goal}
+用户提示：{user_prompt}
 请求模式：{digest_mode}
 
 资料画像：
@@ -56,7 +56,7 @@ PlanIntent 不是最终展示内容，也不是外部检索承诺；它只用于
 3. plan_queries 要服务意图识别结果，可以写知识簇、题型、方法、易错边界、应用场景或大纲拆分问题。
 4. plan_queries 不要写成网站搜索词、来源列表或最终章节标题。
 5. 如果用户意图不明确，就从资料形态和请求模式推断，但要保守表达。
-6. 如果没有上传资料，就基于用户目标做通用意图识别，不要说“已上传资料显示/资料中包含”。
+6. 如果没有上传资料，就基于用户提示做通用意图识别，不要说“已上传资料显示/资料中包含”。
 7. 不要输出来源名单、网站名、论文名、长解释、subject id 或重复内容。
 
 few-shot 示例：

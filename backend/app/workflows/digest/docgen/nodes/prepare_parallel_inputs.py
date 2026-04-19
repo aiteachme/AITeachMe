@@ -1,4 +1,4 @@
-"""Prepare DocGen 0A/0B/0C inputs in parallel."""
+﻿"""Prepare DocGen 0A/0B/0C inputs in parallel."""
 
 from __future__ import annotations
 
@@ -72,7 +72,7 @@ def build_prepare_parallel_inputs_node(*, context: WorkflowContext):
             enhance_plan_outline(
                 subject=state["subject"],
                 digest_mode=docgen_context.digest_mode,
-                user_goal=docgen_context.user_goal,
+                user_prompt=docgen_context.user_prompt,
                 plan_summary=docgen_context.plan_summary or str(confirmed_plan.get("plan_summary") or ""),
                 chapters=chapters,
                 docgen_history_brief=docgen_context.docgen_history_brief,
@@ -81,7 +81,7 @@ def build_prepare_parallel_inputs_node(*, context: WorkflowContext):
             infer_docgen_intent(
                 subject=state["subject"],
                 digest_mode=docgen_context.digest_mode,
-                user_goal=docgen_context.user_goal,
+                user_prompt=docgen_context.user_prompt,
                 plan_summary=docgen_context.plan_summary or str(confirmed_plan.get("plan_summary") or ""),
                 material_profile=material_profile,
                 chapters=chapters,

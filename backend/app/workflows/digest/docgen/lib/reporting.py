@@ -278,12 +278,6 @@ def build_docgen_lane_summary(
         "planner_session_id": str(state.get("planner_session_id", "") or ""),
         "confirmed_plan_id": str(state.get("confirmed_plan_id", "") or ""),
         "digest_mode": str(state.get("digest_mode", "") or ""),
-        "course_type": str(
-            state.get("course_type", "")
-            or document_context.get("course_type", "")
-            or state.get("digest_mode", "")
-            or ""
-        ),
         "source_strategy": str(document_context.get("source_strategy", "") or ""),
         "retrieval_profiles": retrieval_profiles,
         "teaching_actions": teaching_actions,

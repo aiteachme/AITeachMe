@@ -1,4 +1,4 @@
-"""Typed contracts for the rewritten DocGen lane."""
+﻿"""Typed contracts for the rewritten DocGen lane."""
 
 from __future__ import annotations
 
@@ -63,9 +63,8 @@ class DocGenContext(DocGenBaseModel):
     subject: str = ""
     subject_display_name: str = ""
     digest_mode: str = "systematic"
-    course_type: str = "systematic"
     retrieval_profile: str = ""
-    user_goal: str = ""
+    user_prompt: str = ""
     plan_summary: str = ""
     docgen_history_brief: str = ""
     planner_context: dict[str, Any] = Field(default_factory=dict)
@@ -78,9 +77,8 @@ class DocGenContext(DocGenBaseModel):
         "subject",
         "subject_display_name",
         "digest_mode",
-        "course_type",
         "retrieval_profile",
-        "user_goal",
+        "user_prompt",
         "plan_summary",
         "docgen_history_brief",
         mode="before",

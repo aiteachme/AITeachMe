@@ -1,4 +1,4 @@
-"""Generate one DocGen chapter from a ChapterGenerationTask."""
+﻿"""Generate one DocGen chapter from a ChapterGenerationTask."""
 
 from __future__ import annotations
 
@@ -27,7 +27,6 @@ from app.workflows.digest.docgen.lib.models import (
 from app.workflows.digest.docgen.nodes.common import (
     ensure_chapter_heading,
     publish_docgen_progress,
-    resolve_docgen_course_type,
     resolve_docgen_retrieval_profile,
 )
 from app.workflows.digest.docgen.state import DocGenState
@@ -188,7 +187,6 @@ def build_generate_chapters_node(*, context: WorkflowContext):
             planner_session_id=state.get("planner_session_id", ""),
             confirmed_plan_id=state.get("confirmed_plan_id", ""),
             digest_mode=state.get("digest_mode", ""),
-            course_type=resolve_docgen_course_type(state.get("course_type") or state.get("digest_mode")),
             retrieval_profile=str(state.get("retrieval_profile") or resolve_docgen_retrieval_profile(state.get("digest_mode"))),
             teaching_action="chapter_generate",
             chapter_index=task.chapter_index,

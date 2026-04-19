@@ -1,4 +1,4 @@
-"""DocGen LangGraph definition."""
+﻿"""DocGen LangGraph definition."""
 
 from __future__ import annotations
 
@@ -23,7 +23,7 @@ from app.workflows.digest.docgen.nodes import (
     build_repair_or_route_node,
     build_review_content_node,
 )
-from app.workflows.digest.docgen.nodes.common import resolve_docgen_course_type, resolve_docgen_retrieval_profile
+from app.workflows.digest.docgen.nodes.common import resolve_docgen_retrieval_profile
 from app.workflows.digest.docgen.state import DocGenState
 
 NODE_LOAD_CONTEXT = "读取确认方案"
@@ -164,7 +164,6 @@ def create_docgen_initial_state(
 ) -> DocGenState:
     """Create initial state for the DocGen graph."""
 
-    course_type = resolve_docgen_course_type(digest_mode)
     return {
         "subject": subject,
         "file_ids": file_ids,
@@ -176,8 +175,7 @@ def create_docgen_initial_state(
         "planner_session_id": planner_session_id or "",
         "confirmed_plan_id": confirmed_plan_id or "",
         "digest_mode": digest_mode or "",
-        "course_type": course_type,
-        "retrieval_profile": resolve_docgen_retrieval_profile(course_type),
+        "retrieval_profile": resolve_docgen_retrieval_profile(digest_mode),
         "teaching_action": "docgen_build",
         "document_context": None,
         "docgen_context": {},
@@ -217,7 +215,6 @@ def build_generation_sends(state: DocGenState) -> list[Send] | Literal["fail"]:
                 "planner_session_id": state.get("planner_session_id", ""),
                 "confirmed_plan_id": state.get("confirmed_plan_id", ""),
                 "digest_mode": state.get("digest_mode", ""),
-                "course_type": state.get("course_type", ""),
                 "retrieval_profile": state.get("retrieval_profile", ""),
                 "teaching_action": "chapter_generate",
                 "shared_inputs": state.get("shared_inputs"),

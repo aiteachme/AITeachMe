@@ -1,4 +1,4 @@
-"""Confirm DocGen internal execution plan and prepare chapter fan-out."""
+﻿"""Confirm DocGen internal execution plan and prepare chapter fan-out."""
 
 from __future__ import annotations
 

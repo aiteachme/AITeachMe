@@ -18,7 +18,7 @@ export interface BuildPlannerConfirmResponse {
   digest_mode: string;
   selected_file_uids?: string[];
   selected_file_ids?: number[];
-  user_goal: string;
+  user_prompt: string;
   plan_summary: string;
   chapter_plan?: BuildPlannerChapterPlanResponse[];
   research_queries?: string[];

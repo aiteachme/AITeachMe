@@ -1,4 +1,4 @@
-# Planner 链路说明
+﻿# Planner 链路说明
 
 最后更新：2026-04-17
 
@@ -34,34 +34,34 @@ Planner 的流程直接按下面理解。它只做“确认前规划”，不做
 
 ```text
 load_planner_materials
-  输入：planner_operation / requested_file_uids / file_ids / user_goal / message_history / latest_plan
+  输入：planner_operation / requested_file_uids / file_ids / user_prompt / message_history / latest_plan
     - planner_operation：create / append / generate_only，决定是否读写 planner session。
     - requested_file_uids：用户本轮选择的文件 UID。
     - file_ids：实际进入资料准备的文件 ID。
-    - user_goal：用户本轮学习目标。
+    - user_prompt：用户本轮学习目标。
     - message_history：Planner 会话历史和修改意见。
     - latest_plan：append 时上一版 plan。
   输出：material_context / digest_mode / selected_file_ids / selected_file_uids / planner_record / planner_turns
     - material_context：资料理解包，包含文件、切片、画像、统计、材料 digest。
     - digest_mode：sprint 或 systematic。
     - selected_file_ids / selected_file_uids：会话绑定的文件选择。
-    - planner_record / planner_turns：持久化会话快照。
+    - planner_record / planner_turns：来自 `chat_session` / `chat_message` 的 Planner 对话快照。
   作用：准备会话、文件选择和资料上下文。正文未解析时可用文件名和目标生成 seed context。
 
 stream_brief_and_extract_intent
   ├─ stream_planner_brief
-  │    输入：material_context / user_goal / digest_mode / message_history
+  │    输入：material_context / user_prompt / digest_mode / message_history
   │    输出：planner_brief
   │      - planner_brief：用户可见的资料边界和思考过程。
   │    作用：流式输出“我理解到什么”，给前端即时可见内容。
   └─ extract_plan_intent
-       输入：material_context / user_goal / digest_mode / message_history
+       输入：material_context / user_prompt / digest_mode / message_history
        输出：plan_intent
          - plan_intent：一小段内部规划意图和 3-8 条 plan_queries。
-       作用：把用户目标转成后续综合计划用的内部抓手。
+       作用：把用户提示转成后续综合计划用的内部抓手。
 
 stream_and_parse_plan_draft
-  输入：material_context / planner_brief / plan_intent / latest_plan / user_goal / message_history
+  输入：material_context / planner_brief / plan_intent / latest_plan / user_prompt / message_history
   输出：plan_outline_markdown / build_plan_draft
     - plan_outline_markdown：给用户看的计划大纲文本。
     - build_plan_draft：从 `<PLAN_JSON>` 解析出的计划说明、动作步骤和章节草稿。
@@ -77,7 +77,7 @@ normalize_and_persist_plan
   输出：plan / plan_summary / planner_record / planner_turns
     - plan：API、确认接口和 DocGen 消费的最终 plan payload。
     - plan_summary：计划摘要。
-    - planner_record / planner_turns：保存后的会话快照。
+    - planner_record / planner_turns：保存到 `chat_session` / `chat_message` 后的会话快照。
   作用：规范化章节数、模式、媒体计划、构建约束，并保存 assistant turn。
 ```
 
@@ -88,7 +88,7 @@ normalize_and_persist_plan
 ```text
 confirmed_plan
   subject：展示用主题名
-  user_goal：用户学习目标
+  user_prompt：用户学习提示
   digest_mode：sprint / systematic
   chapter_plan：用户确认的章节合同，DocGen 不默认新增、删除、重排
   media_plan：Mermaid / 图片 / 交互块能力开关
@@ -129,10 +129,10 @@ flowchart TD
 
 | LangGraph 节点 id | 中文展示名 | 代码定位 | 做什么 |
 | --- | --- | --- | --- |
-| `load_planner_materials` | 读取资料 | `nodes/load_planner_materials.py` | 读取会话、文件和历史消息，生成并打包 `DigestMaterialContext` |
+| `load_planner_materials` | 读取资料 | `nodes/load_planner_materials.py` | 读取 Planner 对话会话、文件和历史消息，生成并打包 `DigestMaterialContext` |
 | `stream_brief_and_extract_intent` | 理解目标 | `nodes/stream_brief_and_extract_intent.py` | 并行做两件事：流式输出思考过程；生成内部 `plan_intent / plan_queries` |
 | `stream_and_parse_plan_draft` | 合成大纲 | `nodes/stream_and_parse_plan_draft.py` | 一次 reason 流式调用，输出可见计划说明和 `<PLAN_JSON>` 初步大纲 |
-| `normalize_and_persist_plan` | 保存方案 | `nodes/normalize_and_persist_plan.py` | 规范化 plan，保存 planner session 和 assistant turn |
+| `normalize_and_persist_plan` | 保存方案 | `nodes/normalize_and_persist_plan.py` | 规范化 plan，保存 Planner 对话 session 和 assistant message |
 
 ## LLM 调用
 

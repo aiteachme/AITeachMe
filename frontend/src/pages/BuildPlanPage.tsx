@@ -1,4 +1,4 @@
-import { type ChangeEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+﻿import { type ChangeEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -136,11 +136,10 @@ function readPersistedPlannerState(subjectId: string): PersistedPlannerState | n
       return null;
     }
     const parsed = JSON.parse(raw) as PersistedPlannerState;
-    if (parsed.version !== PLANNER_STATE_VERSION || isLegacyPlannerPlan(parsed.currentPlan)) {
+    if (parsed.version !== PLANNER_STATE_VERSION) {
       logPlannerDebug("ignore_persisted_state", {
         subjectId,
         version: parsed.version,
-        isLegacyPlan: isLegacyPlannerPlan(parsed.currentPlan),
       });
       return null;
     }
@@ -149,21 +148,6 @@ function readPersistedPlannerState(subjectId: string): PersistedPlannerState | n
     logPlannerDebug("read_persisted_state_failed", { subjectId });
     return null;
   }
-}
-
-function isLegacyPlannerPlan(plan: BuildPlannerPlanResponse | null | undefined): boolean {
-  const legacyMarkers = [
-    "核心概念与高频考点",
-    "公式与速判技巧",
-    "高频题型突破",
-    "易错点辨析",
-    "综合变式与迁移",
-    "考前速查清单",
-  ];
-  return (plan?.chapter_plan ?? []).some((chapter) => {
-    const title = String(chapter.title ?? "");
-    return legacyMarkers.some((marker) => title.includes(marker));
-  });
 }
 
 function persistPlannerState(subjectId: string, value: PersistedPlannerState) {
@@ -194,6 +178,22 @@ function sameStringSet(left: string[], right: string[]) {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
+}
+
+function plannerUserPrompt(plan: BuildPlannerPlanResponse | null | undefined): string {
+  if (!isRecord(plan)) {
+    return "";
+  }
+  const value = plan.user_prompt;
+  return typeof value === "string" ? value : "";
+}
+
+function confirmedUserPrompt(response: BuildPlannerConfirmResponse | null | undefined): string {
+  if (!isRecord(response)) {
+    return "";
+  }
+  const value = response.user_prompt;
+  return typeof value === "string" ? value : "";
 }
 
 function isAbortError(error: unknown): boolean {
@@ -537,7 +537,7 @@ async function streamPlannerSession(
 
 async function createPlannerSessionStream(
   subject: string,
-  payload: { file_uids: string[]; user_goal: string },
+  payload: { file_uids: string[]; user_prompt: string },
   options: {
     signal?: AbortSignal;
     onStatus?: (payload: unknown) => void;
@@ -747,11 +747,10 @@ export function BuildPlanPage() {
         });
         if (cancelled) return;
         const session = response.data;
-        if (!session || !session.turns?.length || isLegacyPlannerPlan(session.latest_plan)) {
+        if (!session || !session.turns?.length) {
           logPlannerDebug("restore_latest_empty", {
             subjectId,
             found: Boolean(session),
-            isLegacyPlan: Boolean(session && isLegacyPlannerPlan(session.latest_plan)),
           });
           // No server history either — fresh start
           setMessages([createWelcomeMessage()]);
@@ -872,7 +871,7 @@ export function BuildPlanPage() {
       try {
         const response = await createPlannerSessionStream(
           subjectId,
-          { file_uids: plannerEffectiveFileUids, user_goal: prompt },
+          { file_uids: plannerEffectiveFileUids, user_prompt: prompt },
           {
             onStatus: (payload) => {
               setPlannerStreamingStatus(resolvePlannerStatusText(payload));
@@ -935,7 +934,7 @@ export function BuildPlanPage() {
     buildType: "docs",
     buildRequest: () => ({
       file_uids: readyFileUids.length > 0 ? readyFileUids : undefined,
-      prompt: currentPlanRef.current?.user_goal ?? undefined,
+      prompt: plannerUserPrompt(currentPlanRef.current) || undefined,
       confirmed_plan_id: currentPlanRef.current?.confirmed_plan_id ?? undefined,
     }),
     fallbackErrorMessage: "知识文档构建失败。",
@@ -1123,7 +1122,7 @@ export function BuildPlanPage() {
           subjectId,
           {
             file_uids: plannerEffectiveFileUids,
-            user_goal: text,
+            user_prompt: text,
           },
           {
             signal: controller.signal,
@@ -1255,7 +1254,7 @@ export function BuildPlanPage() {
       knowledgeBuild.submitBuild({
         confirmed_plan_id: response.confirmed_plan_id,
         file_uids: readyFileUids.length > 0 ? readyFileUids : undefined,
-        prompt: response.user_goal,
+        prompt: confirmedUserPrompt(response),
       });
     } catch (error) {
       logPlannerDebug("confirm_build_failed", {

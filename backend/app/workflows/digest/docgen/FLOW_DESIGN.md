@@ -1,4 +1,4 @@
-# DocGen 流程设计
+﻿# DocGen 流程设计
 
 最后更新：2026-04-19
 
@@ -185,8 +185,8 @@ prepare_parallel_inputs
   │    作用：执行级细化章节，不新增、不删除、不重排 confirmed plan。
   │    注意：这里只做轻量 grounding，不做完整 Web research。
   ├─ infer_docgen_intent
-  │    输入：user_goal / plan_summary / digest_mode / chapter_assignments / docgen_history_brief
-  │      - user_goal：用户最终学习目标。
+  │    输入：user_prompt / plan_summary / digest_mode / chapter_assignments / docgen_history_brief
+  │      - user_prompt：用户最终学习提示。
   │      - plan_summary：Planner 生成的方案摘要。
   │      - digest_mode：sprint 或 systematic。
   │      - chapter_assignments：用户确认章节列表。

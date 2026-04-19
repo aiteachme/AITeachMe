@@ -1,4 +1,4 @@
-"""Stream the visible plan outline and parse its hidden JSON draft."""
+﻿"""Stream the visible plan outline and parse its hidden JSON draft."""
 
 from __future__ import annotations
 
@@ -28,7 +28,7 @@ def _subject_for_prompt(state: BuildPlannerState) -> str:
     return _resolve_subject_display_name(
         state["subject"],
         shared_inputs=material_context,
-        user_goal=state.get("user_goal") or "",
+        user_prompt=state.get("user_prompt") or "",
     )
 
 
@@ -149,7 +149,7 @@ async def _stream_composer_response(
         stream = acompletion_stream(
             build_plan_composer_messages(
                 subject=_subject_for_prompt(state),
-                user_goal=state.get("user_goal") or "",
+                user_prompt=state.get("user_prompt") or "",
                 digest_mode=state.get("digest_mode") or material_context.course_mode_decision.mode.value,
                 material_context=material_context,
                 planner_brief=planner_brief,

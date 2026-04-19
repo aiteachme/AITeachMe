@@ -56,7 +56,6 @@ def build_load_context_node(*, context: WorkflowContext):
             return {"error": "已确认的构建方案缺少章节规划，无法继续生成知识文档。"}
 
         digest_mode = str(plan_contract.digest_mode or digest_mode)
-        course_type = plan_contract.resolve_course_type()
         retrieval_profile = plan_contract.resolve_retrieval_profile()
         assignments = plan_contract.to_chapter_assignments(
             default_source_file_ids=list(state.get("file_ids", [])),
@@ -64,7 +63,6 @@ def build_load_context_node(*, context: WorkflowContext):
         if not assignments:
             return {"error": "已确认的构建方案中没有可执行的章节。"}
         plan_payload = plan_contract.to_payload()
-        plan_payload["course_type"] = course_type
         plan_payload["retrieval_profile"] = retrieval_profile
         planner_context = dict(plan_payload.get("planner_context") or {})
         docgen_history_brief = str(
@@ -78,10 +76,9 @@ def build_load_context_node(*, context: WorkflowContext):
             "subject": state["subject"],
             "subject_display_name": str(getattr(shared_inputs.subject_profile, "subject_name", "") or state["subject"]),
             "digest_mode": digest_mode,
-            "course_type": course_type,
             "retrieval_profile": retrieval_profile,
             "teaching_action": str(state.get("teaching_action") or "docgen_build"),
-            "user_goal": str(plan_contract.user_goal or state.get("user_prompt") or ""),
+            "user_prompt": str(plan_contract.user_prompt or state.get("user_prompt") or ""),
             "plan_summary": str(plan_contract.plan_summary or ""),
             "docgen_history_brief": docgen_history_brief,
             "planner_context": planner_context,
@@ -92,9 +89,8 @@ def build_load_context_node(*, context: WorkflowContext):
             subject=state["subject"],
             subject_display_name=str(getattr(shared_inputs.subject_profile, "subject_name", "") or state["subject"]),
             digest_mode=digest_mode,
-            course_type=course_type,
             retrieval_profile=retrieval_profile,
-            user_goal=str(plan_contract.user_goal or state.get("user_prompt") or ""),
+            user_prompt=str(plan_contract.user_prompt or state.get("user_prompt") or ""),
             plan_summary=str(plan_contract.plan_summary or ""),
             docgen_history_brief=docgen_history_brief,
             planner_context=planner_context,
@@ -159,7 +155,6 @@ def build_load_context_node(*, context: WorkflowContext):
             stage="plan_ready",
             payload={
                 "digest_mode": digest_mode,
-                "course_type": course_type,
                 "retrieval_profile": retrieval_profile,
                 "chapter_count": len(assignments),
                 "planner_session_id": state.get("planner_session_id", ""),
@@ -175,7 +170,6 @@ def build_load_context_node(*, context: WorkflowContext):
             "confirmed_plan": plan_payload,
             "docgen_context": docgen_context.model_dump(mode="json"),
             "digest_mode": digest_mode,
-            "course_type": course_type,
             "retrieval_profile": retrieval_profile,
             "teaching_action": str(state.get("teaching_action") or "docgen_build"),
             "document_context": document_context,

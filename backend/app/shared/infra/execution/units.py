@@ -76,7 +76,6 @@ class TracedExecutionContext:
     planner_session_id: str = ""
     confirmed_plan_id: str = ""
     digest_mode: str = ""
-    course_type: str = ""
     retrieval_profile: str = ""
     teaching_action: str = ""
     asset_kind: str = ""
@@ -95,8 +94,6 @@ class TracedExecutionContext:
             metadata.setdefault("confirmed_plan_id", self.confirmed_plan_id)
         if self.digest_mode:
             metadata.setdefault("digest_mode", self.digest_mode)
-        if self.course_type:
-            metadata.setdefault("course_type", self.course_type)
         if self.retrieval_profile:
             metadata.setdefault("retrieval_profile", self.retrieval_profile)
         if self.teaching_action:

@@ -12,7 +12,7 @@ def build_intent_messages(
     *,
     subject: str,
     digest_mode: str,
-    user_goal: str,
+    user_prompt: str,
     plan_summary: str,
     material_profile: Mapping[str, Any],
     chapters: Sequence[Mapping[str, Any]],
@@ -29,7 +29,7 @@ def build_intent_messages(
 
 主题：{subject}
 模式：{digest_mode}
-用户目标：{user_goal or "未提供"}
+用户提示：{user_prompt or "未提供"}
 计划摘要：{plan_summary or "未提供"}
 Planner 对话与修改摘要：{docgen_history_brief or "暂无"}
 章节标题：{chapter_titles or "未提供"}

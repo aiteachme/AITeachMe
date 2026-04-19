@@ -1,4 +1,4 @@
-"""Planner graph state.
+﻿"""Planner graph state.
 
 The planner state intentionally stays small. LangSmith already records node
 timing and nested LLM calls, so this graph only carries the business artifacts
@@ -24,7 +24,7 @@ class BuildPlannerState(TypedDict, total=False):
     file_ids: list[int]
     selected_file_ids: list[int]
     selected_file_uids: list[str]
-    user_goal: str
+    user_prompt: str
     digest_mode: str
     planner_session_id: str
     message_history: list[str]
@@ -67,7 +67,7 @@ BuildPlannerGraphInput = project_typed_dict_schema(
         "session_title",
         "feedback_message",
         "file_ids",
-        "user_goal",
+        "user_prompt",
         "digest_mode",
         "planner_session_id",
         "message_history",

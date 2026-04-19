@@ -1,4 +1,4 @@
-"""Enhance one generated DocGen chapter."""
+﻿"""Enhance one generated DocGen chapter."""
 
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ from app.utils.time import utcnow
 from app.shared.infra.workflow.context import WorkflowContext
 from app.workflows.digest.docgen.lib.chapter_enhancement import enhance_chapter_draft
 from app.workflows.digest.docgen.lib.models import ChapterDraft, ClaimLedger, DocumentBackbone
-from app.workflows.digest.docgen.nodes.common import publish_docgen_progress, resolve_docgen_course_type
+from app.workflows.digest.docgen.nodes.common import publish_docgen_progress
 from app.workflows.digest.docgen.state import DocGenState
 
 
@@ -61,7 +61,6 @@ def build_enhance_chapters_node(*, context: WorkflowContext):
                 planner_session_id=state.get("planner_session_id", ""),
                 confirmed_plan_id=state.get("confirmed_plan_id", ""),
                 digest_mode=state.get("digest_mode", ""),
-                course_type=resolve_docgen_course_type(state.get("course_type") or state.get("digest_mode")),
                 teaching_action="chapter_enhance",
                 chapter_index=draft.chapter_index,
             )

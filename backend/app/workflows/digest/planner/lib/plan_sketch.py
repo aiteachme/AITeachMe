@@ -1,4 +1,4 @@
-"""Keep the visible planner brief as-is."""
+﻿"""Keep the visible planner brief as-is."""
 
 from __future__ import annotations
 

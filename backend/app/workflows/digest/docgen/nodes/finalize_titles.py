@@ -1,4 +1,4 @@
-"""Finalize chapter titles before publishing."""
+﻿"""Finalize chapter titles before publishing."""
 
 from __future__ import annotations
 

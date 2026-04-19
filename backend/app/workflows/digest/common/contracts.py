@@ -1,4 +1,4 @@
-"""Shared build-contract helpers for digest planner and docgen lanes."""
+﻿"""Shared build-contract helpers for digest planner and docgen lanes."""
 
 from __future__ import annotations
 
@@ -9,8 +9,8 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
-DEFAULT_COURSE_TYPE = "systematic"
-SPRINT_COURSE_TYPE = "sprint"
+DEFAULT_DIGEST_MODE = "systematic"
+SPRINT_DIGEST_MODE = "sprint"
 PLANNER_RETRIEVAL_PROFILE = "planner_grounding"
 _COVERAGE_SPLIT_RE = re.compile(r"[，。；：、,.!?！？/\n]|以及|并且|然后|再|先|后|与|和|及")
 
@@ -201,7 +201,7 @@ class DigestChapterContract(BaseModel):
         self,
         *,
         default_source_file_ids: list[int],
-        digest_mode: str = DEFAULT_COURSE_TYPE,
+        digest_mode: str = DEFAULT_DIGEST_MODE,
         total_chapters: int | None = None,
         build_constraints: "DigestBuildConstraints | None" = None,
         media_plan: Mapping[str, Any] | None = None,
@@ -271,8 +271,8 @@ class DigestConfirmedPlanContract(BaseModel):
     model_config = ConfigDict(extra="allow")
 
     subject: str = ""
-    user_goal: str = ""
-    digest_mode: str = DEFAULT_COURSE_TYPE
+    user_prompt: str = ""
+    digest_mode: str = DEFAULT_DIGEST_MODE
     chapter_plan: list[DigestChapterContract] = Field(default_factory=list)
     research_queries: list[str] = Field(default_factory=list)
     media_plan: dict[str, Any] = Field(default_factory=dict)
@@ -285,7 +285,7 @@ class DigestConfirmedPlanContract(BaseModel):
 
     @field_validator(
         "subject",
-        "user_goal",
+        "user_prompt",
         "digest_mode",
         "plan_summary",
         "planner_session_id",
@@ -307,8 +307,8 @@ class DigestConfirmedPlanContract(BaseModel):
     def _normalize_selected_file_ids(cls, value: Any) -> list[int]:
         return _clean_int_list(value)
 
-    def resolve_course_type(self) -> str:
-        return resolve_digest_course_type(self.digest_mode)
+    def normalized_digest_mode(self) -> str:
+        return normalize_digest_mode(self.digest_mode)
 
     def resolve_retrieval_profile(self) -> str:
         return resolve_digest_retrieval_profile(self.digest_mode)
@@ -321,7 +321,7 @@ class DigestConfirmedPlanContract(BaseModel):
         return [
             chapter.to_assignment(
                 default_source_file_ids=default_source_file_ids,
-                digest_mode=self.resolve_course_type(),
+                digest_mode=self.normalized_digest_mode(),
                 total_chapters=total_chapters,
                 build_constraints=self.build_constraints,
                 media_plan=self.media_plan,
@@ -342,18 +342,18 @@ def _build_execution_contract(
     media_plan: Mapping[str, Any] | None,
     override: DigestChapterExecutionContract | None,
 ) -> DigestChapterExecutionContract:
-    course_type = resolve_digest_course_type(digest_mode)
+    normalized_mode = normalize_digest_mode(digest_mode)
     chapter_count = max(1, int(total_chapters or 1))
     target_total_words = int(getattr(build_constraints, "target_total_words", 0) or 0)
     if target_total_words <= 0:
-        target_total_words = 6800 if course_type == SPRINT_COURSE_TYPE else max(10000, chapter_count * 1400)
-    per_chapter_target = max(650 if course_type == SPRINT_COURSE_TYPE else 1100, int(target_total_words / chapter_count))
-    per_chapter_min = max(450 if course_type == SPRINT_COURSE_TYPE else 750, int(per_chapter_target * 0.68))
+        target_total_words = 6800 if normalized_mode == SPRINT_DIGEST_MODE else max(10000, chapter_count * 1400)
+    per_chapter_target = max(650 if normalized_mode == SPRINT_DIGEST_MODE else 1100, int(target_total_words / chapter_count))
+    per_chapter_min = max(450 if normalized_mode == SPRINT_DIGEST_MODE else 750, int(per_chapter_target * 0.68))
 
     coverage_requirements = _build_coverage_requirements(required_elements, objective)
     enable_interactive = bool((media_plan or {}).get("enable_interactive_html", False))
     mermaid_quota = 1 if media_hints.mermaid else 0
-    if course_type != SPRINT_COURSE_TYPE and chapter_index == 1:
+    if normalized_mode != SPRINT_DIGEST_MODE and chapter_index == 1:
         mermaid_quota = max(1, mermaid_quota)
 
     image_quota = 1 if media_hints.images else 0
@@ -366,7 +366,7 @@ def _build_execution_contract(
 
     if build_constraints and not build_constraints.include_exercises:
         practice_quota = DigestPracticeQuota()
-    elif course_type == SPRINT_COURSE_TYPE:
+    elif normalized_mode == SPRINT_DIGEST_MODE:
         practice_quota = DigestPracticeQuota(short_answer=2, self_check=3, reasoning=1, application=1)
     else:
         practice_quota = DigestPracticeQuota(short_answer=1, self_check=1, reasoning=2, application=2)
@@ -377,11 +377,11 @@ def _build_execution_contract(
         coverage_requirements=coverage_requirements,
         min_coverage_score=(
             float(getattr(build_constraints, "min_coverage_score", 0.0) or 0.0)
-            or (0.6 if course_type == SPRINT_COURSE_TYPE else 0.72)
+            or (0.6 if normalized_mode == SPRINT_DIGEST_MODE else 0.72)
         ),
-        explanation_depth="compact" if course_type == SPRINT_COURSE_TYPE else "detailed",
+        explanation_depth="compact" if normalized_mode == SPRINT_DIGEST_MODE else "detailed",
         repair_enabled=True,
-        quality_hint="exam_oriented" if course_type == SPRINT_COURSE_TYPE else "systematic_depth",
+        quality_hint="exam_oriented" if normalized_mode == SPRINT_DIGEST_MODE else "systematic_depth",
         media_quota=DigestMediaQuota(
             mermaid=mermaid_quota,
             images=image_quota,
@@ -440,20 +440,20 @@ def normalize_digest_confirmed_plan_payload(
     return parse_digest_confirmed_plan_contract(payload).to_payload()
 
 
-def resolve_digest_course_type(digest_mode: str | None) -> str:
-    """Resolve the normalized course type from the requested digest mode."""
+def normalize_digest_mode(digest_mode: str | None) -> str:
+    """Normalize the requested digest mode."""
 
     normalized = str(digest_mode or "").strip().lower()
-    if normalized == SPRINT_COURSE_TYPE:
-        return SPRINT_COURSE_TYPE
-    return DEFAULT_COURSE_TYPE
+    if normalized == SPRINT_DIGEST_MODE:
+        return SPRINT_DIGEST_MODE
+    return DEFAULT_DIGEST_MODE
 
 
 def resolve_digest_retrieval_profile(digest_mode: str | None) -> str:
     """Resolve the retrieval profile that should be used for doc generation."""
 
-    course_type = resolve_digest_course_type(digest_mode)
-    if course_type == SPRINT_COURSE_TYPE:
+    normalized_mode = normalize_digest_mode(digest_mode)
+    if normalized_mode == SPRINT_DIGEST_MODE:
         return "docgen_sprint"
     return "docgen_systematic"
 
@@ -472,7 +472,7 @@ def resolve_teaching_action(action: str | None, *, fallback: str) -> str:
 
 
 __all__ = [
-    "DEFAULT_COURSE_TYPE",
+    "DEFAULT_DIGEST_MODE",
     "DigestBuildConstraints",
     "DigestChapterContract",
     "DigestChapterExecutionContract",
@@ -481,10 +481,10 @@ __all__ = [
     "DigestPracticeQuota",
     "DigestConfirmedPlanContract",
     "PLANNER_RETRIEVAL_PROFILE",
-    "SPRINT_COURSE_TYPE",
+    "SPRINT_DIGEST_MODE",
     "normalize_digest_confirmed_plan_payload",
     "parse_digest_confirmed_plan_contract",
-    "resolve_digest_course_type",
+    "normalize_digest_mode",
     "resolve_digest_retrieval_profile",
     "resolve_planner_retrieval_profile",
     "resolve_teaching_action",
