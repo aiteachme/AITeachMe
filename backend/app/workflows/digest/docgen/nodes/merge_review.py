@@ -1,4 +1,4 @@
-"""Merge enhanced chapters and run whole-document review."""
+﻿"""Merge enhanced chapters and run whole-document review."""
 
 from __future__ import annotations
 
@@ -69,7 +69,15 @@ def _chapter_metadata(
 
 
 def build_merge_review_node(*, context: WorkflowContext):
+    """构建章节合并和发布前检查节点。
+
+    这里不再做重知识复核，只负责把 reviewed/enhanced drafts 按章节收口、
+    生成发布 metadata、合并整本 Markdown，并记录发布前完整性问题。
+    """
+
     async def merge_review_node(state: DocGenState) -> dict:
+        """合并章节并生成 merge review report。"""
+
         started_at = perf_counter()
         raw_chapters = list(state.get("reviewed_chapter_drafts") or []) or list(state.get("enhanced_chapter_drafts") or [])
         enhanced = _dedupe_enhanced(

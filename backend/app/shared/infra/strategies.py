@@ -1,6 +1,6 @@
 """策略编排框架。
 
-将推理策略、工具、护栏组合成可选择的策略模式。
+将推理策略和工具组合成可选择的策略模式。
 """
 
 from __future__ import annotations
@@ -35,7 +35,6 @@ class Strategy:
     system_prompt_template: str
     reasoning_strategy: ReasoningStrategy = ReasoningStrategy.DIRECT
     tools: list[str] = field(default_factory=list)
-    guardrails: list[str] = field(default_factory=list)
     description: str = ""
 
 

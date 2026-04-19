@@ -1,4 +1,4 @@
-"""Planner lane-local helpers."""
+﻿"""Planner lane-local helpers."""
 
 from app.workflows.digest.planner.lib.plans import (
     BuildPlannerDraft,
@@ -8,14 +8,14 @@ from app.workflows.digest.planner.lib.plans import (
 )
 from app.workflows.digest.planner.lib.planner_events import emit_planner_event, emit_planner_token
 from app.workflows.digest.planner.lib.models import (
-    LearningIntent,
+    PlanIntent,
     PlannerBrief,
 )
 
 __all__ = [
     "BuildPlannerDraft",
     "PlannerChapterPlan",
-    "LearningIntent",
+    "PlanIntent",
     "PlannerBrief",
     "emit_planner_event",
     "emit_planner_token",

@@ -152,6 +152,14 @@ def _build_compression_cache_payload(
 
 
 class ContextCompressor(BaseTracedExecution):
+    """Compress many retrieved documents into a compact query-focused context.
+
+    This is not a summarizer. It selects relevant passages using a cheap lexical
+    fast path first, then embedding similarity when the input is large enough to
+    justify the extra cost. The result is intended to be fed into later workflow
+    prompts as grounding context.
+    """
+
     @property
     def trace_namespace(self) -> str:
         return "检索后处理"
@@ -172,6 +180,23 @@ class ContextCompressor(BaseTracedExecution):
         max_total_chars: int = _DEFAULT_MAX_TOTAL_CHARS,
         passage_max_chars: int = _DEFAULT_PASSAGE_MAX_CHARS,
     ) -> TracedExecutionResult:
+        """Run context compression with runtime-cache protection.
+
+        Args:
+            query: Main question or chapter topic.
+            documents: Raw document/page texts to select from.
+            focus_terms: Optional extra terms that should bias passage scoring.
+            similarity_threshold: Minimum embedding similarity for large inputs.
+            lexical_threshold: Minimum lexical overlap for large inputs.
+            max_results: Maximum number of passages before total-char trimming.
+            max_total_chars: Final context budget in characters.
+            passage_max_chars: Maximum size of each candidate passage.
+
+        Returns:
+            ``TracedExecutionResult.content`` contains selected passages joined
+            by blank lines; metadata records the mode and counts.
+        """
+
         normalized_focus_terms = [str(item).strip() for item in focus_terms or [] if str(item).strip()]
         result, cache_status = await get_compression_runtime_cache().get_or_compute(
             payload=_build_compression_cache_payload(
@@ -211,6 +236,8 @@ class ContextCompressor(BaseTracedExecution):
         max_total_chars: int,
         passage_max_chars: int,
     ) -> TracedExecutionResult:
+        """Execute compression without consulting the runtime cache."""
+
         cleaned_documents = [doc.strip() for doc in documents if str(doc).strip()]
         if not cleaned_documents:
             return TracedExecutionResult(metadata={"compression_mode": "empty"})
@@ -301,6 +328,8 @@ class ContextCompressor(BaseTracedExecution):
         max_total_chars: int = _DEFAULT_MAX_TOTAL_CHARS,
         passage_max_chars: int = _DEFAULT_PASSAGE_MAX_CHARS,
     ) -> str:
+        """Convenience wrapper returning only compressed text content."""
+
         result = await self.run(
             query=query,
             documents=documents,

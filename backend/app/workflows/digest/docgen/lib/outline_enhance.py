@@ -1,4 +1,4 @@
-"""Execution-level outline enhancement for DocGen."""
+﻿"""Execution-level outline enhancement for DocGen."""
 
 from __future__ import annotations
 
@@ -65,7 +65,7 @@ def fallback_enhance_plan_outline(
                 summary_targets=["用一句话说清本章主线", "列出最容易遗忘或混淆的点"],
                 media_requests=media_requests,
                 practice_seed_policy={"style": "exam" if normalized_mode == "sprint" else "reasoning"},
-                retrieval_queries=clean_string_list([*chapter.get("search_queries", []), title, *required], limit=8),
+                retrieval_queries=clean_string_list([title, *required], limit=8),
                 fallback_used=True,
             )
         )
@@ -115,7 +115,7 @@ async def enhance_plan_outline(
     *,
     subject: str,
     digest_mode: str,
-    user_goal: str,
+    user_prompt: str,
     plan_summary: str,
     chapters: Sequence[Mapping[str, Any]],
     docgen_history_brief: str = "",
@@ -127,7 +127,7 @@ async def enhance_plan_outline(
             build_outline_enhance_messages(
                 subject=subject,
                 digest_mode=digest_mode,
-                user_goal=user_goal,
+                user_prompt=user_prompt,
                 plan_summary=plan_summary,
                 chapters=chapters,
                 docgen_history_brief=docgen_history_brief,

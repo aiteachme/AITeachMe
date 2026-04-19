@@ -34,7 +34,7 @@ class InitData(BaseModel):
     version: str = Field(description="版本号。")
 
 
-SettingSource = Literal["env", "settings", "runtime"]
+SettingSource = Literal["env", "settings", "user_settings", "runtime"]
 SettingStatus = Literal["configured", "missing", "default", "disabled", "enabled", "runtime"]
 
 
@@ -43,8 +43,10 @@ class SettingEntry(BaseModel):
 
     key: str = Field(description="稳定设置键。")
     label: str = Field(description="展示名称。")
-    source: SettingSource = Field(description="配置来源：env/settings/runtime。")
+    source: SettingSource = Field(description="配置来源：env/settings/user_settings/runtime。")
     value: Any | None = Field(default=None, description="可安全展示的当前值。")
+    default_value: Any | None = Field(default=None, description="项目默认值。")
+    user_value: Any | None = Field(default=None, description="当前用户覆盖值。")
     display_value: str | None = Field(default=None, description="格式化展示值。")
     status: SettingStatus = Field(description="当前配置状态。")
     secret: bool = Field(default=False, description="是否为敏感配置。")
@@ -69,3 +71,10 @@ class SettingsOverviewData(BaseModel):
     mode: str = Field(description="运行模式。")
     sections: list[SettingSection] = Field(default_factory=list, description="设置分组。")
     notes: list[str] = Field(default_factory=list, description="设置说明。")
+
+
+class UpdateUserSettingsRequest(BaseModel):
+    """更新当前用户的非敏感 settings 覆盖。"""
+
+    settings: dict[str, Any] = Field(default_factory=dict, description="settings_default.yaml 同构的非敏感覆盖。")
+    reset: bool = Field(default=False, description="是否清空当前用户覆盖，恢复项目默认值。")

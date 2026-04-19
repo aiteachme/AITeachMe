@@ -327,7 +327,7 @@ async def knowledge_build_plan_create_stream(
         subject=normalized,
         user_id=user.user_id,
         file_uid_count=len(body.file_uids or []),
-        user_goal_preview=(body.user_goal or "")[:80],
+        user_prompt_preview=(body.user_prompt or "")[:80],
     )
     subject_record = get_subject_record(session, normalized, owner_user_id=user.user_id)
     return _planner_stream_response(

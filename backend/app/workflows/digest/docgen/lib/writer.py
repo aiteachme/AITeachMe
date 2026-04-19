@@ -1,4 +1,4 @@
-"""Workflow-local writer runtime for digest DocGen."""
+﻿"""Workflow-local writer runtime for digest DocGen."""
 
 from __future__ import annotations
 
@@ -8,8 +8,7 @@ from typing import Any
 
 from app.shared.infra.execution import BaseTracedExecution, TracedExecutionResult
 from app.shared.infra.llm_support.routing import TaskType
-from app.shared.infra.skills import collect_recommended_tool_tags, render_prompt_scoped_skillpacks
-from app.shared.infra.tools.builtin.markdown_processing import count_words
+from app.shared.infra.tools.builtin.markdown_processing import count_words, normalize_markdown_rendering
 from app.workflows.digest.common.pedagogy import (
     analyze_chapter_heading_quality,
     ensure_chapter_learning_scaffold,
@@ -46,9 +45,14 @@ class DocGenWriterRuntime(BaseTracedExecution):
         chapter_plan: Mapping[str, Any],
         dense_context: str,
         digest_mode: str,
-        selected_skillpacks: list[str] | None = None,
-        user_goal: str = "",
     ) -> TracedExecutionResult:
+        """根据章节执行合同和 dense_context 生成学生可读草稿。
+
+        Writer 只负责把研究材料写成一章 Markdown：先调用主模型生成正文，
+        再执行标题、结构、字数和学生可见内容清理。事实检索和证据账本不在
+        这里做，避免写作器越权补知识。
+        """
+
         llm = self.context.resolve_llm_caller()
         title = resolve_effective_chapter_title(chapter_plan, fallback_title="Untitled Chapter")
         objective = str(chapter_plan.get("objective") or "")
@@ -59,21 +63,6 @@ class DocGenWriterRuntime(BaseTracedExecution):
         source_count = len(list(chapter_plan.get("source_details") or []))
         chapter_index = int(chapter_plan.get("chapter_index", 0) or 0) or None
         chapter_count = int(chapter_plan.get("total_chapters", 0) or 0) or None
-        skillpack_guidance = render_prompt_scoped_skillpacks(
-            selected_skillpacks,
-            prompt_scope="digest.docgen.writer",
-            bindings={
-                "subject": self.context.subject,
-                "user_goal": user_goal,
-                "chapter_title": title,
-                "topic": title,
-                "concept": title,
-            },
-        )
-        recommended_tool_tags = collect_recommended_tool_tags(
-            selected_skillpacks,
-            prompt_scope="digest.docgen.writer",
-        )
         messages = build_docgen_writer_messages(
             title=title,
             objective=objective,
@@ -85,8 +74,6 @@ class DocGenWriterRuntime(BaseTracedExecution):
             chapter_index=chapter_index,
             chapter_count=chapter_count,
             execution_contract=execution_contract,
-            skillpack_guidance=skillpack_guidance,
-            recommended_tool_tags=recommended_tool_tags,
         )
         markdown = await llm(
             messages,
@@ -169,8 +156,6 @@ class DocGenWriterRuntime(BaseTracedExecution):
                 "heading_repair_applied": heading_repair_applied,
                 "scaffold_fallback_applied": scaffold_fallback_applied,
                 "heading_missing_module_count": len(list(heading_quality.get("missing_modules") or [])),
-                "selected_skillpacks": list(selected_skillpacks or []),
-                "recommended_tool_tags": recommended_tool_tags,
             },
         )
 
@@ -426,6 +411,7 @@ class DocGenWriterRuntime(BaseTracedExecution):
             previous = line
 
         cleaned = "\n".join(lines)
+        cleaned = normalize_markdown_rendering(cleaned)
         cleaned = re.sub(r"\n{3,}", "\n\n", cleaned).strip()
         if not cleaned.startswith("#"):
             cleaned = f"# {title}\n\n{cleaned}".strip()

@@ -24,3 +24,14 @@ class SystemSettingsSnapshot(SQLModel, table=True):
     settings_json: dict[str, Any] = Field(default_factory=dict, sa_column=sa.Column(sa.JSON))
     created_at: datetime = Field(default_factory=utc_now)
     updated_at: datetime = Field(default_factory=utc_now)
+
+
+class UserRuntimeSettings(SQLModel, table=True):
+    """Per-user non-secret runtime settings overrides."""
+
+    __tablename__ = "user_runtime_settings"
+
+    user_id: str = Field(primary_key=True, foreign_key="user.id")
+    settings_json: dict[str, Any] = Field(default_factory=dict, sa_column=sa.Column(sa.JSON))
+    created_at: datetime = Field(default_factory=utc_now)
+    updated_at: datetime = Field(default_factory=utc_now)

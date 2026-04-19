@@ -27,6 +27,24 @@ async def web_search(
     subject: str | None = None,
     local_sections: list[object] | None = None,
 ) -> list[SearchResult]:
+    """Search candidate sources for workflow code.
+
+    This is the public, workflow-facing wrapper around the lower-level
+    ``dispatch_web_search`` scheduler. Most call sites should use this helper
+    instead of importing ``search.web`` directly.
+
+    Args:
+        query: Natural-language search query.
+        top_k: Maximum number of final fused results to return.
+        subject: Optional subject slug. When present, ``local_rag`` may search
+            the subject's indexed uploaded materials before external providers.
+        local_sections: Optional in-memory local sections. This is for planner
+            and draft contexts that have not necessarily been indexed yet.
+
+    Returns:
+        Ranked candidate sources as normalized ``SearchResult`` objects.
+    """
+
     return await dispatch_web_search(
         query,
         top_k=top_k,
@@ -36,6 +54,13 @@ async def web_search(
 
 
 async def get_knowledge_search_notice(subject_id: str) -> str | None:
+    """Return a human-readable reason when subject vector search is unavailable.
+
+    ``None`` means local vector search can be attempted. Non-``None`` values are
+    logged by callers and usually mean the subject has no ready vector index, is
+    still building, or has incompatible vector settings.
+    """
+
     normalized_subject = subject_id.strip()
     if not normalized_subject:
         return None
@@ -52,7 +77,25 @@ async def search_knowledge(
     top_k: int = 5,
     enable_rerank: bool = True,
 ) -> list[RetrievedChunk]:
-    """Search the local knowledge base using the LlamaIndex subject index."""
+    """Search the local subject knowledge base.
+
+    This function is deliberately narrower than ``web_search``: it only queries
+    uploaded/ingested materials for one subject. It uses the LlamaIndex-managed
+    subject index, then rehydrates database chunks so callers receive stable
+    ``RetrievedChunk`` records rather than raw vector-store nodes.
+
+    Args:
+        query: User/query text to search for.
+        subject_id: Subject slug whose indexed materials should be searched.
+        top_k: Maximum number of chunks to return after optional rerank.
+        enable_rerank: Whether to apply the configured rerank model when
+            ``settings.rag.rerank_model`` is set.
+
+    Returns:
+        Retrieved local chunks. Empty list means unavailable index, invalid
+        input, no hits, or provider failure; failures are logged and do not
+        raise into workflow code.
+    """
 
     normalized_query = query.strip()
     normalized_subject = subject_id.strip()

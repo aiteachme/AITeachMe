@@ -66,12 +66,13 @@ def sync_markdown_knowledge_graph(
         )
 
     revision_no = build_revision_no or _next_revision_no(session, subject)
+    units = extract_markdown_knowledge_units(markdown)
+    active_unit_anchors = {item.anchor for item in units}
     report = KnowledgeSyncReport(
         subject=subject,
         build_revision_no=revision_no,
-        anchors_seen=validation.anchors,
+        anchors_seen=[anchor for anchor in validation.anchors if anchor in active_unit_anchors],
     )
-    units = extract_markdown_knowledge_units(markdown)
     unit_by_anchor: dict[str, KnowledgeUnit] = {}
 
     for item in units:
@@ -136,7 +137,7 @@ def sync_markdown_knowledge_graph(
         _deprecate_removed_anchor_units(
             session,
             subject=subject,
-            active_anchors=set(report.anchors_seen),
+            active_anchors=active_unit_anchors,
             build_revision_no=revision_no,
         )
     )

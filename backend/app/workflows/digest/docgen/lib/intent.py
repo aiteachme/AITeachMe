@@ -1,4 +1,4 @@
-"""DocGen writing intent inference."""
+﻿"""DocGen writing intent inference."""
 
 from __future__ import annotations
 
@@ -48,7 +48,7 @@ async def infer_docgen_intent(
     *,
     subject: str,
     digest_mode: str,
-    user_goal: str,
+    user_prompt: str,
     plan_summary: str,
     material_profile: Mapping[str, Any],
     chapters: Sequence[Mapping[str, Any]],
@@ -61,7 +61,7 @@ async def infer_docgen_intent(
             build_intent_messages(
                 subject=subject,
                 digest_mode=digest_mode,
-                user_goal=user_goal,
+                user_prompt=user_prompt,
                 plan_summary=plan_summary,
                 material_profile=material_profile,
                 chapters=chapters,

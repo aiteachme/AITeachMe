@@ -5,7 +5,11 @@ from app.workflows.digest.docgen.lib.document_backbone import (
     build_document_backbone,
     fallback_document_backbone,
 )
-from app.shared.infra.tools.builtin.markdown_processing import normalize_mermaid_blocks
+from app.shared.infra.tools.builtin.markdown_processing import (
+    find_markdown_rendering_issues,
+    normalize_markdown_rendering,
+    normalize_mermaid_blocks,
+)
 from app.workflows.digest.docgen.lib.asset_requests import (
     ASSET_REQUEST_BEGIN,
     ASSET_REQUEST_END,
@@ -150,6 +154,26 @@ mindmap
     assert "    ---" not in normalized
     assert normalized.count("```") == 2
     assert "## 后续正文" in normalized
+
+
+def test_markdown_rendering_normalization_fixes_blockquote_math_and_fences():
+    markdown = """>
+$$
+> \\text{内存管理} = \\text{分配} + \\text{回收} + \\text{保护}
+>
+$$
+
+> 实例演示：```dos
+C:\\> cd C:\\DOS
+C:\\DOS> dir
+```
+"""
+
+    normalized = normalize_markdown_rendering(markdown)
+
+    assert find_markdown_rendering_issues(markdown)
+    assert "$$\n\\text{内存管理} = \\text{分配} + \\text{回收} + \\text{保护}\n$$" in normalized
+    assert "> 实例演示：\n```dos\nC:\\> cd C:\\DOS\nC:\\DOS> dir\n```" in normalized
 
 
 def test_merged_markdown_preserves_chapter_heading_levels():

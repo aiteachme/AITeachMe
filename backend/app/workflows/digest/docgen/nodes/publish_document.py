@@ -20,9 +20,15 @@ logger = structlog.get_logger()
 
 
 def build_publish_document_node(*, context: WorkflowContext):
-    """Build the final staging or publishing node for docs outputs."""
+    """构建文档发布节点。
+
+    这是 DocGen 图的最后一步：把章节 metadata、整本 Markdown 和各类
+    artifacts 写入 staging、当前发布位置、版本归档和 KnowledgeDoc rows。
+    """
 
     async def publish_document_node(state: DocGenState) -> dict:
+        """发布知识文档并写入完整 docgen_manifest。"""
+
         started_at = perf_counter()
         node_logger = context.get_logger().bind(node="publish_document")
         subject = state["subject"]
@@ -55,8 +61,11 @@ def build_publish_document_node(*, context: WorkflowContext):
             "conflict_reports": list(state.get("conflict_reports") or []),
             "chapter_review_reports": list(state.get("chapter_review_reports") or []),
             "document_consistency_report": dict(state.get("document_consistency_report") or {}),
+            "review_decision": str(state.get("review_decision") or ""),
             "review_actions": list(state.get("review_actions") or []),
             "unresolved_warnings": list(state.get("unresolved_warnings") or []),
+            "repair_loop_state": dict(state.get("repair_loop_state") or {}),
+            "repair_trace": list(state.get("repair_trace") or []),
             "source_trust_summary": dict((state.get("document_backbone") or {}).get("source_trust_summary") or {}),
             "asset_manifest": {
                 "assets": [

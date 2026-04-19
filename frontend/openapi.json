@@ -140,6 +140,56 @@
             }
           }
         }
+      },
+      "patch": {
+        "tags": [
+          "system"
+        ],
+        "summary": "更新当前用户 settings",
+        "description": "保存当前用户的非敏感 settings_default.yaml 同构 settings 覆盖；密钥类环境变量不通过此接口保存。",
+        "operationId": "update_system_settings_api_v1_system_settings_patch",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateUserSettingsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_SettingsOverviewData_"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "业务校验未通过。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务内部异常。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/api/v1/auth/email/send-code": {
@@ -6297,27 +6347,10 @@
             "type": "array",
             "title": "Required Elements"
           },
-          "search_queries": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Search Queries"
-          },
           "writing_instructions": {
             "type": "string",
             "title": "Writing Instructions",
             "default": ""
-          },
-          "media_hints": {
-            "additionalProperties": {
-              "items": {
-                "type": "string"
-              },
-              "type": "array"
-            },
-            "type": "object",
-            "title": "Media Hints"
           }
         },
         "type": "object",
@@ -6349,10 +6382,6 @@
             "type": "string",
             "title": "Digest Mode"
           },
-          "tone": {
-            "type": "string",
-            "title": "Tone"
-          },
           "selected_file_uids": {
             "items": {
               "type": "string"
@@ -6367,9 +6396,9 @@
             "type": "array",
             "title": "Selected File Ids"
           },
-          "user_goal": {
+          "user_prompt": {
             "type": "string",
-            "title": "User Goal"
+            "title": "User Prompt"
           },
           "plan_summary": {
             "type": "string",
@@ -6381,25 +6410,6 @@
             },
             "type": "array",
             "title": "Chapter Plan"
-          },
-          "research_queries": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Research Queries"
-          },
-          "selected_skillpacks": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Selected Skillpacks"
-          },
-          "media_plan": {
-            "additionalProperties": true,
-            "type": "object",
-            "title": "Media Plan"
           },
           "build_constraints": {
             "additionalProperties": true,
@@ -6436,8 +6446,7 @@
           "subject",
           "status",
           "digest_mode",
-          "tone",
-          "user_goal",
+          "user_prompt",
           "plan_summary",
           "created_at",
           "updated_at"
@@ -6461,10 +6470,10 @@
             "title": "File Uids",
             "description": "Optional uploaded file UIDs to bind to the planner session. Files may still be parsing; planner prefers parsed content and falls back to filenames/metadata when needed."
           },
-          "user_goal": {
+          "user_prompt": {
             "type": "string",
-            "title": "User Goal",
-            "description": "Learner goal or requested document target."
+            "title": "User Prompt",
+            "description": "Learner prompt or requested document target."
           },
           "digest_mode": {
             "anyOf": [
@@ -6482,33 +6491,6 @@
             "title": "Digest Mode",
             "description": "Optional requested digest mode."
           },
-          "tone": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Tone",
-            "description": "Optional requested writing tone."
-          },
-          "selected_skillpacks": {
-            "anyOf": [
-              {
-                "items": {
-                  "type": "string"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Selected Skillpacks",
-            "description": "Optional prompt skillpacks selected for planner/docgen."
-          },
           "title": {
             "anyOf": [
               {
@@ -6524,7 +6506,7 @@
         },
         "type": "object",
         "required": [
-          "user_goal"
+          "user_prompt"
         ],
         "title": "BuildPlannerCreateRequest",
         "description": "Create a new planner session and generate the first plan draft."
@@ -6535,21 +6517,6 @@
             "type": "string",
             "title": "Message",
             "description": "User feedback used to revise the current plan draft."
-          },
-          "selected_skillpacks": {
-            "anyOf": [
-              {
-                "items": {
-                  "type": "string"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Selected Skillpacks",
-            "description": "Optional updated skillpack selection for the next draft."
           }
         },
         "type": "object",
@@ -6572,24 +6539,13 @@
             "type": "array",
             "title": "Selected File Uids"
           },
-          "user_goal": {
+          "user_prompt": {
             "type": "string",
-            "title": "User Goal"
+            "title": "User Prompt"
           },
           "digest_mode": {
             "type": "string",
             "title": "Digest Mode"
-          },
-          "tone": {
-            "type": "string",
-            "title": "Tone"
-          },
-          "selected_skillpacks": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Selected Skillpacks"
           },
           "chapter_plan": {
             "items": {
@@ -6597,18 +6553,6 @@
             },
             "type": "array",
             "title": "Chapter Plan"
-          },
-          "research_queries": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Research Queries"
-          },
-          "media_plan": {
-            "additionalProperties": true,
-            "type": "object",
-            "title": "Media Plan"
           },
           "build_constraints": {
             "additionalProperties": true,
@@ -6651,9 +6595,8 @@
         "type": "object",
         "required": [
           "subject",
-          "user_goal",
-          "digest_mode",
-          "tone"
+          "user_prompt",
+          "digest_mode"
         ],
         "title": "BuildPlannerPlanResponse"
       },
@@ -7880,7 +7823,7 @@
               }
             ],
             "title": "Confirmed Plan Id",
-            "description": "Planner-generated and confirmed build plan ID. `docs` builds require this field; when provided, the build uses the frozen file selection, chapter plan, and user goal."
+            "description": "Planner-generated and confirmed build plan ID. `docs` builds require this field; when provided, the build uses the frozen file selection, chapter plan, and User prompt."
           }
         },
         "type": "object",
@@ -11354,10 +11297,11 @@
             "enum": [
               "env",
               "settings",
+              "user_settings",
               "runtime"
             ],
             "title": "Source",
-            "description": "配置来源：env/settings/runtime。"
+            "description": "配置来源：env/settings/user_settings/runtime。"
           },
           "value": {
             "anyOf": [
@@ -11368,6 +11312,26 @@
             ],
             "title": "Value",
             "description": "可安全展示的当前值。"
+          },
+          "default_value": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default Value",
+            "description": "项目默认值。"
+          },
+          "user_value": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User Value",
+            "description": "当前用户覆盖值。"
           },
           "display_value": {
             "anyOf": [
@@ -11963,6 +11927,25 @@
         ],
         "title": "TaskStatusValue",
         "description": "任务状态。"
+      },
+      "UpdateUserSettingsRequest": {
+        "properties": {
+          "settings": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Settings",
+            "description": "settings_default.yaml 同构的非敏感覆盖。"
+          },
+          "reset": {
+            "type": "boolean",
+            "title": "Reset",
+            "description": "是否清空当前用户覆盖，恢复项目默认值。",
+            "default": false
+          }
+        },
+        "type": "object",
+        "title": "UpdateUserSettingsRequest",
+        "description": "更新当前用户的非敏感 settings 覆盖。"
       },
       "UserProfileSummary": {
         "properties": {

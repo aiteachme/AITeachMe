@@ -1,4 +1,4 @@
-"""Knowledge-domain API schemas."""
+﻿"""Knowledge-domain API schemas."""
 
 from __future__ import annotations
 
@@ -52,7 +52,7 @@ class DocGenBuildRequest(BaseModel):
         default=None,
         description=(
             "Planner-generated and confirmed build plan ID. `docs` builds require this field; "
-            "when provided, the build uses the frozen file selection, chapter plan, and user goal."
+            "when provided, the build uses the frozen file selection, chapter plan, and User prompt."
         ),
     )
 
@@ -286,10 +286,6 @@ class KnowledgeBuildStatusResponse(BaseModel):
     current_stage_description: str | None = Field(default=None, description="Friendly description of the current build stage.")
 
 
-class DocGenBuildStatusResponse(KnowledgeBuildStatusResponse):
-    """Backward-compatible alias used by existing docs responses."""
-
-
 class DocGenGetResponse(BaseModel):
     """Knowledge docs get response."""
 
@@ -516,10 +512,8 @@ class BuildPlannerCreateRequest(BaseModel):
             "planner prefers parsed content and falls back to filenames/metadata when needed."
         ),
     )
-    user_goal: str = Field(description="Learner goal or requested document target.")
+    user_prompt: str = Field(description="Learner prompt or requested document target.")
     digest_mode: Literal["sprint", "systematic"] | None = Field(default=None, description="Optional requested digest mode.")
-    tone: str | None = Field(default=None, description="Optional requested writing tone.")
-    selected_skillpacks: list[str] | None = Field(default=None, description="Optional prompt skillpacks selected for planner/docgen.")
     title: str | None = Field(default=None, description="Optional planner session title.")
 
 
@@ -527,7 +521,6 @@ class BuildPlannerMessageRequest(BaseModel):
     """Append one planner revision message."""
 
     message: str = Field(description="User feedback used to revise the current plan draft.")
-    selected_skillpacks: list[str] | None = Field(default=None, description="Optional updated skillpack selection for the next draft.")
 
 
 class BuildPlannerTurnResponse(BaseModel):
@@ -542,9 +535,7 @@ class BuildPlannerChapterPlanResponse(BaseModel):
     title: str
     objective: str = ""
     required_elements: list[str] = Field(default_factory=list)
-    search_queries: list[str] = Field(default_factory=list)
     writing_instructions: str = ""
-    media_hints: dict[str, list[str]] = Field(default_factory=dict)
 
 
 class BuildPlannerStepStatsResponse(BaseModel):
@@ -561,13 +552,9 @@ class BuildPlannerRuntimeStatsResponse(BaseModel):
 class BuildPlannerPlanResponse(BaseModel):
     subject: str
     selected_file_uids: list[str] = Field(default_factory=list)
-    user_goal: str
+    user_prompt: str
     digest_mode: str
-    tone: str
-    selected_skillpacks: list[str] = Field(default_factory=list)
     chapter_plan: list[BuildPlannerChapterPlanResponse] = Field(default_factory=list)
-    research_queries: list[str] = Field(default_factory=list)
-    media_plan: dict[str, object] = Field(default_factory=dict)
     build_constraints: dict[str, object] = Field(default_factory=dict)
     plan_summary: str = ""
     status: str = "draft"
@@ -587,12 +574,6 @@ class BuildPlannerSessionResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
 
-    @property
-    def plan(self) -> BuildPlannerPlanResponse:
-        """Backward-compatible alias for older callers."""
-
-        return self.latest_plan
-
 
 class BuildPlannerConfirmResponse(BaseModel):
     planner_session_id: str
@@ -600,29 +581,13 @@ class BuildPlannerConfirmResponse(BaseModel):
     subject: str
     status: str
     digest_mode: str
-    tone: str
     selected_file_uids: list[str] = Field(default_factory=list)
     selected_file_ids: list[int] = Field(default_factory=list)
-    user_goal: str
+    user_prompt: str
     plan_summary: str
     chapter_plan: list[BuildPlannerChapterPlanResponse] = Field(default_factory=list)
-    research_queries: list[str] = Field(default_factory=list)
-    selected_skillpacks: list[str] = Field(default_factory=list)
-    media_plan: dict[str, object] = Field(default_factory=dict)
     build_constraints: dict[str, object] = Field(default_factory=dict)
     plan_json: dict[str, object] = Field(default_factory=dict)
     status_history: list[str] = Field(default_factory=list)
     created_at: datetime
     updated_at: datetime
-
-    @property
-    def session_id(self) -> str:
-        """Backward-compatible alias for older callers."""
-
-        return self.planner_session_id
-
-    @property
-    def plan_id(self) -> str:
-        """Backward-compatible alias for older callers."""
-
-        return self.confirmed_plan_id

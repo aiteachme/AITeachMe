@@ -1,4 +1,4 @@
-"""Chapter-level enhancement, assets, and practice seeds."""
+﻿"""Chapter-level enhancement, assets, and practice seeds."""
 
 from __future__ import annotations
 
@@ -6,7 +6,11 @@ import re
 
 from app.shared.infra.execution import TracedExecutionContext
 from app.shared.infra.tools.builtin.latex_processing import normalize_math_delimiters, validate_latex
-from app.shared.infra.tools.builtin.markdown_processing import build_draft_excerpt, normalize_mermaid_blocks
+from app.shared.infra.tools.builtin.markdown_processing import (
+    build_draft_excerpt,
+    normalize_markdown_rendering,
+    normalize_mermaid_blocks,
+)
 from app.workflows.digest.docgen.lib.asset_requests import build_asset_request_block, extract_asset_request_descriptions, strip_asset_requests
 from app.workflows.digest.docgen.lib.assets import DocGenAssetRuntime
 from app.workflows.digest.docgen.lib.models import (
@@ -123,10 +127,16 @@ async def enhance_chapter_draft(
     claim_ledger: ClaimLedger | None = None,
     document_backbone: DocumentBackbone | None = None,
 ) -> tuple[EnhancedChapterDraft, AssetManifest, PracticeManifest]:
+    """增强单章草稿的表现层内容。
+
+    这里只处理资产、公式、Markdown 结构和自检题。它不能修核心定义、
+    新增知识结论或改变 claim/evidence 关系；这些问题必须走 review /
+    repair 回流。
+    """
+
     markdown = _ensure_requested_placeholders(draft.markdown, draft.placeholder_requests)
-    markdown = strip_asset_requests(markdown, kinds={"image"})
     mermaid_placeholders = [item.strip() for item in extract_asset_request_descriptions(markdown, kind="mermaid")]
-    image_placeholders: list[str] = []
+    image_placeholders = [item.strip() for item in extract_asset_request_descriptions(markdown, kind="image")]
     interactive_placeholders = [item.strip() for item in extract_asset_request_descriptions(markdown, kind="interactive")]
     asset_runtime = DocGenAssetRuntime(traced_context)
     assets: list[dict] = []
@@ -149,14 +159,15 @@ async def enhance_chapter_draft(
             )
         if image_placeholders:
             traced_context.asset_kind = "image"
-            markdown = await asset_runtime.process_image_placeholders(markdown)
+            markdown, image_render_reports = await asset_runtime.process_image_placeholders_with_reports(markdown)
             assets.extend(
                 {
                     "asset_id": f"ch{draft.chapter_index:02d}_image_{index:02d}",
                     "chapter_index": draft.chapter_index,
                     "kind": "image",
                     "source_placeholder": description,
-                    "status": "placeholder_processed",
+                    "status": str((image_render_reports[index - 1] if index - 1 < len(image_render_reports) else {}).get("status") or "unknown"),
+                    "render_report": image_render_reports[index - 1] if index - 1 < len(image_render_reports) else {},
                 }
                 for index, description in enumerate(image_placeholders, start=1)
             )
@@ -168,6 +179,7 @@ async def enhance_chapter_draft(
     markdown = strip_asset_requests(markdown)
     markdown = normalize_math_delimiters(markdown)
     markdown = validate_latex(markdown)
+    markdown = normalize_markdown_rendering(markdown)
     markdown = normalize_mermaid_blocks(markdown)
     questions = _build_practice_questions(
         draft,

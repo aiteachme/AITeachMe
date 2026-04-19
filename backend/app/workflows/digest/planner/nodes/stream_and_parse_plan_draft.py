@@ -1,4 +1,4 @@
-"""Stream the visible plan outline and parse its hidden JSON draft."""
+﻿"""Stream the visible plan outline and parse its hidden JSON draft."""
 
 from __future__ import annotations
 
@@ -13,13 +13,23 @@ from app.shared.infra.llm_support import acompletion_stream
 from app.shared.infra.llm_support.routing import LLMCallPurpose
 from app.shared.infra.workflow.context import WorkflowContext
 from app.workflows.digest.planner.lib.planner_events import emit_planner_event, emit_planner_token
-from app.workflows.digest.planner.lib.models import LearningIntent, PlannerBrief
+from app.workflows.digest.planner.lib.models import PlanIntent, PlannerBrief
+from app.workflows.digest.planner.lib.plans import _resolve_subject_display_name
 from app.workflows.digest.planner.prompts import PLAN_JSON_END_MARKER, PLAN_JSON_MARKER, build_plan_composer_messages
 from app.workflows.digest.planner.state import BuildPlannerState
 
 logger = structlog.get_logger(__name__)
 
 _JSON_FENCE_RE = re.compile(r"```(?:json)?\s*(.*?)```", re.IGNORECASE | re.DOTALL)
+
+
+def _subject_for_prompt(state: BuildPlannerState) -> str:
+    material_context = state["material_context"]
+    return _resolve_subject_display_name(
+        state["subject"],
+        shared_inputs=material_context,
+        user_prompt=state.get("user_prompt") or "",
+    )
 
 
 class PlannerChapterSketch(BaseModel):
@@ -29,6 +39,7 @@ class PlannerChapterSketch(BaseModel):
 
 class PlannerOutlineSketch(BaseModel):
     plan_text: str = ""
+    plan_steps: list[str] = Field(default_factory=list)
     chapters: list[PlannerChapterSketch] = Field(default_factory=list)
 
 
@@ -84,11 +95,11 @@ def _sketch_to_plan_payload(sketch: PlannerOutlineSketch) -> dict[str, Any]:
                 "objective": "；".join(key_points),
                 "required_elements": key_points,
                 "writing_instructions": "围绕本章知识点生成清晰讲解。",
-                "media_hints": {"images": [], "mermaid": [], "interactive": []},
             }
         )
     return {
         "plan_summary": sketch.plan_text.strip(),
+        "plan_steps": [item.strip() for item in sketch.plan_steps if item.strip()],
         "chapter_plan": chapters,
     }
 
@@ -113,8 +124,14 @@ async def _stream_composer_response(
     *,
     material_context,
     planner_brief: PlannerBrief,
-    intent: LearningIntent,
+    plan_intent: PlanIntent,
 ) -> str:
+    """流式生成可见计划说明，同时隐藏机器 JSON 合同。
+
+    前端只看到 `<PLAN_JSON>` 之前的自然语言计划说明；完整响应会保留在
+    后端用于解析 plan_text / plan_steps / chapters，避免机器合同泄露到 UI。
+    """
+
     tokens: list[str] = []
     pending_visible = ""
     visible_closed = False
@@ -126,16 +143,16 @@ async def _stream_composer_response(
             subject=state.get("subject", ""),
             material_digest_chars=len(material_context.material_digest or ""),
             brief_chars=len(planner_brief.markdown or ""),
-            goal_type=intent.goal_type,
+            query_count=len(plan_intent.plan_queries),
         )
         stream = acompletion_stream(
             build_plan_composer_messages(
-                subject=state["subject"],
-                user_goal=state.get("user_goal") or "",
+                subject=_subject_for_prompt(state),
+                user_prompt=state.get("user_prompt") or "",
                 digest_mode=state.get("digest_mode") or material_context.course_mode_decision.mode.value,
                 material_context=material_context,
                 planner_brief=planner_brief,
-                learning_intent=intent,
+                plan_intent=plan_intent,
                 message_history=list(state.get("message_history", [])),
                 latest_plan=state.get("latest_plan"),
             ),
@@ -160,6 +177,11 @@ async def _stream_composer_response(
                 safe_text = pending_visible[:marker_index]
                 visible_closed = True
                 pending_visible = ""
+                await emit_planner_event(
+                    state,
+                    event="planner.plan.finalizing",
+                    detail="计划大纲已生成，正在校验结构并保存草稿...",
+                )
             else:
                 holdback = _marker_holdback_length(pending_visible, PLAN_JSON_MARKER)
                 safe_length = len(pending_visible) - holdback
@@ -189,9 +211,17 @@ async def _stream_composer_response(
 
 
 def build_stream_and_parse_plan_draft_node(*, context: WorkflowContext):
+    """构建计划合成节点。
+
+    负责调用 reason 模型流式输出计划说明，解析隐藏 JSON 大纲，并把结果
+    转成待 normalize 的 planner draft。
+    """
+
     del context
 
     async def stream_and_parse_plan_draft_node(state: BuildPlannerState) -> dict:
+        """合成并解析当前 Planner 草稿。"""
+
         logger.info(
             "planner_compose_node_started",
             planner_session_id=state.get("planner_session_id", ""),
@@ -199,17 +229,17 @@ def build_stream_and_parse_plan_draft_node(*, context: WorkflowContext):
         )
         material_context = state["material_context"]
         planner_brief = PlannerBrief.model_validate(state.get("planner_brief") or {})
-        intent = LearningIntent.model_validate(state.get("learning_intent") or {})
+        plan_intent = PlanIntent.model_validate(state.get("plan_intent") or {})
         await emit_planner_event(
             state,
             event="planner.plan.composing",
-            detail="正在把思考过程提炼成几条可确认的计划大纲...",
+            detail="正在生成计划说明和可调整的初步大纲...",
         )
         raw_response = await _stream_composer_response(
             state,
             material_context=material_context,
             planner_brief=planner_brief,
-            intent=intent,
+            plan_intent=plan_intent,
         )
         visible_outline = _visible_outline_from_response(raw_response)
         try:
@@ -219,6 +249,7 @@ def build_stream_and_parse_plan_draft_node(*, context: WorkflowContext):
                 "planner_compose_parse_completed",
                 planner_session_id=state.get("planner_session_id", ""),
                 plan_text_chars=len(sketch.plan_text or ""),
+                plan_step_count=len(sketch.plan_steps),
                 chapter_count=len(sketch.chapters),
                 visible_outline_chars=len(visible_outline),
             )
@@ -245,6 +276,7 @@ def build_stream_and_parse_plan_draft_node(*, context: WorkflowContext):
             "planner_compose_node_completed",
             planner_session_id=state.get("planner_session_id", ""),
             chapter_count=len(draft_payload.get("chapter_plan") or []),
+            plan_step_count=len(draft_payload.get("plan_steps") or []),
             plan_summary_chars=len(str(draft_payload.get("plan_summary") or "")),
         )
         return result

@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from langsmith import traceable
-
 DENSE_CONTEXT_WRITER_BUDGET = 14000
 DENSE_CONTEXT_REPAIR_BUDGET = 4000
 DENSE_CONTEXT_PURIFY_BUDGET = 12000
@@ -75,7 +73,6 @@ def _build_mode_contract(
 """.strip()
 
 
-@traceable(name="DocGen：章节写作提示词", run_type="prompt")
 def build_docgen_writer_messages(
     *,
     title: str,
@@ -88,9 +85,13 @@ def build_docgen_writer_messages(
     chapter_index: int | None = None,
     chapter_count: int | None = None,
     execution_contract: dict[str, object] | None = None,
-    skillpack_guidance: str = "",
-    recommended_tool_tags: list[str] | None = None,
 ) -> list[dict[str, str]]:
+    """构造章节 writer 提示词。
+
+    Writer prompt 只消费压缩后的 dense_context 和章节执行合同，禁止输出
+    内部资产协议或引用区块；资产、自检和来源统一由后续节点处理。
+    """
+
     normalized_mode = _normalize_mode(digest_mode)
     required_text = "、".join(required_elements) if required_elements else "核心概念、推理过程、典型例子"
     execution_contract = dict(execution_contract or {})
@@ -148,12 +149,6 @@ def build_docgen_writer_messages(
 推荐章节骨架：
 {_chapter_shape_hint(digest_mode=normalized_mode)}
 
-策略包约束：
-{skillpack_guidance.strip() or "无额外策略包约束。"}
-
-推荐工具标签：
-{", ".join(recommended_tool_tags or []) or "无"}
-
 输出硬约束：
 1. 只输出中文 Markdown。
 2. 一级标题必须是 `# {title}`。
@@ -177,7 +172,6 @@ def build_docgen_writer_messages(
     ]
 
 
-@traceable(name="DocGen：修复章节标题提示词", run_type="prompt")
 def build_docgen_heading_repair_messages(
     *,
     title: str,
@@ -244,7 +238,6 @@ def build_docgen_heading_repair_messages(
     ]
 
 
-@traceable(name="DocGen：清洗研究材料提示词", run_type="prompt")
 def build_docgen_research_purify_messages(
     *,
     dense_context: str,
@@ -252,8 +245,6 @@ def build_docgen_research_purify_messages(
     objective: str,
     required_elements: list[str],
     digest_mode: str,
-    skillpack_guidance: str = "",
-    recommended_tool_tags: list[str] | None = None,
 ) -> list[dict[str, str]]:
     must_cover = "、".join(required_elements) if required_elements else "与本章最相关的核心知识"
     normalized_mode = _normalize_mode(digest_mode)
@@ -274,12 +265,6 @@ def build_docgen_research_purify_messages(
 6. 如果是 `sprint`，优先保留高频考点、题型线索和易错点。
 7. 如果是 `systematic`，优先保留定义、推导、适用条件和结构关系。
 
-策略包约束：
-{skillpack_guidance.strip() or "无额外策略包约束。"}
-
-推荐工具标签：
-{", ".join(recommended_tool_tags or []) or "无"}
-
 原始素材：
 {dense_context[:DENSE_CONTEXT_PURIFY_BUDGET]}
 """.strip()
@@ -292,7 +277,6 @@ def build_docgen_research_purify_messages(
     ]
 
 
-@traceable(name="DocGen：生成图示提示词", run_type="prompt")
 def build_docgen_mermaid_prompt(*, topic: str, context: str) -> str:
     return f"""
 请根据下面内容生成一段干净、可渲染的 Mermaid 语法。
@@ -311,7 +295,6 @@ def build_docgen_mermaid_prompt(*, topic: str, context: str) -> str:
 """.strip()
 
 
-@traceable(name="DocGen：规划检索问题提示词", run_type="prompt")
 def build_docgen_sub_query_messages(
     *,
     query: str,
@@ -319,8 +302,6 @@ def build_docgen_sub_query_messages(
     max_queries: int,
     domain: str,
     fallback_queries: list[str],
-    skillpack_guidance: str = "",
-    recommended_tool_tags: list[str] | None = None,
 ) -> list[dict[str, str]]:
     context_lines = "\n".join(
         f"- {item['text']}"
@@ -347,12 +328,6 @@ def build_docgen_sub_query_messages(
 6. 所有查询必须使用中文。
 7. 如果你判断信息不足，也请尽量基于主题稳健拆解，不要返回空列表。
 
-策略包约束：
-{skillpack_guidance.strip() or "无额外策略包约束。"}
-
-推荐工具标签：
-{", ".join(recommended_tool_tags or []) or "无"}
-
 可参考但不要机械照抄的兜底方向：
 {fallback_lines}
 """.strip()
@@ -365,7 +340,6 @@ def build_docgen_sub_query_messages(
     ]
 
 
-@traceable(name="DocGen：补齐缺口检索提示词", run_type="prompt")
 def build_docgen_gap_query_messages(
     *,
     dense_context: str,

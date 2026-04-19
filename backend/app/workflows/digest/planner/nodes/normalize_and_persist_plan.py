@@ -1,4 +1,4 @@
-"""Normalize the plan contract and persist planner session state."""
+﻿"""Normalize the plan contract and persist planner session state."""
 
 from __future__ import annotations
 
@@ -14,7 +14,15 @@ logger = structlog.get_logger(__name__)
 
 
 def build_normalize_and_persist_plan_node(*, context: WorkflowContext):
+    """构建 Planner 保存节点。
+
+    负责把模型输出的 build_plan_draft 规范化成稳定合同，并写入 planner
+    session / chat mirror。这里是 Planner 图的最后一步。
+    """
+
     async def normalize_and_persist_plan_node(state: BuildPlannerState) -> dict:
+        """保存当前 Planner 草稿并返回 API 响应所需状态。"""
+
         logger.info(
             "planner_normalize_started",
             planner_session_id=state.get("planner_session_id", ""),
@@ -24,12 +32,12 @@ def build_normalize_and_persist_plan_node(*, context: WorkflowContext):
         )
         material_context = state["material_context"]
         digest_mode = state.get("digest_mode") or material_context.course_mode_decision.mode.value
+        # 上一个节点已经完成“生成”；这里把极简 JSON 合同补齐成 API/DocGen 稳定结构并落库。
         draft = normalize_planner_draft(
             state.get("build_plan_draft") or {},
             subject=state["subject"],
-            user_goal=state.get("user_goal") or "",
+            user_prompt=state.get("user_prompt") or "",
             requested_digest_mode=digest_mode,
-            selected_skillpacks=list(state.get("selected_skillpacks") or []),
             shared_inputs=material_context,
             latest_plan=state.get("latest_plan"),
         )
@@ -37,6 +45,7 @@ def build_normalize_and_persist_plan_node(*, context: WorkflowContext):
             "planner_normalize_completed",
             planner_session_id=state.get("planner_session_id", ""),
             chapter_count=len(draft.chapter_plan),
+            plan_step_count=len(draft.plan_steps),
             digest_mode=draft.digest_mode,
             plan_summary_chars=len(draft.plan_summary or ""),
         )
@@ -63,7 +72,6 @@ def build_normalize_and_persist_plan_node(*, context: WorkflowContext):
             "plan": plan,
             "plan_summary": draft.plan_summary,
             "digest_mode": draft.digest_mode,
-            "selected_skillpacks": list(draft.selected_skillpacks),
         }
         persist_update = save_planner_result(
             {**state, **result},

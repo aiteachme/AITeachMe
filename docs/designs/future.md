@@ -517,7 +517,7 @@ AI 反馈：你的聚合方向正确！但建议用 .agg() 替代 .sum()，
 
 ## 7. 各形式的 core 模块依赖
 
-| 学习形式 | llm | context | checker | teaching | events | memory | sandbox | skills |
+| 学习形式 | llm | context | checker | teaching | events | memory | sandbox | ability_model |
 |---------|-----|---------|---------|----------|--------|--------|---------|--------|
 | 闪卡+间隔重复 | ✅ | | ✅ | ✅ | ✅ | ✅ | | |
 | AI 口试/答辩 | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | | |
@@ -567,6 +567,6 @@ AI 反馈：你的聚合方向正确！但建议用 .agg() 替代 .sum()，
 - **Brainly**：Ask My Docs、Test Prep、Worksheets、Learning Companion
 - **Anki**：SM-2 算法、间隔重复系统
 - **OpenMAIC**：`Read → Plan → Teach`、Generation Preview、Job Progress、Playback Runtime、Quiz/Simulation/PBL、Settings Center
-- **OpenHands**：Typed Runtime、Skills、Security Gating
+- **OpenHands**：Typed Runtime、能力扩展机制、Security Gating
 
 **调研日期**：2026-03-27

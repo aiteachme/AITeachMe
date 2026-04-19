@@ -1,4 +1,4 @@
-"""Enhance one generated DocGen chapter."""
+﻿"""Enhance one generated DocGen chapter."""
 
 from __future__ import annotations
 
@@ -15,12 +15,20 @@ from app.utils.time import utcnow
 from app.shared.infra.workflow.context import WorkflowContext
 from app.workflows.digest.docgen.lib.chapter_enhancement import enhance_chapter_draft
 from app.workflows.digest.docgen.lib.models import ChapterDraft, ClaimLedger, DocumentBackbone
-from app.workflows.digest.docgen.nodes.common import publish_docgen_progress, resolve_docgen_course_type
+from app.workflows.digest.docgen.nodes.common import publish_docgen_progress
 from app.workflows.digest.docgen.state import DocGenState
 
 
 def build_enhance_chapters_node(*, context: WorkflowContext):
+    """构建章节增强节点。
+
+    该节点在所有章节草稿 fan-in 后运行，但内部会并行增强每章。增强只
+    处理表现层：资产占位、公式、Markdown 结构和自检题，不负责修核心知识。
+    """
+
     async def enhance_chapters_node(state: DocGenState) -> dict:
+        """并行增强章节草稿并产出资产/练习 manifest。"""
+
         started_at = perf_counter()
         drafts = [
             ChapterDraft.model_validate(item)
@@ -53,7 +61,6 @@ def build_enhance_chapters_node(*, context: WorkflowContext):
                 planner_session_id=state.get("planner_session_id", ""),
                 confirmed_plan_id=state.get("confirmed_plan_id", ""),
                 digest_mode=state.get("digest_mode", ""),
-                course_type=resolve_docgen_course_type(state.get("course_type") or state.get("digest_mode")),
                 teaching_action="chapter_enhance",
                 chapter_index=draft.chapter_index,
             )

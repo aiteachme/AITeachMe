@@ -1,14 +1,11 @@
-"""Prompts for DocGen file material summaries."""
+﻿"""Prompts for DocGen file material summaries."""
 
 from __future__ import annotations
-
-from langsmith import traceable
 
 FILE_SUMMARY_CHAPTER_TITLE_BUDGET = 24
 FILE_SUMMARY_EXCERPT_BUDGET = 18000
 
 
-@traceable(name="DocGen：摘要文件材料提示词", run_type="prompt")
 def build_file_summary_messages(
     *,
     filename: str,

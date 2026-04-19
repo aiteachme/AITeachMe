@@ -1,4 +1,4 @@
-"""Workflow-local query planning helpers for DocGen research."""
+﻿"""Workflow-local query planning helpers for DocGen research."""
 
 from __future__ import annotations
 
@@ -151,8 +151,6 @@ async def generate_sub_queries(
     domain: str = "education",
     llm_caller: Callable[..., Awaitable[Any]] | None = None,
     extra_metadata: Mapping[str, Any] | None = None,
-    skillpack_guidance: str = "",
-    recommended_tool_tags: list[str] | None = None,
 ) -> list[str]:
     """Generate research sub-queries with an LLM."""
 
@@ -176,8 +174,6 @@ async def generate_sub_queries(
             max_queries=safe_max_queries,
             domain=domain,
             fallback_queries=fallback_queries,
-            skillpack_guidance=skillpack_guidance,
-            recommended_tool_tags=recommended_tool_tags or [],
         ),
         task_type=TaskType.REASONING,
         model="reason",

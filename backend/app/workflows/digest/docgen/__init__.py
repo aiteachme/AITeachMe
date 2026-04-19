@@ -1,4 +1,4 @@
-"""Digest DocGen workflow package."""
+﻿"""Digest DocGen workflow package."""
 
 from __future__ import annotations
 
@@ -10,12 +10,12 @@ from app.shared.infra.workflow.result import WorkflowResult, err_result
 from app.shared.infra.workflow.runtime import run_state_graph
 from app.shared.infra.settings import get_settings
 from app.workflows.digest.common.metrics import build_token_summary
-from app.workflows.digest.docgen.builds import (
+from app.workflows.digest.docgen.lib.build_lifecycle import (
     get_docgen_result,
     run_docgen_background,
     trigger_docgen_build,
 )
-from app.workflows.digest.docgen.cleanup import clear_subject_knowledge
+from app.workflows.digest.common.cleanup import clear_subject_knowledge
 from app.workflows.digest.docgen.graph import (
     RUN_NAME_DOCGEN,
     build_docgen_graph,
@@ -45,6 +45,13 @@ async def run_docgen_workflow(
     confirmed_plan_id: str | None = None,
     digest_mode: str | None = None,
 ) -> WorkflowResult[DocGenState]:
+    """运行一次 DocGen LangGraph。
+
+    这里只负责创建 workflow context、装配初始 state、执行图、汇总 token /
+    timing 并发布完成或失败事件。构建锁、文件选择和后台任务生命周期不在
+    这里处理，而是在 `lib.build_lifecycle`。
+    """
+
     bus = event_bus or InProcessEventBus()
     settings = get_settings()
     await bus.publish(DocGenRequestedEvent(subject=subject, requested_at=requested_at, file_ids=file_ids))

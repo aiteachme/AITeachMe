@@ -7,7 +7,6 @@
  */
 import type { BuildPlannerChapterPlanResponse } from './buildPlannerChapterPlanResponse';
 import type { BuildPlannerConfirmResponseBuildConstraints } from './buildPlannerConfirmResponseBuildConstraints';
-import type { BuildPlannerConfirmResponseMediaPlan } from './buildPlannerConfirmResponseMediaPlan';
 import type { BuildPlannerConfirmResponsePlanJson } from './buildPlannerConfirmResponsePlanJson';
 
 export interface BuildPlannerConfirmResponse {
@@ -16,15 +15,11 @@ export interface BuildPlannerConfirmResponse {
   subject: string;
   status: string;
   digest_mode: string;
-  tone: string;
   selected_file_uids?: string[];
   selected_file_ids?: number[];
-  user_goal: string;
+  user_prompt: string;
   plan_summary: string;
   chapter_plan?: BuildPlannerChapterPlanResponse[];
-  research_queries?: string[];
-  selected_skillpacks?: string[];
-  media_plan?: BuildPlannerConfirmResponseMediaPlan;
   build_constraints?: BuildPlannerConfirmResponseBuildConstraints;
   plan_json?: BuildPlannerConfirmResponsePlanJson;
   status_history?: string[];

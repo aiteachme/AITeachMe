@@ -24,18 +24,18 @@ def build_docgen_lane_summary(
 
     resolved_status = _resolve_status(state, status=status, error_message=error_message)
     resolved_error = _resolve_error_message(state, error_message=error_message)
-    legacy_chapter_materials = list(state.get("chapter_materials", []))
+    previous_chapter_materials = list(state.get("chapter_materials", []))
     chapter_drafts = list(state.get("chapter_drafts", []))
     enhanced_chapter_drafts = list(state.get("enhanced_chapter_drafts", []))
     chapter_metadatas = list(state.get("chapter_metadatas", []))
     research_traces = list(state.get("research_traces", []))
-    research_records = legacy_chapter_materials or chapter_metadatas or enhanced_chapter_drafts or chapter_drafts
+    research_records = previous_chapter_materials or chapter_metadatas or enhanced_chapter_drafts or chapter_drafts
     document_context = dict(state.get("document_context", {}) or {})
     chapter_count = max(
         len(chapter_metadatas),
         len(enhanced_chapter_drafts),
         len(chapter_drafts),
-        len(legacy_chapter_materials),
+        len(previous_chapter_materials),
     )
     research_items = build_slow_items(
         state.get("slowest_research_chapters")
@@ -272,35 +272,13 @@ def build_docgen_lane_summary(
         for chapter in [*chapter_drafts, *enhanced_chapter_drafts]
         if bool(_quality_mapping(chapter).get("rewrite_used", False) or chapter.get("repair_applied", False))
     )
-    selected_skillpacks = sorted(
-        {
-            str(item).strip()
-            for item in (
-                list(state.get("selected_skillpacks", []) or [])
-                + list(document_context.get("selected_skillpacks", []) or [])
-                + [
-                    skill
-                    for chapter in [*research_records, *chapter_drafts]
-                    for skill in list(chapter.get("selected_skillpacks", []) or [])
-                ]
-            )
-            if str(item).strip()
-        }
-    )
     return {
         "status": resolved_status,
         "error_message": resolved_error,
         "planner_session_id": str(state.get("planner_session_id", "") or ""),
         "confirmed_plan_id": str(state.get("confirmed_plan_id", "") or ""),
         "digest_mode": str(state.get("digest_mode", "") or ""),
-        "course_type": str(
-            state.get("course_type", "")
-            or document_context.get("course_type", "")
-            or state.get("digest_mode", "")
-            or ""
-        ),
         "source_strategy": str(document_context.get("source_strategy", "") or ""),
-        "selected_skillpacks": selected_skillpacks,
         "retrieval_profiles": retrieval_profiles,
         "teaching_actions": teaching_actions,
         "chapter_count": chapter_count,

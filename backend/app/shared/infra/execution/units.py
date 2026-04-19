@@ -76,7 +76,6 @@ class TracedExecutionContext:
     planner_session_id: str = ""
     confirmed_plan_id: str = ""
     digest_mode: str = ""
-    course_type: str = ""
     retrieval_profile: str = ""
     teaching_action: str = ""
     asset_kind: str = ""
@@ -95,8 +94,6 @@ class TracedExecutionContext:
             metadata.setdefault("confirmed_plan_id", self.confirmed_plan_id)
         if self.digest_mode:
             metadata.setdefault("digest_mode", self.digest_mode)
-        if self.course_type:
-            metadata.setdefault("course_type", self.course_type)
         if self.retrieval_profile:
             metadata.setdefault("retrieval_profile", self.retrieval_profile)
         if self.teaching_action:
@@ -308,7 +305,7 @@ def _traced_execution_inputs(kwargs: Mapping[str, Any]) -> dict[str, Any]:
         if title:
             inputs["chapter_title"] = title
 
-    for field_name in ("digest_mode", "tone", "template_kind", "asset_kind"):
+    for field_name in ("digest_mode", "template_kind", "asset_kind"):
         value = kwargs.get(field_name)
         if value not in (None, "", [], {}):
             inputs[field_name] = value

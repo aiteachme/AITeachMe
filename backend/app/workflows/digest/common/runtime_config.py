@@ -23,7 +23,6 @@ class PlannerModeRuntimeConfig:
 class PlannerRuntimeConfig:
     """Planner-facing teaching defaults."""
 
-    default_tone: str
     default_digest_mode: str
     sprint: PlannerModeRuntimeConfig
     systematic: PlannerModeRuntimeConfig
@@ -50,7 +49,6 @@ def get_teaching_runtime_config() -> TeachingRuntimeConfig:
     settings = get_settings()
     return TeachingRuntimeConfig(
         planner=PlannerRuntimeConfig(
-            default_tone=settings.planner.default_tone,
             default_digest_mode=settings.planner.default_digest_mode,
             sprint=PlannerModeRuntimeConfig(
                 min_chapters=settings.planner.sprint.min_chapters,

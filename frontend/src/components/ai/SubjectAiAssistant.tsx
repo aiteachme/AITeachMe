@@ -91,6 +91,7 @@ export function SubjectAiAssistantProvider({ subjectId, children }: SubjectAiAss
     () => sessions.find((item) => item.id === selectedSessionId) ?? null,
     [selectedSessionId, sessions],
   );
+  const isPlannerConversation = selectedSession?.source === "build_planner";
 
   const reloadSessions = useCallback(async (preferredSessionId?: string | null) => {
     if (!subjectId) {
@@ -214,7 +215,7 @@ export function SubjectAiAssistantProvider({ subjectId, children }: SubjectAiAss
 
   async function handleSend() {
     const question = draft.trim();
-    if (!question || !subjectId || isStreaming) {
+    if (!question || !subjectId || isStreaming || isPlannerConversation) {
       return;
     }
     setDraft("");
@@ -359,13 +360,18 @@ export function SubjectAiAssistantProvider({ subjectId, children }: SubjectAiAss
 
           {/* Input Area */}
           <div className="shrink-0 bg-white border-t border-transparent">
+            {isPlannerConversation ? (
+              <div className="border-t border-amber-100 bg-amber-50/80 px-4 py-2 text-[12px] leading-relaxed text-amber-700">
+                这是构建规划会话，可在这里回看；继续修改计划请回到构建页操作。
+              </div>
+            ) : null}
             <ChatComposer
               value={draft}
               onChange={setDraft}
               onSend={() => void handleSend()}
               onAbort={abortStream}
               isStreaming={isStreaming}
-              disabled={!subjectId}
+              disabled={!subjectId || isPlannerConversation}
             />
           </div>
 
@@ -447,6 +453,7 @@ export function SubjectAiAssistantProvider({ subjectId, children }: SubjectAiAss
                         </button>
                       </div>
                       <p className="mt-1 text-[11px] text-zinc-400">
+                        {item.source === "build_planner" ? "规划 · " : ""}
                         {formatSessionTime(item.last_message_at)} · {item.message_count} 条
                       </p>
                     </button>

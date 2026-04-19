@@ -269,6 +269,17 @@ class BuildPlannerSessionNotFoundError(AITeachMeError):
         super().__init__(detail=f"构建方案会话 `{session_id}` 不存在。")
 
 
+class BuildPlannerSessionBusyError(AITeachMeError):
+    error_code = "BUILD_PLANNER_SESSION_BUSY"
+    status_code = HTTPStatus.CONFLICT
+
+    def __init__(self, session_id: str = "") -> None:
+        detail = "上一轮方案生成仍在进行中，请先停止当前生成或等待完成。"
+        if session_id:
+            detail = f"构建方案会话 `{session_id}` 的上一轮生成仍在进行中，请先停止当前生成或等待完成。"
+        super().__init__(detail=detail)
+
+
 class ConfirmedBuildPlanNotFoundError(AITeachMeError):
     error_code = "CONFIRMED_BUILD_PLAN_NOT_FOUND"
     status_code = HTTPStatus.NOT_FOUND

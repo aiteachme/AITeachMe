@@ -1,4 +1,4 @@
-"""Stream the visible brief while extracting structured learning intent."""
+﻿"""Stream visible thinking while generating internal plan intent."""
 
 from __future__ import annotations
 
@@ -14,26 +14,33 @@ from app.workflows.digest.planner.lib.plan_sketch import parse_planner_brief_tex
 from app.workflows.digest.planner.lib.planner_events import emit_planner_event, emit_planner_token
 from app.workflows.digest.planner.lib.plans import _resolve_subject_display_name
 from app.workflows.digest.planner.lib.models import (
-    LearningIntent,
+    PlanIntent,
     PlannerBrief,
     build_empty_planner_brief,
 )
-from app.workflows.digest.planner.prompts import build_learning_intent_messages, build_plan_sketch_prompt
+from app.workflows.digest.planner.prompts import build_plan_intent_messages, build_plan_sketch_prompt
 from app.workflows.digest.planner.state import BuildPlannerState
 
 logger = structlog.get_logger(__name__)
 
 
-async def _stream_planner_brief(state: BuildPlannerState, fallback: PlannerBrief) -> PlannerBrief:
+def _subject_for_prompt(state: BuildPlannerState) -> str:
+    """Return a human-readable subject; never leak subj_* ids into prompts."""
+
     material_context = state["material_context"]
-    subject_name = _resolve_subject_display_name(
+    return _resolve_subject_display_name(
         state["subject"],
         shared_inputs=material_context,
-        user_goal=state.get("user_goal") or "",
+        user_prompt=state.get("user_prompt") or "",
     )
+
+
+async def _stream_planner_brief(state: BuildPlannerState, fallback: PlannerBrief) -> PlannerBrief:
+    material_context = state["material_context"]
+    subject_name = _subject_for_prompt(state)
     prompt = build_plan_sketch_prompt(
         subject=subject_name,
-        user_goal=state.get("user_goal") or "",
+        user_prompt=state.get("user_prompt") or "",
         digest_mode=state.get("digest_mode") or material_context.course_mode_decision.mode.value,
         material_context=material_context,
         message_history=list(state.get("message_history", [])),
@@ -103,53 +110,90 @@ async def _stream_planner_brief(state: BuildPlannerState, fallback: PlannerBrief
     return parse_planner_brief_text(text, fallback=fallback)
 
 
-async def _extract_learning_intent(state: BuildPlannerState) -> LearningIntent:
+async def _extract_plan_intent(state: BuildPlannerState) -> PlanIntent:
     material_context = state["material_context"]
     try:
         logger.info(
-            "planner_intent_llm_starting",
+            "planner_plan_intent_llm_starting",
             planner_session_id=state.get("planner_session_id") or "",
             subject=state.get("subject", ""),
             material_digest_chars=len(material_context.material_digest or ""),
         )
-        intent = await acompletion_with_fallback(
-            build_learning_intent_messages(
-                subject=state["subject"],
-                user_goal=state.get("user_goal") or "",
+        plan_intent = await acompletion_with_fallback(
+            build_plan_intent_messages(
+                subject=_subject_for_prompt(state),
+                user_prompt=state.get("user_prompt") or "",
                 digest_mode=state.get("digest_mode") or material_context.course_mode_decision.mode.value,
                 material_context=material_context,
                 message_history=list(state.get("message_history", [])),
             ),
             call_purpose=LLMCallPurpose.CLASSIFY,
             model="primary",
-            response_model=LearningIntent,
+            response_model=PlanIntent,
             max_tokens=1000,
             extra_metadata={
                 "planner_session_id": state.get("planner_session_id") or "",
-                "substep": "识别学习意图",
+                "substep": "生成规划抓手",
             },
         )
+        plan_intent.plan_queries = _normalize_plan_queries(
+            [*plan_intent.plan_queries, *_fallback_plan_queries(state)]
+        )
+        if not plan_intent.plan_intent.strip():
+            plan_intent.plan_intent = _fallback_plan_intent(state)
         logger.info(
-            "planner_intent_llm_completed",
+            "planner_plan_intent_llm_completed",
             planner_session_id=state.get("planner_session_id") or "",
             subject=state.get("subject", ""),
-            goal_type=intent.goal_type,
-            focus_concept_count=len(intent.focus_concepts),
-            success_criteria_count=len(intent.success_criteria),
+            plan_intent_chars=len(plan_intent.plan_intent or ""),
+            query_count=len(plan_intent.plan_queries),
         )
-        return intent
+        return plan_intent
     except Exception:
         logger.exception(
-            "planner_intent_failed",
+            "planner_plan_intent_failed",
             planner_session_id=state.get("planner_session_id") or "",
             subject=state["subject"],
         )
         await emit_planner_event(
             state,
             event="planner.intent.failed",
-            detail="意图识别失败，请调整目标后重试。",
+            detail="规划抓手生成失败，请调整目标后重试。",
         )
         raise
+
+
+def _normalize_plan_queries(queries: list[str]) -> list[str]:
+    cleaned: list[str] = []
+    seen: set[str] = set()
+    for raw in queries:
+        text = " ".join(str(raw or "").split()).strip()
+        key = text.casefold()
+        if text and key not in seen:
+            seen.add(key)
+            cleaned.append(text)
+    return cleaned[:8]
+
+
+def _fallback_plan_queries(state: BuildPlannerState) -> list[str]:
+    material_context = state["material_context"]
+    goal = str(state.get("user_prompt") or "").strip()
+    subject = _subject_for_prompt(state)
+    mode = str(state.get("digest_mode") or material_context.course_mode_decision.mode.value)
+    candidates = [
+        f"{goal or '当前主题'} 核心知识簇",
+        f"{goal or '当前主题'} 题型与易错点",
+        f"{goal or '当前主题'} 初步大纲拆分",
+        f"{subject} {mode} 学习计划",
+    ]
+    return [item for item in candidates if item.strip()]
+
+
+def _fallback_plan_intent(state: BuildPlannerState) -> str:
+    material_context = state["material_context"]
+    goal = str(state.get("user_prompt") or "").strip()
+    mode = str(state.get("digest_mode") or material_context.course_mode_decision.mode.value)
+    return f"用户意图暂按 {mode} 学习处理；围绕{goal or '当前学习目标'}和已上传资料，先识别资料主线，再生成可调整的初步大纲。"
 
 
 def build_stream_brief_and_extract_intent_node(*, context: WorkflowContext):
@@ -160,30 +204,27 @@ def build_stream_brief_and_extract_intent_node(*, context: WorkflowContext):
             subject=state.get("subject", ""),
         )
         fallback_brief = build_empty_planner_brief()
-        brief, intent = await asyncio.gather(
+        brief, plan_intent = await asyncio.gather(
             _stream_planner_brief(state, fallback_brief),
-            _extract_learning_intent(state),
+            _extract_plan_intent(state),
         )
         await emit_planner_event(
             state,
             event="planner.intent.ready",
-            detail=f"已识别学习目标：{intent.goal_type}，准备直接合成计划大纲。",
+            detail=f"已整理出 {len(plan_intent.plan_queries)} 个规划抓手，准备生成计划和初步大纲。",
             payload={
-                "goal_type": intent.goal_type,
-                "success_criteria": list(intent.success_criteria),
-                "constraints": list(intent.constraints),
-                "focus_concepts": list(intent.focus_concepts),
+                "query_count": len(plan_intent.plan_queries),
             },
         )
         result = {
             "planner_brief": brief.model_dump(mode="json"),
-            "learning_intent": intent.model_dump(mode="json"),
+            "plan_intent": plan_intent.model_dump(mode="json"),
         }
         logger.info(
             "planner_brief_intent_node_completed",
             planner_session_id=state.get("planner_session_id", ""),
             brief_chars=len(brief.markdown or ""),
-            goal_type=intent.goal_type,
+            query_count=len(plan_intent.plan_queries),
         )
         return result
 

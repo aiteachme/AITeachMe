@@ -1,4 +1,4 @@
-"""Conflict reporting helpers for DocGen chapters."""
+﻿"""Conflict reporting helpers for DocGen chapters."""
 
 from __future__ import annotations
 

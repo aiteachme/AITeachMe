@@ -1,10 +1,11 @@
-"""Planner graph definition and public workflow entrypoints.
+﻿"""Planner graph definition and public workflow entrypoints.
 
 真实链路只有四步：读取资料 -> 理解目标 -> 合成大纲 -> 保存方案。
 """
 
 from __future__ import annotations
 
+import asyncio
 import uuid
 
 import structlog
@@ -18,6 +19,7 @@ from app.shared.infra.workflow.result import WorkflowError, WorkflowResult
 from app.shared.infra.workflow.runtime import run_state_graph
 from app.workflows.digest.common.runtime_config import get_teaching_runtime_config
 from app.workflows.digest.planner.lib.store import (
+    mark_planner_session_draft,
     mark_planner_session_failed,
     planner_session_response_from_state,
 )
@@ -60,6 +62,13 @@ def _require_success_state(result: WorkflowResult[BuildPlannerState]) -> BuildPl
 
 
 def build_planner_graph(*, context: WorkflowContext) -> StateGraph:
+    """构建 Planner 的四步 LangGraph。
+
+    Planner 只负责生成和修订可确认的构建方案：读取资料、理解目标、
+    合成大纲、保存方案。不要在这里做 DocGen 的检索写作，也不要把
+    API 持久化细节塞进节点之外的地方。
+    """
+
     trace = workflow_tracer(context=context, lane="planner")
     workflow = StateGraph(
         BuildPlannerState,
@@ -139,11 +148,9 @@ def create_planner_initial_state(
     requested_file_uids: list[str] | None = None,
     session_title: str = "",
     feedback_message: str = "",
-    selected_skillpacks_override: bool = True,
     file_ids: list[int],
-    user_goal: str,
+    user_prompt: str,
     digest_mode: str,
-    selected_skillpacks: list[str],
     planner_session_id: str,
     message_history: list[str],
     latest_plan: dict | None = None,
@@ -159,11 +166,9 @@ def create_planner_initial_state(
         "requested_file_uids": list(requested_file_uids or []),
         "session_title": session_title,
         "feedback_message": feedback_message,
-        "selected_skillpacks_override": selected_skillpacks_override,
         "file_ids": file_ids,
-        "user_goal": user_goal,
+        "user_prompt": user_prompt,
         "digest_mode": digest_mode,
-        "selected_skillpacks": list(selected_skillpacks),
         "planner_session_id": planner_session_id,
         "message_history": message_history,
         "latest_plan": latest_plan,
@@ -181,17 +186,15 @@ async def run_build_planner_workflow(
     *,
     subject: str,
     file_ids: list[int],
-    user_goal: str,
+    user_prompt: str,
     planner_session_id: str,
     digest_mode: str,
-    selected_skillpacks: list[str],
     message_history: list[str],
     user_id: str = "",
     planner_operation: str = "generate_only",
     requested_file_uids: list[str] | None = None,
     session_title: str = "",
     feedback_message: str = "",
-    selected_skillpacks_override: bool = True,
     latest_plan: dict | None = None,
     progress_callback: object | None = None,
     token_callback: object | None = None,
@@ -206,7 +209,7 @@ async def run_build_planner_workflow(
         file_id_count=len(file_ids),
         requested_file_uid_count=len(requested_file_uids or []),
         digest_mode=digest_mode,
-        user_goal_preview=user_goal[:80],
+        user_prompt_preview=user_prompt[:80],
     )
     context = WorkflowContext(
         workflow_name="digest.planner",
@@ -229,11 +232,9 @@ async def run_build_planner_workflow(
             requested_file_uids=requested_file_uids,
             session_title=session_title,
             feedback_message=feedback_message,
-            selected_skillpacks_override=selected_skillpacks_override,
             file_ids=file_ids,
-            user_goal=user_goal,
+            user_prompt=user_prompt,
             digest_mode=digest_mode,
-            selected_skillpacks=selected_skillpacks,
             planner_session_id=planner_session_id,
             message_history=message_history,
             latest_plan=latest_plan,
@@ -262,11 +263,13 @@ async def create_build_planner_session(
     progress_callback: object | None = None,
     token_callback: object | None = None,
 ) -> BuildPlannerSessionResponse:
+    """创建一次新的 Planner 会话并流式生成首版方案。"""
+
     # API 友好入口：只装配 state、启动 graph、把最终 state 转成既有响应结构。
     # 真正业务逻辑仍在 graph nodes 里。
     planner_defaults = get_teaching_runtime_config().planner
     session_id = uuid.uuid4().hex
-    user_goal = payload.user_goal.strip()
+    user_prompt = payload.user_prompt.strip()
     digest_mode = (payload.digest_mode or planner_defaults.default_digest_mode).strip() or planner_defaults.default_digest_mode
     logger.info(
         "planner_create_session_starting",
@@ -275,23 +278,26 @@ async def create_build_planner_session(
         planner_session_id=session_id,
         file_uid_count=len(payload.file_uids or []),
         digest_mode=digest_mode,
-        user_goal_preview=user_goal[:80],
+        user_prompt_preview=user_prompt[:80],
     )
-    result = await run_build_planner_workflow(
-        subject=subject.slug,
-        user_id=user_id,
-        planner_operation="create",
-        requested_file_uids=list(payload.file_uids or []),
-        session_title=payload.title or user_goal or subject.name,
-        file_ids=[],
-        user_goal=user_goal,
-        planner_session_id=session_id,
-        digest_mode=digest_mode,
-        selected_skillpacks=list(payload.selected_skillpacks or []),
-        message_history=[user_goal],
-        progress_callback=progress_callback,
-        token_callback=token_callback,
-    )
+    try:
+        result = await run_build_planner_workflow(
+            subject=subject.slug,
+            user_id=user_id,
+            planner_operation="create",
+            requested_file_uids=list(payload.file_uids or []),
+            session_title=payload.title or user_prompt or subject.name,
+            file_ids=[],
+            user_prompt=user_prompt,
+            planner_session_id=session_id,
+            digest_mode=digest_mode,
+            message_history=[user_prompt],
+            progress_callback=progress_callback,
+            token_callback=token_callback,
+        )
+    except asyncio.CancelledError:
+        _mark_planner_session_failed(subject=subject.slug, user_id=user_id, session_id=session_id)
+        raise
     if result.failed:
         _mark_planner_session_failed(subject=subject.slug, user_id=user_id, session_id=session_id)
     try:
@@ -320,6 +326,8 @@ async def append_build_planner_message(
     progress_callback: object | None = None,
     token_callback: object | None = None,
 ) -> BuildPlannerSessionResponse:
+    """在已有 Planner 会话中追加用户反馈并重新生成方案。"""
+
     # 追加反馈也只是同一条 graph run。
     # load_planner_materials 会读取上一版 session/plan 并追加用户 turn。
     logger.info(
@@ -328,23 +336,24 @@ async def append_build_planner_message(
         user_id=user_id,
         planner_session_id=session_id,
         message_preview=payload.message[:80],
-        selected_skillpacks_override=payload.selected_skillpacks is not None,
     )
-    result = await run_build_planner_workflow(
-        subject=subject.slug,
-        user_id=user_id,
-        planner_operation="append",
-        feedback_message=payload.message.strip(),
-        selected_skillpacks_override=payload.selected_skillpacks is not None,
-        file_ids=[],
-        user_goal="",
-        planner_session_id=session_id,
-        digest_mode="",
-        selected_skillpacks=list(payload.selected_skillpacks or []),
-        message_history=[],
-        progress_callback=progress_callback,
-        token_callback=token_callback,
-    )
+    try:
+        result = await run_build_planner_workflow(
+            subject=subject.slug,
+            user_id=user_id,
+            planner_operation="append",
+            feedback_message=payload.message.strip(),
+            file_ids=[],
+            user_prompt="",
+            planner_session_id=session_id,
+            digest_mode="",
+            message_history=[],
+            progress_callback=progress_callback,
+            token_callback=token_callback,
+        )
+    except asyncio.CancelledError:
+        _mark_planner_session_draft(subject=subject.slug, user_id=user_id, session_id=session_id)
+        raise
     if result.failed:
         _mark_planner_session_failed(subject=subject.slug, user_id=user_id, session_id=session_id)
     try:
@@ -382,6 +391,13 @@ def _mark_planner_session_failed(*, subject: str, user_id: str, session_id: str)
         mark_planner_session_failed(subject=subject, user_id=user_id, session_id=session_id)
     except Exception:
         logger.exception("planner_session_failed_status_update_failed", subject=subject, session_id=session_id)
+
+
+def _mark_planner_session_draft(*, subject: str, user_id: str, session_id: str) -> None:
+    try:
+        mark_planner_session_draft(subject=subject, user_id=user_id, session_id=session_id)
+    except Exception:
+        logger.exception("planner_session_draft_status_update_failed", subject=subject, session_id=session_id)
 
 
 __all__ = [

@@ -19,6 +19,7 @@ from app.shared.infra.storage import get_content_store, run_store_sync
 from app.shared.infra.tools.builtin.markdown_processing import (
     build_reference_section,
     count_words,
+    normalize_markdown_rendering,
     normalize_source_details,
     normalize_mermaid_blocks,
 )
@@ -63,7 +64,7 @@ def _dedupe_chapter_metadatas(chapters: list[dict]) -> list[dict]:
 
 
 def _prepare_chapter_markdown(markdown: str) -> str:
-    return _ensure_chapter_structure(normalize_mermaid_blocks(markdown))
+    return _ensure_chapter_structure(normalize_mermaid_blocks(normalize_markdown_rendering(markdown)))
 
 
 def _ensure_chapter_structure(markdown: str) -> str:
@@ -109,7 +110,7 @@ def build_merged_markdown(
         subject=str((document_context or {}).get("subject") or "未命名学科"),
         subject_display_name=str((document_context or {}).get("subject_display_name") or ""),
         digest_mode=str((document_context or {}).get("digest_mode") or ""),
-        user_goal=str((document_context or {}).get("user_goal") or ""),
+        user_prompt=str((document_context or {}).get("user_prompt") or ""),
         plan_summary=str((document_context or {}).get("plan_summary") or ""),
         source_strategy=str((document_context or {}).get("source_strategy") or ""),
         chapters=deduped_chapters,
@@ -183,7 +184,6 @@ def _build_chapter_manifest(chapter: dict) -> dict[str, object]:
         "provisional_title": str(chapter.get("title") or "").strip(),
         "summary": str(chapter.get("summary") or ""),
         "digest_mode": str(chapter.get("digest_mode") or ""),
-        "course_type": str(chapter.get("course_type") or ""),
         "retrieval_profile": str(chapter.get("retrieval_profile") or ""),
         "teaching_action": str(chapter.get("teaching_action") or ""),
         "source_count": len(source_details),

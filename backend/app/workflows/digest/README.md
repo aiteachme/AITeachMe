@@ -27,10 +27,11 @@ digest/
   负责知识图谱文件入图链路
 - `kg_docs_sync/`
   负责知识文档和知识图谱的同步链路
-- `support/knowledge_graph/`
-  负责图谱触发、状态更新、总览和查询
 - `common/`
   放跨 lane 共用能力，例如 events、exports、contracts、prepare、material profile、metrics、runtime config、pedagogy
+  以及 subject 级知识产物清理 `cleanup.py`
+- `workflows/support/knowledge_graph/`
+  图谱触发、状态更新、总览和查询的 API-facing 用例；不属于 `digest/` 下的新 lane
 
 ## 当前公开入口
 
@@ -64,4 +65,4 @@ from app.workflows.digest.planner import (
 - `kg_file_ingest`
 - `kg_docs_sync`
 
-如果要看具体编排，优先进入各链路下的 `graph.py`、`builds.py`、`state.py`
+如果要看具体编排，优先进入各链路下的 `graph.py`、`state.py`；API-facing 构建入口优先看对应 lane 的 `lib/*lifecycle*.py`

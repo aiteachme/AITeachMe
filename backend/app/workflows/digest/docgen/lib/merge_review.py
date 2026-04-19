@@ -1,4 +1,4 @@
-"""Whole-document review for rewritten DocGen."""
+﻿"""Whole-document review for rewritten DocGen."""
 
 from __future__ import annotations
 
@@ -14,6 +14,12 @@ def build_merge_review_report(
     expected_chapter_count: int,
     plan_summary: str,
 ) -> MergeReviewReport:
+    """生成发布前的整本合并检查报告。
+
+    这里只检查章节数量、重复标题、低质量和缺来源等发布风险；事实和
+    教学质量的重审应发生在 review_content，不在 merge 阶段重新判断。
+    """
+
     del plan_summary
     issues: list[MergeReviewIssue] = []
     if len(enhanced_chapters) != expected_chapter_count:

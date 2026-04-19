@@ -16,9 +16,10 @@ from app.models.knowledge_taxonomy import normalize_knowledge_unit_type
 ANCHOR_PREFIX = "ku_"
 ANCHOR_COMMENT_PREFIX = "ATM_KU:"
 
-_INLINE_ANCHOR_RE = re.compile(r"\{#(?P<anchor>ku_[A-Za-z0-9_-]+)\}")
-_COMMENT_ANCHOR_RE = re.compile(r"<!--\s*ATM_KU:\s*(?P<anchor>ku_[A-Za-z0-9_-]+)\s*-->")
-_ANCHOR_RE = re.compile(r"(?:\{#(?P<inline>ku_[A-Za-z0-9_-]+)\}|<!--\s*ATM_KU:\s*(?P<comment>ku_[A-Za-z0-9_-]+)\s*-->)")
+_ANCHOR_ID_PATTERN = r"ku_[\w-]+"
+_INLINE_ANCHOR_RE = re.compile(rf"\{{#(?P<anchor>{_ANCHOR_ID_PATTERN})\}}")
+_COMMENT_ANCHOR_RE = re.compile(rf"<!--\s*ATM_KU:\s*(?P<anchor>{_ANCHOR_ID_PATTERN})\s*-->")
+_ANCHOR_RE = re.compile(rf"(?:\{{#(?P<inline>{_ANCHOR_ID_PATTERN})\}}|<!--\s*ATM_KU:\s*(?P<comment>{_ANCHOR_ID_PATTERN})\s*-->)")
 _HEADING_RE = re.compile(r"^(?P<prefix>\s{0,3}#{1,6}\s+)(?P<title>.+?)(?P<trailing>\s*)$")
 _TAG_RE = re.compile(r"\[(?P<key>type|prerequisite|related):\s*(?P<value>[^\]]+)\]", re.IGNORECASE)
 _LABEL_RE = re.compile(
@@ -29,6 +30,31 @@ _LABEL_RE = re.compile(
 )
 _MARKDOWN_DECORATION_RE = re.compile(r"[#*_`>{}\[\]()]")
 _MULTISPACE_RE = re.compile(r"\s+")
+_SKIPPABLE_HEADING_EXACT = {
+    "table of contents",
+    "knowledge document overview",
+    "目录",
+    "知识文档总览",
+    "参考资料与延伸阅读",
+    "这份文档怎么读",
+    "章节路线图",
+    "本章自检",
+    "这几项不能漏",
+    "回看时优先问自己",
+}
+_SKIPPABLE_HEADING_PREFIXES = (
+    "考前最后",
+    "再把关键点压实",
+    "再把关键结构补稳",
+    "最终回顾",
+    "临考速记",
+    "本章在考什么",
+    "本章核心考点",
+    "本章核心地位",
+    "本章为何",
+    "易错点复盘",
+    "高频陷阱",
+)
 
 _LABEL_TYPE_MAP = {
     "定义": "definition",
@@ -177,6 +203,8 @@ def extract_markdown_knowledge_units(markdown: str) -> list[MarkdownKnowledgeUni
         name = _extract_unit_name(line)
         if not name:
             continue
+        if _is_skippable_heading(name):
+            continue
 
         tags = _extract_tags(line)
         knowledge_unit_type = _infer_node_type(line, tags.get("type", ""))
@@ -221,13 +249,9 @@ def _slugify_anchor(text: str) -> str:
 
 def _is_skippable_heading(title: str) -> bool:
     lowered = _strip_tags_and_anchor(title).casefold()
-    return lowered in {
-        "table of contents",
-        "knowledge document overview",
-        "目录",
-        "知识文档总览",
-        "参考资料与延伸阅读",
-    }
+    if lowered in _SKIPPABLE_HEADING_EXACT:
+        return True
+    return any(lowered.startswith(prefix.casefold()) for prefix in _SKIPPABLE_HEADING_PREFIXES)
 
 
 def _extract_tags(line: str) -> dict[str, str]:
