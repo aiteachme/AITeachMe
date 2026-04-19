@@ -173,10 +173,6 @@ class ObservabilitySettings(_SettingsModel):
     llm_observability_max_records: int = 5000
 
 
-class SafetySettings(_SettingsModel):
-    guardrails_enabled: bool = True
-
-
 class Settings(_SettingsModel):
     """Project-level runtime settings.
 
@@ -199,7 +195,6 @@ class Settings(_SettingsModel):
     embedding: EmbeddingSettings = Field(default_factory=EmbeddingSettings)
     knowledge_graph: KnowledgeGraphSettings = Field(default_factory=KnowledgeGraphSettings)
     observability: ObservabilitySettings = Field(default_factory=ObservabilitySettings)
-    safety: SafetySettings = Field(default_factory=SafetySettings)
 
     @property
     def embedding_dim(self) -> int:
@@ -303,7 +298,6 @@ __all__ = [
     "PlannerSettings",
     "RagSettings",
     "RuntimeSettings",
-    "SafetySettings",
     "SearchSettings",
     "Settings",
     "get_settings",

@@ -1,7 +1,13 @@
-"""Factory helpers for the shared search stack.
+"""Registry-backed factory helpers for the shared search stack.
 
-- retrievers: find candidate sources/snippets
-- readers: load content from a concrete URL
+The search layer has two plugin-like families:
+
+- retrievers find candidate sources/snippets from local RAG or external search
+- readers load content from a concrete URL returned by a retriever
+
+Importing ``app.shared.infra.search.retrievers`` and ``.readers`` at module load
+time is intentional: those packages auto-register their subclasses through
+``BaseRetriever.__init_subclass__`` and ``BaseReader.__init_subclass__``.
 """
 
 from __future__ import annotations
@@ -22,7 +28,11 @@ def get_retriever(
     subject: str | None = None,
     local_sections: list[object] | None = None,
 ) -> BaseRetriever:
-    """Resolve one retriever by registered name."""
+    """Resolve one retriever by registered name.
+
+    Local RAG retrievers need runtime context (subject / in-memory sections),
+    while external retrievers are stateless wrappers around provider APIs.
+    """
 
     normalized = (name or "").strip().lower()
     retriever_type = get_registered_retriever_types().get(normalized)
@@ -37,6 +47,13 @@ def get_retriever(
 
 
 def get_available_retriever_names(names: list[str]) -> list[str]:
+    """Filter configured names down to registered and currently available retrievers.
+
+    Availability usually means the required API key or base URL is configured.
+    Missing optional providers are silently skipped so broad default profiles can
+    include many providers without requiring every user to configure every key.
+    """
+
     available: list[str] = []
     registered = get_registered_retriever_types()
     for name in names:
@@ -56,7 +73,12 @@ def get_configured_retriever_names(
     include_external: bool = True,
     include_fallback: bool = True,
 ) -> list[str]:
-    """Return configured retriever names that are actually registered."""
+    """Return configured retriever names that are registered and available.
+
+    The raw configured list comes from ``settings.parse_retrievers``. This helper
+    then removes names whose classes are not registered and providers that are
+    not available in the current runtime.
+    """
 
     settings = get_settings()
     configured = settings.parse_retrievers(
@@ -93,7 +115,12 @@ def get_retrievers_for_subject(
     include_external: bool = True,
     include_fallback: bool = True,
 ) -> list[BaseRetriever]:
-    """Build retriever instances for one subject / runtime context."""
+    """Build retriever instances for one subject / runtime context.
+
+    If neither ``subject`` nor ``local_sections`` is provided, ``local_rag`` is
+    disabled even when the profile includes it. That avoids a confusing
+    no-context local search attempt from generic web search tools.
+    """
 
     should_include_local_rag = include_local_rag
     if not (subject or local_sections):
@@ -114,7 +141,12 @@ def get_retrievers_for_subject(
 
 
 def get_reader_for_url(url: str, *, preferred: str | None = None) -> BaseReader:
-    """Resolve the best URL reader."""
+    """Resolve the best URL reader.
+
+    Readers declare URL match priority. Explicit ``preferred`` names are honored
+    first; otherwise the highest-priority compatible reader wins, with BS4 HTML
+    reading as the generic fallback.
+    """
 
     registered = get_registered_reader_types()
     if preferred:

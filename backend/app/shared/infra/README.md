@@ -55,42 +55,27 @@ api/knowledge_docs.py
 
 现在 workflow 相关公开接口已经极简收口。
 
-## 推荐业务入口：`app.shared.infra.facade`
+## 公开入口约定
 
-新增业务友好的门面层：
+`infra` 不再保留一个总的 `facade/` 目录。
 
-```python
-from app.shared.infra.facade import (
-    InfraRuntime,
-    build_infra_context,
-    build_research_context,
-    call_llm_structured,
-    call_llm_text,
-    get_runtime_summary,
-    list_tools,
-    read_sources,
-    run_rag_eval,
-    run_tool,
-    stream_llm_text,
-)
-```
+之前的 `app.shared.infra.facade` 只是预留门面层，没有被 workflow/API 实际调用，反而让入口变得不清楚。现在按能力包直接导入稳定入口：
+
+| 能力 | 推荐入口 |
+| --- | --- |
+| LLM | `app.shared.infra.llm_support` |
+| 搜索 / 资料读取 | `app.shared.infra.search` |
+| 工具 | `app.shared.infra.tools` |
+| 技能 | `app.shared.infra.skills` |
+| workflow runtime | `app.shared.infra.workflow` |
+| 执行安全 / 沙箱 | `app.shared.infra.execution` |
+| 观测 | `app.shared.infra.observability` |
 
 使用约定：
 
-- workflow / application 可以调用 facade；API 层不要直接调用。
-- facade 只组合 LLM、检索、解析、工具、评测和观测能力，不承载业务状态机。
-- `InfraContext` 只携带 `subject / user_id / workflow / lane / node / build_session_id / request_id / permissions / metadata`，不放 DB session、graph state 或教学策略。
-- 复杂节点可实例化 `InfraRuntime`；简单调用优先用门面函数。
-
-当前新增的底层能力包括：
-
-- `facade/research.py`：统一组合 retriever、reader、source curation、context compression。
-- `facade/tools.py`：统一工具列表和执行入口，支持 risk/scopes/approval 元数据。
-- `facade/evals.py`：离线轻量评测入口，后续可接 Phoenix / Ragas / DeepEval。
-
-这层是新增推荐入口，不要求一次性迁移旧代码；新代码优先从 facade 进入。
-
-注意：文档解析不放在 infra facade 中。解析链路归 `app.workflows.ingest`，新增 Docling、MinerU、Marker 等 provider 时应接入 ingest 的 `parsing/provider_contracts.py`、`parsing/decision.py`、`parsing/strategy.py` 与 `parsing/orchestrator.py`，由 ingest 继续负责状态推进、资产产物和 fallback。
+- workflow / application 可以调用各能力包的稳定入口。
+- API 层优先调用 workflows，不直接拼装 infra 能力。
+- 文档解析不放在 infra 公共门面中。解析链路归 `app.workflows.ingest`，新增 Docling、MinerU、Marker 等 provider 时应接入 ingest 的 `parsing/provider_contracts.py`、`parsing/decision.py`、`parsing/strategy.py` 与 `parsing/orchestrator.py`，由 ingest 继续负责状态推进、资产产物和 fallback。
 
 ### `app.shared.infra.workflow`
 

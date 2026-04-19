@@ -145,7 +145,3 @@ observability:
   langsmith_max_text_chars: 100000
   # 进程内 LLM 调用统计最多保留记录数。
   llm_observability_max_records: 5000
-
-safety:
-  # 是否启用共享 guardrails 管线。
-  guardrails_enabled: true
