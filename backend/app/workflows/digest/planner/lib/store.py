@@ -46,6 +46,7 @@ from app.schemas.knowledge import (
 )
 from app.shared.infra.exceptions import (
     BuildPlannerEmptyPlanError,
+    BuildPlannerSessionBusyError,
     BuildPlannerSessionNotFoundError,
     ConfirmedBuildPlanNotFoundError,
     PlannerMaterialsNotReadyError,
@@ -499,6 +500,9 @@ def prepare_planner_run(state: Mapping[str, Any]) -> dict[str, Any]:
 
         with managed_session() as session:
             subject_row = session.query(Subject).filter(Subject.slug == subject_slug).first()
+            latest = repo_get_latest_planner_session(session, subject=subject_slug, user_id=user_id)
+            if latest is not None and latest.status == "planning":
+                raise BuildPlannerSessionBusyError(latest.id)
             planner_files = _select_planner_files(
                 session,
                 subject=subject_slug,
@@ -567,6 +571,8 @@ def prepare_planner_run(state: Mapping[str, Any]) -> dict[str, Any]:
             )
             if record is None:
                 raise BuildPlannerSessionNotFoundError(str(state["planner_session_id"]))
+            if record.status == "planning":
+                raise BuildPlannerSessionBusyError(record.id)
             logger.info(
                 "planner_prepare_run_loaded_session",
                 subject=subject_slug,
@@ -781,6 +787,16 @@ def mark_planner_session_failed(*, subject: str, user_id: str, session_id: str) 
         update_planner_session(session, record)
 
 
+def mark_planner_session_draft(*, subject: str, user_id: str, session_id: str) -> None:
+    with managed_session() as session:
+        record = get_planner_session(session, subject=subject, session_id=session_id, user_id=user_id)
+        if record is None:
+            return
+        record.status = "draft"
+        record.updated_at = utcnow()
+        update_planner_session(session, record)
+
+
 def confirm_planner_session(
     session: Session,
     *,
@@ -937,6 +953,7 @@ __all__ = [
     "get_confirmed_plan_or_raise",
     "get_latest_planner_session",
     "mark_confirmed_plan_status",
+    "mark_planner_session_draft",
     "mark_planner_session_failed",
     "prepare_planner_run",
     "planner_session_response_from_state",

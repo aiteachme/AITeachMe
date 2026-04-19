@@ -196,6 +196,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
+function isAbortError(error: unknown): boolean {
+  return error instanceof Error && error.name === "AbortError";
+}
+
 function parsePlannerRuntimeStats(response: BuildPlannerSessionResponse): PlannerRuntimeStats | null {
   const candidate = (response as PlannerSessionWithRuntime).runtime_stats;
   return candidate ?? null;
@@ -484,6 +488,7 @@ async function streamPlannerSession(
   url: string,
   body: object,
   options: {
+    signal?: AbortSignal;
     onStatus?: (payload: unknown) => void;
     onToken?: (token: string) => void;
   } = {},
@@ -492,6 +497,7 @@ async function streamPlannerSession(
   let streamError: string | null = null;
 
   const result = await postSseJson(url, body, {
+    signal: options.signal,
     onToken: ({ content }) => {
       options.onToken?.(content);
     },
@@ -515,6 +521,11 @@ async function streamPlannerSession(
   if (!streamError && isRecord(result.errorPayload) && typeof result.errorPayload.detail === "string") {
     streamError = result.errorPayload.detail;
   }
+  if (result.aborted) {
+    const error = new Error("已停止生成。");
+    error.name = "AbortError";
+    throw error;
+  }
   if (streamError) {
     throw new Error(streamError);
   }
@@ -528,6 +539,7 @@ async function createPlannerSessionStream(
   subject: string,
   payload: { file_uids: string[]; user_goal: string },
   options: {
+    signal?: AbortSignal;
     onStatus?: (payload: unknown) => void;
     onToken?: (token: string) => void;
   } = {},
@@ -544,6 +556,7 @@ async function revisePlannerSessionStream(
   sessionId: string,
   message: string,
   options: {
+    signal?: AbortSignal;
     onStatus?: (payload: unknown) => void;
     onToken?: (token: string) => void;
   } = {},
@@ -582,6 +595,7 @@ export function BuildPlanPage() {
   const currentPlanRef = useRef<BuildPlannerPlanResponse | null>(null);
   const loadedSubjectRef = useRef<string | null>(null);
   const plannerStreamingRawRef = useRef("");
+  const plannerAbortControllerRef = useRef<AbortController | null>(null);
   const autoStartFiredRef = useRef(false);
 
   const [messages, setMessages] = useState<ChatMessage[]>([createWelcomeMessage()]);
@@ -990,6 +1004,14 @@ export function BuildPlanPage() {
     focusComposer();
   }, [currentPlan, focusComposer, plannerSessionId, subjectId]);
 
+  const handleStopPlannerStream = useCallback(() => {
+    logPlannerDebug("click_stop_plan_message", {
+      subjectId,
+      plannerSessionId,
+    });
+    plannerAbortControllerRef.current?.abort();
+  }, [plannerSessionId, subjectId]);
+
   const appendPlannerResponse = useCallback(
     (response: BuildPlannerSessionResponse, fallbackContent: string, contentOverride?: string | null) => {
       const runtimeStats = parsePlannerRuntimeStats(response);
@@ -1049,6 +1071,10 @@ export function BuildPlanPage() {
   }, [navigate, subjectId]);
 
   const handleSend = useCallback(async () => {
+    if (plannerStreaming) {
+      handleStopPlannerStream();
+      return;
+    }
     const text = inputValue.trim();
     logPlannerDebug("click_send_plan_message", {
       subjectId,
@@ -1079,6 +1105,8 @@ export function BuildPlanPage() {
     setInputValue("");
     setIsRevisingPlan(false);
     setPlannerStreaming(true);
+    const controller = new AbortController();
+    plannerAbortControllerRef.current = controller;
     plannerStreamingRawRef.current = "";
     setPlannerStreamingPreview("");
     const initialStatus = shouldCreateSession
@@ -1098,6 +1126,7 @@ export function BuildPlanPage() {
             user_goal: text,
           },
           {
+            signal: controller.signal,
             onStatus: (payload) => {
               setPlannerStreamingStatus(resolvePlannerStatusText(payload));
               setPlannerStreamingEvents((prev) => appendPlannerStreamEvent(prev, payload));
@@ -1123,6 +1152,7 @@ export function BuildPlanPage() {
       }
 
       const response = await revisePlannerSessionStream(subjectId, plannerSessionId, text, {
+        signal: controller.signal,
         onStatus: (payload) => {
           setPlannerStreamingStatus(resolvePlannerStatusText(payload));
           setPlannerStreamingEvents((prev) => appendPlannerStreamEvent(prev, payload));
@@ -1144,6 +1174,11 @@ export function BuildPlanPage() {
         plannerStreamingPreview || plannerStreamingRawRef.current.replace(/\r/g, "").trim(),
       );
     } catch (error) {
+      if (isAbortError(error)) {
+        logPlannerDebug("send_plan_message_aborted", { subjectId });
+        setMessages((prev) => [...prev, createMessage("system", "已停止生成，你可以继续输入新的调整。")]);
+        return;
+      }
       logPlannerDebug("send_plan_message_failed", {
         subjectId,
         error: getApiErrorMessage(error, "unknown"),
@@ -1153,6 +1188,7 @@ export function BuildPlanPage() {
         createMessage("system", getApiErrorMessage(error, "主模型调用失败，未生成结果，请修改设置后重试。")),
       ]);
     } finally {
+      plannerAbortControllerRef.current = null;
       setPlannerStreaming(false);
       plannerStreamingRawRef.current = "";
       setPlannerStreamingPreview("");
@@ -1162,6 +1198,7 @@ export function BuildPlanPage() {
   }, [
     appendPlannerResponse,
     currentPlan,
+    handleStopPlannerStream,
     inputValue,
     isBuilding,
     isPlannerPending,
@@ -1169,6 +1206,7 @@ export function BuildPlanPage() {
     plannerFileUids,
     plannerNeedsRefresh,
     plannerSessionId,
+    plannerStreaming,
     readyFileUids.length,
     subjectId,
   ]);
@@ -1532,8 +1570,8 @@ export function BuildPlanPage() {
                     void handleSend();
                   }
                 }}
-                disabled={isBuilding}
-                placeholder={inputPlaceholder}
+                disabled={isBuilding || plannerStreaming}
+                placeholder={plannerStreaming ? "正在生成方案，点击右侧按钮可停止当前生成" : inputPlaceholder}
                 rows={1}
                 className="flex-1 resize-none border-0 bg-transparent text-sm leading-relaxed text-zinc-800 placeholder:text-zinc-400 focus:outline-none"
                 style={{ minHeight: "24px", maxHeight: "120px" }}
@@ -1546,10 +1584,14 @@ export function BuildPlanPage() {
               <button
                 type="button"
                 onClick={() => void handleSend()}
-                disabled={!inputValue.trim() || isPlannerPending || isBuilding}
-                className="flex h-9 w-9 items-center justify-center rounded-xl bg-zinc-900 text-white disabled:bg-zinc-200 disabled:text-zinc-400"
+                disabled={isBuilding || (!plannerStreaming && (!inputValue.trim() || confirmPlannerMutation.isPending))}
+                className={
+                  plannerStreaming
+                    ? "flex h-9 w-9 items-center justify-center rounded-xl bg-red-600 text-white hover:bg-red-700"
+                    : "flex h-9 w-9 items-center justify-center rounded-xl bg-zinc-900 text-white disabled:bg-zinc-200 disabled:text-zinc-400"
+                }
               >
-                <ArrowUp className="h-4 w-4" />
+                {plannerStreaming ? <X className="h-4 w-4" /> : <ArrowUp className="h-4 w-4" />}
               </button>
             </div>
 
