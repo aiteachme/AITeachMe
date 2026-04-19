@@ -140,7 +140,7 @@ backend/app/api/knowledge_docs.py
 -> app.workflows.digest.planner
 -> backend/app/workflows/digest/planner/
 -> confirmed_plan
--> backend/app/workflows/digest/docgen/builds.py
+-> backend/app/workflows/digest/docgen/lib/build_lifecycle.py
 -> backend/app/workflows/digest.run_docgen_workflow
 ```
 
@@ -155,7 +155,7 @@ backend/app/api/knowledge_docs.py
 
 ### 5.2 DocGen 阶段
 
-- `docgen/builds.py` 读取 confirmed plan
+- `docgen/lib/build_lifecycle.py` 读取 confirmed plan
 - 校验 build lock、文件选择、向量状态
 - 调 `app.workflows.digest.run_docgen_workflow`
 - docgen graph 再去执行 research / writer / assemble / publish
@@ -318,7 +318,7 @@ backend/app/api/knowledge_docs.py
 6. `backend/app/workflows/support/README.md`
 7. `backend/app/api/knowledge_docs.py`
 8. `backend/app/workflows/digest/planner/graph.py`
-9. `backend/app/workflows/digest/docgen/builds.py`
+9. `backend/app/workflows/digest/docgen/lib/build_lifecycle.py`
 10. `backend/app/workflows/digest/planner/`
 11. `backend/app/workflows/digest/docgen/`
 12. `frontend/src/App.tsx` 与 `frontend/src/pages/*`

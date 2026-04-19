@@ -104,7 +104,6 @@ docgen/
   __init__.py              # lane 稳定导入面
   graph.py                 # LangGraph 定义、初始 state、Send 分发
   state.py                 # DocGenState TypedDict
-  builds.py                # API-facing 构建触发、状态装配、后台任务编排
   nodes/                   # 顶层图节点
   lib/                     # 节点内部复用逻辑和 Pydantic 合同
   prompts/                 # prompt builder / template
@@ -116,7 +115,7 @@ docgen/
 
 说明：
 
-- `builds.py` 不是 LangGraph 节点，而是 DocGen lane 的 API-facing 构建入口。
+- `lib/build_lifecycle.py` 承接 DocGen lane 的构建触发、状态装配、后台任务编排和查询结果组装。
 - 知识产物清理已收口到 `digest/common/cleanup.py`，因为它清理的是 Digest 级知识产物，而不是 DocGen 私有中间状态。
 - 新增节点优先放 `nodes/`，节点内部可复用逻辑放 `lib/`。
 - 不新增 `runtime/`、`internal/`、`services/`、第二套 search/tool registry。

@@ -170,7 +170,7 @@ teaching tool 不是新的独立教学层。当前通用实现是内置 tool，�
 
 - graph builder：`build_<lane>_graph`
 - workflow runner：`run_<lane>_workflow`
-- application 文件：按 use case 命名，例如 `build_plans.py`、`builds.py`
+- application 文件：按 use case 命名，例如 `build_plans.py`、`lifecycle.py`
 - LangGraph 节点 id、节点文件名、函数名使用小写蛇形英文，例如 `load_context.py`
 - README、手写 Mermaid、前端进度文案优先使用中文展示名，例如“读取上下文”“生成章节”“发布文档”
 - 手写 Mermaid 推荐写成“中文展示名 + 英文节点 id”的形式，既方便阅读，也方便回到代码定位

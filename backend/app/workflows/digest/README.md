@@ -66,4 +66,4 @@ from app.workflows.digest.planner import (
 - `kg_file_ingest`
 - `kg_docs_sync`
 
-如果要看具体编排，优先进入各链路下的 `graph.py`、`builds.py`、`state.py`
+如果要看具体编排，优先进入各链路下的 `graph.py`、`state.py`；API-facing 构建入口优先看对应 lane 的 `lib/*lifecycle*.py`

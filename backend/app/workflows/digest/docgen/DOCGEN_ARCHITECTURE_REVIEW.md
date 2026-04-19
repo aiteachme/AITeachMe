@@ -64,7 +64,7 @@ Planner 负责用户确认级计划，DocGen 只消费 confirmed plan。
 ```text
 backend/app/api/knowledge_docs.py
 backend/app/workflows/digest/planner/
-backend/app/workflows/digest/docgen/builds.py
+backend/app/workflows/digest/docgen/lib/build_lifecycle.py
 backend/app/workflows/digest/docgen/graph.py
 ```
 

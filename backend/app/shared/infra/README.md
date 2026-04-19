@@ -30,7 +30,7 @@ shared.infra -> shared.kernel
 api/knowledge_docs.py
 -> app.workflows.digest.planner
 -> confirmed_plan
--> workflows/digest/docgen/builds.py
+-> workflows/digest/docgen/lib/build_lifecycle.py
 -> app.workflows.digest.run_docgen_workflow
 ```
 
