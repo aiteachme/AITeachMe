@@ -10,7 +10,7 @@ MERMAID_PLACEHOLDER_PATTERN = re.compile(r"<!--\s*\[MERMAID:\s*(.+?)\]\s*-->")
 IMAGE_PLACEHOLDER_PATTERN = re.compile(r"<!--\s*\[IMAGE:\s*(.+?)\]\s*-->")
 HEADER_PATTERN = re.compile(r"^(#{1,6})\s+(.+?)\s*$", re.MULTILINE)
 KNOWLEDGE_ANCHOR_PATTERN = re.compile(
-    r"\s*(?:\{#ku_[A-Za-z0-9_-]+\}|<!--\s*ATM_KU:\s*ku_[A-Za-z0-9_-]+\s*-->)"
+    r"\s*(?:\{#ku_[\w-]+\}|<!--\s*ATM_KU:\s*ku_[\w-]+\s*-->)"
 )
 MERMAID_START_PATTERN = re.compile(
     r"^(?P<prefix>(?:>\s*)*)```\s*(?P<lang>mermaid|mindmap|graph|flowchart|sequenceDiagram|classDiagram|stateDiagram(?:-v2)?|erDiagram|gantt|pie|journey|timeline|gitGraph)?\s*$",

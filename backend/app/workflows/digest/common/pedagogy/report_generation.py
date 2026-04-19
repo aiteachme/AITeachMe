@@ -55,7 +55,7 @@ _TITLE_SPECIFICITY_KEYWORDS = (
 )
 _HEADING_RE = re.compile(r"^\s{0,3}(#{1,6})\s+(.+?)\s*$", re.MULTILINE)
 _CODE_FENCE_RE = re.compile(r"```[\s\S]*?```", re.MULTILINE)
-_KU_ANCHOR_RE = re.compile(r"(?:\{#ku_[A-Za-z0-9_-]+\}|<!--\s*ATM_KU:\s*ku_[A-Za-z0-9_-]+\s*-->)")
+_KU_ANCHOR_RE = re.compile(r"(?:\{#ku_[\w-]+\}|<!--\s*ATM_KU:\s*ku_[\w-]+\s*-->)")
 _HTML_COMMENT_RE = re.compile(r"<!--[\s\S]*?-->")
 _SUBJECT_SLUG_RE = re.compile(r"^subj_[a-z0-9_-]+$", re.IGNORECASE)
 _GENERIC_FOCUS_TERMS = {
