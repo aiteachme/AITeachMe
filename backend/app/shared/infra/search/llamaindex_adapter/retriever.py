@@ -87,7 +87,18 @@ class ATMKnowledgeRetriever:
         """Sync fallback."""
         import asyncio
 
-        return asyncio.get_event_loop().run_until_complete(self.aretrieve(query))
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = None
+
+        if loop and loop.is_running():
+            raise RuntimeError(
+                "Cannot call sync retrieve() from within a running event loop. "
+                "Use aretrieve() instead."
+            )
+
+        return asyncio.run(self.aretrieve(query))
 
 
 def build_knowledge_retriever(
