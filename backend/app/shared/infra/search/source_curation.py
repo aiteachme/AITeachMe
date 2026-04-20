@@ -12,12 +12,24 @@ from app.shared.infra.search.types import SearchResult
 _TRUSTED_DOMAIN_KEYWORDS = (
     ".edu",
     ".gov",
-    ".org",
     "wikipedia.org",
+    "wikibooks.org",
+    "wikiversity.org",
+    "wiktionary.org",
+    "oi-wiki.org",
+    "oi-wiki.com",
+    "oiwiki.com",
+    "oi.wiki",
     "mathworld.wolfram.com",
     "ocw.mit.edu",
+    "openstax.org",
+    "open.umn.edu",
+    "oercommons.org",
     "xuetangx.com",
     "icourse163.org",
+)
+
+_LOW_CONFIDENCE_DOMAIN_KEYWORDS = (
     "zhihu.com",
     "csdn.net",
 )
@@ -63,7 +75,8 @@ def _tokenize(text: str) -> list[str]:
 
 def _domain_from_url(url: str) -> str:
     parsed = urlparse(url)
-    return parsed.netloc.lower().strip()
+    domain = parsed.netloc.lower().strip()
+    return domain[4:] if domain.startswith("www.") else domain
 
 
 class SourceCurator(BaseTracedExecution):
@@ -102,7 +115,7 @@ class SourceCurator(BaseTracedExecution):
         curated_domains = [_domain_from_url(item.url) for item in curated if not item.url.startswith("local://")]
         domain_counts = Counter(domain for domain in curated_domains if domain)
         trusted_source_count = sum(
-            1 for item in curated if self._credibility_score(item.url, domain=_domain_from_url(item.url)) >= 0.8
+            1 for item in curated if self._credibility_score(item, domain=_domain_from_url(item.url)) >= 0.8
         )
         local_source_count = sum(1 for item in curated if item.url.startswith("local://"))
         web_source_count = max(0, len(curated) - local_source_count)
@@ -169,7 +182,7 @@ class SourceCurator(BaseTracedExecution):
 
         def score(item: SearchResult) -> tuple[float, float, float, float, int, str]:
             domain = _domain_from_url(item.url)
-            credibility = self._credibility_score(item.url, domain=domain)
+            credibility = self._credibility_score(item, domain=domain)
             lexical = self._lexical_score(query_tokens, item)
             phrase = self._phrase_match_score(query, item)
             base_score = float(item.score or 0.0)
@@ -180,15 +193,17 @@ class SourceCurator(BaseTracedExecution):
 
         return sorted(sources, key=score, reverse=True)
 
-    def _credibility_score(self, url: str, *, domain: str) -> float:
+    def _credibility_score(self, item: SearchResult, *, domain: str) -> float:
         """Return a coarse source-quality score used only as a ranking feature."""
 
-        if url.startswith("local://"):
+        if item.url.startswith("local://"):
             return 1.0
         if not domain:
             return 0.0
         if any(keyword in domain for keyword in _TRUSTED_DOMAIN_KEYWORDS):
             return 0.85
+        if any(keyword in domain for keyword in _LOW_CONFIDENCE_DOMAIN_KEYWORDS):
+            return 0.45
         if domain.endswith(".com"):
             return 0.35
         return 0.5

@@ -126,6 +126,8 @@ search:
   # 进程内检索缓存最大条目数。
   runtime_cache_max_entries: 256
   # 检索 profile 覆盖表；空对象表示使用代码内置 profile。
+  # 内置 profile 包括 docgen_sprint / docgen_systematic / docgen_zh_oer / docgen_zh_math。
+  # 中文 OER profile 会优先检索中文维基教科书、中文维基学院、中文维基百科和 OI Wiki。
   retriever_profiles: {}
 
 observability:
