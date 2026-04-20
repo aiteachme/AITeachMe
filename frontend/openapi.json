@@ -9188,17 +9188,13 @@
             "title": "Content",
             "description": "反馈内容。"
           },
-          "screenshot": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Screenshot",
-            "description": "可选的 Base64 截图。"
+          "images": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Images",
+            "description": "可选的 Base64 截图列表。"
           }
         },
         "type": "object",

@@ -32,7 +32,6 @@ import { KnowledgeBuildResolutionModal } from "../components/pages/KnowledgeBuil
 import { PlannerPreviewMarkdown } from "../components/pages/PlannerPreviewMarkdown";
 import { FullPageDropOverlay } from "../components/ui/FullPageDropOverlay";
 import { useKnowledgeBuildFlow } from "../hooks/useKnowledgeBuildFlow";
-import { createGraphDebugBuildLocationState } from "../lib/knowledgeBuildNavigation";
 import { buildKnowledgeDocStateQueryKey, fetchKnowledgeDocState } from "../lib/knowledgeDocs";
 import { getStoredAppSettings, useSettings } from "../hooks/useSettings";
 import type { FileRecord, FilesData, FilesUploadData } from "../types/files";

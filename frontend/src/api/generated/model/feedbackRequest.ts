@@ -12,6 +12,6 @@
 export interface FeedbackRequest {
   /** 反馈内容。 */
   content: string;
-  /** 可选的 Base64 截图。 */
-  screenshot?: string | null;
+  /** 可选的 Base64 截图列表。 */
+  images?: string[];
 }
