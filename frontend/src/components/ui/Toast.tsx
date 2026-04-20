@@ -197,8 +197,8 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
     <ToastContext.Provider value={value}>
       {children}
 
-      {/* Toast container — fixed top-right, matching common SaaS patterns */}
-      <div className="pointer-events-none fixed top-5 right-5 z-[9999] flex flex-col items-end gap-2">
+      {/* Toast container — below the fixed user bar. */}
+      <div className="pointer-events-none fixed right-5 top-20 z-[9999] flex flex-col items-end gap-2 md:right-6">
         <AnimatePresence mode="popLayout">
           {items.map((item) => (
             <ToastCard key={item.id} item={item} onDismiss={dismiss} />

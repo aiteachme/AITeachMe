@@ -31,7 +31,6 @@ import type { ApiResponse } from "../api/types";
 import { BuildView, ACTIVE_DOC_BUILD_STATUSES, parseIsoTimestamp, useDocBuildProgress } from "../components/knowledge-docs";
 import { KnowledgeBuildResolutionModal } from "../components/pages/KnowledgeBuildResolutionModal";
 import { PlannerPreviewMarkdown } from "../components/pages/PlannerPreviewMarkdown";
-import { SubjectVectorNotice } from "../components/pages/SubjectVectorNotice";
 import { FullPageDropOverlay } from "../components/ui/FullPageDropOverlay";
 import { useKnowledgeBuildFlow } from "../hooks/useKnowledgeBuildFlow";
 import { createGraphDebugBuildLocationState } from "../lib/knowledgeBuildNavigation";
@@ -430,17 +429,11 @@ function PlannerOutlineCard({
 function BuildInProgressBubble({
   progress,
   statusText,
-  isActive,
-  isCancelling,
   onOpen,
-  onCancel,
 }: {
   progress: number;
   statusText: string;
-  isActive: boolean;
-  isCancelling: boolean;
   onOpen: () => void;
-  onCancel: () => void;
 }) {
   return (
     <button
@@ -469,29 +462,6 @@ function BuildInProgressBubble({
               style={{ width: `${Math.max(8, Math.min(100, progress))}%` }}
             />
           </div>
-          {isActive ? (
-            <div className="mt-4 flex justify-end">
-              <span
-                role="button"
-                tabIndex={0}
-                onClick={(event) => {
-                  event.stopPropagation();
-                  onCancel();
-                }}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter" || event.key === " ") {
-                    event.preventDefault();
-                    event.stopPropagation();
-                    onCancel();
-                  }
-                }}
-                className="inline-flex items-center gap-1.5 rounded-md border border-red-200 bg-red-50 px-2.5 py-1.5 text-xs font-medium text-red-700"
-              >
-                {isCancelling ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <X className="h-3.5 w-3.5" />}
-                终止构建
-              </span>
-            </div>
-          ) : null}
         </div>
       </div>
     </button>
@@ -1657,10 +1627,7 @@ export function BuildPlanPage() {
                   <BuildInProgressBubble
                     progress={buildProgress}
                     statusText={buildPreview?.current_stage_description?.trim() || buildStatusText}
-                    isActive={isBuildActive}
-                    isCancelling={cancelBuildMutation.isPending}
                     onOpen={handleOpenKnowledgeDocs}
-                    onCancel={handleCancelBuild}
                   />
                 </div>
               </div>
@@ -1678,14 +1645,6 @@ export function BuildPlanPage() {
             ) : null}
 
             <div ref={chatEndRef} />
-          </div>
-        </div>
-
-        <div className="px-4 md:px-8 lg:px-16">
-          <div className="mx-auto max-w-3xl">
-            <SubjectVectorNotice
-              status={knowledgeBuild.latestVectorStatus ?? knowledgeDocState.data?.vector_status}
-            />
           </div>
         </div>
 
@@ -1731,15 +1690,32 @@ export function BuildPlanPage() {
               />
               <button
                 type="button"
-                onClick={() => void handleSend()}
-                disabled={isBuilding || (!plannerStreaming && (!inputValue.trim() || confirmPlannerMutation.isPending))}
+                onClick={() => {
+                  if (isBuilding) {
+                    handleCancelBuild();
+                    return;
+                  }
+                  void handleSend();
+                }}
+                disabled={
+                  (isBuilding && !isBuildActive) ||
+                  cancelBuildMutation.isPending ||
+                  (!isBuilding && !plannerStreaming && (!inputValue.trim() || confirmPlannerMutation.isPending))
+                }
+                title={isBuilding ? "终止当前构建" : plannerStreaming ? "停止当前生成" : "发送"}
                 className={
-                  plannerStreaming
+                  isBuilding || plannerStreaming
                     ? "flex h-9 w-9 items-center justify-center rounded-xl bg-red-600 text-white hover:bg-red-700"
                     : "flex h-9 w-9 items-center justify-center rounded-xl bg-zinc-900 text-white disabled:bg-zinc-200 disabled:text-zinc-400"
                 }
               >
-                {plannerStreaming ? <X className="h-4 w-4" /> : <ArrowUp className="h-4 w-4" />}
+                {cancelBuildMutation.isPending ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : isBuilding || plannerStreaming ? (
+                  <X className="h-4 w-4" />
+                ) : (
+                  <ArrowUp className="h-4 w-4" />
+                )}
               </button>
             </div>
 
