@@ -12,6 +12,8 @@ import os
 from functools import lru_cache
 from pathlib import Path
 
+from dotenv import dotenv_values
+
 _PROJECT_ROOT = Path(__file__).resolve().parents[4]
 _BACKEND_ROOT = _PROJECT_ROOT / "backend"
 _DOTENV_CANDIDATES = (
@@ -30,19 +32,14 @@ def load_local_dotenv() -> None:
         if not path.exists():
             continue
         try:
-            text = path.read_text(encoding="utf-8")
+            values = dotenv_values(path, encoding="utf-8")
         except Exception:
             continue
-        for raw_line in text.splitlines():
-            line = raw_line.strip()
-            if not line or line.startswith("#") or "=" not in line:
-                continue
-            key, _, raw_value = line.partition("=")
-            env_key = key.strip()
+        for key, value in values.items():
+            env_key = str(key or "").strip()
             if not env_key or env_key in os.environ:
                 continue
-            value = raw_value.strip().strip('"').strip("'")
-            os.environ[env_key] = value
+            os.environ[env_key] = "" if value is None else str(value)
 
 
 def get_env(name: str, default: str | None = None) -> str | None:
