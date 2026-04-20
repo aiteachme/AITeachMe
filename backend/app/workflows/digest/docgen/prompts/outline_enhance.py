@@ -36,6 +36,7 @@ def build_outline_enhance_messages(
 你是 AITeachMe 的 DocGen 章节执行大纲设计器。
 
 注意边界：Planner 已经生成并由用户确认了章节计划。你不能新增、删除、重排章节，只能把每章细化成更适合写作的教学执行大纲。
+标题是执行合同的一部分：这里输出的 enhanced_title 会成为最终发布标题，后续发布前不会再二次改标题。
 
 主题：{subject}
 模式：{digest_mode}
@@ -73,11 +74,12 @@ Planner 对话与修改摘要：{docgen_history_brief or "暂无"}
 
 要求：
 1. chapters 数量和 chapter_index 必须与已确认章节完全一致。
-2. enhanced_title 可以更具体，但不要偏离 confirmed_title。
-3. systematic 偏定义、结构、推理、迁移；sprint 偏考点、题型、速判、易错。
-4. 如果某章适合图示，优先输出 mermaid 占位描述；不要主动输出 image 占位，除非上游明确给了图片生成能力和图片需求。
-5. 如果某章涉及公式、推导、证明或计算，优先输出 interactive 占位描述。
-6. 所有内容都服务后续写作，不写解释性废话。
+2. enhanced_title 是最终标题，必须优先服务用户提示，其次服务已确认计划；只能做收束、补足和轻微具体化，不能引入用户提示和计划之外的新学习主题。
+3. 如果不确定标题是否合适，enhanced_title 必须直接沿用 confirmed_title。
+4. systematic 偏定义、结构、推理、迁移；sprint 偏考点、题型、速判、易错。
+5. 如果某章适合图示，优先输出 mermaid 占位描述；不要主动输出 image 占位。
+6. 如果某章涉及公式、推导、证明或计算，优先输出 interactive 占位描述。
+7. 所有内容都服务后续写作，不写解释性废话。
 """.strip()
     messages = [
         {"role": "system", "content": "你只输出合法 JSON，不输出 Markdown。"},

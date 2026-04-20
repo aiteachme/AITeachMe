@@ -1,8 +1,8 @@
 """Curated site-specific retrievers.
 
 This package keeps one-domain adapters separate from general web search
-providers. Some of them are open educational resources (OER); others are
-ordinary site-constrained fallbacks.
+providers. They are explicit integrations for known sites, not a generic
+"enter any website" crawling mechanism.
 """
 
 from .baidu_baike import BaiduBaikeRetriever

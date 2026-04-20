@@ -51,6 +51,24 @@ api/knowledge_docs.py
 - planner / docgen 可以依赖 `infra`
 - `infra` 不反向感知 planner / docgen 的业务语义
 
+### Search 边界
+
+`shared.infra.search` 只负责“发现来源、读取材料、压缩上下文”，不负责决定教学策略，也不负责生成最终答案。
+
+稳定调用面：
+
+```python
+from app.shared.infra.search import web_search, search_knowledge
+```
+
+约定：
+
+- workflow 默认调用 `web_search()` 或 `search_knowledge()`。
+- 只有 search 层内部、调试工具或特殊 workflow 才直接调用 `dispatch_web_search()`。
+- retriever 名是稳定配置名，统一用小写 snake_case。
+- profile 名表达场景，不表达底层实现，例如 `docgen_zh_edu`、`docgen_zh_math`、`docgen_sprint`。
+- 不提供泛化抓站入口。新增外部网站必须是明确站点适配器，放入 `search/retrievers/sites/` 并说明使用边界。
+
 ## workflow / observability 公开接口
 
 现在 workflow 相关公开接口已经极简收口。

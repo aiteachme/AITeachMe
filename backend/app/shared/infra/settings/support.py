@@ -30,8 +30,6 @@ RETRIEVER_ALIASES: dict[str, str] = {
     "jina": "jina_search",
     "baidu_ai": "baidu_ai_search",
     "baidu_search": "baidu_ai_search",
-    "custom": "custom_endpoint",
-    "custom_retriever": "custom_endpoint",
     "google": "google_cse",
     "google_custom_search": "google_cse",
     "mcp": "mcp_search",
@@ -49,7 +47,7 @@ RETRIEVER_ALIASES: dict[str, str] = {
     "wikiversity_zh": "zh_wikiversity",
     "wiktionary_zh": "zh_wiktionary",
 }
-ZH_OER_RETRIEVERS: list[str] = [
+ZH_EDU_RETRIEVERS: list[str] = [
     "zh_wikibooks",
     "zh_wikiversity",
     "zh_wikipedia",
@@ -78,14 +76,13 @@ DEFAULT_RETRIEVERS: list[str] = [
     "arxiv",
     "semantic_scholar",
     "pubmed_central",
-    "custom_endpoint",
     "mcp_search",
     "duckduckgo",
 ]
 DOCGEN_RETRIEVERS: list[str] = [
     "local_rag",
-    *ZH_OER_RETRIEVERS,
-    *[name for name in DEFAULT_RETRIEVERS if name not in {"local_rag", *ZH_OER_RETRIEVERS}],
+    *ZH_EDU_RETRIEVERS,
+    *[name for name in DEFAULT_RETRIEVERS if name not in {"local_rag", *ZH_EDU_RETRIEVERS}],
 ]
 ZH_MATH_RETRIEVERS: list[str] = [
     "local_rag",
@@ -105,9 +102,9 @@ DEFAULT_RETRIEVER_PROFILES: dict[str, list[str]] = {
     "docgen_sprint": list(DOCGEN_RETRIEVERS),
     "docgen_academic": list(DOCGEN_RETRIEVERS),
     "docgen_systematic": list(DOCGEN_RETRIEVERS),
-    "docgen_zh_oer": [
+    "docgen_zh_edu": [
         "local_rag",
-        *ZH_OER_RETRIEVERS,
+        *ZH_EDU_RETRIEVERS,
         "duckduckgo",
     ],
     "docgen_zh_math": list(ZH_MATH_RETRIEVERS),
@@ -271,7 +268,7 @@ __all__ = [
     "EMBEDDING_DIM_BY_MODEL",
     "RETRIEVER_PROFILES",
     "ZH_MATH_RETRIEVERS",
-    "ZH_OER_RETRIEVERS",
+    "ZH_EDU_RETRIEVERS",
     "get_retriever_profiles",
     "load_project_settings_values",
     "normalize_profile_name",

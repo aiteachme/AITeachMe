@@ -40,7 +40,6 @@ _RETRIEVER_TRACE_LABELS = {
     "baidu_ai_search": "检索：百度AI搜索",
     "openrouter_search": "检索：OpenRouter搜索",
     "pubmed_central": "检索：PubMed Central",
-    "custom_endpoint": "检索：自定义端点",
     "mcp_search": "检索：MCP工具",
     "arxiv": "检索：arXiv论文",
     "semantic_scholar": "检索：Semantic Scholar",

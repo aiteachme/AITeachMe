@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from typing import Any
+import re
 
 import structlog
 
@@ -19,6 +20,64 @@ from app.workflows.digest.docgen.lib.models import (
 from app.workflows.digest.docgen.prompts.outline_enhance import build_outline_enhance_messages
 
 logger = structlog.get_logger(__name__)
+_TITLE_STOPWORDS = {
+    "数学",
+    "知识",
+    "学习",
+    "章节",
+    "核心",
+    "内容",
+    "基础",
+    "应用",
+    "模块",
+    "策略",
+    "理解",
+    "方法",
+    "讲解",
+    "解析",
+}
+
+
+def _title_terms(value: str) -> set[str]:
+    normalized = re.sub(r"[^\w\u4e00-\u9fff]+", " ", str(value or "")).strip()
+    terms: set[str] = set()
+    for token in normalized.split():
+        token = token.strip().casefold()
+        if len(token) >= 3 and token not in _TITLE_STOPWORDS:
+            terms.add(token)
+    cjk = "".join(re.findall(r"[\u4e00-\u9fff]+", normalized))
+    for size in (4, 3, 2):
+        for index in range(0, max(0, len(cjk) - size + 1)):
+            item = cjk[index : index + size]
+            if item and item not in _TITLE_STOPWORDS:
+                terms.add(item)
+    return terms
+
+
+def _resolve_enhanced_title(
+    candidate_title: str,
+    *,
+    confirmed_title: str,
+    user_prompt: str,
+    plan_summary: str,
+) -> tuple[str, str | None]:
+    candidate = clean_text(candidate_title)
+    confirmed = clean_text(confirmed_title)
+    if not candidate:
+        return confirmed, None
+    if len(candidate) > 32:
+        return confirmed, f"标题 `{candidate}` 过长，已回退到 confirmed title。"
+    if candidate == confirmed or candidate in confirmed or confirmed in candidate:
+        return candidate, None
+
+    user_terms = _title_terms(user_prompt)
+    plan_terms = _title_terms(" ".join([confirmed, plan_summary]))
+    candidate_terms = _title_terms(candidate)
+    if candidate_terms & user_terms:
+        return candidate, None
+    if candidate_terms & plan_terms:
+        return candidate, None
+    return confirmed, f"标题 `{candidate}` 与用户提示和 confirmed plan 锚点不一致，已回退到 `{confirmed}`。"
 
 
 def fallback_enhance_plan_outline(
@@ -75,6 +134,8 @@ def _coerce_outline_batch(
     chapters: Sequence[Mapping[str, Any]],
     *,
     digest_mode: str,
+    user_prompt: str,
+    plan_summary: str,
 ) -> tuple[list[EnhancedChapterOutline], list[str]]:
     fallback = {
         outline.chapter_index: outline
@@ -92,8 +153,14 @@ def _coerce_outline_batch(
             continue
         candidate.chapter_index = chapter_index
         candidate.confirmed_title = base.confirmed_title
-        if not candidate.enhanced_title:
-            candidate.enhanced_title = base.enhanced_title
+        candidate.enhanced_title, title_warning = _resolve_enhanced_title(
+            candidate.enhanced_title,
+            confirmed_title=base.confirmed_title,
+            user_prompt=user_prompt,
+            plan_summary=plan_summary,
+        )
+        if title_warning:
+            warnings.append(title_warning)
         if not candidate.objective:
             candidate.objective = base.objective
         if not candidate.teaching_outline:
@@ -144,7 +211,13 @@ async def enhance_plan_outline(
         batch = response if isinstance(response, EnhancedChapterOutlineBatch) else EnhancedChapterOutlineBatch.model_validate(response)
     except Exception:
         return fallback, ["计划大纲增强结果无法解析，已使用 confirmed plan 规则增强结果。"]
-    return _coerce_outline_batch(batch, chapters, digest_mode=digest_mode)
+    return _coerce_outline_batch(
+        batch,
+        chapters,
+        digest_mode=digest_mode,
+        user_prompt=user_prompt,
+        plan_summary=plan_summary,
+    )
 
 
 __all__ = ["enhance_plan_outline", "fallback_enhance_plan_outline"]

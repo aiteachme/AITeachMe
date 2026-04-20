@@ -18,10 +18,12 @@ import {
   Sparkles,
   RefreshCw,
   ExternalLink,
+  Download,
 } from "lucide-react";
 import { cn } from "../lib/utils";
 import { getApiErrorMessage, postSseJson } from "../api/client";
 import { apiClient } from "../api/client";
+import { useToast } from "../components/ui/Toast";
 import { useSubjectAiAssistant } from "../components/ai/SubjectAiAssistant";
 import { useResizablePanel } from "../hooks/useResizablePanel";
 import {
@@ -33,6 +35,7 @@ import {
 import { SubjectVectorNotice } from "../components/pages/SubjectVectorNotice";
 import { MermaidBlock } from "../components/ui/MermaidBlock";
 import { preprocessLaTeX } from "../components/ui/MarkdownViewer";
+import { downloadKnowledgeDocExport, type KnowledgeDocExportFormat } from "../lib/knowledgeDocs";
 
 const KnowledgeGraphSidePanel = lazy(() =>
   import("../components/pages/KnowledgeGraphSidePanel").then((module) => ({
@@ -857,6 +860,7 @@ function CommentThread({
 
 export function KnowledgeDocsPage() {
   const { openAssistant } = useSubjectAiAssistant();
+  const { toast } = useToast();
   const {
     subjectId,
     docMarkdownQuery,
@@ -919,6 +923,7 @@ export function KnowledgeDocsPage() {
     typeof window !== "undefined" ? window.innerWidth < COMPACT_PANEL_BREAKPOINT : false
   );
   const [activeDrawer, setActiveDrawer] = useState<"toc" | "comment" | null>(null);
+  const [exportingFormat, setExportingFormat] = useState<KnowledgeDocExportFormat | null>(null);
 
   const [isGraphDrawerOpen, setIsGraphDrawerOpen] = useState(false);
   const { width: graphPanelWidth, isDragging: isGraphDragging, handleMouseDown: handleGraphMouseDown } = useResizablePanel({
@@ -942,6 +947,33 @@ export function KnowledgeDocsPage() {
 
   const isTocVisible = isCompactPanels ? activeDrawer === "toc" : !isTocCollapsed;
   const isCommentVisible = isCompactPanels ? activeDrawer === "comment" : !isCommentCollapsed;
+  const canExportPublishedDoc = Boolean(subjectId && hasLiveDocMarkdown);
+
+  const handleExportDocument = useCallback(
+    async (format: KnowledgeDocExportFormat) => {
+      if (!subjectId || exportingFormat) {
+        return;
+      }
+      setExportingFormat(format);
+      try {
+        await downloadKnowledgeDocExport(subjectId, format);
+        toast({
+          title: "导出已开始",
+          description: format === "pdf" ? "正在下载最终合并知识文档 PDF。" : "正在下载最终合并知识文档 Markdown。",
+          variant: "success",
+        });
+      } catch (error) {
+        toast({
+          title: "导出失败",
+          description: getApiErrorMessage(error, "知识文档导出失败，请稍后重试。"),
+          variant: "error",
+        });
+      } finally {
+        setExportingFormat(null);
+      }
+    },
+    [exportingFormat, subjectId, toast],
+  );
 
   const openGraphPanel = useCallback(() => {
     setIsGraphDrawerOpen(true);
@@ -2681,6 +2713,28 @@ export function KnowledgeDocsPage() {
                 <article
                   className="min-w-0 flex-1 px-6 py-8 md:px-10 md:py-10"
                 >
+                  {canExportPublishedDoc ? (
+                    <div className="mb-4 flex flex-wrap items-center justify-end gap-2">
+                      <button
+                        type="button"
+                        onClick={() => void handleExportDocument("md")}
+                        disabled={exportingFormat !== null}
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-[#DEE0E3] bg-white px-3 py-2 text-[13px] font-medium text-[#1F2329] shadow-sm transition hover:bg-[#F5F6F7] disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {exportingFormat === "md" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
+                        导出 MD
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void handleExportDocument("pdf")}
+                        disabled={exportingFormat !== null}
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-[#DEE0E3] bg-white px-3 py-2 text-[13px] font-medium text-[#1F2329] shadow-sm transition hover:bg-[#F5F6F7] disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {exportingFormat === "pdf" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
+                        导出 PDF
+                      </button>
+                    </div>
+                  ) : null}
                   <SubjectVectorNotice status={docMarkdownQuery.data?.vector_status} className="mb-6" />
                   {docMarkdownQuery.isError ? (
                     <DocLoadErrorState

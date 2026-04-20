@@ -525,7 +525,7 @@ merge_review
 验收：
 
 - `final_merge_patch_report` 进入 manifest。
-- `finalize_titles` 仍只执行一次。
+- `finalize_titles` 仍只执行一次，但只同步已锁定标题，不再调用 LLM 改标题。
 - patch 失败不阻断发布，只记录 warning。
 
 ## 12. Phase 10：动态研究预算

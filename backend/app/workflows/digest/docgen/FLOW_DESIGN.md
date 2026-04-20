@@ -116,8 +116,8 @@ final_merge_patch
   |
   v
 finalize_titles
-  LLM 复核最终章节标题，保持 chapter_index 和 confirmed plan 语义映射。
-  同步改写每章 Markdown 一级标题，并重新生成整本 Markdown。
+  不再生成新标题；只同步 confirm_and_dispatch / build_document_backbone 阶段锁定的标题。
+  保持 chapter_index 和 confirmed plan 语义映射，同步改写每章 Markdown 一级标题，并重新生成整本 Markdown。
   |
   v
 publish_document
@@ -367,9 +367,10 @@ finalize_titles
   输出：final_chapter_titles / updated chapter_metadatas / title_review_report
   作用：标题收口，保持 chapter_index 和 confirmed plan 映射。
   当前实现：
-    - LLM 复核整本章节标题。
+    - 不调用 LLM，不生成新标题。
+    - 只使用 confirm_and_dispatch / build_document_backbone 阶段锁定的章节标题。
     - 同步改每章 Markdown 一级标题。
-    - 失败时 fallback 到规则标题。
+    - 重建整本 Markdown。
   约束：只统一标题表达，不推翻用户确认过的章节语义。
 
 publish_document
@@ -396,7 +397,7 @@ publish_document
 | `repair_or_route` | `repair_or_route` | 已落地局部 patch：可执行 surface/section patch；待补 evidence/regenerate 和真实 repair loop |
 | `merge_review` | `merge_review` | 已落地 |
 | `final_merge_patch` | 无 | 待新增，只处理合并后小问题 |
-| `finalize_titles` | `finalize_titles` | 已落地，LLM 标题复核 + Markdown 一级标题同步 |
+| `finalize_titles` | `finalize_titles` | 已落地，锁定标题同步 + Markdown 一级标题同步；不再 LLM 改标题 |
 | `publish_document` | `publish_document` | 已落地，已写 docgen artifacts manifest |
 
 ## 3. 有限回流目标设计
@@ -575,7 +576,7 @@ repair_trace
 - 重复摘要。
 - manifest 缺字段。
 
-`finalize_titles` 只执行一次，放在所有 patch 和最终一致性复核之后。
+`finalize_titles` 只执行一次，放在所有 patch 和最终一致性复核之后；它只同步已锁定标题，不再生成新标题。
 
 ## 5. 当前重大问题判断
 
