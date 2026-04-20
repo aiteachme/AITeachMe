@@ -30,6 +30,7 @@ import { ChatTranscript } from "../chat/ChatTranscript";
 // import { Button } from "../ui/Button";
 import { useChatSession } from "../../hooks/useChatSession";
 import { cn } from "../../lib/utils";
+import { useResizablePanel } from "../../hooks/useResizablePanel";
 
 interface SubjectAiAssistantProviderProps {
   subjectId: string | null;
@@ -68,6 +69,12 @@ export function SubjectAiAssistantProvider({ subjectId, children }: SubjectAiAss
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
   const [isSessionDrawerOpen, setIsSessionDrawerOpen] = useState(false);
   const [selectedChunkId, setSelectedChunkId] = useState<number | null>(null);
+
+  const { width: panelWidth, isDragging, handleMouseDown } = useResizablePanel({
+    defaultWidth: 420,
+    minWidth: 320,
+    maxWidth: 800,
+  });
 
   const {
     messages,
@@ -271,11 +278,19 @@ export function SubjectAiAssistantProvider({ subjectId, children }: SubjectAiAss
 
       <div
         className={cn(
-          "h-full shrink-0 border-l border-zinc-200/80 bg-white transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] z-40 relative",
-          isOpen && hasSubject && !isBuildPage ? "w-[420px]" : "w-0 border-transparent"
+          "fixed top-0 bottom-0 right-0 z-[85] bg-white transition-opacity border-l border-zinc-200/80 shadow-[0_0_40px_rgba(0,0,0,0.1)] flex",
+          isOpen && hasSubject && !isBuildPage ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none translate-x-[10px]"
         )}
+        style={isOpen ? { width: panelWidth } : { width: 0 }}
       >
-        <div className="w-[420px] h-full relative flex flex-col bg-white overflow-hidden">
+        <div
+          className={cn(
+            "absolute top-0 bottom-0 left-0 w-1.5 -ml-[0.5px] cursor-col-resize z-50 hover:bg-blue-500/50 transition-colors",
+            isDragging && "bg-blue-500/50"
+          )}
+          onMouseDown={handleMouseDown}
+        />
+        <div className="w-full h-full relative flex flex-col bg-white overflow-hidden">
           {/* Header */}
           <div className="flex shrink-0 items-center justify-between border-b border-zinc-200/60 bg-zinc-50/50 px-4 py-3">
             <div className="flex items-center gap-2">

@@ -9,11 +9,11 @@ import "katex/dist/katex.min.css";
 import {
   FileText,
   ChevronRight,
-  ChevronLeft,
   ChevronDown,
   ChevronUp,
   Send,
   Bot,
+  Network,
   Loader2,
   Sparkles,
   RefreshCw,
@@ -23,6 +23,7 @@ import { cn } from "../lib/utils";
 import { getApiErrorMessage, postSseJson } from "../api/client";
 import { apiClient } from "../api/client";
 import { useSubjectAiAssistant } from "../components/ai/SubjectAiAssistant";
+import { useResizablePanel } from "../hooks/useResizablePanel";
 import {
   BuildView,
   type DocViewMode,
@@ -919,10 +920,12 @@ export function KnowledgeDocsPage() {
   );
   const [activeDrawer, setActiveDrawer] = useState<"toc" | "comment" | null>(null);
 
-  type GraphViewMode = "hidden" | "split" | "full";
-  const [graphViewMode, setGraphViewMode] = useState<GraphViewMode>("hidden");
-  const effectiveGraphViewMode: GraphViewMode =
-    isCompactPanels && graphViewMode !== "hidden" ? "full" : graphViewMode;
+  const [isGraphDrawerOpen, setIsGraphDrawerOpen] = useState(false);
+  const { width: graphPanelWidth, isDragging: isGraphDragging, handleMouseDown: handleGraphMouseDown } = useResizablePanel({
+    defaultWidth: typeof window !== 'undefined' ? window.innerWidth * 0.6 : 800,
+    minWidth: 400,
+    maxWidth: typeof window !== 'undefined' ? window.innerWidth * 0.9 : 1200,
+  });
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const contentAreaRef = useRef<HTMLDivElement>(null);
@@ -941,23 +944,12 @@ export function KnowledgeDocsPage() {
   const isCommentVisible = isCompactPanels ? activeDrawer === "comment" : !isCommentCollapsed;
 
   const openGraphPanel = useCallback(() => {
-    setGraphViewMode((prev) => {
-      const mode = isCompactPanels ? "full" : (prev === "hidden" ? "split" : "full");
-      if (mode === "full") {
-        setIsTocCollapsed(true);
-      }
-      return mode;
-    });
-  }, [isCompactPanels]);
+    setIsGraphDrawerOpen(true);
+  }, []);
 
   const closeGraphPanel = useCallback(() => {
-    setGraphViewMode((prev) => {
-      if (isCompactPanels) {
-        return "hidden";
-      }
-      return prev === "full" ? "split" : "hidden";
-    });
-  }, [isCompactPanels]);
+    setIsGraphDrawerOpen(false);
+  }, []);
 
   const activeTocItem = useMemo(
     () => toc.find((item) => item.id === activeHeading) ?? null,
@@ -2538,14 +2530,8 @@ export function KnowledgeDocsPage() {
   return (
     <div className="relative flex-1 w-full min-h-full overflow-hidden bg-slate-50 flex flex-row">
       
-      {/* Doc + AI Panel Wrapper */}
-      <div 
-        className={cn(
-          "relative h-full transition-all duration-500 ease-[cubic-bezier(0.25,1,0.5,1)] flex flex-col shrink-0 bg-white shadow-[10px_0_20px_-10px_rgba(0,0,0,0.05)] z-10",
-          effectiveGraphViewMode === "hidden" ? "w-full" : 
-          effectiveGraphViewMode === "split" ? "w-[65%] border-r border-slate-200" : "w-0 overflow-hidden opacity-0"
-        )}
-      >
+      {/* Main Doc Wrapper */}
+      <div className="relative h-full transition-all duration-500 ease-[cubic-bezier(0.25,1,0.5,1)] flex flex-col w-full bg-white z-10">
         {!isCompactPanels && (
         <div className="hidden lg:block absolute left-4 top-16 z-30">
           {isTocCollapsed ? (
@@ -2816,51 +2802,56 @@ export function KnowledgeDocsPage() {
       </div>
       </div>
 
-      {/* Unified Sliding Handle for All States */}
-      <div 
-        className={cn(
-          "absolute top-1/2 -translate-y-1/2 z-[70] transition-all duration-500 ease-[cubic-bezier(0.25,1,0.5,1)] flex items-center justify-center gap-[2px]",
-          effectiveGraphViewMode === "hidden" ? "right-0 opacity-90 hover:opacity-100" : 
-          effectiveGraphViewMode === "split" ? "right-[35%] translate-x-1/2 opacity-60 hover:opacity-100" : 
-          "left-0 opacity-90 hover:opacity-100"
-        )}
-      >
-        {effectiveGraphViewMode !== "full" && (
-          <button 
-            onClick={openGraphPanel}
-            className="flex items-center justify-center h-[72px] w-7 rounded-l-full bg-slate-100/50 backdrop-blur-md border border-slate-200/50 shadow-[0_2px_8px_rgba(0,0,0,0.04)] text-slate-500 transition-all duration-300 hover:w-10 hover:bg-white/95 hover:shadow-[0_4px_16px_rgba(0,0,0,0.1)] hover:text-blue-600 hover:border-slate-200/80 focus:outline-none"
-            title={effectiveGraphViewMode === "hidden" ? "打开知识图谱" : "全屏图谱"}
-          >
-            <ChevronLeft className="h-5 w-5 ml-1 transition-transform group-hover:-translate-x-0.5" />
-          </button>
-        )}
-        
-        {effectiveGraphViewMode !== "hidden" && (
-          <button 
-            onClick={closeGraphPanel}
-            className="flex items-center justify-center h-[72px] w-7 rounded-r-full bg-slate-100/50 backdrop-blur-md border border-slate-200/50 shadow-[0_2px_8px_rgba(0,0,0,0.04)] text-slate-500 transition-all duration-300 hover:w-10 hover:bg-white/95 hover:shadow-[0_4px_16px_rgba(0,0,0,0.1)] hover:text-blue-600 hover:border-slate-200/80 focus:outline-none"
-            title={effectiveGraphViewMode === "full" ? (isCompactPanels ? "收起图谱" : "分屏视图") : "收起图谱"}
-          >
-            <ChevronRight className="h-5 w-5 mr-1 transition-transform group-hover:translate-x-0.5" />
-          </button>
-        )}
-      </div>
+      {/* Graph Floating Button */}
+      {subjectId && !isBuildActive && !showDocGeneratingState && (
+        <button
+          type="button"
+          onClick={openGraphPanel}
+          className={cn(
+            "fixed bottom-20 right-6 z-[86] inline-flex h-11 items-center gap-2 rounded-2xl border border-zinc-200/80 bg-white/95 px-4 text-[14px] font-medium text-zinc-700 shadow-[0_2px_8px_rgba(0,0,0,0.04),0_8px_24px_rgba(0,0,0,0.06)] backdrop-blur-xl transition duration-300 hover:border-zinc-300 hover:bg-white hover:text-zinc-900 active:scale-[0.98]",
+            isGraphDrawerOpen ? "pointer-events-none translate-y-4 opacity-0" : "translate-y-0 opacity-100"
+          )}
+          aria-label="打开知识图谱"
+        >
+          <Network className="h-4 w-4 text-zinc-500" />
+          <span>知识图谱</span>
+        </button>
+      )}
 
-      {/* Graph Area Wrapper */}
-      <div 
+      {/* Graph Drawer Panel */}
+      <div
         className={cn(
-          "relative h-full transition-all duration-500 ease-[cubic-bezier(0.25,1,0.5,1)] bg-slate-50 shrink-0 border-l border-slate-200/50",
-          effectiveGraphViewMode === "hidden" ? "w-0 overflow-hidden opacity-0" : 
-          effectiveGraphViewMode === "split" ? "w-[35%]" : "w-full"
+          "fixed top-0 bottom-0 right-0 z-[84] bg-slate-50 transition-transform duration-300 border-l border-zinc-200/80 shadow-[0_0_40px_rgba(0,0,0,0.15)] flex",
+          isGraphDrawerOpen && subjectId ? "translate-x-0 pointer-events-auto" : "translate-x-full pointer-events-none"
         )}
+        style={isGraphDrawerOpen ? { width: graphPanelWidth } : { width: 0 }}
       >
-        {subjectId && effectiveGraphViewMode !== "hidden" && (
-          <Suspense fallback={<GraphPanelFallback />}>
-            <KnowledgeGraphSidePanel 
-              subjectId={subjectId} 
-            />
-          </Suspense>
-        )}
+        <div
+          className={cn(
+            "absolute top-0 bottom-0 left-0 w-2 -ml-[1px] cursor-col-resize z-50 hover:bg-blue-500/30 transition-colors",
+            isGraphDragging && "bg-blue-500/30"
+          )}
+          onMouseDown={handleGraphMouseDown}
+        />
+        <div className="flex-1 w-full h-full relative bg-slate-50 overflow-hidden shadow-inner flex flex-col">
+          {/* Close Button & Header Overlay */}
+          <div className="absolute top-4 left-4 z-10">
+             <button
+                type="button"
+                onClick={closeGraphPanel}
+                className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-slate-200/80 bg-white/90 backdrop-blur-md px-3 text-xs font-medium text-slate-600 shadow-sm transition hover:bg-slate-50 hover:text-slate-900"
+                aria-label="收起图谱"
+              >
+                <ChevronRight className="h-4 w-4" />
+                收起
+              </button>
+          </div>
+          {subjectId && isGraphDrawerOpen && (
+            <Suspense fallback={<GraphPanelFallback />}>
+              <KnowledgeGraphSidePanel subjectId={subjectId} />
+            </Suspense>
+          )}
+        </div>
       </div>
 
 
