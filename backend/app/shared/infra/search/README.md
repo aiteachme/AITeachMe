@@ -33,6 +33,7 @@ shared/infra/search/
 ├── context_compression.py # 上下文压缩
 ├── types.py               # SearchResult / ScrapedPage 等类型
 ├── retrievers/            # 候选结果发现层
+│   └── sites/             # 站点限定检索器，含中文 OER / wiki 资源
 └── readers/               # URL 内容读取层
 ```
 
@@ -45,6 +46,7 @@ shared/infra/search/
 - `factory.py` 是注册表解析层，隔离“配置名字 -> 可用实例”的细节。
 - `retrievers/` 与 `readers/` 的边界清楚：前者找 URL，后者读 URL。
 - `knowledge.py` 与 `llamaindex_index/` 只服务本地 subject 知识检索。
+- `retrievers/sites/` 只放“限定到某个具体网站”的适配器，不和 Tavily / Bing / DuckDuckGo 这类通用 provider 混放。
 
 如果继续重构，推荐方向不是移动文件，而是减少 workflow 直接接触底层参数：
 
@@ -86,6 +88,11 @@ shared/infra/search/
   优先基于当前 subject 的本地 section / chunk 做检索，是上传资料驱动场景的第一入口。
 - `wikipedia`
   基于官方 MediaWiki Search API 的免 key 检索。默认 profile 会启用，用于补充百科定义与中英术语解释。
+- `zh_wikibooks` / `zh_wikiversity` / `zh_wikipedia` / `zh_wiktionary`
+  中文 Wikimedia 检索器，统一放在 `retrievers/sites/`。它们基于对应站点的 MediaWiki API，不是通用网页搜索；适合高等数学、微积分、数学分析等中文概念解释和课程式页面补充。
+  其他 wiki 站点如果要接入，优先复用 `sites/mediawiki.py`；不要为每个 MediaWiki 站点复制一套 HTTP 逻辑。当前没有默认接入 Wikisource / Wikiquote / Commons，因为它们更偏原始文本、引文或媒体素材，不是概念解释主源。
+- `oi_wiki`
+  OI Wiki 站点限定检索器。它优先调用 OI Wiki 站内搜索端点；端点不可用时才退回 DuckDuckGo 站点检索。适合离散数学、线性代数、概率、组合等偏计算机/竞赛数学知识。
 - `duckduckgo`
   通用 Web 搜索，优先尝试 `duckduckgo_search` 包，缺包时退回 DuckDuckGo HTML / Lite 页面解析。
 - `searxng`
@@ -109,7 +116,7 @@ shared/infra/search/
 - `mcp_search`
   调用已连接 MCP 工具做检索，需要配置 `MCP_SEARCH_TOOL`。它只是工具结果适配器，不会启动额外的研究 agent。
 - `baidu_baike` / `zhihu`
-  复用 DuckDuckGo 的站点限定搜索，用于中文百科定义与经验型讨论补充。
+  统一放在 `retrievers/sites/`，复用 DuckDuckGo 的站点限定搜索。它们是普通站点来源，不标记为 OER；只用于中文百科定义与经验型讨论补充。
 
 所有 retriever 的输入统一为：
 
@@ -226,6 +233,8 @@ search:
 
 - 完全无 key 的最小可用组合：
   `local_rag + duckduckgo`
+- 中文学习资料 / 高等数学类知识文档：
+  使用 `docgen_zh_oer` 或 `docgen_zh_math` profile。内置 `docgen_sprint` / `docgen_systematic` 也会优先尝试中文 OER，再进入通用搜索。
 - 想继续提升稳定性但不想买 API：
   再加一个自建或可信公共 `SearXNG` 实例。
 - 已有商业 key：
