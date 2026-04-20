@@ -16,6 +16,7 @@ import {
   Sparkles,
   Trash2,
   X,
+  ChevronRight,
 } from "lucide-react";
 import { apiClient, getApiErrorMessage } from "../../api/client";
 import { useLocation } from "react-router-dom";
@@ -71,9 +72,9 @@ export function SubjectAiAssistantProvider({ subjectId, children }: SubjectAiAss
   const [selectedChunkId, setSelectedChunkId] = useState<number | null>(null);
 
   const { width: panelWidth, isDragging, handleMouseDown } = useResizablePanel({
-    defaultWidth: 420,
-    minWidth: 320,
-    maxWidth: 800,
+    defaultWidth: typeof window !== 'undefined' ? window.innerWidth * 0.6 : 800,
+    minWidth: 400,
+    maxWidth: typeof window !== 'undefined' ? window.innerWidth * 0.8 : 1200,
   });
 
   const {
@@ -278,10 +279,11 @@ export function SubjectAiAssistantProvider({ subjectId, children }: SubjectAiAss
 
       <div
         className={cn(
-          "fixed top-0 bottom-0 right-0 z-[85] bg-white transition-opacity border-l border-zinc-200/80 shadow-[0_0_40px_rgba(0,0,0,0.1)] flex",
-          isOpen && hasSubject && !isBuildPage ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none translate-x-[10px]"
+          "fixed top-0 bottom-0 right-0 z-[85] bg-white border-l border-zinc-200/80 shadow-[0_0_40px_rgba(0,0,0,0.1)] flex",
+          isOpen && hasSubject && !isBuildPage ? "translate-x-0" : "translate-x-full",
+          !isDragging && "transition-transform duration-300 ease-[cubic-bezier(0.2,0.8,0.2,1)]"
         )}
-        style={isOpen ? { width: panelWidth } : { width: 0 }}
+        style={{ width: panelWidth }}
       >
         <div
           className={cn(
@@ -292,8 +294,19 @@ export function SubjectAiAssistantProvider({ subjectId, children }: SubjectAiAss
         />
         <div className="w-full h-full relative flex flex-col bg-white overflow-hidden">
           {/* Header */}
-          <div className="flex shrink-0 items-center justify-between border-b border-zinc-200/60 bg-zinc-50/50 px-4 py-3">
-            <div className="flex items-center gap-2">
+          <div className="flex shrink-0 items-center justify-between border-b border-zinc-200/60 bg-white px-4 py-2.5">
+            <div className="flex min-w-0 items-center gap-2">
+              <button
+                type="button"
+                onClick={closeAssistant}
+                className="inline-flex h-8 items-center justify-center gap-1.5 rounded-md text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-900 px-2"
+                aria-label="收起"
+              >
+                <ChevronRight className="h-4 w-4" />
+                <span className="text-[13px] font-medium hidden lg:inline">收起</span>
+              </button>
+              <div className="mx-1 h-4 w-px bg-slate-200" />
+              
               <button
                 type="button"
                 onClick={() => setIsSessionDrawerOpen(!isSessionDrawerOpen)}
@@ -303,7 +316,6 @@ export function SubjectAiAssistantProvider({ subjectId, children }: SubjectAiAss
                 <PanelLeft className="h-4 w-4" />
               </button>
               <div className="min-w-0 pr-2">
-                <p className="text-[10px] font-semibold uppercase tracking-widest text-zinc-400">AI Assistant</p>
                 <h2 className="truncate text-[14px] font-semibold tracking-tight text-zinc-900">
                   {selectedSession?.title ?? "新会话"}
                 </h2>
@@ -319,14 +331,6 @@ export function SubjectAiAssistantProvider({ subjectId, children }: SubjectAiAss
                 aria-label="清空记录"
               >
                 <Trash2 className="h-4 w-4" />
-              </button>
-              <button
-                type="button"
-                onClick={closeAssistant}
-                className="inline-flex h-8 w-8 items-center justify-center rounded-md text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-900"
-                aria-label="关闭"
-              >
-                <X className="h-4 w-4" />
               </button>
             </div>
           </div>

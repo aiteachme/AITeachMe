@@ -1,8 +1,9 @@
-﻿import { lazy, Suspense, useMemo, useState, type ReactNode } from "react";
+import { lazy, Suspense, useMemo, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertCircle,
   AlertTriangle,
+  ChevronRight,
   Loader2,
   Network,
   Orbit,
@@ -62,8 +63,10 @@ function TabFallback({ message }: { message: string }) {
 
 export function KnowledgeGraphSidePanel({
   subjectId,
+  onClose,
 }: {
   subjectId: string;
+  onClose?: () => void;
 }) {
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<KnowledgeViewTab>("semantic-universe");
@@ -104,7 +107,21 @@ export function KnowledgeGraphSidePanel({
   return (
     <div className="flex h-full w-full flex-col bg-white">
       <div className="flex items-center justify-between gap-3 border-b border-slate-200 bg-white px-3 py-2">
-          <div className="flex items-center gap-1 rounded-lg bg-slate-100 p-1">
+          <div className="flex items-center gap-1">
+            {onClose && (
+              <>
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="flex items-center justify-center gap-1 rounded-md px-2 py-1.5 text-[13px] font-medium text-slate-500 hover:bg-slate-100 hover:text-slate-800 transition-colors"
+                >
+                  <ChevronRight className="h-4 w-4 shrink-0" />
+                  <span className="hidden lg:inline">收起</span>
+                </button>
+                <div className="mx-1 h-4 w-px bg-slate-200" />
+              </>
+            )}
+            <div className="flex items-center gap-1 rounded-lg bg-slate-100 p-1">
             {VIEW_TABS.map((tab) => (
               <button
                 key={tab.id}
@@ -121,6 +138,7 @@ export function KnowledgeGraphSidePanel({
                 <span className="hidden lg:inline">{tab.label}</span>
               </button>
             ))}
+          </div>
           </div>
 
           <div className="flex items-center gap-1.5">

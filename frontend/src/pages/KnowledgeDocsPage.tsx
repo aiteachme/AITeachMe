@@ -924,7 +924,7 @@ export function KnowledgeDocsPage() {
   const { width: graphPanelWidth, isDragging: isGraphDragging, handleMouseDown: handleGraphMouseDown } = useResizablePanel({
     defaultWidth: typeof window !== 'undefined' ? window.innerWidth * 0.6 : 800,
     minWidth: 400,
-    maxWidth: typeof window !== 'undefined' ? window.innerWidth * 0.9 : 1200,
+    maxWidth: typeof window !== 'undefined' ? window.innerWidth * 0.8 : 1200,
   });
 
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -2821,10 +2821,11 @@ export function KnowledgeDocsPage() {
       {/* Graph Drawer Panel */}
       <div
         className={cn(
-          "fixed top-0 bottom-0 right-0 z-[84] bg-slate-50 transition-transform duration-300 border-l border-zinc-200/80 shadow-[0_0_40px_rgba(0,0,0,0.15)] flex",
-          isGraphDrawerOpen && subjectId ? "translate-x-0 pointer-events-auto" : "translate-x-full pointer-events-none"
+          "fixed top-0 bottom-0 right-0 z-[84] bg-slate-50 border-l border-zinc-200/80 shadow-[0_0_40px_rgba(0,0,0,0.15)] flex",
+          isGraphDrawerOpen && subjectId ? "translate-x-0 pointer-events-auto" : "translate-x-full pointer-events-none",
+          !isGraphDragging && "transition-transform duration-300 ease-[cubic-bezier(0.2,0.8,0.2,1)]"
         )}
-        style={isGraphDrawerOpen ? { width: graphPanelWidth } : { width: 0 }}
+        style={{ width: graphPanelWidth }}
       >
         <div
           className={cn(
@@ -2834,21 +2835,9 @@ export function KnowledgeDocsPage() {
           onMouseDown={handleGraphMouseDown}
         />
         <div className="flex-1 w-full h-full relative bg-slate-50 overflow-hidden shadow-inner flex flex-col">
-          {/* Close Button & Header Overlay */}
-          <div className="absolute top-4 left-4 z-10">
-             <button
-                type="button"
-                onClick={closeGraphPanel}
-                className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-slate-200/80 bg-white/90 backdrop-blur-md px-3 text-xs font-medium text-slate-600 shadow-sm transition hover:bg-slate-50 hover:text-slate-900"
-                aria-label="收起图谱"
-              >
-                <ChevronRight className="h-4 w-4" />
-                收起
-              </button>
-          </div>
           {subjectId && isGraphDrawerOpen && (
             <Suspense fallback={<GraphPanelFallback />}>
-              <KnowledgeGraphSidePanel subjectId={subjectId} />
+              <KnowledgeGraphSidePanel subjectId={subjectId} onClose={closeGraphPanel} />
             </Suspense>
           )}
         </div>
