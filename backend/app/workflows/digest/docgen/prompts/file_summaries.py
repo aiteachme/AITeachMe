@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from app.workflows.digest.common.prompt_tracing import trace_prompt_build
+
 FILE_SUMMARY_CHAPTER_TITLE_BUDGET = 24
 FILE_SUMMARY_EXCERPT_BUDGET = 18000
 
@@ -44,10 +46,20 @@ def build_file_summary_messages(
 2. 章节亲和度用 chapter_index 字符串作为 key。
 3. 不要编造文件中没有的真题或引用。
 """.strip()
-    return [
+    messages = [
         {"role": "system", "content": "你只输出合法 JSON。"},
         {"role": "user", "content": prompt},
     ]
+    return trace_prompt_build(
+        "file_summary",
+        inputs={
+            "filename": filename,
+            "digest_mode": digest_mode,
+            "chapter_count": len(chapter_titles),
+            "excerpt_chars": len(excerpt),
+        },
+        output=messages,
+    )
 
 
 __all__ = ["build_file_summary_messages"]

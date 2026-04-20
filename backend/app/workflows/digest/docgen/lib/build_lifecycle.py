@@ -1,4 +1,11 @@
-﻿from __future__ import annotations
+"""DocGen build lifecycle around the graph runtime.
+
+这个模块负责 API 触发后的外围生命周期：文件选择、confirmed plan 读取、
+构建锁、后台任务、状态查询和结果组装。真正的 LangGraph 定义与单次
+运行入口在 `docgen/graph.py`。
+"""
+
+from __future__ import annotations
 
 import asyncio
 import uuid
@@ -30,6 +37,7 @@ from app.workflows.digest.planner import (
     get_confirmed_build_plan,
     mark_confirmed_build_plan_status,
 )
+from app.shared.infra.database import managed_session
 from app.shared.infra.exceptions import ConfirmedBuildPlanRequiredError, NoReadyFilesForDocGenError, RawFileNotFoundError, SubjectBuildLockConflictError
 from app.shared.infra.subject import get_subject_vector_status_by_slug
 from app.shared.infra.tools.builtin.markdown_processing import normalize_mermaid_blocks
@@ -244,7 +252,7 @@ def _resolve_runtime_build_status(*, subject: str) -> KnowledgeBuildStatusRespon
         effective = update_knowledge_build_status(subject, requested_at=build_lock.requested_at, status="running", stage="build_accepted", source_file_ids=build_lock.source_file_ids, prompt=build_lock.prompt)
     if effective is None:
         return None
-    return KnowledgeBuildStatusResponse(status=effective.status, requested_at=effective.requested_at, stage=effective.stage, error_message=_sanitize_build_error_message(effective.error_message), draft_available=bool(effective.draft_available), planner_session_id=effective.planner_session_id, confirmed_plan_id=effective.confirmed_plan_id, digest_mode=effective.digest_mode, mode_reason=effective.mode_reason, current_stage_description=effective.current_stage_description)
+    return KnowledgeBuildStatusResponse(status=effective.status, requested_at=effective.requested_at, stage=effective.stage, error_message=_sanitize_build_error_message(effective.error_message), draft_available=bool(effective.draft_available), progress_pct=effective.progress_pct, planner_session_id=effective.planner_session_id, confirmed_plan_id=effective.confirmed_plan_id, digest_mode=effective.digest_mode, mode_reason=effective.mode_reason, current_stage_description=effective.current_stage_description)
 
 
 def _build_confirmed_plan_payload(plan: ConfirmedBuildPlan) -> dict[str, Any]:
@@ -536,6 +544,9 @@ async def run_docgen_background(*, subject: str, file_ids: list[int], prompt: st
                 pass
         _clear_docgen_staging_safely(subject)
         _write_build_status(subject, requested_at=requested_at, status="cancelled", stage="cancelled", build_session_id=build_session_id, planner_session_id=planner_session_id, confirmed_plan_id=confirmed_plan_id, digest_mode=resolved_digest_mode, error_message="build_cancelled", draft_available=False)
+        if confirmed_plan_id and user_id:
+            with managed_session() as session:
+                mark_confirmed_build_plan_status(session, subject=subject, user_id=user_id, plan_id=confirmed_plan_id, status="cancelled")
         raise
     except Exception:
         if kg_ingest_task is not None and not kg_ingest_task.done():

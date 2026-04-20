@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -38,9 +38,12 @@ async function uploadFiles(subject: string, files: File[]): Promise<FilesUploadD
   const formData = new FormData();
   for (const file of files) formData.append("files", file);
 
-  // 当用户在设置中选择 MinerU 时，把 Token 与参数随上传请求一并传给后端。
-  // 这样后端后台 ingest 任务无需依赖浏览器 localStorage，就能按本次设置走 MinerU。
+  // 前端 settings 属于浏览器本机偏好，上传时需要把解析引擎选择随请求传给后端。
+  // 这样后端后台 ingest 任务无需依赖浏览器 localStorage，就能按本次设置走指定方案。
   const settings = getStoredAppSettings();
+  if (settings.parserProvider === "markitdown") {
+    formData.append("parser_provider", "markitdown");
+  }
   if (settings.parserProvider === "mineru") {
     const token = settings.mineruApiToken?.trim();
     formData.append("parser_provider", "mineru");
@@ -171,21 +174,6 @@ async function importSubject(file: File, newName?: string): Promise<ImportResult
 /* ── Helpers ── */
 
 const ACCEPT_TEXT = ".pdf,.docx,.doc,.ppt,.pptx,.md,.markdown,.txt,.png,.jpg,.jpeg,.webp";
-
-function generateSubjectName(files: File[], prompt: string): string {
-  if (files.length > 0) {
-    const baseName = files[0].name.replace(/\.[^/.]+$/, "").trim();
-    if (baseName) return baseName;
-  }
-  const trimmed = prompt.trim();
-  if (trimmed) {
-    const firstLine = trimmed.split(/[\r\n]/)[0].trim();
-    return firstLine.length > 20 ? firstLine.slice(0, 20) + "…" : firstLine;
-  }
-  const now = new Date();
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `学科_${pad(now.getMonth() + 1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}`;
-}
 
 function formatFileSize(bytes?: number | null): string {
   if (bytes == null || !Number.isFinite(bytes)) return "未知";
@@ -580,6 +568,7 @@ function RenameModal({
 
 export function HomePage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const queryClient = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -596,6 +585,18 @@ export function HomePage() {
 
   // Section tab: "recent" | "courses"
   const [sectionTab, setSectionTab] = useState<"recent" | "courses">("recent");
+  const newEntryAt = (location.state as { newEntryAt?: number } | null)?.newEntryAt;
+
+  useEffect(() => {
+    if (!newEntryAt) {
+      return;
+    }
+    setPrompt("");
+    setPendingFiles([]);
+    setError(null);
+    navigate("/", { replace: true, state: null });
+    window.requestAnimationFrame(() => textareaRef.current?.focus());
+  }, [navigate, newEntryAt]);
 
   // ── Courses query ──
   const { data: courses = [], isLoading: coursesLoading } = useQuery({
@@ -623,9 +624,9 @@ export function HomePage() {
 
   // ── Mutations ──
   const createMutation = useMutation({
-    mutationFn: async ({ name }: { name: string }) => {
+    mutationFn: async () => {
       const created = unwrapOrvalResponse(
-        await createSubjectApiApiV1SubjectsAddPost({ name })
+        await createSubjectApiApiV1SubjectsAddPost({ name: "" })
       );
       if (!created) throw new Error("创建学科失败");
       return created;
@@ -664,24 +665,7 @@ export function HomePage() {
   const handleGenerate = async () => {
     if (!canGenerate) return;
     setError(null);
-
-    // Try AI name suggestion first
-    let name: string;
-    try {
-      const suggestResponse = await apiClient<{ data: { name: string } }>({
-        method: "POST",
-        url: "/api/v1/subjects/suggest-name",
-        data: {
-          prompt: prompt.trim() || undefined,
-          filenames: pendingFiles.length > 0 ? pendingFiles.map((f) => f.name) : undefined,
-        },
-      });
-      name = suggestResponse.data?.name || generateSubjectName(pendingFiles, prompt);
-    } catch {
-      name = generateSubjectName(pendingFiles, prompt);
-    }
-
-    createMutation.mutate({ name });
+    createMutation.mutate();
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -721,7 +705,7 @@ export function HomePage() {
       
       {/* ═══ Background Decor ═══ */}
       <div className="pointer-events-none absolute inset-0 z-0 flex justify-center overflow-hidden">
-        <div className="h-full w-full bg-[linear-gradient(to_right,#e4e4e7_1px,transparent_1px),linear-gradient(to_bottom,#e4e4e7_1px,transparent_1px)] bg-[size:32px_32px] [mask-image:radial-gradient(ellipse_120%_100%_at_50%_0%,#000_50%,transparent_100%)]"></div>
+        <div className="h-full w-full bg-[linear-gradient(to_right,rgba(0,0,0,0.03)_1px,transparent_1px),linear-gradient(to_bottom,rgba(0,0,0,0.03)_1px,transparent_1px)] bg-[size:32px_32px] [mask-image:radial-gradient(ellipse_120%_100%_at_50%_0%,#000_50%,transparent_100%)]"></div>
       </div>
 
       <motion.div
@@ -972,12 +956,12 @@ export function HomePage() {
                           <div className="group/card relative flex h-full flex-col overflow-hidden rounded-2xl border border-zinc-200/80 bg-white p-5 shadow-[0_2px_8px_rgba(0,0,0,0.04)] transition-all duration-300 hover:-translate-y-1 hover:border-zinc-300 hover:shadow-[0_8px_24px_rgba(0,0,0,0.08)]">
                             <div className="relative z-10 mb-4 flex items-start justify-between">
                               <h3 className="line-clamp-1 flex-1 mr-2 text-[15px] font-semibold tracking-tight text-zinc-900 transition-colors group-hover/card:text-zinc-800">
-                                {subject.name}
+                                {subject.name?.trim() || "无标题"}
                               </h3>
                               <div className="flex items-center gap-1 pointer-events-auto">
                                 <SubjectMenu
                                   subjectId={subject.subject_id}
-                                  subjectName={subject.name}
+                                  subjectName={subject.name?.trim() || "无标题"}
                                   onExport={(id: string) => setExportSubjectId(id)}
                                   onRename={(id: string, name: string) => setRenameTarget({ id, name })}
                                 />
@@ -1003,7 +987,7 @@ export function HomePage() {
                     ))}
                     {!subjectsLoading && subjects.length === 0 && (
                       <div className="col-span-full py-12 text-center text-slate-400 text-sm">
-                        暂无学习空间，上方创建或导入课程开始学习
+                        暂无学习空间，上方输入目标或导入课程开始学习
                       </div>
                     )}
                   </div>
@@ -1101,8 +1085,15 @@ export function HomePage() {
       )}
 
       {/* Footer */}
-      <div className="mt-auto pt-12 pb-6 text-center text-sm text-slate-400 font-medium">
-        AITeachMe Open Source Project
+      <div className="mt-auto pt-12 pb-6 text-center text-sm text-slate-400 font-medium tracking-wide">
+        <a 
+          href="https://github.com/aiteachme/AiTeachMe" 
+          target="_blank" 
+          rel="noopener noreferrer" 
+          className="hover:text-slate-600 transition-colors"
+        >
+          AITeachMe Open Source Project
+        </a>
       </div>
     </div>
     {/* ═══ Modals ═══ */}

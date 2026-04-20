@@ -5,14 +5,13 @@ import {
   AlertCircle,
   ArrowUp,
   BookOpen,
+  CheckCircle2,
   FileCode,
   FileImage,
   FileText,
   FileType,
   Loader2,
-  Network,
   Paperclip,
-  Plus,
   RefreshCw,
   Sparkles,
   X,
@@ -23,6 +22,7 @@ import type {
   BuildPlannerConfirmResponse,
   BuildPlannerPlanResponse,
   BuildPlannerSessionResponse,
+  DocGenBuildCancelData,
   DocGenBuildData,
   FileRecord as ApiFileRecord,
 } from "../api/generated/model";
@@ -30,7 +30,6 @@ import type { ApiResponse } from "../api/types";
 import { BuildView, ACTIVE_DOC_BUILD_STATUSES, parseIsoTimestamp, useDocBuildProgress } from "../components/knowledge-docs";
 import { KnowledgeBuildResolutionModal } from "../components/pages/KnowledgeBuildResolutionModal";
 import { PlannerPreviewMarkdown } from "../components/pages/PlannerPreviewMarkdown";
-import { SubjectVectorNotice } from "../components/pages/SubjectVectorNotice";
 import { FullPageDropOverlay } from "../components/ui/FullPageDropOverlay";
 import { useKnowledgeBuildFlow } from "../hooks/useKnowledgeBuildFlow";
 import { createGraphDebugBuildLocationState } from "../lib/knowledgeBuildNavigation";
@@ -61,6 +60,14 @@ interface PersistedPlannerState {
 const ACCEPT = ".pdf,.docx,.doc,.ppt,.pptx,.md,.markdown,.txt,.png,.jpg,.jpeg,.webp";
 const STORAGE_PREFIX = "aiteachme:files-page-planner";
 const PLANNER_STATE_VERSION = 4;
+const WELCOME_MESSAGE_CONTENT =
+  "可以直接告诉我你的学习目标，也可以先上传资料。我会先思考资料边界，再给出几条计划大纲，你确认后再正式开始知识文档构建。";
+
+interface BuildPlanLocationState {
+  initialFiles?: File[];
+  initialPrompt?: string;
+  autoStart?: boolean;
+}
 
 let messageCounter = 0;
 
@@ -115,10 +122,24 @@ function createMessage(
 }
 
 function createWelcomeMessage() {
-  return createMessage(
-    "assistant",
-    "可以直接告诉我你的学习目标，也可以先上传资料。我会先思考资料边界，再给出几条计划大纲，你确认后再正式开始知识文档构建。",
-  );
+  return createMessage("assistant", WELCOME_MESSAGE_CONTENT);
+}
+
+function createInitialMessages(): ChatMessage[] {
+  return [];
+}
+
+function replaceWelcomeWithUserMessage(messages: ChatMessage[], prompt: string): ChatMessage[] {
+  const userMessage = createMessage("user", prompt);
+  if (
+    messages.length === 1 &&
+    messages[0]?.role === "assistant" &&
+    messages[0]?.content === WELCOME_MESSAGE_CONTENT &&
+    !messages[0]?.plan
+  ) {
+    return [userMessage];
+  }
+  return [...messages, userMessage];
 }
 
 function readPersistedPlannerState(subjectId: string): PersistedPlannerState | null {
@@ -335,15 +356,19 @@ function PlannerOutlineCard({
   needsRefresh,
   isDisabled,
   isBuilding,
+  publishedDocReady,
   onConfirm,
   onAdjust,
+  onOpenKnowledgeDocs,
 }: {
   plan: BuildPlannerPlanResponse;
   needsRefresh: boolean;
   isDisabled: boolean;
   isBuilding: boolean;
+  publishedDocReady: boolean;
   onConfirm: () => void;
   onAdjust: () => void;
+  onOpenKnowledgeDocs: () => void;
 }) {
   const outlineItems = buildPlannerOutlineItems(plan);
 
@@ -379,35 +404,99 @@ function PlannerOutlineCard({
           </span>
         ) : null}
         <div className="flex-1" />
-        <button
-          type="button"
-          onClick={onAdjust}
-          className="rounded-lg border border-zinc-200 bg-white px-4 py-2.5 text-sm font-medium text-zinc-700"
-        >
-          调整
-        </button>
-        <button
-          type="button"
-          onClick={onConfirm}
-          disabled={isDisabled}
-          className="inline-flex items-center justify-center gap-2 rounded-lg bg-zinc-950 px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
-        >
-          {isBuilding ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-          开始
-        </button>
+        {publishedDocReady ? (
+          <button
+            type="button"
+            onClick={onOpenKnowledgeDocs}
+            className="inline-flex items-center justify-center gap-2 rounded-lg bg-zinc-950 px-5 py-2.5 text-sm font-semibold text-white"
+          >
+            <BookOpen className="h-4 w-4" />
+            进入
+          </button>
+        ) : (
+          <>
+            <button
+              type="button"
+              onClick={onAdjust}
+              className="rounded-lg border border-zinc-200 bg-white px-4 py-2.5 text-sm font-medium text-zinc-700"
+            >
+              调整
+            </button>
+            <button
+              type="button"
+              onClick={onConfirm}
+              disabled={isDisabled}
+              className="inline-flex items-center justify-center gap-2 rounded-lg bg-zinc-950 px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
+            >
+              {isBuilding ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+              开始
+            </button>
+          </>
+        )}
       </div>
     </div>
   );
 }
 
+function BuildInProgressBubble({
+  progress,
+  statusText,
+  onOpen,
+}: {
+  progress: number;
+  statusText: string;
+  onOpen: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      className="w-full rounded-lg border border-zinc-200 bg-white px-4 py-4 text-left shadow-sm transition hover:border-zinc-300 hover:shadow-md"
+    >
+      <div className="flex items-start gap-3">
+        <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-zinc-950 text-white">
+          <Loader2 className="h-4 w-4 animate-spin" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="text-sm font-semibold text-zinc-950">知识库正在构建</p>
+              <p className="mt-1 text-xs leading-5 text-zinc-500">点击查看完整构建进度</p>
+            </div>
+            <span className="shrink-0 text-xs font-semibold text-zinc-700">{Math.round(progress)}%</span>
+          </div>
+          <p className="mt-3 line-clamp-2 text-sm leading-6 text-zinc-600">
+            {statusText || "正在启动知识文档构建..."}
+          </p>
+          <div className="mt-4 h-1.5 overflow-hidden rounded-full bg-zinc-100">
+            <div
+              className="h-full rounded-full bg-zinc-950 transition-all duration-500"
+              style={{ width: `${Math.max(8, Math.min(100, progress))}%` }}
+            />
+          </div>
+        </div>
+      </div>
+    </button>
+  );
+}
+
 function fileMeta(file: FileRecord) {
   if (file.markdown_ready) {
-    return { label: "已就绪", dot: "bg-emerald-500" };
+    return { 
+      label: "已就绪", 
+      icon: <CheckCircle2 className="ml-1 h-3.5 w-3.5 text-emerald-500" /> 
+    };
   }
   if (file.status === "failed") {
-    return { label: "失败", dot: "bg-red-500" };
+    return { 
+      label: "解析失败", 
+      icon: <AlertCircle className="ml-1 h-3.5 w-3.5 text-red-500" /> 
+    };
   }
-  return { label: "处理中", dot: "bg-sky-500 animate-pulse" };
+  return { 
+    label: "正在解析文件...", 
+    icon: <Loader2 className="ml-1 h-3.5 w-3.5 animate-spin text-sky-500" /> 
+  };
 }
 
 function fileIcon(file: FileRecord) {
@@ -439,9 +528,12 @@ async function uploadFiles(subject: string, files: File[]): Promise<FilesUploadD
   const data = new FormData();
   files.forEach((file) => data.append("files", file));
 
-  // 当用户选择 MinerU 解析时，将前端设置随上传请求一并提交给后端。
-  // Token 可留空，此时后端可继续使用环境变量中的默认凭据。
+  // 前端 settings 属于浏览器本机偏好，上传时需要把解析引擎选择随请求传给后端。
+  // MinerU Token 可留空，此时后端可继续使用环境变量中的默认凭据。
   const settings = getStoredAppSettings();
+  if (settings.parserProvider === "markitdown") {
+    data.append("parser_provider", "markitdown");
+  }
   if (settings.parserProvider === "mineru") {
     const token = settings.mineruApiToken?.trim();
     data.append("parser_provider", "mineru");
@@ -479,6 +571,19 @@ async function confirmPlannerSession(subject: string, sessionId: string) {
     throw new Error("确认构建方案失败。");
   }
   return response.data;
+}
+
+async function cancelKnowledgeBuild(subject: string): Promise<DocGenBuildCancelData> {
+  const response = await apiClient<ApiResponse<DocGenBuildCancelData>>({
+    method: "POST",
+    url: `/api/v1/subjects/${subject}/knowledge/build/cancel`,
+  });
+  return response.data ?? {
+    subject,
+    status: "cancelled",
+    cancelled_task_count: 0,
+    message: "已终止当前知识构建。",
+  };
 }
 
 async function streamPlannerSession(
@@ -581,7 +686,7 @@ export function BuildPlanPage() {
   const queryClient = useQueryClient();
   useSettings();
 
-  const navState = location.state as { initialFiles?: File[]; initialPrompt?: string; autoStart?: boolean } | null;
+  const navState = location.state as BuildPlanLocationState | null;
   const requestedAt = useMemo(
     () => new URLSearchParams(location.search).get("requested_at"),
     [location.search],
@@ -595,12 +700,11 @@ export function BuildPlanPage() {
   const plannerAbortControllerRef = useRef<AbortController | null>(null);
   const autoStartFiredRef = useRef(false);
 
-  const [messages, setMessages] = useState<ChatMessage[]>([createWelcomeMessage()]);
+  const [messages, setMessages] = useState<ChatMessage[]>(() => createInitialMessages());
   const [plannerSessionId, setPlannerSessionId] = useState<string | null>(null);
   const [currentPlan, setCurrentPlan] = useState<BuildPlannerPlanResponse | null>(null);
   const [inputValue, setInputValue] = useState(navState?.initialPrompt ?? "");
   const [plannerNeedsRefresh, setPlannerNeedsRefresh] = useState(false);
-  const [filesTrayOpen, setFilesTrayOpen] = useState(true);
   const [hasAutoUploaded, setHasAutoUploaded] = useState(false);
   const [plannerStreaming, setPlannerStreaming] = useState(false);
   const [plannerStreamingPreview, setPlannerStreamingPreview] = useState("");
@@ -693,9 +797,7 @@ export function BuildPlanPage() {
     !isRequestedBuildReady &&
     !isBuildFailure &&
     (isBuildActive || hasDraftDocMarkdown);
-  const shouldShowBuildView =
-    Boolean(requestedAt) &&
-    (isBuildActive || isWaitingForRequestedBuild || isRequestedBuildReady || isBuildFailure || hasDraftDocMarkdown || hasLiveDocMarkdown);
+  const shouldShowBuildView = false;
   const buildStage = buildMeta?.stage ?? null;
   const { buildProgress, buildStatusText } = useDocBuildProgress({
     buildMeta,
@@ -750,7 +852,7 @@ export function BuildPlanPage() {
             found: Boolean(session),
           });
           // No server history either — fresh start
-          setMessages([createWelcomeMessage()]);
+          setMessages(createInitialMessages());
           setPlannerSessionId(null);
           setCurrentPlan(null);
           setInputValue(navState?.initialPrompt ?? "");
@@ -790,7 +892,7 @@ export function BuildPlanPage() {
         // 后端恢复失败时，回到一个干净的新会话。
         if (cancelled) return;
         logPlannerDebug("restore_latest_failed", { subjectId });
-        setMessages([createWelcomeMessage()]);
+        setMessages(createInitialMessages());
         setPlannerSessionId(null);
         setCurrentPlan(null);
         setInputValue(navState?.initialPrompt ?? "");
@@ -853,8 +955,8 @@ export function BuildPlanPage() {
     }
     autoStartFiredRef.current = true;
 
-    // Fire the planner immediately — capture the prompt before clearing navState
-    setMessages((prev) => [...prev, createMessage("user", prompt)]);
+    // Fire the planner immediately — capture the prompt before clearing navState.
+    setMessages((prev) => replaceWelcomeWithUserMessage(prev, prompt));
     setInputValue("");
     setPlannerStreaming(true);
     plannerStreamingRawRef.current = "";
@@ -926,6 +1028,13 @@ export function BuildPlanPage() {
     mutationFn: (sessionId: string) => confirmPlannerSession(subjectId, sessionId),
   });
 
+  const cancelBuildMutation = useMutation({
+    mutationFn: () => cancelKnowledgeBuild(subjectId),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: buildKnowledgeDocStateQueryKey(subjectId) });
+    },
+  });
+
   const knowledgeBuild = useKnowledgeBuildFlow({
     subjectId,
     buildType: "docs",
@@ -963,7 +1072,8 @@ export function BuildPlanPage() {
   });
 
   const isPlannerPending = plannerStreaming || confirmPlannerMutation.isPending;
-  const isBuilding = knowledgeBuild.isPending;
+  const isBuilding = knowledgeBuild.isPending || isBuildActive;
+  const shouldShowBuildDialog = isBuilding || isWaitingForRequestedBuild;
 
   const focusComposer = useCallback(() => {
     const focusInput = () => {
@@ -1015,6 +1125,7 @@ export function BuildPlanPage() {
       setCurrentPlan(response.latest_plan);
       setPlannerNeedsRefresh(false);
       setIsRevisingPlan(false);
+      void queryClient.invalidateQueries({ queryKey: ["subjects"] });
       setMessages((prev) => [
         ...prev,
         createMessage(
@@ -1025,23 +1136,9 @@ export function BuildPlanPage() {
         ),
       ]);
     },
-    [],
+    [queryClient],
   );
 
-  const handleOpenKnowledgeGraph = useCallback(() => {
-    if (!subjectId) {
-      return;
-    }
-
-    navigate(`/subject/${subjectId}/knowledge-graph`, {
-      state: createGraphDebugBuildLocationState(
-        readyFiles.map((file) => ({
-          uid: file.uid,
-          filename: file.filename,
-        })),
-      ),
-    });
-  }, [navigate, readyFiles, subjectId]);
 
   const handleOpenKnowledgeDocs = useCallback(() => {
     if (!subjectId) {
@@ -1049,6 +1146,13 @@ export function BuildPlanPage() {
     }
     navigate(`/subject/${subjectId}/knowledge-docs${location.search}`);
   }, [location.search, navigate, subjectId]);
+
+  const handleCancelBuild = useCallback(() => {
+    if (!subjectId || cancelBuildMutation.isPending) {
+      return;
+    }
+    cancelBuildMutation.mutate();
+  }, [cancelBuildMutation, subjectId]);
 
   const handleReturnToPlanner = useCallback(() => {
     if (!subjectId) {
@@ -1310,13 +1414,18 @@ export function BuildPlanPage() {
         disabled={uploadMutation.isPending}
       />
 
-      <div className="flex h-full w-full flex-col bg-zinc-50">
-        <div className="flex items-center justify-center pb-2 pt-6">
-          <div className="inline-flex items-center gap-2 rounded-full border border-zinc-200/80 bg-white px-3 py-1.5 text-[11px] font-semibold uppercase tracking-widest text-zinc-500 shadow-sm">
-            <Sparkles className="h-3 w-3" />
-            方案规划
-          </div>
+      <div className="relative flex h-full w-full flex-col overflow-hidden bg-zinc-50">
+        <div className="pointer-events-none absolute inset-0 z-0 flex justify-center overflow-hidden">
+          <div className="h-full w-full bg-[linear-gradient(to_right,#e4e4e7_1px,transparent_1px),linear-gradient(to_bottom,#e4e4e7_1px,transparent_1px)] bg-[size:32px_32px] [mask-image:radial-gradient(ellipse_120%_100%_at_50%_0%,#000_50%,transparent_100%)]" />
         </div>
+
+        <div className="relative z-10 flex h-full w-full flex-col">
+          <div className="flex items-center justify-center pb-2 pt-6">
+            <div className="inline-flex items-center gap-2 rounded-full border border-zinc-200/80 bg-white px-3 py-1.5 text-[11px] font-semibold uppercase tracking-widest text-zinc-500 shadow-sm">
+              <Sparkles className="h-3 w-3" />
+              方案规划
+            </div>
+          </div>
 
         {shouldShowBuildView ? (
           <div className="flex-1 overflow-y-auto px-4 pb-6 md:px-8 lg:px-16">
@@ -1348,6 +1457,21 @@ export function BuildPlanPage() {
                     >
                       <BookOpen className="h-4 w-4" />
                       进入知识文档
+                    </button>
+                  ) : null}
+                  {isBuildActive ? (
+                    <button
+                      type="button"
+                      onClick={handleCancelBuild}
+                      disabled={cancelBuildMutation.isPending}
+                      className="inline-flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-2.5 text-sm font-semibold text-red-700 disabled:opacity-60"
+                    >
+                      {cancelBuildMutation.isPending ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <X className="h-4 w-4" />
+                      )}
+                      终止当前构建
                     </button>
                   ) : null}
                   <button
@@ -1438,8 +1562,10 @@ export function BuildPlanPage() {
                           needsRefresh={plannerNeedsRefresh}
                           isDisabled={isBuilding || isPlannerPending}
                           isBuilding={isBuilding || isPlannerPending}
+                          publishedDocReady={hasLiveDocMarkdown && !isBuilding && !isPlannerPending}
                           onConfirm={handleConfirmBuild}
                           onAdjust={handleContinueAdjust}
+                          onOpenKnowledgeDocs={handleOpenKnowledgeDocs}
                         />
                       ) : null}
                     </>
@@ -1503,13 +1629,17 @@ export function BuildPlanPage() {
               </div>
             ) : null}
 
-            {isBuilding ? (
+            {shouldShowBuildDialog ? (
               <div className="flex gap-3">
                 <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-violet-500 to-indigo-600 shadow-sm">
                   <Sparkles className="h-4 w-4 text-white" />
                 </div>
-                <div className="rounded-2xl rounded-tl-md border border-zinc-100 bg-white px-4 py-3 text-sm text-zinc-700 shadow-sm">
-                  方案已确认，正在发起正式构建。当前页面会在后端受理后继续展示真实的检索、研究与写作进度。
+                <div className="w-full max-w-[85%]">
+                  <BuildInProgressBubble
+                    progress={buildProgress}
+                    statusText={buildPreview?.current_stage_description?.trim() || buildStatusText}
+                    onOpen={handleOpenKnowledgeDocs}
+                  />
                 </div>
               </div>
             ) : null}
@@ -1529,15 +1659,7 @@ export function BuildPlanPage() {
           </div>
         </div>
 
-        <div className="px-4 md:px-8 lg:px-16">
-          <div className="mx-auto max-w-3xl">
-            <SubjectVectorNotice
-              status={knowledgeBuild.latestVectorStatus ?? knowledgeDocState.data?.vector_status}
-            />
-          </div>
-        </div>
-
-        <div className={shouldShowBuildView ? "hidden" : "border-t border-zinc-200/60 bg-white/80 px-4 pb-4 pt-3 backdrop-blur-sm md:px-8 lg:px-16"}>
+        <div className={shouldShowBuildView ? "hidden" : "px-4 pb-6 pt-2 md:px-8 lg:px-16"}>
           <div className="mx-auto max-w-3xl">
             {isRevisingPlan ? (
               <div className="mb-2 flex items-center justify-between gap-3 rounded-2xl border border-violet-200 bg-violet-50 px-4 py-3 text-sm text-violet-700">
@@ -1555,7 +1677,7 @@ export function BuildPlanPage() {
               </div>
             ) : null}
 
-            <div className="flex items-end gap-2 rounded-2xl border border-zinc-200 bg-white px-4 py-3 shadow-sm">
+            <div className="w-full rounded-2xl border border-zinc-200/60 bg-white shadow-[0_2px_8px_rgba(0,0,0,0.04)] transition-all focus-within:border-zinc-300 focus-within:shadow-[0_4px_16px_rgba(0,0,0,0.06)] focus-within:ring-4 focus-within:ring-zinc-900/5">
               <textarea
                 ref={inputRef}
                 value={inputValue}
@@ -1569,91 +1691,36 @@ export function BuildPlanPage() {
                 disabled={isBuilding || plannerStreaming}
                 placeholder={plannerStreaming ? "正在生成方案，点击右侧按钮可停止当前生成" : inputPlaceholder}
                 rows={1}
-                className="flex-1 resize-none border-0 bg-transparent text-sm leading-relaxed text-zinc-800 placeholder:text-zinc-400 focus:outline-none"
-                style={{ minHeight: "24px", maxHeight: "120px" }}
+                className="w-full min-h-[56px] max-h-[120px] resize-none border-0 bg-transparent px-4 pb-3 pt-4 text-[14px] leading-relaxed text-zinc-800 placeholder:text-zinc-400 focus:outline-none"
+                style={{ minHeight: "56px" }}
                 onInput={(event) => {
                   const target = event.currentTarget;
                   target.style.height = "auto";
                   target.style.height = `${Math.min(target.scrollHeight, 120)}px`;
                 }}
               />
-              <button
-                type="button"
-                onClick={() => void handleSend()}
-                disabled={isBuilding || (!plannerStreaming && (!inputValue.trim() || confirmPlannerMutation.isPending))}
-                className={
-                  plannerStreaming
-                    ? "flex h-9 w-9 items-center justify-center rounded-xl bg-red-600 text-white hover:bg-red-700"
-                    : "flex h-9 w-9 items-center justify-center rounded-xl bg-zinc-900 text-white disabled:bg-zinc-200 disabled:text-zinc-400"
-                }
-              >
-                {plannerStreaming ? <X className="h-4 w-4" /> : <ArrowUp className="h-4 w-4" />}
-              </button>
-            </div>
 
-            <div className="mt-2 rounded-2xl border border-zinc-200 bg-white p-3">
-              <button
-                type="button"
-                onClick={() => setFilesTrayOpen((prev) => !prev)}
-                className="flex w-full items-center gap-2 text-left text-xs font-medium text-zinc-500"
-              >
-                <Paperclip className="h-3.5 w-3.5" />
-                <span>
-                  {files.length > 0 ? `${files.length} 份资料 · ${readyFileUids.length} 份已就绪` : "学习资料"}
-                </span>
-                {plannerNeedsRefresh ? (
-                  <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[10px] text-amber-700">
-                    资料已变化
-                  </span>
-                ) : null}
-              </button>
-
-              {filesTrayOpen ? (
-                <div className="mt-3">
-                  <input
-                    type="file"
-                    multiple
-                    accept={ACCEPT}
-                    className="hidden"
-                    id="files-page-upload"
-                    onChange={(event: ChangeEvent<HTMLInputElement>) => {
-                      const selected = Array.from(event.target.files ?? []);
-                      event.target.value = "";
-                      if (selected.length) {
-                        void uploadMutation.mutateAsync(selected);
-                      }
-                    }}
-                  />
-                  <div className="mb-3 flex flex-wrap gap-2">
-                    <label
-                      htmlFor="files-page-upload"
-                      className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-dashed border-zinc-300 bg-zinc-50/50 px-3 py-2 text-[12px] font-medium text-zinc-500"
-                    >
-                      {uploadMutation.isPending ? (
-                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      ) : (
-                        <Plus className="h-3.5 w-3.5" />
-                      )}
-                      {uploadMutation.isPending ? "上传中" : "添加资料"}
-                    </label>
-
+              <div className="px-3 pb-3 flex flex-col gap-2">
+                {files.length > 0 && (
+                  <div className="flex flex-wrap gap-2 px-1 py-2 border-t border-zinc-100">
                     {files.map((file) => {
                       const meta = fileMeta(file);
                       return (
                         <div
                           key={file.uid}
-                          className="group relative flex items-center gap-1.5 rounded-lg border border-zinc-200 bg-white px-2.5 py-2"
+                          className="group relative flex items-center gap-1.5 rounded-lg border border-zinc-200/60 bg-zinc-50 px-2.5 py-1.5 text-[13px] text-zinc-700 transition-colors hover:bg-white hover:border-zinc-300 hover:shadow-sm"
                         >
                           {fileIcon(file)}
-                          <span className="max-w-[110px] truncate text-[12px] font-medium text-zinc-700">
+                          <span className="max-w-[140px] truncate font-medium">
                             {file.filename}
                           </span>
-                          <span className={`${meta.dot} h-1.5 w-1.5 rounded-full`} title={meta.label} />
+                          <span title={meta.label}>{meta.icon}</span>
                           <button
                             type="button"
                             onClick={() => deleteMutation.mutate(file.uid)}
                             disabled={deleteMutation.isPending}
                             className="absolute -right-1.5 -top-1.5 hidden h-4 w-4 items-center justify-center rounded-full bg-zinc-600 text-white group-hover:flex"
+                            title="删除文件"
                           >
                             <X className="h-2.5 w-2.5" />
                           </button>
@@ -1661,18 +1728,80 @@ export function BuildPlanPage() {
                       );
                     })}
                   </div>
+                )}
+
+                <div className="flex items-end justify-between px-1">
+                  <div className="flex items-center gap-2 flex-1">
+                    <input
+                      type="file"
+                      multiple
+                      accept={ACCEPT}
+                      className="hidden"
+                      id="files-page-upload"
+                      onChange={(event: ChangeEvent<HTMLInputElement>) => {
+                        const selected = Array.from(event.target.files ?? []);
+                        event.target.value = "";
+                        if (selected.length) {
+                          void uploadMutation.mutateAsync(selected);
+                        }
+                      }}
+                    />
+                    <label
+                      htmlFor="files-page-upload"
+                      className="flex cursor-pointer items-center gap-1.5 rounded-lg px-3 py-1.5 text-[13px] font-medium text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-900"
+                    >
+                      {uploadMutation.isPending ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Paperclip className="h-4 w-4" />
+                      )}
+                      {uploadMutation.isPending ? "上传中" : "添加资料"}
+                    </label>
+
+                    {plannerNeedsRefresh && (
+                      <span className="rounded-full bg-amber-50 px-2.5 py-0.5 text-[11px] font-medium text-amber-700">
+                        资料已变化
+                      </span>
+                    )}
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (isBuilding) {
+                        handleCancelBuild();
+                        return;
+                      }
+                      void handleSend();
+                    }}
+                    disabled={
+                      (isBuilding && !isBuildActive) ||
+                      cancelBuildMutation.isPending ||
+                      (!isBuilding && !plannerStreaming && (!inputValue.trim() || confirmPlannerMutation.isPending))
+                    }
+                    title={isBuilding ? "终止当前构建" : plannerStreaming ? "停止当前生成" : "发送"}
+                    className={
+                      "flex h-9 w-9 shrink-0 items-center justify-center rounded-xl transition-all " +
+                      (isBuilding || plannerStreaming
+                        ? "bg-red-600 text-white hover:bg-red-700 shadow-sm"
+                        : (!inputValue.trim() || confirmPlannerMutation.isPending)
+                        ? "cursor-not-allowed bg-zinc-100 text-zinc-300"
+                        : "bg-zinc-900 text-white shadow-sm hover:bg-zinc-800 focus:outline-none focus:ring-4 focus:ring-zinc-900/10 active:scale-[0.98]")
+                    }
+                  >
+                    {cancelBuildMutation.isPending ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : isBuilding || plannerStreaming ? (
+                      <X className="h-4 w-4" />
+                    ) : (
+                      <ArrowUp className="h-4 w-4" />
+                    )}
+                  </button>
                 </div>
-              ) : null}
+              </div>
             </div>
-
-            <p className="mt-2 text-center text-[11px] text-zinc-400">
-              不上传资料也可以先构建知识文档；如果你上传了资料，规划阶段会先理解上传内容，再给出可确认的大纲。
-            </p>
-
-            <p className="mt-1 text-center text-[11px] text-zinc-400">
-              先生成方案，再确认构建。确认后会留在当前 build 页面，持续展示真实的构建过程与检索来源。
-            </p>
           </div>
+        </div>
         </div>
       </div>
 
@@ -1684,27 +1813,7 @@ export function BuildPlanPage() {
         onResolve={knowledgeBuild.resolvePrecheckConflict}
       />
 
-      {shouldShowBuildView ? null : (
-        <button
-          type="button"
-          onClick={handleOpenKnowledgeGraph}
-          className="fixed bottom-24 right-4 z-20 flex items-center gap-3 rounded-2xl border border-sky-200 bg-[linear-gradient(135deg,#082f49_0%,#0f766e_100%)] px-4 py-3 text-left text-white shadow-[0_18px_40px_-18px_rgba(8,47,73,0.55)] transition hover:-translate-y-0.5 hover:shadow-[0_22px_50px_-18px_rgba(8,47,73,0.6)] md:bottom-24 md:right-8"
-        >
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-white/14">
-            <Network className="h-5 w-5" />
-          </div>
-          <div className="min-w-0">
-            <div className="text-sm font-semibold">构建知识图谱</div>
-            <div className="mt-0.5 text-[11px] leading-4 text-sky-50/85">
-              {readyFiles.length > 0
-                ? `基于 ${readyFiles.length} 份已解析资料直达图谱调试`
-                : files.length > 0
-                  ? "文件还在解析中，可先进入图谱页调试入口"
-                  : "上传资料后可直接跳转图谱页调试构建"}
-            </div>
-          </div>
-        </button>
-      )}
+
     </>
   );
 }

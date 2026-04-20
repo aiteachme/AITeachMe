@@ -35,7 +35,8 @@ load_context
   -> build_document_backbone
   -> generate_chapters (Send x N)
   -> enhance_chapters
-  -> review_content
+  -> review_chapter (Send x N)
+  -> document_consistency_review
   -> repair_or_route
   -> merge_review
   -> finalize_titles
@@ -43,7 +44,7 @@ load_context
   -> END
 ```
 
-其中 `generate_chapters` 是 LangGraph `Send` fan-out：每章独立研究、整理证据、写草稿；`enhance_chapters` 在章节 fan-in 后一次性并发处理全部草稿。
+其中 `generate_chapters` 和 `review_chapter` 都是 LangGraph `Send` fan-out：生成阶段每章独立研究、整理证据、写草稿；复核阶段每章独立做 LLM 结构化 review，再 fan-in 到整本一致性检查。
 
 ## 3. 当前流程图
 
@@ -58,7 +59,8 @@ flowchart TD
     D["build_document_backbone<br/>构建整本文档知识骨架"]
     E{"generate_chapters<br/>Send x N"}
     F["enhance_chapters<br/>表现层增强"]
-    G["review_content<br/>章节复核与整本一致性检查"]
+    G1{"review_chapter<br/>Send x N"}
+    G2["document_consistency_review<br/>整本一致性检查"]
     H["repair_or_route<br/>安全修补或记录 warning"]
     I["merge_review<br/>合并与发布前检查"]
     J["finalize_titles<br/>标题收口"]
@@ -74,8 +76,9 @@ flowchart TD
     C --> D
     D --> E
     E --> F
-    F --> G
-    G --> H
+    F --> G1
+    G1 --> G2
+    G2 --> H
     H --> I
     I --> J
     J --> K
@@ -90,22 +93,23 @@ flowchart TD
 | 2 | `confirm_and_dispatch` | 生成 `ChapterGenerationPlanSeed`、`ChapterGenerationTaskSeed`、`BackboneResearchAgenda`，同时生成章节 fan-out 使用的 `ChapterGenerationPlan` / `ChapterGenerationTask` |
 | 3 | `build_document_backbone` | 构建术语、概念依赖、主张池、符号表、易混点；失败时降级为 seed 弱骨架 |
 | 4 | `generate_chapters` | 每章检索、读取/压缩上下文、生成 evidence ledger、claim ledger、claim/evidence map、conflict report，并写草稿 |
-| 5 | `enhance_chapters` | 处理 Mermaid、图片/交互占位降级、公式清洗、Markdown 结构和本章自检题 |
-| 6 | `review_content` | 逐章执行 LLM 结构化内容复核，并用规则复核兜底；同时做整本术语/标题/章节数一致性检查 |
-| 7 | `repair_or_route` | 对 `surface_patch` / `section_patch` 执行局部 Markdown patch，对证据补强和重写类动作结构化记录 |
-| 8 | `merge_review` | 按章去重排序，生成章节 metadata，合并 Markdown，做发布前完整性检查 |
-| 9 | `finalize_titles` | 用 LLM 复核并优化最终章节标题，同步改写章节 Markdown 一级标题，并重建整本 Markdown |
-| 10 | `publish_document` | 写 `_build`、当前发布文件、版本归档、`docgen_manifest.json` 和 `KnowledgeDoc` rows |
+| 5 | `enhance_chapters` | 处理 Mermaid、交互占位清理、公式清洗、Markdown 结构和本章自检题 |
+| 6 | `review_chapter` | LangGraph `Send x N` 按章并行执行 LLM 结构化内容复核，并用规则复核兜底 |
+| 7 | `document_consistency_review` | 章节 review fan-in 后检查整本术语、标题、章节数、重复和风格一致性 |
+| 8 | `repair_or_route` | 对 `surface_patch` / `section_patch` 执行局部 Markdown patch，对证据补强和重写类动作结构化记录 |
+| 9 | `merge_review` | 按章去重排序，生成章节 metadata，合并 Markdown，做发布前完整性检查 |
+| 10 | `finalize_titles` | 不再生成新标题，只同步前置执行合同锁定的标题到章节 Markdown 一级标题，并重建整本 Markdown |
+| 11 | `publish_document` | 写 `_build`、当前发布文件、版本归档、`docgen_manifest.json` 和 `KnowledgeDoc` rows |
 
 ## 5. 目录结构
 
 ```text
 docgen/
   __init__.py              # lane 稳定导入面
-  graph.py                 # LangGraph 定义、初始 state、Send 分发
+  graph.py                 # LangGraph 定义、初始 state、Send 分发、单次运行入口
   state.py                 # DocGenState TypedDict
   nodes/                   # 顶层图节点
-  lib/                     # 节点内部复用逻辑和 Pydantic 合同
+  lib/                     # 节点内部复用逻辑和 Pydantic 合同；小质量模块已收口到 quality.py
   prompts/                 # prompt builder / template
   README.md
   FLOW_DESIGN.md
@@ -115,10 +119,13 @@ docgen/
 
 说明：
 
+- `graph.py` 承接单次 DocGen 图运行；`__init__.py` 只保留稳定导出。
 - `lib/build_lifecycle.py` 承接 DocGen lane 的构建触发、状态装配、后台任务编排和查询结果组装。
+- `graph.get_langgraph_dev_docgen_graph()` 只服务 `langgraph dev` / 图可视化调试，不是业务运行入口。
 - 知识产物清理已收口到 `digest/common/cleanup.py`，因为它清理的是 Digest 级知识产物，而不是 DocGen 私有中间状态。
 - 新增节点优先放 `nodes/`，节点内部可复用逻辑放 `lib/`。
 - 不新增 `runtime/`、`internal/`、`services/`、第二套 search/tool registry。
+- `prompts/tracing.py` 会把 prompt builder 输出作为 LangSmith `prompt` 子 run 记录，便于从链路里直接检查提示词拼装。
 
 ## 6. 核心合同
 
@@ -217,8 +224,8 @@ title_review_report
 - `ReviewAction` 已扩展出 `evidence_patch`、`target_anchor`、`instruction`、`constraints`、`expected_effect`，repair 层已消费 `surface_patch` / `section_patch` 执行局部修补，`evidence_patch` 和 `regenerate_chapter` 仍待闭环阶段接入。
 - patch 类动作只有真实修改正文才会标记为 `applied`；未执行的动作会进入 `repair_trace`。
 - 如果后续引入 repair loop，`chapter_drafts` / `enhanced_chapter_drafts` 这类 `operator.add` fan-in 字段需要版本化或按章替换，否则容易累积旧草稿。
-- 文生图已接入 infra `agenerate_image` 和 DocGen image 占位处理；后续还需要补更细的前端展示与失败重试策略。
-- `final_merge_patch` 尚未独立实现，合并后才暴露的小问题只能由 `merge_review` / `finalize_titles` 间接收口。
+- DocGen 当前不直接生成讲义配图；复杂可视化后续应优先走 Mermaid 或 OpenMAIC 风格的交互式 HTML/scene 资产。
+- `final_merge_patch` 尚未独立实现，合并后才暴露的小问题只能由 `merge_review` 间接收口；`finalize_titles` 只做锁定标题同步。
 
 这些问题都不要求立刻大改 graph，但应该按 `REFACTOR_PLAN.md` 的顺序小步处理。
 

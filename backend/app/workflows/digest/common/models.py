@@ -154,7 +154,11 @@ class TopicAnchorSnapshot(BaseModel):
 
 
 class SubjectProfile(BaseModel):
-    """Detected discipline profile used to guide both lanes."""
+    """Detected discipline profile used to guide Digest lanes.
+
+    `subject_name` 只是 UI/display label 的历史字段，不应作为教学语义输入；
+    规划和写作应以 user_prompt、资料内容和 confirmed plan 为准。
+    """
 
     subject_slug: str = ""
     subject_name: str = ""
@@ -173,8 +177,6 @@ class SubjectProfile(BaseModel):
         """Build a concise context string for LLM prompts."""
 
         parts: list[str] = []
-        if self.subject_name:
-            parts.append(f"学科：{self.subject_name}")
         if self.discipline:
             label = self.discipline
             if self.sub_discipline:

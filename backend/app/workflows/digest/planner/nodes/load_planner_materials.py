@@ -8,7 +8,6 @@ from pathlib import Path
 
 import structlog
 
-from app.models.subject import Subject
 from app.repositories.files_repo import list_raw_files_by_ids
 from app.shared.infra.database import managed_session
 from app.shared.infra.workflow.context import WorkflowContext
@@ -54,7 +53,6 @@ def _seed_titles_from_goal_and_files(
 def _build_seed_material_context(*, subject: str, file_ids: list[int], user_prompt: str | None) -> DigestMaterialContext:
     with managed_session() as session:
         raw_files = list_raw_files_by_ids(session, subject, file_ids)
-        subject_row = session.query(Subject).filter(Subject.slug == subject).first()
 
     filenames = [raw_file.original_filename for raw_file in raw_files if raw_file.original_filename]
     seed_titles = _seed_titles_from_goal_and_files(filenames, subject=subject, user_prompt=user_prompt)
@@ -85,7 +83,7 @@ def _build_seed_material_context(*, subject: str, file_ids: list[int], user_prom
         material_hints=FastTopicHints(chapter_candidates=seed_titles),
         learning_domain_profile=SubjectProfile(
             subject_slug=subject,
-            subject_name=(subject_row.name or "").strip() if subject_row is not None else "",
+            subject_name="",
             discipline=(discipline_counts.most_common(1)[0][0] if discipline_counts else ""),
             sub_discipline=(sub_discipline_counts.most_common(1)[0][0] if sub_discipline_counts else ""),
             content_type=(content_type_counts.most_common(1)[0][0] if content_type_counts else ""),

@@ -9,7 +9,8 @@
 5) 读取 `full.md`，并收集 `images/` 资源文件
 
 设计说明：
-- 仅使用标准库网络能力（urllib），避免引入额外依赖。
+- 使用 requests 对齐官方示例，避免预签名 URL 因默认 header 不一致而签名失配。
+- 下载结果 zip 时，如果环境代理链路异常，会自动直连重试一次。
 - 全部函数为同步实现；在异步工作流中请用 `asyncio.to_thread(...)` 调用。
 - 解析结果解压到调用方提供的临时目录中，清理由调用方控制。
 
@@ -28,7 +29,6 @@ from pathlib import Path
 from typing import Any
 
 import structlog
-
 
 DEFAULT_MINERU_BASE_URL = "https://mineru.net"
 logger = structlog.get_logger(__name__)
@@ -312,7 +312,6 @@ def _poll_until_done(
 def _put_file(url: str, file_path: Path) -> None:
     # 严格对齐 backend/playground/mineru_test.py：requests.put(target_url, data=f)
     requests = _get_requests()
-
     try:
         with file_path.open("rb") as f:
             resp = requests.put(url, data=f, timeout=120)
@@ -328,19 +327,39 @@ def _put_file(url: str, file_path: Path) -> None:
 def _download_file(url: str, dest: Path) -> None:
     # 对齐示例：requests.get(zip_url, stream=True)
     requests = _get_requests()
-    try:
-        resp = requests.get(url, stream=True, timeout=240)
-    except Exception as exc:
-        raise RuntimeError(f"MinerU 下载 zip 失败: {exc}") from exc
+    proxy_modes = (True, False) if requests.utils.get_environ_proxies(url) else (True,)
+    last_exc: Exception | None = None
 
-    if resp.status_code != 200:
-        snippet = (resp.text or "").strip().replace("\r", " ").replace("\n", " ")[:600]
-        raise RuntimeError(f"MinerU 下载 zip 失败: HTTP {resp.status_code}; resp={snippet}")
+    for trust_env in proxy_modes:
+        try:
+            if dest.exists():
+                dest.unlink()
+            session = requests.Session()
+            session.trust_env = trust_env
+            with session.get(url, stream=True, timeout=240) as resp:
+                if resp.status_code != 200:
+                    snippet = (resp.text or "").strip().replace("\r", " ").replace("\n", " ")[:600]
+                    raise RuntimeError(f"MinerU 下载 zip 失败: HTTP {resp.status_code}; resp={snippet}")
 
-    with dest.open("wb") as f:
-        for chunk in resp.iter_content(chunk_size=8192):
-            if chunk:
-                f.write(chunk)
+                with dest.open("wb") as f:
+                    for chunk in resp.iter_content(chunk_size=8192):
+                        if chunk:
+                            f.write(chunk)
+                return
+        except Exception as exc:
+            last_exc = exc
+            if dest.exists():
+                dest.unlink()
+            if trust_env and len(proxy_modes) > 1:
+                logger.warning("mineru_download_retrying_without_proxy", error=str(exc))
+                continue
+            hint = ""
+            if len(proxy_modes) > 1:
+                hint = " 当前进程检测到环境代理，这更像是代理/CDN/TLS 链路异常，不像 API Token 问题。"
+            raise RuntimeError(f"MinerU 下载 zip 失败: {exc}{hint}") from exc
+
+    assert last_exc is not None
+    raise RuntimeError(f"MinerU 下载 zip 失败: {last_exc}") from last_exc
 
 
 def _request_json(

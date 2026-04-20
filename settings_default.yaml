@@ -15,8 +15,6 @@ models:
   ocr: ""
   # Embedding 模型；当前默认匹配 DashScope compatible-mode。
   embedding: text-embedding-v4
-  # 文生图模型；留空表示不启用真实图片生成。
-  image_generation: "FLUX-1.1-pro"
   # 预留模型别名覆盖表；例如将某些业务标签映射到特定模型名。
   overrides: {}
 
@@ -126,6 +124,8 @@ search:
   # 进程内检索缓存最大条目数。
   runtime_cache_max_entries: 256
   # 检索 profile 覆盖表；空对象表示使用代码内置 profile。
+  # 内置 profile 包括 docgen_sprint / docgen_systematic / docgen_zh_edu / docgen_zh_math。
+  # 中文教育 profile 会优先检索中文维基教科书、中文维基学院、中文维基百科和 OI Wiki。
   retriever_profiles: {}
 
 observability:

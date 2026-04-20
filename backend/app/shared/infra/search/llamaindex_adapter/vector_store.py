@@ -74,21 +74,19 @@ class ATMVectorStore(BasePydanticVectorStore):
             loop = None
 
         if loop and loop.is_running():
-            import nest_asyncio
+            raise RuntimeError(
+                "Cannot call sync .query() from within a running event loop. "
+                "Use .aquery() instead."
+            )
 
-            nest_asyncio.apply()
-            return loop.run_until_complete(self.aquery(query, **kwargs))
-
-        return asyncio.get_event_loop().run_until_complete(
-            self.aquery(query, **kwargs)
-        )
+        return asyncio.run(self.aquery(query, **kwargs))
 
     async def aquery(
         self, query: VectorStoreQuery, **kwargs: Any
     ) -> VectorStoreQueryResult:
         """Execute a vector similarity search against the subject corpus."""
 
-        from app.repositories.knowledge.knowledge_repo import get_chunk_by_id
+        from app.repositories.knowledge.knowledge_repo import get_chunks_by_ids
         from app.shared.infra.search.llamaindex_index import query_subject_index
 
         query_embedding = query.query_embedding
@@ -97,20 +95,24 @@ class ATMVectorStore(BasePydanticVectorStore):
 
         top_k = query.similarity_top_k or 5
 
-        # Extract ALL ORM data inside session scope to avoid
-        # DetachedInstanceError on both SQLite and PostgreSQL.
-        extracted: list[_ExtractedChunk] = []
         hits = query_subject_index(
             self.subject,
             query_embedding,
             top_k=top_k,
         )
+        if not hits:
+            return VectorStoreQueryResult(nodes=[], similarities=[], ids=[])
+
+        # Extract ALL ORM data inside session scope to avoid DetachedInstanceError.
+        extracted: list[_ExtractedChunk] = []
         with managed_session() as session:
+            chunk_ids = [hit.chunk_id for hit in hits]
+            chunks = get_chunks_by_ids(session, chunk_ids)
+            chunk_by_id = {chunk.id: chunk for chunk in chunks if chunk.id is not None}
+            
             for hit in hits:
-                chunk = get_chunk_by_id(session, hit.chunk_id)
+                chunk = chunk_by_id.get(hit.chunk_id)
                 if chunk is None or chunk.subject != self.subject:
-                    continue
-                if chunk.id is None:
                     continue
                 extracted.append(
                     _ExtractedChunk(

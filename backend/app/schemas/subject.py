@@ -11,12 +11,12 @@ class SubjectCreateRequest(BaseModel):
     model_config = ConfigDict(
         json_schema_extra={
             "example": {
-                "name": "高等数学",
+                "name": "",
             }
         }
     )
 
-    name: str = Field(min_length=1, description="展示名称。")
+    name: str = Field(default="", description="展示名称。可留空，Planner 会在首次对话后自动命名。")
 
 
 class SubjectDetailRequest(BaseModel):

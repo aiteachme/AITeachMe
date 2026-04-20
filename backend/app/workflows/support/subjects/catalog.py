@@ -46,7 +46,7 @@ def create_subject_record(
         Subject(
             user_id=owner_user_id,
             slug=_create_unique_subject_id(session),
-            name=name.strip() or "Untitled Subject",
+            name=name.strip(),
         ),
     )
     return _to_subject_item(subject)

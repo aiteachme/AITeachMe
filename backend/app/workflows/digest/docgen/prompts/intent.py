@@ -5,6 +5,8 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from typing import Any
 
+from app.workflows.digest.common.prompt_tracing import trace_prompt_build
+
 INTENT_CHAPTER_TITLE_BUDGET = 24
 
 
@@ -53,10 +55,20 @@ Planner 对话与修改摘要：{docgen_history_brief or "暂无"}
 2. systematic 模式通常 explanation_depth 更深，定义和推理更完整。
 3. 不要修改章节数量、顺序或主题。
 """.strip()
-    return [
+    messages = [
         {"role": "system", "content": "你只输出合法 JSON。"},
         {"role": "user", "content": prompt},
     ]
+    return trace_prompt_build(
+        "docgen_intent",
+        inputs={
+            "subject": subject,
+            "digest_mode": digest_mode,
+            "chapter_count": len(chapters),
+            "has_history": bool(docgen_history_brief),
+        },
+        output=messages,
+    )
 
 
 __all__ = ["build_intent_messages"]

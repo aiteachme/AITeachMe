@@ -20,7 +20,6 @@ import {
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import {
-  createSubjectApiApiV1SubjectsAddPost,
   deleteSubjectApiApiV1SubjectsDeletePost,
   listSubjectsApiApiV1SubjectsListPost,
   previewDeleteSubjectApiApiV1SubjectsDeletePreviewPost,
@@ -55,52 +54,6 @@ function colorClassForSubject(name: string) {
     hash = name.charCodeAt(index) + ((hash << 5) - hash);
   }
   return COLOR_CLASSES[Math.abs(hash) % COLOR_CLASSES.length];
-}
-
-function NewSubjectForm({
-  onSubmit,
-  onCancel,
-  isPending,
-  error,
-}: {
-  onSubmit: (name: string) => void;
-  onCancel: () => void;
-  isPending: boolean;
-  error?: string;
-}) {
-  const [name, setName] = useState("");
-  const nameInputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    nameInputRef.current?.focus();
-  }, []);
-
-  return (
-    <div className="space-y-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
-      <input
-        ref={nameInputRef}
-        className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-300"
-        placeholder="学科名称，例如：高等数学"
-        value={name}
-        onChange={(event) => setName(event.target.value)}
-        onKeyDown={(event) => {
-          if (event.key === "Enter" && name.trim()) {
-            onSubmit(name.trim());
-          }
-        }}
-      />
-      <p className="text-xs text-slate-500">新建学科现在只需要填写名字，系统会自动生成学科标识。</p>
-      {error ? <p className="text-xs text-red-500">{error}</p> : null}
-      <div className="flex gap-2">
-        <Button className="flex-1" onClick={() => onSubmit(name.trim())} disabled={!name.trim() || isPending}>
-          {isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "创建"}
-        </Button>
-        <Button variant="outline" className="flex-1" onClick={onCancel}>
-          取消
-        </Button>
-      </div>
-    </div>
-  );
 }
 
 function RenameSubjectModal({
@@ -170,12 +123,14 @@ function RenameSubjectModal({
   );
 }
 
+function displaySubjectName(subject: SubjectItem): string {
+  return subject.name?.trim() || "无标题";
+}
+
 export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
   const [expandedSubjects, setExpandedSubjects] = useState<Set<string>>(new Set());
   const [isMobileOpen, setIsMobileOpen] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(false);
-  const [showNewForm, setShowNewForm] = useState(false);
-  const [createError, setCreateError] = useState<string>();
   const [subjectActionError, setSubjectActionError] = useState<string>();
   const [deleteTarget, setDeleteTarget] = useState<SubjectItem | null>(null);
   const [deletePreview, setDeletePreview] = useState<SubjectDeletePreviewData | null>(null);
@@ -222,27 +177,6 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
     setExpandedSubjects((prev) => new Set([...prev, match[1]]));
     setIsCollapsed(false);
   }, [location.pathname]);
-
-  const createMutation = useMutation({
-    mutationFn: async ({ name }: { name: string }) => {
-      const created = unwrapOrvalResponse(await createSubjectApiApiV1SubjectsAddPost({ name }));
-      if (!created) {
-        throw new Error("创建学科失败");
-      }
-      return created;
-    },
-    onSuccess: (created) => {
-      void queryClient.invalidateQueries({ queryKey: ["subjects"] });
-      setExpandedSubjects((prev) => new Set([...prev, created.subject_id]));
-      setShowNewForm(false);
-      setCreateError(undefined);
-      setSubjectActionError(undefined);
-      navigate(`/subject/${created.subject_id}/build`);
-    },
-    onError: (error) => {
-      setCreateError(getApiErrorMessage(error, "创建失败，请重试"));
-    },
-  });
 
   const deletePreviewMutation = useMutation({
     mutationFn: async (subjectId: string) =>
@@ -348,33 +282,18 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
             variant="outline"
             className={cn(effectiveCollapsed ? "mx-auto h-10 w-10 px-0" : "w-full justify-start")}
             onClick={() => {
-              if (effectiveCollapsed) {
-                setIsCollapsed(false);
-                return;
-              }
-              setShowNewForm((prev) => !prev);
+              setSubjectActionError(undefined);
+              setOpenMenuId(null);
+              setIsMobileOpen(false);
+              navigate("/", {
+                state: { newEntryAt: Date.now() },
+              });
             }}
             title={effectiveCollapsed ? "新建学科" : undefined}
           >
             <Plus className="h-4 w-4 shrink-0" />
             {!effectiveCollapsed ? <span className="ml-2">新建学科</span> : null}
           </Button>
-
-          {!effectiveCollapsed && showNewForm ? (
-            <NewSubjectForm
-              onSubmit={(name) => {
-                setCreateError(undefined);
-                setSubjectActionError(undefined);
-                createMutation.mutate({ name });
-              }}
-              onCancel={() => {
-                setShowNewForm(false);
-                setCreateError(undefined);
-              }}
-              isPending={createMutation.isPending}
-              error={createError}
-            />
-          ) : null}
 
           {!effectiveCollapsed && subjectActionError ? (
             <p className="px-1 text-xs text-red-500">{subjectActionError}</p>
@@ -392,7 +311,8 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
           {groupedSubjects.map((subject) => {
             const expanded = expandedSubjects.has(subject.subject_id);
             const activeSubject = location.pathname.startsWith(`/subject/${subject.subject_id}/`);
-            const badgeClass = colorClassForSubject(subject.name);
+            const displayName = displaySubjectName(subject);
+            const badgeClass = colorClassForSubject(subject.name || subject.subject_id);
 
             return (
               <div key={subject.subject_id} className="mb-2">
@@ -405,15 +325,15 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
                       effectiveCollapsed ? "justify-center px-0" : "px-2",
                       activeSubject || expanded ? "bg-slate-50" : "hover:bg-slate-50",
                     )}
-                    title={effectiveCollapsed ? subject.name : undefined}
+                    title={effectiveCollapsed ? displayName : undefined}
                   >
                     {effectiveCollapsed ? null : (
                       <ChevronRight className={cn("mr-1.5 h-4 w-4 shrink-0 text-slate-400 transition-transform", expanded ? "rotate-90" : "rotate-0")} />
                     )}
                     <div className={cn("flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-xs font-bold text-white", badgeClass)}>
-                      {subject.name.charAt(0).toUpperCase()}
+                      {(subject.name.trim().charAt(0) || "新").toUpperCase()}
                     </div>
-                    {!effectiveCollapsed ? <span className="ml-2 truncate text-sm font-medium text-slate-700">{subject.name}</span> : null}
+                    {!effectiveCollapsed ? <span className="ml-2 truncate text-sm font-medium text-slate-700">{displayName}</span> : null}
                   </button>
 
                   {!effectiveCollapsed ? (
@@ -433,7 +353,7 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
                             type="button"
                             onClick={() => {
                               setOpenMenuId(null);
-                              setRenameTarget({ id: subject.subject_id, name: subject.name });
+                              setRenameTarget({ id: subject.subject_id, name: displayName === "无标题" ? "" : subject.name });
                             }}
                             className="flex w-full items-center gap-2 px-3 py-2 text-xs text-slate-700 hover:bg-slate-50"
                           >

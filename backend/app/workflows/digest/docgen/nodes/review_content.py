@@ -1,15 +1,13 @@
-﻿"""Review enhanced DocGen content before merge."""
+"""Review enhanced DocGen content before merge."""
 
 from __future__ import annotations
 
-import asyncio
 from time import perf_counter
 
 from app.shared.infra.workflow.context import WorkflowContext
-from app.utils.docgen_store import append_knowledge_build_recent_event, update_knowledge_build_status
+from app.utils.docgen_store import append_knowledge_build_recent_event, update_knowledge_build_status, upsert_knowledge_build_chapter_progress
 from app.utils.time import utcnow
 from app.workflows.digest.docgen.lib.chapter_review import review_chapter
-from app.workflows.digest.docgen.lib.document_consistency import review_document_consistency
 from app.workflows.digest.docgen.lib.models import (
     ChapterGenerationTask,
     ClaimEvidenceMap,
@@ -17,12 +15,15 @@ from app.workflows.digest.docgen.lib.models import (
     ConflictReport,
     DocumentBackbone,
     EnhancedChapterDraft,
+    ReviewAction,
+    ReviewedChapterDraft,
 )
 from app.workflows.digest.docgen.nodes.common import publish_docgen_progress
+from app.workflows.digest.docgen.lib.quality import review_document_consistency
 from app.workflows.digest.docgen.state import DocGenState
 
 
-def _review_decision(actions: list, *, document_issue_count: int) -> str:
+def _review_decision(actions: list[ReviewAction], *, document_issue_count: int) -> str:
     blocking_types = {"section_patch", "evidence_patch", "regenerate_chapter", "re_dispatch", "rebuild_backbone"}
     has_blocking_action = any(
         action.action_type in blocking_types and action.severity in {"warning", "error"}
@@ -38,76 +39,118 @@ def _review_decision(actions: list, *, document_issue_count: int) -> str:
     return "good"
 
 
-def build_review_content_node(*, context: WorkflowContext):
-    """构建内容复核节点。
+def _by_chapter(model_cls, items: list[dict]) -> dict[int, object]:
+    return {
+        int(item.get("chapter_index", 0) or 0): model_cls.model_validate(item)
+        for item in items
+    }
 
-    章节级 review 按章并行执行，先由 LLM 做结构化复核，再叠加规则兜底；
-    所有章节 review fan-in 后再做整本文档一致性检查，并输出
-    review_decision 与 ReviewAction 给 repair 阶段使用。
+
+def build_review_chapter_node(*, context: WorkflowContext):
+    """构建单章复核节点。
+
+    该节点通过 LangGraph Send 按章 fan-out 运行。每个分支只复核一个
+    EnhancedChapterDraft，并输出单章 ReviewedDraft、ReviewReport 和
+    ReviewAction，随后由 reducers fan-in 到整本一致性节点。
     """
 
-    async def review_content_node(state: DocGenState) -> dict:
-        """复核增强后的章节集合并生成回流动作。"""
+    async def review_chapter_node(state: DocGenState) -> dict:
+        """复核一个增强章节。"""
 
         started_at = perf_counter()
-        enhanced = [
-            EnhancedChapterDraft.model_validate(item)
-            for item in sorted(
-                list(state.get("enhanced_chapter_drafts") or []),
-                key=lambda raw: int((raw or {}).get("chapter_index", 0) or 0),
-            )
-        ]
-        if not enhanced:
-            return {"error": "没有可复核的增强章节。"}
-        # 先把章节相关合同按 chapter_index 对齐，后面逐章复核时就不会靠列表顺序碰运气。
-        tasks_by_chapter = {
-            int(item.get("chapter_index", 0) or 0): ChapterGenerationTask.model_validate(item)
-            for item in list(state.get("chapter_tasks") or [])
-        }
-        claim_ledgers_by_chapter = {
-            int(item.get("chapter_index", 0) or 0): ClaimLedger.model_validate(item)
-            for item in list(state.get("claim_ledgers") or [])
-        }
-        claim_maps_by_chapter = {
-            int(item.get("chapter_index", 0) or 0): ClaimEvidenceMap.model_validate(item)
-            for item in list(state.get("claim_evidence_maps") or [])
-        }
-        conflict_reports_by_chapter = {
-            int(item.get("chapter_index", 0) or 0): ConflictReport.model_validate(item)
-            for item in list(state.get("conflict_reports") or [])
-        }
-        document_backbone = DocumentBackbone.model_validate(state.get("document_backbone") or {})
+        draft = EnhancedChapterDraft.model_validate(state["enhanced_chapter_draft"])
+        tasks_by_chapter = _by_chapter(ChapterGenerationTask, list(state.get("chapter_tasks") or []))
+        claim_ledgers_by_chapter = _by_chapter(ClaimLedger, list(state.get("claim_ledgers") or []))
+        claim_maps_by_chapter = _by_chapter(ClaimEvidenceMap, list(state.get("claim_evidence_maps") or []))
+        conflict_reports_by_chapter = _by_chapter(ConflictReport, list(state.get("conflict_reports") or []))
+
         update_knowledge_build_status(
             state["subject"],
             requested_at=state["requested_at"],
             status="running",
             stage="reviewing_content",
             digest_mode=state.get("digest_mode") or None,
-            current_stage_description=f"正在复核 {len(enhanced)} 个章节的覆盖、证据和一致性。",
+            current_stage_description="正在并行复核章节覆盖、证据支撑和写作质量。",
         )
-        review_parallelism = max(1, min(6, len(enhanced)))
-        review_sem = asyncio.Semaphore(review_parallelism)
+        upsert_knowledge_build_chapter_progress(
+            state["subject"],
+            requested_at=state["requested_at"],
+            chapter_progress={"chapter_index": draft.chapter_index, "title": draft.title, "status": "reviewing"},
+        )
+        reviewed, report, actions = await review_chapter(
+            draft=draft,
+            task=tasks_by_chapter.get(draft.chapter_index),
+            claim_ledger=claim_ledgers_by_chapter.get(draft.chapter_index),
+            claim_evidence_map=claim_maps_by_chapter.get(draft.chapter_index),
+            conflict_report=conflict_reports_by_chapter.get(draft.chapter_index),
+            digest_mode=state.get("digest_mode") or "",
+        )
+        elapsed_ms = int((perf_counter() - started_at) * 1000)
+        upsert_knowledge_build_chapter_progress(
+            state["subject"],
+            requested_at=state["requested_at"],
+            chapter_progress={"chapter_index": draft.chapter_index, "title": draft.title, "status": "reviewed"},
+        )
+        append_knowledge_build_recent_event(
+            state["subject"],
+            requested_at=state["requested_at"],
+            event={
+                "stage": "chapter_reviewed",
+                "chapter_index": draft.chapter_index,
+                "title": draft.title,
+                "summary": f"{draft.title} 内容复核完成，发现 {len(actions)} 条回流建议。",
+                "created_at": utcnow(),
+            },
+        )
+        await publish_docgen_progress(
+            context,
+            state=state,
+            stage="chapter_reviewed",
+            payload={
+                "chapter_index": draft.chapter_index,
+                "title": draft.title,
+                "passed": report.passed,
+                "review_action_count": len(actions),
+                "coverage_score": report.coverage_score,
+                "evidence_support_score": report.evidence_support_score,
+            },
+        )
+        return {
+            "reviewed_chapter_draft_items": [reviewed.model_dump(mode="json")],
+            "chapter_review_report_items": [report.model_dump(mode="json")],
+            "review_action_items": [item.model_dump(mode="json") for item in actions],
+            "review_ms": elapsed_ms,
+            "llm_calls_total": 1,
+        }
 
-        async def _review_one(draft: EnhancedChapterDraft):
-            async with review_sem:
-                return await review_chapter(
-                    draft=draft,
-                    task=tasks_by_chapter.get(draft.chapter_index),
-                    claim_ledger=claim_ledgers_by_chapter.get(draft.chapter_index),
-                    claim_evidence_map=claim_maps_by_chapter.get(draft.chapter_index),
-                    conflict_report=conflict_reports_by_chapter.get(draft.chapter_index),
-                    digest_mode=state.get("digest_mode") or "",
-                )
+    return review_chapter_node
 
-        # 章节复核按章并行；整本文档一致性放在所有章节复核之后统一判断。
-        review_results = await asyncio.gather(*(_review_one(draft) for draft in enhanced))
-        reviewed = []
-        reports = []
-        actions = []
-        for reviewed_draft, report, chapter_actions in review_results:
-            reviewed.append(reviewed_draft)
-            reports.append(report)
-            actions.extend(chapter_actions)
+
+def build_document_consistency_review_node(*, context: WorkflowContext):
+    """构建整本一致性复核节点。
+
+    所有章节复核 fan-in 后运行，只做跨章术语、标题、章节数量和整体
+    风格一致性判断，不再发起章节级 LLM 调用。
+    """
+
+    async def document_consistency_review_node(state: DocGenState) -> dict:
+        """汇总章节 review 并生成 review_decision。"""
+
+        started_at = perf_counter()
+        reviewed = [
+            ReviewedChapterDraft.model_validate(item)
+            for item in sorted(
+                list(state.get("reviewed_chapter_draft_items") or []),
+                key=lambda raw: int((raw or {}).get("chapter_index", 0) or 0),
+            )
+        ]
+        if not reviewed:
+            return {"error": "没有可做整本一致性复核的章节。"}
+        document_backbone = DocumentBackbone.model_validate(state.get("document_backbone") or {})
+        actions = [
+            ReviewAction.model_validate(item)
+            for item in list(state.get("review_action_items") or [])
+        ]
         consistency_report = review_document_consistency(
             reviewed_chapters=reviewed,
             document_backbone=document_backbone,
@@ -141,7 +184,7 @@ def build_review_content_node(*, context: WorkflowContext):
             stage="content_reviewed",
             payload={
                 "chapter_count": len(reviewed),
-                "review_parallelism": review_parallelism,
+                "review_parallelism": min(6, len(reviewed)),
                 "review_decision": review_decision,
                 "review_action_count": len(actions),
                 "document_issue_count": len(consistency_report.issues),
@@ -149,15 +192,14 @@ def build_review_content_node(*, context: WorkflowContext):
         )
         return {
             "reviewed_chapter_drafts": [item.model_dump(mode="json") for item in reviewed],
-            "chapter_review_reports": [item.model_dump(mode="json") for item in reports],
+            "chapter_review_reports": list(state.get("chapter_review_report_items") or []),
+            "review_actions": [item.model_dump(mode="json") for item in actions],
             "document_consistency_report": consistency_report.model_dump(mode="json"),
             "review_decision": review_decision,
-            "review_actions": [item.model_dump(mode="json") for item in actions],
             "review_ms": elapsed_ms,
-            "llm_calls_total": len(enhanced),
         }
 
-    return review_content_node
+    return document_consistency_review_node
 
 
-__all__ = ["build_review_content_node"]
+__all__ = ["build_document_consistency_review_node", "build_review_chapter_node"]

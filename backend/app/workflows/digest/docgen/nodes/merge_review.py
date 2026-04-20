@@ -8,9 +8,9 @@ from app.shared.infra.tools.builtin.markdown_processing import count_words, prep
 from app.utils.docgen_store import append_knowledge_build_recent_event, update_knowledge_build_status
 from app.utils.time import utcnow
 from app.shared.infra.workflow.context import WorkflowContext
-from app.workflows.digest.docgen.lib.merge_review import build_merge_review_report
 from app.workflows.digest.docgen.lib.models import EnhancedChapterDraft
 from app.workflows.digest.docgen.lib.publish import build_merged_markdown
+from app.workflows.digest.docgen.lib.quality import build_merge_review_report
 from app.workflows.digest.docgen.nodes.common import publish_docgen_progress
 from app.workflows.digest.docgen.state import DocGenState
 

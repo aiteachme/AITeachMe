@@ -34,6 +34,7 @@ class BuildPlannerState(TypedDict, total=False):
     material_context: DigestMaterialContext
     planner_brief: dict[str, Any]
     plan_intent: dict[str, Any]
+    generated_subject_name: str
     plan_outline_markdown: str
     build_plan_draft: dict[str, Any]
 

@@ -286,7 +286,7 @@ async def create_build_planner_session(
             user_id=user_id,
             planner_operation="create",
             requested_file_uids=list(payload.file_uids or []),
-            session_title=payload.title or user_prompt or subject.name,
+            session_title=payload.title or user_prompt,
             file_ids=[],
             user_prompt=user_prompt,
             planner_session_id=session_id,

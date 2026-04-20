@@ -111,6 +111,42 @@ class BackgroundTaskRegistry:
             name=record.name,
         )
 
+    async def cancel_matching(
+        self,
+        *,
+        kind: str | None = None,
+        subject: str | None = None,
+        timeout_s: float = 3.0,
+    ) -> int:
+        """Cancel active tasks matching kind and subject, returning task count."""
+
+        with self._lock:
+            records = [
+                record
+                for record in self._tasks.values()
+                if (kind is None or record.kind == kind)
+                and (subject is None or record.subject == subject)
+            ]
+        if not records:
+            return 0
+
+        for record in records:
+            record.task.cancel()
+
+        done, pending = await asyncio.wait(
+            [record.task for record in records],
+            timeout=max(0.1, float(timeout_s)),
+        )
+        if pending:
+            logger.warning(
+                "background_task_cancel_timeout",
+                kind=kind,
+                subject=subject,
+                completed=len(done),
+                pending=len(pending),
+            )
+        return len(records)
+
     async def shutdown(self, *, cancel_timeout_s: float = 5.0) -> None:
         """Cancel all tracked tasks and wait briefly for cleanup."""
 

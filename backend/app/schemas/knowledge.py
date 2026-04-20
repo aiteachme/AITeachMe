@@ -201,6 +201,16 @@ class DocGenBuildData(BaseModel):
     digest_mode: str | None = Field(default=None, description="Digest mode frozen in the confirmed build plan.")
 
 
+class DocGenBuildCancelData(BaseModel):
+    """Result of cancelling the active knowledge build."""
+
+    subject: str
+    status: str = "cancelled"
+    cancelled_task_count: int = 0
+    requested_at: datetime | None = None
+    message: str = "已终止当前知识构建。"
+
+
 class BuildSampleCardResponse(BaseModel):
     """Lightweight preview card shown while digest is building."""
 
@@ -279,6 +289,7 @@ class KnowledgeBuildStatusResponse(BaseModel):
     stage: str = Field(description="Current lifecycle stage for the build.")
     error_message: str | None = Field(default=None, description="Build failure or cancellation reason.")
     draft_available: bool = Field(default=False, description="Whether a staging draft is currently available.")
+    progress_pct: int = Field(default=0, description="Persisted backend progress percentage for the current build.")
     planner_session_id: str | None = Field(default=None, description="Planner session id bound to the current build.")
     confirmed_plan_id: str | None = Field(default=None, description="Confirmed build plan id bound to the current build.")
     digest_mode: str | None = Field(default=None, description="Digest mode for the current build.")

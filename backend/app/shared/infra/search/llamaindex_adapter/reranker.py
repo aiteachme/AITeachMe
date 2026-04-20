@@ -36,9 +36,18 @@ class ATMReranker(BaseNodePostprocessor):
         """Sync fallback — should rarely be hit in async FastAPI."""
         import asyncio
 
-        return asyncio.get_event_loop().run_until_complete(
-            self._apostprocess_nodes(nodes, query_bundle)
-        )
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = None
+
+        if loop and loop.is_running():
+            raise RuntimeError(
+                "Cannot call sync _postprocess_nodes() from within a running event loop. "
+                "Use _apostprocess_nodes() instead."
+            )
+
+        return asyncio.run(self._apostprocess_nodes(nodes, query_bundle))
 
     async def _apostprocess_nodes(
         self,

@@ -231,6 +231,22 @@ def get_available_parsers(extension: str, *, allow_llm_vision: bool) -> list[str
     return parser_names
 
 
+def resolve_markitdown_parser_name(extension: str) -> str | None:
+    """Return the MarkItDown parser registered for an extension, if runnable."""
+
+    normalized = normalize_extension(extension)
+    available = get_available_parsers(normalized, allow_llm_vision=False)
+    if "markitdown" in available:
+        return "markitdown"
+    if "markitdown_generic" in available:
+        return "markitdown_generic"
+    return None
+
+
+def is_markitdown_available_for_extension(extension: str) -> bool:
+    return resolve_markitdown_parser_name(extension) is not None
+
+
 # ── Startup logging (改进 5: MinerU auto-engine 思路) ──
 
 _logger = structlog.get_logger()
@@ -268,4 +284,3 @@ def log_parser_availability() -> None:
         available=available,
         missing=missing or None,
     )
-

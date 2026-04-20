@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import asyncio
+from typing import Literal
 
 import structlog
-from fastapi import APIRouter, Body, Depends, Path, Request
-from fastapi.responses import StreamingResponse
+from fastapi import APIRouter, Body, Depends, Path, Query, Request
+from fastapi.responses import Response, StreamingResponse
 from sqlmodel import Session
 
 from app.api.deps import (
@@ -23,6 +24,7 @@ from app.schemas.knowledge import (
     BuildPlannerMessageRequest,
     BuildPlannerSessionResponse,
     ClearKnowledgeResponse,
+    DocGenBuildCancelData,
     DocGenBuildData,
     DocGenBuildRequest,
     DocGenGetResponse,
@@ -36,6 +38,7 @@ from app.workflows.digest.planner import (
     confirm_build_planner_session,
     create_build_planner_session,
     get_latest_planner_session,
+    mark_confirmed_build_plan_status,
 )
 from app.workflows.support.auth import set_guest_cookie_for_user
 from app.workflows.digest.docgen import (
@@ -53,9 +56,20 @@ from app.workflows.support.knowledge_graph import (
 )
 from app.workflows.support.subjects import get_subject_record
 from app.workflows.interact.chat.lib.streaming import SSEEventEmitter
-from app.utils.docgen_store import KnowledgeBuildLock, acquire_knowledge_build_lock, update_knowledge_build_status
+from app.utils.docgen_store import (
+    KnowledgeBuildLock,
+    acquire_knowledge_build_lock,
+    read_knowledge_build_status,
+    release_knowledge_build_lock,
+    update_knowledge_build_status,
+)
 from app.utils.time import utcnow
-from app.shared.infra.exceptions import SubjectBuildLockConflictError
+from app.shared.infra.exceptions import AITeachMeError, SubjectBuildLockConflictError
+from app.workflows.digest.docgen.lib.export_document import (
+    build_content_disposition,
+    build_export_filename,
+    markdown_to_pdf_bytes,
+)
 
 router = APIRouter(tags=["knowledge"])
 logger = structlog.get_logger(__name__)
@@ -535,6 +549,59 @@ async def knowledge_build(
 
 
 @router.post(
+    "/build/cancel",
+    response_model=ApiResponse[DocGenBuildCancelData],
+    summary="Cancel the active digest build for this subject",
+    responses=build_error_responses([400, 404, 500]),
+)
+async def knowledge_build_cancel(
+    request: Request,
+    subject: str = Path(...),
+    user: CurrentUserContext = Depends(get_current_user_context),
+    session: Session = Depends(get_db),
+) -> ApiResponse[DocGenBuildCancelData]:
+    normalized = normalize_subject_slug(subject)
+    get_subject_record(session, normalized, owner_user_id=user.user_id)
+    build_status = read_knowledge_build_status(normalized)
+    cancelled_task_count = 0
+    registry = getattr(request.app.state, "background_task_registry", None)
+    if registry is not None:
+        cancelled_task_count += await registry.cancel_matching(kind="knowledge.build.docs", subject=normalized)
+        cancelled_task_count += await registry.cancel_matching(kind="knowledge.build.graph", subject=normalized)
+
+    requested_at = build_status.requested_at if build_status is not None else utcnow()
+    confirmed_plan_id = build_status.confirmed_plan_id if build_status is not None else None
+    if confirmed_plan_id:
+        mark_confirmed_build_plan_status(
+            session,
+            subject=normalized,
+            user_id=user.user_id,
+            plan_id=confirmed_plan_id,
+            status="cancelled",
+        )
+    update_knowledge_build_status(
+        normalized,
+        requested_at=requested_at,
+        status="cancelled",
+        stage="cancelled",
+        error_message="build_cancelled",
+        draft_available=False,
+        planner_session_id=build_status.planner_session_id if build_status is not None else None,
+        confirmed_plan_id=confirmed_plan_id,
+        digest_mode=build_status.digest_mode if build_status is not None else None,
+        current_stage_description="本轮知识构建已被用户终止。",
+    )
+    release_knowledge_build_lock(normalized)
+    return ok_response(
+        DocGenBuildCancelData(
+            subject=normalized,
+            cancelled_task_count=cancelled_task_count,
+            requested_at=requested_at,
+        )
+    )
+
+
+@router.post(
     "/docs",
     response_model=ApiResponse[DocGenGetResponse],
     summary="Fetch knowledge docs and minimal build state",
@@ -548,6 +615,43 @@ async def knowledge_docs(
     normalized = normalize_subject_slug(subject)
     get_subject_record(session, normalized, owner_user_id=user.user_id)
     return ok_response(get_docgen_result(session, subject=normalized))
+
+
+@router.get(
+    "/docs/export",
+    summary="Export the merged knowledge document",
+    responses=build_error_responses([400, 404, 500]),
+)
+async def knowledge_docs_export(
+    subject: str = Path(...),
+    format: Literal["md", "pdf"] = Query(default="md", description="Export format."),
+    user: CurrentUserContext = Depends(get_current_user_context),
+    session: Session = Depends(get_db),
+) -> Response:
+    normalized = normalize_subject_slug(subject)
+    get_subject_record(session, normalized, owner_user_id=user.user_id)
+    doc = get_docgen_result(session, subject=normalized)
+    markdown = str(doc.markdown or "").strip()
+    if not doc.exists or not markdown:
+        raise AITeachMeError(
+            "当前还没有可导出的合并知识文档。",
+            error_code="KNOWLEDGE_DOC_NOT_FOUND",
+            status_code=404,
+        )
+
+    filename = build_export_filename(subject=normalized, markdown=markdown, extension=format)
+    headers = {"Content-Disposition": build_content_disposition(filename)}
+    if format == "md":
+        return Response(
+            content=markdown.encode("utf-8"),
+            media_type="text/markdown; charset=utf-8",
+            headers=headers,
+        )
+    return Response(
+        content=markdown_to_pdf_bytes(markdown=markdown, title=filename.rsplit(".", 1)[0]),
+        media_type="application/pdf",
+        headers=headers,
+    )
 
 
 @router.post(

@@ -215,12 +215,9 @@ class DocGenWriterRuntime(BaseTracedExecution):
     ) -> str:
         additions: list[str] = []
         mermaid_hints = [str(item) for item in media_hints.get("mermaid", []) if str(item).strip()]
-        image_hints = [str(item) for item in media_hints.get("images", []) if str(item).strip()]
         quotas = dict(execution_contract.get("media_quota") or {})
         if int(quotas.get("mermaid", 0) or 0) > 0 and "```mermaid" not in markdown and not has_asset_request(markdown, kind="mermaid"):
             additions.append(build_asset_request_block("mermaid", (mermaid_hints[:1] or [f"{title} 的关键结构关系图"])[0]))
-        if int(quotas.get("images", 0) or 0) > 0 and not has_asset_request(markdown, kind="image"):
-            additions.append(build_asset_request_block("image", (image_hints[:1] or [f"{title} 的讲义配图建议"])[0]))
         if not additions:
             return markdown
         return markdown.rstrip() + "\n\n" + "\n\n".join(additions) + "\n"

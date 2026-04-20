@@ -66,7 +66,7 @@ load_context
 | P1 | `repair_or_route` 没有真实闭环 | 局部 patch 可执行，但证据补强、重写和二次复核还没闭环 |
 | P1 | `ReviewAction` 已驱动局部 patch，但证据补强和重写未闭环 | section patch 已可执行，evidence patch / regenerate 仍只是记录 |
 | P1 | 循环下 state append 字段会重复 | 后续一旦回流，旧章节和新章节可能一起进入 manifest |
-| P1 | 图片 disabled 状态不显式 | 资产降级不可追踪 |
+| P1 | 交互式 HTML/scene 资产未接入 | 复杂可视化只能靠 Markdown / Mermaid 表达 |
 | P2 | `final_merge_patch` 缺失 | 合并后小瑕疵没有独立收口点 |
 | P2 | research budget 偏静态 | 还没充分利用覆盖度、证据缺口、章节难度 |
 
@@ -436,13 +436,13 @@ lib/repair.py
 - 其他章节不重新生成。
 - 每章最多 regenerate 一次。
 
-## 10. Phase 8：AssetManifest 与文生图收口
+## 10. Phase 8：AssetManifest 与交互式可视化收口
 
-状态：已落地基础版，仍需前端展示和失败重试。
+状态：DocGen 当前不直接生成讲义配图，只保留 Mermaid 与交互占位清理。
 
 目标：
 
-图片模型未启用、图片请求被降级或跳过时，manifest 必须解释原因；图片模型启用时，DocGen 应生成图片、写入存储并回填 Markdown。
+Mermaid rendered / fallback 状态必须可追踪；残留 image 占位必须被剥离，不泄露到 Markdown。后续如果要做更强表现力，应新增 OpenMAIC 风格的 interactive HTML/scene asset lane，而不是在正文里直接塞文生图。
 
 涉及文件：
 
@@ -456,30 +456,30 @@ nodes/enhance_chapters.py
 
 已处理：
 
-- `shared.infra.llm_support.agenerate_image` 已作为统一文生图入口。
-- DocGen image 占位会生成图片、写入 `assets/docgen/...`，并回填 Markdown 图片链接。
-- disabled / failed / generated 状态会进入 `AssetManifest`。
+- DocGen 不再主动生成 image 占位。
+- 残留 image 占位会在 enhance 阶段剥离。
+- Mermaid 占位仍会生成可渲染的 Markdown 图示。
 
 后续建议：
 
-1. 前端基于 `AssetManifest` 做图片展示和错误解释。
-2. 针对 transient failure 增加一次轻量重试或手动重跑。
-3. 继续保持正文不泄露内部 image 占位符。
+1. 设计 `interactive` asset manifest，明确 HTML / scene 的沙箱、权限和版本字段。
+2. 前端用 iframe 或受控组件渲染交互资产。
+3. 继续保持正文 Markdown 稳定、可审计、可降级。
 
 ```text
-kind: image
-status: disabled
-reason: image_generation_disabled
+kind: interactive
+status: skipped | generated | failed
 source_placeholder
+artifact_key
 ```
 
-3. 不把内部 image 占位符泄露到 Markdown。
+3. 不把内部 image / interactive 占位符泄露到 Markdown。
 
 验收：
 
-- settings 未启用图片时，正文无内部占位符。
-- manifest 有 disabled image asset 记录。
-- 前端或后续任务能解释为什么没有图片。
+- 正文无 image 内部占位符。
+- Mermaid manifest 可说明 fallback / rendered 状态。
+- interactive 占位在未接入时被安全剥离并记录 warning。
 
 ## 11. Phase 9：final_merge_patch
 
@@ -525,7 +525,7 @@ merge_review
 验收：
 
 - `final_merge_patch_report` 进入 manifest。
-- `finalize_titles` 仍只执行一次。
+- `finalize_titles` 仍只执行一次，但只同步已锁定标题，不再调用 LLM 改标题。
 - patch 失败不阻断发布，只记录 warning。
 
 ## 12. Phase 10：动态研究预算
@@ -643,7 +643,7 @@ manifest 字段检查
 ReviewAction validate
 repair_or_route status semantics
 build_document_backbone fallback
-asset disabled manifest
+interactive asset manifest
 merge_review latest chapter selection
 publish docgen_manifest snapshot
 ```
@@ -661,7 +661,7 @@ refactor: 收口 DocGen 回流下的章节产物版本
 feat: 支持 DocGen 局部章节修补
 feat: 支持 DocGen 定向证据补强
 feat: 增加 DocGen 单章重写回流
-fix: 记录 DocGen 图片资产禁用状态
+feat: 设计 DocGen 交互式资产 manifest
 feat: 增加 DocGen 合并后轻量修补节点
 refactor: 增强 DocGen 动态研究预算
 docs: 更新 DocGen manifest 跨引擎复用说明

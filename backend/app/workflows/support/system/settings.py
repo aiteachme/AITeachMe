@@ -327,7 +327,6 @@ def build_settings_overview_data(
                 se("models.embedding", "Embedding 模型", settings.models.embedding, base_settings.models.embedding),
                 _runtime_entry("models.embedding_dim", "Embedding 维度", settings.embedding_dim),
                 se("models.ocr", "Vision OCR 模型", settings.models.ocr, base_settings.models.ocr, "空值时使用 Primary 模型；密钥和服务地址复用 LLM 接入配置。"),
-                se("models.image_generation", "文生图模型", settings.models.image_generation, base_settings.models.image_generation),
             ],
         ),
         SettingSection(
@@ -398,7 +397,6 @@ def build_settings_overview_data(
                 _env_entry("search.searchapi_key", "SEARCHAPI_API_KEY", "SEARCHAPI_API_KEY", "SearchApi.io 检索密钥。", secret=True),
                 _env_entry("search.serpapi_key", "SERPAPI_API_KEY", "SERPAPI_API_KEY", "SerpApi 检索密钥。", secret=True),
                 _env_entry("search.ncbi_key", "NCBI_API_KEY", "NCBI_API_KEY", "NCBI / PubMed API Key，可选。", secret=True),
-                _env_entry("search.custom_endpoint", "CUSTOM_RETRIEVER_ENDPOINT", "CUSTOM_RETRIEVER_ENDPOINT", "自定义检索 HTTP 端点。"),
                 _env_entry("search.mcp_tool", "MCP_SEARCH_TOOL", "MCP_SEARCH_TOOL", "用于检索的 MCP 工具名。"),
                 _env_entry("search.searxng_url", "SEARXNG_BASE_URL", "SEARXNG_BASE_URL", "自建/可信 SearXNG 地址。"),
                 _env_entry("reader.jina_enabled", "JINA_READER_ENABLED", "JINA_READER_ENABLED", "是否启用 Jina Reader。"),

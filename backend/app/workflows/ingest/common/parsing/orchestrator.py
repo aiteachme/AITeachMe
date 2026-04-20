@@ -123,7 +123,11 @@ async def fast_parse_file(
 
             # Determine if Phase 2 is needed
             from app.workflows.ingest.common.parsing.formats import is_text_extension
-            needs_quality_reparse = extension == ".pdf" and parser_name != "pymupdf4llm"
+            needs_quality_reparse = (
+                extension == ".pdf"
+                and parser_name != "pymupdf4llm"
+                and plan.mode != "local_markitdown"
+            )
             needs_asset_ocr = (
                 plan.options.enable_asset_vision_ocr
                 and not is_text_extension(extension)

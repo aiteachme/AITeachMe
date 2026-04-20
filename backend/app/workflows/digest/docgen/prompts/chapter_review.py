@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from app.workflows.digest.common.prompt_tracing import trace_prompt_build
+
 REVIEW_MARKDOWN_BUDGET = 9000
 REVIEW_LEDGER_BUDGET = 5000
 
@@ -65,10 +67,20 @@ ConflictReport：
 5. action 必须可执行，写清 target_anchor、instruction、constraints、expected_effect。
 6. 只做复核判断，不输出修补后的正文。
 """.strip()
-    return [
+    messages = [
         {"role": "system", "content": system_prompt},
         {"role": "user", "content": user_prompt},
     ]
+    return trace_prompt_build(
+        "chapter_review",
+        inputs={
+            "chapter_title": chapter_title,
+            "digest_mode": digest_mode,
+            "markdown_chars": len(markdown),
+            "chapter_task_keys": sorted(chapter_task.keys()),
+        },
+        output=messages,
+    )
 
 
 __all__ = ["build_chapter_review_messages"]

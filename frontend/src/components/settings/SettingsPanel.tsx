@@ -146,8 +146,8 @@ const SEARCH_ENV_GROUPS: LocalEnvGroup[] = [
     ],
   },
   {
-    id: "answer-search",
-    label: "答案型搜索",
+    id: "ai-search",
+    label: "AI 搜索",
     fields: [
       { key: "PERPLEXITY_API_KEY", label: "Perplexity API Key", secret: true },
       { key: "PERPLEXITY_SEARCH_MODEL", label: "Perplexity Model", placeholder: "sonar" },
@@ -170,11 +170,6 @@ const SEARCH_ENV_GROUPS: LocalEnvGroup[] = [
       { key: "NCBI_API_KEY", label: "NCBI API Key", secret: true },
       { key: "PUBMED_DB", label: "PubMed DB", placeholder: "pmc" },
       { key: "PUBMED_SORT", label: "PubMed Sort", placeholder: "relevance" },
-      { key: "CUSTOM_RETRIEVER_ENDPOINT", label: "Custom Retriever Endpoint" },
-      { key: "CUSTOM_RETRIEVER_API_KEY", label: "Custom Retriever API Key", secret: true },
-      { key: "CUSTOM_RETRIEVER_API_KEY_HEADER", label: "Custom API Key Header", placeholder: "Authorization" },
-      { key: "CUSTOM_RETRIEVER_QUERY_PARAM", label: "Custom Query Param", placeholder: "query" },
-      { key: "CUSTOM_RETRIEVER_MAX_RESULTS_PARAM", label: "Custom Max Results Param", placeholder: "max_results" },
     ],
   },
   {
@@ -290,7 +285,6 @@ const MODEL_KEYS = new Set([
   "models.extract",
   "models.embedding",
   "models.ocr",
-  "models.image_generation",
 ]);
 
 const CORE_STATUS_KEYS = new Set([
@@ -946,6 +940,7 @@ export function SettingsPanel({ isOpen, onClose }: SettingsModalProps) {
             { value: "docling", label: "Docling" },
             { value: "unstructured", label: "Unstructured" },
             { value: "mineru", label: "MinerU" },
+            { value: "markitdown", label: "MarkItDown" },
           ]}
         />
         {draft.parserProvider === "mineru" ? (

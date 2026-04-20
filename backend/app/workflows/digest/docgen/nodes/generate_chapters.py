@@ -12,9 +12,6 @@ from app.shared.infra.workflow.context import WorkflowContext
 from app.workflows.digest.docgen.lib import DocGenChapterContextRuntime, DocGenWriterRuntime
 from app.workflows.digest.docgen.lib.chapter_critic import critique_chapter, maybe_rewrite_chapter
 from app.workflows.digest.docgen.lib.chapter_generation import build_fallback_chapter_markdown
-from app.workflows.digest.docgen.lib.claims import align_claim_evidence, build_claim_ledger
-from app.workflows.digest.docgen.lib.conflicts import resolve_conflicts_for_chapter
-from app.workflows.digest.docgen.lib.evidence import build_evidence_ledger, mark_evidence_used
 from app.workflows.digest.docgen.lib.models import (
     ChapterDraft,
     ChapterGenerationTask,
@@ -23,6 +20,13 @@ from app.workflows.digest.docgen.lib.models import (
     ClaimLedger,
     ConflictReport,
     DocumentBackbone,
+)
+from app.workflows.digest.docgen.lib.quality import (
+    align_claim_evidence,
+    build_claim_ledger,
+    build_evidence_ledger,
+    mark_evidence_used,
+    resolve_conflicts_for_chapter,
 )
 from app.workflows.digest.docgen.nodes.common import (
     ensure_chapter_heading,
@@ -37,7 +41,7 @@ def _unique_strings(values: list[str]) -> list[str]:
 
 
 def _media_hints_from_requests(requests: list[dict]) -> dict[str, list[str]]:
-    media_hints = {"mermaid": [], "images": []}
+    media_hints = {"mermaid": []}
     for item in requests:
         kind = str(item.get("kind") or "").strip().lower()
         description = str(item.get("description") or "").strip()
@@ -45,8 +49,6 @@ def _media_hints_from_requests(requests: list[dict]) -> dict[str, list[str]]:
             continue
         if kind == "mermaid":
             media_hints["mermaid"].append(description)
-        elif kind in {"image", "images"}:
-            media_hints["images"].append(description)
     return media_hints
 
 
@@ -90,7 +92,6 @@ def _execution_contract_for_writer(
         "repair_enabled": True,
         "media_quota": {
             "mermaid": len(media_hints["mermaid"]),
-            "images": len(media_hints["images"]),
         },
     }
 

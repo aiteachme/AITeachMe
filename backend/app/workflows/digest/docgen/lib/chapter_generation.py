@@ -5,7 +5,6 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from typing import Any
 
-from app.shared.infra.settings import get_settings
 from app.shared.infra.tools.builtin.markdown_processing import count_words
 from app.workflows.digest.common.pedagogy import resolve_effective_chapter_title
 from app.workflows.digest.docgen.lib.models import (
@@ -103,9 +102,7 @@ def _dedupe_placeholder_requests(requests: Sequence[Mapping[str, Any]]) -> list[
         description = str(item.get("description") or "").strip()
         if not kind or not description:
             continue
-        if kind in {"images", "image"}:
-            kind = "image"
-        elif kind != "mermaid":
+        if kind != "mermaid":
             continue
         key = (kind, description.casefold())
         if key in seen:
@@ -182,18 +179,11 @@ def compose_chapter_generation_plan(
                 *list(outline.media_requests),
             ]
         )
-        image_generation_enabled = get_settings().image_generation_enabled
-
         visual_terms = " ".join([confirmed_title, *required, *outline.content_points])
-        if not image_generation_enabled and not any(item["kind"] == "mermaid" for item in placeholder_requests):
+        if not any(item["kind"] == "mermaid" for item in placeholder_requests):
             if any(marker in visual_terms for marker in ("图", "结构", "流程", "关系", "路径", "层次", "机制", "过程")):
                 placeholder_requests.append(
                     {"kind": "mermaid", "description": f"{confirmed_title} 的结构关系图"}
-                )
-        elif image_generation_enabled and not any(item["kind"] == "image" for item in placeholder_requests):
-            if any(marker in visual_terms for marker in ("图", "结构", "流程", "关系", "场景", "例题")):
-                placeholder_requests.append(
-                    {"kind": "image", "description": f"{confirmed_title} 的学习配图或例题场景图"}
                 )
 
         task = ChapterGenerationTask(

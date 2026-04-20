@@ -246,29 +246,29 @@ practice_manifests
 - `merge_review` 只消费每章 latest active artifact。
 - manifest 同时保留 latest 和 history。
 
-### P1. 文生图已接入，资产体验仍需收口
+### P1. 交互式可视化资产尚未接入
 
 现状：
 
-- `shared.infra.llm_support.agenerate_image` 已提供文生图统一入口。
-- DocGen image 占位已能生成图片、写入 `assets/docgen/...`，并把图片链接回填 Markdown。
-- `AssetManifest` 会记录 `generated` / `disabled` / `failed` 状态。
+- DocGen 当前不再直接生成讲义配图。
+- Mermaid 负责结构图、流程图和概念关系。
+- residual image 占位会在 enhance 阶段清理，避免把内部占位泄露到 Markdown。
 
 影响：
 
-- 后端侧已经能解释图片状态。
-- 前端展示、失败重试和人工重跑策略还需要继续收口。
+- 风景式配图对知识讲义帮助有限，且容易偏离具体教学目标。
+- 更有价值的方向是 OpenMAIC 风格的交互式 HTML/scene、测验、模拟器和动态讲解组件。
 
 建议：
 
-- 前端读取 `asset_manifest.assets` 渲染图片状态。
-- 对 transient failure 增加一次轻量重试或人工重跑入口。
+- 保持 DocGen 正文为稳定 Markdown。
+- 后续新增独立 interactive asset lane，输出可审计的 HTML/scene manifest，再由前端 iframe 或组件渲染。
 
 ### P2. final_merge_patch 尚未实现
 
 现状：
 
-- 合并后才暴露的小问题由 `merge_review` / `finalize_titles` 间接处理。
+- 合并后才暴露的小问题主要由 `merge_review` 间接处理；`finalize_titles` 只同步已锁定标题，不再改写标题语义。
 - 没有独立节点记录 final merge patch。
 
 影响：
@@ -311,7 +311,7 @@ AITeachMe 的 DocGen 需要的是可控教学文档生成，不是开放式研�
 
 ### 4.4 不建议让 enhance 修核心知识
 
-`enhance_chapters` 只能处理 Mermaid、图片、交互占位、公式、Markdown 和自检题。核心知识修补必须回到 review/repair。
+`enhance_chapters` 只能处理 Mermaid、交互占位清理、公式、Markdown 和自检题。核心知识修补必须回到 review/repair。
 
 ### 4.5 不建议新增第二套工具系统
 
@@ -383,11 +383,13 @@ AITeachMe 的 DocGen 需要的是可控教学文档生成，不是开放式研�
 - 再做 targeted evidence patch。
 - 最后做单章 regenerate。
 
-### Phase 6：asset manifest 收口
+### Phase 6：interactive asset manifest 收口
 
 目标：
 
-- image disabled / failed / skipped / rendered 状态全部可追踪。
+- Mermaid rendered / fallback 状态可追踪。
+- residual image 占位被剥离并记录 warning。
+- 后续 interactive HTML/scene 资产有独立 manifest。
 
 ### Phase 7：final_merge_patch
 
@@ -442,7 +444,7 @@ manifest 字段检查
 
 - `ReviewAction` validate。
 - `repair_or_route` 状态语义。
-- `asset disabled manifest`。
+- `interactive asset manifest`。
 - `merge_review` latest artifact selection。
 - `publish_document` manifest snapshot。
 

@@ -1,4 +1,4 @@
-﻿"""系统初始化接口 schema。"""
+"""系统初始化接口 schema。"""
 
 from __future__ import annotations
 
@@ -78,3 +78,10 @@ class UpdateUserSettingsRequest(BaseModel):
 
     settings: dict[str, Any] = Field(default_factory=dict, description="settings_default.yaml 同构的非敏感覆盖。")
     reset: bool = Field(default=False, description="是否清空当前用户覆盖，恢复项目默认值。")
+
+
+class FeedbackRequest(BaseModel):
+    """用户体验与问题反馈请求。"""
+
+    content: str = Field(description="反馈内容。")
+    images: list[str] = Field(default_factory=list, description="可选的 Base64 截图列表。")

@@ -192,6 +192,58 @@
         }
       }
     },
+    "/api/v1/system/feedback": {
+      "post": {
+        "tags": [
+          "system"
+        ],
+        "summary": "提交意见反馈",
+        "description": "接收用户的意见反馈及可选截图。",
+        "operationId": "submit_feedback_api_v1_system_feedback_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FeedbackRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_bool_"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务内部异常。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/auth/email/send-code": {
       "post": {
         "tags": [
@@ -2150,6 +2202,79 @@
         }
       }
     },
+    "/api/v1/subjects/{subject}/knowledge/build/cancel": {
+      "post": {
+        "tags": [
+          "knowledge",
+          "knowledge"
+        ],
+        "summary": "Cancel the active digest build for this subject",
+        "operationId": "knowledge_build_cancel_api_v1_subjects__subject__knowledge_build_cancel_post",
+        "parameters": [
+          {
+            "name": "subject",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Subject"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_DocGenBuildCancelData_"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数不合法。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务内部异常。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/subjects/{subject}/knowledge/docs": {
       "post": {
         "tags": [
@@ -2177,6 +2302,93 @@
                 "schema": {
                   "$ref": "#/components/schemas/ApiResponse_DocGenGetResponse_"
                 }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数不合法。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务内部异常。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/subjects/{subject}/knowledge/docs/export": {
+      "get": {
+        "tags": [
+          "knowledge",
+          "knowledge"
+        ],
+        "summary": "Export the merged knowledge document",
+        "operationId": "knowledge_docs_export_api_v1_subjects__subject__knowledge_docs_export_get",
+        "parameters": [
+          {
+            "name": "subject",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Subject"
+            }
+          },
+          {
+            "name": "format",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "md",
+                "pdf"
+              ],
+              "type": "string",
+              "description": "Export format.",
+              "default": "md",
+              "title": "Format"
+            },
+            "description": "Export format."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
               }
             }
           },
@@ -4878,6 +5090,40 @@
           "message": "ok"
         }
       },
+      "ApiResponse_DocGenBuildCancelData_": {
+        "properties": {
+          "code": {
+            "type": "integer",
+            "title": "Code",
+            "description": "业务码，0 表示成功。",
+            "default": 0
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "响应消息。",
+            "default": "ok"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DocGenBuildCancelData"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "业务数据。"
+          }
+        },
+        "type": "object",
+        "title": "ApiResponse[DocGenBuildCancelData]",
+        "example": {
+          "code": 0,
+          "data": {},
+          "message": "ok"
+        }
+      },
       "ApiResponse_DocGenBuildData_": {
         "properties": {
           "code": {
@@ -6028,6 +6274,41 @@
         },
         "type": "object",
         "title": "ApiResponse[Union[BuildPlannerSessionResponse, NoneType]]",
+        "example": {
+          "code": 0,
+          "data": {},
+          "message": "ok"
+        }
+      },
+      "ApiResponse_bool_": {
+        "properties": {
+          "code": {
+            "type": "integer",
+            "title": "Code",
+            "description": "业务码，0 表示成功。",
+            "default": 0
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "响应消息。",
+            "default": "ok"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Data",
+            "description": "业务数据。"
+          }
+        },
+        "type": "object",
+        "title": "ApiResponse[bool]",
         "example": {
           "code": 0,
           "data": {},
@@ -7676,6 +7957,47 @@
         "title": "CoursePackageItem",
         "description": "One `.atmx` package listed from shared courses folder."
       },
+      "DocGenBuildCancelData": {
+        "properties": {
+          "subject": {
+            "type": "string",
+            "title": "Subject"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status",
+            "default": "cancelled"
+          },
+          "cancelled_task_count": {
+            "type": "integer",
+            "title": "Cancelled Task Count",
+            "default": 0
+          },
+          "requested_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Requested At"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "default": "已终止当前知识构建。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "subject"
+        ],
+        "title": "DocGenBuildCancelData",
+        "description": "Result of cancelling the active knowledge build."
+      },
       "DocGenBuildData": {
         "properties": {
           "accepted_file_uids": {
@@ -8859,6 +9181,29 @@
         "title": "ExportPreviewStats",
         "description": "Export preview counters."
       },
+      "FeedbackRequest": {
+        "properties": {
+          "content": {
+            "type": "string",
+            "title": "Content",
+            "description": "反馈内容。"
+          },
+          "images": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Images",
+            "description": "可选的 Base64 截图列表。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "content"
+        ],
+        "title": "FeedbackRequest",
+        "description": "用户体验与问题反馈请求。"
+      },
       "FileAssetItem": {
         "properties": {
           "name": {
@@ -9717,6 +10062,12 @@
             "title": "Draft Available",
             "description": "Whether a staging draft is currently available.",
             "default": false
+          },
+          "progress_pct": {
+            "type": "integer",
+            "title": "Progress Pct",
+            "description": "Persisted backend progress percentage for the current build.",
+            "default": 0
           },
           "planner_session_id": {
             "anyOf": [
@@ -11469,18 +11820,15 @@
         "properties": {
           "name": {
             "type": "string",
-            "minLength": 1,
             "title": "Name",
-            "description": "展示名称。"
+            "description": "展示名称。可留空，Planner 会在首次对话后自动命名。",
+            "default": ""
           }
         },
         "type": "object",
-        "required": [
-          "name"
-        ],
         "title": "SubjectCreateRequest",
         "example": {
-          "name": "高等数学"
+          "name": ""
         }
       },
       "SubjectDeleteData": {

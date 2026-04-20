@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from app.workflows.digest.common.prompt_tracing import trace_prompt_build
+
 REWRITE_REQUIRED_POINT_BUDGET = 16
 REWRITE_WARNING_BUDGET = 12
 REWRITE_CONTEXT_BUDGET = 7000
@@ -38,10 +40,22 @@ def build_chapter_rewrite_messages(
 3. 不要虚构真题；如果是生成例题，要称为“自测例题”。
 4. systematic 要讲清定义、结构和推理；sprint 要强化题型、速判和易错点。
 """.strip()
-    return [
+    messages = [
         {"role": "system", "content": "你是严格的教学文档改写器，只输出 Markdown。"},
         {"role": "user", "content": prompt},
     ]
+    return trace_prompt_build(
+        "chapter_rewrite",
+        inputs={
+            "title": title,
+            "digest_mode": digest_mode,
+            "required_point_count": len(required_points),
+            "warning_count": len(warnings),
+            "markdown_chars": len(markdown),
+            "dense_context_chars": len(dense_context),
+        },
+        output=messages,
+    )
 
 
 __all__ = ["build_chapter_rewrite_messages"]

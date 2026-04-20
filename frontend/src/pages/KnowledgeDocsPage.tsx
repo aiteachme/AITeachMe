@@ -9,20 +9,23 @@ import "katex/dist/katex.min.css";
 import {
   FileText,
   ChevronRight,
-  ChevronLeft,
   ChevronDown,
   ChevronUp,
   Send,
   Bot,
+  Network,
   Loader2,
   Sparkles,
   RefreshCw,
   ExternalLink,
+  Download,
 } from "lucide-react";
 import { cn } from "../lib/utils";
 import { getApiErrorMessage, postSseJson } from "../api/client";
 import { apiClient } from "../api/client";
+import { useToast } from "../components/ui/Toast";
 import { useSubjectAiAssistant } from "../components/ai/SubjectAiAssistant";
+import { useResizablePanel } from "../hooks/useResizablePanel";
 import {
   BuildView,
   type DocViewMode,
@@ -32,6 +35,7 @@ import {
 import { SubjectVectorNotice } from "../components/pages/SubjectVectorNotice";
 import { MermaidBlock } from "../components/ui/MermaidBlock";
 import { preprocessLaTeX } from "../components/ui/MarkdownViewer";
+import { downloadKnowledgeDocExport, type KnowledgeDocExportFormat } from "../lib/knowledgeDocs";
 
 const KnowledgeGraphSidePanel = lazy(() =>
   import("../components/pages/KnowledgeGraphSidePanel").then((module) => ({
@@ -856,6 +860,7 @@ function CommentThread({
 
 export function KnowledgeDocsPage() {
   const { openAssistant } = useSubjectAiAssistant();
+  const { toast } = useToast();
   const {
     subjectId,
     docMarkdownQuery,
@@ -918,11 +923,14 @@ export function KnowledgeDocsPage() {
     typeof window !== "undefined" ? window.innerWidth < COMPACT_PANEL_BREAKPOINT : false
   );
   const [activeDrawer, setActiveDrawer] = useState<"toc" | "comment" | null>(null);
+  const [exportingFormat, setExportingFormat] = useState<KnowledgeDocExportFormat | null>(null);
 
-  type GraphViewMode = "hidden" | "split" | "full";
-  const [graphViewMode, setGraphViewMode] = useState<GraphViewMode>("hidden");
-  const effectiveGraphViewMode: GraphViewMode =
-    isCompactPanels && graphViewMode !== "hidden" ? "full" : graphViewMode;
+  const [isGraphDrawerOpen, setIsGraphDrawerOpen] = useState(false);
+  const { width: graphPanelWidth, isDragging: isGraphDragging, handleMouseDown: handleGraphMouseDown } = useResizablePanel({
+    defaultWidth: typeof window !== 'undefined' ? window.innerWidth * 0.6 : 800,
+    minWidth: 400,
+    maxWidth: typeof window !== 'undefined' ? window.innerWidth * 0.8 : 1200,
+  });
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const contentAreaRef = useRef<HTMLDivElement>(null);
@@ -939,25 +947,41 @@ export function KnowledgeDocsPage() {
 
   const isTocVisible = isCompactPanels ? activeDrawer === "toc" : !isTocCollapsed;
   const isCommentVisible = isCompactPanels ? activeDrawer === "comment" : !isCommentCollapsed;
+  const canExportPublishedDoc = Boolean(subjectId && hasLiveDocMarkdown);
+
+  const handleExportDocument = useCallback(
+    async (format: KnowledgeDocExportFormat) => {
+      if (!subjectId || exportingFormat) {
+        return;
+      }
+      setExportingFormat(format);
+      try {
+        await downloadKnowledgeDocExport(subjectId, format);
+        toast({
+          title: "导出已开始",
+          description: format === "pdf" ? "正在下载最终合并知识文档 PDF。" : "正在下载最终合并知识文档 Markdown。",
+          variant: "success",
+        });
+      } catch (error) {
+        toast({
+          title: "导出失败",
+          description: getApiErrorMessage(error, "知识文档导出失败，请稍后重试。"),
+          variant: "error",
+        });
+      } finally {
+        setExportingFormat(null);
+      }
+    },
+    [exportingFormat, subjectId, toast],
+  );
 
   const openGraphPanel = useCallback(() => {
-    setGraphViewMode((prev) => {
-      const mode = isCompactPanels ? "full" : (prev === "hidden" ? "split" : "full");
-      if (mode === "full") {
-        setIsTocCollapsed(true);
-      }
-      return mode;
-    });
-  }, [isCompactPanels]);
+    setIsGraphDrawerOpen(true);
+  }, []);
 
   const closeGraphPanel = useCallback(() => {
-    setGraphViewMode((prev) => {
-      if (isCompactPanels) {
-        return "hidden";
-      }
-      return prev === "full" ? "split" : "hidden";
-    });
-  }, [isCompactPanels]);
+    setIsGraphDrawerOpen(false);
+  }, []);
 
   const activeTocItem = useMemo(
     () => toc.find((item) => item.id === activeHeading) ?? null,
@@ -2503,17 +2527,43 @@ export function KnowledgeDocsPage() {
     </div>
   );
 
+  if (isBuildActive || isWaitingForRequestedBuild || showDocGeneratingState) {
+    return (
+      <div className="relative flex min-h-full w-full flex-1 overflow-y-auto bg-zinc-50 px-4 py-6 md:px-8 lg:px-14">
+        <div className="mx-auto w-full max-w-[1120px] rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm md:p-6">
+          <div className="mb-5 flex flex-col gap-3 border-b border-zinc-100 pb-5 md:flex-row md:items-center md:justify-between">
+            <div>
+              <div className="inline-flex items-center gap-2 rounded-full border border-zinc-200 bg-zinc-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-widest text-zinc-600">
+                <Sparkles className="h-3.5 w-3.5" />
+                知识构建
+              </div>
+              <h1 className="mt-3 text-xl font-semibold text-zinc-950">知识库正在构建中</h1>
+              <p className="mt-1 max-w-2xl text-sm leading-6 text-zinc-500">
+                构建完成前暂时隐藏目录、划词问答和 AI 侧栏，避免用旧文档上下文提问。进度会随后台状态自动恢复。
+              </p>
+            </div>
+            <div className="text-sm font-semibold text-zinc-700">{Math.round(buildProgress)}%</div>
+          </div>
+          <BuildView
+            isFetching={docMarkdownQuery.isFetching}
+            progress={buildProgress}
+            statusText={buildPreview?.current_stage_description?.trim() || buildStatusText}
+            buildPreview={buildPreview}
+            buildMetrics={buildMetrics}
+            sourceFiles={sourceFiles}
+            sourceFilesFetching={sourceFilesFetching}
+            buildStage={buildMeta?.stage}
+          />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="relative flex-1 w-full min-h-full overflow-hidden bg-slate-50 flex flex-row">
       
-      {/* Doc + AI Panel Wrapper */}
-      <div 
-        className={cn(
-          "relative h-full transition-all duration-500 ease-[cubic-bezier(0.25,1,0.5,1)] flex flex-col shrink-0 bg-white shadow-[10px_0_20px_-10px_rgba(0,0,0,0.05)] z-10",
-          effectiveGraphViewMode === "hidden" ? "w-full" : 
-          effectiveGraphViewMode === "split" ? "w-[65%] border-r border-slate-200" : "w-0 overflow-hidden opacity-0"
-        )}
-      >
+      {/* Main Doc Wrapper */}
+      <div className="relative h-full transition-all duration-500 ease-[cubic-bezier(0.25,1,0.5,1)] flex flex-col w-full bg-white z-10">
         {!isCompactPanels && (
         <div className="hidden lg:block absolute left-4 top-16 z-30">
           {isTocCollapsed ? (
@@ -2663,6 +2713,28 @@ export function KnowledgeDocsPage() {
                 <article
                   className="min-w-0 flex-1 px-6 py-8 md:px-10 md:py-10"
                 >
+                  {canExportPublishedDoc ? (
+                    <div className="mb-4 flex flex-wrap items-center justify-end gap-2">
+                      <button
+                        type="button"
+                        onClick={() => void handleExportDocument("md")}
+                        disabled={exportingFormat !== null}
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-[#DEE0E3] bg-white px-3 py-2 text-[13px] font-medium text-[#1F2329] shadow-sm transition hover:bg-[#F5F6F7] disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {exportingFormat === "md" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
+                        导出 MD
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void handleExportDocument("pdf")}
+                        disabled={exportingFormat !== null}
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-[#DEE0E3] bg-white px-3 py-2 text-[13px] font-medium text-[#1F2329] shadow-sm transition hover:bg-[#F5F6F7] disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {exportingFormat === "pdf" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
+                        导出 PDF
+                      </button>
+                    </div>
+                  ) : null}
                   <SubjectVectorNotice status={docMarkdownQuery.data?.vector_status} className="mb-6" />
                   {docMarkdownQuery.isError ? (
                     <DocLoadErrorState
@@ -2784,51 +2856,45 @@ export function KnowledgeDocsPage() {
       </div>
       </div>
 
-      {/* Unified Sliding Handle for All States */}
-      <div 
-        className={cn(
-          "absolute top-1/2 -translate-y-1/2 z-[70] transition-all duration-500 ease-[cubic-bezier(0.25,1,0.5,1)] flex items-center justify-center gap-[2px]",
-          effectiveGraphViewMode === "hidden" ? "right-0 opacity-90 hover:opacity-100" : 
-          effectiveGraphViewMode === "split" ? "right-[35%] translate-x-1/2 opacity-60 hover:opacity-100" : 
-          "left-0 opacity-90 hover:opacity-100"
-        )}
-      >
-        {effectiveGraphViewMode !== "full" && (
-          <button 
-            onClick={openGraphPanel}
-            className="flex items-center justify-center h-[72px] w-7 rounded-l-full bg-slate-100/50 backdrop-blur-md border border-slate-200/50 shadow-[0_2px_8px_rgba(0,0,0,0.04)] text-slate-500 transition-all duration-300 hover:w-10 hover:bg-white/95 hover:shadow-[0_4px_16px_rgba(0,0,0,0.1)] hover:text-blue-600 hover:border-slate-200/80 focus:outline-none"
-            title={effectiveGraphViewMode === "hidden" ? "打开知识图谱" : "全屏图谱"}
-          >
-            <ChevronLeft className="h-5 w-5 ml-1 transition-transform group-hover:-translate-x-0.5" />
-          </button>
-        )}
-        
-        {effectiveGraphViewMode !== "hidden" && (
-          <button 
-            onClick={closeGraphPanel}
-            className="flex items-center justify-center h-[72px] w-7 rounded-r-full bg-slate-100/50 backdrop-blur-md border border-slate-200/50 shadow-[0_2px_8px_rgba(0,0,0,0.04)] text-slate-500 transition-all duration-300 hover:w-10 hover:bg-white/95 hover:shadow-[0_4px_16px_rgba(0,0,0,0.1)] hover:text-blue-600 hover:border-slate-200/80 focus:outline-none"
-            title={effectiveGraphViewMode === "full" ? (isCompactPanels ? "收起图谱" : "分屏视图") : "收起图谱"}
-          >
-            <ChevronRight className="h-5 w-5 mr-1 transition-transform group-hover:translate-x-0.5" />
-          </button>
-        )}
-      </div>
+      {/* Graph Floating Button */}
+      {subjectId && !isBuildActive && !showDocGeneratingState && (
+        <button
+          type="button"
+          onClick={openGraphPanel}
+          className={cn(
+            "fixed bottom-20 right-6 z-[86] inline-flex h-11 items-center gap-2 rounded-2xl border border-zinc-200/80 bg-white/95 px-4 text-[14px] font-medium text-zinc-700 shadow-[0_2px_8px_rgba(0,0,0,0.04),0_8px_24px_rgba(0,0,0,0.06)] backdrop-blur-xl transition duration-300 hover:border-zinc-300 hover:bg-white hover:text-zinc-900 active:scale-[0.98]",
+            isGraphDrawerOpen ? "pointer-events-none translate-y-4 opacity-0" : "translate-y-0 opacity-100"
+          )}
+          aria-label="打开知识图谱"
+        >
+          <Network className="h-4 w-4 text-zinc-500" />
+          <span>知识图谱</span>
+        </button>
+      )}
 
-      {/* Graph Area Wrapper */}
-      <div 
+      {/* Graph Drawer Panel */}
+      <div
         className={cn(
-          "relative h-full transition-all duration-500 ease-[cubic-bezier(0.25,1,0.5,1)] bg-slate-50 shrink-0 border-l border-slate-200/50",
-          effectiveGraphViewMode === "hidden" ? "w-0 overflow-hidden opacity-0" : 
-          effectiveGraphViewMode === "split" ? "w-[35%]" : "w-full"
+          "fixed top-0 bottom-0 right-0 z-[84] bg-slate-50 border-l border-zinc-200/80 shadow-[0_0_40px_rgba(0,0,0,0.15)] flex",
+          isGraphDrawerOpen && subjectId ? "translate-x-0 pointer-events-auto" : "translate-x-full pointer-events-none",
+          !isGraphDragging && "transition-transform duration-300 ease-[cubic-bezier(0.2,0.8,0.2,1)]"
         )}
+        style={{ width: graphPanelWidth }}
       >
-        {subjectId && effectiveGraphViewMode !== "hidden" && (
-          <Suspense fallback={<GraphPanelFallback />}>
-            <KnowledgeGraphSidePanel 
-              subjectId={subjectId} 
-            />
-          </Suspense>
-        )}
+        <div
+          className={cn(
+            "absolute top-0 bottom-0 left-0 w-2 -ml-[1px] cursor-col-resize z-50 hover:bg-blue-500/30 transition-colors",
+            isGraphDragging && "bg-blue-500/30"
+          )}
+          onMouseDown={handleGraphMouseDown}
+        />
+        <div className="flex-1 w-full h-full relative bg-slate-50 overflow-hidden shadow-inner flex flex-col">
+          {subjectId && isGraphDrawerOpen && (
+            <Suspense fallback={<GraphPanelFallback />}>
+              <KnowledgeGraphSidePanel subjectId={subjectId} onClose={closeGraphPanel} />
+            </Suspense>
+          )}
+        </div>
       </div>
 
 

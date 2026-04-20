@@ -26,7 +26,6 @@ def _ensure_requested_placeholders(markdown: str, requests: list[dict]) -> str:
     additions: list[str] = []
     existing = {
         "mermaid": {item.strip().casefold() for item in extract_asset_request_descriptions(markdown, kind="mermaid")},
-        "image": {item.strip().casefold() for item in extract_asset_request_descriptions(markdown, kind="image")},
         "interactive": {item.strip().casefold() for item in extract_asset_request_descriptions(markdown, kind="interactive")},
     }
     for item in requests:
@@ -158,19 +157,8 @@ async def enhance_chapter_draft(
                 for index, description in enumerate(mermaid_placeholders, start=1)
             )
         if image_placeholders:
-            traced_context.asset_kind = "image"
-            markdown, image_render_reports = await asset_runtime.process_image_placeholders_with_reports(markdown)
-            assets.extend(
-                {
-                    "asset_id": f"ch{draft.chapter_index:02d}_image_{index:02d}",
-                    "chapter_index": draft.chapter_index,
-                    "kind": "image",
-                    "source_placeholder": description,
-                    "status": str((image_render_reports[index - 1] if index - 1 < len(image_render_reports) else {}).get("status") or "unknown"),
-                    "render_report": image_render_reports[index - 1] if index - 1 < len(image_render_reports) else {},
-                }
-                for index, description in enumerate(image_placeholders, start=1)
-            )
+            markdown = strip_asset_requests(markdown, kinds={"image"})
+            warnings.append("已移除图片占位；DocGen 当前不直接生成讲义配图。")
         if interactive_placeholders:
             markdown = strip_asset_requests(markdown, kinds={"interactive"})
             warnings.append("已移除交互占位；后端仅发布标准 Markdown，交互展示交给前端能力处理。")

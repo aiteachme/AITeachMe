@@ -662,18 +662,36 @@ class DocGenChapterContextRuntime(BaseTracedExecution):
         entry["queries"] = queries[:8]
 
     def _docgen_external_retriever_allowlist(self) -> set[str]:
-        # Keep DocGen web research stable and low-noise. Site-specific DDG
-        # wrappers such as Zhihu/Baidu Baike and paper-only sources often
-        # timeout or drift for basic course writing; users can still opt into
-        # them by configuring dedicated retriever profiles later.
+        # Keep DocGen web research stable and low-noise while still honoring
+        # configured educational profiles. Community-style site wrappers such
+        # as Zhihu/Baidu Baike are intentionally excluded from chapter source
+        # reading; broad web providers may still surface those pages at lower
+        # rank if they are genuinely relevant.
         return {
+            "zh_wikibooks",
+            "zh_wikiversity",
+            "zh_wikipedia",
+            "zh_wiktionary",
+            "oi_wiki",
             "bocha",
             "tavily",
             "brave",
             "exa",
             "bing",
+            "jina_search",
+            "google_cse",
+            "searchapi",
+            "serpapi",
+            "serper",
+            "perplexity",
+            "openrouter_search",
+            "baidu_ai_search",
             "searxng",
             "wikipedia",
+            "arxiv",
+            "semantic_scholar",
+            "pubmed_central",
+            "mcp_search",
             "duckduckgo",
         }
 

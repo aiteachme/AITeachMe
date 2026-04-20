@@ -1,4 +1,9 @@
-﻿"""Typed state for the rewritten DocGen lane."""
+"""DocGen graph state contract.
+
+这里集中描述 LangGraph 节点之间传递的 state 字段，包括 Send fan-out
+临时字段、reducer 聚合字段和最终发布字段。HTTP schema / DB model 不在
+这里定义。
+"""
 
 from __future__ import annotations
 
@@ -42,10 +47,14 @@ class DocGenState(TypedDict, total=False):
     chapter_generation_plan: dict[str, Any]
     chapter_tasks: list[dict[str, Any]]
     chapter_task: dict[str, Any]
+    enhanced_chapter_draft: dict[str, Any]
     total_chapters: int
 
     chapter_drafts: Annotated[list[dict[str, Any]], operator.add]
     enhanced_chapter_drafts: Annotated[list[dict[str, Any]], operator.add]
+    reviewed_chapter_draft_items: Annotated[list[dict[str, Any]], operator.add]
+    chapter_review_report_items: Annotated[list[dict[str, Any]], operator.add]
+    review_action_items: Annotated[list[dict[str, Any]], operator.add]
     reviewed_chapter_drafts: list[dict[str, Any]]
     research_traces: Annotated[list[dict[str, Any]], operator.add]
     evidence_ledgers: Annotated[list[dict[str, Any]], operator.add]
@@ -80,7 +89,7 @@ class DocGenState(TypedDict, total=False):
     research_ms: Annotated[int, operator.add]
     draft_ms: Annotated[int, operator.add]
     enhance_ms: Annotated[int, operator.add]
-    review_ms: int
+    review_ms: Annotated[int, operator.add]
     repair_ms: int
     merge_review_ms: int
     finalize_ms: int

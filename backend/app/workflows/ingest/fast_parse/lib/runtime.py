@@ -27,6 +27,10 @@ from app.workflows.ingest.common.parsing.formats import (
     is_text_extension,
 )
 from app.workflows.ingest.common.parsing.orchestrator import fast_parse_file
+from app.workflows.ingest.common.parsing.parsers import (
+    is_markitdown_available_for_extension,
+    resolve_markitdown_parser_name,
+)
 from app.workflows.ingest.common.parsing.strategy import ParsePlan, build_parse_plan
 from app.workflows.ingest.common.parsing.types import ParserRunOptions
 from app.workflows.ingest.common.parsing.mineru_cloud import MinerURequestOptions, parse_file_to_dir
@@ -112,7 +116,7 @@ async def run_parse_file_workflow(
 
             # ── Load "parse request" metadata (set at upload time) ──
             # 前端 settings 属于"本地配置"，后端后台 ingest 无法直接读取。
-            # 因此 upload 时会把 parser_provider 与 MinerU 参数作为 multipart 字段传来，并暂存到 parse_metadata_json。
+            # 因此 upload 时会把 parser_provider 与 provider 参数作为 multipart 字段传来，并暂存到 parse_metadata_json。
             # 这里读取后：
             # 1) 把 token 拿到内存中用于本次解析
             # 2) 立即把 DB 中的 token 擦掉（避免长期落盘敏感信息）
@@ -192,6 +196,7 @@ async def run_parse_file_workflow(
                 extension=ext,
                 requested_provider=requested_parser_provider,
                 mineru_available=bool(mineru_token and mineru_token.strip()),
+                markitdown_available=is_markitdown_available_for_extension(ext),
             )
             logger.info(
                 "ingest_parse_decision_built",
@@ -311,6 +316,19 @@ async def run_parse_file_workflow(
                     file_size_bytes=raw_file.size_bytes,
                     classification=classification,
                 )
+                if parse_decision.uses_markitdown:
+                    markitdown_parser = resolve_markitdown_parser_name(raw_file.file_ext)
+                    if markitdown_parser:
+                        parse_plan = parse_plan.model_copy(
+                            update={
+                                "mode": "local_markitdown",
+                                "parser_chain": [markitdown_parser],
+                                "decision_reason": parse_decision.primary_reason,
+                            }
+                        )
+                        parse_plan.options.enable_page_vision_ocr = False
+                        parse_plan.options.enable_asset_vision_ocr = False
+                        parse_plan.options.asset_vision_ocr_limit = 0
             logger.info(
                 "ingest_parse_plan_built",
                 subject=subject,

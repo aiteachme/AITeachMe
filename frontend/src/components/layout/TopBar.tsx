@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { apiClient, getApiErrorMessage } from "../../api/client";
+import { FeedbackModal } from "../ui/FeedbackModal";
 import { Modal } from "../ui/Modal";
 
 type RuntimeUser = {
@@ -88,6 +89,7 @@ export function TopBar({ className }: TopBarProps) {
   const [codeSentToEmail, setCodeSentToEmail] = useState<string | null>(null);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isFeedbackModalOpen, setIsFeedbackModalOpen] = useState(false);
 
   const dropdownRef = useRef<HTMLDivElement>(null);
   const mobileMenuRef = useRef<HTMLDivElement>(null);
@@ -316,26 +318,6 @@ export function TopBar({ className }: TopBarProps) {
 
   return (
     <div className={cn("flex items-center gap-3", className)}>
-      <div className="hidden sm:flex items-center gap-1">
-        <a
-          href="https://github.com/aiteachme/AiTeachMe"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="p-2 text-slate-500 hover:text-slate-700 hover:bg-slate-50 rounded-lg transition-colors"
-          title="GitHub"
-        >
-          <Github className="w-4 h-4" />
-        </a>
-
-        <button
-          className="p-2 text-slate-500 hover:text-slate-700 hover:bg-slate-50 rounded-lg transition-colors"
-          onClick={() => alert("这里后续会接入反馈表单")}
-          title="意见反馈"
-        >
-          <MessageCircle className="w-4 h-4" />
-        </button>
-      </div>
-
       <div className="hidden sm:block">
         <div className="relative" ref={dropdownRef}>
           <button
@@ -422,6 +404,29 @@ export function TopBar({ className }: TopBarProps) {
                   </>
                 )}
 
+              </div>
+
+              <div className="border-t border-slate-100 py-1">
+                <a
+                  href="https://github.com/aiteachme/AiTeachMe"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="w-full flex items-center gap-2.5 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-colors"
+                  onClick={() => setIsDropdownOpen(false)}
+                >
+                  <Github className="w-4 h-4 text-slate-400" />
+                  <span>GitHub</span>
+                </a>
+                <button
+                  className="w-full flex items-center gap-2.5 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-colors"
+                  onClick={() => {
+                    setIsDropdownOpen(false);
+                    setIsFeedbackModalOpen(true);
+                  }}
+                >
+                  <MessageCircle className="w-4 h-4 text-slate-400" />
+                  <span>意见反馈</span>
+                </button>
               </div>
 
               {isLoggedIn && (
@@ -529,7 +534,13 @@ export function TopBar({ className }: TopBarProps) {
                 <span>GitHub</span>
               </a>
 
-              <button className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 transition-colors">
+              <button
+                className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 transition-colors"
+                onClick={() => {
+                  setIsMobileMenuOpen(false);
+                  setIsFeedbackModalOpen(true);
+                }}
+              >
                 <MessageCircle className="w-4 h-4 text-slate-400" />
                 <span>意见反馈</span>
               </button>
@@ -670,6 +681,7 @@ export function TopBar({ className }: TopBarProps) {
         </form>
       </Modal>
 
+      <FeedbackModal open={isFeedbackModalOpen} onClose={() => setIsFeedbackModalOpen(false)} />
     </div>
   );
 }

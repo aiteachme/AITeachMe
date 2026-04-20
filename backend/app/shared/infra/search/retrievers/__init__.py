@@ -1,11 +1,9 @@
 from .arxiv import ArxivRetriever
 from .baidu_ai_search import BaiduAISearchRetriever
-from .baike_baidu import BaiduBaikeRetriever
 from .base import BaseRetriever, get_registered_retriever_names
 from .bing import BingRetriever
 from .bocha import BochaRetriever
 from .brave import BraveRetriever
-from .custom_endpoint import CustomEndpointRetriever
 from .duckduckgo import DuckDuckGoRetriever
 from .exa import ExaRetriever
 from .google_cse import GoogleCSERetriever
@@ -20,9 +18,17 @@ from .searxng import SearXngRetriever
 from .serper import SerperRetriever
 from .serpapi import SerpApiRetriever
 from .semantic_scholar import SemanticScholarRetriever
+from .sites import (
+    BaiduBaikeRetriever,
+    OIWikiRetriever,
+    ZhihuRetriever,
+    ZhWikibooksRetriever,
+    ZhWikipediaRetriever,
+    ZhWiktionaryRetriever,
+    ZhWikiversityRetriever,
+)
 from .tavily import TavilyRetriever
 from .wikipedia import WikipediaRetriever
-from .zhihu import ZhihuRetriever
 
 __all__ = [
     "ArxivRetriever",
@@ -32,7 +38,6 @@ __all__ = [
     "BingRetriever",
     "BochaRetriever",
     "BraveRetriever",
-    "CustomEndpointRetriever",
     "DuckDuckGoRetriever",
     "ExaRetriever",
     "get_registered_retriever_names",
@@ -41,6 +46,7 @@ __all__ = [
     "LocalRAGRetriever",
     "MCPSearchRetriever",
     "OpenRouterSearchRetriever",
+    "OIWikiRetriever",
     "PerplexityRetriever",
     "PubMedCentralRetriever",
     "SearchApiRetriever",
@@ -51,4 +57,8 @@ __all__ = [
     "TavilyRetriever",
     "WikipediaRetriever",
     "ZhihuRetriever",
+    "ZhWikibooksRetriever",
+    "ZhWikipediaRetriever",
+    "ZhWiktionaryRetriever",
+    "ZhWikiversityRetriever",
 ]

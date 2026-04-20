@@ -45,10 +45,10 @@ function InlineMetrics({
   }
 
   return (
-    <div className="flex flex-wrap gap-x-2 gap-y-0.5 text-[10px] text-stone-400">
+    <div className="flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-zinc-500">
       {parts.map((part) => (
         <span key={part} className="inline-flex items-center gap-0.5">
-          <span className="inline-block h-1 w-1 rounded-full bg-stone-300" />
+          <span className="inline-block h-1 w-1 rounded-full bg-zinc-300" />
           {part}
         </span>
       ))}
@@ -248,41 +248,43 @@ export function BuildView({
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       transition={{ duration: 0.4 }}
-      className={cn("mx-auto w-full max-w-[1100px] py-6", className)}
+      className={cn("mx-auto w-full max-w-[1120px] py-4", className)}
     >
       <motion.div
         initial={{ opacity: 0, y: -8 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.08, duration: 0.35 }}
-        className="mb-5 flex items-center gap-3"
+        className="mb-5 rounded-2xl border border-zinc-200 bg-white px-4 py-4 shadow-sm"
       >
-        <div className="relative shrink-0">
-          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-sky-500 to-blue-600 shadow-md shadow-sky-500/15">
-            <Sparkles className="h-4 w-4 text-white" />
-          </div>
-          <motion.div
-            className="absolute -inset-1 rounded-xl border border-sky-400/25"
-            animate={{ scale: [1, 1.2, 1], opacity: [0.5, 0, 0.5] }}
-            transition={{ duration: 2, repeat: Infinity }}
-          />
-        </div>
-
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
-            <p className="truncate text-sm font-medium text-stone-800">{statusText}</p>
-            {isFetching ? <Loader2 className="h-3 w-3 shrink-0 animate-spin text-stone-300" /> : null}
-            <span className="ml-auto shrink-0 text-[11px] font-semibold text-sky-600">{Math.round(progress)}%</span>
-          </div>
-          <div className="mt-1.5 h-[3px] overflow-hidden rounded-full bg-stone-100">
+        <div className="flex items-start gap-3">
+          <div className="relative shrink-0">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-zinc-950 shadow-sm">
+              <Sparkles className="h-4 w-4 text-white" />
+            </div>
             <motion.div
-              initial={{ width: 0 }}
-              animate={{ width: `${progress}%` }}
-              transition={{ duration: 0.8, ease: "easeOut" }}
-              className="h-full rounded-full bg-gradient-to-r from-sky-500 to-blue-500"
+              className="absolute -inset-1 rounded-xl border border-zinc-300/40"
+              animate={{ scale: [1, 1.18, 1], opacity: [0.45, 0, 0.45] }}
+              transition={{ duration: 2, repeat: Infinity }}
             />
           </div>
-          <div className="mt-1.5">
-            <InlineMetrics metrics={buildMetrics} preview={buildPreview} />
+
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2">
+              <p className="truncate text-sm font-semibold text-zinc-900">{statusText}</p>
+              {isFetching ? <Loader2 className="h-3 w-3 shrink-0 animate-spin text-zinc-300" /> : null}
+              <span className="ml-auto shrink-0 text-xs font-semibold text-zinc-700">{Math.round(progress)}%</span>
+            </div>
+            <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-zinc-100">
+              <motion.div
+                initial={{ width: 0 }}
+                animate={{ width: `${progress}%` }}
+                transition={{ duration: 0.8, ease: "easeOut" }}
+                className="h-full rounded-full bg-zinc-950"
+              />
+            </div>
+            <div className="mt-2">
+              <InlineMetrics metrics={buildMetrics} preview={buildPreview} />
+            </div>
           </div>
         </div>
       </motion.div>

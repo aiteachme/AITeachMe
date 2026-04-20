@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from app.workflows.digest.common.prompt_tracing import trace_prompt_build
 from app.workflows.digest.planner.prompts.examples import DEFAULT_SKETCH_EXAMPLE_LIMIT, render_plan_sketch_examples
 from app.workflows.digest.common.models import DigestMaterialContext
 from app.workflows.digest.planner.prompts.context import (
@@ -21,7 +22,7 @@ def build_plan_sketch_prompt(
 ) -> str:
     # sketch 是流式展示的“正在理解中”，不是最终计划。最终卡片只使用
     # composer 生成的计划说明和初步大纲。
-    return f"""
+    prompt = f"""
 你是 AITeachMe 的学习规划助手。请先输出一段自然的思考过程，让用户知道你正在如何理解资料。
 不要输出正式计划，不要输出初步大纲，也不要写知识文档正文。
 
@@ -56,6 +57,17 @@ def build_plan_sketch_prompt(
 
 {render_plan_sketch_examples(limit=DEFAULT_SKETCH_EXAMPLE_LIMIT)}
 """.strip()
+    return trace_prompt_build(
+        "planner_plan_sketch",
+        inputs={
+            "subject": subject,
+            "user_prompt_chars": len(user_prompt or ""),
+            "digest_mode": digest_mode,
+            "message_history_count": len(message_history),
+            "material_digest_chars": len(material_context.material_digest or ""),
+        },
+        output=prompt,
+    )
 
 
 __all__ = ["build_plan_sketch_prompt"]
