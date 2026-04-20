@@ -50,20 +50,6 @@ export function FeedbackModal({ open, onClose }: FeedbackModalProps) {
     const files = Array.from(e.target.files || []);
     if (!files.length) return;
 
-    if (imagesDataUrls.length + files.length > 9) {
-      setErrorStatus("最多只能上传 9 张图片。");
-      return;
-    }
-
-    // Check size limit: approximate size of existing base64 + new files
-    // base64 size is roughly string length * 0.75
-    const existingSize = imagesDataUrls.reduce((acc, url) => acc + url.length * 0.75, 0);
-    const newFilesSize = files.reduce((acc, file) => acc + file.size, 0);
-    if (existingSize + newFilesSize > 10 * 1024 * 1024) {
-      setErrorStatus("图片总大小不能超过 10MB。");
-      return;
-    }
-
     Promise.all(
       files.map((file) => {
         return new Promise<string>((resolve) => {
@@ -110,16 +96,15 @@ export function FeedbackModal({ open, onClose }: FeedbackModalProps) {
         </div>
 
 
-        <div className="flex gap-2 rounded-lg border border-slate-200 px-4 py-3 bg-slate-50/50">
+        <div className="flex">
           <button
             onClick={() => fileInputRef.current?.click()}
-            disabled={isSubmitting || successStatus || imagesDataUrls.length >= 9}
+            disabled={isSubmitting || successStatus}
             className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
           >
             <ImagePlus className="w-3.5 h-3.5" />
             添加图片
           </button>
-          <div className="text-xs text-slate-400 mt-1.5 ml-2">还可上传 {9 - imagesDataUrls.length} 张图片（总大小 10MB 内）</div>
           <input
             type="file"
             accept="image/*"
@@ -137,6 +122,7 @@ export function FeedbackModal({ open, onClose }: FeedbackModalProps) {
                 <img src={url} alt={`Screenshot preview ${i}`} className="h-20 object-contain block" />
                 <button 
                   onClick={() => {
+                    // 移除选中的图片
                     setImagesDataUrls(prev => prev.filter((_, idx) => idx !== i));
                   }} 
                   disabled={isSubmitting || successStatus}
