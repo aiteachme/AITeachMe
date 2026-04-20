@@ -12,6 +12,7 @@ from app.workflows.digest.planner.prompts.examples import (
 )
 from app.workflows.digest.planner.prompts.plan_intent import build_plan_intent_messages
 from app.workflows.digest.planner.prompts.plan_sketch import build_plan_sketch_prompt
+from app.workflows.digest.planner.prompts.subject_name import build_subject_name_prompt
 
 __all__ = [
     "PLAN_JSON_END_MARKER",
@@ -19,6 +20,7 @@ __all__ = [
     "build_plan_intent_messages",
     "build_plan_composer_messages",
     "build_plan_sketch_prompt",
+    "build_subject_name_prompt",
     "render_composer_examples",
     "render_plan_intent_examples",
     "render_plan_sketch_examples",

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from app.workflows.digest.docgen.prompts.tracing import trace_prompt_build
+from app.workflows.digest.common.prompt_tracing import trace_prompt_build
 
 DENSE_CONTEXT_WRITER_BUDGET = 14000
 DENSE_CONTEXT_REPAIR_BUDGET = 4000

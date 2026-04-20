@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from app.workflows.digest.common.prompt_tracing import trace_prompt_build
 from app.workflows.digest.common.models import DigestMaterialContext
 from app.workflows.digest.planner.lib.models import (
     PlanIntent,
@@ -136,10 +137,25 @@ JSON 形状：
 few-shot 规律：
 {render_composer_examples(limit=DEFAULT_COMPOSER_EXAMPLE_LIMIT)}
 """.strip()
-    return [
+    messages = [
         {"role": "system", "content": "你是 AITeachMe 的构建计划合成器，必须同时输出可见计划说明和可解析 JSON。"},
         {"role": "user", "content": prompt},
     ]
+    return trace_prompt_build(
+        "planner_plan_composer",
+        inputs={
+            "subject": subject,
+            "user_prompt_chars": len(resolved_user_prompt),
+            "digest_mode": digest_mode,
+            "message_history_count": len(message_history or []),
+            "material_digest_chars": len(material_context.material_digest or ""),
+            "brief_chars": len(sketch),
+            "plan_intent_chars": len(plan_intent_text),
+            "plan_query_count": len(plan_intent.plan_queries),
+            "has_latest_plan": latest_plan is not None,
+        },
+        output=messages,
+    )
 
 
 __all__ = [

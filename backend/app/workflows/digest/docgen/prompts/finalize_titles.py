@@ -4,7 +4,7 @@ from app.workflows.digest.docgen.prompts.common import (
     build_docgen_gap_query_messages,
     build_docgen_sub_query_messages,
 )
-from app.workflows.digest.docgen.prompts.tracing import trace_prompt_build
+from app.workflows.digest.common.prompt_tracing import trace_prompt_build
 
 
 def build_finalize_chapter_titles_messages(*, digest_mode: str, chapters: list[dict]) -> list[dict[str, str]]:

@@ -18,7 +18,7 @@ from app.workflows.digest.planner.lib.models import (
     PlannerBrief,
     build_empty_planner_brief,
 )
-from app.workflows.digest.planner.prompts import build_plan_intent_messages, build_plan_sketch_prompt
+from app.workflows.digest.planner.prompts import build_plan_intent_messages, build_plan_sketch_prompt, build_subject_name_prompt
 from app.workflows.digest.planner.state import BuildPlannerState
 
 logger = structlog.get_logger(__name__)
@@ -49,19 +49,10 @@ async def _generate_subject_name(state: BuildPlannerState) -> str:
         for packet in list(material_context.source_packets or [])[:5]
         if str(packet.filename or "").strip()
     ]
-    prompt = "\n".join(
-        [
-            "请根据用户学习目标和资料线索，生成一个中文学习空间标题。",
-            "要求：",
-            "- 2 到 10 个汉字为佳，最多 16 个字。",
-            "- 像 ChatGPT/Gemini 对话标题一样简洁自然。",
-            "- 不要输出引号、编号、解释、标点。",
-            "- 不要写“新学科”“未命名”“学习资料”。",
-            "",
-            f"用户提示：{state.get('user_prompt') or '未提供'}",
-            f"资料名：{'、'.join(filenames) or '暂无'}",
-            f"模式：{state.get('digest_mode') or material_context.course_mode_decision.mode.value}",
-        ]
+    prompt = build_subject_name_prompt(
+        user_prompt=state.get("user_prompt") or "",
+        filenames=filenames,
+        digest_mode=state.get("digest_mode") or material_context.course_mode_decision.mode.value,
     )
     try:
         title = await acompletion_with_fallback(

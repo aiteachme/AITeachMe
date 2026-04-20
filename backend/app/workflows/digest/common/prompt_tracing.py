@@ -1,4 +1,4 @@
-"""LangSmith tracing helpers for DocGen prompt builders."""
+"""Shared LangSmith tracing helpers for digest prompt builders."""
 
 from __future__ import annotations
 
@@ -19,7 +19,7 @@ def trace_prompt_build(
     inputs: dict[str, Any],
     output: T,
 ) -> T:
-    """Trace one prompt-building step and return the original output."""
+    """Trace one prompt-building step and return the original prompt object."""
 
     with langsmith_trace(
         name=f"Prompt：{name}",

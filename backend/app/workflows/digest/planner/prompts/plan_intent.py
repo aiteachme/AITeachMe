@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from app.workflows.digest.common.prompt_tracing import trace_prompt_build
 from app.workflows.digest.common.models import DigestMaterialContext
 from app.workflows.digest.planner.prompts.context import (
     render_material_digest,
@@ -62,10 +63,23 @@ PlanIntent 不是最终展示内容，也不是外部检索承诺；它只用于
 few-shot 示例：
 {render_plan_intent_examples(limit=DEFAULT_INTENT_EXAMPLE_LIMIT)}
 """.strip()
-    return [
+    messages = [
         {"role": "system", "content": "你是学习规划意图分析器，只输出合法 JSON。"},
         {"role": "user", "content": prompt},
     ]
+    return trace_prompt_build(
+        "planner_plan_intent",
+        inputs={
+            "subject": subject,
+            "user_prompt_chars": len(user_prompt or ""),
+            "digest_mode": digest_mode,
+            "message_history_count": len(message_history),
+            "material_digest_chars": len(material_context.material_digest or ""),
+            "plan_query_min": PLAN_QUERY_MIN,
+            "plan_query_max": PLAN_QUERY_MAX,
+        },
+        output=messages,
+    )
 
 
 __all__ = ["build_plan_intent_messages"]

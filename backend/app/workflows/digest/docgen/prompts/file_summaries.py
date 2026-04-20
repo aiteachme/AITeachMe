@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from app.workflows.digest.docgen.prompts.tracing import trace_prompt_build
+from app.workflows.digest.common.prompt_tracing import trace_prompt_build
 
 FILE_SUMMARY_CHAPTER_TITLE_BUDGET = 24
 FILE_SUMMARY_EXCERPT_BUDGET = 18000

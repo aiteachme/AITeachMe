@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from app.workflows.digest.docgen.prompts.tracing import trace_prompt_build
+from app.workflows.digest.common.prompt_tracing import trace_prompt_build
 
 REVIEW_MARKDOWN_BUDGET = 9000
 REVIEW_LEDGER_BUDGET = 5000
