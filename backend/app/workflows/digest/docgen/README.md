@@ -93,7 +93,7 @@ flowchart TD
 | 2 | `confirm_and_dispatch` | 生成 `ChapterGenerationPlanSeed`、`ChapterGenerationTaskSeed`、`BackboneResearchAgenda`，同时生成章节 fan-out 使用的 `ChapterGenerationPlan` / `ChapterGenerationTask` |
 | 3 | `build_document_backbone` | 构建术语、概念依赖、主张池、符号表、易混点；失败时降级为 seed 弱骨架 |
 | 4 | `generate_chapters` | 每章检索、读取/压缩上下文、生成 evidence ledger、claim ledger、claim/evidence map、conflict report，并写草稿 |
-| 5 | `enhance_chapters` | 处理 Mermaid、图片/交互占位降级、公式清洗、Markdown 结构和本章自检题 |
+| 5 | `enhance_chapters` | 处理 Mermaid、交互占位清理、公式清洗、Markdown 结构和本章自检题 |
 | 6 | `review_chapter` | LangGraph `Send x N` 按章并行执行 LLM 结构化内容复核，并用规则复核兜底 |
 | 7 | `document_consistency_review` | 章节 review fan-in 后检查整本术语、标题、章节数、重复和风格一致性 |
 | 8 | `repair_or_route` | 对 `surface_patch` / `section_patch` 执行局部 Markdown patch，对证据补强和重写类动作结构化记录 |
@@ -224,7 +224,7 @@ title_review_report
 - `ReviewAction` 已扩展出 `evidence_patch`、`target_anchor`、`instruction`、`constraints`、`expected_effect`，repair 层已消费 `surface_patch` / `section_patch` 执行局部修补，`evidence_patch` 和 `regenerate_chapter` 仍待闭环阶段接入。
 - patch 类动作只有真实修改正文才会标记为 `applied`；未执行的动作会进入 `repair_trace`。
 - 如果后续引入 repair loop，`chapter_drafts` / `enhanced_chapter_drafts` 这类 `operator.add` fan-in 字段需要版本化或按章替换，否则容易累积旧草稿。
-- 文生图已接入 infra `agenerate_image` 和 DocGen image 占位处理；后续还需要补更细的前端展示与失败重试策略。
+- DocGen 当前不直接生成讲义配图；复杂可视化后续应优先走 Mermaid 或 OpenMAIC 风格的交互式 HTML/scene 资产。
 - `final_merge_patch` 尚未独立实现，合并后才暴露的小问题只能由 `merge_review` / `finalize_titles` 间接收口。
 
 这些问题都不要求立刻大改 graph，但应该按 `REFACTOR_PLAN.md` 的顺序小步处理。

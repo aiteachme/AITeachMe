@@ -20,6 +20,8 @@ export interface KnowledgeBuildStatusResponse {
   error_message?: string | null;
   /** Whether a staging draft is currently available. */
   draft_available?: boolean;
+  /** Persisted backend progress percentage for the current build. */
+  progress_pct?: number;
   /** Planner session id bound to the current build. */
   planner_session_id?: string | null;
   /** Confirmed build plan id bound to the current build. */

@@ -9866,6 +9866,12 @@
             "description": "Whether a staging draft is currently available.",
             "default": false
           },
+          "progress_pct": {
+            "type": "integer",
+            "title": "Progress Pct",
+            "description": "Persisted backend progress percentage for the current build.",
+            "default": 0
+          },
           "planner_session_id": {
             "anyOf": [
               {

@@ -41,7 +41,7 @@ def _unique_strings(values: list[str]) -> list[str]:
 
 
 def _media_hints_from_requests(requests: list[dict]) -> dict[str, list[str]]:
-    media_hints = {"mermaid": [], "images": []}
+    media_hints = {"mermaid": []}
     for item in requests:
         kind = str(item.get("kind") or "").strip().lower()
         description = str(item.get("description") or "").strip()
@@ -49,8 +49,6 @@ def _media_hints_from_requests(requests: list[dict]) -> dict[str, list[str]]:
             continue
         if kind == "mermaid":
             media_hints["mermaid"].append(description)
-        elif kind in {"image", "images"}:
-            media_hints["images"].append(description)
     return media_hints
 
 
@@ -94,7 +92,6 @@ def _execution_contract_for_writer(
         "repair_enabled": True,
         "media_quota": {
             "mermaid": len(media_hints["mermaid"]),
-            "images": len(media_hints["images"]),
         },
     }
 

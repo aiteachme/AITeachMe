@@ -1,18 +1,23 @@
 /* ------------------------------------------------------------------ */
-/*  useDocBuildProgress — Animated progress bar logic                  */
+/*  useDocBuildProgress — backend-persisted progress state             */
 /* ------------------------------------------------------------------ */
 
-import { useState, useEffect } from "react";
 import type { DocGenBuildStatus } from "../types";
 import {
   resolveDocBuildStatusText,
   resolveDocBuildProgressFloor,
-  resolveDocBuildProgressCap,
 } from "../utils";
 
 export interface DocBuildProgressState {
   buildProgress: number;
   buildStatusText: string;
+}
+
+function clampProgress(value: number): number {
+  if (!Number.isFinite(value)) {
+    return 0;
+  }
+  return Math.max(0, Math.min(100, value));
 }
 
 export function useDocBuildProgress(opts: {
@@ -36,56 +41,21 @@ export function useDocBuildProgress(opts: {
     isWaitingForRequestedBuild,
   } = opts;
 
-  const [buildProgress, setBuildProgress] = useState(0);
-  const [buildStatusText, setBuildStatusText] = useState("正在整理知识文档...");
+  const buildStatusText = resolveDocBuildStatusText(buildMeta, hasLiveDocMarkdown, hasDraftDocMarkdown);
 
-  useEffect(() => {
-    const nextStatusText = resolveDocBuildStatusText(buildMeta, hasLiveDocMarkdown, hasDraftDocMarkdown);
-    const progressFloor = resolveDocBuildProgressFloor(buildMeta, hasDraftDocMarkdown);
-    setBuildStatusText(nextStatusText);
+  if (buildStatus === "completed" || isRequestedBuildReady) {
+    return { buildProgress: 100, buildStatusText };
+  }
 
-    if (buildStatus === "completed" || isRequestedBuildReady) {
-      setBuildProgress(100);
-      return;
-    }
+  const fallbackProgress = resolveDocBuildProgressFloor(buildMeta, hasDraftDocMarkdown);
+  const persistedProgress = clampProgress(Number(buildMeta?.progress_pct ?? fallbackProgress));
 
-    if (isBuildFailure) {
-      setBuildProgress(progressFloor);
-      return;
-    }
+  if (isBuildFailure || (!isBuildActive && !isWaitingForRequestedBuild)) {
+    return { buildProgress: persistedProgress, buildStatusText };
+  }
 
-    if (!isBuildActive && !isWaitingForRequestedBuild) {
-      setBuildProgress(progressFloor);
-      return;
-    }
-
-    const progressCap = resolveDocBuildProgressCap(buildMeta, hasDraftDocMarkdown);
-    setBuildProgress((prev) => {
-      const base = prev > 0 ? prev : progressFloor;
-      return Math.max(base, progressFloor);
-    });
-
-    const timer = window.setInterval(() => {
-      setBuildProgress((prev) => {
-        if (prev >= progressCap) return progressCap;
-        if (prev < 20) return Math.min(progressCap, prev + 6);
-        if (prev < 50) return Math.min(progressCap, prev + 4);
-        if (prev < 75) return Math.min(progressCap, prev + 2.5);
-        return Math.min(progressCap, prev + 1.2);
-      });
-    }, 600);
-
-    return () => window.clearInterval(timer);
-  }, [
-    buildMeta,
-    buildStatus,
-    hasDraftDocMarkdown,
-    hasLiveDocMarkdown,
-    isBuildActive,
-    isBuildFailure,
-    isRequestedBuildReady,
-    isWaitingForRequestedBuild,
-  ]);
-
-  return { buildProgress, buildStatusText };
+  return {
+    buildProgress: Math.max(persistedProgress, fallbackProgress),
+    buildStatusText,
+  };
 }

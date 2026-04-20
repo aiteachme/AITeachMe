@@ -1,6 +1,6 @@
 ﻿"""DocGen lane-local prompt exports."""
 
-from app.workflows.digest.docgen.prompts.assets import build_docgen_image_prompt, build_docgen_mermaid_prompt
+from app.workflows.digest.docgen.prompts.assets import build_docgen_mermaid_prompt
 from app.workflows.digest.docgen.prompts.chapter_review import build_chapter_review_messages
 from app.workflows.digest.docgen.prompts.chapter_critic import build_chapter_rewrite_messages
 from app.workflows.digest.docgen.prompts.finalize_titles import (
@@ -29,7 +29,6 @@ __all__ = [
     "build_chapter_patch_messages",
     "build_chapter_review_messages",
     "build_chapter_rewrite_messages",
-    "build_docgen_image_prompt",
     "build_file_summary_messages",
     "build_intent_messages",
     "build_outline_enhance_messages",

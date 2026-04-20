@@ -5,7 +5,7 @@ from __future__ import annotations
 from time import perf_counter
 
 from app.shared.infra.workflow.context import WorkflowContext
-from app.utils.docgen_store import append_knowledge_build_recent_event, update_knowledge_build_status
+from app.utils.docgen_store import append_knowledge_build_recent_event, update_knowledge_build_status, upsert_knowledge_build_chapter_progress
 from app.utils.time import utcnow
 from app.workflows.digest.docgen.lib.chapter_review import review_chapter
 from app.workflows.digest.docgen.lib.models import (
@@ -64,6 +64,19 @@ def build_review_chapter_node(*, context: WorkflowContext):
         claim_maps_by_chapter = _by_chapter(ClaimEvidenceMap, list(state.get("claim_evidence_maps") or []))
         conflict_reports_by_chapter = _by_chapter(ConflictReport, list(state.get("conflict_reports") or []))
 
+        update_knowledge_build_status(
+            state["subject"],
+            requested_at=state["requested_at"],
+            status="running",
+            stage="reviewing_content",
+            digest_mode=state.get("digest_mode") or None,
+            current_stage_description="正在并行复核章节覆盖、证据支撑和写作质量。",
+        )
+        upsert_knowledge_build_chapter_progress(
+            state["subject"],
+            requested_at=state["requested_at"],
+            chapter_progress={"chapter_index": draft.chapter_index, "title": draft.title, "status": "reviewing"},
+        )
         reviewed, report, actions = await review_chapter(
             draft=draft,
             task=tasks_by_chapter.get(draft.chapter_index),
@@ -73,6 +86,11 @@ def build_review_chapter_node(*, context: WorkflowContext):
             digest_mode=state.get("digest_mode") or "",
         )
         elapsed_ms = int((perf_counter() - started_at) * 1000)
+        upsert_knowledge_build_chapter_progress(
+            state["subject"],
+            requested_at=state["requested_at"],
+            chapter_progress={"chapter_index": draft.chapter_index, "title": draft.title, "status": "reviewed"},
+        )
         append_knowledge_build_recent_event(
             state["subject"],
             requested_at=state["requested_at"],

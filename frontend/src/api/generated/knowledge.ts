@@ -97,16 +97,16 @@ export type knowledgeBuildPlanCreateApiV1SubjectsSubjectKnowledgeBuildPlansPostR
 export const getKnowledgeBuildPlanCreateApiV1SubjectsSubjectKnowledgeBuildPlansPostUrl = (subject: string,) => {
 
 
-
+  
 
   return `/api/v1/subjects/${subject}/knowledge/build/plans`
 }
 
 export const knowledgeBuildPlanCreateApiV1SubjectsSubjectKnowledgeBuildPlansPost = async (subject: string,
     buildPlannerCreateRequest: BuildPlannerCreateRequest, options?: RequestInit): Promise<knowledgeBuildPlanCreateApiV1SubjectsSubjectKnowledgeBuildPlansPostResponse> => {
-
+  
   return orvalApiClient<knowledgeBuildPlanCreateApiV1SubjectsSubjectKnowledgeBuildPlansPostResponse>(getKnowledgeBuildPlanCreateApiV1SubjectsSubjectKnowledgeBuildPlansPostUrl(subject),
-  {
+  {      
     ...options,
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...options?.headers },
@@ -114,7 +114,7 @@ export const knowledgeBuildPlanCreateApiV1SubjectsSubjectKnowledgeBuildPlansPost
       buildPlannerCreateRequest,)
   }
 );}
-
+  
 
 
 
@@ -129,7 +129,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       : {...options, mutation: {...options.mutation, mutationKey}}
       : {mutation: { mutationKey, }, request: undefined};
 
-
+      
 
 
       const mutationFn: MutationFunction<Awaited<ReturnType<typeof knowledgeBuildPlanCreateApiV1SubjectsSubjectKnowledgeBuildPlansPost>>, {subject: string;data: BuildPlannerCreateRequest}> = (props) => {
@@ -140,7 +140,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
 
 
-
+        
 
 
   return  { mutationFn, ...mutationOptions }}
@@ -207,16 +207,16 @@ export type knowledgeDebugKgFileIngestApiV1SubjectsSubjectKnowledgeDebugKgFileIn
 export const getKnowledgeDebugKgFileIngestApiV1SubjectsSubjectKnowledgeDebugKgFileIngestPostUrl = (subject: string,) => {
 
 
-
+  
 
   return `/api/v1/subjects/${subject}/knowledge/debug/kg-file-ingest`
 }
 
 export const knowledgeDebugKgFileIngestApiV1SubjectsSubjectKnowledgeDebugKgFileIngestPost = async (subject: string,
     knowledgeDebugTriggerRequest: KnowledgeDebugTriggerRequest, options?: RequestInit): Promise<knowledgeDebugKgFileIngestApiV1SubjectsSubjectKnowledgeDebugKgFileIngestPostResponse> => {
-
+  
   return orvalApiClient<knowledgeDebugKgFileIngestApiV1SubjectsSubjectKnowledgeDebugKgFileIngestPostResponse>(getKnowledgeDebugKgFileIngestApiV1SubjectsSubjectKnowledgeDebugKgFileIngestPostUrl(subject),
-  {
+  {      
     ...options,
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...options?.headers },
@@ -224,7 +224,7 @@ export const knowledgeDebugKgFileIngestApiV1SubjectsSubjectKnowledgeDebugKgFileI
       knowledgeDebugTriggerRequest,)
   }
 );}
-
+  
 
 
 
@@ -239,7 +239,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       : {...options, mutation: {...options.mutation, mutationKey}}
       : {mutation: { mutationKey, }, request: undefined};
 
-
+      
 
 
       const mutationFn: MutationFunction<Awaited<ReturnType<typeof knowledgeDebugKgFileIngestApiV1SubjectsSubjectKnowledgeDebugKgFileIngestPost>>, {subject: string;data: KnowledgeDebugTriggerRequest}> = (props) => {
@@ -250,7 +250,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
 
 
-
+        
 
 
   return  { mutationFn, ...mutationOptions }}
@@ -317,16 +317,16 @@ export type knowledgeDebugKgDocsSyncApiV1SubjectsSubjectKnowledgeDebugKgDocsSync
 export const getKnowledgeDebugKgDocsSyncApiV1SubjectsSubjectKnowledgeDebugKgDocsSyncPostUrl = (subject: string,) => {
 
 
-
+  
 
   return `/api/v1/subjects/${subject}/knowledge/debug/kg-docs-sync`
 }
 
 export const knowledgeDebugKgDocsSyncApiV1SubjectsSubjectKnowledgeDebugKgDocsSyncPost = async (subject: string,
     knowledgeDebugTriggerRequest: KnowledgeDebugTriggerRequest, options?: RequestInit): Promise<knowledgeDebugKgDocsSyncApiV1SubjectsSubjectKnowledgeDebugKgDocsSyncPostResponse> => {
-
+  
   return orvalApiClient<knowledgeDebugKgDocsSyncApiV1SubjectsSubjectKnowledgeDebugKgDocsSyncPostResponse>(getKnowledgeDebugKgDocsSyncApiV1SubjectsSubjectKnowledgeDebugKgDocsSyncPostUrl(subject),
-  {
+  {      
     ...options,
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...options?.headers },
@@ -334,7 +334,7 @@ export const knowledgeDebugKgDocsSyncApiV1SubjectsSubjectKnowledgeDebugKgDocsSyn
       knowledgeDebugTriggerRequest,)
   }
 );}
-
+  
 
 
 
@@ -349,7 +349,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       : {...options, mutation: {...options.mutation, mutationKey}}
       : {mutation: { mutationKey, }, request: undefined};
 
-
+      
 
 
       const mutationFn: MutationFunction<Awaited<ReturnType<typeof knowledgeDebugKgDocsSyncApiV1SubjectsSubjectKnowledgeDebugKgDocsSyncPost>>, {subject: string;data: KnowledgeDebugTriggerRequest}> = (props) => {
@@ -360,7 +360,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
 
 
-
+        
 
 
   return  { mutationFn, ...mutationOptions }}
@@ -427,22 +427,22 @@ export type knowledgeDebugClearGraphApiV1SubjectsSubjectKnowledgeDebugClearGraph
 export const getKnowledgeDebugClearGraphApiV1SubjectsSubjectKnowledgeDebugClearGraphPostUrl = (subject: string,) => {
 
 
-
+  
 
   return `/api/v1/subjects/${subject}/knowledge/debug/clear-graph`
 }
 
 export const knowledgeDebugClearGraphApiV1SubjectsSubjectKnowledgeDebugClearGraphPost = async (subject: string, options?: RequestInit): Promise<knowledgeDebugClearGraphApiV1SubjectsSubjectKnowledgeDebugClearGraphPostResponse> => {
-
+  
   return orvalApiClient<knowledgeDebugClearGraphApiV1SubjectsSubjectKnowledgeDebugClearGraphPostResponse>(getKnowledgeDebugClearGraphApiV1SubjectsSubjectKnowledgeDebugClearGraphPostUrl(subject),
-  {
+  {      
     ...options,
     method: 'POST'
-
-
+    
+    
   }
 );}
-
+  
 
 
 
@@ -457,7 +457,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       : {...options, mutation: {...options.mutation, mutationKey}}
       : {mutation: { mutationKey, }, request: undefined};
 
-
+      
 
 
       const mutationFn: MutationFunction<Awaited<ReturnType<typeof knowledgeDebugClearGraphApiV1SubjectsSubjectKnowledgeDebugClearGraphPost>>, {subject: string}> = (props) => {
@@ -468,13 +468,13 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
 
 
-
+        
 
 
   return  { mutationFn, ...mutationOptions }}
 
     export type KnowledgeDebugClearGraphApiV1SubjectsSubjectKnowledgeDebugClearGraphPostMutationResult = NonNullable<Awaited<ReturnType<typeof knowledgeDebugClearGraphApiV1SubjectsSubjectKnowledgeDebugClearGraphPost>>>
-
+    
     export type KnowledgeDebugClearGraphApiV1SubjectsSubjectKnowledgeDebugClearGraphPostMutationError = ErrorResponse | HTTPValidationError
 
     /**
@@ -530,22 +530,22 @@ export type knowledgeBuildPlanLatestApiV1SubjectsSubjectKnowledgeBuildPlansLates
 export const getKnowledgeBuildPlanLatestApiV1SubjectsSubjectKnowledgeBuildPlansLatestPostUrl = (subject: string,) => {
 
 
-
+  
 
   return `/api/v1/subjects/${subject}/knowledge/build/plans/latest`
 }
 
 export const knowledgeBuildPlanLatestApiV1SubjectsSubjectKnowledgeBuildPlansLatestPost = async (subject: string, options?: RequestInit): Promise<knowledgeBuildPlanLatestApiV1SubjectsSubjectKnowledgeBuildPlansLatestPostResponse> => {
-
+  
   return orvalApiClient<knowledgeBuildPlanLatestApiV1SubjectsSubjectKnowledgeBuildPlansLatestPostResponse>(getKnowledgeBuildPlanLatestApiV1SubjectsSubjectKnowledgeBuildPlansLatestPostUrl(subject),
-  {
+  {      
     ...options,
     method: 'POST'
-
-
+    
+    
   }
 );}
-
+  
 
 
 
@@ -560,7 +560,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       : {...options, mutation: {...options.mutation, mutationKey}}
       : {mutation: { mutationKey, }, request: undefined};
 
-
+      
 
 
       const mutationFn: MutationFunction<Awaited<ReturnType<typeof knowledgeBuildPlanLatestApiV1SubjectsSubjectKnowledgeBuildPlansLatestPost>>, {subject: string}> = (props) => {
@@ -571,13 +571,13 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
 
 
-
+        
 
 
   return  { mutationFn, ...mutationOptions }}
 
     export type KnowledgeBuildPlanLatestApiV1SubjectsSubjectKnowledgeBuildPlansLatestPostMutationResult = NonNullable<Awaited<ReturnType<typeof knowledgeBuildPlanLatestApiV1SubjectsSubjectKnowledgeBuildPlansLatestPost>>>
-
+    
     export type KnowledgeBuildPlanLatestApiV1SubjectsSubjectKnowledgeBuildPlansLatestPostMutationError = ErrorResponse | HTTPValidationError
 
     /**
@@ -633,16 +633,16 @@ export type knowledgeBuildPlanCreateStreamApiV1SubjectsSubjectKnowledgeBuildPlan
 export const getKnowledgeBuildPlanCreateStreamApiV1SubjectsSubjectKnowledgeBuildPlansStreamPostUrl = (subject: string,) => {
 
 
-
+  
 
   return `/api/v1/subjects/${subject}/knowledge/build/plans/stream`
 }
 
 export const knowledgeBuildPlanCreateStreamApiV1SubjectsSubjectKnowledgeBuildPlansStreamPost = async (subject: string,
     buildPlannerCreateRequest: BuildPlannerCreateRequest, options?: RequestInit): Promise<knowledgeBuildPlanCreateStreamApiV1SubjectsSubjectKnowledgeBuildPlansStreamPostResponse> => {
-
+  
   return orvalApiClient<knowledgeBuildPlanCreateStreamApiV1SubjectsSubjectKnowledgeBuildPlansStreamPostResponse>(getKnowledgeBuildPlanCreateStreamApiV1SubjectsSubjectKnowledgeBuildPlansStreamPostUrl(subject),
-  {
+  {      
     ...options,
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...options?.headers },
@@ -650,7 +650,7 @@ export const knowledgeBuildPlanCreateStreamApiV1SubjectsSubjectKnowledgeBuildPla
       buildPlannerCreateRequest,)
   }
 );}
-
+  
 
 
 
@@ -665,7 +665,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       : {...options, mutation: {...options.mutation, mutationKey}}
       : {mutation: { mutationKey, }, request: undefined};
 
-
+      
 
 
       const mutationFn: MutationFunction<Awaited<ReturnType<typeof knowledgeBuildPlanCreateStreamApiV1SubjectsSubjectKnowledgeBuildPlansStreamPost>>, {subject: string;data: BuildPlannerCreateRequest}> = (props) => {
@@ -676,7 +676,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
 
 
-
+        
 
 
   return  { mutationFn, ...mutationOptions }}
@@ -739,7 +739,7 @@ export const getKnowledgeBuildPlanMessageApiV1SubjectsSubjectKnowledgeBuildPlans
     sessionId: string,) => {
 
 
-
+  
 
   return `/api/v1/subjects/${subject}/knowledge/build/plans/${sessionId}/messages`
 }
@@ -747,9 +747,9 @@ export const getKnowledgeBuildPlanMessageApiV1SubjectsSubjectKnowledgeBuildPlans
 export const knowledgeBuildPlanMessageApiV1SubjectsSubjectKnowledgeBuildPlansSessionIdMessagesPost = async (subject: string,
     sessionId: string,
     buildPlannerMessageRequest: BuildPlannerMessageRequest, options?: RequestInit): Promise<knowledgeBuildPlanMessageApiV1SubjectsSubjectKnowledgeBuildPlansSessionIdMessagesPostResponse> => {
-
+  
   return orvalApiClient<knowledgeBuildPlanMessageApiV1SubjectsSubjectKnowledgeBuildPlansSessionIdMessagesPostResponse>(getKnowledgeBuildPlanMessageApiV1SubjectsSubjectKnowledgeBuildPlansSessionIdMessagesPostUrl(subject,sessionId),
-  {
+  {      
     ...options,
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...options?.headers },
@@ -757,7 +757,7 @@ export const knowledgeBuildPlanMessageApiV1SubjectsSubjectKnowledgeBuildPlansSes
       buildPlannerMessageRequest,)
   }
 );}
-
+  
 
 
 
@@ -772,7 +772,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       : {...options, mutation: {...options.mutation, mutationKey}}
       : {mutation: { mutationKey, }, request: undefined};
 
-
+      
 
 
       const mutationFn: MutationFunction<Awaited<ReturnType<typeof knowledgeBuildPlanMessageApiV1SubjectsSubjectKnowledgeBuildPlansSessionIdMessagesPost>>, {subject: string;sessionId: string;data: BuildPlannerMessageRequest}> = (props) => {
@@ -783,7 +783,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
 
 
-
+        
 
 
   return  { mutationFn, ...mutationOptions }}
@@ -846,7 +846,7 @@ export const getKnowledgeBuildPlanMessageStreamApiV1SubjectsSubjectKnowledgeBuil
     sessionId: string,) => {
 
 
-
+  
 
   return `/api/v1/subjects/${subject}/knowledge/build/plans/${sessionId}/messages/stream`
 }
@@ -854,9 +854,9 @@ export const getKnowledgeBuildPlanMessageStreamApiV1SubjectsSubjectKnowledgeBuil
 export const knowledgeBuildPlanMessageStreamApiV1SubjectsSubjectKnowledgeBuildPlansSessionIdMessagesStreamPost = async (subject: string,
     sessionId: string,
     buildPlannerMessageRequest: BuildPlannerMessageRequest, options?: RequestInit): Promise<knowledgeBuildPlanMessageStreamApiV1SubjectsSubjectKnowledgeBuildPlansSessionIdMessagesStreamPostResponse> => {
-
+  
   return orvalApiClient<knowledgeBuildPlanMessageStreamApiV1SubjectsSubjectKnowledgeBuildPlansSessionIdMessagesStreamPostResponse>(getKnowledgeBuildPlanMessageStreamApiV1SubjectsSubjectKnowledgeBuildPlansSessionIdMessagesStreamPostUrl(subject,sessionId),
-  {
+  {      
     ...options,
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...options?.headers },
@@ -864,7 +864,7 @@ export const knowledgeBuildPlanMessageStreamApiV1SubjectsSubjectKnowledgeBuildPl
       buildPlannerMessageRequest,)
   }
 );}
-
+  
 
 
 
@@ -879,7 +879,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       : {...options, mutation: {...options.mutation, mutationKey}}
       : {mutation: { mutationKey, }, request: undefined};
 
-
+      
 
 
       const mutationFn: MutationFunction<Awaited<ReturnType<typeof knowledgeBuildPlanMessageStreamApiV1SubjectsSubjectKnowledgeBuildPlansSessionIdMessagesStreamPost>>, {subject: string;sessionId: string;data: BuildPlannerMessageRequest}> = (props) => {
@@ -890,7 +890,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
 
 
-
+        
 
 
   return  { mutationFn, ...mutationOptions }}
@@ -953,23 +953,23 @@ export const getKnowledgeBuildPlanConfirmApiV1SubjectsSubjectKnowledgeBuildPlans
     sessionId: string,) => {
 
 
-
+  
 
   return `/api/v1/subjects/${subject}/knowledge/build/plans/${sessionId}/confirm`
 }
 
 export const knowledgeBuildPlanConfirmApiV1SubjectsSubjectKnowledgeBuildPlansSessionIdConfirmPost = async (subject: string,
     sessionId: string, options?: RequestInit): Promise<knowledgeBuildPlanConfirmApiV1SubjectsSubjectKnowledgeBuildPlansSessionIdConfirmPostResponse> => {
-
+  
   return orvalApiClient<knowledgeBuildPlanConfirmApiV1SubjectsSubjectKnowledgeBuildPlansSessionIdConfirmPostResponse>(getKnowledgeBuildPlanConfirmApiV1SubjectsSubjectKnowledgeBuildPlansSessionIdConfirmPostUrl(subject,sessionId),
-  {
+  {      
     ...options,
     method: 'POST'
-
-
+    
+    
   }
 );}
-
+  
 
 
 
@@ -984,7 +984,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       : {...options, mutation: {...options.mutation, mutationKey}}
       : {mutation: { mutationKey, }, request: undefined};
 
-
+      
 
 
       const mutationFn: MutationFunction<Awaited<ReturnType<typeof knowledgeBuildPlanConfirmApiV1SubjectsSubjectKnowledgeBuildPlansSessionIdConfirmPost>>, {subject: string;sessionId: string}> = (props) => {
@@ -995,13 +995,13 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
 
 
-
+        
 
 
   return  { mutationFn, ...mutationOptions }}
 
     export type KnowledgeBuildPlanConfirmApiV1SubjectsSubjectKnowledgeBuildPlansSessionIdConfirmPostMutationResult = NonNullable<Awaited<ReturnType<typeof knowledgeBuildPlanConfirmApiV1SubjectsSubjectKnowledgeBuildPlansSessionIdConfirmPost>>>
-
+    
     export type KnowledgeBuildPlanConfirmApiV1SubjectsSubjectKnowledgeBuildPlansSessionIdConfirmPostMutationError = ErrorResponse
 
     /**
@@ -1062,16 +1062,16 @@ export type knowledgeBuildApiV1SubjectsSubjectKnowledgeBuildPostResponse = (know
 export const getKnowledgeBuildApiV1SubjectsSubjectKnowledgeBuildPostUrl = (subject: string,) => {
 
 
-
+  
 
   return `/api/v1/subjects/${subject}/knowledge/build`
 }
 
 export const knowledgeBuildApiV1SubjectsSubjectKnowledgeBuildPost = async (subject: string,
     docGenBuildRequest: DocGenBuildRequest, options?: RequestInit): Promise<knowledgeBuildApiV1SubjectsSubjectKnowledgeBuildPostResponse> => {
-
+  
   return orvalApiClient<knowledgeBuildApiV1SubjectsSubjectKnowledgeBuildPostResponse>(getKnowledgeBuildApiV1SubjectsSubjectKnowledgeBuildPostUrl(subject),
-  {
+  {      
     ...options,
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...options?.headers },
@@ -1079,7 +1079,7 @@ export const knowledgeBuildApiV1SubjectsSubjectKnowledgeBuildPost = async (subje
       docGenBuildRequest,)
   }
 );}
-
+  
 
 
 
@@ -1094,7 +1094,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       : {...options, mutation: {...options.mutation, mutationKey}}
       : {mutation: { mutationKey, }, request: undefined};
 
-
+      
 
 
       const mutationFn: MutationFunction<Awaited<ReturnType<typeof knowledgeBuildApiV1SubjectsSubjectKnowledgeBuildPost>>, {subject: string;data: DocGenBuildRequest}> = (props) => {
@@ -1105,7 +1105,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
 
 
-
+        
 
 
   return  { mutationFn, ...mutationOptions }}
@@ -1167,22 +1167,22 @@ export type knowledgeBuildCancelApiV1SubjectsSubjectKnowledgeBuildCancelPostResp
 export const getKnowledgeBuildCancelApiV1SubjectsSubjectKnowledgeBuildCancelPostUrl = (subject: string,) => {
 
 
-
+  
 
   return `/api/v1/subjects/${subject}/knowledge/build/cancel`
 }
 
 export const knowledgeBuildCancelApiV1SubjectsSubjectKnowledgeBuildCancelPost = async (subject: string, options?: RequestInit): Promise<knowledgeBuildCancelApiV1SubjectsSubjectKnowledgeBuildCancelPostResponse> => {
-
+  
   return orvalApiClient<knowledgeBuildCancelApiV1SubjectsSubjectKnowledgeBuildCancelPostResponse>(getKnowledgeBuildCancelApiV1SubjectsSubjectKnowledgeBuildCancelPostUrl(subject),
-  {
+  {      
     ...options,
     method: 'POST'
-
-
+    
+    
   }
 );}
-
+  
 
 
 
@@ -1197,7 +1197,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       : {...options, mutation: {...options.mutation, mutationKey}}
       : {mutation: { mutationKey, }, request: undefined};
 
-
+      
 
 
       const mutationFn: MutationFunction<Awaited<ReturnType<typeof knowledgeBuildCancelApiV1SubjectsSubjectKnowledgeBuildCancelPost>>, {subject: string}> = (props) => {
@@ -1208,13 +1208,13 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
 
 
-
+        
 
 
   return  { mutationFn, ...mutationOptions }}
 
     export type KnowledgeBuildCancelApiV1SubjectsSubjectKnowledgeBuildCancelPostMutationResult = NonNullable<Awaited<ReturnType<typeof knowledgeBuildCancelApiV1SubjectsSubjectKnowledgeBuildCancelPost>>>
-
+    
     export type KnowledgeBuildCancelApiV1SubjectsSubjectKnowledgeBuildCancelPostMutationError = ErrorResponse | HTTPValidationError
 
     /**
@@ -1270,22 +1270,22 @@ export type knowledgeDocsApiV1SubjectsSubjectKnowledgeDocsPostResponse = (knowle
 export const getKnowledgeDocsApiV1SubjectsSubjectKnowledgeDocsPostUrl = (subject: string,) => {
 
 
-
+  
 
   return `/api/v1/subjects/${subject}/knowledge/docs`
 }
 
 export const knowledgeDocsApiV1SubjectsSubjectKnowledgeDocsPost = async (subject: string, options?: RequestInit): Promise<knowledgeDocsApiV1SubjectsSubjectKnowledgeDocsPostResponse> => {
-
+  
   return orvalApiClient<knowledgeDocsApiV1SubjectsSubjectKnowledgeDocsPostResponse>(getKnowledgeDocsApiV1SubjectsSubjectKnowledgeDocsPostUrl(subject),
-  {
+  {      
     ...options,
     method: 'POST'
-
-
+    
+    
   }
 );}
-
+  
 
 
 
@@ -1300,7 +1300,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       : {...options, mutation: {...options.mutation, mutationKey}}
       : {mutation: { mutationKey, }, request: undefined};
 
-
+      
 
 
       const mutationFn: MutationFunction<Awaited<ReturnType<typeof knowledgeDocsApiV1SubjectsSubjectKnowledgeDocsPost>>, {subject: string}> = (props) => {
@@ -1311,13 +1311,13 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
 
 
-
+        
 
 
   return  { mutationFn, ...mutationOptions }}
 
     export type KnowledgeDocsApiV1SubjectsSubjectKnowledgeDocsPostMutationResult = NonNullable<Awaited<ReturnType<typeof knowledgeDocsApiV1SubjectsSubjectKnowledgeDocsPost>>>
-
+    
     export type KnowledgeDocsApiV1SubjectsSubjectKnowledgeDocsPostMutationError = ErrorResponse | HTTPValidationError
 
     /**
@@ -1373,16 +1373,16 @@ export type knowledgeOverviewApiV1SubjectsSubjectKnowledgeOverviewPostResponse =
 export const getKnowledgeOverviewApiV1SubjectsSubjectKnowledgeOverviewPostUrl = (subject: string,) => {
 
 
-
+  
 
   return `/api/v1/subjects/${subject}/knowledge/overview`
 }
 
 export const knowledgeOverviewApiV1SubjectsSubjectKnowledgeOverviewPost = async (subject: string,
     knowledgeOverviewRequest: KnowledgeOverviewRequest, options?: RequestInit): Promise<knowledgeOverviewApiV1SubjectsSubjectKnowledgeOverviewPostResponse> => {
-
+  
   return orvalApiClient<knowledgeOverviewApiV1SubjectsSubjectKnowledgeOverviewPostResponse>(getKnowledgeOverviewApiV1SubjectsSubjectKnowledgeOverviewPostUrl(subject),
-  {
+  {      
     ...options,
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...options?.headers },
@@ -1390,7 +1390,7 @@ export const knowledgeOverviewApiV1SubjectsSubjectKnowledgeOverviewPost = async 
       knowledgeOverviewRequest,)
   }
 );}
-
+  
 
 
 
@@ -1405,7 +1405,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       : {...options, mutation: {...options.mutation, mutationKey}}
       : {mutation: { mutationKey, }, request: undefined};
 
-
+      
 
 
       const mutationFn: MutationFunction<Awaited<ReturnType<typeof knowledgeOverviewApiV1SubjectsSubjectKnowledgeOverviewPost>>, {subject: string;data: KnowledgeOverviewRequest}> = (props) => {
@@ -1416,7 +1416,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
 
 
-
+        
 
 
   return  { mutationFn, ...mutationOptions }}
@@ -1483,22 +1483,22 @@ export type knowledgeClearApiV1SubjectsSubjectKnowledgeClearPostResponse = (know
 export const getKnowledgeClearApiV1SubjectsSubjectKnowledgeClearPostUrl = (subject: string,) => {
 
 
-
+  
 
   return `/api/v1/subjects/${subject}/knowledge/clear`
 }
 
 export const knowledgeClearApiV1SubjectsSubjectKnowledgeClearPost = async (subject: string, options?: RequestInit): Promise<knowledgeClearApiV1SubjectsSubjectKnowledgeClearPostResponse> => {
-
+  
   return orvalApiClient<knowledgeClearApiV1SubjectsSubjectKnowledgeClearPostResponse>(getKnowledgeClearApiV1SubjectsSubjectKnowledgeClearPostUrl(subject),
-  {
+  {      
     ...options,
     method: 'POST'
-
-
+    
+    
   }
 );}
-
+  
 
 
 
@@ -1513,7 +1513,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       : {...options, mutation: {...options.mutation, mutationKey}}
       : {mutation: { mutationKey, }, request: undefined};
 
-
+      
 
 
       const mutationFn: MutationFunction<Awaited<ReturnType<typeof knowledgeClearApiV1SubjectsSubjectKnowledgeClearPost>>, {subject: string}> = (props) => {
@@ -1524,13 +1524,13 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
 
 
-
+        
 
 
   return  { mutationFn, ...mutationOptions }}
 
     export type KnowledgeClearApiV1SubjectsSubjectKnowledgeClearPostMutationResult = NonNullable<Awaited<ReturnType<typeof knowledgeClearApiV1SubjectsSubjectKnowledgeClearPost>>>
-
+    
     export type KnowledgeClearApiV1SubjectsSubjectKnowledgeClearPostMutationError = ErrorResponse | HTTPValidationError
 
     /**
@@ -1586,16 +1586,16 @@ export type graphKnowledgeUnitsApiV1SubjectsSubjectKnowledgeGraphKnowledgeUnitsP
 export const getGraphKnowledgeUnitsApiV1SubjectsSubjectKnowledgeGraphKnowledgeUnitsPostUrl = (subject: string,) => {
 
 
-
+  
 
   return `/api/v1/subjects/${subject}/knowledge/graph/knowledge-units`
 }
 
 export const graphKnowledgeUnitsApiV1SubjectsSubjectKnowledgeGraphKnowledgeUnitsPost = async (subject: string,
     knowledgeUnitsQueryRequest: KnowledgeUnitsQueryRequest, options?: RequestInit): Promise<graphKnowledgeUnitsApiV1SubjectsSubjectKnowledgeGraphKnowledgeUnitsPostResponse> => {
-
+  
   return orvalApiClient<graphKnowledgeUnitsApiV1SubjectsSubjectKnowledgeGraphKnowledgeUnitsPostResponse>(getGraphKnowledgeUnitsApiV1SubjectsSubjectKnowledgeGraphKnowledgeUnitsPostUrl(subject),
-  {
+  {      
     ...options,
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...options?.headers },
@@ -1603,7 +1603,7 @@ export const graphKnowledgeUnitsApiV1SubjectsSubjectKnowledgeGraphKnowledgeUnits
       knowledgeUnitsQueryRequest,)
   }
 );}
-
+  
 
 
 
@@ -1618,7 +1618,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       : {...options, mutation: {...options.mutation, mutationKey}}
       : {mutation: { mutationKey, }, request: undefined};
 
-
+      
 
 
       const mutationFn: MutationFunction<Awaited<ReturnType<typeof graphKnowledgeUnitsApiV1SubjectsSubjectKnowledgeGraphKnowledgeUnitsPost>>, {subject: string;data: KnowledgeUnitsQueryRequest}> = (props) => {
@@ -1629,7 +1629,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
 
 
-
+        
 
 
   return  { mutationFn, ...mutationOptions }}
@@ -1691,16 +1691,16 @@ export type graphKnowledgeUnitDetailApiV1SubjectsSubjectKnowledgeGraphKnowledgeU
 export const getGraphKnowledgeUnitDetailApiV1SubjectsSubjectKnowledgeGraphKnowledgeUnitsDetailPostUrl = (subject: string,) => {
 
 
-
+  
 
   return `/api/v1/subjects/${subject}/knowledge/graph/knowledge-units/detail`
 }
 
 export const graphKnowledgeUnitDetailApiV1SubjectsSubjectKnowledgeGraphKnowledgeUnitsDetailPost = async (subject: string,
     knowledgeUnitDetailRequest: KnowledgeUnitDetailRequest, options?: RequestInit): Promise<graphKnowledgeUnitDetailApiV1SubjectsSubjectKnowledgeGraphKnowledgeUnitsDetailPostResponse> => {
-
+  
   return orvalApiClient<graphKnowledgeUnitDetailApiV1SubjectsSubjectKnowledgeGraphKnowledgeUnitsDetailPostResponse>(getGraphKnowledgeUnitDetailApiV1SubjectsSubjectKnowledgeGraphKnowledgeUnitsDetailPostUrl(subject),
-  {
+  {      
     ...options,
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...options?.headers },
@@ -1708,7 +1708,7 @@ export const graphKnowledgeUnitDetailApiV1SubjectsSubjectKnowledgeGraphKnowledge
       knowledgeUnitDetailRequest,)
   }
 );}
-
+  
 
 
 
@@ -1723,7 +1723,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       : {...options, mutation: {...options.mutation, mutationKey}}
       : {mutation: { mutationKey, }, request: undefined};
 
-
+      
 
 
       const mutationFn: MutationFunction<Awaited<ReturnType<typeof graphKnowledgeUnitDetailApiV1SubjectsSubjectKnowledgeGraphKnowledgeUnitsDetailPost>>, {subject: string;data: KnowledgeUnitDetailRequest}> = (props) => {
@@ -1734,7 +1734,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
 
 
-
+        
 
 
   return  { mutationFn, ...mutationOptions }}
@@ -1796,16 +1796,16 @@ export type graphKnowledgeUnitRelationsApiV1SubjectsSubjectKnowledgeGraphKnowled
 export const getGraphKnowledgeUnitRelationsApiV1SubjectsSubjectKnowledgeGraphKnowledgeUnitsRelationsPostUrl = (subject: string,) => {
 
 
-
+  
 
   return `/api/v1/subjects/${subject}/knowledge/graph/knowledge-units/relations`
 }
 
 export const graphKnowledgeUnitRelationsApiV1SubjectsSubjectKnowledgeGraphKnowledgeUnitsRelationsPost = async (subject: string,
     knowledgeUnitRelationsRequest: KnowledgeUnitRelationsRequest, options?: RequestInit): Promise<graphKnowledgeUnitRelationsApiV1SubjectsSubjectKnowledgeGraphKnowledgeUnitsRelationsPostResponse> => {
-
+  
   return orvalApiClient<graphKnowledgeUnitRelationsApiV1SubjectsSubjectKnowledgeGraphKnowledgeUnitsRelationsPostResponse>(getGraphKnowledgeUnitRelationsApiV1SubjectsSubjectKnowledgeGraphKnowledgeUnitsRelationsPostUrl(subject),
-  {
+  {      
     ...options,
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...options?.headers },
@@ -1813,7 +1813,7 @@ export const graphKnowledgeUnitRelationsApiV1SubjectsSubjectKnowledgeGraphKnowle
       knowledgeUnitRelationsRequest,)
   }
 );}
-
+  
 
 
 
@@ -1828,7 +1828,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       : {...options, mutation: {...options.mutation, mutationKey}}
       : {mutation: { mutationKey, }, request: undefined};
 
-
+      
 
 
       const mutationFn: MutationFunction<Awaited<ReturnType<typeof graphKnowledgeUnitRelationsApiV1SubjectsSubjectKnowledgeGraphKnowledgeUnitsRelationsPost>>, {subject: string;data: KnowledgeUnitRelationsRequest}> = (props) => {
@@ -1839,7 +1839,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
 
 
-
+        
 
 
   return  { mutationFn, ...mutationOptions }}
@@ -1901,16 +1901,16 @@ export type graphKnowledgeUnitPathApiV1SubjectsSubjectKnowledgeGraphKnowledgeUni
 export const getGraphKnowledgeUnitPathApiV1SubjectsSubjectKnowledgeGraphKnowledgeUnitsPathPostUrl = (subject: string,) => {
 
 
-
+  
 
   return `/api/v1/subjects/${subject}/knowledge/graph/knowledge-units/path`
 }
 
 export const graphKnowledgeUnitPathApiV1SubjectsSubjectKnowledgeGraphKnowledgeUnitsPathPost = async (subject: string,
     knowledgeUnitPathRequest: KnowledgeUnitPathRequest, options?: RequestInit): Promise<graphKnowledgeUnitPathApiV1SubjectsSubjectKnowledgeGraphKnowledgeUnitsPathPostResponse> => {
-
+  
   return orvalApiClient<graphKnowledgeUnitPathApiV1SubjectsSubjectKnowledgeGraphKnowledgeUnitsPathPostResponse>(getGraphKnowledgeUnitPathApiV1SubjectsSubjectKnowledgeGraphKnowledgeUnitsPathPostUrl(subject),
-  {
+  {      
     ...options,
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...options?.headers },
@@ -1918,7 +1918,7 @@ export const graphKnowledgeUnitPathApiV1SubjectsSubjectKnowledgeGraphKnowledgeUn
       knowledgeUnitPathRequest,)
   }
 );}
-
+  
 
 
 
@@ -1933,7 +1933,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       : {...options, mutation: {...options.mutation, mutationKey}}
       : {mutation: { mutationKey, }, request: undefined};
 
-
+      
 
 
       const mutationFn: MutationFunction<Awaited<ReturnType<typeof graphKnowledgeUnitPathApiV1SubjectsSubjectKnowledgeGraphKnowledgeUnitsPathPost>>, {subject: string;data: KnowledgeUnitPathRequest}> = (props) => {
@@ -1944,7 +1944,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
 
 
-
+        
 
 
   return  { mutationFn, ...mutationOptions }}
@@ -2006,16 +2006,16 @@ export type graphFocusSubgraphApiV1SubjectsSubjectKnowledgeGraphSubgraphPostResp
 export const getGraphFocusSubgraphApiV1SubjectsSubjectKnowledgeGraphSubgraphPostUrl = (subject: string,) => {
 
 
-
+  
 
   return `/api/v1/subjects/${subject}/knowledge/graph/subgraph`
 }
 
 export const graphFocusSubgraphApiV1SubjectsSubjectKnowledgeGraphSubgraphPost = async (subject: string,
     knowledgeSubgraphRequest: KnowledgeSubgraphRequest, options?: RequestInit): Promise<graphFocusSubgraphApiV1SubjectsSubjectKnowledgeGraphSubgraphPostResponse> => {
-
+  
   return orvalApiClient<graphFocusSubgraphApiV1SubjectsSubjectKnowledgeGraphSubgraphPostResponse>(getGraphFocusSubgraphApiV1SubjectsSubjectKnowledgeGraphSubgraphPostUrl(subject),
-  {
+  {      
     ...options,
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...options?.headers },
@@ -2023,7 +2023,7 @@ export const graphFocusSubgraphApiV1SubjectsSubjectKnowledgeGraphSubgraphPost = 
       knowledgeSubgraphRequest,)
   }
 );}
-
+  
 
 
 
@@ -2038,7 +2038,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       : {...options, mutation: {...options.mutation, mutationKey}}
       : {mutation: { mutationKey, }, request: undefined};
 
-
+      
 
 
       const mutationFn: MutationFunction<Awaited<ReturnType<typeof graphFocusSubgraphApiV1SubjectsSubjectKnowledgeGraphSubgraphPost>>, {subject: string;data: KnowledgeSubgraphRequest}> = (props) => {
@@ -2049,7 +2049,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
 
 
-
+        
 
 
   return  { mutationFn, ...mutationOptions }}
@@ -2111,16 +2111,16 @@ export type graphRelationExplanationApiV1SubjectsSubjectKnowledgeGraphRelationsE
 export const getGraphRelationExplanationApiV1SubjectsSubjectKnowledgeGraphRelationsExplainPostUrl = (subject: string,) => {
 
 
-
+  
 
   return `/api/v1/subjects/${subject}/knowledge/graph/relations/explain`
 }
 
 export const graphRelationExplanationApiV1SubjectsSubjectKnowledgeGraphRelationsExplainPost = async (subject: string,
     knowledgeRelationExplanationRequest: KnowledgeRelationExplanationRequest, options?: RequestInit): Promise<graphRelationExplanationApiV1SubjectsSubjectKnowledgeGraphRelationsExplainPostResponse> => {
-
+  
   return orvalApiClient<graphRelationExplanationApiV1SubjectsSubjectKnowledgeGraphRelationsExplainPostResponse>(getGraphRelationExplanationApiV1SubjectsSubjectKnowledgeGraphRelationsExplainPostUrl(subject),
-  {
+  {      
     ...options,
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...options?.headers },
@@ -2128,7 +2128,7 @@ export const graphRelationExplanationApiV1SubjectsSubjectKnowledgeGraphRelations
       knowledgeRelationExplanationRequest,)
   }
 );}
-
+  
 
 
 
@@ -2143,7 +2143,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       : {...options, mutation: {...options.mutation, mutationKey}}
       : {mutation: { mutationKey, }, request: undefined};
 
-
+      
 
 
       const mutationFn: MutationFunction<Awaited<ReturnType<typeof graphRelationExplanationApiV1SubjectsSubjectKnowledgeGraphRelationsExplainPost>>, {subject: string;data: KnowledgeRelationExplanationRequest}> = (props) => {
@@ -2154,7 +2154,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
 
 
-
+        
 
 
   return  { mutationFn, ...mutationOptions }}
@@ -2216,22 +2216,22 @@ export type graphFullApiV1SubjectsSubjectKnowledgeGraphFullPostResponse = (graph
 export const getGraphFullApiV1SubjectsSubjectKnowledgeGraphFullPostUrl = (subject: string,) => {
 
 
-
+  
 
   return `/api/v1/subjects/${subject}/knowledge/graph/full`
 }
 
 export const graphFullApiV1SubjectsSubjectKnowledgeGraphFullPost = async (subject: string, options?: RequestInit): Promise<graphFullApiV1SubjectsSubjectKnowledgeGraphFullPostResponse> => {
-
+  
   return orvalApiClient<graphFullApiV1SubjectsSubjectKnowledgeGraphFullPostResponse>(getGraphFullApiV1SubjectsSubjectKnowledgeGraphFullPostUrl(subject),
-  {
+  {      
     ...options,
     method: 'POST'
-
-
+    
+    
   }
 );}
-
+  
 
 
 
@@ -2246,7 +2246,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       : {...options, mutation: {...options.mutation, mutationKey}}
       : {mutation: { mutationKey, }, request: undefined};
 
-
+      
 
 
       const mutationFn: MutationFunction<Awaited<ReturnType<typeof graphFullApiV1SubjectsSubjectKnowledgeGraphFullPost>>, {subject: string}> = (props) => {
@@ -2257,13 +2257,13 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
 
 
-
+        
 
 
   return  { mutationFn, ...mutationOptions }}
 
     export type GraphFullApiV1SubjectsSubjectKnowledgeGraphFullPostMutationResult = NonNullable<Awaited<ReturnType<typeof graphFullApiV1SubjectsSubjectKnowledgeGraphFullPost>>>
-
+    
     export type GraphFullApiV1SubjectsSubjectKnowledgeGraphFullPostMutationError = ErrorResponse | HTTPValidationError
 
     /**
@@ -2319,16 +2319,16 @@ export type chunkContextApiV1SubjectsSubjectKnowledgeChunksContextPostResponse =
 export const getChunkContextApiV1SubjectsSubjectKnowledgeChunksContextPostUrl = (subject: string,) => {
 
 
-
+  
 
   return `/api/v1/subjects/${subject}/knowledge/chunks/context`
 }
 
 export const chunkContextApiV1SubjectsSubjectKnowledgeChunksContextPost = async (subject: string,
     chunkContextRequest: ChunkContextRequest, options?: RequestInit): Promise<chunkContextApiV1SubjectsSubjectKnowledgeChunksContextPostResponse> => {
-
+  
   return orvalApiClient<chunkContextApiV1SubjectsSubjectKnowledgeChunksContextPostResponse>(getChunkContextApiV1SubjectsSubjectKnowledgeChunksContextPostUrl(subject),
-  {
+  {      
     ...options,
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...options?.headers },
@@ -2336,7 +2336,7 @@ export const chunkContextApiV1SubjectsSubjectKnowledgeChunksContextPost = async 
       chunkContextRequest,)
   }
 );}
-
+  
 
 
 
@@ -2351,7 +2351,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       : {...options, mutation: {...options.mutation, mutationKey}}
       : {mutation: { mutationKey, }, request: undefined};
 
-
+      
 
 
       const mutationFn: MutationFunction<Awaited<ReturnType<typeof chunkContextApiV1SubjectsSubjectKnowledgeChunksContextPost>>, {subject: string;data: ChunkContextRequest}> = (props) => {
@@ -2362,7 +2362,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
 
 
-
+        
 
 
   return  { mutationFn, ...mutationOptions }}
@@ -2384,4 +2384,4 @@ export const useChunkContextApiV1SubjectsSubjectKnowledgeChunksContextPost = <TE
       > => {
       return useMutation(getChunkContextApiV1SubjectsSubjectKnowledgeChunksContextPostMutationOptions(options), queryClient);
     }
-
+    

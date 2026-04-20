@@ -327,7 +327,6 @@ def build_settings_overview_data(
                 se("models.embedding", "Embedding 模型", settings.models.embedding, base_settings.models.embedding),
                 _runtime_entry("models.embedding_dim", "Embedding 维度", settings.embedding_dim),
                 se("models.ocr", "Vision OCR 模型", settings.models.ocr, base_settings.models.ocr, "空值时使用 Primary 模型；密钥和服务地址复用 LLM 接入配置。"),
-                se("models.image_generation", "文生图模型", settings.models.image_generation, base_settings.models.image_generation),
             ],
         ),
         SettingSection(

@@ -84,7 +84,7 @@ enhance_chapters
     ├─ enhance_chapter 1
     ├─ enhance_chapter 2
     └─ enhance_chapter N
-  处理 Mermaid、image、interactive、公式清洗、Markdown 结构和本章自检题。
+  处理 Mermaid、interactive 占位、公式清洗、Markdown 结构和本章自检题；当前不直接生成讲义配图。
   增强稿 fan-in 为 enhanced_chapter_drafts、asset_manifests、practice_manifests。
   |
   v
@@ -276,12 +276,12 @@ enhance_chapters
   输入：ChapterDraft / ClaimLedger / ConfusionMap / placeholder_requests / asset settings / digest_mode
   输出：EnhancedChapterDraft[] / AssetManifest[] / PracticeManifest[]
     - EnhancedChapterDraft：增强后的章节正文。
-    - AssetManifest：Mermaid、图片、交互块等资产清单。
+    - AssetManifest：Mermaid、交互块等资产清单。
     - PracticeManifest：本章自检题和练习种子。
-  作用：处理 Mermaid、图片占位、交互块、公式清洗、本章自检。
+  作用：处理 Mermaid、交互块、公式清洗、本章自检；image 占位会被剥离，不进入发布正文。
   enhance_chapter 内部步骤：
-    1. 解析章节中的 Mermaid / image / interactive 占位符。
-    2. 生成或降级处理对应资产。
+    1. 解析章节中的 Mermaid / interactive 占位符，并清理残留 image 占位。
+    2. 生成或降级处理对应结构化资产。
     3. 统一公式、Mermaid、Markdown 结构。
     4. 根据 ClaimLedger 和 ConfusionMap 追加本章自检题。
     5. 产出 asset / practice manifest。
@@ -390,7 +390,7 @@ publish_document
 | `merge_and_dispatch` | `confirm_and_dispatch` | 已落地，已输出 plan seed 和 backbone agenda |
 | `build_document_backbone` | `build_document_backbone` | 已落地，含 fallback backbone |
 | `generate_draft` | `generate_chapters` | 已落地，已输出 trace / evidence / claim / conflict |
-| `enhance` | `enhance_chapters` | 已落地，需补 asset disabled manifest |
+| `enhance` | `enhance_chapters` | 已落地，当前只保留 Mermaid 与交互占位清理 |
 | `review_content.review_chapter` | `review_chapter` / `复核章节内容` | 已落地，LangGraph Send x N，LLM review + 规则兜底 |
 | `review_content.document_consistency_review` | `document_consistency_review` / `复核整本一致性` | 已落地，章节 review fan-in 后执行 |
 | `repair_or_route` | `repair_or_route` | 已落地局部 patch：可执行 surface/section patch；待补 evidence/regenerate 和真实 repair loop |
@@ -530,8 +530,8 @@ repair_trace
 
 可以：
 
-- Mermaid、图片请求降级、交互占位处理、公式清洗、Markdown 结构和本章自检。
-- 根据 asset settings、digest mode 和章节合同决定表现层策略。
+- Mermaid、交互占位处理、公式清洗、Markdown 结构和本章自检。
+- 根据 digest mode 和章节合同决定表现层策略；当前不再生成讲义配图。
 
 不能：
 
@@ -589,7 +589,7 @@ repair_trace
 | P1 | repair loop 还没形成闭环 | 复核只能记录，不能真正按问题级别修补 |
 | P1 | evidence patch 尚未接入 | 证据不足目前只能结构化记录，不能定向补检索、补阅读、补 evidence binding |
 | P1 | state append reducer 与回流冲突 | 引入循环后容易重复发布过期章节或重复 manifest |
-| P1 | image 生成已接入，仍缺前端展示和失败重试策略 | 用户能拿到 manifest，但图片资产体验还需收口 |
+| P1 | 交互式 HTML/课堂组件尚未接入 | Mermaid 适合结构图，复杂可视化后续应走 OpenMAIC 风格的可交互 HTML/scene 路线 |
 | P2 | `final_merge_patch` 未实现 | 合并后小问题只能靠人工或间接收口 |
 | P2 | research budget 仍偏静态 | 还没充分根据覆盖度、证据缺口和章节难度动态调度 |
 

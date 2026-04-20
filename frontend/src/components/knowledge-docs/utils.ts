@@ -38,28 +38,6 @@ export const DOC_BUILD_STAGE_PROGRESS: Record<string, number> = {
   completed: 100,
 };
 
-export const DOC_BUILD_STAGE_CAP: Record<string, number> = {
-  build_accepted: 20,
-  planner_confirmed: 28,
-  prepare_shared: 48,
-  preparing_docgen_context: 42,
-  dispatch_ready: 46,
-  building_document_backbone: 52,
-  generating_chapters: 66,
-  enhancing_chapters: 78,
-  chapters_enhanced: 84,
-  reviewing_content: 86,
-  content_reviewed: 88,
-  repairing_or_routing: 89,
-  repair_routed: 90,
-  merge_reviewed: 90,
-  titles_finalized: 92,
-  doc_lane_staged: 94,
-  docgen_finalized: 97,
-  graph_ready: 98,
-  publishing: 97,
-};
-
 export const DOC_BUILD_STAGE_TEXT: Record<string, string> = {
   build_accepted: "已接收知识构建请求",
   planner_confirmed: "已读取确认方案",
@@ -407,18 +385,6 @@ export function resolveDocBuildProgressFloor(
   if (stage && DOC_BUILD_STAGE_PROGRESS[stage] !== undefined) return DOC_BUILD_STAGE_PROGRESS[stage];
   if (hasDraftVersion || build.draft_available) return 62;
   return 8;
-}
-
-export function resolveDocBuildProgressCap(
-  build: DocGenBuildStatus | null | undefined,
-  hasDraftVersion: boolean,
-): number {
-  if (!build || build.status === "idle") return hasDraftVersion ? 78 : 45;
-  if (build.status === "completed") return 100;
-  const stage = build.stage?.trim();
-  if (stage && DOC_BUILD_STAGE_CAP[stage] !== undefined) return DOC_BUILD_STAGE_CAP[stage];
-  if (hasDraftVersion || build.draft_available) return 78;
-  return 45;
 }
 
 /* ---- File Helpers ---- */

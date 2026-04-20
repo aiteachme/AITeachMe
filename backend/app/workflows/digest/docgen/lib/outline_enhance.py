@@ -45,8 +45,6 @@ def fallback_enhance_plan_outline(
         if index == 1:
             media_requests.append({"kind": "mermaid", "description": f"{title} 的知识结构图"})
         visual_text = " ".join([title, *required, objective])
-        if any(marker in visual_text for marker in ("图", "结构", "流程", "关系", "场景", "例题")):
-            media_requests.append({"kind": "image", "description": f"{title} 的学习配图或例题场景图"})
         if any(marker in visual_text for marker in ("公式", "推导", "证明", "计算", "定理")):
             media_requests.append({"kind": "interactive", "description": f"{title} 的公式推导展开器"})
         outlines.append(

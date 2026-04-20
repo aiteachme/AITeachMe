@@ -290,7 +290,6 @@ const MODEL_KEYS = new Set([
   "models.extract",
   "models.embedding",
   "models.ocr",
-  "models.image_generation",
 ]);
 
 const CORE_STATUS_KEYS = new Set([

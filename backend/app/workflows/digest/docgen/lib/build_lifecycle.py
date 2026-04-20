@@ -251,7 +251,7 @@ def _resolve_runtime_build_status(*, subject: str) -> KnowledgeBuildStatusRespon
         effective = update_knowledge_build_status(subject, requested_at=build_lock.requested_at, status="running", stage="build_accepted", source_file_ids=build_lock.source_file_ids, prompt=build_lock.prompt)
     if effective is None:
         return None
-    return KnowledgeBuildStatusResponse(status=effective.status, requested_at=effective.requested_at, stage=effective.stage, error_message=_sanitize_build_error_message(effective.error_message), draft_available=bool(effective.draft_available), planner_session_id=effective.planner_session_id, confirmed_plan_id=effective.confirmed_plan_id, digest_mode=effective.digest_mode, mode_reason=effective.mode_reason, current_stage_description=effective.current_stage_description)
+    return KnowledgeBuildStatusResponse(status=effective.status, requested_at=effective.requested_at, stage=effective.stage, error_message=_sanitize_build_error_message(effective.error_message), draft_available=bool(effective.draft_available), progress_pct=effective.progress_pct, planner_session_id=effective.planner_session_id, confirmed_plan_id=effective.confirmed_plan_id, digest_mode=effective.digest_mode, mode_reason=effective.mode_reason, current_stage_description=effective.current_stage_description)
 
 
 def _build_confirmed_plan_payload(plan: ConfirmedBuildPlan) -> dict[str, Any]:

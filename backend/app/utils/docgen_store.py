@@ -227,6 +227,33 @@ def _normalize_recent_event_entry(entry: dict[str, object]) -> dict[str, object]
     }
 
 
+def _derive_progress_from_chapters(status: KnowledgeBuildRuntimeStatus) -> int:
+    chapters = [
+        _normalize_chapter_progress_entry(dict(item))
+        for item in list(status.chapter_progress or [])
+    ]
+    if not chapters:
+        return int(status.progress_pct or 0)
+
+    stage = str(status.stage or "").strip()
+    total = len(chapters)
+    statuses = {str(item.get("status") or "").strip() for item in chapters}
+    generated_or_later = {"generated", "enhancing", "enhanced", "reviewing", "reviewed"}
+    enhanced_or_later = {"enhanced", "reviewing", "reviewed"}
+
+    if stage == "generating_chapters":
+        done = sum(1 for item in chapters if str(item.get("status") or "") in generated_or_later)
+        return 48 + int((done / total) * 16)
+    if stage == "enhancing_chapters" or "enhancing" in statuses:
+        done = sum(1 for item in chapters if str(item.get("status") or "") in enhanced_or_later)
+        return 64 + int((done / total) * 8)
+    if stage == "reviewing_content" or "reviewing" in statuses:
+        done = sum(1 for item in chapters if str(item.get("status") or "") == "reviewed")
+        return 76 + int((done / total) * 4)
+
+    return int(status.progress_pct or 0)
+
+
 def _hydrate_runtime_status(status: KnowledgeBuildRuntimeStatus) -> KnowledgeBuildRuntimeStatus:
     status.requested_at = ensure_utc_datetime(status.requested_at) or utcnow()
     if not status.current_stage_description:
@@ -237,6 +264,7 @@ def _hydrate_runtime_status(status: KnowledgeBuildRuntimeStatus) -> KnowledgeBui
         status.progress_pct = 100
     elif stage_progress is not None:
         status.progress_pct = max(int(status.progress_pct), int(stage_progress))
+    status.progress_pct = max(int(status.progress_pct), _derive_progress_from_chapters(status))
     status.progress_pct = max(0, min(int(status.progress_pct), 100))
 
     if status.current_chunk is None and status.processed_chunks > 0:
@@ -425,10 +453,13 @@ def update_knowledge_build_status(subject: str, **kwargs: object) -> KnowledgeBu
     with _get_status_lock(subject):
         existing = read_knowledge_build_status(subject)
         requested_at = kwargs.get("requested_at")
+        normalized_requested_at = ensure_utc_datetime(requested_at) if isinstance(requested_at, datetime) else None
         if existing is None:
             existing = KnowledgeBuildRuntimeStatus(
-                requested_at=requested_at if isinstance(requested_at, datetime) else utcnow(),
+                requested_at=normalized_requested_at or utcnow(),
             )
+        elif normalized_requested_at is not None and existing.requested_at != normalized_requested_at:
+            existing = KnowledgeBuildRuntimeStatus(requested_at=normalized_requested_at)
         updated = existing.model_copy(update=kwargs)
         updated = _hydrate_runtime_status(updated)
         write_knowledge_build_status(subject, updated)
