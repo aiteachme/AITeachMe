@@ -507,9 +507,12 @@ async function uploadFiles(subject: string, files: File[]): Promise<FilesUploadD
   const data = new FormData();
   files.forEach((file) => data.append("files", file));
 
-  // 当用户选择 MinerU 解析时，将前端设置随上传请求一并提交给后端。
-  // Token 可留空，此时后端可继续使用环境变量中的默认凭据。
+  // 前端 settings 属于浏览器本机偏好，上传时需要把解析引擎选择随请求传给后端。
+  // MinerU Token 可留空，此时后端可继续使用环境变量中的默认凭据。
   const settings = getStoredAppSettings();
+  if (settings.parserProvider === "markitdown") {
+    data.append("parser_provider", "markitdown");
+  }
   if (settings.parserProvider === "mineru") {
     const token = settings.mineruApiToken?.trim();
     data.append("parser_provider", "mineru");

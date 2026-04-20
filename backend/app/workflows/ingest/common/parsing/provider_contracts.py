@@ -14,6 +14,7 @@ ProviderName = Literal[
     "multimodal",
     "deepdoc",
     "docling",
+    "markitdown",
 ]
 
 
@@ -54,6 +55,10 @@ class ParseDecision(BaseModel):
     @property
     def uses_mineru(self) -> bool:
         return self.primary_provider == "mineru"
+
+    @property
+    def uses_markitdown(self) -> bool:
+        return self.primary_provider == "markitdown"
 
 
 __all__ = [

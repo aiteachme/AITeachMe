@@ -1,6 +1,6 @@
 import { useCallback, useSyncExternalStore } from "react";
 
-export type ParserProvider = "docling" | "unstructured" | "mineru";
+export type ParserProvider = "docling" | "unstructured" | "mineru" | "markitdown";
 export type MinerUModelVersion = "vlm" | "pipeline";
 
 export interface AppSettings {
@@ -50,6 +50,9 @@ function normalizeParserProvider(value: unknown): ParserProvider {
   }
   if (value === "mineru") {
     return "mineru";
+  }
+  if (value === "markitdown") {
+    return "markitdown";
   }
   return "docling";
 }

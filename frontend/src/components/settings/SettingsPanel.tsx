@@ -945,6 +945,7 @@ export function SettingsPanel({ isOpen, onClose }: SettingsModalProps) {
             { value: "docling", label: "Docling" },
             { value: "unstructured", label: "Unstructured" },
             { value: "mineru", label: "MinerU" },
+            { value: "markitdown", label: "MarkItDown" },
           ]}
         />
         {draft.parserProvider === "mineru" ? (
