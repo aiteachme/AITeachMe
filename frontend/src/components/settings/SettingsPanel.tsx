@@ -192,7 +192,7 @@ const OPS_ENV_GROUPS: LocalEnvGroup[] = [
     label: "运行模式 / 鉴权",
     fields: [
       { key: "APP_MODE", label: "运行模式", placeholder: "local" },
-      { key: "AUTH_ENABLED", label: "启用鉴权", placeholder: "false" },
+      { key: "AUTH_ENABLED", label: "启用鉴权覆盖", placeholder: "auto" },
       { key: "AUTH_TOKEN_SECRET", label: "Auth Token Secret", secret: true },
       { key: "AUTH_TOKEN_TTL_HOURS", label: "Auth Token TTL", placeholder: "720" },
       { key: "GUEST_TOKEN_TTL_HOURS", label: "Guest Token TTL", placeholder: "720" },

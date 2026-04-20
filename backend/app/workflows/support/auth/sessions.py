@@ -30,6 +30,7 @@ from app.shared.infra.exceptions import AITeachMeError, AuthDisabledError
 from app.shared.infra.runtime import (
     get_guest_cookie_name,
     is_local_mode,
+    resolve_auth_enabled,
     resolve_guest_cookie_samesite,
     resolve_guest_cookie_secure,
 )
@@ -72,7 +73,7 @@ def _auth_token_secret() -> str:
 
 
 def ensure_auth_enabled() -> None:
-    if not get_env_bool("AUTH_ENABLED", True):
+    if not resolve_auth_enabled():
         raise AuthDisabledError()
 
 
@@ -950,7 +951,7 @@ def build_auth_session_data(
     access_token: str | None,
 ) -> AuthSessionData:
     return AuthSessionData(
-        auth_enabled=get_env_bool("AUTH_ENABLED", True),
+        auth_enabled=resolve_auth_enabled(),
         auth_ready=True,
         token_type="bearer",
         access_token=access_token,
@@ -975,7 +976,7 @@ def build_guest_session_data(*, user: User | None) -> AuthSessionData:
             is_authenticated=user.is_registered,
         )
     return AuthSessionData(
-        auth_enabled=get_env_bool("AUTH_ENABLED", True),
+        auth_enabled=resolve_auth_enabled(),
         auth_ready=True,
         token_type="bearer",
         access_token=None,
@@ -991,7 +992,7 @@ def build_session_from_context(
     is_authenticated: bool,
 ) -> AuthSessionData:
     return AuthSessionData(
-        auth_enabled=get_env_bool("AUTH_ENABLED", True),
+        auth_enabled=resolve_auth_enabled(),
         auth_ready=True,
         token_type="bearer",
         access_token=None,

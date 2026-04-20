@@ -188,7 +188,7 @@ class AuthDisabledError(AITeachMeError):
     status_code = HTTPStatus.SERVICE_UNAVAILABLE
 
     def __init__(self) -> None:
-        super().__init__(detail="本地模式下未启用鉴权。")
+        super().__init__(detail="当前运行模式未启用账号鉴权。")
 
 
 class AuthNotReadyError(AITeachMeError):
