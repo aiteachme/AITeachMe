@@ -4,7 +4,6 @@ from .base import BaseRetriever, get_registered_retriever_names
 from .bing import BingRetriever
 from .bocha import BochaRetriever
 from .brave import BraveRetriever
-from .custom_endpoint import CustomEndpointRetriever
 from .duckduckgo import DuckDuckGoRetriever
 from .exa import ExaRetriever
 from .google_cse import GoogleCSERetriever
@@ -39,7 +38,6 @@ __all__ = [
     "BingRetriever",
     "BochaRetriever",
     "BraveRetriever",
-    "CustomEndpointRetriever",
     "DuckDuckGoRetriever",
     "ExaRetriever",
     "get_registered_retriever_names",

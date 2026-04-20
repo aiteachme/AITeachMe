@@ -1,4 +1,4 @@
-"""Chinese Wikimedia OER retrievers."""
+"""Chinese Wikimedia site retrievers."""
 
 from __future__ import annotations
 

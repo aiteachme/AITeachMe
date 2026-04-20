@@ -7,7 +7,7 @@
 阅读原则：
 
 1. 当前代码优先于文档。
-2. `backend/app/workflows/*.md` 和 `backend/app/shared/infra/*.md` 优先于旧设计稿。
+2. `backend/app/workflows/*.md` 和 `backend/app/shared/infra/*.md` 作为模块入口；长期规则以下方主文档为准。
 3. 不再以 `services`、`teaching`、`shared.infra.facade`、`guardrails` 作为正式架构层。
 
 ## 核心文档

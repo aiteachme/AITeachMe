@@ -14,6 +14,7 @@ from .support import (
     EMBEDDING_DIM_BY_MODEL,
     get_retriever_profiles,
     load_project_settings_values,
+    normalize_profile_name,
     normalize_retriever_name,
     split_csv_names,
 )
@@ -236,7 +237,7 @@ class Settings(_SettingsModel):
             normalize_retriever_name(item)
             for item in split_csv_names(self.search.retrievers)
         ]
-        resolved_profile = normalize_retriever_name(
+        resolved_profile = normalize_profile_name(
             profile or self.search.retriever_profile
         )
         profile_names = [
