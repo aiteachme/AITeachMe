@@ -131,7 +131,7 @@ function shouldStartWithoutWelcome(state: BuildPlanLocationState | null | undefi
 }
 
 function createInitialMessages(state: BuildPlanLocationState | null | undefined = null): ChatMessage[] {
-  return shouldStartWithoutWelcome(state) ? [] : [createWelcomeMessage()];
+  return [];
 }
 
 function replaceWelcomeWithUserMessage(messages: ChatMessage[], prompt: string): ChatMessage[] {
@@ -1669,7 +1669,7 @@ export function BuildPlanPage() {
               </div>
             ) : null}
 
-            <div className="flex items-end gap-2 rounded-2xl border border-zinc-200 bg-white px-4 py-3 shadow-sm">
+            <div className="w-full rounded-2xl border border-zinc-200/60 bg-white shadow-[0_2px_8px_rgba(0,0,0,0.04)] transition-all focus-within:border-zinc-300 focus-within:shadow-[0_4px_16px_rgba(0,0,0,0.06)] focus-within:ring-4 focus-within:ring-zinc-900/5">
               <textarea
                 ref={inputRef}
                 value={inputValue}
@@ -1683,108 +1683,36 @@ export function BuildPlanPage() {
                 disabled={isBuilding || plannerStreaming}
                 placeholder={plannerStreaming ? "正在生成方案，点击右侧按钮可停止当前生成" : inputPlaceholder}
                 rows={1}
-                className="flex-1 resize-none border-0 bg-transparent text-sm leading-relaxed text-zinc-800 placeholder:text-zinc-400 focus:outline-none"
-                style={{ minHeight: "24px", maxHeight: "120px" }}
+                className="w-full min-h-[56px] max-h-[120px] resize-none border-0 bg-transparent px-4 pb-3 pt-4 text-[14px] leading-relaxed text-zinc-800 placeholder:text-zinc-400 focus:outline-none"
+                style={{ minHeight: "56px" }}
                 onInput={(event) => {
                   const target = event.currentTarget;
                   target.style.height = "auto";
                   target.style.height = `${Math.min(target.scrollHeight, 120)}px`;
                 }}
               />
-              <button
-                type="button"
-                onClick={() => {
-                  if (isBuilding) {
-                    handleCancelBuild();
-                    return;
-                  }
-                  void handleSend();
-                }}
-                disabled={
-                  (isBuilding && !isBuildActive) ||
-                  cancelBuildMutation.isPending ||
-                  (!isBuilding && !plannerStreaming && (!inputValue.trim() || confirmPlannerMutation.isPending))
-                }
-                title={isBuilding ? "终止当前构建" : plannerStreaming ? "停止当前生成" : "发送"}
-                className={
-                  isBuilding || plannerStreaming
-                    ? "flex h-9 w-9 items-center justify-center rounded-xl bg-red-600 text-white hover:bg-red-700"
-                    : "flex h-9 w-9 items-center justify-center rounded-xl bg-zinc-900 text-white disabled:bg-zinc-200 disabled:text-zinc-400"
-                }
-              >
-                {cancelBuildMutation.isPending ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : isBuilding || plannerStreaming ? (
-                  <X className="h-4 w-4" />
-                ) : (
-                  <ArrowUp className="h-4 w-4" />
-                )}
-              </button>
-            </div>
 
-            <div className="mt-2 rounded-2xl border border-zinc-200 bg-white p-3">
-              <button
-                type="button"
-                onClick={() => setFilesTrayOpen((prev) => !prev)}
-                className="flex w-full items-center gap-2 text-left text-xs font-medium text-zinc-500"
-              >
-                <Paperclip className="h-3.5 w-3.5" />
-                <span>
-                  {files.length > 0 ? `${files.length} 份资料 · ${readyFileUids.length} 份已就绪` : "学习资料"}
-                </span>
-                {plannerNeedsRefresh ? (
-                  <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[10px] text-amber-700">
-                    资料已变化
-                  </span>
-                ) : null}
-              </button>
-
-              {filesTrayOpen ? (
-                <div className="mt-3">
-                  <input
-                    type="file"
-                    multiple
-                    accept={ACCEPT}
-                    className="hidden"
-                    id="files-page-upload"
-                    onChange={(event: ChangeEvent<HTMLInputElement>) => {
-                      const selected = Array.from(event.target.files ?? []);
-                      event.target.value = "";
-                      if (selected.length) {
-                        void uploadMutation.mutateAsync(selected);
-                      }
-                    }}
-                  />
-                  <div className="mb-3 flex flex-wrap gap-2">
-                    <label
-                      htmlFor="files-page-upload"
-                      className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-dashed border-zinc-300 bg-zinc-50/50 px-3 py-2 text-[12px] font-medium text-zinc-500"
-                    >
-                      {uploadMutation.isPending ? (
-                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      ) : (
-                        <Plus className="h-3.5 w-3.5" />
-                      )}
-                      {uploadMutation.isPending ? "上传中" : "添加资料"}
-                    </label>
-
+              <div className="px-3 pb-3 flex flex-col gap-2">
+                {files.length > 0 && (
+                  <div className="flex flex-wrap gap-2 px-1 py-2 border-t border-zinc-100">
                     {files.map((file) => {
                       const meta = fileMeta(file);
                       return (
                         <div
                           key={file.uid}
-                          className="group relative flex items-center gap-1.5 rounded-lg border border-zinc-200 bg-white px-2.5 py-2"
+                          className="group relative flex items-center gap-1.5 rounded-lg border border-zinc-200/60 bg-zinc-50 px-2.5 py-1.5 text-[13px] text-zinc-700 transition-colors hover:bg-white hover:border-zinc-300 hover:shadow-sm"
                         >
                           {fileIcon(file)}
-                          <span className="max-w-[110px] truncate text-[12px] font-medium text-zinc-700">
+                          <span className="max-w-[140px] truncate font-medium">
                             {file.filename}
                           </span>
-                          <span className={`${meta.dot} h-1.5 w-1.5 rounded-full`} title={meta.label} />
+                          <span className={`${meta.dot} ml-1 h-1.5 w-1.5 rounded-full`} title={meta.label} />
                           <button
                             type="button"
                             onClick={() => deleteMutation.mutate(file.uid)}
                             disabled={deleteMutation.isPending}
                             className="absolute -right-1.5 -top-1.5 hidden h-4 w-4 items-center justify-center rounded-full bg-zinc-600 text-white group-hover:flex"
+                            title="删除文件"
                           >
                             <X className="h-2.5 w-2.5" />
                           </button>
@@ -1792,17 +1720,78 @@ export function BuildPlanPage() {
                       );
                     })}
                   </div>
+                )}
+
+                <div className="flex items-end justify-between px-1">
+                  <div className="flex items-center gap-2 flex-1">
+                    <input
+                      type="file"
+                      multiple
+                      accept={ACCEPT}
+                      className="hidden"
+                      id="files-page-upload"
+                      onChange={(event: ChangeEvent<HTMLInputElement>) => {
+                        const selected = Array.from(event.target.files ?? []);
+                        event.target.value = "";
+                        if (selected.length) {
+                          void uploadMutation.mutateAsync(selected);
+                        }
+                      }}
+                    />
+                    <label
+                      htmlFor="files-page-upload"
+                      className="flex cursor-pointer items-center gap-1.5 rounded-lg px-3 py-1.5 text-[13px] font-medium text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-900"
+                    >
+                      {uploadMutation.isPending ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Paperclip className="h-4 w-4" />
+                      )}
+                      {uploadMutation.isPending ? "上传中" : "添加资料"}
+                    </label>
+
+                    {plannerNeedsRefresh && (
+                      <span className="rounded-full bg-amber-50 px-2.5 py-0.5 text-[11px] font-medium text-amber-700">
+                        资料已变化
+                      </span>
+                    )}
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (isBuilding) {
+                        handleCancelBuild();
+                        return;
+                      }
+                      void handleSend();
+                    }}
+                    disabled={
+                      (isBuilding && !isBuildActive) ||
+                      cancelBuildMutation.isPending ||
+                      (!isBuilding && !plannerStreaming && (!inputValue.trim() || confirmPlannerMutation.isPending))
+                    }
+                    title={isBuilding ? "终止当前构建" : plannerStreaming ? "停止当前生成" : "发送"}
+                    className={
+                      "flex h-9 w-9 shrink-0 items-center justify-center rounded-xl transition-all " +
+                      (isBuilding || plannerStreaming
+                        ? "bg-red-600 text-white hover:bg-red-700 shadow-sm"
+                        : (!inputValue.trim() || confirmPlannerMutation.isPending)
+                        ? "cursor-not-allowed bg-zinc-100 text-zinc-300"
+                        : "bg-zinc-900 text-white shadow-sm hover:bg-zinc-800 focus:outline-none focus:ring-4 focus:ring-zinc-900/10 active:scale-[0.98]")
+                    }
+                  >
+                    {cancelBuildMutation.isPending ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : isBuilding || plannerStreaming ? (
+                      <X className="h-4 w-4" />
+                    ) : (
+                      <ArrowUp className="h-4 w-4" />
+                    )}
+                  </button>
                 </div>
-              ) : null}
+              </div>
             </div>
-
-            <p className="mt-2 text-center text-[11px] text-zinc-400">
-              不上传资料也可以先构建知识文档；如果你上传了资料，规划阶段会先理解上传内容，再给出可确认的大纲。
-            </p>
-
-            <p className="mt-1 text-center text-[11px] text-zinc-400">
-              先生成方案，再确认构建。确认后会留在当前 build 页面，持续展示真实的构建过程与检索来源。
-            </p>
           </div>
         </div>
         </div>
