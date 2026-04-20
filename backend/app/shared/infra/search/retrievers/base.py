@@ -19,6 +19,11 @@ _RETRIEVER_TRACE_LABELS = {
     "local_rag": "检索：本地资料RAG",
     "duckduckgo": "检索：DuckDuckGo网页",
     "wikipedia": "检索：维基百科",
+    "zh_wikipedia": "检索：中文维基百科",
+    "zh_wikibooks": "检索：中文维基教科书",
+    "zh_wikiversity": "检索：中文维基学院",
+    "zh_wiktionary": "检索：中文维基词典",
+    "oi_wiki": "检索：OI Wiki",
     "baidu_baike": "检索：百度百科",
     "zhihu": "检索：知乎",
     "bocha": "检索：博查网页",
@@ -162,7 +167,9 @@ class BaseRetriever(ABC):
         process_inputs=_retriever_trace_inputs,
         process_outputs=_retriever_trace_outputs,
         name_factory=lambda self, query, max_results=5: _retriever_trace_name(self),
-        metadata_factory=lambda self, query, max_results=5: {"retriever_name": self.name},
+        metadata_factory=lambda self, query, max_results=5: {
+            "retriever_name": self.name,
+        },
         tags_factory=lambda self, query, max_results=5: [f"retriever:{self.name}"],
     )
     async def _run_traced_search(
