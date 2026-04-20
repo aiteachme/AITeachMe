@@ -7,8 +7,6 @@ from typing import Any
 
 from app.workflows.digest.common.prompt_tracing import trace_prompt_build
 
-INTENT_CHAPTER_TITLE_BUDGET = 24
-
 
 def build_intent_messages(
     *,
@@ -23,11 +21,16 @@ def build_intent_messages(
     # 写作意图只需要章节名快照；完整章节合同仍在后续 plan/state 里流转。
     chapter_titles = "、".join(
         str(chapter.get("title") or chapter.get("resolved_title") or "").strip()
-        for chapter in chapters[:INTENT_CHAPTER_TITLE_BUDGET]
+        for chapter in chapters
         if str(chapter.get("title") or chapter.get("resolved_title") or "").strip()
     )
+    system_prompt = """
+你是 AITeachMe 的 DocGen 写作意图分析器。
+你只输出合法 JSON，不输出 Markdown、解释或额外文本。
+Planner 已经决定大纲；你只判断文档应该怎样讲，不能修改章节数量、顺序或主题。
+""".strip()
     prompt = f"""
-你是 AITeachMe 的 DocGen 写作意图分析器。Planner 已经决定大纲；你只决定文档应该怎样讲。
+请根据用户提示、Planner 摘要、材料画像和章节标题，识别本轮知识文档的写作意图。
 
 主题：{subject}
 模式：{digest_mode}
@@ -56,7 +59,7 @@ Planner 对话与修改摘要：{docgen_history_brief or "暂无"}
 3. 不要修改章节数量、顺序或主题。
 """.strip()
     messages = [
-        {"role": "system", "content": "你只输出合法 JSON。"},
+        {"role": "system", "content": system_prompt},
         {"role": "user", "content": prompt},
     ]
     return trace_prompt_build(

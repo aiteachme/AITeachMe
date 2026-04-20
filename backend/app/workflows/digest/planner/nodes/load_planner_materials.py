@@ -11,7 +11,7 @@ import structlog
 from app.repositories.files_repo import list_raw_files_by_ids
 from app.shared.infra.database import managed_session
 from app.shared.infra.workflow.context import WorkflowContext
-from app.workflows.digest.common.material_digest import FILE_CONTEXT_TOKENS, build_material_digest
+from app.workflows.digest.common.material_digest import build_material_digest
 from app.workflows.digest.common.models import DigestMaterialContext, FastTopicHints, SourcePacket, SubjectProfile
 from app.workflows.digest.common.prepare import prepare_material_context as build_digest_material_context
 from app.workflows.digest.planner.lib.planner_events import emit_planner_event
@@ -173,21 +173,18 @@ def build_load_planner_materials_node(*, context: WorkflowContext):
                 total_chars=digest_result.total_chars,
                 total_tokens=digest_result.total_tokens,
                 source_count=digest_result.source_count,
-                truncated=digest_result.truncated,
             )
             await emit_planner_event(
                 working_state,
                 event="planner.context.ready",
                 detail=(
                     f"资料上下文已拼接（{digest_result.source_count} 份资料，"
-                    f"每份最多前 {FILE_CONTEXT_TOKENS} tokens）。"
+                    "已完整交给 Planner）。"
                 ),
                 payload={
                     "total_chars": digest_result.total_chars,
                     "total_tokens": digest_result.total_tokens,
                     "source_count": digest_result.source_count,
-                    "truncated": digest_result.truncated,
-                    "file_context_tokens": FILE_CONTEXT_TOKENS,
                 },
             )
 

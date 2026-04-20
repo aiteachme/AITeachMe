@@ -474,21 +474,11 @@ def _render_final_plan_markdown(plan_payload: dict[str, Any]) -> str:
     return "\n".join(lines).strip()
 
 
-def _compact_planner_text(value: Any, *, max_chars: int = 900) -> str:
-    text = " ".join(str(value or "").split())
-    if len(text) <= max_chars:
-        return text
-    return text[: max_chars - 3].rstrip() + "..."
-
-
 def _build_docgen_history_brief(turns: list[ChatMessage]) -> str:
     lines: list[str] = []
-    for turn in turns[-10:]:
+    for turn in turns:
         role = "用户" if turn.role == "user" else "规划器"
-        content = _compact_planner_text(
-            turn.content,
-            max_chars=520 if turn.role == "user" else 720,
-        )
+        content = str(turn.content or "").strip()
         if content:
             lines.append(f"{role}: {content}")
     return "\n".join(lines)
@@ -510,7 +500,7 @@ def _build_planner_context_payload(
         "user_revision_count": max(0, len(user_turns) - 1),
         "assistant_revision_count": len(assistant_turns),
         "latest_plan_summary": str(plan.get("plan_summary") or meta.get("latest_summary") or ""),
-        "planner_outline_markdown": _compact_planner_text(latest_outline, max_chars=1800),
+        "planner_outline_markdown": str(latest_outline or "").strip(),
         "docgen_history_brief": _build_docgen_history_brief(turns),
     }
 

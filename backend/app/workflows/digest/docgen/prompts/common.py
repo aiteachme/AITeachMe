@@ -4,15 +4,6 @@ from __future__ import annotations
 
 from app.workflows.digest.common.prompt_tracing import trace_prompt_build
 
-DENSE_CONTEXT_WRITER_BUDGET = 14000
-DENSE_CONTEXT_REPAIR_BUDGET = 4000
-DENSE_CONTEXT_PURIFY_BUDGET = 12000
-DENSE_CONTEXT_GAP_QUERY_BUDGET = 8000
-MARKDOWN_REPAIR_BUDGET = 14000
-MERMAID_CONTEXT_BUDGET = 3000
-PROMPT_CLAIM_TARGET_BUDGET = 8
-PROMPT_CONFLICT_WARNING_BUDGET = 6
-
 
 def _normalize_mode(digest_mode: str) -> str:
     return (digest_mode or "systematic").strip().lower()
@@ -22,20 +13,20 @@ def _chapter_shape_hint(*, digest_mode: str) -> str:
     normalized_mode = _normalize_mode(digest_mode)
     if normalized_mode == "sprint":
         return """
-推荐写成考前冲刺讲义的骨架：
-1) 本章在考什么/为什么重要；
-2) 先把核心概念、结论、判断条件讲清楚；
-3) 再讲典型题型、审题抓手、解题步骤；
-4) 再收易错点、混淆点、边界条件；
-5) 最后用精炼回顾或速记做收尾。
+可参考的冲刺讲义写作路径，不是固定目录：
+- 先让学生知道本章最该抓住什么；
+- 再把核心概念、判断条件或关键结论讲稳；
+- 如果材料支持，再展开题型、审题抓手、步骤或变式；
+- 需要时收束易错点、混淆点和边界条件；
+- 结尾可以用精炼回顾、速记或小结收住。
 """.strip()
     return """
-推荐写成课程讲义的骨架：
-1) 本章问题背景与学习目标；
-2) 核心定义/结构/符号；
-3) 关键推理或方法如何成立；
-4) 典型例子或应用如何落地；
-5) 最后做本章总结与后续衔接。
+可参考的系统讲义写作路径，不是固定目录：
+- 先交代本章要解决的核心问题或学习入口；
+- 再讲核心定义、结构、符号或前置关系；
+- 如果材料支持，再解释推理、方法为什么成立；
+- 需要时用例子、应用或反例帮助落地；
+- 结尾可以做本章小结、迁移提醒或后续衔接。
 """.strip()
 
 
@@ -54,10 +45,10 @@ def _build_mode_contract(
             chapter_specific = "如果这是课程收束章，本章必须回收高频题型、易错点和最后复盘抓手。"
         return f"""
 文档模式契约：这是冲刺型知识文档。
-必须写得抓重点、抓题型、抓易错点。
-必须覆盖这些教学模块：开篇导入、得分抓手、题型拆解、临考速记、易错辨析、最终回顾。
-二级标题文案可以自行命名，优先写成自然、具体、像真实讲义的小标题，不要机械复用模板词。
-结尾不能空泛，必须便于考前快速复盘。
+写作优先级是抓重点、抓题型、抓易错点。
+这些只是参考侧重点，不是固定目录：开篇导入、得分抓手、题型拆解、临考速记、易错辨析、最终回顾。
+请根据本章真实内容取舍和命名二级标题，优先写成自然、具体、像真实讲义的小标题。
+不要为了凑齐参考模块而硬塞小节，结尾要便于考前快速复盘。
 {chapter_specific}
 """.strip()
     extra = ""
@@ -67,9 +58,10 @@ def _build_mode_contract(
         extra = "如果这是课程收束章，本章必须回收全文主线，并给出进一步深入学习的建议。"
     return f"""
 文档模式契约：这是系统型知识文档。
-必须重视定义、定理、推导、应用与章节之间的结构关系。
-必须覆盖这些教学模块：章节导入、前置知识、学习动机、关键定义/定理、推理到应用、章节回收。
-二级标题文案可以自行命名，优先体现本章主题与知识主线，不要机械复用模板词。
+写作优先级是定义、定理、推导、应用与章节之间的结构关系。
+这些只是参考侧重点，不是固定目录：章节导入、前置知识、学习动机、关键定义/定理、推理到应用、章节回收。
+请根据本章真实内容取舍和命名二级标题，优先体现本章主题与知识主线。
+不要为了凑齐参考模块而硬塞小节。
 如果涉及公式或定理，不能只写结论，必须解释适用前提、推理过程和常见边界。
 {extra}
 """.strip()
@@ -90,8 +82,8 @@ def build_docgen_writer_messages(
 ) -> list[dict[str, str]]:
     """构造章节 writer 提示词。
 
-    Writer prompt 只消费压缩后的 dense_context 和章节执行合同，禁止输出
-    内部资产协议或引用区块；资产、自检和来源统一由后续节点处理。
+    Writer prompt 消费上游已经准备好的 dense_context 和章节执行合同，不在
+    prompt builder 里静默截断材料。资产、自检和来源统一由后续节点处理。
     """
 
     normalized_mode = _normalize_mode(digest_mode)
@@ -103,12 +95,12 @@ def build_docgen_writer_messages(
         str(item).strip()
         for item in list(execution_contract.get("claim_targets") or [])
         if str(item).strip()
-    ][:PROMPT_CLAIM_TARGET_BUDGET]
+    ]
     conflict_warnings = [
         str(item).strip()
         for item in list(execution_contract.get("conflict_warnings") or [])
         if str(item).strip()
-    ][:PROMPT_CONFLICT_WARNING_BUDGET]
+    ]
     contract_summary = (
         f"- 目标字数：{execution_contract.get('target_word_count') or '未指定'}\n"
         f"- 最低字数：{execution_contract.get('min_word_count') or '未指定'}\n"
@@ -128,7 +120,6 @@ def build_docgen_writer_messages(
 遇到公式要解释公式在说什么、什么时候能用、最容易错在哪里。
 如果材料不足，要坦诚用现有材料做稳健整理，不能编造事实或来源。
 """.strip()
-    # 研究材料可能很长，这里只裁剪 prompt 输入，不裁剪 workflow 中保存的原始上下文。
     user_prompt = f"""
 请只输出本章的中文 Markdown 正文，不要输出解释，不要输出代码块外的多余说明。
 
@@ -139,7 +130,7 @@ def build_docgen_writer_messages(
 可用来源数量：{source_count}
 额外写作要求：{writing_instructions or "保持教学导向，强调理解路径与复习价值。"}
 
-模式契约：
+模式参考：
 {_build_mode_contract(digest_mode=normalized_mode, chapter_index=chapter_index, chapter_count=chapter_count)}
 
 执行合同：
@@ -148,13 +139,13 @@ def build_docgen_writer_messages(
 写作口径：
 表达要像真实中文教学讲义：清楚、克制、可信、面向学习，不写聊天回复、鸡汤或内部草稿。
 
-推荐章节骨架：
+参考写作路径，不要照抄为目录：
 {_chapter_shape_hint(digest_mode=normalized_mode)}
 
 输出硬约束：
 1. 只输出中文 Markdown。
 2. 一级标题必须是 `# {title}`。
-3. 二级标题必须服从模式契约，覆盖关键模块，但标题文案可以自行命名，不要整章复制固定模板标题。
+3. 二级标题要围绕本章内容自然命名；上面的模式参考只用于检查是否讲清，不要按模板凑齐小节。
 4. 不要自行输出任何资产占位符、内部协议块、HTML 注释或 Mermaid 源码块；系统会在写作完成后按执行合同追加内部资产请求。
 5. 只输出标准 Markdown；不要输出 HTML、CSS、`<style>`、`<div>`、`<details>` 或内联样式。
 6. 如果需要公式，必须使用 `$...$` 或 `$$...$$`。
@@ -166,7 +157,7 @@ def build_docgen_writer_messages(
 12. 不要在章节正文里插入“参考资料与延伸阅读”；参考资料会统一在文档底部处理。
 
 研究材料：
-{dense_context[:DENSE_CONTEXT_WRITER_BUDGET]}
+{dense_context}
 """.strip()
     messages = [
         {"role": "system", "content": system_prompt},
@@ -205,8 +196,8 @@ def build_docgen_heading_repair_messages(
     system_prompt = """
 你是 AITeachMe 的教学编辑助手。
 你的任务不是重写整章主题，而是在保留原有内容价值和文风的前提下，修复章节的二级、三级标题与结构组织。
-标题必须自然、具体、像真实中文讲义，不要使用模板化标题。
-修订目标是让它更像可读的课程讲义，而不是研究草稿或内部整理记录。
+标题要自然、具体、像真实中文讲义；参考结构只能帮助判断缺口，不能变成固定模板。
+修订目标是让它更像可读的课程讲义，而不是研究草稿、内部整理记录或套格式的提纲。
 """.strip()
     # 标题修复只需要局部参考；完整正文和完整研究上下文仍保留在 state/manifest。
     user_prompt = f"""
@@ -219,14 +210,14 @@ def build_docgen_heading_repair_messages(
 额外写作要求：{writing_instructions or "保持教学导向，优先让结构更清楚"}
 章节位置：第 {chapter_index or 1} 章 / 共 {chapter_count or '?'} 章
 
-模式契约：
+模式参考：
 {_build_mode_contract(digest_mode=normalized_mode, chapter_index=chapter_index, chapter_count=chapter_count)}
 
 输出硬约束：
 1. 只输出修订后的完整中文 Markdown。
 2. 一级标题必须保持为 `# {title}`。
-3. 二级和三级标题由你重新命名，可以合并重复标题、改掉泛标题、补上缺失教学模块。
-4. 不要使用“本章导读”“快速回顾”“主题导入”“总结提升”“第 N 章”这类模板标题。
+3. 二级和三级标题由你重新命名，可以合并重复标题、改掉泛标题；只在确实缺少学习必要内容时补小节。
+4. 不要使用“本章导读”“快速回顾”“主题导入”“总结提升”“第 N 章”这类模板标题，也不要照抄参考骨架。
 5. 尽量保留已有正文、例子和公式，除非确实重复或跑题，不要大删内容。
 6. 如果结构不完整，可以补少量过渡句、总结句或提示句，但不要凭空编造来源事实。
 7. 如果涉及公式，继续使用 `$...$` 或 `$$...$$`。
@@ -238,14 +229,14 @@ def build_docgen_heading_repair_messages(
 写作口径：
 表达要像真实中文教学讲义：清楚、克制、可信、面向学习，不写聊天回复、鸡汤或内部草稿。
 
-推荐章节骨架：
+参考写作路径，不要照抄为目录：
 {_chapter_shape_hint(digest_mode=normalized_mode)}
 
 可参考但不要照抄的研究线索：
-{dense_context[:DENSE_CONTEXT_REPAIR_BUDGET] or "暂无额外研究线索，请主要整理现有正文结构。"}
+{dense_context or "暂无额外研究线索，请主要整理现有正文结构。"}
 
 当前 Markdown：
-{markdown[:MARKDOWN_REPAIR_BUDGET]}
+{markdown}
 """.strip()
     messages = [
         {"role": "system", "content": system_prompt},
@@ -276,6 +267,11 @@ def build_docgen_research_purify_messages(
 ) -> list[dict[str, str]]:
     must_cover = "、".join(required_elements) if required_elements else "与本章最相关的核心知识"
     normalized_mode = _normalize_mode(digest_mode)
+    system_prompt = """
+你是 AITeachMe 的研究整理助手。
+你的任务是把杂乱素材提纯成适合章节写作使用的中文研究笔记。
+你不能补充素材里没有的事实，也不能把研究笔记写成最终讲义正文。
+""".strip()
     user_prompt = f"""
 请把下面的研究素材提纯成“供章节写作直接使用”的中文研究笔记。
 
@@ -294,13 +290,10 @@ def build_docgen_research_purify_messages(
 7. 如果是 `systematic`，优先保留定义、推导、适用条件和结构关系。
 
 原始素材：
-{dense_context[:DENSE_CONTEXT_PURIFY_BUDGET]}
+{dense_context}
 """.strip()
     messages = [
-        {
-            "role": "system",
-            "content": "你是 AITeachMe 的研究整理助手，负责把杂乱素材提纯成适合教学写作的中文研究笔记。",
-        },
+        {"role": "system", "content": system_prompt},
         {"role": "user", "content": user_prompt},
     ]
     return trace_prompt_build(
@@ -329,7 +322,7 @@ def build_docgen_mermaid_prompt(*, topic: str, context: str) -> str:
 7. 绝对不要复制上下文中的 Markdown 标题、正文段落、`---` 分隔线或反引号。
 
 主题：{topic}
-上下文：{context[:MERMAID_CONTEXT_BUDGET]}
+上下文：{context}
 """.strip()
     return trace_prompt_build(
         "docgen_mermaid",
@@ -352,6 +345,11 @@ def build_docgen_sub_query_messages(
         if str(item.get("text") or "").strip()
     ) or "- 当前没有额外上下文"
     fallback_lines = "\n".join(f"- {item}" for item in fallback_queries if str(item).strip()) or "- 无"
+    system_prompt = """
+你是 AITeachMe 的研究规划助手。
+你的任务是把单个教学主题拆成可检索、可抓取、可用于知识整理的中文子查询。
+查询要服务后续写作和证据补强，不要生成空泛口号。
+""".strip()
     user_prompt = f"""
 请围绕下面这个教学章节主题，拆解出更适合后续检索和抓取的研究子查询。
 
@@ -375,10 +373,7 @@ def build_docgen_sub_query_messages(
 {fallback_lines}
 """.strip()
     messages = [
-        {
-            "role": "system",
-            "content": "你是 AITeachMe 的研究规划助手，负责把单个教学主题拆成可检索、可抓取、可用于知识整理的中文子查询。",
-        },
+        {"role": "system", "content": system_prompt},
         {"role": "user", "content": user_prompt},
     ]
     return trace_prompt_build(
@@ -402,6 +397,11 @@ def build_docgen_gap_query_messages(
     domain: str = "education",
 ) -> list[dict[str, str]]:
     must_cover = "、".join(required_elements) if required_elements else "与本章最相关的核心知识"
+    system_prompt = """
+你是 AITeachMe 的研究分析引擎。
+你的任务是检查现有研究素材的知识盲区，并生成少量补充检索查询。
+如果素材已经足够，不要为了凑数量硬造查询。
+""".strip()
     user_prompt = f"""
 请分析现有的研究素材，找出缺失的关键信息，并生成用于进一步检索的查询语句。
 
@@ -410,7 +410,7 @@ def build_docgen_gap_query_messages(
 最多生成新查询数：{max_queries}
 
 现有素材摘要：
-{dense_context[:DENSE_CONTEXT_GAP_QUERY_BUDGET]}
+{dense_context}
 
 输出要求：
 1. 分析现有素材中**没有充分解释**或**完全缺失**的关键概念、推导过程或示例。
@@ -420,10 +420,7 @@ def build_docgen_gap_query_messages(
 5. 如果现有素材已经足够完美，无需补充，你可以返回空结果。
 """.strip()
     messages = [
-        {
-            "role": "system",
-            "content": "你是 AITeachMe 的研究分析引擎，负责寻找现有资料的盲区，并生成补充检索的查询语句以完善知识闭环。",
-        },
+        {"role": "system", "content": system_prompt},
         {"role": "user", "content": user_prompt},
     ]
     return trace_prompt_build(

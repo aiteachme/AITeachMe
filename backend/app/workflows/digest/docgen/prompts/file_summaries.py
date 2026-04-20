@@ -4,9 +4,6 @@ from __future__ import annotations
 
 from app.workflows.digest.common.prompt_tracing import trace_prompt_build
 
-FILE_SUMMARY_CHAPTER_TITLE_BUDGET = 24
-FILE_SUMMARY_EXCERPT_BUDGET = 18000
-
 
 def build_file_summary_messages(
     *,
@@ -15,16 +12,20 @@ def build_file_summary_messages(
     chapter_titles: list[str],
     excerpt: str,
 ) -> list[dict[str, str]]:
-    # 文件原文只作为 LLM 摘要样本输入；完整内容仍保留在原始资料和分片里。
+    system_prompt = """
+你是 AITeachMe 的学习资料摘要器。
+你只输出合法 JSON，不能输出 Markdown、解释或额外文本。
+你只能从文件内容中提取对 DocGen 写作有帮助的信息，不能编造文件里没有的内容。
+""".strip()
     prompt = f"""
-你是 AITeachMe 的学习资料摘要器。请为 DocGen 写作阶段提取这个文件中最有用的内容。
+请为 DocGen 写作阶段提取这个文件中最有用的内容。
 
 文件：{filename}
 模式：{digest_mode}
-目标章节：{"、".join(chapter_titles[:FILE_SUMMARY_CHAPTER_TITLE_BUDGET]) or "未提供"}
+目标章节：{"、".join(chapter_titles) or "未提供"}
 
-文件片段：
-{excerpt[:FILE_SUMMARY_EXCERPT_BUDGET]}
+文件内容：
+{excerpt}
 
 请输出 JSON：
 {{
@@ -47,7 +48,7 @@ def build_file_summary_messages(
 3. 不要编造文件中没有的真题或引用。
 """.strip()
     messages = [
-        {"role": "system", "content": "你只输出合法 JSON。"},
+        {"role": "system", "content": system_prompt},
         {"role": "user", "content": prompt},
     ]
     return trace_prompt_build(

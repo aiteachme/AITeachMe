@@ -51,9 +51,9 @@ _DEFAULT_PROFILES: dict[LLMCallPurpose, LLMCallProfile] = {
     LLMCallPurpose.SUMMARIZE: LLMCallProfile(temperature=0.5, timeout_s=60),
     LLMCallPurpose.CLASSIFY: LLMCallProfile(temperature=0.1, timeout_s=30),
     LLMCallPurpose.VISION: LLMCallProfile(temperature=0.3, timeout_s=120),
-    LLMCallPurpose.REASONING: LLMCallProfile(temperature=0.2, timeout_s=120, max_retries=2),
-    LLMCallPurpose.DOCGEN: LLMCallProfile(temperature=0.5, timeout_s=120, max_retries=1),
-    LLMCallPurpose.DOCGEN_LIGHT: LLMCallProfile(temperature=0.1, timeout_s=60, max_retries=2),
+    LLMCallPurpose.REASONING: LLMCallProfile(temperature=0.2, timeout_s=180, max_retries=2),
+    LLMCallPurpose.DOCGEN: LLMCallProfile(temperature=0.5, timeout_s=180, max_retries=1),
+    LLMCallPurpose.DOCGEN_LIGHT: LLMCallProfile(temperature=0.1, timeout_s=120, max_retries=2),
     LLMCallPurpose.IMAGE_GENERATION: LLMCallProfile(temperature=0.7, timeout_s=180, max_retries=1),
     LLMCallPurpose.DEFAULT: LLMCallProfile(),
 }

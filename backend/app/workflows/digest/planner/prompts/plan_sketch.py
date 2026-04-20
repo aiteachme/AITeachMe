@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from app.workflows.digest.common.prompt_tracing import trace_prompt_build
-from app.workflows.digest.planner.prompts.examples import DEFAULT_SKETCH_EXAMPLE_LIMIT, render_plan_sketch_examples
+from app.workflows.digest.planner.prompts.examples import render_plan_sketch_examples
 from app.workflows.digest.common.models import DigestMaterialContext
 from app.workflows.digest.planner.prompts.context import (
     render_material_digest,
@@ -55,7 +55,7 @@ def build_plan_sketch_prompt(
 
 请参考下面这些 few-shot 示例的自然表达，注意它们都是“思考过程”示例，不是最终方案：
 
-{render_plan_sketch_examples(limit=DEFAULT_SKETCH_EXAMPLE_LIMIT)}
+{render_plan_sketch_examples()}
 """.strip()
     return trace_prompt_build(
         "planner_plan_sketch",

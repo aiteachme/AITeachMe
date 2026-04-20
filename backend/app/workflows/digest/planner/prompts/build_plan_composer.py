@@ -17,11 +17,10 @@ from app.workflows.digest.planner.prompts.context import (
     render_material_overview,
     render_message_history,
 )
-from app.workflows.digest.planner.prompts.examples import DEFAULT_COMPOSER_EXAMPLE_LIMIT, render_composer_examples
+from app.workflows.digest.planner.prompts.examples import render_composer_examples
 
 PLAN_JSON_MARKER = "<PLAN_JSON>"
 PLAN_JSON_END_MARKER = "</PLAN_JSON>"
-COMPOSER_MESSAGE_HISTORY_BUDGET = 6
 DEFAULT_PLAN_INTENT = "围绕用户提示和资料主线，先整理资料边界，再生成可调整的初步大纲。"
 
 
@@ -62,6 +61,11 @@ def build_plan_composer_messages(
     )
     # 第一段是用户会看到的 plan_text；JSON 是机器合同。这里允许写
     # “拟查询/对照/搜集”的研究动作，但不能写成已经完成检索。
+    system_prompt = f"""
+你是 AITeachMe 的构建计划合成器。
+你必须先输出用户可见的自然语言计划说明，再输出 {PLAN_JSON_MARKER} 包裹的机器可解析 JSON。
+你不能声称已经完成检索或已经读到外部来源；Planner 阶段只负责制定研究和整理计划。
+""".strip()
     prompt = f"""
 你要生成一份构建前研究计划，分成三层：
 1. 计划说明：用一段话说明接下来会如何查找、对照、整理和判断，不要提前展开章节内容。
@@ -83,7 +87,7 @@ def build_plan_composer_messages(
 {render_material_digest(material_context)}
 
 最近对话与修改意见：
-{render_message_history(message_history, limit=COMPOSER_MESSAGE_HISTORY_BUDGET)}
+{render_message_history(message_history)}
 
 上一版方案：
 {render_latest_plan(latest_plan)}
@@ -135,10 +139,10 @@ JSON 形状：
 - 初步大纲保持概括，key_points 控制为 2-4 个方向，不要塞满细碎知识点。
 
 few-shot 规律：
-{render_composer_examples(limit=DEFAULT_COMPOSER_EXAMPLE_LIMIT)}
+{render_composer_examples()}
 """.strip()
     messages = [
-        {"role": "system", "content": "你是 AITeachMe 的构建计划合成器，必须同时输出可见计划说明和可解析 JSON。"},
+        {"role": "system", "content": system_prompt},
         {"role": "user", "content": prompt},
     ]
     return trace_prompt_build(

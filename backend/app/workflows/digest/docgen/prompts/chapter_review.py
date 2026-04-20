@@ -4,16 +4,6 @@ from __future__ import annotations
 
 from app.workflows.digest.common.prompt_tracing import trace_prompt_build
 
-REVIEW_MARKDOWN_BUDGET = 9000
-REVIEW_LEDGER_BUDGET = 5000
-
-
-def _clip(value: object, *, limit: int) -> str:
-    text = str(value or "").strip()
-    if len(text) <= limit:
-        return text
-    return text[:limit].rstrip() + "\n...[已截断]"
-
 
 def build_chapter_review_messages(
     *,
@@ -42,22 +32,22 @@ def build_chapter_review_messages(
 文档模式：{digest_mode}
 
 章节执行合同：
-{_clip(chapter_task, limit=REVIEW_LEDGER_BUDGET)}
+{chapter_task}
 
 规则复核基线：
-{_clip(rule_review, limit=REVIEW_LEDGER_BUDGET)}
+{rule_review}
 
 ClaimLedger：
-{_clip(claim_ledger, limit=REVIEW_LEDGER_BUDGET)}
+{claim_ledger}
 
 ClaimEvidenceMap：
-{_clip(claim_evidence_map, limit=REVIEW_LEDGER_BUDGET)}
+{claim_evidence_map}
 
 ConflictReport：
-{_clip(conflict_report, limit=REVIEW_LEDGER_BUDGET)}
+{conflict_report}
 
 章节 Markdown：
-{_clip(markdown, limit=REVIEW_MARKDOWN_BUDGET)}
+{markdown}
 
 复核要求：
 1. 判断是否覆盖执行合同中的关键点。

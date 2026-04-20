@@ -9,7 +9,7 @@ from app.workflows.digest.planner.prompts.context import (
     render_material_overview,
     render_message_history,
 )
-from app.workflows.digest.planner.prompts.examples import DEFAULT_INTENT_EXAMPLE_LIMIT, render_plan_intent_examples
+from app.workflows.digest.planner.prompts.examples import render_plan_intent_examples
 
 PLAN_QUERY_MIN = 3
 PLAN_QUERY_MAX = 8
@@ -25,6 +25,11 @@ def build_plan_intent_messages(
 ) -> list[dict[str, str]]:
     # 这里只产出内部意图识别结果。它不直接展示给用户，只帮助 composer
     # 确定“用户想怎么学”和“该按什么问题去整理资料”。
+    system_prompt = """
+你是 AITeachMe 的学习规划意图分析器。
+你只输出合法 JSON，不输出 Markdown、解释、注释或额外文本。
+PlanIntent 只服务后续计划合成，不是对用户的最终展示，也不是外部检索承诺。
+""".strip()
     prompt = f"""
 请先识别用户学习意图，再把结果整理成内部 PlanIntent。
 PlanIntent 不是最终展示内容，也不是外部检索承诺；它只用于后续生成“计划说明 + 初步大纲”。
@@ -61,10 +66,10 @@ PlanIntent 不是最终展示内容，也不是外部检索承诺；它只用于
 7. 不要输出来源名单、网站名、论文名、长解释、subject id 或重复内容。
 
 few-shot 示例：
-{render_plan_intent_examples(limit=DEFAULT_INTENT_EXAMPLE_LIMIT)}
+{render_plan_intent_examples()}
 """.strip()
     messages = [
-        {"role": "system", "content": "你是学习规划意图分析器，只输出合法 JSON。"},
+        {"role": "system", "content": system_prompt},
         {"role": "user", "content": prompt},
     ]
     return trace_prompt_build(
