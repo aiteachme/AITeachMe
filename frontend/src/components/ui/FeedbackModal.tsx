@@ -91,9 +91,6 @@ export function FeedbackModal({ open, onClose }: FeedbackModalProps) {
           </div>
         </div>
 
-        <p className="text-[13px] text-slate-500 pb-1">
-          你共享的所有消息都可能被人工审核，以帮助优化 AiTeachMe。如有其他紧急问题，<a href="https://github.com/aiteachme/AiTeachMe/issues" target="_blank" rel="noopener noreferrer" className="text-slate-700 underline">请查阅或提交 GitHub Issues</a>。
-        </p>
 
         <div className="flex items-center justify-between rounded-lg border border-slate-200 px-4 py-3 bg-slate-50/50">
           <div className="flex items-center gap-3">
