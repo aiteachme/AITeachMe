@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-04-14T05:00:28.817164",
-  "total_commits_analyzed": 553,
+  "generated_at": "2026-04-20T02:34:22.223125",
+  "total_commits_analyzed": 766,
   "stats": [
     {
       "date": "2026-03-11",
@@ -4425,6 +4425,1710 @@
       "code_lines": 110449,
       "other_lines": 33145,
       "message": "fix: 更新orval生成的文件中的emoji，从🍺更改为馃嵑"
+    },
+    {
+      "date": "2026-04-14",
+      "commit": "110b1b8",
+      "total_lines": 142640,
+      "code_lines": 109669,
+      "other_lines": 32971,
+      "message": "docs: 校准 infra 分层文档与 canonical 入口说明"
+    },
+    {
+      "date": "2026-04-14",
+      "commit": "6413422",
+      "total_lines": 143594,
+      "code_lines": 110449,
+      "other_lines": 33145,
+      "message": "chore: update code statistics [skip ci]"
+    },
+    {
+      "date": "2026-04-14",
+      "commit": "13badd6",
+      "total_lines": 143222,
+      "code_lines": 110082,
+      "other_lines": 33140,
+      "message": "refactor: 拆分可观测性与考试上下文模块并同步工作流配置"
+    },
+    {
+      "date": "2026-04-14",
+      "commit": "19a9615",
+      "total_lines": 143609,
+      "code_lines": 110464,
+      "other_lines": 33145,
+      "message": "fix: 修复优化异常处理"
+    },
+    {
+      "date": "2026-04-14",
+      "commit": "12a2645",
+      "total_lines": 143609,
+      "code_lines": 110464,
+      "other_lines": 33145,
+      "message": "refactor: 注释掉主分支推送触发器"
+    },
+    {
+      "date": "2026-04-14",
+      "commit": "b915899",
+      "total_lines": 143609,
+      "code_lines": 110464,
+      "other_lines": 33145,
+      "message": "Refactor workflow imports to use shared infrastruc"
+    },
+    {
+      "date": "2026-04-14",
+      "commit": "bd1f0f0",
+      "total_lines": 143609,
+      "code_lines": 110464,
+      "other_lines": 33145,
+      "message": "Merge branch 'dev_wzx'"
+    },
+    {
+      "date": "2026-04-14",
+      "commit": "0a71030",
+      "total_lines": 141483,
+      "code_lines": 109098,
+      "other_lines": 32385,
+      "message": "docs: 文档内容调整"
+    },
+    {
+      "date": "2026-04-14",
+      "commit": "dbda8a4",
+      "total_lines": 142137,
+      "code_lines": 109661,
+      "other_lines": 32476,
+      "message": "Merge branch 'main' of github.com:aiteachme/AiTeac"
+    },
+    {
+      "date": "2026-04-14",
+      "commit": "aadf0da",
+      "total_lines": 144215,
+      "code_lines": 110869,
+      "other_lines": 33346,
+      "message": "docs: 新增 workflows 调试指南"
+    },
+    {
+      "date": "2026-04-14",
+      "commit": "89aec3e",
+      "total_lines": 142137,
+      "code_lines": 109661,
+      "other_lines": 32476,
+      "message": "chore: 合并"
+    },
+    {
+      "date": "2026-04-14",
+      "commit": "95e215f",
+      "total_lines": 142758,
+      "code_lines": 110081,
+      "other_lines": 32677,
+      "message": "Merge remote-tracking branch 'origin/dev_Ywl'"
+    },
+    {
+      "date": "2026-04-15",
+      "commit": "37940fd",
+      "total_lines": 142857,
+      "code_lines": 109861,
+      "other_lines": 32996,
+      "message": "fix: 移除默认检索链中的 wikipedia 来源"
+    },
+    {
+      "date": "2026-04-15",
+      "commit": "6765bfd",
+      "total_lines": 142370,
+      "code_lines": 109870,
+      "other_lines": 32500,
+      "message": "Merge remote-tracking branch 'origin/main' into de"
+    },
+    {
+      "date": "2026-04-15",
+      "commit": "f4e0016",
+      "total_lines": 142991,
+      "code_lines": 110290,
+      "other_lines": 32701,
+      "message": "Merge branch 'dev_ywl' of github.com:aiteachme/AIT"
+    },
+    {
+      "date": "2026-04-15",
+      "commit": "501e1d4",
+      "total_lines": 141285,
+      "code_lines": 109113,
+      "other_lines": 32172,
+      "message": "refactor: 收敛 infra 可观测性与 workflow 公共入口"
+    },
+    {
+      "date": "2026-04-15",
+      "commit": "6ebceae",
+      "total_lines": 141648,
+      "code_lines": 109440,
+      "other_lines": 32208,
+      "message": "fix: 修复检索增强链路启动报错并收口超时控制"
+    },
+    {
+      "date": "2026-04-15",
+      "commit": "b21151b",
+      "total_lines": 143371,
+      "code_lines": 110567,
+      "other_lines": 32804,
+      "message": "refactor: rag改为使用llamaindex"
+    },
+    {
+      "date": "2026-04-15",
+      "commit": "ade658b",
+      "total_lines": 143169,
+      "code_lines": 110559,
+      "other_lines": 32610,
+      "message": "Merge branch 'dev_ywl': refactor: 收口 planner/docge"
+    },
+    {
+      "date": "2026-04-15",
+      "commit": "37648f5",
+      "total_lines": 143313,
+      "code_lines": 110671,
+      "other_lines": 32642,
+      "message": "refactor: 收口 infra 的 subject 命名并归位上下文窗口预算模块"
+    },
+    {
+      "date": "2026-04-15",
+      "commit": "6b477b9",
+      "total_lines": 143772,
+      "code_lines": 110992,
+      "other_lines": 32780,
+      "message": "refactor: 收口 infra 模块分层并放宽 interact 上下文预算策略"
+    },
+    {
+      "date": "2026-04-15",
+      "commit": "090fe1a",
+      "total_lines": 135705,
+      "code_lines": 106607,
+      "other_lines": 29098,
+      "message": "refactor: 收口观测层并拆分 LangSmith trace 与前端 progress"
+    },
+    {
+      "date": "2026-04-15",
+      "commit": "f31c646",
+      "total_lines": 141060,
+      "code_lines": 108995,
+      "other_lines": 32065,
+      "message": "refactor: 把工作流把 kg 重命名为全名 knowledge_graph"
+    },
+    {
+      "date": "2026-04-15",
+      "commit": "ee1274a",
+      "total_lines": 135823,
+      "code_lines": 106705,
+      "other_lines": 29118,
+      "message": "refactor: 优化 LangSmith 追踪层级并收口 LiteLLM 阻塞初始化"
+    },
+    {
+      "date": "2026-04-15",
+      "commit": "5a28caa",
+      "total_lines": 141347,
+      "code_lines": 109240,
+      "other_lines": 32107,
+      "message": "feat: 拆分知识图谱结点"
+    },
+    {
+      "date": "2026-04-15",
+      "commit": "f18dd41",
+      "total_lines": 136833,
+      "code_lines": 107322,
+      "other_lines": 29511,
+      "message": "refactor: 规范 planner 与 docgen 的链路结构和模块入口"
+    },
+    {
+      "date": "2026-04-15",
+      "commit": "22dc1da",
+      "total_lines": 135960,
+      "code_lines": 106802,
+      "other_lines": 29158,
+      "message": "chore: workflows文档"
+    },
+    {
+      "date": "2026-04-15",
+      "commit": "48247c8",
+      "total_lines": 142758,
+      "code_lines": 110081,
+      "other_lines": 32677,
+      "message": "chore: generated"
+    },
+    {
+      "date": "2026-04-15",
+      "commit": "920ea9f",
+      "total_lines": 126428,
+      "code_lines": 101616,
+      "other_lines": 24812,
+      "message": "chore: update generated"
+    },
+    {
+      "date": "2026-04-15",
+      "commit": "6705f39",
+      "total_lines": 125691,
+      "code_lines": 98230,
+      "other_lines": 27461,
+      "message": "feat: 为考试页面和个人资料页面添加离线访问功能，并配套相应提示文案与界面组件；移除导出预览统计"
+    },
+    {
+      "date": "2026-04-15",
+      "commit": "6af9f0b",
+      "total_lines": 126488,
+      "code_lines": 98846,
+      "other_lines": 27642,
+      "message": "Merge remote-tracking branch 'origin/main' into de"
+    },
+    {
+      "date": "2026-04-15",
+      "commit": "d062f06",
+      "total_lines": 127629,
+      "code_lines": 99570,
+      "other_lines": 28059,
+      "message": "Merge branch 'dev_wzx'"
+    },
+    {
+      "date": "2026-04-15",
+      "commit": "4945361",
+      "total_lines": 136595,
+      "code_lines": 107244,
+      "other_lines": 29351,
+      "message": "refactor: workflows结构调整暂存"
+    },
+    {
+      "date": "2026-04-15",
+      "commit": "8ed2765",
+      "total_lines": 136457,
+      "code_lines": 107146,
+      "other_lines": 29311,
+      "message": "docs: 重构文档开始"
+    },
+    {
+      "date": "2026-04-15",
+      "commit": "5268868",
+      "total_lines": 127253,
+      "code_lines": 99394,
+      "other_lines": 27859,
+      "message": "Merge remote-tracking branch 'origin/main' into de"
+    },
+    {
+      "date": "2026-04-15",
+      "commit": "3eba956",
+      "total_lines": 119382,
+      "code_lines": 95098,
+      "other_lines": 24284,
+      "message": "Merge remote-tracking branch 'origin/main'"
+    },
+    {
+      "date": "2026-04-16",
+      "commit": "8f0bff0",
+      "total_lines": 127748,
+      "code_lines": 99784,
+      "other_lines": 27964,
+      "message": "refactor: 统一 workflows 链路骨架与导入入口"
+    },
+    {
+      "date": "2026-04-16",
+      "commit": "42df848",
+      "total_lines": 119006,
+      "code_lines": 94922,
+      "other_lines": 24084,
+      "message": "Merge remote-tracking branch 'origin/dev_ywl'"
+    },
+    {
+      "date": "2026-04-16",
+      "commit": "b5771f2",
+      "total_lines": 119501,
+      "code_lines": 95312,
+      "other_lines": 24189,
+      "message": "Merge remote-tracking branch 'origin/dev_ywl'"
+    },
+    {
+      "date": "2026-04-16",
+      "commit": "2b59a24",
+      "total_lines": 120121,
+      "code_lines": 95724,
+      "other_lines": 24397,
+      "message": "refactor: 落地 workflows 单层化规范与教学工具迁移骨架"
+    },
+    {
+      "date": "2026-04-16",
+      "commit": "3917d3c",
+      "total_lines": 127629,
+      "code_lines": 99570,
+      "other_lines": 28059,
+      "message": "chore: 调整结构"
+    },
+    {
+      "date": "2026-04-16",
+      "commit": "e5b03a1",
+      "total_lines": 127748,
+      "code_lines": 99784,
+      "other_lines": 27964,
+      "message": "Merge remote-tracking branch 'origin/dev_ywl'"
+    },
+    {
+      "date": "2026-04-16",
+      "commit": "5841835",
+      "total_lines": 127131,
+      "code_lines": 99348,
+      "other_lines": 27783,
+      "message": "refactor: 收口 workflows 结构并清理废弃代码"
+    },
+    {
+      "date": "2026-04-16",
+      "commit": "f9e1e4f",
+      "total_lines": 119786,
+      "code_lines": 95452,
+      "other_lines": 24334,
+      "message": "refactor: 推进 workflows 单层化并移除 teaching 层"
+    },
+    {
+      "date": "2026-04-16",
+      "commit": "a182ffc",
+      "total_lines": 119858,
+      "code_lines": 95505,
+      "other_lines": 24353,
+      "message": "test: 加固 workflows 单层化旧入口清理校验"
+    },
+    {
+      "date": "2026-04-16",
+      "commit": "609f4dc",
+      "total_lines": 127216,
+      "code_lines": 99422,
+      "other_lines": 27794,
+      "message": "refactor: 拆分 digest 观测层并收口链路报表"
+    },
+    {
+      "date": "2026-04-16",
+      "commit": "a28ff10",
+      "total_lines": 126124,
+      "code_lines": 98628,
+      "other_lines": 27496,
+      "message": "refactor: 清理 digest 旧 services 分层"
+    },
+    {
+      "date": "2026-04-16",
+      "commit": "a8a4f4d",
+      "total_lines": 119934,
+      "code_lines": 95557,
+      "other_lines": 24377,
+      "message": "refactor: 迁移 subjects、chats 与导入导出服务到 workflows"
+    },
+    {
+      "date": "2026-04-16",
+      "commit": "aa0a97d",
+      "total_lines": 128932,
+      "code_lines": 100735,
+      "other_lines": 28197,
+      "message": "feat: 增加 infra 门面与工具安全策略"
+    },
+    {
+      "date": "2026-04-16",
+      "commit": "89702e7",
+      "total_lines": 119950,
+      "code_lines": 95567,
+      "other_lines": 24383,
+      "message": "fix: 收紧 teaching tools 公开面并清理缓存目录"
+    },
+    {
+      "date": "2026-04-16",
+      "commit": "b616546",
+      "total_lines": 127990,
+      "code_lines": 99958,
+      "other_lines": 28032,
+      "message": "fix: 收紧 teaching tools 公开面并清理缓存目录"
+    },
+    {
+      "date": "2026-04-16",
+      "commit": "ecaa0c0",
+      "total_lines": 126322,
+      "code_lines": 98782,
+      "other_lines": 27540,
+      "message": "refactor: 收口 workflows 结构并恢复课程兼容入口"
+    },
+    {
+      "date": "2026-04-16",
+      "commit": "29510ee",
+      "total_lines": 129322,
+      "code_lines": 101063,
+      "other_lines": 28259,
+      "message": "feat: 优化 infra 搜索并发融合能力"
+    },
+    {
+      "date": "2026-04-16",
+      "commit": "b2825e7",
+      "total_lines": 128036,
+      "code_lines": 99994,
+      "other_lines": 28042,
+      "message": "fix: 增强 LlamaIndex 索引链路云端兼容性"
+    },
+    {
+      "date": "2026-04-16",
+      "commit": "983da86",
+      "total_lines": 120093,
+      "code_lines": 95676,
+      "other_lines": 24417,
+      "message": "refactor: 移除 services 层并收口业务入口到 workflows"
+    },
+    {
+      "date": "2026-04-16",
+      "commit": "89096ab",
+      "total_lines": 129888,
+      "code_lines": 101564,
+      "other_lines": 28324,
+      "message": "feat: 整理系统设置页配置展示"
+    },
+    {
+      "date": "2026-04-16",
+      "commit": "6db113e",
+      "total_lines": 120034,
+      "code_lines": 95633,
+      "other_lines": 24401,
+      "message": "refactor: 移除 support teaching_tools 模块"
+    },
+    {
+      "date": "2026-04-16",
+      "commit": "50ce584",
+      "total_lines": 126321,
+      "code_lines": 98782,
+      "other_lines": 27539,
+      "message": "refactor: 收口 ingest 运行时与解析共享层"
+    },
+    {
+      "date": "2026-04-16",
+      "commit": "a0d9844",
+      "total_lines": 118572,
+      "code_lines": 94612,
+      "other_lines": 23960,
+      "message": "refactor: 合并 workflows 重组并移除旧业务层入口"
+    },
+    {
+      "date": "2026-04-16",
+      "commit": "3b8efc8",
+      "total_lines": 126974,
+      "code_lines": 99200,
+      "other_lines": 27774,
+      "message": "fix: 恢复 planner 进度 SSE 并优化方案生成展示"
+    },
+    {
+      "date": "2026-04-16",
+      "commit": "416fbcb",
+      "total_lines": 130176,
+      "code_lines": 101774,
+      "other_lines": 28402,
+      "message": "Merge branch 'dev_ywl'"
+    },
+    {
+      "date": "2026-04-16",
+      "commit": "3caf9f6",
+      "total_lines": 126848,
+      "code_lines": 99097,
+      "other_lines": 27751,
+      "message": "fix: 收敛 LangSmith 标签避免高基数字段污染"
+    },
+    {
+      "date": "2026-04-16",
+      "commit": "76eb954",
+      "total_lines": 129266,
+      "code_lines": 101080,
+      "other_lines": 28186,
+      "message": "refactor: 合并 workflows 单层化重组"
+    },
+    {
+      "date": "2026-04-16",
+      "commit": "547dd5b",
+      "total_lines": 129299,
+      "code_lines": 101105,
+      "other_lines": 28194,
+      "message": "docs: 文档更新"
+    },
+    {
+      "date": "2026-04-16",
+      "commit": "3a7d8ff",
+      "total_lines": 130399,
+      "code_lines": 101885,
+      "other_lines": 28514,
+      "message": "fix: 优化文档生成链路命名与说明"
+    },
+    {
+      "date": "2026-04-16",
+      "commit": "eaa738e",
+      "total_lines": 129637,
+      "code_lines": 101342,
+      "other_lines": 28295,
+      "message": "Refactor KnowledgeNode to KnowledgeUnit across the"
+    },
+    {
+      "date": "2026-04-16",
+      "commit": "bf1a3be",
+      "total_lines": 129682,
+      "code_lines": 101380,
+      "other_lines": 28302,
+      "message": "refactor: rename KnowledgeNode to KnowledgeUnit ac"
+    },
+    {
+      "date": "2026-04-16",
+      "commit": "ca12a2e",
+      "total_lines": 130046,
+      "code_lines": 101709,
+      "other_lines": 28337,
+      "message": "Refactor knowledge graph mutations and nodes to st"
+    },
+    {
+      "date": "2026-04-16",
+      "commit": "7471755",
+      "total_lines": 130638,
+      "code_lines": 102000,
+      "other_lines": 28638,
+      "message": "refactor: 收口 ingest 与 digest 模块 canonical 入口"
+    },
+    {
+      "date": "2026-04-16",
+      "commit": "e36816a",
+      "total_lines": 129872,
+      "code_lines": 101564,
+      "other_lines": 28308,
+      "message": "refactor: update node_type descriptions and labels"
+    },
+    {
+      "date": "2026-04-16",
+      "commit": "fdb9c1f",
+      "total_lines": 129257,
+      "code_lines": 101062,
+      "other_lines": 28195,
+      "message": "refactor: 移除旧版 YAML 工具目录"
+    },
+    {
+      "date": "2026-04-16",
+      "commit": "263ee48",
+      "total_lines": 132061,
+      "code_lines": 103118,
+      "other_lines": 28943,
+      "message": "refactor: 统一 workflows 模块内共享层为 common"
+    },
+    {
+      "date": "2026-04-16",
+      "commit": "cb1e986",
+      "total_lines": 132019,
+      "code_lines": 103075,
+      "other_lines": 28944,
+      "message": "Merge branch 'main' of github.com:aiteachme/AITeac"
+    },
+    {
+      "date": "2026-04-16",
+      "commit": "cd0cd8d",
+      "total_lines": 131086,
+      "code_lines": 102594,
+      "other_lines": 28492,
+      "message": "feat: Enhance Knowledge Graph functionality with n"
+    },
+    {
+      "date": "2026-04-16",
+      "commit": "7c8c6c8",
+      "total_lines": 130495,
+      "code_lines": 101750,
+      "other_lines": 28745,
+      "message": "refactor: 拆除 digest 统一构建链路"
+    },
+    {
+      "date": "2026-04-16",
+      "commit": "75c1121",
+      "total_lines": 132618,
+      "code_lines": 103695,
+      "other_lines": 28923,
+      "message": "fix: 移除 Planner 节点级 LLM 超时并增强本地检索回退"
+    },
+    {
+      "date": "2026-04-16",
+      "commit": "b6ea8f4",
+      "total_lines": 133180,
+      "code_lines": 104448,
+      "other_lines": 28732,
+      "message": "feat: Implement Knowledge Graph Release Controls a"
+    },
+    {
+      "date": "2026-04-16",
+      "commit": "ce4c57b",
+      "total_lines": 131453,
+      "code_lines": 102406,
+      "other_lines": 29047,
+      "message": "docs: 优化 DocGen 改造计划开头说明"
+    },
+    {
+      "date": "2026-04-16",
+      "commit": "0de6ae2",
+      "total_lines": 132510,
+      "code_lines": 103493,
+      "other_lines": 29017,
+      "message": "fix: 补全 Planner SSE 后续阶段内容展示"
+    },
+    {
+      "date": "2026-04-16",
+      "commit": "0fc2603",
+      "total_lines": 133325,
+      "code_lines": 103899,
+      "other_lines": 29426,
+      "message": "Merge branch 'main' into dev_ywl"
+    },
+    {
+      "date": "2026-04-16",
+      "commit": "cbdad54",
+      "total_lines": 132803,
+      "code_lines": 104124,
+      "other_lines": 28679,
+      "message": "Refactor knowledge node terminology to knowledge u"
+    },
+    {
+      "date": "2026-04-16",
+      "commit": "7f5ba5f",
+      "total_lines": 135222,
+      "code_lines": 105654,
+      "other_lines": 29568,
+      "message": "Merge remote-tracking branch 'origin/main' into de"
+    },
+    {
+      "date": "2026-04-16",
+      "commit": "aa42baf",
+      "total_lines": 130903,
+      "code_lines": 102027,
+      "other_lines": 28876,
+      "message": "docs: 精简 DocGen 流程设计文档"
+    },
+    {
+      "date": "2026-04-16",
+      "commit": "fc275c0",
+      "total_lines": 133595,
+      "code_lines": 104126,
+      "other_lines": 29469,
+      "message": "refactor: 收拢 workflows 结构并清理 support 残留"
+    },
+    {
+      "date": "2026-04-16",
+      "commit": "51aa062",
+      "total_lines": 133611,
+      "code_lines": 104123,
+      "other_lines": 29488,
+      "message": "refactor: 统一 settings 配置并落库运行快照"
+    },
+    {
+      "date": "2026-04-16",
+      "commit": "be316ac",
+      "total_lines": 134672,
+      "code_lines": 105275,
+      "other_lines": 29397,
+      "message": "Merge branch 'main' of github.com:aiteachme/AITeac"
+    },
+    {
+      "date": "2026-04-17",
+      "commit": "9213f8d",
+      "total_lines": 133316,
+      "code_lines": 103909,
+      "other_lines": 29407,
+      "message": "refactor: 移除 ingest 和 digest 的 application 兼容层"
+    },
+    {
+      "date": "2026-04-17",
+      "commit": "3b7d29a",
+      "total_lines": 136159,
+      "code_lines": 106423,
+      "other_lines": 29736,
+      "message": "refactor: 收口 settings 重构并解决合并冲突"
+    },
+    {
+      "date": "2026-04-17",
+      "commit": "050519f",
+      "total_lines": 136137,
+      "code_lines": 106429,
+      "other_lines": 29708,
+      "message": "refactor: 解决 workflows 结构重构合并冲突"
+    },
+    {
+      "date": "2026-04-17",
+      "commit": "d3833fb",
+      "total_lines": 136544,
+      "code_lines": 106768,
+      "other_lines": 29776,
+      "message": "Merge remote-tracking branch 'origin/dev_ywl'"
+    },
+    {
+      "date": "2026-04-17",
+      "commit": "bf74962",
+      "total_lines": 136255,
+      "code_lines": 106520,
+      "other_lines": 29735,
+      "message": "refactor: 清理 planner 节点别名和事件回调"
+    },
+    {
+      "date": "2026-04-17",
+      "commit": "75b053f",
+      "total_lines": 133558,
+      "code_lines": 104088,
+      "other_lines": 29470,
+      "message": "refactor: 重构检索器可用性判断与检索配置覆盖机制"
+    },
+    {
+      "date": "2026-04-17",
+      "commit": "a4e2aba",
+      "total_lines": 127990,
+      "code_lines": 99533,
+      "other_lines": 28457,
+      "message": "refactor: 精简 planner 旧代码与测试"
+    },
+    {
+      "date": "2026-04-17",
+      "commit": "941cd47",
+      "total_lines": 128156,
+      "code_lines": 99672,
+      "other_lines": 28484,
+      "message": "refactor: 统一检索器候选配置并解决合并冲突"
+    },
+    {
+      "date": "2026-04-17",
+      "commit": "4a22788",
+      "total_lines": 133860,
+      "code_lines": 104335,
+      "other_lines": 29525,
+      "message": "chore: 部分更新planner"
+    },
+    {
+      "date": "2026-04-17",
+      "commit": "b4424f6",
+      "total_lines": 128156,
+      "code_lines": 99672,
+      "other_lines": 28484,
+      "message": "Merge remote-tracking branch 'origin/dev_ywl'"
+    },
+    {
+      "date": "2026-04-17",
+      "commit": "a6098f3",
+      "total_lines": 128583,
+      "code_lines": 100048,
+      "other_lines": 28535,
+      "message": "fix: 合并 digest planner 冲突并恢复完整规划链路"
+    },
+    {
+      "date": "2026-04-17",
+      "commit": "7022a63",
+      "total_lines": 128583,
+      "code_lines": 100048,
+      "other_lines": 28535,
+      "message": "Merge remote-tracking branch 'origin/dev_ywl'"
+    },
+    {
+      "date": "2026-04-17",
+      "commit": "ef0f9fb",
+      "total_lines": 130872,
+      "code_lines": 101358,
+      "other_lines": 29514,
+      "message": "fix: 修复上传配置读取并切换默认配置文件"
+    },
+    {
+      "date": "2026-04-17",
+      "commit": "f7ae94d",
+      "total_lines": 128365,
+      "code_lines": 99911,
+      "other_lines": 28454,
+      "message": "fix: 收口 Ingest 增强任务与清理无用解析抽象"
+    },
+    {
+      "date": "2026-04-17",
+      "commit": "ebd83ae",
+      "total_lines": 128586,
+      "code_lines": 100052,
+      "other_lines": 28534,
+      "message": "refactor: 收紧 ingest 与 digest 模块层级"
+    },
+    {
+      "date": "2026-04-17",
+      "commit": "537a50b",
+      "total_lines": 128368,
+      "code_lines": 99915,
+      "other_lines": 28453,
+      "message": "Merge remote-tracking branch 'origin/main'"
+    },
+    {
+      "date": "2026-04-17",
+      "commit": "f0cdb60",
+      "total_lines": 130797,
+      "code_lines": 101317,
+      "other_lines": 29480,
+      "message": "refactor: 收口 Planner lib 命名与节点职责"
+    },
+    {
+      "date": "2026-04-17",
+      "commit": "4e94c9e",
+      "total_lines": 124382,
+      "code_lines": 97459,
+      "other_lines": 26923,
+      "message": "feat: 调整资料摘要与上传限制策略"
+    },
+    {
+      "date": "2026-04-17",
+      "commit": "2bc9c92",
+      "total_lines": 130639,
+      "code_lines": 101209,
+      "other_lines": 29430,
+      "message": "feat: 调整资料摘要与上传限制策略"
+    },
+    {
+      "date": "2026-04-17",
+      "commit": "3cd18ba",
+      "total_lines": 130639,
+      "code_lines": 101209,
+      "other_lines": 29430,
+      "message": "chore: 改动settings"
+    },
+    {
+      "date": "2026-04-17",
+      "commit": "44f8c7b",
+      "total_lines": 130642,
+      "code_lines": 101213,
+      "other_lines": 29429,
+      "message": "Merge remote-tracking branch 'origin/dev_Ywl'"
+    },
+    {
+      "date": "2026-04-17",
+      "commit": "cb55d3f",
+      "total_lines": 128667,
+      "code_lines": 100179,
+      "other_lines": 28488,
+      "message": "feat: 增强知识图谱构建工作流，添加主题支持和任务进度更新"
+    },
+    {
+      "date": "2026-04-17",
+      "commit": "3a3cafd",
+      "total_lines": 130304,
+      "code_lines": 100976,
+      "other_lines": 29328,
+      "message": "feat: Update generated API models and responses"
+    },
+    {
+      "date": "2026-04-17",
+      "commit": "1dd81b8",
+      "total_lines": 130422,
+      "code_lines": 101075,
+      "other_lines": 29347,
+      "message": "Merge remote-tracking branch 'origin/main'"
+    },
+    {
+      "date": "2026-04-17",
+      "commit": "e0b7149",
+      "total_lines": 130492,
+      "code_lines": 101050,
+      "other_lines": 29442,
+      "message": "refactor: 简化 Digest Planner 状态与证据合同"
+    },
+    {
+      "date": "2026-04-17",
+      "commit": "03968e1",
+      "total_lines": 130539,
+      "code_lines": 101170,
+      "other_lines": 29369,
+      "message": "feat: 添加知识图谱文档同步工作流，增强构建和文件摄取功能"
+    },
+    {
+      "date": "2026-04-17",
+      "commit": "671e13f",
+      "total_lines": 130316,
+      "code_lines": 100970,
+      "other_lines": 29346,
+      "message": "Refactor exam and profile models to remove teachin"
+    },
+    {
+      "date": "2026-04-17",
+      "commit": "794960b",
+      "total_lines": 124785,
+      "code_lines": 96350,
+      "other_lines": 28435,
+      "message": "refactor: update exam and mastery models to replac"
+    },
+    {
+      "date": "2026-04-17",
+      "commit": "f345e96",
+      "total_lines": 124774,
+      "code_lines": 96354,
+      "other_lines": 28420,
+      "message": "Merge remote-tracking branch 'origin/main' into de"
+    },
+    {
+      "date": "2026-04-17",
+      "commit": "826f61c",
+      "total_lines": 130727,
+      "code_lines": 101245,
+      "other_lines": 29482,
+      "message": "refactor: 去除 Digest Planner 服务外壳"
+    },
+    {
+      "date": "2026-04-17",
+      "commit": "18767e0",
+      "total_lines": 130234,
+      "code_lines": 100913,
+      "other_lines": 29321,
+      "message": "refactor: 移除 Ingest 无订阅事件层"
+    },
+    {
+      "date": "2026-04-17",
+      "commit": "f022e16",
+      "total_lines": 124586,
+      "code_lines": 96192,
+      "other_lines": 28394,
+      "message": "Merge branch 'main' of github.com:aiteachme/AITeac"
+    },
+    {
+      "date": "2026-04-17",
+      "commit": "3f84e22",
+      "total_lines": 124699,
+      "code_lines": 96207,
+      "other_lines": 28492,
+      "message": "refactor: 去除 Digest Planner 服务外壳并收敛持久化接口"
+    },
+    {
+      "date": "2026-04-17",
+      "commit": "e9055db",
+      "total_lines": 124634,
+      "code_lines": 96151,
+      "other_lines": 28483,
+      "message": "refactor: 移除数据库 legacy schema 清理逻辑"
+    },
+    {
+      "date": "2026-04-17",
+      "commit": "1b8136e",
+      "total_lines": 124934,
+      "code_lines": 96423,
+      "other_lines": 28511,
+      "message": "feat: 完善搜索检索器实现与配置"
+    },
+    {
+      "date": "2026-04-17",
+      "commit": "80bcdb5",
+      "total_lines": 131038,
+      "code_lines": 101395,
+      "other_lines": 29643,
+      "message": "Merge remote-tracking branch 'origin/dev_ywl'"
+    },
+    {
+      "date": "2026-04-17",
+      "commit": "fa2d914",
+      "total_lines": 125081,
+      "code_lines": 96445,
+      "other_lines": 28636,
+      "message": "Merge branch 'main' of github.com:aiteachme/AiTeac"
+    },
+    {
+      "date": "2026-04-17",
+      "commit": "ab44a15",
+      "total_lines": 125420,
+      "code_lines": 96808,
+      "other_lines": 28612,
+      "message": "Add tests for SQLite legacy schema cleanup and upd"
+    },
+    {
+      "date": "2026-04-17",
+      "commit": "0a3b1c8",
+      "total_lines": 125727,
+      "code_lines": 96899,
+      "other_lines": 28828,
+      "message": "Merge remote-tracking branch 'origin/main' into de"
+    },
+    {
+      "date": "2026-04-17",
+      "commit": "fbb1ec4",
+      "total_lines": 124819,
+      "code_lines": 96349,
+      "other_lines": 28470,
+      "message": "refactor: 简化 planner 流程并重命名节点"
+    },
+    {
+      "date": "2026-04-17",
+      "commit": "819e992",
+      "total_lines": 124049,
+      "code_lines": 95771,
+      "other_lines": 28278,
+      "message": "docs: 新增 Digest 深度研究流程调研方案"
+    },
+    {
+      "date": "2026-04-17",
+      "commit": "04c71fb",
+      "total_lines": 125190,
+      "code_lines": 96478,
+      "other_lines": 28712,
+      "message": "Merge branch 'main' of github.com:aiteachme/AITeac"
+    },
+    {
+      "date": "2026-04-17",
+      "commit": "2430aa8",
+      "total_lines": 125431,
+      "code_lines": 96684,
+      "other_lines": 28747,
+      "message": "refactor: 重构 planner 规划链路并完善检索器配置"
+    },
+    {
+      "date": "2026-04-17",
+      "commit": "8956c83",
+      "total_lines": 129100,
+      "code_lines": 100358,
+      "other_lines": 28742,
+      "message": "docs: 将 DocGen 架构评估文档收口到 planner 目录"
+    },
+    {
+      "date": "2026-04-17",
+      "commit": "0182b52",
+      "total_lines": 125335,
+      "code_lines": 96658,
+      "other_lines": 28677,
+      "message": "Merge branch 'dev_ywl' of github.com:aiteachme/AiT"
+    },
+    {
+      "date": "2026-04-17",
+      "commit": "54e17da",
+      "total_lines": 125947,
+      "code_lines": 96993,
+      "other_lines": 28954,
+      "message": "Merge remote-tracking branch 'origin/dev_ywl'"
+    },
+    {
+      "date": "2026-04-17",
+      "commit": "8e419fe",
+      "total_lines": 128003,
+      "code_lines": 98648,
+      "other_lines": 29355,
+      "message": "fix: 加固 DocGen 公式清洗与占位符增强链路"
+    },
+    {
+      "date": "2026-04-17",
+      "commit": "8f29a1b",
+      "total_lines": 118946,
+      "code_lines": 92364,
+      "other_lines": 26582,
+      "message": "refactor: 简化 planner 大纲草稿合同"
+    },
+    {
+      "date": "2026-04-17",
+      "commit": "c856fc5",
+      "total_lines": 127978,
+      "code_lines": 98635,
+      "other_lines": 29343,
+      "message": "fix: 简化 DocGen 增强代码并补齐检索预算"
+    },
+    {
+      "date": "2026-04-17",
+      "commit": "2242f26",
+      "total_lines": 124258,
+      "code_lines": 95767,
+      "other_lines": 28491,
+      "message": "chore: 更新generated"
+    },
+    {
+      "date": "2026-04-17",
+      "commit": "fd524d6",
+      "total_lines": 126525,
+      "code_lines": 97509,
+      "other_lines": 29016,
+      "message": "chore: 合并代码并保留本地 planner 简化实现"
+    },
+    {
+      "date": "2026-04-17",
+      "commit": "793f41e",
+      "total_lines": 125335,
+      "code_lines": 96658,
+      "other_lines": 28677,
+      "message": "chore: setting"
+    },
+    {
+      "date": "2026-04-17",
+      "commit": "ff3bd8d",
+      "total_lines": 126525,
+      "code_lines": 97509,
+      "other_lines": 29016,
+      "message": "Merge branch 'dev_ywl' of github.com:aiteachme/AiT"
+    },
+    {
+      "date": "2026-04-17",
+      "commit": "d4ec2de",
+      "total_lines": 126576,
+      "code_lines": 97550,
+      "other_lines": 29026,
+      "message": "docs: 加 planner docgen流程"
+    },
+    {
+      "date": "2026-04-17",
+      "commit": "6637bb2",
+      "total_lines": 126526,
+      "code_lines": 97510,
+      "other_lines": 29016,
+      "message": "fix: 对齐 DocGen 的 LangSmith 链路标识"
+    },
+    {
+      "date": "2026-04-17",
+      "commit": "227cfea",
+      "total_lines": 126576,
+      "code_lines": 97550,
+      "other_lines": 29026,
+      "message": "Merge branch 'dev_ywl' of github.com:aiteachme/AIT"
+    },
+    {
+      "date": "2026-04-17",
+      "commit": "e838693",
+      "total_lines": 126526,
+      "code_lines": 97510,
+      "other_lines": 29016,
+      "message": "Merge remote-tracking branch 'origin/main' into de"
+    },
+    {
+      "date": "2026-04-17",
+      "commit": "c139f03",
+      "total_lines": 126577,
+      "code_lines": 97551,
+      "other_lines": 29026,
+      "message": "Merge remote-tracking branch 'origin/dev_ywl' into"
+    },
+    {
+      "date": "2026-04-17",
+      "commit": "fee6924",
+      "total_lines": 126582,
+      "code_lines": 97566,
+      "other_lines": 29016,
+      "message": "fix: 修复知识构建无反馈并补充后端入口日志"
+    },
+    {
+      "date": "2026-04-17",
+      "commit": "07505cf",
+      "total_lines": 126633,
+      "code_lines": 97607,
+      "other_lines": 29026,
+      "message": "Merge remote-tracking branch 'origin/main' into de"
+    },
+    {
+      "date": "2026-04-17",
+      "commit": "c4e2e88",
+      "total_lines": 126644,
+      "code_lines": 97615,
+      "other_lines": 29029,
+      "message": "docs: 文档内容"
+    },
+    {
+      "date": "2026-04-17",
+      "commit": "bc4cd64",
+      "total_lines": 126633,
+      "code_lines": 97607,
+      "other_lines": 29026,
+      "message": "Merge remote-tracking branch 'origin/main' into de"
+    },
+    {
+      "date": "2026-04-17",
+      "commit": "c3dd5d3",
+      "total_lines": 126644,
+      "code_lines": 97615,
+      "other_lines": 29029,
+      "message": "Merge remote-tracking branch 'origin/dev_ywl' into"
+    },
+    {
+      "date": "2026-04-17",
+      "commit": "904234a",
+      "total_lines": 126665,
+      "code_lines": 97633,
+      "other_lines": 29032,
+      "message": "fix: 修复DocGen构建链路与前端进度展示"
+    },
+    {
+      "date": "2026-04-17",
+      "commit": "f8dc2e7",
+      "total_lines": 126740,
+      "code_lines": 97705,
+      "other_lines": 29035,
+      "message": "fix: 缺少embedding时自动跳过向量能力"
+    },
+    {
+      "date": "2026-04-17",
+      "commit": "adc0bca",
+      "total_lines": 125635,
+      "code_lines": 96745,
+      "other_lines": 28890,
+      "message": "refactor: 移除 planner 关键词兜底生成"
+    },
+    {
+      "date": "2026-04-17",
+      "commit": "fffc2a2",
+      "total_lines": 125635,
+      "code_lines": 96745,
+      "other_lines": 28890,
+      "message": "Merge branch 'dev_ywl' of github.com:aiteachme/AiT"
+    },
+    {
+      "date": "2026-04-18",
+      "commit": "c19c37a",
+      "total_lines": 126091,
+      "code_lines": 97193,
+      "other_lines": 28898,
+      "message": "fix: planner修复"
+    },
+    {
+      "date": "2026-04-18",
+      "commit": "2b19cc8",
+      "total_lines": 126198,
+      "code_lines": 97291,
+      "other_lines": 28907,
+      "message": "Merge branch 'dev_ywl' into dev_ywl_t"
+    },
+    {
+      "date": "2026-04-18",
+      "commit": "9654448",
+      "total_lines": 126445,
+      "code_lines": 97501,
+      "other_lines": 28944,
+      "message": "refactor: 优化DocGen链路可观测性与章节生成稳定性"
+    },
+    {
+      "date": "2026-04-18",
+      "commit": "22a3f3f",
+      "total_lines": 126083,
+      "code_lines": 97190,
+      "other_lines": 28893,
+      "message": "refactor: 精简 digest planner 链路可读性"
+    },
+    {
+      "date": "2026-04-18",
+      "commit": "a71ec2c",
+      "total_lines": 126482,
+      "code_lines": 97537,
+      "other_lines": 28945,
+      "message": "chore: 前端"
+    },
+    {
+      "date": "2026-04-18",
+      "commit": "0ceb478",
+      "total_lines": 125947,
+      "code_lines": 97077,
+      "other_lines": 28870,
+      "message": "refactor: 清理学习计划遗留链路并收敛DocGen检索"
+    },
+    {
+      "date": "2026-04-18",
+      "commit": "58fa278",
+      "total_lines": 126180,
+      "code_lines": 97275,
+      "other_lines": 28905,
+      "message": "refactor: 修正 planner LLM 调用类型标记"
+    },
+    {
+      "date": "2026-04-18",
+      "commit": "7d74ad8",
+      "total_lines": 126086,
+      "code_lines": 97186,
+      "other_lines": 28900,
+      "message": "refactor: 去除 planner LLM 调用重复参数"
+    },
+    {
+      "date": "2026-04-18",
+      "commit": "6b034c9",
+      "total_lines": 126065,
+      "code_lines": 97167,
+      "other_lines": 28898,
+      "message": "refactor: 合并 planner 流式增量事件"
+    },
+    {
+      "date": "2026-04-18",
+      "commit": "17d9eb6",
+      "total_lines": 126038,
+      "code_lines": 97214,
+      "other_lines": 28824,
+      "message": "fix: 修复知识文档结构与目录渲染"
+    },
+    {
+      "date": "2026-04-18",
+      "commit": "bff2241",
+      "total_lines": 126006,
+      "code_lines": 97184,
+      "other_lines": 28822,
+      "message": "chore: 合并 dev_ywl_t 并解决 planner 图冲突"
+    },
+    {
+      "date": "2026-04-18",
+      "commit": "e2f904d",
+      "total_lines": 126553,
+      "code_lines": 97537,
+      "other_lines": 29016,
+      "message": "chore: 文档内容"
+    },
+    {
+      "date": "2026-04-18",
+      "commit": "ad35be0",
+      "total_lines": 125977,
+      "code_lines": 97155,
+      "other_lines": 28822,
+      "message": "Merge branch 'dev_ywl'"
+    },
+    {
+      "date": "2026-04-18",
+      "commit": "31880be",
+      "total_lines": 125963,
+      "code_lines": 97163,
+      "other_lines": 28800,
+      "message": "refactor: 清理 Planner 残留并修正 DocGen 统计"
+    },
+    {
+      "date": "2026-04-18",
+      "commit": "16856a6",
+      "total_lines": 126166,
+      "code_lines": 97340,
+      "other_lines": 28826,
+      "message": "refactor: 对齐 Planner 节点命名和文档说明"
+    },
+    {
+      "date": "2026-04-18",
+      "commit": "73680a2",
+      "total_lines": 125932,
+      "code_lines": 97264,
+      "other_lines": 28668,
+      "message": "docs: 更新docgen文档"
+    },
+    {
+      "date": "2026-04-18",
+      "commit": "e063493",
+      "total_lines": 127532,
+      "code_lines": 98448,
+      "other_lines": 29084,
+      "message": "feat: update generated model files and add knowled"
+    },
+    {
+      "date": "2026-04-18",
+      "commit": "169d4f2",
+      "total_lines": 128277,
+      "code_lines": 99348,
+      "other_lines": 28929,
+      "message": "feat: 重构 DocGen 深度研究生成链路"
+    },
+    {
+      "date": "2026-04-18",
+      "commit": "47528e0",
+      "total_lines": 126052,
+      "code_lines": 97225,
+      "other_lines": 28827,
+      "message": "chore: 统一模型服务接入配置"
+    },
+    {
+      "date": "2026-04-18",
+      "commit": "bbc49e1",
+      "total_lines": 128291,
+      "code_lines": 99359,
+      "other_lines": 28932,
+      "message": "Merge branch 'dev_ywl_t' into dev_ywl"
+    },
+    {
+      "date": "2026-04-18",
+      "commit": "10cdf06",
+      "total_lines": 128248,
+      "code_lines": 99337,
+      "other_lines": 28911,
+      "message": "fix: 解耦 DocGen 图谱同步并修复 Markdown 渲染边界"
+    },
+    {
+      "date": "2026-04-18",
+      "commit": "ec9aad3",
+      "total_lines": 128656,
+      "code_lines": 99663,
+      "other_lines": 28993,
+      "message": "refactor: 清理 docgen 无名截断并提升编排可读性"
+    },
+    {
+      "date": "2026-04-18",
+      "commit": "b8f6700",
+      "total_lines": 126017,
+      "code_lines": 97199,
+      "other_lines": 28818,
+      "message": "chore: 优化设置"
+    },
+    {
+      "date": "2026-04-18",
+      "commit": "c50b6d9",
+      "total_lines": 126020,
+      "code_lines": 97202,
+      "other_lines": 28818,
+      "message": "chore: 对齐前端设置项展示"
+    },
+    {
+      "date": "2026-04-18",
+      "commit": "f2e9bca",
+      "total_lines": 128697,
+      "code_lines": 99671,
+      "other_lines": 29026,
+      "message": "Merge branch 'dev_ywl_t' into dev_ywl refactor: 梳理"
+    },
+    {
+      "date": "2026-04-18",
+      "commit": "bcfe114",
+      "total_lines": 125389,
+      "code_lines": 96639,
+      "other_lines": 28750,
+      "message": "chore: 文档更新"
+    },
+    {
+      "date": "2026-04-18",
+      "commit": "10fe655",
+      "total_lines": 128080,
+      "code_lines": 99126,
+      "other_lines": 28954,
+      "message": "Merge branch 'dev_ywl'"
+    },
+    {
+      "date": "2026-04-18",
+      "commit": "94a718b",
+      "total_lines": 129635,
+      "code_lines": 100419,
+      "other_lines": 29216,
+      "message": "Merge branch 'main' of github.com:aiteachme/AITeac"
+    },
+    {
+      "date": "2026-04-18",
+      "commit": "0fdf2b2",
+      "total_lines": 128860,
+      "code_lines": 99818,
+      "other_lines": 29042,
+      "message": "feat: 将 planner 会话同步到通用聊天记录"
+    },
+    {
+      "date": "2026-04-19",
+      "commit": "c5119d0",
+      "total_lines": 128907,
+      "code_lines": 99850,
+      "other_lines": 29057,
+      "message": "style: 简化 planner 计划卡片展示"
+    },
+    {
+      "date": "2026-04-19",
+      "commit": "9c2b93b",
+      "total_lines": 129222,
+      "code_lines": 100132,
+      "other_lines": 29090,
+      "message": "refactor: 深化 planner 计划步骤与提示词流程"
+    },
+    {
+      "date": "2026-04-19",
+      "commit": "2d554cb",
+      "total_lines": 129557,
+      "code_lines": 100407,
+      "other_lines": 29150,
+      "message": "docs: docgen文档更新"
+    },
+    {
+      "date": "2026-04-19",
+      "commit": "ba8b667",
+      "total_lines": 128530,
+      "code_lines": 99575,
+      "other_lines": 28955,
+      "message": "chore: 移除skill"
+    },
+    {
+      "date": "2026-04-19",
+      "commit": "3185090",
+      "total_lines": 128607,
+      "code_lines": 99653,
+      "other_lines": 28954,
+      "message": "chore: update docs"
+    },
+    {
+      "date": "2026-04-19",
+      "commit": "300d649",
+      "total_lines": 129633,
+      "code_lines": 100470,
+      "other_lines": 29163,
+      "message": "refactor: 精简设置页并移除旧配置项"
+    },
+    {
+      "date": "2026-04-19",
+      "commit": "9d13e9e",
+      "total_lines": 129614,
+      "code_lines": 100454,
+      "other_lines": 29160,
+      "message": "refactor: 移除独立 Mermaid 模型配置"
+    },
+    {
+      "date": "2026-04-19",
+      "commit": "3815e9e",
+      "total_lines": 128740,
+      "code_lines": 99663,
+      "other_lines": 29077,
+      "message": "docs: 同步 DocGen 当前流程与重构计划"
+    },
+    {
+      "date": "2026-04-19",
+      "commit": "a0857f9",
+      "total_lines": 129818,
+      "code_lines": 100591,
+      "other_lines": 29227,
+      "message": "feat: 接入 DocGen LLM 复核、局部修补与文生图"
+    },
+    {
+      "date": "2026-04-19",
+      "commit": "7a8e90b",
+      "total_lines": 129975,
+      "code_lines": 100686,
+      "other_lines": 29289,
+      "message": "fix: repair"
+    },
+    {
+      "date": "2026-04-19",
+      "commit": "62331f1",
+      "total_lines": 129654,
+      "code_lines": 100534,
+      "other_lines": 29120,
+      "message": "refactor: 删除未接入的 infra 预留层"
+    },
+    {
+      "date": "2026-04-19",
+      "commit": "860bdbb",
+      "total_lines": 130249,
+      "code_lines": 101012,
+      "other_lines": 29237,
+      "message": "refactor: 移除 Planner 写作语气参数"
+    },
+    {
+      "date": "2026-04-19",
+      "commit": "eb38bb2",
+      "total_lines": 130248,
+      "code_lines": 101011,
+      "other_lines": 29237,
+      "message": "refactor: 下沉 DocGen 构建生命周期入口"
+    },
+    {
+      "date": "2026-04-19",
+      "commit": "e25698e",
+      "total_lines": 130335,
+      "code_lines": 101089,
+      "other_lines": 29246,
+      "message": "fix: 限制 Planner 流式生成期间重复提交"
+    },
+    {
+      "date": "2026-04-19",
+      "commit": "d1bcf30",
+      "total_lines": 130441,
+      "code_lines": 101165,
+      "other_lines": 29276,
+      "message": "refactor: 收口 infra 检索与设置兼容"
+    },
+    {
+      "date": "2026-04-19",
+      "commit": "c422359",
+      "total_lines": 131029,
+      "code_lines": 101729,
+      "other_lines": 29300,
+      "message": "Merge branch 'dev_ywl' into dev_ywl_t"
+    },
+    {
+      "date": "2026-04-19",
+      "commit": "0d49f90",
+      "total_lines": 131114,
+      "code_lines": 101803,
+      "other_lines": 29311,
+      "message": "chore: update settings"
+    },
+    {
+      "date": "2026-04-19",
+      "commit": "3ed0e89",
+      "total_lines": 130587,
+      "code_lines": 101257,
+      "other_lines": 29330,
+      "message": "docs: 为 Digest Planner 和 DocGen 复杂函数补充中文说明"
+    },
+    {
+      "date": "2026-04-19",
+      "commit": "57cba9c",
+      "total_lines": 131366,
+      "code_lines": 101971,
+      "other_lines": 29395,
+      "message": "Merge branch 'dev_ywl_t' into dev_ywl"
+    },
+    {
+      "date": "2026-04-19",
+      "commit": "2152da3",
+      "total_lines": 131292,
+      "code_lines": 101908,
+      "other_lines": 29384,
+      "message": "refactor: 将 Planner 会话收敛到聊天表"
+    },
+    {
+      "date": "2026-04-19",
+      "commit": "8a88c23",
+      "total_lines": 131238,
+      "code_lines": 101865,
+      "other_lines": 29373,
+      "message": "refactor: 统一 Digest 用户输入字段并移除 course_type"
+    },
+    {
+      "date": "2026-04-19",
+      "commit": "24dbfe2",
+      "total_lines": 128008,
+      "code_lines": 98839,
+      "other_lines": 29169,
+      "message": "chore: restore local workspace after git metadata "
+    },
+    {
+      "date": "2026-04-19",
+      "commit": "455e88c",
+      "total_lines": 130111,
+      "code_lines": 100810,
+      "other_lines": 29301,
+      "message": "Merge remote-tracking branch 'origin/main' into de"
+    },
+    {
+      "date": "2026-04-19",
+      "commit": "973ae46",
+      "total_lines": 131170,
+      "code_lines": 101834,
+      "other_lines": 29336,
+      "message": "fix: 修复 DocGen Markdown 渲染与图片展示链路"
+    },
+    {
+      "date": "2026-04-19",
+      "commit": "8343616",
+      "total_lines": 126738,
+      "code_lines": 98926,
+      "other_lines": 27812,
+      "message": "docs: refacts doc"
+    },
+    {
+      "date": "2026-04-19",
+      "commit": "7b793f5",
+      "total_lines": 131230,
+      "code_lines": 101877,
+      "other_lines": 29353,
+      "message": "fix: 过滤知识文档同步中的教学脚手架节点"
+    },
+    {
+      "date": "2026-04-19",
+      "commit": "a942bd1",
+      "total_lines": 126782,
+      "code_lines": 98961,
+      "other_lines": 27821,
+      "message": "fix: 收紧用户 settings 入库逻辑"
+    },
+    {
+      "date": "2026-04-19",
+      "commit": "795fc25",
+      "total_lines": 126646,
+      "code_lines": 98867,
+      "other_lines": 27779,
+      "message": "Merge branch 'dev_ywl_t' into dev_ywl"
+    },
+    {
+      "date": "2026-04-19",
+      "commit": "b1c71b5",
+      "total_lines": 127618,
+      "code_lines": 99648,
+      "other_lines": 27970,
+      "message": "refactor: 收口工作流与基础设施架构"
+    },
+    {
+      "date": "2026-04-19",
+      "commit": "c6050fc",
+      "total_lines": 130617,
+      "code_lines": 101230,
+      "other_lines": 29387,
+      "message": "fix: update build status labels to use description"
+    },
+    {
+      "date": "2026-04-19",
+      "commit": "c0c7ad0",
+      "total_lines": 128605,
+      "code_lines": 100463,
+      "other_lines": 28142,
+      "message": "Merge remote-tracking branch 'origin/main' into de"
     }
   ]
 }
