@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Body, Depends
+from fastapi import APIRouter, BackgroundTasks, Body, Depends
 
 from sqlmodel import Session
 
@@ -94,6 +94,7 @@ async def update_system_settings(
 )
 async def submit_feedback(
     payload: FeedbackRequest,
+    background_tasks: BackgroundTasks,
     user: CurrentUserContext = Depends(get_current_user_context),
 ) -> ApiResponse[bool]:
     """提交用户反馈。"""
@@ -101,54 +102,95 @@ async def submit_feedback(
     import base64
     import logging
     import os
-    import time
     
     import httpx
 
     logger = logging.getLogger(__name__)
     
-    # 打印日志
     logger.info(f"[Feedback] User {user.user_id} ({user.email or 'Guest'}) submitted feedback:")
     logger.info(f"Content: {payload.content}")
+    logger.info(f"Image count: {len(payload.images)}")
 
-    screenshot_msg = ""
-    # 若有截图则保存在本地服务器 data 目录，以防丢失
-    if payload.screenshot and payload.screenshot.startswith("data:image"):
-        try:
-            header, encoded = payload.screenshot.split(",", 1)
-            img_data = base64.b64decode(encoded)
-            save_dir = os.path.join("data", "feedbacks")
-            os.makedirs(save_dir, exist_ok=True)
-            filename = f"feedback_{int(time.time())}_{user.user_id[:8]}.png"
-            screenshot_path = os.path.join(save_dir, filename)
-            with open(screenshot_path, "wb") as f:
-                f.write(img_data)
-            logger.info(f"Screenshot saved to {screenshot_path}")
-            screenshot_msg = f"\n📎 用户附带了截图，已保存在服务器本地：{screenshot_path}"
-        except Exception as e:
-            logger.error(f"Failed to save screenshot: {e}")
-            screenshot_msg = "\n📎 用户附带了截图，但保存失败。"
-            
-    # 推送至飞书群机器人（如果环境当中配置了 FEISHU_WEBHOOK_URL）
     feishu_webhook = os.getenv("FEISHU_WEBHOOK_URL")
+    feishu_app_id = os.getenv("FEISHU_APP_ID")
+    feishu_app_secret = os.getenv("FEISHU_APP_SECRET")
+    
     if feishu_webhook:
         user_info = user.email or f"访客 {user.user_id}"
-        text = f"📢 新的用户反馈 (来自: {user_info})\n\n"
-        text += f"内容：\n{payload.content}"
-        text += screenshot_msg
         
-        try:
-            # Fire-and-forget style push so we don't block
-            async with httpx.AsyncClient() as client:
-                await client.post(
-                    feishu_webhook,
-                    json={
-                        "msg_type": "text",
-                        "content": {"text": text}
-                    },
-                    timeout=5.0
-                )
-        except Exception as e:
-            logger.error(f"Failed to push feedback to Feishu webhook: {e}")
+        async def push_to_feishu():
+            try:
+                # Fire-and-forget style push so we don't block
+                async with httpx.AsyncClient() as client:
+                    tenant_access_token = None
+                    if feishu_app_id and feishu_app_secret and payload.images:
+                        auth_resp = await client.post(
+                            "https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal",
+                            json={"app_id": feishu_app_id, "app_secret": feishu_app_secret},
+                            timeout=5.0
+                        )
+                        if auth_resp.status_code == 200:
+                            data = auth_resp.json()
+                            if data.get("code") == 0:
+                                tenant_access_token = data.get("tenant_access_token")
+
+                    image_keys = []
+                    if tenant_access_token and payload.images:
+                        for idx, b64_img in enumerate(payload.images):
+                            if not b64_img.startswith("data:image"):
+                                continue
+                            try:
+                                header, encoded = b64_img.split(",", 1)
+                                img_bytes = base64.b64decode(encoded)
+                                upload_resp = await client.post(
+                                    "https://open.feishu.cn/open-apis/im/v1/images",
+                                    headers={"Authorization": f"Bearer {tenant_access_token}"},
+                                    data={"image_type": "message"},
+                                    files={"image": (f"screenshot_{idx}.png", img_bytes, "image/png")},
+                                    timeout=10.0
+                                )
+                                if upload_resp.status_code == 200:
+                                    resp_data = upload_resp.json()
+                                    if resp_data.get("code") == 0:
+                                        image_keys.append(resp_data["data"]["image_key"])
+                            except Exception as e:
+                                logger.error(f"Failed to upload image {idx} to feishu: {e}")
+
+                    if image_keys:
+                        post_content = [
+                            [{"tag": "text", "text": f"内容：\n{payload.content}\n\n附件截图：\n"}]
+                        ]
+                        for key in image_keys:
+                            post_content.append([{"tag": "img", "image_key": key}])
+                            
+                        await client.post(
+                            feishu_webhook,
+                            json={
+                                "msg_type": "post",
+                                "content": {
+                                    "post": {
+                                        "zh_cn": {
+                                            "title": f"📢 新的用户反馈 (来自: {user_info})",
+                                            "content": post_content
+                                        }
+                                    }
+                                }
+                            },
+                            timeout=5.0
+                        )
+                    else:
+                        text = f"📢 新的用户反馈 (来自: {user_info})\n\n内容：\n{payload.content}"
+                        if payload.images:
+                            text += f"\n\n📎 附带了 {len(payload.images)} 张截图。由于凭证问题或其他原因未能通过飞书接口上传图片展示。"
+                        await client.post(
+                            feishu_webhook,
+                            json={"msg_type": "text", "content": {"text": text}},
+                            timeout=5.0
+                        )
+            except Exception as e:
+                logger.error(f"Failed to push feedback to Feishu webhook: {e}")
+
+        # 使用 BackgroundTasks 进行真正的异步非阻塞执行
+        background_tasks.add_task(push_to_feishu)
 
     return ok_response(True)

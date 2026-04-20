@@ -5,12 +5,12 @@ import {
   AlertCircle,
   ArrowUp,
   BookOpen,
+  CheckCircle2,
   FileCode,
   FileImage,
   FileText,
   FileType,
   Loader2,
-  Network,
   Paperclip,
   Plus,
   RefreshCw,
@@ -470,12 +470,21 @@ function BuildInProgressBubble({
 
 function fileMeta(file: FileRecord) {
   if (file.markdown_ready) {
-    return { label: "已就绪", dot: "bg-emerald-500" };
+    return { 
+      label: "已就绪", 
+      icon: <CheckCircle2 className="ml-1 h-3.5 w-3.5 text-emerald-500" /> 
+    };
   }
   if (file.status === "failed") {
-    return { label: "失败", dot: "bg-red-500" };
+    return { 
+      label: "解析失败", 
+      icon: <AlertCircle className="ml-1 h-3.5 w-3.5 text-red-500" /> 
+    };
   }
-  return { label: "处理中", dot: "bg-sky-500 animate-pulse" };
+  return { 
+    label: "正在解析文件...", 
+    icon: <Loader2 className="ml-1 h-3.5 w-3.5 animate-spin text-sky-500" /> 
+  };
 }
 
 function fileIcon(file: FileRecord) {
@@ -1119,20 +1128,6 @@ export function BuildPlanPage() {
     [queryClient],
   );
 
-  const handleOpenKnowledgeGraph = useCallback(() => {
-    if (!subjectId) {
-      return;
-    }
-
-    navigate(`/subject/${subjectId}/knowledge-graph`, {
-      state: createGraphDebugBuildLocationState(
-        readyFiles.map((file) => ({
-          uid: file.uid,
-          filename: file.filename,
-        })),
-      ),
-    });
-  }, [navigate, readyFiles, subjectId]);
 
   const handleOpenKnowledgeDocs = useCallback(() => {
     if (!subjectId) {
@@ -1651,7 +1646,7 @@ export function BuildPlanPage() {
           </div>
         </div>
 
-        <div className={shouldShowBuildView ? "hidden" : "border-t border-zinc-200/60 bg-white/80 px-4 pb-4 pt-3 backdrop-blur-sm md:px-8 lg:px-16"}>
+        <div className={shouldShowBuildView ? "hidden" : "px-4 pb-6 pt-2 md:px-8 lg:px-16"}>
           <div className="mx-auto max-w-3xl">
             {isRevisingPlan ? (
               <div className="mb-2 flex items-center justify-between gap-3 rounded-2xl border border-violet-200 bg-violet-50 px-4 py-3 text-sm text-violet-700">
@@ -1706,7 +1701,7 @@ export function BuildPlanPage() {
                           <span className="max-w-[140px] truncate font-medium">
                             {file.filename}
                           </span>
-                          <span className={`${meta.dot} ml-1 h-1.5 w-1.5 rounded-full`} title={meta.label} />
+                          <span title={meta.label}>{meta.icon}</span>
                           <button
                             type="button"
                             onClick={() => deleteMutation.mutate(file.uid)}
@@ -1805,27 +1800,7 @@ export function BuildPlanPage() {
         onResolve={knowledgeBuild.resolvePrecheckConflict}
       />
 
-      {shouldShowBuildView ? null : (
-        <button
-          type="button"
-          onClick={handleOpenKnowledgeGraph}
-          className="fixed bottom-24 right-4 z-20 flex items-center gap-3 rounded-2xl border border-sky-200 bg-[linear-gradient(135deg,#082f49_0%,#0f766e_100%)] px-4 py-3 text-left text-white shadow-[0_18px_40px_-18px_rgba(8,47,73,0.55)] transition hover:-translate-y-0.5 hover:shadow-[0_22px_50px_-18px_rgba(8,47,73,0.6)] md:bottom-24 md:right-8"
-        >
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-white/14">
-            <Network className="h-5 w-5" />
-          </div>
-          <div className="min-w-0">
-            <div className="text-sm font-semibold">构建知识图谱</div>
-            <div className="mt-0.5 text-[11px] leading-4 text-sky-50/85">
-              {readyFiles.length > 0
-                ? `基于 ${readyFiles.length} 份已解析资料直达图谱调试`
-                : files.length > 0
-                  ? "文件还在解析中，可先进入图谱页调试入口"
-                  : "上传资料后可直接跳转图谱页调试构建"}
-            </div>
-          </div>
-        </button>
-      )}
+
     </>
   );
 }

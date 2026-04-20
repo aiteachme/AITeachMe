@@ -84,4 +84,4 @@ class FeedbackRequest(BaseModel):
     """用户体验与问题反馈请求。"""
 
     content: str = Field(description="反馈内容。")
-    screenshot: str | None = Field(default=None, description="可选的 Base64 截图。")
+    images: list[str] = Field(default_factory=list, description="可选的 Base64 截图列表。")
