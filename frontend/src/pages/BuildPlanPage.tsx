@@ -12,7 +12,6 @@ import {
   Loader2,
   Network,
   Paperclip,
-  Plus,
   RefreshCw,
   Sparkles,
   X,
@@ -126,11 +125,7 @@ function createWelcomeMessage() {
   return createMessage("assistant", WELCOME_MESSAGE_CONTENT);
 }
 
-function shouldStartWithoutWelcome(state: BuildPlanLocationState | null | undefined): boolean {
-  return Boolean(state?.autoStart && state.initialPrompt?.trim());
-}
-
-function createInitialMessages(state: BuildPlanLocationState | null | undefined = null): ChatMessage[] {
+function createInitialMessages(): ChatMessage[] {
   return [];
 }
 
@@ -361,15 +356,19 @@ function PlannerOutlineCard({
   needsRefresh,
   isDisabled,
   isBuilding,
+  publishedDocReady,
   onConfirm,
   onAdjust,
+  onOpenKnowledgeDocs,
 }: {
   plan: BuildPlannerPlanResponse;
   needsRefresh: boolean;
   isDisabled: boolean;
   isBuilding: boolean;
+  publishedDocReady: boolean;
   onConfirm: () => void;
   onAdjust: () => void;
+  onOpenKnowledgeDocs: () => void;
 }) {
   const outlineItems = buildPlannerOutlineItems(plan);
 
@@ -405,22 +404,35 @@ function PlannerOutlineCard({
           </span>
         ) : null}
         <div className="flex-1" />
-        <button
-          type="button"
-          onClick={onAdjust}
-          className="rounded-lg border border-zinc-200 bg-white px-4 py-2.5 text-sm font-medium text-zinc-700"
-        >
-          调整
-        </button>
-        <button
-          type="button"
-          onClick={onConfirm}
-          disabled={isDisabled}
-          className="inline-flex items-center justify-center gap-2 rounded-lg bg-zinc-950 px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
-        >
-          {isBuilding ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-          开始
-        </button>
+        {publishedDocReady ? (
+          <button
+            type="button"
+            onClick={onOpenKnowledgeDocs}
+            className="inline-flex items-center justify-center gap-2 rounded-lg bg-zinc-950 px-5 py-2.5 text-sm font-semibold text-white"
+          >
+            <BookOpen className="h-4 w-4" />
+            进入
+          </button>
+        ) : (
+          <>
+            <button
+              type="button"
+              onClick={onAdjust}
+              className="rounded-lg border border-zinc-200 bg-white px-4 py-2.5 text-sm font-medium text-zinc-700"
+            >
+              调整
+            </button>
+            <button
+              type="button"
+              onClick={onConfirm}
+              disabled={isDisabled}
+              className="inline-flex items-center justify-center gap-2 rounded-lg bg-zinc-950 px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
+            >
+              {isBuilding ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+              开始
+            </button>
+          </>
+        )}
       </div>
     </div>
   );
@@ -679,12 +691,11 @@ export function BuildPlanPage() {
   const plannerAbortControllerRef = useRef<AbortController | null>(null);
   const autoStartFiredRef = useRef(false);
 
-  const [messages, setMessages] = useState<ChatMessage[]>(() => createInitialMessages(navState));
+  const [messages, setMessages] = useState<ChatMessage[]>(() => createInitialMessages());
   const [plannerSessionId, setPlannerSessionId] = useState<string | null>(null);
   const [currentPlan, setCurrentPlan] = useState<BuildPlannerPlanResponse | null>(null);
   const [inputValue, setInputValue] = useState(navState?.initialPrompt ?? "");
   const [plannerNeedsRefresh, setPlannerNeedsRefresh] = useState(false);
-  const [filesTrayOpen, setFilesTrayOpen] = useState(true);
   const [hasAutoUploaded, setHasAutoUploaded] = useState(false);
   const [plannerStreaming, setPlannerStreaming] = useState(false);
   const [plannerStreamingPreview, setPlannerStreamingPreview] = useState("");
@@ -832,7 +843,7 @@ export function BuildPlanPage() {
             found: Boolean(session),
           });
           // No server history either — fresh start
-          setMessages(createInitialMessages(navState));
+          setMessages(createInitialMessages());
           setPlannerSessionId(null);
           setCurrentPlan(null);
           setInputValue(navState?.initialPrompt ?? "");
@@ -872,7 +883,7 @@ export function BuildPlanPage() {
         // 后端恢复失败时，回到一个干净的新会话。
         if (cancelled) return;
         logPlannerDebug("restore_latest_failed", { subjectId });
-        setMessages(createInitialMessages(navState));
+        setMessages(createInitialMessages());
         setPlannerSessionId(null);
         setCurrentPlan(null);
         setInputValue(navState?.initialPrompt ?? "");
@@ -1556,8 +1567,10 @@ export function BuildPlanPage() {
                           needsRefresh={plannerNeedsRefresh}
                           isDisabled={isBuilding || isPlannerPending}
                           isBuilding={isBuilding || isPlannerPending}
+                          publishedDocReady={hasLiveDocMarkdown && !isBuilding && !isPlannerPending}
                           onConfirm={handleConfirmBuild}
                           onAdjust={handleContinueAdjust}
+                          onOpenKnowledgeDocs={handleOpenKnowledgeDocs}
                         />
                       ) : null}
                     </>

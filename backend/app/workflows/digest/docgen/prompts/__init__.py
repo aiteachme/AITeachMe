@@ -4,7 +4,6 @@ from app.workflows.digest.docgen.prompts.assets import build_docgen_mermaid_prom
 from app.workflows.digest.docgen.prompts.chapter_review import build_chapter_review_messages
 from app.workflows.digest.docgen.prompts.chapter_critic import build_chapter_rewrite_messages
 from app.workflows.digest.docgen.prompts.finalize_titles import (
-    build_finalize_chapter_titles_messages,
     build_docgen_gap_query_messages,
     build_docgen_sub_query_messages,
 )
@@ -20,7 +19,6 @@ from app.workflows.digest.docgen.prompts.write_chapters import (
 
 __all__ = [
     "build_docgen_gap_query_messages",
-    "build_finalize_chapter_titles_messages",
     "build_docgen_heading_repair_messages",
     "build_docgen_mermaid_prompt",
     "build_docgen_research_purify_messages",

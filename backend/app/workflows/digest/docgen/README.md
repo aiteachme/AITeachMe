@@ -98,7 +98,7 @@ flowchart TD
 | 7 | `document_consistency_review` | 章节 review fan-in 后检查整本术语、标题、章节数、重复和风格一致性 |
 | 8 | `repair_or_route` | 对 `surface_patch` / `section_patch` 执行局部 Markdown patch，对证据补强和重写类动作结构化记录 |
 | 9 | `merge_review` | 按章去重排序，生成章节 metadata，合并 Markdown，做发布前完整性检查 |
-| 10 | `finalize_titles` | 用 LLM 复核并优化最终章节标题，同步改写章节 Markdown 一级标题，并重建整本 Markdown |
+| 10 | `finalize_titles` | 不再生成新标题，只同步前置执行合同锁定的标题到章节 Markdown 一级标题，并重建整本 Markdown |
 | 11 | `publish_document` | 写 `_build`、当前发布文件、版本归档、`docgen_manifest.json` 和 `KnowledgeDoc` rows |
 
 ## 5. 目录结构
@@ -225,7 +225,7 @@ title_review_report
 - patch 类动作只有真实修改正文才会标记为 `applied`；未执行的动作会进入 `repair_trace`。
 - 如果后续引入 repair loop，`chapter_drafts` / `enhanced_chapter_drafts` 这类 `operator.add` fan-in 字段需要版本化或按章替换，否则容易累积旧草稿。
 - DocGen 当前不直接生成讲义配图；复杂可视化后续应优先走 Mermaid 或 OpenMAIC 风格的交互式 HTML/scene 资产。
-- `final_merge_patch` 尚未独立实现，合并后才暴露的小问题只能由 `merge_review` / `finalize_titles` 间接收口。
+- `final_merge_patch` 尚未独立实现，合并后才暴露的小问题只能由 `merge_review` 间接收口；`finalize_titles` 只做锁定标题同步。
 
 这些问题都不要求立刻大改 graph，但应该按 `REFACTOR_PLAN.md` 的顺序小步处理。
 

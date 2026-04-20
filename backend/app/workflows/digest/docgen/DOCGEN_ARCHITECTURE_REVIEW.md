@@ -268,7 +268,7 @@ practice_manifests
 
 现状：
 
-- 合并后才暴露的小问题由 `merge_review` / `finalize_titles` 间接处理。
+- 合并后才暴露的小问题主要由 `merge_review` 间接处理；`finalize_titles` 只同步已锁定标题，不再改写标题语义。
 - 没有独立节点记录 final merge patch。
 
 影响：
