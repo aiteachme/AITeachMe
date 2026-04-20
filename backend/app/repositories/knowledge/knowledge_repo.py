@@ -162,6 +162,13 @@ def get_chunk_by_id(session: Session, chunk_id: int) -> RetrievalChunk | None:
     return session.get(RetrievalChunk, chunk_id)
 
 
+def get_chunks_by_ids(session: Session, chunk_ids: list[int]) -> list[RetrievalChunk]:
+    if not chunk_ids:
+        return []
+    statement = select(RetrievalChunk).where(RetrievalChunk.id.in_(chunk_ids))
+    return list(session.exec(statement).all())
+
+
 def delete_chunks_by_document_ids(session: Session, *, subject: str, document_ids: list[int]) -> int:
     chunks = get_chunks_by_document_ids(session, document_ids)
     chunk_ids = [chunk.id for chunk in chunks if chunk.id is not None]
@@ -390,9 +397,16 @@ def vector_search(
         return []
 
     hits = query_subject_index(subject, query_embedding, top_k=top_k)
+    if not hits:
+        return []
+        
+    chunk_ids = [hit.chunk_id for hit in hits]
+    chunks = get_chunks_by_ids(session, chunk_ids)
+    chunk_by_id = {chunk.id: chunk for chunk in chunks if chunk.id is not None}
+    
     results: list[ChunkSearchResult] = []
     for hit in hits:
-        chunk = session.get(RetrievalChunk, hit.chunk_id)
+        chunk = chunk_by_id.get(hit.chunk_id)
         if chunk is None:
             continue
         results.append(ChunkSearchResult(chunk=chunk, score=float(hit.score)))

@@ -16,9 +16,11 @@ import type {
 } from '@tanstack/react-query';
 
 import type {
+  ApiResponseBool,
   ApiResponseInitData,
   ApiResponseSettingsOverviewData,
   ErrorResponse,
+  FeedbackRequest,
   HTTPValidationError,
   InitRequest,
   UpdateUserSettingsRequest
@@ -316,5 +318,100 @@ export const useUpdateSystemSettingsApiV1SystemSettingsPatch = <TError = ErrorRe
         TContext
       > => {
       return useMutation(getUpdateSystemSettingsApiV1SystemSettingsPatchMutationOptions(options), queryClient);
+    }
+    /**
+ * 接收用户的意见反馈及可选截图。
+ * @summary 提交意见反馈
+ */
+export type submitFeedbackApiV1SystemFeedbackPostResponse200 = {
+  data: ApiResponseBool
+  status: 200
+}
+
+export type submitFeedbackApiV1SystemFeedbackPostResponse422 = {
+  data: HTTPValidationError
+  status: 422
+}
+
+export type submitFeedbackApiV1SystemFeedbackPostResponse500 = {
+  data: ErrorResponse
+  status: 500
+}
+
+export type submitFeedbackApiV1SystemFeedbackPostResponseSuccess = (submitFeedbackApiV1SystemFeedbackPostResponse200) & {
+  headers: Headers;
+};
+export type submitFeedbackApiV1SystemFeedbackPostResponseError = (submitFeedbackApiV1SystemFeedbackPostResponse422 | submitFeedbackApiV1SystemFeedbackPostResponse500) & {
+  headers: Headers;
+};
+
+export type submitFeedbackApiV1SystemFeedbackPostResponse = (submitFeedbackApiV1SystemFeedbackPostResponseSuccess | submitFeedbackApiV1SystemFeedbackPostResponseError)
+
+export const getSubmitFeedbackApiV1SystemFeedbackPostUrl = () => {
+
+
+  
+
+  return `/api/v1/system/feedback`
+}
+
+export const submitFeedbackApiV1SystemFeedbackPost = async (feedbackRequest: FeedbackRequest, options?: RequestInit): Promise<submitFeedbackApiV1SystemFeedbackPostResponse> => {
+  
+  return orvalApiClient<submitFeedbackApiV1SystemFeedbackPostResponse>(getSubmitFeedbackApiV1SystemFeedbackPostUrl(),
+  {      
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      feedbackRequest,)
+  }
+);}
+  
+
+
+
+export const getSubmitFeedbackApiV1SystemFeedbackPostMutationOptions = <TError = HTTPValidationError | ErrorResponse,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof submitFeedbackApiV1SystemFeedbackPost>>, TError,{data: FeedbackRequest}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
+): UseMutationOptions<Awaited<ReturnType<typeof submitFeedbackApiV1SystemFeedbackPost>>, TError,{data: FeedbackRequest}, TContext> => {
+
+const mutationKey = ['submitFeedbackApiV1SystemFeedbackPost'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+      
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof submitFeedbackApiV1SystemFeedbackPost>>, {data: FeedbackRequest}> = (props) => {
+          const {data} = props ?? {};
+
+          return  submitFeedbackApiV1SystemFeedbackPost(data,requestOptions)
+        }
+
+
+
+        
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SubmitFeedbackApiV1SystemFeedbackPostMutationResult = NonNullable<Awaited<ReturnType<typeof submitFeedbackApiV1SystemFeedbackPost>>>
+    export type SubmitFeedbackApiV1SystemFeedbackPostMutationBody = FeedbackRequest
+    export type SubmitFeedbackApiV1SystemFeedbackPostMutationError = HTTPValidationError | ErrorResponse
+
+    /**
+ * @summary 提交意见反馈
+ */
+export const useSubmitFeedbackApiV1SystemFeedbackPost = <TError = HTTPValidationError | ErrorResponse,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof submitFeedbackApiV1SystemFeedbackPost>>, TError,{data: FeedbackRequest}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof submitFeedbackApiV1SystemFeedbackPost>>,
+        TError,
+        {data: FeedbackRequest},
+        TContext
+      > => {
+      return useMutation(getSubmitFeedbackApiV1SystemFeedbackPostMutationOptions(options), queryClient);
     }
     

@@ -8,6 +8,7 @@
 
 export * from './aliasItem';
 export * from './apiResponseAuthSessionData';
+export * from './apiResponseBool';
 export * from './apiResponseBuildPlannerConfirmResponse';
 export * from './apiResponseBuildPlannerSessionResponse';
 export * from './apiResponseChatClearData';
@@ -115,6 +116,7 @@ export * from './examSubmitRequest';
 export * from './exportOptions';
 export * from './exportPreviewData';
 export * from './exportPreviewStats';
+export * from './feedbackRequest';
 export * from './fileAssetItem';
 export * from './fileDeleteData';
 export * from './fileDeleteRequest';
