@@ -139,6 +139,8 @@ export * from './knowledgeBuildStatusResponse';
 export * from './knowledgeDebugTriggerRequest';
 export * from './knowledgeDebugTriggerResponse';
 export * from './knowledgeDebugTriggerResponseAction';
+export * from './knowledgeDocsExportApiV1SubjectsSubjectKnowledgeDocsExportGetFormat';
+export * from './knowledgeDocsExportApiV1SubjectsSubjectKnowledgeDocsExportGetParams';
 export * from './knowledgeOverviewRequest';
 export * from './knowledgeOverviewResponse';
 export * from './knowledgeOverviewStats';
