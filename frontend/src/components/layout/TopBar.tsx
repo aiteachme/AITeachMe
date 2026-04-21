@@ -328,6 +328,7 @@ export function TopBar({ className }: TopBarProps) {
 
   return (
     <div className={cn("flex items-center gap-3", className)}>
+      <div className="hidden sm:block">
         <div 
           className="relative" 
           ref={dropdownRef}
