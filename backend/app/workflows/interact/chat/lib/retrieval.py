@@ -279,8 +279,17 @@ async def _retrieve_vector_context(
 
     from app.shared.infra.search.llamaindex_adapter import build_knowledge_retriever
 
-    retriever = build_knowledge_retriever(subject=subject, top_k=top_k)
-    nodes = await retriever.aretrieve(query)
+    try:
+        retriever = build_knowledge_retriever(subject=subject, top_k=top_k)
+        nodes = await retriever.aretrieve(query)
+    except Exception as exc:
+        logger.warning(
+            "interact_vector_retrieval_soft_failed",
+            subject=subject,
+            error=str(exc),
+            fallback="graph_only",
+        )
+        return []
 
     results: list[RetrievedContext] = []
     for node_with_score in nodes:

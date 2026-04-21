@@ -568,7 +568,7 @@ def _find_unit_with_rag(
         _build_dedup_text(unit.canonical_name, unit.summary, unit.body_markdown or unit.body)
         for unit in candidates
     ]
-    embeddings = _run_async(aembed_texts([candidate_text, *existing_texts]))
+    embeddings = _run_async(aembed_texts([candidate_text, *existing_texts], soft_fail=True))
     if len(embeddings) < 2:
         return None
 

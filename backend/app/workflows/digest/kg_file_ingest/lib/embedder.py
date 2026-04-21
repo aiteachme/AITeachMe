@@ -20,12 +20,18 @@ async def embed_chunks(chunks: list[ChunkData]) -> list[list[float]]:
         f"{chunk.title}\n{chunk.content}".strip()
         for chunk in chunks
     ]
-    embeddings = await aembed_texts(texts)
+    embeddings = await aembed_texts(texts, soft_fail=True)
+    if not embeddings:
+        logger.warning(
+            "embed_chunks_soft_skipped",
+            chunk_count=len(chunks),
+            reason="embedding_call_unavailable_or_failed",
+        )
+        return []
     logger.info(
         "embed_chunks_complete",
         chunk_count=len(chunks),
         embedding_dim=len(embeddings[0]) if embeddings else 0,
     )
     return embeddings
-
 

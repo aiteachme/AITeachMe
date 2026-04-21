@@ -95,7 +95,7 @@ async def cluster_candidates(
     # ── Step 2: 同 knowledge_unit_type 内 embedding 相似度合并 ──
     # 为每个簇的代表生成 embedding
     repr_texts = [cluster[0][0].name + "：" + cluster[0][0].local_summary for cluster in proto_clusters]
-    embeddings = await aembed_texts(repr_texts)
+    embeddings = await aembed_texts(repr_texts, soft_fail=True)
 
     # 按 knowledge_unit_type + taxonomy bucket + token bucket 分桶，避免 O(n2) 扫整类。
     bucket_to_indices: dict[tuple[str, str, str], list[int]] = defaultdict(list)
@@ -124,16 +124,24 @@ async def cluster_candidates(
             parent[rb] = ra
 
     compared_pairs = 0
-    for indices in bucket_to_indices.values():
-        if len(indices) <= 1:
-            continue
-        for idx_a, idx_b in combinations(indices, 2):
-            if find(idx_a) == find(idx_b):
+    if len(embeddings) < len(proto_clusters):
+        logger.warning(
+            "knowledge_cluster_semantic_merge_soft_skipped",
+            cluster_count=len(proto_clusters),
+            available_embedding_count=len(embeddings),
+            reason="embedding_call_unavailable_or_failed",
+        )
+    else:
+        for indices in bucket_to_indices.values():
+            if len(indices) <= 1:
                 continue
-            sim = _cosine_similarity(embeddings[idx_a], embeddings[idx_b])
-            compared_pairs += 1
-            if sim >= similarity_threshold:
-                union(idx_a, idx_b)
+            for idx_a, idx_b in combinations(indices, 2):
+                if find(idx_a) == find(idx_b):
+                    continue
+                sim = _cosine_similarity(embeddings[idx_a], embeddings[idx_b])
+                compared_pairs += 1
+                if sim >= similarity_threshold:
+                    union(idx_a, idx_b)
 
     # 收集最终簇
     root_to_members: dict[int, list[tuple[CandidateNode, int]]] = defaultdict(list)
@@ -171,5 +179,4 @@ async def cluster_candidates(
         bucket_count=len(bucket_to_indices),
     )
     return clustered, candidate_lookup_to_cluster_id
-
 
