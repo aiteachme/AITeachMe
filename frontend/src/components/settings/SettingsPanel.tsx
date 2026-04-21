@@ -635,8 +635,7 @@ function EditableSettingsList({
           <div key={entry.key} className="space-y-2 rounded-lg border border-zinc-100 bg-zinc-50/40 px-4 py-3">
             <div className="flex flex-wrap items-start justify-between gap-2">
               <div>
-                <label className="block text-[13px] font-semibold text-zinc-700">{entry.label}</label>
-                <div className="mt-0.5 font-mono text-[11px] text-zinc-400">{entry.key}</div>
+                <label className="block text-[13px] font-semibold text-zinc-700" title={entry.key}>{entry.label}</label>
               </div>
               <SourcePill source={entry.source} />
             </div>
@@ -860,38 +859,46 @@ export function SettingsPanel({ isOpen, onClose }: SettingsModalProps) {
     }
   };
 
+  const isLocal = overview ? overview.mode === "local" : true;
+
   const renderConnection = () => (
     <div className="space-y-5">
-      <InfoCard text="先保证前端能连到后端，后端能连到模型。这里的密钥只保存在当前浏览器。" />
-      <EnvGroupList groups={CONNECTION_ENV_GROUPS} values={draft.localEnv} onChange={patchEnvVar} />
-      <div className="flex flex-wrap items-center gap-2">
-        <button
-          type="button"
-          onClick={testConnection}
-          disabled={isTestingConnection}
-          className="inline-flex h-[38px] items-center gap-1.5 rounded-lg border border-zinc-200 bg-white px-3 text-[12px] font-medium text-zinc-600 transition hover:text-zinc-900 disabled:opacity-50"
-        >
-          {isTestingConnection ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
-          测试 LLM
-        </button>
-      </div>
-      <AnimatePresence>
-        {connectionStatus !== "idle" ? (
-          <motion.div
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: "auto" }}
-            exit={{ opacity: 0, height: 0 }}
-            className={`overflow-hidden rounded-lg border px-4 py-3 text-[12px] leading-relaxed ${
-              connectionStatus === "success"
-                ? "border-emerald-200 bg-emerald-50/60 text-emerald-700"
-                : "border-red-200 bg-red-50/60 text-red-600"
-            }`}
-          >
-            {connectionMessage}
-          </motion.div>
-        ) : null}
-      </AnimatePresence>
-      <SectionDivider label="后端当前状态" />
+      {isLocal ? (
+        <>
+          <InfoCard text="先保证前端能连到后端，后端能连到模型。这里的密钥只保存在当前浏览器。" />
+          <EnvGroupList groups={CONNECTION_ENV_GROUPS} values={draft.localEnv} onChange={patchEnvVar} />
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={testConnection}
+              disabled={isTestingConnection}
+              className="inline-flex h-[38px] items-center gap-1.5 rounded-lg border border-zinc-200 bg-white px-3 text-[12px] font-medium text-zinc-600 transition hover:text-zinc-900 disabled:opacity-50"
+            >
+              {isTestingConnection ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+              测试 LLM
+            </button>
+          </div>
+          <AnimatePresence>
+            {connectionStatus !== "idle" ? (
+              <motion.div
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: "auto" }}
+                exit={{ opacity: 0, height: 0 }}
+                className={`overflow-hidden rounded-lg border px-4 py-3 text-[12px] leading-relaxed ${
+                  connectionStatus === "success"
+                    ? "border-emerald-200 bg-emerald-50/60 text-emerald-700"
+                    : "border-red-200 bg-red-50/60 text-red-600"
+                }`}
+              >
+                {connectionMessage}
+              </motion.div>
+            ) : null}
+          </AnimatePresence>
+          <SectionDivider label="后端当前状态" />
+        </>
+      ) : (
+        <InfoCard text="云端模式下，基础连接与鉴权配置由服务器环境变量管理。" />
+      )}
       <ReadonlySettingsList
         entries={getEntries("runtime", "models").filter((entry) => CORE_STATUS_KEYS.has(entry.key))}
         loading={isOverviewLoading}
@@ -929,8 +936,12 @@ export function SettingsPanel({ isOpen, onClose }: SettingsModalProps) {
         loading={isOverviewLoading}
         error={overviewError}
       />
-      <SectionDivider label="解析服务密钥" />
-      <EnvGroupList groups={LEARNING_ENV_GROUPS} values={draft.localEnv} onChange={patchEnvVar} />
+      {isLocal && (
+        <>
+          <SectionDivider label="解析服务密钥" />
+          <EnvGroupList groups={LEARNING_ENV_GROUPS} values={draft.localEnv} onChange={patchEnvVar} />
+        </>
+      )}
       <SectionDivider label="上传时解析偏好" />
       <div className="space-y-3">
         <SelectInput
