@@ -10,7 +10,6 @@ from app.api.deps import CurrentUserContext, get_current_user_context, get_db
 from app.api.openapi import build_error_responses
 from app.schemas.common import ApiResponse, ok_response
 from app.schemas.system import FeedbackRequest, InitData, InitRequest, SettingsOverviewData, UpdateUserSettingsRequest
-from app.shared.infra.settings import DEFAULT_PROJECT_SETTINGS_FILENAME
 from app.workflows.support.system import (
     build_init_data,
     build_settings_overview_data,
@@ -48,7 +47,7 @@ async def init_system(
     "/settings",
     response_model=ApiResponse[SettingsOverviewData],
     summary="读取后端设置总览",
-    description=f"返回环境变量与 {DEFAULT_PROJECT_SETTINGS_FILENAME} 合并后的只读设置概览。",
+    description="返回环境变量、代码默认值与可选项目 settings override 合并后的只读设置概览。",
     responses=build_error_responses([500]),
 )
 async def get_system_settings(
@@ -64,8 +63,8 @@ async def get_system_settings(
 @router.patch(
     "/settings",
     response_model=ApiResponse[SettingsOverviewData],
-    summary="更新当前用户 settings",
-    description=f"保存当前用户的非敏感 {DEFAULT_PROJECT_SETTINGS_FILENAME} 同构 settings 覆盖；密钥类环境变量不通过此接口保存。",
+    summary="更新本地模式服务端设置",
+    description="本地模式下保存非敏感系统设置覆盖，并可写回本地 .env；云端普通用户无写权限。",
     responses=build_error_responses([422, 500]),
 )
 async def update_system_settings(
@@ -73,13 +72,14 @@ async def update_system_settings(
     user: CurrentUserContext = Depends(get_current_user_context),
     session: Session = Depends(get_db),
 ) -> ApiResponse[SettingsOverviewData]:
-    """更新当前用户 settings 覆盖。"""
+    """更新本地模式服务端设置。"""
 
     return ok_response(
         update_user_settings_overview_data(
             session=session,
             user_id=user.user_id,
             settings_payload=payload.settings,
+            env_payload=payload.env,
             reset=payload.reset,
         )
     )

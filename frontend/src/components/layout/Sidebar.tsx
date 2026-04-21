@@ -262,12 +262,17 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
           isMobileOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0",
         )}
       >
-        <div className="flex h-14 items-center justify-between border-b border-slate-100 px-4">
+        <div
+          className={cn(
+            "flex h-14 items-center border-b border-slate-100",
+            effectiveCollapsed ? "justify-center px-0" : "justify-between px-4",
+          )}
+        >
           {!effectiveCollapsed ? (
             <Link to="/" className="flex items-center gap-2 text-slate-900">
               <span className="text-lg font-bold">AITeachMe</span>
             </Link>
-          ) : <div />}
+          ) : null}
           <button
             type="button"
             onClick={() => setIsCollapsed((prev) => !prev)}
@@ -278,23 +283,42 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
           </button>
         </div>
 
-        <div className="space-y-2 p-3">
-          <Button
-            variant="outline"
-            className={cn(effectiveCollapsed ? "mx-auto h-10 w-10 px-0" : "w-full justify-start")}
-            onClick={() => {
-              setSubjectActionError(undefined);
-              setOpenMenuId(null);
-              setIsMobileOpen(false);
-              navigate("/", {
-                state: { newEntryAt: Date.now() },
-              });
-            }}
-            title={effectiveCollapsed ? "新建学科" : undefined}
-          >
-            <Plus className="h-4 w-4 shrink-0" />
-            {!effectiveCollapsed ? <span className="ml-2">新建学科</span> : null}
-          </Button>
+        <div className={cn("space-y-2", effectiveCollapsed ? "px-0 py-3" : "p-3")}>
+          {effectiveCollapsed ? (
+            <div className="flex justify-center">
+              <button
+                type="button"
+                onClick={() => {
+                  setSubjectActionError(undefined);
+                  setOpenMenuId(null);
+                  setIsMobileOpen(false);
+                  navigate("/", {
+                    state: { newEntryAt: Date.now() },
+                  });
+                }}
+                title="新建学科"
+                className="flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-700 shadow-sm transition-all hover:border-slate-300 hover:bg-slate-50 hover:text-slate-900"
+              >
+                <Plus className="h-4 w-4 shrink-0" />
+              </button>
+            </div>
+          ) : (
+            <Button
+              variant="outline"
+              className="w-full justify-start"
+              onClick={() => {
+                setSubjectActionError(undefined);
+                setOpenMenuId(null);
+                setIsMobileOpen(false);
+                navigate("/", {
+                  state: { newEntryAt: Date.now() },
+                });
+              }}
+            >
+              <Plus className="h-4 w-4 shrink-0" />
+              <span className="ml-2">新建学科</span>
+            </Button>
+          )}
 
           {!effectiveCollapsed && subjectActionError ? (
             <p className="px-1 text-xs text-red-500">{subjectActionError}</p>

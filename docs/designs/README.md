@@ -1,6 +1,6 @@
 # AITeachMe 设计文档
 
-最后更新：2026-04-19
+最后更新：2026-04-21
 
 `docs/designs/` 只保留当前系统设计和少量长期演进方向。历史重构子目录已经删除；已落地的重构结论已下沉到当前主文档。
 
@@ -32,6 +32,12 @@
 | `14c_cloud_dev_handover.md` | 云端开发交接说明 |
 | `15_export_import.md` | `.atmx` 导入导出设计 |
 | `16_cloud_db_migrations.md` | 云端 PostgreSQL 迁移、校验与运维流程 |
+| `17_settings_config_ownership.md` | 设置、环境变量、数据库覆盖与 local/cloud 页面边界 |
+| `18_effective_settings_runtime.md` | effective settings 的合并规则与运行时真相 |
+| `19_docgen_cover_sidecar.md` | DocGen 封面 sidecar、配置归属与发布接入方式 |
+| `20_docgen_live_build_experience.md` | 知识文档构建实时可视化与 SSE 方案 |
+| `20b_docgen_sse_event_protocol.md` | 知识文档构建 SSE 事件协议草案 |
+| `21_docgen_build_workspace_experience.md` | 知识文档构建工作台、页面主路径与过程体验设计 |
 | `future.md` | 未来学习形态与产品路线 |
 
 ## 文档维护规则

@@ -1,4 +1,4 @@
-"""Ingest runtime shared helpers, DTOs and utility functions."""
+"""Shared ingest runtime helpers used by parse/finalize/enhance nodes."""
 
 from __future__ import annotations
 
@@ -8,16 +8,12 @@ import mimetypes
 import re
 from pathlib import Path
 
-import structlog
-
 from app.models import RawFileAsset
 
 try:
     from PIL import Image
 except ImportError:
     Image = None
-
-logger = structlog.get_logger()
 
 _PAGE_RE = re.compile(r"(?:page|p|slide|s)[_\-]?(\d{1,4})", re.IGNORECASE)
 
@@ -37,18 +33,6 @@ class _MinerUFastParseResult:
     needs_enhance: bool
     needs_quality_reparse: bool = False
     needs_asset_ocr: bool = False
-
-
-def create_parse_file_initial_state(*, subject: str, file_id: int):
-    from app.workflows.ingest.fast_parse.state import IngestParseState
-
-    return {
-        "subject": subject,
-        "file_id": file_id,
-        "error": None,
-    }
-
-
 def _guess_asset_kind(filename: str) -> str:
     lowered = filename.lower()
     if "formula" in lowered or "equation" in lowered or "latex" in lowered:
@@ -79,21 +63,6 @@ def _compute_quality_score(*, markdown: str, image_count: int, classification: d
     if classification.get("has_formulas"):
         score += 0.05
     return max(0.0, min(round(score, 3), 1.0))
-
-
-def _resolve_mineru_token_source(*, requested_parser_provider: str | None, mineru_token: str | None) -> str:
-    """Label the effective MinerU token source for safe diagnostics.
-
-    We only expose the source label in logs; the token value itself must never be logged.
-    """
-
-    if requested_parser_provider != "mineru":
-        return "not_requested"
-    if mineru_token and mineru_token.strip():
-        return "request_or_env"
-    return "missing"
-
-
 def _read_image_dimensions(path: Path) -> tuple[int | None, int | None]:
     if Image is None:
         return None, None

@@ -5,10 +5,10 @@ from __future__ import annotations
 import re
 from time import perf_counter
 
-from app.shared.infra.tools.builtin.markdown_processing import prepend_table_of_contents
 from app.shared.infra.workflow.context import WorkflowContext
 from app.utils.docgen_store import append_knowledge_build_recent_event, update_knowledge_build_status
 from app.utils.time import utcnow
+from app.workflows.digest.docgen.lib.cover import build_docgen_cover_markdown, read_docgen_cover_artifact
 from app.workflows.digest.docgen.lib.publish import build_merged_markdown
 from app.workflows.digest.docgen.nodes.common import publish_docgen_progress
 from app.workflows.digest.docgen.state import DocGenState
@@ -85,13 +85,17 @@ def build_finalize_titles_node(*, context: WorkflowContext):
                 }
             )
 
-        merged_markdown = prepend_table_of_contents(
-            build_merged_markdown(
-                updated_chapters,
-                document_context=dict(state.get("document_context") or {}),
-            ),
-            min_level=2,
-            max_level=4,
+        cover_artifact = dict(state.get("cover_artifact") or {})
+        if not cover_artifact:
+            cover_artifact = dict(await read_docgen_cover_artifact(state["subject"]) or {})
+        cover_markdown = str(state.get("cover_markdown") or "").strip()
+        if not cover_markdown:
+            cover_markdown = build_docgen_cover_markdown(cover_artifact)
+
+        merged_markdown = build_merged_markdown(
+            updated_chapters,
+            document_context=dict(state.get("document_context") or {}),
+            cover_markdown=cover_markdown,
         )
         elapsed_ms = int((perf_counter() - started_at) * 1000)
         update_knowledge_build_status(
@@ -125,6 +129,8 @@ def build_finalize_titles_node(*, context: WorkflowContext):
         )
         return {
             "chapter_metadatas": updated_chapters,
+            "cover_artifact": cover_artifact,
+            "cover_markdown": cover_markdown,
             "merged_markdown": merged_markdown,
             "enriched_markdown": merged_markdown,
             "final_chapter_titles": title_records,

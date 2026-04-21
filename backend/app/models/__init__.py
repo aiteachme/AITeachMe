@@ -36,7 +36,7 @@ from app.models.knowledge_unit import KnowledgeAlias, KnowledgeRevision, Knowled
 from app.models.profile import UserKnowledgeState
 from app.models.raw_file import RawFile, RawFileAsset
 from app.models.subject import Subject
-from app.models.system import SystemSettingsSnapshot, UserRuntimeSettings
+from app.models.system import SystemRuntimeSettings, SystemSettingsSnapshot, UserRuntimeSettings
 from app.models.user import User
 
 __all__ = [
@@ -76,6 +76,7 @@ __all__ = [
     "ReviewTaskType",
     "Subject",
     "SystemSettingsSnapshot",
+    "SystemRuntimeSettings",
     "UserRuntimeSettings",
     "TaskStatus",
     "TemplateNodeRole",

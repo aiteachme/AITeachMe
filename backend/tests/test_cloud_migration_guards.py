@@ -59,6 +59,7 @@ def test_cloud_postgres_init_does_not_create_tables(monkeypatch: pytest.MonkeyPa
 
     monkeypatch.setattr(core, "get_engine", lambda: engine)
     monkeypatch.setattr(core, "assert_postgres_runtime_schema_ready", lambda **kwargs: None)
+    monkeypatch.setattr(core, "_refresh_system_settings_override", lambda *args, **kwargs: None)
     monkeypatch.setattr(core, "_upsert_settings_snapshot", lambda *args, **kwargs: None)
     monkeypatch.setattr(core.SQLModel.metadata, "create_all", fail_create_all)
 

@@ -8,7 +8,10 @@ import structlog
 from sqlmodel import Session, func, select
 
 from app.shared.infra.runtime import is_local_mode
-from app.shared.infra.storage import get_content_store
+from app.shared.infra.storage import (
+    get_content_store,
+    resolve_subject_storage_scope,
+)
 from app.models import (
     ChatMessage,
     ChatSession,
@@ -153,7 +156,7 @@ async def delete_subject_artifacts_async(subject_slug: str) -> None:
     """Delete all stored files for one subject through ContentStore."""
 
     cs = get_content_store()
-    await cs.delete_prefix(cs.subject_prefix(subject_slug))
+    await cs.delete_prefix(resolve_subject_storage_scope(subject_slug).subject_prefix())
     # Also clean local runtime directories when present.
     _delete_subject_directory(subject_slug)
 
@@ -232,20 +235,14 @@ def _delete_raw_files_and_artifacts(session: Session, *, subject: str) -> None:
     if not raw_files:
         return
 
+    cs = get_content_store()
     for raw_file in raw_files:
         if is_local_mode():
-            # Local mode keeps the original direct file cleanup.
             for path_value in [raw_file.file_path, raw_file.markdown_path]:
                 if path_value:
-                    Path(path_value).unlink(missing_ok=True)
-            delete_asset_files(
-                raw_file.asset_dir,
-                asset_name_prefix=build_asset_name_prefix(
-                    filename=raw_file.filename,
-                    file_uid=raw_file.uid,
-                    file_id=raw_file.id,
-                ),
-            )
+                    run_store_sync(cs.delete, path_value, default=None)
+            if raw_file.asset_dir:
+                run_store_sync(cs.delete_prefix, raw_file.asset_dir.rstrip("/") + "/", default=0)
         # Cloud artifact cleanup is handled by delete_subject_artifacts_async().
         session.delete(raw_file)
     session.commit()

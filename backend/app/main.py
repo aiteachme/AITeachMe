@@ -10,7 +10,6 @@ import structlog
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from fastapi.staticfiles import StaticFiles
 
 from app.shared.infra.settings import get_settings
 from app.shared.infra.database import init_db
@@ -86,11 +85,13 @@ def _log_infra_diagnostics(settings) -> None:
 
     import os
     from app.shared.infra.database import get_engine, is_postgres, is_sqlite, is_vec_ready
-    from app.workflows.digest.common.runtime_config import get_teaching_runtime_settings_path
+    from app.workflows.digest.common.runtime_config import (
+        get_teaching_runtime_settings_source,
+    )
 
     engine = get_engine()
     dialect = engine.dialect.name
-    project_settings_path = get_teaching_runtime_settings_path()
+    project_settings_source = get_teaching_runtime_settings_source()
 
     app_mode = resolve_app_mode()
     storage_backend = get_storage_backend()
@@ -108,7 +109,8 @@ def _log_infra_diagnostics(settings) -> None:
         f"    APP_MODE (resolved)    : {app_mode}",
         f"    DATABASE_URL           : {'SET' if os.environ.get('DATABASE_URL') else '!! NOT_SET !!'}",
         f"    STORAGE_BACKEND        : {os.environ.get('STORAGE_BACKEND', '!! NOT_SET !!')}",
-        f"    PROJECT_SETTINGS_PATH  : {project_settings_path}",
+        f"    PROJECT_SETTINGS_PATH  : {os.environ.get('PROJECT_SETTINGS_PATH', 'NOT_SET')}",
+        f"    Settings Source        : {project_settings_source}",
         f"    RENDER                 : {os.environ.get('RENDER', 'NOT_SET')}",
         "",
         "  [DATABASE]",
@@ -260,12 +262,6 @@ def _register_middlewares(app: FastAPI) -> None:
     )
 
 
-def _register_static_mounts(app: FastAPI) -> None:
-    if is_local_mode():
-        data_dir = get_runtime_data_dir()
-        app.mount("/_assets", StaticFiles(directory=data_dir), name="runtime-assets")
-
-
 def _register_exception_handlers(app: FastAPI) -> None:
     @app.exception_handler(KernelAITeachMeError)
     @app.exception_handler(InfraAITeachMeError)
@@ -328,7 +324,6 @@ def create_app() -> FastAPI:
     configure_logging()
     app = FastAPI(**_build_app_metadata())
     _register_middlewares(app)
-    _register_static_mounts(app)
     _register_exception_handlers(app)
     _register_routers(app)
     return app

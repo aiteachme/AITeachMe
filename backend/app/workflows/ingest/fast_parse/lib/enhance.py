@@ -10,7 +10,11 @@ import structlog
 
 from app.shared.infra.settings import get_settings
 from app.shared.infra.database import managed_session
-from app.shared.infra.storage import get_content_store, run_store_sync
+from app.shared.infra.storage import (
+    get_content_store,
+    resolve_subject_storage_scope,
+    run_store_sync,
+)
 from app.models import IngestStatus
 from app.repositories.files_repo import get_raw_file_by_id, replace_raw_file_assets, update_raw_file
 from app.utils.path_helpers import build_asset_name_prefix
@@ -32,7 +36,7 @@ async def _materialize_stored_assets(
     """Copy persisted Phase 1 assets into the Phase 2 work directory."""
 
     cs = get_content_store()
-    prefix = cs.asset_prefix(subject, file_id)
+    prefix = resolve_subject_storage_scope(subject).asset_prefix(file_id)
     keys = await cs.list_prefix(prefix)
     copied = 0
     for key in keys:
@@ -61,6 +65,7 @@ async def _run_deep_enhance_background(
     enhance_logger.info("deep_enhance_background_started")
 
     cs = get_content_store()
+    subject_scope = resolve_subject_storage_scope(subject)
     try:
         with tempfile.TemporaryDirectory(prefix="atm_enhance_") as tmp_dir_str:
             _temp_dir = Path(tmp_dir_str)
@@ -76,7 +81,7 @@ async def _run_deep_enhance_background(
 
                 file_path = await cs.materialize(raw_file.file_path or raw_file.storage_key, _temp_dir)
                 # Materialize markdown to temp for Phase 2 parsing
-                md_key = raw_file.markdown_path or cs.raw_markdown_key(subject, file_id)
+                md_key = raw_file.markdown_path or subject_scope.raw_markdown_key(file_id)
                 markdown_path = _temp_dir / f"{file_id}.md"
                 md_text = run_store_sync(cs.read_text, md_key, default=None)
                 if md_text:
@@ -206,9 +211,9 @@ async def _run_deep_enhance_background(
 
             # Overwrite markdown with enhanced version and persist assets together.
             markdown_path.write_text(enhance_result.markdown, encoding="utf-8")
-            md_key = raw_file.markdown_path or cs.raw_markdown_key(subject, file_id)
+            md_key = raw_file.markdown_path or subject_scope.raw_markdown_key(file_id)
             await cs.write_text(md_key, enhance_result.markdown)
-            asset_prefix = cs.asset_prefix(subject, file_id)
+            asset_prefix = subject_scope.asset_prefix(file_id)
             uploaded_asset_count = await cs.upload_dir(asset_dir, asset_prefix)
             asset_storage_dir = asset_prefix.rstrip("/")
             asset_rows = _build_asset_rows(

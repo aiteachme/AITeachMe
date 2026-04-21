@@ -60,7 +60,7 @@ infra  = 已经接上外部系统的共享能力
 
 `app.shared.infra` 是共享基础设施层，负责：
 
-- 读取 `.env` 和 `settings_default.yaml`
+- 读取 `.env`、代码默认值与可选项目 settings override
 - 初始化数据库与运行时路径
 - 封装本地存储 / S3 存储
 - 提供 LLM、trace / track、Prompt、Embedding 等 AI 基础能力

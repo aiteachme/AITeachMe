@@ -18,12 +18,10 @@ import {
   Sparkles,
   RefreshCw,
   ExternalLink,
-  Download,
 } from "lucide-react";
 import { cn } from "../lib/utils";
 import { getApiErrorMessage, postSseJson } from "../api/client";
 import { apiClient } from "../api/client";
-import { useToast } from "../components/ui/Toast";
 import { useSubjectAiAssistant } from "../components/ai/SubjectAiAssistant";
 import { useResizablePanel } from "../hooks/useResizablePanel";
 import {
@@ -33,9 +31,7 @@ import {
   useDocMarkdown,
 } from "../components/knowledge-docs";
 import { SubjectVectorNotice } from "../components/pages/SubjectVectorNotice";
-import { MermaidBlock } from "../components/ui/MermaidBlock";
-import { preprocessLaTeX } from "../components/ui/MarkdownViewer";
-import { downloadKnowledgeDocExport, type KnowledgeDocExportFormat } from "../lib/knowledgeDocs";
+import { MarkdownViewer, preprocessLaTeX } from "../components/ui/MarkdownViewer";
 
 const KnowledgeGraphSidePanel = lazy(() =>
   import("../components/pages/KnowledgeGraphSidePanel").then((module) => ({
@@ -57,8 +53,6 @@ interface TocTreeNode {
   item: TocItem;
   children: TocTreeNode[];
 }
-
-type HeadingLevel = 1 | 2 | 3 | 4 | 5 | 6;
 
 interface Comment {
   id: string;
@@ -155,23 +149,6 @@ interface ThreadTurnItem {
 /*  Helpers                                                            */
 /* ------------------------------------------------------------------ */
 
-function textToId(text: string): string {
-  return text
-    .toLowerCase()
-    .replace(/[^\w\u4e00-\u9fff]+/g, "-")
-    .replace(/^-|-$/g, "");
-}
-
-function createHeadingIdFactory() {
-  const counts = new Map<string, number>();
-  return (text: string) => {
-    const base = textToId(text) || "section";
-    const next = (counts.get(base) ?? 0) + 1;
-    counts.set(base, next);
-    return next === 1 ? base : `${base}-${next}`;
-  };
-}
-
 function formatTime(ts: number): string {
   const d = new Date(ts);
   const pad = (n: number) => String(n).padStart(2, "0");
@@ -235,18 +212,6 @@ function buildDefaultCollapsedTocIds(items: TocItem[]): Set<string> {
     }
   }
   return collapsed;
-}
-
-/** Recursively extract plain text from React children */
-function extractText(node: React.ReactNode): string {
-  if (typeof node === "string") return node;
-  if (typeof node === "number") return String(node);
-  if (!node) return "";
-  if (Array.isArray(node)) return node.map(extractText).join("");
-  if (typeof node === "object" && "props" in node) {
-    return extractText((node as React.ReactElement).props.children);
-  }
-  return "";
 }
 
 /** Build a hierarchical tree from a flat TocItem list (Feishu-style) */
@@ -399,105 +364,20 @@ function buildCommentThreadLayout(
 /*  DocMarkdown                                                        */
 /* ------------------------------------------------------------------ */
 
-const DocMarkdown = memo(function DocMarkdown({ content }: { content: string }) {
-  const nextHeadingId = useMemo(() => createHeadingIdFactory(), [content]);
-  const makeHeading = (level: HeadingLevel) => {
-    const Tag = `h${level}` as const;
-    const styles: Record<number, string> = {
-      1: "text-[28px] font-bold text-slate-900 mt-10 mb-5 pb-3.5 border-b border-slate-200/80",
-      2: "text-[24px] font-semibold text-slate-800 mt-9 mb-4",
-      3: "text-[20px] font-semibold text-slate-800 mt-7 mb-3",
-      4: "text-[17px] font-semibold text-slate-700 mt-5 mb-2.5",
-      5: "text-[15px] font-semibold text-slate-700 mt-4 mb-2",
-      6: "text-sm font-semibold uppercase tracking-wide text-slate-500 mt-3.5 mb-1.5",
-    };
-    return ({ children }: { children?: React.ReactNode }) => {
-      const text = extractText(children);
-      const id = nextHeadingId(text);
-      return (
-        <Tag id={id} data-heading-id={id} className={styles[level]}>
-          {children}
-        </Tag>
-      );
-    };
-  };
-
+const DocMarkdown = memo(function DocMarkdown({
+  content,
+  subjectId,
+}: {
+  content: string;
+  subjectId?: string;
+}) {
   return (
-    <ReactMarkdown
-      remarkPlugins={[remarkGfm, remarkMath]}
-      rehypePlugins={[rehypeKatex, rehypeHighlight]}
-      components={{
-        h1: makeHeading(1),
-        h2: makeHeading(2),
-        h3: makeHeading(3),
-        h4: makeHeading(4),
-        h5: makeHeading(5),
-        h6: makeHeading(6),
-        p: ({ children }) => (
-          <p className="text-[15px] text-slate-700 leading-[2] mb-4">{children}</p>
-        ),
-        ul: ({ children }) => (
-          <ul className="list-disc text-[15px] text-slate-700 mb-5 space-y-2 pl-6">{children}</ul>
-        ),
-        ol: ({ children }) => (
-          <ol className="list-decimal text-[15px] text-slate-700 mb-5 space-y-2 pl-6">{children}</ol>
-        ),
-        li: ({ children }) => (
-          <li className="leading-[2] [&>p]:inline [&>p]:mb-0">{children}</li>
-        ),
-        blockquote: ({ children }) => (
-          <blockquote className="border-l-[3px] border-blue-300/70 bg-blue-50/30 pl-4 pr-3 py-2.5 text-slate-600 my-5 rounded-r-lg">
-            {children}
-          </blockquote>
-        ),
-        code: ({ className, children }) => {
-          const codeText = extractText(children).replace(/\n$/, "");
-          const language = className?.replace(/^language-/, "").trim().toLowerCase() ?? "";
-          const isBlock = Boolean(className) || codeText.includes("\n");
-          const looksLikeMermaid = /^(mindmap|flowchart|graph|sequenceDiagram|classDiagram|stateDiagram|erDiagram|gantt)\b/i.test(codeText.trim());
-          if (language === "mermaid" || (!language && looksLikeMermaid)) {
-            return <MermaidBlock chart={codeText} />;
-          }
-          if (isBlock) {
-            return (
-              <pre className="bg-slate-900 text-slate-100 rounded-xl p-5 overflow-x-auto text-sm my-5 leading-relaxed">
-                <code className={cn("font-mono text-[13px]", className)}>{children}</code>
-              </pre>
-            );
-          }
-          return (
-            <code className={cn("bg-slate-100/80 text-slate-800 rounded-md px-1.5 py-0.5 text-sm font-mono", className)}>
-              {children}
-            </code>
-          );
-        },
-        pre: ({ children }) => <>{children}</>,
-        table: ({ children }) => (
-          <div className="overflow-x-auto my-5 rounded-xl border border-slate-200">
-            <table className="min-w-full text-sm">{children}</table>
-          </div>
-        ),
-        thead: ({ children }) => (
-          <thead className="bg-slate-50/80 border-b border-slate-200">{children}</thead>
-        ),
-        th: ({ children }) => (
-          <th className="px-4 py-3 text-left font-semibold text-slate-700">{children}</th>
-        ),
-        td: ({ children }) => (
-          <td className="px-4 py-3 text-slate-600 border-t border-slate-100">{children}</td>
-        ),
-        hr: () => <hr className="my-8 border-slate-200/60" />,
-        a: ({ href, children }) => (
-          <a href={href} className="text-blue-600 hover:text-blue-700 hover:underline underline-offset-2 transition-colors" target="_blank" rel="noopener noreferrer">
-            {children}
-          </a>
-        ),
-        strong: ({ children }) => <strong className="font-semibold text-slate-900">{children}</strong>,
-        em: ({ children }) => <em className="italic text-slate-600">{children}</em>,
-      }}
-    >
-      {preprocessLaTeX(content)}
-    </ReactMarkdown>
+    <MarkdownViewer
+      content={content}
+      variant="document"
+      headingAnchors
+      assetSubject={subjectId}
+    />
   );
 });
 
@@ -860,7 +740,6 @@ function CommentThread({
 
 export function KnowledgeDocsPage() {
   const { openAssistant } = useSubjectAiAssistant();
-  const { toast } = useToast();
   const {
     subjectId,
     docMarkdownQuery,
@@ -923,7 +802,6 @@ export function KnowledgeDocsPage() {
     typeof window !== "undefined" ? window.innerWidth < COMPACT_PANEL_BREAKPOINT : false
   );
   const [activeDrawer, setActiveDrawer] = useState<"toc" | "comment" | null>(null);
-  const [exportingFormat, setExportingFormat] = useState<KnowledgeDocExportFormat | null>(null);
 
   const [isGraphDrawerOpen, setIsGraphDrawerOpen] = useState(false);
   const { width: graphPanelWidth, isDragging: isGraphDragging, handleMouseDown: handleGraphMouseDown } = useResizablePanel({
@@ -947,33 +825,6 @@ export function KnowledgeDocsPage() {
 
   const isTocVisible = isCompactPanels ? activeDrawer === "toc" : !isTocCollapsed;
   const isCommentVisible = isCompactPanels ? activeDrawer === "comment" : !isCommentCollapsed;
-  const canExportPublishedDoc = Boolean(subjectId && hasLiveDocMarkdown);
-
-  const handleExportDocument = useCallback(
-    async (format: KnowledgeDocExportFormat) => {
-      if (!subjectId || exportingFormat) {
-        return;
-      }
-      setExportingFormat(format);
-      try {
-        await downloadKnowledgeDocExport(subjectId, format);
-        toast({
-          title: "导出已开始",
-          description: format === "pdf" ? "正在下载最终合并知识文档 PDF。" : "正在下载最终合并知识文档 Markdown。",
-          variant: "success",
-        });
-      } catch (error) {
-        toast({
-          title: "导出失败",
-          description: getApiErrorMessage(error, "知识文档导出失败，请稍后重试。"),
-          variant: "error",
-        });
-      } finally {
-        setExportingFormat(null);
-      }
-    },
-    [exportingFormat, subjectId, toast],
-  );
 
   const openGraphPanel = useCallback(() => {
     setIsGraphDrawerOpen(true);
@@ -2713,28 +2564,6 @@ export function KnowledgeDocsPage() {
                 <article
                   className="min-w-0 flex-1 px-6 py-8 md:px-10 md:py-10"
                 >
-                  {canExportPublishedDoc ? (
-                    <div className="mb-4 flex flex-wrap items-center justify-end gap-2">
-                      <button
-                        type="button"
-                        onClick={() => void handleExportDocument("md")}
-                        disabled={exportingFormat !== null}
-                        className="inline-flex items-center gap-1.5 rounded-lg border border-[#DEE0E3] bg-white px-3 py-2 text-[13px] font-medium text-[#1F2329] shadow-sm transition hover:bg-[#F5F6F7] disabled:cursor-not-allowed disabled:opacity-60"
-                      >
-                        {exportingFormat === "md" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
-                        导出 MD
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => void handleExportDocument("pdf")}
-                        disabled={exportingFormat !== null}
-                        className="inline-flex items-center gap-1.5 rounded-lg border border-[#DEE0E3] bg-white px-3 py-2 text-[13px] font-medium text-[#1F2329] shadow-sm transition hover:bg-[#F5F6F7] disabled:cursor-not-allowed disabled:opacity-60"
-                      >
-                        {exportingFormat === "pdf" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
-                        导出 PDF
-                      </button>
-                    </div>
-                  ) : null}
                   <SubjectVectorNotice status={docMarkdownQuery.data?.vector_status} className="mb-6" />
                   {docMarkdownQuery.isError ? (
                     <DocLoadErrorState
@@ -2778,7 +2607,7 @@ export function KnowledgeDocsPage() {
                           onViewModeChange={setDocViewMode}
                         />
                       )}
-                      <DocMarkdown content={renderedMarkdown} />
+                      <DocMarkdown content={renderedMarkdown} subjectId={subjectId} />
                     </>
                   )}
                 </article>

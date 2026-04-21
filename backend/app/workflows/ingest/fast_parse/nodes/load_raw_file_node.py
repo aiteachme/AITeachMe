@@ -1,4 +1,4 @@
-"""Compatibility wrapper for the load-raw-file node."""
+"""Top-level load-raw-file node entrypoint."""
 
 from app.workflows.ingest.fast_parse.lib.file import build_load_raw_file_node
 

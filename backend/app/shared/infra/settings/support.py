@@ -1,4 +1,4 @@
-"""Helpers for loading project runtime configuration from `settings_default.yaml`."""
+"""Helpers for loading optional project runtime override configuration."""
 
 from __future__ import annotations
 
@@ -19,8 +19,8 @@ EMBEDDING_DIM_BY_MODEL: dict[str, int] = {
     "qwen3-embedding-0.6b": 1024,
 }
 DEFAULT_EMBEDDING_DIM = 1536
-DEFAULT_PROJECT_SETTINGS_FILENAME = "settings_default.yaml"
 PROJECT_SETTINGS_ENV_NAME = "PROJECT_SETTINGS_PATH"
+PROJECT_SETTINGS_SOURCE_LABEL = "code defaults only"
 DEFAULT_RETRIEVER_FALLBACK = "duckduckgo"
 RETRIEVER_ALIASES: dict[str, str] = {
     "ddg": "duckduckgo",
@@ -156,7 +156,7 @@ def parse_yaml_scalar(value: str) -> Any:
 
 
 def parse_yaml_mapping(text: str) -> dict[str, Any]:
-    """Parse the small repo-root `settings_default.yaml` mapping."""
+    """Parse a small project settings override mapping."""
 
     try:
         import yaml  # type: ignore
@@ -201,6 +201,8 @@ def load_project_settings_values(path: Path | None = None) -> dict[str, Any]:
         from app.shared.infra.env_support import resolve_project_settings_path
 
         current_path = resolve_project_settings_path()
+    if current_path is None:
+        return {}
     if not current_path.exists():
         return {}
     try:
@@ -259,8 +261,8 @@ def get_retriever_profiles(path: Path | None = None) -> dict[str, list[str]]:
 
 __all__ = [
     "DEFAULT_EMBEDDING_DIM",
-    "DEFAULT_PROJECT_SETTINGS_FILENAME",
     "PROJECT_SETTINGS_ENV_NAME",
+    "PROJECT_SETTINGS_SOURCE_LABEL",
     "DEFAULT_RETRIEVER_FALLBACK",
     "DEFAULT_RETRIEVER_PROFILES",
     "DEFAULT_RETRIEVERS",

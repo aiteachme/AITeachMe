@@ -10,7 +10,11 @@ from urllib.parse import quote
 from sqlmodel import Session
 
 from app.shared.infra.exceptions import RawFileNotFoundError
-from app.shared.infra.storage import get_content_store, run_store_sync
+from app.shared.infra.storage import (
+    get_content_store,
+    resolve_subject_storage_scope,
+    run_store_sync,
+)
 from app.models import IngestStatus, RawFile, TaskStatus
 from app.repositories.files_repo import (
     get_raw_file_by_id,
@@ -19,12 +23,7 @@ from app.repositories.files_repo import (
     list_raw_files_by_uids,
 )
 from app.schemas.files import FileAssetItem, FileRecord, FilesData
-from app.utils.path_helpers import (
-    build_asset_dir,
-    build_asset_name_prefix,
-    get_data_dir,
-    list_asset_files,
-)
+from app.utils.path_helpers import build_asset_name_prefix
 from app.utils.presenters import require_id, require_uid
 
 
@@ -67,36 +66,52 @@ def _extract_parser_used(raw_file: RawFile) -> str | None:
     return str(parser_used) if parser_used else None
 
 
-def _build_runtime_asset_url(path_value: str | Path | None) -> str | None:
-    if not path_value:
+def _quote_path_parts(path_value: str) -> str:
+    return "/".join(quote(part) for part in Path(path_value).parts if part)
+
+
+def _build_runtime_asset_url(*, subject: str, asset_relative_path: str | None) -> str | None:
+    if not asset_relative_path:
         return None
 
-    asset_path = Path(path_value).resolve()
-    data_dir = get_data_dir().resolve()
-    try:
-        relative_path = asset_path.relative_to(data_dir)
-    except ValueError:
-        return None
-
-    encoded_parts = [quote(part) for part in relative_path.parts]
-    return f"/_assets/{'/'.join(encoded_parts)}"
+    return f"/api/v1/subjects/{quote(subject)}/files/assets/{_quote_path_parts(asset_relative_path)}"
 
 
-def _build_asset_items(*, asset_dir_value: str | None, asset_name_prefix: str) -> list[FileAssetItem]:
+def _build_asset_items(
+    *,
+    subject: str,
+    asset_dir_value: str | None,
+) -> list[FileAssetItem]:
+    if not asset_dir_value:
+        return []
+
+    cs = get_content_store()
+    prefix = asset_dir_value.rstrip("/") + "/"
+    keys = run_store_sync(cs.list_prefix, prefix, default=[]) or []
     assets: list[FileAssetItem] = []
-    for path in list_asset_files(asset_dir_value, asset_name_prefix=asset_name_prefix):
-        asset_url = _build_runtime_asset_url(path)
+    for key in keys:
+        relative_path = _to_subject_relative_storage_path(subject=subject, storage_key=key)
+        asset_url = _build_runtime_asset_url(subject=subject, asset_relative_path=relative_path)
         if not asset_url:
             continue
 
         assets.append(
             FileAssetItem(
-                name=path.name,
+                name=Path(key).name,
                 url=asset_url,
-                mime_type=mimetypes.guess_type(path.name)[0],
+                mime_type=mimetypes.guess_type(key)[0],
             )
         )
     return assets
+
+
+def _to_subject_relative_storage_path(*, subject: str, storage_key: str) -> str | None:
+    scope = resolve_subject_storage_scope(subject)
+    prefix = f"{scope.namespace}/assets/"
+    if not storage_key.startswith(prefix):
+        return None
+    relative = storage_key[len(prefix):].lstrip("/\\")
+    return relative or None
 
 
 def _read_markdown(markdown_path_value: str | None) -> str:
@@ -110,15 +125,21 @@ def _read_markdown(markdown_path_value: str | None) -> str:
 def build_file_record(raw_file: RawFile) -> FileRecord:
     file_uid = require_uid(raw_file.uid, "RawFile.uid")
     markdown_ready = _is_markdown_ready(raw_file)
-    asset_name_prefix = _build_asset_name_prefix_for_raw_file(raw_file)
     asset_dir_value = raw_file.asset_dir
     if not asset_dir_value and raw_file.id is not None:
-        asset_dir_value = str(build_asset_dir(raw_file.subject, raw_file.id))
+        scope = resolve_subject_storage_scope(raw_file.subject)
+        asset_dir_value = scope.asset_prefix(raw_file.id).rstrip("/")
     assets = _build_asset_items(
+        subject=raw_file.subject,
         asset_dir_value=asset_dir_value,
-        asset_name_prefix=asset_name_prefix,
     )
-    asset_base_url = _build_runtime_asset_url(asset_dir_value) if assets else None
+    asset_base_url = _build_runtime_asset_url(
+        subject=raw_file.subject,
+        asset_relative_path=_to_subject_relative_storage_path(
+            subject=raw_file.subject,
+            storage_key=asset_dir_value or "",
+        ),
+    ) if assets else None
     return FileRecord(
         uid=file_uid,
         filename=raw_file.filename,

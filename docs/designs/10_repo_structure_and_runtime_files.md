@@ -109,7 +109,7 @@ backend/data/aiteachme.db
 Subject 级目录：
 
 ```text
-backend/data/<subject>/
+backend/data/users/<user_id>/subjects/<subject>/
   raw_files/
   raw_markdowns/
   assets/
@@ -117,6 +117,12 @@ backend/data/<subject>/
     _build/
     versions/
   cache/
+```
+
+本地运行时临时目录仍可能位于 subject 根目录：
+
+```text
+backend/data/<subject>/
   debug/
   temp/
   exam/
@@ -152,12 +158,12 @@ frontend/dist/
 
 - `.env`
 - `.env.sample`
-- `settings_default.yaml`
+- `PROJECT_SETTINGS_PATH` 指向的可选外部 settings override 文件
 
 使用口径：
 
 - 环境变量由 `backend/app/shared/infra/env_support.py` 读取。
-- 非敏感项目默认配置由 `settings_default.yaml` 提供。
+- 非敏感项目默认配置由代码默认值提供；如有需要，可通过 `PROJECT_SETTINGS_PATH` 叠加外部 override。
 - 用户级非敏感 settings 覆盖存用户数据库。
 - 密钥、连接串、SMTP、对象存储等敏感配置不写用户 settings 数据库。
 

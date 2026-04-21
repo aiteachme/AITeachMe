@@ -6,13 +6,11 @@ The table registry drives export/import order and foreign-key remapping.
 from __future__ import annotations
 
 import json
-import shutil
 import tempfile
 import uuid
 import zipfile
 from dataclasses import dataclass, field as dc_field
 from datetime import datetime
-from io import BytesIO
 from pathlib import Path
 from typing import Any
 
@@ -22,7 +20,11 @@ from sqlmodel import Session, SQLModel, func, select
 
 from app.shared.infra.env_support import get_env
 from app.shared.infra.runtime import is_cloud_mode
-from app.shared.infra.storage import get_content_store, run_store_sync
+from app.shared.infra.storage import (
+    build_subject_storage_scope,
+    get_content_store,
+    run_store_sync,
+)
 from app.models import (
     ChatMessage,
     ChatSession,
@@ -38,24 +40,9 @@ from app.models import (
     UserKnowledgeState,
 )
 from app.schemas.export_import import (
-    CoursePackageItem,
     ExportOptions,
     ExportPreviewData,
     ExportPreviewStats,
-    ImportOptions,
-    ImportResultData,
-)
-from app.utils.path_helpers import (
-    build_asset_dir,
-    build_assets_dir,
-    build_courses_dir,
-    build_exam_dir,
-    build_knowledge_markdown_dir,
-    build_raw_dir,
-    build_raw_file_path,
-    build_raw_markdown_dir,
-    build_raw_markdown_path,
-    build_subject_dir,
 )
 from app.utils.subject import generate_subject_id
 from app.utils.time import utcnow
@@ -249,6 +236,7 @@ def export_subject(
     tmp_path = Path(tmp.name)
 
     try:
+        subject_scope = build_subject_storage_scope(user_id=subject.user_id, subject=subject.slug)
         with zipfile.ZipFile(tmp_path, "w", zipfile.ZIP_DEFLATED) as zf:
             exported: dict[str, list[dict]] = {}
 
@@ -265,7 +253,7 @@ def export_subject(
                     ),
                 )
 
-            _pack_files(zf, subject_slug, options)
+            _pack_files(zf, subject_scope.namespace, options)
 
             manifest = _build_manifest(subject, exported, options)
             zf.writestr("manifest.json", manifest.model_dump_json(indent=2))
@@ -276,109 +264,6 @@ def export_subject(
     except Exception:
         tmp_path.unlink(missing_ok=True)
         raise
-
-
-def import_subject(
-    session: Session,
-    *,
-    file_path: Path,
-    options: ImportOptions | None = None,
-    user_id: str = "local",
-) -> ImportResultData:
-    """Import one subject from an .atmx archive."""
-
-    options = options or ImportOptions()
-
-    with tempfile.TemporaryDirectory() as tmpdir_str:
-        tmpdir = Path(tmpdir_str)
-
-        with zipfile.ZipFile(file_path, "r") as zf:
-            zf.extractall(tmpdir)
-
-        manifest = _read_manifest(tmpdir)
-
-        new_slug = _create_unique_slug(session)
-        new_name = options.new_subject_name or manifest.subject.name
-
-        id_map: dict[str, dict[Any, Any]] = {}
-        imported_counts: dict[str, int] = {}
-        warnings: list[str] = []
-
-        for spec in TABLE_REGISTRY:
-            db_file = tmpdir / "db" / f"{spec.name}.json"
-            if not db_file.exists():
-                continue
-            data = json.loads(db_file.read_text(encoding="utf-8"))
-            records = data.get("records", [])
-            if not records:
-                continue
-            count = _import_table(
-                session, spec, records,
-                id_map=id_map,
-                new_slug=new_slug,
-                new_name=new_name,
-                user_id=user_id,
-                warnings=warnings,
-            )
-            imported_counts[spec.name] = count
-
-        session.commit()
-
-        _unpack_files(tmpdir, new_slug, id_map.get("raw_file", {}))
-
-        logger.info("subject_imported", subject=new_slug, name=new_name, counts=imported_counts)
-        return ImportResultData(
-            subject_id=new_slug,
-            subject_name=new_name,
-            imported_counts=imported_counts,
-            warnings=warnings,
-        )
-
-
-def list_available_courses() -> list[CoursePackageItem]:
-    """Scan shared course packages and return manifest summaries."""
-
-    courses_dir = build_courses_dir()
-    if not courses_dir.exists():
-        courses_dir.mkdir(parents=True, exist_ok=True)
-        return []
-
-    items: list[CoursePackageItem] = []
-    for path in sorted(courses_dir.glob("*.atmx")):
-        if not path.is_file():
-            continue
-        try:
-            with zipfile.ZipFile(path, "r") as zf:
-                if "manifest.json" not in zf.namelist():
-                    continue
-                raw = zf.read("manifest.json")
-                manifest = _ExportManifest.model_validate_json(raw)
-
-            stats_dict = manifest.stats.model_dump()
-            items.append(
-                CoursePackageItem(
-                    filename=path.name,
-                    subject_name=manifest.subject.name,
-                    file_size_bytes=path.stat().st_size,
-                    exported_at=manifest.exported_at,
-                    stats=stats_dict,
-                )
-            )
-        except Exception as exc:
-            logger.warning("course_package_scan_error", file=path.name, error=str(exc))
-            continue
-
-    return items
-
-
-def get_courses_dir_path() -> Path:
-    """Return the shared course package directory path."""
-
-    d = build_courses_dir()
-    d.mkdir(parents=True, exist_ok=True)
-    return d
-
-
 # ===================================================================
 # Internal: DB helpers
 # ===================================================================
@@ -492,7 +377,8 @@ def _import_table(
         if "user_id" in record_data:
             record_data["user_id"] = user_id
 
-        # 澶栭敭閲嶆槧灏?        for fk_field, ref_table in spec.fk_remap.items():
+        # Remap foreign keys after the referenced tables have been imported.
+        for fk_field, ref_table in spec.fk_remap.items():
             _remap_fk(record_data, fk_field, ref_table, id_map, spec.name, warnings)
 
         # Clear absolute-path fields so they can be rebuilt during import
@@ -506,7 +392,7 @@ def _import_table(
             record_data["markdown_path"] = None
             record_data["markdown_uri"] = None
 
-        # 鍒涘缓瀹炰緥
+        # Create and flush the row to obtain its new primary key.
         try:
             instance = spec.model.model_validate(record_data)
             session.add(instance)
@@ -517,15 +403,18 @@ def _import_table(
 
         new_id = getattr(instance, spec.id_field)
 
-        # 路径重建（统一走 ContentStore key）        cs = get_content_store()
+        # Rebuild storage keys under the new subject namespace.
+        cs = get_content_store()
         if spec.name == "raw_file" and isinstance(new_id, int):
+            subject_scope = build_subject_storage_scope(user_id=user_id, subject=new_slug)
             ext = instance.filetype if instance.filetype.startswith(".") else f".{instance.filetype}"
-            instance.file_path = f"{new_slug}/raw_files/{new_id}{ext}"
-            instance.markdown_path = cs.raw_markdown_key(new_slug, new_id)
-            instance.asset_dir = cs.asset_prefix(new_slug, new_id).rstrip("/")
+            instance.file_path = subject_scope.raw_file_key(new_id, ext)
+            instance.markdown_path = subject_scope.raw_markdown_key(new_id)
+            instance.asset_dir = subject_scope.asset_prefix(new_id).rstrip("/")
             instance.storage_backend = "s3" if is_cloud_mode() else "local"
         elif spec.name == "knowledge_document" and isinstance(new_id, int):
-            instance.markdown_path = cs.knowledge_doc_key(new_slug, f"chapter_{instance.chapter_index}.md")
+            subject_scope = build_subject_storage_scope(user_id=user_id, subject=new_slug)
+            instance.markdown_path = subject_scope.knowledge_doc_key(f"chapter_{instance.chapter_index}.md")
 
         if old_id is not None:
             table_id_map[old_id] = new_id
@@ -566,7 +455,7 @@ def _remap_fk(
 # ===================================================================
 
 
-def _pack_files(zf: zipfile.ZipFile, subject_slug: str, options: ExportOptions) -> None:
+def _pack_files(zf: zipfile.ZipFile, namespace: str, options: ExportOptions) -> None:
     """Read files from ContentStore and pack them into the zip archive."""
     cs = get_content_store()
     skip_filenames = {".build.lock", "build_status.json", "manifest.json"}
@@ -580,14 +469,14 @@ def _pack_files(zf: zipfile.ZipFile, subject_slug: str, options: ExportOptions) 
                 zf.writestr(f"{arc_prefix}/{relative}", data)
 
     if options.include_raw_files:
-        _pack_prefix(f"{subject_slug}/raw_files/", "files/raw_files")
-        _pack_prefix(f"{subject_slug}/assets/", "files/assets")
+        _pack_prefix(f"{namespace}/raw_files/", "files/raw_files")
+        _pack_prefix(f"{namespace}/assets/", "files/assets")
     if options.include_raw_markdowns:
-        _pack_prefix(f"{subject_slug}/raw_markdowns/", "files/raw_markdowns")
+        _pack_prefix(f"{namespace}/raw_markdowns/", "files/raw_markdowns")
 
     # knowledge markdowns
     if options.include_knowledge_docs:
-        keys = run_store_sync(cs.list_prefix, f"{subject_slug}/knowledge_markdowns/", default=[])
+        keys = run_store_sync(cs.list_prefix, f"{namespace}/knowledge_markdowns/", default=[])
         for key in keys:
             filename = key.rsplit("/", 1)[-1]
             if filename in skip_filenames or "/_build/" in key:
@@ -595,77 +484,6 @@ def _pack_files(zf: zipfile.ZipFile, subject_slug: str, options: ExportOptions) 
             data = run_store_sync(cs.read_bytes, key, default=None)
             if data is not None:
                 zf.writestr(f"knowledge/{filename}", data)
-
-
-def _pack_dir(zf: zipfile.ZipFile, src_dir: Path, arc_prefix: str) -> None:
-    if not src_dir.exists():
-        return
-    for item in sorted(src_dir.rglob("*")):
-        if item.is_file():
-            zf.write(item, f"{arc_prefix}/{item.relative_to(src_dir).as_posix()}")
-
-
-def _unpack_files(extract_dir: Path, new_slug: str, file_id_map: dict[Any, Any]) -> None:
-    """Write files from the zip archive into ContentStore."""
-    cs = get_content_store()
-
-    def _upload_remapped(src_dir: Path, prefix: str) -> None:
-        if not src_dir.exists():
-            return
-        for item in src_dir.iterdir():
-            if not item.is_file():
-                continue
-            try:
-                old_id = int(item.stem)
-                new_id = file_id_map.get(old_id, old_id)
-                key = f"{new_slug}/{prefix}/{new_id}{item.suffix}"
-            except ValueError:
-                key = f"{new_slug}/{prefix}/{item.name}"
-            run_store_sync(cs.write_bytes, key, item.read_bytes())
-
-    _upload_remapped(extract_dir / "files/raw_files", "raw_files")
-    _upload_remapped(extract_dir / "files/raw_markdowns", "raw_markdowns")
-
-    # Upload asset directories after remapping file IDs
-    if src_assets.exists():
-        for old_dir in src_assets.iterdir():
-            if not old_dir.is_dir():
-                continue
-            try:
-                old_id = int(old_dir.name)
-            except ValueError:
-                continue
-            new_id = file_id_map.get(old_id, old_id)
-            for asset_file in old_dir.rglob("*"):
-                if asset_file.is_file():
-                    relative = asset_file.relative_to(old_dir).as_posix()
-                    key = f"{new_slug}/assets/{new_id}/{relative}"
-                    run_store_sync(cs.write_bytes, key, asset_file.read_bytes())
-
-    # 鐭ヨ瘑鏂囨。涓婁紶
-    src_kd = extract_dir / "knowledge"
-    if src_kd.exists():
-        for item in src_kd.iterdir():
-            if item.is_file():
-                key = cs.knowledge_doc_key(new_slug, item.name)
-                run_store_sync(cs.write_bytes, key, item.read_bytes())
-
-
-def _copy_remapped(src_dir: Path, dst_dir: Path, id_map: dict[Any, Any]) -> None:
-    if not src_dir.exists():
-        return
-    dst_dir.mkdir(parents=True, exist_ok=True)
-    for item in src_dir.iterdir():
-        if not item.is_file():
-            continue
-        try:
-            old_id = int(item.stem)
-            new_id = id_map.get(old_id, old_id)
-            shutil.copy2(item, dst_dir / f"{new_id}{item.suffix}")
-        except ValueError:
-            shutil.copy2(item, dst_dir / item.name)
-
-
 # ===================================================================
 # Internal: Manifest
 # ===================================================================
@@ -707,4 +525,3 @@ def _read_manifest(extract_dir: Path) -> _ExportManifest:
             f"Supported: {SUPPORTED_FORMAT_VERSIONS}"
         )
     return manifest
-

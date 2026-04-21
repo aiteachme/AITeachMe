@@ -130,7 +130,7 @@ export const useInitSystemApiV1SystemInitPost = <TError = HTTPValidationError | 
       return useMutation(getInitSystemApiV1SystemInitPostMutationOptions(options), queryClient);
     }
     /**
- * 返回环境变量与 settings_default.yaml 合并后的只读设置概览。
+ * 返回环境变量、代码默认值与可选项目 settings override 合并后的只读设置概览。
  * @summary 读取后端设置总览
  */
 export type getSystemSettingsApiV1SystemSettingsPostResponse200 = {
@@ -225,8 +225,8 @@ export const useGetSystemSettingsApiV1SystemSettingsPost = <TError = HTTPValidat
       return useMutation(getGetSystemSettingsApiV1SystemSettingsPostMutationOptions(options), queryClient);
     }
     /**
- * 保存当前用户的非敏感 settings_default.yaml 同构 settings 覆盖；密钥类环境变量不通过此接口保存。
- * @summary 更新当前用户 settings
+ * 本地模式下保存非敏感系统设置覆盖，并可写回本地 .env；云端普通用户无写权限。
+ * @summary 更新本地模式服务端设置
  */
 export type updateSystemSettingsApiV1SystemSettingsPatchResponse200 = {
   data: ApiResponseSettingsOverviewData
@@ -307,7 +307,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
     export type UpdateSystemSettingsApiV1SystemSettingsPatchMutationError = ErrorResponse
 
     /**
- * @summary 更新当前用户 settings
+ * @summary 更新本地模式服务端设置
  */
 export const useUpdateSystemSettingsApiV1SystemSettingsPatch = <TError = ErrorResponse,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateSystemSettingsApiV1SystemSettingsPatch>>, TError,{data: UpdateUserSettingsRequest}, TContext>, request?: SecondParameter<typeof orvalApiClient>}

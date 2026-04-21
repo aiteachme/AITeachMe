@@ -96,7 +96,7 @@
           "system"
         ],
         "summary": "读取后端设置总览",
-        "description": "返回环境变量与 settings_default.yaml 合并后的只读设置概览。",
+        "description": "返回环境变量、代码默认值与可选项目 settings override 合并后的只读设置概览。",
         "operationId": "get_system_settings_api_v1_system_settings_post",
         "requestBody": {
           "content": {
@@ -145,8 +145,8 @@
         "tags": [
           "system"
         ],
-        "summary": "更新当前用户 settings",
-        "description": "保存当前用户的非敏感 settings_default.yaml 同构 settings 覆盖；密钥类环境变量不通过此接口保存。",
+        "summary": "更新本地模式服务端设置",
+        "description": "本地模式下保存非敏感系统设置覆盖，并可写回本地 .env；云端普通用户无写权限。",
         "operationId": "update_system_settings_api_v1_system_settings_patch",
         "requestBody": {
           "content": {
@@ -2302,93 +2302,6 @@
                 "schema": {
                   "$ref": "#/components/schemas/ApiResponse_DocGenGetResponse_"
                 }
-              }
-            }
-          },
-          "400": {
-            "description": "请求参数不合法。",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "资源不存在。",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "服务内部异常。",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/subjects/{subject}/knowledge/docs/export": {
-      "get": {
-        "tags": [
-          "knowledge",
-          "knowledge"
-        ],
-        "summary": "Export the merged knowledge document",
-        "operationId": "knowledge_docs_export_api_v1_subjects__subject__knowledge_docs_export_get",
-        "parameters": [
-          {
-            "name": "subject",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Subject"
-            }
-          },
-          {
-            "name": "format",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "enum": [
-                "md",
-                "pdf"
-              ],
-              "type": "string",
-              "description": "Export format.",
-              "default": "md",
-              "title": "Format"
-            },
-            "description": "Export format."
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {}
               }
             }
           },
@@ -11648,6 +11561,7 @@
             "enum": [
               "env",
               "settings",
+              "system_settings",
               "user_settings",
               "runtime"
             ],
@@ -11727,6 +11641,12 @@
             "description": "修改后是否需要重启后端。",
             "default": true
           },
+          "derived": {
+            "type": "boolean",
+            "title": "Derived",
+            "description": "是否为运行时派生值，只读展示。",
+            "default": false
+          },
           "description": {
             "type": "string",
             "title": "Description",
@@ -11781,10 +11701,10 @@
       },
       "SettingsOverviewData": {
         "properties": {
-          "settings_path": {
+          "settings_source": {
             "type": "string",
-            "title": "Settings Path",
-            "description": "当前项目设置文件路径。"
+            "title": "Settings Source",
+            "description": "当前项目设置来源；无外部 override 时显示 code defaults。"
           },
           "mode": {
             "type": "string",
@@ -11810,7 +11730,7 @@
         },
         "type": "object",
         "required": [
-          "settings_path",
+          "settings_source",
           "mode"
         ],
         "title": "SettingsOverviewData",
@@ -12282,18 +12202,33 @@
             "additionalProperties": true,
             "type": "object",
             "title": "Settings",
-            "description": "settings_default.yaml 同构的非敏感覆盖。"
+            "description": "与 Settings schema 同构的系统级非敏感覆盖。"
+          },
+          "env": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "type": "object",
+            "title": "Env",
+            "description": "仅本地模式可编辑的环境变量覆盖，键使用设置项 key。"
           },
           "reset": {
             "type": "boolean",
             "title": "Reset",
-            "description": "是否清空当前用户覆盖，恢复项目默认值。",
+            "description": "是否清空系统级覆盖，恢复项目默认值。",
             "default": false
           }
         },
         "type": "object",
         "title": "UpdateUserSettingsRequest",
-        "description": "更新当前用户的非敏感 settings 覆盖。"
+        "description": "更新本地模式下的系统级 settings 覆盖。"
       },
       "UserProfileSummary": {
         "properties": {

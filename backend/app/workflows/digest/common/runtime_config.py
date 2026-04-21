@@ -4,10 +4,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from functools import lru_cache
-from pathlib import Path
 
 from app.shared.infra.settings import get_settings
-from app.shared.infra.env_support import resolve_project_settings_path
+from app.shared.infra.env_support import describe_project_settings_source
 
 
 @dataclass(frozen=True, slots=True)
@@ -33,13 +32,12 @@ class TeachingRuntimeConfig:
     """Top-level teaching runtime configuration."""
 
     planner: PlannerRuntimeConfig
-    source_path: str
+    settings_source: str
 
+def get_teaching_runtime_settings_source() -> str:
+    """Return a human-readable project settings source description."""
 
-def get_teaching_runtime_settings_path() -> Path:
-    """Return the resolved project settings path for diagnostics/debugging."""
-
-    return resolve_project_settings_path()
+    return describe_project_settings_source()
 
 
 @lru_cache
@@ -67,7 +65,7 @@ def get_teaching_runtime_config() -> TeachingRuntimeConfig:
                 target_length=settings.planner.systematic.target_length,
             ),
         ),
-        source_path=str(resolve_project_settings_path()),
+        settings_source=describe_project_settings_source(),
     )
 
 
@@ -84,5 +82,5 @@ __all__ = [
     "TeachingRuntimeConfig",
     "get_planner_mode_runtime_config",
     "get_teaching_runtime_config",
-    "get_teaching_runtime_settings_path",
+    "get_teaching_runtime_settings_source",
 ]

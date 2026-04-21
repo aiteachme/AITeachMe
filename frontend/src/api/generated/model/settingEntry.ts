@@ -34,6 +34,8 @@ export interface SettingEntry {
   editable?: boolean;
   /** 修改后是否需要重启后端。 */
   restart_required?: boolean;
+  /** 是否为运行时派生值，只读展示。 */
+  derived?: boolean;
   /** 说明。 */
   description?: string;
 }

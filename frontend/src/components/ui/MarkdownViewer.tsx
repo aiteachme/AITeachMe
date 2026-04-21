@@ -276,11 +276,6 @@ function extractSubjectAssetPath(src: string): string | null {
     return null;
   }
 
-  const localStaticMatch = normalized.match(/^\/_assets\/[^/]+\/assets\/(.+)$/);
-  if (localStaticMatch?.[1]) {
-    return localStaticMatch[1].replace(/^\/+/, "");
-  }
-
   const assetMatch = normalized.match(/(?:^|\/)assets\/(.+)$/);
   if (!assetMatch?.[1]) {
     return null;
@@ -340,6 +335,10 @@ function shouldFetchAuthorizedAsset(src: string | undefined): src is string {
   return typeof src === "string" && src.startsWith("/api/v1/subjects/") && src.includes("/files/assets/");
 }
 
+function isDocgenCoverAsset(src: string | undefined): boolean {
+  return typeof src === "string" && /\/files\/assets\/docgen\/docgen_cover_/i.test(src);
+}
+
 function getBearerToken(): string {
   try {
     return window.localStorage.getItem("token") ?? "";
@@ -358,6 +357,7 @@ function MarkdownImage({
   styles: ViewerStyles;
 }) {
   const [blobSrc, setBlobSrc] = useState("");
+  const isCover = isDocgenCoverAsset(src);
 
   useEffect(() => {
     if (!shouldFetchAuthorizedAsset(src)) {
@@ -401,11 +401,14 @@ function MarkdownImage({
 
   return (
     <figure className={styles.imageShell}>
-      <div className={styles.imageFrame}>
+      <div className={cn(styles.imageFrame, isCover && "rounded-xl")}>
         <img
           src={blobSrc || src}
           alt={alt ?? ""}
-          className={styles.image}
+          className={cn(
+            styles.image,
+            isCover && "aspect-[16/7] max-h-none object-cover",
+          )}
           loading="lazy"
         />
       </div>

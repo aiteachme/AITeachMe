@@ -3,13 +3,12 @@
 from __future__ import annotations
 
 import mimetypes
-from pathlib import Path
 from typing import Iterable
 
 from sqlmodel import Session, func, select
 
 from app.models import RawFile, RawFileAsset
-from app.utils.path_helpers import build_asset_dir, list_asset_files, to_storage_key
+from app.shared.infra.storage import get_content_store, resolve_subject_storage_scope, run_store_sync
 from app.utils.time import utcnow
 
 _UNSET = object()
@@ -192,17 +191,22 @@ def list_assets_by_raw_file_id(session: Session, raw_file_id: int) -> list[RawFi
     if raw_file is None:
         return []
 
-    asset_dir = raw_file.asset_dir or str(build_asset_dir(raw_file.subject, raw_file_id))
-    asset_name_prefix = None
+    asset_dir = raw_file.asset_dir
+    if not asset_dir:
+        scope = resolve_subject_storage_scope(raw_file.subject)
+        asset_dir = scope.asset_prefix(raw_file_id).rstrip("/")
+
+    cs = get_content_store()
+    keys = run_store_sync(cs.list_prefix, asset_dir.rstrip("/") + "/", default=[]) or []
     rows: list[RawFileAsset] = []
-    for index, path in enumerate(list_asset_files(asset_dir, asset_name_prefix=asset_name_prefix), start=1):
+    for index, key in enumerate(keys, start=1):
         rows.append(
             RawFileAsset(
                 id=index,
                 raw_file_id=raw_file_id,
-                asset_name=path.name,
-                storage_key=to_storage_key(path),
-                mime_type=mimetypes.guess_type(path.name)[0],
+                asset_name=key.rsplit("/", 1)[-1],
+                storage_key=key,
+                mime_type=mimetypes.guess_type(key)[0],
             )
         )
     return rows

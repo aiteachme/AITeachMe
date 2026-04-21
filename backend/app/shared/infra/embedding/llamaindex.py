@@ -2,7 +2,7 @@
 
 This adapter allows LlamaIndex components (VectorStoreIndex, retrievers,
 etc.) to use the same embedding model and API configuration already
-defined in ``settings_default.yaml`` and the ``aembed_texts()`` helper.
+defined in runtime settings and the ``aembed_texts()`` helper.
 
 No new embedding dependencies are introduced — all calls go through
 ``app.shared.infra.embedding.aembed_texts``.

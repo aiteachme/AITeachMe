@@ -15,6 +15,7 @@ export type SettingEntrySource = typeof SettingEntrySource[keyof typeof SettingE
 export const SettingEntrySource = {
   env: 'env',
   settings: 'settings',
+  system_settings: 'system_settings',
   user_settings: 'user_settings',
   runtime: 'runtime',
 } as const;

@@ -29,6 +29,7 @@ import { HeroAnimation } from "../components/ui/HeroAnimation";
 import { FullPageDropOverlay } from "../components/ui/FullPageDropOverlay";
 import type { FilesUploadData } from "../types/files";
 import { getStoredAppSettings } from "../hooks/useSettings";
+import { loadIngestPreferenceSettings } from "../lib/systemSettings";
 
 /* ── API helpers (same as BuildPlanPage) ── */
 
@@ -38,22 +39,22 @@ async function uploadFiles(subject: string, files: File[]): Promise<FilesUploadD
   const formData = new FormData();
   for (const file of files) formData.append("files", file);
 
-  // 前端 settings 属于浏览器本机偏好，上传时需要把解析引擎选择随请求传给后端。
-  // 这样后端后台 ingest 任务无需依赖浏览器 localStorage，就能按本次设置走指定方案。
-  const settings = getStoredAppSettings();
-  if (settings.parserProvider === "markitdown") {
+  // 解析引擎默认值从后端 settings 数据库缓存读取；浏览器仅保留本机临时 Token 覆盖。
+  const browserSettings = getStoredAppSettings();
+  const ingestSettings = await loadIngestPreferenceSettings();
+  if (ingestSettings.parserProvider === "markitdown") {
     formData.append("parser_provider", "markitdown");
   }
-  if (settings.parserProvider === "mineru") {
-    const token = settings.mineruApiToken?.trim();
+  if (ingestSettings.parserProvider === "mineru") {
+    const token = browserSettings.mineruApiToken?.trim();
     formData.append("parser_provider", "mineru");
     if (token) {
       formData.append("mineru_api_token", token);
     }
-    formData.append("mineru_model_version", settings.mineruModelVersion ?? "vlm");
-    formData.append("mineru_enable_formula", String(settings.mineruEnableFormula));
-    formData.append("mineru_enable_table", String(settings.mineruEnableTable));
-    formData.append("mineru_is_ocr", String(settings.mineruIsOcr));
+    formData.append("mineru_model_version", ingestSettings.mineruModelVersion);
+    formData.append("mineru_enable_formula", String(ingestSettings.mineruEnableFormula));
+    formData.append("mineru_enable_table", String(ingestSettings.mineruEnableTable));
+    formData.append("mineru_is_ocr", String(ingestSettings.mineruIsOcr));
   }
 
   const response = await apiClient<ApiResponse<FilesUploadData>>({
@@ -622,6 +623,12 @@ export function HomePage() {
       )?.items ?? [],
   });
 
+  useEffect(() => {
+    if (subjects.length === 0 && courses.length > 0) {
+      setSectionTab("courses");
+    }
+  }, [courses.length, subjects.length]);
+
   // ── Mutations ──
   const createMutation = useMutation({
     mutationFn: async () => {
@@ -846,14 +853,13 @@ export function HomePage() {
         </AnimatePresence>
       </motion.div>
 
-      {/* ═══ Recent Classrooms / Import Courses ═══ */}
-      {(subjects.length > 0 || courses.length > 0) && (
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.5 }}
-          className="relative z-10 mt-12 w-full max-w-5xl flex flex-col items-center"
-        >
+      {/* ═══ Recent Classrooms / Demo Courses ═══ */}
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ delay: 0.5 }}
+        className="relative z-10 mt-12 w-full max-w-5xl flex flex-col items-center"
+      >
           {/* Section Toggle */}
           <button
             onClick={() => setRecentOpen(!recentOpen)}
@@ -913,10 +919,10 @@ export function HomePage() {
                         ? "bg-slate-900 text-white shadow-sm"
                         : "text-slate-500 hover:text-slate-800 hover:bg-slate-100"
                     )}
-                    title="导入课程"
+                    title="演示课程"
                   >
                     <Package className="w-4 h-4" />
-                    导入课程
+                    演示课程
                     {courses.length > 0 && (
                       <span className={cn(
                         "text-xs px-1.5 py-0.5 rounded-full",
@@ -988,13 +994,13 @@ export function HomePage() {
                     ))}
                     {!subjectsLoading && subjects.length === 0 && (
                       <div className="col-span-full py-12 text-center text-slate-400 text-sm">
-                        暂无学习空间，上方输入目标或导入课程开始学习
+                        暂无学习空间，上方输入目标，或从右侧演示课程开始体验
                       </div>
                     )}
                   </div>
                 )}
 
-                {/* Tab: Import Courses */}
+                {/* Tab: Demo Courses */}
                 {sectionTab === "courses" && (
                   <div className="pt-2 pb-12">
                     {coursesLoading && (
@@ -1007,10 +1013,10 @@ export function HomePage() {
                         <div className="flex items-center justify-center w-16 h-16 rounded-2xl bg-slate-100 mx-auto mb-4">
                           <Package className="w-8 h-8 text-slate-400" />
                         </div>
-                        <p className="text-sm font-medium text-slate-600 mb-1">暂无可导入课程</p>
+                        <p className="text-sm font-medium text-slate-600 mb-1">暂无演示课程</p>
                         <p className="text-xs text-slate-400">
                           将 <code className="px-1 py-0.5 bg-slate-100 rounded text-xs">.atmx</code> 文件放入{" "}
-                          <code className="px-1 py-0.5 bg-slate-100 rounded text-xs">data/_courses/</code> 目录即可在此显示
+                          <code className="px-1 py-0.5 bg-slate-100 rounded text-xs">backend/data/_courses/</code> 目录即可在此显示为演示课程
                         </p>
                       </div>
                     )}
@@ -1027,6 +1033,7 @@ export function HomePage() {
                               <div className="flex items-start justify-between mb-3">
                                 <div className="flex-1 mr-3">
                                   <h3 className="text-lg font-bold text-slate-900 line-clamp-1">{course.subject_name}</h3>
+                                  <p className="mt-1 text-xs font-medium text-emerald-600">演示课程</p>
                                 </div>
                                 <div className="p-2 bg-gradient-to-br from-emerald-50 to-teal-50 rounded-lg border border-emerald-100">
                                   <Package className="w-5 h-5 text-emerald-500" />
@@ -1068,7 +1075,7 @@ export function HomePage() {
                                   {courseImportMutation.isPending ? (
                                     <><Loader2 className="w-4 h-4 animate-spin" /> 导入中…</>
                                   ) : (
-                                    <><Download className="w-4 h-4" /> 一键导入</>
+                                    <><Download className="w-4 h-4" /> 导入体验</>
                                   )}
                                 </button>
                               </div>
@@ -1082,8 +1089,7 @@ export function HomePage() {
               </motion.div>
             )}
           </AnimatePresence>
-        </motion.div>
-      )}
+      </motion.div>
 
       {/* Footer */}
       <div className="mt-auto pt-12 pb-6 text-center text-sm text-slate-400 font-medium tracking-wide">

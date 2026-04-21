@@ -441,9 +441,17 @@ def upgrade() -> None:
     op.create_index("ix_chat_message_created_at", "chat_message", ["created_at"])
 
     op.create_table(
+        "system_runtime_settings",
+        sa.Column("id", sa.String(), primary_key=True, nullable=False),
+        sa.Column("settings_json", sa.JSON(), nullable=True),
+        sa.Column("created_at", sa.DateTime(), nullable=False),
+        sa.Column("updated_at", sa.DateTime(), nullable=False),
+    )
+
+    op.create_table(
         "system_settings_snapshot",
         sa.Column("id", sa.String(), primary_key=True, nullable=False),
-        sa.Column("settings_path", sa.String(), nullable=False),
+        sa.Column("settings_source", sa.String(), nullable=False),
         sa.Column("settings_hash", sa.String(), nullable=False),
         sa.Column("settings_json", sa.JSON(), nullable=True),
         sa.Column("created_at", sa.DateTime(), nullable=False),
@@ -462,6 +470,7 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     op.drop_table("user_runtime_settings")
+    op.drop_table("system_runtime_settings")
     op.drop_index("ix_system_settings_snapshot_settings_hash", table_name="system_settings_snapshot")
     op.drop_table("system_settings_snapshot")
     op.drop_index("ix_chat_message_created_at", table_name="chat_message")

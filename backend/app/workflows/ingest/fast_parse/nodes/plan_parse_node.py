@@ -1,4 +1,4 @@
-"""Compatibility wrapper for the parse-plan node."""
+"""Top-level plan-parse node entrypoint."""
 
 from app.workflows.ingest.fast_parse.lib.file import build_plan_parse_node
 

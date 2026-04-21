@@ -5,24 +5,21 @@ import {
   Bot,
   CheckCircle2,
   Database,
-  Eye,
-  EyeOff,
   KeyRound,
   Loader2,
-  Search,
   RefreshCcw,
-  Sparkles,
+  Search,
+  SlidersHorizontal,
   Wrench,
   X,
 } from "lucide-react";
-import {
-  DEFAULT_SETTINGS,
-  type AppSettings,
-  type MinerUModelVersion,
-  type ParserProvider,
-  useSettings,
-} from "../../hooks/useSettings";
+
+import { DEFAULT_SETTINGS, type AppSettings, useSettings } from "../../hooks/useSettings";
 import { apiClient, getApiErrorMessage } from "../../api/client";
+import {
+  getStoredSystemSettingsOverview,
+  storeSystemSettingsOverview,
+} from "../../lib/systemSettings";
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -31,8 +28,7 @@ interface SettingsModalProps {
 
 type SectionType = "connection" | "models" | "learning" | "search" | "ops" | "observability";
 type SaveState = "idle" | "saving" | "saved" | "error";
-type ConnectionStatus = "idle" | "success" | "error";
-type SettingSource = "env" | "settings" | "user_settings" | "runtime";
+type SettingSource = "env" | "settings" | "system_settings" | "user_settings" | "runtime";
 type SettingStatus = "configured" | "missing" | "default" | "disabled" | "enabled" | "runtime";
 type SettingPrimitive = string | number | boolean | null;
 
@@ -46,20 +42,22 @@ interface SettingEntry {
   status: SettingStatus;
   secret?: boolean;
   editable?: boolean;
+  restart_required?: boolean;
   description?: string;
 }
 
 interface SettingSection {
   id: string;
   label: string;
-  entries: SettingEntry[];
+  description: string;
+  entries?: SettingEntry[];
 }
 
 interface SettingsOverviewData {
-  settings_path: string;
+  settings_source: string;
   mode: string;
-  sections: SettingSection[];
-  notes: string[];
+  sections?: SettingSection[];
+  notes?: string[];
 }
 
 interface ApiResponse<T> {
@@ -68,214 +66,13 @@ interface ApiResponse<T> {
   data: T;
 }
 
-const DEFAULT_PROVIDER_BASE_URL = "https://api.openai.com/v1";
-
-interface LocalEnvField {
-  key: string;
-  label: string;
-  placeholder?: string;
-  secret?: boolean;
-}
-
-interface LocalEnvGroup {
-  id: string;
-  label: string;
-  fields: LocalEnvField[];
-}
-
-const CONNECTION_ENV_GROUPS: LocalEnvGroup[] = [
-  {
-    id: "llm",
-    label: "LLM 接入",
-    fields: [
-      { key: "LLM_API_KEY", label: "LLM API Key", placeholder: "sk-...", secret: true },
-      { key: "LLM_BASE_URL", label: "LLM Base URL", placeholder: "https://dashscope.aliyuncs.com/compatible-mode/v1" },
-    ],
-  },
-  {
-    id: "frontend",
-    label: "前端连接",
-    fields: [
-      { key: "VITE_API_URL", label: "FastAPI 地址", placeholder: "http://localhost:8000" },
-      { key: "VITE_USE_MOCK", label: "本地 Mock", placeholder: "false" },
-    ],
-  },
-];
-
-const LEARNING_ENV_GROUPS: LocalEnvGroup[] = [
-  {
-    id: "parser",
-    label: "文档解析服务",
-    fields: [
-      { key: "MINERU_API_TOKEN", label: "MinerU Token", secret: true },
-    ],
-  },
-];
-
-const SEARCH_ENV_GROUPS: LocalEnvGroup[] = [
-  {
-    id: "general-search",
-    label: "通用网页检索",
-    fields: [
-      { key: "TAVILY_API_KEY", label: "Tavily API Key", secret: true },
-      { key: "BING_API_KEY", label: "Bing API Key", secret: true },
-      { key: "BOCHA_API_KEY", label: "Bocha API Key", secret: true },
-      { key: "BOCHA_FRESHNESS", label: "Bocha Freshness", placeholder: "noLimit" },
-      { key: "BRAVE_SEARCH_API_KEY", label: "Brave Search API Key", secret: true },
-      { key: "EXA_API_KEY", label: "Exa API Key", secret: true },
-      { key: "JINA_SEARCH_ENRICH", label: "Jina Search Enrich", placeholder: "false" },
-      { key: "SERPER_API_KEY", label: "Serper API Key", secret: true },
-      { key: "SERPER_SEARCH_MODE", label: "Serper Mode", placeholder: "search" },
-      { key: "SERPER_GL", label: "Serper Country", placeholder: "us" },
-      { key: "SERPER_HL", label: "Serper Language", placeholder: "en" },
-      { key: "SERPER_AUTOCORRECT", label: "Serper Autocorrect", placeholder: "true" },
-      { key: "GOOGLE_API_KEY", label: "Google API Key", secret: true },
-      { key: "GOOGLE_CX_KEY", label: "Google CX Key", secret: true },
-      { key: "GOOGLE_SAFE_SEARCH", label: "Google Safe Search" },
-      { key: "GOOGLE_LR", label: "Google Language Restrict" },
-      { key: "SEARCHAPI_API_KEY", label: "SearchApi API Key", secret: true },
-      { key: "SEARCHAPI_ENGINE", label: "SearchApi Engine", placeholder: "google" },
-      { key: "SEARCHAPI_GL", label: "SearchApi Country" },
-      { key: "SEARCHAPI_HL", label: "SearchApi Language" },
-      { key: "SERPAPI_API_KEY", label: "SerpApi API Key", secret: true },
-      { key: "SERPAPI_ENGINE", label: "SerpApi Engine", placeholder: "google" },
-      { key: "SERPAPI_GL", label: "SerpApi Country" },
-      { key: "SERPAPI_HL", label: "SerpApi Language" },
-      { key: "SEARXNG_BASE_URL", label: "SearXNG Base URL" },
-      { key: "JINA_API_KEY", label: "Jina API Key", secret: true },
-    ],
-  },
-  {
-    id: "ai-search",
-    label: "AI 搜索",
-    fields: [
-      { key: "PERPLEXITY_API_KEY", label: "Perplexity API Key", secret: true },
-      { key: "PERPLEXITY_SEARCH_MODEL", label: "Perplexity Model", placeholder: "sonar" },
-      { key: "OPENROUTER_API_KEY", label: "OpenRouter API Key", secret: true },
-      { key: "OPENROUTER_BASE_URL", label: "OpenRouter Base URL", placeholder: "https://openrouter.ai/api/v1" },
-      { key: "OPENROUTER_SEARCH_MODEL", label: "OpenRouter Search Model", placeholder: "perplexity/sonar" },
-      { key: "OPENROUTER_HTTP_REFERER", label: "OpenRouter Referer", placeholder: "http://localhost" },
-      { key: "OPENROUTER_APP_TITLE", label: "OpenRouter App Title", placeholder: "AITeachMe" },
-      { key: "BAIDU_AI_SEARCH_API_KEY", label: "Baidu AI Search API Key", secret: true },
-      { key: "BAIDU_AI_SEARCH_MODEL", label: "Baidu AI Search Model", placeholder: "ernie-4.5-turbo-32k" },
-      { key: "BAIDU_AI_SEARCH_SOURCE", label: "Baidu Search Source", placeholder: "baidu_search_v2" },
-      { key: "BAIDU_AI_SEARCH_DEEP", label: "Baidu Deep Search", placeholder: "false" },
-    ],
-  },
-  {
-    id: "academic-custom-search",
-    label: "学术 / 内部检索",
-    fields: [
-      { key: "SEMANTIC_SCHOLAR_API_KEY", label: "Semantic Scholar API Key", secret: true },
-      { key: "NCBI_API_KEY", label: "NCBI API Key", secret: true },
-      { key: "PUBMED_DB", label: "PubMed DB", placeholder: "pmc" },
-      { key: "PUBMED_SORT", label: "PubMed Sort", placeholder: "relevance" },
-    ],
-  },
-  {
-    id: "reader-rerank",
-    label: "正文读取 / Rerank",
-    fields: [
-      { key: "JINA_READER_ENABLED", label: "Jina Reader Enabled", placeholder: "false" },
-      { key: "MCP_SEARCH_TOOL", label: "MCP Search Tool" },
-      { key: "MCP_SEARCH_QUERY_ARG", label: "MCP Query Arg", placeholder: "query" },
-      { key: "MCP_SEARCH_MAX_RESULTS_ARG", label: "MCP Max Results Arg", placeholder: "max_results" },
-      { key: "RAG_RERANK_API_KEY", label: "Rerank API Key", secret: true },
-      { key: "RAG_RERANK_BASE_URL", label: "Rerank Base URL" },
-    ],
-  },
-];
-
-const OPS_ENV_GROUPS: LocalEnvGroup[] = [
-  {
-    id: "runtime-auth",
-    label: "运行模式 / 鉴权",
-    fields: [
-      { key: "APP_MODE", label: "运行模式", placeholder: "local" },
-      { key: "AUTH_ENABLED", label: "启用鉴权覆盖", placeholder: "auto" },
-      { key: "AUTH_TOKEN_SECRET", label: "Auth Token Secret", secret: true },
-      { key: "AUTH_TOKEN_TTL_HOURS", label: "Auth Token TTL", placeholder: "720" },
-      { key: "GUEST_TOKEN_TTL_HOURS", label: "Guest Token TTL", placeholder: "720" },
-      { key: "GUEST_COOKIE_NAME", label: "Guest Cookie Name", placeholder: "atm_guest_token" },
-      { key: "GUEST_COOKIE_SECURE", label: "Guest Cookie Secure" },
-      { key: "GUEST_COOKIE_SAMESITE", label: "Guest Cookie SameSite", placeholder: "auto" },
-      { key: "APP_VERSION", label: "应用版本", placeholder: "0.2.0" },
-    ],
-  },
-  {
-    id: "smtp",
-    label: "SMTP / 邮箱验证码",
-    fields: [
-      { key: "SMTP_HOST", label: "SMTP Host" },
-      { key: "SMTP_PORT", label: "SMTP Port", placeholder: "465" },
-      { key: "SMTP_USERNAME", label: "SMTP Username" },
-      { key: "SMTP_PASSWORD", label: "SMTP Password", secret: true },
-      { key: "SMTP_FROM_EMAIL", label: "From Email" },
-      { key: "SMTP_FROM_NAME", label: "From Name", placeholder: "AITeachMe" },
-      { key: "SMTP_USE_SSL", label: "Use SSL", placeholder: "true" },
-      { key: "SMTP_USE_STARTTLS", label: "Use StartTLS", placeholder: "false" },
-      { key: "SMTP_ADDRESS_FAMILY", label: "Address Family", placeholder: "ipv4" },
-      { key: "SMTP_TIMEOUT_S", label: "Timeout Seconds", placeholder: "15" },
-      { key: "AUTH_EMAIL_CODE_TTL_S", label: "验证码 TTL", placeholder: "600" },
-      { key: "AUTH_EMAIL_CODE_RESEND_INTERVAL_S", label: "重发间隔", placeholder: "60" },
-      { key: "AUTH_EMAIL_CODE_MAX_ATTEMPTS", label: "最大尝试次数", placeholder: "5" },
-    ],
-  },
-  {
-    id: "database-storage",
-    label: "数据库 / 对象存储",
-    fields: [
-      { key: "DATABASE_URL", label: "Database URL", secret: true },
-      { key: "STORAGE_BACKEND", label: "Storage Backend", placeholder: "local" },
-      { key: "S3_BUCKET", label: "S3 Bucket" },
-      { key: "S3_ENDPOINT", label: "S3 Endpoint" },
-      { key: "S3_ACCESS_KEY", label: "S3 Access Key", secret: true },
-      { key: "S3_SECRET_KEY", label: "S3 Secret Key", secret: true },
-      { key: "S3_SESSION_TOKEN", label: "S3 Session Token", secret: true },
-      { key: "S3_REGION", label: "S3 Region" },
-      { key: "S3_PUBLIC_BASE_URL", label: "S3 Public Base URL" },
-      { key: "S3_ADDRESSING_STYLE", label: "S3 Addressing Style", placeholder: "virtual" },
-      { key: "S3_CREDENTIAL_MODE", label: "S3 Credential Mode", placeholder: "auto" },
-      { key: "DOGECLOUD_API_ACCESS_KEY", label: "DogeCloud Access Key", secret: true },
-      { key: "DOGECLOUD_API_SECRET_KEY", label: "DogeCloud Secret Key", secret: true },
-      { key: "DOGECLOUD_API_BASE_URL", label: "DogeCloud Base URL", placeholder: "https://api.dogecloud.com" },
-      { key: "DOGECLOUD_SPACE_NAME", label: "DogeCloud Space" },
-      { key: "DOGECLOUD_TMP_TOKEN_PATH", label: "DogeCloud Token Path", placeholder: "/auth/tmp_token.json" },
-      { key: "DOGECLOUD_TMP_TOKEN_CHANNEL", label: "DogeCloud Token Channel", placeholder: "OSS_FULL" },
-      { key: "DOGECLOUD_TMP_TOKEN_SCOPE", label: "DogeCloud Token Scope", placeholder: "*" },
-    ],
-  },
-  {
-    id: "misc",
-    label: "其他",
-    fields: [
-      { key: "PROJECT_SETTINGS_PATH", label: "Settings 文件路径", placeholder: "settings_default.yaml" },
-      { key: "EXPORT_OPENAPI_ON_STARTUP", label: "启动导出 OpenAPI", placeholder: "false" },
-      { key: "CORS_ALLOWED_ORIGINS", label: "CORS 来源" },
-    ],
-  },
-];
-
-const OBSERVABILITY_ENV_GROUPS: LocalEnvGroup[] = [
-  {
-    id: "langsmith",
-    label: "LangSmith",
-    fields: [
-      { key: "LANGSMITH_TRACING", label: "Tracing", placeholder: "false" },
-      { key: "LANGSMITH_API_KEY", label: "API Key", secret: true },
-      { key: "LANGSMITH_PROJECT", label: "Project", placeholder: "AITeachMe" },
-      { key: "LANGSMITH_ENDPOINT", label: "Endpoint", placeholder: "https://api.smith.langchain.com" },
-    ],
-  },
-];
-
 const SECTIONS = [
-  { id: "connection", label: "连接", description: "后端与 LLM", icon: KeyRound },
+  { id: "connection", label: "连接", description: "模式与本机连接", icon: KeyRound },
   { id: "models", label: "模型", description: "模型路由", icon: Bot },
   { id: "learning", label: "学习引擎", description: "解析与构建", icon: Wrench },
   { id: "search", label: "检索", description: "联网与 RAG", icon: Search },
-  { id: "ops", label: "账号与存储", description: "鉴权、SMTP、数据", icon: Database },
-  { id: "observability", label: "观测调试", description: "Tracing 与本机调试", icon: Activity },
+  { id: "ops", label: "部署状态", description: "鉴权、SMTP、存储", icon: Database },
+  { id: "observability", label: "观测调试", description: "Tracing 与浏览器调试", icon: Activity },
 ] as const;
 
 const MODEL_KEYS = new Set([
@@ -285,6 +82,7 @@ const MODEL_KEYS = new Set([
   "models.extract",
   "models.embedding",
   "models.ocr",
+  "models.image_generation",
 ]);
 
 const CORE_STATUS_KEYS = new Set([
@@ -292,7 +90,7 @@ const CORE_STATUS_KEYS = new Set([
   "runtime.app_mode_raw",
   "runtime.version",
   "auth.enabled",
-  "settings.path",
+  "settings.source",
   "llm.base_url",
   "llm.api_key",
 ]);
@@ -318,12 +116,92 @@ const OBSERVABILITY_ENV_STATUS_KEYS = new Set([
   "langsmith.endpoint",
 ]);
 
+const SIMPLE_LEARNING_KEYS = new Set([
+  "ingest.default_parser_provider",
+  "ingest.mineru_model_version",
+  "ingest.mineru_enable_formula",
+  "ingest.mineru_enable_table",
+  "ingest.mineru_is_ocr",
+  "planner.default_digest_mode",
+  "planner.sprint.min_chapters",
+  "planner.sprint.max_chapters",
+  "planner.sprint.target_length",
+  "planner.systematic.min_chapters",
+  "planner.systematic.max_chapters",
+  "planner.systematic.target_length",
+  "docgen.allow_external_search",
+  "docgen.generate_cover_image",
+  "interact.history_turns",
+  "knowledge_graph.sync_after_docgen",
+]);
+
+const SIMPLE_SEARCH_KEYS = new Set([
+  "rag.top_k",
+  "rag.similarity_threshold",
+  "rag.rerank_model",
+  "rag.rerank_top_k",
+  "local_rag.priority",
+  "local_rag.min_results",
+  "search.retriever_profile",
+]);
+
+const SIMPLE_SEARCH_ENV_KEYS = new Set([
+  "search.tavily_key",
+  "search.jina_key",
+  "search.serper_key",
+  "search.mcp_tool",
+  "rag.rerank_api_key",
+]);
+
+const SIMPLE_OBSERVABILITY_KEYS = new Set([
+  "observability.tracing_enabled",
+  "observability.llm_token_summary_enabled",
+  "observability.llm_observability_enabled",
+  "runtime.llm_concurrency_limit",
+]);
+
 const LEARNING_SETTING_PREFIXES = ["ingest.", "planner.", "docgen.", "interact.", "knowledge_graph."];
 const SEARCH_SETTING_PREFIXES = ["rag.", "local_rag.", "search."];
 const OBSERVABILITY_SETTING_PREFIXES = ["observability.", "runtime.", "embedding."];
+const MODE_AWARE_PREFERENCE_KEYS = new Set([
+  "ingest.default_parser_provider",
+  "ingest.mineru_model_version",
+  "ingest.mineru_enable_formula",
+  "ingest.mineru_enable_table",
+  "ingest.mineru_is_ocr",
+  "planner.default_digest_mode",
+  "interact.history_turns",
+]);
+
+const SETTING_SELECT_OPTIONS: Record<string, Array<{ value: string; label: string }>> = {
+  "ingest.default_parser_provider": [
+    { value: "auto", label: "自动（本地 parser chain）" },
+    { value: "mineru", label: "MinerU" },
+    { value: "markitdown", label: "MarkItDown" },
+  ],
+  "ingest.mineru_model_version": [
+    { value: "vlm", label: "vlm" },
+    { value: "pipeline", label: "pipeline" },
+  ],
+  "planner.default_digest_mode": [
+    { value: "sprint", label: "sprint" },
+    { value: "systematic", label: "systematic" },
+  ],
+};
 
 function hasAnyPrefix(key: string, prefixes: string[]): boolean {
   return prefixes.some((prefix) => key.startsWith(prefix));
+}
+
+function filterByVisibleKeys(
+  entries: SettingEntry[],
+  allowedKeys: Set<string>,
+  showAdvanced: boolean,
+) {
+  if (showAdvanced) {
+    return entries;
+  }
+  return entries.filter((entry) => allowedKeys.has(entry.key));
 }
 
 function isPrimitive(value: unknown): value is SettingPrimitive {
@@ -346,13 +224,16 @@ function displayValue(entry: SettingEntry): string {
   return String(entry.value);
 }
 
-function editableEntries(sections: SettingSection[]): SettingEntry[] {
+function editableEntries(sections: SettingSection[], source?: SettingSource) {
   return sections
-    .flatMap((section) => section.entries)
-    .filter((entry) => entry.editable && isPrimitive(entry.value));
+    .flatMap((section) => section.entries ?? [])
+    .filter((entry) => entry.editable && isPrimitive(entry.value) && (!source || entry.source === source));
 }
 
-function draftFromEntries(entries: SettingEntry[], source: "value" | "default_value" = "value") {
+function draftFromEntries(
+  entries: SettingEntry[],
+  source: "value" | "default_value" = "value",
+) {
   return Object.fromEntries(
     entries.map((entry) => [entry.key, isPrimitive(entry[source]) ? entry[source] : null]),
   ) as Record<string, SettingPrimitive>;
@@ -394,6 +275,17 @@ function buildChangedSettingsPayload(
     Object.entries(draft).filter(([key, value]) => value !== defaults[key]),
   ) as Record<string, SettingPrimitive>;
   return buildSettingsPayload(changedDraft, entries);
+}
+
+function buildChangedFlatPayload(
+  draft: Record<string, SettingPrimitive>,
+  saved: Record<string, SettingPrimitive>,
+) {
+  return Object.fromEntries(
+    Object.entries(draft)
+      .filter(([key, value]) => value !== saved[key])
+      .map(([key, value]) => [key, value === null ? "" : String(value)]),
+  ) as Record<string, string>;
 }
 
 function parseInputValue(raw: string, currentValue: SettingPrimitive): SettingPrimitive {
@@ -446,49 +338,6 @@ function TextInput({
       placeholder={placeholder}
       className="w-full rounded-lg border border-zinc-200 bg-white px-3.5 py-2.5 text-[13px] text-zinc-900 placeholder:text-zinc-300 outline-none transition focus:border-zinc-400 focus:ring-4 focus:ring-zinc-900/5"
     />
-  );
-}
-
-function EnvInput({
-  field,
-  value,
-  onChange,
-}: {
-  field: LocalEnvField;
-  value: string;
-  onChange: (value: string) => void;
-}) {
-  const [showSecret, setShowSecret] = useState(false);
-  return (
-    <div className="space-y-2">
-      <label className="text-[13px] font-semibold text-zinc-700">{field.label}</label>
-      <div className="relative">
-        <input
-          type={field.secret && !showSecret ? "password" : "text"}
-          value={value}
-          onChange={(event) => onChange(event.target.value)}
-          placeholder={field.placeholder || field.key}
-          autoComplete={field.secret ? "new-password" : "off"}
-          autoCapitalize="none"
-          autoCorrect="off"
-          spellCheck={false}
-          className={`w-full rounded-lg border border-zinc-200 bg-white px-3.5 py-2.5 text-[13px] text-zinc-900 placeholder:text-zinc-300 outline-none transition focus:border-zinc-400 focus:ring-4 focus:ring-zinc-900/5 ${
-            field.secret ? "pr-10" : ""
-          }`}
-        />
-        {field.secret ? (
-          <button
-            type="button"
-            onClick={() => setShowSecret((value) => !value)}
-            className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1 text-zinc-400 transition hover:bg-zinc-100 hover:text-zinc-700"
-            aria-label={showSecret ? "隐藏密钥" : "显示密钥"}
-          >
-            {showSecret ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-          </button>
-        ) : null}
-      </div>
-      <p className="font-mono text-[11px] text-zinc-400">{field.key}</p>
-    </div>
   );
 }
 
@@ -548,6 +397,8 @@ function SourcePill({ source }: { source: SettingSource }) {
   const label =
     source === "env"
       ? ".env"
+      : source === "system_settings"
+        ? "系统库"
       : source === "user_settings"
         ? "用户库"
         : source === "settings"
@@ -604,14 +455,16 @@ function EditableSettingsList({
   error: string | null;
 }) {
   const items = entries.filter((entry) => entry.editable && isPrimitive(draft[entry.key]));
-  if (loading) return <InfoCard text="正在读取当前用户 settings..." />;
+  if (loading) return <InfoCard text="正在读取可编辑设置..." />;
   if (error) return <InfoCard text={error} variant="warning" />;
-  if (!items.length) return <InfoCard text="暂无可编辑 settings。" />;
+  if (!items.length) return <InfoCard text="当前模式下暂无可编辑项。" />;
 
   return (
     <div className="space-y-3">
       {items.map((entry) => {
         const value = draft[entry.key];
+        const selectOptions = SETTING_SELECT_OPTIONS[entry.key];
+
         if (typeof value === "boolean") {
           return (
             <div key={entry.key} className="space-y-2 rounded-lg border border-zinc-100 bg-zinc-50/40 px-4 py-3">
@@ -626,6 +479,11 @@ function EditableSettingsList({
                 <span className="rounded-md border border-zinc-200 bg-white px-2 py-0.5 text-[11px] text-zinc-400">
                   默认：{displayValue({ ...entry, value: entry.default_value })}
                 </span>
+                {entry.restart_required ? (
+                  <span className="rounded-md border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] text-amber-700">
+                    保存后建议重启
+                  </span>
+                ) : null}
               </div>
             </div>
           );
@@ -635,53 +493,37 @@ function EditableSettingsList({
           <div key={entry.key} className="space-y-2 rounded-lg border border-zinc-100 bg-zinc-50/40 px-4 py-3">
             <div className="flex flex-wrap items-start justify-between gap-2">
               <div>
-                <label className="block text-[13px] font-semibold text-zinc-700" title={entry.key}>{entry.label}</label>
+                <label className="block text-[13px] font-semibold text-zinc-700">{entry.label}</label>
+                <div className="mt-0.5 font-mono text-[11px] text-zinc-400">{entry.key}</div>
               </div>
               <SourcePill source={entry.source} />
             </div>
-            <TextInput
-              value={value === null ? "" : String(value)}
-              onChange={(next) => onChange(entry.key, parseInputValue(next, value))}
-              placeholder={entry.default_value === null || entry.default_value === undefined ? "留空" : String(entry.default_value)}
-              type={typeof value === "number" ? "number" : "text"}
-            />
+            {selectOptions ? (
+              <SelectInput
+                value={value === null ? "" : String(value)}
+                onChange={(next) => onChange(entry.key, next)}
+                options={selectOptions}
+              />
+            ) : (
+              <TextInput
+                value={value === null ? "" : String(value)}
+                onChange={(next) => onChange(entry.key, parseInputValue(next, value))}
+                placeholder={
+                  entry.default_value === null || entry.default_value === undefined
+                    ? "留空"
+                    : String(entry.default_value)
+                }
+                type={typeof value === "number" ? "number" : "text"}
+              />
+            )}
             <p className="text-[11px] leading-relaxed text-zinc-400">
               默认：{displayValue({ ...entry, value: entry.default_value })}
               {entry.description ? ` · ${entry.description}` : ""}
+              {entry.restart_required ? " · 保存后建议重启" : ""}
             </p>
           </div>
         );
       })}
-    </div>
-  );
-}
-
-function EnvGroupList({
-  groups,
-  values,
-  onChange,
-}: {
-  groups: LocalEnvGroup[];
-  values: Record<string, string>;
-  onChange: (key: string, value: string) => void;
-}) {
-  return (
-    <div className="space-y-5">
-      {groups.map((group) => (
-        <div key={group.id} className="space-y-3">
-          <SectionDivider label={group.label} />
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-            {group.fields.map((field) => (
-              <EnvInput
-                key={field.key}
-                field={field}
-                value={values[field.key] ?? ""}
-                onChange={(value) => onChange(field.key, value)}
-              />
-            ))}
-          </div>
-        </div>
-      ))}
     </div>
   );
 }
@@ -696,17 +538,17 @@ export function SettingsPanel({ isOpen, onClose }: SettingsModalProps) {
   const { settings, updateSettings } = useSettings();
   const [draft, setDraft] = useState<AppSettings>({ ...settings });
   const [activeSection, setActiveSection] = useState<SectionType>("connection");
+  const [showAdvanced, setShowAdvanced] = useState(false);
   const [saveState, setSaveState] = useState<SaveState>("idle");
   const [saveError, setSaveError] = useState<string | null>(null);
-  const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>("idle");
-  const [connectionMessage, setConnectionMessage] = useState("");
-  const [isTestingConnection, setIsTestingConnection] = useState(false);
-  const [overview, setOverview] = useState<SettingsOverviewData | null>(null);
+  const [overview, setOverview] = useState<SettingsOverviewData | null>(() => getStoredSystemSettingsOverview());
   const [isOverviewLoading, setIsOverviewLoading] = useState(false);
   const [overviewError, setOverviewError] = useState<string | null>(null);
   const [settingsDraft, setSettingsDraft] = useState<Record<string, SettingPrimitive>>({});
   const [savedSettingsDraft, setSavedSettingsDraft] = useState<Record<string, SettingPrimitive>>({});
   const [defaultSettingsDraft, setDefaultSettingsDraft] = useState<Record<string, SettingPrimitive>>({});
+  const [envDraft, setEnvDraft] = useState<Record<string, SettingPrimitive>>({});
+  const [savedEnvDraft, setSavedEnvDraft] = useState<Record<string, SettingPrimitive>>({});
 
   useEffect(() => {
     if (!isOpen) return;
@@ -714,8 +556,6 @@ export function SettingsPanel({ isOpen, onClose }: SettingsModalProps) {
     setActiveSection("connection");
     setSaveState("idle");
     setSaveError(null);
-    setConnectionStatus("idle");
-    setConnectionMessage("");
     setOverviewError(null);
   }, [isOpen, settings]);
 
@@ -734,11 +574,18 @@ export function SettingsPanel({ isOpen, onClose }: SettingsModalProps) {
         });
         if (cancelled) return;
         setOverview(response.data);
-        const entries = editableEntries(response.data.sections ?? []);
-        const nextDraft = draftFromEntries(entries);
-        setSettingsDraft(nextDraft);
-        setSavedSettingsDraft(nextDraft);
-        setDefaultSettingsDraft(draftFromEntries(entries, "default_value"));
+        storeSystemSettingsOverview(response.data);
+        const nextSettingEntries = editableEntries(response.data.sections ?? [], "settings").concat(
+          editableEntries(response.data.sections ?? [], "system_settings"),
+        );
+        const nextEnvEntries = editableEntries(response.data.sections ?? [], "env");
+        const nextSettingsDraft = draftFromEntries(nextSettingEntries);
+        const nextEnvDraft = draftFromEntries(nextEnvEntries);
+        setSettingsDraft(nextSettingsDraft);
+        setSavedSettingsDraft(nextSettingsDraft);
+        setDefaultSettingsDraft(draftFromEntries(nextSettingEntries, "default_value"));
+        setEnvDraft(nextEnvDraft);
+        setSavedEnvDraft(nextEnvDraft);
       } catch (error) {
         if (!cancelled) {
           setOverviewError(getApiErrorMessage(error, "读取后端设置失败，请确认后端服务可用。"));
@@ -765,6 +612,10 @@ export function SettingsPanel({ isOpen, onClose }: SettingsModalProps) {
     return () => document.removeEventListener("keydown", onEsc);
   }, [isOpen, onClose]);
 
+  const runtimeMode = overview?.mode ?? getStoredSystemSettingsOverview()?.mode ?? "local";
+  const isLocalRuntime = runtimeMode === "local";
+  const parserProvider =
+    String(settingsDraft["ingest.default_parser_provider"] ?? defaultSettingsDraft["ingest.default_parser_provider"] ?? "auto");
   const activeSectionConfig = useMemo(
     () => SECTIONS.find((section) => section.id === activeSection) ?? SECTIONS[0],
     [activeSection],
@@ -773,32 +624,26 @@ export function SettingsPanel({ isOpen, onClose }: SettingsModalProps) {
     () => Object.fromEntries((overview?.sections ?? []).map((section) => [section.id, section] as const)),
     [overview],
   );
-  const allEditableEntries = useMemo(() => editableEntries(overview?.sections ?? []), [overview]);
   const getEntries = (...ids: string[]) => ids.flatMap((id) => sectionMap[id]?.entries ?? []);
+  const editableSettingEntries = useMemo(
+    () => editableEntries(overview?.sections ?? [], "settings").concat(editableEntries(overview?.sections ?? [], "system_settings")),
+    [overview],
+  );
   const hasLocalChanges = JSON.stringify(draft) !== JSON.stringify(settings);
   const hasServerChanges = !sameDraft(settingsDraft, savedSettingsDraft);
-  const hasChanges = hasLocalChanges || hasServerChanges;
-  const llmConfigured = Boolean((draft.localEnv.LLM_API_KEY ?? "").trim());
+  const hasEnvChanges = !sameDraft(envDraft, savedEnvDraft);
+  const hasChanges = hasLocalChanges || hasServerChanges || hasEnvChanges;
 
   const patch = <K extends keyof AppSettings>(key: K, value: AppSettings[K]) => {
     setDraft((prev) => ({ ...prev, [key]: value }));
   };
 
-  const patchEnvVar = (key: string, value: string) => {
-    setDraft((prev) => ({
-      ...prev,
-      localEnv: {
-        ...prev.localEnv,
-        [key]: value,
-      },
-      apiUrl: key === "VITE_API_URL" ? value : prev.apiUrl,
-      useMock: key === "VITE_USE_MOCK" ? value.trim().toLowerCase() === "true" : prev.useMock,
-      mineruApiToken: key === "MINERU_API_TOKEN" ? value : prev.mineruApiToken,
-    }));
-  };
-
   const patchServerSetting = (key: string, value: SettingPrimitive) => {
     setSettingsDraft((prev) => ({ ...prev, [key]: value }));
+  };
+
+  const patchEnvSetting = (key: string, value: SettingPrimitive) => {
+    setEnvDraft((prev) => ({ ...prev, [key]: value }));
   };
 
   const saveSettings = async () => {
@@ -806,7 +651,7 @@ export function SettingsPanel({ isOpen, onClose }: SettingsModalProps) {
     setSaveError(null);
     updateSettings(draft);
 
-    if (!hasServerChanges) {
+    if (!hasServerChanges && !hasEnvChanges) {
       setSaveState("saved");
       window.setTimeout(() => setSaveState("idle"), 1400);
       return;
@@ -818,98 +663,98 @@ export function SettingsPanel({ isOpen, onClose }: SettingsModalProps) {
         url: "/api/v1/system/settings",
         method: "PATCH",
         data: {
-          settings: reset ? {} : buildChangedSettingsPayload(settingsDraft, defaultSettingsDraft, allEditableEntries),
+          settings: reset
+            ? {}
+            : buildChangedSettingsPayload(settingsDraft, defaultSettingsDraft, editableSettingEntries),
+          env: buildChangedFlatPayload(envDraft, savedEnvDraft),
           reset,
         },
       });
       setOverview(response.data);
-      const entries = editableEntries(response.data.sections ?? []);
-      const nextDraft = draftFromEntries(entries);
-      setSettingsDraft(nextDraft);
-      setSavedSettingsDraft(nextDraft);
-      setDefaultSettingsDraft(draftFromEntries(entries, "default_value"));
+      storeSystemSettingsOverview(response.data);
+      const nextSettingEntries = editableEntries(response.data.sections ?? [], "settings").concat(
+        editableEntries(response.data.sections ?? [], "system_settings"),
+      );
+      const nextEnvEntries = editableEntries(response.data.sections ?? [], "env");
+      const nextSettingsDraft = draftFromEntries(nextSettingEntries);
+      const nextEnvDraft = draftFromEntries(nextEnvEntries);
+      setSettingsDraft(nextSettingsDraft);
+      setSavedSettingsDraft(nextSettingsDraft);
+      setDefaultSettingsDraft(draftFromEntries(nextSettingEntries, "default_value"));
+      setEnvDraft(nextEnvDraft);
+      setSavedEnvDraft(nextEnvDraft);
       setSaveState("saved");
       window.setTimeout(() => setSaveState("idle"), 1400);
     } catch (error) {
       setSaveState("error");
-      setSaveError(getApiErrorMessage(error, "保存用户 settings 失败。"));
+      setSaveError(getApiErrorMessage(error, "保存设置失败。"));
     }
   };
-
-  const testConnection = async () => {
-    const key = (draft.localEnv.LLM_API_KEY ?? "").trim();
-    if (!key) {
-      setConnectionStatus("error");
-      setConnectionMessage("请先填写 LLM_API_KEY。");
-      return;
-    }
-    setIsTestingConnection(true);
-    setConnectionStatus("idle");
-    setConnectionMessage("");
-    const endpoint = `${((draft.localEnv.LLM_BASE_URL ?? "").trim() || DEFAULT_PROVIDER_BASE_URL).replace(/\/$/, "")}/models`;
-    try {
-      const response = await fetch(endpoint, { method: "GET", headers: { Authorization: `Bearer ${key}` } });
-      setConnectionStatus(response.ok ? "success" : "error");
-      setConnectionMessage(response.ok ? "连接成功：models 接口可访问。" : `连接失败：HTTP ${response.status}`);
-    } catch (error) {
-      setConnectionStatus("error");
-      setConnectionMessage(error instanceof Error ? error.message : "连接失败，请检查网络。");
-    } finally {
-      setIsTestingConnection(false);
-    }
-  };
-
-  const isLocal = overview ? overview.mode === "local" : true;
 
   const renderConnection = () => (
     <div className="space-y-5">
-      {isLocal ? (
+      <InfoCard
+        text={
+          isLocalRuntime
+            ? "本地模式下，会开放浏览器本机设置和本地 .env 编辑；这里的非敏感运行参数仍保存到数据库。"
+            : "云端模式下，这里只作为状态页展示当前运行模式、能力状态与配置来源。"
+        }
+      />
+      {isLocalRuntime ? (
         <>
-          <InfoCard text="先保证前端能连到后端，后端能连到模型。这里的密钥只保存在当前浏览器。" />
-          <EnvGroupList groups={CONNECTION_ENV_GROUPS} values={draft.localEnv} onChange={patchEnvVar} />
-          <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              onClick={testConnection}
-              disabled={isTestingConnection}
-              className="inline-flex h-[38px] items-center gap-1.5 rounded-lg border border-zinc-200 bg-white px-3 text-[12px] font-medium text-zinc-600 transition hover:text-zinc-900 disabled:opacity-50"
-            >
-              {isTestingConnection ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
-              测试 LLM
-            </button>
-          </div>
-          <AnimatePresence>
-            {connectionStatus !== "idle" ? (
-              <motion.div
-                initial={{ opacity: 0, height: 0 }}
-                animate={{ opacity: 1, height: "auto" }}
-                exit={{ opacity: 0, height: 0 }}
-                className={`overflow-hidden rounded-lg border px-4 py-3 text-[12px] leading-relaxed ${
-                  connectionStatus === "success"
-                    ? "border-emerald-200 bg-emerald-50/60 text-emerald-700"
-                    : "border-red-200 bg-red-50/60 text-red-600"
-                }`}
-              >
-                {connectionMessage}
-              </motion.div>
-            ) : null}
-          </AnimatePresence>
-          <SectionDivider label="后端当前状态" />
+          <SectionDivider label="本地 .env" />
+          <EditableSettingsList
+            entries={getEntries("models").filter((entry) => entry.source === "env")}
+            draft={envDraft}
+            onChange={patchEnvSetting}
+            loading={isOverviewLoading}
+            error={overviewError}
+          />
         </>
-      ) : (
-        <InfoCard text="云端模式下，基础连接与鉴权配置由服务器环境变量管理。" />
-      )}
+      ) : null}
+      {isLocalRuntime ? (
+        <div className="space-y-3 rounded-lg border border-zinc-100 bg-zinc-50/40 px-4 py-3">
+          <SectionDivider label="浏览器本机" />
+          <div className="space-y-3">
+            <div className="space-y-2">
+              <label className="text-[13px] font-semibold text-zinc-700">FastAPI 地址</label>
+              <TextInput value={draft.apiUrl} onChange={(value) => patch("apiUrl", value)} placeholder="http://localhost:8000" />
+              <p className="text-[11px] leading-relaxed text-zinc-400">只影响当前浏览器访问哪个后端地址。</p>
+            </div>
+            <SwitchRow
+              title="本地 Mock"
+              description="只影响当前浏览器是否启用前端 Mock。"
+              enabled={draft.useMock}
+              onToggle={() => patch("useMock", !draft.useMock)}
+            />
+          </div>
+        </div>
+      ) : null}
+      <SectionDivider label="后端当前状态" />
       <ReadonlySettingsList
         entries={getEntries("runtime", "models").filter((entry) => CORE_STATUS_KEYS.has(entry.key))}
         loading={isOverviewLoading}
         error={overviewError}
       />
+      {overview?.notes?.length ? (
+        <div className="space-y-2">
+          {overview.notes.map((note) => (
+            <InfoCard key={note} text={note} />
+          ))}
+        </div>
+      ) : null}
     </div>
   );
 
   const renderModels = () => (
     <div className="space-y-5">
-      <InfoCard text="模型名是用户级 settings，保存后进入用户数据库；LLM_API_KEY 和 LLM_BASE_URL 仍只在环境变量里。" />
+      <InfoCard
+        text={
+          isLocalRuntime
+            ? "本地模式允许直接调整模型路由。保存后会写入本地系统配置。"
+            : "云端模式下模型路由视为系统级配置，这里只读展示当前有效值。"
+        }
+      />
       <EditableSettingsList
         entries={getEntries("models").filter((entry) => MODEL_KEYS.has(entry.key))}
         draft={settingsDraft}
@@ -926,114 +771,227 @@ export function SettingsPanel({ isOpen, onClose }: SettingsModalProps) {
     </div>
   );
 
-  const renderLearning = () => (
-    <div className="space-y-5">
-      <InfoCard text="这里配置资料解析、知识构建、伴读上下文和知识图谱这些学习流程本身。" />
-      <EditableSettingsList
-        entries={getEntries("learning_engines").filter((entry) => hasAnyPrefix(entry.key, LEARNING_SETTING_PREFIXES))}
-        draft={settingsDraft}
-        onChange={patchServerSetting}
-        loading={isOverviewLoading}
-        error={overviewError}
-      />
-      {isLocal && (
-        <>
-          <SectionDivider label="解析服务密钥" />
-          <EnvGroupList groups={LEARNING_ENV_GROUPS} values={draft.localEnv} onChange={patchEnvVar} />
-        </>
-      )}
-      <SectionDivider label="上传时解析偏好" />
-      <div className="space-y-3">
-        <SelectInput
-          value={draft.parserProvider}
-          onChange={(value) => patch("parserProvider", value as ParserProvider)}
-          options={[
-            { value: "docling", label: "Docling" },
-            { value: "unstructured", label: "Unstructured" },
-            { value: "mineru", label: "MinerU" },
-            { value: "markitdown", label: "MarkItDown" },
-          ]}
+  const renderLearning = () => {
+    const learningEntries = filterByVisibleKeys(
+      getEntries("learning_engines").filter(
+        (entry) => hasAnyPrefix(entry.key, LEARNING_SETTING_PREFIXES) || MODE_AWARE_PREFERENCE_KEYS.has(entry.key),
+      ),
+      SIMPLE_LEARNING_KEYS,
+      showAdvanced,
+    );
+    const learningEnvEntries = getEntries("learning_engines").filter((entry) => entry.source === "env");
+
+    return (
+      <div className="space-y-5">
+        <InfoCard
+          text={
+            isLocalRuntime
+              ? showAdvanced
+                ? "当前显示本地模式下的全部学习引擎可写项。低频调优项也会一起展开，适合排查链路或精细打磨默认行为。"
+                : "当前默认只显示常用学习引擎设置。更底层的并发、超时和链路调优项可以通过右上角“显示高级”查看。"
+              : "云端模式下学习引擎配置只读展示，普通用户不能修改服务端默认值。"
+          }
         />
-        {draft.parserProvider === "mineru" ? (
-          <div className="space-y-3 rounded-lg border border-zinc-100 bg-zinc-50/40 p-4">
-            <TextInput
-              type="password"
-              value={draft.mineruApiToken}
-              onChange={(value) => patchEnvVar("MINERU_API_TOKEN", value)}
-              placeholder="MINERU_API_TOKEN"
-            />
-            <SelectInput
-              value={draft.mineruModelVersion}
-              onChange={(value) => patch("mineruModelVersion", value as MinerUModelVersion)}
-              options={[
-                { value: "vlm", label: "vlm" },
-                { value: "pipeline", label: "pipeline" },
-              ]}
-            />
-            <SwitchRow title="公式识别" description="上传时传给 MinerU。" enabled={draft.mineruEnableFormula} onToggle={() => patch("mineruEnableFormula", !draft.mineruEnableFormula)} />
-            <SwitchRow title="表格识别" description="上传时传给 MinerU。" enabled={draft.mineruEnableTable} onToggle={() => patch("mineruEnableTable", !draft.mineruEnableTable)} />
-            <SwitchRow title="OCR" description="上传扫描件时启用。" enabled={draft.mineruIsOcr} onToggle={() => patch("mineruIsOcr", !draft.mineruIsOcr)} />
+        <EditableSettingsList
+          entries={learningEntries}
+          draft={settingsDraft}
+          onChange={patchServerSetting}
+          loading={isOverviewLoading}
+          error={overviewError}
+        />
+        {isLocalRuntime && parserProvider === "mineru" ? (
+          <div className="space-y-3 rounded-lg border border-zinc-100 bg-zinc-50/40 px-4 py-3">
+            <SectionDivider label="浏览器临时覆盖" />
+            <div className="space-y-2">
+              <label className="text-[13px] font-semibold text-zinc-700">MinerU 临时 Token</label>
+              <TextInput
+                type="password"
+                value={draft.mineruApiToken}
+                onChange={(value) => patch("mineruApiToken", value)}
+                placeholder="MINERU_API_TOKEN"
+              />
+              <p className="text-[11px] leading-relaxed text-zinc-400">
+                仅当前浏览器可见。上传时会优先使用这个临时 Token；留空则回退到本地 .env 里的 MINERU_API_TOKEN。
+              </p>
+            </div>
           </div>
         ) : null}
+        {parserProvider === "auto" ? (
+          <InfoCard text="自动模式不会显式指定 parser_provider。上传时会走后端当前已实现的本地自动 parser chain：先分类，再生成 ParsePlan，再按文件类型和质量策略选择并尝试本地解析器链。" />
+        ) : null}
+        {isLocalRuntime ? (
+          <>
+            <SectionDivider label="本地 .env" />
+            <EditableSettingsList
+              entries={learningEnvEntries}
+              draft={envDraft}
+              onChange={patchEnvSetting}
+              loading={isOverviewLoading}
+              error={overviewError}
+            />
+          </>
+        ) : (
+          <>
+            <SectionDivider label="服务端状态" />
+            <ReadonlySettingsList
+              entries={learningEnvEntries}
+              loading={isOverviewLoading}
+              error={overviewError}
+            />
+          </>
+        )}
       </div>
-    </div>
-  );
+    );
+  };
 
-  const renderSearch = () => (
-    <div className="space-y-5">
-      <InfoCard text="这里配置本地 RAG、联网检索、Rerank、reader 和各类搜索 provider。" />
-      <EditableSettingsList
-        entries={getEntries("search").filter((entry) => hasAnyPrefix(entry.key, SEARCH_SETTING_PREFIXES))}
-        draft={settingsDraft}
-        onChange={patchServerSetting}
-        loading={isOverviewLoading}
-        error={overviewError}
-      />
-      <SectionDivider label="搜索服务密钥" />
-      <EnvGroupList groups={SEARCH_ENV_GROUPS} values={draft.localEnv} onChange={patchEnvVar} />
-      <SectionDivider label="后端 provider 状态" />
-      <ReadonlySettingsList
-        entries={getEntries("search").filter((entry) => entry.source === "env")}
-        loading={isOverviewLoading}
-        error={overviewError}
-      />
-    </div>
-  );
+  const renderSearch = () => {
+    const searchEntries = filterByVisibleKeys(
+      getEntries("search").filter((entry) => hasAnyPrefix(entry.key, SEARCH_SETTING_PREFIXES)),
+      SIMPLE_SEARCH_KEYS,
+      showAdvanced,
+    );
+    const searchEnvEntries = filterByVisibleKeys(
+      getEntries("search").filter((entry) => entry.source === "env"),
+      SIMPLE_SEARCH_ENV_KEYS,
+      showAdvanced,
+    );
 
-  const renderOps = () => (
-    <div className="space-y-5">
-      <InfoCard text="账号、邮件、数据库和对象存储属于部署与数据层配置；敏感项只保存在当前浏览器。" />
-      <EnvGroupList groups={OPS_ENV_GROUPS} values={draft.localEnv} onChange={patchEnvVar} />
-      <SectionDivider label="后端当前状态" />
-      <ReadonlySettingsList
-        entries={getEntries("runtime", "storage").filter((entry) => STORAGE_STATUS_KEYS.has(entry.key) || CORE_STATUS_KEYS.has(entry.key))}
-        loading={isOverviewLoading}
-        error={overviewError}
-      />
-    </div>
-  );
+    return (
+      <div className="space-y-5">
+        <InfoCard
+          text={
+            isLocalRuntime
+              ? showAdvanced
+                ? "当前显示完整检索调优面板，包括 provider、缓存和超时等低层参数。"
+                : "当前默认只显示常用检索策略。大部分 provider 密钥和超时调优项已收进高级视图，避免把日常设置页变成运维面板。"
+              : "云端模式下，检索 provider 的密钥与运行参数只读展示。"
+          }
+        />
+        <EditableSettingsList
+          entries={searchEntries}
+          draft={settingsDraft}
+          onChange={patchServerSetting}
+          loading={isOverviewLoading}
+          error={overviewError}
+        />
+        <SectionDivider label={isLocalRuntime ? "本地 .env" : "服务端 provider 状态"} />
+        {isLocalRuntime ? (
+          <EditableSettingsList
+            entries={searchEnvEntries}
+            draft={envDraft}
+            onChange={patchEnvSetting}
+            loading={isOverviewLoading}
+            error={overviewError}
+          />
+        ) : (
+          <ReadonlySettingsList
+            entries={searchEnvEntries}
+            loading={isOverviewLoading}
+            error={overviewError}
+          />
+        )}
+      </div>
+    );
+  };
 
-  const renderObservability = () => (
-    <div className="space-y-5">
-      <InfoCard text="这里配置 trace、LLM 调用统计和当前浏览器的调试开关。" />
-      <EnvGroupList groups={OBSERVABILITY_ENV_GROUPS} values={draft.localEnv} onChange={patchEnvVar} />
-      <EditableSettingsList
-        entries={getEntries("observability").filter((entry) => entry.editable && hasAnyPrefix(entry.key, OBSERVABILITY_SETTING_PREFIXES))}
-        draft={settingsDraft}
-        onChange={patchServerSetting}
-        loading={isOverviewLoading}
-        error={overviewError}
-      />
-      <SectionDivider label="前端本机" />
-      <SwitchRow title="调试模式" description="只影响当前浏览器。" enabled={draft.debugMode} onToggle={() => patch("debugMode", !draft.debugMode)} />
-      <SectionDivider label="后端观测状态" />
-      <ReadonlySettingsList
-        entries={getEntries("observability").filter((entry) => OBSERVABILITY_ENV_STATUS_KEYS.has(entry.key))}
-        loading={isOverviewLoading}
-        error={overviewError}
-      />
-    </div>
-  );
+  const renderOps = () => {
+    const opsEntries = getEntries("runtime", "storage");
+    const editableEnvEntries = opsEntries.filter((entry) => entry.source === "env");
+    const readonlyEntries = opsEntries.filter(
+      (entry) => CORE_STATUS_KEYS.has(entry.key) || STORAGE_STATUS_KEYS.has(entry.key) || entry.source === "runtime",
+    );
+
+    return (
+      <div className="space-y-5">
+        <InfoCard
+          text={
+            isLocalRuntime
+              ? "本地模式下部署级环境变量也可写入本地 .env，但是否立即生效取决于具体配置，通常建议保存后重启后端。"
+              : "云端模式下，部署、鉴权、数据库和对象存储统一视为平台级配置，只读展示。"
+          }
+        />
+        {isLocalRuntime ? (
+          <>
+            <SectionDivider label="本地 .env" />
+            <EditableSettingsList
+              entries={editableEnvEntries}
+              draft={envDraft}
+              onChange={patchEnvSetting}
+              loading={isOverviewLoading}
+              error={overviewError}
+            />
+          </>
+        ) : null}
+        <SectionDivider label="当前状态" />
+        <ReadonlySettingsList
+          entries={readonlyEntries}
+          loading={isOverviewLoading}
+          error={overviewError}
+        />
+      </div>
+    );
+  };
+
+  const renderObservability = () => {
+    const observabilityEntries = filterByVisibleKeys(
+      getEntries("observability").filter(
+        (entry) => entry.editable && hasAnyPrefix(entry.key, OBSERVABILITY_SETTING_PREFIXES),
+      ),
+      SIMPLE_OBSERVABILITY_KEYS,
+      showAdvanced,
+    );
+    const observabilityEnvEntries = getEntries("observability").filter((entry) =>
+      OBSERVABILITY_ENV_STATUS_KEYS.has(entry.key),
+    );
+
+    return (
+      <div className="space-y-5">
+        <InfoCard
+          text={
+            isLocalRuntime
+              ? showAdvanced
+                ? "当前显示完整观测与调试设置，包括采样、展示和嵌入批处理等低频参数。"
+                : "当前默认只显示最常用的观测控制项。更细的追踪预览、批处理和保留策略已收进高级视图。"
+              : "云端模式下观测配置只读展示；浏览器调试项默认不开放给普通用户。"
+          }
+        />
+        <EditableSettingsList
+          entries={observabilityEntries}
+          draft={settingsDraft}
+          onChange={patchServerSetting}
+          loading={isOverviewLoading}
+          error={overviewError}
+        />
+        {isLocalRuntime ? (
+          <div className="space-y-3 rounded-lg border border-zinc-100 bg-zinc-50/40 px-4 py-3">
+            <SectionDivider label="浏览器本机" />
+            <SwitchRow
+              title="调试模式"
+              description="只影响当前浏览器的调试体验。"
+              enabled={draft.debugMode}
+              onToggle={() => patch("debugMode", !draft.debugMode)}
+            />
+          </div>
+        ) : null}
+        <SectionDivider label={isLocalRuntime ? "本地 .env" : "服务端观测状态"} />
+        {isLocalRuntime ? (
+          <EditableSettingsList
+            entries={observabilityEnvEntries}
+            draft={envDraft}
+            onChange={patchEnvSetting}
+            loading={isOverviewLoading}
+            error={overviewError}
+          />
+        ) : (
+          <ReadonlySettingsList
+            entries={observabilityEnvEntries}
+            loading={isOverviewLoading}
+            error={overviewError}
+          />
+        )}
+      </div>
+    );
+  };
 
   const renderers: Record<SectionType, () => React.ReactNode> = {
     connection: renderConnection,
@@ -1093,9 +1051,9 @@ export function SettingsPanel({ isOpen, onClose }: SettingsModalProps) {
                 })}
               </div>
               <div className="flex flex-wrap gap-1.5 border-t border-zinc-100 px-4 py-3">
-                <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium ${llmConfigured ? "bg-emerald-50 text-emerald-600" : "bg-amber-50 text-amber-600"}`}>
-                  <span className={`h-1.5 w-1.5 rounded-full ${llmConfigured ? "bg-emerald-500" : "bg-amber-500"}`} />
-                  {llmConfigured ? "LLM Key" : "缺少 LLM Key"}
+                <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium ${isLocalRuntime ? "bg-emerald-50 text-emerald-600" : "bg-sky-50 text-sky-600"}`}>
+                  <span className={`h-1.5 w-1.5 rounded-full ${isLocalRuntime ? "bg-emerald-500" : "bg-sky-500"}`} />
+                  {isLocalRuntime ? "本地模式" : "云端模式"}
                 </span>
                 <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium ${draft.useMock ? "bg-amber-50 text-amber-600" : "bg-emerald-50 text-emerald-600"}`}>
                   <span className={`h-1.5 w-1.5 rounded-full ${draft.useMock ? "bg-amber-500" : "bg-emerald-500"}`} />
@@ -1110,14 +1068,30 @@ export function SettingsPanel({ isOpen, onClose }: SettingsModalProps) {
                   <h3 className="text-[16px] font-bold text-zinc-900">{activeSectionConfig.label}</h3>
                   <p className="mt-0.5 text-[12px] text-zinc-400">{activeSectionConfig.description}</p>
                 </div>
-                <button
-                  type="button"
-                  onClick={onClose}
-                  className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-zinc-400 transition hover:bg-zinc-100 hover:text-zinc-600"
-                  aria-label="关闭设置"
-                >
-                  <X className="h-4 w-4" />
-                </button>
+                <div className="flex items-center gap-2">
+                  {isLocalRuntime ? (
+                    <button
+                      type="button"
+                      onClick={() => setShowAdvanced((prev) => !prev)}
+                      className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-[12px] font-medium transition ${
+                        showAdvanced
+                          ? "border-zinc-900 bg-zinc-900 text-white hover:bg-zinc-800"
+                          : "border-zinc-200 bg-white text-zinc-500 hover:border-zinc-300 hover:text-zinc-700"
+                      }`}
+                    >
+                      <SlidersHorizontal className="h-3.5 w-3.5" />
+                      {showAdvanced ? "收起高级" : "显示高级"}
+                    </button>
+                  ) : null}
+                  <button
+                    type="button"
+                    onClick={onClose}
+                    className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-zinc-400 transition hover:bg-zinc-100 hover:text-zinc-600"
+                    aria-label="关闭设置"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
               </div>
 
               <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
@@ -1156,30 +1130,34 @@ export function SettingsPanel({ isOpen, onClose }: SettingsModalProps) {
                 </div>
 
                 <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const nextDraft = { ...DEFAULT_SETTINGS };
-                      setDraft(nextDraft);
-                      setSettingsDraft(defaultSettingsDraft);
-                      setSaveError(null);
-                    }}
-                    className="rounded-lg px-3 py-1.5 text-[12px] font-medium text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-700"
-                  >
-                    恢复默认
-                  </button>
-                  <button
-                    type="button"
-                    onClick={saveSettings}
-                    disabled={!hasChanges || saveState === "saving"}
-                    className={`rounded-lg px-4 py-1.5 text-[12px] font-semibold transition ${
-                      hasChanges && saveState !== "saving"
-                        ? "bg-zinc-900 text-white hover:bg-zinc-800"
-                        : "cursor-not-allowed bg-zinc-100 text-zinc-300"
-                    }`}
-                  >
-                    {saveState === "saving" ? "保存中" : "保存设置"}
-                  </button>
+                  {isLocalRuntime ? (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setDraft({ ...DEFAULT_SETTINGS });
+                          setSettingsDraft(defaultSettingsDraft);
+                          setEnvDraft(savedEnvDraft);
+                          setSaveError(null);
+                        }}
+                        className="rounded-lg px-3 py-1.5 text-[12px] font-medium text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-700"
+                      >
+                        恢复默认
+                      </button>
+                      <button
+                        type="button"
+                        onClick={saveSettings}
+                        disabled={!hasChanges || saveState === "saving"}
+                        className={`rounded-lg px-4 py-1.5 text-[12px] font-semibold transition ${
+                          hasChanges && saveState !== "saving"
+                            ? "bg-zinc-900 text-white hover:bg-zinc-800"
+                            : "cursor-not-allowed bg-zinc-100 text-zinc-300"
+                        }`}
+                      >
+                        {saveState === "saving" ? "保存中" : "保存设置"}
+                      </button>
+                    </>
+                  ) : null}
                 </div>
               </div>
             </div>

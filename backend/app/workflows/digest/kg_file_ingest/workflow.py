@@ -13,6 +13,7 @@ from app.workflows.digest.common.events import (
 )
 from app.workflows.digest.common.metrics import build_token_summary
 from app.workflows.digest.kg_file_ingest.graph import (
+    RUN_NAME_KG_FILE_INGEST,
     build_kg_digest_graph,
     create_graph_digest_initial_state,
 )
@@ -34,14 +35,19 @@ async def run_graph_file_ingest_workflow(
     await bus.publish(DigestBuildRequestedEvent(subject=subject, job_id=job_id, file_ids=file_ids))
 
     context = WorkflowContext(
-        workflow_name="digest.graph",
+        workflow_name="digest.kg_file_ingest",
         subject=subject,
         event_bus=bus,
-        metadata={"job_id": job_id, "build_session_id": build_session_id or ""},
+        metadata={
+            "job_id": job_id,
+            "build_session_id": build_session_id or "",
+            "lane": "kg_file_ingest",
+            "langsmith_run_name": RUN_NAME_KG_FILE_INGEST,
+        },
     )
     result = await run_state_graph(
-        workflow_name="digest.graph",
-        graph_builder=build_kg_digest_graph,
+        workflow_name="digest.kg_file_ingest",
+        graph_builder=lambda: build_kg_digest_graph(context=context),
         initial_state=create_graph_digest_initial_state(
             subject=subject,
             file_ids=file_ids,
@@ -112,6 +118,5 @@ async def run_graph_file_ingest_workflow(
 
 
 __all__ = ["run_graph_file_ingest_workflow"]
-
 
 

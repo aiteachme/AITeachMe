@@ -1,4 +1,4 @@
-"""Compatibility wrapper for the finalize-failure node."""
+"""Top-level finalize-failure node entrypoint."""
 
 from app.workflows.ingest.fast_parse.lib.finalize import build_finalize_failure_node
 

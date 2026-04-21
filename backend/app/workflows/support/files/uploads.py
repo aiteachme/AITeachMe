@@ -5,7 +5,6 @@ from __future__ import annotations
 import hashlib
 import json
 import mimetypes
-import shutil
 import uuid
 from pathlib import Path
 
@@ -15,14 +14,11 @@ from sqlmodel import Session
 from app.shared.infra.settings import get_settings
 from app.shared.infra.exceptions import FileCountLimitError, FileParseError, FileTooLargeError
 from app.shared.infra.runtime import is_cloud_mode
-from app.shared.infra.storage import get_artifact_store, get_content_store
+from app.shared.infra.storage import get_content_store
 from app.models import IngestStatus, RawFile, TaskStatus
 from app.repositories.files_repo import create_raw_file, delete_raw_file, update_raw_file
 from app.schemas.files import FilesUploadData
 from app.utils.path_helpers import (
-    build_asset_dir,
-    build_raw_file_path,
-    build_raw_markdown_path,
     build_temp_dir,
 )
 from app.utils.presenters import require_id
@@ -48,6 +44,7 @@ async def _save_uploaded_raw_files(
     session: Session,
     *,
     subject: str,
+    owner_user_id: str,
     files: list[UploadFile],
     parse_request_metadata: dict[str, object] | None = None,
 ) -> list[RawFile]:
@@ -61,6 +58,7 @@ async def _save_uploaded_raw_files(
             await save_uploaded_file(
                 session,
                 subject=subject,
+                owner_user_id=owner_user_id,
                 file=file,
                 parse_request_metadata=parse_request_metadata,
             )
@@ -72,11 +70,13 @@ async def save_uploaded_file(
     session: Session,
     *,
     subject: str,
+    owner_user_id: str,
     file: UploadFile,
     parse_request_metadata: dict[str, object] | None = None,
 ) -> RawFile:
     settings = get_settings()
-    store = get_artifact_store()
+    cs = get_content_store()
+    scope = cs.subject_scope(user_id=owner_user_id, subject=subject)
     normalized_subject = validate_subject(subject)
     content = await file.read()
     max_upload_size_mb = settings.ingest.max_upload_size_mb
@@ -117,40 +117,21 @@ async def save_uploaded_file(
     )
     raw_file_id = require_id(raw_file.id, "RawFile.id")
 
-    cs = get_content_store()
-    if is_cloud_mode():
-        storage_key = f"{normalized_subject}/raw_files/{raw_file_id}{extension}"
-        try:
-            await store.write_file(storage_key, temp_path)
-        except Exception as exc:
-            delete_raw_file(session, raw_file)
-            temp_path.unlink(missing_ok=True)
-            raise FileParseError(filename, reason=f"上传文件到 OSS 失败: {exc}") from exc
-        temp_path.unlink(missing_ok=True)
-        return update_raw_file(
-            session,
-            raw_file,
-            file_path=storage_key,
-            markdown_path=cs.raw_markdown_key(normalized_subject, raw_file_id),
-            asset_dir=cs.asset_prefix(normalized_subject, raw_file_id).rstrip("/"),
-        )
-
-    final_path = build_raw_file_path(normalized_subject, raw_file_id, extension)
-    final_path.parent.mkdir(parents=True, exist_ok=True)
-
     try:
-        shutil.move(str(temp_path), str(final_path))
+        await cs.write_file(scope.raw_file_key(raw_file_id, extension), temp_path)
     except Exception as exc:
         delete_raw_file(session, raw_file)
         temp_path.unlink(missing_ok=True)
-        raise FileParseError(filename, reason=f"移动上传文件失败: {exc}") from exc
+        reason = "上传文件到 OSS 失败" if is_cloud_mode() else "保存上传文件失败"
+        raise FileParseError(filename, reason=f"{reason}: {exc}") from exc
+    temp_path.unlink(missing_ok=True)
 
     return update_raw_file(
         session,
         raw_file,
-        file_path=str(final_path),
-        markdown_path=str(build_raw_markdown_path(normalized_subject, raw_file_id)),
-        asset_dir=str(build_asset_dir(normalized_subject, raw_file_id)),
+        file_path=scope.raw_file_key(raw_file_id, extension),
+        markdown_path=scope.raw_markdown_key(raw_file_id),
+        asset_dir=scope.asset_prefix(raw_file_id).rstrip("/"),
     )
 
 
@@ -158,11 +139,13 @@ async def save_uploaded_files(
     session: Session,
     *,
     subject: str,
+    owner_user_id: str,
     files: list[UploadFile],
 ) -> FilesUploadData:
     saved = await _save_uploaded_raw_files(
         session,
         subject=subject,
+        owner_user_id=owner_user_id,
         files=files,
         parse_request_metadata=None,
     )
@@ -173,12 +156,14 @@ async def save_uploaded_files_and_request_parse(
     session: Session,
     *,
     subject: str,
+    owner_user_id: str,
     files: list[UploadFile],
     parse_request_metadata: dict[str, object] | None = None,
 ) -> tuple[FilesUploadData, list[int]]:
     saved = await _save_uploaded_raw_files(
         session,
         subject=subject,
+        owner_user_id=owner_user_id,
         files=files,
         parse_request_metadata=parse_request_metadata,
     )

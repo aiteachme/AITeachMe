@@ -19,8 +19,19 @@ class SystemSettingsSnapshot(SQLModel, table=True):
     __tablename__ = "system_settings_snapshot"
 
     id: str = Field(primary_key=True)
-    settings_path: str = Field(default="")
+    settings_source: str = Field(default="")
     settings_hash: str = Field(default="", index=True)
+    settings_json: dict[str, Any] = Field(default_factory=dict, sa_column=sa.Column(sa.JSON))
+    created_at: datetime = Field(default_factory=utc_now)
+    updated_at: datetime = Field(default_factory=utc_now)
+
+
+class SystemRuntimeSettings(SQLModel, table=True):
+    """Global non-secret runtime settings overrides."""
+
+    __tablename__ = "system_runtime_settings"
+
+    id: str = Field(primary_key=True)
     settings_json: dict[str, Any] = Field(default_factory=dict, sa_column=sa.Column(sa.JSON))
     created_at: datetime = Field(default_factory=utc_now)
     updated_at: datetime = Field(default_factory=utc_now)
