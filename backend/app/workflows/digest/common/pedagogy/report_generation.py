@@ -273,48 +273,44 @@ def build_document_overview(
 
     normalized_mode = _normalize_mode(digest_mode)
     mode_label = "冲刺课" if normalized_mode == "sprint" else "系统课"
-    note_kind = "TIP" if normalized_mode == "sprint" else "IMPORTANT"
     display_subject = _resolve_subject_display_name(subject=subject, subject_display_name=subject_display_name)
     deduped_chapters = _dedupe_chapters_for_overview(chapters)
     goal_line = user_prompt.strip() or f"围绕 {display_subject} 生成一份结构化学习文档。"
-    summary_line = plan_summary.strip() or _default_plan_summary(
-        subject=display_subject,
-        digest_mode=normalized_mode,
-        chapters=deduped_chapters,
-    )
+    chapter_count = len(deduped_chapters)
+    scope_line = _build_overview_scope(deduped_chapters)
 
     lines = [
         "# 知识文档总览",
         "",
-        f"> [!{note_kind}]",
-        f"> 课程：{display_subject}",
-        f"> 类型：{mode_label}",
-        f"> 学习目标：{goal_line}",
-        f"> 文档定位：{summary_line}",
+        (
+            f"这份讲义围绕《{display_subject}》展开，按 {mode_label} 方式组织内容，"
+            f"共 {chapter_count} 章。"
+            if chapter_count > 0
+            else f"这份讲义围绕《{display_subject}》展开，按 {mode_label} 方式组织内容。"
+        ),
+        "",
+        f"学习目标：{goal_line}",
     ]
-    source_strategy_label = _source_strategy_label(source_strategy)
-    if source_strategy_label:
-        lines.append(f"> 资料策略：{source_strategy_label}")
-    lines.extend(["", "## 这份文档怎么读", ""])
-    lines.extend(f"- {item}" for item in _reading_guidance(normalized_mode))
-    lines.extend(
-        [
-            "",
-            "## 章节路线图",
-            "",
-            "| 章节 | 标题 | 学习重点 | 章节定位 |",
-            "| --- | --- | --- | --- |",
-        ]
-    )
-
-    for chapter in deduped_chapters:
-        chapter_index = int(chapter.get("chapter_index", 0) or 0)
-        title = resolve_effective_chapter_title(chapter, chapter_index=chapter_index)
-        focus = _chapter_focus(chapter)
-        takeaway = _chapter_takeaway(chapter, digest_mode=normalized_mode)
-        lines.append(f"| {chapter_index or '-'} | {title} | {focus} | {takeaway} |")
+    if scope_line:
+        lines.extend(["", f"重点覆盖：{scope_line}"])
 
     return "\n".join(lines).strip() + "\n"
+
+
+def _build_overview_scope(chapters: list[Mapping[str, object]], *, max_items: int = 5) -> str:
+    titles: list[str] = []
+    for chapter in chapters:
+        chapter_index = int(chapter.get("chapter_index", 0) or 0)
+        title = resolve_effective_chapter_title(chapter, chapter_index=chapter_index).strip()
+        if title and title not in titles:
+            titles.append(title)
+        if len(titles) >= max_items:
+            break
+    if not titles:
+        return ""
+    if len(chapters) > max_items:
+        return "、".join(titles) + " 等主题"
+    return "、".join(titles)
 
 
 def _resolve_subject_display_name(*, subject: str, subject_display_name: str = "") -> str:

@@ -72,7 +72,7 @@ function getApiBaseUrl(): string {
   return base;
 }
 
-function buildApiUrl(url: string): string {
+export function buildApiUrl(url: string): string {
   const base = getApiBaseUrl();
   if (/^https?:\/\//i.test(url) || !base) {
     return url;

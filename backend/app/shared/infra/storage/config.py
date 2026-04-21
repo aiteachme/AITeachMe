@@ -6,7 +6,12 @@ from app.shared.infra.env_support import get_env
 
 
 def get_storage_backend() -> str:
-    return (get_env("STORAGE_BACKEND", "local") or "local").strip().lower() or "local"
+    explicit = (get_env("STORAGE_BACKEND", "auto") or "auto").strip().lower() or "auto"
+    if explicit in {"local", "s3"}:
+        return explicit
+    if (get_env("S3_BUCKET") or "").strip() and (get_env("S3_ENDPOINT") or "").strip():
+        return "s3"
+    return "local"
 
 
 def storage_is_s3() -> bool:

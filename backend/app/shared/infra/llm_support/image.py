@@ -15,6 +15,7 @@ from app.shared.infra.llm_support.routing import LLMCallPurpose
 from app.shared.infra.observability.trace import langsmith_trace
 
 from .common import (
+    build_litellm_provider_kwargs,
     build_completion_context,
     get_semaphore,
     logger,
@@ -50,10 +51,6 @@ class ImageGenerationResult(BaseModel):
     raw_metadata: dict[str, Any] = Field(default_factory=dict)
 
 
-def _completion_model(provider_model: str) -> str:
-    return provider_model if "/" in provider_model else f"openai/{provider_model}"
-
-
 def _is_aihubmix_base_url(value: str | None) -> bool:
     return "aihubmix.com" in str(value or "").casefold()
 
@@ -61,6 +58,11 @@ def _is_aihubmix_base_url(value: str | None) -> bool:
 def _is_aihubmix_prediction_model(value: str) -> bool:
     normalized = str(value or "").strip()
     return "/" in normalized
+
+
+def _is_bare_model_name(value: str | None) -> bool:
+    normalized = str(value or "").strip()
+    return bool(normalized) and "/" not in normalized
 
 
 def _is_describe_only_model(value: str | None) -> bool:
@@ -155,6 +157,29 @@ def _build_aihubmix_prediction_input(*, prompt: str, size: str, n: int, response
     }
 
 
+def _build_openai_compatible_image_payload(
+    *,
+    model: str,
+    prompt: str,
+    size: str,
+    n: int,
+    response_format: str,
+    extra_body: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "model": model,
+        "prompt": prompt,
+        "size": size,
+        "n": max(1, int(n or 1)),
+        "response_format": "b64_json" if response_format == "b64_json" else response_format,
+    }
+    for key, value in dict(extra_body or {}).items():
+        if value is None:
+            continue
+        payload[key] = value
+    return payload
+
+
 async def _agenerate_aihubmix_prediction(
     *,
     api_base: str,
@@ -207,6 +232,61 @@ async def _agenerate_aihubmix_prediction(
     )
 
 
+async def _agenerate_openai_compatible_image(
+    *,
+    api_base: str,
+    api_key: str,
+    model: str,
+    prompt: str,
+    size: str,
+    n: int,
+    response_format: str,
+    timeout_s: int,
+    extra_body: Mapping[str, Any] | None = None,
+) -> ImageGenerationResult:
+    endpoint = f"{api_base.rstrip('/')}/images/generations"
+    request_payload = _build_openai_compatible_image_payload(
+        model=model,
+        prompt=prompt,
+        size=size,
+        n=n,
+        response_format=response_format,
+        extra_body=extra_body,
+    )
+    async with httpx.AsyncClient(timeout=timeout_s) as client:
+        response = await client.post(
+            endpoint,
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            },
+            json=request_payload,
+        )
+    if response.status_code >= 400:
+        raise LLMCallError(
+            reason=(
+                f"openai-compatible image endpoint failed: {response.status_code} "
+                f"{response.text[:240]}"
+            )
+        )
+    payload = response.json()
+    images = _extract_images(payload)
+    if not images:
+        raise LLMCallError(
+            reason=f"openai-compatible image endpoint returned no image: {str(payload)[:240]}"
+        )
+    return ImageGenerationResult(
+        model=model,
+        prompt=prompt,
+        images=images,
+        raw_metadata={
+            "provider": "openai_compatible_http",
+            "endpoint": endpoint,
+            "response_keys": sorted(str(key) for key in payload.keys()),
+        },
+    )
+
+
 async def agenerate_image(
     prompt: str,
     *,
@@ -238,7 +318,7 @@ async def agenerate_image(
         )
 
     call_kwargs = {
-        "model": _completion_model(context.model),
+        "model": context.model,
         "prompt": str(prompt).strip(),
         "api_base": kwargs.pop("api_base", None) or None,
         "api_key": kwargs.pop("api_key", None) or context.api_key,
@@ -247,10 +327,16 @@ async def agenerate_image(
         "size": size,
         "response_format": response_format,
     }
+    call_kwargs.update(build_litellm_provider_kwargs(context.model))
     if call_kwargs["api_base"] is None:
         from app.shared.infra.env_support import get_env
 
         call_kwargs["api_base"] = get_env("LLM_BASE_URL")
+    passthrough_image_body = {
+        key: kwargs.get(key)
+        for key in ("quality", "style", "user", "background", "output_format")
+        if kwargs.get(key) is not None
+    }
     call_kwargs.update(kwargs)
 
     last_error: Exception | None = None
@@ -296,6 +382,18 @@ async def agenerate_image(
                             n=int(call_kwargs["n"]),
                             response_format=response_format,
                             timeout_s=request_timeout_s(context.profile.timeout_s),
+                        )
+                    elif call_kwargs.get("api_base") and _is_bare_model_name(context.model):
+                        result = await _agenerate_openai_compatible_image(
+                            api_base=str(call_kwargs["api_base"]),
+                            api_key=str(call_kwargs["api_key"]),
+                            model=context.model,
+                            prompt=str(prompt).strip(),
+                            size=size,
+                            n=int(call_kwargs["n"]),
+                            response_format=response_format,
+                            timeout_s=request_timeout_s(context.profile.timeout_s),
+                            extra_body=passthrough_image_body,
                         )
                     else:
                         response = await asyncio.wait_for(

@@ -79,7 +79,7 @@ export function BuildResearchSources({ events, className }: Props) {
                   initial={{ opacity: 0, y: 6 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: index * 0.03, duration: 0.2 }}
-                  className="rounded-lg border border-zinc-200 bg-white px-3 py-2 text-[12px] leading-snug text-zinc-600 shadow-sm"
+                  className="py-1 text-[12px] leading-relaxed text-zinc-600 border-l-[2px] border-zinc-200 pl-3"
                 >
                   {title}
                 </motion.div>
@@ -98,7 +98,7 @@ export function BuildResearchSources({ events, className }: Props) {
                   initial={{ opacity: 0, y: 6 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: index * 0.03, duration: 0.2 }}
-                  className="rounded-lg border border-zinc-200 bg-white px-3 py-2 text-[12px] leading-snug text-zinc-600 shadow-sm"
+                  className="py-1 text-[12px] leading-relaxed text-zinc-600 border-l-[2px] border-zinc-200 pl-3"
                 >
                   {summary}
                 </motion.div>

@@ -438,6 +438,10 @@ repair_or_route
     - 已支持 surface_patch / section_patch 的局部 Markdown patch。
     - evidence_patch / regenerate_chapter / re_dispatch / rebuild_backbone 先结构化记录为 unresolved warning。
     - 当前仍是一次性路径：review_content -> repair_or_route -> merge_review。
+    - repair 执行策略已经收口为“按章节并行、章内顺序 patch”：
+      - 不同章节的 patch 会并行执行。
+      - 同一章节内部仍保持顺序，避免多个 patch 同时改同一份 Markdown。
+      - 一旦某章已应用一次实质性 patch，同轮后续 patch 默认跳过；只有 `Markdown 渲染结构异常` 这类确定性表层修补不会锁死该章。
   当前模型方案：
     - `surface_patch / section_patch`
       - `task_type=DOCGEN`

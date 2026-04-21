@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import re
 
 from app.shared.infra.llm_support import acompletion_with_fallback
@@ -165,61 +166,73 @@ async def repair_or_route_review_actions(
     """Apply safe patches and route heavier actions for later repair loops."""
 
     chapters_by_index = {chapter.chapter_index: chapter for chapter in reviewed_chapters}
-    updated_actions: list[ReviewAction] = []
-    unresolved: list[str] = []
-    repair_trace: list[RepairTraceItem] = []
-    patched_chapter_indexes: set[int] = set()
+    updated_actions_by_index: dict[int, ReviewAction] = {}
+    unresolved_by_index: dict[int, str] = {}
+    repair_trace_by_index: dict[int, RepairTraceItem] = {}
+    patch_actions_by_chapter: dict[int, list[tuple[int, ReviewAction]]] = {}
+
+    async def _process_patch_actions_for_chapter(
+        chapter: ReviewedChapterDraft,
+        indexed_actions: list[tuple[int, ReviewAction]],
+    ) -> tuple[ReviewedChapterDraft, list[tuple[int, ReviewAction, RepairTraceItem, str | None]]]:
+        current_chapter = chapter
+        chapter_locked = False
+        results: list[tuple[int, ReviewAction, RepairTraceItem, str | None]] = []
+        for action_index, action in indexed_actions:
+            if chapter_locked:
+                updated_action = action.model_copy(update={"status": "skipped"})
+                results.append(
+                    (
+                        action_index,
+                        updated_action,
+                        RepairTraceItem(
+                            trace_id=f"repair_trace_{action_index:03d}_{action.action_id or action.action_type}",
+                            action_id=action.action_id,
+                            action_type=action.action_type,
+                            chapter_index=action.chapter_index,
+                            status="skipped",
+                            reason=action.reason,
+                            target_anchor=action.target_anchor,
+                            changed=False,
+                            detail="Skipped because another patch was already applied to this chapter in the same repair pass.",
+                        ),
+                        _unresolved_message(updated_action, status="skipped"),
+                    )
+                )
+                continue
+
+            patched_chapter, trace_item, updated_action, unresolved_message = await _apply_patch_action(
+                chapter=current_chapter,
+                action=action,
+            )
+            current_chapter = patched_chapter
+            if trace_item.changed and "Markdown 渲染结构异常" not in action.reason:
+                chapter_locked = True
+            results.append((action_index, updated_action, trace_item, unresolved_message))
+        return current_chapter, results
+
     for action_index, action in enumerate(review_actions, start=1):
         if action.action_type in {"surface_patch", "section_patch"}:
             chapter = chapters_by_index.get(int(action.chapter_index or 0))
             if chapter is None:
                 updated_action = action.model_copy(update={"status": "skipped"})
-                updated_actions.append(updated_action)
-                unresolved.append(_unresolved_message(updated_action, status="skipped"))
-                repair_trace.append(
-                    RepairTraceItem(
-                        trace_id=f"repair_trace_{action.action_id or action.action_type}",
-                        action_id=action.action_id,
-                        action_type=action.action_type,
-                        chapter_index=action.chapter_index,
-                        status="skipped",
-                        reason=action.reason,
-                        target_anchor=action.target_anchor,
-                        changed=False,
-                        detail="No target chapter found for patch action.",
-                    )
+                updated_actions_by_index[action_index] = updated_action
+                unresolved_by_index[action_index] = _unresolved_message(updated_action, status="skipped")
+                repair_trace_by_index[action_index] = RepairTraceItem(
+                    trace_id=f"repair_trace_{action.action_id or action.action_type}",
+                    action_id=action.action_id,
+                    action_type=action.action_type,
+                    chapter_index=action.chapter_index,
+                    status="skipped",
+                    reason=action.reason,
+                    target_anchor=action.target_anchor,
+                    changed=False,
+                    detail="No target chapter found for patch action.",
                 )
                 continue
-            if chapter.chapter_index in patched_chapter_indexes:
-                updated_action = action.model_copy(update={"status": "skipped"})
-                updated_actions.append(updated_action)
-                unresolved.append(_unresolved_message(updated_action, status="skipped"))
-                repair_trace.append(
-                    RepairTraceItem(
-                        trace_id=f"repair_trace_{action_index:03d}_{action.action_id or action.action_type}",
-                        action_id=action.action_id,
-                        action_type=action.action_type,
-                        chapter_index=action.chapter_index,
-                        status="skipped",
-                        reason=action.reason,
-                        target_anchor=action.target_anchor,
-                        changed=False,
-                        detail="Skipped because another patch was already applied to this chapter in the same repair pass.",
-                    )
-                )
-                continue
-            patched_chapter, trace_item, updated_action, unresolved_message = await _apply_patch_action(
-                chapter=chapter,
-                action=action,
-            )
-            chapters_by_index[patched_chapter.chapter_index] = patched_chapter
-            if trace_item.changed and "Markdown 渲染结构异常" not in action.reason:
-                patched_chapter_indexes.add(patched_chapter.chapter_index)
-            updated_actions.append(updated_action)
-            repair_trace.append(trace_item)
-            if unresolved_message:
-                unresolved.append(unresolved_message)
+            patch_actions_by_chapter.setdefault(chapter.chapter_index, []).append((action_index, action))
             continue
+
         if action.action_type in _ACTION_REQUIRES_FUTURE_REPAIR:
             status = "downgraded"
             detail = "MVP repair router recorded this action without changing markdown."
@@ -227,21 +240,50 @@ async def repair_or_route_review_actions(
             status = "recorded"
             detail = "Review requested record-only handling."
         updated_action = action.model_copy(update={"status": status})
-        updated_actions.append(updated_action)
-        unresolved.append(_unresolved_message(updated_action, status=status))
-        repair_trace.append(
-            RepairTraceItem(
-                trace_id=f"repair_trace_{action_index:03d}_{action.action_id or action.action_type}",
-                action_id=action.action_id,
-                action_type=action.action_type,
-                chapter_index=action.chapter_index,
-                status=status,
-                reason=action.reason,
-                target_anchor=action.target_anchor,
-                changed=False,
-                detail=detail,
-            )
+        updated_actions_by_index[action_index] = updated_action
+        unresolved_by_index[action_index] = _unresolved_message(updated_action, status=status)
+        repair_trace_by_index[action_index] = RepairTraceItem(
+            trace_id=f"repair_trace_{action_index:03d}_{action.action_id or action.action_type}",
+            action_id=action.action_id,
+            action_type=action.action_type,
+            chapter_index=action.chapter_index,
+            status=status,
+            reason=action.reason,
+            target_anchor=action.target_anchor,
+            changed=False,
+            detail=detail,
         )
+
+    if patch_actions_by_chapter:
+        patch_results = await asyncio.gather(
+            *[
+                _process_patch_actions_for_chapter(chapters_by_index[chapter_index], indexed_actions)
+                for chapter_index, indexed_actions in sorted(patch_actions_by_chapter.items())
+            ]
+        )
+        for patched_chapter, action_results in patch_results:
+            chapters_by_index[patched_chapter.chapter_index] = patched_chapter
+            for action_index, updated_action, trace_item, unresolved_message in action_results:
+                updated_actions_by_index[action_index] = updated_action
+                repair_trace_by_index[action_index] = trace_item
+                if unresolved_message:
+                    unresolved_by_index[action_index] = unresolved_message
+
+    updated_actions = [
+        updated_actions_by_index[index]
+        for index in range(1, len(review_actions) + 1)
+        if index in updated_actions_by_index
+    ]
+    unresolved = [
+        unresolved_by_index[index]
+        for index in range(1, len(review_actions) + 1)
+        if index in unresolved_by_index
+    ]
+    repair_trace = [
+        repair_trace_by_index[index]
+        for index in range(1, len(review_actions) + 1)
+        if index in repair_trace_by_index
+    ]
     repaired_chapters = [chapters_by_index[index] for index in sorted(chapters_by_index)]
     return repaired_chapters, updated_actions, unresolved, repair_trace
 

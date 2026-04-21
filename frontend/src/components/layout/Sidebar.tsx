@@ -4,6 +4,7 @@ import {
   BarChart3,
   BookOpen,
   ChevronRight,
+  Download,
   Edit3,
   FileText,
   Loader2,
@@ -28,6 +29,7 @@ import {
 import type { SubjectDeletePreviewData, SubjectItem } from "../../api/generated/model";
 import { apiClient, getApiErrorMessage } from "../../api/client";
 import { unwrapOrvalResponse } from "../../lib/unwrapOrvalResponse";
+import { downloadSubjectPackage } from "../../lib/subjectPackage";
 import { cn } from "../../lib/utils";
 import { SubjectDeleteConfirmModal } from "./SubjectDeleteConfirmModal";
 import { CommunityModal } from "./CommunityPanel";
@@ -141,6 +143,7 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
   const [renameTarget, setRenameTarget] = useState<{ id: string; name: string } | null>(null);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [isCommunityModalOpen, setIsCommunityModalOpen] = useState(false);
+  const [exportingSubjectId, setExportingSubjectId] = useState<string | null>(null);
 
   const menuRef = useRef<HTMLDivElement>(null);
   const location = useLocation();
@@ -243,6 +246,18 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
     deleteMutation.reset();
     deletePreviewMutation.mutate(subject.subject_id);
   };
+
+  async function handleExportSubject(subject: SubjectItem) {
+    setSubjectActionError(undefined);
+    setExportingSubjectId(subject.subject_id);
+    try {
+      await downloadSubjectPackage(subject.subject_id);
+    } catch (error: unknown) {
+      setSubjectActionError(getApiErrorMessage(error, "导出失败，请重试"));
+    } finally {
+      setExportingSubjectId((current) => (current === subject.subject_id ? null : current));
+    }
+  }
 
   return (
     <>
@@ -381,9 +396,25 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
                             type="button"
                             onClick={() => {
                               setOpenMenuId(null);
+                              void handleExportSubject(subject);
+                            }}
+                            disabled={exportingSubjectId === subject.subject_id}
+                            className="flex w-full items-center gap-2 px-3 py-2 text-xs text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:text-slate-400"
+                          >
+                            {exportingSubjectId === subject.subject_id ? (
+                              <Loader2 className="h-3.5 w-3.5 animate-spin text-slate-400" />
+                            ) : (
+                              <Download className="h-3.5 w-3.5 text-slate-400" />
+                            )}
+                            导出 .atmx
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setOpenMenuId(null);
                               setRenameTarget({ id: subject.subject_id, name: displayName === "无标题" ? "" : subject.name });
                             }}
-                            className="flex w-full items-center gap-2 px-3 py-2 text-xs text-slate-700 hover:bg-slate-50"
+                            className="flex w-full items-center gap-2 border-t border-slate-100 px-3 py-2 text-xs text-slate-700 hover:bg-slate-50"
                           >
                             <Edit3 className="h-3.5 w-3.5 text-slate-400" />
                             重命名

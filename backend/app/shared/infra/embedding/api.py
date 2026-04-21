@@ -17,6 +17,7 @@ import structlog
 from app.shared.infra.settings import PROJECT_SETTINGS_ENV_NAME, get_settings
 from app.shared.infra.env_support import get_env
 from app.shared.infra.exceptions import LLMCallError, MissingLLMApiKeyError
+from app.shared.infra.llm_support.common import build_litellm_provider_kwargs
 from app.shared.infra.llm_support.litellm_loader import load_litellm
 
 logger = structlog.get_logger()
@@ -24,19 +25,6 @@ litellm = load_litellm()
 
 # 全局：让 litellm 尽可能丢弃不支持的参数
 litellm.drop_params = True
-
-
-def _build_model_name(embedding_model: str) -> str:
-    """构建 litellm 路由所需的 model 名称。
-
-    如果用户已经在 EMBEDDING_MODEL 中写好了 provider 前缀
-    （如 ``openai/text-embedding-3-small`` 或 ``dashscope/qwen3-embedding-0.6b``），
-    就直接使用；否则默认加 ``openai/`` 前缀，以兼容 OpenAI 兼容协议
-    （DashScope compatible-mode / SiliconFlow / aihubmix 等）。
-    """
-    if "/" in embedding_model:
-        return embedding_model
-    return f"openai/{embedding_model}"
 
 
 async def _call_embedding(
@@ -58,6 +46,7 @@ async def _call_embedding(
             api_base=api_base,
             api_key=api_key,
             encoding_format="float",
+            **build_litellm_provider_kwargs(model),
         )
         return [item["embedding"] for item in response.data]
     except litellm.exceptions.BadRequestError as exc:
@@ -73,6 +62,7 @@ async def _call_embedding(
                 input=batch,
                 api_base=api_base,
                 api_key=api_key,
+                **build_litellm_provider_kwargs(model),
             )
             return [item["embedding"] for item in response.data]
         if (
@@ -113,7 +103,16 @@ async def aembed_texts(
     if not api_key:
         raise MissingLLMApiKeyError()
     batch_size = batch_size or settings.embedding.batch_size
-    model = _build_model_name(settings.models.embedding)
+    model = str(settings.models.embedding or "").strip()
+    if not model:
+        if soft_fail:
+            logger.info(
+                "embedding_skipped_unconfigured",
+                text_count=len(texts),
+                reason="models.embedding is empty",
+            )
+            return []
+        raise LLMCallError(reason="models.embedding is not configured")
     api_base = (
         get_env("LLM_BASE_URL", "https://api.openai.com/v1")
         or "https://api.openai.com/v1"

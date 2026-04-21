@@ -21,7 +21,7 @@ SYSTEMATIC_MODE_DEFAULTS: dict[str, Any] = {
 DEFAULT_SETTINGS_VALUES: dict[str, Any] = {
     "models": {
         "reason": "qwen-max",
-        "primary": "qwen-plus",
+        "primary": "qwen-flash",
         "light": "qwen-flash",
         "extract": None,
         "ocr": None,
@@ -39,7 +39,7 @@ DEFAULT_SETTINGS_VALUES: dict[str, Any] = {
     },
     "docgen": {
         "allow_external_search": True,
-        "generate_cover_image": False,
+        "generate_cover_image": True,
         "max_parallel_chapters": 20,
         "io_parallelism": 20,
         "max_research_queries": 3,
@@ -102,8 +102,8 @@ DEFAULT_SETTINGS_VALUES: dict[str, Any] = {
         "tracing_enabled": True,
         "langsmith_capture_inputs": None,
         "langsmith_capture_outputs": None,
-        "langsmith_max_text_chars": 2000,
-        "llm_observability_max_records": 100000,
+        "langsmith_max_text_chars": 100000,
+        "llm_observability_max_records": 1000,
     },
 }
 

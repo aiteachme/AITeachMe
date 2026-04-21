@@ -31,6 +31,7 @@ import { BuildView, ACTIVE_DOC_BUILD_STATUSES, parseIsoTimestamp, useDocBuildPro
 import { KnowledgeBuildResolutionModal } from "../components/pages/KnowledgeBuildResolutionModal";
 import { PlannerPreviewMarkdown } from "../components/pages/PlannerPreviewMarkdown";
 import { FullPageDropOverlay } from "../components/ui/FullPageDropOverlay";
+import { useToast } from "../components/ui/Toast";
 import { useKnowledgeBuildFlow } from "../hooks/useKnowledgeBuildFlow";
 import { buildKnowledgeDocStateQueryKey, fetchKnowledgeDocState } from "../lib/knowledgeDocs";
 import { getStoredAppSettings, useSettings } from "../hooks/useSettings";
@@ -686,6 +687,7 @@ function pickAssistantReply(response: BuildPlannerSessionResponse, fallbackConte
 
 export function BuildPlanPage() {
   const { subjectId = "" } = useParams();
+  const { toast } = useToast();
   const navigate = useNavigate();
   const location = useLocation();
   const queryClient = useQueryClient();
@@ -1058,6 +1060,15 @@ export function BuildPlanPage() {
     fallbackErrorMessage: "知识文档构建失败。",
     onSuccess: (data: DocGenBuildData) => {
       void queryClient.invalidateQueries({ queryKey: buildKnowledgeDocStateQueryKey(subjectId) });
+      toast({
+        title: "已开始构建知识文档",
+        description:
+          readyFileUids.length > 0
+            ? "正在跳转到知识文档页查看真实构建进度。"
+            : "当前将直接进入联网研究模式，正在跳转到知识文档页查看构建进度。",
+        variant: "success",
+        duration: 3200,
+      });
 
       const params = new URLSearchParams();
       if (data.requested_at) {
@@ -1072,11 +1083,11 @@ export function BuildPlanPage() {
 
       navigate(
         {
-          pathname: `/subject/${subjectId}/build`,
+          pathname: `/subject/${subjectId}/knowledge-docs`,
           search: params.toString() ? `?${params.toString()}` : "",
         },
         {
-          replace: true,
+          replace: false,
           state: null,
         },
       );
@@ -1086,6 +1097,16 @@ export function BuildPlanPage() {
   const isPlannerPending = plannerStreaming || confirmPlannerMutation.isPending;
   const isBuilding = knowledgeBuild.isPending || isBuildActive;
   const shouldShowBuildDialog = isBuilding || isWaitingForRequestedBuild;
+  const plannerPendingBadgeText = plannerStreaming
+    ? "思考中"
+    : confirmPlannerMutation.isPending
+      ? "正在确认方案"
+      : "正在启动构建";
+  const plannerPendingStatusText = plannerStreaming
+    ? plannerStreamingStatus
+    : confirmPlannerMutation.isPending
+      ? "方案已确认，正在创建知识文档构建任务并准备跳转到知识文档页..."
+      : "正在确认方案并准备启动构建...";
 
   const focusComposer = useCallback(() => {
     const focusInput = () => {
@@ -1360,12 +1381,6 @@ export function BuildPlanPage() {
       });
       setCurrentPlan(currentPlanRef.current);
       setIsRevisingPlan(false);
-      const buildAcceptedMessage =
-        readyFileUids.length > 0
-          ? "方案已确认，构建请求已受理，接下来会在当前页面展示真实的检索、研究和写作进度。"
-          : "方案已确认。当前没有已解析资料，这一轮会直接进入联网研究模式，并在当前页面展示构建过程。";
-
-      setMessages((prev) => [...prev, createMessage("system", buildAcceptedMessage)]);
       knowledgeBuild.submitBuild({
         confirmed_plan_id: response.confirmed_plan_id,
         file_uids: readyFileUids.length > 0 ? readyFileUids : undefined,
@@ -1595,10 +1610,10 @@ export function BuildPlanPage() {
                   <div className="mb-3 flex flex-wrap items-center gap-2">
                     <span className="inline-flex items-center gap-1.5 rounded-full border border-zinc-200 bg-zinc-50 px-2.5 py-1 text-[11px] font-medium text-zinc-700">
                       <Loader2 className="h-3 w-3 animate-spin" />
-                      {plannerStreaming ? "思考中" : "正在启动构建"}
+                      {plannerPendingBadgeText}
                     </span>
                     <span className="text-xs text-zinc-500">
-                      {plannerStreaming ? plannerStreamingStatus : "正在确认方案并准备启动构建..."}
+                      {plannerPendingStatusText}
                     </span>
                   </div>
                   {plannerStreamingEvents.length ? (

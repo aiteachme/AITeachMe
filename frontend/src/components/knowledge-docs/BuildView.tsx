@@ -234,18 +234,18 @@ export function BuildView({
                       当前没有引入本地文件。
                     </div>
                   ) : (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="flex flex-col">
                       {sourceFiles.map((file) => {
                          const hasError = Boolean(file.error_message?.trim());
                          const isDone = Boolean(file.markdown_ready);
                          const label = resolveFileProcessingLabel(file);
                          
                          return (
-                           <div key={file.uid} className="group relative border border-[#E5E7EB] rounded-lg p-4 hover:border-zinc-300 hover:shadow-sm transition-all bg-white cursor-pointer overflow-hidden">
+                           <div key={file.uid} className="group relative border-b border-[#F3F4F6] py-4 hover:bg-zinc-50 transition-all bg-white cursor-pointer overflow-hidden -mx-4 px-4">
                              <div className="flex items-start gap-4">
                                <div className={cn(
-                                 "w-10 h-10 rounded-md border flex items-center justify-center shrink-0",
-                                 hasError ? "bg-red-50 border-red-100 text-red-500" : isDone ? "bg-emerald-50 border-emerald-100 text-emerald-500" : "bg-zinc-50 border-zinc-100 text-zinc-400"
+                                 "w-9 h-9 rounded-md flex items-center justify-center shrink-0",
+                                 hasError ? "bg-red-50 text-red-500" : isDone ? "bg-emerald-50 text-emerald-500" : "bg-zinc-50 text-zinc-400"
                                )}>
                                   {isDone ? <CheckCircle2 className="w-5 h-5" /> : <FileText className="w-5 h-5" />}
                                </div>
@@ -287,11 +287,11 @@ export function BuildView({
                     </h3>
                   </div>
                   
-                  <div className="border border-[#E5E7EB] rounded-lg bg-[#FAFAFA] p-5 mb-8">
-                     <BuildResearchSources events={events} className="!border-0 !p-0 !bg-transparent !shadow-none !rounded-none" />
+                  <div className="mb-8">
+                     <BuildResearchSources events={events} />
                   </div>
 
-                  <div className="space-y-0">
+                  <div className="space-y-0 border-t border-[#F3F4F6] pt-2">
                      {events.map((event, index) => {
                        const stageLabel = EVENT_STAGE_LABELS[(event.stage ?? "").trim()] ?? (event.stage?.trim() || "事件");
                        return (
@@ -326,7 +326,7 @@ export function BuildView({
                 <div className="max-w-4xl space-y-12">
                   <div>
                      <h3 className="text-[14px] font-semibold text-zinc-900 tracking-tight mb-4">摘要与框架思路</h3>
-                     <p className="text-[13px] leading-relaxed text-zinc-600 border-l-[3px] border-blue-500 pl-4 bg-blue-50/30 py-2">
+                     <p className="text-[13px] leading-relaxed text-zinc-600 border-l-[2px] border-zinc-200 pl-4 py-1">
                        {planSummary || "系统正在理解资料范围与章节边界..."}
                      </p>
                   </div>
