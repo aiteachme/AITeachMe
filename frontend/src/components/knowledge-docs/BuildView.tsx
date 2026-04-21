@@ -222,7 +222,7 @@ export function BuildView({
                 transition={{ duration: 0.15 }}
                 className="absolute inset-0 overflow-y-auto px-10 py-8 scrollbar-thin scrollbar-webkit"
               >
-                <div className="max-w-4xl">
+                <div className="w-full">
                   <h3 className="text-[14px] font-semibold text-black mb-5 tracking-tight flex items-center gap-2">
                     本地文献提取结果
                     <span className="font-normal text-[12px] text-zinc-500 bg-zinc-100 px-2 py-0.5 rounded">{sourceFiles.length} 份</span>
@@ -278,36 +278,28 @@ export function BuildView({
                 transition={{ duration: 0.15 }}
                 className="absolute inset-0 overflow-y-auto px-10 py-8 scrollbar-thin scrollbar-webkit"
               >
-                <div className="max-w-4xl">
-                  {/* Event stream flat style */}
-                  <div className="flex items-center justify-between mb-5">
+                <div className="w-full">
+                  {/* Terminal Style Log Stream */}
+                  <div className="flex items-center justify-between mb-4">
                     <h3 className="text-[14px] font-semibold text-black tracking-tight flex items-center gap-2">
-                       构建网络源与系统事件
-                       <span className="font-normal text-[12px] text-zinc-500 bg-zinc-100 px-2 py-0.5 rounded">{events.length} 条</span>
+                       系统构建日志
+                       <span className="font-mono font-normal text-[11px] text-zinc-500 bg-zinc-100 px-2 py-0.5 rounded">{events.length}</span>
                     </h3>
                   </div>
                   
-                  <div className="mb-8">
-                     <BuildResearchSources events={events} />
-                  </div>
-
-                  <div className="space-y-0 border-t border-[#F3F4F6] pt-2">
+                  <div className="font-mono text-[12px] space-y-1 bg-[#1A1B26] text-zinc-300 p-4 rounded-xl overflow-x-auto shadow-inner min-h-[400px]">
                      {events.map((event, index) => {
-                       const stageLabel = EVENT_STAGE_LABELS[(event.stage ?? "").trim()] ?? (event.stage?.trim() || "事件");
+                       const stageLabel = EVENT_STAGE_LABELS[(event.stage ?? "").trim()] ?? (event.stage?.trim() || "EVENT");
                        return (
-                         <div key={index} className="flex gap-6 py-4 border-b border-[#F3F4F6] last:border-0 hover:bg-[#FAFAFA] transition-colors -mx-4 px-4 rounded-lg">
-                           <div className="flex flex-col gap-0.5 w-[110px] flex-shrink-0">
-                             <span className="text-[12px] font-medium text-zinc-700">{stageLabel}</span>
-                             <span className="text-[11px] text-zinc-400">{event.created_at ? formatBuildEventTime(event.created_at) : ""}</span>
-                           </div>
-                           <p className="text-[12.5px] text-zinc-600 leading-relaxed">
-                             {event.summary}
-                           </p>
+                         <div key={`${event.stage}-${index}`} className="flex gap-3 hover:bg-white/5 px-2 py-1 rounded transition-colors group">
+                           <span className="text-zinc-500 shrink-0 select-none w-12">{event.created_at ? formatBuildEventTime(event.created_at) : ""}</span>
+                           <span className="text-sky-400 shrink-0 w-[100px] truncate select-none">[{stageLabel}]</span>
+                           <span className="text-zinc-100 whitespace-pre-wrap flex-1 leading-relaxed">{event.summary}</span>
                          </div>
                        );
                      })}
                      {events.length === 0 && (
-                        <div className="text-[12px] text-center text-zinc-400 py-10 bg-[#FAFAFA] border border-[#E5E7EB] rounded-lg">系统尚未产生构建日志...</div>
+                        <div className="text-zinc-500 italic py-2 px-2 animate-pulse">Waiting for system events...</div>
                      )}
                   </div>
                 </div>
@@ -323,7 +315,7 @@ export function BuildView({
                 transition={{ duration: 0.15 }}
                 className="absolute inset-0 overflow-y-auto px-10 py-10 scrollbar-thin scrollbar-webkit"
               >
-                <div className="max-w-4xl space-y-12">
+                <div className="w-full space-y-12 pr-6">
                   <div>
                      <h3 className="text-[14px] font-semibold text-zinc-900 tracking-tight mb-4">摘要与框架思路</h3>
                      <p className="text-[13px] leading-relaxed text-zinc-600 border-l-[2px] border-zinc-200 pl-4 py-1">
