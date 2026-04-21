@@ -46,8 +46,8 @@ const EVENT_STAGE_LABELS: Record<string, string> = {
 };
 
 const TABS = [
-  { id: "files", label: "文件解析" },
   { id: "logs", label: "构建日志" },
+  { id: "files", label: "文件解析" },
   { id: "outline", label: "大纲内容" },
   { id: "preview", label: "动态生成" },
 ];
