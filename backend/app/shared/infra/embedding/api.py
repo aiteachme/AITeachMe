@@ -17,6 +17,7 @@ import structlog
 from app.shared.infra.settings import PROJECT_SETTINGS_ENV_NAME, get_settings
 from app.shared.infra.env_support import get_env
 from app.shared.infra.exceptions import LLMCallError, MissingLLMApiKeyError
+from app.shared.infra.llm_support.common import build_litellm_provider_kwargs
 from app.shared.infra.llm_support.litellm_loader import load_litellm
 
 logger = structlog.get_logger()
@@ -45,6 +46,7 @@ async def _call_embedding(
             api_base=api_base,
             api_key=api_key,
             encoding_format="float",
+            **build_litellm_provider_kwargs(model),
         )
         return [item["embedding"] for item in response.data]
     except litellm.exceptions.BadRequestError as exc:
@@ -60,6 +62,7 @@ async def _call_embedding(
                 input=batch,
                 api_base=api_base,
                 api_key=api_key,
+                **build_litellm_provider_kwargs(model),
             )
             return [item["embedding"] for item in response.data]
         if (

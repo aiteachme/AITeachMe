@@ -63,6 +63,21 @@ def normalize_model_selector(value: str | None) -> str | None:
     return normalized or None
 
 
+def build_litellm_provider_kwargs(model: str | None) -> dict[str, str]:
+    """Infer LiteLLM provider kwargs while keeping raw model names in app code.
+
+    Current project convention: business code and settings store plain model
+    names such as ``qwen-flash`` or ``text-embedding-3-small``. When the model
+    string already contains a provider prefix, we pass it through unchanged.
+    Otherwise we default to the OpenAI-compatible route used by the project.
+    """
+
+    normalized = normalize_model_selector(model)
+    if not normalized or "/" in normalized:
+        return {}
+    return {"custom_llm_provider": "openai"}
+
+
 def resolve_settings_model(settings: Settings, model: str | None = None) -> tuple[str, str]:
     """Resolve a provider model name from ``settings.models``."""
 
@@ -221,6 +236,7 @@ def build_completion_kwargs(
         "timeout": context.profile.timeout_s,
         "temperature": remaining_kwargs.pop("temperature", context.profile.temperature),
     }
+    completion_kwargs.update(build_litellm_provider_kwargs(context.model))
     if context.profile.max_tokens is not None:
         completion_kwargs["max_tokens"] = context.profile.max_tokens
     completion_kwargs.update(remaining_kwargs)

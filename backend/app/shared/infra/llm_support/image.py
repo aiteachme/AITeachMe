@@ -15,6 +15,7 @@ from app.shared.infra.llm_support.routing import LLMCallPurpose
 from app.shared.infra.observability.trace import langsmith_trace
 
 from .common import (
+    build_litellm_provider_kwargs,
     build_completion_context,
     get_semaphore,
     logger,
@@ -243,6 +244,7 @@ async def agenerate_image(
         "size": size,
         "response_format": response_format,
     }
+    call_kwargs.update(build_litellm_provider_kwargs(context.model))
     if call_kwargs["api_base"] is None:
         from app.shared.infra.env_support import get_env
 
