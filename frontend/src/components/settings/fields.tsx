@@ -1,59 +1,177 @@
+import type { ReactNode } from "react";
+
+import { cn } from "../../lib/utils";
+import { SETTINGS_STYLES } from "./constants";
+
 interface InfoCardProps {
   text: string;
   variant?: "neutral" | "warning";
 }
 
 export function InfoCard({ text, variant = "neutral" }: InfoCardProps) {
-  const className =
-    variant === "warning"
-      ? "text-amber-700 bg-amber-50"
-      : "text-zinc-600 bg-zinc-50/80";
   return (
-    <div className={`rounded-xl px-4 py-3 text-[13px] leading-relaxed ${className}`}>
+    <div
+      className={cn(
+        SETTINGS_STYLES.field.infoCard,
+        variant === "warning"
+          ? SETTINGS_STYLES.field.infoCardWarning
+          : SETTINGS_STYLES.field.infoCardNeutral,
+      )}
+      role={variant === "warning" ? "alert" : "status"}
+    >
       {text}
     </div>
   );
 }
 
-export function SectionDivider({ label }: { label: string }) {
+interface SectionDividerProps {
+  label: string;
+  compact?: boolean;
+}
+
+export function SectionDivider({ label, compact = false }: SectionDividerProps) {
   return (
-    <div className="flex items-center justify-between pb-2 mt-8 mb-4 border-b border-zinc-100/80">
-      <h3 className="text-base font-semibold text-zinc-900">{label}</h3>
+    <div
+      className={cn(
+        SETTINGS_STYLES.field.divider,
+        compact
+          ? SETTINGS_STYLES.field.dividerCompactSpacing
+          : SETTINGS_STYLES.field.dividerDefaultSpacing,
+      )}
+    >
+      <h3 className={SETTINGS_STYLES.field.dividerTitle}>{label}</h3>
+    </div>
+  );
+}
+
+interface SectionCardProps {
+  title?: string;
+  children: ReactNode;
+  className?: string;
+  bodyClassName?: string;
+}
+
+export function SectionCard({
+  title,
+  children,
+  className,
+  bodyClassName,
+}: SectionCardProps) {
+  return (
+    <div
+      className={cn(
+        SETTINGS_STYLES.field.card,
+        className,
+      )}
+    >
+      {title ? <SectionDivider label={title} compact /> : null}
+      <div className={cn(SETTINGS_STYLES.field.cardBody, bodyClassName)}>{children}</div>
+    </div>
+  );
+}
+
+interface FieldLabelBlockProps {
+  label: string;
+  description?: string;
+  htmlFor?: string;
+}
+
+export function FieldLabelBlock({
+  label,
+  description,
+  htmlFor,
+}: FieldLabelBlockProps) {
+  const LabelTag = htmlFor ? "label" : "span";
+  return (
+    <div className={SETTINGS_STYLES.field.labelBlock}>
+      <LabelTag
+        {...(htmlFor ? { htmlFor } : {})}
+        className={SETTINGS_STYLES.field.label}
+      >
+        {label}
+      </LabelTag>
+      {description ? <p className={SETTINGS_STYLES.field.description}>{description}</p> : null}
+    </div>
+  );
+}
+
+export function FieldNote({
+  children,
+  className,
+}: {
+  children: ReactNode;
+  className?: string;
+}) {
+  return (
+    <p className={cn(SETTINGS_STYLES.field.note, className)}>
+      {children}
+    </p>
+  );
+}
+
+export function ReadonlyValue({
+  children,
+  className,
+}: {
+  children: ReactNode;
+  className?: string;
+}) {
+  return (
+    <div
+      className={cn(
+        SETTINGS_STYLES.field.readonlyValue,
+        className,
+      )}
+    >
+      {children}
     </div>
   );
 }
 
 interface TextInputProps {
+  id?: string;
   value: string;
   onChange: (value: string) => void;
   placeholder?: string;
   type?: string;
 }
 
-export function TextInput({ value, onChange, placeholder, type = "text" }: TextInputProps) {
+export function TextInput({
+  id,
+  value,
+  onChange,
+  placeholder,
+  type = "text",
+}: TextInputProps) {
   return (
     <input
+      id={id}
       type={type}
       value={value}
       onChange={(event) => onChange(event.target.value)}
       placeholder={placeholder}
-      className="flex h-9 w-full max-w-2xl rounded-md border border-zinc-200 bg-transparent px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-zinc-500 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-950 disabled:cursor-not-allowed disabled:opacity-50"
+      className={SETTINGS_STYLES.field.control}
     />
   );
 }
 
 interface SelectInputProps {
+  id?: string;
   value: string;
   onChange: (value: string) => void;
   options: { value: string; label: string }[];
 }
 
-export function SelectInput({ value, onChange, options }: SelectInputProps) {
+export function SelectInput({ id, value, onChange, options }: SelectInputProps) {
   return (
     <select
+      id={id}
       value={value}
       onChange={(event) => onChange(event.target.value)}
-      className="flex h-9 w-full max-w-2xl items-center justify-between whitespace-nowrap rounded-md border border-zinc-200 bg-transparent px-3 py-2 text-sm shadow-sm ring-offset-white focus:outline-none focus:ring-1 focus:ring-zinc-950 appearance-none bg-[url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20width%3D%2224%22%20height%3D%2224%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%3Cpath%20d%3D%22M6%209L12%2015L18%209%22%20stroke%3D%22%2371717A%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%2F%3E%3C%2Fsvg%3E')] bg-[length:16px_16px] bg-[position:right_10px_center] bg-no-repeat pr-10 cursor-pointer"
+      className={cn(
+        SETTINGS_STYLES.field.control,
+        SETTINGS_STYLES.field.select,
+      )}
     >
       {options.map((option) => (
         <option key={option.value} value={option.value}>
@@ -73,27 +191,36 @@ interface SwitchRowProps {
 
 export function SwitchRow({ title, description, enabled, onToggle }: SwitchRowProps) {
   return (
-    <div className="flex flex-row items-center justify-between rounded-lg py-3 hover:bg-zinc-50/50 transition px-2 -mx-2">
-      <div className="space-y-0.5 pr-4">
+    <div className={SETTINGS_STYLES.field.switchRow}>
+      <div className={SETTINGS_STYLES.field.switchCopy}>
         <label
-          className="text-sm font-medium leading-none text-zinc-900 cursor-pointer"
+          className={SETTINGS_STYLES.field.switchLabel}
           onClick={onToggle}
         >
           {title}
         </label>
-        <p className="text-[13px] text-zinc-500 leading-relaxed mt-1.5">{description}</p>
+        <p className={SETTINGS_STYLES.field.switchDescription}>{description}</p>
       </div>
       <button
         type="button"
         onClick={onToggle}
-        className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-950 focus-visible:ring-offset-2 ${
-          enabled ? "bg-zinc-900" : "bg-zinc-200"
-        }`}
+        role="switch"
+        aria-checked={enabled}
+        aria-label={title}
+        className={cn(
+          SETTINGS_STYLES.field.switchButton,
+          enabled
+            ? SETTINGS_STYLES.field.switchButtonEnabled
+            : SETTINGS_STYLES.field.switchButtonDisabled,
+        )}
       >
         <span
-          className={`pointer-events-none block h-4 w-4 rounded-full bg-white shadow-lg ring-0 transition-transform ${
-            enabled ? "translate-x-4" : "translate-x-0"
-          }`}
+          className={cn(
+            SETTINGS_STYLES.field.switchThumb,
+            enabled
+              ? SETTINGS_STYLES.field.switchThumbEnabled
+              : SETTINGS_STYLES.field.switchThumbDisabled,
+          )}
         />
       </button>
     </div>

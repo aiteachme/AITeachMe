@@ -6,7 +6,7 @@ import httpx
 import structlog
 
 from app.shared.infra.env_support import get_env, get_env_bool
-from app.shared.infra.settings import get_settings
+from app.shared.infra.search.defaults import DEFAULT_SEARCH_PROVIDER_TIMEOUT_S
 from app.shared.infra.search.retrievers.base import BaseRetriever
 from app.shared.infra.search.retrievers.common import clamp_max_results, clean_text, make_search_result, normalize_query
 from app.shared.infra.search.types import SearchResult
@@ -37,7 +37,6 @@ class BaiduAISearchRetriever(BaseRetriever):
         api_key = (get_env("BAIDU_AI_SEARCH_API_KEY") or "").strip()
         if not api_key:
             return []
-        settings = get_settings()
         count = clamp_max_results(max_results, upper=20)
         payload = {
             "messages": [{"role": "user", "content": normalized_query}],
@@ -52,7 +51,7 @@ class BaiduAISearchRetriever(BaseRetriever):
             "search_mode": "auto",
         }
         try:
-            async with httpx.AsyncClient(timeout=max(settings.search.provider_timeout_s, 20.0)) as client:
+            async with httpx.AsyncClient(timeout=max(DEFAULT_SEARCH_PROVIDER_TIMEOUT_S, 20.0)) as client:
                 response = await client.post(
                     _BAIDU_AI_SEARCH_ENDPOINT,
                     json=payload,

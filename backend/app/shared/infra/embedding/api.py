@@ -14,6 +14,7 @@ import time
 
 import structlog
 
+from app.shared.infra.embedding.defaults import DEFAULT_EMBEDDING_BATCH_SIZE
 from app.shared.infra.settings import PROJECT_SETTINGS_ENV_NAME, get_settings
 from app.shared.infra.env_support import get_env
 from app.shared.infra.exceptions import LLMCallError, MissingLLMApiKeyError
@@ -102,7 +103,7 @@ async def aembed_texts(
     api_key = (get_env("LLM_API_KEY") or "").strip()
     if not api_key:
         raise MissingLLMApiKeyError()
-    batch_size = batch_size or settings.embedding.batch_size
+    batch_size = batch_size or DEFAULT_EMBEDDING_BATCH_SIZE
     model = str(settings.models.embedding or "").strip()
     if not model:
         if soft_fail:

@@ -11647,6 +11647,18 @@
             "description": "是否为运行时派生值，只读展示。",
             "default": false
           },
+          "ui_group": {
+            "type": "string",
+            "title": "Ui Group",
+            "description": "设置页内的展示分组。",
+            "default": ""
+          },
+          "ui_order": {
+            "type": "integer",
+            "title": "Ui Order",
+            "description": "设置页内的稳定排序值。",
+            "default": 0
+          },
           "description": {
             "type": "string",
             "title": "Description",

@@ -8,7 +8,7 @@ import httpx
 import structlog
 
 from app.shared.infra.env_support import get_env
-from app.shared.infra.settings import get_settings
+from app.shared.infra.search.defaults import DEFAULT_SEARCH_PROVIDER_TIMEOUT_S
 from app.shared.infra.search.retrievers.base import BaseRetriever
 from app.shared.infra.search.retrievers.common import clamp_max_results, clean_text, make_search_result, normalize_query
 from app.shared.infra.search.types import SearchResult
@@ -31,7 +31,6 @@ class PubMedCentralRetriever(BaseRetriever):
         normalized_query = normalize_query(query)
         if not normalized_query:
             return []
-        settings = get_settings()
         count = clamp_max_results(max_results, upper=20)
         db_type = (get_env("PUBMED_DB", "pmc") or "pmc").strip().lower()
         if db_type not in {"pmc", "pubmed"}:
@@ -49,7 +48,7 @@ class PubMedCentralRetriever(BaseRetriever):
             params["api_key"] = api_key
 
         try:
-            async with httpx.AsyncClient(timeout=max(settings.search.provider_timeout_s, 20.0), follow_redirects=True) as client:
+            async with httpx.AsyncClient(timeout=max(DEFAULT_SEARCH_PROVIDER_TIMEOUT_S, 20.0), follow_redirects=True) as client:
                 search_response = await client.get(_ESEARCH_ENDPOINT, params=params)
                 search_response.raise_for_status()
                 article_ids = (((search_response.json() or {}).get("esearchresult") or {}).get("idlist") or [])[:count]

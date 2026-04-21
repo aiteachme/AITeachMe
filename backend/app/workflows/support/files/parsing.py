@@ -18,6 +18,7 @@ from app.workflows.ingest.fast_parse.lib.lifecycle import (
     mark_parse_workflow_failed,
 )
 from app.workflows.support.files.catalog import get_subject_files_or_raise
+from app.workflows.ingest.common.parsing.defaults import DEFAULT_PARSE_CONCURRENCY
 
 logger = structlog.get_logger()
 
@@ -76,8 +77,7 @@ async def run_parse_files_background(
     file_ids: list[int],
     background_task_registry=None,
 ) -> None:
-    settings = get_settings()
-    concurrency = max(settings.ingest.parse_concurrency, 1)
+    concurrency = max(DEFAULT_PARSE_CONCURRENCY, 1)
     batch_logger = logger.bind(subject=subject, file_ids=file_ids)
     batch_logger.info(
         "file_parse_background_started",

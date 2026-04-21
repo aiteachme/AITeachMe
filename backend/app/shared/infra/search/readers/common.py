@@ -7,15 +7,14 @@ from xml.etree import ElementTree
 
 import httpx
 
-from app.shared.infra.settings import get_settings
+from app.shared.infra.search.defaults import DEFAULT_SEARCH_SCRAPE_TIMEOUT_S
 from app.shared.infra.search.types import ScrapedPage
 
 _CORE_TITLE_QNAME = "{http://purl.org/dc/elements/1.1/}title"
 
 
 async def fetch_url(url: str, *, headers: dict[str, str] | None = None) -> httpx.Response:
-    settings = get_settings()
-    async with httpx.AsyncClient(timeout=settings.search.scrape_timeout_s, follow_redirects=True) as client:
+    async with httpx.AsyncClient(timeout=DEFAULT_SEARCH_SCRAPE_TIMEOUT_S, follow_redirects=True) as client:
         response = await client.get(url, headers=headers)
         response.raise_for_status()
         return response

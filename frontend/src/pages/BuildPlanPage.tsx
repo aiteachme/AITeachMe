@@ -33,8 +33,6 @@ import { PlannerPreviewMarkdown } from "../components/pages/PlannerPreviewMarkdo
 import { FullPageDropOverlay } from "../components/ui/FullPageDropOverlay";
 import { useKnowledgeBuildFlow } from "../hooks/useKnowledgeBuildFlow";
 import { buildKnowledgeDocStateQueryKey, fetchKnowledgeDocState } from "../lib/knowledgeDocs";
-import { getStoredAppSettings, useSettings } from "../hooks/useSettings";
-import { loadIngestPreferenceSettings } from "../lib/systemSettings";
 import type { FileRecord, FilesData, FilesUploadData } from "../types/files";
 
 type ChatRole = "user" | "assistant" | "system";
@@ -533,24 +531,6 @@ async function uploadFiles(subject: string, files: File[]): Promise<FilesUploadD
   const data = new FormData();
   files.forEach((file) => data.append("files", file));
 
-  // 解析引擎默认值从后端 settings 数据库缓存读取；浏览器仅保留本机临时 Token 覆盖。
-  const browserSettings = getStoredAppSettings();
-  const ingestSettings = await loadIngestPreferenceSettings();
-  if (ingestSettings.parserProvider === "markitdown") {
-    data.append("parser_provider", "markitdown");
-  }
-  if (ingestSettings.parserProvider === "mineru") {
-    const token = browserSettings.mineruApiToken?.trim();
-    data.append("parser_provider", "mineru");
-    if (token) {
-      data.append("mineru_api_token", token);
-    }
-    data.append("mineru_model_version", ingestSettings.mineruModelVersion);
-    data.append("mineru_enable_formula", String(ingestSettings.mineruEnableFormula));
-    data.append("mineru_enable_table", String(ingestSettings.mineruEnableTable));
-    data.append("mineru_is_ocr", String(ingestSettings.mineruIsOcr));
-  }
-
   const response = await apiClient<ApiResponse<FilesUploadData>>({
     method: "POST",
     url: `/api/v1/subjects/${subject}/files/upload`,
@@ -689,7 +669,6 @@ export function BuildPlanPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const queryClient = useQueryClient();
-  useSettings();
 
   const navState = location.state as BuildPlanLocationState | null;
   const requestedAt = useMemo(

@@ -3,7 +3,6 @@ import ReactDOM from "react-dom/client";
 import App from "./App";
 import "./index.css";
 import "highlight.js/styles/github-dark.css";
-import { getStoredAppSettings } from "./hooks/useSettings";
 
 const BACKEND_READY_TIMEOUT_MS = 6000;
 const BACKEND_READY_POLL_INTERVAL_MS = 300;
@@ -15,8 +14,7 @@ function sleep(ms: number) {
 
 function buildStartupUrl(path: string): string {
   const normalizedPath = path.startsWith("/") ? path : `/${path}`;
-  const configuredBase =
-    getStoredAppSettings().apiUrl.trim() || (import.meta.env.VITE_API_URL ?? "").trim();
+  const configuredBase = (import.meta.env.VITE_API_URL ?? "").trim();
 
   if (!configuredBase || configuredBase.startsWith("/")) {
     return normalizedPath;
@@ -60,7 +58,7 @@ async function waitForBackendReady() {
 
 async function prepare() {
   const shouldUseMock =
-    import.meta.env.VITE_USE_MOCK === "true" || getStoredAppSettings().useMock || window.location.search.includes("mock=1");
+    import.meta.env.VITE_USE_MOCK === "true" || window.location.search.includes("mock=1");
 
   if (shouldUseMock) {
     const { worker } = await import("./mocks/browser");

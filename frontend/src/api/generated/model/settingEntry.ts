@@ -36,6 +36,10 @@ export interface SettingEntry {
   restart_required?: boolean;
   /** 是否为运行时派生值，只读展示。 */
   derived?: boolean;
+  /** 设置页内的展示分组。 */
+  ui_group?: string;
+  /** 设置页内的稳定排序值。 */
+  ui_order?: number;
   /** 说明。 */
   description?: string;
 }

@@ -1,5 +1,4 @@
 import axios, { AxiosHeaders, AxiosRequestConfig, AxiosResponse } from "axios";
-import { APP_SETTINGS_STORAGE_KEY, getStoredAppSettings } from "../hooks/useSettings";
 
 const API_BASE_URL = import.meta.env.VITE_API_URL ?? "";
 const DEVICE_KEY_STORAGE_KEY = "device_key";
@@ -54,22 +53,7 @@ export function getDeviceKey(): string {
 }
 
 function getApiBaseUrl(): string {
-  let base = API_BASE_URL;
-  try {
-    const settings = getStoredAppSettings();
-    if (settings.apiUrl) {
-      return settings.apiUrl;
-    }
-  } catch {}
-
-  try {
-    const stored = localStorage.getItem(APP_SETTINGS_STORAGE_KEY);
-    if (stored) {
-      const { apiUrl } = JSON.parse(stored);
-      if (apiUrl) base = apiUrl;
-    }
-  } catch {}
-  return base;
+  return API_BASE_URL;
 }
 
 export function buildApiUrl(url: string): string {

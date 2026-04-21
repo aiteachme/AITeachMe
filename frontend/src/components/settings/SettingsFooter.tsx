@@ -1,6 +1,9 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { CheckCircle2, Loader2, RefreshCcw } from "lucide-react";
 
+import { cn } from "../../lib/utils";
+
+import { SETTINGS_STYLES } from "./constants";
 import type { SaveState } from "./types";
 
 interface SettingsFooterProps {
@@ -21,8 +24,8 @@ export function SettingsFooter({
   onSave,
 }: SettingsFooterProps) {
   return (
-    <div className="flex items-center justify-between border-t border-zinc-100 bg-white px-8 py-4">
-      <div className="text-[13px] font-medium">
+    <div className={SETTINGS_STYLES.footer.root}>
+      <div className={SETTINGS_STYLES.footer.statusWrap}>
         <AnimatePresence mode="wait">
           {saveState === "saving" ? (
             <motion.span
@@ -30,9 +33,12 @@ export function SettingsFooter({
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="flex items-center gap-2 text-zinc-600"
+              className={cn(
+                SETTINGS_STYLES.footer.statusRow,
+                SETTINGS_STYLES.footer.statusSaving,
+              )}
             >
-              <Loader2 className="h-4 w-4 animate-spin" /> 保存配置中...
+              <Loader2 className={SETTINGS_STYLES.footer.iconSpinning} /> 保存配置中...
             </motion.span>
           ) : saveState === "error" ? (
             <motion.span
@@ -40,9 +46,12 @@ export function SettingsFooter({
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="flex items-center gap-2 text-red-600"
+              className={cn(
+                SETTINGS_STYLES.footer.statusRow,
+                SETTINGS_STYLES.footer.statusError,
+              )}
             >
-              <RefreshCcw className="h-4 w-4" /> {saveError ?? "保存失败"}
+              <RefreshCcw className={SETTINGS_STYLES.footer.icon} /> {saveError ?? "保存失败"}
             </motion.span>
           ) : saveState === "saved" ? (
             <motion.span
@@ -50,9 +59,12 @@ export function SettingsFooter({
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="flex items-center gap-2 text-emerald-600"
+              className={cn(
+                SETTINGS_STYLES.footer.statusRow,
+                SETTINGS_STYLES.footer.statusSaved,
+              )}
             >
-              <CheckCircle2 className="h-4 w-4" /> 配置已生效
+              <CheckCircle2 className={SETTINGS_STYLES.footer.icon} /> 配置已生效
             </motion.span>
           ) : hasChanges ? (
             <motion.span
@@ -60,11 +72,14 @@ export function SettingsFooter({
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="flex items-center gap-2 text-amber-600"
+              className={cn(
+                SETTINGS_STYLES.footer.statusRow,
+                SETTINGS_STYLES.footer.statusChanged,
+              )}
             >
-              <span className="relative flex h-2.5 w-2.5">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75" />
-                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-amber-500" />
+              <span className={SETTINGS_STYLES.footer.changedIndicatorWrap}>
+                <span className={SETTINGS_STYLES.footer.changedIndicatorPulse} />
+                <span className={SETTINGS_STYLES.footer.changedIndicatorDot} />
               </span>
               发现未保存更改
             </motion.span>
@@ -74,7 +89,10 @@ export function SettingsFooter({
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="flex items-center gap-2 text-zinc-400"
+              className={cn(
+                SETTINGS_STYLES.footer.statusRow,
+                SETTINGS_STYLES.footer.statusSynced,
+              )}
             >
               设置已同步
             </motion.span>
@@ -82,13 +100,13 @@ export function SettingsFooter({
         </AnimatePresence>
       </div>
 
-      <div className="flex items-center gap-3">
+      <div className={SETTINGS_STYLES.footer.actions}>
         {isLocalRuntime && (
           <>
             <button
               type="button"
               onClick={onReset}
-              className="inline-flex h-9 items-center justify-center rounded-md px-4 py-2 text-sm font-medium text-zinc-600 transition-colors hover:bg-zinc-100 hover:text-zinc-900"
+              className={SETTINGS_STYLES.footer.resetButton}
             >
               撤销恢复
             </button>
@@ -96,11 +114,12 @@ export function SettingsFooter({
               type="button"
               onClick={onSave}
               disabled={!hasChanges || saveState === "saving"}
-              className={`inline-flex h-9 items-center justify-center rounded-md px-4 py-2 text-sm font-medium shadow transition-colors ${
+              className={cn(
+                SETTINGS_STYLES.footer.saveButton,
                 hasChanges && saveState !== "saving"
-                  ? "bg-zinc-900 text-zinc-50 hover:bg-zinc-900/90"
-                  : "cursor-not-allowed bg-zinc-100 text-zinc-400"
-              }`}
+                  ? SETTINGS_STYLES.footer.saveButtonEnabled
+                  : SETTINGS_STYLES.footer.saveButtonDisabled,
+              )}
             >
               {saveState === "saving" ? "应用中..." : "保存更改"}
             </button>

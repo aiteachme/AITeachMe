@@ -18,6 +18,7 @@ from langsmith import trace as langsmith_trace_run
 from langsmith import traceable
 from langsmith import tracing_context
 
+from app.shared.infra.observability.defaults import DEFAULT_LANGSMITH_MAX_TEXT_CHARS
 from app.shared.infra.settings import get_settings
 from app.shared.infra.env_support import get_env, get_env_bool
 from app.shared.infra.runtime import get_app_version, is_local_mode
@@ -81,7 +82,7 @@ def get_langsmith_project_name() -> str | None:
 
 
 def get_langsmith_max_text_chars() -> int:
-    return max(32, int(get_settings().observability.langsmith_max_text_chars or 2000))
+    return max(32, int(DEFAULT_LANGSMITH_MAX_TEXT_CHARS))
 
 
 def get_langsmith_endpoint() -> str:
@@ -106,16 +107,10 @@ def get_langsmith_probe_ttl_s() -> float:
 
 
 def langsmith_capture_inputs_enabled() -> bool:
-    settings_value = get_settings().observability.langsmith_capture_inputs
-    if settings_value is not None:
-        return settings_value
     return is_local_mode()
 
 
 def langsmith_capture_outputs_enabled() -> bool:
-    settings_value = get_settings().observability.langsmith_capture_outputs
-    if settings_value is not None:
-        return settings_value
     return is_local_mode()
 
 

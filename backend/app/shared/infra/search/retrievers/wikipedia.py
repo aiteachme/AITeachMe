@@ -8,7 +8,7 @@ from urllib.parse import quote
 import httpx
 import structlog
 
-from app.shared.infra.settings import get_settings
+from app.shared.infra.search.defaults import DEFAULT_SEARCH_PROVIDER_TIMEOUT_S
 from app.shared.infra.search.retrievers.base import BaseRetriever
 from app.shared.infra.search.retrievers.common import clamp_max_results, make_search_result, normalize_query
 from app.shared.infra.search.types import SearchResult
@@ -54,12 +54,11 @@ class WikipediaRetriever(BaseRetriever):
         count = clamp_max_results(max_results, upper=50)
 
         languages = ["zh", "en"] if _contains_cjk(normalized_query) else ["en", "zh"]
-        settings = get_settings()
         seen_urls: set[str] = set()
         results: list[SearchResult] = []
 
         async with httpx.AsyncClient(
-            timeout=settings.search.provider_timeout_s,
+            timeout=DEFAULT_SEARCH_PROVIDER_TIMEOUT_S,
             follow_redirects=True,
             headers=_REQUEST_HEADERS,
         ) as client:

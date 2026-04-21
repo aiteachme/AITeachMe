@@ -8,7 +8,7 @@ import httpx
 import structlog
 
 from app.shared.infra.env_support import get_env, get_env_bool
-from app.shared.infra.settings import get_settings
+from app.shared.infra.search.defaults import DEFAULT_SEARCH_PROVIDER_TIMEOUT_S
 from app.shared.infra.search.retrievers.base import BaseRetriever
 from app.shared.infra.search.retrievers.common import clamp_max_results, make_search_result, normalize_query
 from app.shared.infra.search.types import SearchResult
@@ -39,7 +39,6 @@ class JinaSearchRetriever(BaseRetriever):
         api_key = (get_env("JINA_API_KEY") or "").strip()
         if not api_key:
             return []
-        settings = get_settings()
         count = clamp_max_results(max_results, upper=20)
         enrich = get_env_bool("JINA_SEARCH_ENRICH", False)
         headers = {
@@ -53,7 +52,7 @@ class JinaSearchRetriever(BaseRetriever):
             headers["X-Respond-With"] = "no-content"
 
         try:
-            async with httpx.AsyncClient(timeout=settings.search.provider_timeout_s, follow_redirects=True) as client:
+            async with httpx.AsyncClient(timeout=DEFAULT_SEARCH_PROVIDER_TIMEOUT_S, follow_redirects=True) as client:
                 response = await client.get(f"{_JINA_SEARCH_ENDPOINT}/{quote(normalized_query)}", headers=headers)
                 response.raise_for_status()
         except Exception as exc:  # pragma: no cover - provider behavior
