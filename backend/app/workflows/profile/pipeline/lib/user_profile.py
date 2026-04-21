@@ -19,7 +19,7 @@ from app.models import (
     exam_mode_value,
 )
 from app.utils.time import is_at_or_after, is_at_or_before, utcnow
-from app.workflows.profile.subject_profile import SubjectProfileSummary
+from app.workflows.profile.pipeline.lib.subject_profile import SubjectProfileSummary
 
 _RECENT_EXAM_ITEM_LIMIT = 300
 _RECENT_EXAM_PAPER_LIMIT = 80

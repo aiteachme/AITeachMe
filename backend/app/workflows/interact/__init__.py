@@ -6,6 +6,7 @@ from importlib import import_module
 
 __all__ = [
     "InteractWorkflowState",
+    "WORKFLOW_EXPORTS",
     "build_chat_messages",
     "build_interact_workflow_graph",
     "create_interact_initial_state",
@@ -16,12 +17,13 @@ __all__ = [
 
 _ATTR_TO_MODULE = {
     "InteractWorkflowState": "app.workflows.interact.chat.state",
+    "WORKFLOW_EXPORTS": "app.workflows.interact.chat.graph",
     "build_chat_messages": "app.workflows.interact.chat.prompts",
     "build_interact_workflow_graph": "app.workflows.interact.chat.graph",
-    "create_interact_initial_state": "app.workflows.interact.chat.runtime",
+    "create_interact_initial_state": "app.workflows.interact.chat.graph",
     "format_sse_event": "app.workflows.interact.chat.lib",
-    "run_interact_workflow": "app.workflows.interact.chat.runtime",
-    "stream_chat_workflow": "app.workflows.interact.chat.runtime",
+    "run_interact_workflow": "app.workflows.interact.chat.graph",
+    "stream_chat_workflow": "app.workflows.interact.chat.graph",
 }
 
 

@@ -426,9 +426,9 @@ kg_docs_sync
   系统初始化与设置总览位置
 - `support/files/catalog.py`、`support/files/uploads.py`、`support/files/parsing.py`、`support/files/deletion.py`
   文件模块按用例拆分后的位置
-- `profile/application/`
-  Profile 面向 API 的掌握度与复习任务用例落点
-- `interact/application/`
+- `profile/pipeline/lib/`
+  Profile 的掌握度、复习调度、画像摘要与报告建议 helper 落点
+- `interact/chat/use_cases.py`
   Interact 面向 API 的聊天会话、历史记录与 SSE streaming 外壳落点
 - `support/auth/identity.py`、`support/auth/sessions.py`、`support/auth/smtp.py`
   鉴权模块按身份、会话、邮件通道拆分后的位置

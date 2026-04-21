@@ -12,7 +12,7 @@
 - `prompts/`：画像相关 prompt 门面
 - `nodes/`：节点门面
 
-迁移期说明：
+当前口径：
 
-- 真实节点逻辑仍主要在模块根 `profile.graph` 中
-- 新的导出面和 LangGraph 入口统一走 `pipeline/`
+- LangGraph 定义、运行入口与 workflow export 已统一收口到 `pipeline/graph.py`
+- API / schema 需要的画像与掌握度辅助对象统一从 `pipeline/lib/` 提供

@@ -1,4 +1,4 @@
-"""Domain events for the interact workflow."""
+"""Domain events emitted by the interact chat lane."""
 
 from __future__ import annotations
 
@@ -38,3 +38,10 @@ class InteractFailedEvent:
     subject: str
     error_message: str
     occurred_at: datetime = field(default_factory=utcnow)
+
+
+__all__ = [
+    "InteractCompletedEvent",
+    "InteractFailedEvent",
+    "InteractRequestedEvent",
+]

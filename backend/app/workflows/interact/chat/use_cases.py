@@ -1,4 +1,8 @@
-"""Interact chat application use cases."""
+"""API-facing chat use cases built on top of the interact chat lane.
+
+These helpers coordinate session CRUD, history reads, and SSE chat streaming
+for HTTP routes. LangGraph internals remain in ``graph.py``.
+"""
 
 from __future__ import annotations
 
@@ -36,10 +40,10 @@ from app.schemas.chats import (
 )
 from app.schemas.common import PaginatedData, build_paginated_data
 from app.utils.presenters import require_id
-from app.workflows.interact.chat.runtime import stream_chat_workflow
-from app.workflows.interact.chat.prompts import build_chat_messages
+from app.workflows.interact.chat.graph import stream_chat_workflow
 from app.workflows.interact.chat.lib.streaming import format_sse_event
 from app.workflows.interact.chat.lib.strategies import select_teaching_strategy
+from app.workflows.interact.chat.prompts import build_chat_messages
 
 _CHAT_CONTEXT_LIST_ADAPTER = TypeAdapter(list[ChatContextItem])
 
@@ -452,3 +456,14 @@ def _normalize_chat_contexts(raw_contexts: object) -> list[ChatContextItem] | No
     if raw_contexts is None:
         return None
     return _CHAT_CONTEXT_LIST_ADAPTER.validate_python(raw_contexts)
+
+
+__all__ = [
+    "chat_stream",
+    "clear_chat_history",
+    "create_session",
+    "delete_session",
+    "list_chat_history",
+    "list_chat_sessions",
+    "list_chat_threads",
+]

@@ -24,7 +24,7 @@ from app.schemas.chats import (
     ChatSessionListRequest,
 )
 from app.schemas.common import ApiResponse, PaginatedData, ok_response
-from app.workflows.interact.application import (
+from app.workflows.interact.chat import (
     chat_stream,
     clear_chat_history,
     create_session,
