@@ -1,19 +1,6 @@
 import { apiClient } from "../api/client";
 import type { SettingsOverviewData } from "../api/generated/model/settingsOverviewData";
-import type { SettingEntry } from "../api/generated/model/settingEntry";
 import type { ApiResponse } from "../api/types";
-
-export type IngestParserProvider = "auto" | "mineru" | "markitdown";
-export type IngestMinerUModelVersion = "vlm" | "pipeline";
-
-export interface IngestPreferenceSettings {
-  mode: string;
-  parserProvider: IngestParserProvider;
-  mineruModelVersion: IngestMinerUModelVersion;
-  mineruEnableFormula: boolean;
-  mineruEnableTable: boolean;
-  mineruIsOcr: boolean;
-}
 
 const SYSTEM_SETTINGS_STORAGE_KEY = "aiteachme:system-settings-overview";
 
@@ -110,66 +97,4 @@ export async function ensureSystemSettingsOverviewLoaded(
       inFlightOverview = null;
     });
   return inFlightOverview;
-}
-
-function flattenEntries(overview: SettingsOverviewData | null): SettingEntry[] {
-  return overview?.sections?.flatMap((section) => section.entries ?? []) ?? [];
-}
-
-function readPrimitiveSetting(
-  overview: SettingsOverviewData | null,
-  key: string,
-): string | number | boolean | null | undefined {
-  const entry = flattenEntries(overview).find((item) => item.key === key);
-  const candidates = [entry?.value, entry?.default_value];
-  for (const candidate of candidates) {
-    if (
-      candidate === null ||
-      typeof candidate === "string" ||
-      typeof candidate === "number" ||
-      typeof candidate === "boolean"
-    ) {
-      return candidate;
-    }
-  }
-  return undefined;
-}
-
-function normalizeParserProvider(value: unknown): IngestParserProvider {
-  if (value === "mineru" || value === "markitdown") {
-    return value;
-  }
-  return "auto";
-}
-
-function normalizeMineruModelVersion(value: unknown): IngestMinerUModelVersion {
-  if (value === "pipeline") {
-    return "pipeline";
-  }
-  return "vlm";
-}
-
-export function getIngestPreferenceSettings(
-  overview: SettingsOverviewData | null,
-): IngestPreferenceSettings {
-  return {
-    mode: overview?.mode ?? "local",
-    parserProvider: normalizeParserProvider(
-      readPrimitiveSetting(overview, "ingest.default_parser_provider"),
-    ),
-    mineruModelVersion: normalizeMineruModelVersion(
-      readPrimitiveSetting(overview, "ingest.mineru_model_version"),
-    ),
-    mineruEnableFormula:
-      readPrimitiveSetting(overview, "ingest.mineru_enable_formula") !== false,
-    mineruEnableTable:
-      readPrimitiveSetting(overview, "ingest.mineru_enable_table") !== false,
-    mineruIsOcr:
-      readPrimitiveSetting(overview, "ingest.mineru_is_ocr") === true,
-  };
-}
-
-export async function loadIngestPreferenceSettings(): Promise<IngestPreferenceSettings> {
-  const overview = await ensureSystemSettingsOverviewLoaded();
-  return getIngestPreferenceSettings(overview);
 }

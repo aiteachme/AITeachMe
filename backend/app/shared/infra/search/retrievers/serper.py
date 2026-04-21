@@ -6,7 +6,7 @@ import httpx
 import structlog
 
 from app.shared.infra.env_support import get_env, get_env_bool
-from app.shared.infra.settings import get_settings
+from app.shared.infra.search.defaults import DEFAULT_SEARCH_PROVIDER_TIMEOUT_S
 from app.shared.infra.search.retrievers.base import BaseRetriever
 from app.shared.infra.search.retrievers.common import clamp_max_results, clean_text, make_search_result, normalize_query
 from app.shared.infra.search.types import SearchResult
@@ -37,7 +37,6 @@ class SerperRetriever(BaseRetriever):
         api_key = (get_env("SERPER_API_KEY") or "").strip()
         if not api_key:
             return []
-        settings = get_settings()
         count = clamp_max_results(max_results, upper=20)
         mode = (get_env("SERPER_SEARCH_MODE", "search") or "search").strip().lower()
         if mode not in {"search", "scholar"}:
@@ -50,7 +49,7 @@ class SerperRetriever(BaseRetriever):
             "autocorrect": get_env_bool("SERPER_AUTOCORRECT", True),
         }
         try:
-            async with httpx.AsyncClient(timeout=settings.search.provider_timeout_s, follow_redirects=True) as client:
+            async with httpx.AsyncClient(timeout=DEFAULT_SEARCH_PROVIDER_TIMEOUT_S, follow_redirects=True) as client:
                 response = await client.post(
                     f"{_SERPER_BASE_URL}/{mode}",
                     json=payload,

@@ -6,9 +6,12 @@ from pathlib import Path
 
 from pydantic import BaseModel, Field
 
-from app.shared.infra.settings import get_settings
 from app.shared.infra.env_support import get_env
 from app.shared.infra.exceptions import MissingLLMApiKeyError, UnsupportedFileTypeError
+from app.workflows.ingest.common.parsing.defaults import (
+    DEFAULT_PARSE_CONCURRENCY,
+    DEFAULT_PARSER_TIMEOUT_S,
+)
 from app.workflows.ingest.common.parsing.classifier import ClassificationResult
 from app.workflows.ingest.common.parsing.formats import (
     categorize_text_extension,
@@ -52,7 +55,6 @@ def build_parse_plan(
 ) -> ParsePlan:
     """Choose parser chain and runtime budget from file signals and capabilities."""
 
-    settings = get_settings()
     extension = resolve_parser_extension(file_path, normalize_extension(filetype))
     allow_llm_vision = bool(get_env("LLM_API_KEY"))
     available_parsers = get_available_parsers(extension, allow_llm_vision=allow_llm_vision)
@@ -64,13 +66,13 @@ def build_parse_plan(
     file_mb = round((file_size_bytes or 0) / (1024 * 1024), 2)
     estimated_pages = classification.estimated_pages if classification else 0
     parser_parallelism = _derive_parser_parallelism(
-        base_concurrency=settings.ingest.parse_concurrency,
+        base_concurrency=DEFAULT_PARSE_CONCURRENCY,
         file_mb=file_mb,
         estimated_pages=estimated_pages,
     )
     ocr_language_mode = _derive_ocr_language_mode(classification)
     options = ParserRunOptions(
-        timeout_s=settings.ingest.parser_timeout_s,
+        timeout_s=DEFAULT_PARSER_TIMEOUT_S,
         parser_parallelism=parser_parallelism,
         llm_ocr_page_concurrency=parser_parallelism,
         ocr_language_mode=ocr_language_mode,
@@ -275,4 +277,3 @@ def _derive_ocr_language_mode(classification: ClassificationResult | None) -> st
     if classification and classification.detected_language == "en":
         return "en"
     return "zh"
-

@@ -107,14 +107,6 @@ export function useSettingsOverview({ isOpen }: UseSettingsOverviewOptions) {
     }
   }, [isOpen]);
 
-  const sectionMap = useMemo(
-    () =>
-      Object.fromEntries(
-        (overview?.sections ?? []).map((section) => [section.id, section] as const),
-      ),
-    [overview],
-  );
-
   const editableServerEntries = useMemo(
     () => collectEditableServerEntries(overview?.sections ?? []),
     [overview],
@@ -189,7 +181,6 @@ export function useSettingsOverview({ isOpen }: UseSettingsOverviewOptions) {
 
   return {
     overview,
-    sectionMap,
     isOverviewLoading,
     overviewError,
     settingsDraft,

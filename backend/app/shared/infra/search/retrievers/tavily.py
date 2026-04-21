@@ -5,8 +5,8 @@ from __future__ import annotations
 import httpx
 import structlog
 
-from app.shared.infra.settings import get_settings
 from app.shared.infra.env_support import get_env, get_env_bool
+from app.shared.infra.search.defaults import DEFAULT_SEARCH_PROVIDER_TIMEOUT_S
 from app.shared.infra.search.retrievers.base import BaseRetriever
 from app.shared.infra.search.retrievers.common import clamp_max_results, make_search_result, normalize_query
 from app.shared.infra.search.types import SearchResult
@@ -33,7 +33,6 @@ class TavilyRetriever(BaseRetriever):
         normalized_query = normalize_query(query)
         if not normalized_query:
             return []
-        settings = get_settings()
         api_key = (get_env("TAVILY_API_KEY") or "").strip()
         if not api_key:
             return []
@@ -49,7 +48,7 @@ class TavilyRetriever(BaseRetriever):
             "max_results": count,
         }
         try:
-            async with httpx.AsyncClient(timeout=settings.search.provider_timeout_s) as client:
+            async with httpx.AsyncClient(timeout=DEFAULT_SEARCH_PROVIDER_TIMEOUT_S) as client:
                 response = await client.post(
                     "https://api.tavily.com/search",
                     json=payload,

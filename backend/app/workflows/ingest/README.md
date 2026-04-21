@@ -98,7 +98,7 @@ from app.workflows.ingest import run_parse_file_workflow
    - `status = processing`
    - `ingest_status = classifying`
    - `digest_current_step = ingest.parse.queued`
-4. API 用 `background_task_registry.spawn(...)` 启动 `run_parse_files_background()`，批量解析时按 `settings.ingest.parse_concurrency` 控制并发。
+4. API 用 `background_task_registry.spawn(...)` 启动 `run_parse_files_background()`，批量解析时按 ingest 代码默认并发控制执行。
 
 ## Phase 1：Fast Parse 快速解析
 

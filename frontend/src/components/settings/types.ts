@@ -1,12 +1,5 @@
-import type { LucideIcon } from "lucide-react";
-
-export type SectionId =
-  | "connection"
-  | "models"
-  | "learning"
-  | "search"
-  | "ops"
-  | "observability";
+// SectionId 保持为 string，便于通过配置文件直接新增/调整 tab，而不必同步修改类型枚举。
+export type SectionId = string;
 
 export type SettingSource =
   | "env"
@@ -36,6 +29,8 @@ export interface SettingEntry {
   secret?: boolean;
   editable?: boolean;
   restart_required?: boolean;
+  ui_group?: string;
+  ui_order?: number;
   description?: string;
 }
 
@@ -60,12 +55,5 @@ export interface ApiEnvelope<T> {
 }
 
 export type SaveState = "idle" | "saving" | "saved" | "error";
-
-export interface SectionNavEntry {
-  id: SectionId;
-  label: string;
-  description: string;
-  icon: LucideIcon;
-}
 
 export type DraftRecord = Record<string, SettingPrimitive>;

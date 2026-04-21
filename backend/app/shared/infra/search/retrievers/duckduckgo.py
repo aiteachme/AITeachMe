@@ -7,7 +7,7 @@ from urllib.parse import parse_qs, unquote, urljoin, urlparse
 import httpx
 import structlog
 
-from app.shared.infra.settings import get_settings
+from app.shared.infra.search.defaults import DEFAULT_SEARCH_PROVIDER_TIMEOUT_S
 from app.shared.infra.search.retrievers.base import BaseRetriever
 from app.shared.infra.search.retrievers.common import clamp_max_results, clean_text, normalize_query
 from app.shared.infra.search.types import SearchResult
@@ -160,9 +160,8 @@ class DuckDuckGoRetriever(BaseRetriever):
         return await self._search_via_html(normalized_query, max_results=count)
 
     async def _search_via_html(self, query: str, *, max_results: int) -> list[SearchResult]:
-        settings = get_settings()
         async with httpx.AsyncClient(
-            timeout=settings.search.provider_timeout_s,
+            timeout=DEFAULT_SEARCH_PROVIDER_TIMEOUT_S,
             follow_redirects=True,
             headers=_REQUEST_HEADERS,
         ) as client:

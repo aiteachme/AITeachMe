@@ -8,7 +8,7 @@ import httpx
 import structlog
 
 from app.shared.infra.env_support import get_env
-from app.shared.infra.settings import get_settings
+from app.shared.infra.search.defaults import DEFAULT_SEARCH_PROVIDER_TIMEOUT_S
 from app.shared.infra.search.retrievers.base import BaseRetriever
 from app.shared.infra.search.retrievers.common import clamp_max_results, clean_text, make_search_result, normalize_query
 from app.shared.infra.search.types import SearchResult
@@ -42,7 +42,6 @@ class OpenRouterSearchRetriever(BaseRetriever):
         api_key = (get_env("OPENROUTER_API_KEY") or "").strip()
         if not api_key:
             return []
-        settings = get_settings()
         count = clamp_max_results(max_results, upper=20)
         base_url = (get_env("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1") or "https://openrouter.ai/api/v1").rstrip("/")
         payload = {
@@ -57,7 +56,7 @@ class OpenRouterSearchRetriever(BaseRetriever):
             "return_citations": True,
         }
         try:
-            async with httpx.AsyncClient(timeout=max(settings.search.provider_timeout_s, 20.0), follow_redirects=True) as client:
+            async with httpx.AsyncClient(timeout=max(DEFAULT_SEARCH_PROVIDER_TIMEOUT_S, 20.0), follow_redirects=True) as client:
                 response = await client.post(
                     f"{base_url}/chat/completions",
                     json=payload,

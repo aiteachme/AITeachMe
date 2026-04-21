@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from copy import deepcopy
 from functools import lru_cache
-from typing import Any, Literal
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, model_validator
 
@@ -18,7 +18,6 @@ from .support import (
     load_project_settings_values,
     normalize_profile_name,
     normalize_retriever_name,
-    split_csv_names,
 )
 
 
@@ -38,7 +37,6 @@ class ModelsSettings(_SettingsModel):
     ocr: str | None
     embedding: str
     image_generation: str | None
-    overrides: dict[str, str]
 
     @property
     def fast(self) -> str | None:
@@ -66,38 +64,11 @@ class PlannerSettings(_SettingsModel):
 class DocgenSettings(_SettingsModel):
     allow_external_search: bool
     generate_cover_image: bool
-    max_parallel_chapters: int
-    io_parallelism: int
-    max_research_queries: int
-    retrieval_timeout_s: float
-    read_timeout_s: float
 
 
 class IngestSettings(_SettingsModel):
-    default_parser_provider: Literal["auto", "markitdown", "mineru"]
     max_upload_size_mb: int
     max_files_per_upload: int
-    parse_concurrency: int
-    parser_timeout_s: int
-    mineru_model_version: str
-    mineru_enable_formula: bool
-    mineru_enable_table: bool
-    mineru_is_ocr: bool
-
-    @model_validator(mode="before")
-    @classmethod
-    def _normalize_parser_provider(cls, value: Any) -> Any:
-        if not isinstance(value, Mapping):
-            return value
-        data = dict(value)
-        raw_provider = str(data.get("default_parser_provider") or "").strip().lower()
-        if raw_provider in {"", "auto", "local", "docling", "unstructured"}:
-            data["default_parser_provider"] = "auto"
-        elif raw_provider in {"markitdown", "mineru"}:
-            data["default_parser_provider"] = raw_provider
-        else:
-            data["default_parser_provider"] = "auto"
-        return data
 
 
 class RagSettings(_SettingsModel):
@@ -108,20 +79,7 @@ class RagSettings(_SettingsModel):
 
 
 class SearchSettings(_SettingsModel):
-    retrievers: str
     retriever_profile: str
-    max_results_per_query: int
-    scrape_timeout_s: int
-    provider_timeout_s: float
-    total_timeout_s: float
-    read_timeout_s: float
-    parallel_retrievers: bool
-    max_parallel_retrievers: int
-    fusion_k: int
-    runtime_cache_enabled: bool
-    runtime_cache_ttl_s: int
-    runtime_cache_max_entries: int
-    retriever_profiles: dict[str, list[str] | str]
 
 
 class LocalRagSettings(_SettingsModel):
@@ -129,37 +87,21 @@ class LocalRagSettings(_SettingsModel):
     min_results: int
 
 
-class RuntimeSettings(_SettingsModel):
-    llm_concurrency_limit: int
-    default_token_budget: int
-
-
-class EmbeddingSettings(_SettingsModel):
-    batch_size: int
-    batch_delay_s: float
-
-
 class KnowledgeGraphSettings(_SettingsModel):
-    extract_max_parallelism: int
     sync_after_docgen: bool
 
 
 class ObservabilitySettings(_SettingsModel):
     llm_observability_enabled: bool
     llm_token_summary_enabled: bool
-    timing_top_k: int
     tracing_enabled: bool
-    langsmith_capture_inputs: bool | None
-    langsmith_capture_outputs: bool | None
-    langsmith_max_text_chars: int
-    llm_observability_max_records: int
 
 
 class Settings(_SettingsModel):
     """Project-level runtime settings.
 
     The public shape mirrors the optional project settings override schema, e.g.
-    `settings.models.reason` or `settings.search.provider_timeout_s`.
+    `settings.models.reason` or `settings.search.retriever_profile`.
 
     Code defaults live in `backend/app/shared/infra/settings/defaults.py`.
     `PROJECT_SETTINGS_PATH` may point to an optional external override file.
@@ -173,8 +115,6 @@ class Settings(_SettingsModel):
     rag: RagSettings
     search: SearchSettings
     local_rag: LocalRagSettings
-    runtime: RuntimeSettings
-    embedding: EmbeddingSettings
     knowledge_graph: KnowledgeGraphSettings
     observability: ObservabilitySettings
 
@@ -223,22 +163,12 @@ class Settings(_SettingsModel):
         include_fallback: bool = True,
         fallback_retriever: str = DEFAULT_RETRIEVER_FALLBACK,
     ) -> list[str]:
-        explicit_names = [
-            normalize_retriever_name(item)
-            for item in split_csv_names(self.search.retrievers)
-        ]
-        resolved_profile = normalize_profile_name(
-            profile or self.search.retriever_profile
-        )
+        resolved_profile = normalize_profile_name(profile or self.search.retriever_profile)
         profile_names = [
             normalize_retriever_name(item)
             for item in get_retriever_profiles().get(resolved_profile, [])
         ]
-        candidate_names = (
-            explicit_names
-            or profile_names
-            or [DEFAULT_RETRIEVER_FALLBACK]
-        )
+        candidate_names = profile_names or [DEFAULT_RETRIEVER_FALLBACK]
 
         should_include_local_rag = (
             self.local_rag.priority
@@ -332,7 +262,6 @@ def get_settings() -> Settings:
 
 __all__ = [
     "DocgenSettings",
-    "EmbeddingSettings",
     "IngestSettings",
     "InteractSettings",
     "KnowledgeGraphSettings",
@@ -342,7 +271,6 @@ __all__ = [
     "PlannerModeSettings",
     "PlannerSettings",
     "RagSettings",
-    "RuntimeSettings",
     "SearchSettings",
     "Settings",
     "clear_system_settings_override",

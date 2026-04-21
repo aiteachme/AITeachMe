@@ -23,8 +23,10 @@ def test_settings_model_uses_code_defaults_without_project_file(monkeypatch) -> 
 
     assert settings.models.primary == defaults["models"]["primary"]
     assert settings.models.embedding == defaults["models"]["embedding"]
-    assert settings.ingest.parse_concurrency == defaults["ingest"]["parse_concurrency"]
+    assert settings.ingest.max_upload_size_mb == defaults["ingest"]["max_upload_size_mb"]
     assert settings.docgen.generate_cover_image == defaults["docgen"]["generate_cover_image"]
+    assert "runtime" not in defaults
+    assert "embedding" not in defaults
 
 
 def test_settings_support_optional_external_override_file(

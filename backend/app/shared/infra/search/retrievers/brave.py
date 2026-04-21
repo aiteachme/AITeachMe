@@ -5,8 +5,8 @@ from __future__ import annotations
 import httpx
 import structlog
 
-from app.shared.infra.settings import get_settings
 from app.shared.infra.env_support import get_env
+from app.shared.infra.search.defaults import DEFAULT_SEARCH_PROVIDER_TIMEOUT_S
 from app.shared.infra.search.retrievers.base import BaseRetriever
 from app.shared.infra.search.retrievers.common import clamp_max_results, make_search_result, normalize_query
 from app.shared.infra.search.types import SearchResult
@@ -35,14 +35,13 @@ class BraveRetriever(BaseRetriever):
         normalized_query = normalize_query(query)
         if not normalized_query:
             return []
-        settings = get_settings()
         api_key = (get_env("BRAVE_SEARCH_API_KEY") or "").strip()
         if not api_key:
             return []
         count = clamp_max_results(max_results, upper=20)
 
         try:
-            async with httpx.AsyncClient(timeout=settings.search.provider_timeout_s, follow_redirects=True) as client:
+            async with httpx.AsyncClient(timeout=DEFAULT_SEARCH_PROVIDER_TIMEOUT_S, follow_redirects=True) as client:
                 response = await client.get(
                     _BRAVE_SEARCH_ENDPOINT,
                     params={"q": normalized_query, "count": count, "text_decorations": False, "spellcheck": False},

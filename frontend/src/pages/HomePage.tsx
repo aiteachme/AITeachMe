@@ -35,8 +35,6 @@ import { resolveFileProcessingLabel } from "../components/knowledge-docs";
 import { HeroAnimation } from "../components/ui/HeroAnimation";
 import { FullPageDropOverlay } from "../components/ui/FullPageDropOverlay";
 import type { FileRecord, FilesData, FilesUploadData } from "../types/files";
-import { getStoredAppSettings } from "../hooks/useSettings";
-import { loadIngestPreferenceSettings } from "../lib/systemSettings";
 
 /* ── API helpers (same as BuildPlanPage) ── */
 
@@ -45,24 +43,6 @@ interface ApiResponse<T> { code: number; data: T; }
 async function uploadFiles(subject: string, files: File[]): Promise<FilesUploadData> {
   const formData = new FormData();
   for (const file of files) formData.append("files", file);
-
-  // 解析引擎默认值从后端 settings 数据库缓存读取；浏览器仅保留本机临时 Token 覆盖。
-  const browserSettings = getStoredAppSettings();
-  const ingestSettings = await loadIngestPreferenceSettings();
-  if (ingestSettings.parserProvider === "markitdown") {
-    formData.append("parser_provider", "markitdown");
-  }
-  if (ingestSettings.parserProvider === "mineru") {
-    const token = browserSettings.mineruApiToken?.trim();
-    formData.append("parser_provider", "mineru");
-    if (token) {
-      formData.append("mineru_api_token", token);
-    }
-    formData.append("mineru_model_version", ingestSettings.mineruModelVersion);
-    formData.append("mineru_enable_formula", String(ingestSettings.mineruEnableFormula));
-    formData.append("mineru_enable_table", String(ingestSettings.mineruEnableTable));
-    formData.append("mineru_is_ocr", String(ingestSettings.mineruIsOcr));
-  }
 
   const response = await apiClient<ApiResponse<FilesUploadData>>({
     method: "POST",
