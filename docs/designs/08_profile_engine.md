@@ -25,16 +25,9 @@ Profile（画像引擎）是 AITeachMe 的**学习状态中枢**，负责把考�
 
 | 层 | 模块路径 | 职责 |
 |---|---|---|
-| Workflow Graph | `backend/app/workflows/profile/graph.py` | LangGraph 概览图定义 |
-| Workflow State | `backend/app/workflows/profile/state.py` | 状态类型 |
-| Workflow Runtime | `backend/app/workflows/profile/runtime.py` | 运行入口 |
-| Application | `backend/app/workflows/profile/application/mastery.py` | Profile API-facing 掌握度与复习任务入口 |
-| 掌握度更新 | `backend/app/workflows/profile/mastery_updater.py` | 核心掌握度计算引擎 |
-| 复习调度 | `backend/app/workflows/profile/review_scheduler.py` | SM-2 复习间隔 + 遗忘曲线 |
-| 薄弱点分析 | `backend/app/workflows/profile/weakness_analyzer.py` | 多因子薄弱点排序 |
-| 学科画像 | `backend/app/workflows/profile/subject_profile.py` | 学科级聚合与推荐 |
-| 用户画像 | `backend/app/workflows/profile/user_profile.py` | 用户级跨学科聚合 |
-| 事件定义 | `backend/app/workflows/profile/events.py` | 画像事件 |
+| Workflow Graph | `backend/app/workflows/profile/pipeline/graph.py` | LangGraph 概览图定义与运行入口 |
+| Workflow State | `backend/app/workflows/profile/pipeline/state.py` | 状态类型 |
+| Pipeline Lib | `backend/app/workflows/profile/pipeline/lib/` | 掌握度更新、复习调度、薄弱点分析、画像聚合、报告建议 |
 | Prompt 模板 | `backend/app/workflows/profile/pipeline/prompts/` | 分析类 prompt |
 
 ---

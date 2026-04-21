@@ -102,7 +102,6 @@ shared.infra -> shared.kernel
 入口：
 
 - `api/chats.py`
-- `workflows/interact/application/`
 - `workflows/interact/chat/`
 
 职责：
@@ -130,7 +129,6 @@ shared.infra -> shared.kernel
 入口：
 
 - `api/profile.py`
-- `workflows/profile/application/`
 - `workflows/profile/pipeline/`
 
 职责：

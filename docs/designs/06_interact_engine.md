@@ -23,9 +23,9 @@ Interact（伴读引擎）是 AITeachMe 的**实时教学交互核心**，负责
 | 层 | 模块路径 | 职责 |
 |---|---|---|
 | API | `backend/app/api/chats.py` | 对话 SSE 与会话端点 |
-| Application | `backend/app/workflows/interact/application/chats.py` | 会话管理、调度与 SSE 外壳 |
+| API-facing Use Cases | `backend/app/workflows/interact/chat/use_cases.py` | 会话管理、调度与 SSE 外壳 |
 | Workflow Graph | `backend/app/workflows/interact/chat/graph.py` | LangGraph 图定义 |
-| Workflow Runtime | `backend/app/workflows/interact/chat/runtime.py` | 运行入口 |
+| Workflow Runtime | `backend/app/workflows/interact/chat/graph.py` | 单次运行入口与 SSE streaming 底座 |
 | Workflow State | `backend/app/workflows/interact/chat/state.py` | 状态类型 |
 | Nodes | `backend/app/workflows/interact/chat/nodes/` | history/retrieval/strategy/prompt/stream/persist |
 | Prompt 模板 | `backend/app/workflows/interact/chat/prompts/prompts.py` | System prompt |
@@ -52,7 +52,7 @@ graph TD
 
 ## 4. State 类型定义
 
-> 文件: `backend/app/workflows/interact/chat/state.py`（根目录 `state.py` 仅作兼容入口）
+> 文件: `backend/app/workflows/interact/chat/state.py`
 
 ### `InteractWorkflowState` 主要字段
 

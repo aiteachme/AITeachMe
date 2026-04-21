@@ -10,12 +10,10 @@
 profile/
   __init__.py
   README.md
-  application/
   pipeline/
 ```
 
 说明：
 
-- `application/` 承接面向 API 的掌握度与复习任务用例
-- `pipeline/` 是唯一真实链路
-- 根目录旧 `graph.py / runtime.py / state.py` 保留兼容
+- `pipeline/` 是唯一真实链路，掌握度更新、复习调度、画像刷新与报告建议都已下沉到 `pipeline/`
+- 模块根只保留稳定导入面与 README，不再保留 `application/`、`events.py`、`exports.py` 这类根层包装文件
