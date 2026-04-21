@@ -41,6 +41,15 @@ def _build_docgen_graph_for_export():
     return build_docgen_graph(context=context)
 
 
+def _build_kg_graph_for_export():
+    context = WorkflowContext(
+        workflow_name="digest.kg_file_ingest",
+        subject="__export__",
+        event_bus=InProcessEventBus(),
+    )
+    return build_kg_digest_graph(context=context)
+
+
 _DOCGEN_SEND_EDGES = (
     f"{NODE_DISPATCH} -. Send xN .-> {NODE_GENERATE_CHAPTERS}",
     f"{NODE_GENERATE_CHAPTERS} --> {NODE_ENHANCE_CHAPTERS}",
@@ -71,7 +80,7 @@ WORKFLOW_EXPORTS = (
         key="digest_graph",
         title="Digest Graph Workflow",
         description="Incremental knowledge-graph build workflow.",
-        build_graph=build_kg_digest_graph,
+        build_graph=_build_kg_graph_for_export,
         prompts=KG_PROMPTS,
     ),
 )

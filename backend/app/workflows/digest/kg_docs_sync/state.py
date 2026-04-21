@@ -11,10 +11,10 @@ class DocsSyncState(TypedDict, total=False):
     subject: str
     markdown: str
     build_revision_no: int | None
+    build_session_id: str
     report: KnowledgeSyncReport | None
     error: str | None
 
 
 __all__ = ["DocsSyncState"]
-
 

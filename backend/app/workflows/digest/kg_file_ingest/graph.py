@@ -1,10 +1,16 @@
-﻿"""Digest knowledge-graph workflow graph and initial state."""
+"""Digest knowledge-graph workflow graph and initial state."""
 
 from __future__ import annotations
 
 from langgraph.graph import END, StateGraph
 
 from app.shared.infra.workflow import workflow_tracer
+from app.shared.infra.workflow.context import WorkflowContext, create_langgraph_dev_context
+from app.workflows.digest.kg_file_ingest.lib.routes import (
+    route_after_lock_for_trace,
+    route_after_prepare_for_trace,
+    route_after_step_for_trace,
+)
 from app.workflows.digest.kg_file_ingest.nodes import (
     acquire_lock_node,
     analyze_impact_node,
@@ -16,19 +22,21 @@ from app.workflows.digest.kg_file_ingest.nodes import (
     resolve_edges_node,
     resolve_nodes_node,
 )
-from app.workflows.digest.kg_file_ingest.lib.routes import route_after_lock, route_after_prepare, route_after_step
 from app.workflows.digest.kg_file_ingest.state import KGDigestState, KnowledgeDigestState
 
-def build_kg_digest_graph() -> StateGraph:
+RUN_NAME_KG_FILE_INGEST = "知识图谱摄取：解析文件并构建图谱"
+
+
+def build_kg_digest_graph(*, context: WorkflowContext) -> StateGraph:
     """Build the LangGraph workflow for digest graph construction."""
 
     workflow = StateGraph(KGDigestState)
-    trace = workflow_tracer(workflow="digest.graph", lane="kg")
+    trace = workflow_tracer(context=context, lane="kg_file_ingest")
     workflow.add_node(
         "acquire_lock",
         trace.node(
             acquire_lock_node,
-            name="acquire_lock",
+            name="获取构建锁",
             timing_field="acquire_lock_ms",
         ),
     )
@@ -36,7 +44,7 @@ def build_kg_digest_graph() -> StateGraph:
         "prepare",
         trace.node(
             prepare_node,
-            name="prepare",
+            name="准备分块与上下文",
             timing_field="prepare_ms",
         ),
     )
@@ -44,7 +52,7 @@ def build_kg_digest_graph() -> StateGraph:
         "extract",
         trace.node(
             extract_node,
-            name="extract",
+            name="抽取候选节点与关系",
             timing_field="extract_ms",
         ),
     )
@@ -52,7 +60,7 @@ def build_kg_digest_graph() -> StateGraph:
         "cluster",
         trace.node(
             cluster_node,
-            name="cluster",
+            name="聚类候选知识点",
             timing_field="cluster_ms",
         ),
     )
@@ -60,7 +68,7 @@ def build_kg_digest_graph() -> StateGraph:
         "resolve_nodes",
         trace.node(
             resolve_nodes_node,
-            name="resolve_nodes",
+            name="解析知识点落库",
             timing_field="resolve_nodes_ms",
         ),
     )
@@ -68,7 +76,7 @@ def build_kg_digest_graph() -> StateGraph:
         "resolve_edges",
         trace.node(
             resolve_edges_node,
-            name="resolve_edges",
+            name="解析关系落库",
             timing_field="resolve_edges_ms",
         ),
     )
@@ -76,7 +84,7 @@ def build_kg_digest_graph() -> StateGraph:
         "analyze_impact",
         trace.node(
             analyze_impact_node,
-            name="analyze_impact",
+            name="分析图谱影响面",
             timing_field="impact_ms",
         ),
     )
@@ -84,7 +92,7 @@ def build_kg_digest_graph() -> StateGraph:
         "finalize_graph",
         trace.node(
             build_finalize_graph_node(),
-            name="finalize_graph",
+            name="收口图谱构建结果",
             timing_field="finalize_ms",
         ),
     )
@@ -92,14 +100,14 @@ def build_kg_digest_graph() -> StateGraph:
         "fail",
         trace.node(
             fail_node,
-            name="fail",
+            name="记录失败结果",
         ),
     )
 
     workflow.set_entry_point("acquire_lock")
     workflow.add_conditional_edges(
         "acquire_lock",
-        route_after_lock,
+        route_after_lock_for_trace,
         {
             "prepare": "prepare",
             "fail": "fail",
@@ -107,7 +115,7 @@ def build_kg_digest_graph() -> StateGraph:
     )
     workflow.add_conditional_edges(
         "prepare",
-        route_after_prepare,
+        route_after_prepare_for_trace,
         {
             "extract": "extract",
             "finalize_graph": "finalize_graph",
@@ -116,7 +124,7 @@ def build_kg_digest_graph() -> StateGraph:
     )
     workflow.add_conditional_edges(
         "extract",
-        route_after_step,
+        route_after_step_for_trace,
         {
             "continue": "cluster",
             "fail": "fail",
@@ -124,7 +132,7 @@ def build_kg_digest_graph() -> StateGraph:
     )
     workflow.add_conditional_edges(
         "cluster",
-        route_after_step,
+        route_after_step_for_trace,
         {
             "continue": "resolve_nodes",
             "fail": "fail",
@@ -132,7 +140,7 @@ def build_kg_digest_graph() -> StateGraph:
     )
     workflow.add_conditional_edges(
         "resolve_nodes",
-        route_after_step,
+        route_after_step_for_trace,
         {
             "continue": "resolve_edges",
             "fail": "fail",
@@ -140,7 +148,7 @@ def build_kg_digest_graph() -> StateGraph:
     )
     workflow.add_conditional_edges(
         "resolve_edges",
-        route_after_step,
+        route_after_step_for_trace,
         {
             "continue": "analyze_impact",
             "fail": "fail",
@@ -148,7 +156,7 @@ def build_kg_digest_graph() -> StateGraph:
     )
     workflow.add_conditional_edges(
         "analyze_impact",
-        route_after_step,
+        route_after_step_for_trace,
         {
             "continue": "finalize_graph",
             "fail": "fail",
@@ -199,10 +207,13 @@ def create_graph_digest_initial_state(
     }
 
 
+def get_langgraph_dev_kg_file_ingest_graph() -> StateGraph:
+    return build_kg_digest_graph(context=create_langgraph_dev_context("digest.kg_file_ingest.langgraph_dev"))
+
+
 __all__ = [
+    "RUN_NAME_KG_FILE_INGEST",
     "build_kg_digest_graph",
     "create_graph_digest_initial_state",
+    "get_langgraph_dev_kg_file_ingest_graph",
 ]
-
-
-
