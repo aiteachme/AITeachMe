@@ -103,9 +103,10 @@ DEFAULT_SETTINGS_VALUES: dict[str, Any] = {
         "langsmith_capture_inputs": None,
         "langsmith_capture_outputs": None,
         "langsmith_max_text_chars": 2000,
-        "llm_observability_max_records": 5000,
+        "llm_observability_max_records": 100000,
     },
 }
+
 
 
 def get_default_settings_values() -> dict[str, Any]:

@@ -52,7 +52,7 @@ pip install -e .
 
 ```env
 LLM_API_KEY=sk-your-api-key-here
-LLM_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
+LLM_BASE_URL=https://api.openai.com/v1
 APP_MODE=local
 AUTH_ENABLED=false
 ```

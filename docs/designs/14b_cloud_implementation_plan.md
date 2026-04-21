@@ -728,7 +728,7 @@ S3_PUBLIC_BASE_URL=https://<cdn-domain>
 
 # LLM
 LLM_API_KEY=<key>
-LLM_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
+LLM_BASE_URL=https://api.openai.com/v1
 LLM_MODEL=qwen-plus-latest
 EMBEDDING_MODEL=text-embedding-v4
 
@@ -902,7 +902,7 @@ Render 创建 PostgreSQL 后：
 
 # ── LLM ──
 LLM_API_KEY=
-LLM_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
+LLM_BASE_URL=https://api.openai.com/v1
 LLM_MODEL=qwen-plus-latest
 EMBEDDING_MODEL=text-embedding-v4
 

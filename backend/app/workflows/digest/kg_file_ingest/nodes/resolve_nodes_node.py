@@ -181,7 +181,7 @@ async def _build_resolution_index(subject: str) -> ResolutionIndex:
         }
 
     if missing_texts:
-        missing_embeddings = await aembed_texts(missing_texts)
+        missing_embeddings = await aembed_texts(missing_texts, soft_fail=True)
         for node_id, embedding in zip(missing_node_ids, missing_embeddings, strict=False):
             embedding_by_node_id[node_id] = embedding
             cache_payload[str(node_id)]["embedding"] = embedding
@@ -406,7 +406,8 @@ async def resolve_nodes_node(state: KnowledgeDigestState) -> KnowledgeDigestStat
                     [
                         f"{candidate.representative.name}\n{candidate.merged_summary}".strip()
                         for candidate in clustered_candidates
-                    ]
+                    ],
+                    soft_fail=True,
                 )
                 if clustered_candidates
                 else []

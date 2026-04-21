@@ -35,9 +35,9 @@
 | `17_settings_config_ownership.md` | 设置、环境变量、数据库覆盖与 local/cloud 页面边界 |
 | `18_effective_settings_runtime.md` | effective settings 的合并规则与运行时真相 |
 | `19_docgen_cover_sidecar.md` | DocGen 封面 sidecar、配置归属与发布接入方式 |
-| `20_docgen_live_build_experience.md` | 知识文档构建实时可视化与 SSE 方案 |
-| `20b_docgen_sse_event_protocol.md` | 知识文档构建 SSE 事件协议草案 |
-| `21_docgen_build_workspace_experience.md` | 知识文档构建工作台、页面主路径与过程体验设计 |
+| `20_docgen_live_build_experience.md` | DocGen 过程可视化、Build Workspace 形态与“始终有内容可看”的展示规则 |
+| `21_docgen_build_workspace_experience.md` | DocGen Build Workspace 的 SSE 协议、状态归并与前后端落地计划 |
+| `22_docgen_build_workspace_visual_style.md` | DocGen Build Workspace 初版视觉实现稿：样式方向、组件拆分、布局、动效与落地文件映射 |
 | `future.md` | 未来学习形态与产品路线 |
 
 ## 文档维护规则

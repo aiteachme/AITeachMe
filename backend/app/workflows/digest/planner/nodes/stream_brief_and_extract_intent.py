@@ -58,7 +58,7 @@ async def _generate_subject_name(state: BuildPlannerState) -> str:
         title = await acompletion_with_fallback(
             [{"role": "user", "content": prompt}],
             call_purpose=LLMCallPurpose.CLASSIFY,
-            model="primary",
+            model="light",
             max_tokens=40,
             temperature=0.2,
             extra_metadata={
@@ -105,7 +105,7 @@ async def _stream_planner_brief(state: BuildPlannerState, fallback: PlannerBrief
         stream = acompletion_stream(
             [{"role": "user", "content": prompt}],
             call_purpose=LLMCallPurpose.GENERATE,
-            model="reason",
+            model="light",
             max_tokens=1000,
             extra_metadata={
                 "planner_session_id": state.get("planner_session_id") or "",
@@ -173,7 +173,7 @@ async def _extract_plan_intent(state: BuildPlannerState) -> PlanIntent:
                 message_history=list(state.get("message_history", [])),
             ),
             call_purpose=LLMCallPurpose.CLASSIFY,
-            model="primary",
+            model="light",
             response_model=PlanIntent,
             max_tokens=1000,
             extra_metadata={

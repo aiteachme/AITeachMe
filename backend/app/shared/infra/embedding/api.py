@@ -95,12 +95,14 @@ async def aembed_texts(
     texts: list[str],
     *,
     batch_size: int | None = None,
+    soft_fail: bool = False,
 ) -> list[list[float]]:
     """批量生成文本向量，自动分批处理。
 
     Args:
         texts: 待向量化的文本列表。
         batch_size: 每批大小（默认从运行时 settings 读取）。
+        soft_fail: 当 embedding 调用失败时，是否记录 warning 并返回空列表。
     """
 
     if not texts:
@@ -113,8 +115,8 @@ async def aembed_texts(
     batch_size = batch_size or settings.embedding.batch_size
     model = _build_model_name(settings.models.embedding)
     api_base = (
-        get_env("LLM_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1")
-        or "https://dashscope.aliyuncs.com/compatible-mode/v1"
+        get_env("LLM_BASE_URL", "https://api.openai.com/v1")
+        or "https://api.openai.com/v1"
     )
     start = time.monotonic()
 
@@ -157,16 +159,28 @@ async def aembed_texts(
                 )
                 raise LLMCallError(reason=f"Embedding 调用失败（批次 {batch_idx + 1}/{total_batches}）：{exc}") from exc
 
-    if total_batches <= 1:
-        # Single batch — no concurrency overhead
-        _, vectors = await _embed_batch(0)
-        all_vectors = vectors
-    else:
-        results = await asyncio.gather(*(_embed_batch(i) for i in range(total_batches)))
-        # Re-order by batch index
-        results_sorted = sorted(results, key=lambda r: r[0])
-        for _, vectors in results_sorted:
-            all_vectors.extend(vectors)
+    try:
+        if total_batches <= 1:
+            # Single batch — no concurrency overhead
+            _, vectors = await _embed_batch(0)
+            all_vectors = vectors
+        else:
+            results = await asyncio.gather(*(_embed_batch(i) for i in range(total_batches)))
+            # Re-order by batch index
+            results_sorted = sorted(results, key=lambda r: r[0])
+            for _, vectors in results_sorted:
+                all_vectors.extend(vectors)
+    except (MissingLLMApiKeyError, LLMCallError) as exc:
+        if not soft_fail:
+            raise
+        logger.warning(
+            "embedding_call_soft_failed",
+            text_count=len(texts),
+            batch_count=total_batches,
+            model=model,
+            error=str(exc),
+        )
+        return []
 
     logger.info(
         "embedding_call_complete",

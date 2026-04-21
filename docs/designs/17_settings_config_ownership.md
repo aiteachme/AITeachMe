@@ -158,7 +158,156 @@
 - `models.overrides` 还未接入模型解析主链路
 - `search.retriever_profiles` 更适合作为版本化项目配置，而不是日常 UI 表单
 
-## 7. 一句话
+## 7. 设置面板信息架构
+
+设置面板的设计应先服从配置归属，再决定 UI 怎么排。
+
+不要再按“当前前端 tab 长什么样”反推变量位置，而应先判断：
+
+1. 这是浏览器本机项，还是服务端运行时项？
+2. 这是部署级 `.env`，还是非敏感运行时覆盖？
+3. 这是常用项，还是高级调优项，还是诊断展示项？
+
+推荐把变量先按三条轴理解：
+
+### 7.1 配置层
+
+1. `browser local`
+2. `env`
+3. `code defaults`
+4. `optional project override`
+5. `system_runtime_settings`
+6. `derived runtime`
+
+### 7.2 业务领域
+
+1. 当前设备
+2. AI 与模型
+3. 学习构建
+4. 检索与来源
+5. 部署与集成
+6. 观测与性能
+
+### 7.3 展示等级
+
+1. `basic`
+2. `advanced`
+3. `diagnostic`
+4. `hidden`
+
+含义：
+
+- `basic`：默认展示
+- `advanced`：点击“显示高级”后展示
+- `diagnostic`：只读状态 / 派生值
+- `hidden`：不进入普通设置页
+
+## 8. 推荐面板分区
+
+### 8.1 当前设备
+
+只放浏览器本机项：
+
+- `apiUrl`
+- `useMock`
+- `debugMode`
+- 临时 `MinerU Token`
+
+这些值不会成为服务端配置真相，因此必须和服务端设置分开。
+
+### 8.2 AI 与模型
+
+集中放模型路由与模型推导：
+
+- `models.primary`
+- `models.reason`
+- `models.light`
+- `models.extract`
+- `models.embedding`
+- `models.ocr`
+- `models.image_generation`
+- `models.embedding_dim` 只读诊断
+
+### 8.3 学习构建
+
+建议拆成 4 个子组：
+
+1. 上传与解析：`ingest.*`
+2. 方案规划：`planner.*`
+3. 知识文档生成：`docgen.*`
+4. 伴读与图谱联动：`interact.*` / `knowledge_graph.*`
+
+### 8.4 检索与来源
+
+建议分成：
+
+1. 检索策略
+   - `local_rag.*`
+   - `rag.*`
+   - `search.retriever_profile`
+2. 高级调优
+   - timeout / cache / 并发 / fusion
+3. Provider 状态
+   - 各类搜索、reader、rerank、MCP 相关 `.env`
+
+### 8.5 部署与集成
+
+建议集中展示：
+
+- 运行模式
+- 鉴权状态
+- settings source
+- 数据库连接
+- 存储后端
+- S3 / DogeCloud 状态
+- 模型服务地址与密钥状态
+
+默认以状态页为主；本地模式下才开放 `.env` 编辑。
+
+### 8.6 观测与性能
+
+建议拆成两个子组：
+
+1. 观测
+   - tracing
+   - token summary
+   - LangSmith 预览相关项
+2. 性能
+   - `runtime.llm_concurrency_limit`
+   - `runtime.default_token_budget`
+   - `embedding.batch_*`
+
+## 9. 设置页展示原则
+
+当前设置页后续应遵循下面几条规则：
+
+1. 先看任务，再看变量。
+2. 先看常用项，再看高级项。
+3. 先看可写项，再看诊断项。
+4. 让“作用域”和“生效方式”比单纯 source 标签更清楚。
+
+每个设置项至少应让用户一眼看懂：
+
+- 这是浏览器本机、服务端运行时、还是部署级变量
+- 改完是立即生效、建议重启，还是只读
+- 这是当前值、默认值，还是派生值
+
+## 10. 后续演进建议
+
+为了减少前端继续用 key 前缀和大批硬编码集合猜分组，后端 `SettingEntry` 后续建议逐步补充 UI 元数据，例如：
+
+- `ui_section`
+- `ui_group`
+- `ui_level`
+- `scope`
+- `effect`
+
+只要这些元数据到位，前端就可以直接按后端声明渲染，而不是继续维护大量：
+
+- `SIMPLE_*_KEYS`
+- `*_PREFIXES`
+
+## 11. 一句话
 
 现在的配置真相顺序是：
 
