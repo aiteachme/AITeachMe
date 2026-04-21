@@ -310,6 +310,7 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
                   setSubjectActionError(undefined);
                   setOpenMenuId(null);
                   setIsMobileOpen(false);
+                  setIsCollapsed(false);
                   navigate("/", {
                     state: { newEntryAt: Date.now() },
                   });
@@ -343,7 +344,7 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
           ) : null}
         </div>
 
-        <div className="flex-1 overflow-y-auto px-3 pb-4 space-y-1">
+        <div className="flex-1 overflow-y-auto overflow-x-hidden px-3 pb-4 space-y-1 scrollbar-thin scrollbar-webkit">
           {isLoading ? (
             <div className="flex flex-col items-center justify-center py-6 text-slate-400">
               <Loader2 className="h-5 w-5 animate-spin" />
@@ -362,7 +363,16 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
                 <div className="group flex items-center gap-1">
                   <button
                     type="button"
-                    onClick={() => toggleSubject(subject.subject_id)}
+                    onClick={() => {
+                      if (effectiveCollapsed) {
+                        setIsCollapsed(false);
+                        if (!expanded) {
+                          toggleSubject(subject.subject_id);
+                        }
+                      } else {
+                        toggleSubject(subject.subject_id);
+                      }
+                    }}
                     className={cn(
                       "flex items-center transition-colors",
                       effectiveCollapsed ? "h-8 w-full justify-center rounded px-0" : "flex-1 rounded-lg px-2 py-2",
@@ -468,7 +478,7 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
         </div>
 
         {/* Bottom actions */}
-        <div className="border-t border-slate-100 p-2.5 space-y-1">
+        <div className="border-t border-slate-200/80 p-2.5 space-y-1 z-10">
           <button
             type="button"
             onClick={() => setIsCommunityModalOpen(true)}
