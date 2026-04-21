@@ -1,4 +1,4 @@
-"""Compatibility wrapper for the classify-file node."""
+"""Top-level classify-file node entrypoint."""
 
 from app.workflows.ingest.fast_parse.lib.file import build_classify_file_node
 

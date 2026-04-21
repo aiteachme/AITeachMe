@@ -5,6 +5,8 @@ from __future__ import annotations
 from importlib import import_module
 
 __all__ = [
+    "IngestParseGraphInput",
+    "IngestParseGraphOutput",
     "IngestParseState",
     "WORKFLOW_EXPORTS",
     "build_fast_parse_graph",
@@ -15,12 +17,14 @@ __all__ = [
 ]
 
 _ATTR_TO_MODULE = {
+    "IngestParseGraphInput": "app.workflows.ingest.fast_parse.state",
+    "IngestParseGraphOutput": "app.workflows.ingest.fast_parse.state",
     "IngestParseState": "app.workflows.ingest.fast_parse.state",
     "build_fast_parse_graph": "app.workflows.ingest.fast_parse.graph",
-    "create_parse_file_initial_state": "app.workflows.ingest.fast_parse.lib.runtime_helpers",
+    "create_parse_file_initial_state": "app.workflows.ingest.fast_parse.graph",
     "get_langgraph_dev_fast_parse_graph": "app.workflows.ingest.fast_parse.graph",
     "recover_stalled_enhancements": "app.workflows.ingest.fast_parse.lib.recovery",
-    "run_parse_file_workflow": "app.workflows.ingest.fast_parse.lib.runtime",
+    "run_parse_file_workflow": "app.workflows.ingest.fast_parse.graph",
 }
 
 

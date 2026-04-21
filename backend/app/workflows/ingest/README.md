@@ -43,18 +43,20 @@ ingest/
 
 - `__init__.py` 只提供稳定导入面，不承载业务实现。
 - `fast_parse/` 是 Phase 1 快速解析链路。
-- `fast_parse/lib/runtime.py` 是单文件 parse workflow runner 的真实落点，并负责派发后台增强。
+- `fast_parse/graph.py` 是单文件 parse workflow 的真实入口，并负责统一 graph/state/node 的运行收口。
 - `fast_parse/lib/enhance.py` 承接 Phase 2 后台增强 worker。
+- `fast_parse/lib/lifecycle.py` 承接 graph 外的失败兜底和 Phase 2 派发。
 - `fast_parse/lib/recovery.py` 承接增强恢复。
 - `common/parsing/` 放两条链路共享的分类、策略、解析器、Markdown 规范化与 OCR 实现。
 
-当前真实运行主线以 `fast_parse/lib/runtime.py::run_parse_file_workflow()` 和 `fast_parse/lib/enhance.py::_run_deep_enhance_background()` 为准。Ingest 只有 `fast_parse` 一条 workflow graph；后台增强只是 parse 完成后的异步补强步骤，不再作为第二条 LangGraph lane。
+当前真实运行主线以 `fast_parse/graph.py::run_parse_file_workflow()` 和 `fast_parse/lib/enhance.py::_run_deep_enhance_background()` 为准。Ingest 只有 `fast_parse` 一条 workflow graph；后台增强只是 parse 完成后的异步补强步骤，不再作为第二条 LangGraph lane。
 
 ## 容易误会的功能
 
 - workflow export 不再放 `common/exports.py`。各 lane 的 `graph.py` 自己声明 `WORKFLOW_EXPORTS`，根 `ingest.__init__` 只做聚合，供 LangGraph Studio 和 `backend/scripts/generate_workflow_diagrams.py` 使用。
 - Ingest 不再保留事件层。当前没有明确订阅方，状态推进、`digest_current_step` 和日志已经覆盖运行时观测需求。
 - `common/parsing/provider_contracts.py` 只保留当前 `ParseDecision` 需要的 provider 能力与路由契约。未来 `ParsedBlock / PageMap / ParseReport` 仍在设计文档中，不提前放进代码主线。
+- LangGraph 节点 id 保持英文 `snake_case`，LangSmith 展示名使用中文阶段名；不要把节点 id 改成中文。
 
 ## 对外入口
 
@@ -78,7 +80,7 @@ from app.workflows.ingest import run_parse_file_workflow
   -> background_task_registry.spawn(run_parse_files_background)
   -> run_parse_file_workflow
   -> Phase 1 fast parse
-  -> 必要时 background_task_registry 派发 Phase 2 deep enhance
+  -> support/files/parsing.py 按最终 state 必要时派发 Phase 2 deep enhance
   -> raw_file.ingest_status 进入 Digest 可消费态
 ```
 
@@ -100,7 +102,7 @@ from app.workflows.ingest import run_parse_file_workflow
 
 ## Phase 1：Fast Parse 快速解析
 
-真实入口是 `fast_parse/lib/runtime.py::run_parse_file_workflow()`。
+真实入口是 `fast_parse/graph.py::run_parse_file_workflow()`。
 
 ### 1. 读取 RawFile 与物化原始文件
 
@@ -221,7 +223,7 @@ Digest 当前允许消费以下状态：
 
 真实入口是 `fast_parse/lib/enhance.py::_run_deep_enhance_background()`。
 
-Phase 2 在 `background_task_registry` 中后台执行。主解析请求会先返回，前端可以立即预览 Phase 1 Markdown；脚本或非 API 调用场景仍保留 `_background_tasks` 兜底引用，避免 task 被回收。
+Phase 2 由 `support/files/parsing.py` 在 Phase 1 成功后按最终 state 派发。API 运行时优先进入 `background_task_registry`；脚本或非 API 调用场景仍保留 `_background_tasks` 兜底引用，避免 task 被回收。
 
 ### 1. 加载增强上下文
 
@@ -280,25 +282,21 @@ Phase 2 在 `background_task_registry` 中后台执行。主解析请求会先�
 
 ### 已处理
 
+- `run_parse_file_workflow()` 已经切回 `fast_parse/graph.py`，真实运行路径与 LangGraph 图定义统一，不再维护一套图外手写主流程。
+- 文本快通道、MinerU 分支、常规 parser chain 与最终持久化都收口到同一条 graph state 上；Phase 2 派发则回到 graph 外 lifecycle/support 边界。
 - 上传触发的 Phase 2 和启动恢复任务都接入 `background_task_registry`，脚本调用保留 `_background_tasks` 兜底。
 - Phase 2 会先物化 Phase 1 资产，增强后重新上传资产并同步 `image_count`，避免 Markdown 图片引用悬空。
-- Phase 2 临时目录改为上下文管理，增强结束后自动清理工作目录。
+- Phase 1 / finalize 现在也会清理本次解析的临时工作目录，避免临时文件持续堆积。
 
 ### 建议优先级 P0/P1
 
 1. **把 Phase 2 从内存 task 迁移到持久化队列**
    现在启动后可以扫描恢复，但正在执行的上下文、失败次数、重试退避都不够完整。建议后续引入 DB job / Redis queue / Celery / Dramatiq 一类持久化任务层。
 
-2. **判断是否让 fast_parse graph 接管真实运行**
-   当前真实主逻辑仍在 `fast_parse/lib/runtime.py` 手写执行；`fast_parse/graph.py` 主要用于 dev/export。后续如果要强化节点级观测，再考虑让 runtime 调 `run_state_graph(...)`。
-
-3. **增加基于 content_hash 的幂等跳过**
+2. **增加基于 content_hash 的幂等跳过**
    已有 `content_hash`，但当前上传后仍会进入解析。可以在同 subject 下发现同 hash 产物时复用 Markdown 与资产，减少重复解析成本。
 
-4. **统一 Phase 1 临时目录清理策略**
-   Phase 2 已用上下文清理工作目录；Phase 1 仍会创建临时目录，建议后续补充集中清理或 `try/finally` 清理，避免大量文件解析后系统临时目录膨胀。
-
-5. **把解析质量评估从启发式升级为可解释评分**
+3. **把解析质量评估从启发式升级为可解释评分**
    当前 `quality_score` 是简单规则。后续可增加 Markdown 结构、图片覆盖、公式/表格保真度、OCR 低置信段落等维度。
 
 ## 一句话总结

@@ -32,11 +32,12 @@ RawFile
 解析入口：
 
 - `app.workflows.ingest.run_parse_file_workflow`
-- `backend/app/workflows/ingest/fast_parse/lib/runtime.py`
+- `backend/app/workflows/ingest/fast_parse/graph.py`
 
 后台增强：
 
 - `backend/app/workflows/ingest/fast_parse/lib/enhance.py`
+- `backend/app/workflows/ingest/fast_parse/lib/lifecycle.py`
 - `backend/app/workflows/ingest/fast_parse/lib/recovery.py`
 
 ## 3. 当前目录结构

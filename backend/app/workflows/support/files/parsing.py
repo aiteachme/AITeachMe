@@ -13,6 +13,10 @@ from app.models import IngestStatus, RawFile, TaskStatus
 from app.repositories.files_repo import update_raw_file
 from app.utils.presenters import require_id, require_uid
 from app.workflows.ingest import run_parse_file_workflow
+from app.workflows.ingest.fast_parse.lib.lifecycle import (
+    dispatch_enhancement_if_needed,
+    mark_parse_workflow_failed,
+)
 from app.workflows.support.files.catalog import get_subject_files_or_raise
 
 logger = structlog.get_logger()
@@ -90,12 +94,17 @@ async def run_parse_files_background(
                 result = await run_parse_file_workflow(
                     subject=subject,
                     file_id=file_id,
-                    background_task_registry=background_task_registry,
                 )
             except asyncio.CancelledError:
                 batch_logger.warning("file_parse_background_dispatch_cancelled", file_id=file_id)
                 raise
             except Exception as exc:
+                mark_parse_workflow_failed(
+                    subject=subject,
+                    file_id=file_id,
+                    error=str(exc),
+                    step="ingest.unhandled_error",
+                )
                 batch_logger.exception(
                     "file_parse_background_crashed",
                     file_id=file_id,
@@ -104,6 +113,13 @@ async def run_parse_files_background(
                 return
 
             if result.failed:
+                if result.error and result.error.code == "workflow_execution_failed":
+                    mark_parse_workflow_failed(
+                        subject=subject,
+                        file_id=file_id,
+                        error=result.error.detail,
+                        step="ingest.unhandled_error",
+                    )
                 error_metadata = result.error.metadata if result.error else {}
                 batch_logger.warning(
                     "file_parse_background_failed",
@@ -114,6 +130,15 @@ async def run_parse_files_background(
                     parse_mode=error_metadata.get("parse_mode"),
                     parser_chain=error_metadata.get("parser_chain"),
                 )
+                return
+
+            final_state = result.require_value()
+            dispatched_enhance = dispatch_enhancement_if_needed(
+                final_state,
+                background_task_registry=background_task_registry,
+            )
+            if dispatched_enhance:
+                batch_logger.info("file_parse_background_enhance_dispatched", file_id=file_id)
 
     try:
         await asyncio.gather(*(_run_one(file_id) for file_id in file_ids))

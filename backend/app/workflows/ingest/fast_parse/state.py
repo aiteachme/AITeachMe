@@ -1,11 +1,36 @@
-﻿"""State for the ingest fast-parse chain."""
+"""State contracts for the ingest fast-parse lane.
+
+这里定义 LangGraph 输入、运行时状态和输出字段。
+状态既要覆盖上传后解析的 Phase 1 主链，也要承接 Phase 2 派发所需的最小信息。
+"""
 
 from __future__ import annotations
 
 from typing import TypedDict
 
 from app.workflows.ingest.common.parsing.classifier import ClassificationResult
+from app.workflows.ingest.common.parsing.provider_contracts import ParseDecision
 from app.workflows.ingest.common.parsing.strategy import ParsePlan
+
+
+class IngestParseGraphInput(TypedDict):
+    """Graph input for one file parse run."""
+
+    subject: str
+    file_id: int
+
+
+class IngestParseGraphOutput(TypedDict, total=False):
+    """Graph output surfaced to API-facing callers."""
+
+    subject: str
+    file_id: int
+    filename: str
+    filetype: str
+    parser_used: str | None
+    parse_plan: ParsePlan | None
+    needs_enhance: bool
+    error: str | None
 
 
 class IngestParseState(TypedDict, total=False):
@@ -16,9 +41,26 @@ class IngestParseState(TypedDict, total=False):
     filename: str
     filetype: str
     file_path: str
-    markdown_path: str
-    asset_dir: str
+    temp_dir: str
+    local_markdown_path: str
+    local_asset_dir: str
+    record_markdown_path: str
+    record_asset_dir: str
+    asset_upload_prefix: str
+    asset_storage_dir: str
     asset_name_prefix: str
+    storage_backend: str
+    requested_parser_provider: str | None
+    mineru_token: str | None
+    mineru_token_source: str
+    mineru_model_version: str
+    mineru_enable_formula: bool
+    mineru_enable_table: bool
+    mineru_is_ocr: bool
+    parse_decision: ParseDecision | None
+    is_text_fast_path: bool
+    text_category: str | None
+    text_language_hint: str | None
     content_hash: str | None
     file_size_bytes: int | None
     classification: ClassificationResult | None
@@ -26,7 +68,6 @@ class IngestParseState(TypedDict, total=False):
     estimated_pages: int | None
     detected_language: str | None
     parse_plan: ParsePlan | None
-    parse_plan_payload: str | None
     parse_metadata: str | None
     parsed_markdown: str | None
     parser_used: str | None
@@ -37,9 +78,21 @@ class IngestParseState(TypedDict, total=False):
     rewritten_image_refs: int
     extracted_data_images: int
     appended_asset_images: int
+    quality_score: float | None
+    needs_enhance: bool
+    needs_quality_reparse: bool
+    needs_asset_ocr: bool
+    load_ms: int
+    fingerprint_ms: int
+    classify_ms: int
+    plan_ms: int
+    parse_ms: int
+    finalize_ms: int
     error: str | None
 
 
-__all__ = ["IngestParseState"]
-
-
+__all__ = [
+    "IngestParseGraphInput",
+    "IngestParseGraphOutput",
+    "IngestParseState",
+]
