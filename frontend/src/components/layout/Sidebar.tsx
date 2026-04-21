@@ -294,7 +294,7 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
           <button
             type="button"
             onClick={() => setIsCollapsed((prev) => !prev)}
-            className="rounded-md p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+            className="flex h-6 w-6 items-center justify-center rounded text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors"
             title={effectiveCollapsed ? "展开侧边栏" : "收起侧边栏"}
           >
             {effectiveCollapsed ? <PanelLeftOpen className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
@@ -315,7 +315,7 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
                   });
                 }}
                 title="新建学科"
-                className="flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-700 shadow-sm transition-all hover:border-slate-300 hover:bg-slate-50 hover:text-slate-900"
+                className="flex h-6 w-6 items-center justify-center rounded border border-slate-200 bg-white text-slate-700 shadow-sm transition-all hover:border-slate-300 hover:bg-slate-50 hover:text-slate-900"
               >
                 <Plus className="h-4 w-4 shrink-0" />
               </button>
@@ -343,7 +343,7 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
           ) : null}
         </div>
 
-        <div className="flex-1 overflow-y-auto px-3 pb-4">
+        <div className="flex-1 overflow-y-auto px-3 pb-4 space-y-1">
           {isLoading ? (
             <div className="flex flex-col items-center justify-center py-6 text-slate-400">
               <Loader2 className="h-5 w-5 animate-spin" />
@@ -358,22 +358,25 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
             const badgeClass = colorClassForSubject(subject.name || subject.subject_id);
 
             return (
-              <div key={subject.subject_id} className="mb-2">
+              <div key={subject.subject_id} className="relative">
                 <div className="group flex items-center gap-1">
                   <button
                     type="button"
                     onClick={() => toggleSubject(subject.subject_id)}
                     className={cn(
-                      "flex flex-1 items-center rounded-lg py-2 text-left transition-colors",
-                      effectiveCollapsed ? "justify-center px-0" : "px-2",
-                      activeSubject || expanded ? "bg-slate-50" : "hover:bg-slate-50",
+                      "flex items-center transition-colors",
+                      effectiveCollapsed ? "h-8 w-full justify-center rounded px-0" : "flex-1 rounded-lg px-2 py-2",
+                      activeSubject || expanded ? "bg-slate-100/60" : "hover:bg-slate-100/60",
                     )}
                     title={effectiveCollapsed ? displayName : undefined}
                   >
                     {effectiveCollapsed ? null : (
                       <ChevronRight className={cn("mr-1.5 h-4 w-4 shrink-0 text-slate-400 transition-transform", expanded ? "rotate-90" : "rotate-0")} />
                     )}
-                    <div className={cn("flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-xs font-bold text-white", badgeClass)}>
+                    <div className={cn("flex shrink-0 items-center justify-center font-bold text-white shadow-sm", 
+                      effectiveCollapsed ? "h-6 w-6 rounded text-[11px]" : "h-7 w-7 rounded-md text-xs",
+                      badgeClass
+                    )}>
                       {(subject.name.trim().charAt(0) || "新").toUpperCase()}
                     </div>
                     {!effectiveCollapsed ? <span className="ml-2 truncate text-sm font-medium text-slate-700">{displayName}</span> : null}
@@ -465,13 +468,13 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
         </div>
 
         {/* Bottom actions */}
-        <div className="border-t border-slate-100 p-2.5 space-y-0.5">
+        <div className="border-t border-slate-100 p-2.5 space-y-1">
           <button
             type="button"
             onClick={() => setIsCommunityModalOpen(true)}
             className={cn(
-              "flex w-full items-center rounded-lg py-2 text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-700",
-              effectiveCollapsed ? "justify-center px-0" : "gap-2.5 px-3",
+              "flex items-center text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700",
+              effectiveCollapsed ? "h-6 w-6 justify-center rounded mx-auto" : "w-full rounded-lg py-2 gap-2.5 px-3",
             )}
             title="社区"
           >
@@ -482,8 +485,8 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
             type="button"
             onClick={onOpenSettings}
             className={cn(
-              "flex w-full items-center rounded-lg py-2 text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-700",
-              effectiveCollapsed ? "justify-center px-0" : "gap-2.5 px-3",
+              "flex items-center text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700",
+              effectiveCollapsed ? "h-6 w-6 justify-center rounded mx-auto" : "w-full rounded-lg py-2 gap-2.5 px-3",
             )}
             title="设置"
           >
