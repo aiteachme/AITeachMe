@@ -21,6 +21,7 @@ from dataclasses import dataclass
 
 import structlog
 
+from app.shared.infra.llm_support.common import build_litellm_provider_kwargs
 from app.shared.infra.settings import get_settings
 from app.shared.infra.env_support import get_env
 
@@ -129,6 +130,7 @@ async def rerank_chunks(
             top_n=min(final_top_k, len(documents)),
             api_key=api_key,
             api_base=base_url,
+            **build_litellm_provider_kwargs(model),
         )
 
         reranked: list[RetrievedChunk] = []

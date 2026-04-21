@@ -26,7 +26,7 @@ DEFAULT_SETTINGS_VALUES: dict[str, Any] = {
         "extract": None,
         "ocr": None,
         "embedding": "text-embedding-v3",
-        "image_generation": "FLUX-1.1-pro",
+        "image_generation": None,
         "overrides": {},
     },
     "interact": {

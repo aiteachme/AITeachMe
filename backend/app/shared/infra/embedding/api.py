@@ -104,6 +104,15 @@ async def aembed_texts(
         raise MissingLLMApiKeyError()
     batch_size = batch_size or settings.embedding.batch_size
     model = str(settings.models.embedding or "").strip()
+    if not model:
+        if soft_fail:
+            logger.info(
+                "embedding_skipped_unconfigured",
+                text_count=len(texts),
+                reason="models.embedding is empty",
+            )
+            return []
+        raise LLMCallError(reason="models.embedding is not configured")
     api_base = (
         get_env("LLM_BASE_URL", "https://api.openai.com/v1")
         or "https://api.openai.com/v1"
