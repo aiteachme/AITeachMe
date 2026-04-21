@@ -32,6 +32,8 @@
 | `14c_cloud_dev_handover.md` | 云端开发交接说明 |
 | `15_export_import.md` | `.atmx` 导入导出设计 |
 | `16_cloud_db_migrations.md` | 云端 PostgreSQL 迁移、校验与运维流程 |
+| `17_docgen_live_build_experience.md` | 知识文档构建实时可视化与 SSE 方案 |
+| `17b_docgen_sse_event_protocol.md` | 知识文档构建 SSE 事件协议草案 |
 | `future.md` | 未来学习形态与产品路线 |
 
 ## 文档维护规则
