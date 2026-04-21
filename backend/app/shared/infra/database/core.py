@@ -868,13 +868,13 @@ def _upsert_settings_snapshot(engine: sa.Engine, settings) -> None:
     payload = _settings_snapshot_payload(settings)
     now = datetime.now(timezone.utc)
     settings_hash = _settings_snapshot_hash(payload)
-    settings_path = describe_project_settings_source()
+    settings_source = describe_project_settings_source()
 
     with Session(engine, expire_on_commit=False) as session:
         snapshot = session.get(SystemSettingsSnapshot, "runtime")
         if snapshot is None:
             snapshot = SystemSettingsSnapshot(id="runtime", created_at=now)
-        snapshot.settings_path = settings_path
+        snapshot.settings_path = settings_source
         snapshot.settings_hash = settings_hash
         snapshot.settings_json = payload
         snapshot.updated_at = now

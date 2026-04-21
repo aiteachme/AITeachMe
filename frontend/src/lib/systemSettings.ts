@@ -29,7 +29,8 @@ function normalizeSettingsOverview(raw: unknown): SettingsOverviewData | null {
     return null;
   }
 
-  const settingsPath = typeof raw.settings_path === "string" ? raw.settings_path : "";
+  const settingsSource =
+    typeof raw.settings_source === "string" ? raw.settings_source : "";
   const mode = typeof raw.mode === "string" ? raw.mode : "local";
   const sections = Array.isArray(raw.sections) ? (raw.sections as SettingsOverviewData["sections"]) : [];
   const notes = Array.isArray(raw.notes)
@@ -37,7 +38,7 @@ function normalizeSettingsOverview(raw: unknown): SettingsOverviewData | null {
     : [];
 
   return {
-    settings_path: settingsPath,
+    settings_source: settingsSource,
     mode,
     sections,
     notes,
@@ -84,7 +85,7 @@ export async function fetchSystemSettingsOverview(): Promise<SettingsOverviewDat
     data: {},
   });
   const overview = normalizeSettingsOverview(response.data) ?? {
-    settings_path: "",
+    settings_source: "",
     mode: "local",
     sections: [],
     notes: [],

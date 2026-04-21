@@ -26,6 +26,7 @@ from app.shared.infra.settings import (
     Settings,
     get_project_settings,
     get_system_settings_override_payload,
+    merge_settings_values,
     set_system_settings_override,
 )
 from app.shared.infra.env_support import (
@@ -96,16 +97,6 @@ def _display(value: Any) -> str:
         return f"{len(value)} 项"
     text = str(value)
     return text if text.strip() else "空"
-
-
-def _deep_merge(base: dict[str, Any], override: Mapping[str, Any]) -> dict[str, Any]:
-    merged = dict(base)
-    for key, value in override.items():
-        if isinstance(value, Mapping) and isinstance(merged.get(key), dict):
-            merged[key] = _deep_merge(merged[key], value)
-        else:
-            merged[key] = value
-    return merged
 
 
 def _project_by_override_keys(
@@ -179,7 +170,7 @@ def _normalize_user_settings_payload(raw_payload: Mapping[str, Any]) -> dict[str
 
     base_payload = get_project_settings().model_dump(mode="json")
     known_payload = _project_known_settings_keys(base_payload, raw_payload)
-    candidate_payload = _deep_merge(base_payload, known_payload)
+    candidate_payload = merge_settings_values(base_payload, known_payload)
     try:
         effective = Settings.model_validate(candidate_payload)
     except ValidationError as exc:
@@ -203,19 +194,13 @@ def _safe_user_settings_payload(raw_payload: Mapping[str, Any]) -> dict[str, Any
         return {}
 
 
-def _merge_user_settings(base_settings: Settings, user_payload: Mapping[str, Any]) -> Settings:
-    if not user_payload:
-        return base_settings
-    normalized_payload = _safe_user_settings_payload(user_payload)
-    merged_payload = _deep_merge(base_settings.model_dump(mode="json"), normalized_payload)
-    return Settings.model_validate(merged_payload)
-
-
 def _merge_system_settings(base_settings: Settings, system_payload: Mapping[str, Any]) -> Settings:
     if not system_payload:
         return base_settings
     normalized_payload = _safe_user_settings_payload(system_payload)
-    merged_payload = _deep_merge(base_settings.model_dump(mode="json"), normalized_payload)
+    merged_payload = merge_settings_values(
+        base_settings.model_dump(mode="json"), normalized_payload
+    )
     return Settings.model_validate(merged_payload)
 
 
@@ -343,7 +328,7 @@ def build_settings_overview_data(
 
     settings = _merge_system_settings(base_settings, system_payload)
     mode = resolve_app_mode()
-    settings_path = describe_project_settings_source()
+    settings_source = describe_project_settings_source()
 
     def lse(key: str, label: str, value: Any, default_value: Any, description: str = "") -> SettingEntry:
         return _editable_settings_entry(
@@ -368,7 +353,7 @@ def build_settings_overview_data(
                 _env_entry("runtime.app_mode_raw", "APP_MODE", "APP_MODE", "未设置时按本地优先策略解析。"),
                 _runtime_entry("runtime.version", "应用版本", get_app_version()),
                 _env_entry("auth.enabled", "AUTH_ENABLED", "AUTH_ENABLED", "账号鉴权覆盖项；空值按 APP_MODE 自动：local 关闭，cloud/Render 开启。", value=resolve_auth_enabled()),
-                _runtime_entry("settings.path", "项目设置来源", settings_path),
+                _runtime_entry("settings.source", "项目设置来源", settings_source),
             ],
         ),
         SettingSection(
@@ -529,7 +514,7 @@ def build_settings_overview_data(
     ]
 
     return SettingsOverviewData(
-        settings_path=settings_path,
+        settings_source=settings_source,
         mode=mode,
         sections=sections,
         notes=[

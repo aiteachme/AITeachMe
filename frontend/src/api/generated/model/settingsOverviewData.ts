@@ -11,8 +11,8 @@ import type { SettingSection } from './settingSection';
  * 后端设置总览。
  */
 export interface SettingsOverviewData {
-  /** 当前项目设置文件路径。 */
-  settings_path: string;
+  /** 当前项目设置来源；无外部 override 时显示 code defaults。 */
+  settings_source: string;
   /** 运行模式。 */
   mode: string;
   /** 设置分组。 */

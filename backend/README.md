@@ -57,7 +57,7 @@ APP_MODE=local
 AUTH_ENABLED=false
 ```
 
-`LLM_API_KEY / LLM_BASE_URL` 是统一模型接入口，会被对话、规划、出题、批改、Embedding、Vision OCR 等模型能力复用。更换供应商时优先改这两个环境变量，再在仓库根 `settings_default.yaml` 里调整 `models.*` 模型名。
+`LLM_API_KEY / LLM_BASE_URL` 是统一模型接入口，会被对话、规划、出题、批改、Embedding、Vision OCR 等模型能力复用。更换供应商时优先改这两个环境变量；如需调整模型名，优先通过代码默认值或 `PROJECT_SETTINGS_PATH` 指向的外部 override 文件覆盖 `models.*`。
 
 ### 3. 启动服务
 
@@ -116,7 +116,7 @@ LANGSMITH_PROJECT=AITeachMe
 ```
 
 当前约定下，workflow 统一运行入口和共享 infra trace 边界会自动继承 tracing 上下文，因此不需要在每个业务节点里重复手写观测代码。
-trace 内容预览策略统一放在仓库根 `settings_default.yaml` 的 `observability.langsmith_capture_inputs / langsmith_capture_outputs / langsmith_max_text_chars`，避免和环境变量重复；`null` 表示 `APP_MODE=local` 时保留输入/输出预览，非本地模式默认脱敏。严格隐私场景可额外使用 LangSmith 官方 `LANGSMITH_HIDE_INPUTS / LANGSMITH_HIDE_OUTPUTS`。
+trace 内容预览策略统一由运行时 settings 控制：默认值在代码默认值中定义，也可通过 `PROJECT_SETTINGS_PATH` 指向的外部 override 文件或本地设置页覆盖 `observability.langsmith_capture_inputs / langsmith_capture_outputs / langsmith_max_text_chars`。`null` 表示 `APP_MODE=local` 时保留输入/输出预览，非本地模式默认脱敏。严格隐私场景可额外使用 LangSmith 官方 `LANGSMITH_HIDE_INPUTS / LANGSMITH_HIDE_OUTPUTS`。
 
 ## 手动验证
 

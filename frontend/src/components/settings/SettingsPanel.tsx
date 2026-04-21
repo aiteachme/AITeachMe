@@ -54,7 +54,7 @@ interface SettingSection {
 }
 
 interface SettingsOverviewData {
-  settings_path: string;
+  settings_source: string;
   mode: string;
   sections?: SettingSection[];
   notes?: string[];
@@ -90,7 +90,7 @@ const CORE_STATUS_KEYS = new Set([
   "runtime.app_mode_raw",
   "runtime.version",
   "auth.enabled",
-  "settings.path",
+  "settings.source",
   "llm.base_url",
   "llm.api_key",
 ]);

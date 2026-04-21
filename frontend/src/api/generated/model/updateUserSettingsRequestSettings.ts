@@ -7,6 +7,6 @@
  */
 
 /**
- * settings_default.yaml 同构的系统级非敏感覆盖。
+ * 与 Settings schema 同构的系统级非敏感覆盖。
  */
 export type UpdateUserSettingsRequestSettings = { [key: string]: unknown };

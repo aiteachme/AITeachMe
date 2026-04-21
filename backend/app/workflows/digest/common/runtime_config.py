@@ -32,7 +32,7 @@ class TeachingRuntimeConfig:
     """Top-level teaching runtime configuration."""
 
     planner: PlannerRuntimeConfig
-    source_path: str
+    settings_source: str
 
 def get_teaching_runtime_settings_source() -> str:
     """Return a human-readable project settings source description."""
@@ -65,7 +65,7 @@ def get_teaching_runtime_config() -> TeachingRuntimeConfig:
                 target_length=settings.planner.systematic.target_length,
             ),
         ),
-        source_path=describe_project_settings_source(),
+        settings_source=describe_project_settings_source(),
     )
 
 

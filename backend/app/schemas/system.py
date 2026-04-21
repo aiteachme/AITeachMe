@@ -68,7 +68,7 @@ class SettingSection(BaseModel):
 class SettingsOverviewData(BaseModel):
     """后端设置总览。"""
 
-    settings_path: str = Field(description="当前项目设置来源；无外部 override 时显示 code defaults。")
+    settings_source: str = Field(description="当前项目设置来源；无外部 override 时显示 code defaults。")
     mode: str = Field(description="运行模式。")
     sections: list[SettingSection] = Field(default_factory=list, description="设置分组。")
     notes: list[str] = Field(default_factory=list, description="设置说明。")

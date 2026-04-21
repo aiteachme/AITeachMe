@@ -12,7 +12,7 @@ import type { UpdateUserSettingsRequestSettings } from './updateUserSettingsRequ
  * 更新本地模式下的系统级 settings 覆盖。
  */
 export interface UpdateUserSettingsRequest {
-  /** settings_default.yaml 同构的系统级非敏感覆盖。 */
+  /** 与 Settings schema 同构的系统级非敏感覆盖。 */
   settings?: UpdateUserSettingsRequestSettings;
   /** 仅本地模式可编辑的环境变量覆盖，键使用设置项 key。 */
   env?: UpdateUserSettingsRequestEnv;
