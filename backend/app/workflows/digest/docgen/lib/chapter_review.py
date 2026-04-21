@@ -244,7 +244,7 @@ async def review_chapter(
                 conflict_report=(conflict_report or ConflictReport(chapter_index=draft.chapter_index)).model_dump(mode="json"),
                 rule_review=rule_report.model_dump(mode="json"),
             ),
-            task_type=TaskType.DOCGEN,
+            task_type=TaskType.DOCGEN_LIGHT,
             model="light",
             response_model=LLMChapterReviewResult,
             extra_metadata={"chapter_index": draft.chapter_index, "review_mode": "docgen_content_review"},
