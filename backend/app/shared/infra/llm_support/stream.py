@@ -14,20 +14,22 @@ from app.shared.infra.observability.trace import langsmith_trace
 from .litellm_loader import load_litellm
 from .common import (
     build_completion_context,
-    build_completion_kwargs,
     extract_usage,
     get_semaphore,
     logger,
+    log_attempt_cancelled,
+    log_attempt_failed,
+    log_attempt_started,
+    log_attempt_timeout,
     merge_usage,
+    prepare_completion_attempt,
     request_timeout_s,
-    trace_log_fields,
     track_call,
 )
 from .observability import (
     _end_langsmith_trace,
     _langsmith_trace_kwargs,
     _record_new_token_event,
-    _resolved_trace_model,
 )
 
 litellm = load_litellm()
@@ -50,24 +52,21 @@ async def acompletion_stream(
     )
     start = time.monotonic()
     tracked_model = context.model
+    prepared = prepare_completion_attempt(
+        context=context,
+        messages=messages,
+        extra_kwargs=kwargs,
+        attempt=1,
+        override_kwargs={"stream": True},
+    )
 
     async with get_semaphore():
         try:
-            call_kwargs = build_completion_kwargs(
-                context=context,
-                messages=messages,
-                extra_kwargs=kwargs,
-            )
-            call_kwargs["stream"] = True
-            call_model, provider, tracked_model = _resolved_trace_model(
-                call_kwargs,
-                context.model,
-            )
-            logger.info(
+            tracked_model = prepared.tracked_model
+            log_attempt_started(
                 "llm_stream_started",
-                model=tracked_model,
-                task_type=context.task_type.value,
-                timeout_s=context.profile.timeout_s,
+                attempt=prepared,
+                context=context,
             )
             streamed_chunks: list[str] = []
             usage = (0, 0, 0)
@@ -77,16 +76,16 @@ async def acompletion_stream(
                 run_type="llm",
                 **_langsmith_trace_kwargs(
                     task_type=context.task_type,
-                    call_model=call_model,
-                    provider=provider,
+                    call_model=prepared.call_model,
+                    provider=prepared.provider,
                     model_name=tracked_model,
                     mode="stream",
                     messages=messages,
-                    call_kwargs=call_kwargs,
+                    call_kwargs=prepared.call_kwargs,
                 ),
             ) as trace_run:
                 response = await asyncio.wait_for(
-                    litellm.acompletion(**call_kwargs),
+                    litellm.acompletion(**prepared.call_kwargs),
                     timeout=request_timeout_s(context.profile.timeout_s),
                 )
                 usage = merge_usage(usage, extract_usage(response))
@@ -129,13 +128,10 @@ async def acompletion_stream(
                 total_tokens=total_t,
             )
         except asyncio.TimeoutError:
-            logger.warning(
+            log_attempt_timeout(
                 "llm_stream_timeout",
-                elapsed_s=round(time.monotonic() - start, 2),
-                model=tracked_model,
-                task_type=context.task_type.value,
-                timeout_s=context.profile.timeout_s,
-                **trace_log_fields(),
+                attempt=prepared,
+                context=context,
             )
             track_call(
                 task_type=context.task_type,
@@ -146,12 +142,10 @@ async def acompletion_stream(
             )
             raise LLMTimeoutError(timeout_s=context.profile.timeout_s)
         except asyncio.CancelledError:
-            logger.info(
+            log_attempt_cancelled(
                 "llm_stream_cancelled",
-                elapsed_s=round(time.monotonic() - start, 2),
-                model=tracked_model,
-                task_type=context.task_type.value,
-                **trace_log_fields(),
+                attempt=prepared,
+                context=context,
             )
             track_call(
                 task_type=context.task_type,
@@ -169,5 +163,11 @@ async def acompletion_stream(
                 success=False,
                 error=str(exc),
             )
-            logger.error("llm_stream_failed", error=str(exc), **trace_log_fields())
+            log_attempt_failed(
+                "llm_stream_failed",
+                attempt=prepared,
+                context=context,
+                error=exc,
+                level="error",
+            )
             raise LLMCallError(reason=str(exc)) from exc

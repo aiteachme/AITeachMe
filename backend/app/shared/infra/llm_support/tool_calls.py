@@ -14,20 +14,23 @@ from app.shared.infra.observability.trace import langsmith_trace
 from .litellm_loader import load_litellm
 from .common import (
     build_completion_context,
-    build_completion_kwargs,
     extract_usage,
     get_semaphore,
     logger,
+    log_attempt_cancelled,
+    log_attempt_failed,
+    log_attempt_started,
+    log_attempt_timeout,
+    prepare_completion_attempt,
     raise_last_error,
     request_timeout_s,
-    trace_log_fields,
+    sleep_before_retry,
     track_call,
 )
 from .observability import (
     _end_langsmith_trace,
     _langsmith_tool_calls,
     _langsmith_trace_kwargs,
-    _resolved_trace_model,
 )
 
 litellm = load_litellm()
@@ -55,24 +58,19 @@ async def acompletion_with_tools(
 
     async with get_semaphore():
         for attempt in range(1, context.profile.max_retries + 1):
-            start = time.monotonic()
-            call_kwargs = build_completion_kwargs(
+            prepared = prepare_completion_attempt(
                 context=context,
                 messages=messages,
                 extra_kwargs=kwargs,
-            )
-            if tools:
-                call_kwargs["tools"] = tools
-            call_model, provider, tracked_model = _resolved_trace_model(
-                call_kwargs,
-                context.model,
-            )
-            logger.info(
-                "llm_tools_started",
                 attempt=attempt,
-                model=tracked_model,
-                task_type=context.task_type.value,
-                tool_count=len(tools) if tools else 0,
+                override_kwargs={"tools": tools} if tools else None,
+            )
+            tracked_model = prepared.tracked_model
+            log_attempt_started(
+                "llm_tools_started",
+                attempt=prepared,
+                context=context,
+                extra={"tool_count": len(tools) if tools else 0},
             )
             try:
                 with langsmith_trace(
@@ -80,18 +78,18 @@ async def acompletion_with_tools(
                     run_type="llm",
                     **_langsmith_trace_kwargs(
                         task_type=context.task_type,
-                        call_model=call_model,
-                        provider=provider,
+                        call_model=prepared.call_model,
+                        provider=prepared.provider,
                         model_name=tracked_model,
                         mode="tools",
                         messages=messages,
-                        call_kwargs=call_kwargs,
-                        attempt=attempt,
+                        call_kwargs=prepared.call_kwargs,
+                        attempt=prepared.attempt,
                         tools=tools,
                     ),
                 ) as trace_run:
                     response = await asyncio.wait_for(
-                        litellm.acompletion(**call_kwargs),
+                        litellm.acompletion(**prepared.call_kwargs),
                         timeout=request_timeout_s(context.profile.timeout_s),
                     )
                     prompt_t, completion_t, total_t = extract_usage(response)
@@ -106,8 +104,8 @@ async def acompletion_with_tools(
                     )
                 logger.info(
                     "llm_tools_complete",
-                    attempt=attempt,
-                    elapsed_s=round(time.monotonic() - start, 2),
+                    attempt=prepared.attempt,
+                    elapsed_s=round(time.monotonic() - prepared.started_at, 2),
                     model=tracked_model,
                     task_type=context.task_type.value,
                     has_tool_calls=bool(getattr(response.choices[0].message, "tool_calls", None)),
@@ -124,22 +122,17 @@ async def acompletion_with_tools(
                 return response
             except asyncio.TimeoutError:
                 last_error = LLMTimeoutError(timeout_s=context.profile.timeout_s)
-                logger.warning(
+                log_attempt_timeout(
                     "llm_tools_timeout",
-                    attempt=attempt,
-                    model=tracked_model,
-                    task_type=context.task_type.value,
-                    timeout_s=context.profile.timeout_s,
-                    **trace_log_fields(),
+                    attempt=prepared,
+                    context=context,
                 )
             except asyncio.CancelledError:
                 last_error = asyncio.CancelledError()
-                logger.info(
+                log_attempt_cancelled(
                     "llm_tools_cancelled",
-                    attempt=attempt,
-                    model=tracked_model,
-                    task_type=context.task_type.value,
-                    **trace_log_fields(),
+                    attempt=prepared,
+                    context=context,
                 )
                 track_call(
                     task_type=context.task_type,
@@ -151,17 +144,15 @@ async def acompletion_with_tools(
                 raise
             except Exception as exc:
                 last_error = exc
-                logger.warning(
+                log_attempt_failed(
                     "llm_tools_failed",
-                    attempt=attempt,
-                    model=tracked_model,
-                    task_type=context.task_type.value,
-                    error=str(exc),
-                    **trace_log_fields(),
+                    attempt=prepared,
+                    context=context,
+                    error=exc,
                 )
 
             if attempt < context.profile.max_retries:
-                await asyncio.sleep(attempt * 2)
+                await sleep_before_retry(attempt)
 
     track_call(
         task_type=context.task_type,
