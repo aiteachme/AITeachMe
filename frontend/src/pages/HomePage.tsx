@@ -3,16 +3,21 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
 import {
+  AlertCircle,
   ArrowUp,
   BookOpen,
+  CheckCircle2,
   ChevronDown,
   Clock,
   Download,
   Edit3,
+  FileCode,
+  FileImage,
   Loader2,
   MessageSquare,
   MoreVertical,
   FileText,
+  FileType,
   Paperclip,
   Upload,
   X,
@@ -26,9 +31,10 @@ import { unwrapOrvalResponse } from "../lib/unwrapOrvalResponse";
 import { getApiErrorMessage } from "../api/client";
 import { cn } from "../lib/utils";
 import { downloadSubjectPackage } from "../lib/subjectPackage";
+import { resolveFileProcessingLabel, resolveFileProgressScore } from "../components/knowledge-docs";
 import { HeroAnimation } from "../components/ui/HeroAnimation";
 import { FullPageDropOverlay } from "../components/ui/FullPageDropOverlay";
-import type { FilesUploadData } from "../types/files";
+import type { FileRecord, FilesData, FilesUploadData } from "../types/files";
 import { getStoredAppSettings } from "../hooks/useSettings";
 import { loadIngestPreferenceSettings } from "../lib/systemSettings";
 
@@ -65,6 +71,29 @@ async function uploadFiles(subject: string, files: File[]): Promise<FilesUploadD
     headers: { "Content-Type": "multipart/form-data" },
   });
   return response.data;
+}
+
+async function fetchFiles(subject: string): Promise<FilesData> {
+  const response = await apiClient<ApiResponse<FilesData>>({
+    method: "GET",
+    url: `/api/v1/subjects/${subject}/files`,
+  });
+  return response.data ?? {
+    subject,
+    total: 0,
+    ready_count: 0,
+    processing_count: 0,
+    failed_count: 0,
+    items: [],
+  };
+}
+
+async function deleteFile(subject: string, uid: string) {
+  await apiClient<ApiResponse<{ deleted_file_uids: string[] }>>({
+    method: "POST",
+    url: `/api/v1/subjects/${subject}/files/delete`,
+    data: { file_uid: uid },
+  });
 }
 
 /* ── Export / Import API helpers ── */
@@ -151,6 +180,7 @@ async function importSubject(file: File, newName?: string): Promise<ImportResult
 /* ── Helpers ── */
 
 const ACCEPT_TEXT = ".pdf,.docx,.doc,.ppt,.pptx,.md,.markdown,.txt,.png,.jpg,.jpeg,.webp";
+const HOME_ENTRY_FILES_QUERY_KEY = (subjectId: string) => ["home-entry-files", subjectId] as const;
 
 function formatFileSize(bytes?: number | null): string {
   if (bytes == null || !Number.isFinite(bytes)) return "未知";
@@ -159,6 +189,42 @@ function formatFileSize(bytes?: number | null): string {
   let unitIndex = 0;
   while (value >= 1024 && unitIndex < units.length - 1) { value /= 1024; unitIndex += 1; }
   return `${value >= 10 || unitIndex === 0 ? value.toFixed(0) : value.toFixed(1)} ${units[unitIndex]}`;
+}
+
+function normalizeFileExt(filetype?: string | null): string {
+  return String(filetype ?? "").trim().toLowerCase().replace(/^\./, "");
+}
+
+function homeFileIcon(file: Pick<FileRecord, "filetype">) {
+  const ext = normalizeFileExt(file.filetype);
+  if (ext === "pdf") return <FileText className="h-3.5 w-3.5 text-red-400" />;
+  if (["png", "jpg", "jpeg", "webp"].includes(ext)) return <FileImage className="h-3.5 w-3.5 text-emerald-400" />;
+  if (["md", "markdown"].includes(ext)) return <FileCode className="h-3.5 w-3.5 text-violet-400" />;
+  if (["docx", "doc"].includes(ext)) return <FileText className="h-3.5 w-3.5 text-blue-400" />;
+  if (["ppt", "pptx"].includes(ext)) return <FileType className="h-3.5 w-3.5 text-orange-400" />;
+  return <FileUp className="h-3.5 w-3.5 text-zinc-400" />;
+}
+
+function homeFileStatusMeta(file: Pick<FileRecord, "markdown_ready" | "error_message" | "status">) {
+  if (file.markdown_ready) {
+    return {
+      label: "已就绪",
+      icon: <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />,
+      tone: "text-emerald-600",
+    };
+  }
+  if (file.error_message?.trim() || file.status === "failed") {
+    return {
+      label: "处理失败",
+      icon: <AlertCircle className="h-3.5 w-3.5 text-red-500" />,
+      tone: "text-red-600",
+    };
+  }
+  return {
+    label: "解析中",
+    icon: <Loader2 className="h-3.5 w-3.5 animate-spin text-sky-500" />,
+    tone: "text-sky-600",
+  };
 }
 
 /* ── Subject Card Three-dot Dropdown ── */
@@ -551,7 +617,10 @@ export function HomePage() {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const [prompt, setPrompt] = useState("");
-  const [pendingFiles, setPendingFiles] = useState<File[]>([]);
+  const [draftSubjectId, setDraftSubjectId] = useState<string | null>(null);
+  const [isCreatingDraftSubject, setIsCreatingDraftSubject] = useState(false);
+  const [isUploadingFiles, setIsUploadingFiles] = useState(false);
+  const [uploadingFileNames, setUploadingFileNames] = useState<string[]>([]);
   const [recentOpen, setRecentOpen] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -569,11 +638,27 @@ export function HomePage() {
       return;
     }
     setPrompt("");
-    setPendingFiles([]);
+    setDraftSubjectId(null);
+    setIsCreatingDraftSubject(false);
+    setIsUploadingFiles(false);
+    setUploadingFileNames([]);
     setError(null);
     navigate("/", { replace: true, state: null });
     window.requestAnimationFrame(() => textareaRef.current?.focus());
   }, [navigate, newEntryAt]);
+
+  const { data: entryFilesData } = useQuery({
+    queryKey: HOME_ENTRY_FILES_QUERY_KEY(draftSubjectId ?? "pending"),
+    enabled: Boolean(draftSubjectId),
+    queryFn: () => fetchFiles(draftSubjectId!),
+    refetchInterval: (query) => {
+      const data = query.state.data as FilesData | undefined;
+      if (isUploadingFiles || (data?.processing_count ?? 0) > 0) {
+        return 2000;
+      }
+      return false;
+    },
+  });
 
   // ── Courses query ──
   const { data: courses = [], isLoading: coursesLoading } = useQuery({
@@ -606,49 +691,95 @@ export function HomePage() {
   }, [courses.length, subjects.length]);
 
   // ── Mutations ──
-  const createMutation = useMutation({
-    mutationFn: async () => {
+  const ensureDraftSubjectId = useCallback(async () => {
+    if (draftSubjectId) {
+      return draftSubjectId;
+    }
+    setIsCreatingDraftSubject(true);
+    try {
       const created = unwrapOrvalResponse(
         await createSubjectApiApiV1SubjectsAddPost({ name: "" })
       );
-      if (!created) throw new Error("创建学科失败");
-      return created;
-    },
-    onSuccess: async (created) => {
-      queryClient.invalidateQueries({ queryKey: ["subjects"] });
-      setError(null);
-
-      // Upload pending files before navigating
-      if (pendingFiles.length > 0) {
-        try {
-          await uploadFiles(created.subject_id, pendingFiles);
-          setPendingFiles([]);
-        } catch (e) {
-          setError(getApiErrorMessage(e, "文件上传失败"));
-          return;
-        }
+      if (!created) {
+        throw new Error("创建学科失败");
       }
+      setDraftSubjectId(created.subject_id);
+      await queryClient.invalidateQueries({ queryKey: ["subjects"] });
+      return created.subject_id;
+    } catch (err: unknown) {
+      const message = getApiErrorMessage(err, "创建学习空间失败，请重试");
+      setError(message);
+      throw new Error(message);
+    } finally {
+      setIsCreatingDraftSubject(false);
+    }
+  }, [draftSubjectId, queryClient]);
 
-      // Navigate to BuildPlanPage — same planner flow as clicking "开始" there
-      const userGoal = prompt.trim();
-      navigate(`/subject/${created.subject_id}/build`, {
-        state: userGoal
-          ? { initialPrompt: userGoal, autoStart: true }
-          : undefined,
-      });
-    },
-    onError: (err: unknown) => {
-      setError(getApiErrorMessage(err, "创建失败，请重试"));
-    },
-  });
+  const syncEntryFilesCache = useCallback((subjectId: string, uploaded: FileRecord[]) => {
+    queryClient.setQueryData<FilesData>(HOME_ENTRY_FILES_QUERY_KEY(subjectId), (previous) => {
+      const previousItems = previous?.items ?? [];
+      const nextByUid = new Map(previousItems.map((item) => [item.uid, item]));
+      for (const item of uploaded) {
+        nextByUid.set(item.uid, item);
+      }
+      const nextItems = Array.from(nextByUid.values()).sort(
+        (left, right) =>
+          Date.parse(right.latest_updated_at || right.created_at || "") -
+          Date.parse(left.latest_updated_at || left.created_at || ""),
+      );
+      return {
+        subject: subjectId,
+        total: nextItems.length,
+        ready_count: nextItems.filter((item) => item.markdown_ready).length,
+        processing_count: nextItems.filter((item) => !item.markdown_ready && !item.error_message?.trim()).length,
+        failed_count: nextItems.filter((item) => Boolean(item.error_message?.trim()) || item.status === "failed").length,
+        items: nextItems,
+      };
+    });
+  }, [queryClient]);
+
+  const uploadPendingFiles = useCallback(async (files: File[]) => {
+    if (!files.length) {
+      return;
+    }
+    const subjectId = await ensureDraftSubjectId();
+    setError(null);
+    setIsUploadingFiles(true);
+    setUploadingFileNames(files.map((file) => file.name));
+    try {
+      const result = await uploadFiles(subjectId, files);
+      syncEntryFilesCache(subjectId, result.uploaded_items ?? []);
+      await queryClient.invalidateQueries({ queryKey: HOME_ENTRY_FILES_QUERY_KEY(subjectId) });
+    } catch (err: unknown) {
+      setError(getApiErrorMessage(err, "文件上传失败"));
+    } finally {
+      setIsUploadingFiles(false);
+      setUploadingFileNames([]);
+    }
+  }, [ensureDraftSubjectId, queryClient, syncEntryFilesCache]);
 
   // ── Handlers ──
-  const canGenerate = prompt.trim().length > 0 || pendingFiles.length > 0;
+  const uploadedFiles = entryFilesData?.items ?? [];
+  const optimisticUploadingFiles = uploadingFileNames.filter(
+    (name) => !uploadedFiles.some((file) => file.filename === name),
+  );
+  const hasEntryFiles = uploadedFiles.length > 0 || optimisticUploadingFiles.length > 0;
+  const canGenerate = prompt.trim().length > 0 || hasEntryFiles;
 
   const handleGenerate = async () => {
     if (!canGenerate) return;
     setError(null);
-    createMutation.mutate();
+    try {
+      const subjectId = await ensureDraftSubjectId();
+      const userGoal = prompt.trim();
+      navigate(`/subject/${subjectId}/build`, {
+        state: userGoal
+          ? { initialPrompt: userGoal, autoStart: true }
+          : undefined,
+      });
+    } catch {
+      // ensureDraftSubjectId already writes user-facing error
+    }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -662,19 +793,32 @@ export function HomePage() {
     const newFiles = Array.from(e.target.files ?? []);
     if (fileInputRef.current) fileInputRef.current.value = "";
     if (newFiles.length === 0) return;
-    setPendingFiles(prev => [...prev, ...newFiles]);
+    void uploadPendingFiles(newFiles);
   };
 
   const handleFileDrop = useCallback((droppedFiles: File[]) => {
     if (!droppedFiles.length) return;
-    setPendingFiles(prev => [...prev, ...droppedFiles]);
-  }, []);
+    void uploadPendingFiles(droppedFiles);
+  }, [uploadPendingFiles]);
 
-  const removePendingFile = (index: number) => {
-    setPendingFiles(prev => prev.filter((_, i) => i !== index));
-  };
+  const deleteEntryFileMutation = useMutation({
+    mutationFn: async (uid: string) => {
+      if (!draftSubjectId) {
+        throw new Error("缺少临时学习空间，无法删除文件。");
+      }
+      await deleteFile(draftSubjectId, uid);
+    },
+    onSuccess: async () => {
+      if (draftSubjectId) {
+        await queryClient.invalidateQueries({ queryKey: HOME_ENTRY_FILES_QUERY_KEY(draftSubjectId) });
+      }
+    },
+    onError: (err: unknown) => {
+      setError(getApiErrorMessage(err, "删除文件失败"));
+    },
+  });
 
-  const isWorking = createMutation.isPending;
+  const isWorking = isCreatingDraftSubject || isUploadingFiles;
 
   return (
     <>
@@ -684,14 +828,14 @@ export function HomePage() {
       }}
       disabled={isWorking}
     />
-    <div className="relative flex min-h-[100dvh] w-full flex-col items-center overflow-x-hidden bg-transparent p-4 pt-16 md:p-8 md:pt-24 selection:bg-zinc-200">
+    <div className="relative flex min-h-[100dvh] w-full flex-col items-center overflow-x-hidden bg-transparent p-4 pt-20 md:p-8 md:pt-28 selection:bg-zinc-200">
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.6, ease: "easeOut" }}
         className={cn(
           "relative z-20 w-full max-w-[800px] flex flex-col items-center",
-          subjects.length === 0 ? "justify-center min-h-[calc(100dvh-12rem)]" : "mt-[5vh]"
+          subjects.length === 0 ? "justify-center min-h-[calc(100dvh-10rem)] translate-y-[5vh] md:translate-y-[7vh]" : "mt-[8vh]"
         )}
       >
         {/* ── Logo & Title ── */}
@@ -741,20 +885,81 @@ export function HomePage() {
             />
 
             <div className="px-3 pb-3 flex flex-col gap-2">
-              {/* File chips (Phase 1) */}
-              {pendingFiles.length > 0 && (
-                <div className="flex flex-wrap gap-2 px-1 py-3 border-t border-zinc-100">
-                  {pendingFiles.map((file, idx) => (
-                    <div key={idx} className="group flex items-center gap-1.5 rounded-lg border border-zinc-200/60 bg-zinc-50 px-2.5 py-1.5 text-[13px] text-zinc-700 transition-colors hover:bg-white hover:border-zinc-300 hover:shadow-sm">
-                      <FileUp className="h-3.5 w-3.5 text-zinc-400 group-hover:text-zinc-600" />
-                      <span className="max-w-[140px] truncate font-medium">{file.name}</span>
-                      <button 
-                        onClick={() => removePendingFile(idx)}
-                        title="移除文件"
-                        className="ml-0.5 rounded-md p-0.5 text-zinc-400 transition-colors hover:bg-red-50 hover:text-red-500"
+              {(hasEntryFiles || isUploadingFiles) && (
+                <div className="space-y-2 border-t border-zinc-100 px-1 py-3">
+                  {uploadedFiles.map((file) => {
+                    const meta = homeFileStatusMeta(file);
+                    const progress = resolveFileProgressScore(file);
+                    const label = resolveFileProcessingLabel(file);
+                    return (
+                      <div
+                        key={file.uid}
+                        className="group rounded-xl border border-zinc-200/70 bg-zinc-50 px-3 py-2.5 transition-colors hover:border-zinc-300 hover:bg-white hover:shadow-sm"
                       >
-                        <X className="h-3.5 w-3.5" />
-                      </button>
+                        <div className="flex items-start gap-2.5">
+                          <div className="mt-0.5 shrink-0">{homeFileIcon(file)}</div>
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="min-w-0">
+                                <p className="truncate text-[13px] font-medium text-zinc-800">{file.filename}</p>
+                                <div className="mt-1 flex items-center gap-1.5 text-[11px]">
+                                  <span className={cn("inline-flex items-center gap-1", meta.tone)}>
+                                    {meta.icon}
+                                    {meta.label}
+                                  </span>
+                                  <span className="text-zinc-400">·</span>
+                                  <span className="text-zinc-500">{label}</span>
+                                </div>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => deleteEntryFileMutation.mutate(file.uid)}
+                                disabled={deleteEntryFileMutation.isPending}
+                                title="移除文件"
+                                className="rounded-md p-1 text-zinc-400 transition-colors hover:bg-red-50 hover:text-red-500 disabled:cursor-not-allowed disabled:opacity-50"
+                              >
+                                <X className="h-3.5 w-3.5" />
+                              </button>
+                            </div>
+                            <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white">
+                              <div
+                                className={cn(
+                                  "h-full rounded-full transition-all duration-500",
+                                  file.error_message?.trim()
+                                    ? "bg-red-400"
+                                    : file.markdown_ready
+                                      ? "bg-emerald-500"
+                                      : "bg-sky-500"
+                                )}
+                                style={{ width: `${Math.max(10, Math.min(100, progress))}%` }}
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+
+                  {optimisticUploadingFiles.map((filename) => (
+                    <div
+                      key={`uploading-${filename}`}
+                      className="rounded-xl border border-zinc-200/70 bg-zinc-50 px-3 py-2.5"
+                    >
+                      <div className="flex items-start gap-2.5">
+                        <div className="mt-0.5 shrink-0">
+                          <FileUp className="h-3.5 w-3.5 text-zinc-400" />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-[13px] font-medium text-zinc-800">{filename}</p>
+                          <div className="mt-1 inline-flex items-center gap-1.5 text-[11px] text-sky-600">
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            正在上传并准备解析...
+                          </div>
+                          <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white">
+                            <div className="h-full w-1/3 rounded-full bg-sky-500 animate-pulse" />
+                          </div>
+                        </div>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -776,13 +981,17 @@ export function HomePage() {
                     onClick={() => fileInputRef.current?.click()}
                     className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[13px] font-medium text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-900"
                   >
-                    <Paperclip className="h-4 w-4" />
-                    上传文件资料
+                    {isUploadingFiles || isCreatingDraftSubject ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Paperclip className="h-4 w-4" />
+                    )}
+                    {hasEntryFiles ? "继续添加资料" : "上传文件资料"}
                   </button>
                   {isWorking && (
                     <span className="ml-2 flex items-center text-[13px] font-medium text-zinc-500">
                       <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
-                      正在准备学习空间...
+                      {isCreatingDraftSubject ? "正在创建学习空间..." : "正在上传并解析资料..."}
                     </span>
                   )}
                 </div>
