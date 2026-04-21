@@ -263,7 +263,9 @@ function InfoCard({ text, variant = "neutral" }: { text: string; variant?: "neut
 
 function SectionDivider({ label }: { label: string }) {
   return (
-    <h3 className="text-sm font-semibold text-zinc-900 pb-2 mt-8 mb-2 border-b border-zinc-100">{label}</h3>
+    <div className="flex items-center justify-between pb-2 mt-8 mb-4 border-b border-zinc-100/80">
+      <h3 className="text-base font-semibold text-zinc-900">{label}</h3>
+    </div>
   );
 }
 
@@ -284,7 +286,7 @@ function TextInput({
       value={value}
       onChange={(event) => onChange(event.target.value)}
       placeholder={placeholder}
-      className="w-full rounded-xl border border-zinc-200 bg-zinc-50/50 px-4 py-3 text-[14px] text-zinc-900 shadow-sm placeholder:text-zinc-400 outline-none transition focus:border-zinc-400 focus:bg-white focus:ring-4 focus:ring-zinc-900/5"
+      className="flex h-9 w-full max-w-2xl rounded-md border border-zinc-200 bg-transparent px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-zinc-500 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-950 disabled:cursor-not-allowed disabled:opacity-50"
     />
   );
 }
@@ -302,7 +304,7 @@ function SelectInput({
     <select
       value={value}
       onChange={(event) => onChange(event.target.value)}
-      className="w-full rounded-xl border border-zinc-200 bg-zinc-50/50 px-4 py-3 text-[14px] text-zinc-900 shadow-sm outline-none transition focus:border-zinc-400 focus:bg-white focus:ring-4 focus:ring-zinc-900/5 appearance-none bg-[url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20width%3D%2224%22%20height%3D%2224%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%3Cpath%20d%3D%22M6%209L12%2015L18%209%22%20stroke%3D%22%2371717A%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%2F%3E%3C%2Fsvg%3E')] bg-[length:16px_16px] bg-[position:right_16px_center] bg-no-repeat pr-10 cursor-pointer"
+      className="flex h-9 w-full max-w-2xl items-center justify-between whitespace-nowrap rounded-md border border-zinc-200 bg-transparent px-3 py-2 text-sm shadow-sm ring-offset-white focus:outline-none focus:ring-1 focus:ring-zinc-950 appearance-none bg-[url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20width%3D%2224%22%20height%3D%2224%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%3Cpath%20d%3D%22M6%209L12%2015L18%209%22%20stroke%3D%22%2371717A%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%2F%3E%3C%2Fsvg%3E')] bg-[length:16px_16px] bg-[position:right_10px_center] bg-no-repeat pr-10 cursor-pointer"
     >
       {options.map((option) => (
         <option key={option.value} value={option.value}>
@@ -325,19 +327,21 @@ function SwitchRow({
   onToggle: () => void;
 }) {
   return (
-    <button
-      type="button"
-      onClick={onToggle}
-      className="flex w-full items-start sm:items-center justify-between gap-4 py-4 text-left transition group"
-    >
-      <div className="flex-1 pr-4">
-        <span className="block text-[14px] font-medium text-zinc-900">{title}</span>
-        <span className="mt-1 block text-[13px] leading-relaxed text-zinc-500">{description}</span>
+    <div className="flex flex-row items-center justify-between rounded-lg py-3 hover:bg-zinc-50/50 transition px-2 -mx-2">
+      <div className="space-y-0.5 pr-4">
+        <label className="text-sm font-medium leading-none text-zinc-900 cursor-pointer" onClick={onToggle}>{title}</label>
+        <p className="text-[13px] text-zinc-500 leading-relaxed mt-1.5">{description}</p>
       </div>
-      <span className={`relative mt-1 sm:mt-0 inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors duration-200 ease-in-out ${enabled ? "bg-emerald-500" : "bg-zinc-200"}`}>
-        <span className={`inline-block h-5 w-5 rounded-full bg-white shadow transition duration-200 ease-in-out ${enabled ? "translate-x-5" : "translate-x-0.5"}`} />
-      </span>
-    </button>
+      <button
+        type="button"
+        onClick={onToggle}
+        className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-950 focus-visible:ring-offset-2 ${
+          enabled ? "bg-zinc-900" : "bg-zinc-200"
+        }`}
+      >
+        <span className={`pointer-events-none block h-4 w-4 rounded-full bg-white shadow-lg ring-0 transition-transform ${enabled ? "translate-x-4" : "translate-x-0"}`} />
+      </button>
+    </div>
   );
 }
 
@@ -357,16 +361,16 @@ function ReadonlySettingsList({
   if (!entries.length) return null;
 
   return (
-    <div className="divide-y divide-zinc-100 border-b border-zinc-100">
+    <div className="space-y-6">
       {entries.map((entry) => (
-        <div key={entry.key} className="py-3.5 flex flex-col gap-2.5">
-          <div>
-            <span className="text-[14px] font-medium text-zinc-900 block">{entry.label}</span>
+        <div key={entry.key} className="space-y-2">
+          <div className="flex flex-col gap-1.5">
+            <span className="text-sm font-medium leading-none text-zinc-900 block">{entry.label}</span>
             {entry.description && (
-              <p className="mt-0.5 text-[13px] text-zinc-500">{entry.description}</p>
+              <p className="text-[13px] text-zinc-500 leading-relaxed">{entry.description}</p>
             )}
           </div>
-          <div className="font-mono text-[13px] text-zinc-800 bg-zinc-50/80 px-4 py-2 rounded-xl border border-zinc-100/80 break-all w-fit max-w-full">
+          <div className="font-mono text-[13px] text-zinc-800 bg-zinc-50/80 px-3 py-1.5 rounded-md border border-zinc-200 break-all w-fit max-w-full shadow-sm">
             {displayValue(entry)}
           </div>
         </div>
@@ -394,14 +398,14 @@ function EditableSettingsList({
   if (!items.length) return null;
 
   return (
-    <div className="divide-y divide-zinc-100 border-b border-zinc-100">
+    <div className="space-y-6">
       {items.map((entry) => {
         const value = draft[entry.key];
         const selectOptions = SETTING_SELECT_OPTIONS[entry.key];
 
         if (typeof value === "boolean") {
           return (
-            <div key={entry.key} className="py-2">
+            <div key={entry.key}>
               <SwitchRow
                 title={entry.label}
                 description={entry.description || entry.key}
@@ -413,11 +417,11 @@ function EditableSettingsList({
         }
 
         return (
-          <div key={entry.key} className="py-4 flex flex-col gap-2.5">
-            <div>
-              <label className="block text-[14px] font-medium text-zinc-900 leading-6">{entry.label}</label>
+          <div key={entry.key} className="space-y-2">
+            <div className="flex flex-col gap-1.5">
+              <label className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 text-zinc-900">{entry.label}</label>
               {entry.description && (
-                <p className="text-[13px] leading-relaxed text-zinc-500 mb-2">
+                <p className="text-[13px] text-zinc-500 leading-relaxed">
                   {entry.description}
                 </p>
               )}
@@ -935,11 +939,11 @@ export function SettingsPanel({ isOpen, onClose }: SettingsModalProps) {
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.96, y: 10 }}
             transition={{ type: "spring", stiffness: 500, damping: 40 }}
-            className="pointer-events-auto flex h-[min(720px,85vh)] w-full max-w-[880px] overflow-hidden rounded-2xl bg-white shadow-2xl ring-1 ring-zinc-900/5"
+            className="pointer-events-auto flex h-[85vh] w-full max-w-[900px] overflow-hidden rounded-xl bg-white shadow-lg ring-1 ring-black/5"
           >
-            <nav className="flex w-[240px] shrink-0 flex-col bg-[#f9f9f9] border-r border-zinc-100">
+            <nav className="flex w-[240px] shrink-0 flex-col bg-zinc-50/50 border-r border-zinc-200">
               <div className="px-5 pb-2 pt-6">
-                <h2 className="text-[17px] font-bold text-zinc-900">设置</h2>
+                <h2 className="text-lg font-semibold text-zinc-900">设置</h2>
               </div>
               <div className="flex-1 space-y-1 overflow-y-auto px-3 py-4">
                 {SECTIONS.map((section) => {
@@ -950,14 +954,14 @@ export function SettingsPanel({ isOpen, onClose }: SettingsModalProps) {
                       key={section.id}
                       type="button"
                       onClick={() => setActiveSection(section.id)}
-                      className={`group flex w-full items-center gap-3 rounded-lg px-3 py-2 transition-colors ${
-                        active ? "bg-zinc-200/60 text-zinc-900" : "text-zinc-600 hover:bg-zinc-200/40"
+                      className={`group flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors min-w-0 text-left ${
+                        active ? "bg-zinc-100 text-zinc-900 font-medium" : "text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900"
                       }`}
                     >
-                      <span className={`inline-flex items-center justify-center ${active ? "text-zinc-900" : "text-zinc-400 group-hover:text-zinc-600"}`}>
+                      <span className={`inline-flex items-center justify-center shrink-0 ${active ? "text-zinc-900" : "text-zinc-500 group-hover:text-zinc-600"}`}>
                         <Icon className="h-4 w-4" />
                       </span>
-                      <span className="text-[14px] font-medium leading-none">{section.label}</span>
+                      <span className="truncate leading-none">{section.label}</span>
                     </button>
                   );
                 })}
@@ -982,9 +986,9 @@ export function SettingsPanel({ isOpen, onClose }: SettingsModalProps) {
             </nav>
 
             <div className="flex min-w-0 flex-1 flex-col bg-white">
-              <div className="flex items-center justify-between px-8 py-6 pb-2">
+              <div className="flex items-center justify-between px-8 py-6 pb-4">
                 <div>
-                  <h3 className="text-[20px] font-bold text-zinc-900">{activeSectionConfig.label}</h3>
+                  <h3 className="text-xl font-bold text-zinc-900">{activeSectionConfig.label}</h3>
                   <p className="mt-1 text-[13px] text-zinc-500">{activeSectionConfig.description}</p>
                 </div>
                 <div className="flex items-center gap-3">
@@ -1046,7 +1050,7 @@ export function SettingsPanel({ isOpen, onClose }: SettingsModalProps) {
                           setEnvDraft(savedEnvDraft);
                           setSaveError(null);
                         }}
-                        className="rounded-full px-4 py-2 text-[13px] font-medium text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-900"
+                        className="inline-flex h-9 items-center justify-center rounded-md px-4 py-2 text-sm font-medium text-zinc-600 transition-colors hover:bg-zinc-100 hover:text-zinc-900"
                       >
                         撤销恢复
                       </button>
@@ -1054,9 +1058,9 @@ export function SettingsPanel({ isOpen, onClose }: SettingsModalProps) {
                         type="button"
                         onClick={saveSettings}
                         disabled={!hasChanges || saveState === "saving"}
-                        className={`rounded-full px-6 py-2 text-[13px] font-semibold transition shadow-sm ${
+                        className={`inline-flex h-9 items-center justify-center rounded-md px-4 py-2 text-sm font-medium shadow transition-colors ${
                           hasChanges && saveState !== "saving"
-                            ? "bg-zinc-900 text-white hover:bg-zinc-800 hover:shadow-md"
+                            ? "bg-zinc-900 text-zinc-50 hover:bg-zinc-900/90"
                             : "cursor-not-allowed bg-zinc-100 text-zinc-400"
                         }`}
                       >
