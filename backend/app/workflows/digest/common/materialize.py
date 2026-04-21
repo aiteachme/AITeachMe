@@ -251,15 +251,25 @@ async def materialize_shared_inputs(
 
             if embedding_targets:
                 embeddings = await aembed_texts(
-                    [f"{chunk.title}\n{chunk.content}".strip() for chunk in embedding_targets]
+                    [f"{chunk.title}\n{chunk.content}".strip() for chunk in embedding_targets],
+                    soft_fail=True,
                 )
-                knowledge_repo.bulk_insert_embeddings(
-                    session,
-                    subject=subject,
-                    chunk_ids=[int(chunk.id) for chunk in embedding_targets if chunk.id is not None],
-                    embeddings=embeddings,
-                    embedding_model=runtime.embedding_model,
-                )
+                if embeddings:
+                    knowledge_repo.bulk_insert_embeddings(
+                        session,
+                        subject=subject,
+                        chunk_ids=[int(chunk.id) for chunk in embedding_targets if chunk.id is not None],
+                        embeddings=embeddings,
+                        embedding_model=runtime.embedding_model,
+                    )
+                else:
+                    logger.warning(
+                        "canonical_chunk_embedding_soft_skipped",
+                        subject=subject,
+                        build_session_id=session_id,
+                        reason="embedding_call_unavailable_or_failed",
+                        chunk_count=len(embedding_targets),
+                    )
         elif chunk_rows:
             logger.info(
                 "canonical_chunk_embedding_skipped",
@@ -342,4 +352,3 @@ async def materialize_shared_inputs(
         deleted_chunk_count=deleted_chunks,
     )
     return materialized
-

@@ -1,6 +1,6 @@
 ﻿# DocGen 流程设计
 
-最后更新：2026-04-19
+最后更新：2026-04-21
 
 这份文档描述 `digest/docgen` 的目标流程、当前实现映射和后续演进约束。当前实现以 `graph.py`、`state.py`、`nodes/`、`lib/models.py` 为准；本文用于解释节点边界、输入输出合同和后续重构方向。
 
@@ -41,6 +41,51 @@ DocGen 不是“重新想一个大纲再写全文”，而是消费用户确认�
 ### 1.1 短流程总览
 
 这一节面向快速阅读，必须写清所有节点、并行关系、fan-out/fan-in、流水线关系和节点作用。字段级输入输出放在 `1.2 长流程执行合同`。
+
+### 1.1.1 当前模型槽位总览
+
+本节只描述 **当前代码真实使用的逻辑模型槽位**。最终 provider 模型名来自：
+
+- `backend/app/shared/infra/settings/defaults.py`
+- `backend/app/shared/infra/settings/settings.py`
+
+当前默认映射是：
+
+```text
+reason  -> qwen-max
+primary -> qwen-plus
+light   -> qwen-flash
+image_generation -> settings.models.image_generation（默认未配置）
+```
+
+注意：
+
+- 这里说的 `reason / primary / light` 是逻辑模型槽位，不是固定 provider 名。
+- 如果运行时 settings 覆盖了 `settings.models.*`，实际模型名会随之变化。
+- `docgen` 当前没有使用 `extract` 槽位。
+
+按当前代码，DocGen 各阶段的大模型使用如下：
+
+| 阶段 / 子步骤 | 当前代码位置 | 调用类型 | 逻辑模型槽位 | 当前默认模型 | 这一步做什么 | 为什么这样配 |
+| --- | --- | --- | --- | --- | --- | --- |
+| `prepare_parallel_inputs.enhance_plan_outline` | `lib/outline_enhance.py` | 结构化 | `reason` | `qwen-max` | 把 confirmed plan 的章节增强成更适合执行的小纲和 teaching outline | 要做执行级重组与结构推断，偏“想清楚怎么讲” |
+| `prepare_parallel_inputs.infer_docgen_intent` | `lib/intent.py` | 结构化 | `reason` | `qwen-max` | 推断文档风格、讲解深度、例子偏好、考试导向和避让项 | 这是教学意图判断，不是轻量抽取，偏策略推断 |
+| `prepare_parallel_inputs.summarize_files` | `lib/file_summaries.py` | 结构化 | `light` | `qwen-flash` | 为每个文件生成摘要、概念、公式、例题和章节亲和度 | 任务数量多、可并发，适合便宜快的轻量结构化模型 |
+| `confirm_and_dispatch` | 当前纯规则 | 无 LLM | 无 | 无 | 把大纲、意图、文件摘要合并成章节 plan seed / task seed / backbone agenda | 当前是规则收口和任务派发，不需要额外模型推理 |
+| `build_document_backbone` | 当前纯规则 | 无 LLM | 无 | 无 | 构建整本文档的术语表、主张池、依赖关系和易混点骨架 | 当前骨架生成主要靠规则和已有摘要，避免再引入一层全局 LLM 不确定性 |
+| `generate_chapters.query_planning` | `lib/query_planning.py` | 结构化 | `reason` | `qwen-max` | 把章节目标拆成 research sub-queries / gap queries | 这里在做研究问题拆解，属于典型的“推理式规划” |
+| `generate_chapters.research_purify` | `lib/chapter_context.py` | 文本 | `light` | `qwen-flash` | 对收集到的 dense context 做轻量清洗，去掉噪声与重复 | 只是净化材料，不在这里做深度推理，轻量模型足够 |
+| `generate_chapters.writer` | `lib/writer.py` | 文本 | `systematic -> reason` / `sprint -> primary` | `qwen-max` / `qwen-plus` | 真正把研究材料和执行合同写成章节正文 | 系统课更偏结构和推理，冲刺课更偏快速成文和教学压缩 |
+| `generate_chapters.heading_repair` | `lib/writer.py` | 文本 | `light` | `qwen-flash` | 修正章节标题层级、学习脚手架和结构格式 | 只做轻量结构修正，不值得用更贵模型 |
+| `generate_chapters.rewrite` | `lib/chapter_critic.py` | 文本 | `primary` | `qwen-plus` | 当章节质量不够时做一次 bounded rewrite | 是对正文的正式改写，质量要求高于 light，但又没有 systematic writer 那么重 |
+| `enhance_chapters.mermaid_placeholder` | `lib/assets.py` | 文本 | `light` | `qwen-flash` | 把 Mermaid 占位符变成真正可渲染的结构图内容 | 资产生成是辅助增强，轻量模型足够，失败也可降级 |
+| `review_content.review_chapter` | `lib/chapter_review.py` | 结构化 | `light` | `qwen-flash` | 逐章复核覆盖率、证据支撑和写作质量，产出 review action | 是并行、轻量、结构化审稿场景，优先控制成本和速度 |
+| `document_consistency_review` | 当前纯规则 | 无 LLM | 无 | 无 | 对整本文档做术语、章节数、重复和风格一致性检查 | 当前先用规则收口，避免再引入一层全局 review 漂移 |
+| `repair_or_route.surface/section patch` | `lib/repair.py` | 文本 | `primary` | `qwen-plus` | 按 review action 对章节做局部 patch 或记录 unresolved warning | 已经直接改正文，不能太轻；但又不需要动用最重的 reason |
+| `merge_review` | 当前纯规则 | 无 LLM | 无 | 无 | 合并章节、整理 metadata、做发布前完整性检查 | 当前是发布前规则收口，不负责重新思考内容 |
+| `finalize_titles` | 当前纯规则 | 无 LLM | 无 | 无 | 只把已锁定标题同步到最终 Markdown，不重新起标题 | 当前明确禁止 LLM 改标题，防止推翻 confirmed plan 语义 |
+| `publish_document` | 当前纯规则 | 无 LLM | 无 | 无 | 写出 Markdown、manifest、版本归档和数据库记录 | 发布阶段只做持久化，不承担内容生成 |
+| `cover sidecar` | `lib/cover.py` | 文生图 | `image_generation` | 取决于 `settings.models.image_generation` | 为整本文档生成横向抽象封面图 | 封面是独立 sidecar，走专门的图片生成模型，不干扰正文链路 |
 
 ```text
 load_context
@@ -170,6 +215,8 @@ load_context
     - chapter_assignments：confirmed plan 章节转成的执行章节列表。
     - document_context：发布和写作共用的文档级上下文。
   作用：确认用户已确认的章节合同，补齐资料上下文、模式和构建状态。
+  当前模型方案：
+    - 当前无 LLM 调用；纯合同校验与上下文组装。
 
 prepare_parallel_inputs
   ├─ enhance_plan_outline
@@ -183,6 +230,10 @@ prepare_parallel_inputs
   │      - plan_mismatch_warnings：模型输出和 confirmed plan 不一致时的 warning。
   │    作用：执行级细化章节，不新增、不删除、不重排 confirmed plan。
   │    注意：这里只做轻量 grounding，不做完整 Web research。
+  │    当前模型方案：
+  │      - `task_type=REASONING`
+  │      - `model="reason"`
+  │      - 默认映射到 `qwen-max`
   ├─ infer_docgen_intent
   │    输入：user_prompt / plan_summary / digest_mode / chapter_assignments / docgen_history_brief
   │      - user_prompt：用户最终学习提示。
@@ -198,6 +249,10 @@ prepare_parallel_inputs
   │      - redundancy_tolerance：目标字段，是否允许重复强调；当前代码用 review_orientation / chapter_style_hints 等字段近似表达。
   │      - avoidance_rules：目标字段，尽量不写或不能写的内容；当前代码对应 avoid_list。
   │    作用：识别写作深度、考试倾向、例子偏好、定义粒度、避让项。
+  │    当前模型方案：
+  │      - `task_type=CLASSIFY`
+  │      - `model="reason"`
+  │      - 默认映射到 `qwen-max`
   └─ summarize_files
        输入：source_packets / section_packets / chapter_assignments
          - source_packets：文件级正文包。
@@ -208,6 +263,10 @@ prepare_parallel_inputs
          - source_affinity_by_chapter：每章优先使用哪些文件和切片。
          - high_confidence_evidence_units：高置信证据单元。
        作用：为章节生成提供文件摘要、章节亲和度、高价值 section 和候选证据。
+       当前模型方案：
+         - `task_type=DOCGEN_LIGHT`
+         - `model="light"`
+         - 默认映射到 `qwen-flash`
 
 confirm_and_dispatch
   输入：EnhancedChapterOutline[] / DocGenIntentProfile / FileMaterialSummary[] / source_affinity_by_chapter / high_confidence_evidence_units / chapter_assignments
@@ -224,6 +283,8 @@ confirm_and_dispatch
   当前实现补充：
     - 同时生成章节 fan-out 使用的 ChapterGenerationPlan / ChapterGenerationTask。
     - 当前代码节点名为 confirm_and_dispatch。
+  当前模型方案：
+    - 当前无 LLM 调用；纯规则收口和 seed/agenda 派生。
 
 build_document_backbone
   输入：ChapterGenerationPlanSeed / ChapterGenerationTaskSeed[] / shared_inputs / high_confidence_evidence_units / backbone_research_agenda
@@ -243,6 +304,8 @@ build_document_backbone
     - dependency_refs / forward_refs
     - claim_targets / concept_targets / confusion_targets
     - coverage_threshold / evidence_support_threshold / repetition_tolerance / patch_tolerance
+  当前模型方案：
+    - 当前无 LLM 调用；纯规则骨架构建 + fallback backbone。
 
 generate_chapters
   ├─ generate_chapter 1
@@ -259,12 +322,39 @@ generate_chapters
   作用：每章执行研究、主张抽取、证据对齐、冲突消解和正文草稿生成。
   generate_chapter 内部步骤：
     1. retrieve_for_chapter：取 retrieval_queries / priority_section_refs，先本地，资料不足时外部补洞。
+       当前模型方案：
+         - 子查询规划 `generate_sub_queries` / `generate_gap_queries`
+         - `task_type=REASONING`
+         - `model="reason"`
+         - 默认映射到 `qwen-max`
     2. compress_context：读取命中内容并压缩为 dense_context，同时抽取 evidence_units。
+       当前模型方案：
+         - 当前主要依赖检索、reader、compressor 规则链。
+         - 若触发 `research_purify`，使用：
+           - `task_type=DOCGEN_LIGHT`
+           - `model="light"`
+           - 默认映射到 `qwen-flash`
     3. extract_claims：基于 ChapterGenerationTask、dense_context 和 CanonicalClaimPool 生成 ClaimLedger。
     4. align_evidence：把 ClaimLedger 映射到 evidence_units，生成 ClaimEvidenceMap 和 EvidenceLedger。
     5. resolve_conflicts：处理定义冲突、记号冲突、来源口径差异和例子冲突。
     6. draft_chapter：基于 resolved claims 和 claim-evidence map 写章节草稿，留下增强占位符。
+       当前模型方案：
+         - writer 主调用：
+           - `task_type=DOCGEN`
+           - `digest_mode=systematic -> model="reason"`
+           - `digest_mode=sprint -> model="primary"`
+           - 默认映射到 `qwen-max / qwen-plus`
+         - heading repair：
+           - `task_type=DOCGEN_LIGHT`
+           - `model="light"`
+           - 默认映射到 `qwen-flash`
     7. critic/rewrite：当前代码仍在单章内做轻量 critic 和最多一次 rewrite；目标上应逐步前移到 review_content。
+       当前模型方案：
+         - critic 本身是规则判断，不调模型
+         - 若触发 rewrite：
+           - `task_type=DOCGEN`
+           - `model="primary"`
+           - 默认映射到 `qwen-plus`
   模式差异：sprint/systematic 的核心差异主要在 draft_chapter 体现。
     - sprint：短、密、题型导向，强调考点、速判、易错点、复盘清单。
     - systematic：长、稳、结构导向，强调定义、推理、例子、迁移和前置关系。
@@ -281,6 +371,12 @@ enhance_chapters
   作用：处理 Mermaid、交互块、公式清洗、本章自检；image 占位会被剥离，不进入发布正文。
   enhance_chapter 内部步骤：
     1. 解析章节中的 Mermaid / interactive 占位符，并清理残留 image 占位。
+       当前模型方案：
+         - Mermaid 占位生成：
+           - `task_type=DOCGEN_LIGHT`
+           - `model="light"`
+           - 默认映射到 `qwen-flash`
+         - interactive / image 当前不走大模型生成正文资产
     2. 生成或降级处理对应结构化资产。
     3. 统一公式、Mermaid、Markdown 结构。
     4. 根据 ClaimLedger 和 ConfusionMap 追加本章自检题。
@@ -319,6 +415,13 @@ review_content / 当前 review_chapter Send x N + document_consistency_review
     - review_chapter 使用 LLM 结构化复核 + 规则 guardrail。
     - review_chapter 当前通过 LangGraph Send 按章 fan-out，在 LangSmith 中可见为并行章节复核分支。
     - document_consistency_review 在章节 fan-in 后执行，不调工具、不检索、不改正文。
+  当前模型方案：
+    - `review_chapter`
+      - `task_type=DOCGEN`
+      - `model="light"`
+      - 默认映射到 `qwen-flash`
+    - `document_consistency_review`
+      - 当前无 LLM 调用；纯规则一致性检查。
 
 repair_or_route
   输入：ReviewAction[] / ReviewedChapterDraft[] / EnhancedChapterDraft[] / ChapterGenerationTask[] / DocumentBackbone
@@ -335,6 +438,13 @@ repair_or_route
     - 已支持 surface_patch / section_patch 的局部 Markdown patch。
     - evidence_patch / regenerate_chapter / re_dispatch / rebuild_backbone 先结构化记录为 unresolved warning。
     - 当前仍是一次性路径：review_content -> repair_or_route -> merge_review。
+  当前模型方案：
+    - `surface_patch / section_patch`
+      - `task_type=DOCGEN`
+      - `model="primary"`
+      - 默认映射到 `qwen-plus`
+    - `evidence_patch / regenerate_chapter / re_dispatch / rebuild_backbone`
+      - 当前只记录，不自动发起新的大模型调用
   目标实现：
     - 支持最多两轮有限回流：review_content <-> repair_or_route。
     - 第二轮仍未解决的问题写入 unresolved_warnings 和 manifest。
@@ -346,6 +456,8 @@ merge_review
     - chapter_metadatas：发布和 manifest 使用的章节元数据。
     - MergeReviewReport：章节完整性、manifest 完整性和最终来源覆盖报告。
   作用：合并章节，只做发布前收口，不承担最重的知识复核。
+  当前模型方案：
+    - 当前无 LLM 调用；纯规则合并和检查。
 
 final_merge_patch
   输入：merged_markdown / chapter_metadatas / merge_review_report / unresolved_warnings
@@ -372,12 +484,20 @@ finalize_titles
     - 同步改每章 Markdown 一级标题。
     - 重建整本 Markdown。
   约束：只统一标题表达，不推翻用户确认过的章节语义。
+  当前模型方案：
+    - 当前无 LLM 调用。
 
 publish_document
   输入：merged_markdown / chapter_metadatas / docgen_artifacts / document_context
   输出：markdown files / docgen_manifest.json / KnowledgeDoc rows / version archive
     - docgen_artifacts：DocGenContext、DocumentBackbone、计划、章节、主张、证据、冲突、资产、练习、review 报告。
   作用：发布章节 Markdown、整本 Markdown、manifest、数据库记录和版本归档。
+  当前模型方案：
+    - 当前无文本 LLM 调用。
+    - 若启用了封面 sidecar，会额外走：
+      - `agenerate_image(...)`
+      - `model="image_generation"`
+      - 实际 provider 模型取决于 `settings.models.image_generation`
 ```
 
 ## 2. 当前实现映射

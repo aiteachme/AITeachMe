@@ -257,7 +257,7 @@ export function SubjectAiAssistantProvider({ subjectId, children }: SubjectAiAss
 
   return (
     <SubjectAiAssistantContext.Provider value={contextValue}>
-      <div className="flex h-screen w-full overflow-hidden bg-slate-50 relative">
+      <div className="flex h-screen w-full overflow-hidden bg-transparent relative">
         <div className="relative flex-1 min-w-0 overflow-hidden">
           {children}
         </div>

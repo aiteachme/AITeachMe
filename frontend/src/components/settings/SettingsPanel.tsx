@@ -1,17 +1,17 @@
-﻿import { type ReactNode, useEffect, useMemo, useState } from "react";
+﻿import { useEffect, useMemo, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   Activity,
   Bot,
   CheckCircle2,
   Database,
+  KeyRound,
   Loader2,
-  Monitor,
   RefreshCcw,
   Search,
-  SlidersHorizontal,
   Wrench,
   X,
+  Wifi,
 } from "lucide-react";
 
 import { DEFAULT_SETTINGS, type AppSettings, useSettings } from "../../hooks/useSettings";
@@ -26,7 +26,7 @@ interface SettingsModalProps {
   onClose: () => void;
 }
 
-type SectionType = "device" | "models" | "learning" | "search" | "deploy" | "observability";
+type SectionType = "connection" | "models" | "learning" | "search" | "credentials" | "ops" | "observability";
 type SaveState = "idle" | "saving" | "saved" | "error";
 type SettingSource = "env" | "settings" | "system_settings" | "user_settings" | "runtime";
 type SettingStatus = "configured" | "missing" | "default" | "disabled" | "enabled" | "runtime";
@@ -43,7 +43,6 @@ interface SettingEntry {
   secret?: boolean;
   editable?: boolean;
   restart_required?: boolean;
-  derived?: boolean;
   description?: string;
 }
 
@@ -68,20 +67,19 @@ interface ApiResponse<T> {
 }
 
 const SECTIONS = [
-  { id: "device", label: "当前设备", description: "浏览器本机项", icon: Monitor },
-  { id: "models", label: "AI 与模型", description: "模型路由与推导", icon: Bot },
-  { id: "learning", label: "学习构建", description: "上传、规划与文档生成", icon: Wrench },
-  { id: "search", label: "检索与来源", description: "RAG、联网与检索服务", icon: Search },
-  { id: "deploy", label: "部署与集成", description: "运行模式、鉴权、存储", icon: Database },
-  { id: "observability", label: "观测与性能", description: "追踪、并发与调优", icon: Activity },
+  { id: "connection", label: "连接", description: "模式与本机连接", icon: Wifi },
+  { id: "models", label: "模型", description: "模型路由", icon: Bot },
+  { id: "learning", label: "学习引擎", description: "解析与构建", icon: Wrench },
+  { id: "search", label: "检索", description: "联网与 RAG", icon: Search },
+  { id: "credentials", label: "API 密钥", description: "服务授权配置", icon: KeyRound },
+  { id: "ops", label: "部署状态", description: "鉴权、SMTP、存储", icon: Database },
+  { id: "observability", label: "观测调试", description: "Tracing 与浏览器调试", icon: Activity },
 ] as const;
 
-const MODEL_BASIC_KEYS = new Set([
-  "models.primary",
-  "models.reason",
-  "models.light",
-  "models.embedding",
-]);
+function isCredentialKey(key: string): boolean {
+  const k = key.toLowerCase();
+  return k.includes("key") || k.includes("token") || k.includes("secret") || k.includes("password");
+}
 
 const MODEL_KEYS = new Set([
   "models.primary",
@@ -93,15 +91,8 @@ const MODEL_KEYS = new Set([
   "models.image_generation",
 ]);
 
-const DEPLOY_RUNTIME_KEYS = new Set([
-  "runtime.mode",
-  "runtime.app_mode_raw",
-  "runtime.version",
+const CORE_STATUS_KEYS = new Set([
   "auth.enabled",
-  "settings.source",
-]);
-
-const LLM_PROVIDER_STATUS_KEYS = new Set([
   "llm.base_url",
   "llm.api_key",
 ]);
@@ -127,55 +118,20 @@ const OBSERVABILITY_ENV_STATUS_KEYS = new Set([
   "langsmith.endpoint",
 ]);
 
-const INGEST_BASIC_KEYS = new Set([
+
+
+const LEARNING_SETTING_PREFIXES = ["ingest.", "planner.", "docgen.", "interact.", "knowledge_graph."];
+const SEARCH_SETTING_PREFIXES = ["rag.", "local_rag.", "search."];
+const OBSERVABILITY_SETTING_PREFIXES = ["observability.", "runtime.", "embedding."];
+const MODE_AWARE_PREFERENCE_KEYS = new Set([
   "ingest.default_parser_provider",
   "ingest.mineru_model_version",
   "ingest.mineru_enable_formula",
   "ingest.mineru_enable_table",
   "ingest.mineru_is_ocr",
-]);
-
-const DOCGEN_BASIC_KEYS = new Set([
-  "docgen.allow_external_search",
-  "docgen.generate_cover_image",
-]);
-
-const LEARNING_LINKAGE_KEYS = new Set([
+  "planner.default_digest_mode",
   "interact.history_turns",
-  "knowledge_graph.sync_after_docgen",
 ]);
-
-const SEARCH_STRATEGY_KEYS = new Set([
-  "rag.top_k",
-  "rag.similarity_threshold",
-  "rag.rerank_model",
-  "rag.rerank_top_k",
-  "local_rag.priority",
-  "local_rag.min_results",
-  "search.retriever_profile",
-]);
-
-const SEARCH_PROVIDER_BASIC_KEYS = new Set([
-  "search.tavily_key",
-  "search.jina_key",
-  "search.serper_key",
-  "search.mcp_tool",
-  "rag.rerank_api_key",
-]);
-
-const OBSERVABILITY_BASIC_KEYS = new Set([
-  "observability.tracing_enabled",
-  "observability.llm_token_summary_enabled",
-  "observability.llm_observability_enabled",
-]);
-
-const PERFORMANCE_BASIC_KEYS = new Set([
-  "runtime.llm_concurrency_limit",
-]);
-
-const LEARNING_SETTING_PREFIXES = ["ingest.", "planner.", "docgen.", "interact.", "knowledge_graph."];
-const SEARCH_SETTING_PREFIXES = ["rag.", "local_rag.", "search."];
-const OBSERVABILITY_SETTING_PREFIXES = ["observability.", "runtime.", "embedding."];
 
 const SETTING_SELECT_OPTIONS: Record<string, Array<{ value: string; label: string }>> = {
   "ingest.default_parser_provider": [
@@ -197,12 +153,7 @@ function hasAnyPrefix(key: string, prefixes: string[]): boolean {
   return prefixes.some((prefix) => key.startsWith(prefix));
 }
 
-function splitEntriesByKeys(entries: SettingEntry[], basicKeys: Set<string>) {
-  return {
-    basic: entries.filter((entry) => basicKeys.has(entry.key)),
-    advanced: entries.filter((entry) => !basicKeys.has(entry.key)),
-  };
-}
+
 
 function isPrimitive(value: unknown): value is SettingPrimitive {
   return value === null || ["string", "number", "boolean"].includes(typeof value);
@@ -305,9 +256,17 @@ function parseInputValue(raw: string, currentValue: SettingPrimitive): SettingPr
 function InfoCard({ text, variant = "neutral" }: { text: string; variant?: "neutral" | "warning" }) {
   const className =
     variant === "warning"
-      ? "border-amber-100 bg-amber-50/60 text-amber-700"
-      : "border-zinc-100 bg-zinc-50/60 text-zinc-500";
-  return <div className={`rounded-lg border px-4 py-3 text-[12px] leading-relaxed ${className}`}>{text}</div>;
+      ? "text-amber-700 bg-amber-50"
+      : "text-zinc-600 bg-zinc-50/80";
+  return <div className={`rounded-xl px-4 py-3 text-[13px] leading-relaxed ${className}`}>{text}</div>;
+}
+
+function SectionDivider({ label }: { label: string }) {
+  return (
+    <div className="flex items-center justify-between pb-2 mt-8 mb-4 border-b border-zinc-100/80">
+      <h3 className="text-base font-semibold text-zinc-900">{label}</h3>
+    </div>
+  );
 }
 
 function TextInput({
@@ -327,7 +286,7 @@ function TextInput({
       value={value}
       onChange={(event) => onChange(event.target.value)}
       placeholder={placeholder}
-      className="w-full rounded-lg border border-zinc-200 bg-white px-3.5 py-2.5 text-[13px] text-zinc-900 placeholder:text-zinc-300 outline-none transition focus:border-zinc-400 focus:ring-4 focus:ring-zinc-900/5"
+      className="flex h-9 w-full max-w-2xl rounded-md border border-zinc-200 bg-transparent px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-zinc-500 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-950 disabled:cursor-not-allowed disabled:opacity-50"
     />
   );
 }
@@ -345,7 +304,7 @@ function SelectInput({
     <select
       value={value}
       onChange={(event) => onChange(event.target.value)}
-      className="w-full rounded-lg border border-zinc-200 bg-white px-3.5 py-2.5 text-[13px] text-zinc-900 outline-none transition focus:border-zinc-400 focus:ring-4 focus:ring-zinc-900/5"
+      className="flex h-9 w-full max-w-2xl items-center justify-between whitespace-nowrap rounded-md border border-zinc-200 bg-transparent px-3 py-2 text-sm shadow-sm ring-offset-white focus:outline-none focus:ring-1 focus:ring-zinc-950 appearance-none bg-[url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20width%3D%2224%22%20height%3D%2224%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%3Cpath%20d%3D%22M6%209L12%2015L18%209%22%20stroke%3D%22%2371717A%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%2F%3E%3C%2Fsvg%3E')] bg-[length:16px_16px] bg-[position:right_10px_center] bg-no-repeat pr-10 cursor-pointer"
     >
       {options.map((option) => (
         <option key={option.value} value={option.value}>
@@ -368,77 +327,25 @@ function SwitchRow({
   onToggle: () => void;
 }) {
   return (
-    <button
-      type="button"
-      onClick={onToggle}
-      className="flex w-full items-center justify-between gap-4 rounded-lg border border-zinc-100 bg-white px-4 py-3 text-left transition hover:border-zinc-200"
-    >
-      <span>
-        <span className="block text-[13px] font-semibold text-zinc-800">{title}</span>
-        <span className="mt-0.5 block text-[12px] leading-relaxed text-zinc-400">{description}</span>
-      </span>
-      <span className={`relative inline-flex h-[22px] w-[42px] shrink-0 items-center rounded-full transition ${enabled ? "bg-zinc-900" : "bg-zinc-200"}`}>
-        <span className={`inline-block h-[18px] w-[18px] rounded-full bg-white shadow-sm transition ${enabled ? "translate-x-[22px]" : "translate-x-[2px]"}`} />
-      </span>
-    </button>
-  );
-}
-
-function SourcePill({ source }: { source: SettingSource }) {
-  const label =
-    source === "env"
-      ? ".env"
-      : source === "system_settings"
-        ? "系统库"
-      : source === "user_settings"
-        ? "用户库"
-        : source === "settings"
-          ? "默认"
-      : "运行时";
-  return <span className="rounded-md border border-zinc-200 bg-white px-2 py-0.5 text-[11px] font-semibold text-zinc-500">{label}</span>;
-}
-
-function ScopePill({ entry }: { entry: SettingEntry }) {
-  const label =
-    entry.source === "env"
-      ? "部署级"
-      : entry.source === "runtime" || entry.derived
-        ? "诊断值"
-        : "服务端运行时";
-  return <span className="rounded-md border border-zinc-200 bg-white px-2 py-0.5 text-[11px] text-zinc-500">{label}</span>;
-}
-
-function EffectPill({ entry }: { entry: SettingEntry }) {
-  const label = entry.derived
-    ? "只读"
-    : entry.restart_required
-      ? "建议重启"
-      : "即时生效";
-  const className = entry.restart_required
-    ? "border-amber-200 bg-amber-50 text-amber-700"
-    : "border-zinc-200 bg-white text-zinc-500";
-  return <span className={`rounded-md px-2 py-0.5 text-[11px] ${className}`}>{label}</span>;
-}
-
-function SettingsGroup({
-  title,
-  description,
-  children,
-}: {
-  title: string;
-  description?: string;
-  children: ReactNode;
-}) {
-  return (
-    <section className="space-y-3 rounded-xl border border-zinc-100 bg-zinc-50/35 p-4">
-      <div className="space-y-1">
-        <h4 className="text-[13px] font-semibold text-zinc-800">{title}</h4>
-        {description ? <p className="text-[11px] leading-relaxed text-zinc-500">{description}</p> : null}
+    <div className="flex flex-row items-center justify-between rounded-lg py-3 hover:bg-zinc-50/50 transition px-2 -mx-2">
+      <div className="space-y-0.5 pr-4">
+        <label className="text-sm font-medium leading-none text-zinc-900 cursor-pointer" onClick={onToggle}>{title}</label>
+        <p className="text-[13px] text-zinc-500 leading-relaxed mt-1.5">{description}</p>
       </div>
-      {children}
-    </section>
+      <button
+        type="button"
+        onClick={onToggle}
+        className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-950 focus-visible:ring-offset-2 ${
+          enabled ? "bg-zinc-900" : "bg-zinc-200"
+        }`}
+      >
+        <span className={`pointer-events-none block h-4 w-4 rounded-full bg-white shadow-lg ring-0 transition-transform ${enabled ? "translate-x-4" : "translate-x-0"}`} />
+      </button>
+    </div>
   );
 }
+
+
 
 function ReadonlySettingsList({
   entries,
@@ -451,27 +358,21 @@ function ReadonlySettingsList({
 }) {
   if (loading) return <InfoCard text="正在读取后端当前状态..." />;
   if (error) return <InfoCard text={error} variant="warning" />;
-  if (!entries.length) return <InfoCard text="暂无配置项。" />;
+  if (!entries.length) return null;
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-6">
       {entries.map((entry) => (
-        <div key={entry.key} className="rounded-lg border border-zinc-100 bg-zinc-50/40 px-4 py-3">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div>
-              <div className="text-[13px] font-semibold text-zinc-700">{entry.label}</div>
-              <div className="mt-0.5 font-mono text-[11px] text-zinc-400">{entry.key}</div>
-            </div>
-            <div className="flex flex-wrap items-center gap-1.5">
-              <SourcePill source={entry.source} />
-              <ScopePill entry={entry} />
-              <EffectPill entry={entry} />
-            </div>
+        <div key={entry.key} className="space-y-2">
+          <div className="flex flex-col gap-1.5">
+            <span className="text-sm font-medium leading-none text-zinc-900 block">{entry.label}</span>
+            {entry.description && (
+              <p className="text-[13px] text-zinc-500 leading-relaxed">{entry.description}</p>
+            )}
           </div>
-          <div className="mt-2 rounded-md border border-zinc-200 bg-white px-2.5 py-1.5 font-mono text-[12px] text-zinc-800">
+          <div className="font-mono text-[13px] text-zinc-800 bg-zinc-50/80 px-3 py-1.5 rounded-md border border-zinc-200 break-all w-fit max-w-full shadow-sm">
             {displayValue(entry)}
           </div>
-          {entry.description ? <p className="mt-2 text-[11px] leading-relaxed text-zinc-400">{entry.description}</p> : null}
         </div>
       ))}
     </div>
@@ -492,73 +393,60 @@ function EditableSettingsList({
   error: string | null;
 }) {
   const items = entries.filter((entry) => entry.editable && isPrimitive(draft[entry.key]));
-  if (loading) return <InfoCard text="正在读取可编辑设置..." />;
+  if (loading) return <InfoCard text="正在加载..." />;
   if (error) return <InfoCard text={error} variant="warning" />;
-  if (!items.length) return <InfoCard text="当前模式下暂无可编辑项。" />;
+  if (!items.length) return null;
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-6">
       {items.map((entry) => {
         const value = draft[entry.key];
         const selectOptions = SETTING_SELECT_OPTIONS[entry.key];
 
         if (typeof value === "boolean") {
           return (
-            <div key={entry.key} className="space-y-2 rounded-lg border border-zinc-100 bg-zinc-50/40 px-4 py-3">
+            <div key={entry.key}>
               <SwitchRow
                 title={entry.label}
                 description={entry.description || entry.key}
                 enabled={value}
                 onToggle={() => onChange(entry.key, !value)}
               />
-              <div className="flex flex-wrap items-center gap-1.5">
-                <SourcePill source={entry.source} />
-                <ScopePill entry={entry} />
-                <EffectPill entry={entry} />
-                <span className="rounded-md border border-zinc-200 bg-white px-2 py-0.5 text-[11px] text-zinc-400">
-                  默认：{displayValue({ ...entry, value: entry.default_value })}
-                </span>
-              </div>
             </div>
           );
         }
 
         return (
-          <div key={entry.key} className="space-y-2 rounded-lg border border-zinc-100 bg-zinc-50/40 px-4 py-3">
-            <div className="flex flex-wrap items-start justify-between gap-2">
-              <div>
-                <label className="block text-[13px] font-semibold text-zinc-700">{entry.label}</label>
-                <div className="mt-0.5 font-mono text-[11px] text-zinc-400">{entry.key}</div>
-              </div>
-              <div className="flex flex-wrap items-center gap-1.5">
-                <SourcePill source={entry.source} />
-                <ScopePill entry={entry} />
-                <EffectPill entry={entry} />
-              </div>
+          <div key={entry.key} className="space-y-2">
+            <div className="flex flex-col gap-1.5">
+              <label className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 text-zinc-900">{entry.label}</label>
+              {entry.description && (
+                <p className="text-[13px] text-zinc-500 leading-relaxed">
+                  {entry.description}
+                </p>
+              )}
             </div>
-            {selectOptions ? (
-              <SelectInput
-                value={value === null ? "" : String(value)}
-                onChange={(next) => onChange(entry.key, next)}
-                options={selectOptions}
-              />
-            ) : (
-              <TextInput
-                value={value === null ? "" : String(value)}
-                onChange={(next) => onChange(entry.key, parseInputValue(next, value))}
-                placeholder={
-                  entry.default_value === null || entry.default_value === undefined
-                    ? "留空"
-                    : String(entry.default_value)
-                }
-                type={typeof value === "number" ? "number" : "text"}
-              />
-            )}
-            <p className="text-[11px] leading-relaxed text-zinc-400">
-              默认：{displayValue({ ...entry, value: entry.default_value })}
-              {entry.description ? ` · ${entry.description}` : ""}
-              {entry.restart_required ? " · 保存后建议重启" : ""}
-            </p>
+            
+            <div className="w-full">
+              {selectOptions ? (
+                <SelectInput
+                  value={value === null ? "" : String(value)}
+                  onChange={(next) => onChange(entry.key, next)}
+                  options={selectOptions}
+                />
+              ) : (
+                <TextInput
+                  value={value === null ? "" : String(value)}
+                  onChange={(next) => onChange(entry.key, parseInputValue(next, value))}
+                  placeholder={
+                    entry.default_value === null || entry.default_value === undefined
+                      ? "留空"
+                      : String(entry.default_value)
+                  }
+                  type={typeof value === "number" ? "number" : "text"}
+                />
+              )}
+            </div>
           </div>
         );
       })}
@@ -575,8 +463,7 @@ const contentVariants = {
 export function SettingsPanel({ isOpen, onClose }: SettingsModalProps) {
   const { settings, updateSettings } = useSettings();
   const [draft, setDraft] = useState<AppSettings>({ ...settings });
-  const [activeSection, setActiveSection] = useState<SectionType>("device");
-  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [activeSection, setActiveSection] = useState<SectionType>("connection");
   const [saveState, setSaveState] = useState<SaveState>("idle");
   const [saveError, setSaveError] = useState<string | null>(null);
   const [overview, setOverview] = useState<SettingsOverviewData | null>(() => getStoredSystemSettingsOverview());
@@ -591,7 +478,7 @@ export function SettingsPanel({ isOpen, onClose }: SettingsModalProps) {
   useEffect(() => {
     if (!isOpen) return;
     setDraft({ ...settings });
-    setActiveSection("device");
+    setActiveSection("connection");
     setSaveState("idle");
     setSaveError(null);
     setOverviewError(null);
@@ -729,199 +616,100 @@ export function SettingsPanel({ isOpen, onClose }: SettingsModalProps) {
     }
   };
 
-  const renderDevice = () => (
-    <div className="space-y-5">
-      <InfoCard text="这里只影响当前浏览器或本机调试体验，不会写入服务端运行时真相。" />
-      <SettingsGroup title="当前浏览器" description="浏览器本机项始终只对你现在使用的这台设备生效。">
-        <div className="space-y-3">
-          <div className="space-y-2 rounded-lg border border-zinc-100 bg-white px-4 py-3">
-            <label className="text-[13px] font-semibold text-zinc-700">后端地址</label>
-            <TextInput value={draft.apiUrl} onChange={(value) => patch("apiUrl", value)} placeholder="http://localhost:8000" />
-            <p className="text-[11px] leading-relaxed text-zinc-400">只影响当前浏览器请求哪个后端服务。</p>
-          </div>
-          <SwitchRow
-            title="启用本地 Mock"
-            description="只影响当前浏览器是否使用前端 Mock 数据。"
-            enabled={draft.useMock}
-            onToggle={() => patch("useMock", !draft.useMock)}
+  const renderConnection = () => (
+    <div className="space-y-4">
+      {isLocalRuntime ? (
+        <>
+          <SectionDivider label="本地 .env" />
+          <EditableSettingsList
+            entries={getEntries("models").filter((entry) => entry.source === "env")}
+            draft={envDraft}
+            onChange={patchEnvSetting}
+            loading={isOverviewLoading}
+            error={overviewError}
           />
-          <SwitchRow
-            title="调试模式"
-            description="只影响当前浏览器的调试展示和开发辅助体验。"
-            enabled={draft.debugMode}
-            onToggle={() => patch("debugMode", !draft.debugMode)}
-          />
-          <div className="space-y-2 rounded-lg border border-zinc-100 bg-white px-4 py-3">
-            <label className="text-[13px] font-semibold text-zinc-700">MinerU 临时令牌</label>
-            <TextInput
-              type="password"
-              value={draft.mineruApiToken}
-              onChange={(value) => patch("mineruApiToken", value)}
-              placeholder="MINERU_API_TOKEN"
+        </>
+      ) : null}
+      {isLocalRuntime ? (
+        <div className="space-y-3 rounded-lg border border-zinc-100 bg-zinc-50/40 px-4 py-3 mt-4">
+          <SectionDivider label="浏览器本机" />
+          <div className="space-y-3">
+            <div className="space-y-2">
+              <label className="text-[13px] font-semibold text-zinc-700">FastAPI 地址</label>
+              <TextInput value={draft.apiUrl} onChange={(value) => patch("apiUrl", value)} placeholder="http://localhost:8000" />
+              <p className="text-[11px] leading-relaxed text-zinc-400">只影响当前浏览器访问哪个后端地址。</p>
+            </div>
+            <SwitchRow
+              title="本地 Mock"
+              description="只影响当前浏览器是否启用前端 Mock。"
+              enabled={draft.useMock}
+              onToggle={() => patch("useMock", !draft.useMock)}
             />
-            <p className="text-[11px] leading-relaxed text-zinc-400">
-              仅当前浏览器可见。上传时会优先使用这个临时令牌；留空则回退到服务端环境变量。
-            </p>
           </div>
         </div>
-      </SettingsGroup>
-      {overview?.notes?.length ? (
-        <SettingsGroup title="说明" description="帮助你理解当前设置来源与保存方式。">
-          <div className="space-y-2">
-            {overview.notes.map((note) => (
-              <InfoCard key={note} text={note} />
-            ))}
-          </div>
-        </SettingsGroup>
       ) : null}
+      <SectionDivider label="后端能力探测" />
+      <ReadonlySettingsList
+        entries={getEntries("runtime", "models").filter((entry) => CORE_STATUS_KEYS.has(entry.key))}
+        loading={isOverviewLoading}
+        error={overviewError}
+      />
     </div>
   );
 
-  const renderModels = () => {
-    const modelEntries = getEntries("models").filter((entry) => MODEL_KEYS.has(entry.key));
-    const { basic: basicModelEntries, advanced: advancedModelEntries } = splitEntriesByKeys(modelEntries, MODEL_BASIC_KEYS);
-
-    return (
-      <div className="space-y-5">
-        <InfoCard
-          text={
-            isLocalRuntime
-              ? "这里集中放模型路由。常用项默认展示，专用模型放进高级设置；保存后会写入服务端运行时配置。"
-              : "云端模式下模型路由只读展示，普通用户不能修改服务端全局模型配置。"
-          }
-        />
-        <SettingsGroup title="核心路由" description="优先调整这里，通常就能满足大多数本地调试和日常使用。">
-          <EditableSettingsList
-            entries={basicModelEntries}
-            draft={settingsDraft}
-            onChange={patchServerSetting}
-            loading={isOverviewLoading}
-            error={overviewError}
-          />
-        </SettingsGroup>
-        {(showAdvanced || advancedModelEntries.length === 0) ? null : (
-          <InfoCard text="还有 OCR、抽取和图片生成等专用模型设置，点击右上角“显示高级”后展开。" />
-        )}
-        {showAdvanced && advancedModelEntries.length > 0 ? (
-          <SettingsGroup title="专用模型" description="低频修改项，适合需要精细拆分任务模型时使用。">
-            <EditableSettingsList
-              entries={advancedModelEntries}
-              draft={settingsDraft}
-              onChange={patchServerSetting}
-              loading={isOverviewLoading}
-              error={overviewError}
-            />
-          </SettingsGroup>
-        ) : null}
-        <SettingsGroup title="运行推导" description="这些值来自当前路由配置推导，只读展示。">
-          <ReadonlySettingsList
-            entries={getEntries("models").filter((entry) => entry.key === "models.embedding_dim")}
-            loading={isOverviewLoading}
-            error={overviewError}
-          />
-        </SettingsGroup>
-      </div>
-    );
-  };
+  const renderModels = () => (
+    <div className="space-y-5">
+      <InfoCard
+        text={
+          isLocalRuntime
+            ? "本地模式允许直接调整模型路由。保存后会写入本地系统配置。"
+            : "云端模式下模型路由视为系统级配置，这里只读展示当前有效值。"
+        }
+      />
+      <EditableSettingsList
+        entries={getEntries("models").filter((entry) => MODEL_KEYS.has(entry.key))}
+        draft={settingsDraft}
+        onChange={patchServerSetting}
+        loading={isOverviewLoading}
+        error={overviewError}
+      />
+      <SectionDivider label="运行推导" />
+      <ReadonlySettingsList
+        entries={getEntries("models").filter((entry) => entry.key === "models.embedding_dim")}
+        loading={isOverviewLoading}
+        error={overviewError}
+      />
+    </div>
+  );
 
   const renderLearning = () => {
     const learningEntries = getEntries("learning_engines").filter(
-      (entry) => hasAnyPrefix(entry.key, LEARNING_SETTING_PREFIXES) && entry.source !== "env",
+      (entry) => (hasAnyPrefix(entry.key, LEARNING_SETTING_PREFIXES) || MODE_AWARE_PREFERENCE_KEYS.has(entry.key)) && !isCredentialKey(entry.key)
     );
-    const ingestEntries = learningEntries.filter((entry) => entry.key.startsWith("ingest."));
-    const plannerEntries = learningEntries.filter((entry) => entry.key.startsWith("planner."));
-    const docgenEntries = learningEntries.filter((entry) => entry.key.startsWith("docgen."));
-    const linkageEntries = learningEntries.filter(
-      (entry) => entry.key.startsWith("interact.") || entry.key.startsWith("knowledge_graph."),
-    );
-    const { basic: basicIngestEntries, advanced: advancedIngestEntries } = splitEntriesByKeys(ingestEntries, INGEST_BASIC_KEYS);
-    const { basic: basicDocgenEntries, advanced: advancedDocgenEntries } = splitEntriesByKeys(docgenEntries, DOCGEN_BASIC_KEYS);
-    const { basic: basicLinkageEntries, advanced: advancedLinkageEntries } = splitEntriesByKeys(linkageEntries, LEARNING_LINKAGE_KEYS);
-    const learningEnvEntries = getEntries("learning_engines").filter((entry) => entry.source === "env");
+    const learningEnvEntries = getEntries("learning_engines").filter((entry) => entry.source === "env" && !isCredentialKey(entry.key));
 
     return (
       <div className="space-y-5">
         <InfoCard
           text={
             isLocalRuntime
-              ? "这页按学习链路组织配置：上传与解析、方案规划、知识文档生成，以及伴读/图谱联动。"
-              : "云端模式下学习构建参数只读展示，普通用户不能修改服务端全局行为。"
+              ? "当前显示本地模式下的全部学习引擎可写项。"
+              : "云端模式下学习引擎配置只读展示，普通用户不能修改服务端默认值。"
           }
         />
-        <SettingsGroup title="上传与解析" description="控制默认解析方式，以及上传时的基础行为。">
-          <EditableSettingsList
-            entries={basicIngestEntries}
-            draft={settingsDraft}
-            onChange={patchServerSetting}
-            loading={isOverviewLoading}
-            error={overviewError}
-          />
-        </SettingsGroup>
+        <EditableSettingsList
+          entries={learningEntries}
+          draft={settingsDraft}
+          onChange={patchServerSetting}
+          loading={isOverviewLoading}
+          error={overviewError}
+        />
         {parserProvider === "auto" ? (
-          <InfoCard text="当前是自动解析模式。上传时会先分类，再生成解析计划，然后按文件类型和质量策略选择本地解析器链。" />
+          <InfoCard text="自动模式不会显式指定 parser_provider。上传时会走后端当前已实现的本地自动 parser chain：先分类，再生成 ParsePlan，再按文件类型和质量策略选择并尝试本地解析器链。" />
         ) : null}
-        {showAdvanced && advancedIngestEntries.length > 0 ? (
-          <SettingsGroup title="解析高级项" description="并发、超时和上传上限等低频调优项。">
-            <EditableSettingsList
-              entries={advancedIngestEntries}
-              draft={settingsDraft}
-              onChange={patchServerSetting}
-              loading={isOverviewLoading}
-              error={overviewError}
-            />
-          </SettingsGroup>
-        ) : null}
-        <SettingsGroup title="方案规划" description="控制 Planner 默认采用的 Digest 模式与章节范围。">
-          <EditableSettingsList
-            entries={plannerEntries}
-            draft={settingsDraft}
-            onChange={patchServerSetting}
-            loading={isOverviewLoading}
-            error={overviewError}
-          />
-        </SettingsGroup>
-        <SettingsGroup title="知识文档生成" description="控制 DocGen 的来源策略、封面开关与章节执行预算。">
-          <EditableSettingsList
-            entries={basicDocgenEntries}
-            draft={settingsDraft}
-            onChange={patchServerSetting}
-            loading={isOverviewLoading}
-            error={overviewError}
-          />
-        </SettingsGroup>
-        {showAdvanced && advancedDocgenEntries.length > 0 ? (
-          <SettingsGroup title="文档生成高级项" description="章节并发、研究查询数和网页读取预算等低层调优项。">
-            <EditableSettingsList
-              entries={advancedDocgenEntries}
-              draft={settingsDraft}
-              onChange={patchServerSetting}
-              loading={isOverviewLoading}
-              error={overviewError}
-            />
-          </SettingsGroup>
-        ) : null}
-        <SettingsGroup title="伴读与图谱联动" description="控制伴读上下文长度，以及生成文档后是否同步知识图谱。">
-          <EditableSettingsList
-            entries={basicLinkageEntries}
-            draft={settingsDraft}
-            onChange={patchServerSetting}
-            loading={isOverviewLoading}
-            error={overviewError}
-          />
-        </SettingsGroup>
-        {showAdvanced && advancedLinkageEntries.length > 0 ? (
-          <SettingsGroup title="联动高级项" description="知识图谱抽取并发等低频调优项。">
-            <EditableSettingsList
-              entries={advancedLinkageEntries}
-              draft={settingsDraft}
-              onChange={patchServerSetting}
-              loading={isOverviewLoading}
-              error={overviewError}
-            />
-          </SettingsGroup>
-        ) : null}
-        <SettingsGroup title={isLocalRuntime ? "服务端解析凭证" : "解析服务状态"} description="MinerU 等服务依赖的部署级环境变量。">
-          {isLocalRuntime ? (
+        {isLocalRuntime ? (
+          <>
+            <SectionDivider label="本地 .env" />
             <EditableSettingsList
               entries={learningEnvEntries}
               draft={envDraft}
@@ -929,103 +717,112 @@ export function SettingsPanel({ isOpen, onClose }: SettingsModalProps) {
               loading={isOverviewLoading}
               error={overviewError}
             />
-          ) : (
+          </>
+        ) : (
+          <>
+            <SectionDivider label="服务端状态" />
             <ReadonlySettingsList
               entries={learningEnvEntries}
               loading={isOverviewLoading}
               error={overviewError}
             />
-          )}
-        </SettingsGroup>
+          </>
+        )}
       </div>
     );
   };
 
   const renderSearch = () => {
-    const searchEntries = getEntries("search").filter(
-      (entry) => hasAnyPrefix(entry.key, SEARCH_SETTING_PREFIXES) && entry.source !== "env",
-    );
-    const searchEnvEntries = getEntries("search").filter((entry) => entry.source === "env");
-    const { basic: basicSearchEntries, advanced: advancedSearchEntries } = splitEntriesByKeys(searchEntries, SEARCH_STRATEGY_KEYS);
-    const { basic: basicSearchEnvEntries, advanced: advancedSearchEnvEntries } = splitEntriesByKeys(searchEnvEntries, SEARCH_PROVIDER_BASIC_KEYS);
+    const searchEntries = getEntries("search").filter((entry) => hasAnyPrefix(entry.key, SEARCH_SETTING_PREFIXES) && !isCredentialKey(entry.key));
+    const searchEnvEntries = getEntries("search").filter((entry) => entry.source === "env" && !isCredentialKey(entry.key));
 
     return (
       <div className="space-y-5">
         <InfoCard
           text={
             isLocalRuntime
-              ? "默认先展示最常用的 RAG 与检索策略。各类联网检索服务的密钥与状态收进下方的检索服务区。"
-              : "云端模式下，这里作为只读状态页展示当前检索策略与联网服务状态。"
+              ? "当前显示完整检索调优面板，包括 provider、缓存和超时等低层参数。"
+              : "云端模式下，检索 provider 的密钥与运行参数只读展示。"
           }
         />
-        <SettingsGroup title="检索策略" description="优先调整这里，决定本地资料优先级、相似度阈值与默认检索 Profile。">
+        <EditableSettingsList
+          entries={searchEntries}
+          draft={settingsDraft}
+          onChange={patchServerSetting}
+          loading={isOverviewLoading}
+          error={overviewError}
+        />
+        <SectionDivider label={isLocalRuntime ? "本地 .env" : "服务端 provider 状态"} />
+        {isLocalRuntime ? (
           <EditableSettingsList
-            entries={basicSearchEntries}
-            draft={settingsDraft}
-            onChange={patchServerSetting}
+            entries={searchEnvEntries}
+            draft={envDraft}
+            onChange={patchEnvSetting}
             loading={isOverviewLoading}
             error={overviewError}
           />
-        </SettingsGroup>
-        {showAdvanced && advancedSearchEntries.length > 0 ? (
-          <SettingsGroup title="检索高级项" description="超时、缓存、并发 provider 和融合参数等低层调优项。">
-            <EditableSettingsList
-              entries={advancedSearchEntries}
-              draft={settingsDraft}
-              onChange={patchServerSetting}
-              loading={isOverviewLoading}
-              error={overviewError}
-            />
-          </SettingsGroup>
-        ) : null}
-        <SettingsGroup title={isLocalRuntime ? "检索服务与密钥" : "检索服务状态"} description="联网搜索、阅读器、MCP 与重排服务的接入状态。">
-          {isLocalRuntime ? (
-            <EditableSettingsList
-              entries={basicSearchEnvEntries}
-              draft={envDraft}
-              onChange={patchEnvSetting}
-              loading={isOverviewLoading}
-              error={overviewError}
-            />
-          ) : (
-            <ReadonlySettingsList
-              entries={basicSearchEnvEntries}
-              loading={isOverviewLoading}
-              error={overviewError}
-            />
-          )}
-        </SettingsGroup>
-        {showAdvanced && advancedSearchEnvEntries.length > 0 ? (
-          <SettingsGroup title="更多检索服务" description="低频使用的联网检索服务与附加来源接入项。">
-            {isLocalRuntime ? (
-              <EditableSettingsList
-                entries={advancedSearchEnvEntries}
-                draft={envDraft}
-                onChange={patchEnvSetting}
-                loading={isOverviewLoading}
-                error={overviewError}
-              />
-            ) : (
-              <ReadonlySettingsList
-                entries={advancedSearchEnvEntries}
-                loading={isOverviewLoading}
-                error={overviewError}
-              />
-            )}
-          </SettingsGroup>
-        ) : null}
+        ) : (
+          <ReadonlySettingsList
+            entries={searchEnvEntries}
+            loading={isOverviewLoading}
+            error={overviewError}
+          />
+        )}
       </div>
     );
   };
 
-  const renderDeploy = () => {
-    const runtimeEntries = getEntries("runtime").filter((entry) => DEPLOY_RUNTIME_KEYS.has(entry.key));
-    const llmEntries = getEntries("models").filter((entry) => LLM_PROVIDER_STATUS_KEYS.has(entry.key));
-    const storageEntries = getEntries("storage").filter(
-      (entry) => STORAGE_STATUS_KEYS.has(entry.key) || entry.source === "runtime",
+  const renderCredentials = () => {
+    const allEntries = getEntries("runtime", "models", "learning_engines", "search", "storage", "observability");
+    const credentialEntries = allEntries.filter((entry) => isCredentialKey(entry.key) || entry.secret);
+    const uniqueCredentialEntries = Array.from(new Map(credentialEntries.map((e) => [e.key, e])).values());
+    const editableEnvEntries = uniqueCredentialEntries.filter((entry) => entry.source === "env");
+
+    return (
+      <div className="space-y-5">
+        <InfoCard text="此处集中管理所有第三方服务与本地服务的 API 密钥和鉴权 Token。" />
+        {isLocalRuntime ? (
+          <>
+            <SectionDivider label="临时覆盖" />
+            <div className="space-y-3 rounded-lg border border-zinc-100 bg-zinc-50/40 px-4 py-3">
+              <div className="space-y-2">
+                <label className="text-[13px] font-semibold text-zinc-700">MinerU 临时 Token</label>
+                <TextInput
+                  type="password"
+                  value={draft.mineruApiToken}
+                  onChange={(value) => patch("mineruApiToken", value)}
+                  placeholder="MINERU_API_TOKEN"
+                />
+                <p className="text-[11px] leading-relaxed text-zinc-400">
+                  仅当前浏览器可见。优先使用此设置；留空则回退到本地 .env 配置。
+                </p>
+              </div>
+            </div>
+            <SectionDivider label="本地 .env 配置" />
+            <EditableSettingsList
+              entries={editableEnvEntries}
+              draft={envDraft}
+              onChange={patchEnvSetting}
+              loading={isOverviewLoading}
+              error={overviewError}
+            />
+          </>
+        ) : (
+          <ReadonlySettingsList
+            entries={editableEnvEntries}
+            loading={isOverviewLoading}
+            error={overviewError}
+          />
+        )}
+      </div>
     );
-    const localDeployEnvEntries = getEntries("runtime", "storage", "models").filter(
-      (entry) => entry.source === "env" && (DEPLOY_RUNTIME_KEYS.has(entry.key) || STORAGE_STATUS_KEYS.has(entry.key) || LLM_PROVIDER_STATUS_KEYS.has(entry.key)),
+  };
+
+  const renderOps = () => {
+    const opsEntries = getEntries("runtime", "storage").filter((entry) => !isCredentialKey(entry.key));
+    const editableEnvEntries = opsEntries.filter((entry) => entry.source === "env");
+    const readonlyEntries = opsEntries.filter(
+      (entry) => CORE_STATUS_KEYS.has(entry.key) || STORAGE_STATUS_KEYS.has(entry.key) || entry.source === "runtime",
     );
 
     return (
@@ -1033,58 +830,38 @@ export function SettingsPanel({ isOpen, onClose }: SettingsModalProps) {
         <InfoCard
           text={
             isLocalRuntime
-              ? "这里集中展示部署级变量、运行模式、鉴权、模型接入以及数据库/存储状态。本地模式下允许写回本机 .env。"
-              : "云端模式下部署、鉴权、数据库和对象存储统一视为平台级配置，只读展示当前状态。"
+              ? "本地模式下部署级环境变量也可写入本地 .env，但是否立即生效取决于具体配置，通常建议保存后重启后端。"
+              : "云端模式下，部署、鉴权、数据库和对象存储统一视为平台级配置，只读展示。"
           }
         />
         {isLocalRuntime ? (
-          <SettingsGroup title="本机环境变量" description="部署级配置通常保存到本机 .env；是否立即生效取决于具体变量，通常建议保存后重启后端。">
+          <>
+            <SectionDivider label="本地 .env" />
             <EditableSettingsList
-              entries={localDeployEnvEntries}
+              entries={editableEnvEntries}
               draft={envDraft}
               onChange={patchEnvSetting}
               loading={isOverviewLoading}
               error={overviewError}
             />
-          </SettingsGroup>
+          </>
         ) : null}
-        <SettingsGroup title="运行与鉴权" description="当前运行模式、APP_MODE 解析结果、鉴权开关与设置来源。">
-          <ReadonlySettingsList
-            entries={runtimeEntries}
-            loading={isOverviewLoading}
-            error={overviewError}
-          />
-        </SettingsGroup>
-        <SettingsGroup title="模型接入" description="当前模型服务地址与密钥配置状态。">
-          <ReadonlySettingsList
-            entries={llmEntries}
-            loading={isOverviewLoading}
-            error={overviewError}
-          />
-        </SettingsGroup>
-        <SettingsGroup title="数据库与存储" description="数据库连接、对象存储后端与 S3 / DogeCloud 当前状态。">
-          <ReadonlySettingsList
-            entries={storageEntries}
-            loading={isOverviewLoading}
-            error={overviewError}
-          />
-        </SettingsGroup>
+        <SectionDivider label="当前状态" />
+        <ReadonlySettingsList
+          entries={readonlyEntries}
+          loading={isOverviewLoading}
+          error={overviewError}
+        />
       </div>
     );
   };
 
   const renderObservability = () => {
     const observabilityEntries = getEntries("observability").filter(
-      (entry) => entry.editable && hasAnyPrefix(entry.key, OBSERVABILITY_SETTING_PREFIXES),
+      (entry) => entry.editable && hasAnyPrefix(entry.key, OBSERVABILITY_SETTING_PREFIXES) && !isCredentialKey(entry.key)
     );
-    const observabilityToggleEntries = observabilityEntries.filter((entry) => entry.key.startsWith("observability."));
-    const performanceEntries = observabilityEntries.filter(
-      (entry) => entry.key.startsWith("runtime.") || entry.key.startsWith("embedding."),
-    );
-    const { basic: basicObservabilityEntries, advanced: advancedObservabilityEntries } = splitEntriesByKeys(observabilityToggleEntries, OBSERVABILITY_BASIC_KEYS);
-    const { basic: basicPerformanceEntries, advanced: advancedPerformanceEntries } = splitEntriesByKeys(performanceEntries, PERFORMANCE_BASIC_KEYS);
     const observabilityEnvEntries = getEntries("observability").filter((entry) =>
-      OBSERVABILITY_ENV_STATUS_KEYS.has(entry.key),
+      OBSERVABILITY_ENV_STATUS_KEYS.has(entry.key) && !isCredentialKey(entry.key)
     );
 
     return (
@@ -1092,77 +869,55 @@ export function SettingsPanel({ isOpen, onClose }: SettingsModalProps) {
         <InfoCard
           text={
             isLocalRuntime
-              ? "这页聚合 tracing、调用统计和运行性能调优项。调试模式已移到“当前设备”，避免与服务端观测开关混淆。"
-              : "云端模式下观测与性能设置只读展示；普通用户不能修改服务端 tracing 和运行时调优参数。"
+              ? "当前显示完整观测与调试设置，包括采样、展示和嵌入批处理等低频参数。"
+              : "云端模式下观测配置只读展示；浏览器调试项默认不开放给普通用户。"
           }
         />
-        <SettingsGroup title="观测与追踪" description="控制 LangSmith、LLM 调用统计和文本预览等可观测性行为。">
+        <EditableSettingsList
+          entries={observabilityEntries}
+          draft={settingsDraft}
+          onChange={patchServerSetting}
+          loading={isOverviewLoading}
+          error={overviewError}
+        />
+        {isLocalRuntime ? (
+          <div className="space-y-3 rounded-lg border border-zinc-100 bg-zinc-50/40 px-4 py-3">
+            <SectionDivider label="浏览器本机" />
+            <SwitchRow
+              title="调试模式"
+              description="只影响当前浏览器的调试体验。"
+              enabled={draft.debugMode}
+              onToggle={() => patch("debugMode", !draft.debugMode)}
+            />
+          </div>
+        ) : null}
+        <SectionDivider label={isLocalRuntime ? "本地 .env" : "服务端观测状态"} />
+        {isLocalRuntime ? (
           <EditableSettingsList
-            entries={basicObservabilityEntries}
-            draft={settingsDraft}
-            onChange={patchServerSetting}
+            entries={observabilityEnvEntries}
+            draft={envDraft}
+            onChange={patchEnvSetting}
             loading={isOverviewLoading}
             error={overviewError}
           />
-        </SettingsGroup>
-        {showAdvanced && advancedObservabilityEntries.length > 0 ? (
-          <SettingsGroup title="观测高级项" description="Trace 输入输出预览和文本截断等低频调优项。">
-            <EditableSettingsList
-              entries={advancedObservabilityEntries}
-              draft={settingsDraft}
-              onChange={patchServerSetting}
-              loading={isOverviewLoading}
-              error={overviewError}
-            />
-          </SettingsGroup>
-        ) : null}
-        <SettingsGroup title="运行性能" description="控制 LLM 并发和 Embedding 批处理行为。">
-          <EditableSettingsList
-            entries={basicPerformanceEntries}
-            draft={settingsDraft}
-            onChange={patchServerSetting}
+        ) : (
+          <ReadonlySettingsList
+            entries={observabilityEnvEntries}
             loading={isOverviewLoading}
             error={overviewError}
           />
-        </SettingsGroup>
-        {showAdvanced && advancedPerformanceEntries.length > 0 ? (
-          <SettingsGroup title="性能高级项" description="上下文预算、Embedding 批延迟等低频调优项。">
-            <EditableSettingsList
-              entries={advancedPerformanceEntries}
-              draft={settingsDraft}
-              onChange={patchServerSetting}
-              loading={isOverviewLoading}
-              error={overviewError}
-            />
-          </SettingsGroup>
-        ) : null}
-        <SettingsGroup title={isLocalRuntime ? "LangSmith 与观测环境变量" : "观测服务状态"} description="用于 tracing 与可观测性的部署级环境变量。">
-          {isLocalRuntime ? (
-            <EditableSettingsList
-              entries={observabilityEnvEntries}
-              draft={envDraft}
-              onChange={patchEnvSetting}
-              loading={isOverviewLoading}
-              error={overviewError}
-            />
-          ) : (
-            <ReadonlySettingsList
-              entries={observabilityEnvEntries}
-              loading={isOverviewLoading}
-              error={overviewError}
-            />
-          )}
-        </SettingsGroup>
+        )}
       </div>
     );
   };
 
-  const renderers: Record<SectionType, () => ReactNode> = {
-    device: renderDevice,
+  const renderers: Record<SectionType, () => React.ReactNode> = {
+    connection: renderConnection,
     models: renderModels,
     learning: renderLearning,
     search: renderSearch,
-    deploy: renderDeploy,
+    credentials: renderCredentials,
+    ops: renderOps,
     observability: renderObservability,
   };
 
@@ -1177,20 +932,20 @@ export function SettingsPanel({ isOpen, onClose }: SettingsModalProps) {
         transition={{ duration: 0.18 }}
         className="fixed inset-0 z-[100]"
       >
-        <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
+        <div className="absolute inset-0 bg-black/20 backdrop-blur-[2px]" onClick={onClose} />
         <div className="pointer-events-none absolute inset-0 flex items-center justify-center p-4 sm:p-8">
           <motion.div
-            initial={{ opacity: 0, y: 16, scale: 0.97 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 10, scale: 0.97 }}
-            transition={{ type: "spring", stiffness: 400, damping: 32 }}
-            className="pointer-events-auto flex h-[min(720px,85vh)] w-full max-w-[960px] overflow-hidden rounded-lg border border-zinc-200/60 bg-white shadow-[0_25px_80px_-20px_rgba(0,0,0,0.35)]"
+            initial={{ opacity: 0, scale: 0.96, y: 10 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.96, y: 10 }}
+            transition={{ type: "spring", stiffness: 500, damping: 40 }}
+            className="pointer-events-auto flex h-[85vh] w-full max-w-[900px] overflow-hidden rounded-xl bg-white shadow-lg ring-1 ring-black/5"
           >
-            <nav className="flex w-[210px] shrink-0 flex-col border-r border-zinc-100 bg-zinc-50/70">
-              <div className="px-5 pb-4 pt-5">
-                <h2 className="text-[15px] font-bold text-zinc-900">设置</h2>
+            <nav className="flex w-[240px] shrink-0 flex-col bg-zinc-50/50 border-r border-zinc-200">
+              <div className="px-5 pb-2 pt-6">
+                <h2 className="text-lg font-semibold text-zinc-900">设置</h2>
               </div>
-              <div className="flex-1 space-y-0.5 overflow-y-auto px-2.5">
+              <div className="flex-1 space-y-1 overflow-y-auto px-3 py-4">
                 {SECTIONS.map((section) => {
                   const Icon = section.icon;
                   const active = activeSection === section.id;
@@ -1199,101 +954,92 @@ export function SettingsPanel({ isOpen, onClose }: SettingsModalProps) {
                       key={section.id}
                       type="button"
                       onClick={() => setActiveSection(section.id)}
-                      className={`flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-left transition ${
-                        active ? "bg-white text-zinc-900 shadow-[0_1px_3px_rgba(0,0,0,0.06)]" : "text-zinc-500 hover:bg-white/60 hover:text-zinc-700"
+                      className={`group flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors min-w-0 text-left ${
+                        active ? "bg-zinc-100 text-zinc-900 font-medium" : "text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900"
                       }`}
                     >
-                      <span className={`inline-flex h-8 w-8 items-center justify-center rounded-lg ${active ? "bg-zinc-900 text-white" : "bg-zinc-100 text-zinc-400"}`}>
+                      <span className={`inline-flex items-center justify-center shrink-0 ${active ? "text-zinc-900" : "text-zinc-500 group-hover:text-zinc-600"}`}>
                         <Icon className="h-4 w-4" />
                       </span>
-                      <span>
-                        <span className="block text-[13px] font-medium">{section.label}</span>
-                        <span className="block text-[11px] text-zinc-400">{section.description}</span>
-                      </span>
+                      <span className="truncate leading-none">{section.label}</span>
                     </button>
                   );
                 })}
               </div>
-              <div className="flex flex-wrap gap-1.5 border-t border-zinc-100 px-4 py-3">
-                <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium ${isLocalRuntime ? "bg-emerald-50 text-emerald-600" : "bg-sky-50 text-sky-600"}`}>
-                  <span className={`h-1.5 w-1.5 rounded-full ${isLocalRuntime ? "bg-emerald-500" : "bg-sky-500"}`} />
-                  {isLocalRuntime ? "本地模式" : "云端模式"}
-                </span>
-                <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium ${draft.useMock ? "bg-amber-50 text-amber-600" : "bg-emerald-50 text-emerald-600"}`}>
-                  <span className={`h-1.5 w-1.5 rounded-full ${draft.useMock ? "bg-amber-500" : "bg-emerald-500"}`} />
-                  {draft.useMock ? "Mock" : "真实后端"}
-                </span>
+              
+              <div className="p-4 mt-auto mb-4 mx-3 rounded-xl bg-zinc-100/50 border border-zinc-200/50">
+                <div className="flex flex-col gap-2">
+                  <span className="text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-1">环境状态</span>
+                  <div className="flex items-center gap-2">
+                    <span className={`relative flex h-2 w-2`}>
+                      <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${isLocalRuntime ? "bg-emerald-400" : "bg-sky-400"}`}></span>
+                      <span className={`relative inline-flex rounded-full h-2 w-2 ${isLocalRuntime ? "bg-emerald-500" : "bg-sky-500"}`}></span>
+                    </span>
+                    <span className="text-[13px] font-medium text-zinc-700">{isLocalRuntime ? "本地网络直连" : "云端托管运行"}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className={`h-2 w-2 rounded-sm ${draft.useMock ? "bg-amber-500" : "bg-zinc-300"}`} />
+                    <span className="text-[13px] font-medium text-zinc-700">{draft.useMock ? "Mock数据开启" : "系统真实数据"}</span>
+                  </div>
+                </div>
               </div>
             </nav>
 
-            <div className="flex min-w-0 flex-1 flex-col">
-              <div className="flex items-center justify-between border-b border-zinc-100 px-6 py-4">
+            <div className="flex min-w-0 flex-1 flex-col bg-white">
+              <div className="flex items-center justify-between px-8 py-6 pb-4">
                 <div>
-                  <h3 className="text-[16px] font-bold text-zinc-900">{activeSectionConfig.label}</h3>
-                  <p className="mt-0.5 text-[12px] text-zinc-400">{activeSectionConfig.description}</p>
+                  <h3 className="text-xl font-bold text-zinc-900">{activeSectionConfig.label}</h3>
+                  <p className="mt-1 text-[13px] text-zinc-500">{activeSectionConfig.description}</p>
                 </div>
-                <div className="flex items-center gap-2">
-                  {isLocalRuntime ? (
-                    <button
-                      type="button"
-                      onClick={() => setShowAdvanced((prev) => !prev)}
-                      className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-[12px] font-medium transition ${
-                        showAdvanced
-                          ? "border-zinc-900 bg-zinc-900 text-white hover:bg-zinc-800"
-                          : "border-zinc-200 bg-white text-zinc-500 hover:border-zinc-300 hover:text-zinc-700"
-                      }`}
-                    >
-                      <SlidersHorizontal className="h-3.5 w-3.5" />
-                      {showAdvanced ? "收起高级" : "显示高级"}
-                    </button>
-                  ) : null}
+                <div className="flex items-center gap-3">
                   <button
                     type="button"
                     onClick={onClose}
-                    className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-zinc-400 transition hover:bg-zinc-100 hover:text-zinc-600"
+                    className="inline-flex h-8 w-8 items-center justify-center rounded-full text-zinc-400 transition hover:bg-zinc-100 hover:text-zinc-600"
                     aria-label="关闭设置"
                   >
-                    <X className="h-4 w-4" />
+                    <X className="h-5 w-5" />
                   </button>
                 </div>
               </div>
 
-              <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
+              <div className="min-h-0 flex-1 overflow-y-auto px-8 py-2">
                 <AnimatePresence mode="wait">
-                  <motion.div key={activeSection} variants={contentVariants} initial="initial" animate="animate" exit="exit">
+                  <motion.div key={activeSection} variants={contentVariants} initial="initial" animate="animate" exit="exit" className="pb-8">
                     {renderers[activeSection]()}
                   </motion.div>
                 </AnimatePresence>
               </div>
 
-              <div className="flex items-center justify-between border-t border-zinc-100 bg-zinc-50/50 px-6 py-3">
-                <div className="text-[12px] text-zinc-400">
+              <div className="flex items-center justify-between border-t border-zinc-100 bg-white px-8 py-4">
+                <div className="text-[13px] font-medium">
                   <AnimatePresence mode="wait">
                     {saveState === "saving" ? (
-                      <motion.span key="saving" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="flex items-center gap-1.5 text-zinc-600">
-                        <Loader2 className="h-3.5 w-3.5 animate-spin" /> 正在保存
+                      <motion.span key="saving" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="flex items-center gap-2 text-zinc-600">
+                        <Loader2 className="h-4 w-4 animate-spin" /> 保存配置中...
                       </motion.span>
                     ) : saveState === "error" ? (
-                      <motion.span key="error" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="flex items-center gap-1.5 text-red-600">
-                        <RefreshCcw className="h-3.5 w-3.5" /> {saveError ?? "保存失败"}
+                      <motion.span key="error" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="flex items-center gap-2 text-red-600">
+                        <RefreshCcw className="h-4 w-4" /> {saveError ?? "保存失败"}
                       </motion.span>
                     ) : saveState === "saved" ? (
-                      <motion.span key="saved" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="flex items-center gap-1.5 text-emerald-600">
-                        <CheckCircle2 className="h-3.5 w-3.5" /> 已保存
+                      <motion.span key="saved" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="flex items-center gap-2 text-emerald-600">
+                        <CheckCircle2 className="h-4 w-4" /> 配置已生效
                       </motion.span>
                     ) : hasChanges ? (
-                      <motion.span key="changed" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="flex items-center gap-1.5 text-amber-600">
-                        <RefreshCcw className="h-3.5 w-3.5" /> 有未保存修改
+                      <motion.span key="changed" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="flex items-center gap-2 text-amber-600">
+                        <span className="relative flex h-2.5 w-2.5"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span><span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-amber-500"></span></span>
+                        发现未保存更改
                       </motion.span>
                     ) : (
-                      <motion.span key="synced" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="flex items-center gap-1.5">
-                        <CheckCircle2 className="h-3.5 w-3.5" /> 已同步
+                      <motion.span key="synced" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="flex items-center gap-2 text-zinc-400">
+                        设置已同步
                       </motion.span>
                     )}
                   </AnimatePresence>
                 </div>
 
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-3">
                   {isLocalRuntime ? (
                     <>
                       <button
@@ -1304,21 +1050,21 @@ export function SettingsPanel({ isOpen, onClose }: SettingsModalProps) {
                           setEnvDraft(savedEnvDraft);
                           setSaveError(null);
                         }}
-                        className="rounded-lg px-3 py-1.5 text-[12px] font-medium text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-700"
+                        className="inline-flex h-9 items-center justify-center rounded-md px-4 py-2 text-sm font-medium text-zinc-600 transition-colors hover:bg-zinc-100 hover:text-zinc-900"
                       >
-                        恢复默认
+                        撤销恢复
                       </button>
                       <button
                         type="button"
                         onClick={saveSettings}
                         disabled={!hasChanges || saveState === "saving"}
-                        className={`rounded-lg px-4 py-1.5 text-[12px] font-semibold transition ${
+                        className={`inline-flex h-9 items-center justify-center rounded-md px-4 py-2 text-sm font-medium shadow transition-colors ${
                           hasChanges && saveState !== "saving"
-                            ? "bg-zinc-900 text-white hover:bg-zinc-800"
-                            : "cursor-not-allowed bg-zinc-100 text-zinc-300"
+                            ? "bg-zinc-900 text-zinc-50 hover:bg-zinc-900/90"
+                            : "cursor-not-allowed bg-zinc-100 text-zinc-400"
                         }`}
                       >
-                        {saveState === "saving" ? "保存中" : "保存设置"}
+                        {saveState === "saving" ? "应用中..." : "保存更改"}
                       </button>
                     </>
                   ) : null}

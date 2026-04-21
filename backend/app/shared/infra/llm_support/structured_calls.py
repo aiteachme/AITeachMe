@@ -19,16 +19,21 @@ from app.shared.infra.observability.trace import langsmith_trace
 from .litellm_loader import load_litellm
 from .common import (
     build_completion_context,
-    build_completion_kwargs,
     extract_usage,
     get_semaphore,
     logger,
+    log_attempt_cancelled,
+    log_attempt_failed,
+    log_attempt_started,
+    log_attempt_timeout,
+    prepare_completion_attempt,
     raise_last_error,
     request_timeout_s,
+    sleep_before_retry,
     trace_log_fields,
     track_call,
 )
-from .observability import _end_langsmith_trace, _langsmith_trace_kwargs, _resolved_trace_model
+from .observability import _end_langsmith_trace, _langsmith_trace_kwargs
 from .structured import (
     _build_structured_fallback_messages,
     _parse_structured_response_text,
@@ -73,24 +78,21 @@ async def acompletion_structured(
 
     async with get_semaphore():
         for attempt in range(1, context.profile.max_retries + 1):
-            start = time.monotonic()
-            call_kwargs = build_completion_kwargs(
+            prepared = prepare_completion_attempt(
                 context=context,
                 messages=messages,
                 extra_kwargs=kwargs,
-            )
-            call_model, provider, tracked_model = _resolved_trace_model(
-                call_kwargs,
-                context.model,
-            )
-            logger.info(
-                "llm_structured_started",
                 attempt=attempt,
-                response_model=response_model.__name__,
-                model=tracked_model,
-                task_type=context.task_type.value,
-                timeout_s=context.profile.timeout_s,
-                mode="instructor" if use_instructor else "json_prompt",
+            )
+            tracked_model = prepared.tracked_model
+            log_attempt_started(
+                "llm_structured_started",
+                attempt=prepared,
+                context=context,
+                extra={
+                    "response_model": response_model.__name__,
+                    "mode": "instructor" if use_instructor else "json_prompt",
+                },
             )
             try:
                 prompt_t = 0
@@ -100,19 +102,19 @@ async def acompletion_structured(
                 trace_messages = messages
                 if not use_instructor:
                     trace_messages = _build_structured_fallback_messages(response_model, messages)
-                    call_kwargs["messages"] = trace_messages
+                    prepared.call_kwargs["messages"] = trace_messages
                 with langsmith_trace(
                     name="LLM：结构化生成",
                     run_type="llm",
                     **_langsmith_trace_kwargs(
                         task_type=context.task_type,
-                        call_model=call_model,
-                        provider=provider,
+                        call_model=prepared.call_model,
+                        provider=prepared.provider,
                         model_name=tracked_model,
                         mode="structured",
                         messages=trace_messages,
-                        call_kwargs=call_kwargs,
-                        attempt=attempt,
+                        call_kwargs=prepared.call_kwargs,
+                        attempt=prepared.attempt,
                     ),
                 ) as trace_run:
                     if use_instructor:
@@ -122,7 +124,7 @@ async def acompletion_structured(
                                 client.chat.completions.create(
                                     response_model=response_model,
                                     max_retries=0,
-                                    **call_kwargs,
+                                    **prepared.call_kwargs,
                                 ),
                                 timeout=request_timeout_s(context.profile.timeout_s),
                             )
@@ -135,7 +137,7 @@ async def acompletion_structured(
                                 **trace_log_fields(),
                             )
                             raw_response = await asyncio.wait_for(
-                                litellm.acompletion(**call_kwargs),
+                                litellm.acompletion(**prepared.call_kwargs),
                                 timeout=request_timeout_s(context.profile.timeout_s),
                             )
                             prompt_t, completion_t, total_t = extract_usage(raw_response)
@@ -149,7 +151,7 @@ async def acompletion_structured(
                             result = _parse_structured_response_text(response_model, raw_text)
                     else:
                         response = await asyncio.wait_for(
-                            litellm.acompletion(**call_kwargs),
+                            litellm.acompletion(**prepared.call_kwargs),
                             timeout=request_timeout_s(context.profile.timeout_s),
                         )
                         prompt_t, completion_t, total_t = extract_usage(response)
@@ -166,8 +168,8 @@ async def acompletion_structured(
                     )
                 logger.info(
                     "llm_structured_complete",
-                    attempt=attempt,
-                    elapsed_s=round(time.monotonic() - start, 2),
+                    attempt=prepared.attempt,
+                    elapsed_s=round(time.monotonic() - prepared.started_at, 2),
                     response_model=response_model.__name__,
                     model=tracked_model,
                     task_type=context.task_type.value,
@@ -185,28 +187,25 @@ async def acompletion_structured(
                 return result
             except asyncio.TimeoutError:
                 last_error = LLMTimeoutError(timeout_s=context.profile.timeout_s)
-                logger.warning(
+                log_attempt_timeout(
                     "llm_structured_timeout",
-                    attempt=attempt,
-                    elapsed_s=round(time.monotonic() - start, 2),
-                    response_model=response_model.__name__,
-                    model=tracked_model,
-                    task_type=context.task_type.value,
-                    timeout_s=context.profile.timeout_s,
-                    mode="instructor" if use_instructor else "json_prompt",
-                    **trace_log_fields(),
+                    attempt=prepared,
+                    context=context,
+                    extra={
+                        "response_model": response_model.__name__,
+                        "mode": "instructor" if use_instructor else "json_prompt",
+                    },
                 )
             except asyncio.CancelledError:
                 last_error = asyncio.CancelledError()
-                logger.info(
+                log_attempt_cancelled(
                     "llm_structured_cancelled",
-                    attempt=attempt,
-                    elapsed_s=round(time.monotonic() - start, 2),
-                    response_model=response_model.__name__,
-                    model=tracked_model,
-                    task_type=context.task_type.value,
-                    mode="instructor" if use_instructor else "json_prompt",
-                    **trace_log_fields(),
+                    attempt=prepared,
+                    context=context,
+                    extra={
+                        "response_model": response_model.__name__,
+                        "mode": "instructor" if use_instructor else "json_prompt",
+                    },
                 )
                 track_call(
                     task_type=context.task_type,
@@ -218,20 +217,19 @@ async def acompletion_structured(
                 raise
             except Exception as exc:
                 last_error = exc
-                logger.warning(
+                log_attempt_failed(
                     "llm_structured_failed",
-                    attempt=attempt,
-                    elapsed_s=round(time.monotonic() - start, 2),
-                    response_model=response_model.__name__,
-                    model=tracked_model,
-                    task_type=context.task_type.value,
-                    error=str(exc),
-                    mode="instructor" if use_instructor else "json_prompt",
-                    **trace_log_fields(),
+                    attempt=prepared,
+                    context=context,
+                    error=exc,
+                    extra={
+                        "response_model": response_model.__name__,
+                        "mode": "instructor" if use_instructor else "json_prompt",
+                    },
                 )
 
             if attempt < context.profile.max_retries:
-                await asyncio.sleep(attempt * 2)
+                await sleep_before_retry(attempt)
 
     track_call(
         task_type=context.task_type,

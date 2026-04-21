@@ -181,7 +181,7 @@ async def _resolve_primary_entity(
         f"{node.canonical_name}: {_get_current_summary(session, node)}"
         for node in same_type_nodes
     ]
-    existing_embeddings = await aembed_texts(existing_texts)
+    existing_embeddings = await aembed_texts(existing_texts, soft_fail=True)
 
     best_similarity = 0.0
     best_node: KnowledgeUnit | None = None
@@ -288,7 +288,7 @@ async def _resolve_secondary_entity(
         f"{sibling.canonical_name}: {_get_current_summary(session, sibling)}"
         for sibling in siblings
     ]
-    sibling_embeddings = await aembed_texts(sibling_texts)
+    sibling_embeddings = await aembed_texts(sibling_texts, soft_fail=True)
 
     best_similarity = 0.0
     best_sibling: KnowledgeUnit | None = None
@@ -522,7 +522,6 @@ __all__ = [
     "resolve_edge",
     "resolve_node",
 ]
-
 
 
 

@@ -68,7 +68,7 @@ async def infer_docgen_intent(
                 docgen_history_brief=docgen_history_brief,
             ),
             task_type=TaskType.CLASSIFY,
-            model="primary",
+            model="reason",
             response_model=DocGenIntentProfile,
             temperature=0.1,
             max_tokens=1200,

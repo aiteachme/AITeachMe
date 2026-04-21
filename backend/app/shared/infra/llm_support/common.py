@@ -42,6 +42,18 @@ class CompletionContext:
         return self.call_purpose
 
 
+@dataclass(frozen=True)
+class CompletionAttempt:
+    """Prepared provider call data for one retry attempt."""
+
+    attempt: int
+    started_at: float
+    call_kwargs: dict[str, Any]
+    call_model: str
+    provider: str
+    tracked_model: str
+
+
 def normalize_model_selector(value: str | None) -> str | None:
     """Normalize one settings model key or concrete provider model name."""
 
@@ -215,6 +227,129 @@ def build_completion_kwargs(
         completion_kwargs["max_tokens"] = context.profile.max_tokens
     completion_kwargs.update(remaining_kwargs)
     return completion_kwargs
+
+
+def prepare_completion_attempt(
+    *,
+    context: CompletionContext,
+    messages: list[ChatMessage],
+    extra_kwargs: Mapping[str, Any],
+    attempt: int,
+    override_kwargs: Mapping[str, Any] | None = None,
+) -> CompletionAttempt:
+    """Build one attempt payload plus resolved trace model metadata."""
+
+    from app.shared.infra.llm_support.observability import _resolved_trace_model
+
+    call_kwargs = build_completion_kwargs(
+        context=context,
+        messages=messages,
+        extra_kwargs=extra_kwargs,
+    )
+    if override_kwargs:
+        call_kwargs.update(dict(override_kwargs))
+    call_model, provider, tracked_model = _resolved_trace_model(
+        call_kwargs,
+        context.model,
+    )
+    return CompletionAttempt(
+        attempt=attempt,
+        started_at=time.monotonic(),
+        call_kwargs=call_kwargs,
+        call_model=call_model,
+        provider=provider,
+        tracked_model=tracked_model,
+    )
+
+
+def log_attempt_started(
+    event: str,
+    *,
+    attempt: CompletionAttempt,
+    context: CompletionContext,
+    extra: Mapping[str, Any] | None = None,
+) -> None:
+    """Emit one standard attempt-start log line."""
+
+    logger.info(
+        event,
+        attempt=attempt.attempt,
+        model=attempt.tracked_model,
+        task_type=context.task_type.value,
+        timeout_s=context.profile.timeout_s,
+        **dict(extra or {}),
+    )
+
+
+def log_attempt_timeout(
+    event: str,
+    *,
+    attempt: CompletionAttempt,
+    context: CompletionContext,
+    extra: Mapping[str, Any] | None = None,
+) -> None:
+    """Emit one standard timeout log line."""
+
+    logger.warning(
+        event,
+        attempt=attempt.attempt,
+        elapsed_s=round(time.monotonic() - attempt.started_at, 2),
+        model=attempt.tracked_model,
+        task_type=context.task_type.value,
+        timeout_s=context.profile.timeout_s,
+        **dict(extra or {}),
+        **trace_log_fields(),
+    )
+
+
+def log_attempt_cancelled(
+    event: str,
+    *,
+    attempt: CompletionAttempt,
+    context: CompletionContext,
+    extra: Mapping[str, Any] | None = None,
+) -> None:
+    """Emit one standard cancelled log line."""
+
+    logger.info(
+        event,
+        attempt=attempt.attempt,
+        elapsed_s=round(time.monotonic() - attempt.started_at, 2),
+        model=attempt.tracked_model,
+        task_type=context.task_type.value,
+        **dict(extra or {}),
+        **trace_log_fields(),
+    )
+
+
+def log_attempt_failed(
+    event: str,
+    *,
+    attempt: CompletionAttempt,
+    context: CompletionContext,
+    error: Exception,
+    extra: Mapping[str, Any] | None = None,
+    level: str = "warning",
+) -> None:
+    """Emit one standard failure log line."""
+
+    log_method = getattr(logger, level, logger.warning)
+    log_method(
+        event,
+        attempt=attempt.attempt,
+        elapsed_s=round(time.monotonic() - attempt.started_at, 2),
+        model=attempt.tracked_model,
+        task_type=context.task_type.value,
+        error=str(error),
+        **dict(extra or {}),
+        **trace_log_fields(),
+    )
+
+
+async def sleep_before_retry(attempt: int) -> None:
+    """Apply the current linear retry backoff."""
+
+    await asyncio.sleep(attempt * 2)
 
 
 def track_call(

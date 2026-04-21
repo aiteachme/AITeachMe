@@ -103,9 +103,16 @@ DEFAULT_SETTINGS_VALUES: dict[str, Any] = {
         "langsmith_capture_inputs": None,
         "langsmith_capture_outputs": None,
         "langsmith_max_text_chars": 2000,
-        "llm_observability_max_records": 5000,
+        "llm_observability_max_records": 100000,
     },
 }
+
+
+
+
+
+
+你现在再来仔细看一下digest/docgen，来详细思考规划一下docgen的可视化进程的文档！具体到底是要怎样展示，展示出什么，如何确保让用户始终都有内容能够看到？？并且是SSE的形式，尽可能优化那个样式，再来整理一下详细的规划，浓缩一下文档，整理出两份docgen过程可视化的文档把！！！
 
 
 def get_default_settings_values() -> dict[str, Any]:

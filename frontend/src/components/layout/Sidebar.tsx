@@ -29,6 +29,7 @@ import { apiClient, getApiErrorMessage } from "../../api/client";
 import { unwrapOrvalResponse } from "../../lib/unwrapOrvalResponse";
 import { cn } from "../../lib/utils";
 import { SubjectDeleteConfirmModal } from "./SubjectDeleteConfirmModal";
+
 import { Button } from "../ui/Button";
 
 const MODULES = [
@@ -429,8 +430,8 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
           })}
         </div>
 
-        {/* Bottom settings button */}
-        <div className="border-t border-slate-100 p-2.5">
+        {/* Bottom actions */}
+        <div className="border-t border-slate-100 p-2.5 space-y-0.5">
           <button
             type="button"
             onClick={onOpenSettings}

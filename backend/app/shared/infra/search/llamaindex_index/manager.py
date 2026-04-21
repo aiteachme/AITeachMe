@@ -354,7 +354,7 @@ async def retrieve_subject_chunks(
     if embedding is None:
         from app.shared.infra.embedding import aembed_texts
 
-        vectors = await aembed_texts([normalized_query])
+        vectors = await aembed_texts([normalized_query], soft_fail=True)
         embedding = vectors[0] if vectors else []
 
     if is_cloud_mode():
