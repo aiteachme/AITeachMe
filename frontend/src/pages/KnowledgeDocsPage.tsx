@@ -2380,32 +2380,17 @@ export function KnowledgeDocsPage() {
 
   if (isBuildActive || isWaitingForRequestedBuild || showDocGeneratingState) {
     return (
-      <div className="relative flex min-h-full w-full flex-1 overflow-y-auto bg-zinc-50 px-4 py-6 md:px-8 lg:px-14">
-        <div className="mx-auto w-full max-w-[1120px] rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm md:p-6">
-          <div className="mb-5 flex flex-col gap-3 border-b border-zinc-100 pb-5 md:flex-row md:items-center md:justify-between">
-            <div>
-              <div className="inline-flex items-center gap-2 rounded-full border border-zinc-200 bg-zinc-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-widest text-zinc-600">
-                <Sparkles className="h-3.5 w-3.5" />
-                知识构建
-              </div>
-              <h1 className="mt-3 text-xl font-semibold text-zinc-950">知识库正在构建中</h1>
-              <p className="mt-1 max-w-2xl text-sm leading-6 text-zinc-500">
-                构建完成前暂时隐藏目录、划词问答和 AI 侧栏，避免用旧文档上下文提问。进度会随后台状态自动恢复。
-              </p>
-            </div>
-            <div className="text-sm font-semibold text-zinc-700">{Math.round(buildProgress)}%</div>
-          </div>
-          <BuildView
-            isFetching={docMarkdownQuery.isFetching}
-            progress={buildProgress}
-            statusText={buildPreview?.current_stage_description?.trim() || buildStatusText}
-            buildPreview={buildPreview}
-            buildMetrics={buildMetrics}
-            sourceFiles={sourceFiles}
-            sourceFilesFetching={sourceFilesFetching}
-            buildStage={buildMeta?.stage}
-          />
-        </div>
+      <div className="relative flex min-h-[100dvh] w-full flex-col overflow-x-hidden bg-transparent px-4 py-16 md:px-8">
+        <BuildView
+          isFetching={docMarkdownQuery.isFetching}
+          progress={buildProgress}
+          statusText={buildPreview?.current_stage_description?.trim() || buildStatusText}
+          buildPreview={buildPreview}
+          buildMetrics={buildMetrics}
+          sourceFiles={sourceFiles}
+          sourceFilesFetching={sourceFilesFetching}
+          buildStage={buildMeta?.stage}
+        />
       </div>
     );
   }
