@@ -283,26 +283,41 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
         </div>
 
         <div className={cn("space-y-2", effectiveCollapsed ? "px-0 py-3" : "p-3")}>
-          <Button
-            variant="outline"
-            className={cn(
-              effectiveCollapsed
-                ? "mx-auto h-7 w-7 min-w-0 rounded-md px-0 shadow-none"
-                : "w-full justify-start",
-            )}
-            onClick={() => {
-              setSubjectActionError(undefined);
-              setOpenMenuId(null);
-              setIsMobileOpen(false);
-              navigate("/", {
-                state: { newEntryAt: Date.now() },
-              });
-            }}
-            title={effectiveCollapsed ? "新建学科" : undefined}
-          >
-            <Plus className={cn("shrink-0", effectiveCollapsed ? "h-3.5 w-3.5" : "h-4 w-4")} />
-            {!effectiveCollapsed ? <span className="ml-2">新建学科</span> : null}
-          </Button>
+          {effectiveCollapsed ? (
+            <div className="flex justify-center">
+              <button
+                type="button"
+                onClick={() => {
+                  setSubjectActionError(undefined);
+                  setOpenMenuId(null);
+                  setIsMobileOpen(false);
+                  navigate("/", {
+                    state: { newEntryAt: Date.now() },
+                  });
+                }}
+                title="新建学科"
+                className="flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-700 shadow-sm transition-all hover:border-slate-300 hover:bg-slate-50 hover:text-slate-900"
+              >
+                <Plus className="h-4 w-4 shrink-0" />
+              </button>
+            </div>
+          ) : (
+            <Button
+              variant="outline"
+              className="w-full justify-start"
+              onClick={() => {
+                setSubjectActionError(undefined);
+                setOpenMenuId(null);
+                setIsMobileOpen(false);
+                navigate("/", {
+                  state: { newEntryAt: Date.now() },
+                });
+              }}
+            >
+              <Plus className="h-4 w-4 shrink-0" />
+              <span className="ml-2">新建学科</span>
+            </Button>
+          )}
 
           {!effectiveCollapsed && subjectActionError ? (
             <p className="px-1 text-xs text-red-500">{subjectActionError}</p>
