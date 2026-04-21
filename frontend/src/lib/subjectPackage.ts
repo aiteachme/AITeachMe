@@ -1,17 +1,26 @@
+import { buildApiUrl, getDeviceKey } from "../api/client";
+
 export async function downloadSubjectPackage(subject: string): Promise<void> {
   const token = localStorage.getItem("token");
-  const base = import.meta.env.VITE_API_URL ?? "";
-  const url = `${base}/api/v1/subjects/${encodeURIComponent(subject)}/export`;
+  const url = buildApiUrl(`/api/v1/subjects/${encodeURIComponent(subject)}/export`);
   const response = await fetch(url, {
     method: "POST",
+    credentials: "include",
     headers: {
       "Content-Type": "application/json",
+      "X-Device-Key": getDeviceKey(),
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
     body: JSON.stringify({}),
   });
   if (!response.ok) {
-    throw new Error(`导出失败 (${response.status})`);
+    const rawText = await response.text();
+    try {
+      const payload = JSON.parse(rawText) as { detail?: string; message?: string };
+      throw new Error(payload.detail || payload.message || `导出失败 (${response.status})`);
+    } catch {
+      throw new Error(rawText.trim() || `导出失败 (${response.status})`);
+    }
   }
 
   const blob = await response.blob();
