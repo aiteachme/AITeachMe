@@ -878,7 +878,20 @@ export function HomePage() {
           className="flex items-center justify-center gap-1 mb-2"
         >
           <HeroAnimation />
-          <h1 className="text-4xl md:text-5xl font-semibold text-zinc-900 tracking-tight">AI 赛博私教</h1>
+          <motion.div
+            initial={{ opacity: 0, x: -10, filter: "blur(8px)" }}
+            animate={{ opacity: 1, x: 0, filter: "blur(0px)" }}
+            transition={{ duration: 1, ease: "easeOut", delay: 0.2 }}
+          >
+            <motion.h1 
+              className="text-6xl md:text-7xl text-transparent bg-clip-text bg-gradient-to-r from-blue-500 via-violet-500 to-fuchsia-500 pb-2 drop-shadow-sm animate-text-gradient"
+              style={{ fontFamily: "'Edwardian Script ITC', 'Vivaldi', 'Vladimir Script', 'Brush Script MT', 'Dancing Script', 'Pacifico', cursive", lineHeight: "1.2", paddingRight: "0.1em" }}
+              animate={{ y: [0, -5, 0] }}
+              transition={{ repeat: Infinity, duration: 3, ease: "easeInOut" }}
+            >
+              AITeachMe
+            </motion.h1>
+          </motion.div>
         </motion.div>
 
         {/* ── Slogan ── */}

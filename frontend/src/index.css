@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+@import url('https://fonts.loli.net/css2?family=Inter:wght@300;400;500;600;700&family=Dancing+Script:wght@700&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -169,4 +169,16 @@
 
 .animate-blink {
   animation: blink 1s step-end infinite;
+}
+
+/* ----------- Text Gradient Animation ----------- */
+@keyframes text-gradient {
+  to {
+    background-position: 200% center;
+  }
+}
+
+.animate-text-gradient {
+  animation: text-gradient 3s linear infinite;
+  background-size: 200% auto;
 }
