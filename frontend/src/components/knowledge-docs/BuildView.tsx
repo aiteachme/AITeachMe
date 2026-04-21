@@ -287,19 +287,19 @@ export function BuildView({
                     </h3>
                   </div>
                   
-                  <div className="font-mono text-[12px] space-y-1 bg-[#1A1B26] text-zinc-300 p-4 rounded-xl overflow-x-auto shadow-inner min-h-[400px]">
+                  <div className="font-mono text-[12px] space-y-1 bg-[#FAFAFA] border border-[#E5E7EB] text-zinc-800 p-4 rounded-xl overflow-x-auto shadow-sm min-h-[400px]">
                      {events.map((event, index) => {
                        const stageLabel = EVENT_STAGE_LABELS[(event.stage ?? "").trim()] ?? (event.stage?.trim() || "EVENT");
                        return (
-                         <div key={`${event.stage}-${index}`} className="flex gap-3 hover:bg-white/5 px-2 py-1 rounded transition-colors group">
-                           <span className="text-zinc-500 shrink-0 select-none w-12">{event.created_at ? formatBuildEventTime(event.created_at) : ""}</span>
-                           <span className="text-sky-400 shrink-0 w-[100px] truncate select-none">[{stageLabel}]</span>
-                           <span className="text-zinc-100 whitespace-pre-wrap flex-1 leading-relaxed">{event.summary}</span>
+                         <div key={`${event.stage}-${index}`} className="flex gap-3 hover:bg-white px-2 py-1 rounded transition-colors group">
+                           <span className="text-zinc-400 shrink-0 select-none w-12">{event.created_at ? formatBuildEventTime(event.created_at) : ""}</span>
+                           <span className="text-blue-600 font-medium shrink-0 w-[100px] truncate select-none">[{stageLabel}]</span>
+                           <span className="text-zinc-800 whitespace-pre-wrap flex-1 leading-relaxed">{event.summary}</span>
                          </div>
                        );
                      })}
                      {events.length === 0 && (
-                        <div className="text-zinc-500 italic py-2 px-2 animate-pulse">Waiting for system events...</div>
+                        <div className="text-zinc-400 italic py-2 px-2 animate-pulse">Waiting for system events...</div>
                      )}
                   </div>
                 </div>
