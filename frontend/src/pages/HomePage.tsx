@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useEffect } from "react";
+import { useState, useRef, useCallback, useEffect, useMemo } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
@@ -31,7 +31,7 @@ import { unwrapOrvalResponse } from "../lib/unwrapOrvalResponse";
 import { getApiErrorMessage } from "../api/client";
 import { cn } from "../lib/utils";
 import { downloadSubjectPackage } from "../lib/subjectPackage";
-import { resolveFileProcessingLabel, resolveFileProgressScore } from "../components/knowledge-docs";
+import { resolveFileProcessingLabel } from "../components/knowledge-docs";
 import { HeroAnimation } from "../components/ui/HeroAnimation";
 import { FullPageDropOverlay } from "../components/ui/FullPageDropOverlay";
 import type { FileRecord, FilesData, FilesUploadData } from "../types/files";
@@ -764,6 +764,38 @@ export function HomePage() {
     (name) => !uploadedFiles.some((file) => file.filename === name),
   );
   const hasEntryFiles = uploadedFiles.length > 0 || optimisticUploadingFiles.length > 0;
+  const entryFilesStatusText = useMemo(() => {
+    if (isCreatingDraftSubject) {
+      return "正在创建学习空间，随后会立即上传资料。";
+    }
+    if (isUploadingFiles) {
+      return "资料正在上传，上传完成后会继续后台解析；文件会保留在这里，除非你手动移除。";
+    }
+    if (!hasEntryFiles) {
+      return "";
+    }
+    const readyCount = entryFilesData?.ready_count ?? uploadedFiles.filter((file) => file.markdown_ready).length;
+    const processingCount =
+      entryFilesData?.processing_count ??
+      uploadedFiles.filter((file) => !file.markdown_ready && !file.error_message?.trim()).length;
+    const failedCount =
+      entryFilesData?.failed_count ??
+      uploadedFiles.filter((file) => Boolean(file.error_message?.trim()) || file.status === "failed").length;
+
+    if (processingCount > 0) {
+      return `${processingCount} 份资料正在解析中；已上传的资料会持续保留，完成后会自动转为可用状态。`;
+    }
+    if (readyCount > 0 && failedCount === 0) {
+      return `${readyCount} 份资料已就绪，可以直接开始规划。资料会保留，除非你手动移除。`;
+    }
+    if (readyCount > 0 && failedCount > 0) {
+      return `${readyCount} 份资料已就绪，${failedCount} 份资料处理失败；失败文件可删掉后重新上传。`;
+    }
+    if (failedCount > 0) {
+      return `${failedCount} 份资料处理失败；你可以移除后重新上传。`;
+    }
+    return "资料已上传，会继续在后台解析；文件会保留在这里，除非你手动移除。";
+  }, [entryFilesData?.failed_count, entryFilesData?.processing_count, entryFilesData?.ready_count, hasEntryFiles, isCreatingDraftSubject, isUploadingFiles, uploadedFiles]);
   const canGenerate = prompt.trim().length > 0 || hasEntryFiles;
 
   const handleGenerate = async () => {
@@ -828,14 +860,14 @@ export function HomePage() {
       }}
       disabled={isWorking}
     />
-    <div className="relative flex min-h-[100dvh] w-full flex-col items-center overflow-x-hidden bg-transparent p-4 pt-20 md:p-8 md:pt-28 selection:bg-zinc-200">
+    <div className="relative flex min-h-[100dvh] w-full flex-col items-center overflow-x-hidden bg-transparent p-4 pt-24 md:p-8 md:pt-32 selection:bg-zinc-200">
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.6, ease: "easeOut" }}
         className={cn(
           "relative z-20 w-full max-w-[800px] flex flex-col items-center",
-          subjects.length === 0 ? "justify-center min-h-[calc(100dvh-10rem)] translate-y-[5vh] md:translate-y-[7vh]" : "mt-[8vh]"
+          subjects.length === 0 ? "justify-center min-h-[calc(100dvh-9rem)] translate-y-[8vh] md:translate-y-[11vh]" : "mt-[10vh]"
         )}
       >
         {/* ── Logo & Title ── */}
@@ -866,76 +898,45 @@ export function HomePage() {
           transition={{ delay: 0.35 }}
           className="w-full"
         >
-          <div className="w-full rounded-2xl border border-zinc-200/60 bg-white shadow-[0_2px_8px_rgba(0,0,0,0.04)] transition-all focus-within:border-zinc-300 focus-within:shadow-[0_4px_16px_rgba(0,0,0,0.06)] focus-within:ring-4 focus-within:ring-zinc-900/5">
-            <div className="relative z-20 flex items-start justify-between px-4 pt-4">
-              <span className="text-[13px] font-semibold text-zinc-700 tracking-tight">
-                你好，学习者 👋
-              </span>
-            </div>
-
+          <div className="w-full rounded-[30px] border border-zinc-200/70 bg-white/96 shadow-[0_18px_50px_-34px_rgba(24,24,27,0.18)] transition-all focus-within:border-zinc-300 focus-within:shadow-[0_24px_70px_-42px_rgba(24,24,27,0.24)] focus-within:ring-4 focus-within:ring-zinc-900/5">
             <textarea
               ref={textareaRef}
-              placeholder="描述你的学习目标（可选），例如：期末考试复习重点、考研知识梳理、Python 核心编程入门..."
-              className="w-full min-h-[120px] max-h-[250px] resize-none border-0 bg-transparent px-4 pb-3 pt-4 text-[14px] leading-[1.8] text-zinc-800 focus:outline-none placeholder:text-zinc-400"
+              placeholder="直接输入学习目标，也可以先上传资料再一起规划"
+              className="w-full min-h-[108px] max-h-[240px] resize-none border-0 bg-transparent px-6 pb-4 pt-7 text-[15px] leading-[1.9] text-zinc-800 focus:outline-none placeholder:text-zinc-400"
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
               onKeyDown={handleKeyDown}
               rows={3}
-              disabled={isWorking}
+              disabled={isCreatingDraftSubject}
             />
 
-            <div className="px-3 pb-3 flex flex-col gap-2">
+            <div className="mx-5 h-px bg-zinc-100" />
+
+            <div className="px-5 pb-4 pt-3 flex flex-col gap-3">
               {(hasEntryFiles || isUploadingFiles) && (
-                <div className="space-y-2 border-t border-zinc-100 px-1 py-3">
+                <div className="space-y-2">
+                  <div className="flex flex-wrap gap-2">
                   {uploadedFiles.map((file) => {
                     const meta = homeFileStatusMeta(file);
-                    const progress = resolveFileProgressScore(file);
-                    const label = resolveFileProcessingLabel(file);
                     return (
                       <div
                         key={file.uid}
-                        className="group rounded-xl border border-zinc-200/70 bg-zinc-50 px-3 py-2.5 transition-colors hover:border-zinc-300 hover:bg-white hover:shadow-sm"
+                        className="group inline-flex max-w-full items-center gap-2 rounded-2xl border border-zinc-200/80 bg-zinc-50/90 px-3 py-2 text-[13px] text-zinc-700 transition-colors hover:border-zinc-300 hover:bg-white"
                       >
-                        <div className="flex items-start gap-2.5">
-                          <div className="mt-0.5 shrink-0">{homeFileIcon(file)}</div>
-                          <div className="min-w-0 flex-1">
-                            <div className="flex items-start justify-between gap-3">
-                              <div className="min-w-0">
-                                <p className="truncate text-[13px] font-medium text-zinc-800">{file.filename}</p>
-                                <div className="mt-1 flex items-center gap-1.5 text-[11px]">
-                                  <span className={cn("inline-flex items-center gap-1", meta.tone)}>
-                                    {meta.icon}
-                                    {meta.label}
-                                  </span>
-                                  <span className="text-zinc-400">·</span>
-                                  <span className="text-zinc-500">{label}</span>
-                                </div>
-                              </div>
-                              <button
-                                type="button"
-                                onClick={() => deleteEntryFileMutation.mutate(file.uid)}
-                                disabled={deleteEntryFileMutation.isPending}
-                                title="移除文件"
-                                className="rounded-md p-1 text-zinc-400 transition-colors hover:bg-red-50 hover:text-red-500 disabled:cursor-not-allowed disabled:opacity-50"
-                              >
-                                <X className="h-3.5 w-3.5" />
-                              </button>
-                            </div>
-                            <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white">
-                              <div
-                                className={cn(
-                                  "h-full rounded-full transition-all duration-500",
-                                  file.error_message?.trim()
-                                    ? "bg-red-400"
-                                    : file.markdown_ready
-                                      ? "bg-emerald-500"
-                                      : "bg-sky-500"
-                                )}
-                                style={{ width: `${Math.max(10, Math.min(100, progress))}%` }}
-                              />
-                            </div>
-                          </div>
-                        </div>
+                        <span className="shrink-0">{homeFileIcon(file)}</span>
+                        <span className="max-w-[220px] truncate font-medium text-zinc-800">{file.filename}</span>
+                        <span className={cn("shrink-0", meta.tone)} title={resolveFileProcessingLabel(file)}>
+                          {meta.icon}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => deleteEntryFileMutation.mutate(file.uid)}
+                          disabled={deleteEntryFileMutation.isPending}
+                          title="移除文件"
+                          className="rounded-md p-0.5 text-zinc-400 transition-colors hover:bg-red-50 hover:text-red-500 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </button>
                       </div>
                     );
                   })}
@@ -943,29 +944,21 @@ export function HomePage() {
                   {optimisticUploadingFiles.map((filename) => (
                     <div
                       key={`uploading-${filename}`}
-                      className="rounded-xl border border-zinc-200/70 bg-zinc-50 px-3 py-2.5"
+                      className="inline-flex max-w-full items-center gap-2 rounded-2xl border border-zinc-200/80 bg-zinc-50/90 px-3 py-2 text-[13px] text-zinc-700"
                     >
-                      <div className="flex items-start gap-2.5">
-                        <div className="mt-0.5 shrink-0">
-                          <FileUp className="h-3.5 w-3.5 text-zinc-400" />
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <p className="truncate text-[13px] font-medium text-zinc-800">{filename}</p>
-                          <div className="mt-1 inline-flex items-center gap-1.5 text-[11px] text-sky-600">
-                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                            正在上传并准备解析...
-                          </div>
-                          <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white">
-                            <div className="h-full w-1/3 rounded-full bg-sky-500 animate-pulse" />
-                          </div>
-                        </div>
-                      </div>
+                      <FileUp className="h-3.5 w-3.5 shrink-0 text-zinc-400" />
+                      <span className="max-w-[220px] truncate font-medium text-zinc-800">{filename}</span>
+                      <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-sky-500" />
                     </div>
                   ))}
+                  </div>
+                  {entryFilesStatusText ? (
+                    <p className="px-1 text-[12px] leading-5 text-zinc-500">{entryFilesStatusText}</p>
+                  ) : null}
                 </div>
               )}
 
-              <div className="flex items-end justify-between px-1">
+              <div className="flex items-end justify-between px-1 pt-1">
                 <div className="flex items-center gap-2 flex-1">
                   <input 
                     type="file" 
@@ -986,7 +979,7 @@ export function HomePage() {
                     ) : (
                       <Paperclip className="h-4 w-4" />
                     )}
-                    {hasEntryFiles ? "继续添加资料" : "上传文件资料"}
+                    {hasEntryFiles ? "添加资料" : "添加资料"}
                   </button>
                   {isWorking && (
                     <span className="ml-2 flex items-center text-[13px] font-medium text-zinc-500">
@@ -1000,14 +993,13 @@ export function HomePage() {
                   onClick={handleGenerate}
                   disabled={!canGenerate || isWorking}
                   className={cn(
-                    "flex h-10 shrink-0 items-center justify-center gap-1.5 rounded-lg px-5 transition-all focus:outline-none focus:ring-4 focus:ring-zinc-900/10 active:scale-[0.98]",
+                    "flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl transition-all focus:outline-none focus:ring-4 focus:ring-zinc-900/10 active:scale-[0.98]",
                     canGenerate && !isWorking
                       ? "bg-zinc-900 text-white shadow-sm hover:bg-zinc-800"
                       : "cursor-not-allowed bg-zinc-100 text-zinc-300"
                   )}
                 >
-                  <span className="text-[14px] font-medium">开始学习</span>
-                  <ArrowUp className="ml-0.5 h-3.5 w-3.5" />
+                  <ArrowUp className="h-4 w-4" />
                 </button>
               </div>
             </div>
