@@ -75,7 +75,7 @@ async def parse_image_bytes_with_llm_vision(
     settings = get_settings()
     ocr_model = settings.models.ocr or settings.models.primary
     ocr_api_key = (get_env("LLM_API_KEY") or "").strip()
-    ocr_base_url = get_env("LLM_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1")
+    ocr_base_url = get_env("LLM_BASE_URL", "https://api.openai.com/v1")
     if not ocr_api_key:
         raise MissingLLMApiKeyError()
 

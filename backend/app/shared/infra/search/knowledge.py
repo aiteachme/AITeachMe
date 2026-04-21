@@ -107,8 +107,8 @@ async def rerank_chunks(
     api_key = (get_env("RAG_RERANK_API_KEY") or get_env("LLM_API_KEY") or "").strip()
     base_url = (
         get_env("RAG_RERANK_BASE_URL")
-        or get_env("LLM_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1")
-        or "https://dashscope.aliyuncs.com/compatible-mode/v1"
+        or get_env("LLM_BASE_URL", "https://api.openai.com/v1")
+        or "https://api.openai.com/v1"
     )
     final_top_k = top_k or settings.rag.rerank_top_k
 
