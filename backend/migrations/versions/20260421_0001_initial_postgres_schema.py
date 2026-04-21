@@ -451,7 +451,7 @@ def upgrade() -> None:
     op.create_table(
         "system_settings_snapshot",
         sa.Column("id", sa.String(), primary_key=True, nullable=False),
-        sa.Column("settings_path", sa.String(), nullable=False),
+        sa.Column("settings_source", sa.String(), nullable=False),
         sa.Column("settings_hash", sa.String(), nullable=False),
         sa.Column("settings_json", sa.JSON(), nullable=True),
         sa.Column("created_at", sa.DateTime(), nullable=False),

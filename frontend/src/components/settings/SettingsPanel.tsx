@@ -130,6 +130,7 @@ const SIMPLE_LEARNING_KEYS = new Set([
   "planner.systematic.max_chapters",
   "planner.systematic.target_length",
   "docgen.allow_external_search",
+  "docgen.generate_cover_image",
   "interact.history_turns",
   "knowledge_graph.sync_after_docgen",
 ]);

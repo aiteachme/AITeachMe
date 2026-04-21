@@ -198,8 +198,8 @@ MinerU 分支会先把 MinerU 输出的 Markdown 和图片复制到当前规范�
 
 解析成功后统一写入：
 
-- `ContentStore.raw_markdown_key(subject, file_id)`
-- `ContentStore.asset_prefix(subject, file_id)`
+- `ContentStore.subject_scope(user_id=..., subject=...).raw_markdown_key(file_id)`
+- `ContentStore.subject_scope(user_id=..., subject=...).asset_prefix(file_id)`
 - `raw_file_asset` 表
 - `raw_file.parsed_markdown`
 - `raw_file.parser_used`
@@ -257,7 +257,7 @@ Phase 2 由 `support/files/parsing.py` 在 Phase 1 成功后按最终 state 派�
 成功后：
 
 - 覆盖 raw Markdown。
-- 上传增强阶段工作目录中的资产到 `ContentStore.asset_prefix(subject, file_id)`。
+- 上传增强阶段工作目录中的资产到 `subject_scope.asset_prefix(file_id)`。
 - 刷新 `image_count` 与资产元数据。
 - 更新 `parse_metadata_json` 中的 OCR 统计。
 - `ingest_status = ready_for_digest`

@@ -269,6 +269,55 @@ POST /api/v1/subjects/import   — 上传并导入 .atmx 文件
 
 ---
 
+## 7.1 演示课程分发建议（线上 / 线下统一口径）
+
+后续如果首页增加“演示课程”Tab，前端**不要直接硬编码 OSS 路径**，而是统一只请求后端课程目录接口；  
+后端再决定当前是读本地共享目录，还是读 OSS 上的公开课程索引。
+
+推荐落点如下：
+
+### 本地 / 开发环境
+
+- 本地共享课程目录：`backend/data/_courses/`
+- 手工放入或脚本同步的 `.atmx` 文件都落这里
+- 首页“导入课程”Tab 直接列出这个目录里的课程包
+
+### 云端 / 演示课程 OSS
+
+推荐在 OSS 中固定一套公开前缀：
+
+```text
+demo-courses/
+├── catalog/
+│   └── v1/
+│       └── index.json
+├── packages/
+│   └── <course_slug>/
+│       └── v<package_version>/
+│           └── <course_slug>.atmx
+└── covers/
+    └── <course_slug>.png
+```
+
+其中：
+
+- `index.json`：课程卡片列表、版本、下载地址、封面、简介
+- `packages/.../*.atmx`：真正的课程包
+- `covers/`：可选课程封面
+
+### 运行时职责
+
+- 本地模式：后端优先扫描 `backend/data/_courses/`
+- 云端模式：后端可额外读取 OSS 的 `demo-courses/catalog/v1/index.json`
+- 前端只消费统一后的 `/api/v1/courses` 结果，不感知本地目录还是 OSS
+- 真正导入时，应由后端下载到临时目录后复用同一套 `import_subject()` 逻辑，不依赖浏览器写服务器文件系统
+
+一句话原则：
+
+> **课程分发源可以是本地目录，也可以是 OSS；但导入执行器只能有一套。**
+
+---
+
 ## 8. 后端文件清单
 
 | 类型 | 文件 | 职责 |

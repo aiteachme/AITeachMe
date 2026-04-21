@@ -6,22 +6,13 @@
  * OpenAPI spec version: 0.2.0
  */
 import {
-  useMutation,
-  useQuery
+  useMutation
 } from '@tanstack/react-query';
 import type {
-  DataTag,
-  DefinedInitialDataOptions,
-  DefinedUseQueryResult,
   MutationFunction,
   QueryClient,
-  QueryFunction,
-  QueryKey,
-  UndefinedInitialDataOptions,
   UseMutationOptions,
-  UseMutationResult,
-  UseQueryOptions,
-  UseQueryResult
+  UseMutationResult
 } from '@tanstack/react-query';
 
 import type {
@@ -49,7 +40,6 @@ import type {
   ErrorResponse,
   HTTPValidationError,
   KnowledgeDebugTriggerRequest,
-  KnowledgeDocsExportApiV1SubjectsSubjectKnowledgeDocsExportGetParams,
   KnowledgeOverviewRequest,
   KnowledgeRelationExplanationRequest,
   KnowledgeSubgraphRequest,
@@ -1344,153 +1334,6 @@ export const useKnowledgeDocsApiV1SubjectsSubjectKnowledgeDocsPost = <TError = E
       return useMutation(getKnowledgeDocsApiV1SubjectsSubjectKnowledgeDocsPostMutationOptions(options), queryClient);
     }
     /**
- * @summary Export the merged knowledge document
- */
-export type knowledgeDocsExportApiV1SubjectsSubjectKnowledgeDocsExportGetResponse200 = {
-  data: unknown
-  status: 200
-}
-
-export type knowledgeDocsExportApiV1SubjectsSubjectKnowledgeDocsExportGetResponse400 = {
-  data: ErrorResponse
-  status: 400
-}
-
-export type knowledgeDocsExportApiV1SubjectsSubjectKnowledgeDocsExportGetResponse404 = {
-  data: ErrorResponse
-  status: 404
-}
-
-export type knowledgeDocsExportApiV1SubjectsSubjectKnowledgeDocsExportGetResponse422 = {
-  data: HTTPValidationError
-  status: 422
-}
-
-export type knowledgeDocsExportApiV1SubjectsSubjectKnowledgeDocsExportGetResponse500 = {
-  data: ErrorResponse
-  status: 500
-}
-
-export type knowledgeDocsExportApiV1SubjectsSubjectKnowledgeDocsExportGetResponseSuccess = (knowledgeDocsExportApiV1SubjectsSubjectKnowledgeDocsExportGetResponse200) & {
-  headers: Headers;
-};
-export type knowledgeDocsExportApiV1SubjectsSubjectKnowledgeDocsExportGetResponseError = (knowledgeDocsExportApiV1SubjectsSubjectKnowledgeDocsExportGetResponse400 | knowledgeDocsExportApiV1SubjectsSubjectKnowledgeDocsExportGetResponse404 | knowledgeDocsExportApiV1SubjectsSubjectKnowledgeDocsExportGetResponse422 | knowledgeDocsExportApiV1SubjectsSubjectKnowledgeDocsExportGetResponse500) & {
-  headers: Headers;
-};
-
-export type knowledgeDocsExportApiV1SubjectsSubjectKnowledgeDocsExportGetResponse = (knowledgeDocsExportApiV1SubjectsSubjectKnowledgeDocsExportGetResponseSuccess | knowledgeDocsExportApiV1SubjectsSubjectKnowledgeDocsExportGetResponseError)
-
-export const getKnowledgeDocsExportApiV1SubjectsSubjectKnowledgeDocsExportGetUrl = (subject: string,
-    params?: KnowledgeDocsExportApiV1SubjectsSubjectKnowledgeDocsExportGetParams,) => {
-  const normalizedParams = new URLSearchParams();
-
-  Object.entries(params || {}).forEach(([key, value]) => {
-    
-    if (value !== undefined) {
-      normalizedParams.append(key, value === null ? 'null' : value.toString())
-    }
-  });
-
-  const stringifiedParams = normalizedParams.toString();
-
-  return stringifiedParams.length > 0 ? `/api/v1/subjects/${subject}/knowledge/docs/export?${stringifiedParams}` : `/api/v1/subjects/${subject}/knowledge/docs/export`
-}
-
-export const knowledgeDocsExportApiV1SubjectsSubjectKnowledgeDocsExportGet = async (subject: string,
-    params?: KnowledgeDocsExportApiV1SubjectsSubjectKnowledgeDocsExportGetParams, options?: RequestInit): Promise<knowledgeDocsExportApiV1SubjectsSubjectKnowledgeDocsExportGetResponse> => {
-  
-  return orvalApiClient<knowledgeDocsExportApiV1SubjectsSubjectKnowledgeDocsExportGetResponse>(getKnowledgeDocsExportApiV1SubjectsSubjectKnowledgeDocsExportGetUrl(subject,params),
-  {      
-    ...options,
-    method: 'GET'
-    
-    
-  }
-);}
-  
-
-
-
-
-export const getKnowledgeDocsExportApiV1SubjectsSubjectKnowledgeDocsExportGetQueryKey = (subject: string,
-    params?: KnowledgeDocsExportApiV1SubjectsSubjectKnowledgeDocsExportGetParams,) => {
-    return [
-    `/api/v1/subjects/${subject}/knowledge/docs/export`, ...(params ? [params] : [])
-    ] as const;
-    }
-
-    
-export const getKnowledgeDocsExportApiV1SubjectsSubjectKnowledgeDocsExportGetQueryOptions = <TData = Awaited<ReturnType<typeof knowledgeDocsExportApiV1SubjectsSubjectKnowledgeDocsExportGet>>, TError = ErrorResponse | HTTPValidationError>(subject: string,
-    params?: KnowledgeDocsExportApiV1SubjectsSubjectKnowledgeDocsExportGetParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof knowledgeDocsExportApiV1SubjectsSubjectKnowledgeDocsExportGet>>, TError, TData>>, request?: SecondParameter<typeof orvalApiClient>}
-) => {
-
-const {query: queryOptions, request: requestOptions} = options ?? {};
-
-  const queryKey =  queryOptions?.queryKey ?? getKnowledgeDocsExportApiV1SubjectsSubjectKnowledgeDocsExportGetQueryKey(subject,params);
-
-  
-
-    const queryFn: QueryFunction<Awaited<ReturnType<typeof knowledgeDocsExportApiV1SubjectsSubjectKnowledgeDocsExportGet>>> = ({ signal }) => knowledgeDocsExportApiV1SubjectsSubjectKnowledgeDocsExportGet(subject,params, { signal, ...requestOptions });
-
-      
-
-      
-
-   return  { queryKey, queryFn, enabled: !!(subject), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof knowledgeDocsExportApiV1SubjectsSubjectKnowledgeDocsExportGet>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
-}
-
-export type KnowledgeDocsExportApiV1SubjectsSubjectKnowledgeDocsExportGetQueryResult = NonNullable<Awaited<ReturnType<typeof knowledgeDocsExportApiV1SubjectsSubjectKnowledgeDocsExportGet>>>
-export type KnowledgeDocsExportApiV1SubjectsSubjectKnowledgeDocsExportGetQueryError = ErrorResponse | HTTPValidationError
-
-
-export function useKnowledgeDocsExportApiV1SubjectsSubjectKnowledgeDocsExportGet<TData = Awaited<ReturnType<typeof knowledgeDocsExportApiV1SubjectsSubjectKnowledgeDocsExportGet>>, TError = ErrorResponse | HTTPValidationError>(
- subject: string,
-    params: undefined |  KnowledgeDocsExportApiV1SubjectsSubjectKnowledgeDocsExportGetParams, options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof knowledgeDocsExportApiV1SubjectsSubjectKnowledgeDocsExportGet>>, TError, TData>> & Pick<
-        DefinedInitialDataOptions<
-          Awaited<ReturnType<typeof knowledgeDocsExportApiV1SubjectsSubjectKnowledgeDocsExportGet>>,
-          TError,
-          Awaited<ReturnType<typeof knowledgeDocsExportApiV1SubjectsSubjectKnowledgeDocsExportGet>>
-        > , 'initialData'
-      >, request?: SecondParameter<typeof orvalApiClient>}
- , queryClient?: QueryClient
-  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
-export function useKnowledgeDocsExportApiV1SubjectsSubjectKnowledgeDocsExportGet<TData = Awaited<ReturnType<typeof knowledgeDocsExportApiV1SubjectsSubjectKnowledgeDocsExportGet>>, TError = ErrorResponse | HTTPValidationError>(
- subject: string,
-    params?: KnowledgeDocsExportApiV1SubjectsSubjectKnowledgeDocsExportGetParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof knowledgeDocsExportApiV1SubjectsSubjectKnowledgeDocsExportGet>>, TError, TData>> & Pick<
-        UndefinedInitialDataOptions<
-          Awaited<ReturnType<typeof knowledgeDocsExportApiV1SubjectsSubjectKnowledgeDocsExportGet>>,
-          TError,
-          Awaited<ReturnType<typeof knowledgeDocsExportApiV1SubjectsSubjectKnowledgeDocsExportGet>>
-        > , 'initialData'
-      >, request?: SecondParameter<typeof orvalApiClient>}
- , queryClient?: QueryClient
-  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
-export function useKnowledgeDocsExportApiV1SubjectsSubjectKnowledgeDocsExportGet<TData = Awaited<ReturnType<typeof knowledgeDocsExportApiV1SubjectsSubjectKnowledgeDocsExportGet>>, TError = ErrorResponse | HTTPValidationError>(
- subject: string,
-    params?: KnowledgeDocsExportApiV1SubjectsSubjectKnowledgeDocsExportGetParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof knowledgeDocsExportApiV1SubjectsSubjectKnowledgeDocsExportGet>>, TError, TData>>, request?: SecondParameter<typeof orvalApiClient>}
- , queryClient?: QueryClient
-  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
-/**
- * @summary Export the merged knowledge document
- */
-
-export function useKnowledgeDocsExportApiV1SubjectsSubjectKnowledgeDocsExportGet<TData = Awaited<ReturnType<typeof knowledgeDocsExportApiV1SubjectsSubjectKnowledgeDocsExportGet>>, TError = ErrorResponse | HTTPValidationError>(
- subject: string,
-    params?: KnowledgeDocsExportApiV1SubjectsSubjectKnowledgeDocsExportGetParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof knowledgeDocsExportApiV1SubjectsSubjectKnowledgeDocsExportGet>>, TError, TData>>, request?: SecondParameter<typeof orvalApiClient>}
- , queryClient?: QueryClient 
- ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
-
-  const queryOptions = getKnowledgeDocsExportApiV1SubjectsSubjectKnowledgeDocsExportGetQueryOptions(subject,params,options)
-
-  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
-
-  return { ...query, queryKey: queryOptions.queryKey };
-}
-
-
-
-
-/**
  * @summary Fetch aggregated knowledge overview
  */
 export type knowledgeOverviewApiV1SubjectsSubjectKnowledgeOverviewPostResponse200 = {

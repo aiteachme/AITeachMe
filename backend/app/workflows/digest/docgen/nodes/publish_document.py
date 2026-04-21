@@ -9,6 +9,7 @@ import structlog
 from app.utils.docgen_store import append_knowledge_build_recent_event, upsert_knowledge_build_chapter_progress
 from app.utils.time import utcnow
 from app.shared.infra.workflow.context import WorkflowContext
+from app.workflows.digest.docgen.lib.cover import build_docgen_cover_markdown, read_docgen_cover_artifact
 from app.workflows.digest.docgen.nodes.common import get_effective_chapter_title, publish_docgen_progress
 from app.workflows.digest.docgen.lib.publish import (
     publish_staged_knowledge_docs,
@@ -38,6 +39,12 @@ def build_publish_document_node(*, context: WorkflowContext):
         )
         chapter_assignments = list(state.get("chapter_assignments", []))
         document_context = dict(state.get("document_context") or {})
+        cover_artifact = dict(state.get("cover_artifact") or {})
+        if not cover_artifact:
+            cover_artifact = dict(await read_docgen_cover_artifact(subject) or {})
+        cover_markdown = str(state.get("cover_markdown") or "").strip()
+        if not cover_markdown:
+            cover_markdown = build_docgen_cover_markdown(cover_artifact)
         # 这份快照给后续调试、问答/出题复用和失败追踪用；不要只因为前端暂时不用就删。
         docgen_artifacts = {
             "docgen_context": dict(state.get("docgen_context") or {}),
@@ -84,6 +91,7 @@ def build_publish_document_node(*, context: WorkflowContext):
             "merge_review_report": dict(state.get("merge_review_report") or {}),
             "final_chapter_titles": list(state.get("final_chapter_titles") or []),
             "title_review_report": dict(state.get("title_review_report") or {}),
+            "cover_artifact": cover_artifact,
         }
         user_prompt = state.get("user_prompt")
         requested_at = state["requested_at"]
@@ -103,6 +111,7 @@ def build_publish_document_node(*, context: WorkflowContext):
             subject=subject,
             chapter_metadatas=chapter_metadatas,
             document_context=document_context,
+            cover_markdown=cover_markdown,
             docgen_artifacts=docgen_artifacts,
         )
 
@@ -113,6 +122,7 @@ def build_publish_document_node(*, context: WorkflowContext):
                 chapter_metadatas=chapter_metadatas,
                 chapter_assignments=chapter_assignments,
                 document_context=document_context,
+                cover_markdown=cover_markdown,
                 user_prompt=user_prompt,
                 requested_at=requested_at,
                 version_no=1,

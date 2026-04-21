@@ -74,6 +74,8 @@ class DocGenState(TypedDict, total=False):
 
     final_chapter_titles: list[dict[str, Any]]
     title_review_report: dict[str, Any]
+    cover_artifact: dict[str, Any]
+    cover_markdown: str
     chapter_metadatas: list[dict[str, Any]]
     merge_review_report: dict[str, Any]
     merged_markdown: str

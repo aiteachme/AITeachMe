@@ -65,6 +65,7 @@ class PlannerSettings(_SettingsModel):
 
 class DocgenSettings(_SettingsModel):
     allow_external_search: bool
+    generate_cover_image: bool
     max_parallel_chapters: int
     io_parallelism: int
     max_research_queries: int

@@ -4,10 +4,11 @@ from __future__ import annotations
 
 from time import perf_counter
 
-from app.shared.infra.tools.builtin.markdown_processing import count_words, prepend_table_of_contents
+from app.shared.infra.tools.builtin.markdown_processing import count_words
 from app.utils.docgen_store import append_knowledge_build_recent_event, update_knowledge_build_status
 from app.utils.time import utcnow
 from app.shared.infra.workflow.context import WorkflowContext
+from app.workflows.digest.docgen.lib.cover import build_docgen_cover_markdown, read_docgen_cover_artifact
 from app.workflows.digest.docgen.lib.models import EnhancedChapterDraft
 from app.workflows.digest.docgen.lib.publish import build_merged_markdown
 from app.workflows.digest.docgen.lib.quality import build_merge_review_report
@@ -122,13 +123,12 @@ def build_merge_review_node(*, context: WorkflowContext):
                     chapter_review_report=review_reports_by_chapter.get(chapter.chapter_index),
                 )
             )
-        merged_markdown = prepend_table_of_contents(
-            build_merged_markdown(
-                chapter_metadatas,
-                document_context=dict(state.get("document_context") or {}),
-            ),
-            min_level=2,
-            max_level=4,
+        cover_artifact = await read_docgen_cover_artifact(state["subject"])
+        cover_markdown = build_docgen_cover_markdown(cover_artifact)
+        merged_markdown = build_merged_markdown(
+            chapter_metadatas,
+            document_context=dict(state.get("document_context") or {}),
+            cover_markdown=cover_markdown,
         )
         elapsed_ms = int((perf_counter() - started_at) * 1000)
         update_knowledge_build_status(
@@ -166,6 +166,8 @@ def build_merge_review_node(*, context: WorkflowContext):
         )
         return {
             "chapter_metadatas": chapter_metadatas,
+            "cover_artifact": dict(cover_artifact or {}),
+            "cover_markdown": cover_markdown,
             "merged_markdown": merged_markdown,
             "enriched_markdown": merged_markdown,
             "merge_review_report": review.model_dump(mode="json"),

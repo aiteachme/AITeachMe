@@ -10,7 +10,6 @@ import structlog
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from fastapi.staticfiles import StaticFiles
 
 from app.shared.infra.settings import get_settings
 from app.shared.infra.database import init_db
@@ -263,12 +262,6 @@ def _register_middlewares(app: FastAPI) -> None:
     )
 
 
-def _register_static_mounts(app: FastAPI) -> None:
-    if is_local_mode():
-        data_dir = get_runtime_data_dir()
-        app.mount("/_assets", StaticFiles(directory=data_dir), name="runtime-assets")
-
-
 def _register_exception_handlers(app: FastAPI) -> None:
     @app.exception_handler(KernelAITeachMeError)
     @app.exception_handler(InfraAITeachMeError)
@@ -331,7 +324,6 @@ def create_app() -> FastAPI:
     configure_logging()
     app = FastAPI(**_build_app_metadata())
     _register_middlewares(app)
-    _register_static_mounts(app)
     _register_exception_handlers(app)
     _register_routers(app)
     return app

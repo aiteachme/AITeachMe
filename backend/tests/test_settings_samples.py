@@ -24,6 +24,7 @@ def test_settings_model_uses_code_defaults_without_project_file(monkeypatch) -> 
     assert settings.models.primary == defaults["models"]["primary"]
     assert settings.models.embedding == defaults["models"]["embedding"]
     assert settings.ingest.parse_concurrency == defaults["ingest"]["parse_concurrency"]
+    assert settings.docgen.generate_cover_image == defaults["docgen"]["generate_cover_image"]
 
 
 def test_settings_support_optional_external_override_file(

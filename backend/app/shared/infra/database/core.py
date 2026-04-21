@@ -874,7 +874,7 @@ def _upsert_settings_snapshot(engine: sa.Engine, settings) -> None:
         snapshot = session.get(SystemSettingsSnapshot, "runtime")
         if snapshot is None:
             snapshot = SystemSettingsSnapshot(id="runtime", created_at=now)
-        snapshot.settings_path = settings_source
+        snapshot.settings_source = settings_source
         snapshot.settings_hash = settings_hash
         snapshot.settings_json = payload
         snapshot.updated_at = now

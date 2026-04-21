@@ -396,6 +396,7 @@ def build_settings_overview_data(
                 lse("planner.systematic.max_chapters", "系统最多章节", settings.planner.systematic.max_chapters, base_settings.planner.systematic.max_chapters),
                 lse("planner.systematic.target_length", "系统目标长度", settings.planner.systematic.target_length, base_settings.planner.systematic.target_length),
                 lse("docgen.allow_external_search", "DocGen 允许外部检索", settings.docgen.allow_external_search, base_settings.docgen.allow_external_search),
+                lse("docgen.generate_cover_image", "DocGen 生成封面", settings.docgen.generate_cover_image, base_settings.docgen.generate_cover_image, "启用后会为知识文档生成一张横向、抽象、无文字的艺术风景封面，并置于文档顶部。"),
                 lse("docgen.max_parallel_chapters", "DocGen 章节并发", settings.docgen.max_parallel_chapters, base_settings.docgen.max_parallel_chapters),
                 lse("docgen.io_parallelism", "DocGen I/O 并发", settings.docgen.io_parallelism, base_settings.docgen.io_parallelism),
                 lse("docgen.max_research_queries", "每章研究 Query 数", settings.docgen.max_research_queries, base_settings.docgen.max_research_queries),

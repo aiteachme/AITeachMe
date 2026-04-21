@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import hashlib
-import json
 
-from app.shared.infra.storage import get_content_store, run_store_sync
+from app.shared.infra.storage import (
+    get_content_store,
+    resolve_subject_storage_scope,
+    run_store_sync,
+)
 
 
 def compute_embedding_text_hash(text: str) -> str:
@@ -18,7 +21,7 @@ def load_subject_embedding_cache(subject: str) -> dict[str, dict[str, object]]:
     """Load the persisted node embedding cache for one subject."""
 
     cs = get_content_store()
-    key = cs.embedding_cache_key(subject)
+    key = resolve_subject_storage_scope(subject).embedding_cache_key()
     payload = run_store_sync(cs.read_json_raw, key)
     if not isinstance(payload, dict):
         return {}
@@ -36,7 +39,7 @@ def write_subject_embedding_cache(
     """Persist the node embedding cache for one subject."""
 
     cs = get_content_store()
-    key = cs.embedding_cache_key(subject)
+    key = resolve_subject_storage_scope(subject).embedding_cache_key()
     run_store_sync(cs.write_json_raw, key, cache_payload)
     return key
 

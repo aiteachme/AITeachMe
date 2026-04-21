@@ -231,6 +231,11 @@ ContentStore 提供所有 key 构建方法，业务代码不再手动拼路径�
 - `manifest.json`
 - `build_status.json`
 
+对象前缀口径：
+
+- 用户私有学科产物统一落在 `users/{user_id}/subjects/{subject}/...`
+- 共享演示课程或公共样例不要混入用户前缀，应使用独立公共前缀（例如 `demo-courses/...`）
+
 不进入 OSS：
 
 - `temp/`

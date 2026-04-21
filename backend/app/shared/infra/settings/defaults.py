@@ -39,6 +39,7 @@ DEFAULT_SETTINGS_VALUES: dict[str, Any] = {
     },
     "docgen": {
         "allow_external_search": True,
+        "generate_cover_image": False,
         "max_parallel_chapters": 20,
         "io_parallelism": 20,
         "max_research_queries": 3,

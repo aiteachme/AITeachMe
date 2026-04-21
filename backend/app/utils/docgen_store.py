@@ -10,7 +10,11 @@ from threading import Lock, RLock
 from pydantic import BaseModel, Field
 
 from app.shared.infra.runtime import is_cloud_mode, is_local_mode
-from app.shared.infra.storage import get_content_store, run_store_sync
+from app.shared.infra.storage import (
+    get_content_store,
+    resolve_subject_storage_scope,
+    run_store_sync,
+)
 from app.utils.path_helpers import (
     build_docgen_intermediate_latest_dir,
     build_knowledge_build_lock_path,
@@ -434,7 +438,7 @@ def read_knowledge_build_status(subject: str) -> KnowledgeBuildRuntimeStatus | N
     """Read the runtime build-status payload if it exists."""
 
     cs = get_content_store()
-    key = cs.build_status_key(subject)
+    key = resolve_subject_storage_scope(subject).build_status_key()
     status = run_store_sync(cs.read_json, key, KnowledgeBuildRuntimeStatus)
     return _hydrate_runtime_status(status) if status is not None else None
 
@@ -443,7 +447,7 @@ def write_knowledge_build_status(subject: str, status: KnowledgeBuildRuntimeStat
     """Persist the runtime build-status payload."""
 
     cs = get_content_store()
-    key = cs.build_status_key(subject)
+    key = resolve_subject_storage_scope(subject).build_status_key()
     run_store_sync(cs.write_json, key, status)
     return key
 
@@ -518,21 +522,25 @@ def clear_knowledge_build_status(subject: str) -> None:
     """Remove runtime build-status metadata."""
 
     cs = get_content_store()
-    run_store_sync(cs.delete, cs.build_status_key(subject), default=None)
+    run_store_sync(cs.delete, resolve_subject_storage_scope(subject).build_status_key(), default=None)
 
 
 def read_knowledge_manifest(subject: str) -> KnowledgeDocsManifest | None:
     """Read the published manifest if it exists."""
 
     cs = get_content_store()
-    return run_store_sync(cs.read_json, cs.build_manifest_key(subject), KnowledgeDocsManifest)
+    return run_store_sync(
+        cs.read_json,
+        resolve_subject_storage_scope(subject).build_manifest_key(),
+        KnowledgeDocsManifest,
+    )
 
 
 def write_knowledge_manifest(subject: str, manifest: KnowledgeDocsManifest) -> str:
     """Persist the published manifest."""
 
     cs = get_content_store()
-    key = cs.build_manifest_key(subject)
+    key = resolve_subject_storage_scope(subject).build_manifest_key()
     run_store_sync(cs.write_json, key, manifest)
     return key
 
@@ -541,7 +549,7 @@ def clear_docgen_staging(subject: str) -> None:
     """Remove the current knowledge-markdown build directory."""
 
     cs = get_content_store()
-    run_store_sync(cs.delete_prefix, cs.knowledge_build_prefix(subject), default=0)
+    run_store_sync(cs.delete_prefix, resolve_subject_storage_scope(subject).knowledge_build_prefix(), default=0)
 
     if is_local_mode():
         intermediate_dir = build_docgen_intermediate_latest_dir(subject)
@@ -553,9 +561,11 @@ def clear_published_knowledge_docs_files(subject: str) -> None:
     """Remove all published knowledge-doc files, including archived versions."""
 
     cs = get_content_store()
-    keys = run_store_sync(cs.list_prefix, f"{subject}/knowledge_markdowns/", default=[])
+    subject_scope = resolve_subject_storage_scope(subject)
+    prefix = subject_scope.knowledge_doc_key("")
+    keys = run_store_sync(cs.list_prefix, prefix, default=[])
     for key in keys:
-        relative = key.removeprefix(f"{subject}/knowledge_markdowns/")
+        relative = key.removeprefix(prefix)
         filename = relative.rsplit("/", 1)[-1] if "/" in relative else relative
         if (
             filename.startswith("chapter_")
@@ -570,9 +580,11 @@ def clear_current_published_knowledge_docs_files(subject: str) -> None:
     """Remove only the current published chapter markdown files."""
 
     cs = get_content_store()
-    keys = run_store_sync(cs.list_prefix, f"{subject}/knowledge_markdowns/", default=[])
+    subject_scope = resolve_subject_storage_scope(subject)
+    prefix = subject_scope.knowledge_doc_key("")
+    keys = run_store_sync(cs.list_prefix, prefix, default=[])
     for key in keys:
-        relative = key.removeprefix(f"{subject}/knowledge_markdowns/")
+        relative = key.removeprefix(prefix)
         if relative.startswith("versions/"):
             continue
         filename = relative.rsplit("/", 1)[-1] if "/" in relative else relative
@@ -588,7 +600,7 @@ def clear_knowledge_runtime_artifacts(subject: str) -> None:
     clear_published_knowledge_docs_files(subject)
 
     cs = get_content_store()
-    run_store_sync(cs.delete, cs.build_manifest_key(subject), default=None)
+    run_store_sync(cs.delete, resolve_subject_storage_scope(subject).build_manifest_key(), default=None)
 
     release_knowledge_build_lock(subject)
 

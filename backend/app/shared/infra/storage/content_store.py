@@ -19,6 +19,10 @@ from typing import Generator, TypeVar
 from pydantic import BaseModel
 
 from app.shared.infra.storage.base import ArtifactStore
+from app.shared.infra.storage.subject_scope import (
+    SubjectStorageScope,
+    build_subject_storage_scope,
+)
 
 T = TypeVar("T", bound=BaseModel)
 
@@ -43,54 +47,10 @@ class ContentStore:
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
     @staticmethod
-    def raw_markdown_key(subject: str, file_id: int) -> str:
-        """原始解析 markdown 的 key。"""
-        return f"{subject}/raw_markdowns/{file_id}.md"
+    def subject_scope(*, user_id: str, subject: str) -> SubjectStorageScope:
+        """Return the canonical persisted storage scope for one subject."""
 
-    @staticmethod
-    def asset_key(subject: str, file_id: int, name: str) -> str:
-        """单个 asset 文件的 key。"""
-        return f"{subject}/assets/{file_id}/{name}"
-
-    @staticmethod
-    def asset_prefix(subject: str, file_id: int) -> str:
-        """asset 目录的 key 前缀。"""
-        return f"{subject}/assets/{file_id}/"
-
-    @staticmethod
-    def knowledge_doc_key(subject: str, filename: str) -> str:
-        """已发布的知识文档 key。"""
-        return f"{subject}/knowledge_markdowns/{filename}"
-
-    @staticmethod
-    def knowledge_build_prefix(subject: str) -> str:
-        """知识文档构建目录前缀。"""
-        return f"{subject}/knowledge_markdowns/_build/"
-
-    @staticmethod
-    def chunk_manifest_key(subject: str) -> str:
-        """chunk manifest 的 key。"""
-        return f"{subject}/knowledge_markdowns/chunk_manifest.json"
-
-    @staticmethod
-    def build_status_key(subject: str) -> str:
-        """构建状态文件 key。"""
-        return f"{subject}/knowledge_markdowns/_build/status.json"
-
-    @staticmethod
-    def build_manifest_key(subject: str) -> str:
-        """构建 manifest 文件 key。"""
-        return f"{subject}/knowledge_markdowns/_build/manifest.json"
-
-    @staticmethod
-    def embedding_cache_key(subject: str) -> str:
-        """节点 embedding 缓存 key。"""
-        return f"{subject}/cache/node_embedding_cache.json"
-
-    @staticmethod
-    def subject_prefix(subject: str) -> str:
-        """subject 根前缀。"""
-        return f"{subject}/"
+        return build_subject_storage_scope(user_id=user_id, subject=subject)
 
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     #  2. 文本 / JSON 便捷操作
