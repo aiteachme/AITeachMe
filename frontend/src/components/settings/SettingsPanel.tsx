@@ -9,9 +9,9 @@ import {
   Loader2,
   RefreshCcw,
   Search,
-  SlidersHorizontal,
   Wrench,
   X,
+  Wifi,
 } from "lucide-react";
 
 import { DEFAULT_SETTINGS, type AppSettings, useSettings } from "../../hooks/useSettings";
@@ -26,7 +26,7 @@ interface SettingsModalProps {
   onClose: () => void;
 }
 
-type SectionType = "connection" | "models" | "learning" | "search" | "ops" | "observability";
+type SectionType = "connection" | "models" | "learning" | "search" | "credentials" | "ops" | "observability";
 type SaveState = "idle" | "saving" | "saved" | "error";
 type SettingSource = "env" | "settings" | "system_settings" | "user_settings" | "runtime";
 type SettingStatus = "configured" | "missing" | "default" | "disabled" | "enabled" | "runtime";
@@ -67,13 +67,19 @@ interface ApiResponse<T> {
 }
 
 const SECTIONS = [
-  { id: "connection", label: "连接", description: "模式与本机连接", icon: KeyRound },
+  { id: "connection", label: "连接", description: "模式与本机连接", icon: Wifi },
   { id: "models", label: "模型", description: "模型路由", icon: Bot },
   { id: "learning", label: "学习引擎", description: "解析与构建", icon: Wrench },
   { id: "search", label: "检索", description: "联网与 RAG", icon: Search },
+  { id: "credentials", label: "API 密钥", description: "服务授权配置", icon: KeyRound },
   { id: "ops", label: "部署状态", description: "鉴权、SMTP、存储", icon: Database },
   { id: "observability", label: "观测调试", description: "Tracing 与浏览器调试", icon: Activity },
 ] as const;
+
+function isCredentialKey(key: string): boolean {
+  const k = key.toLowerCase();
+  return k.includes("key") || k.includes("token") || k.includes("secret") || k.includes("password");
+}
 
 const MODEL_KEYS = new Set([
   "models.primary",
@@ -86,11 +92,7 @@ const MODEL_KEYS = new Set([
 ]);
 
 const CORE_STATUS_KEYS = new Set([
-  "runtime.mode",
-  "runtime.app_mode_raw",
-  "runtime.version",
   "auth.enabled",
-  "settings.source",
   "llm.base_url",
   "llm.api_key",
 ]);
@@ -116,49 +118,7 @@ const OBSERVABILITY_ENV_STATUS_KEYS = new Set([
   "langsmith.endpoint",
 ]);
 
-const SIMPLE_LEARNING_KEYS = new Set([
-  "ingest.default_parser_provider",
-  "ingest.mineru_model_version",
-  "ingest.mineru_enable_formula",
-  "ingest.mineru_enable_table",
-  "ingest.mineru_is_ocr",
-  "planner.default_digest_mode",
-  "planner.sprint.min_chapters",
-  "planner.sprint.max_chapters",
-  "planner.sprint.target_length",
-  "planner.systematic.min_chapters",
-  "planner.systematic.max_chapters",
-  "planner.systematic.target_length",
-  "docgen.allow_external_search",
-  "docgen.generate_cover_image",
-  "interact.history_turns",
-  "knowledge_graph.sync_after_docgen",
-]);
 
-const SIMPLE_SEARCH_KEYS = new Set([
-  "rag.top_k",
-  "rag.similarity_threshold",
-  "rag.rerank_model",
-  "rag.rerank_top_k",
-  "local_rag.priority",
-  "local_rag.min_results",
-  "search.retriever_profile",
-]);
-
-const SIMPLE_SEARCH_ENV_KEYS = new Set([
-  "search.tavily_key",
-  "search.jina_key",
-  "search.serper_key",
-  "search.mcp_tool",
-  "rag.rerank_api_key",
-]);
-
-const SIMPLE_OBSERVABILITY_KEYS = new Set([
-  "observability.tracing_enabled",
-  "observability.llm_token_summary_enabled",
-  "observability.llm_observability_enabled",
-  "runtime.llm_concurrency_limit",
-]);
 
 const LEARNING_SETTING_PREFIXES = ["ingest.", "planner.", "docgen.", "interact.", "knowledge_graph."];
 const SEARCH_SETTING_PREFIXES = ["rag.", "local_rag.", "search."];
@@ -193,16 +153,7 @@ function hasAnyPrefix(key: string, prefixes: string[]): boolean {
   return prefixes.some((prefix) => key.startsWith(prefix));
 }
 
-function filterByVisibleKeys(
-  entries: SettingEntry[],
-  allowedKeys: Set<string>,
-  showAdvanced: boolean,
-) {
-  if (showAdvanced) {
-    return entries;
-  }
-  return entries.filter((entry) => allowedKeys.has(entry.key));
-}
+
 
 function isPrimitive(value: unknown): value is SettingPrimitive {
   return value === null || ["string", "number", "boolean"].includes(typeof value);
@@ -305,17 +256,14 @@ function parseInputValue(raw: string, currentValue: SettingPrimitive): SettingPr
 function InfoCard({ text, variant = "neutral" }: { text: string; variant?: "neutral" | "warning" }) {
   const className =
     variant === "warning"
-      ? "border-amber-100 bg-amber-50/60 text-amber-700"
-      : "border-zinc-100 bg-zinc-50/60 text-zinc-500";
-  return <div className={`rounded-lg border px-4 py-3 text-[12px] leading-relaxed ${className}`}>{text}</div>;
+      ? "text-amber-700 bg-amber-50"
+      : "text-zinc-600 bg-zinc-50/80";
+  return <div className={`rounded-xl px-4 py-3 text-[13px] leading-relaxed ${className}`}>{text}</div>;
 }
 
 function SectionDivider({ label }: { label: string }) {
   return (
-    <div className="flex items-center gap-3 pt-2">
-      <span className="text-[11px] font-semibold uppercase tracking-widest text-zinc-400">{label}</span>
-      <div className="h-px flex-1 bg-zinc-100" />
-    </div>
+    <h3 className="text-sm font-semibold text-zinc-900 pb-2 mt-8 mb-2 border-b border-zinc-100">{label}</h3>
   );
 }
 
@@ -336,7 +284,7 @@ function TextInput({
       value={value}
       onChange={(event) => onChange(event.target.value)}
       placeholder={placeholder}
-      className="w-full rounded-lg border border-zinc-200 bg-white px-3.5 py-2.5 text-[13px] text-zinc-900 placeholder:text-zinc-300 outline-none transition focus:border-zinc-400 focus:ring-4 focus:ring-zinc-900/5"
+      className="w-full rounded-xl border border-zinc-200 bg-zinc-50/50 px-4 py-3 text-[14px] text-zinc-900 shadow-sm placeholder:text-zinc-400 outline-none transition focus:border-zinc-400 focus:bg-white focus:ring-4 focus:ring-zinc-900/5"
     />
   );
 }
@@ -354,7 +302,7 @@ function SelectInput({
     <select
       value={value}
       onChange={(event) => onChange(event.target.value)}
-      className="w-full rounded-lg border border-zinc-200 bg-white px-3.5 py-2.5 text-[13px] text-zinc-900 outline-none transition focus:border-zinc-400 focus:ring-4 focus:ring-zinc-900/5"
+      className="w-full rounded-xl border border-zinc-200 bg-zinc-50/50 px-4 py-3 text-[14px] text-zinc-900 shadow-sm outline-none transition focus:border-zinc-400 focus:bg-white focus:ring-4 focus:ring-zinc-900/5 appearance-none bg-[url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20width%3D%2224%22%20height%3D%2224%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%3Cpath%20d%3D%22M6%209L12%2015L18%209%22%20stroke%3D%22%2371717A%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%2F%3E%3C%2Fsvg%3E')] bg-[length:16px_16px] bg-[position:right_16px_center] bg-no-repeat pr-10 cursor-pointer"
     >
       {options.map((option) => (
         <option key={option.value} value={option.value}>
@@ -380,32 +328,20 @@ function SwitchRow({
     <button
       type="button"
       onClick={onToggle}
-      className="flex w-full items-center justify-between gap-4 rounded-lg border border-zinc-100 bg-white px-4 py-3 text-left transition hover:border-zinc-200"
+      className="flex w-full items-start sm:items-center justify-between gap-4 py-4 text-left transition group"
     >
-      <span>
-        <span className="block text-[13px] font-semibold text-zinc-800">{title}</span>
-        <span className="mt-0.5 block text-[12px] leading-relaxed text-zinc-400">{description}</span>
-      </span>
-      <span className={`relative inline-flex h-[22px] w-[42px] shrink-0 items-center rounded-full transition ${enabled ? "bg-zinc-900" : "bg-zinc-200"}`}>
-        <span className={`inline-block h-[18px] w-[18px] rounded-full bg-white shadow-sm transition ${enabled ? "translate-x-[22px]" : "translate-x-[2px]"}`} />
+      <div className="flex-1 pr-4">
+        <span className="block text-[14px] font-medium text-zinc-900">{title}</span>
+        <span className="mt-1 block text-[13px] leading-relaxed text-zinc-500">{description}</span>
+      </div>
+      <span className={`relative mt-1 sm:mt-0 inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors duration-200 ease-in-out ${enabled ? "bg-emerald-500" : "bg-zinc-200"}`}>
+        <span className={`inline-block h-5 w-5 rounded-full bg-white shadow transition duration-200 ease-in-out ${enabled ? "translate-x-5" : "translate-x-0.5"}`} />
       </span>
     </button>
   );
 }
 
-function SourcePill({ source }: { source: SettingSource }) {
-  const label =
-    source === "env"
-      ? ".env"
-      : source === "system_settings"
-        ? "系统库"
-      : source === "user_settings"
-        ? "用户库"
-        : source === "settings"
-          ? "默认"
-          : "运行时";
-  return <span className="rounded-md border border-zinc-200 bg-white px-2 py-0.5 text-[11px] font-semibold text-zinc-500">{label}</span>;
-}
+
 
 function ReadonlySettingsList({
   entries,
@@ -418,23 +354,21 @@ function ReadonlySettingsList({
 }) {
   if (loading) return <InfoCard text="正在读取后端当前状态..." />;
   if (error) return <InfoCard text={error} variant="warning" />;
-  if (!entries.length) return <InfoCard text="暂无配置项。" />;
+  if (!entries.length) return null;
 
   return (
-    <div className="space-y-2">
+    <div className="divide-y divide-zinc-100 border-b border-zinc-100">
       {entries.map((entry) => (
-        <div key={entry.key} className="rounded-lg border border-zinc-100 bg-zinc-50/40 px-4 py-3">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div>
-              <div className="text-[13px] font-semibold text-zinc-700">{entry.label}</div>
-              <div className="mt-0.5 font-mono text-[11px] text-zinc-400">{entry.key}</div>
-            </div>
-            <SourcePill source={entry.source} />
+        <div key={entry.key} className="py-3.5 flex flex-col gap-2.5">
+          <div>
+            <span className="text-[14px] font-medium text-zinc-900 block">{entry.label}</span>
+            {entry.description && (
+              <p className="mt-0.5 text-[13px] text-zinc-500">{entry.description}</p>
+            )}
           </div>
-          <div className="mt-2 rounded-md border border-zinc-200 bg-white px-2.5 py-1.5 font-mono text-[12px] text-zinc-800">
+          <div className="font-mono text-[13px] text-zinc-800 bg-zinc-50/80 px-4 py-2 rounded-xl border border-zinc-100/80 break-all w-fit max-w-full">
             {displayValue(entry)}
           </div>
-          {entry.description ? <p className="mt-2 text-[11px] leading-relaxed text-zinc-400">{entry.description}</p> : null}
         </div>
       ))}
     </div>
@@ -455,72 +389,60 @@ function EditableSettingsList({
   error: string | null;
 }) {
   const items = entries.filter((entry) => entry.editable && isPrimitive(draft[entry.key]));
-  if (loading) return <InfoCard text="正在读取可编辑设置..." />;
+  if (loading) return <InfoCard text="正在加载..." />;
   if (error) return <InfoCard text={error} variant="warning" />;
-  if (!items.length) return <InfoCard text="当前模式下暂无可编辑项。" />;
+  if (!items.length) return null;
 
   return (
-    <div className="space-y-3">
+    <div className="divide-y divide-zinc-100 border-b border-zinc-100">
       {items.map((entry) => {
         const value = draft[entry.key];
         const selectOptions = SETTING_SELECT_OPTIONS[entry.key];
 
         if (typeof value === "boolean") {
           return (
-            <div key={entry.key} className="space-y-2 rounded-lg border border-zinc-100 bg-zinc-50/40 px-4 py-3">
+            <div key={entry.key} className="py-2">
               <SwitchRow
                 title={entry.label}
                 description={entry.description || entry.key}
                 enabled={value}
                 onToggle={() => onChange(entry.key, !value)}
               />
-              <div className="flex flex-wrap items-center gap-1.5">
-                <SourcePill source={entry.source} />
-                <span className="rounded-md border border-zinc-200 bg-white px-2 py-0.5 text-[11px] text-zinc-400">
-                  默认：{displayValue({ ...entry, value: entry.default_value })}
-                </span>
-                {entry.restart_required ? (
-                  <span className="rounded-md border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] text-amber-700">
-                    保存后建议重启
-                  </span>
-                ) : null}
-              </div>
             </div>
           );
         }
 
         return (
-          <div key={entry.key} className="space-y-2 rounded-lg border border-zinc-100 bg-zinc-50/40 px-4 py-3">
-            <div className="flex flex-wrap items-start justify-between gap-2">
-              <div>
-                <label className="block text-[13px] font-semibold text-zinc-700">{entry.label}</label>
-                <div className="mt-0.5 font-mono text-[11px] text-zinc-400">{entry.key}</div>
-              </div>
-              <SourcePill source={entry.source} />
+          <div key={entry.key} className="py-4 flex flex-col gap-2.5">
+            <div>
+              <label className="block text-[14px] font-medium text-zinc-900 leading-6">{entry.label}</label>
+              {entry.description && (
+                <p className="text-[13px] leading-relaxed text-zinc-500 mb-2">
+                  {entry.description}
+                </p>
+              )}
             </div>
-            {selectOptions ? (
-              <SelectInput
-                value={value === null ? "" : String(value)}
-                onChange={(next) => onChange(entry.key, next)}
-                options={selectOptions}
-              />
-            ) : (
-              <TextInput
-                value={value === null ? "" : String(value)}
-                onChange={(next) => onChange(entry.key, parseInputValue(next, value))}
-                placeholder={
-                  entry.default_value === null || entry.default_value === undefined
-                    ? "留空"
-                    : String(entry.default_value)
-                }
-                type={typeof value === "number" ? "number" : "text"}
-              />
-            )}
-            <p className="text-[11px] leading-relaxed text-zinc-400">
-              默认：{displayValue({ ...entry, value: entry.default_value })}
-              {entry.description ? ` · ${entry.description}` : ""}
-              {entry.restart_required ? " · 保存后建议重启" : ""}
-            </p>
+            
+            <div className="w-full">
+              {selectOptions ? (
+                <SelectInput
+                  value={value === null ? "" : String(value)}
+                  onChange={(next) => onChange(entry.key, next)}
+                  options={selectOptions}
+                />
+              ) : (
+                <TextInput
+                  value={value === null ? "" : String(value)}
+                  onChange={(next) => onChange(entry.key, parseInputValue(next, value))}
+                  placeholder={
+                    entry.default_value === null || entry.default_value === undefined
+                      ? "留空"
+                      : String(entry.default_value)
+                  }
+                  type={typeof value === "number" ? "number" : "text"}
+                />
+              )}
+            </div>
           </div>
         );
       })}
@@ -538,7 +460,6 @@ export function SettingsPanel({ isOpen, onClose }: SettingsModalProps) {
   const { settings, updateSettings } = useSettings();
   const [draft, setDraft] = useState<AppSettings>({ ...settings });
   const [activeSection, setActiveSection] = useState<SectionType>("connection");
-  const [showAdvanced, setShowAdvanced] = useState(false);
   const [saveState, setSaveState] = useState<SaveState>("idle");
   const [saveError, setSaveError] = useState<string | null>(null);
   const [overview, setOverview] = useState<SettingsOverviewData | null>(() => getStoredSystemSettingsOverview());
@@ -692,14 +613,7 @@ export function SettingsPanel({ isOpen, onClose }: SettingsModalProps) {
   };
 
   const renderConnection = () => (
-    <div className="space-y-5">
-      <InfoCard
-        text={
-          isLocalRuntime
-            ? "本地模式下，会开放浏览器本机设置和本地 .env 编辑；这里的非敏感运行参数仍保存到数据库。"
-            : "云端模式下，这里只作为状态页展示当前运行模式、能力状态与配置来源。"
-        }
-      />
+    <div className="space-y-4">
       {isLocalRuntime ? (
         <>
           <SectionDivider label="本地 .env" />
@@ -713,7 +627,7 @@ export function SettingsPanel({ isOpen, onClose }: SettingsModalProps) {
         </>
       ) : null}
       {isLocalRuntime ? (
-        <div className="space-y-3 rounded-lg border border-zinc-100 bg-zinc-50/40 px-4 py-3">
+        <div className="space-y-3 rounded-lg border border-zinc-100 bg-zinc-50/40 px-4 py-3 mt-4">
           <SectionDivider label="浏览器本机" />
           <div className="space-y-3">
             <div className="space-y-2">
@@ -730,19 +644,12 @@ export function SettingsPanel({ isOpen, onClose }: SettingsModalProps) {
           </div>
         </div>
       ) : null}
-      <SectionDivider label="后端当前状态" />
+      <SectionDivider label="后端能力探测" />
       <ReadonlySettingsList
         entries={getEntries("runtime", "models").filter((entry) => CORE_STATUS_KEYS.has(entry.key))}
         loading={isOverviewLoading}
         error={overviewError}
       />
-      {overview?.notes?.length ? (
-        <div className="space-y-2">
-          {overview.notes.map((note) => (
-            <InfoCard key={note} text={note} />
-          ))}
-        </div>
-      ) : null}
     </div>
   );
 
@@ -772,23 +679,17 @@ export function SettingsPanel({ isOpen, onClose }: SettingsModalProps) {
   );
 
   const renderLearning = () => {
-    const learningEntries = filterByVisibleKeys(
-      getEntries("learning_engines").filter(
-        (entry) => hasAnyPrefix(entry.key, LEARNING_SETTING_PREFIXES) || MODE_AWARE_PREFERENCE_KEYS.has(entry.key),
-      ),
-      SIMPLE_LEARNING_KEYS,
-      showAdvanced,
+    const learningEntries = getEntries("learning_engines").filter(
+      (entry) => (hasAnyPrefix(entry.key, LEARNING_SETTING_PREFIXES) || MODE_AWARE_PREFERENCE_KEYS.has(entry.key)) && !isCredentialKey(entry.key)
     );
-    const learningEnvEntries = getEntries("learning_engines").filter((entry) => entry.source === "env");
+    const learningEnvEntries = getEntries("learning_engines").filter((entry) => entry.source === "env" && !isCredentialKey(entry.key));
 
     return (
       <div className="space-y-5">
         <InfoCard
           text={
             isLocalRuntime
-              ? showAdvanced
-                ? "当前显示本地模式下的全部学习引擎可写项。低频调优项也会一起展开，适合排查链路或精细打磨默认行为。"
-                : "当前默认只显示常用学习引擎设置。更底层的并发、超时和链路调优项可以通过右上角“显示高级”查看。"
+              ? "当前显示本地模式下的全部学习引擎可写项。"
               : "云端模式下学习引擎配置只读展示，普通用户不能修改服务端默认值。"
           }
         />
@@ -799,23 +700,6 @@ export function SettingsPanel({ isOpen, onClose }: SettingsModalProps) {
           loading={isOverviewLoading}
           error={overviewError}
         />
-        {isLocalRuntime && parserProvider === "mineru" ? (
-          <div className="space-y-3 rounded-lg border border-zinc-100 bg-zinc-50/40 px-4 py-3">
-            <SectionDivider label="浏览器临时覆盖" />
-            <div className="space-y-2">
-              <label className="text-[13px] font-semibold text-zinc-700">MinerU 临时 Token</label>
-              <TextInput
-                type="password"
-                value={draft.mineruApiToken}
-                onChange={(value) => patch("mineruApiToken", value)}
-                placeholder="MINERU_API_TOKEN"
-              />
-              <p className="text-[11px] leading-relaxed text-zinc-400">
-                仅当前浏览器可见。上传时会优先使用这个临时 Token；留空则回退到本地 .env 里的 MINERU_API_TOKEN。
-              </p>
-            </div>
-          </div>
-        ) : null}
         {parserProvider === "auto" ? (
           <InfoCard text="自动模式不会显式指定 parser_provider。上传时会走后端当前已实现的本地自动 parser chain：先分类，再生成 ParsePlan，再按文件类型和质量策略选择并尝试本地解析器链。" />
         ) : null}
@@ -845,25 +729,15 @@ export function SettingsPanel({ isOpen, onClose }: SettingsModalProps) {
   };
 
   const renderSearch = () => {
-    const searchEntries = filterByVisibleKeys(
-      getEntries("search").filter((entry) => hasAnyPrefix(entry.key, SEARCH_SETTING_PREFIXES)),
-      SIMPLE_SEARCH_KEYS,
-      showAdvanced,
-    );
-    const searchEnvEntries = filterByVisibleKeys(
-      getEntries("search").filter((entry) => entry.source === "env"),
-      SIMPLE_SEARCH_ENV_KEYS,
-      showAdvanced,
-    );
+    const searchEntries = getEntries("search").filter((entry) => hasAnyPrefix(entry.key, SEARCH_SETTING_PREFIXES) && !isCredentialKey(entry.key));
+    const searchEnvEntries = getEntries("search").filter((entry) => entry.source === "env" && !isCredentialKey(entry.key));
 
     return (
       <div className="space-y-5">
         <InfoCard
           text={
             isLocalRuntime
-              ? showAdvanced
-                ? "当前显示完整检索调优面板，包括 provider、缓存和超时等低层参数。"
-                : "当前默认只显示常用检索策略。大部分 provider 密钥和超时调优项已收进高级视图，避免把日常设置页变成运维面板。"
+              ? "当前显示完整检索调优面板，包括 provider、缓存和超时等低层参数。"
               : "云端模式下，检索 provider 的密钥与运行参数只读展示。"
           }
         />
@@ -894,8 +768,54 @@ export function SettingsPanel({ isOpen, onClose }: SettingsModalProps) {
     );
   };
 
+  const renderCredentials = () => {
+    const allEntries = getEntries("runtime", "models", "learning_engines", "search", "storage", "observability");
+    const credentialEntries = allEntries.filter((entry) => isCredentialKey(entry.key) || entry.secret);
+    const uniqueCredentialEntries = Array.from(new Map(credentialEntries.map((e) => [e.key, e])).values());
+    const editableEnvEntries = uniqueCredentialEntries.filter((entry) => entry.source === "env");
+
+    return (
+      <div className="space-y-5">
+        <InfoCard text="此处集中管理所有第三方服务与本地服务的 API 密钥和鉴权 Token。" />
+        {isLocalRuntime ? (
+          <>
+            <SectionDivider label="临时覆盖" />
+            <div className="space-y-3 rounded-lg border border-zinc-100 bg-zinc-50/40 px-4 py-3">
+              <div className="space-y-2">
+                <label className="text-[13px] font-semibold text-zinc-700">MinerU 临时 Token</label>
+                <TextInput
+                  type="password"
+                  value={draft.mineruApiToken}
+                  onChange={(value) => patch("mineruApiToken", value)}
+                  placeholder="MINERU_API_TOKEN"
+                />
+                <p className="text-[11px] leading-relaxed text-zinc-400">
+                  仅当前浏览器可见。优先使用此设置；留空则回退到本地 .env 配置。
+                </p>
+              </div>
+            </div>
+            <SectionDivider label="本地 .env 配置" />
+            <EditableSettingsList
+              entries={editableEnvEntries}
+              draft={envDraft}
+              onChange={patchEnvSetting}
+              loading={isOverviewLoading}
+              error={overviewError}
+            />
+          </>
+        ) : (
+          <ReadonlySettingsList
+            entries={editableEnvEntries}
+            loading={isOverviewLoading}
+            error={overviewError}
+          />
+        )}
+      </div>
+    );
+  };
+
   const renderOps = () => {
-    const opsEntries = getEntries("runtime", "storage");
+    const opsEntries = getEntries("runtime", "storage").filter((entry) => !isCredentialKey(entry.key));
     const editableEnvEntries = opsEntries.filter((entry) => entry.source === "env");
     const readonlyEntries = opsEntries.filter(
       (entry) => CORE_STATUS_KEYS.has(entry.key) || STORAGE_STATUS_KEYS.has(entry.key) || entry.source === "runtime",
@@ -933,15 +853,11 @@ export function SettingsPanel({ isOpen, onClose }: SettingsModalProps) {
   };
 
   const renderObservability = () => {
-    const observabilityEntries = filterByVisibleKeys(
-      getEntries("observability").filter(
-        (entry) => entry.editable && hasAnyPrefix(entry.key, OBSERVABILITY_SETTING_PREFIXES),
-      ),
-      SIMPLE_OBSERVABILITY_KEYS,
-      showAdvanced,
+    const observabilityEntries = getEntries("observability").filter(
+      (entry) => entry.editable && hasAnyPrefix(entry.key, OBSERVABILITY_SETTING_PREFIXES) && !isCredentialKey(entry.key)
     );
     const observabilityEnvEntries = getEntries("observability").filter((entry) =>
-      OBSERVABILITY_ENV_STATUS_KEYS.has(entry.key),
+      OBSERVABILITY_ENV_STATUS_KEYS.has(entry.key) && !isCredentialKey(entry.key)
     );
 
     return (
@@ -949,9 +865,7 @@ export function SettingsPanel({ isOpen, onClose }: SettingsModalProps) {
         <InfoCard
           text={
             isLocalRuntime
-              ? showAdvanced
-                ? "当前显示完整观测与调试设置，包括采样、展示和嵌入批处理等低频参数。"
-                : "当前默认只显示最常用的观测控制项。更细的追踪预览、批处理和保留策略已收进高级视图。"
+              ? "当前显示完整观测与调试设置，包括采样、展示和嵌入批处理等低频参数。"
               : "云端模式下观测配置只读展示；浏览器调试项默认不开放给普通用户。"
           }
         />
@@ -998,6 +912,7 @@ export function SettingsPanel({ isOpen, onClose }: SettingsModalProps) {
     models: renderModels,
     learning: renderLearning,
     search: renderSearch,
+    credentials: renderCredentials,
     ops: renderOps,
     observability: renderObservability,
   };
@@ -1013,20 +928,20 @@ export function SettingsPanel({ isOpen, onClose }: SettingsModalProps) {
         transition={{ duration: 0.18 }}
         className="fixed inset-0 z-[100]"
       >
-        <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
+        <div className="absolute inset-0 bg-black/20 backdrop-blur-[2px]" onClick={onClose} />
         <div className="pointer-events-none absolute inset-0 flex items-center justify-center p-4 sm:p-8">
           <motion.div
-            initial={{ opacity: 0, y: 16, scale: 0.97 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 10, scale: 0.97 }}
-            transition={{ type: "spring", stiffness: 400, damping: 32 }}
-            className="pointer-events-auto flex h-[min(720px,85vh)] w-full max-w-[880px] overflow-hidden rounded-lg border border-zinc-200/60 bg-white shadow-[0_25px_80px_-20px_rgba(0,0,0,0.35)]"
+            initial={{ opacity: 0, scale: 0.96, y: 10 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.96, y: 10 }}
+            transition={{ type: "spring", stiffness: 500, damping: 40 }}
+            className="pointer-events-auto flex h-[min(720px,85vh)] w-full max-w-[880px] overflow-hidden rounded-2xl bg-white shadow-2xl ring-1 ring-zinc-900/5"
           >
-            <nav className="flex w-[210px] shrink-0 flex-col border-r border-zinc-100 bg-zinc-50/70">
-              <div className="px-5 pb-4 pt-5">
-                <h2 className="text-[15px] font-bold text-zinc-900">设置</h2>
+            <nav className="flex w-[240px] shrink-0 flex-col bg-[#f9f9f9] border-r border-zinc-100">
+              <div className="px-5 pb-2 pt-6">
+                <h2 className="text-[17px] font-bold text-zinc-900">设置</h2>
               </div>
-              <div className="flex-1 space-y-0.5 overflow-y-auto px-2.5">
+              <div className="flex-1 space-y-1 overflow-y-auto px-3 py-4">
                 {SECTIONS.map((section) => {
                   const Icon = section.icon;
                   const active = activeSection === section.id;
@@ -1035,101 +950,92 @@ export function SettingsPanel({ isOpen, onClose }: SettingsModalProps) {
                       key={section.id}
                       type="button"
                       onClick={() => setActiveSection(section.id)}
-                      className={`flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-left transition ${
-                        active ? "bg-white text-zinc-900 shadow-[0_1px_3px_rgba(0,0,0,0.06)]" : "text-zinc-500 hover:bg-white/60 hover:text-zinc-700"
+                      className={`group flex w-full items-center gap-3 rounded-lg px-3 py-2 transition-colors ${
+                        active ? "bg-zinc-200/60 text-zinc-900" : "text-zinc-600 hover:bg-zinc-200/40"
                       }`}
                     >
-                      <span className={`inline-flex h-8 w-8 items-center justify-center rounded-lg ${active ? "bg-zinc-900 text-white" : "bg-zinc-100 text-zinc-400"}`}>
+                      <span className={`inline-flex items-center justify-center ${active ? "text-zinc-900" : "text-zinc-400 group-hover:text-zinc-600"}`}>
                         <Icon className="h-4 w-4" />
                       </span>
-                      <span>
-                        <span className="block text-[13px] font-medium">{section.label}</span>
-                        <span className="block text-[11px] text-zinc-400">{section.description}</span>
-                      </span>
+                      <span className="text-[14px] font-medium leading-none">{section.label}</span>
                     </button>
                   );
                 })}
               </div>
-              <div className="flex flex-wrap gap-1.5 border-t border-zinc-100 px-4 py-3">
-                <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium ${isLocalRuntime ? "bg-emerald-50 text-emerald-600" : "bg-sky-50 text-sky-600"}`}>
-                  <span className={`h-1.5 w-1.5 rounded-full ${isLocalRuntime ? "bg-emerald-500" : "bg-sky-500"}`} />
-                  {isLocalRuntime ? "本地模式" : "云端模式"}
-                </span>
-                <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium ${draft.useMock ? "bg-amber-50 text-amber-600" : "bg-emerald-50 text-emerald-600"}`}>
-                  <span className={`h-1.5 w-1.5 rounded-full ${draft.useMock ? "bg-amber-500" : "bg-emerald-500"}`} />
-                  {draft.useMock ? "Mock" : "真实后端"}
-                </span>
+              
+              <div className="p-4 mt-auto mb-4 mx-3 rounded-xl bg-zinc-100/50 border border-zinc-200/50">
+                <div className="flex flex-col gap-2">
+                  <span className="text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-1">环境状态</span>
+                  <div className="flex items-center gap-2">
+                    <span className={`relative flex h-2 w-2`}>
+                      <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${isLocalRuntime ? "bg-emerald-400" : "bg-sky-400"}`}></span>
+                      <span className={`relative inline-flex rounded-full h-2 w-2 ${isLocalRuntime ? "bg-emerald-500" : "bg-sky-500"}`}></span>
+                    </span>
+                    <span className="text-[13px] font-medium text-zinc-700">{isLocalRuntime ? "本地网络直连" : "云端托管运行"}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className={`h-2 w-2 rounded-sm ${draft.useMock ? "bg-amber-500" : "bg-zinc-300"}`} />
+                    <span className="text-[13px] font-medium text-zinc-700">{draft.useMock ? "Mock数据开启" : "系统真实数据"}</span>
+                  </div>
+                </div>
               </div>
             </nav>
 
-            <div className="flex min-w-0 flex-1 flex-col">
-              <div className="flex items-center justify-between border-b border-zinc-100 px-6 py-4">
+            <div className="flex min-w-0 flex-1 flex-col bg-white">
+              <div className="flex items-center justify-between px-8 py-6 pb-2">
                 <div>
-                  <h3 className="text-[16px] font-bold text-zinc-900">{activeSectionConfig.label}</h3>
-                  <p className="mt-0.5 text-[12px] text-zinc-400">{activeSectionConfig.description}</p>
+                  <h3 className="text-[20px] font-bold text-zinc-900">{activeSectionConfig.label}</h3>
+                  <p className="mt-1 text-[13px] text-zinc-500">{activeSectionConfig.description}</p>
                 </div>
-                <div className="flex items-center gap-2">
-                  {isLocalRuntime ? (
-                    <button
-                      type="button"
-                      onClick={() => setShowAdvanced((prev) => !prev)}
-                      className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-[12px] font-medium transition ${
-                        showAdvanced
-                          ? "border-zinc-900 bg-zinc-900 text-white hover:bg-zinc-800"
-                          : "border-zinc-200 bg-white text-zinc-500 hover:border-zinc-300 hover:text-zinc-700"
-                      }`}
-                    >
-                      <SlidersHorizontal className="h-3.5 w-3.5" />
-                      {showAdvanced ? "收起高级" : "显示高级"}
-                    </button>
-                  ) : null}
+                <div className="flex items-center gap-3">
                   <button
                     type="button"
                     onClick={onClose}
-                    className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-zinc-400 transition hover:bg-zinc-100 hover:text-zinc-600"
+                    className="inline-flex h-8 w-8 items-center justify-center rounded-full text-zinc-400 transition hover:bg-zinc-100 hover:text-zinc-600"
                     aria-label="关闭设置"
                   >
-                    <X className="h-4 w-4" />
+                    <X className="h-5 w-5" />
                   </button>
                 </div>
               </div>
 
-              <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
+              <div className="min-h-0 flex-1 overflow-y-auto px-8 py-2">
                 <AnimatePresence mode="wait">
-                  <motion.div key={activeSection} variants={contentVariants} initial="initial" animate="animate" exit="exit">
+                  <motion.div key={activeSection} variants={contentVariants} initial="initial" animate="animate" exit="exit" className="pb-8">
                     {renderers[activeSection]()}
                   </motion.div>
                 </AnimatePresence>
               </div>
 
-              <div className="flex items-center justify-between border-t border-zinc-100 bg-zinc-50/50 px-6 py-3">
-                <div className="text-[12px] text-zinc-400">
+              <div className="flex items-center justify-between border-t border-zinc-100 bg-white px-8 py-4">
+                <div className="text-[13px] font-medium">
                   <AnimatePresence mode="wait">
                     {saveState === "saving" ? (
-                      <motion.span key="saving" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="flex items-center gap-1.5 text-zinc-600">
-                        <Loader2 className="h-3.5 w-3.5 animate-spin" /> 正在保存
+                      <motion.span key="saving" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="flex items-center gap-2 text-zinc-600">
+                        <Loader2 className="h-4 w-4 animate-spin" /> 保存配置中...
                       </motion.span>
                     ) : saveState === "error" ? (
-                      <motion.span key="error" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="flex items-center gap-1.5 text-red-600">
-                        <RefreshCcw className="h-3.5 w-3.5" /> {saveError ?? "保存失败"}
+                      <motion.span key="error" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="flex items-center gap-2 text-red-600">
+                        <RefreshCcw className="h-4 w-4" /> {saveError ?? "保存失败"}
                       </motion.span>
                     ) : saveState === "saved" ? (
-                      <motion.span key="saved" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="flex items-center gap-1.5 text-emerald-600">
-                        <CheckCircle2 className="h-3.5 w-3.5" /> 已保存
+                      <motion.span key="saved" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="flex items-center gap-2 text-emerald-600">
+                        <CheckCircle2 className="h-4 w-4" /> 配置已生效
                       </motion.span>
                     ) : hasChanges ? (
-                      <motion.span key="changed" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="flex items-center gap-1.5 text-amber-600">
-                        <RefreshCcw className="h-3.5 w-3.5" /> 有未保存修改
+                      <motion.span key="changed" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="flex items-center gap-2 text-amber-600">
+                        <span className="relative flex h-2.5 w-2.5"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span><span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-amber-500"></span></span>
+                        发现未保存更改
                       </motion.span>
                     ) : (
-                      <motion.span key="synced" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="flex items-center gap-1.5">
-                        <CheckCircle2 className="h-3.5 w-3.5" /> 已同步
+                      <motion.span key="synced" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="flex items-center gap-2 text-zinc-400">
+                        设置已同步
                       </motion.span>
                     )}
                   </AnimatePresence>
                 </div>
 
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-3">
                   {isLocalRuntime ? (
                     <>
                       <button
@@ -1140,21 +1046,21 @@ export function SettingsPanel({ isOpen, onClose }: SettingsModalProps) {
                           setEnvDraft(savedEnvDraft);
                           setSaveError(null);
                         }}
-                        className="rounded-lg px-3 py-1.5 text-[12px] font-medium text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-700"
+                        className="rounded-full px-4 py-2 text-[13px] font-medium text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-900"
                       >
-                        恢复默认
+                        撤销恢复
                       </button>
                       <button
                         type="button"
                         onClick={saveSettings}
                         disabled={!hasChanges || saveState === "saving"}
-                        className={`rounded-lg px-4 py-1.5 text-[12px] font-semibold transition ${
+                        className={`rounded-full px-6 py-2 text-[13px] font-semibold transition shadow-sm ${
                           hasChanges && saveState !== "saving"
-                            ? "bg-zinc-900 text-white hover:bg-zinc-800"
-                            : "cursor-not-allowed bg-zinc-100 text-zinc-300"
+                            ? "bg-zinc-900 text-white hover:bg-zinc-800 hover:shadow-md"
+                            : "cursor-not-allowed bg-zinc-100 text-zinc-400"
                         }`}
                       >
-                        {saveState === "saving" ? "保存中" : "保存设置"}
+                        {saveState === "saving" ? "应用中..." : "保存更改"}
                       </button>
                     </>
                   ) : null}

@@ -708,14 +708,7 @@ export function HomePage() {
       }}
       disabled={isWorking}
     />
-    <div className="relative flex min-h-[100dvh] w-full flex-col items-center overflow-x-hidden bg-zinc-50 p-4 pt-16 md:p-8 md:pt-24 selection:bg-zinc-200">
-      
-      {/* ═══ Background Decor ═══ */}
-      <div className="pointer-events-none absolute inset-0 z-0 flex justify-center overflow-hidden mix-blend-multiply">
-        <div className="absolute -top-[10%] left-[20%] h-[500px] w-[500px] rounded-full bg-blue-100/40 blur-[100px]" />
-        <div className="absolute right-[20%] top-[20%] h-[400px] w-[400px] rounded-full bg-emerald-100/30 blur-[100px]" />
-      </div>
-
+    <div className="relative flex min-h-[100dvh] w-full flex-col items-center overflow-x-hidden bg-transparent p-4 pt-16 md:p-8 md:pt-24 selection:bg-zinc-200">
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}

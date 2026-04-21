@@ -4,7 +4,7 @@ import { Sidebar } from "./Sidebar";
 import { TopBar } from "./TopBar";
 import { SubjectAiAssistantProvider } from "../ai/SubjectAiAssistant";
 import { isFullBleedSubjectPath } from "../../lib/subjectNavigation";
-import { SettingsModal } from "../settings/SettingsModal";
+import { SettingsPanel as SettingsModal } from "../settings/SettingsPanel";
 
 export function Layout() {
   const { pathname } = useLocation();
@@ -16,9 +16,16 @@ export function Layout() {
 
   return (
     <SubjectAiAssistantProvider subjectId={subjectId}>
-      <div className="flex h-screen bg-slate-50 overflow-hidden">
+      <div className="flex h-screen bg-[#fafafa] overflow-hidden relative selection:bg-zinc-200">
+        {/* Global Ambient Background */}
+        <div className="pointer-events-none absolute inset-0 z-0 overflow-hidden mix-blend-multiply transition-colors duration-1000">
+          <div className="absolute -left-[5%] -top-[10%] h-[600px] w-[600px] rounded-full bg-indigo-100/40 blur-[120px] opacity-80" />
+          <div className="absolute bottom-[-10%] right-[-5%] h-[600px] w-[600px] rounded-full bg-zinc-200/50 blur-[120px] opacity-60" />
+          <div className="absolute left-[30%] top-[20%] h-[800px] w-[800px] rounded-full bg-sky-100/30 blur-[150px] opacity-70" />
+        </div>
+
         <Sidebar onOpenSettings={() => setIsSettingsOpen(true)} />
-        <div className="flex-1 flex flex-col min-w-0 relative">
+        <div className="flex-1 flex flex-col min-w-0 relative z-10">
           {/* Top Bar — ALWAYS SHOW on all tabs to ensure User / Github buttons are visible */}
           <header className="absolute top-0 left-0 right-0 h-16 px-4 md:px-6 flex items-center justify-end z-40 pointer-events-none">
             <div className="pointer-events-auto">
@@ -27,7 +34,7 @@ export function Layout() {
           </header>
 
           {/* Main Content */}
-          <main className="flex-1 w-full overflow-x-hidden overflow-y-auto relative bg-slate-50 flex flex-col">
+          <main className="flex-1 w-full overflow-x-hidden overflow-y-auto relative bg-transparent flex flex-col">
             {isFullBleed || isHome ? (
               <div className="flex-1 min-h-[calc(100vh-4rem)] flex flex-col w-full">
                 <Outlet />

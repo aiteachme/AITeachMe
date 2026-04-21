@@ -1428,11 +1428,7 @@ export function BuildPlanPage() {
         disabled={uploadMutation.isPending}
       />
 
-      <div className="relative flex h-full w-full flex-col overflow-hidden bg-zinc-50">
-        <div className="pointer-events-none absolute inset-0 z-0 flex justify-center overflow-hidden">
-          <div className="h-full w-full bg-[linear-gradient(to_right,#e4e4e7_1px,transparent_1px),linear-gradient(to_bottom,#e4e4e7_1px,transparent_1px)] bg-[size:32px_32px] [mask-image:radial-gradient(ellipse_120%_100%_at_50%_0%,#000_50%,transparent_100%)]" />
-        </div>
-
+      <div className="relative flex h-full w-full flex-col overflow-hidden bg-transparent">
         <div className="relative z-10 flex h-full w-full flex-col">
           <div className="flex items-center justify-center pb-2 pt-6">
             <div className="inline-flex items-center gap-2 rounded-full border border-zinc-200/80 bg-white px-3 py-1.5 text-[11px] font-semibold uppercase tracking-widest text-zinc-500 shadow-sm">
