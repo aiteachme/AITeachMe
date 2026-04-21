@@ -12,7 +12,6 @@ import { cn } from "../../lib/utils";
 import { apiClient, getApiErrorMessage } from "../../api/client";
 import { FeedbackModal } from "../ui/FeedbackModal";
 import { Modal } from "../ui/Modal";
-import { CommunityModal } from "./CommunityPanel";
 
 type RuntimeUser = {
   user_id: string;
@@ -94,7 +93,6 @@ export function TopBar({ className }: TopBarProps) {
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isFeedbackModalOpen, setIsFeedbackModalOpen] = useState(false);
-  const [isCommunityModalOpen, setIsCommunityModalOpen] = useState(false);
 
   const dropdownRef = useRef<HTMLDivElement>(null);
   const mobileMenuRef = useRef<HTMLDivElement>(null);
@@ -330,16 +328,6 @@ export function TopBar({ className }: TopBarProps) {
 
   return (
     <div className={cn("flex items-center gap-3", className)}>
-      <button
-        type="button"
-        onClick={() => setIsCommunityModalOpen(true)}
-        className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800"
-      >
-        <MessageCircle className="h-4 w-4" />
-        <span className="hidden sm:inline text-[13px] font-medium">交流社区</span>
-      </button>
-
-      <div className="hidden sm:block">
         <div 
           className="relative" 
           ref={dropdownRef}
@@ -717,7 +705,6 @@ export function TopBar({ className }: TopBarProps) {
       </Modal>
 
       <FeedbackModal open={isFeedbackModalOpen} onClose={() => setIsFeedbackModalOpen(false)} />
-      <CommunityModal isOpen={isCommunityModalOpen} onClose={() => setIsCommunityModalOpen(false)} />
     </div>
   );
 }

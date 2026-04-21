@@ -135,9 +135,11 @@ export function BuildView({
              />
           </div>
           {buildPreview?.mode_reason?.trim() ? (
-             <p className="mt-4 text-[11px] text-zinc-500 bg-white border border-zinc-200 rounded px-2 py-1 leading-snug">
-               {buildPreview.mode_reason.trim()}
-             </p>
+             <div className="mt-4">
+               <span className="inline-block text-[10.5px] font-mono text-zinc-500 bg-zinc-200/40 rounded px-2 py-1 leading-none">
+                 {buildPreview.mode_reason.trim()}
+               </span>
+             </div>
           ) : null}
         </div>
 
@@ -152,7 +154,7 @@ export function BuildView({
                   <div key={step.key} className="relative pl-6">
                      {/* Node Dot */}
                      <div className={cn(
-                       "absolute left-[-9px] top-[1px] w-4 h-4 rounded-full border-[2px] bg-[#FAFAFA] flex items-center justify-center transition-colors",
+                       "absolute left-[-9px] top-[1px] w-4 h-4 rounded-full border bg-[#FAFAFA] flex items-center justify-center transition-colors",
                        isDone ? "border-blue-500 bg-blue-500" : isActive ? "border-blue-500" : "border-zinc-200"
                      )}>
                        {isDone && <Check className="w-2.5 h-2.5 text-white" strokeWidth={3} />}
@@ -387,7 +389,7 @@ export function BuildView({
                 className="absolute inset-0 flex h-full"
               >
                 {/* Left Sub-Tab: Chapter List */}
-                <div className="w-[280px] flex-shrink-0 border-r border-[#E5E7EB] bg-[#FAFAFA] flex flex-col h-full">
+                <div className="w-[280px] flex-shrink-0 border-r border-[#E5E7EB] bg-white flex flex-col h-full">
                   <div className="p-4 border-b border-[#E5E7EB]">
                      <h3 className="text-[13px] font-medium text-zinc-800 flex items-center gap-2">
                        <Code2 className="w-4 h-4 text-zinc-400" /> 在线生成流 ({chapters.length})
@@ -405,7 +407,7 @@ export function BuildView({
                             onClick={() => setSelectedPreviewChapter(chapter.chapter_index)}
                             className={cn(
                               "w-full text-left px-3 py-2.5 rounded-lg text-[12px] transition-colors flex items-start gap-3",
-                              isSelected ? "bg-white border border-[#E5E7EB] shadow-sm" : "hover:bg-zinc-100 border border-transparent"
+                              isSelected ? "bg-zinc-50/80 font-medium" : "hover:bg-zinc-50 border border-transparent text-zinc-600"
                             )}
                           >
                              <div className="mt-0.5 relative flex items-center justify-center shrink-0 w-3 h-3">
@@ -421,7 +423,7 @@ export function BuildView({
                                 )}
                              </div>
                              <div className="flex-1 pr-2">
-                               <div className={cn("font-medium line-clamp-2", isSelected ? "text-zinc-900" : "text-zinc-600")}>
+                               <div className="line-clamp-2">
                                  {String(chapter.chapter_index).padStart(2, '0')}. {chapter.title}
                                </div>
                              </div>

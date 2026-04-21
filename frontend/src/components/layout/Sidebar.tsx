@@ -16,6 +16,7 @@ import {
   Sparkles,
   Trash2,
   X,
+  MessageCircle,
 } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
@@ -29,6 +30,7 @@ import { apiClient, getApiErrorMessage } from "../../api/client";
 import { unwrapOrvalResponse } from "../../lib/unwrapOrvalResponse";
 import { cn } from "../../lib/utils";
 import { SubjectDeleteConfirmModal } from "./SubjectDeleteConfirmModal";
+import { CommunityModal } from "./CommunityPanel";
 
 import { Button } from "../ui/Button";
 
@@ -138,6 +140,7 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [renameTarget, setRenameTarget] = useState<{ id: string; name: string } | null>(null);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  const [isCommunityModalOpen, setIsCommunityModalOpen] = useState(false);
 
   const menuRef = useRef<HTMLDivElement>(null);
   const location = useLocation();
@@ -434,6 +437,18 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
         <div className="border-t border-slate-100 p-2.5 space-y-0.5">
           <button
             type="button"
+            onClick={() => setIsCommunityModalOpen(true)}
+            className={cn(
+              "flex w-full items-center rounded-lg py-2 text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-700",
+              effectiveCollapsed ? "justify-center px-0" : "gap-2.5 px-3",
+            )}
+            title="社区"
+          >
+            <MessageCircle className="h-4 w-4 shrink-0" />
+            {!effectiveCollapsed ? <span className="text-sm">社区</span> : null}
+          </button>
+          <button
+            type="button"
             onClick={onOpenSettings}
             className={cn(
               "flex w-full items-center rounded-lg py-2 text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-700",
@@ -475,6 +490,8 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
           onSuccess={() => void queryClient.invalidateQueries({ queryKey: ["subjects"] })}
         />
       ) : null}
+
+      <CommunityModal isOpen={isCommunityModalOpen} onClose={() => setIsCommunityModalOpen(false)} />
     </>
   );
 }
