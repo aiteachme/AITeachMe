@@ -164,6 +164,15 @@ def _load_postgres_store():
     )
 
 
+def prepare_postgres_store() -> None:
+    """Initialize the cloud PGVectorStore tables owned by LlamaIndex."""
+
+    if not is_cloud_mode():
+        return
+    _load_postgres_store()
+    logger.info("llamaindex_postgres_store_prepared", table_name=_POSTGRES_TABLE_NAME)
+
+
 def _load_store(subject: str):
     if is_cloud_mode():
         return _load_postgres_store()

@@ -251,6 +251,7 @@ async def knowledge_debug_kg_docs_sync(
     update_knowledge_build_status(
         normalized,
         requested_at=requested_at,
+        build_kind="graph",
         status="accepted",
         stage="graph_docs_sync",
         prompt=body.prompt,

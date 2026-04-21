@@ -31,6 +31,7 @@
 | `14b_cloud_implementation_plan.md` | 云端部署实施计划 |
 | `14c_cloud_dev_handover.md` | 云端开发交接说明 |
 | `15_export_import.md` | `.atmx` 导入导出设计 |
+| `16_cloud_db_migrations.md` | 云端 PostgreSQL 迁移、校验与运维流程 |
 | `future.md` | 未来学习形态与产品路线 |
 
 ## 文档维护规则

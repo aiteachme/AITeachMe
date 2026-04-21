@@ -157,7 +157,7 @@ def _clear_docgen_staging_safely(subject: str) -> None:
         logger.exception("knowledge_build_cleanup_failed", subject=subject)
 
 def _write_build_status(subject: str, *, requested_at: datetime, status: str, stage: str, **extra: object) -> None:
-    payload = {"requested_at": requested_at, "status": status, "stage": stage, **extra}
+    payload = {"requested_at": requested_at, "build_kind": "docgen", "status": status, "stage": stage, **extra}
     if "error_message" in payload:
         payload["error_message"] = _sanitize_build_error_message(payload.get("error_message"))
     update_knowledge_build_status(subject, **payload)
@@ -249,8 +249,8 @@ def _resolve_runtime_build_status(*, subject: str) -> KnowledgeBuildStatusRespon
     build_status = read_knowledge_build_status(subject)
     effective = build_status
     if effective is None and build_lock is not None:
-        effective = update_knowledge_build_status(subject, requested_at=build_lock.requested_at, status="running", stage="build_accepted", source_file_ids=build_lock.source_file_ids, prompt=build_lock.prompt)
-    if effective is None:
+        effective = update_knowledge_build_status(subject, requested_at=build_lock.requested_at, build_kind="docgen", status="running", stage="build_accepted", source_file_ids=build_lock.source_file_ids, prompt=build_lock.prompt)
+    if effective is None or effective.build_kind != "docgen":
         return None
     return KnowledgeBuildStatusResponse(status=effective.status, requested_at=effective.requested_at, stage=effective.stage, error_message=_sanitize_build_error_message(effective.error_message), draft_available=bool(effective.draft_available), progress_pct=effective.progress_pct, planner_session_id=effective.planner_session_id, confirmed_plan_id=effective.confirmed_plan_id, digest_mode=effective.digest_mode, mode_reason=effective.mode_reason, current_stage_description=effective.current_stage_description)
 
@@ -410,6 +410,7 @@ def trigger_docgen_build(session: Session, *, subject: Subject, user_id: str, fi
             if search_only_mode
             else ("方案已确认，正在排队启动构建。" if confirmed_plan_id else None)
         ),
+        build_kind="docgen" if (build_type or "docs") == "docs" else "graph",
     )
     logger.info(
         "knowledge_build_requested",
@@ -478,6 +479,7 @@ async def run_docgen_background(*, subject: str, file_ids: list[int], prompt: st
                     requested_at=requested_at,
                     build_session_id=build_session_id,
                     doc_chapter_metadatas=graph_seed_chapter_metadatas,
+                    build_kind="docgen",
                 )
             )
         result = await run_docgen_workflow(subject=subject, file_ids=file_ids, user_prompt=prompt, requested_at=requested_at, build_session_id=build_session_id, confirmed_plan=confirmed_plan_payload, planner_session_id=planner_session_id, confirmed_plan_id=confirmed_plan_id, digest_mode=resolved_digest_mode)
@@ -512,6 +514,7 @@ async def run_docgen_background(*, subject: str, file_ids: list[int], prompt: st
                 build_session_id=build_session_id,
                 file_ids=file_ids,
                 prompt=prompt,
+                build_kind="docgen",
             )
         _write_build_status(
             subject,
@@ -577,16 +580,17 @@ def get_docgen_result(session: Session, *, subject: str) -> DocGenGetResponse:
     draft_path = build_merged_knowledge_base_build_path(subject)
     manifest = read_knowledge_manifest(subject)
     build_status = read_knowledge_build_status(subject)
+    docgen_build_status = build_status if build_status is not None and build_status.build_kind == "docgen" else None
     markdown = normalize_mermaid_blocks(merged_path.read_text(encoding="utf-8")) if merged_path.exists() else ""
     draft_markdown = normalize_mermaid_blocks(draft_path.read_text(encoding="utf-8")) if draft_path.exists() else ""
     updated_at = manifest.updated_at if manifest is not None else (datetime.fromtimestamp(merged_path.stat().st_mtime) if merged_path.exists() else None)
-    draft_updated_at = build_status.draft_updated_at if build_status is not None and build_status.draft_updated_at is not None else (datetime.fromtimestamp(draft_path.stat().st_mtime) if draft_path.exists() else None)
+    draft_updated_at = docgen_build_status.draft_updated_at if docgen_build_status is not None and docgen_build_status.draft_updated_at is not None else (datetime.fromtimestamp(draft_path.stat().st_mtime) if draft_path.exists() else None)
     source_file_uids = _resolve_file_uids_from_ids(session, subject=subject, file_ids=(manifest.source_file_ids if manifest is not None else [])) if manifest is not None else []
     build_response = _resolve_runtime_build_status(subject=subject)
     if build_response is not None:
         build_response.draft_available = bool(build_response.draft_available or draft_markdown.strip())
-    build_preview = _build_runtime_preview(build_status=build_status, draft_markdown=draft_markdown, manifest=manifest)
-    build_metrics = _build_runtime_metrics(build_status=build_status)
+    build_preview = _build_runtime_preview(build_status=docgen_build_status, draft_markdown=draft_markdown, manifest=manifest)
+    build_metrics = _build_runtime_metrics(build_status=docgen_build_status)
     return DocGenGetResponse(exists=bool(merged_path.exists() and markdown.strip()), markdown=markdown, updated_at=updated_at, source_file_uids=source_file_uids, prompt=(manifest.prompt if manifest is not None else None), draft_markdown=draft_markdown, draft_updated_at=draft_updated_at, build=build_response, build_preview=build_preview, build_metrics=build_metrics, vector_status=get_subject_vector_status_by_slug(session, subject), planner_session_id=(build_response.planner_session_id if build_response is not None else None), confirmed_plan_id=(build_response.confirmed_plan_id if build_response is not None else None), digest_mode=(build_response.digest_mode if build_response is not None else None))
 
 

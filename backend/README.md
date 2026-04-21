@@ -67,7 +67,8 @@ uvicorn app.main:app --reload --port 8000
 
 首次启动时若缺少 SQLite 相关 Python 依赖，服务会自动尝试安装并继续启动。
 数据库文件会自动创建在 `data/aiteachme.db`。
-如果检测到 schema 过期，服务会自动备份旧库并重建新库。
+如果检测到本地 SQLite schema 过期，服务会自动备份旧库并重建新库。
+云端 PostgreSQL 使用 Alembic 迁移，见 `docs/designs/16_cloud_db_migrations.md`。
 
 ## LangGraph Dev 调试
 
