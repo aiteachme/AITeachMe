@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { BookOpen, CheckCircle2, FileText, History, LayoutTemplate, Loader2, Activity } from "lucide-react";
+import { CheckCircle2, FileText, History, LayoutTemplate, Loader2, Activity } from "lucide-react";
 
 import { cn } from "../../lib/utils";
 import type { FileRecord } from "../../api/generated/model";
@@ -45,20 +45,6 @@ const EVENT_STAGE_LABELS: Record<string, string> = {
   completed: "已发布",
 };
 
-function uniqueCompact(items: string[]): string[] {
-  const seen = new Set<string>();
-  const values: string[] = [];
-  for (const item of items) {
-    const value = String(item ?? "").trim();
-    if (!value) continue;
-    const key = value.toLowerCase();
-    if (seen.has(key)) continue;
-    seen.add(key);
-    values.push(value);
-  }
-  return values;
-}
-
 const TABS = [
   { id: "parsing", label: "解析结果", icon: History },
   { id: "outline", label: "大纲内容", icon: LayoutTemplate },
@@ -75,30 +61,25 @@ export function BuildView({
   buildStage,
   className,
 }: Props) {
-  const [activeTab, setActiveTab] = useState<string>("outline");
+  const [activeTab, setActiveTab] = useState<string>("preview");
 
   const timelineSteps = useBuildTimelineSteps(buildStage);
   const chapters = buildPreview?.chapter_progress ?? [];
   const events = buildPreview?.recent_events ?? [];
   const roundedProgress = Math.max(0, Math.min(100, Math.round(progress)));
 
-
   const draftExcerpt = buildPreview?.draft_excerpt?.trim() ?? "";
   const planSummary = buildPreview?.plan_summary?.trim() ?? "";
 
-  // Helper to find the chapter currently being drafted
   const spotlightChapter = chapters.find((c) =>
     ["generating", "enhancing", "reviewing", "drafting", "researching"].includes(c.status)
   ) ?? chapters.find(c => c.status !== "pending") ?? null;
 
-  // Auto-switch to Preview tab if chapters start generating
   useEffect(() => {
     if (draftExcerpt && activeTab === "outline") {
       setActiveTab("preview");
     }
   }, [draftExcerpt]);
-
-
 
   return (
     <motion.div
@@ -106,66 +87,51 @@ export function BuildView({
       animate={{ opacity: 1 }}
       transition={{ duration: 0.35 }}
       className={cn(
-        "mx-auto w-full max-w-[1280px] h-[calc(100vh-80px)] flex flex-col lg:flex-row gap-6",
+        "mx-auto w-full max-w-[1300px] h-full min-h-[calc(100vh-80px)] flex flex-col lg:flex-row gap-5 pb-6",
         className
       )}
     >
       {/* -------------------------------------------------------- */}
       {/* LEFT COLUMN: Progress & Status Timeline                  */}
       {/* -------------------------------------------------------- */}
-      <div className="flex-shrink-0 w-full lg:w-[320px] flex flex-col gap-6 h-full">
-        {/* Progress Card */}
-        <div className="rounded-[28px] border border-white/60 bg-white/70 backdrop-blur-md p-6 shadow-sm flex flex-col items-center justify-center text-center">
-          <div className="relative mb-6">
-            <svg className="w-32 h-32 transform -rotate-90">
-              <circle
-                cx="64"
-                cy="64"
-                r="60"
-                stroke="currentColor"
-                strokeWidth="6"
-                fill="transparent"
-                className="text-zinc-100"
-              />
+      <div className="flex-shrink-0 w-full lg:w-[300px] flex flex-col gap-5">
+        {/* Status / Progress Card */}
+        <div className="rounded-xl border border-zinc-200 bg-white p-6 shadow-sm flex flex-col items-center justify-center text-center">
+          <div className="relative mb-5">
+            <svg className="w-28 h-28 transform -rotate-90">
+              <circle cx="56" cy="56" r="50" stroke="currentColor" strokeWidth="6" fill="transparent" className="text-zinc-100" />
               <motion.circle
-                cx="64"
-                cy="64"
-                r="60"
-                stroke="currentColor"
-                strokeWidth="6"
-                fill="transparent"
-                strokeDasharray={60 * 2 * Math.PI}
-                strokeDashoffset={60 * 2 * Math.PI * (1 - roundedProgress / 100)}
-                className="text-sky-500"
-                initial={{ strokeDashoffset: 60 * 2 * Math.PI }}
-                animate={{ strokeDashoffset: 60 * 2 * Math.PI * (1 - roundedProgress / 100) }}
+                cx="56" cy="56" r="50" stroke="currentColor" strokeWidth="6" fill="transparent"
+                strokeDasharray={50 * 2 * Math.PI}
+                strokeDashoffset={50 * 2 * Math.PI * (1 - roundedProgress / 100)}
+                className="text-sky-500" /* using standard primary color */
+                initial={{ strokeDashoffset: 50 * 2 * Math.PI }}
+                animate={{ strokeDashoffset: 50 * 2 * Math.PI * (1 - roundedProgress / 100) }}
                 transition={{ duration: 0.8, ease: "easeOut" }}
               />
             </svg>
             <div className="absolute inset-0 flex items-center justify-center flex-col">
-              <span className="text-3xl font-bold tracking-tighter text-zinc-800">{roundedProgress}<span className="text-xl">%</span></span>
+              <span className="text-2xl font-bold tracking-tight text-zinc-900">
+                {roundedProgress}<span className="text-lg text-zinc-500 font-medium ml-0.5">%</span>
+              </span>
             </div>
-            <motion.div
-              className="absolute -inset-2 rounded-full border border-sky-300/30"
-              animate={{ scale: [1, 1.1, 1], opacity: [0.6, 0, 0.6] }}
-              transition={{ duration: 2.5, repeat: Infinity, ease: "easeInOut" }}
-            />
           </div>
           
-          <h2 className="text-lg font-semibold tracking-tight text-zinc-900 flex items-center gap-2">
+          <h2 className="text-[15px] font-semibold text-zinc-900 flex items-center justify-center gap-2">
             {isFetching && <Loader2 className="h-4 w-4 animate-spin text-zinc-400" />}
-            {statusText || "任务初始化..."}
+            {statusText || "任务初始化"}
           </h2>
           {buildPreview?.mode_reason?.trim() ? (
-             <p className="mt-2 text-xs leading-5 text-sky-600 font-medium bg-sky-50 px-3 py-1 rounded-full border border-sky-100">{buildPreview.mode_reason.trim()}</p>
+             <p className="mt-2 text-[12px] text-zinc-500 font-medium bg-zinc-50 px-3 py-1.5 rounded-lg border border-zinc-200/60 inline-flex">
+               {buildPreview.mode_reason.trim()}
+             </p>
           ) : null}
         </div>
 
         {/* Timeline Timeline */}
-        <div className="flex-1 rounded-[28px] border border-white/60 bg-white/70 backdrop-blur-md p-6 shadow-sm overflow-hidden flex flex-col">
-          <h3 className="text-xs font-bold text-zinc-400 uppercase tracking-[0.2em] mb-6 flex items-center gap-2">
-            <CheckCircle2 className="w-4 h-4 text-zinc-400" />
-            执行流状态
+        <div className="flex-1 rounded-xl border border-zinc-200 bg-white p-5 shadow-sm overflow-hidden flex flex-col">
+          <h3 className="text-xs font-semibold text-zinc-400 uppercase mb-5 flex items-center gap-1.5">
+            <CheckCircle2 className="w-4 h-4" /> 执行状态
           </h3>
           <div className="flex-1 overflow-y-auto pr-2 scrollbar-thin scrollbar-webkit">
             <BuildProcessTimeline steps={timelineSteps} />
@@ -176,9 +142,9 @@ export function BuildView({
       {/* -------------------------------------------------------- */}
       {/* RIGHT COLUMN: Tabbed Content Area                        */}
       {/* -------------------------------------------------------- */}
-      <div className="flex-1 min-w-0 rounded-[28px] border border-white/60 bg-white/50 backdrop-blur-xl shadow-sm flex flex-col overflow-hidden h-full">
+      <div className="flex-1 min-w-0 rounded-xl border border-zinc-200 bg-white shadow-sm flex flex-col overflow-hidden relative">
         {/* Tabs Header */}
-        <div className="flex items-center gap-4 px-6 pt-5 border-b border-zinc-200/50">
+        <div className="flex items-center gap-6 px-6 pt-3 border-b border-zinc-100 bg-white">
           {TABS.map((tab) => {
             const Icon = tab.icon;
             const isActive = activeTab === tab.id;
@@ -187,16 +153,16 @@ export function BuildView({
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
                 className={cn(
-                  "relative px-4 py-3 flex items-center gap-2 text-sm font-medium transition-colors outline-none",
-                  isActive ? "text-sky-600" : "text-zinc-500 hover:text-zinc-800"
+                  "relative pb-3 flex items-center gap-2 text-[14px] transition-colors outline-none",
+                  isActive ? "text-zinc-900 font-medium" : "text-zinc-500 hover:text-zinc-800 min-w-max"
                 )}
               >
                 <Icon className={cn("w-4 h-4", isActive ? "text-sky-500" : "text-zinc-400")} />
                 {tab.label}
                 {isActive && (
                   <motion.div
-                    layoutId="docgen-active-tab"
-                    className="absolute bottom-0 left-0 right-0 h-[3px] bg-sky-500 rounded-t-sm"
+                    layoutId="docgen-active-tab-flat"
+                    className="absolute bottom-0 left-0 right-0 h-[2px] bg-zinc-900"
                     transition={{ type: "spring", stiffness: 300, damping: 30 }}
                   />
                 )}
@@ -206,50 +172,49 @@ export function BuildView({
         </div>
 
         {/* Tab Body */}
-        <div className="flex-1 overflow-hidden relative bg-white/30">
+        <div className="flex-1 overflow-hidden relative bg-white">
           <AnimatePresence mode="wait">
             {activeTab === "parsing" && (
               <motion.div
                 key="parsing"
-                initial={{ opacity: 0, y: 10 }}
+                initial={{ opacity: 0, y: 5 }}
                 animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -10 }}
-                transition={{ duration: 0.2 }}
+                exit={{ opacity: 0, y: -5 }}
+                transition={{ duration: 0.15 }}
                 className="absolute inset-0 overflow-y-auto p-6 md:p-8 flex flex-col gap-8 scrollbar-thin scrollbar-webkit"
               >
                 <div>
-                  <h3 className="text-sm font-bold text-zinc-900 flex items-center gap-2 mb-4">
-                    <BookOpen className="w-4 h-4 text-zinc-500" /> 本地文献吸收站
+                  <h3 className="text-[14px] font-semibold text-zinc-900 mb-4">
+                    本地文献提取
                   </h3>
-                  <div className="bg-white/60 p-4 rounded-2xl border border-white/80 shadow-[inset_0_2px_10px_rgba(0,0,0,0.02)]">
+                  <div className="bg-white p-4 rounded-xl border border-zinc-200 shadow-sm">
                      <BuildMaterialPipeline files={sourceFiles} isFetching={sourceFilesFetching} />
                   </div>
                 </div>
                 
                 <div>
-                  <h3 className="text-sm font-bold text-zinc-900 flex items-center gap-2 mb-4">
-                    <History className="w-4 h-4 text-zinc-500" /> 实时终端与引源
+                  <h3 className="text-[14px] font-semibold text-zinc-900 mb-4">
+                    构建日志与网络源
                   </h3>
-                  <div className="bg-white/60 p-4 rounded-2xl border border-white/80 shadow-[inset_0_2px_10px_rgba(0,0,0,0.02)] space-y-6">
+                  <div className="bg-white p-4 rounded-xl border border-zinc-200 shadow-sm space-y-5">
                      <BuildResearchSources events={events} />
-                     <div className="space-y-2.5">
+                     <div className="space-y-3 pt-4 border-t border-zinc-100">
                        {events.map((event, index) => {
                          const stageLabel = EVENT_STAGE_LABELS[(event.stage ?? "").trim()] ?? (event.stage?.trim() || "事件");
                          return (
-                           <div key={index} className="flex flex-col gap-1 p-3 rounded-xl bg-white/70 border border-zinc-100">
-                             <div className="flex items-center gap-2 text-[11px] text-zinc-400 font-medium uppercase">
-                               <span className="w-1.5 h-1.5 rounded-full bg-sky-400" />
-                               {stageLabel}
-                               <span className="ml-auto">{event.created_at ? formatBuildEventTime(event.created_at) : ""}</span>
+                           <div key={index} className="flex gap-4 p-3 rounded-lg hover:bg-zinc-50/50 group transition-colors">
+                             <div className="flex flex-col gap-1 w-24 flex-shrink-0">
+                               <span className="text-[13px] font-medium text-zinc-700">{stageLabel}</span>
+                               <span className="text-[12px] text-zinc-400 group-hover:text-zinc-500 transition-colors">{event.created_at ? formatBuildEventTime(event.created_at) : ""}</span>
                              </div>
-                             <p className="text-[13px] text-zinc-600 leading-relaxed pl-3.5">
+                             <p className="text-[13.5px] text-zinc-600 leading-[1.6] border-l border-zinc-200 pl-4">
                                {event.summary}
                              </p>
                            </div>
                          );
                        })}
                        {events.length === 0 && (
-                          <div className="text-[12px] text-center text-zinc-400 py-6">等待终端响应...</div>
+                          <div className="text-[13px] text-center text-zinc-400 py-6">无后台事件流记录。</div>
                        )}
                      </div>
                   </div>
@@ -260,78 +225,67 @@ export function BuildView({
             {activeTab === "outline" && (
               <motion.div
                 key="outline"
-                initial={{ opacity: 0, y: 10 }}
+                initial={{ opacity: 0, y: 5 }}
                 animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -10 }}
-                transition={{ duration: 0.2 }}
-                className="absolute inset-0 overflow-y-auto p-6 md:p-8 scrollbar-thin scrollbar-webkit"
+                exit={{ opacity: 0, y: -5 }}
+                transition={{ duration: 0.15 }}
+                className="absolute inset-0 overflow-y-auto p-6 md:p-8 scrollbar-thin scrollbar-webkit bg-zinc-50/20"
               >
                 <div className="max-w-4xl mx-auto space-y-8">
                   {/* Summary Block */}
-                  <div className="bg-zinc-50/60 rounded-2xl border border-zinc-200/50 p-6 shadow-sm">
-                     <h3 className="text-xs font-semibold uppercase tracking-[0.2em] text-zinc-400 mb-4">学习构架总结</h3>
-                     <p className="text-[14px] leading-[1.8] text-zinc-700 font-serif">
+                  <div className="bg-white rounded-xl border border-zinc-200 p-6 shadow-sm">
+                     <h3 className="text-[13px] font-medium text-zinc-500 mb-3">大纲与架构思路</h3>
+                     <p className="text-[14px] leading-[1.8] text-zinc-800">
                        {planSummary || "系统正在先搭稳定骨架，理解资料范围与章节边界，请稍候。"}
                      </p>
                   </div>
 
                   {/* Chapter Tracking Details */}
                   <div>
-                    <h3 className="text-xs font-semibold uppercase tracking-[0.2em] text-zinc-400 mb-4 flex items-center justify-between">
-                       章节追踪状态
-                       <span className="bg-zinc-200/50 text-zinc-500 rounded-full px-2 py-0.5 text-[10px]">
+                    <h3 className="text-[14px] font-semibold text-zinc-900 mb-4 flex items-center justify-between">
+                       章节清单
+                       <span className="bg-zinc-100 text-zinc-600 rounded px-2 py-0.5 text-[12px]">
                          共计 {chapters.length} 章节
                        </span>
                     </h3>
                     
                     {chapters.length > 0 ? (
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                         {chapters.map((chapter) => {
                           const isDone = ["generated", "completed", "enhanced", "reviewed"].includes(chapter.status);
                           const isActive = ["generating", "drafting", "enhancing"].includes(chapter.status);
                           
                           return (
                             <div key={chapter.chapter_index} className={cn(
-                              "relative group overflow-hidden flex flex-col p-4 rounded-2xl border transition-all duration-300",
+                              "flex flex-col p-4 rounded-xl border transition-all duration-200",
                               isActive
-                                ? "bg-sky-50/80 border-sky-200/60 shadow-sm"
+                                ? "bg-white border-sky-500/50 ring-1 ring-sky-500/20 shadow-sm"
                                 : isDone
-                                ? "bg-white/80 border-zinc-200/50"
-                                : "bg-zinc-50/50 border-zinc-200/30 opacity-70"
+                                ? "bg-white border-zinc-200"
+                                : "bg-zinc-50 border-zinc-200 border-dashed opacity-80"
                             )}>
                                <div className="flex items-start gap-3">
-                                  <span className="font-mono text-zinc-400 text-xs mt-1">
+                                  <span className="font-mono text-zinc-400 text-[12px] mt-0.5">
                                     {String(chapter.chapter_index).padStart(2, "0")}
                                   </span>
                                   <div className="flex-1">
                                     <h4 className={cn(
                                       "text-[14px] font-medium leading-relaxed mb-1",
-                                      isActive ? "text-sky-800" : isDone ? "text-zinc-800" : "text-zinc-600"
+                                      isActive ? "text-zinc-900" : isDone ? "text-zinc-800" : "text-zinc-600"
                                     )}>{chapter.title}</h4>
-                                    <p className="text-[12px] text-zinc-500">
+                                    <p className="text-[12px] text-zinc-500 flex items-center gap-1.5">
+                                      {isActive && <Activity className="w-3.5 h-3.5 text-sky-500 animate-pulse" />}
                                       {buildChapterStatusLabel(chapter.status)}
                                     </p>
                                   </div>
-                                  {isActive && <Activity className="w-4 h-4 text-sky-400 animate-pulse" />}
-                                  {isDone && <CheckCircle2 className="w-4 h-4 text-emerald-400" />}
                                </div>
-                               {isActive && (
-                                <div className="absolute bottom-0 left-0 w-full h-[2px] bg-sky-100 overflow-hidden">
-                                  <motion.div
-                                    className="h-full bg-sky-400"
-                                    animate={{ x: ["-100%", "100%"] }}
-                                    transition={{ duration: 1.5, repeat: Infinity, ease: "linear" }}
-                                    style={{ width: "20%" }}
-                                  />
-                                </div>
-                              )}
                             </div>
                           );
                         })}
                       </div>
                     ) : (
-                      <div className="text-[13px] text-zinc-400 text-center py-10 border border-dashed border-zinc-300/60 rounded-2xl">
-                         大纲正在构筑中，暂未就绪。
+                      <div className="text-[13px] text-zinc-400 text-center py-10 border border-zinc-200 rounded-xl bg-white shadow-sm">
+                         章节暂未划分。
                       </div>
                     )}
                   </div>
@@ -342,46 +296,46 @@ export function BuildView({
             {activeTab === "preview" && (
               <motion.div
                 key="preview"
-                initial={{ opacity: 0, y: 10 }}
+                initial={{ opacity: 0, y: 5 }}
                 animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -10 }}
-                transition={{ duration: 0.2 }}
-                className="absolute inset-0 flex flex-col p-6 md:p-8"
+                exit={{ opacity: 0, y: -5 }}
+                transition={{ duration: 0.15 }}
+                className="absolute inset-0 flex flex-col h-full bg-zinc-50/30"
               >
-                 <div className="flex-1 w-full max-w-4xl mx-auto flex flex-col bg-white rounded-[24px] border border-zinc-200/60 shadow-[0_4px_24px_-12px_rgba(0,0,0,0.05)] overflow-hidden">
+                 <div className="flex-1 w-full flex flex-col bg-white overflow-hidden m-6 rounded-xl border border-zinc-200 shadow-sm shadow-zinc-200/50">
                     {/* Header Info */}
-                    <div className="flex items-center justify-between p-4 border-b border-zinc-100/80 bg-zinc-50/50">
-                       <span className="flex items-center gap-2 text-xs font-semibold text-zinc-500 uppercase tracking-widest">
-                         <FileText className="w-4 h-4" /> 章节预览流
+                    <div className="flex items-center justify-between p-4 border-b border-zinc-100 bg-white">
+                       <span className="flex items-center gap-2 text-[13px] font-medium text-zinc-600">
+                         <FileText className="w-4 h-4 text-zinc-400" /> 章节预览流
                        </span>
                        {spotlightChapter ? (
                          <div className="flex items-center gap-2">
                            <span className="relative flex h-2 w-2">
-                             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-sky-400 opacity-75"></span>
+                             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-sky-500 opacity-75"></span>
                              <span className="relative inline-flex rounded-full h-2 w-2 bg-sky-500"></span>
                            </span>
-                           <span className="text-[12px] font-medium text-sky-700">
+                           <span className="text-[13px] font-medium text-sky-600">
                              {String(spotlightChapter.chapter_index).padStart(2, "0")}：{spotlightChapter.title}
                            </span>
                          </div>
                        ) : (
-                         <span className="text-[11px] bg-zinc-200/50 text-zinc-500 px-2 py-0.5 rounded-full">等待接入</span>
+                         <span className="text-[13px] text-zinc-400">正在等待输出...</span>
                        )}
                     </div>
                     {/* Draft Content View Wrapper */}
-                    <div className="flex-1 overflow-y-auto p-6 md:p-10 scrollbar-thin scrollbar-webkit">
+                    <div className="flex-1 overflow-y-auto p-6 md:p-8 scrollbar-thin scrollbar-webkit">
                        {draftExcerpt ? (
                           <pre
-                            className="whitespace-pre-wrap text-[14.5px] leading-[2.1] text-zinc-700"
+                            className="whitespace-pre-wrap text-[15px] leading-[2.2] text-zinc-800 min-h-full break-words"
                             style={{ fontFamily: 'var(--font-serif)' }}
                           >
                             {draftExcerpt}
-                            <motion.span className="ml-1 inline-block h-[15px] w-[2px] animate-blink rounded-sm bg-sky-500 align-middle" />
+                            <motion.span className="ml-1 inline-block h-[15px] w-[2px] animate-blink rounded-sm bg-zinc-900 align-middle" />
                           </pre>
                        ) : (
                           <div className="h-full flex flex-col items-center justify-center text-zinc-400 space-y-4">
-                             <Activity className="w-8 h-8 opacity-20" />
-                             <p className="text-sm">SSE 流正准备将章节推送到此处...</p>
+                             <Activity className="w-8 h-8 text-zinc-200" />
+                             <p className="text-[14px]">SSE 流正准备将章节推送到此处...</p>
                           </div>
                        )}
                     </div>
@@ -393,9 +347,9 @@ export function BuildView({
       </div>
 
       <style>{`
-        .scrollbar-webkit::-webkit-scrollbar { width: 4px; }
+        .scrollbar-webkit::-webkit-scrollbar { width: 6px; }
         .scrollbar-webkit::-webkit-scrollbar-track { background: transparent; }
-        .scrollbar-webkit::-webkit-scrollbar-thumb { background-color: rgba(161, 161, 170, 0.4); border-radius: 4px; }
+        .scrollbar-webkit::-webkit-scrollbar-thumb { background-color: rgba(161, 161, 170, 0.4); border-radius: 6px; }
       `}</style>
     </motion.div>
   );
