@@ -1,13 +1,15 @@
-"""Runtime settings loaded from project `settings_default.yaml`."""
+"""Runtime settings resolved from code defaults and project overrides."""
 
 from __future__ import annotations
 
 from collections.abc import Mapping
+from copy import deepcopy
 from functools import lru_cache
-from typing import Any
+from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, model_validator
 
+from .defaults import merge_default_settings, merge_settings_values
 from .support import (
     DEFAULT_EMBEDDING_DIM,
     DEFAULT_RETRIEVER_FALLBACK,
@@ -19,6 +21,7 @@ from .support import (
     split_csv_names,
 )
 
+
 class _SettingsModel(BaseModel):
     """Base model for settings-shaped runtime sections."""
 
@@ -26,16 +29,16 @@ class _SettingsModel(BaseModel):
 
 
 class ModelsSettings(_SettingsModel):
-    """Model names exactly shaped like `settings_default.yaml: models`."""
+    """Model names shaped like the project settings `models` section."""
 
-    reason: str | None = None
-    primary: str = "qwen-plus"
-    light: str | None = None
-    extract: str | None = None
-    ocr: str | None = None
-    embedding: str = "text-embedding-v3"
-    image_generation: str | None = None
-    overrides: dict[str, str] = Field(default_factory=dict)
+    reason: str | None
+    primary: str
+    light: str | None
+    extract: str | None
+    ocr: str | None
+    embedding: str
+    image_generation: str | None
+    overrides: dict[str, str]
 
     @property
     def fast(self) -> str | None:
@@ -45,7 +48,7 @@ class ModelsSettings(_SettingsModel):
 
 
 class InteractSettings(_SettingsModel):
-    history_turns: int = 10
+    history_turns: int
 
 
 class PlannerModeSettings(_SettingsModel):
@@ -55,147 +58,133 @@ class PlannerModeSettings(_SettingsModel):
 
 
 class PlannerSettings(_SettingsModel):
-    default_digest_mode: str = "sprint"
-    allow_external_search: bool = True
-    sprint: PlannerModeSettings = Field(
-        default_factory=lambda: PlannerModeSettings(
-            min_chapters=4,
-            max_chapters=7,
-            target_length="3000-5000字",
-        )
-    )
-    systematic: PlannerModeSettings = Field(
-        default_factory=lambda: PlannerModeSettings(
-            min_chapters=5,
-            max_chapters=12,
-            target_length="10000-15000字",
-        )
-    )
-
-    @model_validator(mode="before")
-    @classmethod
-    def _merge_partial_mode_settings(cls, value: Any) -> Any:
-        if not isinstance(value, Mapping):
-            return value
-        data = dict(value)
-
-        def merge_mode(key: str, defaults: dict[str, Any]) -> None:
-            existing = data.get(key)
-            if isinstance(existing, Mapping):
-                data[key] = {**defaults, **dict(existing)}
-
-        merge_mode(
-            "sprint",
-            {
-                "min_chapters": 4,
-                "max_chapters": 7,
-                "target_length": "3000-5000字",
-            },
-        )
-        merge_mode(
-            "systematic",
-            {
-                "min_chapters": 5,
-                "max_chapters": 12,
-                "target_length": "10000-15000字",
-            },
-        )
-        return data
+    default_digest_mode: str
+    sprint: PlannerModeSettings
+    systematic: PlannerModeSettings
 
 
 class DocgenSettings(_SettingsModel):
-    allow_external_search: bool = True
-    max_parallel_chapters: int = 20
-    io_parallelism: int = 20
-    max_research_queries: int = 3
-    retrieval_timeout_s: float = 18.0
-    read_timeout_s: float = 12.0
+    allow_external_search: bool
+    max_parallel_chapters: int
+    io_parallelism: int
+    max_research_queries: int
+    retrieval_timeout_s: float
+    read_timeout_s: float
 
 
 class IngestSettings(_SettingsModel):
-    max_upload_size_mb: int = 10
-    max_files_per_upload: int = 10
-    parse_concurrency: int = 5
-    parser_timeout_s: int = 90
+    default_parser_provider: Literal["auto", "markitdown", "mineru"]
+    max_upload_size_mb: int
+    max_files_per_upload: int
+    parse_concurrency: int
+    parser_timeout_s: int
+    mineru_model_version: str
+    mineru_enable_formula: bool
+    mineru_enable_table: bool
+    mineru_is_ocr: bool
+
+    @model_validator(mode="before")
+    @classmethod
+    def _normalize_parser_provider(cls, value: Any) -> Any:
+        if not isinstance(value, Mapping):
+            return value
+        data = dict(value)
+        raw_provider = str(data.get("default_parser_provider") or "").strip().lower()
+        if raw_provider in {"", "auto", "local", "docling", "unstructured"}:
+            data["default_parser_provider"] = "auto"
+        elif raw_provider in {"markitdown", "mineru"}:
+            data["default_parser_provider"] = raw_provider
+        else:
+            data["default_parser_provider"] = "auto"
+        return data
 
 
 class RagSettings(_SettingsModel):
-    top_k: int = 5
-    similarity_threshold: float = 0.3
-    rerank_model: str | None = None
-    rerank_top_k: int = 3
+    top_k: int
+    similarity_threshold: float
+    rerank_model: str | None
+    rerank_top_k: int
 
 
 class SearchSettings(_SettingsModel):
-    retrievers: str = ""
-    retriever_profile: str = ""
-    max_results_per_query: int = 5
-    scrape_timeout_s: int = 20
-    provider_timeout_s: float = 6.0
-    total_timeout_s: float = 12.0
-    read_timeout_s: float = 10.0
-    parallel_retrievers: bool = True
-    max_parallel_retrievers: int = 4
-    fusion_k: int = 60
-    runtime_cache_enabled: bool = True
-    runtime_cache_ttl_s: int = 900
-    runtime_cache_max_entries: int = 256
-    retriever_profiles: dict[str, list[str] | str] = Field(default_factory=dict)
+    retrievers: str
+    retriever_profile: str
+    max_results_per_query: int
+    scrape_timeout_s: int
+    provider_timeout_s: float
+    total_timeout_s: float
+    read_timeout_s: float
+    parallel_retrievers: bool
+    max_parallel_retrievers: int
+    fusion_k: int
+    runtime_cache_enabled: bool
+    runtime_cache_ttl_s: int
+    runtime_cache_max_entries: int
+    retriever_profiles: dict[str, list[str] | str]
 
 
 class LocalRagSettings(_SettingsModel):
-    priority: bool = True
-    min_results: int = 2
+    priority: bool
+    min_results: int
 
 
 class RuntimeSettings(_SettingsModel):
-    llm_concurrency_limit: int = 20
-    default_token_budget: int = 4000
+    llm_concurrency_limit: int
+    default_token_budget: int
 
 
 class EmbeddingSettings(_SettingsModel):
-    batch_size: int = 10
-    batch_delay_s: float = 0.1
+    batch_size: int
+    batch_delay_s: float
 
 
 class KnowledgeGraphSettings(_SettingsModel):
-    extract_max_parallelism: int = 20
-    sync_after_docgen: bool = False
+    extract_max_parallelism: int
+    sync_after_docgen: bool
 
 
 class ObservabilitySettings(_SettingsModel):
-    llm_observability_enabled: bool = True
-    llm_token_summary_enabled: bool = True
-    timing_top_k: int = 5
-    tracing_enabled: bool = True
-    langsmith_capture_inputs: bool | None = None
-    langsmith_capture_outputs: bool | None = None
-    langsmith_max_text_chars: int = 2000
-    llm_observability_max_records: int = 5000
+    llm_observability_enabled: bool
+    llm_token_summary_enabled: bool
+    timing_top_k: int
+    tracing_enabled: bool
+    langsmith_capture_inputs: bool | None
+    langsmith_capture_outputs: bool | None
+    langsmith_max_text_chars: int
+    llm_observability_max_records: int
 
 
 class Settings(_SettingsModel):
     """Project-level runtime settings.
 
-    The public shape mirrors repo-root `settings_default.yaml`, e.g.
+    The public shape mirrors the optional project settings override schema, e.g.
     `settings.models.reason` or `settings.search.provider_timeout_s`.
 
-    The settings object intentionally does not mirror old flat names; call
-    sites should use the same nested paths as `settings_default.yaml`.
+    Code defaults live in `backend/app/shared/infra/settings/defaults.py`.
+    `PROJECT_SETTINGS_PATH` may point to an optional external override file.
     """
 
-    models: ModelsSettings = Field(default_factory=ModelsSettings)
-    interact: InteractSettings = Field(default_factory=InteractSettings)
-    planner: PlannerSettings = Field(default_factory=PlannerSettings)
-    docgen: DocgenSettings = Field(default_factory=DocgenSettings)
-    ingest: IngestSettings = Field(default_factory=IngestSettings)
-    rag: RagSettings = Field(default_factory=RagSettings)
-    search: SearchSettings = Field(default_factory=SearchSettings)
-    local_rag: LocalRagSettings = Field(default_factory=LocalRagSettings)
-    runtime: RuntimeSettings = Field(default_factory=RuntimeSettings)
-    embedding: EmbeddingSettings = Field(default_factory=EmbeddingSettings)
-    knowledge_graph: KnowledgeGraphSettings = Field(default_factory=KnowledgeGraphSettings)
-    observability: ObservabilitySettings = Field(default_factory=ObservabilitySettings)
+    models: ModelsSettings
+    interact: InteractSettings
+    planner: PlannerSettings
+    docgen: DocgenSettings
+    ingest: IngestSettings
+    rag: RagSettings
+    search: SearchSettings
+    local_rag: LocalRagSettings
+    runtime: RuntimeSettings
+    embedding: EmbeddingSettings
+    knowledge_graph: KnowledgeGraphSettings
+    observability: ObservabilitySettings
+
+    @model_validator(mode="before")
+    @classmethod
+    def _merge_code_defaults(cls, value: Any) -> Any:
+        if value is None:
+            return merge_default_settings()
+        if isinstance(value, Mapping):
+            return merge_default_settings(value)
+        return value
 
     @property
     def embedding_dim(self) -> int:
@@ -244,12 +233,11 @@ class Settings(_SettingsModel):
             normalize_retriever_name(item)
             for item in get_retriever_profiles().get(resolved_profile, [])
         ]
-        if explicit_names:
-            candidate_names = explicit_names
-        elif profile_names:
-            candidate_names = profile_names
-        else:
-            candidate_names = [DEFAULT_RETRIEVER_FALLBACK]
+        candidate_names = (
+            explicit_names
+            or profile_names
+            or [DEFAULT_RETRIEVER_FALLBACK]
+        )
 
         should_include_local_rag = (
             self.local_rag.priority
@@ -275,15 +263,70 @@ class Settings(_SettingsModel):
             _append(item)
 
         fallback_name = normalize_retriever_name(fallback_retriever)
-        if include_fallback and include_external and fallback_name and any(name != "local_rag" for name in normalized):
+        if (
+            include_fallback
+            and include_external
+            and fallback_name
+            and any(name != "local_rag" for name in normalized)
+        ):
             _append(fallback_name)
 
         return normalized
 
 
+_SYSTEM_SETTINGS_OVERRIDE: dict[str, Any] = {}
+_EFFECTIVE_SETTINGS_CACHE: Settings | None = None
+
+
 @lru_cache
-def get_settings() -> Settings:
+def get_project_settings() -> Settings:
     return Settings.model_validate(load_project_settings_values())
+
+
+def get_system_settings_override_payload() -> dict[str, Any]:
+    return deepcopy(_SYSTEM_SETTINGS_OVERRIDE)
+
+
+def set_system_settings_override(payload: Mapping[str, Any] | None) -> Settings:
+    global _SYSTEM_SETTINGS_OVERRIDE, _EFFECTIVE_SETTINGS_CACHE
+    base_payload = get_project_settings().model_dump(mode="json")
+    candidate_override = deepcopy(dict(payload or {}))
+    candidate_payload = merge_settings_values(base_payload, candidate_override)
+    effective = Settings.model_validate(candidate_payload)
+    normalized_override = {
+        key: value
+        for key, value in candidate_override.items()
+        if key in base_payload
+    }
+    _SYSTEM_SETTINGS_OVERRIDE = normalized_override
+    _EFFECTIVE_SETTINGS_CACHE = effective
+    return effective
+
+
+def clear_system_settings_override() -> Settings:
+    return set_system_settings_override({})
+
+
+def reset_project_settings_cache() -> None:
+    global _EFFECTIVE_SETTINGS_CACHE
+    get_project_settings.cache_clear()
+    _EFFECTIVE_SETTINGS_CACHE = None
+
+
+def get_settings() -> Settings:
+    global _EFFECTIVE_SETTINGS_CACHE
+    if _EFFECTIVE_SETTINGS_CACHE is not None:
+        return _EFFECTIVE_SETTINGS_CACHE
+    project_settings = get_project_settings()
+    if not _SYSTEM_SETTINGS_OVERRIDE:
+        _EFFECTIVE_SETTINGS_CACHE = project_settings
+        return project_settings
+    merged_payload = merge_settings_values(
+        project_settings.model_dump(mode="json"),
+        _SYSTEM_SETTINGS_OVERRIDE,
+    )
+    _EFFECTIVE_SETTINGS_CACHE = Settings.model_validate(merged_payload)
+    return _EFFECTIVE_SETTINGS_CACHE
 
 
 __all__ = [
@@ -301,5 +344,10 @@ __all__ = [
     "RuntimeSettings",
     "SearchSettings",
     "Settings",
+    "clear_system_settings_override",
     "get_settings",
+    "get_project_settings",
+    "get_system_settings_override_payload",
+    "reset_project_settings_cache",
+    "set_system_settings_override",
 ]

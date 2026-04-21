@@ -29,6 +29,7 @@ import { HeroAnimation } from "../components/ui/HeroAnimation";
 import { FullPageDropOverlay } from "../components/ui/FullPageDropOverlay";
 import type { FilesUploadData } from "../types/files";
 import { getStoredAppSettings } from "../hooks/useSettings";
+import { loadIngestPreferenceSettings } from "../lib/systemSettings";
 
 /* ── API helpers (same as BuildPlanPage) ── */
 
@@ -38,22 +39,22 @@ async function uploadFiles(subject: string, files: File[]): Promise<FilesUploadD
   const formData = new FormData();
   for (const file of files) formData.append("files", file);
 
-  // 前端 settings 属于浏览器本机偏好，上传时需要把解析引擎选择随请求传给后端。
-  // 这样后端后台 ingest 任务无需依赖浏览器 localStorage，就能按本次设置走指定方案。
-  const settings = getStoredAppSettings();
-  if (settings.parserProvider === "markitdown") {
+  // 解析引擎默认值从后端 settings 数据库缓存读取；浏览器仅保留本机临时 Token 覆盖。
+  const browserSettings = getStoredAppSettings();
+  const ingestSettings = await loadIngestPreferenceSettings();
+  if (ingestSettings.parserProvider === "markitdown") {
     formData.append("parser_provider", "markitdown");
   }
-  if (settings.parserProvider === "mineru") {
-    const token = settings.mineruApiToken?.trim();
+  if (ingestSettings.parserProvider === "mineru") {
+    const token = browserSettings.mineruApiToken?.trim();
     formData.append("parser_provider", "mineru");
     if (token) {
       formData.append("mineru_api_token", token);
     }
-    formData.append("mineru_model_version", settings.mineruModelVersion ?? "vlm");
-    formData.append("mineru_enable_formula", String(settings.mineruEnableFormula));
-    formData.append("mineru_enable_table", String(settings.mineruEnableTable));
-    formData.append("mineru_is_ocr", String(settings.mineruIsOcr));
+    formData.append("mineru_model_version", ingestSettings.mineruModelVersion);
+    formData.append("mineru_enable_formula", String(ingestSettings.mineruEnableFormula));
+    formData.append("mineru_enable_table", String(ingestSettings.mineruEnableTable));
+    formData.append("mineru_is_ocr", String(ingestSettings.mineruIsOcr));
   }
 
   const response = await apiClient<ApiResponse<FilesUploadData>>({

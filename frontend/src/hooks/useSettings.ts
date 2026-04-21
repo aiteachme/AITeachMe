@@ -1,24 +1,10 @@
 import { useCallback, useSyncExternalStore } from "react";
 
-export type ParserProvider = "docling" | "unstructured" | "mineru" | "markitdown";
-export type MinerUModelVersion = "vlm" | "pipeline";
-
 export interface AppSettings {
   apiUrl: string;
   useMock: boolean;
-  /** `.env.sample` 风格的本机环境变量，仅存当前浏览器 localStorage。 */
-  localEnv: Record<string, string>;
-  parserProvider: ParserProvider;
   /** MinerU: 个人 API Token（仅存前端 localStorage，上传时随请求传给后端）。 */
   mineruApiToken: string;
-  /** MinerU: 是否开启公式识别。 */
-  mineruEnableFormula: boolean;
-  /** MinerU: 是否开启表格识别。 */
-  mineruEnableTable: boolean;
-  /** MinerU: 是否开启 OCR（通常用于图片型文档/扫描件）。 */
-  mineruIsOcr: boolean;
-  /** MinerU: 模型版本（对应请求中的 model_version）。 */
-  mineruModelVersion: MinerUModelVersion;
   debugMode: boolean;
 }
 
@@ -27,13 +13,7 @@ export const APP_SETTINGS_STORAGE_KEY = "app-settings";
 export const DEFAULT_SETTINGS: AppSettings = {
   apiUrl: import.meta.env.VITE_API_URL || "http://localhost:8000",
   useMock: import.meta.env.VITE_USE_MOCK === "true",
-  localEnv: {},
-  parserProvider: "docling",
   mineruApiToken: "",
-  mineruEnableFormula: true,
-  mineruEnableTable: true,
-  mineruIsOcr: false,
-  mineruModelVersion: "vlm",
   debugMode: false,
 };
 
@@ -44,62 +24,21 @@ let currentSettings: AppSettings = { ...DEFAULT_SETTINGS };
 let hasLoadedInitialSettings = false;
 let hasBoundStorageListener = false;
 
-function normalizeParserProvider(value: unknown): ParserProvider {
-  if (value === "unstructured") {
-    return "unstructured";
-  }
-  if (value === "mineru") {
-    return "mineru";
-  }
-  if (value === "markitdown") {
-    return "markitdown";
-  }
-  return "docling";
-}
-
-function normalizeMinerUModelVersion(value: unknown): MinerUModelVersion {
-  if (value === "pipeline") {
-    return "pipeline";
-  }
-  return "vlm";
-}
-
 function normalizeSettings(settings: Partial<AppSettings>): AppSettings {
   const merged = { ...DEFAULT_SETTINGS, ...settings };
-  const localEnv =
-    typeof merged.localEnv === "object" && merged.localEnv !== null
+  const legacyLocalEnv =
+    typeof (settings as { localEnv?: unknown }).localEnv === "object" &&
+    (settings as { localEnv?: unknown }).localEnv !== null
       ? Object.fromEntries(
-          Object.entries(merged.localEnv).map(([key, value]) => [key, String(value ?? "")]),
+          Object.entries((settings as { localEnv?: Record<string, unknown> }).localEnv ?? {}).map(([key, value]) => [key, String(value ?? "")]),
         )
       : {};
-  if (!localEnv.VITE_API_URL && merged.apiUrl) {
-    localEnv.VITE_API_URL = String(merged.apiUrl);
-  }
-  if (!localEnv.VITE_USE_MOCK) {
-    localEnv.VITE_USE_MOCK = String(Boolean(merged.useMock));
-  }
-  if (!localEnv.MINERU_API_TOKEN && merged.mineruApiToken) {
-    localEnv.MINERU_API_TOKEN = String(merged.mineruApiToken);
-  }
   return {
-    apiUrl: String(localEnv.VITE_API_URL || merged.apiUrl || DEFAULT_SETTINGS.apiUrl),
-    useMock: localEnv.VITE_USE_MOCK
-      ? localEnv.VITE_USE_MOCK.trim().toLowerCase() === "true"
+    apiUrl: String(legacyLocalEnv.VITE_API_URL || merged.apiUrl || DEFAULT_SETTINGS.apiUrl),
+    useMock: legacyLocalEnv.VITE_USE_MOCK
+      ? legacyLocalEnv.VITE_USE_MOCK.trim().toLowerCase() === "true"
       : typeof merged.useMock === "boolean" ? merged.useMock : DEFAULT_SETTINGS.useMock,
-    localEnv,
-    parserProvider: normalizeParserProvider(merged.parserProvider),
-    mineruApiToken: String(localEnv.MINERU_API_TOKEN ?? merged.mineruApiToken ?? DEFAULT_SETTINGS.mineruApiToken),
-    mineruEnableFormula:
-      typeof merged.mineruEnableFormula === "boolean"
-        ? merged.mineruEnableFormula
-        : DEFAULT_SETTINGS.mineruEnableFormula,
-    mineruEnableTable:
-      typeof merged.mineruEnableTable === "boolean"
-        ? merged.mineruEnableTable
-        : DEFAULT_SETTINGS.mineruEnableTable,
-    mineruIsOcr:
-      typeof merged.mineruIsOcr === "boolean" ? merged.mineruIsOcr : DEFAULT_SETTINGS.mineruIsOcr,
-    mineruModelVersion: normalizeMinerUModelVersion(merged.mineruModelVersion),
+    mineruApiToken: String(legacyLocalEnv.MINERU_API_TOKEN ?? merged.mineruApiToken ?? DEFAULT_SETTINGS.mineruApiToken),
     debugMode:
       typeof merged.debugMode === "boolean" ? merged.debugMode : DEFAULT_SETTINGS.debugMode,
   };

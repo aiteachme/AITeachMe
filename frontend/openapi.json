@@ -145,8 +145,8 @@
         "tags": [
           "system"
         ],
-        "summary": "更新当前用户 settings",
-        "description": "保存当前用户的非敏感 settings_default.yaml 同构 settings 覆盖；密钥类环境变量不通过此接口保存。",
+        "summary": "更新本地模式服务端设置",
+        "description": "本地模式下保存非敏感 settings_default.yaml 同构系统设置覆盖，并可写回本地 .env；云端普通用户无写权限。",
         "operationId": "update_system_settings_api_v1_system_settings_patch",
         "requestBody": {
           "content": {
@@ -11648,6 +11648,7 @@
             "enum": [
               "env",
               "settings",
+              "system_settings",
               "user_settings",
               "runtime"
             ],
@@ -11726,6 +11727,12 @@
             "title": "Restart Required",
             "description": "修改后是否需要重启后端。",
             "default": true
+          },
+          "derived": {
+            "type": "boolean",
+            "title": "Derived",
+            "description": "是否为运行时派生值，只读展示。",
+            "default": false
           },
           "description": {
             "type": "string",
@@ -12282,18 +12289,33 @@
             "additionalProperties": true,
             "type": "object",
             "title": "Settings",
-            "description": "settings_default.yaml 同构的非敏感覆盖。"
+            "description": "settings_default.yaml 同构的系统级非敏感覆盖。"
+          },
+          "env": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "type": "object",
+            "title": "Env",
+            "description": "仅本地模式可编辑的环境变量覆盖，键使用设置项 key。"
           },
           "reset": {
             "type": "boolean",
             "title": "Reset",
-            "description": "是否清空当前用户覆盖，恢复项目默认值。",
+            "description": "是否清空系统级覆盖，恢复项目默认值。",
             "default": false
           }
         },
         "type": "object",
         "title": "UpdateUserSettingsRequest",
-        "description": "更新当前用户的非敏感 settings 覆盖。"
+        "description": "更新本地模式下的系统级 settings 覆盖。"
       },
       "UserProfileSummary": {
         "properties": {

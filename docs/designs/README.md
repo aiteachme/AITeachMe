@@ -32,6 +32,8 @@
 | `14c_cloud_dev_handover.md` | 云端开发交接说明 |
 | `15_export_import.md` | `.atmx` 导入导出设计 |
 | `16_cloud_db_migrations.md` | 云端 PostgreSQL 迁移、校验与运维流程 |
+| `17_settings_config_ownership.md` | 设置、环境变量、数据库覆盖与 local/cloud 页面边界 |
+| `18_effective_settings_runtime.md` | effective settings 的合并规则与运行时真相 |
 | `future.md` | 未来学习形态与产品路线 |
 
 ## 文档维护规则

@@ -34,6 +34,7 @@ import { FullPageDropOverlay } from "../components/ui/FullPageDropOverlay";
 import { useKnowledgeBuildFlow } from "../hooks/useKnowledgeBuildFlow";
 import { buildKnowledgeDocStateQueryKey, fetchKnowledgeDocState } from "../lib/knowledgeDocs";
 import { getStoredAppSettings, useSettings } from "../hooks/useSettings";
+import { loadIngestPreferenceSettings } from "../lib/systemSettings";
 import type { FileRecord, FilesData, FilesUploadData } from "../types/files";
 
 type ChatRole = "user" | "assistant" | "system";
@@ -527,22 +528,22 @@ async function uploadFiles(subject: string, files: File[]): Promise<FilesUploadD
   const data = new FormData();
   files.forEach((file) => data.append("files", file));
 
-  // 前端 settings 属于浏览器本机偏好，上传时需要把解析引擎选择随请求传给后端。
-  // MinerU Token 可留空，此时后端可继续使用环境变量中的默认凭据。
-  const settings = getStoredAppSettings();
-  if (settings.parserProvider === "markitdown") {
+  // 解析引擎默认值从后端 settings 数据库缓存读取；浏览器仅保留本机临时 Token 覆盖。
+  const browserSettings = getStoredAppSettings();
+  const ingestSettings = await loadIngestPreferenceSettings();
+  if (ingestSettings.parserProvider === "markitdown") {
     data.append("parser_provider", "markitdown");
   }
-  if (settings.parserProvider === "mineru") {
-    const token = settings.mineruApiToken?.trim();
+  if (ingestSettings.parserProvider === "mineru") {
+    const token = browserSettings.mineruApiToken?.trim();
     data.append("parser_provider", "mineru");
     if (token) {
       data.append("mineru_api_token", token);
     }
-    data.append("mineru_model_version", settings.mineruModelVersion ?? "vlm");
-    data.append("mineru_enable_formula", String(settings.mineruEnableFormula));
-    data.append("mineru_enable_table", String(settings.mineruEnableTable));
-    data.append("mineru_is_ocr", String(settings.mineruIsOcr));
+    data.append("mineru_model_version", ingestSettings.mineruModelVersion);
+    data.append("mineru_enable_formula", String(ingestSettings.mineruEnableFormula));
+    data.append("mineru_enable_table", String(ingestSettings.mineruEnableTable));
+    data.append("mineru_is_ocr", String(ingestSettings.mineruIsOcr));
   }
 
   const response = await apiClient<ApiResponse<FilesUploadData>>({

@@ -23,8 +23,11 @@ import sqlalchemy as sa
 import structlog
 from sqlmodel import Session, SQLModel, create_engine
 
-from app.shared.infra.settings import get_settings
-from app.shared.infra.env_support import get_env, resolve_project_settings_path
+from app.shared.infra.settings import get_settings, set_system_settings_override
+from app.shared.infra.env_support import (
+    describe_project_settings_source,
+    get_env,
+)
 from app.shared.infra.exceptions import VectorExtensionUnavailableError
 from app.shared.infra.runtime import get_backend_root, is_cloud_mode, is_local_mode
 from app.shared.infra.runtime import get_sqlite_db_path
@@ -43,7 +46,7 @@ from app.models.knowledge_unit import KnowledgeUnit
 from app.models.profile import UserKnowledgeState
 from app.models.raw_file import RawFile
 from app.models.subject import Subject
-from app.models.system import SystemSettingsSnapshot, UserRuntimeSettings
+from app.models.system import SystemRuntimeSettings, SystemSettingsSnapshot, UserRuntimeSettings
 from app.models.user import User
 
 logger = structlog.get_logger()
@@ -75,6 +78,7 @@ _SCHEMA_MODELS = (
     UserKnowledgeState,
     ChatSession,
     ChatMessage,
+    SystemRuntimeSettings,
     SystemSettingsSnapshot,
     UserRuntimeSettings,
 )
@@ -864,7 +868,7 @@ def _upsert_settings_snapshot(engine: sa.Engine, settings) -> None:
     payload = _settings_snapshot_payload(settings)
     now = datetime.now(timezone.utc)
     settings_hash = _settings_snapshot_hash(payload)
-    settings_path = str(resolve_project_settings_path())
+    settings_path = describe_project_settings_source()
 
     with Session(engine, expire_on_commit=False) as session:
         snapshot = session.get(SystemSettingsSnapshot, "runtime")
@@ -876,6 +880,13 @@ def _upsert_settings_snapshot(engine: sa.Engine, settings) -> None:
         snapshot.updated_at = now
         session.add(snapshot)
         session.commit()
+
+
+def _refresh_system_settings_override(engine: sa.Engine) -> None:
+    with Session(engine, expire_on_commit=False) as session:
+        row = session.get(SystemRuntimeSettings, "runtime")
+        payload = row.settings_json if row is not None and isinstance(row.settings_json, dict) else {}
+    set_system_settings_override(payload)
 
 
 def init_db() -> None:
@@ -895,14 +906,15 @@ def _init_local_sqlite_db(settings) -> None:
     engine = _ensure_local_sqlite_schema(get_engine())
 
     SQLModel.metadata.create_all(engine, tables=_SCHEMA_TABLES)
+    _refresh_system_settings_override(engine)
     _ensure_default_local_user(engine)
-    _upsert_settings_snapshot(engine, settings)
+    _upsert_settings_snapshot(engine, get_settings())
 
     logger.info(
         "database_initialized",
         mode="local",
-        embedding_model=settings.normalized_embedding_model,
-        embedding_dim=settings.embedding_dim,
+        embedding_model=get_settings().normalized_embedding_model,
+        embedding_dim=get_settings().embedding_dim,
         table_count=len(_SCHEMA_TABLES),
         vec_ready=is_vec_ready(),
     )
@@ -918,13 +930,14 @@ def _init_postgres_db(settings) -> None:
 
     engine = get_engine()
     assert_postgres_runtime_schema_ready(engine=engine, settings=settings)
-    _upsert_settings_snapshot(engine, settings)
+    _refresh_system_settings_override(engine)
+    _upsert_settings_snapshot(engine, get_settings())
 
-    dim = settings.embedding_dim
+    dim = get_settings().embedding_dim
     logger.info(
         "database_initialized",
         mode="cloud",
-        embedding_model=settings.normalized_embedding_model,
+        embedding_model=get_settings().normalized_embedding_model,
         embedding_dim=dim,
         table_count=len(_SCHEMA_TABLES),
     )

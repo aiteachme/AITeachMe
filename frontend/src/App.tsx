@@ -1,4 +1,4 @@
-import type { ReactElement } from "react";
+import { useEffect, type ReactElement } from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Layout } from "./components/layout/Layout";
@@ -10,6 +10,7 @@ import { ProfilePage } from "./pages/ProfilePage";
 import { KnowledgeDocsPage } from "./pages/KnowledgeDocsPage";
 import { KnowledgeDebugPage } from "./pages/KnowledgeDebugPage";
 import { SUBJECT_ROUTE_REDIRECTS, type SubjectRouteId } from "./lib/subjectNavigation";
+import { ensureSystemSettingsOverviewLoaded } from "./lib/systemSettings";
 
 const queryClient = new QueryClient();
 
@@ -21,9 +22,17 @@ const SUBJECT_PAGE_ELEMENTS: Record<SubjectRouteId, ReactElement> = {
   profile: <ProfilePage />,
 };
 
+function RuntimeSettingsBootstrap() {
+  useEffect(() => {
+    void ensureSystemSettingsOverviewLoaded();
+  }, []);
+  return null;
+}
+
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
+    <RuntimeSettingsBootstrap />
     <ToastProvider>
       <BrowserRouter>
         <Routes>

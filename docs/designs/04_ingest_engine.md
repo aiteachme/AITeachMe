@@ -68,7 +68,7 @@ workflows/ingest/
 
 1. 保存原始文件到 ContentStore。
 2. 创建 `RawFile`。
-3. 保存解析参数，例如 MinerU 选项。
+3. 保存解析参数，例如默认解析模式和 MinerU 选项。
 4. 使用 `background_task_registry.spawn(...)` 派发解析任务。
 
 ### Phase 1：Fast Parse
@@ -106,6 +106,22 @@ workflows/ingest/
 - 如果请求没有 token，则读取服务端 `MINERU_API_TOKEN`。
 - token 不长期落 DB。
 - MinerU 输出会进入同一套 Markdown/asset canonicalize 逻辑。
+
+## 5.1 默认解析模式
+
+当前设置页和运行时 settings 中的 `ingest.default_parser_provider` 只允许三种值：
+
+- `auto`
+- `markitdown`
+- `mineru`
+
+说明：
+
+- `auto`：不显式指定 `parser_provider`，进入当前后端已实现的本地自动 parser chain
+- `markitdown`：显式请求 MarkItDown；若当前扩展或依赖不支持，会 fallback 回本地解析
+- `mineru`：显式请求 MinerU；若 token 缺失或扩展不支持，会 fallback 回本地解析
+
+`docling` / `unstructured` 目前还没有接入真实执行链，因此不作为可配置项开放。
 
 ## 6. Digest 准入状态
 

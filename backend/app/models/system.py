@@ -26,6 +26,17 @@ class SystemSettingsSnapshot(SQLModel, table=True):
     updated_at: datetime = Field(default_factory=utc_now)
 
 
+class SystemRuntimeSettings(SQLModel, table=True):
+    """Global non-secret runtime settings overrides."""
+
+    __tablename__ = "system_runtime_settings"
+
+    id: str = Field(primary_key=True)
+    settings_json: dict[str, Any] = Field(default_factory=dict, sa_column=sa.Column(sa.JSON))
+    created_at: datetime = Field(default_factory=utc_now)
+    updated_at: datetime = Field(default_factory=utc_now)
+
+
 class UserRuntimeSettings(SQLModel, table=True):
     """Per-user non-secret runtime settings overrides."""
 

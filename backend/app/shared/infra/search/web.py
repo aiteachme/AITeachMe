@@ -214,7 +214,7 @@ async def dispatch_web_search(
             workflow pass local context that is not yet in the subject vector
             index, while still reusing the same local-first dispatch logic.
         profile: Optional retriever profile name. Profiles live in
-            ``settings_default.yaml`` / ``settings.support`` and decide which
+            code defaults / optional project settings override and decide which
             retrievers are considered and in what order.
         total_timeout_s: Per-call override for the whole search budget. ``None``
             uses ``settings.search.total_timeout_s``.
