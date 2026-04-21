@@ -19,6 +19,7 @@ from app.shared.infra.workflow.result import WorkflowError, WorkflowResult
 from app.shared.infra.workflow.runtime import run_state_graph
 from app.workflows.digest.common.runtime_config import get_teaching_runtime_config
 from app.workflows.digest.planner.lib.store import (
+    mark_planner_session_cancelled,
     mark_planner_session_draft,
     mark_planner_session_failed,
     planner_session_response_from_state,
@@ -296,7 +297,7 @@ async def create_build_planner_session(
             token_callback=token_callback,
         )
     except asyncio.CancelledError:
-        _mark_planner_session_failed(subject=subject.slug, user_id=user_id, session_id=session_id)
+        _mark_planner_session_cancelled(subject=subject.slug, user_id=user_id, session_id=session_id)
         raise
     if result.failed:
         _mark_planner_session_failed(subject=subject.slug, user_id=user_id, session_id=session_id)
@@ -352,7 +353,7 @@ async def append_build_planner_message(
             token_callback=token_callback,
         )
     except asyncio.CancelledError:
-        _mark_planner_session_draft(subject=subject.slug, user_id=user_id, session_id=session_id)
+        _mark_planner_session_cancelled(subject=subject.slug, user_id=user_id, session_id=session_id)
         raise
     if result.failed:
         _mark_planner_session_failed(subject=subject.slug, user_id=user_id, session_id=session_id)
@@ -391,6 +392,13 @@ def _mark_planner_session_failed(*, subject: str, user_id: str, session_id: str)
         mark_planner_session_failed(subject=subject, user_id=user_id, session_id=session_id)
     except Exception:
         logger.exception("planner_session_failed_status_update_failed", subject=subject, session_id=session_id)
+
+
+def _mark_planner_session_cancelled(*, subject: str, user_id: str, session_id: str) -> None:
+    try:
+        mark_planner_session_cancelled(subject=subject, user_id=user_id, session_id=session_id)
+    except Exception:
+        logger.exception("planner_session_cancelled_status_update_failed", subject=subject, session_id=session_id)
 
 
 def _mark_planner_session_draft(*, subject: str, user_id: str, session_id: str) -> None:

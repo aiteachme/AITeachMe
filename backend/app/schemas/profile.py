@@ -6,8 +6,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field
 
-from app.workflows.profile.subject_profile import SubjectProfileSummary
-from app.workflows.profile.user_profile import UserProfileSummary
+from app.workflows.profile import SubjectProfileSummary, UserProfileSummary
 
 
 class MasteryStateResponse(BaseModel):

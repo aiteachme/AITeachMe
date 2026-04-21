@@ -11,12 +11,14 @@ from sqlmodel import Session
 from app.models import ExamPaper
 from app.shared.infra.database import managed_session
 from app.shared.infra.workflow import workflow_tracer
-from app.workflows.profile.mastery_updater import MasteryUpdateResult, update_mastery_from_exam
-from app.workflows.profile.review_scheduler import schedule_reviews
-from app.workflows.profile.state import ProfileWorkflowState
-from app.workflows.profile.subject_profile import refresh_subject_profile_summary
-from app.workflows.profile.user_profile import refresh_user_profile_summary
-from app.workflows.profile.weakness_analyzer import WeaknessItem, analyze_weakness
+from app.shared.infra.workflow.graph_export import WorkflowGraphExport
+from app.workflows.profile.pipeline.lib.mastery import MasteryUpdateResult, update_mastery_from_exam
+from app.workflows.profile.pipeline.lib.reviews import schedule_reviews
+from app.workflows.profile.pipeline.lib.subject_profile import refresh_subject_profile_summary
+from app.workflows.profile.pipeline.lib.user_profile import refresh_user_profile_summary
+from app.workflows.profile.pipeline.lib.weakness import WeaknessItem, analyze_weakness
+from app.workflows.profile.pipeline.prompts import PROMPTS
+from app.workflows.profile.pipeline.state import ProfileWorkflowState
 
 
 def _mastery_updated_node(state: ProfileWorkflowState) -> ProfileWorkflowState:
@@ -397,11 +399,28 @@ def create_profile_initial_state(
     }
 
 
+WORKFLOW_EXPORTS = (
+    WorkflowGraphExport(
+        key="profile_pipeline",
+        title="Profile Pipeline Workflow",
+        description="Executable profile pipeline from mastery updates to review scheduling, weakness analysis, and profile refresh.",
+        build_graph=build_profile_pipeline_graph,
+        prompts=PROMPTS,
+    ),
+    WorkflowGraphExport(
+        key="profile_flow",
+        title="Profile Workflow",
+        description="High-level profile workflow from mastery updates to review scheduling, weakness ranking, and report suggestions.",
+        build_graph=build_profile_workflow_graph,
+        prompts=PROMPTS,
+    ),
+)
+
+
 __all__ = [
     "ProfileWorkflowState",
+    "WORKFLOW_EXPORTS",
     "build_profile_pipeline_graph",
     "build_profile_workflow_graph",
     "create_profile_initial_state",
 ]
-
-

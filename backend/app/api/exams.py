@@ -32,8 +32,7 @@ from app.workflows.examine import (
     ExamQuestionGenerationSpec,
     run_question_build_workflow,
 )
-from app.workflows.profile.mastery_updater import update_mastery_from_exam
-from app.workflows.profile.review_scheduler import schedule_reviews
+from app.workflows.profile import schedule_reviews, update_mastery_from_exam
 
 router = APIRouter(prefix="/api/v1/subjects/{subject}/exams", tags=["exams"])
 

@@ -13,8 +13,7 @@ from app.repositories import profile_repo
 from app.schemas.common import ApiResponse, ok_response
 from app.schemas.profile import MasteryOverviewResponse, MasteryStateResponse, ReviewTaskResponse
 from app.shared.infra.exceptions import AITeachMeError
-from app.workflows.profile.subject_profile import build_subject_profile_summary
-from app.workflows.profile.user_profile import build_user_profile_summary
+from app.workflows.profile import build_subject_profile_summary, build_user_profile_summary
 
 router = APIRouter(prefix="/api/v1/subjects/{subject}/profile", tags=["profile"])
 

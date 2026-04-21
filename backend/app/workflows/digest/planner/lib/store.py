@@ -842,6 +842,14 @@ def mark_planner_session_failed(*, subject: str, user_id: str, session_id: str) 
         _update_planner_session_meta(session, record, planner_status="failed")
 
 
+def mark_planner_session_cancelled(*, subject: str, user_id: str, session_id: str) -> None:
+    with managed_session() as session:
+        record = _get_planner_session(session, subject=subject, session_id=session_id, user_id=user_id)
+        if record is None:
+            return
+        _update_planner_session_meta(session, record, planner_status="cancelled")
+
+
 def mark_planner_session_draft(*, subject: str, user_id: str, session_id: str) -> None:
     with managed_session() as session:
         record = _get_planner_session(session, subject=subject, session_id=session_id, user_id=user_id)
@@ -1008,6 +1016,7 @@ __all__ = [
     "get_confirmed_plan_or_raise",
     "get_latest_planner_session",
     "mark_confirmed_plan_status",
+    "mark_planner_session_cancelled",
     "mark_planner_session_draft",
     "mark_planner_session_failed",
     "prepare_planner_run",

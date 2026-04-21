@@ -1,5 +1,10 @@
 """Chat workflow helper exports."""
 
+from app.workflows.interact.chat.lib.events import (
+    InteractCompletedEvent,
+    InteractFailedEvent,
+    InteractRequestedEvent,
+)
 from app.workflows.interact.chat.lib.execution import (
     InteractExecutionMode,
     select_execution_mode,
@@ -15,7 +20,10 @@ from app.workflows.interact.chat.lib.types import (
 )
 
 __all__ = [
+    "InteractCompletedEvent",
     "InteractExecutionMode",
+    "InteractFailedEvent",
+    "InteractRequestedEvent",
     "MistakeSummary",
     "RecentMessage",
     "RetrievedContext",
