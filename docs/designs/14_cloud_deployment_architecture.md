@@ -388,7 +388,7 @@ S3_REGION=<optional-region>
 S3_PUBLIC_BASE_URL=https://<optional-cdn-domain>
 
 LLM_API_KEY=<key>
-LLM_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
+LLM_BASE_URL=https://api.openai.com/v1
 LLM_MODEL=qwen-plus-latest
 EMBEDDING_MODEL=text-embedding-v3
 ```

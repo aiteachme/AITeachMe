@@ -113,8 +113,8 @@ async def aembed_texts(
     batch_size = batch_size or settings.embedding.batch_size
     model = _build_model_name(settings.models.embedding)
     api_base = (
-        get_env("LLM_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1")
-        or "https://dashscope.aliyuncs.com/compatible-mode/v1"
+        get_env("LLM_BASE_URL", "https://api.openai.com/v1")
+        or "https://api.openai.com/v1"
     )
     start = time.monotonic()
 

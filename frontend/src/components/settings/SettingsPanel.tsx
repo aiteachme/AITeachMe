@@ -89,7 +89,7 @@ const CONNECTION_ENV_GROUPS: LocalEnvGroup[] = [
     label: "LLM 接入",
     fields: [
       { key: "LLM_API_KEY", label: "LLM API Key", placeholder: "sk-...", secret: true },
-      { key: "LLM_BASE_URL", label: "LLM Base URL", placeholder: "https://dashscope.aliyuncs.com/compatible-mode/v1" },
+      { key: "LLM_BASE_URL", label: "LLM Base URL", placeholder: "https://api.openai.com/v1" },
     ],
   },
   {
