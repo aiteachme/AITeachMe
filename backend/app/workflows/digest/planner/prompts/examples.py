@@ -10,10 +10,6 @@ from __future__ import annotations
 
 from typing import Any
 
-DEFAULT_SKETCH_EXAMPLE_LIMIT = 3
-DEFAULT_INTENT_EXAMPLE_LIMIT = 4
-DEFAULT_COMPOSER_EXAMPLE_LIMIT = 2
-
 
 PLAN_SKETCH_EXAMPLES = [
     {
@@ -303,20 +299,16 @@ def _render_plan_steps(items: list[str]) -> str:
     return "\n".join(f"  - {item}" for item in items)
 
 
-def _take_examples(items: list[dict[str, Any]], *, limit: int | None) -> list[dict[str, Any]]:
-    return items if limit is None else items[: max(0, limit)]
-
-
-def render_plan_sketch_examples(*, limit: int | None = None) -> str:
+def render_plan_sketch_examples() -> str:
     blocks = []
-    for index, item in enumerate(_take_examples(PLAN_SKETCH_EXAMPLES, limit=limit), start=1):
+    for index, item in enumerate(PLAN_SKETCH_EXAMPLES, start=1):
         blocks.append(f"示例 {index}\n输入：{item['input']}\n输出：\n{item['output']}")
     return "\n\n".join(blocks)
 
 
-def render_plan_intent_examples(*, limit: int | None = None) -> str:
+def render_plan_intent_examples() -> str:
     blocks = []
-    for index, item in enumerate(_take_examples(PLAN_INTENT_EXAMPLES, limit=limit), start=1):
+    for index, item in enumerate(PLAN_INTENT_EXAMPLES, start=1):
         output = item["output"]
         blocks.append(
             f"示例 {index}\n"
@@ -327,9 +319,9 @@ def render_plan_intent_examples(*, limit: int | None = None) -> str:
     return "\n\n".join(blocks)
 
 
-def render_composer_examples(*, limit: int | None = None) -> str:
+def render_composer_examples() -> str:
     blocks = [_render_style_notes()]
-    for index, item in enumerate(_take_examples(COMPOSER_EXAMPLES, limit=limit), start=1):
+    for index, item in enumerate(COMPOSER_EXAMPLES, start=1):
         output = item["output"]
         blocks.append(
             f"示例 {index}\n"

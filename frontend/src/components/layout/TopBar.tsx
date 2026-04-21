@@ -20,6 +20,8 @@ type RuntimeUser = {
 };
 
 type AuthSessionData = {
+  auth_enabled?: boolean;
+  auth_ready?: boolean;
   access_token?: string | null;
   current_user?: RuntimeUser | null;
 };
@@ -75,6 +77,7 @@ function getAvatarText(user: RuntimeUser | null): string {
 
 export function TopBar({ className }: TopBarProps) {
   const [authUser, setAuthUser] = useState<RuntimeUser | null>(null);
+  const [authEnabled, setAuthEnabled] = useState<boolean | null>(null);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [authMode, setAuthMode] = useState<"login" | "register">("login");
   const [authEmail, setAuthEmail] = useState("");
@@ -95,6 +98,7 @@ export function TopBar({ className }: TopBarProps) {
   const mobileMenuRef = useRef<HTMLDivElement>(null);
 
   const isLoggedIn = Boolean(authUser?.is_authenticated);
+  const canUseAuth = authEnabled === true;
   const displayName = getDisplayName(authUser);
   const identitySubtitle = getIdentitySubtitle(authUser);
   const avatarText = getAvatarText(authUser);
@@ -122,11 +126,13 @@ export function TopBar({ className }: TopBarProps) {
           data: {},
         });
         const currentUser = response.data.current_user ?? null;
+        setAuthEnabled(Boolean(response.data.auth_enabled));
         if (!currentUser?.is_authenticated) {
           localStorage.removeItem("token");
         }
         setAuthUser(currentUser);
       } catch {
+        setAuthEnabled(false);
         setAuthUser(null);
       }
     };
@@ -198,6 +204,10 @@ export function TopBar({ className }: TopBarProps) {
   };
 
   const openAuthEntry = (mode: "login" | "register") => {
+    if (!canUseAuth) {
+      closeMenus();
+      return;
+    }
     closeMenus();
     openAuthModal(mode);
   };
@@ -384,7 +394,7 @@ export function TopBar({ className }: TopBarProps) {
                       </div>
                     </button>
                   </>
-                ) : (
+                ) : canUseAuth ? (
                   <>
                     <button
                       className="w-full flex items-center gap-2.5 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-colors"
@@ -402,6 +412,10 @@ export function TopBar({ className }: TopBarProps) {
                       <span>注册账号</span>
                     </button>
                   </>
+                ) : (
+                  <div className="px-4 py-2 text-sm text-slate-500">
+                    本地模式无需登录，数据保存在当前设备环境中。
+                  </div>
                 )}
 
               </div>
@@ -499,7 +513,7 @@ export function TopBar({ className }: TopBarProps) {
                     </div>
                   </button>
                 </>
-              ) : (
+              ) : canUseAuth ? (
                 <>
                   <button
                     className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 transition-colors"
@@ -517,6 +531,10 @@ export function TopBar({ className }: TopBarProps) {
                     <span>注册账号</span>
                   </button>
                 </>
+              ) : (
+                <div className="px-4 py-2.5 text-sm text-slate-500">
+                  本地模式无需登录，数据保存在当前设备环境中。
+                </div>
               )}
 
             </div>
@@ -562,7 +580,7 @@ export function TopBar({ className }: TopBarProps) {
       </div>
 
       <Modal
-        open={isAuthModalOpen}
+        open={canUseAuth && isAuthModalOpen}
         onClose={closeAuthModal}
         title={authMode === "login" ? "登录 AiTeachMe" : "注册 AiTeachMe"}
         className="max-w-md"

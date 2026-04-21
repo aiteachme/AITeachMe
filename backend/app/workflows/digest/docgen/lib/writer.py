@@ -431,7 +431,7 @@ class DocGenWriterRuntime(BaseTracedExecution):
     def _estimate_quality_score(self, *, markdown: str, coverage_score: float, min_word_count: int) -> float:
         word_count = count_words(markdown)
         length_score = 1.0 if min_word_count <= 0 else min(1.0, word_count / max(1, min_word_count))
-        heading_score = 1.0 if markdown.count("\n## ") >= 5 else 0.75
+        heading_score = 1.0 if markdown.count("\n## ") >= 3 else 0.75
         placeholder_bonus = 0.1 if any(token in markdown for token in _PLACEHOLDER_TOKEN_MAP.values()) else 0.0
         score = (coverage_score * 0.55) + (length_score * 0.3) + (heading_score * 0.15) + placeholder_bonus
         return round(min(1.0, score), 4)

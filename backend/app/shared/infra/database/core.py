@@ -26,7 +26,7 @@ from sqlmodel import Session, SQLModel, create_engine
 from app.shared.infra.settings import get_settings
 from app.shared.infra.env_support import get_env, resolve_project_settings_path
 from app.shared.infra.exceptions import VectorExtensionUnavailableError
-from app.shared.infra.runtime import is_cloud_mode, is_local_mode
+from app.shared.infra.runtime import get_backend_root, is_cloud_mode, is_local_mode
 from app.shared.infra.runtime import get_sqlite_db_path
 from app.shared.infra.subject import (
     build_subject_vector_table_name,
@@ -304,6 +304,14 @@ def _drop_sqlite_removed_schema(engine: sa.Engine) -> None:
                         )
         finally:
             connection.execute(sa.text("PRAGMA foreign_keys = ON"))
+
+
+def _drop_sqlite_legacy_schema(engine: sa.Engine) -> None:
+    """Backward-compatible alias for older tests and local tooling."""
+
+    _drop_sqlite_removed_schema(engine)
+
+
 def _ensure_local_sqlite_schema(engine: sa.Engine) -> sa.Engine:
     db_path = _get_db_path()
     if not db_path.exists():
@@ -497,6 +505,7 @@ def _ensure_postgres_embedding_column(
     *,
     embedding_dim: int,
     reset: bool = False,
+    allow_rebuild: bool = False,
 ) -> None:
     current_dim = _postgres_vector_dim(
         connection,
@@ -512,6 +521,13 @@ def _ensure_postgres_embedding_column(
             )
         )
     elif current_dim != embedding_dim:
+        if not (reset or allow_rebuild):
+            raise RuntimeError(
+                "PostgreSQL vector column dimension mismatch. "
+                f"expected={embedding_dim}, actual={current_dim}. "
+                "Set ALLOW_CLOUD_VECTOR_REBUILD=true only after confirming "
+                "the existing vectors can be rebuilt."
+            )
         connection.execute(sa.text("DROP INDEX IF EXISTS idx_retrieval_chunk_embedding"))
         connection.execute(sa.text("ALTER TABLE retrieval_chunk DROP COLUMN IF EXISTS embedding"))
         connection.execute(
@@ -533,6 +549,151 @@ def _ensure_postgres_embedding_column(
             "ON retrieval_chunk "
             "USING hnsw (embedding vector_cosine_ops)"
         )
+    )
+
+
+def _postgres_extension_exists(connection: sa.Connection, extension_name: str) -> bool:
+    row = connection.execute(
+        sa.text("SELECT 1 FROM pg_extension WHERE extname = :extension_name"),
+        {"extension_name": extension_name},
+    ).first()
+    return row is not None
+
+
+def _get_alembic_head_revision() -> str:
+    from alembic.config import Config
+    from alembic.script import ScriptDirectory
+
+    config = Config(str(get_backend_root() / "alembic.ini"))
+    script = ScriptDirectory.from_config(config)
+    head = script.get_current_head()
+    if not head:
+        raise RuntimeError("Alembic has no head revision.")
+    return str(head)
+
+
+def _get_postgres_alembic_revision(connection: sa.Connection) -> str | None:
+    if not _postgres_table_exists(connection, "alembic_version"):
+        return None
+    rows = list(connection.execute(sa.text("SELECT version_num FROM alembic_version")).scalars())
+    if len(rows) != 1:
+        return ",".join(str(row) for row in rows) if rows else None
+    return str(rows[0])
+
+
+def _collect_postgres_runtime_schema_errors(
+    connection: sa.Connection,
+    settings,
+) -> list[str]:
+    errors: list[str] = []
+
+    try:
+        expected_revision = _get_alembic_head_revision()
+    except Exception as exc:  # noqa: BLE001
+        errors.append(f"cannot load Alembic head revision: {exc}")
+        expected_revision = None
+
+    current_revision = _get_postgres_alembic_revision(connection)
+    if expected_revision and current_revision != expected_revision:
+        errors.append(
+            "alembic revision mismatch: "
+            f"current={current_revision or 'missing'}, expected={expected_revision}"
+        )
+
+    if not _postgres_extension_exists(connection, "vector"):
+        errors.append("missing PostgreSQL extension: vector")
+
+    missing_tables = [
+        table.name
+        for table in _SCHEMA_TABLES
+        if not _postgres_table_exists(connection, table.name)
+    ]
+    if missing_tables:
+        errors.append(f"missing tables: {', '.join(missing_tables)}")
+
+    if _postgres_table_exists(connection, "retrieval_chunk"):
+        expected_dim = settings.embedding_dim
+        actual_dim = _postgres_vector_dim(
+            connection,
+            table_name="retrieval_chunk",
+            column_name="embedding",
+        )
+        if actual_dim != expected_dim:
+            errors.append(
+                "retrieval_chunk.embedding dimension mismatch: "
+                f"current={actual_dim or 'missing'}, expected={expected_dim}"
+            )
+
+    return errors
+
+
+def validate_postgres_runtime_schema(
+    engine: sa.Engine | None = None,
+    settings=None,
+) -> list[str]:
+    """Return cloud PostgreSQL schema readiness errors."""
+
+    resolved_engine = engine or get_engine()
+    resolved_settings = settings or get_settings()
+    with resolved_engine.connect() as connection:
+        return _collect_postgres_runtime_schema_errors(connection, resolved_settings)
+
+
+def assert_postgres_runtime_schema_ready(
+    engine: sa.Engine | None = None,
+    settings=None,
+) -> None:
+    errors = validate_postgres_runtime_schema(engine=engine, settings=settings)
+    if errors:
+        detail = "\n".join(f"- {error}" for error in errors)
+        raise RuntimeError(
+            "PostgreSQL schema is not ready. Run "
+            "`alembic upgrade head && python scripts/prepare_cloud_db.py && "
+            "python scripts/check_cloud_db.py` before starting the app.\n"
+            f"{detail}"
+        )
+
+
+def prepare_postgres_runtime_schema(
+    *,
+    allow_vector_rebuild: bool = False,
+    prepare_llamaindex: bool = True,
+) -> None:
+    """Prepare cloud-only runtime database objects that are outside metadata."""
+
+    if not is_cloud_mode():
+        raise RuntimeError("prepare_postgres_runtime_schema requires APP_MODE=cloud.")
+
+    settings = get_settings()
+    engine = get_engine()
+    with engine.begin() as connection:
+        connection.execute(sa.text("CREATE EXTENSION IF NOT EXISTS vector"))
+        current_revision = _get_postgres_alembic_revision(connection)
+        expected_revision = _get_alembic_head_revision()
+        if current_revision != expected_revision:
+            raise RuntimeError(
+                "Alembic revision mismatch before runtime schema preparation. "
+                f"current={current_revision or 'missing'}, expected={expected_revision}. "
+                "Run `alembic upgrade head` first."
+            )
+        if not _postgres_table_exists(connection, "retrieval_chunk"):
+            raise RuntimeError("Missing table retrieval_chunk. Run `alembic upgrade head` first.")
+        _ensure_postgres_embedding_column(
+            connection,
+            embedding_dim=settings.embedding_dim,
+            allow_rebuild=allow_vector_rebuild,
+        )
+
+    if prepare_llamaindex:
+        from app.shared.infra.search.llamaindex_index.manager import prepare_postgres_store
+
+        prepare_postgres_store()
+
+    logger.info(
+        "postgres_runtime_schema_prepared",
+        embedding_dim=settings.embedding_dim,
+        allow_vector_rebuild=allow_vector_rebuild,
+        prepare_llamaindex=prepare_llamaindex,
     )
 
 
@@ -748,24 +909,18 @@ def _init_local_sqlite_db(settings) -> None:
 
 
 def _init_postgres_db(settings) -> None:
-    """PostgreSQL + pgvector 初始化。"""
+    """PostgreSQL startup guard.
+
+    Cloud DDL is owned by Alembic and the Render pre-deploy preparation step.
+    App startup intentionally validates only, so a bad migration fails before
+    the new Render instance receives traffic.
+    """
 
     engine = get_engine()
-
-    # 确保 pgvector 扩展可用
-    with engine.begin() as conn:
-        conn.execute(sa.text("CREATE EXTENSION IF NOT EXISTS vector"))
-        _drop_postgres_removed_schema(conn)
-
-    SQLModel.metadata.create_all(engine, tables=_SCHEMA_TABLES)
+    assert_postgres_runtime_schema_ready(engine=engine, settings=settings)
     _upsert_settings_snapshot(engine, settings)
 
-    # 为 retrieval_chunk 添加 embedding 向量列（如果不存在）
     dim = settings.embedding_dim
-    if dim:
-        with engine.begin() as conn:
-            _ensure_postgres_embedding_column(conn, embedding_dim=dim)
-
     logger.info(
         "database_initialized",
         mode="cloud",

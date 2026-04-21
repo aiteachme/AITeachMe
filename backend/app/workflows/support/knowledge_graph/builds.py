@@ -43,7 +43,8 @@ def _sanitize_build_error_message(error_message: str | None) -> str | None:
     return text
 
 def _write_build_status(subject: str, *, requested_at: datetime, status: str, stage: str, **extra: object) -> None:
-    payload = {"requested_at": requested_at, "status": status, "stage": stage, **extra}
+    build_kind = str(extra.pop("build_kind", "graph") or "graph")
+    payload = {"requested_at": requested_at, "build_kind": build_kind, "status": status, "stage": stage, **extra}
     if "error_message" in payload:
         payload["error_message"] = _sanitize_build_error_message(payload.get("error_message"))
     update_knowledge_build_status(subject, **payload)
@@ -114,6 +115,7 @@ def run_graph_docs_sync_after_doc_build(
     build_session_id: str,
     file_ids: list[int],
     prompt: str | None,
+    build_kind: str = "graph",
 ) -> dict[str, int | str]:
     """Re-sync knowledge units and knowledge images from the latest knowledge document."""
 
@@ -140,6 +142,7 @@ def run_graph_docs_sync_after_doc_build(
         draft_available=False,
         source_file_ids=file_ids,
         prompt=prompt,
+        build_kind=build_kind,
         graph_input_paths=resolve_graph_input_paths(
             file_ids=file_ids,
             knowledge_doc_markdown=knowledge_doc_markdown,
@@ -173,6 +176,7 @@ async def run_graph_file_ingest_background(
     requested_at: datetime,
     build_session_id: str,
     doc_chapter_metadatas: list[dict[str, object]] | None = None,
+    build_kind: str = "graph",
 ) -> dict[str, int]:
     """Build graph candidates from parsed files without owning the outer build lock."""
 
@@ -191,6 +195,7 @@ async def run_graph_file_ingest_background(
         draft_available=False,
         source_file_ids=file_ids,
         prompt=prompt,
+        build_kind=build_kind,
         current_stage_description="Extracting candidates from parsed files and building the graph.",
     )
     _cleanup_pending_digest_outputs(subject)

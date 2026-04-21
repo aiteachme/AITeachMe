@@ -18,7 +18,7 @@ from app.schemas.system import InitData, RuntimeUser, SettingEntry, SettingSecti
 from app.shared.infra.exceptions import AITeachMeError
 from app.shared.infra.settings import DEFAULT_PROJECT_SETTINGS_FILENAME, Settings, get_settings
 from app.shared.infra.env_support import get_env, get_env_bool, resolve_project_settings_path
-from app.shared.infra.runtime import get_app_version, resolve_app_mode
+from app.shared.infra.runtime import get_app_version, resolve_app_mode, resolve_auth_enabled
 from app.shared.infra.storage.config import (
     get_storage_backend,
     resolve_s3_addressing_style,
@@ -39,7 +39,7 @@ def build_init_data(
 ) -> InitData:
     """Build frontend runtime initialization data."""
 
-    auth_enabled = get_env_bool("AUTH_ENABLED", True)
+    auth_enabled = resolve_auth_enabled()
     return InitData(
         mode=resolve_app_mode(),
         auth_enabled=auth_enabled,
@@ -309,7 +309,7 @@ def build_settings_overview_data(
                 _runtime_entry("runtime.mode", "运行模式", mode, "由 APP_MODE 解析得到。"),
                 _env_entry("runtime.app_mode_raw", "APP_MODE", "APP_MODE", "未设置时按本地优先策略解析。"),
                 _runtime_entry("runtime.version", "应用版本", get_app_version()),
-                _env_entry("auth.enabled", "AUTH_ENABLED", "AUTH_ENABLED", "控制账号鉴权能力。", value=get_env_bool("AUTH_ENABLED", True)),
+                _env_entry("auth.enabled", "AUTH_ENABLED", "AUTH_ENABLED", "账号鉴权覆盖项；空值按 APP_MODE 自动：local 关闭，cloud/Render 开启。", value=resolve_auth_enabled()),
                 _runtime_entry("settings.path", f"{DEFAULT_PROJECT_SETTINGS_FILENAME} 路径", str(settings_path)),
             ],
         ),

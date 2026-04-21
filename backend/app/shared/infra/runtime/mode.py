@@ -24,6 +24,13 @@ def is_local_mode() -> bool:
     return not is_cloud_mode()
 
 
+def resolve_auth_enabled() -> bool:
+    explicit_value = get_env_optional_bool("AUTH_ENABLED")
+    if explicit_value is not None:
+        return explicit_value
+    return is_cloud_mode()
+
+
 def get_app_version() -> str:
     return (get_env("APP_VERSION", "0.2.0") or "0.2.0").strip() or "0.2.0"
 
@@ -51,6 +58,7 @@ __all__ = [
     "get_guest_cookie_name",
     "is_cloud_mode",
     "is_local_mode",
+    "resolve_auth_enabled",
     "resolve_app_mode",
     "resolve_guest_cookie_samesite",
     "resolve_guest_cookie_secure",

@@ -28,17 +28,6 @@ _QUESTION_RE = re.compile(r"(例题|习题|选择题|填空题|简答题|证明�
 _EVIDENCE_SPLIT_RE = re.compile(r"(?<=[。！？!?；;])\s+|\n+")
 
 
-def _sample_excerpt(packet: SourcePacket, *, max_chars: int = 18000) -> str:
-    text = str(packet.normalized_content or "").strip()
-    if len(text) <= max_chars:
-        return text
-    head = text[: int(max_chars * 0.55)]
-    middle_start = max(0, int(len(text) * 0.45))
-    middle = text[middle_start : middle_start + int(max_chars * 0.25)]
-    tail = text[-int(max_chars * 0.2) :]
-    return "\n\n".join([head, "\n[...中间抽样...]\n", middle, "\n[...末尾抽样...]\n", tail])
-
-
 def _sections_for_file(sections: Sequence[SectionPacket], file_id: int) -> list[SectionPacket]:
     return [section for section in sections if int(section.source_file_id or 0) == file_id]
 
@@ -245,7 +234,7 @@ async def _summarize_one_file(
         for chapter in chapters
         if str(chapter.get("title") or chapter.get("resolved_title") or "").strip()
     ]
-    excerpt = _sample_excerpt(packet)
+    excerpt = str(packet.normalized_content or "").strip()
     if not excerpt.strip():
         return fallback
     try:

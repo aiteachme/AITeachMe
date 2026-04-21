@@ -7,8 +7,6 @@ from typing import Any
 
 from app.workflows.digest.common.prompt_tracing import trace_prompt_build
 
-OUTLINE_CHAPTER_REQUIRED_BUDGET = 12
-
 
 def build_outline_enhance_messages(
     *,
@@ -20,7 +18,7 @@ def build_outline_enhance_messages(
     docgen_history_brief: str = "",
 ) -> list[dict[str, str]]:
     chapter_lines = []
-    # 已确认章节可能很长；这里仅压缩 prompt 摘要，不改变 confirmed plan 本身。
+    # Prompt 只渲染章节执行所需字段；完整 confirmed plan 仍保留在 state。
     for chapter in chapters:
         chapter_lines.append(
             "\n".join(
@@ -28,10 +26,15 @@ def build_outline_enhance_messages(
                     f"- chapter_index: {chapter.get('chapter_index')}",
                     f"  title: {chapter.get('title') or chapter.get('resolved_title')}",
                     f"  objective: {chapter.get('objective')}",
-                    f"  required_elements: {', '.join(str(item) for item in chapter.get('required_elements', [])[:OUTLINE_CHAPTER_REQUIRED_BUDGET])}",
+                    f"  required_elements: {', '.join(str(item) for item in chapter.get('required_elements', []))}",
                 ]
             )
         )
+    system_prompt = """
+你是 AITeachMe 的 DocGen 章节执行大纲设计器。
+你只输出合法 JSON，不输出 Markdown、解释、注释或额外文本。
+你必须尊重用户已确认的章节计划，不能新增、删除、重排章节。
+""".strip()
     prompt = f"""
 你是 AITeachMe 的 DocGen 章节执行大纲设计器。
 
@@ -82,7 +85,7 @@ Planner 对话与修改摘要：{docgen_history_brief or "暂无"}
 7. 所有内容都服务后续写作，不写解释性废话。
 """.strip()
     messages = [
-        {"role": "system", "content": "你只输出合法 JSON，不输出 Markdown。"},
+        {"role": "system", "content": system_prompt},
         {"role": "user", "content": prompt},
     ]
     return trace_prompt_build(

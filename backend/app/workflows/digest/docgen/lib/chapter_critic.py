@@ -26,7 +26,7 @@ def critique_chapter(
     warnings: list[str] = []
     if count_words(markdown) < min_word_count:
         warnings.append("章节长度低于最低目标。")
-    if markdown.count("\n## ") < (4 if str(digest_mode).strip().lower() == "sprint" else 5):
+    if markdown.count("\n## ") < (2 if str(digest_mode).strip().lower() == "sprint" else 3):
         warnings.append("章节结构不够完整。")
     normalized = "".join(str(markdown or "").split()).casefold()
     missing = [

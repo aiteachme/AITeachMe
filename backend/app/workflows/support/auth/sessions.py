@@ -14,7 +14,7 @@ import ssl
 import time
 from datetime import datetime, timedelta, timezone
 from email.message import EmailMessage
-from email.utils import formataddr
+from email.utils import formataddr, parseaddr
 
 import structlog
 from fastapi import Response
@@ -30,6 +30,7 @@ from app.shared.infra.exceptions import AITeachMeError, AuthDisabledError
 from app.shared.infra.runtime import (
     get_guest_cookie_name,
     is_local_mode,
+    resolve_auth_enabled,
     resolve_guest_cookie_samesite,
     resolve_guest_cookie_secure,
 )
@@ -72,7 +73,7 @@ def _auth_token_secret() -> str:
 
 
 def ensure_auth_enabled() -> None:
-    if not get_env_bool("AUTH_ENABLED", True):
+    if not resolve_auth_enabled():
         raise AuthDisabledError()
 
 
@@ -111,6 +112,38 @@ def _normalize_verification_code(raw_code: str) -> str:
             error_code="AUTH_INVALID_EMAIL_CODE",
         )
     return code
+
+
+def _clean_mail_header_part(value: str) -> str:
+    """Remove line breaks from SMTP header values before composing EmailMessage."""
+
+    return re.sub(r"[\r\n]+", " ", str(value or "")).strip()
+
+
+def _resolve_smtp_sender_identity(
+    *,
+    raw_from_email: str,
+    raw_from_name: str | None,
+) -> tuple[str, str]:
+    """Return a safe ``(display_name, ascii_email)`` tuple for the From header.
+
+    ``SMTP_FROM_EMAIL`` is sometimes configured as a full header such as
+    ``爱教我 <noreply@example.com>``. Python's ``formataddr`` can encode the
+    display name, but the address part itself must be an ASCII email address.
+    """
+
+    configured_email = _clean_mail_header_part(raw_from_email)
+    parsed_name, parsed_email = parseaddr(configured_email)
+    from_email = _clean_mail_header_part(parsed_email or configured_email)
+    from_name = _clean_mail_header_part(raw_from_name or parsed_name) or "AITeachMe"
+
+    if not from_email.isascii() or not _EMAIL_RE.fullmatch(from_email):
+        raise AITeachMeError(
+            detail="SMTP_FROM_EMAIL 必须配置为有效邮箱地址，例如 noreply@example.com。",
+            status_code=503,
+            error_code="AUTH_SMTP_NOT_CONFIGURED",
+        )
+    return from_name, from_email
 
 
 def _hash_email_verification_code(*, email: str, purpose: str, code: str) -> str:
@@ -264,6 +297,7 @@ class _AddressFamilySMTP_SSL(smtplib.SMTP_SSL):
 def _ensure_smtp_ready() -> None:
     host = (get_env("SMTP_HOST") or "").strip()
     from_email = (get_env("SMTP_FROM_EMAIL") or "").strip()
+    from_name = get_env("SMTP_FROM_NAME", "")
     username = (get_env("SMTP_USERNAME") or "").strip()
     password = get_env("SMTP_PASSWORD", "") or ""
     _normalize_smtp_address_family(get_env("SMTP_ADDRESS_FAMILY", "ipv4"))
@@ -274,6 +308,7 @@ def _ensure_smtp_ready() -> None:
             status_code=503,
             error_code="AUTH_SMTP_NOT_CONFIGURED",
         )
+    _resolve_smtp_sender_identity(raw_from_email=from_email, raw_from_name=from_name)
     if username and not password:
         raise AITeachMeError(
             detail="SMTP 用户名已配置，但缺少 SMTP 密码。",
@@ -295,8 +330,10 @@ def _send_email_verification_message(*, to_email: str, code: str, ttl_seconds: i
     port = get_env_int("SMTP_PORT", 465)
     username = (get_env("SMTP_USERNAME") or "").strip() or None
     password = get_env("SMTP_PASSWORD", "") or ""
-    from_email = (get_env("SMTP_FROM_EMAIL") or "").strip()
-    from_name = (get_env("SMTP_FROM_NAME", "AITeachMe") or "AITeachMe").strip() or "AITeachMe"
+    from_name, from_email = _resolve_smtp_sender_identity(
+        raw_from_email=get_env("SMTP_FROM_EMAIL") or "",
+        raw_from_name=get_env("SMTP_FROM_NAME", ""),
+    )
     address_family = _normalize_smtp_address_family(get_env("SMTP_ADDRESS_FAMILY", "ipv4"))
     timeout_s = max(3, get_env_int("SMTP_TIMEOUT_S", 15))
     ttl_min = max(1, int(round(ttl_seconds / 60)))
@@ -914,7 +951,7 @@ def build_auth_session_data(
     access_token: str | None,
 ) -> AuthSessionData:
     return AuthSessionData(
-        auth_enabled=get_env_bool("AUTH_ENABLED", True),
+        auth_enabled=resolve_auth_enabled(),
         auth_ready=True,
         token_type="bearer",
         access_token=access_token,
@@ -939,7 +976,7 @@ def build_guest_session_data(*, user: User | None) -> AuthSessionData:
             is_authenticated=user.is_registered,
         )
     return AuthSessionData(
-        auth_enabled=get_env_bool("AUTH_ENABLED", True),
+        auth_enabled=resolve_auth_enabled(),
         auth_ready=True,
         token_type="bearer",
         access_token=None,
@@ -955,7 +992,7 @@ def build_session_from_context(
     is_authenticated: bool,
 ) -> AuthSessionData:
     return AuthSessionData(
-        auth_enabled=get_env_bool("AUTH_ENABLED", True),
+        auth_enabled=resolve_auth_enabled(),
         auth_ready=True,
         token_type="bearer",
         access_token=None,

@@ -20,6 +20,7 @@ from app.shared.infra.runtime import get_runtime_data_dir
 from app.shared.infra.runtime import (
     get_app_version,
     is_local_mode,
+    resolve_auth_enabled,
     resolve_app_mode,
     resolve_guest_cookie_samesite,
     resolve_guest_cookie_secure,
@@ -181,7 +182,7 @@ def _log_infra_diagnostics(settings) -> None:
 
     lines.append("")
     lines.append("  [AUTH]")
-    lines.append(f"    Enabled                : {get_env_bool('AUTH_ENABLED', True)}")
+    lines.append(f"    Enabled                : {resolve_auth_enabled()}")
 
     status = "CLOUD" if app_mode == "cloud" else "LOCAL"
     lines.append("")

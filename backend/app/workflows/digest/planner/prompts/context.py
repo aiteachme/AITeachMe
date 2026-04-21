@@ -45,9 +45,10 @@ def render_material_overview(material_context: DigestMaterialContext) -> str:
     return "\n".join(line for line in lines if line.strip())
 
 
-def render_message_history(message_history: list[str] | None, *, limit: int = 4) -> str:
+def render_message_history(message_history: list[str] | None, *, limit: int | None = None) -> str:
     history = [_clean(item) for item in message_history or [] if _clean(item)]
-    return "\n".join(f"- {item}" for item in history[-limit:]) if history else EMPTY_HISTORY
+    selected = history[-limit:] if limit is not None and limit > 0 else history
+    return "\n".join(f"- {item}" for item in selected) if selected else EMPTY_HISTORY
 
 
 def render_latest_plan(latest_plan: dict[str, Any] | None) -> str:

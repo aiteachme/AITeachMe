@@ -4,15 +4,6 @@ from __future__ import annotations
 
 from app.workflows.digest.common.prompt_tracing import trace_prompt_build
 
-PATCH_MARKDOWN_BUDGET = 12000
-
-
-def _clip(value: object, *, limit: int) -> str:
-    text = str(value or "").strip()
-    if len(text) <= limit:
-        return text
-    return text[:limit].rstrip() + "\n...[已截断]"
-
 
 def build_chapter_patch_messages(
     *,
@@ -30,10 +21,10 @@ def build_chapter_patch_messages(
 章节标题：{chapter_title}
 
 ReviewAction：
-{_clip(action, limit=3000)}
+{action}
 
 当前章节 Markdown：
-{_clip(markdown, limit=PATCH_MARKDOWN_BUDGET)}
+{markdown}
 
 输出要求：
 1. 只输出修补后的完整 Markdown。

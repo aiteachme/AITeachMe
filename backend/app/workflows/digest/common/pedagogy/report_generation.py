@@ -225,6 +225,11 @@ def build_chapter_title_resolution_messages(
     required_text = "、".join(item for item in required_elements if item.strip()) or "核心概念、推理路径、典型例子"
     query_text = "；".join(item for item in search_queries if item.strip()) or "无明确检索词"
     source_text = "\n".join(f"- {item}" for item in source_titles if item.strip()) or "- 当前没有明确来源标题"
+    system_prompt = """
+你是 AITeachMe 的课程命名助手。
+你的任务是根据教学合同和研究结果生成自然、具体、非模板化的中文章节标题。
+你只输出一个标题，不输出解释、编号或 Markdown。
+""".strip()
     user_prompt = f"""
 请为下面这一章生成一个新的中文章节标题。
 
@@ -240,7 +245,7 @@ def build_chapter_title_resolution_messages(
 {source_text}
 
 研究笔记：
-{dense_context[:5000] or "暂无研究笔记，请根据章节合同稳健命名。"}
+{dense_context or "暂无研究笔记，请根据章节合同稳健命名。"}
 
 输出要求：
 1. 只输出一个中文标题。
@@ -249,10 +254,7 @@ def build_chapter_title_resolution_messages(
 4. 不要输出编号，不要输出解释，不要输出 Markdown。
 """.strip()
     return [
-        {
-            "role": "system",
-            "content": "你是 AITeachMe 的课程命名助手，负责根据教学合同和研究结果生成自然、具体、非模板化的中文章节标题。",
-        },
+        {"role": "system", "content": system_prompt},
         {"role": "user", "content": user_prompt},
     ]
 
@@ -450,18 +452,16 @@ def analyze_chapter_heading_quality(markdown: str, *, digest_mode: str) -> dict[
         for key, keywords in heading_keywords.items()
         if not _has_heading_keywords(markdown, keywords)
     ]
-    min_h2_count = 4 if normalized_mode == "sprint" else 5
+    min_h2_count = 3 if normalized_mode == "sprint" else 4
     h2_count = _count_headings(markdown, level=2)
     needs_agent_repair = bool(
         h2_count < min_h2_count
         or duplicates
         or generic_titles
-        or len(missing_modules) >= 2
+        or len(missing_modules) >= 5
     )
     needs_scaffold_fallback = bool(
-        h2_count < max(2, min_h2_count - 1)
-        or len(missing_modules) >= 3
-        or "recap" in missing_modules
+        h2_count < 2
     )
     return {
         "digest_mode": normalized_mode,

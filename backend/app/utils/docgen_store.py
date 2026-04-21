@@ -100,6 +100,7 @@ class KnowledgeBuildRuntimeStatus(BaseModel):
     """Runtime metadata for the current or most recent build."""
 
     requested_at: datetime
+    build_kind: str = "docgen"
     status: str = "accepted"
     stage: str = "build_accepted"
     build_session_id: str | None = None

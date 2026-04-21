@@ -14,8 +14,16 @@ class RetrievalChunk(SQLModel, table=True):
 
     __tablename__ = "retrieval_chunk"
     __table_args__ = (
-        UniqueConstraint("document_id", "chunk_index"),
-        UniqueConstraint("subject", "digest_chunk_uid"),
+        UniqueConstraint(
+            "document_id",
+            "chunk_index",
+            name="uq_retrieval_chunk_document_id_chunk_index",
+        ),
+        UniqueConstraint(
+            "subject",
+            "digest_chunk_uid",
+            name="uq_retrieval_chunk_subject_digest_chunk_uid",
+        ),
     )
 
     id: int | None = Field(default=None, primary_key=True)
