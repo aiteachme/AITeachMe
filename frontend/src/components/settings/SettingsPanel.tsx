@@ -1,12 +1,12 @@
-import { useEffect, useMemo, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   Activity,
   Bot,
   CheckCircle2,
   Database,
-  KeyRound,
   Loader2,
+  Monitor,
   RefreshCcw,
   Search,
   SlidersHorizontal,
@@ -26,7 +26,7 @@ interface SettingsModalProps {
   onClose: () => void;
 }
 
-type SectionType = "connection" | "models" | "learning" | "search" | "ops" | "observability";
+type SectionType = "device" | "models" | "learning" | "search" | "deploy" | "observability";
 type SaveState = "idle" | "saving" | "saved" | "error";
 type SettingSource = "env" | "settings" | "system_settings" | "user_settings" | "runtime";
 type SettingStatus = "configured" | "missing" | "default" | "disabled" | "enabled" | "runtime";
@@ -43,6 +43,7 @@ interface SettingEntry {
   secret?: boolean;
   editable?: boolean;
   restart_required?: boolean;
+  derived?: boolean;
   description?: string;
 }
 
@@ -67,13 +68,20 @@ interface ApiResponse<T> {
 }
 
 const SECTIONS = [
-  { id: "connection", label: "连接", description: "模式与本机连接", icon: KeyRound },
-  { id: "models", label: "模型", description: "模型路由", icon: Bot },
-  { id: "learning", label: "学习引擎", description: "解析与构建", icon: Wrench },
-  { id: "search", label: "检索", description: "联网与 RAG", icon: Search },
-  { id: "ops", label: "部署状态", description: "鉴权、SMTP、存储", icon: Database },
-  { id: "observability", label: "观测调试", description: "Tracing 与浏览器调试", icon: Activity },
+  { id: "device", label: "当前设备", description: "浏览器本机项", icon: Monitor },
+  { id: "models", label: "AI 与模型", description: "模型路由与推导", icon: Bot },
+  { id: "learning", label: "学习构建", description: "上传、规划与文档生成", icon: Wrench },
+  { id: "search", label: "检索与来源", description: "RAG、联网与检索服务", icon: Search },
+  { id: "deploy", label: "部署与集成", description: "运行模式、鉴权、存储", icon: Database },
+  { id: "observability", label: "观测与性能", description: "追踪、并发与调优", icon: Activity },
 ] as const;
+
+const MODEL_BASIC_KEYS = new Set([
+  "models.primary",
+  "models.reason",
+  "models.light",
+  "models.embedding",
+]);
 
 const MODEL_KEYS = new Set([
   "models.primary",
@@ -85,12 +93,15 @@ const MODEL_KEYS = new Set([
   "models.image_generation",
 ]);
 
-const CORE_STATUS_KEYS = new Set([
+const DEPLOY_RUNTIME_KEYS = new Set([
   "runtime.mode",
   "runtime.app_mode_raw",
   "runtime.version",
   "auth.enabled",
   "settings.source",
+]);
+
+const LLM_PROVIDER_STATUS_KEYS = new Set([
   "llm.base_url",
   "llm.api_key",
 ]);
@@ -116,26 +127,25 @@ const OBSERVABILITY_ENV_STATUS_KEYS = new Set([
   "langsmith.endpoint",
 ]);
 
-const SIMPLE_LEARNING_KEYS = new Set([
+const INGEST_BASIC_KEYS = new Set([
   "ingest.default_parser_provider",
   "ingest.mineru_model_version",
   "ingest.mineru_enable_formula",
   "ingest.mineru_enable_table",
   "ingest.mineru_is_ocr",
-  "planner.default_digest_mode",
-  "planner.sprint.min_chapters",
-  "planner.sprint.max_chapters",
-  "planner.sprint.target_length",
-  "planner.systematic.min_chapters",
-  "planner.systematic.max_chapters",
-  "planner.systematic.target_length",
+]);
+
+const DOCGEN_BASIC_KEYS = new Set([
   "docgen.allow_external_search",
   "docgen.generate_cover_image",
+]);
+
+const LEARNING_LINKAGE_KEYS = new Set([
   "interact.history_turns",
   "knowledge_graph.sync_after_docgen",
 ]);
 
-const SIMPLE_SEARCH_KEYS = new Set([
+const SEARCH_STRATEGY_KEYS = new Set([
   "rag.top_k",
   "rag.similarity_threshold",
   "rag.rerank_model",
@@ -145,7 +155,7 @@ const SIMPLE_SEARCH_KEYS = new Set([
   "search.retriever_profile",
 ]);
 
-const SIMPLE_SEARCH_ENV_KEYS = new Set([
+const SEARCH_PROVIDER_BASIC_KEYS = new Set([
   "search.tavily_key",
   "search.jina_key",
   "search.serper_key",
@@ -153,25 +163,19 @@ const SIMPLE_SEARCH_ENV_KEYS = new Set([
   "rag.rerank_api_key",
 ]);
 
-const SIMPLE_OBSERVABILITY_KEYS = new Set([
+const OBSERVABILITY_BASIC_KEYS = new Set([
   "observability.tracing_enabled",
   "observability.llm_token_summary_enabled",
   "observability.llm_observability_enabled",
+]);
+
+const PERFORMANCE_BASIC_KEYS = new Set([
   "runtime.llm_concurrency_limit",
 ]);
 
 const LEARNING_SETTING_PREFIXES = ["ingest.", "planner.", "docgen.", "interact.", "knowledge_graph."];
 const SEARCH_SETTING_PREFIXES = ["rag.", "local_rag.", "search."];
 const OBSERVABILITY_SETTING_PREFIXES = ["observability.", "runtime.", "embedding."];
-const MODE_AWARE_PREFERENCE_KEYS = new Set([
-  "ingest.default_parser_provider",
-  "ingest.mineru_model_version",
-  "ingest.mineru_enable_formula",
-  "ingest.mineru_enable_table",
-  "ingest.mineru_is_ocr",
-  "planner.default_digest_mode",
-  "interact.history_turns",
-]);
 
 const SETTING_SELECT_OPTIONS: Record<string, Array<{ value: string; label: string }>> = {
   "ingest.default_parser_provider": [
@@ -193,15 +197,11 @@ function hasAnyPrefix(key: string, prefixes: string[]): boolean {
   return prefixes.some((prefix) => key.startsWith(prefix));
 }
 
-function filterByVisibleKeys(
-  entries: SettingEntry[],
-  allowedKeys: Set<string>,
-  showAdvanced: boolean,
-) {
-  if (showAdvanced) {
-    return entries;
-  }
-  return entries.filter((entry) => allowedKeys.has(entry.key));
+function splitEntriesByKeys(entries: SettingEntry[], basicKeys: Set<string>) {
+  return {
+    basic: entries.filter((entry) => basicKeys.has(entry.key)),
+    advanced: entries.filter((entry) => !basicKeys.has(entry.key)),
+  };
 }
 
 function isPrimitive(value: unknown): value is SettingPrimitive {
@@ -310,15 +310,6 @@ function InfoCard({ text, variant = "neutral" }: { text: string; variant?: "neut
   return <div className={`rounded-lg border px-4 py-3 text-[12px] leading-relaxed ${className}`}>{text}</div>;
 }
 
-function SectionDivider({ label }: { label: string }) {
-  return (
-    <div className="flex items-center gap-3 pt-2">
-      <span className="text-[11px] font-semibold uppercase tracking-widest text-zinc-400">{label}</span>
-      <div className="h-px flex-1 bg-zinc-100" />
-    </div>
-  );
-}
-
 function TextInput({
   value,
   onChange,
@@ -403,8 +394,50 @@ function SourcePill({ source }: { source: SettingSource }) {
         ? "用户库"
         : source === "settings"
           ? "默认"
-          : "运行时";
+      : "运行时";
   return <span className="rounded-md border border-zinc-200 bg-white px-2 py-0.5 text-[11px] font-semibold text-zinc-500">{label}</span>;
+}
+
+function ScopePill({ entry }: { entry: SettingEntry }) {
+  const label =
+    entry.source === "env"
+      ? "部署级"
+      : entry.source === "runtime" || entry.derived
+        ? "诊断值"
+        : "服务端运行时";
+  return <span className="rounded-md border border-zinc-200 bg-white px-2 py-0.5 text-[11px] text-zinc-500">{label}</span>;
+}
+
+function EffectPill({ entry }: { entry: SettingEntry }) {
+  const label = entry.derived
+    ? "只读"
+    : entry.restart_required
+      ? "建议重启"
+      : "即时生效";
+  const className = entry.restart_required
+    ? "border-amber-200 bg-amber-50 text-amber-700"
+    : "border-zinc-200 bg-white text-zinc-500";
+  return <span className={`rounded-md px-2 py-0.5 text-[11px] ${className}`}>{label}</span>;
+}
+
+function SettingsGroup({
+  title,
+  description,
+  children,
+}: {
+  title: string;
+  description?: string;
+  children: ReactNode;
+}) {
+  return (
+    <section className="space-y-3 rounded-xl border border-zinc-100 bg-zinc-50/35 p-4">
+      <div className="space-y-1">
+        <h4 className="text-[13px] font-semibold text-zinc-800">{title}</h4>
+        {description ? <p className="text-[11px] leading-relaxed text-zinc-500">{description}</p> : null}
+      </div>
+      {children}
+    </section>
+  );
 }
 
 function ReadonlySettingsList({
@@ -429,7 +462,11 @@ function ReadonlySettingsList({
               <div className="text-[13px] font-semibold text-zinc-700">{entry.label}</div>
               <div className="mt-0.5 font-mono text-[11px] text-zinc-400">{entry.key}</div>
             </div>
-            <SourcePill source={entry.source} />
+            <div className="flex flex-wrap items-center gap-1.5">
+              <SourcePill source={entry.source} />
+              <ScopePill entry={entry} />
+              <EffectPill entry={entry} />
+            </div>
           </div>
           <div className="mt-2 rounded-md border border-zinc-200 bg-white px-2.5 py-1.5 font-mono text-[12px] text-zinc-800">
             {displayValue(entry)}
@@ -476,14 +513,11 @@ function EditableSettingsList({
               />
               <div className="flex flex-wrap items-center gap-1.5">
                 <SourcePill source={entry.source} />
+                <ScopePill entry={entry} />
+                <EffectPill entry={entry} />
                 <span className="rounded-md border border-zinc-200 bg-white px-2 py-0.5 text-[11px] text-zinc-400">
                   默认：{displayValue({ ...entry, value: entry.default_value })}
                 </span>
-                {entry.restart_required ? (
-                  <span className="rounded-md border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] text-amber-700">
-                    保存后建议重启
-                  </span>
-                ) : null}
               </div>
             </div>
           );
@@ -496,7 +530,11 @@ function EditableSettingsList({
                 <label className="block text-[13px] font-semibold text-zinc-700">{entry.label}</label>
                 <div className="mt-0.5 font-mono text-[11px] text-zinc-400">{entry.key}</div>
               </div>
-              <SourcePill source={entry.source} />
+              <div className="flex flex-wrap items-center gap-1.5">
+                <SourcePill source={entry.source} />
+                <ScopePill entry={entry} />
+                <EffectPill entry={entry} />
+              </div>
             </div>
             {selectOptions ? (
               <SelectInput
@@ -537,7 +575,7 @@ const contentVariants = {
 export function SettingsPanel({ isOpen, onClose }: SettingsModalProps) {
   const { settings, updateSettings } = useSettings();
   const [draft, setDraft] = useState<AppSettings>({ ...settings });
-  const [activeSection, setActiveSection] = useState<SectionType>("connection");
+  const [activeSection, setActiveSection] = useState<SectionType>("device");
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [saveState, setSaveState] = useState<SaveState>("idle");
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -553,7 +591,7 @@ export function SettingsPanel({ isOpen, onClose }: SettingsModalProps) {
   useEffect(() => {
     if (!isOpen) return;
     setDraft({ ...settings });
-    setActiveSection("connection");
+    setActiveSection("device");
     setSaveState("idle");
     setSaveError(null);
     setOverviewError(null);
@@ -691,94 +729,114 @@ export function SettingsPanel({ isOpen, onClose }: SettingsModalProps) {
     }
   };
 
-  const renderConnection = () => (
+  const renderDevice = () => (
     <div className="space-y-5">
-      <InfoCard
-        text={
-          isLocalRuntime
-            ? "本地模式下，会开放浏览器本机设置和本地 .env 编辑；这里的非敏感运行参数仍保存到数据库。"
-            : "云端模式下，这里只作为状态页展示当前运行模式、能力状态与配置来源。"
-        }
-      />
-      {isLocalRuntime ? (
-        <>
-          <SectionDivider label="本地 .env" />
+      <InfoCard text="这里只影响当前浏览器或本机调试体验，不会写入服务端运行时真相。" />
+      <SettingsGroup title="当前浏览器" description="浏览器本机项始终只对你现在使用的这台设备生效。">
+        <div className="space-y-3">
+          <div className="space-y-2 rounded-lg border border-zinc-100 bg-white px-4 py-3">
+            <label className="text-[13px] font-semibold text-zinc-700">后端地址</label>
+            <TextInput value={draft.apiUrl} onChange={(value) => patch("apiUrl", value)} placeholder="http://localhost:8000" />
+            <p className="text-[11px] leading-relaxed text-zinc-400">只影响当前浏览器请求哪个后端服务。</p>
+          </div>
+          <SwitchRow
+            title="启用本地 Mock"
+            description="只影响当前浏览器是否使用前端 Mock 数据。"
+            enabled={draft.useMock}
+            onToggle={() => patch("useMock", !draft.useMock)}
+          />
+          <SwitchRow
+            title="调试模式"
+            description="只影响当前浏览器的调试展示和开发辅助体验。"
+            enabled={draft.debugMode}
+            onToggle={() => patch("debugMode", !draft.debugMode)}
+          />
+          <div className="space-y-2 rounded-lg border border-zinc-100 bg-white px-4 py-3">
+            <label className="text-[13px] font-semibold text-zinc-700">MinerU 临时令牌</label>
+            <TextInput
+              type="password"
+              value={draft.mineruApiToken}
+              onChange={(value) => patch("mineruApiToken", value)}
+              placeholder="MINERU_API_TOKEN"
+            />
+            <p className="text-[11px] leading-relaxed text-zinc-400">
+              仅当前浏览器可见。上传时会优先使用这个临时令牌；留空则回退到服务端环境变量。
+            </p>
+          </div>
+        </div>
+      </SettingsGroup>
+      {overview?.notes?.length ? (
+        <SettingsGroup title="说明" description="帮助你理解当前设置来源与保存方式。">
+          <div className="space-y-2">
+            {overview.notes.map((note) => (
+              <InfoCard key={note} text={note} />
+            ))}
+          </div>
+        </SettingsGroup>
+      ) : null}
+    </div>
+  );
+
+  const renderModels = () => {
+    const modelEntries = getEntries("models").filter((entry) => MODEL_KEYS.has(entry.key));
+    const { basic: basicModelEntries, advanced: advancedModelEntries } = splitEntriesByKeys(modelEntries, MODEL_BASIC_KEYS);
+
+    return (
+      <div className="space-y-5">
+        <InfoCard
+          text={
+            isLocalRuntime
+              ? "这里集中放模型路由。常用项默认展示，专用模型放进高级设置；保存后会写入服务端运行时配置。"
+              : "云端模式下模型路由只读展示，普通用户不能修改服务端全局模型配置。"
+          }
+        />
+        <SettingsGroup title="核心路由" description="优先调整这里，通常就能满足大多数本地调试和日常使用。">
           <EditableSettingsList
-            entries={getEntries("models").filter((entry) => entry.source === "env")}
-            draft={envDraft}
-            onChange={patchEnvSetting}
+            entries={basicModelEntries}
+            draft={settingsDraft}
+            onChange={patchServerSetting}
             loading={isOverviewLoading}
             error={overviewError}
           />
-        </>
-      ) : null}
-      {isLocalRuntime ? (
-        <div className="space-y-3 rounded-lg border border-zinc-100 bg-zinc-50/40 px-4 py-3">
-          <SectionDivider label="浏览器本机" />
-          <div className="space-y-3">
-            <div className="space-y-2">
-              <label className="text-[13px] font-semibold text-zinc-700">FastAPI 地址</label>
-              <TextInput value={draft.apiUrl} onChange={(value) => patch("apiUrl", value)} placeholder="http://localhost:8000" />
-              <p className="text-[11px] leading-relaxed text-zinc-400">只影响当前浏览器访问哪个后端地址。</p>
-            </div>
-            <SwitchRow
-              title="本地 Mock"
-              description="只影响当前浏览器是否启用前端 Mock。"
-              enabled={draft.useMock}
-              onToggle={() => patch("useMock", !draft.useMock)}
+        </SettingsGroup>
+        {(showAdvanced || advancedModelEntries.length === 0) ? null : (
+          <InfoCard text="还有 OCR、抽取和图片生成等专用模型设置，点击右上角“显示高级”后展开。" />
+        )}
+        {showAdvanced && advancedModelEntries.length > 0 ? (
+          <SettingsGroup title="专用模型" description="低频修改项，适合需要精细拆分任务模型时使用。">
+            <EditableSettingsList
+              entries={advancedModelEntries}
+              draft={settingsDraft}
+              onChange={patchServerSetting}
+              loading={isOverviewLoading}
+              error={overviewError}
             />
-          </div>
-        </div>
-      ) : null}
-      <SectionDivider label="后端当前状态" />
-      <ReadonlySettingsList
-        entries={getEntries("runtime", "models").filter((entry) => CORE_STATUS_KEYS.has(entry.key))}
-        loading={isOverviewLoading}
-        error={overviewError}
-      />
-      {overview?.notes?.length ? (
-        <div className="space-y-2">
-          {overview.notes.map((note) => (
-            <InfoCard key={note} text={note} />
-          ))}
-        </div>
-      ) : null}
-    </div>
-  );
-
-  const renderModels = () => (
-    <div className="space-y-5">
-      <InfoCard
-        text={
-          isLocalRuntime
-            ? "本地模式允许直接调整模型路由。保存后会写入本地系统配置。"
-            : "云端模式下模型路由视为系统级配置，这里只读展示当前有效值。"
-        }
-      />
-      <EditableSettingsList
-        entries={getEntries("models").filter((entry) => MODEL_KEYS.has(entry.key))}
-        draft={settingsDraft}
-        onChange={patchServerSetting}
-        loading={isOverviewLoading}
-        error={overviewError}
-      />
-      <SectionDivider label="运行推导" />
-      <ReadonlySettingsList
-        entries={getEntries("models").filter((entry) => entry.key === "models.embedding_dim")}
-        loading={isOverviewLoading}
-        error={overviewError}
-      />
-    </div>
-  );
+          </SettingsGroup>
+        ) : null}
+        <SettingsGroup title="运行推导" description="这些值来自当前路由配置推导，只读展示。">
+          <ReadonlySettingsList
+            entries={getEntries("models").filter((entry) => entry.key === "models.embedding_dim")}
+            loading={isOverviewLoading}
+            error={overviewError}
+          />
+        </SettingsGroup>
+      </div>
+    );
+  };
 
   const renderLearning = () => {
-    const learningEntries = filterByVisibleKeys(
-      getEntries("learning_engines").filter(
-        (entry) => hasAnyPrefix(entry.key, LEARNING_SETTING_PREFIXES) || MODE_AWARE_PREFERENCE_KEYS.has(entry.key),
-      ),
-      SIMPLE_LEARNING_KEYS,
-      showAdvanced,
+    const learningEntries = getEntries("learning_engines").filter(
+      (entry) => hasAnyPrefix(entry.key, LEARNING_SETTING_PREFIXES) && entry.source !== "env",
     );
+    const ingestEntries = learningEntries.filter((entry) => entry.key.startsWith("ingest."));
+    const plannerEntries = learningEntries.filter((entry) => entry.key.startsWith("planner."));
+    const docgenEntries = learningEntries.filter((entry) => entry.key.startsWith("docgen."));
+    const linkageEntries = learningEntries.filter(
+      (entry) => entry.key.startsWith("interact.") || entry.key.startsWith("knowledge_graph."),
+    );
+    const { basic: basicIngestEntries, advanced: advancedIngestEntries } = splitEntriesByKeys(ingestEntries, INGEST_BASIC_KEYS);
+    const { basic: basicDocgenEntries, advanced: advancedDocgenEntries } = splitEntriesByKeys(docgenEntries, DOCGEN_BASIC_KEYS);
+    const { basic: basicLinkageEntries, advanced: advancedLinkageEntries } = splitEntriesByKeys(linkageEntries, LEARNING_LINKAGE_KEYS);
     const learningEnvEntries = getEntries("learning_engines").filter((entry) => entry.source === "env");
 
     return (
@@ -786,42 +844,84 @@ export function SettingsPanel({ isOpen, onClose }: SettingsModalProps) {
         <InfoCard
           text={
             isLocalRuntime
-              ? showAdvanced
-                ? "当前显示本地模式下的全部学习引擎可写项。低频调优项也会一起展开，适合排查链路或精细打磨默认行为。"
-                : "当前默认只显示常用学习引擎设置。更底层的并发、超时和链路调优项可以通过右上角“显示高级”查看。"
-              : "云端模式下学习引擎配置只读展示，普通用户不能修改服务端默认值。"
+              ? "这页按学习链路组织配置：上传与解析、方案规划、知识文档生成，以及伴读/图谱联动。"
+              : "云端模式下学习构建参数只读展示，普通用户不能修改服务端全局行为。"
           }
         />
-        <EditableSettingsList
-          entries={learningEntries}
-          draft={settingsDraft}
-          onChange={patchServerSetting}
-          loading={isOverviewLoading}
-          error={overviewError}
-        />
-        {isLocalRuntime && parserProvider === "mineru" ? (
-          <div className="space-y-3 rounded-lg border border-zinc-100 bg-zinc-50/40 px-4 py-3">
-            <SectionDivider label="浏览器临时覆盖" />
-            <div className="space-y-2">
-              <label className="text-[13px] font-semibold text-zinc-700">MinerU 临时 Token</label>
-              <TextInput
-                type="password"
-                value={draft.mineruApiToken}
-                onChange={(value) => patch("mineruApiToken", value)}
-                placeholder="MINERU_API_TOKEN"
-              />
-              <p className="text-[11px] leading-relaxed text-zinc-400">
-                仅当前浏览器可见。上传时会优先使用这个临时 Token；留空则回退到本地 .env 里的 MINERU_API_TOKEN。
-              </p>
-            </div>
-          </div>
-        ) : null}
+        <SettingsGroup title="上传与解析" description="控制默认解析方式，以及上传时的基础行为。">
+          <EditableSettingsList
+            entries={basicIngestEntries}
+            draft={settingsDraft}
+            onChange={patchServerSetting}
+            loading={isOverviewLoading}
+            error={overviewError}
+          />
+        </SettingsGroup>
         {parserProvider === "auto" ? (
-          <InfoCard text="自动模式不会显式指定 parser_provider。上传时会走后端当前已实现的本地自动 parser chain：先分类，再生成 ParsePlan，再按文件类型和质量策略选择并尝试本地解析器链。" />
+          <InfoCard text="当前是自动解析模式。上传时会先分类，再生成解析计划，然后按文件类型和质量策略选择本地解析器链。" />
         ) : null}
-        {isLocalRuntime ? (
-          <>
-            <SectionDivider label="本地 .env" />
+        {showAdvanced && advancedIngestEntries.length > 0 ? (
+          <SettingsGroup title="解析高级项" description="并发、超时和上传上限等低频调优项。">
+            <EditableSettingsList
+              entries={advancedIngestEntries}
+              draft={settingsDraft}
+              onChange={patchServerSetting}
+              loading={isOverviewLoading}
+              error={overviewError}
+            />
+          </SettingsGroup>
+        ) : null}
+        <SettingsGroup title="方案规划" description="控制 Planner 默认采用的 Digest 模式与章节范围。">
+          <EditableSettingsList
+            entries={plannerEntries}
+            draft={settingsDraft}
+            onChange={patchServerSetting}
+            loading={isOverviewLoading}
+            error={overviewError}
+          />
+        </SettingsGroup>
+        <SettingsGroup title="知识文档生成" description="控制 DocGen 的来源策略、封面开关与章节执行预算。">
+          <EditableSettingsList
+            entries={basicDocgenEntries}
+            draft={settingsDraft}
+            onChange={patchServerSetting}
+            loading={isOverviewLoading}
+            error={overviewError}
+          />
+        </SettingsGroup>
+        {showAdvanced && advancedDocgenEntries.length > 0 ? (
+          <SettingsGroup title="文档生成高级项" description="章节并发、研究查询数和网页读取预算等低层调优项。">
+            <EditableSettingsList
+              entries={advancedDocgenEntries}
+              draft={settingsDraft}
+              onChange={patchServerSetting}
+              loading={isOverviewLoading}
+              error={overviewError}
+            />
+          </SettingsGroup>
+        ) : null}
+        <SettingsGroup title="伴读与图谱联动" description="控制伴读上下文长度，以及生成文档后是否同步知识图谱。">
+          <EditableSettingsList
+            entries={basicLinkageEntries}
+            draft={settingsDraft}
+            onChange={patchServerSetting}
+            loading={isOverviewLoading}
+            error={overviewError}
+          />
+        </SettingsGroup>
+        {showAdvanced && advancedLinkageEntries.length > 0 ? (
+          <SettingsGroup title="联动高级项" description="知识图谱抽取并发等低频调优项。">
+            <EditableSettingsList
+              entries={advancedLinkageEntries}
+              draft={settingsDraft}
+              onChange={patchServerSetting}
+              loading={isOverviewLoading}
+              error={overviewError}
+            />
+          </SettingsGroup>
+        ) : null}
+        <SettingsGroup title={isLocalRuntime ? "服务端解析凭证" : "解析服务状态"} description="MinerU 等服务依赖的部署级环境变量。">
+          {isLocalRuntime ? (
             <EditableSettingsList
               entries={learningEnvEntries}
               draft={envDraft}
@@ -829,117 +929,160 @@ export function SettingsPanel({ isOpen, onClose }: SettingsModalProps) {
               loading={isOverviewLoading}
               error={overviewError}
             />
-          </>
-        ) : (
-          <>
-            <SectionDivider label="服务端状态" />
+          ) : (
             <ReadonlySettingsList
               entries={learningEnvEntries}
               loading={isOverviewLoading}
               error={overviewError}
             />
-          </>
-        )}
+          )}
+        </SettingsGroup>
       </div>
     );
   };
 
   const renderSearch = () => {
-    const searchEntries = filterByVisibleKeys(
-      getEntries("search").filter((entry) => hasAnyPrefix(entry.key, SEARCH_SETTING_PREFIXES)),
-      SIMPLE_SEARCH_KEYS,
-      showAdvanced,
+    const searchEntries = getEntries("search").filter(
+      (entry) => hasAnyPrefix(entry.key, SEARCH_SETTING_PREFIXES) && entry.source !== "env",
     );
-    const searchEnvEntries = filterByVisibleKeys(
-      getEntries("search").filter((entry) => entry.source === "env"),
-      SIMPLE_SEARCH_ENV_KEYS,
-      showAdvanced,
-    );
+    const searchEnvEntries = getEntries("search").filter((entry) => entry.source === "env");
+    const { basic: basicSearchEntries, advanced: advancedSearchEntries } = splitEntriesByKeys(searchEntries, SEARCH_STRATEGY_KEYS);
+    const { basic: basicSearchEnvEntries, advanced: advancedSearchEnvEntries } = splitEntriesByKeys(searchEnvEntries, SEARCH_PROVIDER_BASIC_KEYS);
 
     return (
       <div className="space-y-5">
         <InfoCard
           text={
             isLocalRuntime
-              ? showAdvanced
-                ? "当前显示完整检索调优面板，包括 provider、缓存和超时等低层参数。"
-                : "当前默认只显示常用检索策略。大部分 provider 密钥和超时调优项已收进高级视图，避免把日常设置页变成运维面板。"
-              : "云端模式下，检索 provider 的密钥与运行参数只读展示。"
+              ? "默认先展示最常用的 RAG 与检索策略。各类联网检索服务的密钥与状态收进下方的检索服务区。"
+              : "云端模式下，这里作为只读状态页展示当前检索策略与联网服务状态。"
           }
         />
-        <EditableSettingsList
-          entries={searchEntries}
-          draft={settingsDraft}
-          onChange={patchServerSetting}
-          loading={isOverviewLoading}
-          error={overviewError}
-        />
-        <SectionDivider label={isLocalRuntime ? "本地 .env" : "服务端 provider 状态"} />
-        {isLocalRuntime ? (
+        <SettingsGroup title="检索策略" description="优先调整这里，决定本地资料优先级、相似度阈值与默认检索 Profile。">
           <EditableSettingsList
-            entries={searchEnvEntries}
-            draft={envDraft}
-            onChange={patchEnvSetting}
+            entries={basicSearchEntries}
+            draft={settingsDraft}
+            onChange={patchServerSetting}
             loading={isOverviewLoading}
             error={overviewError}
           />
-        ) : (
-          <ReadonlySettingsList
-            entries={searchEnvEntries}
-            loading={isOverviewLoading}
-            error={overviewError}
-          />
-        )}
-      </div>
-    );
-  };
-
-  const renderOps = () => {
-    const opsEntries = getEntries("runtime", "storage");
-    const editableEnvEntries = opsEntries.filter((entry) => entry.source === "env");
-    const readonlyEntries = opsEntries.filter(
-      (entry) => CORE_STATUS_KEYS.has(entry.key) || STORAGE_STATUS_KEYS.has(entry.key) || entry.source === "runtime",
-    );
-
-    return (
-      <div className="space-y-5">
-        <InfoCard
-          text={
-            isLocalRuntime
-              ? "本地模式下部署级环境变量也可写入本地 .env，但是否立即生效取决于具体配置，通常建议保存后重启后端。"
-              : "云端模式下，部署、鉴权、数据库和对象存储统一视为平台级配置，只读展示。"
-          }
-        />
-        {isLocalRuntime ? (
-          <>
-            <SectionDivider label="本地 .env" />
+        </SettingsGroup>
+        {showAdvanced && advancedSearchEntries.length > 0 ? (
+          <SettingsGroup title="检索高级项" description="超时、缓存、并发 provider 和融合参数等低层调优项。">
             <EditableSettingsList
-              entries={editableEnvEntries}
+              entries={advancedSearchEntries}
+              draft={settingsDraft}
+              onChange={patchServerSetting}
+              loading={isOverviewLoading}
+              error={overviewError}
+            />
+          </SettingsGroup>
+        ) : null}
+        <SettingsGroup title={isLocalRuntime ? "检索服务与密钥" : "检索服务状态"} description="联网搜索、阅读器、MCP 与重排服务的接入状态。">
+          {isLocalRuntime ? (
+            <EditableSettingsList
+              entries={basicSearchEnvEntries}
               draft={envDraft}
               onChange={patchEnvSetting}
               loading={isOverviewLoading}
               error={overviewError}
             />
-          </>
+          ) : (
+            <ReadonlySettingsList
+              entries={basicSearchEnvEntries}
+              loading={isOverviewLoading}
+              error={overviewError}
+            />
+          )}
+        </SettingsGroup>
+        {showAdvanced && advancedSearchEnvEntries.length > 0 ? (
+          <SettingsGroup title="更多检索服务" description="低频使用的联网检索服务与附加来源接入项。">
+            {isLocalRuntime ? (
+              <EditableSettingsList
+                entries={advancedSearchEnvEntries}
+                draft={envDraft}
+                onChange={patchEnvSetting}
+                loading={isOverviewLoading}
+                error={overviewError}
+              />
+            ) : (
+              <ReadonlySettingsList
+                entries={advancedSearchEnvEntries}
+                loading={isOverviewLoading}
+                error={overviewError}
+              />
+            )}
+          </SettingsGroup>
         ) : null}
-        <SectionDivider label="当前状态" />
-        <ReadonlySettingsList
-          entries={readonlyEntries}
-          loading={isOverviewLoading}
-          error={overviewError}
+      </div>
+    );
+  };
+
+  const renderDeploy = () => {
+    const runtimeEntries = getEntries("runtime").filter((entry) => DEPLOY_RUNTIME_KEYS.has(entry.key));
+    const llmEntries = getEntries("models").filter((entry) => LLM_PROVIDER_STATUS_KEYS.has(entry.key));
+    const storageEntries = getEntries("storage").filter(
+      (entry) => STORAGE_STATUS_KEYS.has(entry.key) || entry.source === "runtime",
+    );
+    const localDeployEnvEntries = getEntries("runtime", "storage", "models").filter(
+      (entry) => entry.source === "env" && (DEPLOY_RUNTIME_KEYS.has(entry.key) || STORAGE_STATUS_KEYS.has(entry.key) || LLM_PROVIDER_STATUS_KEYS.has(entry.key)),
+    );
+
+    return (
+      <div className="space-y-5">
+        <InfoCard
+          text={
+            isLocalRuntime
+              ? "这里集中展示部署级变量、运行模式、鉴权、模型接入以及数据库/存储状态。本地模式下允许写回本机 .env。"
+              : "云端模式下部署、鉴权、数据库和对象存储统一视为平台级配置，只读展示当前状态。"
+          }
         />
+        {isLocalRuntime ? (
+          <SettingsGroup title="本机环境变量" description="部署级配置通常保存到本机 .env；是否立即生效取决于具体变量，通常建议保存后重启后端。">
+            <EditableSettingsList
+              entries={localDeployEnvEntries}
+              draft={envDraft}
+              onChange={patchEnvSetting}
+              loading={isOverviewLoading}
+              error={overviewError}
+            />
+          </SettingsGroup>
+        ) : null}
+        <SettingsGroup title="运行与鉴权" description="当前运行模式、APP_MODE 解析结果、鉴权开关与设置来源。">
+          <ReadonlySettingsList
+            entries={runtimeEntries}
+            loading={isOverviewLoading}
+            error={overviewError}
+          />
+        </SettingsGroup>
+        <SettingsGroup title="模型接入" description="当前模型服务地址与密钥配置状态。">
+          <ReadonlySettingsList
+            entries={llmEntries}
+            loading={isOverviewLoading}
+            error={overviewError}
+          />
+        </SettingsGroup>
+        <SettingsGroup title="数据库与存储" description="数据库连接、对象存储后端与 S3 / DogeCloud 当前状态。">
+          <ReadonlySettingsList
+            entries={storageEntries}
+            loading={isOverviewLoading}
+            error={overviewError}
+          />
+        </SettingsGroup>
       </div>
     );
   };
 
   const renderObservability = () => {
-    const observabilityEntries = filterByVisibleKeys(
-      getEntries("observability").filter(
-        (entry) => entry.editable && hasAnyPrefix(entry.key, OBSERVABILITY_SETTING_PREFIXES),
-      ),
-      SIMPLE_OBSERVABILITY_KEYS,
-      showAdvanced,
+    const observabilityEntries = getEntries("observability").filter(
+      (entry) => entry.editable && hasAnyPrefix(entry.key, OBSERVABILITY_SETTING_PREFIXES),
     );
+    const observabilityToggleEntries = observabilityEntries.filter((entry) => entry.key.startsWith("observability."));
+    const performanceEntries = observabilityEntries.filter(
+      (entry) => entry.key.startsWith("runtime.") || entry.key.startsWith("embedding."),
+    );
+    const { basic: basicObservabilityEntries, advanced: advancedObservabilityEntries } = splitEntriesByKeys(observabilityToggleEntries, OBSERVABILITY_BASIC_KEYS);
+    const { basic: basicPerformanceEntries, advanced: advancedPerformanceEntries } = splitEntriesByKeys(performanceEntries, PERFORMANCE_BASIC_KEYS);
     const observabilityEnvEntries = getEntries("observability").filter((entry) =>
       OBSERVABILITY_ENV_STATUS_KEYS.has(entry.key),
     );
@@ -949,56 +1092,77 @@ export function SettingsPanel({ isOpen, onClose }: SettingsModalProps) {
         <InfoCard
           text={
             isLocalRuntime
-              ? showAdvanced
-                ? "当前显示完整观测与调试设置，包括采样、展示和嵌入批处理等低频参数。"
-                : "当前默认只显示最常用的观测控制项。更细的追踪预览、批处理和保留策略已收进高级视图。"
-              : "云端模式下观测配置只读展示；浏览器调试项默认不开放给普通用户。"
+              ? "这页聚合 tracing、调用统计和运行性能调优项。调试模式已移到“当前设备”，避免与服务端观测开关混淆。"
+              : "云端模式下观测与性能设置只读展示；普通用户不能修改服务端 tracing 和运行时调优参数。"
           }
         />
-        <EditableSettingsList
-          entries={observabilityEntries}
-          draft={settingsDraft}
-          onChange={patchServerSetting}
-          loading={isOverviewLoading}
-          error={overviewError}
-        />
-        {isLocalRuntime ? (
-          <div className="space-y-3 rounded-lg border border-zinc-100 bg-zinc-50/40 px-4 py-3">
-            <SectionDivider label="浏览器本机" />
-            <SwitchRow
-              title="调试模式"
-              description="只影响当前浏览器的调试体验。"
-              enabled={draft.debugMode}
-              onToggle={() => patch("debugMode", !draft.debugMode)}
-            />
-          </div>
-        ) : null}
-        <SectionDivider label={isLocalRuntime ? "本地 .env" : "服务端观测状态"} />
-        {isLocalRuntime ? (
+        <SettingsGroup title="观测与追踪" description="控制 LangSmith、LLM 调用统计和文本预览等可观测性行为。">
           <EditableSettingsList
-            entries={observabilityEnvEntries}
-            draft={envDraft}
-            onChange={patchEnvSetting}
+            entries={basicObservabilityEntries}
+            draft={settingsDraft}
+            onChange={patchServerSetting}
             loading={isOverviewLoading}
             error={overviewError}
           />
-        ) : (
-          <ReadonlySettingsList
-            entries={observabilityEnvEntries}
+        </SettingsGroup>
+        {showAdvanced && advancedObservabilityEntries.length > 0 ? (
+          <SettingsGroup title="观测高级项" description="Trace 输入输出预览和文本截断等低频调优项。">
+            <EditableSettingsList
+              entries={advancedObservabilityEntries}
+              draft={settingsDraft}
+              onChange={patchServerSetting}
+              loading={isOverviewLoading}
+              error={overviewError}
+            />
+          </SettingsGroup>
+        ) : null}
+        <SettingsGroup title="运行性能" description="控制 LLM 并发和 Embedding 批处理行为。">
+          <EditableSettingsList
+            entries={basicPerformanceEntries}
+            draft={settingsDraft}
+            onChange={patchServerSetting}
             loading={isOverviewLoading}
             error={overviewError}
           />
-        )}
+        </SettingsGroup>
+        {showAdvanced && advancedPerformanceEntries.length > 0 ? (
+          <SettingsGroup title="性能高级项" description="上下文预算、Embedding 批延迟等低频调优项。">
+            <EditableSettingsList
+              entries={advancedPerformanceEntries}
+              draft={settingsDraft}
+              onChange={patchServerSetting}
+              loading={isOverviewLoading}
+              error={overviewError}
+            />
+          </SettingsGroup>
+        ) : null}
+        <SettingsGroup title={isLocalRuntime ? "LangSmith 与观测环境变量" : "观测服务状态"} description="用于 tracing 与可观测性的部署级环境变量。">
+          {isLocalRuntime ? (
+            <EditableSettingsList
+              entries={observabilityEnvEntries}
+              draft={envDraft}
+              onChange={patchEnvSetting}
+              loading={isOverviewLoading}
+              error={overviewError}
+            />
+          ) : (
+            <ReadonlySettingsList
+              entries={observabilityEnvEntries}
+              loading={isOverviewLoading}
+              error={overviewError}
+            />
+          )}
+        </SettingsGroup>
       </div>
     );
   };
 
-  const renderers: Record<SectionType, () => React.ReactNode> = {
-    connection: renderConnection,
+  const renderers: Record<SectionType, () => ReactNode> = {
+    device: renderDevice,
     models: renderModels,
     learning: renderLearning,
     search: renderSearch,
-    ops: renderOps,
+    deploy: renderDeploy,
     observability: renderObservability,
   };
 
@@ -1020,7 +1184,7 @@ export function SettingsPanel({ isOpen, onClose }: SettingsModalProps) {
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 10, scale: 0.97 }}
             transition={{ type: "spring", stiffness: 400, damping: 32 }}
-            className="pointer-events-auto flex h-[min(720px,85vh)] w-full max-w-[880px] overflow-hidden rounded-lg border border-zinc-200/60 bg-white shadow-[0_25px_80px_-20px_rgba(0,0,0,0.35)]"
+            className="pointer-events-auto flex h-[min(720px,85vh)] w-full max-w-[960px] overflow-hidden rounded-lg border border-zinc-200/60 bg-white shadow-[0_25px_80px_-20px_rgba(0,0,0,0.35)]"
           >
             <nav className="flex w-[210px] shrink-0 flex-col border-r border-zinc-100 bg-zinc-50/70">
               <div className="px-5 pb-4 pt-5">

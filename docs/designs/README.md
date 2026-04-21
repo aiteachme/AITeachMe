@@ -38,6 +38,7 @@
 | `20_docgen_live_build_experience.md` | 知识文档构建实时可视化与 SSE 方案 |
 | `20b_docgen_sse_event_protocol.md` | 知识文档构建 SSE 事件协议草案 |
 | `21_docgen_build_workspace_experience.md` | 知识文档构建工作台、页面主路径与过程体验设计 |
+| `22_settings_panel_information_architecture.md` | 设置面板信息架构、变量落位与 UI 元数据设计 |
 | `future.md` | 未来学习形态与产品路线 |
 
 ## 文档维护规则
