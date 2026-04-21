@@ -26,7 +26,7 @@ DEFAULT_SETTINGS_VALUES: dict[str, Any] = {
         "extract": None,
         "ocr": None,
         "embedding": "text-embedding-v3",
-        "image_generation": None,
+        "image_generation": "FLUX-1.1-pro",
         "overrides": {},
     },
     "interact": {
@@ -39,7 +39,7 @@ DEFAULT_SETTINGS_VALUES: dict[str, Any] = {
     },
     "docgen": {
         "allow_external_search": True,
-        "generate_cover_image": False,
+        "generate_cover_image": True,
         "max_parallel_chapters": 20,
         "io_parallelism": 20,
         "max_research_queries": 3,

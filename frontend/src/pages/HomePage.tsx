@@ -25,6 +25,7 @@ import { apiClient } from "../api/client";
 import { unwrapOrvalResponse } from "../lib/unwrapOrvalResponse";
 import { getApiErrorMessage } from "../api/client";
 import { cn } from "../lib/utils";
+import { downloadSubjectPackage } from "../lib/subjectPackage";
 import { HeroAnimation } from "../components/ui/HeroAnimation";
 import { FullPageDropOverlay } from "../components/ui/FullPageDropOverlay";
 import type { FilesUploadData } from "../types/files";
@@ -131,32 +132,7 @@ async function fetchExportPreview(subject: string): Promise<ExportPreviewData> {
 }
 
 async function downloadExport(subject: string): Promise<void> {
-  const token = localStorage.getItem("token");
-  const base = import.meta.env.VITE_API_URL ?? "";
-  const url = `${base}/api/v1/subjects/${subject}/export`;
-  const response = await fetch(url, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
-    body: JSON.stringify({}),
-  });
-  if (!response.ok) throw new Error(`导出失败 (${response.status})`);
-  const blob = await response.blob();
-  const disposition = response.headers.get("content-disposition");
-  let filename = `${subject}.atmx`;
-  if (disposition) {
-    const match = disposition.match(/filename[^;=\n]*=["']?([^"';\n]*)["']?/);
-    if (match?.[1]) filename = match[1];
-  }
-  const a = document.createElement("a");
-  a.href = URL.createObjectURL(blob);
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  URL.revokeObjectURL(a.href);
+  await downloadSubjectPackage(subject);
 }
 
 async function importSubject(file: File, newName?: string): Promise<ImportResultData> {
