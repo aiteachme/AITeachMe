@@ -20,9 +20,9 @@ SYSTEMATIC_MODE_DEFAULTS: dict[str, Any] = {
 
 DEFAULT_SETTINGS_VALUES: dict[str, Any] = {
     "models": {
-        "reason": None,
+        "reason": "qwen-max",
         "primary": "qwen-plus",
-        "light": None,
+        "light": "qwen-flash",
         "extract": None,
         "ocr": None,
         "embedding": "text-embedding-v3",
