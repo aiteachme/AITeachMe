@@ -211,10 +211,8 @@ def build_completion_kwargs(
     """Build the LiteLLM kwargs shared by all completion modes."""
 
     remaining_kwargs = dict(extra_kwargs)
-    provider_model = context.model
-    completion_model = provider_model if "/" in provider_model else f"openai/{provider_model}"
     completion_kwargs = {
-        "model": completion_model,
+        "model": context.model,
         "messages": messages,
         "api_base": (
             get_env("LLM_BASE_URL")

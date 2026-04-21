@@ -26,19 +26,6 @@ litellm = load_litellm()
 litellm.drop_params = True
 
 
-def _build_model_name(embedding_model: str) -> str:
-    """构建 litellm 路由所需的 model 名称。
-
-    如果用户已经在 EMBEDDING_MODEL 中写好了 provider 前缀
-    （如 ``openai/text-embedding-3-small`` 或 ``dashscope/qwen3-embedding-0.6b``），
-    就直接使用；否则默认加 ``openai/`` 前缀，以兼容 OpenAI 兼容协议
-    （DashScope compatible-mode / SiliconFlow / aihubmix 等）。
-    """
-    if "/" in embedding_model:
-        return embedding_model
-    return f"openai/{embedding_model}"
-
-
 async def _call_embedding(
     model: str,
     batch: list[str],
@@ -113,7 +100,7 @@ async def aembed_texts(
     if not api_key:
         raise MissingLLMApiKeyError()
     batch_size = batch_size or settings.embedding.batch_size
-    model = _build_model_name(settings.models.embedding)
+    model = str(settings.models.embedding or "").strip()
     api_base = (
         get_env("LLM_BASE_URL", "https://api.openai.com/v1")
         or "https://api.openai.com/v1"

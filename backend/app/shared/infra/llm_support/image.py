@@ -50,10 +50,6 @@ class ImageGenerationResult(BaseModel):
     raw_metadata: dict[str, Any] = Field(default_factory=dict)
 
 
-def _completion_model(provider_model: str) -> str:
-    return provider_model if "/" in provider_model else f"openai/{provider_model}"
-
-
 def _is_aihubmix_base_url(value: str | None) -> bool:
     return "aihubmix.com" in str(value or "").casefold()
 
@@ -238,7 +234,7 @@ async def agenerate_image(
         )
 
     call_kwargs = {
-        "model": _completion_model(context.model),
+        "model": context.model,
         "prompt": str(prompt).strip(),
         "api_base": kwargs.pop("api_base", None) or None,
         "api_key": kwargs.pop("api_key", None) or context.api_key,

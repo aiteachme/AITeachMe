@@ -98,7 +98,7 @@ async def parse_image_bytes_with_llm_vision(
         text = await acompletion(
             messages=messages,
             task_type=TaskType.VISION,
-            model=f"openai/{ocr_model}",
+            model=ocr_model,
             api_base=ocr_base_url,
             api_key=ocr_api_key,
             timeout=120,
