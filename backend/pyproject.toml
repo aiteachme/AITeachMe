@@ -5,6 +5,7 @@ requires-python = ">=3.11"
 dependencies = [
     "fastapi>=0.111.0",
     "uvicorn[standard]>=0.29.0",
+    "pytest>=9.0.0",
     "sqlmodel>=0.0.19",
     "nanoid>=2.0.0",
     "pysqlite3-binary>=0.5.4; platform_system == 'Linux'",
