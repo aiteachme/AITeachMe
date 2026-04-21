@@ -244,3 +244,122 @@ The theorem relates the sides of a right triangle.
 
     assert len(edges) == 1
     assert edges[0].edge_type == "prerequisite"
+
+
+def test_sync_markdown_knowledge_graph_resolves_cross_section_edges(monkeypatch):
+    engine = create_engine("sqlite:///:memory:")
+    SQLModel.metadata.create_all(engine)
+
+    async def fake_extract_candidates(**kwargs):
+        chunk_title = kwargs["chunk_title"]
+        if chunk_title == "Derivative":
+            return ChunkExtractionResult(
+                nodes=[
+                    CandidateNode(
+                        candidate_id="derivative-concept",
+                        name="Derivative",
+                        knowledge_unit_type="concept",
+                        local_summary="Derivative describes change rate.",
+                        taxonomy_hint="Derivative",
+                    )
+                ],
+                edges=[],
+            )
+        if chunk_title == "Tangent Line":
+            return ChunkExtractionResult(
+                nodes=[
+                    CandidateNode(
+                        candidate_id="tangent-line-concept",
+                        name="Tangent Line",
+                        knowledge_unit_type="concept",
+                        local_summary="Tangent line gives a geometric view of derivative.",
+                        taxonomy_hint="Derivative",
+                    )
+                ],
+                edges=[
+                    CandidateEdge(
+                        source_name="Tangent Line",
+                        target_name="Derivative",
+                        edge_type="application",
+                        description="Tangent line is an application view of derivative.",
+                    )
+                ],
+            )
+        return ChunkExtractionResult(nodes=[], edges=[])
+
+    monkeypatch.setattr(incremental_sync, "extract_candidates", fake_extract_candidates)
+    monkeypatch.setattr(incremental_sync, "search_knowledge", _empty_search_knowledge)
+
+    markdown = """# Derivative
+
+Derivative describes change rate.
+
+## Tangent Line
+
+Tangent line gives a geometric interpretation of derivative.
+"""
+
+    with Session(engine) as session:
+        report = sync_markdown_knowledge_graph(session, subject="math", markdown=markdown)
+        edges = list(session.exec(select(KnowledgeEdge)).all())
+
+    assert report.edge_change_count >= 1
+    assert any(
+        edge.edge_type == "application"
+        and edge.description == "markdown_anchor_sync: Tangent line is an application view of derivative."
+        for edge in edges
+    )
+
+
+def test_sync_markdown_knowledge_graph_builds_structural_edges_from_header_hierarchy(monkeypatch):
+    engine = create_engine("sqlite:///:memory:")
+    SQLModel.metadata.create_all(engine)
+
+    async def fake_extract_candidates(**kwargs):
+        chunk_title = kwargs["chunk_title"]
+        if chunk_title == "Derivative":
+            return ChunkExtractionResult(
+                nodes=[
+                    CandidateNode(
+                        name="Derivative",
+                        knowledge_unit_type="concept",
+                        local_summary="Derivative describes change rate.",
+                        taxonomy_hint="Derivative",
+                    )
+                ],
+                edges=[],
+            )
+        if chunk_title == "Tangent Line":
+            return ChunkExtractionResult(
+                nodes=[
+                    CandidateNode(
+                        name="Tangent Line",
+                        knowledge_unit_type="concept",
+                        local_summary="Tangent line gives a geometric view of derivative.",
+                        taxonomy_hint="Derivative",
+                    )
+                ],
+                edges=[],
+            )
+        return ChunkExtractionResult(nodes=[], edges=[])
+
+    monkeypatch.setattr(incremental_sync, "extract_candidates", fake_extract_candidates)
+    monkeypatch.setattr(incremental_sync, "search_knowledge", _empty_search_knowledge)
+
+    markdown = """# Derivative
+
+Derivative describes change rate.
+
+## Tangent Line
+
+Tangent line gives a geometric interpretation of derivative.
+"""
+
+    with Session(engine) as session:
+        report = sync_markdown_knowledge_graph(session, subject="math", markdown=markdown)
+        edges = list(session.exec(select(KnowledgeEdge)).all())
+
+    assert report.edge_change_count == 1
+    assert len(edges) == 1
+    assert edges[0].edge_type == "derivation"
+    assert edges[0].description == "markdown_anchor_sync: Tangent Line 属于主题 Derivative。"

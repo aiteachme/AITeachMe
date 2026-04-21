@@ -108,7 +108,7 @@ async def _prepare_debug_chunks_for_files(
         return len(chunk_ids)
 
 
-def run_graph_docs_sync_after_doc_build(
+async def run_graph_docs_sync_after_doc_build(
     *,
     subject: str,
     requested_at: datetime,
@@ -151,9 +151,10 @@ def run_graph_docs_sync_after_doc_build(
         knowledge_doc_chapter_count=len(doc_chapter_metadatas),
         current_stage_description="Syncing KnowledgeUnits, knowledge images, and relations from the latest knowledge markdown.",
     )
-    sync_result = run_graph_docs_sync_workflow(
+    sync_result = await run_graph_docs_sync_workflow(
         subject=subject,
         markdown=knowledge_doc_markdown,
+        build_session_id=build_session_id,
     )
     if sync_result.failed:
         raise RuntimeError(sync_result.error.detail)
@@ -247,7 +248,7 @@ async def run_graph_build_background(
             return
 
         if knowledge_doc_markdown:
-            doc_sync_metrics = run_graph_docs_sync_after_doc_build(
+            doc_sync_metrics = await run_graph_docs_sync_after_doc_build(
                 subject=subject,
                 requested_at=requested_at,
                 build_session_id=build_session_id,
@@ -441,7 +442,7 @@ async def run_graph_docs_sync_debug_background(
             logger.error("knowledge_graph_docs_sync_debug_failed_no_markdown", subject=subject)
             return
 
-        metrics = run_graph_docs_sync_after_doc_build(
+        metrics = await run_graph_docs_sync_after_doc_build(
             subject=subject,
             requested_at=requested_at,
             build_session_id=build_session_id,

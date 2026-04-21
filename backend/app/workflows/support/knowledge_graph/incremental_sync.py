@@ -74,6 +74,18 @@ class MarkdownExtractedEdge:
     description: str
 
 
+@dataclass(slots=True)
+class PendingMarkdownExtractedEdge:
+    """Chunk-level extracted edge before endpoint anchors are resolved."""
+
+    source_candidate_id: str | None
+    target_candidate_id: str | None
+    source_name: str
+    target_name: str
+    edge_type: str
+    description: str
+
+
 def sync_markdown_knowledge_graph(
     session: Session,
     *,
@@ -167,19 +179,161 @@ def _extract_markdown_graph_items(markdown: str) -> tuple[list[MarkdownKnowledge
     if not sections:
         return [], []
 
-    async def _extract_all_sections() -> list[tuple[list[MarkdownKnowledgeUnit], list[MarkdownExtractedEdge]]]:
+    async def _extract_all_sections() -> list[
+        tuple[
+            list[MarkdownKnowledgeUnit],
+            list[PendingMarkdownExtractedEdge],
+            dict[str, str],
+            dict[str, list[str]],
+            dict[str, list[str]],
+        ]
+    ]:
         return await asyncio.gather(*[_extract_section_graph_items(section) for section in sections])
 
     results = _run_async(_extract_all_sections()) or []
     units: list[MarkdownKnowledgeUnit] = []
-    edges: list[MarkdownExtractedEdge] = []
-    for section_units, section_edges in results:
+    pending_edges: list[PendingMarkdownExtractedEdge] = []
+    candidate_id_to_anchor: dict[str, str] = {}
+    anchors_by_name: dict[str, list[str]] = {}
+    anchors_by_normalized_name: dict[str, list[str]] = {}
+    units_by_section_index: list[list[MarkdownKnowledgeUnit]] = []
+
+    for (
+        section_units,
+        section_pending_edges,
+        section_candidate_id_to_anchor,
+        section_anchors_by_name,
+        section_anchors_by_normalized_name,
+    ) in results:
         units.extend(section_units)
-        edges.extend(section_edges)
+        units_by_section_index.append(section_units)
+        pending_edges.extend(section_pending_edges)
+        candidate_id_to_anchor.update(section_candidate_id_to_anchor)
+        for name, anchors in section_anchors_by_name.items():
+            bucket = anchors_by_name.setdefault(name, [])
+            for anchor in anchors:
+                if anchor not in bucket:
+                    bucket.append(anchor)
+        for normalized_name, anchors in section_anchors_by_normalized_name.items():
+            bucket = anchors_by_normalized_name.setdefault(normalized_name, [])
+            for anchor in anchors:
+                if anchor not in bucket:
+                    bucket.append(anchor)
+
+    pending_edges.extend(
+        _build_structural_section_edges(
+            sections=sections,
+            units_by_section_index=units_by_section_index,
+            anchors_by_name=anchors_by_name,
+            anchors_by_normalized_name=anchors_by_normalized_name,
+        )
+    )
+
+    edges: list[MarkdownExtractedEdge] = []
+    seen_edge_keys: set[tuple[str, str, str]] = set()
+    for edge in pending_edges:
+        source_anchor = _resolve_edge_anchor(
+            candidate_id=edge.source_candidate_id,
+            endpoint_name=edge.source_name,
+            anchor_by_candidate_id=candidate_id_to_anchor,
+            anchors_by_name=anchors_by_name,
+            anchors_by_normalized_name=anchors_by_normalized_name,
+        )
+        target_anchor = _resolve_edge_anchor(
+            candidate_id=edge.target_candidate_id,
+            endpoint_name=edge.target_name,
+            anchor_by_candidate_id=candidate_id_to_anchor,
+            anchors_by_name=anchors_by_name,
+            anchors_by_normalized_name=anchors_by_normalized_name,
+        )
+        if not source_anchor or not target_anchor or source_anchor == target_anchor:
+            logger.info(
+                "knowledge_graph_edge_skipped_unresolved_endpoint",
+                edge_type=edge.edge_type,
+                source_name=edge.source_name,
+                target_name=edge.target_name,
+                source_candidate_id=edge.source_candidate_id,
+                target_candidate_id=edge.target_candidate_id,
+                source_resolved=bool(source_anchor),
+                target_resolved=bool(target_anchor),
+            )
+            continue
+        key = (source_anchor, target_anchor, edge.edge_type)
+        if key in seen_edge_keys:
+            continue
+        seen_edge_keys.add(key)
+        edges.append(
+            MarkdownExtractedEdge(
+                source_anchor=source_anchor,
+                target_anchor=target_anchor,
+                edge_type=edge.edge_type,
+                description=edge.description,
+            )
+        )
     return units, edges
 
 
-async def _extract_section_graph_items(section) -> tuple[list[MarkdownKnowledgeUnit], list[MarkdownExtractedEdge]]:
+def _build_structural_section_edges(
+    *,
+    sections,
+    units_by_section_index: list[list[MarkdownKnowledgeUnit]],
+    anchors_by_name: dict[str, list[str]],
+    anchors_by_normalized_name: dict[str, list[str]],
+) -> list[PendingMarkdownExtractedEdge]:
+    pending_edges: list[PendingMarkdownExtractedEdge] = []
+    seen: set[tuple[str, str, str]] = set()
+
+    for section, section_units in zip(sections, units_by_section_index, strict=False):
+        path_parts = [part.strip() for part in str(section.header_path or "").split(" > ") if part.strip()]
+        if len(path_parts) < 2 or not section_units:
+            continue
+
+        parent_title = path_parts[-2]
+        parent_anchor = _resolve_edge_anchor(
+            candidate_id=None,
+            endpoint_name=parent_title,
+            anchor_by_candidate_id={},
+            anchors_by_name=anchors_by_name,
+            anchors_by_normalized_name=anchors_by_normalized_name,
+        )
+        if not parent_anchor:
+            continue
+
+        section_title_normalized = normalize_name(section.title)
+        primary_units = [
+            unit
+            for unit in section_units
+            if section_title_normalized and normalize_name(unit.name) == section_title_normalized
+        ]
+        scoped_units = primary_units or section_units
+        for unit in scoped_units:
+            if unit.anchor == parent_anchor:
+                continue
+            key = (unit.anchor, parent_anchor, "derivation")
+            if key in seen:
+                continue
+            seen.add(key)
+            pending_edges.append(
+                PendingMarkdownExtractedEdge(
+                    source_candidate_id=None,
+                    target_candidate_id=None,
+                    source_name=unit.name,
+                    target_name=parent_title,
+                    edge_type="derivation",
+                    description=f"{unit.name} 属于主题 {parent_title}。",
+                )
+            )
+
+    return pending_edges
+
+
+async def _extract_section_graph_items(section) -> tuple[
+    list[MarkdownKnowledgeUnit],
+    list[PendingMarkdownExtractedEdge],
+    dict[str, str],
+    dict[str, list[str]],
+    dict[str, list[str]],
+]:
     result = await extract_candidates(
         chunk_content=section.body_markdown,
         chunk_title=section.title,
@@ -191,7 +345,7 @@ async def _extract_section_graph_items(section) -> tuple[list[MarkdownKnowledgeU
     used_anchors: set[str] = set()
     units: list[MarkdownKnowledgeUnit] = []
     anchor_by_candidate_id: dict[str, str] = {}
-    anchor_by_name: dict[str, str] = {}
+    anchors_by_name: dict[str, list[str]] = {}
     anchors_by_normalized_name: dict[str, list[str]] = {}
     body_markdown = section.body_markdown[:8000]
     knowledge_images = list(section.knowledge_images)
@@ -214,55 +368,25 @@ async def _extract_section_graph_items(section) -> tuple[list[MarkdownKnowledgeU
         units.append(unit)
         if node.candidate_id:
             anchor_by_candidate_id[node.candidate_id] = anchor
-        anchor_by_name.setdefault(node.name, anchor)
+        anchors_by_name.setdefault(node.name, []).append(anchor)
         normalized_name = normalize_name(node.name)
         if normalized_name:
             anchors_by_normalized_name.setdefault(normalized_name, []).append(anchor)
 
-    edges: list[MarkdownExtractedEdge] = []
-    seen_edge_keys: set[tuple[str, str, str]] = set()
+    edges: list[PendingMarkdownExtractedEdge] = []
     for edge in result.edges:
-        source_anchor = _resolve_edge_anchor(
-            candidate_id=edge.source_candidate_id,
-            endpoint_name=edge.source_name,
-            anchor_by_candidate_id=anchor_by_candidate_id,
-            anchor_by_name=anchor_by_name,
-            anchors_by_normalized_name=anchors_by_normalized_name,
-        )
-        target_anchor = _resolve_edge_anchor(
-            candidate_id=edge.target_candidate_id,
-            endpoint_name=edge.target_name,
-            anchor_by_candidate_id=anchor_by_candidate_id,
-            anchor_by_name=anchor_by_name,
-            anchors_by_normalized_name=anchors_by_normalized_name,
-        )
-        if not source_anchor or not target_anchor or source_anchor == target_anchor:
-            logger.info(
-                "knowledge_graph_edge_skipped_unresolved_endpoint",
-                chunk_title=section.title,
-                edge_type=edge.edge_type,
-                source_name=edge.source_name,
-                target_name=edge.target_name,
+        edges.append(
+            PendingMarkdownExtractedEdge(
                 source_candidate_id=edge.source_candidate_id,
                 target_candidate_id=edge.target_candidate_id,
-                source_resolved=bool(source_anchor),
-                target_resolved=bool(target_anchor),
-            )
-            continue
-        key = (source_anchor, target_anchor, edge.edge_type)
-        if key in seen_edge_keys:
-            continue
-        seen_edge_keys.add(key)
-        edges.append(
-            MarkdownExtractedEdge(
-                source_anchor=source_anchor,
-                target_anchor=target_anchor,
+                source_name=edge.source_name,
+                target_name=edge.target_name,
                 edge_type=edge.edge_type,
                 description=edge.description,
             )
         )
 
-    return units, edges
+    return units, edges, anchor_by_candidate_id, anchors_by_name, anchors_by_normalized_name
 
 
 def _resolve_edge_anchor(
@@ -270,7 +394,7 @@ def _resolve_edge_anchor(
     candidate_id: str | None,
     endpoint_name: str,
     anchor_by_candidate_id: dict[str, str],
-    anchor_by_name: dict[str, str],
+    anchors_by_name: dict[str, list[str]],
     anchors_by_normalized_name: dict[str, list[str]],
 ) -> str | None:
     if candidate_id:
@@ -278,9 +402,11 @@ def _resolve_edge_anchor(
         if anchor:
             return anchor
 
-    anchor = anchor_by_name.get(endpoint_name)
-    if anchor:
-        return anchor
+    exact_matches = anchors_by_name.get(endpoint_name, [])
+    if len(exact_matches) == 1:
+        return exact_matches[0]
+    if len(exact_matches) > 1:
+        return None
 
     normalized_name = normalize_name(endpoint_name)
     if not normalized_name:
