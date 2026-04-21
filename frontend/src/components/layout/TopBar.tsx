@@ -12,6 +12,7 @@ import { cn } from "../../lib/utils";
 import { apiClient, getApiErrorMessage } from "../../api/client";
 import { FeedbackModal } from "../ui/FeedbackModal";
 import { Modal } from "../ui/Modal";
+import { CommunityModal } from "./CommunityPanel";
 
 type RuntimeUser = {
   user_id: string;
@@ -93,6 +94,7 @@ export function TopBar({ className }: TopBarProps) {
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isFeedbackModalOpen, setIsFeedbackModalOpen] = useState(false);
+  const [isCommunityModalOpen, setIsCommunityModalOpen] = useState(false);
 
   const dropdownRef = useRef<HTMLDivElement>(null);
   const mobileMenuRef = useRef<HTMLDivElement>(null);
@@ -328,10 +330,23 @@ export function TopBar({ className }: TopBarProps) {
 
   return (
     <div className={cn("flex items-center gap-3", className)}>
+      <button
+        type="button"
+        onClick={() => setIsCommunityModalOpen(true)}
+        className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800"
+      >
+        <MessageCircle className="h-4 w-4" />
+        <span className="hidden sm:inline text-[13px] font-medium">交流社区</span>
+      </button>
+
       <div className="hidden sm:block">
-        <div className="relative" ref={dropdownRef}>
+        <div 
+          className="relative" 
+          ref={dropdownRef}
+          onMouseEnter={() => setIsDropdownOpen(true)}
+          onMouseLeave={() => setIsDropdownOpen(false)}
+        >
           <button
-            onClick={() => setIsDropdownOpen(!isDropdownOpen)}
             className="flex items-center gap-2 rounded-full border border-slate-200 bg-white pl-2 pr-3 py-1.5 text-sm text-slate-700 transition-colors hover:bg-slate-50"
           >
             <div className="flex h-7 w-7 items-center justify-center rounded-full bg-gradient-to-br from-slate-700 to-slate-900 text-xs font-medium text-white">
@@ -352,13 +367,14 @@ export function TopBar({ className }: TopBarProps) {
           </button>
 
           {isDropdownOpen && (
-            <div
-              className="absolute right-0 mt-2 w-64 bg-white rounded-xl shadow-lg border border-slate-200 py-1 z-50"
-              style={{
-                animation: "fadeIn 0.15s ease-out",
-              }}
-            >
-              <div className="px-4 py-3 border-b border-slate-100">
+            <div className="absolute right-0 top-full pt-2 z-50">
+              <div
+                className="w-64 bg-white rounded-xl shadow-lg border border-slate-200 py-1"
+                style={{
+                  animation: "fadeIn 0.15s ease-out",
+                }}
+              >
+                <div className="px-4 py-3 border-b border-slate-100">
                 <div className="flex items-center gap-3">
                   <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-slate-700 to-slate-900 text-sm font-semibold text-white">
                     {avatarText}
@@ -454,6 +470,7 @@ export function TopBar({ className }: TopBarProps) {
                   </button>
                 </div>
               )}
+            </div>
             </div>
           )}
         </div>
@@ -700,6 +717,7 @@ export function TopBar({ className }: TopBarProps) {
       </Modal>
 
       <FeedbackModal open={isFeedbackModalOpen} onClose={() => setIsFeedbackModalOpen(false)} />
+      <CommunityModal isOpen={isCommunityModalOpen} onClose={() => setIsCommunityModalOpen(false)} />
     </div>
   );
 }
