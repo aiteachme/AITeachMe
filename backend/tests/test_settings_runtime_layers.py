@@ -1,6 +1,10 @@
 from __future__ import annotations
 
+import pytest
+from pydantic import ValidationError
+
 from app.shared.infra.settings import (
+    Settings,
     clear_system_settings_override,
     get_project_settings,
     get_settings,
@@ -63,7 +67,7 @@ def test_settings_overview_cloud_mode_is_read_only(monkeypatch) -> None:
     )
     monkeypatch.setattr(
         "app.workflows.support.system.settings.get_system_settings_override_payload",
-        lambda: {"ingest": {"default_parser_provider": "mineru"}},
+        lambda: {"models": {"primary": "cloud-override"}},
     )
 
     overview = build_settings_overview_data(session=None, user_id=None)
@@ -73,6 +77,16 @@ def test_settings_overview_cloud_mode_is_read_only(monkeypatch) -> None:
         for entry in section.entries
     }
 
-    assert entries["ingest.default_parser_provider"].editable is False
+    assert entries["models.primary"].editable is False
     assert entries["models.primary"].editable is False
     assert entries["database.url"].editable is False
+    assert entries["models.primary"].ui_group
+    assert entries["models.primary"].ui_order > 0
+
+
+def test_settings_model_rejects_removed_low_level_keys() -> None:
+    with pytest.raises(ValidationError):
+        Settings.model_validate({"ingest": {"parse_concurrency": 99}})
+
+    with pytest.raises(ValidationError):
+        Settings.model_validate({"search": {"runtime_cache_ttl_s": 60}})

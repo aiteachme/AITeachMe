@@ -16,10 +16,6 @@ export function isCredentialKey(key: string): boolean {
   );
 }
 
-export function hasAnyPrefix(key: string, prefixes: string[]): boolean {
-  return prefixes.some((prefix) => key.startsWith(prefix));
-}
-
 export function isPrimitive(value: unknown): value is SettingPrimitive {
   return value === null || ["string", "number", "boolean"].includes(typeof value);
 }
@@ -132,4 +128,17 @@ export function parseInputValue(
     if (normalized === "false") return false;
   }
   return raw;
+}
+
+export function resolveEntryInputType(entry: SettingEntry, value: SettingPrimitive): string {
+  if (entry.source === "env" && typeof value === "string") {
+    return "password";
+  }
+  if (isCredentialKey(entry.key)) {
+    return "password";
+  }
+  if (typeof value === "number") {
+    return "number";
+  }
+  return "text";
 }

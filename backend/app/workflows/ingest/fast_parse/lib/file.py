@@ -20,6 +20,12 @@ from app.repositories.files_repo import get_raw_file_by_id, update_raw_file
 from app.shared.infra.workflow.context import WorkflowContext
 from app.utils.path_helpers import build_asset_name_prefix
 from app.workflows.ingest.common.parsing.classifier import classify_file
+from app.workflows.ingest.common.parsing.defaults import (
+    DEFAULT_MINERU_ENABLE_FORMULA,
+    DEFAULT_MINERU_ENABLE_TABLE,
+    DEFAULT_MINERU_IS_OCR,
+    DEFAULT_MINERU_MODEL_VERSION,
+)
 from app.workflows.ingest.common.parsing.decision import build_parse_decision
 from app.workflows.ingest.common.parsing.formats import (
     categorize_text_extension,
@@ -67,10 +73,10 @@ def _resolve_parse_request(
         requested_parser_provider = None
 
     mineru_token: str | None = None
-    mineru_model_version = "vlm"
-    mineru_enable_formula = True
-    mineru_enable_table = True
-    mineru_is_ocr = False
+    mineru_model_version = DEFAULT_MINERU_MODEL_VERSION
+    mineru_enable_formula = DEFAULT_MINERU_ENABLE_FORMULA
+    mineru_enable_table = DEFAULT_MINERU_ENABLE_TABLE
+    mineru_is_ocr = DEFAULT_MINERU_IS_OCR
 
     sanitized_payload = dict(raw_payload)
     mineru_block = sanitized_payload.get("mineru")

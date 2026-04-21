@@ -8,7 +8,6 @@ import { useLocation, useParams } from "react-router-dom";
 
 import { apiClient } from "../../../api/client";
 import type { FileRecord } from "../../../api/generated/model";
-import { useSettings } from "../../../hooks/useSettings";
 import type {
   ApiResponse,
   DocGenGetResponse,
@@ -26,12 +25,6 @@ import {
   extractFirstMarkdownParagraph,
   cleanKnowledgeMarkdownForDisplay,
 } from "../utils";
-import {
-  MOCK_DOCUMENT_CHAPTERS,
-  MOCK_DOCUMENT_MARKDOWN,
-  MOCK_DOCUMENT_SUMMARY,
-  MOCK_DOCUMENT_TITLE,
-} from "../mock";
 
 async function fetchSourceFiles(subjectId: string): Promise<FileRecord[]> {
   const response = await apiClient<ApiResponse<FilesListResponse>>({
@@ -95,7 +88,6 @@ export interface DocMarkdownState {
 export function useDocMarkdown(): DocMarkdownState {
   const { subjectId } = useParams<{ subjectId: string }>();
   const location = useLocation();
-  const { settings } = useSettings();
   const requestedAt = useMemo(
     () => new URLSearchParams(location.search).get("requested_at"),
     [location.search],
@@ -145,7 +137,6 @@ export function useDocMarkdown(): DocMarkdownState {
   const draftUpdatedAt = docMarkdownQuery.data?.draft_updated_at ?? null;
   const hasLiveDocMarkdown = Boolean(docMarkdownQuery.data?.exists && liveMarkdown.trim().length > 0);
   const hasDraftDocMarkdown = Boolean(draftMarkdown.trim().length > 0);
-  const shouldUseDebugMock = settings.debugMode && !hasLiveDocMarkdown && !hasDraftDocMarkdown;
 
   const buildRequestedAtMs = useMemo(
     () => parseIsoTimestamp(buildMeta?.requested_at),
@@ -169,49 +160,34 @@ export function useDocMarkdown(): DocMarkdownState {
     targetRequestedAtMs !== null && !isRequestedBuildReady && !isBuildFailure;
 
   const effectiveDocViewMode: DocViewMode =
-    shouldUseDebugMock
-      ? "live"
-      : !hasLiveDocMarkdown && hasDraftDocMarkdown
+    !hasLiveDocMarkdown && hasDraftDocMarkdown
       ? "draft"
       : docViewMode === "draft" && hasDraftDocMarkdown
         ? "draft"
         : "live";
-  const renderedMarkdown = shouldUseDebugMock
-    ? MOCK_DOCUMENT_MARKDOWN
-    : effectiveDocViewMode === "draft"
+  const renderedMarkdown = effectiveDocViewMode === "draft"
       ? draftMarkdown
       : liveMarkdown;
   const hasRenderedMarkdown = Boolean(renderedMarkdown.trim());
   const renderedDocUpdatedLabel = useMemo(
-    () => {
-      if (shouldUseDebugMock) {
-        return "调试预览";
-      }
-      return formatDocTimestamp(effectiveDocViewMode === "draft" ? draftUpdatedAt : liveUpdatedAt);
-    },
-    [draftUpdatedAt, effectiveDocViewMode, liveUpdatedAt, shouldUseDebugMock],
+    () => formatDocTimestamp(effectiveDocViewMode === "draft" ? draftUpdatedAt : liveUpdatedAt),
+    [draftUpdatedAt, effectiveDocViewMode, liveUpdatedAt],
   );
 
   const renderedDigestMode = buildMeta?.digest_mode ?? buildPreview?.digest_mode ?? null;
   const renderedDigestModeLabel =
-    shouldUseDebugMock
-      ? "系统课 · 调试样章"
-      : renderedDigestMode === "systematic"
+    renderedDigestMode === "systematic"
       ? "系统课"
       : renderedDigestMode === "sprint"
         ? "速成课"
         : "知识文档";
-  const renderedChapterHighlights = shouldUseDebugMock
-    ? MOCK_DOCUMENT_CHAPTERS
-    : (buildPreview?.latest_chapter_titles ?? []).slice(0, 4);
+  const renderedChapterHighlights = (buildPreview?.latest_chapter_titles ?? []).slice(0, 4);
   const renderedSubjectLabel = (subjectId ?? "知识文档").replace(/[-_]+/g, " ");
   const renderedDocTitle =
-    (shouldUseDebugMock ? MOCK_DOCUMENT_TITLE : undefined) ??
     extractFirstMarkdownHeading(renderedMarkdown) ??
     renderedChapterHighlights[0] ??
     renderedSubjectLabel;
   const renderedDocSummary =
-    (shouldUseDebugMock ? MOCK_DOCUMENT_SUMMARY : undefined) ??
     extractFirstMarkdownParagraph(renderedMarkdown) ??
     buildPreview?.plan_summary?.trim() ??
     "正在整理知识文档...";
@@ -260,19 +236,16 @@ export function useDocMarkdown(): DocMarkdownState {
   /* Show state derivation */
   const showDocGeneratingState =
     !docMarkdownQuery.isError &&
-    !shouldUseDebugMock &&
     !hasLiveDocMarkdown &&
     !hasDraftDocMarkdown &&
     (isBuildActive || isWaitingForRequestedBuild);
   const showDocBuildFailureState =
     !docMarkdownQuery.isError &&
-    !shouldUseDebugMock &&
     !hasLiveDocMarkdown &&
     !hasDraftDocMarkdown &&
     isBuildFailure;
   const showDocEmptyState =
     !docMarkdownQuery.isError &&
-    !shouldUseDebugMock &&
     !hasLiveDocMarkdown &&
     !hasDraftDocMarkdown &&
     !isBuildActive &&
@@ -280,7 +253,6 @@ export function useDocMarkdown(): DocMarkdownState {
     !isBuildFailure;
   const showDocUpdatingBanner =
     !docMarkdownQuery.isError &&
-    !shouldUseDebugMock &&
     hasRenderedMarkdown &&
     (isBuildActive || effectiveDocViewMode === "draft" || (!hasLiveDocMarkdown && hasDraftDocMarkdown));
 

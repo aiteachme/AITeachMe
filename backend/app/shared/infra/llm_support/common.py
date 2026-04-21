@@ -14,6 +14,7 @@ from app.schemas.llm import ChatMessage
 from app.shared.infra.settings import Settings, get_settings
 from app.shared.infra.env_support import get_env
 from app.shared.infra.exceptions import LLMCallError, LLMTimeoutError, MissingLLMApiKeyError
+from app.shared.infra.llm_support.defaults import DEFAULT_LLM_CONCURRENCY_LIMIT
 from app.shared.infra.llm_support.routing import LLMCallProfile, LLMCallPurpose, get_call_profile
 from app.shared.infra.observability.trace import get_llm_trace_context
 from app.shared.infra.observability.llm_stats import LLMCallRecord, get_tracker
@@ -142,7 +143,7 @@ def request_timeout_s(timeout_s: int) -> int:
 def get_semaphore() -> asyncio.Semaphore:
     global _LLM_SEMAPHORE
     if _LLM_SEMAPHORE is None:
-        _LLM_SEMAPHORE = asyncio.Semaphore(get_settings().runtime.llm_concurrency_limit)
+        _LLM_SEMAPHORE = asyncio.Semaphore(DEFAULT_LLM_CONCURRENCY_LIMIT)
     return _LLM_SEMAPHORE
 
 

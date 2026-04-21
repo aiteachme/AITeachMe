@@ -53,6 +53,8 @@ class SettingEntry(BaseModel):
     editable: bool = Field(default=False, description="是否可在页面直接编辑。")
     restart_required: bool = Field(default=True, description="修改后是否需要重启后端。")
     derived: bool = Field(default=False, description="是否为运行时派生值，只读展示。")
+    ui_group: str = Field(default="", description="设置页内的展示分组。")
+    ui_order: int = Field(default=0, description="设置页内的稳定排序值。")
     description: str = Field(default="", description="说明。")
 
 

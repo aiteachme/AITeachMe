@@ -11,12 +11,22 @@ from urllib.parse import urlparse
 
 from app.shared.infra.settings import get_settings
 from app.shared.infra.execution import BaseTracedExecution, TracedExecutionResult
+from app.shared.infra.search.defaults import (
+    DEFAULT_SEARCH_MAX_RESULTS_PER_QUERY,
+    DEFAULT_SEARCH_PROVIDER_TIMEOUT_S,
+)
 from app.shared.infra.llm_support.routing import TaskType
 from app.shared.infra.search import ContextCompressor, SourceCurator
 from app.shared.infra.search.factory import get_configured_retriever_names, get_retrievers_for_subject
 from app.shared.infra.search.retrievers.local_rag import LocalRAGRetriever
 from app.shared.infra.search.types import ScrapedPage, SearchResult
 from app.shared.infra.tools.builtin.web_reading import read_urls
+from app.workflows.digest.docgen.lib.defaults import (
+    DEFAULT_DOCGEN_IO_PARALLELISM,
+    DEFAULT_DOCGEN_MAX_RESEARCH_QUERIES,
+    DEFAULT_DOCGEN_READ_TIMEOUT_S,
+    DEFAULT_DOCGEN_RETRIEVAL_TIMEOUT_S,
+)
 from app.workflows.digest.docgen.lib.query_planning import (
     build_research_focus_text,
     dedupe_queries,
@@ -90,7 +100,7 @@ class DocGenChapterContextRuntime(BaseTracedExecution):
         """
 
         settings = get_settings()
-        query_limit = max_results_per_query or settings.search.max_results_per_query
+        query_limit = max_results_per_query or DEFAULT_SEARCH_MAX_RESULTS_PER_QUERY
         strategy = self._resolve_strategy(digest_mode)
         if max_research_rounds is not None:
             strategy["max_rounds"] = max(1, int(max_research_rounds))
@@ -101,7 +111,7 @@ class DocGenChapterContextRuntime(BaseTracedExecution):
         if max_gap_queries_per_round is not None:
             strategy["max_gap_queries_per_round"] = max(1, int(max_gap_queries_per_round))
         resolved_query_cap = max(
-            max(1, int(settings.docgen.max_research_queries)),
+            max(1, int(DEFAULT_DOCGEN_MAX_RESEARCH_QUERIES)),
             int(strategy["query_cap"]),
         )
         if query_cap is not None:
@@ -181,8 +191,8 @@ class DocGenChapterContextRuntime(BaseTracedExecution):
         previous_score = 0.0
         previous_curated_count = 0
         retrieval_started_at = time.monotonic()
-        retrieval_budget_s = max(1.0, float(settings.docgen.retrieval_timeout_s))
-        provider_budget_s = max(0.5, float(settings.search.provider_timeout_s))
+        retrieval_budget_s = max(1.0, float(DEFAULT_DOCGEN_RETRIEVAL_TIMEOUT_S))
+        provider_budget_s = max(0.5, float(DEFAULT_SEARCH_PROVIDER_TIMEOUT_S))
 
         for round_index in range(1, int(strategy["max_rounds"]) + 1):
             if time.monotonic() - retrieval_started_at >= retrieval_budget_s:
@@ -235,7 +245,7 @@ class DocGenChapterContextRuntime(BaseTracedExecution):
             documents, read_url_count = await self._collect_documents(
                 curated_results,
                 page_cache=page_cache,
-                read_timeout_s=float(settings.docgen.read_timeout_s),
+                read_timeout_s=float(DEFAULT_DOCGEN_READ_TIMEOUT_S),
             )
             if not documents:
                 documents = [item.to_text() for item in curated_results if item.to_text().strip()]
@@ -542,7 +552,7 @@ class DocGenChapterContextRuntime(BaseTracedExecution):
         if urls_to_fetch:
             pages = await read_urls(
                 urls_to_fetch,
-                max_workers=min(len(urls_to_fetch), get_settings().docgen.io_parallelism),
+                max_workers=min(len(urls_to_fetch), DEFAULT_DOCGEN_IO_PARALLELISM),
                 timeout_s=read_timeout_s,
             )
             for page in pages:

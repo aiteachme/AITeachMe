@@ -220,11 +220,11 @@ def build_lane_llm_rollup(token_summary: DigestTokenSummary) -> dict[str, Any]:
 
 
 def _top_k(value: int | None = None) -> int:
-    from app.shared.infra.settings import get_settings
+    from app.shared.infra.observability.defaults import DEFAULT_TIMING_TOP_K
 
     if value is not None:
         return max(1, int(value))
-    return max(1, int(get_settings().observability.timing_top_k))
+    return max(1, int(DEFAULT_TIMING_TOP_K))
 
 
 __all__ = [

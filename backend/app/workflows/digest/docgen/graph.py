@@ -13,7 +13,6 @@ from typing import Any, Literal
 from langgraph.graph import END, StateGraph
 from langgraph.types import Send
 
-from app.shared.infra.settings import get_settings
 from app.shared.infra.workflow import workflow_tracer
 from app.shared.infra.workflow.context import WorkflowContext, create_langgraph_dev_context
 from app.shared.infra.workflow.events import InProcessEventBus
@@ -25,6 +24,7 @@ from app.workflows.digest.common.events import (
     DocGenRequestedEvent,
 )
 from app.workflows.digest.common.metrics import build_token_summary
+from app.workflows.digest.docgen.lib.defaults import DEFAULT_DOCGEN_MAX_PARALLEL_CHAPTERS
 from app.workflows.digest.docgen.lib.reporting import build_docgen_lane_summary
 from app.workflows.digest.docgen.nodes import (
     build_confirm_and_dispatch_node,
@@ -343,7 +343,6 @@ async def run_docgen_workflow(
     """
 
     bus = event_bus or InProcessEventBus()
-    settings = get_settings()
     await bus.publish(DocGenRequestedEvent(subject=subject, requested_at=requested_at, file_ids=file_ids))
 
     context = WorkflowContext(
@@ -358,7 +357,7 @@ async def run_docgen_workflow(
             "planner_session_id": planner_session_id or "",
             "confirmed_plan_id": confirmed_plan_id or "",
             "digest_mode": digest_mode or "",
-            "max_concurrency": max(1, int(settings.docgen.max_parallel_chapters)),
+            "max_concurrency": max(1, int(DEFAULT_DOCGEN_MAX_PARALLEL_CHAPTERS)),
         },
     )
     result = await run_state_graph(

@@ -8,7 +8,7 @@ from urllib.parse import quote
 import httpx
 import structlog
 
-from app.shared.infra.settings import get_settings
+from app.shared.infra.search.defaults import DEFAULT_SEARCH_PROVIDER_TIMEOUT_S
 from app.shared.infra.search.retrievers.base import BaseRetriever
 from app.shared.infra.search.retrievers.common import clamp_max_results, make_search_result, normalize_query
 from app.shared.infra.search.types import SearchResult
@@ -49,10 +49,9 @@ class MediaWikiSiteRetriever(BaseRetriever):
         if not normalized_query or not self.api_url or not self.page_base_url:
             return []
         count = clamp_max_results(max_results, upper=50)
-        settings = get_settings()
         try:
             async with httpx.AsyncClient(
-                timeout=settings.search.provider_timeout_s,
+                timeout=DEFAULT_SEARCH_PROVIDER_TIMEOUT_S,
                 follow_redirects=True,
                 headers=_REQUEST_HEADERS,
             ) as client:

@@ -9,8 +9,8 @@ from typing import Any
 
 from sqlmodel import select
 
-from app.shared.infra.settings import get_settings
 from app.shared.infra.database import managed_session
+from app.shared.infra.llm_support.defaults import DEFAULT_LLM_CONCURRENCY_LIMIT
 from app.models import RetrievalChunk
 from app.utils.job_helpers import update_job_progress
 from app.workflows.digest.kg_file_ingest.lib.extractor import (
@@ -20,6 +20,7 @@ from app.workflows.digest.kg_file_ingest.lib.extractor import (
     has_conceptual_content,
 )
 from app.workflows.digest.common.metrics import add_slow_item
+from app.workflows.digest.kg_file_ingest.lib.defaults import DEFAULT_KG_EXTRACT_MAX_PARALLELISM
 from app.workflows.digest.kg_file_ingest.state import KnowledgeDigestState
 from app.workflows.digest.kg_file_ingest.lib.support import workflow_logger
 from app.models.knowledge_taxonomy import normalize_knowledge_unit_type
@@ -27,9 +28,8 @@ from app.shared.infra.workflow.runtime import cancel_tasks_and_drain
 from app.workflows.digest.common.models import TopicAnchor, TopicAnchorSnapshot
 
 def _resolve_extract_parallelism(chunk_count: int = 0) -> int:
-    settings = get_settings()
-    ceiling = settings.runtime.llm_concurrency_limit
-    configured = settings.knowledge_graph.extract_max_parallelism
+    ceiling = DEFAULT_LLM_CONCURRENCY_LIMIT
+    configured = DEFAULT_KG_EXTRACT_MAX_PARALLELISM
     # Adaptive: scale parallelism with chunk count so small jobs don't
     # over-subscribe and large jobs saturate the concurrency budget.
     if chunk_count <= 0:
@@ -603,4 +603,3 @@ async def extract_node(state: KnowledgeDigestState) -> KnowledgeDigestState:
             return {**state, "error": f"extract_failed: {exc}"}
 
 __all__ = ["extract_node"]
-

@@ -8,7 +8,7 @@ from urllib.parse import urljoin
 import httpx
 import structlog
 
-from app.shared.infra.settings import get_settings
+from app.shared.infra.search.defaults import DEFAULT_SEARCH_PROVIDER_TIMEOUT_S
 from app.shared.infra.search.retrievers.common import clamp_max_results, make_search_result, normalize_query
 from app.shared.infra.search.retrievers.sites.duckduckgo_site import DuckDuckGoSiteRetriever
 from app.shared.infra.search.types import SearchResult
@@ -53,10 +53,9 @@ class OIWikiRetriever(DuckDuckGoSiteRetriever):
         return await super().search(normalized_query, max_results=count)
 
     async def _search_official_endpoint(self, query: str, *, max_results: int) -> list[SearchResult]:
-        settings = get_settings()
         try:
             async with httpx.AsyncClient(
-                timeout=settings.search.provider_timeout_s,
+                timeout=DEFAULT_SEARCH_PROVIDER_TIMEOUT_S,
                 follow_redirects=True,
                 # OI Wiki's own search worker uses this public endpoint; some
                 # Windows certificate stores reject its chain, so we do not send

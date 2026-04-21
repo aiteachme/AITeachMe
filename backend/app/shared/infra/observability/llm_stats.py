@@ -10,6 +10,7 @@ from uuid import uuid4
 
 import structlog
 
+from app.shared.infra.observability.defaults import DEFAULT_LLM_OBSERVABILITY_MAX_RECORDS
 from app.shared.infra.settings import get_settings
 
 logger = structlog.get_logger()
@@ -44,7 +45,7 @@ class LLMCallTracker:
 
     def record(self, rec: LLMCallRecord) -> None:
         self._records.append(rec)
-        max_records = max(1, int(get_settings().observability.llm_observability_max_records))
+        max_records = max(1, int(DEFAULT_LLM_OBSERVABILITY_MAX_RECORDS))
         overflow = len(self._records) - max_records
         if overflow > 0:
             del self._records[:overflow]

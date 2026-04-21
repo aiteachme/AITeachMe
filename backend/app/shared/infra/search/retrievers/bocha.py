@@ -6,10 +6,10 @@ import httpx
 import structlog
 
 from app.shared.infra.env_support import get_env
+from app.shared.infra.search.defaults import DEFAULT_SEARCH_PROVIDER_TIMEOUT_S
 from app.shared.infra.search.retrievers.base import BaseRetriever
 from app.shared.infra.search.retrievers.common import clamp_max_results, clean_text, make_search_result, normalize_query
 from app.shared.infra.search.types import SearchResult
-from app.shared.infra.settings import get_settings
 
 logger = structlog.get_logger(__name__)
 
@@ -41,7 +41,7 @@ class BochaRetriever(BaseRetriever):
 
         count = clamp_max_results(max_results, upper=50)
         try:
-            async with httpx.AsyncClient(timeout=get_settings().search.provider_timeout_s, follow_redirects=True) as client:
+            async with httpx.AsyncClient(timeout=DEFAULT_SEARCH_PROVIDER_TIMEOUT_S, follow_redirects=True) as client:
                 response = await client.post(
                     _BOCHA_SEARCH_ENDPOINT,
                     json={

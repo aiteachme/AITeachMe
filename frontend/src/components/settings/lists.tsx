@@ -1,6 +1,18 @@
-import { InfoCard, SelectInput, SwitchRow, TextInput } from "./fields";
-import { SETTING_SELECT_OPTIONS } from "./constants";
-import { displayValue, isPrimitive, parseInputValue } from "./helpers";
+import {
+  FieldLabelBlock,
+  InfoCard,
+  ReadonlyValue,
+  SelectInput,
+  SwitchRow,
+  TextInput,
+} from "./fields";
+import { SETTINGS_STYLES, SETTING_SELECT_OPTIONS } from "./constants";
+import {
+  displayValue,
+  isPrimitive,
+  parseInputValue,
+  resolveEntryInputType,
+} from "./helpers";
 import type { DraftRecord, SettingEntry, SettingPrimitive } from "./types";
 
 interface ReadonlySettingsListProps {
@@ -19,22 +31,13 @@ export function ReadonlySettingsList({
   if (!entries.length) return null;
 
   return (
-    <div className="space-y-6">
+    <div className={SETTINGS_STYLES.list.root}>
       {entries.map((entry) => (
-        <div key={entry.key} className="space-y-2">
-          <div className="flex flex-col gap-1.5">
-            <span className="text-sm font-medium leading-none text-zinc-900 block">
-              {entry.label}
-            </span>
-            {entry.description && (
-              <p className="text-[13px] text-zinc-500 leading-relaxed">
-                {entry.description}
-              </p>
-            )}
-          </div>
-          <div className="font-mono text-[13px] text-zinc-800 bg-zinc-50/80 px-3 py-1.5 rounded-md border border-zinc-200 break-all w-fit max-w-full shadow-sm">
+        <div key={entry.key} className={SETTINGS_STYLES.list.item}>
+          <FieldLabelBlock label={entry.label} description={entry.description} />
+          <ReadonlyValue>
             {displayValue(entry)}
-          </div>
+          </ReadonlyValue>
         </div>
       ))}
     </div>
@@ -64,10 +67,11 @@ export function EditableSettingsList({
   if (!items.length) return null;
 
   return (
-    <div className="space-y-6">
+    <div className={SETTINGS_STYLES.list.root}>
       {items.map((entry) => {
         const value = draft[entry.key];
         const selectOptions = SETTING_SELECT_OPTIONS[entry.key];
+        const controlId = `settings-${entry.key.replace(/[^a-z0-9]+/gi, "-").toLowerCase()}`;
 
         if (typeof value === "boolean") {
           return (
@@ -83,27 +87,24 @@ export function EditableSettingsList({
         }
 
         return (
-          <div key={entry.key} className="space-y-2">
-            <div className="flex flex-col gap-1.5">
-              <label className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 text-zinc-900">
-                {entry.label}
-              </label>
-              {entry.description && (
-                <p className="text-[13px] text-zinc-500 leading-relaxed">
-                  {entry.description}
-                </p>
-              )}
-            </div>
+          <div key={entry.key} className={SETTINGS_STYLES.list.item}>
+            <FieldLabelBlock
+              label={entry.label}
+              description={entry.description}
+              htmlFor={controlId}
+            />
 
-            <div className="w-full">
+            <div className={SETTINGS_STYLES.list.controlWrap}>
               {selectOptions ? (
                 <SelectInput
+                  id={controlId}
                   value={value === null ? "" : String(value)}
                   onChange={(next) => onChange(entry.key, next)}
                   options={selectOptions}
                 />
               ) : (
                 <TextInput
+                  id={controlId}
                   value={value === null ? "" : String(value)}
                   onChange={(next) => onChange(entry.key, parseInputValue(next, value))}
                   placeholder={
@@ -111,7 +112,7 @@ export function EditableSettingsList({
                       ? "留空"
                       : String(entry.default_value)
                   }
-                  type={typeof value === "number" ? "number" : "text"}
+                  type={resolveEntryInputType(entry, value)}
                 />
               )}
             </div>

@@ -68,7 +68,7 @@ workflows/ingest/
 
 1. 保存原始文件到 ContentStore。
 2. 创建 `RawFile`。
-3. 保存解析参数，例如默认解析模式和 MinerU 选项。
+3. 保存本次上传请求显式传入的解析参数；未显式传入时走后端代码默认行为。
 4. 使用 `background_task_registry.spawn(...)` 派发解析任务。
 
 ### Phase 1：Fast Parse
@@ -102,26 +102,20 @@ workflows/ingest/
 
 ## 5. MinerU 规则
 
-- 前端可选择 MinerU，并临时传 `mineru_api_token`。
+- 上传请求仍可显式指定 MinerU 参数，并传 `mineru_api_token`。
 - 如果请求没有 token，则读取服务端 `MINERU_API_TOKEN`。
 - token 不长期落 DB。
 - MinerU 输出会进入同一套 Markdown/asset canonicalize 逻辑。
 
 ## 5.1 默认解析模式
 
-当前设置页和运行时 settings 中的 `ingest.default_parser_provider` 只允许三种值：
+`parser_provider` 现在不再属于项目级 settings。
 
-- `auto`
-- `markitdown`
-- `mineru`
+- 默认行为：不显式指定 `parser_provider`，进入后端代码默认的本地自动 parser chain。
+- 显式请求 `markitdown`：若当前扩展或依赖不支持，会 fallback 回本地解析。
+- 显式请求 `mineru`：若 token 缺失或扩展不支持，会 fallback 回本地解析。
 
-说明：
-
-- `auto`：不显式指定 `parser_provider`，进入当前后端已实现的本地自动 parser chain
-- `markitdown`：显式请求 MarkItDown；若当前扩展或依赖不支持，会 fallback 回本地解析
-- `mineru`：显式请求 MinerU；若 token 缺失或扩展不支持，会 fallback 回本地解析
-
-`docling` / `unstructured` 目前还没有接入真实执行链，因此不作为可配置项开放。
+也就是说，解析模式现在是“请求显式指定”或“代码默认”，不再由设置页维护一套全局默认解析器偏好。
 
 ## 6. Digest 准入状态
 
