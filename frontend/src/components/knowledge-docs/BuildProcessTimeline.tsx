@@ -16,24 +16,8 @@ interface Props {
 
 export function BuildProcessTimeline({ steps, className }: Props) {
   return (
-    <section
-      className={cn(
-        "overflow-hidden rounded-[28px] border border-stone-200/80 bg-white/90 p-4 shadow-[0_20px_60px_-48px_rgba(28,25,23,0.35)] backdrop-blur-sm md:p-5",
-        className,
-      )}
-    >
-      <div className="flex items-center justify-between gap-3 border-b border-stone-200/70 pb-3">
-        <div>
-          <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-stone-400">Build Rail</p>
-          <h3 className="mt-1 text-sm font-semibold text-stone-900">构建阶段</h3>
-        </div>
-        <span className="rounded-full border border-stone-200 bg-stone-50 px-2.5 py-1 text-[11px] text-stone-500">
-          {steps.filter((step) => step.state === "done").length}/{steps.length}
-        </span>
-      </div>
-
-      <div className="relative mt-4">
-        <div className="absolute bottom-3 left-[11px] top-3 w-px bg-gradient-to-b from-stone-200 via-stone-200 to-transparent" />
+    <div className={cn("relative", className)}>
+      <div className="absolute bottom-3 left-[11px] top-3 w-px bg-zinc-200" />
 
         <div className="space-y-1.5">
           {steps.map((step, index) => {
@@ -47,42 +31,37 @@ export function BuildProcessTimeline({ steps, className }: Props) {
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ delay: index * 0.05, duration: 0.26, ease: "easeOut" }}
                 className={cn(
-                  "relative flex items-start gap-3 rounded-2xl px-2 py-2.5 transition-colors",
-                  isActive ? "bg-sky-50/70" : "hover:bg-stone-50/80",
+                  "relative flex items-start gap-3 rounded-lg px-2 py-2.5 transition-colors leading-[1.2]",
+                  isActive ? "bg-sky-50/50" : "hover:bg-zinc-50/80",
                 )}
               >
                 <div className="relative z-10 mt-0.5 shrink-0">
                   {isDone ? (
-                    <div className="flex h-[22px] w-[22px] items-center justify-center rounded-full bg-emerald-500 shadow-sm shadow-emerald-500/20">
-                      <Check className="h-3 w-3 text-white" strokeWidth={3} />
+                    <div className="flex h-5 w-5 items-center justify-center rounded-full bg-emerald-100 text-emerald-500 border border-emerald-200">
+                      <Check className="h-3 w-3" strokeWidth={3} />
                     </div>
                   ) : isActive ? (
                     <div className="relative">
-                      <div className="flex h-[22px] w-[22px] items-center justify-center rounded-full bg-sky-500 shadow-sm shadow-sky-500/30">
-                        <Loader2 className="h-3 w-3 animate-spin text-white" strokeWidth={3} />
+                      <div className="flex h-5 w-5 items-center justify-center rounded-full bg-sky-100 text-sky-500 border border-sky-200">
+                        <Loader2 className="h-3 w-3 animate-spin" strokeWidth={3} />
                       </div>
-                      <motion.div
-                        className="absolute -inset-1 rounded-full border border-sky-400/40"
-                        animate={{ scale: [1, 1.38, 1], opacity: [0.65, 0, 0.65] }}
-                        transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
-                      />
                     </div>
                   ) : (
-                    <div className="h-[22px] w-[22px] rounded-full border border-stone-200 bg-stone-50" />
+                    <div className="h-5 w-5 rounded-full border border-zinc-200 bg-white" />
                   )}
                 </div>
 
                 <div className="min-w-0">
                   <div className="flex items-center gap-2">
-                    <span className="text-[10px] font-medium text-stone-300">{String(index + 1).padStart(2, "0")}</span>
+                    <span className="text-[10px] font-medium text-zinc-300">{String(index + 1).padStart(2, "0")}</span>
                     <p
                       className={cn(
                         "text-[13px] leading-5 transition-colors",
                         isDone
-                          ? "font-medium text-stone-700"
+                          ? "font-medium text-zinc-700"
                           : isActive
-                            ? "font-semibold text-sky-800"
-                            : "text-stone-400",
+                            ? "font-semibold text-sky-600"
+                            : "text-zinc-400",
                       )}
                     >
                       {step.title}
@@ -91,7 +70,7 @@ export function BuildProcessTimeline({ steps, className }: Props) {
                   <p
                     className={cn(
                       "mt-1 text-[11px] leading-5",
-                      isActive ? "text-sky-600" : isDone ? "text-stone-500" : "text-stone-400",
+                      isActive ? "text-sky-600" : isDone ? "text-zinc-400" : "text-zinc-300",
                     )}
                   >
                     {step.description}
@@ -101,8 +80,7 @@ export function BuildProcessTimeline({ steps, className }: Props) {
             );
           })}
         </div>
-      </div>
-    </section>
+    </div>
   );
 }
 
