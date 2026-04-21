@@ -68,8 +68,9 @@ def build_prepare_parallel_inputs_node(*, context: WorkflowContext):
         if shared_inputs is not None and getattr(shared_inputs, "material_profile", None) is not None:
             material_profile = shared_inputs.material_profile.model_dump(mode="json")
 
-        outline_result, intent_profile, file_summaries = await asyncio.gather(
-            enhance_plan_outline(
+        async def _run_outline_enhance():
+            step_started_at = perf_counter()
+            result = await enhance_plan_outline(
                 subject=state["subject"],
                 digest_mode=docgen_context.digest_mode,
                 user_prompt=docgen_context.user_prompt,
@@ -77,8 +78,21 @@ def build_prepare_parallel_inputs_node(*, context: WorkflowContext):
                 chapters=chapters,
                 docgen_history_brief=docgen_context.docgen_history_brief,
                 extra_metadata=extra,
-            ),
-            infer_docgen_intent(
+            )
+            append_knowledge_build_recent_event(
+                state["subject"],
+                requested_at=state["requested_at"],
+                event={
+                    "stage": "outline_enhanced",
+                    "summary": f"章节大纲增强完成，用时 {int((perf_counter() - step_started_at) * 1000)} ms。",
+                    "created_at": utcnow(),
+                },
+            )
+            return result
+
+        async def _run_intent_inference():
+            step_started_at = perf_counter()
+            result = await infer_docgen_intent(
                 subject=state["subject"],
                 digest_mode=docgen_context.digest_mode,
                 user_prompt=docgen_context.user_prompt,
@@ -87,13 +101,45 @@ def build_prepare_parallel_inputs_node(*, context: WorkflowContext):
                 chapters=chapters,
                 docgen_history_brief=docgen_context.docgen_history_brief,
                 extra_metadata=extra,
-            ),
-            summarize_files(
-                shared_inputs,
-                chapters=chapters,
-                digest_mode=docgen_context.digest_mode,
-                extra_metadata=extra,
-            ) if shared_inputs is not None else asyncio.sleep(0, result=[]),
+            )
+            append_knowledge_build_recent_event(
+                state["subject"],
+                requested_at=state["requested_at"],
+                event={
+                    "stage": "intent_inferred",
+                    "summary": f"写作意图识别完成，用时 {int((perf_counter() - step_started_at) * 1000)} ms。",
+                    "created_at": utcnow(),
+                },
+            )
+            return result
+
+        async def _run_file_summaries():
+            step_started_at = perf_counter()
+            result = await (
+                summarize_files(
+                    shared_inputs,
+                    chapters=chapters,
+                    digest_mode=docgen_context.digest_mode,
+                    extra_metadata=extra,
+                )
+                if shared_inputs is not None
+                else asyncio.sleep(0, result=[])
+            )
+            append_knowledge_build_recent_event(
+                state["subject"],
+                requested_at=state["requested_at"],
+                event={
+                    "stage": "file_summaries_ready",
+                    "summary": f"文件摘要准备完成，共 {len(result)} 份，用时 {int((perf_counter() - step_started_at) * 1000)} ms。",
+                    "created_at": utcnow(),
+                },
+            )
+            return result
+
+        outline_result, intent_profile, file_summaries = await asyncio.gather(
+            _run_outline_enhance(),
+            _run_intent_inference(),
+            _run_file_summaries(),
         )
         enhanced_outlines, mismatch_warnings = outline_result
         if shared_inputs is not None:

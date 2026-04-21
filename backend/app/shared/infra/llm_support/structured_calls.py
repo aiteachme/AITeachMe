@@ -129,6 +129,10 @@ async def acompletion_structured(
                                 timeout=request_timeout_s(context.profile.timeout_s),
                             )
                             prompt_t, completion_t, total_t = extract_usage(result)
+                        except asyncio.TimeoutError:
+                            raise
+                        except asyncio.CancelledError:
+                            raise
                         except Exception as instructor_exc:
                             logger.warning(
                                 "llm_structured_instructor_parse_failed_trying_repair",
