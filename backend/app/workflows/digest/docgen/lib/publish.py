@@ -21,7 +21,6 @@ from app.shared.infra.storage import (
     run_store_sync,
 )
 from app.shared.infra.tools.builtin.markdown_processing import (
-    build_table_of_contents,
     build_reference_section,
     count_words,
     normalize_markdown_rendering,
@@ -137,7 +136,6 @@ def build_merged_markdown(
     merged = separator.join(body).strip()
     if str(cover_markdown or "").strip():
         merged = f"{str(cover_markdown).strip()}\n\n{merged.lstrip()}".strip()
-    merged = _insert_table_of_contents_after_first_h1(merged)
     return normalize_mermaid_blocks(merged.strip()) + "\n"
 
 
@@ -145,55 +143,7 @@ def _ensure_document_overview_structure(markdown: str) -> str:
     cleaned = str(markdown or "").strip()
     if not cleaned.startswith("# "):
         cleaned = "# 知识文档总览\n\n" + cleaned.lstrip("# \n")
-    if "\n## " not in cleaned:
-        lines = cleaned.splitlines()
-        lines.insert(2 if len(lines) > 1 else len(lines), "## 这份文档怎么读")
-        lines.insert(3 if len(lines) > 2 else len(lines), "")
-        cleaned = "\n".join(lines)
     return cleaned.strip()
-
-
-def _insert_table_of_contents_after_first_h1(
-    markdown: str,
-    *,
-    heading: str = "## 目录",
-    min_level: int = 2,
-    max_level: int = 4,
-    max_entries: int = 24,
-) -> str:
-    if heading.lower() in markdown.lower():
-        return markdown
-
-    toc = build_table_of_contents(
-        markdown,
-        heading=heading,
-        min_level=min_level,
-        max_level=max_level,
-        max_entries=max_entries,
-    ).strip()
-    if not toc:
-        return markdown
-
-    lines = markdown.splitlines()
-    first_h1_index = next(
-        (index for index, line in enumerate(lines) if line.startswith("# ")),
-        None,
-    )
-    if first_h1_index is None:
-        return toc + "\n\n" + markdown.lstrip()
-
-    insert_at = first_h1_index + 1
-    while insert_at < len(lines) and not lines[insert_at].strip():
-        insert_at += 1
-
-    composed = [
-        *lines[:insert_at],
-        "",
-        toc,
-        "",
-        *lines[insert_at:],
-    ]
-    return "\n".join(composed).strip() + "\n"
 
 
 

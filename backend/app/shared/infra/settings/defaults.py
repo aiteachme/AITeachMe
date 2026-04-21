@@ -102,8 +102,8 @@ DEFAULT_SETTINGS_VALUES: dict[str, Any] = {
         "tracing_enabled": True,
         "langsmith_capture_inputs": None,
         "langsmith_capture_outputs": None,
-        "langsmith_max_text_chars": 2000,
-        "llm_observability_max_records": 100000,
+        "langsmith_max_text_chars": 100000,
+        "llm_observability_max_records": 1000,
     },
 }
 
