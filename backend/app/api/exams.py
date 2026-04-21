@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import random
 import re
 
 from fastapi import APIRouter, Body, Depends, Path
@@ -29,6 +28,10 @@ from app.schemas.exams import (
 )
 from app.shared.infra.exceptions import AITeachMeError
 from app.utils.time import utcnow
+from app.workflows.examine import (
+    ExamQuestionGenerationSpec,
+    run_question_build_workflow,
+)
 from app.workflows.profile.mastery_updater import update_mastery_from_exam
 from app.workflows.profile.review_scheduler import schedule_reviews
 
@@ -36,18 +39,6 @@ router = APIRouter(prefix="/api/v1/subjects/{subject}/exams", tags=["exams"])
 
 _HTML_COMMENT_RE = re.compile(r"<!--.*?-->", re.DOTALL)
 _WHITESPACE_RE = re.compile(r"\s+")
-_EXAM_NOISE_PATTERNS = (
-    "普通高等学校招生全国统一考试",
-    "考生注意",
-    "试卷",
-    "答题纸",
-    "黑色字迹钢笔",
-    "第1页",
-    "第2页",
-    "第3页",
-    "第4页",
-    "page:",
-)
 
 
 def _ensure_subject(session: Session, subject: str, user_id: str) -> Subject:
@@ -76,44 +67,18 @@ def _raise_not_found(detail: str, error_code: str = "EXAM_NOT_FOUND") -> None:
 def _clean_exam_text(value: str | None) -> str:
     text = str(value or "")
     text = _HTML_COMMENT_RE.sub(" ", text)
-    text = text.replace("·", " ").replace("•", " ")
     text = _WHITESPACE_RE.sub(" ", text).strip()
     return text
 
 
-def _looks_like_exam_noise(value: str) -> bool:
-    if not value:
-        return True
-    lowered = value.casefold()
-    if any(pattern.casefold() in lowered for pattern in _EXAM_NOISE_PATTERNS):
-        return True
-    if len(value) > 80:
-        return True
-    return False
-
-
-def _clean_unit_name(value: str | None) -> str:
-    cleaned = _clean_exam_text(value)
-    cleaned = cleaned.strip("：:;；,.，。、()（）[]【】")
-    return cleaned
-
-
-def _build_exam_summary(unit: KnowledgeUnit) -> str:
-    summary = _clean_exam_text(unit.summary)
-    name = _clean_unit_name(unit.canonical_name)
-    if summary and not _looks_like_exam_noise(summary):
-        return summary.rstrip("。.;；")
-    return f"从题目中识别的核心知识点：{name}"
-
-
 def _is_exam_eligible_unit(unit: KnowledgeUnit) -> bool:
-    name = _clean_unit_name(unit.canonical_name)
+    name = _clean_exam_text(unit.canonical_name)
     summary = _clean_exam_text(unit.summary)
-    if not name or _looks_like_exam_noise(name):
+    if not name or len(name) <= 1:
         return False
-    if len(name) <= 1:
+    if len(name) > 80:
         return False
-    if summary and _looks_like_exam_noise(summary) and len(name) >= 12:
+    if summary and len(summary) > 1000:
         return False
     return True
 
@@ -184,7 +149,7 @@ def _pick_knowledge_units(
             unit
             for unit in ordered_units
             if focus in unit.canonical_name.casefold()
-            or focus in unit.summary.casefold()
+            or focus in (unit.summary or "").casefold()
             or focus in unit.knowledge_unit_type.casefold()
         ]
         if focused:
@@ -200,13 +165,6 @@ def _pick_knowledge_units(
     return deduped[: max(1, limit)]
 
 
-def _sanitize_summary(summary: str | None, fallback: str) -> str:
-    cleaned = _clean_exam_text(summary)
-    if cleaned:
-        return cleaned.rstrip(".")
-    return _clean_unit_name(fallback)
-
-
 def _question_type_for_order(*, exam_mode: str, difficulty: str, item_order: int) -> str:
     if exam_mode == "paper_exam":
         cycle = ["single_choice", "fill_blank", "short_answer"]
@@ -219,41 +177,28 @@ def _question_type_for_order(*, exam_mode: str, difficulty: str, item_order: int
     return cycle[(item_order - 1) % len(cycle)]
 
 
-def _template_for_unit(
+def _difficulty_for_order(*, requested_difficulty: str, item_order: int) -> str:
+    normalized = str(requested_difficulty or "medium").strip().lower()
+    if normalized in {"easy", "medium", "hard"}:
+        return normalized
+    if normalized == "mixed":
+        cycle = ["easy", "medium", "hard"]
+        return cycle[(item_order - 1) % len(cycle)]
+    return "medium"
+
+
+def _upsert_generated_template(
     session: Session,
     *,
     subject: str,
     unit: KnowledgeUnit,
-    difficulty: str,
     question_type: str,
-    distractor_units: list[KnowledgeUnit],
+    difficulty: str,
+    stem: str,
+    answer: str,
+    explanation: str,
+    options: list[str] | None,
 ) -> QuestionTemplate:
-    unit_name = _clean_unit_name(unit.canonical_name)
-    summary = _build_exam_summary(unit)
-    answer = unit_name
-    options: list[str] | None = None
-
-    if question_type == "single_choice":
-        candidate_names = [
-            _clean_unit_name(other.canonical_name)
-            for other in distractor_units
-            if other.id != unit.id
-        ]
-        candidate_names = [name for name in candidate_names if name and name != unit_name and not _looks_like_exam_noise(name)]
-        rng = random.Random(f"{subject}:{unit.id}:{difficulty}:{question_type}")
-        rng.shuffle(candidate_names)
-        options = [unit_name, *candidate_names[:3]]
-        rng.shuffle(options)
-        stem = f"下列哪个知识点最符合这段描述？{summary}"
-        answer = unit_name
-    elif question_type == "fill_blank":
-        stem = f"填空：{summary}。这个知识点是 ____。"
-        answer = unit_name
-    else:
-        stem = f"请简要说明“{unit_name}”的核心思想，并说明它通常在什么情况下使用。"
-        answer = summary or unit_name
-        question_type = "short_answer"
-
     stem_hash = _hash_stem(stem)
     existing = session.exec(
         select(QuestionTemplate).where(
@@ -264,7 +209,22 @@ def _template_for_unit(
         )
     ).first()
     if existing is not None:
+        existing.question_type = question_type
+        existing.difficulty = difficulty
+        existing.stem = stem
+        existing.answer = answer
+        existing.explanation = explanation
+        existing.options_json = json.dumps(options, ensure_ascii=False) if options else None
+        existing.knowledge_unit_refs_json = json.dumps(
+            [{"knowledge_unit_id": unit.id, "coverage_weight": 1.0, "role": "primary"}],
+            ensure_ascii=False,
+        )
+        existing.updated_at = utcnow()
+        session.add(existing)
+        session.commit()
+        session.refresh(existing)
         return existing
+
     template = QuestionTemplate(
         subject=subject,
         knowledge_unit_id=unit.id,
@@ -273,7 +233,7 @@ def _template_for_unit(
         stem=stem,
         stem_hash=stem_hash,
         answer=answer,
-        explanation=f"请回顾“{unit_name}”的定义、典型特征和常见用法。",
+        explanation=explanation,
         options_json=json.dumps(options, ensure_ascii=False) if options else None,
         knowledge_unit_refs_json=json.dumps(
             [{"knowledge_unit_id": unit.id, "coverage_weight": 1.0, "role": "primary"}],
@@ -454,7 +414,38 @@ async def generate_exam(
         )
 
     mode = exam_mode_value(body.exam_mode)
-    difficulty = body.difficulty or "medium"
+    requested_difficulty = body.difficulty or "medium"
+    question_specs = [
+        ExamQuestionGenerationSpec(
+            item_order=order,
+            knowledge_unit_id=int(unit.id or 0),
+            question_type=_question_type_for_order(
+                exam_mode=mode,
+                difficulty=_difficulty_for_order(
+                    requested_difficulty=requested_difficulty,
+                    item_order=order,
+                ),
+                item_order=order,
+            ),
+            difficulty=_difficulty_for_order(
+                requested_difficulty=requested_difficulty,
+                item_order=order,
+            ),
+        )
+        for order, unit in enumerate(units, start=1)
+        if unit.id is not None
+    ]
+    build_result = await run_question_build_workflow(
+        subject=normalized,
+        exam_mode=mode,
+        units=units,
+        specs=question_specs,
+        focus_prompt=body.focus_prompt or "",
+        user_prompt=body.user_prompt or "",
+        style_prompt=body.style_prompt or "",
+    )
+    generated_questions = build_result.require_value().get("generated_questions") or []
+
     paper = exams_repo.create_exam_paper(
         session,
         ExamPaper(
@@ -466,28 +457,32 @@ async def generate_exam(
             total_score=float(len(units)),
             selection_context_json=json.dumps(
                 {
-                    "source": "knowledge_unit",
+                    "source": "knowledge_unit_llm",
                     "knowledge_unit_ids": [unit.id for unit in units],
                     "focus_prompt": body.focus_prompt,
+                    "user_prompt": body.user_prompt,
+                    "style_prompt": body.style_prompt,
+                    "requested_difficulty": requested_difficulty,
+                    "sample_file_uids": body.sample_file_uids or [],
                 },
                 ensure_ascii=False,
             ),
         ),
     )
     items: list[ExamPaperItem] = []
+    generated_by_order = {int(item["item_order"]): item for item in generated_questions}
     for order, unit in enumerate(units, start=1):
-        question_type = _question_type_for_order(
-            exam_mode=mode,
-            difficulty=difficulty,
-            item_order=order,
-        )
-        template = _template_for_unit(
+        generated = generated_by_order[order]
+        template = _upsert_generated_template(
             session,
             subject=normalized,
             unit=unit,
-            difficulty=difficulty,
-            question_type=question_type,
-            distractor_units=units,
+            difficulty=str(generated["difficulty"]),
+            question_type=str(generated["question_type"]),
+            stem=str(generated["stem"]),
+            answer=str(generated["correct_answer"]),
+            explanation=str(generated["explanation"]),
+            options=list(generated.get("options") or []) or None,
         )
         items.append(
             ExamPaperItem(
