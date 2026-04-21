@@ -875,21 +875,22 @@ export function HomePage() {
           initial={{ opacity: 0, scale: 0.9 }}
           animate={{ opacity: 1, scale: 1 }}
           transition={{ delay: 0.1, type: "spring", stiffness: 200, damping: 20 }}
-          className="flex items-center justify-center gap-1 mb-2"
+          className="flex items-center justify-center gap-5 mb-4"
         >
           <HeroAnimation />
           <motion.div
             initial={{ opacity: 0, x: -10, filter: "blur(8px)" }}
             animate={{ opacity: 1, x: 0, filter: "blur(0px)" }}
             transition={{ duration: 1, ease: "easeOut", delay: 0.2 }}
+            className="flex items-center pt-2"
           >
             <motion.h1 
-              className="text-6xl md:text-7xl text-transparent bg-clip-text bg-gradient-to-r from-blue-500 via-violet-500 to-fuchsia-500 pb-2 drop-shadow-sm animate-text-gradient"
-              style={{ fontFamily: "'Edwardian Script ITC', 'Vivaldi', 'Vladimir Script', 'Brush Script MT', 'Dancing Script', 'Pacifico', cursive", lineHeight: "1.2", paddingRight: "0.1em" }}
-              animate={{ y: [0, -5, 0] }}
+              className="text-5xl md:text-6xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-blue-500 via-violet-500 to-fuchsia-500 pb-2 drop-shadow-md animate-text-gradient py-2 px-4 -mx-4 tracking-wide"
+              style={{ fontFamily: "'Edwardian Script ITC', 'Vivaldi', 'Vladimir Script', 'Brush Script MT', 'Dancing Script', 'Pacifico', cursive", lineHeight: "1.2", wordSpacing: "0.15em" }}
+              animate={{ y: [0, -4, 0] }}
               transition={{ repeat: Infinity, duration: 3, ease: "easeInOut" }}
             >
-              AITeachMe
+              AI Teach Me
             </motion.h1>
           </motion.div>
         </motion.div>
@@ -909,9 +910,9 @@ export function HomePage() {
           initial={{ opacity: 0, scale: 0.97 }}
           animate={{ opacity: 1, scale: 1 }}
           transition={{ delay: 0.35 }}
-          className="w-full"
+          className="w-full relative z-10"
         >
-          <div className="w-full rounded-[30px] border border-zinc-200/70 bg-white/96 shadow-[0_18px_50px_-34px_rgba(24,24,27,0.18)] transition-all focus-within:border-zinc-300 focus-within:shadow-[0_24px_70px_-42px_rgba(24,24,27,0.24)] focus-within:ring-4 focus-within:ring-zinc-900/5">
+          <div className="w-full rounded-[30px] border-[1.5px] border-zinc-200/80 bg-white/70 backdrop-blur-xl shadow-[0_8px_30px_rgb(0,0,0,0.06)] transition-all focus-within:border-indigo-300 focus-within:shadow-[0_8px_30px_rgb(99,102,241,0.15)] focus-within:ring-4 focus-within:ring-indigo-500/10 hover:border-zinc-300 hover:bg-white/80 hover:shadow-[0_8px_30px_rgb(0,0,0,0.1)]">
             <textarea
               ref={textareaRef}
               placeholder="直接输入学习目标，也可以先上传资料再一起规划"

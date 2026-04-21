@@ -275,7 +275,7 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
 
       <aside
         className={cn(
-          "fixed inset-y-0 left-0 z-40 flex shrink-0 flex-col border-r border-slate-200/60 bg-white/70 backdrop-blur-xl shadow-[4px_0_24px_rgba(0,0,0,0.02)] transition-all lg:static",
+          "fixed inset-y-0 left-0 z-40 flex shrink-0 flex-col border-r border-slate-200/50 bg-gradient-to-b from-white/90 to-white/50 backdrop-blur-2xl shadow-[4px_0_30px_rgba(0,0,0,0.03)] ring-1 ring-white/50 transition-all lg:static",
           effectiveCollapsed ? "w-[76px]" : "w-[280px]",
           isMobileOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0",
         )}
