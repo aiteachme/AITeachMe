@@ -11,10 +11,10 @@ import structlog
 
 from app.shared.infra.database import managed_session
 from app.shared.infra.embedding import aembed_texts
+from app.shared.infra.storage import resolve_subject_storage_scope
 from app.models import DigestStep, RetrievalChunk
 from app.models.raw_file import RawFile
 import app.repositories.knowledge.knowledge_repo as knowledge_repo
-from app.utils.path_helpers import build_knowledge_chunk_manifest_path
 from app.utils.time import utcnow
 from app.shared.infra.subject import (
     get_runtime_embedding_config,
@@ -61,14 +61,18 @@ def _load_chunk_manifest(subject: str) -> KnowledgeChunkManifest | None:
     from app.shared.infra.storage import get_content_store, run_store_sync
 
     cs = get_content_store()
-    return run_store_sync(cs.read_json, cs.chunk_manifest_key(subject), KnowledgeChunkManifest)
+    return run_store_sync(
+        cs.read_json,
+        resolve_subject_storage_scope(subject).chunk_manifest_key(),
+        KnowledgeChunkManifest,
+    )
 
 
 def _write_chunk_manifest(subject: str, manifest: KnowledgeChunkManifest) -> str:
     from app.shared.infra.storage import get_content_store, run_store_sync
 
     cs = get_content_store()
-    key = cs.chunk_manifest_key(subject)
+    key = resolve_subject_storage_scope(subject).chunk_manifest_key()
     run_store_sync(cs.write_json, key, manifest)
     return key
 
@@ -338,5 +342,4 @@ async def materialize_shared_inputs(
         deleted_chunk_count=deleted_chunks,
     )
     return materialized
-
 

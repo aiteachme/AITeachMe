@@ -33,6 +33,7 @@ from app.schemas.knowledge import (
 )
 from app.shared.infra.database import managed_session
 from app.shared.infra.settings import get_settings
+from app.shared.infra.storage import get_content_store, resolve_subject_storage_scope, run_store_sync
 from app.workflows.digest.planner import (
     get_confirmed_build_plan,
     mark_confirmed_build_plan_status,
@@ -42,7 +43,6 @@ from app.shared.infra.exceptions import ConfirmedBuildPlanRequiredError, NoReady
 from app.shared.infra.subject import get_subject_vector_status_by_slug
 from app.shared.infra.tools.builtin.markdown_processing import normalize_mermaid_blocks
 from app.utils.docgen_store import KnowledgeBuildLock, acquire_knowledge_build_lock, clear_docgen_staging, read_knowledge_build_lock, read_knowledge_build_status, read_knowledge_manifest, update_knowledge_build_status
-from app.utils.path_helpers import build_merged_knowledge_base_build_path, build_merged_knowledge_base_path
 from app.utils.presenters import require_id, require_uid
 from app.utils.time import utcnow
 from app.workflows.digest.common.metrics import build_token_summary
@@ -576,22 +576,28 @@ def get_docgen_result(session: Session, *, subject: str) -> DocGenGetResponse:
     LLM 统计；该函数不触发构建，只服务 `/knowledge/docs` 轮询查询。
     """
 
-    merged_path = build_merged_knowledge_base_path(subject)
-    draft_path = build_merged_knowledge_base_build_path(subject)
+    cs = get_content_store()
+    subject_scope = resolve_subject_storage_scope(subject)
+    merged_key = subject_scope.knowledge_doc_key("merged_knowledge_base.md")
+    draft_key = subject_scope.knowledge_build_prefix() + "merged_knowledge_base.md"
     manifest = read_knowledge_manifest(subject)
     build_status = read_knowledge_build_status(subject)
     docgen_build_status = build_status if build_status is not None and build_status.build_kind == "docgen" else None
-    markdown = normalize_mermaid_blocks(merged_path.read_text(encoding="utf-8")) if merged_path.exists() else ""
-    draft_markdown = normalize_mermaid_blocks(draft_path.read_text(encoding="utf-8")) if draft_path.exists() else ""
-    updated_at = manifest.updated_at if manifest is not None else (datetime.fromtimestamp(merged_path.stat().st_mtime) if merged_path.exists() else None)
-    draft_updated_at = docgen_build_status.draft_updated_at if docgen_build_status is not None and docgen_build_status.draft_updated_at is not None else (datetime.fromtimestamp(draft_path.stat().st_mtime) if draft_path.exists() else None)
+    markdown = normalize_mermaid_blocks(run_store_sync(cs.read_text, merged_key, default="") or "")
+    draft_markdown = normalize_mermaid_blocks(run_store_sync(cs.read_text, draft_key, default="") or "")
+    updated_at = manifest.updated_at if manifest is not None else None
+    draft_updated_at = (
+        docgen_build_status.draft_updated_at
+        if docgen_build_status is not None and docgen_build_status.draft_updated_at is not None
+        else None
+    )
     source_file_uids = _resolve_file_uids_from_ids(session, subject=subject, file_ids=(manifest.source_file_ids if manifest is not None else [])) if manifest is not None else []
     build_response = _resolve_runtime_build_status(subject=subject)
     if build_response is not None:
         build_response.draft_available = bool(build_response.draft_available or draft_markdown.strip())
     build_preview = _build_runtime_preview(build_status=docgen_build_status, draft_markdown=draft_markdown, manifest=manifest)
     build_metrics = _build_runtime_metrics(build_status=docgen_build_status)
-    return DocGenGetResponse(exists=bool(merged_path.exists() and markdown.strip()), markdown=markdown, updated_at=updated_at, source_file_uids=source_file_uids, prompt=(manifest.prompt if manifest is not None else None), draft_markdown=draft_markdown, draft_updated_at=draft_updated_at, build=build_response, build_preview=build_preview, build_metrics=build_metrics, vector_status=get_subject_vector_status_by_slug(session, subject), planner_session_id=(build_response.planner_session_id if build_response is not None else None), confirmed_plan_id=(build_response.confirmed_plan_id if build_response is not None else None), digest_mode=(build_response.digest_mode if build_response is not None else None))
+    return DocGenGetResponse(exists=bool(markdown.strip()), markdown=markdown, updated_at=updated_at, source_file_uids=source_file_uids, prompt=(manifest.prompt if manifest is not None else None), draft_markdown=draft_markdown, draft_updated_at=draft_updated_at, build=build_response, build_preview=build_preview, build_metrics=build_metrics, vector_status=get_subject_vector_status_by_slug(session, subject), planner_session_id=(build_response.planner_session_id if build_response is not None else None), confirmed_plan_id=(build_response.confirmed_plan_id if build_response is not None else None), digest_mode=(build_response.digest_mode if build_response is not None else None))
 
 
 __all__ = ["get_docgen_result", "run_docgen_background", "trigger_docgen_build"]

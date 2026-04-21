@@ -9,7 +9,7 @@ from pathlib import Path
 import structlog
 
 from app.shared.infra.database import managed_session
-from app.shared.infra.storage import get_content_store
+from app.shared.infra.storage import get_content_store, resolve_subject_storage_scope
 from app.models import RawFile
 from app.repositories.files_repo import list_raw_files_by_ids
 from app.workflows.digest.common.material_profile import (
@@ -118,6 +118,7 @@ async def load_source_packets(subject: str, file_ids: list[int]) -> list[SourceP
     """Load parsed raw markdown and normalize it into source packets."""
 
     cs = get_content_store()
+    subject_scope = resolve_subject_storage_scope(subject)
     requested_order = {file_id: index for index, file_id in enumerate(file_ids)}
     with managed_session() as session:
         raw_files = sorted(
@@ -130,7 +131,7 @@ async def load_source_packets(subject: str, file_ids: list[int]) -> list[SourceP
             return None
 
         file_id = int(raw_file.id)
-        md_key = raw_file.markdown_path or cs.raw_markdown_key(subject, file_id)
+        md_key = raw_file.markdown_path or subject_scope.raw_markdown_key(file_id)
         content = await cs.read_text(md_key, default="") or ""
 
         # fallback 到 DB 中的 parsed_markdown
@@ -138,7 +139,7 @@ async def load_source_packets(subject: str, file_ids: list[int]) -> list[SourceP
             content = raw_file.parsed_markdown
 
         markdown_path_str = md_key
-        asset_dir_str = getattr(raw_file, "asset_dir", None) or cs.asset_prefix(subject, file_id).rstrip("/")
+        asset_dir_str = getattr(raw_file, "asset_dir", None) or subject_scope.asset_prefix(file_id).rstrip("/")
 
         if not content.strip():
             return None

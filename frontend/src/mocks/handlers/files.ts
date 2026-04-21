@@ -41,7 +41,7 @@ function buildFileUid(seed: number): string {
 }
 
 function buildAssetBaseUrl(subject: string, assetDirName: string | number): string {
-  return `/_assets/${subject}/assets/${assetDirName}`;
+  return `/api/v1/subjects/${subject}/files/assets/${assetDirName}`;
 }
 
 function buildFileAssets(subject: string, assetDirName: string | number): FileAssetItem[] {
@@ -402,13 +402,6 @@ export const fileHandlers = [
       code: 0,
       data: { deleted_file_uids: deletedUids },
     });
-  }),
-
-  http.get("/_assets/:subject/assets/:assetDirName/:assetName", ({ params }) => {
-    return buildMockAssetResponse(
-      String(params.subject),
-      `assets/${String(params.assetDirName)}/${String(params.assetName)}`,
-    );
   }),
 
   http.get("/api/v1/subjects/:subject/files/assets/:assetPath*", ({ params }) => {

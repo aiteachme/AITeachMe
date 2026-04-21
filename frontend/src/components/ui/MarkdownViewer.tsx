@@ -276,11 +276,6 @@ function extractSubjectAssetPath(src: string): string | null {
     return null;
   }
 
-  const localStaticMatch = normalized.match(/^\/_assets\/[^/]+\/assets\/(.+)$/);
-  if (localStaticMatch?.[1]) {
-    return localStaticMatch[1].replace(/^\/+/, "");
-  }
-
   const assetMatch = normalized.match(/(?:^|\/)assets\/(.+)$/);
   if (!assetMatch?.[1]) {
     return null;

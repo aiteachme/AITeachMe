@@ -2,14 +2,15 @@
 
 from __future__ import annotations
 
+import shutil
 import tempfile
 from pathlib import Path
 
-from fastapi import APIRouter, Body, Depends, File, Form, UploadFile
+from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 from sqlmodel import Session
 
-from app.api.deps import get_db
+from app.api.deps import CurrentUserContext, get_current_user_context, get_db, normalize_subject_slug
 from app.api.openapi import build_error_responses
 from app.schemas.common import ApiResponse, ok_response
 from app.schemas.export_import import (
@@ -26,6 +27,7 @@ from app.workflows.support.export_import import (
     list_available_courses,
     preview_export,
 )
+from app.workflows.support.subjects import get_subject_record
 
 router = APIRouter(prefix="/api/v1", tags=["export-import"])
 
@@ -43,11 +45,14 @@ router = APIRouter(prefix="/api/v1", tags=["export-import"])
 )
 async def export_preview_api(
     subject: str,
+    user: CurrentUserContext = Depends(get_current_user_context),
     session: Session = Depends(get_db),
 ) -> ApiResponse[ExportPreviewData]:
     """获取学科导出内容摘要。"""
 
-    return ok_response(preview_export(session, subject_slug=subject))
+    normalized = normalize_subject_slug(subject)
+    subject_record = get_subject_record(session, normalized, owner_user_id=user.user_id)
+    return ok_response(preview_export(session, subject_slug=subject_record.slug))
 
 
 @router.post(
@@ -58,12 +63,15 @@ async def export_preview_api(
 async def export_subject_api(
     subject: str,
     body: ExportOptions = Body(default=ExportOptions()),
+    user: CurrentUserContext = Depends(get_current_user_context),
     session: Session = Depends(get_db),
 ) -> FileResponse:
     """将学科全部产物打包为 .atmx 文件下载。"""
 
-    tmp_path = export_subject(session, subject_slug=subject, options=body)
-    filename = f"{subject}.atmx"
+    normalized = normalize_subject_slug(subject)
+    subject_record = get_subject_record(session, normalized, owner_user_id=user.user_id)
+    tmp_path = export_subject(session, subject_slug=subject_record.slug, options=body)
+    filename = f"{subject_record.slug}.atmx"
     return FileResponse(
         path=tmp_path,
         media_type="application/octet-stream",
@@ -86,14 +94,14 @@ async def export_subject_api(
 async def import_subject_api(
     file: UploadFile = File(..., description="上传 .atmx 导出包。"),
     new_subject_name: str | None = Form(default=None, description="自定义导入学科名。"),
+    user: CurrentUserContext = Depends(get_current_user_context),
     session: Session = Depends(get_db),
 ) -> ApiResponse[ImportResultData]:
     """从上传的 .atmx 文件导入学科。"""
 
     suffix = Path(file.filename or "upload.atmx").suffix or ".atmx"
     with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
-        content = await file.read()
-        tmp.write(content)
+        shutil.copyfileobj(file.file, tmp)
         tmp_path = Path(tmp.name)
 
     try:
@@ -101,6 +109,7 @@ async def import_subject_api(
             session,
             file_path=tmp_path,
             options=ImportOptions(new_subject_name=new_subject_name),
+            user_id=user.user_id,
         )
         return ok_response(result)
     finally:
@@ -133,28 +142,31 @@ async def list_courses_api() -> ApiResponse[list[CoursePackageItem]]:
 async def import_course_api(
     filename: str,
     new_subject_name: str | None = Body(default=None, embed=True),
+    user: CurrentUserContext = Depends(get_current_user_context),
     session: Session = Depends(get_db),
 ) -> ApiResponse[ImportResultData]:
     """从共享课程目录导入指定 .atmx 文件。"""
+
+    if Path(filename).name != filename:
+        raise HTTPException(status_code=400, detail="非法文件路径")
 
     courses_dir = get_courses_dir_path()
     file_path = courses_dir / filename
 
     if not file_path.exists() or not file_path.is_file():
-        from fastapi import HTTPException
         raise HTTPException(status_code=404, detail=f"课程文件不存在: {filename}")
 
     # 安全检查：防止路径遍历
     try:
         file_path.resolve().relative_to(courses_dir.resolve())
     except ValueError:
-        from fastapi import HTTPException
         raise HTTPException(status_code=400, detail="非法文件路径")
 
     result = import_subject(
         session,
         file_path=file_path,
         options=ImportOptions(new_subject_name=new_subject_name),
+        user_id=user.user_id,
     )
     return ok_response(result)
 

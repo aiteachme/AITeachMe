@@ -1,11 +1,10 @@
-﻿"""Asset indexing for digest builds."""
+"""Asset indexing for digest builds."""
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import structlog
 
+from app.shared.infra.storage import get_content_store, run_store_sync
 from app.workflows.digest.common.models import AssetItem, AssetRegistry, SourcePacket
 
 logger = structlog.get_logger()
@@ -17,24 +16,31 @@ def build_asset_registry(subject: str, source_packets: list[SourcePacket]) -> As
     if not source_packets:
         return AssetRegistry(subject=subject, asset_dir="")
 
+    cs = get_content_store()
     asset_dir = source_packets[0].asset_dir
     assets: list[AssetItem] = []
     missing_assets = 0
 
     for packet in source_packets:
-        packet_asset_dir = Path(packet.asset_dir)
+        prefix = packet.asset_dir.rstrip("/") + "/"
+        stored_keys = run_store_sync(cs.list_prefix, prefix, default=[]) or []
+        key_by_name = {key.rsplit("/", 1)[-1]: key for key in stored_keys}
         for asset_name in dict.fromkeys(packet.image_refs):
-            asset_path = packet_asset_dir / asset_name
-            asset_exists = asset_path.exists() and asset_path.is_file()
+            asset_key = key_by_name.get(asset_name)
+            asset_exists = bool(asset_key)
             if not asset_exists:
                 missing_assets += 1
+            file_size = 0
+            if asset_key:
+                data = run_store_sync(cs.read_bytes, asset_key, default=None)
+                file_size = len(data) if data is not None else 0
             assets.append(
                 AssetItem(
                     filename=asset_name,
                     file_id=packet.file_id,
                     page_number=_extract_page_number(asset_name),
                     asset_type=_detect_asset_type(asset_name),
-                    file_size=asset_path.stat().st_size if asset_exists else 0,
+                    file_size=file_size,
                     ocr_available=asset_exists,
                 )
             )
@@ -71,4 +77,3 @@ def _extract_page_number(filename: str) -> int | None:
     if not digits:
         return None
     return int("".join(digits))
-

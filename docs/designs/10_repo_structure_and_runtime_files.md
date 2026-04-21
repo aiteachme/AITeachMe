@@ -109,7 +109,7 @@ backend/data/aiteachme.db
 Subject 级目录：
 
 ```text
-backend/data/<subject>/
+backend/data/users/<user_id>/subjects/<subject>/
   raw_files/
   raw_markdowns/
   assets/
@@ -117,6 +117,12 @@ backend/data/<subject>/
     _build/
     versions/
   cache/
+```
+
+本地运行时临时目录仍可能位于 subject 根目录：
+
+```text
+backend/data/<subject>/
   debug/
   temp/
   exam/

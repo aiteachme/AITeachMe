@@ -15,7 +15,11 @@ from app.repositories.knowledge import docgen_repo
 from app.shared.infra.database import managed_session
 from app.workflows.digest.common.pedagogy import resolve_effective_chapter_title
 from app.workflows.digest.common.pedagogy import build_document_overview as build_learning_document_overview
-from app.shared.infra.storage import get_content_store, run_store_sync
+from app.shared.infra.storage import (
+    get_content_store,
+    resolve_subject_storage_scope,
+    run_store_sync,
+)
 from app.shared.infra.tools.builtin.markdown_processing import (
     build_reference_section,
     count_words,
@@ -144,32 +148,31 @@ def _ensure_document_overview_structure(markdown: str) -> str:
 
 
 
-def _build_chapter_key(subject: str, chapter_index: int, title: str) -> str:
+def _build_chapter_key(namespace: str, chapter_index: int, title: str) -> str:
     safe_title = sanitize_doc_title(title)
-    return f"{subject}/knowledge_markdowns/chapter_{chapter_index:02d}_{safe_title}.md"
+    return f"{namespace}/knowledge_markdowns/chapter_{chapter_index:02d}_{safe_title}.md"
 
 
-def _build_versioned_chapter_key(subject: str, version_no: int, chapter_index: int, title: str) -> str:
+def _build_versioned_chapter_key(namespace: str, version_no: int, chapter_index: int, title: str) -> str:
     safe_title = sanitize_doc_title(title)
-    return f"{subject}/knowledge_markdowns/versions/v{version_no:04d}/chapter_{chapter_index:02d}_{safe_title}.md"
+    return f"{namespace}/knowledge_markdowns/versions/v{version_no:04d}/chapter_{chapter_index:02d}_{safe_title}.md"
 
 
-def _build_versioned_merged_key(subject: str, version_no: int) -> str:
-    return f"{subject}/knowledge_markdowns/versions/v{version_no:04d}/merged_knowledge_base.md"
+def _build_versioned_merged_key(namespace: str, version_no: int) -> str:
+    return f"{namespace}/knowledge_markdowns/versions/v{version_no:04d}/merged_knowledge_base.md"
 
 
-def _build_versioned_docgen_manifest_key(subject: str, version_no: int) -> str:
-    return f"{subject}/knowledge_markdowns/versions/v{version_no:04d}/docgen_manifest.json"
+def _build_versioned_docgen_manifest_key(namespace: str, version_no: int) -> str:
+    return f"{namespace}/knowledge_markdowns/versions/v{version_no:04d}/docgen_manifest.json"
 
 
-def _build_current_docgen_manifest_key(subject: str) -> str:
-    return f"{subject}/knowledge_markdowns/docgen_manifest.json"
+def _build_current_docgen_manifest_key(namespace: str) -> str:
+    return f"{namespace}/knowledge_markdowns/docgen_manifest.json"
 
 
-
-def _staging_chapter_key(subject: str, chapter_index: int, title: str) -> str:
+def _staging_chapter_key(namespace: str, chapter_index: int, title: str) -> str:
     safe_title = sanitize_doc_title(title)
-    return f"{subject}/knowledge_markdowns/_build/chapter_{chapter_index:02d}_{safe_title}.md"
+    return f"{namespace}/knowledge_markdowns/_build/chapter_{chapter_index:02d}_{safe_title}.md"
 
 
 
@@ -250,6 +253,7 @@ async def stage_knowledge_docs(
         return StagedKnowledgeDocs()
 
     cs = get_content_store()
+    subject_scope = resolve_subject_storage_scope(subject)
     sorted_chapters = _dedupe_chapter_metadatas(
         sorted(chapter_metadatas, key=lambda item: item.get("chapter_index", 0))
     )
@@ -260,7 +264,7 @@ async def stage_knowledge_docs(
         chapter_index = int(chapter.get("chapter_index", index))
         chapter_title = resolve_effective_chapter_title(chapter, chapter_index=chapter_index)
         chapter_markdown = _prepare_chapter_markdown(str(chapter.get("markdown") or ""))
-        staging_key = _staging_chapter_key(subject, chapter_index, chapter_title)
+        staging_key = _staging_chapter_key(subject_scope.namespace, chapter_index, chapter_title)
         write_tasks.append(asyncio.create_task(cs.write_text(staging_key, chapter_markdown)))
         built_paths.append((chapter_index, chapter_title))
 
@@ -272,9 +276,9 @@ async def stage_knowledge_docs(
         raise
 
     merged_markdown = build_merged_markdown(sorted_chapters, document_context=document_context)
-    await cs.write_text(f"{subject}/knowledge_markdowns/_build/merged_knowledge_base.md", merged_markdown)
+    await cs.write_text(subject_scope.knowledge_build_prefix() + "merged_knowledge_base.md", merged_markdown)
     if docgen_artifacts is not None:
-        await cs.write_json_raw(f"{subject}/knowledge_markdowns/_build/docgen_manifest.json", docgen_artifacts)
+        await cs.write_json_raw(subject_scope.knowledge_build_prefix() + "docgen_manifest.json", docgen_artifacts)
 
     update_knowledge_build_status(
         subject,
@@ -306,6 +310,7 @@ def publish_staged_knowledge_docs(
         return []
 
     cs = get_content_store()
+    subject_scope = resolve_subject_storage_scope(subject)
     sorted_chapters = _dedupe_chapter_metadatas(
         sorted(chapter_metadatas, key=lambda item: item.get("chapter_index", 0))
     )
@@ -327,9 +332,9 @@ def publish_staged_knowledge_docs(
         if not source_file_ids and index < len(chapter_assignments):
             source_file_ids = list(chapter_assignments[index].get("source_file_ids") or [])
 
-        final_key = _build_chapter_key(subject, chapter_index, chapter_title)
+        final_key = _build_chapter_key(subject_scope.namespace, chapter_index, chapter_title)
         archive_key = _build_versioned_chapter_key(
-            subject,
+            subject_scope.namespace,
             resolved_version_no,
             chapter_index,
             chapter_title,
@@ -362,14 +367,14 @@ def publish_staged_knowledge_docs(
         )
 
     merged_markdown = build_merged_markdown(sorted_chapters, document_context=document_context)
-    run_store_sync(cs.write_text, _build_versioned_merged_key(subject, resolved_version_no), merged_markdown)
-    run_store_sync(cs.write_text, cs.knowledge_doc_key(subject, "merged_knowledge_base.md"), merged_markdown)
+    run_store_sync(cs.write_text, _build_versioned_merged_key(subject_scope.namespace, resolved_version_no), merged_markdown)
+    run_store_sync(cs.write_text, subject_scope.knowledge_doc_key("merged_knowledge_base.md"), merged_markdown)
     if docgen_artifacts is not None:
-        versioned_manifest_key = _build_versioned_docgen_manifest_key(subject, resolved_version_no)
-        current_manifest_key = _build_current_docgen_manifest_key(subject)
+        versioned_manifest_key = _build_versioned_docgen_manifest_key(subject_scope.namespace, resolved_version_no)
+        current_manifest_key = _build_current_docgen_manifest_key(subject_scope.namespace)
         run_store_sync(cs.write_json_raw, versioned_manifest_key, docgen_artifacts)
         run_store_sync(cs.write_json_raw, current_manifest_key, docgen_artifacts)
-    run_store_sync(cs.delete_prefix, cs.knowledge_build_prefix(subject), default=0)
+    run_store_sync(cs.delete_prefix, subject_scope.knowledge_build_prefix(), default=0)
 
     manifest = KnowledgeDocsManifest(
         updated_at=requested_at,
@@ -392,7 +397,7 @@ def publish_staged_knowledge_docs(
         ],
     )
     if docgen_artifacts is not None:
-        manifest.docgen_manifest_key = _build_versioned_docgen_manifest_key(subject, resolved_version_no)
+        manifest.docgen_manifest_key = _build_versioned_docgen_manifest_key(subject_scope.namespace, resolved_version_no)
         manifest.merge_review_report = dict(docgen_artifacts.get("merge_review_report") or {})
     write_knowledge_manifest(subject, manifest)
     update_knowledge_build_status(

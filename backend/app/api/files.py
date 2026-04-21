@@ -63,6 +63,7 @@ async def upload_files(
     data, parse_file_ids = await save_uploaded_files_and_request_parse(
         session,
         subject=normalized_subject,
+        owner_user_id=user.user_id,
         files=files,
         parse_request_metadata=parse_request_metadata,
     )
@@ -118,6 +119,7 @@ async def delete_files_api(
         await delete_files(
             session,
             subject=normalized_subject,
+            owner_user_id=user.user_id,
             file_uids=unique_file_uids,
         )
     )
@@ -143,7 +145,9 @@ async def serve_file_asset(
     get_subject_record(session, normalized_subject, owner_user_id=user.user_id)
 
     cs = get_content_store()
-    storage_key = f"{normalized_subject}/{asset_path}"
+    subject_scope = cs.subject_scope(user_id=user.user_id, subject=normalized_subject)
+    normalized_asset_path = asset_path.lstrip("/\\")
+    storage_key = f"{subject_scope.namespace}/assets/{normalized_asset_path}"
     media_type = mimetypes.guess_type(asset_path)[0] or "application/octet-stream"
 
     public_url = cs.public_url(storage_key)

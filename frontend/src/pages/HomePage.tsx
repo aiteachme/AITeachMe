@@ -1009,7 +1009,7 @@ export function HomePage() {
                         <p className="text-sm font-medium text-slate-600 mb-1">暂无可导入课程</p>
                         <p className="text-xs text-slate-400">
                           将 <code className="px-1 py-0.5 bg-slate-100 rounded text-xs">.atmx</code> 文件放入{" "}
-                          <code className="px-1 py-0.5 bg-slate-100 rounded text-xs">data/_courses/</code> 目录即可在此显示
+                          <code className="px-1 py-0.5 bg-slate-100 rounded text-xs">backend/data/_courses/</code> 目录即可在此显示
                         </p>
                       </div>
                     )}
