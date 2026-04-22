@@ -102,7 +102,6 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
           <SettingsNav
             activeSection={activeSection}
             onSelect={setActiveSection}
-            isLocalRuntime={isLocalRuntime}
             sections={sections}
           />
 

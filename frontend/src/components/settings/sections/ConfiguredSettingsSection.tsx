@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { memo, useMemo } from "react";
 
 import { SETTINGS_STYLES } from "../constants";
 import { InfoCard, SectionDivider } from "../fields";
@@ -72,7 +72,7 @@ function prepareEntryGroups(
   }));
 }
 
-export function ConfiguredSettingsSection({
+export const ConfiguredSettingsSection = memo(function ConfiguredSettingsSection({
   section,
   isLocalRuntime,
   settingsDraft,
@@ -91,8 +91,12 @@ export function ConfiguredSettingsSection({
     [isLocalRuntime, section],
   );
 
-  const validGroups = groups.filter(
-    (g) => g.serverEditableEntries.length > 0 || g.envEditableEntries.length > 0 || g.readonlyEntries.length > 0
+  const validGroups = useMemo(
+    () =>
+      groups.filter(
+        (g) => g.serverEditableEntries.length > 0 || g.envEditableEntries.length > 0 || g.readonlyEntries.length > 0,
+      ),
+    [groups],
   );
 
   return (
@@ -136,4 +140,4 @@ export function ConfiguredSettingsSection({
       })}
     </div>
   );
-}
+});

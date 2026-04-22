@@ -60,7 +60,7 @@ export const SETTINGS_STYLES = {
     changedIndicatorDot: "relative inline-flex h-2 w-2 rounded-full bg-amber-500",
     actions: "flex items-center gap-3",
     resetButton:
-      "inline-flex h-9 items-center justify-center rounded-lg px-4 text-[14px] font-medium text-zinc-600 transition-colors hover:bg-zinc-100 hover:text-zinc-900 active:scale-[0.98]",
+      "inline-flex h-9 items-center justify-center rounded-lg px-4 text-[14px] font-medium text-zinc-600 transition-colors hover:bg-zinc-100 hover:text-zinc-900 active:scale-[0.98] disabled:cursor-not-allowed disabled:text-zinc-300 disabled:hover:bg-transparent",
     saveButton:
       "inline-flex h-9 items-center justify-center rounded-lg px-5 text-[14px] font-medium transition-all active:scale-[0.98] shadow-sm",
     saveButtonEnabled: "bg-zinc-900 text-white hover:bg-zinc-800 hover:shadow",

@@ -1,10 +1,11 @@
-import { memo } from "react";
+import { memo, useState } from "react";
 
 import { CheckCircle2, Loader2, RefreshCcw } from "lucide-react";
 
 import { cn } from "../../lib/utils";
 
 import { SETTINGS_STYLES } from "./constants";
+import { SettingsResetConfirmModal } from "./SettingsResetConfirmModal";
 import type { SaveState } from "./types";
 
 interface SettingsFooterProps {
@@ -72,38 +73,52 @@ export const SettingsFooter = memo(function SettingsFooter({
   onReset,
   onSave,
 }: SettingsFooterProps) {
+  const [isResetConfirmOpen, setIsResetConfirmOpen] = useState(false);
+
   return (
-    <div className={SETTINGS_STYLES.footer.root}>
-      <div className={SETTINGS_STYLES.footer.statusWrap}>
-        {renderStatus(saveState, saveError, hasChanges)}
+    <>
+      <div className={SETTINGS_STYLES.footer.root}>
+        <div className={SETTINGS_STYLES.footer.statusWrap}>
+          {renderStatus(saveState, saveError, hasChanges)}
+        </div>
+
+        <div className={SETTINGS_STYLES.footer.actions}>
+          {isLocalRuntime && (
+            <>
+              <button
+                type="button"
+                onClick={() => setIsResetConfirmOpen(true)}
+                disabled={!hasChanges || saveState === "saving"}
+                className={SETTINGS_STYLES.footer.resetButton}
+              >
+                恢复默认
+              </button>
+              <button
+                type="button"
+                onClick={onSave}
+                disabled={!hasChanges || saveState === "saving"}
+                className={cn(
+                  SETTINGS_STYLES.footer.saveButton,
+                  hasChanges && saveState !== "saving"
+                    ? SETTINGS_STYLES.footer.saveButtonEnabled
+                    : SETTINGS_STYLES.footer.saveButtonDisabled,
+                )}
+              >
+                {saveState === "saving" ? "应用中..." : "保存更改"}
+              </button>
+            </>
+          )}
+        </div>
       </div>
 
-      <div className={SETTINGS_STYLES.footer.actions}>
-        {isLocalRuntime && (
-          <>
-            <button
-              type="button"
-              onClick={onReset}
-              className={SETTINGS_STYLES.footer.resetButton}
-            >
-              恢复默认
-            </button>
-            <button
-              type="button"
-              onClick={onSave}
-              disabled={!hasChanges || saveState === "saving"}
-              className={cn(
-                SETTINGS_STYLES.footer.saveButton,
-                hasChanges && saveState !== "saving"
-                  ? SETTINGS_STYLES.footer.saveButtonEnabled
-                  : SETTINGS_STYLES.footer.saveButtonDisabled,
-              )}
-            >
-              {saveState === "saving" ? "应用中..." : "保存更改"}
-            </button>
-          </>
-        )}
-      </div>
-    </div>
+      <SettingsResetConfirmModal
+        open={isResetConfirmOpen}
+        onClose={() => setIsResetConfirmOpen(false)}
+        onConfirm={() => {
+          onReset();
+          setIsResetConfirmOpen(false);
+        }}
+      />
+    </>
   );
 });

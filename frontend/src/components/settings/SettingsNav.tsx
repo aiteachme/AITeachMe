@@ -10,7 +10,6 @@ import type { SectionId, SettingSection } from "./types";
 interface SettingsNavProps {
   activeSection: SectionId;
   onSelect: (id: SectionId) => void;
-  isLocalRuntime: boolean;
   sections: SettingSection[];
 }
 

@@ -2380,7 +2380,7 @@ export function KnowledgeDocsPage() {
 
   if (!hasRenderedMarkdown && (isBuildActive || isWaitingForRequestedBuild || showDocGeneratingState)) {
     return (
-      <div className="relative flex min-h-[100dvh] w-full flex-col overflow-x-hidden bg-transparent px-4 py-16 md:px-8">
+      <div className="relative flex h-[100dvh] w-full overflow-hidden bg-white">
         <BuildView
           isFetching={docMarkdownQuery.isFetching}
           progress={buildProgress}
@@ -2559,6 +2559,7 @@ export function KnowledgeDocsPage() {
                     />
                   ) : showDocGeneratingState ? (
                     <BuildView
+                      className="min-h-[600px] h-[70vh] rounded-xl border border-zinc-100 overflow-hidden"
                       isFetching={docMarkdownQuery.isFetching}
                       progress={buildProgress}
                       statusText={buildPreview?.current_stage_description?.trim() || buildStatusText}
