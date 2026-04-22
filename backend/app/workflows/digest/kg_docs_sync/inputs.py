@@ -4,7 +4,11 @@ from __future__ import annotations
 
 import re
 
-from app.utils.path_helpers import build_merged_knowledge_base_build_path, build_merged_knowledge_base_path
+from sqlmodel import Session
+
+from app.repositories.knowledge.docgen_repo import get_current_published_docs
+from app.shared.infra.database import managed_session
+from app.shared.infra.tools.builtin.markdown_processing import normalize_mermaid_blocks
 
 _HEADING_RE = re.compile(r"^\s*#{1,6}\s+(?P<title>.+?)\s*$")
 
@@ -60,17 +64,25 @@ def extract_doc_chapter_metadatas(markdown: str) -> list[dict[str, object]]:
     return chapters[:60]
 
 
+def _merge_current_doc_markdown(session: Session, subject: str) -> str:
+    docs = get_current_published_docs(session, subject)
+    parts = [
+        normalize_mermaid_blocks(
+            str(doc.markdown_content or doc.content_markdown or "").strip()
+        )
+        for doc in docs
+        if str(doc.markdown_content or doc.content_markdown or "").strip()
+    ]
+    if not parts:
+        return ""
+    return ("\n\n---\n\n".join(parts)).strip()
+
+
 def load_knowledge_doc_markdown(subject: str) -> tuple[str, str]:
-    draft_path = build_merged_knowledge_base_build_path(subject)
-    merged_path = build_merged_knowledge_base_path(subject)
-    if draft_path.exists():
-        draft = draft_path.read_text(encoding="utf-8").strip()
-        if draft:
-            return draft, "draft"
-    if merged_path.exists():
-        merged = merged_path.read_text(encoding="utf-8").strip()
-        if merged:
-            return merged, "published"
+    with managed_session() as session:
+        merged = _merge_current_doc_markdown(session, subject).strip()
+    if merged:
+        return merged, "database"
     return "", "none"
 
 
