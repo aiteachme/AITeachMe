@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { memo, useEffect } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { X } from "lucide-react";
 
@@ -26,7 +26,27 @@ function WeChatIcon({ className }: { className?: string }) {
 /*  Community Modal                                                    */
 /* ------------------------------------------------------------------ */
 
-export function CommunityModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
+const WECHAT_QR_SRC = "/wechat-qr-1.jpg";
+let communityQrPreloadStarted = false;
+
+export function ensureCommunityQrPreloaded() {
+  if (typeof window === "undefined" || communityQrPreloadStarted) {
+    return;
+  }
+
+  communityQrPreloadStarted = true;
+  const image = new Image();
+  image.decoding = "async";
+  image.src = WECHAT_QR_SRC;
+}
+
+export const CommunityModal = memo(function CommunityModal({
+  isOpen,
+  onClose,
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+}) {
   // Close on Escape
   useEffect(() => {
     if (!isOpen) return;
@@ -37,6 +57,10 @@ export function CommunityModal({ isOpen, onClose }: { isOpen: boolean; onClose: 
     return () => document.removeEventListener("keydown", handleKey);
   }, [isOpen, onClose]);
 
+  useEffect(() => {
+    ensureCommunityQrPreloaded();
+  }, []);
+
   return (
     <AnimatePresence>
       {isOpen ? (
@@ -46,18 +70,18 @@ export function CommunityModal({ isOpen, onClose }: { isOpen: boolean; onClose: 
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            transition={{ duration: 0.2 }}
-            className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm"
+            transition={{ duration: 0.14 }}
+            className="absolute inset-0 bg-slate-900/46"
             onClick={onClose}
           />
 
           {/* Dialog */}
           <motion.div
-            initial={{ opacity: 0, scale: 0.96, y: 12 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.96, y: 8 }}
-            transition={{ duration: 0.2, ease: "easeOut" }}
-            className="relative z-10 w-full max-w-[400px] rounded-[28px] bg-white overflow-hidden shadow-none"
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 4 }}
+            transition={{ duration: 0.14, ease: "easeOut" }}
+            className="relative z-10 w-full max-w-[400px] overflow-hidden rounded-[28px] bg-white shadow-[0_12px_40px_-18px_rgba(15,23,42,0.28)] will-change-transform"
           >
             {/* Close Button */}
             <button
@@ -81,8 +105,10 @@ export function CommunityModal({ isOpen, onClose }: { isOpen: boolean; onClose: 
               {/* QR Code Container */}
               <div className="rounded-2xl border border-slate-100 p-2">
                 <img
-                  src="/wechat-qr-1.jpg"
+                  src={WECHAT_QR_SRC}
                   alt="微信交流群二维码"
+                  loading="eager"
+                  decoding="async"
                   className="block rounded-xl"
                   style={{ width: 280, height: 280, objectFit: "contain" }}
                 />
@@ -93,5 +119,5 @@ export function CommunityModal({ isOpen, onClose }: { isOpen: boolean; onClose: 
       ) : null}
     </AnimatePresence>
   );
-}
+});
 

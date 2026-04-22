@@ -31,7 +31,7 @@ import { unwrapOrvalResponse } from "../../lib/unwrapOrvalResponse";
 import { downloadSubjectPackage } from "../../lib/subjectPackage";
 import { cn } from "../../lib/utils";
 import { SubjectDeleteConfirmModal } from "./SubjectDeleteConfirmModal";
-import { CommunityModal } from "./CommunityPanel";
+import { CommunityModal, ensureCommunityQrPreloaded } from "./CommunityPanel";
 
 import { Button } from "../ui/Button";
 
@@ -545,6 +545,8 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
           <button
             type="button"
             onClick={() => setIsCommunityModalOpen(true)}
+            onMouseEnter={ensureCommunityQrPreloaded}
+            onFocus={ensureCommunityQrPreloaded}
             className={cn(
               "flex items-center text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700",
               effectiveCollapsed ? "h-6 w-6 justify-center rounded mx-auto" : "w-full rounded-lg py-2 gap-2.5 px-3",
