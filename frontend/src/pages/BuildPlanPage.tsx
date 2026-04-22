@@ -1424,73 +1424,70 @@ export function BuildPlanPage() {
 
       <div className="relative flex h-full w-full flex-col overflow-hidden bg-transparent">
         <div className="relative z-10 flex h-full w-full flex-col">
+          {!shouldShowBuildView && (
           <div className="flex items-center justify-center pb-2 pt-6">
             <div className="inline-flex items-center gap-2 rounded-full border border-zinc-200/80 bg-white px-3 py-1.5 text-[11px] font-semibold uppercase tracking-widest text-zinc-500 shadow-sm">
               <Sparkles className="h-3 w-3" />
               方案规划
             </div>
           </div>
+          )}
 
         {shouldShowBuildView ? (
-          <div className="flex-1 overflow-y-auto px-4 pb-6 md:px-8 lg:px-16">
-            <div className="mx-auto max-w-[1100px] rounded-[28px] border border-zinc-200/80 bg-white/90 p-5 shadow-[0_28px_70px_-48px_rgba(24,24,27,0.35)] backdrop-blur-sm md:p-6">
-              <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                <div className="space-y-2">
-                  <div className="inline-flex items-center gap-2 rounded-full border border-sky-200 bg-sky-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-widest text-sky-700">
-                    <Sparkles className="h-3 w-3" />
-                    知识构建
-                  </div>
-                  <h2 className="text-xl font-semibold text-zinc-900">
-                    {isBuildFailure ? "本轮构建失败" : canOpenKnowledgeDocs ? "知识文档已就绪" : "知识文档构建中"}
-                  </h2>
-                  <p className="max-w-2xl text-sm leading-6 text-zinc-600">
-                    {isBuildFailure
-                      ? buildMeta?.error_message?.trim() || "构建过程中出现了问题，你可以回到方案规划后重新发起。"
-                      : canOpenKnowledgeDocs
-                        ? "正式知识文档已经可以打开。你也可以先在这里检查章节推进、检索来源和草稿片段。"
-                        : "这里会持续展示材料处理、检索来源、章节推进和草稿片段，不再把构建过程丢到知识文档页里。"}
-                  </p>
+          <div className="flex-1 flex flex-col overflow-hidden">
+            {/* Header bar — slim horizontal strip */}
+            <div className="flex items-center justify-between gap-4 px-8 py-4 border-b border-zinc-100 bg-white shrink-0">
+              <div className="flex items-center gap-4 min-w-0">
+                <div className="inline-flex items-center gap-2 rounded-md bg-zinc-900 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-widest text-white shrink-0">
+                  <Sparkles className="h-3 w-3" />
+                  知识构建
                 </div>
-
-                <div className="flex flex-wrap items-center gap-3">
-                  {canOpenKnowledgeDocs ? (
-                    <button
-                      type="button"
-                      onClick={handleOpenKnowledgeDocs}
-                      className="inline-flex items-center gap-2 rounded-xl bg-zinc-900 px-4 py-2.5 text-sm font-semibold text-white"
-                    >
-                      <BookOpen className="h-4 w-4" />
-                      进入知识文档
-                    </button>
-                  ) : null}
-                  {isBuildActive ? (
-                    <button
-                      type="button"
-                      onClick={handleCancelBuild}
-                      disabled={cancelBuildMutation.isPending}
-                      className="inline-flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-2.5 text-sm font-semibold text-red-700 disabled:opacity-60"
-                    >
-                      {cancelBuildMutation.isPending ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : (
-                        <X className="h-4 w-4" />
-                      )}
-                      终止当前构建
-                    </button>
-                  ) : null}
-                  <button
-                    type="button"
-                    onClick={handleReturnToPlanner}
-                    className="inline-flex items-center gap-2 rounded-xl border border-zinc-200 bg-white px-4 py-2.5 text-sm font-medium text-zinc-600"
-                  >
-                    <RefreshCw className="h-4 w-4" />
-                    返回方案规划
-                  </button>
-                </div>
+                <h2 className="text-[15px] font-semibold text-zinc-900 truncate">
+                  {isBuildFailure ? "本轮构建失败" : canOpenKnowledgeDocs ? "知识文档已就绪" : "知识文档构建中"}
+                </h2>
               </div>
 
-              {knowledgeDocState.isError ? (
-                <div className="mt-5 rounded-2xl border border-red-200 bg-red-50 px-4 py-4 text-sm text-red-700">
+              <div className="flex items-center gap-2 shrink-0">
+                {canOpenKnowledgeDocs ? (
+                  <button
+                    type="button"
+                    onClick={handleOpenKnowledgeDocs}
+                    className="inline-flex items-center gap-2 rounded-lg bg-zinc-900 px-4 py-2 text-sm font-semibold text-white"
+                  >
+                    <BookOpen className="h-4 w-4" />
+                    进入知识文档
+                  </button>
+                ) : null}
+                {isBuildActive ? (
+                  <button
+                    type="button"
+                    onClick={handleCancelBuild}
+                    disabled={cancelBuildMutation.isPending}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-700 disabled:opacity-60"
+                  >
+                    {cancelBuildMutation.isPending ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <X className="h-3.5 w-3.5" />
+                    )}
+                    终止
+                  </button>
+                ) : null}
+                <button
+                  type="button"
+                  onClick={handleReturnToPlanner}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm font-medium text-zinc-600 hover:bg-zinc-50"
+                >
+                  <RefreshCw className="h-3.5 w-3.5" />
+                  返回规划
+                </button>
+              </div>
+            </div>
+
+            {/* BuildView fills remaining space */}
+            {knowledgeDocState.isError ? (
+              <div className="flex-1 overflow-y-auto px-8 py-8">
+                <div className="max-w-xl mx-auto rounded-2xl border border-red-200 bg-red-50 px-5 py-5 text-sm text-red-700">
                   <div className="flex items-start gap-3">
                     <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
                     <div className="space-y-2">
@@ -1507,20 +1504,20 @@ export function BuildPlanPage() {
                     </div>
                   </div>
                 </div>
-              ) : (
-                <BuildView
-                  className="pt-2"
-                  isFetching={knowledgeDocState.isFetching}
-                  progress={buildProgress}
-                  statusText={buildStatusText}
-                  buildPreview={buildPreview}
-                  buildMetrics={buildMetrics}
-                  sourceFiles={buildSourceFiles}
-                  sourceFilesFetching={filesQuery.isFetching}
-                  buildStage={buildStage}
-                />
-              )}
-            </div>
+              </div>
+            ) : (
+              <BuildView
+                className="flex-1"
+                isFetching={knowledgeDocState.isFetching}
+                progress={buildProgress}
+                statusText={buildStatusText}
+                buildPreview={buildPreview}
+                buildMetrics={buildMetrics}
+                sourceFiles={buildSourceFiles}
+                sourceFilesFetching={filesQuery.isFetching}
+                buildStage={buildStage}
+              />
+            )}
           </div>
         ) : null}
 
