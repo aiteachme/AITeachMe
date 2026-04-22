@@ -1,13 +1,11 @@
-"""Minimal LangGraph export for the exam-grade lane.
-
-The production grading flow is still invoked through the exams API. This graph
-exists so LangGraph dev/export references for the examine engine remain valid.
-"""
+"""Stable workflow exports for the exam-grade lane."""
 
 from __future__ import annotations
 
 from typing import TypedDict
 
+from app.models import ExamPaperItem
+from app.workflows.examine.exam_grade.lib import grade_exam_items_with_workflow
 from langgraph.graph import END, StateGraph
 
 
@@ -30,5 +28,14 @@ def _grade_exam_node(state: ExamGradeState) -> ExamGradeState:
         "status": str(state.get("status") or "ready"),
     }
 
+async def run_exam_grade_workflow(
+    *,
+    subject: str,
+    items: list[ExamPaperItem],
+):
+    """Run the production exam grading workflow."""
 
-__all__ = ["ExamGradeState", "build_exam_grade_graph"]
+    return await grade_exam_items_with_workflow(subject=subject, items=items)
+
+
+__all__ = ["ExamGradeState", "build_exam_grade_graph", "run_exam_grade_workflow"]

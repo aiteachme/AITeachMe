@@ -30,6 +30,7 @@ from app.shared.infra.exceptions import AITeachMeError
 from app.utils.time import utcnow
 from app.workflows.examine import (
     ExamQuestionGenerationSpec,
+    run_exam_grade_workflow,
     run_question_build_workflow,
 )
 from app.workflows.profile import schedule_reviews, update_mastery_from_exam
@@ -257,7 +258,7 @@ def _paper_item_response(
         stem=item.stem_snapshot,
         options=json.loads(item.options_snapshot_json) if item.options_snapshot_json else None,
         correct_answer=item.answer_snapshot,
-        explanation=item.explanation_snapshot,
+        explanation=item.feedback_text or item.explanation_snapshot,
         knowledge_unit_links=[
             {
                 "knowledge_unit_id": knowledge_unit_id,
@@ -332,20 +333,18 @@ def _paper_detail(session: Session, paper: ExamPaper) -> ExamPaperDetailResponse
     )
 
 
-def _grade_exam(session: Session, paper: ExamPaper) -> ExamGradeResponse:
+async def _grade_exam(session: Session, paper: ExamPaper) -> ExamGradeResponse:
     items = exams_repo.list_items_by_paper(session, paper.id or 0)
+    decisions = await run_exam_grade_workflow(subject=paper.subject, items=items)
     total_score = 0.0
     score_obtained = 0.0
     now = utcnow()
-    for item in items:
-        expected = " ".join((item.answer_snapshot or "").casefold().split())
-        answer = " ".join((item.answer_content or "").casefold().split())
-        is_correct = bool(answer and (answer == expected or answer in expected or expected in answer))
-        item.is_correct = is_correct
-        item.score_max = item.score
-        item.score_obtained = item.score if is_correct else 0.0
-        item.error_cause_label = None if is_correct else "knowledge_gap"
-        item.feedback_text = "Correct." if is_correct else "Review the linked KnowledgeUnit and try again."
+    for item, decision in zip(items, decisions, strict=False):
+        item.is_correct = decision.is_correct
+        item.score_max = decision.score_max
+        item.score_obtained = decision.score_obtained
+        item.error_cause_label = decision.error_cause_label
+        item.feedback_text = decision.feedback_text
         item.graded_at = now
         item.updated_at = now
         total_score += item.score
@@ -619,4 +618,4 @@ async def submit_exam(
     session.add(paper)
     session.commit()
     session.refresh(paper)
-    return ok_response(_grade_exam(session, paper))
+    return ok_response(await _grade_exam(session, paper))

@@ -7,6 +7,14 @@ from typing import Any
 
 from app.schemas.llm import ChatMessage, SYSTEM, USER
 
+_LATEX_FORMAT_RULES = (
+    "\nMath formatting rules:\n"
+    "- If the stem, correct_answer, or explanation contains mathematical formulas, use valid LaTeX only.\n"
+    "- Inline math must use `$...$`; display math must use `$$...$$`.\n"
+    "- Do not output bare TeX commands without `$` delimiters.\n"
+    "- Do not use `\\(...\\)` or `\\[...\\]`.\n"
+)
+
 SYSTEM_PROMPT_EXAM_QUESTION_BUILD = """
 你是一名严格、资深、重视教学效果的命题老师。
 
@@ -58,8 +66,8 @@ def build_exam_question_messages(
         f"{json.dumps(payload, ensure_ascii=False, indent=2)}"
     )
     return [
-        {"role": SYSTEM, "content": SYSTEM_PROMPT_EXAM_QUESTION_BUILD},
-        {"role": USER, "content": user_prompt_text},
+        {"role": SYSTEM, "content": SYSTEM_PROMPT_EXAM_QUESTION_BUILD + _LATEX_FORMAT_RULES},
+        {"role": USER, "content": user_prompt_text + "\n\n如出现数学公式，必须使用 LaTeX，并用 `$...$` 或 `$$...$$` 包裹。"},
     ]
 
 
@@ -82,6 +90,6 @@ def build_text_exam_messages(
         f"{json.dumps(payload, ensure_ascii=False, indent=2)}"
     )
     return [
-        {"role": SYSTEM, "content": SYSTEM_PROMPT_EXAM_QUESTION_BUILD},
-        {"role": USER, "content": user_prompt_text},
+        {"role": SYSTEM, "content": SYSTEM_PROMPT_EXAM_QUESTION_BUILD + _LATEX_FORMAT_RULES},
+        {"role": USER, "content": user_prompt_text + "\n\n如出现数学公式，必须使用 LaTeX，并用 `$...$` 或 `$$...$$` 包裹。"},
     ]
