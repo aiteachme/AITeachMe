@@ -16,11 +16,7 @@ interface SettingsPanelProps {
   onClose: () => void;
 }
 
-const contentVariants = {
-  initial: { opacity: 0, y: 8 },
-  animate: { opacity: 1, y: 0, transition: { duration: 0.22, ease: "easeOut" as const } },
-  exit: { opacity: 0, y: -4, transition: { duration: 0.12 } },
-};
+
 
 export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
   const [activeSection, setActiveSection] = useState<SectionId>("");
@@ -116,27 +112,21 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
               </div>
 
               <div className={SETTINGS_STYLES.panel.scrollArea}>
-                <AnimatePresence mode="wait">
-                  <motion.div
-                    key={activeSection}
-                    variants={contentVariants}
-                    initial="initial"
-                    animate="animate"
-                    exit="exit"
-                    className={SETTINGS_STYLES.panel.sectionFrame}
-                  >
-                    <ConfiguredSettingsSection
-                      section={activeSectionConfig}
-                      isLocalRuntime={isLocalRuntime}
-                      settingsDraft={settingsDraft}
-                      envDraft={envDraft}
-                      onServerChange={patchServerSetting}
-                      onEnvChange={patchEnvSetting}
-                      loading={isOverviewLoading}
-                      error={overviewError}
-                    />
-                  </motion.div>
-                </AnimatePresence>
+                <div
+                  key={activeSection}
+                  className={SETTINGS_STYLES.panel.sectionFrame}
+                >
+                  <ConfiguredSettingsSection
+                    section={activeSectionConfig}
+                    isLocalRuntime={isLocalRuntime}
+                    settingsDraft={settingsDraft}
+                    envDraft={envDraft}
+                    onServerChange={patchServerSetting}
+                    onEnvChange={patchEnvSetting}
+                    loading={isOverviewLoading}
+                    error={overviewError}
+                  />
+                </div>
               </div>
 
               <SettingsFooter

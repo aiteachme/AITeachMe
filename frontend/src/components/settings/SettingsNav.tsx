@@ -1,3 +1,6 @@
+import { Link2, GitFork, Sparkles, Globe, Server, Activity } from "lucide-react";
+import type { ReactNode } from "react";
+
 import { cn } from "../../lib/utils";
 
 import { SETTINGS_STYLES } from "./constants";
@@ -8,6 +11,20 @@ interface SettingsNavProps {
   onSelect: (id: SectionId) => void;
   isLocalRuntime: boolean;
   sections: SettingSection[];
+}
+
+/** Map section ids coming from the backend to distinct lucide icons. */
+const SECTION_ICON_MAP: Record<string, ReactNode> = {
+  connection: <Link2 className="h-4 w-4" />,
+  models: <GitFork className="h-4 w-4" />,
+  learning: <Sparkles className="h-4 w-4" />,
+  search: <Globe className="h-4 w-4" />,
+  ops: <Server className="h-4 w-4" />,
+  observability: <Activity className="h-4 w-4" />,
+};
+
+function getSectionIcon(sectionId: string): ReactNode {
+  return SECTION_ICON_MAP[sectionId] ?? <Server className="h-4 w-4" />;
 }
 
 export function SettingsNav({
@@ -43,7 +60,7 @@ export function SettingsNav({
                     : SETTINGS_STYLES.nav.itemIconIdle,
                 )}
               >
-                <span className={SETTINGS_STYLES.nav.itemIconSize}>•</span>
+                {getSectionIcon(section.id)}
               </span>
               <span className={SETTINGS_STYLES.nav.itemLabel}>{section.label}</span>
             </button>
