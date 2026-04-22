@@ -9,9 +9,12 @@ from sqlmodel import Session, select
 
 from app.shared.infra.settings import get_settings
 from app.shared.infra.subject import (
-    build_subject_index_ref,
+    build_enabled_binding,
+    build_subject_index_ref_for_subject,
+    get_subject_embedding_binding,
+    set_subject_embedding_binding,
 )
-from app.models import RawFile, RetrievalChunk
+from app.models import RawFile, RetrievalChunk, Subject
 from app.utils.time import utcnow
 
 logger = structlog.get_logger()
@@ -301,6 +304,44 @@ def clear_chunk_vector_metadata(
     return len(chunks)
 
 
+def _sync_subject_vector_binding(
+    session: Session,
+    *,
+    subject: str,
+    embedding_model: str | None,
+    embedding_dim: int,
+) -> None:
+    if not subject or not embedding_model or embedding_dim <= 0:
+        return
+
+    subject_row = session.exec(select(Subject).where(Subject.slug == subject)).first()
+    if subject_row is None:
+        raise RuntimeError(f"Subject `{subject}` not found while syncing vector binding.")
+
+    expected_ref = build_subject_index_ref_for_subject(subject_row)
+    binding = get_subject_embedding_binding(subject_row)
+    if (
+        binding is not None
+        and binding.mode.value == "enabled"
+        and binding.embedding_model == embedding_model
+        and binding.embedding_dim == embedding_dim
+        and binding.vector_table == expected_ref
+    ):
+        return
+
+    set_subject_embedding_binding(
+        subject_row,
+        build_enabled_binding(
+            subject_slug=subject,
+            owner_user_id=subject_row.user_id,
+            embedding_model=embedding_model,
+            embedding_dim=embedding_dim,
+        ),
+    )
+    subject_row.updated_at = utcnow()
+    session.add(subject_row)
+
+
 def bulk_insert_embeddings(
     session: Session,
     *,
@@ -318,6 +359,15 @@ def bulk_insert_embeddings(
             "chunk_ids and embeddings must have the same length. "
             f"Got {len(chunk_ids)} chunk_ids and {len(embeddings)} embeddings."
         )
+    embedding_dim = len(embeddings[0]) if embeddings else 0
+    if embedding_dim <= 0:
+        raise ValueError("Embeddings must not be empty.")
+    for embedding in embeddings[1:]:
+        if len(embedding) != embedding_dim:
+            raise ValueError(
+                "All embeddings must share the same dimension. "
+                f"Expected {embedding_dim}, got {len(embedding)}."
+            )
 
     statement = select(RetrievalChunk).where(
         RetrievalChunk.subject == subject,
@@ -347,18 +397,29 @@ def bulk_insert_embeddings(
         return
 
     upsert_chunks(subject, indexed_chunks)
+    resolved_embedding_model = embedding_model or get_settings().normalized_embedding_model
+    subject_row = session.exec(select(Subject).where(Subject.slug == subject)).first()
+    if subject_row is None:
+        raise RuntimeError(f"Subject `{subject}` not found while writing embeddings.")
+
+    _sync_subject_vector_binding(
+        session,
+        subject=subject,
+        embedding_model=resolved_embedding_model,
+        embedding_dim=embedding_dim,
+    )
     update_chunk_vector_metadata(
         session,
         subject=subject,
         chunk_ids=[chunk.chunk_id for chunk in indexed_chunks],
-        embedding_model=embedding_model or get_settings().normalized_embedding_model,
-        vector_ref=build_subject_index_ref(subject),
+        embedding_model=resolved_embedding_model,
+        vector_ref=build_subject_index_ref_for_subject(subject_row),
     )
     logger.info(
         "bulk_insert_embeddings_completed",
         subject=subject,
         chunk_count=len(indexed_chunks),
-        embedding_dim=len(embeddings[0]) if embeddings else 0,
+        embedding_dim=embedding_dim,
         backend="llamaindex",
     )
 

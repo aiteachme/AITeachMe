@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
-EMBEDDING_DIM_BY_MODEL: dict[str, int] = {
+KNOWN_EMBEDDING_DIMENSIONS: dict[str, int] = {
     "text-embedding-v4": 1024,
     "text-embedding-v3": 1536,
     "text-embedding-v2": 1536,
@@ -511,7 +511,9 @@ def get_llm_provider_model_defaults(provider: str | None) -> dict[str, Any]:
     candidate = LLM_PROVIDER_MODEL_DEFAULTS.get(normalized)
     if candidate is None:
         candidate = LLM_PROVIDER_MODEL_DEFAULTS["openai_compatible"]
-    return dict(candidate)
+    resolved = dict(candidate)
+    resolved.setdefault("embedding_dim", None)
+    return resolved
 
 
 def get_llm_api_version() -> str | None:
@@ -551,6 +553,28 @@ def llm_provider_requires_api_key(
     if is_local_llm_base_url(base_url):
         return False
     return True
+
+
+def resolve_embedding_dimension(
+    model: str | None,
+    *,
+    configured_dim: int | None = None,
+) -> int:
+    """Resolve one embedding dimension from explicit config plus known hints."""
+
+    if configured_dim is not None:
+        normalized_dim = int(configured_dim)
+        if normalized_dim > 0:
+            return normalized_dim
+
+    normalized_model = (model or "").strip()
+    if not normalized_model:
+        return 0
+
+    return KNOWN_EMBEDDING_DIMENSIONS.get(
+        normalized_model,
+        DEFAULT_EMBEDDING_DIM,
+    )
 
 
 def split_csv_names(value: str | None) -> list[str]:
@@ -714,7 +738,7 @@ __all__ = [
     "DEFAULT_RETRIEVER_PROFILES",
     "DEFAULT_RETRIEVERS",
     "DOCGEN_RETRIEVERS",
-    "EMBEDDING_DIM_BY_MODEL",
+    "KNOWN_EMBEDDING_DIMENSIONS",
     "RETRIEVER_PROFILES",
     "ZH_MATH_RETRIEVERS",
     "ZH_EDU_RETRIEVERS",
@@ -730,6 +754,7 @@ __all__ = [
     "normalize_retriever_name",
     "resolve_litellm_provider_name",
     "resolve_runtime_llm_provider",
+    "resolve_embedding_dimension",
     "split_provider_model_name",
     "split_csv_names",
 ]
