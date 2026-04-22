@@ -1,11 +1,9 @@
 import { memo, useEffect } from "react";
-import { AnimatePresence, motion } from "framer-motion";
 import { X } from "lucide-react";
 
 /* ------------------------------------------------------------------ */
 /*  Inline brand icons                                                 */
 /* ------------------------------------------------------------------ */
-
 
 function WeChatIcon({ className }: { className?: string }) {
   return (
@@ -47,7 +45,6 @@ export const CommunityModal = memo(function CommunityModal({
   isOpen: boolean;
   onClose: () => void;
 }) {
-  // Close on Escape
   useEffect(() => {
     if (!isOpen) return;
     const handleKey = (e: KeyboardEvent) => {
@@ -61,63 +58,47 @@ export const CommunityModal = memo(function CommunityModal({
     ensureCommunityQrPreloaded();
   }, []);
 
+  if (!isOpen) {
+    return null;
+  }
+
   return (
-    <AnimatePresence>
-      {isOpen ? (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-          {/* Backdrop */}
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.18 }}
-            className="absolute inset-0 bg-black/40 backdrop-blur-sm transition-opacity"
-            onClick={onClose}
-          />
+    <div className="fixed inset-0 z-[120] flex items-center justify-center p-4">
+      <div
+        className="absolute inset-0 modal-backdrop"
+        onClick={onClose}
+      />
 
-          {/* Dialog */}
-          <motion.div
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 4 }}
-            transition={{ duration: 0.16, ease: "easeOut" }}
-            className="relative z-10 w-full max-w-[400px] overflow-hidden rounded-[28px] bg-white shadow-[0_24px_60px_-15px_rgba(0,0,0,0.1)] ring-1 ring-zinc-200/50 will-change-transform"
-          >
-            {/* Close Button */}
-            <button
-              type="button"
-              onClick={onClose}
-              className="absolute right-4 top-4 z-20 flex h-8 w-8 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600"
-            >
-              <X className="h-5 w-5" />
-            </button>
+      <div className="relative z-10 w-full max-w-[400px] overflow-hidden rounded-[28px] bg-white shadow-[0_16px_40px_rgba(15,23,42,0.12)] ring-1 ring-zinc-200/70">
+        <button
+          type="button"
+          onClick={onClose}
+          className="absolute right-4 top-4 z-20 flex h-8 w-8 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600"
+        >
+          <X className="h-5 w-5" />
+        </button>
 
-            {/* Content */}
-            <div className="flex flex-col items-center px-8 pb-10 pt-12">
-              <div className="mb-6 flex flex-col items-center">
-                <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-[#07C160]/10 text-[#07C160]">
-                  <WeChatIcon className="h-8 w-8" />
-                </div>
-                <h2 className="text-xl font-bold tracking-tight text-slate-800">微信交流群</h2>
-                <p className="mt-2 text-[15px] text-slate-500">扫码加入交流群</p>
-              </div>
-
-              {/* QR Code Container */}
-              <div className="rounded-2xl border border-slate-100 p-2">
-                <img
-                  src={WECHAT_QR_SRC}
-                  alt="微信交流群二维码"
-                  loading="eager"
-                  decoding="async"
-                  className="block rounded-xl"
-                  style={{ width: 280, height: 280, objectFit: "contain" }}
-                />
-              </div>
+        <div className="flex flex-col items-center px-8 pb-10 pt-12">
+          <div className="mb-6 flex flex-col items-center">
+            <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-[#07C160]/10 text-[#07C160]">
+              <WeChatIcon className="h-8 w-8" />
             </div>
-          </motion.div>
+            <h2 className="text-xl font-bold tracking-tight text-slate-800">微信交流群</h2>
+            <p className="mt-2 text-[15px] text-slate-500">扫码加入交流群</p>
+          </div>
+
+          <div className="rounded-2xl border border-slate-100 p-2">
+            <img
+              src={WECHAT_QR_SRC}
+              alt="微信群二维码"
+              loading="eager"
+              decoding="async"
+              className="block rounded-xl"
+              style={{ width: 280, height: 280, objectFit: "contain" }}
+            />
+          </div>
         </div>
-      ) : null}
-    </AnimatePresence>
+      </div>
+    </div>
   );
 });
-

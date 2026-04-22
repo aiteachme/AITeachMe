@@ -1,7 +1,7 @@
 export const SETTINGS_STYLES = {
   panel: {
     root: "fixed inset-0 z-[100]",
-    backdrop: "absolute inset-0 bg-black/26",
+    backdrop: "absolute inset-0 modal-backdrop modal-backdrop-strong",
     viewport: "pointer-events-none absolute inset-0 flex items-center justify-center p-4 sm:p-6",
     dialog:
       "pointer-events-auto flex h-[85vh] w-full max-w-[1024px] overflow-hidden rounded-2xl bg-white shadow-[0_12px_28px_rgba(0,0,0,0.08)] ring-1 ring-zinc-200/70",

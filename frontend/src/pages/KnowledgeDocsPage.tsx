@@ -2470,7 +2470,7 @@ export function KnowledgeDocsPage() {
           {activeDrawer && (
             <button
               onClick={closeDrawer}
-              className="fixed inset-0 z-[76] bg-slate-900/25 backdrop-blur-[1px]"
+              className="fixed inset-0 z-[76] bg-slate-900/24"
               aria-label="关闭抽屉遮罩"
             />
           )}

@@ -89,7 +89,10 @@ function RenameSubjectModal({
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center">
-      <div className="absolute inset-0 bg-black/45" onClick={onClose} />
+      <div
+        className="absolute inset-0 modal-backdrop"
+        onClick={onClose}
+      />
       <div className="relative z-10 w-[380px] max-w-[90vw] rounded-2xl border border-slate-200 bg-white shadow-[0_18px_48px_-24px_rgba(15,23,42,0.35)]">
         <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
           <h3 className="text-sm font-bold text-slate-900">重命名学科</h3>
@@ -270,7 +273,7 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
       </button>
 
       {isMobileOpen ? (
-        <div className="fixed inset-0 z-30 bg-black/28 lg:hidden" onClick={() => setIsMobileOpen(false)} />
+        <div className="fixed inset-0 z-30 modal-backdrop lg:hidden" onClick={() => setIsMobileOpen(false)} />
       ) : null}
 
       <aside

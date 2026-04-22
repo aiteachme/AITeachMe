@@ -396,7 +396,7 @@ export function SubjectAiAssistantProvider({ subjectId, children }: SubjectAiAss
           {/* Sessions Drawer (Overlay) */}
           <div
             className={cn(
-              "absolute inset-0 z-20 bg-slate-900/10 backdrop-blur-[1px] transition-opacity duration-300",
+              "absolute inset-0 z-20 bg-slate-900/14 transition-opacity duration-300",
               isSessionDrawerOpen ? "pointer-events-auto opacity-100" : "pointer-events-none opacity-0"
             )}
             onClick={() => setIsSessionDrawerOpen(false)}

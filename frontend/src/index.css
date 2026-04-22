@@ -215,6 +215,28 @@
   contain-intrinsic-size: 76px;
 }
 
+.modal-backdrop {
+  background: rgba(15, 23, 42, 0.18);
+}
+
+.modal-backdrop-strong {
+  background: rgba(15, 23, 42, 0.22);
+}
+
+@supports ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
+  .modal-backdrop {
+    background: rgba(248, 250, 252, 0.42);
+    -webkit-backdrop-filter: blur(10px) saturate(1.05);
+    backdrop-filter: blur(10px) saturate(1.05);
+  }
+
+  .modal-backdrop-strong {
+    background: rgba(244, 246, 248, 0.5);
+    -webkit-backdrop-filter: blur(14px) saturate(1.08);
+    backdrop-filter: blur(14px) saturate(1.08);
+  }
+}
+
 /* ----------- Build view scroll ----------- */
 .build-scroll {
   scrollbar-width: thin;
