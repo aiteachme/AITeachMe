@@ -13,6 +13,7 @@ from app.shared.infra.env_support import get_env
 from app.shared.infra.runtime import is_cloud_mode
 from app.shared.infra.settings import get_settings
 from app.shared.infra.subject.settings import (
+    build_subject_index_ref_for_subject,
     SubjectEmbeddingBinding,
     SubjectEmbeddingMode,
     get_subject_embedding_binding,
@@ -187,6 +188,9 @@ def get_subject_vector_capability(
     binding = get_subject_embedding_binding(subject)
     runtime = get_runtime_embedding_config()
     status = build_subject_vector_status(binding, runtime=runtime)
+    expected_ref = build_subject_index_ref_for_subject(subject)
+    if status.vector_table is None and binding is not None:
+        status.vector_table = expected_ref
 
     if binding is None or binding.mode == SubjectEmbeddingMode.DISABLED:
         return SubjectVectorCapability(binding=binding, status=status, queryable=False)
@@ -198,27 +202,28 @@ def get_subject_vector_capability(
         return SubjectVectorCapability(binding=binding, status=status, queryable=False)
     if runtime.dimension_explicit and binding.embedding_dim != runtime.embedding_dim:
         return SubjectVectorCapability(binding=binding, status=status, queryable=False)
-    if not binding.vector_table:
-        return SubjectVectorCapability(binding=binding, status=status, queryable=False)
+    if not binding.vector_table or binding.vector_table != expected_ref:
+        return SubjectVectorCapability(
+            binding=binding,
+            status=_build_table_conflict_status(binding, reason="vector_table_missing"),
+            queryable=False,
+        )
+    from app.shared.infra.database import get_vector_table_dim, vector_table_exists
 
-    should_check_backing_store = is_cloud_mode() or not binding.vector_table.startswith("llamaindex://")
-    if should_check_backing_store:
-        from app.shared.infra.database import get_vector_table_dim, vector_table_exists
-
-        connection = session.connection()
-        if not vector_table_exists(connection, binding.vector_table):
-            return SubjectVectorCapability(
-                binding=binding,
-                status=_build_table_conflict_status(binding, reason="vector_table_missing"),
-                queryable=False,
-            )
-        table_dim = get_vector_table_dim(connection, binding.vector_table)
-        if table_dim is not None and table_dim != binding.embedding_dim:
-            return SubjectVectorCapability(
-                binding=binding,
-                status=_build_table_conflict_status(binding, reason="vector_table_dimension_mismatch"),
-                queryable=False,
-            )
+    connection = session.connection()
+    if not vector_table_exists(connection, expected_ref):
+        return SubjectVectorCapability(
+            binding=binding,
+            status=_build_table_conflict_status(binding, reason="vector_table_missing"),
+            queryable=False,
+        )
+    table_dim = get_vector_table_dim(connection, expected_ref)
+    if table_dim is not None and table_dim != binding.embedding_dim:
+        return SubjectVectorCapability(
+            binding=binding,
+            status=_build_table_conflict_status(binding, reason="vector_table_dimension_mismatch"),
+            queryable=False,
+        )
 
     return SubjectVectorCapability(binding=binding, status=status, queryable=True)
 

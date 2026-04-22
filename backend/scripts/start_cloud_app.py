@@ -29,16 +29,13 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--host", default="0.0.0.0")
     parser.add_argument("--port", default="8000")
     parser.add_argument("--reset-db", action="store_true")
-    parser.add_argument("--allow-vector-rebuild", action="store_true")
     return parser
 
 
-def _run_bootstrap(*, reset_db: bool, allow_vector_rebuild: bool) -> None:
+def _run_bootstrap(*, reset_db: bool) -> None:
     command = [sys.executable, str(BACKEND_ROOT / "scripts" / "bootstrap_cloud_db.py")]
     if reset_db:
         command.append("--reset-db")
-    if allow_vector_rebuild:
-        command.append("--allow-vector-rebuild")
     subprocess.run(command, cwd=BACKEND_ROOT, check=True)
 
 
@@ -48,7 +45,6 @@ def main(argv: list[str] | None = None) -> int:
     if is_cloud_mode():
         _run_bootstrap(
             reset_db=bool(args.reset_db),
-            allow_vector_rebuild=bool(args.allow_vector_rebuild),
         )
 
     uvicorn_cmd = [

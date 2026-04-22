@@ -28,15 +28,10 @@ from app.shared.infra.env_support import (
     describe_project_settings_source,
     get_env,
 )
-from app.shared.infra.exceptions import VectorExtensionUnavailableError
 from app.shared.infra.runtime import get_backend_root, is_cloud_mode, is_local_mode
 from app.shared.infra.runtime import get_sqlite_db_path
 from app.shared.infra.subject import (
-    build_postgres_subject_index_data_table_name,
-    build_subject_index_ref,
-    build_subject_vector_table_name,
     extract_postgres_subject_index_data_table_name,
-    get_postgres_vector_ref,
 )
 from app.models.build_planner import ConfirmedBuildPlan
 from app.models.chat import ChatMessage, ChatSession
@@ -54,17 +49,7 @@ from app.models.user import User
 
 logger = structlog.get_logger()
 
-try:
-    import sqlite_vec
-except ImportError as exc:
-    sqlite_vec = None
-    _SQLITE_VEC_IMPORT_ERROR = str(exc)
-else:
-    _SQLITE_VEC_IMPORT_ERROR = None
-
 _engine = None
-_vec_ready: bool | None = None
-_vec_error: str | None = None
 _SCHEMA_MODELS = (
     User,
     EmailVerificationCode,
@@ -91,7 +76,7 @@ _EXPECTED_SCHEMA_COLUMNS = {
     for table in _SCHEMA_TABLES
 }
 _ALLOWED_SQLITE_RUNTIME_TABLES = {"sqlite_sequence"}
-_ALLOWED_SQLITE_RUNTIME_PREFIXES = ("chunk_embeddings_",)
+_ALLOWED_SQLITE_RUNTIME_PREFIXES: tuple[str, ...] = ()
 _REMOVED_POSTGRES_TABLES = (
     "unit_dependency",
     "theme_tree_node",
@@ -107,78 +92,6 @@ _REMOVED_POSTGRES_COLUMNS = {
 }
 _REMOVED_SQLITE_TABLES = _REMOVED_POSTGRES_TABLES
 _REMOVED_SQLITE_COLUMNS = _REMOVED_POSTGRES_COLUMNS
-
-
-def _set_vec_status(ready: bool, error: str | None = None) -> None:
-    global _vec_ready, _vec_error
-    _vec_ready = ready
-    _vec_error = error
-
-
-def is_vec_ready() -> bool:
-    """Return whether vector extension is available for the current runtime."""
-
-    if is_postgres():
-        return True  # pgvector 在 init_db 时已确认
-    return bool(_vec_ready)
-
-
-def require_vec_ready() -> None:
-    """Raise when vector features are unavailable."""
-
-    if not is_vec_ready():
-        raise VectorExtensionUnavailableError(_vec_error or "")
-
-
-def get_vec_status() -> tuple[bool | None, str | None]:
-    """Return sqlite-vec availability and the last error message."""
-
-    return _vec_ready, _vec_error
-
-
-def reset_runtime_state() -> None:
-    """Reset cached engine/runtime flags for local restart scenarios."""
-
-    global _engine, _vec_ready, _vec_error
-    if _engine is not None:
-        _engine.dispose()
-    _engine = None
-    _vec_ready = None
-    _vec_error = None
-
-
-def _load_vec_extension(dbapi_conn) -> None:
-    if sqlite_vec is None:
-        _set_vec_status(False, _SQLITE_VEC_IMPORT_ERROR)
-        logger.warning("sqlite_vec_unavailable", error=_SQLITE_VEC_IMPORT_ERROR)
-        return
-
-    can_toggle_extensions = hasattr(dbapi_conn, "enable_load_extension")
-    try:
-        if can_toggle_extensions:
-            dbapi_conn.enable_load_extension(True)
-
-        sqlite_vec.load(dbapi_conn)
-        _set_vec_status(True, None)
-        logger.info(
-            "sqlite_vec_loaded",
-            supports_enable_load_extension=can_toggle_extensions,
-        )
-    except Exception as exc:
-        _set_vec_status(False, str(exc))
-        logger.warning(
-            "sqlite_vec_unavailable",
-            supports_enable_load_extension=can_toggle_extensions,
-            error=str(exc),
-        )
-    finally:
-        if can_toggle_extensions:
-            try:
-                dbapi_conn.enable_load_extension(False)
-            except Exception as exc:
-                logger.warning("sqlite_extension_disable_failed", error=str(exc))
-
-
 def _get_db_path():
     return get_sqlite_db_path()
 
@@ -369,7 +282,6 @@ def _build_sqlite_engine() -> sa.Engine:
         cursor = dbapi_conn.cursor()
         cursor.execute("PRAGMA foreign_keys = ON")
         cursor.close()
-        _load_vec_extension(dbapi_conn)
 
     logger.info("database_engine_created", dialect="sqlite", db_path=str(db_path))
     return engine
@@ -431,35 +343,10 @@ def quote_sqlite_identifier(identifier: str) -> str:
 
 
 def _normalize_postgres_vector_target(table_name: str) -> str:
-    if table_name == get_postgres_vector_ref():
-        return table_name
     resolved_llamaindex_table = extract_postgres_subject_index_data_table_name(table_name)
     if resolved_llamaindex_table:
         return resolved_llamaindex_table
-    if table_name.startswith("chunk_embeddings_"):
-        return get_postgres_vector_ref()
     return table_name
-
-
-def _postgres_column_exists(
-    connection: sa.Connection,
-    *,
-    table_name: str,
-    column_name: str,
-) -> bool:
-    row = connection.execute(
-        sa.text(
-            """
-            SELECT 1
-            FROM information_schema.columns
-            WHERE table_schema = current_schema()
-              AND table_name = :table_name
-              AND column_name = :column_name
-            """
-        ),
-        {"table_name": table_name, "column_name": column_name},
-    ).first()
-    return row is not None
 
 
 def _postgres_table_exists(connection: sa.Connection, table_name: str) -> bool:
@@ -477,12 +364,7 @@ def _postgres_table_exists(connection: sa.Connection, table_name: str) -> bool:
     return row is not None
 
 
-def _postgres_vector_dim(
-    connection: sa.Connection,
-    *,
-    table_name: str,
-    column_name: str,
-) -> int | None:
+def _postgres_vector_dim(connection: sa.Connection, *, table_name: str, column_name: str) -> int | None:
     row = connection.execute(
         sa.text(
             """
@@ -508,61 +390,6 @@ def _postgres_vector_dim(
     if match is None:
         return None
     return int(match.group(1))
-
-
-def _ensure_postgres_embedding_column(
-    connection: sa.Connection,
-    *,
-    embedding_dim: int,
-    reset: bool = False,
-    allow_rebuild: bool = False,
-) -> None:
-    current_dim = _postgres_vector_dim(
-        connection,
-        table_name="retrieval_chunk",
-        column_name="embedding",
-    )
-
-    if current_dim is None:
-        connection.execute(
-            sa.text(
-                f"ALTER TABLE retrieval_chunk "
-                f"ADD COLUMN IF NOT EXISTS embedding vector({embedding_dim})"
-            )
-        )
-    elif current_dim != embedding_dim:
-        if not (reset or allow_rebuild):
-            raise RuntimeError(
-                "PostgreSQL vector column dimension mismatch. "
-                f"expected={embedding_dim}, actual={current_dim}. "
-                "Use `python scripts/prepare_cloud_db.py --allow-vector-rebuild` "
-                "(or set ALLOW_CLOUD_VECTOR_REBUILD=true) only after confirming "
-                "the existing vectors can be rebuilt."
-            )
-        connection.execute(sa.text("DROP INDEX IF EXISTS idx_retrieval_chunk_embedding"))
-        connection.execute(sa.text("ALTER TABLE retrieval_chunk DROP COLUMN IF EXISTS embedding"))
-        connection.execute(
-            sa.text(
-                f"ALTER TABLE retrieval_chunk "
-                f"ADD COLUMN embedding vector({embedding_dim})"
-            )
-        )
-    elif reset:
-        logger.info(
-            "postgres_embedding_column_reset_skipped",
-            reason="dimension_unchanged",
-            embedding_dim=embedding_dim,
-        )
-
-    connection.execute(
-        sa.text(
-            "CREATE INDEX IF NOT EXISTS idx_retrieval_chunk_embedding "
-            "ON retrieval_chunk "
-            "USING hnsw (embedding vector_cosine_ops)"
-        )
-    )
-
-
 def _postgres_extension_exists(connection: sa.Connection, extension_name: str) -> bool:
     row = connection.execute(
         sa.text("SELECT 1 FROM pg_extension WHERE extname = :extension_name"),
@@ -657,7 +484,6 @@ def assert_postgres_runtime_schema_ready(
 
 def prepare_postgres_runtime_schema(
     *,
-    allow_vector_rebuild: bool = False,
     prepare_llamaindex: bool = True,
 ) -> None:
     """Prepare cloud-only runtime database objects that are outside metadata."""
@@ -686,7 +512,6 @@ def prepare_postgres_runtime_schema(
 
     logger.info(
         "postgres_runtime_schema_prepared",
-        allow_vector_rebuild=allow_vector_rebuild,
         prepare_llamaindex=prepare_llamaindex,
     )
 
@@ -717,12 +542,11 @@ def _drop_postgres_removed_schema(connection: sa.Connection) -> None:
         if not _postgres_table_exists(connection, table_name):
             continue
         for column_name in column_names:
-            if _postgres_column_exists(connection, table_name=table_name, column_name=column_name):
-                connection.execute(
-                    sa.text(
-                        f"ALTER TABLE {table_name} DROP COLUMN IF EXISTS {column_name}"
-                    )
+            connection.execute(
+                sa.text(
+                    f"ALTER TABLE {table_name} DROP COLUMN IF EXISTS {column_name}"
                 )
+            )
 
     for table_name in _REMOVED_POSTGRES_TABLES:
         connection.execute(sa.text(f"DROP TABLE IF EXISTS {table_name} CASCADE"))
@@ -733,12 +557,6 @@ def vector_table_exists(connection: sa.Connection, table_name: str) -> bool:
 
     if connection.dialect.name == "postgresql":
         normalized = _normalize_postgres_vector_target(table_name)
-        if normalized == get_postgres_vector_ref():
-            return _postgres_table_exists(connection, "retrieval_chunk") and _postgres_column_exists(
-                connection,
-                table_name="retrieval_chunk",
-                column_name="embedding",
-            )
         return _postgres_table_exists(connection, normalized)
 
     row = connection.execute(
@@ -753,13 +571,11 @@ def get_vector_table_dim(connection: sa.Connection, table_name: str) -> int | No
 
     if connection.dialect.name == "postgresql":
         normalized = _normalize_postgres_vector_target(table_name)
-        if normalized == get_postgres_vector_ref():
-            return _postgres_vector_dim(
-                connection,
-                table_name="retrieval_chunk",
-                column_name="embedding",
-            )
-        return None
+        return _postgres_vector_dim(
+            connection,
+            table_name=normalized,
+            column_name="embedding",
+        )
 
     row = connection.execute(
         sa.text("SELECT sql FROM sqlite_master WHERE name = :table_name"),
@@ -772,87 +588,6 @@ def get_vector_table_dim(connection: sa.Connection, table_name: str) -> int | No
     if match is None:
         return None
     return int(match.group(1))
-
-
-def ensure_subject_vec_table(engine: sa.Engine, *, subject: str, embedding_dim: int) -> str:
-    """Ensure one subject-scoped sqlite-vec table exists with the requested dimension."""
-
-    table_name = (
-        build_subject_index_ref(subject)
-        if engine.dialect.name == "postgresql"
-        else build_subject_vector_table_name(subject)
-    )
-    if engine.dialect.name == "postgresql":
-        from app.shared.infra.search.llamaindex_index import prepare_postgres_store
-
-        prepare_postgres_store(subject=subject, embedding_dim=embedding_dim)
-        return table_name
-
-    if not is_vec_ready():
-        logger.warning(
-            "database_vec_table_unavailable",
-            subject=subject,
-            table_name=table_name,
-            embedding_dim=embedding_dim,
-            vec_error=_vec_error,
-        )
-        return table_name
-
-    quoted_table_name = quote_sqlite_identifier(table_name)
-    with engine.begin() as connection:
-        existing_dim = get_vector_table_dim(connection, table_name)
-        if existing_dim is not None and existing_dim != embedding_dim:
-            connection.execute(sa.text(f"DROP TABLE IF EXISTS {quoted_table_name}"))
-        connection.execute(
-            sa.text(
-                f"CREATE VIRTUAL TABLE IF NOT EXISTS {quoted_table_name} "
-                f"USING vec0(chunk_id INTEGER PRIMARY KEY, embedding FLOAT[{embedding_dim}])"
-            )
-        )
-    return table_name
-
-
-def reset_subject_vec_table(engine: sa.Engine, *, subject: str, embedding_dim: int) -> str:
-    """Drop and recreate the subject-scoped vector table."""
-
-    table_name = (
-        build_subject_index_ref(subject)
-        if engine.dialect.name == "postgresql"
-        else build_subject_vector_table_name(subject)
-    )
-    if engine.dialect.name == "postgresql":
-        actual_table_name = build_postgres_subject_index_data_table_name(subject)
-        with engine.begin() as connection:
-            if not re.fullmatch(r"[a-z_][a-z0-9_]*", actual_table_name):
-                raise RuntimeError(f"Unsafe PGVector table name: {actual_table_name}")
-            connection.execute(
-                sa.text(f"DROP TABLE IF EXISTS public.{actual_table_name}")
-            )
-        from app.shared.infra.search.llamaindex_index import prepare_postgres_store
-
-        prepare_postgres_store(subject=subject, embedding_dim=embedding_dim)
-        return table_name
-
-    if not is_vec_ready():
-        logger.warning(
-            "database_vec_table_reset_skipped",
-            subject=subject,
-            table_name=table_name,
-            embedding_dim=embedding_dim,
-            vec_error=_vec_error,
-        )
-        return table_name
-
-    quoted_table_name = quote_sqlite_identifier(table_name)
-    with engine.begin() as connection:
-        connection.execute(sa.text(f"DROP TABLE IF EXISTS {quoted_table_name}"))
-        connection.execute(
-            sa.text(
-                f"CREATE VIRTUAL TABLE {quoted_table_name} "
-                f"USING vec0(chunk_id INTEGER PRIMARY KEY, embedding FLOAT[{embedding_dim}])"
-            )
-        )
-    return table_name
 
 
 def _ensure_default_local_user(engine) -> None:
@@ -932,7 +667,6 @@ def _init_local_sqlite_db(settings) -> None:
         embedding_model=get_settings().normalized_embedding_model,
         embedding_dim=get_settings().embedding_dim,
         table_count=len(_SCHEMA_TABLES),
-        vec_ready=is_vec_ready(),
     )
 
 

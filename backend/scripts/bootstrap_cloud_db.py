@@ -8,7 +8,6 @@ Behavior:
 - empty / normal Alembic-managed DB: run upgrade -> prepare -> check
 - legacy DB without alembic_version but with existing app tables: require
   ALLOW_CLOUD_DB_RESET=true before wiping and rebuilding the current database
-- vector dimension changes still require ALLOW_CLOUD_VECTOR_REBUILD=true
 """
 
 from __future__ import annotations
@@ -44,11 +43,6 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         "--reset-db",
         action="store_true",
         help="Allow wiping a legacy dirty database before rerunning migrations.",
-    )
-    parser.add_argument(
-        "--allow-vector-rebuild",
-        action="store_true",
-        help="Allow rebuilding retrieval_chunk.embedding when the configured dimension changes.",
     )
     return parser
 
@@ -102,8 +96,7 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         _run_alembic_upgrade_head()
-        prepare_args = ["--allow-vector-rebuild"] if args.allow_vector_rebuild else []
-        _run_script("prepare_cloud_db.py", *prepare_args)
+        _run_script("prepare_cloud_db.py")
         _run_script("check_cloud_db.py")
     except subprocess.CalledProcessError as exc:
         print(
@@ -119,7 +112,6 @@ def main(argv: list[str] | None = None) -> int:
     print(
         "cloud database bootstrap completed "
         f"(reset_db={str(bool(args.reset_db)).lower()}, "
-        f"allow_vector_rebuild={str(bool(args.allow_vector_rebuild)).lower()}, "
         f"{ALLOW_RESET_ENV}={str(get_env_bool(ALLOW_RESET_ENV, False)).lower()})"
     )
     return 0

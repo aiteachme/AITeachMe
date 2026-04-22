@@ -7,7 +7,6 @@ from sqlmodel import Session
 
 from app.models.subject import Subject
 from app.repositories.subject_repo import save_subject
-from app.shared.infra.runtime import is_cloud_mode
 from app.schemas.knowledge import (
     KnowledgeBuildPrecheckConflictData,
     SubjectVectorStatusResponse,
@@ -18,6 +17,7 @@ from app.shared.infra.database import (
 )
 from app.shared.infra.exceptions import KnowledgeBuildPrecheckConflictError
 from app.shared.infra.subject.settings import (
+    build_subject_index_ref_for_subject,
     SubjectEmbeddingBinding,
     SubjectEmbeddingMode,
     build_disabled_binding,
@@ -43,7 +43,6 @@ logger = structlog.get_logger()
 
 _USER_DISABLED_REASON = "user_selected_disable_after_precheck"
 _PRECHECK_DETAIL_MAP = SUBJECT_VECTOR_PRECHECK_DETAIL_MAP
-_LLAMAINDEX_REF_PREFIX = "llamaindex://"
 _RUNTIME_UNAVAILABLE_REASONS = {
     "embedding_not_configured",
     "embedding_api_key_missing",
@@ -51,12 +50,6 @@ _RUNTIME_UNAVAILABLE_REASONS = {
     "vector_extension_unavailable",
     "llamaindex_postgres_unavailable",
 }
-
-
-def _is_llamaindex_index_ref(value: str | None) -> bool:
-    return bool(value and value.startswith(_LLAMAINDEX_REF_PREFIX))
-
-
 def _build_precheck_conflict(
     *,
     reason: str,
@@ -108,7 +101,8 @@ def inspect_subject_build_precheck(
             runtime=runtime,
             requires_full_rebuild=True,
         )
-    if not binding.vector_table:
+    expected_ref = build_subject_index_ref_for_subject(subject)
+    if not binding.vector_table or binding.vector_table != expected_ref:
         return _build_precheck_conflict(
             reason="vector_table_missing",
             binding=binding,
@@ -130,29 +124,27 @@ def inspect_subject_build_precheck(
             requires_full_rebuild=True,
         )
 
-    should_check_backing_store = is_cloud_mode() or not _is_llamaindex_index_ref(binding.vector_table)
-    if should_check_backing_store:
-        connection = session.connection()
-        if not vector_table_exists(connection, binding.vector_table):
-            return _build_precheck_conflict(
-                reason="vector_table_missing",
-                binding=binding,
-                runtime=runtime,
-                requires_full_rebuild=True,
-            )
+    connection = session.connection()
+    if not vector_table_exists(connection, expected_ref):
+        return _build_precheck_conflict(
+            reason="vector_table_missing",
+            binding=binding,
+            runtime=runtime,
+            requires_full_rebuild=True,
+        )
 
-        table_dim = get_vector_table_dim(connection, binding.vector_table)
-        if (
-            table_dim is not None
-            and binding.embedding_dim is not None
-            and table_dim != binding.embedding_dim
-        ):
-            return _build_precheck_conflict(
-                reason="vector_table_dimension_mismatch",
-                binding=binding,
-                runtime=runtime,
-                requires_full_rebuild=True,
-            )
+    table_dim = get_vector_table_dim(connection, expected_ref)
+    if (
+        table_dim is not None
+        and binding.embedding_dim is not None
+        and table_dim != binding.embedding_dim
+    ):
+        return _build_precheck_conflict(
+            reason="vector_table_dimension_mismatch",
+            binding=binding,
+            runtime=runtime,
+            requires_full_rebuild=True,
+        )
 
     return None
 
@@ -227,6 +219,7 @@ def resolve_subject_build_vector_status(
             subject,
             build_disabled_binding(
                 subject_slug=subject.slug,
+                owner_user_id=subject.user_id,
                 disabled_reason=_USER_DISABLED_REASON,
                 previous_binding=get_subject_embedding_binding(subject),
             ),
@@ -249,6 +242,7 @@ def resolve_subject_build_vector_status(
         subject,
         build_enabled_binding(
             subject_slug=subject.slug,
+            owner_user_id=subject.user_id,
             embedding_model=runtime.embedding_model,
             embedding_dim=runtime.embedding_dim,
         ),

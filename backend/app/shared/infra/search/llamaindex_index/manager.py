@@ -27,12 +27,12 @@ from sqlalchemy.engine.url import make_url
 from app.shared.infra.settings import get_settings
 from app.shared.infra.env_support import get_env
 from app.shared.infra.runtime import is_cloud_mode
-from app.shared.infra.storage import get_content_store, run_store_sync
+from app.shared.infra.storage import get_content_store, resolve_subject_storage_scope, run_store_sync
 from app.shared.infra.subject.settings import (
     build_postgres_subject_index_name,
-    build_subject_index_ref,
+    build_subject_index_ref_for_subject,
     extract_postgres_subject_index_data_table_name,
-    extract_postgres_subject_index_name,
+    get_subject_embedding_binding,
 )
 
 logger = structlog.get_logger(__name__)
@@ -76,7 +76,9 @@ def _subject_lock(subject: str) -> RLock:
 
 
 def _local_index_prefix(subject: str) -> str:
-    return f"{subject.strip()}/rag_index/"
+    normalized_subject = subject.strip()
+    scope = resolve_subject_storage_scope(normalized_subject)
+    return f"{scope.namespace}/rag_index/"
 
 
 def _local_vector_store_key(subject: str) -> str:
@@ -149,36 +151,42 @@ def _postgres_identifier_is_safe(identifier: str | None) -> bool:
     return bool(identifier and re.fullmatch(r"[a-z_][a-z0-9_]*", identifier))
 
 
-def _subject_binding_snapshot(subject: str):
+def _subject_record_snapshot(subject: str):
     from sqlmodel import Session, select
 
     from app.models.subject import Subject
     from app.shared.infra.database import get_engine
-    from app.shared.infra.subject.settings import get_subject_embedding_binding
 
     normalized_subject = subject.strip()
     if not normalized_subject:
         return None
 
     with Session(get_engine()) as session:
-        subject_row = session.exec(
+        return session.exec(
             select(Subject).where(Subject.slug == normalized_subject)
         ).first()
-        if subject_row is None:
-            return None
-        return get_subject_embedding_binding(subject_row)
+
+
+def _subject_binding_snapshot(subject: str):
+    subject_row = _subject_record_snapshot(subject)
+    if subject_row is None:
+        return None
+    return get_subject_embedding_binding(subject_row)
 
 
 def _subject_store_spec(
     subject: str,
     *,
     embedding_dim: int | None = None,
-    use_active_binding: bool = True,
 ) -> tuple[str, int]:
-    binding = _subject_binding_snapshot(subject)
-    index_name = build_postgres_subject_index_name(subject)
-    if use_active_binding and binding is not None and binding.vector_table:
-        index_name = extract_postgres_subject_index_name(binding.vector_table) or index_name
+    subject_row = _subject_record_snapshot(subject)
+    if subject_row is None:
+        raise RuntimeError(f"Subject '{subject.strip()}' not found for vector-store resolution.")
+    binding = get_subject_embedding_binding(subject_row)
+    index_name = build_postgres_subject_index_name(
+        subject_row.slug,
+        owner_user_id=subject_row.user_id,
+    )
     resolved_dim = (
         embedding_dim
         or (binding.embedding_dim if binding is not None else None)
@@ -195,7 +203,6 @@ def _load_postgres_store(
     *,
     subject: str,
     embedding_dim: int | None = None,
-    use_active_binding: bool = True,
 ):
     try:
         from llama_index.vector_stores.postgres import PGVectorStore
@@ -207,7 +214,6 @@ def _load_postgres_store(
     index_name, resolved_dim = _subject_store_spec(
         subject,
         embedding_dim=embedding_dim,
-        use_active_binding=use_active_binding,
     )
     sync_url = make_url(_sync_database_url()).set(drivername="postgresql+psycopg2")
     async_url = sync_url.set(drivername="postgresql+asyncpg")
@@ -256,7 +262,6 @@ def prepare_postgres_store(
     _load_postgres_store(
         subject=subject,
         embedding_dim=resolved_dim,
-        use_active_binding=False,
     )
     logger.info(
         "llamaindex_postgres_store_prepared",
@@ -270,13 +275,11 @@ def _load_store(
     subject: str,
     *,
     embedding_dim: int | None = None,
-    use_active_binding: bool = True,
 ):
     if is_cloud_mode():
         return _load_postgres_store(
             subject=subject,
             embedding_dim=embedding_dim,
-            use_active_binding=use_active_binding,
         )
     return _load_local_store(subject)
 
@@ -325,7 +328,6 @@ def upsert_chunks(subject: str, chunks: list[IndexedChunk]) -> None:
         vector_store = _load_store(
             normalized_subject,
             embedding_dim=embedding_dim,
-            use_active_binding=False,
         )
         _delete_node_ids(
             vector_store,
@@ -385,30 +387,10 @@ def clear_subject_index(subject: str) -> None:
 
     with _subject_lock(normalized_subject):
         if is_cloud_mode():
-            target_refs: list[str] = []
-            binding = _subject_binding_snapshot(normalized_subject)
-            if binding is not None and binding.vector_table:
-                target_refs.append(binding.vector_table)
-            subject_scoped_ref = build_subject_index_ref(normalized_subject)
-            if subject_scoped_ref not in target_refs:
-                target_refs.append(subject_scoped_ref)
-
-            from app.shared.infra.database import get_engine, vector_table_exists
-
-            with get_engine().connect() as connection:
-                for vector_ref in target_refs:
-                    if not vector_table_exists(connection, vector_ref):
-                        continue
-                    vector_store = _load_postgres_store(
-                        subject=normalized_subject,
-                        use_active_binding=(
-                            binding is not None
-                            and binding.vector_table == vector_ref
-                        ),
-                    )
-                    delete_nodes = getattr(vector_store, "delete_nodes", None)
-                    if callable(delete_nodes):
-                        delete_nodes(filters=_subject_filter(normalized_subject))
+            vector_store = _load_postgres_store(subject=normalized_subject)
+            delete_nodes = getattr(vector_store, "delete_nodes", None)
+            if callable(delete_nodes):
+                delete_nodes(filters=_subject_filter(normalized_subject))
         else:
             cs = get_content_store()
             run_store_sync(cs.delete_prefix, _local_index_prefix(normalized_subject), default=0)
@@ -425,11 +407,12 @@ def subject_index_exists(subject: str) -> bool:
     if is_cloud_mode():
         from app.shared.infra.database import get_engine, vector_table_exists
 
-        binding = _subject_binding_snapshot(normalized_subject)
-        if binding is None or not binding.vector_table:
+        subject_row = _subject_record_snapshot(normalized_subject)
+        if subject_row is None:
             return False
+        expected_ref = build_subject_index_ref_for_subject(subject_row)
         with get_engine().connect() as connection:
-            return vector_table_exists(connection, binding.vector_table)
+            return vector_table_exists(connection, expected_ref)
     cs = get_content_store()
     return bool(run_store_sync(cs.exists, _local_vector_store_key(normalized_subject), default=False))
 
@@ -444,14 +427,15 @@ def count_indexed_chunks(subject: str, chunk_ids: list[int]) -> int:
     if is_cloud_mode():
         from app.shared.infra.database import get_engine, vector_table_exists
 
-        binding = _subject_binding_snapshot(normalized_subject)
-        if binding is None or not binding.vector_table:
+        subject_row = _subject_record_snapshot(normalized_subject)
+        if subject_row is None:
             return 0
-        data_table = extract_postgres_subject_index_data_table_name(binding.vector_table)
+        vector_ref = build_subject_index_ref_for_subject(subject_row)
+        data_table = extract_postgres_subject_index_data_table_name(vector_ref)
         if not _postgres_identifier_is_safe(data_table):
             return 0
         with get_engine().connect() as connection:
-            if not vector_table_exists(connection, binding.vector_table):
+            if not vector_table_exists(connection, vector_ref):
                 return 0
             params = {f"node_id_{index}": node_id for index, node_id in enumerate(sorted(normalized_ids))}
             placeholders = ", ".join(f":{name}" for name in params)

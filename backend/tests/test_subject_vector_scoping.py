@@ -4,13 +4,13 @@ import asyncio
 from types import SimpleNamespace
 
 
-def test_cloud_subject_index_ref_is_subject_scoped(monkeypatch) -> None:
+def test_cloud_subject_index_ref_is_user_subject_scoped(monkeypatch) -> None:
     from app.shared.infra.subject import settings as subject_settings
 
     monkeypatch.setattr(subject_settings, "is_cloud_mode", lambda: True)
 
-    math_ref = subject_settings.build_subject_index_ref("math")
-    physics_ref = subject_settings.build_subject_index_ref("physics")
+    math_ref = subject_settings.build_subject_index_ref("math", owner_user_id="user_a")
+    physics_ref = subject_settings.build_subject_index_ref("math", owner_user_id="user_b")
 
     assert math_ref != physics_ref
     assert math_ref.startswith("llamaindex://postgres/atm_llamaindex_rag_")
@@ -19,6 +19,16 @@ def test_cloud_subject_index_ref_is_subject_scoped(monkeypatch) -> None:
         subject_settings.extract_postgres_subject_index_data_table_name(math_ref)
         == f"data_{subject_settings.extract_postgres_subject_index_name(math_ref)}"
     )
+
+
+def test_local_subject_index_ref_is_user_subject_scoped(monkeypatch) -> None:
+    from app.shared.infra.subject import settings as subject_settings
+
+    monkeypatch.setattr(subject_settings, "is_cloud_mode", lambda: False)
+
+    ref = subject_settings.build_subject_index_ref("math", owner_user_id="user_a")
+
+    assert ref == "llamaindex://local/users/user_a/subjects/math/rag_index"
 
 
 def test_upsert_chunks_cloud_uses_subject_scoped_store_and_actual_dimension(
@@ -39,12 +49,11 @@ def test_upsert_chunks_cloud_uses_subject_scoped_store_and_actual_dimension(
     monkeypatch.setattr(
         manager,
         "_load_store",
-        lambda subject, *, embedding_dim=None, use_active_binding=True: (
+        lambda subject, *, embedding_dim=None: (
             captured.update(
                 {
                     "subject": subject,
                     "embedding_dim": embedding_dim,
-                    "use_active_binding": use_active_binding,
                 }
             )
             or FakeStore()
@@ -77,7 +86,6 @@ def test_upsert_chunks_cloud_uses_subject_scoped_store_and_actual_dimension(
 
     assert captured["subject"] == "math"
     assert captured["embedding_dim"] == 4
-    assert captured["use_active_binding"] is False
     assert captured["node_count"] == 2
 
 
@@ -106,12 +114,11 @@ def test_query_subject_index_cloud_uses_query_vector_dimension(monkeypatch) -> N
     monkeypatch.setattr(
         manager,
         "_load_store",
-        lambda subject, *, embedding_dim=None, use_active_binding=True: (
+        lambda subject, *, embedding_dim=None: (
             captured.update(
                 {
                     "subject": subject,
                     "embedding_dim": embedding_dim,
-                    "use_active_binding": use_active_binding,
                 }
             )
             or FakeStore()
@@ -122,7 +129,6 @@ def test_query_subject_index_cloud_uses_query_vector_dimension(monkeypatch) -> N
 
     assert captured["subject"] == "math"
     assert captured["embedding_dim"] == 3
-    assert captured["use_active_binding"] is True
     assert captured["query_embedding"] == [0.1, 0.2, 0.3]
     assert captured["top_k"] == 2
     assert len(hits) == 1

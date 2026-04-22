@@ -10,7 +10,7 @@ from sqlmodel import Session, select
 from app.shared.infra.settings import get_settings
 from app.shared.infra.subject import (
     build_enabled_binding,
-    build_subject_index_ref,
+    build_subject_index_ref_for_subject,
     get_subject_embedding_binding,
     set_subject_embedding_binding,
 )
@@ -316,9 +316,9 @@ def _sync_subject_vector_binding(
 
     subject_row = session.exec(select(Subject).where(Subject.slug == subject)).first()
     if subject_row is None:
-        return
+        raise RuntimeError(f"Subject `{subject}` not found while syncing vector binding.")
 
-    expected_ref = build_subject_index_ref(subject)
+    expected_ref = build_subject_index_ref_for_subject(subject_row)
     binding = get_subject_embedding_binding(subject_row)
     if (
         binding is not None
@@ -333,6 +333,7 @@ def _sync_subject_vector_binding(
         subject_row,
         build_enabled_binding(
             subject_slug=subject,
+            owner_user_id=subject_row.user_id,
             embedding_model=embedding_model,
             embedding_dim=embedding_dim,
         ),
@@ -397,6 +398,10 @@ def bulk_insert_embeddings(
 
     upsert_chunks(subject, indexed_chunks)
     resolved_embedding_model = embedding_model or get_settings().normalized_embedding_model
+    subject_row = session.exec(select(Subject).where(Subject.slug == subject)).first()
+    if subject_row is None:
+        raise RuntimeError(f"Subject `{subject}` not found while writing embeddings.")
+
     _sync_subject_vector_binding(
         session,
         subject=subject,
@@ -408,7 +413,7 @@ def bulk_insert_embeddings(
         subject=subject,
         chunk_ids=[chunk.chunk_id for chunk in indexed_chunks],
         embedding_model=resolved_embedding_model,
-        vector_ref=build_subject_index_ref(subject),
+        vector_ref=build_subject_index_ref_for_subject(subject_row),
     )
     logger.info(
         "bulk_insert_embeddings_completed",

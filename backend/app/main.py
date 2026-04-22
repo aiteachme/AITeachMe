@@ -84,7 +84,7 @@ def _log_infra_diagnostics(settings) -> None:
     """启动时输出基础设施诊断信息，方便在 Render Logs 里排查。"""
 
     import os
-    from app.shared.infra.database import get_engine, is_postgres, is_sqlite, is_vec_ready
+    from app.shared.infra.database import get_engine, is_postgres, is_sqlite
     from app.workflows.digest.common.runtime_config import (
         get_teaching_runtime_settings_source,
     )
@@ -122,7 +122,7 @@ def _log_infra_diagnostics(settings) -> None:
         lines.append(f"    Database               : {engine.url.database or 'unknown'}")
         lines.append(f"    pgvector               : ready")
     elif is_sqlite():
-        lines.append(f"    sqlite-vec             : {'ready' if is_vec_ready() else 'NOT available'}")
+        lines.append("    Subject Vector Index   : local subject-scoped store")
 
     lines.append("")
     lines.append("  [STORAGE]")
