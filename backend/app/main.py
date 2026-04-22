@@ -5,7 +5,9 @@ from __future__ import annotations
 from contextlib import asynccontextmanager
 import json
 import threading
+from time import perf_counter
 from typing import AsyncGenerator
+import uuid
 
 import structlog
 from fastapi import FastAPI, Request
@@ -15,7 +17,11 @@ from fastapi.responses import JSONResponse
 from app.shared.infra.settings import get_settings
 from app.shared.infra.database import init_db
 from app.shared.infra.env_support import get_env, get_env_bool
-from app.shared.infra.logger import configure_logging
+from app.shared.infra.logger import (
+    bind_logging_context,
+    clear_logging_context,
+    configure_logging,
+)
 from app.shared.infra.runtime import get_runtime_data_dir
 from app.shared.infra.runtime import (
     get_app_version,
@@ -216,7 +222,10 @@ def _log_infra_diagnostics(settings) -> None:
     lines.append("=" * 60)
     lines.append("")
 
-    print("\n".join(lines), flush=True)
+    logger.info(
+        "startup_infra_diagnostics",
+        diagnostics="\n".join(lines),
+    )
 
 
 @asynccontextmanager
@@ -260,6 +269,47 @@ def _build_app_metadata() -> dict[str, object]:
 
 
 def _register_middlewares(app: FastAPI) -> None:
+    @app.middleware("http")
+    async def request_logging_middleware(request: Request, call_next):
+        clear_logging_context()
+
+        request_id = (request.headers.get("x-request-id") or "").strip() or uuid.uuid4().hex
+        client_ip = request.client.host if request.client is not None else None
+        bind_logging_context(
+            request_id=request_id,
+            method=request.method,
+            path=request.url.path,
+            client_ip=client_ip,
+        )
+
+        access_logger = structlog.get_logger("app.access")
+        started_at = perf_counter()
+        try:
+            response = await call_next(request)
+            elapsed_ms = int((perf_counter() - started_at) * 1000)
+            response.headers.setdefault("x-request-id", request_id)
+
+            if request.url.path == "/api/health":
+                access_logger.debug(
+                    "request_completed",
+                    status_code=response.status_code,
+                    elapsed_ms=elapsed_ms,
+                )
+            else:
+                log_method = access_logger.warning if response.status_code >= 500 else access_logger.info
+                log_method(
+                    "request_completed",
+                    status_code=response.status_code,
+                    elapsed_ms=elapsed_ms,
+                )
+            return response
+        except Exception:
+            elapsed_ms = int((perf_counter() - started_at) * 1000)
+            access_logger.exception("request_failed", elapsed_ms=elapsed_ms)
+            raise
+        finally:
+            clear_logging_context()
+
     # 从环境变量读取允许的跨域来源（逗号分隔），或使用默认白名单
     default_origins = [
         "https://aiteachme.cn",
