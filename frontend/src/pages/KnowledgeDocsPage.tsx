@@ -2378,7 +2378,7 @@ export function KnowledgeDocsPage() {
     </div>
   );
 
-  if (isBuildActive || isWaitingForRequestedBuild || showDocGeneratingState) {
+  if (!hasRenderedMarkdown && (isBuildActive || isWaitingForRequestedBuild || showDocGeneratingState)) {
     return (
       <div className="relative flex min-h-[100dvh] w-full flex-col overflow-x-hidden bg-transparent px-4 py-16 md:px-8">
         <BuildView

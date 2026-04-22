@@ -13,7 +13,6 @@ import {
   MessageSquareText,
   PanelLeft,
   Plus,
-  Sparkles,
   Trash2,
   X,
   ChevronRight,

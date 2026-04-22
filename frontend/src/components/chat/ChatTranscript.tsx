@@ -1,4 +1,4 @@
-import { AlertCircle, Sparkles, UserRound } from "lucide-react";
+import { AlertCircle, UserRound } from "lucide-react";
 import { type ChatSessionMessage } from "../../hooks/useChatSession";
 import { cn } from "../../lib/utils";
 import { ChatCitationList } from "./ChatCitationList";

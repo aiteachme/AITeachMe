@@ -364,7 +364,7 @@ export function resolveDocBuildStatusText(
   }
   if (build.status === "cancelled") return "本轮知识构建已取消";
   if (build.status === "completed") {
-    return hasLiveVersion ? "最新知识文档已发布" : "构建已完成";
+    return hasLiveVersion ? "最新知识文档已发布" : "构建已完成，正在同步正式文档";
   }
   const stage = build.stage?.trim();
   if (stage && DOC_BUILD_STAGE_TEXT[stage]) return DOC_BUILD_STAGE_TEXT[stage];
@@ -378,9 +378,10 @@ export function resolveDocBuildStatusText(
 export function resolveDocBuildProgressFloor(
   build: DocGenBuildStatus | null | undefined,
   hasDraftVersion: boolean,
+  hasLiveVersion = false,
 ): number {
   if (!build || build.status === "idle") return hasDraftVersion ? 62 : 0;
-  if (build.status === "completed") return 100;
+  if (build.status === "completed") return hasLiveVersion ? 100 : 97;
   const stage = build.stage?.trim();
   if (stage && DOC_BUILD_STAGE_PROGRESS[stage] !== undefined) return DOC_BUILD_STAGE_PROGRESS[stage];
   if (hasDraftVersion || build.draft_available) return 62;
