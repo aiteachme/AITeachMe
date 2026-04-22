@@ -20,7 +20,7 @@ from app.shared.infra.settings.support import (
     upgrade_legacy_settings_payload,
 )
 from app.shared.infra.settings.settings import Settings
-from app.workflows.support.system.catalog import ENV_ENTRY_KEY_MAP
+from app.workflows.support.system.catalog import ENV_ENTRY_KEY_MAP, SETTINGS_CATALOG
 
 SAMPLE_ENV_FILES = (
     ".env.sample",
@@ -253,6 +253,17 @@ def test_user_env_sample_vars_are_all_exposed_in_settings_catalog() -> None:
     )
 
     assert sorted(sample_names - set(ENV_ENTRY_KEY_MAP.values())) == []
+
+
+def test_settings_catalog_does_not_repeat_entry_keys() -> None:
+    keys = [
+        entry.key
+        for section in SETTINGS_CATALOG
+        for entry in section.entries
+    ]
+    duplicates = sorted({key for key in keys if keys.count(key) > 1})
+
+    assert duplicates == []
 
 
 def test_minimal_env_sample_keeps_local_bootstrap_keys() -> None:

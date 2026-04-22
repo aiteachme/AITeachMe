@@ -361,30 +361,23 @@ SETTINGS_CATALOG: tuple[SettingsCatalogSection, ...] = (
                 ui_order=20,
             ),
             setting(
-                "models.rerank",
-                "Rerank 模型",
-                description="可选。配置后会对本地检索结果再做一次重排序，提高相关性。",
-                ui_group="本地资料检索",
-                ui_order=30,
-            ),
-            setting(
                 "rag.rerank_top_k",
                 "Rerank 保留条数",
                 description="启用重排序模型后，最终保留的候选条数。",
                 ui_group="本地资料检索",
-                ui_order=40,
+                ui_order=30,
             ),
             setting(
                 "local_rag.priority",
                 "本地资料优先",
                 ui_group="本地资料检索",
-                ui_order=50,
+                ui_order=40,
             ),
             setting(
                 "local_rag.min_results",
                 "本地命中阈值",
                 ui_group="本地资料检索",
-                ui_order=60,
+                ui_order=50,
             ),
             env(
                 "search.tavily_api_key",
