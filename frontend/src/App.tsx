@@ -6,7 +6,7 @@ import { ToastProvider } from "./components/ui/Toast";
 import { HomePage } from "./pages/HomePage";
 import { LearningSpacesPage } from "./pages/LearningSpacesPage";
 import { BuildPlanPage } from "./pages/BuildPlanPage";
-import { ExamsPage } from "./pages/ExamsPage";
+import { ExamPaperPage, ExamsPage } from "./pages/ExamsPage";
 import { ProfilePage } from "./pages/ProfilePage";
 import { KnowledgeDocsPage } from "./pages/KnowledgeDocsPage";
 import { KnowledgeDebugPage } from "./pages/KnowledgeDebugPage";
@@ -45,6 +45,7 @@ function App() {
                 <Route key={routeId} path={`subject/:subjectId/${routeId}`} element={element} />
               ),
             )}
+            <Route path="subject/:subjectId/exams/:examPaperId" element={<ExamPaperPage />} />
             {Object.entries(SUBJECT_ROUTE_REDIRECTS).map(([aliasPath, targetRoute]) => (
               <Route
                 key={aliasPath}

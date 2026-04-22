@@ -323,6 +323,7 @@ def publish_staged_knowledge_docs(
         latest_version_no = docgen_repo.get_latest_version_no(session, subject)
     resolved_version_no = max(int(version_no or 0), latest_version_no + 1)
     package_key = f"{subject}:docgen:v{resolved_version_no:04d}"
+    published_at = utcnow()
 
     clear_current_published_knowledge_docs_files(subject)
 
@@ -364,7 +365,7 @@ def publish_staged_knowledge_docs(
                 build_session_id=build_session_id,
                 is_current=True,
                 status="published",
-                published_at=requested_at,
+                published_at=published_at,
                 digest_mode=str(chapter.get("digest_mode") or "") or None,
                 manifest_json=json.dumps(_build_chapter_manifest(chapter), ensure_ascii=False),
                 source_scope_json=json.dumps(_build_source_scope(chapter), ensure_ascii=False),
@@ -383,10 +384,25 @@ def publish_staged_knowledge_docs(
         current_manifest_key = _build_current_docgen_manifest_key(subject_scope.namespace)
         run_store_sync(cs.write_json_raw, versioned_manifest_key, docgen_artifacts)
         run_store_sync(cs.write_json_raw, current_manifest_key, docgen_artifacts)
-    run_store_sync(cs.delete_prefix, subject_scope.knowledge_build_prefix(), default=0)
+
+    with managed_session() as session:
+        current_docs = docgen_repo.get_docs_by_subject(session, subject, only_current=True)
+        for doc in current_docs:
+            doc.is_current = False
+            doc.status = "superseded"
+            doc.superseded_at = published_at
+            doc.updated_at = published_at
+            session.add(doc)
+        for doc in docs_to_create:
+            session.add(doc)
+        session.commit()
+        created_docs: list[KnowledgeDoc] = []
+        for doc in docs_to_create:
+            session.refresh(doc)
+            created_docs.append(doc)
 
     manifest = KnowledgeDocsManifest(
-        updated_at=requested_at,
+        updated_at=published_at,
         version_no=resolved_version_no,
         source_file_ids=sorted(
             {
@@ -408,7 +424,10 @@ def publish_staged_knowledge_docs(
     if docgen_artifacts is not None:
         manifest.docgen_manifest_key = _build_versioned_docgen_manifest_key(subject_scope.namespace, resolved_version_no)
         manifest.merge_review_report = dict(docgen_artifacts.get("merge_review_report") or {})
+    # Do not mark the build completed until live docs are committed and staging is cleared,
+    # otherwise `/knowledge/docs` can briefly report 100% while no readable document is available.
     write_knowledge_manifest(subject, manifest)
+    run_store_sync(cs.delete_prefix, subject_scope.knowledge_build_prefix(), default=0)
     update_knowledge_build_status(
         subject,
         requested_at=requested_at,
@@ -420,21 +439,5 @@ def publish_staged_knowledge_docs(
         staged_chapter_count=len(sorted_chapters),
         published_doc_count=len(docs_to_create),
     )
-
-    with managed_session() as session:
-        current_docs = docgen_repo.get_docs_by_subject(session, subject, only_current=True)
-        for doc in current_docs:
-            doc.is_current = False
-            doc.status = "superseded"
-            doc.superseded_at = requested_at
-            doc.updated_at = requested_at
-            session.add(doc)
-        for doc in docs_to_create:
-            session.add(doc)
-        session.commit()
-        created_docs: list[KnowledgeDoc] = []
-        for doc in docs_to_create:
-            session.refresh(doc)
-            created_docs.append(doc)
 
     return [doc.id for doc in created_docs if doc.id is not None]

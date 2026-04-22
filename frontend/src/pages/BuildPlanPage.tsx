@@ -677,6 +677,7 @@ export function BuildPlanPage() {
     () => new URLSearchParams(location.search).get("requested_at"),
     [location.search],
   );
+  const requestedAtMs = useMemo(() => parseIsoTimestamp(requestedAt), [requestedAt]);
   const chatEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const plannerSessionIdRef = useRef<string | null>(null);
@@ -721,22 +722,27 @@ export function BuildPlanPage() {
       const data = query.state.data;
       const build = data?.build;
       const status = build?.status ?? null;
+      const liveMarkdown = data?.markdown ?? "";
+      const hasLiveDocMarkdown = Boolean(data?.exists && liveMarkdown.trim().length > 0);
+      const targetRequestedAtMs = requestedAtMs ?? parseIsoTimestamp(build?.requested_at ?? null);
+      const updatedAtMs = parseIsoTimestamp(data?.updated_at ?? null);
+      const hasRequestedLiveDoc =
+        hasLiveDocMarkdown &&
+        (targetRequestedAtMs === null || (updatedAtMs !== null && updatedAtMs >= targetRequestedAtMs));
 
       if (status && ACTIVE_DOC_BUILD_STATUSES.has(status)) {
         return 2500;
       }
-      if (status === "failed" || status === "cancelled" || status === "completed") {
+      if (status === "completed") {
+        return hasRequestedLiveDoc ? false : 1200;
+      }
+      if (status === "failed" || status === "cancelled") {
         return false;
       }
-
-      const targetRequestedAtMs = parseIsoTimestamp(requestedAt) ?? parseIsoTimestamp(build?.requested_at ?? null);
-      if (targetRequestedAtMs === null) {
+      if (!status || status === "idle") {
         return false;
       }
-
-      const updatedAtMs = parseIsoTimestamp(data?.updated_at ?? null);
-      const isReady = updatedAtMs !== null && updatedAtMs >= targetRequestedAtMs;
-      return isReady ? false : 2500;
+      return hasRequestedLiveDoc ? false : 2500;
     },
   });
 
@@ -766,7 +772,6 @@ export function BuildPlanPage() {
   const draftMarkdown = knowledgeDocState.data?.draft_markdown ?? "";
   const hasLiveDocMarkdown = Boolean(knowledgeDocState.data?.exists && liveMarkdown.trim().length > 0);
   const hasDraftDocMarkdown = Boolean(draftMarkdown.trim().length > 0);
-  const requestedAtMs = useMemo(() => parseIsoTimestamp(requestedAt), [requestedAt]);
   const buildRequestedAtMs = useMemo(
     () => parseIsoTimestamp(buildMeta?.requested_at ?? null),
     [buildMeta?.requested_at],
@@ -780,13 +785,12 @@ export function BuildPlanPage() {
   const isBuildFailure = buildStatus === "failed" || buildStatus === "cancelled";
   const isRequestedBuildReady =
     targetRequestedAtMs !== null
-      ? publishedUpdatedAtMs !== null && publishedUpdatedAtMs >= targetRequestedAtMs
-      : buildStatus === "completed" && hasLiveDocMarkdown;
+      ? hasLiveDocMarkdown && publishedUpdatedAtMs !== null && publishedUpdatedAtMs >= targetRequestedAtMs
+      : hasLiveDocMarkdown;
   const isWaitingForRequestedBuild =
-    targetRequestedAtMs !== null &&
-    !isRequestedBuildReady &&
     !isBuildFailure &&
-    (isBuildActive || hasDraftDocMarkdown);
+    !isRequestedBuildReady &&
+    (isBuildActive || buildStatus === "completed" || hasDraftDocMarkdown || (targetRequestedAtMs !== null && !hasLiveDocMarkdown));
   const shouldShowBuildView = false;
   const buildStage = buildMeta?.stage ?? null;
   const { buildProgress, buildStatusText } = useDocBuildProgress({
@@ -1413,7 +1417,7 @@ export function BuildPlanPage() {
     : "直接输入学习目标，也可以先上传资料再一起规划";
 
   const canOpenKnowledgeDocs =
-    shouldShowBuildView && (isRequestedBuildReady || buildStatus === "completed" || hasLiveDocMarkdown);
+    shouldShowBuildView && (isRequestedBuildReady || hasLiveDocMarkdown || hasDraftDocMarkdown);
 
   return (
     <>

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Check, CheckCircle2, FileText, Loader2, Activity, PlayCircle, FileSearch, Code2 } from "lucide-react";
 
@@ -61,6 +61,7 @@ export function BuildView({
 }: Props) {
   const [activeTab, setActiveTab] = useState<string>("preview");
   const [selectedPreviewChapter, setSelectedPreviewChapter] = useState<number | null>(null);
+  const previewFallbackAppliedRef = useRef(false);
 
   const timelineSteps = useBuildTimelineSteps(buildStage);
   const chapters = buildPreview?.chapter_progress ?? [];
@@ -69,6 +70,7 @@ export function BuildView({
 
   const draftExcerpt = buildPreview?.draft_excerpt?.trim() ?? "";
   const planSummary = buildPreview?.plan_summary?.trim() ?? "";
+  const hasDraftExcerpt = draftExcerpt.length > 0;
 
   const spotlightChapter = chapters.find((c) =>
     ["generating", "enhancing", "reviewing", "drafting", "researching"].includes(c.status)
@@ -76,7 +78,7 @@ export function BuildView({
 
   // Auto-switch to preview and select active chapter when streaming starts
   useEffect(() => {
-    if (draftExcerpt) {
+    if (hasDraftExcerpt) {
       if (activeTab === "outline" || activeTab === "logs" || activeTab === "files") {
         setActiveTab("preview");
       }
@@ -84,7 +86,31 @@ export function BuildView({
         setSelectedPreviewChapter(spotlightChapter.chapter_index);
       }
     }
-  }, [draftExcerpt, spotlightChapter]);
+  }, [activeTab, hasDraftExcerpt, selectedPreviewChapter, spotlightChapter]);
+
+  useEffect(() => {
+    if (hasDraftExcerpt) {
+      previewFallbackAppliedRef.current = false;
+      return;
+    }
+    if (activeTab !== "preview" || previewFallbackAppliedRef.current) {
+      return;
+    }
+    if (events.length > 0) {
+      previewFallbackAppliedRef.current = true;
+      setActiveTab("logs");
+      return;
+    }
+    if (chapters.length > 0) {
+      previewFallbackAppliedRef.current = true;
+      setActiveTab("outline");
+      return;
+    }
+    if (sourceFiles.length > 0) {
+      previewFallbackAppliedRef.current = true;
+      setActiveTab("files");
+    }
+  }, [activeTab, chapters.length, events.length, hasDraftExcerpt, sourceFiles.length]);
 
   // Ensure selected chapter in preview defaults to spotlight or first chapter
   useEffect(() => {
@@ -459,7 +485,7 @@ export function BuildView({
                               )}
                            </div>
                            <div className="flex-1 overflow-y-auto px-10 py-10 build-scroll bg-white">
-                              {isStreaming && draftExcerpt ? (
+                              {isStreaming && hasDraftExcerpt ? (
                                  <div className="max-w-[700px] mx-auto pb-10">
                                    <pre
                                      className="whitespace-pre-wrap text-[14px] leading-[1.85] text-zinc-800 break-words"
