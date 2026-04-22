@@ -319,7 +319,7 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
                 className={cn(
                   "flex h-8 w-8 items-center justify-center rounded-lg transition-colors",
                   isCreateSubjectActive
-                    ? "bg-slate-100 text-slate-900"
+                    ? "bg-[#eef2f6] text-[#243246] ring-1 ring-[#d9e1ea]"
                     : "text-slate-500 hover:bg-slate-100 hover:text-slate-900",
                 )}
               >
@@ -339,7 +339,7 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
                 className={cn(
                   "flex h-8 w-8 items-center justify-center rounded-lg transition-colors",
                   isMyLearningSpaceActive
-                    ? "bg-slate-100 text-slate-900"
+                    ? "bg-[#eef2f6] text-[#243246] ring-1 ring-[#d9e1ea]"
                     : "text-slate-500 hover:bg-slate-100 hover:text-slate-900",
                 )}
               >
@@ -353,7 +353,7 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
                 className={cn(
                   "flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left transition-colors",
                   isCreateSubjectActive
-                    ? "bg-slate-100/80 text-slate-900"
+                    ? "bg-[#f3f6f9] text-slate-950 ring-1 ring-[#dbe3ec]"
                     : "text-slate-900 hover:bg-slate-100/80",
                 )}
                 onClick={() => {
@@ -366,10 +366,17 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
                 }}
               >
                 <Edit3
-                  className={cn("h-5 w-5 shrink-0", isCreateSubjectActive ? "text-slate-700" : "text-slate-500")}
+                  className={cn("h-5 w-5 shrink-0", isCreateSubjectActive ? "text-[#4b607b]" : "text-slate-500")}
                   strokeWidth={2.2}
                 />
-                <span className="text-[15px] font-normal tracking-[0.01em] text-slate-900">新建学科</span>
+                <span
+                  className={cn(
+                    "text-[15px] tracking-[0.01em]",
+                    isCreateSubjectActive ? "font-semibold text-[#1f2937]" : "font-normal text-slate-900",
+                  )}
+                >
+                  新建学科
+                </span>
               </button>
 
               <button
@@ -377,7 +384,7 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
                 className={cn(
                   "flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left transition-colors",
                   isMyLearningSpaceActive
-                    ? "bg-slate-100/80 text-slate-900"
+                    ? "bg-[#f3f6f9] text-slate-950 ring-1 ring-[#dbe3ec]"
                     : "text-slate-900 hover:bg-slate-100/80",
                 )}
                 onClick={() => {
@@ -388,10 +395,17 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
                 }}
               >
                 <LayoutGrid
-                  className={cn("h-5 w-5 shrink-0", isMyLearningSpaceActive ? "text-slate-700" : "text-slate-500")}
+                  className={cn("h-5 w-5 shrink-0", isMyLearningSpaceActive ? "text-[#4b607b]" : "text-slate-500")}
                   strokeWidth={2.2}
                 />
-                <span className="text-[15px] font-normal tracking-[0.01em] text-slate-900">我的学习空间</span>
+                <span
+                  className={cn(
+                    "text-[15px] tracking-[0.01em]",
+                    isMyLearningSpaceActive ? "font-semibold text-[#1f2937]" : "font-normal text-slate-900",
+                  )}
+                >
+                  我的学习空间
+                </span>
               </button>
             </>
           )}
@@ -419,13 +433,18 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
             const expanded = expandedSubjects.has(subject.subject_id);
             const displayName = displaySubjectName(subject);
             const badgeClass = colorClassForSubject(subject.name || subject.subject_id);
+            const isSubjectRouteActive = location.pathname.startsWith(`/subject/${subject.subject_id}/`);
 
             return (
               <div key={subject.subject_id} className="relative">
                 <div
                   className={cn(
                     "group flex items-center gap-1 rounded-lg transition-colors",
-                    !effectiveCollapsed ? "hover:bg-slate-100/60" : "",
+                    !effectiveCollapsed && isSubjectRouteActive
+                      ? "bg-[#f7f9fb] ring-1 ring-[#e3e8ee]"
+                      : !effectiveCollapsed
+                        ? "hover:bg-slate-100/60"
+                        : "",
                   )}
                 >
                   <button
@@ -525,10 +544,12 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
                           onClick={() => setIsMobileOpen(false)}
                           className={cn(
                             "flex items-center rounded-md px-2.5 py-1.5 text-sm transition-colors",
-                            isActive ? "bg-slate-100 text-slate-900" : "text-slate-500 hover:bg-slate-50 hover:text-slate-700",
+                            isActive
+                              ? "bg-[#eef3f8] text-[#1f2937] ring-1 ring-[#d9e2ec] font-medium"
+                              : "text-slate-500 hover:bg-slate-50 hover:text-slate-700",
                           )}
                         >
-                          <Icon className="mr-2.5 h-4 w-4" />
+                          <Icon className={cn("mr-2.5 h-4 w-4", isActive ? "text-[#556b86]" : undefined)} />
                           {moduleItem.name}
                         </Link>
                       );
