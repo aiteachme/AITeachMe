@@ -34,6 +34,7 @@ class ModelsSettings(_SettingsModel):
     reason: str | None
     primary: str
     light: str | None
+    vision: str | None
     embedding: str | None
     embedding_dim: int | None = None
     rerank: str | None
@@ -156,8 +157,18 @@ class Settings(_SettingsModel):
         return value is not None and int(value) > 0
 
     @property
-    def has_vision_ocr_model(self) -> bool:
+    def has_vision_model(self) -> bool:
+        return bool((self.models.vision or "").strip())
+
+    @property
+    def has_document_ocr_model(self) -> bool:
         return bool((self.models.ocr or "").strip())
+
+    @property
+    def has_vision_ocr_model(self) -> bool:
+        """Backward-compatible alias for older ingest call sites."""
+
+        return self.has_document_ocr_model
 
     @property
     def rerank_configured(self) -> bool:

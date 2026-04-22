@@ -168,7 +168,7 @@ async def _fill_page_ocr(
                     reason="vision_model_refused",
                     failed_count=consecutive_failures,
                     remaining_skipped=len(rendered_pages) - list(rendered_pages.keys()).index(page_number),
-                    hint="OCR model may not support vision. Check OCR_MODEL config.",
+                    hint="文档 OCR 模型可能不支持图片输入，请检查 settings.models.ocr 配置。",
                 )
                 break
 
@@ -180,6 +180,7 @@ async def _fill_page_ocr(
                     page_bytes,
                     mime_type="image/png",
                     language_mode=language_mode,
+                    model_selector="ocr",
                 )
                 result = result.strip()
             except Exception as exc:
@@ -235,4 +236,3 @@ def _render_page_block(item: PDFPageFallbackItem) -> str:
     if item.ocr_markdown:
         parts.extend(["", "### Page OCR", item.ocr_markdown])
     return "\n".join(parts)
-

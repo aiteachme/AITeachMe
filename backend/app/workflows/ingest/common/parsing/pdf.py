@@ -143,6 +143,7 @@ async def _run_page_ocr(
                 page.image_bytes,
                 mime_type="image/png",
                 language_mode=options.ocr_language_mode,
+                model_selector="ocr",
             )
         ocr_map[page.page_number] = text
 
@@ -546,4 +547,3 @@ def _render_rect_png(page: object, rect: object) -> bytes:
     )
     pixmap = page.get_pixmap(matrix=fitz.Matrix(3.0, 3.0), clip=clip, alpha=False)
     return pixmap.tobytes("png")
-

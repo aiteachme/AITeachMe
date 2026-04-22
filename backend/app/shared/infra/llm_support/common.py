@@ -119,6 +119,8 @@ def resolve_settings_model(settings: Settings, model: str | None = None) -> tupl
         return models.light or fallback_model, "light"
     if normalized == "extract":
         return models.light or fallback_model, "extract"
+    if normalized == "vision":
+        return models.vision or fallback_model, "vision"
     if normalized == "rerank":
         return models.rerank or fallback_model, "rerank"
     if normalized == "ocr":

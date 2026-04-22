@@ -187,10 +187,10 @@ async def _run_deep_enhance_background(
                     enhance_logger.warning("quality_reparse_failed", error=str(exc))
                     # Continue with Phase 1 markdown; quality re-parse is best-effort.
 
-            # ── Step 2: LLM OCR enrichment (only if vision model configured) ──
-            has_vision = get_settings().has_vision_ocr_model
+            # ── Step 2: 文档 OCR 增强（仅在配置文档 OCR 模型后启用） ──
+            has_document_ocr = get_settings().has_document_ocr_model
 
-            if has_vision:
+            if has_document_ocr:
                 enhance_result = await deep_enhance_file(
                     markdown,
                     file_path=str(file_path),
@@ -202,8 +202,8 @@ async def _run_deep_enhance_background(
                 )
             else:
                 enhance_logger.info(
-                    "skipping_ocr_no_vision_model",
-                    hint="Set OCR_MODEL in .env to enable LLM OCR (e.g. OCR_MODEL=qwen-vl-max)",
+                    "skipping_document_ocr_no_model",
+                    hint="在设置页配置“文档 OCR 模型”后，才会对扫描页和文档图片执行 OCR 增强。",
                 )
                 # Create a dummy result; no OCR was done.
                 from app.workflows.ingest.common.parsing.orchestrator import DeepEnhanceResult

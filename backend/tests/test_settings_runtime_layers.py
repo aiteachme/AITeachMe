@@ -87,6 +87,10 @@ def test_settings_overview_cloud_mode_is_read_only(monkeypatch) -> None:
     assert entries["models.primary"].editable is False
     assert entries["models.primary"].ui_group
     assert entries["models.primary"].ui_order > 0
+    assert entries["models.vision"].ui_group == "视觉理解"
+    assert entries["models.ocr"].ui_group == "文档解析"
+    assert entries["models.vision"].ui_order < entries["models.ocr"].ui_order
+    assert entries["models.ocr"].ui_order < entries["models.embedding"].ui_order
 
 
 def test_settings_model_rejects_removed_low_level_keys() -> None:

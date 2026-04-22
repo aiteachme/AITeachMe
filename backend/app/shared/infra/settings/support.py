@@ -139,6 +139,7 @@ LITELLM_PROVIDER_BY_RUNTIME_PROVIDER: dict[str, str] = {
     "bedrock": "bedrock",
 }
 _OPTIONAL_MODEL_CAPABILITY_DEFAULTS: dict[str, Any] = {
+    "vision": None,
     "rerank": None,
     "ocr": None,
     "image_generation": None,

@@ -22,6 +22,7 @@ SYSTEMATIC_MODE_DEFAULTS: dict[str, Any] = {
 
 DEFAULT_SETTINGS_VALUES: dict[str, Any] = {
     "models": {
+        "vision": None,
         "embedding_dim": None,
         "rerank": None,
         "ocr": None,

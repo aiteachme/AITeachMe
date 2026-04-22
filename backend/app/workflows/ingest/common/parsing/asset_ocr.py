@@ -198,6 +198,7 @@ async def _ocr_asset_paths(
                 image_bytes,
                 mime_type=mime_type,
                 language_mode=language_mode,
+                model_selector="ocr",
             )
         except Exception as exc:
             logger.warning("asset_ocr_failed", asset_name=asset_path.name, error=str(exc))
@@ -221,7 +222,7 @@ async def _ocr_asset_paths(
                     reason="vision_model_refused",
                     failed_count=consecutive_failures,
                     remaining_skipped=len(asset_paths) - len(results) - 1,
-                    hint="OCR model may not support vision. Check OCR_MODEL config.",
+                    hint="文档 OCR 模型可能不支持图片输入，请检查 settings.models.ocr 配置。",
                 )
                 circuit_broken = True
             continue
@@ -364,4 +365,3 @@ def _render_ocr_block(item: AssetOCRItem, index: int) -> str:
     if item.ocr_markdown and item.ocr_markdown.strip() and item.ocr_markdown.strip() != "[unclear]":
         parts.extend(["", "```markdown", item.ocr_markdown.strip(), "```"])
     return "\n".join(parts)
-
