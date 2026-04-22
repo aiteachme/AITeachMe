@@ -1,26 +1,34 @@
-"""System initialization queries."""
+"""System settings overview service."""
 
 from __future__ import annotations
 
 from collections.abc import Mapping
+from dataclasses import dataclass
 from typing import Any
 
 from pydantic import ValidationError
 import structlog
 from sqlmodel import Session
 
-from app.repositories.user_settings_repo import (
-    clear_user_runtime_settings,
-    get_user_runtime_settings_payload,
-    upsert_user_runtime_settings_payload,
-)
 from app.repositories.system_settings_repo import (
     clear_system_runtime_settings,
     get_system_runtime_settings_payload,
     upsert_system_runtime_settings_payload,
 )
-from app.schemas.system import InitData, RuntimeUser, SettingEntry, SettingSection, SettingsOverviewData
+from app.repositories.user_settings_repo import (
+    clear_user_runtime_settings,
+    get_user_runtime_settings_payload,
+    upsert_user_runtime_settings_payload,
+)
+from app.schemas.system import SettingEntry, SettingSection, SettingsOverviewData
+from app.shared.infra.env_support import (
+    describe_project_settings_source,
+    get_env,
+    resolve_writable_local_env_path,
+    write_local_env_updates,
+)
 from app.shared.infra.exceptions import AITeachMeError
+from app.shared.infra.runtime import get_app_version, is_local_mode, resolve_app_mode, resolve_auth_enabled
 from app.shared.infra.settings import (
     PROJECT_SETTINGS_ENV_NAME,
     PROJECT_SETTINGS_SOURCE_LABEL,
@@ -32,57 +40,38 @@ from app.shared.infra.settings import (
     set_system_settings_override,
 )
 from app.shared.infra.settings.support import get_llm_api_version, resolve_runtime_llm_provider
-from app.shared.infra.env_support import (
-    describe_project_settings_source,
-    get_env,
-    get_env_bool,
-    resolve_writable_local_env_path,
-    write_local_env_updates,
-)
-from app.shared.infra.runtime import get_app_version, is_local_mode, resolve_app_mode, resolve_auth_enabled
 from app.shared.infra.storage.config import (
     get_storage_backend,
     resolve_s3_addressing_style,
     resolve_s3_credential_mode,
 )
+from app.workflows.support.system.catalog import (
+    ENV_ENTRY_KEY_MAP,
+    SETTINGS_CATALOG,
+    SettingsCatalogEntry,
+    build_settings_notes,
+)
 
 _MISSING = object()
 logger = structlog.get_logger(__name__)
-_ENV_ENTRY_KEYS: dict[str, str] = {}
 
 
-def build_init_data(
-    *,
-    user_id: str,
-    email: str | None,
-    is_local: bool,
-    device_key: str | None,
-    is_authenticated: bool,
-) -> InitData:
-    """Build frontend runtime initialization data."""
-
-    auth_enabled = resolve_auth_enabled()
-    return InitData(
-        mode=resolve_app_mode(),
-        auth_enabled=auth_enabled,
-        auth_ready=True,
-        current_user=RuntimeUser(
-            user_id=user_id,
-            email=email,
-            is_local=is_local,
-            device_key=device_key,
-            is_authenticated=is_authenticated,
-        ),
-        feature_flags={
-            "auth": auth_enabled,
-            "files": True,
-            "knowledge": True,
-            "chat": True,
-            "exam": True,
-            "profile": True,
-        },
-        version=get_app_version(),
-    )
+@dataclass(frozen=True)
+class _OverviewContext:
+    settings: Settings
+    base_payload: dict[str, Any]
+    settings_payload: dict[str, Any]
+    system_payload: Mapping[str, Any]
+    user_payload: Mapping[str, Any]
+    mode: str
+    settings_source: str
+    llm_provider: str | None
+    llm_api_version: str | None
+    app_version: str
+    auth_enabled_effective: bool
+    storage_backend: str
+    s3_addressing_style: str
+    s3_credential_mode: str
 
 
 def _has_env(name: str) -> bool:
@@ -142,12 +131,7 @@ def _project_known_settings_keys(
     schema_payload: Mapping[str, Any],
     raw_override: Mapping[str, Any],
 ) -> dict[str, Any]:
-    """Keep only user setting keys still recognized by the current schema.
-
-    User settings are persisted in the database and may outlive config schema
-    refactors. Unknown keys from older releases should not make the settings
-    page fail to load after a deploy.
-    """
+    """Keep only user setting keys still recognized by the current schema."""
 
     projected: dict[str, Any] = {}
     for key, raw_value in raw_override.items():
@@ -164,12 +148,7 @@ def _project_known_settings_keys(
 
 
 def _normalize_user_settings_payload(raw_payload: Mapping[str, Any]) -> dict[str, Any]:
-    """Validate and shrink a user settings override payload.
-
-    The database should store only user-changed, non-secret settings. Defaults
-    remain in code defaults / optional project override files; secrets remain in ``.env`` / process
-    environment or browser-local draft fields.
-    """
+    """Validate and shrink a settings override payload."""
 
     base_payload = get_project_settings().model_dump(mode="json")
     known_payload = _project_known_settings_keys(base_payload, raw_payload)
@@ -188,7 +167,7 @@ def _normalize_user_settings_payload(raw_payload: Mapping[str, Any]) -> dict[str
 
 
 def _safe_user_settings_payload(raw_payload: Mapping[str, Any]) -> dict[str, Any]:
-    """Normalize persisted user settings without letting stale rows break reads."""
+    """Normalize persisted settings without letting stale rows break reads."""
 
     try:
         return _normalize_user_settings_payload(raw_payload)
@@ -201,9 +180,7 @@ def _merge_system_settings(base_settings: Settings, system_payload: Mapping[str,
     if not system_payload:
         return base_settings
     normalized_payload = _safe_user_settings_payload(system_payload)
-    merged_payload = merge_settings_values(
-        base_settings.model_dump(mode="json"), normalized_payload
-    )
+    merged_payload = merge_settings_values(base_settings.model_dump(mode="json"), normalized_payload)
     return Settings.model_validate(merged_payload)
 
 
@@ -214,6 +191,34 @@ def _lookup_path(payload: Mapping[str, Any], dotted_key: str) -> tuple[bool, Any
             return False, _MISSING
         current = current[part]
     return True, current
+
+
+def _require_path(payload: Mapping[str, Any], dotted_key: str) -> Any:
+    found, value = _lookup_path(payload, dotted_key)
+    if not found:
+        raise RuntimeError(f"Unknown settings catalog key: {dotted_key}")
+    return value
+
+
+def _lookup_attr_path(value: Any, dotted_key: str) -> tuple[bool, Any]:
+    current: Any = value
+    for part in dotted_key.split("."):
+        if isinstance(current, Mapping):
+            if part not in current:
+                return False, _MISSING
+            current = current[part]
+            continue
+        if not hasattr(current, part):
+            return False, _MISSING
+        current = getattr(current, part)
+    return True, current
+
+
+def _require_attr_path(value: Any, dotted_key: str) -> Any:
+    found, resolved = _lookup_attr_path(value, dotted_key)
+    if not found:
+        raise RuntimeError(f"Unknown settings catalog value path: {dotted_key}")
+    return resolved
 
 
 def _editable_settings_entry(
@@ -230,7 +235,7 @@ def _editable_settings_entry(
     ui_group: str = "",
     ui_order: int = 0,
 ) -> SettingEntry:
-    has_system_value, system_value = _lookup_path(system_payload, key)
+    has_system_value, _ = _lookup_path(system_payload, key)
     has_user_value, user_value = _lookup_path(user_payload, key)
     if has_system_value:
         source = "system_settings"
@@ -269,13 +274,17 @@ def _env_entry(
     ui_group: str = "",
     ui_order: int = 0,
 ) -> SettingEntry:
-    _ENV_ENTRY_KEYS[key] = env_name
     configured = _has_env(env_name)
     local_mode = is_local_mode()
     actual_value = value if value is not None else get_env(env_name)
     safe_secret = bool(secret and not local_mode)
     safe_value = None if safe_secret else actual_value
-    display_value = "已配置" if safe_secret and configured else ("未配置" if safe_secret else _display(safe_value))
+    if safe_secret and configured:
+        display_value = "已配置"
+    elif safe_secret:
+        display_value = "未配置"
+    else:
+        display_value = _display(safe_value)
     return SettingEntry(
         key=key,
         label=label,
@@ -316,12 +325,69 @@ def _runtime_entry(
     )
 
 
+def _build_catalog_entry(entry: SettingsCatalogEntry, context: _OverviewContext) -> SettingEntry:
+    if entry.kind == "setting":
+        return _editable_settings_entry(
+            entry.key,
+            entry.label,
+            _require_path(context.settings_payload, entry.key),
+            _require_path(context.base_payload, entry.key),
+            context.system_payload,
+            context.user_payload,
+            entry.description,
+            editable_in_local=entry.editable_in_local,
+            editable_in_cloud=entry.editable_in_cloud,
+            ui_group=entry.ui_group,
+            ui_order=entry.ui_order,
+        )
+
+    if entry.kind == "env":
+        resolved_value = _require_attr_path(context, entry.value_path) if entry.value_path else None
+        return _env_entry(
+            entry.key,
+            entry.label,
+            entry.env_name or "",
+            entry.description,
+            secret=entry.secret,
+            value=resolved_value,
+            restart_required=entry.restart_required,
+            ui_group=entry.ui_group,
+            ui_order=entry.ui_order,
+        )
+
+    if entry.kind == "runtime":
+        if entry.value_path is None:
+            raise RuntimeError(f"Runtime catalog entry requires value_path: {entry.key}")
+        return _runtime_entry(
+            entry.key,
+            entry.label,
+            _require_attr_path(context, entry.value_path),
+            entry.description,
+            ui_group=entry.ui_group,
+            ui_order=entry.ui_order,
+        )
+
+    raise RuntimeError(f"Unsupported settings catalog entry kind: {entry.kind}")
+
+
+def _build_sections(context: _OverviewContext) -> list[SettingSection]:
+    return [
+        SettingSection(
+            id=section.id,
+            label=section.label,
+            description=section.description,
+            entries=[_build_catalog_entry(entry, context) for entry in section.entries],
+        )
+        for section in SETTINGS_CATALOG
+    ]
+
+
 def build_settings_overview_data(
     *,
     session: Session | None = None,
     user_id: str | None = None,
 ) -> SettingsOverviewData:
-    """Build a safe overview of env, project defaults, and user settings."""
+    """Build a safe overview of env, project defaults, and runtime overrides."""
 
     base_settings = get_project_settings()
     raw_system_payload = (
@@ -345,7 +411,10 @@ def build_settings_overview_data(
                 clear_system_runtime_settings(session)
             set_system_settings_override(system_payload)
         if user_id and raw_user_payload != user_payload:
-            upsert_user_runtime_settings_payload(session, user_id=user_id, payload=user_payload)
+            if user_payload:
+                upsert_user_runtime_settings_payload(session, user_id=user_id, payload=user_payload)
+            else:
+                clear_user_runtime_settings(session, user_id=user_id)
 
     if is_local_mode() and session is not None and not system_payload and user_payload:
         upsert_system_runtime_settings_payload(session, payload=user_payload)
@@ -353,203 +422,31 @@ def build_settings_overview_data(
         system_payload = user_payload
 
     settings = _merge_system_settings(base_settings, system_payload)
-    mode = resolve_app_mode()
-    settings_source = describe_project_settings_source()
-    llm_provider = resolve_runtime_llm_provider()
-    llm_api_version = get_llm_api_version()
-
-    def lse(
-        key: str,
-        label: str,
-        value: Any,
-        default_value: Any,
-        description: str = "",
-        *,
-        ui_group: str,
-        ui_order: int,
-    ) -> SettingEntry:
-        return _editable_settings_entry(
-            key,
-            label,
-            value,
-            default_value,
-            system_payload,
-            user_payload,
-            description,
-            editable_in_local=True,
-            editable_in_cloud=False,
-            ui_group=ui_group,
-            ui_order=ui_order,
-        )
-
-    sections = [
-        SettingSection(
-            id="connection",
-            label="连接",
-            description="模型服务连接与密钥状态。",
-            entries=[
-                _env_entry(
-                    "llm.provider",
-                    "模型供应商",
-                    "LLM_PROVIDER",
-                    "可选。留空时会根据模型地址自动识别 Anthropic / Gemini / Azure / vLLM / Ollama / OpenAI-compatible。",
-                    value=llm_provider,
-                    restart_required=False,
-                    ui_group="服务端连接",
-                    ui_order=5,
-                ),
-                _env_entry(
-                    "llm.base_url",
-                    "模型服务地址",
-                    "LLM_BASE_URL",
-                    "统一模型接入口。OpenAI-compatible、Anthropic、Gemini、Azure、vLLM、Ollama 等上游都从这里接入；本地无鉴权网关可只填地址。",
-                    restart_required=False,
-                    ui_group="服务端连接",
-                    ui_order=10,
-                ),
-                _env_entry(
-                    "llm.api_key",
-                    "模型服务密钥",
-                    "LLM_API_KEY",
-                    "模型访问密钥，只显示是否配置。Ollama / 本地 vLLM / LM Studio 等无鉴权场景可留空。",
-                    secret=True,
-                    restart_required=False,
-                    ui_group="服务端连接",
-                    ui_order=20,
-                ),
-                _env_entry(
-                    "llm.api_version",
-                    "模型 API 版本",
-                    "LLM_API_VERSION",
-                    "主要给 Azure 等需要 API Version 的上游使用；普通 OpenAI-compatible 场景可留空。",
-                    value=llm_api_version,
-                    restart_required=False,
-                    ui_group="服务端连接",
-                    ui_order=30,
-                ),
-            ],
-        ),
-        SettingSection(
-            id="models",
-            label="模型路由",
-            description="模型名默认来自代码默认值与可选项目 override；本地模式下页面修改会保存为系统级运行覆盖。",
-            entries=[
-                lse("models.primary", "主模型", settings.models.primary, base_settings.models.primary, "主要生成、对话、批改任务。Azure 场景下通常应填写 deployment 名。", ui_group="模型路由", ui_order=10),
-                lse("models.reason", "推理模型", settings.models.reason, base_settings.models.reason, "深度推理与规划；空值时回退到主模型。Azure 场景下通常应填写 deployment 名。", ui_group="模型路由", ui_order=20),
-                lse("models.light", "轻量模型", settings.models.light, base_settings.models.light, "分类、摘要和批量轻任务；空值时回退到主模型。Azure 场景下通常应填写 deployment 名。", ui_group="模型路由", ui_order=30),
-                lse("models.extract", "抽取模型", settings.models.extract, base_settings.models.extract, "知识抽取专用；空值时回退到轻量模型或主模型。", ui_group="模型路由", ui_order=40),
-                lse("models.embedding", "向量模型", settings.models.embedding, base_settings.models.embedding, "Anthropic 等不提供 embedding 的上游可留空或改走独立 OpenAI-compatible embedding 服务。Azure 场景下通常应填写 deployment 名。", ui_group="模型路由", ui_order=50),
-                lse("models.ocr", "视觉 OCR 模型", settings.models.ocr, base_settings.models.ocr, "空值时使用主模型；密钥和服务地址复用模型接入配置。", ui_group="模型路由", ui_order=60),
-                lse("models.image_generation", "图片生成模型", settings.models.image_generation, base_settings.models.image_generation, "留空表示未启用服务端图片生成能力。", ui_group="模型路由", ui_order=70),
-                _runtime_entry("models.embedding_dim", "向量维度", settings.embedding_dim, ui_group="运行推导", ui_order=80),
-            ],
-        ),
-        SettingSection(
-            id="learning",
-            label="学习引擎",
-            description="上传限制、学习规划、知识文档策略与图谱联动开关。",
-            entries=[
-                lse("ingest.max_upload_size_mb", "最大上传大小", settings.ingest.max_upload_size_mb, base_settings.ingest.max_upload_size_mb, "", ui_group="上传限制", ui_order=10),
-                lse("ingest.max_files_per_upload", "单次最大文件数", settings.ingest.max_files_per_upload, base_settings.ingest.max_files_per_upload, "", ui_group="上传限制", ui_order=20),
-                _env_entry("mineru.api_token", "MinerU 服务密钥", "MINERU_API_TOKEN", "服务端 MinerU Token，只显示是否配置。", secret=True, ui_group="解析服务", ui_order=30),
-                lse("planner.default_digest_mode", "默认 Digest 模式", settings.planner.default_digest_mode, base_settings.planner.default_digest_mode, "", ui_group="学习规划", ui_order=40),
-                lse("planner.sprint.min_chapters", "冲刺最少章节", settings.planner.sprint.min_chapters, base_settings.planner.sprint.min_chapters, "", ui_group="冲刺模式", ui_order=50),
-                lse("planner.sprint.max_chapters", "冲刺最多章节", settings.planner.sprint.max_chapters, base_settings.planner.sprint.max_chapters, "", ui_group="冲刺模式", ui_order=60),
-                lse("planner.sprint.target_length", "冲刺目标长度", settings.planner.sprint.target_length, base_settings.planner.sprint.target_length, "", ui_group="冲刺模式", ui_order=70),
-                lse("planner.systematic.min_chapters", "系统最少章节", settings.planner.systematic.min_chapters, base_settings.planner.systematic.min_chapters, "", ui_group="系统模式", ui_order=80),
-                lse("planner.systematic.max_chapters", "系统最多章节", settings.planner.systematic.max_chapters, base_settings.planner.systematic.max_chapters, "", ui_group="系统模式", ui_order=90),
-                lse("planner.systematic.target_length", "系统目标长度", settings.planner.systematic.target_length, base_settings.planner.systematic.target_length, "", ui_group="系统模式", ui_order=100),
-                lse("docgen.allow_external_search", "知识文档允许外部检索", settings.docgen.allow_external_search, base_settings.docgen.allow_external_search, "", ui_group="知识文档", ui_order=110),
-                lse("docgen.generate_cover_image", "知识文档生成封面", settings.docgen.generate_cover_image, base_settings.docgen.generate_cover_image, "启用后会为知识文档生成一张横向、抽象、无文字的艺术风景封面，并置于文档顶部。", ui_group="知识文档", ui_order=120),
-                lse("interact.history_turns", "伴读历史轮数", settings.interact.history_turns, base_settings.interact.history_turns, "", ui_group="伴读", ui_order=130),
-                lse("knowledge_graph.sync_after_docgen", "DocGen 后同步图谱", settings.knowledge_graph.sync_after_docgen, base_settings.knowledge_graph.sync_after_docgen, "", ui_group="图谱联动", ui_order=140),
-            ],
-        ),
-        SettingSection(
-            id="search",
-            label="检索与联网",
-            description="本地 RAG、检索策略与外部 Provider 状态。",
-            entries=[
-                lse("rag.top_k", "RAG 返回条数", settings.rag.top_k, base_settings.rag.top_k, "", ui_group="本地 RAG", ui_order=10),
-                lse("rag.similarity_threshold", "相似度阈值", settings.rag.similarity_threshold, base_settings.rag.similarity_threshold, "", ui_group="本地 RAG", ui_order=20),
-                lse("rag.rerank_model", "Rerank 模型", settings.rag.rerank_model, base_settings.rag.rerank_model, "", ui_group="本地 RAG", ui_order=30),
-                lse("rag.rerank_top_k", "Rerank 保留条数", settings.rag.rerank_top_k, base_settings.rag.rerank_top_k, "", ui_group="本地 RAG", ui_order=40),
-                _env_entry("rag.rerank_api_key", "重排服务密钥", "RAG_RERANK_API_KEY", "Rerank 服务密钥。", secret=True, ui_group="重排服务", ui_order=50),
-                lse("local_rag.priority", "本地资料优先", settings.local_rag.priority, base_settings.local_rag.priority, "", ui_group="本地 RAG", ui_order=60),
-                lse("local_rag.min_results", "本地命中阈值", settings.local_rag.min_results, base_settings.local_rag.min_results, "", ui_group="本地 RAG", ui_order=70),
-                lse("search.retriever_profile", "检索策略预设", settings.search.retriever_profile, base_settings.search.retriever_profile, "", ui_group="检索策略", ui_order=80),
-                _env_entry("search.tavily_key", "Tavily 密钥", "TAVILY_API_KEY", "Tavily 检索密钥。", secret=True, ui_group="检索 Provider", ui_order=90),
-                _env_entry("search.brave_key", "Brave Search 密钥", "BRAVE_SEARCH_API_KEY", "Brave Search 密钥。", secret=True, ui_group="检索 Provider", ui_order=100),
-                _env_entry("search.exa_key", "Exa 检索密钥", "EXA_API_KEY", "Exa 语义搜索密钥。", secret=True, ui_group="检索 Provider", ui_order=110),
-                _env_entry("search.bing_key", "Bing Search 密钥", "BING_API_KEY", "Bing Search 密钥。", secret=True, ui_group="检索 Provider", ui_order=120),
-                _env_entry("search.bocha_key", "Bocha 检索密钥", "BOCHA_API_KEY", "Bocha 搜索密钥。", secret=True, ui_group="检索 Provider", ui_order=130),
-                _env_entry("search.jina_key", "Jina 检索密钥", "JINA_API_KEY", "Jina Search / Reader 共用密钥。", secret=True, ui_group="检索 Provider", ui_order=140),
-                _env_entry("search.serper_key", "Serper 检索密钥", "SERPER_API_KEY", "Serper Google / Scholar 检索密钥。", secret=True, ui_group="检索 Provider", ui_order=150),
-                _env_entry("search.perplexity_key", "Perplexity 检索密钥", "PERPLEXITY_API_KEY", "Perplexity Sonar 检索密钥。", secret=True, ui_group="检索 Provider", ui_order=160),
-                _env_entry("search.openrouter_key", "OpenRouter 检索密钥", "OPENROUTER_API_KEY", "OpenRouter 搜索模型密钥。", secret=True, ui_group="检索 Provider", ui_order=170),
-                _env_entry("search.baidu_ai_key", "百度千帆检索密钥", "BAIDU_AI_SEARCH_API_KEY", "百度千帆 AI Search 密钥。", secret=True, ui_group="检索 Provider", ui_order=180),
-                _env_entry("search.google_key", "Google 检索密钥", "GOOGLE_API_KEY", "Google Custom Search API Key。", secret=True, ui_group="检索 Provider", ui_order=190),
-                _env_entry("search.google_cx", "Google 检索引擎 ID", "GOOGLE_CX_KEY", "Google Custom Search Engine ID。", secret=True, ui_group="检索 Provider", ui_order=200),
-                _env_entry("search.searchapi_key", "SearchApi 密钥", "SEARCHAPI_API_KEY", "SearchApi.io 检索密钥。", secret=True, ui_group="检索 Provider", ui_order=210),
-                _env_entry("search.serpapi_key", "SerpApi 密钥", "SERPAPI_API_KEY", "SerpApi 检索密钥。", secret=True, ui_group="检索 Provider", ui_order=220),
-                _env_entry("search.ncbi_key", "NCBI / PubMed 密钥", "NCBI_API_KEY", "NCBI / PubMed API Key，可选。", secret=True, ui_group="检索 Provider", ui_order=230),
-                _env_entry("search.mcp_tool", "MCP 检索工具名", "MCP_SEARCH_TOOL", "用于检索的 MCP 工具名。", ui_group="检索 Provider", ui_order=240),
-                _env_entry("search.searxng_url", "SearXNG 地址", "SEARXNG_BASE_URL", "自建/可信 SearXNG 地址。", ui_group="检索 Provider", ui_order=250),
-                _env_entry("reader.jina_enabled", "是否启用 Jina Reader", "JINA_READER_ENABLED", "是否启用 Jina Reader。", ui_group="阅读器", ui_order=260),
-            ],
-        ),
-        SettingSection(
-            id="ops",
-            label="部署状态",
-            description="运行模式、鉴权、数据库与对象存储状态。",
-            entries=[
-                _runtime_entry("runtime.mode", "运行模式", mode, "由 APP_MODE 解析得到。", ui_group="运行状态", ui_order=10),
-                _env_entry("runtime.app_mode_raw", "应用运行模式原值", "APP_MODE", "未设置时按本地优先策略解析。", ui_group="运行状态", ui_order=20),
-                _runtime_entry("runtime.version", "应用版本", get_app_version(), ui_group="运行状态", ui_order=30),
-                _runtime_entry("settings.source", "项目设置来源", settings_source, ui_group="运行状态", ui_order=40),
-                _env_entry("auth.enabled_raw", "鉴权开关原值", "AUTH_ENABLED", "为空时按 APP_MODE 自动推导。", value=get_env("AUTH_ENABLED"), ui_group="鉴权", ui_order=50),
-                _runtime_entry("runtime.auth_enabled_effective", "鉴权生效态", resolve_auth_enabled(), "空值时按运行模式自动推导。", ui_group="鉴权", ui_order=60),
-                _env_entry("database.url", "数据库连接串", "DATABASE_URL", "云端模式需要配置数据库连接串。", secret=True, ui_group="数据库与对象存储", ui_order=70),
-                _runtime_entry("storage.backend", "存储后端", get_storage_backend(), ui_group="数据库与对象存储", ui_order=80),
-                _env_entry("storage.s3_bucket", "S3 Bucket", "S3_BUCKET", ui_group="数据库与对象存储", ui_order=90),
-                _env_entry("storage.s3_endpoint", "S3 Endpoint", "S3_ENDPOINT", ui_group="数据库与对象存储", ui_order=100),
-                _env_entry("storage.s3_public_base_url", "S3 公共访问地址", "S3_PUBLIC_BASE_URL", ui_group="数据库与对象存储", ui_order=110),
-                _runtime_entry("storage.s3_addressing_style", "S3 地址风格", resolve_s3_addressing_style(), ui_group="数据库与对象存储", ui_order=120),
-                _runtime_entry("storage.s3_credential_mode", "S3 凭证模式", resolve_s3_credential_mode(), ui_group="数据库与对象存储", ui_order=130),
-                _env_entry("storage.s3_access_key", "S3 访问密钥", "S3_ACCESS_KEY", secret=True, ui_group="数据库与对象存储", ui_order=140),
-                _env_entry("storage.s3_secret_key", "S3 私钥", "S3_SECRET_KEY", secret=True, ui_group="数据库与对象存储", ui_order=150),
-                _env_entry("storage.dogecloud_access_key", "DogeCloud 访问密钥", "DOGECLOUD_API_ACCESS_KEY", secret=True, ui_group="数据库与对象存储", ui_order=160),
-                _env_entry("storage.dogecloud_space", "DogeCloud 空间名", "DOGECLOUD_SPACE_NAME", ui_group="数据库与对象存储", ui_order=170),
-            ],
-        ),
-        SettingSection(
-            id="observability",
-            label="观测调试",
-            description="追踪、Token 摘要与 LangSmith 接入状态。",
-            entries=[
-                lse("observability.tracing_enabled", "追踪总开关", settings.observability.tracing_enabled, base_settings.observability.tracing_enabled, "", ui_group="观测开关", ui_order=10),
-                lse("observability.llm_token_summary_enabled", "LLM Token 摘要", settings.observability.llm_token_summary_enabled, base_settings.observability.llm_token_summary_enabled, "", ui_group="观测开关", ui_order=20),
-                lse("observability.llm_observability_enabled", "LLM 调用统计", settings.observability.llm_observability_enabled, base_settings.observability.llm_observability_enabled, "", ui_group="观测开关", ui_order=30),
-                _env_entry("langsmith.tracing", "LangSmith 追踪开关", "LANGSMITH_TRACING", ui_group="LangSmith", ui_order=40),
-                _env_entry("langsmith.api_key", "LangSmith 密钥", "LANGSMITH_API_KEY", secret=True, ui_group="LangSmith", ui_order=50),
-                _env_entry("langsmith.project", "LangSmith 项目名", "LANGSMITH_PROJECT", ui_group="LangSmith", ui_order=60),
-                _env_entry("langsmith.endpoint", "LangSmith 地址", "LANGSMITH_ENDPOINT", ui_group="LangSmith", ui_order=70),
-            ],
-        ),
-    ]
+    context = _OverviewContext(
+        settings=settings,
+        base_payload=base_settings.model_dump(mode="json"),
+        settings_payload=settings.model_dump(mode="json"),
+        system_payload=system_payload,
+        user_payload=user_payload,
+        mode=resolve_app_mode(),
+        settings_source=describe_project_settings_source(),
+        llm_provider=resolve_runtime_llm_provider(),
+        llm_api_version=get_llm_api_version(),
+        app_version=get_app_version(),
+        auth_enabled_effective=resolve_auth_enabled(),
+        storage_backend=get_storage_backend(),
+        s3_addressing_style=resolve_s3_addressing_style(),
+        s3_credential_mode=resolve_s3_credential_mode(),
+    )
 
     return SettingsOverviewData(
-        settings_source=settings_source,
-        mode=mode,
-        sections=sections,
-        notes=[
-            f"{PROJECT_SETTINGS_SOURCE_LABEL} 始终作为项目默认值保留；如需额外项目覆盖，可配置 {PROJECT_SETTINGS_ENV_NAME} 指向外部文件。",
-            "本地模式下，服务端非敏感配置保存到 system_runtime_settings；环境变量写回本地 .env。",
-            "云端模式下，普通用户仅能查看状态，不能修改任何服务端配置。",
-            "多供应商场景下，后端会先按 LLM_PROVIDER 或 LLM_BASE_URL 推断默认模型；如果你手动覆盖过 models.*，仍以手动覆盖为准。",
-            "Anthropic、DeepSeek、Kimi、GLM、MiniMax、Doubao、SiliconFlow 等上游的 embedding 能力并不统一；当默认未配置 embedding 时，系统会继续工作，但会跳过向量检索相关能力。",
-            "Azure 场景通常还需要配置 API Version；本地 Ollama / vLLM / LM Studio 等无鉴权上游可以不填 API Key。",
-        ],
+        settings_source=context.settings_source,
+        mode=context.mode,
+        sections=_build_sections(context),
+        notes=build_settings_notes(
+            project_settings_env_name=PROJECT_SETTINGS_ENV_NAME,
+            project_settings_source_label=PROJECT_SETTINGS_SOURCE_LABEL,
+        ),
     )
 
 
@@ -561,18 +458,15 @@ def update_user_settings_overview_data(
     env_payload: Mapping[str, str | None] | None = None,
     reset: bool = False,
 ) -> SettingsOverviewData:
-    """Persist local system settings and return fresh overview.
-
-    Cloud-mode ordinary users do not have writable server-side settings.
-    """
+    """Persist local system settings and return a fresh overview."""
 
     env_updates = {
-        _ENV_ENTRY_KEYS[key]: value
+        ENV_ENTRY_KEY_MAP[key]: value
         for key, value in dict(env_payload or {}).items()
-        if key in _ENV_ENTRY_KEYS
+        if key in ENV_ENTRY_KEY_MAP
     }
-
     has_settings_updates = bool(dict(settings_payload))
+
     if not is_local_mode() and (env_updates or has_settings_updates or reset):
         raise AITeachMeError(
             detail="云端模式下普通用户无服务端设置写权限。",
@@ -597,4 +491,11 @@ def update_user_settings_overview_data(
         normalized_payload = _normalize_user_settings_payload(settings_payload)
         upsert_system_runtime_settings_payload(session, payload=normalized_payload)
         set_system_settings_override(normalized_payload)
+
     return build_settings_overview_data(session=session, user_id=user_id)
+
+
+__all__ = [
+    "build_settings_overview_data",
+    "update_user_settings_overview_data",
+]
