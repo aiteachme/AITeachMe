@@ -21,7 +21,9 @@ SYSTEMATIC_MODE_DEFAULTS: dict[str, Any] = {
 }
 
 DEFAULT_SETTINGS_VALUES: dict[str, Any] = {
-    "models": {},
+    "models": {
+        "embedding_dim": None,
+    },
     "interact": {
         "history_turns": 10,
     },
@@ -67,7 +69,10 @@ def get_default_settings_values() -> dict[str, Any]:
     """Return a deep-copied settings payload owned by code defaults."""
 
     values = deepcopy(DEFAULT_SETTINGS_VALUES)
-    values["models"] = get_llm_provider_model_defaults(resolve_runtime_llm_provider())
+    values["models"] = merge_settings_values(
+        values["models"],
+        get_llm_provider_model_defaults(resolve_runtime_llm_provider()),
+    )
     return values
 
 

@@ -11,4 +11,5 @@
 ## Files
 
 - `init.py` contains the frontend runtime init entrypoint.
-- `settings.py` contains settings overview and shared system data builders.
+- `catalog.py` declares the settings page tabs, groups, and entry metadata.
+- `settings.py` builds the settings overview from the catalog and handles local updates.

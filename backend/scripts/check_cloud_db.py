@@ -16,10 +16,7 @@ from app.shared.infra.database import (  # noqa: E402
     get_engine,
     validate_postgres_runtime_schema,
 )
-from app.shared.infra.database.core import (  # noqa: E402
-    _SCHEMA_TABLES,
-    _postgres_vector_dim,
-)
+from app.shared.infra.database.core import _SCHEMA_TABLES  # noqa: E402
 from app.shared.infra.runtime import is_cloud_mode  # noqa: E402
 from app.shared.infra.search.llamaindex_index import prepare_postgres_store  # noqa: E402
 
@@ -173,13 +170,6 @@ def _collect_deep_schema_errors(connection: sa.Connection) -> list[str]:
             errors.append(
                 f"missing foreign key: {table_name}.{column_name} -> {referenced_table}"
             )
-
-    if _postgres_vector_dim(
-        connection,
-        table_name="retrieval_chunk",
-        column_name="embedding",
-    ) is None:
-        errors.append("missing pgvector column: retrieval_chunk.embedding")
 
     return errors
 

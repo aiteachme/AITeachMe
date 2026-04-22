@@ -48,7 +48,7 @@ def test_build_provider_kwargs_for_minimax_routes_to_anthropic(monkeypatch) -> N
     monkeypatch.setenv("LLM_PROVIDER", "minimax")
     monkeypatch.delenv("LLM_API_VERSION", raising=False)
 
-    kwargs = build_litellm_provider_kwargs("MiniMax-M2.7-highspeed")
+    kwargs = build_litellm_provider_kwargs("MiniMax-M2.5-highspeed")
 
     assert kwargs == {"custom_llm_provider": "anthropic"}
 

@@ -13,6 +13,7 @@ from sqlmodel import Session
 from app.shared.infra.database import managed_session
 from app.shared.infra.runtime import get_guest_cookie_name, is_local_mode
 from app.shared.infra.exceptions import AITeachMeError
+from app.shared.infra.logger import bind_logging_context
 from app.workflows.support.auth import (
     create_guest_user,
     resolve_guest_user_from_token,
@@ -94,6 +95,12 @@ def _log_current_user_context(
     has_bearer_token: bool,
     has_guest_token: bool,
 ) -> None:
+    bind_logging_context(
+        user_id=context.user_id,
+        auth_source=context.auth_source,
+        is_authenticated=context.is_authenticated,
+        device_key_suffix=_device_key_suffix(context.device_key),
+    )
     logger.debug(
         "current_user_context_resolved",
         path=request.url.path,

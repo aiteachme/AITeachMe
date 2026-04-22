@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
-EMBEDDING_DIM_BY_MODEL: dict[str, int] = {
+KNOWN_EMBEDDING_DIMENSIONS: dict[str, int] = {
     "text-embedding-v4": 1024,
     "text-embedding-v3": 1536,
     "text-embedding-v2": 1536,
@@ -68,6 +68,10 @@ LLM_PROVIDER_ALIASES: dict[str, str] = {
     "groq": "groq",
     "mistral": "mistral",
     "bedrock": "bedrock",
+    "aws_bedrock": "bedrock",
+    "aws-bedrock": "bedrock",
+    "amazon_bedrock": "bedrock",
+    "amazon-bedrock": "bedrock",
 }
 LLM_CANONICAL_PROVIDERS: frozenset[str] = frozenset(
     {
@@ -133,6 +137,11 @@ LITELLM_PROVIDER_BY_RUNTIME_PROVIDER: dict[str, str] = {
     "bedrock": "bedrock",
 }
 LLM_PROVIDER_MODEL_DEFAULTS: dict[str, dict[str, Any]] = {
+    # These are only first-run defaults. Users can still override any
+    # models.reason / primary / light / extract value from the settings UI.
+    # We bias primary / light toward lower-latency models when a provider
+    # offers a clear speed-first option.
+    #
     # Default path for OpenAI-compatible gateways such as DashScope compatible
     # mode, LiteLLM Gateway, vLLM, LM Studio, Ollama OpenAI mode, etc.
     "openai_compatible": {
@@ -183,7 +192,7 @@ LLM_PROVIDER_MODEL_DEFAULTS: dict[str, dict[str, Any]] = {
     "kimi": {
         "reason": "kimi-k2-thinking",
         "primary": "kimi-k2.5",
-        "light": "moonshot-v1-8k",
+        "light": "kimi-k2-turbo-preview",
         "extract": None,
         "ocr": None,
         "embedding": None,
@@ -191,7 +200,7 @@ LLM_PROVIDER_MODEL_DEFAULTS: dict[str, dict[str, Any]] = {
     },
     "glm": {
         "reason": "glm-5.1",
-        "primary": "glm-5.1",
+        "primary": "glm-4.7-flash",
         "light": "glm-4.7-flash",
         "extract": None,
         "ocr": None,
@@ -219,17 +228,17 @@ LLM_PROVIDER_MODEL_DEFAULTS: dict[str, dict[str, Any]] = {
         "image_generation": "gpt-image-1",
     },
     "anthropic": {
-        "reason": "claude-3-5-sonnet-latest",
-        "primary": "claude-3-5-sonnet-latest",
-        "light": "claude-3-5-haiku-latest",
+        "reason": "claude-sonnet-4-6",
+        "primary": "claude-haiku-4-5",
+        "light": "claude-haiku-4-5",
         "extract": None,
         "ocr": None,
         "embedding": None,
         "image_generation": None,
     },
     "minimax": {
-        "reason": "MiniMax-M2.7",
-        "primary": "MiniMax-M2.7-highspeed",
+        "reason": "MiniMax-M2.5",
+        "primary": "MiniMax-M2.5-highspeed",
         "light": "MiniMax-M2.1-highspeed",
         "extract": None,
         "ocr": None,
@@ -237,18 +246,18 @@ LLM_PROVIDER_MODEL_DEFAULTS: dict[str, dict[str, Any]] = {
         "image_generation": None,
     },
     "gemini": {
-        "reason": "gemini-2.5-pro",
+        "reason": "gemini-2.5-flash",
         "primary": "gemini-2.5-flash",
-        "light": "gemini-2.5-flash",
+        "light": "gemini-2.5-flash-lite",
         "extract": None,
         "ocr": None,
         "embedding": "text-embedding-004",
         "image_generation": None,
     },
     "vertex_ai": {
-        "reason": "gemini-2.5-pro",
+        "reason": "gemini-2.5-flash",
         "primary": "gemini-2.5-flash",
-        "light": "gemini-2.5-flash",
+        "light": "gemini-2.5-flash-lite",
         "extract": None,
         "ocr": None,
         "embedding": "text-embedding-004",
@@ -282,8 +291,8 @@ LLM_PROVIDER_MODEL_DEFAULTS: dict[str, dict[str, Any]] = {
         "image_generation": None,
     },
     "xai": {
-        "reason": "grok-4-fast-reasoning",
-        "primary": "grok-4-0709",
+        "reason": "grok-4",
+        "primary": "grok-3-mini",
         "light": "grok-3-mini",
         "extract": None,
         "ocr": None,
@@ -292,7 +301,7 @@ LLM_PROVIDER_MODEL_DEFAULTS: dict[str, dict[str, Any]] = {
     },
     "groq": {
         "reason": "llama-3.3-70b-versatile",
-        "primary": "llama-3.3-70b-versatile",
+        "primary": "llama-3.1-8b-instant",
         "light": "llama-3.1-8b-instant",
         "extract": None,
         "ocr": None,
@@ -300,9 +309,18 @@ LLM_PROVIDER_MODEL_DEFAULTS: dict[str, dict[str, Any]] = {
         "image_generation": None,
     },
     "mistral": {
-        "reason": "mistral-large-latest",
-        "primary": "mistral-large-latest",
-        "light": "ministral-8b-latest",
+        "reason": "mistral-small-latest",
+        "primary": "mistral-small-latest",
+        "light": "mistral-small-latest",
+        "extract": None,
+        "ocr": None,
+        "embedding": None,
+        "image_generation": None,
+    },
+    "bedrock": {
+        "reason": "anthropic.claude-sonnet-4-6",
+        "primary": "anthropic.claude-haiku-4-5-20251001-v1:0",
+        "light": "anthropic.claude-haiku-4-5-20251001-v1:0",
         "extract": None,
         "ocr": None,
         "embedding": None,
@@ -465,6 +483,8 @@ def detect_llm_provider_from_base_url(base_url: str | None) -> str | None:
         return "groq"
     if "api.mistral.ai" in text:
         return "mistral"
+    if "bedrock-runtime." in text or "bedrock-runtime-" in text:
+        return "bedrock"
     if "localhost:11434" in normalized.lower() or "127.0.0.1:11434" in normalized.lower():
         return "ollama"
     return "openai_compatible"
@@ -491,7 +511,9 @@ def get_llm_provider_model_defaults(provider: str | None) -> dict[str, Any]:
     candidate = LLM_PROVIDER_MODEL_DEFAULTS.get(normalized)
     if candidate is None:
         candidate = LLM_PROVIDER_MODEL_DEFAULTS["openai_compatible"]
-    return dict(candidate)
+    resolved = dict(candidate)
+    resolved.setdefault("embedding_dim", None)
+    return resolved
 
 
 def get_llm_api_version() -> str | None:
@@ -531,6 +553,28 @@ def llm_provider_requires_api_key(
     if is_local_llm_base_url(base_url):
         return False
     return True
+
+
+def resolve_embedding_dimension(
+    model: str | None,
+    *,
+    configured_dim: int | None = None,
+) -> int:
+    """Resolve one embedding dimension from explicit config plus known hints."""
+
+    if configured_dim is not None:
+        normalized_dim = int(configured_dim)
+        if normalized_dim > 0:
+            return normalized_dim
+
+    normalized_model = (model or "").strip()
+    if not normalized_model:
+        return 0
+
+    return KNOWN_EMBEDDING_DIMENSIONS.get(
+        normalized_model,
+        DEFAULT_EMBEDDING_DIM,
+    )
 
 
 def split_csv_names(value: str | None) -> list[str]:
@@ -694,7 +738,7 @@ __all__ = [
     "DEFAULT_RETRIEVER_PROFILES",
     "DEFAULT_RETRIEVERS",
     "DOCGEN_RETRIEVERS",
-    "EMBEDDING_DIM_BY_MODEL",
+    "KNOWN_EMBEDDING_DIMENSIONS",
     "RETRIEVER_PROFILES",
     "ZH_MATH_RETRIEVERS",
     "ZH_EDU_RETRIEVERS",
@@ -710,6 +754,7 @@ __all__ = [
     "normalize_retriever_name",
     "resolve_litellm_provider_name",
     "resolve_runtime_llm_provider",
+    "resolve_embedding_dimension",
     "split_provider_model_name",
     "split_csv_names",
 ]

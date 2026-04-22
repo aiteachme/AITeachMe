@@ -19,10 +19,14 @@ from llama_index.core import VectorStoreIndex
 from llama_index.core.retrievers import VectorIndexRetriever
 from llama_index.core.schema import NodeWithScore, QueryBundle
 
+from app.models.subject import Subject
+from app.shared.infra.database import managed_session
 from app.shared.infra.settings import get_settings
 from app.shared.infra.embedding import ATMEmbedding
 from app.shared.infra.search.llamaindex_adapter.reranker import ATMReranker
 from app.shared.infra.search.llamaindex_adapter.vector_store import ATMVectorStore
+from app.shared.infra.subject.settings import get_subject_embedding_binding
+from sqlmodel import select
 
 logger = structlog.get_logger(__name__)
 
@@ -53,7 +57,16 @@ class ATMKnowledgeRetriever:
         )
 
         # Build LlamaIndex components
-        self._embed_model = ATMEmbedding()
+        binding_model: str | None = None
+        with managed_session() as session:
+            subject_row = session.exec(
+                select(Subject).where(Subject.slug == subject)
+            ).first()
+            if subject_row is not None:
+                binding = get_subject_embedding_binding(subject_row)
+                if binding is not None:
+                    binding_model = binding.embedding_model
+        self._embed_model = ATMEmbedding(model_name=binding_model)
         self._vector_store = ATMVectorStore(subject=subject)
         self._index = VectorStoreIndex.from_vector_store(
             vector_store=self._vector_store,

@@ -79,6 +79,23 @@ def test_cloud_postgres_schema_not_ready_raises(monkeypatch: pytest.MonkeyPatch)
         core.assert_postgres_runtime_schema_ready()
 
 
+def test_cloud_runtime_schema_no_longer_requires_global_embedding_column(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.shared.infra.database import core
+
+    connection = object()
+
+    monkeypatch.setattr(core, "_get_alembic_head_revision", lambda: "head")
+    monkeypatch.setattr(core, "_get_postgres_alembic_revision", lambda conn: "head")
+    monkeypatch.setattr(core, "_postgres_extension_exists", lambda conn, extension_name: True)
+    monkeypatch.setattr(core, "_postgres_table_exists", lambda conn, table_name: True)
+
+    errors = core._collect_postgres_runtime_schema_errors(connection, settings=object())
+
+    assert errors == []
+
+
 def test_retrieval_chunk_unique_constraints_are_named() -> None:
     from app.models.knowledge import RetrievalChunk
 

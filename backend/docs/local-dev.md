@@ -47,6 +47,7 @@ docgen:
 约定：
 
 - `.env` 放密钥、部署和外部接入参数
+- repo 根目录 `.env.sample` 已按“基础必填 / 高级可选”分层，普通本地开发通常只需要前半部分
 - `config.yaml` 放模型名、planner/docgen/search 等运行默认值
 - 页面 UI 只做用户级或当前请求级覆盖
 

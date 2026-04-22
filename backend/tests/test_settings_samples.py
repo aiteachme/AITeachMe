@@ -19,6 +19,7 @@ from app.shared.infra.settings.support import (
     split_provider_model_name,
 )
 from app.shared.infra.settings.settings import Settings
+from app.workflows.support.system.catalog import ENV_ENTRY_KEY_MAP
 
 
 def test_settings_model_uses_code_defaults_without_project_file(monkeypatch) -> None:
@@ -32,6 +33,7 @@ def test_settings_model_uses_code_defaults_without_project_file(monkeypatch) -> 
 
     assert settings.models.primary == defaults["models"]["primary"]
     assert settings.models.embedding == defaults["models"]["embedding"]
+    assert settings.models.embedding_dim == defaults["models"]["embedding_dim"]
     assert settings.ingest.max_upload_size_mb == defaults["ingest"]["max_upload_size_mb"]
     assert settings.docgen.generate_cover_image == defaults["docgen"]["generate_cover_image"]
     assert "runtime" not in defaults
@@ -55,6 +57,10 @@ def test_detect_llm_provider_from_base_url_handles_major_providers() -> None:
     assert detect_llm_provider_from_base_url("https://api.siliconflow.cn/v1") == "siliconflow"
     assert detect_llm_provider_from_base_url("https://ark.cn-beijing.volces.com/api/v3") == "doubao"
     assert (
+        detect_llm_provider_from_base_url("https://bedrock-runtime.us-east-1.amazonaws.com")
+        == "bedrock"
+    )
+    assert (
         detect_llm_provider_from_base_url("https://dashscope.aliyuncs.com/compatible-mode/v1")
         == "qwen"
     )
@@ -75,10 +81,13 @@ def test_provider_defaults_switch_by_provider() -> None:
     ollama_defaults = get_llm_provider_model_defaults("ollama")
     deepseek_defaults = get_llm_provider_model_defaults("deepseek")
     minimax_defaults = get_llm_provider_model_defaults("minimax")
+    bedrock_defaults = get_llm_provider_model_defaults("bedrock")
 
-    assert anthropic_defaults["primary"].startswith("claude-")
+    assert anthropic_defaults["reason"] == "claude-sonnet-4-6"
+    assert anthropic_defaults["primary"] == "claude-haiku-4-5"
     assert anthropic_defaults["embedding"] is None
-    assert gemini_defaults["primary"].startswith("gemini-")
+    assert gemini_defaults["primary"] == "gemini-2.5-flash"
+    assert gemini_defaults["light"] == "gemini-2.5-flash-lite"
     assert gemini_defaults["embedding"] == "text-embedding-004"
     assert azure_defaults["primary"] == "gpt-4o-mini"
     assert vllm_defaults["primary"] == "Qwen/Qwen2.5-7B-Instruct"
@@ -86,7 +95,9 @@ def test_provider_defaults_switch_by_provider() -> None:
     assert ollama_defaults["primary"] == "qwen2.5"
     assert ollama_defaults["embedding"] is None
     assert deepseek_defaults["primary"] == "deepseek-chat"
-    assert minimax_defaults["primary"] == "MiniMax-M2.7-highspeed"
+    assert minimax_defaults["primary"] == "MiniMax-M2.5-highspeed"
+    assert bedrock_defaults["reason"] == "anthropic.claude-sonnet-4-6"
+    assert bedrock_defaults["primary"].startswith("anthropic.claude-haiku-4-5")
 
 
 def test_provider_defaults_allow_optional_embedding_models(monkeypatch) -> None:
@@ -123,6 +134,7 @@ def test_settings_support_optional_external_override_file(
                 "models:",
                 "  primary: qwen-flash",
                 "  embedding: text-embedding-v4",
+                "  embedding_dim: 1024",
                 "planner:",
                 '  sprint:',
                 '    target_length: "3000-10000字"',
@@ -139,6 +151,8 @@ def test_settings_support_optional_external_override_file(
 
     assert settings.models.primary == "qwen-flash"
     assert settings.models.embedding == "text-embedding-v4"
+    assert settings.models.embedding_dim == 1024
+    assert settings.embedding_dim == 1024
     assert settings.planner.sprint.target_length == "3000-10000字"
 
 
@@ -174,13 +188,23 @@ def test_settings_model_validate_accepts_partial_external_override() -> None:
     assert settings.planner.systematic.min_chapters == defaults["planner"]["systematic"]["min_chapters"]
 
 
-def test_env_sample_covers_exposed_env_keys() -> None:
-    support_settings = Path(__file__).resolve().parents[1].joinpath(
-        "app/workflows/support/system/settings.py"
-    ).read_text(encoding="utf-8")
-    exposed_env_names = set(
-        re.findall(r'_env_entry\([^\n]+?"([A-Z0-9_]+)"', support_settings)
+def test_settings_embedding_dim_can_be_explicitly_overridden_for_unknown_model() -> None:
+    settings = Settings.model_validate(
+        {
+            "models": {
+                "embedding": "custom-embedding-model",
+                "embedding_dim": 2048,
+            }
+        }
     )
+
+    assert settings.models.embedding == "custom-embedding-model"
+    assert settings.models.embedding_dim == 2048
+    assert settings.embedding_dim == 2048
+
+
+def test_env_sample_covers_exposed_env_keys() -> None:
+    exposed_env_names = set(ENV_ENTRY_KEY_MAP.values())
 
     env_sample_text = Path(__file__).resolve().parents[2].joinpath(".env.sample").read_text(
         encoding="utf-8"
