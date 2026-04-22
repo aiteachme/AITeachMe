@@ -37,7 +37,6 @@ function getSectionIcon(sectionId: string): ReactNode {
 export const SettingsNav = memo(function SettingsNav({
   activeSection,
   onSelect,
-  isLocalRuntime,
   sections,
 }: SettingsNavProps) {
   return (
@@ -73,35 +72,6 @@ export const SettingsNav = memo(function SettingsNav({
             </button>
           );
         })}
-      </div>
-
-      <div className={SETTINGS_STYLES.nav.statusCard}>
-        <div className={SETTINGS_STYLES.nav.statusContent}>
-          <span className={SETTINGS_STYLES.nav.statusLabel}>环境状态</span>
-          <div className={SETTINGS_STYLES.nav.statusRow}>
-            <span className={SETTINGS_STYLES.nav.runtimeIndicatorWrap}>
-              <span
-                className={cn(
-                  SETTINGS_STYLES.nav.runtimeIndicatorPulse,
-                  isLocalRuntime
-                    ? SETTINGS_STYLES.nav.runtimeIndicatorPulseLocal
-                    : SETTINGS_STYLES.nav.runtimeIndicatorPulseCloud,
-                )}
-              />
-              <span
-                className={cn(
-                  SETTINGS_STYLES.nav.runtimeIndicatorDot,
-                  isLocalRuntime
-                    ? SETTINGS_STYLES.nav.runtimeIndicatorDotLocal
-                    : SETTINGS_STYLES.nav.runtimeIndicatorDotCloud,
-                )}
-              />
-            </span>
-            <span className={SETTINGS_STYLES.nav.statusText}>
-              {isLocalRuntime ? "本地网络直连" : "云端托管运行"}
-            </span>
-          </div>
-        </div>
       </div>
     </nav>
   );

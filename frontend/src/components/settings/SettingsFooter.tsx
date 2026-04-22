@@ -1,6 +1,5 @@
 import { memo } from "react";
 
-import { AnimatePresence, motion } from "framer-motion";
 import { CheckCircle2, Loader2, RefreshCcw } from "lucide-react";
 
 import { cn } from "../../lib/utils";
@@ -17,6 +16,54 @@ interface SettingsFooterProps {
   onSave: () => void;
 }
 
+function renderStatus(
+  saveState: SaveState,
+  saveError: string | null,
+  hasChanges: boolean,
+) {
+  if (saveState === "saving") {
+    return (
+      <span className={cn(SETTINGS_STYLES.footer.statusRow, SETTINGS_STYLES.footer.statusSaving)}>
+        <Loader2 className={SETTINGS_STYLES.footer.iconSpinning} /> 保存配置中...
+      </span>
+    );
+  }
+
+  if (saveState === "error") {
+    return (
+      <span className={cn(SETTINGS_STYLES.footer.statusRow, SETTINGS_STYLES.footer.statusError)}>
+        <RefreshCcw className={SETTINGS_STYLES.footer.icon} /> {saveError ?? "保存失败"}
+      </span>
+    );
+  }
+
+  if (saveState === "saved") {
+    return (
+      <span className={cn(SETTINGS_STYLES.footer.statusRow, SETTINGS_STYLES.footer.statusSaved)}>
+        <CheckCircle2 className={SETTINGS_STYLES.footer.icon} /> 配置已生效
+      </span>
+    );
+  }
+
+  if (hasChanges) {
+    return (
+      <span className={cn(SETTINGS_STYLES.footer.statusRow, SETTINGS_STYLES.footer.statusChanged)}>
+        <span className={SETTINGS_STYLES.footer.changedIndicatorWrap}>
+          <span className={SETTINGS_STYLES.footer.changedIndicatorPulse} />
+          <span className={SETTINGS_STYLES.footer.changedIndicatorDot} />
+        </span>
+        发现未保存更改
+      </span>
+    );
+  }
+
+  return (
+    <span className={cn(SETTINGS_STYLES.footer.statusRow, SETTINGS_STYLES.footer.statusSynced)}>
+      设置已同步
+    </span>
+  );
+}
+
 export const SettingsFooter = memo(function SettingsFooter({
   saveState,
   saveError,
@@ -28,78 +75,7 @@ export const SettingsFooter = memo(function SettingsFooter({
   return (
     <div className={SETTINGS_STYLES.footer.root}>
       <div className={SETTINGS_STYLES.footer.statusWrap}>
-        <AnimatePresence mode="wait">
-          {saveState === "saving" ? (
-            <motion.span
-              key="saving"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className={cn(
-                SETTINGS_STYLES.footer.statusRow,
-                SETTINGS_STYLES.footer.statusSaving,
-              )}
-            >
-              <Loader2 className={SETTINGS_STYLES.footer.iconSpinning} /> 保存配置中...
-            </motion.span>
-          ) : saveState === "error" ? (
-            <motion.span
-              key="error"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className={cn(
-                SETTINGS_STYLES.footer.statusRow,
-                SETTINGS_STYLES.footer.statusError,
-              )}
-            >
-              <RefreshCcw className={SETTINGS_STYLES.footer.icon} /> {saveError ?? "保存失败"}
-            </motion.span>
-          ) : saveState === "saved" ? (
-            <motion.span
-              key="saved"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className={cn(
-                SETTINGS_STYLES.footer.statusRow,
-                SETTINGS_STYLES.footer.statusSaved,
-              )}
-            >
-              <CheckCircle2 className={SETTINGS_STYLES.footer.icon} /> 配置已生效
-            </motion.span>
-          ) : hasChanges ? (
-            <motion.span
-              key="changed"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className={cn(
-                SETTINGS_STYLES.footer.statusRow,
-                SETTINGS_STYLES.footer.statusChanged,
-              )}
-            >
-              <span className={SETTINGS_STYLES.footer.changedIndicatorWrap}>
-                <span className={SETTINGS_STYLES.footer.changedIndicatorPulse} />
-                <span className={SETTINGS_STYLES.footer.changedIndicatorDot} />
-              </span>
-              发现未保存更改
-            </motion.span>
-          ) : (
-            <motion.span
-              key="synced"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className={cn(
-                SETTINGS_STYLES.footer.statusRow,
-                SETTINGS_STYLES.footer.statusSynced,
-              )}
-            >
-              设置已同步
-            </motion.span>
-          )}
-        </AnimatePresence>
+        {renderStatus(saveState, saveError, hasChanges)}
       </div>
 
       <div className={SETTINGS_STYLES.footer.actions}>

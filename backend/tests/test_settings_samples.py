@@ -245,6 +245,16 @@ def test_env_samples_cover_exposed_env_keys() -> None:
     assert sorted(exposed_env_names - sample_names) == []
 
 
+def test_user_env_sample_vars_are_all_exposed_in_settings_catalog() -> None:
+    project_root = Path(__file__).resolve().parents[2]
+    env_sample_text = project_root.joinpath(".env.sample").read_text(encoding="utf-8")
+    sample_names = set(
+        re.findall(r"^(?:#\s*)?([A-Z][A-Z0-9_]+)=", env_sample_text, re.MULTILINE)
+    )
+
+    assert sorted(sample_names - set(ENV_ENTRY_KEY_MAP.values())) == []
+
+
 def test_minimal_env_sample_keeps_local_bootstrap_keys() -> None:
     env_sample_text = Path(__file__).resolve().parents[2].joinpath(".env.sample").read_text(
         encoding="utf-8"

@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
-import { AnimatePresence, motion } from "framer-motion";
 import { X } from "lucide-react";
 
 import {
@@ -19,8 +18,6 @@ interface SettingsPanelProps {
   isOpen: boolean;
   onClose: () => void;
 }
-
-
 
 export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
   const [activeSection, setActiveSection] = useState<SectionId>("");
@@ -52,8 +49,6 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
     }
 
     const handleSettingsChanged = () => {
-      // Keep the panel aligned with the global overview cache without requiring a full reload.
-      // `useSettingsOverview` still owns the editable live state while the panel is open.
       const next = getStoredSystemSettingsOverview();
       setStoredOverview(next);
     };
@@ -100,81 +95,64 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
   if (!isOpen) return null;
 
   const panel = (
-    <AnimatePresence>
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-        transition={{ duration: 0.18 }}
-        className={SETTINGS_STYLES.panel.root}
-      >
-        <div className={SETTINGS_STYLES.panel.backdrop} onClick={onClose} />
-        <div className={SETTINGS_STYLES.panel.viewport}>
-          <motion.div
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 4 }}
-            transition={{ duration: 0.16, ease: "easeOut" }}
-            className={SETTINGS_STYLES.panel.dialog}
-          >
-            <SettingsNav
-              activeSection={activeSection}
-              onSelect={setActiveSection}
-              isLocalRuntime={isLocalRuntime}
-              sections={sections}
-            />
+    <div className={SETTINGS_STYLES.panel.root}>
+      <div className={SETTINGS_STYLES.panel.backdrop} onClick={onClose} />
+      <div className={SETTINGS_STYLES.panel.viewport}>
+        <div className={SETTINGS_STYLES.panel.dialog}>
+          <SettingsNav
+            activeSection={activeSection}
+            onSelect={setActiveSection}
+            isLocalRuntime={isLocalRuntime}
+            sections={sections}
+          />
 
-            <div className={SETTINGS_STYLES.panel.body}>
-              <div className={SETTINGS_STYLES.panel.header}>
-                <div>
-                  <h3 className={SETTINGS_STYLES.panel.headerTitle}>
-                    {activeSectionConfig?.label ?? "设置"}
-                  </h3>
-                  <p className={SETTINGS_STYLES.panel.headerDescription}>
-                    {activeSectionConfig?.description ?? "查看与调整当前系统设置。"}
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={onClose}
-                  className={SETTINGS_STYLES.panel.closeButton}
-                  aria-label="关闭设置"
-                >
-                  <X className={SETTINGS_STYLES.panel.closeIcon} />
-                </button>
+          <div className={SETTINGS_STYLES.panel.body}>
+            <div className={SETTINGS_STYLES.panel.header}>
+              <div>
+                <h3 className={SETTINGS_STYLES.panel.headerTitle}>
+                  {activeSectionConfig?.label ?? "设置"}
+                </h3>
+                <p className={SETTINGS_STYLES.panel.headerDescription}>
+                  {activeSectionConfig?.description ?? "查看与调整当前系统设置。"}
+                </p>
               </div>
-
-              <div className={SETTINGS_STYLES.panel.scrollArea}>
-                <div
-                  key={activeSection}
-                  className={SETTINGS_STYLES.panel.sectionFrame}
-                >
-                  <ConfiguredSettingsSection
-                    section={activeSectionConfig}
-                    isLocalRuntime={isLocalRuntime}
-                    settingsDraft={settingsDraft}
-                    envDraft={envDraft}
-                    onServerChange={patchServerSetting}
-                    onEnvChange={patchEnvSetting}
-                    loading={isOverviewLoading}
-                    error={overviewError}
-                  />
-                </div>
-              </div>
-
-              <SettingsFooter
-                saveState={saveState}
-                saveError={saveError}
-                hasChanges={hasServerChanges || hasEnvChanges}
-                isLocalRuntime={isLocalRuntime}
-                onReset={resetServerDrafts}
-                onSave={() => void saveAll()}
-              />
+              <button
+                type="button"
+                onClick={onClose}
+                className={SETTINGS_STYLES.panel.closeButton}
+                aria-label="关闭设置"
+              >
+                <X className={SETTINGS_STYLES.panel.closeIcon} />
+              </button>
             </div>
-          </motion.div>
+
+            <div className={SETTINGS_STYLES.panel.scrollArea}>
+              <div key={activeSection} className={SETTINGS_STYLES.panel.sectionFrame}>
+                <ConfiguredSettingsSection
+                  section={activeSectionConfig}
+                  isLocalRuntime={isLocalRuntime}
+                  settingsDraft={settingsDraft}
+                  envDraft={envDraft}
+                  onServerChange={patchServerSetting}
+                  onEnvChange={patchEnvSetting}
+                  loading={isOverviewLoading}
+                  error={overviewError}
+                />
+              </div>
+            </div>
+
+            <SettingsFooter
+              saveState={saveState}
+              saveError={saveError}
+              hasChanges={hasServerChanges || hasEnvChanges}
+              isLocalRuntime={isLocalRuntime}
+              onReset={resetServerDrafts}
+              onSave={() => void saveAll()}
+            />
+          </div>
         </div>
-      </motion.div>
-    </AnimatePresence>
+      </div>
+    </div>
   );
 
   return typeof document !== "undefined"
