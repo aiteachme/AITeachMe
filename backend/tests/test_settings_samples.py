@@ -40,6 +40,7 @@ def test_settings_model_uses_code_defaults_without_project_file(monkeypatch) -> 
     assert settings.models.primary == defaults["models"]["primary"]
     assert settings.models.embedding == defaults["models"]["embedding"]
     assert settings.models.embedding_dim == defaults["models"]["embedding_dim"]
+    assert settings.models.vision is defaults["models"]["vision"]
     assert settings.models.rerank is defaults["models"]["rerank"]
     assert settings.models.ocr is defaults["models"]["ocr"]
     assert settings.models.speech_to_text is defaults["models"]["speech_to_text"]

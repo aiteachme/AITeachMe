@@ -185,14 +185,15 @@ def _log_infra_diagnostics(settings) -> None:
     lines.append(f"    Reason Model           : {settings.models.reason or settings.models.primary}")
     lines.append(f"    Primary Text Model     : {settings.models.primary}")
     lines.append(f"    Light Text Model       : {settings.models.light or settings.models.primary}")
+    lines.append(f"    Vision Model           : {settings.models.vision or 'disabled'}")
+    lines.append(f"    Document OCR Model     : {settings.models.ocr or 'disabled'}")
     lines.append(f"    Embedding Model        : {settings.models.embedding}")
     lines.append(f"    Rerank Model           : {settings.models.rerank or 'disabled'}")
-    lines.append(f"    OCR Model              : {settings.models.ocr or '(uses primary)'}")
     lines.append(
         f"    MinerU Server Token    : {'SET' if get_env('MINERU_API_TOKEN') else 'not set'}"
     )
     lines.append(
-        f"    Image Model            : {settings.models.image_generation or 'disabled'}"
+        f"    Image Generation Model : {settings.models.image_generation or 'disabled'}"
     )
     lines.append(f"    Speech->Text Model     : {settings.models.speech_to_text or 'disabled'}")
     lines.append(f"    Text->Speech Model     : {settings.models.text_to_speech or 'disabled'}")

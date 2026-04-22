@@ -4,12 +4,13 @@ from __future__ import annotations
 
 import base64
 from pathlib import Path
+from typing import Literal
 
 import structlog
 
 from app.shared.infra.settings import get_settings
 from app.shared.infra.env_support import get_env
-from app.shared.infra.exceptions import FileParseError, MissingLLMApiKeyError
+from app.shared.infra.exceptions import FileParseError, LLMCallError, MissingLLMApiKeyError
 from app.shared.infra.llm_support import acompletion
 from app.shared.infra.llm_support.routing import TaskType
 from app.shared.infra.settings.support import llm_provider_requires_api_key
@@ -23,6 +24,7 @@ from app.workflows.ingest.common.parsing.prompts import get_image_parse_prompt
 logger = structlog.get_logger()
 
 _UNCLEAR_MARKDOWN = "[unclear]"
+_VisualModelSelector = Literal["vision", "ocr"]
 
 
 async def parse_image_with_llm_vision(
@@ -30,10 +32,15 @@ async def parse_image_with_llm_vision(
     asset_dir: Path,
     options: ParserRunOptions,
 ) -> str:
-    """Convert an image into markdown and persist the original asset."""
+    """Convert a directly uploaded image into markdown via the vision model."""
 
     path = Path(file_path)
-    logger.info("parse_image_start", filename=path.name, ocr_language_mode=options.ocr_language_mode)
+    logger.info(
+        "parse_image_start",
+        filename=path.name,
+        ocr_language_mode=options.ocr_language_mode,
+        model_selector="vision",
+    )
 
     image_bytes = path.read_bytes()
     original_filename = save_image_bytes(
@@ -50,6 +57,7 @@ async def parse_image_with_llm_vision(
             image_bytes,
             mime_type=mime_type,
             language_mode=options.ocr_language_mode,
+            model_selector="vision",
         )
     except Exception as exc:
         logger.error("parse_image_failed", filename=path.name, error=str(exc))
@@ -66,18 +74,18 @@ async def parse_image_bytes_with_llm_vision(
     *,
     mime_type: str,
     language_mode: str = "zh",
+    model_selector: _VisualModelSelector = "vision",
 ) -> str:
-    """Run LLM vision parsing on image bytes and return markdown text."""
+    """Run one visual model on image bytes and return markdown text."""
 
     if not image_bytes or len(image_bytes) < 100:
         logger.warning("parse_image_bytes_skipped", reason="image_bytes_too_small", size=len(image_bytes))
         return _UNCLEAR_MARKDOWN
 
-    settings = get_settings()
-    ocr_model = settings.models.ocr or settings.models.primary
-    ocr_api_key = (get_env("LLM_API_KEY") or "").strip() or None
-    ocr_base_url = get_env("LLM_BASE_URL", "https://api.openai.com/v1")
-    if llm_provider_requires_api_key(base_url=ocr_base_url) and not ocr_api_key:
+    resolved_model = _resolve_visual_model(model_selector)
+    api_key = (get_env("LLM_API_KEY") or "").strip() or None
+    base_url = get_env("LLM_BASE_URL", "https://api.openai.com/v1")
+    if llm_provider_requires_api_key(base_url=base_url) and not api_key:
         raise MissingLLMApiKeyError()
 
     encoded = base64.b64encode(image_bytes).decode("utf-8")
@@ -100,14 +108,14 @@ async def parse_image_bytes_with_llm_vision(
             "timeout": 120,
             "temperature": 0.3,
         }
-        if ocr_base_url:
-            completion_kwargs["api_base"] = ocr_base_url
-        if ocr_api_key is not None:
-            completion_kwargs["api_key"] = ocr_api_key
+        if base_url:
+            completion_kwargs["api_base"] = base_url
+        if api_key is not None:
+            completion_kwargs["api_key"] = api_key
         text = await acompletion(
             messages=messages,
             task_type=TaskType.VISION,
-            model=ocr_model,
+            model=resolved_model,
             **completion_kwargs,
         )
     except Exception as exc:
@@ -116,13 +124,19 @@ async def parse_image_bytes_with_llm_vision(
             error=str(exc),
             mime_type=mime_type,
             language_mode=language_mode,
-            ocr_model=ocr_model,
+            model_selector=model_selector,
+            model=resolved_model,
             exc_info=True,
         )
         return _UNCLEAR_MARKDOWN
 
     if not text or not text.strip():
-        logger.warning("parse_image_bytes_empty_response", mime_type=mime_type, ocr_model=ocr_model)
+        logger.warning(
+            "parse_image_bytes_empty_response",
+            mime_type=mime_type,
+            model_selector=model_selector,
+            model=resolved_model,
+        )
         return _UNCLEAR_MARKDOWN
 
     text_lower = text.lower().strip()
@@ -134,7 +148,26 @@ async def parse_image_bytes_with_llm_vision(
         "unable to process",
     ]
     if any(pattern in text_lower for pattern in refuse_patterns):
-        logger.warning("parse_image_bytes_refused", response_preview=text[:100], ocr_model=ocr_model)
+        logger.warning(
+            "parse_image_bytes_refused",
+            response_preview=text[:100],
+            model_selector=model_selector,
+            model=resolved_model,
+        )
         return _UNCLEAR_MARKDOWN
 
     return text
+
+
+def _resolve_visual_model(model_selector: _VisualModelSelector) -> str:
+    settings = get_settings()
+    if model_selector == "vision":
+        candidate = (settings.models.vision or "").strip()
+        if candidate:
+            return candidate
+        raise LLMCallError(reason="models.vision is not configured")
+
+    candidate = (settings.models.ocr or "").strip()
+    if candidate:
+        return candidate
+    raise LLMCallError(reason="models.ocr is not configured")

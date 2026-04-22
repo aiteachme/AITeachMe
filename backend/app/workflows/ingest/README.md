@@ -243,14 +243,14 @@ Phase 2 由 `support/files/parsing.py` 在 Phase 1 成功后按最终 state 派�
 
 ### 3. Vision OCR 增强
 
-如果配置了 `OCR_MODEL`：
+如果配置了“文档 OCR 模型”（`settings.models.ocr`）：
 
 1. 扫描 Markdown 图片引用。
 2. 对图片资产调用 LLM Vision OCR。
 3. 用 OCR 结果替换或补充图片占位内容。
 4. 对低文本密度 PDF 页做整页 fallback OCR。
 
-如果没有配置 Vision 模型，则跳过 OCR，只保留质量重解析结果。
+如果没有配置文档 OCR 模型，则跳过 OCR，只保留质量重解析结果。
 
 ### 4. Phase 2 持久化
 
