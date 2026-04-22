@@ -104,21 +104,21 @@ export function FullPageDropOverlay({
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          transition={{ duration: 0.18, ease: "easeOut" }}
+          transition={{ duration: 0.12, ease: "easeOut" }}
           onDrop={handleOverlayDrop}
           onDragOver={handleOverlayDragOver}
           className="fixed inset-0 z-[9999] flex items-center justify-center"
         >
           {/* 毛玻璃背景 */}
-          <div className="absolute inset-0 bg-slate-900/50 backdrop-blur-md" />
+          <div className="absolute inset-0 bg-slate-900/56" />
 
           {/* 中心卡片 */}
           <motion.div
-            initial={{ scale: 0.88, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            exit={{ scale: 0.92, opacity: 0 }}
-            transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
-            className="relative flex flex-col items-center gap-5 rounded-3xl border-2 border-dashed border-white/40 bg-white/10 px-20 py-16 shadow-2xl backdrop-blur-lg"
+            initial={{ y: 8, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: 4, opacity: 0 }}
+            transition={{ duration: 0.16, ease: [0.16, 1, 0.3, 1] }}
+            className="relative flex flex-col items-center gap-5 rounded-3xl border-2 border-dashed border-white/40 bg-white/12 px-20 py-16 shadow-[0_20px_48px_-24px_rgba(15,23,42,0.45)]"
           >
             {/* 浮动文件类型图标 */}
             {floatingIcons.map(({ Icon, delay, x, y, rotate, color }, i) => (
@@ -136,9 +136,9 @@ export function FullPageDropOverlay({
 
             {/* 主图标 */}
             <motion.div
-              animate={{ y: [0, -6, 0] }}
-              transition={{ repeat: Infinity, duration: 2, ease: "easeInOut" }}
-              className="flex h-24 w-24 items-center justify-center rounded-full bg-gradient-to-br from-white/30 to-white/10 shadow-inner ring-1 ring-white/20"
+              animate={{ y: [0, -4, 0] }}
+              transition={{ repeat: Infinity, duration: 2.4, ease: "easeInOut" }}
+              className="flex h-24 w-24 items-center justify-center rounded-full bg-gradient-to-br from-white/30 to-white/12 ring-1 ring-white/20"
             >
               <FileUp className="h-12 w-12 text-white drop-shadow-md" strokeWidth={1.5} />
             </motion.div>
@@ -155,8 +155,8 @@ export function FullPageDropOverlay({
 
             {/* 外层脉冲光圈 */}
             <motion.div
-              animate={{ opacity: [0.3, 0.6, 0.3] }}
-              transition={{ repeat: Infinity, duration: 2.5, ease: "easeInOut" }}
+              animate={{ opacity: [0.22, 0.4, 0.22] }}
+              transition={{ repeat: Infinity, duration: 2.8, ease: "easeInOut" }}
               className="absolute -inset-4 rounded-[2rem] border border-white/20"
             />
           </motion.div>
