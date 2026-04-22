@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import { X } from "lucide-react";
 
@@ -80,6 +81,17 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
     return () => document.removeEventListener("keydown", onEsc);
   }, [isOpen, onClose]);
 
+  useEffect(() => {
+    if (!isOpen || typeof document === "undefined") {
+      return;
+    }
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [isOpen]);
+
   const activeSectionConfig = useMemo(
     () => sections.find((section) => section.id === activeSection) ?? sections[0],
     [activeSection, sections],
@@ -87,7 +99,7 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
 
   if (!isOpen) return null;
 
-  return (
+  const panel = (
     <AnimatePresence>
       <motion.div
         initial={{ opacity: 0 }}
@@ -164,4 +176,8 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
       </motion.div>
     </AnimatePresence>
   );
+
+  return typeof document !== "undefined"
+    ? createPortal(panel, document.body)
+    : panel;
 }

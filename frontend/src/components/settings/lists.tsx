@@ -1,4 +1,4 @@
-import { memo, startTransition, useCallback, useEffect, useMemo, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useState } from "react";
 
 import {
   FieldLabelBlock,
@@ -97,27 +97,9 @@ const EditableSettingsRow = memo(function EditableSettingsRow({
     }
   }, [entry.key, onChange, value]);
 
-  useEffect(() => {
-    if (typeof value === "boolean" || selectOptions) {
-      return;
-    }
-
-    const timerId = window.setTimeout(() => {
-      const parsed = parseInputValue(localValue, value);
-      if (parsed === value) {
-        return;
-      }
-      startTransition(() => {
-        onChange(entry.key, parsed);
-      });
-    }, 120);
-
-    return () => window.clearTimeout(timerId);
-  }, [entry.key, localValue, onChange, selectOptions, value]);
-
   const handleValueChange = useCallback(
     (next: string) => {
-      setLocalValue(next);
+      setLocalValue((prev) => (prev === next ? prev : next));
     },
     [],
   );

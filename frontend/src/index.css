@@ -210,6 +210,11 @@
   background-color: rgba(100, 116, 139, 0.25);
 }
 
+.settings-row {
+  content-visibility: auto;
+  contain-intrinsic-size: 76px;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

@@ -140,6 +140,7 @@ interface TextInputProps {
   onBlur?: () => void;
   placeholder?: string;
   type?: string;
+  multiline?: boolean;
 }
 
 export function TextInput({
@@ -149,8 +150,9 @@ export function TextInput({
   onBlur,
   placeholder,
   type = "text",
+  multiline = false,
 }: TextInputProps) {
-  if (type === "text" || type === "url") {
+  if (multiline) {
     return (
       <textarea
         id={id}
@@ -159,7 +161,10 @@ export function TextInput({
         onBlur={onBlur}
         placeholder={placeholder}
         rows={1}
-        className={cn(SETTINGS_STYLES.field.control, "resize-y max-h-[300px] overflow-y-auto block leading-relaxed")}
+        className={cn(
+          SETTINGS_STYLES.field.control,
+          "block max-h-[300px] resize-y overflow-y-auto leading-relaxed",
+        )}
       />
     );
   }
@@ -172,12 +177,11 @@ export function TextInput({
       onChange={(event) => onChange(event.target.value)}
       onBlur={onBlur}
       placeholder={placeholder}
+      spellCheck={false}
       className={SETTINGS_STYLES.field.control}
     />
   );
 }
-
-const SECRET_MASK = "••••••••••••";
 
 interface SecretInputProps {
   id?: string;
@@ -198,27 +202,17 @@ export function SecretInput({
 
   return (
     <div className="relative w-full">
-      {visible ? (
-        <textarea
-          id={id}
-          value={value}
-          onChange={(event) => onChange(event.target.value)}
-          onBlur={onBlur}
-          placeholder={placeholder}
-          rows={1}
-          className={cn(SETTINGS_STYLES.field.control, "resize-y max-h-[300px] overflow-y-auto block leading-relaxed pr-9")}
-        />
-      ) : (
-        <div
-          className={cn(
-            SETTINGS_STYLES.field.control,
-            "cursor-default select-none items-center pr-9 text-zinc-500 truncate",
-          )}
-          onClick={() => setVisible(true)}
-        >
-          {value ? SECRET_MASK : <span className="text-zinc-400">{placeholder ?? "留空"}</span>}
-        </div>
-      )}
+      <input
+        id={id}
+        type={visible ? "text" : "password"}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        onBlur={onBlur}
+        placeholder={placeholder}
+        autoComplete="off"
+        spellCheck={false}
+        className={cn(SETTINGS_STYLES.field.control, "pr-9")}
+      />
       <button
         type="button"
         onClick={() => setVisible((prev) => !prev)}

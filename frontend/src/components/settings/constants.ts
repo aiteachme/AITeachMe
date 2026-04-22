@@ -1,7 +1,7 @@
 export const SETTINGS_STYLES = {
   panel: {
     root: "fixed inset-0 z-[100]",
-    backdrop: "absolute inset-0 bg-black/40 backdrop-blur-sm transition-opacity",
+    backdrop: "absolute inset-0 bg-black/38 backdrop-blur-[1px] transition-opacity",
     viewport: "pointer-events-none absolute inset-0 flex items-center justify-center p-4 sm:p-6",
     dialog:
       "pointer-events-auto flex h-[85vh] w-full max-w-[1024px] overflow-hidden rounded-2xl bg-white shadow-[0_24px_60px_-15px_rgba(0,0,0,0.15)] ring-1 ring-zinc-200/50",
@@ -106,9 +106,9 @@ export const SETTINGS_STYLES = {
   },
   list: {
     root: "flex flex-col divide-y divide-zinc-100",
-    item: "flex flex-col md:flex-row md:items-start gap-6 py-5 transition-colors",
+    item: "settings-row flex flex-col gap-6 py-5 transition-colors md:flex-row md:items-start",
     controlWrap: "flex-1 min-w-0 w-full",
-    readonlyItem: "flex flex-col md:flex-row md:items-start gap-6 py-5",
+    readonlyItem: "settings-row flex flex-col gap-6 py-5 md:flex-row md:items-start",
     readonlyControl: "flex-1 min-w-0 w-full",
   },
   section: {
