@@ -10,6 +10,7 @@ export function Layout() {
   const { pathname } = useLocation();
   const isFullBleed = isFullBleedSubjectPath(pathname);
   const isHome = pathname === "/";
+  const isExamFocusPage = /^\/subject\/[^/]+\/exams\/[^/]+$/.test(pathname);
   const subjectId = pathname.match(/^\/subject\/([^/]+)/)?.[1] ?? null;
 
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -24,14 +25,14 @@ export function Layout() {
           <div className="absolute left-[30%] top-[20%] h-[800px] w-[800px] rounded-full bg-sky-100/30 blur-[150px] opacity-70" />
         </div>
 
-        <Sidebar onOpenSettings={() => setIsSettingsOpen(true)} />
+        {!isExamFocusPage && <Sidebar onOpenSettings={() => setIsSettingsOpen(true)} />}
         <div className="flex-1 flex flex-col min-w-0 relative z-10">
           {/* Top Bar — ALWAYS SHOW on all tabs to ensure User / Github buttons are visible */}
-          <header className="absolute top-0 left-0 right-0 h-16 px-4 md:px-6 flex items-center justify-end z-40 pointer-events-none">
+          {!isExamFocusPage && <header className="absolute top-0 left-0 right-0 h-16 px-4 md:px-6 flex items-center justify-end z-40 pointer-events-none">
             <div className="pointer-events-auto">
               <TopBar />
             </div>
-          </header>
+          </header>}
 
           {/* Main Content */}
           <main className="flex-1 w-full overflow-x-hidden overflow-y-auto relative bg-transparent flex flex-col">
