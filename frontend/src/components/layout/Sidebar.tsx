@@ -12,7 +12,6 @@ import {
   MoreVertical,
   PanelLeftClose,
   PanelLeftOpen,
-  Plus,
   Settings,
   Sparkles,
   Trash2,
@@ -151,6 +150,7 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
   const queryClient = useQueryClient();
 
   const effectiveCollapsed = !isMobileOpen && isCollapsed;
+  const isCreateSubjectActive = location.pathname === "/";
 
   const { data: subjects = [], isLoading } = useQuery({
     queryKey: ["subjects"],
@@ -316,15 +316,25 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
                   });
                 }}
                 title="新建学科"
-                className="flex h-6 w-6 items-center justify-center rounded border border-slate-200 bg-white text-slate-700 shadow-sm transition-all hover:border-slate-300 hover:bg-slate-50 hover:text-slate-900"
+                className={cn(
+                  "flex h-8 w-8 items-center justify-center rounded-lg transition-all",
+                  isCreateSubjectActive
+                    ? "bg-slate-100 text-slate-900"
+                    : "text-slate-500 hover:bg-slate-100 hover:text-slate-900",
+                )}
               >
-                <Plus className="h-4 w-4 shrink-0" />
+                <Edit3 className="h-4 w-4 shrink-0" strokeWidth={2.2} />
               </button>
             </div>
           ) : (
-            <Button
-              variant="outline"
-              className="w-full justify-start"
+            <button
+              type="button"
+              className={cn(
+                "flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left transition-colors",
+                isCreateSubjectActive
+                  ? "bg-slate-100/80 text-slate-900"
+                  : "text-slate-900 hover:bg-slate-100/80",
+              )}
               onClick={() => {
                 setSubjectActionError(undefined);
                 setOpenMenuId(null);
@@ -334,9 +344,12 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
                 });
               }}
             >
-              <Plus className="h-4 w-4 shrink-0" />
-              <span className="ml-2">新建学科</span>
-            </Button>
+              <Edit3
+                className={cn("h-5 w-5 shrink-0", isCreateSubjectActive ? "text-slate-700" : "text-slate-500")}
+                strokeWidth={2.2}
+              />
+              <span className="text-[15px] font-normal tracking-[0.01em] text-slate-900">新建学科</span>
+            </button>
           )}
 
           {!effectiveCollapsed && subjectActionError ? (
@@ -345,6 +358,12 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
         </div>
 
         <div className="flex-1 overflow-y-auto overflow-x-hidden px-3 pb-4 space-y-1 scrollbar-thin scrollbar-webkit">
+          {!effectiveCollapsed ? (
+            <div className="px-2 pb-2 pt-1">
+              <span className="text-[11px] font-medium tracking-[0.08em] text-slate-400">学科</span>
+            </div>
+          ) : null}
+
           {isLoading ? (
             <div className="flex flex-col items-center justify-center py-6 text-slate-400">
               <Loader2 className="h-5 w-5 animate-spin" />
@@ -376,7 +395,7 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
                     className={cn(
                       "flex items-center transition-colors",
                       effectiveCollapsed ? "h-8 w-full justify-center rounded px-0" : "flex-1 rounded-lg px-2 py-2",
-                      activeSubject || expanded ? "bg-slate-100/60" : "hover:bg-slate-100/60",
+                      "hover:bg-slate-100/60",
                     )}
                     title={effectiveCollapsed ? displayName : undefined}
                   >
