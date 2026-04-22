@@ -68,6 +68,10 @@ LLM_PROVIDER_ALIASES: dict[str, str] = {
     "groq": "groq",
     "mistral": "mistral",
     "bedrock": "bedrock",
+    "aws_bedrock": "bedrock",
+    "aws-bedrock": "bedrock",
+    "amazon_bedrock": "bedrock",
+    "amazon-bedrock": "bedrock",
 }
 LLM_CANONICAL_PROVIDERS: frozenset[str] = frozenset(
     {
@@ -133,6 +137,11 @@ LITELLM_PROVIDER_BY_RUNTIME_PROVIDER: dict[str, str] = {
     "bedrock": "bedrock",
 }
 LLM_PROVIDER_MODEL_DEFAULTS: dict[str, dict[str, Any]] = {
+    # These are only first-run defaults. Users can still override any
+    # models.reason / primary / light / extract value from the settings UI.
+    # We bias primary / light toward lower-latency models when a provider
+    # offers a clear speed-first option.
+    #
     # Default path for OpenAI-compatible gateways such as DashScope compatible
     # mode, LiteLLM Gateway, vLLM, LM Studio, Ollama OpenAI mode, etc.
     "openai_compatible": {
@@ -183,7 +192,7 @@ LLM_PROVIDER_MODEL_DEFAULTS: dict[str, dict[str, Any]] = {
     "kimi": {
         "reason": "kimi-k2-thinking",
         "primary": "kimi-k2.5",
-        "light": "moonshot-v1-8k",
+        "light": "kimi-k2-turbo-preview",
         "extract": None,
         "ocr": None,
         "embedding": None,
@@ -191,7 +200,7 @@ LLM_PROVIDER_MODEL_DEFAULTS: dict[str, dict[str, Any]] = {
     },
     "glm": {
         "reason": "glm-5.1",
-        "primary": "glm-5.1",
+        "primary": "glm-4.7-flash",
         "light": "glm-4.7-flash",
         "extract": None,
         "ocr": None,
@@ -219,17 +228,17 @@ LLM_PROVIDER_MODEL_DEFAULTS: dict[str, dict[str, Any]] = {
         "image_generation": "gpt-image-1",
     },
     "anthropic": {
-        "reason": "claude-3-5-sonnet-latest",
-        "primary": "claude-3-5-sonnet-latest",
-        "light": "claude-3-5-haiku-latest",
+        "reason": "claude-sonnet-4-6",
+        "primary": "claude-haiku-4-5",
+        "light": "claude-haiku-4-5",
         "extract": None,
         "ocr": None,
         "embedding": None,
         "image_generation": None,
     },
     "minimax": {
-        "reason": "MiniMax-M2.7",
-        "primary": "MiniMax-M2.7-highspeed",
+        "reason": "MiniMax-M2.5",
+        "primary": "MiniMax-M2.5-highspeed",
         "light": "MiniMax-M2.1-highspeed",
         "extract": None,
         "ocr": None,
@@ -237,18 +246,18 @@ LLM_PROVIDER_MODEL_DEFAULTS: dict[str, dict[str, Any]] = {
         "image_generation": None,
     },
     "gemini": {
-        "reason": "gemini-2.5-pro",
+        "reason": "gemini-2.5-flash",
         "primary": "gemini-2.5-flash",
-        "light": "gemini-2.5-flash",
+        "light": "gemini-2.5-flash-lite",
         "extract": None,
         "ocr": None,
         "embedding": "text-embedding-004",
         "image_generation": None,
     },
     "vertex_ai": {
-        "reason": "gemini-2.5-pro",
+        "reason": "gemini-2.5-flash",
         "primary": "gemini-2.5-flash",
-        "light": "gemini-2.5-flash",
+        "light": "gemini-2.5-flash-lite",
         "extract": None,
         "ocr": None,
         "embedding": "text-embedding-004",
@@ -282,8 +291,8 @@ LLM_PROVIDER_MODEL_DEFAULTS: dict[str, dict[str, Any]] = {
         "image_generation": None,
     },
     "xai": {
-        "reason": "grok-4-fast-reasoning",
-        "primary": "grok-4-0709",
+        "reason": "grok-4",
+        "primary": "grok-3-mini",
         "light": "grok-3-mini",
         "extract": None,
         "ocr": None,
@@ -292,7 +301,7 @@ LLM_PROVIDER_MODEL_DEFAULTS: dict[str, dict[str, Any]] = {
     },
     "groq": {
         "reason": "llama-3.3-70b-versatile",
-        "primary": "llama-3.3-70b-versatile",
+        "primary": "llama-3.1-8b-instant",
         "light": "llama-3.1-8b-instant",
         "extract": None,
         "ocr": None,
@@ -300,9 +309,18 @@ LLM_PROVIDER_MODEL_DEFAULTS: dict[str, dict[str, Any]] = {
         "image_generation": None,
     },
     "mistral": {
-        "reason": "mistral-large-latest",
-        "primary": "mistral-large-latest",
-        "light": "ministral-8b-latest",
+        "reason": "mistral-small-latest",
+        "primary": "mistral-small-latest",
+        "light": "mistral-small-latest",
+        "extract": None,
+        "ocr": None,
+        "embedding": None,
+        "image_generation": None,
+    },
+    "bedrock": {
+        "reason": "anthropic.claude-sonnet-4-6",
+        "primary": "anthropic.claude-haiku-4-5-20251001-v1:0",
+        "light": "anthropic.claude-haiku-4-5-20251001-v1:0",
         "extract": None,
         "ocr": None,
         "embedding": None,
@@ -465,6 +483,8 @@ def detect_llm_provider_from_base_url(base_url: str | None) -> str | None:
         return "groq"
     if "api.mistral.ai" in text:
         return "mistral"
+    if "bedrock-runtime." in text or "bedrock-runtime-" in text:
+        return "bedrock"
     if "localhost:11434" in normalized.lower() or "127.0.0.1:11434" in normalized.lower():
         return "ollama"
     return "openai_compatible"

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
+import json
 import threading
 from typing import AsyncGenerator
 
@@ -35,6 +36,10 @@ from app.shared.infra.storage.config import (
 from app.shared.infra.exceptions import AITeachMeError as InfraAITeachMeError
 from app.shared.kernel.exceptions import AITeachMeError as KernelAITeachMeError
 from app.shared.infra.runtime import BackgroundTaskRegistry
+from app.shared.infra.settings.support import (
+    get_llm_provider_model_defaults,
+    resolve_runtime_llm_provider,
+)
 
 logger = structlog.get_logger()
 _OPENAPI_EXPORT_LOCK = threading.Lock()
@@ -92,6 +97,9 @@ def _log_infra_diagnostics(settings) -> None:
     engine = get_engine()
     dialect = engine.dialect.name
     project_settings_source = get_teaching_runtime_settings_source()
+    runtime_provider = resolve_runtime_llm_provider()
+    runtime_provider_defaults = get_llm_provider_model_defaults(runtime_provider)
+    openai_compatible_defaults = get_llm_provider_model_defaults("openai_compatible")
 
     app_mode = resolve_app_mode()
     storage_backend = get_storage_backend()
@@ -181,6 +189,21 @@ def _log_infra_diagnostics(settings) -> None:
     lines.append(
         f"    Image Model            : {settings.models.image_generation or 'disabled'}"
     )
+    lines.append(f"    Runtime Provider       : {runtime_provider}")
+    lines.append("    Runtime Provider Defaults:")
+    for raw_line in json.dumps(
+        runtime_provider_defaults,
+        ensure_ascii=False,
+        indent=6,
+    ).splitlines():
+        lines.append(f"      {raw_line}")
+    lines.append("    openai_compatible Defaults:")
+    for raw_line in json.dumps(
+        openai_compatible_defaults,
+        ensure_ascii=False,
+        indent=6,
+    ).splitlines():
+        lines.append(f"      {raw_line}")
 
     lines.append("")
     lines.append("  [AUTH]")

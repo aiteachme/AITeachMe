@@ -55,6 +55,10 @@ def test_detect_llm_provider_from_base_url_handles_major_providers() -> None:
     assert detect_llm_provider_from_base_url("https://api.siliconflow.cn/v1") == "siliconflow"
     assert detect_llm_provider_from_base_url("https://ark.cn-beijing.volces.com/api/v3") == "doubao"
     assert (
+        detect_llm_provider_from_base_url("https://bedrock-runtime.us-east-1.amazonaws.com")
+        == "bedrock"
+    )
+    assert (
         detect_llm_provider_from_base_url("https://dashscope.aliyuncs.com/compatible-mode/v1")
         == "qwen"
     )
@@ -75,10 +79,13 @@ def test_provider_defaults_switch_by_provider() -> None:
     ollama_defaults = get_llm_provider_model_defaults("ollama")
     deepseek_defaults = get_llm_provider_model_defaults("deepseek")
     minimax_defaults = get_llm_provider_model_defaults("minimax")
+    bedrock_defaults = get_llm_provider_model_defaults("bedrock")
 
-    assert anthropic_defaults["primary"].startswith("claude-")
+    assert anthropic_defaults["reason"] == "claude-sonnet-4-6"
+    assert anthropic_defaults["primary"] == "claude-haiku-4-5"
     assert anthropic_defaults["embedding"] is None
-    assert gemini_defaults["primary"].startswith("gemini-")
+    assert gemini_defaults["primary"] == "gemini-2.5-flash"
+    assert gemini_defaults["light"] == "gemini-2.5-flash-lite"
     assert gemini_defaults["embedding"] == "text-embedding-004"
     assert azure_defaults["primary"] == "gpt-4o-mini"
     assert vllm_defaults["primary"] == "Qwen/Qwen2.5-7B-Instruct"
@@ -86,7 +93,9 @@ def test_provider_defaults_switch_by_provider() -> None:
     assert ollama_defaults["primary"] == "qwen2.5"
     assert ollama_defaults["embedding"] is None
     assert deepseek_defaults["primary"] == "deepseek-chat"
-    assert minimax_defaults["primary"] == "MiniMax-M2.7-highspeed"
+    assert minimax_defaults["primary"] == "MiniMax-M2.5-highspeed"
+    assert bedrock_defaults["reason"] == "anthropic.claude-sonnet-4-6"
+    assert bedrock_defaults["primary"].startswith("anthropic.claude-haiku-4-5")
 
 
 def test_provider_defaults_allow_optional_embedding_models(monkeypatch) -> None:
