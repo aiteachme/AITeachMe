@@ -108,7 +108,7 @@ export function SettingsFooter({
               onClick={onReset}
               className={SETTINGS_STYLES.footer.resetButton}
             >
-              撤销恢复
+              恢复默认
             </button>
             <button
               type="button"
