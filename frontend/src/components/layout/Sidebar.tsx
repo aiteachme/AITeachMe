@@ -288,7 +288,7 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
         >
           {!effectiveCollapsed ? (
             <Link to="/" className="flex items-center gap-2 text-slate-900">
-              <span className="text-lg font-bold">AITeachMe</span>
+              <img src="/logo.svg" alt="AITeachMe" className="h-5 w-auto" />
             </Link>
           ) : null}
           <button

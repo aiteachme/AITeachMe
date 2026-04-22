@@ -347,8 +347,8 @@ export function SubjectAiAssistantProvider({ subjectId, children }: SubjectAiAss
             {!selectedSessionId ? (
               <div className="flex h-full items-center justify-center px-6">
                 <div className="max-w-md text-center">
-                  <div className="mx-auto inline-flex h-14 w-14 items-center justify-center rounded-xl border border-zinc-200/60 bg-zinc-50 text-zinc-600">
-                    <Sparkles className="h-6 w-6" />
+                  <div className="mx-auto inline-flex h-14 w-14 items-center justify-center rounded-xl border border-zinc-200/60 bg-white p-2 text-zinc-600 shadow-sm">
+                    <img src="/logo.svg" alt="AI" className="h-full w-full object-contain" />
                   </div>
                   <h3 className="mt-5 text-[17px] font-semibold tracking-tight text-zinc-900">开始伴读</h3>
                   <p className="mt-2 text-[13px] leading-relaxed text-zinc-500">
