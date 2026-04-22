@@ -7,6 +7,7 @@ from sqlmodel import Session
 
 from app.models.subject import Subject
 from app.repositories.subject_repo import save_subject
+from app.shared.infra.runtime import is_cloud_mode
 from app.schemas.knowledge import (
     KnowledgeBuildPrecheckConflictData,
     SubjectVectorStatusResponse,
@@ -121,7 +122,7 @@ def inspect_subject_build_precheck(
             runtime=runtime,
             requires_full_rebuild=True,
         )
-    if binding.embedding_dim != runtime.embedding_dim:
+    if runtime.dimension_explicit and binding.embedding_dim != runtime.embedding_dim:
         return _build_precheck_conflict(
             reason="embedding_dimension_mismatch",
             binding=binding,
@@ -129,7 +130,8 @@ def inspect_subject_build_precheck(
             requires_full_rebuild=True,
         )
 
-    if not _is_llamaindex_index_ref(binding.vector_table):
+    should_check_backing_store = is_cloud_mode() or not _is_llamaindex_index_ref(binding.vector_table)
+    if should_check_backing_store:
         connection = session.connection()
         if not vector_table_exists(connection, binding.vector_table):
             return _build_precheck_conflict(

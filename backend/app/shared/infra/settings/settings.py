@@ -11,13 +11,12 @@ from pydantic import BaseModel, ConfigDict, model_validator
 
 from .defaults import merge_default_settings, merge_settings_values
 from .support import (
-    DEFAULT_EMBEDDING_DIM,
     DEFAULT_RETRIEVER_FALLBACK,
-    EMBEDDING_DIM_BY_MODEL,
     get_retriever_profiles,
     load_project_settings_values,
     normalize_profile_name,
     normalize_retriever_name,
+    resolve_embedding_dimension,
 )
 
 
@@ -36,6 +35,7 @@ class ModelsSettings(_SettingsModel):
     extract: str | None
     ocr: str | None
     embedding: str
+    embedding_dim: int | None = None
     image_generation: str | None
 
     @property
@@ -129,11 +129,9 @@ class Settings(_SettingsModel):
 
     @property
     def embedding_dim(self) -> int:
-        if not self.normalized_embedding_model:
-            return 0
-        return EMBEDDING_DIM_BY_MODEL.get(
+        return resolve_embedding_dimension(
             self.normalized_embedding_model,
-            DEFAULT_EMBEDDING_DIM,
+            configured_dim=self.models.embedding_dim,
         )
 
     @property
@@ -144,6 +142,11 @@ class Settings(_SettingsModel):
     @property
     def embedding_configured(self) -> bool:
         return self.normalized_embedding_model is not None
+
+    @property
+    def embedding_dim_is_explicit(self) -> bool:
+        value = self.models.embedding_dim
+        return value is not None and int(value) > 0
 
     @property
     def has_vision_ocr_model(self) -> bool:

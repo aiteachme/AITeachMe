@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import re
 from datetime import datetime
 from enum import Enum
 
@@ -14,7 +16,9 @@ from app.utils.time import utcnow
 _SUBJECT_VECTOR_TABLE_PREFIX = "chunk_embeddings_"
 _POSTGRES_VECTOR_REF = "retrieval_chunk.embedding"
 _LOCAL_LLAMA_INDEX_REF_PREFIX = "llamaindex://local/"
-_POSTGRES_LLAMA_INDEX_REF = "llamaindex://postgres/atm_llamaindex_rag"
+_POSTGRES_LLAMA_INDEX_REF_PREFIX = "llamaindex://postgres/"
+_POSTGRES_LLAMA_INDEX_NAME_PREFIX = "atm_llamaindex_rag_"
+_POSTGRES_LLAMA_INDEX_DATA_PREFIX = "data_"
 
 
 class SubjectEmbeddingMode(str, Enum):
@@ -48,11 +52,50 @@ def build_subject_vector_table_name(subject_slug: str) -> str:
     return f"{_SUBJECT_VECTOR_TABLE_PREFIX}{normalized}"
 
 
+def _normalize_subject_index_token(subject_slug: str) -> str:
+    raw = (subject_slug or "").strip().lower()
+    normalized = re.sub(r"[^a-z0-9_]+", "_", raw).strip("_") or "subject"
+    digest = hashlib.sha1(raw.encode("utf-8")).hexdigest()[:10]
+    trimmed = normalized[:24]
+    return f"{trimmed}_{digest}"
+
+
+def build_postgres_subject_index_name(subject_slug: str) -> str:
+    """Return the deterministic PGVector index name for one subject."""
+
+    return f"{_POSTGRES_LLAMA_INDEX_NAME_PREFIX}{_normalize_subject_index_token(subject_slug)}"
+
+
+def build_postgres_subject_index_data_table_name(subject_slug: str) -> str:
+    """Return the concrete PostgreSQL data table used by PGVectorStore."""
+
+    return f"{_POSTGRES_LLAMA_INDEX_DATA_PREFIX}{build_postgres_subject_index_name(subject_slug)}"
+
+
+def extract_postgres_subject_index_name(vector_ref: str | None) -> str | None:
+    """Extract the PGVector index name from one stored vector ref."""
+
+    value = (vector_ref or "").strip()
+    if not value.startswith(_POSTGRES_LLAMA_INDEX_REF_PREFIX):
+        return None
+    index_name = value.removeprefix(_POSTGRES_LLAMA_INDEX_REF_PREFIX).strip().lower()
+    return index_name or None
+
+
+def extract_postgres_subject_index_data_table_name(vector_ref: str | None) -> str | None:
+    """Extract the concrete PostgreSQL PGVector data table from one vector ref."""
+
+    index_name = extract_postgres_subject_index_name(vector_ref)
+    if not index_name:
+        return None
+    return f"{_POSTGRES_LLAMA_INDEX_DATA_PREFIX}{index_name}"
+
+
 def build_subject_index_ref(subject_slug: str) -> str:
     """Return the subject-scoped LlamaIndex storage reference."""
 
     if is_cloud_mode():
-        return _POSTGRES_LLAMA_INDEX_REF
+        return f"{_POSTGRES_LLAMA_INDEX_REF_PREFIX}{build_postgres_subject_index_name(subject_slug)}"
     return f"{_LOCAL_LLAMA_INDEX_REF_PREFIX}{subject_slug.strip()}/rag_index"
 
 
@@ -147,9 +190,13 @@ __all__ = [
     "SubjectSettingsPayload",
     "build_disabled_binding",
     "build_enabled_binding",
+    "build_postgres_subject_index_data_table_name",
+    "build_postgres_subject_index_name",
     "build_subject_index_ref",
     "build_subject_vector_table_name",
     "dump_subject_settings",
+    "extract_postgres_subject_index_data_table_name",
+    "extract_postgres_subject_index_name",
     "get_postgres_vector_ref",
     "get_subject_embedding_binding",
     "load_subject_settings",

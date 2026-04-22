@@ -86,6 +86,7 @@ async def aembed_texts(
     texts: list[str],
     *,
     batch_size: int | None = None,
+    model: str | None = None,
     soft_fail: bool = False,
 ) -> list[list[float]]:
     """批量生成文本向量，自动分批处理。
@@ -104,8 +105,8 @@ async def aembed_texts(
     if not api_key:
         raise MissingLLMApiKeyError()
     batch_size = batch_size or DEFAULT_EMBEDDING_BATCH_SIZE
-    model = str(settings.models.embedding or "").strip()
-    if not model:
+    resolved_model = str(model or settings.models.embedding or "").strip()
+    if not resolved_model:
         if soft_fail:
             logger.info(
                 "embedding_skipped_unconfigured",
@@ -134,7 +135,7 @@ async def aembed_texts(
         async with semaphore:
             try:
                 batch_vectors = await _call_embedding(
-                    model=model,
+                    model=resolved_model,
                     batch=batch,
                     api_base=api_base,
                     api_key=api_key,
@@ -145,7 +146,7 @@ async def aembed_texts(
                     "embedding_batch_failed",
                     batch_idx=batch_idx,
                     batch_size=len(batch),
-                    model=model,
+                    model=resolved_model,
                     error=str(exc),
                 )
                 raise
@@ -154,7 +155,7 @@ async def aembed_texts(
                     "embedding_batch_failed",
                     batch_idx=batch_idx,
                     batch_size=len(batch),
-                    model=model,
+                    model=resolved_model,
                     error=str(exc),
                 )
                 raise LLMCallError(reason=f"Embedding 调用失败（批次 {batch_idx + 1}/{total_batches}）：{exc}") from exc
@@ -177,7 +178,7 @@ async def aembed_texts(
             "embedding_call_soft_failed",
             text_count=len(texts),
             batch_count=total_batches,
-            model=model,
+            model=resolved_model,
             error=str(exc),
         )
         return []
@@ -187,7 +188,7 @@ async def aembed_texts(
         elapsed_s=round(time.monotonic() - start, 2),
         text_count=len(texts),
         batch_count=total_batches,
-        model=model,
+        model=resolved_model,
         embedding_dim=len(all_vectors[0]) if all_vectors else 0,
     )
     return all_vectors

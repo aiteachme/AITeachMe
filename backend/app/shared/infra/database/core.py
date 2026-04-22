@@ -32,7 +32,10 @@ from app.shared.infra.exceptions import VectorExtensionUnavailableError
 from app.shared.infra.runtime import get_backend_root, is_cloud_mode, is_local_mode
 from app.shared.infra.runtime import get_sqlite_db_path
 from app.shared.infra.subject import (
+    build_postgres_subject_index_data_table_name,
+    build_subject_index_ref,
     build_subject_vector_table_name,
+    extract_postgres_subject_index_data_table_name,
     get_postgres_vector_ref,
 )
 from app.models.build_planner import ConfirmedBuildPlan
@@ -430,6 +433,9 @@ def quote_sqlite_identifier(identifier: str) -> str:
 def _normalize_postgres_vector_target(table_name: str) -> str:
     if table_name == get_postgres_vector_ref():
         return table_name
+    resolved_llamaindex_table = extract_postgres_subject_index_data_table_name(table_name)
+    if resolved_llamaindex_table:
+        return resolved_llamaindex_table
     if table_name.startswith("chunk_embeddings_"):
         return get_postgres_vector_ref()
     return table_name
@@ -529,7 +535,8 @@ def _ensure_postgres_embedding_column(
             raise RuntimeError(
                 "PostgreSQL vector column dimension mismatch. "
                 f"expected={embedding_dim}, actual={current_dim}. "
-                "Set ALLOW_CLOUD_VECTOR_REBUILD=true only after confirming "
+                "Use `python scripts/prepare_cloud_db.py --allow-vector-rebuild` "
+                "(or set ALLOW_CLOUD_VECTOR_REBUILD=true) only after confirming "
                 "the existing vectors can be rebuilt."
             )
         connection.execute(sa.text("DROP INDEX IF EXISTS idx_retrieval_chunk_embedding"))
@@ -615,19 +622,6 @@ def _collect_postgres_runtime_schema_errors(
     if missing_tables:
         errors.append(f"missing tables: {', '.join(missing_tables)}")
 
-    if _postgres_table_exists(connection, "retrieval_chunk"):
-        expected_dim = settings.embedding_dim
-        actual_dim = _postgres_vector_dim(
-            connection,
-            table_name="retrieval_chunk",
-            column_name="embedding",
-        )
-        if actual_dim != expected_dim:
-            errors.append(
-                "retrieval_chunk.embedding dimension mismatch: "
-                f"current={actual_dim or 'missing'}, expected={expected_dim}"
-            )
-
     return errors
 
 
@@ -652,8 +646,11 @@ def assert_postgres_runtime_schema_ready(
         detail = "\n".join(f"- {error}" for error in errors)
         raise RuntimeError(
             "PostgreSQL schema is not ready. Run "
-            "`alembic upgrade head && python scripts/prepare_cloud_db.py && "
-            "python scripts/check_cloud_db.py` before starting the app.\n"
+            "`python scripts/bootstrap_cloud_db.py` "
+            "(or `alembic upgrade head && python scripts/prepare_cloud_db.py && "
+            "python scripts/check_cloud_db.py`) before starting the app. "
+            "If Render free does not support Pre-Deploy, use "
+            "`python scripts/start_cloud_app.py --host 0.0.0.0 --port $PORT` as the Start Command.\n"
             f"{detail}"
         )
 
@@ -668,7 +665,6 @@ def prepare_postgres_runtime_schema(
     if not is_cloud_mode():
         raise RuntimeError("prepare_postgres_runtime_schema requires APP_MODE=cloud.")
 
-    settings = get_settings()
     engine = get_engine()
     with engine.begin() as connection:
         connection.execute(sa.text("CREATE EXTENSION IF NOT EXISTS vector"))
@@ -682,11 +678,6 @@ def prepare_postgres_runtime_schema(
             )
         if not _postgres_table_exists(connection, "retrieval_chunk"):
             raise RuntimeError("Missing table retrieval_chunk. Run `alembic upgrade head` first.")
-        _ensure_postgres_embedding_column(
-            connection,
-            embedding_dim=settings.embedding_dim,
-            allow_rebuild=allow_vector_rebuild,
-        )
 
     if prepare_llamaindex:
         from app.shared.infra.search.llamaindex_index.manager import prepare_postgres_store
@@ -695,10 +686,30 @@ def prepare_postgres_runtime_schema(
 
     logger.info(
         "postgres_runtime_schema_prepared",
-        embedding_dim=settings.embedding_dim,
         allow_vector_rebuild=allow_vector_rebuild,
         prepare_llamaindex=prepare_llamaindex,
     )
+
+
+def reset_postgres_public_schema() -> None:
+    """Drop and recreate the public schema for one cloud PostgreSQL database.
+
+    This is an explicit operator action intended only for one-time cleanup of a
+    legacy or disposable cloud database before rerunning Alembic migrations.
+    It is intentionally *not* called from app startup.
+    """
+
+    if not is_cloud_mode():
+        raise RuntimeError("reset_postgres_public_schema requires APP_MODE=cloud.")
+
+    engine = get_engine()
+    with engine.begin() as connection:
+        connection.execute(sa.text("DROP SCHEMA IF EXISTS public CASCADE"))
+        connection.execute(sa.text("CREATE SCHEMA public"))
+        connection.execute(sa.text("GRANT ALL ON SCHEMA public TO CURRENT_USER"))
+        connection.execute(sa.text("GRANT ALL ON SCHEMA public TO PUBLIC"))
+
+    logger.warning("postgres_public_schema_reset_completed")
 
 
 def _drop_postgres_removed_schema(connection: sa.Connection) -> None:
@@ -767,13 +778,14 @@ def ensure_subject_vec_table(engine: sa.Engine, *, subject: str, embedding_dim: 
     """Ensure one subject-scoped sqlite-vec table exists with the requested dimension."""
 
     table_name = (
-        get_postgres_vector_ref()
+        build_subject_index_ref(subject)
         if engine.dialect.name == "postgresql"
         else build_subject_vector_table_name(subject)
     )
     if engine.dialect.name == "postgresql":
-        with engine.begin() as connection:
-            _ensure_postgres_embedding_column(connection, embedding_dim=embedding_dim)
+        from app.shared.infra.search.llamaindex_index import prepare_postgres_store
+
+        prepare_postgres_store(subject=subject, embedding_dim=embedding_dim)
         return table_name
 
     if not is_vec_ready():
@@ -804,17 +816,21 @@ def reset_subject_vec_table(engine: sa.Engine, *, subject: str, embedding_dim: i
     """Drop and recreate the subject-scoped vector table."""
 
     table_name = (
-        get_postgres_vector_ref()
+        build_subject_index_ref(subject)
         if engine.dialect.name == "postgresql"
         else build_subject_vector_table_name(subject)
     )
     if engine.dialect.name == "postgresql":
+        actual_table_name = build_postgres_subject_index_data_table_name(subject)
         with engine.begin() as connection:
-            _ensure_postgres_embedding_column(
-                connection,
-                embedding_dim=embedding_dim,
-                reset=True,
+            if not re.fullmatch(r"[a-z_][a-z0-9_]*", actual_table_name):
+                raise RuntimeError(f"Unsafe PGVector table name: {actual_table_name}")
+            connection.execute(
+                sa.text(f"DROP TABLE IF EXISTS public.{actual_table_name}")
             )
+        from app.shared.infra.search.llamaindex_index import prepare_postgres_store
+
+        prepare_postgres_store(subject=subject, embedding_dim=embedding_dim)
         return table_name
 
     if not is_vec_ready():

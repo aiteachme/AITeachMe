@@ -42,6 +42,7 @@ class RuntimeEmbeddingConfig(BaseModel):
     available: bool = False
     embedding_model: str | None = None
     embedding_dim: int | None = None
+    dimension_explicit: bool = False
     reason: str | None = None
 
 
@@ -59,6 +60,7 @@ def get_runtime_embedding_config() -> RuntimeEmbeddingConfig:
     settings = get_settings()
     model = settings.normalized_embedding_model
     embedding_dim = settings.embedding_dim or None
+    dimension_explicit = settings.embedding_dim_is_explicit
 
     if model is None:
         return RuntimeEmbeddingConfig(reason="embedding_not_configured")
@@ -67,6 +69,7 @@ def get_runtime_embedding_config() -> RuntimeEmbeddingConfig:
             configured=True,
             embedding_model=model,
             embedding_dim=embedding_dim,
+            dimension_explicit=dimension_explicit,
             reason="embedding_api_key_missing",
         )
 
@@ -79,6 +82,7 @@ def get_runtime_embedding_config() -> RuntimeEmbeddingConfig:
             configured=True,
             embedding_model=model,
             embedding_dim=embedding_dim,
+            dimension_explicit=dimension_explicit,
             reason="llamaindex_unavailable",
         )
 
@@ -92,6 +96,7 @@ def get_runtime_embedding_config() -> RuntimeEmbeddingConfig:
                 configured=True,
                 embedding_model=model,
                 embedding_dim=embedding_dim,
+                dimension_explicit=dimension_explicit,
                 reason="llamaindex_postgres_unavailable",
             )
 
@@ -100,6 +105,7 @@ def get_runtime_embedding_config() -> RuntimeEmbeddingConfig:
             configured=True,
             embedding_model=model,
             embedding_dim=embedding_dim,
+            dimension_explicit=dimension_explicit,
             reason="vector_extension_unavailable",
         )
 
@@ -108,6 +114,7 @@ def get_runtime_embedding_config() -> RuntimeEmbeddingConfig:
         available=True,
         embedding_model=model,
         embedding_dim=embedding_dim,
+        dimension_explicit=dimension_explicit,
     )
 
 
@@ -144,7 +151,10 @@ def build_subject_vector_status(
         notice = SUBJECT_VECTOR_PRECHECK_DETAIL_MAP[current_runtime.reason]
     elif current_runtime.embedding_model != binding.embedding_model:
         notice = SUBJECT_VECTOR_PRECHECK_DETAIL_MAP["embedding_model_mismatch"]
-    elif current_runtime.embedding_dim != binding.embedding_dim:
+    elif (
+        current_runtime.dimension_explicit
+        and current_runtime.embedding_dim != binding.embedding_dim
+    ):
         notice = SUBJECT_VECTOR_PRECHECK_DETAIL_MAP["embedding_dimension_mismatch"]
 
     return SubjectVectorStatusResponse(
@@ -174,7 +184,6 @@ def get_subject_vector_capability(
 ) -> SubjectVectorCapability:
     """Return the subject vector status plus whether vector search can run now."""
 
-    del session
     binding = get_subject_embedding_binding(subject)
     runtime = get_runtime_embedding_config()
     status = build_subject_vector_status(binding, runtime=runtime)
@@ -185,10 +194,31 @@ def get_subject_vector_capability(
         return SubjectVectorCapability(binding=binding, status=status, queryable=False)
     if binding.embedding_model != runtime.embedding_model:
         return SubjectVectorCapability(binding=binding, status=status, queryable=False)
-    if binding.embedding_dim != runtime.embedding_dim:
+    if binding.embedding_dim is None:
+        return SubjectVectorCapability(binding=binding, status=status, queryable=False)
+    if runtime.dimension_explicit and binding.embedding_dim != runtime.embedding_dim:
         return SubjectVectorCapability(binding=binding, status=status, queryable=False)
     if not binding.vector_table:
         return SubjectVectorCapability(binding=binding, status=status, queryable=False)
+
+    should_check_backing_store = is_cloud_mode() or not binding.vector_table.startswith("llamaindex://")
+    if should_check_backing_store:
+        from app.shared.infra.database import get_vector_table_dim, vector_table_exists
+
+        connection = session.connection()
+        if not vector_table_exists(connection, binding.vector_table):
+            return SubjectVectorCapability(
+                binding=binding,
+                status=_build_table_conflict_status(binding, reason="vector_table_missing"),
+                queryable=False,
+            )
+        table_dim = get_vector_table_dim(connection, binding.vector_table)
+        if table_dim is not None and table_dim != binding.embedding_dim:
+            return SubjectVectorCapability(
+                binding=binding,
+                status=_build_table_conflict_status(binding, reason="vector_table_dimension_mismatch"),
+                queryable=False,
+            )
 
     return SubjectVectorCapability(binding=binding, status=status, queryable=True)
 

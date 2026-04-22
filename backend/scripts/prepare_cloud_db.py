@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 import os
 import sys
 from pathlib import Path
@@ -15,12 +16,23 @@ from app.shared.infra.database import prepare_postgres_runtime_schema  # noqa: E
 from app.shared.infra.runtime import is_cloud_mode  # noqa: E402
 
 
-def main() -> int:
+def _build_arg_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description="Prepare cloud PostgreSQL runtime objects.")
+    parser.add_argument(
+        "--allow-vector-rebuild",
+        action="store_true",
+        help="Allow rebuilding retrieval_chunk.embedding when the configured dimension changes.",
+    )
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
     if not is_cloud_mode():
         print("prepare_cloud_db requires APP_MODE=cloud.", file=sys.stderr)
         return 2
 
-    allow_vector_rebuild = get_env_bool("ALLOW_CLOUD_VECTOR_REBUILD", False)
+    args = _build_arg_parser().parse_args(argv)
+    allow_vector_rebuild = bool(args.allow_vector_rebuild) or get_env_bool("ALLOW_CLOUD_VECTOR_REBUILD", False)
     try:
         prepare_postgres_runtime_schema(allow_vector_rebuild=allow_vector_rebuild)
     except Exception as exc:  # noqa: BLE001

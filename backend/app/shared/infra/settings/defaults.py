@@ -26,6 +26,7 @@ DEFAULT_SETTINGS_VALUES: dict[str, Any] = {
         "extract": None,
         "ocr": None,
         "embedding": "text-embedding-v3",
+        "embedding_dim": None,
         "image_generation": None,
     },
     "interact": {
