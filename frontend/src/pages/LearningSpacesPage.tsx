@@ -1,0 +1,169 @@
+import { Link, useNavigate } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
+import { BookOpen, LayoutGrid, Loader2, Plus } from "lucide-react";
+
+import { listSubjectsApiApiV1SubjectsListPost } from "../api/generated/subjects";
+import { unwrapOrvalResponse } from "../lib/unwrapOrvalResponse";
+
+function displaySubjectName(subject: { name?: string | null }) {
+  return subject.name?.trim() || "未命名学科";
+}
+
+function subjectTone(name: string) {
+  const tones = [
+    "from-slate-900 to-slate-700",
+    "from-emerald-600 to-teal-500",
+    "from-rose-600 to-orange-500",
+    "from-indigo-600 to-blue-500",
+    "from-amber-500 to-orange-500",
+    "from-cyan-600 to-sky-500",
+  ];
+
+  let hash = 0;
+  for (let index = 0; index < name.length; index += 1) {
+    hash = name.charCodeAt(index) + ((hash << 5) - hash);
+  }
+
+  return tones[Math.abs(hash) % tones.length];
+}
+
+export function LearningSpacesPage() {
+  const navigate = useNavigate();
+
+  const { data: subjects = [], isLoading } = useQuery({
+    queryKey: ["subjects"],
+    queryFn: async () =>
+      unwrapOrvalResponse(
+        await listSubjectsApiApiV1SubjectsListPost({
+          page: 1,
+          size: 100,
+        }),
+      )?.items ?? [],
+  });
+
+  return (
+    <div className="min-h-full px-8 pb-12 pt-24 md:px-12">
+      <div className="mx-auto w-full max-w-[1400px]">
+        <div className="flex flex-col gap-5 md:flex-row md:items-end md:justify-between">
+          <div className="space-y-3">
+            <div className="inline-flex items-center gap-2 rounded-full bg-white/85 px-3 py-1 text-xs font-medium text-slate-500 ring-1 ring-slate-200/80 backdrop-blur">
+              <LayoutGrid className="h-3.5 w-3.5" />
+              我的学习空间
+            </div>
+            <div>
+              <h1 className="text-[32px] font-semibold tracking-tight text-slate-900">我的学习空间</h1>
+              <p className="mt-2 text-sm leading-6 text-slate-500">
+                这里直接展示你已经创建的学科，每个学科都是一张独立卡片。
+              </p>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => navigate("/", { state: { newEntryAt: Date.now() } })}
+            className="inline-flex items-center justify-center gap-2 rounded-2xl bg-slate-900 px-4 py-3 text-sm font-medium text-white transition hover:bg-slate-800"
+          >
+            <Plus className="h-4 w-4" />
+            新建学科
+          </button>
+        </div>
+
+        <div className="mt-8 flex items-center justify-between">
+          <h2 className="text-[15px] font-medium text-slate-500">学科列表</h2>
+          <p className="text-sm text-slate-400">{isLoading ? "加载中..." : `${subjects.length} 个学科`}</p>
+        </div>
+
+        {isLoading ? (
+          <div className="mt-8 flex min-h-[240px] items-center justify-center rounded-[30px] border border-dashed border-slate-200 bg-white/45">
+            <div className="flex items-center gap-2 text-sm text-slate-500">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              正在加载学习空间...
+            </div>
+          </div>
+        ) : null}
+
+        {!isLoading && subjects.length === 0 ? (
+          <div className="mt-8 flex min-h-[300px] flex-col items-center justify-center rounded-[30px] border border-dashed border-slate-200 bg-white/45 px-6 text-center">
+            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-100 text-slate-500">
+              <LayoutGrid className="h-7 w-7" />
+            </div>
+            <h2 className="mt-5 text-lg font-semibold text-slate-900">还没有学习空间</h2>
+            <p className="mt-2 max-w-md text-sm leading-6 text-slate-500">
+              先创建一个学科，创建后它就会以独立卡片的形式出现在这里。
+            </p>
+            <button
+              type="button"
+              onClick={() => navigate("/", { state: { newEntryAt: Date.now() } })}
+              className="mt-6 inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-50"
+            >
+              <Plus className="h-4 w-4" />
+              去新建学科
+            </button>
+          </div>
+        ) : null}
+
+        {!isLoading && subjects.length > 0 ? (
+          <div className="mt-6 grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-3">
+            {subjects.map((subject: any) => {
+              const displayName = displaySubjectName(subject);
+              const initial = displayName.charAt(0).toUpperCase();
+
+              return (
+                <Link
+                  key={subject.subject_id}
+                  to={`/subject/${subject.subject_id}/build`}
+                  className="group flex min-h-[328px] flex-col overflow-hidden rounded-[30px] border border-slate-200/80 bg-white shadow-[0_6px_24px_rgba(15,23,42,0.06)] transition duration-300 hover:-translate-y-1 hover:border-slate-300 hover:shadow-[0_20px_48px_rgba(15,23,42,0.12)]"
+                >
+                  <div className="relative h-[176px] overflow-hidden border-b border-slate-100 bg-[linear-gradient(135deg,#f8fafc_0%,#eef2ff_50%,#f8fafc_100%)]">
+                    <div className="absolute left-5 top-5 inline-flex items-center gap-2 rounded-full bg-white/92 px-3 py-1.5 text-xs font-medium text-slate-600 shadow-sm">
+                      <span className="h-2.5 w-2.5 rounded-full bg-sky-400" />
+                      Ready
+                    </div>
+                    <div className="absolute right-5 top-5 rounded-full bg-white/92 px-3 py-1.5 text-[11px] font-medium text-slate-500 shadow-sm">
+                      学科
+                    </div>
+                    <div
+                      className={`absolute left-5 bottom-5 flex h-16 w-16 items-center justify-center rounded-[22px] bg-gradient-to-br ${subjectTone(displayName)} text-2xl font-semibold text-white shadow-lg`}
+                    >
+                      {initial}
+                    </div>
+                    <div className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-white/60 to-transparent" />
+                  </div>
+
+                  <div className="flex flex-1 flex-col px-6 pb-6 pt-5">
+                    <h3 className="line-clamp-2 text-[19px] font-semibold leading-8 tracking-tight text-slate-900">
+                      {displayName}
+                    </h3>
+
+                    <p className="mt-3 text-sm leading-6 text-slate-500">
+                      打开这个学习空间，继续管理资料、知识结构和学习内容。
+                    </p>
+
+                    <div className="mt-6 flex flex-wrap gap-2">
+                      <span className="rounded-full bg-slate-100 px-3 py-1.5 text-xs font-medium text-slate-500">
+                        已创建
+                      </span>
+                      <span className="rounded-full bg-slate-100 px-3 py-1.5 text-xs font-medium text-slate-500">
+                        可继续学习
+                      </span>
+                    </div>
+
+                    <div className="mt-auto flex items-center justify-between border-t border-slate-100 pt-6">
+                      <div className="inline-flex items-center gap-2 text-sm font-medium text-slate-500">
+                        <BookOpen className="h-4 w-4" />
+                        进入学习
+                      </div>
+                      <span className="rounded-full border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 transition group-hover:border-slate-300 group-hover:bg-slate-50">
+                        打开
+                      </span>
+                    </div>
+                  </div>
+                </Link>
+              );
+            })}
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
+}

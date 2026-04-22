@@ -3,16 +3,15 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
   BarChart3,
   BookOpen,
-  ChevronRight,
   Download,
   Edit3,
   FileText,
+  LayoutGrid,
   Loader2,
   Menu,
   MoreVertical,
   PanelLeftClose,
   PanelLeftOpen,
-  Plus,
   Settings,
   Sparkles,
   Trash2,
@@ -149,8 +148,9 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
   const location = useLocation();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-
   const effectiveCollapsed = !isMobileOpen && isCollapsed;
+  const isCreateSubjectActive = location.pathname === "/";
+  const isMyLearningSpaceActive = location.pathname === "/spaces";
 
   const { data: subjects = [], isLoading } = useQuery({
     queryKey: ["subjects"],
@@ -303,7 +303,7 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
 
         <div className={cn("space-y-2", effectiveCollapsed ? "px-0 py-3" : "p-3")}>
           {effectiveCollapsed ? (
-            <div className="flex justify-center">
+            <div className="flex flex-col items-center gap-2">
               <button
                 type="button"
                 onClick={() => {
@@ -316,27 +316,84 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
                   });
                 }}
                 title="新建学科"
-                className="flex h-6 w-6 items-center justify-center rounded border border-slate-200 bg-white text-slate-700 shadow-sm transition-all hover:border-slate-300 hover:bg-slate-50 hover:text-slate-900"
+                className={cn(
+                  "flex h-8 w-8 items-center justify-center rounded-lg transition-all",
+                  isCreateSubjectActive
+                    ? "bg-slate-100 text-slate-900"
+                    : "text-slate-500 hover:bg-slate-100 hover:text-slate-900",
+                )}
               >
-                <Plus className="h-4 w-4 shrink-0" />
+                <Edit3 className="h-4 w-4 shrink-0" strokeWidth={2.2} />
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setSubjectActionError(undefined);
+                  setOpenMenuId(null);
+                  setIsMobileOpen(false);
+                  setIsCollapsed(false);
+                  navigate("/spaces");
+                }}
+                title="我的学习空间"
+                className={cn(
+                  "flex h-8 w-8 items-center justify-center rounded-lg transition-all",
+                  isMyLearningSpaceActive
+                    ? "bg-slate-100 text-slate-900"
+                    : "text-slate-500 hover:bg-slate-100 hover:text-slate-900",
+                )}
+              >
+                <LayoutGrid className="h-4 w-4 shrink-0" strokeWidth={2.2} />
               </button>
             </div>
           ) : (
-            <Button
-              variant="outline"
-              className="w-full justify-start"
-              onClick={() => {
-                setSubjectActionError(undefined);
-                setOpenMenuId(null);
-                setIsMobileOpen(false);
-                navigate("/", {
-                  state: { newEntryAt: Date.now() },
-                });
-              }}
-            >
-              <Plus className="h-4 w-4 shrink-0" />
-              <span className="ml-2">新建学科</span>
-            </Button>
+            <>
+              <button
+                type="button"
+                className={cn(
+                  "flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left transition-colors",
+                  isCreateSubjectActive
+                    ? "bg-slate-100/80 text-slate-900"
+                    : "text-slate-900 hover:bg-slate-100/80",
+                )}
+                onClick={() => {
+                  setSubjectActionError(undefined);
+                  setOpenMenuId(null);
+                  setIsMobileOpen(false);
+                  navigate("/", {
+                    state: { newEntryAt: Date.now() },
+                  });
+                }}
+              >
+                <Edit3
+                  className={cn("h-5 w-5 shrink-0", isCreateSubjectActive ? "text-slate-700" : "text-slate-500")}
+                  strokeWidth={2.2}
+                />
+                <span className="text-[15px] font-normal tracking-[0.01em] text-slate-900">新建学科</span>
+              </button>
+
+              <button
+                type="button"
+                className={cn(
+                  "flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left transition-colors",
+                  isMyLearningSpaceActive
+                    ? "bg-slate-100/80 text-slate-900"
+                    : "text-slate-900 hover:bg-slate-100/80",
+                )}
+                onClick={() => {
+                  setSubjectActionError(undefined);
+                  setOpenMenuId(null);
+                  setIsMobileOpen(false);
+                  navigate("/spaces");
+                }}
+              >
+                <LayoutGrid
+                  className={cn("h-5 w-5 shrink-0", isMyLearningSpaceActive ? "text-slate-700" : "text-slate-500")}
+                  strokeWidth={2.2}
+                />
+                <span className="text-[15px] font-normal tracking-[0.01em] text-slate-900">我的学习空间</span>
+              </button>
+            </>
           )}
 
           {!effectiveCollapsed && subjectActionError ? (
@@ -345,6 +402,12 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
         </div>
 
         <div className="flex-1 overflow-y-auto overflow-x-hidden px-3 pb-4 space-y-1 scrollbar-thin scrollbar-webkit">
+          {!effectiveCollapsed ? (
+            <div className="px-2 pb-2 pt-1">
+              <span className="text-[11px] font-medium tracking-[0.08em] text-slate-400">学科</span>
+            </div>
+          ) : null}
+
           {isLoading ? (
             <div className="flex flex-col items-center justify-center py-6 text-slate-400">
               <Loader2 className="h-5 w-5 animate-spin" />
@@ -354,13 +417,17 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
 
           {groupedSubjects.map((subject) => {
             const expanded = expandedSubjects.has(subject.subject_id);
-            const activeSubject = location.pathname.startsWith(`/subject/${subject.subject_id}/`);
             const displayName = displaySubjectName(subject);
             const badgeClass = colorClassForSubject(subject.name || subject.subject_id);
 
             return (
               <div key={subject.subject_id} className="relative">
-                <div className="group flex items-center gap-1">
+                <div
+                  className={cn(
+                    "group flex items-center gap-1 rounded-lg transition-colors",
+                    !effectiveCollapsed ? "hover:bg-slate-100/60" : "",
+                  )}
+                >
                   <button
                     type="button"
                     onClick={() => {
@@ -376,13 +443,9 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
                     className={cn(
                       "flex items-center transition-colors",
                       effectiveCollapsed ? "h-8 w-full justify-center rounded px-0" : "flex-1 rounded-lg px-2 py-2",
-                      activeSubject || expanded ? "bg-slate-100/60" : "hover:bg-slate-100/60",
                     )}
                     title={effectiveCollapsed ? displayName : undefined}
                   >
-                    {effectiveCollapsed ? null : (
-                      <ChevronRight className={cn("mr-1.5 h-4 w-4 shrink-0 text-slate-400 transition-transform", expanded ? "rotate-90" : "rotate-0")} />
-                    )}
                     <div className={cn("flex shrink-0 items-center justify-center font-bold text-white shadow-sm", 
                       effectiveCollapsed ? "h-6 w-6 rounded text-[11px]" : "h-7 w-7 rounded-md text-xs",
                       badgeClass
@@ -397,7 +460,7 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
                       <button
                         type="button"
                         onClick={() => setOpenMenuId((prev) => (prev === subject.subject_id ? null : subject.subject_id))}
-                        className="rounded-md p-1.5 text-slate-400 opacity-0 transition hover:bg-slate-100 hover:text-slate-700 group-hover:opacity-100"
+                        className="rounded-md p-1.5 text-slate-400 opacity-0 transition hover:text-slate-700 group-hover:opacity-100"
                         title="更多操作"
                       >
                         <MoreVertical className="h-4 w-4" />
