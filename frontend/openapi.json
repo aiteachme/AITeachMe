@@ -4036,6 +4036,97 @@
         }
       }
     },
+    "/api/v1/subjects/{subject}/exams/{exam_paper_id}/study-guide": {
+      "get": {
+        "tags": [
+          "exams"
+        ],
+        "summary": "Generate study guide from a graded exam",
+        "operationId": "exam_study_guide_api_v1_subjects__subject__exams__exam_paper_id__study_guide_get",
+        "parameters": [
+          {
+            "name": "subject",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Subject"
+            }
+          },
+          {
+            "name": "exam_paper_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Exam Paper Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_ExamStudyGuideResponse_"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数不合法。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "当前资源状态不允许执行该操作。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务内部异常。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/subjects/{subject}/exams/{exam_paper_id}/submit": {
       "post": {
         "tags": [
@@ -5201,6 +5292,40 @@
         },
         "type": "object",
         "title": "ApiResponse[ExamPaperDetailResponse]",
+        "example": {
+          "code": 0,
+          "data": {},
+          "message": "ok"
+        }
+      },
+      "ApiResponse_ExamStudyGuideResponse_": {
+        "properties": {
+          "code": {
+            "type": "integer",
+            "title": "Code",
+            "description": "业务码，0 表示成功。",
+            "default": 0
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "响应消息。",
+            "default": "ok"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ExamStudyGuideResponse"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "业务数据。"
+          }
+        },
+        "type": "object",
+        "title": "ApiResponse[ExamStudyGuideResponse]",
         "example": {
           "code": 0,
           "data": {},
@@ -8915,6 +9040,110 @@
           "explanation"
         ],
         "title": "ExamPaperItemResponse"
+      },
+      "ExamStudyGuideFocusUnit": {
+        "properties": {
+          "knowledge_unit_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Knowledge Unit Id"
+          },
+          "knowledge_unit_name": {
+            "type": "string",
+            "title": "Knowledge Unit Name"
+          },
+          "mastery_score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mastery Score"
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason"
+          }
+        },
+        "type": "object",
+        "required": [
+          "knowledge_unit_name",
+          "reason"
+        ],
+        "title": "ExamStudyGuideFocusUnit"
+      },
+      "ExamStudyGuideResponse": {
+        "properties": {
+          "exam_paper_id": {
+            "type": "integer",
+            "title": "Exam Paper Id"
+          },
+          "subject": {
+            "type": "string",
+            "title": "Subject"
+          },
+          "generated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Generated At"
+          },
+          "overall_summary": {
+            "type": "string",
+            "title": "Overall Summary"
+          },
+          "strengths": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Strengths"
+          },
+          "priority_gaps": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Priority Gaps"
+          },
+          "action_steps": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Action Steps"
+          },
+          "review_tasks": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Review Tasks"
+          },
+          "focus_units": {
+            "items": {
+              "$ref": "#/components/schemas/ExamStudyGuideFocusUnit"
+            },
+            "type": "array",
+            "title": "Focus Units"
+          }
+        },
+        "type": "object",
+        "required": [
+          "exam_paper_id",
+          "subject",
+          "generated_at",
+          "overall_summary"
+        ],
+        "title": "ExamStudyGuideResponse"
       },
       "ExamSubmitAnswerItem": {
         "properties": {
