@@ -3,7 +3,6 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
   BarChart3,
   BookOpen,
-  ChevronRight,
   Download,
   Edit3,
   FileText,
@@ -423,7 +422,12 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
 
             return (
               <div key={subject.subject_id} className="relative">
-                <div className="group flex items-center gap-1">
+                <div
+                  className={cn(
+                    "group flex items-center gap-1 rounded-lg transition-colors",
+                    !effectiveCollapsed ? "hover:bg-slate-100/60" : "",
+                  )}
+                >
                   <button
                     type="button"
                     onClick={() => {
@@ -439,13 +443,9 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
                     className={cn(
                       "flex items-center transition-colors",
                       effectiveCollapsed ? "h-8 w-full justify-center rounded px-0" : "flex-1 rounded-lg px-2 py-2",
-                      "hover:bg-slate-100/60",
                     )}
                     title={effectiveCollapsed ? displayName : undefined}
                   >
-                    {effectiveCollapsed ? null : (
-                      <ChevronRight className={cn("mr-1.5 h-4 w-4 shrink-0 text-slate-400 transition-transform", expanded ? "rotate-90" : "rotate-0")} />
-                    )}
                     <div className={cn("flex shrink-0 items-center justify-center font-bold text-white shadow-sm", 
                       effectiveCollapsed ? "h-6 w-6 rounded text-[11px]" : "h-7 w-7 rounded-md text-xs",
                       badgeClass
@@ -460,7 +460,7 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
                       <button
                         type="button"
                         onClick={() => setOpenMenuId((prev) => (prev === subject.subject_id ? null : subject.subject_id))}
-                        className="rounded-md p-1.5 text-slate-400 opacity-0 transition hover:bg-slate-100 hover:text-slate-700 group-hover:opacity-100"
+                        className="rounded-md p-1.5 text-slate-400 opacity-0 transition hover:text-slate-700 group-hover:opacity-100"
                         title="更多操作"
                       >
                         <MoreVertical className="h-4 w-4" />
