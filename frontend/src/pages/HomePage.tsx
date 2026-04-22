@@ -1,4 +1,4 @@
-﻿import { useState, useRef, useCallback, useEffect, useMemo } from "react";
+import { useState, useRef, useCallback, useEffect, useMemo } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
@@ -764,31 +764,29 @@ export function HomePage() {
           initial={{ opacity: 0, scale: 0.9 }}
           animate={{ opacity: 1, scale: 1 }}
           transition={{ delay: 0.1, type: "spring", stiffness: 200, damping: 20 }}
-          className="flex items-center justify-center gap-5 mb-4"
+          className="flex flex-col items-center justify-center mb-2"
         >
           <HeroAnimation />
           <motion.div
-            initial={{ opacity: 0, x: -10, filter: "blur(8px)" }}
-            animate={{ opacity: 1, x: 0, filter: "blur(0px)" }}
-            transition={{ duration: 1, ease: "easeOut", delay: 0.2 }}
-            className="flex items-center pt-2"
+            initial={{ opacity: 0, y: 10, filter: "blur(6px)" }}
+            animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+            transition={{ duration: 0.8, ease: "easeOut", delay: 2.8 }}
+            className="flex flex-col items-center mt-3"
           >
-            <motion.h1 
-              className="text-5xl md:text-6xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-blue-500 via-violet-500 to-fuchsia-500 pb-2 drop-shadow-md animate-text-gradient py-2 px-4 -mx-4 tracking-wide"
-              style={{ fontFamily: "'Edwardian Script ITC', 'Vivaldi', 'Vladimir Script', 'Brush Script MT', 'Dancing Script', 'Pacifico', cursive", lineHeight: "1.2", wordSpacing: "0.15em" }}
-              animate={{ y: [0, -4, 0] }}
-              transition={{ repeat: Infinity, duration: 3, ease: "easeInOut" }}
+            <h1
+              className="text-2xl md:text-3xl font-bold tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-slate-800 via-indigo-700 to-violet-600 animate-text-gradient"
+              style={{ backgroundSize: "200% auto" }}
             >
-              AI Teach Me
-            </motion.h1>
+              AITeachMe
+            </h1>
           </motion.div>
         </motion.div>
 
         {/* ── Slogan ── */}
         <motion.p
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.25 }}
+          initial={{ opacity: 0, y: 6 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 3.0, duration: 0.6 }}
           className="mb-8 px-4 text-center text-[15px] leading-relaxed text-zinc-500"
         >
           把任何令人头疼的学习资料，变成你的 24 小时专属"赛博私教"。
