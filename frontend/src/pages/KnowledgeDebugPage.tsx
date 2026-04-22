@@ -76,6 +76,13 @@ const NODE_TYPE_TONE: Record<string, string> = {
   remark: "bg-slate-100 text-slate-700",
 };
 
+const KG_FILE_INGEST_READY_STATUSES = new Set([
+  "fast_parsed",
+  "enhancing",
+  "ready_for_digest",
+  "enhance_failed",
+]);
+
 async function fetchFiles(subject: string): Promise<FileRecord[]> {
   const response = await apiClient<ApiResponse<FilesData>>({
     method: "GET",
@@ -215,7 +222,9 @@ export function KnowledgeDebugPage() {
   const digestReadyFiles = useMemo(
     () =>
       readyFiles.filter(
-        (file) => file.status === "completed" && file.ingest_status === "ready_for_digest",
+        (file) =>
+          file.status === "completed" &&
+          KG_FILE_INGEST_READY_STATUSES.has(file.ingest_status.trim().toLowerCase()),
       ),
     [readyFiles],
   );

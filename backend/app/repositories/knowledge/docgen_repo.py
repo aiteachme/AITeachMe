@@ -43,6 +43,21 @@ def get_docs_by_subject(
     return list(session.exec(statement).all())
 
 
+def get_current_published_docs(session: Session, subject: str) -> list[KnowledgeDoc]:
+    """Return current published chapter docs for one subject in display order."""
+
+    statement = (
+        select(KnowledgeDoc)
+        .where(
+            KnowledgeDoc.subject == subject,
+            KnowledgeDoc.is_current.is_(True),
+            KnowledgeDoc.status == "published",
+        )
+        .order_by(KnowledgeDoc.order_index, KnowledgeDoc.chapter_index, KnowledgeDoc.id)
+    )
+    return list(session.exec(statement).all())
+
+
 def get_latest_version_no(session: Session, subject: str) -> int:
     """Return the latest published version number for one subject."""
 
