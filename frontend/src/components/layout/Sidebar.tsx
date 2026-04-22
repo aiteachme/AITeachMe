@@ -7,6 +7,7 @@ import {
   Download,
   Edit3,
   FileText,
+  LayoutGrid,
   Loader2,
   Menu,
   MoreVertical,
@@ -148,9 +149,9 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
   const location = useLocation();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-
   const effectiveCollapsed = !isMobileOpen && isCollapsed;
   const isCreateSubjectActive = location.pathname === "/";
+  const isMyLearningSpaceActive = location.pathname === "/spaces";
 
   const { data: subjects = [], isLoading } = useQuery({
     queryKey: ["subjects"],
@@ -303,7 +304,7 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
 
         <div className={cn("space-y-2", effectiveCollapsed ? "px-0 py-3" : "p-3")}>
           {effectiveCollapsed ? (
-            <div className="flex justify-center">
+            <div className="flex flex-col items-center gap-2">
               <button
                 type="button"
                 onClick={() => {
@@ -325,31 +326,75 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
               >
                 <Edit3 className="h-4 w-4 shrink-0" strokeWidth={2.2} />
               </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setSubjectActionError(undefined);
+                  setOpenMenuId(null);
+                  setIsMobileOpen(false);
+                  setIsCollapsed(false);
+                  navigate("/spaces");
+                }}
+                title="我的学习空间"
+                className={cn(
+                  "flex h-8 w-8 items-center justify-center rounded-lg transition-all",
+                  isMyLearningSpaceActive
+                    ? "bg-slate-100 text-slate-900"
+                    : "text-slate-500 hover:bg-slate-100 hover:text-slate-900",
+                )}
+              >
+                <LayoutGrid className="h-4 w-4 shrink-0" strokeWidth={2.2} />
+              </button>
             </div>
           ) : (
-            <button
-              type="button"
-              className={cn(
-                "flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left transition-colors",
-                isCreateSubjectActive
-                  ? "bg-slate-100/80 text-slate-900"
-                  : "text-slate-900 hover:bg-slate-100/80",
-              )}
-              onClick={() => {
-                setSubjectActionError(undefined);
-                setOpenMenuId(null);
-                setIsMobileOpen(false);
-                navigate("/", {
-                  state: { newEntryAt: Date.now() },
-                });
-              }}
-            >
-              <Edit3
-                className={cn("h-5 w-5 shrink-0", isCreateSubjectActive ? "text-slate-700" : "text-slate-500")}
-                strokeWidth={2.2}
-              />
-              <span className="text-[15px] font-normal tracking-[0.01em] text-slate-900">新建学科</span>
-            </button>
+            <>
+              <button
+                type="button"
+                className={cn(
+                  "flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left transition-colors",
+                  isCreateSubjectActive
+                    ? "bg-slate-100/80 text-slate-900"
+                    : "text-slate-900 hover:bg-slate-100/80",
+                )}
+                onClick={() => {
+                  setSubjectActionError(undefined);
+                  setOpenMenuId(null);
+                  setIsMobileOpen(false);
+                  navigate("/", {
+                    state: { newEntryAt: Date.now() },
+                  });
+                }}
+              >
+                <Edit3
+                  className={cn("h-5 w-5 shrink-0", isCreateSubjectActive ? "text-slate-700" : "text-slate-500")}
+                  strokeWidth={2.2}
+                />
+                <span className="text-[15px] font-normal tracking-[0.01em] text-slate-900">新建学科</span>
+              </button>
+
+              <button
+                type="button"
+                className={cn(
+                  "flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left transition-colors",
+                  isMyLearningSpaceActive
+                    ? "bg-slate-100/80 text-slate-900"
+                    : "text-slate-900 hover:bg-slate-100/80",
+                )}
+                onClick={() => {
+                  setSubjectActionError(undefined);
+                  setOpenMenuId(null);
+                  setIsMobileOpen(false);
+                  navigate("/spaces");
+                }}
+              >
+                <LayoutGrid
+                  className={cn("h-5 w-5 shrink-0", isMyLearningSpaceActive ? "text-slate-700" : "text-slate-500")}
+                  strokeWidth={2.2}
+                />
+                <span className="text-[15px] font-normal tracking-[0.01em] text-slate-900">我的学习空间</span>
+              </button>
+            </>
           )}
 
           {!effectiveCollapsed && subjectActionError ? (
@@ -373,7 +418,6 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
 
           {groupedSubjects.map((subject) => {
             const expanded = expandedSubjects.has(subject.subject_id);
-            const activeSubject = location.pathname.startsWith(`/subject/${subject.subject_id}/`);
             const displayName = displaySubjectName(subject);
             const badgeClass = colorClassForSubject(subject.name || subject.subject_id);
 

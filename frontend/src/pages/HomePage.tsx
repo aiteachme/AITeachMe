@@ -1,21 +1,16 @@
-import { useState, useRef, useCallback, useEffect, useMemo } from "react";
-import { Link, useLocation, useNavigate } from "react-router-dom";
+﻿import { useState, useRef, useCallback, useEffect, useMemo } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   AlertCircle,
   ArrowUp,
-  BookOpen,
   CheckCircle2,
   ChevronDown,
-  Clock,
   Download,
-  Edit3,
   FileCode,
   FileImage,
   Loader2,
-  MessageSquare,
-  MoreVertical,
   FileText,
   FileType,
   Paperclip,
@@ -25,7 +20,7 @@ import {
   Package,
 } from "lucide-react";
 
-import { listSubjectsApiApiV1SubjectsListPost, createSubjectApiApiV1SubjectsAddPost } from "../api/generated/subjects";
+import { createSubjectApiApiV1SubjectsAddPost } from "../api/generated/subjects";
 import { apiClient } from "../api/client";
 import { unwrapOrvalResponse } from "../lib/unwrapOrvalResponse";
 import { getApiErrorMessage } from "../api/client";
@@ -205,74 +200,6 @@ function homeFileStatusMeta(file: Pick<FileRecord, "markdown_ready" | "error_mes
     icon: <Loader2 className="h-3.5 w-3.5 animate-spin text-sky-500" />,
     tone: "text-sky-600",
   };
-}
-
-/* ── Subject Card Three-dot Dropdown ── */
-
-function SubjectMenu({
-  subjectId,
-  subjectName,
-  onExport,
-  onRename,
-}: {
-  subjectId: string;
-  subjectName: string;
-  onExport: (id: string) => void;
-  onRename: (id: string, name: string) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const menuRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    const handler = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setOpen(false);
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, [open]);
-
-  return (
-    <div ref={menuRef} className="relative z-30">
-      <button
-        type="button"
-        onClick={(e) => { e.preventDefault(); e.stopPropagation(); setOpen(!open); }}
-        className="p-1.5 rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition-colors"
-        title="更多操作"
-      >
-        <MoreVertical className="w-4 h-4" />
-      </button>
-      <AnimatePresence>
-        {open && (
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95, y: -4 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.95, y: -4 }}
-            transition={{ duration: 0.15 }}
-            className="absolute right-0 top-full mt-1 w-36 bg-white rounded-xl border border-slate-200 shadow-lg overflow-hidden"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <button
-              type="button"
-              onClick={(e) => { e.preventDefault(); e.stopPropagation(); setOpen(false); onExport(subjectId); }}
-              className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-sm text-slate-700 hover:bg-slate-50 transition-colors"
-            >
-              <Download className="w-4 h-4 text-slate-400" />
-              <span>导出学科</span>
-            </button>
-            <button
-              type="button"
-              onClick={(e) => { e.preventDefault(); e.stopPropagation(); setOpen(false); onRename(subjectId, subjectName); }}
-              className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-sm text-slate-700 hover:bg-slate-50 transition-colors border-t border-slate-100"
-            >
-              <Edit3 className="w-4 h-4 text-slate-400" />
-              <span>重命名</span>
-            </button>
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </div>
-  );
 }
 
 /* ── Export Modal ── */
@@ -608,9 +535,6 @@ export function HomePage() {
   const [exportSubjectId, setExportSubjectId] = useState<string | null>(null);
   const [importOpen, setImportOpen] = useState(false);
   const [renameTarget, setRenameTarget] = useState<{ id: string; name: string } | null>(null);
-
-  // Section tab: "recent" | "courses"
-  const [sectionTab, setSectionTab] = useState<"recent" | "courses">("recent");
   const newEntryAt = (location.state as { newEntryAt?: number } | null)?.newEntryAt;
 
   useEffect(() => {
@@ -654,21 +578,6 @@ export function HomePage() {
       queryClient.invalidateQueries({ queryKey: ["available-courses"] });
     },
   });
-
-  // ── Subject list ──
-  const { data: subjects = [], isLoading: subjectsLoading } = useQuery({
-    queryKey: ["subjects"],
-    queryFn: async () =>
-      unwrapOrvalResponse(
-        await listSubjectsApiApiV1SubjectsListPost({ page: 1, size: 100 }),
-      )?.items ?? [],
-  });
-
-  useEffect(() => {
-    if (subjects.length === 0 && courses.length > 0) {
-      setSectionTab("courses");
-    }
-  }, [courses.length, subjects.length]);
 
   // ── Mutations ──
   const ensureDraftSubjectId = useCallback(async () => {
@@ -847,7 +756,7 @@ export function HomePage() {
         transition={{ duration: 0.6, ease: "easeOut" }}
         className={cn(
           "relative z-20 w-full max-w-[800px] flex flex-col items-center",
-          subjects.length === 0 ? "justify-center min-h-[calc(100dvh-9rem)] translate-y-[8vh] md:translate-y-[11vh]" : "mt-[10vh]"
+          courses.length === 0 ? "justify-center min-h-[calc(100dvh-9rem)] translate-y-[8vh] md:translate-y-[11vh]" : "mt-[10vh]"
         )}
       >
         {/* ── Logo & Title ── */}
@@ -1031,9 +940,9 @@ export function HomePage() {
           >
             <div className="flex-1 h-[1px] bg-zinc-200 group-hover:bg-zinc-300 transition-colors" />
             <span className="flex shrink-0 select-none items-center gap-2 text-[13px] font-semibold tracking-tight text-zinc-400 transition-colors group-hover:text-zinc-800">
-              <Clock className="h-4 w-4" />
-              最近的学习空间
-              <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-[11px] text-zinc-500 shadow-[inset_0_1px_2px_rgba(0,0,0,0.02)]">{subjects.length + courses.length}</span>
+              <Package className="h-4 w-4" />
+              演示课程
+              <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-[11px] text-zinc-500 shadow-[inset_0_1px_2px_rgba(0,0,0,0.02)]">{courses.length}</span>
               <motion.div
                 animate={{ rotate: recentOpen ? 180 : 0 }}
                 transition={{ duration: 0.3, ease: "easeInOut" }}
@@ -1054,118 +963,17 @@ export function HomePage() {
                 transition={{ duration: 0.4, ease: [0.25, 0.1, 0.25, 1] }}
                 className="w-full overflow-hidden"
               >
-                {/* Tab Bar */}
-                <div className="flex items-center gap-1 pt-4 pb-2 px-1">
+                <div className="flex items-center justify-end pt-4 pb-2 px-1">
                   <button
-                    onClick={() => setSectionTab("recent")}
-                    className={cn(
-                      "flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all",
-                      sectionTab === "recent"
-                        ? "bg-slate-900 text-white shadow-sm"
-                        : "text-slate-500 hover:text-slate-800 hover:bg-slate-100"
-                    )}
-                    title="最近的学习空间"
+                    onClick={() => setImportOpen(true)}
+                    className="flex items-center gap-2 px-3.5 py-2 rounded-xl text-sm font-medium text-slate-600 bg-white border border-slate-200 hover:border-slate-300 hover:bg-slate-50 shadow-sm hover:shadow transition-all"
+                    title="从文件导入学科包"
                   >
-                    <Clock className="w-4 h-4" />
-                    最近的学习空间
-                    {subjects.length > 0 && (
-                      <span className={cn(
-                        "text-xs px-1.5 py-0.5 rounded-full",
-                        sectionTab === "recent" ? "bg-white/20" : "bg-slate-100"
-                      )}>{subjects.length}</span>
-                    )}
+                    <Upload className="w-4 h-4 text-emerald-500" />
+                    上传导入
                   </button>
-                  <button
-                    onClick={() => setSectionTab("courses")}
-                    className={cn(
-                      "flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all",
-                      sectionTab === "courses"
-                        ? "bg-slate-900 text-white shadow-sm"
-                        : "text-slate-500 hover:text-slate-800 hover:bg-slate-100"
-                    )}
-                    title="演示课程"
-                  >
-                    <Package className="w-4 h-4" />
-                    演示课程
-                    {courses.length > 0 && (
-                      <span className={cn(
-                        "text-xs px-1.5 py-0.5 rounded-full",
-                        sectionTab === "courses" ? "bg-white/20" : "bg-slate-100"
-                      )}>{courses.length}</span>
-                    )}
-                  </button>
-
-                  {/* Upload import button */}
-                  <div className="ml-auto">
-                    <button
-                      onClick={() => setImportOpen(true)}
-                      className="flex items-center gap-2 px-3.5 py-2 rounded-xl text-sm font-medium text-slate-600 bg-white border border-slate-200 hover:border-slate-300 hover:bg-slate-50 shadow-sm hover:shadow transition-all"
-                      title="从文件导入学科包"
-                    >
-                      <Upload className="w-4 h-4 text-emerald-500" />
-                      上传导入
-                    </button>
-                  </div>
                 </div>
 
-                {/* Tab: Recent Subjects */}
-                {sectionTab === "recent" && (
-                  <div className="pt-2 pb-12 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-                    {subjectsLoading && (
-                      <div className="col-span-full py-8 flex justify-center w-full">
-                        <Loader2 className="w-6 h-6 animate-spin text-slate-400" />
-                      </div>
-                    )}
-                    {subjects.map((subject: any, i: number) => (
-                      <motion.div
-                        key={subject.subject_id}
-                        initial={{ opacity: 0, y: 16 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: i * 0.05, duration: 0.35, ease: "easeOut" }}
-                      >
-                        <div className="relative block group">
-                          <div className="group/card relative flex h-full flex-col overflow-hidden rounded-2xl border border-zinc-200/80 bg-white p-5 shadow-[0_2px_8px_rgba(0,0,0,0.04)] transition-all duration-300 hover:-translate-y-1 hover:border-zinc-300 hover:shadow-[0_8px_24px_rgba(0,0,0,0.08)]">
-                            <div className="relative z-10 mb-4 flex items-start justify-between">
-                              <h3 className="line-clamp-1 flex-1 mr-2 text-[15px] font-semibold tracking-tight text-zinc-900 transition-colors group-hover/card:text-zinc-800">
-                                {subject.name?.trim() || "无标题"}
-                              </h3>
-                              <div className="flex items-center gap-1 pointer-events-auto">
-                                <SubjectMenu
-                                  subjectId={subject.subject_id}
-                                  subjectName={subject.name?.trim() || "无标题"}
-                                  onExport={(id: string) => setExportSubjectId(id)}
-                                  onRename={(id: string, name: string) => setRenameTarget({ id, name })}
-                                />
-                                <Link to={`/subject/${subject.subject_id}/build`} className="rounded-lg bg-zinc-50 p-2 transition-colors group-hover/card:bg-zinc-100/80">
-                                  <BookOpen className="h-[18px] w-[18px] text-zinc-400 transition-colors group-hover/card:text-zinc-700" />
-                                </Link>
-                              </div>
-                            </div>
-                            <Link to={`/subject/${subject.subject_id}/build`} className="relative z-10 mt-auto flex items-center gap-2.5 border-t border-zinc-100 pt-4">
-                              <span className="flex items-center rounded-md bg-zinc-100/80 px-2 py-1 text-[11px] font-semibold text-zinc-500">
-                                <MessageSquare className="mr-1 h-3.5 w-3.5" /> 会话
-                              </span>
-                              <span className="flex items-center rounded-md bg-zinc-100/80 px-2 py-1 text-[11px] font-semibold text-zinc-500">
-                                <FileText className="mr-1 h-3.5 w-3.5" /> 资料
-                              </span>
-                              <span className="ml-auto flex items-center text-[11px] font-semibold text-zinc-400 transition-colors group-hover/card:text-zinc-900">
-                                 进入学习 <ChevronDown className="ml-0.5 h-3.5 w-3.5 -rotate-90" />
-                              </span>
-                            </Link>
-                          </div>
-                        </div>
-                      </motion.div>
-                    ))}
-                    {!subjectsLoading && subjects.length === 0 && (
-                      <div className="col-span-full py-12 text-center text-slate-400 text-sm">
-                        暂无学习空间，上方输入目标，或从右侧演示课程开始体验
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {/* Tab: Demo Courses */}
-                {sectionTab === "courses" && (
                   <div className="pt-2 pb-12">
                     {coursesLoading && (
                       <div className="py-8 flex justify-center">
@@ -1249,7 +1057,6 @@ export function HomePage() {
                       </div>
                     )}
                   </div>
-                )}
               </motion.div>
             )}
           </AnimatePresence>

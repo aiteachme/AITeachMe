@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Layout } from "./components/layout/Layout";
 import { ToastProvider } from "./components/ui/Toast";
 import { HomePage } from "./pages/HomePage";
+import { LearningSpacesPage } from "./pages/LearningSpacesPage";
 import { BuildPlanPage } from "./pages/BuildPlanPage";
 import { ExamsPage } from "./pages/ExamsPage";
 import { ProfilePage } from "./pages/ProfilePage";
@@ -38,6 +39,7 @@ function App() {
         <Routes>
           <Route path="/" element={<Layout />}>
             <Route index element={<HomePage />} />
+            <Route path="spaces" element={<LearningSpacesPage />} />
             {(Object.entries(SUBJECT_PAGE_ELEMENTS) as Array<[SubjectRouteId, ReactElement]>).map(
               ([routeId, element]) => (
                 <Route key={routeId} path={`subject/:subjectId/${routeId}`} element={element} />
