@@ -118,9 +118,19 @@ def resolve_settings_model(settings: Settings, model: str | None = None) -> tupl
     if normalized == "light":
         return models.light or fallback_model, "light"
     if normalized == "extract":
-        return models.extract or models.light or fallback_model, "extract"
+        return models.light or fallback_model, "extract"
+    if normalized == "rerank":
+        return models.rerank or fallback_model, "rerank"
+    if normalized == "ocr":
+        return models.ocr or fallback_model, "ocr"
     if normalized == "image_generation":
         return models.image_generation or fallback_model, "image_generation"
+    if normalized == "speech_to_text":
+        return models.speech_to_text or fallback_model, "speech_to_text"
+    if normalized == "text_to_speech":
+        return models.text_to_speech or fallback_model, "text_to_speech"
+    if normalized == "video_generation":
+        return models.video_generation or fallback_model, "video_generation"
     return selector, selector
 
 

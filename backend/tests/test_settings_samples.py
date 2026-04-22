@@ -17,9 +17,15 @@ from app.shared.infra.settings.support import (
     llm_provider_requires_api_key,
     resolve_runtime_llm_provider,
     split_provider_model_name,
+    upgrade_legacy_settings_payload,
 )
 from app.shared.infra.settings.settings import Settings
 from app.workflows.support.system.catalog import ENV_ENTRY_KEY_MAP
+
+SAMPLE_ENV_FILES = (
+    ".env.sample",
+    ".env.developer.sample",
+)
 
 
 def test_settings_model_uses_code_defaults_without_project_file(monkeypatch) -> None:
@@ -34,6 +40,11 @@ def test_settings_model_uses_code_defaults_without_project_file(monkeypatch) -> 
     assert settings.models.primary == defaults["models"]["primary"]
     assert settings.models.embedding == defaults["models"]["embedding"]
     assert settings.models.embedding_dim == defaults["models"]["embedding_dim"]
+    assert settings.models.rerank is defaults["models"]["rerank"]
+    assert settings.models.ocr is defaults["models"]["ocr"]
+    assert settings.models.speech_to_text is defaults["models"]["speech_to_text"]
+    assert settings.models.text_to_speech is defaults["models"]["text_to_speech"]
+    assert settings.models.video_generation is defaults["models"]["video_generation"]
     assert settings.ingest.max_upload_size_mb == defaults["ingest"]["max_upload_size_mb"]
     assert settings.docgen.generate_cover_image == defaults["docgen"]["generate_cover_image"]
     assert "runtime" not in defaults
@@ -86,6 +97,8 @@ def test_provider_defaults_switch_by_provider() -> None:
     assert anthropic_defaults["reason"] == "claude-sonnet-4-6"
     assert anthropic_defaults["primary"] == "claude-haiku-4-5"
     assert anthropic_defaults["embedding"] is None
+    assert anthropic_defaults["rerank"] is None
+    assert anthropic_defaults["image_generation"] is None
     assert gemini_defaults["primary"] == "gemini-2.5-flash"
     assert gemini_defaults["light"] == "gemini-2.5-flash-lite"
     assert gemini_defaults["embedding"] == "text-embedding-004"
@@ -203,14 +216,38 @@ def test_settings_embedding_dim_can_be_explicitly_overridden_for_unknown_model()
     assert settings.embedding_dim == 2048
 
 
-def test_env_sample_covers_exposed_env_keys() -> None:
-    exposed_env_names = set(ENV_ENTRY_KEY_MAP.values())
+def test_settings_upgrade_legacy_extract_and_rerank_keys() -> None:
+    upgraded = upgrade_legacy_settings_payload(
+        {
+            "models": {"extract": "legacy-extract-model"},
+            "rag": {"rerank_model": "qwen3-reranker-4b"},
+        }
+    )
 
+    assert upgraded["models"]["light"] == "legacy-extract-model"
+    assert "extract" not in upgraded["models"]
+    assert upgraded["models"]["rerank"] == "qwen3-reranker-4b"
+    assert "rerank_model" not in upgraded["rag"]
+
+
+def test_env_samples_cover_exposed_env_keys() -> None:
+    exposed_env_names = set(ENV_ENTRY_KEY_MAP.values())
+    project_root = Path(__file__).resolve().parents[2]
+
+    sample_names: set[str] = set()
+    for sample_name in SAMPLE_ENV_FILES:
+        env_sample_text = project_root.joinpath(sample_name).read_text(encoding="utf-8")
+        sample_names.update(
+            re.findall(r"^(?:#\s*)?([A-Z][A-Z0-9_]+)=", env_sample_text, re.MULTILINE)
+        )
+
+    assert sorted(exposed_env_names - sample_names) == []
+
+
+def test_minimal_env_sample_keeps_local_bootstrap_keys() -> None:
     env_sample_text = Path(__file__).resolve().parents[2].joinpath(".env.sample").read_text(
         encoding="utf-8"
     )
-    sample_names = set(
-        re.findall(r"^(?:#\s*)?([A-Z][A-Z0-9_]+)=", env_sample_text, re.MULTILINE)
-    )
 
-    assert sorted(exposed_env_names - sample_names) == []
+    assert "LLM_API_KEY=" in env_sample_text
+    assert "LLM_BASE_URL=" in env_sample_text

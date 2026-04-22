@@ -108,6 +108,12 @@
 
 当前 settings 页面只展示后端 `/api/v1/system/settings` 返回的 section/entry 元数据。
 
+额外约束：
+
+- 部署级 env 只保留在 `.env` / 部署平台变量中管理
+- `APP_MODE`、`DATABASE_URL`、对象存储连接、底层 provider endpoint 等不再作为产品设置页字段展示
+- 设置页优先承载“项目运行策略 + 常用外部服务授权”
+
 后端是唯一真相源：
 
 - `SettingSection.id / label / description` 决定 tab
@@ -125,8 +131,7 @@
 2. `models`
 3. `learning`
 4. `search`
-5. `ops`
-6. `observability`
+5. `observability`
 
 每个分区内部再由后端 `ui_group` 控制展示顺序。
 

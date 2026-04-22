@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from copy import deepcopy
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
@@ -137,196 +138,163 @@ LITELLM_PROVIDER_BY_RUNTIME_PROVIDER: dict[str, str] = {
     "mistral": "mistral",
     "bedrock": "bedrock",
 }
+_OPTIONAL_MODEL_CAPABILITY_DEFAULTS: dict[str, Any] = {
+    "rerank": None,
+    "ocr": None,
+    "image_generation": None,
+    "speech_to_text": None,
+    "text_to_speech": None,
+    "video_generation": None,
+}
+
+
+def _provider_model_defaults(
+    *,
+    reason: str,
+    primary: str,
+    light: str | None,
+    embedding: str | None,
+) -> dict[str, Any]:
+    return {
+        "reason": reason,
+        "primary": primary,
+        "light": light,
+        "embedding": embedding,
+        **_OPTIONAL_MODEL_CAPABILITY_DEFAULTS,
+    }
+
+
 LLM_PROVIDER_MODEL_DEFAULTS: dict[str, dict[str, Any]] = {
     # These are only first-run defaults. Users can still override any
-    # models.reason / primary / light / extract value from the settings UI.
+    # text-generation route and embedding value from the settings UI.
     # We bias primary / light toward lower-latency models when a provider
-    # offers a clear speed-first option.
+    # offers a clear speed-first option. Other capability slots remain empty
+    # by default and are opt-in.
     #
     # Default path for OpenAI-compatible gateways such as DashScope compatible
     # mode, LiteLLM Gateway, vLLM, LM Studio, Ollama OpenAI mode, etc.
-    "openai_compatible": {
-        "reason": "qwen-max",
-        "primary": "qwen-flash",
-        "light": "qwen-flash",
-        "extract": None,
-        "ocr": None,
-        "embedding": "text-embedding-v3",
-        "image_generation": None,
-    },
-    "vllm": {
-        "reason": "Qwen/Qwen2.5-7B-Instruct",
-        "primary": "Qwen/Qwen2.5-7B-Instruct",
-        "light": "Qwen/Qwen2.5-7B-Instruct",
-        "extract": None,
-        "ocr": None,
-        "embedding": None,
-        "image_generation": None,
-    },
-    "ollama": {
-        "reason": "qwen2.5",
-        "primary": "qwen2.5",
-        "light": "qwen2.5",
-        "extract": None,
-        "ocr": None,
-        "embedding": None,
-        "image_generation": None,
-    },
-    "qwen": {
-        "reason": "qwen-max",
-        "primary": "qwen-flash",
-        "light": "qwen-flash",
-        "extract": None,
-        "ocr": None,
-        "embedding": "text-embedding-v4",
-        "image_generation": None,
-    },
-    "deepseek": {
-        "reason": "deepseek-reasoner",
-        "primary": "deepseek-chat",
-        "light": "deepseek-chat",
-        "extract": None,
-        "ocr": None,
-        "embedding": None,
-        "image_generation": None,
-    },
-    "kimi": {
-        "reason": "kimi-k2-thinking",
-        "primary": "kimi-k2.5",
-        "light": "kimi-k2-turbo-preview",
-        "extract": None,
-        "ocr": None,
-        "embedding": None,
-        "image_generation": None,
-    },
-    "glm": {
-        "reason": "glm-5.1",
-        "primary": "glm-4.7-flash",
-        "light": "glm-4.7-flash",
-        "extract": None,
-        "ocr": None,
-        "embedding": None,
-        "image_generation": None,
-    },
-    "openai": {
-        "reason": "gpt-4o",
-        "primary": "gpt-4o-mini",
-        "light": "gpt-4o-mini",
-        "extract": None,
-        "ocr": None,
-        "embedding": "text-embedding-3-small",
-        "image_generation": "gpt-image-1",
-    },
+    "openai_compatible": _provider_model_defaults(
+        reason="qwen-max",
+        primary="qwen-flash",
+        light="qwen-flash",
+        embedding="text-embedding-v3",
+    ),
+    "vllm": _provider_model_defaults(
+        reason="Qwen/Qwen2.5-7B-Instruct",
+        primary="Qwen/Qwen2.5-7B-Instruct",
+        light="Qwen/Qwen2.5-7B-Instruct",
+        embedding=None,
+    ),
+    "ollama": _provider_model_defaults(
+        reason="qwen2.5",
+        primary="qwen2.5",
+        light="qwen2.5",
+        embedding=None,
+    ),
+    "qwen": _provider_model_defaults(
+        reason="qwen-max",
+        primary="qwen-flash",
+        light="qwen-flash",
+        embedding="text-embedding-v4",
+    ),
+    "deepseek": _provider_model_defaults(
+        reason="deepseek-reasoner",
+        primary="deepseek-chat",
+        light="deepseek-chat",
+        embedding=None,
+    ),
+    "kimi": _provider_model_defaults(
+        reason="kimi-k2-thinking",
+        primary="kimi-k2.5",
+        light="kimi-k2-turbo-preview",
+        embedding=None,
+    ),
+    "glm": _provider_model_defaults(
+        reason="glm-5.1",
+        primary="glm-4.7-flash",
+        light="glm-4.7-flash",
+        embedding=None,
+    ),
+    "openai": _provider_model_defaults(
+        reason="gpt-4o",
+        primary="gpt-4o-mini",
+        light="gpt-4o-mini",
+        embedding="text-embedding-3-small",
+    ),
     # Azure OpenAI usually requires deployment names in `models.*`. We still
     # provide OpenAI-style defaults as sane placeholders for first-run setup.
-    "azure": {
-        "reason": "gpt-4o",
-        "primary": "gpt-4o-mini",
-        "light": "gpt-4o-mini",
-        "extract": None,
-        "ocr": None,
-        "embedding": "text-embedding-3-small",
-        "image_generation": "gpt-image-1",
-    },
-    "anthropic": {
-        "reason": "claude-sonnet-4-6",
-        "primary": "claude-haiku-4-5",
-        "light": "claude-haiku-4-5",
-        "extract": None,
-        "ocr": None,
-        "embedding": None,
-        "image_generation": None,
-    },
-    "minimax": {
-        "reason": "MiniMax-M2.5",
-        "primary": "MiniMax-M2.5-highspeed",
-        "light": "MiniMax-M2.1-highspeed",
-        "extract": None,
-        "ocr": None,
-        "embedding": None,
-        "image_generation": None,
-    },
-    "gemini": {
-        "reason": "gemini-2.5-flash",
-        "primary": "gemini-2.5-flash",
-        "light": "gemini-2.5-flash-lite",
-        "extract": None,
-        "ocr": None,
-        "embedding": "text-embedding-004",
-        "image_generation": None,
-    },
-    "vertex_ai": {
-        "reason": "gemini-2.5-flash",
-        "primary": "gemini-2.5-flash",
-        "light": "gemini-2.5-flash-lite",
-        "extract": None,
-        "ocr": None,
-        "embedding": "text-embedding-004",
-        "image_generation": None,
-    },
-    "siliconflow": {
-        "reason": "deepseek-ai/DeepSeek-R1",
-        "primary": "deepseek-ai/DeepSeek-V3.2",
-        "light": "Qwen/Qwen2.5-7B-Instruct",
-        "extract": None,
-        "ocr": None,
-        "embedding": None,
-        "image_generation": None,
-    },
-    "doubao": {
-        "reason": "doubao-seed-2-0-pro-260215",
-        "primary": "doubao-seed-2-0-pro-260215",
-        "light": "doubao-seed-2-0-lite-260215",
-        "extract": None,
-        "ocr": None,
-        "embedding": None,
-        "image_generation": None,
-    },
-    "openrouter": {
-        "reason": "openai/gpt-4o-mini",
-        "primary": "openai/gpt-4o-mini",
-        "light": "openai/gpt-4o-mini",
-        "extract": None,
-        "ocr": None,
-        "embedding": None,
-        "image_generation": None,
-    },
-    "xai": {
-        "reason": "grok-4",
-        "primary": "grok-3-mini",
-        "light": "grok-3-mini",
-        "extract": None,
-        "ocr": None,
-        "embedding": None,
-        "image_generation": None,
-    },
-    "groq": {
-        "reason": "llama-3.3-70b-versatile",
-        "primary": "llama-3.1-8b-instant",
-        "light": "llama-3.1-8b-instant",
-        "extract": None,
-        "ocr": None,
-        "embedding": None,
-        "image_generation": None,
-    },
-    "mistral": {
-        "reason": "mistral-small-latest",
-        "primary": "mistral-small-latest",
-        "light": "mistral-small-latest",
-        "extract": None,
-        "ocr": None,
-        "embedding": None,
-        "image_generation": None,
-    },
-    "bedrock": {
-        "reason": "anthropic.claude-sonnet-4-6",
-        "primary": "anthropic.claude-haiku-4-5-20251001-v1:0",
-        "light": "anthropic.claude-haiku-4-5-20251001-v1:0",
-        "extract": None,
-        "ocr": None,
-        "embedding": None,
-        "image_generation": None,
-    },
+    "azure": _provider_model_defaults(
+        reason="gpt-4o",
+        primary="gpt-4o-mini",
+        light="gpt-4o-mini",
+        embedding="text-embedding-3-small",
+    ),
+    "anthropic": _provider_model_defaults(
+        reason="claude-sonnet-4-6",
+        primary="claude-haiku-4-5",
+        light="claude-haiku-4-5",
+        embedding=None,
+    ),
+    "minimax": _provider_model_defaults(
+        reason="MiniMax-M2.5",
+        primary="MiniMax-M2.5-highspeed",
+        light="MiniMax-M2.1-highspeed",
+        embedding=None,
+    ),
+    "gemini": _provider_model_defaults(
+        reason="gemini-2.5-flash",
+        primary="gemini-2.5-flash",
+        light="gemini-2.5-flash-lite",
+        embedding="text-embedding-004",
+    ),
+    "vertex_ai": _provider_model_defaults(
+        reason="gemini-2.5-flash",
+        primary="gemini-2.5-flash",
+        light="gemini-2.5-flash-lite",
+        embedding="text-embedding-004",
+    ),
+    "siliconflow": _provider_model_defaults(
+        reason="deepseek-ai/DeepSeek-R1",
+        primary="deepseek-ai/DeepSeek-V3.2",
+        light="Qwen/Qwen2.5-7B-Instruct",
+        embedding=None,
+    ),
+    "doubao": _provider_model_defaults(
+        reason="doubao-seed-2-0-pro-260215",
+        primary="doubao-seed-2-0-pro-260215",
+        light="doubao-seed-2-0-lite-260215",
+        embedding=None,
+    ),
+    "openrouter": _provider_model_defaults(
+        reason="openai/gpt-4o-mini",
+        primary="openai/gpt-4o-mini",
+        light="openai/gpt-4o-mini",
+        embedding=None,
+    ),
+    "xai": _provider_model_defaults(
+        reason="grok-4",
+        primary="grok-3-mini",
+        light="grok-3-mini",
+        embedding=None,
+    ),
+    "groq": _provider_model_defaults(
+        reason="llama-3.3-70b-versatile",
+        primary="llama-3.1-8b-instant",
+        light="llama-3.1-8b-instant",
+        embedding=None,
+    ),
+    "mistral": _provider_model_defaults(
+        reason="mistral-small-latest",
+        primary="mistral-small-latest",
+        light="mistral-small-latest",
+        embedding=None,
+    ),
+    "bedrock": _provider_model_defaults(
+        reason="anthropic.claude-sonnet-4-6",
+        primary="anthropic.claude-haiku-4-5-20251001-v1:0",
+        light="anthropic.claude-haiku-4-5-20251001-v1:0",
+        embedding=None,
+    ),
 }
 RETRIEVER_ALIASES: dict[str, str] = {
     "ddg": "duckduckgo",
@@ -505,6 +473,36 @@ def resolve_runtime_llm_provider(
         return configured_provider
     detected = detect_llm_provider_from_base_url(base_url or get_env("LLM_BASE_URL"))
     return detected or "openai_compatible"
+
+
+def upgrade_legacy_settings_payload(raw_payload: Any) -> dict[str, Any]:
+    """Upgrade removed settings keys into the current schema shape."""
+
+    if raw_payload is None:
+        return {}
+    if not isinstance(raw_payload, dict):
+        return deepcopy(dict(raw_payload))
+
+    upgraded = deepcopy(raw_payload)
+
+    models = upgraded.get("models")
+    if isinstance(models, dict):
+        legacy_extract = models.pop("extract", None)
+        if legacy_extract is not None and not str(models.get("light") or "").strip():
+            models["light"] = legacy_extract
+
+    rag = upgraded.get("rag")
+    if isinstance(rag, dict):
+        legacy_rerank_model = rag.pop("rerank_model", None)
+        if legacy_rerank_model is not None:
+            models_bucket = upgraded.get("models")
+            if not isinstance(models_bucket, dict):
+                models_bucket = {}
+                upgraded["models"] = models_bucket
+            if not str(models_bucket.get("rerank") or "").strip():
+                models_bucket["rerank"] = legacy_rerank_model
+
+    return upgraded
 
 
 def get_llm_provider_model_defaults(provider: str | None) -> dict[str, Any]:
@@ -759,4 +757,5 @@ __all__ = [
     "resolve_embedding_dimension",
     "split_provider_model_name",
     "split_csv_names",
+    "upgrade_legacy_settings_payload",
 ]

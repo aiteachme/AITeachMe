@@ -59,7 +59,12 @@ APP_MODE=local
 AUTH_ENABLED=false
 ```
 
-主配置项见 repo 根目录 `.env.sample`。同一个文件里已经按“基础必填 / 高级可选”分层，大多数项目通常只需要前半部分。
+环境变量样例现在拆成两份：
+
+- `.env.sample`：本地用户与设置页主入口
+- `.env.developer.sample`：开发 / 部署 / 基础设施 / 验证码 / 通知变量
+
+大多数本地开发只需要先复制 `.env.sample`，再按需从 `.env.developer.sample` 补充部署项。
 
 `LLM_API_KEY / LLM_BASE_URL` 是统一模型接入口，会被对话、规划、出题、批改、Embedding、Vision OCR 等模型能力复用。后端现在会优先根据 `LLM_PROVIDER` 或 `LLM_BASE_URL` 自动识别 OpenAI-compatible、Anthropic、Gemini、Azure、DeepSeek、Kimi、GLM、MiniMax、Doubao、SiliconFlow、vLLM、Ollama 等主流上游，并切换一组更匹配的默认 `models.*`。如果供应商支持的模型名与默认值不同，仍可通过代码默认值、设置页或 `PROJECT_SETTINGS_PATH` 指向的外部 override 文件覆盖 `models.*`。Azure OpenAI 这类上游通常还需要额外提供 `LLM_API_VERSION`；本地 Ollama / vLLM / LM Studio 等未开启鉴权的网关可以不填 `LLM_API_KEY`。
 

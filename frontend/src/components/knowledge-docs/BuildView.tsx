@@ -8,9 +8,7 @@ import type {
   KnowledgeBuildMetrics,
   KnowledgeBuildPreview,
 } from "./types";
-import { BuildMaterialPipeline } from "./BuildMaterialPipeline";
 import { useBuildTimelineSteps } from "./BuildProcessTimeline";
-import { BuildResearchSources } from "./BuildResearchSources";
 import { buildChapterStatusLabel, formatBuildEventTime, resolveFileProcessingLabel } from "./utils";
 
 interface Props {
@@ -58,7 +56,6 @@ export function BuildView({
   statusText,
   buildPreview,
   sourceFiles,
-  sourceFilesFetching,
   buildStage,
   className,
 }: Props) {

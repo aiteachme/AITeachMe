@@ -23,6 +23,12 @@ SYSTEMATIC_MODE_DEFAULTS: dict[str, Any] = {
 DEFAULT_SETTINGS_VALUES: dict[str, Any] = {
     "models": {
         "embedding_dim": None,
+        "rerank": None,
+        "ocr": None,
+        "image_generation": None,
+        "speech_to_text": None,
+        "text_to_speech": None,
+        "video_generation": None,
     },
     "interact": {
         "history_turns": 10,
@@ -43,7 +49,6 @@ DEFAULT_SETTINGS_VALUES: dict[str, Any] = {
     "rag": {
         "top_k": 5,
         "similarity_threshold": 0.3,
-        "rerank_model": None,
         "rerank_top_k": 3,
     },
     "local_rag": {

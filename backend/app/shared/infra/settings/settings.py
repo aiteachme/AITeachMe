@@ -18,6 +18,7 @@ from .support import (
     normalize_profile_name,
     normalize_retriever_name,
     resolve_embedding_dimension,
+    upgrade_legacy_settings_payload,
 )
 
 
@@ -33,11 +34,22 @@ class ModelsSettings(_SettingsModel):
     reason: str | None
     primary: str
     light: str | None
-    extract: str | None
-    ocr: str | None
     embedding: str | None
     embedding_dim: int | None = None
+    rerank: str | None
+    ocr: str | None
     image_generation: str | None
+    speech_to_text: str | None
+    text_to_speech: str | None
+    video_generation: str | None
+
+    @model_validator(mode="before")
+    @classmethod
+    def _upgrade_legacy_model_keys(cls, value: Any) -> Any:
+        if isinstance(value, Mapping):
+            upgraded = upgrade_legacy_settings_payload({"models": value})
+            return upgraded.get("models", value)
+        return value
 
     @property
     def fast(self) -> str | None:
@@ -75,7 +87,6 @@ class IngestSettings(_SettingsModel):
 class RagSettings(_SettingsModel):
     top_k: int
     similarity_threshold: float
-    rerank_model: str | None
     rerank_top_k: int
 
 
@@ -120,7 +131,7 @@ class Settings(_SettingsModel):
         if value is None:
             return merge_default_settings()
         if isinstance(value, Mapping):
-            return merge_default_settings(value)
+            return merge_default_settings(upgrade_legacy_settings_payload(value))
         return value
 
     @property
@@ -149,9 +160,25 @@ class Settings(_SettingsModel):
         return bool((self.models.ocr or "").strip())
 
     @property
+    def rerank_configured(self) -> bool:
+        return bool((self.models.rerank or "").strip())
+
+    @property
     def image_generation_enabled(self) -> bool:
         value = (self.models.image_generation or "").strip()
         return bool(value)
+
+    @property
+    def speech_to_text_enabled(self) -> bool:
+        return bool((self.models.speech_to_text or "").strip())
+
+    @property
+    def text_to_speech_enabled(self) -> bool:
+        return bool((self.models.text_to_speech or "").strip())
+
+    @property
+    def video_generation_enabled(self) -> bool:
+        return bool((self.models.video_generation or "").strip())
 
     def parse_retrievers(
         self,
@@ -220,7 +247,7 @@ def get_system_settings_override_payload() -> dict[str, Any]:
 def set_system_settings_override(payload: Mapping[str, Any] | None) -> Settings:
     global _SYSTEM_SETTINGS_OVERRIDE, _EFFECTIVE_SETTINGS_CACHE
     base_payload = get_project_settings().model_dump(mode="json")
-    candidate_override = deepcopy(dict(payload or {}))
+    candidate_override = upgrade_legacy_settings_payload(payload)
     candidate_payload = merge_settings_values(base_payload, candidate_override)
     effective = Settings.model_validate(candidate_payload)
     normalized_override = {

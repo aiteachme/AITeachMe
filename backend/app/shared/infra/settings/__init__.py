@@ -25,12 +25,17 @@ from .settings import (
     reset_project_settings_cache,
     set_system_settings_override,
 )
-from .support import PROJECT_SETTINGS_ENV_NAME, PROJECT_SETTINGS_SOURCE_LABEL
+from .support import (
+    PROJECT_SETTINGS_ENV_NAME,
+    PROJECT_SETTINGS_SOURCE_LABEL,
+    upgrade_legacy_settings_payload,
+)
 
 __all__ = [
     "DEFAULT_SETTINGS_VALUES",
     "PROJECT_SETTINGS_ENV_NAME",
     "PROJECT_SETTINGS_SOURCE_LABEL",
+    "upgrade_legacy_settings_payload",
     "DocgenSettings",
     "IngestSettings",
     "InteractSettings",

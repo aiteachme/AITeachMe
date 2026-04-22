@@ -35,7 +35,10 @@ export function ReadonlySettingsList({
     <div className={SETTINGS_STYLES.list.root}>
       {entries.map((entry) => (
         <div key={entry.key} className={SETTINGS_STYLES.list.readonlyItem}>
-          <FieldLabelBlock label={entry.label} />
+          <FieldLabelBlock
+            label={entry.label}
+            description={entry.description}
+          />
           <div className={SETTINGS_STYLES.list.readonlyControl}>
             <ReadonlyValue>
               {displayValue(entry)}
@@ -93,6 +96,7 @@ export function EditableSettingsList({
           <div key={entry.key} className={SETTINGS_STYLES.list.item}>
             <FieldLabelBlock
               label={entry.label}
+              description={entry.description}
               htmlFor={controlId}
             />
 

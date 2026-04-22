@@ -53,7 +53,7 @@ class ATMKnowledgeRetriever:
         self._enable_rerank = (
             enable_rerank
             if enable_rerank is not None
-            else bool(settings.rag.rerank_model)
+            else settings.rerank_configured
         )
 
         # Build LlamaIndex components
@@ -126,7 +126,7 @@ def build_knowledge_retriever(
         subject: The subject slug to search within.
         top_k: Number of final results to return.
         enable_rerank: Override rerank behaviour. ``None`` means auto-detect
-            from runtime settings (``rag.rerank_model``).
+            from runtime settings (``models.rerank``).
 
     Returns:
         An ``ATMKnowledgeRetriever`` instance.
