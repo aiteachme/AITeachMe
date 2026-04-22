@@ -53,8 +53,8 @@ export const SETTINGS_STYLES = {
     statusSaved: "text-emerald-600",
     statusChanged: "text-amber-600",
     statusSynced: "text-zinc-400",
-    icon: "h-3.5 w-3.5",
-    iconSpinning: "h-3.5 w-3.5 animate-spin",
+    icon: "h-4 w-4",
+    iconSpinning: "h-4 w-4 animate-spin",
     changedIndicatorWrap: "relative flex h-2 w-2",
     changedIndicatorPulse:
       "absolute inline-flex h-full w-full animate-ping rounded-full bg-amber-400 opacity-75",
@@ -76,6 +76,9 @@ export const SETTINGS_STYLES = {
     dividerCompactSpacing: "mb-2",
     dividerTitle: "flex items-center gap-2 text-[13px] font-semibold text-zinc-800",
     dividerAccent: "w-0.5 h-3.5 rounded-full bg-indigo-500/70",
+    iconButton:
+      "absolute right-2 top-1/2 inline-flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-md p-0.5 text-zinc-400 transition-colors hover:text-zinc-600",
+    icon: "h-4 w-4",
     card: "rounded-lg border border-zinc-100 bg-zinc-50/30 px-4 py-3",
     cardBody: "space-y-2",
     // Left-right layout: label block sits on the left

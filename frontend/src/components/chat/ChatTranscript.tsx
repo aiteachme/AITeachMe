@@ -30,13 +30,13 @@ export function ChatTranscript({ messages, onOpenCitation }: ChatTranscriptProps
             >
               <div
                 className={cn(
-                  "flex h-10 w-10 shrink-0 items-center justify-center text-white shadow-sm",
+                  "flex h-10 w-10 shrink-0 items-center justify-center shadow-sm",
                   isAssistant
-                    ? "rounded-full bg-gradient-to-br from-emerald-500 via-teal-500 to-cyan-600 ring-4 ring-emerald-100/80"
-                    : "rounded-full bg-slate-900",
+                    ? "rounded-full bg-slate-50 ring-2 ring-slate-200/50 p-1.5"
+                    : "rounded-full bg-slate-900 text-white",
                 )}
               >
-                {isAssistant ? <Sparkles className="h-4 w-4" /> : <UserRound className="h-4 w-4" />}
+                {isAssistant ? <img src="/logo.svg" alt="AI" className="h-full w-full object-contain" /> : <UserRound className="h-4 w-4" />}
               </div>
 
               <div className="min-w-0 flex-1">
@@ -46,8 +46,7 @@ export function ChatTranscript({ messages, onOpenCitation }: ChatTranscriptProps
                     isAssistant ? "text-emerald-600/90" : "justify-end text-slate-400",
                   )}
                 >
-                  {isAssistant ? <Sparkles className="h-3.5 w-3.5" /> : null}
-                  <span>{isAssistant ? "AI Tutor" : "You"}</span>
+                  <span>{isAssistant ? "AITeachMe" : "You"}</span>
                 </div>
 
                 {isAssistant ? (

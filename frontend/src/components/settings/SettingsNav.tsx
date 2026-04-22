@@ -14,18 +14,24 @@ interface SettingsNavProps {
   sections: SettingSection[];
 }
 
-/** Map section ids coming from the backend to distinct lucide icons. */
-const SECTION_ICON_MAP: Record<string, ReactNode> = {
-  connection: <Link2 className="h-4 w-4" />,
-  models: <GitFork className="h-4 w-4" />,
-  learning: <Sparkles className="h-4 w-4" />,
-  search: <Globe className="h-4 w-4" />,
-  ops: <Server className="h-4 w-4" />,
-  observability: <Activity className="h-4 w-4" />,
-};
-
 function getSectionIcon(sectionId: string): ReactNode {
-  return SECTION_ICON_MAP[sectionId] ?? <Server className="h-4 w-4" />;
+  const iconClassName = SETTINGS_STYLES.nav.itemIconSize;
+  switch (sectionId) {
+    case "connection":
+      return <Link2 className={iconClassName} />;
+    case "models":
+      return <GitFork className={iconClassName} />;
+    case "learning":
+      return <Sparkles className={iconClassName} />;
+    case "search":
+      return <Globe className={iconClassName} />;
+    case "ops":
+      return <Server className={iconClassName} />;
+    case "observability":
+      return <Activity className={iconClassName} />;
+    default:
+      return <Server className={iconClassName} />;
+  }
 }
 
 export const SettingsNav = memo(function SettingsNav({
