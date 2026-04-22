@@ -28,8 +28,10 @@ from app.shared.infra.settings import (
     get_project_settings,
     get_system_settings_override_payload,
     merge_settings_values,
+    reset_project_settings_cache,
     set_system_settings_override,
 )
+from app.shared.infra.settings.support import get_llm_api_version, resolve_runtime_llm_provider
 from app.shared.infra.env_support import (
     describe_project_settings_source,
     get_env,
@@ -353,6 +355,8 @@ def build_settings_overview_data(
     settings = _merge_system_settings(base_settings, system_payload)
     mode = resolve_app_mode()
     settings_source = describe_project_settings_source()
+    llm_provider = resolve_runtime_llm_provider()
+    llm_api_version = get_llm_api_version()
 
     def lse(
         key: str,
@@ -385,10 +389,21 @@ def build_settings_overview_data(
             description="模型服务连接与密钥状态。",
             entries=[
                 _env_entry(
+                    "llm.provider",
+                    "模型供应商",
+                    "LLM_PROVIDER",
+                    "可选。留空时会根据模型地址自动识别 Anthropic / Gemini / Azure / vLLM / Ollama / OpenAI-compatible。",
+                    value=llm_provider,
+                    restart_required=False,
+                    ui_group="服务端连接",
+                    ui_order=5,
+                ),
+                _env_entry(
                     "llm.base_url",
                     "模型服务地址",
                     "LLM_BASE_URL",
-                    "OpenAI 兼容上游地址。",
+                    "统一模型接入口。OpenAI-compatible、Anthropic、Gemini、Azure、vLLM、Ollama 等上游都从这里接入；本地无鉴权网关可只填地址。",
+                    restart_required=False,
                     ui_group="服务端连接",
                     ui_order=10,
                 ),
@@ -396,10 +411,21 @@ def build_settings_overview_data(
                     "llm.api_key",
                     "模型服务密钥",
                     "LLM_API_KEY",
-                    "模型访问密钥，只显示是否配置。",
+                    "模型访问密钥，只显示是否配置。Ollama / 本地 vLLM / LM Studio 等无鉴权场景可留空。",
                     secret=True,
+                    restart_required=False,
                     ui_group="服务端连接",
                     ui_order=20,
+                ),
+                _env_entry(
+                    "llm.api_version",
+                    "模型 API 版本",
+                    "LLM_API_VERSION",
+                    "主要给 Azure 等需要 API Version 的上游使用；普通 OpenAI-compatible 场景可留空。",
+                    value=llm_api_version,
+                    restart_required=False,
+                    ui_group="服务端连接",
+                    ui_order=30,
                 ),
             ],
         ),
@@ -408,11 +434,11 @@ def build_settings_overview_data(
             label="模型路由",
             description="模型名默认来自代码默认值与可选项目 override；本地模式下页面修改会保存为系统级运行覆盖。",
             entries=[
-                lse("models.primary", "主模型", settings.models.primary, base_settings.models.primary, "主要生成、对话、批改任务。", ui_group="模型路由", ui_order=10),
-                lse("models.reason", "推理模型", settings.models.reason, base_settings.models.reason, "深度推理与规划；空值时回退到主模型。", ui_group="模型路由", ui_order=20),
-                lse("models.light", "轻量模型", settings.models.light, base_settings.models.light, "分类、摘要和批量轻任务；空值时回退到主模型。", ui_group="模型路由", ui_order=30),
+                lse("models.primary", "主模型", settings.models.primary, base_settings.models.primary, "主要生成、对话、批改任务。Azure 场景下通常应填写 deployment 名。", ui_group="模型路由", ui_order=10),
+                lse("models.reason", "推理模型", settings.models.reason, base_settings.models.reason, "深度推理与规划；空值时回退到主模型。Azure 场景下通常应填写 deployment 名。", ui_group="模型路由", ui_order=20),
+                lse("models.light", "轻量模型", settings.models.light, base_settings.models.light, "分类、摘要和批量轻任务；空值时回退到主模型。Azure 场景下通常应填写 deployment 名。", ui_group="模型路由", ui_order=30),
                 lse("models.extract", "抽取模型", settings.models.extract, base_settings.models.extract, "知识抽取专用；空值时回退到轻量模型或主模型。", ui_group="模型路由", ui_order=40),
-                lse("models.embedding", "向量模型", settings.models.embedding, base_settings.models.embedding, "", ui_group="模型路由", ui_order=50),
+                lse("models.embedding", "向量模型", settings.models.embedding, base_settings.models.embedding, "Anthropic 等不提供 embedding 的上游可留空或改走独立 OpenAI-compatible embedding 服务。Azure 场景下通常应填写 deployment 名。", ui_group="模型路由", ui_order=50),
                 lse("models.ocr", "视觉 OCR 模型", settings.models.ocr, base_settings.models.ocr, "空值时使用主模型；密钥和服务地址复用模型接入配置。", ui_group="模型路由", ui_order=60),
                 lse("models.image_generation", "图片生成模型", settings.models.image_generation, base_settings.models.image_generation, "留空表示未启用服务端图片生成能力。", ui_group="模型路由", ui_order=70),
                 _runtime_entry("models.embedding_dim", "向量维度", settings.embedding_dim, ui_group="运行推导", ui_order=80),
@@ -520,6 +546,9 @@ def build_settings_overview_data(
             f"{PROJECT_SETTINGS_SOURCE_LABEL} 始终作为项目默认值保留；如需额外项目覆盖，可配置 {PROJECT_SETTINGS_ENV_NAME} 指向外部文件。",
             "本地模式下，服务端非敏感配置保存到 system_runtime_settings；环境变量写回本地 .env。",
             "云端模式下，普通用户仅能查看状态，不能修改任何服务端配置。",
+            "多供应商场景下，后端会先按 LLM_PROVIDER 或 LLM_BASE_URL 推断默认模型；如果你手动覆盖过 models.*，仍以手动覆盖为准。",
+            "Anthropic、DeepSeek、Kimi、GLM、MiniMax、Doubao、SiliconFlow 等上游的 embedding 能力并不统一；当默认未配置 embedding 时，系统会继续工作，但会跳过向量检索相关能力。",
+            "Azure 场景通常还需要配置 API Version；本地 Ollama / vLLM / LM Studio 等无鉴权上游可以不填 API Key。",
         ],
     )
 
@@ -553,6 +582,7 @@ def update_user_settings_overview_data(
 
     if env_updates:
         write_local_env_updates(env_updates)
+        reset_project_settings_cache()
         logger.info(
             "local_env_updated_via_settings",
             env_path=str(resolve_writable_local_env_path()),

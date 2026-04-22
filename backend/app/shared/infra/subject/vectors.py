@@ -12,6 +12,7 @@ from app.schemas.knowledge import SubjectVectorStatusResponse
 from app.shared.infra.env_support import get_env
 from app.shared.infra.runtime import is_cloud_mode
 from app.shared.infra.settings import get_settings
+from app.shared.infra.settings.support import llm_provider_requires_api_key, resolve_runtime_llm_provider
 from app.shared.infra.subject.settings import (
     SubjectEmbeddingBinding,
     SubjectEmbeddingMode,
@@ -59,10 +60,12 @@ def get_runtime_embedding_config() -> RuntimeEmbeddingConfig:
     settings = get_settings()
     model = settings.normalized_embedding_model
     embedding_dim = settings.embedding_dim or None
+    base_url = get_env("LLM_BASE_URL")
+    provider = resolve_runtime_llm_provider(base_url=base_url)
 
     if model is None:
         return RuntimeEmbeddingConfig(reason="embedding_not_configured")
-    if not get_env("LLM_API_KEY"):
+    if llm_provider_requires_api_key(provider, base_url=base_url) and not get_env("LLM_API_KEY"):
         return RuntimeEmbeddingConfig(
             configured=True,
             embedding_model=model,

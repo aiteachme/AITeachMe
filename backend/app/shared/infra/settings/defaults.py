@@ -6,6 +6,8 @@ from collections.abc import Mapping
 from copy import deepcopy
 from typing import Any
 
+from .support import get_llm_provider_model_defaults, resolve_runtime_llm_provider
+
 SPRINT_MODE_DEFAULTS: dict[str, Any] = {
     "min_chapters": 4,
     "max_chapters": 7,
@@ -19,15 +21,7 @@ SYSTEMATIC_MODE_DEFAULTS: dict[str, Any] = {
 }
 
 DEFAULT_SETTINGS_VALUES: dict[str, Any] = {
-    "models": {
-        "reason": "qwen-max",
-        "primary": "qwen-flash",
-        "light": "qwen-flash",
-        "extract": None,
-        "ocr": None,
-        "embedding": "text-embedding-v3",
-        "image_generation": None,
-    },
+    "models": {},
     "interact": {
         "history_turns": 10,
     },
@@ -72,7 +66,9 @@ DEFAULT_SETTINGS_VALUES: dict[str, Any] = {
 def get_default_settings_values() -> dict[str, Any]:
     """Return a deep-copied settings payload owned by code defaults."""
 
-    return deepcopy(DEFAULT_SETTINGS_VALUES)
+    values = deepcopy(DEFAULT_SETTINGS_VALUES)
+    values["models"] = get_llm_provider_model_defaults(resolve_runtime_llm_provider())
+    return values
 
 
 def merge_settings_values(
@@ -93,7 +89,7 @@ def merge_settings_values(
 def merge_default_settings(override: Mapping[str, Any] | None = None) -> dict[str, Any]:
     """Merge project overrides on top of code-owned defaults."""
 
-    return merge_settings_values(DEFAULT_SETTINGS_VALUES, override)
+    return merge_settings_values(get_default_settings_values(), override)
 
 
 __all__ = [

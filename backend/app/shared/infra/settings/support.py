@@ -1,10 +1,11 @@
-"""Helpers for loading optional project runtime override configuration."""
+"""Helpers for settings overrides, provider detection, and retriever profiles."""
 
 from __future__ import annotations
 
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 EMBEDDING_DIM_BY_MODEL: dict[str, int] = {
     "text-embedding-v4": 1024,
@@ -21,7 +22,293 @@ EMBEDDING_DIM_BY_MODEL: dict[str, int] = {
 DEFAULT_EMBEDDING_DIM = 1536
 PROJECT_SETTINGS_ENV_NAME = "PROJECT_SETTINGS_PATH"
 PROJECT_SETTINGS_SOURCE_LABEL = "code defaults only"
+LLM_PROVIDER_ENV_NAME = "LLM_PROVIDER"
+LLM_API_VERSION_ENV_NAME = "LLM_API_VERSION"
 DEFAULT_RETRIEVER_FALLBACK = "duckduckgo"
+LLM_PROVIDER_ALIASES: dict[str, str] = {
+    "openai": "openai",
+    "openai_compatible": "openai_compatible",
+    "openai-compatible": "openai_compatible",
+    "compatible": "openai_compatible",
+    "vllm": "vllm",
+    "vllm_openai": "vllm",
+    "vllm-openai": "vllm",
+    "qwen": "qwen",
+    "dashscope": "qwen",
+    "deepseek": "deepseek",
+    "kimi": "kimi",
+    "moonshot": "kimi",
+    "moonshotai": "kimi",
+    "glm": "glm",
+    "zhipu": "glm",
+    "zhipuai": "glm",
+    "bigmodel": "glm",
+    "azure": "azure",
+    "azure_openai": "azure",
+    "azure-openai": "azure",
+    "anthropic": "anthropic",
+    "claude": "anthropic",
+    "minimax": "minimax",
+    "gemini": "gemini",
+    "google": "gemini",
+    "google_ai": "gemini",
+    "google-ai": "gemini",
+    "google_ai_studio": "gemini",
+    "google-ai-studio": "gemini",
+    "vertex": "vertex_ai",
+    "vertexai": "vertex_ai",
+    "vertex_ai": "vertex_ai",
+    "openrouter": "openrouter",
+    "ollama": "ollama",
+    "siliconflow": "siliconflow",
+    "doubao": "doubao",
+    "ark": "doubao",
+    "xai": "xai",
+    "grok": "xai",
+    "groq": "groq",
+    "mistral": "mistral",
+    "bedrock": "bedrock",
+}
+LLM_CANONICAL_PROVIDERS: frozenset[str] = frozenset(
+    {
+        "openai",
+        "openai_compatible",
+        "vllm",
+        "qwen",
+        "deepseek",
+        "kimi",
+        "glm",
+        "azure",
+        "anthropic",
+        "minimax",
+        "gemini",
+        "vertex_ai",
+        "openrouter",
+        "ollama",
+        "siliconflow",
+        "doubao",
+        "xai",
+        "groq",
+        "mistral",
+        "bedrock",
+    }
+)
+LLM_MODEL_PREFIX_PROVIDERS: frozenset[str] = frozenset(
+    {
+        "openai",
+        "openai_compatible",
+        "vllm",
+        "azure",
+        "anthropic",
+        "gemini",
+        "vertex_ai",
+        "openrouter",
+        "ollama",
+        "xai",
+        "groq",
+        "mistral",
+        "bedrock",
+    }
+)
+LITELLM_PROVIDER_BY_RUNTIME_PROVIDER: dict[str, str] = {
+    "openai": "openai",
+    "openai_compatible": "openai",
+    "vllm": "openai",
+    "qwen": "openai",
+    "deepseek": "openai",
+    "kimi": "openai",
+    "glm": "openai",
+    "siliconflow": "openai",
+    "doubao": "openai",
+    "azure": "azure",
+    "anthropic": "anthropic",
+    "minimax": "anthropic",
+    "gemini": "gemini",
+    "vertex_ai": "gemini",
+    "openrouter": "openrouter",
+    "ollama": "ollama",
+    "xai": "xai",
+    "groq": "groq",
+    "mistral": "mistral",
+    "bedrock": "bedrock",
+}
+LLM_PROVIDER_MODEL_DEFAULTS: dict[str, dict[str, Any]] = {
+    # Default path for OpenAI-compatible gateways such as DashScope compatible
+    # mode, LiteLLM Gateway, vLLM, LM Studio, Ollama OpenAI mode, etc.
+    "openai_compatible": {
+        "reason": "qwen-max",
+        "primary": "qwen-flash",
+        "light": "qwen-flash",
+        "extract": None,
+        "ocr": None,
+        "embedding": "text-embedding-v3",
+        "image_generation": None,
+    },
+    "vllm": {
+        "reason": "Qwen/Qwen2.5-7B-Instruct",
+        "primary": "Qwen/Qwen2.5-7B-Instruct",
+        "light": "Qwen/Qwen2.5-7B-Instruct",
+        "extract": None,
+        "ocr": None,
+        "embedding": None,
+        "image_generation": None,
+    },
+    "ollama": {
+        "reason": "qwen2.5",
+        "primary": "qwen2.5",
+        "light": "qwen2.5",
+        "extract": None,
+        "ocr": None,
+        "embedding": None,
+        "image_generation": None,
+    },
+    "qwen": {
+        "reason": "qwen-max",
+        "primary": "qwen-flash",
+        "light": "qwen-flash",
+        "extract": None,
+        "ocr": None,
+        "embedding": "text-embedding-v4",
+        "image_generation": None,
+    },
+    "deepseek": {
+        "reason": "deepseek-reasoner",
+        "primary": "deepseek-chat",
+        "light": "deepseek-chat",
+        "extract": None,
+        "ocr": None,
+        "embedding": None,
+        "image_generation": None,
+    },
+    "kimi": {
+        "reason": "kimi-k2-thinking",
+        "primary": "kimi-k2.5",
+        "light": "moonshot-v1-8k",
+        "extract": None,
+        "ocr": None,
+        "embedding": None,
+        "image_generation": None,
+    },
+    "glm": {
+        "reason": "glm-5.1",
+        "primary": "glm-5.1",
+        "light": "glm-4.7-flash",
+        "extract": None,
+        "ocr": None,
+        "embedding": None,
+        "image_generation": None,
+    },
+    "openai": {
+        "reason": "gpt-4o",
+        "primary": "gpt-4o-mini",
+        "light": "gpt-4o-mini",
+        "extract": None,
+        "ocr": None,
+        "embedding": "text-embedding-3-small",
+        "image_generation": "gpt-image-1",
+    },
+    # Azure OpenAI usually requires deployment names in `models.*`. We still
+    # provide OpenAI-style defaults as sane placeholders for first-run setup.
+    "azure": {
+        "reason": "gpt-4o",
+        "primary": "gpt-4o-mini",
+        "light": "gpt-4o-mini",
+        "extract": None,
+        "ocr": None,
+        "embedding": "text-embedding-3-small",
+        "image_generation": "gpt-image-1",
+    },
+    "anthropic": {
+        "reason": "claude-3-5-sonnet-latest",
+        "primary": "claude-3-5-sonnet-latest",
+        "light": "claude-3-5-haiku-latest",
+        "extract": None,
+        "ocr": None,
+        "embedding": None,
+        "image_generation": None,
+    },
+    "minimax": {
+        "reason": "MiniMax-M2.7",
+        "primary": "MiniMax-M2.7-highspeed",
+        "light": "MiniMax-M2.1-highspeed",
+        "extract": None,
+        "ocr": None,
+        "embedding": None,
+        "image_generation": None,
+    },
+    "gemini": {
+        "reason": "gemini-2.5-pro",
+        "primary": "gemini-2.5-flash",
+        "light": "gemini-2.5-flash",
+        "extract": None,
+        "ocr": None,
+        "embedding": "text-embedding-004",
+        "image_generation": None,
+    },
+    "vertex_ai": {
+        "reason": "gemini-2.5-pro",
+        "primary": "gemini-2.5-flash",
+        "light": "gemini-2.5-flash",
+        "extract": None,
+        "ocr": None,
+        "embedding": "text-embedding-004",
+        "image_generation": None,
+    },
+    "siliconflow": {
+        "reason": "deepseek-ai/DeepSeek-R1",
+        "primary": "deepseek-ai/DeepSeek-V3.2",
+        "light": "Qwen/Qwen2.5-7B-Instruct",
+        "extract": None,
+        "ocr": None,
+        "embedding": None,
+        "image_generation": None,
+    },
+    "doubao": {
+        "reason": "doubao-seed-2-0-pro-260215",
+        "primary": "doubao-seed-2-0-pro-260215",
+        "light": "doubao-seed-2-0-lite-260215",
+        "extract": None,
+        "ocr": None,
+        "embedding": None,
+        "image_generation": None,
+    },
+    "openrouter": {
+        "reason": "openai/gpt-4o-mini",
+        "primary": "openai/gpt-4o-mini",
+        "light": "openai/gpt-4o-mini",
+        "extract": None,
+        "ocr": None,
+        "embedding": None,
+        "image_generation": None,
+    },
+    "xai": {
+        "reason": "grok-4-fast-reasoning",
+        "primary": "grok-4-0709",
+        "light": "grok-3-mini",
+        "extract": None,
+        "ocr": None,
+        "embedding": None,
+        "image_generation": None,
+    },
+    "groq": {
+        "reason": "llama-3.3-70b-versatile",
+        "primary": "llama-3.3-70b-versatile",
+        "light": "llama-3.1-8b-instant",
+        "extract": None,
+        "ocr": None,
+        "embedding": None,
+        "image_generation": None,
+    },
+    "mistral": {
+        "reason": "mistral-large-latest",
+        "primary": "mistral-large-latest",
+        "light": "ministral-8b-latest",
+        "extract": None,
+        "ocr": None,
+        "embedding": None,
+        "image_generation": None,
+    },
+}
 RETRIEVER_ALIASES: dict[str, str] = {
     "ddg": "duckduckgo",
     "rag": "local_rag",
@@ -110,6 +397,140 @@ DEFAULT_RETRIEVER_PROFILES: dict[str, list[str]] = {
     "docgen_zh_math": list(ZH_MATH_RETRIEVERS),
 }
 RETRIEVER_PROFILES = DEFAULT_RETRIEVER_PROFILES
+
+
+def normalize_llm_provider_name(name: str | None) -> str | None:
+    normalized = (name or "").strip().lower()
+    if not normalized:
+        return None
+    return LLM_PROVIDER_ALIASES.get(normalized, normalized)
+
+
+def split_provider_model_name(model: str | None) -> tuple[str | None, str]:
+    normalized = (model or "").strip()
+    if not normalized or "/" not in normalized:
+        return None, normalized
+    provider_name, model_name = normalized.split("/", 1)
+    normalized_provider = normalize_llm_provider_name(provider_name)
+    if normalized_provider not in LLM_MODEL_PREFIX_PROVIDERS:
+        return None, normalized
+    return normalized_provider, model_name.strip()
+
+
+def detect_llm_provider_from_base_url(base_url: str | None) -> str | None:
+    normalized = (base_url or "").strip()
+    if not normalized:
+        return None
+    try:
+        parsed = urlparse(normalized)
+    except Exception:
+        parsed = None
+    host = (parsed.hostname or "").lower() if parsed is not None else normalized.lower()
+    path = (parsed.path or "").lower() if parsed is not None else ""
+    text = f"{host}{path}"
+
+    if any(marker in text for marker in ("anthropic.com",)):
+        return "anthropic"
+    if any(marker in text for marker in ("minimaxi.com", "minimax.io")):
+        return "minimax"
+    if any(marker in text for marker in ("generativelanguage.googleapis.com", "ai.google.dev")):
+        return "gemini"
+    if any(marker in text for marker in ("aiplatform.googleapis.com", "vertex.googleapis.com")):
+        return "vertex_ai"
+    if any(marker in text for marker in ("openai.azure.com", ".inference.ai.azure.com", "azure.com/openai")):
+        return "azure"
+    if "api.deepseek.com" in text:
+        return "deepseek"
+    if any(marker in text for marker in ("moonshot.cn", "moonshot.ai")):
+        return "kimi"
+    if any(marker in text for marker in ("bigmodel.cn", "api.z.ai")):
+        return "glm"
+    if "dashscope.aliyuncs.com" in text:
+        return "qwen"
+    if "siliconflow.cn" in text:
+        return "siliconflow"
+    if any(marker in text for marker in ("ark.cn-beijing.volces.com", "volces.com/api/v3")):
+        return "doubao"
+    if "vllm" in text:
+        return "vllm"
+    if "localhost:8000" in normalized.lower() or "127.0.0.1:8000" in normalized.lower():
+        return "vllm"
+    if "api.openai.com" in text:
+        return "openai"
+    if "openrouter.ai" in text:
+        return "openrouter"
+    if "api.x.ai" in text:
+        return "xai"
+    if "api.groq.com" in text:
+        return "groq"
+    if "api.mistral.ai" in text:
+        return "mistral"
+    if "localhost:11434" in normalized.lower() or "127.0.0.1:11434" in normalized.lower():
+        return "ollama"
+    return "openai_compatible"
+
+
+def resolve_runtime_llm_provider(
+    *,
+    explicit_provider: str | None = None,
+    base_url: str | None = None,
+) -> str:
+    from app.shared.infra.env_support import get_env
+
+    configured_provider = normalize_llm_provider_name(
+        explicit_provider or get_env(LLM_PROVIDER_ENV_NAME)
+    )
+    if configured_provider:
+        return configured_provider
+    detected = detect_llm_provider_from_base_url(base_url or get_env("LLM_BASE_URL"))
+    return detected or "openai_compatible"
+
+
+def get_llm_provider_model_defaults(provider: str | None) -> dict[str, Any]:
+    normalized = normalize_llm_provider_name(provider) or "openai_compatible"
+    candidate = LLM_PROVIDER_MODEL_DEFAULTS.get(normalized)
+    if candidate is None:
+        candidate = LLM_PROVIDER_MODEL_DEFAULTS["openai_compatible"]
+    return dict(candidate)
+
+
+def get_llm_api_version() -> str | None:
+    from app.shared.infra.env_support import get_env
+
+    value = (get_env(LLM_API_VERSION_ENV_NAME) or get_env("AZURE_API_VERSION") or "").strip()
+    return value or None
+
+
+def resolve_litellm_provider_name(provider: str | None) -> str | None:
+    normalized = normalize_llm_provider_name(provider)
+    if not normalized:
+        return None
+    return LITELLM_PROVIDER_BY_RUNTIME_PROVIDER.get(normalized)
+
+
+def is_local_llm_base_url(base_url: str | None) -> bool:
+    normalized = (base_url or "").strip()
+    if not normalized:
+        return False
+    try:
+        parsed = urlparse(normalized)
+    except Exception:
+        parsed = None
+    host = (parsed.hostname or "").lower() if parsed is not None else ""
+    return host in {"localhost", "127.0.0.1", "::1"}
+
+
+def llm_provider_requires_api_key(
+    provider: str | None = None,
+    *,
+    base_url: str | None = None,
+) -> bool:
+    normalized_provider = normalize_llm_provider_name(provider) or detect_llm_provider_from_base_url(base_url)
+    if normalized_provider in {"ollama", "vllm"}:
+        return False
+    if is_local_llm_base_url(base_url):
+        return False
+    return True
 
 
 def split_csv_names(value: str | None) -> list[str]:
@@ -261,6 +682,12 @@ def get_retriever_profiles(path: Path | None = None) -> dict[str, list[str]]:
 
 __all__ = [
     "DEFAULT_EMBEDDING_DIM",
+    "LLM_API_VERSION_ENV_NAME",
+    "LLM_CANONICAL_PROVIDERS",
+    "LLM_MODEL_PREFIX_PROVIDERS",
+    "LLM_PROVIDER_ENV_NAME",
+    "LLM_PROVIDER_MODEL_DEFAULTS",
+    "LITELLM_PROVIDER_BY_RUNTIME_PROVIDER",
     "PROJECT_SETTINGS_ENV_NAME",
     "PROJECT_SETTINGS_SOURCE_LABEL",
     "DEFAULT_RETRIEVER_FALLBACK",
@@ -271,9 +698,18 @@ __all__ = [
     "RETRIEVER_PROFILES",
     "ZH_MATH_RETRIEVERS",
     "ZH_EDU_RETRIEVERS",
+    "detect_llm_provider_from_base_url",
     "get_retriever_profiles",
+    "get_llm_api_version",
+    "get_llm_provider_model_defaults",
+    "is_local_llm_base_url",
+    "llm_provider_requires_api_key",
     "load_project_settings_values",
+    "normalize_llm_provider_name",
     "normalize_profile_name",
     "normalize_retriever_name",
+    "resolve_litellm_provider_name",
+    "resolve_runtime_llm_provider",
+    "split_provider_model_name",
     "split_csv_names",
 ]

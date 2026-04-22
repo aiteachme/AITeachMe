@@ -53,11 +53,13 @@ pip install -e .
 ```env
 LLM_API_KEY=sk-your-api-key-here
 LLM_BASE_URL=https://api.openai.com/v1
+# 可选：LLM_PROVIDER=openai|openai_compatible|anthropic|gemini|azure|deepseek|kimi|glm|qwen|minimax|siliconflow|doubao|vllm|ollama|...
+# Azure 场景通常还需要：LLM_API_VERSION=2024-10-21
 APP_MODE=local
 AUTH_ENABLED=false
 ```
 
-`LLM_API_KEY / LLM_BASE_URL` 是统一模型接入口，会被对话、规划、出题、批改、Embedding、Vision OCR 等模型能力复用。更换供应商时优先改这两个环境变量；如需调整模型名，优先通过代码默认值或 `PROJECT_SETTINGS_PATH` 指向的外部 override 文件覆盖 `models.*`。
+`LLM_API_KEY / LLM_BASE_URL` 是统一模型接入口，会被对话、规划、出题、批改、Embedding、Vision OCR 等模型能力复用。后端现在会优先根据 `LLM_PROVIDER` 或 `LLM_BASE_URL` 自动识别 OpenAI-compatible、Anthropic、Gemini、Azure、DeepSeek、Kimi、GLM、MiniMax、Doubao、SiliconFlow、vLLM、Ollama 等主流上游，并切换一组更匹配的默认 `models.*`。如果供应商支持的模型名与默认值不同，仍可通过代码默认值、设置页或 `PROJECT_SETTINGS_PATH` 指向的外部 override 文件覆盖 `models.*`。Azure OpenAI 这类上游通常还需要额外提供 `LLM_API_VERSION`；本地 Ollama / vLLM / LM Studio 等未开启鉴权的网关可以不填 `LLM_API_KEY`。
 
 ### 3. 启动服务
 

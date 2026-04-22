@@ -20,6 +20,7 @@ from app.shared.infra.env_support import get_env
 from app.shared.infra.exceptions import LLMCallError, MissingLLMApiKeyError
 from app.shared.infra.llm_support.common import build_litellm_provider_kwargs
 from app.shared.infra.llm_support.litellm_loader import load_litellm
+from app.shared.infra.settings.support import llm_provider_requires_api_key, resolve_runtime_llm_provider
 
 logger = structlog.get_logger()
 litellm = load_litellm()
@@ -32,7 +33,7 @@ async def _call_embedding(
     model: str,
     batch: list[str],
     api_base: str,
-    api_key: str,
+    api_key: str | None,
 ) -> list[list[float]]:
     """调用 litellm embedding，自动处理 encoding_format 兼容性。
 
@@ -41,13 +42,17 @@ async def _call_embedding(
     2. 如果报 400（参数不支持），降级不带 encoding_format 重试
     """
     try:
-        response = await litellm.aembedding(
-            model=model,
-            input=batch,
-            api_base=api_base,
-            api_key=api_key,
-            encoding_format="float",
+        request_kwargs = {
+            "model": model,
+            "input": batch,
+            "api_base": api_base,
+            "encoding_format": "float",
             **build_litellm_provider_kwargs(model),
+        }
+        if api_key is not None:
+            request_kwargs["api_key"] = api_key
+        response = await litellm.aembedding(
+            **request_kwargs,
         )
         return [item["embedding"] for item in response.data]
     except litellm.exceptions.BadRequestError as exc:
@@ -58,13 +63,15 @@ async def _call_embedding(
                 "embedding_encoding_format_fallback",
                 reason="API 不支持 encoding_format 参数，降级重试",
             )
-            response = await litellm.aembedding(
-                model=model,
-                input=batch,
-                api_base=api_base,
-                api_key=api_key,
+            fallback_kwargs = {
+                "model": model,
+                "input": batch,
+                "api_base": api_base,
                 **build_litellm_provider_kwargs(model),
-            )
+            }
+            if api_key is not None:
+                fallback_kwargs["api_key"] = api_key
+            response = await litellm.aembedding(**fallback_kwargs)
             return [item["embedding"] for item in response.data]
         if (
             "Incorrect model ID" in error_text
@@ -100,8 +107,13 @@ async def aembed_texts(
         return []
 
     settings = get_settings()
-    api_key = (get_env("LLM_API_KEY") or "").strip()
-    if not api_key:
+    api_base = (
+        get_env("LLM_BASE_URL", "https://api.openai.com/v1")
+        or "https://api.openai.com/v1"
+    )
+    provider = resolve_runtime_llm_provider(base_url=api_base)
+    api_key = (get_env("LLM_API_KEY") or "").strip() or None
+    if api_key is None and llm_provider_requires_api_key(provider, base_url=api_base):
         raise MissingLLMApiKeyError()
     batch_size = batch_size or DEFAULT_EMBEDDING_BATCH_SIZE
     model = str(settings.models.embedding or "").strip()
@@ -114,10 +126,6 @@ async def aembed_texts(
             )
             return []
         raise LLMCallError(reason="models.embedding is not configured")
-    api_base = (
-        get_env("LLM_BASE_URL", "https://api.openai.com/v1")
-        or "https://api.openai.com/v1"
-    )
     start = time.monotonic()
 
     all_vectors: list[list[float]] = []

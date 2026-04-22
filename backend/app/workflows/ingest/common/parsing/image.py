@@ -12,6 +12,7 @@ from app.shared.infra.env_support import get_env
 from app.shared.infra.exceptions import FileParseError, MissingLLMApiKeyError
 from app.shared.infra.llm_support import acompletion
 from app.shared.infra.llm_support.routing import TaskType
+from app.shared.infra.settings.support import llm_provider_requires_api_key
 from app.shared.infra.prompt_loader import populate_prompt
 from app.schemas.llm import ChatMessage, USER
 from app.workflows.ingest.common.parsing.types import ParserRunOptions
@@ -74,9 +75,9 @@ async def parse_image_bytes_with_llm_vision(
 
     settings = get_settings()
     ocr_model = settings.models.ocr or settings.models.primary
-    ocr_api_key = (get_env("LLM_API_KEY") or "").strip()
+    ocr_api_key = (get_env("LLM_API_KEY") or "").strip() or None
     ocr_base_url = get_env("LLM_BASE_URL", "https://api.openai.com/v1")
-    if not ocr_api_key:
+    if llm_provider_requires_api_key(base_url=ocr_base_url) and not ocr_api_key:
         raise MissingLLMApiKeyError()
 
     encoded = base64.b64encode(image_bytes).decode("utf-8")
@@ -95,14 +96,19 @@ async def parse_image_bytes_with_llm_vision(
     ]
 
     try:
+        completion_kwargs = {
+            "timeout": 120,
+            "temperature": 0.3,
+        }
+        if ocr_base_url:
+            completion_kwargs["api_base"] = ocr_base_url
+        if ocr_api_key is not None:
+            completion_kwargs["api_key"] = ocr_api_key
         text = await acompletion(
             messages=messages,
             task_type=TaskType.VISION,
             model=ocr_model,
-            api_base=ocr_base_url,
-            api_key=ocr_api_key,
-            timeout=120,
-            temperature=0.3,
+            **completion_kwargs,
         )
     except Exception as exc:
         logger.error(

@@ -35,7 +35,7 @@ class ModelsSettings(_SettingsModel):
     light: str | None
     extract: str | None
     ocr: str | None
-    embedding: str
+    embedding: str | None
     image_generation: str | None
 
     @property
