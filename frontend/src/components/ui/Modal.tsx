@@ -1,5 +1,6 @@
 import * as React from "react";
 import { AnimatePresence, motion } from "framer-motion";
+import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 import { cn } from "../../lib/utils";
 
@@ -21,7 +22,7 @@ export function Modal({ open, onClose, title, children, className }: ModalProps)
     return () => document.removeEventListener("keydown", handler);
   }, [open, onClose]);
 
-  return (
+  const content = (
     <AnimatePresence>
       {open ? (
         <motion.div
@@ -64,4 +65,10 @@ export function Modal({ open, onClose, title, children, className }: ModalProps)
       ) : null}
     </AnimatePresence>
   );
+
+  if (typeof document === "undefined") {
+    return null;
+  }
+
+  return createPortal(content, document.body);
 }
