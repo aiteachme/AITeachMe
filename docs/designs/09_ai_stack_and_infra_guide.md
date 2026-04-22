@@ -44,17 +44,21 @@ AITeachMe 的 AI 工程分三层：
 | 逻辑模型 | 用途 |
 | --- | --- |
 | `reason` | 规划、复杂判断、深度推理 |
-| `primary` | 对话、写作、出题、批改、OCR 默认回退 |
+| `primary` | 对话、写作、出题、批改等主文本生成 |
 | `light` | 分类、摘要、批量轻任务、Mermaid 文本生成 |
-| `extract` | 知识抽取，空值时回退 light/primary |
 | `embedding` | 向量检索 |
+| `rerank` | 检索重排序 |
 | `ocr` | Vision OCR，空值时使用 primary |
+| `speech_to_text` | 音转文 |
+| `text_to_speech` | 文转音 |
 | `image_generation` | 文生图，空值时禁用真实图片生成 |
+| `video_generation` | 视频生成，空值时禁用 |
 
 注意：
 
 - `TaskType` 表示业务语义、温度、超时、重试和观测分类。
 - 模型选择优先显式传 `model="reason" / "primary" / "light"`。
+- `extract` 现在只保留为兼容别名，内部默认回退到 `light`，不再作为独立模型分类继续扩展。
 - Mermaid 不再有独立模型配置，直接走普通轻量文本模型。
 
 ## 4. 结构化输出

@@ -11,13 +11,14 @@ from pydantic import BaseModel, ConfigDict, model_validator
 
 from .defaults import merge_default_settings, merge_settings_values
 from .support import (
-    DEFAULT_EMBEDDING_DIM,
     DEFAULT_RETRIEVER_FALLBACK,
-    EMBEDDING_DIM_BY_MODEL,
+    DEFAULT_RUNTIME_RETRIEVER_PROFILE,
     get_retriever_profiles,
     load_project_settings_values,
     normalize_profile_name,
     normalize_retriever_name,
+    resolve_embedding_dimension,
+    upgrade_legacy_settings_payload,
 )
 
 
@@ -33,10 +34,22 @@ class ModelsSettings(_SettingsModel):
     reason: str | None
     primary: str
     light: str | None
-    extract: str | None
+    embedding: str | None
+    embedding_dim: int | None = None
+    rerank: str | None
     ocr: str | None
-    embedding: str
     image_generation: str | None
+    speech_to_text: str | None
+    text_to_speech: str | None
+    video_generation: str | None
+
+    @model_validator(mode="before")
+    @classmethod
+    def _upgrade_legacy_model_keys(cls, value: Any) -> Any:
+        if isinstance(value, Mapping):
+            upgraded = upgrade_legacy_settings_payload({"models": value})
+            return upgraded.get("models", value)
+        return value
 
     @property
     def fast(self) -> str | None:
@@ -74,12 +87,7 @@ class IngestSettings(_SettingsModel):
 class RagSettings(_SettingsModel):
     top_k: int
     similarity_threshold: float
-    rerank_model: str | None
     rerank_top_k: int
-
-
-class SearchSettings(_SettingsModel):
-    retriever_profile: str
 
 
 class LocalRagSettings(_SettingsModel):
@@ -101,7 +109,7 @@ class Settings(_SettingsModel):
     """Project-level runtime settings.
 
     The public shape mirrors the optional project settings override schema, e.g.
-    `settings.models.reason` or `settings.search.retriever_profile`.
+    `settings.models.reason` or one fixed retriever profile resolved in code.
 
     Code defaults live in `backend/app/shared/infra/settings/defaults.py`.
     `PROJECT_SETTINGS_PATH` may point to an optional external override file.
@@ -113,7 +121,6 @@ class Settings(_SettingsModel):
     docgen: DocgenSettings
     ingest: IngestSettings
     rag: RagSettings
-    search: SearchSettings
     local_rag: LocalRagSettings
     knowledge_graph: KnowledgeGraphSettings
     observability: ObservabilitySettings
@@ -124,16 +131,14 @@ class Settings(_SettingsModel):
         if value is None:
             return merge_default_settings()
         if isinstance(value, Mapping):
-            return merge_default_settings(value)
+            return merge_default_settings(upgrade_legacy_settings_payload(value))
         return value
 
     @property
     def embedding_dim(self) -> int:
-        if not self.normalized_embedding_model:
-            return 0
-        return EMBEDDING_DIM_BY_MODEL.get(
+        return resolve_embedding_dimension(
             self.normalized_embedding_model,
-            DEFAULT_EMBEDDING_DIM,
+            configured_dim=self.models.embedding_dim,
         )
 
     @property
@@ -146,13 +151,34 @@ class Settings(_SettingsModel):
         return self.normalized_embedding_model is not None
 
     @property
+    def embedding_dim_is_explicit(self) -> bool:
+        value = self.models.embedding_dim
+        return value is not None and int(value) > 0
+
+    @property
     def has_vision_ocr_model(self) -> bool:
         return bool((self.models.ocr or "").strip())
+
+    @property
+    def rerank_configured(self) -> bool:
+        return bool((self.models.rerank or "").strip())
 
     @property
     def image_generation_enabled(self) -> bool:
         value = (self.models.image_generation or "").strip()
         return bool(value)
+
+    @property
+    def speech_to_text_enabled(self) -> bool:
+        return bool((self.models.speech_to_text or "").strip())
+
+    @property
+    def text_to_speech_enabled(self) -> bool:
+        return bool((self.models.text_to_speech or "").strip())
+
+    @property
+    def video_generation_enabled(self) -> bool:
+        return bool((self.models.video_generation or "").strip())
 
     def parse_retrievers(
         self,
@@ -163,7 +189,7 @@ class Settings(_SettingsModel):
         include_fallback: bool = True,
         fallback_retriever: str = DEFAULT_RETRIEVER_FALLBACK,
     ) -> list[str]:
-        resolved_profile = normalize_profile_name(profile or self.search.retriever_profile)
+        resolved_profile = normalize_profile_name(profile or DEFAULT_RUNTIME_RETRIEVER_PROFILE)
         profile_names = [
             normalize_retriever_name(item)
             for item in get_retriever_profiles().get(resolved_profile, [])
@@ -221,7 +247,7 @@ def get_system_settings_override_payload() -> dict[str, Any]:
 def set_system_settings_override(payload: Mapping[str, Any] | None) -> Settings:
     global _SYSTEM_SETTINGS_OVERRIDE, _EFFECTIVE_SETTINGS_CACHE
     base_payload = get_project_settings().model_dump(mode="json")
-    candidate_override = deepcopy(dict(payload or {}))
+    candidate_override = upgrade_legacy_settings_payload(payload)
     candidate_payload = merge_settings_values(base_payload, candidate_override)
     effective = Settings.model_validate(candidate_payload)
     normalized_override = {
@@ -271,7 +297,6 @@ __all__ = [
     "PlannerModeSettings",
     "PlannerSettings",
     "RagSettings",
-    "SearchSettings",
     "Settings",
     "clear_system_settings_override",
     "get_settings",

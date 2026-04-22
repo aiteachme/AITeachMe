@@ -18,8 +18,7 @@ import structlog
 from pydantic import BaseModel, Field
 from sqlmodel import Session, SQLModel, func, select
 
-from app.shared.infra.env_support import get_env
-from app.shared.infra.runtime import is_cloud_mode
+from app.shared.infra.runtime import get_app_version, is_cloud_mode
 from app.shared.infra.storage import (
     build_subject_storage_scope,
     get_content_store,
@@ -495,7 +494,7 @@ def _build_manifest(
     options: ExportOptions,
 ) -> _ExportManifest:
     return _ExportManifest(
-        app_version=get_env("APP_VERSION", "0.2.0") or "0.2.0",
+        app_version=get_app_version(),
         exported_at=utcnow(),
         subject=_ManifestSubject(
             slug=subject.slug,

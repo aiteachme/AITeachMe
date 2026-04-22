@@ -57,7 +57,7 @@ class ATMReranker(BaseNodePostprocessor):
         """Run litellm rerank and return re-scored nodes."""
 
         settings = get_settings()
-        if not settings.rag.rerank_model or not nodes:
+        if not settings.rerank_configured or not nodes:
             return nodes
 
         query_str = query_bundle.query_str if query_bundle else ""
@@ -106,7 +106,7 @@ class ATMReranker(BaseNodePostprocessor):
             "llamaindex_rerank_done",
             input_count=len(nodes),
             output_count=len(result),
-            model=settings.rag.rerank_model,
+            model=settings.models.rerank,
         )
         return result
 

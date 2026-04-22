@@ -1,4 +1,6 @@
+import { useState } from "react";
 import type { ReactNode } from "react";
+import { Eye, EyeOff } from "lucide-react";
 
 import { cn } from "../../lib/utils";
 import { SETTINGS_STYLES } from "./constants";
@@ -39,7 +41,10 @@ export function SectionDivider({ label, compact = false }: SectionDividerProps) 
           : SETTINGS_STYLES.field.dividerDefaultSpacing,
       )}
     >
-      <h3 className={SETTINGS_STYLES.field.dividerTitle}>{label}</h3>
+      <h3 className={SETTINGS_STYLES.field.dividerTitle}>
+        <span className={SETTINGS_STYLES.field.dividerAccent} />
+        {label}
+      </h3>
     </div>
   );
 }
@@ -132,6 +137,7 @@ interface TextInputProps {
   id?: string;
   value: string;
   onChange: (value: string) => void;
+  onBlur?: () => void;
   placeholder?: string;
   type?: string;
 }
@@ -140,6 +146,7 @@ export function TextInput({
   id,
   value,
   onChange,
+  onBlur,
   placeholder,
   type = "text",
 }: TextInputProps) {
@@ -149,9 +156,68 @@ export function TextInput({
       type={type}
       value={value}
       onChange={(event) => onChange(event.target.value)}
+      onBlur={onBlur}
       placeholder={placeholder}
       className={SETTINGS_STYLES.field.control}
     />
+  );
+}
+
+const SECRET_MASK = "••••••••••••";
+
+interface SecretInputProps {
+  id?: string;
+  value: string;
+  onChange: (value: string) => void;
+  onBlur?: () => void;
+  placeholder?: string;
+}
+
+export function SecretInput({
+  id,
+  value,
+  onChange,
+  onBlur,
+  placeholder,
+}: SecretInputProps) {
+  const [visible, setVisible] = useState(false);
+
+  return (
+    <div className="relative">
+      {visible ? (
+        <input
+          id={id}
+          type="text"
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          onBlur={onBlur}
+          placeholder={placeholder}
+          className={cn(SETTINGS_STYLES.field.control, "pr-9")}
+        />
+      ) : (
+        <div
+          className={cn(
+            SETTINGS_STYLES.field.control,
+            "cursor-default select-none items-center pr-9 text-zinc-500",
+          )}
+          onClick={() => setVisible(true)}
+        >
+          {value ? SECRET_MASK : <span className="text-zinc-400">{placeholder ?? "留空"}</span>}
+        </div>
+      )}
+      <button
+        type="button"
+        onClick={() => setVisible((prev) => !prev)}
+        className={SETTINGS_STYLES.field.iconButton}
+        aria-label={visible ? "隐藏" : "显示"}
+      >
+        {visible ? (
+          <EyeOff className={SETTINGS_STYLES.field.icon} />
+        ) : (
+          <Eye className={SETTINGS_STYLES.field.icon} />
+        )}
+      </button>
+    </div>
   );
 }
 

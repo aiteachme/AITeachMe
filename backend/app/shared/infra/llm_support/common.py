@@ -18,6 +18,14 @@ from app.shared.infra.llm_support.defaults import DEFAULT_LLM_CONCURRENCY_LIMIT
 from app.shared.infra.llm_support.routing import LLMCallProfile, LLMCallPurpose, get_call_profile
 from app.shared.infra.observability.trace import get_llm_trace_context
 from app.shared.infra.observability.llm_stats import LLMCallRecord, get_tracker
+from app.shared.infra.settings.support import (
+    get_llm_api_version,
+    llm_provider_requires_api_key,
+    normalize_llm_provider_name,
+    resolve_litellm_provider_name,
+    resolve_runtime_llm_provider,
+    split_provider_model_name,
+)
 
 logger = structlog.get_logger()
 
@@ -31,7 +39,7 @@ class CompletionContext:
 
     call_purpose: LLMCallPurpose
     settings: Settings
-    api_key: str
+    api_key: str | None
     profile: LLMCallProfile
     model: str
     model_selector: str
@@ -68,15 +76,31 @@ def build_litellm_provider_kwargs(model: str | None) -> dict[str, str]:
     """Infer LiteLLM provider kwargs while keeping raw model names in app code.
 
     Current project convention: business code and settings store plain model
-    names such as ``qwen-flash`` or ``text-embedding-3-small``. When the model
-    string already contains a provider prefix, we pass it through unchanged.
-    Otherwise we default to the OpenAI-compatible route used by the project.
+    names such as ``gpt-4o-mini`` or ``claude-3-5-sonnet-latest``. We infer
+    the LiteLLM provider from either the model prefix or ``LLM_BASE_URL`` /
+    ``LLM_PROVIDER`` so one shared connection entry can support Anthropic,
+    Gemini, Azure, OpenAI-compatible gateways and other major providers.
     """
 
     normalized = normalize_model_selector(model)
-    if not normalized or "/" in normalized:
+    if not normalized:
         return {}
-    return {"custom_llm_provider": "openai"}
+    explicit_provider, _model_name = split_provider_model_name(normalized)
+    runtime_provider = normalize_llm_provider_name(resolve_runtime_llm_provider())
+    routed_provider = runtime_provider
+    if explicit_provider and runtime_provider != "openrouter":
+        routed_provider = explicit_provider
+
+    litellm_provider = resolve_litellm_provider_name(routed_provider)
+    if not litellm_provider:
+        return {}
+
+    kwargs = {"custom_llm_provider": litellm_provider}
+    if litellm_provider == "azure":
+        api_version = get_llm_api_version()
+        if api_version:
+            kwargs["api_version"] = api_version
+    return kwargs
 
 
 def resolve_settings_model(settings: Settings, model: str | None = None) -> tuple[str, str]:
@@ -94,9 +118,19 @@ def resolve_settings_model(settings: Settings, model: str | None = None) -> tupl
     if normalized == "light":
         return models.light or fallback_model, "light"
     if normalized == "extract":
-        return models.extract or models.light or fallback_model, "extract"
+        return models.light or fallback_model, "extract"
+    if normalized == "rerank":
+        return models.rerank or fallback_model, "rerank"
+    if normalized == "ocr":
+        return models.ocr or fallback_model, "ocr"
     if normalized == "image_generation":
         return models.image_generation or fallback_model, "image_generation"
+    if normalized == "speech_to_text":
+        return models.speech_to_text or fallback_model, "speech_to_text"
+    if normalized == "text_to_speech":
+        return models.text_to_speech or fallback_model, "text_to_speech"
+    if normalized == "video_generation":
+        return models.video_generation or fallback_model, "video_generation"
     return selector, selector
 
 
@@ -120,8 +154,10 @@ def build_completion_context(
 
     resolved_purpose = resolve_call_purpose(call_purpose=call_purpose, task_type=task_type)
     settings = get_settings()
-    api_key = (get_env("LLM_API_KEY") or "").strip()
-    if not api_key:
+    base_url = get_env("LLM_BASE_URL")
+    provider = resolve_runtime_llm_provider(base_url=base_url)
+    api_key = (get_env("LLM_API_KEY") or "").strip() or None
+    if api_key is None and llm_provider_requires_api_key(provider, base_url=base_url):
         raise MissingLLMApiKeyError()
     resolved_model, model_selector = resolve_settings_model(settings, model)
     return CompletionContext(
@@ -230,13 +266,14 @@ def build_completion_kwargs(
     completion_kwargs = {
         "model": context.model,
         "messages": messages,
-        "api_base": (
-            get_env("LLM_BASE_URL")
-        ),
-        "api_key": context.api_key,
         "timeout": context.profile.timeout_s,
         "temperature": remaining_kwargs.pop("temperature", context.profile.temperature),
     }
+    api_base = get_env("LLM_BASE_URL")
+    if api_base:
+        completion_kwargs["api_base"] = api_base
+    if context.api_key is not None:
+        completion_kwargs["api_key"] = context.api_key
     completion_kwargs.update(build_litellm_provider_kwargs(context.model))
     if context.profile.max_tokens is not None:
         completion_kwargs["max_tokens"] = context.profile.max_tokens

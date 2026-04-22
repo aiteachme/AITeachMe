@@ -48,6 +48,7 @@ export function useSettingsOverview({ isOpen }: UseSettingsOverviewOptions) {
   const [defaultSettingsDraft, setDefaultSettingsDraft] = useState<DraftRecord>({});
   const [envDraft, setEnvDraft] = useState<DraftRecord>({});
   const [savedEnvDraft, setSavedEnvDraft] = useState<DraftRecord>({});
+  const [defaultEnvDraft, setDefaultEnvDraft] = useState<DraftRecord>({});
 
   const [saveState, setSaveState] = useState<SaveState>("idle");
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -65,6 +66,7 @@ export function useSettingsOverview({ isOpen }: UseSettingsOverviewOptions) {
     setDefaultSettingsDraft(draftFromEntries(serverEntries, "default_value"));
     setEnvDraft(nextEnvDraft);
     setSavedEnvDraft(nextEnvDraft);
+    setDefaultEnvDraft(draftFromEntries(envEntries, "default_value"));
   }, []);
 
   useEffect(() => {
@@ -112,28 +114,38 @@ export function useSettingsOverview({ isOpen }: UseSettingsOverviewOptions) {
     [overview],
   );
 
-  const hasServerChanges = !sameDraft(settingsDraft, savedSettingsDraft);
-  const hasEnvChanges = !sameDraft(envDraft, savedEnvDraft);
+  const hasServerChanges = useMemo(
+    () => !sameDraft(settingsDraft, savedSettingsDraft),
+    [savedSettingsDraft, settingsDraft],
+  );
+  const hasEnvChanges = useMemo(
+    () => !sameDraft(envDraft, savedEnvDraft),
+    [envDraft, savedEnvDraft],
+  );
 
   const patchServerSetting = useCallback(
     (key: string, value: DraftRecord[string]) => {
-      setSettingsDraft((prev) => ({ ...prev, [key]: value }));
+      setSettingsDraft((prev) => (
+        prev[key] === value ? prev : { ...prev, [key]: value }
+      ));
     },
     [],
   );
 
   const patchEnvSetting = useCallback(
     (key: string, value: DraftRecord[string]) => {
-      setEnvDraft((prev) => ({ ...prev, [key]: value }));
+      setEnvDraft((prev) => (
+        prev[key] === value ? prev : { ...prev, [key]: value }
+      ));
     },
     [],
   );
 
   const resetServerDrafts = useCallback(() => {
     setSettingsDraft(defaultSettingsDraft);
-    setEnvDraft(savedEnvDraft);
+    setEnvDraft(defaultEnvDraft);
     setSaveError(null);
-  }, [defaultSettingsDraft, savedEnvDraft]);
+  }, [defaultSettingsDraft, defaultEnvDraft]);
 
   const saveAll = useCallback(async () => {
     if (!hasServerChanges && !hasEnvChanges) {

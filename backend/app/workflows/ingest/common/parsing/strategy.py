@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 
 from app.shared.infra.env_support import get_env
 from app.shared.infra.exceptions import MissingLLMApiKeyError, UnsupportedFileTypeError
+from app.shared.infra.settings.support import llm_provider_requires_api_key
 from app.workflows.ingest.common.parsing.defaults import (
     DEFAULT_PARSE_CONCURRENCY,
     DEFAULT_PARSER_TIMEOUT_S,
@@ -56,7 +57,9 @@ def build_parse_plan(
     """Choose parser chain and runtime budget from file signals and capabilities."""
 
     extension = resolve_parser_extension(file_path, normalize_extension(filetype))
-    allow_llm_vision = bool(get_env("LLM_API_KEY"))
+    allow_llm_vision = bool(get_env("LLM_API_KEY")) or not llm_provider_requires_api_key(
+        base_url=get_env("LLM_BASE_URL")
+    )
     available_parsers = get_available_parsers(extension, allow_llm_vision=allow_llm_vision)
     if not available_parsers:
         if is_image_extension(extension):

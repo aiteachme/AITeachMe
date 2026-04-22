@@ -23,9 +23,9 @@ class ATMEmbedding(BaseEmbedding):
 
     _model_name: str = PrivateAttr(default="")
 
-    def __init__(self, **kwargs: Any) -> None:
+    def __init__(self, *, model_name: str | None = None, **kwargs: Any) -> None:
         super().__init__(**kwargs)
-        self._model_name = get_settings().normalized_embedding_model or ""
+        self._model_name = (model_name or get_settings().normalized_embedding_model or "").strip()
 
     @classmethod
     def class_name(cls) -> str:
@@ -38,13 +38,13 @@ class ATMEmbedding(BaseEmbedding):
     async def _aget_text_embedding(self, text: str) -> list[float]:
         from app.shared.infra.embedding import aembed_texts
 
-        result = await aembed_texts([text])
+        result = await aembed_texts([text], model=self._model_name or None)
         return result[0]
 
     async def _aget_text_embeddings(self, texts: list[str]) -> list[list[float]]:
         from app.shared.infra.embedding import aembed_texts
 
-        return await aembed_texts(texts)
+        return await aembed_texts(texts, model=self._model_name or None)
 
     async def _aget_query_embedding(self, query: str) -> list[float]:
         return await self._aget_text_embedding(query)

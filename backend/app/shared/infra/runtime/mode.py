@@ -6,6 +6,8 @@ import os
 
 from app.shared.infra.env_support import get_env, get_env_optional_bool
 
+APP_VERSION = "0.2.0"
+
 
 def resolve_app_mode() -> str:
     raw_value = (get_env("APP_MODE", "auto") or "auto").strip().lower()
@@ -32,7 +34,7 @@ def resolve_auth_enabled() -> bool:
 
 
 def get_app_version() -> str:
-    return (get_env("APP_VERSION", "0.2.0") or "0.2.0").strip() or "0.2.0"
+    return APP_VERSION
 
 
 def get_guest_cookie_name() -> str:
@@ -54,6 +56,7 @@ def resolve_guest_cookie_secure() -> bool:
 
 
 __all__ = [
+    "APP_VERSION",
     "get_app_version",
     "get_guest_cookie_name",
     "is_cloud_mode",

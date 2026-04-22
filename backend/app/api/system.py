@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import structlog
 from fastapi import APIRouter, BackgroundTasks, Body, Depends
 
 from sqlmodel import Session
@@ -17,6 +18,7 @@ from app.workflows.support.system import (
 )
 
 router = APIRouter(prefix="/api/v1/system", tags=["system"])
+logger = structlog.get_logger(__name__)
 
 
 @router.post(
@@ -100,16 +102,18 @@ async def submit_feedback(
     """提交用户反馈。"""
 
     import base64
-    import logging
     import os
     
     import httpx
 
-    logger = logging.getLogger(__name__)
-    
-    logger.info(f"[Feedback] User {user.user_id} ({user.email or 'Guest'}) submitted feedback:")
-    logger.info(f"Content: {payload.content}")
-    logger.info(f"Image count: {len(payload.images)}")
+    logger.info(
+        "feedback_submitted",
+        user_id=user.user_id,
+        has_email=bool(user.email),
+        email_domain=(user.email.rsplit("@", 1)[-1].lower() if user.email and "@" in user.email else None),
+        content_chars=len(payload.content),
+        image_count=len(payload.images),
+    )
 
     feishu_webhook = os.getenv("FEISHU_WEBHOOK_URL")
     feishu_app_id = os.getenv("FEISHU_APP_ID")
@@ -154,7 +158,11 @@ async def submit_feedback(
                                     if resp_data.get("code") == 0:
                                         image_keys.append(resp_data["data"]["image_key"])
                             except Exception as e:
-                                logger.error(f"Failed to upload image {idx} to feishu: {e}")
+                                logger.error(
+                                    "feedback_image_upload_failed",
+                                    image_index=idx,
+                                    error=str(e),
+                                )
 
                     if image_keys:
                         post_content = [
@@ -188,7 +196,7 @@ async def submit_feedback(
                             timeout=5.0
                         )
             except Exception as e:
-                logger.error(f"Failed to push feedback to Feishu webhook: {e}")
+                logger.error("feedback_push_to_feishu_failed", error=str(e))
 
         # 使用 BackgroundTasks 进行真正的异步非阻塞执行
         background_tasks.add_task(push_to_feishu)

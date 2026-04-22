@@ -3,6 +3,7 @@ import type { SettingsOverviewData } from "../api/generated/model/settingsOvervi
 import type { ApiResponse } from "../api/types";
 
 const SYSTEM_SETTINGS_STORAGE_KEY = "aiteachme:system-settings-overview";
+export const SYSTEM_SETTINGS_CHANGED_EVENT = "aiteachme:system-settings-overview-changed";
 
 let currentOverview: SettingsOverviewData | null = null;
 let inFlightOverview: Promise<SettingsOverviewData | null> | null = null;
@@ -39,9 +40,11 @@ export function storeSystemSettingsOverview(overview: SettingsOverviewData | nul
   }
   if (!overview) {
     window.localStorage.removeItem(SYSTEM_SETTINGS_STORAGE_KEY);
+    window.dispatchEvent(new CustomEvent(SYSTEM_SETTINGS_CHANGED_EVENT, { detail: null }));
     return;
   }
   window.localStorage.setItem(SYSTEM_SETTINGS_STORAGE_KEY, JSON.stringify(overview));
+  window.dispatchEvent(new CustomEvent(SYSTEM_SETTINGS_CHANGED_EVENT, { detail: overview }));
 }
 
 export function getStoredSystemSettingsOverview(): SettingsOverviewData | null {

@@ -17,6 +17,11 @@ from app.shared.infra.observability.trace import (
     sanitize_langsmith_text as _shared_sanitize_langsmith_text,
     sanitize_langsmith_value as _shared_sanitize_langsmith_value,
 )
+from app.shared.infra.settings.support import (
+    normalize_llm_provider_name,
+    resolve_runtime_llm_provider,
+    split_provider_model_name,
+)
 
 def _langsmith_usage(
     *,
@@ -41,10 +46,13 @@ def _model_provider_and_name(model: str) -> tuple[str, str]:
     normalized = str(model or "").strip()
     if not normalized:
         return "unknown", ""
-    if "/" in normalized:
-        provider, model_name = normalized.split("/", 1)
-        return provider or "unknown", model_name or normalized
-    return "openai", normalized
+    provider, model_name = split_provider_model_name(normalized)
+    if provider:
+        return provider, model_name or normalized
+    resolved_provider = normalize_llm_provider_name(resolve_runtime_llm_provider()) or "unknown"
+    if resolved_provider == "openai_compatible":
+        resolved_provider = "openai"
+    return resolved_provider, normalized
 
 
 def _resolved_trace_model(

@@ -17,6 +17,7 @@ from app.models.raw_file import RawFile
 import app.repositories.knowledge.knowledge_repo as knowledge_repo
 from app.utils.time import utcnow
 from app.shared.infra.subject import (
+    build_subject_index_ref_for_subject,
     get_runtime_embedding_config,
     get_subject_record_by_slug,
     get_subject_vector_capability,
@@ -224,8 +225,8 @@ async def materialize_shared_inputs(
                 else None
             )
             expected_table = (
-                capability.binding.vector_table
-                if capability is not None and capability.binding is not None
+                build_subject_index_ref_for_subject(subject_record)
+                if capability is not None and subject_record is not None
                 else None
             )
             reused_chunk_ids = [int(chunk.id) for chunk in reused_chunks if chunk.id is not None]

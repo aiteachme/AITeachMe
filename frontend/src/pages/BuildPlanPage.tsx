@@ -1538,8 +1538,8 @@ export function BuildPlanPage() {
                 }
               >
                 {message.role === "assistant" ? (
-                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-violet-500 to-indigo-600 shadow-sm">
-                    <Sparkles className="h-4 w-4 text-white" />
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-50 ring-1 ring-slate-200/50 p-1 shadow-sm">
+                    <img src="/logo.svg" alt="AI" className="h-full w-full object-contain" />
                   </div>
                 ) : null}
 
@@ -1582,8 +1582,8 @@ export function BuildPlanPage() {
 
             {isPlannerPending ? (
               <div className="flex gap-3">
-                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-violet-500 to-indigo-600 shadow-sm">
-                  <Sparkles className="h-4 w-4 text-white" />
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-50 ring-1 ring-slate-200/50 p-1 shadow-sm">
+                  <img src="/logo.svg" alt="AI" className="h-full w-full object-contain" />
                 </div>
                 <div className="w-full max-w-[85%] rounded-lg border border-zinc-200 bg-white px-4 py-4 shadow-sm">
                   <div className="mb-3 flex flex-wrap items-center gap-2">
@@ -1635,8 +1635,8 @@ export function BuildPlanPage() {
 
             {shouldShowBuildDialog ? (
               <div className="flex gap-3">
-                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-violet-500 to-indigo-600 shadow-sm">
-                  <Sparkles className="h-4 w-4 text-white" />
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-50 ring-1 ring-slate-200/50 p-1 shadow-sm">
+                  <img src="/logo.svg" alt="AI" className="h-full w-full object-contain" />
                 </div>
                 <div className="w-full max-w-[85%]">
                   <BuildInProgressBubble

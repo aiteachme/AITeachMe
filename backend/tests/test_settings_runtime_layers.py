@@ -77,9 +77,14 @@ def test_settings_overview_cloud_mode_is_read_only(monkeypatch) -> None:
         for entry in section.entries
     }
 
+    assert "ops" not in {section.id for section in overview.sections}
+    assert "runtime.mode" not in entries
+    assert "database.url" not in entries
+    assert "storage.backend" not in entries
+    assert "search.mcp_tool" not in entries
+    assert "search.searxng_url" not in entries
+    assert "langsmith.endpoint" not in entries
     assert entries["models.primary"].editable is False
-    assert entries["models.primary"].editable is False
-    assert entries["database.url"].editable is False
     assert entries["models.primary"].ui_group
     assert entries["models.primary"].ui_order > 0
 
@@ -90,3 +95,31 @@ def test_settings_model_rejects_removed_low_level_keys() -> None:
 
     with pytest.raises(ValidationError):
         Settings.model_validate({"search": {"runtime_cache_ttl_s": 60}})
+
+    with pytest.raises(ValidationError):
+        Settings.model_validate({"search": {"retriever_profile": "planner_grounding"}})
+
+
+def test_get_settings_supports_embedding_dim_override() -> None:
+    clear_system_settings_override()
+    try:
+        overridden = set_system_settings_override(
+            {"models": {"embedding": "custom-embedding-model", "embedding_dim": 2048}}
+        )
+        assert overridden.models.embedding == "custom-embedding-model"
+        assert overridden.models.embedding_dim == 2048
+        assert get_settings().embedding_dim == 2048
+    finally:
+        clear_system_settings_override()
+
+
+def test_settings_model_upgrades_legacy_extract_and_rerank_keys() -> None:
+    settings = Settings.model_validate(
+        {
+            "models": {"extract": "legacy-extract-model"},
+            "rag": {"rerank_model": "qwen3-reranker-4b"},
+        }
+    )
+
+    assert settings.models.light == "legacy-extract-model"
+    assert settings.models.rerank == "qwen3-reranker-4b"

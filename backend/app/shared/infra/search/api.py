@@ -89,7 +89,7 @@ async def search_knowledge(
         subject_id: Subject slug whose indexed materials should be searched.
         top_k: Maximum number of chunks to return after optional rerank.
         enable_rerank: Whether to apply the configured rerank model when
-            ``settings.rag.rerank_model`` is set.
+            ``settings.models.rerank`` is set.
 
     Returns:
         Retrieved local chunks. Empty list means unavailable index, invalid
@@ -108,7 +108,7 @@ async def search_knowledge(
         return []
 
     settings = get_settings()
-    should_rerank = enable_rerank and bool(settings.rag.rerank_model)
+    should_rerank = enable_rerank and settings.rerank_configured
 
     try:
         from app.shared.infra.search.llamaindex_index import retrieve_subject_chunks

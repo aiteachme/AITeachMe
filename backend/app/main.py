@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
+import json
 import threading
+from time import perf_counter
 from typing import AsyncGenerator
+import uuid
 
 import structlog
 from fastapi import FastAPI, Request
@@ -14,7 +17,11 @@ from fastapi.responses import JSONResponse
 from app.shared.infra.settings import get_settings
 from app.shared.infra.database import init_db
 from app.shared.infra.env_support import get_env, get_env_bool
-from app.shared.infra.logger import configure_logging
+from app.shared.infra.logger import (
+    bind_logging_context,
+    clear_logging_context,
+    configure_logging,
+)
 from app.shared.infra.runtime import get_runtime_data_dir
 from app.shared.infra.runtime import (
     get_app_version,
@@ -35,6 +42,10 @@ from app.shared.infra.storage.config import (
 from app.shared.infra.exceptions import AITeachMeError as InfraAITeachMeError
 from app.shared.kernel.exceptions import AITeachMeError as KernelAITeachMeError
 from app.shared.infra.runtime import BackgroundTaskRegistry
+from app.shared.infra.settings.support import (
+    get_llm_provider_model_defaults,
+    resolve_runtime_llm_provider,
+)
 
 logger = structlog.get_logger()
 _OPENAPI_EXPORT_LOCK = threading.Lock()
@@ -84,7 +95,7 @@ def _log_infra_diagnostics(settings) -> None:
     """启动时输出基础设施诊断信息，方便在 Render Logs 里排查。"""
 
     import os
-    from app.shared.infra.database import get_engine, is_postgres, is_sqlite, is_vec_ready
+    from app.shared.infra.database import get_engine, is_postgres, is_sqlite
     from app.workflows.digest.common.runtime_config import (
         get_teaching_runtime_settings_source,
     )
@@ -92,6 +103,9 @@ def _log_infra_diagnostics(settings) -> None:
     engine = get_engine()
     dialect = engine.dialect.name
     project_settings_source = get_teaching_runtime_settings_source()
+    runtime_provider = resolve_runtime_llm_provider()
+    runtime_provider_defaults = get_llm_provider_model_defaults(runtime_provider)
+    openai_compatible_defaults = get_llm_provider_model_defaults("openai_compatible")
 
     app_mode = resolve_app_mode()
     storage_backend = get_storage_backend()
@@ -122,7 +136,7 @@ def _log_infra_diagnostics(settings) -> None:
         lines.append(f"    Database               : {engine.url.database or 'unknown'}")
         lines.append(f"    pgvector               : ready")
     elif is_sqlite():
-        lines.append(f"    sqlite-vec             : {'ready' if is_vec_ready() else 'NOT available'}")
+        lines.append("    Subject Vector Index   : local subject-scoped store")
 
     lines.append("")
     lines.append("  [STORAGE]")
@@ -170,17 +184,35 @@ def _log_infra_diagnostics(settings) -> None:
     lines.append("")
     lines.append("  [TEACHING]")
     lines.append(f"    Reason Model           : {settings.models.reason or settings.models.primary}")
-    lines.append(f"    Primary Model          : {settings.models.primary}")
-    lines.append(f"    Light Model            : {settings.models.light or settings.models.primary}")
-    lines.append(f"    Extract Override       : {settings.models.extract or '(uses light)'}")
+    lines.append(f"    Primary Text Model     : {settings.models.primary}")
+    lines.append(f"    Light Text Model       : {settings.models.light or settings.models.primary}")
     lines.append(f"    Embedding Model        : {settings.models.embedding}")
-    lines.append(f"    OCR Model              : {settings.models.ocr or settings.models.primary}")
+    lines.append(f"    Rerank Model           : {settings.models.rerank or 'disabled'}")
+    lines.append(f"    OCR Model              : {settings.models.ocr or '(uses primary)'}")
     lines.append(
         f"    MinerU Server Token    : {'SET' if get_env('MINERU_API_TOKEN') else 'not set'}"
     )
     lines.append(
         f"    Image Model            : {settings.models.image_generation or 'disabled'}"
     )
+    lines.append(f"    Speech->Text Model     : {settings.models.speech_to_text or 'disabled'}")
+    lines.append(f"    Text->Speech Model     : {settings.models.text_to_speech or 'disabled'}")
+    lines.append(f"    Video Model            : {settings.models.video_generation or 'disabled'}")
+    lines.append(f"    Runtime Provider       : {runtime_provider}")
+    lines.append("    Runtime Provider Defaults:")
+    for raw_line in json.dumps(
+        runtime_provider_defaults,
+        ensure_ascii=False,
+        indent=6,
+    ).splitlines():
+        lines.append(f"      {raw_line}")
+    lines.append("    openai_compatible Defaults:")
+    for raw_line in json.dumps(
+        openai_compatible_defaults,
+        ensure_ascii=False,
+        indent=6,
+    ).splitlines():
+        lines.append(f"      {raw_line}")
 
     lines.append("")
     lines.append("  [AUTH]")
@@ -193,7 +225,10 @@ def _log_infra_diagnostics(settings) -> None:
     lines.append("=" * 60)
     lines.append("")
 
-    print("\n".join(lines), flush=True)
+    logger.info(
+        "startup_infra_diagnostics",
+        diagnostics="\n".join(lines),
+    )
 
 
 @asynccontextmanager
@@ -237,6 +272,47 @@ def _build_app_metadata() -> dict[str, object]:
 
 
 def _register_middlewares(app: FastAPI) -> None:
+    @app.middleware("http")
+    async def request_logging_middleware(request: Request, call_next):
+        clear_logging_context()
+
+        request_id = (request.headers.get("x-request-id") or "").strip() or uuid.uuid4().hex
+        client_ip = request.client.host if request.client is not None else None
+        bind_logging_context(
+            request_id=request_id,
+            method=request.method,
+            path=request.url.path,
+            client_ip=client_ip,
+        )
+
+        access_logger = structlog.get_logger("app.access")
+        started_at = perf_counter()
+        try:
+            response = await call_next(request)
+            elapsed_ms = int((perf_counter() - started_at) * 1000)
+            response.headers.setdefault("x-request-id", request_id)
+
+            if request.url.path == "/api/health":
+                access_logger.debug(
+                    "request_completed",
+                    status_code=response.status_code,
+                    elapsed_ms=elapsed_ms,
+                )
+            else:
+                log_method = access_logger.warning if response.status_code >= 500 else access_logger.info
+                log_method(
+                    "request_completed",
+                    status_code=response.status_code,
+                    elapsed_ms=elapsed_ms,
+                )
+            return response
+        except Exception:
+            elapsed_ms = int((perf_counter() - started_at) * 1000)
+            access_logger.exception("request_failed", elapsed_ms=elapsed_ms)
+            raise
+        finally:
+            clear_logging_context()
+
     # 从环境变量读取允许的跨域来源（逗号分隔），或使用默认白名单
     default_origins = [
         "https://aiteachme.cn",

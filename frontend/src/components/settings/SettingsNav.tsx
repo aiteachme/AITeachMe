@@ -1,3 +1,7 @@
+import { memo } from "react";
+import { Link2, GitFork, Sparkles, Globe, Server, Activity } from "lucide-react";
+import type { ReactNode } from "react";
+
 import { cn } from "../../lib/utils";
 
 import { SETTINGS_STYLES } from "./constants";
@@ -10,7 +14,27 @@ interface SettingsNavProps {
   sections: SettingSection[];
 }
 
-export function SettingsNav({
+function getSectionIcon(sectionId: string): ReactNode {
+  const iconClassName = SETTINGS_STYLES.nav.itemIconSize;
+  switch (sectionId) {
+    case "connection":
+      return <Link2 className={iconClassName} />;
+    case "models":
+      return <GitFork className={iconClassName} />;
+    case "learning":
+      return <Sparkles className={iconClassName} />;
+    case "search":
+      return <Globe className={iconClassName} />;
+    case "ops":
+      return <Server className={iconClassName} />;
+    case "observability":
+      return <Activity className={iconClassName} />;
+    default:
+      return <Server className={iconClassName} />;
+  }
+}
+
+export const SettingsNav = memo(function SettingsNav({
   activeSection,
   onSelect,
   isLocalRuntime,
@@ -43,7 +67,7 @@ export function SettingsNav({
                     : SETTINGS_STYLES.nav.itemIconIdle,
                 )}
               >
-                <span className={SETTINGS_STYLES.nav.itemIconSize}>•</span>
+                {getSectionIcon(section.id)}
               </span>
               <span className={SETTINGS_STYLES.nav.itemLabel}>{section.label}</span>
             </button>
@@ -81,4 +105,4 @@ export function SettingsNav({
       </div>
     </nav>
   );
-}
+});
