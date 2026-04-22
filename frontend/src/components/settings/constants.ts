@@ -2,29 +2,29 @@
 export const SETTINGS_STYLES = {
   panel: {
     root: "fixed inset-0 z-[100]",
-    backdrop: "absolute inset-0 bg-black/30 backdrop-blur-[3px]",
+    backdrop: "absolute inset-0 bg-zinc-900/20 backdrop-blur-[4px]",
     viewport: "pointer-events-none absolute inset-0 flex items-center justify-center p-4 sm:p-8",
     dialog:
-      "pointer-events-auto flex h-[85vh] w-full max-w-[1100px] overflow-hidden rounded-2xl bg-white shadow-2xl ring-1 ring-black/[0.08]",
+      "pointer-events-auto flex h-[85vh] w-full max-w-[1100px] overflow-hidden rounded-2xl bg-white shadow-[0_24px_60px_-15px_rgba(0,0,0,0.1)] ring-1 ring-zinc-200/50",
     body: "flex min-w-0 flex-1 flex-col",
     header: "flex items-center justify-between border-b border-zinc-100 px-6 py-3.5",
     headerTitle: "text-[15px] font-semibold text-zinc-900",
     headerDescription: "mt-0.5 text-[12px] text-zinc-500 leading-relaxed",
     closeButton:
-      "inline-flex h-7 w-7 items-center justify-center rounded-lg text-zinc-400 transition-colors hover:bg-zinc-100 hover:text-zinc-600",
-    closeIcon: "h-3.5 w-3.5",
-    scrollArea: "min-h-0 flex-1 overflow-y-auto px-6 py-4 settings-scroll",
-    sectionFrame: "pb-4",
+      "inline-flex h-8 w-8 items-center justify-center rounded-full bg-zinc-100/50 text-zinc-500 transition-all hover:bg-zinc-200/80 hover:text-zinc-900 active:scale-90",
+    closeIcon: "h-4 w-4",
+    scrollArea: "min-h-0 flex-1 overflow-y-auto px-8 py-6 settings-scroll",
+    sectionFrame: "pb-6 max-w-4xl",
   },
   nav: {
-    root: "flex w-[200px] shrink-0 flex-col border-r border-zinc-200/80 bg-zinc-50/70",
+    root: "flex w-[200px] shrink-0 flex-col border-r border-zinc-100 bg-zinc-50/50",
     header: "px-5 pb-1 pt-5",
     title: "text-[15px] font-semibold text-zinc-800",
-    list: "flex-1 space-y-0.5 overflow-y-auto px-3 py-3",
+    list: "flex-1 space-y-1 overflow-y-auto px-3 py-4",
     item:
-      "group flex min-w-0 w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-[13px] transition-all",
-    itemActive: "bg-indigo-50/80 font-medium text-indigo-700",
-    itemIdle: "text-zinc-600 hover:bg-zinc-100/80 hover:text-zinc-800",
+      "group relative flex min-w-0 w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-[13px] transition-all overflow-hidden",
+    itemActive: "bg-white font-semibold text-indigo-600 shadow-[0_1px_3px_rgba(0,0,0,0.05)] ring-1 ring-zinc-200/50",
+    itemIdle: "text-zinc-600 hover:bg-zinc-200/40 hover:text-zinc-900",
     itemIcon: "inline-flex shrink-0 items-center justify-center",
     itemIconActive: "text-indigo-600",
     itemIconIdle: "text-zinc-400 group-hover:text-zinc-500",
@@ -45,7 +45,7 @@ export const SETTINGS_STYLES = {
     runtimeIndicatorDotCloud: "bg-sky-500",
   },
   footer: {
-    root: "flex items-center justify-between border-t border-zinc-100 bg-zinc-50/50 px-6 py-3",
+    root: "flex items-center justify-between border-t border-zinc-100 bg-white px-8 py-4",
     statusWrap: "text-[13px] font-medium",
     statusRow: "flex items-center gap-2",
     statusSaving: "text-zinc-500",
@@ -59,13 +59,13 @@ export const SETTINGS_STYLES = {
     changedIndicatorPulse:
       "absolute inline-flex h-full w-full animate-ping rounded-full bg-amber-400 opacity-75",
     changedIndicatorDot: "relative inline-flex h-2 w-2 rounded-full bg-amber-500",
-    actions: "flex items-center gap-2.5",
+    actions: "flex items-center gap-3",
     resetButton:
-      "inline-flex h-8 items-center justify-center rounded-lg px-3.5 text-[13px] font-medium text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-700",
+      "inline-flex h-9 items-center justify-center rounded-xl px-4 text-[13px] font-medium text-zinc-500 transition-all hover:bg-zinc-100 hover:text-zinc-900 active:scale-[0.96]",
     saveButton:
-      "inline-flex h-8 items-center justify-center rounded-lg px-4 text-[13px] font-medium transition-all",
-    saveButtonEnabled: "bg-indigo-600 text-white shadow-sm hover:bg-indigo-700",
-    saveButtonDisabled: "cursor-not-allowed bg-zinc-100 text-zinc-400",
+      "inline-flex h-9 items-center justify-center rounded-xl px-5 text-[13px] font-medium transition-all active:scale-[0.96]",
+    saveButtonEnabled: "bg-indigo-600 text-white shadow-sm hover:bg-indigo-700 hover:shadow-md hover:-translate-y-[0.5px]",
+    saveButtonDisabled: "cursor-not-allowed bg-zinc-100 text-zinc-400 shadow-none transform-none",
   },
   field: {
     infoCard: "rounded-lg px-4 py-3 text-[13px] leading-relaxed",
@@ -84,30 +84,30 @@ export const SETTINGS_STYLES = {
     description: "text-[12px] leading-relaxed text-zinc-400",
     note: "text-[11px] leading-relaxed text-zinc-400",
     readonlyValue:
-      "w-fit max-w-full break-all rounded-md border border-zinc-200/80 bg-zinc-50 px-3 py-1.5 font-mono text-[12px] text-zinc-600",
+      "w-fit max-w-full break-all rounded-lg border border-zinc-200/60 bg-zinc-50/80 px-3.5 py-2 font-mono text-[12px] text-zinc-600 shadow-sm",
     // Input control — fixed width on the right side
     control:
-      "flex h-8 w-full rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-[13px] text-zinc-800 transition-colors placeholder:text-zinc-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/30 focus-visible:border-indigo-400 disabled:cursor-not-allowed disabled:opacity-50",
+      "flex h-9 w-full rounded-xl border border-zinc-200/80 bg-zinc-50/50 px-3.5 py-2 text-[13px] text-zinc-800 shadow-sm transition-all placeholder:text-zinc-400 hover:bg-white hover:border-zinc-300 focus-visible:bg-white focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-indigo-500/20 focus-visible:border-indigo-500 disabled:cursor-not-allowed disabled:opacity-50",
     select:
       "appearance-none items-center justify-between whitespace-nowrap bg-[url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20width%3D%2224%22%20height%3D%2224%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%3Cpath%20d%3D%22M6%209L12%2015L18%209%22%20stroke%3D%22%2371717A%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%2F%3E%3C%2Fsvg%3E')] bg-[length:16px_16px] bg-[position:right_10px_center] bg-no-repeat pr-10",
     switchRow:
-      "mx-[-0.25rem] flex flex-row items-center justify-between rounded-lg px-3 py-2.5 transition-colors hover:bg-zinc-50",
-    switchCopy: "space-y-0.5 pr-4",
-    switchLabel: "cursor-pointer text-[13px] font-medium leading-none text-zinc-700",
-    switchDescription: "mt-0.5 text-[12px] leading-relaxed text-zinc-400",
+      "mx-[-0.5rem] flex flex-row items-center justify-between rounded-xl px-4 py-3 transition-colors hover:bg-zinc-50",
+    switchCopy: "space-y-1 pr-4",
+    switchLabel: "cursor-pointer text-[13px] font-semibold leading-none text-zinc-800",
+    switchDescription: "mt-1 text-[12px] leading-relaxed text-zinc-500",
     switchButton:
       "relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/30 focus-visible:ring-offset-2",
     switchButtonEnabled: "bg-indigo-600",
     switchButtonDisabled: "bg-zinc-200",
     switchThumb:
-      "pointer-events-none block h-4 w-4 rounded-full bg-white shadow-lg ring-0 transition-transform",
+      "pointer-events-none block h-4 w-4 rounded-full bg-white shadow-[0_1px_2px_rgba(0,0,0,0.15)] ring-0 transition-transform",
     switchThumbEnabled: "translate-x-4",
     switchThumbDisabled: "translate-x-0",
   },
   list: {
-    root: "space-y-3",
+    root: "space-y-4",
     // Left-right row: label left, control right
-    item: "flex items-center gap-6",
+    item: "flex items-center gap-8 border-b border-zinc-100/50 pb-4 last:border-0 last:pb-0",
     // Control takes remaining space
     controlWrap: "flex-1 min-w-0",
     // Readonly items also left-right
