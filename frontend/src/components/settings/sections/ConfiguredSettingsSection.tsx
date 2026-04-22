@@ -91,40 +91,46 @@ export function ConfiguredSettingsSection({
     [isLocalRuntime, section],
   );
 
+  const validGroups = groups.filter(
+    (g) => g.serverEditableEntries.length > 0 || g.envEditableEntries.length > 0 || g.readonlyEntries.length > 0
+  );
+
   return (
     <div className={SETTINGS_STYLES.section.root}>
-      {groups.map((group, index) => {
+      {validGroups.map((group, index) => {
         return (
           <div key={`${group.label || "group"}-${index}`} className={SETTINGS_STYLES.section.groupBlock}>
-            {group.label ? <SectionDivider label={group.label} /> : null}
+            {group.label ? <SectionDivider label={group.label} compact={index === 0} /> : null}
 
-            {group.serverEditableEntries.length > 0 ? (
-              <EditableSettingsList
-                entries={group.serverEditableEntries}
-                draft={settingsDraft}
-                onChange={onServerChange}
-                loading={loading}
-                error={error}
-              />
-            ) : null}
+            <div className={SETTINGS_STYLES.section.cardWrapper}>
+              {group.serverEditableEntries.length > 0 ? (
+                <EditableSettingsList
+                  entries={group.serverEditableEntries}
+                  draft={settingsDraft}
+                  onChange={onServerChange}
+                  loading={loading}
+                  error={error}
+                />
+              ) : null}
 
-            {group.envEditableEntries.length > 0 ? (
-              <EditableSettingsList
-                entries={group.envEditableEntries}
-                draft={envDraft}
-                onChange={onEnvChange}
-                loading={loading}
-                error={error}
-              />
-            ) : null}
+              {group.envEditableEntries.length > 0 ? (
+                <EditableSettingsList
+                  entries={group.envEditableEntries}
+                  draft={envDraft}
+                  onChange={onEnvChange}
+                  loading={loading}
+                  error={error}
+                />
+              ) : null}
 
-            {group.readonlyEntries.length > 0 ? (
-              <ReadonlySettingsList
-                entries={group.readonlyEntries}
-                loading={loading}
-                error={error}
-              />
-            ) : null}
+              {group.readonlyEntries.length > 0 ? (
+                <ReadonlySettingsList
+                  entries={group.readonlyEntries}
+                  loading={loading}
+                  error={error}
+                />
+              ) : null}
+            </div>
           </div>
         );
       })}

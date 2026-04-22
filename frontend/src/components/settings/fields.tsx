@@ -150,6 +150,20 @@ export function TextInput({
   placeholder,
   type = "text",
 }: TextInputProps) {
+  if (type === "text" || type === "url") {
+    return (
+      <textarea
+        id={id}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        onBlur={onBlur}
+        placeholder={placeholder}
+        rows={1}
+        className={cn(SETTINGS_STYLES.field.control, "resize-y max-h-[300px] overflow-y-auto block leading-relaxed")}
+      />
+    );
+  }
+
   return (
     <input
       id={id}
@@ -183,22 +197,22 @@ export function SecretInput({
   const [visible, setVisible] = useState(false);
 
   return (
-    <div className="relative">
+    <div className="relative w-full">
       {visible ? (
-        <input
+        <textarea
           id={id}
-          type="text"
           value={value}
           onChange={(event) => onChange(event.target.value)}
           onBlur={onBlur}
           placeholder={placeholder}
-          className={cn(SETTINGS_STYLES.field.control, "pr-9")}
+          rows={1}
+          className={cn(SETTINGS_STYLES.field.control, "resize-y max-h-[300px] overflow-y-auto block leading-relaxed pr-9")}
         />
       ) : (
         <div
           className={cn(
             SETTINGS_STYLES.field.control,
-            "cursor-default select-none items-center pr-9 text-zinc-500",
+            "cursor-default select-none items-center pr-9 text-zinc-500 truncate",
           )}
           onClick={() => setVisible(true)}
         >
