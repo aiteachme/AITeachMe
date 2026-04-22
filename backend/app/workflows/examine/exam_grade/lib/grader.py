@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field, field_validator
 from app.models import ExamPaperItem
 from app.shared.infra.llm_support import acompletion_with_fallback
 from app.shared.infra.llm_support.routing import LLMCallPurpose
+from app.shared.infra.observability.trace import traceable_with_context
 from app.workflows.examine.exam_grade.prompts import (
     build_objective_feedback_messages,
     build_subjective_grade_messages,
@@ -107,6 +108,23 @@ def _grade_objective_correctness(item: ExamPaperItem) -> bool:
     return answer == expected
 
 
+@traceable_with_context(
+    name="考试：客观题反馈",
+    run_type="chain",
+    metadata_factory=lambda subject, item, is_correct: {
+        "substep": "exam.grade.objective_feedback",
+        "question_type": item.question_type,
+        "item_order": item.item_order,
+        "question_template_id": item.question_template_id,
+        "is_correct": bool(is_correct),
+    },
+    tags_factory=lambda subject, item, is_correct: [
+        "exam-grade",
+        "objective",
+        f"question-type:{str(item.question_type or '').strip().lower() or 'unknown'}",
+        f"judgement:{'correct' if is_correct else 'incorrect'}",
+    ],
+)
 async def _generate_objective_feedback(subject: str, item: ExamPaperItem, *, is_correct: bool) -> tuple[str, str | None]:
     try:
         result = await acompletion_with_fallback(
@@ -139,6 +157,21 @@ async def _generate_objective_feedback(subject: str, item: ExamPaperItem, *, is_
         )
 
 
+@traceable_with_context(
+    name="考试：主观题判分",
+    run_type="chain",
+    metadata_factory=lambda subject, item: {
+        "substep": "exam.grade.subjective_item",
+        "question_type": item.question_type,
+        "item_order": item.item_order,
+        "question_template_id": item.question_template_id,
+    },
+    tags_factory=lambda subject, item: [
+        "exam-grade",
+        "subjective",
+        f"question-type:{str(item.question_type or '').strip().lower() or 'unknown'}",
+    ],
+)
 async def _grade_subjective_item(subject: str, item: ExamPaperItem) -> ExamItemGradeDecision:
     user_answer = _normalize_text(item.answer_content)
     if not user_answer:
@@ -209,6 +242,19 @@ def _parse_options(raw: str | None) -> list[str] | None:
     return normalized or None
 
 
+@traceable_with_context(
+    name="考试：整卷判题",
+    run_type="chain",
+    metadata_factory=lambda *, subject, items: {
+        "substep": "exam.grade.paper",
+        "subject": subject,
+        "item_count": len(items),
+    },
+    tags_factory=lambda *, subject, items: [
+        "exam-grade",
+        "paper-grading",
+    ],
+)
 async def grade_exam_items_with_workflow(
     *,
     subject: str,

@@ -24,6 +24,8 @@ from app.schemas.exams import (
     ExamHistoryItem,
     ExamPaperDetailResponse,
     ExamPaperItemResponse,
+    ExamStudyGuideFocusUnit,
+    ExamStudyGuideResponse,
     ExamSubmitRequest,
 )
 from app.shared.infra.exceptions import AITeachMeError
@@ -31,6 +33,7 @@ from app.utils.time import utcnow
 from app.workflows.examine import (
     ExamQuestionGenerationSpec,
     run_exam_grade_workflow,
+    run_exam_study_guide_workflow,
     run_question_build_workflow,
 )
 from app.workflows.profile import schedule_reviews, update_mastery_from_exam
@@ -69,6 +72,10 @@ def _clean_exam_text(value: str | None) -> str:
     text = _HTML_COMMENT_RE.sub(" ", text)
     text = _WHITESPACE_RE.sub(" ", text).strip()
     return text
+
+
+def _build_exam_title(paper: ExamPaper) -> str:
+    return f"{paper.exam_mode} · {paper.created_at.strftime('%m/%d %H:%M')}"
 
 
 def _is_exam_eligible_unit(unit: KnowledgeUnit) -> bool:
@@ -333,6 +340,101 @@ def _paper_detail(session: Session, paper: ExamPaper) -> ExamPaperDetailResponse
     )
 
 
+async def _study_guide_detail(session: Session, paper: ExamPaper) -> ExamStudyGuideResponse:
+    items = exams_repo.list_items_by_paper(session, paper.id or 0)
+    knowledge_unit_ids = {
+        knowledge_unit_id
+        for item in items
+        for ref in _json_list(item.knowledge_unit_refs_json)
+        for knowledge_unit_id in [int(ref.get("knowledge_unit_id", 0) or 0)]
+        if knowledge_unit_id > 0
+    }
+    knowledge_unit_by_id = {
+        unit.id: unit
+        for unit in session.exec(
+            select(KnowledgeUnit).where(KnowledgeUnit.id.in_(knowledge_unit_ids))
+        ).all()
+        if unit.id is not None
+    } if knowledge_unit_ids else {}
+
+    weak_states = profile_repo.list_weak_knowledge_states(
+        session,
+        user_id=paper.user_id,
+        subject=paper.subject,
+        target_kind="knowledge_unit",
+    )
+    pending_reviews = profile_repo.list_pending_reviews(
+        session,
+        user_id=paper.user_id,
+        subject=paper.subject,
+    )
+    wrong_question_summaries = profile_repo.list_recent_wrong_attempt_summaries(
+        session,
+        user_id=paper.user_id,
+        subject=paper.subject,
+        knowledge_unit_ids=[
+            int(state.knowledge_unit_id)
+            for state in weak_states
+            if state.knowledge_unit_id is not None
+        ],
+        limit=5,
+    )
+
+    score_summary = (
+        f"得分 {paper.score_obtained or 0:.1f}/{paper.total_score or 0:.1f}，"
+        f"共 {paper.total_items} 题，"
+        f"正确 {sum(1 for item in items if item.is_correct)} 题，"
+        f"错误或未作答 {sum(1 for item in items if item.is_correct is not True)} 题。"
+    )
+    weak_point_payload = [
+        {
+            "knowledge_unit_id": int(state.knowledge_unit_id) if state.knowledge_unit_id is not None else None,
+            "knowledge_unit_name": (
+                knowledge_unit_by_id[int(state.knowledge_unit_id)].canonical_name
+                if state.knowledge_unit_id is not None and int(state.knowledge_unit_id) in knowledge_unit_by_id
+                else "未命名知识点"
+            ),
+            "mastery_score": round(float(state.mastery_score), 3),
+            "reason": (
+                f"掌握度 {float(state.mastery_score):.0%}，"
+                f"累计 {state.total_attempts} 次练习，"
+                f"正确 {state.correct_attempts} 次。"
+            ),
+        }
+        for state in weak_states[:5]
+    ]
+    review_payload = [
+        {
+            "knowledge_unit_name": (
+                knowledge_unit_by_id[int(state.knowledge_unit_id)].canonical_name
+                if state.knowledge_unit_id is not None and int(state.knowledge_unit_id) in knowledge_unit_by_id
+                else "未命名知识点"
+            ),
+            "reason": state.review_reason or "建议尽快回顾",
+            "priority": round(float(state.review_priority), 3),
+        }
+        for state in pending_reviews[:5]
+    ]
+
+    response = await run_exam_study_guide_workflow(
+        exam_paper_id=paper.id or 0,
+        subject=paper.subject,
+        exam_title=_build_exam_title(paper),
+        score_summary=score_summary,
+        wrong_question_summaries=wrong_question_summaries,
+        weak_points=weak_point_payload,
+        pending_reviews=review_payload,
+        generated_at=utcnow(),
+    )
+    if response.focus_units:
+        normalized_focus_units: list[ExamStudyGuideFocusUnit] = []
+        for item in response.focus_units:
+            if item.knowledge_unit_name.strip():
+                normalized_focus_units.append(item)
+        response.focus_units = normalized_focus_units
+    return response
+
+
 async def _grade_exam(session: Session, paper: ExamPaper) -> ExamGradeResponse:
     items = exams_repo.list_items_by_paper(session, paper.id or 0)
     decisions = await run_exam_grade_workflow(subject=paper.subject, items=items)
@@ -581,6 +683,32 @@ async def exam_detail(
     if paper is None or paper.subject != normalized or paper.user_id != user.user_id:
         _raise_not_found(f"Exam paper `{exam_paper_id}` not found.")
     return ok_response(_paper_detail(session, paper))
+
+
+@router.get(
+    "/{exam_paper_id}/study-guide",
+    response_model=ApiResponse[ExamStudyGuideResponse],
+    summary="Generate study guide from a graded exam",
+    responses=build_error_responses([400, 404, 409, 500]),
+)
+async def exam_study_guide(
+    subject: str = Path(...),
+    exam_paper_id: int = Path(...),
+    user: CurrentUserContext = Depends(get_current_user_context),
+    session: Session = Depends(get_db),
+) -> ApiResponse[ExamStudyGuideResponse]:
+    normalized = normalize_subject_slug(subject)
+    _ensure_subject(session, normalized, user.user_id)
+    paper = exams_repo.get_exam_paper_by_id(session, exam_paper_id)
+    if paper is None or paper.subject != normalized or paper.user_id != user.user_id:
+        _raise_not_found(f"Exam paper `{exam_paper_id}` not found.")
+    if paper.status != "graded":
+        raise AITeachMeError(
+            detail="Study guide is available only after grading is complete.",
+            error_code="EXAM_NOT_GRADED",
+            status_code=409,
+        )
+    return ok_response(await _study_guide_detail(session, paper))
 
 
 @router.post(

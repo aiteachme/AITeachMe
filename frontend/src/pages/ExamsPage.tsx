@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft,
   ArrowRight,
@@ -32,7 +32,7 @@ import type {
   ExamPaperItemResponse,
 } from "../api/generated/model";
 import { getMasteryOverviewApiV1SubjectsSubjectProfileMasteryGetQueryKey } from "../api/generated/profile";
-import { getApiErrorMessage } from "../api/client";
+import { getApiErrorMessage, orvalApiClient } from "../api/client";
 import { Button } from "../components/ui/Button";
 import { MarkdownViewer } from "../components/ui/MarkdownViewer";
 import { Modal } from "../components/ui/Modal";
@@ -67,6 +67,35 @@ const STATUS_META: Record<string, { label: string; tone: string; accent: string 
     accent: "from-emerald-300 via-teal-300 to-cyan-300",
   },
 };
+
+interface ExamStudyGuideFocusUnit {
+  knowledge_unit_id?: number | null;
+  knowledge_unit_name: string;
+  mastery_score?: number | null;
+  reason: string;
+}
+
+interface ExamStudyGuideResponse {
+  exam_paper_id: number;
+  subject: string;
+  generated_at: string;
+  overall_summary: string;
+  strengths: string[];
+  priority_gaps: string[];
+  action_steps: string[];
+  review_tasks: string[];
+  focus_units: ExamStudyGuideFocusUnit[];
+}
+
+async function getExamStudyGuide(subjectId: string, paperId: number, signal?: AbortSignal) {
+  return orvalApiClient<{ data?: { code?: number; message?: string; data?: ExamStudyGuideResponse } }>(
+    `/api/v1/subjects/${subjectId}/exams/${paperId}/study-guide`,
+    {
+      method: "GET",
+      signal,
+    },
+  );
+}
 
 function formatDateTime(value?: string | null) {
   if (!value) return "暂无记录";
@@ -147,9 +176,13 @@ function hasAnsweredQuestion(item: ExamPaperItemResponse, answers: Record<number
 function ExamStageHeader({
   currentStep,
   onBack,
+  onStepSelect,
+  isStepEnabled,
 }: {
   currentStep: 1 | 2 | 3;
   onBack: () => void;
+  onStepSelect?: (step: 1 | 2 | 3) => void;
+  isStepEnabled?: (step: 1 | 2 | 3) => boolean;
 }) {
   const steps = [1, 2, 3] as const;
 
@@ -169,20 +202,24 @@ function ExamStageHeader({
           {steps.map((step, index) => {
             const isActive = step === currentStep;
             const isCompleted = step < currentStep;
+            const isEnabled = isStepEnabled?.(step) ?? true;
 
             return (
               <div key={step} className="flex items-center gap-1.5 sm:gap-2.5">
-                <div
+                <button
+                  type="button"
+                  disabled={!isEnabled}
+                  onClick={() => onStepSelect?.(step)}
                   className={`grid h-7 w-7 place-items-center rounded-lg text-xs font-semibold transition sm:h-8 sm:w-8 sm:text-sm ${
                     isActive
                       ? "bg-violet-500 text-white shadow-[0_10px_24px_rgba(139,92,246,0.28)]"
                       : isCompleted
                         ? "bg-slate-900 text-white"
                         : "bg-slate-200 text-slate-700"
-                  }`}
+                  } ${isEnabled ? "cursor-pointer" : "cursor-not-allowed opacity-45"}`}
                 >
                   {step}
-                </div>
+                </button>
                 {index < steps.length - 1 && (
                   <div
                     className="h-px w-10 sm:w-16"
@@ -198,6 +235,108 @@ function ExamStageHeader({
         </div>
 
         <div className="justify-self-end" />
+      </div>
+    </div>
+  );
+}
+
+function StudyGuideSection({
+  icon,
+  title,
+  items,
+}: {
+  icon: ReactNode;
+  title: string;
+  items: string[];
+}) {
+  if (!items.length) return null;
+
+  return (
+    <section className="rounded-[28px] border border-slate-200/80 bg-white/92 p-6 shadow-sm">
+      <div className="flex items-center gap-3">
+        <div className="grid h-10 w-10 place-items-center rounded-2xl bg-slate-100 text-slate-700">
+          {icon}
+        </div>
+        <div>
+          <h2 className="text-lg font-semibold text-slate-950">{title}</h2>
+          <p className="text-sm text-slate-500">根据本次考卷与当前掌握情况生成</p>
+        </div>
+      </div>
+      <div className="mt-5 space-y-3">
+        {items.map((item, index) => (
+          <div key={`${title}-${index}`} className="flex gap-3 rounded-2xl bg-slate-50 px-4 py-3 text-sm leading-7 text-slate-700">
+            <span className="mt-1 text-xs font-semibold text-slate-400">{index + 1}</span>
+            <span>{item}</span>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function ExamStudyGuideView({
+  guide,
+  paper,
+  onBackToReview,
+}: {
+  guide: ExamStudyGuideResponse;
+  paper: ExamPaperDetailResponse;
+  onBackToReview: () => void;
+}) {
+  return (
+    <div className="space-y-8">
+      <section className="rounded-[32px] border border-slate-200/80 bg-[linear-gradient(135deg,#ffffff_0%,#f8fbff_52%,#f2f7ff_100%)] px-6 py-7 shadow-sm sm:px-8">
+        <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+          <div className="max-w-3xl">
+            <div className="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold tracking-[0.16em] text-slate-500">
+              <Sparkles className="h-3.5 w-3.5" />
+              学习指南
+            </div>
+            <h1 className="mt-4 text-3xl font-semibold tracking-[-0.04em] text-slate-950 sm:text-4xl">
+              {buildExamTitle(paper)}
+            </h1>
+            <p className="mt-4 text-base leading-8 text-slate-600">{guide.overall_summary}</p>
+          </div>
+          <Button variant="outline" className="rounded-full px-5" onClick={onBackToReview}>
+            返回批改结果
+          </Button>
+        </div>
+      </section>
+
+      {guide.focus_units.length > 0 && (
+        <section className="rounded-[28px] border border-slate-200/80 bg-white/92 p-6 shadow-sm">
+          <div className="flex items-center gap-3">
+            <div className="grid h-10 w-10 place-items-center rounded-2xl bg-rose-50 text-rose-700">
+              <Target className="h-5 w-5" />
+            </div>
+            <div>
+              <h2 className="text-lg font-semibold text-slate-950">重点查漏知识点</h2>
+              <p className="text-sm text-slate-500">优先处理这些最影响当前表现的知识点</p>
+            </div>
+          </div>
+          <div className="mt-5 grid gap-4 lg:grid-cols-2">
+            {guide.focus_units.map((unit, index) => (
+              <div key={`${unit.knowledge_unit_name}-${index}`} className="rounded-[24px] border border-slate-200 bg-slate-50 px-5 py-4">
+                <div className="flex items-center justify-between gap-3">
+                  <h3 className="text-base font-semibold text-slate-900">{unit.knowledge_unit_name}</h3>
+                  {typeof unit.mastery_score === "number" && (
+                    <span className="rounded-full bg-white px-3 py-1 text-xs font-medium text-slate-500 ring-1 ring-inset ring-slate-200">
+                      掌握度 {(unit.mastery_score * 100).toFixed(0)}%
+                    </span>
+                  )}
+                </div>
+                <p className="mt-3 text-sm leading-7 text-slate-600">{unit.reason}</p>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      <div className="grid gap-6 xl:grid-cols-2">
+        <StudyGuideSection icon={<GraduationCap className="h-5 w-5" />} title="做得不错" items={guide.strengths} />
+        <StudyGuideSection icon={<Layers3 className="h-5 w-5" />} title="优先补漏" items={guide.priority_gaps} />
+        <StudyGuideSection icon={<ArrowRight className="h-5 w-5" />} title="下一步怎么学" items={guide.action_steps} />
+        <StudyGuideSection icon={<FileText className="h-5 w-5" />} title="立刻可做的复习任务" items={guide.review_tasks} />
       </div>
     </div>
   );
@@ -371,6 +510,7 @@ function ExamPaperWorkspace({ subjectId, paperId, backHref }: ExamPaperWorkspace
   const { toast } = useToast();
   const [answers, setAnswers] = useState<Record<number, string>>({});
   const [pageScale, setPageScale] = useState(1);
+  const [activeStage, setActiveStage] = useState<1 | 2 | 3>(1);
 
   const examDetailQuery = useExamDetailApiV1SubjectsSubjectExamsExamPaperIdGet(subjectId, paperId, {
     query: {
@@ -382,7 +522,24 @@ function ExamPaperWorkspace({ subjectId, paperId, backHref }: ExamPaperWorkspace
     () => unwrapOrvalResponse<ExamPaperDetailResponse>(examDetailQuery.data),
     [examDetailQuery.data],
   );
-  const currentStep: 1 | 2 | 3 = paper?.status === "graded" ? 2 : 1;
+
+  useEffect(() => {
+    if (!paper) return;
+    if (paper.status === "graded") {
+      setActiveStage((current) => (current === 1 ? 2 : current));
+      return;
+    }
+    setActiveStage(1);
+  }, [paper?.id, paper?.status]);
+
+  const studyGuideQuery = useQuery({
+    queryKey: ["exam-study-guide", subjectId, paperId],
+    enabled: Boolean(subjectId && paperId && paper?.status === "graded" && activeStage === 3),
+    queryFn: async ({ signal }) => {
+      const response = await getExamStudyGuide(subjectId, paperId, signal);
+      return unwrapOrvalResponse<ExamStudyGuideResponse>(response);
+    },
+  });
 
   useEffect(() => {
     if (!paper?.items) return;
@@ -413,6 +570,7 @@ function ExamPaperWorkspace({ subjectId, paperId, backHref }: ExamPaperWorkspace
           description: `本次得分 ${graded?.score ?? 0}，掌握度已同步更新。`,
           variant: "success",
         });
+        setActiveStage(2);
         window.scrollTo({ top: 0, behavior: "smooth" });
       },
       onError: (error) => {
@@ -428,7 +586,23 @@ function ExamPaperWorkspace({ subjectId, paperId, backHref }: ExamPaperWorkspace
   return (
     <div className="relative min-h-[calc(100vh-4rem)]">
       <div className="pointer-events-none fixed inset-0 -z-10 bg-[linear-gradient(180deg,#ffffff_0%,#f7f9fc_36%,#eef3f8_100%)]" />
-      <ExamStageHeader currentStep={currentStep} onBack={() => navigate(backHref)} />
+      <ExamStageHeader
+        currentStep={paper?.status === "graded" ? activeStage : 1}
+        onBack={() => navigate(backHref)}
+        onStepSelect={(step) => {
+          if (step === 1) {
+            setActiveStage(1);
+            return;
+          }
+          if (paper?.status === "graded") {
+            setActiveStage(step);
+          }
+        }}
+        isStepEnabled={(step) => {
+          if (step === 1) return true;
+          return paper?.status === "graded";
+        }}
+      />
 
       <div className="px-4 py-6 sm:px-6 lg:px-8">
         <div className="mx-auto max-w-7xl space-y-6">
@@ -452,6 +626,8 @@ function ExamPaperWorkspace({ subjectId, paperId, backHref }: ExamPaperWorkspace
 
           {paper && (
             <>
+              {activeStage !== 3 && (
+                <>
               <aside className="hidden lg:block">
                 <div className="fixed left-2 top-28 z-20 w-[112px] rounded-[28px] border border-slate-200/80 bg-white/92 px-3 py-4 shadow-[0_18px_40px_rgba(15,23,42,0.08)] backdrop-blur xl:left-3 xl:w-[136px] 2xl:w-[184px]">
                   <div className="mb-3 px-2 text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
@@ -553,6 +729,8 @@ function ExamPaperWorkspace({ subjectId, paperId, backHref }: ExamPaperWorkspace
                     const answerValue = answers[item.id] ?? "";
                     const isChoice = item.question_type === "single_choice";
                     const isGraded = paper.status === "graded";
+                    const isReviewStage = isGraded && activeStage === 2;
+                    const isReadonly = isGraded;
                     const isCorrect = item.is_correct === true;
 
                     return (
@@ -585,15 +763,15 @@ function ExamPaperWorkspace({ subjectId, paperId, backHref }: ExamPaperWorkspace
                               {(item.options ?? []).map((option: string) => {
                                 const isSelected = answerValue === option;
                                 const isCorrectOption = (item.correct_answer ?? "") === option;
-                                const isWrongSelectedOption = isGraded && isSelected && !isCorrectOption;
-                                const isRightOption = isGraded && isSelected && isCorrectOption;
+                                const isWrongSelectedOption = isReviewStage && isSelected && !isCorrectOption;
+                                const isRightOption = isReviewStage && isSelected && isCorrectOption;
                                 return (
                                   <button
                                     key={option}
                                     type="button"
                                     role="radio"
                                     aria-checked={isSelected}
-                                    disabled={isGraded}
+                                    disabled={isReadonly}
                                     onClick={() =>
                                       setAnswers((current) => ({
                                         ...current,
@@ -601,25 +779,33 @@ function ExamPaperWorkspace({ subjectId, paperId, backHref }: ExamPaperWorkspace
                                       }))
                                     }
                                     className={`flex items-center gap-5 rounded-[28px] border px-7 py-6 text-left text-lg leading-8 transition ${
-                                      isGraded
+                                      isReviewStage
                                         ? isRightOption
                                           ? "border-emerald-300 bg-emerald-50 text-emerald-900 shadow-[0_12px_30px_rgba(16,185,129,0.12)]"
                                           : isWrongSelectedOption
                                             ? "border-rose-300 bg-rose-50 text-rose-900 shadow-[0_12px_30px_rgba(244,63,94,0.10)]"
                                             : "border-slate-200 bg-white text-slate-500"
+                                        : isReadonly
+                                          ? isSelected
+                                            ? "border-slate-900 bg-slate-900 text-white shadow-[0_18px_40px_rgba(15,23,42,0.16)]"
+                                            : "border-slate-200 bg-white text-slate-700"
                                         : isSelected
                                           ? "border-slate-900 bg-slate-900 text-white shadow-[0_18px_40px_rgba(15,23,42,0.16)]"
                                           : "border-slate-200 bg-white text-slate-800 hover:border-slate-300 hover:bg-slate-50"
-                                    } disabled:cursor-not-allowed`}
+                                    } ${isReadonly ? "cursor-default" : ""} disabled:cursor-not-allowed`}
                                   >
                                     <span
                                       className={`grid h-8 w-8 shrink-0 place-items-center rounded-full border-4 ${
-                                        isGraded
+                                        isReviewStage
                                           ? isRightOption
                                             ? "border-emerald-600 bg-white"
                                             : isWrongSelectedOption
                                               ? "border-rose-600 bg-white"
                                               : "border-slate-300 bg-white"
+                                          : isReadonly
+                                            ? isSelected
+                                              ? "border-white bg-white"
+                                              : "border-slate-400 bg-white"
                                           : isSelected
                                             ? "border-white bg-white"
                                             : "border-slate-900 bg-white"
@@ -627,11 +813,15 @@ function ExamPaperWorkspace({ subjectId, paperId, backHref }: ExamPaperWorkspace
                                     >
                                       <span
                                         className={`h-3.5 w-3.5 rounded-full ${
-                                          isGraded
+                                          isReviewStage
                                             ? isRightOption
                                               ? "bg-emerald-600"
                                               : isWrongSelectedOption
                                                 ? "bg-rose-600"
+                                                : "bg-transparent"
+                                            : isReadonly
+                                              ? isSelected
+                                                ? "bg-slate-900"
                                                 : "bg-transparent"
                                             : isSelected
                                               ? "bg-slate-900"
@@ -640,12 +830,16 @@ function ExamPaperWorkspace({ subjectId, paperId, backHref }: ExamPaperWorkspace
                                       />
                                     </span>
                                     <div className={`min-w-0 flex-1 [&_p]:mb-0 [&_p]:text-lg [&_p]:leading-8 [&_.katex-display]:my-3 [&_.katex]:text-inherit ${
-                                      isGraded
+                                      isReviewStage
                                         ? isRightOption
                                           ? "[&_p]:text-emerald-900"
                                           : isWrongSelectedOption
                                             ? "[&_p]:text-rose-900"
                                             : "[&_p]:text-slate-500"
+                                        : isReadonly
+                                          ? isSelected
+                                            ? "[&_p]:text-white"
+                                            : "[&_p]:text-slate-700"
                                         : isSelected
                                           ? "[&_p]:text-white"
                                           : "[&_p]:text-slate-800"
@@ -660,10 +854,12 @@ function ExamPaperWorkspace({ subjectId, paperId, backHref }: ExamPaperWorkspace
                             <div className="mt-10">
                               <textarea
                                 className={`min-h-36 w-full rounded-[28px] border px-6 py-5 text-lg leading-8 outline-none transition ${
-                                  isGraded
+                                  isReviewStage
                                     ? isCorrect
                                       ? "border-emerald-300 bg-emerald-50 text-emerald-900"
                                       : "border-rose-300 bg-rose-50 text-rose-900"
+                                    : isReadonly
+                                      ? "border-slate-200 bg-slate-50 text-slate-900"
                                     : "border-slate-200 bg-white text-slate-900 focus:border-slate-400"
                                 }`}
                                 placeholder={item.question_type === "fill_blank" ? "填写答案" : "输入你的作答"}
@@ -671,13 +867,13 @@ function ExamPaperWorkspace({ subjectId, paperId, backHref }: ExamPaperWorkspace
                                 onChange={(event) =>
                                   setAnswers((current) => ({ ...current, [item.id]: event.target.value }))
                                 }
-                                disabled={isGraded}
+                                disabled={isReadonly}
                               />
                             </div>
                           )}
                         </div>
 
-                        {paper.status === "graded" && (
+                        {isReviewStage && (
                           <div className="mx-auto mt-6 max-w-6xl rounded-[24px] bg-slate-50 px-5 py-5 text-sm leading-7 text-slate-600">
                             <div className="[&_p]:mb-2 [&_.katex-display]:my-3">
                               <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">你的答案</p>
@@ -704,9 +900,9 @@ function ExamPaperWorkspace({ subjectId, paperId, backHref }: ExamPaperWorkspace
                   })}
                 </section>
 
-                <section className="flex flex-col items-center justify-center border-t border-slate-100 pt-4 pb-12 text-center sm:pb-16">
+                <section className="flex flex-col items-center justify-center gap-3 border-t border-slate-100 pt-4 pb-12 text-center sm:pb-16">
                   <Button
-                    className="h-14 rounded-full bg-black px-10 text-base font-semibold shadow-[0_18px_40px_rgba(15,23,42,0.18)]"
+                    className={`h-14 rounded-full bg-black px-10 text-base font-semibold shadow-[0_18px_40px_rgba(15,23,42,0.18)] ${paper.status === "graded" ? "hidden" : ""}`}
                     onClick={() =>
                       submitExam.mutate({
                         subject: subjectId,
@@ -720,7 +916,7 @@ function ExamPaperWorkspace({ subjectId, paperId, backHref }: ExamPaperWorkspace
                         },
                       })
                     }
-                    disabled={paper.status === "graded" || submitExam.isPending}
+                    disabled={submitExam.isPending}
                   >
                     {paper.status === "graded"
                       ? "已完成批改"
@@ -728,8 +924,48 @@ function ExamPaperWorkspace({ subjectId, paperId, backHref }: ExamPaperWorkspace
                         ? "提交中..."
                         : "提交这份考卷"}
                   </Button>
+                  {paper.status === "graded" && (
+                    <>
+                      <Button
+                        className="h-14 rounded-full bg-black px-10 text-base font-semibold shadow-[0_18px_40px_rgba(15,23,42,0.18)]"
+                        onClick={() => {
+                          setActiveStage(3);
+                          window.scrollTo({ top: 0, behavior: "smooth" });
+                        }}
+                      >
+                        查看学习指南
+                      </Button>
+                      <p className="text-sm text-slate-500">进入第 3 步，根据本次结果继续查漏补缺。</p>
+                    </>
+                  )}
                   </section>
                 </div>
+                </>
+              )}
+
+              {activeStage === 3 && (
+                <div className="mx-auto max-w-6xl">
+                  {studyGuideQuery.isLoading && (
+                    <div className="rounded-[28px] border border-slate-200 bg-white px-6 py-12 text-center text-sm text-slate-500">
+                      正在生成学习指南...
+                    </div>
+                  )}
+
+                  {studyGuideQuery.error && (
+                    <div className="rounded-[28px] border border-red-200 bg-red-50 px-6 py-4 text-sm text-red-700">
+                      {getApiErrorMessage(studyGuideQuery.error, "学习指南生成失败")}
+                    </div>
+                  )}
+
+                  {studyGuideQuery.data && (
+                    <ExamStudyGuideView
+                      guide={studyGuideQuery.data}
+                      paper={paper}
+                      onBackToReview={() => setActiveStage(2)}
+                    />
+                  )}
+                </div>
+              )}
             </>
           )}
         </div>

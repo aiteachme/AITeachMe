@@ -61,6 +61,25 @@ class ExamGradeResponse(RuntimeStatusResponse):
     mastery_consumed: bool
 
 
+class ExamStudyGuideFocusUnit(BaseModel):
+    knowledge_unit_id: int | None = None
+    knowledge_unit_name: str
+    mastery_score: float | None = None
+    reason: str
+
+
+class ExamStudyGuideResponse(BaseModel):
+    exam_paper_id: int
+    subject: str
+    generated_at: datetime
+    overall_summary: str
+    strengths: list[str] = Field(default_factory=list)
+    priority_gaps: list[str] = Field(default_factory=list)
+    action_steps: list[str] = Field(default_factory=list)
+    review_tasks: list[str] = Field(default_factory=list)
+    focus_units: list[ExamStudyGuideFocusUnit] = Field(default_factory=list)
+
+
 class ExamHistoryItem(BaseModel):
     id: int
     subject: str

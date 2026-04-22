@@ -28,6 +28,7 @@ import type {
   ApiResponseExamGenerateResponse,
   ApiResponseExamGradeResponse,
   ApiResponseExamPaperDetailResponse,
+  ApiResponseExamStudyGuideResponse,
   ApiResponsePaginatedDataExamHistoryItem,
   ErrorResponse,
   ExamGenerateRequest,
@@ -434,6 +435,153 @@ export function useExamDetailApiV1SubjectsSubjectExamsExamPaperIdGet<TData = Awa
  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
 
   const queryOptions = getExamDetailApiV1SubjectsSubjectExamsExamPaperIdGetQueryOptions(subject,examPaperId,options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+/**
+ * @summary Generate study guide from a graded exam
+ */
+export type examStudyGuideApiV1SubjectsSubjectExamsExamPaperIdStudyGuideGetResponse200 = {
+  data: ApiResponseExamStudyGuideResponse
+  status: 200
+}
+
+export type examStudyGuideApiV1SubjectsSubjectExamsExamPaperIdStudyGuideGetResponse400 = {
+  data: ErrorResponse
+  status: 400
+}
+
+export type examStudyGuideApiV1SubjectsSubjectExamsExamPaperIdStudyGuideGetResponse404 = {
+  data: ErrorResponse
+  status: 404
+}
+
+export type examStudyGuideApiV1SubjectsSubjectExamsExamPaperIdStudyGuideGetResponse409 = {
+  data: ErrorResponse
+  status: 409
+}
+
+export type examStudyGuideApiV1SubjectsSubjectExamsExamPaperIdStudyGuideGetResponse422 = {
+  data: HTTPValidationError
+  status: 422
+}
+
+export type examStudyGuideApiV1SubjectsSubjectExamsExamPaperIdStudyGuideGetResponse500 = {
+  data: ErrorResponse
+  status: 500
+}
+
+export type examStudyGuideApiV1SubjectsSubjectExamsExamPaperIdStudyGuideGetResponseSuccess = (examStudyGuideApiV1SubjectsSubjectExamsExamPaperIdStudyGuideGetResponse200) & {
+  headers: Headers;
+};
+export type examStudyGuideApiV1SubjectsSubjectExamsExamPaperIdStudyGuideGetResponseError = (examStudyGuideApiV1SubjectsSubjectExamsExamPaperIdStudyGuideGetResponse400 | examStudyGuideApiV1SubjectsSubjectExamsExamPaperIdStudyGuideGetResponse404 | examStudyGuideApiV1SubjectsSubjectExamsExamPaperIdStudyGuideGetResponse409 | examStudyGuideApiV1SubjectsSubjectExamsExamPaperIdStudyGuideGetResponse422 | examStudyGuideApiV1SubjectsSubjectExamsExamPaperIdStudyGuideGetResponse500) & {
+  headers: Headers;
+};
+
+export type examStudyGuideApiV1SubjectsSubjectExamsExamPaperIdStudyGuideGetResponse = (examStudyGuideApiV1SubjectsSubjectExamsExamPaperIdStudyGuideGetResponseSuccess | examStudyGuideApiV1SubjectsSubjectExamsExamPaperIdStudyGuideGetResponseError)
+
+export const getExamStudyGuideApiV1SubjectsSubjectExamsExamPaperIdStudyGuideGetUrl = (subject: string,
+    examPaperId: number,) => {
+
+
+
+
+  return `/api/v1/subjects/${subject}/exams/${examPaperId}/study-guide`
+}
+
+export const examStudyGuideApiV1SubjectsSubjectExamsExamPaperIdStudyGuideGet = async (subject: string,
+    examPaperId: number, options?: RequestInit): Promise<examStudyGuideApiV1SubjectsSubjectExamsExamPaperIdStudyGuideGetResponse> => {
+
+  return orvalApiClient<examStudyGuideApiV1SubjectsSubjectExamsExamPaperIdStudyGuideGetResponse>(getExamStudyGuideApiV1SubjectsSubjectExamsExamPaperIdStudyGuideGetUrl(subject,examPaperId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getExamStudyGuideApiV1SubjectsSubjectExamsExamPaperIdStudyGuideGetQueryKey = (subject: string,
+    examPaperId: number,) => {
+    return [
+    `/api/v1/subjects/${subject}/exams/${examPaperId}/study-guide`
+    ] as const;
+    }
+
+
+export const getExamStudyGuideApiV1SubjectsSubjectExamsExamPaperIdStudyGuideGetQueryOptions = <TData = Awaited<ReturnType<typeof examStudyGuideApiV1SubjectsSubjectExamsExamPaperIdStudyGuideGet>>, TError = ErrorResponse | HTTPValidationError>(subject: string,
+    examPaperId: number, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof examStudyGuideApiV1SubjectsSubjectExamsExamPaperIdStudyGuideGet>>, TError, TData>>, request?: SecondParameter<typeof orvalApiClient>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getExamStudyGuideApiV1SubjectsSubjectExamsExamPaperIdStudyGuideGetQueryKey(subject,examPaperId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof examStudyGuideApiV1SubjectsSubjectExamsExamPaperIdStudyGuideGet>>> = ({ signal }) => examStudyGuideApiV1SubjectsSubjectExamsExamPaperIdStudyGuideGet(subject,examPaperId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(subject && examPaperId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof examStudyGuideApiV1SubjectsSubjectExamsExamPaperIdStudyGuideGet>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type ExamStudyGuideApiV1SubjectsSubjectExamsExamPaperIdStudyGuideGetQueryResult = NonNullable<Awaited<ReturnType<typeof examStudyGuideApiV1SubjectsSubjectExamsExamPaperIdStudyGuideGet>>>
+export type ExamStudyGuideApiV1SubjectsSubjectExamsExamPaperIdStudyGuideGetQueryError = ErrorResponse | HTTPValidationError
+
+
+export function useExamStudyGuideApiV1SubjectsSubjectExamsExamPaperIdStudyGuideGet<TData = Awaited<ReturnType<typeof examStudyGuideApiV1SubjectsSubjectExamsExamPaperIdStudyGuideGet>>, TError = ErrorResponse | HTTPValidationError>(
+ subject: string,
+    examPaperId: number, options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof examStudyGuideApiV1SubjectsSubjectExamsExamPaperIdStudyGuideGet>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof examStudyGuideApiV1SubjectsSubjectExamsExamPaperIdStudyGuideGet>>,
+          TError,
+          Awaited<ReturnType<typeof examStudyGuideApiV1SubjectsSubjectExamsExamPaperIdStudyGuideGet>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof orvalApiClient>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useExamStudyGuideApiV1SubjectsSubjectExamsExamPaperIdStudyGuideGet<TData = Awaited<ReturnType<typeof examStudyGuideApiV1SubjectsSubjectExamsExamPaperIdStudyGuideGet>>, TError = ErrorResponse | HTTPValidationError>(
+ subject: string,
+    examPaperId: number, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof examStudyGuideApiV1SubjectsSubjectExamsExamPaperIdStudyGuideGet>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof examStudyGuideApiV1SubjectsSubjectExamsExamPaperIdStudyGuideGet>>,
+          TError,
+          Awaited<ReturnType<typeof examStudyGuideApiV1SubjectsSubjectExamsExamPaperIdStudyGuideGet>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof orvalApiClient>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useExamStudyGuideApiV1SubjectsSubjectExamsExamPaperIdStudyGuideGet<TData = Awaited<ReturnType<typeof examStudyGuideApiV1SubjectsSubjectExamsExamPaperIdStudyGuideGet>>, TError = ErrorResponse | HTTPValidationError>(
+ subject: string,
+    examPaperId: number, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof examStudyGuideApiV1SubjectsSubjectExamsExamPaperIdStudyGuideGet>>, TError, TData>>, request?: SecondParameter<typeof orvalApiClient>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * @summary Generate study guide from a graded exam
+ */
+
+export function useExamStudyGuideApiV1SubjectsSubjectExamsExamPaperIdStudyGuideGet<TData = Awaited<ReturnType<typeof examStudyGuideApiV1SubjectsSubjectExamsExamPaperIdStudyGuideGet>>, TError = ErrorResponse | HTTPValidationError>(
+ subject: string,
+    examPaperId: number, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof examStudyGuideApiV1SubjectsSubjectExamsExamPaperIdStudyGuideGet>>, TError, TData>>, request?: SecondParameter<typeof orvalApiClient>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getExamStudyGuideApiV1SubjectsSubjectExamsExamPaperIdStudyGuideGetQueryOptions(subject,examPaperId,options)
 
   const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
 

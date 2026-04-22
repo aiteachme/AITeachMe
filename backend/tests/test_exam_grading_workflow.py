@@ -7,6 +7,10 @@ from app.workflows.examine.exam_grade.lib.grader import (
     SubjectiveGradePayload,
     grade_exam_items_with_workflow,
 )
+from app.workflows.examine.exam_grade.lib.study_guide import (
+    ExamStudyGuidePayload,
+    generate_exam_study_guide,
+)
 
 
 @pytest.mark.anyio
@@ -79,3 +83,42 @@ async def test_grade_exam_items_with_workflow_uses_llm_for_subjective_questions(
     assert decision.score_obtained == pytest.approx(0.9)
     assert decision.grading_mode == "subjective_llm"
     assert "核心推导" in decision.feedback_text
+
+
+@pytest.mark.anyio
+async def test_generate_exam_study_guide_returns_structured_sections(monkeypatch):
+    async def fake_acompletion_with_fallback(messages, **kwargs):
+        return ExamStudyGuidePayload(
+            overall_summary="本次考卷主要暴露出函数综合应用与公式表达稳定性不足，需要优先围绕错题相关知识点回补。",
+            strengths=["基础概念辨识整体稳定。", "作答覆盖率较高。"],
+            priority_gaps=["函数综合应用", "公式表达规范", "错题对应知识点复盘"],
+            action_steps=["先复盘错题。", "再按知识点回补。", "最后做针对性练习。"],
+            review_tasks=["完成函数综合应用复习任务。", "整理本次错题本。"],
+            focus_units=[
+                {
+                    "knowledge_unit_id": 11,
+                    "knowledge_unit_name": "函数综合应用",
+                    "mastery_score": 0.52,
+                    "reason": "掌握度偏低，且本次错题集中出现。",
+                }
+            ],
+        )
+
+    monkeypatch.setattr("app.workflows.examine.exam_grade.lib.study_guide.acompletion_with_fallback", fake_acompletion_with_fallback)
+
+    guide = await generate_exam_study_guide(
+        exam_paper_id=9,
+        subject="math",
+        exam_title="专项练习 · 04/23 12:00",
+        score_summary="得分 4/8，共 8 题，正确 4 题，错误或未作答 4 题。",
+        wrong_question_summaries=[{"question_stem": "题目A", "user_answer": "A", "correct_answer": "B", "analysis": "误判条件"}],
+        weak_points=[{"knowledge_unit_id": 11, "knowledge_unit_name": "函数综合应用", "mastery_score": 0.52, "reason": "掌握度偏低"}],
+        pending_reviews=[{"knowledge_unit_name": "函数综合应用", "reason": "建议尽快回顾", "priority": 0.91}],
+        generated_at=__import__("datetime").datetime.now(),
+    )
+
+    assert guide.exam_paper_id == 9
+    assert guide.strengths
+    assert guide.priority_gaps
+    assert guide.action_steps
+    assert guide.focus_units[0].knowledge_unit_name == "函数综合应用"
