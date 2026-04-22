@@ -488,23 +488,23 @@ export const getExamStudyGuideApiV1SubjectsSubjectExamsExamPaperIdStudyGuideGetU
     examPaperId: number,) => {
 
 
-
+  
 
   return `/api/v1/subjects/${subject}/exams/${examPaperId}/study-guide`
 }
 
 export const examStudyGuideApiV1SubjectsSubjectExamsExamPaperIdStudyGuideGet = async (subject: string,
     examPaperId: number, options?: RequestInit): Promise<examStudyGuideApiV1SubjectsSubjectExamsExamPaperIdStudyGuideGetResponse> => {
-
+  
   return orvalApiClient<examStudyGuideApiV1SubjectsSubjectExamsExamPaperIdStudyGuideGetResponse>(getExamStudyGuideApiV1SubjectsSubjectExamsExamPaperIdStudyGuideGetUrl(subject,examPaperId),
-  {
+  {      
     ...options,
     method: 'GET'
-
-
+    
+    
   }
 );}
-
+  
 
 
 
@@ -516,7 +516,7 @@ export const getExamStudyGuideApiV1SubjectsSubjectExamsExamPaperIdStudyGuideGetQ
     ] as const;
     }
 
-
+    
 export const getExamStudyGuideApiV1SubjectsSubjectExamsExamPaperIdStudyGuideGetQueryOptions = <TData = Awaited<ReturnType<typeof examStudyGuideApiV1SubjectsSubjectExamsExamPaperIdStudyGuideGet>>, TError = ErrorResponse | HTTPValidationError>(subject: string,
     examPaperId: number, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof examStudyGuideApiV1SubjectsSubjectExamsExamPaperIdStudyGuideGet>>, TError, TData>>, request?: SecondParameter<typeof orvalApiClient>}
 ) => {
@@ -525,13 +525,13 @@ const {query: queryOptions, request: requestOptions} = options ?? {};
 
   const queryKey =  queryOptions?.queryKey ?? getExamStudyGuideApiV1SubjectsSubjectExamsExamPaperIdStudyGuideGetQueryKey(subject,examPaperId);
 
-
+  
 
     const queryFn: QueryFunction<Awaited<ReturnType<typeof examStudyGuideApiV1SubjectsSubjectExamsExamPaperIdStudyGuideGet>>> = ({ signal }) => examStudyGuideApiV1SubjectsSubjectExamsExamPaperIdStudyGuideGet(subject,examPaperId, { signal, ...requestOptions });
 
+      
 
-
-
+      
 
    return  { queryKey, queryFn, enabled: !!(subject && examPaperId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof examStudyGuideApiV1SubjectsSubjectExamsExamPaperIdStudyGuideGet>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
 }
@@ -574,7 +574,7 @@ export function useExamStudyGuideApiV1SubjectsSubjectExamsExamPaperIdStudyGuideG
 export function useExamStudyGuideApiV1SubjectsSubjectExamsExamPaperIdStudyGuideGet<TData = Awaited<ReturnType<typeof examStudyGuideApiV1SubjectsSubjectExamsExamPaperIdStudyGuideGet>>, TError = ErrorResponse | HTTPValidationError>(
  subject: string,
     examPaperId: number, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof examStudyGuideApiV1SubjectsSubjectExamsExamPaperIdStudyGuideGet>>, TError, TData>>, request?: SecondParameter<typeof orvalApiClient>}
- , queryClient?: QueryClient
+ , queryClient?: QueryClient 
  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
 
   const queryOptions = getExamStudyGuideApiV1SubjectsSubjectExamsExamPaperIdStudyGuideGetQueryOptions(subject,examPaperId,options)
@@ -583,8 +583,6 @@ export function useExamStudyGuideApiV1SubjectsSubjectExamsExamPaperIdStudyGuideG
 
   return { ...query, queryKey: queryOptions.queryKey };
 }
-
-
 
 
 
