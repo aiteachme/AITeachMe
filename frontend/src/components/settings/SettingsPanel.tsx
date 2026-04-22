@@ -2,7 +2,10 @@ import { useEffect, useMemo, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { X } from "lucide-react";
 
-import { getStoredSystemSettingsOverview } from "../../lib/systemSettings";
+import {
+  SYSTEM_SETTINGS_CHANGED_EVENT,
+  getStoredSystemSettingsOverview,
+} from "../../lib/systemSettings";
 
 import { SETTINGS_STYLES } from "./constants";
 import { SettingsFooter } from "./SettingsFooter";
@@ -20,7 +23,7 @@ interface SettingsPanelProps {
 
 export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
   const [activeSection, setActiveSection] = useState<SectionId>("");
-  const [storedOverview] = useState(() => getStoredSystemSettingsOverview());
+  const [storedOverview, setStoredOverview] = useState(() => getStoredSystemSettingsOverview());
   const {
     overview,
     isOverviewLoading,
@@ -41,6 +44,22 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
   const sections = effectiveOverview?.sections ?? [];
   const runtimeMode = effectiveOverview?.mode ?? "local";
   const isLocalRuntime = runtimeMode === "local";
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const handleSettingsChanged = () => {
+      // Keep the panel aligned with the global overview cache without requiring a full reload.
+      // `useSettingsOverview` still owns the editable live state while the panel is open.
+      const next = getStoredSystemSettingsOverview();
+      setStoredOverview(next);
+    };
+
+    window.addEventListener(SYSTEM_SETTINGS_CHANGED_EVENT, handleSettingsChanged);
+    return () => window.removeEventListener(SYSTEM_SETTINGS_CHANGED_EVENT, handleSettingsChanged);
+  }, []);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -80,10 +99,10 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
         <div className={SETTINGS_STYLES.panel.backdrop} onClick={onClose} />
         <div className={SETTINGS_STYLES.panel.viewport}>
           <motion.div
-            initial={{ opacity: 0, scale: 0.96, y: 10 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.96, y: 10 }}
-            transition={{ type: "spring", stiffness: 500, damping: 40 }}
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 4 }}
+            transition={{ duration: 0.16, ease: "easeOut" }}
             className={SETTINGS_STYLES.panel.dialog}
           >
             <SettingsNav

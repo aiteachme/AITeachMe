@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 
 import { apiClient, getApiErrorMessage } from "../../api/client";
 import {
@@ -37,6 +38,7 @@ interface UseSettingsOverviewOptions {
 }
 
 export function useSettingsOverview({ isOpen }: UseSettingsOverviewOptions) {
+  const queryClient = useQueryClient();
   const [overview, setOverview] = useState<SettingsOverviewData | null>(
     () => getStoredSystemSettingsOverview(),
   );
@@ -174,6 +176,7 @@ export function useSettingsOverview({ isOpen }: UseSettingsOverviewOptions) {
         },
       });
       applyOverview(response.data);
+      await queryClient.refetchQueries({ type: "active" });
       setSaveState("saved");
       window.setTimeout(() => setSaveState("idle"), 1400);
     } catch (error) {
@@ -187,6 +190,7 @@ export function useSettingsOverview({ isOpen }: UseSettingsOverviewOptions) {
     envDraft,
     hasEnvChanges,
     hasServerChanges,
+    queryClient,
     savedEnvDraft,
     settingsDraft,
   ]);

@@ -89,8 +89,8 @@ function RenameSubjectModal({
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center">
-      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative z-10 w-[380px] max-w-[90vw] rounded-2xl border border-slate-200 bg-white shadow-2xl">
+      <div className="absolute inset-0 bg-black/45" onClick={onClose} />
+      <div className="relative z-10 w-[380px] max-w-[90vw] rounded-2xl border border-slate-200 bg-white shadow-[0_18px_48px_-24px_rgba(15,23,42,0.35)]">
         <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
           <h3 className="text-sm font-bold text-slate-900">重命名学科</h3>
           <button onClick={onClose} className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600">
@@ -270,12 +270,12 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
       </button>
 
       {isMobileOpen ? (
-        <div className="fixed inset-0 z-30 bg-black/20 backdrop-blur-sm lg:hidden" onClick={() => setIsMobileOpen(false)} />
+        <div className="fixed inset-0 z-30 bg-black/28 lg:hidden" onClick={() => setIsMobileOpen(false)} />
       ) : null}
 
       <aside
         className={cn(
-          "fixed inset-y-0 left-0 z-40 flex shrink-0 flex-col border-r border-slate-200/50 bg-gradient-to-b from-white/90 to-white/50 backdrop-blur-2xl shadow-[4px_0_30px_rgba(0,0,0,0.03)] ring-1 ring-white/50 transition-all lg:static",
+          "fixed inset-y-0 left-0 z-40 flex shrink-0 flex-col border-r border-slate-200/50 bg-gradient-to-b from-white/96 to-white/92 shadow-[4px_0_24px_rgba(0,0,0,0.03)] ring-1 ring-white/50 transition-[width,transform] duration-200 lg:static",
           effectiveCollapsed ? "w-[64px]" : "w-[240px]",
           isMobileOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0",
         )}
@@ -317,7 +317,7 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
                 }}
                 title="新建学科"
                 className={cn(
-                  "flex h-8 w-8 items-center justify-center rounded-lg transition-all",
+                  "flex h-8 w-8 items-center justify-center rounded-lg transition-colors",
                   isCreateSubjectActive
                     ? "bg-slate-100 text-slate-900"
                     : "text-slate-500 hover:bg-slate-100 hover:text-slate-900",
@@ -337,7 +337,7 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
                 }}
                 title="我的学习空间"
                 className={cn(
-                  "flex h-8 w-8 items-center justify-center rounded-lg transition-all",
+                  "flex h-8 w-8 items-center justify-center rounded-lg transition-colors",
                   isMyLearningSpaceActive
                     ? "bg-slate-100 text-slate-900"
                     : "text-slate-500 hover:bg-slate-100 hover:text-slate-900",

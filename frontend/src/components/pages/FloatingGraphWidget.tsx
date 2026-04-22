@@ -12,15 +12,16 @@ export function FloatingGraphWidget({ subjectId }: { subjectId: string }) {
       <AnimatePresence>
         {!isOpen ? (
           <motion.div
-            initial={{ opacity: 0, scale: 0.92, y: 12 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.92, y: 12 }}
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 8 }}
+            transition={{ duration: 0.14 }}
             className="fixed bottom-6 right-8 z-[60]"
           >
             <button
               type="button"
               onClick={() => setIsOpen(true)}
-              className="group flex h-14 items-center gap-3 overflow-hidden rounded-full border border-blue-200 bg-white/90 pl-4 pr-2.5 shadow-[0_8px_30px_rgb(0,0,0,0.12)] backdrop-blur-xl transition-all hover:border-blue-300 hover:bg-white"
+              className="group flex h-14 items-center gap-3 overflow-hidden rounded-full border border-blue-200 bg-white/96 pl-4 pr-2.5 shadow-[0_8px_24px_rgba(0,0,0,0.12)] transition-colors hover:border-blue-300 hover:bg-white"
             >
               <div className="flex flex-col items-start pr-2">
                 <span className="text-sm font-semibold text-slate-800">????</span>
@@ -40,7 +41,8 @@ export function FloatingGraphWidget({ subjectId }: { subjectId: string }) {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[70] bg-slate-900/15 backdrop-blur-sm"
+            transition={{ duration: 0.12 }}
+            className="fixed inset-0 z-[70] bg-slate-900/24"
             onClick={(event) => {
               if (event.target === event.currentTarget) {
                 setIsOpen(false);
@@ -48,10 +50,10 @@ export function FloatingGraphWidget({ subjectId }: { subjectId: string }) {
             }}
           >
             <motion.div
-              initial={{ y: "100%", opacity: 0.6, scale: 0.96 }}
-              animate={{ y: 0, opacity: 1, scale: 1 }}
-              exit={{ y: "100%", opacity: 0, scale: 0.96 }}
-              transition={{ type: "spring", damping: 26, stiffness: 300 }}
+              initial={{ y: "100%", opacity: 0.8 }}
+              animate={{ y: 0, opacity: 1 }}
+              exit={{ y: "100%", opacity: 0 }}
+              transition={{ duration: 0.18, ease: "easeOut" }}
               className="absolute bottom-0 right-0 h-[88vh] w-full overflow-hidden rounded-t-3xl border border-slate-200 bg-white shadow-2xl sm:bottom-6 sm:right-6 sm:h-[760px] sm:w-[980px] sm:rounded-2xl"
             >
               <div className="flex items-center justify-end border-b border-slate-100 px-4 py-3">

@@ -18,10 +18,10 @@ export function Layout() {
     <SubjectAiAssistantProvider subjectId={subjectId}>
       <div className="flex h-screen bg-[#fafafa] overflow-hidden relative selection:bg-zinc-200">
         {/* Global Ambient Background */}
-        <div className="pointer-events-none absolute inset-0 z-0 overflow-hidden mix-blend-multiply transition-colors duration-1000">
-          <div className="absolute -left-[5%] -top-[10%] h-[600px] w-[600px] rounded-full bg-indigo-100/40 blur-[120px] opacity-80" />
-          <div className="absolute bottom-[-10%] right-[-5%] h-[600px] w-[600px] rounded-full bg-zinc-200/50 blur-[120px] opacity-60" />
-          <div className="absolute left-[30%] top-[20%] h-[800px] w-[800px] rounded-full bg-sky-100/30 blur-[150px] opacity-70" />
+        <div className="pointer-events-none absolute inset-0 z-0 overflow-hidden mix-blend-multiply">
+          <div className="absolute -left-[4%] -top-[8%] h-[440px] w-[440px] rounded-full bg-indigo-100/30 blur-[72px] opacity-75" />
+          <div className="absolute bottom-[-8%] right-[-4%] h-[420px] w-[420px] rounded-full bg-zinc-200/40 blur-[72px] opacity-55" />
+          <div className="absolute left-[32%] top-[22%] h-[520px] w-[520px] rounded-full bg-sky-100/24 blur-[88px] opacity-60" />
         </div>
 
         <Sidebar onOpenSettings={() => setIsSettingsOpen(true)} />
