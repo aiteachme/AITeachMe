@@ -12,6 +12,7 @@ from pydantic import BaseModel, ConfigDict, model_validator
 from .defaults import merge_default_settings, merge_settings_values
 from .support import (
     DEFAULT_RETRIEVER_FALLBACK,
+    DEFAULT_RUNTIME_RETRIEVER_PROFILE,
     get_retriever_profiles,
     load_project_settings_values,
     normalize_profile_name,
@@ -78,10 +79,6 @@ class RagSettings(_SettingsModel):
     rerank_top_k: int
 
 
-class SearchSettings(_SettingsModel):
-    retriever_profile: str
-
-
 class LocalRagSettings(_SettingsModel):
     priority: bool
     min_results: int
@@ -101,7 +98,7 @@ class Settings(_SettingsModel):
     """Project-level runtime settings.
 
     The public shape mirrors the optional project settings override schema, e.g.
-    `settings.models.reason` or `settings.search.retriever_profile`.
+    `settings.models.reason` or one fixed retriever profile resolved in code.
 
     Code defaults live in `backend/app/shared/infra/settings/defaults.py`.
     `PROJECT_SETTINGS_PATH` may point to an optional external override file.
@@ -113,7 +110,6 @@ class Settings(_SettingsModel):
     docgen: DocgenSettings
     ingest: IngestSettings
     rag: RagSettings
-    search: SearchSettings
     local_rag: LocalRagSettings
     knowledge_graph: KnowledgeGraphSettings
     observability: ObservabilitySettings
@@ -166,7 +162,7 @@ class Settings(_SettingsModel):
         include_fallback: bool = True,
         fallback_retriever: str = DEFAULT_RETRIEVER_FALLBACK,
     ) -> list[str]:
-        resolved_profile = normalize_profile_name(profile or self.search.retriever_profile)
+        resolved_profile = normalize_profile_name(profile or DEFAULT_RUNTIME_RETRIEVER_PROFILE)
         profile_names = [
             normalize_retriever_name(item)
             for item in get_retriever_profiles().get(resolved_profile, [])
@@ -274,7 +270,6 @@ __all__ = [
     "PlannerModeSettings",
     "PlannerSettings",
     "RagSettings",
-    "SearchSettings",
     "Settings",
     "clear_system_settings_override",
     "get_settings",

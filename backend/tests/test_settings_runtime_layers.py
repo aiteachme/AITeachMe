@@ -91,6 +91,9 @@ def test_settings_model_rejects_removed_low_level_keys() -> None:
     with pytest.raises(ValidationError):
         Settings.model_validate({"search": {"runtime_cache_ttl_s": 60}})
 
+    with pytest.raises(ValidationError):
+        Settings.model_validate({"search": {"retriever_profile": "planner_grounding"}})
+
 
 def test_get_settings_supports_embedding_dim_override() -> None:
     clear_system_settings_override()

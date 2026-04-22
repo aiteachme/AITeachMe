@@ -28,7 +28,7 @@ from app.shared.infra.env_support import (
     write_local_env_updates,
 )
 from app.shared.infra.exceptions import AITeachMeError
-from app.shared.infra.runtime import get_app_version, is_local_mode, resolve_app_mode, resolve_auth_enabled
+from app.shared.infra.runtime import is_local_mode, resolve_app_mode, resolve_auth_enabled
 from app.shared.infra.settings import (
     PROJECT_SETTINGS_ENV_NAME,
     PROJECT_SETTINGS_SOURCE_LABEL,
@@ -67,7 +67,6 @@ class _OverviewContext:
     settings_source: str
     llm_provider: str | None
     llm_api_version: str | None
-    app_version: str
     auth_enabled_effective: bool
     storage_backend: str
     s3_addressing_style: str
@@ -432,7 +431,6 @@ def build_settings_overview_data(
         settings_source=describe_project_settings_source(),
         llm_provider=resolve_runtime_llm_provider(),
         llm_api_version=get_llm_api_version(),
-        app_version=get_app_version(),
         auth_enabled_effective=resolve_auth_enabled(),
         storage_backend=get_storage_backend(),
         s3_addressing_style=resolve_s3_addressing_style(),

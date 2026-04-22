@@ -46,9 +46,6 @@ DEFAULT_SETTINGS_VALUES: dict[str, Any] = {
         "rerank_model": None,
         "rerank_top_k": 3,
     },
-    "search": {
-        "retriever_profile": "",
-    },
     "local_rag": {
         "priority": True,
         "min_results": 2,
