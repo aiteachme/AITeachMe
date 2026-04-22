@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from contextlib import asynccontextmanager
 import json
+import sys
 import threading
 from time import perf_counter
 from typing import AsyncGenerator
@@ -25,7 +26,6 @@ from app.shared.infra.logger import (
 from app.shared.infra.runtime import get_runtime_data_dir
 from app.shared.infra.runtime import (
     get_app_version,
-    is_local_mode,
     resolve_auth_enabled,
     resolve_app_mode,
     resolve_guest_cookie_samesite,
@@ -178,7 +178,6 @@ def _log_infra_diagnostics(settings) -> None:
         except Exception as exc:
             lines.append(f"    S3 Smoke Test          : FAILED - {exc}")
     else:
-        from app.shared.infra.runtime import get_runtime_data_dir
         lines.append(f"    Data Dir               : {get_runtime_data_dir()}")
 
     lines.append("")
@@ -225,10 +224,8 @@ def _log_infra_diagnostics(settings) -> None:
     lines.append("=" * 60)
     lines.append("")
 
-    logger.info(
-        "startup_infra_diagnostics",
-        diagnostics="\n".join(lines),
-    )
+    diagnostics_text = "\n".join(lines).lstrip("\n")
+    print(diagnostics_text, file=sys.stderr, flush=True)
 
 
 @asynccontextmanager
