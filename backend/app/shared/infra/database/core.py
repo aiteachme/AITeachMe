@@ -23,7 +23,12 @@ import sqlalchemy as sa
 import structlog
 from sqlmodel import Session, SQLModel, create_engine
 
-from app.shared.infra.settings import get_settings, set_system_settings_override
+from app.shared.infra.settings import (
+    clear_system_settings_override,
+    get_settings,
+    reset_project_settings_cache,
+    set_system_settings_override,
+)
 from app.shared.infra.env_support import (
     describe_project_settings_source,
     get_env,
@@ -92,8 +97,38 @@ _REMOVED_POSTGRES_COLUMNS = {
 }
 _REMOVED_SQLITE_TABLES = _REMOVED_POSTGRES_TABLES
 _REMOVED_SQLITE_COLUMNS = _REMOVED_POSTGRES_COLUMNS
+
+
 def _get_db_path():
     return get_sqlite_db_path()
+
+
+def reset_runtime_state() -> None:
+    """Reset runtime singletons before rebuilding the local SQLite database.
+
+    Schema drift recovery deletes the SQLite files and immediately recreates the
+    engine. On Windows, the old engine must be disposed first or the file can
+    stay locked. We also clear in-memory settings/search caches so rebuilt
+    startup does not reuse state derived from the old database.
+    """
+
+    global _engine
+
+    stale_engine = _engine
+    _engine = None
+    if stale_engine is not None:
+        try:
+            stale_engine.dispose()
+        except Exception as exc:  # pragma: no cover - defensive cleanup only
+            logger.warning("database_engine_dispose_failed_during_reset", error=str(exc))
+
+    reset_project_settings_cache()
+    clear_system_settings_override()
+
+    from app.shared.infra.search import reset_search_runtime_caches
+
+    reset_search_runtime_caches()
+    logger.info("runtime_state_reset_for_local_db_rebuild")
 
 
 def _is_allowed_runtime_table(table_name: str) -> bool:
