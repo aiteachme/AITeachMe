@@ -2,7 +2,7 @@
 export const SETTINGS_STYLES = {
   panel: {
     root: "fixed inset-0 z-[100]",
-    backdrop: "absolute inset-0 bg-zinc-900/20 backdrop-blur-[4px]",
+    backdrop: "absolute inset-0 bg-zinc-900/28",
     viewport: "pointer-events-none absolute inset-0 flex items-center justify-center p-4 sm:p-8",
     dialog:
       "pointer-events-auto flex h-[85vh] w-full max-w-[1100px] overflow-hidden rounded-2xl bg-white shadow-[0_24px_60px_-15px_rgba(0,0,0,0.1)] ring-1 ring-zinc-200/50",
@@ -11,7 +11,7 @@ export const SETTINGS_STYLES = {
     headerTitle: "text-[15px] font-semibold text-zinc-900",
     headerDescription: "mt-0.5 text-[12px] text-zinc-500 leading-relaxed",
     closeButton:
-      "inline-flex h-8 w-8 items-center justify-center rounded-full bg-zinc-100/50 text-zinc-500 transition-all hover:bg-zinc-200/80 hover:text-zinc-900 active:scale-90",
+      "inline-flex h-8 w-8 items-center justify-center rounded-full bg-zinc-100/50 text-zinc-500 transition-colors hover:bg-zinc-200/80 hover:text-zinc-900 active:scale-90",
     closeIcon: "h-4 w-4",
     scrollArea: "min-h-0 flex-1 overflow-y-auto px-8 py-6 settings-scroll",
     sectionFrame: "pb-6 max-w-4xl",
@@ -22,8 +22,8 @@ export const SETTINGS_STYLES = {
     title: "text-[15px] font-semibold text-zinc-800",
     list: "flex-1 space-y-1 overflow-y-auto px-3 py-4",
     item:
-      "group relative flex min-w-0 w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-[13px] transition-all overflow-hidden",
-    itemActive: "bg-white font-semibold text-indigo-600 shadow-[0_1px_3px_rgba(0,0,0,0.05)] ring-1 ring-zinc-200/50",
+      "group relative flex min-w-0 w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-[13px] transition-colors overflow-hidden",
+    itemActive: "bg-white font-semibold text-indigo-600 ring-1 ring-zinc-200/50",
     itemIdle: "text-zinc-600 hover:bg-zinc-200/40 hover:text-zinc-900",
     itemIcon: "inline-flex shrink-0 items-center justify-center",
     itemIconActive: "text-indigo-600",
@@ -61,10 +61,10 @@ export const SETTINGS_STYLES = {
     changedIndicatorDot: "relative inline-flex h-2 w-2 rounded-full bg-amber-500",
     actions: "flex items-center gap-3",
     resetButton:
-      "inline-flex h-9 items-center justify-center rounded-xl px-4 text-[13px] font-medium text-zinc-500 transition-all hover:bg-zinc-100 hover:text-zinc-900 active:scale-[0.96]",
+      "inline-flex h-9 items-center justify-center rounded-xl px-4 text-[13px] font-medium text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-900 active:scale-[0.96]",
     saveButton:
-      "inline-flex h-9 items-center justify-center rounded-xl px-5 text-[13px] font-medium transition-all active:scale-[0.96]",
-    saveButtonEnabled: "bg-indigo-600 text-white shadow-sm hover:bg-indigo-700 hover:shadow-md hover:-translate-y-[0.5px]",
+      "inline-flex h-9 items-center justify-center rounded-xl px-5 text-[13px] font-medium transition-colors active:scale-[0.96]",
+    saveButtonEnabled: "bg-indigo-600 text-white hover:bg-indigo-700",
     saveButtonDisabled: "cursor-not-allowed bg-zinc-100 text-zinc-400 shadow-none transform-none",
   },
   field: {
@@ -84,10 +84,10 @@ export const SETTINGS_STYLES = {
     description: "text-[12px] leading-relaxed text-zinc-400",
     note: "text-[11px] leading-relaxed text-zinc-400",
     readonlyValue:
-      "w-fit max-w-full break-all rounded-lg border border-zinc-200/60 bg-zinc-50/80 px-3.5 py-2 font-mono text-[12px] text-zinc-600 shadow-sm",
+      "w-fit max-w-full break-all rounded-lg border border-zinc-200/60 bg-zinc-50/80 px-3.5 py-2 font-mono text-[12px] text-zinc-600",
     // Input control — fixed width on the right side
     control:
-      "flex h-9 w-full rounded-xl border border-zinc-200/80 bg-zinc-50/50 px-3.5 py-2 text-[13px] text-zinc-800 shadow-sm transition-all placeholder:text-zinc-400 hover:bg-white hover:border-zinc-300 focus-visible:bg-white focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-indigo-500/20 focus-visible:border-indigo-500 disabled:cursor-not-allowed disabled:opacity-50",
+      "flex h-9 w-full rounded-xl border border-zinc-200/80 bg-zinc-50/50 px-3.5 py-2 text-[13px] text-zinc-800 transition-colors placeholder:text-zinc-400 hover:bg-white hover:border-zinc-300 focus-visible:bg-white focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-indigo-500/20 focus-visible:border-indigo-500 disabled:cursor-not-allowed disabled:opacity-50",
     select:
       "appearance-none items-center justify-between whitespace-nowrap bg-[url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20width%3D%2224%22%20height%3D%2224%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%3Cpath%20d%3D%22M6%209L12%2015L18%209%22%20stroke%3D%22%2371717A%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%2F%3E%3C%2Fsvg%3E')] bg-[length:16px_16px] bg-[position:right_10px_center] bg-no-repeat pr-10",
     switchRow:

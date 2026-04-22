@@ -1,3 +1,5 @@
+import { memo, startTransition, useCallback, useEffect, useMemo, useState } from "react";
+
 import {
   FieldLabelBlock,
   InfoCard,
@@ -22,6 +24,26 @@ interface ReadonlySettingsListProps {
   error: string | null;
 }
 
+const ReadonlySettingsRow = memo(function ReadonlySettingsRow({
+  entry,
+}: {
+  entry: SettingEntry;
+}) {
+  return (
+    <div className={SETTINGS_STYLES.list.readonlyItem}>
+      <FieldLabelBlock
+        label={entry.label}
+        description={entry.description}
+      />
+      <div className={SETTINGS_STYLES.list.readonlyControl}>
+        <ReadonlyValue>
+          {displayValue(entry)}
+        </ReadonlyValue>
+      </div>
+    </div>
+  );
+});
+
 export function ReadonlySettingsList({
   entries,
   loading,
@@ -34,17 +56,7 @@ export function ReadonlySettingsList({
   return (
     <div className={SETTINGS_STYLES.list.root}>
       {entries.map((entry) => (
-        <div key={entry.key} className={SETTINGS_STYLES.list.readonlyItem}>
-          <FieldLabelBlock
-            label={entry.label}
-            description={entry.description}
-          />
-          <div className={SETTINGS_STYLES.list.readonlyControl}>
-            <ReadonlyValue>
-              {displayValue(entry)}
-            </ReadonlyValue>
-          </div>
-        </div>
+        <ReadonlySettingsRow key={entry.key} entry={entry} />
       ))}
     </div>
   );
@@ -57,6 +69,141 @@ interface EditableSettingsListProps {
   loading: boolean;
   error: string | null;
 }
+
+interface EditableSettingsRowProps {
+  entry: SettingEntry;
+  value: SettingPrimitive;
+  onChange: (key: string, value: SettingPrimitive) => void;
+}
+
+const EditableSettingsRow = memo(function EditableSettingsRow({
+  entry,
+  value,
+  onChange,
+}: EditableSettingsRowProps) {
+  const selectOptions = useMemo(() => SETTING_SELECT_OPTIONS[entry.key], [entry.key]);
+  const controlId = `settings-${entry.key.replace(/[^a-z0-9]+/gi, "-").toLowerCase()}`;
+  const resolvedInputType = resolveEntryInputType(entry, value);
+  const [localValue, setLocalValue] = useState(() => (value === null ? "" : String(value)));
+
+  useEffect(() => {
+    const nextValue = value === null ? "" : String(value);
+    setLocalValue((prev) => (prev === nextValue ? prev : nextValue));
+  }, [value]);
+
+  const handleBooleanToggle = useCallback(() => {
+    if (typeof value === "boolean") {
+      onChange(entry.key, !value);
+    }
+  }, [entry.key, onChange, value]);
+
+  useEffect(() => {
+    if (typeof value === "boolean" || selectOptions) {
+      return;
+    }
+
+    const timerId = window.setTimeout(() => {
+      const parsed = parseInputValue(localValue, value);
+      if (parsed === value) {
+        return;
+      }
+      startTransition(() => {
+        onChange(entry.key, parsed);
+      });
+    }, 120);
+
+    return () => window.clearTimeout(timerId);
+  }, [entry.key, localValue, onChange, selectOptions, value]);
+
+  const handleValueChange = useCallback(
+    (next: string) => {
+      setLocalValue(next);
+    },
+    [],
+  );
+
+  const commitLocalValue = useCallback(() => {
+    if (typeof value === "boolean" || selectOptions) {
+      return;
+    }
+    const parsed = parseInputValue(localValue, value);
+    if (parsed === value) {
+      return;
+    }
+    onChange(entry.key, parsed);
+  }, [entry.key, localValue, onChange, selectOptions, value]);
+
+  const handleSelectChange = useCallback(
+    (next: string) => {
+      setLocalValue(next);
+      onChange(entry.key, next);
+    },
+    [entry.key, onChange],
+  );
+
+  if (typeof value === "boolean") {
+    return (
+      <div>
+        <SwitchRow
+          title={entry.label}
+          description={entry.description || entry.key}
+          enabled={value}
+          onToggle={handleBooleanToggle}
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div className={SETTINGS_STYLES.list.item}>
+      <FieldLabelBlock
+        label={entry.label}
+        description={entry.description}
+        htmlFor={controlId}
+      />
+
+      <div className={SETTINGS_STYLES.list.controlWrap}>
+        {selectOptions ? (
+          <SelectInput
+            id={controlId}
+            value={localValue}
+            onChange={handleSelectChange}
+            options={selectOptions}
+          />
+        ) : resolvedInputType === "password" ? (
+          <SecretInput
+            id={controlId}
+            value={localValue}
+            onChange={handleValueChange}
+            onBlur={commitLocalValue}
+            placeholder={
+              entry.default_value === null || entry.default_value === undefined
+                ? "留空"
+                : String(entry.default_value)
+            }
+          />
+        ) : (
+          <TextInput
+            id={controlId}
+            value={localValue}
+            onChange={handleValueChange}
+            onBlur={commitLocalValue}
+            placeholder={
+              entry.default_value === null || entry.default_value === undefined
+                ? "留空"
+                : String(entry.default_value)
+            }
+            type={resolvedInputType}
+          />
+        )}
+      </div>
+    </div>
+  );
+}, (prev, next) => (
+  prev.entry === next.entry &&
+  prev.value === next.value &&
+  prev.onChange === next.onChange
+));
 
 export function EditableSettingsList({
   entries,
@@ -76,64 +223,13 @@ export function EditableSettingsList({
     <div className={SETTINGS_STYLES.list.root}>
       {items.map((entry) => {
         const value = draft[entry.key];
-        const selectOptions = SETTING_SELECT_OPTIONS[entry.key];
-        const controlId = `settings-${entry.key.replace(/[^a-z0-9]+/gi, "-").toLowerCase()}`;
-
-        if (typeof value === "boolean") {
-          return (
-            <div key={entry.key}>
-              <SwitchRow
-                title={entry.label}
-                description={entry.description || entry.key}
-                enabled={value}
-                onToggle={() => onChange(entry.key, !value)}
-              />
-            </div>
-          );
-        }
-
         return (
-          <div key={entry.key} className={SETTINGS_STYLES.list.item}>
-            <FieldLabelBlock
-              label={entry.label}
-              description={entry.description}
-              htmlFor={controlId}
-            />
-
-            <div className={SETTINGS_STYLES.list.controlWrap}>
-              {selectOptions ? (
-                <SelectInput
-                  id={controlId}
-                  value={value === null ? "" : String(value)}
-                  onChange={(next) => onChange(entry.key, next)}
-                  options={selectOptions}
-                />
-              ) : resolveEntryInputType(entry, value) === "password" ? (
-                <SecretInput
-                  id={controlId}
-                  value={value === null ? "" : String(value)}
-                  onChange={(next) => onChange(entry.key, parseInputValue(next, value))}
-                  placeholder={
-                    entry.default_value === null || entry.default_value === undefined
-                      ? "留空"
-                      : String(entry.default_value)
-                  }
-                />
-              ) : (
-                <TextInput
-                  id={controlId}
-                  value={value === null ? "" : String(value)}
-                  onChange={(next) => onChange(entry.key, parseInputValue(next, value))}
-                  placeholder={
-                    entry.default_value === null || entry.default_value === undefined
-                      ? "留空"
-                      : String(entry.default_value)
-                  }
-                  type={resolveEntryInputType(entry, value)}
-                />
-              )}
-            </div>
-          </div>
+          <EditableSettingsRow
+            key={entry.key}
+            entry={entry}
+            value={value}
+            onChange={onChange}
+          />
         );
       })}
     </div>

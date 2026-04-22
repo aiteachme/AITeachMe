@@ -20,6 +20,7 @@ interface SettingsPanelProps {
 
 export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
   const [activeSection, setActiveSection] = useState<SectionId>("");
+  const [storedOverview] = useState(() => getStoredSystemSettingsOverview());
   const {
     overview,
     isOverviewLoading,
@@ -36,8 +37,9 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
     saveAll,
   } = useSettingsOverview({ isOpen });
 
-  const sections = overview?.sections ?? getStoredSystemSettingsOverview()?.sections ?? [];
-  const runtimeMode = overview?.mode ?? getStoredSystemSettingsOverview()?.mode ?? "local";
+  const effectiveOverview = overview ?? storedOverview;
+  const sections = effectiveOverview?.sections ?? [];
+  const runtimeMode = effectiveOverview?.mode ?? "local";
   const isLocalRuntime = runtimeMode === "local";
 
   useEffect(() => {

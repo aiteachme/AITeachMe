@@ -114,19 +114,29 @@ export function useSettingsOverview({ isOpen }: UseSettingsOverviewOptions) {
     [overview],
   );
 
-  const hasServerChanges = !sameDraft(settingsDraft, savedSettingsDraft);
-  const hasEnvChanges = !sameDraft(envDraft, savedEnvDraft);
+  const hasServerChanges = useMemo(
+    () => !sameDraft(settingsDraft, savedSettingsDraft),
+    [savedSettingsDraft, settingsDraft],
+  );
+  const hasEnvChanges = useMemo(
+    () => !sameDraft(envDraft, savedEnvDraft),
+    [envDraft, savedEnvDraft],
+  );
 
   const patchServerSetting = useCallback(
     (key: string, value: DraftRecord[string]) => {
-      setSettingsDraft((prev) => ({ ...prev, [key]: value }));
+      setSettingsDraft((prev) => (
+        prev[key] === value ? prev : { ...prev, [key]: value }
+      ));
     },
     [],
   );
 
   const patchEnvSetting = useCallback(
     (key: string, value: DraftRecord[string]) => {
-      setEnvDraft((prev) => ({ ...prev, [key]: value }));
+      setEnvDraft((prev) => (
+        prev[key] === value ? prev : { ...prev, [key]: value }
+      ));
     },
     [],
   );

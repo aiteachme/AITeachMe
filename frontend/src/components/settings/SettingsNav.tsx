@@ -1,3 +1,4 @@
+import { memo } from "react";
 import { Link2, GitFork, Sparkles, Globe, Server, Activity } from "lucide-react";
 import type { ReactNode } from "react";
 
@@ -27,7 +28,7 @@ function getSectionIcon(sectionId: string): ReactNode {
   return SECTION_ICON_MAP[sectionId] ?? <Server className="h-4 w-4" />;
 }
 
-export function SettingsNav({
+export const SettingsNav = memo(function SettingsNav({
   activeSection,
   onSelect,
   isLocalRuntime,
@@ -98,4 +99,4 @@ export function SettingsNav({
       </div>
     </nav>
   );
-}
+});

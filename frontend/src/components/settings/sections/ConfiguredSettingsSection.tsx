@@ -1,3 +1,5 @@
+import { useMemo } from "react";
+
 import { SETTINGS_STYLES } from "../constants";
 import { InfoCard, SectionDivider } from "../fields";
 import { EditableSettingsList, ReadonlySettingsList } from "../lists";
@@ -17,6 +19,13 @@ interface ConfiguredSettingsSectionProps {
 interface EntryGroup {
   label: string;
   entries: SettingEntry[];
+}
+
+interface PreparedEntryGroup {
+  label: string;
+  serverEditableEntries: SettingEntry[];
+  envEditableEntries: SettingEntry[];
+  readonlyEntries: SettingEntry[];
 }
 
 function compareEntries(a: SettingEntry, b: SettingEntry): number {
@@ -45,6 +54,24 @@ function groupSectionEntries(section: SettingSection | undefined): EntryGroup[] 
     .sort((left, right) => compareEntries(left.entries[0], right.entries[0]));
 }
 
+function prepareEntryGroups(
+  section: SettingSection | undefined,
+  isLocalRuntime: boolean,
+): PreparedEntryGroup[] {
+  return groupSectionEntries(section).map((group) => ({
+    label: group.label,
+    envEditableEntries: isLocalRuntime
+      ? group.entries.filter((entry) => entry.editable && entry.source === "env")
+      : [],
+    serverEditableEntries: isLocalRuntime
+      ? group.entries.filter((entry) => entry.editable && entry.source !== "env")
+      : [],
+    readonlyEntries: isLocalRuntime
+      ? group.entries.filter((entry) => !entry.editable)
+      : group.entries,
+  }));
+}
+
 export function ConfiguredSettingsSection({
   section,
   isLocalRuntime,
@@ -59,28 +86,21 @@ export function ConfiguredSettingsSection({
     return <InfoCard text="当前设置分区不存在。" variant="warning" />;
   }
 
-  const groups = groupSectionEntries(section);
+  const groups = useMemo(
+    () => prepareEntryGroups(section, isLocalRuntime),
+    [isLocalRuntime, section],
+  );
 
   return (
     <div className={SETTINGS_STYLES.section.root}>
       {groups.map((group, index) => {
-        const envEditableEntries = isLocalRuntime
-          ? group.entries.filter((entry) => entry.editable && entry.source === "env")
-          : [];
-        const serverEditableEntries = isLocalRuntime
-          ? group.entries.filter((entry) => entry.editable && entry.source !== "env")
-          : [];
-        const readonlyEntries = isLocalRuntime
-          ? group.entries.filter((entry) => !entry.editable)
-          : group.entries;
-
         return (
           <div key={`${group.label || "group"}-${index}`} className={SETTINGS_STYLES.section.groupBlock}>
             {group.label ? <SectionDivider label={group.label} /> : null}
 
-            {serverEditableEntries.length > 0 ? (
+            {group.serverEditableEntries.length > 0 ? (
               <EditableSettingsList
-                entries={serverEditableEntries}
+                entries={group.serverEditableEntries}
                 draft={settingsDraft}
                 onChange={onServerChange}
                 loading={loading}
@@ -88,9 +108,9 @@ export function ConfiguredSettingsSection({
               />
             ) : null}
 
-            {envEditableEntries.length > 0 ? (
+            {group.envEditableEntries.length > 0 ? (
               <EditableSettingsList
-                entries={envEditableEntries}
+                entries={group.envEditableEntries}
                 draft={envDraft}
                 onChange={onEnvChange}
                 loading={loading}
@@ -98,9 +118,9 @@ export function ConfiguredSettingsSection({
               />
             ) : null}
 
-            {readonlyEntries.length > 0 ? (
+            {group.readonlyEntries.length > 0 ? (
               <ReadonlySettingsList
-                entries={readonlyEntries}
+                entries={group.readonlyEntries}
                 loading={loading}
                 error={error}
               />

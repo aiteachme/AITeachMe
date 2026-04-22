@@ -1,3 +1,5 @@
+import { memo } from "react";
+
 import { AnimatePresence, motion } from "framer-motion";
 import { CheckCircle2, Loader2, RefreshCcw } from "lucide-react";
 
@@ -15,7 +17,7 @@ interface SettingsFooterProps {
   onSave: () => void;
 }
 
-export function SettingsFooter({
+export const SettingsFooter = memo(function SettingsFooter({
   saveState,
   saveError,
   hasChanges,
@@ -128,4 +130,4 @@ export function SettingsFooter({
       </div>
     </div>
   );
-}
+});

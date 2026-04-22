@@ -137,6 +137,7 @@ interface TextInputProps {
   id?: string;
   value: string;
   onChange: (value: string) => void;
+  onBlur?: () => void;
   placeholder?: string;
   type?: string;
 }
@@ -145,6 +146,7 @@ export function TextInput({
   id,
   value,
   onChange,
+  onBlur,
   placeholder,
   type = "text",
 }: TextInputProps) {
@@ -154,6 +156,7 @@ export function TextInput({
       type={type}
       value={value}
       onChange={(event) => onChange(event.target.value)}
+      onBlur={onBlur}
       placeholder={placeholder}
       className={SETTINGS_STYLES.field.control}
     />
@@ -166,6 +169,7 @@ interface SecretInputProps {
   id?: string;
   value: string;
   onChange: (value: string) => void;
+  onBlur?: () => void;
   placeholder?: string;
 }
 
@@ -173,6 +177,7 @@ export function SecretInput({
   id,
   value,
   onChange,
+  onBlur,
   placeholder,
 }: SecretInputProps) {
   const [visible, setVisible] = useState(false);
@@ -185,6 +190,7 @@ export function SecretInput({
           type="text"
           value={value}
           onChange={(event) => onChange(event.target.value)}
+          onBlur={onBlur}
           placeholder={placeholder}
           className={cn(SETTINGS_STYLES.field.control, "pr-9")}
         />
