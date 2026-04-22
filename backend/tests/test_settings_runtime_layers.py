@@ -90,3 +90,16 @@ def test_settings_model_rejects_removed_low_level_keys() -> None:
 
     with pytest.raises(ValidationError):
         Settings.model_validate({"search": {"runtime_cache_ttl_s": 60}})
+
+
+def test_get_settings_supports_embedding_dim_override() -> None:
+    clear_system_settings_override()
+    try:
+        overridden = set_system_settings_override(
+            {"models": {"embedding": "custom-embedding-model", "embedding_dim": 2048}}
+        )
+        assert overridden.models.embedding == "custom-embedding-model"
+        assert overridden.models.embedding_dim == 2048
+        assert get_settings().embedding_dim == 2048
+    finally:
+        clear_system_settings_override()

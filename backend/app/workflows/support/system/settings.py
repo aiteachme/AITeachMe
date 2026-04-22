@@ -413,9 +413,10 @@ def build_settings_overview_data(
                 lse("models.light", "轻量模型", settings.models.light, base_settings.models.light, "分类、摘要和批量轻任务；空值时回退到主模型。", ui_group="模型路由", ui_order=30),
                 lse("models.extract", "抽取模型", settings.models.extract, base_settings.models.extract, "知识抽取专用；空值时回退到轻量模型或主模型。", ui_group="模型路由", ui_order=40),
                 lse("models.embedding", "向量模型", settings.models.embedding, base_settings.models.embedding, "", ui_group="模型路由", ui_order=50),
-                lse("models.ocr", "视觉 OCR 模型", settings.models.ocr, base_settings.models.ocr, "空值时使用主模型；密钥和服务地址复用模型接入配置。", ui_group="模型路由", ui_order=60),
-                lse("models.image_generation", "图片生成模型", settings.models.image_generation, base_settings.models.image_generation, "留空表示未启用服务端图片生成能力。", ui_group="模型路由", ui_order=70),
-                _runtime_entry("models.embedding_dim", "向量维度", settings.embedding_dim, ui_group="运行推导", ui_order=80),
+                lse("models.embedding_dim", "向量维度覆盖", settings.models.embedding_dim, base_settings.models.embedding_dim, "未知 embedding 模型可在这里显式填写维度；已知模型通常可留空自动推导。", ui_group="模型路由", ui_order=60),
+                lse("models.ocr", "视觉 OCR 模型", settings.models.ocr, base_settings.models.ocr, "空值时使用主模型；密钥和服务地址复用模型接入配置。", ui_group="模型路由", ui_order=70),
+                lse("models.image_generation", "图片生成模型", settings.models.image_generation, base_settings.models.image_generation, "留空表示未启用服务端图片生成能力。", ui_group="模型路由", ui_order=80),
+                _runtime_entry("runtime.embedding_dim_resolved", "向量维度", settings.embedding_dim, ui_group="运行推导", ui_order=90),
             ],
         ),
         SettingSection(

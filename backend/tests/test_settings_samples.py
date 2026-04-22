@@ -23,6 +23,7 @@ def test_settings_model_uses_code_defaults_without_project_file(monkeypatch) -> 
 
     assert settings.models.primary == defaults["models"]["primary"]
     assert settings.models.embedding == defaults["models"]["embedding"]
+    assert settings.models.embedding_dim == defaults["models"]["embedding_dim"]
     assert settings.ingest.max_upload_size_mb == defaults["ingest"]["max_upload_size_mb"]
     assert settings.docgen.generate_cover_image == defaults["docgen"]["generate_cover_image"]
     assert "runtime" not in defaults
@@ -39,6 +40,7 @@ def test_settings_support_optional_external_override_file(
                 "models:",
                 "  primary: qwen-flash",
                 "  embedding: text-embedding-v4",
+                "  embedding_dim: 1024",
                 "planner:",
                 '  sprint:',
                 '    target_length: "3000-10000字"',
@@ -55,6 +57,8 @@ def test_settings_support_optional_external_override_file(
 
     assert settings.models.primary == "qwen-flash"
     assert settings.models.embedding == "text-embedding-v4"
+    assert settings.models.embedding_dim == 1024
+    assert settings.embedding_dim == 1024
     assert settings.planner.sprint.target_length == "3000-10000字"
 
 
@@ -88,6 +92,21 @@ def test_settings_model_validate_accepts_partial_external_override() -> None:
     assert settings.models.embedding == defaults["models"]["embedding"]
     assert settings.planner.systematic.target_length == "10000-30000字"
     assert settings.planner.systematic.min_chapters == defaults["planner"]["systematic"]["min_chapters"]
+
+
+def test_settings_embedding_dim_can_be_explicitly_overridden_for_unknown_model() -> None:
+    settings = Settings.model_validate(
+        {
+            "models": {
+                "embedding": "custom-embedding-model",
+                "embedding_dim": 2048,
+            }
+        }
+    )
+
+    assert settings.models.embedding == "custom-embedding-model"
+    assert settings.models.embedding_dim == 2048
+    assert settings.embedding_dim == 2048
 
 
 def test_env_sample_covers_exposed_env_keys() -> None:

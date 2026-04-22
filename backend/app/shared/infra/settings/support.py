@@ -6,7 +6,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
-EMBEDDING_DIM_BY_MODEL: dict[str, int] = {
+KNOWN_EMBEDDING_DIMENSIONS: dict[str, int] = {
     "text-embedding-v4": 1024,
     "text-embedding-v3": 1536,
     "text-embedding-v2": 1536,
@@ -110,6 +110,28 @@ DEFAULT_RETRIEVER_PROFILES: dict[str, list[str]] = {
     "docgen_zh_math": list(ZH_MATH_RETRIEVERS),
 }
 RETRIEVER_PROFILES = DEFAULT_RETRIEVER_PROFILES
+
+
+def resolve_embedding_dimension(
+    model: str | None,
+    *,
+    configured_dim: int | None = None,
+) -> int:
+    """Resolve one embedding dimension from explicit config plus known hints."""
+
+    if configured_dim is not None:
+        normalized_dim = int(configured_dim)
+        if normalized_dim > 0:
+            return normalized_dim
+
+    normalized_model = (model or "").strip()
+    if not normalized_model:
+        return 0
+
+    return KNOWN_EMBEDDING_DIMENSIONS.get(
+        normalized_model,
+        DEFAULT_EMBEDDING_DIM,
+    )
 
 
 def split_csv_names(value: str | None) -> list[str]:
@@ -267,7 +289,7 @@ __all__ = [
     "DEFAULT_RETRIEVER_PROFILES",
     "DEFAULT_RETRIEVERS",
     "DOCGEN_RETRIEVERS",
-    "EMBEDDING_DIM_BY_MODEL",
+    "KNOWN_EMBEDDING_DIMENSIONS",
     "RETRIEVER_PROFILES",
     "ZH_MATH_RETRIEVERS",
     "ZH_EDU_RETRIEVERS",
@@ -275,5 +297,6 @@ __all__ = [
     "load_project_settings_values",
     "normalize_profile_name",
     "normalize_retriever_name",
+    "resolve_embedding_dimension",
     "split_csv_names",
 ]
