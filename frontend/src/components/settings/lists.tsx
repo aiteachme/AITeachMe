@@ -2,6 +2,7 @@ import {
   FieldLabelBlock,
   InfoCard,
   ReadonlyValue,
+  SecretInput,
   SelectInput,
   SwitchRow,
   TextInput,
@@ -33,11 +34,13 @@ export function ReadonlySettingsList({
   return (
     <div className={SETTINGS_STYLES.list.root}>
       {entries.map((entry) => (
-        <div key={entry.key} className={SETTINGS_STYLES.list.item}>
-          <FieldLabelBlock label={entry.label} description={entry.description} />
-          <ReadonlyValue>
-            {displayValue(entry)}
-          </ReadonlyValue>
+        <div key={entry.key} className={SETTINGS_STYLES.list.readonlyItem}>
+          <FieldLabelBlock label={entry.label} />
+          <div className={SETTINGS_STYLES.list.readonlyControl}>
+            <ReadonlyValue>
+              {displayValue(entry)}
+            </ReadonlyValue>
+          </div>
         </div>
       ))}
     </div>
@@ -90,7 +93,6 @@ export function EditableSettingsList({
           <div key={entry.key} className={SETTINGS_STYLES.list.item}>
             <FieldLabelBlock
               label={entry.label}
-              description={entry.description}
               htmlFor={controlId}
             />
 
@@ -101,6 +103,17 @@ export function EditableSettingsList({
                   value={value === null ? "" : String(value)}
                   onChange={(next) => onChange(entry.key, next)}
                   options={selectOptions}
+                />
+              ) : resolveEntryInputType(entry, value) === "password" ? (
+                <SecretInput
+                  id={controlId}
+                  value={value === null ? "" : String(value)}
+                  onChange={(next) => onChange(entry.key, parseInputValue(next, value))}
+                  placeholder={
+                    entry.default_value === null || entry.default_value === undefined
+                      ? "留空"
+                      : String(entry.default_value)
+                  }
                 />
               ) : (
                 <TextInput

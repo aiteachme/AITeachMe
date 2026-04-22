@@ -20,6 +20,7 @@ from app.models.build_planner import ConfirmedBuildPlan
 from app.models.raw_file import RawFile
 from app.models.subject import Subject
 from app.repositories.files_repo import list_all_raw_files_by_subject, list_raw_files_by_ids, list_raw_files_by_uids
+from app.repositories.knowledge.docgen_repo import get_current_published_docs
 from app.repositories.knowledge.knowledge_repo import clear_chunk_vector_metadata
 from app.schemas.knowledge import (
     BuildPreviewChapterProgressResponse,
@@ -176,6 +177,20 @@ def _extract_markdown_excerpt(markdown: str, *, max_lines: int = 6, max_chars: i
             break
     excerpt = "\n".join(lines).strip()
     return excerpt if len(excerpt) <= max_chars else excerpt[: max_chars - 3].rstrip() + "..."
+
+
+def _load_current_published_markdown(session: Session, *, subject: str) -> tuple[str, datetime | None]:
+    docs = get_current_published_docs(session, subject)
+    parts: list[str] = []
+    updated_at: datetime | None = None
+    for doc in docs:
+        markdown = normalize_mermaid_blocks(str(doc.markdown_content or doc.content_markdown or "").strip())
+        if markdown:
+            parts.append(markdown)
+        for candidate in (doc.updated_at, doc.published_at, doc.created_at):
+            if candidate is not None and (updated_at is None or candidate > updated_at):
+                updated_at = candidate
+    return ("\n\n---\n\n".join(parts)).strip(), updated_at
 
 
 def _resolve_preview_chapter_titles(*, draft_markdown: str, manifest) -> list[str]:
@@ -610,14 +625,13 @@ def get_docgen_result(session: Session, *, subject: str) -> DocGenGetResponse:
 
     cs = get_content_store()
     subject_scope = resolve_subject_storage_scope(subject)
-    merged_key = subject_scope.knowledge_doc_key("merged_knowledge_base.md")
     draft_key = subject_scope.knowledge_build_prefix() + "merged_knowledge_base.md"
     manifest = read_knowledge_manifest(subject)
     build_status = read_knowledge_build_status(subject)
     docgen_build_status = build_status if build_status is not None and build_status.build_kind == "docgen" else None
-    markdown = normalize_mermaid_blocks(run_store_sync(cs.read_text, merged_key, default="") or "")
+    markdown, db_updated_at = _load_current_published_markdown(session, subject=subject)
     draft_markdown = normalize_mermaid_blocks(run_store_sync(cs.read_text, draft_key, default="") or "")
-    updated_at = manifest.updated_at if manifest is not None else None
+    updated_at = db_updated_at or (manifest.updated_at if manifest is not None else None)
     draft_updated_at = (
         docgen_build_status.draft_updated_at
         if docgen_build_status is not None and docgen_build_status.draft_updated_at is not None

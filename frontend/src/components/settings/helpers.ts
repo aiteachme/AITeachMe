@@ -131,10 +131,7 @@ export function parseInputValue(
 }
 
 export function resolveEntryInputType(entry: SettingEntry, value: SettingPrimitive): string {
-  if (entry.source === "env" && typeof value === "string") {
-    return "password";
-  }
-  if (isCredentialKey(entry.key)) {
+  if (entry.secret || isCredentialKey(entry.key)) {
     return "password";
   }
   if (typeof value === "number") {
