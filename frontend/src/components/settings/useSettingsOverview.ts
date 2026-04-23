@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import { apiClient, getApiErrorMessage } from "../../api/client";
 import {
@@ -110,19 +110,9 @@ export function useSettingsOverview({ isOpen }: UseSettingsOverviewOptions) {
     }
   }, [isOpen]);
 
-  const editableServerEntries = useMemo(
-    () => collectEditableServerEntries(overview?.sections ?? []),
-    [overview],
-  );
-
-  const hasServerChanges = useMemo(
-    () => !sameDraft(settingsDraft, savedSettingsDraft),
-    [savedSettingsDraft, settingsDraft],
-  );
-  const hasEnvChanges = useMemo(
-    () => !sameDraft(envDraft, savedEnvDraft),
-    [envDraft, savedEnvDraft],
-  );
+  const editableServerEntries = collectEditableServerEntries(overview?.sections ?? []);
+  const hasServerChanges = !sameDraft(settingsDraft, savedSettingsDraft);
+  const hasEnvChanges = !sameDraft(envDraft, savedEnvDraft);
 
   const patchServerSetting = useCallback(
     (key: string, value: DraftRecord[string]) => {
@@ -144,11 +134,11 @@ export function useSettingsOverview({ isOpen }: UseSettingsOverviewOptions) {
     setSaveError(null);
   }, [defaultSettingsDraft, defaultEnvDraft]);
 
-  const saveAll = useCallback(async (): Promise<boolean> => {
+  const saveAll = useCallback(async () => {
     if (!hasServerChanges && !hasEnvChanges) {
       setSaveState("saved");
       window.setTimeout(() => setSaveState("idle"), 1400);
-      return true;
+      return;
     }
 
     setSaveState("saving");
@@ -173,11 +163,9 @@ export function useSettingsOverview({ isOpen }: UseSettingsOverviewOptions) {
       applyOverview(response.data);
       setSaveState("saved");
       window.setTimeout(() => setSaveState("idle"), 1400);
-      return true;
     } catch (error) {
       setSaveState("error");
       setSaveError(getApiErrorMessage(error, "保存设置失败。"));
-      return false;
     }
   }, [
     applyOverview,

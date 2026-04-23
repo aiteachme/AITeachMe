@@ -1,4 +1,4 @@
-import { memo, useMemo } from "react";
+import { memo } from "react";
 
 import { InfoCard, SectionDivider } from "./SettingsFields";
 import { EditableSettingsList, ReadonlySettingsList } from "./SettingsEntryLists";
@@ -14,11 +14,6 @@ interface RuntimeSettingsSectionProps {
   onEnvChange: (key: string, value: DraftRecord[string]) => void;
   loading: boolean;
   error: string | null;
-}
-
-interface EntryGroup {
-  label: string;
-  entries: SettingEntry[];
 }
 
 interface PreparedEntryGroup {
@@ -37,7 +32,10 @@ function compareEntries(a: SettingEntry, b: SettingEntry): number {
   return String(a.label ?? a.key).localeCompare(String(b.label ?? b.key), "zh-CN");
 }
 
-function groupSectionEntries(section: SettingSection | undefined): EntryGroup[] {
+function buildEntryGroups(
+  section: SettingSection | undefined,
+  isLocalRuntime: boolean,
+): PreparedEntryGroup[] {
   const groups = new Map<string, SettingEntry[]>();
   for (const entry of section?.entries ?? []) {
     const label = String(entry.ui_group ?? "").trim();
@@ -47,29 +45,34 @@ function groupSectionEntries(section: SettingSection | undefined): EntryGroup[] 
   }
 
   return [...groups.entries()]
-    .map(([label, entries]) => ({
-      label,
-      entries: [...entries].sort(compareEntries),
-    }))
-    .sort((left, right) => compareEntries(left.entries[0], right.entries[0]));
-}
-
-function prepareEntryGroups(
-  section: SettingSection | undefined,
-  isLocalRuntime: boolean,
-): PreparedEntryGroup[] {
-  return groupSectionEntries(section).map((group) => ({
-    label: group.label,
-    envEditableEntries: isLocalRuntime
-      ? group.entries.filter((entry) => entry.editable && entry.source === "env")
-      : [],
-    serverEditableEntries: isLocalRuntime
-      ? group.entries.filter((entry) => entry.editable && entry.source !== "env")
-      : [],
-    readonlyEntries: isLocalRuntime
-      ? group.entries.filter((entry) => !entry.editable)
-      : group.entries,
-  }));
+    .map(([label, entries]) => {
+      const sortedEntries = [...entries].sort(compareEntries);
+      return {
+        label,
+        envEditableEntries: isLocalRuntime
+          ? sortedEntries.filter((entry) => entry.editable && entry.source === "env")
+          : [],
+        serverEditableEntries: isLocalRuntime
+          ? sortedEntries.filter((entry) => entry.editable && entry.source !== "env")
+          : [],
+        readonlyEntries: isLocalRuntime
+          ? sortedEntries.filter((entry) => !entry.editable)
+          : sortedEntries,
+      };
+    })
+    .filter(
+      (group) =>
+        group.serverEditableEntries.length > 0 ||
+        group.envEditableEntries.length > 0 ||
+        group.readonlyEntries.length > 0,
+    )
+    .sort((left, right) => {
+      const leftEntry =
+        left.serverEditableEntries[0] ?? left.envEditableEntries[0] ?? left.readonlyEntries[0];
+      const rightEntry =
+        right.serverEditableEntries[0] ?? right.envEditableEntries[0] ?? right.readonlyEntries[0];
+      return compareEntries(leftEntry, rightEntry);
+    });
 }
 
 export const RuntimeSettingsSection = memo(function RuntimeSettingsSection({
@@ -86,25 +89,11 @@ export const RuntimeSettingsSection = memo(function RuntimeSettingsSection({
     return <InfoCard text="当前设置分区不存在。" variant="warning" />;
   }
 
-  const groups = useMemo(
-    () => prepareEntryGroups(section, isLocalRuntime),
-    [isLocalRuntime, section],
-  );
-
-  const validGroups = useMemo(
-    () =>
-      groups.filter(
-        (group) =>
-          group.serverEditableEntries.length > 0 ||
-          group.envEditableEntries.length > 0 ||
-          group.readonlyEntries.length > 0,
-      ),
-    [groups],
-  );
+  const groups = buildEntryGroups(section, isLocalRuntime);
 
   return (
     <div className={SETTINGS_STYLES.section.root}>
-      {validGroups.map((group, index) => (
+      {groups.map((group, index) => (
         <div key={`${group.label || "group"}-${index}`} className={SETTINGS_STYLES.section.groupBlock}>
           {group.label ? <SectionDivider label={group.label} compact={index === 0} /> : null}
 
