@@ -86,7 +86,7 @@ async def save_uploaded_file(
     filename = file.filename or "unknown"
     extension = Path(filename).suffix.lower()
     content_hash = hashlib.sha256(content).hexdigest()
-    temp_dir = build_temp_dir(normalized_subject)
+    temp_dir = build_temp_dir(normalized_subject, user_id=owner_user_id)
     temp_dir.mkdir(parents=True, exist_ok=True)
     temp_path = temp_dir / f"{uuid.uuid4().hex}{extension}"
     temp_path.write_bytes(content)

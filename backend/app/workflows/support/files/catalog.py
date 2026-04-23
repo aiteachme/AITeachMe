@@ -114,7 +114,11 @@ def _to_subject_relative_storage_path(*, subject: str, storage_key: str) -> str 
     return relative or None
 
 
-def _read_markdown(markdown_path_value: str | None) -> str:
+def _read_markdown(markdown_path_value: str | None, *, markdown_content: str | None = None) -> str:
+    in_db = str(markdown_content or "").strip()
+    if in_db:
+        return in_db
+
     if not markdown_path_value:
         return ""
 
@@ -154,7 +158,10 @@ def build_file_record(raw_file: RawFile) -> FileRecord:
         estimated_pages=raw_file.estimated_pages,
         image_count=raw_file.image_count,
         parser_used=_extract_parser_used(raw_file),
-        markdown_content=_read_markdown(raw_file.markdown_path),
+        markdown_content=_read_markdown(
+            raw_file.markdown_path,
+            markdown_content=raw_file.markdown_content,
+        ),
         asset_base_url=asset_base_url,
         assets=assets,
         classification_json=raw_file.classification_json,

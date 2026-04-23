@@ -18,22 +18,43 @@ def get_data_dir() -> Path:
     return get_runtime_data_dir()
 
 
-def build_subject_dir(subject: str) -> Path:
+def _canonical_subject_dir(subject: str, *, user_id: str | None = None) -> Path:
+    """Return the canonical subject directory under `users/<user>/subjects/`.
+
+    Falls back to the legacy `data/<subject>/` layout only when the user scope
+    cannot be resolved yet.
+    """
+
+    try:
+        if user_id is not None:
+            from app.shared.infra.storage import build_subject_storage_scope
+
+            scope = build_subject_storage_scope(user_id=user_id, subject=subject)
+        else:
+            from app.shared.infra.storage import resolve_subject_storage_scope
+
+            scope = resolve_subject_storage_scope(subject)
+        return get_data_dir() / scope.namespace
+    except Exception:
+        return get_data_dir() / subject
+
+
+def build_subject_dir(subject: str, *, user_id: str | None = None) -> Path:
     """Return the subject data directory."""
 
-    return get_data_dir() / subject
+    return _canonical_subject_dir(subject, user_id=user_id)
 
 
-def build_raw_dir(subject: str) -> Path:
+def build_raw_dir(subject: str, *, user_id: str | None = None) -> Path:
     """Return the raw file directory."""
 
-    return build_subject_dir(subject) / "raw_files"
+    return build_subject_dir(subject, user_id=user_id) / "raw_files"
 
 
-def build_raw_markdown_dir(subject: str) -> Path:
+def build_raw_markdown_dir(subject: str, *, user_id: str | None = None) -> Path:
     """Return the parsed raw-markdown directory."""
 
-    return build_subject_dir(subject) / "raw_markdowns"
+    return build_subject_dir(subject, user_id=user_id) / "raw_markdowns"
 
 
 def build_markdown_dir(subject: str) -> Path:
@@ -42,28 +63,28 @@ def build_markdown_dir(subject: str) -> Path:
     return build_raw_markdown_dir(subject)
 
 
-def build_assets_dir(subject: str) -> Path:
+def build_assets_dir(subject: str, *, user_id: str | None = None) -> Path:
     """Return the extracted-assets root directory."""
 
-    return build_subject_dir(subject) / "assets"
+    return build_subject_dir(subject, user_id=user_id) / "assets"
 
 
-def build_temp_dir(subject: str) -> Path:
+def build_temp_dir(subject: str, *, user_id: str | None = None) -> Path:
     """Return the temp directory."""
 
-    return build_subject_dir(subject) / "temp"
+    return build_subject_dir(subject, user_id=user_id) / "temp"
 
 
-def build_debug_dir(subject: str) -> Path:
+def build_debug_dir(subject: str, *, user_id: str | None = None) -> Path:
     """Return the subject-level debug directory."""
 
-    return build_subject_dir(subject) / "debug"
+    return build_subject_dir(subject, user_id=user_id) / "debug"
 
 
-def build_exam_dir(subject: str) -> Path:
+def build_exam_dir(subject: str, *, user_id: str | None = None) -> Path:
     """Return the subject-level exam export directory."""
 
-    return build_subject_dir(subject) / "exam"
+    return build_subject_dir(subject, user_id=user_id) / "exam"
 
 
 def build_raw_file_path(subject: str, record_id: int, extension: str) -> Path:
@@ -91,10 +112,10 @@ def build_asset_dir(subject: str, raw_file_id: int) -> Path:
     return build_assets_dir(subject) / str(raw_file_id)
 
 
-def build_knowledge_markdown_dir(subject: str) -> Path:
+def build_knowledge_markdown_dir(subject: str, *, user_id: str | None = None) -> Path:
     """Return the published knowledge-markdown directory."""
 
-    return build_subject_dir(subject) / "knowledge_markdowns"
+    return build_subject_dir(subject, user_id=user_id) / "knowledge_markdowns"
 
 
 def build_knowledge_docs_dir(subject: str) -> Path:
