@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import uuid
 
 import structlog
 from fastapi import APIRouter, Body, Depends, Path, Request
@@ -27,6 +28,7 @@ from app.schemas.knowledge import (
     DocGenBuildData,
     DocGenBuildRequest,
     DocGenGetResponse,
+    KnowledgeBuildRuntimeResponse,
     KnowledgeDebugTriggerRequest,
     KnowledgeDebugTriggerResponse,
     KnowledgeOverviewRequest,
@@ -43,6 +45,7 @@ from app.workflows.support.auth import set_guest_cookie_for_user
 from app.workflows.digest.docgen import (
     clear_subject_knowledge,
     get_docgen_result,
+    get_knowledge_build_runtime_result,
     run_docgen_background,
     trigger_docgen_build,
 )
@@ -58,8 +61,11 @@ from app.workflows.interact.chat.lib.streaming import SSEEventEmitter
 from app.utils.docgen_store import (
     KnowledgeBuildLock,
     acquire_knowledge_build_lock,
+    build_aggregate_knowledge_build_status,
+    read_knowledge_build_runtime,
     read_knowledge_build_status,
     release_knowledge_build_lock,
+    update_knowledge_build_lane_status,
     update_knowledge_build_status,
 )
 from app.utils.time import utcnow
@@ -190,7 +196,7 @@ async def knowledge_debug_kg_file_ingest(
 ) -> ApiResponse[KnowledgeDebugTriggerResponse]:
     normalized = normalize_subject_slug(subject)
     subject_record = get_subject_record(session, normalized, owner_user_id=user.user_id)
-    data, accepted_file_ids = trigger_docgen_build(
+    data, accepted_file_ids, build_group_id = trigger_docgen_build(
         session,
         subject=subject_record,
         user_id=user.user_id,
@@ -206,6 +212,7 @@ async def knowledge_debug_kg_file_ingest(
             file_ids=accepted_file_ids,
             prompt=data.prompt,
             requested_at=data.requested_at,
+            build_group_id=build_group_id,
         ),
         kind="knowledge.debug.kg_file_ingest",
         subject=normalized,
@@ -237,14 +244,16 @@ async def knowledge_debug_kg_docs_sync(
     normalized = normalize_subject_slug(subject)
     get_subject_record(session, normalized, owner_user_id=user.user_id)
     requested_at = utcnow()
+    build_group_id = uuid.uuid4().hex
     if not acquire_knowledge_build_lock(
         normalized,
-        KnowledgeBuildLock(requested_at=requested_at, source_file_ids=[], prompt=body.prompt),
+        KnowledgeBuildLock(requested_at=requested_at, build_group_id=build_group_id, source_file_ids=[], prompt=body.prompt),
     ):
         raise SubjectBuildLockConflictError(normalized)
     update_knowledge_build_status(
         normalized,
         requested_at=requested_at,
+        build_group_id=build_group_id,
         build_kind="graph",
         status="accepted",
         stage="graph_docs_sync",
@@ -257,6 +266,7 @@ async def knowledge_debug_kg_docs_sync(
             subject=normalized,
             prompt=body.prompt,
             requested_at=requested_at,
+            build_group_id=build_group_id,
         ),
         kind="knowledge.debug.kg_docs_sync",
         subject=normalized,
@@ -476,7 +486,7 @@ async def knowledge_build(
         owner_user_id=user.user_id,
     )
 
-    data, accepted_file_ids = trigger_docgen_build(
+    data, accepted_file_ids, build_group_id = trigger_docgen_build(
         session,
         subject=subject_record,
         user_id=user.user_id,
@@ -504,6 +514,7 @@ async def knowledge_build(
                 file_ids=accepted_file_ids,
                 prompt=data.prompt,
                 requested_at=data.requested_at,
+                build_group_id=build_group_id,
                 planner_session_id=data.planner_session_id,
                 confirmed_plan_id=data.confirmed_plan_id,
                 user_id=user.user_id,
@@ -526,6 +537,7 @@ async def knowledge_build(
                 file_ids=accepted_file_ids,
                 prompt=data.prompt,
                 requested_at=data.requested_at,
+                build_group_id=build_group_id,
             ),
             kind="knowledge.build.graph",
             subject=normalized,
@@ -557,15 +569,18 @@ async def knowledge_build_cancel(
 ) -> ApiResponse[DocGenBuildCancelData]:
     normalized = normalize_subject_slug(subject)
     get_subject_record(session, normalized, owner_user_id=user.user_id)
-    build_status = read_knowledge_build_status(normalized)
+    runtime = read_knowledge_build_runtime(normalized)
+    aggregate_status = build_aggregate_knowledge_build_status(runtime)
+    docgen_status = runtime.docgen_runtime if runtime is not None else None
+    graph_status = runtime.graph_runtime if runtime is not None else None
     cancelled_task_count = 0
     registry = getattr(request.app.state, "background_task_registry", None)
     if registry is not None:
         cancelled_task_count += await registry.cancel_matching(kind="knowledge.build.docs", subject=normalized)
         cancelled_task_count += await registry.cancel_matching(kind="knowledge.build.graph", subject=normalized)
 
-    requested_at = build_status.requested_at if build_status is not None else utcnow()
-    confirmed_plan_id = build_status.confirmed_plan_id if build_status is not None else None
+    requested_at = aggregate_status.requested_at if aggregate_status is not None else utcnow()
+    confirmed_plan_id = docgen_status.confirmed_plan_id if docgen_status is not None else None
     if confirmed_plan_id:
         mark_confirmed_build_plan_status(
             session,
@@ -574,18 +589,32 @@ async def knowledge_build_cancel(
             plan_id=confirmed_plan_id,
             status="cancelled",
         )
-    update_knowledge_build_status(
-        normalized,
-        requested_at=requested_at,
-        status="cancelled",
-        stage="cancelled",
-        error_message="build_cancelled",
-        draft_available=False,
-        planner_session_id=build_status.planner_session_id if build_status is not None else None,
-        confirmed_plan_id=confirmed_plan_id,
-        digest_mode=build_status.digest_mode if build_status is not None else None,
-        current_stage_description="本轮知识构建已被用户终止。",
-    )
+    if docgen_status is not None and (docgen_status.status or "").strip() in {"accepted", "running", "publishing"}:
+        update_knowledge_build_lane_status(
+            normalized,
+            lane="docgen",
+            requested_at=requested_at,
+            build_group_id=docgen_status.build_group_id,
+            status="cancelled",
+            stage="cancelled",
+            error_message="build_cancelled",
+            draft_available=False,
+            planner_session_id=docgen_status.planner_session_id,
+            confirmed_plan_id=confirmed_plan_id,
+            digest_mode=docgen_status.digest_mode,
+            current_stage_description="本轮知识构建已被用户终止。",
+        )
+    if graph_status is not None and (graph_status.status or "").strip() in {"accepted", "running", "publishing"}:
+        update_knowledge_build_lane_status(
+            normalized,
+            lane="graph",
+            requested_at=requested_at,
+            build_group_id=graph_status.build_group_id,
+            status="cancelled",
+            stage="cancelled",
+            error_message="build_cancelled",
+            current_stage_description="本轮图谱构建已被用户终止。",
+        )
     release_knowledge_build_lock(normalized)
     return ok_response(
         DocGenBuildCancelData(
@@ -594,6 +623,22 @@ async def knowledge_build_cancel(
             requested_at=requested_at,
         )
     )
+
+
+@router.post(
+    "/build/runtime",
+    response_model=ApiResponse[KnowledgeBuildRuntimeResponse],
+    summary="Fetch aggregate/docgen/graph runtime state",
+    responses=build_error_responses([400, 404, 500]),
+)
+async def knowledge_build_runtime(
+    subject: str = Path(...),
+    user: CurrentUserContext = Depends(get_current_user_context),
+    session: Session = Depends(get_db),
+) -> ApiResponse[KnowledgeBuildRuntimeResponse]:
+    normalized = normalize_subject_slug(subject)
+    get_subject_record(session, normalized, owner_user_id=user.user_id)
+    return ok_response(get_knowledge_build_runtime_result(session, subject=normalized))
 
 
 @router.post(

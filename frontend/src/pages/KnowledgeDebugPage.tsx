@@ -29,6 +29,10 @@ import { KnowledgeGraphView } from "../components/pages/KnowledgeGraphView";
 import { SubjectVectorNotice } from "../components/pages/SubjectVectorNotice";
 import { Button } from "../components/ui/Button";
 import { useToast } from "../components/ui/Toast";
+import {
+  buildKnowledgeBuildRuntimeQueryKey,
+  fetchKnowledgeBuildRuntime,
+} from "../lib/knowledgeBuildRuntime";
 import { buildKnowledgeDocStateQueryKey, fetchKnowledgeDocState } from "../lib/knowledgeDocs";
 import {
   OVERVIEW_INCLUDE_PRESETS,
@@ -184,7 +188,15 @@ export function KnowledgeDebugPage() {
     },
   });
 
-  const buildStatus = (docsStateQuery.data as DocGenGetResponse | undefined)?.build ?? null;
+  const runtimeQuery = useQuery({
+    queryKey: subjectId ? buildKnowledgeBuildRuntimeQueryKey(subjectId) : ["knowledge-build-runtime-empty"],
+    queryFn: () => fetchKnowledgeBuildRuntime(subjectId ?? ""),
+    enabled: Boolean(subjectId),
+    refetchInterval: (query) =>
+      ACTIVE_DOC_BUILD_STATUSES.has((query.state.data?.aggregate?.status ?? "").trim()) ? 3000 : false,
+  });
+
+  const buildStatus = runtimeQuery.data?.aggregate ?? null;
   const isBuildActive = ACTIVE_DOC_BUILD_STATUSES.has((buildStatus?.status ?? "").trim());
 
   const overviewQuery = useQuery({
@@ -369,6 +381,7 @@ export function KnowledgeDebugPage() {
                 variant="outline"
                 onClick={() => void Promise.all([
                   docsStateQuery.refetch(),
+                  runtimeQuery.refetch(),
                   overviewQuery.refetch(),
                   graphQuery.refetch(),
                   unitsQuery.refetch(),
@@ -385,6 +398,7 @@ export function KnowledgeDebugPage() {
                 <RefreshCw
                   className={`h-4 w-4 ${
                     docsStateQuery.isFetching ||
+                    runtimeQuery.isFetching ||
                     overviewQuery.isFetching ||
                     graphQuery.isFetching ||
                     unitsQuery.isFetching ||

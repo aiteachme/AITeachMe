@@ -52,6 +52,7 @@ def update_job_progress(
         )
         update_knowledge_build_status(
             resolved_subject,
+            build_kind="graph",
             status="running",
             stage=safe_step,
             progress_pct=normalized_progress,
@@ -245,4 +246,3 @@ def activate_graph_entities_by_subject(session: Session, *, subject: str) -> int
     session.commit()
     logger.info("activate_graph_entities_by_subject", subject=subject, activated=total)
     return total
-

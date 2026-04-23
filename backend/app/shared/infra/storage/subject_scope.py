@@ -63,6 +63,9 @@ class SubjectStorageScope:
     def build_status_key(self) -> str:
         return f"{self.namespace}/knowledge_markdowns/_build/status.json"
 
+    def build_runtime_key(self) -> str:
+        return f"{self.namespace}/knowledge_markdowns/_build/runtime.json"
+
     def build_manifest_key(self) -> str:
         return f"{self.namespace}/knowledge_markdowns/_build/manifest.json"
 
