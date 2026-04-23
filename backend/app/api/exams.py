@@ -185,14 +185,8 @@ def _pick_knowledge_units(
 
 
 def _question_type_for_order(*, exam_mode: str, difficulty: str, item_order: int) -> str:
-    if exam_mode == "paper_exam":
-        cycle = ["single_choice", "multiple_choice", "fill_blank", "short_answer", "true_false"]
-    elif difficulty == "easy":
-        cycle = ["single_choice", "true_false", "fill_blank"]
-    elif difficulty == "hard":
-        cycle = ["short_answer", "multiple_choice", "fill_blank", "single_choice", "true_false"]
-    else:
-        cycle = ["single_choice", "multiple_choice", "short_answer", "true_false", "fill_blank"]
+    del exam_mode, difficulty
+    cycle = ["single_choice", "fill_blank"]
     return cycle[(item_order - 1) % len(cycle)]
 
 

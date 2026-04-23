@@ -1,4 +1,4 @@
-from app.api.exams import _require_generated_questions_by_order
+from app.api.exams import _question_type_for_order, _require_generated_questions_by_order
 from app.shared.infra.exceptions import AITeachMeError
 from app.shared.infra.workflow.result import err_result, ok_result
 
@@ -40,3 +40,16 @@ def test_require_generated_questions_by_order_raises_when_workflow_fails():
         assert exc.error_code == "EXAM_QUESTION_BUILD_FAILED"
         assert exc.status_code == 502
         assert exc.detail == "LLM timeout"
+
+
+def test_question_type_for_order_only_returns_single_choice_and_fill_blank():
+    generated = {
+        _question_type_for_order(exam_mode="paper_exam", difficulty="medium", item_order=order)
+        for order in range(1, 9)
+    } | {
+        _question_type_for_order(exam_mode="web_practice", difficulty=difficulty, item_order=order)
+        for difficulty in ["easy", "medium", "hard"]
+        for order in range(1, 9)
+    }
+
+    assert generated == {"single_choice", "fill_blank"}
