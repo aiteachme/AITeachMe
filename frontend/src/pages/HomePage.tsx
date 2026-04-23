@@ -26,6 +26,7 @@ import { unwrapOrvalResponse } from "../lib/unwrapOrvalResponse";
 import { getApiErrorMessage } from "../api/client";
 import { cn } from "../lib/utils";
 import { downloadSubjectPackage } from "../lib/subjectPackage";
+import { FILE_ACCEPT, extractPasteFiles } from "../lib/fileUpload";
 import { resolveFileProcessingLabel } from "../components/knowledge-docs";
 import { HeroAnimation } from "../components/ui/HeroAnimation";
 import { FullPageDropOverlay } from "../components/ui/FullPageDropOverlay";
@@ -154,7 +155,6 @@ async function importSubject(file: File, newName?: string): Promise<ImportResult
 }
 /* ── Helpers ── */
 
-const ACCEPT_TEXT = ".pdf,.docx,.doc,.ppt,.pptx,.md,.markdown,.txt,.png,.jpg,.jpeg,.webp";
 const HOME_ENTRY_FILES_QUERY_KEY = (subjectId: string) => ["home-entry-files", subjectId] as const;
 
 function formatFileSize(bytes?: number | null): string {
@@ -710,6 +710,15 @@ export function HomePage() {
     }
   };
 
+  const handlePaste = useCallback((e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const files = extractPasteFiles(e);
+    if (files.length > 0) {
+      e.preventDefault();
+      void uploadPendingFiles(files);
+    }
+    // If no files, let the default text paste proceed
+  }, [uploadPendingFiles]);
+
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const newFiles = Array.from(e.target.files ?? []);
     if (fileInputRef.current) fileInputRef.current.value = "";
@@ -799,7 +808,13 @@ export function HomePage() {
           transition={{ delay: 0.35 }}
           className="w-full relative z-10"
         >
-          <div className="w-full rounded-[30px] border-[1.5px] border-zinc-200/80 bg-white/70 backdrop-blur-xl shadow-[0_8px_30px_rgb(0,0,0,0.06)] transition-all focus-within:border-indigo-300 focus-within:shadow-[0_8px_30px_rgb(99,102,241,0.15)] focus-within:ring-4 focus-within:ring-indigo-500/10 hover:border-zinc-300 hover:bg-white/80 hover:shadow-[0_8px_30px_rgb(0,0,0,0.1)]">
+          <div className={cn(
+            "w-full rounded-[30px] border-[1.5px] backdrop-blur-xl transition-all",
+            hasEntryFiles
+              ? "border-indigo-300/80 bg-indigo-50/40 shadow-[0_8px_30px_rgb(99,102,241,0.10)] ring-2 ring-indigo-500/8"
+              : "border-zinc-200/80 bg-white/70 shadow-[0_8px_30px_rgb(0,0,0,0.06)] hover:border-zinc-300 hover:bg-white/80 hover:shadow-[0_8px_30px_rgb(0,0,0,0.1)]",
+            "focus-within:border-indigo-300 focus-within:shadow-[0_8px_30px_rgb(99,102,241,0.15)] focus-within:ring-4 focus-within:ring-indigo-500/10"
+          )}>
             <textarea
               ref={textareaRef}
               placeholder="直接输入学习目标，也可以先上传资料再一起规划"
@@ -807,6 +822,7 @@ export function HomePage() {
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
               onKeyDown={handleKeyDown}
+              onPaste={handlePaste}
               rows={3}
               disabled={isCreatingDraftSubject}
             />
@@ -868,7 +884,7 @@ export function HomePage() {
                     className="hidden" 
                     ref={fileInputRef} 
                     onChange={handleFileSelect}
-                    accept={ACCEPT_TEXT}
+                    accept={FILE_ACCEPT}
                   />
                   <button
                     type="button"

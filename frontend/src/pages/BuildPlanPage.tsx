@@ -34,6 +34,7 @@ import { FullPageDropOverlay } from "../components/ui/FullPageDropOverlay";
 import { useToast } from "../components/ui/Toast";
 import { useKnowledgeBuildFlow } from "../hooks/useKnowledgeBuildFlow";
 import { buildKnowledgeDocStateQueryKey, fetchKnowledgeDocState } from "../lib/knowledgeDocs";
+import { FILE_ACCEPT, extractPasteFiles } from "../lib/fileUpload";
 import type { FileRecord, FilesData, FilesUploadData } from "../types/files";
 
 type ChatRole = "user" | "assistant" | "system";
@@ -56,7 +57,6 @@ interface PersistedPlannerState {
   plannerNeedsRefresh: boolean;
 }
 
-const ACCEPT = ".pdf,.docx,.doc,.ppt,.pptx,.md,.markdown,.txt,.png,.jpg,.jpeg,.webp";
 const STORAGE_PREFIX = "aiteachme:files-page-planner";
 const PLANNER_STATE_VERSION = 4;
 const LEGACY_WELCOME_MESSAGE_CONTENT =
@@ -1693,6 +1693,13 @@ export function BuildPlanPage() {
                     void handleSend();
                   }
                 }}
+                onPaste={(event) => {
+                  const files = extractPasteFiles(event);
+                  if (files.length > 0) {
+                    event.preventDefault();
+                    void uploadMutation.mutateAsync(files);
+                  }
+                }}
                 disabled={isBuilding || plannerStreaming}
                 placeholder={plannerStreaming ? "正在生成方案，点击右侧按钮可停止当前生成" : inputPlaceholder}
                 rows={1}
@@ -1740,7 +1747,7 @@ export function BuildPlanPage() {
                     <input
                       type="file"
                       multiple
-                      accept={ACCEPT}
+                      accept={FILE_ACCEPT}
                       className="hidden"
                       id="files-page-upload"
                       onChange={(event: ChangeEvent<HTMLInputElement>) => {
