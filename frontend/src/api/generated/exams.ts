@@ -29,6 +29,8 @@ import type {
   ApiResponseExamGradeResponse,
   ApiResponseExamPaperDetailResponse,
   ApiResponseExamStudyGuideResponse,
+  ApiResponseListQuestionTemplateItemResponse,
+  ApiResponseListQuestionTypeRegistryItemResponse,
   ApiResponsePaginatedDataExamHistoryItem,
   ErrorResponse,
   ExamGenerateRequest,
@@ -293,6 +295,274 @@ export function useExamHistoryApiV1SubjectsSubjectExamsHistoryGet<TData = Awaite
  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
 
   const queryOptions = getExamHistoryApiV1SubjectsSubjectExamsHistoryGetQueryOptions(subject,params,options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+/**
+ * @summary List question templates for the subject
+ */
+export type questionTemplatesApiV1SubjectsSubjectExamsQuestionTemplatesGetResponse200 = {
+  data: ApiResponseListQuestionTemplateItemResponse
+  status: 200
+}
+
+export type questionTemplatesApiV1SubjectsSubjectExamsQuestionTemplatesGetResponse400 = {
+  data: ErrorResponse
+  status: 400
+}
+
+export type questionTemplatesApiV1SubjectsSubjectExamsQuestionTemplatesGetResponse404 = {
+  data: ErrorResponse
+  status: 404
+}
+
+export type questionTemplatesApiV1SubjectsSubjectExamsQuestionTemplatesGetResponse422 = {
+  data: HTTPValidationError
+  status: 422
+}
+
+export type questionTemplatesApiV1SubjectsSubjectExamsQuestionTemplatesGetResponse500 = {
+  data: ErrorResponse
+  status: 500
+}
+
+export type questionTemplatesApiV1SubjectsSubjectExamsQuestionTemplatesGetResponseSuccess = (questionTemplatesApiV1SubjectsSubjectExamsQuestionTemplatesGetResponse200) & {
+  headers: Headers;
+};
+export type questionTemplatesApiV1SubjectsSubjectExamsQuestionTemplatesGetResponseError = (questionTemplatesApiV1SubjectsSubjectExamsQuestionTemplatesGetResponse400 | questionTemplatesApiV1SubjectsSubjectExamsQuestionTemplatesGetResponse404 | questionTemplatesApiV1SubjectsSubjectExamsQuestionTemplatesGetResponse422 | questionTemplatesApiV1SubjectsSubjectExamsQuestionTemplatesGetResponse500) & {
+  headers: Headers;
+};
+
+export type questionTemplatesApiV1SubjectsSubjectExamsQuestionTemplatesGetResponse = (questionTemplatesApiV1SubjectsSubjectExamsQuestionTemplatesGetResponseSuccess | questionTemplatesApiV1SubjectsSubjectExamsQuestionTemplatesGetResponseError)
+
+export const getQuestionTemplatesApiV1SubjectsSubjectExamsQuestionTemplatesGetUrl = (subject: string,) => {
+
+
+
+
+  return `/api/v1/subjects/${subject}/exams/question-templates`
+}
+
+export const questionTemplatesApiV1SubjectsSubjectExamsQuestionTemplatesGet = async (subject: string, options?: RequestInit): Promise<questionTemplatesApiV1SubjectsSubjectExamsQuestionTemplatesGetResponse> => {
+
+  return orvalApiClient<questionTemplatesApiV1SubjectsSubjectExamsQuestionTemplatesGetResponse>(getQuestionTemplatesApiV1SubjectsSubjectExamsQuestionTemplatesGetUrl(subject),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getQuestionTemplatesApiV1SubjectsSubjectExamsQuestionTemplatesGetQueryKey = (subject: string,) => {
+    return [
+    `/api/v1/subjects/${subject}/exams/question-templates`
+    ] as const;
+    }
+
+
+export const getQuestionTemplatesApiV1SubjectsSubjectExamsQuestionTemplatesGetQueryOptions = <TData = Awaited<ReturnType<typeof questionTemplatesApiV1SubjectsSubjectExamsQuestionTemplatesGet>>, TError = ErrorResponse | HTTPValidationError>(subject: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof questionTemplatesApiV1SubjectsSubjectExamsQuestionTemplatesGet>>, TError, TData>>, request?: SecondParameter<typeof orvalApiClient>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getQuestionTemplatesApiV1SubjectsSubjectExamsQuestionTemplatesGetQueryKey(subject);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof questionTemplatesApiV1SubjectsSubjectExamsQuestionTemplatesGet>>> = ({ signal }) => questionTemplatesApiV1SubjectsSubjectExamsQuestionTemplatesGet(subject, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(subject), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof questionTemplatesApiV1SubjectsSubjectExamsQuestionTemplatesGet>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type QuestionTemplatesApiV1SubjectsSubjectExamsQuestionTemplatesGetQueryResult = NonNullable<Awaited<ReturnType<typeof questionTemplatesApiV1SubjectsSubjectExamsQuestionTemplatesGet>>>
+export type QuestionTemplatesApiV1SubjectsSubjectExamsQuestionTemplatesGetQueryError = ErrorResponse | HTTPValidationError
+
+
+export function useQuestionTemplatesApiV1SubjectsSubjectExamsQuestionTemplatesGet<TData = Awaited<ReturnType<typeof questionTemplatesApiV1SubjectsSubjectExamsQuestionTemplatesGet>>, TError = ErrorResponse | HTTPValidationError>(
+ subject: string, options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof questionTemplatesApiV1SubjectsSubjectExamsQuestionTemplatesGet>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof questionTemplatesApiV1SubjectsSubjectExamsQuestionTemplatesGet>>,
+          TError,
+          Awaited<ReturnType<typeof questionTemplatesApiV1SubjectsSubjectExamsQuestionTemplatesGet>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof orvalApiClient>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useQuestionTemplatesApiV1SubjectsSubjectExamsQuestionTemplatesGet<TData = Awaited<ReturnType<typeof questionTemplatesApiV1SubjectsSubjectExamsQuestionTemplatesGet>>, TError = ErrorResponse | HTTPValidationError>(
+ subject: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof questionTemplatesApiV1SubjectsSubjectExamsQuestionTemplatesGet>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof questionTemplatesApiV1SubjectsSubjectExamsQuestionTemplatesGet>>,
+          TError,
+          Awaited<ReturnType<typeof questionTemplatesApiV1SubjectsSubjectExamsQuestionTemplatesGet>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof orvalApiClient>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useQuestionTemplatesApiV1SubjectsSubjectExamsQuestionTemplatesGet<TData = Awaited<ReturnType<typeof questionTemplatesApiV1SubjectsSubjectExamsQuestionTemplatesGet>>, TError = ErrorResponse | HTTPValidationError>(
+ subject: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof questionTemplatesApiV1SubjectsSubjectExamsQuestionTemplatesGet>>, TError, TData>>, request?: SecondParameter<typeof orvalApiClient>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * @summary List question templates for the subject
+ */
+
+export function useQuestionTemplatesApiV1SubjectsSubjectExamsQuestionTemplatesGet<TData = Awaited<ReturnType<typeof questionTemplatesApiV1SubjectsSubjectExamsQuestionTemplatesGet>>, TError = ErrorResponse | HTTPValidationError>(
+ subject: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof questionTemplatesApiV1SubjectsSubjectExamsQuestionTemplatesGet>>, TError, TData>>, request?: SecondParameter<typeof orvalApiClient>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getQuestionTemplatesApiV1SubjectsSubjectExamsQuestionTemplatesGetQueryOptions(subject,options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+/**
+ * @summary List global and subject question types
+ */
+export type questionTypesApiV1SubjectsSubjectExamsQuestionTypesGetResponse200 = {
+  data: ApiResponseListQuestionTypeRegistryItemResponse
+  status: 200
+}
+
+export type questionTypesApiV1SubjectsSubjectExamsQuestionTypesGetResponse400 = {
+  data: ErrorResponse
+  status: 400
+}
+
+export type questionTypesApiV1SubjectsSubjectExamsQuestionTypesGetResponse404 = {
+  data: ErrorResponse
+  status: 404
+}
+
+export type questionTypesApiV1SubjectsSubjectExamsQuestionTypesGetResponse422 = {
+  data: HTTPValidationError
+  status: 422
+}
+
+export type questionTypesApiV1SubjectsSubjectExamsQuestionTypesGetResponse500 = {
+  data: ErrorResponse
+  status: 500
+}
+
+export type questionTypesApiV1SubjectsSubjectExamsQuestionTypesGetResponseSuccess = (questionTypesApiV1SubjectsSubjectExamsQuestionTypesGetResponse200) & {
+  headers: Headers;
+};
+export type questionTypesApiV1SubjectsSubjectExamsQuestionTypesGetResponseError = (questionTypesApiV1SubjectsSubjectExamsQuestionTypesGetResponse400 | questionTypesApiV1SubjectsSubjectExamsQuestionTypesGetResponse404 | questionTypesApiV1SubjectsSubjectExamsQuestionTypesGetResponse422 | questionTypesApiV1SubjectsSubjectExamsQuestionTypesGetResponse500) & {
+  headers: Headers;
+};
+
+export type questionTypesApiV1SubjectsSubjectExamsQuestionTypesGetResponse = (questionTypesApiV1SubjectsSubjectExamsQuestionTypesGetResponseSuccess | questionTypesApiV1SubjectsSubjectExamsQuestionTypesGetResponseError)
+
+export const getQuestionTypesApiV1SubjectsSubjectExamsQuestionTypesGetUrl = (subject: string,) => {
+
+
+
+
+  return `/api/v1/subjects/${subject}/exams/question-types`
+}
+
+export const questionTypesApiV1SubjectsSubjectExamsQuestionTypesGet = async (subject: string, options?: RequestInit): Promise<questionTypesApiV1SubjectsSubjectExamsQuestionTypesGetResponse> => {
+
+  return orvalApiClient<questionTypesApiV1SubjectsSubjectExamsQuestionTypesGetResponse>(getQuestionTypesApiV1SubjectsSubjectExamsQuestionTypesGetUrl(subject),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getQuestionTypesApiV1SubjectsSubjectExamsQuestionTypesGetQueryKey = (subject: string,) => {
+    return [
+    `/api/v1/subjects/${subject}/exams/question-types`
+    ] as const;
+    }
+
+
+export const getQuestionTypesApiV1SubjectsSubjectExamsQuestionTypesGetQueryOptions = <TData = Awaited<ReturnType<typeof questionTypesApiV1SubjectsSubjectExamsQuestionTypesGet>>, TError = ErrorResponse | HTTPValidationError>(subject: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof questionTypesApiV1SubjectsSubjectExamsQuestionTypesGet>>, TError, TData>>, request?: SecondParameter<typeof orvalApiClient>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getQuestionTypesApiV1SubjectsSubjectExamsQuestionTypesGetQueryKey(subject);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof questionTypesApiV1SubjectsSubjectExamsQuestionTypesGet>>> = ({ signal }) => questionTypesApiV1SubjectsSubjectExamsQuestionTypesGet(subject, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(subject), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof questionTypesApiV1SubjectsSubjectExamsQuestionTypesGet>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type QuestionTypesApiV1SubjectsSubjectExamsQuestionTypesGetQueryResult = NonNullable<Awaited<ReturnType<typeof questionTypesApiV1SubjectsSubjectExamsQuestionTypesGet>>>
+export type QuestionTypesApiV1SubjectsSubjectExamsQuestionTypesGetQueryError = ErrorResponse | HTTPValidationError
+
+
+export function useQuestionTypesApiV1SubjectsSubjectExamsQuestionTypesGet<TData = Awaited<ReturnType<typeof questionTypesApiV1SubjectsSubjectExamsQuestionTypesGet>>, TError = ErrorResponse | HTTPValidationError>(
+ subject: string, options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof questionTypesApiV1SubjectsSubjectExamsQuestionTypesGet>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof questionTypesApiV1SubjectsSubjectExamsQuestionTypesGet>>,
+          TError,
+          Awaited<ReturnType<typeof questionTypesApiV1SubjectsSubjectExamsQuestionTypesGet>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof orvalApiClient>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useQuestionTypesApiV1SubjectsSubjectExamsQuestionTypesGet<TData = Awaited<ReturnType<typeof questionTypesApiV1SubjectsSubjectExamsQuestionTypesGet>>, TError = ErrorResponse | HTTPValidationError>(
+ subject: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof questionTypesApiV1SubjectsSubjectExamsQuestionTypesGet>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof questionTypesApiV1SubjectsSubjectExamsQuestionTypesGet>>,
+          TError,
+          Awaited<ReturnType<typeof questionTypesApiV1SubjectsSubjectExamsQuestionTypesGet>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof orvalApiClient>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useQuestionTypesApiV1SubjectsSubjectExamsQuestionTypesGet<TData = Awaited<ReturnType<typeof questionTypesApiV1SubjectsSubjectExamsQuestionTypesGet>>, TError = ErrorResponse | HTTPValidationError>(
+ subject: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof questionTypesApiV1SubjectsSubjectExamsQuestionTypesGet>>, TError, TData>>, request?: SecondParameter<typeof orvalApiClient>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * @summary List global and subject question types
+ */
+
+export function useQuestionTypesApiV1SubjectsSubjectExamsQuestionTypesGet<TData = Awaited<ReturnType<typeof questionTypesApiV1SubjectsSubjectExamsQuestionTypesGet>>, TError = ErrorResponse | HTTPValidationError>(
+ subject: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof questionTypesApiV1SubjectsSubjectExamsQuestionTypesGet>>, TError, TData>>, request?: SecondParameter<typeof orvalApiClient>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getQuestionTypesApiV1SubjectsSubjectExamsQuestionTypesGetQueryOptions(subject,options)
 
   const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
 

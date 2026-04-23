@@ -40,6 +40,32 @@ class QuestionTemplate(SQLModel, table=True):
     updated_at: datetime = Field(default_factory=utcnow)
 
 
+class QuestionTypeRegistry(SQLModel, table=True):
+    """Question type definition available to exam generation and grading."""
+
+    __tablename__ = "question_type_registry"
+    __table_args__ = (
+        UniqueConstraint("scope", "subject", "type_key", name="uq_question_type_scope_subject_key"),
+    )
+
+    id: int | None = Field(default=None, primary_key=True)
+    type_key: str = Field(index=True)
+    display_name: str
+    scope: str = Field(default="global", index=True)
+    subject: str = Field(default="", index=True)
+    description: str = Field(default="")
+    answer_format: str = Field(default="")
+    grading_method: str = Field(default="llm")
+    option_schema_json: str = Field(default="{}")
+    rubric_json: str = Field(default="{}")
+    source: str = Field(default="system")
+    confidence: float = Field(default=1.0, ge=0.0, le=1.0)
+    is_system: bool = Field(default=True, index=True)
+    is_active: bool = Field(default=True, index=True)
+    created_at: datetime = Field(default_factory=utcnow)
+    updated_at: datetime = Field(default_factory=utcnow)
+
+
 class ExamPaper(SQLModel, table=True):
     """Generated exam paper for one subject and one user."""
 

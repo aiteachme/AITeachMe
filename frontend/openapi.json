@@ -3955,6 +3955,150 @@
         }
       }
     },
+    "/api/v1/subjects/{subject}/exams/question-templates": {
+      "get": {
+        "tags": [
+          "exams"
+        ],
+        "summary": "List question templates for the subject",
+        "operationId": "question_templates_api_v1_subjects__subject__exams_question_templates_get",
+        "parameters": [
+          {
+            "name": "subject",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Subject"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_list_QuestionTemplateItemResponse__"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数不合法。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务内部异常。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/subjects/{subject}/exams/question-types": {
+      "get": {
+        "tags": [
+          "exams"
+        ],
+        "summary": "List global and subject question types",
+        "operationId": "question_types_api_v1_subjects__subject__exams_question_types_get",
+        "parameters": [
+          {
+            "name": "subject",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Subject"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_list_QuestionTypeRegistryItemResponse__"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数不合法。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务内部异常。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/subjects/{subject}/exams/{exam_paper_id}": {
       "get": {
         "tags": [
@@ -6423,6 +6567,82 @@
         },
         "type": "object",
         "title": "ApiResponse[list[KnowledgeRelationResponse]]",
+        "example": {
+          "code": 0,
+          "data": {},
+          "message": "ok"
+        }
+      },
+      "ApiResponse_list_QuestionTemplateItemResponse__": {
+        "properties": {
+          "code": {
+            "type": "integer",
+            "title": "Code",
+            "description": "业务码，0 表示成功。",
+            "default": 0
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "响应消息。",
+            "default": "ok"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/QuestionTemplateItemResponse"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Data",
+            "description": "业务数据。"
+          }
+        },
+        "type": "object",
+        "title": "ApiResponse[list[QuestionTemplateItemResponse]]",
+        "example": {
+          "code": 0,
+          "data": {},
+          "message": "ok"
+        }
+      },
+      "ApiResponse_list_QuestionTypeRegistryItemResponse__": {
+        "properties": {
+          "code": {
+            "type": "integer",
+            "title": "Code",
+            "description": "业务码，0 表示成功。",
+            "default": 0
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "响应消息。",
+            "default": "ok"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/QuestionTypeRegistryItemResponse"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Data",
+            "description": "业务数据。"
+          }
+        },
+        "type": "object",
+        "title": "ApiResponse[list[QuestionTypeRegistryItemResponse]]",
         "example": {
           "code": 0,
           "data": {},
@@ -11530,6 +11750,199 @@
           "pages"
         ],
         "title": "PaginatedData[SubjectItem]"
+      },
+      "QuestionTemplateItemResponse": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "subject": {
+            "type": "string",
+            "title": "Subject"
+          },
+          "knowledge_unit_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Knowledge Unit Id"
+          },
+          "question_type": {
+            "type": "string",
+            "title": "Question Type"
+          },
+          "difficulty": {
+            "type": "string",
+            "title": "Difficulty"
+          },
+          "stem": {
+            "type": "string",
+            "title": "Stem"
+          },
+          "options": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Options"
+          },
+          "answer": {
+            "type": "string",
+            "title": "Answer"
+          },
+          "explanation": {
+            "type": "string",
+            "title": "Explanation"
+          },
+          "knowledge_unit_refs": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Knowledge Unit Refs"
+          },
+          "selection_hints": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Selection Hints"
+          },
+          "template_version": {
+            "type": "integer",
+            "title": "Template Version"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "subject",
+          "question_type",
+          "difficulty",
+          "stem",
+          "answer",
+          "explanation",
+          "template_version",
+          "status",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "QuestionTemplateItemResponse"
+      },
+      "QuestionTypeRegistryItemResponse": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "type_key": {
+            "type": "string",
+            "title": "Type Key"
+          },
+          "display_name": {
+            "type": "string",
+            "title": "Display Name"
+          },
+          "scope": {
+            "type": "string",
+            "title": "Scope"
+          },
+          "subject": {
+            "type": "string",
+            "title": "Subject"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description"
+          },
+          "answer_format": {
+            "type": "string",
+            "title": "Answer Format"
+          },
+          "grading_method": {
+            "type": "string",
+            "title": "Grading Method"
+          },
+          "option_schema": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Option Schema"
+          },
+          "rubric": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Rubric"
+          },
+          "source": {
+            "type": "string",
+            "title": "Source"
+          },
+          "confidence": {
+            "type": "number",
+            "title": "Confidence"
+          },
+          "is_system": {
+            "type": "boolean",
+            "title": "Is System"
+          },
+          "is_active": {
+            "type": "boolean",
+            "title": "Is Active"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "type_key",
+          "display_name",
+          "scope",
+          "subject",
+          "description",
+          "answer_format",
+          "grading_method",
+          "source",
+          "confidence",
+          "is_system",
+          "is_active",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "QuestionTypeRegistryItemResponse"
       },
       "RegisterRequest": {
         "properties": {

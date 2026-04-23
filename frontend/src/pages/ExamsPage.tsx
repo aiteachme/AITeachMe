@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft,
   ArrowRight,
+  BookOpen,
   CalendarDays,
   ChevronDown,
   ChevronRight,
@@ -11,6 +12,7 @@ import {
   Layers3,
   Plus,
   Sparkles,
+  Tags,
   Target,
   ZoomIn,
   ZoomOut,
@@ -87,9 +89,66 @@ interface ExamStudyGuideResponse {
   focus_units: ExamStudyGuideFocusUnit[];
 }
 
+interface QuestionTemplateItem {
+  id: number;
+  subject: string;
+  knowledge_unit_id?: number | null;
+  question_type: string;
+  difficulty: string;
+  stem: string;
+  options?: string[] | null;
+  answer: string;
+  explanation: string;
+  knowledge_unit_refs: Array<Record<string, unknown>>;
+  selection_hints: Record<string, unknown>;
+  template_version: number;
+  status: string;
+  created_at: string;
+  updated_at: string;
+}
+
+interface QuestionTypeRegistryItem {
+  id: number;
+  type_key: string;
+  display_name: string;
+  scope: string;
+  subject: string;
+  description: string;
+  answer_format: string;
+  grading_method: string;
+  option_schema: Record<string, unknown>;
+  rubric: Record<string, unknown>;
+  source: string;
+  confidence: number;
+  is_system: boolean;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
 async function getExamStudyGuide(subjectId: string, paperId: number, signal?: AbortSignal) {
   return orvalApiClient<{ data?: { code?: number; message?: string; data?: ExamStudyGuideResponse } }>(
     `/api/v1/subjects/${subjectId}/exams/${paperId}/study-guide`,
+    {
+      method: "GET",
+      signal,
+    },
+  );
+}
+
+async function getQuestionTemplates(subjectId: string, signal?: AbortSignal) {
+  return orvalApiClient<{ data?: { code?: number; message?: string; data?: QuestionTemplateItem[] } }>(
+    `/api/v1/subjects/${subjectId}/exams/question-templates`,
+    {
+      method: "GET",
+      signal,
+    },
+  );
+}
+
+async function getQuestionTypes(subjectId: string, signal?: AbortSignal) {
+  return orvalApiClient<{ data?: { code?: number; message?: string; data?: QuestionTypeRegistryItem[] } }>(
+    `/api/v1/subjects/${subjectId}/exams/question-types`,
     {
       method: "GET",
       signal,
@@ -1078,7 +1137,7 @@ export function ExamsPage() {
                   一键创建新的练习卷，继续完成未做完的测试，也可以回看已经生成过的考卷与得分记录。
                 </p>
 
-                <div className="mt-8">
+                <div className="mt-8 flex flex-wrap gap-3">
                   <Button
                     size="lg"
                     className="h-14 rounded-full bg-black px-7 text-base font-semibold text-white hover:bg-slate-900"
@@ -1086,6 +1145,24 @@ export function ExamsPage() {
                   >
                     <Plus className="h-5 w-5" />
                     创建新考卷
+                  </Button>
+                  <Button
+                    size="lg"
+                    variant="outline"
+                    className="h-14 rounded-full px-6 text-base font-semibold text-slate-800"
+                    onClick={() => navigate(`/subject/${subjectId}/exams/question-templates`)}
+                  >
+                    <BookOpen className="h-5 w-5" />
+                    题库查看
+                  </Button>
+                  <Button
+                    size="lg"
+                    variant="outline"
+                    className="h-14 rounded-full px-6 text-base font-semibold text-slate-800"
+                    onClick={() => navigate(`/subject/${subjectId}/exams/question-types`)}
+                  >
+                    <Tags className="h-5 w-5" />
+                    题型查看
                   </Button>
                 </div>
               </div>
@@ -1249,6 +1326,339 @@ export function ExamsPage() {
         onCreated={(paperId) => navigate(`/subject/${subjectId}/exams/${paperId}`)}
       />
     </>
+  );
+}
+
+function JsonBadge({ value }: { value: unknown }) {
+  const text = JSON.stringify(value ?? {}, null, 2);
+  if (!text || text === "{}" || text === "[]") {
+    return <span className="text-slate-400">无</span>;
+  }
+  return (
+    <pre className="max-h-40 overflow-auto border-l-2 border-slate-200 pl-3 text-xs leading-5 text-slate-600">
+      {text}
+    </pre>
+  );
+}
+
+function KnowledgeRefTags({ refs }: { refs: Array<Record<string, unknown>> }) {
+  if (!refs.length) {
+    return <span className="text-sm text-slate-400">无</span>;
+  }
+
+  return (
+    <div className="flex flex-wrap gap-2">
+      {refs.map((ref, index) => {
+        const unitId = ref.knowledge_unit_id ?? ref.unit_id ?? "unknown";
+        const role = String(ref.role ?? "related");
+        const weight = Number(ref.coverage_weight ?? 1);
+        const weightLabel = Number.isFinite(weight) ? weight.toFixed(2).replace(/\.?0+$/, "") : "1";
+
+        return (
+          <span
+            key={`${String(unitId)}-${role}-${index}`}
+            className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-sm"
+          >
+            <span className="text-slate-950">知识点 #{String(unitId)}</span>
+            <span className="text-slate-400">|</span>
+            <span>{role}</span>
+            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] text-slate-500">
+              {weightLabel}
+            </span>
+          </span>
+        );
+      })}
+    </div>
+  );
+}
+
+function ExamCatalogShell({
+  subjectId,
+  eyebrow,
+  title,
+  description,
+  children,
+}: {
+  subjectId: string;
+  eyebrow: string;
+  title: string;
+  description: string;
+  children: ReactNode;
+}) {
+  const navigate = useNavigate();
+  return (
+    <div className="min-h-[calc(100vh-4rem)] bg-[linear-gradient(180deg,#fbfcff_0%,#f4f7fb_55%,#eef3f8_100%)] px-4 py-6 sm:px-6 lg:px-8">
+      <div className="mx-auto flex max-w-7xl flex-col gap-6">
+        <header className="px-2 py-4 sm:px-4 lg:px-6">
+          <button
+            type="button"
+            onClick={() => navigate(`/subject/${subjectId}/exams`)}
+            className="inline-flex items-center gap-2 text-sm font-medium text-slate-500 transition hover:text-slate-900"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            返回考试中心
+          </button>
+          <div className="mt-6 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+            <div>
+              <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-sm font-medium text-slate-600">
+                <Sparkles className="h-4 w-4 text-sky-500" />
+                {eyebrow}
+              </div>
+              <h1 className="mt-4 text-3xl font-semibold tracking-[-0.04em] text-slate-950 sm:text-4xl">
+                {title}
+              </h1>
+              <p className="mt-3 max-w-3xl text-sm leading-7 text-slate-600 sm:text-base">
+                {description}
+              </p>
+            </div>
+            <div className="text-sm font-semibold text-slate-500">
+              当前学科：{subjectId}
+            </div>
+          </div>
+        </header>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+export function QuestionTemplatesPage() {
+  const { subjectId } = useParams();
+
+  const templatesQuery = useQuery({
+    queryKey: ["exam-question-templates", subjectId],
+    enabled: Boolean(subjectId),
+    queryFn: async ({ signal }) => {
+      const response = await getQuestionTemplates(subjectId ?? "", signal);
+      return unwrapOrvalResponse<QuestionTemplateItem[]>(response) ?? [];
+    },
+  });
+
+  if (!subjectId) {
+    return (
+      <div className="min-h-[calc(100vh-4rem)] bg-[#f7f8fc] px-6 py-8">
+        <div className="mx-auto max-w-5xl rounded-[28px] border border-amber-200 bg-amber-50 px-5 py-4 text-amber-900 shadow-sm">
+          缺少学科标识，暂时无法加载题库。
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <ExamCatalogShell
+      subjectId={subjectId}
+      eyebrow="Question Bank"
+      title="题库模板"
+      description="这里展示当前学科已经沉淀下来的所有 QuestionTemplate。它们是可复用的题目模板，生成试卷时会复制为本次考试的题目快照。"
+    >
+      {templatesQuery.isLoading && (
+        <div className="px-6 py-12 text-center text-sm text-slate-500">
+          正在加载题库模板...
+        </div>
+      )}
+
+      {templatesQuery.error && (
+        <div className="px-2 py-4 text-sm text-red-700">
+          {getApiErrorMessage(templatesQuery.error, "题库模板加载失败")}
+        </div>
+      )}
+
+      {!templatesQuery.isLoading && !templatesQuery.error && (templatesQuery.data ?? []).length === 0 && (
+        <div className="px-6 py-12 text-center">
+          <BookOpen className="mx-auto h-10 w-10 text-slate-300" />
+          <h3 className="mt-4 text-lg font-semibold text-slate-900">还没有题库模板</h3>
+          <p className="mt-2 text-sm text-slate-500">创建考试后，系统生成的题目会沉淀到这里。</p>
+        </div>
+      )}
+
+      <div className="grid gap-4">
+        {(templatesQuery.data ?? []).map((item) => (
+          <article
+            key={item.id}
+            className="rounded-[28px] border border-slate-200 bg-white px-5 py-5 shadow-sm transition hover:border-slate-300 sm:px-6"
+          >
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="rounded-full bg-slate-950 px-3 py-1 text-xs font-semibold text-white">
+                    #{item.id}
+                  </span>
+                  <span className="rounded-full bg-sky-50 px-3 py-1 text-xs font-semibold text-sky-700">
+                    {item.question_type}
+                  </span>
+                  <span className="rounded-full bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700">
+                    {item.difficulty}
+                  </span>
+                  <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
+                    {item.status}
+                  </span>
+                </div>
+                <div className="mt-4 text-base leading-8 text-slate-900">
+                  <ExamMarkdown content={item.stem} />
+                </div>
+              </div>
+              <div className="shrink-0 text-sm text-slate-500">
+                知识单元：{item.knowledge_unit_id ?? "未绑定"}
+              </div>
+            </div>
+
+            {item.options?.length ? (
+              <div className="mt-5 grid gap-2 border-t border-slate-100 pt-4 md:grid-cols-2">
+                {item.options.map((option, index) => (
+                  <div key={`${item.id}-${index}`} className="text-sm leading-7 text-slate-700">
+                    {option}
+                  </div>
+                ))}
+              </div>
+            ) : null}
+
+            <div className="mt-5 grid gap-4 border-t border-slate-100 pt-5 lg:grid-cols-2">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-700">标准答案</p>
+                <div className="mt-2 text-sm leading-7 text-emerald-950">
+                  <ExamMarkdown content={item.answer} />
+                </div>
+              </div>
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">解析</p>
+                <div className="mt-2 text-sm leading-7 text-slate-700">
+                  <ExamMarkdown content={item.explanation} />
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-5 grid gap-4 lg:grid-cols-2">
+              <div>
+                <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">知识点应用</p>
+                <KnowledgeRefTags refs={item.knowledge_unit_refs} />
+              </div>
+              <div>
+                <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">选择提示</p>
+                <JsonBadge value={item.selection_hints} />
+              </div>
+            </div>
+          </article>
+        ))}
+      </div>
+    </ExamCatalogShell>
+  );
+}
+
+export function QuestionTypesPage() {
+  const { subjectId } = useParams();
+
+  const typesQuery = useQuery({
+    queryKey: ["exam-question-types", subjectId],
+    enabled: Boolean(subjectId),
+    queryFn: async ({ signal }) => {
+      const response = await getQuestionTypes(subjectId ?? "", signal);
+      return unwrapOrvalResponse<QuestionTypeRegistryItem[]>(response) ?? [];
+    },
+  });
+
+  if (!subjectId) {
+    return (
+      <div className="min-h-[calc(100vh-4rem)] bg-[#f7f8fc] px-6 py-8">
+        <div className="mx-auto max-w-5xl rounded-[28px] border border-amber-200 bg-amber-50 px-5 py-4 text-amber-900 shadow-sm">
+          缺少学科标识，暂时无法加载题型。
+        </div>
+      </div>
+    );
+  }
+
+  const rows = typesQuery.data ?? [];
+  const globalRows = rows.filter((item) => item.scope === "global");
+  const subjectRows = rows.filter((item) => item.scope !== "global");
+
+  return (
+    <ExamCatalogShell
+      subjectId={subjectId}
+      eyebrow="Question Types"
+      title="题型注册表"
+      description="这里展示系统基础题型和当前学科题型。后续系统从样卷中学习出的特色题型，也可以进入这张注册表。"
+    >
+      {typesQuery.isLoading && (
+        <div className="px-6 py-12 text-center text-sm text-slate-500">
+          正在加载题型...
+        </div>
+      )}
+
+      {typesQuery.error && (
+        <div className="px-2 py-4 text-sm text-red-700">
+          {getApiErrorMessage(typesQuery.error, "题型加载失败")}
+        </div>
+      )}
+
+      {!typesQuery.isLoading && !typesQuery.error && (
+        <div className="grid gap-6">
+          {[
+            { title: "基础题型", rows: globalRows, icon: <Tags className="h-5 w-5" /> },
+            { title: "当前学科题型", rows: subjectRows, icon: <Layers3 className="h-5 w-5" /> },
+          ].map((group) => (
+            <section key={group.title} className="space-y-4 px-1">
+              <div className="flex items-center justify-between gap-3">
+                <h2 className="inline-flex items-center gap-2 text-xl font-semibold tracking-[-0.03em] text-slate-950">
+                  {group.icon}
+                  {group.title}
+                </h2>
+                <span className="rounded-full bg-slate-100 px-3 py-1 text-sm font-semibold text-slate-600">
+                  {group.rows.length} 类
+                </span>
+              </div>
+
+              {group.rows.length === 0 ? (
+                <div className="px-5 py-8 text-center text-sm text-slate-500">
+                  暂无{group.title}
+                </div>
+              ) : (
+                <div className="grid gap-4 lg:grid-cols-2">
+                  {group.rows.map((item) => (
+                    <article key={item.id} className="rounded-[28px] border border-slate-200 bg-white px-5 py-5 shadow-sm transition hover:border-slate-300">
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <div>
+                          <h3 className="text-lg font-semibold text-slate-950">{item.display_name}</h3>
+                          <p className="mt-1 font-mono text-xs text-slate-500">{item.type_key}</p>
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-600 ring-1 ring-inset ring-slate-200">
+                            {item.scope}
+                          </span>
+                          <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-600 ring-1 ring-inset ring-slate-200">
+                            {item.grading_method}
+                          </span>
+                          {item.is_system && (
+                            <span className="rounded-full bg-sky-100 px-3 py-1 text-xs font-semibold text-sky-700">
+                              system
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      <p className="mt-4 text-sm leading-7 text-slate-600">{item.description || "暂无描述"}</p>
+                      <div className="mt-4 border-t border-slate-100 pt-4 text-sm leading-7 text-slate-600">
+                        <span className="font-semibold text-slate-900">答案格式：</span>
+                        {item.answer_format || "未配置"}
+                      </div>
+
+                      <div className="mt-4 grid gap-4 border-t border-slate-100 pt-4">
+                        <div>
+                          <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">选项结构</p>
+                          <JsonBadge value={item.option_schema} />
+                        </div>
+                        <div>
+                          <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">评分规则</p>
+                          <JsonBadge value={item.rubric} />
+                        </div>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              )}
+            </section>
+          ))}
+        </div>
+      )}
+    </ExamCatalogShell>
   );
 }
 

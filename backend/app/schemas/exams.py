@@ -112,6 +112,43 @@ class QuestionBankItemResponse(BaseModel):
     style_summary: str | None = None
 
 
+class QuestionTemplateItemResponse(BaseModel):
+    id: int
+    subject: str
+    knowledge_unit_id: int | None = None
+    question_type: str
+    difficulty: str
+    stem: str
+    options: list[str] | None = None
+    answer: str
+    explanation: str
+    knowledge_unit_refs: list[dict[str, Any]] = Field(default_factory=list)
+    selection_hints: dict[str, Any] = Field(default_factory=dict)
+    template_version: int
+    status: str
+    created_at: datetime
+    updated_at: datetime
+
+
+class QuestionTypeRegistryItemResponse(BaseModel):
+    id: int
+    type_key: str
+    display_name: str
+    scope: str
+    subject: str
+    description: str
+    answer_format: str
+    grading_method: str
+    option_schema: dict[str, Any] = Field(default_factory=dict)
+    rubric: dict[str, Any] = Field(default_factory=dict)
+    source: str
+    confidence: float
+    is_system: bool
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
+
+
 class ExamNodeLinkResponse(BaseModel):
     knowledge_unit_id: int
     knowledge_unit_name: str

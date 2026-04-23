@@ -21,7 +21,7 @@ from typing import Generator
 
 import sqlalchemy as sa
 import structlog
-from sqlmodel import Session, SQLModel, create_engine
+from sqlmodel import Session, SQLModel, create_engine, select
 
 from app.shared.infra.settings import (
     clear_system_settings_override,
@@ -38,10 +38,11 @@ from app.shared.infra.runtime import get_sqlite_db_path
 from app.shared.infra.subject import (
     extract_postgres_subject_index_data_table_name,
 )
+from migrations.seed_data.question_types import BUILTIN_QUESTION_TYPE_ROWS
 from app.models.build_planner import ConfirmedBuildPlan
 from app.models.chat import ChatMessage, ChatSession
 from app.models.email_verification import EmailVerificationCode
-from app.models.exam import ExamPaper, ExamPaperItem, QuestionTemplate
+from app.models.exam import ExamPaper, ExamPaperItem, QuestionTemplate, QuestionTypeRegistry
 from app.models.knowledge import RetrievalChunk
 from app.models.knowledge_doc import KnowledgeDocument
 from app.models.knowledge_relation import KnowledgeEdge
@@ -65,6 +66,7 @@ _SCHEMA_MODELS = (
     KnowledgeDocument,
     KnowledgeUnit,
     KnowledgeEdge,
+    QuestionTypeRegistry,
     QuestionTemplate,
     ExamPaper,
     ExamPaperItem,
@@ -641,6 +643,34 @@ def _ensure_default_local_user(engine) -> None:
             session.commit()
 
 
+def _ensure_builtin_question_types(engine: sa.Engine) -> None:
+    now = datetime.now(timezone.utc)
+    with Session(engine, expire_on_commit=False) as session:
+        for payload in BUILTIN_QUESTION_TYPE_ROWS:
+            existing = session.exec(
+                select(QuestionTypeRegistry).where(
+                    QuestionTypeRegistry.scope == "global",
+                    QuestionTypeRegistry.subject == "",
+                    QuestionTypeRegistry.type_key == payload["type_key"],
+                )
+            ).first()
+            if existing is None:
+                existing = QuestionTypeRegistry(
+                    scope="global",
+                    subject="",
+                    source="system",
+                    is_system=True,
+                    is_active=True,
+                    confidence=1.0,
+                    created_at=now,
+                )
+            for key, value in payload.items():
+                setattr(existing, key, value)
+            existing.updated_at = now
+            session.add(existing)
+        session.commit()
+
+
 def _settings_snapshot_payload(settings) -> dict[str, object]:
     return settings.model_dump(mode="json")
 
@@ -694,6 +724,7 @@ def _init_local_sqlite_db(settings) -> None:
     SQLModel.metadata.create_all(engine, tables=_SCHEMA_TABLES)
     _refresh_system_settings_override(engine)
     _ensure_default_local_user(engine)
+    _ensure_builtin_question_types(engine)
     _upsert_settings_snapshot(engine, get_settings())
 
     logger.info(

@@ -7,11 +7,12 @@ import json
 import re
 
 from fastapi import APIRouter, Body, Depends, Path
+from sqlalchemy import or_
 from sqlmodel import Session, select
 
 from app.api.deps import CurrentUserContext, get_current_user_context, get_db, normalize_subject_slug
 from app.api.openapi import build_error_responses
-from app.models import ExamPaper, ExamPaperItem, QuestionTemplate, exam_mode_value
+from app.models import ExamPaper, ExamPaperItem, QuestionTemplate, QuestionTypeRegistry, exam_mode_value
 from app.models.knowledge_unit import KnowledgeUnit
 from app.models.subject import Subject
 from app.repositories import exams_repo
@@ -24,6 +25,8 @@ from app.schemas.exams import (
     ExamHistoryItem,
     ExamPaperDetailResponse,
     ExamPaperItemResponse,
+    QuestionTemplateItemResponse,
+    QuestionTypeRegistryItemResponse,
     ExamStudyGuideFocusUnit,
     ExamStudyGuideResponse,
     ExamSubmitRequest,
@@ -57,6 +60,14 @@ def _json_list(raw: str | None) -> list[dict[str, object]]:
     except json.JSONDecodeError:
         return []
     return [item for item in payload if isinstance(item, dict)] if isinstance(payload, list) else []
+
+
+def _json_dict(raw: str | None) -> dict[str, object]:
+    try:
+        payload = json.loads(raw or "{}")
+    except json.JSONDecodeError:
+        return {}
+    return payload if isinstance(payload, dict) else {}
 
 
 def _hash_stem(stem: str) -> str:
@@ -287,6 +298,56 @@ def _paper_item_response(
         score_obtained=item.score_obtained,
         score_max=item.score_max,
         error_cause_label=item.error_cause_label,
+    )
+
+
+def _question_template_response(template: QuestionTemplate) -> QuestionTemplateItemResponse:
+    options_payload = None
+    if template.options_json:
+        try:
+            decoded_options = json.loads(template.options_json)
+            if isinstance(decoded_options, list):
+                options_payload = [str(item) for item in decoded_options]
+        except json.JSONDecodeError:
+            options_payload = None
+
+    return QuestionTemplateItemResponse(
+        id=template.id or 0,
+        subject=template.subject,
+        knowledge_unit_id=template.knowledge_unit_id,
+        question_type=template.question_type,
+        difficulty=template.difficulty,
+        stem=template.stem,
+        options=options_payload,
+        answer=template.answer,
+        explanation=template.explanation,
+        knowledge_unit_refs=_json_list(template.knowledge_unit_refs_json),
+        selection_hints=_json_dict(template.selection_hints_json),
+        template_version=template.template_version,
+        status=template.status,
+        created_at=template.created_at,
+        updated_at=template.updated_at,
+    )
+
+
+def _question_type_response(item: QuestionTypeRegistry) -> QuestionTypeRegistryItemResponse:
+    return QuestionTypeRegistryItemResponse(
+        id=item.id or 0,
+        type_key=item.type_key,
+        display_name=item.display_name,
+        scope=item.scope,
+        subject=item.subject,
+        description=item.description,
+        answer_format=item.answer_format,
+        grading_method=item.grading_method,
+        option_schema=_json_dict(item.option_schema_json),
+        rubric=_json_dict(item.rubric_json),
+        source=item.source,
+        confidence=item.confidence,
+        is_system=item.is_system,
+        is_active=item.is_active,
+        created_at=item.created_at,
+        updated_at=item.updated_at,
     )
 
 
@@ -663,6 +724,62 @@ async def exam_history(
             total=total,
         )
     )
+
+
+@router.get(
+    "/question-templates",
+    response_model=ApiResponse[list[QuestionTemplateItemResponse]],
+    summary="List question templates for the subject",
+    responses=build_error_responses([400, 404, 500]),
+)
+async def question_templates(
+    subject: str = Path(...),
+    user: CurrentUserContext = Depends(get_current_user_context),
+    session: Session = Depends(get_db),
+) -> ApiResponse[list[QuestionTemplateItemResponse]]:
+    normalized = normalize_subject_slug(subject)
+    _ensure_subject(session, normalized, user.user_id)
+    rows = list(
+        session.exec(
+            select(QuestionTemplate)
+            .where(QuestionTemplate.subject == normalized)
+            .order_by(QuestionTemplate.created_at.desc(), QuestionTemplate.id.desc())
+        ).all()
+    )
+    return ok_response([_question_template_response(item) for item in rows])
+
+
+@router.get(
+    "/question-types",
+    response_model=ApiResponse[list[QuestionTypeRegistryItemResponse]],
+    summary="List global and subject question types",
+    responses=build_error_responses([400, 404, 500]),
+)
+async def question_types(
+    subject: str = Path(...),
+    user: CurrentUserContext = Depends(get_current_user_context),
+    session: Session = Depends(get_db),
+) -> ApiResponse[list[QuestionTypeRegistryItemResponse]]:
+    normalized = normalize_subject_slug(subject)
+    _ensure_subject(session, normalized, user.user_id)
+    rows = list(
+        session.exec(
+            select(QuestionTypeRegistry)
+            .where(
+                QuestionTypeRegistry.is_active == True,  # noqa: E712
+                or_(
+                    QuestionTypeRegistry.scope == "global",
+                    QuestionTypeRegistry.subject == normalized,
+                ),
+            )
+            .order_by(
+                QuestionTypeRegistry.scope.asc(),
+                QuestionTypeRegistry.subject.asc(),
+                QuestionTypeRegistry.type_key.asc(),
+            )
+        ).all()
+    )
+    return ok_response([_question_type_response(item) for item in rows])
 
 
 @router.get(
