@@ -1,19 +1,40 @@
-import { useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import { Outlet, useLocation } from "react-router-dom";
 import { Sidebar } from "./Sidebar";
 import { TopBar } from "./TopBar";
 import { SubjectAiAssistantProvider } from "../ai/SubjectAiAssistant";
 import { isFullBleedSubjectPath } from "../../lib/subjectNavigation";
 import { SettingsDialog } from "../settings/SettingsDialog";
+import {
+  ensureSystemSettingsOverviewLoaded,
+  getStoredSystemSettingsOverview,
+  subscribeSystemSettingsOverview,
+} from "../../lib/systemSettings";
 
 export function Layout() {
   const { pathname } = useLocation();
   const isFullBleed = isFullBleedSubjectPath(pathname);
-  const isHome = pathname === "/";
   const isExamFocusPage = /^\/subject\/[^/]+\/exams\/[^/]+$/.test(pathname);
   const subjectId = pathname.match(/^\/subject\/([^/]+)/)?.[1] ?? null;
 
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const settingsOverview = useSyncExternalStore(
+    subscribeSystemSettingsOverview,
+    getStoredSystemSettingsOverview,
+    () => null,
+  );
+
+  useEffect(() => {
+    if (!settingsOverview) {
+      void ensureSystemSettingsOverviewLoaded();
+    }
+  }, [settingsOverview]);
+
+  const isCloudRuntime = settingsOverview?.mode === "cloud";
+  const shouldShowTopBar = !isExamFocusPage && isCloudRuntime;
+  const contentContainerClassName = shouldShowTopBar
+    ? "container mx-auto min-h-full max-w-7xl px-4 pb-4 pt-20 md:px-6 md:pb-6 lg:px-8 lg:pb-8"
+    : "container mx-auto min-h-full max-w-7xl px-4 pb-4 pt-6 md:px-6 md:pb-6 md:pt-6 lg:px-8 lg:pb-8";
 
   return (
     <>
@@ -29,7 +50,7 @@ export function Layout() {
 
           {!isExamFocusPage && <Sidebar onOpenSettings={() => setIsSettingsOpen(true)} />}
           <div className="relative z-10 flex min-w-0 flex-1 flex-col">
-            {!isExamFocusPage && (
+            {shouldShowTopBar && (
               <header className="pointer-events-none absolute left-0 right-0 top-0 z-40 flex h-16 items-center justify-end px-4 md:px-6">
                 <div className="pointer-events-auto">
                   <TopBar />
@@ -38,12 +59,12 @@ export function Layout() {
             )}
 
             <main className="relative flex w-full flex-1 flex-col overflow-x-hidden overflow-y-auto bg-transparent">
-              {isFullBleed || isHome ? (
+              {isFullBleed || pathname === "/" ? (
                 <div className="flex min-h-[calc(100vh-4rem)] w-full flex-1 flex-col">
                   <Outlet />
                 </div>
               ) : (
-                <div className="container mx-auto min-h-full max-w-7xl px-4 pb-4 pt-20 md:px-6 md:pb-6 lg:px-8 lg:pb-8">
+                <div className={contentContainerClassName}>
                   <Outlet />
                 </div>
               )}

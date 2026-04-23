@@ -330,6 +330,13 @@ SETTINGS_CATALOG: tuple[SettingsCatalogSection, ...] = (
                 ui_order=120,
             ),
             setting(
+                "docgen.generate_interactive_html",
+                "知识文档生成交互页",
+                description="预留开关。启用后允许 DocGen 在增强阶段为高价值章节生成独立 HTML 交互页 sidecar 资产；不适合的章节不会强制生成。",
+                ui_group="知识文档",
+                ui_order=125,
+            ),
+            setting(
                 "interact.history_turns",
                 "伴读历史轮数",
                 ui_group="伴读",

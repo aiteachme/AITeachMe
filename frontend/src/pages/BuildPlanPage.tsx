@@ -50,6 +50,7 @@ interface ChatMessage {
   timestamp: string;
   plan?: BuildPlannerPlanResponse | null;
   runtimeStats?: PlannerRuntimeStats | null;
+  streaming?: boolean;
 }
 
 interface PersistedPlannerState {
@@ -92,13 +93,6 @@ interface PlannerRuntimeStats {
   steps?: PlannerRuntimeStep[];
 }
 
-interface PlannerStreamEvent {
-  id: string;
-  text: string;
-  stage?: string;
-  details?: string[];
-}
-
 interface PlannerOutlineItem {
   title: string;
   description?: string;
@@ -113,6 +107,7 @@ function createMessage(
   content: string,
   plan: BuildPlannerPlanResponse | null = null,
   runtimeStats: PlannerRuntimeStats | null = null,
+  streaming = false,
 ): ChatMessage {
   return {
     id: nextMessageId(),
@@ -121,6 +116,19 @@ function createMessage(
     timestamp: new Date().toISOString(),
     plan,
     runtimeStats,
+    streaming,
+  };
+}
+
+function createStreamingAssistantMessage(id: string): ChatMessage {
+  return {
+    id,
+    role: "assistant",
+    content: "",
+    timestamp: new Date().toISOString(),
+    plan: null,
+    runtimeStats: null,
+    streaming: true,
   };
 }
 
@@ -141,6 +149,26 @@ function sanitizePlannerMessages(messages: ChatMessage[]): ChatMessage[] {
 
 function appendUserMessage(messages: ChatMessage[], prompt: string): ChatMessage[] {
   return [...sanitizePlannerMessages(messages), createMessage("user", prompt)];
+}
+
+function replaceMessageById(
+  messages: ChatMessage[],
+  id: string,
+  updater: (message: ChatMessage) => ChatMessage,
+): ChatMessage[] {
+  let replaced = false;
+  const next = messages.map((message) => {
+    if (message.id !== id) {
+      return message;
+    }
+    replaced = true;
+    return updater(message);
+  });
+  return replaced ? next : messages;
+}
+
+function removeMessageById(messages: ChatMessage[], id: string): ChatMessage[] {
+  return messages.filter((message) => message.id !== id);
 }
 
 function readPersistedPlannerState(subjectId: string): PersistedPlannerState | null {
@@ -276,87 +304,6 @@ function buildPlannerOutlineItems(plan: BuildPlannerPlanResponse | null | undefi
   }
 
   return [];
-}
-
-function plannerPayloadOutlineDetails(payload: Record<string, unknown>): string[] {
-  const items = Array.isArray(payload.outline_items) ? payload.outline_items : [];
-  return items
-    .map((item) => {
-      if (!isRecord(item)) {
-        return "";
-      }
-      const title = typeof item.title === "string" ? item.title.trim() : "";
-      const objective = typeof item.objective === "string" ? item.objective.trim() : "";
-      return title && objective ? `${title}：${objective}` : title;
-    })
-    .filter(Boolean)
-    .slice(0, 8);
-}
-
-function buildPlannerStreamDetails(payload: Record<string, unknown>): string[] {
-  const stage = typeof payload.event === "string"
-    ? payload.event.trim()
-    : typeof payload.stage === "string"
-      ? payload.stage.trim()
-      : "";
-
-  switch (stage) {
-    case "planner.thinking.started":
-      return [];
-    case "planner.intent.ready":
-      return [];
-    case "planner.plan.composing":
-      return ["正在生成计划说明和可调整的初步大纲。"];
-    case "planner.plan.finalizing":
-      return ["正在校验计划结构，并写入草稿记录。"];
-    case "planner.plan.ready":
-      return plannerPayloadOutlineDetails(payload);
-    default:
-      return [];
-  }
-}
-
-function normalizePlannerStreamEvent(payload: unknown): PlannerStreamEvent | null {
-  if (typeof payload === "string") {
-    const cleaned = payload.trim();
-    return cleaned ? { id: nextMessageId(), text: cleaned } : null;
-  }
-  if (!isRecord(payload)) {
-    return null;
-  }
-
-  const text = resolvePlannerStatusText(payload).trim();
-  if (!text) {
-    return null;
-  }
-
-  const stage = typeof payload.event === "string"
-    ? payload.event.trim()
-    : typeof payload.stage === "string"
-      ? payload.stage.trim()
-      : "";
-
-  return {
-    id: nextMessageId(),
-    text,
-    stage: stage || undefined,
-    details: buildPlannerStreamDetails(payload),
-  };
-}
-
-function appendPlannerStreamEvent(events: PlannerStreamEvent[], payload: unknown): PlannerStreamEvent[] {
-  const nextEvent = normalizePlannerStreamEvent(payload);
-  if (!nextEvent) {
-    return events;
-  }
-  const last = events[events.length - 1];
-  if (
-    last?.text === nextEvent.text &&
-    JSON.stringify(last.details ?? []) === JSON.stringify(nextEvent.details ?? [])
-  ) {
-    return events;
-  }
-  return [...events.slice(-5), nextEvent];
 }
 
 function PlannerOutlineCard({
@@ -686,13 +633,16 @@ export function BuildPlanPage() {
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const plannerSessionIdRef = useRef<string | null>(null);
   const currentPlanRef = useRef<BuildPlannerPlanResponse | null>(null);
-  const loadedSubjectRef = useRef<string | null>(null);
+  const hydratedSubjectRef = useRef<string | null>(null);
+  const localInteractionSubjectRef = useRef<string | null>(null);
   const plannerStreamingRawRef = useRef("");
   const plannerAbortControllerRef = useRef<AbortController | null>(null);
+  const plannerPendingMessageIdRef = useRef<string | null>(null);
   const autoStartFiredRef = useRef(false);
 
   const markPlannerLocalInteraction = useCallback(() => {
-    loadedSubjectRef.current = subjectId;
+    localInteractionSubjectRef.current = subjectId;
+    hydratedSubjectRef.current = subjectId;
   }, [subjectId]);
 
   const [messages, setMessages] = useState<ChatMessage[]>(() => createInitialMessages());
@@ -704,7 +654,6 @@ export function BuildPlanPage() {
   const [plannerStreaming, setPlannerStreaming] = useState(false);
   const [plannerStreamingPreview, setPlannerStreamingPreview] = useState("");
   const [plannerStreamingStatus, setPlannerStreamingStatus] = useState("正在思考目标与资料...");
-  const [plannerStreamingEvents, setPlannerStreamingEvents] = useState<PlannerStreamEvent[]>([]);
   const [isRevisingPlan, setIsRevisingPlan] = useState(false);
 
   const filesQuery = useQuery({
@@ -845,7 +794,16 @@ export function BuildPlanPage() {
       return;
     }
     let cancelled = false;
-    loadedSubjectRef.current = null;
+
+    // 如果用户在页面初次挂载后的极短时间内已经开始本地交互
+    // （例如很快发送了一条 planner 消息），不要再执行后续恢复逻辑，
+    // 否则异步恢复结果会把本地插入的 assistant 占位消息覆盖掉。
+    if (localInteractionSubjectRef.current === subjectId) {
+      logPlannerDebug("skip_restore_after_local_interaction", { subjectId });
+      return;
+    }
+
+    hydratedSubjectRef.current = null;
 
     // 先尝试恢复本地缓存，但只有存在真实 planner session 时才信任。
     const persisted = readPersistedPlannerState(subjectId);
@@ -863,7 +821,7 @@ export function BuildPlanPage() {
       setPlannerNeedsRefresh(Boolean(persisted.plannerNeedsRefresh));
       setHasAutoUploaded(false);
       setIsRevisingPlan(false);
-      loadedSubjectRef.current = subjectId;
+      hydratedSubjectRef.current = subjectId;
       return;
     }
 
@@ -875,7 +833,7 @@ export function BuildPlanPage() {
           method: "POST",
           url: `/api/v1/subjects/${subjectId}/knowledge/build/plans/latest`,
         });
-        if (cancelled || loadedSubjectRef.current === subjectId) return;
+        if (cancelled || localInteractionSubjectRef.current === subjectId) return;
         const session = response.data;
         if (!session || !session.turns?.length) {
           logPlannerDebug("restore_latest_empty", {
@@ -890,7 +848,7 @@ export function BuildPlanPage() {
           setPlannerNeedsRefresh(false);
           setHasAutoUploaded(false);
           setIsRevisingPlan(false);
-          loadedSubjectRef.current = subjectId;
+          hydratedSubjectRef.current = subjectId;
           return;
         }
 
@@ -918,10 +876,10 @@ export function BuildPlanPage() {
         setPlannerNeedsRefresh(false);
         setHasAutoUploaded(false);
         setIsRevisingPlan(false);
-        loadedSubjectRef.current = subjectId;
+        hydratedSubjectRef.current = subjectId;
       } catch {
         // 后端恢复失败时，回到一个干净的新会话。
-        if (cancelled || loadedSubjectRef.current === subjectId) return;
+        if (cancelled || localInteractionSubjectRef.current === subjectId) return;
         logPlannerDebug("restore_latest_failed", { subjectId });
         setMessages(createInitialMessages());
         setPlannerSessionId(null);
@@ -930,7 +888,7 @@ export function BuildPlanPage() {
         setPlannerNeedsRefresh(false);
         setHasAutoUploaded(false);
         setIsRevisingPlan(false);
-        loadedSubjectRef.current = subjectId;
+        hydratedSubjectRef.current = subjectId;
       }
     }
 
@@ -945,7 +903,7 @@ export function BuildPlanPage() {
   }, [plannerSessionId, currentPlan]);
 
   useEffect(() => {
-    if (!subjectId || loadedSubjectRef.current !== subjectId) {
+    if (!subjectId || hydratedSubjectRef.current !== subjectId) {
       return;
     }
     persistPlannerState(subjectId, {
@@ -958,7 +916,7 @@ export function BuildPlanPage() {
   }, [currentPlan, inputValue, messages, plannerNeedsRefresh, plannerSessionId, subjectId]);
 
   useEffect(() => {
-    if (loadedSubjectRef.current !== subjectId || !currentPlan) {
+    if (hydratedSubjectRef.current !== subjectId || !currentPlan) {
       return;
     }
     const selected = currentPlan.selected_file_uids ?? [];
@@ -988,7 +946,12 @@ export function BuildPlanPage() {
 
     // Fire the planner immediately — capture the prompt before clearing navState.
     markPlannerLocalInteraction();
-    setMessages((prev) => appendUserMessage(prev, prompt));
+    const pendingAssistantId = nextMessageId();
+    plannerPendingMessageIdRef.current = pendingAssistantId;
+    setMessages((prev) => [
+      ...appendUserMessage(prev, prompt),
+      createStreamingAssistantMessage(pendingAssistantId),
+    ]);
     setInputValue("");
     setPlannerStreaming(true);
     plannerStreamingRawRef.current = "";
@@ -1006,7 +969,6 @@ export function BuildPlanPage() {
           {
             onStatus: (payload) => {
               setPlannerStreamingStatus(resolvePlannerStatusText(payload));
-              setPlannerStreamingEvents((prev) => appendPlannerStreamEvent(prev, payload));
             },
             onToken: (token) => {
               plannerStreamingRawRef.current += token;
@@ -1020,16 +982,21 @@ export function BuildPlanPage() {
           plannerStreamingRawRef.current.replace(/\r/g, "").trim(),
         );
       } catch (error) {
-        setMessages((prev) => [
-          ...prev,
-          createMessage("system", getApiErrorMessage(error, "主模型调用失败，未生成结果，请修改设置后重试。")),
-        ]);
+        setMessages((prev) => {
+          const next = plannerPendingMessageIdRef.current
+            ? removeMessageById(prev, plannerPendingMessageIdRef.current)
+            : prev;
+          return [
+            ...next,
+            createMessage("system", getApiErrorMessage(error, "主模型调用失败，未生成结果，请修改设置后重试。")),
+          ];
+        });
+        plannerPendingMessageIdRef.current = null;
       } finally {
         setPlannerStreaming(false);
         plannerStreamingRawRef.current = "";
         setPlannerStreamingPreview("");
         setPlannerStreamingStatus("正在思考目标与资料...");
-        setPlannerStreamingEvents([]);
       }
     })();
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1118,11 +1085,6 @@ export function BuildPlanPage() {
   const isPlannerPending = plannerStreaming || confirmPlannerMutation.isPending;
   const isBuilding = knowledgeBuild.isPending || isBuildActive;
   const shouldShowBuildDialog = isBuilding || isWaitingForRequestedBuild;
-  const plannerPendingBadgeText = plannerStreaming
-    ? "思考中"
-    : confirmPlannerMutation.isPending
-      ? "正在确认方案"
-      : "正在启动构建";
   const plannerPendingStatusText = plannerStreaming
     ? plannerStreamingStatus
     : confirmPlannerMutation.isPending
@@ -1175,20 +1137,34 @@ export function BuildPlanPage() {
   const appendPlannerResponse = useCallback(
     (response: BuildPlannerSessionResponse, fallbackContent: string, contentOverride?: string | null) => {
       const runtimeStats = parsePlannerRuntimeStats(response);
+      const resolvedContent = contentOverride?.trim() || pickAssistantReply(response, fallbackContent);
+      const pendingId = plannerPendingMessageIdRef.current;
       setPlannerSessionId(response.session_id);
       setCurrentPlan(response.latest_plan);
       setPlannerNeedsRefresh(false);
       setIsRevisingPlan(false);
       void queryClient.invalidateQueries({ queryKey: ["subjects"] });
-      setMessages((prev) => [
-        ...prev,
-        createMessage(
-          "assistant",
-          contentOverride?.trim() || pickAssistantReply(response, fallbackContent),
-          response.latest_plan,
-          runtimeStats,
-        ),
-      ]);
+      setMessages((prev) => {
+        if (pendingId) {
+          return replaceMessageById(prev, pendingId, (message) => ({
+            ...message,
+            content: resolvedContent,
+            plan: response.latest_plan,
+            runtimeStats,
+            streaming: false,
+          }));
+        }
+        return [
+          ...prev,
+          createMessage(
+            "assistant",
+            resolvedContent,
+            response.latest_plan,
+            runtimeStats,
+          ),
+        ];
+      });
+      plannerPendingMessageIdRef.current = null;
     },
     [queryClient],
   );
@@ -1256,7 +1232,12 @@ export function BuildPlanPage() {
       effectiveFileCount: plannerEffectiveFileUids.length,
     });
     markPlannerLocalInteraction();
-    setMessages((prev) => appendUserMessage(prev, text));
+    const pendingAssistantId = nextMessageId();
+    plannerPendingMessageIdRef.current = pendingAssistantId;
+    setMessages((prev) => [
+      ...appendUserMessage(prev, text),
+      createStreamingAssistantMessage(pendingAssistantId),
+    ]);
     setInputValue("");
     setIsRevisingPlan(false);
     setPlannerStreaming(true);
@@ -1270,7 +1251,6 @@ export function BuildPlanPage() {
         : "正在理解目标和资料，整理思考过程..."
       : "正在根据你的补充重新思考大纲...";
     setPlannerStreamingStatus(initialStatus);
-    setPlannerStreamingEvents([{ id: nextMessageId(), text: initialStatus }]);
 
     try {
       if (shouldCreateSession) {
@@ -1284,7 +1264,6 @@ export function BuildPlanPage() {
             signal: controller.signal,
             onStatus: (payload) => {
               setPlannerStreamingStatus(resolvePlannerStatusText(payload));
-              setPlannerStreamingEvents((prev) => appendPlannerStreamEvent(prev, payload));
             },
             onToken: (token) => {
               plannerStreamingRawRef.current += token;
@@ -1310,7 +1289,6 @@ export function BuildPlanPage() {
         signal: controller.signal,
         onStatus: (payload) => {
           setPlannerStreamingStatus(resolvePlannerStatusText(payload));
-          setPlannerStreamingEvents((prev) => appendPlannerStreamEvent(prev, payload));
         },
         onToken: (token) => {
           plannerStreamingRawRef.current += token;
@@ -1331,24 +1309,35 @@ export function BuildPlanPage() {
     } catch (error) {
       if (isAbortError(error)) {
         logPlannerDebug("send_plan_message_aborted", { subjectId });
-        setMessages((prev) => [...prev, createMessage("system", "已停止生成，你可以继续输入新的调整。")]);
+        setMessages((prev) => {
+          const next = plannerPendingMessageIdRef.current
+            ? removeMessageById(prev, plannerPendingMessageIdRef.current)
+            : prev;
+          return [...next, createMessage("system", "已停止生成，你可以继续输入新的调整。")];
+        });
+        plannerPendingMessageIdRef.current = null;
         return;
       }
       logPlannerDebug("send_plan_message_failed", {
         subjectId,
         error: getApiErrorMessage(error, "unknown"),
       });
-      setMessages((prev) => [
-        ...prev,
-        createMessage("system", getApiErrorMessage(error, "主模型调用失败，未生成结果，请修改设置后重试。")),
-      ]);
+      setMessages((prev) => {
+        const next = plannerPendingMessageIdRef.current
+          ? removeMessageById(prev, plannerPendingMessageIdRef.current)
+          : prev;
+        return [
+          ...next,
+          createMessage("system", getApiErrorMessage(error, "主模型调用失败，未生成结果，请修改设置后重试。")),
+        ];
+      });
+      plannerPendingMessageIdRef.current = null;
     } finally {
       plannerAbortControllerRef.current = null;
       setPlannerStreaming(false);
       plannerStreamingRawRef.current = "";
       setPlannerStreamingPreview("");
       setPlannerStreamingStatus("正在思考目标与资料...");
-      setPlannerStreamingEvents([]);
     }
   }, [
     appendPlannerResponse,
@@ -1593,6 +1582,19 @@ export function BuildPlanPage() {
                 >
                   {message.role === "assistant" ? (
                     <>
+                      {message.streaming && !message.plan ? (
+                        <div className="rounded-2xl rounded-tl-md border border-zinc-100 dark:border-slate-800 bg-white dark:bg-slate-900 px-4 py-3 shadow-sm">
+                          {plannerStreamingPreview.trim() ? (
+                            <PlannerPreviewMarkdown markdown={plannerStreamingPreview} />
+                          ) : (
+                            <div className="flex items-center gap-2 text-sm text-zinc-500 dark:text-slate-400">
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                              <span>{plannerPendingStatusText}</span>
+                            </div>
+                          )}
+                        </div>
+                      ) : null}
+
                       {!message.plan && message.content ? (
                         <div className="rounded-2xl rounded-tl-md border border-zinc-100 dark:border-slate-800 bg-white dark:bg-slate-900 px-4 py-3 shadow-sm">
                           <PlannerPreviewMarkdown markdown={message.content} />
@@ -1618,59 +1620,6 @@ export function BuildPlanPage() {
                 </div>
               </div>
             ))}
-
-            {isPlannerPending ? (
-              <div className="flex gap-3">
-                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-50 ring-1 ring-slate-200/50 p-1 shadow-sm">
-                  <img src="/logo.svg" alt="AI" className="h-full w-full object-contain" />
-                </div>
-                <div className="w-full max-w-[85%] rounded-lg border border-zinc-200 bg-white px-4 py-4 shadow-sm">
-                  <div className="mb-3 flex flex-wrap items-center gap-2">
-                    <span className="inline-flex items-center gap-1.5 rounded-full border border-zinc-200 bg-zinc-50 px-2.5 py-1 text-[11px] font-medium text-zinc-700">
-                      <Loader2 className="h-3 w-3 animate-spin" />
-                      {plannerPendingBadgeText}
-                    </span>
-                    <span className="text-xs text-zinc-500">
-                      {plannerPendingStatusText}
-                    </span>
-                  </div>
-                  {plannerStreamingEvents.length ? (
-                    <div className="mb-3 space-y-1.5 rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2">
-                      {plannerStreamingEvents.map((event, index) => (
-                        <div key={event.id} className="flex items-start gap-2 text-xs leading-5 text-zinc-700">
-                          <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-zinc-400" />
-                          <div className="min-w-0 flex-1">
-                            <div>
-                              {index === plannerStreamingEvents.length - 1 ? "当前：" : "已完成："}
-                              {event.text}
-                            </div>
-                            {event.details?.length ? (
-                              <div className="mt-1.5 space-y-1 text-[11px] leading-5 text-zinc-600">
-                                {event.details.map((detail) => (
-                                  <div key={`${event.id}-${detail}`} className="rounded-md bg-white px-2 py-1">
-                                    {detail}
-                                  </div>
-                                ))}
-                              </div>
-                            ) : null}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : null}
-                  {plannerStreamingPreview.trim() ? (
-                    <div className="mb-3">
-                      <PlannerPreviewMarkdown markdown={plannerStreamingPreview} />
-                    </div>
-                  ) : null}
-                  {!plannerStreaming || !plannerStreamingPreview.trim() ? (
-                    <div className="rounded-lg border border-dashed border-zinc-200 bg-zinc-50 px-3 py-3 text-sm text-zinc-500">
-                      正在等待后端推送第一段思考内容，请稍等...
-                    </div>
-                  ) : null}
-                </div>
-              </div>
-            ) : null}
 
             {shouldShowBuildDialog ? (
               <div className="flex gap-3">

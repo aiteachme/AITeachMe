@@ -10,6 +10,7 @@ import { BuildPlanPage } from "./pages/BuildPlanPage";
 import { ExamPaperPage, ExamsPage, QuestionTemplatesPage, QuestionTypesPage } from "./pages/ExamsPage";
 import { ProfilePage } from "./pages/ProfilePage";
 import { KnowledgeDocsPage } from "./pages/KnowledgeDocsPage";
+import { KnowledgeInteractivePage } from "./pages/KnowledgeInteractivePage";
 import { KnowledgeDebugPage } from "./pages/KnowledgeDebugPage";
 import { SUBJECT_ROUTE_REDIRECTS, type SubjectRouteId } from "./lib/subjectNavigation";
 import { ensureSystemSettingsOverviewLoaded } from "./lib/systemSettings";
@@ -47,6 +48,7 @@ function App() {
                     <Route key={routeId} path={`subject/:subjectId/${routeId}`} element={element} />
                   ),
                 )}
+                <Route path="subject/:subjectId/knowledge-docs/interactive" element={<KnowledgeInteractivePage />} />
                 <Route path="subject/:subjectId/exams/question-templates" element={<QuestionTemplatesPage />} />
                 <Route path="subject/:subjectId/exams/question-types" element={<QuestionTypesPage />} />
                 <Route path="subject/:subjectId/exams/:examPaperId" element={<ExamPaperPage />} />

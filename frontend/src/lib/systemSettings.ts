@@ -3,10 +3,17 @@ import type { SettingsOverviewData } from "../api/generated/model/settingsOvervi
 import type { ApiResponse } from "../api/types";
 
 const SYSTEM_SETTINGS_STORAGE_KEY = "aiteachme:system-settings-overview";
-export const SYSTEM_SETTINGS_CHANGED_EVENT = "aiteachme:system-settings-overview-changed";
+type SystemSettingsOverviewListener = () => void;
+const DEFAULT_SETTINGS_OVERVIEW: SettingsOverviewData = {
+  settings_source: "",
+  mode: "local",
+  sections: [],
+  notes: [],
+};
 
 let currentOverview: SettingsOverviewData | null = null;
 let inFlightOverview: Promise<SettingsOverviewData | null> | null = null;
+const listeners = new Set<SystemSettingsOverviewListener>();
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -35,16 +42,14 @@ function normalizeSettingsOverview(raw: unknown): SettingsOverviewData | null {
 
 export function storeSystemSettingsOverview(overview: SettingsOverviewData | null): void {
   currentOverview = overview;
-  if (typeof window === "undefined") {
-    return;
+  if (typeof window !== "undefined") {
+    if (overview) {
+      window.localStorage.setItem(SYSTEM_SETTINGS_STORAGE_KEY, JSON.stringify(overview));
+    } else {
+      window.localStorage.removeItem(SYSTEM_SETTINGS_STORAGE_KEY);
+    }
   }
-  if (!overview) {
-    window.localStorage.removeItem(SYSTEM_SETTINGS_STORAGE_KEY);
-    window.dispatchEvent(new CustomEvent(SYSTEM_SETTINGS_CHANGED_EVENT, { detail: null }));
-    return;
-  }
-  window.localStorage.setItem(SYSTEM_SETTINGS_STORAGE_KEY, JSON.stringify(overview));
-  window.dispatchEvent(new CustomEvent(SYSTEM_SETTINGS_CHANGED_EVENT, { detail: overview }));
+  notifySystemSettingsOverviewListeners();
 }
 
 export function getStoredSystemSettingsOverview(): SettingsOverviewData | null {
@@ -68,18 +73,26 @@ export function getStoredSystemSettingsOverview(): SettingsOverviewData | null {
   }
 }
 
+export function subscribeSystemSettingsOverview(
+  listener: SystemSettingsOverviewListener,
+): () => void {
+  listeners.add(listener);
+  return () => {
+    listeners.delete(listener);
+  };
+}
+
+function notifySystemSettingsOverviewListeners() {
+  listeners.forEach((listener) => listener());
+}
+
 export async function fetchSystemSettingsOverview(): Promise<SettingsOverviewData> {
   const response = await apiClient<ApiResponse<SettingsOverviewData>>({
     url: "/api/v1/system/settings",
     method: "POST",
     data: {},
   });
-  const overview = normalizeSettingsOverview(response.data) ?? {
-    settings_source: "",
-    mode: "local",
-    sections: [],
-    notes: [],
-  };
+  const overview = normalizeSettingsOverview(response.data) ?? DEFAULT_SETTINGS_OVERVIEW;
   storeSystemSettingsOverview(overview);
   return overview;
 }

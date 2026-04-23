@@ -222,6 +222,9 @@ def build_stream_and_parse_plan_draft_node(*, context: WorkflowContext):
     async def stream_and_parse_plan_draft_node(state: BuildPlannerState) -> dict:
         """合成并解析当前 Planner 草稿。"""
 
+        if state.get("error"):
+            return {}
+
         logger.info(
             "planner_compose_node_started",
             planner_session_id=state.get("planner_session_id", ""),

@@ -49,8 +49,7 @@ def _replace_first_h1(markdown: str, title: str) -> str:
 def build_finalize_titles_node(*, context: WorkflowContext):
     """构建标题同步节点。
 
-    标题在 `confirm_and_dispatch` / `build_document_backbone` 前已经随章节
-    执行合同锁定。这里只同步 metadata 和每章 Markdown 一级标题，不再
+    标题在 `lock_titles_for_chapters` 阶段已经锁定。这里只同步 metadata 和每章 Markdown 一级标题，不再
     调用 LLM，也不重新发明标题。
     """
 

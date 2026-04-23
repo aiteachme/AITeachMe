@@ -67,12 +67,15 @@ load_planner_materials
 DocGen 消费的关键字段：
 
 - `subject`
-- `user_goal`
+- `user_prompt`
 - `digest_mode`
 - `chapter_plan`
-- `media_plan`
 - `build_constraints`
+- `plan_summary`
 - `selected_file_ids`
+- `planner_session_id`
+- `confirmed_plan_id`
+- `mode_reason`
 - `planner_context`
 - `docgen_history_brief`
 
@@ -91,21 +94,21 @@ DocGen 消费 confirmed plan，生成可发布的知识文档和 manifest。
 ```text
 load_context
   -> prepare_parallel_inputs
-       ├─ enhance_plan_outline
-       ├─ infer_docgen_intent
-       └─ summarize_files
   -> confirm_and_dispatch
   -> build_document_backbone
   -> generate_chapters (Send x N)
   -> enhance_chapters
-  -> review_content
+  -> review_chapter (Send x N)
+  -> document_consistency_review
   -> repair_or_route
   -> merge_review
   -> finalize_titles
   -> publish_document
 ```
 
-权威文档：`backend/app/workflows/digest/docgen/README.md`
+权威文档：`backend/app/workflows/digest/docgen/FLOW_DESIGN.md`
+
+唯一文档文件：`backend/app/workflows/digest/docgen/FLOW_DESIGN.md`
 
 ## 5. DocGen 产物
 

@@ -11,6 +11,7 @@ import structlog
 
 from app.shared.infra.llm_support import acompletion_with_fallback
 from app.shared.infra.llm_support.routing import TaskType
+from app.workflows.digest.docgen.lib.defaults import DEFAULT_DOCGEN_FILE_SUMMARY_PARALLELISM
 from app.workflows.digest.common.models import DigestMaterialContext, SectionPacket, SourcePacket
 from app.workflows.digest.docgen.lib.models import (
     FileMaterialSummary,
@@ -227,6 +228,7 @@ async def _summarize_one_file(
     chapters: Sequence[Mapping[str, Any]],
     digest_mode: str,
     extra_metadata: Mapping[str, Any],
+    semaphore: asyncio.Semaphore | None = None,
 ) -> FileMaterialSummary:
     fallback = fallback_file_summary(packet, sections=sections, chapters=chapters)
     chapter_titles = [
@@ -237,25 +239,28 @@ async def _summarize_one_file(
     excerpt = str(packet.normalized_content or "").strip()
     if not excerpt.strip():
         return fallback
+    if semaphore is None:
+        semaphore = asyncio.Semaphore(max(1, int(DEFAULT_DOCGEN_FILE_SUMMARY_PARALLELISM)))
     try:
-        response = await acompletion_with_fallback(
-            build_file_summary_messages(
-                filename=packet.filename,
-                digest_mode=digest_mode,
-                chapter_titles=chapter_titles,
-                excerpt=excerpt,
-            ),
-            task_type=TaskType.DOCGEN_LIGHT,
-            model="light",
-            response_model=FileMaterialSummary,
-            temperature=0.1,
-            max_tokens=5000,
-            extra_metadata={
-                "docgen_stage": "summarize_file",
-                "file_id": packet.file_id,
-                **dict(extra_metadata),
-            },
-        )
+        async with semaphore:
+            response = await acompletion_with_fallback(
+                build_file_summary_messages(
+                    filename=packet.filename,
+                    digest_mode=digest_mode,
+                    chapter_titles=chapter_titles,
+                    excerpt=excerpt,
+                ),
+                task_type=TaskType.DOCGEN_LIGHT,
+                model="light",
+                response_model=FileMaterialSummary,
+                temperature=0.1,
+                max_tokens=5000,
+                extra_metadata={
+                    "docgen_stage": "summarize_file",
+                    "file_id": packet.file_id,
+                    **dict(extra_metadata),
+                },
+            )
     except Exception as exc:
         logger.warning("docgen_file_summary_failed", file_id=packet.file_id, error=str(exc))
         return fallback
@@ -284,6 +289,7 @@ async def summarize_files(
     if not packets:
         return []
     sections = list(material_context.section_packets or [])
+    semaphore = asyncio.Semaphore(max(1, int(DEFAULT_DOCGEN_FILE_SUMMARY_PARALLELISM)))
     return list(
         await asyncio.gather(
             *(
@@ -293,6 +299,7 @@ async def summarize_files(
                     chapters=chapters,
                     digest_mode=digest_mode,
                     extra_metadata=dict(extra_metadata or {}),
+                    semaphore=semaphore,
                 )
                 for packet in packets
             )
