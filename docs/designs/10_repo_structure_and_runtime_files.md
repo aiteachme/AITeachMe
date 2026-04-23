@@ -88,9 +88,12 @@ backend/app/api/knowledge_docs.py
 1. `backend/app/api/knowledge_docs.py`
 2. `backend/app/workflows/digest/planner/README.md`
 3. `backend/app/workflows/digest/planner/graph.py`
-4. `backend/app/workflows/digest/docgen/README.md`
+4. `backend/app/workflows/digest/docgen/FLOW_DESIGN.md`
 5. `backend/app/workflows/digest/docgen/graph.py`
-6. `backend/app/workflows/digest/docgen/lib/models.py`
+6. `backend/app/workflows/digest/docgen/state.py`
+7. `backend/app/workflows/digest/docgen/lib/models.py`
+
+其中 `docgen/` 目录当前只保留 `FLOW_DESIGN.md` 这一份文档文件；入口说明和流程判断都以它为准。
 
 ## 5. 运行时文件
 

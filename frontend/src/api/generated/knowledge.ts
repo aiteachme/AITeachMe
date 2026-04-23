@@ -24,6 +24,7 @@ import type {
   ApiResponseDocGenBuildData,
   ApiResponseDocGenGetResponse,
   ApiResponseFullGraphResponse,
+  ApiResponseKnowledgeBuildRuntimeResponse,
   ApiResponseKnowledgeDebugTriggerResponse,
   ApiResponseKnowledgeOverviewResponse,
   ApiResponseKnowledgePathResponse,
@@ -1229,6 +1230,109 @@ export const useKnowledgeBuildCancelApiV1SubjectsSubjectKnowledgeBuildCancelPost
         TContext
       > => {
       return useMutation(getKnowledgeBuildCancelApiV1SubjectsSubjectKnowledgeBuildCancelPostMutationOptions(options), queryClient);
+    }
+    /**
+ * @summary Fetch aggregate/docgen/graph runtime state
+ */
+export type knowledgeBuildRuntimeApiV1SubjectsSubjectKnowledgeBuildRuntimePostResponse200 = {
+  data: ApiResponseKnowledgeBuildRuntimeResponse
+  status: 200
+}
+
+export type knowledgeBuildRuntimeApiV1SubjectsSubjectKnowledgeBuildRuntimePostResponse400 = {
+  data: ErrorResponse
+  status: 400
+}
+
+export type knowledgeBuildRuntimeApiV1SubjectsSubjectKnowledgeBuildRuntimePostResponse404 = {
+  data: ErrorResponse
+  status: 404
+}
+
+export type knowledgeBuildRuntimeApiV1SubjectsSubjectKnowledgeBuildRuntimePostResponse422 = {
+  data: HTTPValidationError
+  status: 422
+}
+
+export type knowledgeBuildRuntimeApiV1SubjectsSubjectKnowledgeBuildRuntimePostResponse500 = {
+  data: ErrorResponse
+  status: 500
+}
+
+export type knowledgeBuildRuntimeApiV1SubjectsSubjectKnowledgeBuildRuntimePostResponseSuccess = (knowledgeBuildRuntimeApiV1SubjectsSubjectKnowledgeBuildRuntimePostResponse200) & {
+  headers: Headers;
+};
+export type knowledgeBuildRuntimeApiV1SubjectsSubjectKnowledgeBuildRuntimePostResponseError = (knowledgeBuildRuntimeApiV1SubjectsSubjectKnowledgeBuildRuntimePostResponse400 | knowledgeBuildRuntimeApiV1SubjectsSubjectKnowledgeBuildRuntimePostResponse404 | knowledgeBuildRuntimeApiV1SubjectsSubjectKnowledgeBuildRuntimePostResponse422 | knowledgeBuildRuntimeApiV1SubjectsSubjectKnowledgeBuildRuntimePostResponse500) & {
+  headers: Headers;
+};
+
+export type knowledgeBuildRuntimeApiV1SubjectsSubjectKnowledgeBuildRuntimePostResponse = (knowledgeBuildRuntimeApiV1SubjectsSubjectKnowledgeBuildRuntimePostResponseSuccess | knowledgeBuildRuntimeApiV1SubjectsSubjectKnowledgeBuildRuntimePostResponseError)
+
+export const getKnowledgeBuildRuntimeApiV1SubjectsSubjectKnowledgeBuildRuntimePostUrl = (subject: string,) => {
+
+
+  
+
+  return `/api/v1/subjects/${subject}/knowledge/build/runtime`
+}
+
+export const knowledgeBuildRuntimeApiV1SubjectsSubjectKnowledgeBuildRuntimePost = async (subject: string, options?: RequestInit): Promise<knowledgeBuildRuntimeApiV1SubjectsSubjectKnowledgeBuildRuntimePostResponse> => {
+  
+  return orvalApiClient<knowledgeBuildRuntimeApiV1SubjectsSubjectKnowledgeBuildRuntimePostResponse>(getKnowledgeBuildRuntimeApiV1SubjectsSubjectKnowledgeBuildRuntimePostUrl(subject),
+  {      
+    ...options,
+    method: 'POST'
+    
+    
+  }
+);}
+  
+
+
+
+export const getKnowledgeBuildRuntimeApiV1SubjectsSubjectKnowledgeBuildRuntimePostMutationOptions = <TError = ErrorResponse | HTTPValidationError,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof knowledgeBuildRuntimeApiV1SubjectsSubjectKnowledgeBuildRuntimePost>>, TError,{subject: string}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
+): UseMutationOptions<Awaited<ReturnType<typeof knowledgeBuildRuntimeApiV1SubjectsSubjectKnowledgeBuildRuntimePost>>, TError,{subject: string}, TContext> => {
+
+const mutationKey = ['knowledgeBuildRuntimeApiV1SubjectsSubjectKnowledgeBuildRuntimePost'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+      
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof knowledgeBuildRuntimeApiV1SubjectsSubjectKnowledgeBuildRuntimePost>>, {subject: string}> = (props) => {
+          const {subject} = props ?? {};
+
+          return  knowledgeBuildRuntimeApiV1SubjectsSubjectKnowledgeBuildRuntimePost(subject,requestOptions)
+        }
+
+
+
+        
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type KnowledgeBuildRuntimeApiV1SubjectsSubjectKnowledgeBuildRuntimePostMutationResult = NonNullable<Awaited<ReturnType<typeof knowledgeBuildRuntimeApiV1SubjectsSubjectKnowledgeBuildRuntimePost>>>
+    
+    export type KnowledgeBuildRuntimeApiV1SubjectsSubjectKnowledgeBuildRuntimePostMutationError = ErrorResponse | HTTPValidationError
+
+    /**
+ * @summary Fetch aggregate/docgen/graph runtime state
+ */
+export const useKnowledgeBuildRuntimeApiV1SubjectsSubjectKnowledgeBuildRuntimePost = <TError = ErrorResponse | HTTPValidationError,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof knowledgeBuildRuntimeApiV1SubjectsSubjectKnowledgeBuildRuntimePost>>, TError,{subject: string}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof knowledgeBuildRuntimeApiV1SubjectsSubjectKnowledgeBuildRuntimePost>>,
+        TError,
+        {subject: string},
+        TContext
+      > => {
+      return useMutation(getKnowledgeBuildRuntimeApiV1SubjectsSubjectKnowledgeBuildRuntimePostMutationOptions(options), queryClient);
     }
     /**
  * @summary Fetch knowledge docs and minimal build state

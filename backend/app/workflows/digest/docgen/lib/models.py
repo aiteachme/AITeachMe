@@ -258,6 +258,52 @@ class SourceAffinityByChapter(DocGenBaseModel):
         return clean_text(value)
 
 
+class LockedChapterTitle(DocGenBaseModel):
+    chapter_index: int = 1
+    confirmed_title: str = ""
+    enhanced_title: str = ""
+    plan_mismatch_warnings: list[str] = Field(default_factory=list)
+    fallback_used: bool = False
+
+    @field_validator("confirmed_title", "enhanced_title", mode="before")
+    @classmethod
+    def _text(cls, value: Any) -> str:
+        return clean_text(value)
+
+    @field_validator("plan_mismatch_warnings", mode="before")
+    @classmethod
+    def _warnings(cls, value: Any) -> list[str]:
+        return clean_string_list(value)
+
+
+class ChapterExecutionBrief(DocGenBaseModel):
+    chapter_index: int = 1
+    teaching_outline: list[str] = Field(default_factory=list)
+    concept_targets: list[str] = Field(default_factory=list)
+    definition_targets: list[str] = Field(default_factory=list)
+    formula_targets: list[str] = Field(default_factory=list)
+    example_targets: list[str] = Field(default_factory=list)
+    pitfall_targets: list[str] = Field(default_factory=list)
+    retrieval_queries: list[str] = Field(default_factory=list)
+    plan_mismatch_warnings: list[str] = Field(default_factory=list)
+    fallback_used: bool = False
+
+    @field_validator(
+        "teaching_outline",
+        "concept_targets",
+        "definition_targets",
+        "formula_targets",
+        "example_targets",
+        "pitfall_targets",
+        "retrieval_queries",
+        "plan_mismatch_warnings",
+        mode="before",
+    )
+    @classmethod
+    def _lists(cls, value: Any) -> list[str]:
+        return clean_string_list(value)
+
+
 class EnhancedChapterOutline(DocGenBaseModel):
     chapter_index: int = 1
     confirmed_title: str = ""
@@ -325,6 +371,7 @@ class ChapterGenerationTaskSeed(DocGenBaseModel):
     enhanced_title: str = ""
     chapter_goal: str = ""
     mode: str = "systematic"
+    priority_file_ids: list[int] = Field(default_factory=list)
     required_elements: list[str] = Field(default_factory=list)
     forbidden_scope: list[str] = Field(default_factory=list)
     retrieval_queries: list[str] = Field(default_factory=list)
@@ -355,6 +402,11 @@ class ChapterGenerationTaskSeed(DocGenBaseModel):
     @classmethod
     def _lists(cls, value: Any) -> list[str]:
         return clean_string_list(value)
+
+    @field_validator("priority_file_ids", mode="before")
+    @classmethod
+    def _priority_file_ids(cls, value: Any) -> list[int]:
+        return clean_int_list(value)
 
     @model_validator(mode="after")
     def _finish(self) -> "ChapterGenerationTaskSeed":

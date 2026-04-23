@@ -33,17 +33,23 @@ class DocGenState(TypedDict, total=False):
     docgen_context: dict[str, Any]
 
     chapter_assignments: list[dict[str, Any]]
-    enhanced_chapter_outlines: list[dict[str, Any]]
+    chapter_assignment: dict[str, Any]
+    intent_core: dict[str, Any]
     intent_profile: dict[str, Any]
+    locked_title_items: Annotated[list[dict[str, Any]], operator.add]
+    locked_titles: list[dict[str, Any]]
     file_summaries: list[dict[str, Any]]
     source_affinity_by_chapter: list[dict[str, Any]]
     high_confidence_evidence_units: list[dict[str, Any]]
     plan_mismatch_warnings: list[str]
     chapter_generation_plan_seed: dict[str, Any]
     chapter_task_seeds: list[dict[str, Any]]
+    chapter_task_seed: dict[str, Any]
     backbone_research_agenda: dict[str, Any]
     document_backbone: dict[str, Any]
     backbone_conflict_warnings: list[dict[str, Any]]
+    chapter_execution_brief_items: Annotated[list[dict[str, Any]], operator.add]
+    chapter_execution_briefs: list[dict[str, Any]]
     chapter_generation_plan: dict[str, Any]
     chapter_tasks: list[dict[str, Any]]
     chapter_task: dict[str, Any]
@@ -86,8 +92,12 @@ class DocGenState(TypedDict, total=False):
 
     load_ms: int
     prepare_ms: Annotated[int, operator.add]
-    dispatch_ms: int
+    intent_core_ms: int
+    title_lock_ms: Annotated[int, operator.add]
+    seed_backbone_ms: int
     backbone_ms: int
+    chapter_prepare_ms: Annotated[int, operator.add]
+    assemble_tasks_ms: int
     research_ms: Annotated[int, operator.add]
     draft_ms: Annotated[int, operator.add]
     enhance_ms: Annotated[int, operator.add]

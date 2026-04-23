@@ -1,8 +1,19 @@
 ﻿# DocGen 流程设计
 
-最后更新：2026-04-21
+最后更新：2026-04-23
 
-这份文档描述 `digest/docgen` 的目标流程、当前实现映射和后续演进约束。当前实现以 `graph.py`、`state.py`、`nodes/`、`lib/models.py` 为准；本文用于解释节点边界、输入输出合同和后续重构方向。
+这份文档是 `backend/app/workflows/digest/docgen/` 当前唯一的文档文件，同时兼任入口说明和流程权威文档。
+
+如果 `docgen/` 下的文档、上游设计文档和当前实现之间出现冲突，按下面顺序判断：
+
+1. 当前代码：`graph.py`、`state.py`、`nodes/`、`lib/models.py`
+2. 当前文档：`FLOW_DESIGN.md`
+
+使用约定：
+
+- `FLOW_DESIGN.md` 负责维护 DocGen 的目录入口、公开运行面、真实流程、节点合同、当前实现映射和演进约束。
+- `docgen/` 目录下不再保留第二份入口 README，也不再保留独立的架构评估文档。
+- 其他上游文档如果需要引用 DocGen 文档，应显式指向本文件，不应复制一份新的节点级流程合同。
 
 ## 0. 文档维护硬约束
 
@@ -16,8 +27,9 @@
 如果目标阶段名和当前代码节点名不一致，必须显式写出映射，例如：
 
 ```text
-prepare_context / 当前 prepare_parallel_inputs
-merge_and_dispatch / 当前 confirm_and_dispatch
+prepare_global_seed / 当前 prepare_global_seed
+seed_backbone / 当前 confirm_and_seed_backbone
+prepare_chapter_execution / 当前 build_chapter_execution_briefs + assemble_chapter_tasks
 generate_draft / 当前 generate_chapters
 enhance / 当前 enhance_chapters
 ```
@@ -35,6 +47,36 @@ DocGen 不是“重新想一个大纲再写全文”，而是消费用户确认�
 - 单章研究、证据、主张、冲突记录。
 - 表现层增强。
 - 内容复核、有限回流和发布级 manifest。
+
+### 0.1 本文件同时承担的入口信息
+
+当前 `docgen/` 目录：
+
+```text
+docgen/
+  __init__.py          # lane 稳定导出面
+  graph.py             # LangGraph 定义、Send 分发、单次运行入口
+  state.py             # DocGenState TypedDict
+  nodes/               # 顶层图节点
+  lib/                 # 节点内部复用逻辑和 Pydantic 合同
+  prompts/             # prompt builder / template
+  FLOW_DESIGN.md       # 当前唯一文档文件
+```
+
+公开入口与阅读顺序：
+
+1. `backend/app/workflows/digest/docgen/FLOW_DESIGN.md`
+2. `backend/app/workflows/digest/docgen/graph.py`
+3. `backend/app/workflows/digest/docgen/state.py`
+4. `backend/app/workflows/digest/docgen/lib/models.py`
+5. `backend/app/workflows/digest/docgen/nodes/*.py`
+
+运行入口说明：
+
+- `__init__.py` 只保留稳定导出。
+- `graph.py` 承接图定义、Send fan-out/fan-in 和单次 `run_docgen_workflow`。
+- `lib/build_lifecycle.py` 承接 API 触发后的构建锁、后台任务、状态装配和结果组装。
+- `graph.get_langgraph_dev_docgen_graph()` 只服务 `langgraph dev` / 图可视化调试，不是业务运行入口。
 
 ## 1. 流程总览与执行合同
 
@@ -68,24 +110,28 @@ image_generation -> settings.models.image_generation（默认未配置）
 
 | 阶段 / 子步骤 | 当前代码位置 | 调用类型 | 逻辑模型槽位 | 当前默认模型 | 这一步做什么 | 为什么这样配 |
 | --- | --- | --- | --- | --- | --- | --- |
-| `prepare_parallel_inputs.enhance_plan_outline` | `lib/outline_enhance.py` | 结构化 | `reason` | `qwen-max` | 把 confirmed plan 的章节增强成更适合执行的小纲和 teaching outline | 要做执行级重组与结构推断，偏“想清楚怎么讲” |
-| `prepare_parallel_inputs.infer_docgen_intent` | `lib/intent.py` | 结构化 | `reason` | `qwen-max` | 推断文档风格、讲解深度、例子偏好、考试导向和避让项 | 这是教学意图判断，不是轻量抽取，偏策略推断 |
-| `prepare_parallel_inputs.summarize_files` | `lib/file_summaries.py` | 结构化 | `light` | `qwen-flash` | 为每个文件生成摘要、概念、公式、例题和章节亲和度 | 任务数量多、可并发，适合便宜快的轻量结构化模型 |
-| `confirm_and_dispatch` | 当前纯规则 | 无 LLM | 无 | 无 | 把大纲、意图、文件摘要合并成章节 plan seed / task seed / backbone agenda | 当前是规则收口和任务派发，不需要额外模型推理 |
-| `build_document_backbone` | 当前纯规则 | 无 LLM | 无 | 无 | 构建整本文档的术语表、主张池、依赖关系和易混点骨架 | 当前骨架生成主要靠规则和已有摘要，避免再引入一层全局 LLM 不确定性 |
-| `generate_chapters.query_planning` | `lib/query_planning.py` | 结构化 | `reason` | `qwen-max` | 把章节目标拆成 research sub-queries / gap queries | 这里在做研究问题拆解，属于典型的“推理式规划” |
-| `generate_chapters.research_purify` | `lib/chapter_context.py` | 文本 | `light` | `qwen-flash` | 对收集到的 dense context 做轻量清洗，去掉噪声与重复 | 只是净化材料，不在这里做深度推理，轻量模型足够 |
-| `generate_chapters.writer` | `lib/writer.py` | 文本 | `systematic -> reason` / `sprint -> primary` | `qwen-max` / `qwen-plus` | 真正把研究材料和执行合同写成章节正文 | 系统课更偏结构和推理，冲刺课更偏快速成文和教学压缩 |
-| `generate_chapters.heading_repair` | `lib/writer.py` | 文本 | `light` | `qwen-flash` | 修正章节标题层级、学习脚手架和结构格式 | 只做轻量结构修正，不值得用更贵模型 |
-| `generate_chapters.rewrite` | `lib/chapter_critic.py` | 文本 | `primary` | `qwen-plus` | 当章节质量不够时做一次 bounded rewrite | 是对正文的正式改写，质量要求高于 light，但又没有 systematic writer 那么重 |
-| `enhance_chapters.mermaid_placeholder` | `lib/assets.py` | 文本 | `light` | `qwen-flash` | 把 Mermaid 占位符变成真正可渲染的结构图内容 | 资产生成是辅助增强，轻量模型足够，失败也可降级 |
-| `review_content.review_chapter` | `lib/chapter_review.py` | 结构化 | `light` | `qwen-flash` | 逐章复核覆盖率、证据支撑和写作质量，产出 review action | 是并行、轻量、结构化审稿场景，优先控制成本和速度 |
-| `document_consistency_review` | 当前纯规则 | 无 LLM | 无 | 无 | 对整本文档做术语、章节数、重复和风格一致性检查 | 当前先用规则收口，避免再引入一层全局 review 漂移 |
-| `repair_or_route.surface/section patch` | `lib/repair.py` | 文本 | `primary` | `qwen-plus` | 按 review action 对章节做局部 patch 或记录 unresolved warning | 已经直接改正文，不能太轻；但又不需要动用最重的 reason |
-| `merge_review` | 当前纯规则 | 无 LLM | 无 | 无 | 合并章节、整理 metadata、做发布前完整性检查 | 当前是发布前规则收口，不负责重新思考内容 |
+| `prepare_global_seed.infer_intent_core` | `lib/intent.py` | 结构化 | `reason` | `qwen-max` | 只做文档级短意图判断，不再生成按章长提示 | 保留策略判断能力，但缩短输出，避免全局重调用过长 |
+| `prepare_global_seed.summarize_files` | `lib/file_summaries.py` | 结构化 | `light` | `qwen-flash` | 为每个文件生成摘要、概念、公式、例题和章节亲和度 | 文件任务数量多，适合轻量并发 |
+| `lock_titles_for_chapters.lock_title_for_chapter` | `lib/title_lock.py` | 结构化 | `reason` | `qwen-max` | 节点内部按章并行锁定最终标题 | 标题仍需高质量推理，但输出极短，适合收在单节点内部并行 |
+| `confirm_and_seed_backbone` | 当前纯规则 | 无 LLM | 无 | 无 | 基于 confirmed plan、locked titles、source signals 组装骨架 seed | 这是规则收口，不需要额外模型推理 |
+| `build_document_backbone` | 当前纯规则 | 无 LLM | 无 | 无 | 构建整本文档的术语表、主张池、依赖关系和易混点骨架 | 全局一致性优先用规则保持稳定 |
+| `build_chapter_execution_briefs.build_chapter_execution_brief` | `lib/chapter_execution_brief.py` | 结构化 | `reason` | `qwen-max` | 节点内部按章并行生成最小执行 brief | 章级小任务，保留推理能力但严格限制输出字段和长度 |
+| `assemble_chapter_tasks` | 当前纯规则 | 无 LLM | 无 | 无 | 合并 locked title、intent core、backbone、chapter brief，组装最终章节任务 | 任务装配是规则问题，不需要再调用模型 |
+| `generate_chapters.query_planning` | `lib/query_planning.py` | 结构化 | `reason` | `qwen-max` | 把章节目标拆成 research sub-queries / gap queries | 研究问题拆解仍然适合推理式规划 |
+| `generate_chapters.research_purify` | `lib/chapter_context.py` | 文本 | `light` | `qwen-flash` | 对 dense context 做轻量清洗，去掉噪声与重复 | 只是净化材料，不做深度推理 |
+| `generate_chapters.writer` | `lib/writer.py` | 文本 | `systematic -> reason` / `sprint -> primary` | `qwen-max` / `qwen-plus` | 把研究材料和执行合同写成章节正文 | 系统课更偏结构推理，冲刺课更偏快速成文 |
+| `generate_chapters.heading_repair` | `lib/writer.py` | 文本 | `light` | `qwen-flash` | 修正章节标题层级、学习脚手架和结构格式 | 轻量结构修正，不值得用更贵模型 |
+| `generate_chapters.rewrite` | `lib/chapter_critic.py` | 文本 | `primary` | `qwen-plus` | 当章节质量不够时做一次 bounded rewrite | 正文改写质量要求高于 light，但不需要最重推理 |
+| `enhance_chapters.mermaid_placeholder` | `lib/assets.py` | 文本 | `light` | `qwen-flash` | 把 Mermaid 占位符变成真正可渲染的结构图内容 | 资产生成是辅助增强，轻量模型足够 |
+| `review_content.review_chapter` | `lib/chapter_review.py` | 结构化 | `light` | `qwen-flash` | 逐章复核覆盖率、证据支撑和写作质量，产出 review action | 并行、轻量、结构化审稿场景，优先控制成本和速度 |
+| `document_consistency_review` | 当前纯规则 | 无 LLM | 无 | 无 | 对整本文档做术语、章节数、重复和风格一致性检查 | 全局复核先用规则收口，减少漂移 |
+| `repair_or_route.surface/section patch` | `lib/repair.py` | 文本 | `primary` | `qwen-plus` | 按 review action 对章节做局部 patch 或记录 unresolved warning | 已经直接改正文，不能太轻；但又不需要最重 reason |
+| `merge_review` | 当前纯规则 | 无 LLM | 无 | 无 | 合并章节、整理 metadata、做发布前完整性检查 | 发布前规则收口，不负责重新思考内容 |
 | `finalize_titles` | 当前纯规则 | 无 LLM | 无 | 无 | 只把已锁定标题同步到最终 Markdown，不重新起标题 | 当前明确禁止 LLM 改标题，防止推翻 confirmed plan 语义 |
 | `publish_document` | 当前纯规则 | 无 LLM | 无 | 无 | 写出 Markdown、manifest、版本归档和数据库记录 | 发布阶段只做持久化，不承担内容生成 |
-| `cover sidecar` | `lib/cover.py` | 文生图 | `image_generation` | 取决于 `settings.models.image_generation` | 为整本文档生成横向抽象封面图 | 封面是独立 sidecar，走专门的图片生成模型，不干扰正文链路 |
+| `cover sidecar` | `lib/cover.py` | 文生图 | `image_generation` | 取决于 `settings.models.image_generation` | 为整本文档生成横向抽象封面图 | 封面是独立 sidecar，不干扰正文链路 |
+
+当前主线：
 
 ```text
 load_context
@@ -93,26 +139,40 @@ load_context
   校验用户已经确认章节合同，生成 DocGen 全局上下文、章节 assignment 和发布上下文。
   |
   v
-prepare_context / 当前 prepare_parallel_inputs
-  并行准备写作上下文：
-    ├─ enhance_plan_outline
-    │    把用户确认的大纲增强成执行级小纲，不新增、不删除、不重排章节。
-    ├─ infer_docgen_intent
-    │    识别讲解深度、考试倾向、例子偏好、定义粒度和避让项。
+prepare_global_seed
+  全局轻准备，只做两件事：
+    ├─ infer_intent_core
+    │    只推断文档级短意图，不再产按章长提示。
     └─ summarize_files
          摘要文件、判断章节亲和度、抽取高置信证据候选。
-  三路结果 fan-in 后进入派发阶段。
+  这一步不再做整本 outline enhance。
   |
   v
-confirm_and_dispatch
-  合并 prepare_context 的三路结果。
+lock_titles_for_chapters
+  单节点内部按章节并行执行：
+    - lock_title_for_chapter x N
+  锁定最终标题，只输出标题相关字段。
+  |
+  v
+confirm_and_seed_backbone
+  合并 confirmed plan、locked titles、文件摘要、章节亲和度和证据候选。
   生成 ChapterGenerationPlanSeed、ChapterGenerationTaskSeed 和 backbone_research_agenda。
-  同时生成当前章节 fan-out 使用的 ChapterGenerationPlan / ChapterGenerationTask。
   |
   v
 build_document_backbone
   基于章节 seed、资料摘要和证据候选，构建整本文档知识骨架。
-  统一术语、概念依赖、符号、核心主张和易混点，并回填每章最终执行合同。
+  统一术语、概念依赖、符号、核心主张和易混点。
+  |
+  v
+build_chapter_execution_briefs
+  单节点内部按章节并行执行：
+    - build_chapter_execution_brief x N
+  每章生成最小执行 brief，不再产完整执行大纲。
+  |
+  v
+assemble_chapter_tasks
+  合并 locked title、intent core、document backbone、chapter brief。
+  组装最终 ChapterGenerationPlan / ChapterGenerationTask。
   |
   v
 generate_chapters
@@ -129,18 +189,11 @@ enhance_chapters
     ├─ enhance_chapter 1
     ├─ enhance_chapter 2
     └─ enhance_chapter N
-  处理 Mermaid、interactive 占位、公式清洗、Markdown 结构和本章自检题；当前不直接生成讲义配图。
-  增强稿 fan-in 为 enhanced_chapter_drafts、asset_manifests、practice_manifests。
+  处理 Mermaid、interactive 占位、公式清洗、Markdown 结构和本章自检题。
   |
   v
 review_content / 当前 review_chapter Send x N + document_consistency_review
-  按章并行复核：
-    ├─ review_chapter 1
-    ├─ review_chapter 2
-    └─ review_chapter N
-  然后执行 document_consistency_review。
-  章节复核使用 LLM 结构化 review + 规则 guardrail，整本复核检查术语、符号、章节数、重复和风格一致性。
-  输出 reviewed drafts、chapter review reports、document consistency report、review actions 和 review decision。
+  按章并行复核，然后执行整本一致性检查。
   |
   v
 repair_or_route
@@ -151,32 +204,35 @@ repair_or_route
   v
 merge_review
   reviewed drafts fan-in 后按 chapter_index 去重、排序、收口 chapter metadata。
-  合并整本 Markdown，生成 merge review report，做发布前完整性检查。
   |
   v
 final_merge_patch
   目标节点，当前尚未独立实现。
-  只修合并后才暴露的小问题，例如目录重复、跨章过渡、重复摘要、manifest 缺字段。
-  不重新检索，不重写章节，不改变 claim/evidence。
+  只修合并后才暴露的小问题，不重新检索，不重写章节，不改变 claim/evidence。
   |
   v
 finalize_titles
-  不再生成新标题；只同步 confirm_and_dispatch / build_document_backbone 阶段锁定的标题。
-  保持 chapter_index 和 confirmed plan 语义映射，同步改写每章 Markdown 一级标题，并重新生成整本 Markdown。
+  不再生成新标题；只同步 lock_titles_for_chapters 阶段已经锁定的标题。
   |
   v
 publish_document
   发布章节 Markdown、整本 Markdown、docgen_manifest.json、版本归档和 KnowledgeDoc rows。
-  同时写入构建状态、manifest 和可供 Interact / Examine / Profile 复用的 DocGen artifacts。
 ```
 
 并行与 fan-in/fan-out 关系摘要：
 
 ```text
-prepare_context
-  enhance_plan_outline ┐
-  infer_docgen_intent  ├─ fan-in -> merge_and_dispatch
-  summarize_files      ┘
+prepare_global_seed
+  infer_intent_core ┐
+  summarize_files   ┘
+
+lock_titles_for_chapters
+  单节点内部并行执行 lock_title_for_chapter x N
+  完成后进入 confirm_and_seed_backbone
+
+build_chapter_execution_briefs
+  单节点内部并行执行 build_chapter_execution_brief x N
+  完成后进入 assemble_chapter_tasks
 
 generate_draft
   generate_chapter 1 ┐
@@ -192,10 +248,6 @@ review_content
   review_chapter 1 ┐
   review_chapter 2 ├─ fan-in -> document_consistency_review -> repair_or_route
   review_chapter N ┘
-
-repair_or_route
-  当前：review_content -> repair_or_route -> merge_review
-  目标：review_content <-> repair_or_route，最多两轮，然后进入 merge_review
 ```
 
 ### 1.2 长流程执行合同
@@ -218,99 +270,104 @@ load_context
   当前模型方案：
     - 当前无 LLM 调用；纯合同校验与上下文组装。
 
-prepare_parallel_inputs
-  ├─ enhance_plan_outline
-  │    输入：chapter_assignments / material_stats_profile / material_sections / planner_context
-  │      - chapter_assignments：用户确认的章节列表。
-  │      - material_stats_profile：资料类型、题目密度、公式密度、学科画像等统计；当前主要来自 shared_inputs.material_profile。
-  │      - material_sections：切片级正文，可抽取高信息密度片段；当前主要来自 shared_inputs.section_packets。
-  │      - planner_context：Planner 会话摘要、修改意见和用户确认上下文。
-  │    输出：EnhancedChapterOutline[] / plan_mismatch_warnings[]
-  │      - EnhancedChapterOutline：每章执行级小纲和重点目标。
-  │      - plan_mismatch_warnings：模型输出和 confirmed plan 不一致时的 warning。
-  │    作用：执行级细化章节，不新增、不删除、不重排 confirmed plan。
-  │    注意：这里只做轻量 grounding，不做完整 Web research。
-  │    当前模型方案：
-  │      - `task_type=REASONING`
-  │      - `model="reason"`
-  │      - 默认映射到 `qwen-max`
-  ├─ infer_docgen_intent
-  │    输入：user_prompt / plan_summary / digest_mode / chapter_assignments / docgen_history_brief
-  │      - user_prompt：用户最终学习提示。
-  │      - plan_summary：Planner 生成的方案摘要。
-  │      - digest_mode：sprint 或 systematic。
-  │      - chapter_assignments：用户确认章节列表。
-  │      - docgen_history_brief：和文档生成有关的历史修改摘要。
-  │    输出：DocGenIntentProfile
-  │      - depth_level：讲解深度。
-  │      - example_preference：定义优先、例题优先、比喻优先等偏好。
-  │      - exam_orientation：考试导向强弱。
-  │      - derivation_tolerance：目标字段，是否允许详细推导；当前代码用 explanation_depth / definition_depth 等字段近似表达。
-  │      - redundancy_tolerance：目标字段，是否允许重复强调；当前代码用 review_orientation / chapter_style_hints 等字段近似表达。
-  │      - avoidance_rules：目标字段，尽量不写或不能写的内容；当前代码对应 avoid_list。
-  │    作用：识别写作深度、考试倾向、例子偏好、定义粒度、避让项。
-  │    当前模型方案：
-  │      - `task_type=CLASSIFY`
-  │      - `model="reason"`
-  │      - 默认映射到 `qwen-max`
-  └─ summarize_files
-       输入：source_packets / section_packets / chapter_assignments
-         - source_packets：文件级正文包。
-         - section_packets：切片级正文包。
-         - chapter_assignments：章节目标，用于判断文件和章节亲和度。
-       输出：FileMaterialSummary[] / source_affinity_by_chapter / high_confidence_evidence_units
-         - FileMaterialSummary：文件摘要、核心概念、公式、例题、高价值 section、章节亲和度。
-         - source_affinity_by_chapter：每章优先使用哪些文件和切片。
-         - high_confidence_evidence_units：高置信证据单元。
-       作用：为章节生成提供文件摘要、章节亲和度、高价值 section 和候选证据。
-       当前模型方案：
-         - `task_type=DOCGEN_LIGHT`
-         - `model="light"`
-         - 默认映射到 `qwen-flash`
+prepare_global_seed
+  输入：user_prompt / plan_summary / digest_mode / chapter_assignments / docgen_history_brief / source_packets / section_packets
+    - chapter_assignments：用户确认的章节列表。
+    - source_packets / section_packets：文件级正文包和切片级正文包。
+    - docgen_history_brief：和文档生成有关的历史修改摘要。
+  输出：intent_core / FileMaterialSummary[] / source_affinity_by_chapter / high_confidence_evidence_units
+    - intent_core：文档级短意图，只包含 document style、深度、例子偏好、考试导向和 avoid_list。
+    - FileMaterialSummary：文件摘要、核心概念、公式、例题、高价值 section、章节亲和度。
+    - source_affinity_by_chapter：每章优先使用哪些文件和切片。
+    - high_confidence_evidence_units：高置信证据单元。
+  作用：把前置阶段收口成“全局轻准备”，不再在这里生成整本执行大纲。
+  当前模型方案：
+    - `infer_intent_core`
+      - `task_type=CLASSIFY`
+      - `model="reason"`
+      - 默认映射到 `qwen-max`
+    - `summarize_files`
+      - `task_type=DOCGEN_LIGHT`
+      - `model="light"`
+      - 默认映射到 `qwen-flash`
 
-confirm_and_dispatch
-  输入：EnhancedChapterOutline[] / DocGenIntentProfile / FileMaterialSummary[] / source_affinity_by_chapter / high_confidence_evidence_units / chapter_assignments
-  输出：ChapterGenerationPlanSeed / ChapterGenerationTaskSeed[] / backbone_research_agenda
-    - ChapterGenerationPlanSeed：整轮写作规则、格式、预算、章节任务初稿。
-    - ChapterGenerationTaskSeed：单章执行合同初稿。
+lock_titles_for_chapters
+  输入：subject / digest_mode / user_prompt / plan_summary / docgen_history_brief / chapter_assignment
+    - chapter_assignment：单章 confirmed contract。
+  输出：LockedChapterTitle[]
+    - LockedChapterTitle：单章锁定标题记录，只包含 confirmed_title / enhanced_title / warnings / fallback_used。
+  作用：把标题锁定从原来的整本 outline enhance 中拆出来，改成收在单节点里的章节级并行极短结构化任务。
+  约束：
+    - 只锁标题。
+    - 不生成 teaching outline。
+    - 不生成 retrieval queries。
+    - 不生成 media requests。
+  当前模型方案：
+    - `task_type=REASONING`
+    - `model="reason"`
+    - 默认映射到 `qwen-max`
+
+confirm_and_seed_backbone
+  输入：confirmed_plan payload / LockedChapterTitle[] / FileMaterialSummary[] / source_affinity_by_chapter / high_confidence_evidence_units
+  输出：ChapterGenerationPlanSeed / ChapterGenerationTaskSeed[] / backbone_research_agenda / locked_titles
+    - ChapterGenerationPlanSeed：整轮写作规则、格式和预算初稿。
+    - ChapterGenerationTaskSeed：单章 seed，只保留标题、章节目标、required_elements、最小 retrieval seed 和 source seed。
     - backbone_research_agenda：构建全局知识骨架需要优先检索和打开的主题、切片、证据方向。
-  作用：合并 prepare_context 的多路结果，先形成章节研究范围和全局检索议程。
-  每个 ChapterGenerationTaskSeed 至少包含：
-    - chapter_index / confirmed_title / enhanced_title / chapter_goal / mode
-    - required_elements / forbidden_scope
-    - retrieval_queries / priority_section_refs / preferred_sources / fallback_policy
-    - target_length / style_rules / citation_policy / uncertainty_policy / allowed_assets
-  当前实现补充：
-    - 同时生成章节 fan-out 使用的 ChapterGenerationPlan / ChapterGenerationTask。
-    - 当前代码节点名为 confirm_and_dispatch。
+    - locked_titles：按 chapter_index 排序后的稳定标题记录。
+  作用：在标题锁定之后，用规则把 confirmed plan 和 source signals 收口成 backbone seed。
   当前模型方案：
     - 当前无 LLM 调用；纯规则收口和 seed/agenda 派生。
 
 build_document_backbone
-  输入：ChapterGenerationPlanSeed / ChapterGenerationTaskSeed[] / shared_inputs / high_confidence_evidence_units / backbone_research_agenda
-  输出：DocumentBackbone / ChapterGenerationPlan / ChapterGenerationTask[] / backbone_conflict_warnings
+  输入：ChapterGenerationTaskSeed[] / shared_inputs / high_confidence_evidence_units / backbone_research_agenda
+  输出：DocumentBackbone / backbone_conflict_warnings
     - DocumentBackbone：整本文档的全局知识骨架。
-    - ChapterGenerationPlan：吸收 backbone 后的最终整轮执行计划。
-    - ChapterGenerationTask：吸收 backbone 后的最终单章执行合同。
     - backbone_conflict_warnings：全局术语、定义、符号或来源冲突 warning。
-  作用：在初版章节研究范围上做全局证据采样和统一建模，再回填每章合同。
+  作用：在 seed 基础上做全局证据采样和统一建模，但不在这里直接组装最终 ChapterGenerationTask。
   DocumentBackbone 包含：
     - CanonicalGlossary：全局术语表，统一术语、别名、定义。
     - ConceptDependencyGraph：概念依赖图，约束前置关系。
     - NotationRegistry：符号和记号规范。
     - CanonicalClaimPool：整本文档必须讲清的核心主张池。
     - ConfusionMap：易混点、误区和边界。
-  回填到 ChapterGenerationTask 的字段：
-    - dependency_refs / forward_refs
-    - claim_targets / concept_targets / confusion_targets
-    - coverage_threshold / evidence_support_threshold / repetition_tolerance / patch_tolerance
   当前模型方案：
     - 当前无 LLM 调用；纯规则骨架构建 + fallback backbone。
 
+build_chapter_execution_briefs
+  输入：ChapterGenerationTaskSeed / DocumentBackbone / intent_core
+  输出：ChapterExecutionBrief[]
+    - ChapterExecutionBrief：单章最小执行脚手架。
+  作用：把原来整本 outline enhance 中“每章怎么讲”的部分拆出来，改成收在单节点里的章节级并行小任务。
+  约束：
+    - teaching_outline 最多 3 条。
+    - concept_targets / definition_targets / formula_targets / example_targets / pitfall_targets 各最多 2 条。
+    - retrieval_queries 最多 2 条。
+    - 不允许顺带改标题。
+    - 不输出 media_requests。
+    - 不输出 practice_seed_policy。
+  当前模型方案：
+    - `task_type=REASONING`
+    - `model="reason"`
+    - 默认映射到 `qwen-max`
+
+assemble_chapter_tasks
+  输入：confirmed_plan payload / locked_titles / intent_core / ChapterGenerationTaskSeed[] / ChapterExecutionBrief[] / DocumentBackbone / FileMaterialSummary[] / source_affinity_by_chapter
+  输出：ChapterGenerationPlan / ChapterGenerationTask[] / chapter_execution_briefs
+    - ChapterGenerationPlan：最终整轮执行计划。
+    - ChapterGenerationTask：最终单章执行合同。
+    - chapter_execution_briefs：排序后的章节 brief 快照。
+  作用：用规则把 locked title、intent core、document backbone 和 chapter brief 合并成最终章节任务。
+  ChapterGenerationTask 至少包含：
+    - chapter_index / confirmed_title / enhanced_title / objective
+    - required_elements / forbidden_scope
+    - retrieval_queries / priority_section_refs / preferred_sources / fallback_policy
+    - concept_targets / definition_targets / formula_targets / example_targets / pitfall_targets
+    - allowed_assets / practice_seed_policy（由规则装配阶段派生，不再由 chapter brief 直接产出）
+    - dependency_refs / forward_refs / claim_targets / confusion_targets
+  当前模型方案：
+    - 当前无 LLM 调用；纯规则装配和 backbone 回填。
+
 generate_chapters
-  ├─ generate_chapter 1
-  ├─ generate_chapter 2
-  └─ generate_chapter N
   输入：单章 ChapterGenerationTask / shared_inputs / DocumentBackbone / DocGenContext / retrieval_profile
   输出：ChapterDraft[] / ChapterResearchTrace[] / ClaimLedger[] / ClaimEvidenceMap[] / EvidenceLedger[] / ConflictReport[]
     - ChapterDraft：章节初稿、摘要草稿、占位符、质量信号。
@@ -484,7 +541,7 @@ finalize_titles
   作用：标题收口，保持 chapter_index 和 confirmed plan 映射。
   当前实现：
     - 不调用 LLM，不生成新标题。
-    - 只使用 confirm_and_dispatch / build_document_backbone 阶段锁定的章节标题。
+    - 只使用 lock_titles_for_chapters 阶段已经锁定的章节标题。
     - 同步改每章 Markdown 一级标题。
     - 重建整本 Markdown。
   约束：只统一标题表达，不推翻用户确认过的章节语义。
@@ -506,14 +563,16 @@ publish_document
 
 ## 2. 当前实现映射
 
-| 目标阶段 | 当前对应 | 状态 |
+| 目标阶段 | 当前代码对应 | 重构状态 |
 | --- | --- | --- |
 | `load_context` | `load_context` | 已落地 |
-| `prepare_context.enhance_plan_outline` | `prepare_parallel_inputs` 内部 | 已落地 |
-| `prepare_context.infer_docgen_intent` | `prepare_parallel_inputs` 内部 | 已落地 |
-| `prepare_context.summarize_files` | `prepare_parallel_inputs` 内部 | 已落地，已输出 evidence candidates |
-| `merge_and_dispatch` | `confirm_and_dispatch` | 已落地，已输出 plan seed 和 backbone agenda |
+| `prepare_global_seed.infer_intent_core` | `prepare_global_seed` 内部 | 已落地 |
+| `prepare_global_seed.summarize_files` | `prepare_global_seed` 内部 | 已落地，已输出 evidence candidates |
+| `lock_titles_for_chapters` | `lock_titles_for_chapters` | 已落地 |
+| `confirm_and_seed_backbone` | `confirm_and_seed_backbone` | 已落地 |
 | `build_document_backbone` | `build_document_backbone` | 已落地，含 fallback backbone |
+| `build_chapter_execution_briefs` | `build_chapter_execution_briefs` | 已落地 |
+| `assemble_chapter_tasks` | `assemble_chapter_tasks` | 已落地 |
 | `generate_draft` | `generate_chapters` | 已落地，已输出 trace / evidence / claim / conflict |
 | `enhance` | `enhance_chapters` | 已落地，当前只保留 Mermaid 与交互占位清理 |
 | `review_content.review_chapter` | `review_chapter` / `复核章节内容` | 已落地，LangGraph Send x N，LLM review + 规则兜底 |
@@ -523,6 +582,11 @@ publish_document
 | `final_merge_patch` | 无 | 待新增，只处理合并后小问题 |
 | `finalize_titles` | `finalize_titles` | 已落地，锁定标题同步 + Markdown 一级标题同步；不再 LLM 改标题 |
 | `publish_document` | `publish_document` | 已落地，已写 docgen artifacts manifest |
+
+说明：
+
+- 旧的 `prepare_parallel_inputs` / `confirm_and_dispatch` 节点文件仍保留在仓库里，主要用于过渡期参考；它们已经不再属于当前主图。
+- 当前主图已切换到“全局轻准备 + 两个单节点内部并行阶段 + 规则装配”的结构，不再让一次 outline enhance 调用承担完整执行大纲生成。
 
 ## 3. 有限回流目标设计
 
@@ -704,13 +768,15 @@ repair_trace
 
 ## 5. 当前重大问题判断
 
-当前没有发现需要立刻推倒重写 DocGen 主图的问题。主线已经接近目标设计，重要能力也基本落点清楚。
+当前没有发现需要立刻推倒重写 DocGen 主图的问题。新的主图方向已经明确：把前置阶段从“两个超重全局调用”改成“短输出 + 章级并行 + 规则收口”，同时保持标题前置锁定和章节生成链路不倒退。
 
 值得后续重构的重点是：
 
 | 优先级 | 问题 | 为什么重要 |
 | --- | --- | --- |
-| P0 | 文档与代码漂移 | 新人会按过期 README / 架构评估理解当前 graph，后续改动容易补错位置 |
+| P0 | 前置 prepare 阶段职责过重 | 原来的 outline enhance / intent inference 把标题锁定、执行脚手架、检索 seed 和章级风格生成塞进少数几个全局 `reason` 调用，直接拖垮 wall clock |
+| P0 | 图上并行粒度过细会让观测失真 | 标题锁定和 chapter brief 这类前置准备任务如果直接暴露成 graph-level fan-out，容易让 timing 变成 branch sum，而不是真实墙钟时间 |
+| P1 | 文档与代码漂移 | 新人会按过期主线理解当前 graph，后续改动容易补错位置 |
 | P1 | repair loop 还没形成闭环 | 复核只能记录，不能真正按问题级别修补 |
 | P1 | evidence patch 尚未接入 | 证据不足目前只能结构化记录，不能定向补检索、补阅读、补 evidence binding |
 | P1 | state append reducer 与回流冲突 | 引入循环后容易重复发布过期章节或重复 manifest |

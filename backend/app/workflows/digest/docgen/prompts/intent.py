@@ -8,7 +8,7 @@ from typing import Any
 from app.workflows.digest.common.prompt_tracing import trace_prompt_build
 
 
-def build_intent_messages(
+def build_intent_core_messages(
     *,
     subject: str,
     digest_mode: str,
@@ -18,7 +18,7 @@ def build_intent_messages(
     chapters: Sequence[Mapping[str, Any]],
     docgen_history_brief: str = "",
 ) -> list[dict[str, str]]:
-    # 写作意图只需要章节名快照；完整章节合同仍在后续 plan/state 里流转。
+    # 文档级意图判断只需要短上下文；按章风格脚手架后移到章节 brief 阶段。
     chapter_titles = "、".join(
         str(chapter.get("title") or chapter.get("resolved_title") or "").strip()
         for chapter in chapters
@@ -30,7 +30,7 @@ def build_intent_messages(
 Planner 已经决定大纲；你只判断文档应该怎样讲，不能修改章节数量、顺序或主题。
 """.strip()
     prompt = f"""
-请根据用户提示、Planner 摘要、材料画像和章节标题，识别本轮知识文档的写作意图。
+请根据用户提示、Planner 摘要、材料画像和章节标题，识别本轮知识文档的文档级写作意图。
 
 主题：{subject}
 模式：{digest_mode}
@@ -49,7 +49,6 @@ Planner 对话与修改摘要：{docgen_history_brief or "暂无"}
   "definition_depth": "minimal|standard|strict",
   "exam_orientation": 0.0,
   "review_orientation": 0.0,
-  "chapter_style_hints": {{"1": "..."}},
   "avoid_list": ["..."]
 }}
 
@@ -57,6 +56,7 @@ Planner 对话与修改摘要：{docgen_history_brief or "暂无"}
 1. sprint 模式通常 exam_orientation 更高，讲法更短、更题型化。
 2. systematic 模式通常 explanation_depth 更深，定义和推理更完整。
 3. 不要修改章节数量、顺序或主题。
+4. 只输出文档级短字段；不要生成按章 `chapter_style_hints`。
 """.strip()
     messages = [
         {"role": "system", "content": system_prompt},
@@ -74,4 +74,25 @@ Planner 对话与修改摘要：{docgen_history_brief or "暂无"}
     )
 
 
-__all__ = ["build_intent_messages"]
+def build_intent_messages(
+    *,
+    subject: str,
+    digest_mode: str,
+    user_prompt: str,
+    plan_summary: str,
+    material_profile: Mapping[str, Any],
+    chapters: Sequence[Mapping[str, Any]],
+    docgen_history_brief: str = "",
+) -> list[dict[str, str]]:
+    return build_intent_core_messages(
+        subject=subject,
+        digest_mode=digest_mode,
+        user_prompt=user_prompt,
+        plan_summary=plan_summary,
+        material_profile=material_profile,
+        chapters=chapters,
+        docgen_history_brief=docgen_history_brief,
+    )
+
+
+__all__ = ["build_intent_core_messages", "build_intent_messages"]

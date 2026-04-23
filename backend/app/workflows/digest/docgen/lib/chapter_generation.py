@@ -9,6 +9,7 @@ from app.shared.infra.tools.builtin.markdown_processing import count_words
 from app.workflows.digest.common.pedagogy import resolve_effective_chapter_title
 from app.workflows.digest.docgen.lib.models import (
     BackboneResearchAgenda,
+    ChapterExecutionBrief,
     ChapterBudgetPolicy,
     ChapterGenerationPlan,
     ChapterGenerationPlanSeed,
@@ -19,7 +20,9 @@ from app.workflows.digest.docgen.lib.models import (
     EnhancedChapterOutline,
     FileMaterialSummary,
     HighConfidenceEvidenceUnit,
+    LockedChapterTitle,
     SourceAffinityByChapter,
+    clean_int_list,
     clean_string_list,
 )
 
@@ -110,6 +113,269 @@ def _dedupe_placeholder_requests(requests: Sequence[Mapping[str, Any]]) -> list[
         seen.add(key)
         deduped.append({"kind": kind, "description": description})
     return deduped
+
+
+def _locked_titles_by_index(
+    locked_titles: Sequence[LockedChapterTitle],
+) -> dict[int, LockedChapterTitle]:
+    return {int(item.chapter_index): item for item in locked_titles if int(item.chapter_index or 0) > 0}
+
+
+def _briefs_by_index(
+    briefs: Sequence[ChapterExecutionBrief],
+) -> dict[int, ChapterExecutionBrief]:
+    return {int(item.chapter_index): item for item in briefs if int(item.chapter_index or 0) > 0}
+
+
+def _seed_target_length(*, digest_mode: str) -> int:
+    normalized_mode = str(digest_mode or "").strip().lower()
+    return 950 if normalized_mode == "sprint" else 1300
+
+
+def compose_seed_plan_and_backbone_agenda(
+    *,
+    docgen_context: DocGenContext,
+    confirmed_chapters: Sequence[Mapping[str, Any]],
+    locked_titles: Sequence[LockedChapterTitle],
+    file_summaries: Sequence[FileMaterialSummary],
+    source_affinity_by_chapter: Sequence[SourceAffinityByChapter] | None = None,
+    high_confidence_evidence_units: Sequence[HighConfidenceEvidenceUnit] | None = None,
+    plan_mismatch_warnings: Sequence[str] | None = None,
+) -> tuple[ChapterGenerationPlanSeed, list[ChapterGenerationTaskSeed], BackboneResearchAgenda]:
+    locked_by_index = _locked_titles_by_index(locked_titles)
+    evidence_units = list(high_confidence_evidence_units or [])
+    normalized_mode = str(docgen_context.digest_mode or "").strip().lower()
+    chapter_format = _SPRINT_FORMAT if normalized_mode == "sprint" else _SYSTEMATIC_FORMAT
+    global_rules = [
+        "严格按用户确认的章节边界写作，不新增、删除或重排章节。",
+        "优先使用本地学习资料；外部来源只用于补缺和校准。",
+        "例题若非原始资料或可靠来源，不得称为真题，只能称为自测例题或变式练习。",
+        "所有术语、公式和推理必须给出可读解释，避免只抛结论。",
+    ]
+    if normalized_mode == "sprint":
+        global_rules.append("冲刺模式要突出题型、速判、易错点和考前复盘。")
+    else:
+        global_rules.append("系统模式要突出定义、结构、推理、例子和迁移。")
+
+    task_seeds: list[ChapterGenerationTaskSeed] = []
+    warnings = clean_string_list(plan_mismatch_warnings or [])
+    topics: list[str] = []
+    glossary_candidates: list[str] = []
+    confusion_candidates: list[str] = []
+    section_refs: list[str] = []
+    evidence_unit_ids: list[str] = []
+
+    for index, chapter in enumerate(confirmed_chapters, start=1):
+        chapter_index = int(chapter.get("chapter_index", index) or index)
+        confirmed_title = resolve_effective_chapter_title(chapter, chapter_index=chapter_index)
+        locked = locked_by_index.get(chapter_index) or LockedChapterTitle(
+            chapter_index=chapter_index,
+            confirmed_title=confirmed_title,
+            enhanced_title=confirmed_title,
+            fallback_used=True,
+        )
+        priority_file_ids, priority_section_refs = _priority_files_for_chapter(
+            chapter_index=chapter_index,
+            file_summaries=file_summaries,
+        )
+        affinity = _affinity_for_chapter(
+            chapter_index=chapter_index,
+            source_affinity_by_chapter=source_affinity_by_chapter,
+        )
+        if affinity is not None:
+            priority_file_ids = affinity.file_ids or priority_file_ids
+            priority_section_refs = affinity.section_refs or priority_section_refs
+        preferred_sources = [f"local://file/{file_id}" for file_id in priority_file_ids]
+        preferred_sources.extend(
+            unit.source_ref
+            for unit in evidence_units
+            if chapter_index in unit.chapter_affinity
+        )
+        required = clean_string_list(chapter.get("required_elements", []))
+        retrieval_queries = clean_string_list([locked.enhanced_title, *required], limit=2)
+        task_seeds.append(
+            ChapterGenerationTaskSeed(
+                chapter_index=chapter_index,
+                confirmed_title=confirmed_title,
+                enhanced_title=locked.enhanced_title or confirmed_title,
+                chapter_goal=str(chapter.get("objective") or ""),
+                mode=docgen_context.digest_mode,
+                priority_file_ids=priority_file_ids,
+                required_elements=required,
+                retrieval_queries=retrieval_queries,
+                priority_section_refs=priority_section_refs,
+                preferred_sources=preferred_sources,
+                target_length=_seed_target_length(digest_mode=docgen_context.digest_mode),
+                style_rules=list(global_rules),
+                allowed_assets=[],
+            )
+        )
+        topics.extend([locked.enhanced_title, *required])
+        glossary_candidates.extend(required)
+        confusion_candidates.extend([item for item in required if any(marker in item for marker in ("易错", "误区", "混淆", "边界"))])
+        section_refs.extend(priority_section_refs)
+        evidence_unit_ids.extend(
+            unit.evidence_id
+            for unit in evidence_units
+            if chapter_index in unit.chapter_affinity
+        )
+        warnings.extend(locked.plan_mismatch_warnings)
+
+    plan_seed = ChapterGenerationPlanSeed(
+        subject=docgen_context.subject,
+        digest_mode=docgen_context.digest_mode,
+        source_policy=docgen_context.source_strategy,
+        writing_rules=list(global_rules),
+        chapter_format=chapter_format,
+        budget_policy={"chapter_count": len(confirmed_chapters), "max_writer_retries": 1},
+        chapters=task_seeds,
+        plan_mismatch_warnings=clean_string_list(warnings),
+    )
+    agenda = BackboneResearchAgenda(
+        topics=clean_string_list(topics, limit=64),
+        section_refs=clean_string_list(section_refs, limit=48),
+        evidence_unit_ids=clean_string_list(evidence_unit_ids, limit=48),
+        glossary_candidates=clean_string_list(glossary_candidates, limit=48),
+        notation_candidates=clean_string_list(
+            [item for summary in file_summaries for item in summary.formulas],
+            limit=32,
+        ),
+        confusion_candidates=clean_string_list(confusion_candidates, limit=32),
+    )
+    return plan_seed, task_seeds, agenda
+
+
+def assemble_chapter_generation_plan(
+    *,
+    docgen_context: DocGenContext,
+    confirmed_chapters: Sequence[Mapping[str, Any]],
+    locked_titles: Sequence[LockedChapterTitle],
+    intent_profile: DocGenIntentProfile,
+    file_summaries: Sequence[FileMaterialSummary],
+    source_affinity_by_chapter: Sequence[SourceAffinityByChapter] | None = None,
+    task_seeds: Sequence[ChapterGenerationTaskSeed],
+    chapter_execution_briefs: Sequence[ChapterExecutionBrief],
+    plan_mismatch_warnings: Sequence[str] | None = None,
+) -> ChapterGenerationPlan:
+    chapter_count = len(confirmed_chapters)
+    locked_by_index = _locked_titles_by_index(locked_titles)
+    briefs_by_index = _briefs_by_index(chapter_execution_briefs)
+    normalized_mode = str(docgen_context.digest_mode or "").strip().lower()
+    chapter_format = _SPRINT_FORMAT if normalized_mode == "sprint" else _SYSTEMATIC_FORMAT
+    global_rules = [
+        "严格按用户确认的章节边界写作，不新增、删除或重排章节。",
+        "优先使用本地学习资料；外部来源只用于补缺和校准。",
+        "例题若非原始资料或可靠来源，不得称为真题，只能称为自测例题或变式练习。",
+        "所有术语、公式和推理必须给出可读解释，避免只抛结论。",
+    ]
+    if normalized_mode == "sprint":
+        global_rules.append("冲刺模式要突出题型、速判、易错点和考前复盘。")
+    else:
+        global_rules.append("系统模式要突出定义、结构、推理、例子和迁移。")
+
+    seed_by_index = {int(seed.chapter_index): seed for seed in task_seeds}
+    tasks: list[ChapterGenerationTask] = []
+    warnings = clean_string_list(plan_mismatch_warnings or [])
+    for index, chapter in enumerate(confirmed_chapters, start=1):
+        chapter_index = int(chapter.get("chapter_index", index) or index)
+        confirmed_title = resolve_effective_chapter_title(chapter, chapter_index=chapter_index)
+        locked = locked_by_index.get(chapter_index) or LockedChapterTitle(
+            chapter_index=chapter_index,
+            confirmed_title=confirmed_title,
+            enhanced_title=confirmed_title,
+            fallback_used=True,
+        )
+        seed = seed_by_index.get(chapter_index) or ChapterGenerationTaskSeed(
+            chapter_index=chapter_index,
+            confirmed_title=confirmed_title,
+            enhanced_title=locked.enhanced_title or confirmed_title,
+            chapter_goal=str(chapter.get("objective") or ""),
+            mode=docgen_context.digest_mode,
+            required_elements=clean_string_list(chapter.get("required_elements", [])),
+        )
+        brief = briefs_by_index.get(chapter_index) or ChapterExecutionBrief(
+            chapter_index=chapter_index,
+            concept_targets=seed.required_elements[:2],
+            definition_targets=seed.required_elements[:2],
+            retrieval_queries=seed.retrieval_queries[:2],
+            fallback_used=True,
+        )
+        min_words, target_words = _chapter_word_budget(
+            digest_mode=docgen_context.digest_mode,
+            chapter_count=chapter_count,
+            intent=intent_profile,
+        )
+        affinity = _affinity_for_chapter(
+            chapter_index=chapter_index,
+            source_affinity_by_chapter=source_affinity_by_chapter,
+        )
+        priority_file_ids, priority_section_refs = _priority_files_for_chapter(
+            chapter_index=chapter_index,
+            file_summaries=file_summaries,
+        )
+        if affinity is not None:
+            priority_file_ids = affinity.file_ids or priority_file_ids
+            priority_section_refs = affinity.section_refs or priority_section_refs
+        if seed.priority_file_ids:
+            priority_file_ids = seed.priority_file_ids
+        placeholder_requests: list[dict[str, str]] = []
+        visual_terms = " ".join([locked.enhanced_title, *seed.required_elements, *brief.concept_targets])
+        if any(marker in visual_terms for marker in ("图", "结构", "流程", "关系", "路径", "层次", "机制", "过程")):
+            placeholder_requests.append({"kind": "mermaid", "description": f"{locked.enhanced_title} 的结构关系图"})
+        task = ChapterGenerationTask(
+            chapter_index=chapter_index,
+            confirmed_title=confirmed_title,
+            enhanced_title=locked.enhanced_title or confirmed_title,
+            objective=seed.chapter_goal or str(chapter.get("objective") or ""),
+            teaching_outline=clean_string_list(brief.teaching_outline, limit=3),
+            content_points=clean_string_list(seed.required_elements),
+            concept_targets=clean_string_list([*brief.concept_targets, *seed.required_elements], limit=8),
+            definition_targets=clean_string_list(brief.definition_targets, limit=4),
+            formula_targets=clean_string_list(brief.formula_targets, limit=4),
+            example_targets=clean_string_list(brief.example_targets, limit=4),
+            pitfall_targets=clean_string_list(brief.pitfall_targets, limit=4),
+            priority_file_ids=priority_file_ids or clean_int_list(chapter.get("source_file_ids", [])),
+            priority_section_refs=priority_section_refs or seed.priority_section_refs,
+            retrieval_queries=clean_string_list(brief.retrieval_queries or seed.retrieval_queries, limit=2),
+            writing_rules=list(global_rules),
+            required_elements=list(seed.required_elements),
+            forbidden_scope=list(seed.forbidden_scope),
+            preferred_sources=list(seed.preferred_sources),
+            fallback_policy=seed.fallback_policy,
+            style_rules=list(seed.style_rules or global_rules),
+            citation_policy=seed.citation_policy,
+            uncertainty_policy=seed.uncertainty_policy,
+            allowed_assets=clean_string_list([str(item.get("kind") or "") for item in placeholder_requests if isinstance(item, dict)]),
+            placeholder_requests=placeholder_requests,
+            practice_seed_policy={"style": "exam" if normalized_mode == "sprint" else "reasoning"},
+            coverage_threshold=0.6 if normalized_mode == "sprint" else 0.72,
+            evidence_support_threshold=0.48 if normalized_mode == "sprint" else 0.56,
+            repetition_tolerance=0.45 if normalized_mode == "sprint" else 0.3,
+            patch_tolerance=0.45 if normalized_mode == "sprint" else 0.32,
+            min_word_count=min_words,
+            target_word_count=target_words,
+            budget_policy=ChapterBudgetPolicy(
+                max_research_rounds=2 if normalized_mode == "sprint" else 3,
+                max_local_queries=3,
+                max_web_queries=2 if normalized_mode == "sprint" else 4,
+                max_opened_urls=3 if normalized_mode == "sprint" else 5,
+                max_context_chars=4200 if normalized_mode == "sprint" else 6200,
+                max_writer_retries=1,
+            ),
+        )
+        tasks.append(task)
+        warnings.extend(locked.plan_mismatch_warnings)
+        warnings.extend(brief.plan_mismatch_warnings)
+    return ChapterGenerationPlan(
+        subject=docgen_context.subject,
+        digest_mode=docgen_context.digest_mode,
+        source_policy=docgen_context.source_strategy,
+        writing_rules=list(global_rules),
+        chapter_format=chapter_format,
+        budget_policy={"chapter_count": chapter_count, "max_writer_retries": 1},
+        chapters=tasks,
+        plan_mismatch_warnings=clean_string_list(warnings),
+    )
 
 
 def compose_chapter_generation_plan(
@@ -203,7 +469,6 @@ def compose_chapter_generation_plan(
             retrieval_queries=clean_string_list(outline.retrieval_queries),
             writing_rules=[
                 *global_rules,
-                intent_profile.chapter_style_hints.get(chapter_index, ""),
             ],
             placeholder_requests=placeholder_requests,
             practice_seed_policy=dict(outline.practice_seed_policy),
