@@ -179,7 +179,7 @@ def _maybe_update_subject_name(
     user_id: str,
     generated_name: str,
 ) -> None:
-    title = " ".join(str(generated_name or "").strip().split())[:16]
+    title = " ".join(str(generated_name or "").strip().split())
     if not title or title.casefold() in _AUTO_TITLE_PLACEHOLDERS:
         return
     subject_row = session.exec(
@@ -199,7 +199,7 @@ def _maybe_update_subject_name(
 
 
 def _apply_generated_subject_name(plan_payload: dict[str, Any], generated_name: str) -> str:
-    title = " ".join(str(generated_name or "").strip().split())[:16]
+    title = " ".join(str(generated_name or "").strip().split())
     if not title or title.casefold() in _AUTO_TITLE_PLACEHOLDERS:
         return ""
     plan_payload["subject"] = title

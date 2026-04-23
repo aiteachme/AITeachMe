@@ -1,6 +1,6 @@
-﻿"""Planner graph definition and public workflow entrypoints.
+"""Planner graph definition and public workflow entrypoints.
 
-真实链路只有四步：读取资料 -> 理解目标 -> 合成大纲 -> 保存方案。
+真实链路主线：读取资料 -> 理解目标 ->（并行：生成标题 / 合成大纲）-> 保存方案。
 """
 
 from __future__ import annotations
@@ -27,11 +27,13 @@ from app.workflows.digest.planner.lib.store import (
 from app.workflows.digest.planner.lib.steps import (
     STEP_COMPOSE_PLAN,
     STEP_DISPLAY_NAMES,
+    STEP_GENERATE_TITLE,
     STEP_LOAD_MATERIALS,
     STEP_SAVE_PLAN,
     STEP_UNDERSTAND_GOAL,
 )
 from app.workflows.digest.planner.nodes import (
+    build_generate_subject_name_node,
     build_load_planner_materials_node,
     build_normalize_and_persist_plan_node,
     build_stream_and_parse_plan_draft_node,
@@ -63,11 +65,11 @@ def _require_success_state(result: WorkflowResult[BuildPlannerState]) -> BuildPl
 
 
 def build_planner_graph(*, context: WorkflowContext) -> StateGraph:
-    """构建 Planner 的四步 LangGraph。
+    """构建 Planner 的 LangGraph。
 
     Planner 只负责生成和修订可确认的构建方案：读取资料、理解目标、
-    合成大纲、保存方案。不要在这里做 DocGen 的检索写作，也不要把
-    API 持久化细节塞进节点之外的地方。
+    并行生成标题与大纲、保存方案。不要在这里做 DocGen 的检索写作，
+    也不要把 API 持久化细节塞进节点之外的地方。
     """
 
     trace = workflow_tracer(context=context, lane="planner")
@@ -102,6 +104,14 @@ def build_planner_graph(*, context: WorkflowContext) -> StateGraph:
         ),
     )
     workflow.add_node(
+        STEP_GENERATE_TITLE,
+        trace.node(
+            build_generate_subject_name_node(context=context),
+            name=STEP_DISPLAY_NAMES[STEP_GENERATE_TITLE],
+            timing_field="title_ms",
+        ),
+    )
+    workflow.add_node(
         STEP_SAVE_PLAN,
         trace.node(
             build_normalize_and_persist_plan_node(context=context),
@@ -109,22 +119,17 @@ def build_planner_graph(*, context: WorkflowContext) -> StateGraph:
             timing_field="finalize_ms",
         ),
     )
+
     workflow.set_entry_point(STEP_LOAD_MATERIALS)
     workflow.add_conditional_edges(
         STEP_LOAD_MATERIALS,
         route_after_step_for_trace,
         {"continue": STEP_UNDERSTAND_GOAL, "fail": END},
     )
-    workflow.add_conditional_edges(
-        STEP_UNDERSTAND_GOAL,
-        route_after_step_for_trace,
-        {"continue": STEP_COMPOSE_PLAN, "fail": END},
-    )
-    workflow.add_conditional_edges(
-        STEP_COMPOSE_PLAN,
-        route_after_step_for_trace,
-        {"continue": STEP_SAVE_PLAN, "fail": END},
-    )
+    workflow.add_edge(STEP_UNDERSTAND_GOAL, STEP_COMPOSE_PLAN)
+    workflow.add_edge(STEP_UNDERSTAND_GOAL, STEP_GENERATE_TITLE)
+    workflow.add_edge(STEP_COMPOSE_PLAN, STEP_SAVE_PLAN)
+    workflow.add_edge(STEP_GENERATE_TITLE, STEP_SAVE_PLAN)
     workflow.add_edge(STEP_SAVE_PLAN, END)
     return workflow
 
@@ -158,8 +163,6 @@ def create_planner_initial_state(
     progress_callback: object | None = None,
     token_callback: object | None = None,
 ) -> BuildPlannerState:
-    # planner_operation 只区分“直接调图调试”和“API create/append”；
-    # 不管哪种入口，下面跑的都是同一条 graph。
     return {
         "subject": subject,
         "user_id": user_id,
@@ -266,8 +269,6 @@ async def create_build_planner_session(
 ) -> BuildPlannerSessionResponse:
     """创建一次新的 Planner 会话并流式生成首版方案。"""
 
-    # API 友好入口：只装配 state、启动 graph、把最终 state 转成既有响应结构。
-    # 真正业务逻辑仍在 graph nodes 里。
     planner_defaults = get_teaching_runtime_config().planner
     session_id = uuid.uuid4().hex
     user_prompt = payload.user_prompt.strip()
@@ -329,8 +330,6 @@ async def append_build_planner_message(
 ) -> BuildPlannerSessionResponse:
     """在已有 Planner 会话中追加用户反馈并重新生成方案。"""
 
-    # 追加反馈也只是同一条 graph run。
-    # load_planner_materials 会读取上一版 session/plan 并追加用户 turn。
     logger.info(
         "planner_append_message_starting",
         subject=subject.slug,
