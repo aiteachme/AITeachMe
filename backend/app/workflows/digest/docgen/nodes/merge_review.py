@@ -8,7 +8,11 @@ from app.shared.infra.tools.builtin.markdown_processing import count_words
 from app.utils.docgen_store import append_knowledge_build_recent_event, update_knowledge_build_status
 from app.utils.time import utcnow
 from app.shared.infra.workflow.context import WorkflowContext
-from app.workflows.digest.docgen.lib.cover import build_docgen_cover_markdown, read_docgen_cover_artifact
+from app.workflows.digest.docgen.lib.cover import (
+    build_docgen_cover_markdown,
+    read_docgen_cover_artifact,
+    wait_for_docgen_cover_artifact,
+)
 from app.workflows.digest.docgen.lib.models import EnhancedChapterDraft
 from app.workflows.digest.docgen.lib.publish import build_merged_markdown
 from app.workflows.digest.docgen.lib.quality import build_merge_review_report
@@ -124,6 +128,8 @@ def build_merge_review_node(*, context: WorkflowContext):
                 )
             )
         cover_artifact = await read_docgen_cover_artifact(state["subject"])
+        if not cover_artifact:
+            cover_artifact = await wait_for_docgen_cover_artifact(state["subject"])
         cover_markdown = build_docgen_cover_markdown(cover_artifact)
         merged_markdown = build_merged_markdown(
             chapter_metadatas,

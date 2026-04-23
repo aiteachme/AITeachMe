@@ -13,7 +13,6 @@ import type {
   FileRecord,
   KnowledgeBuildMetricsResponse,
   KnowledgeBuildPreviewResponse,
-  KnowledgeBuildStatusResponse,
 } from "../../api/generated/model";
 
 /* ---- TOC ---- */
@@ -126,7 +125,19 @@ export interface ThreadTurnItem {
 
 /* ---- Build Status & Preview ---- */
 
-export type DocGenBuildStatus = KnowledgeBuildStatusResponse;
+export interface DocGenBuildStatus {
+  status?: string | null;
+  requested_at?: string | null;
+  stage?: string | null;
+  error_message?: string | null;
+  draft_available?: boolean;
+  progress_pct?: number;
+  planner_session_id?: string | null;
+  confirmed_plan_id?: string | null;
+  digest_mode?: string | null;
+  mode_reason?: string | null;
+  current_stage_description?: string | null;
+}
 export type BuildSampleCard = BuildSampleCardResponse;
 export type BuildPreviewNode = BuildPreviewNodeResponse;
 export type BuildPreviewChapterProgress = BuildPreviewChapterProgressResponse;

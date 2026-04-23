@@ -8,7 +8,11 @@ from time import perf_counter
 from app.shared.infra.workflow.context import WorkflowContext
 from app.utils.docgen_store import append_knowledge_build_recent_event, update_knowledge_build_status
 from app.utils.time import utcnow
-from app.workflows.digest.docgen.lib.cover import build_docgen_cover_markdown, read_docgen_cover_artifact
+from app.workflows.digest.docgen.lib.cover import (
+    build_docgen_cover_markdown,
+    read_docgen_cover_artifact,
+    wait_for_docgen_cover_artifact,
+)
 from app.workflows.digest.docgen.lib.publish import build_merged_markdown
 from app.workflows.digest.docgen.nodes.common import publish_docgen_progress
 from app.workflows.digest.docgen.state import DocGenState
@@ -88,6 +92,8 @@ def build_finalize_titles_node(*, context: WorkflowContext):
         cover_artifact = dict(state.get("cover_artifact") or {})
         if not cover_artifact:
             cover_artifact = dict(await read_docgen_cover_artifact(state["subject"]) or {})
+        if not cover_artifact:
+            cover_artifact = dict(await wait_for_docgen_cover_artifact(state["subject"]) or {})
         cover_markdown = str(state.get("cover_markdown") or "").strip()
         if not cover_markdown:
             cover_markdown = build_docgen_cover_markdown(cover_artifact)

@@ -33,6 +33,10 @@ import { PlannerPreviewMarkdown } from "../components/build-plan/PlannerPreviewM
 import { FullPageDropOverlay } from "../components/ui/FullPageDropOverlay";
 import { useToast } from "../components/ui/Toast";
 import { useKnowledgeBuildFlow } from "../hooks/useKnowledgeBuildFlow";
+import {
+  buildKnowledgeBuildRuntimeQueryKey,
+  fetchKnowledgeBuildRuntime,
+} from "../lib/knowledgeBuildRuntime";
 import { buildKnowledgeDocStateQueryKey, fetchKnowledgeDocState } from "../lib/knowledgeDocs";
 import { FILE_ACCEPT, extractPasteFiles } from "../lib/fileUpload";
 import type { FileRecord, FilesData, FilesUploadData } from "../types/files";
@@ -746,6 +750,38 @@ export function BuildPlanPage() {
     },
   });
 
+  const buildRuntimeQuery = useQuery({
+    queryKey: [...buildKnowledgeBuildRuntimeQueryKey(subjectId), requestedAt],
+    queryFn: () => fetchKnowledgeBuildRuntime(subjectId),
+    enabled: Boolean(subjectId),
+    retry: false,
+    refetchInterval: (query) => {
+      const aggregate = query.state.data?.aggregate;
+      const status = (aggregate?.status ?? "").trim();
+      const liveMarkdown = knowledgeDocState.data?.markdown ?? "";
+      const hasLiveDocMarkdown = Boolean(knowledgeDocState.data?.exists && liveMarkdown.trim().length > 0);
+      const targetRequestedAtMs = requestedAtMs ?? parseIsoTimestamp(aggregate?.requested_at ?? null);
+      const updatedAtMs = parseIsoTimestamp(knowledgeDocState.data?.updated_at ?? null);
+      const hasRequestedLiveDoc =
+        hasLiveDocMarkdown &&
+        (targetRequestedAtMs === null || (updatedAtMs !== null && updatedAtMs >= targetRequestedAtMs));
+
+      if (status && ACTIVE_DOC_BUILD_STATUSES.has(status)) {
+        return 2500;
+      }
+      if (status === "completed" || status === "partial_failed" || status === "skipped") {
+        return hasRequestedLiveDoc ? false : 1200;
+      }
+      if (status === "failed" || status === "cancelled") {
+        return false;
+      }
+      if (!status || status === "idle") {
+        return false;
+      }
+      return hasRequestedLiveDoc ? false : 2500;
+    },
+  });
+
   const files = filesQuery.data?.items ?? [];
   const plannerFiles = useMemo(() => files.filter((item) => item.status !== "failed"), [files]);
   const readyFiles = useMemo(() => files.filter((item) => item.markdown_ready), [files]);
@@ -764,9 +800,9 @@ export function BuildPlanPage() {
     [files],
   );
 
-  const buildMeta = knowledgeDocState.data?.build ?? null;
-  const buildPreview = knowledgeDocState.data?.build_preview ?? null;
-  const buildMetrics = knowledgeDocState.data?.build_metrics ?? null;
+  const buildMeta = buildRuntimeQuery.data?.aggregate ?? knowledgeDocState.data?.build ?? null;
+  const buildPreview = buildRuntimeQuery.data?.docgen_preview ?? knowledgeDocState.data?.build_preview ?? null;
+  const buildMetrics = buildRuntimeQuery.data?.docgen_metrics ?? knowledgeDocState.data?.build_metrics ?? null;
   const buildStatus = buildMeta?.status ?? null;
   const liveMarkdown = knowledgeDocState.data?.markdown ?? "";
   const draftMarkdown = knowledgeDocState.data?.draft_markdown ?? "";
@@ -1029,6 +1065,7 @@ export function BuildPlanPage() {
     mutationFn: () => cancelKnowledgeBuild(subjectId),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: buildKnowledgeDocStateQueryKey(subjectId) });
+      void queryClient.invalidateQueries({ queryKey: buildKnowledgeBuildRuntimeQueryKey(subjectId) });
     },
   });
 
@@ -1043,6 +1080,7 @@ export function BuildPlanPage() {
     fallbackErrorMessage: "知识文档构建失败。",
     onSuccess: (data: DocGenBuildData) => {
       void queryClient.invalidateQueries({ queryKey: buildKnowledgeDocStateQueryKey(subjectId) });
+      void queryClient.invalidateQueries({ queryKey: buildKnowledgeBuildRuntimeQueryKey(subjectId) });
       toast({
         title: "已开始构建知识文档",
         description:
@@ -1512,7 +1550,7 @@ export function BuildPlanPage() {
             ) : (
               <BuildView
                 className="flex-1"
-                isFetching={knowledgeDocState.isFetching}
+                isFetching={knowledgeDocState.isFetching || buildRuntimeQuery.isFetching}
                 progress={buildProgress}
                 statusText={buildStatusText}
                 buildPreview={buildPreview}

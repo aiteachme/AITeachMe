@@ -358,7 +358,7 @@ def _import_table(
     for record_data in records:
         old_id = record_data.get(spec.id_field)
 
-        # 鏂?ID
+        # 新 ID
         if spec.id_type == "auto":
             record_data[spec.id_field] = None
         elif spec.id_type == "uuid":

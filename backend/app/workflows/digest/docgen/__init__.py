@@ -9,6 +9,7 @@ from app.workflows.digest.docgen.graph import (
 )
 from app.workflows.digest.docgen.lib.build_lifecycle import (
     get_docgen_result,
+    get_knowledge_build_runtime_result,
     run_docgen_background,
     trigger_docgen_build,
 )
@@ -20,6 +21,7 @@ __all__ = [
     "clear_subject_knowledge",
     "create_docgen_initial_state",
     "get_docgen_result",
+    "get_knowledge_build_runtime_result",
     "get_langgraph_dev_docgen_graph",
     "run_docgen_background",
     "run_docgen_workflow",
