@@ -287,13 +287,3 @@ def resolve_storage_key_path(storage_key: str) -> Path:
     """Resolve a local storage key into an absolute runtime path."""
 
     return (get_data_dir() / storage_key).resolve()
-
-
-def build_courses_dir() -> Path:
-    """Return the shared course packages directory.
-
-    This folder holds pre-built ``.atmx`` files that can be listed
-    and imported by any user of the instance.
-    """
-
-    return get_data_dir() / "_courses"

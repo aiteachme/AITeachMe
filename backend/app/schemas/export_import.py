@@ -57,9 +57,9 @@ class ImportResultData(BaseModel):
 
 
 class CoursePackageItem(BaseModel):
-    """One `.atmx` package listed from shared courses folder."""
+    """One remote demo-course package listed from the configured catalog."""
 
-    filename: str = Field(description="Package filename.")
+    filename: str = Field(description="Stable course identifier used for remote import.")
     subject_name: str = Field(description="Subject name from manifest.")
     file_size_bytes: int = Field(default=0)
     exported_at: datetime | None = Field(default=None)
