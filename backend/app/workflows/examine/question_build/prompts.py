@@ -15,6 +15,15 @@ _LATEX_FORMAT_RULES = (
     "- Do not use `\\(...\\)` or `\\[...\\]`.\n"
 )
 
+_QUESTION_TYPE_FORMAT_RULES = (
+    "\nQuestion type formatting rules:\n"
+    "- single_choice: provide exactly 4 distinct options; correct_answer must exactly equal one option.\n"
+    "- multiple_choice: provide exactly 4 distinct options prefixed A./B./C./D.; correct_answer must be comma-separated labels such as A,C.\n"
+    "- true_false: omit options or use exactly ['True', 'False']; correct_answer must be True or False.\n"
+    "- fill_blank: do not provide options; correct_answer must be short and unique.\n"
+    "- short_answer: do not provide options; answer and explanation must include key scoring points.\n"
+)
+
 SYSTEM_PROMPT_EXAM_QUESTION_BUILD = """
 你是一名严格、资深、重视教学效果的命题老师。
 
@@ -66,7 +75,7 @@ def build_exam_question_messages(
         f"{json.dumps(payload, ensure_ascii=False, indent=2)}"
     )
     return [
-        {"role": SYSTEM, "content": SYSTEM_PROMPT_EXAM_QUESTION_BUILD + _LATEX_FORMAT_RULES},
+        {"role": SYSTEM, "content": SYSTEM_PROMPT_EXAM_QUESTION_BUILD + _QUESTION_TYPE_FORMAT_RULES + _LATEX_FORMAT_RULES},
         {"role": USER, "content": user_prompt_text + "\n\n如出现数学公式，必须使用 LaTeX，并用 `$...$` 或 `$$...$$` 包裹。"},
     ]
 
@@ -90,6 +99,6 @@ def build_text_exam_messages(
         f"{json.dumps(payload, ensure_ascii=False, indent=2)}"
     )
     return [
-        {"role": SYSTEM, "content": SYSTEM_PROMPT_EXAM_QUESTION_BUILD + _LATEX_FORMAT_RULES},
+        {"role": SYSTEM, "content": SYSTEM_PROMPT_EXAM_QUESTION_BUILD + _QUESTION_TYPE_FORMAT_RULES + _LATEX_FORMAT_RULES},
         {"role": USER, "content": user_prompt_text + "\n\n如出现数学公式，必须使用 LaTeX，并用 `$...$` 或 `$$...$$` 包裹。"},
     ]

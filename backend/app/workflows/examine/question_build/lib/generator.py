@@ -20,7 +20,13 @@ from app.workflows.examine.question_build.prompts import (
     build_text_exam_messages,
 )
 
-QuestionTypeLiteral = Literal["single_choice", "fill_blank", "short_answer"]
+QuestionTypeLiteral = Literal[
+    "single_choice",
+    "multiple_choice",
+    "true_false",
+    "fill_blank",
+    "short_answer",
+]
 DifficultyLiteral = Literal["easy", "medium", "hard"]
 T = TypeVar("T")
 
@@ -77,6 +83,28 @@ class ExamQuestionDraft(BaseModel):
                 raise ValueError("single_choice correct_answer must equal one option exactly")
             return self
 
+        if self.question_type == "multiple_choice":
+            options = self.options or []
+            if len(options) != 4:
+                raise ValueError("multiple_choice questions must contain exactly 4 options")
+            if len({item.casefold() for item in options}) != 4:
+                raise ValueError("multiple_choice options must be distinct")
+            selected = _split_multi_choice_answer(self.correct_answer)
+            option_keys = {_choice_key(option) for option in options}
+            if len(selected) < 2:
+                raise ValueError("multiple_choice correct_answer must contain at least 2 choices")
+            if not selected <= option_keys:
+                raise ValueError("multiple_choice correct_answer must use option labels from options")
+            return self
+
+        if self.question_type == "true_false":
+            options = self.options or []
+            if options and {item.casefold() for item in options} != {"true", "false"}:
+                raise ValueError("true_false options must be omitted or exactly ['True', 'False']")
+            if _normalize_true_false_answer(self.correct_answer) is None:
+                raise ValueError("true_false correct_answer must be True or False")
+            return self
+
         if self.options:
             raise ValueError("non-choice questions must not provide options")
 
@@ -84,6 +112,34 @@ class ExamQuestionDraft(BaseModel):
             raise ValueError("fill_blank correct_answer must stay concise")
 
         return self
+
+
+def _choice_key(value: str) -> str:
+    cleaned = " ".join(str(value or "").split()).strip()
+    if not cleaned:
+        return ""
+    head = cleaned[0].casefold()
+    if head in {"a", "b", "c", "d"}:
+        return head
+    return cleaned.casefold()
+
+
+def _split_multi_choice_answer(value: str) -> set[str]:
+    normalized = str(value or "").replace("，", ",").replace("、", ",").replace("；", ",")
+    return {
+        token.strip().strip(".").strip(")").casefold()
+        for token in normalized.split(",")
+        if token.strip()
+    }
+
+
+def _normalize_true_false_answer(value: str) -> bool | None:
+    normalized = " ".join(str(value or "").casefold().split()).strip()
+    if normalized in {"true", "t", "yes", "y", "正确", "对", "是"}:
+        return True
+    if normalized in {"false", "f", "no", "n", "错误", "错", "否"}:
+        return False
+    return None
 
 
 class ExamQuestionBatch(BaseModel):

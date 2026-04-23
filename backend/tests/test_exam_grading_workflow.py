@@ -51,6 +51,51 @@ async def test_grade_exam_items_with_workflow_uses_rule_based_grading_for_object
 
 
 @pytest.mark.anyio
+async def test_grade_exam_items_with_workflow_grades_multiple_choice_and_true_false(monkeypatch):
+    async def fake_acompletion_with_fallback(messages, **kwargs):
+        return ObjectiveFeedbackPayload(
+            feedback_text="The objective answer was checked against the reference answer.",
+            error_cause_label=None,
+        )
+
+    monkeypatch.setattr(grader, "acompletion_with_fallback", fake_acompletion_with_fallback)
+
+    multiple_choice = ExamPaperItem(
+        id=11,
+        exam_paper_id=1,
+        question_template_id=11,
+        item_order=1,
+        stem_snapshot="Which statements are correct?",
+        options_snapshot_json='["A. Local rate", "B. Always positive", "C. Tangent slope", "D. Area"]',
+        answer_snapshot="A,C",
+        explanation_snapshot="A derivative describes local rate and tangent slope.",
+        difficulty="medium",
+        question_type="multiple_choice",
+        score=1.0,
+        answer_content="C,A",
+    )
+    true_false = ExamPaperItem(
+        id=12,
+        exam_paper_id=1,
+        question_template_id=12,
+        item_order=2,
+        stem_snapshot="Differentiability implies continuity.",
+        options_snapshot_json=None,
+        answer_snapshot="True",
+        explanation_snapshot="Differentiability is stronger than continuity.",
+        difficulty="easy",
+        question_type="true_false",
+        score=1.0,
+        answer_content="对",
+    )
+
+    decisions = await grade_exam_items_with_workflow(subject="math", items=[multiple_choice, true_false])
+
+    assert [decision.is_correct for decision in decisions] == [True, True]
+    assert [decision.grading_mode for decision in decisions] == ["objective_rule", "objective_rule"]
+
+
+@pytest.mark.anyio
 async def test_grade_exam_items_with_workflow_uses_llm_for_subjective_questions(monkeypatch):
     async def fake_acompletion_with_fallback(messages, **kwargs):
         return SubjectiveGradePayload(

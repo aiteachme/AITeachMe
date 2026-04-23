@@ -136,3 +136,54 @@ async def test_generate_exam_questions_for_units_rejects_misaligned_llm_output(m
             units=units,
             specs=specs,
         )
+
+
+def test_exam_question_draft_accepts_multiple_choice_and_true_false_shapes():
+    multiple_choice = ExamQuestionDraft(
+        item_order=1,
+        knowledge_unit_id=301,
+        question_type="multiple_choice",
+        difficulty="medium",
+        stem="Which two statements correctly describe derivatives in this context?",
+        options=[
+            "A. A derivative can describe an instantaneous rate of change.",
+            "B. A derivative is always equal to the function value.",
+            "C. A derivative can be represented by the slope of a tangent line.",
+            "D. A derivative is the area under a curve.",
+        ],
+        correct_answer="A,C",
+        explanation="The derivative captures instantaneous change and tangent slope; function value and area are different concepts.",
+    )
+    true_false = ExamQuestionDraft(
+        item_order=2,
+        knowledge_unit_id=301,
+        question_type="true_false",
+        difficulty="easy",
+        stem="True or False: differentiability at a point implies continuity at that point.",
+        correct_answer="True",
+        explanation="Differentiability is stronger than continuity, so the statement is true.",
+    )
+
+    assert multiple_choice.options is not None and len(multiple_choice.options) == 4
+    assert multiple_choice.correct_answer == "A,C"
+    assert true_false.options is None
+    assert true_false.correct_answer == "True"
+
+
+def test_exam_question_draft_rejects_invalid_multiple_choice_answer():
+    with pytest.raises(ValueError, match="multiple_choice correct_answer"):
+        ExamQuestionDraft(
+            item_order=1,
+            knowledge_unit_id=301,
+            question_type="multiple_choice",
+            difficulty="medium",
+            stem="Which statements about derivatives are correct?",
+            options=[
+                "A. Derivatives measure local change.",
+                "B. Derivatives are always positive.",
+                "C. Derivatives can be zero.",
+                "D. Derivatives equal area.",
+            ],
+            correct_answer="A,E",
+            explanation="This should fail because E is not one of the available option labels.",
+        )

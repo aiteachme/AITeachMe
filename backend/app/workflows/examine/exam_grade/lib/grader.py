@@ -70,6 +70,15 @@ def _split_multi_choice_tokens(value: str | None) -> set[str]:
     }
 
 
+def _normalize_true_false_token(value: str | None) -> str:
+    normalized = _normalize_text(value)
+    if normalized in {"true", "t", "yes", "y", "正确", "对", "是"}:
+        return "true"
+    if normalized in {"false", "f", "no", "n", "错误", "错", "否"}:
+        return "false"
+    return normalized
+
+
 def _is_objective_type(question_type: str) -> bool:
     return (question_type or "").strip().lower() in _OBJECTIVE_TYPES
 
@@ -105,6 +114,8 @@ def _grade_objective_correctness(item: ExamPaperItem) -> bool:
         return False
     if question_type in {"multiple_choice", "multi_choice"}:
         return _split_multi_choice_tokens(expected) == _split_multi_choice_tokens(answer)
+    if question_type == "true_false":
+        return _normalize_true_false_token(expected) == _normalize_true_false_token(answer)
     return answer == expected
 
 

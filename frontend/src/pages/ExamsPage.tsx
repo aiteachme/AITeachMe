@@ -117,6 +117,22 @@ function formatDifficultyLabel(value: string) {
   return DIFFICULTIES.find((item) => item.value === value)?.label ?? value;
 }
 
+function getOptionKey(option: string) {
+  const cleaned = option.trim();
+  const match = cleaned.match(/^([A-Da-d])(?:[.)、．\s]|$)/);
+  return (match?.[1] ?? cleaned.slice(0, 1)).toUpperCase();
+}
+
+function splitMultiChoiceAnswer(value?: string | null) {
+  return new Set(
+    String(value ?? "")
+      .replace(/[，、；;\s]+/g, ",")
+      .split(",")
+      .map((item) => item.trim().replace(/[.)、．]$/g, "").toUpperCase())
+      .filter(Boolean),
+  );
+}
+
 function getStatusMeta(status?: string | null) {
   if (!status) return STATUS_META.draft;
   return STATUS_META[status] ?? STATUS_META.draft;
@@ -727,7 +743,15 @@ function ExamPaperWorkspace({ subjectId, paperId, backHref }: ExamPaperWorkspace
                 >
                   {(paper.items ?? []).map((item: ExamPaperItemResponse) => {
                     const answerValue = answers[item.id] ?? "";
-                    const isChoice = item.question_type === "single_choice";
+                    const isSingleChoice = item.question_type === "single_choice";
+                    const isMultipleChoice = item.question_type === "multiple_choice" || item.question_type === "multi_choice";
+                    const isTrueFalse = item.question_type === "true_false";
+                    const isChoice = isSingleChoice || isMultipleChoice || isTrueFalse;
+                    const choiceOptions = isTrueFalse && !(item.options?.length)
+                      ? ["True", "False"]
+                      : (item.options ?? []);
+                    const selectedMultiChoice = splitMultiChoiceAnswer(answerValue);
+                    const correctMultiChoice = splitMultiChoiceAnswer(item.correct_answer);
                     const isGraded = paper.status === "graded";
                     const isReviewStage = isGraded && activeStage === 2;
                     const isReadonly = isGraded;
@@ -749,35 +773,60 @@ function ExamPaperWorkspace({ subjectId, paperId, backHref }: ExamPaperWorkspace
                             <div className="mx-auto mt-4 max-w-5xl text-slate-950 [&_p]:mb-0 [&_p]:text-2xl [&_p]:font-semibold [&_p]:leading-[1.5] [&_p]:tracking-[-0.03em] sm:[&_p]:text-3xl [&_.katex-display]:my-4 [&_.katex]:text-inherit">
                               <ExamMarkdown content={item.stem} />
                             </div>
-                            <div className="mt-4 flex flex-wrap items-center justify-center gap-2 text-sm text-slate-500">
-                              <span>{formatDifficultyLabel(item.difficulty)}</span>
-                              <span>·</span>
-                              <span>{item.question_type}</span>
-                              <span>·</span>
-                              <span>{buildKnowledgeLabel(item)}</span>
-                            </div>
+                            {isReviewStage && (
+                              <div className="mt-4 flex flex-wrap items-center justify-center gap-2 text-sm text-slate-500">
+                                <span>{formatDifficultyLabel(item.difficulty)}</span>
+                                <span>·</span>
+                                <span>{item.question_type}</span>
+                                <span>·</span>
+                                <span>{buildKnowledgeLabel(item)}</span>
+                              </div>
+                            )}
                           </div>
 
                           {isChoice ? (
-                            <div className="mt-10 grid gap-4" role="radiogroup" aria-label={`第 ${item.item_order} 题选项`}>
-                              {(item.options ?? []).map((option: string) => {
-                                const isSelected = answerValue === option;
-                                const isCorrectOption = (item.correct_answer ?? "") === option;
+                            <div
+                              className="mt-10 grid gap-4"
+                              role={isMultipleChoice ? "group" : "radiogroup"}
+                              aria-label={`第 ${item.item_order} 题选项`}
+                            >
+                              {choiceOptions.map((option: string) => {
+                                const optionValue = isMultipleChoice ? getOptionKey(option) : option;
+                                const isSelected = isMultipleChoice
+                                  ? selectedMultiChoice.has(optionValue)
+                                  : answerValue === optionValue;
+                                const isCorrectOption = isMultipleChoice
+                                  ? correctMultiChoice.has(optionValue)
+                                  : (item.correct_answer ?? "") === optionValue;
                                 const isWrongSelectedOption = isReviewStage && isSelected && !isCorrectOption;
                                 const isRightOption = isReviewStage && isSelected && isCorrectOption;
                                 return (
                                   <button
                                     key={option}
                                     type="button"
-                                    role="radio"
+                                    role={isMultipleChoice ? "checkbox" : "radio"}
                                     aria-checked={isSelected}
                                     disabled={isReadonly}
-                                    onClick={() =>
-                                      setAnswers((current) => ({
-                                        ...current,
-                                        [item.id]: isSelected ? "" : option,
-                                      }))
-                                    }
+                                    onClick={() => {
+                                      setAnswers((current) => {
+                                        if (!isMultipleChoice) {
+                                          return {
+                                            ...current,
+                                            [item.id]: isSelected ? "" : optionValue,
+                                          };
+                                        }
+                                        const next = splitMultiChoiceAnswer(current[item.id]);
+                                        if (next.has(optionValue)) {
+                                          next.delete(optionValue);
+                                        } else {
+                                          next.add(optionValue);
+                                        }
+                                        return {
+                                          ...current,
+                                          [item.id]: Array.from(next).sort().join(","),
+                                        };
+                                      });
+                                    }}
                                     className={`flex items-center gap-5 rounded-[28px] border px-7 py-6 text-left text-lg leading-8 transition ${
                                       isReviewStage
                                         ? isRightOption
@@ -812,7 +861,7 @@ function ExamPaperWorkspace({ subjectId, paperId, backHref }: ExamPaperWorkspace
                                       }`}
                                     >
                                       <span
-                                        className={`h-3.5 w-3.5 rounded-full ${
+                                        className={`${isMultipleChoice ? "h-3.5 w-3.5 rounded-[4px]" : "h-3.5 w-3.5 rounded-full"} ${
                                           isReviewStage
                                             ? isRightOption
                                               ? "bg-emerald-600"
