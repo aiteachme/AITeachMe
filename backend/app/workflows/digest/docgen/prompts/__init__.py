@@ -9,6 +9,7 @@ from app.workflows.digest.docgen.prompts.finalize_titles import (
     build_docgen_sub_query_messages,
 )
 from app.workflows.digest.docgen.prompts.file_summaries import build_file_summary_messages
+from app.workflows.digest.docgen.prompts.interactive_html import build_interactive_html_messages
 from app.workflows.digest.docgen.prompts.intent import build_intent_core_messages, build_intent_messages
 from app.workflows.digest.docgen.prompts.outline_enhance import build_outline_enhance_messages
 from app.workflows.digest.docgen.prompts.repair import build_chapter_patch_messages
@@ -31,6 +32,7 @@ __all__ = [
     "build_chapter_review_messages",
     "build_chapter_rewrite_messages",
     "build_file_summary_messages",
+    "build_interactive_html_messages",
     "build_intent_core_messages",
     "build_intent_messages",
     "build_outline_enhance_messages",

@@ -220,6 +220,8 @@ def build_docgen_lane_summary(
         int(chapter.get("interactive_block_count", 0) or 0)
         for chapter in [*chapter_drafts, *chapter_metadatas]
     )
+    if interactive_block_count <= 0:
+        interactive_block_count = sum(1 for asset in asset_items if asset.get("kind") == "interactive")
     mermaid_block_count = int(state.get("mermaid_block_count", 0) or 0)
     if mermaid_block_count <= 0:
         mermaid_block_count = sum(

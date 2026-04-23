@@ -78,6 +78,7 @@ class PlannerSettings(_SettingsModel):
 class DocgenSettings(_SettingsModel):
     allow_external_search: bool
     generate_cover_image: bool
+    generate_interactive_html: bool
 
 
 class IngestSettings(_SettingsModel):

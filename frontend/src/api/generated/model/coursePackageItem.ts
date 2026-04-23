@@ -8,10 +8,10 @@
 import type { CoursePackageItemStats } from './coursePackageItemStats';
 
 /**
- * One `.atmx` package listed from shared courses folder.
+ * One remote demo-course package listed from the configured catalog.
  */
 export interface CoursePackageItem {
-  /** Package filename. */
+  /** Stable course identifier used for remote import. */
   filename: string;
   /** Subject name from manifest. */
   subject_name: string;

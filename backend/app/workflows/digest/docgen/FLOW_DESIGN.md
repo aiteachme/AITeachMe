@@ -123,6 +123,7 @@ image_generation -> settings.models.image_generation（默认未配置）
 | `generate_chapters.heading_repair` | `lib/writer.py` | 文本 | `light` | `qwen-flash` | 修正章节标题层级、学习脚手架和结构格式 | 轻量结构修正，不值得用更贵模型 |
 | `generate_chapters.rewrite` | `lib/chapter_critic.py` | 文本 | `primary` | `qwen-plus` | 当章节质量不够时做一次 bounded rewrite | 正文改写质量要求高于 light，但不需要最重推理 |
 | `enhance_chapters.mermaid_placeholder` | `lib/assets.py` | 文本 | `light` | `qwen-flash` | 把 Mermaid 占位符变成真正可渲染的结构图内容 | 资产生成是辅助增强，轻量模型足够 |
+| `enhance_chapters.interactive_html_sidecar` | `lib/interactive_html.py` | 文本 | `primary` | `qwen-plus` | 为少量高价值章节生成独立 HTML 交互页 sidecar | 交互页比文生图更适合参数变化、步骤展开和几何/函数/方程可视化 |
 | `review_content.review_chapter` | `lib/chapter_review.py` | 结构化 | `light` | `qwen-flash` | 逐章复核覆盖率、证据支撑和写作质量，产出 review action | 并行、轻量、结构化审稿场景，优先控制成本和速度 |
 | `document_consistency_review` | 当前纯规则 | 无 LLM | 无 | 无 | 对整本文档做术语、章节数、重复和风格一致性检查 | 全局复核先用规则收口，减少漂移 |
 | `repair_or_route.surface/section patch` | `lib/repair.py` | 文本 | `primary` | `qwen-plus` | 按 review action 对章节做局部 patch 或记录 unresolved warning | 已经直接改正文，不能太轻；但又不需要最重 reason |
@@ -189,7 +190,7 @@ enhance_chapters
     ├─ enhance_chapter 1
     ├─ enhance_chapter 2
     └─ enhance_chapter N
-  处理 Mermaid、interactive 占位、公式清洗、Markdown 结构和本章自检题。
+  处理 Mermaid、交互 HTML sidecar、公式清洗、Markdown 结构和本章自检题。
   |
   v
 review_content / 当前 review_chapter Send x N + document_consistency_review
@@ -425,7 +426,7 @@ enhance_chapters
     - EnhancedChapterDraft：增强后的章节正文。
     - AssetManifest：Mermaid、交互块等资产清单。
     - PracticeManifest：本章自检题和练习种子。
-  作用：处理 Mermaid、交互块、公式清洗、本章自检；image 占位会被剥离，不进入发布正文。
+  作用：处理 Mermaid、交互 HTML sidecar、公式清洗、本章自检；image 占位会被剥离，不进入发布正文。
   enhance_chapter 内部步骤：
     1. 解析章节中的 Mermaid / interactive 占位符，并清理残留 image 占位。
        当前模型方案：
@@ -433,8 +434,12 @@ enhance_chapters
            - `task_type=DOCGEN_LIGHT`
            - `model="light"`
            - 默认映射到 `qwen-flash`
-         - interactive / image 当前不走大模型生成正文资产
-    2. 生成或降级处理对应结构化资产。
+         - interactive HTML sidecar：
+           - `task_type=DOCGEN`
+           - `model="primary"`
+           - 默认映射到 `qwen-plus`
+         - image 当前不走大模型生成正文资产
+    2. 对少量高价值章节生成独立、自包含的 HTML 交互页 sidecar，并在 Markdown 中插入新标签页打开链接。
     3. 统一公式、Mermaid、Markdown 结构。
     4. 根据 ClaimLedger 和 ConfusionMap 追加本章自检题。
     5. 产出 asset / practice manifest。
@@ -443,6 +448,8 @@ enhance_chapters
     - 不修核心定义。
     - 不自行引入新结论。
     - 不改变 claim / evidence 关系。
+    - 不把原始 HTML 直接嵌进正文 Markdown。
+    - 交互页默认走独立 sidecar 资产，由前端预览页以 sandboxed iframe 打开。
 
 review_content / 当前 review_chapter Send x N + document_consistency_review
   ├─ review_chapter 1

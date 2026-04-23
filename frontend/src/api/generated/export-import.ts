@@ -354,7 +354,7 @@ export const useImportSubjectApiApiV1SubjectsImportPost = <TError = ErrorRespons
       return useMutation(getImportSubjectApiApiV1SubjectsImportPostMutationOptions(options), queryClient);
     }
     /**
- * 列出共享课程目录中的 .atmx 文件。
+ * 列出线上演示课程目录中的课程包。
  * @summary 列出可导入课程
  */
 export type listCoursesApiApiV1CoursesGetResponse200 = {
@@ -367,10 +367,15 @@ export type listCoursesApiApiV1CoursesGetResponse500 = {
   status: 500
 }
 
+export type listCoursesApiApiV1CoursesGetResponse502 = {
+  data: ErrorResponse
+  status: 502
+}
+
 export type listCoursesApiApiV1CoursesGetResponseSuccess = (listCoursesApiApiV1CoursesGetResponse200) & {
   headers: Headers;
 };
-export type listCoursesApiApiV1CoursesGetResponseError = (listCoursesApiApiV1CoursesGetResponse500) & {
+export type listCoursesApiApiV1CoursesGetResponseError = (listCoursesApiApiV1CoursesGetResponse500 | listCoursesApiApiV1CoursesGetResponse502) & {
   headers: Headers;
 };
 
@@ -472,17 +477,12 @@ export function useListCoursesApiApiV1CoursesGet<TData = Awaited<ReturnType<type
 
 
 /**
- * 从共享课程目录导入指定 .atmx 文件。
- * @summary 从课程目录导入
+ * 从线上演示课程目录下载 `.atmx` 后导入。
+ * @summary 从演示课程导入
  */
 export type importCourseApiApiV1CoursesFilenameImportPostResponse200 = {
   data: ApiResponseImportResultData
   status: 200
-}
-
-export type importCourseApiApiV1CoursesFilenameImportPostResponse400 = {
-  data: ErrorResponse
-  status: 400
 }
 
 export type importCourseApiApiV1CoursesFilenameImportPostResponse404 = {
@@ -500,10 +500,20 @@ export type importCourseApiApiV1CoursesFilenameImportPostResponse500 = {
   status: 500
 }
 
+export type importCourseApiApiV1CoursesFilenameImportPostResponse502 = {
+  data: ErrorResponse
+  status: 502
+}
+
+export type importCourseApiApiV1CoursesFilenameImportPostResponse503 = {
+  data: ErrorResponse
+  status: 503
+}
+
 export type importCourseApiApiV1CoursesFilenameImportPostResponseSuccess = (importCourseApiApiV1CoursesFilenameImportPostResponse200) & {
   headers: Headers;
 };
-export type importCourseApiApiV1CoursesFilenameImportPostResponseError = (importCourseApiApiV1CoursesFilenameImportPostResponse400 | importCourseApiApiV1CoursesFilenameImportPostResponse404 | importCourseApiApiV1CoursesFilenameImportPostResponse422 | importCourseApiApiV1CoursesFilenameImportPostResponse500) & {
+export type importCourseApiApiV1CoursesFilenameImportPostResponseError = (importCourseApiApiV1CoursesFilenameImportPostResponse404 | importCourseApiApiV1CoursesFilenameImportPostResponse422 | importCourseApiApiV1CoursesFilenameImportPostResponse500 | importCourseApiApiV1CoursesFilenameImportPostResponse502 | importCourseApiApiV1CoursesFilenameImportPostResponse503) & {
   headers: Headers;
 };
 
@@ -565,7 +575,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
     export type ImportCourseApiApiV1CoursesFilenameImportPostMutationError = ErrorResponse | HTTPValidationError
 
     /**
- * @summary 从课程目录导入
+ * @summary 从演示课程导入
  */
 export const useImportCourseApiApiV1CoursesFilenameImportPost = <TError = ErrorResponse | HTTPValidationError,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof importCourseApiApiV1CoursesFilenameImportPost>>, TError,{filename: string;data: BodyImportCourseApiApiV1CoursesFilenameImportPost}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
