@@ -29,7 +29,7 @@ from app.models import (
 import app.repositories.knowledge.knowledge_repo as knowledge_repo
 from app.repositories.subject_repo import delete_subject
 from app.schemas.subject import SubjectDeleteImpactItem, SubjectDeletePreviewData
-from app.utils.path_helpers import build_asset_name_prefix, build_subject_dir, delete_asset_files
+from app.utils.path_helpers import build_asset_name_prefix, build_subject_dir, delete_asset_files, get_data_dir
 
 logger = structlog.get_logger()
 
@@ -143,7 +143,7 @@ def delete_subject_with_all_content(session: Session, *, subject: Subject) -> di
     _delete_raw_files_and_artifacts(session, subject=subject.slug)
 
     # Local directory cleanup; cloud artifacts are handled by delete_subject_artifacts_async.
-    _delete_subject_directory(subject.slug)
+    _delete_subject_directory(subject.slug, user_id=subject.user_id)
 
     delete_subject(session, subject)
 
@@ -248,7 +248,11 @@ def _delete_raw_files_and_artifacts(session: Session, *, subject: str) -> None:
     session.commit()
 
 
-def _delete_subject_directory(subject: str) -> None:
-    subject_dir = build_subject_dir(subject)
-    if subject_dir.exists():
-        shutil.rmtree(subject_dir, ignore_errors=True)
+def _delete_subject_directory(subject: str, *, user_id: str | None = None) -> None:
+    subject_dirs = {
+        build_subject_dir(subject, user_id=user_id),
+        get_data_dir() / subject,  # Best-effort cleanup for legacy top-level folders.
+    }
+    for subject_dir in subject_dirs:
+        if subject_dir.exists():
+            shutil.rmtree(subject_dir, ignore_errors=True)
