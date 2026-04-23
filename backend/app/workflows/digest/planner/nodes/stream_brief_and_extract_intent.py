@@ -7,7 +7,7 @@ import time
 
 import structlog
 
-from app.shared.infra.llm_support import acompletion_stream
+from app.shared.infra.llm_support import acompletion_stream, acompletion_with_fallback
 from app.shared.infra.llm_support.routing import LLMCallPurpose
 from app.shared.infra.workflow.context import WorkflowContext
 from app.workflows.digest.planner.lib.plan_sketch import parse_planner_brief_text

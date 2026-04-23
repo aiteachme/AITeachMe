@@ -633,14 +633,16 @@ export function BuildPlanPage() {
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const plannerSessionIdRef = useRef<string | null>(null);
   const currentPlanRef = useRef<BuildPlannerPlanResponse | null>(null);
-  const loadedSubjectRef = useRef<string | null>(null);
+  const hydratedSubjectRef = useRef<string | null>(null);
+  const localInteractionSubjectRef = useRef<string | null>(null);
   const plannerStreamingRawRef = useRef("");
   const plannerAbortControllerRef = useRef<AbortController | null>(null);
   const plannerPendingMessageIdRef = useRef<string | null>(null);
   const autoStartFiredRef = useRef(false);
 
   const markPlannerLocalInteraction = useCallback(() => {
-    loadedSubjectRef.current = subjectId;
+    localInteractionSubjectRef.current = subjectId;
+    hydratedSubjectRef.current = subjectId;
   }, [subjectId]);
 
   const [messages, setMessages] = useState<ChatMessage[]>(() => createInitialMessages());
@@ -792,7 +794,16 @@ export function BuildPlanPage() {
       return;
     }
     let cancelled = false;
-    loadedSubjectRef.current = null;
+
+    // 如果用户在页面初次挂载后的极短时间内已经开始本地交互
+    // （例如很快发送了一条 planner 消息），不要再执行后续恢复逻辑，
+    // 否则异步恢复结果会把本地插入的 assistant 占位消息覆盖掉。
+    if (localInteractionSubjectRef.current === subjectId) {
+      logPlannerDebug("skip_restore_after_local_interaction", { subjectId });
+      return;
+    }
+
+    hydratedSubjectRef.current = null;
 
     // 先尝试恢复本地缓存，但只有存在真实 planner session 时才信任。
     const persisted = readPersistedPlannerState(subjectId);
@@ -810,7 +821,7 @@ export function BuildPlanPage() {
       setPlannerNeedsRefresh(Boolean(persisted.plannerNeedsRefresh));
       setHasAutoUploaded(false);
       setIsRevisingPlan(false);
-      loadedSubjectRef.current = subjectId;
+      hydratedSubjectRef.current = subjectId;
       return;
     }
 
@@ -822,7 +833,7 @@ export function BuildPlanPage() {
           method: "POST",
           url: `/api/v1/subjects/${subjectId}/knowledge/build/plans/latest`,
         });
-        if (cancelled || loadedSubjectRef.current === subjectId) return;
+        if (cancelled || localInteractionSubjectRef.current === subjectId) return;
         const session = response.data;
         if (!session || !session.turns?.length) {
           logPlannerDebug("restore_latest_empty", {
@@ -837,7 +848,7 @@ export function BuildPlanPage() {
           setPlannerNeedsRefresh(false);
           setHasAutoUploaded(false);
           setIsRevisingPlan(false);
-          loadedSubjectRef.current = subjectId;
+          hydratedSubjectRef.current = subjectId;
           return;
         }
 
@@ -865,10 +876,10 @@ export function BuildPlanPage() {
         setPlannerNeedsRefresh(false);
         setHasAutoUploaded(false);
         setIsRevisingPlan(false);
-        loadedSubjectRef.current = subjectId;
+        hydratedSubjectRef.current = subjectId;
       } catch {
         // 后端恢复失败时，回到一个干净的新会话。
-        if (cancelled || loadedSubjectRef.current === subjectId) return;
+        if (cancelled || localInteractionSubjectRef.current === subjectId) return;
         logPlannerDebug("restore_latest_failed", { subjectId });
         setMessages(createInitialMessages());
         setPlannerSessionId(null);
@@ -877,7 +888,7 @@ export function BuildPlanPage() {
         setPlannerNeedsRefresh(false);
         setHasAutoUploaded(false);
         setIsRevisingPlan(false);
-        loadedSubjectRef.current = subjectId;
+        hydratedSubjectRef.current = subjectId;
       }
     }
 
@@ -892,7 +903,7 @@ export function BuildPlanPage() {
   }, [plannerSessionId, currentPlan]);
 
   useEffect(() => {
-    if (!subjectId || loadedSubjectRef.current !== subjectId) {
+    if (!subjectId || hydratedSubjectRef.current !== subjectId) {
       return;
     }
     persistPlannerState(subjectId, {
@@ -905,7 +916,7 @@ export function BuildPlanPage() {
   }, [currentPlan, inputValue, messages, plannerNeedsRefresh, plannerSessionId, subjectId]);
 
   useEffect(() => {
-    if (loadedSubjectRef.current !== subjectId || !currentPlan) {
+    if (hydratedSubjectRef.current !== subjectId || !currentPlan) {
       return;
     }
     const selected = currentPlan.selected_file_uids ?? [];
