@@ -4178,6 +4178,85 @@
             }
           }
         }
+      },
+      "delete": {
+        "tags": [
+          "exams"
+        ],
+        "summary": "Delete exam paper",
+        "operationId": "delete_exam_paper_api_v1_subjects__subject__exams__exam_paper_id__delete",
+        "parameters": [
+          {
+            "name": "subject",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Subject"
+            }
+          },
+          {
+            "name": "exam_paper_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Exam Paper Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_ExamPaperDeleteResponse_"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数不合法。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务内部异常。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/api/v1/subjects/{subject}/exams/{exam_paper_id}/study-guide": {
@@ -5402,6 +5481,40 @@
         },
         "type": "object",
         "title": "ApiResponse[ExamGradeResponse]",
+        "example": {
+          "code": 0,
+          "data": {},
+          "message": "ok"
+        }
+      },
+      "ApiResponse_ExamPaperDeleteResponse_": {
+        "properties": {
+          "code": {
+            "type": "integer",
+            "title": "Code",
+            "description": "业务码，0 表示成功。",
+            "default": 0
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "响应消息。",
+            "default": "ok"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ExamPaperDeleteResponse"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "业务数据。"
+          }
+        },
+        "type": "object",
+        "title": "ApiResponse[ExamPaperDeleteResponse]",
         "example": {
           "code": 0,
           "data": {},
@@ -9029,6 +9142,24 @@
         ],
         "title": "ExamNodeLinkResponse"
       },
+      "ExamPaperDeleteResponse": {
+        "properties": {
+          "deleted": {
+            "type": "boolean",
+            "title": "Deleted"
+          },
+          "exam_paper_id": {
+            "type": "integer",
+            "title": "Exam Paper Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "deleted",
+          "exam_paper_id"
+        ],
+        "title": "ExamPaperDeleteResponse"
+      },
       "ExamPaperDetailResponse": {
         "properties": {
           "id": {
@@ -10310,6 +10441,24 @@
             "type": "integer",
             "title": "Total Chunks",
             "description": "Total number of section chunks for this build.",
+            "default": 0
+          },
+          "doc_sync_section_count": {
+            "type": "integer",
+            "title": "Doc Sync Section Count",
+            "description": "How many knowledge-doc sections were analyzed during docs-sync.",
+            "default": 0
+          },
+          "doc_sync_llm_section_count": {
+            "type": "integer",
+            "title": "Doc Sync Llm Section Count",
+            "description": "How many docs-sync sections attempted structured LLM extraction.",
+            "default": 0
+          },
+          "doc_sync_fallback_section_count": {
+            "type": "integer",
+            "title": "Doc Sync Fallback Section Count",
+            "description": "How many docs-sync sections fell back after extraction.",
             "default": 0
           },
           "discovered_node_count": {

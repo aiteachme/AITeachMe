@@ -127,6 +127,11 @@ class KnowledgeBuildRuntimeStatus(BaseModel):
     current_chunk: int | None = None
     processed_chunks: int = 0
     total_chunks: int = 0
+    doc_sync_section_count: int = 0
+    doc_sync_llm_section_count: int = 0
+    doc_sync_fallback_section_count: int = 0
+    doc_sync_question_fallback_section_count: int = 0
+    doc_sync_topic_fallback_section_count: int = 0
     sample_cards: list[dict[str, str]] = Field(default_factory=list)
     mode_reason: str | None = None
     plan_summary: str | None = None

@@ -130,6 +130,11 @@ async def run_graph_docs_sync_after_doc_build(
             "doc_sync_unit_changes": 0,
             "doc_sync_edge_changes": 0,
             "doc_sync_elapsed_ms": 0,
+            "doc_sync_section_count": 0,
+            "doc_sync_llm_section_count": 0,
+            "doc_sync_fallback_section_count": 0,
+            "doc_sync_question_fallback_section_count": 0,
+            "doc_sync_topic_fallback_section_count": 0,
         }
 
     _write_build_status(
@@ -166,6 +171,11 @@ async def run_graph_docs_sync_after_doc_build(
         "doc_sync_unit_changes": sync_report.unit_change_count,
         "doc_sync_edge_changes": sync_report.edge_change_count,
         "doc_sync_elapsed_ms": sync_report.elapsed_ms,
+        "doc_sync_section_count": sync_report.section_count,
+        "doc_sync_llm_section_count": sync_report.llm_section_count,
+        "doc_sync_fallback_section_count": sync_report.fallback_section_count,
+        "doc_sync_question_fallback_section_count": sync_report.question_fallback_section_count,
+        "doc_sync_topic_fallback_section_count": sync_report.topic_fallback_section_count,
     }
 
 
@@ -234,6 +244,11 @@ async def run_graph_build_background(
             "doc_sync_unit_changes": 0,
             "doc_sync_edge_changes": 0,
             "doc_sync_elapsed_ms": 0,
+            "doc_sync_section_count": 0,
+            "doc_sync_llm_section_count": 0,
+            "doc_sync_fallback_section_count": 0,
+            "doc_sync_question_fallback_section_count": 0,
+            "doc_sync_topic_fallback_section_count": 0,
         }
         if not file_ids and not knowledge_doc_markdown.strip():
             _write_build_status(
