@@ -4,7 +4,7 @@ import { Sidebar } from "./Sidebar";
 import { TopBar } from "./TopBar";
 import { SubjectAiAssistantProvider } from "../ai/SubjectAiAssistant";
 import { isFullBleedSubjectPath } from "../../lib/subjectNavigation";
-import { SettingsPanel as SettingsModal } from "../settings/SettingsPanel";
+import { SettingsDialog } from "../settings/SettingsDialog";
 
 export function Layout() {
   const { pathname } = useLocation();
@@ -18,12 +18,12 @@ export function Layout() {
   return (
     <>
       <SubjectAiAssistantProvider subjectId={subjectId}>
-        <div className="relative flex h-screen overflow-hidden bg-[#fafafa] selection:bg-zinc-200">
+        <div className="relative flex h-screen overflow-hidden bg-[#fafafa] dark:bg-[#0b0f19] selection:bg-zinc-200 dark:selection:bg-slate-700">
           {!isSettingsOpen ? (
-            <div className="pointer-events-none absolute inset-0 z-0 overflow-hidden mix-blend-multiply">
-              <div className="absolute -left-[4%] -top-[8%] h-[440px] w-[440px] rounded-full bg-indigo-100/30 blur-[72px] opacity-75" />
-              <div className="absolute bottom-[-8%] right-[-4%] h-[420px] w-[420px] rounded-full bg-zinc-200/40 blur-[72px] opacity-55" />
-              <div className="absolute left-[32%] top-[22%] h-[520px] w-[520px] rounded-full bg-sky-100/24 blur-[88px] opacity-60" />
+            <div className="pointer-events-none absolute inset-0 z-0 overflow-hidden mix-blend-multiply dark:mix-blend-screen">
+              <div className="absolute -left-[4%] -top-[8%] h-[440px] w-[440px] rounded-full bg-indigo-100/30 dark:bg-indigo-900/20 blur-[72px] opacity-75 dark:opacity-40" />
+              <div className="absolute bottom-[-8%] right-[-4%] h-[420px] w-[420px] rounded-full bg-zinc-200/40 dark:bg-slate-800/30 blur-[72px] opacity-55 dark:opacity-40" />
+              <div className="absolute left-[32%] top-[22%] h-[520px] w-[520px] rounded-full bg-sky-100/24 dark:bg-sky-900/10 blur-[88px] opacity-60 dark:opacity-30" />
             </div>
           ) : null}
 
@@ -52,7 +52,7 @@ export function Layout() {
         </div>
       </SubjectAiAssistantProvider>
 
-      <SettingsModal isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} />
+      <SettingsDialog isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} />
     </>
   );
 }

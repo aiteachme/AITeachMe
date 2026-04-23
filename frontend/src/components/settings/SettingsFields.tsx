@@ -1,9 +1,8 @@
-import { useState } from "react";
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { Eye, EyeOff } from "lucide-react";
 
 import { cn } from "../../lib/utils";
-import { SETTINGS_STYLES } from "./constants";
+import { SETTINGS_STYLES } from "./settingsStyles";
 
 interface InfoCardProps {
   text: string;
@@ -49,32 +48,6 @@ export function SectionDivider({ label, compact = false }: SectionDividerProps) 
   );
 }
 
-interface SectionCardProps {
-  title?: string;
-  children: ReactNode;
-  className?: string;
-  bodyClassName?: string;
-}
-
-export function SectionCard({
-  title,
-  children,
-  className,
-  bodyClassName,
-}: SectionCardProps) {
-  return (
-    <div
-      className={cn(
-        SETTINGS_STYLES.field.card,
-        className,
-      )}
-    >
-      {title ? <SectionDivider label={title} compact /> : null}
-      <div className={cn(SETTINGS_STYLES.field.cardBody, bodyClassName)}>{children}</div>
-    </div>
-  );
-}
-
 interface FieldLabelBlockProps {
   label: string;
   description?: string;
@@ -89,28 +62,13 @@ export function FieldLabelBlock({
   const LabelTag = htmlFor ? "label" : "span";
   return (
     <div className={SETTINGS_STYLES.field.labelBlock}>
-      <LabelTag
-        {...(htmlFor ? { htmlFor } : {})}
-        className={SETTINGS_STYLES.field.label}
-      >
+      <LabelTag {...(htmlFor ? { htmlFor } : {})} className={SETTINGS_STYLES.field.label}>
         {label}
       </LabelTag>
-      {description ? <p className={SETTINGS_STYLES.field.description}>{description}</p> : null}
+      {description ? (
+        <p className={SETTINGS_STYLES.field.description}>{description}</p>
+      ) : null}
     </div>
-  );
-}
-
-export function FieldNote({
-  children,
-  className,
-}: {
-  children: ReactNode;
-  className?: string;
-}) {
-  return (
-    <p className={cn(SETTINGS_STYLES.field.note, className)}>
-      {children}
-    </p>
   );
 }
 
@@ -122,12 +80,7 @@ export function ReadonlyValue({
   className?: string;
 }) {
   return (
-    <div
-      className={cn(
-        SETTINGS_STYLES.field.readonlyValue,
-        className,
-      )}
-    >
+    <div className={cn(SETTINGS_STYLES.field.readonlyValue, className)}>
       {children}
     </div>
   );
@@ -242,10 +195,7 @@ export function SelectInput({ id, value, onChange, options }: SelectInputProps) 
       id={id}
       value={value}
       onChange={(event) => onChange(event.target.value)}
-      className={cn(
-        SETTINGS_STYLES.field.control,
-        SETTINGS_STYLES.field.select,
-      )}
+      className={cn(SETTINGS_STYLES.field.control, SETTINGS_STYLES.field.select)}
     >
       {options.map((option) => (
         <option key={option.value} value={option.value}>
@@ -267,10 +217,7 @@ export function SwitchRow({ title, description, enabled, onToggle }: SwitchRowPr
   return (
     <div className={SETTINGS_STYLES.field.switchRow}>
       <div className={SETTINGS_STYLES.field.switchCopy}>
-        <label
-          className={SETTINGS_STYLES.field.switchLabel}
-          onClick={onToggle}
-        >
+        <label className={SETTINGS_STYLES.field.switchLabel} onClick={onToggle}>
           {title}
         </label>
         <p className={SETTINGS_STYLES.field.switchDescription}>{description}</p>

@@ -15,7 +15,7 @@ import type { FileRecord } from "../../types/files";
 import { Button } from "../ui/Button";
 import { Modal } from "../ui/Modal";
 import { useToast } from "../ui/Toast";
-import { KnowledgeBuildResolutionModal } from "./KnowledgeBuildResolutionModal";
+import { KnowledgeBuildResolutionModal } from "../build-plan/KnowledgeBuildResolutionModal";
 
 interface FilesData {
   items: FileRecord[];

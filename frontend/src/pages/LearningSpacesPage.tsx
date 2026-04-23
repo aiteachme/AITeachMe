@@ -46,13 +46,13 @@ export function LearningSpacesPage() {
       <div className="mx-auto w-full max-w-[1400px]">
         <div className="flex flex-col gap-5 md:flex-row md:items-end md:justify-between">
           <div className="space-y-3">
-            <div className="inline-flex items-center gap-2 rounded-full bg-white/85 px-3 py-1 text-xs font-medium text-slate-500 ring-1 ring-slate-200/80 backdrop-blur">
+            <div className="inline-flex items-center gap-2 rounded-full bg-white/85 dark:bg-slate-800/85 px-3 py-1 text-xs font-medium text-slate-500 dark:text-slate-400 ring-1 ring-slate-200/80 dark:ring-slate-700/80 backdrop-blur">
               <LayoutGrid className="h-3.5 w-3.5" />
               我的学习空间
             </div>
             <div>
-              <h1 className="text-[32px] font-semibold tracking-tight text-slate-900">我的学习空间</h1>
-              <p className="mt-2 text-sm leading-6 text-slate-500">
+              <h1 className="text-[32px] font-semibold tracking-tight text-slate-900 dark:text-slate-100">我的学习空间</h1>
+              <p className="mt-2 text-sm leading-6 text-slate-500 dark:text-slate-400">
                 这里直接展示你已经创建的学科，每个学科都是一张独立卡片。
               </p>
             </div>
@@ -61,7 +61,7 @@ export function LearningSpacesPage() {
           <button
             type="button"
             onClick={() => navigate("/", { state: { newEntryAt: Date.now() } })}
-            className="inline-flex items-center justify-center gap-2 rounded-2xl bg-slate-900 px-4 py-3 text-sm font-medium text-white transition hover:bg-slate-800"
+            className="inline-flex items-center justify-center gap-2 rounded-2xl bg-slate-900 dark:bg-zinc-100 px-4 py-3 text-sm font-medium text-white dark:text-zinc-900 transition hover:bg-slate-800 dark:hover:bg-white"
           >
             <Plus className="h-4 w-4" />
             新建学科
@@ -69,13 +69,13 @@ export function LearningSpacesPage() {
         </div>
 
         <div className="mt-8 flex items-center justify-between">
-          <h2 className="text-[15px] font-medium text-slate-500">学科列表</h2>
-          <p className="text-sm text-slate-400">{isLoading ? "加载中..." : `${subjects.length} 个学科`}</p>
+          <h2 className="text-[15px] font-medium text-slate-500 dark:text-slate-400">学科列表</h2>
+          <p className="text-sm text-slate-400 dark:text-slate-500">{isLoading ? "加载中..." : `${subjects.length} 个学科`}</p>
         </div>
 
         {isLoading ? (
-          <div className="mt-8 flex min-h-[240px] items-center justify-center rounded-[30px] border border-dashed border-slate-200 bg-white/45">
-            <div className="flex items-center gap-2 text-sm text-slate-500">
+          <div className="mt-8 flex min-h-[240px] items-center justify-center rounded-[30px] border border-dashed border-slate-200 dark:border-slate-800 bg-white/45 dark:bg-slate-900/45">
+            <div className="flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400">
               <Loader2 className="h-4 w-4 animate-spin" />
               正在加载学习空间...
             </div>
@@ -83,18 +83,18 @@ export function LearningSpacesPage() {
         ) : null}
 
         {!isLoading && subjects.length === 0 ? (
-          <div className="mt-8 flex min-h-[300px] flex-col items-center justify-center rounded-[30px] border border-dashed border-slate-200 bg-white/45 px-6 text-center">
-            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-100 text-slate-500">
+          <div className="mt-8 flex min-h-[300px] flex-col items-center justify-center rounded-[30px] border border-dashed border-slate-200 dark:border-slate-800 bg-white/45 dark:bg-slate-900/45 px-6 text-center">
+            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400">
               <LayoutGrid className="h-7 w-7" />
             </div>
-            <h2 className="mt-5 text-lg font-semibold text-slate-900">还没有学习空间</h2>
-            <p className="mt-2 max-w-md text-sm leading-6 text-slate-500">
+            <h2 className="mt-5 text-lg font-semibold text-slate-900 dark:text-slate-100">还没有学习空间</h2>
+            <p className="mt-2 max-w-md text-sm leading-6 text-slate-500 dark:text-slate-400">
               先创建一个学科，创建后它就会以独立卡片的形式出现在这里。
             </p>
             <button
               type="button"
               onClick={() => navigate("/", { state: { newEntryAt: Date.now() } })}
-              className="mt-6 inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-50"
+              className="mt-6 inline-flex items-center gap-2 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-4 py-3 text-sm font-medium text-slate-700 dark:text-slate-300 transition hover:border-slate-300 dark:hover:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-700"
             >
               <Plus className="h-4 w-4" />
               去新建学科
@@ -112,14 +112,14 @@ export function LearningSpacesPage() {
                 <Link
                   key={subject.subject_id}
                   to={`/subject/${subject.subject_id}/build`}
-                  className="group flex min-h-[328px] flex-col overflow-hidden rounded-[30px] border border-slate-200/80 bg-white shadow-[0_6px_24px_rgba(15,23,42,0.06)] transition duration-300 hover:-translate-y-1 hover:border-slate-300 hover:shadow-[0_20px_48px_rgba(15,23,42,0.12)]"
+                  className="group flex min-h-[328px] flex-col overflow-hidden rounded-[30px] border border-slate-200/80 dark:border-slate-800/80 bg-white dark:bg-slate-900 shadow-[0_6px_24px_rgba(15,23,42,0.06)] dark:shadow-[0_6px_24px_rgba(0,0,0,0.2)] transition duration-300 hover:-translate-y-1 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-[0_20px_48px_rgba(15,23,42,0.12)] dark:hover:shadow-[0_20px_48px_rgba(0,0,0,0.3)]"
                 >
-                  <div className="relative h-[176px] overflow-hidden border-b border-slate-100 bg-[linear-gradient(135deg,#f8fafc_0%,#eef2ff_50%,#f8fafc_100%)]">
-                    <div className="absolute left-5 top-5 inline-flex items-center gap-2 rounded-full bg-white/92 px-3 py-1.5 text-xs font-medium text-slate-600 shadow-sm">
+                  <div className="relative h-[176px] overflow-hidden border-b border-slate-100 dark:border-slate-800 bg-[linear-gradient(135deg,#f8fafc_0%,#eef2ff_50%,#f8fafc_100%)] dark:bg-[linear-gradient(135deg,#0f172a_0%,#1e1b4b_50%,#0f172a_100%)]">
+                    <div className="absolute left-5 top-5 inline-flex items-center gap-2 rounded-full bg-white/92 dark:bg-slate-800/92 px-3 py-1.5 text-xs font-medium text-slate-600 dark:text-slate-300 shadow-sm">
                       <span className="h-2.5 w-2.5 rounded-full bg-sky-400" />
                       Ready
                     </div>
-                    <div className="absolute right-5 top-5 rounded-full bg-white/92 px-3 py-1.5 text-[11px] font-medium text-slate-500 shadow-sm">
+                    <div className="absolute right-5 top-5 rounded-full bg-white/92 dark:bg-slate-800/92 px-3 py-1.5 text-[11px] font-medium text-slate-500 dark:text-slate-400 shadow-sm">
                       学科
                     </div>
                     <div
@@ -127,33 +127,33 @@ export function LearningSpacesPage() {
                     >
                       {initial}
                     </div>
-                    <div className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-white/60 to-transparent" />
+                    <div className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-white/60 dark:from-slate-900/60 to-transparent" />
                   </div>
 
                   <div className="flex flex-1 flex-col px-6 pb-6 pt-5">
-                    <h3 className="line-clamp-2 text-[19px] font-semibold leading-8 tracking-tight text-slate-900">
+                    <h3 className="line-clamp-2 text-[19px] font-semibold leading-8 tracking-tight text-slate-900 dark:text-slate-100">
                       {displayName}
                     </h3>
 
-                    <p className="mt-3 text-sm leading-6 text-slate-500">
+                    <p className="mt-3 text-sm leading-6 text-slate-500 dark:text-slate-400">
                       打开这个学习空间，继续管理资料、知识结构和学习内容。
                     </p>
 
                     <div className="mt-6 flex flex-wrap gap-2">
-                      <span className="rounded-full bg-slate-100 px-3 py-1.5 text-xs font-medium text-slate-500">
+                      <span className="rounded-full bg-slate-100 dark:bg-slate-800 px-3 py-1.5 text-xs font-medium text-slate-500 dark:text-slate-400">
                         已创建
                       </span>
-                      <span className="rounded-full bg-slate-100 px-3 py-1.5 text-xs font-medium text-slate-500">
+                      <span className="rounded-full bg-slate-100 dark:bg-slate-800 px-3 py-1.5 text-xs font-medium text-slate-500 dark:text-slate-400">
                         可继续学习
                       </span>
                     </div>
 
-                    <div className="mt-auto flex items-center justify-between border-t border-slate-100 pt-6">
-                      <div className="inline-flex items-center gap-2 text-sm font-medium text-slate-500">
+                    <div className="mt-auto flex items-center justify-between border-t border-slate-100 dark:border-slate-800 pt-6">
+                      <div className="inline-flex items-center gap-2 text-sm font-medium text-slate-500 dark:text-slate-400">
                         <BookOpen className="h-4 w-4" />
                         进入学习
                       </div>
-                      <span className="rounded-full border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 transition group-hover:border-slate-300 group-hover:bg-slate-50">
+                      <span className="rounded-full border border-slate-200 dark:border-slate-700 px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 transition group-hover:border-slate-300 dark:group-hover:border-slate-600 group-hover:bg-slate-50 dark:group-hover:bg-slate-800">
                         打开
                       </span>
                     </div>

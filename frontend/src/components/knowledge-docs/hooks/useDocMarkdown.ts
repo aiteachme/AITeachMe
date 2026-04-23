@@ -1,29 +1,33 @@
 /* ------------------------------------------------------------------ */
-/*  useDocMarkdown — Data fetching & derived state for knowledge docs  */
+/*  useDocMarkdown - Data fetching & derived state for knowledge docs  */
 /* ------------------------------------------------------------------ */
 
-import { useState, useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useLocation, useParams } from "react-router-dom";
 
 import { apiClient } from "../../../api/client";
 import type { FileRecord } from "../../../api/generated/model";
+import {
+  buildKnowledgeBuildRuntimeQueryKey,
+  fetchKnowledgeBuildRuntime,
+} from "../../../lib/knowledgeBuildRuntime";
 import type {
   ApiResponse,
-  DocGenGetResponse,
-  FilesListResponse,
-  DocViewMode,
   DocGenBuildStatus,
-  KnowledgeBuildPreview,
+  DocGenGetResponse,
+  DocViewMode,
+  FilesListResponse,
   KnowledgeBuildMetrics,
+  KnowledgeBuildPreview,
 } from "../types";
 import {
   ACTIVE_DOC_BUILD_STATUSES,
-  parseIsoTimestamp,
-  formatDocTimestamp,
+  cleanKnowledgeMarkdownForDisplay,
   extractFirstMarkdownHeading,
   extractFirstMarkdownParagraph,
-  cleanKnowledgeMarkdownForDisplay,
+  formatDocTimestamp,
+  parseIsoTimestamp,
 } from "../utils";
 
 async function fetchSourceFiles(subjectId: string): Promise<FileRecord[]> {
@@ -37,11 +41,7 @@ async function fetchSourceFiles(subjectId: string): Promise<FileRecord[]> {
 export interface DocMarkdownState {
   subjectId: string | undefined;
   requestedAt: string | null;
-
-  /* Query */
   docMarkdownQuery: ReturnType<typeof useQuery<DocGenGetResponse>>;
-
-  /* Raw data */
   liveMarkdown: string;
   draftMarkdown: string;
   buildMeta: DocGenBuildStatus | null;
@@ -50,35 +50,25 @@ export interface DocMarkdownState {
   buildStatus: string | null;
   liveUpdatedAt: string | null;
   draftUpdatedAt: string | null;
-
-  /* Derived booleans */
   hasLiveDocMarkdown: boolean;
   hasDraftDocMarkdown: boolean;
   isBuildActive: boolean;
   isBuildFailure: boolean;
   isRequestedBuildReady: boolean;
   isWaitingForRequestedBuild: boolean;
-
-  /* View mode */
   docViewMode: DocViewMode;
   setDocViewMode: (mode: DocViewMode) => void;
   effectiveDocViewMode: DocViewMode;
   renderedMarkdown: string;
   hasRenderedMarkdown: boolean;
-
-  /* Display metadata */
   renderedDocUpdatedLabel: string | null;
   renderedDigestModeLabel: string;
   renderedChapterHighlights: string[];
   renderedSubjectLabel: string;
   renderedDocTitle: string;
   renderedDocSummary: string;
-
-  /* Source files */
   sourceFiles: FileRecord[];
   sourceFilesFetching: boolean;
-
-  /* Show states */
   showDocGeneratingState: boolean;
   showDocBuildFailureState: boolean;
   showDocEmptyState: boolean;
@@ -92,10 +82,7 @@ export function useDocMarkdown(): DocMarkdownState {
     () => new URLSearchParams(location.search).get("requested_at"),
     [location.search],
   );
-  const requestedAtMs = useMemo(
-    () => parseIsoTimestamp(requestedAt),
-    [requestedAt],
-  );
+  const requestedAtMs = useMemo(() => parseIsoTimestamp(requestedAt), [requestedAt]);
 
   const [docViewMode, setDocViewMode] = useState<DocViewMode>("live");
 
@@ -112,31 +99,40 @@ export function useDocMarkdown(): DocMarkdownState {
       return response.data;
     },
     enabled: Boolean(subjectId),
+  });
+
+  const runtimeQuery = useQuery({
+    queryKey: subjectId
+      ? [...buildKnowledgeBuildRuntimeQueryKey(subjectId), requestedAt]
+      : ["knowledge-build-runtime-empty"],
+    queryFn: () => fetchKnowledgeBuildRuntime(subjectId as string),
+    enabled: Boolean(subjectId),
     refetchInterval: (query) => {
-      const data = query.state.data;
-      const build = data?.build;
-      const buildStatus = build?.status ?? null;
-      const liveMarkdown = cleanKnowledgeMarkdownForDisplay(data?.markdown ?? "");
-      const hasLiveDocMarkdown = Boolean(data?.exists && liveMarkdown.trim().length > 0);
-      const targetRequestedAtMs = requestedAtMs ?? parseIsoTimestamp(build?.requested_at ?? null);
-      const updatedAtMs = parseIsoTimestamp(data?.updated_at);
+      const aggregate = query.state.data?.aggregate;
+      const status = (aggregate?.status ?? "").trim();
+      const liveMarkdown = cleanKnowledgeMarkdownForDisplay(docMarkdownQuery.data?.markdown ?? "");
+      const hasLiveDocMarkdown = Boolean(docMarkdownQuery.data?.exists && liveMarkdown.trim().length > 0);
+      const targetRequestedAtMs = requestedAtMs ?? parseIsoTimestamp(aggregate?.requested_at ?? null);
+      const updatedAtMs = parseIsoTimestamp(docMarkdownQuery.data?.updated_at ?? null);
       const hasRequestedLiveDoc =
         hasLiveDocMarkdown &&
         (targetRequestedAtMs === null || (updatedAtMs !== null && updatedAtMs >= targetRequestedAtMs));
 
-      if (buildStatus && ACTIVE_DOC_BUILD_STATUSES.has(buildStatus)) return 2500;
-      if (buildStatus === "completed") return hasRequestedLiveDoc ? false : 1200;
-      if (buildStatus === "failed" || buildStatus === "cancelled") return false;
-      if (!buildStatus || buildStatus === "idle") return false;
+      if (status && ACTIVE_DOC_BUILD_STATUSES.has(status)) return 2500;
+      if (status === "completed" || status === "partial_failed" || status === "skipped") {
+        return hasRequestedLiveDoc ? false : 1200;
+      }
+      if (status === "failed" || status === "cancelled") return false;
+      if (!status || status === "idle") return false;
       return hasRequestedLiveDoc ? false : 2500;
     },
   });
 
   const liveMarkdown = cleanKnowledgeMarkdownForDisplay(docMarkdownQuery.data?.markdown ?? "");
   const draftMarkdown = cleanKnowledgeMarkdownForDisplay(docMarkdownQuery.data?.draft_markdown ?? "");
-  const buildMeta = docMarkdownQuery.data?.build ?? null;
-  const buildPreview = docMarkdownQuery.data?.build_preview ?? null;
-  const buildMetrics = docMarkdownQuery.data?.build_metrics ?? null;
+  const buildMeta = runtimeQuery.data?.aggregate ?? docMarkdownQuery.data?.build ?? null;
+  const buildPreview = runtimeQuery.data?.docgen_preview ?? docMarkdownQuery.data?.build_preview ?? null;
+  const buildMetrics = runtimeQuery.data?.docgen_metrics ?? docMarkdownQuery.data?.build_metrics ?? null;
   const buildStatus = buildMeta?.status ?? null;
   const liveUpdatedAt = docMarkdownQuery.data?.updated_at ?? null;
   const draftUpdatedAt = docMarkdownQuery.data?.draft_updated_at ?? null;
@@ -168,6 +164,8 @@ export function useDocMarkdown(): DocMarkdownState {
       hasDraftDocMarkdown ||
       isBuildActive ||
       buildStatus === "completed" ||
+      buildStatus === "partial_failed" ||
+      buildStatus === "skipped" ||
       (targetRequestedAtMs !== null && !hasLiveDocMarkdown)
     );
 
@@ -177,21 +175,19 @@ export function useDocMarkdown(): DocMarkdownState {
       : docViewMode === "draft" && hasDraftDocMarkdown
         ? "draft"
         : "live";
-  const renderedMarkdown = effectiveDocViewMode === "draft"
-      ? draftMarkdown
-      : liveMarkdown;
+  const renderedMarkdown = effectiveDocViewMode === "draft" ? draftMarkdown : liveMarkdown;
   const hasRenderedMarkdown = Boolean(renderedMarkdown.trim());
   const renderedDocUpdatedLabel = useMemo(
     () => formatDocTimestamp(effectiveDocViewMode === "draft" ? draftUpdatedAt : liveUpdatedAt),
     [draftUpdatedAt, effectiveDocViewMode, liveUpdatedAt],
   );
 
-  const renderedDigestMode = buildMeta?.digest_mode ?? buildPreview?.digest_mode ?? null;
+  const renderedDigestMode = buildPreview?.digest_mode ?? null;
   const renderedDigestModeLabel =
     renderedDigestMode === "systematic"
-      ? "系统课"
+      ? "系统讲义"
       : renderedDigestMode === "sprint"
-        ? "速成课"
+        ? "冲刺讲义"
         : "知识文档";
   const renderedChapterHighlights = (buildPreview?.latest_chapter_titles ?? []).slice(0, 4);
   const renderedSubjectLabel = (subjectId ?? "知识文档").replace(/[-_]+/g, " ");
@@ -204,7 +200,6 @@ export function useDocMarkdown(): DocMarkdownState {
     buildPreview?.plan_summary?.trim() ??
     "正在整理知识文档...";
 
-  /* Source files */
   const sourceFilesQuery = useQuery({
     queryKey: ["knowledge-build-source-files", subjectId],
     enabled: Boolean(subjectId) && (isBuildActive || isWaitingForRequestedBuild),
@@ -214,6 +209,7 @@ export function useDocMarkdown(): DocMarkdownState {
       return state.dataUpdatedAt ? 2500 : 1200;
     },
   });
+
   const sourceFiles = useMemo(() => {
     const items = sourceFilesQuery.data ?? [];
     if (items.length === 0) return [];
@@ -238,14 +234,23 @@ export function useDocMarkdown(): DocMarkdownState {
       .slice(0, 6);
   }, [docMarkdownQuery.data?.source_file_uids, sourceFilesQuery.data]);
 
-  /* Auto view mode switching */
   useEffect(() => {
-    if (!hasLiveDocMarkdown && hasDraftDocMarkdown) { setDocViewMode("draft"); return; }
-    if (hasLiveDocMarkdown && !hasDraftDocMarkdown) { setDocViewMode("live"); return; }
-    if (buildStatus === "completed" && hasLiveDocMarkdown) { setDocViewMode("live"); }
+    if (!hasLiveDocMarkdown && hasDraftDocMarkdown) {
+      setDocViewMode("draft");
+      return;
+    }
+    if (hasLiveDocMarkdown && !hasDraftDocMarkdown) {
+      setDocViewMode("live");
+      return;
+    }
+    if (
+      (buildStatus === "completed" || buildStatus === "partial_failed" || buildStatus === "skipped")
+      && hasLiveDocMarkdown
+    ) {
+      setDocViewMode("live");
+    }
   }, [buildStatus, hasDraftDocMarkdown, hasLiveDocMarkdown]);
 
-  /* Show state derivation */
   const showDocGeneratingState =
     !docMarkdownQuery.isError &&
     !hasLiveDocMarkdown &&

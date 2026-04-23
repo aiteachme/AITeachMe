@@ -1,9 +1,6 @@
-/* ------------------------------------------------------------------ */
-/*  BuildMetricsBadges — LLM metrics display as pill badges            */
-/* ------------------------------------------------------------------ */
-
-import { Activity, Cpu, Zap, Clock } from "lucide-react";
 import { motion } from "framer-motion";
+import { Activity, Clock, Cpu, Zap } from "lucide-react";
+
 import { cn } from "../../lib/utils";
 import type { KnowledgeBuildMetrics, KnowledgeBuildPreview } from "./types";
 
@@ -23,9 +20,10 @@ export function BuildMetricsBadges({ metrics, preview, className }: Props) {
 
   const items: Array<{ icon: typeof Activity; label: string; value: string }> = [];
 
-  const throughput = (preview?.total_chunks ?? 0) > 0
-    ? `${preview?.processed_chunks ?? 0}/${preview?.total_chunks ?? 0}`
-    : null;
+  const throughput =
+    (preview?.total_chunks ?? 0) > 0
+      ? `${preview?.processed_chunks ?? 0}/${preview?.total_chunks ?? 0}`
+      : null;
   if (throughput) {
     items.push({ icon: Activity, label: "分片", value: throughput });
   }
@@ -55,11 +53,11 @@ export function BuildMetricsBadges({ metrics, preview, className }: Props) {
           initial={{ opacity: 0, scale: 0.9 }}
           animate={{ opacity: 1, scale: 1 }}
           transition={{ delay: index * 0.06, duration: 0.25 }}
-          className="inline-flex items-center gap-1.5 rounded-lg border border-stone-200/80 bg-white/80 px-2.5 py-1.5 text-[11px] text-stone-600 backdrop-blur-sm"
+          className="inline-flex items-center gap-1.5 rounded-lg border border-stone-200/80 bg-white/80 px-2.5 py-1.5 text-[11px] text-stone-600 backdrop-blur-sm dark:border-slate-700/80 dark:bg-slate-950/80 dark:text-slate-300"
         >
-          <item.icon className="w-3 h-3 text-stone-400" />
-          <span className="text-stone-400">{item.label}</span>
-          <span className="font-medium text-stone-700">{item.value}</span>
+          <item.icon className="h-3 w-3 text-stone-400 dark:text-slate-500" />
+          <span className="text-stone-400 dark:text-slate-500">{item.label}</span>
+          <span className="font-medium text-stone-700 dark:text-slate-100">{item.value}</span>
         </motion.div>
       ))}
     </div>

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import mimetypes
 from collections.abc import Mapping
@@ -139,6 +140,28 @@ async def read_docgen_cover_artifact(subject: str) -> dict[str, Any] | None:
     return payload if isinstance(payload, dict) else None
 
 
+async def wait_for_docgen_cover_artifact(
+    subject: str,
+    *,
+    max_wait_seconds: float = 4.0,
+    poll_interval_seconds: float = 0.2,
+) -> dict[str, Any] | None:
+    """Wait briefly for the cover sidecar so publish behavior is deterministic."""
+
+    settings = get_settings()
+    if not settings.docgen.generate_cover_image or not settings.image_generation_enabled:
+        return None
+
+    waited = 0.0
+    while waited <= max_wait_seconds:
+        artifact = await read_docgen_cover_artifact(subject)
+        if artifact:
+            return artifact
+        await asyncio.sleep(poll_interval_seconds)
+        waited += poll_interval_seconds
+    return None
+
+
 async def generate_docgen_cover_artifact(
     *,
     subject: str,
@@ -249,4 +272,5 @@ __all__ = [
     "build_docgen_cover_markdown",
     "generate_docgen_cover_artifact",
     "read_docgen_cover_artifact",
+    "wait_for_docgen_cover_artifact",
 ]

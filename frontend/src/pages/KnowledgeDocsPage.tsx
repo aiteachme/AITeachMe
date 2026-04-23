@@ -30,11 +30,11 @@ import {
   useDocBuildProgress,
   useDocMarkdown,
 } from "../components/knowledge-docs";
-import { SubjectVectorNotice } from "../components/pages/SubjectVectorNotice";
+import { SubjectVectorNotice } from "../components/knowledge-graph/SubjectVectorNotice";
 import { MarkdownViewer, preprocessLaTeX } from "../components/ui/MarkdownViewer";
 
 const KnowledgeGraphSidePanel = lazy(() =>
-  import("../components/pages/KnowledgeGraphSidePanel").then((module) => ({
+  import("../components/knowledge-graph/KnowledgeGraphSidePanel").then((module) => ({
     default: module.KnowledgeGraphSidePanel,
   })),
 );
@@ -518,12 +518,12 @@ function DocUpdatingBanner({
 
 function DocEmptyState() {
   return (
-    <section className="rounded-3xl border border-dashed border-slate-200 bg-white p-7 text-center shadow-sm">
-      <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-100 text-slate-500">
+    <section className="rounded-3xl border border-dashed border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-7 text-center shadow-sm dark:shadow-[0_4px_16px_rgba(0,0,0,0.2)]">
+      <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400">
         <FileText className="h-6 w-6" />
       </div>
-      <h2 className="mt-4 text-lg font-semibold text-slate-900">暂时还没有知识文档</h2>
-      <p className="mt-2 text-sm leading-6 text-slate-600">
+      <h2 className="mt-4 text-lg font-semibold text-slate-900 dark:text-slate-100">暂时还没有知识文档</h2>
+      <p className="mt-2 text-sm leading-6 text-slate-600 dark:text-slate-400">
         先回到文件页发起一次知识文档构建，这里会展示最终发布的 merged 文档。
       </p>
     </section>
@@ -2396,10 +2396,10 @@ export function KnowledgeDocsPage() {
   }
 
   return (
-    <div className="relative flex-1 w-full min-h-full overflow-hidden bg-slate-50 flex flex-row">
+    <div className="relative flex-1 w-full min-h-full overflow-hidden bg-slate-50 dark:bg-slate-900 flex flex-row">
       
       {/* Main Doc Wrapper */}
-      <div className="relative h-full transition-all duration-500 ease-[cubic-bezier(0.25,1,0.5,1)] flex flex-col w-full bg-white z-10">
+      <div className="relative h-full transition-all duration-500 ease-[cubic-bezier(0.25,1,0.5,1)] flex flex-col w-full bg-white dark:bg-slate-900 z-10">
         {!isCompactPanels && (
         <div className="hidden lg:block absolute left-4 top-16 z-30">
           {isTocCollapsed ? (

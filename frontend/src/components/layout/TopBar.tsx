@@ -336,14 +336,14 @@ export function TopBar({ className }: TopBarProps) {
           onMouseLeave={() => setIsDropdownOpen(false)}
         >
           <button
-            className="flex items-center gap-2 rounded-full border border-slate-200 bg-white pl-2 pr-3 py-1.5 text-sm text-slate-700 transition-colors hover:bg-slate-50"
+            className="flex items-center gap-2 rounded-full border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900 pl-2 pr-3 py-1.5 text-sm text-slate-700 dark:text-slate-300 transition-colors hover:bg-slate-50 dark:hover:bg-slate-800"
           >
             <div className="flex h-7 w-7 items-center justify-center rounded-full bg-gradient-to-br from-slate-700 to-slate-900 text-xs font-medium text-white">
               {avatarText}
             </div>
             <div className="hidden min-w-0 text-left lg:block">
-              <div className="max-w-[120px] truncate font-medium text-slate-700">{displayName}</div>
-              <div className="max-w-[120px] truncate text-[11px] text-slate-400">
+              <div className="max-w-[120px] truncate font-medium text-slate-700 dark:text-slate-300">{displayName}</div>
+              <div className="max-w-[120px] truncate text-[11px] text-slate-400 dark:text-slate-500">
                 {isLoggedIn ? "已登录" : "游客身份"}
               </div>
             </div>
@@ -358,19 +358,19 @@ export function TopBar({ className }: TopBarProps) {
           {isDropdownOpen && (
             <div className="absolute right-0 top-full pt-2 z-50">
               <div
-                className="w-64 bg-white rounded-xl shadow-lg border border-slate-200 py-1"
+                className="w-64 bg-white dark:bg-slate-900 rounded-xl shadow-lg border border-slate-200 dark:border-slate-800 py-1"
                 style={{
                   animation: "fadeIn 0.15s ease-out",
                 }}
               >
-                <div className="px-4 py-3 border-b border-slate-100">
+                <div className="px-4 py-3 border-b border-slate-100 dark:border-slate-800/80">
                 <div className="flex items-center gap-3">
                   <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-slate-700 to-slate-900 text-sm font-semibold text-white">
                     {avatarText}
                   </div>
                   <div className="min-w-0">
-                    <p className="truncate text-sm font-medium text-slate-900">{displayName}</p>
-                    <p className="truncate text-xs text-slate-500">{identitySubtitle}</p>
+                    <p className="truncate text-sm font-medium text-slate-900 dark:text-slate-100">{displayName}</p>
+                    <p className="truncate text-xs text-slate-500 dark:text-slate-400">{identitySubtitle}</p>
                   </div>
                 </div>
               </div>
@@ -379,21 +379,21 @@ export function TopBar({ className }: TopBarProps) {
                 {isLoggedIn ? (
                   <>
                     <button
-                      className="w-full flex items-center gap-2.5 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-colors"
+                      className="w-full flex items-center gap-2.5 px-4 py-2 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors"
                       onClick={() => setIsDropdownOpen(false)}
                     >
-                      <User className="w-4 h-4 text-slate-400" />
+                      <User className="w-4 h-4 text-slate-400 dark:text-slate-500" />
                       <span>个人资料</span>
                     </button>
 
                     <button
-                      className="w-full flex items-center gap-2.5 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-colors"
+                      className="w-full flex items-center gap-2.5 px-4 py-2 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors"
                       onClick={() => setIsDropdownOpen(false)}
                     >
-                      <CreditCard className="w-4 h-4 text-slate-400" />
+                      <CreditCard className="w-4 h-4 text-slate-400 dark:text-slate-500" />
                       <div className="flex items-center justify-between flex-1">
                         <span>余额</span>
-                        <span className="text-xs font-medium text-blue-600 bg-blue-50 px-2 py-0.5 rounded">
+                        <span className="text-xs font-medium text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/30 px-2 py-0.5 rounded">
                           ￥100.00
                         </span>
                       </div>
@@ -402,56 +402,56 @@ export function TopBar({ className }: TopBarProps) {
                 ) : canUseAuth ? (
                   <>
                     <button
-                      className="w-full flex items-center gap-2.5 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-colors"
+                      className="w-full flex items-center gap-2.5 px-4 py-2 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors"
                       onClick={() => openAuthEntry("login")}
                     >
-                      <LogIn className="w-4 h-4 text-slate-400" />
+                      <LogIn className="w-4 h-4 text-slate-400 dark:text-slate-500" />
                       <span>登录账号</span>
                     </button>
 
                     <button
-                      className="w-full flex items-center gap-2.5 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-colors"
+                      className="w-full flex items-center gap-2.5 px-4 py-2 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors"
                       onClick={() => openAuthEntry("register")}
                     >
-                      <User className="w-4 h-4 text-slate-400" />
+                      <User className="w-4 h-4 text-slate-400 dark:text-slate-500" />
                       <span>注册账号</span>
                     </button>
                   </>
                 ) : (
-                  <div className="px-4 py-2 text-sm text-slate-500">
+                  <div className="px-4 py-2 text-sm text-slate-500 dark:text-slate-400">
                     本地模式无需登录，数据保存在当前设备环境中。
                   </div>
                 )}
 
               </div>
 
-              <div className="border-t border-slate-100 py-1">
+              <div className="border-t border-slate-100 dark:border-slate-800/80 py-1">
                 <a
                   href="https://github.com/aiteachme/AiTeachMe"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="w-full flex items-center gap-2.5 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-colors"
+                  className="w-full flex items-center gap-2.5 px-4 py-2 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors"
                   onClick={() => setIsDropdownOpen(false)}
                 >
-                  <Github className="w-4 h-4 text-slate-400" />
+                  <Github className="w-4 h-4 text-slate-400 dark:text-slate-500" />
                   <span>GitHub</span>
                 </a>
                 <button
-                  className="w-full flex items-center gap-2.5 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-colors"
+                  className="w-full flex items-center gap-2.5 px-4 py-2 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors"
                   onClick={() => {
                     setIsDropdownOpen(false);
                     setIsFeedbackModalOpen(true);
                   }}
                 >
-                  <MessageCircle className="w-4 h-4 text-slate-400" />
+                  <MessageCircle className="w-4 h-4 text-slate-400 dark:text-slate-500" />
                   <span>意见反馈</span>
                 </button>
               </div>
 
               {isLoggedIn && (
-                <div className="border-t border-slate-100 pt-1">
+                <div className="border-t border-slate-100 dark:border-slate-800/80 pt-1">
                   <button
-                    className="w-full flex items-center gap-2.5 px-4 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors"
+                    className="w-full flex items-center gap-2.5 px-4 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
                     onClick={handleLogout}
                   >
                     <LogOut className="w-4 h-4" />
@@ -468,7 +468,7 @@ export function TopBar({ className }: TopBarProps) {
       <div className="sm:hidden relative" ref={mobileMenuRef}>
         <button
           onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-          className="flex items-center gap-2 rounded-full border border-slate-200 bg-white px-2 py-1.5 text-slate-700 transition-colors hover:bg-slate-50"
+          className="flex items-center gap-2 rounded-full border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-2 py-1.5 text-slate-700 dark:text-slate-300 transition-colors hover:bg-slate-50 dark:hover:bg-slate-800"
           title="身份菜单"
         >
           <div className="flex h-7 w-7 items-center justify-center rounded-full bg-gradient-to-br from-slate-700 to-slate-900 text-xs font-medium text-white">
@@ -484,19 +484,19 @@ export function TopBar({ className }: TopBarProps) {
 
         {isMobileMenuOpen && (
           <div
-            className="absolute right-0 mt-2 w-64 bg-white rounded-xl shadow-lg border border-slate-200 py-2 z-50"
+            className="absolute right-0 mt-2 w-64 bg-white dark:bg-slate-900 rounded-xl shadow-lg border border-slate-200 dark:border-slate-800 py-2 z-50"
             style={{
               animation: "fadeIn 0.15s ease-out",
             }}
           >
-            <div className="px-4 py-3 border-b border-slate-100">
+            <div className="px-4 py-3 border-b border-slate-100 dark:border-slate-800/80">
               <div className="flex items-center gap-3">
                 <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-slate-700 to-slate-900 text-sm font-semibold text-white">
                   {avatarText}
                 </div>
                 <div className="min-w-0">
-                  <p className="truncate text-sm font-medium text-slate-900">{displayName}</p>
-                  <p className="truncate text-xs text-slate-500">{identitySubtitle}</p>
+                  <p className="truncate text-sm font-medium text-slate-900 dark:text-slate-100">{displayName}</p>
+                  <p className="truncate text-xs text-slate-500 dark:text-slate-400">{identitySubtitle}</p>
                 </div>
               </div>
             </div>
@@ -504,16 +504,16 @@ export function TopBar({ className }: TopBarProps) {
             <div className="py-1">
               {isLoggedIn ? (
                 <>
-                  <button className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 transition-colors">
-                    <User className="w-4 h-4 text-slate-400" />
+                  <button className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
+                    <User className="w-4 h-4 text-slate-400 dark:text-slate-500" />
                     <span>个人资料</span>
                   </button>
 
-                  <button className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 transition-colors">
-                    <CreditCard className="w-4 h-4 text-slate-400" />
+                  <button className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
+                    <CreditCard className="w-4 h-4 text-slate-400 dark:text-slate-500" />
                     <div className="flex items-center justify-between flex-1">
                       <span>余额</span>
-                      <span className="text-xs font-medium text-blue-600 bg-blue-50 px-2 py-0.5 rounded">
+                      <span className="text-xs font-medium text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/30 px-2 py-0.5 rounded">
                         ￥100.00
                       </span>
                     </div>
@@ -522,58 +522,58 @@ export function TopBar({ className }: TopBarProps) {
               ) : canUseAuth ? (
                 <>
                   <button
-                    className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 transition-colors"
+                    className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors"
                     onClick={() => openAuthEntry("login")}
                   >
-                    <LogIn className="w-4 h-4 text-slate-400" />
+                    <LogIn className="w-4 h-4 text-slate-400 dark:text-slate-500" />
                     <span>登录账号</span>
                   </button>
 
                   <button
-                    className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 transition-colors"
+                    className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors"
                     onClick={() => openAuthEntry("register")}
                   >
-                    <User className="w-4 h-4 text-slate-400" />
+                    <User className="w-4 h-4 text-slate-400 dark:text-slate-500" />
                     <span>注册账号</span>
                   </button>
                 </>
               ) : (
-                <div className="px-4 py-2.5 text-sm text-slate-500">
+                <div className="px-4 py-2.5 text-sm text-slate-500 dark:text-slate-400">
                   本地模式无需登录，数据保存在当前设备环境中。
                 </div>
               )}
 
             </div>
 
-            <div className="border-t border-slate-100 my-1" />
+            <div className="border-t border-slate-100 dark:border-slate-800/80 my-1" />
 
             <div className="py-1">
               <a
                 href="https://github.com/aiteachme/AiTeachMe"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 transition-colors"
+                className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors"
               >
-                <Github className="w-4 h-4 text-slate-400" />
+                <Github className="w-4 h-4 text-slate-400 dark:text-slate-500" />
                 <span>GitHub</span>
               </a>
 
               <button
-                className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 transition-colors"
+                className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors"
                 onClick={() => {
                   setIsMobileMenuOpen(false);
                   setIsFeedbackModalOpen(true);
                 }}
               >
-                <MessageCircle className="w-4 h-4 text-slate-400" />
+                <MessageCircle className="w-4 h-4 text-slate-400 dark:text-slate-500" />
                 <span>意见反馈</span>
               </button>
             </div>
 
             {isLoggedIn && (
-              <div className="border-t border-slate-100 pt-1 pb-1">
+              <div className="border-t border-slate-100 dark:border-slate-800/80 pt-1 pb-1">
                 <button
-                  className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 transition-colors"
+                  className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
                   onClick={handleLogout}
                 >
                   <LogOut className="w-4 h-4" />
@@ -592,14 +592,14 @@ export function TopBar({ className }: TopBarProps) {
         className="max-w-md"
       >
         <form className="space-y-4" onSubmit={handleAuthSubmit}>
-          <p className="text-sm text-slate-500">
+          <p className="text-sm text-slate-500 dark:text-slate-400">
             {authMode === "login"
               ? "继续使用当前设备身份，并开启登录态同步。"
               : "将当前访客身份升级为邮箱账号。"}
           </p>
 
           <div className="space-y-1.5">
-            <label className="text-sm font-medium text-slate-700" htmlFor="auth-email">
+            <label className="text-sm font-medium text-slate-700 dark:text-slate-200" htmlFor="auth-email">
               邮箱
             </label>
             <input
@@ -609,12 +609,12 @@ export function TopBar({ className }: TopBarProps) {
               onChange={(event) => setAuthEmail(event.target.value)}
               autoComplete="email"
               placeholder="name@example.com"
-              className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
+              className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-200 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-slate-600 dark:focus:ring-slate-800"
             />
           </div>
 
           <div className="space-y-1.5">
-            <label className="text-sm font-medium text-slate-700" htmlFor="auth-password">
+            <label className="text-sm font-medium text-slate-700 dark:text-slate-200" htmlFor="auth-password">
               密码
             </label>
             <input
@@ -624,13 +624,13 @@ export function TopBar({ className }: TopBarProps) {
               onChange={(event) => setAuthPassword(event.target.value)}
               autoComplete={authMode === "login" ? "current-password" : "new-password"}
               placeholder="至少 6 位"
-              className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
+              className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-200 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-slate-600 dark:focus:ring-slate-800"
             />
           </div>
 
           {authMode === "register" && (
             <div className="space-y-1.5">
-              <label className="text-sm font-medium text-slate-700" htmlFor="auth-verification-code">
+              <label className="text-sm font-medium text-slate-700 dark:text-slate-200" htmlFor="auth-verification-code">
                 邮箱验证码
               </label>
               <div className="flex gap-2">
@@ -641,13 +641,13 @@ export function TopBar({ className }: TopBarProps) {
                   onChange={(event) => setAuthVerificationCode(event.target.value)}
                   autoComplete="one-time-code"
                   placeholder="请输入 6 位验证码"
-                  className="min-w-0 flex-1 rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
+                  className="min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-200 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-slate-600 dark:focus:ring-slate-800"
                 />
                 <button
                   type="button"
                   onClick={handleSendVerificationCode}
                   disabled={isSendCodeSubmitting || sendCodeCooldownS > 0}
-                  className="shrink-0 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                  className="shrink-0 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
                 >
                   {isSendCodeSubmitting
                     ? "发送中..."
@@ -656,15 +656,15 @@ export function TopBar({ className }: TopBarProps) {
                       : "发送验证码"}
                 </button>
               </div>
-              {sendCodeInfo && <p className="text-xs text-emerald-600">{sendCodeInfo}</p>}
+              {sendCodeInfo && <p className="text-xs text-emerald-600 dark:text-emerald-300">{sendCodeInfo}</p>}
               {codeExpiresInS !== null && codeExpiresInS > 0 && (
-                <p className="text-xs text-slate-500">验证码剩余有效期：{codeExpiresInS}s</p>
+                <p className="text-xs text-slate-500 dark:text-slate-400">验证码剩余有效期：{codeExpiresInS}s</p>
               )}
             </div>
           )}
 
           {authError && (
-            <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+            <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300">
               {authError}
             </div>
           )}
@@ -672,7 +672,7 @@ export function TopBar({ className }: TopBarProps) {
           <button
             type="submit"
             disabled={isAuthSubmitting}
-            className="w-full rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+            className="w-full rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white"
           >
             {isAuthSubmitting ? "处理中..." : authMode === "login" ? "登录" : "注册"}
           </button>
@@ -690,14 +690,14 @@ export function TopBar({ className }: TopBarProps) {
                 setSendCodeInfo(null);
                 setCodeSentToEmail(null);
               }}
-              className="text-slate-600 underline-offset-2 hover:text-slate-900 hover:underline"
+              className="text-slate-600 underline-offset-2 hover:text-slate-900 hover:underline dark:text-slate-300 dark:hover:text-slate-100"
             >
               {authMode === "login" ? "没有账号？去注册" : "已有账号？去登录"}
             </button>
             <button
               type="button"
               onClick={closeAuthModal}
-              className="text-slate-500 hover:text-slate-800"
+              className="text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200"
             >
               取消
             </button>

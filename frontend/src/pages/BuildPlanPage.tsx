@@ -28,12 +28,17 @@ import type {
 } from "../api/generated/model";
 import type { ApiResponse } from "../api/types";
 import { BuildView, ACTIVE_DOC_BUILD_STATUSES, parseIsoTimestamp, useDocBuildProgress } from "../components/knowledge-docs";
-import { KnowledgeBuildResolutionModal } from "../components/pages/KnowledgeBuildResolutionModal";
-import { PlannerPreviewMarkdown } from "../components/pages/PlannerPreviewMarkdown";
+import { KnowledgeBuildResolutionModal } from "../components/build-plan/KnowledgeBuildResolutionModal";
+import { PlannerPreviewMarkdown } from "../components/build-plan/PlannerPreviewMarkdown";
 import { FullPageDropOverlay } from "../components/ui/FullPageDropOverlay";
 import { useToast } from "../components/ui/Toast";
 import { useKnowledgeBuildFlow } from "../hooks/useKnowledgeBuildFlow";
+import {
+  buildKnowledgeBuildRuntimeQueryKey,
+  fetchKnowledgeBuildRuntime,
+} from "../lib/knowledgeBuildRuntime";
 import { buildKnowledgeDocStateQueryKey, fetchKnowledgeDocState } from "../lib/knowledgeDocs";
+import { FILE_ACCEPT, extractPasteFiles } from "../lib/fileUpload";
 import type { FileRecord, FilesData, FilesUploadData } from "../types/files";
 
 type ChatRole = "user" | "assistant" | "system";
@@ -56,7 +61,6 @@ interface PersistedPlannerState {
   plannerNeedsRefresh: boolean;
 }
 
-const ACCEPT = ".pdf,.docx,.doc,.ppt,.pptx,.md,.markdown,.txt,.png,.jpg,.jpeg,.webp";
 const STORAGE_PREFIX = "aiteachme:files-page-planner";
 const PLANNER_STATE_VERSION = 4;
 const LEGACY_WELCOME_MESSAGE_CONTENT =
@@ -746,6 +750,38 @@ export function BuildPlanPage() {
     },
   });
 
+  const buildRuntimeQuery = useQuery({
+    queryKey: [...buildKnowledgeBuildRuntimeQueryKey(subjectId), requestedAt],
+    queryFn: () => fetchKnowledgeBuildRuntime(subjectId),
+    enabled: Boolean(subjectId),
+    retry: false,
+    refetchInterval: (query) => {
+      const aggregate = query.state.data?.aggregate;
+      const status = (aggregate?.status ?? "").trim();
+      const liveMarkdown = knowledgeDocState.data?.markdown ?? "";
+      const hasLiveDocMarkdown = Boolean(knowledgeDocState.data?.exists && liveMarkdown.trim().length > 0);
+      const targetRequestedAtMs = requestedAtMs ?? parseIsoTimestamp(aggregate?.requested_at ?? null);
+      const updatedAtMs = parseIsoTimestamp(knowledgeDocState.data?.updated_at ?? null);
+      const hasRequestedLiveDoc =
+        hasLiveDocMarkdown &&
+        (targetRequestedAtMs === null || (updatedAtMs !== null && updatedAtMs >= targetRequestedAtMs));
+
+      if (status && ACTIVE_DOC_BUILD_STATUSES.has(status)) {
+        return 2500;
+      }
+      if (status === "completed" || status === "partial_failed" || status === "skipped") {
+        return hasRequestedLiveDoc ? false : 1200;
+      }
+      if (status === "failed" || status === "cancelled") {
+        return false;
+      }
+      if (!status || status === "idle") {
+        return false;
+      }
+      return hasRequestedLiveDoc ? false : 2500;
+    },
+  });
+
   const files = filesQuery.data?.items ?? [];
   const plannerFiles = useMemo(() => files.filter((item) => item.status !== "failed"), [files]);
   const readyFiles = useMemo(() => files.filter((item) => item.markdown_ready), [files]);
@@ -764,9 +800,9 @@ export function BuildPlanPage() {
     [files],
   );
 
-  const buildMeta = knowledgeDocState.data?.build ?? null;
-  const buildPreview = knowledgeDocState.data?.build_preview ?? null;
-  const buildMetrics = knowledgeDocState.data?.build_metrics ?? null;
+  const buildMeta = buildRuntimeQuery.data?.aggregate ?? knowledgeDocState.data?.build ?? null;
+  const buildPreview = buildRuntimeQuery.data?.docgen_preview ?? knowledgeDocState.data?.build_preview ?? null;
+  const buildMetrics = buildRuntimeQuery.data?.docgen_metrics ?? knowledgeDocState.data?.build_metrics ?? null;
   const buildStatus = buildMeta?.status ?? null;
   const liveMarkdown = knowledgeDocState.data?.markdown ?? "";
   const draftMarkdown = knowledgeDocState.data?.draft_markdown ?? "";
@@ -1029,6 +1065,7 @@ export function BuildPlanPage() {
     mutationFn: () => cancelKnowledgeBuild(subjectId),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: buildKnowledgeDocStateQueryKey(subjectId) });
+      void queryClient.invalidateQueries({ queryKey: buildKnowledgeBuildRuntimeQueryKey(subjectId) });
     },
   });
 
@@ -1043,6 +1080,7 @@ export function BuildPlanPage() {
     fallbackErrorMessage: "知识文档构建失败。",
     onSuccess: (data: DocGenBuildData) => {
       void queryClient.invalidateQueries({ queryKey: buildKnowledgeDocStateQueryKey(subjectId) });
+      void queryClient.invalidateQueries({ queryKey: buildKnowledgeBuildRuntimeQueryKey(subjectId) });
       toast({
         title: "已开始构建知识文档",
         description:
@@ -1430,7 +1468,7 @@ export function BuildPlanPage() {
         <div className="relative z-10 flex h-full w-full flex-col">
           {!shouldShowBuildView && (
           <div className="flex items-center justify-center pb-2 pt-6">
-            <div className="inline-flex items-center gap-2 rounded-full border border-zinc-200/80 bg-white px-3 py-1.5 text-[11px] font-semibold uppercase tracking-widest text-zinc-500 shadow-sm">
+            <div className="inline-flex items-center gap-2 rounded-full border border-zinc-200/80 dark:border-slate-800/80 bg-white dark:bg-slate-900 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-widest text-zinc-500 dark:text-slate-400 shadow-sm">
               <Sparkles className="h-3 w-3" />
               方案规划
             </div>
@@ -1512,7 +1550,7 @@ export function BuildPlanPage() {
             ) : (
               <BuildView
                 className="flex-1"
-                isFetching={knowledgeDocState.isFetching}
+                isFetching={knowledgeDocState.isFetching || buildRuntimeQuery.isFetching}
                 progress={buildProgress}
                 statusText={buildStatusText}
                 buildPreview={buildPreview}
@@ -1549,14 +1587,14 @@ export function BuildPlanPage() {
                     message.role === "user"
                       ? "max-w-[80%] rounded-2xl rounded-tr-md bg-zinc-900 px-4 py-3 text-sm text-white shadow-sm"
                       : message.role === "system"
-                        ? "rounded-full bg-zinc-100 px-3 py-1 text-xs text-zinc-500"
+                        ? "rounded-full bg-zinc-100 dark:bg-slate-800 px-3 py-1 text-xs text-zinc-500 dark:text-slate-400"
                         : "max-w-[85%] space-y-2"
                   }
                 >
                   {message.role === "assistant" ? (
                     <>
                       {!message.plan && message.content ? (
-                        <div className="rounded-2xl rounded-tl-md border border-zinc-100 bg-white px-4 py-3 shadow-sm">
+                        <div className="rounded-2xl rounded-tl-md border border-zinc-100 dark:border-slate-800 bg-white dark:bg-slate-900 px-4 py-3 shadow-sm">
                           <PlannerPreviewMarkdown markdown={message.content} />
                         </div>
                       ) : null}
@@ -1682,7 +1720,7 @@ export function BuildPlanPage() {
               </div>
             ) : null}
 
-            <div className="w-full rounded-2xl border border-zinc-200/60 bg-white shadow-[0_2px_8px_rgba(0,0,0,0.04)] transition-all focus-within:border-zinc-300 focus-within:shadow-[0_4px_16px_rgba(0,0,0,0.06)] focus-within:ring-4 focus-within:ring-zinc-900/5">
+            <div className="w-full rounded-2xl border border-zinc-200/60 dark:border-slate-800/60 bg-white dark:bg-slate-900 shadow-[0_2px_8px_rgba(0,0,0,0.04)] dark:shadow-[0_2px_8px_rgba(0,0,0,0.2)] transition-all focus-within:border-zinc-300 dark:focus-within:border-slate-700 focus-within:shadow-[0_4px_16px_rgba(0,0,0,0.06)] dark:focus-within:shadow-[0_4px_16px_rgba(0,0,0,0.3)] focus-within:ring-4 focus-within:ring-zinc-900/5 dark:focus-within:ring-slate-800/50">
               <textarea
                 ref={inputRef}
                 value={inputValue}
@@ -1693,10 +1731,17 @@ export function BuildPlanPage() {
                     void handleSend();
                   }
                 }}
+                onPaste={(event) => {
+                  const files = extractPasteFiles(event);
+                  if (files.length > 0) {
+                    event.preventDefault();
+                    void uploadMutation.mutateAsync(files);
+                  }
+                }}
                 disabled={isBuilding || plannerStreaming}
                 placeholder={plannerStreaming ? "正在生成方案，点击右侧按钮可停止当前生成" : inputPlaceholder}
                 rows={1}
-                className="w-full min-h-[56px] max-h-[120px] resize-none border-0 bg-transparent px-4 pb-3 pt-4 text-[14px] leading-relaxed text-zinc-800 placeholder:text-zinc-400 focus:outline-none"
+                className="w-full min-h-[56px] max-h-[120px] resize-none border-0 bg-transparent px-4 pb-3 pt-4 text-[14px] leading-relaxed text-zinc-800 dark:text-zinc-200 placeholder:text-zinc-400 dark:placeholder:text-slate-500 focus:outline-none"
                 style={{ minHeight: "56px" }}
                 onInput={(event) => {
                   const target = event.currentTarget;
@@ -1707,13 +1752,13 @@ export function BuildPlanPage() {
 
               <div className="px-3 pb-3 flex flex-col gap-2">
                 {files.length > 0 && (
-                  <div className="flex flex-wrap gap-2 px-1 py-2 border-t border-zinc-100">
+                  <div className="flex flex-wrap gap-2 px-1 py-2 border-t border-zinc-100 dark:border-slate-800">
                     {files.map((file) => {
                       const meta = fileMeta(file);
                       return (
                         <div
                           key={file.uid}
-                          className="group relative flex items-center gap-1.5 rounded-lg border border-zinc-200/60 bg-zinc-50 px-2.5 py-1.5 text-[13px] text-zinc-700 transition-colors hover:bg-white hover:border-zinc-300 hover:shadow-sm"
+                          className="group relative flex items-center gap-1.5 rounded-lg border border-zinc-200/60 dark:border-slate-700/60 bg-zinc-50 dark:bg-slate-800/50 px-2.5 py-1.5 text-[13px] text-zinc-700 dark:text-slate-300 transition-colors hover:bg-white dark:hover:bg-slate-800 hover:border-zinc-300 dark:hover:border-slate-600 hover:shadow-sm"
                         >
                           {fileIcon(file)}
                           <span className="max-w-[140px] truncate font-medium">
@@ -1740,7 +1785,7 @@ export function BuildPlanPage() {
                     <input
                       type="file"
                       multiple
-                      accept={ACCEPT}
+                      accept={FILE_ACCEPT}
                       className="hidden"
                       id="files-page-upload"
                       onChange={(event: ChangeEvent<HTMLInputElement>) => {

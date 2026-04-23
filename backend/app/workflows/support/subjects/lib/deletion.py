@@ -106,19 +106,19 @@ def build_subject_delete_preview(session: Session, *, subject: Subject) -> Subje
         ),
         SubjectDeleteImpactItem(
             key="exam",
-            label="鑰冭瘯璁板綍",
+            label="考试记录",
             count=_sum_counts(detail_counts, _EXAM_KEYS),
             description="会删除题模板、试卷与试卷题目快照。",
         ),
         SubjectDeleteImpactItem(
             key="chat",
-            label="瀵硅瘽璁板綍",
+            label="对话记录",
             count=detail_counts["chat_message"] + detail_counts["chat_session"],
             description="会删除该学科下的会话与聊天消息。",
         ),
         SubjectDeleteImpactItem(
             key="profile",
-            label="瀛︿範鐢诲儚",
+            label="学习画像",
             count=_sum_counts(detail_counts, _PROFILE_KEYS),
             description="会删除 mastery 与复习状态。",
         ),

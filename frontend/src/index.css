@@ -219,8 +219,16 @@
   background: rgba(15, 23, 42, 0.18);
 }
 
+.dark .modal-backdrop {
+  background: rgba(2, 6, 23, 0.6);
+}
+
 .modal-backdrop-strong {
   background: rgba(15, 23, 42, 0.22);
+}
+
+.dark .modal-backdrop-strong {
+  background: rgba(2, 6, 23, 0.75);
 }
 
 @supports ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
@@ -230,10 +238,22 @@
     backdrop-filter: blur(10px) saturate(1.05);
   }
 
+  .dark .modal-backdrop {
+    background: rgba(2, 6, 23, 0.5);
+    -webkit-backdrop-filter: blur(12px) saturate(1.2);
+    backdrop-filter: blur(12px) saturate(1.2);
+  }
+
   .modal-backdrop-strong {
     background: rgba(244, 246, 248, 0.5);
     -webkit-backdrop-filter: blur(14px) saturate(1.08);
     backdrop-filter: blur(14px) saturate(1.08);
+  }
+
+  .dark .modal-backdrop-strong {
+    background: rgba(2, 6, 23, 0.6);
+    -webkit-backdrop-filter: blur(16px) saturate(1.2);
+    backdrop-filter: blur(16px) saturate(1.2);
   }
 }
 
@@ -266,6 +286,121 @@
 
 .build-scroll:hover::-webkit-scrollbar-thumb:hover {
   background-color: rgba(161, 161, 170, 0.5);
+}
+
+.dark .knowledge-debug-page {
+  color: rgb(226 232 240);
+}
+
+.dark .knowledge-debug-page .debug-header-shell {
+  background: rgba(2, 6, 23, 0.95);
+  border-color: rgba(51, 65, 85, 0.85);
+}
+
+.dark .knowledge-debug-page .debug-surface {
+  background: rgba(2, 6, 23, 0.72);
+  border-color: rgba(51, 65, 85, 0.85);
+}
+
+.dark .knowledge-debug-page .debug-tabbar {
+  border-color: rgba(51, 65, 85, 0.85);
+}
+
+.dark .knowledge-debug-page .debug-tab-active {
+  border-color: rgb(248 250 252);
+  color: rgb(248 250 252);
+}
+
+.dark .knowledge-debug-page .debug-tab-idle {
+  color: rgb(148 163 184);
+}
+
+.dark .knowledge-debug-page .debug-tab-idle:hover {
+  color: rgb(226 232 240);
+}
+
+.dark .knowledge-debug-page .debug-filter-active {
+  background: rgb(248 250 252);
+  color: rgb(15 23 42);
+}
+
+.dark .knowledge-debug-page .debug-filter-idle {
+  background: rgba(2, 6, 23, 0.72);
+  border-color: rgba(51, 65, 85, 0.85);
+  color: rgb(203 213 225);
+}
+
+.dark .knowledge-debug-page .border-emerald-200.bg-emerald-50 {
+  border-color: rgba(16, 185, 129, 0.35);
+  background: rgba(16, 185, 129, 0.1);
+  color: rgb(167 243 208);
+}
+
+.dark .knowledge-debug-page .border-rose-200.bg-rose-50 {
+  border-color: rgba(244, 63, 94, 0.35);
+  background: rgba(244, 63, 94, 0.1);
+  color: rgb(253 164 175);
+}
+
+.dark .knowledge-debug-page .border-rose-300.text-rose-700 {
+  border-color: rgba(244, 63, 94, 0.35);
+  color: rgb(253 164 175);
+}
+
+.dark .knowledge-debug-page .border-rose-300.text-rose-700:hover {
+  background: rgba(244, 63, 94, 0.1);
+}
+
+.dark .knowledge-debug-page .text-slate-900 {
+  color: rgb(248 250 252);
+}
+
+.dark .knowledge-debug-page .text-slate-600 {
+  color: rgb(203 213 225);
+}
+
+.dark .knowledge-debug-page .text-slate-500 {
+  color: rgb(148 163 184);
+}
+
+.dark .knowledge-debug-page .border-slate-200 {
+  border-color: rgba(51, 65, 85, 0.85);
+}
+
+.dark .knowledge-graph-view .bg-white {
+  background: rgba(2, 6, 23, 0.72);
+}
+
+.dark .knowledge-graph-view .bg-slate-50 {
+  background: rgba(15, 23, 42, 0.72);
+}
+
+.dark .knowledge-graph-view .bg-slate-100 {
+  background: rgba(30, 41, 59, 0.85);
+}
+
+.dark .knowledge-graph-view .border-slate-200,
+.dark .knowledge-graph-view .border-slate-100 {
+  border-color: rgba(51, 65, 85, 0.85);
+}
+
+.dark .knowledge-graph-view .text-slate-900 {
+  color: rgb(248 250 252);
+}
+
+.dark .knowledge-graph-view .text-slate-800,
+.dark .knowledge-graph-view .text-slate-700 {
+  color: rgb(226 232 240);
+}
+
+.dark .knowledge-graph-view .text-slate-600,
+.dark .knowledge-graph-view .text-slate-500 {
+  color: rgb(148 163 184);
+}
+
+.dark .knowledge-graph-view .text-slate-400,
+.dark .knowledge-graph-view .text-slate-300 {
+  color: rgb(100 116 139);
 }
 @media (prefers-reduced-motion: reduce) {
   *,

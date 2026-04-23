@@ -9,7 +9,11 @@ import structlog
 from app.utils.docgen_store import append_knowledge_build_recent_event, upsert_knowledge_build_chapter_progress
 from app.utils.time import utcnow
 from app.shared.infra.workflow.context import WorkflowContext
-from app.workflows.digest.docgen.lib.cover import build_docgen_cover_markdown, read_docgen_cover_artifact
+from app.workflows.digest.docgen.lib.cover import (
+    build_docgen_cover_markdown,
+    read_docgen_cover_artifact,
+    wait_for_docgen_cover_artifact,
+)
 from app.workflows.digest.docgen.nodes.common import get_effective_chapter_title, publish_docgen_progress
 from app.workflows.digest.docgen.lib.publish import (
     publish_staged_knowledge_docs,
@@ -42,6 +46,8 @@ def build_publish_document_node(*, context: WorkflowContext):
         cover_artifact = dict(state.get("cover_artifact") or {})
         if not cover_artifact:
             cover_artifact = dict(await read_docgen_cover_artifact(subject) or {})
+        if not cover_artifact:
+            cover_artifact = dict(await wait_for_docgen_cover_artifact(subject) or {})
         cover_markdown = str(state.get("cover_markdown") or "").strip()
         if not cover_markdown:
             cover_markdown = build_docgen_cover_markdown(cover_artifact)

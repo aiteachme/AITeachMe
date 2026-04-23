@@ -12,7 +12,7 @@ import {
   draftFromEntries,
   editableEntries,
   sameDraft,
-} from "./helpers";
+} from "./settingsHelpers";
 import type {
   ApiEnvelope,
   DraftRecord,
@@ -20,7 +20,7 @@ import type {
   SettingEntry,
   SettingSection,
   SettingsOverviewData,
-} from "./types";
+} from "./settingsTypes";
 
 function collectEditableServerEntries(sections: SettingSection[]): SettingEntry[] {
   return editableEntries(sections, "settings").concat(
@@ -59,6 +59,7 @@ export function useSettingsOverview({ isOpen }: UseSettingsOverviewOptions) {
     const envEntries = collectEditableEnvEntries(sections);
     const nextSettingsDraft = draftFromEntries(serverEntries);
     const nextEnvDraft = draftFromEntries(envEntries);
+
     setOverview(next);
     storeSystemSettingsOverview(next);
     setSettingsDraft(nextSettingsDraft);
@@ -125,18 +126,14 @@ export function useSettingsOverview({ isOpen }: UseSettingsOverviewOptions) {
 
   const patchServerSetting = useCallback(
     (key: string, value: DraftRecord[string]) => {
-      setSettingsDraft((prev) => (
-        prev[key] === value ? prev : { ...prev, [key]: value }
-      ));
+      setSettingsDraft((prev) => (prev[key] === value ? prev : { ...prev, [key]: value }));
     },
     [],
   );
 
   const patchEnvSetting = useCallback(
     (key: string, value: DraftRecord[string]) => {
-      setEnvDraft((prev) => (
-        prev[key] === value ? prev : { ...prev, [key]: value }
-      ));
+      setEnvDraft((prev) => (prev[key] === value ? prev : { ...prev, [key]: value }));
     },
     [],
   );
@@ -147,11 +144,11 @@ export function useSettingsOverview({ isOpen }: UseSettingsOverviewOptions) {
     setSaveError(null);
   }, [defaultSettingsDraft, defaultEnvDraft]);
 
-  const saveAll = useCallback(async () => {
+  const saveAll = useCallback(async (): Promise<boolean> => {
     if (!hasServerChanges && !hasEnvChanges) {
       setSaveState("saved");
       window.setTimeout(() => setSaveState("idle"), 1400);
-      return;
+      return true;
     }
 
     setSaveState("saving");
@@ -176,9 +173,11 @@ export function useSettingsOverview({ isOpen }: UseSettingsOverviewOptions) {
       applyOverview(response.data);
       setSaveState("saved");
       window.setTimeout(() => setSaveState("idle"), 1400);
+      return true;
     } catch (error) {
       setSaveState("error");
       setSaveError(getApiErrorMessage(error, "保存设置失败。"));
+      return false;
     }
   }, [
     applyOverview,

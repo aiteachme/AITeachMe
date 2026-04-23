@@ -150,7 +150,7 @@ export function HeroAnimation() {
           <motion.path
             key={`fill-${i}`}
             d={d}
-            fill="#0b0c0b"
+            className="fill-[#0b0c0b] dark:fill-slate-100"
             initial={{ opacity: 0 }}
             animate={{ opacity: isDrawn ? 1 : 0 }}
             transition={{ duration: 0.6, delay: i * 0.04, ease: "easeOut" }}
@@ -164,7 +164,7 @@ export function HeroAnimation() {
             cx={c.cx}
             cy={c.cy}
             r={c.r}
-            fill="#0b0c0b"
+            className="fill-[#0b0c0b] dark:fill-slate-100"
             initial={{ scale: 0, opacity: 0 }}
             animate={{ scale: isDrawn ? 1 : 0, opacity: isDrawn ? 1 : 0 }}
             transition={{ duration: 0.4, delay: 0.1 * i, type: "spring", stiffness: 300 }}
@@ -178,7 +178,7 @@ export function HeroAnimation() {
           cy="0"
           rx={ELLIPSE.rx}
           ry={ELLIPSE.ry}
-          fill="#0b0c0b"
+          className="fill-[#0b0c0b] dark:fill-slate-100"
           transform={`translate(${ELLIPSE.cx},${ELLIPSE.cy}) rotate(${ELLIPSE.rotate})`}
           initial={{ scale: 0, opacity: 0 }}
           animate={{ scale: isDrawn ? 1 : 0, opacity: isDrawn ? 1 : 0 }}

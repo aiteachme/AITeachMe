@@ -1162,21 +1162,21 @@ export function ExamsPage() {
 
   return (
     <>
-      <div className="min-h-[calc(100vh-4rem)] bg-[linear-gradient(180deg,#fbfcff_0%,#f4f7fb_55%,#eef3f8_100%)] px-4 py-6 sm:px-6 lg:px-8">
+      <div className="min-h-[calc(100vh-4rem)] bg-[linear-gradient(180deg,#fbfcff_0%,#f4f7fb_55%,#eef3f8_100%)] dark:bg-none dark:bg-slate-900 px-4 py-6 sm:px-6 lg:px-8">
         <div className="mx-auto flex max-w-7xl flex-col gap-6">
           <section className="overflow-hidden px-2 py-4 sm:px-4 lg:px-6">
             <div className="flex flex-col gap-8 lg:flex-row lg:items-center lg:justify-between">
               <div className="max-w-3xl">
-                <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white/80 px-3 py-1 text-sm font-medium text-slate-600">
+                <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 dark:border-slate-800 bg-white/80 dark:bg-slate-800/80 px-3 py-1 text-sm font-medium text-slate-600 dark:text-slate-300">
                   <Sparkles className="h-4 w-4 text-sky-500" />
                   Exam Studio
                 </div>
 
-                <h1 className="mt-5 text-4xl font-semibold tracking-[-0.04em] text-slate-950 sm:text-5xl">
+                <h1 className="mt-5 text-4xl font-semibold tracking-[-0.04em] text-slate-950 dark:text-slate-100 sm:text-5xl">
                   所有考试卷都在这里
                 </h1>
 
-                <p className="mt-4 max-w-2xl text-base leading-8 text-slate-600 sm:text-lg">
+                <p className="mt-4 max-w-2xl text-base leading-8 text-slate-600 dark:text-slate-400 sm:text-lg">
                   一键创建新的练习卷，继续完成未做完的测试，也可以回看已经生成过的考卷与得分记录。
                 </p>
 
@@ -1192,7 +1192,7 @@ export function ExamsPage() {
                   <Button
                     size="lg"
                     variant="outline"
-                    className="h-14 rounded-full px-6 text-base font-semibold text-slate-800"
+                    className="h-14 rounded-full px-6 text-base font-semibold text-slate-800 dark:text-slate-200 dark:border-slate-700"
                     onClick={() => navigate(`/subject/${subjectId}/exams/question-templates`)}
                   >
                     <BookOpen className="h-5 w-5" />
@@ -1201,7 +1201,7 @@ export function ExamsPage() {
                   <Button
                     size="lg"
                     variant="outline"
-                    className="h-14 rounded-full px-6 text-base font-semibold text-slate-800"
+                    className="h-14 rounded-full px-6 text-base font-semibold text-slate-800 dark:text-slate-200 dark:border-slate-700"
                     onClick={() => navigate(`/subject/${subjectId}/exams/question-types`)}
                   >
                     <Tags className="h-5 w-5" />
@@ -1244,10 +1244,10 @@ export function ExamsPage() {
                     }
                     className="flex w-full items-center justify-between px-1 py-2 text-left"
                   >
-                    <h3 className="text-lg font-semibold tracking-[-0.02em] text-slate-950">
+                    <h3 className="text-lg font-semibold tracking-[-0.02em] text-slate-950 dark:text-slate-100">
                       {group.title}({group.items.length})
                     </h3>
-                    <div className="grid h-10 w-10 place-items-center rounded-full text-slate-500">
+                    <div className="grid h-10 w-10 place-items-center rounded-full text-slate-500 dark:text-slate-400">
                       <ChevronDown
                         className={`h-5 w-5 transition-transform ${
                           expandedGroups[group.key] ? "rotate-180" : ""
@@ -1306,7 +1306,7 @@ export function ExamsPage() {
 
                                   <div className="min-w-0">
                                     <div className="flex flex-wrap items-center gap-3">
-                                      <h3 className="truncate text-xl font-semibold tracking-[-0.03em] text-slate-950">
+                                      <h3 className="truncate text-xl font-semibold tracking-[-0.03em] text-slate-950 dark:text-slate-100">
                                         {buildExamTitle(item)}
                                       </h3>
                                       <span className={`rounded-full px-3 py-1 text-xs font-semibold ${statusMeta.tone}`}>
@@ -1314,7 +1314,7 @@ export function ExamsPage() {
                                       </span>
                                     </div>
 
-                                    <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-2 text-sm text-slate-500">
+                                    <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-2 text-sm text-slate-500 dark:text-slate-400">
                                       <span className="inline-flex items-center gap-2">
                                         <Layers3 className="h-4 w-4" />
                                         {formatModeLabel(item.exam_mode)}
@@ -1330,10 +1330,10 @@ export function ExamsPage() {
                                     </div>
 
                                     <div className="mt-4 flex flex-wrap items-center gap-3">
-                                      <div className="rounded-full bg-slate-100 px-3 py-1.5 text-sm font-medium text-slate-700">
+                                      <div className="rounded-full bg-slate-100 dark:bg-slate-800 px-3 py-1.5 text-sm font-medium text-slate-700 dark:text-slate-300">
                                         得分：{scoreText}
                                       </div>
-                                      <div className="rounded-full bg-slate-100 px-3 py-1.5 text-sm font-medium text-slate-700">
+                                      <div className="rounded-full bg-slate-100 dark:bg-slate-800 px-3 py-1.5 text-sm font-medium text-slate-700 dark:text-slate-300">
                                         学科：{item.subject}
                                       </div>
                                     </div>
@@ -1362,7 +1362,7 @@ export function ExamsPage() {
                                       <Trash2 className="h-[18px] w-[18px]" />
                                     </Button>
                                   </div>
-                                  <div className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-slate-100 text-slate-600 transition group-hover:bg-slate-900 group-hover:text-white">
+                                  <div className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 transition group-hover:bg-slate-900 dark:group-hover:bg-slate-700 group-hover:text-white">
                                     <ChevronRight className="h-5 w-5" />
                                   </div>
                                 </div>
@@ -1448,7 +1448,7 @@ function ExamCatalogShell({
 }) {
   const navigate = useNavigate();
   return (
-    <div className="min-h-[calc(100vh-4rem)] bg-[linear-gradient(180deg,#fbfcff_0%,#f4f7fb_55%,#eef3f8_100%)] px-4 py-6 sm:px-6 lg:px-8">
+    <div className="min-h-[calc(100vh-4rem)] bg-[linear-gradient(180deg,#fbfcff_0%,#f4f7fb_55%,#eef3f8_100%)] dark:bg-none dark:bg-slate-900 px-4 py-6 sm:px-6 lg:px-8">
       <div className="mx-auto flex max-w-7xl flex-col gap-6">
         <header className="px-2 py-4 sm:px-4 lg:px-6">
           <button

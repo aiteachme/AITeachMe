@@ -32,8 +32,8 @@ export function ChatTranscript({ messages, onOpenCitation }: ChatTranscriptProps
                 className={cn(
                   "flex h-10 w-10 shrink-0 items-center justify-center shadow-sm",
                   isAssistant
-                    ? "rounded-full bg-slate-50 ring-2 ring-slate-200/50 p-1.5"
-                    : "rounded-full bg-slate-900 text-white",
+                    ? "rounded-full bg-slate-50 ring-2 ring-slate-200/50 p-1.5 dark:bg-slate-900 dark:ring-slate-700/70"
+                    : "rounded-full bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900",
                 )}
               >
                 {isAssistant ? <img src="/logo.svg" alt="AI" className="h-full w-full object-contain" /> : <UserRound className="h-4 w-4" />}
@@ -43,21 +43,21 @@ export function ChatTranscript({ messages, onOpenCitation }: ChatTranscriptProps
                 <div
                   className={cn(
                     "mb-1.5 flex items-center gap-2 text-[11px] font-medium tracking-[0.12em]",
-                    isAssistant ? "text-emerald-600/90" : "justify-end text-slate-400",
+                    isAssistant ? "text-emerald-600/90 dark:text-emerald-400/90" : "justify-end text-slate-400 dark:text-slate-500",
                   )}
                 >
                   <span>{isAssistant ? "AITeachMe" : "You"}</span>
                 </div>
 
                 {isAssistant ? (
-                  <div className="rounded-2xl bg-white/80 px-4 py-3 text-[15px] leading-7 text-slate-800 shadow-[0_10px_35px_-24px_rgba(15,23,42,0.42)]">
+                  <div className="rounded-2xl bg-white/80 px-4 py-3 text-[15px] leading-7 text-slate-800 shadow-[0_10px_35px_-24px_rgba(15,23,42,0.42)] dark:bg-slate-950/90 dark:text-slate-100 dark:shadow-[0_20px_45px_-28px_rgba(0,0,0,0.78)]">
                     <MarkdownViewer content={message.content || " "} />
                     {message.status === "streaming" ? (
-                      <span className="ml-0.5 inline-block h-4 w-0.5 animate-pulse bg-slate-500 align-middle" />
+                      <span className="ml-0.5 inline-block h-4 w-0.5 animate-pulse bg-slate-500 align-middle dark:bg-slate-400" />
                     ) : null}
                   </div>
                 ) : (
-                  <p className="whitespace-pre-wrap rounded-3xl bg-slate-900 px-4 py-3 text-[15px] leading-7 text-slate-100 shadow-[0_10px_28px_-20px_rgba(15,23,42,0.6)]">
+                  <p className="whitespace-pre-wrap rounded-3xl bg-slate-900 px-4 py-3 text-[15px] leading-7 text-slate-100 shadow-[0_10px_28px_-20px_rgba(15,23,42,0.6)] dark:bg-slate-100 dark:text-slate-900 dark:shadow-[0_18px_30px_-24px_rgba(255,255,255,0.22)]">
                     {message.content}
                   </p>
                 )}
@@ -67,8 +67,8 @@ export function ChatTranscript({ messages, onOpenCitation }: ChatTranscriptProps
                     className={cn(
                       "mt-3 inline-flex items-center gap-2 rounded-2xl px-3 py-2 text-sm",
                       message.status === "interrupted"
-                        ? "bg-amber-50 text-amber-700"
-                        : "bg-rose-50 text-rose-600",
+                        ? "bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-300"
+                        : "bg-rose-50 text-rose-600 dark:bg-rose-500/10 dark:text-rose-300",
                     )}
                   >
                     <AlertCircle className="h-4 w-4" />

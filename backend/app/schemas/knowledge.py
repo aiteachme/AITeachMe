@@ -300,6 +300,33 @@ class KnowledgeBuildStatusResponse(BaseModel):
     current_stage_description: str | None = Field(default=None, description="Friendly description of the current build stage.")
 
 
+class KnowledgeBuildLaneRuntimeResponse(BaseModel):
+    """One runtime lane snapshot used by polling clients."""
+
+    lane: Literal["aggregate", "docgen", "graph"]
+    build_group_id: str | None = Field(default=None, description="Shared build-group identifier across related lanes.")
+    status: str = Field(description="idle / accepted / running / completed / failed / cancelled / skipped / partial_failed")
+    stage: str = Field(description="Current lifecycle stage for this lane.")
+    started_at: datetime | None = Field(default=None, description="Lane start timestamp.")
+    finished_at: datetime | None = Field(default=None, description="Lane finish timestamp when terminal.")
+    requested_at: datetime | None = Field(default=None, description="Original request timestamp for this lane.")
+    error_message: str | None = Field(default=None, description="Lane failure or cancellation reason.")
+    progress_pct: int = Field(default=0, description="Backend progress percentage for this lane.")
+    current_stage_description: str | None = Field(default=None, description="Friendly description of the current lane stage.")
+    metrics: dict[str, object] = Field(default_factory=dict, description="Compact metrics for this lane.")
+
+
+class KnowledgeBuildRuntimeResponse(BaseModel):
+    """Unified runtime response for aggregate/docgen/graph lanes."""
+
+    build_group_id: str | None = Field(default=None, description="Shared build-group identifier across related lanes.")
+    aggregate: KnowledgeBuildLaneRuntimeResponse | None = Field(default=None, description="Aggregate runtime across all required lanes.")
+    docgen: KnowledgeBuildLaneRuntimeResponse | None = Field(default=None, description="DocGen lane runtime.")
+    graph: KnowledgeBuildLaneRuntimeResponse | None = Field(default=None, description="Graph lane runtime.")
+    docgen_preview: KnowledgeBuildPreviewResponse | None = Field(default=None, description="DocGen-oriented preview payload for waiting UIs.")
+    docgen_metrics: KnowledgeBuildMetricsResponse | None = Field(default=None, description="DocGen-oriented live diagnostics for waiting UIs.")
+
+
 class DocGenGetResponse(BaseModel):
     """Knowledge docs get response."""
 

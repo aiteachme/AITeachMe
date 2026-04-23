@@ -13,7 +13,8 @@ interface MermaidBlockProps {
 
 let mermaidConfigured = false;
 const MINDMAP_ROOT_RE = /^root\(\((.+)\)\)$/i;
-const MINDMAP_MIXED_SYNTAX_RE = /-->|==>|\b(?:graph|flowchart|sequencediagram|classdiagram|statediagram|erdiagram|gantt)\b/i;
+const MINDMAP_MIXED_SYNTAX_RE =
+  /-->|==>|\b(?:graph|flowchart|sequencediagram|classdiagram|statediagram|erdiagram|gantt)\b/i;
 
 function ensureMermaidConfigured() {
   if (mermaidConfigured) {
@@ -63,10 +64,7 @@ function hashChart(chart: string): string {
 }
 
 function normalizeMermaidSource(chart: string): string {
-  return String(chart ?? "")
-    .replace(/\uFEFF/g, "")
-    .replace(/\r\n?/g, "\n")
-    .trim();
+  return String(chart ?? "").replace(/\uFEFF/g, "").replace(/\r\n?/g, "\n").trim();
 }
 
 function sanitizeMindmapLabel(label: string): string {
@@ -74,7 +72,10 @@ function sanitizeMindmapLabel(label: string): string {
     .normalize("NFKC")
     .replace(/[`$]/g, " ")
     .replace(/[<>{}\[\]]/g, " ")
-    .replace(/\b(?:mindmap|root|graph|flowchart|subgraph|classDef|class|style|click|section|title|LR|RL|TB|BT)\b/gi, " ")
+    .replace(
+      /\b(?:mindmap|root|graph|flowchart|subgraph|classDef|class|style|click|section|title|LR|RL|TB|BT)\b/gi,
+      " ",
+    )
     .replace(/\s+/g, " ")
     .trim()
     .slice(0, 32);
@@ -196,8 +197,14 @@ function buildChartCandidates(chart: string): string[] {
     return [normalized];
   }
 
-  const candidates = [normalized, normalizeMindmapChart(normalized), buildSimplifiedMindmap(normalized)];
-  return candidates.filter((candidate, index) => candidate && candidates.indexOf(candidate) === index);
+  const candidates = [
+    normalized,
+    normalizeMindmapChart(normalized),
+    buildSimplifiedMindmap(normalized),
+  ];
+  return candidates.filter(
+    (candidate, index) => candidate && candidates.indexOf(candidate) === index,
+  );
 }
 
 async function renderMermaidChart(diagramId: string, chart: string) {
@@ -274,26 +281,31 @@ export function MermaidBlock({ chart, variant = "default" }: MermaidBlockProps) 
       className={cn(
         "my-6 overflow-hidden border",
         isDocument
-          ? "rounded-[28px] border-sky-100 bg-[radial-gradient(circle_at_top_left,#e0f2fe_0%,#ffffff_38%,#f8fafc_100%)] shadow-[0_28px_80px_-56px_rgba(14,116,144,0.55)]"
-          : "rounded-2xl border-sky-100 bg-sky-50/70 shadow-sm",
+          ? "rounded-[28px] border-sky-100 bg-[radial-gradient(circle_at_top_left,#e0f2fe_0%,#ffffff_38%,#f8fafc_100%)] shadow-[0_28px_80px_-56px_rgba(14,116,144,0.55)] dark:border-sky-500/20 dark:bg-[radial-gradient(circle_at_top_left,rgba(14,165,233,0.16)_0%,rgba(15,23,42,0.96)_42%,rgba(2,6,23,0.98)_100%)] dark:shadow-[0_32px_72px_-56px_rgba(14,165,233,0.45)]"
+          : "rounded-2xl border-sky-100 bg-sky-50/70 shadow-sm dark:border-sky-500/20 dark:bg-slate-950/80 dark:shadow-[0_18px_40px_-28px_rgba(0,0,0,0.72)]",
       )}
     >
       <div
         className={cn(
           "flex items-center justify-between gap-3 border-b px-4 py-3",
-          isDocument ? "border-sky-100/80 bg-white/70" : "border-sky-100/80 bg-white/80",
+          isDocument
+            ? "border-sky-100/80 bg-white/70 dark:border-sky-500/20 dark:bg-slate-950/70"
+            : "border-sky-100/80 bg-white/80 dark:border-sky-500/20 dark:bg-slate-950/80",
         )}
       >
         <div className="flex items-center gap-2">
-          <span className="inline-flex h-8 w-8 items-center justify-center rounded-2xl bg-sky-100 text-sky-700">
+          <span className="inline-flex h-8 w-8 items-center justify-center rounded-2xl bg-sky-100 text-sky-700 dark:bg-sky-500/15 dark:text-sky-300">
             <Sparkles className="h-4 w-4" />
           </span>
           <div>
-            <p className="text-sm font-semibold text-slate-900">{diagramLabel}</p>
-            <p className="text-xs text-slate-500">Mermaid 实时渲染</p>
+            <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+              {diagramLabel}
+            </p>
+            <p className="text-xs text-slate-500 dark:text-slate-400">Mermaid 实时渲染</p>
           </div>
         </div>
-        <div className="flex items-center gap-2 text-xs text-slate-500">
+
+        <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
           {svgMarkup ? null : errorMessage ? (
             <>
               <TriangleAlert className="h-3.5 w-3.5 text-amber-500" />
@@ -312,17 +324,17 @@ export function MermaidBlock({ chart, variant = "default" }: MermaidBlockProps) 
         <div
           className={cn(
             "overflow-x-auto px-4 py-5 [&_svg]:mx-auto [&_svg]:h-auto [&_svg]:max-w-full",
-            isDocument ? "bg-transparent" : "bg-white/60",
+            isDocument ? "bg-transparent" : "bg-white/60 dark:bg-slate-950/30",
           )}
           dangerouslySetInnerHTML={{ __html: svgMarkup }}
         />
       ) : (
         <div className="px-4 py-5">
-          <pre className="overflow-x-auto rounded-2xl bg-slate-950 p-4 text-[13px] leading-6 text-slate-100">
+          <pre className="overflow-x-auto rounded-2xl bg-slate-950 p-4 text-[13px] leading-6 text-slate-100 dark:border dark:border-slate-800">
             <code>{chart}</code>
           </pre>
           {errorMessage ? (
-            <p className="mt-3 text-xs leading-5 text-amber-700">
+            <p className="mt-3 text-xs leading-5 text-amber-700 dark:text-amber-300">
               Mermaid 渲染失败：{errorMessage}
             </p>
           ) : null}

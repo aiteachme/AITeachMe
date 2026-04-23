@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import tempfile
 import zipfile
@@ -9,8 +10,16 @@ from pathlib import Path
 from typing import Any
 
 import structlog
-from sqlmodel import Session
+from sqlmodel import Session, select
+
+from app.models import RetrievalChunk, Subject
+from app.repositories.knowledge import knowledge_repo
 from app.schemas.export_import import ImportOptions, ImportResultData
+from app.shared.infra.embedding import aembed_texts
+from app.shared.infra.subject import (
+    resolve_subject_build_vector_status,
+    should_generate_subject_embeddings,
+)
 from app.shared.infra.storage import (
     build_subject_storage_scope,
     get_content_store,
@@ -83,6 +92,13 @@ def import_subject(
             session.rollback()
             _cleanup_import_artifacts(new_slug, user_id=user_id)
             raise
+
+        _rebuild_imported_embeddings(
+            session,
+            subject_slug=new_slug,
+            imported_counts=imported_counts,
+            warnings=warnings,
+        )
 
         logger.info(
             "subject_imported",
@@ -169,6 +185,103 @@ def _cleanup_import_artifacts(subject_slug: str, *, user_id: str) -> None:
             subject=subject_slug,
             error=str(exc),
         )
+
+
+def _rebuild_imported_embeddings(
+    session: Session,
+    *,
+    subject_slug: str,
+    imported_counts: dict[str, int],
+    warnings: list[str],
+) -> None:
+    """Best-effort rebuild for imported retrieval chunk embeddings."""
+
+    if int(imported_counts.get("retrieval_chunk", 0) or 0) <= 0:
+        return
+
+    subject = session.exec(select(Subject).where(Subject.slug == subject_slug)).first()
+    if subject is None:
+        warnings.append("embedding_rebuild: imported subject not found after commit")
+        return
+
+    try:
+        resolve_subject_build_vector_status(
+            session,
+            subject=subject,
+            embedding_resolution=None,
+        )
+    except Exception as exc:
+        logger.warning(
+            "subject_import_embedding_precheck_failed",
+            subject=subject_slug,
+            error=str(exc),
+        )
+        warnings.append(f"embedding_rebuild: precheck failed: {exc}")
+        return
+
+    if not should_generate_subject_embeddings(session, subject_slug=subject_slug):
+        logger.info(
+            "subject_import_embedding_skipped",
+            subject=subject_slug,
+            reason="subject_vectors_disabled_or_unavailable",
+        )
+        return
+
+    chunks = list(
+        session.exec(
+            select(RetrievalChunk)
+            .where(
+                RetrievalChunk.subject == subject_slug,
+                RetrievalChunk.is_active.is_(True),
+            )
+            .order_by(RetrievalChunk.document_id, RetrievalChunk.chunk_index)
+        ).all()
+    )
+    chunk_rows = [chunk for chunk in chunks if chunk.id is not None]
+    if not chunk_rows:
+        return
+
+    payloads = [f"{chunk.title}\n{chunk.content}".strip() for chunk in chunk_rows]
+    embeddings = _run_async(aembed_texts(payloads, soft_fail=True))
+    if not embeddings:
+        logger.warning(
+            "subject_import_embedding_soft_failed",
+            subject=subject_slug,
+            chunk_count=len(chunk_rows),
+        )
+        warnings.append("embedding_rebuild: skipped because embedding service is unavailable")
+        return
+
+    try:
+        knowledge_repo.bulk_insert_embeddings(
+            session,
+            subject=subject_slug,
+            chunk_ids=[int(chunk.id) for chunk in chunk_rows],
+            embeddings=embeddings,
+        )
+    except Exception as exc:
+        logger.warning(
+            "subject_import_embedding_rebuild_failed",
+            subject=subject_slug,
+            error=str(exc),
+        )
+        warnings.append(f"embedding_rebuild: failed: {exc}")
+
+
+def _run_async(coro):
+    """Run one coroutine safely from sync import flows."""
+
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        loop = None
+
+    if loop is not None and loop.is_running():
+        import concurrent.futures
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+            return pool.submit(asyncio.run, coro).result()
+    return asyncio.run(coro)
 
 
 __all__ = ["import_subject"]
