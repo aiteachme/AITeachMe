@@ -23,6 +23,7 @@ from app.models.knowledge_taxonomy import (
     normalize_type_source,
     validate_relation_direction,
 )
+from app.utils.knowledge_helpers import normalize_name
 from app.workflows.digest.kg_file_ingest.prompts import SYSTEM_PROMPT_KNOWLEDGE_EXTRACT, USER_PROMPT_KNOWLEDGE_EXTRACT
 from app.workflows.digest.common.semantic_titles import (
     DEFAULT_QUESTION_TOPIC,
@@ -90,6 +91,16 @@ _DOCS_LABEL_TYPE_MAP = {
 _DOCS_RETRY_SIGNAL_RE = re.compile(
     r"(?:定义|定理|公式|性质|法则|原理|几何意义|物理意义|判定|判别|方法|步骤|证明|推论|注意|易错|Remark|Definition|Theorem|Formula|Example|Proof)",
     re.IGNORECASE,
+)
+_DOCS_RELATIVE_TITLE_TYPE_RULES: tuple[tuple[re.Pattern[str], str], ...] = (
+    (re.compile(r"(?:定义|definition)", re.IGNORECASE), "definition"),
+    (re.compile(r"(?:定理|性质|引理|推论|theorem|lemma|proposition|property)", re.IGNORECASE), "theorem"),
+    (re.compile(r"(?:公式|方程|恒等式|formula|equation|identity)", re.IGNORECASE), "formula"),
+    (re.compile(r"(?:例题|示例|example|case)", re.IGNORECASE), "example"),
+    (re.compile(r"(?:练习|习题|exercise|problem)", re.IGNORECASE), "exercise"),
+    (re.compile(r"(?:证明|推导|proof|derivation)", re.IGNORECASE), "proof_step"),
+    (re.compile(r"(?:方法|步骤|策略|algorithm|method|procedure|step)", re.IGNORECASE), "method"),
+    (re.compile(r"(?:几何意义|物理意义|应用|注意|易错|备注|说明|remark|note|intuition|interpretation)", re.IGNORECASE), "remark"),
 )
 # 停用词：过于宽泛不适合作为知识点
 _CONCEPT_STOPWORDS = frozenset({
@@ -455,13 +466,7 @@ def _build_docs_section_support_result(
     chapter_topic_hints: list[str] | None = None,
     subject_context: str | None = None,
 ) -> ChunkExtractionResult:
-    support = _build_topic_fallback(
-        chunk_content=chunk_content,
-        chunk_title=chunk_title,
-        header_path=header_path,
-        chapter_topic_hints=chapter_topic_hints,
-        subject_context=subject_context,
-    )
+    support = ChunkExtractionResult(nodes=[], edges=[])
     topic_path = choose_semantic_topic_path(
         header_path=header_path,
         fallback_title=chunk_title,
@@ -469,8 +474,13 @@ def _build_docs_section_support_result(
         extracted_terms=_extract_key_terms(chunk_content),
         subject_context=subject_context,
     )
-    leaf_name = topic_path[-1]
+    leaf_name = _qualify_docs_unit_name(
+        chunk_title=chunk_title,
+        header_path=header_path,
+        topic_path=topic_path,
+    )
     existing_names = {node.name for node in support.nodes}
+    typed_line_count = len(list(_DOCS_TYPED_LINE_RE.finditer(chunk_content)))
 
     def _append_node(name: str, node_type: str, summary: str) -> None:
         cleaned_name = _normalize_text(name)
@@ -486,14 +496,19 @@ def _build_docs_section_support_result(
                 parent_entity_name=(leaf_name if normalize_knowledge_unit_type(node_type) not in {"concept", "method"} else None),
             )
         )
-        support.edges.append(
-            CandidateEdge(
-                source_name=cleaned_name,
-                target_name=leaf_name,
-                edge_type=_hint_edge_type_for_node(node_type),
-                description=f"{cleaned_name} is grounded in section {leaf_name}.",
+        if cleaned_name != leaf_name:
+            support.edges.append(
+                CandidateEdge(
+                    source_name=cleaned_name,
+                    target_name=leaf_name,
+                    edge_type=_hint_edge_type_for_node(node_type),
+                    description=f"{cleaned_name} is grounded in section {leaf_name}.",
+                )
             )
-        )
+
+    primary_type = _infer_docs_primary_node_type(chunk_title=chunk_title, chunk_content=chunk_content)
+    if leaf_name and (typed_line_count == 0 or primary_type == "concept"):
+        _append_node(leaf_name, primary_type, chunk_content or chunk_title)
 
     for match in _DOCS_TYPED_LINE_RE.finditer(chunk_content):
         label = (match.group("label") or "").strip().lower()
@@ -502,22 +517,65 @@ def _build_docs_section_support_result(
         if not node_type or not value:
             continue
         unit_name = value[:64]
-        if node_type in {"definition", "formula", "theorem"} and leaf_name and leaf_name not in value:
+        if (
+            node_type in {"definition", "formula", "theorem"}
+            and leaf_name
+            and (
+                leaf_name not in value
+                or len(value) > 18
+                or bool(re.search(r"[。！？.!?=\s]", value))
+            )
+        ):
             unit_name = f"{leaf_name}{match.group('label')}"
         _append_node(unit_name, node_type, value)
 
     summary_match = _DOCS_SUMMARY_SENTENCE_RE.search(chunk_content)
-    if summary_match is not None and leaf_name and f"{leaf_name}定义" not in existing_names:
+    if (
+        summary_match is not None
+        and leaf_name
+        and f"{leaf_name}定义" not in existing_names
+        and typed_line_count == 0
+        and primary_type == "concept"
+    ):
         sentence = _normalize_text(summary_match.group("sentence") or "")
         if sentence:
             _append_node(f"{leaf_name}定义", "definition", sentence)
 
-    if _DOCS_EXPLANATION_CUE_RE.search(chunk_title) and leaf_name:
-        cue_name = _normalize_text(chunk_title)
-        if cue_name and cue_name not in existing_names and cue_name != leaf_name:
-            _append_node(cue_name, "concept", chunk_title)
-
     return support
+
+
+def _infer_docs_primary_node_type(*, chunk_title: str, chunk_content: str) -> str:
+    for pattern, node_type in _DOCS_RELATIVE_TITLE_TYPE_RULES:
+        if pattern.search(chunk_title):
+            return node_type
+    if _INDEPENDENT_FORMULA_RE.search(chunk_content):
+        return "formula"
+    return "concept"
+
+
+def _qualify_docs_unit_name(
+    *,
+    chunk_title: str,
+    header_path: str,
+    topic_path: list[str] | None = None,
+) -> str:
+    cleaned_title = clean_semantic_title(chunk_title) or _normalize_text(chunk_title)
+    if not cleaned_title:
+        return ""
+    parts = [part.strip() for part in (topic_path or _split_header_path(header_path, chunk_title)) if part.strip()]
+    if len(parts) < 2:
+        return cleaned_title
+
+    parent_name = parts[-2]
+    for pattern, _node_type in _DOCS_RELATIVE_TITLE_TYPE_RULES:
+        if pattern.search(cleaned_title):
+            if re.search(r"[\u4e00-\u9fff]", cleaned_title):
+                return f"{parent_name}的{cleaned_title}"
+            return f"{parent_name} {cleaned_title}"
+
+    if normalize_name(cleaned_title) == normalize_name(parent_name):
+        return parent_name
+    return cleaned_title
 
 
 async def _repair_docs_extraction_after_empty(

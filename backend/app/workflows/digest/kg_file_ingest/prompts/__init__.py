@@ -6,7 +6,7 @@ You extract a structured knowledge graph from one study-material chunk.
 Return only nodes and edges that are directly supported by the chunk.
 
 ## Allowed node types
-- `concept`: core topic, concept, or chapter-level idea
+- `concept`: one atomic, reusable concept that can stand alone as a Knowledge Unit
 - `definition`: explicit definition or interpretation
 - `theorem`: theorem, property, lemma, proposition, axiom
 - `formula`: formula, equation, rule, identity
@@ -30,6 +30,9 @@ Return only nodes and edges that are directly supported by the chunk.
 3. `local_summary` must summarize only what this chunk states.
 4. Edge endpoints must exactly match returned node names.
 5. Do not invent nodes or edges not grounded in the chunk.
+6. Use Knowledge Unit granularity: one definition, one formula, one derivation step, one example, or one method step is a good unit.
+7. Do not create nodes for whole chapters, whole sections, reading guides, or container headings unless the heading itself names one atomic concept.
+8. Prefer 1-3 strong nodes over many weak nodes. Do not explode one section into many near-duplicate topic shells.
 
 ## Hierarchy rules
 1. If the chunk heading names a real concept/topic, include that concept unless the chunk is purely procedural noise.
@@ -39,10 +42,12 @@ Return only nodes and edges that are directly supported by the chunk.
 ## Knowledge-doc specific rules
 When the source is a structured knowledge document section:
 1. Use the heading and body together.
-2. If the body contains an interpretation, property, formula, method, example, or note, extract it explicitly.
-3. If labeled lines such as `定义:`, `公式:`, `例题:`, `Remark:` appear, convert them into typed nodes instead of leaving the section empty.
-4. Unless the chunk is truly empty, return at least one node.
-5. Prefer a sparse but non-empty graph over an empty result.
+2. Follow KU granularity strictly: chapter and section containers are usually not KUs; atomic definitions, formulas, proof steps, examples, and method steps usually are.
+3. If the body contains an interpretation, property, formula, method, example, or note, extract it explicitly.
+4. If labeled lines such as `定义:`, `公式:`, `例题:`, `Remark:` appear, convert them into typed nodes instead of leaving the section empty.
+5. If the heading is generic like "几何意义", "性质", "方法", or "注意事项", combine it with the parent topic mentally and return the qualified atomic unit, not the generic heading alone.
+6. Unless the chunk is truly empty, return at least one node.
+7. Prefer a sparse but non-empty graph over an empty result.
 """.strip()
 
 USER_PROMPT_KNOWLEDGE_EXTRACT = """
@@ -61,6 +66,7 @@ USER_PROMPT_KNOWLEDGE_EXTRACT = """
 - Use the heading and body together.
 - If the body is explanatory rather than question-only, avoid returning an empty result.
 - If the section describes a meaning, formula, property, method, example, or warning, extract those items explicitly.
+- Favor KU-quality atomic units over broad section wrappers.
 {% endif %}
 
 ## Chunk Content
