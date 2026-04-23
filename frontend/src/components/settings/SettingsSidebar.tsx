@@ -1,13 +1,11 @@
-import { memo } from "react";
-import { Link2, GitFork, Sparkles, Globe, Server, Activity } from "lucide-react";
-import type { ReactNode } from "react";
+import { memo, type ReactNode } from "react";
+import { Activity, GitFork, Globe, Link2, Monitor, Server, Sparkles } from "lucide-react";
 
 import { cn } from "../../lib/utils";
+import { SETTINGS_STYLES } from "./settingsStyles";
+import type { SectionId, SettingSection } from "./settingsTypes";
 
-import { SETTINGS_STYLES } from "./constants";
-import type { SectionId, SettingSection } from "./types";
-
-interface SettingsNavProps {
+interface SettingsSidebarProps {
   activeSection: SectionId;
   onSelect: (id: SectionId) => void;
   sections: SettingSection[];
@@ -16,6 +14,8 @@ interface SettingsNavProps {
 function getSectionIcon(sectionId: string): ReactNode {
   const iconClassName = SETTINGS_STYLES.nav.itemIconSize;
   switch (sectionId) {
+    case "system_ui":
+      return <Monitor className={iconClassName} />;
     case "connection":
       return <Link2 className={iconClassName} />;
     case "models":
@@ -33,11 +33,11 @@ function getSectionIcon(sectionId: string): ReactNode {
   }
 }
 
-export const SettingsNav = memo(function SettingsNav({
+export const SettingsSidebar = memo(function SettingsSidebar({
   activeSection,
   onSelect,
   sections,
-}: SettingsNavProps) {
+}: SettingsSidebarProps) {
   return (
     <nav className={SETTINGS_STYLES.nav.root}>
       <div className={SETTINGS_STYLES.nav.header}>
@@ -60,9 +60,7 @@ export const SettingsNav = memo(function SettingsNav({
               <span
                 className={cn(
                   SETTINGS_STYLES.nav.itemIcon,
-                  active
-                    ? SETTINGS_STYLES.nav.itemIconActive
-                    : SETTINGS_STYLES.nav.itemIconIdle,
+                  active ? SETTINGS_STYLES.nav.itemIconActive : SETTINGS_STYLES.nav.itemIconIdle,
                 )}
               >
                 {getSectionIcon(section.id)}

@@ -40,3 +40,4 @@ export { DocEmptyState } from "./DocEmptyState";
 export { DocErrorState } from "./DocErrorState";
 export { DocUpdatingBanner } from "./DocUpdatingBanner";
 export { DocTocSidebar } from "./DocTocSidebar";
+export { KnowledgeDocViewer } from "./KnowledgeDocViewer";

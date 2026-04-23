@@ -17,14 +17,14 @@ import {
   buildKnowledgeOverviewQueryKey,
   fetchKnowledgeOverview,
 } from "../../lib/knowledgeOverview";
-import { DigestBuildProgress } from "./DigestBuildPanel";
+import { DigestBuildProgress } from "../build-plan/DigestBuildPanel";
 import { GraphBuildButton } from "./GraphBuildButton";
 import { SubjectVectorNotice } from "./SubjectVectorNotice";
 import { Button } from "../ui/Button";
 import { Modal } from "../ui/Modal";
 
 const SemanticUniverse = lazy(() =>
-  import("./SemanticUniverse").then((module) => ({ default: module.SemanticUniverse })),
+  import("../pages/SemanticUniverse").then((module) => ({ default: module.SemanticUniverse })),
 );
 const KnowledgeGraphView = lazy(() =>
   import("./KnowledgeGraphView").then((module) => ({ default: module.KnowledgeGraphView })),

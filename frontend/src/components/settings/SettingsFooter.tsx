@@ -1,12 +1,10 @@
 import { memo, useState } from "react";
-
 import { CheckCircle2, Loader2, RefreshCcw } from "lucide-react";
 
 import { cn } from "../../lib/utils";
-
-import { SETTINGS_STYLES } from "./constants";
-import { SettingsResetConfirmModal } from "./SettingsResetConfirmModal";
-import type { SaveState } from "./types";
+import { SettingsResetDialog } from "./SettingsResetDialog";
+import { SETTINGS_STYLES } from "./settingsStyles";
+import type { SaveState } from "./settingsTypes";
 
 interface SettingsFooterProps {
   saveState: SaveState;
@@ -73,7 +71,7 @@ export const SettingsFooter = memo(function SettingsFooter({
   onReset,
   onSave,
 }: SettingsFooterProps) {
-  const [isResetConfirmOpen, setIsResetConfirmOpen] = useState(false);
+  const [isResetDialogOpen, setIsResetDialogOpen] = useState(false);
 
   return (
     <>
@@ -83,11 +81,11 @@ export const SettingsFooter = memo(function SettingsFooter({
         </div>
 
         <div className={SETTINGS_STYLES.footer.actions}>
-          {isLocalRuntime && (
+          {isLocalRuntime ? (
             <>
               <button
                 type="button"
-                onClick={() => setIsResetConfirmOpen(true)}
+                onClick={() => setIsResetDialogOpen(true)}
                 disabled={!hasChanges || saveState === "saving"}
                 className={SETTINGS_STYLES.footer.resetButton}
               >
@@ -107,16 +105,16 @@ export const SettingsFooter = memo(function SettingsFooter({
                 {saveState === "saving" ? "应用中..." : "保存更改"}
               </button>
             </>
-          )}
+          ) : null}
         </div>
       </div>
 
-      <SettingsResetConfirmModal
-        open={isResetConfirmOpen}
-        onClose={() => setIsResetConfirmOpen(false)}
+      <SettingsResetDialog
+        open={isResetDialogOpen}
+        onClose={() => setIsResetDialogOpen(false)}
         onConfirm={() => {
           onReset();
-          setIsResetConfirmOpen(false);
+          setIsResetDialogOpen(false);
         }}
       />
     </>

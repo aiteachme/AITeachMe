@@ -1,11 +1,11 @@
 import { memo, useMemo } from "react";
 
-import { SETTINGS_STYLES } from "../constants";
-import { InfoCard, SectionDivider } from "../fields";
-import { EditableSettingsList, ReadonlySettingsList } from "../lists";
-import type { DraftRecord, SettingEntry, SettingSection } from "../types";
+import { InfoCard, SectionDivider } from "./SettingsFields";
+import { EditableSettingsList, ReadonlySettingsList } from "./SettingsEntryLists";
+import { SETTINGS_STYLES } from "./settingsStyles";
+import type { DraftRecord, SettingEntry, SettingSection } from "./settingsTypes";
 
-interface ConfiguredSettingsSectionProps {
+interface RuntimeSettingsSectionProps {
   section: SettingSection | undefined;
   isLocalRuntime: boolean;
   settingsDraft: DraftRecord;
@@ -72,7 +72,7 @@ function prepareEntryGroups(
   }));
 }
 
-export const ConfiguredSettingsSection = memo(function ConfiguredSettingsSection({
+export const RuntimeSettingsSection = memo(function RuntimeSettingsSection({
   section,
   isLocalRuntime,
   settingsDraft,
@@ -81,7 +81,7 @@ export const ConfiguredSettingsSection = memo(function ConfiguredSettingsSection
   onEnvChange,
   loading,
   error,
-}: ConfiguredSettingsSectionProps) {
+}: RuntimeSettingsSectionProps) {
   if (!section) {
     return <InfoCard text="当前设置分区不存在。" variant="warning" />;
   }
@@ -94,50 +94,51 @@ export const ConfiguredSettingsSection = memo(function ConfiguredSettingsSection
   const validGroups = useMemo(
     () =>
       groups.filter(
-        (g) => g.serverEditableEntries.length > 0 || g.envEditableEntries.length > 0 || g.readonlyEntries.length > 0,
+        (group) =>
+          group.serverEditableEntries.length > 0 ||
+          group.envEditableEntries.length > 0 ||
+          group.readonlyEntries.length > 0,
       ),
     [groups],
   );
 
   return (
     <div className={SETTINGS_STYLES.section.root}>
-      {validGroups.map((group, index) => {
-        return (
-          <div key={`${group.label || "group"}-${index}`} className={SETTINGS_STYLES.section.groupBlock}>
-            {group.label ? <SectionDivider label={group.label} compact={index === 0} /> : null}
+      {validGroups.map((group, index) => (
+        <div key={`${group.label || "group"}-${index}`} className={SETTINGS_STYLES.section.groupBlock}>
+          {group.label ? <SectionDivider label={group.label} compact={index === 0} /> : null}
 
-            <div className={SETTINGS_STYLES.section.cardWrapper}>
-              {group.serverEditableEntries.length > 0 ? (
-                <EditableSettingsList
-                  entries={group.serverEditableEntries}
-                  draft={settingsDraft}
-                  onChange={onServerChange}
-                  loading={loading}
-                  error={error}
-                />
-              ) : null}
+          <div className={SETTINGS_STYLES.section.cardWrapper}>
+            {group.serverEditableEntries.length > 0 ? (
+              <EditableSettingsList
+                entries={group.serverEditableEntries}
+                draft={settingsDraft}
+                onChange={onServerChange}
+                loading={loading}
+                error={error}
+              />
+            ) : null}
 
-              {group.envEditableEntries.length > 0 ? (
-                <EditableSettingsList
-                  entries={group.envEditableEntries}
-                  draft={envDraft}
-                  onChange={onEnvChange}
-                  loading={loading}
-                  error={error}
-                />
-              ) : null}
+            {group.envEditableEntries.length > 0 ? (
+              <EditableSettingsList
+                entries={group.envEditableEntries}
+                draft={envDraft}
+                onChange={onEnvChange}
+                loading={loading}
+                error={error}
+              />
+            ) : null}
 
-              {group.readonlyEntries.length > 0 ? (
-                <ReadonlySettingsList
-                  entries={group.readonlyEntries}
-                  loading={loading}
-                  error={error}
-                />
-              ) : null}
-            </div>
+            {group.readonlyEntries.length > 0 ? (
+              <ReadonlySettingsList
+                entries={group.readonlyEntries}
+                loading={loading}
+                error={error}
+              />
+            ) : null}
           </div>
-        );
-      })}
+        </div>
+      ))}
     </div>
   );
 });

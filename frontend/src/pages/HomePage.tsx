@@ -230,19 +230,19 @@ function ExportModal({
         initial={{ opacity: 0, scale: 0.95, y: 10 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.95 }}
-        className="relative z-10 w-[480px] max-w-[90vw] bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden"
+        className="relative z-10 w-[480px] max-w-[90vw] bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden dark:bg-slate-900 dark:border-slate-800"
       >
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 dark:border-slate-800/80">
           <div className="flex items-center gap-3">
             <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 shadow-sm">
               <Package className="w-5 h-5 text-white" />
             </div>
             <div>
-              <h3 className="text-base font-bold text-slate-900">导出学科</h3>
-              <p className="text-xs text-slate-500 mt-0.5">{preview?.subject_name ?? "加载中…"}</p>
+              <h3 className="text-base font-bold text-slate-900 dark:text-slate-100">导出学科</h3>
+              <p className="text-xs text-slate-500 mt-0.5 dark:text-slate-400">{preview?.subject_name ?? "加载中…"}</p>
             </div>
           </div>
-          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors" title="关闭">
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors dark:hover:bg-slate-800 dark:text-slate-500 dark:hover:text-slate-300" title="关闭">
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -254,8 +254,8 @@ function ExportModal({
             </div>
           ) : stats ? (
             <div className="space-y-3">
-              <p className="text-sm text-slate-600 mb-4">
-                将以下内容打包为 <code className="px-1.5 py-0.5 bg-slate-100 rounded text-xs font-mono">.atmx</code> 文件，导入后即可直接使用。
+              <p className="text-sm text-slate-600 mb-4 dark:text-slate-400">
+                将以下内容打包为 <code className="px-1.5 py-0.5 bg-slate-100 rounded text-xs font-mono dark:bg-slate-800">.atmx</code> 文件，导入后即可直接使用。
               </p>
               <div className="grid grid-cols-2 gap-2">
                 {[
@@ -267,9 +267,9 @@ function ExportModal({
                   { label: "考试记录", value: stats.exam_paper_count, show: stats.exam_paper_count > 0 },
                   { label: "对话记录", value: stats.chat_session_count, show: stats.chat_session_count > 0 },
                 ].filter(s => s.show).map(({ label, value }) => (
-                  <div key={label} className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2">
-                    <span className="text-xs text-slate-500">{label}</span>
-                    <span className="text-sm font-semibold text-slate-800">{value}</span>
+                  <div key={label} className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2 dark:bg-slate-800/50">
+                    <span className="text-xs text-slate-500 dark:text-slate-400">{label}</span>
+                    <span className="text-sm font-semibold text-slate-800 dark:text-slate-200">{value}</span>
                   </div>
                 ))}
               </div>
@@ -281,8 +281,8 @@ function ExportModal({
             </div>
           ) : null}
         </div>
-        <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-slate-100 bg-slate-50/50">
-          <button onClick={onClose} className="px-4 py-2 text-sm font-medium text-slate-600 hover:text-slate-800 rounded-lg hover:bg-slate-100 transition-colors">
+        <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-slate-100 bg-slate-50/50 dark:border-slate-800/80 dark:bg-slate-900">
+          <button onClick={onClose} className="px-4 py-2 text-sm font-medium text-slate-600 hover:text-slate-800 rounded-lg hover:bg-slate-100 transition-colors dark:text-slate-400 dark:hover:text-slate-200 dark:hover:bg-slate-800">
             取消
           </button>
           <button
@@ -327,19 +327,19 @@ function ImportModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: (
         initial={{ opacity: 0, scale: 0.95, y: 10 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.95 }}
-        className="relative z-10 w-[480px] max-w-[90vw] bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden"
+        className="relative z-10 w-[480px] max-w-[90vw] bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden dark:bg-slate-900 dark:border-slate-800"
       >
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 dark:border-slate-800/80">
           <div className="flex items-center gap-3">
             <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 shadow-sm">
               <Upload className="w-5 h-5 text-white" />
             </div>
             <div>
-              <h3 className="text-base font-bold text-slate-900">导入学科</h3>
-              <p className="text-xs text-slate-500 mt-0.5">从 .atmx 文件导入已构建的学科</p>
+              <h3 className="text-base font-bold text-slate-900 dark:text-slate-100">导入学科</h3>
+              <p className="text-xs text-slate-500 mt-0.5 dark:text-slate-400">从 .atmx 文件导入已构建的学科</p>
             </div>
           </div>
-          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors" title="关闭">
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors dark:hover:bg-slate-800 dark:text-slate-500 dark:hover:text-slate-300" title="关闭">
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -359,49 +359,49 @@ function ImportModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: (
             className={cn(
               "flex flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed px-6 py-8 cursor-pointer transition-all",
               dragOver
-                ? "border-emerald-400 bg-emerald-50"
+                ? "border-emerald-400 bg-emerald-50 dark:bg-emerald-900/10"
                 : selectedFile
-                  ? "border-slate-300 bg-slate-50"
-                  : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50"
+                  ? "border-slate-300 bg-slate-50 dark:border-slate-700 dark:bg-slate-800/50"
+                  : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:hover:border-slate-700 dark:hover:bg-slate-800/80"
             )}
           >
             {selectedFile ? (
               <>
-                <div className="flex items-center justify-center w-12 h-12 rounded-xl bg-emerald-100">
-                  <Package className="w-6 h-6 text-emerald-600" />
+                <div className="flex items-center justify-center w-12 h-12 rounded-xl bg-emerald-100 dark:bg-emerald-900/30">
+                  <Package className="w-6 h-6 text-emerald-600 dark:text-emerald-400" />
                 </div>
                 <div className="text-center">
-                  <p className="text-sm font-semibold text-slate-800">{selectedFile.name}</p>
+                  <p className="text-sm font-semibold text-slate-800 dark:text-slate-200">{selectedFile.name}</p>
                   <p className="text-xs text-slate-400 mt-1">{formatFileSize(selectedFile.size)}</p>
                 </div>
                 <button
                   type="button"
                   onClick={(e) => { e.stopPropagation(); setSelectedFile(null); }}
-                  className="text-xs text-slate-500 hover:text-red-500 underline"
+                  className="text-xs text-slate-500 hover:text-red-500 dark:text-slate-400 dark:hover:text-red-400 underline"
                 >
                   重新选择
                 </button>
               </>
             ) : (
               <>
-                <div className="flex items-center justify-center w-12 h-12 rounded-xl bg-slate-100">
-                  <Upload className="w-6 h-6 text-slate-400" />
+                <div className="flex items-center justify-center w-12 h-12 rounded-xl bg-slate-100 dark:bg-slate-800">
+                  <Upload className="w-6 h-6 text-slate-400 dark:text-slate-500" />
                 </div>
                 <div className="text-center">
-                  <p className="text-sm font-medium text-slate-600">点击选择或拖拽 .atmx 文件</p>
-                  <p className="text-xs text-slate-400 mt-1">支持 AITeachMe 导出包</p>
+                  <p className="text-sm font-medium text-slate-600 dark:text-slate-300">点击选择或拖拽 .atmx 文件</p>
+                  <p className="text-xs text-slate-400 mt-1 dark:text-slate-500">支持 AITeachMe 导出包</p>
                 </div>
               </>
             )}
           </div>
           <div>
-            <label className="block text-xs font-medium text-slate-500 mb-1.5">自定义学科名称（可选）</label>
+            <label className="block text-xs font-medium text-slate-500 mb-1.5 dark:text-slate-400">自定义学科名称（可选）</label>
             <input
               type="text"
               value={customName}
               onChange={(e) => setCustomName(e.target.value)}
               placeholder="留空则使用导出时的原名"
-              className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-300 transition-colors"
+              className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-300 transition-colors dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:placeholder:text-slate-500 dark:focus:ring-slate-100/10"
             />
           </div>
           {importMutation.isError && (
@@ -410,8 +410,8 @@ function ImportModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: (
             </div>
           )}
         </div>
-        <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-slate-100 bg-slate-50/50">
-          <button onClick={onClose} className="px-4 py-2 text-sm font-medium text-slate-600 hover:text-slate-800 rounded-lg hover:bg-slate-100 transition-colors">
+        <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-slate-100 bg-slate-50/50 dark:border-slate-800/80 dark:bg-slate-900">
+          <button onClick={onClose} className="px-4 py-2 text-sm font-medium text-slate-600 hover:text-slate-800 rounded-lg hover:bg-slate-100 transition-colors dark:text-slate-400 dark:hover:text-slate-200 dark:hover:bg-slate-800">
             取消
           </button>
           <button
@@ -469,11 +469,11 @@ function RenameModal({
         initial={{ opacity: 0, scale: 0.95, y: 10 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.95 }}
-        className="relative z-10 w-[420px] max-w-[90vw] bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden"
+        className="relative z-10 w-[420px] max-w-[90vw] bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden dark:bg-slate-900 dark:border-slate-800"
       >
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
-          <h3 className="text-base font-bold text-slate-900">重命名学科</h3>
-          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors" title="关闭">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 dark:border-slate-800/80">
+          <h3 className="text-base font-bold text-slate-900 dark:text-slate-100">重命名学科</h3>
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors dark:hover:bg-slate-800 dark:text-slate-500 dark:hover:text-slate-300" title="关闭">
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -484,15 +484,15 @@ function RenameModal({
             onChange={(e) => setName(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter" && name.trim()) renameMutation.mutate(); }}
             placeholder="输入学科名称"
-            className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-300 transition-colors"
+            className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-300 transition-colors dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:placeholder:text-slate-500 dark:focus:ring-slate-100/10"
             autoFocus
           />
           {renameMutation.isError && (
             <p className="mt-2 text-sm text-red-600">{getApiErrorMessage(renameMutation.error, "重命名失败")}</p>
           )}
         </div>
-        <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-slate-100 bg-slate-50/50">
-          <button onClick={onClose} className="px-4 py-2 text-sm font-medium text-slate-600 hover:text-slate-800 rounded-lg hover:bg-slate-100 transition-colors">
+        <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-slate-100 bg-slate-50/50 dark:border-slate-800/80 dark:bg-slate-900">
+          <button onClick={onClose} className="px-4 py-2 text-sm font-medium text-slate-600 hover:text-slate-800 rounded-lg hover:bg-slate-100 transition-colors dark:text-slate-400 dark:hover:text-slate-200 dark:hover:bg-slate-800">
             取消
           </button>
           <button
@@ -783,7 +783,7 @@ export function HomePage() {
             className="flex flex-col items-center mt-3"
           >
             <h1
-              className="text-2xl md:text-3xl font-bold tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-slate-800 via-indigo-700 to-violet-600 animate-text-gradient"
+              className="text-2xl md:text-3xl font-bold tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-slate-800 via-indigo-700 to-violet-600 animate-text-gradient dark:from-slate-100 dark:via-indigo-400 dark:to-violet-400"
               style={{ backgroundSize: "200% auto" }}
             >
               AITeachMe
@@ -796,7 +796,7 @@ export function HomePage() {
           initial={{ opacity: 0, y: 6 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 3.0, duration: 0.6 }}
-          className="mb-8 px-4 text-center text-[15px] leading-relaxed text-zinc-500"
+          className="mb-8 px-4 text-center text-[15px] leading-relaxed text-zinc-500 dark:text-slate-400"
         >
           把任何令人头疼的学习资料，变成你的 24 小时专属"赛博私教"。
         </motion.p>
@@ -811,14 +811,14 @@ export function HomePage() {
           <div className={cn(
             "w-full rounded-[30px] border-[1.5px] backdrop-blur-xl transition-all",
             hasEntryFiles
-              ? "border-indigo-300/80 bg-indigo-50/40 shadow-[0_8px_30px_rgb(99,102,241,0.10)] ring-2 ring-indigo-500/8"
-              : "border-zinc-200/80 bg-white/70 shadow-[0_8px_30px_rgb(0,0,0,0.06)] hover:border-zinc-300 hover:bg-white/80 hover:shadow-[0_8px_30px_rgb(0,0,0,0.1)]",
-            "focus-within:border-indigo-300 focus-within:shadow-[0_8px_30px_rgb(99,102,241,0.15)] focus-within:ring-4 focus-within:ring-indigo-500/10"
+              ? "border-indigo-300/80 bg-indigo-50/40 shadow-[0_8px_30px_rgb(99,102,241,0.10)] ring-2 ring-indigo-500/8 dark:border-indigo-500/30 dark:bg-indigo-900/10 dark:shadow-[0_8px_30px_rgb(99,102,241,0.2)]"
+              : "border-zinc-200/80 bg-white/70 shadow-[0_8px_30px_rgb(0,0,0,0.06)] hover:border-zinc-300 hover:bg-white/80 hover:shadow-[0_8px_30px_rgb(0,0,0,0.1)] dark:border-slate-700 dark:bg-slate-900/70 dark:hover:border-slate-600 dark:hover:bg-slate-900/90",
+            "focus-within:border-indigo-300 focus-within:shadow-[0_8px_30px_rgb(99,102,241,0.15)] focus-within:ring-4 focus-within:ring-indigo-500/10 dark:focus-within:border-indigo-500/50"
           )}>
             <textarea
               ref={textareaRef}
               placeholder="直接输入学习目标，也可以先上传资料再一起规划"
-              className="w-full min-h-[108px] max-h-[240px] resize-none border-0 bg-transparent px-6 pb-4 pt-7 text-[15px] leading-[1.9] text-zinc-800 focus:outline-none placeholder:text-zinc-400"
+              className="w-full min-h-[108px] max-h-[240px] resize-none border-0 bg-transparent px-6 pb-4 pt-7 text-[15px] leading-[1.9] text-zinc-800 focus:outline-none placeholder:text-zinc-400 dark:text-slate-200 dark:placeholder:text-slate-500"
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
               onKeyDown={handleKeyDown}
@@ -827,7 +827,7 @@ export function HomePage() {
               disabled={isCreatingDraftSubject}
             />
 
-            <div className="mx-5 h-px bg-zinc-100" />
+            <div className="mx-5 h-px bg-zinc-100 dark:bg-slate-800" />
 
             <div className="px-5 pb-4 pt-3 flex flex-col gap-3">
               {(hasEntryFiles || isUploadingFiles) && (
@@ -838,10 +838,10 @@ export function HomePage() {
                     return (
                       <div
                         key={file.uid}
-                        className="group inline-flex max-w-full items-center gap-2 rounded-2xl border border-zinc-200/80 bg-zinc-50/90 px-3 py-2 text-[13px] text-zinc-700 transition-colors hover:border-zinc-300 hover:bg-white"
+                        className="group inline-flex max-w-full items-center gap-2 rounded-2xl border border-zinc-200/80 bg-zinc-50/90 px-3 py-2 text-[13px] text-zinc-700 transition-colors hover:border-zinc-300 hover:bg-white dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:border-slate-600 dark:hover:bg-slate-800/80"
                       >
                         <span className="shrink-0">{homeFileIcon(file)}</span>
-                        <span className="max-w-[220px] truncate font-medium text-zinc-800">{file.filename}</span>
+                        <span className="max-w-[220px] truncate font-medium text-zinc-800 dark:text-slate-200">{file.filename}</span>
                         <span className={cn("shrink-0", meta.tone)} title={resolveFileProcessingLabel(file)}>
                           {meta.icon}
                         </span>
@@ -861,10 +861,10 @@ export function HomePage() {
                   {optimisticUploadingFiles.map((filename) => (
                     <div
                       key={`uploading-${filename}`}
-                      className="inline-flex max-w-full items-center gap-2 rounded-2xl border border-zinc-200/80 bg-zinc-50/90 px-3 py-2 text-[13px] text-zinc-700"
+                      className="inline-flex max-w-full items-center gap-2 rounded-2xl border border-zinc-200/80 bg-zinc-50/90 px-3 py-2 text-[13px] text-zinc-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
                     >
-                      <FileUp className="h-3.5 w-3.5 shrink-0 text-zinc-400" />
-                      <span className="max-w-[220px] truncate font-medium text-zinc-800">{filename}</span>
+                      <FileUp className="h-3.5 w-3.5 shrink-0 text-zinc-400 dark:text-slate-500" />
+                      <span className="max-w-[220px] truncate font-medium text-zinc-800 dark:text-slate-200">{filename}</span>
                       <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-sky-500" />
                     </div>
                   ))}
@@ -889,7 +889,7 @@ export function HomePage() {
                   <button
                     type="button"
                     onClick={() => fileInputRef.current?.click()}
-                    className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[13px] font-medium text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-900"
+                    className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[13px] font-medium text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200"
                   >
                     {isUploadingFiles || isCreatingDraftSubject ? (
                       <Loader2 className="h-4 w-4 animate-spin" />
@@ -912,8 +912,8 @@ export function HomePage() {
                   className={cn(
                     "flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl transition-all focus:outline-none focus:ring-4 focus:ring-zinc-900/10 active:scale-[0.98]",
                     canGenerate && !isWorking
-                      ? "bg-zinc-900 text-white shadow-sm hover:bg-zinc-800"
-                      : "cursor-not-allowed bg-zinc-100 text-zinc-300"
+                      ? "bg-zinc-900 text-white shadow-sm hover:bg-zinc-800 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white"
+                      : "cursor-not-allowed bg-zinc-100 text-zinc-300 dark:bg-slate-800 dark:text-slate-600"
                   )}
                 >
                   <ArrowUp className="h-4 w-4" />
@@ -952,11 +952,11 @@ export function HomePage() {
             onClick={() => setRecentOpen(!recentOpen)}
             className="group flex w-full cursor-pointer items-center gap-4 py-3"
           >
-            <div className="flex-1 h-[1px] bg-zinc-200 group-hover:bg-zinc-300 transition-colors" />
-            <span className="flex shrink-0 select-none items-center gap-2 text-[13px] font-semibold tracking-tight text-zinc-400 transition-colors group-hover:text-zinc-800">
+            <div className="flex-1 h-[1px] bg-zinc-200 group-hover:bg-zinc-300 transition-colors dark:bg-slate-800 dark:group-hover:bg-slate-700" />
+            <span className="flex shrink-0 select-none items-center gap-2 text-[13px] font-semibold tracking-tight text-zinc-400 transition-colors group-hover:text-zinc-800 dark:text-slate-500 dark:group-hover:text-slate-300">
               <Package className="h-4 w-4" />
               演示课程
-              <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-[11px] text-zinc-500 shadow-[inset_0_1px_2px_rgba(0,0,0,0.02)]">{courses.length}</span>
+              <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-[11px] text-zinc-500 shadow-[inset_0_1px_2px_rgba(0,0,0,0.02)] dark:bg-slate-800 dark:text-slate-400">{courses.length}</span>
               <motion.div
                 animate={{ rotate: recentOpen ? 180 : 0 }}
                 transition={{ duration: 0.3, ease: "easeInOut" }}
@@ -964,7 +964,7 @@ export function HomePage() {
                 <ChevronDown className="h-4 w-4" />
               </motion.div>
             </span>
-            <div className="flex-1 h-[1px] bg-zinc-200 group-hover:bg-zinc-300 transition-colors" />
+            <div className="flex-1 h-[1px] bg-zinc-200 group-hover:bg-zinc-300 transition-colors dark:bg-slate-800 dark:group-hover:bg-slate-700" />
           </button>
 
           {/* Expandable Content */}
@@ -980,7 +980,7 @@ export function HomePage() {
                 <div className="flex items-center justify-end pt-4 pb-2 px-1">
                   <button
                     onClick={() => setImportOpen(true)}
-                    className="flex items-center gap-2 px-3.5 py-2 rounded-xl text-sm font-medium text-slate-600 bg-white border border-slate-200 hover:border-slate-300 hover:bg-slate-50 shadow-sm hover:shadow transition-all"
+                    className="flex items-center gap-2 px-3.5 py-2 rounded-xl text-sm font-medium text-slate-600 bg-white border border-slate-200 hover:border-slate-300 hover:bg-slate-50 shadow-sm hover:shadow transition-all dark:bg-slate-900 dark:border-slate-800 dark:text-slate-300 dark:hover:border-slate-700 dark:hover:bg-slate-800"
                     title="从文件导入学科包"
                   >
                     <Upload className="w-4 h-4 text-emerald-500" />
