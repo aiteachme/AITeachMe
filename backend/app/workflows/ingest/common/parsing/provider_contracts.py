@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field
 ProviderName = Literal[
     "local",
     "mineru",
+    "paddle_ocr",
     "ocr",
     "multimodal",
     "deepdoc",
@@ -59,6 +60,14 @@ class ParseDecision(BaseModel):
     @property
     def uses_markitdown(self) -> bool:
         return self.primary_provider == "markitdown"
+
+    @property
+    def uses_paddle_ocr(self) -> bool:
+        return self.primary_provider == "paddle_ocr"
+
+    @property
+    def uses_ocr(self) -> bool:
+        return self.primary_provider == "ocr"
 
 
 __all__ = [

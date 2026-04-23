@@ -36,6 +36,7 @@ async def upload_files(
     files: list[UploadFile] = File(...),
     parser_provider: str | None = Form(default=None),
     mineru_api_token: str | None = Form(default=None),
+    paddle_ocr_api_token: str | None = Form(default=None),
     mineru_model_version: str | None = Form(default=None),
     mineru_enable_formula: bool | None = Form(default=None),
     mineru_enable_table: bool | None = Form(default=None),
@@ -58,6 +59,10 @@ async def upload_files(
                 "enable_formula": mineru_enable_formula,
                 "enable_table": mineru_enable_table,
                 "is_ocr": mineru_is_ocr,
+            }
+        if parser_provider == "paddle_ocr":
+            parse_request_metadata["paddle_ocr"] = {
+                "api_token": paddle_ocr_api_token,
             }
 
     data, parse_file_ids = await save_uploaded_files_and_request_parse(

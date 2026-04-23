@@ -14,6 +14,8 @@ from pathlib import Path
 
 from app.shared.infra.database import managed_session
 from app.shared.infra.env_support import get_env
+from app.shared.infra.settings import get_settings
+from app.shared.infra.settings.support import llm_provider_requires_api_key
 from app.shared.infra.storage import get_content_store, resolve_subject_storage_scope
 from app.models import IngestStatus
 from app.repositories.files_repo import get_raw_file_by_id, update_raw_file
@@ -30,7 +32,9 @@ from app.workflows.ingest.common.parsing.decision import build_parse_decision
 from app.workflows.ingest.common.parsing.formats import (
     categorize_text_extension,
     get_text_language_hint,
+    is_image_extension,
     is_text_extension,
+    normalize_extension,
 )
 from app.workflows.ingest.common.parsing.parsers import (
     is_markitdown_available_for_extension,
@@ -62,17 +66,47 @@ def _coerce_optional_bool(value: object, *, default: bool) -> bool:
     return default
 
 
+def _normalize_parser_provider(value: object) -> str | None:
+    if not isinstance(value, str):
+        return None
+    normalized = value.strip().lower()
+    if normalized in {"", "auto", "default", "local"}:
+        return None
+    if normalized in {"paddleocr", "paddle-ocr"}:
+        return "paddle_ocr"
+    if normalized in {"mineru", "ocr", "markitdown", "paddle_ocr"}:
+        return normalized
+    return normalized
+
+
+def _is_ocr_provider_available() -> bool:
+    ocr_base_url = (
+        (get_env("OCR_BASE_URL") or "").strip()
+        or (get_env("LLM_BASE_URL") or "").strip()
+        or None
+    )
+    ocr_api_key = (
+        (get_env("OCR_API_KEY") or "").strip()
+        or (get_env("LLM_API_KEY") or "").strip()
+        or None
+    )
+    return bool(ocr_api_key) or not llm_provider_requires_api_key(base_url=ocr_base_url)
+
+
+def _is_paddle_ocr_provider_available(api_token: str | None = None) -> bool:
+    return bool((api_token or "").strip() or (get_env("PADDLE_OCR_API_TOKEN") or "").strip())
+
+
 def _resolve_parse_request(
     *,
     raw_payload: dict[str, object],
-) -> tuple[dict[str, object], str | None, str | None, str, bool, bool, bool]:
-    requested_parser_provider = raw_payload.get("requested_parser_provider")
-    if isinstance(requested_parser_provider, str):
-        requested_parser_provider = requested_parser_provider.strip().lower() or None
-    else:
-        requested_parser_provider = None
+) -> tuple[dict[str, object], str | None, str | None, str | None, str, bool, bool, bool]:
+    requested_parser_provider = _normalize_parser_provider(
+        raw_payload.get("requested_parser_provider")
+    )
 
     mineru_token: str | None = None
+    paddle_ocr_token: str | None = None
     mineru_model_version = DEFAULT_MINERU_MODEL_VERSION
     mineru_enable_formula = DEFAULT_MINERU_ENABLE_FORMULA
     mineru_enable_table = DEFAULT_MINERU_ENABLE_TABLE
@@ -107,10 +141,20 @@ def _resolve_parse_request(
         sanitized_block.pop("api_token", None)
         sanitized_payload["mineru"] = sanitized_block
 
+    paddle_ocr_block = sanitized_payload.get("paddle_ocr")
+    if requested_parser_provider == "paddle_ocr" and isinstance(paddle_ocr_block, dict):
+        token_value = paddle_ocr_block.get("api_token")
+        paddle_ocr_token = str(token_value).strip() if token_value else None
+
+        sanitized_block = dict(paddle_ocr_block)
+        sanitized_block.pop("api_token", None)
+        sanitized_payload["paddle_ocr"] = sanitized_block
+
     return (
         sanitized_payload,
         requested_parser_provider,
         mineru_token,
+        paddle_ocr_token,
         mineru_model_version,
         mineru_enable_formula,
         mineru_enable_table,
@@ -152,11 +196,16 @@ async def _load_raw_file_state(state: IngestParseState) -> IngestParseState:
             sanitized_payload,
             requested_parser_provider,
             mineru_token,
+            paddle_ocr_token,
             mineru_model_version,
             mineru_enable_formula,
             mineru_enable_table,
             mineru_is_ocr,
         ) = _resolve_parse_request(raw_payload=parse_request_payload)
+        default_parser_provider = _normalize_parser_provider(
+            get_settings().ingest.parser_provider
+        )
+        requested_parser_provider = requested_parser_provider or default_parser_provider
 
         if sanitized_payload != parse_request_payload:
             update_raw_file(
@@ -167,6 +216,7 @@ async def _load_raw_file_state(state: IngestParseState) -> IngestParseState:
             raw_file = get_raw_file_by_id(session, file_id) or raw_file
 
         mineru_token_source = "not_requested"
+        paddle_ocr_token_source = "not_requested"
         if requested_parser_provider == "mineru":
             if mineru_token:
                 mineru_token_source = "request"
@@ -177,12 +227,24 @@ async def _load_raw_file_state(state: IngestParseState) -> IngestParseState:
                     mineru_token_source = "server_env"
                 else:
                     mineru_token_source = "missing"
+        if requested_parser_provider == "paddle_ocr":
+            if paddle_ocr_token:
+                paddle_ocr_token_source = "request"
+            else:
+                env_token = (get_env("PADDLE_OCR_API_TOKEN") or "").strip()
+                if env_token:
+                    paddle_ocr_token = env_token
+                    paddle_ocr_token_source = "server_env"
+                else:
+                    paddle_ocr_token_source = "missing"
 
         extension = raw_file.file_ext.lower()
         parse_decision = build_parse_decision(
             extension=extension,
             requested_provider=requested_parser_provider,
             mineru_available=bool(mineru_token),
+            paddle_ocr_available=_is_paddle_ocr_provider_available(paddle_ocr_token),
+            ocr_available=_is_ocr_provider_available(),
             markitdown_available=is_markitdown_available_for_extension(extension),
         )
 
@@ -212,6 +274,8 @@ async def _load_raw_file_state(state: IngestParseState) -> IngestParseState:
             "requested_parser_provider": requested_parser_provider,
             "mineru_token": mineru_token,
             "mineru_token_source": mineru_token_source,
+            "paddle_ocr_token": paddle_ocr_token,
+            "paddle_ocr_token_source": paddle_ocr_token_source,
             "mineru_model_version": mineru_model_version,
             "mineru_enable_formula": mineru_enable_formula,
             "mineru_enable_table": mineru_enable_table,
@@ -242,6 +306,7 @@ def build_load_raw_file_node(*, context: WorkflowContext):
             requested_parser_provider=next_state.get("requested_parser_provider"),
             primary_provider=parse_decision.primary_provider if parse_decision else None,
             mineru_token_source=next_state.get("mineru_token_source"),
+            paddle_ocr_token_source=next_state.get("paddle_ocr_token_source"),
         )
         return next_state
 
@@ -335,6 +400,13 @@ def build_plan_parse_node(*, context: WorkflowContext):
                     decision_reason=parse_decision.primary_reason,
                     options=ParserRunOptions(),
                 )
+            elif parse_decision and parse_decision.uses_paddle_ocr:
+                parse_plan = ParsePlan(
+                    mode="external_paddle_ocr",
+                    parser_chain=["paddle_ocr"],
+                    decision_reason=parse_decision.primary_reason,
+                    options=ParserRunOptions(),
+                )
             else:
                 parse_plan = build_parse_plan(
                     file_path=state["file_path"],
@@ -342,6 +414,35 @@ def build_plan_parse_node(*, context: WorkflowContext):
                     file_size_bytes=state.get("file_size_bytes"),
                     classification=state.get("classification"),
                 )
+                if parse_decision and parse_decision.uses_ocr:
+                    extension = normalize_extension(state["filetype"])
+                    if extension == ".pdf":
+                        parser_chain = [
+                            "ocr_vision",
+                            *[name for name in parse_plan.parser_chain if name != "ocr_vision"],
+                        ]
+                    elif extension in {".ppt", ".pptx"}:
+                        parser_chain = ["ocr_vision", "markitdown", "python_pptx_native"]
+                    elif is_image_extension(extension):
+                        parser_chain = ["llm_vision"]
+                    else:
+                        parser_chain = parse_plan.parser_chain
+                    parse_plan = parse_plan.model_copy(
+                        update={
+                            "mode": "external_ocr",
+                            "parser_chain": parser_chain,
+                            "decision_reason": parse_decision.primary_reason,
+                        }
+                    )
+                    parse_plan.options.enable_page_vision_ocr = True
+                    parse_plan.options.enable_asset_vision_ocr = False
+                    parse_plan.options.asset_vision_ocr_limit = 0
+                    parse_plan.options.ocr_page_limit = max(
+                        parse_plan.options.ocr_page_limit,
+                        int(state.get("estimated_pages") or 0),
+                        120,
+                    )
+                    parse_plan.options.ocr_text_char_threshold = 1_000_000
                 if parse_decision and parse_decision.uses_markitdown:
                     markitdown_parser = resolve_markitdown_parser_name(state["filetype"])
                     if markitdown_parser:

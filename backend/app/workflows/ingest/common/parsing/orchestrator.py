@@ -127,11 +127,14 @@ async def fast_parse_file(
                 extension == ".pdf"
                 and parser_name != "pymupdf4llm"
                 and plan.mode != "local_markitdown"
+                and parser_name != "ocr_vision"
+                and plan.mode != "external_ocr"
             )
             needs_asset_ocr = (
                 plan.options.enable_asset_vision_ocr
                 and not is_text_extension(extension)
                 and image_count > 0
+                and plan.mode != "external_ocr"
             )
             needs_enhance = needs_quality_reparse or needs_asset_ocr
 

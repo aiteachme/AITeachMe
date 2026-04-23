@@ -48,6 +48,10 @@ from app.workflows.ingest.common.parsing.pptx import (
     parse_pptx_with_markitdown,
     parse_pptx_with_python_pptx,
 )
+from app.workflows.ingest.common.parsing.ppt_ocr import (
+    PPT_OCR_VISION_AVAILABLE,
+    parse_ppt_with_ocr_vision,
+)
 from app.workflows.ingest.common.parsing.text import (
     TEXT_FALLBACK_EXTENSION,
     TEXT_NATIVE_AVAILABLE,
@@ -106,6 +110,7 @@ def _build_markitdown_generic_availability() -> dict[str, dict[str, bool]]:
 
 PARSER_REGISTRY: dict[str, dict[str, Parser]] = {
     ".pdf": {
+        "ocr_vision": parse_pdf_with_pymupdf_ocr_vision,
         "pymupdf_ocr_vision": parse_pdf_with_pymupdf_ocr_vision,
         "pymupdf4llm": parse_pdf_with_pymupdf4llm,
         "pdfplumber": parse_pdf_with_pdfplumber,
@@ -118,10 +123,12 @@ PARSER_REGISTRY: dict[str, dict[str, Parser]] = {
         "docx_native": parse_docx_with_native,
     },
     ".ppt": {
+        "ocr_vision": parse_ppt_with_ocr_vision,
         "markitdown": parse_pptx_with_markitdown,
         "python_pptx_native": parse_pptx_with_python_pptx,
     },
     ".pptx": {
+        "ocr_vision": parse_ppt_with_ocr_vision,
         "markitdown": parse_pptx_with_markitdown,
         "python_pptx_native": parse_pptx_with_python_pptx,
     },
@@ -174,6 +181,7 @@ DEFAULT_PARSER_CHAIN: dict[str, list[str]] = {
 
 _PARSER_AVAILABILITY: dict[str, dict[str, bool]] = {
     ".pdf": {
+        "ocr_vision": PDF_PYMUPDF_OCR_VISION_AVAILABLE,
         "pymupdf_ocr_vision": PDF_PYMUPDF_OCR_VISION_AVAILABLE,
         "pymupdf4llm": PDF_PYMUPDF4LLM_AVAILABLE,
         "pdfplumber": PDF_PDFPLUMBER_AVAILABLE,
@@ -186,10 +194,12 @@ _PARSER_AVAILABILITY: dict[str, dict[str, bool]] = {
         "docx_native": DOCX_NATIVE_AVAILABLE,
     },
     ".ppt": {
+        "ocr_vision": PPT_OCR_VISION_AVAILABLE,
         "markitdown": PPTX_MARKITDOWN_AVAILABLE,
         "python_pptx_native": PPTX_NATIVE_AVAILABLE,
     },
     ".pptx": {
+        "ocr_vision": PPT_OCR_VISION_AVAILABLE,
         "markitdown": PPTX_MARKITDOWN_AVAILABLE,
         "python_pptx_native": PPTX_NATIVE_AVAILABLE,
     },

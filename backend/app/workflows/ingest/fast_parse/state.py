@@ -53,6 +53,8 @@ class IngestParseState(TypedDict, total=False):
     requested_parser_provider: str | None
     mineru_token: str | None
     mineru_token_source: str
+    paddle_ocr_token: str | None
+    paddle_ocr_token_source: str
     mineru_model_version: str
     mineru_enable_formula: bool
     mineru_enable_table: bool

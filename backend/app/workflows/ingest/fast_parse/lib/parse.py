@@ -1,9 +1,10 @@
 """Parse-phase node for ingest workflows (Phase 1 fast parse).
 
-这个节点统一承接三类 Phase 1 主线：
+这个节点统一承接四类 Phase 1 主线：
 1. 文本类文件 UTF-8 快通道
 2. MinerU 显式外部解析分支
-3. 本地 parser chain 常规解析分支
+3. PaddleOCR 显式外部解析分支
+4. 本地 parser chain 常规解析分支
 """
 
 from __future__ import annotations
@@ -18,10 +19,14 @@ from app.shared.infra.workflow.context import WorkflowContext
 from app.utils.path_helpers import list_asset_files
 from app.workflows.ingest.common.parsing.canonicalizer import canonicalize_markdown
 from app.workflows.ingest.common.parsing.mineru_cloud import MinerURequestOptions, parse_file_to_dir
+from app.workflows.ingest.common.parsing.paddle_ocr_cloud import (
+    PaddleOCRRequestOptions,
+    parse_file_to_dir as parse_file_to_dir_with_paddle_ocr,
+)
 from app.workflows.ingest.common.parsing.orchestrator import fast_parse_file
 from app.workflows.ingest.fast_parse.lib.common import workflow_logger
 from app.workflows.ingest.fast_parse.lib.runtime_helpers import (
-    _MinerUFastParseResult,
+    _ExternalFastParseResult,
     _compute_quality_score,
 )
 from app.workflows.ingest.fast_parse.state import IngestParseState
@@ -76,6 +81,8 @@ def _build_parse_metadata(
         "parser_chain": (
             ["mineru"]
             if parser_used == "mineru"
+            else ["paddle_ocr"]
+            if parser_used == "paddle_ocr"
             else parse_plan.parser_chain
             if parse_plan is not None
             else attempted_parsers
@@ -98,6 +105,16 @@ def _build_parse_metadata(
         }
         if state.get("requested_parser_provider") == "mineru"
         else None,
+        "paddle_ocr": {
+            "token_source": state.get("paddle_ocr_token_source"),
+        }
+        if state.get("requested_parser_provider") == "paddle_ocr"
+        else None,
+        "ocr": {
+            "base_url_source": "OCR_BASE_URL" if state.get("requested_parser_provider") == "ocr" else None,
+        }
+        if state.get("requested_parser_provider") == "ocr"
+        else None,
         "provider_metadata": provider_metadata,
         "rewritten_image_refs": rewritten_image_refs,
         "extracted_data_images": extracted_data_images,
@@ -116,8 +133,31 @@ def _build_parse_metadata(
     return json.dumps(payload, ensure_ascii=False)
 
 
+def _copy_external_assets(
+    *,
+    source_dir: Path | None,
+    dest_dir: Path,
+    asset_name_prefix: str,
+) -> int:
+    if source_dir is None or not source_dir.exists():
+        return 0
+
+    copied_assets = 0
+    used_names: set[str] = set()
+    for src in sorted(path for path in source_dir.rglob("*") if path.is_file()):
+        target_name = f"{asset_name_prefix}{src.name}"
+        if target_name in used_names or (dest_dir / target_name).exists():
+            stem = Path(src.name).stem
+            suffix = Path(src.name).suffix
+            target_name = f"{asset_name_prefix}{stem}_{copied_assets + 1}{suffix}"
+        shutil.copy2(src, dest_dir / target_name)
+        used_names.add(target_name)
+        copied_assets += 1
+    return copied_assets
+
+
 def build_parse_file_node(*, context: WorkflowContext):
-    """Phase 1 fast parse node — text fast path, MinerU, or local parser chain."""
+    """Phase 1 fast parse node — text fast path, external providers, or local parser chain."""
 
     async def parse_file_node(state: IngestParseState) -> IngestParseState:
         logger = workflow_logger(context, state)
@@ -208,14 +248,11 @@ def build_parse_file_node(*, context: WorkflowContext):
                 )
 
                 mineru_markdown_raw = extracted.markdown_path.read_text(encoding="utf-8", errors="replace")
-                copied_assets = 0
-                if extracted.images_dir and extracted.images_dir.exists():
-                    for src in sorted(extracted.images_dir.iterdir()):
-                        if not src.is_file():
-                            continue
-                        dest = local_asset_dir / f"{state['asset_name_prefix']}{src.name}"
-                        shutil.copy2(src, dest)
-                        copied_assets += 1
+                copied_assets = _copy_external_assets(
+                    source_dir=extracted.images_dir,
+                    dest_dir=local_asset_dir,
+                    asset_name_prefix=state["asset_name_prefix"],
+                )
 
                 canonical_result = canonicalize_markdown(
                     mineru_markdown_raw,
@@ -225,7 +262,7 @@ def build_parse_file_node(*, context: WorkflowContext):
                     asset_gallery_limit=parse_plan.options.asset_gallery_limit if parse_plan else 12,
                 )
                 elapsed = round(time.monotonic() - started_at, 2)
-                parse_result = _MinerUFastParseResult(
+                parse_result = _ExternalFastParseResult(
                     markdown=canonical_result.markdown,
                     parser_used="mineru",
                     attempted_parsers=["mineru"],
@@ -240,6 +277,47 @@ def build_parse_file_node(*, context: WorkflowContext):
                     "file_name": extracted.file_name,
                     "copied_assets": copied_assets,
                     "token_source": state.get("mineru_token_source"),
+                }
+            elif parse_decision and parse_decision.uses_paddle_ocr:
+                extracted = await asyncio.to_thread(
+                    parse_file_to_dir_with_paddle_ocr,
+                    file_path=Path(state["file_path"]),
+                    options=PaddleOCRRequestOptions(
+                        api_token=state.get("paddle_ocr_token") or "",
+                    ),
+                    output_dir=Path(state["temp_dir"]) / "paddle_ocr_output",
+                )
+
+                paddle_ocr_markdown_raw = extracted.markdown_path.read_text(encoding="utf-8", errors="replace")
+                copied_assets = _copy_external_assets(
+                    source_dir=extracted.images_dir,
+                    dest_dir=local_asset_dir,
+                    asset_name_prefix=state["asset_name_prefix"],
+                )
+
+                canonical_result = canonicalize_markdown(
+                    paddle_ocr_markdown_raw,
+                    asset_dir=local_asset_dir,
+                    asset_link_prefix=f"../assets/{state['file_id']}",
+                    asset_name_prefix=state["asset_name_prefix"],
+                    asset_gallery_limit=parse_plan.options.asset_gallery_limit if parse_plan else 12,
+                )
+                elapsed = round(time.monotonic() - started_at, 2)
+                parse_result = _ExternalFastParseResult(
+                    markdown=canonical_result.markdown,
+                    parser_used="paddle_ocr",
+                    attempted_parsers=["paddle_ocr"],
+                    parser_elapsed_s={"paddle_ocr": elapsed},
+                    rewritten_image_refs=canonical_result.rewritten_image_refs,
+                    extracted_data_images=canonical_result.extracted_data_images,
+                    appended_asset_images=canonical_result.appended_asset_images,
+                    needs_enhance=False,
+                )
+                provider_metadata = {
+                    "job_id": extracted.job_id,
+                    "model": extracted.model,
+                    "copied_assets": copied_assets,
+                    "token_source": state.get("paddle_ocr_token_source"),
                 }
             else:
                 parse_result = await fast_parse_file(

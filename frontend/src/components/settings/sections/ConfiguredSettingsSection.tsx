@@ -57,19 +57,54 @@ function groupSectionEntries(section: SettingSection | undefined): EntryGroup[] 
 function prepareEntryGroups(
   section: SettingSection | undefined,
   isLocalRuntime: boolean,
+  settingsDraft: DraftRecord,
 ): PreparedEntryGroup[] {
-  return groupSectionEntries(section).map((group) => ({
-    label: group.label,
-    envEditableEntries: isLocalRuntime
-      ? group.entries.filter((entry) => entry.editable && entry.source === "env")
-      : [],
-    serverEditableEntries: isLocalRuntime
-      ? group.entries.filter((entry) => entry.editable && entry.source !== "env")
-      : [],
-    readonlyEntries: isLocalRuntime
-      ? group.entries.filter((entry) => !entry.editable)
-      : group.entries,
-  }));
+  return groupSectionEntries(section).map((group) => {
+    const entries = filterParserServiceEntries(group.entries, settingsDraft);
+    return {
+      label: group.label,
+      envEditableEntries: isLocalRuntime
+        ? entries.filter((entry) => entry.editable && entry.source === "env")
+        : [],
+      serverEditableEntries: isLocalRuntime
+        ? entries.filter((entry) => entry.editable && entry.source !== "env")
+        : [],
+      readonlyEntries: isLocalRuntime
+        ? entries.filter((entry) => !entry.editable)
+        : entries,
+    };
+  });
+}
+
+function resolveParserProvider(entries: SettingEntry[], settingsDraft: DraftRecord): string {
+  const draftValue = settingsDraft["ingest.parser_provider"];
+  if (typeof draftValue === "string" && draftValue.trim()) {
+    return draftValue.trim().toLowerCase();
+  }
+  const entryValue = entries.find((entry) => entry.key === "ingest.parser_provider")?.value;
+  if (typeof entryValue === "string" && entryValue.trim()) {
+    return entryValue.trim().toLowerCase();
+  }
+  return "local";
+}
+
+function filterParserServiceEntries(entries: SettingEntry[], settingsDraft: DraftRecord): SettingEntry[] {
+  if (!entries.some((entry) => entry.key === "ingest.parser_provider")) {
+    return entries;
+  }
+  const provider = resolveParserProvider(entries, settingsDraft);
+  const alwaysVisible = new Set(["ingest.parser_provider"]);
+  const mineruVisible = new Set(["mineru.api_token"]);
+  const paddleOcrVisible = new Set(["paddle_ocr.api_token"]);
+  const ocrVisible = new Set(["ocr.base_url", "ocr.api_key", "models.ocr"]);
+
+  return entries.filter((entry) => {
+    if (alwaysVisible.has(entry.key)) return true;
+    if (provider === "mineru") return mineruVisible.has(entry.key);
+    if (provider === "paddle_ocr") return paddleOcrVisible.has(entry.key);
+    if (provider === "ocr") return ocrVisible.has(entry.key);
+    return false;
+  });
 }
 
 export function ConfiguredSettingsSection({
@@ -87,8 +122,8 @@ export function ConfiguredSettingsSection({
   }
 
   const groups = useMemo(
-    () => prepareEntryGroups(section, isLocalRuntime),
-    [isLocalRuntime, section],
+    () => prepareEntryGroups(section, isLocalRuntime, settingsDraft),
+    [isLocalRuntime, section, settingsDraft],
   );
 
   return (

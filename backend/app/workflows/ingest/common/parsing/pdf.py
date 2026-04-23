@@ -165,10 +165,14 @@ def _build_pdf_ocr_pages(path: Path, asset_dir: Path, options: ParserRunOptions)
         page_number = page_index + 1
         base_text = (page.get_text("text") or "").strip()
         has_visual = bool(page.get_images(full=True)) or _page_has_meaningful_drawing_clusters(page)
+        force_full_page_ocr = (
+            options.enable_page_vision_ocr
+            and options.ocr_text_char_threshold >= 100_000
+        )
         should_ocr = (
             options.enable_page_vision_ocr
             and ocr_pages < options.ocr_page_limit
-            and has_visual
+            and (has_visual or force_full_page_ocr)
             and len(base_text) < min_text_chars
         )
         if not should_ocr:
@@ -546,4 +550,3 @@ def _render_rect_png(page: object, rect: object) -> bytes:
     )
     pixmap = page.get_pixmap(matrix=fitz.Matrix(3.0, 3.0), clip=clip, alpha=False)
     return pixmap.tobytes("png")
-
