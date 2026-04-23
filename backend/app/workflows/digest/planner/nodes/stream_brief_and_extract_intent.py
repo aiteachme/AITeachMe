@@ -7,7 +7,7 @@ import time
 
 import structlog
 
-from app.shared.infra.llm_support import acompletion_stream, acompletion_with_fallback
+from app.shared.infra.llm_support import acompletion_stream
 from app.shared.infra.llm_support.routing import LLMCallPurpose
 from app.shared.infra.workflow.context import WorkflowContext
 from app.workflows.digest.planner.lib.plan_sketch import parse_planner_brief_text
@@ -18,11 +18,10 @@ from app.workflows.digest.planner.lib.models import (
     PlannerBrief,
     build_empty_planner_brief,
 )
-from app.workflows.digest.planner.prompts import build_plan_intent_messages, build_plan_sketch_prompt, build_subject_name_prompt
+from app.workflows.digest.planner.prompts import build_plan_intent_messages, build_plan_sketch_prompt
 from app.workflows.digest.planner.state import BuildPlannerState
 
 logger = structlog.get_logger(__name__)
-_AUTO_TITLE_PLACEHOLDERS = {"", "untitled subject", "新学科", "无标题", "未命名", "未命名学科"}
 
 
 def _subject_for_prompt(state: BuildPlannerState) -> str:
@@ -34,50 +33,6 @@ def _subject_for_prompt(state: BuildPlannerState) -> str:
         shared_inputs=material_context,
         user_prompt=state.get("user_prompt") or "",
     )
-
-
-def _needs_auto_subject_name(state: BuildPlannerState) -> bool:
-    return str(state.get("planner_operation") or "") == "create"
-
-
-async def _generate_subject_name(state: BuildPlannerState) -> str:
-    if not _needs_auto_subject_name(state):
-        return ""
-    material_context = state["material_context"]
-    filenames = [
-        packet.filename
-        for packet in list(material_context.source_packets or [])[:5]
-        if str(packet.filename or "").strip()
-    ]
-    prompt = build_subject_name_prompt(
-        user_prompt=state.get("user_prompt") or "",
-        filenames=filenames,
-        digest_mode=state.get("digest_mode") or material_context.course_mode_decision.mode.value,
-    )
-    try:
-        title = await acompletion_with_fallback(
-            [{"role": "user", "content": prompt}],
-            call_purpose=LLMCallPurpose.CLASSIFY,
-            model="light",
-            max_tokens=40,
-            temperature=0.2,
-            extra_metadata={
-                "planner_session_id": state.get("planner_session_id") or "",
-                "substep": "生成学科标题",
-            },
-        )
-    except Exception:
-        logger.exception(
-            "planner_subject_name_generation_failed",
-            planner_session_id=state.get("planner_session_id") or "",
-            subject=state.get("subject") or "",
-        )
-        return ""
-    cleaned = str(title or "").strip().strip("\"'“”‘’`，。；;:： ")
-    cleaned = " ".join(cleaned.split())
-    if not cleaned or cleaned.casefold() in _AUTO_TITLE_PLACEHOLDERS:
-        return ""
-    return cleaned[:16]
 
 
 async def _stream_planner_brief(state: BuildPlannerState, fallback: PlannerBrief) -> PlannerBrief:
@@ -249,10 +204,9 @@ def build_stream_brief_and_extract_intent_node(*, context: WorkflowContext):
             subject=state.get("subject", ""),
         )
         fallback_brief = build_empty_planner_brief()
-        brief, plan_intent, generated_subject_name = await asyncio.gather(
+        brief, plan_intent = await asyncio.gather(
             _stream_planner_brief(state, fallback_brief),
             _extract_plan_intent(state),
-            _generate_subject_name(state),
         )
         await emit_planner_event(
             state,
@@ -265,7 +219,6 @@ def build_stream_brief_and_extract_intent_node(*, context: WorkflowContext):
         result = {
             "planner_brief": brief.model_dump(mode="json"),
             "plan_intent": plan_intent.model_dump(mode="json"),
-            "generated_subject_name": generated_subject_name,
         }
         logger.info(
             "planner_brief_intent_node_completed",
