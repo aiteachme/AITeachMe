@@ -127,6 +127,39 @@ class RawFileNotFoundError(AITeachMeError):
         super().__init__(detail=f"文件 `{file_id}` 不存在。")
 
 
+class DemoCourseCatalogNotConfiguredError(AITeachMeError):
+    error_code = "DEMO_COURSE_CATALOG_NOT_CONFIGURED"
+    status_code = HTTPStatus.SERVICE_UNAVAILABLE
+
+    def __init__(self) -> None:
+        super().__init__(
+            detail=(
+                "当前未配置演示课程目录。"
+                "请先配置现有对象存储公共根地址 `S3_PUBLIC_BASE_URL`，"
+                "后端会固定从 `<S3_PUBLIC_BASE_URL>/demo-courses/` 读取课程索引。"
+            )
+        )
+
+
+class DemoCourseCatalogUnavailableError(AITeachMeError):
+    error_code = "DEMO_COURSE_CATALOG_UNAVAILABLE"
+    status_code = HTTPStatus.BAD_GATEWAY
+
+    def __init__(self, reason: str = "") -> None:
+        detail = "演示课程目录当前不可用。"
+        if reason:
+            detail = f"{detail}{reason}"
+        super().__init__(detail=detail)
+
+
+class DemoCoursePackageNotFoundError(AITeachMeError):
+    error_code = "DEMO_COURSE_PACKAGE_NOT_FOUND"
+    status_code = HTTPStatus.NOT_FOUND
+
+    def __init__(self, course_id: str) -> None:
+        super().__init__(detail=f"演示课程 `{course_id}` 不存在。")
+
+
 class InvalidRawFileStateError(AITeachMeError):
     error_code = "INVALID_RAW_FILE_STATE"
     status_code = HTTPStatus.UNPROCESSABLE_ENTITY

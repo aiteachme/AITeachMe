@@ -143,10 +143,11 @@ backend/data/<subject>/
 | `knowledge_markdowns/docgen_manifest.json` | 发布 manifest |
 | `knowledge_markdowns/versions/vXXXX/` | 历史版本 |
 
-课程包共享目录：
+演示课程主源：
 
 ```text
-backend/data/_courses/
+S3_PUBLIC_BASE_URL -> https://<your-cdn-domain>
+固定课程索引 -> <S3_PUBLIC_BASE_URL>/demo-courses/catalog/v1/index.json
 ```
 
 前端构建产物：

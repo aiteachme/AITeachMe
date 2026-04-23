@@ -43,6 +43,7 @@ from app.schemas.export_import import (
     ExportPreviewData,
     ExportPreviewStats,
 )
+from app.utils.path_helpers import sanitize_doc_title
 from app.utils.subject import generate_subject_id
 from app.utils.time import utcnow
 
@@ -387,6 +388,9 @@ def _import_table(
             record_data["asset_dir"] = None
             record_data["storage_uri"] = None
             record_data["markdown_uri"] = None
+        elif spec.name == "retrieval_chunk":
+            record_data["embedding_model"] = None
+            record_data["vector_ref"] = None
         elif spec.name == "knowledge_document":
             record_data["markdown_path"] = None
             record_data["markdown_uri"] = None
@@ -413,7 +417,11 @@ def _import_table(
             instance.storage_backend = "s3" if is_cloud_mode() else "local"
         elif spec.name == "knowledge_document" and isinstance(new_id, int):
             subject_scope = build_subject_storage_scope(user_id=user_id, subject=new_slug)
-            instance.markdown_path = subject_scope.knowledge_doc_key(f"chapter_{instance.chapter_index}.md")
+            chapter_index = max(1, int(instance.chapter_index or 1))
+            safe_title = sanitize_doc_title(instance.title or f"chapter_{chapter_index}")
+            instance.markdown_path = subject_scope.knowledge_doc_key(
+                f"chapter_{chapter_index:02d}_{safe_title}.md"
+            )
 
         if old_id is not None:
             table_id_map[old_id] = new_id
@@ -457,7 +465,13 @@ def _remap_fk(
 def _pack_files(zf: zipfile.ZipFile, namespace: str, options: ExportOptions) -> None:
     """Read files from ContentStore and pack them into the zip archive."""
     cs = get_content_store()
-    skip_filenames = {".build.lock", "build_status.json", "manifest.json"}
+    skip_filenames = {
+        ".build.lock",
+        "build_status.json",
+        "chunk_manifest.json",
+        "manifest.json",
+        "node_embedding_cache.json",
+    }
 
     def _pack_prefix(prefix: str, arc_prefix: str) -> None:
         keys = run_store_sync(cs.list_prefix, prefix, default=[])
@@ -477,8 +491,15 @@ def _pack_files(zf: zipfile.ZipFile, namespace: str, options: ExportOptions) -> 
     if options.include_knowledge_docs:
         keys = run_store_sync(cs.list_prefix, f"{namespace}/knowledge_markdowns/", default=[])
         for key in keys:
-            filename = key.rsplit("/", 1)[-1]
-            if filename in skip_filenames or "/_build/" in key:
+            prefix = f"{namespace}/knowledge_markdowns/"
+            relative = key[len(prefix):] if key.startswith(prefix) else key.rsplit("/", 1)[-1]
+            filename = relative.rsplit("/", 1)[-1]
+            if (
+                filename in skip_filenames
+                or relative.startswith("_build/")
+                or relative.startswith("versions/")
+                or "/" in relative
+            ):
                 continue
             data = run_store_sync(cs.read_bytes, key, default=None)
             if data is not None:
