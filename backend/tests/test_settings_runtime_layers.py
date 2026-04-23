@@ -10,7 +10,10 @@ from app.shared.infra.settings import (
     get_settings,
     set_system_settings_override,
 )
-from app.workflows.support.system.settings import build_settings_overview_data
+from app.workflows.support.system.settings import (
+    _normalize_user_settings_payload,
+    build_settings_overview_data,
+)
 
 
 def test_get_settings_merges_system_runtime_override() -> None:
@@ -127,3 +130,28 @@ def test_settings_model_upgrades_legacy_extract_and_rerank_keys() -> None:
 
     assert settings.models.light == "legacy-extract-model"
     assert settings.models.rerank == "qwen3-reranker-4b"
+
+
+def test_normalize_user_settings_payload_normalizes_openai_compatible_image_model(monkeypatch) -> None:
+    monkeypatch.setenv("LLM_BASE_URL", "https://gateway.example.com/v1")
+
+    payload = _normalize_user_settings_payload(
+        {"models": {"image_generation": "doubao-seedream-4-0"}}
+    )
+
+    assert payload == {
+        "models": {"image_generation": "doubao/doubao-seedream-4-0"}
+    }
+
+
+def test_set_system_settings_override_normalizes_openai_compatible_image_model(monkeypatch) -> None:
+    monkeypatch.setenv("LLM_BASE_URL", "https://gateway.example.com/v1")
+    clear_system_settings_override()
+    try:
+        overridden = set_system_settings_override(
+            {"models": {"image_generation": "doubao-seedream-4-0"}}
+        )
+        assert overridden.models.image_generation == "doubao/doubao-seedream-4-0"
+        assert get_settings().models.image_generation == "doubao/doubao-seedream-4-0"
+    finally:
+        clear_system_settings_override()

@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import time
 from collections.abc import Mapping
 from typing import Any
+from urllib.parse import urlparse
 
 import httpx
 from pydantic import BaseModel, Field
@@ -13,6 +15,11 @@ from pydantic import BaseModel, Field
 from app.shared.infra.exceptions import LLMCallError, LLMTimeoutError
 from app.shared.infra.llm_support.routing import LLMCallPurpose
 from app.shared.infra.observability.trace import langsmith_trace
+from app.shared.infra.settings.support import (
+    is_openai_compatible_one_step_image_model,
+    normalize_openai_compatible_image_model_name,
+    resolve_runtime_llm_provider,
+)
 
 from .common import (
     build_litellm_provider_kwargs,
@@ -29,7 +36,16 @@ from .observability import _end_langsmith_trace, _sanitize_langsmith_value
 
 litellm = load_litellm()
 
-AIHUBMIX_DESCRIBE_MODELS = {"describe"}
+PREDICTION_DESCRIBE_MODELS = {"describe"}
+PREDICTION_ONLY_INPUT_KEYS = frozenset(
+    {
+        "numberOfImages",
+        "stream",
+        "sequential_image_generation",
+    }
+)
+OFFICIALLY_UNSUPPORTED_IMAGE_PROVIDERS = frozenset({"anthropic", "groq", "deepseek", "kimi", "mistral"})
+ERROR_PREVIEW_CHARS = 240
 
 
 class GeneratedImage(BaseModel):
@@ -51,11 +67,7 @@ class ImageGenerationResult(BaseModel):
     raw_metadata: dict[str, Any] = Field(default_factory=dict)
 
 
-def _is_aihubmix_base_url(value: str | None) -> bool:
-    return "aihubmix.com" in str(value or "").casefold()
-
-
-def _is_aihubmix_prediction_model(value: str) -> bool:
+def _is_prediction_model_name(value: str) -> bool:
     normalized = str(value or "").strip()
     return "/" in normalized
 
@@ -66,13 +78,82 @@ def _is_bare_model_name(value: str | None) -> bool:
 
 
 def _is_describe_only_model(value: str | None) -> bool:
-    return str(value or "").strip().casefold() in AIHUBMIX_DESCRIBE_MODELS
+    normalized = str(value or "").strip()
+    model_name = normalized.rsplit("/", 1)[-1]
+    return model_name.casefold() in PREDICTION_DESCRIBE_MODELS
+
+
+def _should_use_prediction_endpoint(
+    *,
+    model: str,
+    endpoint_mode: str | None,
+    prediction_input: Mapping[str, Any] | None,
+) -> bool:
+    normalized_mode = str(endpoint_mode or "").strip().lower()
+    if normalized_mode == "prediction":
+        return True
+    if normalized_mode == "images":
+        return False
+    if _is_prediction_model_name(model):
+        return True
+    if any(key in dict(prediction_input or {}) for key in PREDICTION_ONLY_INPUT_KEYS):
+        return True
+    return False
 
 
 def _item_get(item: Any, key: str, default: Any = None) -> Any:
     if isinstance(item, Mapping):
         return item.get(key, default)
     return getattr(item, key, default)
+
+
+def _base_origin(api_base: str | None) -> str:
+    normalized = str(api_base or "").strip()
+    if not normalized:
+        return ""
+    parsed = urlparse(normalized)
+    if parsed.scheme and parsed.netloc:
+        return f"{parsed.scheme}://{parsed.netloc}"
+    return normalized.rstrip("/")
+
+
+def _data_url_to_image(value: str) -> GeneratedImage | None:
+    normalized = str(value or "").strip()
+    if not normalized.startswith("data:") or ";base64," not in normalized:
+        return None
+    header, b64_data = normalized.split(",", 1)
+    mime_type = header[5:].split(";", 1)[0].strip() or "image/png"
+    return GeneratedImage(b64_json=b64_data, mime_type=mime_type)
+
+
+def _preview_text(value: Any, *, limit: int = ERROR_PREVIEW_CHARS) -> str:
+    return str(value)[:limit]
+
+
+async def _materialize_b64_images(
+    images: list[GeneratedImage],
+    *,
+    timeout_s: int,
+) -> list[GeneratedImage]:
+    materialized: list[GeneratedImage] = []
+    async with httpx.AsyncClient(timeout=timeout_s) as client:
+        for image in images:
+            if image.b64_json or not image.url:
+                materialized.append(image)
+                continue
+            response = await client.get(image.url)
+            response.raise_for_status()
+            mime_type = response.headers.get("content-type", "").split(";", 1)[0].strip() or image.mime_type
+            materialized.append(
+                GeneratedImage(
+                    url=image.url,
+                    b64_json=base64.b64encode(response.content).decode("ascii"),
+                    revised_prompt=image.revised_prompt,
+                    mime_type=mime_type or "image/png",
+                    provider_metadata=dict(image.provider_metadata),
+                )
+            )
+    return materialized
 
 
 def _extract_images(response: Any) -> list[GeneratedImage]:
@@ -130,6 +211,101 @@ def _extract_prediction_images(payload: Mapping[str, Any]) -> list[GeneratedImag
     return images
 
 
+def _extract_qwen_native_images(payload: Mapping[str, Any]) -> list[GeneratedImage]:
+    output = payload.get("output") or {}
+    choices = output.get("choices") or []
+    images: list[GeneratedImage] = []
+    if not isinstance(choices, list):
+        return images
+    for choice in choices:
+        if not isinstance(choice, Mapping):
+            continue
+        message = choice.get("message") or {}
+        contents = message.get("content") or []
+        if not isinstance(contents, list):
+            continue
+        for item in contents:
+            if not isinstance(item, Mapping):
+                continue
+            image_url = str(item.get("image") or "")
+            if image_url:
+                images.append(GeneratedImage(url=image_url))
+    return images
+
+
+def _extract_siliconflow_images(payload: Mapping[str, Any]) -> list[GeneratedImage]:
+    images: list[GeneratedImage] = []
+    for item in list(payload.get("images") or []):
+        if not isinstance(item, Mapping):
+            continue
+        image_url = str(item.get("url") or "")
+        if image_url:
+            images.append(GeneratedImage(url=image_url))
+    return images
+
+
+def _extract_minimax_images(payload: Mapping[str, Any]) -> list[GeneratedImage]:
+    data = payload.get("data") or {}
+    images: list[GeneratedImage] = []
+    for url in list(data.get("image_urls") or []):
+        normalized = str(url or "").strip()
+        if normalized:
+            images.append(GeneratedImage(url=normalized))
+    for raw_b64 in list(data.get("image_base64") or []):
+        normalized = str(raw_b64 or "").strip()
+        if normalized:
+            images.append(GeneratedImage(b64_json=normalized, mime_type="image/jpeg"))
+    return images
+
+
+def _extract_openrouter_images(payload: Mapping[str, Any]) -> list[GeneratedImage]:
+    images: list[GeneratedImage] = []
+    for choice in list(payload.get("choices") or []):
+        if not isinstance(choice, Mapping):
+            continue
+        message = choice.get("message") or {}
+        for item in list(message.get("images") or []):
+            if not isinstance(item, Mapping):
+                continue
+            image_url = item.get("image_url") or {}
+            data_url = str(image_url.get("url") or "")
+            parsed = _data_url_to_image(data_url)
+            if parsed is not None:
+                images.append(parsed)
+            elif data_url:
+                images.append(GeneratedImage(url=data_url))
+    return images
+
+
+def _extract_gemini_images(payload: Mapping[str, Any]) -> list[GeneratedImage]:
+    images: list[GeneratedImage] = []
+    for candidate in list(payload.get("candidates") or []):
+        if not isinstance(candidate, Mapping):
+            continue
+        content = candidate.get("content") or {}
+        for part in list(content.get("parts") or []):
+            if not isinstance(part, Mapping):
+                continue
+            inline_data = part.get("inlineData") or part.get("inline_data") or {}
+            b64_data = str(inline_data.get("data") or "")
+            mime_type = str(inline_data.get("mimeType") or inline_data.get("mime_type") or "image/png")
+            if b64_data:
+                images.append(GeneratedImage(b64_json=b64_data, mime_type=mime_type))
+    return images
+
+
+def _extract_imagen_native_images(payload: Mapping[str, Any]) -> list[GeneratedImage]:
+    images: list[GeneratedImage] = []
+    for item in list(payload.get("generatedImages") or payload.get("generated_images") or []):
+        if not isinstance(item, Mapping):
+            continue
+        image = item.get("image") or {}
+        b64_data = str(image.get("imageBytes") or image.get("image_bytes") or "")
+        if b64_data:
+            images.append(GeneratedImage(b64_json=b64_data, mime_type="image/png"))
+    return images
+
+
 def _metadata_without_image_payload(result: ImageGenerationResult) -> dict[str, Any]:
     return {
         "model": result.model,
@@ -140,20 +316,19 @@ def _metadata_without_image_payload(result: ImageGenerationResult) -> dict[str, 
                 "has_url": bool(image.url),
                 "has_b64_json": bool(image.b64_json),
                 "mime_type": image.mime_type,
-                "revised_prompt": image.revised_prompt[:240],
+                "revised_prompt": image.revised_prompt,
             }
             for image in result.images
         ],
     }
 
 
-def _build_aihubmix_prediction_input(*, prompt: str, size: str, n: int, response_format: str) -> dict[str, Any]:
+def _build_prediction_image_input(*, prompt: str, size: str, n: int, response_format: str) -> dict[str, Any]:
     return {
         "prompt": prompt,
         "size": size,
         "n": max(1, int(n or 1)),
         "response_format": "base64_json" if response_format == "b64_json" else response_format,
-        "watermark": False,
     }
 
 
@@ -180,7 +355,7 @@ def _build_openai_compatible_image_payload(
     return payload
 
 
-async def _agenerate_aihubmix_prediction(
+async def _agenerate_prediction_image(
     *,
     api_base: str,
     api_key: str,
@@ -190,15 +365,21 @@ async def _agenerate_aihubmix_prediction(
     n: int,
     response_format: str,
     timeout_s: int,
+    extra_input: Mapping[str, Any] | None = None,
 ) -> ImageGenerationResult:
+    request_input = _build_prediction_image_input(
+        prompt=prompt,
+        size=size,
+        n=n,
+        response_format=response_format,
+    )
+    for key, value in dict(extra_input or {}).items():
+        if value is None:
+            continue
+        request_input[key] = value
     endpoint = f"{api_base.rstrip('/')}/models/{model.strip('/')}/predictions"
     request_payload = {
-        "input": _build_aihubmix_prediction_input(
-            prompt=prompt,
-            size=size,
-            n=n,
-            response_format=response_format,
-        )
+        "input": request_input
     }
     async with httpx.AsyncClient(timeout=timeout_s) as client:
         response = await client.post(
@@ -212,20 +393,20 @@ async def _agenerate_aihubmix_prediction(
     if response.status_code >= 400:
         raise LLMCallError(
             reason=(
-                f"aihubmix prediction endpoint failed: {response.status_code} "
-                f"{response.text[:240]}"
+                f"prediction image endpoint failed: {response.status_code} "
+                f"{_preview_text(response.text)}"
             )
         )
     payload = response.json()
     images = _extract_prediction_images(payload)
     if not images:
-        raise LLMCallError(reason=f"aihubmix prediction returned no image: {str(payload)[:240]}")
+        raise LLMCallError(reason=f"prediction image endpoint returned no image: {_preview_text(payload)}")
     return ImageGenerationResult(
         model=model,
         prompt=prompt,
         images=images,
         raw_metadata={
-            "provider": "aihubmix",
+            "provider": "openai_compatible_prediction_http",
             "endpoint": endpoint,
             "response_keys": sorted(str(key) for key in payload.keys()),
         },
@@ -266,14 +447,14 @@ async def _agenerate_openai_compatible_image(
         raise LLMCallError(
             reason=(
                 f"openai-compatible image endpoint failed: {response.status_code} "
-                f"{response.text[:240]}"
+                f"{_preview_text(response.text)}"
             )
         )
     payload = response.json()
     images = _extract_images(payload)
     if not images:
         raise LLMCallError(
-            reason=f"openai-compatible image endpoint returned no image: {str(payload)[:240]}"
+            reason=f"openai-compatible image endpoint returned no image: {_preview_text(payload)}"
         )
     return ImageGenerationResult(
         model=model,
@@ -283,6 +464,726 @@ async def _agenerate_openai_compatible_image(
             "provider": "openai_compatible_http",
             "endpoint": endpoint,
             "response_keys": sorted(str(key) for key in payload.keys()),
+        },
+    )
+
+
+async def _agenerate_qwen_native_image(
+    *,
+    api_base: str,
+    api_key: str,
+    model: str,
+    prompt: str,
+    size: str,
+    n: int,
+    timeout_s: int,
+    parameters: Mapping[str, Any] | None = None,
+) -> ImageGenerationResult:
+    endpoint = f"{_base_origin(api_base)}/api/v1/services/aigc/multimodal-generation/generation"
+    request_parameters = {
+        "size": size,
+        "n": max(1, int(n or 1)),
+        **{key: value for key, value in dict(parameters or {}).items() if value is not None},
+    }
+    request_payload = {
+        "model": model,
+        "input": {
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [{"text": prompt}],
+                }
+            ]
+        },
+        "parameters": request_parameters,
+    }
+    async with httpx.AsyncClient(timeout=timeout_s) as client:
+        response = await client.post(
+            endpoint,
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            },
+            json=request_payload,
+        )
+    if response.status_code >= 400:
+        raise LLMCallError(reason=f"qwen image endpoint failed: {response.status_code} {_preview_text(response.text)}")
+    payload = response.json()
+    images = _extract_qwen_native_images(payload)
+    if not images:
+        raise LLMCallError(reason=f"qwen image endpoint returned no image: {_preview_text(payload)}")
+    return ImageGenerationResult(
+        model=model,
+        prompt=prompt,
+        images=images,
+        raw_metadata={
+            "provider": "qwen_native_http",
+            "endpoint": endpoint,
+            "response_keys": sorted(str(key) for key in payload.keys()),
+        },
+    )
+
+
+async def _agenerate_siliconflow_image(
+    *,
+    api_base: str,
+    api_key: str,
+    model: str,
+    prompt: str,
+    timeout_s: int,
+    payload: Mapping[str, Any],
+) -> ImageGenerationResult:
+    endpoint = f"{api_base.rstrip('/')}/images/generations"
+    request_payload = {key: value for key, value in dict(payload).items() if value is not None}
+    async with httpx.AsyncClient(timeout=timeout_s) as client:
+        response = await client.post(
+            endpoint,
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            },
+            json=request_payload,
+        )
+    if response.status_code >= 400:
+        raise LLMCallError(reason=f"siliconflow image endpoint failed: {response.status_code} {_preview_text(response.text)}")
+    payload_json = response.json()
+    images = _extract_siliconflow_images(payload_json)
+    if not images:
+        raise LLMCallError(reason=f"siliconflow image endpoint returned no image: {_preview_text(payload_json)}")
+    return ImageGenerationResult(
+        model=model,
+        prompt=prompt,
+        images=images,
+        raw_metadata={
+            "provider": "siliconflow_http",
+            "endpoint": endpoint,
+            "response_keys": sorted(str(key) for key in payload_json.keys()),
+        },
+    )
+
+
+async def _agenerate_minimax_image(
+    *,
+    api_base: str,
+    api_key: str,
+    model: str,
+    prompt: str,
+    timeout_s: int,
+    payload: Mapping[str, Any],
+) -> ImageGenerationResult:
+    endpoint = f"{_base_origin(api_base)}/v1/image_generation"
+    request_payload = {key: value for key, value in dict(payload).items() if value is not None}
+    async with httpx.AsyncClient(timeout=timeout_s) as client:
+        response = await client.post(
+            endpoint,
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            },
+            json=request_payload,
+        )
+    if response.status_code >= 400:
+        raise LLMCallError(reason=f"minimax image endpoint failed: {response.status_code} {_preview_text(response.text)}")
+    payload_json = response.json()
+    images = _extract_minimax_images(payload_json)
+    if not images:
+        raise LLMCallError(reason=f"minimax image endpoint returned no image: {_preview_text(payload_json)}")
+    return ImageGenerationResult(
+        model=model,
+        prompt=prompt,
+        images=images,
+        raw_metadata={
+            "provider": "minimax_http",
+            "endpoint": endpoint,
+            "response_keys": sorted(str(key) for key in payload_json.keys()),
+        },
+    )
+
+
+async def _agenerate_openrouter_chat_image(
+    *,
+    api_base: str,
+    api_key: str,
+    model: str,
+    prompt: str,
+    timeout_s: int,
+    modalities: list[str],
+    extra_body: Mapping[str, Any] | None = None,
+) -> ImageGenerationResult:
+    endpoint = f"{api_base.rstrip('/')}/chat/completions"
+    request_payload: dict[str, Any] = {
+        "model": model,
+        "messages": [{"role": "user", "content": prompt}],
+        "modalities": modalities,
+        "stream": False,
+    }
+    for key, value in dict(extra_body or {}).items():
+        if value is None:
+            continue
+        request_payload[key] = value
+    async with httpx.AsyncClient(timeout=timeout_s) as client:
+        response = await client.post(
+            endpoint,
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            },
+            json=request_payload,
+        )
+    if response.status_code >= 400:
+        raise LLMCallError(reason=f"openrouter image endpoint failed: {response.status_code} {_preview_text(response.text)}")
+    payload = response.json()
+    images = _extract_openrouter_images(payload)
+    if not images:
+        raise LLMCallError(reason=f"openrouter image endpoint returned no image: {_preview_text(payload)}")
+    return ImageGenerationResult(
+        model=model,
+        prompt=prompt,
+        images=images,
+        raw_metadata={
+            "provider": "openrouter_chat_http",
+            "endpoint": endpoint,
+            "response_keys": sorted(str(key) for key in payload.keys()),
+        },
+    )
+
+
+async def _agenerate_gemini_native_image(
+    *,
+    api_key: str,
+    model: str,
+    prompt: str,
+    timeout_s: int,
+    extra_body: Mapping[str, Any] | None = None,
+) -> ImageGenerationResult:
+    endpoint = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+    request_payload: dict[str, Any] = {
+        "contents": [{"parts": [{"text": prompt}]}],
+    }
+    if extra_body:
+        request_payload.update({key: value for key, value in dict(extra_body).items() if value is not None})
+    async with httpx.AsyncClient(timeout=timeout_s) as client:
+        response = await client.post(
+            endpoint,
+            headers={
+                "x-goog-api-key": api_key,
+                "Content-Type": "application/json",
+            },
+            json=request_payload,
+        )
+    if response.status_code >= 400:
+        raise LLMCallError(reason=f"gemini image endpoint failed: {response.status_code} {_preview_text(response.text)}")
+    payload = response.json()
+    images = _extract_gemini_images(payload)
+    if not images:
+        raise LLMCallError(reason=f"gemini image endpoint returned no image: {_preview_text(payload)}")
+    return ImageGenerationResult(
+        model=model,
+        prompt=prompt,
+        images=images,
+        raw_metadata={
+            "provider": "gemini_native_http",
+            "endpoint": endpoint,
+            "response_keys": sorted(str(key) for key in payload.keys()),
+        },
+    )
+
+
+async def _agenerate_imagen_native_image(
+    *,
+    api_key: str,
+    model: str,
+    prompt: str,
+    timeout_s: int,
+    parameters: Mapping[str, Any] | None = None,
+) -> ImageGenerationResult:
+    endpoint = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:predict"
+    request_payload = {
+        "instances": [{"prompt": prompt}],
+        "parameters": {key: value for key, value in dict(parameters or {}).items() if value is not None},
+    }
+    async with httpx.AsyncClient(timeout=timeout_s) as client:
+        response = await client.post(
+            endpoint,
+            headers={
+                "x-goog-api-key": api_key,
+                "Content-Type": "application/json",
+            },
+            json=request_payload,
+        )
+    if response.status_code >= 400:
+        raise LLMCallError(reason=f"imagen image endpoint failed: {response.status_code} {_preview_text(response.text)}")
+    payload = response.json()
+    images = _extract_imagen_native_images(payload)
+    if not images:
+        raise LLMCallError(reason=f"imagen image endpoint returned no image: {_preview_text(payload)}")
+    return ImageGenerationResult(
+        model=model,
+        prompt=prompt,
+        images=images,
+        raw_metadata={
+            "provider": "imagen_native_http",
+            "endpoint": endpoint,
+            "response_keys": sorted(str(key) for key in payload.keys()),
+        },
+    )
+
+
+def _extract_vertex_imagen_images(payload: Mapping[str, Any]) -> list[GeneratedImage]:
+    images: list[GeneratedImage] = []
+    for item in list(payload.get("predictions") or []):
+        if not isinstance(item, Mapping):
+            continue
+        b64_data = str(item.get("bytesBase64Encoded") or "")
+        mime_type = str(item.get("mimeType") or "image/png")
+        if b64_data:
+            images.append(GeneratedImage(b64_json=b64_data, mime_type=mime_type))
+    return images
+
+
+async def _agenerate_vertex_imagen_image(
+    *,
+    api_key: str,
+    model: str,
+    prompt: str,
+    timeout_s: int,
+    parameters: Mapping[str, Any] | None = None,
+) -> ImageGenerationResult:
+    from app.shared.infra.env_support import get_env
+
+    project_id = (get_env("VERTEX_AI_PROJECT_ID") or get_env("GOOGLE_CLOUD_PROJECT") or "").strip()
+    location = (get_env("VERTEX_AI_LOCATION") or get_env("GOOGLE_CLOUD_LOCATION") or "us-central1").strip()
+    access_token = (
+        get_env("VERTEX_AI_ACCESS_TOKEN")
+        or get_env("GOOGLE_CLOUD_ACCESS_TOKEN")
+        or ""
+    ).strip()
+    if not project_id or not access_token:
+        raise LLMCallError(
+            reason=(
+                "vertex_ai image generation requires VERTEX_AI_PROJECT_ID (or GOOGLE_CLOUD_PROJECT) "
+                "and VERTEX_AI_ACCESS_TOKEN (or GOOGLE_CLOUD_ACCESS_TOKEN)."
+            )
+        )
+    endpoint = (
+        f"https://{location}-aiplatform.googleapis.com/v1/projects/{project_id}/locations/"
+        f"{location}/publishers/google/models/{model}:predict"
+    )
+    request_payload = {
+        "instances": [{"prompt": prompt}],
+        "parameters": {key: value for key, value in dict(parameters or {}).items() if value is not None},
+    }
+    async with httpx.AsyncClient(timeout=timeout_s) as client:
+        response = await client.post(
+            endpoint,
+            headers={
+                "Authorization": f"Bearer {access_token}",
+                "Content-Type": "application/json",
+            },
+            json=request_payload,
+        )
+    if response.status_code >= 400:
+        raise LLMCallError(reason=f"vertex_ai image endpoint failed: {response.status_code} {_preview_text(response.text)}")
+    payload = response.json()
+    images = _extract_vertex_imagen_images(payload)
+    if not images:
+        raise LLMCallError(reason=f"vertex_ai image endpoint returned no image: {_preview_text(payload)}")
+    return ImageGenerationResult(
+        model=model,
+        prompt=prompt,
+        images=images,
+        raw_metadata={
+            "provider": "vertex_imagen_http",
+            "endpoint": endpoint,
+            "response_keys": sorted(str(key) for key in payload.keys()),
+        },
+    )
+
+
+def _extract_bedrock_nova_images(payload: Mapping[str, Any]) -> list[GeneratedImage]:
+    images: list[GeneratedImage] = []
+    for item in list(payload.get("images") or []):
+        normalized = str(item or "").strip()
+        if normalized:
+            images.append(GeneratedImage(b64_json=normalized, mime_type="image/png"))
+    return images
+
+
+async def _agenerate_bedrock_image(
+    *,
+    model: str,
+    prompt: str,
+    size: str,
+    n: int,
+    timeout_s: int,
+    image_generation_config: Mapping[str, Any] | None = None,
+    text_to_image_params: Mapping[str, Any] | None = None,
+) -> ImageGenerationResult:
+    import asyncio
+    import json
+
+    import boto3
+
+    width = 1024
+    height = 1024
+    if "x" in str(size):
+        raw_width, raw_height = str(size).lower().split("x", 1)
+        if raw_width.isdigit() and raw_height.isdigit():
+            width = int(raw_width)
+            height = int(raw_height)
+
+    request_payload = {
+        "taskType": "TEXT_IMAGE",
+        "textToImageParams": {
+            "text": prompt,
+            **{key: value for key, value in dict(text_to_image_params or {}).items() if value is not None},
+        },
+        "imageGenerationConfig": {
+            "numberOfImages": max(1, int(n or 1)),
+            "width": width,
+            "height": height,
+            **{key: value for key, value in dict(image_generation_config or {}).items() if value is not None},
+        },
+    }
+
+    def _invoke() -> dict[str, Any]:
+        client = boto3.client("bedrock-runtime")
+        response = client.invoke_model(
+            modelId=model,
+            body=json.dumps(request_payload),
+            contentType="application/json",
+            accept="application/json",
+        )
+        return json.loads(response["body"].read().decode("utf-8"))
+
+    payload = await asyncio.wait_for(asyncio.to_thread(_invoke), timeout=timeout_s)
+    images = _extract_bedrock_nova_images(payload)
+    if not images:
+        raise LLMCallError(reason=f"bedrock image endpoint returned no image: {_preview_text(payload)}")
+    return ImageGenerationResult(
+        model=model,
+        prompt=prompt,
+        images=images,
+        raw_metadata={
+            "provider": "bedrock_nova_runtime",
+            "response_keys": sorted(str(key) for key in payload.keys()),
+        },
+    )
+
+
+def _resolve_openrouter_modalities(model: str, modalities: Any = None) -> list[str]:
+    if isinstance(modalities, list) and modalities:
+        return [str(item) for item in modalities if str(item).strip()]
+    normalized_model = str(model or "").strip().lower()
+    if normalized_model.startswith("google/"):
+        return ["image", "text"]
+    return ["image"]
+
+
+def _parse_size_dimensions(size: str, *, default: tuple[int, int] = (1024, 1024)) -> tuple[int, int]:
+    normalized = str(size or "").strip().lower()
+    if "x" not in normalized:
+        return default
+    raw_width, raw_height = normalized.split("x", 1)
+    if raw_width.isdigit() and raw_height.isdigit():
+        return int(raw_width), int(raw_height)
+    return default
+
+
+def _build_provider_image_options(
+    *,
+    model: str,
+    prompt: str,
+    size: str,
+    n: int,
+    response_format: str,
+    kwargs: Mapping[str, Any],
+    explicit_prediction_input: Mapping[str, Any] | None,
+) -> dict[str, Any]:
+    passthrough_image_body = {
+        key: kwargs.get(key)
+        for key in ("quality", "style", "user", "background", "output_format")
+        if kwargs.get(key) is not None
+    }
+    passthrough_prediction_input = {
+        key: kwargs.get(key)
+        for key in (
+            "quality",
+            "style",
+            "background",
+            "output_format",
+            "watermark",
+            "stream",
+            "sequential_image_generation",
+            "numberOfImages",
+        )
+        if kwargs.get(key) is not None
+    }
+    if isinstance(explicit_prediction_input, Mapping):
+        for key, value in explicit_prediction_input.items():
+            if value is not None:
+                passthrough_prediction_input[str(key)] = value
+
+    qwen_parameters = {
+        key: kwargs.get(key)
+        for key in ("negative_prompt", "prompt_extend", "watermark", "seed")
+        if kwargs.get(key) is not None
+    }
+
+    width, height = _parse_size_dimensions(size)
+    minimax_payload: dict[str, Any] = {
+        "model": model,
+        "prompt": prompt,
+        "response_format": "base64" if response_format == "b64_json" else response_format,
+        "width": width,
+        "height": height,
+    }
+    for key in ("aspect_ratio", "seed", "prompt_optimizer", "watermark"):
+        if kwargs.get(key) is not None:
+            minimax_payload[key] = kwargs.get(key)
+
+    siliconflow_payload: dict[str, Any] = {
+        "model": model,
+        "prompt": prompt,
+        "image_size": kwargs.get("image_size") or size,
+        "batch_size": kwargs.get("batch_size") or max(1, int(n or 1)),
+    }
+    for key in ("negative_prompt", "seed", "num_inference_steps", "guidance_scale", "cfg", "image"):
+        if kwargs.get(key) is not None:
+            siliconflow_payload[key] = kwargs.get(key)
+
+    openrouter_extra_body = {
+        key: kwargs.get(key)
+        for key in ("n", "temperature", "top_p", "stream", "image_config")
+        if kwargs.get(key) is not None
+    }
+    if "n" not in openrouter_extra_body and int(n or 1) > 1:
+        openrouter_extra_body["n"] = int(n or 1)
+
+    gemini_extra_body = {
+        "generationConfig": {
+            key: value
+            for key, value in {
+                "responseModalities": kwargs.get("response_modalities") or ["TEXT", "IMAGE"],
+            }.items()
+            if value is not None
+        }
+    }
+
+    imagen_parameters = {
+        key: kwargs.get(key)
+        for key in ("numberOfImages", "sampleCount", "aspectRatio", "personGeneration", "safetyFilterLevel")
+        if kwargs.get(key) is not None
+    }
+    imagen_parameters.setdefault("numberOfImages", max(1, int(n or 1)))
+
+    vertex_imagen_parameters = {
+        key: kwargs.get(key)
+        for key in (
+            "sampleCount",
+            "addWatermark",
+            "aspectRatio",
+            "enhancePrompt",
+            "includeRaiReason",
+            "includeSafetyAttributes",
+            "personGeneration",
+            "safetySetting",
+            "seed",
+            "storageUri",
+            "outputOptions",
+        )
+        if kwargs.get(key) is not None
+    }
+    vertex_imagen_parameters.setdefault("sampleCount", max(1, int(n or 1)))
+
+    bedrock_image_generation_config = {
+        key: kwargs.get(key)
+        for key in ("seed", "cfgScale", "quality")
+        if kwargs.get(key) is not None
+    }
+    bedrock_text_to_image_params = {
+        key: kwargs.get(key)
+        for key in ("negativeText", "style")
+        if kwargs.get(key) is not None
+    }
+
+    return {
+        "passthrough_image_body": passthrough_image_body,
+        "passthrough_prediction_input": passthrough_prediction_input,
+        "qwen_parameters": qwen_parameters,
+        "minimax_payload": minimax_payload,
+        "siliconflow_payload": siliconflow_payload,
+        "openrouter_extra_body": openrouter_extra_body,
+        "openrouter_modalities": _resolve_openrouter_modalities(model, kwargs.get("modalities")),
+        "gemini_extra_body": gemini_extra_body,
+        "imagen_parameters": imagen_parameters,
+        "vertex_imagen_parameters": vertex_imagen_parameters,
+        "bedrock_image_generation_config": bedrock_image_generation_config,
+        "bedrock_text_to_image_params": bedrock_text_to_image_params,
+    }
+
+
+async def _dispatch_provider_image_request(
+    *,
+    runtime_provider: str,
+    call_kwargs: Mapping[str, Any],
+    prompt: str,
+    size: str,
+    response_format: str,
+    timeout_s: int,
+    endpoint_mode: str | None,
+    options: Mapping[str, Any],
+) -> ImageGenerationResult:
+    model = str(call_kwargs["model"])
+    api_base = str(call_kwargs["api_base"])
+    api_key = str(call_kwargs["api_key"])
+    n = int(call_kwargs["n"])
+
+    if runtime_provider in OFFICIALLY_UNSUPPORTED_IMAGE_PROVIDERS:
+        raise LLMCallError(
+            reason=(
+                f"provider `{runtime_provider}` has no official text-to-image API in this project "
+                "compatibility layer. Please switch to a provider with image generation support."
+            )
+        )
+
+    if runtime_provider == "qwen":
+        return await _agenerate_qwen_native_image(
+            api_base=api_base,
+            api_key=api_key,
+            model=model,
+            prompt=prompt,
+            size=size,
+            n=n,
+            timeout_s=timeout_s,
+            parameters=options["qwen_parameters"],
+        )
+    if runtime_provider == "minimax":
+        return await _agenerate_minimax_image(
+            api_base=api_base,
+            api_key=api_key,
+            model=model,
+            prompt=prompt,
+            timeout_s=timeout_s,
+            payload=options["minimax_payload"],
+        )
+    if runtime_provider == "siliconflow":
+        return await _agenerate_siliconflow_image(
+            api_base=api_base,
+            api_key=api_key,
+            model=model,
+            prompt=prompt,
+            timeout_s=timeout_s,
+            payload=options["siliconflow_payload"],
+        )
+    if runtime_provider == "openrouter":
+        return await _agenerate_openrouter_chat_image(
+            api_base=api_base,
+            api_key=api_key,
+            model=model,
+            prompt=prompt,
+            timeout_s=timeout_s,
+            modalities=options["openrouter_modalities"],
+            extra_body=options["openrouter_extra_body"],
+        )
+    if runtime_provider == "gemini" and model.startswith("imagen-"):
+        return await _agenerate_imagen_native_image(
+            api_key=api_key,
+            model=model,
+            prompt=prompt,
+            timeout_s=timeout_s,
+            parameters=options["imagen_parameters"],
+        )
+    if runtime_provider == "gemini":
+        return await _agenerate_gemini_native_image(
+            api_key=api_key,
+            model=model,
+            prompt=prompt,
+            timeout_s=timeout_s,
+            extra_body=options["gemini_extra_body"],
+        )
+    if runtime_provider == "vertex_ai":
+        return await _agenerate_vertex_imagen_image(
+            api_key=api_key,
+            model=model,
+            prompt=prompt,
+            timeout_s=timeout_s,
+            parameters=options["vertex_imagen_parameters"],
+        )
+    if runtime_provider == "bedrock":
+        return await _agenerate_bedrock_image(
+            model=model,
+            prompt=prompt,
+            size=size,
+            n=n,
+            timeout_s=timeout_s,
+            image_generation_config=options["bedrock_image_generation_config"],
+            text_to_image_params=options["bedrock_text_to_image_params"],
+        )
+    if runtime_provider == "openai_compatible":
+        if _should_use_prediction_endpoint(
+            model=model,
+            endpoint_mode=endpoint_mode,
+            prediction_input=options["passthrough_prediction_input"],
+        ):
+            return await _agenerate_prediction_image(
+                api_base=api_base,
+                api_key=api_key,
+                model=model,
+                prompt=prompt,
+                size=size,
+                n=n,
+                response_format=response_format,
+                timeout_s=timeout_s,
+                extra_input=options["passthrough_prediction_input"],
+            )
+        if _is_bare_model_name(model):
+            if not is_openai_compatible_one_step_image_model(model):
+                raise LLMCallError(
+                    reason=(
+                        "OpenAI-compatible image model routing is ambiguous. "
+                        "Use a provider/model prediction path such as "
+                        "`doubao/doubao-seedream-4-0`, `qianfan/qwen-image`, "
+                        "`openai/gpt-image-1`, or a supported one-step "
+                        "`/images/generations` model such as `FLUX.1-Kontext-pro`. "
+                        f"Current model: {model}"
+                    )
+                )
+            return await _agenerate_openai_compatible_image(
+                api_base=api_base,
+                api_key=api_key,
+                model=model,
+                prompt=prompt,
+                size=size,
+                n=n,
+                response_format=response_format,
+                timeout_s=timeout_s,
+                extra_body=options["passthrough_image_body"],
+            )
+        raise LLMCallError(reason="unsupported openai-compatible image model configuration")
+    if runtime_provider in {"openai", "azure", "doubao", "xai"}:
+        return await _agenerate_openai_compatible_image(
+            api_base=api_base,
+            api_key=api_key,
+            model=model,
+            prompt=prompt,
+            size=size,
+            n=n,
+            response_format=response_format,
+            timeout_s=timeout_s,
+            extra_body=options["passthrough_image_body"],
+        )
+
+    response = await asyncio.wait_for(
+        litellm.aimage_generation(**dict(call_kwargs)),
+        timeout=timeout_s,
+    )
+    return ImageGenerationResult(
+        model=model,
+        prompt=prompt,
+        images=_extract_images(response),
+        raw_metadata={
+            "response_type": type(response).__name__,
         },
     )
 
@@ -310,10 +1211,10 @@ async def agenerate_image(
     if _is_describe_only_model(context.model):
         raise LLMCallError(
             reason=(
-                "model DESCRIBE is an AiHubMix image description endpoint "
+                "model DESCRIBE is an image description endpoint "
                 "(requires an image_file input), not a text-to-image generation model. "
                 "Use a text-to-image model such as gpt-image-1, gpt-4o-image-vip, "
-                "FLUX.1-Kontext-pro, or an AiHubMix prediction model path like qianfan/qwen-image."
+                "FLUX.1-Kontext-pro, or a prediction-style model path like qianfan/qwen-image."
             )
         )
 
@@ -327,21 +1228,34 @@ async def agenerate_image(
         "size": size,
         "response_format": response_format,
     }
-    call_kwargs.update(build_litellm_provider_kwargs(context.model))
+    endpoint_mode = kwargs.pop("endpoint_mode", None)
+    explicit_prediction_input = kwargs.pop("prediction_input", None)
     if call_kwargs["api_base"] is None:
         from app.shared.infra.env_support import get_env
 
         call_kwargs["api_base"] = get_env("LLM_BASE_URL")
-    passthrough_image_body = {
-        key: kwargs.get(key)
-        for key in ("quality", "style", "user", "background", "output_format")
-        if kwargs.get(key) is not None
-    }
+    runtime_provider = resolve_runtime_llm_provider(base_url=str(call_kwargs["api_base"] or ""))
+    normalized_model = normalize_openai_compatible_image_model_name(
+        str(call_kwargs["model"]),
+        runtime_provider=runtime_provider,
+    )
+    if normalized_model:
+        call_kwargs["model"] = normalized_model
+    call_kwargs.update(build_litellm_provider_kwargs(str(call_kwargs["model"])))
+    provider_options = _build_provider_image_options(
+        model=str(call_kwargs["model"]),
+        prompt=str(prompt).strip(),
+        size=size,
+        n=int(call_kwargs["n"]),
+        response_format=response_format,
+        kwargs=kwargs,
+        explicit_prediction_input=explicit_prediction_input,
+    )
     call_kwargs.update(kwargs)
 
     last_error: Exception | None = None
     call_started_at = time.monotonic()
-    tracked_model = context.model
+    tracked_model = str(call_kwargs["model"])
     async with get_semaphore():
         for attempt in range(1, context.profile.max_retries + 1):
             start = time.monotonic()
@@ -372,41 +1286,25 @@ async def agenerate_image(
                         **dict(extra_metadata or {}),
                     },
                 ) as trace_run:
-                    if _is_aihubmix_base_url(call_kwargs.get("api_base")) and _is_aihubmix_prediction_model(context.model):
-                        result = await _agenerate_aihubmix_prediction(
-                            api_base=str(call_kwargs["api_base"]),
-                            api_key=str(call_kwargs["api_key"]),
-                            model=context.model,
-                            prompt=str(prompt).strip(),
-                            size=size,
-                            n=int(call_kwargs["n"]),
-                            response_format=response_format,
-                            timeout_s=request_timeout_s(context.profile.timeout_s),
-                        )
-                    elif call_kwargs.get("api_base") and _is_bare_model_name(context.model):
-                        result = await _agenerate_openai_compatible_image(
-                            api_base=str(call_kwargs["api_base"]),
-                            api_key=str(call_kwargs["api_key"]),
-                            model=context.model,
-                            prompt=str(prompt).strip(),
-                            size=size,
-                            n=int(call_kwargs["n"]),
-                            response_format=response_format,
-                            timeout_s=request_timeout_s(context.profile.timeout_s),
-                            extra_body=passthrough_image_body,
-                        )
-                    else:
-                        response = await asyncio.wait_for(
-                            litellm.aimage_generation(**call_kwargs),
-                            timeout=request_timeout_s(context.profile.timeout_s),
-                        )
+                    result = await _dispatch_provider_image_request(
+                        runtime_provider=runtime_provider,
+                        call_kwargs=call_kwargs,
+                        prompt=str(prompt).strip(),
+                        size=size,
+                        response_format=response_format,
+                        timeout_s=request_timeout_s(context.profile.timeout_s),
+                        endpoint_mode=endpoint_mode,
+                        options=provider_options,
+                    )
+                    if response_format == "b64_json" and any(not image.b64_json and image.url for image in result.images):
                         result = ImageGenerationResult(
-                            model=tracked_model,
-                            prompt=str(prompt).strip(),
-                            images=_extract_images(response),
-                            raw_metadata={
-                                "response_type": type(response).__name__,
-                            },
+                            model=result.model,
+                            prompt=result.prompt,
+                            images=await _materialize_b64_images(
+                                result.images,
+                                timeout_s=request_timeout_s(context.profile.timeout_s),
+                            ),
+                            raw_metadata=dict(result.raw_metadata),
                         )
                     if not result.images:
                         raise LLMCallError(reason="image generation returned no image")
