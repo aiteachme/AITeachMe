@@ -106,11 +106,11 @@ def _resolve_subject_display_name(
 ) -> str:
     shared = shared_inputs or _minimal_shared_inputs(subject)
     for candidate in [
-        user_prompt,
-        *shared.fast_hints.chapter_candidates[:3],
-        *shared.subject_profile.key_topics[:3],
         shared.subject_profile.sub_discipline,
         shared.subject_profile.discipline,
+        *shared.fast_hints.chapter_candidates[:3],
+        *shared.subject_profile.key_topics[:3],
+        user_prompt,
         subject if not _text(subject).lower().startswith("subj_") else "",
     ]:
         text = _text(candidate)
@@ -230,7 +230,6 @@ def normalize_planner_draft(
     *,
     subject: str,
     user_prompt: str | None = None,
-    user_goal: str | None = None,
     requested_digest_mode: str,
     shared_inputs: SharedInputs | None = None,
     latest_plan: BuildPlannerDraft | Mapping[str, Any] | None = None,
@@ -242,7 +241,7 @@ def normalize_planner_draft(
     """
 
     shared = shared_inputs or _minimal_shared_inputs(subject)
-    resolved_user_prompt = _text(user_prompt or user_goal)
+    resolved_user_prompt = _text(user_prompt)
     current = _mapping(draft)
     previous = _mapping(latest_plan)
     mode = _normalize_digest_mode(requested_digest_mode or current.get("digest_mode") or previous.get("digest_mode"))
@@ -283,7 +282,6 @@ def normalize_planner_payload(
     *,
     subject: str,
     user_prompt: str | None = None,
-    user_goal: str | None = None,
     requested_digest_mode: str,
     shared_inputs: SharedInputs | None = None,
     latest_plan: BuildPlannerDraft | Mapping[str, Any] | None = None,
@@ -292,7 +290,6 @@ def normalize_planner_payload(
         payload,
         subject=subject,
         user_prompt=user_prompt,
-        user_goal=user_goal,
         requested_digest_mode=requested_digest_mode,
         shared_inputs=shared_inputs,
         latest_plan=latest_plan,

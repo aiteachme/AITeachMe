@@ -73,12 +73,12 @@ stream_and_parse_plan_draft
     4. 转成待 normalize 的 `chapter_plan`。
 
 normalize_and_persist_plan
-  输入：build_plan_draft / material_context / latest_plan
+  输入：build_plan_draft / material_context / latest_plan / planner_brief / plan_intent
   输出：plan / plan_summary / planner_record / planner_turns
     - plan：API、确认接口和 DocGen 消费的最终 plan payload。
     - plan_summary：计划摘要。
     - planner_record / planner_turns：保存到 `chat_session` / `chat_message` 后的会话快照。
-  作用：规范化章节数、模式、媒体计划、构建约束，并保存 assistant turn。
+  作用：规范化章节数、模式、媒体计划、构建约束；在看到完整思考、意图和章节草稿后再生成学科名；最后保存 assistant turn。
 ```
 
 ## Planner -> DocGen 交接
@@ -135,13 +135,14 @@ flowchart TD
 
 ## LLM 调用
 
-一次正常 planner run 只有 3 个逻辑 LLM 步骤：
+一次正常 planner run 有 4 个逻辑 LLM 步骤：
 
 | 顺序 | 步骤 | 模型 | 产物 |
 | --- | --- | --- | --- |
 | 1 | `stream_planner_brief` | `reason` | 用户可见的思考过程 |
 | 2 | `extract_plan_intent` | `primary` | `PlanIntent` |
 | 3 | `stream_and_parse_plan_draft` | `reason` | 可见计划说明 + 极简 JSON 初步大纲 |
+| 4 | `generate_subject_name` | `light` | 基于完整思考、意图和章节骨架生成学科名 |
 
 ## State
 

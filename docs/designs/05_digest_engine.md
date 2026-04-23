@@ -67,7 +67,7 @@ load_planner_materials
 DocGen 消费的关键字段：
 
 - `subject`
-- `user_goal`
+- `user_prompt`
 - `digest_mode`
 - `chapter_plan`
 - `media_plan`
