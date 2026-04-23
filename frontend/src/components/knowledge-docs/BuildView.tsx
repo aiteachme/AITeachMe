@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Check, CheckCircle2, FileText, Loader2, Activity, PlayCircle, FileSearch, Code2 } from "lucide-react";
 
@@ -10,6 +10,7 @@ import type {
 } from "./types";
 import { useBuildTimelineSteps } from "./BuildProcessTimeline";
 import { buildChapterStatusLabel, formatBuildEventTime, resolveFileProcessingLabel } from "./utils";
+import { useBuildEventStream } from "../../hooks/useBuildEventStream";
 
 interface Props {
   isFetching: boolean;
@@ -21,6 +22,8 @@ interface Props {
   sourceFilesFetching: boolean;
   buildStage: string | null | undefined;
   className?: string;
+  /** Subject ID for SSE streaming — enables live build updates */
+  subjectId?: string;
 }
 
 const EVENT_STAGE_LABELS: Record<string, string> = {
@@ -58,18 +61,48 @@ export function BuildView({
   sourceFiles,
   buildStage,
   className,
+  subjectId,
 }: Props) {
   const [activeTab, setActiveTab] = useState<string>("preview");
   const [selectedPreviewChapter, setSelectedPreviewChapter] = useState<number | null>(null);
   const previewFallbackAppliedRef = useRef(false);
 
-  const timelineSteps = useBuildTimelineSteps(buildStage);
-  const chapters = buildPreview?.chapter_progress ?? [];
-  const events = buildPreview?.recent_events ?? [];
-  const roundedProgress = Math.max(0, Math.min(100, Math.round(progress)));
+  // ---------- SSE live streaming ----------
+  const isBuildActive = Boolean(
+    buildStage && !(["completed", "failed", "cancelled"] as string[]).includes(buildStage)
+  );
+  const { snapshot: sseSnapshot } = useBuildEventStream({
+    subjectId: subjectId ?? "",
+    enabled: Boolean(subjectId) && isBuildActive,
+  });
 
-  const draftExcerpt = buildPreview?.draft_excerpt?.trim() ?? "";
-  const planSummary = buildPreview?.plan_summary?.trim() ?? "";
+  // Merge SSE data with polling data — SSE takes priority when available
+  const mergedChapters = useMemo(() => {
+    const sseChapters = sseSnapshot?.docgen_preview?.chapter_progress;
+    if (sseChapters && sseChapters.length > 0) return sseChapters;
+    return buildPreview?.chapter_progress ?? [];
+  }, [sseSnapshot?.docgen_preview?.chapter_progress, buildPreview?.chapter_progress]);
+
+  const mergedEvents = useMemo(() => {
+    const sseEvents = sseSnapshot?.docgen_preview?.recent_events;
+    if (sseEvents && sseEvents.length > 0) return sseEvents;
+    return buildPreview?.recent_events ?? [];
+  }, [sseSnapshot?.docgen_preview?.recent_events, buildPreview?.recent_events]);
+
+  const timelineSteps = useBuildTimelineSteps(buildStage);
+  const chapters = mergedChapters;
+  const events = mergedEvents;
+  const roundedProgress = Math.max(0, Math.min(100, Math.round(
+    sseSnapshot?.aggregate?.progress_pct ?? progress
+  )));
+
+  const draftExcerpt = (
+    sseSnapshot?.docgen?.current_stage_description || 
+    sseSnapshot?.docgen_preview?.draft_excerpt || 
+    buildPreview?.draft_excerpt || 
+    ""
+  ).trim();
+  const planSummary = (sseSnapshot?.docgen_preview?.plan_summary ?? buildPreview?.plan_summary ?? "").trim();
   const hasDraftExcerpt = draftExcerpt.length > 0;
 
   const spotlightChapter = chapters.find((c) =>
@@ -77,16 +110,22 @@ export function BuildView({
   ) ?? chapters.find(c => c.status !== "pending") ?? null;
 
   // Auto-switch to preview and select active chapter when streaming starts
+  // We use a ref to only auto-switch ONCE so we don't fight user interactions.
+  const autoSwitchedToPreviewRef = useRef(false);
+
   useEffect(() => {
-    if (hasDraftExcerpt) {
+    if (hasDraftExcerpt && !autoSwitchedToPreviewRef.current) {
+      autoSwitchedToPreviewRef.current = true;
       if (activeTab === "outline" || activeTab === "logs" || activeTab === "files") {
         setActiveTab("preview");
       }
       if (spotlightChapter && selectedPreviewChapter !== spotlightChapter.chapter_index) {
         setSelectedPreviewChapter(spotlightChapter.chapter_index);
       }
+    } else if (!hasDraftExcerpt) {
+      autoSwitchedToPreviewRef.current = false;
     }
-  }, [activeTab, hasDraftExcerpt, selectedPreviewChapter, spotlightChapter]);
+  }, [hasDraftExcerpt, activeTab, selectedPreviewChapter, spotlightChapter]);
 
   useEffect(() => {
     if (hasDraftExcerpt) {
@@ -155,7 +194,7 @@ export function BuildView({
              <motion.div
                 className={cn(
                   "h-full rounded-full",
-                  roundedProgress === 100 ? "bg-emerald-500" : "bg-blue-500"
+                  roundedProgress === 100 ? "bg-emerald-500" : "bg-blue-500 animate-pulse"
                 )}
                 initial={{width:0}}
                 animate={{width:`${roundedProgress}%`}}
@@ -189,7 +228,12 @@ export function BuildView({
                        isDone ? "border-blue-500 bg-blue-500 dark:bg-blue-500" : isActive ? "border-blue-500" : "border-zinc-200 dark:border-slate-700"
                      )}>
                        {isDone && <Check className="w-2.5 h-2.5 text-white" strokeWidth={3} />}
-                       {isActive && <div className="w-1.5 h-1.5 rounded-full bg-blue-500" />}
+                       {isActive && (
+                         <>
+                           <div className="absolute inset-0 rounded-full border border-blue-500 animate-ping opacity-75" />
+                           <div className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
+                         </>
+                       )}
                      </div>
                      {/* Content */}
                      <div>

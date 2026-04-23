@@ -1,4 +1,4 @@
-﻿"""Knowledge docs API routes."""
+"""Knowledge docs API routes."""
 
 from __future__ import annotations
 
@@ -639,6 +639,70 @@ async def knowledge_build_runtime(
     normalized = normalize_subject_slug(subject)
     get_subject_record(session, normalized, owner_user_id=user.user_id)
     return ok_response(get_knowledge_build_runtime_result(session, subject=normalized))
+
+
+@router.get(
+    "/build/stream",
+    summary="SSE stream for live build progress snapshots",
+    responses=build_error_responses([400, 404, 500]),
+)
+async def knowledge_build_stream(
+    request: Request,
+    subject: str = Path(...),
+    user: CurrentUserContext = Depends(get_current_user_context),
+    session: Session = Depends(get_db),
+) -> StreamingResponse:
+    """Lightweight SSE endpoint that polls docgen_store and streams
+    snapshot events when the build state changes.  The frontend connects
+    via native EventSource (GET + cookies).
+    """
+    import hashlib
+
+    normalized = normalize_subject_slug(subject)
+    get_subject_record(session, normalized, owner_user_id=user.user_id)
+
+    _TERMINAL_STATUSES = {"completed", "failed", "cancelled"}
+    _POLL_INTERVAL = 2.0
+
+    async def event_generator():
+        last_hash: str | None = None
+
+        while True:
+            if await request.is_disconnected():
+                break
+
+            try:
+                result = get_knowledge_build_runtime_result(session, subject=normalized)
+            except Exception:
+                await asyncio.sleep(_POLL_INTERVAL)
+                continue
+
+            # Serialize using Pydantic's built-in JSON serialization
+            snapshot_json = result.model_dump_json(exclude_none=True)
+            current_hash = hashlib.md5(snapshot_json.encode()).hexdigest()
+
+            if current_hash != last_hash:
+                last_hash = current_hash
+                yield f"event: snapshot\ndata: {snapshot_json}\n\n"
+
+            # Check terminal status from the aggregate lane
+            agg = result.aggregate
+            status = (agg.status if agg is not None else "idle").strip()
+            if status in _TERMINAL_STATUSES:
+                yield f"event: done\ndata: {{\"status\": \"{status}\"}}\n\n"
+                break
+
+            await asyncio.sleep(_POLL_INTERVAL)
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+            "Connection": "keep-alive",
+        },
+    )
 
 
 @router.post(

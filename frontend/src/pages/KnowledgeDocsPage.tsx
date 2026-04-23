@@ -2390,6 +2390,7 @@ export function KnowledgeDocsPage() {
           sourceFiles={sourceFiles}
           sourceFilesFetching={sourceFilesFetching}
           buildStage={buildMeta?.stage}
+          subjectId={subjectId}
         />
       </div>
     );
@@ -2568,6 +2569,7 @@ export function KnowledgeDocsPage() {
                       sourceFiles={sourceFiles}
                       sourceFilesFetching={sourceFilesFetching}
                       buildStage={buildMeta?.stage}
+                      subjectId={subjectId}
                     />
                   ) : showDocBuildFailureState ? (
                     <DocLoadErrorState

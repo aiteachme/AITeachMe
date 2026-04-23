@@ -478,7 +478,7 @@ function BuildInProgressBubble({
           </p>
           <div className="mt-4 h-1.5 overflow-hidden rounded-full bg-zinc-100">
             <div
-              className="h-full rounded-full bg-zinc-950 transition-all duration-500"
+              className="h-full rounded-full bg-zinc-950 animate-pulse transition-all duration-500"
               style={{ width: `${Math.max(8, Math.min(100, progress))}%` }}
             />
           </div>
@@ -1331,7 +1331,16 @@ export function BuildPlanPage() {
     } catch (error) {
       if (isAbortError(error)) {
         logPlannerDebug("send_plan_message_aborted", { subjectId });
-        setMessages((prev) => [...prev, createMessage("system", "已停止生成，你可以继续输入新的调整。")]);
+        const partialContent = plannerStreamingRawRef.current.replace(/\r/g, "").trim();
+        if (partialContent) {
+          setMessages((prev) => [
+            ...prev,
+            createMessage("assistant", partialContent),
+            createMessage("system", "已停止生成，以上是已输出的部分内容。你可以继续输入新的调整。"),
+          ]);
+        } else {
+          setMessages((prev) => [...prev, createMessage("system", "已停止生成，你可以继续输入新的调整。")]);
+        }
         return;
       }
       logPlannerDebug("send_plan_message_failed", {
@@ -1558,6 +1567,7 @@ export function BuildPlanPage() {
                 sourceFiles={buildSourceFiles}
                 sourceFilesFetching={filesQuery.isFetching}
                 buildStage={buildStage}
+                subjectId={subjectId}
               />
             )}
           </div>

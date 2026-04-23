@@ -6,13 +6,22 @@
  * OpenAPI spec version: 0.2.0
  */
 import {
-  useMutation
+  useMutation,
+  useQuery
 } from '@tanstack/react-query';
 import type {
+  DataTag,
+  DefinedInitialDataOptions,
+  DefinedUseQueryResult,
   MutationFunction,
   QueryClient,
+  QueryFunction,
+  QueryKey,
+  UndefinedInitialDataOptions,
   UseMutationOptions,
-  UseMutationResult
+  UseMutationResult,
+  UseQueryOptions,
+  UseQueryResult
 } from '@tanstack/react-query';
 
 import type {
@@ -24,6 +33,7 @@ import type {
   ApiResponseDocGenBuildData,
   ApiResponseDocGenGetResponse,
   ApiResponseFullGraphResponse,
+  ApiResponseKnowledgeBuildRuntimeResponse,
   ApiResponseKnowledgeDebugTriggerResponse,
   ApiResponseKnowledgeOverviewResponse,
   ApiResponseKnowledgePathResponse,
@@ -1231,6 +1241,244 @@ export const useKnowledgeBuildCancelApiV1SubjectsSubjectKnowledgeBuildCancelPost
       return useMutation(getKnowledgeBuildCancelApiV1SubjectsSubjectKnowledgeBuildCancelPostMutationOptions(options), queryClient);
     }
     /**
+ * @summary Fetch aggregate/docgen/graph runtime state
+ */
+export type knowledgeBuildRuntimeApiV1SubjectsSubjectKnowledgeBuildRuntimePostResponse200 = {
+  data: ApiResponseKnowledgeBuildRuntimeResponse
+  status: 200
+}
+
+export type knowledgeBuildRuntimeApiV1SubjectsSubjectKnowledgeBuildRuntimePostResponse400 = {
+  data: ErrorResponse
+  status: 400
+}
+
+export type knowledgeBuildRuntimeApiV1SubjectsSubjectKnowledgeBuildRuntimePostResponse404 = {
+  data: ErrorResponse
+  status: 404
+}
+
+export type knowledgeBuildRuntimeApiV1SubjectsSubjectKnowledgeBuildRuntimePostResponse422 = {
+  data: HTTPValidationError
+  status: 422
+}
+
+export type knowledgeBuildRuntimeApiV1SubjectsSubjectKnowledgeBuildRuntimePostResponse500 = {
+  data: ErrorResponse
+  status: 500
+}
+
+export type knowledgeBuildRuntimeApiV1SubjectsSubjectKnowledgeBuildRuntimePostResponseSuccess = (knowledgeBuildRuntimeApiV1SubjectsSubjectKnowledgeBuildRuntimePostResponse200) & {
+  headers: Headers;
+};
+export type knowledgeBuildRuntimeApiV1SubjectsSubjectKnowledgeBuildRuntimePostResponseError = (knowledgeBuildRuntimeApiV1SubjectsSubjectKnowledgeBuildRuntimePostResponse400 | knowledgeBuildRuntimeApiV1SubjectsSubjectKnowledgeBuildRuntimePostResponse404 | knowledgeBuildRuntimeApiV1SubjectsSubjectKnowledgeBuildRuntimePostResponse422 | knowledgeBuildRuntimeApiV1SubjectsSubjectKnowledgeBuildRuntimePostResponse500) & {
+  headers: Headers;
+};
+
+export type knowledgeBuildRuntimeApiV1SubjectsSubjectKnowledgeBuildRuntimePostResponse = (knowledgeBuildRuntimeApiV1SubjectsSubjectKnowledgeBuildRuntimePostResponseSuccess | knowledgeBuildRuntimeApiV1SubjectsSubjectKnowledgeBuildRuntimePostResponseError)
+
+export const getKnowledgeBuildRuntimeApiV1SubjectsSubjectKnowledgeBuildRuntimePostUrl = (subject: string,) => {
+
+
+  
+
+  return `/api/v1/subjects/${subject}/knowledge/build/runtime`
+}
+
+export const knowledgeBuildRuntimeApiV1SubjectsSubjectKnowledgeBuildRuntimePost = async (subject: string, options?: RequestInit): Promise<knowledgeBuildRuntimeApiV1SubjectsSubjectKnowledgeBuildRuntimePostResponse> => {
+  
+  return orvalApiClient<knowledgeBuildRuntimeApiV1SubjectsSubjectKnowledgeBuildRuntimePostResponse>(getKnowledgeBuildRuntimeApiV1SubjectsSubjectKnowledgeBuildRuntimePostUrl(subject),
+  {      
+    ...options,
+    method: 'POST'
+    
+    
+  }
+);}
+  
+
+
+
+export const getKnowledgeBuildRuntimeApiV1SubjectsSubjectKnowledgeBuildRuntimePostMutationOptions = <TError = ErrorResponse | HTTPValidationError,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof knowledgeBuildRuntimeApiV1SubjectsSubjectKnowledgeBuildRuntimePost>>, TError,{subject: string}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
+): UseMutationOptions<Awaited<ReturnType<typeof knowledgeBuildRuntimeApiV1SubjectsSubjectKnowledgeBuildRuntimePost>>, TError,{subject: string}, TContext> => {
+
+const mutationKey = ['knowledgeBuildRuntimeApiV1SubjectsSubjectKnowledgeBuildRuntimePost'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+      
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof knowledgeBuildRuntimeApiV1SubjectsSubjectKnowledgeBuildRuntimePost>>, {subject: string}> = (props) => {
+          const {subject} = props ?? {};
+
+          return  knowledgeBuildRuntimeApiV1SubjectsSubjectKnowledgeBuildRuntimePost(subject,requestOptions)
+        }
+
+
+
+        
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type KnowledgeBuildRuntimeApiV1SubjectsSubjectKnowledgeBuildRuntimePostMutationResult = NonNullable<Awaited<ReturnType<typeof knowledgeBuildRuntimeApiV1SubjectsSubjectKnowledgeBuildRuntimePost>>>
+    
+    export type KnowledgeBuildRuntimeApiV1SubjectsSubjectKnowledgeBuildRuntimePostMutationError = ErrorResponse | HTTPValidationError
+
+    /**
+ * @summary Fetch aggregate/docgen/graph runtime state
+ */
+export const useKnowledgeBuildRuntimeApiV1SubjectsSubjectKnowledgeBuildRuntimePost = <TError = ErrorResponse | HTTPValidationError,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof knowledgeBuildRuntimeApiV1SubjectsSubjectKnowledgeBuildRuntimePost>>, TError,{subject: string}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof knowledgeBuildRuntimeApiV1SubjectsSubjectKnowledgeBuildRuntimePost>>,
+        TError,
+        {subject: string},
+        TContext
+      > => {
+      return useMutation(getKnowledgeBuildRuntimeApiV1SubjectsSubjectKnowledgeBuildRuntimePostMutationOptions(options), queryClient);
+    }
+    /**
+ * Lightweight SSE endpoint that polls docgen_store and streams
+snapshot events when the build state changes.  The frontend connects
+via native EventSource (GET + cookies).
+ * @summary SSE stream for live build progress snapshots
+ */
+export type knowledgeBuildStreamApiV1SubjectsSubjectKnowledgeBuildStreamGetResponse200 = {
+  data: unknown
+  status: 200
+}
+
+export type knowledgeBuildStreamApiV1SubjectsSubjectKnowledgeBuildStreamGetResponse400 = {
+  data: ErrorResponse
+  status: 400
+}
+
+export type knowledgeBuildStreamApiV1SubjectsSubjectKnowledgeBuildStreamGetResponse404 = {
+  data: ErrorResponse
+  status: 404
+}
+
+export type knowledgeBuildStreamApiV1SubjectsSubjectKnowledgeBuildStreamGetResponse422 = {
+  data: HTTPValidationError
+  status: 422
+}
+
+export type knowledgeBuildStreamApiV1SubjectsSubjectKnowledgeBuildStreamGetResponse500 = {
+  data: ErrorResponse
+  status: 500
+}
+
+export type knowledgeBuildStreamApiV1SubjectsSubjectKnowledgeBuildStreamGetResponseSuccess = (knowledgeBuildStreamApiV1SubjectsSubjectKnowledgeBuildStreamGetResponse200) & {
+  headers: Headers;
+};
+export type knowledgeBuildStreamApiV1SubjectsSubjectKnowledgeBuildStreamGetResponseError = (knowledgeBuildStreamApiV1SubjectsSubjectKnowledgeBuildStreamGetResponse400 | knowledgeBuildStreamApiV1SubjectsSubjectKnowledgeBuildStreamGetResponse404 | knowledgeBuildStreamApiV1SubjectsSubjectKnowledgeBuildStreamGetResponse422 | knowledgeBuildStreamApiV1SubjectsSubjectKnowledgeBuildStreamGetResponse500) & {
+  headers: Headers;
+};
+
+export type knowledgeBuildStreamApiV1SubjectsSubjectKnowledgeBuildStreamGetResponse = (knowledgeBuildStreamApiV1SubjectsSubjectKnowledgeBuildStreamGetResponseSuccess | knowledgeBuildStreamApiV1SubjectsSubjectKnowledgeBuildStreamGetResponseError)
+
+export const getKnowledgeBuildStreamApiV1SubjectsSubjectKnowledgeBuildStreamGetUrl = (subject: string,) => {
+
+
+  
+
+  return `/api/v1/subjects/${subject}/knowledge/build/stream`
+}
+
+export const knowledgeBuildStreamApiV1SubjectsSubjectKnowledgeBuildStreamGet = async (subject: string, options?: RequestInit): Promise<knowledgeBuildStreamApiV1SubjectsSubjectKnowledgeBuildStreamGetResponse> => {
+  
+  return orvalApiClient<knowledgeBuildStreamApiV1SubjectsSubjectKnowledgeBuildStreamGetResponse>(getKnowledgeBuildStreamApiV1SubjectsSubjectKnowledgeBuildStreamGetUrl(subject),
+  {      
+    ...options,
+    method: 'GET'
+    
+    
+  }
+);}
+  
+
+
+
+
+export const getKnowledgeBuildStreamApiV1SubjectsSubjectKnowledgeBuildStreamGetQueryKey = (subject: string,) => {
+    return [
+    `/api/v1/subjects/${subject}/knowledge/build/stream`
+    ] as const;
+    }
+
+    
+export const getKnowledgeBuildStreamApiV1SubjectsSubjectKnowledgeBuildStreamGetQueryOptions = <TData = Awaited<ReturnType<typeof knowledgeBuildStreamApiV1SubjectsSubjectKnowledgeBuildStreamGet>>, TError = ErrorResponse | HTTPValidationError>(subject: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof knowledgeBuildStreamApiV1SubjectsSubjectKnowledgeBuildStreamGet>>, TError, TData>>, request?: SecondParameter<typeof orvalApiClient>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getKnowledgeBuildStreamApiV1SubjectsSubjectKnowledgeBuildStreamGetQueryKey(subject);
+
+  
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof knowledgeBuildStreamApiV1SubjectsSubjectKnowledgeBuildStreamGet>>> = ({ signal }) => knowledgeBuildStreamApiV1SubjectsSubjectKnowledgeBuildStreamGet(subject, { signal, ...requestOptions });
+
+      
+
+      
+
+   return  { queryKey, queryFn, enabled: !!(subject), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof knowledgeBuildStreamApiV1SubjectsSubjectKnowledgeBuildStreamGet>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type KnowledgeBuildStreamApiV1SubjectsSubjectKnowledgeBuildStreamGetQueryResult = NonNullable<Awaited<ReturnType<typeof knowledgeBuildStreamApiV1SubjectsSubjectKnowledgeBuildStreamGet>>>
+export type KnowledgeBuildStreamApiV1SubjectsSubjectKnowledgeBuildStreamGetQueryError = ErrorResponse | HTTPValidationError
+
+
+export function useKnowledgeBuildStreamApiV1SubjectsSubjectKnowledgeBuildStreamGet<TData = Awaited<ReturnType<typeof knowledgeBuildStreamApiV1SubjectsSubjectKnowledgeBuildStreamGet>>, TError = ErrorResponse | HTTPValidationError>(
+ subject: string, options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof knowledgeBuildStreamApiV1SubjectsSubjectKnowledgeBuildStreamGet>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof knowledgeBuildStreamApiV1SubjectsSubjectKnowledgeBuildStreamGet>>,
+          TError,
+          Awaited<ReturnType<typeof knowledgeBuildStreamApiV1SubjectsSubjectKnowledgeBuildStreamGet>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof orvalApiClient>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useKnowledgeBuildStreamApiV1SubjectsSubjectKnowledgeBuildStreamGet<TData = Awaited<ReturnType<typeof knowledgeBuildStreamApiV1SubjectsSubjectKnowledgeBuildStreamGet>>, TError = ErrorResponse | HTTPValidationError>(
+ subject: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof knowledgeBuildStreamApiV1SubjectsSubjectKnowledgeBuildStreamGet>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof knowledgeBuildStreamApiV1SubjectsSubjectKnowledgeBuildStreamGet>>,
+          TError,
+          Awaited<ReturnType<typeof knowledgeBuildStreamApiV1SubjectsSubjectKnowledgeBuildStreamGet>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof orvalApiClient>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useKnowledgeBuildStreamApiV1SubjectsSubjectKnowledgeBuildStreamGet<TData = Awaited<ReturnType<typeof knowledgeBuildStreamApiV1SubjectsSubjectKnowledgeBuildStreamGet>>, TError = ErrorResponse | HTTPValidationError>(
+ subject: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof knowledgeBuildStreamApiV1SubjectsSubjectKnowledgeBuildStreamGet>>, TError, TData>>, request?: SecondParameter<typeof orvalApiClient>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * @summary SSE stream for live build progress snapshots
+ */
+
+export function useKnowledgeBuildStreamApiV1SubjectsSubjectKnowledgeBuildStreamGet<TData = Awaited<ReturnType<typeof knowledgeBuildStreamApiV1SubjectsSubjectKnowledgeBuildStreamGet>>, TError = ErrorResponse | HTTPValidationError>(
+ subject: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof knowledgeBuildStreamApiV1SubjectsSubjectKnowledgeBuildStreamGet>>, TError, TData>>, request?: SecondParameter<typeof orvalApiClient>}
+ , queryClient?: QueryClient 
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getKnowledgeBuildStreamApiV1SubjectsSubjectKnowledgeBuildStreamGetQueryOptions(subject,options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+/**
  * @summary Fetch knowledge docs and minimal build state
  */
 export type knowledgeDocsApiV1SubjectsSubjectKnowledgeDocsPostResponse200 = {

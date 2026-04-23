@@ -2275,6 +2275,151 @@
         }
       }
     },
+    "/api/v1/subjects/{subject}/knowledge/build/runtime": {
+      "post": {
+        "tags": [
+          "knowledge",
+          "knowledge"
+        ],
+        "summary": "Fetch aggregate/docgen/graph runtime state",
+        "operationId": "knowledge_build_runtime_api_v1_subjects__subject__knowledge_build_runtime_post",
+        "parameters": [
+          {
+            "name": "subject",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Subject"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_KnowledgeBuildRuntimeResponse_"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数不合法。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务内部异常。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/subjects/{subject}/knowledge/build/stream": {
+      "get": {
+        "tags": [
+          "knowledge",
+          "knowledge"
+        ],
+        "summary": "SSE stream for live build progress snapshots",
+        "description": "Lightweight SSE endpoint that polls docgen_store and streams\nsnapshot events when the build state changes.  The frontend connects\nvia native EventSource (GET + cookies).",
+        "operationId": "knowledge_build_stream_api_v1_subjects__subject__knowledge_build_stream_get",
+        "parameters": [
+          {
+            "name": "subject",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Subject"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数不合法。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务内部异常。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/subjects/{subject}/knowledge/docs": {
       "post": {
         "tags": [
@@ -5742,6 +5887,40 @@
         },
         "type": "object",
         "title": "ApiResponse[InitData]",
+        "example": {
+          "code": 0,
+          "data": {},
+          "message": "ok"
+        }
+      },
+      "ApiResponse_KnowledgeBuildRuntimeResponse_": {
+        "properties": {
+          "code": {
+            "type": "integer",
+            "title": "Code",
+            "description": "业务码，0 表示成功。",
+            "default": 0
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "响应消息。",
+            "default": "ok"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/KnowledgeBuildRuntimeResponse"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "业务数据。"
+          }
+        },
+        "type": "object",
+        "title": "ApiResponse[KnowledgeBuildRuntimeResponse]",
         "example": {
           "code": 0,
           "data": {},
@@ -10229,6 +10408,124 @@
         "description": "系统初始化请求。",
         "example": {}
       },
+      "KnowledgeBuildLaneRuntimeResponse": {
+        "properties": {
+          "lane": {
+            "type": "string",
+            "enum": [
+              "aggregate",
+              "docgen",
+              "graph"
+            ],
+            "title": "Lane"
+          },
+          "build_group_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Build Group Id",
+            "description": "Shared build-group identifier across related lanes."
+          },
+          "status": {
+            "type": "string",
+            "title": "Status",
+            "description": "idle / accepted / running / completed / failed / cancelled / skipped / partial_failed"
+          },
+          "stage": {
+            "type": "string",
+            "title": "Stage",
+            "description": "Current lifecycle stage for this lane."
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At",
+            "description": "Lane start timestamp."
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At",
+            "description": "Lane finish timestamp when terminal."
+          },
+          "requested_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Requested At",
+            "description": "Original request timestamp for this lane."
+          },
+          "error_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Message",
+            "description": "Lane failure or cancellation reason."
+          },
+          "progress_pct": {
+            "type": "integer",
+            "title": "Progress Pct",
+            "description": "Backend progress percentage for this lane.",
+            "default": 0
+          },
+          "current_stage_description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Stage Description",
+            "description": "Friendly description of the current lane stage."
+          },
+          "metrics": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Metrics",
+            "description": "Compact metrics for this lane."
+          }
+        },
+        "type": "object",
+        "required": [
+          "lane",
+          "status",
+          "stage"
+        ],
+        "title": "KnowledgeBuildLaneRuntimeResponse",
+        "description": "One runtime lane snapshot used by polling clients."
+      },
       "KnowledgeBuildMetricsResponse": {
         "properties": {
           "llm_total_calls": {
@@ -10388,6 +10685,80 @@
         "type": "object",
         "title": "KnowledgeBuildPreviewResponse",
         "description": "Human-facing preview payload for ongoing digest builds."
+      },
+      "KnowledgeBuildRuntimeResponse": {
+        "properties": {
+          "build_group_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Build Group Id",
+            "description": "Shared build-group identifier across related lanes."
+          },
+          "aggregate": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/KnowledgeBuildLaneRuntimeResponse"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Aggregate runtime across all required lanes."
+          },
+          "docgen": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/KnowledgeBuildLaneRuntimeResponse"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "DocGen lane runtime."
+          },
+          "graph": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/KnowledgeBuildLaneRuntimeResponse"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Graph lane runtime."
+          },
+          "docgen_preview": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/KnowledgeBuildPreviewResponse"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "DocGen-oriented preview payload for waiting UIs."
+          },
+          "docgen_metrics": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/KnowledgeBuildMetricsResponse"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "DocGen-oriented live diagnostics for waiting UIs."
+          }
+        },
+        "type": "object",
+        "title": "KnowledgeBuildRuntimeResponse",
+        "description": "Unified runtime response for aggregate/docgen/graph lanes."
       },
       "KnowledgeBuildStatusResponse": {
         "properties": {
