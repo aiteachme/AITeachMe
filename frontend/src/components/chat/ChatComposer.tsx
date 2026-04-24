@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { Loader2, Send, Square } from "lucide-react";
+import { Loader2, Send, X } from "lucide-react";
 import { cn } from "../../lib/utils";
 
 interface ChatComposerProps {
@@ -57,10 +57,11 @@ export function ChatComposer({
               <button
                 type="button"
                 onClick={onAbort}
-                className="inline-flex h-11 shrink-0 items-center justify-center gap-1.5 rounded-xl bg-zinc-800 px-3.5 text-[13px] font-medium text-white transition hover:bg-zinc-700 focus:outline-none focus:ring-4 focus:ring-zinc-900/10 active:scale-[0.98] dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white dark:focus:ring-slate-100/10 sm:h-10"
+                aria-label="停止生成"
+                title="停止生成"
+                className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-zinc-900 text-white shadow-sm transition-all hover:bg-zinc-800 focus:outline-none focus:ring-4 focus:ring-zinc-900/10 active:scale-[0.98] dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white dark:focus:ring-slate-100/10 sm:h-10 sm:w-10"
               >
-                <Square className="h-3.5 w-3.5 fill-current" />
-                停止
+                <X className="h-4 w-4" />
               </button>
             ) : (
               <button

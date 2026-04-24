@@ -1714,7 +1714,7 @@ export function BuildPlanPage() {
                     className={
                       "flex h-11 w-11 shrink-0 items-center justify-center rounded-xl transition-all sm:h-9 sm:w-9 " +
                       (isBuilding || plannerStreaming
-                        ? "bg-red-600 text-white hover:bg-red-700 shadow-sm"
+                        ? "bg-zinc-900 text-white shadow-sm hover:bg-zinc-800 focus:outline-none focus:ring-4 focus:ring-zinc-900/10 active:scale-[0.98]"
                         : (!inputValue.trim() || confirmPlannerMutation.isPending)
                         ? "cursor-not-allowed bg-zinc-100 text-zinc-300"
                         : "bg-zinc-900 text-white shadow-sm hover:bg-zinc-800 focus:outline-none focus:ring-4 focus:ring-zinc-900/10 active:scale-[0.98]")
