@@ -6,7 +6,7 @@ import os
 
 from app.shared.infra.env_support import get_env, get_env_optional_bool
 
-APP_VERSION = "0.2.0"
+APP_VERSION = "0.0.1"
 
 
 def resolve_app_mode() -> str:

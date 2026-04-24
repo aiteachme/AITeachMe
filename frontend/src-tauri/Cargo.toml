@@ -1,6 +1,6 @@
 [package]
 name = "aiteachme-tauri"
-version = "0.1.0"
+version = "0.0.1"
 description = "AiTeachMe desktop shell"
 authors = ["AiTeachMe"]
 edition = "2021"
