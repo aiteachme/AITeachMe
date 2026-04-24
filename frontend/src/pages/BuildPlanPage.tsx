@@ -365,7 +365,7 @@ function PlannerOutlineCard({
         ))}
       </div>
 
-      <div className="mt-6 flex items-center gap-3">
+      <div className="mt-6 flex flex-wrap items-center gap-3">
         <span className="rounded-full border border-zinc-200 px-2 py-0.5 text-[11px] text-zinc-500">
           {plan.digest_mode}
         </span>
@@ -379,7 +379,7 @@ function PlannerOutlineCard({
           <button
             type="button"
             onClick={onOpenKnowledgeDocs}
-            className="inline-flex items-center justify-center gap-2 rounded-lg border border-zinc-200 bg-white px-4 py-2.5 text-sm font-medium text-zinc-700"
+            className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-zinc-200 bg-white px-4 py-2.5 text-sm font-medium text-zinc-700"
           >
             <BookOpen className="h-4 w-4" />
             进入文档
@@ -389,7 +389,7 @@ function PlannerOutlineCard({
           type="button"
           onClick={onAdjust}
           disabled={isDisabled}
-          className="rounded-lg border border-zinc-200 bg-white px-4 py-2.5 text-sm font-medium text-zinc-700 disabled:opacity-50"
+          className="min-h-11 rounded-lg border border-zinc-200 bg-white px-4 py-2.5 text-sm font-medium text-zinc-700 disabled:opacity-50"
         >
           调整
         </button>
@@ -397,7 +397,7 @@ function PlannerOutlineCard({
           type="button"
           onClick={onConfirm}
           disabled={isDisabled}
-          className="inline-flex items-center justify-center gap-2 rounded-lg bg-zinc-950 px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
+          className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-zinc-950 px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
         >
           {isBuilding ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
           开始构建
@@ -1679,7 +1679,7 @@ export function BuildPlanPage() {
                     />
                     <label
                       htmlFor="files-page-upload"
-                      className="flex cursor-pointer items-center gap-1.5 rounded-lg px-3 py-1.5 text-[13px] font-medium text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-900"
+                      className="flex min-h-10 cursor-pointer items-center gap-1.5 rounded-lg px-3 py-1.5 text-[13px] font-medium text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-900"
                     >
                       {uploadMutation.isPending ? (
                         <Loader2 className="h-4 w-4 animate-spin" />
@@ -1712,7 +1712,7 @@ export function BuildPlanPage() {
                     }
                     title={isBuilding ? "终止当前构建" : plannerStreaming ? "停止当前生成" : "发送"}
                     className={
-                      "flex h-9 w-9 shrink-0 items-center justify-center rounded-xl transition-all " +
+                      "flex h-11 w-11 shrink-0 items-center justify-center rounded-xl transition-all sm:h-9 sm:w-9 " +
                       (isBuilding || plannerStreaming
                         ? "bg-red-600 text-white hover:bg-red-700 shadow-sm"
                         : (!inputValue.trim() || confirmPlannerMutation.isPending)

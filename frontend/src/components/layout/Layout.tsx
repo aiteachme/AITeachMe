@@ -39,7 +39,7 @@ export function Layout() {
   return (
     <>
       <SubjectAiAssistantProvider subjectId={subjectId}>
-        <div className="relative flex h-screen overflow-hidden bg-[#fafafa] dark:bg-[#0b0f19] selection:bg-zinc-200 dark:selection:bg-slate-700">
+        <div className="relative flex h-dvh overflow-hidden bg-[#fafafa] dark:bg-[#0b0f19] selection:bg-zinc-200 dark:selection:bg-slate-700">
           {!isSettingsOpen ? (
             <div className="pointer-events-none absolute inset-0 z-0 overflow-hidden mix-blend-multiply dark:mix-blend-screen">
               <div className="absolute -left-[4%] -top-[8%] h-[440px] w-[440px] rounded-full bg-indigo-100/30 dark:bg-indigo-900/20 blur-[72px] opacity-75 dark:opacity-40" />
@@ -60,7 +60,7 @@ export function Layout() {
 
             <main className="relative flex w-full flex-1 flex-col overflow-x-hidden overflow-y-auto bg-transparent">
               {isFullBleed || pathname === "/" ? (
-                <div className="flex min-h-[calc(100vh-4rem)] w-full flex-1 flex-col">
+                <div className="flex min-h-[calc(100dvh-4rem)] w-full flex-1 flex-col">
                   <Outlet />
                 </div>
               ) : (
