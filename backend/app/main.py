@@ -316,10 +316,8 @@ def _register_middlewares(app: FastAPI) -> None:
         "https://aiteachme.cn",
         "https://www.aiteachme.cn",
         "https://aiteachme.pages.dev",
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-        "http://localhost:5174",
-        "http://127.0.0.1:5174",
+        "http://localhost:5180",
+        "http://127.0.0.1:5180",
         "http://localhost:3000",
         "http://127.0.0.1:3000",
     ]
