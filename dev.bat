@@ -121,32 +121,56 @@ if /I "%FRONTEND_MODE%"=="conda" (
 
 set "BACKEND_PID="
 set "FRONTEND_PID="
+set "BACKEND_URL=http://localhost:9020"
+set "FRONTEND_URL=http://localhost:5180"
 set "PORT_SCAN_FILE=%TEMP%\aiteachme-dev-ports-%RANDOM%.txt"
 netstat -ano -p tcp > "%PORT_SCAN_FILE%"
-for /f "tokens=5" %%P in ('findstr /R /C:":8010 .*LISTENING" "%PORT_SCAN_FILE%" 2^>nul') do if not defined BACKEND_PID set "BACKEND_PID=%%P"
+for /f "tokens=5" %%P in ('findstr /R /C:":9020 .*LISTENING" "%PORT_SCAN_FILE%" 2^>nul') do if not defined BACKEND_PID set "BACKEND_PID=%%P"
 for /f "tokens=5" %%P in ('findstr /R /C:":5180 .*LISTENING" "%PORT_SCAN_FILE%" 2^>nul') do if not defined FRONTEND_PID set "FRONTEND_PID=%%P"
 del "%PORT_SCAN_FILE%" >nul 2>nul
 
+if "%START_FLAGS%"=="" if not "%FRONTEND_PID%"=="" (
+	powershell -NoProfile -ExecutionPolicy Bypass -Command "$p = Get-CimInstance Win32_Process -Filter 'ProcessId=%FRONTEND_PID%' -ErrorAction SilentlyContinue; if ($p -and $p.CommandLine -like '*AiTeachMe*frontend*vite*') { exit 0 } exit 1" >nul 2>nul
+	if not errorlevel 1 (
+		echo [Frontend] Existing Vite process has no reusable console, restarting PID %FRONTEND_PID%...
+		taskkill /PID %FRONTEND_PID% /T /F >nul 2>nul
+		set "FRONTEND_PID="
+	)
+)
+
 if not "%BACKEND_PID%"=="" (
-	echo [Backend] FastAPI is already running on http://localhost:8010, PID %BACKEND_PID%. Reusing it.
+	echo [Backend] FastAPI is already running on %BACKEND_URL%, PID %BACKEND_PID%. Reusing it.
 ) else (
-	echo [Backend] Starting FastAPI on http://localhost:8010...
+	echo [Backend] Starting FastAPI on %BACKEND_URL%...
 	if /I "%BACKEND_MODE%"=="venv" (
-		start "Backend" %START_FLAGS% /D "%~dp0backend" "%BACKEND_PY%" -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8010
+		start "Backend" %START_FLAGS% /D "%~dp0backend" "%BACKEND_PY%" -m uvicorn app.main:app --reload --host 127.0.0.1 --port 9020
 	) else (
-		start "Backend" %START_FLAGS% /D "%~dp0backend" "%CONDA_CMD%" run -n %CONDA_ENV_NAME% --no-capture-output python -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8010
+		start "Backend" %START_FLAGS% /D "%~dp0backend" "%CONDA_CMD%" run -n %CONDA_ENV_NAME% --no-capture-output python -m uvicorn app.main:app --reload --host 127.0.0.1 --port 9020
 	)
 )
 
 if not "%FRONTEND_PID%"=="" (
-	echo [Frontend] Vite is already running on http://localhost:5180, PID %FRONTEND_PID%. Reusing it.
+	echo [Frontend] Vite is already running on %FRONTEND_URL%, PID %FRONTEND_PID%. Reusing it.
 ) else (
-	echo [Frontend] Starting Vite on http://localhost:5180...
+	echo [Frontend] Starting Vite on %FRONTEND_URL%...
 	if /I "%FRONTEND_MODE%"=="system" (
-		start "Frontend" %START_FLAGS% /D "%~dp0frontend" npm run dev
+		if "%START_FLAGS%"=="" (
+			start "Frontend" /D "%~dp0frontend" cmd /k "npm run dev"
+		) else (
+			start "Frontend" %START_FLAGS% /D "%~dp0frontend" npm run dev
+		)
 	) else (
-		start "Frontend" %START_FLAGS% /D "%~dp0frontend" "%CONDA_CMD%" run -n %CONDA_ENV_NAME% --no-capture-output npm run dev
+		if "%START_FLAGS%"=="" (
+			start "Frontend" /D "%~dp0frontend" cmd /k ""%CONDA_CMD%" run -n %CONDA_ENV_NAME% --no-capture-output npm run dev"
+		) else (
+			start "Frontend" %START_FLAGS% /D "%~dp0frontend" "%CONDA_CMD%" run -n %CONDA_ENV_NAME% --no-capture-output npm run dev
+		)
 	)
+)
+
+if "%START_FLAGS%"=="" (
+	echo [Frontend] Opening %FRONTEND_URL%...
+	start "" "%FRONTEND_URL%"
 )
 
 if "%START_ELECTRON%"=="1" (

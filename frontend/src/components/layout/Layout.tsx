@@ -45,7 +45,7 @@ export function Layout() {
         <div
           className={cn(
             "app-shell relative flex min-h-0 overflow-hidden bg-[#fafafa] selection:bg-zinc-200 dark:bg-[#0b0f19] dark:selection:bg-slate-700",
-            isElectron ? "flex-1" : "h-dvh",
+            isElectron ? "w-full flex-1" : "h-dvh w-screen max-w-full",
           )}
         >
           {!isSettingsOpen ? (
