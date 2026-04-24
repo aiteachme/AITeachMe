@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import asyncio
+from dataclasses import dataclass
 import re
 from typing import Literal
+from time import perf_counter
 
 from pydantic import BaseModel, Field
 import structlog
@@ -20,6 +23,7 @@ from app.models.knowledge_taxonomy import (
     normalize_type_source,
     validate_relation_direction,
 )
+from app.utils.knowledge_helpers import normalize_name
 from app.workflows.digest.kg_file_ingest.prompts import SYSTEM_PROMPT_KNOWLEDGE_EXTRACT, USER_PROMPT_KNOWLEDGE_EXTRACT
 from app.workflows.digest.common.semantic_titles import (
     DEFAULT_QUESTION_TOPIC,
@@ -38,6 +42,7 @@ _MULTISPACE_RE = re.compile(r"\s+")
 _MAX_EXAMPLE_NAME_CHARS = 48
 _MAX_EXAMPLE_SUMMARY_CHARS = 800
 _MAX_TOPIC_SUMMARY_CHARS = 240
+_DOCS_SYNC_SECTION_LLM_TIMEOUT_S = 25
 
 # ── 知识点提取相关模式 ──────────────────────────────────────────
 # 中文学科概念词（2-8字，排除常见停用词）
@@ -58,6 +63,45 @@ _CONCEPTUAL_KEYWORDS_RE = re.compile(
     r"(?:定义|定理|性质|引理|推论|公理|命题|概念|原理|法则|公式)",
 )
 _INDEPENDENT_FORMULA_RE = re.compile(r"\$\$[^$]+\$\$", re.DOTALL)
+_DOCS_TYPED_LINE_RE = re.compile(
+    r"^\s*(?:[-*]\s*)?(?:\*\*)?"
+    r"(?P<label>定义|定理|公式|例题|示例|练习|证明|备注|Definition|Theorem|Formula|Example|Exercise|Proof|Remark)"
+    r"(?:\*\*)?\s*[:：]\s*(?P<value>.+?)\s*$",
+    re.IGNORECASE | re.MULTILINE,
+)
+_DOCS_SUMMARY_SENTENCE_RE = re.compile(r"(?P<sentence>[^。！？.!?]{0,80}(?:是|指|表示|意味着|可理解为|定义为)[^。！？.!?]{4,120}[。！？.!?])")
+_DOCS_EXPLANATION_CUE_RE = re.compile(r"(?:几何意义|物理意义|性质|应用|图像|判定|判别|方法|步骤|注意|易错|拓展)")
+_DOCS_LABEL_TYPE_MAP = {
+    "定义": "definition",
+    "definition": "definition",
+    "定理": "theorem",
+    "theorem": "theorem",
+    "公式": "formula",
+    "formula": "formula",
+    "例题": "example",
+    "示例": "example",
+    "example": "example",
+    "练习": "exercise",
+    "exercise": "exercise",
+    "证明": "proof_step",
+    "proof": "proof_step",
+    "备注": "remark",
+    "remark": "remark",
+}
+_DOCS_RETRY_SIGNAL_RE = re.compile(
+    r"(?:定义|定理|公式|性质|法则|原理|几何意义|物理意义|判定|判别|方法|步骤|证明|推论|注意|易错|Remark|Definition|Theorem|Formula|Example|Proof)",
+    re.IGNORECASE,
+)
+_DOCS_RELATIVE_TITLE_TYPE_RULES: tuple[tuple[re.Pattern[str], str], ...] = (
+    (re.compile(r"(?:定义|definition)", re.IGNORECASE), "definition"),
+    (re.compile(r"(?:定理|性质|引理|推论|theorem|lemma|proposition|property)", re.IGNORECASE), "theorem"),
+    (re.compile(r"(?:公式|方程|恒等式|formula|equation|identity)", re.IGNORECASE), "formula"),
+    (re.compile(r"(?:例题|示例|example|case)", re.IGNORECASE), "example"),
+    (re.compile(r"(?:练习|习题|exercise|problem)", re.IGNORECASE), "exercise"),
+    (re.compile(r"(?:证明|推导|proof|derivation)", re.IGNORECASE), "proof_step"),
+    (re.compile(r"(?:方法|步骤|策略|algorithm|method|procedure|step)", re.IGNORECASE), "method"),
+    (re.compile(r"(?:几何意义|物理意义|应用|注意|易错|备注|说明|remark|note|intuition|interpretation)", re.IGNORECASE), "remark"),
+)
 # 停用词：过于宽泛不适合作为知识点
 _CONCEPT_STOPWORDS = frozenset({
     "选择题", "填空题", "解答题", "判断题", "计算题", "证明题", "简答题",
@@ -151,6 +195,20 @@ class ChunkExtractionResult(BaseModel):
 
     nodes: list[CandidateNode] = Field(default_factory=list)
     edges: list[CandidateEdge] = Field(default_factory=list)
+
+
+@dataclass(slots=True)
+class CandidateExtractionDiagnostics:
+    """Lightweight runtime diagnostics for one candidate-extraction pass."""
+
+    llm_attempted: bool = False
+    used_question_fallback: bool = False
+    used_topic_fallback: bool = False
+    markdown_anchor_short_circuit_used: bool = False
+    question_like_chunk: bool = False
+    elapsed_ms: int = 0
+    node_count: int = 0
+    edge_count: int = 0
 
 
 def _normalize_text(text: str) -> str:
@@ -324,11 +382,239 @@ def _looks_like_question_chunk(chunk_content: str) -> bool:
     return len(parse_question_blocks(chunk_content)) >= 2
 
 
+def _should_prepare_question_fallback(
+    *,
+    chunk_content: str,
+    chunk_title: str,
+    doc_source_type: str | None,
+) -> bool:
+    if not _looks_like_question_chunk(chunk_content):
+        return False
+    if doc_source_type != "knowledge_doc_markdown":
+        return True
+    normalized_title = _normalize_text(chunk_title).lower()
+    return any(
+        token in normalized_title
+        for token in ("题", "练习", "例题", "模板", "流程", "策略", "速查", "复盘", "考试须知")
+    )
+
+
 def _split_header_path(header_path: str, chunk_title: str) -> list[str]:
     return choose_semantic_topic_path(
         header_path=header_path,
         fallback_title=chunk_title,
     )
+
+
+def _hint_edge_type_for_node(node_type: str) -> Literal["derivation", "example_of", "application"]:
+    normalized = normalize_knowledge_unit_type(node_type)
+    if normalized in {"example", "exercise"}:
+        return "example_of"
+    if normalized in {"remark"}:
+        return "application"
+    return "derivation"
+
+
+def _merge_candidate_results(
+    primary: ChunkExtractionResult,
+    supplement: ChunkExtractionResult | None,
+) -> ChunkExtractionResult:
+    if supplement is None:
+        return primary
+
+    merged = ChunkExtractionResult(
+        nodes=list(primary.nodes),
+        edges=list(primary.edges),
+    )
+    seen_nodes = {
+        (_normalize_text(node.name), normalize_knowledge_unit_type(node.knowledge_unit_type))
+        for node in merged.nodes
+    }
+    for node in supplement.nodes:
+        key = (_normalize_text(node.name), normalize_knowledge_unit_type(node.knowledge_unit_type))
+        if key in seen_nodes:
+            continue
+        seen_nodes.add(key)
+        merged.nodes.append(node)
+
+    seen_edges = {
+        (
+            _normalize_text(edge.source_name),
+            _normalize_text(edge.target_name),
+            normalize_relation_type(edge.edge_type),
+        )
+        for edge in merged.edges
+    }
+    for edge in supplement.edges:
+        key = (
+            _normalize_text(edge.source_name),
+            _normalize_text(edge.target_name),
+            normalize_relation_type(edge.edge_type),
+        )
+        if key in seen_edges:
+            continue
+        seen_edges.add(key)
+        merged.edges.append(edge)
+    return merged
+
+
+def _build_docs_section_support_result(
+    *,
+    chunk_content: str,
+    chunk_title: str,
+    header_path: str,
+    chapter_topic_hints: list[str] | None = None,
+    subject_context: str | None = None,
+) -> ChunkExtractionResult:
+    support = ChunkExtractionResult(nodes=[], edges=[])
+    topic_path = choose_semantic_topic_path(
+        header_path=header_path,
+        fallback_title=chunk_title,
+        chapter_topic_hints=chapter_topic_hints,
+        extracted_terms=_extract_key_terms(chunk_content),
+        subject_context=subject_context,
+    )
+    leaf_name = _qualify_docs_unit_name(
+        chunk_title=chunk_title,
+        header_path=header_path,
+        topic_path=topic_path,
+    )
+    existing_names = {node.name for node in support.nodes}
+    typed_line_count = len(list(_DOCS_TYPED_LINE_RE.finditer(chunk_content)))
+
+    def _append_node(name: str, node_type: str, summary: str) -> None:
+        cleaned_name = _normalize_text(name)
+        if not cleaned_name or cleaned_name in existing_names:
+            return
+        existing_names.add(cleaned_name)
+        support.nodes.append(
+            CandidateNode(
+                name=cleaned_name,
+                knowledge_unit_type=node_type,
+                local_summary=_truncate(_normalize_text(summary), limit=_MAX_EXAMPLE_SUMMARY_CHARS) or cleaned_name,
+                taxonomy_hint=leaf_name,
+                parent_entity_name=(leaf_name if normalize_knowledge_unit_type(node_type) not in {"concept", "method"} else None),
+            )
+        )
+        if cleaned_name != leaf_name:
+            support.edges.append(
+                CandidateEdge(
+                    source_name=cleaned_name,
+                    target_name=leaf_name,
+                    edge_type=_hint_edge_type_for_node(node_type),
+                    description=f"{cleaned_name} is grounded in section {leaf_name}.",
+                )
+            )
+
+    primary_type = _infer_docs_primary_node_type(chunk_title=chunk_title, chunk_content=chunk_content)
+    if leaf_name and (typed_line_count == 0 or primary_type == "concept"):
+        _append_node(leaf_name, primary_type, chunk_content or chunk_title)
+
+    for match in _DOCS_TYPED_LINE_RE.finditer(chunk_content):
+        label = (match.group("label") or "").strip().lower()
+        node_type = _DOCS_LABEL_TYPE_MAP.get(label)
+        value = _normalize_text(match.group("value") or "")
+        if not node_type or not value:
+            continue
+        unit_name = value[:64]
+        if (
+            node_type in {"definition", "formula", "theorem"}
+            and leaf_name
+            and (
+                leaf_name not in value
+                or len(value) > 18
+                or bool(re.search(r"[。！？.!?=\s]", value))
+            )
+        ):
+            unit_name = f"{leaf_name}{match.group('label')}"
+        _append_node(unit_name, node_type, value)
+
+    summary_match = _DOCS_SUMMARY_SENTENCE_RE.search(chunk_content)
+    if (
+        summary_match is not None
+        and leaf_name
+        and f"{leaf_name}定义" not in existing_names
+        and typed_line_count == 0
+        and primary_type == "concept"
+    ):
+        sentence = _normalize_text(summary_match.group("sentence") or "")
+        if sentence:
+            _append_node(f"{leaf_name}定义", "definition", sentence)
+
+    return support
+
+
+def _infer_docs_primary_node_type(*, chunk_title: str, chunk_content: str) -> str:
+    for pattern, node_type in _DOCS_RELATIVE_TITLE_TYPE_RULES:
+        if pattern.search(chunk_title):
+            return node_type
+    if _INDEPENDENT_FORMULA_RE.search(chunk_content):
+        return "formula"
+    return "concept"
+
+
+def _qualify_docs_unit_name(
+    *,
+    chunk_title: str,
+    header_path: str,
+    topic_path: list[str] | None = None,
+) -> str:
+    cleaned_title = clean_semantic_title(chunk_title) or _normalize_text(chunk_title)
+    if not cleaned_title:
+        return ""
+    parts = [part.strip() for part in (topic_path or _split_header_path(header_path, chunk_title)) if part.strip()]
+    if len(parts) < 2:
+        return cleaned_title
+
+    parent_name = parts[-2]
+    for pattern, _node_type in _DOCS_RELATIVE_TITLE_TYPE_RULES:
+        if pattern.search(cleaned_title):
+            if re.search(r"[\u4e00-\u9fff]", cleaned_title):
+                return f"{parent_name}的{cleaned_title}"
+            return f"{parent_name} {cleaned_title}"
+
+    if normalize_name(cleaned_title) == normalize_name(parent_name):
+        return parent_name
+    return cleaned_title
+
+
+async def _repair_docs_extraction_after_empty(
+    *,
+    messages: list[ChatMessage],
+) -> ChunkExtractionResult:
+    repair_messages = list(messages)
+    repair_messages.append(
+        {
+            "role": USER,
+            "content": (
+                "The previous extraction was empty. Re-read the chunk and return a non-empty graph if the "
+                "section contains any concept, definition, formula, method, example, theorem, proof step, or note. "
+                "At minimum, include the main concept named by the heading when it is a real topic."
+            ),
+        }
+    )
+    return await acompletion_structured(
+        response_model=ChunkExtractionResult,
+        messages=repair_messages,
+        task_type=TaskType.EXTRACT,
+        model="extract",
+    )
+
+
+def _should_retry_docs_extraction_after_empty(
+    *,
+    chunk_content: str,
+    chunk_title: str,
+) -> bool:
+    normalized_title = _normalize_text(chunk_title)
+    if _DOCS_TYPED_LINE_RE.search(chunk_content):
+        return True
+    if _DOCS_SUMMARY_SENTENCE_RE.search(chunk_content):
+        return True
+    if _DOCS_RETRY_SIGNAL_RE.search(chunk_content) or _DOCS_RETRY_SIGNAL_RE.search(normalized_title):
+        return True
+    key_terms = _extract_key_terms(chunk_content)
+    return len(key_terms) >= 2
 
 
 def _fallback_question_support_name(
@@ -422,8 +708,6 @@ def _sanitize_candidate_graph(
             logger.warning(
                 "knowledge_edge_dropped_invalid_direction",
                 edge_type=edge.edge_type,
-                source=edge.source_name,
-                target=edge.target_name,
                 source_type=edge.source_node_type,
                 target_type=edge.target_node_type,
             )
@@ -824,42 +1108,52 @@ async def _build_question_fallback(
     return ChunkExtractionResult(nodes=nodes, edges=edges)
 
 
-async def extract_candidates(
+async def _extract_candidates_internal(
     chunk_content: str,
     chunk_title: str,
     header_path: str,
     doc_source_type: str | None = None,
     subject_context: str | None = None,
     prefer_fast_path: bool = False,
+    allow_markdown_anchor_short_circuit: bool = True,
     sibling_topics: str = "",
     digest_mode: str = "",
     chapter_topic_hints: list[str] | None = None,
-) -> ChunkExtractionResult:
-    """Extract candidate nodes and edges from one chunk."""
+) -> tuple[ChunkExtractionResult, CandidateExtractionDiagnostics]:
+    """Extract candidate nodes and edges plus runtime diagnostics for one chunk."""
 
-    markdown_anchor_result = _build_markdown_anchor_result(
-        chunk_content=chunk_content,
-        chunk_title=chunk_title,
-        header_path=header_path,
-    )
-    if markdown_anchor_result is not None:
-        result = _sanitize_candidate_graph(
-            markdown_anchor_result,
+    started_at = perf_counter()
+    diagnostics = CandidateExtractionDiagnostics()
+
+    if allow_markdown_anchor_short_circuit:
+        markdown_anchor_result = _build_markdown_anchor_result(
+            chunk_content=chunk_content,
             chunk_title=chunk_title,
             header_path=header_path,
-            chapter_topic_hints=chapter_topic_hints,
-            subject_context=subject_context,
-            question_mode=False,
         )
-        result = _assign_candidate_ids_and_edge_types(result)
-        logger.info(
-            "knowledge_extract_markdown_anchors_used",
-            chunk_title=chunk_title,
-            header_path=header_path,
-            node_count=len(result.nodes),
-            edge_count=len(result.edges),
-        )
-        return result
+        if markdown_anchor_result is not None:
+            result = _sanitize_candidate_graph(
+                markdown_anchor_result,
+                chunk_title=chunk_title,
+                header_path=header_path,
+                chapter_topic_hints=chapter_topic_hints,
+                subject_context=subject_context,
+                question_mode=False,
+            )
+            result = _assign_candidate_ids_and_edge_types(result)
+            logger.info(
+                "knowledge_extract_markdown_anchors_used",
+                chunk_title=chunk_title,
+                header_path=header_path,
+                node_count=len(result.nodes),
+                edge_count=len(result.edges),
+            )
+            diagnostics.markdown_anchor_short_circuit_used = True
+            diagnostics.question_like_chunk = False
+            diagnostics.node_count = len(result.nodes)
+            diagnostics.edge_count = len(result.edges)
+            diagnostics.elapsed_ms = int((perf_counter() - started_at) * 1000)
+            return result, diagnostics
 
     user_content = populate_prompt(
         USER_PROMPT_KNOWLEDGE_EXTRACT,
@@ -877,20 +1171,38 @@ async def extract_candidates(
         {"role": USER, "content": user_content},
     ]
 
-    question_fallback = await _build_question_fallback(
+    question_fallback: ChunkExtractionResult | None = None
+    question_fallback_eligible = _should_prepare_question_fallback(
         chunk_content=chunk_content,
         chunk_title=chunk_title,
-        header_path=header_path,
-        chapter_topic_hints=chapter_topic_hints,
-        subject_context=subject_context,
-        digest_mode=digest_mode,
+        doc_source_type=doc_source_type,
     )
+    if question_fallback_eligible:
+        question_fallback = await _build_question_fallback(
+            chunk_content=chunk_content,
+            chunk_title=chunk_title,
+            header_path=header_path,
+            chapter_topic_hints=chapter_topic_hints,
+            subject_context=subject_context,
+            digest_mode=digest_mode,
+        )
     topic_fallback = _build_topic_fallback(
         chunk_content=chunk_content,
         chunk_title=chunk_title,
         header_path=header_path,
         chapter_topic_hints=chapter_topic_hints,
         subject_context=subject_context,
+    )
+    docs_section_support = (
+        _build_docs_section_support_result(
+            chunk_content=chunk_content,
+            chunk_title=chunk_title,
+            header_path=header_path,
+            chapter_topic_hints=chapter_topic_hints,
+            subject_context=subject_context,
+        )
+        if doc_source_type == "knowledge_doc_markdown"
+        else None
     )
 
     used_question_fallback = False
@@ -903,23 +1215,33 @@ async def extract_candidates(
             header_path=header_path,
             node_count=len(question_fallback.nodes),
         )
-        return question_fallback
+        diagnostics.used_question_fallback = True
+        diagnostics.question_like_chunk = True
+        diagnostics.node_count = len(question_fallback.nodes)
+        diagnostics.edge_count = len(question_fallback.edges)
+        diagnostics.elapsed_ms = int((perf_counter() - started_at) * 1000)
+        return question_fallback, diagnostics
 
     try:
-        result = await acompletion_structured(
+        diagnostics.llm_attempted = True
+        llm_call = acompletion_structured(
             response_model=ChunkExtractionResult,
             messages=messages,
             task_type=TaskType.EXTRACT,
             model="extract",
         )
-    except Exception:
+        if doc_source_type == "knowledge_doc_markdown":
+            result = await asyncio.wait_for(llm_call, timeout=_DOCS_SYNC_SECTION_LLM_TIMEOUT_S)
+        else:
+            result = await llm_call
+    except Exception as exc:
         if question_fallback is not None:
             logger.warning(
                 "knowledge_extract_question_fallback_after_error",
                 chunk_title=chunk_title,
                 header_path=header_path,
                 node_count=len(question_fallback.nodes),
-                exc_info=True,
+                error_type=type(exc).__name__,
             )
             result = question_fallback
             used_question_fallback = True
@@ -928,29 +1250,51 @@ async def extract_candidates(
                 "knowledge_extract_topic_fallback_after_error",
                 chunk_title=chunk_title,
                 header_path=header_path,
-                exc_info=True,
+                error_type=type(exc).__name__,
             )
-            result = topic_fallback
+            result = docs_section_support or topic_fallback
             used_topic_fallback = True
     else:
         if not result.nodes and not result.edges:
+            if doc_source_type == "knowledge_doc_markdown" and _should_retry_docs_extraction_after_empty(
+                chunk_content=chunk_content,
+                chunk_title=chunk_title,
+            ):
+                try:
+                    result = await _repair_docs_extraction_after_empty(messages=messages)
+                except Exception as exc:
+                    logger.warning(
+                        "knowledge_extract_docs_retry_failed",
+                        chunk_title=chunk_title,
+                        header_path=header_path,
+                        error_type=type(exc).__name__,
+                    )
             if question_fallback is not None:
-                logger.warning(
-                    "knowledge_extract_question_fallback_after_empty_result",
-                    chunk_title=chunk_title,
-                    header_path=header_path,
-                    node_count=len(question_fallback.nodes),
-                )
-                result = question_fallback
-                used_question_fallback = True
+                if not result.nodes and not result.edges:
+                    logger.warning(
+                        "knowledge_extract_question_fallback_after_empty_result",
+                        chunk_title=chunk_title,
+                        header_path=header_path,
+                        node_count=len(question_fallback.nodes),
+                    )
+                    result = question_fallback
+                    used_question_fallback = True
             else:
-                logger.warning(
-                    "knowledge_extract_topic_fallback_after_empty_result",
-                    chunk_title=chunk_title,
-                    header_path=header_path,
-                )
-                result = topic_fallback
-                used_topic_fallback = True
+                if not result.nodes and not result.edges:
+                    logger.warning(
+                        "knowledge_extract_topic_fallback_after_empty_result",
+                        chunk_title=chunk_title,
+                        header_path=header_path,
+                    )
+                    result = docs_section_support or topic_fallback
+                    used_topic_fallback = True
+
+    if doc_source_type == "knowledge_doc_markdown":
+        concept_like_count = sum(
+            1 for node in result.nodes if normalize_knowledge_unit_type(node.knowledge_unit_type) in {"concept", "method"}
+        )
+        if concept_like_count == 0 or len(result.nodes) <= 1 or (not result.edges and docs_section_support is not None):
+            result = _merge_candidate_results(result, docs_section_support)
 
     result = _sanitize_candidate_graph(
         result,
@@ -972,14 +1316,78 @@ async def extract_candidates(
         used_topic_fallback=used_topic_fallback,
         question_like_chunk=_looks_like_question_chunk(chunk_content),
     )
+    diagnostics.used_question_fallback = used_question_fallback
+    diagnostics.used_topic_fallback = used_topic_fallback
+    diagnostics.question_like_chunk = _looks_like_question_chunk(chunk_content)
+    diagnostics.node_count = len(result.nodes)
+    diagnostics.edge_count = len(result.edges)
+    diagnostics.elapsed_ms = int((perf_counter() - started_at) * 1000)
+    return result, diagnostics
+
+
+async def extract_candidates(
+    chunk_content: str,
+    chunk_title: str,
+    header_path: str,
+    doc_source_type: str | None = None,
+    subject_context: str | None = None,
+    prefer_fast_path: bool = False,
+    allow_markdown_anchor_short_circuit: bool = True,
+    sibling_topics: str = "",
+    digest_mode: str = "",
+    chapter_topic_hints: list[str] | None = None,
+) -> ChunkExtractionResult:
+    """Extract candidate nodes and edges from one chunk."""
+
+    result, _diagnostics = await _extract_candidates_internal(
+        chunk_content=chunk_content,
+        chunk_title=chunk_title,
+        header_path=header_path,
+        doc_source_type=doc_source_type,
+        subject_context=subject_context,
+        prefer_fast_path=prefer_fast_path,
+        allow_markdown_anchor_short_circuit=allow_markdown_anchor_short_circuit,
+        sibling_topics=sibling_topics,
+        digest_mode=digest_mode,
+        chapter_topic_hints=chapter_topic_hints,
+    )
     return result
 
 
+async def extract_candidates_with_diagnostics(
+    chunk_content: str,
+    chunk_title: str,
+    header_path: str,
+    doc_source_type: str | None = None,
+    subject_context: str | None = None,
+    prefer_fast_path: bool = False,
+    allow_markdown_anchor_short_circuit: bool = True,
+    sibling_topics: str = "",
+    digest_mode: str = "",
+    chapter_topic_hints: list[str] | None = None,
+) -> tuple[ChunkExtractionResult, CandidateExtractionDiagnostics]:
+    """Extract candidates together with lightweight runtime diagnostics."""
+
+    return await _extract_candidates_internal(
+        chunk_content=chunk_content,
+        chunk_title=chunk_title,
+        header_path=header_path,
+        doc_source_type=doc_source_type,
+        subject_context=subject_context,
+        prefer_fast_path=prefer_fast_path,
+        allow_markdown_anchor_short_circuit=allow_markdown_anchor_short_circuit,
+        sibling_topics=sibling_topics,
+        digest_mode=digest_mode,
+        chapter_topic_hints=chapter_topic_hints,
+    )
+
+
 __all__ = [
+    "CandidateExtractionDiagnostics",
     "CandidateEdge",
     "CandidateNode",
     "ChunkExtractionResult",
     "extract_candidates",
+    "extract_candidates_with_diagnostics",
     "has_conceptual_content",
 ]
-

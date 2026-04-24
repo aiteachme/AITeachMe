@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useEffect, useMemo, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft,
   ArrowRight,
@@ -14,6 +14,7 @@ import {
   Sparkles,
   Tags,
   Target,
+  Trash2,
   ZoomIn,
   ZoomOut,
 } from "lucide-react";
@@ -89,6 +90,11 @@ interface ExamStudyGuideResponse {
   focus_units: ExamStudyGuideFocusUnit[];
 }
 
+interface ExamPaperDeleteResponse {
+  deleted: boolean;
+  exam_paper_id: number;
+}
+
 interface QuestionTemplateItem {
   id: number;
   subject: string;
@@ -132,6 +138,15 @@ async function getExamStudyGuide(subjectId: string, paperId: number, signal?: Ab
     {
       method: "GET",
       signal,
+    },
+  );
+}
+
+async function deleteExamPaper(subjectId: string, paperId: number) {
+  return orvalApiClient<{ data?: { code?: number; message?: string; data?: ExamPaperDeleteResponse } }>(
+    `/api/v1/subjects/${subjectId}/exams/${paperId}`,
+    {
+      method: "DELETE",
     },
   );
 }
@@ -1085,6 +1100,8 @@ function ExamPaperWorkspace({ subjectId, paperId, backHref }: ExamPaperWorkspace
 export function ExamsPage() {
   const { subjectId } = useParams();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [expandedGroups, setExpandedGroups] = useState({
     active: true,
@@ -1106,6 +1123,32 @@ export function ExamsPage() {
     () => historyItems.filter((item) => item.status === "graded"),
     [historyItems],
   );
+
+  const deleteExamMutation = useMutation({
+    mutationFn: async (paperId: number) => {
+      if (!subjectId) {
+        throw new Error("缺少学科标识，无法删除考卷。");
+      }
+      return deleteExamPaper(subjectId, paperId);
+    },
+    onSuccess: async (_response, paperId) => {
+      await queryClient.invalidateQueries({
+        queryKey: getExamHistoryApiV1SubjectsSubjectExamsHistoryGetQueryKey(subjectId ?? "", { page: 1, size: 24 }),
+      });
+      toast({
+        title: "考卷已删除",
+        description: `已删除考卷 #${paperId}。`,
+        variant: "success",
+      });
+    },
+    onError: (error) => {
+      toast({
+        title: "删除失败",
+        description: getApiErrorMessage(error, "请稍后重试"),
+        variant: "error",
+      });
+    },
+  });
 
   if (!subjectId) {
     return (
@@ -1185,25 +1228,6 @@ export function ExamsPage() {
                 </div>
               )}
 
-              {!historyQuery.isLoading && !historyQuery.error && historyItems.length === 0 && (
-                <div className="px-1 py-6">
-                  <div className="grid h-14 w-14 place-items-center rounded-2xl bg-slate-900 dark:bg-slate-800 text-white">
-                    <GraduationCap className="h-6 w-6" />
-                  </div>
-                  <h3 className="mt-5 text-xl font-semibold text-slate-950 dark:text-slate-100">还没有考卷记录</h3>
-                  <p className="mt-3 max-w-xl text-sm leading-7 text-slate-500 dark:text-slate-400">
-                    从这里创建第一份试卷。你可以选择专项练习或整卷测试，也可以输入想重点考察的知识范围。
-                  </p>
-                  <Button
-                    size="lg"
-                    className="mt-6 rounded-full bg-black px-6"
-                    onClick={() => setIsCreateOpen(true)}
-                  >
-                    <Plus className="h-5 w-5" />
-                    创建第一份考卷
-                  </Button>
-                </div>
-              )}
 
               {[
                 { key: "active" as const, title: "待完成的考卷", items: activeHistoryItems },
@@ -1243,13 +1267,36 @@ export function ExamsPage() {
                             item.score_obtained != null && item.total_score != null
                               ? `${item.score_obtained}/${item.total_score}`
                               : "未评分";
+                          const isDeleting = deleteExamMutation.isPending && deleteExamMutation.variables === item.id;
+
+                          const handleDeleteExam = (event: MouseEvent<HTMLButtonElement>) => {
+                            event.stopPropagation();
+                            if (isDeleting) return;
+                            const confirmed = window.confirm(
+                              `确认删除这份考卷吗？\n\n${buildExamTitle(item)}\n\n删除后无法恢复。`,
+                            );
+                            if (!confirmed) return;
+                            deleteExamMutation.mutate(item.id);
+                          };
+
+                          const handleOpenExam = () => {
+                            navigate(`/subject/${subjectId}/exams/${item.id}`);
+                          };
+
+                          const handleCardKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+                            if (event.key !== "Enter" && event.key !== " ") return;
+                            event.preventDefault();
+                            handleOpenExam();
+                          };
 
                           return (
-                            <button
+                            <div
                               key={item.id}
-                              type="button"
-                              onClick={() => navigate(`/subject/${subjectId}/exams/${item.id}`)}
-                              className="group w-full rounded-[28px] border border-slate-200/80 dark:border-slate-800/80 bg-[linear-gradient(180deg,#ffffff_0%,#fbfcff_100%)] dark:bg-none dark:bg-slate-900/50 px-5 py-5 text-left transition duration-200 hover:-translate-y-0.5 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-[0_18px_45px_rgba(15,23,42,0.08)] dark:hover:shadow-[0_18px_45px_rgba(0,0,0,0.4)] sm:px-6"
+                              role="button"
+                              tabIndex={0}
+                              onClick={handleOpenExam}
+                              onKeyDown={handleCardKeyDown}
+                              className="group w-full rounded-[28px] border border-slate-200/80 bg-[linear-gradient(180deg,#ffffff_0%,#fbfcff_100%)] px-5 py-5 text-left transition duration-200 hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-[0_18px_45px_rgba(15,23,42,0.08)] sm:px-6"
                             >
                               <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
                                 <div className="flex min-w-0 items-start gap-4">
@@ -1294,19 +1341,33 @@ export function ExamsPage() {
                                 </div>
 
                                 <div className="flex items-center justify-between gap-4 lg:justify-end">
-                                  <div className="text-sm text-slate-400">
-                                    {item.graded_at
-                                      ? `最近批改 ${formatDateTime(item.graded_at)}`
-                                      : item.submitted_at
-                                        ? `最近提交 ${formatDateTime(item.submitted_at)}`
-                                        : "点击进入考试"}
+                                  <div className="flex items-center gap-3">
+                                    <div className="text-sm text-slate-400">
+                                      {item.graded_at
+                                        ? `最近批改 ${formatDateTime(item.graded_at)}`
+                                        : item.submitted_at
+                                          ? `最近提交 ${formatDateTime(item.submitted_at)}`
+                                          : "点击进入考试"}
+                                    </div>
+                                    <Button
+                                      type="button"
+                                      size="icon"
+                                      variant="outline"
+                                      className="h-12 w-12 rounded-full border-red-200 bg-white text-red-500 hover:bg-red-50 hover:text-red-600"
+                                      aria-label={`删除考卷 ${buildExamTitle(item)}`}
+                                      title="删除考卷"
+                                      disabled={isDeleting}
+                                      onClick={handleDeleteExam}
+                                    >
+                                      <Trash2 className="h-[18px] w-[18px]" />
+                                    </Button>
                                   </div>
                                   <div className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 transition group-hover:bg-slate-900 dark:group-hover:bg-slate-700 group-hover:text-white">
                                     <ChevronRight className="h-5 w-5" />
                                   </div>
                                 </div>
                               </div>
-                            </button>
+                            </div>
                           );
                         })
                       )}

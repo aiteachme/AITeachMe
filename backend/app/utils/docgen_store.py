@@ -20,6 +20,7 @@ from app.utils.path_helpers import (
     build_docgen_intermediate_latest_dir,
     build_knowledge_build_lock_path,
 )
+from app.shared.infra.workflow.live_stream import publish_workflow_stream_event
 from app.utils.time import ensure_utc_datetime, utcnow
 
 STALE_BUILD_LOCK_TTL = timedelta(minutes=30)
@@ -140,6 +141,11 @@ class KnowledgeBuildRuntimeStatus(BaseModel):
     current_chunk: int | None = None
     processed_chunks: int = 0
     total_chunks: int = 0
+    doc_sync_section_count: int = 0
+    doc_sync_llm_section_count: int = 0
+    doc_sync_fallback_section_count: int = 0
+    doc_sync_question_fallback_section_count: int = 0
+    doc_sync_topic_fallback_section_count: int = 0
     sample_cards: list[dict[str, str]] = Field(default_factory=list)
     mode_reason: str | None = None
     plan_summary: str | None = None
@@ -751,6 +757,7 @@ def write_knowledge_build_runtime(subject: str, runtime: KnowledgeBuildRuntimeEn
     cs = get_content_store()
     key = resolve_subject_storage_scope(subject).build_runtime_key()
     run_store_sync(cs.write_json, key, _hydrate_runtime_envelope(runtime))
+    publish_workflow_stream_event(subject, "runtime_dirty", {"reason": "runtime_write"})
     return key
 
 
@@ -928,6 +935,7 @@ def append_knowledge_build_recent_event(
         runtime.build_group_id = runtime.build_group_id or existing.build_group_id
         write_knowledge_build_runtime(subject, runtime)
         write_knowledge_build_status(subject, existing)
+        publish_workflow_stream_event(subject, "build_event", normalized)
         return existing
 
 

@@ -1344,9 +1344,7 @@ export const useKnowledgeBuildRuntimeApiV1SubjectsSubjectKnowledgeBuildRuntimePo
       return useMutation(getKnowledgeBuildRuntimeApiV1SubjectsSubjectKnowledgeBuildRuntimePostMutationOptions(options), queryClient);
     }
     /**
- * Lightweight SSE endpoint that polls docgen_store and streams
-snapshot events when the build state changes.  The frontend connects
-via native EventSource (GET + cookies).
+ * SSE endpoint for live build runtime, direct deltas and fallback snapshots.
  * @summary SSE stream for live build progress snapshots
  */
 export type knowledgeBuildStreamApiV1SubjectsSubjectKnowledgeBuildStreamGetResponse200 = {

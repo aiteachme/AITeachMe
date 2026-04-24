@@ -12,8 +12,13 @@ from typing import Any
 import httpx
 import structlog
 
+from app.shared.infra.env_support import get_env
 from app.shared.infra.llm_support import GeneratedImage, agenerate_image
 from app.shared.infra.settings import get_settings
+from app.shared.infra.settings.support import (
+    normalize_openai_compatible_image_model_name,
+    resolve_runtime_llm_provider,
+)
 from app.shared.infra.storage import get_content_store, resolve_subject_storage_scope
 from app.utils.docgen_store import append_knowledge_build_recent_event
 from app.utils.time import utcnow
@@ -24,7 +29,9 @@ DOCGEN_COVER_ARTIFACT_NAME = "cover_artifact.json"
 DOCGEN_COVER_SIZE_CANDIDATES = (
     "1792x1024",
     "1536x1024",
+    "1024x1024",
 )
+PREDICTION_IMAGE_COVER_SIZE_CANDIDATES = ("1024x1024",)
 _REMOTE_IMAGE_TIMEOUT_S = 45
 
 
@@ -126,6 +133,17 @@ async def _image_bytes(image: GeneratedImage) -> tuple[bytes, str]:
     raise ValueError("image payload contains neither b64_json nor url")
 
 
+def _cover_size_candidates(model: str | None, *, api_base: str | None) -> tuple[str, ...]:
+    runtime_provider = resolve_runtime_llm_provider(base_url=api_base)
+    normalized_model = normalize_openai_compatible_image_model_name(
+        model,
+        runtime_provider=runtime_provider,
+    ) or ""
+    if runtime_provider == "openai_compatible" and "/" in normalized_model:
+        return PREDICTION_IMAGE_COVER_SIZE_CANDIDATES
+    return DOCGEN_COVER_SIZE_CANDIDATES
+
+
 def build_docgen_cover_markdown(artifact: Mapping[str, Any] | None) -> str:
     asset_path = str((artifact or {}).get("asset_path") or "").strip()
     if not asset_path:
@@ -196,7 +214,11 @@ async def generate_docgen_cover_artifact(
     )
 
     last_error: Exception | None = None
-    for size in DOCGEN_COVER_SIZE_CANDIDATES:
+    size_candidates = _cover_size_candidates(
+        settings.models.image_generation,
+        api_base=get_env("LLM_BASE_URL"),
+    )
+    for size in size_candidates:
         try:
             result = await agenerate_image(
                 prompt,

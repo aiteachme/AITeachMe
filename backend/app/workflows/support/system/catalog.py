@@ -213,7 +213,7 @@ SETTINGS_CATALOG: tuple[SettingsCatalogSection, ...] = (
             setting(
                 "models.image_generation",
                 "文生图模型",
-                description="留空表示未启用服务端图片生成能力。",
+                description="留空表示未启用服务端图片生成能力。对 openai-compatible 图片网关，prediction 型模型建议填写 provider/model。",
                 ui_group="多媒体生成",
                 ui_order=90,
             ),

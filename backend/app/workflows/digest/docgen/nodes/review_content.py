@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from time import perf_counter
 
-from app.shared.infra.tools.builtin.markdown_processing import build_draft_excerpt, count_words
+from app.shared.infra.tools.builtin.markdown_processing import count_words
 from app.shared.infra.workflow.context import WorkflowContext
 from app.utils.docgen_store import (
     append_knowledge_build_recent_event,
@@ -113,7 +113,7 @@ def build_review_chapter_node(*, context: WorkflowContext):
                 "chapter_index": draft.chapter_index,
                 "title": reviewed.title,
                 "status": "reviewed",
-                "excerpt": build_draft_excerpt(reviewed.markdown, max_chars=1200),
+                "excerpt": reviewed.markdown.strip(),
                 "latest_headings": extract_markdown_preview_headings(reviewed.markdown),
                 "word_count": count_words(reviewed.markdown),
                 "source_count": len(reviewed.source_details),

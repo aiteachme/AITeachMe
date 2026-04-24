@@ -6,7 +6,7 @@ import asyncio
 from time import perf_counter
 
 from app.shared.infra.execution import TracedExecutionContext
-from app.shared.infra.tools.builtin.markdown_processing import build_draft_excerpt, count_words
+from app.shared.infra.tools.builtin.markdown_processing import count_words
 from app.utils.docgen_store import (
     append_knowledge_build_recent_event,
     update_knowledge_build_status,
@@ -95,7 +95,7 @@ def build_enhance_chapters_node(*, context: WorkflowContext):
                     "chapter_index": draft.chapter_index,
                     "title": enhanced.title,
                     "status": "enhanced",
-                    "excerpt": build_draft_excerpt(enhanced.markdown, max_chars=1200),
+                    "excerpt": enhanced.markdown.strip(),
                     "latest_headings": extract_markdown_preview_headings(enhanced.markdown),
                     "word_count": word_count,
                     "source_count": len(enhanced.source_details),
