@@ -55,7 +55,7 @@ docgen:
 ## 启动
 
 ```bash
-uvicorn app.main:app --reload --port 8000
+uvicorn app.main:app --reload --port 8010
 ```
 
 首次启动时若缺少 SQLite 相关 Python 依赖，服务会自动尝试安装并继续启动。

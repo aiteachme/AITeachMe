@@ -52,7 +52,7 @@ def main() -> int:
     print("1. Open .env and fill in LLM_API_KEY")
     print("2. If you need deployment vars, merge entries from .env.developer.sample")
     print("3. Validate config with: python scripts/test_env.py")
-    print("4. Start server with: uvicorn app.main:app --reload --port 8000")
+    print("4. Start server with: uvicorn app.main:app --reload --port 8010")
     return 0
 
 

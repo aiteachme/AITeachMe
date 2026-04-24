@@ -907,5 +907,5 @@ LLM_MODEL=qwen-plus-latest
 EMBEDDING_MODEL=text-embedding-v4
 
 # ── 前端 ──
-VITE_API_URL=http://localhost:8000
+VITE_API_URL=http://localhost:8010
 ```
