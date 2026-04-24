@@ -1,4 +1,4 @@
-﻿"""Finalize knowledge docs by staging or publishing them."""
+"""Finalize knowledge docs by staging or publishing them."""
 
 from __future__ import annotations
 
@@ -7,8 +7,9 @@ from time import perf_counter
 import structlog
 
 from app.shared.infra.tools.builtin.markdown_processing import build_draft_excerpt
-from app.utils.docgen_store import (
+from app.shared.infra.knowledge.build_store import (
     append_knowledge_build_recent_event,
+    update_knowledge_build_status,
     update_knowledge_build_merge_preview,
     upsert_knowledge_build_chapter_progress,
 )
@@ -100,6 +101,15 @@ def build_publish_document_node(*, context: WorkflowContext):
         if not chapter_metadatas:
             return {"error": "当前没有可用于最终发布的章节内容。"}
 
+        update_knowledge_build_status(
+            subject,
+            requested_at=requested_at,
+            status="publishing",
+            stage="publishing",
+            draft_available=True,
+            staged_chapter_count=len(chapter_metadatas),
+            current_stage_description="正在发布最终知识文档。",
+        )
         node_logger.info(
             "docgen_finalize_started",
             chapter_count=len(chapter_metadatas),

@@ -1,11 +1,11 @@
-﻿"""Apply safe review repairs and record heavier routes."""
+"""Apply safe review repairs and record heavier routes."""
 
 from __future__ import annotations
 
 from time import perf_counter
 
 from app.shared.infra.workflow.context import WorkflowContext
-from app.utils.docgen_store import append_knowledge_build_recent_event, update_knowledge_build_status
+from app.shared.infra.knowledge.build_store import append_knowledge_build_recent_event, update_knowledge_build_status
 from app.utils.time import utcnow
 from app.workflows.digest.docgen.lib.models import ReviewAction, ReviewedChapterDraft
 from app.workflows.digest.docgen.lib.repair import repair_or_route_review_actions

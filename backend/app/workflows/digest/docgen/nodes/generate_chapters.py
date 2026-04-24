@@ -1,4 +1,4 @@
-﻿"""Generate one DocGen chapter from a ChapterGenerationTask."""
+"""Generate one DocGen chapter from a ChapterGenerationTask."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ from urllib.parse import urlparse
 
 from app.shared.infra.execution import TracedExecutionContext
 from app.shared.infra.tools.builtin.markdown_processing import build_draft_excerpt, count_words
-from app.utils.docgen_store import (
+from app.shared.infra.knowledge.build_store import (
     append_knowledge_build_recent_event,
     upsert_knowledge_build_chapter_preview,
     upsert_knowledge_build_chapter_progress,
@@ -43,6 +43,8 @@ from app.workflows.digest.docgen.nodes.common import (
 from app.workflows.digest.docgen.state import DocGenState
 
 CHAPTER_LIVE_PREVIEW_MAX_CHARS = 60000
+STREAM_DIRECT_MIN_DELTA_CHARS = 48
+STREAM_DIRECT_MIN_INTERVAL_S = 0.22
 STREAM_PREVIEW_MIN_DELTA_CHARS = 180
 STREAM_PREVIEW_MIN_INTERVAL_S = 0.8
 
@@ -529,11 +531,14 @@ def build_generate_chapters_node(*, context: WorkflowContext):
                 fallback_used=True,
             )
         writer_markdown = ""
+        stream_direct_last_at = 0.0
+        stream_direct_last_len = 0
         stream_preview_last_at = 0.0
         stream_preview_last_len = 0
         stream_progress_marked = False
 
         async def _publish_writer_stream_preview(accumulated_markdown: str) -> None:
+            nonlocal stream_direct_last_at, stream_direct_last_len
             nonlocal stream_preview_last_at, stream_preview_last_len, stream_progress_marked
             raw_markdown = str(accumulated_markdown or "").strip()
             if not raw_markdown:
@@ -541,7 +546,13 @@ def build_generate_chapters_node(*, context: WorkflowContext):
             now = perf_counter()
             current_len = len(raw_markdown)
             preview_markdown = _chapter_live_preview_markdown(raw_markdown, title=title)
-            _publish_preview_delta(preview_markdown, status="drafting")
+            if (
+                current_len - stream_direct_last_len >= STREAM_DIRECT_MIN_DELTA_CHARS
+                or now - stream_direct_last_at >= STREAM_DIRECT_MIN_INTERVAL_S
+            ):
+                stream_direct_last_at = now
+                stream_direct_last_len = current_len
+                _publish_preview_delta(preview_markdown, status="drafting")
             if (
                 current_len - stream_preview_last_len < STREAM_PREVIEW_MIN_DELTA_CHARS
                 and now - stream_preview_last_at < STREAM_PREVIEW_MIN_INTERVAL_S

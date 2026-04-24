@@ -63,7 +63,7 @@ from app.shared.infra.workflow.live_stream import (
     format_sse_event,
     subscribe_workflow_stream,
 )
-from app.utils.docgen_store import (
+from app.shared.infra.knowledge.build_store import (
     KnowledgeBuildLock,
     acquire_knowledge_build_lock,
     build_aggregate_knowledge_build_status,

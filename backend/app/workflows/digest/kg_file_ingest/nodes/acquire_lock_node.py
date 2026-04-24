@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from app.shared.infra.database import managed_session
 from app.repositories.knowledge import knowledge_build_repo
-from app.utils.job_helpers import update_job_progress
+from app.workflows.digest.kg_file_ingest.lib.job_lifecycle import update_job_progress
 from app.workflows.digest.kg_file_ingest.state import KnowledgeDigestState
 from app.workflows.digest.kg_file_ingest.lib.support import workflow_logger
 
@@ -42,5 +42,4 @@ async def acquire_lock_node(state: KnowledgeDigestState) -> KnowledgeDigestState
         return {**state, "lock_acquired": True}
 
 __all__ = ["acquire_lock_node"]
-
 

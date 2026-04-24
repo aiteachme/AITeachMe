@@ -1,6 +1,6 @@
 """同步调用桥接层。
 
-在 FastAPI 异步上下文中部分调用方仍是同步函数（例如 docgen_store、
+在 FastAPI 异步上下文中部分调用方仍是同步函数（例如 build_store、
 publish 流程中的辅助函数），此模块提供统一的同步→异步桥接，
 避免在每个调用点重复编写 ThreadPoolExecutor 样板代码。
 

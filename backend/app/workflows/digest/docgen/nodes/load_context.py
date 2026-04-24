@@ -1,4 +1,4 @@
-﻿"""Load context node for the DocGen lane."""
+"""Load context node for the DocGen lane."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ from copy import deepcopy
 
 from pydantic import ValidationError
 
-from app.utils.docgen_store import append_knowledge_build_recent_event, update_knowledge_build_status
+from app.shared.infra.knowledge.build_store import append_knowledge_build_recent_event, update_knowledge_build_status
 from app.utils.time import utcnow
 from app.shared.infra.workflow.context import WorkflowContext
 from app.workflows.digest.docgen.nodes.common import (

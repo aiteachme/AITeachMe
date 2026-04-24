@@ -1,4 +1,4 @@
-﻿"""Knowledge graph extract node."""
+"""Knowledge graph extract node."""
 
 
 from __future__ import annotations
@@ -12,7 +12,7 @@ from sqlmodel import select
 from app.shared.infra.database import managed_session
 from app.shared.infra.llm_support.defaults import DEFAULT_LLM_CONCURRENCY_LIMIT
 from app.models import RetrievalChunk
-from app.utils.job_helpers import update_job_progress
+from app.workflows.digest.kg_file_ingest.lib.job_lifecycle import update_job_progress
 from app.workflows.digest.kg_file_ingest.lib.extractor import (
     CandidateEdge,
     ChunkExtractionResult,
@@ -476,7 +476,7 @@ async def extract_node(state: KnowledgeDigestState) -> KnowledgeDigestState:
                                 if len(sample_nodes) < 6 and n.knowledge_unit_type in ("concept", "method"):
                                     sample_nodes.append({"name": n.name, "type": n.knowledge_unit_type})
                         try:
-                            from app.utils.docgen_store import update_knowledge_build_status
+                            from app.shared.infra.knowledge.build_store import update_knowledge_build_status
                             update_knowledge_build_status(
                                 state["subject"],
                                 build_kind="graph",
@@ -530,7 +530,7 @@ async def extract_node(state: KnowledgeDigestState) -> KnowledgeDigestState:
                 subject=state["subject"],
             )
             try:
-                from app.utils.docgen_store import update_knowledge_build_status
+                from app.shared.infra.knowledge.build_store import update_knowledge_build_status
 
                 update_knowledge_build_status(
                     state["subject"],

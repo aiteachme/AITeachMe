@@ -20,7 +20,7 @@ from app.shared.infra.settings.support import (
     resolve_runtime_llm_provider,
 )
 from app.shared.infra.storage import get_content_store, resolve_subject_storage_scope
-from app.utils.docgen_store import append_knowledge_build_recent_event
+from app.shared.infra.knowledge.build_store import append_knowledge_build_recent_event
 from app.utils.time import utcnow
 
 logger = structlog.get_logger(__name__)

@@ -1,4 +1,4 @@
-﻿"""Merge enhanced chapters and run whole-document review."""
+"""Merge enhanced chapters and run whole-document review."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ from time import perf_counter
 
 from app.shared.infra.tools.builtin.markdown_processing import build_draft_excerpt
 from app.shared.infra.tools.builtin.markdown_processing import count_words
-from app.utils.docgen_store import (
+from app.shared.infra.knowledge.build_store import (
     append_knowledge_build_recent_event,
     update_knowledge_build_merge_preview,
     update_knowledge_build_status,

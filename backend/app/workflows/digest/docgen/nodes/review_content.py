@@ -6,7 +6,7 @@ from time import perf_counter
 
 from app.shared.infra.tools.builtin.markdown_processing import count_words
 from app.shared.infra.workflow.context import WorkflowContext
-from app.utils.docgen_store import (
+from app.shared.infra.knowledge.build_store import (
     append_knowledge_build_recent_event,
     update_knowledge_build_status,
     upsert_knowledge_build_chapter_preview,

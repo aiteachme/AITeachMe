@@ -20,7 +20,7 @@ from app.models import (
 )
 import app.repositories.knowledge.knowledge_repo as knowledge_repo
 from app.shared.infra.exceptions import KnowledgeClearConflictError, SubjectBuildLockConflictError
-from app.utils.docgen_store import clear_knowledge_runtime_artifacts, is_knowledge_build_locked
+from app.shared.infra.knowledge.build_store import clear_knowledge_runtime_artifacts, is_knowledge_build_locked
 
 logger = structlog.get_logger()
 

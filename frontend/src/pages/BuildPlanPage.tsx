@@ -24,10 +24,9 @@ import type {
   BuildPlannerSessionResponse,
   DocGenBuildCancelData,
   DocGenBuildData,
-  FileRecord as ApiFileRecord,
 } from "../api/generated/model";
 import type { ApiResponse } from "../api/types";
-import { BuildView, ACTIVE_DOC_BUILD_STATUSES, parseIsoTimestamp, useDocBuildProgress } from "../components/knowledge-docs";
+import { ACTIVE_DOC_BUILD_STATUSES, parseIsoTimestamp, useDocBuildProgress } from "../components/knowledge-docs";
 import { KnowledgeBuildResolutionModal } from "../components/build-plan/KnowledgeBuildResolutionModal";
 import { PlannerPreviewMarkdown } from "../components/build-plan/PlannerPreviewMarkdown";
 import { FullPageDropOverlay } from "../components/ui/FullPageDropOverlay";
@@ -169,6 +168,23 @@ function replaceMessageById(
 
 function removeMessageById(messages: ChatMessage[], id: string): ChatMessage[] {
   return messages.filter((message) => message.id !== id);
+}
+
+function settleAbortedPlannerMessages(
+  messages: ChatMessage[],
+  partialContent: string,
+  systemContent: string,
+): ChatMessage[] {
+  const content = partialContent.trim();
+  const next = messages.filter(
+    (message) => !(message.role === "assistant" && message.streaming && !message.plan),
+  );
+
+  if (content) {
+    next.push(createMessage("assistant", content));
+  }
+  next.push(createMessage("system", systemContent));
+  return next;
 }
 
 function readPersistedPlannerState(subjectId: string): PersistedPlannerState | null {
@@ -363,31 +379,29 @@ function PlannerOutlineCard({
           <button
             type="button"
             onClick={onOpenKnowledgeDocs}
-            className="inline-flex items-center justify-center gap-2 rounded-lg bg-zinc-950 px-5 py-2.5 text-sm font-semibold text-white"
+            className="inline-flex items-center justify-center gap-2 rounded-lg border border-zinc-200 bg-white px-4 py-2.5 text-sm font-medium text-zinc-700"
           >
             <BookOpen className="h-4 w-4" />
-            进入
+            进入文档
           </button>
-        ) : (
-          <>
-            <button
-              type="button"
-              onClick={onAdjust}
-              className="rounded-lg border border-zinc-200 bg-white px-4 py-2.5 text-sm font-medium text-zinc-700"
-            >
-              调整
-            </button>
-            <button
-              type="button"
-              onClick={onConfirm}
-              disabled={isDisabled}
-              className="inline-flex items-center justify-center gap-2 rounded-lg bg-zinc-950 px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
-            >
-              {isBuilding ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-              开始
-            </button>
-          </>
-        )}
+        ) : null}
+        <button
+          type="button"
+          onClick={onAdjust}
+          disabled={isDisabled}
+          className="rounded-lg border border-zinc-200 bg-white px-4 py-2.5 text-sm font-medium text-zinc-700 disabled:opacity-50"
+        >
+          调整
+        </button>
+        <button
+          type="button"
+          onClick={onConfirm}
+          disabled={isDisabled}
+          className="inline-flex items-center justify-center gap-2 rounded-lg bg-zinc-950 px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
+        >
+          {isBuilding ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+          开始构建
+        </button>
       </div>
     </div>
   );
@@ -396,27 +410,31 @@ function PlannerOutlineCard({
 function BuildInProgressBubble({
   progress,
   statusText,
+  isActive,
+  canOpenKnowledgeDocs,
   onOpen,
 }: {
   progress: number;
   statusText: string;
+  isActive: boolean;
+  canOpenKnowledgeDocs: boolean;
   onOpen: () => void;
 }) {
   return (
-    <button
-      type="button"
-      onClick={onOpen}
-      className="w-full rounded-lg border border-zinc-200 bg-white px-4 py-4 text-left shadow-sm transition hover:border-zinc-300 hover:shadow-md"
-    >
+    <div className="w-full rounded-2xl border border-zinc-200 bg-white px-4 py-4 text-left shadow-sm">
       <div className="flex items-start gap-3">
         <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-zinc-950 text-white">
-          <Loader2 className="h-4 w-4 animate-spin" />
+          {isActive ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <p className="text-sm font-semibold text-zinc-950">知识库正在构建</p>
-              <p className="mt-1 text-xs leading-5 text-zinc-500">点击查看完整构建进度</p>
+              <p className="text-sm font-semibold text-zinc-950">
+                {isActive ? "知识库正在构建" : "知识库构建状态"}
+              </p>
+              <p className="mt-1 text-xs leading-5 text-zinc-500">
+                可进入知识文档页面查看完整实时进度。
+              </p>
             </div>
             <span className="shrink-0 text-xs font-semibold text-zinc-700">{Math.round(progress)}%</span>
           </div>
@@ -429,9 +447,21 @@ function BuildInProgressBubble({
               style={{ width: `${Math.max(8, Math.min(100, progress))}%` }}
             />
           </div>
+          {canOpenKnowledgeDocs ? (
+            <div className="mt-4 flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={onOpen}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-zinc-950 px-3 py-2 text-xs font-semibold text-white"
+              >
+                <BookOpen className="h-3.5 w-3.5" />
+                进入知识文档
+              </button>
+            </div>
+          ) : null}
         </div>
       </div>
-    </button>
+    </div>
   );
 }
 
@@ -740,18 +770,8 @@ export function BuildPlanPage() {
     () => (readyFileUids.length > 0 ? readyFileUids : plannerFileUids),
     [plannerFileUids, readyFileUids],
   );
-  const buildSourceFiles = useMemo<ApiFileRecord[]>(
-    () =>
-      files.map((file) => ({
-        ...file,
-        status: file.status as ApiFileRecord["status"],
-      })),
-    [files],
-  );
-
   const buildMeta = buildRuntimeQuery.data?.aggregate ?? knowledgeDocState.data?.build ?? null;
   const buildPreview = buildRuntimeQuery.data?.docgen_preview ?? knowledgeDocState.data?.build_preview ?? null;
-  const buildMetrics = buildRuntimeQuery.data?.docgen_metrics ?? knowledgeDocState.data?.build_metrics ?? null;
   const buildStatus = buildMeta?.status ?? null;
   const liveMarkdown = knowledgeDocState.data?.markdown ?? "";
   const draftMarkdown = knowledgeDocState.data?.draft_markdown ?? "";
@@ -776,7 +796,6 @@ export function BuildPlanPage() {
     !isBuildFailure &&
     !isRequestedBuildReady &&
     (isBuildActive || buildStatus === "completed" || hasDraftDocMarkdown || (targetRequestedAtMs !== null && !hasLiveDocMarkdown));
-  const buildStage = buildMeta?.stage ?? null;
   const { buildProgress, buildStatusText } = useDocBuildProgress({
     buildMeta,
     buildStatus,
@@ -953,6 +972,8 @@ export function BuildPlanPage() {
     ]);
     setInputValue("");
     setPlannerStreaming(true);
+    const controller = new AbortController();
+    plannerAbortControllerRef.current = controller;
     plannerStreamingRawRef.current = "";
     setPlannerStreamingPreview("");
     setPlannerStreamingStatus("正在理解目标和资料，整理思考过程...");
@@ -966,6 +987,7 @@ export function BuildPlanPage() {
           subjectId,
           { file_uids: plannerEffectiveFileUids, user_prompt: prompt },
           {
+            signal: controller.signal,
             onStatus: (payload) => {
               setPlannerStreamingStatus(resolvePlannerStatusText(payload));
             },
@@ -981,6 +1003,18 @@ export function BuildPlanPage() {
           plannerStreamingRawRef.current.replace(/\r/g, "").trim(),
         );
       } catch (error) {
+        if (isAbortError(error)) {
+          const partialContent = plannerStreamingRawRef.current.replace(/\r/g, "").trim();
+          setMessages((prev) => settleAbortedPlannerMessages(
+            prev,
+            partialContent,
+            partialContent
+              ? "已停止生成，以上是已输出的部分内容。你可以继续输入新的要求。"
+              : "已停止生成，你可以继续输入新的要求。",
+          ));
+          plannerPendingMessageIdRef.current = null;
+          return;
+        }
         setMessages((prev) => {
           const next = plannerPendingMessageIdRef.current
             ? removeMessageById(prev, plannerPendingMessageIdRef.current)
@@ -992,6 +1026,7 @@ export function BuildPlanPage() {
         });
         plannerPendingMessageIdRef.current = null;
       } finally {
+        plannerAbortControllerRef.current = null;
         setPlannerStreaming(false);
         plannerStreamingRawRef.current = "";
         setPlannerStreamingPreview("");
@@ -1083,8 +1118,7 @@ export function BuildPlanPage() {
 
   const isPlannerPending = plannerStreaming || confirmPlannerMutation.isPending;
   const isBuilding = knowledgeBuild.isPending || isBuildActive;
-  const shouldShowBuildDialog = isBuilding || isWaitingForRequestedBuild;
-  const shouldShowBuildView = shouldShowBuildDialog || isBuildFailure;
+  const shouldShowBuildDialog = isBuilding || isWaitingForRequestedBuild || isBuildFailure;
   const plannerPendingStatusText = plannerStreaming
     ? plannerStreamingStatus
     : confirmPlannerMutation.isPending
@@ -1183,22 +1217,6 @@ export function BuildPlanPage() {
     }
     cancelBuildMutation.mutate();
   }, [cancelBuildMutation, subjectId]);
-
-  const handleReturnToPlanner = useCallback(() => {
-    if (!subjectId) {
-      return;
-    }
-    navigate(
-      {
-        pathname: `/subject/${subjectId}/build`,
-        search: "",
-      },
-      {
-        replace: true,
-        state: null,
-      },
-    );
-  }, [navigate, subjectId]);
 
   const handleSend = useCallback(async () => {
     if (plannerStreaming) {
@@ -1310,18 +1328,13 @@ export function BuildPlanPage() {
       if (isAbortError(error)) {
         logPlannerDebug("send_plan_message_aborted", { subjectId });
         const partialContent = plannerStreamingRawRef.current.replace(/\r/g, "").trim();
-        setMessages((prev) => {
-          const pendingId = plannerPendingMessageIdRef.current;
-          const next = pendingId ? removeMessageById(prev, pendingId) : prev;
-          if (partialContent) {
-            return [
-              ...next,
-              createMessage("assistant", partialContent),
-              createMessage("system", "已停止生成，以上是已输出的部分内容。你可以继续输入新的调整。"),
-            ];
-          }
-          return [...next, createMessage("system", "已停止生成，你可以继续输入新的调整。")];
-        });
+        setMessages((prev) => settleAbortedPlannerMessages(
+          prev,
+          partialContent,
+          partialContent
+            ? "已停止生成，以上是已输出的部分内容。你可以继续输入新的调整。"
+            : "已停止生成，你可以继续输入新的调整。",
+        ));
         plannerPendingMessageIdRef.current = null;
         return;
       }
@@ -1451,7 +1464,7 @@ export function BuildPlanPage() {
     : "直接输入学习目标，也可以先上传资料再一起规划";
 
   const canOpenKnowledgeDocs =
-    shouldShowBuildView && (isRequestedBuildReady || hasLiveDocMarkdown || hasDraftDocMarkdown);
+    isRequestedBuildReady || hasLiveDocMarkdown || hasDraftDocMarkdown;
 
   return (
     <>
@@ -1462,105 +1475,14 @@ export function BuildPlanPage() {
 
       <div className="relative flex h-full w-full flex-col overflow-hidden bg-transparent">
         <div className="relative z-10 flex h-full w-full flex-col">
-          {!shouldShowBuildView && (
           <div className="flex items-center justify-center pb-2 pt-6">
             <div className="inline-flex items-center gap-2 rounded-full border border-zinc-200/80 dark:border-slate-800/80 bg-white dark:bg-slate-900 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-widest text-zinc-500 dark:text-slate-400 shadow-sm">
               <Sparkles className="h-3 w-3" />
               方案规划
             </div>
           </div>
-          )}
 
-        {shouldShowBuildView ? (
-          <div className="flex-1 flex flex-col overflow-hidden">
-            {/* Header bar — slim horizontal strip */}
-            <div className="flex items-center justify-between gap-4 px-8 py-4 border-b border-zinc-100 bg-white shrink-0">
-              <div className="flex items-center gap-4 min-w-0">
-                <div className="inline-flex items-center gap-2 rounded-md bg-zinc-900 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-widest text-white shrink-0">
-                  <Sparkles className="h-3 w-3" />
-                  知识构建
-                </div>
-                <h2 className="text-[15px] font-semibold text-zinc-900 truncate">
-                  {isBuildFailure ? "本轮构建失败" : canOpenKnowledgeDocs ? "知识文档已就绪" : "知识文档构建中"}
-                </h2>
-              </div>
-
-              <div className="flex items-center gap-2 shrink-0">
-                {canOpenKnowledgeDocs ? (
-                  <button
-                    type="button"
-                    onClick={handleOpenKnowledgeDocs}
-                    className="inline-flex items-center gap-2 rounded-lg bg-zinc-900 px-4 py-2 text-sm font-semibold text-white"
-                  >
-                    <BookOpen className="h-4 w-4" />
-                    进入知识文档
-                  </button>
-                ) : null}
-                {isBuildActive ? (
-                  <button
-                    type="button"
-                    onClick={handleCancelBuild}
-                    disabled={cancelBuildMutation.isPending}
-                    className="inline-flex items-center gap-1.5 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-700 disabled:opacity-60"
-                  >
-                    {cancelBuildMutation.isPending ? (
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    ) : (
-                      <X className="h-3.5 w-3.5" />
-                    )}
-                    终止
-                  </button>
-                ) : null}
-                <button
-                  type="button"
-                  onClick={handleReturnToPlanner}
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm font-medium text-zinc-600 hover:bg-zinc-50"
-                >
-                  <RefreshCw className="h-3.5 w-3.5" />
-                  返回规划
-                </button>
-              </div>
-            </div>
-
-            {/* BuildView fills remaining space */}
-            {knowledgeDocState.isError ? (
-              <div className="flex-1 overflow-y-auto px-8 py-8">
-                <div className="max-w-xl mx-auto rounded-2xl border border-red-200 bg-red-50 px-5 py-5 text-sm text-red-700">
-                  <div className="flex items-start gap-3">
-                    <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-                    <div className="space-y-2">
-                      <p className="font-medium">构建状态拉取失败</p>
-                      <p>如果后端已经受理，重新刷新即可恢复；如果问题持续，可以先回到规划态重新发起。</p>
-                      <button
-                        type="button"
-                        onClick={() => void knowledgeDocState.refetch()}
-                        className="inline-flex items-center gap-2 rounded-lg border border-red-200 bg-white px-3 py-2 text-xs font-medium text-red-700"
-                      >
-                        <RefreshCw className="h-3.5 w-3.5" />
-                        重新拉取状态
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <BuildView
-                className="flex-1"
-                isFetching={knowledgeDocState.isFetching || buildRuntimeQuery.isFetching}
-                progress={buildProgress}
-                statusText={buildStatusText}
-                buildPreview={buildPreview}
-                buildMetrics={buildMetrics}
-                sourceFiles={buildSourceFiles}
-                sourceFilesFetching={filesQuery.isFetching}
-                buildStage={buildStage}
-                subjectId={subjectId}
-              />
-            )}
-          </div>
-        ) : null}
-
-        <div className={shouldShowBuildView ? "hidden" : "flex-1 overflow-y-auto px-4 pb-4 md:px-8 lg:px-16"}>
+        <div className="flex-1 overflow-y-auto px-4 pb-4 md:px-8 lg:px-16">
           <div className="mx-auto max-w-3xl space-y-3">
             {messages.map((message) => (
               <div
@@ -1593,7 +1515,7 @@ export function BuildPlanPage() {
                       {message.streaming && !message.plan ? (
                         <div className="rounded-2xl rounded-tl-md border border-zinc-100 dark:border-slate-800 bg-white dark:bg-slate-900 px-4 py-3 shadow-sm">
                           {plannerStreamingPreview.trim() ? (
-                            <PlannerPreviewMarkdown markdown={plannerStreamingPreview} />
+                            <PlannerPreviewMarkdown markdown={plannerStreamingPreview} streaming />
                           ) : (
                             <div className="flex items-center gap-2 text-sm text-zinc-500 dark:text-slate-400">
                               <Loader2 className="h-4 w-4 animate-spin" />
@@ -1638,6 +1560,8 @@ export function BuildPlanPage() {
                   <BuildInProgressBubble
                     progress={buildProgress}
                     statusText={buildPreview?.current_stage_description?.trim() || buildStatusText}
+                    isActive={isBuildActive || knowledgeBuild.isPending}
+                    canOpenKnowledgeDocs={canOpenKnowledgeDocs}
                     onOpen={handleOpenKnowledgeDocs}
                   />
                 </div>
@@ -1659,7 +1583,7 @@ export function BuildPlanPage() {
           </div>
         </div>
 
-        <div className={shouldShowBuildView ? "hidden" : "px-4 pb-6 pt-2 md:px-8 lg:px-16"}>
+        <div className="px-4 pb-6 pt-2 md:px-8 lg:px-16">
           <div className="mx-auto max-w-3xl">
             {isRevisingPlan ? (
               <div className="mb-2 flex items-center justify-between gap-3 rounded-2xl border border-violet-200 bg-violet-50 px-4 py-3 text-sm text-violet-700">

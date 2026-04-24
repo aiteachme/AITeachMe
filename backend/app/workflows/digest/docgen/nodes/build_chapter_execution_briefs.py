@@ -6,7 +6,7 @@ import asyncio
 from time import perf_counter
 
 from app.shared.infra.workflow.context import WorkflowContext
-from app.utils.docgen_store import append_knowledge_build_recent_event
+from app.shared.infra.knowledge.build_store import append_knowledge_build_recent_event
 from app.utils.time import utcnow
 from app.workflows.digest.docgen.lib.chapter_execution_brief import build_chapter_execution_brief
 from app.workflows.digest.docgen.lib.models import ChapterGenerationTaskSeed, DocGenContext, DocumentBackbone

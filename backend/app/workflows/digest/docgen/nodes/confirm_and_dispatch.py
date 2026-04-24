@@ -1,10 +1,10 @@
-﻿"""Confirm DocGen internal execution plan and prepare chapter fan-out."""
+"""Confirm DocGen internal execution plan and prepare chapter fan-out."""
 
 from __future__ import annotations
 
 from time import perf_counter
 
-from app.utils.docgen_store import append_knowledge_build_recent_event, update_knowledge_build_status
+from app.shared.infra.knowledge.build_store import append_knowledge_build_recent_event, update_knowledge_build_status
 from app.utils.time import utcnow
 from app.shared.infra.workflow.context import WorkflowContext
 from app.workflows.digest.docgen.lib.chapter_generation import (

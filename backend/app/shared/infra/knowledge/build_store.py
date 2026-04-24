@@ -1,4 +1,4 @@
-"""Storage helpers for knowledge-doc build artifacts."""
+"""Storage helpers for subject knowledge build runtime and artifacts."""
 
 from __future__ import annotations
 
@@ -50,8 +50,14 @@ _STAGE_PROGRESS = {
     "injecting_examine": 84,
     "doc_lane_staged": 90,
     "graph_ready": 92,
+    "queued_after_docgen": 92,
+    "graph_docs_sync": 94,
+    "graph_file_ingest": 96,
     "publishing": 97,
+    "docgen_finalized": 97,
     "completed": 100,
+    "disabled": 100,
+    "blocked_by_docgen_failure": 0,
     "failed": 0,
     "cancelled": 0,
 }
@@ -79,8 +85,14 @@ _STAGE_DESCRIPTION = {
     "injecting_examine": "正在注入练习与自检内容。",
     "doc_lane_staged": "文档草稿已暂存，等待统一发布。",
     "graph_ready": "知识图谱已就绪。",
+    "queued_after_docgen": "知识文档发布后将自动开始图谱同步。",
+    "graph_docs_sync": "正在从知识文档同步知识点、知识图像和关系。",
+    "graph_file_ingest": "正在从已解析文件抽取候选并构建图谱。",
     "publishing": "正在发布最终知识文档。",
+    "docgen_finalized": "知识文档已发布，正在收口运行状态。",
     "completed": "知识文档构建完成。",
+    "disabled": "已关闭文档构建后自动图谱同步。",
+    "blocked_by_docgen_failure": "知识文档构建失败，未继续图谱同步。",
     "failed": "知识文档构建失败。",
     "cancelled": "知识文档构建已取消。",
 }

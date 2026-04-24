@@ -46,7 +46,7 @@ from app.workflows.digest.planner import (
 from app.shared.infra.exceptions import ConfirmedBuildPlanRequiredError, NoReadyFilesForDocGenError, RawFileNotFoundError, SubjectBuildLockConflictError
 from app.shared.infra.subject import get_subject_vector_status_by_slug
 from app.shared.infra.tools.builtin.markdown_processing import normalize_mermaid_blocks
-from app.utils.docgen_store import (
+from app.shared.infra.knowledge.build_store import (
     KnowledgeBuildLock,
     acquire_knowledge_build_lock,
     build_aggregate_knowledge_build_status,
@@ -599,7 +599,7 @@ async def run_docgen_background(*, subject: str, file_ids: list[int], prompt: st
     """
 
     from app.workflows.digest import run_docgen_workflow
-    from app.utils.docgen_store import release_knowledge_build_lock
+    from app.shared.infra.knowledge.build_store import release_knowledge_build_lock
     from app.workflows.support.knowledge_graph import (
         run_graph_docs_sync_after_doc_build,
         run_graph_file_ingest_background,
@@ -610,6 +610,7 @@ async def run_docgen_background(*, subject: str, file_ids: list[int], prompt: st
     kg_ingest_task: asyncio.Task[dict[str, int]] | None = None
     graph_seed_chapter_metadatas: list[dict[str, object]] = []
     sync_graph_after_docgen = bool(get_settings().knowledge_graph.sync_after_docgen)
+    docgen_published = False
     logger.info(
         "knowledge_build_background_started",
         subject=subject,
@@ -663,6 +664,25 @@ async def run_docgen_background(*, subject: str, file_ids: list[int], prompt: st
                     mark_confirmed_build_plan_status(session, subject=subject, user_id=user_id, plan_id=confirmed_plan_id, status="failed")
             logger.error("knowledge_build_failed", subject=subject, error=result.error.detail)
             return
+        _write_docgen_status(
+            subject,
+            requested_at=requested_at,
+            build_group_id=build_group_id,
+            status="completed",
+            stage="completed",
+            build_session_id=build_session_id,
+            planner_session_id=planner_session_id,
+            confirmed_plan_id=confirmed_plan_id,
+            digest_mode=resolved_digest_mode,
+            error_message=None,
+            draft_available=False,
+            current_stage_description=(
+                "知识文档已发布完成，正在同步图谱。"
+                if sync_graph_after_docgen
+                else "知识文档已发布完成。"
+            ),
+        )
+        docgen_published = True
         ingest_metrics = {"processed_chunks": 0}
         graph_error_message: str | None = None
         doc_sync_metrics: dict[str, int | str] = {
@@ -713,21 +733,35 @@ async def run_docgen_background(*, subject: str, file_ids: list[int], prompt: st
         await _cancel_optional_task(kg_ingest_task)
         if sync_graph_after_docgen:
             update_knowledge_build_lane_status(subject, lane="graph", requested_at=requested_at, build_group_id=build_group_id, status="cancelled", stage="cancelled", error_message="build_cancelled", current_stage_description="图谱构建已取消。")
-        _clear_docgen_staging_safely(subject)
-        _write_docgen_status(subject, requested_at=requested_at, build_group_id=build_group_id, status="cancelled", stage="cancelled", build_session_id=build_session_id, planner_session_id=planner_session_id, confirmed_plan_id=confirmed_plan_id, digest_mode=resolved_digest_mode, error_message="build_cancelled", draft_available=False)
+        if not docgen_published:
+            _clear_docgen_staging_safely(subject)
+            _write_docgen_status(subject, requested_at=requested_at, build_group_id=build_group_id, status="cancelled", stage="cancelled", build_session_id=build_session_id, planner_session_id=planner_session_id, confirmed_plan_id=confirmed_plan_id, digest_mode=resolved_digest_mode, error_message="build_cancelled", draft_available=False)
         if confirmed_plan_id and user_id:
             with managed_session() as session:
-                mark_confirmed_build_plan_status(session, subject=subject, user_id=user_id, plan_id=confirmed_plan_id, status="cancelled")
+                mark_confirmed_build_plan_status(
+                    session,
+                    subject=subject,
+                    user_id=user_id,
+                    plan_id=confirmed_plan_id,
+                    status="completed" if docgen_published else "cancelled",
+                )
         raise
     except Exception:
         await _cancel_optional_task(kg_ingest_task)
         if sync_graph_after_docgen:
             update_knowledge_build_lane_status(subject, lane="graph", requested_at=requested_at, build_group_id=build_group_id, status="skipped", stage="blocked_by_docgen_failure", current_stage_description="知识文档构建异常失败，未完成图谱同步。")
-        _clear_docgen_staging_safely(subject)
-        _write_docgen_status(subject, requested_at=requested_at, build_group_id=build_group_id, status="failed", stage="failed", build_session_id=build_session_id, planner_session_id=planner_session_id, confirmed_plan_id=confirmed_plan_id, digest_mode=resolved_digest_mode, error_message="build_crashed", draft_available=False)
+        if not docgen_published:
+            _clear_docgen_staging_safely(subject)
+            _write_docgen_status(subject, requested_at=requested_at, build_group_id=build_group_id, status="failed", stage="failed", build_session_id=build_session_id, planner_session_id=planner_session_id, confirmed_plan_id=confirmed_plan_id, digest_mode=resolved_digest_mode, error_message="build_crashed", draft_available=False)
         if confirmed_plan_id and user_id:
             with managed_session() as session:
-                mark_confirmed_build_plan_status(session, subject=subject, user_id=user_id, plan_id=confirmed_plan_id, status="failed")
+                mark_confirmed_build_plan_status(
+                    session,
+                    subject=subject,
+                    user_id=user_id,
+                    plan_id=confirmed_plan_id,
+                    status="completed" if docgen_published else "failed",
+                )
         logger.exception("knowledge_build_failed", subject=subject)
         return
     finally:

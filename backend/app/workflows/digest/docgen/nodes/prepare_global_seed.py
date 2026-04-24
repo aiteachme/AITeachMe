@@ -6,7 +6,7 @@ import asyncio
 from time import perf_counter
 
 from app.shared.infra.workflow.context import WorkflowContext
-from app.utils.docgen_store import append_knowledge_build_recent_event, update_knowledge_build_status
+from app.shared.infra.knowledge.build_store import append_knowledge_build_recent_event, update_knowledge_build_status
 from app.utils.time import utcnow
 from app.workflows.digest.docgen.lib.file_summaries import derive_source_affinity_and_evidence, summarize_files
 from app.workflows.digest.docgen.lib.intent import infer_intent_core

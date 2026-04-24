@@ -7,7 +7,7 @@ from sqlmodel import Session, func, select
 
 from app.models import ExamPaperItem, KnowledgeEdge, KnowledgeUnit, QuestionTemplate, UserKnowledgeState
 from app.shared.infra.exceptions import SubjectBuildLockConflictError
-from app.utils.docgen_store import is_knowledge_build_locked
+from app.shared.infra.knowledge.build_store import is_knowledge_build_locked
 
 
 def clear_subject_graph_entities(session: Session, *, subject: str) -> dict[str, int]:

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from app.shared.infra.database import managed_session
 import app.repositories.knowledge.knowledge_repo as knowledge_repo
-from app.utils.job_helpers import update_job_progress
+from app.workflows.digest.kg_file_ingest.lib.job_lifecycle import update_job_progress
 from app.workflows.digest.kg_file_ingest.state import KnowledgeDigestState
 from app.workflows.digest.kg_file_ingest.lib.support import workflow_logger
 
@@ -65,5 +65,4 @@ async def prepare_node(state: KnowledgeDigestState) -> KnowledgeDigestState:
 
 
 __all__ = ["prepare_node"]
-
 
