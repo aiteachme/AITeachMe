@@ -267,7 +267,8 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
       <button
         type="button"
         onClick={() => setIsMobileOpen((prev) => !prev)}
-        className="fixed left-4 top-4 z-50 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-2 shadow-sm lg:hidden text-slate-700 dark:text-slate-300"
+        className="fixed left-4 top-4 z-50 flex h-11 w-11 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-700 shadow-sm dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300 lg:hidden"
+        aria-label={isMobileOpen ? "关闭导航" : "打开导航"}
       >
         {isMobileOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
       </button>
@@ -297,7 +298,7 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
           <button
             type="button"
             onClick={() => setIsCollapsed((prev) => !prev)}
-            className="flex h-6 w-6 items-center justify-center rounded text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:text-slate-500 dark:hover:bg-slate-800/50 dark:hover:text-slate-300 transition-colors"
+            className="flex h-11 w-11 items-center justify-center rounded text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600 dark:text-slate-500 dark:hover:bg-slate-800/50 dark:hover:text-slate-300 lg:h-8 lg:w-8"
             title={effectiveCollapsed ? "展开侧边栏" : "收起侧边栏"}
           >
             {effectiveCollapsed ? <PanelLeftOpen className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
@@ -482,7 +483,7 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
                       <button
                         type="button"
                         onClick={() => setOpenMenuId((prev) => (prev === subject.subject_id ? null : subject.subject_id))}
-                        className="rounded-md p-1.5 text-slate-400 opacity-0 transition hover:text-slate-700 group-hover:opacity-100 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-300"
+                        className="flex h-8 w-8 items-center justify-center rounded-md text-slate-400 opacity-100 transition hover:bg-slate-100 hover:text-slate-700 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-300 sm:opacity-0 sm:group-hover:opacity-100"
                         title="更多操作"
                       >
                         <MoreVertical className="h-4 w-4" />
@@ -546,7 +547,7 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
                           to={path}
                           onClick={() => setIsMobileOpen(false)}
                           className={cn(
-                            "flex items-center rounded-md px-2.5 py-1.5 text-sm transition-colors",
+                            "flex min-h-10 items-center rounded-md px-2.5 py-2 text-sm transition-colors",
                             isActive
                               ? "bg-[#eef3f8] text-[#1f2937] ring-1 ring-[#d9e2ec] font-medium dark:bg-slate-800 dark:text-slate-200 dark:ring-slate-700"
                               : "text-slate-500 hover:bg-slate-50 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-slate-800/40 dark:hover:text-slate-200",
@@ -573,7 +574,7 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
             onFocus={ensureCommunityQrPreloaded}
             className={cn(
               "flex items-center text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-slate-800/50 dark:hover:text-slate-200",
-              effectiveCollapsed ? "h-6 w-6 justify-center rounded mx-auto" : "w-full rounded-lg py-2 gap-2.5 px-3",
+              effectiveCollapsed ? "mx-auto h-11 w-11 justify-center rounded" : "min-h-11 w-full rounded-lg px-3 py-2 gap-2.5",
             )}
             title="社区"
           >
@@ -585,7 +586,7 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
             onClick={onOpenSettings}
             className={cn(
               "flex items-center text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-slate-800/50 dark:hover:text-slate-200",
-              effectiveCollapsed ? "h-6 w-6 justify-center rounded mx-auto" : "w-full rounded-lg py-2 gap-2.5 px-3",
+              effectiveCollapsed ? "mx-auto h-11 w-11 justify-center rounded" : "min-h-11 w-full rounded-lg px-3 py-2 gap-2.5",
             )}
             title="设置"
           >

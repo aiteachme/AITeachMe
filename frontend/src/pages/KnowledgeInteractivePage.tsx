@@ -70,9 +70,9 @@ export function KnowledgeInteractivePage() {
   }, [assetUrl]);
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100">
-      <div className="mx-auto flex min-h-screen max-w-7xl flex-col px-6 py-6">
-        <header className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-800 bg-slate-900/80 px-5 py-4">
+    <div className="min-h-dvh bg-slate-950 text-slate-100">
+      <div className="mx-auto flex min-h-dvh max-w-7xl flex-col px-3 py-4 sm:px-6 sm:py-6">
+        <header className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-800 bg-slate-900/80 px-4 py-4 sm:px-5">
           <div className="min-w-0">
             <p className="text-xs uppercase tracking-[0.18em] text-slate-400">Interactive Sidecar</p>
             <h1 className="mt-1 truncate text-lg font-semibold text-white">{title}</h1>

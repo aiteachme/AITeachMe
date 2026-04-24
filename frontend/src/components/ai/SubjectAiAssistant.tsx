@@ -61,6 +61,8 @@ export function useSubjectAiAssistant(): SubjectAiAssistantContextValue {
 export function SubjectAiAssistantProvider({ subjectId, children }: SubjectAiAssistantProviderProps) {
   const { pathname } = useLocation();
   const isBuildPage = /\/subject\/[^/]+\/build\b/.test(pathname);
+  const initialViewportWidth = typeof window !== "undefined" ? window.innerWidth : 1200;
+  const isNarrowInitialViewport = initialViewportWidth < 640;
   const [isOpen, setIsOpen] = useState(false);
   const [draft, setDraft] = useState("");
   const [sessions, setSessions] = useState<ChatSessionItem[]>([]);
@@ -71,9 +73,9 @@ export function SubjectAiAssistantProvider({ subjectId, children }: SubjectAiAss
   const [selectedChunkId, setSelectedChunkId] = useState<number | null>(null);
 
   const { width: panelWidth, isDragging, handleMouseDown } = useResizablePanel({
-    defaultWidth: typeof window !== 'undefined' ? window.innerWidth * 0.6 : 800,
-    minWidth: 400,
-    maxWidth: typeof window !== 'undefined' ? window.innerWidth * 0.8 : 1200,
+    defaultWidth: isNarrowInitialViewport ? initialViewportWidth : initialViewportWidth * 0.6,
+    minWidth: isNarrowInitialViewport ? initialViewportWidth : 400,
+    maxWidth: isNarrowInitialViewport ? initialViewportWidth : initialViewportWidth * 0.8,
   });
 
   const {
@@ -256,7 +258,7 @@ export function SubjectAiAssistantProvider({ subjectId, children }: SubjectAiAss
 
   return (
     <SubjectAiAssistantContext.Provider value={contextValue}>
-      <div className="flex h-screen w-full overflow-hidden bg-transparent relative">
+      <div className="relative flex h-dvh w-full overflow-hidden bg-transparent">
         <div className="relative flex-1 min-w-0 overflow-hidden">
           {children}
         </div>
@@ -266,13 +268,13 @@ export function SubjectAiAssistantProvider({ subjectId, children }: SubjectAiAss
           type="button"
           onClick={() => openAssistant()}
           className={cn(
-            "fixed bottom-6 right-6 z-[86] inline-flex h-11 items-center gap-2 rounded-2xl border border-zinc-200/80 bg-white/95 px-4 text-[14px] font-medium text-zinc-700 shadow-[0_2px_8px_rgba(0,0,0,0.04),0_8px_24px_rgba(0,0,0,0.06)] backdrop-blur-xl transition duration-300 hover:border-zinc-300 hover:bg-white hover:text-zinc-900 active:scale-[0.98] dark:border-slate-800/80 dark:bg-slate-950/92 dark:text-slate-300 dark:shadow-[0_18px_40px_-22px_rgba(0,0,0,0.7)] dark:hover:border-slate-700 dark:hover:bg-slate-950 dark:hover:text-slate-100",
+            "fixed bottom-4 right-4 z-[86] inline-flex h-12 items-center gap-2 rounded-2xl border border-zinc-200/80 bg-white/95 px-3 text-[14px] font-medium text-zinc-700 shadow-[0_2px_8px_rgba(0,0,0,0.04),0_8px_24px_rgba(0,0,0,0.06)] backdrop-blur-xl transition duration-300 hover:border-zinc-300 hover:bg-white hover:text-zinc-900 active:scale-[0.98] dark:border-slate-800/80 dark:bg-slate-950/92 dark:text-slate-300 dark:shadow-[0_18px_40px_-22px_rgba(0,0,0,0.7)] dark:hover:border-slate-700 dark:hover:bg-slate-950 dark:hover:text-slate-100 sm:bottom-6 sm:right-6 sm:h-11 sm:px-4",
             isOpen ? "pointer-events-none translate-y-4 opacity-0" : "translate-y-0 opacity-100"
           )}
           aria-label="打开 AI 助手"
         >
           <Bot className="h-4 w-4 text-zinc-500 dark:text-slate-400" />
-          <span>AI Assistant</span>
+          <span className="hidden sm:inline">AI Assistant</span>
         </button>
       ) : null}
 
@@ -286,7 +288,7 @@ export function SubjectAiAssistantProvider({ subjectId, children }: SubjectAiAss
       >
         <div
           className={cn(
-            "absolute top-0 bottom-0 left-0 w-1.5 -ml-[0.5px] cursor-col-resize z-50 hover:bg-blue-500/50 transition-colors",
+            "absolute bottom-0 left-0 top-0 z-50 -ml-[0.5px] hidden w-1.5 cursor-col-resize transition-colors hover:bg-blue-500/50 sm:block",
             isDragging && "bg-blue-500/50"
           )}
           onMouseDown={handleMouseDown}
