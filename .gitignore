@@ -24,6 +24,13 @@ venv/
 *.egg-info/
 dist/
 build/
+!/build/
+/build/*
+!/build/*.bat
+!/build/*.md
+!/build/scripts/
+!/build/scripts/*.ps1
+!/build/scripts/*.cjs
 !backend/app/workflows/digest/build/
 !backend/app/workflows/digest/build/*.py
 .hypothesis/
@@ -38,7 +45,20 @@ yarn-error.log*
 
 # Desktop packaging output
 desktop-release/
+desktop-release-electron/
+desktop-release-tauri/
+/build/electron/
+/build/electron-local/
+/build/electron-remote/
+/build/tauri-local/
+/build/tauri-remote/
 frontend/release/
+frontend/electron/build-config.cjs
+frontend/src-tauri/target/
+frontend/src-tauri/gen/
+frontend/src-tauri/binaries/*.exe
+frontend/src-tauri/binaries/*-pc-windows-msvc
+frontend/src-tauri/binaries/*-pc-windows-gnu
 
 # Project specific
 backend/uploads/

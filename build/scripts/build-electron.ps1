@@ -1,13 +1,17 @@
 param(
+    [Parameter(Mandatory = $true)]
+    [ValidateSet("local", "remote")]
+    [string]$Flavor,
     [switch]$SkipInstall,
-    [string]$BackendPort = "8010"
+    [string]$BackendPort = "8010",
+    [string]$ApiUrl = $env:AITEACHME_REMOTE_API_URL
 )
 
 $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
 
 function Resolve-RepoRoot {
-    return (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+    return (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
 }
 
 function Resolve-CommandPath {
@@ -184,66 +188,153 @@ function Write-Step {
     Write-Host "== $Message ==" -ForegroundColor Cyan
 }
 
+function Write-ElectronBuildConfig {
+    param(
+        [string]$FrontendDir,
+        [string]$BackendMode,
+        [string]$ApiBaseUrl,
+        [string]$BackendPort,
+        [string]$AppId,
+        [string]$ProductName
+    )
+
+    $configPath = Join-Path $FrontendDir "electron\build-config.cjs"
+    $config = [ordered]@{
+        backendMode = $BackendMode
+        apiBaseUrl = $ApiBaseUrl
+        backendPort = $BackendPort
+        appId = $AppId
+        appName = $ProductName
+        productName = $ProductName
+    }
+    $json = $config | ConvertTo-Json -Depth 4
+    Set-Content -LiteralPath $configPath -Value "module.exports = $json;`n" -Encoding UTF8
+}
+
+function Set-ProcessEnv {
+    param(
+        [string]$Name,
+        [string]$Value
+    )
+
+    [Environment]::SetEnvironmentVariable($Name, $Value, "Process")
+}
+
+function Restore-ProcessEnv {
+    param([hashtable]$PreviousValues)
+
+    foreach ($name in $PreviousValues.Keys) {
+        [Environment]::SetEnvironmentVariable($name, $PreviousValues[$name], "Process")
+    }
+}
+
 $repoRoot = Resolve-RepoRoot
 $backendDir = Join-Path $repoRoot "backend"
 $frontendDir = Join-Path $repoRoot "frontend"
 $frontendReleaseDir = Join-Path $frontendDir "release"
-$finalReleaseDir = Join-Path $repoRoot "desktop-release"
+$finalReleaseDir = Join-Path $repoRoot "build\electron-$Flavor"
 $backendDistDir = Join-Path $backendDir "dist\aiteachme-backend"
+$productName = if ($Flavor -eq "local") { "AiTeachMe Electron Local" } else { "AiTeachMe Electron Remote" }
+$appId = if ($Flavor -eq "local") { "com.aiteachme.desktop.electron.local" } else { "com.aiteachme.desktop.electron.remote" }
+
+if ($Flavor -eq "remote") {
+    if ([string]::IsNullOrWhiteSpace($ApiUrl)) {
+        throw "Remote API URL is required. Pass -ApiUrl https://your-api.example.com or set AITEACHME_REMOTE_API_URL."
+    }
+    if ($ApiUrl -notmatch "^https?://") {
+        throw "Remote API URL must start with http:// or https://: $ApiUrl"
+    }
+}
+
+$apiBaseUrl = if ($Flavor -eq "local") { "http://127.0.0.1:$BackendPort" } else { $ApiUrl.TrimEnd("/") }
 
 $python = Resolve-PythonCommand $repoRoot
 $npm = Resolve-CommandPath @("npm.cmd", "npm")
 Stop-LocalBuildToolProcesses -RepoRoot $repoRoot
 
 Write-Host "Repo: $repoRoot"
+Write-Host "Flavor: electron-$Flavor"
+Write-Host "Product: $productName"
 Write-Host "Python: $($python.File) $($python.PrefixArgs -join ' ')"
 Write-Host "npm: $npm"
-Write-Host "Backend port: $BackendPort"
+Write-Host "API base URL: $apiBaseUrl"
+if ($Flavor -eq "local") {
+    Write-Host "Backend port: $BackendPort"
+}
 
 Write-Step "Install build dependencies"
 if ($SkipInstall) {
     Write-Host "SkipInstall is set; dependency installation skipped."
 }
 else {
-    Invoke-Python -Python $python -Arguments @("-m", "pip", "install", "-e", ".") -WorkingDirectory $backendDir
-    Invoke-Python -Python $python -Arguments @("-m", "pip", "install", "pyinstaller") -WorkingDirectory $backendDir
+    if ($Flavor -eq "local") {
+        Invoke-Python -Python $python -Arguments @("-m", "pip", "install", "-e", ".") -WorkingDirectory $backendDir
+        Invoke-Python -Python $python -Arguments @("-m", "pip", "install", "pyinstaller") -WorkingDirectory $backendDir
+    }
     Invoke-External -File $npm -Arguments @("install") -WorkingDirectory $frontendDir
 }
 
-Write-Step "Build backend executable"
-Remove-DirectoryIfExists -Path (Join-Path $backendDir "build") -RepoRoot $repoRoot
-Remove-DirectoryIfExists -Path $backendDistDir -RepoRoot $repoRoot
-Invoke-Python -Python $python -Arguments @("-m", "PyInstaller", "--noconfirm", "aiteachme-backend.spec") -WorkingDirectory $backendDir
+if ($Flavor -eq "local") {
+    Write-Step "Build backend executable"
+    Remove-DirectoryIfExists -Path (Join-Path $backendDir "build") -RepoRoot $repoRoot
+    Remove-DirectoryIfExists -Path $backendDistDir -RepoRoot $repoRoot
+    Invoke-Python -Python $python -Arguments @("-m", "PyInstaller", "--noconfirm", "aiteachme-backend.spec") -WorkingDirectory $backendDir
 
-if (-not (Test-Path (Join-Path $backendDistDir "aiteachme-backend.exe"))) {
-    throw "Backend executable was not produced: $backendDistDir"
+    if (-not (Test-Path (Join-Path $backendDistDir "aiteachme-backend.exe"))) {
+        throw "Backend executable was not produced: $backendDistDir"
+    }
 }
 
-Write-Step "Build frontend"
-$previousViteApiUrl = [Environment]::GetEnvironmentVariable("VITE_API_URL", "Process")
-[Environment]::SetEnvironmentVariable("VITE_API_URL", "http://127.0.0.1:$BackendPort", "Process")
+Write-Step "Write Electron runtime build config"
+Write-ElectronBuildConfig `
+    -FrontendDir $frontendDir `
+    -BackendMode $Flavor `
+    -ApiBaseUrl $apiBaseUrl `
+    -BackendPort $BackendPort `
+    -AppId $appId `
+    -ProductName $productName
+
+$envNames = @(
+    "VITE_API_URL",
+    "AITEACHME_ELECTRON_FLAVOR",
+    "AITEACHME_ELECTRON_PRODUCT_NAME",
+    "AITEACHME_ELECTRON_APP_ID"
+)
+$previousEnv = @{}
+foreach ($name in $envNames) {
+    $previousEnv[$name] = [Environment]::GetEnvironmentVariable($name, "Process")
+}
+
 try {
+    Set-ProcessEnv -Name "VITE_API_URL" -Value $apiBaseUrl
+    Set-ProcessEnv -Name "AITEACHME_ELECTRON_FLAVOR" -Value $Flavor
+    Set-ProcessEnv -Name "AITEACHME_ELECTRON_PRODUCT_NAME" -Value $productName
+    Set-ProcessEnv -Name "AITEACHME_ELECTRON_APP_ID" -Value $appId
+
+    Write-Step "Build frontend"
     Invoke-External -File $npm -Arguments @("run", "build") -WorkingDirectory $frontendDir
+
+    Write-Step "Build Electron installer and portable exe"
+    Stop-LocalBuildToolProcesses -RepoRoot $repoRoot
+    Stop-ProcessesUnderPath -Path $frontendReleaseDir
+    Remove-DirectoryIfExists -Path $frontendReleaseDir -RepoRoot $repoRoot
+    Invoke-External -File $npm -Arguments @("run", "electron:installer") -WorkingDirectory $frontendDir
+    Stop-LocalBuildToolProcesses -RepoRoot $repoRoot
+    Invoke-External -File "powershell" -Arguments @(
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        (Join-Path $repoRoot "build\scripts\build-electron-portable-nsis.ps1"),
+        "-RepoRoot",
+        $repoRoot,
+        "-ProductName",
+        $productName
+    ) -WorkingDirectory $repoRoot
 }
 finally {
-    [Environment]::SetEnvironmentVariable("VITE_API_URL", $previousViteApiUrl, "Process")
+    Restore-ProcessEnv -PreviousValues $previousEnv
 }
-
-Write-Step "Build Electron installer and portable exe"
-Stop-LocalBuildToolProcesses -RepoRoot $repoRoot
-Stop-ProcessesUnderPath -Path $frontendReleaseDir
-Remove-DirectoryIfExists -Path $frontendReleaseDir -RepoRoot $repoRoot
-Invoke-External -File $npm -Arguments @("run", "desktop:installer") -WorkingDirectory $frontendDir
-Stop-LocalBuildToolProcesses -RepoRoot $repoRoot
-Invoke-External -File "powershell" -Arguments @(
-    "-NoProfile",
-    "-ExecutionPolicy",
-    "Bypass",
-    "-File",
-    (Join-Path $repoRoot "scripts\build-portable-nsis.ps1"),
-    "-RepoRoot",
-    $repoRoot
-) -WorkingDirectory $repoRoot
 
 Write-Step "Collect artifacts"
 Remove-DirectoryIfExists -Path $finalReleaseDir -RepoRoot $repoRoot
@@ -255,7 +346,7 @@ $installer = Get-ChildItem $frontendReleaseDir -Recurse -File -Filter "*.exe" |
     Select-Object -First 1
 
 $portable = Get-ChildItem $frontendReleaseDir -Recurse -File -Filter "*.exe" |
-    Where-Object { $_.Name -notmatch "Setup" } |
+    Where-Object { $_.Name -eq "$productName.exe" } |
     Sort-Object LastWriteTime -Descending |
     Select-Object -First 1
 
@@ -267,8 +358,8 @@ if ($null -eq $portable) {
     throw "Could not find portable exe under $frontendReleaseDir"
 }
 
-$installerOutput = Join-Path $finalReleaseDir "AiTeachMe Setup.exe"
-$portableOutput = Join-Path $finalReleaseDir "AiTeachMe.exe"
+$installerOutput = Join-Path $finalReleaseDir $installer.Name
+$portableOutput = Join-Path $finalReleaseDir $portable.Name
 
 Copy-Item -LiteralPath $installer.FullName -Destination $installerOutput -Force
 Copy-Item -LiteralPath $portable.FullName -Destination $portableOutput -Force

@@ -1,22 +1,25 @@
 param(
-    [string]$RepoRoot
+    [string]$RepoRoot,
+    [string]$ProductName = "AiTeachMe"
 )
 
 $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
 
 if (-not $RepoRoot) {
-    $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+    $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
 }
 
 $frontendDir = Join-Path $RepoRoot "frontend"
 $releaseDir = Join-Path $frontendDir "release"
 $unpackedDir = Join-Path $releaseDir "win-unpacked"
-$outputExe = Join-Path $releaseDir "AiTeachMe.exe"
+$appExeName = "$ProductName.exe"
+$appExe = Join-Path $unpackedDir $appExeName
+$outputExe = Join-Path $releaseDir $appExeName
 $iconPath = Join-Path $RepoRoot "docs\brand\atm-logo-3_ico_96x96.ico"
 $scriptPath = Join-Path $releaseDir "aiteachme-portable.nsi"
 
-if (-not (Test-Path (Join-Path $unpackedDir "AiTeachMe.exe"))) {
+if (-not (Test-Path $appExe)) {
     throw "Missing unpacked Electron app. Run the installer build first: $unpackedDir"
 }
 
@@ -50,7 +53,7 @@ $sourceNsisPath = Convert-ToNsisPath (Join-Path $unpackedDir "*")
 
 $nsisScript = @"
 Unicode true
-Name "AiTeachMe"
+Name "$ProductName"
 OutFile "$outputNsisPath"
 Icon "$iconNsisPath"
 RequestExecutionLevel user
@@ -61,11 +64,11 @@ SetCompressor /SOLID lzma
 InstallDir "`$TEMP\AiTeachMePortable"
 
 Section
-  IfFileExists "`$INSTDIR\AiTeachMe.exe" 0 +2
+  IfFileExists "`$INSTDIR\$appExeName" 0 +2
   RMDir /r "`$INSTDIR"
   SetOutPath "`$INSTDIR"
   File /r "$sourceNsisPath"
-  ExecWait '"`$INSTDIR\AiTeachMe.exe"'
+  ExecWait '"`$INSTDIR\$appExeName"'
   RMDir /r "`$INSTDIR"
 SectionEnd
 "@

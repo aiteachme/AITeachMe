@@ -4,6 +4,11 @@ node_modules/
 # Build output
 dist/
 dist-ssr/
+src-tauri/target/
+src-tauri/gen/
+src-tauri/binaries/*.exe
+src-tauri/binaries/*-pc-windows-msvc
+src-tauri/binaries/*-pc-windows-gnu
 *.local
 
 # Editor directories

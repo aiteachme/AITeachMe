@@ -1,0 +1,10 @@
+{
+  "productName": "AiTeachMe Local",
+  "identifier": "com.aiteachme.desktop.local",
+  "mainBinaryName": "aiteachme-local",
+  "bundle": {
+    "externalBin": [
+      "binaries/aiteachme-backend"
+    ]
+  }
+}

@@ -6,7 +6,8 @@ import hashlib
 import json
 import re
 
-from fastapi import APIRouter, Body, Depends, Path
+from fastapi import APIRouter, BackgroundTasks, Body, Depends, Path, Request
+from fastapi.responses import StreamingResponse
 from sqlalchemy import or_
 from sqlmodel import Session, select
 
@@ -33,6 +34,12 @@ from app.schemas.exams import (
     ExamSubmitRequest,
 )
 from app.shared.infra.exceptions import AITeachMeError
+from app.shared.infra.database import managed_session
+from app.shared.infra.workflow.live_stream import (
+    format_sse_event,
+    publish_workflow_stream_event,
+    subscribe_workflow_stream,
+)
 from app.utils.time import utcnow
 from app.workflows.examine import (
     ExamQuestionGenerationSpec,
@@ -46,6 +53,14 @@ router = APIRouter(prefix="/api/v1/subjects/{subject}/exams", tags=["exams"])
 
 _HTML_COMMENT_RE = re.compile(r"<!--.*?-->", re.DOTALL)
 _WHITESPACE_RE = re.compile(r"\s+")
+
+
+def _exam_stream_channel(subject: str, paper_id: int) -> str:
+    return f"exam:{subject}:{paper_id}"
+
+
+def _publish_exam_event(subject: str, paper_id: int, event: str, data: dict[str, object]) -> None:
+    publish_workflow_stream_event(_exam_stream_channel(subject, paper_id), event, data)
 
 
 def _ensure_subject(session: Session, subject: str, user_id: str) -> Subject:
@@ -200,6 +215,55 @@ def _difficulty_for_order(*, requested_difficulty: str, item_order: int) -> str:
     return "medium"
 
 
+def _build_exam_selection_context(
+    *,
+    source: str,
+    knowledge_unit_ids: list[int],
+    focus_prompt: str | None,
+    user_prompt: str | None,
+    style_prompt: str | None,
+    requested_difficulty: str,
+    sample_file_uids: list[str],
+    generation_status: str = "generating",
+    error_message: str | None = None,
+) -> str:
+    payload: dict[str, object] = {
+        "source": source,
+        "knowledge_unit_ids": knowledge_unit_ids,
+        "focus_prompt": focus_prompt,
+        "user_prompt": user_prompt,
+        "style_prompt": style_prompt,
+        "requested_difficulty": requested_difficulty,
+        "sample_file_uids": sample_file_uids,
+        "generation_status": generation_status,
+    }
+    if error_message:
+        payload["error_message"] = error_message
+    return json.dumps(payload, ensure_ascii=False)
+
+
+def _set_exam_generation_status(
+    session: Session,
+    paper: ExamPaper,
+    *,
+    status: str,
+    error_message: str | None = None,
+) -> ExamPaper:
+    context = _json_dict(paper.selection_context_json)
+    context["generation_status"] = status
+    if error_message:
+        context["error_message"] = error_message
+    else:
+        context.pop("error_message", None)
+    paper.selection_context_json = json.dumps(context, ensure_ascii=False)
+    paper.status = status
+    paper.updated_at = utcnow()
+    session.add(paper)
+    session.commit()
+    session.refresh(paper)
+    return paper
+
+
 def _require_generated_questions_by_order(
     *,
     build_result,
@@ -308,6 +372,182 @@ def _upsert_generated_template(
         ),
     )
     return exams_repo.create_question_template(session, template)
+
+
+async def _run_exam_generation_background(
+    *,
+    subject: str,
+    user_id: str,
+    paper_id: int,
+    exam_mode: str,
+    unit_ids: list[int],
+    requested_difficulty: str,
+    focus_prompt: str | None,
+    user_prompt: str | None,
+    style_prompt: str | None,
+) -> None:
+    _publish_exam_event(
+        subject,
+        paper_id,
+        "snapshot",
+        {"exam_paper_id": paper_id, "status": "generating", "stage": "question_build"},
+    )
+    try:
+        with managed_session() as session:
+            paper = exams_repo.get_exam_paper_by_id(session, paper_id)
+            if paper is None or paper.subject != subject or paper.user_id != user_id:
+                return
+            units = list(
+                session.exec(
+                    select(KnowledgeUnit).where(
+                        KnowledgeUnit.subject == subject,
+                        KnowledgeUnit.id.in_(unit_ids),
+                    )
+                ).all()
+            )
+            unit_by_id = {int(unit.id): unit for unit in units if unit.id is not None}
+            exam_units = [unit_by_id[unit_id] for unit_id in unit_ids if unit_id in unit_by_id]
+            if not exam_units:
+                raise AITeachMeError(
+                    detail="No persisted KnowledgeUnits are available for exam generation.",
+                    error_code="NO_PERSISTED_KNOWLEDGE_UNITS_FOR_EXAM",
+                    status_code=409,
+                )
+
+            question_specs = [
+                ExamQuestionGenerationSpec(
+                    item_order=order,
+                    knowledge_unit_id=int(unit.id or 0),
+                    question_type=_question_type_for_order(
+                        exam_mode=exam_mode,
+                        difficulty=_difficulty_for_order(
+                            requested_difficulty=requested_difficulty,
+                            item_order=order,
+                        ),
+                        item_order=order,
+                    ),
+                    difficulty=_difficulty_for_order(
+                        requested_difficulty=requested_difficulty,
+                        item_order=order,
+                    ),
+                )
+                for order, unit in enumerate(exam_units, start=1)
+            ]
+
+        build_result = await run_question_build_workflow(
+            subject=subject,
+            exam_mode=exam_mode,
+            units=exam_units,
+            specs=question_specs,
+            focus_prompt=focus_prompt or "",
+            user_prompt=user_prompt or "",
+            style_prompt=style_prompt or "",
+        )
+        generated_by_order = _require_generated_questions_by_order(
+            build_result=build_result,
+            expected_orders=[spec.item_order for spec in question_specs],
+        )
+
+        with managed_session() as session:
+            paper = exams_repo.get_exam_paper_by_id(session, paper_id)
+            if paper is None or paper.subject != subject or paper.user_id != user_id:
+                return
+            units = list(
+                session.exec(
+                    select(KnowledgeUnit).where(
+                        KnowledgeUnit.subject == subject,
+                        KnowledgeUnit.id.in_(unit_ids),
+                    )
+                ).all()
+            )
+            unit_by_id = {int(unit.id): unit for unit in units if unit.id is not None}
+            items: list[ExamPaperItem] = []
+            for order, unit_id in enumerate(unit_ids, start=1):
+                unit = unit_by_id.get(unit_id)
+                if unit is None:
+                    continue
+                generated = generated_by_order[order]
+                template = _upsert_generated_template(
+                    session,
+                    subject=subject,
+                    unit=unit,
+                    difficulty=str(generated["difficulty"]),
+                    question_type=str(generated["question_type"]),
+                    stem=str(generated["stem"]),
+                    answer=str(generated["correct_answer"]),
+                    explanation=str(generated["explanation"]),
+                    options=list(generated.get("options") or []) or None,
+                )
+                items.append(
+                    ExamPaperItem(
+                        exam_paper_id=paper.id or 0,
+                        question_template_id=template.id or 0,
+                        item_order=order,
+                        stem_snapshot=template.stem,
+                        options_snapshot_json=template.options_json,
+                        answer_snapshot=template.answer,
+                        explanation_snapshot=template.explanation,
+                        knowledge_unit_id=unit.id,
+                        knowledge_unit_refs_json=template.knowledge_unit_refs_json,
+                        difficulty=template.difficulty,
+                        question_type=template.question_type,
+                        score=1.0,
+                    )
+                )
+            exams_repo.create_exam_paper_items(session, items)
+            paper.total_items = len(items)
+            paper.total_score = float(len(items))
+            _set_exam_generation_status(session, paper, status="ready")
+
+        _publish_exam_event(
+            subject,
+            paper_id,
+            "done",
+            {"exam_paper_id": paper_id, "status": "ready", "num_questions": len(items)},
+        )
+    except Exception as exc:
+        error_message = str(getattr(exc, "detail", None) or exc or "Exam question generation failed.")
+        with managed_session() as session:
+            paper = exams_repo.get_exam_paper_by_id(session, paper_id)
+            if paper is not None:
+                _set_exam_generation_status(session, paper, status="failed", error_message=error_message)
+        _publish_exam_event(
+            subject,
+            paper_id,
+            "done",
+            {"exam_paper_id": paper_id, "status": "failed", "error_message": error_message},
+        )
+
+
+async def _spawn_exam_generation_after_response(
+    request: Request,
+    *,
+    subject: str,
+    user_id: str,
+    paper_id: int,
+    exam_mode: str,
+    unit_ids: list[int],
+    requested_difficulty: str,
+    focus_prompt: str | None,
+    user_prompt: str | None,
+    style_prompt: str | None,
+) -> None:
+    request.app.state.background_task_registry.spawn(
+        _run_exam_generation_background(
+            subject=subject,
+            user_id=user_id,
+            paper_id=paper_id,
+            exam_mode=exam_mode,
+            unit_ids=unit_ids,
+            requested_difficulty=requested_difficulty,
+            focus_prompt=focus_prompt,
+            user_prompt=user_prompt,
+            style_prompt=style_prompt,
+        ),
+        kind="exam.generate",
+        subject=subject,
+        name=f"exam.generate:{subject}:{paper_id}",
+    )
 
 
 def _paper_item_response(
@@ -600,6 +840,8 @@ async def _grade_exam(session: Session, paper: ExamPaper) -> ExamGradeResponse:
     responses=build_error_responses([400, 404, 409, 500]),
 )
 async def generate_exam(
+    request: Request,
+    background_tasks: BackgroundTasks,
     subject: str = Path(...),
     body: ExamGenerateRequest = Body(...),
     user: CurrentUserContext = Depends(get_current_user_context),
@@ -632,96 +874,43 @@ async def generate_exam(
 
     mode = exam_mode_value(body.exam_mode)
     requested_difficulty = body.difficulty or "medium"
-    question_specs = [
-        ExamQuestionGenerationSpec(
-            item_order=order,
-            knowledge_unit_id=int(unit.id or 0),
-            question_type=_question_type_for_order(
-                exam_mode=mode,
-                difficulty=_difficulty_for_order(
-                    requested_difficulty=requested_difficulty,
-                    item_order=order,
-                ),
-                item_order=order,
-            ),
-            difficulty=_difficulty_for_order(
-                requested_difficulty=requested_difficulty,
-                item_order=order,
-            ),
-        )
-        for order, unit in enumerate(exam_units, start=1)
-    ]
-    build_result = await run_question_build_workflow(
-        subject=normalized,
-        exam_mode=mode,
-        units=exam_units,
-        specs=question_specs,
-        focus_prompt=body.focus_prompt or "",
-        user_prompt=body.user_prompt or "",
-        style_prompt=body.style_prompt or "",
-    )
-    generated_by_order = _require_generated_questions_by_order(
-        build_result=build_result,
-        expected_orders=[spec.item_order for spec in question_specs],
-    )
-
     paper = exams_repo.create_exam_paper(
         session,
         ExamPaper(
             subject=normalized,
             user_id=user.user_id,
             exam_mode=mode,
-            status="ready",
+            status="generating",
             total_items=len(exam_units),
             total_score=float(len(exam_units)),
-            selection_context_json=json.dumps(
-                {
-                    "source": "knowledge_unit_llm",
-                    "knowledge_unit_ids": [unit.id for unit in exam_units],
-                    "focus_prompt": body.focus_prompt,
-                    "user_prompt": body.user_prompt,
-                    "style_prompt": body.style_prompt,
-                    "requested_difficulty": requested_difficulty,
-                    "sample_file_uids": body.sample_file_uids or [],
-                },
-                ensure_ascii=False,
+            selection_context_json=_build_exam_selection_context(
+                source="knowledge_unit_llm",
+                knowledge_unit_ids=[int(unit.id or 0) for unit in exam_units],
+                focus_prompt=body.focus_prompt,
+                user_prompt=body.user_prompt,
+                style_prompt=body.style_prompt,
+                requested_difficulty=requested_difficulty,
+                sample_file_uids=body.sample_file_uids or [],
             ),
         ),
     )
-    items: list[ExamPaperItem] = []
-    for order, unit in enumerate(exam_units, start=1):
-        generated = generated_by_order[order]
-        template = _upsert_generated_template(
-            session,
-            subject=normalized,
-            unit=unit,
-            difficulty=str(generated["difficulty"]),
-            question_type=str(generated["question_type"]),
-            stem=str(generated["stem"]),
-            answer=str(generated["correct_answer"]),
-            explanation=str(generated["explanation"]),
-            options=list(generated.get("options") or []) or None,
-        )
-        items.append(
-            ExamPaperItem(
-                exam_paper_id=paper.id or 0,
-                question_template_id=template.id or 0,
-                item_order=order,
-                stem_snapshot=template.stem,
-                options_snapshot_json=template.options_json,
-                answer_snapshot=template.answer,
-                explanation_snapshot=template.explanation,
-                knowledge_unit_id=unit.id,
-                knowledge_unit_refs_json=template.knowledge_unit_refs_json,
-                difficulty=template.difficulty,
-                question_type=template.question_type,
-                score=1.0,
-            )
-        )
-    exams_repo.create_exam_paper_items(session, items)
+    paper_id = paper.id or 0
+    background_tasks.add_task(
+        _spawn_exam_generation_after_response,
+        request,
+        subject=normalized,
+        user_id=user.user_id,
+        paper_id=paper_id,
+        exam_mode=mode,
+        unit_ids=[int(unit.id or 0) for unit in exam_units],
+        requested_difficulty=requested_difficulty,
+        focus_prompt=body.focus_prompt,
+        user_prompt=body.user_prompt,
+        style_prompt=body.style_prompt,
+    )
     return ok_response(
         ExamGenerateResponse(
-            id=paper.id or 0,
+            id=paper_id,
             status=paper.status,
             error_message=None,
             created_at=paper.created_at,
@@ -729,8 +918,8 @@ async def generate_exam(
             subject=paper.subject,
             user_id=paper.user_id,
             exam_mode=paper.exam_mode,
-            num_questions=len(items),
-            exam_paper_id=paper.id,
+            num_questions=len(exam_units),
+            exam_paper_id=paper_id,
             sample_file_uids=body.sample_file_uids or [],
         )
     )
@@ -840,6 +1029,72 @@ async def question_types(
 
 
 @router.get(
+    "/{exam_paper_id}/stream",
+    summary="SSE stream for exam generation status",
+    responses=build_error_responses([400, 404, 500]),
+)
+async def exam_generation_stream(
+    request: Request,
+    subject: str = Path(...),
+    exam_paper_id: int = Path(...),
+    user: CurrentUserContext = Depends(get_current_user_context),
+    session: Session = Depends(get_db),
+) -> StreamingResponse:
+    normalized = normalize_subject_slug(subject)
+    _ensure_subject(session, normalized, user.user_id)
+    paper = exams_repo.get_exam_paper_by_id(session, exam_paper_id)
+    if paper is None or paper.subject != normalized or paper.user_id != user.user_id:
+        _raise_not_found(f"Exam paper `{exam_paper_id}` not found.")
+
+    async def event_generator():
+        def snapshot_payload() -> dict[str, object]:
+            with managed_session() as stream_session:
+                current = exams_repo.get_exam_paper_by_id(stream_session, exam_paper_id)
+                if current is None:
+                    return {
+                        "exam_paper_id": exam_paper_id,
+                        "status": "failed",
+                        "error_message": "Exam paper no longer exists.",
+                    }
+                context = _json_dict(current.selection_context_json)
+                return {
+                    "exam_paper_id": exam_paper_id,
+                    "status": current.status,
+                    "num_questions": current.total_items,
+                    "error_message": context.get("error_message"),
+                    "updated_at": current.updated_at,
+                }
+
+        initial = snapshot_payload()
+        yield format_sse_event("snapshot", initial)
+        if str(initial.get("status") or "") in {"ready", "failed", "graded", "submitted"}:
+            yield format_sse_event("done", initial)
+            return
+
+        with subscribe_workflow_stream(_exam_stream_channel(normalized, exam_paper_id)) as queue:
+            while True:
+                if await request.is_disconnected():
+                    break
+                try:
+                    event = await queue.get()
+                except Exception:
+                    break
+                yield format_sse_event(event.event, event.data)
+                if event.event == "done":
+                    break
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+            "Connection": "keep-alive",
+        },
+    )
+
+
+@router.get(
     "/{exam_paper_id}",
     response_model=ApiResponse[ExamPaperDetailResponse],
     summary="Fetch exam detail",
@@ -925,6 +1180,10 @@ async def submit_exam(
     paper = exams_repo.get_exam_paper_by_id(session, exam_paper_id)
     if paper is None or paper.subject != normalized or paper.user_id != user.user_id:
         _raise_not_found(f"Exam paper `{exam_paper_id}` not found.")
+    if paper.status == "generating":
+        raise AITeachMeError(detail="Exam is still generating.", error_code="EXAM_STILL_GENERATING", status_code=409)
+    if paper.status == "failed":
+        raise AITeachMeError(detail="Exam generation failed.", error_code="EXAM_GENERATION_FAILED", status_code=409)
     if paper.status == "graded":
         raise AITeachMeError(detail="Exam already graded.", error_code="EXAM_ALREADY_GRADED", status_code=409)
 

@@ -9,7 +9,7 @@ set "PYTHONIOENCODING=utf-8"
 title AITeachMe Dev
 
 set "START_FLAGS="
-set "START_ELECTRON=1"
+set "START_ELECTRON=0"
 if /I "%~1"=="--headless" (
 	set "START_FLAGS=/B"
 )
