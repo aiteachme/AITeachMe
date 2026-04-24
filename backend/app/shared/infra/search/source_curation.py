@@ -40,6 +40,9 @@ _BLACKLISTED_DOMAIN_MARKERS = (
     "docin.com",
 )
 
+_MIN_RELEVANCE_FOR_TRUSTED_WEB = 0.03
+_MIN_RELEVANCE_FOR_WEB = 0.08
+
 _CJK_RUN_RE = re.compile(r"[\u3400-\u9fff]+")
 _LATIN_TOKEN_RE = re.compile(r"[a-z0-9]+")
 _NORMALIZE_RE = re.compile(r"[\W_]+", re.UNICODE)
@@ -109,7 +112,7 @@ class SourceCurator(BaseTracedExecution):
         LangSmith still gets a compact summary of why the source set changed.
         """
 
-        filtered = self._filter_sources(sources)
+        filtered = self._filter_sources(sources, query=query)
         ranked = self._rank_sources(query=query, sources=filtered)
         curated = ranked[:max_results]
         curated_domains = [_domain_from_url(item.url) for item in curated if not item.url.startswith("local://")]
@@ -158,11 +161,12 @@ class SourceCurator(BaseTracedExecution):
         metadata = {key: value for key, value in result.metadata.items() if key != "curated_sources"}
         return curated, metadata
 
-    def _filter_sources(self, sources: list[SearchResult]) -> list[SearchResult]:
+    def _filter_sources(self, sources: list[SearchResult], *, query: str = "") -> list[SearchResult]:
         """Deduplicate sources and remove known low-value domains."""
 
         deduped: list[SearchResult] = []
         seen: set[str] = set()
+        query_tokens = Counter(_tokenize(query))
         for item in sources:
             url = item.url.strip()
             key = url or f"{item.title.strip()}::{item.snippet.strip()[:120]}"
@@ -171,6 +175,13 @@ class SourceCurator(BaseTracedExecution):
             lowered = url.lower()
             if lowered and any(marker in lowered for marker in _BLACKLISTED_DOMAIN_MARKERS):
                 continue
+            if query_tokens and not item.url.startswith("local://"):
+                domain = _domain_from_url(item.url)
+                relevance = max(self._lexical_score(query_tokens, item), self._phrase_match_score(query, item))
+                credibility = self._credibility_score(item, domain=domain)
+                min_relevance = _MIN_RELEVANCE_FOR_TRUSTED_WEB if credibility >= 0.8 else _MIN_RELEVANCE_FOR_WEB
+                if relevance < min_relevance:
+                    continue
             seen.add(key)
             deduped.append(item)
         return deduped
