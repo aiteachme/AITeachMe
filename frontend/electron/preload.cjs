@@ -1,7 +1,7 @@
 const { contextBridge, ipcRenderer } = require("electron");
 
 const editCommands = new Set(["undo", "redo", "cut", "copy", "paste", "delete", "selectAll"]);
-const backendPort = process.env.AITEACHME_BACKEND_PORT || "8010";
+const backendPort = process.env.AITEACHME_BACKEND_PORT || "9020";
 
 function loadBuildConfig() {
   try {

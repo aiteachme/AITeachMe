@@ -44,7 +44,7 @@ function buildStartupUrl(path: string): string {
   const normalizedPath = path.startsWith("/") ? path : `/${path}`;
   const desktopBase =
     window.location.protocol === "file:"
-      ? window.aiteachmeDesktop?.apiBaseUrl ?? "http://127.0.0.1:8010"
+      ? window.aiteachmeDesktop?.apiBaseUrl ?? "http://127.0.0.1:9020"
       : "";
   const configuredBase = desktopBase || (import.meta.env.VITE_API_URL ?? "").trim();
 

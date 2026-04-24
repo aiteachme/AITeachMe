@@ -160,7 +160,10 @@ def build_completion_context(
     provider = resolve_runtime_llm_provider(base_url=base_url)
     api_key = (get_env_choice("LLM_API_KEY") or "").strip() or None
     if api_key is None and llm_provider_requires_api_key(provider, base_url=base_url):
-        raise MissingLLMApiKeyError()
+        raise MissingLLMApiKeyError(
+            provider=provider,
+            base_url_configured=bool((base_url or "").strip()),
+        )
     resolved_model, model_selector = resolve_settings_model(settings, model)
     return CompletionContext(
         call_purpose=resolved_purpose,

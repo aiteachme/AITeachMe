@@ -3,7 +3,7 @@ const { spawn } = require("node:child_process");
 const path = require("node:path");
 
 const DEV_SERVER_URL = "http://127.0.0.1:5180";
-const BACKEND_PORT = process.env.AITEACHME_BACKEND_PORT || "8010";
+const BACKEND_PORT = process.env.AITEACHME_BACKEND_PORT || "9020";
 const isDevMode = process.argv.includes("--dev");
 
 function loadBuildConfig() {
