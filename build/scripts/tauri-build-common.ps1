@@ -28,6 +28,22 @@ function Resolve-CommandPath {
     throw "Cannot find command: $($Names -join ', ')"
 }
 
+function Get-ProjectVersion {
+    param([string]$RepoRoot)
+
+    $packageJsonPath = Join-Path $RepoRoot "frontend\package.json"
+    if (-not (Test-Path $packageJsonPath)) {
+        throw "Cannot find frontend package.json: $packageJsonPath"
+    }
+
+    $packageJson = Get-Content -LiteralPath $packageJsonPath -Raw | ConvertFrom-Json
+    if ([string]::IsNullOrWhiteSpace($packageJson.version)) {
+        throw "frontend package.json does not contain a version."
+    }
+
+    return $packageJson.version
+}
+
 function Assert-RustToolchain {
     try {
         [void](Resolve-CommandPath @("rustc.exe", "rustc"))
@@ -142,11 +158,18 @@ function Copy-TauriArtifacts {
         throw "Tauri bundle output was not produced: $bundleDir"
     }
 
-    $outputDir = Join-Path $RepoRoot "build\$Flavor"
-    if (Test-Path $outputDir) {
-        Remove-Item -LiteralPath $outputDir -Recurse -Force
+    $projectVersion = Get-ProjectVersion -RepoRoot $RepoRoot
+    $outputDir = Join-Path $RepoRoot "build\artifacts"
+    New-Item -ItemType Directory -Path $outputDir -Force | Out-Null
+    Get-ChildItem -LiteralPath $outputDir -File -Filter "AiTeachMe-v*-$Flavor-*.*" -ErrorAction SilentlyContinue |
+        Remove-Item -Force
+
+    $directRoot = Join-Path $outputDir "direct"
+    $directDir = Join-Path $directRoot $Flavor
+    if (Test-Path $directDir) {
+        Remove-Item -LiteralPath $directDir -Recurse -Force
     }
-    New-Item -ItemType Directory -Path $outputDir | Out-Null
+    New-Item -ItemType Directory -Path $directDir -Force | Out-Null
 
     $artifacts = @(Get-ChildItem $bundleDir -Recurse -File |
         Where-Object { $_.Extension -in @(".exe", ".msi", ".msix", ".zip") } |
@@ -157,12 +180,40 @@ function Copy-TauriArtifacts {
     }
 
     foreach ($artifact in $artifacts) {
-        Copy-Item -LiteralPath $artifact.FullName -Destination (Join-Path $outputDir $artifact.Name) -Force
+        $artifactKind = if ($artifact.Extension -eq ".zip") { "bundle" } else { "installer" }
+        $artifactName = "AiTeachMe-v$projectVersion-$Flavor-$artifactKind$($artifact.Extension)"
+        Copy-Item -LiteralPath $artifact.FullName -Destination (Join-Path $outputDir $artifactName) -Force
     }
+
+    $releaseDir = Join-Path $RepoRoot "frontend\src-tauri\target\release"
+    $mainBinaryName = if ($Flavor -eq "tauri-local") { "aiteachme-local.exe" } else { "aiteachme-remote.exe" }
+    $productExeName = if ($Flavor -eq "tauri-local") { "AiTeachMe Local.exe" } else { "AiTeachMe Remote.exe" }
+    $mainBinary = Join-Path $releaseDir $mainBinaryName
+
+    if (-not (Test-Path $mainBinary)) {
+        throw "Tauri direct executable was not produced: $mainBinary"
+    }
+
+    Copy-Item -LiteralPath $mainBinary -Destination (Join-Path $directDir $productExeName) -Force
+
+    if ($Flavor -eq "tauri-local") {
+        $sidecar = Join-Path $releaseDir "aiteachme-backend.exe"
+        if (-not (Test-Path $sidecar)) {
+            throw "Tauri local backend sidecar was not produced: $sidecar"
+        }
+        Copy-Item -LiteralPath $sidecar -Destination (Join-Path $directDir "aiteachme-backend.exe") -Force
+    }
+
+    $directZip = Join-Path $outputDir "AiTeachMe-v$projectVersion-$Flavor-direct.zip"
+    if (Test-Path $directZip) {
+        Remove-Item -LiteralPath $directZip -Force
+    }
+    Compress-Archive -Path (Join-Path $directDir "*") -DestinationPath $directZip -Force
 
     Write-Host ""
     Write-Host "Tauri $Flavor artifacts:" -ForegroundColor Green
     Get-ChildItem $outputDir -File | ForEach-Object {
         Write-Host "  $($_.FullName)"
     }
+    Write-Host "  $directDir"
 }

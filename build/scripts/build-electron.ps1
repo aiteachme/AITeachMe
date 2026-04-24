@@ -27,6 +27,22 @@ function Resolve-CommandPath {
     throw "Cannot find command: $($Names -join ', ')"
 }
 
+function Get-ProjectVersion {
+    param([string]$RepoRoot)
+
+    $packageJsonPath = Join-Path $RepoRoot "frontend\package.json"
+    if (-not (Test-Path $packageJsonPath)) {
+        throw "Cannot find frontend package.json: $packageJsonPath"
+    }
+
+    $packageJson = Get-Content -LiteralPath $packageJsonPath -Raw | ConvertFrom-Json
+    if ([string]::IsNullOrWhiteSpace($packageJson.version)) {
+        throw "frontend package.json does not contain a version."
+    }
+
+    return $packageJson.version
+}
+
 function Resolve-PythonCommand {
     param([string]$RepoRoot)
 
@@ -232,8 +248,9 @@ $repoRoot = Resolve-RepoRoot
 $backendDir = Join-Path $repoRoot "backend"
 $frontendDir = Join-Path $repoRoot "frontend"
 $frontendReleaseDir = Join-Path $frontendDir "release"
-$finalReleaseDir = Join-Path $repoRoot "build\electron-$Flavor"
+$finalReleaseDir = Join-Path $repoRoot "build\artifacts"
 $backendDistDir = Join-Path $backendDir "dist\aiteachme-backend"
+$projectVersion = Get-ProjectVersion -RepoRoot $repoRoot
 $productName = if ($Flavor -eq "local") { "AiTeachMe Electron Local" } else { "AiTeachMe Electron Remote" }
 $appId = if ($Flavor -eq "local") { "com.aiteachme.desktop.electron.local" } else { "com.aiteachme.desktop.electron.remote" }
 
@@ -252,8 +269,16 @@ $python = Resolve-PythonCommand $repoRoot
 $npm = Resolve-CommandPath @("npm.cmd", "npm")
 Stop-LocalBuildToolProcesses -RepoRoot $repoRoot
 
+if ([string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable("ELECTRON_MIRROR", "Process"))) {
+    Set-ProcessEnv -Name "ELECTRON_MIRROR" -Value "https://npmmirror.com/mirrors/electron/"
+}
+if ([string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable("ELECTRON_BUILDER_BINARIES_MIRROR", "Process"))) {
+    Set-ProcessEnv -Name "ELECTRON_BUILDER_BINARIES_MIRROR" -Value "https://npmmirror.com/mirrors/electron-builder-binaries/"
+}
+
 Write-Host "Repo: $repoRoot"
 Write-Host "Flavor: electron-$Flavor"
+Write-Host "Version: $projectVersion"
 Write-Host "Product: $productName"
 Write-Host "Python: $($python.File) $($python.PrefixArgs -join ' ')"
 Write-Host "npm: $npm"
@@ -337,8 +362,9 @@ finally {
 }
 
 Write-Step "Collect artifacts"
-Remove-DirectoryIfExists -Path $finalReleaseDir -RepoRoot $repoRoot
-New-Item -ItemType Directory -Path $finalReleaseDir | Out-Null
+New-Item -ItemType Directory -Path $finalReleaseDir -Force | Out-Null
+Get-ChildItem -LiteralPath $finalReleaseDir -File -Filter "AiTeachMe-v*-electron-$Flavor-*.*" -ErrorAction SilentlyContinue |
+    Remove-Item -Force
 
 $installer = Get-ChildItem $frontendReleaseDir -Recurse -File -Filter "*.exe" |
     Where-Object { $_.Name -match "Setup" } |
@@ -358,8 +384,8 @@ if ($null -eq $portable) {
     throw "Could not find portable exe under $frontendReleaseDir"
 }
 
-$installerOutput = Join-Path $finalReleaseDir $installer.Name
-$portableOutput = Join-Path $finalReleaseDir $portable.Name
+$installerOutput = Join-Path $finalReleaseDir "AiTeachMe-v$projectVersion-electron-$Flavor-installer$($installer.Extension)"
+$portableOutput = Join-Path $finalReleaseDir "AiTeachMe-v$projectVersion-electron-$Flavor-portable$($portable.Extension)"
 
 Copy-Item -LiteralPath $installer.FullName -Destination $installerOutput -Force
 Copy-Item -LiteralPath $portable.FullName -Destination $portableOutput -Force

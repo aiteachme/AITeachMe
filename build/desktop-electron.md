@@ -10,7 +10,7 @@ Electron now has the same local/remote split as Tauri.
 
 The local flavor bundles the PyInstaller backend and writes artifacts to:
 
-- `build/electron-local`
+- `build/artifacts`
 
 ## Remote backend flavor
 
@@ -20,7 +20,7 @@ The local flavor bundles the PyInstaller backend and writes artifacts to:
 
 The remote flavor bundles only Electron and the frontend. It does not include the Python backend, and writes artifacts to:
 
-- `build/electron-remote`
+- `build/artifacts`
 
 The frontend package scripts still exist for lower-level Electron packaging, and default to the local flavor when no build environment is set:
 

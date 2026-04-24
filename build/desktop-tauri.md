@@ -40,7 +40,8 @@ The local backend listens on `127.0.0.1:8010` by default. To build a package wit
 
 Build artifacts are copied to:
 
-- `build/tauri-remote`
-- `build/tauri-local`
+- `build/artifacts`
+
+Tauri builds produce an installer plus `*-direct.zip` for direct launch after extraction. Unpacked direct-run folders are kept under `build/artifacts/direct`.
 
 Tauri's raw bundle output remains under `frontend/src-tauri/target/release/bundle`.

@@ -31,7 +31,7 @@ module.exports = {
   appId,
   productName,
   electronDist: path.join(frontendRoot, "node_modules", "electron", "dist"),
-  afterPack: path.join(frontendRoot, "electron", "after-pack.cjs"),
+  afterPack: path.join(repoRoot, "frontend", "electron", "after-pack.cjs"),
   directories: {
     output: "release",
   },
