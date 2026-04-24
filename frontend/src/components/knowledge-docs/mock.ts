@@ -71,6 +71,12 @@ $$
 
 这里 $\\vec{v}$ 就是特征向量，而 $\\lambda$ 就是对应的特征值。它意味着经过矩阵 $\\mathbf{A}$ 变换后，向量在这个特定方向上的变化仅仅是大小发生了缩放，而没有产生旋转偏移。特征向量构成了理解矩阵的“骨架”。
 
+!tip 做题时先看矩阵维度和变换对象，再去判断该用乘法、特征分解还是几何解释。
+
+:::note
+如果你正在从线代过渡到机器学习，这一章最值得反复看的部分其实是“矩阵乘法”和“特征向量的几何含义”。
+:::
+
 ### 3.1 概念连线图谱
 
 \`\`\`mermaid
@@ -125,4 +131,3 @@ export const MOCK_DOCUMENT_CHAPTERS = [
 ];
 
 export const MOCK_DOCUMENT_MARKDOWN = getMockDocumentMarkdown();
-

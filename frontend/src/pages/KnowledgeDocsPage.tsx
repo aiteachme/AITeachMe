@@ -9,6 +9,8 @@ import "katex/dist/katex.min.css";
 import {
   FileText,
   ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
   ChevronDown,
   ChevronUp,
   Send,
@@ -18,6 +20,7 @@ import {
   Sparkles,
   RefreshCw,
   ExternalLink,
+  SlidersHorizontal,
 } from "lucide-react";
 import { cn } from "../lib/utils";
 import { getApiErrorMessage, postSseJson } from "../api/client";
@@ -70,7 +73,9 @@ interface FloatingComment {
   anchorId: string;
   selectedText: string;
   selectionViewportTop: number;
+  selectionContentTop: number;
   top: number;
+  segments: HighlightSegment[];
 }
 
 interface FloatingToolbar {
@@ -79,6 +84,7 @@ interface FloatingToolbar {
   top: number;
   left: number;
   selectionViewportTop: number;
+  selectionContentTop: number;
 }
 
 interface HighlightSegment {
@@ -86,6 +92,12 @@ interface HighlightSegment {
   left: number;
   width: number;
   height: number;
+}
+
+interface KnowledgeDocsViewPrefs {
+  widePage: boolean;
+  showToc: boolean;
+  showCommentPanel: boolean;
 }
 
 interface SelectionHighlight {
@@ -112,6 +124,11 @@ interface CommentThreadLayout {
 interface CommentThreadLayoutResult {
   positions: Record<string, CommentThreadLayout>;
   totalHeight: number;
+}
+
+interface TocScrollThumbStyle {
+  top: number;
+  height: number;
 }
 
 interface ApiResponse<T> {
@@ -169,8 +186,72 @@ function formatDocTimestamp(value: string | null | undefined): string | null {
   });
 }
 
-const COMPACT_PANEL_BREAKPOINT = 1536;
+const TOC_DRAWER_BREAKPOINT = 960;
+const COMMENT_DRAWER_BREAKPOINT = 1280;
 const THREAD_HISTORY_PAGE_SIZE = 100;
+const KNOWLEDGE_DOCS_VIEW_PREFS_VERSION = 1;
+const FLOATING_COMPOSER_THREAD_ID = "__floating-composer__";
+
+function getHeadingActivationOffset(container: HTMLElement): number {
+  return Math.min(128, Math.max(76, container.clientHeight * 0.18));
+}
+
+function createDefaultKnowledgeDocsViewPrefs(): KnowledgeDocsViewPrefs {
+  return {
+    widePage: false,
+    showToc: true,
+    showCommentPanel: true,
+  };
+}
+
+function normalizeKnowledgeDocsViewPrefs(raw: unknown): KnowledgeDocsViewPrefs {
+  const defaults = createDefaultKnowledgeDocsViewPrefs();
+  if (!raw || typeof raw !== "object") {
+    return defaults;
+  }
+  const candidate = raw as Partial<KnowledgeDocsViewPrefs>;
+  return {
+    widePage: candidate.widePage === true,
+    showToc: candidate.showToc !== false,
+    showCommentPanel: candidate.showCommentPanel !== false,
+  };
+}
+
+function knowledgeDocsViewPrefsStorageKey(subjectId?: string): string {
+  return `aiteachme:knowledge-docs-view:v${KNOWLEDGE_DOCS_VIEW_PREFS_VERSION}:${subjectId ?? "default"}`;
+}
+
+function readKnowledgeDocsViewPrefs(subjectId?: string): KnowledgeDocsViewPrefs {
+  if (!subjectId || typeof window === "undefined") {
+    return createDefaultKnowledgeDocsViewPrefs();
+  }
+  try {
+    const raw = window.localStorage.getItem(knowledgeDocsViewPrefsStorageKey(subjectId));
+    if (!raw) {
+      return createDefaultKnowledgeDocsViewPrefs();
+    }
+    return normalizeKnowledgeDocsViewPrefs(JSON.parse(raw));
+  } catch {
+    return createDefaultKnowledgeDocsViewPrefs();
+  }
+}
+
+function persistKnowledgeDocsViewPrefs(subjectId: string | undefined, prefs: KnowledgeDocsViewPrefs) {
+  if (!subjectId || typeof window === "undefined") {
+    return;
+  }
+  try {
+    window.localStorage.setItem(
+      knowledgeDocsViewPrefsStorageKey(subjectId),
+      JSON.stringify({
+        version: KNOWLEDGE_DOCS_VIEW_PREFS_VERSION,
+        ...prefs,
+      }),
+    );
+  } catch {
+    // Ignore storage failures and fall back to in-memory state.
+  }
+}
 
 function tocEqual(a: TocItem[], b: TocItem[]): boolean {
   if (a.length !== b.length) return false;
@@ -179,6 +260,21 @@ function tocEqual(a: TocItem[], b: TocItem[]): boolean {
       a[i].id !== b[i].id ||
       a[i].text !== b[i].text ||
       a[i].level !== b[i].level
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function highlightSegmentsEqual(a: HighlightSegment[], b: HighlightSegment[]): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i += 1) {
+    if (
+      Math.abs(a[i].top - b[i].top) > 0.5 ||
+      Math.abs(a[i].left - b[i].left) > 0.5 ||
+      Math.abs(a[i].width - b[i].width) > 0.5 ||
+      Math.abs(a[i].height - b[i].height) > 0.5
     ) {
       return false;
     }
@@ -304,16 +400,16 @@ function buildCommentThreadLayout(
     : -1;
 
   if (pinnedIndex < 0) {
-    let cursor = 0;
+    let cursor = desiredTopByThreadId.get(threads[0].threadId) ?? 0;
     for (let i = 0; i < threads.length; i += 1) {
       const desiredTop = desiredTopByThreadId.get(threads[i].threadId);
-      const top = desiredTop === undefined ? cursor : Math.max(cursor, desiredTop);
+      const top = desiredTop === undefined ? cursor : (i === 0 ? desiredTop : Math.max(cursor, desiredTop));
       positions[i] = top;
       cursor = top + heights[i] + gap;
     }
   } else {
     const pinnedDesiredTop = desiredTopByThreadId.get(threads[pinnedIndex].threadId) ?? 0;
-    positions[pinnedIndex] = Math.max(0, pinnedDesiredTop);
+    positions[pinnedIndex] = pinnedDesiredTop;
 
     let downCursor = positions[pinnedIndex] + heights[pinnedIndex] + gap;
     for (let i = pinnedIndex + 1; i < threads.length; i += 1) {
@@ -329,14 +425,6 @@ function buildCommentThreadLayout(
       const desiredTop = desiredTopByThreadId.get(threads[i].threadId);
       positions[i] = desiredTop === undefined ? maxTop : Math.min(maxTop, desiredTop);
       upCursor = positions[i];
-    }
-
-    const minTop = Math.min(...positions);
-    if (minTop < 0) {
-      const shift = -minTop;
-      for (let i = 0; i < positions.length; i += 1) {
-        positions[i] += shift;
-      }
     }
   }
 
@@ -667,7 +755,10 @@ function CommentThread({
         <div className="flex items-center gap-1.5">
           <button
             type="button"
-            onClick={onOpenAssistant}
+            onClick={(e) => {
+              e.stopPropagation();
+              onOpenAssistant();
+            }}
             className={cn(
               "inline-flex h-6 items-center gap-1 rounded-md border border-sky-200 bg-gradient-to-r from-sky-50 to-cyan-50 px-2 text-[10px] font-semibold text-sky-700 transition hover:border-sky-300 hover:from-sky-100 hover:to-cyan-100",
             )}
@@ -703,6 +794,7 @@ function CommentThread({
         <textarea
           value={draft}
           onChange={(e) => onDraftChange(e.target.value)}
+          onClick={(e) => e.stopPropagation()}
           onKeyDown={(e) => {
             if (e.key === "Enter" && !e.shiftKey) {
               e.preventDefault();
@@ -716,7 +808,10 @@ function CommentThread({
         />
         <div className="mt-2 flex items-center justify-end">
           <button
-            onClick={onSend}
+            onClick={(e) => {
+              e.stopPropagation();
+              onSend();
+            }}
             disabled={!draft.trim() || isStreaming}
             className={cn(
               "inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors",
@@ -788,6 +883,7 @@ export function KnowledgeDocsPage() {
   const [threadStreaming, setThreadStreaming] = useState<Record<string, boolean>>({});
   const [activeCommentThreadId, setActiveCommentThreadId] = useState<string | null>(null);
   const [pinnedThreadId, setPinnedThreadId] = useState<string | null>(null);
+  const [isAutoCommentHighlightSuppressed, setIsAutoCommentHighlightSuppressed] = useState(false);
   const [commentListOriginTop, setCommentListOriginTop] = useState<number | null>(null);
   const [threadHeightsById, setThreadHeightsById] = useState<Record<string, number>>({});
   const [isTocCollapsed, setIsTocCollapsed] = useState(false);
@@ -798,10 +894,15 @@ export function KnowledgeDocsPage() {
   const [floatingToolbar, setFloatingToolbar] = useState<FloatingToolbar | null>(null);
   const [floatingComment, setFloatingComment] = useState<FloatingComment | null>(null);
   const [floatingInput, setFloatingInput] = useState("");
-  const [isCompactPanels, setIsCompactPanels] = useState(() =>
-    typeof window !== "undefined" ? window.innerWidth < COMPACT_PANEL_BREAKPOINT : false
+  const [floatingComposerHeight, setFloatingComposerHeight] = useState(236);
+  const [viewportWidth, setViewportWidth] = useState(() =>
+    typeof window !== "undefined" ? window.innerWidth : COMMENT_DRAWER_BREAKPOINT
   );
+  const [viewPrefs, setViewPrefs] = useState<KnowledgeDocsViewPrefs>(() => readKnowledgeDocsViewPrefs(subjectId));
+  const [isSettingsPanelOpen, setIsSettingsPanelOpen] = useState(false);
   const [activeDrawer, setActiveDrawer] = useState<"toc" | "comment" | null>(null);
+  const [isTocScrollbarVisible, setIsTocScrollbarVisible] = useState(false);
+  const [tocScrollThumbStyle, setTocScrollThumbStyle] = useState<TocScrollThumbStyle>({ top: 0, height: 0 });
 
   const [isGraphDrawerOpen, setIsGraphDrawerOpen] = useState(false);
   const { width: graphPanelWidth, isDragging: isGraphDragging, handleMouseDown: handleGraphMouseDown } = useResizablePanel({
@@ -816,17 +917,86 @@ export function KnowledgeDocsPage() {
   const commentPanelRef = useRef<HTMLDivElement>(null);
   const commentViewportRef = useRef<HTMLDivElement>(null);
   const commentThreadListRef = useRef<HTMLDivElement>(null);
+  const floatingComposerCardRef = useRef<HTMLDivElement>(null);
+  const floatingComposerTextareaRef = useRef<HTMLTextAreaElement>(null);
+  const settingsPanelRef = useRef<HTMLDivElement>(null);
+  const settingsButtonRef = useRef<HTMLButtonElement>(null);
   const selectedRangeRef = useRef<Range | null>(null);
   const threadRefs = useRef(new Map<string, HTMLDivElement>());
   const headingFlashTimersRef = useRef(new Map<string, number>());
   const tocNavRef = useRef<HTMLElement>(null);
   const tocDefaultInitializedRef = useRef(false);
   const streamControllersRef = useRef(new Map<string, AbortController>());
+  const tocScrollbarTimerRef = useRef<number | null>(null);
+  const tocAutoScrollingRef = useRef(false);
+  const tocAutoScrollReleaseTimerRef = useRef<number | null>(null);
+  const activeHeadingLockRef = useRef<string | null>(null);
+  const lastAutoCommentHighlightHeadingRef = useRef(activeHeading);
 
-  const isTocVisible = isCompactPanels ? activeDrawer === "toc" : !isTocCollapsed;
-  const isCommentVisible = isCompactPanels ? activeDrawer === "comment" : !isCommentCollapsed;
+  const isCompactToc = viewportWidth < TOC_DRAWER_BREAKPOINT;
+  const isCompactComment = viewportWidth < COMMENT_DRAWER_BREAKPOINT;
+  const isCompactPanels = isCompactToc || isCompactComment;
+  const hasCompactTocControl = isCompactToc && viewPrefs.showToc;
+  const hasCompactCommentControl = isCompactComment && viewPrefs.showCommentPanel;
+  const isTocVisible = viewPrefs.showToc && (isCompactToc ? activeDrawer === "toc" : !isTocCollapsed);
+  const isCommentVisible = viewPrefs.showCommentPanel && (isCompactComment ? activeDrawer === "comment" : !isCommentCollapsed);
+  const pageWideMode = viewPrefs.widePage;
+
+  const updateViewPrefs = useCallback((updater: (prev: KnowledgeDocsViewPrefs) => KnowledgeDocsViewPrefs) => {
+    setViewPrefs((prev) => normalizeKnowledgeDocsViewPrefs(updater(prev)));
+  }, []);
+
+  const showTocScrollbarTemporarily = useCallback(() => {
+    setIsTocScrollbarVisible(true);
+    if (tocScrollbarTimerRef.current !== null) {
+      window.clearTimeout(tocScrollbarTimerRef.current);
+    }
+    tocScrollbarTimerRef.current = window.setTimeout(() => {
+      setIsTocScrollbarVisible(false);
+      tocScrollbarTimerRef.current = null;
+    }, 680);
+  }, []);
+
+  const updateTocScrollThumb = useCallback(() => {
+    const nav = tocNavRef.current;
+    if (!nav) {
+      setTocScrollThumbStyle((prev) => (prev.height === 0 ? prev : { top: 0, height: 0 }));
+      return;
+    }
+    const maxScrollTop = nav.scrollHeight - nav.clientHeight;
+    if (maxScrollTop <= 0) {
+      setTocScrollThumbStyle((prev) => (prev.height === 0 ? prev : { top: 0, height: 0 }));
+      return;
+    }
+
+    const trackInset = 8;
+    const trackHeight = Math.max(0, nav.clientHeight - trackInset * 2);
+    const minThumbHeight = 26;
+    const thumbHeight = Math.max(minThumbHeight, (nav.clientHeight / nav.scrollHeight) * trackHeight);
+    const maxThumbTop = Math.max(0, trackHeight - thumbHeight);
+    const top = trackInset + (nav.scrollTop / maxScrollTop) * maxThumbTop;
+
+    setTocScrollThumbStyle((prev) => {
+      if (Math.abs(prev.top - top) < 0.5 && Math.abs(prev.height - thumbHeight) < 0.5) {
+        return prev;
+      }
+      return { top, height: thumbHeight };
+    });
+  }, []);
+
+  const markTocAutoScrolling = useCallback(() => {
+    tocAutoScrollingRef.current = true;
+    if (tocAutoScrollReleaseTimerRef.current !== null) {
+      window.clearTimeout(tocAutoScrollReleaseTimerRef.current);
+    }
+    tocAutoScrollReleaseTimerRef.current = window.setTimeout(() => {
+      tocAutoScrollingRef.current = false;
+      tocAutoScrollReleaseTimerRef.current = null;
+    }, 260);
+  }, []);
 
   const openGraphPanel = useCallback(() => {
+    setIsSettingsPanelOpen(false);
     setIsGraphDrawerOpen(true);
   }, []);
 
@@ -841,6 +1011,52 @@ export function KnowledgeDocsPage() {
 
   // Build hierarchical tree from flat TOC (Feishu-style)
   const tocTree = useMemo(() => buildTocTree(toc), [toc]);
+
+  const alignActiveTocItem = useCallback((behavior: ScrollBehavior = "auto") => {
+    if (!activeHeading || !isTocVisible) return;
+    const nav = tocNavRef.current;
+    if (!nav) return;
+
+    const activeNode = nav.querySelector(`[data-toc-id="${activeHeading}"]`) as HTMLElement | null;
+    if (!activeNode) return;
+
+    const activeTop = activeNode.offsetTop;
+    const activeBottom = activeTop + activeNode.offsetHeight;
+    const edgeGuard = Math.min(34, Math.max(16, nav.clientHeight * 0.08));
+    const visibleTop = nav.scrollTop + edgeGuard;
+    const visibleBottom = Math.max(
+      visibleTop + activeNode.offsetHeight,
+      nav.scrollTop + nav.clientHeight - edgeGuard,
+    );
+
+    let nextScrollTop = nav.scrollTop;
+    if (activeBottom > visibleBottom) {
+      nextScrollTop = activeBottom - nav.clientHeight + edgeGuard;
+    } else if (activeTop < visibleTop) {
+      nextScrollTop = activeTop - edgeGuard;
+    } else {
+      return;
+    }
+
+    const maxScrollTop = Math.max(0, nav.scrollHeight - nav.clientHeight);
+    nextScrollTop = Math.max(0, Math.min(maxScrollTop, nextScrollTop));
+    if (Math.abs(nextScrollTop - nav.scrollTop) < 1) return;
+
+    markTocAutoScrolling();
+    if (behavior === "smooth") {
+      nav.scrollTo({ top: nextScrollTop, behavior });
+      return;
+    }
+
+    const previousScrollBehavior = nav.style.scrollBehavior;
+    nav.style.scrollBehavior = "auto";
+    nav.scrollTop = nextScrollTop;
+    if (previousScrollBehavior) {
+      nav.style.scrollBehavior = previousScrollBehavior;
+    } else {
+      nav.style.removeProperty("scroll-behavior");
+    }
+  }, [activeHeading, isTocVisible, markTocAutoScrolling]);
 
   // Auto-expand ancestors of active heading
   useEffect(() => {
@@ -860,18 +1076,18 @@ export function KnowledgeDocsPage() {
     });
   }, [activeHeading, tocTree]);
 
-  // Auto-scroll TOC sidebar to keep active item visible
   useEffect(() => {
-    if (!activeHeading || !tocNavRef.current) return;
-    const activeBtn = tocNavRef.current.querySelector(`[data-toc-id="${activeHeading}"]`) as HTMLElement | null;
-    if (!activeBtn) return;
-    const nav = tocNavRef.current;
-    const navRect = nav.getBoundingClientRect();
-    const btnRect = activeBtn.getBoundingClientRect();
-    if (btnRect.top < navRect.top + 8 || btnRect.bottom > navRect.bottom - 8) {
-      activeBtn.scrollIntoView({ behavior: "smooth", block: "center" });
+    if (lastAutoCommentHighlightHeadingRef.current === activeHeading) {
+      return;
     }
+    lastAutoCommentHighlightHeadingRef.current = activeHeading;
+    setIsAutoCommentHighlightSuppressed(false);
   }, [activeHeading]);
+
+  // Keep the active TOC item visible without mirroring the document's scroll position.
+  useEffect(() => {
+    alignActiveTocItem();
+  }, [activeHeading, collapsedTocIds, alignActiveTocItem]);
 
   useEffect(() => {
     tocDefaultInitializedRef.current = false;
@@ -899,19 +1115,53 @@ export function KnowledgeDocsPage() {
   }, [renderedMarkdown]);
 
   useEffect(() => {
-    const syncCompactMode = () => {
-      setIsCompactPanels(window.innerWidth < COMPACT_PANEL_BREAKPOINT);
+    setViewPrefs(readKnowledgeDocsViewPrefs(subjectId));
+  }, [subjectId]);
+
+  useEffect(() => {
+    persistKnowledgeDocsViewPrefs(subjectId, viewPrefs);
+  }, [subjectId, viewPrefs]);
+
+  useEffect(() => {
+    const syncViewportWidth = () => {
+      setViewportWidth(window.innerWidth);
     };
-    syncCompactMode();
-    window.addEventListener("resize", syncCompactMode);
-    return () => window.removeEventListener("resize", syncCompactMode);
+    syncViewportWidth();
+    window.addEventListener("resize", syncViewportWidth);
+    return () => window.removeEventListener("resize", syncViewportWidth);
   }, []);
 
   useEffect(() => {
-    if (!isCompactPanels) {
+    if (
+      (activeDrawer === "toc" && (!isCompactToc || !viewPrefs.showToc)) ||
+      (activeDrawer === "comment" && (!isCompactComment || !viewPrefs.showCommentPanel))
+    ) {
       setActiveDrawer(null);
     }
-  }, [isCompactPanels]);
+  }, [activeDrawer, isCompactComment, isCompactToc, viewPrefs.showCommentPanel, viewPrefs.showToc]);
+
+  useEffect(() => {
+    if (!viewPrefs.showCommentPanel) {
+      setFloatingComment(null);
+      if (activeDrawer === "comment") {
+        setActiveDrawer(null);
+      }
+    }
+    if (!viewPrefs.showToc && activeDrawer === "toc") {
+      setActiveDrawer(null);
+    }
+  }, [activeDrawer, viewPrefs.showCommentPanel, viewPrefs.showToc]);
+
+  useEffect(() => {
+    if (!isSettingsPanelOpen) return;
+    const handlePointerDown = (event: MouseEvent) => {
+      if (settingsPanelRef.current?.contains(event.target as Node)) return;
+      if (settingsButtonRef.current?.contains(event.target as Node)) return;
+      setIsSettingsPanelOpen(false);
+    };
+    document.addEventListener("mousedown", handlePointerDown);
+    return () => document.removeEventListener("mousedown", handlePointerDown);
+  }, [isSettingsPanelOpen]);
 
   useEffect(() => {
     return () => {
@@ -919,6 +1169,12 @@ export function KnowledgeDocsPage() {
         window.clearTimeout(timer);
       }
       headingFlashTimersRef.current.clear();
+      if (tocScrollbarTimerRef.current !== null) {
+        window.clearTimeout(tocScrollbarTimerRef.current);
+      }
+      if (tocAutoScrollReleaseTimerRef.current !== null) {
+        window.clearTimeout(tocAutoScrollReleaseTimerRef.current);
+      }
       for (const controller of streamControllersRef.current.values()) {
         controller.abort();
       }
@@ -1034,33 +1290,106 @@ export function KnowledgeDocsPage() {
     };
   }, [subjectId]);
 
-  // Track active heading on scroll with throttle (Feishu-style)
+  // Track active heading from a single scroll position so the TOC highlight does not bounce.
   useEffect(() => {
     const container = scrollRef.current;
     if (!container) return;
 
-    let rafPending = false;
-    const handleScroll = () => {
-      if (rafPending) return;
-      rafPending = true;
-      window.requestAnimationFrame(() => {
-        rafPending = false;
-        const headings = container.querySelectorAll("[data-heading-id]");
-        let current = "";
-        for (const el of headings) {
-          const rect = el.getBoundingClientRect();
-          if (rect.top <= 120) {
-            current = el.getAttribute("data-heading-id") ?? "";
-          }
+    const headingRoot = contentAreaRef.current;
+    const headings = Array.from((headingRoot ?? container).querySelectorAll<HTMLElement>("[data-heading-id]"));
+    if (headings.length === 0) {
+      setActiveHeading("");
+      return;
+    }
+
+    let rafId = 0;
+
+    const findActiveHeadingId = () => {
+      const containerRect = container.getBoundingClientRect();
+      const activationTop = containerRect.top + getHeadingActivationOffset(container);
+      let current = headings[0]?.getAttribute("data-heading-id") ?? "";
+      for (const heading of headings) {
+        const rect = heading.getBoundingClientRect();
+        const id = heading.getAttribute("data-heading-id") ?? "";
+        if (!id) continue;
+        if (rect.top <= activationTop) {
+          current = id;
+        } else {
+          break;
         }
-        setActiveHeading(current);
+      }
+      return current;
+    };
+
+    const syncActiveHeading = () => {
+      window.cancelAnimationFrame(rafId);
+      rafId = window.requestAnimationFrame(() => {
+        const lockedHeadingId = activeHeadingLockRef.current;
+        if (lockedHeadingId && headings.some((heading) => heading.getAttribute("data-heading-id") === lockedHeadingId)) {
+          setActiveHeading((prev) => (prev === lockedHeadingId ? prev : lockedHeadingId));
+          return;
+        }
+
+        const nextId = findActiveHeadingId();
+        setActiveHeading((prev) => (prev === nextId ? prev : nextId));
       });
     };
 
+    const handleScroll = () => {
+      syncActiveHeading();
+    };
+    const clearHeadingLock = () => {
+      activeHeadingLockRef.current = null;
+      syncActiveHeading();
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End", " "].includes(event.key)) {
+        clearHeadingLock();
+      }
+    };
+
     container.addEventListener("scroll", handleScroll, { passive: true });
-    handleScroll();
-    return () => container.removeEventListener("scroll", handleScroll);
+    container.addEventListener("wheel", clearHeadingLock, { passive: true });
+    container.addEventListener("touchstart", clearHeadingLock, { passive: true });
+    container.addEventListener("pointerdown", clearHeadingLock);
+    window.addEventListener("resize", handleScroll);
+    window.addEventListener("keydown", handleKeyDown);
+    syncActiveHeading();
+
+    return () => {
+      window.cancelAnimationFrame(rafId);
+      container.removeEventListener("scroll", handleScroll);
+      container.removeEventListener("wheel", clearHeadingLock);
+      container.removeEventListener("touchstart", clearHeadingLock);
+      container.removeEventListener("pointerdown", clearHeadingLock);
+      window.removeEventListener("resize", handleScroll);
+      window.removeEventListener("keydown", handleKeyDown);
+    };
   }, [renderedMarkdown]);
+
+  useEffect(() => {
+    if (!isTocVisible) return;
+    const container = scrollRef.current;
+    if (!container) return;
+
+    let rafId = 0;
+    const syncTocPosition = () => {
+      window.cancelAnimationFrame(rafId);
+      rafId = window.requestAnimationFrame(() => {
+        alignActiveTocItem();
+      });
+    };
+
+    container.addEventListener("scroll", syncTocPosition, { passive: true });
+    window.addEventListener("resize", syncTocPosition);
+    syncTocPosition();
+
+    return () => {
+      window.cancelAnimationFrame(rafId);
+      container.removeEventListener("scroll", syncTocPosition);
+      window.removeEventListener("resize", syncTocPosition);
+    };
+  }, [alignActiveTocItem, isTocVisible]);
 
   const flashHeading = useCallback((node: HTMLElement) => {
     const headingId = node.getAttribute("data-heading-id") ?? node.id;
@@ -1078,20 +1407,27 @@ export function KnowledgeDocsPage() {
     headingFlashTimersRef.current.set(headingId, timer);
   }, []);
 
-  const scrollToHeading = useCallback((id: string) => {
+  const scrollToHeading = useCallback((id: string, options: { lockActive?: boolean } = {}) => {
     const container = scrollRef.current;
     if (!container) return;
-    const el = container.querySelector(`[data-heading-id="${id}"]`) as HTMLElement | null;
+    const headingRoot = contentAreaRef.current;
+    const el = (headingRoot ?? container).querySelector(`[data-heading-id="${id}"]`) as HTMLElement | null;
     if (!el) return;
+
+    if (options.lockActive !== false) {
+      activeHeadingLockRef.current = id;
+      setActiveHeading((prev) => (prev === id ? prev : id));
+    }
 
     const containerRect = container.getBoundingClientRect();
     const elRect = el.getBoundingClientRect();
     const headingTop = container.scrollTop + (elRect.top - containerRect.top);
     const maxScrollTop = Math.max(0, container.scrollHeight - container.clientHeight);
-    const targetTop = Math.max(0, Math.min(maxScrollTop, headingTop - 8));
+    const targetTop = Math.max(0, Math.min(maxScrollTop, headingTop - getHeadingActivationOffset(container)));
     container.scrollTo({ top: targetTop, behavior: "smooth" });
     flashHeading(el);
   }, [flashHeading]);
+
 
   const captureRangeSegments = useCallback((range: Range): HighlightSegment[] => {
     const container = scrollRef.current;
@@ -1100,14 +1436,67 @@ export function KnowledgeDocsPage() {
     }
 
     const containerRect = container.getBoundingClientRect();
-    const rects = Array.from(range.getClientRects()).filter(
-      (rect) => rect.width > 1 || rect.height > 1,
-    );
+    const rangeRoot = range.commonAncestorContainer.nodeType === Node.TEXT_NODE
+      ? range.commonAncestorContainer.parentNode
+      : range.commonAncestorContainer;
+    const textNodes: Text[] = [];
+
+    if (range.commonAncestorContainer.nodeType === Node.TEXT_NODE) {
+      textNodes.push(range.commonAncestorContainer as Text);
+    } else if (rangeRoot) {
+      const walker = document.createTreeWalker(rangeRoot, NodeFilter.SHOW_TEXT);
+      let current = walker.nextNode();
+      while (current) {
+        const textNode = current as Text;
+        if ((textNode.nodeValue ?? "").trim()) {
+          try {
+            if (range.intersectsNode(textNode)) {
+              textNodes.push(textNode);
+            }
+          } catch {
+            // Ignore nodes that cannot be compared against this range.
+          }
+        }
+        current = walker.nextNode();
+      }
+    }
+
+    const textRects: DOMRect[] = [];
+    for (const textNode of textNodes) {
+      const value = textNode.nodeValue ?? "";
+      if (!value) continue;
+
+      let startOffset = textNode === range.startContainer ? range.startOffset : 0;
+      let endOffset = textNode === range.endContainer ? range.endOffset : value.length;
+      startOffset = Math.max(0, Math.min(value.length, startOffset));
+      endOffset = Math.max(0, Math.min(value.length, endOffset));
+      if (endOffset <= startOffset) continue;
+
+      const selectedSlice = value.slice(startOffset, endOffset);
+      const firstVisibleOffset = selectedSlice.search(/\S/u);
+      if (firstVisibleOffset < 0) continue;
+      const trailingWhitespaceLength = selectedSlice.match(/\s+$/u)?.[0].length ?? 0;
+      const visibleStartOffset = startOffset + firstVisibleOffset;
+      const visibleEndOffset = endOffset - trailingWhitespaceLength;
+      if (visibleEndOffset <= visibleStartOffset) continue;
+
+      const textRange = document.createRange();
+      textRange.setStart(textNode, visibleStartOffset);
+      textRange.setEnd(textNode, visibleEndOffset);
+      textRects.push(
+        ...Array.from(textRange.getClientRects()).filter((rect) => rect.width > 1 && rect.height > 1),
+      );
+    }
+
+    const rects = textRects.length > 0
+      ? textRects
+      : Array.from(range.getClientRects()).filter((rect) => rect.width > 1 && rect.height > 1);
+
     const toSegment = (rect: DOMRect): HighlightSegment => ({
       top: rect.top - containerRect.top + container.scrollTop,
       left: rect.left - containerRect.left + container.scrollLeft,
-      width: Math.max(16, rect.width),
-      height: Math.max(18, rect.height),
+      width: Math.max(4, rect.width),
+      height: Math.max(12, rect.height),
     });
 
     if (rects.length === 0) {
@@ -1138,84 +1527,95 @@ export function KnowledgeDocsPage() {
     if (!target) {
       return [];
     }
-    const heading = contentRoot.querySelector(`[data-heading-id="${anchorId}"]`) as HTMLElement | null;
-    if (!heading) {
-      return [];
-    }
-    const allHeadings = Array.from(contentRoot.querySelectorAll<HTMLElement>("[data-heading-id]"));
-    const headingIndex = allHeadings.findIndex((node) => node === heading);
-    const nextHeading = headingIndex >= 0 ? allHeadings[headingIndex + 1] ?? null : null;
-    const sectionRoots: Node[] = [];
-    let node: Node | null = heading;
-    while (node && node !== nextHeading) {
-      sectionRoots.push(node);
-      node = node.nextSibling;
-    }
-    if (sectionRoots.length === 0) {
-      return [];
-    }
 
-    const textEntries: Array<{ node: Text; start: number; end: number }> = [];
-    let rawText = "";
-    for (const rootNode of sectionRoots) {
-      const walker = document.createTreeWalker(rootNode, NodeFilter.SHOW_TEXT);
-      let current = walker.nextNode();
-      while (current) {
-        const textNode = current as Text;
+    const locateInRoots = (roots: Node[]): HighlightSegment[] => {
+      const textEntries: Array<{ node: Text; start: number; end: number }> = [];
+      let rawText = "";
+      const pushTextNode = (textNode: Text) => {
         const value = textNode.nodeValue ?? "";
-        if (value.length > 0) {
-          const start = rawText.length;
-          rawText += value;
-          textEntries.push({ node: textNode, start, end: rawText.length });
-        }
-        current = walker.nextNode();
-      }
-    }
-    if (!rawText || textEntries.length === 0) {
-      return [];
-    }
+        if (!value) return;
+        const start = rawText.length;
+        rawText += value;
+        textEntries.push({ node: textNode, start, end: rawText.length });
+      };
 
-    let matchStart = rawText.indexOf(target);
-    let matchEnd = matchStart >= 0 ? matchStart + target.length : -1;
-    if (matchStart < 0) {
-      const condensedRawChars: string[] = [];
-      const rawIndexByCondensed: number[] = [];
-      for (let i = 0; i < rawText.length; i += 1) {
-        const char = rawText[i];
-        if (!/\s/u.test(char)) {
-          condensedRawChars.push(char);
-          rawIndexByCondensed.push(i);
+      for (const rootNode of roots) {
+        if (rootNode.nodeType === Node.TEXT_NODE) {
+          pushTextNode(rootNode as Text);
+          continue;
+        }
+        const walker = document.createTreeWalker(rootNode, NodeFilter.SHOW_TEXT);
+        let current = walker.nextNode();
+        while (current) {
+          pushTextNode(current as Text);
+          current = walker.nextNode();
         }
       }
-      const condensedRaw = condensedRawChars.join("");
-      const condensedTarget = target.replace(/\s+/gu, "");
-      const condensedStart = condensedTarget ? condensedRaw.indexOf(condensedTarget) : -1;
-      if (condensedStart < 0) {
+      if (!rawText || textEntries.length === 0) {
         return [];
       }
-      const rawStart = rawIndexByCondensed[condensedStart];
-      const rawEnd = rawIndexByCondensed[condensedStart + condensedTarget.length - 1];
-      if (rawStart === undefined || rawEnd === undefined) {
+
+      let matchStart = rawText.indexOf(target);
+      let matchEnd = matchStart >= 0 ? matchStart + target.length : -1;
+      if (matchStart < 0) {
+        const condensedRawChars: string[] = [];
+        const rawIndexByCondensed: number[] = [];
+        for (let i = 0; i < rawText.length; i += 1) {
+          const char = rawText[i];
+          if (!/\s/u.test(char)) {
+            condensedRawChars.push(char);
+            rawIndexByCondensed.push(i);
+          }
+        }
+        const condensedRaw = condensedRawChars.join("");
+        const condensedTarget = target.replace(/\s+/gu, "");
+        const condensedStart = condensedTarget ? condensedRaw.indexOf(condensedTarget) : -1;
+        if (condensedStart < 0) {
+          return [];
+        }
+        const rawStart = rawIndexByCondensed[condensedStart];
+        const rawEnd = rawIndexByCondensed[condensedStart + condensedTarget.length - 1];
+        if (rawStart === undefined || rawEnd === undefined) {
+          return [];
+        }
+        matchStart = rawStart;
+        matchEnd = rawEnd + 1;
+      }
+      if (matchStart < 0 || matchEnd <= matchStart) {
         return [];
       }
-      matchStart = rawStart;
-      matchEnd = rawEnd + 1;
-    }
-    if (matchStart < 0 || matchEnd <= matchStart) {
-      return [];
+
+      const startEntry = textEntries.find((entry) => matchStart >= entry.start && matchStart < entry.end);
+      const endBoundary = Math.max(matchStart, matchEnd - 1);
+      const endEntry = textEntries.find((entry) => endBoundary >= entry.start && endBoundary < entry.end);
+      if (!startEntry || !endEntry) {
+        return [];
+      }
+
+      const range = document.createRange();
+      range.setStart(startEntry.node, matchStart - startEntry.start);
+      range.setEnd(endEntry.node, matchEnd - endEntry.start);
+      return captureRangeSegments(range);
+    };
+
+    const heading = contentRoot.querySelector(`[data-heading-id="${anchorId}"]`) as HTMLElement | null;
+    if (heading) {
+      const allHeadings = Array.from(contentRoot.querySelectorAll<HTMLElement>("[data-heading-id]"));
+      const headingIndex = allHeadings.findIndex((node) => node === heading);
+      const nextHeading = headingIndex >= 0 ? allHeadings[headingIndex + 1] ?? null : null;
+      const sectionRoots: Node[] = [];
+      let node: Node | null = heading;
+      while (node && node !== nextHeading) {
+        sectionRoots.push(node);
+        node = node.nextSibling;
+      }
+      const sectionSegments = locateInRoots(sectionRoots);
+      if (sectionSegments.length > 0) {
+        return sectionSegments;
+      }
     }
 
-    const startEntry = textEntries.find((entry) => matchStart >= entry.start && matchStart < entry.end);
-    const endBoundary = Math.max(matchStart, matchEnd - 1);
-    const endEntry = textEntries.find((entry) => endBoundary >= entry.start && endBoundary < entry.end);
-    if (!startEntry || !endEntry) {
-      return [];
-    }
-
-    const range = document.createRange();
-    range.setStart(startEntry.node, matchStart - startEntry.start);
-    range.setEnd(endEntry.node, matchEnd - endEntry.start);
-    return captureRangeSegments(range);
+    return locateInRoots([contentRoot]);
   }, [captureRangeSegments]);
 
   const createLocalThreadId = useCallback((anchorId: string) => (
@@ -1252,13 +1652,25 @@ export function KnowledgeDocsPage() {
     setActiveDrawer(null);
   }, []);
 
+  const handleTocManualScrollStart = useCallback(() => {
+    updateTocScrollThumb();
+    showTocScrollbarTemporarily();
+  }, [showTocScrollbarTemporarily, updateTocScrollThumb]);
+
+  const handleTocNavScroll = useCallback(() => {
+    updateTocScrollThumb();
+    if (tocAutoScrollingRef.current) {
+      return;
+    }
+    showTocScrollbarTemporarily();
+  }, [showTocScrollbarTemporarily, updateTocScrollThumb]);
+
   const handleTocItemClick = useCallback((id: string) => {
-    setActiveHeading(id);
     scrollToHeading(id);
-    if (isCompactPanels) {
+    if (isCompactToc) {
       setActiveDrawer(null);
     }
-  }, [isCompactPanels, scrollToHeading]);
+  }, [isCompactToc, scrollToHeading]);
 
   const dismissCommentComposer = useCallback(() => {
     setFloatingComment(null);
@@ -1275,22 +1687,29 @@ export function KnowledgeDocsPage() {
 
   const computeCommentComposerTop = useCallback((selectionViewportTop: number) => {
     const panel = commentPanelRef.current;
-    if (!panel) return 56;
+    if (!panel) return isCompactComment ? 18 : 56;
     const panelRect = panel.getBoundingClientRect();
-    const rawTop = selectionViewportTop - panelRect.top - 24;
-    const minTop = 56;
+    const rawTop = selectionViewportTop - panelRect.top - (isCompactComment ? 18 : 24);
+    const minTop = isCompactComment ? 18 : 56;
     const estimatedComposerHeight = 208;
-    const maxTop = Math.max(minTop, panelRect.height - estimatedComposerHeight - 12);
+    const maxTop = Math.max(minTop, panelRect.height - estimatedComposerHeight - (isCompactComment ? 18 : 14));
     return Math.min(maxTop, Math.max(minTop, rawTop));
-  }, []);
+  }, [isCompactComment]);
 
   // Keep document selection behavior close to Feishu:
   // any click outside toolbar clears highlighted range state.
   useEffect(() => {
     const handlePointerDown = (e: MouseEvent) => {
       if (floatingRef.current?.contains(e.target as Node)) return;
+      if (floatingComposerCardRef.current?.contains(e.target as Node)) return;
+      if (commentPanelRef.current?.contains(e.target as Node)) return;
       clearSelectionHighlight();
       setFloatingToolbar(null);
+      setFloatingComment(null);
+      setFloatingInput("");
+      setActiveCommentThreadId(null);
+      setPinnedThreadId(null);
+      setIsAutoCommentHighlightSuppressed(true);
     };
     document.addEventListener("mousedown", handlePointerDown);
     return () => document.removeEventListener("mousedown", handlePointerDown);
@@ -1313,6 +1732,47 @@ export function KnowledgeDocsPage() {
     });
     return () => window.cancelAnimationFrame(raf);
   }, [floatingToolbar]);
+
+  useEffect(() => {
+    if (!floatingComment || !isCommentVisible) return;
+    const raf = window.requestAnimationFrame(() => {
+      const textarea = floatingComposerTextareaRef.current;
+      if (!textarea) return;
+      textarea.focus({ preventScroll: true });
+      const valueLength = textarea.value.length;
+      textarea.setSelectionRange(valueLength, valueLength);
+    });
+    return () => window.cancelAnimationFrame(raf);
+  }, [floatingComment, isCommentVisible]);
+
+  useEffect(() => {
+    if (isCompactComment || !floatingComment) {
+      setFloatingComposerHeight(236);
+      return;
+    }
+
+    const measure = () => {
+      const node = floatingComposerCardRef.current;
+      if (!node) return;
+      const nextHeight = Math.ceil(node.getBoundingClientRect().height);
+      if (nextHeight > 0) {
+        setFloatingComposerHeight((prev) => (Math.abs(prev - nextHeight) < 1 ? prev : nextHeight));
+      }
+    };
+
+    measure();
+    const observer = typeof ResizeObserver !== "undefined"
+      ? new ResizeObserver(() => measure())
+      : null;
+    if (observer && floatingComposerCardRef.current) {
+      observer.observe(floatingComposerCardRef.current);
+    }
+    window.addEventListener("resize", measure);
+    return () => {
+      observer?.disconnect();
+      window.removeEventListener("resize", measure);
+    };
+  }, [floatingComment, isCompactComment]);
 
   const updateThreadDraft = useCallback((threadId: string, value: string) => {
     setThreadDrafts((prev) => {
@@ -1530,10 +1990,11 @@ export function KnowledgeDocsPage() {
     const question = floatingInput.trim();
     const { anchorId, selectedText } = floatingComment;
     const threadId = createLocalThreadId(anchorId);
-    const segments = captureSelectionSegments();
+    const segments = floatingComment.segments.length > 0 ? floatingComment.segments : captureSelectionSegments();
     addSelectionHighlight(threadId, anchorId, selectedText, segments);
     setActiveCommentThreadId(threadId);
     setPinnedThreadId(threadId);
+    setIsAutoCommentHighlightSuppressed(false);
     setFloatingInput("");
     setThreadDrafts((prev) => ({ ...prev, [threadId]: "" }));
     dismissCommentComposer();
@@ -1558,12 +2019,16 @@ export function KnowledgeDocsPage() {
     setThreadDrafts((prev) => ({ ...prev, [threadId]: "" }));
     setActiveCommentThreadId(threadId);
     setPinnedThreadId(threadId);
+    setIsAutoCommentHighlightSuppressed(false);
     void streamAssistantReply(threadId, anchorId, selectedText, question);
   }, [streamAssistantReply, threadDrafts, threadStreaming]);
 
   const openCommentComposer = useCallback(() => {
     if (!floatingToolbar) return;
-    if (isCompactPanels) {
+    if (!viewPrefs.showCommentPanel) {
+      updateViewPrefs((prev) => ({ ...prev, showCommentPanel: true }));
+    }
+    if (isCompactComment) {
       setActiveDrawer("comment");
     } else {
       setIsCommentCollapsed(false);
@@ -1572,13 +2037,15 @@ export function KnowledgeDocsPage() {
       anchorId: floatingToolbar.anchorId,
       selectedText: floatingToolbar.selectedText,
       selectionViewportTop: floatingToolbar.selectionViewportTop,
+      selectionContentTop: floatingToolbar.selectionContentTop,
       top: computeCommentComposerTop(floatingToolbar.selectionViewportTop),
+      segments: captureSelectionSegments(),
     });
     setFloatingToolbar(null);
     setFloatingInput("");
-  }, [computeCommentComposerTop, floatingToolbar, isCompactPanels]);
+  }, [captureSelectionSegments, computeCommentComposerTop, floatingToolbar, isCompactComment, updateViewPrefs, viewPrefs.showCommentPanel]);
 
-  // Feishu-style: detect text selection and show action toolbar near selection first
+  // Feishu-style: detect text selection and place a composer in the right rail.
   const handleTextSelect = useCallback(() => {
     const sel = window.getSelection();
     if (!sel || sel.isCollapsed || !sel.toString().trim()) {
@@ -1594,10 +2061,11 @@ export function KnowledgeDocsPage() {
     if (!container) return;
     const contentArea = contentAreaRef.current;
     if (contentArea && !contentArea.contains(range.commonAncestorContainer)) return;
+    if (rect.width < 1 && rect.height < 1) return;
     const containerRect = container.getBoundingClientRect();
 
     // Find nearest heading above the selection
-    let node: Node | null = sel.anchorNode;
+    let node: Node | null = range.startContainer;
     let headingId = "";
     while (node && node !== container) {
       if (node instanceof HTMLElement) {
@@ -1607,7 +2075,7 @@ export function KnowledgeDocsPage() {
       node = node.parentNode;
     }
     if (!headingId) {
-      const allHeadings = container.querySelectorAll("[data-heading-id]");
+      const allHeadings = (contentArea ?? container).querySelectorAll("[data-heading-id]");
       for (const h of allHeadings) {
         const hRange = document.createRange();
         hRange.selectNode(h);
@@ -1616,30 +2084,71 @@ export function KnowledgeDocsPage() {
         }
       }
     }
-
-    if (headingId) {
-      selectedRangeRef.current = range.cloneRange();
-      const contentTop = rect.top - containerRect.top + container.scrollTop;
-      const contentLeft = rect.left - containerRect.left + container.scrollLeft + rect.width / 2;
-      const top = Math.max(container.scrollTop + 8, contentTop - 46);
-      const left = Math.min(
-        container.scrollLeft + container.clientWidth - 170,
-        Math.max(container.scrollLeft + 170, contentLeft)
-      );
-      setFloatingToolbar({
-        anchorId: headingId,
-        selectedText,
-        top,
-        left,
-        selectionViewportTop: rect.top + rect.height / 2,
-      });
-      setFloatingComment(null);
-      setFloatingInput("");
+    if (!headingId) {
+      headingId = activeHeading || "document";
     }
-  }, []);
+
+    selectedRangeRef.current = range.cloneRange();
+    const segments = captureRangeSegments(range);
+    if (segments.length === 0) {
+      return;
+    }
+
+    if (!viewPrefs.showCommentPanel) {
+      updateViewPrefs((prev) => ({ ...prev, showCommentPanel: true }));
+    }
+    if (isCompactComment) {
+      setActiveDrawer("comment");
+    } else {
+      setIsCommentCollapsed(false);
+    }
+
+    const contentTop = rect.top - containerRect.top + container.scrollTop;
+    const selectionViewportTop = rect.top + rect.height / 2;
+    setFloatingToolbar(null);
+    setFloatingComment({
+      anchorId: headingId,
+      selectedText,
+      selectionViewportTop,
+      selectionContentTop: contentTop + rect.height / 2,
+      top: computeCommentComposerTop(selectionViewportTop),
+      segments,
+    });
+    setFloatingInput("");
+    setActiveCommentThreadId(null);
+  }, [
+    activeHeading,
+    captureRangeSegments,
+    computeCommentComposerTop,
+    isCompactComment,
+    updateViewPrefs,
+    viewPrefs.showCommentPanel,
+  ]);
 
   useEffect(() => {
-    if (!floatingComment) return;
+    const handleDocumentMouseUp = (event: MouseEvent) => {
+      const target = event.target as Node;
+      if (commentPanelRef.current?.contains(target)) return;
+      if (floatingRef.current?.contains(target)) return;
+      window.requestAnimationFrame(() => {
+        handleTextSelect();
+      });
+    };
+    const handleDocumentKeyUp = () => {
+      window.requestAnimationFrame(() => {
+        handleTextSelect();
+      });
+    };
+    document.addEventListener("mouseup", handleDocumentMouseUp);
+    document.addEventListener("keyup", handleDocumentKeyUp);
+    return () => {
+      document.removeEventListener("mouseup", handleDocumentMouseUp);
+      document.removeEventListener("keyup", handleDocumentKeyUp);
+    };
+  }, [handleTextSelect]);
+
+  useEffect(() => {
+    if (!floatingComment || !isCompactComment) return;
     const container = scrollRef.current;
     let rafId = 0;
 
@@ -1680,7 +2189,7 @@ export function KnowledgeDocsPage() {
       window.removeEventListener("resize", updateTop);
       container?.removeEventListener("scroll", updateTop);
     };
-  }, [computeCommentComposerTop, floatingComment?.anchorId, isCommentVisible]);
+  }, [computeCommentComposerTop, floatingComment?.anchorId, isCommentVisible, isCompactComment]);
 
   const activeStreamingCount = useMemo(
     () => Object.values(threadStreaming).filter(Boolean).length,
@@ -1740,6 +2249,39 @@ export function KnowledgeDocsPage() {
     () => new Map(commentThreads.map((item) => [item.threadId, item] as const)),
     [commentThreads]
   );
+  const centerThreadInViewport = useCallback((threadId: string) => {
+    const container = scrollRef.current;
+    if (!container) return;
+
+    const thread = commentThreadById.get(threadId);
+    if (!thread) return;
+
+    const highlight = selectionHighlights.find((item) => item.threadId === threadId);
+    const headingRoot = contentAreaRef.current;
+    const heading = (headingRoot ?? container).querySelector(`[data-heading-id="${thread.anchorId}"]`) as HTMLElement | null;
+
+    let targetCenter = 0;
+    if (highlight && highlight.segments.length > 0) {
+      const top = Math.min(...highlight.segments.map((segment) => segment.top));
+      const bottom = Math.max(...highlight.segments.map((segment) => segment.top + segment.height));
+      targetCenter = (top + bottom) / 2;
+    } else if (heading) {
+      const containerRect = container.getBoundingClientRect();
+      const headingRect = heading.getBoundingClientRect();
+      targetCenter = container.scrollTop + (headingRect.top - containerRect.top) + headingRect.height / 2;
+    } else {
+      return;
+    }
+
+    const maxScrollTop = Math.max(0, container.scrollHeight - container.clientHeight);
+    const targetTop = Math.max(0, Math.min(maxScrollTop, targetCenter - container.clientHeight / 2));
+    container.scrollTo({ top: targetTop, behavior: "smooth" });
+
+    if (heading) {
+      flashHeading(heading);
+    }
+    setActiveHeading(thread.anchorId);
+  }, [commentThreadById, flashHeading, selectionHighlights]);
   const highlightTopByThreadId = useMemo(() => {
     const next = new Map<string, number>();
     for (const highlight of selectionHighlights) {
@@ -1753,7 +2295,7 @@ export function KnowledgeDocsPage() {
     return next;
   }, [selectionHighlights]);
   const measureCommentListOrigin = useCallback(() => {
-    if (isCompactPanels) {
+    if (isCompactComment) {
       setCommentListOriginTop(null);
       return;
     }
@@ -1771,14 +2313,14 @@ export function KnowledgeDocsPage() {
       }
       return nextTop;
     });
-  }, [isCompactPanels]);
+  }, [isCompactComment]);
   const threadHeightMap = useMemo(
     () => new Map(Object.entries(threadHeightsById)),
     [threadHeightsById]
   );
   const desiredTopByThreadId = useMemo(() => {
     const next = new Map<string, number>();
-    if (isCompactPanels || commentListOriginTop === null) {
+    if (isCompactComment || commentListOriginTop === null) {
       return next;
     }
     for (const thread of commentThreads) {
@@ -1786,13 +2328,62 @@ export function KnowledgeDocsPage() {
       if (highlightTop === undefined) {
         continue;
       }
-      next.set(thread.threadId, Math.max(0, highlightTop - commentListOriginTop - 2));
+      next.set(thread.threadId, highlightTop - commentListOriginTop - 2);
+    }
+    if (floatingComment) {
+      next.set(
+        FLOATING_COMPOSER_THREAD_ID,
+        floatingComment.selectionContentTop - commentListOriginTop - 18,
+      );
     }
     return next;
-  }, [commentListOriginTop, commentThreads, highlightTopByThreadId, isCompactPanels]);
+  }, [commentListOriginTop, commentThreads, floatingComment, highlightTopByThreadId, isCompactComment]);
+  const desktopCommentLayoutThreads = useMemo<CommentThreadView[]>(() => {
+    const threads = isCompactComment || !floatingComment
+      ? commentThreads
+      : [...commentThreads, {
+      threadId: FLOATING_COMPOSER_THREAD_ID,
+      anchorId: floatingComment.anchorId,
+      selectedText: floatingComment.selectedText,
+      comments: [],
+      createdAt: Number.MAX_SAFE_INTEGER,
+    }];
+
+    return [...threads].sort((left, right) => {
+      const leftTop = desiredTopByThreadId.get(left.threadId);
+      const rightTop = desiredTopByThreadId.get(right.threadId);
+      if (leftTop !== undefined && rightTop !== undefined && Math.abs(leftTop - rightTop) > 2) {
+        return leftTop - rightTop;
+      }
+      if (leftTop !== undefined && rightTop === undefined) {
+        return -1;
+      }
+      if (leftTop === undefined && rightTop !== undefined) {
+        return 1;
+      }
+      const leftOrder = tocOrderMap.get(left.anchorId) ?? Number.MAX_SAFE_INTEGER;
+      const rightOrder = tocOrderMap.get(right.anchorId) ?? Number.MAX_SAFE_INTEGER;
+      if (leftOrder !== rightOrder) {
+        return leftOrder - rightOrder;
+      }
+      return left.createdAt - right.createdAt;
+    });
+  }, [commentThreads, desiredTopByThreadId, floatingComment, isCompactComment, tocOrderMap]);
+  const desktopThreadHeightMap = useMemo(() => {
+    const next = new Map(threadHeightMap);
+    if (!isCompactComment && floatingComment) {
+      next.set(FLOATING_COMPOSER_THREAD_ID, Math.max(180, floatingComposerHeight));
+    }
+    return next;
+  }, [floatingComment, floatingComposerHeight, isCompactComment, threadHeightMap]);
   const desktopThreadLayout = useMemo(
-    () => buildCommentThreadLayout(commentThreads, threadHeightMap, desiredTopByThreadId, pinnedThreadId),
-    [commentThreads, desiredTopByThreadId, pinnedThreadId, threadHeightMap]
+    () => buildCommentThreadLayout(
+      desktopCommentLayoutThreads,
+      desktopThreadHeightMap,
+      desiredTopByThreadId,
+      floatingComment ? FLOATING_COMPOSER_THREAD_ID : pinnedThreadId,
+    ),
+    [desktopCommentLayoutThreads, desktopThreadHeightMap, desiredTopByThreadId, floatingComment, pinnedThreadId]
   );
   const threadCountByAnchor = useMemo(() => {
     const next = new Map<string, number>();
@@ -1817,7 +2408,7 @@ export function KnowledgeDocsPage() {
   }, [commentThreadById, pinnedThreadId]);
 
   useEffect(() => {
-    if (isCompactPanels) {
+    if (isCompactComment) {
       setCommentListOriginTop(null);
       return;
     }
@@ -1826,7 +2417,7 @@ export function KnowledgeDocsPage() {
     });
     return () => window.cancelAnimationFrame(rafId);
   }, [
-    isCompactPanels,
+    isCompactComment,
     measureCommentListOrigin,
     commentThreads.length,
     isCommentCollapsed,
@@ -1835,7 +2426,7 @@ export function KnowledgeDocsPage() {
   ]);
 
   useEffect(() => {
-    if (isCompactPanels) {
+    if (isCompactComment) {
       return;
     }
     const handleLayoutChange = () => {
@@ -1862,10 +2453,10 @@ export function KnowledgeDocsPage() {
       container?.removeEventListener("scroll", handleLayoutChange);
       observer?.disconnect();
     };
-  }, [isCompactPanels, measureCommentListOrigin]);
+  }, [isCompactComment, measureCommentListOrigin]);
 
   useEffect(() => {
-    if (isCompactPanels) {
+    if (isCompactComment) {
       setThreadHeightsById({});
       return;
     }
@@ -1897,7 +2488,7 @@ export function KnowledgeDocsPage() {
       }
       return next;
     });
-  }, [commentThreads, comments, isCompactPanels, threadDrafts, threadStreaming]);
+  }, [commentThreads, comments, isCompactComment, threadDrafts, threadStreaming]);
 
   useEffect(() => {
     if (!activeCommentThreadId) {
@@ -1940,6 +2531,56 @@ export function KnowledgeDocsPage() {
     });
   }, [buildSelectionSegmentsFromText, commentThreads, hasRenderedMarkdown]);
 
+  useEffect(() => {
+    if (!hasRenderedMarkdown) {
+      return;
+    }
+
+    let rafId = 0;
+    const refreshHighlightLayout = () => {
+      window.cancelAnimationFrame(rafId);
+      rafId = window.requestAnimationFrame(() => {
+        setSelectionHighlights((prev) => {
+          let changed = false;
+          const next = prev.map((highlight) => {
+            const segments = buildSelectionSegmentsFromText(highlight.anchorId, highlight.selectedText);
+            if (segments.length === 0 || highlightSegmentsEqual(highlight.segments, segments)) {
+              return highlight;
+            }
+            changed = true;
+            return {
+              ...highlight,
+              segments,
+            };
+          });
+          return changed ? next : prev;
+        });
+      });
+    };
+
+    const container = scrollRef.current;
+    const contentArea = contentAreaRef.current;
+    const observer = typeof ResizeObserver !== "undefined"
+      ? new ResizeObserver(() => refreshHighlightLayout())
+      : null;
+
+    if (observer && container) {
+      observer.observe(container);
+    }
+    if (observer && contentArea) {
+      observer.observe(contentArea);
+    }
+
+    window.addEventListener("resize", refreshHighlightLayout);
+    refreshHighlightLayout();
+
+    return () => {
+      window.cancelAnimationFrame(rafId);
+      window.removeEventListener("resize", refreshHighlightLayout);
+      observer?.disconnect();
+    };
+  }, [buildSelectionSegmentsFromText, hasRenderedMarkdown]);
+
   const activeCommentIndex = useMemo(() => {
     if (commentThreadIds.length === 0) return -1;
     if (activeCommentThreadId) {
@@ -1967,7 +2608,7 @@ export function KnowledgeDocsPage() {
   const activeThreadId = activeCommentIndex >= 0
     ? commentThreadIds[activeCommentIndex]
     : null;
-  const highlightedThreadId = activeCommentThreadId ?? activeThreadId;
+  const highlightedThreadId = activeCommentThreadId ?? (isAutoCommentHighlightSuppressed ? null : activeThreadId);
 
   const focusCommentThread = useCallback((
     threadId: string,
@@ -1977,32 +2618,37 @@ export function KnowledgeDocsPage() {
     if (!thread) {
       return;
     }
-    if (isCompactPanels) {
+    if (!viewPrefs.showCommentPanel) {
+      updateViewPrefs((prev) => ({ ...prev, showCommentPanel: true }));
+    }
+    if (isCompactComment) {
       setActiveDrawer("comment");
     } else {
       setIsCommentCollapsed(false);
     }
     setActiveCommentThreadId(threadId);
-    if (options.pinToSelection) {
+    setIsAutoCommentHighlightSuppressed(false);
+    const shouldPin = options.pinToSelection ?? !isCompactComment;
+    if (shouldPin) {
       setPinnedThreadId(threadId);
     }
     if (options.scrollToDoc !== false) {
-      scrollToHeading(thread.anchorId);
+      centerThreadInViewport(threadId);
     }
-    if (options.scrollThreadIntoView !== false) {
+    if (isCompactComment && options.scrollThreadIntoView !== false) {
       window.requestAnimationFrame(() => {
         threadRefs.current.get(threadId)?.scrollIntoView({ behavior: "smooth", block: "center" });
       });
     }
-  }, [commentThreadById, isCompactPanels, scrollToHeading]);
+  }, [centerThreadInViewport, commentThreadById, isCompactComment, updateViewPrefs, viewPrefs.showCommentPanel]);
 
   const locateCommentThread = useCallback((threadId: string) => {
     focusCommentThread(threadId, {
       scrollToDoc: false,
       pinToSelection: true,
-      scrollThreadIntoView: isCompactPanels,
+      scrollThreadIntoView: isCompactComment,
     });
-  }, [focusCommentThread, isCompactPanels]);
+  }, [focusCommentThread, isCompactComment]);
 
   const jumpCommentThread = useCallback((direction: -1 | 1) => {
     if (commentThreadIds.length === 0) return;
@@ -2029,12 +2675,12 @@ export function KnowledgeDocsPage() {
   }, [activeThreadId, commentThreadIds, openAssistant, subjectId, threadSessionIds]);
 
   const closeCommentPanel = useCallback(() => {
-    if (isCompactPanels) {
+    if (isCompactComment) {
       closeDrawer();
     } else {
       setIsCommentCollapsed(true);
     }
-  }, [closeDrawer, isCompactPanels]);
+  }, [closeDrawer, isCompactComment]);
 
   const toggleTocCollapse = useCallback((id: string) => {
     setCollapsedTocIds((prev) => {
@@ -2130,24 +2776,62 @@ export function KnowledgeDocsPage() {
     });
   }, [activeHeading, collapsedTocIds, commentsForAnchor, handleTocItemClick, toggleTocCollapse]);
 
+  useEffect(() => {
+    if (!isTocVisible) {
+      setTocScrollThumbStyle((prev) => (prev.height === 0 ? prev : { top: 0, height: 0 }));
+      return;
+    }
+
+    const syncThumb = () => {
+      window.requestAnimationFrame(() => {
+        updateTocScrollThumb();
+      });
+    };
+
+    syncThumb();
+    window.addEventListener("resize", syncThumb);
+    return () => window.removeEventListener("resize", syncThumb);
+  }, [collapsedTocIds, isTocVisible, tocTree, updateTocScrollThumb]);
+
   const tocNav = (
-    <nav ref={tocNavRef} className="toc-scroll flex-1 overflow-y-auto py-2 pr-1">
-      {tocTree.length > 0 ? (
-        renderTocNodes(tocTree)
-      ) : (
-        <div className="px-3 py-4 text-xs text-slate-400 text-center">暂无目录</div>
+    <div className="relative h-full">
+      <nav
+        ref={tocNavRef}
+        className="toc-scroll h-full overflow-y-auto py-2 pr-2"
+        onWheel={handleTocManualScrollStart}
+        onTouchStart={handleTocManualScrollStart}
+        onPointerDown={handleTocManualScrollStart}
+        onScroll={handleTocNavScroll}
+      >
+        {tocTree.length > 0 ? (
+          renderTocNodes(tocTree)
+        ) : (
+          <div className="px-3 py-4 text-xs text-slate-400 text-center">暂无目录</div>
+        )}
+      </nav>
+      {tocScrollThumbStyle.height > 0 && (
+        <div
+          className={cn(
+            "pointer-events-none absolute right-[3px] w-[3px] rounded-full bg-slate-400/55 transition-opacity duration-150",
+            isTocScrollbarVisible ? "opacity-100" : "opacity-0"
+          )}
+          style={{
+            top: tocScrollThumbStyle.top,
+            height: tocScrollThumbStyle.height,
+          }}
+        />
       )}
-    </nav>
+    </div>
   );
 
   const commentPanel = (
     <div
       ref={commentPanelRef}
       className={cn(
-        "relative w-full",
-        isCompactPanels
+        "relative flex h-full w-full min-h-0 flex-col",
+        isCompactComment
           ? "h-full rounded-2xl border border-slate-200 bg-white shadow-2xl flex flex-col overflow-hidden"
-          : "border-l border-slate-200/90 pl-3 bg-transparent overflow-visible"
+          : "bg-white/86 overflow-hidden"
       )}
     >
       <div className="px-1 h-11 border-b border-slate-200/80 flex items-center justify-between">
@@ -2193,12 +2877,12 @@ export function KnowledgeDocsPage() {
             className="w-7 h-7 rounded-lg hover:bg-slate-100 transition-colors flex items-center justify-center text-slate-500 hover:text-slate-700"
             aria-label="收起问答栏"
           >
-            <ChevronRight className={cn("w-4 h-4", isCompactPanels && "rotate-180")} />
+            <ChevronRight className={cn("w-4 h-4", isCompactComment && "rotate-180")} />
           </button>
         </div>
       </div>
 
-      {floatingComment && (
+      {isCompactComment && floatingComment && (
         <div
           className="absolute left-3 right-3 z-30 overflow-hidden rounded-2xl border border-slate-200/90 bg-white/95 shadow-[0_28px_56px_-30px_rgba(15,23,42,0.68)] backdrop-blur"
           style={{ top: floatingComment.top }}
@@ -2216,6 +2900,7 @@ export function KnowledgeDocsPage() {
           </div>
           <div className="space-y-2.5 p-3">
             <textarea
+              ref={floatingComposerTextareaRef}
               value={floatingInput}
               onChange={(e) => setFloatingInput(e.target.value)}
               onKeyDown={(e) => {
@@ -2230,7 +2915,6 @@ export function KnowledgeDocsPage() {
               placeholder="基于这段内容向 AI 提问..."
               rows={3}
               className="w-full resize-none rounded-xl border border-slate-200/90 bg-white px-3 py-2.5 text-sm leading-6 text-slate-800 shadow-inner shadow-slate-100/70 outline-none transition focus:border-slate-300 focus:ring-4 focus:ring-sky-100/80"
-              autoFocus
             />
             <div className="flex items-center justify-between">
               <button
@@ -2257,35 +2941,41 @@ export function KnowledgeDocsPage() {
         </div>
       )}
 
-      <div ref={commentViewportRef} className={cn("relative", isCompactPanels && "flex-1 overflow-y-auto")}>
-        {isCompactPanels && (
+      <div
+        ref={commentViewportRef}
+        className={cn(
+          "relative min-h-0 flex-1",
+          isCompactComment ? "overflow-y-auto bg-slate-50/80" : "overflow-hidden pr-1"
+        )}
+      >
+        {isCompactComment && (
           <>
             <div className="pointer-events-none absolute inset-x-0 top-0 h-12 z-20 bg-gradient-to-b from-slate-50 via-slate-50/80 to-transparent" />
             <div className="pointer-events-none absolute inset-x-0 bottom-0 h-12 z-20 bg-gradient-to-t from-slate-50 via-slate-50/80 to-transparent" />
           </>
         )}
         {!threadHistoryLoaded ? (
-          <div className={cn("p-3", isCompactPanels && "h-full")}>
+          <div className={cn("p-3", isCompactComment && "h-full")}>
             <div className={cn(
               "flex items-center justify-center rounded-xl border border-dashed border-slate-200 bg-slate-50 text-slate-400",
-              isCompactPanels ? "h-full" : "h-24"
+              isCompactComment ? "h-full" : "h-24"
             )}>
               <Loader2 className="h-4 w-4 animate-spin" />
             </div>
           </div>
         ) : threadHistoryError ? (
-          <div className={cn("p-3", isCompactPanels && "h-full")}>
+          <div className={cn("p-3", isCompactComment && "h-full")}>
             <div className="rounded-xl border border-rose-200 bg-rose-50/70 px-4 py-4 text-xs leading-5 text-rose-600">
               {threadHistoryError}
             </div>
           </div>
-        ) : commentThreads.length === 0 ? (
-          <div className={cn("p-3", isCompactPanels && "h-full")}>
+        ) : commentThreads.length === 0 && !floatingComment ? (
+          <div className={cn("p-3", isCompactComment && "h-full")}>
             <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-center">
               <p className="text-sm text-slate-500">选中文本后点击“问问 AI”即可开始对话</p>
             </div>
           </div>
-        ) : isCompactPanels ? (
+        ) : isCompactComment ? (
           <div ref={commentThreadListRef} className="relative p-3 space-y-3">
             {commentThreads.map((thread) => (
               <div
@@ -2313,6 +3003,7 @@ export function KnowledgeDocsPage() {
                   onJumpToAnchor={(id) => {
                     setActiveCommentThreadId(thread.threadId);
                     setPinnedThreadId(thread.threadId);
+                    setIsAutoCommentHighlightSuppressed(false);
                     scrollToHeading(id);
                   }}
                   onOpenAssistant={() => openAiAssistant(thread.threadId)}
@@ -2328,7 +3019,74 @@ export function KnowledgeDocsPage() {
             className="relative px-3 py-3"
             style={{ minHeight: Math.max(160, desktopThreadLayout.totalHeight + 24) }}
           >
-            {commentThreads.map((thread) => {
+            {desktopCommentLayoutThreads.map((thread) => {
+              if (thread.threadId === FLOATING_COMPOSER_THREAD_ID && floatingComment) {
+                const layout = desktopThreadLayout.positions[FLOATING_COMPOSER_THREAD_ID];
+                const top = layout?.top ?? 0;
+                return (
+                  <div
+                    key={FLOATING_COMPOSER_THREAD_ID}
+                    ref={floatingComposerCardRef}
+                    className="absolute left-3 right-3 transition-[top] duration-200 ease-out"
+                    style={{ top }}
+                  >
+                    <div className="overflow-hidden rounded-2xl border border-slate-200/90 bg-white shadow-[0_22px_48px_-32px_rgba(15,23,42,0.45)]">
+                      <div className="border-b border-slate-200/80 bg-[linear-gradient(130deg,rgba(236,253,255,0.82),rgba(248,250,252,0.96),rgba(239,246,255,0.88))] px-3 py-2.5">
+                        <div className="flex items-center gap-2">
+                          <span className="inline-flex h-7 w-7 items-center justify-center rounded-xl bg-slate-900 text-white shadow-sm">
+                            <Sparkles className="h-3.5 w-3.5" />
+                          </span>
+                          <div className="min-w-0">
+                            <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">问问 AI</p>
+                            <p className="truncate text-xs text-slate-700">&ldquo;{floatingComment.selectedText.slice(0, 72)}&rdquo;</p>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="space-y-2.5 p-3">
+                        <textarea
+                          ref={floatingComposerTextareaRef}
+                          value={floatingInput}
+                          onChange={(e) => setFloatingInput(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" && !e.shiftKey) {
+                              e.preventDefault();
+                              addComment();
+                            }
+                            if (e.key === "Escape") {
+                              dismissCommentComposer();
+                            }
+                          }}
+                          placeholder="基于这段内容向 AI 提问..."
+                          rows={3}
+                          className="w-full resize-none rounded-xl border border-slate-200/90 bg-white px-3 py-2.5 text-sm leading-6 text-slate-800 shadow-inner shadow-slate-100/70 outline-none transition focus:border-slate-300 focus:ring-4 focus:ring-sky-100/80"
+                        />
+                        <div className="flex items-center justify-between">
+                          <button
+                            onClick={dismissCommentComposer}
+                            className="rounded-lg px-2.5 py-1 text-xs text-slate-500 transition hover:bg-slate-100 hover:text-slate-700"
+                          >
+                            取消
+                          </button>
+                          <button
+                            onClick={addComment}
+                            disabled={!floatingInput.trim()}
+                            className={cn(
+                              "inline-flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-medium transition",
+                              floatingInput.trim()
+                                ? "bg-slate-900 text-white shadow-sm hover:bg-slate-800"
+                                : "bg-slate-100 text-slate-300"
+                            )}
+                          >
+                            <Send className="h-3.5 w-3.5" />
+                            发送
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              }
+
               const layout = desktopThreadLayout.positions[thread.threadId];
               const top = layout?.top ?? 0;
               return (
@@ -2356,15 +3114,10 @@ export function KnowledgeDocsPage() {
                     onDraftChange={(value) => updateThreadDraft(thread.threadId, value)}
                     onSend={() => sendThreadReply(thread.threadId, thread.anchorId, thread.selectedText)}
                     onFocus={() => focusCommentThread(thread.threadId, {
-                      scrollToDoc: false,
                       pinToSelection: true,
                       scrollThreadIntoView: false,
                     })}
-                    onJumpToAnchor={(id) => {
-                      setActiveCommentThreadId(thread.threadId);
-                      setPinnedThreadId(thread.threadId);
-                      scrollToHeading(id);
-                    }}
+                    onJumpToAnchor={() => focusCommentThread(thread.threadId, { pinToSelection: true, scrollThreadIntoView: false })}
                     onOpenAssistant={() => openAiAssistant(thread.threadId)}
                     compactMode={false}
                     isAligned={layout?.aligned ?? false}
@@ -2377,6 +3130,13 @@ export function KnowledgeDocsPage() {
       </div>
     </div>
   );
+
+  const desktopTocWidthClass = "w-[clamp(14rem,16vw,18rem)]";
+  const desktopCommentWidthClass = "w-[clamp(18rem,23vw,26rem)]";
+  const showDesktopCommentPanel = !isCompactComment && viewPrefs.showCommentPanel && !isCommentCollapsed;
+  const pageShellMaxWidthClass = pageWideMode ? "max-w-none" : showDesktopCommentPanel ? "max-w-[1480px]" : "max-w-[1120px]";
+  const docColumnMaxWidthClass = pageWideMode ? "max-w-none" : showDesktopCommentPanel ? "max-w-[920px]" : "max-w-[980px]";
+  const showFloatingActions = Boolean(subjectId && !isBuildActive && !showDocGeneratingState);
 
   if (!hasRenderedMarkdown && (isBuildActive || isWaitingForRequestedBuild || showDocGeneratingState)) {
     return (
@@ -2397,48 +3157,10 @@ export function KnowledgeDocsPage() {
   }
 
   return (
-    <div className="relative flex-1 w-full min-h-full overflow-hidden bg-slate-50 dark:bg-slate-900 flex flex-row">
-      
-      {/* Main Doc Wrapper */}
-      <div className="relative h-full transition-all duration-500 ease-[cubic-bezier(0.25,1,0.5,1)] flex flex-col w-full bg-white dark:bg-slate-900 z-10">
-        {!isCompactPanels && (
-        <div className="hidden lg:block absolute left-4 top-16 z-30">
-          {isTocCollapsed ? (
-            <aside className="w-11 h-11">
-              <button
-                onClick={() => setIsTocCollapsed(false)}
-                className="w-11 h-11 rounded-xl border border-slate-200/80 bg-slate-50/95 backdrop-blur-sm shadow-sm text-slate-600 hover:text-slate-900 hover:bg-white transition-colors flex items-center justify-center"
-                aria-label="展开目录"
-                title={activeTocItem?.text ? `展开目录（当前：${activeTocItem.text}）` : "展开目录"}
-              >
-                <FileText className="w-4 h-4" />
-                <ChevronRight className="w-3.5 h-3.5 -ml-0.5" />
-              </button>
-            </aside>
-          ) : (
-            <aside className="w-[16%] min-w-[200px] max-w-[280px] h-[calc(100vh-7rem)] max-h-[820px] flex flex-col overflow-hidden">
-              <div className="px-2 h-10 flex items-center justify-between">
-                <div className="flex items-center gap-2 text-slate-900">
-                  <FileText className="w-4 h-4" />
-                  <span className="text-sm font-semibold">目录</span>
-                </div>
-                <button
-                  onClick={() => setIsTocCollapsed(true)}
-                  className="w-7 h-7 rounded-lg hover:bg-slate-100 transition-colors flex items-center justify-center text-slate-500 hover:text-slate-700"
-                  aria-label="收起目录"
-                >
-                  <ChevronRight className="w-4 h-4 rotate-180" />
-                </button>
-              </div>
-              {tocNav}
-            </aside>
-          )}
-        </div>
-      )}
-
-      {isCompactPanels && (
-        <>
-          <div className="fixed top-3 left-16 lg:left-[17rem] z-[79] flex items-center gap-2">
+    <div className="relative flex h-full min-h-0 flex-1 w-full overflow-hidden bg-slate-50 dark:bg-slate-900">
+      <div className="relative z-10 flex min-h-0 h-full w-full bg-white dark:bg-slate-900">
+      {hasCompactTocControl && (
+          <div className="fixed left-3 top-3 z-[79] flex items-center gap-2">
             <button
               onClick={openTocDrawer}
               className={cn(
@@ -2450,6 +3172,11 @@ export function KnowledgeDocsPage() {
             >
               <FileText className="w-4 h-4" />
             </button>
+          </div>
+      )}
+
+      {hasCompactCommentControl && (
+          <div className="fixed top-3 right-6 z-[79] flex items-center gap-2">
             <button
               onClick={openCommentDrawer}
               className={cn(
@@ -2467,15 +3194,17 @@ export function KnowledgeDocsPage() {
               )}
             </button>
           </div>
+      )}
 
-          {activeDrawer && (
-            <button
-              onClick={closeDrawer}
-              className="fixed inset-0 z-[76] bg-slate-900/24"
-              aria-label="关闭抽屉遮罩"
-            />
-          )}
+      {activeDrawer && isCompactPanels && (
+        <button
+          onClick={closeDrawer}
+          className="fixed inset-0 z-[76] bg-slate-900/24"
+          aria-label="关闭抽屉遮罩"
+        />
+      )}
 
+      {hasCompactTocControl && (
           <aside
             className={cn(
               "fixed left-3 top-14 bottom-4 z-[78] w-[min(20rem,calc(100vw-1.5rem))] rounded-2xl border border-slate-200 bg-white/98 shadow-2xl flex flex-col overflow-hidden transition-transform duration-200",
@@ -2497,23 +3226,9 @@ export function KnowledgeDocsPage() {
             </div>
             <div className="px-1 pb-2 flex-1 overflow-hidden">{tocNav}</div>
           </aside>
-        </>
       )}
 
-      {!isCompactPanels && isCommentCollapsed && (
-        <aside className="hidden lg:flex absolute right-4 top-16 z-20">
-          <button
-            onClick={() => setIsCommentCollapsed(false)}
-            className="rounded-xl border border-slate-200 bg-white/95 backdrop-blur-sm shadow-sm px-2 py-2.5 text-slate-600 hover:text-slate-900 hover:bg-white transition-colors flex items-center gap-1"
-            aria-label="展开问答栏"
-          >
-            <Bot className="w-4 h-4" />
-            <ChevronRight className="w-4 h-4 rotate-180" />
-          </button>
-        </aside>
-      )}
-
-      {isCompactPanels && (
+      {hasCompactCommentControl && (
         <aside
           className={cn(
             "fixed right-3 top-14 bottom-4 z-[78] w-[min(24rem,calc(100vw-1.5rem))] transition-transform duration-200",
@@ -2524,32 +3239,77 @@ export function KnowledgeDocsPage() {
         </aside>
       )}
 
-      <div
-        ref={scrollRef}
-        className="h-full overflow-y-auto relative doc-scroll-container content-scroll"
-        onMouseUp={handleTextSelect}
-      >
-        <div
+      {!isCompactToc && viewPrefs.showToc && (
+        <aside
           className={cn(
-            "min-h-full pr-4 transition-[padding-left,padding-right] duration-300 pl-4 md:pl-6",
-            isCompactPanels
-              ? "lg:pr-6 lg:pl-6"
-              : "lg:pr-6",
-            isCompactPanels
-              ? null
-              : isTocCollapsed
-                ? "lg:pl-20"
-                : "lg:pl-[17%]"
+            "h-full min-h-0 shrink-0 overflow-hidden bg-white/88 backdrop-blur-md transition-[width] duration-300 ease-out",
+            isTocCollapsed ? "w-[56px]" : desktopTocWidthClass
           )}
         >
-          <div className="mx-auto max-w-[1800px] px-6 py-8">
-            <div
-              ref={contentAreaRef}
-              className="feishu-doc-content mx-auto flex min-h-full w-full max-w-[1380px] items-start gap-3"
-              >
-                <article
-                  className="min-w-0 flex-1 px-6 py-8 md:px-10 md:py-10"
+          <div className="flex h-full flex-col">
+            {isTocCollapsed ? (
+              <div className="flex flex-1 items-start justify-start px-2 py-3">
+                <button
+                  onClick={() => setIsTocCollapsed(false)}
+                  className="flex h-8 w-8 items-center justify-center rounded-lg text-[#3370FF] transition-colors hover:bg-[#EDF3FF] hover:text-[#245BDB]"
+                  aria-label="展开目录"
+                  title={activeTocItem?.text ? `展开目录（当前：${activeTocItem.text}）` : "展开目录"}
                 >
+                  <ChevronsRight className="h-4 w-4" />
+                </button>
+              </div>
+            ) : (
+              <>
+                <div className="sticky top-0 z-10 bg-white/92 px-3 pb-1 pt-3 backdrop-blur-md">
+                  <button
+                    onClick={() => setIsTocCollapsed(true)}
+                    className="flex h-8 w-8 items-center justify-center rounded-lg text-[#3370FF] transition-colors hover:bg-[#EDF3FF] hover:text-[#245BDB]"
+                    aria-label="收起目录"
+                    title="收起目录"
+                  >
+                    <ChevronsLeft className="h-4 w-4" />
+                  </button>
+                </div>
+                <div className="min-h-0 flex-1 overflow-hidden px-2 pb-3 pt-0.5">
+                  {tocNav}
+                </div>
+              </>
+            )}
+          </div>
+        </aside>
+      )}
+
+      <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
+        {!isCompactComment && viewPrefs.showCommentPanel && isCommentCollapsed && (
+          <aside className="absolute right-4 top-4 z-20 hidden lg:flex">
+            <button
+              onClick={() => setIsCommentCollapsed(false)}
+              className="rounded-xl border border-slate-200 bg-white/95 px-2 py-2.5 text-slate-600 shadow-sm transition-colors hover:bg-white hover:text-slate-900"
+              aria-label="展开问答栏"
+            >
+              <Bot className="w-4 h-4" />
+            </button>
+          </aside>
+        )}
+
+        <div
+          ref={scrollRef}
+          className="relative h-full overflow-y-auto doc-scroll-container content-scroll"
+          onMouseUp={handleTextSelect}
+        >
+          <div className="min-h-full px-4 py-8 md:px-6 lg:px-8">
+            <div
+              className={cn(
+                "mx-auto flex min-h-full w-full items-start justify-center",
+                showDesktopCommentPanel && "gap-4 xl:gap-5",
+                pageShellMaxWidthClass,
+              )}
+            >
+              <div
+                ref={contentAreaRef}
+                className={cn("feishu-doc-content min-w-0 w-full", docColumnMaxWidthClass)}
+              >
+                <article className="min-w-0 px-2 py-2 md:px-4">
                   <SubjectVectorNotice status={docMarkdownQuery.data?.vector_status} className="mb-6" />
                   {docMarkdownQuery.isError ? (
                     <DocLoadErrorState
@@ -2599,13 +3359,18 @@ export function KnowledgeDocsPage() {
                     </>
                   )}
                 </article>
-                {!isCompactPanels && !isCommentCollapsed && (
-                  <aside className="hidden lg:block w-[22%] min-w-[260px] max-w-[380px] shrink-0 py-8">
-                    {commentPanel}
-                  </aside>
-                )}
+              </div>
+              {showDesktopCommentPanel && (
+                <aside
+                  className={cn(
+                    "sticky top-4 h-[calc(100dvh-2rem)] min-h-0 shrink-0 border-l border-slate-200/80 bg-white/92 px-3 py-4 backdrop-blur-md",
+                    desktopCommentWidthClass,
+                  )}
+                >
+                  {commentPanel}
+                </aside>
+              )}
             </div>
-          </div>
 
           {selectionHighlights.map((highlight) => (
             <div key={highlight.id}>
@@ -2616,10 +3381,10 @@ export function KnowledgeDocsPage() {
                   onClick={() => locateCommentThread(highlight.threadId)}
                   data-highlight-thread-id={highlight.threadId}
                   className={cn(
-                    "group absolute z-30 rounded-[3px] transition-colors focus-visible:outline-none",
+                    "group absolute z-30 rounded-[2px] transition-[background-color,box-shadow] duration-150 focus-visible:outline-none",
                     highlightedThreadId === highlight.threadId
-                      ? "bg-blue-100/45 ring-1 ring-blue-300/70 shadow-[0_0_0_1px_rgba(59,130,246,0.18)]"
-                      : "bg-transparent hover:bg-amber-100/35 focus-visible:ring-2 focus-visible:ring-amber-300/70"
+                      ? "bg-amber-100/60 shadow-[0_4px_12px_-14px_rgba(180,83,9,0.65)]"
+                      : "bg-transparent hover:bg-amber-50/25 focus-visible:ring-2 focus-visible:ring-amber-300/45"
                   )}
                   style={{
                     top: segment.top,
@@ -2632,10 +3397,10 @@ export function KnowledgeDocsPage() {
                 >
                   <span
                     className={cn(
-                      "pointer-events-none absolute inset-x-0 bottom-0 rounded-full transition-all",
+                      "pointer-events-none absolute inset-x-[1px] bottom-[-3px] rounded-full transition-all duration-150",
                       highlightedThreadId === highlight.threadId
-                        ? "h-[2.5px] bg-blue-500 shadow-[0_0_0_1px_rgba(59,130,246,0.28),0_4px_10px_-6px_rgba(37,99,235,0.85)]"
-                        : "h-[1.5px] bg-amber-300/90 shadow-[0_0_0_1px_rgba(245,158,11,0.24),0_2px_8px_-6px_rgba(245,158,11,0.7)] group-hover:h-[2px] group-hover:bg-amber-400/95"
+                        ? "h-[1.5px] bg-amber-600/95 shadow-[0_3px_8px_-5px_rgba(180,83,9,0.85)]"
+                        : "h-px bg-amber-400/65 shadow-[0_2px_6px_-5px_rgba(180,83,9,0.65)] group-hover:bg-amber-500/75"
                     )}
                   />
                 </button>
@@ -2643,10 +3408,25 @@ export function KnowledgeDocsPage() {
             </div>
           ))}
 
+          {floatingComment?.segments.map((segment, index) => (
+            <div
+              key={`floating-selection-${index}`}
+              className="pointer-events-none absolute z-30 rounded-[2px] bg-amber-50/40"
+              style={{
+                top: segment.top,
+                left: segment.left,
+                width: segment.width,
+                height: segment.height,
+              }}
+            >
+              <span className="absolute inset-x-[1px] bottom-[-3px] h-px rounded-full bg-amber-500/80 shadow-[0_2px_6px_-5px_rgba(180,83,9,0.75)]" />
+            </div>
+          ))}
+
           {floatingToolbar && (
             <div
               ref={floatingRef}
-              className="absolute z-50 -translate-x-1/2"
+              className="absolute z-50"
               style={{
                 top: floatingToolbar.top,
                 left: floatingToolbar.left,
@@ -2668,19 +3448,116 @@ export function KnowledgeDocsPage() {
               </div>
             </div>
           )}
-
+        </div>
         </div>
       </div>
+
       </div>
 
+      {showFloatingActions && isSettingsPanelOpen && (
+        <div
+          ref={settingsPanelRef}
+          className="fixed bottom-20 right-6 z-[87] w-[min(22rem,calc(100vw-2rem))] overflow-hidden rounded-3xl border border-slate-200/90 bg-white/96 shadow-[0_22px_60px_-32px_rgba(15,23,42,0.36)] backdrop-blur-xl"
+        >
+          <div className="border-b border-slate-200/80 px-4 py-3">
+            <p className="text-sm font-semibold text-slate-900">页面设置</p>
+            <p className="mt-1 text-xs leading-5 text-slate-500">切换文档页的阅读宽度与侧栏显示方式。</p>
+          </div>
+          <div className="p-3">
+            <button
+              type="button"
+              onClick={() => {
+                updateViewPrefs((prev) => ({ ...prev, widePage: !prev.widePage }));
+              }}
+              className="flex w-full items-center justify-between rounded-2xl px-3 py-3 text-left transition hover:bg-slate-50"
+              aria-pressed={pageWideMode}
+            >
+              <div className="flex min-w-0 items-start gap-3">
+                <span className="mt-0.5 inline-flex h-8 w-8 items-center justify-center rounded-xl bg-slate-100 text-slate-600">
+                  <ExternalLink className="h-4 w-4" />
+                </span>
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-slate-900">宽页模式</p>
+                  <p className="mt-1 text-xs leading-5 text-slate-500">正文根据剩余空间自适应铺开，目录和问答栏同步扩展。</p>
+                </div>
+              </div>
+              <span className={cn("ml-3 flex h-6 w-11 shrink-0 rounded-full p-0.5 transition", pageWideMode ? "bg-slate-900" : "bg-slate-200")}>
+                <span className={cn("h-5 w-5 rounded-full bg-white shadow-sm transition", pageWideMode ? "translate-x-5" : "translate-x-0")} />
+              </span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                updateViewPrefs((prev) => ({ ...prev, showToc: !prev.showToc }));
+                if (!viewPrefs.showToc) {
+                  setIsTocCollapsed(false);
+                }
+              }}
+              className="flex w-full items-center justify-between rounded-2xl px-3 py-3 text-left transition hover:bg-slate-50"
+              aria-pressed={viewPrefs.showToc}
+            >
+              <div className="flex min-w-0 items-start gap-3">
+                <span className="mt-0.5 inline-flex h-8 w-8 items-center justify-center rounded-xl bg-slate-100 text-slate-600">
+                  <FileText className="h-4 w-4" />
+                </span>
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-slate-900">显示目录</p>
+                  <p className="mt-1 text-xs leading-5 text-slate-500">保留左侧目录轨道，跟随正文标题高亮。</p>
+                </div>
+              </div>
+              <span className={cn("ml-3 flex h-6 w-11 shrink-0 rounded-full p-0.5 transition", viewPrefs.showToc ? "bg-slate-900" : "bg-slate-200")}>
+                <span className={cn("h-5 w-5 rounded-full bg-white shadow-sm transition", viewPrefs.showToc ? "translate-x-5" : "translate-x-0")} />
+              </span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                updateViewPrefs((prev) => ({ ...prev, showCommentPanel: !prev.showCommentPanel }));
+                if (!viewPrefs.showCommentPanel) {
+                  setIsCommentCollapsed(false);
+                }
+              }}
+              className="flex w-full items-center justify-between rounded-2xl px-3 py-3 text-left transition hover:bg-slate-50"
+              aria-pressed={viewPrefs.showCommentPanel}
+            >
+              <div className="flex min-w-0 items-start gap-3">
+                <span className="mt-0.5 inline-flex h-8 w-8 items-center justify-center rounded-xl bg-slate-100 text-slate-600">
+                  <Bot className="h-4 w-4" />
+                </span>
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-slate-900">显示问答栏</p>
+                  <p className="mt-1 text-xs leading-5 text-slate-500">显示右侧 AI 问答会话区，并让划词追问对齐到对应段落。</p>
+                </div>
+              </div>
+              <span className={cn("ml-3 flex h-6 w-11 shrink-0 rounded-full p-0.5 transition", viewPrefs.showCommentPanel ? "bg-slate-900" : "bg-slate-200")}>
+                <span className={cn("h-5 w-5 rounded-full bg-white shadow-sm transition", viewPrefs.showCommentPanel ? "translate-x-5" : "translate-x-0")} />
+              </span>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {showFloatingActions && (
+        <button
+          ref={settingsButtonRef}
+          type="button"
+          onClick={() => setIsSettingsPanelOpen((prev) => !prev)}
+          className="fixed bottom-6 right-6 z-[88] inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-zinc-200/80 bg-white/95 text-zinc-700 shadow-[0_2px_8px_rgba(0,0,0,0.04),0_8px_24px_rgba(0,0,0,0.06)] backdrop-blur-xl transition duration-300 hover:border-zinc-300 hover:bg-white hover:text-zinc-900 active:scale-[0.98]"
+          aria-label="打开页面设置"
+          aria-expanded={isSettingsPanelOpen}
+        >
+          <SlidersHorizontal className="h-4 w-4" />
+        </button>
+      )}
+
       {/* Graph Floating Button */}
-      {subjectId && !isBuildActive && !showDocGeneratingState && (
+      {showFloatingActions && (
         <button
           type="button"
           onClick={openGraphPanel}
           className={cn(
             "fixed bottom-20 right-6 z-[86] inline-flex h-11 items-center gap-2 rounded-2xl border border-zinc-200/80 bg-white/95 px-4 text-[14px] font-medium text-zinc-700 shadow-[0_2px_8px_rgba(0,0,0,0.04),0_8px_24px_rgba(0,0,0,0.06)] backdrop-blur-xl transition duration-300 hover:border-zinc-300 hover:bg-white hover:text-zinc-900 active:scale-[0.98]",
-            isGraphDrawerOpen ? "pointer-events-none translate-y-4 opacity-0" : "translate-y-0 opacity-100"
+            isGraphDrawerOpen || isSettingsPanelOpen ? "pointer-events-none translate-y-4 opacity-0" : "translate-y-0 opacity-100"
           )}
           aria-label="打开知识图谱"
         >

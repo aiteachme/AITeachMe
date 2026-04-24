@@ -70,8 +70,8 @@ export function Layout() {
               {isFullBleed || pathname === "/" ? (
                 <div
                   className={cn(
-                    "flex w-full flex-1 flex-col",
-                    isElectron ? "min-h-full" : "min-h-[calc(100vh-4rem)]",
+                    "flex h-full w-full flex-1 flex-col",
+                    isElectron ? "min-h-0" : "min-h-[calc(100vh-4rem)]",
                   )}
                 >
                   <Outlet />
