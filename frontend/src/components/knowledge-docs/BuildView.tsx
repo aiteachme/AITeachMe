@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
-import { Check, CheckCircle2, Code2, Loader2, PlayCircle } from "lucide-react";
+import { Check, CheckCircle2, ChevronRight, Code2, Loader2, PanelRightClose, PanelRightOpen, PlayCircle } from "lucide-react";
 
 import { cn } from "../../lib/utils";
 import type { FileRecord } from "../../api/generated/model";
@@ -86,6 +86,7 @@ export function BuildView({
   subjectId,
 }: Props) {
   const [selectedPreviewChapter, setSelectedPreviewChapter] = useState<number | null>(null);
+  const [detailsOpen, setDetailsOpen] = useState(false);
 
   const isBuildActive = Boolean(
     buildStage && !(["completed", "failed", "cancelled"] as string[]).includes(buildStage)
@@ -185,122 +186,101 @@ export function BuildView({
       animate={{ opacity: 1 }}
       transition={{ duration: 0.35 }}
       className={cn(
-        "w-full h-full flex flex-col lg:flex-row bg-white dark:bg-slate-900 overflow-hidden",
+        "w-full h-full flex flex-col bg-white dark:bg-slate-900 overflow-hidden",
         className
       )}
     >
-      <div className="flex-shrink-0 w-full lg:w-[260px] flex flex-col border-r border-zinc-100 dark:border-slate-800 bg-gradient-to-b from-white to-zinc-50/40 dark:from-slate-900 dark:to-slate-950/30">
-        <div className="px-6 pt-7 pb-5">
-          <div className="flex items-start justify-between mb-4">
-            <div className="flex-1 min-w-0 pr-3">
-              <h2 className="text-[13px] font-semibold text-zinc-900 dark:text-zinc-100 leading-snug flex items-center gap-1.5">
-                {isFetching && <Loader2 className="w-3.5 h-3.5 animate-spin text-zinc-400 dark:text-slate-500 shrink-0" />}
-                <span className="line-clamp-2">{statusText || "任务初始化..."}</span>
-              </h2>
+      <div className="border-b border-zinc-100 bg-white px-5 py-4 dark:border-slate-800 dark:bg-slate-900 lg:px-8">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-zinc-900 text-white dark:bg-zinc-100 dark:text-slate-950">
+                {isFetching ? <Loader2 className="h-4 w-4 animate-spin" /> : <Code2 className="h-4 w-4" />}
+              </span>
+              <div className="min-w-0">
+                <h2 className="truncate text-[15px] font-semibold text-zinc-950 dark:text-zinc-50">
+                  {statusText || "正在准备知识文档..."}
+                </h2>
+                <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-zinc-500 dark:text-slate-400">
+                  <span>{chapters.length > 0 ? `${chapters.length} 个章节` : "等待章节计划"}</span>
+                  {buildModeLabel ? <span>{buildModeLabel}</span> : null}
+                  {(sseConnected || isBuildActive) ? (
+                    <span className="inline-flex items-center gap-1.5 text-blue-600 dark:text-blue-400">
+                      <span className={cn("h-1.5 w-1.5 rounded-full", sseConnected ? "bg-blue-500" : "bg-zinc-300 dark:bg-slate-600")} />
+                      {sseConnected ? "实时更新" : "等待实时更新"}
+                    </span>
+                  ) : null}
+                </div>
+              </div>
             </div>
-            <span className={cn(
-              "text-[12px] font-semibold tabular-nums px-2.5 py-1 rounded-md shrink-0",
-              roundedProgress === 100
-                ? "bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400"
-                : "bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-400"
-            )}>
-              {roundedProgress}%
-            </span>
-          </div>
-          <div className="h-1 w-full bg-zinc-100 dark:bg-slate-800 rounded-full overflow-hidden">
-            <motion.div
-              className={cn(
-                "h-full rounded-full",
-                roundedProgress === 100 ? "bg-emerald-500" : "bg-blue-500 animate-pulse"
-              )}
-              initial={{ width: 0 }}
-              animate={{ width: `${roundedProgress}%` }}
-              transition={{ duration: 0.5 }}
-            />
-          </div>
-          {buildModeLabel ? (
-            <div className="mt-3">
-              <span className="inline-flex rounded-full bg-zinc-100 px-2.5 py-1 text-[10.5px] text-zinc-500 dark:bg-slate-800 dark:text-slate-400">
-                {buildModeLabel}
+            <div className="mt-4 flex items-center gap-3">
+              <div className="h-2 flex-1 overflow-hidden rounded-full bg-zinc-100 dark:bg-slate-800">
+                <motion.div
+                  className={cn("h-full rounded-full", roundedProgress === 100 ? "bg-emerald-500" : "bg-blue-500")}
+                  initial={{ width: 0 }}
+                  animate={{ width: `${roundedProgress}%` }}
+                  transition={{ duration: 0.45 }}
+                />
+              </div>
+              <span className="w-11 text-right text-[13px] font-semibold tabular-nums text-zinc-900 dark:text-zinc-100">
+                {roundedProgress}%
               </span>
             </div>
-          ) : null}
+          </div>
+          <button
+            type="button"
+            onClick={() => setDetailsOpen((value) => !value)}
+            aria-expanded={detailsOpen}
+            className="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-lg border border-zinc-200 bg-white px-3 text-[13px] font-medium text-zinc-700 transition hover:bg-zinc-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+          >
+            {detailsOpen ? <PanelRightClose className="h-4 w-4" /> : <PanelRightOpen className="h-4 w-4" />}
+            细节
+          </button>
         </div>
 
-        <div className="mx-6 border-t border-zinc-100 dark:border-slate-800" />
-
-        <div className="flex-1 overflow-y-auto px-6 py-5 build-scroll">
-          <h3 className="text-[10px] font-semibold text-zinc-300 dark:text-slate-500 tracking-[0.18em] mb-5">
-            构建阶段
-          </h3>
-          <div className="relative border-l border-zinc-200/60 dark:border-slate-700 ml-[7px] space-y-6">
-            {timelineSteps.map((step, idx) => {
-              const isDone = step.state === "done";
-              const isActive = step.state === "active";
-              return (
-                <div key={step.key} className="relative pl-6">
-                  <div className={cn(
-                    "absolute left-[-9px] top-[1px] w-4 h-4 rounded-full border bg-white dark:bg-slate-900 flex items-center justify-center transition-colors",
-                    isDone ? "border-blue-500 bg-blue-500 dark:bg-blue-500" : isActive ? "border-blue-500" : "border-zinc-200 dark:border-slate-700"
+        <div className="mt-4 grid grid-cols-2 gap-2 md:grid-cols-3 lg:grid-cols-6">
+          {timelineSteps.map((step, idx) => {
+            const isDone = step.state === "done";
+            const isActive = step.state === "active";
+            return (
+              <div
+                key={step.key}
+                className={cn(
+                  "min-h-[52px] rounded-lg border px-3 py-2 transition-colors",
+                  isActive
+                    ? "border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-blue-300"
+                    : isDone
+                      ? "border-emerald-100 bg-emerald-50 text-emerald-700 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300"
+                      : "border-zinc-100 bg-zinc-50 text-zinc-400 dark:border-slate-800 dark:bg-slate-950/40 dark:text-slate-500",
+                )}
+              >
+                <div className="flex items-center gap-2">
+                  <span className={cn(
+                    "flex h-4 w-4 items-center justify-center rounded-full border text-[9px]",
+                    isDone ? "border-emerald-500 bg-emerald-500 text-white" : isActive ? "border-blue-500 bg-white dark:bg-slate-900" : "border-zinc-200 dark:border-slate-700",
                   )}>
-                    {isDone && <Check className="w-2.5 h-2.5 text-white" strokeWidth={3} />}
-                    {isActive && (
-                      <>
-                        <div className="absolute inset-0 rounded-full border border-blue-500 animate-ping opacity-75" />
-                        <div className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
-                      </>
-                    )}
-                  </div>
-                  <div>
-                    <div className={cn(
-                      "text-[13px] leading-none mb-1.5 flex items-center gap-1.5",
-                      isActive ? "text-blue-600 dark:text-blue-400 font-medium" : isDone ? "text-zinc-700 dark:text-slate-300" : "text-zinc-400 dark:text-slate-500"
-                    )}>
-                      <span className="text-[10px] font-mono opacity-50">0{idx + 1}</span>
-                      {step.title}
-                    </div>
-                    {isActive && (
-                      <div className="text-[11px] text-zinc-500 dark:text-slate-400 leading-snug">
-                        {step.description}
-                      </div>
-                    )}
-                  </div>
+                    {isDone ? <Check className="h-2.5 w-2.5" strokeWidth={3} /> : idx + 1}
+                  </span>
+                  <span className="truncate text-[12px] font-medium">{step.title}</span>
                 </div>
-              );
-            })}
-          </div>
+                {isActive ? <p className="mt-1 line-clamp-1 text-[11px] opacity-80">{step.description}</p> : null}
+              </div>
+            );
+          })}
         </div>
       </div>
 
-      <div className="flex-1 min-w-0 flex flex-col relative bg-white dark:bg-slate-900">
-        <div className="h-12 flex items-center justify-between border-b border-zinc-100 dark:border-slate-800 px-6 lg:px-8 bg-white/90 dark:bg-slate-900/90">
-          <div className="flex items-center gap-2 min-w-0">
-            <Code2 className="w-3.5 h-3.5 text-zinc-300 dark:text-slate-600 shrink-0" />
-            <span className="text-[13px] font-semibold text-zinc-900 dark:text-zinc-100">动态生成</span>
-            <span className="text-[11px] text-zinc-400 dark:text-slate-500 truncate">
-              {chapters.length > 0 ? `${chapters.length} 个章节并行推进` : "等待章节计划"}
-            </span>
-          </div>
-          {(sseConnected || isBuildActive) && (
-            <div className="flex items-center gap-2">
-              <span className="relative flex h-2 w-2">
-                <span className="absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75 animate-ping" />
-                <span className="relative inline-flex h-2 w-2 rounded-full bg-blue-500" />
-              </span>
-              <span className="text-[11px] font-medium text-blue-500 dark:text-blue-400">
-                {sseConnected ? "实时连接" : "等待连接"}
-              </span>
+      <div className="flex-1 min-h-0 flex bg-white dark:bg-slate-900">
+        <div className="flex-1 min-w-0 flex flex-col lg:flex-row">
+          <div className="w-full shrink-0 border-b border-zinc-100 bg-zinc-50/50 dark:border-slate-800 dark:bg-slate-950/20 lg:w-[280px] lg:border-b-0 lg:border-r">
+            <div className="flex items-center justify-between px-4 py-3">
+              <div>
+                <div className="text-[12px] font-semibold text-zinc-800 dark:text-slate-100">章节进度</div>
+                <div className="mt-0.5 text-[11px] text-zinc-400 dark:text-slate-500">选择章节查看生成预览</div>
+              </div>
+              <ChevronRight className="hidden h-4 w-4 text-zinc-300 lg:block" />
             </div>
-          )}
-        </div>
-
-        <div className="flex-1 min-h-0 flex">
-          <div className="w-[245px] shrink-0 border-r border-zinc-100 dark:border-slate-800 bg-white dark:bg-slate-900/50 flex flex-col">
-            <div className="px-4 py-4 border-b border-zinc-50 dark:border-slate-800">
-              <div className="text-[12px] font-medium text-zinc-500 dark:text-slate-400">章节流</div>
-            </div>
-
-            <div className="flex-1 overflow-y-auto p-2.5 space-y-0.5 build-scroll">
+            <div className="max-h-52 overflow-y-auto px-2.5 pb-3 build-scroll lg:max-h-none lg:h-[calc(100%-64px)]">
               {chapters.map((chapter) => {
                 const isSelected = selectedPreviewChapter === chapter.chapter_index;
                 const isStreaming = spotlightChapter?.chapter_index === chapter.chapter_index;
@@ -310,11 +290,12 @@ export function BuildView({
                   <button
                     key={chapter.chapter_index}
                     onClick={() => setSelectedPreviewChapter(chapter.chapter_index)}
+                    aria-pressed={isSelected}
                     className={cn(
-                      "w-full text-left px-3 py-2.5 rounded-lg text-[12px] transition-all flex items-start gap-2.5",
+                      "w-full text-left px-3 py-3 rounded-lg text-[12px] transition-all flex items-start gap-2.5",
                       isSelected
-                        ? "bg-zinc-900 dark:bg-slate-800 text-white dark:text-zinc-100 font-medium shadow-sm"
-                        : "text-zinc-600 dark:text-slate-400 hover:bg-zinc-50 dark:hover:bg-slate-800/50"
+                        ? "bg-zinc-900 text-white shadow-sm dark:bg-slate-800 dark:text-zinc-100"
+                        : "text-zinc-600 hover:bg-white dark:text-slate-400 dark:hover:bg-slate-800/60"
                     )}
                   >
                     <div className="mt-1 relative flex items-center justify-center shrink-0 w-3 h-3">
@@ -341,7 +322,7 @@ export function BuildView({
                 );
               })}
               {chapters.length === 0 && (
-                <div className="text-[12px] text-zinc-300 text-center py-12">大纲未就绪</div>
+                <div className="text-[12px] text-zinc-300 text-center py-10">大纲未就绪</div>
               )}
             </div>
           </div>
@@ -404,7 +385,7 @@ export function BuildView({
                     )}
                   </div>
 
-                  <div className="flex-1 overflow-y-auto px-10 py-10 build-scroll bg-white dark:bg-slate-900">
+                  <div className="flex-1 overflow-y-auto px-5 py-6 build-scroll bg-white dark:bg-slate-900 md:px-10 md:py-9">
                     {selectedExcerpt ? (
                       <div className="max-w-[760px] mx-auto space-y-6 pb-10">
                         <div className="flex flex-wrap items-center gap-2">
@@ -457,7 +438,7 @@ export function BuildView({
                           )}
                         </div>
 
-                        {selectedChapterEvents.length > 0 ? (
+                        {detailsOpen && selectedChapterEvents.length > 0 ? (
                           <EventTrail events={selectedChapterEvents} selectedPreviewChapter={selectedPreviewChapter} />
                         ) : null}
                       </div>
@@ -494,11 +475,30 @@ export function BuildView({
               </div>
             )}
           </div>
+        </div>
 
-          <aside className="hidden 2xl:flex w-[285px] shrink-0 border-l border-zinc-100 dark:border-slate-800 bg-gradient-to-b from-zinc-50/70 to-white dark:from-slate-950/40 dark:to-slate-900 flex-col">
-            <div className="px-4 py-4 border-b border-zinc-100 dark:border-slate-800">
-              <p className="text-[11px] font-medium tracking-[0.18em] text-zinc-400 dark:text-slate-500">构建脉冲</p>
-              <p className="mt-1 text-[11px] text-zinc-400 dark:text-slate-600">最近 {recentEvents.length} 条事件</p>
+        {detailsOpen ? (
+          <>
+          <button
+            type="button"
+            className="fixed inset-0 z-[89] bg-slate-950/20 lg:hidden"
+            aria-label="收起构建细节"
+            onClick={() => setDetailsOpen(false)}
+          />
+          <aside className="fixed bottom-0 right-0 top-0 z-[90] flex w-[min(320px,calc(100vw-1rem))] shrink-0 flex-col border-l border-zinc-100 bg-zinc-50/95 shadow-2xl dark:border-slate-800 dark:bg-slate-950 lg:static lg:z-auto lg:w-[320px] lg:bg-zinc-50/70 lg:shadow-none lg:dark:bg-slate-950/30">
+            <div className="flex items-center justify-between px-4 py-4 border-b border-zinc-100 dark:border-slate-800">
+              <div>
+                <p className="text-[12px] font-semibold text-zinc-800 dark:text-slate-100">构建细节</p>
+                <p className="mt-1 text-[11px] text-zinc-400 dark:text-slate-500">事件、摘要和调试信息</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setDetailsOpen(false)}
+                className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-zinc-400 transition hover:bg-white hover:text-zinc-700 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+                aria-label="收起构建细节"
+              >
+                <PanelRightClose className="h-4 w-4" />
+              </button>
             </div>
             {planSummary ? (
               <div className="px-4 py-4 border-b border-zinc-100 dark:border-slate-800">
@@ -509,6 +509,9 @@ export function BuildView({
               </div>
             ) : null}
             <div className="flex-1 overflow-y-auto px-3 py-3 build-scroll">
+              <p className="px-1 pb-2 text-[11px] font-medium tracking-[0.18em] text-zinc-400 dark:text-slate-500">
+                最近事件
+              </p>
               <div className="space-y-2">
                 {recentEvents.map((event, index) => {
                   const stage = (event.stage ?? "").trim();
@@ -536,7 +539,8 @@ export function BuildView({
               </div>
             </div>
           </aside>
-        </div>
+          </>
+        ) : null}
       </div>
     </motion.div>
   );
