@@ -11,10 +11,8 @@ from app.schemas.knowledge import (
     KnowledgeBuildPrecheckConflictData,
     SubjectVectorStatusResponse,
 )
-from app.shared.infra.database import (
-    get_vector_table_dim,
-    vector_table_exists,
-)
+from app.shared.infra.database import get_vector_table_dim, vector_table_exists
+from app.shared.infra.runtime import is_cloud_mode
 from app.shared.infra.exceptions import KnowledgeBuildPrecheckConflictError
 from app.shared.infra.subject.settings import (
     build_subject_index_ref_for_subject,
@@ -124,8 +122,16 @@ def inspect_subject_build_precheck(
             requires_full_rebuild=True,
         )
 
-    connection = session.connection()
-    if not vector_table_exists(connection, expected_ref):
+    if is_cloud_mode():
+        connection = session.connection()
+        index_exists = vector_table_exists(connection, expected_ref)
+    else:
+        from app.shared.infra.search.llamaindex_index import subject_index_exists
+
+        connection = None
+        index_exists = subject_index_exists(subject.slug)
+
+    if not index_exists:
         return _build_precheck_conflict(
             reason="vector_table_missing",
             binding=binding,
@@ -133,18 +139,19 @@ def inspect_subject_build_precheck(
             requires_full_rebuild=True,
         )
 
-    table_dim = get_vector_table_dim(connection, expected_ref)
-    if (
-        table_dim is not None
-        and binding.embedding_dim is not None
-        and table_dim != binding.embedding_dim
-    ):
-        return _build_precheck_conflict(
-            reason="vector_table_dimension_mismatch",
-            binding=binding,
-            runtime=runtime,
-            requires_full_rebuild=True,
-        )
+    if connection is not None:
+        table_dim = get_vector_table_dim(connection, expected_ref)
+        if (
+            table_dim is not None
+            and binding.embedding_dim is not None
+            and table_dim != binding.embedding_dim
+        ):
+            return _build_precheck_conflict(
+                reason="vector_table_dimension_mismatch",
+                binding=binding,
+                runtime=runtime,
+                requires_full_rebuild=True,
+            )
 
     return None
 

@@ -31,6 +31,44 @@ def test_local_subject_index_ref_is_user_subject_scoped(monkeypatch) -> None:
     assert ref == "llamaindex://local/users/user_a/subjects/math/rag_index"
 
 
+def test_local_vector_capability_uses_local_index_existence(monkeypatch) -> None:
+    from app.models.subject import Subject
+    from app.shared.infra.subject import vectors
+    from app.shared.infra.subject.settings import build_enabled_binding, set_subject_embedding_binding
+
+    subject = Subject(user_id="user_a", slug="math", name="Math")
+    set_subject_embedding_binding(
+        subject,
+        build_enabled_binding(
+            subject_slug=subject.slug,
+            owner_user_id=subject.user_id,
+            embedding_model="text-embedding-v4",
+            embedding_dim=1024,
+        ),
+    )
+
+    monkeypatch.setattr(vectors, "is_cloud_mode", lambda: False)
+    monkeypatch.setattr(
+        vectors,
+        "get_runtime_embedding_config",
+        lambda: vectors.RuntimeEmbeddingConfig(
+            configured=True,
+            available=True,
+            embedding_model="text-embedding-v4",
+            embedding_dim=1024,
+        ),
+    )
+
+    import app.shared.infra.search.llamaindex_index as llamaindex_index
+
+    monkeypatch.setattr(llamaindex_index, "subject_index_exists", lambda slug: slug == "math")
+
+    capability = vectors.get_subject_vector_capability(SimpleNamespace(), subject)
+
+    assert capability.queryable is True
+    assert capability.status.notice is None
+
+
 def test_upsert_chunks_cloud_uses_subject_scoped_store_and_actual_dimension(
     monkeypatch,
 ) -> None:

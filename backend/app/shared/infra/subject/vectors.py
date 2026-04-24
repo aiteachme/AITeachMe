@@ -211,22 +211,32 @@ def get_subject_vector_capability(
             status=_build_table_conflict_status(binding, reason="vector_table_missing"),
             queryable=False,
         )
-    from app.shared.infra.database import get_vector_table_dim, vector_table_exists
+    if is_cloud_mode():
+        from app.shared.infra.database import get_vector_table_dim, vector_table_exists
 
-    connection = session.connection()
-    if not vector_table_exists(connection, expected_ref):
+        connection = session.connection()
+        index_exists = vector_table_exists(connection, expected_ref)
+    else:
+        from app.shared.infra.search.llamaindex_index import subject_index_exists
+
+        connection = None
+        index_exists = subject_index_exists(subject.slug)
+
+    if not index_exists:
         return SubjectVectorCapability(
             binding=binding,
             status=_build_table_conflict_status(binding, reason="vector_table_missing"),
             queryable=False,
         )
-    table_dim = get_vector_table_dim(connection, expected_ref)
-    if table_dim is not None and table_dim != binding.embedding_dim:
-        return SubjectVectorCapability(
-            binding=binding,
-            status=_build_table_conflict_status(binding, reason="vector_table_dimension_mismatch"),
-            queryable=False,
-        )
+
+    if connection is not None:
+        table_dim = get_vector_table_dim(connection, expected_ref)
+        if table_dim is not None and table_dim != binding.embedding_dim:
+            return SubjectVectorCapability(
+                binding=binding,
+                status=_build_table_conflict_status(binding, reason="vector_table_dimension_mismatch"),
+                queryable=False,
+            )
 
     return SubjectVectorCapability(binding=binding, status=status, queryable=True)
 
