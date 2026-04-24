@@ -25,6 +25,7 @@ import { apiClient } from "../api/client";
 import { unwrapOrvalResponse } from "../lib/unwrapOrvalResponse";
 import { getApiErrorMessage } from "../api/client";
 import { cn } from "../lib/utils";
+import { isElectronRuntime } from "../lib/electronRuntime";
 import { downloadSubjectPackage } from "../lib/subjectPackage";
 import { FILE_ACCEPT, extractPasteFiles } from "../lib/fileUpload";
 import { resolveFileProcessingLabel } from "../components/knowledge-docs";
@@ -520,6 +521,7 @@ export function HomePage() {
   const navigate = useNavigate();
   const location = useLocation();
   const queryClient = useQueryClient();
+  const isElectron = isElectronRuntime();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -758,7 +760,12 @@ export function HomePage() {
       }}
       disabled={isWorking || Boolean(exportSubjectId) || importOpen || Boolean(renameTarget)}
     />
-    <div className="relative flex min-h-[100dvh] w-full flex-col items-center overflow-x-hidden bg-transparent p-4 pt-24 md:p-8 md:pt-32 selection:bg-zinc-200">
+    <div
+      className={cn(
+        "relative flex w-full flex-col items-center overflow-x-clip bg-transparent p-4 pt-24 selection:bg-zinc-200 md:p-8 md:pt-32",
+        isElectron ? "min-h-full" : "min-h-[100dvh]",
+      )}
+    >
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}

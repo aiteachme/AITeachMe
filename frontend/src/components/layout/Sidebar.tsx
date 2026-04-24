@@ -285,14 +285,14 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
 
       <aside
         className={cn(
-          "fixed inset-y-0 left-0 z-40 flex shrink-0 flex-col border-r border-slate-200/50 dark:border-slate-800/50 bg-gradient-to-b from-white/96 to-white/92 dark:from-[#0b0f19]/96 dark:to-[#0b0f19]/92 shadow-[4px_0_24px_rgba(0,0,0,0.03)] dark:shadow-[4px_0_24px_rgba(0,0,0,0.3)] ring-1 ring-white/50 dark:ring-white/5 transition-[width,transform] duration-200 lg:static",
+          "fixed inset-y-0 left-0 z-40 flex min-h-0 shrink-0 self-stretch flex-col overflow-hidden border-r border-slate-200/50 dark:border-slate-800/50 bg-gradient-to-b from-white/96 to-white/92 dark:from-[#0b0f19]/96 dark:to-[#0b0f19]/92 shadow-[4px_0_24px_rgba(0,0,0,0.03)] dark:shadow-[4px_0_24px_rgba(0,0,0,0.3)] ring-1 ring-white/50 dark:ring-white/5 transition-[width,transform] duration-200 lg:static",
           effectiveCollapsed ? "w-[64px]" : "w-[240px]",
           isMobileOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0",
         )}
       >
         <div
           className={cn(
-            "flex h-14 items-center border-b border-slate-100 dark:border-slate-800/50",
+            "flex h-14 shrink-0 items-center border-b border-slate-100 dark:border-slate-800/50",
             effectiveCollapsed ? "justify-center px-0" : "justify-between px-4",
           )}
         >
@@ -311,7 +311,7 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
           </button>
         </div>
 
-        <div className={cn("space-y-2", effectiveCollapsed ? "px-0 py-3" : "p-3")}>
+        <div className={cn("shrink-0 space-y-2", effectiveCollapsed ? "px-0 py-3" : "p-3")}>
           {effectiveCollapsed ? (
             <div className="flex flex-col items-center gap-2">
               <button
@@ -425,7 +425,7 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
           ) : null}
         </div>
 
-        <div className="flex-1 overflow-y-auto overflow-x-hidden px-3 pb-4 space-y-1 scrollbar-thin scrollbar-webkit">
+        <div className="min-h-0 flex-1 space-y-1 overflow-y-auto overflow-x-hidden px-3 pb-4 scrollbar-thin scrollbar-webkit">
           {!effectiveCollapsed ? (
             <div className="px-2 pb-2 pt-1">
               <span className="text-[11px] font-medium tracking-[0.08em] text-slate-400">学科</span>
@@ -573,7 +573,7 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
         </div>
 
         {/* Bottom actions */}
-        <div className="border-t border-slate-200/80 dark:border-slate-800/50 p-2.5 space-y-1 z-10">
+        <div className="z-10 mt-auto shrink-0 space-y-1 border-t border-slate-200/80 p-2.5 dark:border-slate-800/50">
           <button
             type="button"
             onClick={() => setIsCommunityModalOpen(true)}

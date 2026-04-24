@@ -1476,8 +1476,8 @@ export function BuildPlanPage() {
         disabled={uploadMutation.isPending}
       />
 
-      <div className="relative flex h-full w-full flex-col overflow-hidden bg-transparent">
-        <div className="relative z-10 flex h-full w-full flex-col">
+      <div className="relative flex min-h-0 w-full flex-1 flex-col overflow-hidden bg-transparent">
+        <div className="relative z-10 flex min-h-0 w-full flex-1 flex-col">
           <div className="flex items-center justify-center pb-2 pt-6">
             <div className="inline-flex items-center gap-2 rounded-full border border-zinc-200/80 dark:border-slate-800/80 bg-white dark:bg-slate-900 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-widest text-zinc-500 dark:text-slate-400 shadow-sm">
               <Sparkles className="h-3 w-3" />
@@ -1485,7 +1485,7 @@ export function BuildPlanPage() {
             </div>
           </div>
 
-        <div className="flex-1 overflow-y-auto px-4 pb-4 md:px-8 lg:px-16">
+        <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-4 md:px-8 lg:px-16">
           <div className="mx-auto max-w-3xl space-y-3">
             {messages.map((message) => (
               <div
@@ -1586,7 +1586,7 @@ export function BuildPlanPage() {
           </div>
         </div>
 
-        <div className="px-4 pb-6 pt-2 md:px-8 lg:px-16">
+        <div className="shrink-0 px-4 pb-6 pt-2 md:px-8 lg:px-16">
           <div className="mx-auto max-w-3xl">
             {isRevisingPlan ? (
               <div className="mb-2 flex items-center justify-between gap-3 rounded-2xl border border-violet-200 bg-violet-50 px-4 py-3 text-sm text-violet-700">

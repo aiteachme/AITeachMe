@@ -32,6 +32,7 @@ import { useChatSession } from "../../hooks/useChatSession";
 import { cn } from "../../lib/utils";
 import { useResizablePanel } from "../../hooks/useResizablePanel";
 import { publicAssetPath } from "../../lib/publicAsset";
+import { isElectronRuntime } from "../../lib/electronRuntime";
 
 interface SubjectAiAssistantProviderProps {
   subjectId: string | null;
@@ -62,6 +63,7 @@ export function useSubjectAiAssistant(): SubjectAiAssistantContextValue {
 
 export function SubjectAiAssistantProvider({ subjectId, children }: SubjectAiAssistantProviderProps) {
   const { pathname } = useLocation();
+  const isElectron = isElectronRuntime();
   const isBuildPage = /\/subject\/[^/]+\/build\b/.test(pathname);
   const initialViewportWidth = typeof window !== "undefined" ? window.innerWidth : 1200;
   const isNarrowInitialViewport = initialViewportWidth < 640;
@@ -261,8 +263,13 @@ export function SubjectAiAssistantProvider({ subjectId, children }: SubjectAiAss
 
   return (
     <SubjectAiAssistantContext.Provider value={contextValue}>
-      <div className="relative flex h-dvh w-full overflow-hidden bg-transparent">
-        <div className="relative flex-1 min-w-0 overflow-hidden">
+      <div
+        className={cn(
+          "relative flex min-h-0 w-full overflow-hidden bg-transparent",
+          isElectron ? "flex-1" : "h-dvh",
+        )}
+      >
+        <div className="relative flex min-h-0 flex-1 min-w-0 overflow-hidden">
           {children}
         </div>
 

@@ -29,6 +29,8 @@
 
   body {
     @apply bg-background text-foreground;
+    margin: 0;
+    overflow: hidden;
     font-family: var(--font-sans);
     font-feature-settings: "rlig" 1, "calt" 1;
     -webkit-font-smoothing: antialiased;
@@ -37,16 +39,18 @@
 
   html,
   body,
-  #root {
+  #root,
+  #app {
     height: 100%;
   }
 }
 
 .electron-window-frame {
-  display: flex;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
   height: 100vh;
+  max-height: 100vh;
   min-height: 0;
-  flex-direction: column;
   overflow: hidden;
   background: #fafafa;
 }
@@ -58,8 +62,7 @@
 .electron-window-titlebar {
   position: relative;
   z-index: 80;
-  height: 34px;
-  flex: 0 0 34px;
+  min-height: 0;
   user-select: none;
   -webkit-app-region: drag;
 }
@@ -76,9 +79,21 @@
 }
 
 .electron-window-content {
+  position: relative;
   min-height: 0;
-  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
   overflow: hidden;
+  transform: translateZ(0);
+}
+
+.electron-window-frame .app-shell {
+  flex: 1 1 auto;
+  width: 100%;
+  height: auto;
+  max-height: 100%;
+  min-height: 0;
+  min-width: 0;
 }
 
 @keyframes fadeIn {

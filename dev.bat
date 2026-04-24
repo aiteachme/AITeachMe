@@ -119,18 +119,34 @@ if /I "%FRONTEND_MODE%"=="conda" (
 	)
 )
 
-echo [Backend] Starting FastAPI (http://localhost:8010)...
-if /I "%BACKEND_MODE%"=="venv" (
-	start "Backend" %START_FLAGS% /D "%~dp0backend" "%BACKEND_PY%" -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8010
+set "BACKEND_PID="
+set "FRONTEND_PID="
+set "PORT_SCAN_FILE=%TEMP%\aiteachme-dev-ports-%RANDOM%.txt"
+netstat -ano -p tcp > "%PORT_SCAN_FILE%"
+for /f "tokens=5" %%P in ('findstr /R /C:":8010 .*LISTENING" "%PORT_SCAN_FILE%" 2^>nul') do if not defined BACKEND_PID set "BACKEND_PID=%%P"
+for /f "tokens=5" %%P in ('findstr /R /C:":5180 .*LISTENING" "%PORT_SCAN_FILE%" 2^>nul') do if not defined FRONTEND_PID set "FRONTEND_PID=%%P"
+del "%PORT_SCAN_FILE%" >nul 2>nul
+
+if not "%BACKEND_PID%"=="" (
+	echo [Backend] FastAPI is already running on http://localhost:8010, PID %BACKEND_PID%. Reusing it.
 ) else (
-	start "Backend" %START_FLAGS% /D "%~dp0backend" "%CONDA_CMD%" run -n %CONDA_ENV_NAME% --no-capture-output python -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8010
+	echo [Backend] Starting FastAPI on http://localhost:8010...
+	if /I "%BACKEND_MODE%"=="venv" (
+		start "Backend" %START_FLAGS% /D "%~dp0backend" "%BACKEND_PY%" -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8010
+	) else (
+		start "Backend" %START_FLAGS% /D "%~dp0backend" "%CONDA_CMD%" run -n %CONDA_ENV_NAME% --no-capture-output python -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8010
+	)
 )
 
-echo [Frontend] Starting Vite (http://localhost:5180)...
-if /I "%FRONTEND_MODE%"=="system" (
-	start "Frontend" %START_FLAGS% /D "%~dp0frontend" npm run dev
+if not "%FRONTEND_PID%"=="" (
+	echo [Frontend] Vite is already running on http://localhost:5180, PID %FRONTEND_PID%. Reusing it.
 ) else (
-	start "Frontend" %START_FLAGS% /D "%~dp0frontend" "%CONDA_CMD%" run -n %CONDA_ENV_NAME% --no-capture-output npm run dev
+	echo [Frontend] Starting Vite on http://localhost:5180...
+	if /I "%FRONTEND_MODE%"=="system" (
+		start "Frontend" %START_FLAGS% /D "%~dp0frontend" npm run dev
+	) else (
+		start "Frontend" %START_FLAGS% /D "%~dp0frontend" "%CONDA_CMD%" run -n %CONDA_ENV_NAME% --no-capture-output npm run dev
+	)
 )
 
 if "%START_ELECTRON%"=="1" (
@@ -142,7 +158,7 @@ if "%START_ELECTRON%"=="1" (
 	)
 )
 
-echo Services started. Close each window to stop that service.
+echo Services are ready. Close each service window to stop it.
 echo If browser cannot open, check logs in Backend/Frontend windows.
 
 popd >nul
