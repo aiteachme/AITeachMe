@@ -18,7 +18,7 @@ from typing import Generator, TypeVar
 
 from pydantic import BaseModel
 
-from app.shared.infra.storage.base import ArtifactStore
+from app.shared.infra.storage.base import ArtifactStore, validate_delete_prefix
 from app.shared.infra.storage.subject_scope import (
     SubjectStorageScope,
     build_subject_storage_scope,
@@ -150,7 +150,7 @@ class ContentStore:
         await self._inner.delete(key)
 
     async def delete_prefix(self, prefix: str) -> int:
-        return await self._inner.delete_prefix(prefix)
+        return await self._inner.delete_prefix(validate_delete_prefix(prefix))
 
     async def list_prefix(self, prefix: str) -> list[str]:
         return await self._inner.list_prefix(prefix)

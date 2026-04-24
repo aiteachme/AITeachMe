@@ -82,7 +82,14 @@ _EXPECTED_SCHEMA_COLUMNS = {
     table.name: {column.name for column in table.columns}
     for table in _SCHEMA_TABLES
 }
-_ALLOWED_SQLITE_RUNTIME_TABLES = {"sqlite_sequence"}
+_ALLOWED_SQLITE_RUNTIME_TABLES = {
+    "sqlite_sequence",
+    # Memory keeps its own lightweight runtime tables for now. They are not
+    # part of the SQLModel schema, but they are legitimate local app state and
+    # must not trigger SQLite drift recovery.
+    "memory_entries",
+    "learning_logs",
+}
 _ALLOWED_SQLITE_RUNTIME_PREFIXES: tuple[str, ...] = ()
 _REMOVED_POSTGRES_TABLES = (
     "unit_dependency",

@@ -9,6 +9,24 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 
 
+def validate_delete_prefix(prefix: str) -> str:
+    """Return a normalized, directory-like prefix safe for bulk deletion."""
+
+    normalized = str(prefix or "").replace("\\", "/").strip()
+    if (
+        not normalized
+        or normalized in {".", "/", "./"}
+        or normalized.startswith("/")
+        or not normalized.endswith("/")
+    ):
+        raise ValueError("delete_prefix requires a non-root directory prefix ending with '/'")
+
+    segments = [segment for segment in normalized.split("/") if segment]
+    if not segments or any(segment in {".", ".."} for segment in segments):
+        raise ValueError(f"unsafe delete_prefix value: {prefix}")
+    return normalized
+
+
 class ArtifactStore(ABC):
     """文件与工件存储的统一抽象。"""
 
@@ -52,3 +70,6 @@ class ArtifactStore(ABC):
         """返回文件的公开访问 URL，无 CDN 时返回 None。"""
 
         return None
+
+
+__all__ = ["ArtifactStore", "validate_delete_prefix"]
