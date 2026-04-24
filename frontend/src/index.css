@@ -119,27 +119,13 @@
 
   /* ----------- TOC sidebar scroll ----------- */
   .toc-scroll {
-    scrollbar-width: thin;
-    scrollbar-color: rgba(100, 116, 139, 0.25) transparent;
+    scrollbar-width: none;
     scroll-behavior: smooth;
   }
 
   .toc-scroll::-webkit-scrollbar {
-    width: 5px;
-  }
-
-  .toc-scroll::-webkit-scrollbar-track {
-    background: transparent;
-  }
-
-  .toc-scroll::-webkit-scrollbar-thumb {
-    background-color: transparent;
-    border-radius: 9999px;
-    transition: background-color 0.2s;
-  }
-
-  .toc-scroll:hover::-webkit-scrollbar-thumb {
-    background-color: rgba(100, 116, 139, 0.35);
+    width: 0;
+    height: 0;
   }
 
   /* ----------- Content area scrollbar ----------- */
@@ -203,6 +189,82 @@
 
   .feishu-doc-content table tbody tr:hover {
     background-color: #F5F6F7;
+  }
+
+  .feishu-doc-content pre code.hljs {
+    display: block;
+    min-width: max-content;
+    background: transparent;
+    color: #24292f;
+  }
+
+  .feishu-doc-content pre .hljs-keyword,
+  .feishu-doc-content pre .hljs-selector-tag,
+  .feishu-doc-content pre .hljs-literal,
+  .feishu-doc-content pre .hljs-doctag,
+  .feishu-doc-content pre .hljs-type {
+    color: #cf222e;
+  }
+
+  .feishu-doc-content pre .hljs-string,
+  .feishu-doc-content pre .hljs-regexp,
+  .feishu-doc-content pre .hljs-symbol,
+  .feishu-doc-content pre .hljs-bullet,
+  .feishu-doc-content pre .hljs-template-variable,
+  .feishu-doc-content pre .hljs-template-tag {
+    color: #0a3069;
+  }
+
+  .feishu-doc-content pre .hljs-number,
+  .feishu-doc-content pre .hljs-built_in {
+    color: #0550ae;
+  }
+
+  .feishu-doc-content pre .hljs-attr,
+  .feishu-doc-content pre .hljs-attribute,
+  .feishu-doc-content pre .hljs-variable,
+  .feishu-doc-content pre .hljs-variable.language_ {
+    color: #953800;
+  }
+
+  .feishu-doc-content pre .hljs-comment,
+  .feishu-doc-content pre .hljs-quote {
+    color: #6e7781;
+    font-style: italic;
+  }
+
+  .feishu-doc-content pre .hljs-title,
+  .feishu-doc-content pre .hljs-section,
+  .feishu-doc-content pre .hljs-function,
+  .feishu-doc-content pre .hljs-title.function_,
+  .feishu-doc-content pre .hljs-title.class_ {
+    color: #8250df;
+  }
+
+  .feishu-doc-content pre .hljs-name,
+  .feishu-doc-content pre .hljs-tag {
+    color: #116329;
+  }
+
+  .feishu-doc-content pre .hljs-meta,
+  .feishu-doc-content pre .hljs-meta .hljs-keyword {
+    color: #57606a;
+  }
+
+  .feishu-doc-content pre .hljs-operator,
+  .feishu-doc-content pre .hljs-punctuation,
+  .feishu-doc-content pre .hljs-subst {
+    color: #24292f;
+  }
+
+  .feishu-doc-content pre .hljs-deletion {
+    color: #cf222e;
+    background-color: #ffebe9;
+  }
+
+  .feishu-doc-content pre .hljs-addition {
+    color: #116329;
+    background-color: #dafbe1;
   }
 }
 

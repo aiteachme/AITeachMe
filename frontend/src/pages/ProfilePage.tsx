@@ -89,7 +89,7 @@ export function ProfilePage() {
 
   if (!subjectId) {
     return (
-      <div className="min-h-[calc(100vh-4rem)] bg-slate-50 px-6 py-8 dark:bg-slate-950">
+      <div className="min-h-[calc(100dvh-4rem)] bg-slate-50 px-4 py-6 dark:bg-slate-950 sm:px-6 sm:py-8">
         <div className="mx-auto max-w-5xl rounded-lg border border-amber-200 bg-amber-50 px-5 py-4 text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300">
           缺少学科标识，暂时无法加载学习画像。
         </div>
@@ -98,18 +98,18 @@ export function ProfilePage() {
   }
 
   return (
-    <div className="min-h-[calc(100vh-4rem)] bg-slate-50 px-6 py-8 dark:bg-slate-950">
+    <div className="min-h-[calc(100dvh-4rem)] bg-slate-50 px-4 py-6 dark:bg-slate-950 sm:px-6 sm:py-8">
       <div className="mx-auto flex max-w-6xl flex-col gap-6">
         <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-950/70 dark:shadow-[0_18px_36px_-28px_rgba(0,0,0,0.72)]">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
             <div>
               <p className="text-sm font-medium text-slate-500 dark:text-slate-400">Profile</p>
-              <h1 className="mt-1 text-3xl font-semibold text-slate-950 dark:text-slate-100">{subjectId}</h1>
+              <h1 className="mt-1 break-words text-2xl font-semibold text-slate-950 dark:text-slate-100 sm:text-3xl">{subjectId}</h1>
               <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-600 dark:text-slate-300">
                 基于当前 KnowledgeUnit 掌握度、最近答题结果和待复习任务生成个性化画像。
               </p>
             </div>
-            <div className="flex items-center gap-2 rounded-lg border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-300">
+            <div className="flex items-start gap-2 rounded-lg border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-300 sm:items-center">
               <Sparkles className="h-4 w-4" />
               推荐模式 {subjectProfile?.recommended_exam_mode ?? "web_practice"}，建议{" "}
               {subjectProfile?.recommended_question_count ?? 10} 题

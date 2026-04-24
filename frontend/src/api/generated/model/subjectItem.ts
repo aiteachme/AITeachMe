@@ -13,6 +13,8 @@ export interface SubjectItem {
   subject_id: string;
   /** 展示名称。 */
   name: string;
+  /** 学科图标 key。 */
+  icon_key?: string | null;
   /** 创建时间。 */
   created_at: string;
   /** 更新时间。 */

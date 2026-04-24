@@ -6,7 +6,7 @@ from pathlib import Path
 
 from pydantic import BaseModel, Field
 
-from app.shared.infra.env_support import get_env
+from app.shared.infra.env_support import get_env, get_env_choice
 from app.shared.infra.exceptions import FileParseError, MissingLLMApiKeyError, UnsupportedFileTypeError
 from app.shared.infra.settings import get_settings
 from app.shared.infra.settings.support import llm_provider_requires_api_key
@@ -288,6 +288,6 @@ def _derive_ocr_language_mode(classification: ClassificationResult | None) -> st
 
 
 def _llm_visual_calls_available() -> bool:
-    return bool(get_env("LLM_API_KEY")) or not llm_provider_requires_api_key(
+    return bool(get_env_choice("LLM_API_KEY")) or not llm_provider_requires_api_key(
         base_url=get_env("LLM_BASE_URL")
     )

@@ -103,7 +103,7 @@ workflows/ingest/
 ## 5. MinerU 规则
 
 - 上传请求仍可显式指定 MinerU 参数，并传 `mineru_api_token`。
-- 如果请求没有 token，则读取服务端 `MINERU_API_TOKEN`。
+- 如果请求没有 token，则读取服务端 `MINERU_API_TOKENS` 或 `MINERU_API_TOKEN`，支持英文逗号分隔多个 token 并随机选择一个。
 - token 不长期落 DB。
 - MinerU 输出会进入同一套 Markdown/asset canonicalize 逻辑。
 

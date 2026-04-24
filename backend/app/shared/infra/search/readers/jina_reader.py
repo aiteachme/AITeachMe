@@ -12,7 +12,7 @@ from urllib.parse import quote
 
 import structlog
 
-from app.shared.infra.env_support import get_env, get_env_bool
+from app.shared.infra.env_support import get_env_bool, get_env_choice
 from app.shared.infra.search.readers.base import BaseReader
 from app.shared.infra.search.readers.common import build_error_page, fetch_url, normalize_read_text
 from app.shared.infra.search.types import ScrapedPage
@@ -40,7 +40,7 @@ class JinaReader(BaseReader):
     async def read(self, url: str) -> ScrapedPage:
         reader_url = self.reader_url(url)
         headers = {}
-        api_key = (get_env("JINA_API_KEY") or "").strip()
+        api_key = (get_env_choice("JINA_API_KEY") or "").strip()
         if api_key:
             headers["Authorization"] = f"Bearer {api_key}"
         try:

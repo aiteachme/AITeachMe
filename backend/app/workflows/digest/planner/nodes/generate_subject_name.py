@@ -10,6 +10,7 @@ from app.shared.infra.workflow.context import WorkflowContext
 from app.workflows.digest.planner.lib.models import PlanIntent, PlannerBrief
 from app.workflows.digest.planner.prompts import build_subject_name_prompt
 from app.workflows.digest.planner.state import BuildPlannerState
+from app.workflows.support.subjects.icons import choose_subject_icon_key
 
 logger = structlog.get_logger(__name__)
 
@@ -100,7 +101,7 @@ def build_generate_subject_name_node(*, context: WorkflowContext):
                 planner_session_id=state.get("planner_session_id") or "",
                 subject=state.get("subject") or "",
             )
-            return {"generated_subject_name": ""}
+            return {"generated_subject_name": "", "generated_subject_icon_key": ""}
 
         cleaned = _clean_subject_name(title)
         logger.info(
@@ -109,7 +110,8 @@ def build_generate_subject_name_node(*, context: WorkflowContext):
             subject=state.get("subject") or "",
             generated_subject_name=cleaned or None,
         )
-        return {"generated_subject_name": cleaned}
+        icon_key = await choose_subject_icon_key(cleaned, hints=topic_hints) if cleaned else ""
+        return {"generated_subject_name": cleaned, "generated_subject_icon_key": icon_key}
 
     return generate_subject_name_node
 

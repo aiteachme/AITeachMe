@@ -12,7 +12,7 @@ from typing import Any
 import structlog
 from sqlmodel import Session, select
 
-from app.models import RetrievalChunk, Subject
+from app.models import ChatSession, RetrievalChunk, Subject
 from app.repositories.knowledge import knowledge_repo
 from app.schemas.export_import import ImportOptions, ImportResultData
 from app.shared.infra.embedding import aembed_texts
@@ -50,7 +50,7 @@ def import_subject(
         tmpdir = Path(tmpdir_str)
 
         with zipfile.ZipFile(file_path, "r") as zf:
-            zf.extractall(tmpdir)
+            _safe_extract_archive(zf, tmpdir)
 
         manifest = _read_manifest(tmpdir)
         new_slug = _create_unique_slug(session)
@@ -87,6 +87,11 @@ def import_subject(
                 user_id=user_id,
                 file_id_map=id_map.get("raw_file", {}),
             )
+            _reconcile_imported_planner_metadata(
+                session,
+                subject_slug=new_slug,
+                id_map=id_map,
+            )
             session.commit()
         except Exception:
             session.rollback()
@@ -112,6 +117,62 @@ def import_subject(
             imported_counts=imported_counts,
             warnings=warnings,
         )
+
+
+def _reconcile_imported_planner_metadata(
+    session: Session,
+    *,
+    subject_slug: str,
+    id_map: dict[str, dict[Any, Any]],
+) -> None:
+    """Remap planner chat-session metadata after all import ids are known."""
+
+    file_id_map = id_map.get("raw_file") or {}
+    plan_id_map = id_map.get("confirmed_build_plan") or {}
+    if not file_id_map and not plan_id_map:
+        return
+
+    sessions = list(session.exec(select(ChatSession).where(ChatSession.subject == subject_slug)).all())
+    for item in sessions:
+        meta = dict(item.meta_json or {})
+        selected_file_ids = meta.get("selected_file_ids")
+        if isinstance(selected_file_ids, list):
+            remapped_ids = []
+            for old_id in selected_file_ids:
+                new_id = _lookup_imported_id(old_id, file_id_map)
+                if new_id is not None:
+                    remapped_ids.append(new_id)
+            meta["selected_file_ids"] = remapped_ids
+
+        confirmed_plan_id = meta.get("confirmed_plan_id")
+        if confirmed_plan_id is not None:
+            meta["confirmed_plan_id"] = _lookup_imported_id(confirmed_plan_id, plan_id_map)
+
+        item.meta_json = meta
+        session.add(item)
+
+
+def _lookup_imported_id(old_id: Any, value_map: dict[Any, Any]) -> Any | None:
+    new_id = value_map.get(old_id)
+    if new_id is None and isinstance(old_id, str) and old_id.isdigit():
+        new_id = value_map.get(int(old_id))
+    if new_id is None and isinstance(old_id, int):
+        new_id = value_map.get(str(old_id))
+    return new_id
+
+
+def _safe_extract_archive(zf: zipfile.ZipFile, target_dir: Path) -> None:
+    """Extract a subject package without allowing paths outside target_dir."""
+
+    target_root = target_dir.resolve()
+    for member in zf.infolist():
+        member_path = target_dir / member.filename
+        resolved = member_path.resolve()
+        try:
+            resolved.relative_to(target_root)
+        except ValueError as exc:
+            raise ValueError(f"Invalid .atmx file: unsafe archive path {member.filename!r}") from exc
+    zf.extractall(target_dir)
 
 
 def _unpack_files(

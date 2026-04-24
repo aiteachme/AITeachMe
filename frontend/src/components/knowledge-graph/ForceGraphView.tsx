@@ -462,15 +462,15 @@ export function ForceGraphView({
   }
 
   return (
-    <div className="flex h-full min-h-[640px] gap-0">
+    <div className="flex h-full min-h-[520px] flex-col gap-0 lg:min-h-[640px] lg:flex-row">
       {/* 鈹€鈹€ Graph Panel 鈹€鈹€ */}
-      <div className="relative flex-1 min-w-0 min-h-[640px]">
+      <div className="relative min-h-[420px] min-w-0 flex-1 lg:min-h-[640px]">
         <div ref={containerRef} className="absolute inset-0">
           <svg ref={svgRef} className="h-full w-full" />
         </div>
 
         {/* Top-left: toolbar + stats + edge label toggle */}
-        <div className="pointer-events-auto absolute left-3 top-3 z-10 flex items-center gap-2">
+        <div className="pointer-events-auto absolute left-3 top-3 z-10 flex max-w-[calc(100%-1.5rem)] flex-wrap items-center gap-2">
           {toolbar}
           <span className="rounded-full bg-white/90 px-2.5 py-1 text-[10px] font-medium text-slate-500 shadow-sm ring-1 ring-slate-200/60">
             {nodeCount} 鑺傜偣 路 {edgeCount} 杈?
@@ -487,8 +487,8 @@ export function ForceGraphView({
         </div>
 
         {/* Bottom-left: Legend */}
-        <div className="pointer-events-none absolute bottom-3 left-3 z-10">
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg bg-white/80 px-3 py-1.5 ring-1 ring-slate-200/40">
+        <div className="pointer-events-none absolute bottom-3 left-3 right-3 z-10">
+          <div className="inline-flex max-w-full flex-wrap items-center gap-x-3 gap-y-1 rounded-lg bg-white/80 px-3 py-1.5 ring-1 ring-slate-200/40">
             {presentTypes.map(({ type, fill, label }) => (
               <div key={type} className="flex items-center gap-1">
                 <span className="inline-block h-3 w-3 rounded-full" style={{ backgroundColor: fill }} />
@@ -501,7 +501,7 @@ export function ForceGraphView({
 
       {/* 鈹€鈹€ Detail Sidebar 鈹€鈹€ */}
       {selectedNodeId && (
-        <div className="w-[320px] shrink-0 border-l border-slate-200 bg-white overflow-y-auto">
+        <div className="max-h-[45dvh] w-full shrink-0 overflow-y-auto border-t border-slate-200 bg-white lg:max-h-none lg:w-[320px] lg:border-l lg:border-t-0">
           <div className="p-4">
             <NodeDetailSidebar
               subject={subject}

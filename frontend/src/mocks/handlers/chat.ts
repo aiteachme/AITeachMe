@@ -40,7 +40,12 @@ interface ChatSessionItem {
 interface ChatSendBody {
   question?: unknown;
   session_id?: unknown;
+  selected_text?: unknown;
   selected_context?: unknown;
+  selection_context?: {
+    selected_text?: unknown;
+    section_excerpt?: unknown;
+  } | null;
   source?: unknown;
   anchor_id?: unknown;
 }
@@ -283,6 +288,11 @@ async function streamChatResponse(request: Request) {
   const selectedContext = typeof body.selected_context === "string"
     ? body.selected_context
     : "";
+  const selectedText = typeof body.selected_text === "string"
+    ? body.selected_text
+    : typeof body.selection_context?.selected_text === "string"
+      ? body.selection_context.selected_text
+      : selectedContext;
   const source = typeof body.source === "string" ? body.source : null;
   const anchorId = typeof body.anchor_id === "string" ? body.anchor_id : null;
   const askedSessionId = typeof body.session_id === "string" && body.session_id.trim()
@@ -294,7 +304,7 @@ async function streamChatResponse(request: Request) {
   const chunks = chunkText(answer);
   const contexts = mockContexts;
 
-  pushHistory(sessionItem.id, turnId, question, answer, contexts, source, anchorId, selectedContext || null);
+  pushHistory(sessionItem.id, turnId, question, answer, contexts, source, anchorId, selectedText || null);
 
   const encoder = new TextEncoder();
   const stream = new ReadableStream({
