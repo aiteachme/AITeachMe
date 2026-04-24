@@ -8128,6 +8128,117 @@
         "title": "ChatRoleValue",
         "description": "聊天角色。"
       },
+      "ChatSelectionContext": {
+        "properties": {
+          "selected_text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Selected Text",
+            "description": "Exact selected text."
+          },
+          "anchor_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Anchor Id",
+            "description": "Nearest doc heading anchor."
+          },
+          "anchor_title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Anchor Title",
+            "description": "Nearest doc heading title."
+          },
+          "heading_path": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Heading Path",
+            "description": "Heading path from document root to selection."
+          },
+          "before_text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Before Text",
+            "description": "Text window before the selection."
+          },
+          "after_text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "After Text",
+            "description": "Text window after the selection."
+          },
+          "section_title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Section Title",
+            "description": "Title of the section used for wider context."
+          },
+          "section_excerpt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Section Excerpt",
+            "description": "Wider section excerpt around the selection."
+          },
+          "section_truncated": {
+            "type": "boolean",
+            "title": "Section Truncated",
+            "description": "Whether the wider section was truncated.",
+            "default": false
+          },
+          "local_context_truncated": {
+            "type": "boolean",
+            "title": "Local Context Truncated",
+            "description": "Whether the local before/after window was truncated.",
+            "default": false
+          }
+        },
+        "type": "object",
+        "title": "ChatSelectionContext",
+        "description": "Structured context captured around a doc text selection."
+      },
       "ChatSendRequest": {
         "properties": {
           "question": {
@@ -8171,6 +8282,18 @@
             "title": "Anchor Id",
             "description": "Optional doc heading anchor for highlighted QA."
           },
+          "selected_text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Selected Text",
+            "description": "Exact highlighted text for display and persistence."
+          },
           "selected_context": {
             "anyOf": [
               {
@@ -8181,7 +8304,18 @@
               }
             ],
             "title": "Selected Context",
-            "description": "Optional highlighted context."
+            "description": "Legacy highlighted context string."
+          },
+          "selection_context": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ChatSelectionContext"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Structured doc-selection context for the prompt."
           },
           "source_chunk_id": {
             "anyOf": [
@@ -8205,7 +8339,21 @@
         "example": {
           "anchor_id": "chapter-1",
           "question": "什么是条件概率？",
-          "selected_context": "条件概率表示在 B 已经发生的前提下 A 发生的概率。",
+          "selected_text": "条件概率表示在 B 已经发生的前提下 A 发生的概率。",
+          "selection_context": {
+            "after_text": "后面会用乘法公式继续推导。",
+            "anchor_title": "条件概率",
+            "before_text": "前面介绍了样本空间与事件。",
+            "heading_path": [
+              "概率基础",
+              "条件概率"
+            ],
+            "local_context_truncated": false,
+            "section_excerpt": "条件概率用于描述在某个事件已经发生时另一个事件发生的可能性。",
+            "section_title": "条件概率",
+            "section_truncated": false,
+            "selected_text": "条件概率表示在 B 已经发生的前提下 A 发生的概率。"
+          },
           "session_id": "dbe63613-08f6-4818-8317-cdf8d7a794a8",
           "source": "quick_chat",
           "source_chunk_id": 12

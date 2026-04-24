@@ -87,6 +87,7 @@ export * from './chatContextItem';
 export * from './chatListRequest';
 export * from './chatMessageItem';
 export * from './chatRoleValue';
+export * from './chatSelectionContext';
 export * from './chatSendRequest';
 export * from './chatSessionCreateData';
 export * from './chatSessionCreateRequest';

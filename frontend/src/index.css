@@ -195,38 +195,76 @@
     display: block;
     min-width: max-content;
     background: transparent;
-    color: #dbe7f5;
+    color: #24292f;
   }
 
   .feishu-doc-content pre .hljs-keyword,
   .feishu-doc-content pre .hljs-selector-tag,
   .feishu-doc-content pre .hljs-literal,
-  .feishu-doc-content pre .hljs-title.function_ {
-    color: #93c5fd;
+  .feishu-doc-content pre .hljs-doctag,
+  .feishu-doc-content pre .hljs-type {
+    color: #cf222e;
   }
 
   .feishu-doc-content pre .hljs-string,
-  .feishu-doc-content pre .hljs-attr,
-  .feishu-doc-content pre .hljs-template-variable {
-    color: #86efac;
+  .feishu-doc-content pre .hljs-regexp,
+  .feishu-doc-content pre .hljs-symbol,
+  .feishu-doc-content pre .hljs-bullet,
+  .feishu-doc-content pre .hljs-template-variable,
+  .feishu-doc-content pre .hljs-template-tag {
+    color: #0a3069;
   }
 
   .feishu-doc-content pre .hljs-number,
-  .feishu-doc-content pre .hljs-built_in,
+  .feishu-doc-content pre .hljs-built_in {
+    color: #0550ae;
+  }
+
+  .feishu-doc-content pre .hljs-attr,
+  .feishu-doc-content pre .hljs-attribute,
+  .feishu-doc-content pre .hljs-variable,
   .feishu-doc-content pre .hljs-variable.language_ {
-    color: #fbbf24;
+    color: #953800;
   }
 
   .feishu-doc-content pre .hljs-comment,
   .feishu-doc-content pre .hljs-quote {
-    color: #94a3b8;
+    color: #6e7781;
     font-style: italic;
   }
 
   .feishu-doc-content pre .hljs-title,
   .feishu-doc-content pre .hljs-section,
-  .feishu-doc-content pre .hljs-function {
-    color: #fda4af;
+  .feishu-doc-content pre .hljs-function,
+  .feishu-doc-content pre .hljs-title.function_,
+  .feishu-doc-content pre .hljs-title.class_ {
+    color: #8250df;
+  }
+
+  .feishu-doc-content pre .hljs-name,
+  .feishu-doc-content pre .hljs-tag {
+    color: #116329;
+  }
+
+  .feishu-doc-content pre .hljs-meta,
+  .feishu-doc-content pre .hljs-meta .hljs-keyword {
+    color: #57606a;
+  }
+
+  .feishu-doc-content pre .hljs-operator,
+  .feishu-doc-content pre .hljs-punctuation,
+  .feishu-doc-content pre .hljs-subst {
+    color: #24292f;
+  }
+
+  .feishu-doc-content pre .hljs-deletion {
+    color: #cf222e;
+    background-color: #ffebe9;
+  }
+
+  .feishu-doc-content pre .hljs-addition {
+    color: #116329;
+    background-color: #dafbe1;
   }
 }
 

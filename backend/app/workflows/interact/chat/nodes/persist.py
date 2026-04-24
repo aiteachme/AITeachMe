@@ -71,7 +71,7 @@ def build_persist_turn_node(*, context: WorkflowContext, session: Session | None
                 ] or None,
                 source=state.get("source"),
                 anchor_id=state.get("anchor_id"),
-                selected_text=state.get("selected_context"),
+                selected_text=state.get("selected_text") or state.get("selected_context"),
                 source_chunk_id=state.get("source_chunk_id"),
             )
         workflow_logger.info(
