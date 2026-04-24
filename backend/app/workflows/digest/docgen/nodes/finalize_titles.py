@@ -5,8 +5,13 @@ from __future__ import annotations
 import re
 from time import perf_counter
 
+from app.shared.infra.tools.builtin.markdown_processing import build_draft_excerpt
 from app.shared.infra.workflow.context import WorkflowContext
-from app.utils.docgen_store import append_knowledge_build_recent_event, update_knowledge_build_status
+from app.utils.docgen_store import (
+    append_knowledge_build_recent_event,
+    update_knowledge_build_merge_preview,
+    update_knowledge_build_status,
+)
 from app.utils.time import utcnow
 from app.workflows.digest.docgen.lib.publish import build_merged_markdown
 from app.workflows.digest.docgen.nodes.common import publish_docgen_progress
@@ -101,6 +106,14 @@ def build_finalize_titles_node(*, context: WorkflowContext):
             staged_chapter_count=len(updated_chapters),
             draft_available=bool(merged_markdown.strip()),
             current_stage_description="章节标题已按前置执行合同同步。",
+        )
+        update_knowledge_build_merge_preview(
+            state["subject"],
+            requested_at=state["requested_at"],
+            merge_preview={
+                "latest_chapter_titles": [chapter["title"] for chapter in updated_chapters],
+                "draft_excerpt": build_draft_excerpt(merged_markdown, max_chars=1600),
+            },
         )
         append_knowledge_build_recent_event(
             state["subject"],

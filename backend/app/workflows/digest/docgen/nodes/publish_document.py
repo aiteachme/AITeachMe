@@ -6,7 +6,12 @@ from time import perf_counter
 
 import structlog
 
-from app.utils.docgen_store import append_knowledge_build_recent_event, upsert_knowledge_build_chapter_progress
+from app.shared.infra.tools.builtin.markdown_processing import build_draft_excerpt
+from app.utils.docgen_store import (
+    append_knowledge_build_recent_event,
+    update_knowledge_build_merge_preview,
+    upsert_knowledge_build_chapter_progress,
+)
 from app.utils.time import utcnow
 from app.shared.infra.workflow.context import WorkflowContext
 from app.workflows.digest.docgen.nodes.common import get_effective_chapter_title, publish_docgen_progress
@@ -125,6 +130,15 @@ def build_publish_document_node(*, context: WorkflowContext):
                 docgen_artifacts=docgen_artifacts,
             )
             node_logger.info("docgen_standalone_publish_completed", doc_count=len(doc_ids))
+
+        update_knowledge_build_merge_preview(
+            subject,
+            requested_at=requested_at,
+            merge_preview={
+                "latest_chapter_titles": [str(chapter.get("title") or "").strip() for chapter in chapter_metadatas],
+                "draft_excerpt": build_draft_excerpt(staged_docs.merged_markdown, max_chars=1600),
+            },
+        )
 
         for chapter in chapter_metadatas:
             title = get_effective_chapter_title(

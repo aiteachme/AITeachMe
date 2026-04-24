@@ -3,10 +3,16 @@
 from __future__ import annotations
 
 from time import perf_counter
+from urllib.parse import urlparse
 
 from app.shared.infra.execution import TracedExecutionContext
 from app.shared.infra.tools.builtin.markdown_processing import build_draft_excerpt, count_words
-from app.utils.docgen_store import append_knowledge_build_recent_event, upsert_knowledge_build_chapter_progress
+from app.utils.docgen_store import (
+    append_knowledge_build_recent_event,
+    upsert_knowledge_build_chapter_preview,
+    upsert_knowledge_build_chapter_progress,
+)
+from app.shared.infra.workflow.live_stream import publish_workflow_stream_event
 from app.utils.time import utcnow
 from app.shared.infra.workflow.context import WorkflowContext
 from app.workflows.digest.docgen.lib import DocGenChapterContextRuntime, DocGenWriterRuntime
@@ -30,10 +36,15 @@ from app.workflows.digest.docgen.lib.quality import (
 )
 from app.workflows.digest.docgen.nodes.common import (
     ensure_chapter_heading,
+    extract_markdown_preview_headings,
     publish_docgen_progress,
     resolve_docgen_retrieval_profile,
 )
 from app.workflows.digest.docgen.state import DocGenState
+
+CHAPTER_LIVE_PREVIEW_MAX_CHARS = 60000
+STREAM_PREVIEW_MIN_DELTA_CHARS = 180
+STREAM_PREVIEW_MIN_INTERVAL_S = 0.8
 
 
 def _unique_strings(values: list[str]) -> list[str]:
@@ -149,6 +160,141 @@ def _source_scope(source_details: list[dict]) -> dict:
     }
 
 
+def _source_preview_metadata(source_details: list[dict]) -> dict[str, list[str]]:
+    domains: list[str] = []
+    source_titles: list[str] = []
+    source_urls: list[str] = []
+    seen_domains: set[str] = set()
+    seen_titles: set[str] = set()
+    seen_urls: set[str] = set()
+
+    for item in source_details:
+        raw_url = str(item.get("url") or "").strip()
+        raw_title = str(item.get("title") or item.get("source_title") or "").strip()
+        if raw_url and not raw_url.startswith("local://"):
+            domain = urlparse(raw_url).netloc.strip().lower()
+            if domain and domain not in seen_domains and len(domains) < 4:
+                domains.append(domain)
+                seen_domains.add(domain)
+            if raw_url not in seen_urls and len(source_urls) < 4:
+                source_urls.append(raw_url)
+                seen_urls.add(raw_url)
+        if raw_title and raw_title not in seen_titles and len(source_titles) < 4:
+            source_titles.append(raw_title)
+            seen_titles.add(raw_title)
+
+    return {
+        "domains": domains,
+        "source_titles": source_titles,
+        "source_urls": source_urls,
+    }
+
+
+def _trim_preview_markdown(markdown: str, *, max_chars: int = 1200) -> str:
+    text = markdown.strip()
+    if len(text) <= max_chars:
+        return text
+    return f"{text[:max_chars].rstrip()}\n\n..."
+
+
+def _chapter_live_preview_markdown(markdown: str, *, title: str) -> str:
+    text = str(markdown or "").strip()
+    if not text:
+        return f"# {title}\n\n正在接收写作流..."
+    if not text.lstrip().startswith("#"):
+        text = f"# {title}\n\n{text}"
+    return _trim_preview_markdown(text, max_chars=CHAPTER_LIVE_PREVIEW_MAX_CHARS)
+
+
+def _append_preview_list(lines: list[str], title: str, values: list[str], *, limit: int = 6) -> None:
+    items = _unique_strings([str(item).strip() for item in values])[:limit]
+    if not items:
+        return
+    lines.extend(["", f"## {title}", ""])
+    lines.extend(f"- {item}" for item in items)
+
+
+def _task_preview_markdown(
+    task: ChapterGenerationTask,
+    *,
+    title: str,
+    total_chapters: int,
+) -> str:
+    lines = [
+        f"# {title}",
+        "",
+        "正在启动本章生成。先展示本章执行合同，检索完成后会刷新证据来源，正文生成完成后会替换为初稿片段。",
+        "",
+        "## 生成目标",
+        "",
+        task.objective or "系统正在根据章节 brief 整理本章目标。",
+    ]
+    if total_chapters > 0:
+        lines.extend(
+            [
+                "",
+                "## 执行范围",
+                "",
+                f"- 章节位置：第 {task.chapter_index} / {total_chapters} 章",
+                f"- 目标字数：约 {task.target_word_count} 字",
+            ]
+        )
+    _append_preview_list(
+        lines,
+        "即将覆盖的重点",
+        [
+            *task.content_points,
+            *task.concept_targets,
+            *task.definition_targets,
+            *task.formula_targets,
+            *task.example_targets,
+            *task.pitfall_targets,
+        ],
+    )
+    _append_preview_list(lines, "检索线索", task.retrieval_queries, limit=5)
+    _append_preview_list(lines, "写作路径", task.teaching_outline, limit=5)
+    return _trim_preview_markdown("\n".join(lines), max_chars=1200)
+
+
+def _research_preview_markdown(
+    *,
+    title: str,
+    dense_context: str,
+    source_details: list[dict],
+    research_trace: ChapterResearchTrace,
+    local_hit_count: int,
+    web_hit_count: int,
+    fallback_used: bool,
+) -> str:
+    read_url_count = int(research_trace.budget_used.get("read_url_count", 0) or 0)
+    document_count = int(research_trace.budget_used.get("document_count", 0) or 0)
+    source_titles = [
+        str(item.get("title") or item.get("source_title") or item.get("url") or "").strip()
+        for item in source_details
+    ]
+    lines = [
+        f"# {title}",
+        "",
+        "检索与证据整理已完成，正在进入正文写作。这里先展示本章已经锁定的资料范围和证据线索。",
+        "",
+        "## 检索结果",
+        "",
+        f"- 本地命中：{local_hit_count}",
+        f"- 联网命中：{web_hit_count}",
+        f"- 已执行查询：{len(research_trace.executed_queries)}",
+        f"- 已打开网页：{read_url_count}",
+        f"- 已纳入文档：{document_count}",
+    ]
+    if fallback_used:
+        lines.append("- 检索出现异常，系统会使用章节 brief 兜底生成。")
+    _append_preview_list(lines, "执行过的查询", research_trace.executed_queries, limit=5)
+    _append_preview_list(lines, "已纳入证据来源", source_titles, limit=5)
+    _append_preview_list(lines, "仍需补强的点", research_trace.gap_notes, limit=4)
+    if dense_context.strip():
+        lines.extend(["", "## 上下文摘录", "", build_draft_excerpt(dense_context, max_chars=420)])
+    return _trim_preview_markdown("\n".join(lines), max_chars=1400)
+
+
 def build_generate_chapters_node(*, context: WorkflowContext):
     """构建单章生成节点。
 
@@ -165,10 +311,52 @@ def build_generate_chapters_node(*, context: WorkflowContext):
         document_backbone = DocumentBackbone.model_validate(state.get("document_backbone") or {})
         total_chapters = int(state.get("total_chapters", 0) or 0)
         title = task.enhanced_title or task.confirmed_title
+        task_preview = _task_preview_markdown(task, title=title, total_chapters=total_chapters)
+
+        stream_preview_last_text = ""
+
+        def _publish_preview_delta(preview_markdown: str, *, status: str) -> None:
+            nonlocal stream_preview_last_text
+            text = str(preview_markdown or "").strip()
+            if not text or text == stream_preview_last_text:
+                return
+            previous = stream_preview_last_text
+            mode = "append" if previous and text.startswith(previous) else "replace"
+            stream_preview_last_text = text
+            publish_workflow_stream_event(
+                state["subject"],
+                "preview_delta",
+                {
+                    "kind": "chapter_preview",
+                    "chapter_index": task.chapter_index,
+                    "title": title,
+                    "status": status,
+                    "mode": mode,
+                    "base_length": len(previous),
+                    "text": text[len(previous):] if mode == "append" else text,
+                    "full_length": len(text),
+                    "updated_at": utcnow().isoformat(),
+                },
+            )
+
+        _publish_preview_delta(task_preview, status="generating")
         upsert_knowledge_build_chapter_progress(
             state["subject"],
             requested_at=state["requested_at"],
             chapter_progress={"chapter_index": task.chapter_index, "title": title, "status": "generating"},
+        )
+        upsert_knowledge_build_chapter_preview(
+            state["subject"],
+            requested_at=state["requested_at"],
+            chapter_preview={
+                "chapter_index": task.chapter_index,
+                "title": title,
+                "status": "generating",
+                "excerpt": task_preview,
+                "latest_headings": extract_markdown_preview_headings(task_preview),
+                "word_count": 0,
+                "source_count": 0,
+            },
         )
         append_knowledge_build_recent_event(
             state["subject"],
@@ -243,6 +431,58 @@ def build_generate_chapters_node(*, context: WorkflowContext):
             fallback_used = True
             research_trace.stop_reason = f"research_failed:{str(exc)[:160]}"
         research_ms = int((perf_counter() - research_started_at) * 1000)
+        research_preview = _research_preview_markdown(
+            title=title,
+            dense_context=dense_context,
+            source_details=source_details,
+            research_trace=research_trace,
+            local_hit_count=local_hit_count,
+            web_hit_count=web_hit_count,
+            fallback_used=fallback_used,
+        )
+        _publish_preview_delta(research_preview, status="generating")
+        upsert_knowledge_build_chapter_preview(
+            state["subject"],
+            requested_at=state["requested_at"],
+            chapter_preview={
+                "chapter_index": task.chapter_index,
+                "title": title,
+                "status": "generating",
+                "excerpt": research_preview,
+                "latest_headings": extract_markdown_preview_headings(research_preview),
+                "word_count": 0,
+                "source_count": len(source_details),
+            },
+        )
+        append_knowledge_build_recent_event(
+            state["subject"],
+            requested_at=state["requested_at"],
+            event={
+                "stage": "chapter_research_ready",
+                "chapter_index": task.chapter_index,
+                "title": title,
+                "summary": (
+                    f"{title} 检索已完成：本地命中 {local_hit_count}，联网命中 {web_hit_count}，"
+                    f"纳入 {len(source_details)} 个来源，开始正文写作。"
+                ),
+                "created_at": utcnow(),
+                **_source_preview_metadata(source_details),
+            },
+        )
+        await publish_docgen_progress(
+            context,
+            state=state,
+            stage="chapter_research_ready",
+            payload={
+                "chapter_index": task.chapter_index,
+                "title": title,
+                "local_hits": local_hit_count,
+                "web_hits": web_hit_count,
+                "source_count": len(source_details),
+                "query_count": len(research_trace.executed_queries),
+                "fallback_used": fallback_used,
+            },
+        )
 
         targets = [
             *task.content_points,
@@ -289,6 +529,55 @@ def build_generate_chapters_node(*, context: WorkflowContext):
                 fallback_used=True,
             )
         writer_markdown = ""
+        stream_preview_last_at = 0.0
+        stream_preview_last_len = 0
+        stream_progress_marked = False
+
+        async def _publish_writer_stream_preview(accumulated_markdown: str) -> None:
+            nonlocal stream_preview_last_at, stream_preview_last_len, stream_progress_marked
+            raw_markdown = str(accumulated_markdown or "").strip()
+            if not raw_markdown:
+                return
+            now = perf_counter()
+            current_len = len(raw_markdown)
+            preview_markdown = _chapter_live_preview_markdown(raw_markdown, title=title)
+            _publish_preview_delta(preview_markdown, status="drafting")
+            if (
+                current_len - stream_preview_last_len < STREAM_PREVIEW_MIN_DELTA_CHARS
+                and now - stream_preview_last_at < STREAM_PREVIEW_MIN_INTERVAL_S
+            ):
+                return
+            stream_preview_last_at = now
+            stream_preview_last_len = current_len
+            if not stream_progress_marked:
+                stream_progress_marked = True
+                upsert_knowledge_build_chapter_progress(
+                    state["subject"],
+                    requested_at=state["requested_at"],
+                    chapter_progress={
+                        "chapter_index": task.chapter_index,
+                        "title": title,
+                        "status": "drafting",
+                        "source_count": len(source_details),
+                        "local_hits": local_hit_count,
+                        "web_hits": web_hit_count,
+                        "query_count": len(research_trace.executed_queries),
+                    },
+                )
+            upsert_knowledge_build_chapter_preview(
+                state["subject"],
+                requested_at=state["requested_at"],
+                chapter_preview={
+                    "chapter_index": task.chapter_index,
+                    "title": title,
+                    "status": "drafting",
+                    "excerpt": preview_markdown,
+                    "latest_headings": extract_markdown_preview_headings(preview_markdown),
+                    "word_count": count_words(raw_markdown),
+                    "source_count": len(source_details),
+                },
+            )
+
         try:
             writer = DocGenWriterRuntime(traced_context)
             writer_result = await writer.run(
@@ -301,6 +590,7 @@ def build_generate_chapters_node(*, context: WorkflowContext):
                 ),
                 dense_context=dense_context,
                 digest_mode=state.get("digest_mode") or "systematic",
+                on_stream_update=_publish_writer_stream_preview,
             )
             writer_markdown = ensure_chapter_heading(title, writer_result.content)
         except Exception as exc:
@@ -364,6 +654,22 @@ def build_generate_chapters_node(*, context: WorkflowContext):
             source_details=source_details,
             fallback_used=fallback_used,
         )
+        word_count = count_words(writer_markdown)
+        final_preview = _chapter_live_preview_markdown(writer_markdown, title=title)
+        _publish_preview_delta(final_preview, status="generated")
+        upsert_knowledge_build_chapter_preview(
+            state["subject"],
+            requested_at=state["requested_at"],
+            chapter_preview={
+                "chapter_index": task.chapter_index,
+                "title": title,
+                "status": "generated",
+                "excerpt": final_preview,
+                "latest_headings": extract_markdown_preview_headings(writer_markdown),
+                "word_count": word_count,
+                "source_count": len(source_details),
+            },
+        )
         upsert_knowledge_build_chapter_progress(
             state["subject"],
             requested_at=state["requested_at"],
@@ -375,8 +681,20 @@ def build_generate_chapters_node(*, context: WorkflowContext):
                 "local_hits": local_hit_count,
                 "web_hits": web_hit_count,
                 "query_count": len(research_trace.executed_queries),
-                "word_count": count_words(writer_markdown),
+                "word_count": word_count,
                 "fallback_used": fallback_used,
+            },
+        )
+        append_knowledge_build_recent_event(
+            state["subject"],
+            requested_at=state["requested_at"],
+            event={
+                "stage": "chapter_generated",
+                "chapter_index": task.chapter_index,
+                "title": title,
+                "summary": f"{title} 初稿已完成，约 {word_count} 字，引用 {len(source_details)} 个来源。",
+                "created_at": utcnow(),
+                **_source_preview_metadata(source_details),
             },
         )
         await publish_docgen_progress(
@@ -386,7 +704,7 @@ def build_generate_chapters_node(*, context: WorkflowContext):
             payload={
                 "chapter_index": task.chapter_index,
                 "title": title,
-                "word_count": count_words(writer_markdown),
+                "word_count": word_count,
                 "quality_score": quality.quality_score,
                 "fallback_used": fallback_used,
             },

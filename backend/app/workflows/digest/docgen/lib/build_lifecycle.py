@@ -23,7 +23,9 @@ from app.repositories.files_repo import list_all_raw_files_by_subject, list_raw_
 from app.repositories.knowledge.docgen_repo import get_current_published_docs
 from app.repositories.knowledge.knowledge_repo import clear_chunk_vector_metadata
 from app.schemas.knowledge import (
+    BuildPreviewChapterPreviewResponse,
     BuildPreviewChapterProgressResponse,
+    BuildPreviewMergePreviewResponse,
     BuildPreviewNodeResponse,
     BuildPreviewRecentEventResponse,
     DocGenBuildData,
@@ -269,11 +271,51 @@ def _build_runtime_preview(*, build_status, draft_markdown: str, manifest) -> Kn
         BuildPreviewChapterProgressResponse.model_validate(item)
         for item in list(build_status.chapter_progress or [])
     ] if build_status is not None else []
+    chapter_previews = [
+        BuildPreviewChapterPreviewResponse.model_validate(item)
+        for item in list(build_status.chapter_previews or [])
+    ] if build_status is not None else []
     recent_events = [
         BuildPreviewRecentEventResponse.model_validate(item)
         for item in list(build_status.recent_events or [])
     ] if build_status is not None else []
-    return KnowledgeBuildPreviewResponse(current_stage_description=(build_status.current_stage_description if build_status is not None else None), digest_mode=(build_status.digest_mode if build_status is not None else None), mode_reason=(build_status.mode_reason if build_status is not None else None), processed_chunks=(build_status.processed_chunks if build_status is not None else 0), total_chunks=(build_status.total_chunks if build_status is not None else 0), doc_sync_section_count=(build_status.doc_sync_section_count if build_status is not None else 0), doc_sync_llm_section_count=(build_status.doc_sync_llm_section_count if build_status is not None else 0), doc_sync_fallback_section_count=(build_status.doc_sync_fallback_section_count if build_status is not None else 0), discovered_node_count=(build_status.discovered_node_count if build_status is not None else 0), discovered_node_types=(dict(build_status.discovered_node_types) if build_status is not None else {}), sample_nodes=sample_nodes, sample_cards=sample_cards, plan_summary=(build_status.plan_summary if build_status is not None else None), chapter_progress=chapter_progress, recent_events=recent_events, latest_chapter_titles=_resolve_preview_chapter_titles(draft_markdown=draft_markdown, manifest=manifest), draft_excerpt=_extract_markdown_excerpt(draft_markdown))
+    merge_preview_payload = (
+        dict(build_status.merge_preview or {})
+        if build_status is not None and dict(build_status.merge_preview or {})
+        else {}
+    )
+    fallback_latest_titles = _resolve_preview_chapter_titles(draft_markdown=draft_markdown, manifest=manifest)
+    fallback_draft_excerpt = _extract_markdown_excerpt(draft_markdown)
+    if fallback_latest_titles and not merge_preview_payload.get("latest_chapter_titles"):
+        merge_preview_payload["latest_chapter_titles"] = fallback_latest_titles
+    if fallback_draft_excerpt and not merge_preview_payload.get("draft_excerpt"):
+        merge_preview_payload["draft_excerpt"] = fallback_draft_excerpt
+    merge_preview = (
+        BuildPreviewMergePreviewResponse.model_validate(merge_preview_payload)
+        if merge_preview_payload
+        else None
+    )
+    return KnowledgeBuildPreviewResponse(
+        current_stage_description=(build_status.current_stage_description if build_status is not None else None),
+        digest_mode=(build_status.digest_mode if build_status is not None else None),
+        mode_reason=(build_status.mode_reason if build_status is not None else None),
+        processed_chunks=(build_status.processed_chunks if build_status is not None else 0),
+        total_chunks=(build_status.total_chunks if build_status is not None else 0),
+        doc_sync_section_count=(build_status.doc_sync_section_count if build_status is not None else 0),
+        doc_sync_llm_section_count=(build_status.doc_sync_llm_section_count if build_status is not None else 0),
+        doc_sync_fallback_section_count=(build_status.doc_sync_fallback_section_count if build_status is not None else 0),
+        discovered_node_count=(build_status.discovered_node_count if build_status is not None else 0),
+        discovered_node_types=(dict(build_status.discovered_node_types) if build_status is not None else {}),
+        sample_nodes=sample_nodes,
+        sample_cards=sample_cards,
+        plan_summary=(build_status.plan_summary if build_status is not None else None),
+        chapter_progress=chapter_progress,
+        recent_events=recent_events,
+        chapter_previews=chapter_previews,
+        merge_preview=merge_preview,
+        latest_chapter_titles=(merge_preview.latest_chapter_titles if merge_preview is not None else fallback_latest_titles),
+        draft_excerpt=(merge_preview.draft_excerpt if merge_preview is not None else fallback_draft_excerpt),
+    )
 
 
 def _build_runtime_metrics(*, build_status) -> KnowledgeBuildMetricsResponse | None:

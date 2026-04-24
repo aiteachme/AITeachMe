@@ -5,7 +5,9 @@
 /* ------------------------------------------------------------------ */
 
 import type {
+  BuildPreviewChapterPreviewResponse,
   BuildPreviewChapterProgressResponse,
+  BuildPreviewMergePreviewResponse,
   BuildPreviewNodeResponse,
   BuildPreviewRecentEventResponse,
   BuildSampleCardResponse,
@@ -141,6 +143,8 @@ export interface DocGenBuildStatus {
 export type BuildSampleCard = BuildSampleCardResponse;
 export type BuildPreviewNode = BuildPreviewNodeResponse;
 export type BuildPreviewChapterProgress = BuildPreviewChapterProgressResponse;
+export type BuildPreviewChapterPreview = BuildPreviewChapterPreviewResponse;
+export type BuildPreviewMergePreview = BuildPreviewMergePreviewResponse;
 export type BuildPreviewRecentEvent = BuildPreviewRecentEventResponse;
 export type KnowledgeBuildPreview = KnowledgeBuildPreviewResponse;
 export type KnowledgeBuildMetrics = KnowledgeBuildMetricsResponse;

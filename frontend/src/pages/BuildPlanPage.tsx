@@ -425,7 +425,7 @@ function BuildInProgressBubble({
           </p>
           <div className="mt-4 h-1.5 overflow-hidden rounded-full bg-zinc-100">
             <div
-              className="h-full rounded-full bg-zinc-950 transition-all duration-500"
+              className="h-full rounded-full bg-zinc-950 animate-pulse transition-all duration-500"
               style={{ width: `${Math.max(8, Math.min(100, progress))}%` }}
             />
           </div>
@@ -776,7 +776,6 @@ export function BuildPlanPage() {
     !isBuildFailure &&
     !isRequestedBuildReady &&
     (isBuildActive || buildStatus === "completed" || hasDraftDocMarkdown || (targetRequestedAtMs !== null && !hasLiveDocMarkdown));
-  const shouldShowBuildView = false;
   const buildStage = buildMeta?.stage ?? null;
   const { buildProgress, buildStatusText } = useDocBuildProgress({
     buildMeta,
@@ -1085,6 +1084,7 @@ export function BuildPlanPage() {
   const isPlannerPending = plannerStreaming || confirmPlannerMutation.isPending;
   const isBuilding = knowledgeBuild.isPending || isBuildActive;
   const shouldShowBuildDialog = isBuilding || isWaitingForRequestedBuild;
+  const shouldShowBuildView = shouldShowBuildDialog || isBuildFailure;
   const plannerPendingStatusText = plannerStreaming
     ? plannerStreamingStatus
     : confirmPlannerMutation.isPending
@@ -1309,10 +1309,17 @@ export function BuildPlanPage() {
     } catch (error) {
       if (isAbortError(error)) {
         logPlannerDebug("send_plan_message_aborted", { subjectId });
+        const partialContent = plannerStreamingRawRef.current.replace(/\r/g, "").trim();
         setMessages((prev) => {
-          const next = plannerPendingMessageIdRef.current
-            ? removeMessageById(prev, plannerPendingMessageIdRef.current)
-            : prev;
+          const pendingId = plannerPendingMessageIdRef.current;
+          const next = pendingId ? removeMessageById(prev, pendingId) : prev;
+          if (partialContent) {
+            return [
+              ...next,
+              createMessage("assistant", partialContent),
+              createMessage("system", "已停止生成，以上是已输出的部分内容。你可以继续输入新的调整。"),
+            ];
+          }
           return [...next, createMessage("system", "已停止生成，你可以继续输入新的调整。")];
         });
         plannerPendingMessageIdRef.current = null;
@@ -1547,6 +1554,7 @@ export function BuildPlanPage() {
                 sourceFiles={buildSourceFiles}
                 sourceFilesFetching={filesQuery.isFetching}
                 buildStage={buildStage}
+                subjectId={subjectId}
               />
             )}
           </div>

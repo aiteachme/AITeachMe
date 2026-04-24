@@ -2348,6 +2348,78 @@
         }
       }
     },
+    "/api/v1/subjects/{subject}/knowledge/build/stream": {
+      "get": {
+        "tags": [
+          "knowledge",
+          "knowledge"
+        ],
+        "summary": "SSE stream for live build progress snapshots",
+        "description": "SSE endpoint for live build runtime, direct deltas and fallback snapshots.",
+        "operationId": "knowledge_build_stream_api_v1_subjects__subject__knowledge_build_stream_get",
+        "parameters": [
+          {
+            "name": "subject",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Subject"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数不合法。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务内部异常。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/subjects/{subject}/knowledge/docs": {
       "post": {
         "tags": [
@@ -7521,6 +7593,68 @@
         ],
         "title": "BuildPlannerTurnResponse"
       },
+      "BuildPreviewChapterPreviewResponse": {
+        "properties": {
+          "chapter_index": {
+            "type": "integer",
+            "title": "Chapter Index"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status",
+            "description": "planned / generating / generated / enhancing / enhanced / reviewing / reviewed / completed"
+          },
+          "excerpt": {
+            "type": "string",
+            "title": "Excerpt",
+            "description": "Latest readable excerpt for the chapter preview.",
+            "default": ""
+          },
+          "latest_headings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Latest Headings",
+            "description": "Recent section headings extracted from the chapter preview."
+          },
+          "word_count": {
+            "type": "integer",
+            "title": "Word Count",
+            "default": 0
+          },
+          "source_count": {
+            "type": "integer",
+            "title": "Source Count",
+            "default": 0
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At",
+            "description": "When this chapter preview was last refreshed."
+          }
+        },
+        "type": "object",
+        "required": [
+          "chapter_index",
+          "title",
+          "status"
+        ],
+        "title": "BuildPreviewChapterPreviewResponse",
+        "description": "Per-chapter live preview surfaced while docgen is progressing."
+      },
       "BuildPreviewChapterProgressResponse": {
         "properties": {
           "chapter_index": {
@@ -7575,6 +7709,40 @@
         ],
         "title": "BuildPreviewChapterProgressResponse",
         "description": "Per-chapter runtime progress shown while docgen is building."
+      },
+      "BuildPreviewMergePreviewResponse": {
+        "properties": {
+          "latest_chapter_titles": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Latest Chapter Titles",
+            "description": "Latest resolved chapter titles in the merged preview."
+          },
+          "draft_excerpt": {
+            "type": "string",
+            "title": "Draft Excerpt",
+            "description": "Short excerpt from the current merged preview.",
+            "default": ""
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At",
+            "description": "When the merged preview was last refreshed."
+          }
+        },
+        "type": "object",
+        "title": "BuildPreviewMergePreviewResponse",
+        "description": "Whole-document live preview surfaced before final publish."
       },
       "BuildPreviewNodeResponse": {
         "properties": {
@@ -10763,6 +10931,25 @@
             "type": "array",
             "title": "Recent Events",
             "description": "Recent research / writing / publishing events for this build."
+          },
+          "chapter_previews": {
+            "items": {
+              "$ref": "#/components/schemas/BuildPreviewChapterPreviewResponse"
+            },
+            "type": "array",
+            "title": "Chapter Previews",
+            "description": "Readable per-chapter live previews for the build workspace."
+          },
+          "merge_preview": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BuildPreviewMergePreviewResponse"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Merged whole-document preview before final publish."
           },
           "latest_chapter_titles": {
             "items": {

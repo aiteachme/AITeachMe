@@ -4,8 +4,13 @@ from __future__ import annotations
 
 from time import perf_counter
 
+from app.shared.infra.tools.builtin.markdown_processing import build_draft_excerpt
 from app.shared.infra.tools.builtin.markdown_processing import count_words
-from app.utils.docgen_store import append_knowledge_build_recent_event, update_knowledge_build_status
+from app.utils.docgen_store import (
+    append_knowledge_build_recent_event,
+    update_knowledge_build_merge_preview,
+    update_knowledge_build_status,
+)
 from app.utils.time import utcnow
 from app.shared.infra.workflow.context import WorkflowContext
 from app.workflows.digest.docgen.lib.models import EnhancedChapterDraft
@@ -143,6 +148,14 @@ def build_merge_review_node(*, context: WorkflowContext):
                 else f"整本文档检查完成，带 {len(review.issues)} 个 warning 发布。"
             ),
             draft_available=bool(merged_markdown.strip()),
+        )
+        update_knowledge_build_merge_preview(
+            state["subject"],
+            requested_at=state["requested_at"],
+            merge_preview={
+                "latest_chapter_titles": [chapter["title"] for chapter in chapter_metadatas],
+                "draft_excerpt": build_draft_excerpt(merged_markdown, max_chars=1600),
+            },
         )
         append_knowledge_build_recent_event(
             state["subject"],
