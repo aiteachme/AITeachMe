@@ -69,6 +69,10 @@ def build_persist_turn_node(*, context: WorkflowContext, session: Session | None
                     item.model_dump()
                     for item in (state.get("contexts") or [])
                 ] or None,
+                source=state.get("source"),
+                anchor_id=state.get("anchor_id"),
+                selected_text=state.get("selected_context"),
+                source_chunk_id=state.get("source_chunk_id"),
             )
         workflow_logger.info(
             "interact_turn_persisted",
@@ -81,4 +85,3 @@ def build_persist_turn_node(*, context: WorkflowContext, session: Session | None
         }
 
     return persist_turn
-

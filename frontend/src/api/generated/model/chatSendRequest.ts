@@ -14,7 +14,7 @@ export interface ChatSendRequest {
   question: string;
   /** Optional session ID. Auto-created when omitted. */
   session_id?: string | null;
-  /** Optional source tag that enables direct chat mode. */
+  /** Optional source tag, e.g. quick_chat or build_assistant. */
   source?: string | null;
   /** Optional doc heading anchor for highlighted QA. */
   anchor_id?: string | null;

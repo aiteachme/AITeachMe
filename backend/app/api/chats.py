@@ -53,9 +53,7 @@ async def send_chat(
     session: Session = Depends(get_db),
 ) -> StreamingResponse:
     normalized_subject = normalize_subject_slug(subject)
-    direct_mode = bool(body.source and body.source.strip())
-    if not direct_mode:
-        get_subject_record(session, normalized_subject, owner_user_id=user.user_id)
+    get_subject_record(session, normalized_subject, owner_user_id=user.user_id)
     stream_response = StreamingResponse(
         chat_stream(
             request,

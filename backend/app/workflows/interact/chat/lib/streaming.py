@@ -31,6 +31,14 @@ class SSEEventEmitter:
     async def emit_token(self, content: str) -> None:
         await self.emit_event("token", {"content": content})
 
+    async def emit_status(self, *, stage: str, detail: str, **extra: object) -> None:
+        payload = {
+            "stage": stage,
+            "detail": detail,
+            **extra,
+        }
+        await self.emit_event("status", payload)
+
     async def emit_error(self, *, detail: str, error_code: str) -> None:
         await self.emit_event("error", {"detail": detail, "error_code": error_code})
 

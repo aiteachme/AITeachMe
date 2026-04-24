@@ -10,13 +10,18 @@ from __future__ import annotations
 
 from fastapi import Request
 
-from app.shared.infra.agent_loop import AgentLoopConfig, run_agent_loop_stream
+from app.shared.infra.agent_loop import run_agent_loop_stream
 from app.shared.infra.llm_support import acompletion_stream
-from app.shared.infra.llm_support.routing import TaskType
+from app.shared.infra.llm_support.routing import LLMCallPurpose
 from app.shared.infra.workflow.context import WorkflowContext
 from app.workflows.interact.chat.state import InteractWorkflowState
 from app.workflows.interact.chat.lib.execution import InteractExecutionMode
 from app.workflows.interact.chat.lib.streaming import SSEEventEmitter
+from app.workflows.interact.chat.lib.tooling import (
+    INTERACT_MODEL_SELECTOR,
+    build_agent_loop_config,
+    resolve_interact_tool_plan,
+)
 
 
 async def _is_disconnected(request: Request | None) -> bool:
@@ -29,6 +34,17 @@ async def _emit_token(emitter: SSEEventEmitter | None, token: str) -> None:
     if emitter is None:
         return
     await emitter.emit_token(token)
+
+
+async def _emit_status(
+    emitter: SSEEventEmitter | None,
+    stage: str,
+    detail: str,
+    **extra: object,
+) -> None:
+    if emitter is None:
+        return
+    await emitter.emit_status(stage=stage, detail=detail, **extra)
 
 
 def _build_stream_state(
@@ -51,21 +67,21 @@ def _build_stream_state(
 
 def _build_response_stream(state: InteractWorkflowState, *, subject: str):
     execution_mode = state.get("execution_mode", InteractExecutionMode.SINGLE_PASS)
-    if execution_mode == InteractExecutionMode.PLAN_EXECUTE:
+    tool_plan = resolve_interact_tool_plan(
+        execution_mode=execution_mode,
+        subject=subject,
+        retrieval_results=state.get("retrieval_results", []),
+    )
+    if tool_plan.uses_tools:
         return run_agent_loop_stream(
             state["messages"],
-            tools=["search_kb"],
-            config=AgentLoopConfig(
-                max_iterations=3,
-                max_tool_calls_per_turn=2,
-                tool_timeout_s=20,
-                task_type=TaskType.CHAT,
-                tool_argument_overrides={"search_kb": {"subject": subject}},
-            ),
+            tools=tool_plan.tool_names,
+            config=build_agent_loop_config(tool_plan=tool_plan, subject=subject),
         )
     return acompletion_stream(
         state["messages"],
-        task_type=TaskType.CHAT,
+        call_purpose=LLMCallPurpose.CHAT,
+        model=INTERACT_MODEL_SELECTOR,
     )
 
 
@@ -85,6 +101,20 @@ def build_stream_answer_node(
 
         collected_tokens: list[str] = []
         subject = str(state.get("subject") or context.subject or "")
+        execution_mode = state.get("execution_mode", InteractExecutionMode.SINGLE_PASS)
+        tool_plan = resolve_interact_tool_plan(
+            execution_mode=execution_mode,
+            subject=subject,
+            retrieval_results=state.get("retrieval_results", []),
+        )
+        await _emit_status(
+            emitter,
+            "answering",
+            "正在组织回答..." if not tool_plan.uses_tools else "正在结合知识库工具整理回答...",
+            execution_mode=execution_mode.value,
+            tools=tool_plan.tool_names,
+            model=INTERACT_MODEL_SELECTOR,
+        )
         stream = _build_response_stream(state, subject=subject)
         try:
             async for token in stream:
@@ -120,4 +150,3 @@ def build_stream_answer_node(
         )
 
     return stream_answer
-

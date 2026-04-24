@@ -27,6 +27,7 @@ def build_chat_messages(
     weak_points: list[WeakPointSummary],
     recent_mistakes: list[MistakeSummary],
     question: str,
+    source: str | None = None,
     selected_context: str | None = None,
     source_chunk_id: int | None = None,
     context_window: ContextWindowManager | None = None,
@@ -40,6 +41,7 @@ def build_chat_messages(
         teaching_strategy=get_strategy_instruction(strategy_mode),
         weak_points_context=_format_weak_points_context(weak_points),
         mistakes_context=_format_mistakes_context(recent_mistakes),
+        interaction_entry=_format_interaction_entry(source),
         selected_context=_format_selected_context(selected_context, source_chunk_id),
     )
     history_messages = [
@@ -110,12 +112,24 @@ def _format_mistakes_context(mistakes: list[MistakeSummary]) -> str:
     )
 
 
+def _format_interaction_entry(source: str | None) -> str:
+    normalized = (source or "").strip()
+    if normalized == "quick_chat":
+        return "知识文档划选提问。回答时优先解释用户划选内容，并把它放回原知识脉络中。"
+    if normalized == "build_assistant":
+        return "知识库构建过程触发。回答时优先解释当前构建阶段、资料处理或知识文档生成结果。"
+    if normalized:
+        return f"外部入口触发：{normalized}。回答时保留入口上下文，但不要虚构来源。"
+    return "常规学习对话。"
+
+
 def _format_selected_context(selected_context: str | None, source_chunk_id: int | None) -> str:
     if not selected_context:
         return "无。"
+    selected = selected_context.strip()[:2400]
     if source_chunk_id is None:
-        return selected_context
-    return f"[chunk_id={source_chunk_id}]\n{selected_context}"
+        return selected
+    return f"[chunk_id={source_chunk_id}]\n{selected}"
 
 
 __all__ = [

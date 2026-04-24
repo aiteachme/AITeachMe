@@ -35,7 +35,7 @@ class ChatSendRequest(BaseModel):
             "example": {
                 "question": "什么是条件概率？",
                 "session_id": "dbe63613-08f6-4818-8317-cdf8d7a794a8",
-                "source": "doc_selection",
+                "source": "quick_chat",
                 "anchor_id": "chapter-1",
                 "selected_context": "条件概率表示在 B 已经发生的前提下 A 发生的概率。",
                 "source_chunk_id": 12,
@@ -45,7 +45,7 @@ class ChatSendRequest(BaseModel):
 
     question: str = Field(description="Current user question.")
     session_id: str | None = Field(default=None, description="Optional session ID. Auto-created when omitted.")
-    source: str | None = Field(default=None, description="Optional source tag that enables direct chat mode.")
+    source: str | None = Field(default=None, description="Optional source tag, e.g. quick_chat or build_assistant.")
     anchor_id: str | None = Field(default=None, description="Optional doc heading anchor for highlighted QA.")
     selected_context: str | None = Field(default=None, description="Optional highlighted context.")
     source_chunk_id: int | None = Field(default=None, description="Optional source chunk ID for the highlighted context.")
