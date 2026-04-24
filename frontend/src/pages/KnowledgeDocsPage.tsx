@@ -78,6 +78,19 @@ interface FloatingComment {
   segments: HighlightSegment[];
 }
 
+interface SelectionContextPayload {
+  selected_text: string;
+  anchor_id: string;
+  anchor_title?: string;
+  heading_path: string[];
+  before_text?: string;
+  after_text?: string;
+  section_title?: string;
+  section_excerpt?: string;
+  section_truncated: boolean;
+  local_context_truncated: boolean;
+}
+
 interface FloatingToolbar {
   anchorId: string;
   selectedText: string;
@@ -172,6 +185,10 @@ function formatTime(ts: number): string {
   return `${d.getMonth() + 1}/${d.getDate()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
+function isHistoryComment(comment: Pick<Comment, "id">): boolean {
+  return comment.id.startsWith("history-");
+}
+
 function formatDocTimestamp(value: string | null | undefined): string | null {
   if (!value) return null;
   const date = new Date(value);
@@ -191,6 +208,9 @@ const COMMENT_DRAWER_BREAKPOINT = 1280;
 const THREAD_HISTORY_PAGE_SIZE = 100;
 const KNOWLEDGE_DOCS_VIEW_PREFS_VERSION = 1;
 const FLOATING_COMPOSER_THREAD_ID = "__floating-composer__";
+const SELECTION_SELECTED_TEXT_LIMIT = 1200;
+const SELECTION_LOCAL_CONTEXT_CHARS = 900;
+const SELECTION_SECTION_CONTEXT_CHARS = 3200;
 
 function getHeadingActivationOffset(container: HTMLElement): number {
   return Math.min(128, Math.max(76, container.clientHeight * 0.18));
@@ -332,20 +352,192 @@ function buildTocTree(items: TocItem[]): TocTreeNode[] {
   return roots;
 }
 
-/** Find ancestor IDs for a given heading id in the tree */
-function findAncestorIds(roots: TocTreeNode[], targetId: string): string[] {
-  const path: string[] = [];
+function findTocPath(roots: TocTreeNode[], targetId: string): TocTreeNode[] {
+  const path: TocTreeNode[] = [];
   const search = (nodes: TocTreeNode[]): boolean => {
     for (const node of nodes) {
       if (node.item.id === targetId) return true;
-      path.push(node.item.id);
+      path.push(node);
       if (search(node.children)) return true;
       path.pop();
     }
     return false;
   };
-  search(roots);
-  return path;
+  return search(roots) ? path : [];
+}
+
+function resolveVisibleActiveTocId(
+  roots: TocTreeNode[],
+  activeId: string,
+  collapsedIds: Set<string>
+): string {
+  if (!activeId) return "";
+  const ancestorPath = findTocPath(roots, activeId);
+  for (const ancestor of ancestorPath) {
+    if (collapsedIds.has(ancestor.item.id)) {
+      return ancestor.item.id;
+    }
+  }
+  return activeId;
+}
+
+function getHeadingLevel(node: Element | null | undefined): number {
+  if (!node) return 0;
+  const level = Number(node.tagName.replace("H", ""));
+  return Number.isInteger(level) ? level : 0;
+}
+
+function normalizeSelectionContextText(text: string): string {
+  return text
+    .replace(/\u00a0/g, " ")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n[ \t]+/g, "\n")
+    .replace(/[ \t]{2,}/g, " ")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+function clipContextText(text: string, limit: number): string {
+  const normalized = normalizeSelectionContextText(text);
+  if (normalized.length <= limit) return normalized;
+  return `${normalized.slice(0, Math.max(0, limit - 1)).trimEnd()}…`;
+}
+
+function collectNodeText(nodes: Node[]): string {
+  return normalizeSelectionContextText(
+    nodes
+      .map((node) => node.textContent ?? "")
+      .filter(Boolean)
+      .join("\n")
+  );
+}
+
+function findHeadingPath(contentRoot: HTMLElement, anchorId: string): HTMLElement[] {
+  const headings = Array.from(contentRoot.querySelectorAll<HTMLElement>("[data-heading-id]"));
+  const targetIndex = headings.findIndex((heading) => heading.getAttribute("data-heading-id") === anchorId);
+  if (targetIndex < 0) return [];
+
+  const stack: HTMLElement[] = [];
+  for (let index = 0; index <= targetIndex; index += 1) {
+    const heading = headings[index];
+    const level = getHeadingLevel(heading);
+    if (!level) continue;
+    while (stack.length > 0 && getHeadingLevel(stack[stack.length - 1]) >= level) {
+      stack.pop();
+    }
+    stack.push(heading);
+  }
+  return stack;
+}
+
+function collectSectionNodes(heading: HTMLElement): Node[] {
+  const boundaryLevel = getHeadingLevel(heading);
+  const nodes: Node[] = [heading];
+  let node = heading.nextSibling;
+  while (node) {
+    if (node instanceof HTMLElement && node.hasAttribute("data-heading-id")) {
+      const level = getHeadingLevel(node);
+      if (level > 0 && level <= boundaryLevel) break;
+    }
+    nodes.push(node);
+    node = node.nextSibling;
+  }
+  return nodes;
+}
+
+function findSelectionIndex(sectionText: string, selectedText: string): number {
+  const normalizedSelection = normalizeSelectionContextText(selectedText);
+  if (!normalizedSelection) return -1;
+
+  const exactIndex = sectionText.indexOf(normalizedSelection);
+  if (exactIndex >= 0) return exactIndex;
+
+  const compactSection = sectionText.replace(/\s+/g, "");
+  const compactSelection = normalizedSelection.replace(/\s+/g, "");
+  if (!compactSelection) return -1;
+  const compactIndex = compactSection.indexOf(compactSelection.slice(0, Math.min(120, compactSelection.length)));
+  if (compactIndex < 0) return -1;
+
+  let compactCursor = 0;
+  for (let index = 0; index < sectionText.length; index += 1) {
+    if (/\s/.test(sectionText[index])) continue;
+    if (compactCursor === compactIndex) return index;
+    compactCursor += 1;
+  }
+  return -1;
+}
+
+function excerptAroundSelection(sectionText: string, selectedText: string, maxChars: number): { text: string; truncated: boolean } {
+  if (sectionText.length <= maxChars) {
+    return { text: sectionText, truncated: false };
+  }
+
+  const selectionIndex = findSelectionIndex(sectionText, selectedText);
+  const selectedLength = Math.max(clipContextText(selectedText, SELECTION_SELECTED_TEXT_LIMIT).length, 1);
+  const fallbackStart = Math.max(0, Math.floor((sectionText.length - maxChars) / 2));
+  const start = selectionIndex >= 0
+    ? Math.max(0, selectionIndex - Math.floor(maxChars * 0.42))
+    : fallbackStart;
+  const adjustedStart = Math.min(start, Math.max(0, sectionText.length - maxChars));
+  const end = Math.min(sectionText.length, Math.max(adjustedStart + maxChars, selectionIndex + selectedLength));
+  const finalStart = Math.max(0, Math.min(adjustedStart, end - maxChars));
+  const prefix = finalStart > 0 ? "… " : "";
+  const suffix = end < sectionText.length ? " …" : "";
+  return {
+    text: `${prefix}${sectionText.slice(finalStart, end).trim()}${suffix}`,
+    truncated: true,
+  };
+}
+
+function buildSelectionContextPayload(
+  contentRoot: HTMLElement | null,
+  anchorId: string,
+  selectedText: string
+): SelectionContextPayload {
+  const fallbackSelectedText = clipContextText(selectedText, SELECTION_SELECTED_TEXT_LIMIT);
+  if (!contentRoot) {
+    return {
+      selected_text: fallbackSelectedText,
+      anchor_id: anchorId,
+      heading_path: [],
+      section_truncated: false,
+      local_context_truncated: false,
+    };
+  }
+
+  const headingPath = findHeadingPath(contentRoot, anchorId);
+  const currentHeading = headingPath[headingPath.length - 1] ?? null;
+  const currentLevel = getHeadingLevel(currentHeading);
+  const sectionHeading = currentLevel >= 3
+    ? [...headingPath].reverse().find((heading) => getHeadingLevel(heading) < currentLevel) ?? currentHeading
+    : currentHeading;
+  const sectionText = sectionHeading ? collectNodeText(collectSectionNodes(sectionHeading)) : normalizeSelectionContextText(contentRoot.textContent ?? "");
+  const selectedIndex = findSelectionIndex(sectionText, selectedText);
+  const normalizedSelectedText = normalizeSelectionContextText(selectedText);
+  const beforeRaw = selectedIndex >= 0 ? sectionText.slice(0, selectedIndex) : "";
+  const afterRaw = selectedIndex >= 0 ? sectionText.slice(selectedIndex + normalizedSelectedText.length) : "";
+  const beforeText = beforeRaw.length > SELECTION_LOCAL_CONTEXT_CHARS
+    ? `… ${beforeRaw.slice(-SELECTION_LOCAL_CONTEXT_CHARS).trimStart()}`
+    : beforeRaw;
+  const afterText = afterRaw.length > SELECTION_LOCAL_CONTEXT_CHARS
+    ? `${afterRaw.slice(0, SELECTION_LOCAL_CONTEXT_CHARS).trimEnd()} …`
+    : afterRaw;
+  const sectionExcerpt = excerptAroundSelection(sectionText, selectedText, SELECTION_SECTION_CONTEXT_CHARS);
+
+  return {
+    selected_text: fallbackSelectedText,
+    anchor_id: anchorId,
+    anchor_title: currentHeading?.textContent?.trim() || undefined,
+    heading_path: headingPath
+      .map((heading) => heading.textContent?.trim() ?? "")
+      .filter(Boolean),
+    before_text: beforeText ? clipContextText(beforeText, SELECTION_LOCAL_CONTEXT_CHARS + 4) : undefined,
+    after_text: afterText ? clipContextText(afterText, SELECTION_LOCAL_CONTEXT_CHARS + 4) : undefined,
+    section_title: sectionHeading?.textContent?.trim() || undefined,
+    section_excerpt: sectionExcerpt.text ? clipContextText(sectionExcerpt.text, SELECTION_SECTION_CONTEXT_CHARS + 4) : undefined,
+    section_truncated: sectionExcerpt.truncated,
+    local_context_truncated: beforeRaw.length > SELECTION_LOCAL_CONTEXT_CHARS || afterRaw.length > SELECTION_LOCAL_CONTEXT_CHARS,
+  };
 }
 
 function moveRecordKey<T>(
@@ -576,7 +768,7 @@ function DocUpdatingBanner({
               className={cn(
                 "rounded-full px-3 py-1 text-xs font-medium transition-colors",
                 viewMode === "draft"
-                  ? "bg-slate-900 text-white shadow-sm"
+                    ? "bg-slate-900 text-white shadow-sm"
                   : hasDraftVersion
                     ? "text-slate-600 hover:text-slate-900"
                     : "cursor-not-allowed text-slate-300",
@@ -654,26 +846,46 @@ function GraphPanelFallback() {
 
 function CommentCard({
   comment,
+  defaultCollapsed = false,
 }: {
   comment: Comment;
+  defaultCollapsed?: boolean;
 }) {
   const isAssistant = comment.role === "assistant";
+  const contentRef = useRef<HTMLDivElement>(null);
+  const [isCollapsed, setIsCollapsed] = useState(defaultCollapsed);
+  const [canCollapse, setCanCollapse] = useState(false);
+
+  useEffect(() => {
+    const rafId = window.requestAnimationFrame(() => {
+      const node = contentRef.current;
+      if (!node) return;
+      const lineHeight = Number.parseFloat(window.getComputedStyle(node).lineHeight) || 18;
+      const nextCanCollapse = node.scrollHeight > lineHeight * 3 + 8;
+      setCanCollapse(nextCanCollapse);
+      if (!nextCanCollapse) {
+        setIsCollapsed(false);
+      }
+    });
+    return () => window.cancelAnimationFrame(rafId);
+  }, [comment.content]);
+
   return (
     <div
       className={cn(
-        "w-full rounded-lg border shadow-sm transition-shadow",
+        "w-full rounded-lg border transition-colors",
         isAssistant
-          ? "border-blue-100 bg-blue-50/60 hover:shadow-blue-100/70"
-          : "border-slate-200 bg-white hover:shadow-md"
+          ? "border-sky-100 bg-sky-50/60"
+          : "border-slate-200 bg-white"
       )}
     >
       <div className="px-3 py-2">
-        <div className="mb-1 flex items-center justify-between">
+        <div className="mb-1.5 flex items-center justify-between gap-2">
           <div className="flex items-center gap-1.5">
             <div
               className={cn(
-                "flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-semibold text-white",
-                isAssistant ? "bg-blue-500" : "bg-slate-900"
+                "flex h-5 w-5 items-center justify-center rounded-md text-[10px] font-semibold text-white",
+                isAssistant ? "bg-sky-500" : "bg-slate-900"
               )}
             >
               {isAssistant ? "AI" : "我"}
@@ -685,15 +897,81 @@ function CommentCard({
               {formatTime(comment.createdAt)}
             </span>
           </div>
-          {comment.streaming && <Loader2 className="h-3.5 w-3.5 animate-spin text-blue-400" />}
+          <div className="flex items-center gap-1">
+            {comment.streaming && <Loader2 className="h-3.5 w-3.5 animate-spin text-sky-400" />}
+            {canCollapse && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setIsCollapsed((prev) => !prev);
+                }}
+                className={cn(
+                  "inline-flex h-6 items-center justify-center rounded-md transition",
+                  isCollapsed
+                    ? isAssistant
+                      ? "gap-1 bg-sky-100 px-2 text-[10px] font-medium text-sky-700 hover:bg-sky-200"
+                      : "gap-1 bg-slate-100 px-2 text-[10px] font-medium text-slate-700 hover:bg-slate-200"
+                    : "w-6 text-slate-400 hover:bg-white/80 hover:text-slate-700"
+                )}
+                aria-label={isCollapsed ? "展开消息" : "收起消息"}
+                title={isCollapsed ? "展开消息" : "收起消息"}
+              >
+                {isCollapsed ? (
+                  <>
+                    <ChevronDown className="h-3.5 w-3.5" />
+                    <span>展开</span>
+                  </>
+                ) : (
+                  <ChevronUp className="h-3.5 w-3.5" />
+                )}
+              </button>
+            )}
+          </div>
         </div>
-        {isAssistant ? (
-          <CommentMarkdown content={comment.content} />
-        ) : (
-          <p className="text-xs leading-relaxed text-slate-700 whitespace-pre-wrap">
-            {comment.content}
-          </p>
-        )}
+        <div
+          ref={contentRef}
+          className={cn(
+            "relative text-xs leading-relaxed text-slate-700",
+            isCollapsed && "max-h-[5.1rem] overflow-hidden rounded-md"
+          )}
+        >
+          {isAssistant ? (
+            <CommentMarkdown content={comment.content} />
+          ) : (
+            <p className="whitespace-pre-wrap">
+              {comment.content}
+            </p>
+          )}
+          {isCollapsed && (
+            <>
+              <div
+                className={cn(
+                  "pointer-events-none absolute inset-x-0 bottom-0 h-12 bg-gradient-to-t via-70% to-transparent",
+                  isAssistant ? "from-sky-50 via-sky-50/95" : "from-white via-white/95"
+                )}
+              />
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setIsCollapsed(false);
+                }}
+                className={cn(
+                  "absolute bottom-1 right-1 inline-flex h-6 items-center gap-1 rounded-md border px-2 text-[10px] font-medium shadow-sm transition",
+                  isAssistant
+                    ? "border-sky-200 bg-white/95 text-sky-700 hover:border-sky-300 hover:bg-sky-50"
+                    : "border-slate-200 bg-white/95 text-slate-700 hover:border-slate-300 hover:bg-slate-50"
+                )}
+                aria-label="展开完整内容"
+                title="展开完整内容"
+              >
+                <ChevronDown className="h-3 w-3" />
+                已收起，展开全部
+              </button>
+            </>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -701,7 +979,6 @@ function CommentCard({
 
 function CommentThread({
   anchorId,
-  title,
   comments,
   selectedText,
   draft,
@@ -716,7 +993,6 @@ function CommentThread({
   isAligned,
 }: {
   anchorId: string;
-  title: string;
   comments: Comment[];
   selectedText: string;
   draft: string;
@@ -730,27 +1006,44 @@ function CommentThread({
   compactMode: boolean;
   isAligned: boolean;
 }) {
+  const [isThreadCollapsed, setIsThreadCollapsed] = useState(false);
+  const selectedPreview = selectedText.trim() || "定位划词位置";
+
   return (
     <section
       onClick={onFocus}
       className={cn(
-        "rounded-xl border bg-slate-50/60 shadow-sm overflow-hidden transition-colors",
+        "rounded-lg border bg-white overflow-hidden transition-colors",
         isActive
-          ? "border-blue-400 bg-blue-50/35 shadow-[0_0_0_1px_rgba(59,130,246,0.18),0_8px_26px_-18px_rgba(59,130,246,0.6)]"
+          ? "border-sky-300 bg-sky-50/25"
           : "border-slate-200",
         isAligned && !isActive && "border-slate-300/80"
       )}
     >
-      <div className="px-3 py-2 border-b border-slate-200 bg-white flex items-center justify-between gap-2">
+      <div className="px-3 py-2 border-b border-slate-200/80 bg-white flex items-center justify-between gap-2">
         <button
           type="button"
           onClick={() => onJumpToAnchor(anchorId)}
+          title={selectedText ? `定位划词：${selectedText}` : "定位划词位置"}
           className={cn(
-            "text-left text-xs font-semibold truncate transition-colors",
-            isActive ? "text-blue-700" : "text-slate-700 hover:text-blue-600"
+            "group flex min-w-0 flex-1 items-center gap-2 rounded-md px-1 py-0.5 text-left transition-colors hover:bg-slate-50",
+            isActive && "bg-sky-50/70"
           )}
         >
-          {title}
+          <span
+            className={cn(
+              "h-5 w-[3px] shrink-0 rounded-full",
+              isActive ? "bg-sky-400" : "bg-slate-300"
+            )}
+          />
+          <span
+            className={cn(
+              "min-w-0 truncate text-[11px] font-medium",
+              isActive ? "text-sky-700" : "text-slate-600 group-hover:text-slate-800"
+            )}
+          >
+            {selectedPreview}
+          </span>
         </button>
         <div className="flex items-center gap-1.5">
           <button
@@ -759,72 +1052,77 @@ function CommentThread({
               e.stopPropagation();
               onOpenAssistant();
             }}
-            className={cn(
-              "inline-flex h-6 items-center gap-1 rounded-md border border-sky-200 bg-gradient-to-r from-sky-50 to-cyan-50 px-2 text-[10px] font-semibold text-sky-700 transition hover:border-sky-300 hover:from-sky-100 hover:to-cyan-100",
-            )}
+            className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-500 transition hover:border-sky-200 hover:bg-sky-50 hover:text-sky-700"
+            aria-label="在 AI 面板继续对话"
             title="在 AI 面板继续对话"
           >
-            <ExternalLink className="h-2.5 w-2.5" />
-            AI 面板
+            <ExternalLink className="h-3.5 w-3.5" />
           </button>
-          <span className="shrink-0 rounded-full bg-blue-100 text-blue-700 text-[10px] px-2 py-0.5 font-medium">
+          <span className="shrink-0 rounded-full bg-slate-100 text-slate-600 text-[10px] px-2 py-0.5 font-medium">
             {comments.length}
           </span>
-        </div>
-      </div>
-      {selectedText && (
-        <div className={cn(
-          "px-3 py-2 border-b border-slate-100 bg-white/80 transition-colors",
-          isActive && "bg-blue-50/70 border-blue-100"
-        )}>
-          <p className={cn("truncate text-[11px]", isActive ? "text-blue-700 font-medium" : "text-blue-500")}>
-            &ldquo;{selectedText}&rdquo;
-          </p>
-        </div>
-      )}
-      <div className={cn("p-2 space-y-2", compactMode ? "max-h-64 overflow-y-auto" : "overflow-visible")}>
-        {comments.map((comment) => (
-          <CommentCard
-            key={comment.id}
-            comment={comment}
-          />
-        ))}
-      </div>
-      <div className="border-t border-slate-200 bg-white p-2">
-        <textarea
-          value={draft}
-          onChange={(e) => onDraftChange(e.target.value)}
-          onClick={(e) => e.stopPropagation()}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey) {
-              e.preventDefault();
-              onSend();
-            }
-          }}
-          rows={2}
-          disabled={isStreaming}
-          placeholder={isStreaming ? "AI 正在回复..." : "继续追问这段内容..."}
-          className="w-full resize-none rounded-lg border border-slate-200 px-3 py-2 text-xs text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-300 disabled:bg-slate-50 disabled:text-slate-400"
-        />
-        <div className="mt-2 flex items-center justify-end">
           <button
+            type="button"
             onClick={(e) => {
               e.stopPropagation();
-              onSend();
+              setIsThreadCollapsed((prev) => !prev);
             }}
-            disabled={!draft.trim() || isStreaming}
-            className={cn(
-              "inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors",
-              draft.trim() && !isStreaming
-                ? "bg-blue-500 text-white hover:bg-blue-600"
-                : "bg-slate-100 text-slate-300"
-            )}
+            className="flex h-6 w-6 items-center justify-center rounded-md text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
+            aria-label={isThreadCollapsed ? "展开问答" : "收起问答"}
+            title={isThreadCollapsed ? "展开问答" : "收起问答"}
           >
-            {isStreaming ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
-            发送
+            {isThreadCollapsed ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronUp className="h-3.5 w-3.5" />}
           </button>
         </div>
       </div>
+      {!isThreadCollapsed && (
+        <>
+          <div className={cn("p-2 space-y-2", compactMode ? "max-h-64 overflow-y-auto" : "overflow-visible")}>
+            {comments.map((comment) => (
+              <CommentCard
+                key={comment.id}
+                comment={comment}
+                defaultCollapsed={isHistoryComment(comment)}
+              />
+            ))}
+          </div>
+          <div className="border-t border-slate-200 bg-white p-2">
+            <textarea
+              value={draft}
+              onChange={(e) => onDraftChange(e.target.value)}
+              onClick={(e) => e.stopPropagation()}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  onSend();
+                }
+              }}
+              rows={2}
+              disabled={isStreaming}
+              placeholder={isStreaming ? "AI 正在回复..." : "继续追问这段内容..."}
+              className="w-full resize-none rounded-md border border-slate-200 px-3 py-2 text-xs text-slate-700 focus:outline-none focus:ring-2 focus:ring-sky-100 focus:border-sky-300 disabled:bg-slate-50 disabled:text-slate-400"
+            />
+            <div className="mt-2 flex items-center justify-end">
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onSend();
+                }}
+                disabled={!draft.trim() || isStreaming}
+                className={cn(
+                  "inline-flex items-center gap-1 rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors",
+                  draft.trim() && !isStreaming
+                    ? "bg-slate-900 text-white hover:bg-slate-800"
+                    : "bg-slate-100 text-slate-300"
+                )}
+              >
+                {isStreaming ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
+                发送
+              </button>
+            </div>
+          </div>
+        </>
+      )}
     </section>
   );
 }
@@ -885,6 +1183,7 @@ export function KnowledgeDocsPage() {
   const [pinnedThreadId, setPinnedThreadId] = useState<string | null>(null);
   const [isAutoCommentHighlightSuppressed, setIsAutoCommentHighlightSuppressed] = useState(false);
   const [commentListOriginTop, setCommentListOriginTop] = useState<number | null>(null);
+  const [desktopCommentScrollMinHeight, setDesktopCommentScrollMinHeight] = useState(0);
   const [threadHeightsById, setThreadHeightsById] = useState<Record<string, number>>({});
   const [isTocCollapsed, setIsTocCollapsed] = useState(false);
   const [isCommentCollapsed, setIsCommentCollapsed] = useState(false);
@@ -917,6 +1216,7 @@ export function KnowledgeDocsPage() {
   const commentPanelRef = useRef<HTMLDivElement>(null);
   const commentViewportRef = useRef<HTMLDivElement>(null);
   const commentThreadListRef = useRef<HTMLDivElement>(null);
+  const desktopCommentTrackRef = useRef<HTMLDivElement>(null);
   const floatingComposerCardRef = useRef<HTMLDivElement>(null);
   const floatingComposerTextareaRef = useRef<HTMLTextAreaElement>(null);
   const settingsPanelRef = useRef<HTMLDivElement>(null);
@@ -940,6 +1240,7 @@ export function KnowledgeDocsPage() {
   const hasCompactCommentControl = isCompactComment && viewPrefs.showCommentPanel;
   const isTocVisible = viewPrefs.showToc && (isCompactToc ? activeDrawer === "toc" : !isTocCollapsed);
   const isCommentVisible = viewPrefs.showCommentPanel && (isCompactComment ? activeDrawer === "comment" : !isCommentCollapsed);
+  const showDesktopCommentPanel = !isCompactComment && viewPrefs.showCommentPanel && !isCommentCollapsed;
   const pageWideMode = viewPrefs.widePage;
 
   const updateViewPrefs = useCallback((updater: (prev: KnowledgeDocsViewPrefs) => KnowledgeDocsViewPrefs) => {
@@ -1004,20 +1305,25 @@ export function KnowledgeDocsPage() {
     setIsGraphDrawerOpen(false);
   }, []);
 
-  const activeTocItem = useMemo(
-    () => toc.find((item) => item.id === activeHeading) ?? null,
-    [activeHeading, toc]
-  );
-
   // Build hierarchical tree from flat TOC (Feishu-style)
   const tocTree = useMemo(() => buildTocTree(toc), [toc]);
 
+  const visibleActiveHeading = useMemo(
+    () => resolveVisibleActiveTocId(tocTree, activeHeading, collapsedTocIds),
+    [activeHeading, collapsedTocIds, tocTree]
+  );
+
+  const activeTocItem = useMemo(
+    () => toc.find((item) => item.id === visibleActiveHeading) ?? null,
+    [toc, visibleActiveHeading]
+  );
+
   const alignActiveTocItem = useCallback((behavior: ScrollBehavior = "auto") => {
-    if (!activeHeading || !isTocVisible) return;
+    if (!visibleActiveHeading || !isTocVisible) return;
     const nav = tocNavRef.current;
     if (!nav) return;
 
-    const activeNode = nav.querySelector(`[data-toc-id="${activeHeading}"]`) as HTMLElement | null;
+    const activeNode = nav.querySelector(`[data-toc-id="${visibleActiveHeading}"]`) as HTMLElement | null;
     if (!activeNode) return;
 
     const activeTop = activeNode.offsetTop;
@@ -1056,25 +1362,7 @@ export function KnowledgeDocsPage() {
     } else {
       nav.style.removeProperty("scroll-behavior");
     }
-  }, [activeHeading, isTocVisible, markTocAutoScrolling]);
-
-  // Auto-expand ancestors of active heading
-  useEffect(() => {
-    if (!activeHeading || tocTree.length === 0) return;
-    const ancestors = findAncestorIds(tocTree, activeHeading);
-    if (ancestors.length === 0) return;
-    setCollapsedTocIds((prev) => {
-      let changed = false;
-      const next = new Set(prev);
-      for (const id of ancestors) {
-        if (next.has(id)) {
-          next.delete(id);
-          changed = true;
-        }
-      }
-      return changed ? next : prev;
-    });
-  }, [activeHeading, tocTree]);
+  }, [isTocVisible, markTocAutoScrolling, visibleActiveHeading]);
 
   useEffect(() => {
     if (lastAutoCommentHighlightHeadingRef.current === activeHeading) {
@@ -1087,7 +1375,7 @@ export function KnowledgeDocsPage() {
   // Keep the active TOC item visible without mirroring the document's scroll position.
   useEffect(() => {
     alignActiveTocItem();
-  }, [activeHeading, collapsedTocIds, alignActiveTocItem]);
+  }, [visibleActiveHeading, collapsedTocIds, alignActiveTocItem]);
 
   useEffect(() => {
     tocDefaultInitializedRef.current = false;
@@ -1696,6 +1984,33 @@ export function KnowledgeDocsPage() {
     return Math.min(maxTop, Math.max(minTop, rawTop));
   }, [isCompactComment]);
 
+  const buildFloatingCommentFromToolbar = useCallback((toolbar: FloatingToolbar): FloatingComment => {
+    const container = scrollRef.current;
+    const range = selectedRangeRef.current;
+    let selectionViewportTop = toolbar.selectionViewportTop;
+    let selectionContentTop = toolbar.selectionContentTop;
+    let segments: HighlightSegment[] = [];
+
+    if (container && range) {
+      const rect = range.getBoundingClientRect();
+      if (rect.width > 0 || rect.height > 0) {
+        const containerRect = container.getBoundingClientRect();
+        selectionViewportTop = rect.top + rect.height / 2;
+        selectionContentTop = rect.top - containerRect.top + container.scrollTop + rect.height / 2;
+      }
+      segments = captureRangeSegments(range);
+    }
+
+    return {
+      anchorId: toolbar.anchorId,
+      selectedText: toolbar.selectedText,
+      selectionViewportTop,
+      selectionContentTop,
+      top: computeCommentComposerTop(selectionViewportTop),
+      segments,
+    };
+  }, [captureRangeSegments, computeCommentComposerTop]);
+
   // Keep document selection behavior close to Feishu:
   // any click outside toolbar clears highlighted range state.
   useEffect(() => {
@@ -1924,6 +2239,7 @@ export function KnowledgeDocsPage() {
 
     try {
       const subject = subjectId ?? "demo";
+      const selectionContext = buildSelectionContextPayload(contentAreaRef.current, anchorId, selectedText);
       const result = await postSseJson(
         `/api/v1/subjects/${subject}/chats/send`,
         {
@@ -1931,7 +2247,9 @@ export function KnowledgeDocsPage() {
           source: "quick_chat",
           session_id: threadSessionIds[threadId] ?? undefined,
           anchor_id: anchorId,
+          selected_text: selectedText || undefined,
           selected_context: selectedText || undefined,
+          selection_context: selectionContext,
         },
         {
           signal: controller.signal,
@@ -2025,6 +2343,7 @@ export function KnowledgeDocsPage() {
 
   const openCommentComposer = useCallback(() => {
     if (!floatingToolbar) return;
+    const toolbar = floatingToolbar;
     if (!viewPrefs.showCommentPanel) {
       updateViewPrefs((prev) => ({ ...prev, showCommentPanel: true }));
     }
@@ -2033,19 +2352,22 @@ export function KnowledgeDocsPage() {
     } else {
       setIsCommentCollapsed(false);
     }
-    setFloatingComment({
-      anchorId: floatingToolbar.anchorId,
-      selectedText: floatingToolbar.selectedText,
-      selectionViewportTop: floatingToolbar.selectionViewportTop,
-      selectionContentTop: floatingToolbar.selectionContentTop,
-      top: computeCommentComposerTop(floatingToolbar.selectionViewportTop),
-      segments: captureSelectionSegments(),
-    });
     setFloatingToolbar(null);
     setFloatingInput("");
-  }, [captureSelectionSegments, computeCommentComposerTop, floatingToolbar, isCompactComment, updateViewPrefs, viewPrefs.showCommentPanel]);
+    const showComposer = () => {
+      setFloatingComment(buildFloatingCommentFromToolbar(toolbar));
+    };
+    if (isCommentVisible) {
+      showComposer();
+      window.requestAnimationFrame(showComposer);
+      return;
+    }
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(showComposer);
+    });
+  }, [buildFloatingCommentFromToolbar, floatingToolbar, isCommentVisible, isCompactComment, updateViewPrefs, viewPrefs.showCommentPanel]);
 
-  // Feishu-style: detect text selection and place a composer in the right rail.
+  // Feishu-style: detect text selection and show a small ask-AI action first.
   const handleTextSelect = useCallback(() => {
     const sel = window.getSelection();
     if (!sel || sel.isCollapsed || !sel.toString().trim()) {
@@ -2094,35 +2416,31 @@ export function KnowledgeDocsPage() {
       return;
     }
 
-    if (!viewPrefs.showCommentPanel) {
-      updateViewPrefs((prev) => ({ ...prev, showCommentPanel: true }));
-    }
-    if (isCompactComment) {
-      setActiveDrawer("comment");
-    } else {
-      setIsCommentCollapsed(false);
-    }
-
     const contentTop = rect.top - containerRect.top + container.scrollTop;
     const selectionViewportTop = rect.top + rect.height / 2;
-    setFloatingToolbar(null);
-    setFloatingComment({
+    const toolbarWidth = 112;
+    const minToolbarLeft = container.scrollLeft + 12;
+    const maxToolbarLeft = container.scrollLeft + container.clientWidth - toolbarWidth - 12;
+    const toolbarLeft = Math.max(
+      minToolbarLeft,
+      Math.min(maxToolbarLeft, rect.right - containerRect.left + container.scrollLeft + 8)
+    );
+    const toolbarTop = Math.max(container.scrollTop + 10, contentTop - 44);
+
+    setFloatingComment(null);
+    setFloatingToolbar({
       anchorId: headingId,
       selectedText,
+      top: toolbarTop,
+      left: toolbarLeft,
       selectionViewportTop,
       selectionContentTop: contentTop + rect.height / 2,
-      top: computeCommentComposerTop(selectionViewportTop),
-      segments,
     });
     setFloatingInput("");
     setActiveCommentThreadId(null);
   }, [
     activeHeading,
     captureRangeSegments,
-    computeCommentComposerTop,
-    isCompactComment,
-    updateViewPrefs,
-    viewPrefs.showCommentPanel,
   ]);
 
   useEffect(() => {
@@ -2148,7 +2466,7 @@ export function KnowledgeDocsPage() {
   }, [handleTextSelect]);
 
   useEffect(() => {
-    if (!floatingComment || !isCompactComment) return;
+    if (!floatingComment) return;
     const container = scrollRef.current;
     let rafId = 0;
 
@@ -2158,24 +2476,37 @@ export function KnowledgeDocsPage() {
         setFloatingComment((prev) => {
           if (!prev) return null;
           let selectionViewportTop = prev.selectionViewportTop;
+          let selectionContentTop = prev.selectionContentTop;
+          let segments = prev.segments;
           const range = selectedRangeRef.current;
-          if (range) {
+          const containerNode = scrollRef.current;
+          if (range && containerNode) {
             const rect = range.getBoundingClientRect();
             if (rect.width > 0 || rect.height > 0) {
+              const containerRect = containerNode.getBoundingClientRect();
               selectionViewportTop = rect.top + rect.height / 2;
+              selectionContentTop = rect.top - containerRect.top + containerNode.scrollTop + rect.height / 2;
+            }
+            const nextSegments = captureRangeSegments(range);
+            if (nextSegments.length > 0) {
+              segments = nextSegments;
             }
           }
           const nextTop = computeCommentComposerTop(selectionViewportTop);
           if (
             Math.abs(prev.top - nextTop) < 0.5 &&
-            Math.abs(prev.selectionViewportTop - selectionViewportTop) < 0.5
+            Math.abs(prev.selectionViewportTop - selectionViewportTop) < 0.5 &&
+            Math.abs(prev.selectionContentTop - selectionContentTop) < 0.5 &&
+            highlightSegmentsEqual(prev.segments, segments)
           ) {
             return prev;
           }
           return {
             ...prev,
             selectionViewportTop,
+            selectionContentTop,
             top: nextTop,
+            segments,
           };
         });
       });
@@ -2184,12 +2515,26 @@ export function KnowledgeDocsPage() {
     updateTop();
     window.addEventListener("resize", updateTop);
     container?.addEventListener("scroll", updateTop, { passive: true });
+
+    const observer = typeof ResizeObserver !== "undefined"
+      ? new ResizeObserver(() => updateTop())
+      : null;
+    if (observer) {
+      if (contentAreaRef.current) {
+        observer.observe(contentAreaRef.current);
+      }
+      if (commentPanelRef.current) {
+        observer.observe(commentPanelRef.current);
+      }
+    }
+
     return () => {
       window.cancelAnimationFrame(rafId);
       window.removeEventListener("resize", updateTop);
       container?.removeEventListener("scroll", updateTop);
+      observer?.disconnect();
     };
-  }, [computeCommentComposerTop, floatingComment?.anchorId, isCommentVisible, isCompactComment]);
+  }, [captureRangeSegments, computeCommentComposerTop, floatingComment?.anchorId, isCommentVisible, showDesktopCommentPanel]);
 
   const activeStreamingCount = useMemo(
     () => Object.values(threadStreaming).filter(Boolean).length,
@@ -2211,10 +2556,6 @@ export function KnowledgeDocsPage() {
 
   const tocOrderMap = useMemo(
     () => new Map(toc.map((item, index) => [item.id, index])),
-    [toc]
-  );
-  const tocTitleMap = useMemo(
-    () => new Map(toc.map((item) => [item.id, item.text])),
     [toc]
   );
   const commentThreads = useMemo<CommentThreadView[]>(() => (
@@ -2306,7 +2647,7 @@ export function KnowledgeDocsPage() {
     }
     const containerRect = container.getBoundingClientRect();
     const listRect = list.getBoundingClientRect();
-    const nextTop = listRect.top - containerRect.top + container.scrollTop;
+    const nextTop = listRect.top - containerRect.top;
     setCommentListOriginTop((prev) => {
       if (prev !== null && Math.abs(prev - nextTop) < 0.5) {
         return prev;
@@ -2314,6 +2655,24 @@ export function KnowledgeDocsPage() {
       return nextTop;
     });
   }, [isCompactComment]);
+
+  const syncDesktopCommentTrack = useCallback(() => {
+    const track = desktopCommentTrackRef.current;
+    if (!track) return;
+    if (isCompactComment || !isCommentVisible) {
+      track.style.removeProperty("transform");
+      return;
+    }
+    const container = scrollRef.current;
+    const list = commentThreadListRef.current;
+    if (!container || !list) return;
+    const containerRect = container.getBoundingClientRect();
+    const listRect = list.getBoundingClientRect();
+    const currentTop = listRect.top - containerRect.top;
+    const baseTop = commentListOriginTop ?? currentTop;
+    const translateY = baseTop - currentTop - container.scrollTop;
+    track.style.transform = `translate3d(0, ${translateY}px, 0)`;
+  }, [commentListOriginTop, isCommentVisible, isCompactComment]);
   const threadHeightMap = useMemo(
     () => new Map(Object.entries(threadHeightsById)),
     [threadHeightsById]
@@ -2385,6 +2744,36 @@ export function KnowledgeDocsPage() {
     ),
     [desktopCommentLayoutThreads, desktopThreadHeightMap, desiredTopByThreadId, floatingComment, pinnedThreadId]
   );
+  const updateDesktopCommentScrollExtent = useCallback(() => {
+    if (!showDesktopCommentPanel || !isCommentVisible || commentListOriginTop === null || desktopThreadLayout.totalHeight <= 0) {
+      setDesktopCommentScrollMinHeight((prev) => (prev === 0 ? prev : 0));
+      return;
+    }
+
+    const container = scrollRef.current;
+    const viewport = commentViewportRef.current;
+    if (!container || !viewport) {
+      return;
+    }
+
+    const containerRect = container.getBoundingClientRect();
+    const viewportRect = viewport.getBoundingClientRect();
+    const viewportBottom = viewportRect.bottom - containerRect.top;
+    const bottomGutter = 32;
+    const trackHeight = desktopThreadLayout.totalHeight + 24;
+    const requiredScrollHeight = Math.ceil(
+      commentListOriginTop +
+      trackHeight +
+      container.clientHeight -
+      viewportBottom +
+      bottomGutter
+    );
+    const nextMinHeight = Math.max(container.clientHeight, requiredScrollHeight);
+
+    setDesktopCommentScrollMinHeight((prev) => (
+      Math.abs(prev - nextMinHeight) < 1 ? prev : nextMinHeight
+    ));
+  }, [commentListOriginTop, desktopThreadLayout.totalHeight, isCommentVisible, showDesktopCommentPanel]);
   const threadCountByAnchor = useMemo(() => {
     const next = new Map<string, number>();
     for (const item of commentThreads) {
@@ -2410,15 +2799,20 @@ export function KnowledgeDocsPage() {
   useEffect(() => {
     if (isCompactComment) {
       setCommentListOriginTop(null);
+      syncDesktopCommentTrack();
       return;
     }
     const rafId = window.requestAnimationFrame(() => {
       measureCommentListOrigin();
+      syncDesktopCommentTrack();
+      updateDesktopCommentScrollExtent();
     });
     return () => window.cancelAnimationFrame(rafId);
   }, [
     isCompactComment,
     measureCommentListOrigin,
+    syncDesktopCommentTrack,
+    updateDesktopCommentScrollExtent,
     commentThreads.length,
     isCommentCollapsed,
     activeDrawer,
@@ -2427,14 +2821,20 @@ export function KnowledgeDocsPage() {
 
   useEffect(() => {
     if (isCompactComment) {
+      syncDesktopCommentTrack();
       return;
     }
     const handleLayoutChange = () => {
       measureCommentListOrigin();
+      syncDesktopCommentTrack();
+      updateDesktopCommentScrollExtent();
+    };
+    const handleDocumentScroll = () => {
+      syncDesktopCommentTrack();
     };
     const container = scrollRef.current;
     window.addEventListener("resize", handleLayoutChange);
-    container?.addEventListener("scroll", handleLayoutChange, { passive: true });
+    container?.addEventListener("scroll", handleDocumentScroll, { passive: true });
 
     const observer = typeof ResizeObserver !== "undefined"
       ? new ResizeObserver(() => handleLayoutChange())
@@ -2450,16 +2850,39 @@ export function KnowledgeDocsPage() {
 
     return () => {
       window.removeEventListener("resize", handleLayoutChange);
-      container?.removeEventListener("scroll", handleLayoutChange);
+      container?.removeEventListener("scroll", handleDocumentScroll);
       observer?.disconnect();
     };
-  }, [isCompactComment, measureCommentListOrigin]);
+  }, [isCompactComment, measureCommentListOrigin, syncDesktopCommentTrack, updateDesktopCommentScrollExtent]);
 
   useEffect(() => {
-    if (isCompactComment) {
-      setThreadHeightsById({});
+    if (isCompactComment || !showDesktopCommentPanel) {
+      setDesktopCommentScrollMinHeight((prev) => (prev === 0 ? prev : 0));
       return;
     }
+
+    const rafId = window.requestAnimationFrame(() => {
+      updateDesktopCommentScrollExtent();
+      syncDesktopCommentTrack();
+    });
+    return () => window.cancelAnimationFrame(rafId);
+  }, [
+    isCompactComment,
+    showDesktopCommentPanel,
+    updateDesktopCommentScrollExtent,
+    syncDesktopCommentTrack,
+    desktopThreadLayout.totalHeight,
+    threadHeightsById,
+    floatingComposerHeight,
+    commentThreads.length,
+  ]);
+
+  const refreshThreadHeights = useCallback(() => {
+    if (isCompactComment) {
+      setThreadHeightsById((prev) => (Object.keys(prev).length === 0 ? prev : {}));
+      return;
+    }
+
     const next: Record<string, number> = {};
     for (const thread of commentThreads) {
       const node = threadRefs.current.get(thread.threadId);
@@ -2488,7 +2911,48 @@ export function KnowledgeDocsPage() {
       }
       return next;
     });
-  }, [commentThreads, comments, isCompactComment, threadDrafts, threadStreaming]);
+  }, [commentThreads, isCompactComment]);
+
+  useEffect(() => {
+    if (isCompactComment) {
+      refreshThreadHeights();
+      return;
+    }
+
+    let rafId = 0;
+    const scheduleMeasure = () => {
+      if (rafId) {
+        return;
+      }
+      rafId = window.requestAnimationFrame(() => {
+        rafId = 0;
+        refreshThreadHeights();
+      });
+    };
+
+    refreshThreadHeights();
+
+    const observer = typeof ResizeObserver !== "undefined"
+      ? new ResizeObserver(() => scheduleMeasure())
+      : null;
+    if (observer) {
+      for (const thread of commentThreads) {
+        const node = threadRefs.current.get(thread.threadId);
+        if (node) {
+          observer.observe(node);
+        }
+      }
+    }
+    window.addEventListener("resize", scheduleMeasure);
+
+    return () => {
+      if (rafId) {
+        window.cancelAnimationFrame(rafId);
+      }
+      observer?.disconnect();
+      window.removeEventListener("resize", scheduleMeasure);
+    };
+  }, [commentThreads, isCompactComment, refreshThreadHeights]);
 
   useEffect(() => {
     if (!activeCommentThreadId) {
@@ -2579,7 +3043,16 @@ export function KnowledgeDocsPage() {
       window.removeEventListener("resize", refreshHighlightLayout);
       observer?.disconnect();
     };
-  }, [buildSelectionSegmentsFromText, hasRenderedMarkdown]);
+  }, [
+    buildSelectionSegmentsFromText,
+    hasRenderedMarkdown,
+    isCommentCollapsed,
+    isCompactComment,
+    isTocCollapsed,
+    pageWideMode,
+    viewPrefs.showCommentPanel,
+    viewPrefs.showToc,
+  ]);
 
   const activeCommentIndex = useMemo(() => {
     if (commentThreadIds.length === 0) return -1;
@@ -2699,7 +3172,7 @@ export function KnowledgeDocsPage() {
       const { item } = node;
       const hasChildren = node.children.length > 0;
       const isCollapsed = collapsedTocIds.has(item.id);
-      const isActive = activeHeading === item.id;
+      const isActive = visibleActiveHeading === item.id;
       const count = commentsForAnchor(item.id);
       const indent = depth * 16;
 
@@ -2774,7 +3247,7 @@ export function KnowledgeDocsPage() {
         </div>
       );
     });
-  }, [activeHeading, collapsedTocIds, commentsForAnchor, handleTocItemClick, toggleTocCollapse]);
+  }, [collapsedTocIds, commentsForAnchor, handleTocItemClick, toggleTocCollapse, visibleActiveHeading]);
 
   useEffect(() => {
     if (!isTocVisible) {
@@ -2991,7 +3464,6 @@ export function KnowledgeDocsPage() {
               >
                 <CommentThread
                   anchorId={thread.anchorId}
-                  title={tocTitleMap.get(thread.anchorId) ?? thread.anchorId}
                   comments={thread.comments}
                   selectedText={thread.selectedText}
                   draft={threadDrafts[thread.threadId] ?? ""}
@@ -3017,114 +3489,118 @@ export function KnowledgeDocsPage() {
           <div
             ref={commentThreadListRef}
             className="relative px-3 py-3"
-            style={{ minHeight: Math.max(160, desktopThreadLayout.totalHeight + 24) }}
           >
-            {desktopCommentLayoutThreads.map((thread) => {
-              if (thread.threadId === FLOATING_COMPOSER_THREAD_ID && floatingComment) {
-                const layout = desktopThreadLayout.positions[FLOATING_COMPOSER_THREAD_ID];
-                const top = layout?.top ?? 0;
-                return (
-                  <div
-                    key={FLOATING_COMPOSER_THREAD_ID}
-                    ref={floatingComposerCardRef}
-                    className="absolute left-3 right-3 transition-[top] duration-200 ease-out"
-                    style={{ top }}
-                  >
-                    <div className="overflow-hidden rounded-2xl border border-slate-200/90 bg-white shadow-[0_22px_48px_-32px_rgba(15,23,42,0.45)]">
-                      <div className="border-b border-slate-200/80 bg-[linear-gradient(130deg,rgba(236,253,255,0.82),rgba(248,250,252,0.96),rgba(239,246,255,0.88))] px-3 py-2.5">
-                        <div className="flex items-center gap-2">
-                          <span className="inline-flex h-7 w-7 items-center justify-center rounded-xl bg-slate-900 text-white shadow-sm">
-                            <Sparkles className="h-3.5 w-3.5" />
-                          </span>
-                          <div className="min-w-0">
-                            <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">问问 AI</p>
-                            <p className="truncate text-xs text-slate-700">&ldquo;{floatingComment.selectedText.slice(0, 72)}&rdquo;</p>
+            <div
+              ref={desktopCommentTrackRef}
+              className="relative will-change-transform"
+              style={{ minHeight: Math.max(160, desktopThreadLayout.totalHeight + 24) }}
+            >
+              {desktopCommentLayoutThreads.map((thread) => {
+                if (thread.threadId === FLOATING_COMPOSER_THREAD_ID && floatingComment) {
+                  const layout = desktopThreadLayout.positions[FLOATING_COMPOSER_THREAD_ID];
+                  const top = layout?.top ?? 0;
+                  return (
+                    <div
+                      key={FLOATING_COMPOSER_THREAD_ID}
+                      ref={floatingComposerCardRef}
+                      className="absolute left-0 right-0"
+                      style={{ top }}
+                    >
+                      <div className="overflow-hidden rounded-2xl border border-slate-200/90 bg-white shadow-[0_22px_48px_-32px_rgba(15,23,42,0.45)]">
+                        <div className="border-b border-slate-200/80 bg-[linear-gradient(130deg,rgba(236,253,255,0.82),rgba(248,250,252,0.96),rgba(239,246,255,0.88))] px-3 py-2.5">
+                          <div className="flex items-center gap-2">
+                            <span className="inline-flex h-7 w-7 items-center justify-center rounded-xl bg-slate-900 text-white shadow-sm">
+                              <Sparkles className="h-3.5 w-3.5" />
+                            </span>
+                            <div className="min-w-0">
+                              <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">问问 AI</p>
+                              <p className="truncate text-xs text-slate-700">&ldquo;{floatingComment.selectedText.slice(0, 72)}&rdquo;</p>
+                            </div>
+                          </div>
+                        </div>
+                        <div className="space-y-2.5 p-3">
+                          <textarea
+                            ref={floatingComposerTextareaRef}
+                            value={floatingInput}
+                            onChange={(e) => setFloatingInput(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter" && !e.shiftKey) {
+                                e.preventDefault();
+                                addComment();
+                              }
+                              if (e.key === "Escape") {
+                                dismissCommentComposer();
+                              }
+                            }}
+                            placeholder="基于这段内容向 AI 提问..."
+                            rows={3}
+                            className="w-full resize-none rounded-xl border border-slate-200/90 bg-white px-3 py-2.5 text-sm leading-6 text-slate-800 shadow-inner shadow-slate-100/70 outline-none transition focus:border-slate-300 focus:ring-4 focus:ring-sky-100/80"
+                          />
+                          <div className="flex items-center justify-between">
+                            <button
+                              onClick={dismissCommentComposer}
+                              className="rounded-lg px-2.5 py-1 text-xs text-slate-500 transition hover:bg-slate-100 hover:text-slate-700"
+                            >
+                              取消
+                            </button>
+                            <button
+                              onClick={addComment}
+                              disabled={!floatingInput.trim()}
+                              className={cn(
+                                "inline-flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-medium transition",
+                                floatingInput.trim()
+                                  ? "bg-slate-900 text-white shadow-sm hover:bg-slate-800"
+                                  : "bg-slate-100 text-slate-300"
+                              )}
+                            >
+                              <Send className="h-3.5 w-3.5" />
+                              发送
+                            </button>
                           </div>
                         </div>
                       </div>
-                      <div className="space-y-2.5 p-3">
-                        <textarea
-                          ref={floatingComposerTextareaRef}
-                          value={floatingInput}
-                          onChange={(e) => setFloatingInput(e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter" && !e.shiftKey) {
-                              e.preventDefault();
-                              addComment();
-                            }
-                            if (e.key === "Escape") {
-                              dismissCommentComposer();
-                            }
-                          }}
-                          placeholder="基于这段内容向 AI 提问..."
-                          rows={3}
-                          className="w-full resize-none rounded-xl border border-slate-200/90 bg-white px-3 py-2.5 text-sm leading-6 text-slate-800 shadow-inner shadow-slate-100/70 outline-none transition focus:border-slate-300 focus:ring-4 focus:ring-sky-100/80"
-                        />
-                        <div className="flex items-center justify-between">
-                          <button
-                            onClick={dismissCommentComposer}
-                            className="rounded-lg px-2.5 py-1 text-xs text-slate-500 transition hover:bg-slate-100 hover:text-slate-700"
-                          >
-                            取消
-                          </button>
-                          <button
-                            onClick={addComment}
-                            disabled={!floatingInput.trim()}
-                            className={cn(
-                              "inline-flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-medium transition",
-                              floatingInput.trim()
-                                ? "bg-slate-900 text-white shadow-sm hover:bg-slate-800"
-                                : "bg-slate-100 text-slate-300"
-                            )}
-                          >
-                            <Send className="h-3.5 w-3.5" />
-                            发送
-                          </button>
-                        </div>
-                      </div>
                     </div>
+                  );
+                }
+
+                const layout = desktopThreadLayout.positions[thread.threadId];
+                const top = layout?.top ?? 0;
+                return (
+                  <div
+                    key={thread.threadId}
+                    data-thread-id={thread.threadId}
+                    ref={(node: HTMLDivElement | null) => {
+                      if (node) {
+                        threadRefs.current.set(thread.threadId, node);
+                      } else {
+                        threadRefs.current.delete(thread.threadId);
+                      }
+                    }}
+                    className="absolute left-0 right-0"
+                    style={{ top }}
+                  >
+                    <CommentThread
+                      anchorId={thread.anchorId}
+                      comments={thread.comments}
+                      selectedText={thread.selectedText}
+                      draft={threadDrafts[thread.threadId] ?? ""}
+                      isStreaming={Boolean(threadStreaming[thread.threadId])}
+                      isActive={highlightedThreadId === thread.threadId}
+                      onDraftChange={(value) => updateThreadDraft(thread.threadId, value)}
+                      onSend={() => sendThreadReply(thread.threadId, thread.anchorId, thread.selectedText)}
+                      onFocus={() => focusCommentThread(thread.threadId, {
+                        pinToSelection: true,
+                        scrollThreadIntoView: false,
+                      })}
+                      onJumpToAnchor={() => focusCommentThread(thread.threadId, { pinToSelection: true, scrollThreadIntoView: false })}
+                      onOpenAssistant={() => openAiAssistant(thread.threadId)}
+                      compactMode={false}
+                      isAligned={layout?.aligned ?? false}
+                    />
                   </div>
                 );
-              }
-
-              const layout = desktopThreadLayout.positions[thread.threadId];
-              const top = layout?.top ?? 0;
-              return (
-                <div
-                  key={thread.threadId}
-                  data-thread-id={thread.threadId}
-                  ref={(node: HTMLDivElement | null) => {
-                    if (node) {
-                      threadRefs.current.set(thread.threadId, node);
-                    } else {
-                      threadRefs.current.delete(thread.threadId);
-                    }
-                  }}
-                  className="absolute left-3 right-3 transition-[top] duration-200 ease-out"
-                  style={{ top }}
-                >
-                  <CommentThread
-                    anchorId={thread.anchorId}
-                    title={tocTitleMap.get(thread.anchorId) ?? thread.anchorId}
-                    comments={thread.comments}
-                    selectedText={thread.selectedText}
-                    draft={threadDrafts[thread.threadId] ?? ""}
-                    isStreaming={Boolean(threadStreaming[thread.threadId])}
-                    isActive={highlightedThreadId === thread.threadId}
-                    onDraftChange={(value) => updateThreadDraft(thread.threadId, value)}
-                    onSend={() => sendThreadReply(thread.threadId, thread.anchorId, thread.selectedText)}
-                    onFocus={() => focusCommentThread(thread.threadId, {
-                      pinToSelection: true,
-                      scrollThreadIntoView: false,
-                    })}
-                    onJumpToAnchor={() => focusCommentThread(thread.threadId, { pinToSelection: true, scrollThreadIntoView: false })}
-                    onOpenAssistant={() => openAiAssistant(thread.threadId)}
-                    compactMode={false}
-                    isAligned={layout?.aligned ?? false}
-                  />
-                </div>
-              );
-            })}
+              })}
+            </div>
           </div>
         )}
       </div>
@@ -3133,7 +3609,6 @@ export function KnowledgeDocsPage() {
 
   const desktopTocWidthClass = "w-[clamp(14rem,16vw,18rem)]";
   const desktopCommentWidthClass = "w-[clamp(18rem,23vw,26rem)]";
-  const showDesktopCommentPanel = !isCompactComment && viewPrefs.showCommentPanel && !isCommentCollapsed;
   const pageShellMaxWidthClass = pageWideMode ? "max-w-none" : showDesktopCommentPanel ? "max-w-[1480px]" : "max-w-[1120px]";
   const docColumnMaxWidthClass = pageWideMode ? "max-w-none" : showDesktopCommentPanel ? "max-w-[920px]" : "max-w-[980px]";
   const showFloatingActions = Boolean(subjectId && !isBuildActive && !showDocGeneratingState);
@@ -3297,13 +3772,17 @@ export function KnowledgeDocsPage() {
           className="relative h-full overflow-y-auto doc-scroll-container content-scroll"
           onMouseUp={handleTextSelect}
         >
-          <div className="min-h-full px-4 py-8 md:px-6 lg:px-8">
+          <div
+            className="min-h-full px-4 py-8 md:px-6 lg:px-8"
+            style={desktopCommentScrollMinHeight > 0 ? { minHeight: desktopCommentScrollMinHeight } : undefined}
+          >
             <div
               className={cn(
                 "mx-auto flex min-h-full w-full items-start justify-center",
                 showDesktopCommentPanel && "gap-4 xl:gap-5",
                 pageShellMaxWidthClass,
               )}
+              style={desktopCommentScrollMinHeight > 0 ? { minHeight: desktopCommentScrollMinHeight } : undefined}
             >
               <div
                 ref={contentAreaRef}
@@ -3433,19 +3912,19 @@ export function KnowledgeDocsPage() {
               }}
               onMouseUp={(e) => e.stopPropagation()}
             >
-              <div className="inline-flex items-center gap-2 rounded-2xl border border-slate-200/90 bg-white/95 px-2 py-1.5 shadow-[0_22px_44px_-28px_rgba(15,23,42,0.82)] backdrop-blur">
-                <span className="max-w-40 truncate px-1 text-[11px] text-slate-500">
-                  &ldquo;{floatingToolbar.selectedText.slice(0, 60)}&rdquo;
-                </span>
-                <button
-                  onMouseDown={(e) => e.preventDefault()}
-                  onClick={openCommentComposer}
-                  className="inline-flex h-8 items-center gap-1.5 rounded-xl bg-slate-900 px-3 text-xs font-medium text-white shadow-sm transition hover:bg-slate-800"
-                >
+              <button
+                type="button"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={openCommentComposer}
+                className="group inline-flex h-10 items-center gap-2 rounded-full border border-slate-200/90 bg-white/96 px-2.5 pr-3 text-xs font-medium text-slate-700 shadow-[0_18px_42px_-24px_rgba(15,23,42,0.85)] backdrop-blur transition hover:border-sky-200 hover:bg-sky-50 hover:text-sky-700"
+                title="基于选中内容问问 AI"
+                aria-label="基于选中内容问问 AI"
+              >
+                <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-slate-900 text-white shadow-sm transition group-hover:bg-sky-600">
                   <Sparkles className="h-3.5 w-3.5" />
-                  问问AI
-                </button>
-              </div>
+                </span>
+                问问 AI
+              </button>
             </div>
           )}
         </div>

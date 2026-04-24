@@ -30,6 +30,7 @@ from app.schemas.chats import (
     ChatClearData,
     ChatContextItem,
     ChatMessageItem,
+    ChatSelectionContext,
     ChatSessionDeleteData,
     ChatSessionItem,
     ChatThreadTurnItem,
@@ -208,7 +209,9 @@ async def chat_stream(
     question: str,
     source: str | None = None,
     anchor_id: str | None = None,
+    selected_text: str | None = None,
     selected_context: str | None = None,
+    selection_context: ChatSelectionContext | None = None,
     source_chunk_id: int | None = None,
 ) -> AsyncGenerator[str, None]:
     resolved_session = _resolve_chat_session(
@@ -229,7 +232,9 @@ async def chat_stream(
         question=question,
         source=_clean_optional(source),
         anchor_id=_clean_optional(anchor_id),
+        selected_text=selected_text,
         selected_context=selected_context,
+        selection_context=selection_context,
         source_chunk_id=source_chunk_id,
     ):
         event_name, data = _parse_sse_payload(payload)

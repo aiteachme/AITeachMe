@@ -173,9 +173,9 @@ const VIEWER_STYLES: Record<MarkdownViewerVariant, ViewerStyles> = {
     listItem: "leading-[1.75] [&>p]:mb-0 [&>p]:inline",
     blockquote: "my-2.5 rounded-r-md border-l-[3px] border-[#DEE0E3] bg-[#FAFBFC]/88 pl-3 pr-2.5 py-1.25 text-[14px] leading-[1.68] text-[#646A73] dark:border-slate-700 dark:bg-slate-900/40 dark:text-slate-400",
     codeInline: "rounded-md border border-[#E6EAF0] bg-[#F8FAFC] px-1.5 py-0.5 font-mono text-[0.9em] text-[#0F172A] shadow-[inset_0_1px_0_rgba(255,255,255,0.65)] dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100",
-    codeShell: "my-6 overflow-hidden rounded-2xl border border-[#D7DCE2] bg-[linear-gradient(180deg,#0f172a_0%,#111827_100%)] shadow-[0_22px_48px_-30px_rgba(15,23,42,0.58)] dark:border-slate-800",
-    codeLanguageBadge: "border-b border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.08),rgba(255,255,255,0.02))] px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-300/90",
-    codePre: "overflow-x-auto bg-[radial-gradient(circle_at_top_left,rgba(56,189,248,0.14),transparent_38%),linear-gradient(180deg,rgba(2,6,23,0.14),rgba(2,6,23,0))] px-4 py-4 text-[13px] leading-6 text-slate-100 font-mono",
+    codeShell: "my-6 overflow-hidden rounded-xl border border-[#E5E7EB] bg-white shadow-[0_12px_30px_-26px_rgba(15,23,42,0.35)] dark:border-[#E5E7EB] dark:bg-white",
+    codeLanguageBadge: "border-b border-[#ECECF1] bg-[#F7F7F8] px-4 py-2.5 text-[11px] font-medium uppercase tracking-[0.16em] text-[#6B7280] dark:border-[#ECECF1] dark:bg-[#F7F7F8] dark:text-[#6B7280]",
+    codePre: "overflow-x-auto bg-white px-4 py-4 text-[13px] leading-6 text-[#111827] font-mono dark:bg-white dark:text-[#111827]",
     tableShell: "my-5 overflow-x-auto rounded-lg border border-[#DEE0E3] bg-white dark:border-slate-800 dark:bg-slate-950/60",
     table: "min-w-full text-[14px]",
     thead: "border-b border-[#DEE0E3] bg-[#F5F6F7] dark:border-slate-800 dark:bg-slate-900/80",
@@ -510,6 +510,42 @@ function createHeadingIdFactory() {
   };
 }
 
+function looksLikeGitConflictBlock(codeText: string): boolean {
+  return /^<<<<<<<[\s\S]*\n=======[\s\S]*\n>>>>>>>/m.test(codeText);
+}
+
+function renderGitConflictLines(codeText: string): ReactNode[] {
+  let region: "base" | "current" | "incoming" = "base";
+
+  return codeText.split("\n").map((line, index) => {
+    let lineClass = "border-transparent text-[#24292F]";
+
+    if (/^<<<<<<<(?:\s|$)/.test(line)) {
+      lineClass = "border-rose-300 bg-rose-50 text-rose-700 font-semibold";
+      region = "current";
+    } else if (/^=======$/.test(line)) {
+      lineClass = "border-amber-300 bg-amber-50 text-amber-700 font-semibold";
+      region = "incoming";
+    } else if (/^>>>>>>>(?:\s|$)/.test(line)) {
+      lineClass = "border-emerald-300 bg-emerald-50 text-emerald-700 font-semibold";
+      region = "base";
+    } else if (region === "current") {
+      lineClass = "border-rose-100 bg-rose-50/35 text-[#24292F]";
+    } else if (region === "incoming") {
+      lineClass = "border-emerald-100 bg-emerald-50/35 text-[#24292F]";
+    }
+
+    return (
+      <span
+        key={`${index}-${line}`}
+        className={cn("block min-h-[1.5rem] border-l-4 px-4 whitespace-pre", lineClass)}
+      >
+        {line || "\u00A0"}
+      </span>
+    );
+  });
+}
+
 function isAbsoluteAssetUrl(value: string): boolean {
   return /^(https?:)?\/\//i.test(value) || value.startsWith("/") || value.startsWith("data:");
 }
@@ -767,13 +803,17 @@ export function MarkdownViewer({
           }
 
           if (isBlock) {
+            const shouldRenderConflictBlock = looksLikeGitConflictBlock(codeText);
+
             return (
               <div className={styles.codeShell}>
                 {language ? (
                   <div className={styles.codeLanguageBadge}>{language}</div>
                 ) : null}
-                <pre className={styles.codePre}>
-                  <code className={cn("font-mono", className)}>{children}</code>
+                <pre className={cn(styles.codePre, shouldRenderConflictBlock ? "px-0 py-3" : "")}>
+                  <code className={cn("font-mono", className)}>
+                    {shouldRenderConflictBlock ? renderGitConflictLines(codeText) : children}
+                  </code>
                 </pre>
               </div>
             );

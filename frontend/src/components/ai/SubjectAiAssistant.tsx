@@ -249,6 +249,7 @@ export function SubjectAiAssistantProvider({ subjectId, children }: SubjectAiAss
   }
 
   const hasSubject = Boolean(subjectId);
+  const shouldShowAssistantPanel = isOpen && hasSubject && !isBuildPage;
 
   const contextValue = useMemo<SubjectAiAssistantContextValue>(() => ({
     openAssistant,
@@ -278,10 +279,21 @@ export function SubjectAiAssistantProvider({ subjectId, children }: SubjectAiAss
         </button>
       ) : null}
 
+      <button
+        type="button"
+        className={cn(
+          "fixed inset-0 z-[84] cursor-default bg-transparent transition-opacity",
+          shouldShowAssistantPanel ? "pointer-events-auto opacity-100" : "pointer-events-none opacity-0"
+        )}
+        onClick={closeAssistant}
+        aria-label="收起 AI 助手"
+        tabIndex={shouldShowAssistantPanel ? 0 : -1}
+      />
+
       <div
         className={cn(
           "fixed top-0 bottom-0 right-0 z-[85] bg-white border-l border-zinc-200/80 shadow-[0_0_40px_rgba(0,0,0,0.1)] flex dark:bg-slate-950 dark:border-slate-800/80 dark:shadow-[0_0_50px_rgba(0,0,0,0.55)]",
-          isOpen && hasSubject && !isBuildPage ? "translate-x-0" : "translate-x-full",
+          shouldShowAssistantPanel ? "translate-x-0" : "translate-x-full",
           !isDragging && "transition-transform duration-300 ease-[cubic-bezier(0.2,0.8,0.2,1)]"
         )}
         style={{ width: panelWidth }}
@@ -344,7 +356,7 @@ export function SubjectAiAssistantProvider({ subjectId, children }: SubjectAiAss
           ) : null}
 
           {/* Main Chat Content */}
-          <div className="min-h-0 flex-1 overflow-y-auto pb-4 pt-2">
+          <div className="min-h-0 flex-1 overflow-y-auto pt-2">
             {!selectedSessionId ? (
               <div className="flex h-full items-center justify-center px-6">
                 <div className="max-w-md text-center">
