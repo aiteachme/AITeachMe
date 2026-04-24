@@ -27,7 +27,7 @@ from app.shared.infra.runtime import is_cloud_mode  # noqa: E402
 def _build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Bootstrap cloud DB if needed, then start uvicorn.")
     parser.add_argument("--host", default="0.0.0.0")
-    parser.add_argument("--port", default="8000")
+    parser.add_argument("--port", default="9020")
     parser.add_argument("--reset-db", action="store_true")
     return parser
 

@@ -14,7 +14,7 @@ fn backend_port() -> String {
     .ok()
     .filter(|value| !value.trim().is_empty())
     .or_else(|| option_env!("AITEACHME_TAURI_BACKEND_PORT").map(str::to_owned))
-    .unwrap_or_else(|| "8010".to_owned())
+    .unwrap_or_else(|| "9020".to_owned())
 }
 
 #[cfg(feature = "local-backend")]

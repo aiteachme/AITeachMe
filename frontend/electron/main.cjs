@@ -3,7 +3,6 @@ const { spawn } = require("node:child_process");
 const path = require("node:path");
 
 const DEV_SERVER_URL = "http://127.0.0.1:5180";
-const BACKEND_PORT = process.env.AITEACHME_BACKEND_PORT || "8010";
 const isDevMode = process.argv.includes("--dev");
 
 function loadBuildConfig() {
@@ -18,6 +17,7 @@ const buildConfig = loadBuildConfig();
 const APP_ID = buildConfig.appId || "com.aiteachme.desktop";
 const APP_NAME = buildConfig.appName || "AiTeachMe";
 const BACKEND_MODE = buildConfig.backendMode || "local";
+const BACKEND_PORT = String(process.env.AITEACHME_BACKEND_PORT || buildConfig.backendPort || "9020");
 const appIconPath = app.isPackaged
   ? path.join(process.resourcesPath, "app-icon.ico")
   : path.join(__dirname, "..", "..", "docs", "brand", "atm-logo-3_ico_96x96.ico");

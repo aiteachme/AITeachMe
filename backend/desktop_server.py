@@ -75,7 +75,7 @@ def main() -> None:
     configure_desktop_environment()
     ensure_standard_streams()
 
-    port = int(os.environ.get("AITEACHME_BACKEND_PORT", "8010"))
+    port = int(os.environ.get("AITEACHME_BACKEND_PORT", "9020"))
     log_level = os.environ.get("AITEACHME_BACKEND_LOG_LEVEL", "info")
 
     import uvicorn

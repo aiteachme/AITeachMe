@@ -1,7 +1,7 @@
 param(
     [string]$ApiUrl = "https://aiteachme.onrender.com",
     [switch]$SkipInstall,
-    [string]$BackendPort = "8010"
+    [string]$BackendPort = "9020"
 )
 
 $ErrorActionPreference = "Stop"

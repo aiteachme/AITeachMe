@@ -1,6 +1,6 @@
 param(
     [switch]$SkipInstall,
-    [string]$BackendPort = "8010"
+    [string]$BackendPort = "9020"
 )
 
 $params = @{

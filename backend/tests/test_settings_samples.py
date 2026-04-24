@@ -61,7 +61,7 @@ def test_detect_llm_provider_from_base_url_handles_major_providers() -> None:
         == "azure"
     )
     assert detect_llm_provider_from_base_url("http://localhost:11434/v1") == "ollama"
-    assert detect_llm_provider_from_base_url("http://localhost:8000/v1") == "vllm"
+    assert detect_llm_provider_from_base_url("http://localhost:9020/v1") == "vllm"
     assert detect_llm_provider_from_base_url("https://api.deepseek.com/v1") == "deepseek"
     assert detect_llm_provider_from_base_url("https://api.moonshot.cn/v1") == "kimi"
     assert detect_llm_provider_from_base_url("https://open.bigmodel.cn/api/paas/v4") == "glm"
@@ -134,7 +134,7 @@ def test_split_provider_model_name_preserves_vendor_model_paths() -> None:
 def test_llm_provider_requires_api_key_handles_local_gateways() -> None:
     assert llm_provider_requires_api_key("anthropic", base_url="https://api.anthropic.com") is True
     assert llm_provider_requires_api_key("ollama", base_url="http://localhost:11434/v1") is False
-    assert llm_provider_requires_api_key("vllm", base_url="http://127.0.0.1:8000/v1") is False
+    assert llm_provider_requires_api_key("vllm", base_url="http://127.0.0.1:9020/v1") is False
     assert llm_provider_requires_api_key("openai_compatible", base_url="http://localhost:1234/v1") is False
 
 

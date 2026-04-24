@@ -41,10 +41,10 @@ npm run dev
 ```
 
 ```bash
-cd backend ; conda activate atm ; uvicorn app.main:app --reload --port 8010
+cd backend ; conda activate atm ; uvicorn app.main:app --reload --port 9020
 
 cd backend ; conda activate atm
-uvicorn app.main:app --reload --port 8010
+uvicorn app.main:app --reload --port 9020
 ```
 
 

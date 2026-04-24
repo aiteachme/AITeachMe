@@ -70,7 +70,7 @@ bash infra/deployment/ci/deploy.sh
 
 访问服务器：
 - 前端：`http://your-server-ip`
-- 后端 API：`http://your-server-ip:8000`
+- 后端 API：`http://your-server-ip:9020`
 
 查看容器状态：
 ```bash
@@ -99,7 +99,7 @@ services:
       - "3000:80"  # 改为 3000 端口
   backend:
     ports:
-      - "8080:8000"  # 改为 8080 端口
+      - "8080:9020"  # 改为 8080 端口
 ```
 
 ### 添加环境变量

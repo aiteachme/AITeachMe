@@ -23,10 +23,10 @@ The local flavor packages the Vite frontend, the Tauri shell, and a PyInstaller 
 .\build\tauri-local.bat
 ```
 
-The local backend listens on `127.0.0.1:8010` by default. To build a package with another port:
+The local backend listens on `127.0.0.1:9020` by default. To build a package with another port:
 
 ```powershell
-.\build\tauri-local.bat -BackendPort 8020
+.\build\tauri-local.bat -BackendPort 9020
 ```
 
 ## Prerequisites

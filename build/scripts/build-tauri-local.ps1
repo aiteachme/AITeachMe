@@ -1,6 +1,6 @@
 param(
     [switch]$SkipInstall,
-    [string]$BackendPort = "8010"
+    [string]$BackendPort = "9020"
 )
 
 . (Join-Path $PSScriptRoot "tauri-build-common.ps1")
