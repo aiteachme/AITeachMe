@@ -24,7 +24,7 @@ def test_merged_markdown_places_cover_first_and_toc_after_overview_h1() -> None:
     assert merged.index("## 目录") > merged.index("# 知识文档总览")
 
 
-def test_cover_size_candidates_use_square_fallback_for_openai_compatible_prediction_models() -> None:
+def test_cover_size_candidates_use_square_fallback_for_openai_compatible_gateway_models() -> None:
     assert _cover_size_candidates(
         "doubao-seedream-4-0",
         api_base="https://gateway.example.com/v1",

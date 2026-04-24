@@ -41,7 +41,6 @@ from app.workflows.digest.planner import (
     get_confirmed_build_plan,
     mark_confirmed_build_plan_status,
 )
-from app.workflows.digest.docgen.lib.cover import generate_docgen_cover_artifact
 from app.shared.infra.exceptions import ConfirmedBuildPlanRequiredError, NoReadyFilesForDocGenError, RawFileNotFoundError, SubjectBuildLockConflictError
 from app.shared.infra.subject import get_subject_vector_status_by_slug
 from app.shared.infra.tools.builtin.markdown_processing import normalize_mermaid_blocks
@@ -567,7 +566,6 @@ async def run_docgen_background(*, subject: str, file_ids: list[int], prompt: st
     confirmed_plan_payload = None
     resolved_digest_mode = None
     kg_ingest_task: asyncio.Task[dict[str, int]] | None = None
-    cover_task: asyncio.Task[dict[str, Any] | None] | None = None
     graph_seed_chapter_metadatas: list[dict[str, object]] = []
     sync_graph_after_docgen = bool(get_settings().knowledge_graph.sync_after_docgen)
     logger.info(
@@ -599,18 +597,6 @@ async def run_docgen_background(*, subject: str, file_ids: list[int], prompt: st
             update_knowledge_build_lane_status(subject, lane="graph", requested_at=requested_at, build_group_id=build_group_id, status="accepted", stage="queued_after_docgen", source_file_ids=file_ids, prompt=prompt, current_stage_description="知识文档发布后将自动开始图谱同步。")
         else:
             update_knowledge_build_lane_status(subject, lane="graph", requested_at=requested_at, build_group_id=build_group_id, status="skipped", stage="disabled", source_file_ids=file_ids, prompt=prompt, current_stage_description="已关闭文档构建后自动图谱同步。")
-        if confirmed_plan_payload is not None:
-            cover_task = asyncio.create_task(
-                generate_docgen_cover_artifact(
-                    subject=subject,
-                    build_session_id=build_session_id,
-                    user_prompt=prompt,
-                    plan_summary=str(confirmed_plan_payload.get("plan_summary") or ""),
-                    digest_mode=resolved_digest_mode,
-                    confirmed_plan=confirmed_plan_payload,
-                    requested_at=requested_at,
-                )
-            )
         if sync_graph_after_docgen and file_ids:
             kg_ingest_task = asyncio.create_task(
                 run_graph_file_ingest_background(
@@ -625,7 +611,6 @@ async def run_docgen_background(*, subject: str, file_ids: list[int], prompt: st
             )
         result = await run_docgen_workflow(subject=subject, file_ids=file_ids, user_prompt=prompt, requested_at=requested_at, build_session_id=build_session_id, confirmed_plan=confirmed_plan_payload, planner_session_id=planner_session_id, confirmed_plan_id=confirmed_plan_id, digest_mode=resolved_digest_mode)
         if result.failed:
-            await _cancel_optional_task(cover_task)
             await _cancel_optional_task(kg_ingest_task)
             if sync_graph_after_docgen:
                 update_knowledge_build_lane_status(subject, lane="graph", requested_at=requested_at, build_group_id=build_group_id, status="skipped", stage="blocked_by_docgen_failure", current_stage_description="知识文档构建失败，未继续图谱同步。")
@@ -636,7 +621,6 @@ async def run_docgen_background(*, subject: str, file_ids: list[int], prompt: st
                     mark_confirmed_build_plan_status(session, subject=subject, user_id=user_id, plan_id=confirmed_plan_id, status="failed")
             logger.error("knowledge_build_failed", subject=subject, error=result.error.detail)
             return
-        await _cancel_optional_task(cover_task)
         ingest_metrics = {"processed_chunks": 0}
         graph_error_message: str | None = None
         doc_sync_metrics: dict[str, int | str] = {
@@ -684,7 +668,6 @@ async def run_docgen_background(*, subject: str, file_ids: list[int], prompt: st
             with managed_session() as session:
                 mark_confirmed_build_plan_status(session, subject=subject, user_id=user_id, plan_id=confirmed_plan_id, status="completed")
     except asyncio.CancelledError:
-        await _cancel_optional_task(cover_task)
         await _cancel_optional_task(kg_ingest_task)
         if sync_graph_after_docgen:
             update_knowledge_build_lane_status(subject, lane="graph", requested_at=requested_at, build_group_id=build_group_id, status="cancelled", stage="cancelled", error_message="build_cancelled", current_stage_description="图谱构建已取消。")
@@ -695,7 +678,6 @@ async def run_docgen_background(*, subject: str, file_ids: list[int], prompt: st
                 mark_confirmed_build_plan_status(session, subject=subject, user_id=user_id, plan_id=confirmed_plan_id, status="cancelled")
         raise
     except Exception:
-        await _cancel_optional_task(cover_task)
         await _cancel_optional_task(kg_ingest_task)
         if sync_graph_after_docgen:
             update_knowledge_build_lane_status(subject, lane="graph", requested_at=requested_at, build_group_id=build_group_id, status="skipped", stage="blocked_by_docgen_failure", current_stage_description="知识文档构建异常失败，未完成图谱同步。")

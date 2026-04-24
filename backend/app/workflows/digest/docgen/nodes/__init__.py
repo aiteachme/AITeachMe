@@ -6,6 +6,7 @@ from .build_chapter_execution_briefs import build_chapter_execution_briefs_node
 from .confirm_and_seed_backbone import build_confirm_and_seed_backbone_node
 from .enhance_chapters import build_enhance_chapters_node
 from .finalize_titles import build_finalize_titles_node
+from .generate_cover import build_generate_cover_node
 from .generate_chapters import build_generate_chapters_node
 from .load_context import build_load_context_node
 from .lock_titles_for_chapters import build_lock_titles_for_chapters_node
@@ -23,6 +24,7 @@ __all__ = [
     "build_document_consistency_review_node",
     "build_enhance_chapters_node",
     "build_finalize_titles_node",
+    "build_generate_cover_node",
     "build_generate_chapters_node",
     "build_load_context_node",
     "build_lock_titles_for_chapters_node",

@@ -48,22 +48,33 @@ class ContextWindowManager:
     def estimate_tokens(text: str) -> int:
         """快速估算 token 数量。"""
 
-        return max(1, int(len(text) / _CHARS_PER_TOKEN))
+        normalized = str(text or "")
+        if not normalized.strip():
+            return 0
+        return max(1, int(len(normalized) / _CHARS_PER_TOKEN))
 
     def estimate_message_tokens(self, messages: list[dict]) -> int:
         """估算消息列表的 token 数量。"""
 
-        return sum(self.estimate_tokens(str(message.get("content", ""))) for message in messages)
+        return sum(self.estimate_tokens(str(message.get("content") or "")) for message in messages)
 
     def truncate_text(self, text: str, max_tokens: int) -> str:
         """按 token 预算截断文本。"""
 
-        estimated = self.estimate_tokens(text)
-        if estimated <= max_tokens:
-            return text
+        normalized = str(text or "")
+        if max_tokens <= 0 or not normalized.strip():
+            return ""
 
-        max_chars = int(max_tokens * _CHARS_PER_TOKEN)
-        return text[:max_chars] + "..."
+        estimated = self.estimate_tokens(normalized)
+        if estimated <= max_tokens:
+            return normalized
+
+        max_chars = max(1, int(max_tokens * _CHARS_PER_TOKEN))
+        if max_chars >= len(normalized):
+            return normalized
+        if max_chars <= 3:
+            return normalized[:max_chars]
+        return normalized[: max_chars - 3].rstrip() + "..."
 
     def truncate_messages(
         self,

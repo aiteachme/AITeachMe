@@ -147,20 +147,6 @@ _OPTIONAL_MODEL_CAPABILITY_DEFAULTS: dict[str, Any] = {
     "text_to_speech": None,
     "video_generation": None,
 }
-OPENAI_COMPATIBLE_ONE_STEP_IMAGE_MODELS: frozenset[str] = frozenset(
-    {
-        "flux-1.1-pro",
-        "flux-1.1-pro-ultra",
-        "flux.1-kontext-pro",
-        "flux.1-kontext-max",
-    }
-)
-OPENAI_COMPATIBLE_IMAGE_PROVIDER_HINTS: tuple[tuple[str, tuple[str, ...]], ...] = (
-    ("doubao", ("doubao-seedream", "seedream-")),
-    ("qianfan", ("qwen-image",)),
-    ("openai", ("gpt-image-", "dall-e-", "gpt-4o-image")),
-    ("google", ("gemini-", "imagen-")),
-)
 
 
 def _provider_model_defaults(
@@ -419,21 +405,6 @@ def split_provider_model_name(model: str | None) -> tuple[str | None, str]:
     return normalized_provider, model_name.strip()
 
 
-def is_openai_compatible_one_step_image_model(model: str | None) -> bool:
-    normalized = (model or "").strip().casefold()
-    return normalized in OPENAI_COMPATIBLE_ONE_STEP_IMAGE_MODELS
-
-
-def infer_openai_compatible_image_provider(model: str | None) -> str | None:
-    normalized = (model or "").strip().casefold()
-    if not normalized or "/" in normalized or is_openai_compatible_one_step_image_model(normalized):
-        return None
-    for provider, prefixes in OPENAI_COMPATIBLE_IMAGE_PROVIDER_HINTS:
-        if any(normalized.startswith(prefix) for prefix in prefixes):
-            return provider
-    return None
-
-
 def normalize_openai_compatible_image_model_name(
     model: str | None,
     *,
@@ -444,12 +415,9 @@ def normalize_openai_compatible_image_model_name(
         return None
     if normalize_llm_provider_name(runtime_provider) != "openai_compatible":
         return normalized
-    if "/" in normalized or is_openai_compatible_one_step_image_model(normalized):
+    if "/" in normalized:
         return normalized
-    provider = infer_openai_compatible_image_provider(normalized)
-    if provider:
-        return f"{provider}/{normalized}"
-    return normalized
+    return f"openai/{normalized}"
 
 
 def detect_llm_provider_from_base_url(base_url: str | None) -> str | None:
@@ -794,9 +762,7 @@ __all__ = [
     "get_retriever_profiles",
     "get_llm_api_version",
     "get_llm_provider_model_defaults",
-    "infer_openai_compatible_image_provider",
     "is_local_llm_base_url",
-    "is_openai_compatible_one_step_image_model",
     "llm_provider_requires_api_key",
     "load_project_settings_values",
     "normalize_openai_compatible_image_model_name",

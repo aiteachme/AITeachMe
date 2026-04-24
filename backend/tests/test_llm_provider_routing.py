@@ -1,20 +1,15 @@
 from __future__ import annotations
 
+from app.shared.infra.llm_support.common import build_completion_context, build_litellm_provider_kwargs
 from app.shared.infra.llm_support.image import (
-    _metadata_without_image_payload,
-    _build_provider_image_options,
-    _build_prediction_image_input,
-    _extract_bedrock_nova_images,
-    _extract_gemini_images,
-    _extract_imagen_native_images,
-    _extract_openrouter_images,
-    _extract_qwen_native_images,
-    _extract_vertex_imagen_images,
     GeneratedImage,
     ImageGenerationResult,
-    _should_use_prediction_endpoint,
+    _build_litellm_image_kwargs,
+    _extract_images,
+    _is_openai_gpt_image_model,
+    _metadata_without_image_payload,
+    _resolve_litellm_image_model,
 )
-from app.shared.infra.llm_support.common import build_completion_context, build_litellm_provider_kwargs
 from app.shared.infra.llm_support.routing import LLMCallPurpose
 from app.shared.infra.settings import reset_project_settings_cache
 from app.shared.infra.settings.support import normalize_openai_compatible_image_model_name
@@ -112,22 +107,26 @@ def test_build_completion_context_allows_local_provider_without_api_key(monkeypa
     assert context.model == "qwen2.5"
 
 
-def test_normalize_openai_compatible_image_model_name_for_prediction_models() -> None:
+def test_normalize_openai_compatible_image_model_name_uses_litellm_openai_route() -> None:
     assert normalize_openai_compatible_image_model_name(
         "doubao-seedream-4-0",
         runtime_provider="openai_compatible",
-    ) == "doubao/doubao-seedream-4-0"
+    ) == "openai/doubao-seedream-4-0"
     assert normalize_openai_compatible_image_model_name(
         "qwen-image",
         runtime_provider="openai_compatible",
-    ) == "qianfan/qwen-image"
-
-
-def test_normalize_openai_compatible_image_model_name_keeps_one_step_models() -> None:
+    ) == "openai/qwen-image"
     assert normalize_openai_compatible_image_model_name(
         "FLUX.1-Kontext-pro",
         runtime_provider="openai_compatible",
-    ) == "FLUX.1-Kontext-pro"
+    ) == "openai/FLUX.1-Kontext-pro"
+
+
+def test_normalize_openai_compatible_image_model_name_keeps_prefixed_models() -> None:
+    assert normalize_openai_compatible_image_model_name(
+        "openrouter/google/gemini-2.5-flash-image",
+        runtime_provider="openai_compatible",
+    ) == "openrouter/google/gemini-2.5-flash-image"
 
 
 def test_normalize_openai_compatible_image_model_name_skips_non_compatible_runtimes() -> None:
@@ -137,170 +136,95 @@ def test_normalize_openai_compatible_image_model_name_skips_non_compatible_runti
     ) == "doubao-seedream-4-0"
 
 
-def test_build_prediction_image_input_uses_prediction_style_response_format() -> None:
-    payload = _build_prediction_image_input(
+def test_resolve_litellm_image_model_routes_by_runtime_provider() -> None:
+    assert _resolve_litellm_image_model("gpt-image-1", runtime_provider="openai") == "gpt-image-1"
+    assert _resolve_litellm_image_model("gpt-image-1", runtime_provider="openai_compatible") == "openai/gpt-image-1"
+    assert (
+        _resolve_litellm_image_model("google/gemini-2.5-flash-image", runtime_provider="openrouter")
+        == "openrouter/google/gemini-2.5-flash-image"
+    )
+    assert (
+        _resolve_litellm_image_model("openrouter/google/gemini-2.5-flash-image", runtime_provider="openai")
+        == "openrouter/google/gemini-2.5-flash-image"
+    )
+    assert _resolve_litellm_image_model("fal-ai/flux/dev", runtime_provider="openai_compatible") == "fal-ai/flux/dev"
+    assert _resolve_litellm_image_model("doubao/doubao-seedream-4-0", runtime_provider="openai_compatible") == "doubao/doubao-seedream-4-0"
+    assert _resolve_litellm_image_model("imagegeneration@006", runtime_provider="vertex_ai") == "vertex_ai/imagegeneration@006"
+
+
+def test_build_litellm_image_kwargs_drops_response_format_for_gpt_image_models() -> None:
+    kwargs = _build_litellm_image_kwargs(
+        model="gpt-image-1",
         prompt="demo",
-        size="2K",
+        runtime_provider="openai_compatible",
+        api_base="https://gateway.example.com/v1",
+        api_key="sk-test",
+        timeout_s=30,
+        size="1024x1024",
         n=1,
         response_format="b64_json",
+        extra_kwargs={"quality": "high"},
     )
 
-    assert payload == {
-        "prompt": "demo",
-        "size": "2K",
-        "n": 1,
-        "response_format": "base64_json",
-    }
+    assert kwargs["model"] == "openai/gpt-image-1"
+    assert kwargs["api_base"] == "https://gateway.example.com/v1"
+    assert kwargs["api_key"] == "sk-test"
+    assert kwargs["quality"] == "high"
+    assert "response_format" not in kwargs
+    assert _is_openai_gpt_image_model(kwargs["model"])
 
 
-def test_should_use_prediction_endpoint_for_bare_model_with_prediction_inputs() -> None:
-    assert _should_use_prediction_endpoint(
-        model="imagen-3.0-generate-002",
-        endpoint_mode=None,
-        prediction_input={"numberOfImages": 1},
+def test_build_litellm_image_kwargs_keeps_provider_specific_fields() -> None:
+    kwargs = _build_litellm_image_kwargs(
+        model="dall-e-3",
+        prompt="demo",
+        runtime_provider="openai",
+        api_base=None,
+        api_key=None,
+        timeout_s=30,
+        size="1024x1024",
+        n=1,
+        response_format="b64_json",
+        extra_kwargs={"style": "vivid", "background": None},
     )
 
-
-def test_should_use_prediction_endpoint_respects_explicit_endpoint_mode() -> None:
-    assert _should_use_prediction_endpoint(
-        model="imagen-3.0-generate-002",
-        endpoint_mode="prediction",
-        prediction_input={},
-    )
-    assert not _should_use_prediction_endpoint(
-        model="FLUX.1-Kontext-pro",
-        endpoint_mode="images",
-        prediction_input={"numberOfImages": 1},
-    )
+    assert kwargs["model"] == "dall-e-3"
+    assert kwargs["response_format"] == "b64_json"
+    assert kwargs["style"] == "vivid"
+    assert "background" not in kwargs
 
 
-def test_extract_openrouter_images_parses_data_urls() -> None:
-    images = _extract_openrouter_images(
+def test_extract_images_reads_litellm_data_and_chat_image_payloads() -> None:
+    images = _extract_images(
         {
+            "data": [
+                {
+                    "b64_json": "T1BFTkFJ",
+                    "revised_prompt": "clean prompt",
+                    "mime_type": "image/png",
+                }
+            ],
             "choices": [
                 {
                     "message": {
                         "images": [
                             {
-                                "image_url": {
-                                    "url": "data:image/png;base64,QUJD",
+                                "imageUrl": {
+                                    "url": "data:image/png;base64,T1BFTlJPVVRFUg==",
                                 }
                             }
                         ]
                     }
                 }
-            ]
+            ],
         }
     )
 
-    assert len(images) == 1
-    assert images[0].b64_json == "QUJD"
-    assert images[0].mime_type == "image/png"
-
-
-def test_extract_qwen_native_images_reads_message_content_images() -> None:
-    images = _extract_qwen_native_images(
-        {
-            "output": {
-                "choices": [
-                    {
-                        "message": {
-                            "content": [
-                                {"image": "https://example.com/qwen.png"},
-                            ]
-                        }
-                    }
-                ]
-            }
-        }
-    )
-
-    assert len(images) == 1
-    assert images[0].url == "https://example.com/qwen.png"
-
-
-def test_extract_gemini_and_imagen_images_read_native_payloads() -> None:
-    gemini_images = _extract_gemini_images(
-        {
-            "candidates": [
-                {
-                    "content": {
-                        "parts": [
-                            {
-                                "inlineData": {
-                                    "mimeType": "image/png",
-                                    "data": "R0VNSU5J",
-                                }
-                            }
-                        ]
-                    }
-                }
-            ]
-        }
-    )
-    imagen_images = _extract_imagen_native_images(
-        {
-            "generatedImages": [
-                {
-                    "image": {
-                        "imageBytes": "SU1BR0VO",
-                    }
-                }
-            ]
-        }
-    )
-
-    assert gemini_images[0].b64_json == "R0VNSU5J"
-    assert imagen_images[0].b64_json == "SU1BR0VO"
-
-
-def test_extract_vertex_and_bedrock_images_read_native_payloads() -> None:
-    vertex_images = _extract_vertex_imagen_images(
-        {
-            "predictions": [
-                {
-                    "bytesBase64Encoded": "VkVSVEVY",
-                    "mimeType": "image/png",
-                }
-            ]
-        }
-    )
-    bedrock_images = _extract_bedrock_nova_images(
-        {
-            "images": ["QkVEUk9DSw=="],
-        }
-    )
-
-    assert vertex_images[0].b64_json == "VkVSVEVY"
-    assert bedrock_images[0].b64_json == "QkVEUk9DSw=="
-
-
-def test_build_provider_image_options_splits_bedrock_text_and_generation_fields() -> None:
-    options = _build_provider_image_options(
-        model="amazon.nova-canvas-v1:0",
-        prompt="demo",
-        size="1536x1024",
-        n=2,
-        response_format="b64_json",
-        kwargs={
-            "negativeText": "bad",
-            "style": "photographic",
-            "seed": 123,
-            "cfgScale": 7.5,
-            "quality": "premium",
-        },
-        explicit_prediction_input=None,
-    )
-
-    assert options["bedrock_text_to_image_params"] == {
-        "negativeText": "bad",
-        "style": "photographic",
-    }
-    assert options["bedrock_image_generation_config"] == {
-        "seed": 123,
-        "cfgScale": 7.5,
-        "quality": "premium",
-    }
+    assert len(images) == 2
+    assert images[0].b64_json == "T1BFTkFJ"
+    assert images[0].revised_prompt == "clean prompt"
+    assert images[1].b64_json == "T1BFTlJPVVRFUg=="
+    assert images[1].mime_type == "image/png"
 
 
 def test_metadata_without_image_payload_keeps_full_revised_prompt() -> None:

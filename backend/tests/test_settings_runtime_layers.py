@@ -140,7 +140,7 @@ def test_normalize_user_settings_payload_normalizes_openai_compatible_image_mode
     )
 
     assert payload == {
-        "models": {"image_generation": "doubao/doubao-seedream-4-0"}
+        "models": {"image_generation": "openai/doubao-seedream-4-0"}
     }
 
 
@@ -151,7 +151,7 @@ def test_set_system_settings_override_normalizes_openai_compatible_image_model(m
         overridden = set_system_settings_override(
             {"models": {"image_generation": "doubao-seedream-4-0"}}
         )
-        assert overridden.models.image_generation == "doubao/doubao-seedream-4-0"
-        assert get_settings().models.image_generation == "doubao/doubao-seedream-4-0"
+        assert overridden.models.image_generation == "openai/doubao-seedream-4-0"
+        assert get_settings().models.image_generation == "openai/doubao-seedream-4-0"
     finally:
         clear_system_settings_override()
