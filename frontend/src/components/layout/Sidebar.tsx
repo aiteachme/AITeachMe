@@ -29,6 +29,7 @@ import type { SubjectDeletePreviewData, SubjectItem } from "../../api/generated/
 import { apiClient, getApiErrorMessage } from "../../api/client";
 import { unwrapOrvalResponse } from "../../lib/unwrapOrvalResponse";
 import { downloadSubjectPackage } from "../../lib/subjectPackage";
+import { resolveSubjectIcon } from "../../lib/subjectIcons";
 import { cn } from "../../lib/utils";
 import { SubjectDeleteConfirmModal } from "./SubjectDeleteConfirmModal";
 import { CommunityModal, ensureCommunityQrPreloaded } from "./CommunityPanel";
@@ -51,6 +52,8 @@ const COLOR_CLASSES = [
   "bg-cyan-600",
   "bg-amber-600",
 ];
+
+type SubjectWithIcon = SubjectItem & { icon_key?: string | null };
 
 function colorClassForSubject(name: string) {
   let hash = 0;
@@ -438,6 +441,7 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
             const displayName = displaySubjectName(subject);
             const badgeClass = colorClassForSubject(subject.name || subject.subject_id);
             const isSubjectRouteActive = location.pathname.startsWith(`/subject/${subject.subject_id}/`);
+            const SubjectIcon = resolveSubjectIcon((subject as SubjectWithIcon).icon_key);
 
             return (
               <div key={subject.subject_id} className="relative">
@@ -473,7 +477,7 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
                       effectiveCollapsed ? "h-6 w-6 rounded text-[11px]" : "h-7 w-7 rounded-md text-xs",
                       badgeClass
                     )}>
-                      {(subject.name.trim().charAt(0) || "新").toUpperCase()}
+                      <SubjectIcon className={cn(effectiveCollapsed ? "h-3.5 w-3.5" : "h-4 w-4")} strokeWidth={2.2} />
                     </div>
                     {!effectiveCollapsed ? <span className="ml-2 truncate text-sm font-medium text-slate-700 dark:text-slate-300">{displayName}</span> : null}
                   </button>

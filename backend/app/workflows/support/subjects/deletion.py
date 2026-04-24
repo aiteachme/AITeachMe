@@ -6,7 +6,6 @@ from sqlmodel import Session
 
 from app.shared.infra.exceptions import SubjectInUseError
 from app.models import Subject
-from app.repositories.subject_repo import delete_subject
 from app.schemas.subject import SubjectDeleteData, SubjectDeletePreviewData
 from app.workflows.support.subjects.catalog import get_subject_record
 from app.workflows.support.subjects.lib.deletion import (
@@ -51,8 +50,7 @@ def delete_subject_record(
 
 
 def _delete_empty_subject(session: Session, subject: Subject) -> dict[str, int]:
-    delete_subject(session, subject)
-    return {"subject": 1}
+    return delete_subject_with_all_content(session, subject=subject)
 
 
 __all__ = [

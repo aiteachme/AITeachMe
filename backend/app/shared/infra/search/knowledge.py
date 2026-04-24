@@ -23,7 +23,7 @@ import structlog
 
 from app.shared.infra.llm_support.common import build_litellm_provider_kwargs
 from app.shared.infra.settings import get_settings
-from app.shared.infra.env_support import get_env
+from app.shared.infra.env_support import get_env, get_env_choice
 
 logger = structlog.get_logger()
 
@@ -105,7 +105,7 @@ async def rerank_chunks(
     if not model or not chunks:
         return chunks
 
-    api_key = (get_env("LLM_API_KEY") or "").strip()
+    api_key = (get_env_choice("LLM_API_KEY") or "").strip()
     base_url = (
         get_env("LLM_BASE_URL", "https://api.openai.com/v1")
         or "https://api.openai.com/v1"

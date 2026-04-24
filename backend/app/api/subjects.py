@@ -19,6 +19,7 @@ from app.schemas.subject import (
     SubjectUpdateRequest,
 )
 from app.workflows.support.subjects import (
+    choose_subject_icon_key,
     create_subject_record,
     delete_subject_record,
     list_subject_records,
@@ -40,11 +41,13 @@ async def create_subject_api(
     user: CurrentUserContext = Depends(get_current_user_context),
     session: Session = Depends(get_db),
 ) -> ApiResponse[SubjectItem]:
+    icon_key = await choose_subject_icon_key(body.name)
     return ok_response(
         create_subject_record(
             session,
             owner_user_id=user.user_id,
             name=body.name,
+            icon_key=icon_key,
         )
     )
 
@@ -122,12 +125,14 @@ async def update_subject_api(
     user: CurrentUserContext = Depends(get_current_user_context),
     session: Session = Depends(get_db),
 ) -> ApiResponse[SubjectItem]:
+    icon_key = await choose_subject_icon_key(body.name)
     return ok_response(
         update_subject_record(
             session,
             owner_user_id=user.user_id,
             subject_id=body.subject_id,
             name=body.name,
+            icon_key=icon_key,
         )
     )
 

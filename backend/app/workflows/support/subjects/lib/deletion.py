@@ -1,44 +1,47 @@
 ﻿from __future__ import annotations
 
 import shutil
-from pathlib import Path
 
 import sqlalchemy as sa
 import structlog
 from sqlmodel import Session, func, select
 
-from app.shared.infra.runtime import is_local_mode
 from app.shared.infra.storage import (
+    build_subject_storage_scope,
     get_content_store,
     resolve_subject_storage_scope,
+    run_store_sync,
 )
 from app.models import (
     ChatMessage,
     ChatSession,
+    ConfirmedBuildPlan,
     ExamPaper,
     ExamPaperItem,
     KnowledgeDocument,
     KnowledgeEdge,
     KnowledgeUnit,
     QuestionTemplate,
+    QuestionTypeRegistry,
     RawFile,
     RetrievalChunk,
     Subject,
     UserKnowledgeState,
 )
 import app.repositories.knowledge.knowledge_repo as knowledge_repo
-from app.repositories.subject_repo import delete_subject
 from app.schemas.subject import SubjectDeleteImpactItem, SubjectDeletePreviewData
-from app.utils.path_helpers import build_asset_name_prefix, build_subject_dir, delete_asset_files, get_data_dir
+from app.utils.path_helpers import build_subject_dir, get_data_dir
 
 logger = structlog.get_logger()
 
 _EXAM_KEYS = [
     "question_template",
+    "question_type_registry",
     "exam_paper",
     "exam_paper_item",
 ]
 _PROFILE_KEYS = ["user_knowledge_state"]
+_PLANNER_KEYS = ["confirmed_build_plan"]
 _KNOWLEDGE_KEYS = [
     "knowledge_document",
     "knowledge_edge",
@@ -74,6 +77,7 @@ def collect_subject_delete_counts(session: Session, *, subject: str) -> dict[str
         "chat_message": _count_rows(session, ChatMessage, ChatMessage.subject == subject),
         "chat_session": _count_rows(session, ChatSession, ChatSession.subject == subject),
         "question_template": _count_rows(session, QuestionTemplate, QuestionTemplate.subject == subject),
+        "question_type_registry": _count_rows(session, QuestionTypeRegistry, QuestionTypeRegistry.subject == subject),
         "exam_paper": _count_rows(session, ExamPaper, ExamPaper.subject == subject),
         "exam_paper_item": _count_query(
             session,
@@ -85,6 +89,7 @@ def collect_subject_delete_counts(session: Session, *, subject: str) -> dict[str
         "user_knowledge_state": _count_rows(session, UserKnowledgeState, UserKnowledgeState.subject == subject),
         "knowledge_edge": _count_rows(session, KnowledgeEdge, KnowledgeEdge.subject == subject),
         "knowledge_unit": _count_rows(session, KnowledgeUnit, KnowledgeUnit.subject == subject),
+        "confirmed_build_plan": _count_rows(session, ConfirmedBuildPlan, ConfirmedBuildPlan.subject == subject),
     }
 
 
@@ -122,6 +127,12 @@ def build_subject_delete_preview(session: Session, *, subject: Subject) -> Subje
             count=_sum_counts(detail_counts, _PROFILE_KEYS),
             description="会删除 mastery 与复习状态。",
         ),
+        SubjectDeleteImpactItem(
+            key="planner",
+            label="构建方案",
+            count=_sum_counts(detail_counts, _PLANNER_KEYS),
+            description="会删除该学科已确认的构建方案。",
+        ),
     ]
     return SubjectDeletePreviewData(
         subject_id=subject.slug,
@@ -134,31 +145,51 @@ def build_subject_delete_preview(session: Session, *, subject: Subject) -> Subje
 
 
 def delete_subject_with_all_content(session: Session, *, subject: Subject) -> dict[str, int]:
-    counts = collect_subject_delete_counts(session, subject=subject.slug)
-    _delete_profiles(session, subject=subject.slug)
-    _delete_exam_records(session, subject=subject.slug)
-    _delete_chat_messages(session, subject=subject.slug)
-    _delete_knowledge_and_curriculum(session, subject=subject.slug)
-    _delete_documents_and_chunks(session, subject=subject.slug)
-    _delete_raw_files_and_artifacts(session, subject=subject.slug)
+    subject_slug = subject.slug
+    owner_user_id = subject.user_id
+    counts = collect_subject_delete_counts(session, subject=subject_slug)
+    try:
+        _delete_profiles(session, subject=subject_slug)
+        _delete_exam_records(session, subject=subject_slug)
+        _delete_chat_messages(session, subject=subject_slug)
+        _delete_knowledge_and_curriculum(session, subject=subject_slug)
+        _delete_documents_and_chunks(session, subject=subject_slug)
+        _delete_planner_records(session, subject=subject_slug)
+        _delete_raw_files_and_artifacts(session, subject=subject_slug)
+        session.delete(subject)
+        session.commit()
+    except Exception:
+        session.rollback()
+        raise
 
-    # Local directory cleanup; cloud artifacts are handled by delete_subject_artifacts_async.
-    _delete_subject_directory(subject.slug, user_id=subject.user_id)
-
-    delete_subject(session, subject)
-
+    _delete_subject_artifacts_best_effort(subject_slug, user_id=owner_user_id)
     deleted_counts = {"subject": 1, **counts}
-    logger.info("subject_deleted_with_all_content", subject=subject.slug, deleted_counts=deleted_counts)
+    logger.info("subject_deleted_with_all_content", subject=subject_slug, deleted_counts=deleted_counts)
     return deleted_counts
 
 
-async def delete_subject_artifacts_async(subject_slug: str) -> None:
+async def delete_subject_artifacts_async(subject_slug: str, *, user_id: str | None = None) -> None:
     """Delete all stored files for one subject through ContentStore."""
 
     cs = get_content_store()
-    await cs.delete_prefix(resolve_subject_storage_scope(subject_slug).subject_prefix())
+    scope = (
+        build_subject_storage_scope(user_id=user_id, subject=subject_slug)
+        if user_id
+        else resolve_subject_storage_scope(subject_slug)
+    )
+    await cs.delete_prefix(scope.subject_prefix())
     # Also clean local runtime directories when present.
-    _delete_subject_directory(subject_slug)
+    _delete_subject_directory(subject_slug, user_id=user_id)
+
+
+def _delete_subject_artifacts_best_effort(subject_slug: str, *, user_id: str | None) -> None:
+    cs = get_content_store()
+    try:
+        scope = build_subject_storage_scope(user_id=user_id or "local", subject=subject_slug)
+        run_store_sync(cs.delete_prefix, scope.subject_prefix(), default=0)
+    except Exception as exc:  # pragma: no cover - best-effort cleanup
+        logger.warning("subject_artifact_prefix_cleanup_failed", subject=subject_slug, error=str(exc))
+    _delete_subject_directory(subject_slug, user_id=user_id)
 
 
 def _delete_exam_records(session: Session, *, subject: str) -> None:
@@ -181,8 +212,11 @@ def _delete_exam_records(session: Session, *, subject: str) -> None:
     for template in templates:
         session.delete(template)
 
-    if paper_items or papers or templates:
-        session.commit()
+    registry_items = list(
+        session.exec(select(QuestionTypeRegistry).where(QuestionTypeRegistry.subject == subject)).all()
+    )
+    for registry_item in registry_items:
+        session.delete(registry_item)
 
 
 def _delete_chat_messages(session: Session, *, subject: str) -> None:
@@ -194,9 +228,6 @@ def _delete_chat_messages(session: Session, *, subject: str) -> None:
     for item in sessions:
         session.delete(item)
 
-    if messages or sessions:
-        session.commit()
-
 
 def _delete_profiles(session: Session, *, subject: str) -> None:
     knowledge_states = list(
@@ -204,9 +235,6 @@ def _delete_profiles(session: Session, *, subject: str) -> None:
     )
     for state in knowledge_states:
         session.delete(state)
-
-    if knowledge_states:
-        session.commit()
 
 
 def _delete_knowledge_and_curriculum(session: Session, *, subject: str) -> None:
@@ -216,7 +244,6 @@ def _delete_knowledge_and_curriculum(session: Session, *, subject: str) -> None:
         KnowledgeUnit,
     ):
         _bulk_delete_by_subject(session, model, subject=subject)
-    session.commit()
 
 
 def _delete_documents_and_chunks(session: Session, *, subject: str) -> None:
@@ -226,8 +253,12 @@ def _delete_documents_and_chunks(session: Session, *, subject: str) -> None:
         knowledge_repo.delete_embeddings_by_chunk_ids(session, subject=subject, chunk_ids=chunk_ids)
     for chunk in chunks:
         session.delete(chunk)
-    if chunks:
-        session.commit()
+
+
+def _delete_planner_records(session: Session, *, subject: str) -> None:
+    plans = list(session.exec(select(ConfirmedBuildPlan).where(ConfirmedBuildPlan.subject == subject)).all())
+    for plan in plans:
+        session.delete(plan)
 
 
 def _delete_raw_files_and_artifacts(session: Session, *, subject: str) -> None:
@@ -235,17 +266,8 @@ def _delete_raw_files_and_artifacts(session: Session, *, subject: str) -> None:
     if not raw_files:
         return
 
-    cs = get_content_store()
     for raw_file in raw_files:
-        if is_local_mode():
-            for path_value in [raw_file.file_path, raw_file.markdown_path]:
-                if path_value:
-                    run_store_sync(cs.delete, path_value, default=None)
-            if raw_file.asset_dir:
-                run_store_sync(cs.delete_prefix, raw_file.asset_dir.rstrip("/") + "/", default=0)
-        # Cloud artifact cleanup is handled by delete_subject_artifacts_async().
         session.delete(raw_file)
-    session.commit()
 
 
 def _delete_subject_directory(subject: str, *, user_id: str | None = None) -> None:

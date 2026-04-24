@@ -5,6 +5,7 @@ export interface SubjectItem {
   id: number;
   subject_id: string;
   name: string;
+  icon_key?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -14,6 +15,7 @@ let mockSubjects: SubjectItem[] = [
     id: 1,
     subject_id: "subj_2gr8k4m9q7pn",
     name: "高数",
+    icon_key: "sigma",
     created_at: "2026-03-01T00:00:00Z",
     updated_at: "2026-03-01T00:00:00Z",
   },
@@ -40,6 +42,7 @@ export const subjectHandlers = [
       id: nextId++,
       subject_id: buildMockSubjectId(),
       name: body.name,
+      icon_key: "book-open",
       created_at: now,
       updated_at: now,
     };

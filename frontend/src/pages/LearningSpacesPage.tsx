@@ -4,6 +4,13 @@ import { BookOpen, LayoutGrid, Loader2, Plus } from "lucide-react";
 
 import { listSubjectsApiApiV1SubjectsListPost } from "../api/generated/subjects";
 import { unwrapOrvalResponse } from "../lib/unwrapOrvalResponse";
+import { resolveSubjectIcon } from "../lib/subjectIcons";
+
+type SubjectWithIcon = {
+  subject_id: string;
+  name?: string | null;
+  icon_key?: string | null;
+};
 
 function displaySubjectName(subject: { name?: string | null }) {
   return subject.name?.trim() || "未命名学科";
@@ -104,9 +111,9 @@ export function LearningSpacesPage() {
 
         {!isLoading && subjects.length > 0 ? (
           <div className="mt-6 grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-3">
-            {subjects.map((subject: any) => {
+            {subjects.map((subject: SubjectWithIcon) => {
               const displayName = displaySubjectName(subject);
-              const initial = displayName.charAt(0).toUpperCase();
+              const SubjectIcon = resolveSubjectIcon(subject.icon_key);
 
               return (
                 <Link
@@ -125,7 +132,7 @@ export function LearningSpacesPage() {
                     <div
                       className={`absolute left-5 bottom-5 flex h-16 w-16 items-center justify-center rounded-[22px] bg-gradient-to-br ${subjectTone(displayName)} text-2xl font-semibold text-white shadow-lg`}
                     >
-                      {initial}
+                      <SubjectIcon className="h-8 w-8" strokeWidth={2.1} />
                     </div>
                     <div className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-white/60 dark:from-slate-900/60 to-transparent" />
                   </div>

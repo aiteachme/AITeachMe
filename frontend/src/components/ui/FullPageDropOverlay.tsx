@@ -29,7 +29,19 @@ export function FullPageDropOverlay({
 
     let dragCounter = 0;
 
+    const isBlockedByModal = () =>
+      Boolean(
+        document.querySelector(
+          '[data-drop-overlay-blocker="true"], [aria-modal="true"], [role="dialog"], .modal-backdrop',
+        ),
+      );
+
     const handleDragEnter = (e: globalThis.DragEvent) => {
+      if (e.defaultPrevented) return;
+      if (isBlockedByModal()) {
+        if (e.dataTransfer?.types.includes("Files")) e.preventDefault();
+        return;
+      }
       e.preventDefault();
       if (e.dataTransfer?.types.includes("Files")) {
         dragCounter++;
@@ -38,6 +50,11 @@ export function FullPageDropOverlay({
     };
 
     const handleDragLeave = (e: globalThis.DragEvent) => {
+      if (e.defaultPrevented) return;
+      if (isBlockedByModal()) {
+        if (e.dataTransfer?.types.includes("Files")) e.preventDefault();
+        return;
+      }
       e.preventDefault();
       dragCounter--;
       if (dragCounter <= 0) {
@@ -47,6 +64,11 @@ export function FullPageDropOverlay({
     };
 
     const handleDragOver = (e: globalThis.DragEvent) => {
+      if (e.defaultPrevented) return;
+      if (isBlockedByModal()) {
+        if (e.dataTransfer?.types.includes("Files")) e.preventDefault();
+        return;
+      }
       e.preventDefault();
       if (e.dataTransfer) {
         e.dataTransfer.dropEffect = "copy";
@@ -54,6 +76,18 @@ export function FullPageDropOverlay({
     };
 
     const handleDrop = (e: globalThis.DragEvent) => {
+      if (e.defaultPrevented) {
+        dragCounter = 0;
+        setIsDragging(false);
+        return;
+      }
+      if (isBlockedByModal()) {
+        e.preventDefault();
+        e.stopPropagation();
+        dragCounter = 0;
+        setIsDragging(false);
+        return;
+      }
       e.preventDefault();
       e.stopPropagation();
       dragCounter = 0;

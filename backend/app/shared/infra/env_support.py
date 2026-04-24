@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import os
 import re
+import secrets
 from functools import lru_cache
 from pathlib import Path
 from typing import Mapping
@@ -51,6 +52,29 @@ def get_env(name: str, default: str | None = None) -> str | None:
     if value is None:
         return default
     return value
+
+
+def get_env_list(name: str, default: list[str] | None = None) -> list[str]:
+    raw_value = get_env(name)
+    if raw_value is None:
+        return list(default or [])
+
+    values: list[str] = []
+    seen: set[str] = set()
+    for item in re.split(r"[,;\n\r]+", raw_value):
+        value = item.strip()
+        if not value or value in seen:
+            continue
+        seen.add(value)
+        values.append(value)
+    return values or list(default or [])
+
+
+def get_env_choice(name: str, default: str | None = None) -> str | None:
+    values = get_env_list(name)
+    if not values:
+        return default
+    return secrets.choice(values)
 
 
 def get_env_bool(name: str, default: bool) -> bool:
@@ -176,8 +200,10 @@ def write_local_env_updates(updates: Mapping[str, str | None]) -> Path:
 __all__ = [
     "get_env",
     "get_env_bool",
+    "get_env_choice",
     "get_env_float",
     "get_env_int",
+    "get_env_list",
     "get_env_optional_bool",
     "get_project_root",
     "load_local_dotenv",
