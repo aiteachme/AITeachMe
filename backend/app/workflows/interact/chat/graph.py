@@ -38,6 +38,24 @@ from app.workflows.interact.chat.nodes import (
 from app.workflows.interact.chat.prompts.prompts import PROMPTS
 from app.workflows.interact.chat.state import InteractWorkflowState
 
+NODE_LOAD_HISTORY = "load_history_state"
+NODE_RETRIEVE_CONTEXT = "retrieve_context"
+NODE_SELECT_STRATEGY = "select_teaching_strategy"
+NODE_SELECT_MODE = "select_execution_mode"
+NODE_BUILD_PROMPT = "build_prompt"
+NODE_STREAM_ANSWER = "stream_answer"
+NODE_PERSIST_TURN = "persist_turn"
+
+NODE_DISPLAY_NAMES = {
+    NODE_LOAD_HISTORY: "读取对话状态",
+    NODE_RETRIEVE_CONTEXT: "检索学习上下文",
+    NODE_SELECT_STRATEGY: "选择教学策略",
+    NODE_SELECT_MODE: "选择执行模式",
+    NODE_BUILD_PROMPT: "组装伴读提示词",
+    NODE_STREAM_ANSWER: "流式生成回答",
+    NODE_PERSIST_TURN: "保存对话轮次",
+}
+
 
 def build_interact_workflow_graph(
     *,
@@ -52,110 +70,116 @@ def build_interact_workflow_graph(
     workflow = StateGraph(InteractWorkflowState)
     trace = workflow_tracer(workflow=workflow_name, lane="chat")
     workflow.add_node(
-        "load_history_state",
+        NODE_LOAD_HISTORY,
         trace.node(
             _resolve_history_node(context=context, session=session),
-            name="load_history_state",
+            name=NODE_DISPLAY_NAMES[NODE_LOAD_HISTORY],
         ),
     )
     workflow.add_node(
-        "retrieve_context",
+        NODE_RETRIEVE_CONTEXT,
         trace.node(
             _resolve_retrieval_node(context=context, session=session),
-            name="retrieve_context",
+            name=NODE_DISPLAY_NAMES[NODE_RETRIEVE_CONTEXT],
         ),
     )
     workflow.add_node(
-        "select_teaching_strategy",
+        NODE_SELECT_STRATEGY,
         trace.node(
             _resolve_strategy_node(context=context),
-            name="select_teaching_strategy",
+            name=NODE_DISPLAY_NAMES[NODE_SELECT_STRATEGY],
         ),
     )
     workflow.add_node(
-        "select_execution_mode",
+        NODE_SELECT_MODE,
         trace.node(
             _resolve_execution_mode_node(context=context),
-            name="select_execution_mode",
+            name=NODE_DISPLAY_NAMES[NODE_SELECT_MODE],
         ),
     )
     workflow.add_node(
-        "build_prompt",
+        NODE_BUILD_PROMPT,
         trace.node(
             _resolve_prompt_node(context=context),
-            name="build_prompt",
+            name=NODE_DISPLAY_NAMES[NODE_BUILD_PROMPT],
         ),
     )
     workflow.add_node(
-        "stream_answer",
+        NODE_STREAM_ANSWER,
         trace.node(
             _resolve_stream_node(
                 context=context,
                 request=request,
                 emitter=emitter,
             ),
-            name="stream_answer",
+            name=NODE_DISPLAY_NAMES[NODE_STREAM_ANSWER],
         ),
     )
     workflow.add_node(
-        "persist_turn",
+        NODE_PERSIST_TURN,
         trace.node(
             _resolve_persist_node(context=context, session=session),
-            name="persist_turn",
+            name=NODE_DISPLAY_NAMES[NODE_PERSIST_TURN],
         ),
     )
 
-    workflow.set_entry_point("load_history_state")
+    workflow.set_entry_point(NODE_LOAD_HISTORY)
     workflow.add_conditional_edges(
-        "load_history_state",
-        _route_after_standard_step,
+        NODE_LOAD_HISTORY,
+        ROUTE_AFTER_STANDARD_STEP,
         {
-            "continue": "retrieve_context",
+            "continue": NODE_RETRIEVE_CONTEXT,
             "finish": END,
         },
     )
     workflow.add_conditional_edges(
-        "retrieve_context",
-        _route_after_standard_step,
+        NODE_RETRIEVE_CONTEXT,
+        ROUTE_AFTER_STANDARD_STEP,
         {
-            "continue": "select_teaching_strategy",
+            "continue": NODE_SELECT_STRATEGY,
             "finish": END,
         },
     )
     workflow.add_conditional_edges(
-        "select_teaching_strategy",
-        _route_after_standard_step,
+        NODE_SELECT_STRATEGY,
+        ROUTE_AFTER_STANDARD_STEP,
         {
-            "continue": "select_execution_mode",
+            "continue": NODE_SELECT_MODE,
             "finish": END,
         },
     )
     workflow.add_conditional_edges(
-        "select_execution_mode",
-        _route_after_standard_step,
+        NODE_SELECT_MODE,
+        ROUTE_AFTER_STANDARD_STEP,
         {
-            "continue": "build_prompt",
+            "continue": NODE_BUILD_PROMPT,
             "finish": END,
         },
     )
     workflow.add_conditional_edges(
-        "build_prompt",
-        _route_after_standard_step,
+        NODE_BUILD_PROMPT,
+        ROUTE_AFTER_STANDARD_STEP,
         {
-            "continue": "stream_answer",
+            "continue": NODE_STREAM_ANSWER,
             "finish": END,
         },
     )
     workflow.add_conditional_edges(
-        "stream_answer",
-        _route_after_stream_step,
+        NODE_STREAM_ANSWER,
+        ROUTE_AFTER_STREAM_STEP,
         {
-            "continue": "persist_turn",
+            "continue": NODE_PERSIST_TURN,
             "finish": END,
         },
     )
-    workflow.add_edge("persist_turn", END)
+    workflow.add_edge(NODE_PERSIST_TURN, END)
     return workflow
+
+
+def _named_route(fn, name: str):
+    fn.__name__ = name
+    fn.__qualname__ = name
+    return fn
 
 
 def _route_after_standard_step(state: InteractWorkflowState) -> str:
@@ -166,6 +190,10 @@ def _route_after_stream_step(state: InteractWorkflowState) -> str:
     if state.get("error") or state.get("stream_interrupted"):
         return "finish"
     return "continue"
+
+
+ROUTE_AFTER_STANDARD_STEP = _named_route(_route_after_standard_step, "检查是否继续")
+ROUTE_AFTER_STREAM_STEP = _named_route(_route_after_stream_step, "检查是否保存对话")
 
 
 def _resolve_history_node(
@@ -435,8 +463,8 @@ async def _execute_interact_workflow(
 WORKFLOW_EXPORTS = (
     WorkflowGraphExport(
         key="interact_flow",
-        title="Interact Workflow",
-        description="Teaching chat workflow with history loading, retrieval, strategy selection, primary-model SSE streaming, tool planning, and persistence.",
+        title="伴读对话链路",
+        description="伴读式聊天链路：读取历史、检索上下文、选择教学策略、使用 primary 模型 SSE 流式回答，并保存对话轮次。",
         build_graph=get_langgraph_dev_interact_graph,
         prompts=PROMPTS,
     ),

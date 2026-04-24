@@ -16,19 +16,20 @@
 当前链路：
 
 ```text
-load_history_state
-  -> retrieve_context
-  -> select_teaching_strategy
-  -> select_execution_mode
-  -> build_prompt
-  -> stream_answer
-  -> persist_turn
+读取对话状态
+  -> 检索学习上下文
+  -> 选择教学策略
+  -> 选择执行模式
+  -> 组装伴读提示词
+  -> 流式生成回答
+  -> 保存对话轮次
 ```
 
 关键约定：
 
 - 所有入口都走同一张图：普通对话、知识文档划选提问、构建过程触发只通过 `source` 标记区分，不再使用旁路 direct chat。
-- 所有 LLM 输出默认使用 `primary` 模型选择器；`stream_answer` 的最终回答必须以 SSE token 形式推送。
+- 图内节点 id 保持稳定英文，LangSmith 展示名、路由名和文档链路统一使用中文。
+- 所有 LLM 输出默认使用 `primary` 模型选择器；`流式生成回答` 节点的最终回答必须以 SSE token 形式推送。
 - 工具扩展只改 `lib/tooling.py` 的工具计划策略；节点不直接硬编码工具清单。
 - 划选文本会进入检索 query 和 prompt，但会做长度截断，避免大段选区挤占上下文。
 
