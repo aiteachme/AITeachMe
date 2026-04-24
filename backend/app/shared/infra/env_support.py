@@ -61,7 +61,7 @@ def get_env_list(name: str, default: list[str] | None = None) -> list[str]:
 
     values: list[str] = []
     seen: set[str] = set()
-    for item in re.split(r"[,;\n\r]+", raw_value):
+    for item in raw_value.split(","):
         value = item.strip()
         if not value or value in seen:
             continue
