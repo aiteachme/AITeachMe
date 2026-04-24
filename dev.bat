@@ -119,11 +119,11 @@ if /I "%FRONTEND_MODE%"=="conda" (
 	)
 )
 
-echo [Backend] Starting FastAPI (http://localhost:8010)...
+echo [Backend] Starting FastAPI (http://localhost:9020)...
 if /I "%BACKEND_MODE%"=="venv" (
-	start "Backend" %START_FLAGS% /D "%~dp0backend" "%BACKEND_PY%" -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8010
+	start "Backend" %START_FLAGS% /D "%~dp0backend" "%BACKEND_PY%" -m uvicorn app.main:app --reload --host 127.0.0.1 --port 9020
 ) else (
-	start "Backend" %START_FLAGS% /D "%~dp0backend" "%CONDA_CMD%" run -n %CONDA_ENV_NAME% --no-capture-output python -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8010
+	start "Backend" %START_FLAGS% /D "%~dp0backend" "%CONDA_CMD%" run -n %CONDA_ENV_NAME% --no-capture-output python -m uvicorn app.main:app --reload --host 127.0.0.1 --port 9020
 )
 
 echo [Frontend] Starting Vite (http://localhost:5180)...

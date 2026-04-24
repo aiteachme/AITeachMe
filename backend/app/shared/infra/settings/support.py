@@ -456,7 +456,7 @@ def detect_llm_provider_from_base_url(base_url: str | None) -> str | None:
         return "doubao"
     if "vllm" in text:
         return "vllm"
-    if "localhost:8000" in normalized.lower() or "127.0.0.1:8000" in normalized.lower():
+    if "localhost:9020" in normalized.lower() or "127.0.0.1:9020" in normalized.lower():
         return "vllm"
     if "api.openai.com" in text:
         return "openai"
