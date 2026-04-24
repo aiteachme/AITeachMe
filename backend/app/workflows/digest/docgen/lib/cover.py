@@ -12,10 +12,15 @@ from typing import Any
 import httpx
 import structlog
 
+from app.shared.infra.env_support import get_env
 from app.shared.infra.llm_support import GeneratedImage, agenerate_image
 from app.shared.infra.settings import get_settings
+from app.shared.infra.settings.support import (
+    normalize_openai_compatible_image_model_name,
+    resolve_runtime_llm_provider,
+)
 from app.shared.infra.storage import get_content_store, resolve_subject_storage_scope
-from app.utils.docgen_store import append_knowledge_build_recent_event
+from app.shared.infra.knowledge.build_store import append_knowledge_build_recent_event
 from app.utils.time import utcnow
 
 logger = structlog.get_logger(__name__)
@@ -24,7 +29,9 @@ DOCGEN_COVER_ARTIFACT_NAME = "cover_artifact.json"
 DOCGEN_COVER_SIZE_CANDIDATES = (
     "1792x1024",
     "1536x1024",
+    "1024x1024",
 )
+PREDICTION_IMAGE_COVER_SIZE_CANDIDATES = ("1024x1024",)
 _REMOTE_IMAGE_TIMEOUT_S = 45
 
 
@@ -68,6 +75,30 @@ def _course_cues(confirmed_plan: Mapping[str, Any] | None, *, limit: int = 8) ->
     return cues
 
 
+def _file_summary_cues(file_summaries: list[Mapping[str, Any]] | None, *, limit: int = 8) -> list[str]:
+    cues: list[str] = []
+    seen: set[str] = set()
+    for summary in list(file_summaries or []):
+        if not isinstance(summary, Mapping):
+            continue
+        candidates = [
+            str(summary.get("summary") or "").strip(),
+            *[str(item).strip() for item in list(summary.get("concepts") or [])],
+            *[str(item).strip() for item in list(summary.get("key_terms") or [])],
+        ]
+        for item in candidates:
+            if not item:
+                continue
+            normalized = item.casefold()
+            if normalized in seen:
+                continue
+            seen.add(normalized)
+            cues.append(item)
+            if len(cues) >= limit:
+                return cues
+    return cues
+
+
 def _build_cover_prompt(
     *,
     subject: str,
@@ -75,33 +106,45 @@ def _build_cover_prompt(
     plan_summary: str,
     digest_mode: str,
     confirmed_plan: Mapping[str, Any] | None,
+    file_summaries: list[Mapping[str, Any]] | None = None,
+    intent_profile: Mapping[str, Any] | None = None,
 ) -> str:
     chapter_titles = "；".join(_chapter_titles(confirmed_plan)) or "课程主线"
     course_cues = "；".join(_course_cues(confirmed_plan)) or subject
-    mode_hint = "冲刺复习感、重点收束、克制而有张力" if digest_mode == "sprint" else "系统学习感、结构层次、平静而有纵深"
+    file_cues = "；".join(_file_summary_cues(file_summaries)) or course_cues
+    mode_hint = (
+        "compressed, focused, tense but elegant, like dusk before an exam"
+        if digest_mode == "sprint"
+        else "slow, layered, spacious, calm, like a long journey through changing landscapes"
+    )
+    abstract_intent = str((intent_profile or {}).get("teaching_intent") or "").strip()
 
     return (
-        "Create a refined panoramic cover illustration for a teaching document.\n"
+        "Create a poetic panoramic cover image for a teaching document.\n"
         "\n"
-        "Hard requirements:\n"
-        "- wide horizontal banner composition with a low-height, panoramic feel\n"
-        "- abstract artistic landscape or environmental scene\n"
-        "- scenic, atmospheric, elegant, calm, slightly surreal\n"
-        "- no text, no letters, no numbers, no typography anywhere\n"
-        "- no equations, no charts, no diagrams, no UI, no book cover mockup\n"
-        "- not literal classroom imagery; keep it metaphorical and scenic\n"
-        "- visually connected to the course only through subtle motifs and atmosphere\n"
-        "- clean composition, open negative space, suitable as a document top cover\n"
-        "- painterly or modern illustration style, not photo collage\n"
+        "Creative direction:\n"
+        "- wide cinematic landscape banner\n"
+        "- abstract or semi-abstract environment, not a literal textbook illustration\n"
+        "- treat the course as emotional weather, terrain, light, season, depth, rhythm, and motion\n"
+        "- let the model freely associate from the learning themes into mountains, coastlines, forests, rivers, sky, mist, wind, architecture silhouettes, paths, reflections, or layered geological forms\n"
+        "- prioritize beauty, atmosphere, metaphor, and artistic restraint over explicit explanation\n"
+        "- painterly, contemporary editorial illustration, or dreamlike landscape art\n"
+        "- no text, no letters, no numbers, no equations, no charts, no diagrams, no UI\n"
+        "- no book mockup, no classroom scene, no obvious education props\n"
+        "- leave clean breathing space so it can sit above the document as a cover\n"
         "\n"
-        f"Course subject: {subject}\n"
-        f"Build intent: {user_prompt or 'teaching document cover'}\n"
-        f"Plan summary: {plan_summary or 'structured learning document'}\n"
-        f"Digest mode mood: {mode_hint}\n"
-        f"Chapter cues: {chapter_titles}\n"
-        f"Subtle course motifs to translate into terrain, light, layers, motion, or texture: {course_cues}\n"
+        "Course signals to loosely absorb, not literally depict:\n"
+        f"- subject: {subject}\n"
+        f"- build intent: {user_prompt or 'teaching document cover'}\n"
+        f"- plan summary: {plan_summary or 'structured learning document'}\n"
+        f"- chapter arc: {chapter_titles}\n"
+        f"- curriculum motifs: {course_cues}\n"
+        f"- source material cues: {file_cues}\n"
+        f"- mood: {mode_hint}\n"
+        f"- teaching intent hint: {abstract_intent or 'guide the learner through a meaningful landscape of ideas'}\n"
         "\n"
-        "The result should feel like an abstract landscape cover that hints at the course theme without spelling it out."
+        "The final image should feel like a refined abstract landscape that quietly resonates with the course, "
+        "as if the subject had dissolved into scenery."
     )
 
 
@@ -124,6 +167,17 @@ async def _image_bytes(image: GeneratedImage) -> tuple[bytes, str]:
         content_type = response.headers.get("content-type", "").split(";", 1)[0].strip()
         return response.content, content_type or mime_type
     raise ValueError("image payload contains neither b64_json nor url")
+
+
+def _cover_size_candidates(model: str | None, *, api_base: str | None) -> tuple[str, ...]:
+    runtime_provider = resolve_runtime_llm_provider(base_url=api_base)
+    normalized_model = normalize_openai_compatible_image_model_name(
+        model,
+        runtime_provider=runtime_provider,
+    ) or ""
+    if runtime_provider == "openai_compatible" and "/" in normalized_model:
+        return PREDICTION_IMAGE_COVER_SIZE_CANDIDATES
+    return DOCGEN_COVER_SIZE_CANDIDATES
 
 
 def build_docgen_cover_markdown(artifact: Mapping[str, Any] | None) -> str:
@@ -171,8 +225,10 @@ async def generate_docgen_cover_artifact(
     digest_mode: str | None,
     confirmed_plan: Mapping[str, Any] | None,
     requested_at: datetime | None = None,
+    file_summaries: list[Mapping[str, Any]] | None = None,
+    intent_profile: Mapping[str, Any] | None = None,
 ) -> dict[str, Any] | None:
-    """Best-effort cover generation that never raises into the main DocGen flow."""
+    """Best-effort cover generation used by the DocGen main graph."""
 
     settings = get_settings()
     if not settings.docgen.generate_cover_image:
@@ -193,10 +249,16 @@ async def generate_docgen_cover_artifact(
         plan_summary=str(plan_summary or "").strip(),
         digest_mode=str(digest_mode or "").strip().lower(),
         confirmed_plan=confirmed_plan,
+        file_summaries=file_summaries,
+        intent_profile=intent_profile,
     )
 
     last_error: Exception | None = None
-    for size in DOCGEN_COVER_SIZE_CANDIDATES:
+    size_candidates = _cover_size_candidates(
+        settings.models.image_generation,
+        api_base=get_env("LLM_BASE_URL"),
+    )
+    for size in size_candidates:
         try:
             result = await agenerate_image(
                 prompt,

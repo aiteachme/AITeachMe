@@ -22,6 +22,7 @@ def build_prompt_node(*, context: WorkflowContext):
             weak_points=state.get("weak_points", []),
             recent_mistakes=state.get("recent_mistakes", []),
             question=state["question"],
+            source=state.get("source"),
             selected_context=state.get("selected_context"),
             source_chunk_id=state.get("source_chunk_id"),
         )
@@ -47,4 +48,3 @@ def build_prompt_node(*, context: WorkflowContext):
         }
 
     return build_prompt
-

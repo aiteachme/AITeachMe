@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import re
-from collections.abc import Mapping
+from collections.abc import Awaitable, Callable, Mapping
 from typing import Any
 
 from app.shared.infra.execution import BaseTracedExecution, TracedExecutionResult
+from app.shared.infra.llm_support import acompletion_stream
 from app.shared.infra.llm_support.routing import TaskType
 from app.shared.infra.tools.builtin.markdown_processing import count_words, normalize_markdown_rendering
 from app.workflows.digest.common.pedagogy import (
@@ -45,6 +46,7 @@ class DocGenWriterRuntime(BaseTracedExecution):
         chapter_plan: Mapping[str, Any],
         dense_context: str,
         digest_mode: str,
+        on_stream_update: Callable[[str], Awaitable[None]] | None = None,
     ) -> TracedExecutionResult:
         """根据章节执行合同和 dense_context 生成学生可读草稿。
 
@@ -75,12 +77,35 @@ class DocGenWriterRuntime(BaseTracedExecution):
             chapter_count=chapter_count,
             execution_contract=execution_contract,
         )
-        markdown = await llm(
-            messages,
-            task_type=TaskType.DOCGEN,
-            model="reason" if digest_mode == "systematic" else "primary",
-            extra_metadata=self.context.trace_metadata(chapter_index=self.context.chapter_index),
-        )
+        model_selector = "reason" if digest_mode == "systematic" else "primary"
+        markdown = ""
+        if on_stream_update is not None and self.context.llm_caller is None:
+            chunks: list[str] = []
+            try:
+                async for chunk in acompletion_stream(
+                    messages,
+                    task_type=TaskType.DOCGEN,
+                    model=model_selector,
+                ):
+                    chunks.append(str(chunk))
+                    await self._safe_stream_update(on_stream_update, "".join(chunks))
+                markdown = "".join(chunks)
+                await self._safe_stream_update(on_stream_update, markdown)
+            except Exception as exc:
+                self.logger.warning(
+                    "docgen_writer_stream_failed_falling_back",
+                    chapter_index=chapter_index,
+                    streamed_chars=sum(len(item) for item in chunks),
+                    error=str(exc),
+                )
+
+        if not markdown.strip():
+            markdown = await llm(
+                messages,
+                task_type=TaskType.DOCGEN,
+                model=model_selector,
+                extra_metadata=self.context.trace_metadata(chapter_index=self.context.chapter_index),
+            )
 
         markdown = strip_asset_requests(str(markdown).strip())
         heading_quality = analyze_chapter_heading_quality(
@@ -158,6 +183,20 @@ class DocGenWriterRuntime(BaseTracedExecution):
                 "heading_missing_module_count": len(list(heading_quality.get("missing_modules") or [])),
             },
         )
+
+    async def _safe_stream_update(
+        self,
+        callback: Callable[[str], Awaitable[None]],
+        markdown: str,
+    ) -> None:
+        try:
+            await callback(markdown)
+        except Exception as exc:
+            self.logger.warning(
+                "docgen_writer_stream_preview_update_failed",
+                chapter_index=self.context.chapter_index,
+                error=str(exc),
+            )
 
     async def _repair_heading_structure(
         self,

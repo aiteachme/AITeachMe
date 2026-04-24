@@ -1,4 +1,4 @@
-﻿"""Knowledge-graph background build orchestration."""
+"""Knowledge-graph background build orchestration."""
 
 from __future__ import annotations
 
@@ -12,12 +12,12 @@ from sqlmodel import select
 from app.models.knowledge import RetrievalChunk
 from app.shared.infra.database import managed_session
 from app.repositories.files_repo import list_raw_files_by_ids
-from app.utils.docgen_store import (
+from app.shared.infra.knowledge.build_store import (
     release_knowledge_build_lock,
     sanitize_knowledge_build_error_message,
     update_knowledge_build_lane_status,
 )
-from app.utils.job_helpers import cleanup_pending_by_subject
+from app.workflows.digest.kg_file_ingest.lib.job_lifecycle import cleanup_pending_by_subject
 from app.workflows.digest.kg_docs_sync.inputs import (
     extract_doc_chapter_metadatas,
     load_knowledge_doc_markdown,
@@ -143,7 +143,7 @@ async def run_graph_docs_sync_after_doc_build(
         ),
         knowledge_doc_source=knowledge_doc_source,
         knowledge_doc_chapter_count=len(doc_chapter_metadatas),
-        current_stage_description="Syncing KnowledgeUnits, knowledge images, and relations from the latest knowledge markdown.",
+        current_stage_description="正在从最新知识文档同步知识点、知识图像和关系。",
     )
     sync_result = await run_graph_docs_sync_workflow(
         subject=subject,
@@ -196,7 +196,7 @@ async def run_graph_file_ingest_background(
         draft_available=False,
         source_file_ids=file_ids,
         prompt=prompt,
-        current_stage_description="Extracting candidates from parsed files and building the graph.",
+        current_stage_description="正在从已解析文件抽取候选并构建图谱。",
     )
     _cleanup_pending_digest_outputs(subject)
     result = await run_graph_file_ingest_workflow(
@@ -282,7 +282,7 @@ async def run_graph_build_background(
             current_stage_description=(
                 "Extracting candidates from parsed files and building the graph."
                 if file_ids
-                else "Skipped file-ingest workflow (no files); keeping docs-sync results only."
+                else "没有文件输入，已跳过文件摄取，仅保留文档同步结果。"
             ),
         )
         ingest_metrics = await run_graph_file_ingest_background(

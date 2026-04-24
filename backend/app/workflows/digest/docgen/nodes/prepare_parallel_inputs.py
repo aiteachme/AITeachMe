@@ -1,11 +1,11 @@
-﻿"""Prepare DocGen 0A/0B/0C inputs in parallel."""
+"""Prepare DocGen 0A/0B/0C inputs in parallel."""
 
 from __future__ import annotations
 
 import asyncio
 from time import perf_counter
 
-from app.utils.docgen_store import append_knowledge_build_recent_event, update_knowledge_build_status
+from app.shared.infra.knowledge.build_store import append_knowledge_build_recent_event, update_knowledge_build_status
 from app.utils.time import utcnow
 from app.shared.infra.workflow.context import WorkflowContext
 from app.workflows.digest.docgen.lib.file_summaries import derive_source_affinity_and_evidence, summarize_files

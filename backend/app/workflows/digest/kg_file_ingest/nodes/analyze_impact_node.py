@@ -13,7 +13,7 @@ from app.shared.infra.database import managed_session
 from app.shared.infra.embedding import aembed_texts
 from app.models.knowledge_relation import EdgeRevision, KnowledgeEdge
 from app.models.knowledge_unit import KnowledgeUnit
-from app.utils.job_helpers import update_job_progress
+from app.workflows.digest.kg_file_ingest.lib.job_lifecycle import update_job_progress
 from app.utils.knowledge_helpers import normalize_name
 from app.utils.time import utcnow
 from app.workflows.digest.kg_file_ingest.mutations import (
@@ -74,6 +74,5 @@ async def analyze_impact_node(state: KnowledgeDigestState) -> KnowledgeDigestSta
             return {**state, "error": f"analyze_impact_failed: {exc}"}
 
 __all__ = ["analyze_impact_node"]
-
 
 

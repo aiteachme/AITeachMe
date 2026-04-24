@@ -99,13 +99,16 @@ const STAGE_TO_STEP_INDEX: Record<string, number> = {
   load_context: 0,
 
   prepare_shared: 1,
+  preparing_docgen_global_seed: 1,
   preparing_docgen_context: 1,
   prepare_parallel_inputs: 1,
 
   dispatch_ready: 2,
+  backbone_seed_ready: 2,
   confirm_and_dispatch: 2,
   building_document_backbone: 2,
   build_document_backbone: 2,
+  preparing_chapter_execution_briefs: 2,
 
   generating_chapters: 3,
   enhancing_chapters: 3,

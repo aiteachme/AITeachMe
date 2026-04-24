@@ -1,4 +1,10 @@
-﻿"""Helpers for digest graph build lifecycle maintenance."""
+"""Knowledge graph ingest job lifecycle helpers.
+
+This module serves the `digest/kg_file_ingest` lane and the support-level
+knowledge-graph build orchestration. It owns graph job progress updates,
+pending entity cleanup, and pending-to-active promotion; generic utilities do
+not belong here.
+"""
 
 from __future__ import annotations
 
@@ -24,7 +30,7 @@ def update_job_progress(
     subject: str | None = None,
 ) -> None:
     from app.repositories.knowledge import knowledge_build_repo
-    from app.utils.docgen_store import update_knowledge_build_status
+    from app.shared.infra.knowledge.build_store import update_knowledge_build_status
 
     normalized_progress = max(0, min(int(progress), 100))
     safe_step = str(current_step or "").strip() or "running"
@@ -246,3 +252,14 @@ def activate_graph_entities_by_subject(session: Session, *, subject: str) -> int
     session.commit()
     logger.info("activate_graph_entities_by_subject", subject=subject, activated=total)
     return total
+
+
+__all__ = [
+    "activate_graph_entities_by_job",
+    "activate_graph_entities_by_subject",
+    "cleanup_orphan_pending_by_subject",
+    "cleanup_pending_by_job",
+    "cleanup_pending_by_subject",
+    "stamp_graph_revision_by_subject",
+    "update_job_progress",
+]

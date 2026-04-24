@@ -87,6 +87,28 @@ def ensure_chapter_heading(title: str, markdown: str) -> str:
     return cleaned + "\n"
 
 
+def extract_markdown_preview_headings(markdown: str, *, limit: int = 4) -> list[str]:
+    secondary: list[str] = []
+    primary: list[str] = []
+    seen: set[str] = set()
+
+    for raw_line in str(markdown or "").splitlines():
+        stripped = raw_line.strip()
+        if stripped.startswith("## "):
+            title = stripped[3:].strip()
+            if title and title not in seen:
+                secondary.append(title)
+                seen.add(title)
+        elif stripped.startswith("# "):
+            title = stripped[2:].strip()
+            if title and title not in seen:
+                primary.append(title)
+                seen.add(title)
+
+    ordered = secondary or primary
+    return ordered[: max(1, int(limit))]
+
+
 def build_examine_markdown(
     question_titles: list[str] | None = None,
     *,
@@ -146,6 +168,7 @@ def build_examine_markdown(
 __all__ = [
     "build_examine_markdown",
     "ensure_chapter_heading",
+    "extract_markdown_preview_headings",
     "get_effective_chapter_title",
     "normalize_chapter_assignments",
     "normalize_confirmed_plan_contract",
@@ -154,4 +177,3 @@ __all__ = [
     "resolve_docgen_retrieval_profile",
     "serialize_section",
 ]
-

@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 from app.shared.infra.database import managed_session
-from app.utils.job_helpers import update_job_progress
+from app.workflows.digest.kg_file_ingest.lib.job_lifecycle import update_job_progress
 from app.workflows.digest.kg_file_ingest.lib.clusterer import cluster_candidates
 from app.models.knowledge_taxonomy import normalize_knowledge_unit_type
 from app.workflows.digest.kg_file_ingest.state import KnowledgeDigestState
@@ -98,5 +98,4 @@ async def cluster_node(state: KnowledgeDigestState) -> KnowledgeDigestState:
             return {**state, "error": f"cluster_failed: {exc}"}
 
 __all__ = ["cluster_node"]
-
 

@@ -40,7 +40,11 @@ from app.shared.infra.settings import (
     set_system_settings_override,
     upgrade_legacy_settings_payload,
 )
-from app.shared.infra.settings.support import get_llm_api_version, resolve_runtime_llm_provider
+from app.shared.infra.settings.support import (
+    get_llm_api_version,
+    normalize_openai_compatible_image_model_name,
+    resolve_runtime_llm_provider,
+)
 from app.workflows.support.system.catalog import (
     ENV_ENTRY_KEY_MAP,
     SETTINGS_CATALOG,
@@ -155,6 +159,12 @@ def _normalize_user_settings_payload(raw_payload: Mapping[str, Any]) -> dict[str
             data=exc.errors(),
         ) from exc
     projected_payload = _project_by_override_keys(effective.model_dump(mode="json"), known_payload)
+    models_payload = projected_payload.get("models")
+    if isinstance(models_payload, dict) and "image_generation" in models_payload:
+        models_payload["image_generation"] = normalize_openai_compatible_image_model_name(
+            models_payload.get("image_generation"),
+            runtime_provider=resolve_runtime_llm_provider(base_url=get_env("LLM_BASE_URL")),
+        )
     return _diff_from_base(base_payload, projected_payload)
 
 

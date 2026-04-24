@@ -23,7 +23,9 @@ from app.repositories.files_repo import list_all_raw_files_by_subject, list_raw_
 from app.repositories.knowledge.docgen_repo import get_current_published_docs
 from app.repositories.knowledge.knowledge_repo import clear_chunk_vector_metadata
 from app.schemas.knowledge import (
+    BuildPreviewChapterPreviewResponse,
     BuildPreviewChapterProgressResponse,
+    BuildPreviewMergePreviewResponse,
     BuildPreviewNodeResponse,
     BuildPreviewRecentEventResponse,
     DocGenBuildData,
@@ -41,11 +43,10 @@ from app.workflows.digest.planner import (
     get_confirmed_build_plan,
     mark_confirmed_build_plan_status,
 )
-from app.workflows.digest.docgen.lib.cover import generate_docgen_cover_artifact
 from app.shared.infra.exceptions import ConfirmedBuildPlanRequiredError, NoReadyFilesForDocGenError, RawFileNotFoundError, SubjectBuildLockConflictError
 from app.shared.infra.subject import get_subject_vector_status_by_slug
 from app.shared.infra.tools.builtin.markdown_processing import normalize_mermaid_blocks
-from app.utils.docgen_store import (
+from app.shared.infra.knowledge.build_store import (
     KnowledgeBuildLock,
     acquire_knowledge_build_lock,
     build_aggregate_knowledge_build_status,
@@ -270,11 +271,51 @@ def _build_runtime_preview(*, build_status, draft_markdown: str, manifest) -> Kn
         BuildPreviewChapterProgressResponse.model_validate(item)
         for item in list(build_status.chapter_progress or [])
     ] if build_status is not None else []
+    chapter_previews = [
+        BuildPreviewChapterPreviewResponse.model_validate(item)
+        for item in list(build_status.chapter_previews or [])
+    ] if build_status is not None else []
     recent_events = [
         BuildPreviewRecentEventResponse.model_validate(item)
         for item in list(build_status.recent_events or [])
     ] if build_status is not None else []
-    return KnowledgeBuildPreviewResponse(current_stage_description=(build_status.current_stage_description if build_status is not None else None), digest_mode=(build_status.digest_mode if build_status is not None else None), mode_reason=(build_status.mode_reason if build_status is not None else None), processed_chunks=(build_status.processed_chunks if build_status is not None else 0), total_chunks=(build_status.total_chunks if build_status is not None else 0), doc_sync_section_count=(build_status.doc_sync_section_count if build_status is not None else 0), doc_sync_llm_section_count=(build_status.doc_sync_llm_section_count if build_status is not None else 0), doc_sync_fallback_section_count=(build_status.doc_sync_fallback_section_count if build_status is not None else 0), discovered_node_count=(build_status.discovered_node_count if build_status is not None else 0), discovered_node_types=(dict(build_status.discovered_node_types) if build_status is not None else {}), sample_nodes=sample_nodes, sample_cards=sample_cards, plan_summary=(build_status.plan_summary if build_status is not None else None), chapter_progress=chapter_progress, recent_events=recent_events, latest_chapter_titles=_resolve_preview_chapter_titles(draft_markdown=draft_markdown, manifest=manifest), draft_excerpt=_extract_markdown_excerpt(draft_markdown))
+    merge_preview_payload = (
+        dict(build_status.merge_preview or {})
+        if build_status is not None and dict(build_status.merge_preview or {})
+        else {}
+    )
+    fallback_latest_titles = _resolve_preview_chapter_titles(draft_markdown=draft_markdown, manifest=manifest)
+    fallback_draft_excerpt = _extract_markdown_excerpt(draft_markdown)
+    if fallback_latest_titles and not merge_preview_payload.get("latest_chapter_titles"):
+        merge_preview_payload["latest_chapter_titles"] = fallback_latest_titles
+    if fallback_draft_excerpt and not merge_preview_payload.get("draft_excerpt"):
+        merge_preview_payload["draft_excerpt"] = fallback_draft_excerpt
+    merge_preview = (
+        BuildPreviewMergePreviewResponse.model_validate(merge_preview_payload)
+        if merge_preview_payload
+        else None
+    )
+    return KnowledgeBuildPreviewResponse(
+        current_stage_description=(build_status.current_stage_description if build_status is not None else None),
+        digest_mode=(build_status.digest_mode if build_status is not None else None),
+        mode_reason=(build_status.mode_reason if build_status is not None else None),
+        processed_chunks=(build_status.processed_chunks if build_status is not None else 0),
+        total_chunks=(build_status.total_chunks if build_status is not None else 0),
+        doc_sync_section_count=(build_status.doc_sync_section_count if build_status is not None else 0),
+        doc_sync_llm_section_count=(build_status.doc_sync_llm_section_count if build_status is not None else 0),
+        doc_sync_fallback_section_count=(build_status.doc_sync_fallback_section_count if build_status is not None else 0),
+        discovered_node_count=(build_status.discovered_node_count if build_status is not None else 0),
+        discovered_node_types=(dict(build_status.discovered_node_types) if build_status is not None else {}),
+        sample_nodes=sample_nodes,
+        sample_cards=sample_cards,
+        plan_summary=(build_status.plan_summary if build_status is not None else None),
+        chapter_progress=chapter_progress,
+        recent_events=recent_events,
+        chapter_previews=chapter_previews,
+        merge_preview=merge_preview,
+        latest_chapter_titles=(merge_preview.latest_chapter_titles if merge_preview is not None else fallback_latest_titles),
+        draft_excerpt=(merge_preview.draft_excerpt if merge_preview is not None else fallback_draft_excerpt),
+    )
 
 
 def _build_runtime_metrics(*, build_status) -> KnowledgeBuildMetricsResponse | None:
@@ -558,7 +599,7 @@ async def run_docgen_background(*, subject: str, file_ids: list[int], prompt: st
     """
 
     from app.workflows.digest import run_docgen_workflow
-    from app.utils.docgen_store import release_knowledge_build_lock
+    from app.shared.infra.knowledge.build_store import release_knowledge_build_lock
     from app.workflows.support.knowledge_graph import (
         run_graph_docs_sync_after_doc_build,
         run_graph_file_ingest_background,
@@ -567,9 +608,9 @@ async def run_docgen_background(*, subject: str, file_ids: list[int], prompt: st
     confirmed_plan_payload = None
     resolved_digest_mode = None
     kg_ingest_task: asyncio.Task[dict[str, int]] | None = None
-    cover_task: asyncio.Task[dict[str, Any] | None] | None = None
     graph_seed_chapter_metadatas: list[dict[str, object]] = []
     sync_graph_after_docgen = bool(get_settings().knowledge_graph.sync_after_docgen)
+    docgen_published = False
     logger.info(
         "knowledge_build_background_started",
         subject=subject,
@@ -599,18 +640,6 @@ async def run_docgen_background(*, subject: str, file_ids: list[int], prompt: st
             update_knowledge_build_lane_status(subject, lane="graph", requested_at=requested_at, build_group_id=build_group_id, status="accepted", stage="queued_after_docgen", source_file_ids=file_ids, prompt=prompt, current_stage_description="知识文档发布后将自动开始图谱同步。")
         else:
             update_knowledge_build_lane_status(subject, lane="graph", requested_at=requested_at, build_group_id=build_group_id, status="skipped", stage="disabled", source_file_ids=file_ids, prompt=prompt, current_stage_description="已关闭文档构建后自动图谱同步。")
-        if confirmed_plan_payload is not None:
-            cover_task = asyncio.create_task(
-                generate_docgen_cover_artifact(
-                    subject=subject,
-                    build_session_id=build_session_id,
-                    user_prompt=prompt,
-                    plan_summary=str(confirmed_plan_payload.get("plan_summary") or ""),
-                    digest_mode=resolved_digest_mode,
-                    confirmed_plan=confirmed_plan_payload,
-                    requested_at=requested_at,
-                )
-            )
         if sync_graph_after_docgen and file_ids:
             kg_ingest_task = asyncio.create_task(
                 run_graph_file_ingest_background(
@@ -625,7 +654,6 @@ async def run_docgen_background(*, subject: str, file_ids: list[int], prompt: st
             )
         result = await run_docgen_workflow(subject=subject, file_ids=file_ids, user_prompt=prompt, requested_at=requested_at, build_session_id=build_session_id, confirmed_plan=confirmed_plan_payload, planner_session_id=planner_session_id, confirmed_plan_id=confirmed_plan_id, digest_mode=resolved_digest_mode)
         if result.failed:
-            await _cancel_optional_task(cover_task)
             await _cancel_optional_task(kg_ingest_task)
             if sync_graph_after_docgen:
                 update_knowledge_build_lane_status(subject, lane="graph", requested_at=requested_at, build_group_id=build_group_id, status="skipped", stage="blocked_by_docgen_failure", current_stage_description="知识文档构建失败，未继续图谱同步。")
@@ -636,7 +664,25 @@ async def run_docgen_background(*, subject: str, file_ids: list[int], prompt: st
                     mark_confirmed_build_plan_status(session, subject=subject, user_id=user_id, plan_id=confirmed_plan_id, status="failed")
             logger.error("knowledge_build_failed", subject=subject, error=result.error.detail)
             return
-        await _cancel_optional_task(cover_task)
+        _write_docgen_status(
+            subject,
+            requested_at=requested_at,
+            build_group_id=build_group_id,
+            status="completed",
+            stage="completed",
+            build_session_id=build_session_id,
+            planner_session_id=planner_session_id,
+            confirmed_plan_id=confirmed_plan_id,
+            digest_mode=resolved_digest_mode,
+            error_message=None,
+            draft_available=False,
+            current_stage_description=(
+                "知识文档已发布完成，正在同步图谱。"
+                if sync_graph_after_docgen
+                else "知识文档已发布完成。"
+            ),
+        )
+        docgen_published = True
         ingest_metrics = {"processed_chunks": 0}
         graph_error_message: str | None = None
         doc_sync_metrics: dict[str, int | str] = {
@@ -684,26 +730,38 @@ async def run_docgen_background(*, subject: str, file_ids: list[int], prompt: st
             with managed_session() as session:
                 mark_confirmed_build_plan_status(session, subject=subject, user_id=user_id, plan_id=confirmed_plan_id, status="completed")
     except asyncio.CancelledError:
-        await _cancel_optional_task(cover_task)
         await _cancel_optional_task(kg_ingest_task)
         if sync_graph_after_docgen:
             update_knowledge_build_lane_status(subject, lane="graph", requested_at=requested_at, build_group_id=build_group_id, status="cancelled", stage="cancelled", error_message="build_cancelled", current_stage_description="图谱构建已取消。")
-        _clear_docgen_staging_safely(subject)
-        _write_docgen_status(subject, requested_at=requested_at, build_group_id=build_group_id, status="cancelled", stage="cancelled", build_session_id=build_session_id, planner_session_id=planner_session_id, confirmed_plan_id=confirmed_plan_id, digest_mode=resolved_digest_mode, error_message="build_cancelled", draft_available=False)
+        if not docgen_published:
+            _clear_docgen_staging_safely(subject)
+            _write_docgen_status(subject, requested_at=requested_at, build_group_id=build_group_id, status="cancelled", stage="cancelled", build_session_id=build_session_id, planner_session_id=planner_session_id, confirmed_plan_id=confirmed_plan_id, digest_mode=resolved_digest_mode, error_message="build_cancelled", draft_available=False)
         if confirmed_plan_id and user_id:
             with managed_session() as session:
-                mark_confirmed_build_plan_status(session, subject=subject, user_id=user_id, plan_id=confirmed_plan_id, status="cancelled")
+                mark_confirmed_build_plan_status(
+                    session,
+                    subject=subject,
+                    user_id=user_id,
+                    plan_id=confirmed_plan_id,
+                    status="completed" if docgen_published else "cancelled",
+                )
         raise
     except Exception:
-        await _cancel_optional_task(cover_task)
         await _cancel_optional_task(kg_ingest_task)
         if sync_graph_after_docgen:
             update_knowledge_build_lane_status(subject, lane="graph", requested_at=requested_at, build_group_id=build_group_id, status="skipped", stage="blocked_by_docgen_failure", current_stage_description="知识文档构建异常失败，未完成图谱同步。")
-        _clear_docgen_staging_safely(subject)
-        _write_docgen_status(subject, requested_at=requested_at, build_group_id=build_group_id, status="failed", stage="failed", build_session_id=build_session_id, planner_session_id=planner_session_id, confirmed_plan_id=confirmed_plan_id, digest_mode=resolved_digest_mode, error_message="build_crashed", draft_available=False)
+        if not docgen_published:
+            _clear_docgen_staging_safely(subject)
+            _write_docgen_status(subject, requested_at=requested_at, build_group_id=build_group_id, status="failed", stage="failed", build_session_id=build_session_id, planner_session_id=planner_session_id, confirmed_plan_id=confirmed_plan_id, digest_mode=resolved_digest_mode, error_message="build_crashed", draft_available=False)
         if confirmed_plan_id and user_id:
             with managed_session() as session:
-                mark_confirmed_build_plan_status(session, subject=subject, user_id=user_id, plan_id=confirmed_plan_id, status="failed")
+                mark_confirmed_build_plan_status(
+                    session,
+                    subject=subject,
+                    user_id=user_id,
+                    plan_id=confirmed_plan_id,
+                    status="completed" if docgen_published else "failed",
+                )
         logger.exception("knowledge_build_failed", subject=subject)
         return
     finally:

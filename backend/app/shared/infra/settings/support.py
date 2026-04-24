@@ -405,6 +405,21 @@ def split_provider_model_name(model: str | None) -> tuple[str | None, str]:
     return normalized_provider, model_name.strip()
 
 
+def normalize_openai_compatible_image_model_name(
+    model: str | None,
+    *,
+    runtime_provider: str | None = None,
+) -> str | None:
+    normalized = (model or "").strip()
+    if not normalized:
+        return None
+    if normalize_llm_provider_name(runtime_provider) != "openai_compatible":
+        return normalized
+    if "/" in normalized:
+        return normalized
+    return f"openai/{normalized}"
+
+
 def detect_llm_provider_from_base_url(base_url: str | None) -> str | None:
     normalized = (base_url or "").strip()
     if not normalized:
@@ -750,6 +765,7 @@ __all__ = [
     "is_local_llm_base_url",
     "llm_provider_requires_api_key",
     "load_project_settings_values",
+    "normalize_openai_compatible_image_model_name",
     "normalize_llm_provider_name",
     "normalize_profile_name",
     "normalize_retriever_name",

@@ -21,6 +21,8 @@ class InteractWorkflowState(TypedDict, total=False):
     user_id: str
     session_id: str | None
     question: str
+    source: str | None
+    anchor_id: str | None
     selected_context: str | None
     source_chunk_id: int | None
     recent_messages: list[RecentMessage]

@@ -6,7 +6,7 @@ import shutil
 from pathlib import Path
 
 from app.shared.infra.runtime import get_runtime_data_dir
-from app.shared.infra.storage.base import ArtifactStore
+from app.shared.infra.storage.base import ArtifactStore, validate_delete_prefix
 
 
 def _is_relative_to(path: Path, root: Path) -> bool:
@@ -61,7 +61,7 @@ class LocalArtifactStore(ArtifactStore):
         ]
 
     async def delete_prefix(self, prefix: str) -> int:
-        base = self._resolve(prefix)
+        base = self._resolve(validate_delete_prefix(prefix))
         if not base.exists():
             return 0
         files = [p for p in base.rglob("*") if p.is_file()]

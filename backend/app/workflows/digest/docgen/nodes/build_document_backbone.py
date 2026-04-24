@@ -1,11 +1,11 @@
-﻿"""Build the document-level knowledge backbone."""
+"""Build the document-level knowledge backbone."""
 
 from __future__ import annotations
 
 from time import perf_counter
 
 from app.shared.infra.workflow.context import WorkflowContext
-from app.utils.docgen_store import append_knowledge_build_recent_event, update_knowledge_build_status
+from app.shared.infra.knowledge.build_store import append_knowledge_build_recent_event, update_knowledge_build_status
 from app.utils.time import utcnow
 from app.workflows.digest.docgen.lib.document_backbone import (
     build_document_backbone,

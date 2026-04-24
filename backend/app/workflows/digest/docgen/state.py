@@ -92,6 +92,7 @@ class DocGenState(TypedDict, total=False):
 
     load_ms: int
     prepare_ms: Annotated[int, operator.add]
+    cover_ms: int
     intent_core_ms: int
     title_lock_ms: Annotated[int, operator.add]
     seed_backbone_ms: int

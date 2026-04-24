@@ -1,4 +1,4 @@
-﻿"""Knowledge docs API routes."""
+"""Knowledge docs API routes."""
 
 from __future__ import annotations
 
@@ -58,7 +58,12 @@ from app.workflows.support.knowledge_graph import (
 )
 from app.workflows.support.subjects import get_subject_record
 from app.workflows.interact.chat.lib.streaming import SSEEventEmitter
-from app.utils.docgen_store import (
+from app.shared.infra.workflow.live_stream import (
+    WorkflowStreamEvent,
+    format_sse_event,
+    subscribe_workflow_stream,
+)
+from app.shared.infra.knowledge.build_store import (
     KnowledgeBuildLock,
     acquire_knowledge_build_lock,
     build_aggregate_knowledge_build_status,
@@ -639,6 +644,159 @@ async def knowledge_build_runtime(
     normalized = normalize_subject_slug(subject)
     get_subject_record(session, normalized, owner_user_id=user.user_id)
     return ok_response(get_knowledge_build_runtime_result(session, subject=normalized))
+
+
+@router.get(
+    "/build/stream",
+    summary="SSE stream for live build progress snapshots",
+    responses=build_error_responses([400, 404, 500]),
+)
+async def knowledge_build_stream(
+    request: Request,
+    subject: str = Path(...),
+    user: CurrentUserContext = Depends(get_current_user_context),
+    session: Session = Depends(get_db),
+) -> StreamingResponse:
+    """SSE endpoint for live build runtime, direct deltas and fallback snapshots."""
+    import hashlib
+    import json
+
+    normalized = normalize_subject_slug(subject)
+    get_subject_record(session, normalized, owner_user_id=user.user_id)
+
+    _TERMINAL_STATUSES = {"completed", "failed", "cancelled"}
+    _SNAPSHOT_FALLBACK_INTERVAL = 8.0
+
+    async def event_generator():
+        last_hash: str | None = None
+        last_preview_text_by_chapter: dict[int, str] = {}
+
+        def remember_preview_delta(payload: dict[str, object]) -> bool:
+            chapter_index = int(payload.get("chapter_index") or 0)
+            if chapter_index <= 0:
+                return False
+            text = str(payload.get("text") or "")
+            if not text:
+                return False
+            previous = last_preview_text_by_chapter.get(chapter_index, "")
+            full_length = int(payload.get("full_length") or 0)
+            if full_length > 0 and len(previous) >= full_length:
+                return False
+            mode = str(payload.get("mode") or "replace")
+            base_length = int(payload.get("base_length") or -1)
+            if mode == "append" and base_length >= 0 and base_length != len(previous):
+                return False
+            next_text = f"{previous}{text}" if mode == "append" and previous else text
+            last_preview_text_by_chapter[chapter_index] = next_text
+            return True
+
+        def build_preview_delta_payloads(result: KnowledgeBuildRuntimeResponse) -> list[dict[str, object]]:
+            payloads: list[dict[str, object]] = []
+            preview = result.docgen_preview
+            if preview is None:
+                return payloads
+            for chapter_preview in list(preview.chapter_previews or []):
+                chapter_index = int(chapter_preview.chapter_index or 0)
+                if chapter_index <= 0:
+                    continue
+                text = str(chapter_preview.excerpt or "")
+                previous = last_preview_text_by_chapter.get(chapter_index, "")
+                if not text or text == previous:
+                    continue
+                mode = "append" if previous and text.startswith(previous) else "replace"
+                payload = {
+                    "kind": "chapter_preview",
+                    "chapter_index": chapter_index,
+                    "title": chapter_preview.title,
+                    "status": chapter_preview.status,
+                    "mode": mode,
+                    "base_length": len(previous),
+                    "text": text[len(previous):] if mode == "append" else text,
+                    "full_length": len(text),
+                    "updated_at": (
+                        chapter_preview.updated_at.isoformat()
+                        if chapter_preview.updated_at is not None
+                        else None
+                    ),
+                }
+                last_preview_text_by_chapter[chapter_index] = text
+                payloads.append(payload)
+            return payloads
+
+        async def build_snapshot_events(*, force: bool = False) -> tuple[list[str], bool]:
+            nonlocal last_hash
+            try:
+                result = get_knowledge_build_runtime_result(session, subject=normalized)
+            except Exception:
+                return [], False
+
+            events: list[str] = []
+            for payload in build_preview_delta_payloads(result):
+                events.append(format_sse_event("preview_delta", payload))
+            snapshot_json = result.model_dump_json(exclude_none=True)
+            current_hash = hashlib.md5(snapshot_json.encode()).hexdigest()
+            if force or current_hash != last_hash:
+                last_hash = current_hash
+                events.append(f"event: snapshot\ndata: {snapshot_json}\n\n")
+
+            agg = result.aggregate
+            status = (agg.status if agg is not None else "idle").strip()
+            if status in _TERMINAL_STATUSES:
+                events.append(f"event: done\ndata: {json.dumps({'status': status}, ensure_ascii=False)}\n\n")
+                return events, True
+            return events, False
+
+        def should_forward_direct_event(event: WorkflowStreamEvent) -> bool:
+            if event.event != "preview_delta":
+                return True
+            return remember_preview_delta(event.data)
+
+        with subscribe_workflow_stream(normalized) as queue:
+            events, terminal = await build_snapshot_events(force=True)
+            for payload in events:
+                yield payload
+            if terminal:
+                return
+
+            while True:
+                if await request.is_disconnected():
+                    break
+                try:
+                    stream_event = await asyncio.wait_for(
+                        queue.get(),
+                        timeout=_SNAPSHOT_FALLBACK_INTERVAL,
+                    )
+                except asyncio.TimeoutError:
+                    events, terminal = await build_snapshot_events(force=False)
+                    if events:
+                        for payload in events:
+                            yield payload
+                    else:
+                        yield "event: ping\ndata: {}\n\n"
+                    if terminal:
+                        break
+                    continue
+
+                if stream_event.event == "runtime_dirty":
+                    events, terminal = await build_snapshot_events(force=False)
+                    for payload in events:
+                        yield payload
+                    if terminal:
+                        break
+                    continue
+
+                if should_forward_direct_event(stream_event):
+                    yield format_sse_event(stream_event.event, stream_event.data)
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+            "Connection": "keep-alive",
+        },
+    )
 
 
 @router.post(

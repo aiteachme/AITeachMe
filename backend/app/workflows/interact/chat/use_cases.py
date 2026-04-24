@@ -8,20 +8,16 @@ from __future__ import annotations
 
 import json
 from collections.abc import AsyncGenerator
-from uuid import uuid4
 
 from fastapi import Request
 from pydantic import TypeAdapter
 from sqlmodel import Session
 
-from app.shared.infra.llm_support import acompletion_stream
-from app.shared.infra.llm_support.routing import TaskType
 from app.models import ChatMessage, ChatSession
 from app.repositories.chats_repo import (
     clear_messages_by_subject,
     count_messages_by_session_ids,
     create_chat_session,
-    create_message_pair,
     delete_chat_session,
     get_chat_session,
     list_messages_by_subject,
@@ -42,8 +38,6 @@ from app.schemas.common import PaginatedData, build_paginated_data
 from app.utils.presenters import require_id
 from app.workflows.interact.chat.graph import stream_chat_workflow
 from app.workflows.interact.chat.lib.streaming import format_sse_event
-from app.workflows.interact.chat.lib.strategies import select_teaching_strategy
-from app.workflows.interact.chat.prompts import build_chat_messages
 
 _CHAT_CONTEXT_LIST_ADAPTER = TypeAdapter(list[ChatContextItem])
 
@@ -223,24 +217,8 @@ async def chat_stream(
         user_id=user_id,
         session_id=session_id,
         question=question,
-        source=source,
+        source=_clean_optional(source),
     )
-
-    if source and source.strip():
-        async for payload in _stream_direct_chat(
-            request=request,
-            session=session,
-            subject=subject,
-            user_id=user_id,
-            chat_session=resolved_session,
-            question=question,
-            source=source,
-            anchor_id=anchor_id,
-            selected_context=selected_context,
-            source_chunk_id=source_chunk_id,
-        ):
-            yield payload
-        return
 
     async for payload in stream_chat_workflow(
         request=request,
@@ -249,6 +227,8 @@ async def chat_stream(
         user_id=user_id,
         session_id=resolved_session.id,
         question=question,
+        source=_clean_optional(source),
+        anchor_id=_clean_optional(anchor_id),
         selected_context=selected_context,
         source_chunk_id=source_chunk_id,
     ):
@@ -272,84 +252,6 @@ async def chat_stream(
             "session_id": resolved_session.id,
         }
         yield format_sse_event("done", done_payload)
-
-
-async def _stream_direct_chat(
-    *,
-    request: Request,
-    session: Session,
-    subject: str,
-    user_id: str,
-    chat_session: ChatSession,
-    question: str,
-    source: str,
-    anchor_id: str | None,
-    selected_context: str | None,
-    source_chunk_id: int | None,
-) -> AsyncGenerator[str, None]:
-    messages = build_chat_messages(
-        subject=subject,
-        strategy_mode=select_teaching_strategy(question, selected_context),
-        retrieval_results=[],
-        recent_messages=[],
-        weak_points=[],
-        recent_mistakes=[],
-        question=question,
-        selected_context=selected_context,
-        source_chunk_id=source_chunk_id,
-    )
-    stream = acompletion_stream(messages, task_type=TaskType.CHAT)
-    assistant_tokens: list[str] = []
-    turn_id = str(uuid4())
-
-    try:
-        async for token in stream:
-            if await request.is_disconnected():
-                await stream.aclose()
-                return
-            assistant_tokens.append(token)
-            yield format_sse_event("token", {"content": token})
-    except Exception as exc:
-        yield format_sse_event(
-            "error",
-            {"detail": str(exc), "error_code": "STREAM_ERROR"},
-        )
-        return
-
-    assistant_content = "".join(assistant_tokens).strip()
-    if not assistant_content:
-        assistant_content = "I received the question, but no answer content was generated."
-
-    create_message_pair(
-        session,
-        subject=subject,
-        user_id=user_id,
-        session_id=chat_session.id,
-        user_content=question,
-        assistant_content=assistant_content,
-        contexts=None,
-        turn_id=turn_id,
-        source=source,
-        anchor_id=anchor_id,
-        selected_text=selected_context,
-        source_chunk_id=source_chunk_id,
-    )
-    touch_chat_session(
-        session,
-        subject=subject,
-        user_id=user_id,
-        session_id=chat_session.id,
-        title=_build_session_title(question) if _is_placeholder_title(chat_session.title) else None,
-    )
-
-    yield format_sse_event(
-        "done",
-        {
-            "turn_id": turn_id,
-            "session_id": chat_session.id,
-            "contexts": None,
-        },
-    )
 
 
 def _resolve_chat_session(
@@ -386,6 +288,13 @@ def _build_session_title(question: str) -> str:
         return "New Chat"
     max_len = 24
     return text[:max_len] if len(text) <= max_len else f"{text[:max_len]}..."
+
+
+def _clean_optional(value: str | None) -> str | None:
+    if value is None:
+        return None
+    cleaned = value.strip()
+    return cleaned or None
 
 
 def _is_placeholder_title(title: str) -> bool:

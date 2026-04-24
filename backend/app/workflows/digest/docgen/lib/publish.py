@@ -1,4 +1,4 @@
-﻿"""Helpers for staging and publishing knowledge docs."""
+"""Helpers for staging and publishing knowledge docs."""
 
 from __future__ import annotations
 
@@ -27,7 +27,7 @@ from app.shared.infra.tools.builtin.markdown_processing import (
     normalize_source_details,
     normalize_mermaid_blocks,
 )
-from app.utils.docgen_store import (
+from app.shared.infra.knowledge.build_store import (
     KnowledgeDocsManifest,
     clear_current_published_knowledge_docs_files,
     update_knowledge_build_status,

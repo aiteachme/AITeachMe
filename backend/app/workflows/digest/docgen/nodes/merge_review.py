@@ -1,18 +1,18 @@
-﻿"""Merge enhanced chapters and run whole-document review."""
+"""Merge enhanced chapters and run whole-document review."""
 
 from __future__ import annotations
 
 from time import perf_counter
 
+from app.shared.infra.tools.builtin.markdown_processing import build_draft_excerpt
 from app.shared.infra.tools.builtin.markdown_processing import count_words
-from app.utils.docgen_store import append_knowledge_build_recent_event, update_knowledge_build_status
+from app.shared.infra.knowledge.build_store import (
+    append_knowledge_build_recent_event,
+    update_knowledge_build_merge_preview,
+    update_knowledge_build_status,
+)
 from app.utils.time import utcnow
 from app.shared.infra.workflow.context import WorkflowContext
-from app.workflows.digest.docgen.lib.cover import (
-    build_docgen_cover_markdown,
-    read_docgen_cover_artifact,
-    wait_for_docgen_cover_artifact,
-)
 from app.workflows.digest.docgen.lib.models import EnhancedChapterDraft
 from app.workflows.digest.docgen.lib.publish import build_merged_markdown
 from app.workflows.digest.docgen.lib.quality import build_merge_review_report
@@ -127,10 +127,8 @@ def build_merge_review_node(*, context: WorkflowContext):
                     chapter_review_report=review_reports_by_chapter.get(chapter.chapter_index),
                 )
             )
-        cover_artifact = await read_docgen_cover_artifact(state["subject"])
-        if not cover_artifact:
-            cover_artifact = await wait_for_docgen_cover_artifact(state["subject"])
-        cover_markdown = build_docgen_cover_markdown(cover_artifact)
+        cover_artifact = dict(state.get("cover_artifact") or {})
+        cover_markdown = str(state.get("cover_markdown") or "").strip()
         merged_markdown = build_merged_markdown(
             chapter_metadatas,
             document_context=dict(state.get("document_context") or {}),
@@ -150,6 +148,14 @@ def build_merge_review_node(*, context: WorkflowContext):
                 else f"整本文档检查完成，带 {len(review.issues)} 个 warning 发布。"
             ),
             draft_available=bool(merged_markdown.strip()),
+        )
+        update_knowledge_build_merge_preview(
+            state["subject"],
+            requested_at=state["requested_at"],
+            merge_preview={
+                "latest_chapter_titles": [chapter["title"] for chapter in chapter_metadatas],
+                "draft_excerpt": build_draft_excerpt(merged_markdown, max_chars=1600),
+            },
         )
         append_knowledge_build_recent_event(
             state["subject"],

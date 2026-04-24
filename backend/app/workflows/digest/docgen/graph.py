@@ -33,6 +33,7 @@ from app.workflows.digest.docgen.nodes import (
     build_document_consistency_review_node,
     build_enhance_chapters_node,
     build_finalize_titles_node,
+    build_generate_cover_node,
     build_generate_chapters_node,
     build_lock_titles_for_chapters_node,
     build_load_context_node,
@@ -47,6 +48,7 @@ from app.workflows.digest.docgen.state import DocGenState
 
 NODE_LOAD_CONTEXT = "读取确认方案"
 NODE_PREPARE_GLOBAL_SEED = "准备全局种子"
+NODE_GENERATE_COVER = "生成封面"
 NODE_LOCK_TITLES = "锁定章节标题"
 NODE_CONFIRM_BACKBONE_SEED = "确认骨架种子"
 NODE_BUILD_BACKBONE = "构建文档知识骨架"
@@ -86,6 +88,14 @@ def build_docgen_graph(*, context: WorkflowContext) -> StateGraph:
             build_prepare_global_seed_node(context=context),
             name=NODE_PREPARE_GLOBAL_SEED,
             timing_field="prepare_ms",
+        ),
+    )
+    workflow.add_node(
+        NODE_GENERATE_COVER,
+        trace.node(
+            build_generate_cover_node(context=context),
+            name=NODE_GENERATE_COVER,
+            timing_field="cover_ms",
         ),
     )
     workflow.add_node(
@@ -173,6 +183,11 @@ def build_docgen_graph(*, context: WorkflowContext) -> StateGraph:
     )
     workflow.add_conditional_edges(
         NODE_PREPARE_GLOBAL_SEED,
+        route_after_step_for_trace,
+        {"continue": NODE_GENERATE_COVER, "fail": END},
+    )
+    workflow.add_conditional_edges(
+        NODE_GENERATE_COVER,
         route_after_step_for_trace,
         {"continue": NODE_LOCK_TITLES, "fail": END},
     )

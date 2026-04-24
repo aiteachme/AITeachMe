@@ -1,7 +1,7 @@
 import sqlalchemy as sa
 from sqlmodel import create_engine
 
-from app.shared.infra.database.core import _drop_sqlite_legacy_schema
+from app.shared.infra.database.core import _drop_sqlite_legacy_schema, _inspect_sqlite_schema_drift
 
 
 def test_drop_sqlite_legacy_schema_removes_legacy_indexes_before_columns(tmp_path):
@@ -126,3 +126,14 @@ def test_ensure_local_sqlite_schema_rebuilds_engine_after_drift(
         "reset",
         ("remove", db_path),
     ]
+
+
+def test_sqlite_schema_drift_allows_memory_runtime_tables(tmp_path):
+    db_path = tmp_path / "runtime.sqlite"
+    engine = create_engine(f"sqlite:///{db_path}")
+
+    with engine.begin() as connection:
+        connection.execute(sa.text("CREATE TABLE memory_entries (id INTEGER PRIMARY KEY)"))
+        connection.execute(sa.text("CREATE TABLE learning_logs (id INTEGER PRIMARY KEY)"))
+
+    assert _inspect_sqlite_schema_drift(engine) is None

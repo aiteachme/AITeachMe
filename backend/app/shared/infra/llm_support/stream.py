@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import time
-from typing import AsyncGenerator
+from typing import Any, AsyncGenerator
 
 from app.schemas.llm import ChatMessage
 from app.shared.infra.exceptions import LLMCallError, LLMTimeoutError
@@ -33,6 +33,29 @@ from .observability import (
 )
 
 litellm = load_litellm()
+
+
+async def _stream_chunks_with_timeout(
+    response: Any,
+    *,
+    timeout_s: int,
+) -> AsyncGenerator[Any, None]:
+    """Yield streaming chunks while enforcing a timeout for each upstream read."""
+
+    iterator = response.__aiter__()
+    try:
+        while True:
+            try:
+                yield await asyncio.wait_for(iterator.__anext__(), timeout=timeout_s)
+            except StopAsyncIteration:
+                break
+    finally:
+        close = getattr(iterator, "aclose", None) or getattr(response, "aclose", None)
+        if callable(close):
+            try:
+                await close()
+            except Exception:
+                pass
 
 
 async def acompletion_stream(
@@ -89,7 +112,10 @@ async def acompletion_stream(
                     timeout=request_timeout_s(context.profile.timeout_s),
                 )
                 usage = merge_usage(usage, extract_usage(response))
-                async for chunk in response:
+                async for chunk in _stream_chunks_with_timeout(
+                    response,
+                    timeout_s=request_timeout_s(context.profile.timeout_s),
+                ):
                     usage = merge_usage(usage, extract_usage(chunk))
                     choices = getattr(chunk, "choices", None) or []
                     if not choices:

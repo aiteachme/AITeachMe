@@ -1,8 +1,18 @@
 from __future__ import annotations
 
 from app.shared.infra.llm_support.common import build_completion_context, build_litellm_provider_kwargs
+from app.shared.infra.llm_support.image import (
+    GeneratedImage,
+    ImageGenerationResult,
+    _build_litellm_image_kwargs,
+    _extract_images,
+    _is_openai_gpt_image_model,
+    _metadata_without_image_payload,
+    _resolve_litellm_image_model,
+)
 from app.shared.infra.llm_support.routing import LLMCallPurpose
 from app.shared.infra.settings import reset_project_settings_cache
+from app.shared.infra.settings.support import normalize_openai_compatible_image_model_name
 
 
 def test_build_provider_kwargs_for_anthropic(monkeypatch) -> None:
@@ -95,3 +105,136 @@ def test_build_completion_context_allows_local_provider_without_api_key(monkeypa
 
     assert context.api_key is None
     assert context.model == "qwen2.5"
+
+
+def test_normalize_openai_compatible_image_model_name_uses_litellm_openai_route() -> None:
+    assert normalize_openai_compatible_image_model_name(
+        "doubao-seedream-4-0",
+        runtime_provider="openai_compatible",
+    ) == "openai/doubao-seedream-4-0"
+    assert normalize_openai_compatible_image_model_name(
+        "qwen-image",
+        runtime_provider="openai_compatible",
+    ) == "openai/qwen-image"
+    assert normalize_openai_compatible_image_model_name(
+        "FLUX.1-Kontext-pro",
+        runtime_provider="openai_compatible",
+    ) == "openai/FLUX.1-Kontext-pro"
+
+
+def test_normalize_openai_compatible_image_model_name_keeps_prefixed_models() -> None:
+    assert normalize_openai_compatible_image_model_name(
+        "openrouter/google/gemini-2.5-flash-image",
+        runtime_provider="openai_compatible",
+    ) == "openrouter/google/gemini-2.5-flash-image"
+
+
+def test_normalize_openai_compatible_image_model_name_skips_non_compatible_runtimes() -> None:
+    assert normalize_openai_compatible_image_model_name(
+        "doubao-seedream-4-0",
+        runtime_provider="doubao",
+    ) == "doubao-seedream-4-0"
+
+
+def test_resolve_litellm_image_model_routes_by_runtime_provider() -> None:
+    assert _resolve_litellm_image_model("gpt-image-1", runtime_provider="openai") == "gpt-image-1"
+    assert _resolve_litellm_image_model("gpt-image-1", runtime_provider="openai_compatible") == "openai/gpt-image-1"
+    assert (
+        _resolve_litellm_image_model("google/gemini-2.5-flash-image", runtime_provider="openrouter")
+        == "openrouter/google/gemini-2.5-flash-image"
+    )
+    assert (
+        _resolve_litellm_image_model("openrouter/google/gemini-2.5-flash-image", runtime_provider="openai")
+        == "openrouter/google/gemini-2.5-flash-image"
+    )
+    assert _resolve_litellm_image_model("fal-ai/flux/dev", runtime_provider="openai_compatible") == "fal-ai/flux/dev"
+    assert _resolve_litellm_image_model("doubao/doubao-seedream-4-0", runtime_provider="openai_compatible") == "doubao/doubao-seedream-4-0"
+    assert _resolve_litellm_image_model("imagegeneration@006", runtime_provider="vertex_ai") == "vertex_ai/imagegeneration@006"
+
+
+def test_build_litellm_image_kwargs_drops_response_format_for_gpt_image_models() -> None:
+    kwargs = _build_litellm_image_kwargs(
+        model="gpt-image-1",
+        prompt="demo",
+        runtime_provider="openai_compatible",
+        api_base="https://gateway.example.com/v1",
+        api_key="sk-test",
+        timeout_s=30,
+        size="1024x1024",
+        n=1,
+        response_format="b64_json",
+        extra_kwargs={"quality": "high"},
+    )
+
+    assert kwargs["model"] == "openai/gpt-image-1"
+    assert kwargs["api_base"] == "https://gateway.example.com/v1"
+    assert kwargs["api_key"] == "sk-test"
+    assert kwargs["quality"] == "high"
+    assert "response_format" not in kwargs
+    assert _is_openai_gpt_image_model(kwargs["model"])
+
+
+def test_build_litellm_image_kwargs_keeps_provider_specific_fields() -> None:
+    kwargs = _build_litellm_image_kwargs(
+        model="dall-e-3",
+        prompt="demo",
+        runtime_provider="openai",
+        api_base=None,
+        api_key=None,
+        timeout_s=30,
+        size="1024x1024",
+        n=1,
+        response_format="b64_json",
+        extra_kwargs={"style": "vivid", "background": None},
+    )
+
+    assert kwargs["model"] == "dall-e-3"
+    assert kwargs["response_format"] == "b64_json"
+    assert kwargs["style"] == "vivid"
+    assert "background" not in kwargs
+
+
+def test_extract_images_reads_litellm_data_and_chat_image_payloads() -> None:
+    images = _extract_images(
+        {
+            "data": [
+                {
+                    "b64_json": "T1BFTkFJ",
+                    "revised_prompt": "clean prompt",
+                    "mime_type": "image/png",
+                }
+            ],
+            "choices": [
+                {
+                    "message": {
+                        "images": [
+                            {
+                                "imageUrl": {
+                                    "url": "data:image/png;base64,T1BFTlJPVVRFUg==",
+                                }
+                            }
+                        ]
+                    }
+                }
+            ],
+        }
+    )
+
+    assert len(images) == 2
+    assert images[0].b64_json == "T1BFTkFJ"
+    assert images[0].revised_prompt == "clean prompt"
+    assert images[1].b64_json == "T1BFTlJPVVRFUg=="
+    assert images[1].mime_type == "image/png"
+
+
+def test_metadata_without_image_payload_keeps_full_revised_prompt() -> None:
+    revised_prompt = "x" * 400
+    payload = _metadata_without_image_payload(
+        ImageGenerationResult(
+            model="demo-model",
+            prompt="hello",
+            images=[GeneratedImage(revised_prompt=revised_prompt)],
+        )
+    )
+
+    assert payload["images"][0]["revised_prompt"] == revised_prompt
