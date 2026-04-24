@@ -40,19 +40,19 @@ def test_plan_queries_are_deduped_and_bounded():
     assert queries == [f"抓手 {index}" for index in range(8)]
 
 
-def test_planner_prompt_subject_uses_display_name_not_subject_id():
+def test_planner_prompt_subject_hides_subject_id():
     material_context = DigestMaterialContext(
-        learning_domain_profile=SubjectProfile(subject_slug="subj_demo", subject_name="数学")
+        learning_domain_profile=SubjectProfile(subject_slug="subj_demo", discipline="数学")
     )
     state = {
         "subject": "subj_demo",
-        "user_goal": "介绍下小学数学",
+        "user_prompt": "介绍下小学数学",
         "digest_mode": "sprint",
         "material_context": material_context,
     }
 
-    assert _intent_subject_for_prompt(state) == "数学"
-    assert _composer_subject_for_prompt(state) == "数学"
+    assert "subj_" not in _intent_subject_for_prompt(state)
+    assert "subj_" not in _composer_subject_for_prompt(state)
     assert all("subj_" not in item for item in _fallback_plan_queries(state))
 
 
@@ -87,7 +87,7 @@ def test_normalized_planner_draft_preserves_plan_steps():
             ],
         },
         subject="math",
-        user_goal="复习高数",
+        user_prompt="复习高数",
         requested_digest_mode="systematic",
     )
 
@@ -113,7 +113,7 @@ def test_composer_prompt_allows_research_plan_without_claiming_done():
     )
     prompt = build_plan_composer_messages(
         subject="数学",
-        user_goal="介绍下小学数学",
+        user_prompt="介绍下小学数学",
         digest_mode="sprint",
         material_context=material_context,
         planner_brief=PlannerBrief(markdown="用户想先了解小学数学整体框架。"),

@@ -3,10 +3,15 @@
 from __future__ import annotations
 
 from time import perf_counter
+from urllib.parse import urlparse
 
 from app.shared.infra.execution import TracedExecutionContext
 from app.shared.infra.tools.builtin.markdown_processing import build_draft_excerpt, count_words
-from app.utils.docgen_store import append_knowledge_build_recent_event, upsert_knowledge_build_chapter_progress
+from app.utils.docgen_store import (
+    append_knowledge_build_recent_event,
+    upsert_knowledge_build_chapter_preview,
+    upsert_knowledge_build_chapter_progress,
+)
 from app.utils.time import utcnow
 from app.shared.infra.workflow.context import WorkflowContext
 from app.workflows.digest.docgen.lib import DocGenChapterContextRuntime, DocGenWriterRuntime
@@ -30,6 +35,7 @@ from app.workflows.digest.docgen.lib.quality import (
 )
 from app.workflows.digest.docgen.nodes.common import (
     ensure_chapter_heading,
+    extract_markdown_preview_headings,
     publish_docgen_progress,
     resolve_docgen_retrieval_profile,
 )
@@ -149,6 +155,36 @@ def _source_scope(source_details: list[dict]) -> dict:
     }
 
 
+def _source_preview_metadata(source_details: list[dict]) -> dict[str, list[str]]:
+    domains: list[str] = []
+    source_titles: list[str] = []
+    source_urls: list[str] = []
+    seen_domains: set[str] = set()
+    seen_titles: set[str] = set()
+    seen_urls: set[str] = set()
+
+    for item in source_details:
+        raw_url = str(item.get("url") or "").strip()
+        raw_title = str(item.get("title") or item.get("source_title") or "").strip()
+        if raw_url and not raw_url.startswith("local://"):
+            domain = urlparse(raw_url).netloc.strip().lower()
+            if domain and domain not in seen_domains and len(domains) < 4:
+                domains.append(domain)
+                seen_domains.add(domain)
+            if raw_url not in seen_urls and len(source_urls) < 4:
+                source_urls.append(raw_url)
+                seen_urls.add(raw_url)
+        if raw_title and raw_title not in seen_titles and len(source_titles) < 4:
+            source_titles.append(raw_title)
+            seen_titles.add(raw_title)
+
+    return {
+        "domains": domains,
+        "source_titles": source_titles,
+        "source_urls": source_urls,
+    }
+
+
 def build_generate_chapters_node(*, context: WorkflowContext):
     """构建单章生成节点。
 
@@ -169,6 +205,15 @@ def build_generate_chapters_node(*, context: WorkflowContext):
             state["subject"],
             requested_at=state["requested_at"],
             chapter_progress={"chapter_index": task.chapter_index, "title": title, "status": "generating"},
+        )
+        upsert_knowledge_build_chapter_preview(
+            state["subject"],
+            requested_at=state["requested_at"],
+            chapter_preview={
+                "chapter_index": task.chapter_index,
+                "title": title,
+                "status": "generating",
+            },
         )
         append_knowledge_build_recent_event(
             state["subject"],
@@ -364,6 +409,20 @@ def build_generate_chapters_node(*, context: WorkflowContext):
             source_details=source_details,
             fallback_used=fallback_used,
         )
+        word_count = count_words(writer_markdown)
+        upsert_knowledge_build_chapter_preview(
+            state["subject"],
+            requested_at=state["requested_at"],
+            chapter_preview={
+                "chapter_index": task.chapter_index,
+                "title": title,
+                "status": "generated",
+                "excerpt": build_draft_excerpt(writer_markdown, max_chars=1200),
+                "latest_headings": extract_markdown_preview_headings(writer_markdown),
+                "word_count": word_count,
+                "source_count": len(source_details),
+            },
+        )
         upsert_knowledge_build_chapter_progress(
             state["subject"],
             requested_at=state["requested_at"],
@@ -375,8 +434,20 @@ def build_generate_chapters_node(*, context: WorkflowContext):
                 "local_hits": local_hit_count,
                 "web_hits": web_hit_count,
                 "query_count": len(research_trace.executed_queries),
-                "word_count": count_words(writer_markdown),
+                "word_count": word_count,
                 "fallback_used": fallback_used,
+            },
+        )
+        append_knowledge_build_recent_event(
+            state["subject"],
+            requested_at=state["requested_at"],
+            event={
+                "stage": "chapter_generated",
+                "chapter_index": task.chapter_index,
+                "title": title,
+                "summary": f"{title} 初稿已完成，约 {word_count} 字，引用 {len(source_details)} 个来源。",
+                "created_at": utcnow(),
+                **_source_preview_metadata(source_details),
             },
         )
         await publish_docgen_progress(
@@ -386,7 +457,7 @@ def build_generate_chapters_node(*, context: WorkflowContext):
             payload={
                 "chapter_index": task.chapter_index,
                 "title": title,
-                "word_count": count_words(writer_markdown),
+                "word_count": word_count,
                 "quality_score": quality.quality_score,
                 "fallback_used": fallback_used,
             },

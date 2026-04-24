@@ -662,7 +662,7 @@ async def knowledge_build_stream(
     get_subject_record(session, normalized, owner_user_id=user.user_id)
 
     _TERMINAL_STATUSES = {"completed", "failed", "cancelled"}
-    _POLL_INTERVAL = 2.0
+    _POLL_INTERVAL = 1.0
 
     async def event_generator():
         last_hash: str | None = None

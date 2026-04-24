@@ -42,6 +42,7 @@ DEFAULT_SETTINGS_VALUES: dict[str, Any] = {
     "docgen": {
         "allow_external_search": True,
         "generate_cover_image": False,
+        "generate_interactive_html": False,
     },
     "ingest": {
         "max_upload_size_mb": 10,

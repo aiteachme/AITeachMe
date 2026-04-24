@@ -6,16 +6,18 @@ import asyncio
 from time import perf_counter
 
 from app.shared.infra.execution import TracedExecutionContext
+from app.shared.infra.tools.builtin.markdown_processing import build_draft_excerpt, count_words
 from app.utils.docgen_store import (
     append_knowledge_build_recent_event,
     update_knowledge_build_status,
+    upsert_knowledge_build_chapter_preview,
     upsert_knowledge_build_chapter_progress,
 )
 from app.utils.time import utcnow
 from app.shared.infra.workflow.context import WorkflowContext
 from app.workflows.digest.docgen.lib.chapter_enhancement import enhance_chapter_draft
 from app.workflows.digest.docgen.lib.models import ChapterDraft, ClaimLedger, DocumentBackbone
-from app.workflows.digest.docgen.nodes.common import publish_docgen_progress
+from app.workflows.digest.docgen.nodes.common import extract_markdown_preview_headings, publish_docgen_progress
 from app.workflows.digest.docgen.state import DocGenState
 
 
@@ -69,12 +71,35 @@ def build_enhance_chapters_node(*, context: WorkflowContext):
                 requested_at=state["requested_at"],
                 chapter_progress={"chapter_index": draft.chapter_index, "title": draft.title, "status": "enhancing"},
             )
+            upsert_knowledge_build_chapter_preview(
+                state["subject"],
+                requested_at=state["requested_at"],
+                chapter_preview={
+                    "chapter_index": draft.chapter_index,
+                    "title": draft.title,
+                    "status": "enhancing",
+                },
+            )
             enhanced, asset_manifest, practice_manifest = await enhance_chapter_draft(
                 draft,
                 traced_context=traced_context,
                 digest_mode=state.get("digest_mode") or "systematic",
                 claim_ledger=claim_ledgers_by_chapter.get(draft.chapter_index),
                 document_backbone=document_backbone,
+            )
+            word_count = count_words(enhanced.markdown)
+            upsert_knowledge_build_chapter_preview(
+                state["subject"],
+                requested_at=state["requested_at"],
+                chapter_preview={
+                    "chapter_index": draft.chapter_index,
+                    "title": enhanced.title,
+                    "status": "enhanced",
+                    "excerpt": build_draft_excerpt(enhanced.markdown, max_chars=1200),
+                    "latest_headings": extract_markdown_preview_headings(enhanced.markdown),
+                    "word_count": word_count,
+                    "source_count": len(enhanced.source_details),
+                },
             )
             upsert_knowledge_build_chapter_progress(
                 state["subject"],
@@ -84,6 +109,7 @@ def build_enhance_chapters_node(*, context: WorkflowContext):
                     "title": enhanced.title,
                     "status": "enhanced",
                     "source_count": len(enhanced.source_details),
+                    "word_count": word_count,
                 },
             )
             append_knowledge_build_recent_event(

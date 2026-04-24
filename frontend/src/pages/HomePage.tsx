@@ -100,7 +100,7 @@ interface ImportResultData {
   warnings: string[];
 }
 
-/* ── Courses folder API ── */
+/* ── Demo courses API ── */
 
 interface CoursePackageItem {
   filename: string;
@@ -1001,8 +1001,11 @@ export function HomePage() {
                         </div>
                         <p className="text-sm font-medium text-slate-600 mb-1">暂无演示课程</p>
                         <p className="text-xs text-slate-400">
-                          将 <code className="px-1 py-0.5 bg-slate-100 rounded text-xs">.atmx</code> 文件放入{" "}
-                          <code className="px-1 py-0.5 bg-slate-100 rounded text-xs">backend/data/_courses/</code> 目录即可在此显示为演示课程
+                          请在后端配置现有的{" "}
+                          <code className="px-1 py-0.5 bg-slate-100 rounded text-xs">S3_PUBLIC_BASE_URL</code>
+                          ，系统会固定从{" "}
+                          <code className="px-1 py-0.5 bg-slate-100 rounded text-xs">demo-courses/catalog/v1/index.json</code>
+                          读取线上 <code className="px-1 py-0.5 bg-slate-100 rounded text-xs">.atmx</code> 课程包
                         </p>
                       </div>
                     )}

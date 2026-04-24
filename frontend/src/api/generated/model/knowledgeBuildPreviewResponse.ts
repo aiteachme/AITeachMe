@@ -5,7 +5,9 @@
  * 本地优先的 AI 助教后端服务。
  * OpenAPI spec version: 0.2.0
  */
+import type { BuildPreviewChapterPreviewResponse } from './buildPreviewChapterPreviewResponse';
 import type { BuildPreviewChapterProgressResponse } from './buildPreviewChapterProgressResponse';
+import type { BuildPreviewMergePreviewResponse } from './buildPreviewMergePreviewResponse';
 import type { BuildPreviewNodeResponse } from './buildPreviewNodeResponse';
 import type { BuildPreviewRecentEventResponse } from './buildPreviewRecentEventResponse';
 import type { BuildSampleCardResponse } from './buildSampleCardResponse';
@@ -39,6 +41,10 @@ export interface KnowledgeBuildPreviewResponse {
   chapter_progress?: BuildPreviewChapterProgressResponse[];
   /** Recent research / writing / publishing events for this build. */
   recent_events?: BuildPreviewRecentEventResponse[];
+  /** Readable per-chapter live previews for the build workspace. */
+  chapter_previews?: BuildPreviewChapterPreviewResponse[];
+  /** Merged whole-document preview before final publish. */
+  merge_preview?: BuildPreviewMergePreviewResponse | null;
   /** Recently staged or published chapter titles. */
   latest_chapter_titles?: string[];
   /** Short excerpt from the current draft markdown, if any. */

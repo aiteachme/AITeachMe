@@ -88,33 +88,58 @@ export function BuildView({
     if (sseEvents && sseEvents.length > 0) return sseEvents;
     return buildPreview?.recent_events ?? [];
   }, [sseSnapshot?.docgen_preview?.recent_events, buildPreview?.recent_events]);
+  const mergedChapterPreviews = useMemo(() => {
+    const sseChapterPreviews = sseSnapshot?.docgen_preview?.chapter_previews;
+    if (sseChapterPreviews && sseChapterPreviews.length > 0) return sseChapterPreviews;
+    return buildPreview?.chapter_previews ?? [];
+  }, [sseSnapshot?.docgen_preview?.chapter_previews, buildPreview?.chapter_previews]);
+  const mergePreview = useMemo(() => {
+    return sseSnapshot?.docgen_preview?.merge_preview ?? buildPreview?.merge_preview ?? null;
+  }, [sseSnapshot?.docgen_preview?.merge_preview, buildPreview?.merge_preview]);
 
   const timelineSteps = useBuildTimelineSteps(buildStage);
   const chapters = mergedChapters;
   const events = mergedEvents;
+  const chapterPreviews = mergedChapterPreviews;
   const roundedProgress = Math.max(0, Math.min(100, Math.round(
     sseSnapshot?.aggregate?.progress_pct ?? progress
   )));
 
   const draftExcerpt = (
-    sseSnapshot?.docgen?.current_stage_description || 
-    sseSnapshot?.docgen_preview?.draft_excerpt || 
-    buildPreview?.draft_excerpt || 
+    mergePreview?.draft_excerpt ||
+    sseSnapshot?.docgen_preview?.draft_excerpt ||
+    buildPreview?.draft_excerpt ||
+    sseSnapshot?.docgen?.current_stage_description ||
     ""
   ).trim();
   const planSummary = (sseSnapshot?.docgen_preview?.plan_summary ?? buildPreview?.plan_summary ?? "").trim();
   const hasDraftExcerpt = draftExcerpt.length > 0;
+  const hasChapterPreviewContent = chapterPreviews.some((item) => Boolean(item.excerpt?.trim()));
+  const hasLivePreviewContent = hasChapterPreviewContent || hasDraftExcerpt;
 
   const spotlightChapter = chapters.find((c) =>
     ["generating", "enhancing", "reviewing", "drafting", "researching"].includes(c.status)
   ) ?? chapters.find(c => c.status !== "pending") ?? null;
+  const chapterPreviewByIndex = useMemo(
+    () => new Map(chapterPreviews.map((item) => [item.chapter_index, item])),
+    [chapterPreviews],
+  );
+  const selectedChapterPreview = selectedPreviewChapter !== null
+    ? chapterPreviewByIndex.get(selectedPreviewChapter) ?? null
+    : null;
+  const selectedChapterEvents = useMemo(() => {
+    if (selectedPreviewChapter === null) {
+      return [];
+    }
+    return events.filter((event) => event.chapter_index === selectedPreviewChapter).slice(0, 4);
+  }, [events, selectedPreviewChapter]);
 
   // Auto-switch to preview and select active chapter when streaming starts
   // We use a ref to only auto-switch ONCE so we don't fight user interactions.
   const autoSwitchedToPreviewRef = useRef(false);
 
   useEffect(() => {
-    if (hasDraftExcerpt && !autoSwitchedToPreviewRef.current) {
+    if (hasLivePreviewContent && !autoSwitchedToPreviewRef.current) {
       autoSwitchedToPreviewRef.current = true;
       if (activeTab === "outline" || activeTab === "logs" || activeTab === "files") {
         setActiveTab("preview");
@@ -122,13 +147,13 @@ export function BuildView({
       if (spotlightChapter && selectedPreviewChapter !== spotlightChapter.chapter_index) {
         setSelectedPreviewChapter(spotlightChapter.chapter_index);
       }
-    } else if (!hasDraftExcerpt) {
+    } else if (!hasLivePreviewContent) {
       autoSwitchedToPreviewRef.current = false;
     }
-  }, [hasDraftExcerpt, activeTab, selectedPreviewChapter, spotlightChapter]);
+  }, [hasLivePreviewContent, activeTab, selectedPreviewChapter, spotlightChapter]);
 
   useEffect(() => {
-    if (hasDraftExcerpt) {
+    if (hasLivePreviewContent) {
       previewFallbackAppliedRef.current = false;
       return;
     }
@@ -149,7 +174,7 @@ export function BuildView({
       previewFallbackAppliedRef.current = true;
       setActiveTab("files");
     }
-  }, [activeTab, chapters.length, events.length, hasDraftExcerpt, sourceFiles.length]);
+  }, [activeTab, chapters.length, events.length, hasLivePreviewContent, sourceFiles.length]);
 
   // Ensure selected chapter in preview defaults to spotlight or first chapter
   useEffect(() => {
@@ -408,7 +433,7 @@ export function BuildView({
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-1">
                         {chapters.map((chapter) => {
                           const isDone = ["generated", "completed", "enhanced", "reviewed"].includes(chapter.status);
-                          const isActive = ["generating", "drafting", "enhancing"].includes(chapter.status);
+                          const isActive = ["generating", "drafting", "enhancing", "reviewing"].includes(chapter.status);
 
                           return (
                             <div key={chapter.chapter_index} className={cn(
@@ -509,15 +534,36 @@ export function BuildView({
                 <div className="flex-1 min-w-0 flex flex-col h-full bg-white dark:bg-slate-900 relative">
                    {selectedPreviewChapter ? (() => {
                       const selChapter = chapters.find(c => c.chapter_index === selectedPreviewChapter);
-                      const isStreaming = spotlightChapter?.chapter_index === selectedPreviewChapter;
-                      const isDone = selChapter ? ["generated", "completed", "enhanced", "reviewed"].includes(selChapter.status) : false;
+                      const preview = selectedChapterPreview;
+                      const selectedStatus = preview?.status ?? selChapter?.status ?? "planned";
+                      const isStreaming =
+                        spotlightChapter?.chapter_index === selectedPreviewChapter ||
+                        ["generating", "enhancing", "reviewing"].includes(selectedStatus);
+                      const isDone = ["generated", "completed", "enhanced", "reviewed"].includes(selectedStatus);
+                      const selectedExcerpt = (
+                        preview?.excerpt?.trim() ||
+                        (isStreaming ? mergePreview?.draft_excerpt?.trim() : "") ||
+                        draftExcerpt
+                      ).trim();
+                      const selectedHeadings = preview?.latest_headings ?? [];
+                      const selectedWordCount = preview?.word_count ?? selChapter?.word_count ?? 0;
+                      const selectedSourceCount = preview?.source_count ?? selChapter?.source_count ?? 0;
+                      const previewUpdatedAt = preview?.updated_at ? formatBuildEventTime(preview.updated_at) : null;
+                      const usingMergeFallback = !preview?.excerpt?.trim() && Boolean(selectedExcerpt);
 
                       return (
                          <>
                            <div className="flex items-center justify-between px-8 py-3 border-b border-zinc-50 dark:border-slate-800">
-                              <span className="text-[12px] font-medium text-zinc-400 dark:text-slate-500">
-                                {isStreaming ? "正在实时推流..." : isDone ? "生成已完成" : "等待生成..."}
-                              </span>
+                              <div className="min-w-0">
+                                <span className="text-[12px] font-medium text-zinc-400 dark:text-slate-500">
+                                  {buildChapterStatusLabel(selectedStatus)}
+                                </span>
+                                {previewUpdatedAt ? (
+                                  <span className="ml-2 text-[11px] text-zinc-300 dark:text-slate-600">
+                                    更新于 {previewUpdatedAt}
+                                  </span>
+                                ) : null}
+                              </div>
                               {isStreaming && (
                                 <div className="flex items-center gap-2">
                                   <span className="relative flex h-2 w-2">
@@ -529,20 +575,74 @@ export function BuildView({
                               )}
                            </div>
                            <div className="flex-1 overflow-y-auto px-10 py-10 build-scroll bg-white dark:bg-slate-900">
-                              {isStreaming && hasDraftExcerpt ? (
-                                 <div className="max-w-[700px] mx-auto pb-10">
+                              {selectedExcerpt ? (
+                                 <div className="max-w-[760px] mx-auto space-y-6 pb-10">
+                                   <div className="flex flex-wrap items-center gap-2">
+                                     <span className="rounded-full bg-zinc-100 px-2.5 py-1 text-[11px] text-zinc-600 dark:bg-slate-800 dark:text-slate-300">
+                                       {buildChapterStatusLabel(selectedStatus)}
+                                     </span>
+                                     {selectedWordCount > 0 ? (
+                                       <span className="rounded-full bg-zinc-100 px-2.5 py-1 text-[11px] text-zinc-500 dark:bg-slate-800 dark:text-slate-400">
+                                         约 {selectedWordCount} 字
+                                       </span>
+                                     ) : null}
+                                     {selectedSourceCount > 0 ? (
+                                       <span className="rounded-full bg-zinc-100 px-2.5 py-1 text-[11px] text-zinc-500 dark:bg-slate-800 dark:text-slate-400">
+                                         {selectedSourceCount} 个来源
+                                       </span>
+                                     ) : null}
+                                     {usingMergeFallback ? (
+                                       <span className="rounded-full bg-blue-50 px-2.5 py-1 text-[11px] text-blue-600 dark:bg-blue-500/10 dark:text-blue-400">
+                                         当前显示整本合并预览
+                                       </span>
+                                     ) : null}
+                                   </div>
+
+                                   {selectedHeadings.length > 0 ? (
+                                     <div className="flex flex-wrap gap-2">
+                                       {selectedHeadings.map((heading) => (
+                                         <span
+                                           key={`${selectedPreviewChapter}-${heading}`}
+                                           className="rounded-full border border-zinc-200 bg-white px-2.5 py-1 text-[11px] text-zinc-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400"
+                                         >
+                                           {heading}
+                                         </span>
+                                       ))}
+                                     </div>
+                                   ) : null}
+
                                    <pre
                                      className="whitespace-pre-wrap text-[14px] leading-[1.85] text-zinc-800 dark:text-zinc-200 break-words"
                                      style={{ fontFamily: 'var(--font-serif)' }}
                                    >
-                                     {draftExcerpt}
-                                     <motion.span className="ml-[2px] inline-block h-[15px] w-[2px] animate-blink bg-blue-500 dark:bg-blue-400 align-middle" />
+                                     {selectedExcerpt}
+                                     {isStreaming && (
+                                       <motion.span className="ml-[2px] inline-block h-[15px] w-[2px] animate-blink bg-blue-500 dark:bg-blue-400 align-middle" />
+                                     )}
                                    </pre>
+
+                                   {selectedChapterEvents.length > 0 ? (
+                                     <div className="space-y-2 border-t border-zinc-100 pt-5 dark:border-slate-800">
+                                       <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-zinc-400 dark:text-slate-500">
+                                         改进轨迹
+                                       </p>
+                                       <div className="space-y-2">
+                                         {selectedChapterEvents.map((event, index) => (
+                                           <div
+                                             key={`${selectedPreviewChapter}-${event.stage}-${index}`}
+                                             className="rounded-xl bg-zinc-50 px-4 py-3 text-[12px] leading-6 text-zinc-600 dark:bg-slate-800/60 dark:text-slate-300"
+                                           >
+                                             {event.summary}
+                                           </div>
+                                         ))}
+                                       </div>
+                                     </div>
+                                   ) : null}
                                  </div>
                               ) : isDone ? (
                                  <div className="h-full flex flex-col items-center justify-center text-zinc-400 dark:text-slate-500 space-y-3">
                                     <CheckCircle2 className="w-10 h-10 text-emerald-200 dark:text-emerald-500/30" strokeWidth={1.5} />
-                                    <p className="text-[13px] text-zinc-400 dark:text-slate-500">此章已生成，等待最终合并...</p>
+                                    <p className="text-[13px] text-zinc-400 dark:text-slate-500">此章已完成，但章节预览尚未刷新到工作台。</p>
                                  </div>
                               ) : (
                                  <div className="h-full flex flex-col items-center justify-center text-zinc-400 dark:text-slate-500 space-y-3">

@@ -253,6 +253,27 @@ class BuildPreviewRecentEventResponse(BaseModel):
     source_urls: list[str] = Field(default_factory=list, description="Representative URLs surfaced for this event.")
 
 
+class BuildPreviewChapterPreviewResponse(BaseModel):
+    """Per-chapter live preview surfaced while docgen is progressing."""
+
+    chapter_index: int
+    title: str
+    status: str = Field(description="planned / generating / generated / enhancing / enhanced / reviewing / reviewed / completed")
+    excerpt: str = Field(default="", description="Latest readable excerpt for the chapter preview.")
+    latest_headings: list[str] = Field(default_factory=list, description="Recent section headings extracted from the chapter preview.")
+    word_count: int = 0
+    source_count: int = 0
+    updated_at: datetime | None = Field(default=None, description="When this chapter preview was last refreshed.")
+
+
+class BuildPreviewMergePreviewResponse(BaseModel):
+    """Whole-document live preview surfaced before final publish."""
+
+    latest_chapter_titles: list[str] = Field(default_factory=list, description="Latest resolved chapter titles in the merged preview.")
+    draft_excerpt: str = Field(default="", description="Short excerpt from the current merged preview.")
+    updated_at: datetime | None = Field(default=None, description="When the merged preview was last refreshed.")
+
+
 class KnowledgeBuildPreviewResponse(BaseModel):
     """Human-facing preview payload for ongoing digest builds."""
 
@@ -268,6 +289,8 @@ class KnowledgeBuildPreviewResponse(BaseModel):
     plan_summary: str | None = Field(default=None, description="Confirmed build plan summary for the current build.")
     chapter_progress: list[BuildPreviewChapterProgressResponse] = Field(default_factory=list, description="Per-chapter progress for the current build.")
     recent_events: list[BuildPreviewRecentEventResponse] = Field(default_factory=list, description="Recent research / writing / publishing events for this build.")
+    chapter_previews: list[BuildPreviewChapterPreviewResponse] = Field(default_factory=list, description="Readable per-chapter live previews for the build workspace.")
+    merge_preview: BuildPreviewMergePreviewResponse | None = Field(default=None, description="Merged whole-document preview before final publish.")
     latest_chapter_titles: list[str] = Field(default_factory=list, description="Recently staged or published chapter titles.")
     draft_excerpt: str = Field(default="", description="Short excerpt from the current draft markdown, if any.")
 

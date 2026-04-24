@@ -1,8 +1,10 @@
 import { apiClient } from "../api/client";
 import type {
+  BuildPreviewChapterPreviewResponse,
   BuildPreviewNodeResponse,
   BuildPreviewRecentEventResponse,
   BuildPreviewChapterProgressResponse,
+  BuildPreviewMergePreviewResponse,
   BuildSampleCardResponse,
   KnowledgeBuildMetricsResponse,
   KnowledgeBuildPreviewResponse,
@@ -37,6 +39,8 @@ export type KnowledgeBuildMetrics = KnowledgeBuildMetricsResponse;
 export type BuildPreviewNode = BuildPreviewNodeResponse;
 export type BuildPreviewRecentEvent = BuildPreviewRecentEventResponse;
 export type BuildPreviewChapterProgress = BuildPreviewChapterProgressResponse;
+export type BuildPreviewChapterPreview = BuildPreviewChapterPreviewResponse;
+export type BuildPreviewMergePreview = BuildPreviewMergePreviewResponse;
 export type BuildSampleCard = BuildSampleCardResponse;
 
 export function buildKnowledgeBuildRuntimeQueryKey(subjectId: string) {

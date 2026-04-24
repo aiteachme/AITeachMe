@@ -31,9 +31,12 @@ _STAGE_PROGRESS = {
     "build_accepted": 8,
     "prepare_shared": 18,
     "planner_confirmed": 22,
+    "preparing_docgen_global_seed": 28,
     "preparing_docgen_context": 30,
     "dispatch_ready": 34,
+    "backbone_seed_ready": 36,
     "building_document_backbone": 38,
+    "preparing_chapter_execution_briefs": 42,
     "generating_chapters": 48,
     "enhancing_chapters": 64,
     "chapters_enhanced": 72,
@@ -57,9 +60,12 @@ _STAGE_DESCRIPTION = {
     "build_accepted": "已接收构建请求，等待启动。",
     "prepare_shared": "正在准备共享资料上下文。",
     "planner_confirmed": "构建方案已确认，准备按章节启动。",
+    "preparing_docgen_global_seed": "正在准备 DocGen 全局种子：文档意图与文件摘要。",
     "preparing_docgen_context": "正在增强大纲、识别写作意图并摘要材料。",
     "dispatch_ready": "章节执行计划 seed 已生成，准备构建知识骨架。",
+    "backbone_seed_ready": "骨架 seed 已确认，准备构建整本文档知识骨架。",
     "building_document_backbone": "正在统一术语、主张、证据和易混点。",
+    "preparing_chapter_execution_briefs": "文档知识骨架已生成，正在并行准备章节执行 brief。",
     "generating_chapters": "正在按章节检索、整理证据并生成草稿。",
     "enhancing_chapters": "正在增强 Markdown、公式与媒体占位内容。",
     "chapters_enhanced": "章节增强已完成。",
@@ -139,6 +145,8 @@ class KnowledgeBuildRuntimeStatus(BaseModel):
     plan_summary: str | None = None
     metrics: dict[str, object] = Field(default_factory=dict)
     chapter_progress: list[dict[str, object]] = Field(default_factory=list)
+    chapter_previews: list[dict[str, object]] = Field(default_factory=list)
+    merge_preview: dict[str, object] = Field(default_factory=dict)
     recent_events: list[dict[str, object]] = Field(default_factory=list)
 
 
@@ -289,6 +297,38 @@ def _normalize_recent_event_entry(entry: dict[str, object]) -> dict[str, object]
     }
 
 
+def _normalize_chapter_preview_entry(entry: dict[str, object]) -> dict[str, object]:
+    chapter_index = int(entry.get("chapter_index", 0) or 0)
+    fallback_title = f"第 {chapter_index} 章" if chapter_index > 0 else "未命名章节"
+    title = str(entry.get("title") or fallback_title).strip() or fallback_title
+    updated_at = entry.get("updated_at")
+    if not isinstance(updated_at, datetime):
+        updated_at = None
+    return {
+        "chapter_index": chapter_index,
+        "title": title,
+        "status": str(entry.get("status") or "planned").strip() or "planned",
+        "excerpt": str(entry.get("excerpt") or "").strip(),
+        "latest_headings": _normalize_compact_string_list(entry.get("latest_headings"), limit=6),
+        "word_count": int(entry.get("word_count", 0) or 0),
+        "source_count": int(entry.get("source_count", 0) or 0),
+        "updated_at": updated_at,
+    }
+
+
+def _normalize_merge_preview_entry(entry: dict[str, object]) -> dict[str, object]:
+    latest_chapter_titles = _normalize_compact_string_list(entry.get("latest_chapter_titles"), limit=8)
+    draft_excerpt = str(entry.get("draft_excerpt") or "").strip()
+    updated_at = entry.get("updated_at")
+    if not isinstance(updated_at, datetime):
+        updated_at = None
+    return {
+        "latest_chapter_titles": latest_chapter_titles,
+        "draft_excerpt": draft_excerpt,
+        "updated_at": updated_at,
+    }
+
+
 def _derive_progress_from_chapters(status: KnowledgeBuildRuntimeStatus) -> int:
     chapters = [
         _normalize_chapter_progress_entry(dict(item))
@@ -361,6 +401,17 @@ def _hydrate_runtime_status(status: KnowledgeBuildRuntimeStatus) -> KnowledgeBui
         for item in list(status.chapter_progress or [])
     ]
     status.chapter_progress.sort(key=lambda item: int(item.get("chapter_index", 0) or 0))
+    status.chapter_previews = [
+        _normalize_chapter_preview_entry(dict(item))
+        for item in list(status.chapter_previews or [])
+        if int(dict(item).get("chapter_index", 0) or 0) > 0
+    ]
+    status.chapter_previews.sort(key=lambda item: int(item.get("chapter_index", 0) or 0))
+    status.merge_preview = (
+        _normalize_merge_preview_entry(dict(status.merge_preview or {}))
+        if dict(status.merge_preview or {})
+        else {}
+    )
     status.recent_events = [
         _normalize_recent_event_entry(dict(item))
         for item in list(status.recent_events or [])
@@ -816,6 +867,45 @@ def upsert_knowledge_build_chapter_progress(
         return existing
 
 
+def upsert_knowledge_build_chapter_preview(
+    subject: str,
+    *,
+    chapter_preview: dict[str, object],
+    requested_at: datetime | None = None,
+) -> KnowledgeBuildRuntimeStatus:
+    """Merge one chapter preview entry into the runtime build status."""
+
+    with _get_status_lock(subject):
+        runtime = read_knowledge_build_runtime(subject) or KnowledgeBuildRuntimeEnvelope()
+        existing = runtime.docgen_runtime
+        if existing is None:
+            existing = KnowledgeBuildRuntimeStatus(requested_at=requested_at or utcnow())
+        chapter_index = int(chapter_preview.get("chapter_index", 0) or 0)
+        if chapter_index <= 0:
+            existing = _hydrate_runtime_status(existing)
+            runtime.docgen_runtime = existing
+            runtime.build_group_id = runtime.build_group_id or existing.build_group_id
+            write_knowledge_build_runtime(subject, runtime)
+            write_knowledge_build_status(subject, existing)
+            return existing
+        current = {
+            int(item.get("chapter_index", 0) or 0): dict(item)
+            for item in list(existing.chapter_previews or [])
+        }
+        merged = dict(current.get(chapter_index, {}))
+        merged.update(dict(chapter_preview))
+        merged["updated_at"] = chapter_preview.get("updated_at") if "updated_at" in chapter_preview else utcnow()
+        current[chapter_index] = _normalize_chapter_preview_entry(merged)
+        existing.chapter_previews = [current[key] for key in sorted(current)]
+        existing.build_kind = "docgen"
+        existing = _hydrate_runtime_status(existing)
+        runtime.docgen_runtime = existing
+        runtime.build_group_id = runtime.build_group_id or existing.build_group_id
+        write_knowledge_build_runtime(subject, runtime)
+        write_knowledge_build_status(subject, existing)
+        return existing
+
+
 def append_knowledge_build_recent_event(
     subject: str,
     *,
@@ -832,6 +922,32 @@ def append_knowledge_build_recent_event(
             existing = KnowledgeBuildRuntimeStatus(requested_at=requested_at or utcnow())
         normalized = _normalize_recent_event_entry(event)
         existing.recent_events = [normalized, *list(existing.recent_events or [])][: max(1, int(limit))]
+        existing.build_kind = "docgen"
+        existing = _hydrate_runtime_status(existing)
+        runtime.docgen_runtime = existing
+        runtime.build_group_id = runtime.build_group_id or existing.build_group_id
+        write_knowledge_build_runtime(subject, runtime)
+        write_knowledge_build_status(subject, existing)
+        return existing
+
+
+def update_knowledge_build_merge_preview(
+    subject: str,
+    *,
+    merge_preview: dict[str, object],
+    requested_at: datetime | None = None,
+) -> KnowledgeBuildRuntimeStatus:
+    """Merge whole-document preview content into the runtime build status."""
+
+    with _get_status_lock(subject):
+        runtime = read_knowledge_build_runtime(subject) or KnowledgeBuildRuntimeEnvelope()
+        existing = runtime.docgen_runtime
+        if existing is None:
+            existing = KnowledgeBuildRuntimeStatus(requested_at=requested_at or utcnow())
+        current = dict(existing.merge_preview or {})
+        current.update(dict(merge_preview))
+        current["updated_at"] = merge_preview.get("updated_at") if "updated_at" in merge_preview else utcnow()
+        existing.merge_preview = _normalize_merge_preview_entry(current)
         existing.build_kind = "docgen"
         existing = _hydrate_runtime_status(existing)
         runtime.docgen_runtime = existing
@@ -952,7 +1068,9 @@ __all__ = [
     "release_knowledge_build_lock",
     "sanitize_knowledge_build_error_message",
     "update_knowledge_build_lane_status",
+    "update_knowledge_build_merge_preview",
     "update_knowledge_build_status",
+    "upsert_knowledge_build_chapter_preview",
     "upsert_knowledge_build_chapter_progress",
     "write_knowledge_build_runtime",
     "write_knowledge_build_status",

@@ -4,8 +4,14 @@ from __future__ import annotations
 
 from time import perf_counter
 
+from app.shared.infra.tools.builtin.markdown_processing import build_draft_excerpt, count_words
 from app.shared.infra.workflow.context import WorkflowContext
-from app.utils.docgen_store import append_knowledge_build_recent_event, update_knowledge_build_status, upsert_knowledge_build_chapter_progress
+from app.utils.docgen_store import (
+    append_knowledge_build_recent_event,
+    update_knowledge_build_status,
+    upsert_knowledge_build_chapter_preview,
+    upsert_knowledge_build_chapter_progress,
+)
 from app.utils.time import utcnow
 from app.workflows.digest.docgen.lib.chapter_review import review_chapter
 from app.workflows.digest.docgen.lib.models import (
@@ -18,7 +24,7 @@ from app.workflows.digest.docgen.lib.models import (
     ReviewAction,
     ReviewedChapterDraft,
 )
-from app.workflows.digest.docgen.nodes.common import publish_docgen_progress
+from app.workflows.digest.docgen.nodes.common import extract_markdown_preview_headings, publish_docgen_progress
 from app.workflows.digest.docgen.lib.quality import review_document_consistency
 from app.workflows.digest.docgen.state import DocGenState
 
@@ -77,6 +83,15 @@ def build_review_chapter_node(*, context: WorkflowContext):
             requested_at=state["requested_at"],
             chapter_progress={"chapter_index": draft.chapter_index, "title": draft.title, "status": "reviewing"},
         )
+        upsert_knowledge_build_chapter_preview(
+            state["subject"],
+            requested_at=state["requested_at"],
+            chapter_preview={
+                "chapter_index": draft.chapter_index,
+                "title": draft.title,
+                "status": "reviewing",
+            },
+        )
         reviewed, report, actions = await review_chapter(
             draft=draft,
             task=tasks_by_chapter.get(draft.chapter_index),
@@ -91,14 +106,27 @@ def build_review_chapter_node(*, context: WorkflowContext):
             requested_at=state["requested_at"],
             chapter_progress={"chapter_index": draft.chapter_index, "title": draft.title, "status": "reviewed"},
         )
+        upsert_knowledge_build_chapter_preview(
+            state["subject"],
+            requested_at=state["requested_at"],
+            chapter_preview={
+                "chapter_index": draft.chapter_index,
+                "title": reviewed.title,
+                "status": "reviewed",
+                "excerpt": build_draft_excerpt(reviewed.markdown, max_chars=1200),
+                "latest_headings": extract_markdown_preview_headings(reviewed.markdown),
+                "word_count": count_words(reviewed.markdown),
+                "source_count": len(reviewed.source_details),
+            },
+        )
         append_knowledge_build_recent_event(
             state["subject"],
             requested_at=state["requested_at"],
             event={
                 "stage": "chapter_reviewed",
                 "chapter_index": draft.chapter_index,
-                "title": draft.title,
-                "summary": f"{draft.title} 内容复核完成，发现 {len(actions)} 条回流建议。",
+                "title": reviewed.title,
+                "summary": f"{reviewed.title} 内容复核完成，发现 {len(actions)} 条回流建议。",
                 "created_at": utcnow(),
             },
         )
@@ -108,7 +136,7 @@ def build_review_chapter_node(*, context: WorkflowContext):
             stage="chapter_reviewed",
             payload={
                 "chapter_index": draft.chapter_index,
-                "title": draft.title,
+                "title": reviewed.title,
                 "passed": report.passed,
                 "review_action_count": len(actions),
                 "coverage_score": report.coverage_score,

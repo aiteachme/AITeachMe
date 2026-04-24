@@ -2,10 +2,6 @@ import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 
-import {
-  SYSTEM_SETTINGS_CHANGED_EVENT,
-  getStoredSystemSettingsOverview,
-} from "../../lib/systemSettings";
 import { useTheme, type Theme } from "../providers/ThemeProvider";
 
 import { FieldLabelBlock, SelectInput } from "./SettingsFields";
@@ -21,6 +17,12 @@ interface SettingsDialogProps {
   onClose: () => void;
 }
 
+const SYSTEM_SECTION: SettingSection = {
+  id: "system_ui",
+  label: "系统",
+  description: "配置当前浏览器中的界面主题，修改后会立即生效。",
+};
+
 const THEME_OPTIONS: Array<{ value: Theme; label: string }> = [
   { value: "light", label: "浅色" },
   { value: "dark", label: "深色" },
@@ -30,8 +32,6 @@ const THEME_OPTIONS: Array<{ value: Theme; label: string }> = [
 export function SettingsDialog({ isOpen, onClose }: SettingsDialogProps) {
   const { theme, setTheme } = useTheme();
   const [activeSection, setActiveSection] = useState<SectionId>("");
-  const [storedOverview, setStoredOverview] = useState(() => getStoredSystemSettingsOverview());
-  const [themeDraft, setThemeDraft] = useState<Theme>(theme);
   const {
     overview,
     isOverviewLoading,
@@ -48,43 +48,13 @@ export function SettingsDialog({ isOpen, onClose }: SettingsDialogProps) {
     saveAll,
   } = useSettingsOverview({ isOpen });
 
-  const effectiveOverview = overview ?? storedOverview;
-  const sections: SettingSection[] = useMemo(() => {
-    const backendSections = effectiveOverview?.sections ?? [];
-    return [
-      ...backendSections,
-      {
-        id: "system_ui",
-        label: "系统",
-        description: "配置本机界面主题与本地显示偏好。",
-      },
-    ];
-  }, [effectiveOverview?.sections]);
-
-  const runtimeMode = effectiveOverview?.mode ?? "local";
-  const isLocalRuntime = runtimeMode === "local";
-  const hasAppearanceChanges = themeDraft !== theme;
-  const hasChanges = hasServerChanges || hasEnvChanges || hasAppearanceChanges;
-
-  useEffect(() => {
-    if (typeof window === "undefined") {
-      return;
-    }
-
-    const handleSettingsChanged = () => {
-      setStoredOverview(getStoredSystemSettingsOverview());
-    };
-
-    window.addEventListener(SYSTEM_SETTINGS_CHANGED_EVENT, handleSettingsChanged);
-    return () => window.removeEventListener(SYSTEM_SETTINGS_CHANGED_EVENT, handleSettingsChanged);
-  }, []);
-
-  useEffect(() => {
-    if (!isOpen) {
-      return;
-    }
-    setThemeDraft(theme);
-  }, [isOpen, theme]);
+  const isCloudRuntime = overview?.mode === "cloud";
+  const sections = useMemo(
+    () => (isCloudRuntime ? [SYSTEM_SECTION] : [...(overview?.sections ?? []), SYSTEM_SECTION]),
+    [isCloudRuntime, overview?.sections],
+  );
+  const isLocalRuntime = !isCloudRuntime;
+  const hasChanges = hasServerChanges || hasEnvChanges;
 
   useEffect(() => {
     if (!isOpen) return;
@@ -116,22 +86,7 @@ export function SettingsDialog({ isOpen, onClose }: SettingsDialogProps) {
     };
   }, [isOpen]);
 
-  const activeSectionConfig = useMemo(
-    () => sections.find((section) => section.id === activeSection) ?? sections[0],
-    [activeSection, sections],
-  );
-
-  async function handleSave() {
-    const saved = await saveAll();
-    if (saved && hasAppearanceChanges) {
-      setTheme(themeDraft);
-    }
-  }
-
-  function handleReset() {
-    resetServerDrafts();
-    setThemeDraft("system");
-  }
+  const activeSectionConfig = sections.find((section) => section.id === activeSection) ?? sections[0];
 
   if (!isOpen) return null;
 
@@ -175,15 +130,15 @@ export function SettingsDialog({ isOpen, onClose }: SettingsDialogProps) {
                         <div className={SETTINGS_STYLES.list.item}>
                           <FieldLabelBlock
                             label="界面主题"
-                            description="切换浅色、深色或跟随系统。修改后会在保存设置时写入当前浏览器。"
+                            description="切换浅色、深色或跟随系统。修改后会立即写入当前浏览器并生效。"
                             htmlFor="system-ui-theme"
                           />
 
                           <div className={SETTINGS_STYLES.list.controlWrap}>
                             <SelectInput
                               id="system-ui-theme"
-                              value={themeDraft}
-                              onChange={(value) => setThemeDraft(value as Theme)}
+                              value={theme}
+                              onChange={(value) => setTheme(value as Theme)}
                               options={THEME_OPTIONS}
                             />
                           </div>
@@ -211,8 +166,8 @@ export function SettingsDialog({ isOpen, onClose }: SettingsDialogProps) {
               saveError={saveError}
               hasChanges={hasChanges}
               isLocalRuntime={isLocalRuntime}
-              onReset={handleReset}
-              onSave={() => void handleSave()}
+              onReset={resetServerDrafts}
+              onSave={() => void saveAll()}
             />
           </div>
         </div>

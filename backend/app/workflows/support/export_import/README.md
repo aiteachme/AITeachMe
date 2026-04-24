@@ -7,17 +7,17 @@
 - Preview subject export size and table counts.
 - Export a subject into an `.atmx` package.
 - Import an `.atmx` package as a new subject.
-- List shared course packages.
+- List remote demo-course packages from the configured OSS catalog.
 
 ## Module Split
 
 - `exports.py`: 导出预览、打包、manifest 与导出侧共享规则
 - `imports.py`: 导入事务、ID 重映射、文件落盘与失败清理
-- `courses.py`: 本地共享课程目录扫描
+- `courses.py`: 线上演示课程目录读取与远程 `.atmx` 下载
 
 ## Runtime Paths
 
-- 本地共享课程目录：`backend/data/_courses/`
-- 云端演示课程建议由后端统一聚合，不让前端直接拼 OSS 路径
+- 演示课程主源：现有 `S3_PUBLIC_BASE_URL` 下固定的 `demo-courses/`
+- 默认课程索引：`<S3_PUBLIC_BASE_URL>/demo-courses/catalog/v1/index.json`
 
 This module is a support workflow. It should coordinate repositories, schemas, storage, and models without introducing a parallel engine lane.
