@@ -9,8 +9,24 @@ set "PYTHONIOENCODING=utf-8"
 title AITeachMe Dev
 
 set "START_FLAGS="
+set "START_ELECTRON=1"
 if /I "%~1"=="--headless" (
 	set "START_FLAGS=/B"
+)
+if /I "%~2"=="--headless" (
+	set "START_FLAGS=/B"
+)
+if /I "%~1"=="--electron" (
+	set "START_ELECTRON=1"
+)
+if /I "%~2"=="--electron" (
+	set "START_ELECTRON=1"
+)
+if /I "%~1"=="--no-electron" (
+	set "START_ELECTRON=0"
+)
+if /I "%~2"=="--no-electron" (
+	set "START_ELECTRON=0"
 )
 
 rem Always run from repo root (where this script lives)
@@ -115,6 +131,15 @@ if /I "%FRONTEND_MODE%"=="system" (
 	start "Frontend" %START_FLAGS% /D "%~dp0frontend" npm run dev
 ) else (
 	start "Frontend" %START_FLAGS% /D "%~dp0frontend" "%CONDA_CMD%" run -n %CONDA_ENV_NAME% --no-capture-output npm run dev
+)
+
+if "%START_ELECTRON%"=="1" (
+	echo [Desktop] Starting Electron window...
+	if /I "%FRONTEND_MODE%"=="system" (
+		start "Desktop" %START_FLAGS% /D "%~dp0frontend" npm run electron:window
+	) else (
+		start "Desktop" %START_FLAGS% /D "%~dp0frontend" "%CONDA_CMD%" run -n %CONDA_ENV_NAME% --no-capture-output npm run electron:window
+	)
 )
 
 echo Services started. Close each window to stop that service.

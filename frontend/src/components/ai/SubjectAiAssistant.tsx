@@ -31,6 +31,7 @@ import { ChatTranscript } from "../chat/ChatTranscript";
 import { useChatSession } from "../../hooks/useChatSession";
 import { cn } from "../../lib/utils";
 import { useResizablePanel } from "../../hooks/useResizablePanel";
+import { publicAssetPath } from "../../lib/publicAsset";
 
 interface SubjectAiAssistantProviderProps {
   subjectId: string | null;
@@ -49,6 +50,7 @@ interface SubjectAiAssistantContextValue {
 }
 
 const SubjectAiAssistantContext = createContext<SubjectAiAssistantContextValue | null>(null);
+const LOGO_SRC = publicAssetPath("logo.svg");
 
 export function useSubjectAiAssistant(): SubjectAiAssistantContextValue {
   const value = useContext(SubjectAiAssistantContext);
@@ -347,7 +349,7 @@ export function SubjectAiAssistantProvider({ subjectId, children }: SubjectAiAss
               <div className="flex h-full items-center justify-center px-6">
                 <div className="max-w-md text-center">
                   <div className="mx-auto inline-flex h-14 w-14 items-center justify-center rounded-xl border border-zinc-200/60 bg-white p-2 text-zinc-600 shadow-sm dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300">
-                    <img src="/logo.svg" alt="AI" className="h-full w-full object-contain" />
+                    <img src={LOGO_SRC} alt="AI" className="h-full w-full object-contain" />
                   </div>
                   <h3 className="mt-5 text-[17px] font-semibold tracking-tight text-zinc-900">开始伴读</h3>
                   <p className="mt-2 text-[13px] leading-relaxed text-zinc-500">

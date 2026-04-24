@@ -42,7 +42,11 @@ function sleep(ms: number) {
 
 function buildStartupUrl(path: string): string {
   const normalizedPath = path.startsWith("/") ? path : `/${path}`;
-  const configuredBase = (import.meta.env.VITE_API_URL ?? "").trim();
+  const desktopBase =
+    window.location.protocol === "file:"
+      ? window.aiteachmeDesktop?.apiBaseUrl ?? "http://127.0.0.1:8010"
+      : "";
+  const configuredBase = desktopBase || (import.meta.env.VITE_API_URL ?? "").trim();
 
   if (!configuredBase || configuredBase.startsWith("/")) {
     return normalizedPath;

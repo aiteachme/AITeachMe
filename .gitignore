@@ -36,6 +36,10 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
+# Desktop packaging output
+desktop-release/
+frontend/release/
+
 # Project specific
 backend/uploads/
 backend/data/*.db

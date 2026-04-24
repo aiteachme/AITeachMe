@@ -45,6 +45,50 @@ def test_drop_sqlite_legacy_schema_removes_legacy_indexes_before_columns(tmp_pat
     assert "ix_question_template_curriculum_version_id" not in remaining_indexes
 
 
+def test_drop_sqlite_legacy_schema_removes_local_legacy_columns(tmp_path):
+    db_path = tmp_path / "legacy.sqlite"
+    engine = create_engine(f"sqlite:///{db_path}")
+
+    with engine.begin() as connection:
+        connection.execute(
+            sa.text(
+                """
+                CREATE TABLE chat_session (
+                    id TEXT PRIMARY KEY,
+                    title TEXT NOT NULL,
+                    user_goal TEXT NOT NULL
+                )
+                """
+            )
+        )
+        connection.execute(
+            sa.text(
+                """
+                CREATE TABLE system_settings_snapshot (
+                    id TEXT PRIMARY KEY,
+                    settings_hash TEXT NOT NULL,
+                    settings_path TEXT NOT NULL
+                )
+                """
+            )
+        )
+
+    _drop_sqlite_legacy_schema(engine)
+
+    inspector = sa.inspect(engine)
+    chat_session_columns = {
+        column["name"]
+        for column in inspector.get_columns("chat_session")
+    }
+    settings_snapshot_columns = {
+        column["name"]
+        for column in inspector.get_columns("system_settings_snapshot")
+    }
+
+    assert "user_goal" not in chat_session_columns
+    assert "settings_path" not in settings_snapshot_columns
+
+
 def test_ensure_local_sqlite_schema_rebuilds_engine_after_drift(
     monkeypatch,
     tmp_path,

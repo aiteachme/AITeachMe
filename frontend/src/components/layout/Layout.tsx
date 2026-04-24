@@ -5,14 +5,17 @@ import { TopBar } from "./TopBar";
 import { SubjectAiAssistantProvider } from "../ai/SubjectAiAssistant";
 import { isFullBleedSubjectPath } from "../../lib/subjectNavigation";
 import { SettingsDialog } from "../settings/SettingsDialog";
+import { cn } from "../../lib/utils";
 import {
   ensureSystemSettingsOverviewLoaded,
   getStoredSystemSettingsOverview,
   subscribeSystemSettingsOverview,
 } from "../../lib/systemSettings";
+import { isElectronRuntime } from "../../lib/electronRuntime";
 
 export function Layout() {
   const { pathname } = useLocation();
+  const isElectron = isElectronRuntime();
   const isFullBleed = isFullBleedSubjectPath(pathname);
   const isExamFocusPage = /^\/subject\/[^/]+\/exams\/[^/]+$/.test(pathname);
   const subjectId = pathname.match(/^\/subject\/([^/]+)/)?.[1] ?? null;
@@ -39,7 +42,12 @@ export function Layout() {
   return (
     <>
       <SubjectAiAssistantProvider subjectId={subjectId}>
-        <div className="relative flex h-screen overflow-hidden bg-[#fafafa] dark:bg-[#0b0f19] selection:bg-zinc-200 dark:selection:bg-slate-700">
+        <div
+          className={cn(
+            "app-shell relative flex overflow-hidden bg-[#fafafa] selection:bg-zinc-200 dark:bg-[#0b0f19] dark:selection:bg-slate-700",
+            isElectron ? "h-full" : "h-screen",
+          )}
+        >
           {!isSettingsOpen ? (
             <div className="pointer-events-none absolute inset-0 z-0 overflow-hidden mix-blend-multiply dark:mix-blend-screen">
               <div className="absolute -left-[4%] -top-[8%] h-[440px] w-[440px] rounded-full bg-indigo-100/30 dark:bg-indigo-900/20 blur-[72px] opacity-75 dark:opacity-40" />
@@ -58,9 +66,14 @@ export function Layout() {
               </header>
             )}
 
-            <main className="relative flex w-full flex-1 flex-col overflow-x-hidden overflow-y-auto bg-transparent">
+            <main className="relative flex min-h-0 w-full flex-1 flex-col overflow-x-hidden overflow-y-auto bg-transparent">
               {isFullBleed || pathname === "/" ? (
-                <div className="flex min-h-[calc(100vh-4rem)] w-full flex-1 flex-col">
+                <div
+                  className={cn(
+                    "flex w-full flex-1 flex-col",
+                    isElectron ? "min-h-full" : "min-h-[calc(100vh-4rem)]",
+                  )}
+                >
                   <Outlet />
                 </div>
               ) : (

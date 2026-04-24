@@ -6,6 +6,7 @@ export default defineConfig(({ mode }) => {
   const apiTarget = env.VITE_API_URL || "http://127.0.0.1:8010";
 
   return {
+    base: "./",
     plugins: [react()],
     root: ".",
     envDir: "..",

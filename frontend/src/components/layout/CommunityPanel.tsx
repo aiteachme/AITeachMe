@@ -1,5 +1,6 @@
 import { memo, useEffect } from "react";
 import { X } from "lucide-react";
+import { publicAssetPath } from "../../lib/publicAsset";
 
 /* ------------------------------------------------------------------ */
 /*  Inline brand icons                                                 */
@@ -24,7 +25,7 @@ function WeChatIcon({ className }: { className?: string }) {
 /*  Community Modal                                                    */
 /* ------------------------------------------------------------------ */
 
-const WECHAT_QR_SRC = "/wechat-qr-1.jpg";
+const WECHAT_QR_SRC = publicAssetPath("wechat-qr-1.jpg");
 let communityQrPreloadStarted = false;
 
 export function ensureCommunityQrPreloaded() {

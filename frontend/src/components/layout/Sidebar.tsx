@@ -30,6 +30,7 @@ import { apiClient, getApiErrorMessage } from "../../api/client";
 import { unwrapOrvalResponse } from "../../lib/unwrapOrvalResponse";
 import { downloadSubjectPackage } from "../../lib/subjectPackage";
 import { cn } from "../../lib/utils";
+import { publicAssetPath } from "../../lib/publicAsset";
 import { SubjectDeleteConfirmModal } from "./SubjectDeleteConfirmModal";
 import { CommunityModal, ensureCommunityQrPreloaded } from "./CommunityPanel";
 
@@ -51,6 +52,8 @@ const COLOR_CLASSES = [
   "bg-cyan-600",
   "bg-amber-600",
 ];
+
+const LOGO_SRC = publicAssetPath("logo.svg");
 
 function colorClassForSubject(name: string) {
   let hash = 0;
@@ -291,7 +294,7 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
         >
           {!effectiveCollapsed ? (
             <Link to="/" className="flex items-center gap-2 text-slate-900 dark:text-slate-100">
-              <img src="/logo.svg" alt="AITeachMe" className="h-5 w-auto dark:invert dark:opacity-90" />
+              <img src={LOGO_SRC} alt="AITeachMe" className="h-5 w-auto dark:invert dark:opacity-90" />
             </Link>
           ) : null}
           <button

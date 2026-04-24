@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from functools import lru_cache
+import os
 from pathlib import Path
 
 _LEGACY_DB_NAME = "aiteachme.db"
@@ -15,11 +16,22 @@ def get_backend_root() -> Path:
     return Path(__file__).resolve().parents[4]
 
 
+def _get_configured_runtime_data_dir() -> Path | None:
+    raw_path = (
+        os.environ.get("AITEACHME_DATA_DIR")
+        or os.environ.get("AITEACHME_RUNTIME_DATA_DIR")
+        or ""
+    ).strip()
+    if not raw_path:
+        return None
+    return Path(raw_path).expanduser().resolve()
+
+
 @lru_cache(maxsize=1)
 def get_runtime_data_dir() -> Path:
     """Return the fixed runtime data directory used by local backend runs."""
 
-    data_dir = get_backend_root() / "data"
+    data_dir = _get_configured_runtime_data_dir() or get_backend_root() / "data"
     data_dir.mkdir(parents=True, exist_ok=True)
     return data_dir
 

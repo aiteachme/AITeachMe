@@ -39,6 +39,7 @@ import {
 } from "../lib/knowledgeBuildRuntime";
 import { buildKnowledgeDocStateQueryKey, fetchKnowledgeDocState } from "../lib/knowledgeDocs";
 import { FILE_ACCEPT, extractPasteFiles } from "../lib/fileUpload";
+import { publicAssetPath } from "../lib/publicAsset";
 import type { FileRecord, FilesData, FilesUploadData } from "../types/files";
 
 type ChatRole = "user" | "assistant" | "system";
@@ -63,6 +64,7 @@ interface PersistedPlannerState {
 }
 
 const STORAGE_PREFIX = "aiteachme:files-page-planner";
+const LOGO_SRC = publicAssetPath("logo.svg");
 const PLANNER_STATE_VERSION = 4;
 const LEGACY_WELCOME_MESSAGE_CONTENT =
   "可以直接告诉我你的学习目标，也可以先上传资料。我会先思考资料边界，再给出几条计划大纲，你确认后再正式开始知识文档构建。";
@@ -1567,7 +1569,7 @@ export function BuildPlanPage() {
               >
                 {message.role === "assistant" ? (
                   <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-50 ring-1 ring-slate-200/50 p-1 shadow-sm">
-                    <img src="/logo.svg" alt="AI" className="h-full w-full object-contain" />
+                    <img src={LOGO_SRC} alt="AI" className="h-full w-full object-contain" />
                   </div>
                 ) : null}
 
@@ -1624,7 +1626,7 @@ export function BuildPlanPage() {
             {shouldShowBuildDialog ? (
               <div className="flex gap-3">
                 <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-50 ring-1 ring-slate-200/50 p-1 shadow-sm">
-                  <img src="/logo.svg" alt="AI" className="h-full w-full object-contain" />
+                  <img src={LOGO_SRC} alt="AI" className="h-full w-full object-contain" />
                 </div>
                 <div className="w-full max-w-[85%]">
                   <BuildInProgressBubble

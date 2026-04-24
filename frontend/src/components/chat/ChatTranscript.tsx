@@ -1,8 +1,11 @@
 import { AlertCircle, UserRound } from "lucide-react";
 import { type ChatSessionMessage } from "../../hooks/useChatSession";
 import { cn } from "../../lib/utils";
+import { publicAssetPath } from "../../lib/publicAsset";
 import { ChatCitationList } from "./ChatCitationList";
 import { MarkdownViewer } from "../ui/MarkdownViewer";
+
+const LOGO_SRC = publicAssetPath("logo.svg");
 
 interface ChatTranscriptProps {
   messages: ChatSessionMessage[];
@@ -36,7 +39,7 @@ export function ChatTranscript({ messages, onOpenCitation }: ChatTranscriptProps
                     : "rounded-full bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900",
                 )}
               >
-                {isAssistant ? <img src="/logo.svg" alt="AI" className="h-full w-full object-contain" /> : <UserRound className="h-4 w-4" />}
+                {isAssistant ? <img src={LOGO_SRC} alt="AI" className="h-full w-full object-contain" /> : <UserRound className="h-4 w-4" />}
               </div>
 
               <div className="min-w-0 flex-1">
