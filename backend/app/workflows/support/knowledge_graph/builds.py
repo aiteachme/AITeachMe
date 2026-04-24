@@ -12,7 +12,11 @@ from sqlmodel import select
 from app.models.knowledge import RetrievalChunk
 from app.shared.infra.database import managed_session
 from app.repositories.files_repo import list_raw_files_by_ids
-from app.utils.docgen_store import release_knowledge_build_lock, update_knowledge_build_status
+from app.utils.docgen_store import (
+    release_knowledge_build_lock,
+    sanitize_knowledge_build_error_message,
+    update_knowledge_build_lane_status,
+)
 from app.utils.job_helpers import cleanup_pending_by_subject
 from app.workflows.digest.kg_docs_sync.inputs import (
     extract_doc_chapter_metadatas,
@@ -24,30 +28,15 @@ from app.workflows.digest.kg_file_ingest.lib.support import prepare_chunk_ids_fo
 logger = structlog.get_logger()
 
 
-def _sanitize_build_error_message(error_message: str | None) -> str | None:
-    text = (error_message or "").strip()
-    if not text:
-        return None
-    if text == "build_cancelled":
-        return "Knowledge graph build cancelled."
-    if text == "build_crashed":
-        return "Knowledge graph build crashed."
-    if text == "no_graph_build_sources":
-        return "No graph build sources found. Provide files or knowledge markdown."
-    if text == "no_ready_digest_inputs":
-        return "No ready digest inputs found. Files must be fully prepared for digest ingestion."
-    if "Dimension mismatch" in text or "sqlite3.OperationalError" in text or ("chunk_embeddings" in text and "embedding" in text):
-        return "Embedding configuration or storage is inconsistent."
-    if "[SQL:" in text or "parameters:" in text or "Traceback" in text or len(text) > 240:
-        return "Knowledge graph build failed."
-    return text
-
-def _write_build_status(subject: str, *, requested_at: datetime, status: str, stage: str, **extra: object) -> None:
-    build_kind = str(extra.pop("build_kind", "graph") or "graph")
-    payload = {"requested_at": requested_at, "build_kind": build_kind, "status": status, "stage": stage, **extra}
-    if "error_message" in payload:
-        payload["error_message"] = _sanitize_build_error_message(payload.get("error_message"))
-    update_knowledge_build_status(subject, **payload)
+def _write_graph_status(subject: str, *, requested_at: datetime, status: str, stage: str, **extra: object) -> None:
+    update_knowledge_build_lane_status(
+        subject,
+        lane="graph",
+        requested_at=requested_at,
+        status=status,
+        stage=stage,
+        **extra,
+    )
 
 
 def _new_graph_run_id() -> int:
@@ -112,10 +101,10 @@ async def run_graph_docs_sync_after_doc_build(
     *,
     subject: str,
     requested_at: datetime,
+    build_group_id: str,
     build_session_id: str,
     file_ids: list[int],
     prompt: str | None,
-    build_kind: str = "graph",
 ) -> dict[str, int | str]:
     """Re-sync knowledge units and knowledge images from the latest knowledge document."""
 
@@ -130,11 +119,17 @@ async def run_graph_docs_sync_after_doc_build(
             "doc_sync_unit_changes": 0,
             "doc_sync_edge_changes": 0,
             "doc_sync_elapsed_ms": 0,
+            "doc_sync_section_count": 0,
+            "doc_sync_llm_section_count": 0,
+            "doc_sync_fallback_section_count": 0,
+            "doc_sync_question_fallback_section_count": 0,
+            "doc_sync_topic_fallback_section_count": 0,
         }
 
-    _write_build_status(
+    _write_graph_status(
         subject,
         requested_at=requested_at,
+        build_group_id=build_group_id,
         status="running",
         stage="graph_docs_sync",
         build_session_id=build_session_id,
@@ -142,7 +137,6 @@ async def run_graph_docs_sync_after_doc_build(
         draft_available=False,
         source_file_ids=file_ids,
         prompt=prompt,
-        build_kind=build_kind,
         graph_input_paths=resolve_graph_input_paths(
             file_ids=file_ids,
             knowledge_doc_markdown=knowledge_doc_markdown,
@@ -166,6 +160,11 @@ async def run_graph_docs_sync_after_doc_build(
         "doc_sync_unit_changes": sync_report.unit_change_count,
         "doc_sync_edge_changes": sync_report.edge_change_count,
         "doc_sync_elapsed_ms": sync_report.elapsed_ms,
+        "doc_sync_section_count": sync_report.section_count,
+        "doc_sync_llm_section_count": sync_report.llm_section_count,
+        "doc_sync_fallback_section_count": sync_report.fallback_section_count,
+        "doc_sync_question_fallback_section_count": sync_report.question_fallback_section_count,
+        "doc_sync_topic_fallback_section_count": sync_report.topic_fallback_section_count,
     }
 
 
@@ -175,9 +174,9 @@ async def run_graph_file_ingest_background(
     file_ids: list[int],
     prompt: str | None,
     requested_at: datetime,
+    build_group_id: str,
     build_session_id: str,
     doc_chapter_metadatas: list[dict[str, object]] | None = None,
-    build_kind: str = "graph",
 ) -> dict[str, int]:
     """Build graph candidates from parsed files without owning the outer build lock."""
 
@@ -186,9 +185,10 @@ async def run_graph_file_ingest_background(
     if not file_ids:
         return {"processed_chunks": 0}
 
-    _write_build_status(
+    _write_graph_status(
         subject,
         requested_at=requested_at,
+        build_group_id=build_group_id,
         status="running",
         stage="graph_file_ingest",
         build_session_id=build_session_id,
@@ -196,7 +196,6 @@ async def run_graph_file_ingest_background(
         draft_available=False,
         source_file_ids=file_ids,
         prompt=prompt,
-        build_kind=build_kind,
         current_stage_description="Extracting candidates from parsed files and building the graph.",
     )
     _cleanup_pending_digest_outputs(subject)
@@ -223,6 +222,7 @@ async def run_graph_build_background(
     file_ids: list[int],
     prompt: str | None,
     requested_at: datetime,
+    build_group_id: str,
 ) -> None:
     build_session_id = _new_build_session_id()
     try:
@@ -234,11 +234,17 @@ async def run_graph_build_background(
             "doc_sync_unit_changes": 0,
             "doc_sync_edge_changes": 0,
             "doc_sync_elapsed_ms": 0,
+            "doc_sync_section_count": 0,
+            "doc_sync_llm_section_count": 0,
+            "doc_sync_fallback_section_count": 0,
+            "doc_sync_question_fallback_section_count": 0,
+            "doc_sync_topic_fallback_section_count": 0,
         }
         if not file_ids and not knowledge_doc_markdown.strip():
-            _write_build_status(
+            _write_graph_status(
                 subject,
                 requested_at=requested_at,
+                build_group_id=build_group_id,
                 status="failed",
                 stage="failed",
                 build_session_id=build_session_id,
@@ -251,14 +257,16 @@ async def run_graph_build_background(
             doc_sync_metrics = await run_graph_docs_sync_after_doc_build(
                 subject=subject,
                 requested_at=requested_at,
+                build_group_id=build_group_id,
                 build_session_id=build_session_id,
                 file_ids=file_ids,
                 prompt=prompt,
             )
 
-        _write_build_status(
+        _write_graph_status(
             subject,
             requested_at=requested_at,
+            build_group_id=build_group_id,
             status="running",
             stage="graph_file_ingest" if file_ids else "prepare_shared",
             build_session_id=build_session_id,
@@ -282,13 +290,15 @@ async def run_graph_build_background(
             file_ids=file_ids,
             prompt=prompt,
             requested_at=requested_at,
+            build_group_id=build_group_id,
             build_session_id=build_session_id,
             doc_chapter_metadatas=doc_chapter_metadatas,
         )
 
-        _write_build_status(
+        _write_graph_status(
             subject,
             requested_at=requested_at,
+            build_group_id=build_group_id,
             status="completed",
             stage="completed",
             build_session_id=build_session_id,
@@ -301,9 +311,10 @@ async def run_graph_build_background(
             **doc_sync_metrics,
         )
     except asyncio.CancelledError:
-        _write_build_status(
+        _write_graph_status(
             subject,
             requested_at=requested_at,
+            build_group_id=build_group_id,
             status="cancelled",
             stage="cancelled",
             build_session_id=build_session_id,
@@ -311,9 +322,10 @@ async def run_graph_build_background(
         )
         raise
     except Exception:
-        _write_build_status(
+        _write_graph_status(
             subject,
             requested_at=requested_at,
+            build_group_id=build_group_id,
             status="failed",
             stage="failed",
             build_session_id=build_session_id,
@@ -331,15 +343,17 @@ async def run_graph_file_ingest_debug_background(
     file_ids: list[int],
     prompt: str | None,
     requested_at: datetime,
+    build_group_id: str,
 ) -> None:
     """Run only the kg_file_ingest lane as a standalone debug action."""
 
     build_session_id = _new_build_session_id()
     try:
         if not file_ids:
-            _write_build_status(
+            _write_graph_status(
                 subject,
                 requested_at=requested_at,
+                build_group_id=build_group_id,
                 status="failed",
                 stage="failed",
                 build_session_id=build_session_id,
@@ -354,9 +368,10 @@ async def run_graph_file_ingest_debug_background(
             build_session_id=build_session_id,
         )
         if prepared_chunk_count <= 0:
-            _write_build_status(
+            _write_graph_status(
                 subject,
                 requested_at=requested_at,
+                build_group_id=build_group_id,
                 status="failed",
                 stage="failed",
                 build_session_id=build_session_id,
@@ -377,12 +392,14 @@ async def run_graph_file_ingest_debug_background(
             file_ids=file_ids,
             prompt=prompt,
             requested_at=requested_at,
+            build_group_id=build_group_id,
             build_session_id=build_session_id,
             doc_chapter_metadatas=[],
         )
-        _write_build_status(
+        _write_graph_status(
             subject,
             requested_at=requested_at,
+            build_group_id=build_group_id,
             status="completed",
             stage="completed",
             build_session_id=build_session_id,
@@ -393,9 +410,10 @@ async def run_graph_file_ingest_debug_background(
             current_stage_description="kg_file_ingest 调试执行完成。",
         )
     except asyncio.CancelledError:
-        _write_build_status(
+        _write_graph_status(
             subject,
             requested_at=requested_at,
+            build_group_id=build_group_id,
             status="cancelled",
             stage="cancelled",
             build_session_id=build_session_id,
@@ -403,9 +421,10 @@ async def run_graph_file_ingest_debug_background(
         )
         raise
     except Exception as exc:
-        _write_build_status(
+        _write_graph_status(
             subject,
             requested_at=requested_at,
+            build_group_id=build_group_id,
             status="failed",
             stage="failed",
             build_session_id=build_session_id,
@@ -423,6 +442,7 @@ async def run_graph_docs_sync_debug_background(
     subject: str,
     prompt: str | None,
     requested_at: datetime,
+    build_group_id: str,
 ) -> None:
     """Run only the kg_docs_sync lane as a standalone debug action."""
 
@@ -430,9 +450,10 @@ async def run_graph_docs_sync_debug_background(
     try:
         knowledge_doc_markdown, knowledge_doc_source = load_knowledge_doc_markdown(subject)
         if not knowledge_doc_markdown.strip():
-            _write_build_status(
+            _write_graph_status(
                 subject,
                 requested_at=requested_at,
+                build_group_id=build_group_id,
                 status="failed",
                 stage="failed",
                 build_session_id=build_session_id,
@@ -445,13 +466,15 @@ async def run_graph_docs_sync_debug_background(
         metrics = await run_graph_docs_sync_after_doc_build(
             subject=subject,
             requested_at=requested_at,
+            build_group_id=build_group_id,
             build_session_id=build_session_id,
             file_ids=[],
             prompt=prompt,
         )
-        _write_build_status(
+        _write_graph_status(
             subject,
             requested_at=requested_at,
+            build_group_id=build_group_id,
             status="completed",
             stage="completed",
             build_session_id=build_session_id,
@@ -461,9 +484,10 @@ async def run_graph_docs_sync_debug_background(
             **metrics,
         )
     except asyncio.CancelledError:
-        _write_build_status(
+        _write_graph_status(
             subject,
             requested_at=requested_at,
+            build_group_id=build_group_id,
             status="cancelled",
             stage="cancelled",
             build_session_id=build_session_id,
@@ -471,9 +495,10 @@ async def run_graph_docs_sync_debug_background(
         )
         raise
     except Exception as exc:
-        _write_build_status(
+        _write_graph_status(
             subject,
             requested_at=requested_at,
+            build_group_id=build_group_id,
             status="failed",
             stage="failed",
             build_session_id=build_session_id,

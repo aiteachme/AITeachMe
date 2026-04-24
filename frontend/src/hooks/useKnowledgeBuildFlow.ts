@@ -1,5 +1,5 @@
 import { useCallback, useRef, useState } from "react";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 import {
   apiClient,
@@ -13,6 +13,7 @@ import type {
 } from "../api/generated/model";
 import type { ApiResponse } from "../api/types";
 import { useToast } from "../components/ui/Toast";
+import { buildKnowledgeBuildRuntimeQueryKey } from "../lib/knowledgeBuildRuntime";
 
 export type KnowledgeBuildResolution = "rebuild" | "disable";
 
@@ -99,6 +100,7 @@ export function useKnowledgeBuildFlow({
   onSuccess,
 }: UseKnowledgeBuildFlowOptions) {
   const { toast } = useToast();
+  const queryClient = useQueryClient();
   const pendingRequestRef = useRef<KnowledgeBuildRequestPayload | null>(null);
   const vectorNoticeShownRef = useRef("");
   const [errorMessage, setErrorMessage] = useState("");
@@ -115,6 +117,7 @@ export function useKnowledgeBuildFlow({
       setPrecheckConflict(null);
       setErrorMessage("");
       setLatestVectorStatus(data.vector_status ?? null);
+      void queryClient.invalidateQueries({ queryKey: buildKnowledgeBuildRuntimeQueryKey(subjectId) });
       const notice = data.vector_status?.notice?.trim();
       if (notice && notice !== vectorNoticeShownRef.current) {
         vectorNoticeShownRef.current = notice;

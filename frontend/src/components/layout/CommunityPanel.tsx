@@ -69,25 +69,25 @@ export const CommunityModal = memo(function CommunityModal({
         onClick={onClose}
       />
 
-      <div className="relative z-10 w-full max-w-[400px] overflow-hidden rounded-[28px] bg-white shadow-[0_16px_40px_rgba(15,23,42,0.12)] ring-1 ring-zinc-200/70">
+      <div className="relative z-10 w-full max-w-[400px] overflow-hidden rounded-[28px] bg-white dark:bg-slate-900 shadow-[0_16px_40px_rgba(15,23,42,0.12)] dark:shadow-[0_16px_40px_rgba(0,0,0,0.5)] ring-1 ring-zinc-200/70 dark:ring-slate-800">
         <button
           type="button"
           onClick={onClose}
-          className="absolute right-4 top-4 z-20 flex h-8 w-8 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600"
+          className="absolute right-4 top-4 z-20 flex h-8 w-8 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800 dark:text-slate-500 dark:hover:text-slate-300"
         >
           <X className="h-5 w-5" />
         </button>
 
         <div className="flex flex-col items-center px-8 pb-10 pt-12">
           <div className="mb-6 flex flex-col items-center">
-            <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-[#07C160]/10 text-[#07C160]">
+            <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-[#07C160]/10 dark:bg-[#07C160]/20 text-[#07C160]">
               <WeChatIcon className="h-8 w-8" />
             </div>
-            <h2 className="text-xl font-bold tracking-tight text-slate-800">微信交流群</h2>
-            <p className="mt-2 text-[15px] text-slate-500">扫码加入交流群</p>
+            <h2 className="text-xl font-bold tracking-tight text-slate-800 dark:text-slate-100">微信交流群</h2>
+            <p className="mt-2 text-[15px] text-slate-500 dark:text-slate-400">扫码加入交流群</p>
           </div>
 
-          <div className="rounded-2xl border border-slate-100 p-2">
+          <div className="rounded-2xl border border-slate-100 dark:border-slate-800 dark:bg-slate-800/50 p-2">
             <img
               src={WECHAT_QR_SRC}
               alt="微信群二维码"

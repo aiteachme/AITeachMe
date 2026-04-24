@@ -29,7 +29,7 @@ from app.models import (
 import app.repositories.knowledge.knowledge_repo as knowledge_repo
 from app.repositories.subject_repo import delete_subject
 from app.schemas.subject import SubjectDeleteImpactItem, SubjectDeletePreviewData
-from app.utils.path_helpers import build_asset_name_prefix, build_subject_dir, delete_asset_files
+from app.utils.path_helpers import build_asset_name_prefix, build_subject_dir, delete_asset_files, get_data_dir
 
 logger = structlog.get_logger()
 
@@ -106,19 +106,19 @@ def build_subject_delete_preview(session: Session, *, subject: Subject) -> Subje
         ),
         SubjectDeleteImpactItem(
             key="exam",
-            label="鑰冭瘯璁板綍",
+            label="考试记录",
             count=_sum_counts(detail_counts, _EXAM_KEYS),
             description="会删除题模板、试卷与试卷题目快照。",
         ),
         SubjectDeleteImpactItem(
             key="chat",
-            label="瀵硅瘽璁板綍",
+            label="对话记录",
             count=detail_counts["chat_message"] + detail_counts["chat_session"],
             description="会删除该学科下的会话与聊天消息。",
         ),
         SubjectDeleteImpactItem(
             key="profile",
-            label="瀛︿範鐢诲儚",
+            label="学习画像",
             count=_sum_counts(detail_counts, _PROFILE_KEYS),
             description="会删除 mastery 与复习状态。",
         ),
@@ -143,7 +143,7 @@ def delete_subject_with_all_content(session: Session, *, subject: Subject) -> di
     _delete_raw_files_and_artifacts(session, subject=subject.slug)
 
     # Local directory cleanup; cloud artifacts are handled by delete_subject_artifacts_async.
-    _delete_subject_directory(subject.slug)
+    _delete_subject_directory(subject.slug, user_id=subject.user_id)
 
     delete_subject(session, subject)
 
@@ -248,7 +248,11 @@ def _delete_raw_files_and_artifacts(session: Session, *, subject: str) -> None:
     session.commit()
 
 
-def _delete_subject_directory(subject: str) -> None:
-    subject_dir = build_subject_dir(subject)
-    if subject_dir.exists():
-        shutil.rmtree(subject_dir, ignore_errors=True)
+def _delete_subject_directory(subject: str, *, user_id: str | None = None) -> None:
+    subject_dirs = {
+        build_subject_dir(subject, user_id=user_id),
+        get_data_dir() / subject,  # Best-effort cleanup for legacy top-level folders.
+    }
+    for subject_dir in subject_dirs:
+        if subject_dir.exists():
+            shutil.rmtree(subject_dir, ignore_errors=True)

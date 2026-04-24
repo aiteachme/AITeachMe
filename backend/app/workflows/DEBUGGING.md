@@ -29,7 +29,8 @@
 - `ingest_fast_parse`
 - `digest_planner`
 - `digest_docgen`
-- `digest_kg`
+- `kg_file_ingest`
+- `kg_docs_sync`
 - `interact_chat`
 - `examine_question_build`
 - `examine_exam_grade`

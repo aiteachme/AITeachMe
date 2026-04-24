@@ -8,15 +8,15 @@ import {
   SelectInput,
   SwitchRow,
   TextInput,
-} from "./fields";
-import { SETTINGS_STYLES, SETTING_SELECT_OPTIONS } from "./constants";
+} from "./SettingsFields";
+import { SETTING_SELECT_OPTIONS, SETTINGS_STYLES } from "./settingsStyles";
 import {
   displayValue,
   isPrimitive,
   parseInputValue,
   resolveEntryInputType,
-} from "./helpers";
-import type { DraftRecord, SettingEntry, SettingPrimitive } from "./types";
+} from "./settingsHelpers";
+import type { DraftRecord, SettingEntry, SettingPrimitive } from "./settingsTypes";
 
 interface ReadonlySettingsListProps {
   entries: SettingEntry[];
@@ -31,14 +31,9 @@ const ReadonlySettingsRow = memo(function ReadonlySettingsRow({
 }) {
   return (
     <div className={SETTINGS_STYLES.list.readonlyItem}>
-      <FieldLabelBlock
-        label={entry.label}
-        description={entry.description}
-      />
+      <FieldLabelBlock label={entry.label} description={entry.description} />
       <div className={SETTINGS_STYLES.list.readonlyControl}>
-        <ReadonlyValue>
-          {displayValue(entry)}
-        </ReadonlyValue>
+        <ReadonlyValue>{displayValue(entry)}</ReadonlyValue>
       </div>
     </div>
   );
@@ -97,12 +92,9 @@ const EditableSettingsRow = memo(function EditableSettingsRow({
     }
   }, [entry.key, onChange, value]);
 
-  const handleValueChange = useCallback(
-    (next: string) => {
-      setLocalValue((prev) => (prev === next ? prev : next));
-    },
-    [],
-  );
+  const handleValueChange = useCallback((next: string) => {
+    setLocalValue((prev) => (prev === next ? prev : next));
+  }, []);
 
   const commitLocalValue = useCallback(() => {
     if (typeof value === "boolean" || selectOptions) {
@@ -138,11 +130,7 @@ const EditableSettingsRow = memo(function EditableSettingsRow({
 
   return (
     <div className={SETTINGS_STYLES.list.item}>
-      <FieldLabelBlock
-        label={entry.label}
-        description={entry.description}
-        htmlFor={controlId}
-      />
+      <FieldLabelBlock label={entry.label} description={entry.description} htmlFor={controlId} />
 
       <div className={SETTINGS_STYLES.list.controlWrap}>
         {selectOptions ? (
@@ -194,9 +182,7 @@ export function EditableSettingsList({
   loading,
   error,
 }: EditableSettingsListProps) {
-  const items = entries.filter(
-    (entry) => entry.editable && isPrimitive(draft[entry.key]),
-  );
+  const items = entries.filter((entry) => entry.editable && isPrimitive(draft[entry.key]));
   if (loading) return <InfoCard text="正在加载..." />;
   if (error) return <InfoCard text={error} variant="warning" />;
   if (!items.length) return null;

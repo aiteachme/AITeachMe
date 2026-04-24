@@ -8,13 +8,11 @@ from app.shared.infra.workflow.context import WorkflowContext
 from app.utils.docgen_store import append_knowledge_build_recent_event, update_knowledge_build_status
 from app.utils.time import utcnow
 from app.workflows.digest.docgen.lib.document_backbone import (
-    apply_backbone_to_chapter_plan,
     build_document_backbone,
     fallback_document_backbone,
 )
 from app.workflows.digest.docgen.lib.models import (
     BackboneResearchAgenda,
-    ChapterGenerationPlan,
     ChapterGenerationTaskSeed,
     FileMaterialSummary,
     HighConfidenceEvidenceUnit,
@@ -31,7 +29,7 @@ def build_document_backbone_node(*, context: WorkflowContext):
     """
 
     async def document_backbone_node(state: DocGenState) -> dict:
-        """生成 DocumentBackbone 并更新章节执行合同。"""
+        """生成 DocumentBackbone。"""
 
         started_at = perf_counter()
         task_seeds = [
@@ -40,7 +38,6 @@ def build_document_backbone_node(*, context: WorkflowContext):
         ]
         if not task_seeds:
             return {"error": "DocGen 知识骨架构建失败：缺少章节 seed。"}
-        generation_plan = ChapterGenerationPlan.model_validate(state.get("chapter_generation_plan") or {})
         agenda = BackboneResearchAgenda.model_validate(state.get("backbone_research_agenda") or {})
         evidence_units = [
             HighConfidenceEvidenceUnit.model_validate(item)
@@ -65,29 +62,23 @@ def build_document_backbone_node(*, context: WorkflowContext):
                 evidence_units=evidence_units,
                 file_summaries=file_summaries,
             )
-            updated_plan = apply_backbone_to_chapter_plan(
-                plan=generation_plan,
-                backbone=document_backbone,
-            )
         except Exception as exc:
             document_backbone, warnings = fallback_document_backbone(
                 task_seeds=task_seeds,
                 reason=str(exc)[:160],
             )
-            updated_plan = generation_plan
 
-        tasks = [task.model_dump(mode="json") for task in updated_plan.chapters]
         elapsed_ms = int((perf_counter() - started_at) * 1000)
         update_knowledge_build_status(
             state["subject"],
             requested_at=state["requested_at"],
             status="running",
-            stage="generating_chapters",
+            stage="preparing_chapter_execution_briefs",
             digest_mode=state.get("digest_mode") or None,
-            total_chunks=len(tasks),
+            total_chunks=len(task_seeds),
             processed_chunks=0,
             current_chunk=0,
-            current_stage_description=f"文档知识骨架已生成，开始并行生成 {len(tasks)} 个章节。",
+            current_stage_description=f"文档知识骨架已生成，开始并行准备 {len(task_seeds)} 个章节的执行 brief。",
         )
         append_knowledge_build_recent_event(
             state["subject"],
@@ -112,8 +103,6 @@ def build_document_backbone_node(*, context: WorkflowContext):
         )
         return {
             "document_backbone": document_backbone.model_dump(mode="json"),
-            "chapter_generation_plan": updated_plan.model_dump(mode="json"),
-            "chapter_tasks": tasks,
             "backbone_conflict_warnings": [item.model_dump(mode="json") for item in warnings],
             "backbone_ms": elapsed_ms,
         }

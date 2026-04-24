@@ -25,10 +25,14 @@ import type {
 } from "../api/generated/model";
 import type { ApiResponse, PaginatedData } from "../api/types";
 import { ACTIVE_DOC_BUILD_STATUSES, DOC_BUILD_STAGE_TEXT } from "../components/knowledge-docs/utils";
-import { KnowledgeGraphView } from "../components/pages/KnowledgeGraphView";
-import { SubjectVectorNotice } from "../components/pages/SubjectVectorNotice";
+import { KnowledgeGraphView } from "../components/knowledge-graph/KnowledgeGraphView";
+import { SubjectVectorNotice } from "../components/knowledge-graph/SubjectVectorNotice";
 import { Button } from "../components/ui/Button";
 import { useToast } from "../components/ui/Toast";
+import {
+  buildKnowledgeBuildRuntimeQueryKey,
+  fetchKnowledgeBuildRuntime,
+} from "../lib/knowledgeBuildRuntime";
 import { buildKnowledgeDocStateQueryKey, fetchKnowledgeDocState } from "../lib/knowledgeDocs";
 import {
   OVERVIEW_INCLUDE_PRESETS,
@@ -184,7 +188,15 @@ export function KnowledgeDebugPage() {
     },
   });
 
-  const buildStatus = (docsStateQuery.data as DocGenGetResponse | undefined)?.build ?? null;
+  const runtimeQuery = useQuery({
+    queryKey: subjectId ? buildKnowledgeBuildRuntimeQueryKey(subjectId) : ["knowledge-build-runtime-empty"],
+    queryFn: () => fetchKnowledgeBuildRuntime(subjectId ?? ""),
+    enabled: Boolean(subjectId),
+    refetchInterval: (query) =>
+      ACTIVE_DOC_BUILD_STATUSES.has((query.state.data?.aggregate?.status ?? "").trim()) ? 3000 : false,
+  });
+
+  const buildStatus = runtimeQuery.data?.aggregate ?? null;
   const isBuildActive = ACTIVE_DOC_BUILD_STATUSES.has((buildStatus?.status ?? "").trim());
 
   const overviewQuery = useQuery({
@@ -322,15 +334,15 @@ export function KnowledgeDebugPage() {
 
   if (!subjectId) {
     return (
-      <div className="flex min-h-[40vh] items-center justify-center text-sm text-slate-500">
+      <div className="flex min-h-[40vh] items-center justify-center text-sm text-slate-500 dark:text-slate-400">
         未找到学科。
       </div>
     );
   }
 
   return (
-    <div className="min-h-full bg-slate-50">
-      <div className="border-b border-slate-200 bg-white">
+    <div className="knowledge-debug-page min-h-full bg-slate-50 dark:bg-slate-950">
+      <div className="debug-header-shell border-b border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950/95">
         <div className="mx-auto flex w-full max-w-7xl flex-col gap-4 px-4 pb-6 pt-20 md:px-6 lg:px-8">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
             <div className="space-y-2">
@@ -369,6 +381,7 @@ export function KnowledgeDebugPage() {
                 variant="outline"
                 onClick={() => void Promise.all([
                   docsStateQuery.refetch(),
+                  runtimeQuery.refetch(),
                   overviewQuery.refetch(),
                   graphQuery.refetch(),
                   unitsQuery.refetch(),
@@ -385,6 +398,7 @@ export function KnowledgeDebugPage() {
                 <RefreshCw
                   className={`h-4 w-4 ${
                     docsStateQuery.isFetching ||
+                    runtimeQuery.isFetching ||
                     overviewQuery.isFetching ||
                     graphQuery.isFetching ||
                     unitsQuery.isFetching ||
@@ -440,23 +454,23 @@ export function KnowledgeDebugPage() {
           </div>
 
           <div className="grid gap-3 md:grid-cols-4">
-            <div className="border border-slate-200 bg-white px-4 py-3">
+            <div className="debug-surface border border-slate-200 bg-white px-4 py-3">
               <div className="text-xs text-slate-500">知识单元</div>
               <div className="mt-1 text-2xl font-semibold text-slate-900">
                 {overviewQuery.data?.stats?.node_count ?? 0}
               </div>
             </div>
-            <div className="border border-slate-200 bg-white px-4 py-3">
+            <div className="debug-surface border border-slate-200 bg-white px-4 py-3">
               <div className="text-xs text-slate-500">知识边</div>
               <div className="mt-1 text-2xl font-semibold text-slate-900">
                 {overviewQuery.data?.stats?.edge_count ?? 0}
               </div>
             </div>
-            <div className="border border-slate-200 bg-white px-4 py-3">
+            <div className="debug-surface border border-slate-200 bg-white px-4 py-3">
               <div className="text-xs text-slate-500">可摄取文件</div>
               <div className="mt-1 text-2xl font-semibold text-slate-900">{digestReadyFiles.length}</div>
             </div>
-            <div className="border border-slate-200 bg-white px-4 py-3">
+            <div className="debug-surface border border-slate-200 bg-white px-4 py-3">
               <div className="text-xs text-slate-500">当前构建阶段</div>
               <div className="mt-1 text-sm font-medium text-slate-900">
                 {resolveBuildStatusLabel(buildStatus)}
@@ -487,7 +501,7 @@ export function KnowledgeDebugPage() {
       </div>
 
       <div className="mx-auto flex w-full max-w-7xl flex-1 flex-col gap-4 px-4 py-6 md:px-6 lg:px-8">
-        <div className="flex items-center gap-2 border-b border-slate-200">
+        <div className="debug-tabbar flex items-center gap-2 border-b border-slate-200">
           {[
             { id: "units" as const, label: "知识单元", icon: FileSearch },
             { id: "graph" as const, label: "知识图谱", icon: Network },
@@ -501,8 +515,8 @@ export function KnowledgeDebugPage() {
                 onClick={() => setActiveTab(tab.id)}
                 className={`inline-flex items-center gap-2 border-b-2 px-3 py-3 text-sm transition-colors ${
                   active
-                    ? "border-slate-900 text-slate-900"
-                    : "border-transparent text-slate-500 hover:text-slate-700"
+                    ? "debug-tab-active border-slate-900 text-slate-900"
+                    : "debug-tab-idle border-transparent text-slate-500 hover:text-slate-700"
                 }`}
               >
                 <Icon className="h-4 w-4" />
@@ -523,8 +537,8 @@ export function KnowledgeDebugPage() {
                 }}
                 className={`rounded-md px-3 py-1.5 text-xs transition-colors ${
                   knowledgeUnitType === ""
-                    ? "bg-slate-900 text-white"
-                    : "border border-slate-200 bg-white text-slate-600"
+                    ? "debug-filter-active bg-slate-900 text-white"
+                    : "debug-filter-idle border border-slate-200 bg-white text-slate-600"
                 }`}
               >
                 全部
@@ -539,8 +553,8 @@ export function KnowledgeDebugPage() {
                   }}
                   className={`rounded-md px-3 py-1.5 text-xs transition-colors ${
                     knowledgeUnitType === type
-                      ? "bg-slate-900 text-white"
-                      : "border border-slate-200 bg-white text-slate-600"
+                      ? "debug-filter-active bg-slate-900 text-white"
+                      : "debug-filter-idle border border-slate-200 bg-white text-slate-600"
                   }`}
                 >
                   {NODE_TYPE_LABELS[type] ?? type}
@@ -563,7 +577,7 @@ export function KnowledgeDebugPage() {
                   {units.map((unit) => {
                     const typeTone = NODE_TYPE_TONE[unit.knowledge_unit_type] ?? "bg-slate-100 text-slate-700";
                     return (
-                      <div key={unit.id} className="border border-slate-200 bg-white p-4">
+                      <div key={unit.id} className="debug-surface border border-slate-200 bg-white p-4">
                         <div className="flex items-start justify-between gap-3">
                           <div>
                             <div className="text-sm font-medium text-slate-900">{unit.canonical_name}</div>
@@ -583,12 +597,12 @@ export function KnowledgeDebugPage() {
                 </div>
 
                 {units.length === 0 ? (
-                  <div className="border border-slate-200 bg-white px-4 py-10 text-center text-sm text-slate-500">
+                  <div className="debug-surface border border-slate-200 bg-white px-4 py-10 text-center text-sm text-slate-500">
                     当前还没有知识单元。
                   </div>
                 ) : null}
 
-                <div className="flex items-center justify-between border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600">
+                <div className="debug-surface flex items-center justify-between border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600">
                   <span>共 {totalUnits} 个知识单元</span>
                   <div className="flex items-center gap-2">
                     <Button
@@ -616,7 +630,7 @@ export function KnowledgeDebugPage() {
             )}
           </div>
         ) : (
-          <div className="min-h-[70vh] border border-slate-200 bg-white p-4">
+          <div className="debug-surface min-h-[70vh] border border-slate-200 bg-white p-4">
             {graphQuery.isLoading ? (
               <div className="flex h-[60vh] items-center justify-center text-slate-500">
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />

@@ -193,7 +193,7 @@ async def _extract_doc_summary_candidates(
         target_index = chunk_id_to_index.get(chunk_id)
         if target_index is None:
             continue
-        chapter_title = str(chapter.get("title") or "").strip() or f"绔犺妭{int(chapter.get('chapter_index', 0) or 0)}"
+        chapter_title = str(chapter.get("title") or "").strip() or f"章节{int(chapter.get('chapter_index', 0) or 0)}"
         summary_jobs.append((target_index, chunk_id, chapter_title, content))
 
     if not summary_jobs:
@@ -479,6 +479,7 @@ async def extract_node(state: KnowledgeDigestState) -> KnowledgeDigestState:
                             from app.utils.docgen_store import update_knowledge_build_status
                             update_knowledge_build_status(
                                 state["subject"],
+                                build_kind="graph",
                                 progress_pct=min(progress, 40),
                                 discovered_node_count=total_nodes,
                                 discovered_node_types=type_counts,
@@ -533,6 +534,7 @@ async def extract_node(state: KnowledgeDigestState) -> KnowledgeDigestState:
 
                 update_knowledge_build_status(
                     state["subject"],
+                    build_kind="graph",
                     progress_pct=40,
                     processed_chunks=len(chunk_ids),
                     total_chunks=len(chunk_ids),

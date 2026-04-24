@@ -23,6 +23,9 @@ def build_normalize_and_persist_plan_node(*, context: WorkflowContext):
     async def normalize_and_persist_plan_node(state: BuildPlannerState) -> dict:
         """保存当前 Planner 草稿并返回 API 响应所需状态。"""
 
+        if state.get("error"):
+            return {}
+
         logger.info(
             "planner_normalize_started",
             planner_session_id=state.get("planner_session_id", ""),
@@ -41,6 +44,9 @@ def build_normalize_and_persist_plan_node(*, context: WorkflowContext):
             shared_inputs=material_context,
             latest_plan=state.get("latest_plan"),
         )
+        generated_subject_name = str(state.get("generated_subject_name") or "").strip()
+        if generated_subject_name:
+            draft.subject = generated_subject_name
         logger.info(
             "planner_normalize_completed",
             planner_session_id=state.get("planner_session_id", ""),
@@ -48,6 +54,7 @@ def build_normalize_and_persist_plan_node(*, context: WorkflowContext):
             plan_step_count=len(draft.plan_steps),
             digest_mode=draft.digest_mode,
             plan_summary_chars=len(draft.plan_summary or ""),
+            generated_subject_name=generated_subject_name or None,
         )
         plan = draft.model_dump(mode="json")
         outline_items = [
@@ -72,6 +79,7 @@ def build_normalize_and_persist_plan_node(*, context: WorkflowContext):
             "plan": plan,
             "plan_summary": draft.plan_summary,
             "digest_mode": draft.digest_mode,
+            "generated_subject_name": generated_subject_name,
         }
         persist_update = save_planner_result(
             {**state, **result},

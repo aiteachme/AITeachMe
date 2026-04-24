@@ -261,6 +261,9 @@ class KnowledgeBuildPreviewResponse(BaseModel):
     mode_reason: str | None = Field(default=None, description="Why the current digest mode was selected.")
     processed_chunks: int = Field(default=0, description="How many section chunks have been processed so far.")
     total_chunks: int = Field(default=0, description="Total number of section chunks for this build.")
+    doc_sync_section_count: int = Field(default=0, description="How many knowledge-doc sections were analyzed during docs-sync.")
+    doc_sync_llm_section_count: int = Field(default=0, description="How many docs-sync sections attempted structured LLM extraction.")
+    doc_sync_fallback_section_count: int = Field(default=0, description="How many docs-sync sections fell back after extraction.")
     discovered_node_count: int = Field(default=0, description="Current discovered knowledge-node count.")
     discovered_node_types: dict[str, int] = Field(default_factory=dict, description="Node counts by node type.")
     sample_nodes: list[BuildPreviewNodeResponse] = Field(default_factory=list, description="Sample discovered nodes.")
@@ -295,6 +298,33 @@ class KnowledgeBuildStatusResponse(BaseModel):
     digest_mode: str | None = Field(default=None, description="Digest mode for the current build.")
     mode_reason: str | None = Field(default=None, description="Reason for the current digest mode.")
     current_stage_description: str | None = Field(default=None, description="Friendly description of the current build stage.")
+
+
+class KnowledgeBuildLaneRuntimeResponse(BaseModel):
+    """One runtime lane snapshot used by polling clients."""
+
+    lane: Literal["aggregate", "docgen", "graph"]
+    build_group_id: str | None = Field(default=None, description="Shared build-group identifier across related lanes.")
+    status: str = Field(description="idle / accepted / running / completed / failed / cancelled / skipped / partial_failed")
+    stage: str = Field(description="Current lifecycle stage for this lane.")
+    started_at: datetime | None = Field(default=None, description="Lane start timestamp.")
+    finished_at: datetime | None = Field(default=None, description="Lane finish timestamp when terminal.")
+    requested_at: datetime | None = Field(default=None, description="Original request timestamp for this lane.")
+    error_message: str | None = Field(default=None, description="Lane failure or cancellation reason.")
+    progress_pct: int = Field(default=0, description="Backend progress percentage for this lane.")
+    current_stage_description: str | None = Field(default=None, description="Friendly description of the current lane stage.")
+    metrics: dict[str, object] = Field(default_factory=dict, description="Compact metrics for this lane.")
+
+
+class KnowledgeBuildRuntimeResponse(BaseModel):
+    """Unified runtime response for aggregate/docgen/graph lanes."""
+
+    build_group_id: str | None = Field(default=None, description="Shared build-group identifier across related lanes.")
+    aggregate: KnowledgeBuildLaneRuntimeResponse | None = Field(default=None, description="Aggregate runtime across all required lanes.")
+    docgen: KnowledgeBuildLaneRuntimeResponse | None = Field(default=None, description="DocGen lane runtime.")
+    graph: KnowledgeBuildLaneRuntimeResponse | None = Field(default=None, description="Graph lane runtime.")
+    docgen_preview: KnowledgeBuildPreviewResponse | None = Field(default=None, description="DocGen-oriented preview payload for waiting UIs.")
+    docgen_metrics: KnowledgeBuildMetricsResponse | None = Field(default=None, description="DocGen-oriented live diagnostics for waiting UIs.")
 
 
 class DocGenGetResponse(BaseModel):

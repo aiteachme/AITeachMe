@@ -6,6 +6,7 @@ import shutil
 from datetime import datetime, timedelta
 from pathlib import Path
 from threading import Lock, RLock
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -22,6 +23,8 @@ from app.utils.path_helpers import (
 from app.utils.time import ensure_utc_datetime, utcnow
 
 STALE_BUILD_LOCK_TTL = timedelta(minutes=30)
+_ACTIVE_BUILD_STATUSES = {"accepted", "running", "publishing"}
+_TERMINAL_BUILD_STATUSES = {"completed", "failed", "cancelled", "skipped", "partial_failed"}
 
 _STAGE_PROGRESS = {
     "idle": 0,
@@ -96,6 +99,7 @@ class KnowledgeBuildLock(BaseModel):
     """Lock file payload for an in-progress knowledge-doc build."""
 
     requested_at: datetime
+    build_group_id: str | None = None
     source_file_ids: list[int] = Field(default_factory=list)
     prompt: str | None = None
 
@@ -105,8 +109,11 @@ class KnowledgeBuildRuntimeStatus(BaseModel):
 
     requested_at: datetime
     build_kind: str = "docgen"
+    build_group_id: str | None = None
     status: str = "accepted"
     stage: str = "build_accepted"
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
     build_session_id: str | None = None
     planner_session_id: str | None = None
     confirmed_plan_id: str | None = None
@@ -127,11 +134,25 @@ class KnowledgeBuildRuntimeStatus(BaseModel):
     current_chunk: int | None = None
     processed_chunks: int = 0
     total_chunks: int = 0
+    doc_sync_section_count: int = 0
+    doc_sync_llm_section_count: int = 0
+    doc_sync_fallback_section_count: int = 0
+    doc_sync_question_fallback_section_count: int = 0
+    doc_sync_topic_fallback_section_count: int = 0
     sample_cards: list[dict[str, str]] = Field(default_factory=list)
     mode_reason: str | None = None
     plan_summary: str | None = None
+    metrics: dict[str, object] = Field(default_factory=dict)
     chapter_progress: list[dict[str, object]] = Field(default_factory=list)
     recent_events: list[dict[str, object]] = Field(default_factory=list)
+
+
+class KnowledgeBuildRuntimeEnvelope(BaseModel):
+    """Persisted runtime envelope for aggregate/docgen/graph lanes."""
+
+    build_group_id: str | None = None
+    docgen_runtime: KnowledgeBuildRuntimeStatus | None = None
+    graph_runtime: KnowledgeBuildRuntimeStatus | None = None
 
 
 def _get_status_lock(subject: str) -> RLock:
@@ -141,6 +162,47 @@ def _get_status_lock(subject: str) -> RLock:
             lock = RLock()
             _STATUS_LOCKS[subject] = lock
         return lock
+
+
+def _normalize_build_lane(build_kind: str | None) -> Literal["docgen", "graph"]:
+    return "graph" if str(build_kind or "").strip().lower() == "graph" else "docgen"
+
+
+def _lane_attr_name(lane: Literal["docgen", "graph"]) -> str:
+    return f"{lane}_runtime"
+
+
+def sanitize_knowledge_build_error_message(
+    error_message: str | None,
+    *,
+    build_kind: str | None = None,
+) -> str | None:
+    text = str(error_message or "").strip()
+    if not text:
+        return None
+
+    lane = _normalize_build_lane(build_kind)
+    lane_label = "知识图谱" if lane == "graph" else "知识文档"
+
+    if text == "build_cancelled":
+        return f"{lane_label}构建已取消。"
+    if text == "build_crashed":
+        return f"{lane_label}构建异常失败。"
+    if text == "no_ready_digest_inputs":
+        return "当前没有可用于图谱构建的已解析资料。"
+    if text == "no_graph_build_sources":
+        return "当前没有可用于图谱构建的输入来源。"
+    if text == "confirmed_plan_required":
+        return "知识文档构建必须基于已确认的构建方案执行，请先完成 planner 确认。"
+    if (
+        "Dimension mismatch" in text
+        or "sqlite3.OperationalError" in text
+        or ("chunk_embeddings" in text and "embedding" in text)
+    ):
+        return "Embedding 配置已变化，请先重建向量后再继续。"
+    if "[SQL:" in text or "parameters:" in text or "Traceback" in text or len(text) > 240:
+        return f"{lane_label}构建异常失败。"
+    return text
 
 
 def _build_sample_cards(
@@ -261,6 +323,10 @@ def _derive_progress_from_chapters(status: KnowledgeBuildRuntimeStatus) -> int:
 
 def _hydrate_runtime_status(status: KnowledgeBuildRuntimeStatus) -> KnowledgeBuildRuntimeStatus:
     status.requested_at = ensure_utc_datetime(status.requested_at) or utcnow()
+    status.started_at = ensure_utc_datetime(status.started_at) or status.requested_at
+    status.finished_at = ensure_utc_datetime(status.finished_at)
+    status.build_kind = str(status.build_kind or "docgen").strip() or "docgen"
+    status.metrics = dict(status.metrics or {})
     if not status.current_stage_description:
         status.current_stage_description = _STAGE_DESCRIPTION.get(status.stage, "知识文档构建进行中。")
 
@@ -280,7 +346,11 @@ def _hydrate_runtime_status(status: KnowledgeBuildRuntimeStatus) -> KnowledgeBui
 
     if status.status == "completed":
         status.estimated_remaining_seconds = 0
-    elif status.status in {"failed", "cancelled", "idle"}:
+        status.finished_at = status.finished_at or utcnow()
+    elif status.status in {"failed", "cancelled", "skipped", "partial_failed"}:
+        status.estimated_remaining_seconds = None
+        status.finished_at = status.finished_at or utcnow()
+    elif status.status == "idle":
         status.estimated_remaining_seconds = None
     elif 0 < status.progress_pct < 100:
         elapsed_seconds = max(1, int((utcnow() - status.requested_at).total_seconds()))
@@ -288,6 +358,8 @@ def _hydrate_runtime_status(status: KnowledgeBuildRuntimeStatus) -> KnowledgeBui
         status.estimated_remaining_seconds = max(3, remaining)
     else:
         status.estimated_remaining_seconds = None
+        if status.status in _ACTIVE_BUILD_STATUSES:
+            status.finished_at = None
 
     status.chapter_progress = [
         _normalize_chapter_progress_entry(dict(item))
@@ -311,6 +383,179 @@ def _hydrate_runtime_status(status: KnowledgeBuildRuntimeStatus) -> KnowledgeBui
             digest_mode=status.digest_mode,
         )
     return status
+
+
+def _hydrate_runtime_envelope(
+    envelope: KnowledgeBuildRuntimeEnvelope,
+) -> KnowledgeBuildRuntimeEnvelope:
+    if envelope.docgen_runtime is not None:
+        envelope.docgen_runtime = _hydrate_runtime_status(envelope.docgen_runtime)
+    if envelope.graph_runtime is not None:
+        envelope.graph_runtime = _hydrate_runtime_status(envelope.graph_runtime)
+    envelope.build_group_id = (
+        envelope.build_group_id
+        or (envelope.docgen_runtime.build_group_id if envelope.docgen_runtime is not None else None)
+        or (envelope.graph_runtime.build_group_id if envelope.graph_runtime is not None else None)
+    )
+    return envelope
+
+
+def _build_runtime_metrics(
+    *,
+    docgen_runtime: KnowledgeBuildRuntimeStatus | None,
+    graph_runtime: KnowledgeBuildRuntimeStatus | None,
+) -> dict[str, object]:
+    return {
+        "docgen_status": (docgen_runtime.status if docgen_runtime is not None else "idle"),
+        "graph_status": (graph_runtime.status if graph_runtime is not None else "idle"),
+    }
+
+
+def build_aggregate_knowledge_build_status(
+    envelope: KnowledgeBuildRuntimeEnvelope | None,
+) -> KnowledgeBuildRuntimeStatus | None:
+    if envelope is None:
+        return None
+
+    hydrated = _hydrate_runtime_envelope(envelope)
+    docgen_runtime = hydrated.docgen_runtime
+    graph_runtime = hydrated.graph_runtime
+    build_group_id = hydrated.build_group_id
+
+    if docgen_runtime is None and graph_runtime is None:
+        return None
+
+    def _new(
+        *,
+        requested_at: datetime,
+        status: str,
+        stage: str,
+        description: str,
+        started_at: datetime | None = None,
+        finished_at: datetime | None = None,
+        error_message: str | None = None,
+        progress_pct: int = 0,
+    ) -> KnowledgeBuildRuntimeStatus:
+        return _hydrate_runtime_status(
+            KnowledgeBuildRuntimeStatus(
+                requested_at=requested_at,
+                build_kind="aggregate",
+                build_group_id=build_group_id,
+                status=status,
+                stage=stage,
+                started_at=started_at,
+                finished_at=finished_at,
+                error_message=error_message,
+                progress_pct=progress_pct,
+                current_stage_description=description,
+                metrics=_build_runtime_metrics(
+                    docgen_runtime=docgen_runtime,
+                    graph_runtime=graph_runtime,
+                ),
+            )
+        )
+
+    if docgen_runtime is None:
+        return _new(
+            requested_at=graph_runtime.requested_at,
+            status=graph_runtime.status,
+            stage=graph_runtime.stage,
+            description=graph_runtime.current_stage_description or "知识图谱构建进行中。",
+            started_at=graph_runtime.started_at,
+            finished_at=graph_runtime.finished_at,
+            error_message=graph_runtime.error_message,
+            progress_pct=graph_runtime.progress_pct,
+        )
+
+    if docgen_runtime.status in {"failed", "cancelled"}:
+        return _new(
+            requested_at=docgen_runtime.requested_at,
+            status=docgen_runtime.status,
+            stage=docgen_runtime.stage,
+            description=docgen_runtime.current_stage_description or "知识文档构建失败。",
+            started_at=docgen_runtime.started_at,
+            finished_at=docgen_runtime.finished_at,
+            error_message=docgen_runtime.error_message,
+            progress_pct=docgen_runtime.progress_pct,
+        )
+
+    if docgen_runtime.status in _ACTIVE_BUILD_STATUSES:
+        return _new(
+            requested_at=docgen_runtime.requested_at,
+            status="running",
+            stage=docgen_runtime.stage,
+            description=docgen_runtime.current_stage_description or "知识文档构建进行中。",
+            started_at=docgen_runtime.started_at,
+            progress_pct=docgen_runtime.progress_pct,
+        )
+
+    if graph_runtime is None:
+        return _new(
+            requested_at=docgen_runtime.requested_at,
+            status=docgen_runtime.status,
+            stage=docgen_runtime.stage,
+            description=docgen_runtime.current_stage_description or "知识文档已发布。",
+            started_at=docgen_runtime.started_at,
+            finished_at=docgen_runtime.finished_at,
+            progress_pct=docgen_runtime.progress_pct,
+        )
+
+    if graph_runtime.status in _ACTIVE_BUILD_STATUSES:
+        return _new(
+            requested_at=docgen_runtime.requested_at,
+            status="running",
+            stage=graph_runtime.stage,
+            description=graph_runtime.current_stage_description or "知识图谱构建进行中。",
+            started_at=docgen_runtime.started_at,
+            progress_pct=max(docgen_runtime.progress_pct, graph_runtime.progress_pct),
+        )
+
+    if graph_runtime.status in {"failed", "cancelled"}:
+        return _new(
+            requested_at=docgen_runtime.requested_at,
+            status="partial_failed",
+            stage=graph_runtime.stage,
+            description=graph_runtime.current_stage_description or "知识文档已发布，但图谱构建失败。",
+            started_at=docgen_runtime.started_at,
+            finished_at=graph_runtime.finished_at or docgen_runtime.finished_at,
+            error_message=graph_runtime.error_message,
+            progress_pct=100,
+        )
+
+    if graph_runtime.status == "skipped":
+        return _new(
+            requested_at=docgen_runtime.requested_at,
+            status="completed",
+            stage="completed",
+            description=graph_runtime.current_stage_description or docgen_runtime.current_stage_description or "知识文档已发布。",
+            started_at=docgen_runtime.started_at,
+            finished_at=docgen_runtime.finished_at,
+            progress_pct=100,
+        )
+
+    return _new(
+        requested_at=docgen_runtime.requested_at,
+        status="completed",
+        stage="completed",
+        description=graph_runtime.current_stage_description or "知识文档与知识图谱已完成。",
+        started_at=docgen_runtime.started_at,
+        finished_at=graph_runtime.finished_at or docgen_runtime.finished_at,
+        progress_pct=100,
+    )
+
+
+def _read_legacy_knowledge_build_status(subject: str) -> KnowledgeBuildRuntimeStatus | None:
+    cs = get_content_store()
+    key = resolve_subject_storage_scope(subject).build_status_key()
+    status = run_store_sync(cs.read_json, key, KnowledgeBuildRuntimeStatus)
+    return _hydrate_runtime_status(status) if status is not None else None
+
+
+def _write_legacy_knowledge_build_status(subject: str, status: KnowledgeBuildRuntimeStatus) -> str:
+    cs = get_content_store()
+    key = resolve_subject_storage_scope(subject).build_status_key()
+    run_store_sync(cs.write_json, key, status)
+    return key
 
 
 def _read_build_lock_path(path: Path) -> KnowledgeBuildLock | None:
@@ -434,41 +679,114 @@ def _cloud_release_build_lock(subject: str) -> None:
             session.commit()
 
 
-def read_knowledge_build_status(subject: str) -> KnowledgeBuildRuntimeStatus | None:
-    """Read the runtime build-status payload if it exists."""
+def read_knowledge_build_runtime(subject: str) -> KnowledgeBuildRuntimeEnvelope | None:
+    """Read the unified runtime envelope for one subject."""
 
     cs = get_content_store()
-    key = resolve_subject_storage_scope(subject).build_status_key()
-    status = run_store_sync(cs.read_json, key, KnowledgeBuildRuntimeStatus)
-    return _hydrate_runtime_status(status) if status is not None else None
+    key = resolve_subject_storage_scope(subject).build_runtime_key()
+    runtime = run_store_sync(cs.read_json, key, KnowledgeBuildRuntimeEnvelope)
+    if runtime is not None:
+        return _hydrate_runtime_envelope(runtime)
+
+    legacy = _read_legacy_knowledge_build_status(subject)
+    if legacy is None:
+        return None
+    return _hydrate_runtime_envelope(
+        KnowledgeBuildRuntimeEnvelope(
+            build_group_id=legacy.build_group_id,
+            docgen_runtime=legacy,
+        )
+    )
+
+
+def write_knowledge_build_runtime(subject: str, runtime: KnowledgeBuildRuntimeEnvelope) -> str:
+    """Persist the unified runtime envelope for one subject."""
+
+    cs = get_content_store()
+    key = resolve_subject_storage_scope(subject).build_runtime_key()
+    run_store_sync(cs.write_json, key, _hydrate_runtime_envelope(runtime))
+    return key
+
+
+def read_knowledge_build_status(subject: str) -> KnowledgeBuildRuntimeStatus | None:
+    """Read the legacy docgen runtime payload used by docs-oriented polling."""
+
+    runtime = read_knowledge_build_runtime(subject)
+    if runtime is not None and runtime.docgen_runtime is not None:
+        return runtime.docgen_runtime
+    return _read_legacy_knowledge_build_status(subject)
 
 
 def write_knowledge_build_status(subject: str, status: KnowledgeBuildRuntimeStatus) -> str:
-    """Persist the runtime build-status payload."""
+    """Persist the legacy docgen runtime payload."""
 
-    cs = get_content_store()
-    key = resolve_subject_storage_scope(subject).build_status_key()
-    run_store_sync(cs.write_json, key, status)
-    return key
+    return _write_legacy_knowledge_build_status(subject, _hydrate_runtime_status(status))
+
+
+def read_knowledge_build_aggregate_status(subject: str) -> KnowledgeBuildRuntimeStatus | None:
+    """Read the aggregate runtime status for one subject."""
+
+    return build_aggregate_knowledge_build_status(read_knowledge_build_runtime(subject))
+
+
+def update_knowledge_build_lane_status(
+    subject: str,
+    *,
+    lane: Literal["docgen", "graph"],
+    **kwargs: object,
+) -> KnowledgeBuildRuntimeStatus:
+    """Merge updates into one runtime lane and refresh the persisted envelope."""
+
+    with _get_status_lock(subject):
+        runtime = read_knowledge_build_runtime(subject) or KnowledgeBuildRuntimeEnvelope()
+        attr_name = _lane_attr_name(lane)
+        existing = getattr(runtime, attr_name)
+        requested_at = kwargs.get("requested_at")
+        normalized_requested_at = ensure_utc_datetime(requested_at) if isinstance(requested_at, datetime) else None
+        build_group_id = str(kwargs.get("build_group_id") or "").strip() or None
+
+        should_reset = (
+            existing is None
+            or (normalized_requested_at is not None and existing.requested_at != normalized_requested_at)
+            or (build_group_id is not None and existing is not None and existing.build_group_id != build_group_id)
+        )
+        if should_reset:
+            existing = KnowledgeBuildRuntimeStatus(
+                requested_at=normalized_requested_at or utcnow(),
+                build_kind=lane,
+                build_group_id=build_group_id,
+            )
+
+        payload = dict(kwargs)
+        payload["build_kind"] = lane
+        if "error_message" in payload:
+            payload["error_message"] = sanitize_knowledge_build_error_message(
+                payload.get("error_message"),
+                build_kind=lane,
+            )
+
+        updated = existing.model_copy(update=payload)
+        updated = _hydrate_runtime_status(updated)
+        setattr(runtime, attr_name, updated)
+        runtime.build_group_id = (
+            build_group_id
+            or updated.build_group_id
+            or runtime.build_group_id
+        )
+        runtime = _hydrate_runtime_envelope(runtime)
+        write_knowledge_build_runtime(subject, runtime)
+
+        if lane == "docgen":
+            write_knowledge_build_status(subject, updated)
+
+        return updated
 
 
 def update_knowledge_build_status(subject: str, **kwargs: object) -> KnowledgeBuildRuntimeStatus:
     """Merge updates into the runtime build-status payload."""
 
-    with _get_status_lock(subject):
-        existing = read_knowledge_build_status(subject)
-        requested_at = kwargs.get("requested_at")
-        normalized_requested_at = ensure_utc_datetime(requested_at) if isinstance(requested_at, datetime) else None
-        if existing is None:
-            existing = KnowledgeBuildRuntimeStatus(
-                requested_at=normalized_requested_at or utcnow(),
-            )
-        elif normalized_requested_at is not None and existing.requested_at != normalized_requested_at:
-            existing = KnowledgeBuildRuntimeStatus(requested_at=normalized_requested_at)
-        updated = existing.model_copy(update=kwargs)
-        updated = _hydrate_runtime_status(updated)
-        write_knowledge_build_status(subject, updated)
-        return updated
+    lane = _normalize_build_lane(str(kwargs.get("build_kind") or "docgen"))
+    return update_knowledge_build_lane_status(subject, lane=lane, **kwargs)
 
 
 def upsert_knowledge_build_chapter_progress(
@@ -480,7 +798,8 @@ def upsert_knowledge_build_chapter_progress(
     """Merge one chapter progress entry into the runtime build status."""
 
     with _get_status_lock(subject):
-        existing = read_knowledge_build_status(subject)
+        runtime = read_knowledge_build_runtime(subject) or KnowledgeBuildRuntimeEnvelope()
+        existing = runtime.docgen_runtime
         if existing is None:
             existing = KnowledgeBuildRuntimeStatus(requested_at=requested_at or utcnow())
         normalized = _normalize_chapter_progress_entry(chapter_progress)
@@ -493,7 +812,11 @@ def upsert_knowledge_build_chapter_progress(
         merged.update(normalized)
         current[chapter_index] = _normalize_chapter_progress_entry(merged)
         existing.chapter_progress = [current[key] for key in sorted(current)]
+        existing.build_kind = "docgen"
         existing = _hydrate_runtime_status(existing)
+        runtime.docgen_runtime = existing
+        runtime.build_group_id = runtime.build_group_id or existing.build_group_id
+        write_knowledge_build_runtime(subject, runtime)
         write_knowledge_build_status(subject, existing)
         return existing
 
@@ -508,12 +831,17 @@ def append_knowledge_build_recent_event(
     """Append one recent event into the runtime build status."""
 
     with _get_status_lock(subject):
-        existing = read_knowledge_build_status(subject)
+        runtime = read_knowledge_build_runtime(subject) or KnowledgeBuildRuntimeEnvelope()
+        existing = runtime.docgen_runtime
         if existing is None:
             existing = KnowledgeBuildRuntimeStatus(requested_at=requested_at or utcnow())
         normalized = _normalize_recent_event_entry(event)
         existing.recent_events = [normalized, *list(existing.recent_events or [])][: max(1, int(limit))]
+        existing.build_kind = "docgen"
         existing = _hydrate_runtime_status(existing)
+        runtime.docgen_runtime = existing
+        runtime.build_group_id = runtime.build_group_id or existing.build_group_id
+        write_knowledge_build_runtime(subject, runtime)
         write_knowledge_build_status(subject, existing)
         return existing
 
@@ -523,6 +851,7 @@ def clear_knowledge_build_status(subject: str) -> None:
 
     cs = get_content_store()
     run_store_sync(cs.delete, resolve_subject_storage_scope(subject).build_status_key(), default=None)
+    run_store_sync(cs.delete, resolve_subject_storage_scope(subject).build_runtime_key(), default=None)
 
 
 def read_knowledge_manifest(subject: str) -> KnowledgeDocsManifest | None:
@@ -607,11 +936,13 @@ def clear_knowledge_runtime_artifacts(subject: str) -> None:
 
 __all__ = [
     "KnowledgeBuildLock",
+    "KnowledgeBuildRuntimeEnvelope",
     "KnowledgeBuildRuntimeStatus",
     "KnowledgeDocsManifest",
     "STALE_BUILD_LOCK_TTL",
     "acquire_knowledge_build_lock",
     "append_knowledge_build_recent_event",
+    "build_aggregate_knowledge_build_status",
     "clear_current_published_knowledge_docs_files",
     "clear_docgen_staging",
     "clear_knowledge_build_status",
@@ -619,11 +950,16 @@ __all__ = [
     "clear_published_knowledge_docs_files",
     "is_knowledge_build_locked",
     "read_knowledge_build_lock",
+    "read_knowledge_build_runtime",
+    "read_knowledge_build_aggregate_status",
     "read_knowledge_build_status",
     "read_knowledge_manifest",
     "release_knowledge_build_lock",
+    "sanitize_knowledge_build_error_message",
+    "update_knowledge_build_lane_status",
     "update_knowledge_build_status",
     "upsert_knowledge_build_chapter_progress",
+    "write_knowledge_build_runtime",
     "write_knowledge_build_status",
     "write_knowledge_manifest",
 ]

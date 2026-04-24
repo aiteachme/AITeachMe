@@ -27,6 +27,7 @@ import type {
 import type {
   ApiResponseExamGenerateResponse,
   ApiResponseExamGradeResponse,
+  ApiResponseExamPaperDeleteResponse,
   ApiResponseExamPaperDetailResponse,
   ApiResponseExamStudyGuideResponse,
   ApiResponseListQuestionTemplateItemResponse,
@@ -717,6 +718,111 @@ export function useExamDetailApiV1SubjectsSubjectExamsExamPaperIdGet<TData = Awa
 
 
 /**
+ * @summary Delete exam paper
+ */
+export type deleteExamPaperApiV1SubjectsSubjectExamsExamPaperIdDeleteResponse200 = {
+  data: ApiResponseExamPaperDeleteResponse
+  status: 200
+}
+
+export type deleteExamPaperApiV1SubjectsSubjectExamsExamPaperIdDeleteResponse400 = {
+  data: ErrorResponse
+  status: 400
+}
+
+export type deleteExamPaperApiV1SubjectsSubjectExamsExamPaperIdDeleteResponse404 = {
+  data: ErrorResponse
+  status: 404
+}
+
+export type deleteExamPaperApiV1SubjectsSubjectExamsExamPaperIdDeleteResponse422 = {
+  data: HTTPValidationError
+  status: 422
+}
+
+export type deleteExamPaperApiV1SubjectsSubjectExamsExamPaperIdDeleteResponse500 = {
+  data: ErrorResponse
+  status: 500
+}
+
+export type deleteExamPaperApiV1SubjectsSubjectExamsExamPaperIdDeleteResponseSuccess = (deleteExamPaperApiV1SubjectsSubjectExamsExamPaperIdDeleteResponse200) & {
+  headers: Headers;
+};
+export type deleteExamPaperApiV1SubjectsSubjectExamsExamPaperIdDeleteResponseError = (deleteExamPaperApiV1SubjectsSubjectExamsExamPaperIdDeleteResponse400 | deleteExamPaperApiV1SubjectsSubjectExamsExamPaperIdDeleteResponse404 | deleteExamPaperApiV1SubjectsSubjectExamsExamPaperIdDeleteResponse422 | deleteExamPaperApiV1SubjectsSubjectExamsExamPaperIdDeleteResponse500) & {
+  headers: Headers;
+};
+
+export type deleteExamPaperApiV1SubjectsSubjectExamsExamPaperIdDeleteResponse = (deleteExamPaperApiV1SubjectsSubjectExamsExamPaperIdDeleteResponseSuccess | deleteExamPaperApiV1SubjectsSubjectExamsExamPaperIdDeleteResponseError)
+
+export const getDeleteExamPaperApiV1SubjectsSubjectExamsExamPaperIdDeleteUrl = (subject: string,
+    examPaperId: number,) => {
+
+
+
+
+  return `/api/v1/subjects/${subject}/exams/${examPaperId}`
+}
+
+export const deleteExamPaperApiV1SubjectsSubjectExamsExamPaperIdDelete = async (subject: string,
+    examPaperId: number, options?: RequestInit): Promise<deleteExamPaperApiV1SubjectsSubjectExamsExamPaperIdDeleteResponse> => {
+
+  return orvalApiClient<deleteExamPaperApiV1SubjectsSubjectExamsExamPaperIdDeleteResponse>(getDeleteExamPaperApiV1SubjectsSubjectExamsExamPaperIdDeleteUrl(subject,examPaperId),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+export const getDeleteExamPaperApiV1SubjectsSubjectExamsExamPaperIdDeleteMutationOptions = <TError = ErrorResponse | HTTPValidationError,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteExamPaperApiV1SubjectsSubjectExamsExamPaperIdDelete>>, TError,{subject: string;examPaperId: number}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteExamPaperApiV1SubjectsSubjectExamsExamPaperIdDelete>>, TError,{subject: string;examPaperId: number}, TContext> => {
+
+const mutationKey = ['deleteExamPaperApiV1SubjectsSubjectExamsExamPaperIdDelete'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteExamPaperApiV1SubjectsSubjectExamsExamPaperIdDelete>>, {subject: string;examPaperId: number}> = (props) => {
+          const {subject,examPaperId} = props ?? {};
+
+          return  deleteExamPaperApiV1SubjectsSubjectExamsExamPaperIdDelete(subject,examPaperId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteExamPaperApiV1SubjectsSubjectExamsExamPaperIdDeleteMutationResult = NonNullable<Awaited<ReturnType<typeof deleteExamPaperApiV1SubjectsSubjectExamsExamPaperIdDelete>>>
+
+    export type DeleteExamPaperApiV1SubjectsSubjectExamsExamPaperIdDeleteMutationError = ErrorResponse | HTTPValidationError
+
+    /**
+ * @summary Delete exam paper
+ */
+export const useDeleteExamPaperApiV1SubjectsSubjectExamsExamPaperIdDelete = <TError = ErrorResponse | HTTPValidationError,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteExamPaperApiV1SubjectsSubjectExamsExamPaperIdDelete>>, TError,{subject: string;examPaperId: number}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof deleteExamPaperApiV1SubjectsSubjectExamsExamPaperIdDelete>>,
+        TError,
+        {subject: string;examPaperId: number},
+        TContext
+      > => {
+      return useMutation(getDeleteExamPaperApiV1SubjectsSubjectExamsExamPaperIdDeleteMutationOptions(options), queryClient);
+    }
+    /**
  * @summary Generate study guide from a graded exam
  */
 export type examStudyGuideApiV1SubjectsSubjectExamsExamPaperIdStudyGuideGetResponse200 = {

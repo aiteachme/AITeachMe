@@ -3,10 +3,38 @@ import ReactDOM from "react-dom/client";
 import App from "./App";
 import "./index.css";
 import "highlight.js/styles/github-dark.css";
+import { THEME_STORAGE_KEY, type Theme } from "./components/providers/ThemeProvider";
 
 const BACKEND_READY_TIMEOUT_MS = 6000;
 const BACKEND_READY_POLL_INTERVAL_MS = 300;
 const BACKEND_READY_REQUEST_TIMEOUT_MS = 1200;
+
+function resolveInitialTheme(theme: Theme): "light" | "dark" {
+  if (theme !== "system") {
+    return theme;
+  }
+
+  return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+}
+
+function applyInitialTheme() {
+  try {
+    const storedTheme = window.localStorage.getItem(THEME_STORAGE_KEY);
+    const theme: Theme =
+      storedTheme === "light" || storedTheme === "dark" || storedTheme === "system"
+        ? storedTheme
+        : "system";
+    const resolvedTheme = resolveInitialTheme(theme);
+    const root = window.document.documentElement;
+
+    root.classList.remove("light", "dark");
+    root.classList.add(resolvedTheme);
+    root.dataset.themePreference = theme;
+    root.style.colorScheme = resolvedTheme;
+  } catch {
+    // Ignore localStorage access failures and let ThemeProvider recover after mount.
+  }
+}
 
 function sleep(ms: number) {
   return new Promise((resolve) => window.setTimeout(resolve, ms));
@@ -67,6 +95,8 @@ async function prepare() {
 
   await waitForBackendReady();
 }
+
+applyInitialTheme();
 
 prepare().catch(() => {
   // Startup preparation should never block initial rendering.

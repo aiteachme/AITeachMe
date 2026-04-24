@@ -271,7 +271,7 @@ export function KnowledgeGraphView({
   );
 
   return (
-    <div className="flex flex-col h-full min-h-0 gap-4">
+    <div className="knowledge-graph-view flex flex-col h-full min-h-0 gap-4">
       {viewMode === "graph" && (
         <ForceGraphView
           subject={subject}

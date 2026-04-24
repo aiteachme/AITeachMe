@@ -179,7 +179,7 @@ def _maybe_update_subject_name(
     user_id: str,
     generated_name: str,
 ) -> None:
-    title = " ".join(str(generated_name or "").strip().split())[:16]
+    title = " ".join(str(generated_name or "").strip().split())
     if not title or title.casefold() in _AUTO_TITLE_PLACEHOLDERS:
         return
     subject_row = session.exec(
@@ -196,6 +196,14 @@ def _maybe_update_subject_name(
         subject=subject,
         generated_name=title,
     )
+
+
+def _apply_generated_subject_name(plan_payload: dict[str, Any], generated_name: str) -> str:
+    title = " ".join(str(generated_name or "").strip().split())
+    if not title or title.casefold() in _AUTO_TITLE_PLACEHOLDERS:
+        return ""
+    plan_payload["subject"] = title
+    return title
 
 
 def _update_planner_session_meta(
@@ -719,11 +727,15 @@ def save_planner_result(
             material_context=material_context,
             latest_plan=_planner_plan(record),
         )
+        generated_title = _apply_generated_subject_name(
+            persisted_plan,
+            str(state.get("generated_subject_name") or ""),
+        )
         _maybe_update_subject_name(
             session,
             subject=subject_slug,
             user_id=user_id,
-            generated_name=str(state.get("generated_subject_name") or ""),
+            generated_name=generated_title,
         )
         record = _update_planner_session_meta(
             session,
@@ -734,6 +746,12 @@ def save_planner_result(
             planner_status="draft",
             confirmed_plan_id=None,
         )
+        if generated_title and str(record.title or "").strip() != generated_title:
+            record.title = generated_title
+            record.updated_at = utcnow()
+            session.add(record)
+            session.commit()
+            session.refresh(record)
         _create_planner_message(
             session,
             record=record,

@@ -13,7 +13,11 @@ from sqlmodel import Session, select
 
 from app.models.knowledge_relation import KnowledgeEdge
 from app.models.knowledge_unit import KnowledgeUnit
-from app.models.knowledge_taxonomy import normalize_knowledge_unit_type, normalize_relation_type
+from app.models.knowledge_taxonomy import (
+    normalize_knowledge_unit_type,
+    normalize_relation_type,
+    validate_relation_direction,
+)
 from app.repositories import knowledge_relation_repo, knowledge_unit_repo
 from app.shared.infra.embedding import aembed_texts
 from app.shared.infra.search.api import search_knowledge
@@ -25,12 +29,15 @@ from app.workflows.digest.common.markdown_knowledge_anchors import (
     extract_markdown_section_chunks,
     validate_knowledge_unit_anchors,
 )
-from app.workflows.digest.kg_file_ingest.lib.extractor import extract_candidates
+from app.workflows.digest.kg_file_ingest.lib.extractor import extract_candidates_with_diagnostics
 
 _ANCHOR_ALIAS_SOURCE = "markdown_anchor"
 _SYNC_EDGE_MARKER = "markdown_anchor_sync"
 _RAG_DEDUP_TOP_K = 6
 _RAG_DEDUP_SIMILARITY_THRESHOLD = 0.82
+_DOCS_SYNC_SECTION_CONCURRENCY_LIMIT = 6
+_DOCS_SYNC_SECTION_MAX_RETRIES = 2
+_DOCS_SYNC_SECTION_RETRY_DELAY_S = 0.4
 _ASYNC_BRIDGE_LOCK = threading.Lock()
 _ASYNC_BRIDGE_READY = threading.Event()
 _ASYNC_BRIDGE_LOOP: asyncio.AbstractEventLoop | None = None
@@ -53,6 +60,14 @@ class KnowledgeSyncReport:
     created_edge_ids: list[int] = field(default_factory=list)
     updated_edge_ids: list[int] = field(default_factory=list)
     deprecated_edge_ids: list[int] = field(default_factory=list)
+    section_count: int = 0
+    llm_section_count: int = 0
+    fallback_section_count: int = 0
+    question_fallback_section_count: int = 0
+    topic_fallback_section_count: int = 0
+    markdown_short_circuit_section_count: int = 0
+    total_extracted_node_count: int = 0
+    total_extracted_edge_count: int = 0
     elapsed_ms: int = 0
 
     @property
@@ -86,12 +101,40 @@ class PendingMarkdownExtractedEdge:
     description: str
 
 
+@dataclass(slots=True)
+class SectionExtractionContext:
+    """Context retained after one section extraction for cross-section merging."""
+
+    section_index: int
+    title: str
+    header_path: str
+    body_markdown: str
+    primary_anchor: str | None = None
+    primary_name: str = ""
+    primary_type: str = ""
+
+
+@dataclass(slots=True)
+class SectionExtractionPayload:
+    """Normalized result for one extracted markdown section."""
+
+    units: list[MarkdownKnowledgeUnit]
+    pending_edges: list[PendingMarkdownExtractedEdge]
+    candidate_id_to_anchor: dict[str, str]
+    anchors_by_name: dict[str, list[str]]
+    anchors_by_normalized_name: dict[str, list[str]]
+    node_contexts_by_anchor: dict[str, dict[str, object]]
+    section_context: SectionExtractionContext
+    diagnostics: dict[str, int]
+
+
 def sync_markdown_knowledge_graph(
     session: Session,
     *,
     subject: str,
     markdown: str,
     build_revision_no: int | None = None,
+    enable_rag_dedup: bool = False,
 ) -> KnowledgeSyncReport:
     """Synchronize knowledge units and knowledge images from Markdown into the graph."""
 
@@ -104,17 +147,31 @@ def sync_markdown_knowledge_graph(
         )
 
     revision_no = build_revision_no or _next_revision_no(session, subject)
-    units, extracted_edges = _extract_markdown_graph_items(markdown)
+    units, extracted_edges, diagnostics_totals = _extract_markdown_graph_items(markdown)
     report = KnowledgeSyncReport(
         subject=subject,
         build_revision_no=revision_no,
         synced_unit_keys=[item.anchor for item in units],
+        section_count=int(diagnostics_totals.get("section_count", 0) or 0),
+        llm_section_count=int(diagnostics_totals.get("llm_section_count", 0) or 0),
+        fallback_section_count=int(diagnostics_totals.get("fallback_section_count", 0) or 0),
+        question_fallback_section_count=int(diagnostics_totals.get("question_fallback_section_count", 0) or 0),
+        topic_fallback_section_count=int(diagnostics_totals.get("topic_fallback_section_count", 0) or 0),
+        markdown_short_circuit_section_count=int(diagnostics_totals.get("markdown_short_circuit_section_count", 0) or 0),
+        total_extracted_node_count=int(diagnostics_totals.get("total_extracted_node_count", 0) or 0),
+        total_extracted_edge_count=int(diagnostics_totals.get("total_extracted_edge_count", 0) or 0),
     )
     unit_by_anchor: dict[str, KnowledgeUnit] = {}
     report.knowledge_image_count = sum(len(item.knowledge_images) for item in units)
 
     for item in units:
-        unit, created = _upsert_unit(session, subject=subject, item=item, build_revision_no=revision_no)
+        unit, created = _upsert_unit(
+            session,
+            subject=subject,
+            item=item,
+            build_revision_no=revision_no,
+            enable_rag_dedup=enable_rag_dedup,
+        )
         if unit.id is None:
             continue
         unit_by_anchor[item.anchor] = unit
@@ -128,6 +185,20 @@ def sync_markdown_knowledge_graph(
         source = unit_by_anchor.get(extracted_edge.source_anchor)
         target = unit_by_anchor.get(extracted_edge.target_anchor)
         if source is None or target is None or source.id is None or target.id is None:
+            continue
+        if not validate_relation_direction(
+            edge_type=extracted_edge.edge_type,
+            source_type=source.knowledge_unit_type,
+            target_type=target.knowledge_unit_type,
+        ):
+            logger.warning(
+                "knowledge_docs_sync_edge_skipped_invalid_direction",
+                edge_type=extracted_edge.edge_type,
+                source_type=source.knowledge_unit_type,
+                target_type=target.knowledge_unit_type,
+                source_anchor=extracted_edge.source_anchor,
+                target_anchor=extracted_edge.target_anchor,
+            )
             continue
         edge, created = _upsert_edge(
             session,
@@ -160,6 +231,19 @@ def sync_markdown_knowledge_graph(
     )
     session.commit()
     report.elapsed_ms = int((perf_counter() - started_at) * 1000)
+    logger.info(
+        "knowledge_docs_sync_complete",
+        subject=subject,
+        build_revision_no=revision_no,
+        section_count=report.section_count,
+        llm_section_count=report.llm_section_count,
+        fallback_section_count=report.fallback_section_count,
+        question_fallback_section_count=report.question_fallback_section_count,
+        topic_fallback_section_count=report.topic_fallback_section_count,
+        unit_change_count=report.unit_change_count,
+        edge_change_count=report.edge_change_count,
+        elapsed_ms=report.elapsed_ms,
+    )
     return report
 
 
@@ -174,21 +258,32 @@ def _next_revision_no(session: Session, subject: str) -> int:
     return current + 1
 
 
-def _extract_markdown_graph_items(markdown: str) -> tuple[list[MarkdownKnowledgeUnit], list[MarkdownExtractedEdge]]:
+def _extract_markdown_graph_items(
+    markdown: str,
+) -> tuple[list[MarkdownKnowledgeUnit], list[MarkdownExtractedEdge], dict[str, int]]:
     sections = extract_markdown_section_chunks(markdown)
     if not sections:
-        return [], []
+        return [], [], {
+            "section_count": 0,
+            "llm_section_count": 0,
+            "fallback_section_count": 0,
+            "question_fallback_section_count": 0,
+            "topic_fallback_section_count": 0,
+            "markdown_short_circuit_section_count": 0,
+            "total_extracted_node_count": 0,
+            "total_extracted_edge_count": 0,
+        }
 
-    async def _extract_all_sections() -> list[
-        tuple[
-            list[MarkdownKnowledgeUnit],
-            list[PendingMarkdownExtractedEdge],
-            dict[str, str],
-            dict[str, list[str]],
-            dict[str, list[str]],
-        ]
-    ]:
-        return await asyncio.gather(*[_extract_section_graph_items(section) for section in sections])
+    async def _extract_all_sections() -> list[SectionExtractionPayload]:
+        semaphore = asyncio.Semaphore(_DOCS_SYNC_SECTION_CONCURRENCY_LIMIT)
+
+        async def _extract_with_queue(section_index: int, section) -> SectionExtractionPayload:
+            async with semaphore:
+                return await _extract_section_with_retries(section_index, section)
+
+        return await asyncio.gather(
+            *[_extract_with_queue(section_index, section) for section_index, section in enumerate(sections)]
+        )
 
     results = _run_async(_extract_all_sections()) or []
     units: list[MarkdownKnowledgeUnit] = []
@@ -197,24 +292,34 @@ def _extract_markdown_graph_items(markdown: str) -> tuple[list[MarkdownKnowledge
     anchors_by_name: dict[str, list[str]] = {}
     anchors_by_normalized_name: dict[str, list[str]] = {}
     units_by_section_index: list[list[MarkdownKnowledgeUnit]] = []
+    node_contexts_by_anchor: dict[str, dict[str, object]] = {}
+    section_contexts: list[SectionExtractionContext] = []
+    diagnostics_totals = {
+        "section_count": len(sections),
+        "llm_section_count": 0,
+        "fallback_section_count": 0,
+        "question_fallback_section_count": 0,
+        "topic_fallback_section_count": 0,
+        "markdown_short_circuit_section_count": 0,
+        "total_extracted_node_count": 0,
+        "total_extracted_edge_count": 0,
+    }
 
-    for (
-        section_units,
-        section_pending_edges,
-        section_candidate_id_to_anchor,
-        section_anchors_by_name,
-        section_anchors_by_normalized_name,
-    ) in results:
-        units.extend(section_units)
-        units_by_section_index.append(section_units)
-        pending_edges.extend(section_pending_edges)
-        candidate_id_to_anchor.update(section_candidate_id_to_anchor)
-        for name, anchors in section_anchors_by_name.items():
+    for payload in results:
+        units.extend(payload.units)
+        units_by_section_index.append(payload.units)
+        pending_edges.extend(payload.pending_edges)
+        candidate_id_to_anchor.update(payload.candidate_id_to_anchor)
+        node_contexts_by_anchor.update(payload.node_contexts_by_anchor)
+        section_contexts.append(payload.section_context)
+        for key in diagnostics_totals:
+            diagnostics_totals[key] += int(payload.diagnostics.get(key, 0) or 0)
+        for name, anchors in payload.anchors_by_name.items():
             bucket = anchors_by_name.setdefault(name, [])
             for anchor in anchors:
                 if anchor not in bucket:
                     bucket.append(anchor)
-        for normalized_name, anchors in section_anchors_by_normalized_name.items():
+        for normalized_name, anchors in payload.anchors_by_normalized_name.items():
             bucket = anchors_by_normalized_name.setdefault(normalized_name, [])
             for anchor in anchors:
                 if anchor not in bucket:
@@ -224,6 +329,14 @@ def _extract_markdown_graph_items(markdown: str) -> tuple[list[MarkdownKnowledge
         _build_structural_section_edges(
             sections=sections,
             units_by_section_index=units_by_section_index,
+            anchors_by_name=anchors_by_name,
+            anchors_by_normalized_name=anchors_by_normalized_name,
+        )
+    )
+    pending_edges.extend(
+        _build_cross_section_semantic_edges(
+            node_contexts_by_anchor=node_contexts_by_anchor,
+            section_contexts=section_contexts,
             anchors_by_name=anchors_by_name,
             anchors_by_normalized_name=anchors_by_normalized_name,
         )
@@ -270,7 +383,7 @@ def _extract_markdown_graph_items(markdown: str) -> tuple[list[MarkdownKnowledge
                 description=edge.description,
             )
         )
-    return units, edges
+    return units, edges, diagnostics_totals
 
 
 def _build_structural_section_edges(
@@ -327,19 +440,221 @@ def _build_structural_section_edges(
     return pending_edges
 
 
-async def _extract_section_graph_items(section) -> tuple[
-    list[MarkdownKnowledgeUnit],
-    list[PendingMarkdownExtractedEdge],
-    dict[str, str],
-    dict[str, list[str]],
-    dict[str, list[str]],
-]:
-    result = await extract_candidates(
+def _hint_edge_type_for_unit(unit_type: str) -> str:
+    normalized = normalize_knowledge_unit_type(unit_type)
+    if normalized in {"example", "exercise"}:
+        return "example_of"
+    if normalized in {"remark"}:
+        return "application"
+    return "derivation"
+
+
+def _infer_relation_from_section_text(*, body_markdown: str, primary_type: str) -> str | None:
+    text = normalize_name(body_markdown or "")
+    if not text:
+        return None
+    if any(token in text for token in ("前提", "基础", "先学", "先掌握", "依赖")):
+        return "prerequisite"
+    if any(token in text for token in ("由", "推出", "推得", "可得", "基于", "建立在")):
+        return "derivation"
+    if any(token in text for token in ("利用", "应用", "借助", "结合", "使用")):
+        return "application"
+    if any(token in text for token in ("区别", "对比", "比较", "不同于", "相反")):
+        return "contrast"
+    if any(token in text for token in ("类似", "相似", "同理")):
+        return "similar"
+    if normalize_knowledge_unit_type(primary_type) in {"example", "exercise"}:
+        return "example_of"
+    return None
+
+
+def _build_cross_section_semantic_edges(
+    *,
+    node_contexts_by_anchor: dict[str, dict[str, object]],
+    section_contexts: list[SectionExtractionContext],
+    anchors_by_name: dict[str, list[str]],
+    anchors_by_normalized_name: dict[str, list[str]],
+) -> list[PendingMarkdownExtractedEdge]:
+    pending_edges: list[PendingMarkdownExtractedEdge] = []
+    seen: set[tuple[str, str, str]] = set()
+    primary_contexts = [ctx for ctx in section_contexts if ctx.primary_anchor and ctx.primary_name]
+
+    def _push_edge(source_name: str, target_name: str, edge_type: str, description: str) -> None:
+        key = (normalize_name(source_name), normalize_name(target_name), edge_type)
+        if not key[0] or not key[1] or key in seen or key[0] == key[1]:
+            return
+        seen.add(key)
+        pending_edges.append(
+            PendingMarkdownExtractedEdge(
+                source_candidate_id=None,
+                target_candidate_id=None,
+                source_name=source_name,
+                target_name=target_name,
+                edge_type=edge_type,
+                description=description,
+            )
+        )
+
+    for source_anchor, context in node_contexts_by_anchor.items():
+        source_name = str(context.get("name") or "").strip()
+        source_type = str(context.get("knowledge_unit_type") or "concept").strip()
+        source_section_index = int(context.get("section_index", -1) or -1)
+        for hint_field in ("parent_entity_name", "taxonomy_hint"):
+            hint_name = str(context.get(hint_field) or "").strip()
+            if not hint_name or normalize_name(hint_name) == normalize_name(source_name):
+                continue
+            target_anchor = _resolve_edge_anchor(
+                candidate_id=None,
+                endpoint_name=hint_name,
+                anchor_by_candidate_id={},
+                anchors_by_name=anchors_by_name,
+                anchors_by_normalized_name=anchors_by_normalized_name,
+            )
+            if not target_anchor or target_anchor == source_anchor:
+                continue
+            target_context = node_contexts_by_anchor.get(target_anchor, {})
+            if int(target_context.get("section_index", -1) or -1) == source_section_index:
+                continue
+            _push_edge(
+                source_name,
+                str(target_context.get("name") or hint_name),
+                _hint_edge_type_for_unit(source_type),
+                f"{source_name} references {hint_name} across sections via {hint_field}.",
+            )
+
+    for context in primary_contexts:
+        body_markdown = context.body_markdown or ""
+        relation = _infer_relation_from_section_text(
+            body_markdown=body_markdown,
+            primary_type=context.primary_type,
+        )
+        if relation is None:
+            continue
+        body_text = normalize_name(body_markdown)
+        for other in primary_contexts:
+            if other.section_index == context.section_index or not other.primary_anchor or not other.primary_name:
+                continue
+            normalized_other_name = normalize_name(other.primary_name)
+            if not normalized_other_name or normalized_other_name not in body_text:
+                continue
+            if relation == "example_of":
+                _push_edge(
+                    context.primary_name,
+                    other.primary_name,
+                    relation,
+                    f"{context.primary_name} is presented as an example of {other.primary_name}.",
+                )
+            elif relation in {"similar", "contrast"}:
+                _push_edge(
+                    context.primary_name,
+                    other.primary_name,
+                    relation,
+                    f"{context.primary_name} is discussed together with {other.primary_name}.",
+                )
+            else:
+                _push_edge(
+                    other.primary_name,
+                    context.primary_name,
+                    relation,
+                    f"{other.primary_name} supports section {context.primary_name}.",
+                )
+
+    return pending_edges
+
+
+async def _extract_section_with_retries(section_index: int, section) -> SectionExtractionPayload:
+    last_error: Exception | None = None
+    for attempt in range(1, _DOCS_SYNC_SECTION_MAX_RETRIES + 1):
+        try:
+            return await _extract_section_graph_items(section_index, section)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            last_error = exc
+            logger.warning(
+                "knowledge_docs_sync_section_retry_scheduled",
+                section_index=section_index,
+                chunk_title=section.title,
+                header_path=section.header_path,
+                attempt=attempt,
+                max_retries=_DOCS_SYNC_SECTION_MAX_RETRIES,
+                error_type=type(exc).__name__,
+            )
+            if attempt >= _DOCS_SYNC_SECTION_MAX_RETRIES:
+                break
+            await asyncio.sleep(_DOCS_SYNC_SECTION_RETRY_DELAY_S * attempt)
+
+    logger.warning(
+        "knowledge_docs_sync_section_fallback_after_retries",
+        section_index=section_index,
+        chunk_title=section.title,
+        header_path=section.header_path,
+        error_type=(type(last_error).__name__ if last_error is not None else "UnknownError"),
+    )
+    return _build_section_fallback_payload(section_index, section)
+
+
+def _build_section_fallback_payload(section_index: int, section) -> SectionExtractionPayload:
+    body_markdown = section.body_markdown[:8000]
+    primary_anchor = str(section.anchor or build_knowledge_unit_anchor(section.title))
+    primary_unit = MarkdownKnowledgeUnit(
+        anchor=primary_anchor,
+        name=section.title,
+        knowledge_unit_type="concept",
+        summary=section.summary or section.title,
+        body_markdown=body_markdown,
+        knowledge_images=list(section.knowledge_images),
+        prerequisites=[],
+        related=[],
+        line_no=section.line_no,
+        heading_level=section.heading_level,
+    )
+    normalized_name = normalize_name(section.title)
+    return SectionExtractionPayload(
+        units=[primary_unit],
+        pending_edges=[],
+        candidate_id_to_anchor={},
+        anchors_by_name={section.title: [primary_anchor]},
+        anchors_by_normalized_name=({normalized_name: [primary_anchor]} if normalized_name else {}),
+        node_contexts_by_anchor={
+            primary_anchor: {
+                "name": section.title,
+                "knowledge_unit_type": "concept",
+                "taxonomy_hint": section.title,
+                "parent_entity_name": "",
+                "section_index": section_index,
+            }
+        },
+        section_context=SectionExtractionContext(
+            section_index=section_index,
+            title=section.title,
+            header_path=section.header_path,
+            body_markdown=body_markdown,
+            primary_anchor=primary_anchor,
+            primary_name=section.title,
+            primary_type="concept",
+        ),
+        diagnostics={
+            "section_count": 0,
+            "llm_section_count": 0,
+            "fallback_section_count": 1,
+            "question_fallback_section_count": 0,
+            "topic_fallback_section_count": 1,
+            "markdown_short_circuit_section_count": 0,
+            "total_extracted_node_count": 1,
+            "total_extracted_edge_count": 0,
+        },
+    )
+
+
+async def _extract_section_graph_items(section_index: int, section) -> SectionExtractionPayload:
+    result, diagnostics = await extract_candidates_with_diagnostics(
         chunk_content=section.body_markdown,
         chunk_title=section.title,
         header_path=section.header_path,
         doc_source_type="knowledge_doc_markdown",
         prefer_fast_path=False,
+        allow_markdown_anchor_short_circuit=False,
     )
 
     used_anchors: set[str] = set()
@@ -347,8 +662,13 @@ async def _extract_section_graph_items(section) -> tuple[
     anchor_by_candidate_id: dict[str, str] = {}
     anchors_by_name: dict[str, list[str]] = {}
     anchors_by_normalized_name: dict[str, list[str]] = {}
+    node_contexts_by_anchor: dict[str, dict[str, object]] = {}
     body_markdown = section.body_markdown[:8000]
     knowledge_images = list(section.knowledge_images)
+    primary_anchor: str | None = None
+    primary_name = ""
+    primary_type = ""
+    normalized_section_title = normalize_name(section.title)
 
     for node in result.nodes:
         anchor_seed = node.anchor_id or node.candidate_id or f"{section.anchor}-{node.knowledge_unit_type}-{node.name}"
@@ -372,6 +692,21 @@ async def _extract_section_graph_items(section) -> tuple[
         normalized_name = normalize_name(node.name)
         if normalized_name:
             anchors_by_normalized_name.setdefault(normalized_name, []).append(anchor)
+        node_contexts_by_anchor[anchor] = {
+            "name": node.name,
+            "knowledge_unit_type": node.knowledge_unit_type,
+            "taxonomy_hint": node.taxonomy_hint or "",
+            "parent_entity_name": node.parent_entity_name or "",
+            "section_index": section_index,
+        }
+        if primary_anchor is None:
+            primary_anchor = anchor
+            primary_name = node.name
+            primary_type = node.knowledge_unit_type
+        if normalized_section_title and normalized_name == normalized_section_title:
+            primary_anchor = anchor
+            primary_name = node.name
+            primary_type = node.knowledge_unit_type
 
     edges: list[PendingMarkdownExtractedEdge] = []
     for edge in result.edges:
@@ -386,7 +721,33 @@ async def _extract_section_graph_items(section) -> tuple[
             )
         )
 
-    return units, edges, anchor_by_candidate_id, anchors_by_name, anchors_by_normalized_name
+    return SectionExtractionPayload(
+        units=units,
+        pending_edges=edges,
+        candidate_id_to_anchor=anchor_by_candidate_id,
+        anchors_by_name=anchors_by_name,
+        anchors_by_normalized_name=anchors_by_normalized_name,
+        node_contexts_by_anchor=node_contexts_by_anchor,
+        section_context=SectionExtractionContext(
+            section_index=section_index,
+            title=section.title,
+            header_path=section.header_path,
+            body_markdown=body_markdown,
+            primary_anchor=primary_anchor,
+            primary_name=primary_name,
+            primary_type=primary_type,
+        ),
+        diagnostics={
+            "section_count": 0,
+            "llm_section_count": 1 if diagnostics.llm_attempted else 0,
+            "fallback_section_count": 1 if (diagnostics.used_question_fallback or diagnostics.used_topic_fallback) else 0,
+            "question_fallback_section_count": 1 if diagnostics.used_question_fallback else 0,
+            "topic_fallback_section_count": 1 if diagnostics.used_topic_fallback else 0,
+            "markdown_short_circuit_section_count": 1 if diagnostics.markdown_anchor_short_circuit_used else 0,
+            "total_extracted_node_count": diagnostics.node_count,
+            "total_extracted_edge_count": diagnostics.edge_count,
+        },
+    )
 
 
 def _resolve_edge_anchor(
@@ -432,17 +793,33 @@ def _upsert_unit(
     subject: str,
     item: MarkdownKnowledgeUnit,
     build_revision_no: int,
+    enable_rag_dedup: bool = False,
 ) -> tuple[KnowledgeUnit, bool]:
     knowledge_unit_type = normalize_knowledge_unit_type(item.knowledge_unit_type)
     normalized_name = normalize_name(item.name)
     unit = _find_unit_by_anchor(session, subject=subject, anchor=item.anchor)
     if unit is None:
+        unit = _find_unit_by_exact_name(
+            session,
+            subject=subject,
+            item=item,
+            knowledge_unit_type=knowledge_unit_type,
+        )
+    if unit is None and enable_rag_dedup:
         unit = _find_unit_with_rag(
             session,
             subject=subject,
             item=item,
             knowledge_unit_type=knowledge_unit_type,
         )
+    name_conflict_unit = knowledge_unit_repo.find_knowledge_unit_by_normalized_name(
+        session,
+        subject,
+        normalized_name,
+        knowledge_unit_type,
+    )
+    if name_conflict_unit is not None and (unit is None or name_conflict_unit.id != unit.id):
+        unit = name_conflict_unit
     if unit is None:
         unit = knowledge_unit_repo.find_knowledge_unit_by_normalized_name(
             session,
@@ -529,6 +906,24 @@ def _find_unit_by_anchor(session: Session, *, subject: str, anchor: str) -> Know
             if alias.get("source") == _ANCHOR_ALIAS_SOURCE and alias.get("normalized_alias") == anchor:
                 return unit
     return None
+
+
+def _find_unit_by_exact_name(
+    session: Session,
+    *,
+    subject: str,
+    item: MarkdownKnowledgeUnit,
+    knowledge_unit_type: str,
+) -> KnowledgeUnit | None:
+    normalized_name = normalize_name(item.name)
+    if not normalized_name:
+        return None
+    return knowledge_unit_repo.find_knowledge_unit_by_normalized_name(
+        session,
+        subject,
+        normalized_name,
+        knowledge_unit_type,
+    )
 
 
 def _find_unit_with_rag(

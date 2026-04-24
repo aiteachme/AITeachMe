@@ -23,6 +23,7 @@ from app.schemas.exams import (
     ExamGenerateResponse,
     ExamGradeResponse,
     ExamHistoryItem,
+    ExamPaperDeleteResponse,
     ExamPaperDetailResponse,
     ExamPaperItemResponse,
     QuestionTemplateItemResponse,
@@ -184,14 +185,8 @@ def _pick_knowledge_units(
 
 
 def _question_type_for_order(*, exam_mode: str, difficulty: str, item_order: int) -> str:
-    if exam_mode == "paper_exam":
-        cycle = ["single_choice", "multiple_choice", "fill_blank", "short_answer", "true_false"]
-    elif difficulty == "easy":
-        cycle = ["single_choice", "true_false", "fill_blank"]
-    elif difficulty == "hard":
-        cycle = ["short_answer", "multiple_choice", "fill_blank", "single_choice", "true_false"]
-    else:
-        cycle = ["single_choice", "multiple_choice", "short_answer", "true_false", "fill_blank"]
+    del exam_mode, difficulty
+    cycle = ["single_choice", "fill_blank"]
     return cycle[(item_order - 1) % len(cycle)]
 
 
@@ -203,6 +198,60 @@ def _difficulty_for_order(*, requested_difficulty: str, item_order: int) -> str:
         cycle = ["easy", "medium", "hard"]
         return cycle[(item_order - 1) % len(cycle)]
     return "medium"
+
+
+def _require_generated_questions_by_order(
+    *,
+    build_result,
+    expected_orders: list[int],
+) -> dict[int, dict[str, object]]:
+    if build_result.failed:
+        detail = str(build_result.error.detail if build_result.error is not None else "").strip()
+        raise AITeachMeError(
+            detail=detail or "Exam question generation failed.",
+            error_code="EXAM_QUESTION_BUILD_FAILED",
+            status_code=502,
+        )
+
+    state = build_result.require_value()
+    build_error = str(state.get("error") or "").strip()
+    if build_error:
+        raise AITeachMeError(
+            detail=build_error,
+            error_code="EXAM_QUESTION_BUILD_FAILED",
+            status_code=502,
+        )
+
+    generated_questions = state.get("generated_questions") or []
+    generated_by_order: dict[int, dict[str, object]] = {}
+    invalid_orders: list[object] = []
+    for item in generated_questions:
+        if not isinstance(item, dict):
+            invalid_orders.append(item)
+            continue
+        try:
+            item_order = int(item["item_order"])
+        except (KeyError, TypeError, ValueError):
+            invalid_orders.append(item.get("item_order"))
+            continue
+        generated_by_order[item_order] = item
+
+    if invalid_orders:
+        raise AITeachMeError(
+            detail=f"Exam question generation returned invalid item_order values: {invalid_orders}",
+            error_code="EXAM_QUESTION_BUILD_INVALID",
+            status_code=502,
+        )
+
+    missing_orders = [order for order in expected_orders if order not in generated_by_order]
+    if missing_orders:
+        raise AITeachMeError(
+            detail=f"Exam question generation returned incomplete results; missing item_order values: {missing_orders}",
+            error_code="EXAM_QUESTION_BUILD_INCOMPLETE",
+            status_code=502,
+        )
+
+    return generated_by_order
 
 
 def _upsert_generated_template(
@@ -573,6 +622,13 @@ async def generate_exam(
             error_code="NO_KNOWLEDGE_UNITS_FOR_EXAM",
             status_code=409,
         )
+    exam_units = [unit for unit in units if unit.id is not None]
+    if not exam_units:
+        raise AITeachMeError(
+            detail="No persisted KnowledgeUnits are available for exam generation.",
+            error_code="NO_PERSISTED_KNOWLEDGE_UNITS_FOR_EXAM",
+            status_code=409,
+        )
 
     mode = exam_mode_value(body.exam_mode)
     requested_difficulty = body.difficulty or "medium"
@@ -593,19 +649,21 @@ async def generate_exam(
                 item_order=order,
             ),
         )
-        for order, unit in enumerate(units, start=1)
-        if unit.id is not None
+        for order, unit in enumerate(exam_units, start=1)
     ]
     build_result = await run_question_build_workflow(
         subject=normalized,
         exam_mode=mode,
-        units=units,
+        units=exam_units,
         specs=question_specs,
         focus_prompt=body.focus_prompt or "",
         user_prompt=body.user_prompt or "",
         style_prompt=body.style_prompt or "",
     )
-    generated_questions = build_result.require_value().get("generated_questions") or []
+    generated_by_order = _require_generated_questions_by_order(
+        build_result=build_result,
+        expected_orders=[spec.item_order for spec in question_specs],
+    )
 
     paper = exams_repo.create_exam_paper(
         session,
@@ -614,12 +672,12 @@ async def generate_exam(
             user_id=user.user_id,
             exam_mode=mode,
             status="ready",
-            total_items=len(units),
-            total_score=float(len(units)),
+            total_items=len(exam_units),
+            total_score=float(len(exam_units)),
             selection_context_json=json.dumps(
                 {
                     "source": "knowledge_unit_llm",
-                    "knowledge_unit_ids": [unit.id for unit in units],
+                    "knowledge_unit_ids": [unit.id for unit in exam_units],
                     "focus_prompt": body.focus_prompt,
                     "user_prompt": body.user_prompt,
                     "style_prompt": body.style_prompt,
@@ -631,8 +689,7 @@ async def generate_exam(
         ),
     )
     items: list[ExamPaperItem] = []
-    generated_by_order = {int(item["item_order"]): item for item in generated_questions}
-    for order, unit in enumerate(units, start=1):
+    for order, unit in enumerate(exam_units, start=1):
         generated = generated_by_order[order]
         template = _upsert_generated_template(
             session,
@@ -800,6 +857,28 @@ async def exam_detail(
     if paper is None or paper.subject != normalized or paper.user_id != user.user_id:
         _raise_not_found(f"Exam paper `{exam_paper_id}` not found.")
     return ok_response(_paper_detail(session, paper))
+
+
+@router.delete(
+    "/{exam_paper_id}",
+    response_model=ApiResponse[ExamPaperDeleteResponse],
+    summary="Delete exam paper",
+    responses=build_error_responses([400, 404, 500]),
+)
+async def delete_exam_paper(
+    subject: str = Path(...),
+    exam_paper_id: int = Path(...),
+    user: CurrentUserContext = Depends(get_current_user_context),
+    session: Session = Depends(get_db),
+) -> ApiResponse[ExamPaperDeleteResponse]:
+    normalized = normalize_subject_slug(subject)
+    _ensure_subject(session, normalized, user.user_id)
+    paper = exams_repo.get_exam_paper_by_id(session, exam_paper_id)
+    if paper is None or paper.subject != normalized or paper.user_id != user.user_id:
+        _raise_not_found(f"Exam paper `{exam_paper_id}` not found.")
+
+    exams_repo.delete_exam_paper_cascade(session, paper_id=exam_paper_id)
+    return ok_response(ExamPaperDeleteResponse(deleted=True, exam_paper_id=exam_paper_id))
 
 
 @router.get(

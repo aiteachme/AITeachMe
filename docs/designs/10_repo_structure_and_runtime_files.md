@@ -88,9 +88,12 @@ backend/app/api/knowledge_docs.py
 1. `backend/app/api/knowledge_docs.py`
 2. `backend/app/workflows/digest/planner/README.md`
 3. `backend/app/workflows/digest/planner/graph.py`
-4. `backend/app/workflows/digest/docgen/README.md`
+4. `backend/app/workflows/digest/docgen/FLOW_DESIGN.md`
 5. `backend/app/workflows/digest/docgen/graph.py`
-6. `backend/app/workflows/digest/docgen/lib/models.py`
+6. `backend/app/workflows/digest/docgen/state.py`
+7. `backend/app/workflows/digest/docgen/lib/models.py`
+
+其中 `docgen/` 目录当前只保留 `FLOW_DESIGN.md` 这一份文档文件；入口说明和流程判断都以它为准。
 
 ## 5. 运行时文件
 
@@ -140,10 +143,11 @@ backend/data/<subject>/
 | `knowledge_markdowns/docgen_manifest.json` | 发布 manifest |
 | `knowledge_markdowns/versions/vXXXX/` | 历史版本 |
 
-课程包共享目录：
+演示课程主源：
 
 ```text
-backend/data/_courses/
+S3_PUBLIC_BASE_URL -> https://<your-cdn-domain>
+固定课程索引 -> <S3_PUBLIC_BASE_URL>/demo-courses/catalog/v1/index.json
 ```
 
 前端构建产物：

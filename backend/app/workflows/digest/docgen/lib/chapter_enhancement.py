@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 
+from app.shared.infra.settings import get_settings
 from app.shared.infra.execution import TracedExecutionContext
 from app.shared.infra.tools.builtin.latex_processing import normalize_math_delimiters, validate_latex
 from app.shared.infra.tools.builtin.markdown_processing import (
@@ -13,6 +14,7 @@ from app.shared.infra.tools.builtin.markdown_processing import (
 )
 from app.workflows.digest.docgen.lib.asset_requests import build_asset_request_block, extract_asset_request_descriptions, strip_asset_requests
 from app.workflows.digest.docgen.lib.assets import DocGenAssetRuntime
+from app.workflows.digest.docgen.lib.interactive_html import maybe_generate_interactive_html_asset
 from app.workflows.digest.docgen.lib.models import (
     AssetManifest,
     ChapterDraft,
@@ -118,6 +120,15 @@ def _append_practice_section(markdown: str, questions: list[dict]) -> str:
     return "\n".join(lines).strip() + "\n"
 
 
+def _append_interactive_block(markdown: str, asset: dict[str, object] | None) -> str:
+    if not asset:
+        return markdown
+    link_markdown = str(asset.get("link_markdown") or "").strip()
+    if not link_markdown:
+        return markdown
+    return markdown.rstrip() + "\n\n" + link_markdown + "\n"
+
+
 async def enhance_chapter_draft(
     draft: ChapterDraft,
     *,
@@ -134,6 +145,7 @@ async def enhance_chapter_draft(
     """
 
     markdown = _ensure_requested_placeholders(draft.markdown, draft.placeholder_requests)
+    settings = get_settings()
     mermaid_placeholders = [item.strip() for item in extract_asset_request_descriptions(markdown, kind="mermaid")]
     image_placeholders = [item.strip() for item in extract_asset_request_descriptions(markdown, kind="image")]
     interactive_placeholders = [item.strip() for item in extract_asset_request_descriptions(markdown, kind="interactive")]
@@ -161,7 +173,10 @@ async def enhance_chapter_draft(
             warnings.append("已移除图片占位；DocGen 当前不直接生成讲义配图。")
         if interactive_placeholders:
             markdown = strip_asset_requests(markdown, kinds={"interactive"})
-            warnings.append("已移除交互占位；后端仅发布标准 Markdown，交互展示交给前端能力处理。")
+            if settings.docgen.generate_interactive_html:
+                warnings.append("已移除旧式交互占位；本轮会按章节启发式尝试生成 HTML 交互页 sidecar。")
+            else:
+                warnings.append("已移除交互占位；当前未启用知识文档交互页生成。")
     except Exception as exc:
         warnings.append(f"章节增强失败，已保留原始正文：{str(exc)[:120]}")
     markdown = strip_asset_requests(markdown)
@@ -169,6 +184,24 @@ async def enhance_chapter_draft(
     markdown = validate_latex(markdown)
     markdown = normalize_markdown_rendering(markdown)
     markdown = normalize_mermaid_blocks(markdown)
+
+    interactive_asset: dict[str, object] | None = None
+    if settings.docgen.generate_interactive_html:
+        try:
+            traced_context.asset_kind = "interactive"
+            interactive_asset = await maybe_generate_interactive_html_asset(
+                draft=draft,
+                traced_context=traced_context,
+                digest_mode=digest_mode,
+                claim_ledger=claim_ledger,
+                document_backbone=document_backbone,
+            )
+            if interactive_asset is not None:
+                markdown = _append_interactive_block(markdown, interactive_asset)
+                assets.append(interactive_asset)
+        except Exception as exc:
+            warnings.append(f"交互页生成失败，已跳过交互增强：{str(exc)[:120]}")
+
     questions = _build_practice_questions(
         draft,
         digest_mode=digest_mode,

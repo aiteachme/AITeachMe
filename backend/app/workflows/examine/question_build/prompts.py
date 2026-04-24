@@ -18,10 +18,8 @@ _LATEX_FORMAT_RULES = (
 _QUESTION_TYPE_FORMAT_RULES = (
     "\nQuestion type formatting rules:\n"
     "- single_choice: provide exactly 4 distinct options; correct_answer must exactly equal one option.\n"
-    "- multiple_choice: provide exactly 4 distinct options prefixed A./B./C./D.; correct_answer must be comma-separated labels such as A,C.\n"
-    "- true_false: omit options or use exactly ['True', 'False']; correct_answer must be True or False.\n"
     "- fill_blank: do not provide options; correct_answer must be short and unique.\n"
-    "- short_answer: do not provide options; answer and explanation must include key scoring points.\n"
+    "- Only return question_type values that appear in question_specs; do not invent unsupported types.\n"
 )
 
 SYSTEM_PROMPT_EXAM_QUESTION_BUILD = """
@@ -33,7 +31,6 @@ SYSTEM_PROMPT_EXAM_QUESTION_BUILD = """
 - 题干表达准确、自然、无歧义
 - 选项题必须只有一个最佳答案，干扰项要“看起来合理但本质错误”
 - 填空题答案必须简洁唯一，不得依赖模糊表述
-- 简答题要能真正考查理解、辨析、方法应用或推理
 - 解析要简洁但有教学价值，指出为什么对、为什么错、考点是什么
 
 输出必须完全遵守结构化 schema，不要输出任何额外说明。
@@ -68,7 +65,7 @@ def build_exam_question_messages(
         "2. question_type 和 difficulty 必须严格匹配给定规格。\n"
         "3. single_choice 必须提供 4 个不同选项，且 correct_answer 必须精确等于其中一个选项。\n"
         "4. fill_blank 不要提供 options，答案要简短唯一。\n"
-        "5. short_answer 不要提供 options，答案与 explanation 要体现关键评分点。\n"
+        "5. 当前只允许生成 single_choice 和 fill_blank，不要返回 true_false、short_answer、multiple_choice 或其他题型。\n"
         "6. 题干不要直接泄露答案；解析不要空泛。\n"
         "7. 优先考查理解、辨析、应用、迁移，不要只考死记硬背。\n\n"
         "输入数据如下：\n"

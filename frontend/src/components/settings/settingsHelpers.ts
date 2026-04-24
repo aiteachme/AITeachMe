@@ -4,15 +4,15 @@ import type {
   SettingPrimitive,
   SettingSection,
   SettingSource,
-} from "./types";
+} from "./settingsTypes";
 
 export function isCredentialKey(key: string): boolean {
-  const k = key.toLowerCase();
+  const normalizedKey = key.toLowerCase();
   return (
-    k.includes("key") ||
-    k.includes("token") ||
-    k.includes("secret") ||
-    k.includes("password")
+    normalizedKey.includes("key") ||
+    normalizedKey.includes("token") ||
+    normalizedKey.includes("secret") ||
+    normalizedKey.includes("password")
   );
 }
 
@@ -67,10 +67,12 @@ export function buildSettingsPayload(
 ): Record<string, unknown> {
   const allowed = new Set(entries.map((entry) => entry.key));
   const root: Record<string, unknown> = {};
+
   Object.entries(draft).forEach(([key, value]) => {
     if (!allowed.has(key)) {
       return;
     }
+
     const parts = key.split(".");
     let cursor = root;
     parts.forEach((part, index) => {
@@ -88,6 +90,7 @@ export function buildSettingsPayload(
       cursor = cursor[part] as Record<string, unknown>;
     });
   });
+
   return root;
 }
 
@@ -118,8 +121,8 @@ export function parseInputValue(
   currentValue: SettingPrimitive,
 ): SettingPrimitive {
   if (typeof currentValue === "number") {
-    const next = Number(raw);
-    return Number.isFinite(next) ? next : currentValue;
+    const nextValue = Number(raw);
+    return Number.isFinite(nextValue) ? nextValue : currentValue;
   }
   if (currentValue === null) {
     const normalized = raw.trim().toLowerCase();

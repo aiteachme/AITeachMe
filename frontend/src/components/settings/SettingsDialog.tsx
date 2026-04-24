@@ -2,26 +2,36 @@ import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 
-import {
-  SYSTEM_SETTINGS_CHANGED_EVENT,
-  getStoredSystemSettingsOverview,
-} from "../../lib/systemSettings";
+import { useTheme, type Theme } from "../providers/ThemeProvider";
 
-import { SETTINGS_STYLES } from "./constants";
+import { FieldLabelBlock, SelectInput } from "./SettingsFields";
+import { RuntimeSettingsSection } from "./RuntimeSettingsSection";
 import { SettingsFooter } from "./SettingsFooter";
-import { SettingsNav } from "./SettingsNav";
-import { ConfiguredSettingsSection } from "./sections/ConfiguredSettingsSection";
+import { SettingsSidebar } from "./SettingsSidebar";
+import { SETTINGS_STYLES } from "./settingsStyles";
+import type { SectionId, SettingSection } from "./settingsTypes";
 import { useSettingsOverview } from "./useSettingsOverview";
-import type { SectionId } from "./types";
 
-interface SettingsPanelProps {
+interface SettingsDialogProps {
   isOpen: boolean;
   onClose: () => void;
 }
 
-export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
+const SYSTEM_SECTION: SettingSection = {
+  id: "system_ui",
+  label: "系统",
+  description: "配置当前浏览器中的界面主题，修改后会立即生效。",
+};
+
+const THEME_OPTIONS: Array<{ value: Theme; label: string }> = [
+  { value: "light", label: "浅色" },
+  { value: "dark", label: "深色" },
+  { value: "system", label: "跟随系统" },
+];
+
+export function SettingsDialog({ isOpen, onClose }: SettingsDialogProps) {
+  const { theme, setTheme } = useTheme();
   const [activeSection, setActiveSection] = useState<SectionId>("");
-  const [storedOverview, setStoredOverview] = useState(() => getStoredSystemSettingsOverview());
   const {
     overview,
     isOverviewLoading,
@@ -38,24 +48,13 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
     saveAll,
   } = useSettingsOverview({ isOpen });
 
-  const effectiveOverview = overview ?? storedOverview;
-  const sections = effectiveOverview?.sections ?? [];
-  const runtimeMode = effectiveOverview?.mode ?? "local";
-  const isLocalRuntime = runtimeMode === "local";
-
-  useEffect(() => {
-    if (typeof window === "undefined") {
-      return;
-    }
-
-    const handleSettingsChanged = () => {
-      const next = getStoredSystemSettingsOverview();
-      setStoredOverview(next);
-    };
-
-    window.addEventListener(SYSTEM_SETTINGS_CHANGED_EVENT, handleSettingsChanged);
-    return () => window.removeEventListener(SYSTEM_SETTINGS_CHANGED_EVENT, handleSettingsChanged);
-  }, []);
+  const isCloudRuntime = overview?.mode === "cloud";
+  const sections = useMemo(
+    () => (isCloudRuntime ? [SYSTEM_SECTION] : [...(overview?.sections ?? []), SYSTEM_SECTION]),
+    [isCloudRuntime, overview?.sections],
+  );
+  const isLocalRuntime = !isCloudRuntime;
+  const hasChanges = hasServerChanges || hasEnvChanges;
 
   useEffect(() => {
     if (!isOpen) return;
@@ -87,10 +86,7 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
     };
   }, [isOpen]);
 
-  const activeSectionConfig = useMemo(
-    () => sections.find((section) => section.id === activeSection) ?? sections[0],
-    [activeSection, sections],
-  );
+  const activeSectionConfig = sections.find((section) => section.id === activeSection) ?? sections[0];
 
   if (!isOpen) return null;
 
@@ -99,7 +95,7 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
       <div className={SETTINGS_STYLES.panel.backdrop} onClick={onClose} />
       <div className={SETTINGS_STYLES.panel.viewport}>
         <div className={SETTINGS_STYLES.panel.dialog}>
-          <SettingsNav
+          <SettingsSidebar
             activeSection={activeSection}
             onSelect={setActiveSection}
             sections={sections}
@@ -127,23 +123,48 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
 
             <div className={SETTINGS_STYLES.panel.scrollArea}>
               <div key={activeSection} className={SETTINGS_STYLES.panel.sectionFrame}>
-                <ConfiguredSettingsSection
-                  section={activeSectionConfig}
-                  isLocalRuntime={isLocalRuntime}
-                  settingsDraft={settingsDraft}
-                  envDraft={envDraft}
-                  onServerChange={patchServerSetting}
-                  onEnvChange={patchEnvSetting}
-                  loading={isOverviewLoading}
-                  error={overviewError}
-                />
+                {activeSection === "system_ui" ? (
+                  <div className={SETTINGS_STYLES.section.root}>
+                    <div className={SETTINGS_STYLES.section.groupBlock}>
+                      <div className={SETTINGS_STYLES.section.cardWrapper}>
+                        <div className={SETTINGS_STYLES.list.item}>
+                          <FieldLabelBlock
+                            label="界面主题"
+                            description="切换浅色、深色或跟随系统。修改后会立即写入当前浏览器并生效。"
+                            htmlFor="system-ui-theme"
+                          />
+
+                          <div className={SETTINGS_STYLES.list.controlWrap}>
+                            <SelectInput
+                              id="system-ui-theme"
+                              value={theme}
+                              onChange={(value) => setTheme(value as Theme)}
+                              options={THEME_OPTIONS}
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <RuntimeSettingsSection
+                    section={activeSectionConfig}
+                    isLocalRuntime={isLocalRuntime}
+                    settingsDraft={settingsDraft}
+                    envDraft={envDraft}
+                    onServerChange={patchServerSetting}
+                    onEnvChange={patchEnvSetting}
+                    loading={isOverviewLoading}
+                    error={overviewError}
+                  />
+                )}
               </div>
             </div>
 
             <SettingsFooter
               saveState={saveState}
               saveError={saveError}
-              hasChanges={hasServerChanges || hasEnvChanges}
+              hasChanges={hasChanges}
               isLocalRuntime={isLocalRuntime}
               onReset={resetServerDrafts}
               onSave={() => void saveAll()}
@@ -154,7 +175,5 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
     </div>
   );
 
-  return typeof document !== "undefined"
-    ? createPortal(panel, document.body)
-    : panel;
+  return typeof document !== "undefined" ? createPortal(panel, document.body) : panel;
 }

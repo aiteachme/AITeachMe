@@ -12,7 +12,6 @@ from typing import Any, Literal
 
 from langgraph.graph import END, StateGraph
 from langgraph.types import Send
-
 from app.shared.infra.workflow import workflow_tracer
 from app.shared.infra.workflow.context import WorkflowContext, create_langgraph_dev_context
 from app.shared.infra.workflow.events import InProcessEventBus
@@ -27,15 +26,18 @@ from app.workflows.digest.common.metrics import build_token_summary
 from app.workflows.digest.docgen.lib.defaults import DEFAULT_DOCGEN_MAX_PARALLEL_CHAPTERS
 from app.workflows.digest.docgen.lib.reporting import build_docgen_lane_summary
 from app.workflows.digest.docgen.nodes import (
-    build_confirm_and_dispatch_node,
+    build_assemble_chapter_tasks_node,
+    build_chapter_execution_briefs_node,
+    build_confirm_and_seed_backbone_node,
     build_document_backbone_node,
     build_document_consistency_review_node,
     build_enhance_chapters_node,
     build_finalize_titles_node,
     build_generate_chapters_node,
+    build_lock_titles_for_chapters_node,
     build_load_context_node,
     build_merge_review_node,
-    build_prepare_parallel_inputs_node,
+    build_prepare_global_seed_node,
     build_publish_document_node,
     build_repair_or_route_node,
     build_review_chapter_node,
@@ -44,9 +46,12 @@ from app.workflows.digest.docgen.nodes.common import resolve_docgen_retrieval_pr
 from app.workflows.digest.docgen.state import DocGenState
 
 NODE_LOAD_CONTEXT = "读取确认方案"
-NODE_PREPARE_CONTEXT = "并行准备写作上下文"
-NODE_DISPATCH = "确认章节生成计划"
+NODE_PREPARE_GLOBAL_SEED = "准备全局种子"
+NODE_LOCK_TITLES = "锁定章节标题"
+NODE_CONFIRM_BACKBONE_SEED = "确认骨架种子"
 NODE_BUILD_BACKBONE = "构建文档知识骨架"
+NODE_BUILD_CHAPTER_BRIEFS = "生成章节执行简报"
+NODE_ASSEMBLE_CHAPTER_TASKS = "组装最终章节任务"
 NODE_GENERATE_CHAPTERS = "生成章节草稿"
 NODE_ENHANCE_CHAPTERS = "增强章节内容"
 NODE_REVIEW_CHAPTERS = "复核章节内容"
@@ -76,19 +81,27 @@ def build_docgen_graph(*, context: WorkflowContext) -> StateGraph:
         trace.node(build_load_context_node(context=context), name=NODE_LOAD_CONTEXT, timing_field="load_ms"),
     )
     workflow.add_node(
-        NODE_PREPARE_CONTEXT,
+        NODE_PREPARE_GLOBAL_SEED,
         trace.node(
-            build_prepare_parallel_inputs_node(context=context),
-            name=NODE_PREPARE_CONTEXT,
+            build_prepare_global_seed_node(context=context),
+            name=NODE_PREPARE_GLOBAL_SEED,
             timing_field="prepare_ms",
         ),
     )
     workflow.add_node(
-        NODE_DISPATCH,
+        NODE_LOCK_TITLES,
         trace.node(
-            build_confirm_and_dispatch_node(context=context),
-            name=NODE_DISPATCH,
-            timing_field="dispatch_ms",
+            build_lock_titles_for_chapters_node(context=context),
+            name=NODE_LOCK_TITLES,
+            timing_field="title_lock_ms",
+        ),
+    )
+    workflow.add_node(
+        NODE_CONFIRM_BACKBONE_SEED,
+        trace.node(
+            build_confirm_and_seed_backbone_node(context=context),
+            name=NODE_CONFIRM_BACKBONE_SEED,
+            timing_field="seed_backbone_ms",
         ),
     )
     workflow.add_node(
@@ -97,6 +110,22 @@ def build_docgen_graph(*, context: WorkflowContext) -> StateGraph:
             build_document_backbone_node(context=context),
             name=NODE_BUILD_BACKBONE,
             timing_field="backbone_ms",
+        ),
+    )
+    workflow.add_node(
+        NODE_BUILD_CHAPTER_BRIEFS,
+        trace.node(
+            build_chapter_execution_briefs_node(context=context),
+            name=NODE_BUILD_CHAPTER_BRIEFS,
+            timing_field="chapter_prepare_ms",
+        ),
+    )
+    workflow.add_node(
+        NODE_ASSEMBLE_CHAPTER_TASKS,
+        trace.node(
+            build_assemble_chapter_tasks_node(context=context),
+            name=NODE_ASSEMBLE_CHAPTER_TASKS,
+            timing_field="assemble_tasks_ms",
         ),
     )
     workflow.add_node(
@@ -140,20 +169,35 @@ def build_docgen_graph(*, context: WorkflowContext) -> StateGraph:
     workflow.add_conditional_edges(
         NODE_LOAD_CONTEXT,
         route_after_step_for_trace,
-        {"continue": NODE_PREPARE_CONTEXT, "fail": END},
+        {"continue": NODE_PREPARE_GLOBAL_SEED, "fail": END},
     )
     workflow.add_conditional_edges(
-        NODE_PREPARE_CONTEXT,
+        NODE_PREPARE_GLOBAL_SEED,
         route_after_step_for_trace,
-        {"continue": NODE_DISPATCH, "fail": END},
+        {"continue": NODE_LOCK_TITLES, "fail": END},
     )
     workflow.add_conditional_edges(
-        NODE_DISPATCH,
+        NODE_LOCK_TITLES,
+        route_after_step_for_trace,
+        {"continue": NODE_CONFIRM_BACKBONE_SEED, "fail": END},
+    )
+    workflow.add_conditional_edges(
+        NODE_CONFIRM_BACKBONE_SEED,
         route_after_step_for_trace,
         {"continue": NODE_BUILD_BACKBONE, "fail": END},
     )
     workflow.add_conditional_edges(
         NODE_BUILD_BACKBONE,
+        route_after_step_for_trace,
+        {"continue": NODE_BUILD_CHAPTER_BRIEFS, "fail": END},
+    )
+    workflow.add_conditional_edges(
+        NODE_BUILD_CHAPTER_BRIEFS,
+        route_after_step_for_trace,
+        {"continue": NODE_ASSEMBLE_CHAPTER_TASKS, "fail": END},
+    )
+    workflow.add_conditional_edges(
+        NODE_ASSEMBLE_CHAPTER_TASKS,
         build_generation_sends_for_trace,
         {"fail": END},
     )

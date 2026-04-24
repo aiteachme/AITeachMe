@@ -21,7 +21,7 @@ def test_find_unit_with_rag_reuses_existing_unit(monkeypatch):
 
         return [Hit()]
 
-    async def fake_aembed_texts(texts, *, batch_size=None):
+    async def fake_aembed_texts(texts, *, batch_size=None, soft_fail=False):
         return [[1.0, 0.0] for _ in texts]
 
     monkeypatch.setattr(incremental_sync, "search_knowledge", fake_search_knowledge)

@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useEffect, useMemo, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft,
   ArrowRight,
@@ -14,6 +14,7 @@ import {
   Sparkles,
   Tags,
   Target,
+  Trash2,
   ZoomIn,
   ZoomOut,
 } from "lucide-react";
@@ -89,6 +90,11 @@ interface ExamStudyGuideResponse {
   focus_units: ExamStudyGuideFocusUnit[];
 }
 
+interface ExamPaperDeleteResponse {
+  deleted: boolean;
+  exam_paper_id: number;
+}
+
 interface QuestionTemplateItem {
   id: number;
   subject: string;
@@ -132,6 +138,15 @@ async function getExamStudyGuide(subjectId: string, paperId: number, signal?: Ab
     {
       method: "GET",
       signal,
+    },
+  );
+}
+
+async function deleteExamPaper(subjectId: string, paperId: number) {
+  return orvalApiClient<{ data?: { code?: number; message?: string; data?: ExamPaperDeleteResponse } }>(
+    `/api/v1/subjects/${subjectId}/exams/${paperId}`,
+    {
+      method: "DELETE",
     },
   );
 }
@@ -1085,6 +1100,8 @@ function ExamPaperWorkspace({ subjectId, paperId, backHref }: ExamPaperWorkspace
 export function ExamsPage() {
   const { subjectId } = useParams();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [expandedGroups, setExpandedGroups] = useState({
     active: true,
@@ -1107,6 +1124,32 @@ export function ExamsPage() {
     [historyItems],
   );
 
+  const deleteExamMutation = useMutation({
+    mutationFn: async (paperId: number) => {
+      if (!subjectId) {
+        throw new Error("缺少学科标识，无法删除考卷。");
+      }
+      return deleteExamPaper(subjectId, paperId);
+    },
+    onSuccess: async (_response, paperId) => {
+      await queryClient.invalidateQueries({
+        queryKey: getExamHistoryApiV1SubjectsSubjectExamsHistoryGetQueryKey(subjectId ?? "", { page: 1, size: 24 }),
+      });
+      toast({
+        title: "考卷已删除",
+        description: `已删除考卷 #${paperId}。`,
+        variant: "success",
+      });
+    },
+    onError: (error) => {
+      toast({
+        title: "删除失败",
+        description: getApiErrorMessage(error, "请稍后重试"),
+        variant: "error",
+      });
+    },
+  });
+
   if (!subjectId) {
     return (
       <div className="min-h-[calc(100vh-4rem)] bg-[#f7f8fc] px-6 py-8">
@@ -1119,21 +1162,21 @@ export function ExamsPage() {
 
   return (
     <>
-      <div className="min-h-[calc(100vh-4rem)] bg-[linear-gradient(180deg,#fbfcff_0%,#f4f7fb_55%,#eef3f8_100%)] px-4 py-6 sm:px-6 lg:px-8">
+      <div className="min-h-[calc(100vh-4rem)] bg-[linear-gradient(180deg,#fbfcff_0%,#f4f7fb_55%,#eef3f8_100%)] dark:bg-none dark:bg-slate-900 px-4 py-6 sm:px-6 lg:px-8">
         <div className="mx-auto flex max-w-7xl flex-col gap-6">
           <section className="overflow-hidden px-2 py-4 sm:px-4 lg:px-6">
             <div className="flex flex-col gap-8 lg:flex-row lg:items-center lg:justify-between">
               <div className="max-w-3xl">
-                <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white/80 px-3 py-1 text-sm font-medium text-slate-600">
+                <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 dark:border-slate-800 bg-white/80 dark:bg-slate-800/80 px-3 py-1 text-sm font-medium text-slate-600 dark:text-slate-300">
                   <Sparkles className="h-4 w-4 text-sky-500" />
                   Exam Studio
                 </div>
 
-                <h1 className="mt-5 text-4xl font-semibold tracking-[-0.04em] text-slate-950 sm:text-5xl">
+                <h1 className="mt-5 text-4xl font-semibold tracking-[-0.04em] text-slate-950 dark:text-slate-100 sm:text-5xl">
                   所有考试卷都在这里
                 </h1>
 
-                <p className="mt-4 max-w-2xl text-base leading-8 text-slate-600 sm:text-lg">
+                <p className="mt-4 max-w-2xl text-base leading-8 text-slate-600 dark:text-slate-400 sm:text-lg">
                   一键创建新的练习卷，继续完成未做完的测试，也可以回看已经生成过的考卷与得分记录。
                 </p>
 
@@ -1149,7 +1192,7 @@ export function ExamsPage() {
                   <Button
                     size="lg"
                     variant="outline"
-                    className="h-14 rounded-full px-6 text-base font-semibold text-slate-800"
+                    className="h-14 rounded-full px-6 text-base font-semibold text-slate-800 dark:text-slate-200 dark:border-slate-700"
                     onClick={() => navigate(`/subject/${subjectId}/exams/question-templates`)}
                   >
                     <BookOpen className="h-5 w-5" />
@@ -1158,7 +1201,7 @@ export function ExamsPage() {
                   <Button
                     size="lg"
                     variant="outline"
-                    className="h-14 rounded-full px-6 text-base font-semibold text-slate-800"
+                    className="h-14 rounded-full px-6 text-base font-semibold text-slate-800 dark:text-slate-200 dark:border-slate-700"
                     onClick={() => navigate(`/subject/${subjectId}/exams/question-types`)}
                   >
                     <Tags className="h-5 w-5" />
@@ -1185,25 +1228,6 @@ export function ExamsPage() {
                 </div>
               )}
 
-              {!historyQuery.isLoading && !historyQuery.error && historyItems.length === 0 && (
-                <div className="px-1 py-6">
-                  <div className="grid h-14 w-14 place-items-center rounded-2xl bg-slate-900 text-white">
-                    <GraduationCap className="h-6 w-6" />
-                  </div>
-                  <h3 className="mt-5 text-xl font-semibold text-slate-950">还没有考卷</h3>
-                  <p className="mt-3 max-w-xl text-sm leading-7 text-slate-500">
-                    从这里创建第一份试卷。你可以选择专项练习或整卷测试，也可以输入想重点考察的知识范围。
-                  </p>
-                  <Button
-                    size="lg"
-                    className="mt-6 rounded-full bg-black px-6"
-                    onClick={() => setIsCreateOpen(true)}
-                  >
-                    <Plus className="h-5 w-5" />
-                    创建第一份考卷
-                  </Button>
-                </div>
-              )}
 
               {[
                 { key: "active" as const, title: "待完成的考卷", items: activeHistoryItems },
@@ -1220,10 +1244,10 @@ export function ExamsPage() {
                     }
                     className="flex w-full items-center justify-between px-1 py-2 text-left"
                   >
-                    <h3 className="text-lg font-semibold tracking-[-0.02em] text-slate-950">
+                    <h3 className="text-lg font-semibold tracking-[-0.02em] text-slate-950 dark:text-slate-100">
                       {group.title}({group.items.length})
                     </h3>
-                    <div className="grid h-10 w-10 place-items-center rounded-full text-slate-500">
+                    <div className="grid h-10 w-10 place-items-center rounded-full text-slate-500 dark:text-slate-400">
                       <ChevronDown
                         className={`h-5 w-5 transition-transform ${
                           expandedGroups[group.key] ? "rotate-180" : ""
@@ -1243,12 +1267,35 @@ export function ExamsPage() {
                             item.score_obtained != null && item.total_score != null
                               ? `${item.score_obtained}/${item.total_score}`
                               : "未评分";
+                          const isDeleting = deleteExamMutation.isPending && deleteExamMutation.variables === item.id;
+
+                          const handleDeleteExam = (event: MouseEvent<HTMLButtonElement>) => {
+                            event.stopPropagation();
+                            if (isDeleting) return;
+                            const confirmed = window.confirm(
+                              `确认删除这份考卷吗？\n\n${buildExamTitle(item)}\n\n删除后无法恢复。`,
+                            );
+                            if (!confirmed) return;
+                            deleteExamMutation.mutate(item.id);
+                          };
+
+                          const handleOpenExam = () => {
+                            navigate(`/subject/${subjectId}/exams/${item.id}`);
+                          };
+
+                          const handleCardKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+                            if (event.key !== "Enter" && event.key !== " ") return;
+                            event.preventDefault();
+                            handleOpenExam();
+                          };
 
                           return (
-                            <button
+                            <div
                               key={item.id}
-                              type="button"
-                              onClick={() => navigate(`/subject/${subjectId}/exams/${item.id}`)}
+                              role="button"
+                              tabIndex={0}
+                              onClick={handleOpenExam}
+                              onKeyDown={handleCardKeyDown}
                               className="group w-full rounded-[28px] border border-slate-200/80 bg-[linear-gradient(180deg,#ffffff_0%,#fbfcff_100%)] px-5 py-5 text-left transition duration-200 hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-[0_18px_45px_rgba(15,23,42,0.08)] sm:px-6"
                             >
                               <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
@@ -1259,7 +1306,7 @@ export function ExamsPage() {
 
                                   <div className="min-w-0">
                                     <div className="flex flex-wrap items-center gap-3">
-                                      <h3 className="truncate text-xl font-semibold tracking-[-0.03em] text-slate-950">
+                                      <h3 className="truncate text-xl font-semibold tracking-[-0.03em] text-slate-950 dark:text-slate-100">
                                         {buildExamTitle(item)}
                                       </h3>
                                       <span className={`rounded-full px-3 py-1 text-xs font-semibold ${statusMeta.tone}`}>
@@ -1267,7 +1314,7 @@ export function ExamsPage() {
                                       </span>
                                     </div>
 
-                                    <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-2 text-sm text-slate-500">
+                                    <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-2 text-sm text-slate-500 dark:text-slate-400">
                                       <span className="inline-flex items-center gap-2">
                                         <Layers3 className="h-4 w-4" />
                                         {formatModeLabel(item.exam_mode)}
@@ -1283,10 +1330,10 @@ export function ExamsPage() {
                                     </div>
 
                                     <div className="mt-4 flex flex-wrap items-center gap-3">
-                                      <div className="rounded-full bg-slate-100 px-3 py-1.5 text-sm font-medium text-slate-700">
+                                      <div className="rounded-full bg-slate-100 dark:bg-slate-800 px-3 py-1.5 text-sm font-medium text-slate-700 dark:text-slate-300">
                                         得分：{scoreText}
                                       </div>
-                                      <div className="rounded-full bg-slate-100 px-3 py-1.5 text-sm font-medium text-slate-700">
+                                      <div className="rounded-full bg-slate-100 dark:bg-slate-800 px-3 py-1.5 text-sm font-medium text-slate-700 dark:text-slate-300">
                                         学科：{item.subject}
                                       </div>
                                     </div>
@@ -1294,19 +1341,33 @@ export function ExamsPage() {
                                 </div>
 
                                 <div className="flex items-center justify-between gap-4 lg:justify-end">
-                                  <div className="text-sm text-slate-400">
-                                    {item.graded_at
-                                      ? `最近批改 ${formatDateTime(item.graded_at)}`
-                                      : item.submitted_at
-                                        ? `最近提交 ${formatDateTime(item.submitted_at)}`
-                                        : "点击进入考试"}
+                                  <div className="flex items-center gap-3">
+                                    <div className="text-sm text-slate-400">
+                                      {item.graded_at
+                                        ? `最近批改 ${formatDateTime(item.graded_at)}`
+                                        : item.submitted_at
+                                          ? `最近提交 ${formatDateTime(item.submitted_at)}`
+                                          : "点击进入考试"}
+                                    </div>
+                                    <Button
+                                      type="button"
+                                      size="icon"
+                                      variant="outline"
+                                      className="h-12 w-12 rounded-full border-red-200 bg-white text-red-500 hover:bg-red-50 hover:text-red-600"
+                                      aria-label={`删除考卷 ${buildExamTitle(item)}`}
+                                      title="删除考卷"
+                                      disabled={isDeleting}
+                                      onClick={handleDeleteExam}
+                                    >
+                                      <Trash2 className="h-[18px] w-[18px]" />
+                                    </Button>
                                   </div>
-                                  <div className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-slate-100 text-slate-600 transition group-hover:bg-slate-900 group-hover:text-white">
+                                  <div className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 transition group-hover:bg-slate-900 dark:group-hover:bg-slate-700 group-hover:text-white">
                                     <ChevronRight className="h-5 w-5" />
                                   </div>
                                 </div>
                               </div>
-                            </button>
+                            </div>
                           );
                         })
                       )}
@@ -1387,7 +1448,7 @@ function ExamCatalogShell({
 }) {
   const navigate = useNavigate();
   return (
-    <div className="min-h-[calc(100vh-4rem)] bg-[linear-gradient(180deg,#fbfcff_0%,#f4f7fb_55%,#eef3f8_100%)] px-4 py-6 sm:px-6 lg:px-8">
+    <div className="min-h-[calc(100vh-4rem)] bg-[linear-gradient(180deg,#fbfcff_0%,#f4f7fb_55%,#eef3f8_100%)] dark:bg-none dark:bg-slate-900 px-4 py-6 sm:px-6 lg:px-8">
       <div className="mx-auto flex max-w-7xl flex-col gap-6">
         <header className="px-2 py-4 sm:px-4 lg:px-6">
           <button

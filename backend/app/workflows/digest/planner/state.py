@@ -49,6 +49,7 @@ class BuildPlannerState(TypedDict, total=False):
     prepare_ms: int
     bootstrap_ms: int
     compose_ms: int
+    title_ms: int
     finalize_ms: int
 
     # Runtime callbacks and failure marker
@@ -93,6 +94,7 @@ BuildPlannerGraphOutput = project_typed_dict_schema(
         "prepare_ms",
         "bootstrap_ms",
         "compose_ms",
+        "title_ms",
         "finalize_ms",
         "error",
     ],
