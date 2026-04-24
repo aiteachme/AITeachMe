@@ -27,11 +27,13 @@ from app.shared.infra.storage import (
 from app.models import (
     ChatMessage,
     ChatSession,
+    ConfirmedBuildPlan,
     ExamPaper,
     ExamPaperItem,
     KnowledgeDocument,
     KnowledgeEdge,
     KnowledgeUnit,
+    QuestionTypeRegistry,
     QuestionTemplate,
     RawFile,
     RetrievalChunk,
@@ -46,6 +48,11 @@ from app.schemas.export_import import (
 from app.utils.path_helpers import sanitize_doc_title
 from app.utils.subject import generate_subject_id
 from app.utils.time import utcnow
+from app.workflows.support.subjects.icons import (
+    SUBJECT_ICON_SETTINGS_KEY,
+    infer_subject_icon_key,
+    normalize_subject_icon_key,
+)
 
 logger = structlog.get_logger()
 
@@ -66,6 +73,8 @@ class _ManifestStats(BaseModel):
     knowledge_document_count: int = 0
     knowledge_unit_count: int = 0
     knowledge_edge_count: int = 0
+    confirmed_build_plan_count: int = 0
+    question_type_registry_count: int = 0
     question_template_count: int = 0
     exam_paper_count: int = 0
     chat_session_count: int = 0
@@ -137,6 +146,11 @@ TABLE_REGISTRY: list[_TableSpec] = [
         },
     ),
     _TableSpec(
+        "question_type_registry",
+        QuestionTypeRegistry,
+        optional_group="exam",
+    ),
+    _TableSpec(
         "question_template",
         QuestionTemplate,
         fk_remap={
@@ -178,6 +192,12 @@ TABLE_REGISTRY: list[_TableSpec] = [
         optional_group="chat",
     ),
     _TableSpec(
+        "confirmed_build_plan",
+        ConfirmedBuildPlan,
+        id_type="uuid",
+        fk_remap={"planner_session_id": "chat_session"},
+    ),
+    _TableSpec(
         "chat_message",
         ChatMessage,
         fk_remap={
@@ -207,6 +227,8 @@ def preview_export(session: Session, *, subject_slug: str) -> ExportPreviewData:
         knowledge_document_count=_count(session, KnowledgeDocument, subject_slug),
         knowledge_unit_count=_count(session, KnowledgeUnit, subject_slug),
         knowledge_edge_count=_count(session, KnowledgeEdge, subject_slug),
+        confirmed_build_plan_count=_count(session, ConfirmedBuildPlan, subject_slug),
+        question_type_registry_count=_count(session, QuestionTypeRegistry, subject_slug),
         question_template_count=_count(session, QuestionTemplate, subject_slug),
         exam_paper_count=_count(session, ExamPaper, subject_slug),
         chat_session_count=_count(session, ChatSession, subject_slug),
@@ -302,17 +324,23 @@ def _query_table(
     subject_slug: str,
     exported: dict[str, list[dict]],
 ) -> list[dict]:
+    def _ordered(stmt):
+        order_col = getattr(spec.model, spec.id_field, None)
+        if order_col is None:
+            return stmt
+        return stmt.order_by(order_col)
+
     if spec.subject_field == "slug":
-        rows = session.exec(select(spec.model).where(spec.model.slug == subject_slug)).all()
+        rows = session.exec(_ordered(select(spec.model).where(spec.model.slug == subject_slug))).all()
     elif spec.subject_field:
         col = getattr(spec.model, spec.subject_field)
-        rows = session.exec(select(spec.model).where(col == subject_slug)).all()
+        rows = session.exec(_ordered(select(spec.model).where(col == subject_slug))).all()
     elif spec.parent_fk and spec.parent_table:
         parent_ids = {r["id"] for r in exported.get(spec.parent_table, [])}
         if not parent_ids:
             return []
         col = getattr(spec.model, spec.parent_fk)
-        rows = session.exec(select(spec.model).where(col.in_(parent_ids))).all()
+        rows = session.exec(_ordered(select(spec.model).where(col.in_(parent_ids)))).all()
     else:
         return []
 
@@ -327,6 +355,23 @@ def _record_to_dict(record: SQLModel) -> dict:
         else:
             data[key] = value
     return data
+
+
+def _ensure_subject_icon(record_data: dict[str, Any], subject_name: str) -> None:
+    settings = _decode_settings_json(record_data.get("settings_json"))
+    if normalize_subject_icon_key(settings.get(SUBJECT_ICON_SETTINGS_KEY)) is None:
+        settings[SUBJECT_ICON_SETTINGS_KEY] = infer_subject_icon_key(subject_name)
+    record_data["settings_json"] = json.dumps(settings, ensure_ascii=False)
+
+
+def _decode_settings_json(raw_value: Any) -> dict[str, Any]:
+    if isinstance(raw_value, dict):
+        return dict(raw_value)
+    try:
+        decoded = json.loads(str(raw_value or "{}"))
+    except Exception:
+        return {}
+    return decoded if isinstance(decoded, dict) else {}
 
 
 # ===================================================================
@@ -355,9 +400,13 @@ def _import_table(
 ) -> int:
     table_id_map: dict[Any, Any] = {}
     id_map[spec.name] = table_id_map  # Register early to support self-referencing foreign keys
+    self_fk_fields = {fk_field for fk_field, ref_table in spec.fk_remap.items() if ref_table == spec.name}
+    pending_self_refs: list[tuple[SQLModel, dict[str, Any], Any]] = []
 
-    for record_data in records:
+    for raw_record in records:
+        record_data = dict(raw_record)
         old_id = record_data.get(spec.id_field)
+        old_self_refs = {field: record_data.get(field) for field in self_fk_fields}
 
         # 新 ID
         if spec.id_type == "auto":
@@ -370,6 +419,7 @@ def _import_table(
             record_data["slug"] = new_slug
             record_data["name"] = new_name
             record_data["normalized_name"] = None
+            _ensure_subject_icon(record_data, new_name)
         elif spec.subject_field and spec.subject_field != "slug":
             record_data[spec.subject_field] = new_slug
 
@@ -379,7 +429,20 @@ def _import_table(
 
         # Remap foreign keys after the referenced tables have been imported.
         for fk_field, ref_table in spec.fk_remap.items():
+            if fk_field in self_fk_fields:
+                record_data[fk_field] = None
+                continue
             _remap_fk(record_data, fk_field, ref_table, id_map, spec.name, warnings)
+
+        if spec.name == "confirmed_build_plan":
+            _remap_id_list_field(
+                record_data,
+                "selected_file_ids_json",
+                "raw_file",
+                id_map,
+                spec.name,
+                warnings,
+            )
 
         # Clear absolute-path fields so they can be rebuilt during import
         if spec.name == "raw_file":
@@ -426,7 +489,33 @@ def _import_table(
         if old_id is not None:
             table_id_map[old_id] = new_id
 
+        if self_fk_fields:
+            pending_self_refs.append((instance, old_self_refs, old_id))
+
+    for instance, old_refs, old_id in pending_self_refs:
+        for fk_field, old_fk in old_refs.items():
+            if old_fk is None:
+                continue
+            new_fk = _lookup_mapped_id(old_fk, table_id_map)
+            if new_fk is None:
+                warnings.append(f"{spec.name}.{fk_field}: ref {old_fk} not found in {spec.name}")
+                continue
+            setattr(instance, fk_field, new_fk)
+        session.add(instance)
+
+    if pending_self_refs:
+        session.flush()
+
     return len(table_id_map)
+
+
+def _lookup_mapped_id(old_id: Any, ref_map: dict[Any, Any]) -> Any | None:
+    new_id = ref_map.get(old_id)
+    if new_id is None and isinstance(old_id, str) and old_id.isdigit():
+        new_id = ref_map.get(int(old_id))
+    if new_id is None and isinstance(old_id, int):
+        new_id = ref_map.get(str(old_id))
+    return new_id
 
 
 def _remap_fk(
@@ -444,17 +533,36 @@ def _remap_fk(
     if ref_map is None:
         record[fk_field] = None
         return
-    new_fk = ref_map.get(old_fk)
-    # Try int/str cross-lookup when remapping foreign keys
-    if new_fk is None and isinstance(old_fk, str) and old_fk.isdigit():
-        new_fk = ref_map.get(int(old_fk))
-    if new_fk is None and isinstance(old_fk, int):
-        new_fk = ref_map.get(str(old_fk))
+    new_fk = _lookup_mapped_id(old_fk, ref_map)
     if new_fk is not None:
         record[fk_field] = new_fk
     else:
         record[fk_field] = None
         warnings.append(f"{table_name}.{fk_field}: ref {old_fk} not found in {ref_table}")
+
+
+def _remap_id_list_field(
+    record: dict,
+    field_name: str,
+    ref_table: str,
+    id_map: dict[str, dict[Any, Any]],
+    table_name: str,
+    warnings: list[str],
+) -> None:
+    values = record.get(field_name)
+    if not isinstance(values, list):
+        record[field_name] = []
+        return
+
+    ref_map = id_map.get(ref_table) or {}
+    remapped: list[Any] = []
+    for old_id in values:
+        new_id = _lookup_mapped_id(old_id, ref_map)
+        if new_id is None:
+            warnings.append(f"{table_name}.{field_name}: ref {old_id} not found in {ref_table}")
+            continue
+        remapped.append(new_id)
+    record[field_name] = remapped
 
 
 # ===================================================================
@@ -526,6 +634,8 @@ def _build_manifest(
             knowledge_document_count=len(exported.get("knowledge_document", [])),
             knowledge_unit_count=len(exported.get("knowledge_unit", [])),
             knowledge_edge_count=len(exported.get("knowledge_edge", [])),
+            confirmed_build_plan_count=len(exported.get("confirmed_build_plan", [])),
+            question_type_registry_count=len(exported.get("question_type_registry", [])),
             question_template_count=len(exported.get("question_template", [])),
             exam_paper_count=len(exported.get("exam_paper", [])),
             chat_session_count=len(exported.get("chat_session", [])),

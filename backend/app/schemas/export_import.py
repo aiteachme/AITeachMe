@@ -26,6 +26,8 @@ class ExportPreviewStats(BaseModel):
     knowledge_document_count: int = 0
     knowledge_unit_count: int = 0
     knowledge_edge_count: int = 0
+    confirmed_build_plan_count: int = 0
+    question_type_registry_count: int = 0
     question_template_count: int = 0
     exam_paper_count: int = 0
     chat_session_count: int = 0

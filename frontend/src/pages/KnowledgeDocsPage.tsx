@@ -804,10 +804,12 @@ export function KnowledgeDocsPage() {
   const [activeDrawer, setActiveDrawer] = useState<"toc" | "comment" | null>(null);
 
   const [isGraphDrawerOpen, setIsGraphDrawerOpen] = useState(false);
+  const initialViewportWidth = typeof window !== "undefined" ? window.innerWidth : 1200;
+  const isNarrowInitialViewport = initialViewportWidth < 640;
   const { width: graphPanelWidth, isDragging: isGraphDragging, handleMouseDown: handleGraphMouseDown } = useResizablePanel({
-    defaultWidth: typeof window !== 'undefined' ? window.innerWidth * 0.6 : 800,
-    minWidth: 400,
-    maxWidth: typeof window !== 'undefined' ? window.innerWidth * 0.8 : 1200,
+    defaultWidth: isNarrowInitialViewport ? initialViewportWidth : initialViewportWidth * 0.6,
+    minWidth: isNarrowInitialViewport ? initialViewportWidth : 400,
+    maxWidth: isNarrowInitialViewport ? initialViewportWidth : initialViewportWidth * 0.8,
   });
 
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -2542,13 +2544,13 @@ export function KnowledgeDocsPage() {
                 : "lg:pl-[17%]"
           )}
         >
-          <div className="mx-auto max-w-[1800px] px-6 py-8">
+          <div className="mx-auto max-w-[1800px] px-3 py-4 sm:px-6 sm:py-8">
             <div
               ref={contentAreaRef}
               className="feishu-doc-content mx-auto flex min-h-full w-full max-w-[1380px] items-start gap-3"
               >
                 <article
-                  className="min-w-0 flex-1 px-6 py-8 md:px-10 md:py-10"
+                  className="min-w-0 flex-1 px-3 py-5 sm:px-6 sm:py-8 md:px-10 md:py-10"
                 >
                   <SubjectVectorNotice status={docMarkdownQuery.data?.vector_status} className="mb-6" />
                   {docMarkdownQuery.isError ? (
@@ -2685,7 +2687,7 @@ export function KnowledgeDocsPage() {
           aria-label="打开知识图谱"
         >
           <Network className="h-4 w-4 text-zinc-500" />
-          <span>知识图谱</span>
+          <span className="hidden sm:inline">知识图谱</span>
         </button>
       )}
 
@@ -2700,7 +2702,7 @@ export function KnowledgeDocsPage() {
       >
         <div
           className={cn(
-            "absolute top-0 bottom-0 left-0 w-2 -ml-[1px] cursor-col-resize z-50 hover:bg-blue-500/30 transition-colors",
+            "absolute bottom-0 left-0 top-0 z-50 -ml-[1px] hidden w-2 cursor-col-resize transition-colors hover:bg-blue-500/30 sm:block",
             isGraphDragging && "bg-blue-500/30"
           )}
           onMouseDown={handleGraphMouseDown}

@@ -5,7 +5,7 @@ from __future__ import annotations
 import httpx
 import structlog
 
-from app.shared.infra.env_support import get_env
+from app.shared.infra.env_support import get_env_choice
 from app.shared.infra.search.defaults import DEFAULT_SEARCH_PROVIDER_TIMEOUT_S
 from app.shared.infra.search.retrievers.base import BaseRetriever
 from app.shared.infra.search.retrievers.common import clamp_max_results, clean_text, make_search_result, normalize_query
@@ -32,7 +32,7 @@ class SemanticScholarRetriever(BaseRetriever):
             "fields": "title,abstract,url,openAccessPdf,isOpenAccess,year,venue",
         }
         headers: dict[str, str] = {}
-        api_key = (get_env("SEMANTIC_SCHOLAR_API_KEY") or "").strip()
+        api_key = (get_env_choice("SEMANTIC_SCHOLAR_API_KEY") or "").strip()
         if api_key:
             headers["x-api-key"] = api_key
         try:

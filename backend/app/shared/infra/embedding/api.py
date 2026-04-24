@@ -16,7 +16,7 @@ import structlog
 
 from app.shared.infra.embedding.defaults import DEFAULT_EMBEDDING_BATCH_SIZE
 from app.shared.infra.settings import PROJECT_SETTINGS_ENV_NAME, get_settings
-from app.shared.infra.env_support import get_env
+from app.shared.infra.env_support import get_env, get_env_choice
 from app.shared.infra.exceptions import LLMCallError, MissingLLMApiKeyError
 from app.shared.infra.llm_support.common import build_litellm_provider_kwargs
 from app.shared.infra.llm_support.litellm_loader import load_litellm
@@ -113,7 +113,7 @@ async def aembed_texts(
         or "https://api.openai.com/v1"
     )
     provider = resolve_runtime_llm_provider(base_url=api_base)
-    api_key = (get_env("LLM_API_KEY") or "").strip() or None
+    api_key = (get_env_choice("LLM_API_KEY") or "").strip() or None
     if api_key is None and llm_provider_requires_api_key(provider, base_url=api_base):
         raise MissingLLMApiKeyError()
     batch_size = batch_size or DEFAULT_EMBEDDING_BATCH_SIZE

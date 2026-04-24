@@ -9,11 +9,12 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import secrets
 import tempfile
 from pathlib import Path
 
 from app.shared.infra.database import managed_session
-from app.shared.infra.env_support import get_env
+from app.shared.infra.env_support import get_env_list
 from app.shared.infra.storage import get_content_store, resolve_subject_storage_scope
 from app.models import IngestStatus
 from app.repositories.files_repo import get_raw_file_by_id, update_raw_file
@@ -171,10 +172,10 @@ async def _load_raw_file_state(state: IngestParseState) -> IngestParseState:
             if mineru_token:
                 mineru_token_source = "request"
             else:
-                env_token = (get_env("MINERU_API_TOKEN") or "").strip()
-                if env_token:
-                    mineru_token = env_token
-                    mineru_token_source = "server_env"
+                env_tokens = get_env_list("MINERU_API_TOKENS") or get_env_list("MINERU_API_TOKEN")
+                if env_tokens:
+                    mineru_token = secrets.choice(env_tokens)
+                    mineru_token_source = "server_env_pool" if len(env_tokens) > 1 else "server_env"
                 else:
                     mineru_token_source = "missing"
 

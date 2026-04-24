@@ -17,7 +17,7 @@ from fastapi.responses import JSONResponse
 
 from app.shared.infra.settings import get_settings
 from app.shared.infra.database import init_db
-from app.shared.infra.env_support import get_env, get_env_bool
+from app.shared.infra.env_support import get_env, get_env_bool, get_env_list
 from app.shared.infra.logger import (
     bind_logging_context,
     clear_logging_context,
@@ -189,9 +189,8 @@ def _log_infra_diagnostics(settings) -> None:
     lines.append(f"    Document OCR Model     : {settings.models.ocr or 'disabled'}")
     lines.append(f"    Embedding Model        : {settings.models.embedding}")
     lines.append(f"    Rerank Model           : {settings.models.rerank or 'disabled'}")
-    lines.append(
-        f"    MinerU Server Token    : {'SET' if get_env('MINERU_API_TOKEN') else 'not set'}"
-    )
+    mineru_tokens = get_env_list("MINERU_API_TOKENS") or get_env_list("MINERU_API_TOKEN")
+    lines.append(f"    MinerU Server Token    : {'SET' if mineru_tokens else 'not set'}")
     lines.append(
         f"    Image Generation Model : {settings.models.image_generation or 'disabled'}"
     )

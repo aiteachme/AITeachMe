@@ -35,6 +35,7 @@ class BuildPlannerState(TypedDict, total=False):
     planner_brief: dict[str, Any]
     plan_intent: dict[str, Any]
     generated_subject_name: str
+    generated_subject_icon_key: str
     plan_outline_markdown: str
     build_plan_draft: dict[str, Any]
 

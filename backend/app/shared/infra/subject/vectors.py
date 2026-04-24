@@ -9,7 +9,7 @@ from sqlmodel import Session, select
 
 from app.models.subject import Subject
 from app.schemas.knowledge import SubjectVectorStatusResponse
-from app.shared.infra.env_support import get_env
+from app.shared.infra.env_support import get_env, get_env_choice
 from app.shared.infra.runtime import is_cloud_mode
 from app.shared.infra.settings import get_settings
 from app.shared.infra.settings.support import llm_provider_requires_api_key, resolve_runtime_llm_provider
@@ -68,7 +68,7 @@ def get_runtime_embedding_config() -> RuntimeEmbeddingConfig:
 
     if model is None:
         return RuntimeEmbeddingConfig(reason="embedding_not_configured")
-    if llm_provider_requires_api_key(provider, base_url=base_url) and not get_env("LLM_API_KEY"):
+    if llm_provider_requires_api_key(provider, base_url=base_url) and not get_env_choice("LLM_API_KEY"):
         return RuntimeEmbeddingConfig(
             configured=True,
             embedding_model=model,

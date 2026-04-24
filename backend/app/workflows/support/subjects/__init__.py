@@ -15,9 +15,11 @@ from app.workflows.support.subjects.deletion import (
     delete_subject_with_all_content,
     preview_subject_delete,
 )
+from app.workflows.support.subjects.icons import choose_subject_icon_key
 
 __all__ = [
     "build_subject_delete_preview",
+    "choose_subject_icon_key",
     "collect_subject_delete_counts",
     "create_subject_record",
     "delete_subject_artifacts_async",

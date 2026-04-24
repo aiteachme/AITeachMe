@@ -7,7 +7,7 @@ from xml.etree import ElementTree
 import httpx
 import structlog
 
-from app.shared.infra.env_support import get_env
+from app.shared.infra.env_support import get_env, get_env_choice
 from app.shared.infra.search.defaults import DEFAULT_SEARCH_PROVIDER_TIMEOUT_S
 from app.shared.infra.search.retrievers.base import BaseRetriever
 from app.shared.infra.search.retrievers.common import clamp_max_results, clean_text, make_search_result, normalize_query
@@ -43,7 +43,7 @@ class PubMedCentralRetriever(BaseRetriever):
             "retmode": "json",
             "sort": get_env("PUBMED_SORT", "relevance") or "relevance",
         }
-        api_key = (get_env("NCBI_API_KEY") or "").strip()
+        api_key = (get_env_choice("NCBI_API_KEY") or "").strip()
         if api_key:
             params["api_key"] = api_key
 

@@ -9944,6 +9944,16 @@
             "title": "Knowledge Edge Count",
             "default": 0
           },
+          "confirmed_build_plan_count": {
+            "type": "integer",
+            "title": "Confirmed Build Plan Count",
+            "default": 0
+          },
+          "question_type_registry_count": {
+            "type": "integer",
+            "title": "Question Type Registry Count",
+            "default": 0
+          },
           "question_template_count": {
             "type": "integer",
             "title": "Question Template Count",
@@ -13220,6 +13230,18 @@
             "type": "string",
             "title": "Name",
             "description": "展示名称。"
+          },
+          "icon_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Icon Key",
+            "description": "学科图标 key。"
           },
           "created_at": {
             "type": "string",

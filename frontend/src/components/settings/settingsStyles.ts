@@ -2,26 +2,26 @@ export const SETTINGS_STYLES = {
   panel: {
     root: "fixed inset-0 z-[100]",
     backdrop: "absolute inset-0 modal-backdrop modal-backdrop-strong",
-    viewport: "pointer-events-none absolute inset-0 flex items-center justify-center p-4 sm:p-6",
+    viewport: "pointer-events-none absolute inset-0 flex items-center justify-center p-2 sm:p-6",
     dialog:
-      "pointer-events-auto flex h-[85vh] w-full max-w-[1024px] overflow-hidden rounded-2xl bg-white dark:bg-slate-900 shadow-[0_12px_28px_rgba(0,0,0,0.08)] ring-1 ring-zinc-200/70 dark:ring-zinc-800/70",
+      "pointer-events-auto flex h-[calc(100dvh-1rem)] w-full max-w-[1024px] flex-col overflow-hidden rounded-2xl bg-white dark:bg-slate-900 shadow-[0_12px_28px_rgba(0,0,0,0.08)] ring-1 ring-zinc-200/70 dark:ring-zinc-800/70 sm:h-[85vh] sm:flex-row",
     body: "flex min-w-0 flex-1 flex-col bg-white dark:bg-slate-900",
-    header: "flex items-center justify-between border-b border-zinc-100 dark:border-slate-800 px-8 py-5",
+    header: "flex items-center justify-between border-b border-zinc-100 dark:border-slate-800 px-4 py-4 sm:px-8 sm:py-5",
     headerTitle: "text-lg font-bold text-zinc-900 dark:text-slate-100 tracking-tight",
     headerDescription: "mt-1 text-sm text-zinc-500 dark:text-slate-400",
     closeButton:
-      "inline-flex h-8 w-8 items-center justify-center rounded-full text-zinc-400 dark:text-slate-500 transition-colors hover:bg-zinc-100 dark:hover:bg-slate-800 hover:text-zinc-900 dark:hover:text-slate-100 active:scale-95",
+      "inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-zinc-400 dark:text-slate-500 transition-colors hover:bg-zinc-100 dark:hover:bg-slate-800 hover:text-zinc-900 dark:hover:text-slate-100 active:scale-95 sm:h-8 sm:w-8",
     closeIcon: "h-5 w-5",
-    scrollArea: "min-h-0 flex-1 overflow-y-auto px-8 py-8 sm:px-12 settings-scroll",
+    scrollArea: "min-h-0 flex-1 overflow-y-auto px-4 py-5 settings-scroll sm:px-12 sm:py-8",
     sectionFrame: "max-w-[760px] mx-auto",
   },
   nav: {
-    root: "flex w-[240px] shrink-0 flex-col border-r border-zinc-100 dark:border-slate-800 bg-zinc-50/35 dark:bg-slate-900/50 pt-2",
-    header: "px-6 pb-2 pt-6",
+    root: "flex w-full shrink-0 flex-col border-b border-zinc-100 dark:border-slate-800 bg-zinc-50/35 dark:bg-slate-900/50 pt-2 sm:w-[240px] sm:border-b-0 sm:border-r",
+    header: "px-4 pb-1 pt-3 sm:px-6 sm:pb-2 sm:pt-6",
     title: "text-xs font-semibold text-zinc-500 dark:text-slate-400",
-    list: "flex-1 space-y-0.5 overflow-y-auto px-4 py-2",
+    list: "flex gap-1 overflow-x-auto px-3 py-2 sm:block sm:flex-1 sm:space-y-0.5 sm:overflow-x-hidden sm:overflow-y-auto sm:px-4",
     item:
-      "group relative flex min-w-0 w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-[14px] transition-colors overflow-hidden",
+      "group relative flex min-h-11 w-auto min-w-0 shrink-0 items-center gap-3 overflow-hidden rounded-lg px-3 py-2.5 text-left text-[14px] transition-colors sm:w-full",
     itemActive: "bg-zinc-200/60 dark:bg-slate-800 font-semibold text-zinc-900 dark:text-slate-100",
     itemIdle: "font-medium text-zinc-600 dark:text-slate-400 hover:bg-zinc-200/40 dark:hover:bg-slate-800/50 hover:text-zinc-900 dark:hover:text-slate-200",
     itemIcon: "inline-flex shrink-0 items-center justify-center",
@@ -44,7 +44,7 @@ export const SETTINGS_STYLES = {
     runtimeIndicatorDotCloud: "bg-sky-500",
   },
   footer: {
-    root: "flex items-center justify-between border-t border-zinc-100 dark:border-slate-800 bg-white dark:bg-slate-900 px-10 py-5 z-10",
+    root: "z-10 flex flex-col gap-3 border-t border-zinc-100 bg-white px-4 py-4 dark:border-slate-800 dark:bg-slate-900 sm:flex-row sm:items-center sm:justify-between sm:px-10 sm:py-5",
     statusWrap: "text-sm font-medium",
     statusRow: "flex items-center gap-2",
     statusSaving: "text-zinc-500 dark:text-zinc-400",
@@ -58,11 +58,11 @@ export const SETTINGS_STYLES = {
     changedIndicatorPulse:
       "absolute inline-flex h-full w-full animate-ping rounded-full bg-amber-400 opacity-75",
     changedIndicatorDot: "relative inline-flex h-2 w-2 rounded-full bg-amber-500",
-    actions: "flex items-center gap-3",
+    actions: "flex w-full items-center justify-end gap-3 sm:w-auto",
     resetButton:
-      "inline-flex h-9 items-center justify-center rounded-lg px-4 text-[14px] font-medium text-zinc-600 dark:text-zinc-400 transition-colors hover:bg-zinc-100 dark:hover:bg-slate-800 hover:text-zinc-900 dark:hover:text-zinc-200 active:scale-[0.98] disabled:cursor-not-allowed disabled:text-zinc-300 dark:disabled:text-zinc-600 disabled:hover:bg-transparent",
+      "inline-flex h-11 items-center justify-center rounded-lg px-4 text-[14px] font-medium text-zinc-600 dark:text-zinc-400 transition-colors hover:bg-zinc-100 dark:hover:bg-slate-800 hover:text-zinc-900 dark:hover:text-zinc-200 active:scale-[0.98] disabled:cursor-not-allowed disabled:text-zinc-300 dark:disabled:text-zinc-600 disabled:hover:bg-transparent sm:h-9",
     saveButton:
-      "inline-flex h-9 items-center justify-center rounded-lg px-5 text-[14px] font-medium transition-all active:scale-[0.98] shadow-sm",
+      "inline-flex h-11 items-center justify-center rounded-lg px-5 text-[14px] font-medium transition-all active:scale-[0.98] shadow-sm sm:h-9",
     saveButtonEnabled: "bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 hover:bg-zinc-800 dark:hover:bg-zinc-200 hover:shadow",
     saveButtonDisabled: "cursor-not-allowed bg-zinc-100 dark:bg-slate-800/60 text-zinc-400 dark:text-zinc-600 shadow-none transform-none",
   },
@@ -87,7 +87,7 @@ export const SETTINGS_STYLES = {
     readonlyValue:
       "w-full max-w-full break-all rounded-md border border-zinc-200 dark:border-slate-800 bg-zinc-50 dark:bg-slate-900 px-3 py-2 font-mono text-[13px] text-zinc-600 dark:text-zinc-400",
     control:
-      "min-h-[40px] w-full rounded-md border border-zinc-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-[14px] text-zinc-900 dark:text-zinc-100 transition-colors placeholder:text-zinc-400 hover:border-zinc-400 dark:hover:border-slate-600 focus-visible:outline-none focus-visible:border-zinc-900 dark:focus-visible:border-zinc-100 focus-visible:ring-1 focus-visible:ring-zinc-900 dark:focus-visible:ring-zinc-100 disabled:cursor-not-allowed disabled:opacity-50 disabled:bg-zinc-50 dark:disabled:bg-slate-900",
+      "min-h-11 w-full rounded-md border border-zinc-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-[14px] text-zinc-900 dark:text-zinc-100 transition-colors placeholder:text-zinc-400 hover:border-zinc-400 dark:hover:border-slate-600 focus-visible:outline-none focus-visible:border-zinc-900 dark:focus-visible:border-zinc-100 focus-visible:ring-1 focus-visible:ring-zinc-900 dark:focus-visible:ring-zinc-100 disabled:cursor-not-allowed disabled:opacity-50 disabled:bg-zinc-50 dark:disabled:bg-slate-900",
     select:
       "appearance-none items-center justify-between whitespace-nowrap cursor-pointer bg-[url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20width%3D%2224%22%20height%3D%2224%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%3Cpath%20d%3D%22M6%209L12%2015L18%209%22%20stroke%3D%22%2371717A%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%2F%3E%3C%2Fsvg%3E')] bg-[length:16px_16px] bg-[position:right_10px_center] bg-no-repeat pr-10",
     switchRow:

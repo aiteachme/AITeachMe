@@ -9,7 +9,7 @@ from typing import Literal
 import structlog
 
 from app.shared.infra.settings import get_settings
-from app.shared.infra.env_support import get_env
+from app.shared.infra.env_support import get_env, get_env_choice
 from app.shared.infra.exceptions import FileParseError, LLMCallError, MissingLLMApiKeyError
 from app.shared.infra.llm_support import acompletion
 from app.shared.infra.llm_support.routing import TaskType
@@ -83,7 +83,7 @@ async def parse_image_bytes_with_llm_vision(
         return _UNCLEAR_MARKDOWN
 
     resolved_model = _resolve_visual_model(model_selector)
-    api_key = (get_env("LLM_API_KEY") or "").strip() or None
+    api_key = (get_env_choice("LLM_API_KEY") or "").strip() or None
     base_url = get_env("LLM_BASE_URL", "https://api.openai.com/v1")
     if llm_provider_requires_api_key(base_url=base_url) and not api_key:
         raise MissingLLMApiKeyError()

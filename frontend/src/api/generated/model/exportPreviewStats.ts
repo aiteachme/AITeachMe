@@ -15,6 +15,8 @@ export interface ExportPreviewStats {
   knowledge_document_count?: number;
   knowledge_unit_count?: number;
   knowledge_edge_count?: number;
+  confirmed_build_plan_count?: number;
+  question_type_registry_count?: number;
   question_template_count?: number;
   exam_paper_count?: number;
   chat_session_count?: number;
