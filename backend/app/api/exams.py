@@ -30,6 +30,7 @@ from app.schemas.exams import (
     ExamPaperItemResponse,
     QuestionTemplateItemResponse,
     QuestionTypeRegistryItemResponse,
+    PaperPreview,
     ExamStudyGuideFocusUnit,
     ExamStudyGuideResponse,
     ExamSubmitRequest,
@@ -55,6 +56,10 @@ logger = structlog.get_logger(__name__)
 
 _HTML_COMMENT_RE = re.compile(r"<!--.*?-->", re.DOTALL)
 _WHITESPACE_RE = re.compile(r"\s+")
+_CODE_PREVIEW_RE = re.compile(r"(```|`[^`]+`|\b(def|class|function|return|for|while|if|else|const|let|var)\b|[{};])", re.IGNORECASE)
+_CHART_PREVIEW_RE = re.compile(r"(图表|图像|折线|柱状|坐标|曲线图|统计图|chart|graph|plot|axis|trend)", re.IGNORECASE)
+_FORMULA_PREVIEW_RE = re.compile(r"(公式|方程|函数|求导|积分|计算|证明|derive|formula|equation|∑|√|≤|≥|≈|≠|=|\bf\s*\()", re.IGNORECASE)
+_IMAGE_PREVIEW_RE = re.compile(r"(图片|如图|示意图|image|figure|photo|diagram)", re.IGNORECASE)
 
 
 def _exam_stream_channel(subject: str, paper_id: int) -> str:
@@ -105,6 +110,164 @@ def _clean_exam_text(value: str | None) -> str:
 
 def _build_exam_title(paper: ExamPaper) -> str:
     return f"{paper.exam_mode} · {paper.created_at.strftime('%m/%d %H:%M')}"
+
+
+def _preview_density(difficulty: str | None) -> int:
+    normalized = str(difficulty or "").lower()
+    if normalized == "easy":
+        return 1
+    if normalized == "hard":
+        return 3
+    return 2
+
+
+def _preview_shape(question_type: str | None) -> str:
+    normalized = str(question_type or "").lower()
+    if "choice" in normalized or normalized in {"single", "multiple"}:
+        return "choice"
+    if "blank" in normalized or "fill" in normalized:
+        return "blank"
+    if "judge" in normalized or "true_false" in normalized or "boolean" in normalized:
+        return "judge"
+    if "chart" in normalized or "graph" in normalized:
+        return "chart"
+    if "formula" in normalized or "calc" in normalized or "math" in normalized:
+        return "formula"
+    if "code" in normalized or "program" in normalized:
+        return "code"
+    if "short" in normalized or "essay" in normalized or "answer" in normalized:
+        return "short"
+    return "text"
+
+
+def _content_preview_type(text: str) -> str | None:
+    if _CODE_PREVIEW_RE.search(text):
+        return "code"
+    if _CHART_PREVIEW_RE.search(text):
+        return "chart"
+    if _FORMULA_PREVIEW_RE.search(text):
+        return "formula"
+    if _IMAGE_PREVIEW_RE.search(text):
+        return "image"
+    return None
+
+
+def _dominant_preview_type(items: list[ExamPaperItem]) -> str:
+    detected: set[str] = set()
+    shapes: list[str] = []
+    for item in items:
+        shapes.append(_preview_shape(item.question_type))
+        text = " ".join(
+            part
+            for part in [
+                item.stem_snapshot,
+                item.explanation_snapshot,
+                item.options_snapshot_json or "",
+            ]
+            if part
+        )
+        content_type = _content_preview_type(text)
+        if content_type:
+            detected.add(content_type)
+
+    for candidate in ["code", "chart", "formula", "image"]:
+        if candidate in detected:
+            return candidate
+    if shapes and shapes.count("choice") >= max(shapes.count("blank"), shapes.count("text"), shapes.count("short")):
+        return "choice"
+    if "blank" in shapes:
+        return "blank"
+    return "text"
+
+
+def _dedupe_preview_keywords(values: list[str]) -> list[str]:
+    seen: set[str] = set()
+    keywords: list[str] = []
+    for value in values:
+        cleaned = _clean_exam_text(value)
+        if not cleaned:
+            continue
+        key = cleaned.casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        keywords.append(cleaned[:18])
+        if len(keywords) >= 3:
+            break
+    return keywords
+
+
+def _build_paper_preview(
+    items: list[ExamPaperItem],
+    *,
+    knowledge_unit_by_id: dict[int, KnowledgeUnit],
+) -> PaperPreview:
+    ordered_items = sorted(items, key=lambda item: item.item_order)
+    keyword_candidates: list[str] = []
+    for item in ordered_items:
+        for ref in _json_list(item.knowledge_unit_refs_json):
+            knowledge_unit_id = int(ref.get("knowledge_unit_id", 0) or 0)
+            unit = knowledge_unit_by_id.get(knowledge_unit_id)
+            if unit is not None:
+                keyword_candidates.append(unit.canonical_name)
+
+    return PaperPreview(
+        keywords=_dedupe_preview_keywords(keyword_candidates),
+        question_types=_dedupe_preview_keywords([item.question_type for item in ordered_items]),
+        dominant_type=_dominant_preview_type(ordered_items),
+        rows=[
+            {
+                "order": item.item_order,
+                "type": item.question_type,
+                "shape": _preview_shape(item.question_type),
+                "difficulty": item.difficulty,
+                "density": _preview_density(item.difficulty),
+            }
+            for item in ordered_items[:5]
+        ],
+        overflow_count=max(0, len(ordered_items) - 5),
+    )
+
+
+def _paper_preview_from_json(raw: str | None) -> PaperPreview:
+    payload = _json_dict(raw)
+    if not payload:
+        return PaperPreview()
+    try:
+        return PaperPreview.model_validate(payload)
+    except Exception:
+        return PaperPreview()
+
+
+def _paper_preview_for_response(
+    paper: ExamPaper,
+    items: list[ExamPaperItem],
+    *,
+    knowledge_unit_by_id: dict[int, KnowledgeUnit],
+) -> PaperPreview:
+    saved_preview = _paper_preview_from_json(getattr(paper, "paper_preview_json", "{}"))
+    if saved_preview.rows or saved_preview.keywords or saved_preview.question_types:
+        return saved_preview
+    if not items:
+        return saved_preview
+    return _build_paper_preview(items, knowledge_unit_by_id=knowledge_unit_by_id)
+
+
+def _knowledge_units_for_items(session: Session, items: list[ExamPaperItem]) -> dict[int, KnowledgeUnit]:
+    knowledge_unit_ids = {
+        knowledge_unit_id
+        for item in items
+        for ref in _json_list(item.knowledge_unit_refs_json)
+        for knowledge_unit_id in [int(ref.get("knowledge_unit_id", 0) or 0)]
+        if knowledge_unit_id > 0
+    }
+    return {
+        unit.id: unit
+        for unit in session.exec(
+            select(KnowledgeUnit).where(KnowledgeUnit.id.in_(knowledge_unit_ids))
+        ).all()
+        if unit.id is not None
+    } if knowledge_unit_ids else {}
 
 
 def _is_exam_eligible_unit(unit: KnowledgeUnit) -> bool:
@@ -509,6 +672,10 @@ async def _run_exam_generation_background(
             exams_repo.create_exam_paper_items(session, items)
             paper.total_items = len(items)
             paper.total_score = float(len(items))
+            paper.paper_preview_json = _build_paper_preview(
+                items,
+                knowledge_unit_by_id=unit_by_id,
+            ).model_dump_json()
             _set_exam_generation_status(session, paper, status="ready")
 
         _publish_exam_event(
@@ -665,20 +832,7 @@ def _question_type_response(item: QuestionTypeRegistry) -> QuestionTypeRegistryI
 
 def _paper_detail(session: Session, paper: ExamPaper) -> ExamPaperDetailResponse:
     items = exams_repo.list_items_by_paper(session, paper.id or 0)
-    knowledge_unit_ids = {
-        knowledge_unit_id
-        for item in items
-        for ref in _json_list(item.knowledge_unit_refs_json)
-        for knowledge_unit_id in [int(ref.get("knowledge_unit_id", 0) or 0)]
-        if knowledge_unit_id > 0
-    }
-    knowledge_unit_by_id = {
-        unit.id: unit
-        for unit in session.exec(
-            select(KnowledgeUnit).where(KnowledgeUnit.id.in_(knowledge_unit_ids))
-        ).all()
-        if unit.id is not None
-    } if knowledge_unit_ids else {}
+    knowledge_unit_by_id = _knowledge_units_for_items(session, items)
     mastery_by_unit_id = {
         int(state.knowledge_unit_id): state.mastery_score
         for state in profile_repo.list_knowledge_states(
@@ -702,6 +856,11 @@ def _paper_detail(session: Session, paper: ExamPaper) -> ExamPaperDetailResponse
         graded_at=paper.graded_at,
         created_at=paper.created_at,
         selection_context=json.loads(paper.selection_context_json or "{}"),
+        paper_preview=_paper_preview_for_response(
+            paper,
+            items,
+            knowledge_unit_by_id=knowledge_unit_by_id,
+        ),
         items=[
             _paper_item_response(
                 item,
@@ -971,6 +1130,15 @@ async def exam_history(
         limit=size,
         offset=PageParams(page=page, size=size).offset,
     )
+    items_by_paper_id = {
+        int(paper.id or 0): exams_repo.list_items_by_paper(session, int(paper.id or 0))
+        for paper in rows
+        if paper.id is not None
+    }
+    knowledge_unit_by_id = _knowledge_units_for_items(
+        session,
+        [item for items in items_by_paper_id.values() for item in items],
+    )
     return ok_response(
         build_paginated_data(
             items=[
@@ -986,6 +1154,11 @@ async def exam_history(
                     created_at=paper.created_at,
                     submitted_at=paper.submitted_at,
                     graded_at=paper.graded_at,
+                    paper_preview=_paper_preview_for_response(
+                        paper,
+                        items_by_paper_id.get(int(paper.id or 0), []),
+                        knowledge_unit_by_id=knowledge_unit_by_id,
+                    ),
                 )
                 for paper in rows
             ],

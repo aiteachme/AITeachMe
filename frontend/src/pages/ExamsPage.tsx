@@ -33,6 +33,8 @@ import type {
   ExamNodeLinkResponse,
   ExamPaperDetailResponse,
   ExamPaperItemResponse,
+  PaperPreview,
+  PaperPreviewRow,
 } from "../api/generated/model";
 import { getMasteryOverviewApiV1SubjectsSubjectProfileMasteryGetQueryKey } from "../api/generated/profile";
 import { buildApiUrl, getApiErrorMessage, orvalApiClient } from "../api/client";
@@ -224,6 +226,216 @@ function HeroOrb() {
   );
 }
 
+type PreviewShape = PaperPreviewRow["shape"];
+type PreviewDominantType = PaperPreview["dominant_type"];
+
+const PREVIEW_ROW_LIMIT = 5;
+
+function buildFallbackPaperPreview(item: ExamHistoryItem): PaperPreview {
+  const rowCount = Math.min(Math.max(item.total_items || 1, 1), PREVIEW_ROW_LIMIT);
+  return {
+    keywords: [],
+    question_types: [],
+    dominant_type: "text",
+    rows: Array.from({ length: rowCount }, (_, index) => ({
+      order: index + 1,
+      type: "text",
+      shape: "text",
+      difficulty: "medium",
+      density: 2,
+    })),
+    overflow_count: Math.max(0, (item.total_items || 0) - PREVIEW_ROW_LIMIT),
+  };
+}
+
+function getPaperPreview(item: ExamHistoryItem): PaperPreview {
+  const preview = item.paper_preview;
+  if (preview?.rows?.length || preview?.keywords?.length || preview?.question_types?.length) {
+    return preview;
+  }
+  return buildFallbackPaperPreview(item);
+}
+
+function PreviewLine({ width = "w-16" }: { width?: string }) {
+  return <span className={`block h-1 rounded-full bg-slate-300/80 dark:bg-slate-600/80 ${width}`} />;
+}
+
+function ChoicePreviewShape({ density }: { density: number }) {
+  return (
+    <div className="flex h-6 min-w-0 flex-1 items-center gap-2">
+      <div className="flex min-w-0 flex-1 items-center gap-1.5">
+        <PreviewLine width={density > 1 ? "w-12" : "w-9"} />
+        <PreviewLine width={density > 2 ? "w-10" : "w-7"} />
+      </div>
+      <div className="grid shrink-0 grid-cols-4 gap-1">
+        {[0, 1, 2, 3].map((dot) => (
+          <span key={dot} className="h-1.5 w-1.5 rounded-full border border-slate-400/80 dark:border-slate-500" />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function BlankPreviewShape({ density }: { density: number }) {
+  return (
+    <div className="flex h-6 min-w-0 flex-1 items-center gap-1.5">
+      <PreviewLine width={density > 1 ? "w-10" : "w-7"} />
+      <span className="h-3 w-10 shrink-0 border-b border-slate-400/80 dark:border-slate-500" />
+      <PreviewLine width={density > 2 ? "w-12" : "w-8"} />
+    </div>
+  );
+}
+
+function TextPreviewShape({ density }: { density: number }) {
+  const lines = density > 2 ? ["w-20", "w-16", "w-12"] : density > 1 ? ["w-20", "w-14"] : ["w-16"];
+  return (
+    <div className="flex h-6 min-w-0 flex-1 flex-col justify-center gap-1">
+      {lines.map((width, index) => (
+        <PreviewLine key={`${width}-${index}`} width={width} />
+      ))}
+    </div>
+  );
+}
+
+function JudgePreviewShape({ density }: { density: number }) {
+  return (
+    <div className="flex h-6 min-w-0 flex-1 items-center gap-2">
+      <span className="grid h-4 w-4 shrink-0 place-items-center rounded border border-slate-400/80 text-[9px] font-semibold text-slate-500 dark:border-slate-600 dark:text-slate-400">
+        T
+      </span>
+      <PreviewLine width={density > 1 ? "w-20" : "w-14"} />
+    </div>
+  );
+}
+
+function ChartPreviewShape() {
+  return (
+    <svg className="h-6 min-w-0 flex-1 text-slate-400 dark:text-slate-600" viewBox="0 0 96 24" role="presentation" aria-hidden="true">
+      <rect x="2" y="3" width="44" height="18" rx="2.5" fill="none" stroke="currentColor" strokeWidth="1.4" />
+      <path d="M8 17h32M8 17V7" fill="none" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" />
+      <path d="M9 15l8-5 7 4 8-8 7 6" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M56 8h28M56 15h20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function FormulaPreviewShape() {
+  return (
+    <div className="flex h-6 min-w-0 flex-1 items-center gap-2 text-[10px] font-semibold text-slate-500 dark:text-slate-400">
+      <span className="shrink-0 font-serif">f(x)</span>
+      <svg className="h-5 min-w-0 flex-1 text-slate-400 dark:text-slate-600" viewBox="0 0 72 20" role="presentation" aria-hidden="true">
+        <path d="M3 14c8-13 18-13 28 0s20 6 36-8" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+      </svg>
+    </div>
+  );
+}
+
+function CodePreviewShape({ density }: { density: number }) {
+  return (
+    <div className="flex h-6 min-w-0 flex-1 items-center gap-2 font-mono text-[11px] font-semibold text-slate-500 dark:text-slate-400">
+      <span className="shrink-0">{"{}"}</span>
+      <div className="flex min-w-0 flex-1 flex-col gap-1">
+        <PreviewLine width={density > 1 ? "w-20" : "w-14"} />
+        {density > 2 ? <PreviewLine width="w-12" /> : null}
+      </div>
+    </div>
+  );
+}
+
+function PaperPreviewShape({ row }: { row: PaperPreviewRow }) {
+  const shape = (row.shape || "text") as PreviewShape;
+  const density = row.density || 2;
+  if (shape === "choice") return <ChoicePreviewShape density={density} />;
+  if (shape === "blank") return <BlankPreviewShape density={density} />;
+  if (shape === "judge") return <JudgePreviewShape density={density} />;
+  if (shape === "chart") return <ChartPreviewShape />;
+  if (shape === "formula") return <FormulaPreviewShape />;
+  if (shape === "code") return <CodePreviewShape density={density} />;
+  return <TextPreviewShape density={density} />;
+}
+
+function DominantPreviewMark({ type }: { type: PreviewDominantType }) {
+  if (type === "chart") {
+    return (
+      <svg className="h-8 w-8 text-slate-400 dark:text-slate-600" viewBox="0 0 32 32" role="presentation" aria-hidden="true">
+        <path d="M6 25V7M6 25h21" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+        <path d="M8 21l5-7 5 4 7-10" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    );
+  }
+  if (type === "formula") {
+    return <span className="font-serif text-lg font-semibold text-slate-400 dark:text-slate-600">f(x)</span>;
+  }
+  if (type === "image") {
+    return (
+      <svg className="h-8 w-8 text-slate-400 dark:text-slate-600" viewBox="0 0 32 32" role="presentation" aria-hidden="true">
+        <rect x="6" y="8" width="20" height="16" rx="3" fill="none" stroke="currentColor" strokeWidth="1.6" />
+        <path d="M9 21l5-6 4 4 3-3 3 5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        <circle cx="20.5" cy="13" r="1.5" fill="currentColor" />
+      </svg>
+    );
+  }
+  if (type === "code") {
+    return <span className="font-mono text-lg font-semibold text-slate-400 dark:text-slate-600">{"{}"}</span>;
+  }
+  return (
+    <div className="flex w-9 flex-col gap-1">
+      <PreviewLine width="w-8" />
+      <PreviewLine width="w-6" />
+      <PreviewLine width="w-7" />
+    </div>
+  );
+}
+
+function PaperFingerprintPreview({ preview }: { preview: PaperPreview }) {
+  const rows = preview.rows?.slice(0, PREVIEW_ROW_LIMIT) ?? [];
+  const keywords = preview.keywords?.slice(0, 3) ?? [];
+  const overflowCount = preview.overflow_count || 0;
+
+  return (
+    <div className="relative z-10 mt-3 flex min-h-[142px] flex-1 flex-col overflow-hidden">
+      <div className="mb-2 flex h-6 flex-wrap items-start gap-1 overflow-hidden">
+        {keywords.length > 0
+          ? keywords.map((keyword) => (
+              <span
+                key={keyword}
+                className="max-w-[5.5rem] truncate rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-medium leading-4 text-slate-500 dark:border-slate-800 dark:bg-slate-800/80 dark:text-slate-400"
+              >
+                {keyword}
+              </span>
+            ))
+          : preview.question_types?.slice(0, 2).map((type) => (
+              <span
+                key={type}
+                className="max-w-[5.5rem] truncate rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-medium leading-4 text-slate-500 dark:border-slate-800 dark:bg-slate-800/80 dark:text-slate-400"
+              >
+                {type}
+              </span>
+            ))}
+      </div>
+
+      <div className="space-y-1.5 pr-10">
+        {rows.map((row) => (
+          <div key={`${row.order}-${row.type}`} className="flex h-6 items-center gap-2 text-slate-400 dark:text-slate-600">
+            <span className="w-4 shrink-0 text-right text-[10px] font-semibold tabular-nums text-slate-400 dark:text-slate-600">
+              {row.order}
+            </span>
+            <PaperPreviewShape row={row} />
+          </div>
+        ))}
+      </div>
+
+      <div className="pointer-events-none absolute bottom-1 right-1 grid h-10 w-10 place-items-center rounded-full border border-slate-200/80 bg-white/75 backdrop-blur-sm dark:border-slate-700/70 dark:bg-slate-900/70">
+        <DominantPreviewMark type={preview.dominant_type || "text"} />
+      </div>
+
+      {overflowCount > 0 ? (
+        <div className="mt-1 pl-6 text-[10px] font-medium text-slate-400 dark:text-slate-600">+{overflowCount}</div>
+      ) : null}
+    </div>
+  );
+}
+
 function ExamPaperCard({
   item,
   isDeleting,
@@ -242,6 +454,7 @@ function ExamPaperCard({
       }).format(new Date(item.created_at))
     : "-";
   const difficultyLabel = getExamHistoryDifficulty(item);
+  const preview = getPaperPreview(item);
 
   const handleCardKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (event.key !== "Enter" && event.key !== " ") return;
@@ -275,29 +488,7 @@ function ExamPaperCard({
           {difficultyLabel ? ` · ${difficultyLabel}` : ""}
         </div>
 
-        <svg
-          className="pointer-events-none absolute inset-x-5 bottom-[62px] top-[136px] z-0 h-auto w-[calc(100%-2.5rem)] text-slate-300 dark:text-slate-700"
-          viewBox="0 0 210 205"
-          role="presentation"
-          aria-hidden="true"
-          preserveAspectRatio="none"
-        >
-          <g fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round">
-            <path strokeWidth="2.4" d="M10 13h90" />
-            <path strokeWidth="1.7" d="M10 28h128M10 42h105M10 56h118M10 70h92" />
-            <rect x="150" y="18" width="46" height="46" rx="5" strokeWidth="1.9" />
-            <path strokeWidth="1.7" d="M157 55l10-15 9 8 11-22" />
-            <circle cx="162" cy="35" r="3" fill="currentColor" stroke="none" />
-
-            <path strokeWidth="2.4" d="M10 101h82" />
-            <path strokeWidth="1.7" d="M10 116h148M10 130h126M10 144h138M10 158h110" />
-            <rect x="14" y="169" width="20" height="20" rx="3.5" strokeWidth="1.6" />
-            <path strokeWidth="1.6" d="M46 175h62M46 185h92" />
-
-            <path strokeWidth="2" d="M145 120c10-25 43-25 54-5s-6 48-33 46c-20-1-30-21-21-41Z" />
-            <path strokeWidth="1.5" d="M153 153l15-28 12 17 9-12 15 23" />
-          </g>
-        </svg>
+        <PaperFingerprintPreview preview={preview} />
 
         <div className="relative z-10 mt-auto flex items-center justify-end gap-2 pt-3">
           <div className="flex items-center gap-2">
