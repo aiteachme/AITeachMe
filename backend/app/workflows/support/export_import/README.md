@@ -19,5 +19,11 @@
 
 - 演示课程主源：现有 `S3_PUBLIC_BASE_URL` 下固定的 `demo-courses/`
 - 默认课程索引：`<S3_PUBLIC_BASE_URL>/demo-courses/catalog/v1/index.json`
+- 课程索引由本机私有脚本 `scripts/private/demo_course_package.py` 自动维护；不要手写 OSS 上的 `index.json`
+
+## Demo Course Paths
+
+- `GET /api/v1/courses`: 前端展示课程卡片。
+- `POST /api/v1/courses/{filename}/import`: 后端从 OSS 拉取 `.atmx` 后导入当前连接的运行环境；导入成功后出现在左侧学科列表。本地后端就是本机，云端后端就是云端账号。
 
 This module is a support workflow. It should coordinate repositories, schemas, storage, and models without introducing a parallel engine lane.

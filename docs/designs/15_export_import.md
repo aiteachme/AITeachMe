@@ -295,7 +295,7 @@ demo-courses/
 
 其中：
 
-- `index.json`：课程卡片列表、版本、下载地址、封面、简介
+- `index.json`：课程卡片列表、版本、下载地址、封面、简介；由本机私有脚本自动维护，不建议人工编辑
 - `packages/.../*.atmx`：真正的课程包
 - `covers/`：可选课程封面
 
@@ -305,8 +305,14 @@ demo-courses/
 - 云端模式：后端读取同一份 OSS 课程索引；如有需要可额外做启动预热缓存
 - 前端只消费统一后的 `/api/v1/courses` 结果，不感知当前后端跑在本地还是云端
 - 真正导入时，应由后端下载到临时目录后复用同一套 `import_subject()` 逻辑，不依赖浏览器写服务器文件系统
-- 推荐直接复用现有对象存储公共根地址：`S3_PUBLIC_BASE_URL=https://<your-cdn-domain>`
+- 云端页面的“导入”导入的是当前云端账号；本地页面的“导入”导入的是本机后端，成功后直接进入左侧学科列表
+- 需要离线分发时，运维侧用私有脚本下载 `.atmx`，再通过前端“上传导入”入口导入
+- 推荐由部署/发行侧复用现有对象存储公共根地址：`S3_PUBLIC_BASE_URL=https://<your-cdn-domain>`；该项不面向普通本地用户设置。
 - 后端代码中固定拼接 `demo-courses/catalog/v1/index.json`
+- 运维侧通过本机私有脚本执行上传、下载、删除：
+  - `python scripts/private/demo_course_package.py --mode upload --file xxx.atmx`
+  - `python scripts/private/demo_course_package.py --mode download --file <course_id-or-filename>`
+  - `python scripts/private/demo_course_package.py --mode delete --file <course_id-or-filename> --yes`
 
 一句话原则：
 

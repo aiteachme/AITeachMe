@@ -150,6 +150,14 @@ S3_PUBLIC_BASE_URL -> https://<your-cdn-domain>
 固定课程索引 -> <S3_PUBLIC_BASE_URL>/demo-courses/catalog/v1/index.json
 ```
 
+其中 `S3_PUBLIC_BASE_URL` 是发行/部署侧配置，不应出现在普通本地用户设置页；`index.json` 由本机私有脚本 `scripts/private/demo_course_package.py` 维护。脚本支持上传、下载和删除 `.atmx` 演示课程包，并通过 `.git/info/exclude` 保持不入库。
+
+演示课程页面有两条运行时路径：
+
+- 展示课程：`/api/v1/courses` 读取 OSS index。
+- 导入当前环境：`/api/v1/courses/{filename}/import` 由当前连接的后端临时下载 `.atmx` 并导入；成功后出现在左侧学科列表。本地后端写本机数据目录，云端后端写云端账号。
+- 离线分发：运维侧用私有脚本下载 `.atmx`，用户侧再通过“上传导入”入口导入。
+
 前端构建产物：
 
 ```text

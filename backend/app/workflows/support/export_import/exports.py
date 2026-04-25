@@ -443,6 +443,7 @@ def _import_table(
     id_map[spec.name] = table_id_map  # Register early to support self-referencing foreign keys
     self_fk_fields = {fk_field for fk_field, ref_table in spec.fk_remap.items() if ref_table == spec.name}
     pending_self_refs: list[tuple[SQLModel, dict[str, Any], Any]] = []
+    imported_at = utcnow()
 
     for raw_record in records:
         record_data = dict(raw_record)
@@ -460,6 +461,8 @@ def _import_table(
             record_data["slug"] = new_slug
             record_data["name"] = new_name
             record_data["normalized_name"] = None
+            record_data["created_at"] = imported_at
+            record_data["updated_at"] = imported_at
             _ensure_subject_icon(record_data, new_name)
         elif spec.subject_field and spec.subject_field != "slug":
             record_data[spec.subject_field] = new_slug
