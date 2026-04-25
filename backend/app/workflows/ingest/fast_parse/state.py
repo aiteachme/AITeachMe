@@ -51,6 +51,7 @@ class IngestParseState(TypedDict, total=False):
     record_asset_dir: str
     asset_upload_prefix: str
     asset_storage_dir: str
+    asset_link_prefix: str
     asset_name_prefix: str
     storage_backend: str
     requested_parser_provider: str | None

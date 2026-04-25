@@ -150,6 +150,7 @@ def sync_markdown_knowledge_graph(
     markdown: str,
     build_revision_no: int | None = None,
     enable_rag_dedup: bool = False,
+    subject_context: str | None = None,
 ) -> KnowledgeSyncReport:
     """Synchronize knowledge units and knowledge images from Markdown into the graph."""
 
@@ -162,7 +163,10 @@ def sync_markdown_knowledge_graph(
         )
 
     revision_no = build_revision_no or _next_revision_no(session, subject)
-    units, extracted_edges, diagnostics_totals = _extract_markdown_graph_items(markdown)
+    units, extracted_edges, diagnostics_totals = _extract_markdown_graph_items(
+        markdown,
+        subject_context=subject_context,
+    )
     report = KnowledgeSyncReport(
         subject=subject,
         build_revision_no=revision_no,
@@ -312,6 +316,8 @@ def _chapter_retry_delay_s() -> float:
 
 def _extract_markdown_graph_items(
     markdown: str,
+    *,
+    subject_context: str | None = None,
 ) -> tuple[list[MarkdownKnowledgeUnit], list[MarkdownExtractedEdge], dict[str, int]]:
     chapters = extract_markdown_chapter_chunks(markdown)
     sections = extract_markdown_section_chunks(markdown)
@@ -323,7 +329,11 @@ def _extract_markdown_graph_items(
 
         async def _extract_with_queue(chapter_index: int, chapter) -> SectionExtractionPayload:
             async with semaphore:
-                return await _extract_chapter_with_retries(chapter_index, chapter)
+                return await _extract_chapter_with_retries(
+                    chapter_index,
+                    chapter,
+                    subject_context=subject_context or "",
+                )
 
         return await asyncio.gather(
             *[_extract_with_queue(chapter_index, chapter) for chapter_index, chapter in enumerate(chapters)]
@@ -634,12 +644,21 @@ def _merge_missing_chapter_heading_nodes(result: ChunkExtractionResult, chapter)
     return result
 
 
-async def _extract_chapter_with_retries(chapter_index: int, chapter) -> SectionExtractionPayload:
+async def _extract_chapter_with_retries(
+    chapter_index: int,
+    chapter,
+    *,
+    subject_context: str = "",
+) -> SectionExtractionPayload:
     last_error: Exception | None = None
     max_retries = _chapter_max_retries()
     for attempt in range(1, max_retries + 1):
         try:
-            return await _extract_chapter_graph_items(chapter_index, chapter)
+            return await _extract_chapter_graph_items(
+                chapter_index,
+                chapter,
+                subject_context=subject_context,
+            )
         except asyncio.CancelledError:
             raise
         except Exception as exc:
@@ -720,12 +739,18 @@ def _build_chapter_fallback_payload(chapter_index: int, chapter) -> SectionExtra
     )
 
 
-async def _extract_chapter_graph_items(chapter_index: int, chapter) -> SectionExtractionPayload:
+async def _extract_chapter_graph_items(
+    chapter_index: int,
+    chapter,
+    *,
+    subject_context: str = "",
+) -> SectionExtractionPayload:
     result, diagnostics = await _extract_candidates_with_diagnostics_adapter(
         chunk_content=chapter.body_markdown,
         chunk_title=chapter.title,
         header_path=chapter.header_path,
         doc_source_type="knowledge_doc_markdown",
+        subject_context=subject_context,
         prefer_fast_path=False,
         allow_markdown_anchor_short_circuit=False,
     )

@@ -48,6 +48,7 @@ def test_settings_model_uses_code_defaults_without_project_file(monkeypatch) -> 
     assert settings.models.video_generation is defaults["models"]["video_generation"]
     assert settings.ingest.max_upload_size_mb == defaults["ingest"]["max_upload_size_mb"]
     assert settings.docgen.generate_cover_image == defaults["docgen"]["generate_cover_image"]
+    assert settings.knowledge_graph.sync_after_docgen is True
     assert "runtime" not in defaults
     assert "embedding" not in defaults
 
@@ -61,7 +62,8 @@ def test_detect_llm_provider_from_base_url_handles_major_providers() -> None:
         == "azure"
     )
     assert detect_llm_provider_from_base_url("http://localhost:11434/v1") == "ollama"
-    assert detect_llm_provider_from_base_url("http://localhost:9020/v1") == "vllm"
+    assert detect_llm_provider_from_base_url("http://localhost:8000/v1") == "vllm"
+    assert detect_llm_provider_from_base_url("http://localhost:9020/v1") == "openai_compatible"
     assert detect_llm_provider_from_base_url("https://api.deepseek.com/v1") == "deepseek"
     assert detect_llm_provider_from_base_url("https://api.moonshot.cn/v1") == "kimi"
     assert detect_llm_provider_from_base_url("https://open.bigmodel.cn/api/paas/v4") == "glm"
@@ -87,6 +89,7 @@ def test_resolve_runtime_llm_provider_prefers_explicit_env(monkeypatch) -> None:
 
 def test_provider_defaults_switch_by_provider() -> None:
     anthropic_defaults = get_llm_provider_model_defaults("anthropic")
+    openai_compatible_defaults = get_llm_provider_model_defaults("openai_compatible")
     gemini_defaults = get_llm_provider_model_defaults("gemini")
     azure_defaults = get_llm_provider_model_defaults("azure")
     vllm_defaults = get_llm_provider_model_defaults("vllm")
@@ -100,6 +103,7 @@ def test_provider_defaults_switch_by_provider() -> None:
     assert anthropic_defaults["embedding"] is None
     assert anthropic_defaults["rerank"] is None
     assert anthropic_defaults["image_generation"] is None
+    assert openai_compatible_defaults["embedding"] == "text-embedding-3-small"
     assert gemini_defaults["primary"] == "gemini-2.5-flash"
     assert gemini_defaults["light"] == "gemini-2.5-flash-lite"
     assert gemini_defaults["embedding"] == "text-embedding-004"
@@ -134,7 +138,7 @@ def test_split_provider_model_name_preserves_vendor_model_paths() -> None:
 def test_llm_provider_requires_api_key_handles_local_gateways() -> None:
     assert llm_provider_requires_api_key("anthropic", base_url="https://api.anthropic.com") is True
     assert llm_provider_requires_api_key("ollama", base_url="http://localhost:11434/v1") is False
-    assert llm_provider_requires_api_key("vllm", base_url="http://127.0.0.1:9020/v1") is False
+    assert llm_provider_requires_api_key("vllm", base_url="http://127.0.0.1:8000/v1") is False
     assert llm_provider_requires_api_key("openai_compatible", base_url="http://localhost:1234/v1") is False
 
 

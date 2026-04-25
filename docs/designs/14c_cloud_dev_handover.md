@@ -172,7 +172,7 @@ grep -rn "file_path\|markdown_path\|asset_dir" \
 ## 五、关键设计约束（必须遵循）
 
 1. **local 模式必须完全不受影响** — 所有改动都通过 `settings.is_cloud_mode` 或 `is_postgres()` 分支
-2. **storage_key 是统一文件定位语义** — 格式为 `{subject}/raw_files/{id}.pdf`
+2. **storage_key 是统一文件定位语义** — 上传文件使用 `{file_uid}__{safe_stem}` 目录，不使用裸自增 id 命名
 3. **不做 async ORM 重构** — PostgreSQL 用同步 psycopg
 4. **DogeCloud 细节不写进业务层** — 只出现在 env 值和 `s3_store.py`
 5. **temp/ 和 debug/ 不进 OSS** — 始终用本地临时目录

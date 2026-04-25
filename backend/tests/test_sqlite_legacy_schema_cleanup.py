@@ -5,6 +5,7 @@ from app.shared.infra.database.core import (
     _apply_sqlite_additive_schema_updates,
     _drop_sqlite_legacy_schema,
     _inspect_sqlite_schema_drift,
+    _json_dumps,
 )
 
 
@@ -188,3 +189,57 @@ def test_sqlite_schema_drift_allows_memory_runtime_tables(tmp_path):
         connection.execute(sa.text("CREATE TABLE atm_vec_chunks_dim_3_rowids (id INTEGER PRIMARY KEY)"))
 
     assert _inspect_sqlite_schema_drift(engine) is None
+
+
+def test_sqlite_additive_schema_updates_add_subject_learning_context_columns(tmp_path):
+    db_path = tmp_path / "legacy_subject.sqlite"
+    engine = create_engine(f"sqlite:///{db_path}")
+
+    with engine.begin() as connection:
+        connection.execute(
+            sa.text(
+                """
+                CREATE TABLE subject (
+                    id INTEGER PRIMARY KEY,
+                    user_id TEXT NOT NULL,
+                    slug TEXT NOT NULL,
+                    name TEXT NOT NULL
+                )
+                """
+            )
+        )
+        connection.execute(
+            sa.text(
+                """
+                INSERT INTO subject (id, user_id, slug, name)
+                VALUES (1, 'local', 'math', 'Math')
+                """
+            )
+        )
+
+    _apply_sqlite_additive_schema_updates(engine)
+
+    inspector = sa.inspect(engine)
+    columns = {column["name"] for column in inspector.get_columns("subject")}
+    assert {
+        "learning_intent_text",
+        "subject_intro_text",
+        "document_summary_json",
+        "llm_context_text",
+    } <= columns
+
+    with engine.connect() as connection:
+        row = connection.execute(
+            sa.text(
+                """
+                SELECT learning_intent_text, subject_intro_text, document_summary_json, llm_context_text
+                FROM subject
+                WHERE slug = 'math'
+                """
+            )
+        ).one()
+    assert tuple(row) == ("", "", "{}", "")
+
+
+def test_database_json_serializer_keeps_unicode_readable():
+    assert "\\u" not in _json_dumps({"subject": "高等数学"})

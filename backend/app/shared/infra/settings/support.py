@@ -172,13 +172,14 @@ LLM_PROVIDER_MODEL_DEFAULTS: dict[str, dict[str, Any]] = {
     # offers a clear speed-first option. Other capability slots remain empty
     # by default and are opt-in.
     #
-    # Default path for OpenAI-compatible gateways such as DashScope compatible
-    # mode, LiteLLM Gateway, vLLM, LM Studio, Ollama OpenAI mode, etc.
+    # Default path for generic OpenAI-compatible gateways such as LiteLLM
+    # Gateway, LM Studio, and third-party API aggregators. DashScope/Qwen has
+    # its own provider-specific defaults below.
     "openai_compatible": _provider_model_defaults(
         reason="qwen-max",
         primary="qwen-flash",
         light="qwen-flash",
-        embedding="text-embedding-v3",
+        embedding="text-embedding-3-small",
     ),
     "vllm": _provider_model_defaults(
         reason="Qwen/Qwen2.5-7B-Instruct",

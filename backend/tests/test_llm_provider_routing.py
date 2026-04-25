@@ -1,6 +1,11 @@
 from __future__ import annotations
 
-from app.shared.infra.llm_support.common import build_completion_context, build_litellm_provider_kwargs
+from app.shared.infra.llm_support.common import (
+    build_completion_context,
+    build_litellm_provider_kwargs,
+    capture_llm_runtime_snapshot,
+    use_llm_runtime_snapshot,
+)
 from app.shared.infra.llm_support.image import (
     GeneratedImage,
     ImageGenerationResult,
@@ -11,7 +16,11 @@ from app.shared.infra.llm_support.image import (
     _resolve_litellm_image_model,
 )
 from app.shared.infra.llm_support.routing import LLMCallPurpose
-from app.shared.infra.settings import reset_project_settings_cache
+from app.shared.infra.settings import (
+    clear_system_settings_override,
+    reset_project_settings_cache,
+    set_system_settings_override,
+)
 from app.shared.infra.settings.support import normalize_openai_compatible_image_model_name
 
 
@@ -105,6 +114,29 @@ def test_build_completion_context_allows_local_provider_without_api_key(monkeypa
 
     assert context.api_key is None
     assert context.model == "qwen2.5"
+
+
+def test_llm_runtime_snapshot_freezes_model_and_connection(monkeypatch) -> None:
+    clear_system_settings_override()
+    monkeypatch.setenv("LLM_PROVIDER", "openai_compatible")
+    monkeypatch.setenv("LLM_BASE_URL", "https://old-gateway.example/v1")
+    monkeypatch.setenv("LLM_API_KEY", "old-key")
+    set_system_settings_override({"models": {"primary": "old-model"}})
+    snapshot = capture_llm_runtime_snapshot()
+
+    monkeypatch.setenv("LLM_BASE_URL", "https://new-gateway.example/v1")
+    monkeypatch.setenv("LLM_API_KEY", "new-key")
+    set_system_settings_override({"models": {"primary": "new-model"}})
+
+    try:
+        with use_llm_runtime_snapshot(snapshot):
+            context = build_completion_context(call_purpose=LLMCallPurpose.CHAT)
+
+        assert context.model == "old-model"
+        assert context.base_url == "https://old-gateway.example/v1"
+        assert context.api_key == "old-key"
+    finally:
+        clear_system_settings_override()
 
 
 def test_normalize_openai_compatible_image_model_name_uses_litellm_openai_route() -> None:

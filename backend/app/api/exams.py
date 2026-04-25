@@ -48,6 +48,7 @@ from app.workflows.examine import (
     run_question_build_workflow,
 )
 from app.workflows.profile import schedule_reviews, update_mastery_from_exam
+from app.workflows.support.subjects.learning_context import load_subject_llm_context
 
 router = APIRouter(prefix="/api/v1/subjects/{subject}/exams", tags=["exams"])
 logger = structlog.get_logger(__name__)
@@ -427,6 +428,7 @@ async def _run_exam_generation_background(
                     error_code="NO_PERSISTED_KNOWLEDGE_UNITS_FOR_EXAM",
                     status_code=409,
                 )
+            subject_context = load_subject_llm_context(session, subject=subject)
 
             mastery_by_unit_id = _mastery_by_unit_id(session, user_id=user_id, subject=subject)
 
@@ -441,6 +443,7 @@ async def _run_exam_generation_background(
             question_count=question_count,
             requested_difficulty=requested_difficulty,
             mastery_by_unit_id=mastery_by_unit_id,
+            subject_context=subject_context,
             focus_prompt=focus_prompt or "",
             user_prompt=user_prompt or "",
             style_prompt=style_prompt or "",

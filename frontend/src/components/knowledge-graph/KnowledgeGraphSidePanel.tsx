@@ -156,7 +156,7 @@ export function KnowledgeGraphSidePanel({
         </div>
 
       <div className="grid gap-3 border-b border-slate-200 bg-slate-50/70 p-3">
-          <DigestBuildProgress subject={subjectId} compact />
+          <DigestBuildProgress subject={subjectId} compact focus="graph" />
           <SubjectVectorNotice status={overview?.vector_status} />
         </div>
 

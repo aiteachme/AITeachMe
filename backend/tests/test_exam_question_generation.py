@@ -3,6 +3,7 @@ import pytest
 from app.models.knowledge_unit import KnowledgeUnit
 from app.workflows.examine.question_build.lib import generator
 from app.workflows.examine.question_build.lib.generator import (
+    ExamQuestionBatch,
     ExamQuestionBlueprint,
     ExamQuestionBlueprintBatch,
     ExamQuestionDraft,
@@ -17,12 +18,14 @@ from app.workflows.examine.question_build.lib.generator import (
 
 @pytest.mark.anyio
 async def test_generate_exam_questions_for_units_returns_validated_llm_questions(monkeypatch):
+    observed_messages = []
+
     async def fake_acompletion_with_fallback(*args, **kwargs):
-        assert kwargs["response_model"] is ExamSingleQuestionResponse
-        item_order = kwargs["extra_metadata"]["item_order"]
-        if item_order == 1:
-            return ExamSingleQuestionResponse(
-                question=ExamQuestionDraft(
+        assert kwargs["response_model"] is ExamQuestionBatch
+        observed_messages.extend(args[0])
+        return ExamQuestionBatch(
+            questions=[
+                ExamQuestionDraft(
                     item_order=1,
                     knowledge_unit_id=101,
                     question_type="single_choice",
@@ -31,18 +34,17 @@ async def test_generate_exam_questions_for_units_returns_validated_llm_questions
                     options=["Instantaneous rate of change", "Area accumulation", "Vector cross product", "Set union"],
                     correct_answer="A",
                     explanation="A derivative describes local instantaneous change, which is its core definition.",
-                )
-            )
-        return ExamSingleQuestionResponse(
-            question=ExamQuestionDraft(
-                item_order=2,
-                knowledge_unit_id=102,
-                question_type="short_answer",
-                difficulty="hard",
-                stem="Explain why Newton iteration usually needs a reasonable initial value.",
-                correct_answer="A nearby initial value makes local linearization more likely to converge.",
-                explanation="Newton iteration depends on local tangent approximations, so distant starts may diverge.",
-            )
+                ),
+                ExamQuestionDraft(
+                    item_order=2,
+                    knowledge_unit_id=102,
+                    question_type="short_answer",
+                    difficulty="hard",
+                    stem="Explain why Newton iteration usually needs a reasonable initial value.",
+                    correct_answer="A nearby initial value makes local linearization more likely to converge.",
+                    explanation="Newton iteration depends on local tangent approximations, so distant starts may diverge.",
+                ),
+            ]
         )
 
     monkeypatch.setattr(generator, "acompletion_with_fallback", fake_acompletion_with_fallback)
@@ -87,6 +89,7 @@ async def test_generate_exam_questions_for_units_returns_validated_llm_questions
         exam_mode="paper_exam",
         units=units,
         specs=specs,
+        subject_context="Calculus context: derivatives before Newton iteration.",
         focus_prompt="导数与数值方法",
         user_prompt="更重视理解与应用",
         style_prompt="风格接近高质量阶段测验",
@@ -96,6 +99,7 @@ async def test_generate_exam_questions_for_units_returns_validated_llm_questions
     assert questions[0].correct_answer == "A"
     assert questions[0].options is not None and len(questions[0].options) == 4
     assert questions[1].question_type == "short_answer"
+    assert "Calculus context: derivatives before Newton iteration." in observed_messages[1]["content"]
 
 
 @pytest.mark.anyio

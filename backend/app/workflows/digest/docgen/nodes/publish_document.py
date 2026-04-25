@@ -48,6 +48,7 @@ def build_publish_document_node(*, context: WorkflowContext):
         cover_markdown = str(state.get("cover_markdown") or "").strip()
         # 这份快照给后续调试、问答/出题复用和失败追踪用；不要只因为前端暂时不用就删。
         docgen_artifacts = {
+            "confirmed_plan": dict(state.get("confirmed_plan") or {}),
             "docgen_context": dict(state.get("docgen_context") or {}),
             "intent_profile": dict(state.get("intent_profile") or {}),
             "file_summaries": list(state.get("file_summaries") or []),
@@ -93,6 +94,12 @@ def build_publish_document_node(*, context: WorkflowContext):
             "final_chapter_titles": list(state.get("final_chapter_titles") or []),
             "title_review_report": dict(state.get("title_review_report") or {}),
             "cover_artifact": cover_artifact,
+            "build_metadata": {
+                "build_session_id": state.get("build_session_id") or "",
+                "planner_session_id": state.get("planner_session_id") or "",
+                "confirmed_plan_id": state.get("confirmed_plan_id") or "",
+                "digest_mode": state.get("digest_mode") or "",
+            },
         }
         user_prompt = state.get("user_prompt")
         requested_at = state["requested_at"]

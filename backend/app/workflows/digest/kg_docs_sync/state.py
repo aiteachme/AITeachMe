@@ -2,14 +2,16 @@
 
 from __future__ import annotations
 
-from typing import TypedDict
+from typing import TYPE_CHECKING, TypedDict
 
-from app.workflows.support.knowledge_graph.incremental_sync import KnowledgeSyncReport
+if TYPE_CHECKING:
+    from app.workflows.support.knowledge_graph.incremental_sync import KnowledgeSyncReport
 
 
 class DocsSyncState(TypedDict, total=False):
     subject: str
     markdown: str
+    subject_context: str
     build_revision_no: int | None
     build_session_id: str
     report: KnowledgeSyncReport | None
@@ -17,4 +19,3 @@ class DocsSyncState(TypedDict, total=False):
 
 
 __all__ = ["DocsSyncState"]
-

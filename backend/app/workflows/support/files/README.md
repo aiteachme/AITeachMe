@@ -13,3 +13,8 @@
 
 - This module is a support workflow, not a LangGraph engine lane.
 - Long-running parsing still belongs to `workflows/ingest`; this module only coordinates the API-facing command.
+- Persisted upload artifacts are keyed by stable file uid plus a sanitized filename stem:
+  `users/{user}/files/{file_uid}__{safe_stem}/raw.ext`, `markdown.md`, and `assets/`.
+  The database keeps the original filename for display; storage keys should not use bare auto-increment ids.
+- Subject import/export packages use the same `{file_uid}__{safe_stem}` segment for raw files,
+  parsed markdown, and extracted assets inside the archive.

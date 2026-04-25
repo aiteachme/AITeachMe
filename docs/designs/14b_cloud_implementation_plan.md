@@ -421,22 +421,23 @@ async def save_uploaded_file(subject, filename, content, ...):
     temp_path = temp_dir / f"{uuid.uuid4().hex}{extension}"
     temp_path.write_bytes(content)
 
-    # 2. 创建DB记录，获取 raw_file_id
+    # 2. 创建DB记录，获取 file_uid
     raw_file = _create_raw_file_record(session, subject, filename, ...)
 
     # 3. 构建 storage_key 并持久化
-    storage_key = f"{subject}/raw_files/{raw_file.id}{extension}"
+    storage_key = user_file_scope.raw_file_key(
+        file_uid=raw_file.uid,
+        filename=raw_file.filename,
+        extension=extension,
+    )
 
     if settings.is_cloud_mode:
         await store.write_file(storage_key, temp_path)
         raw_file.file_path = storage_key  # cloud模式下存storage_key
         temp_path.unlink(missing_ok=True)
     else:
-        # local模式：原有逻辑，move到最终路径
-        final_path = build_raw_file_path(subject, raw_file.id, extension)
-        final_path.parent.mkdir(parents=True, exist_ok=True)
-        shutil.move(str(temp_path), str(final_path))
-        raw_file.file_path = str(final_path)
+        await store.write_file(storage_key, temp_path)
+        raw_file.file_path = storage_key
 
     session.commit()
 ```
@@ -488,7 +489,7 @@ async def load_raw_file(state, ...):
 
 ### Step 3.4 — 改造 Ingest 产物写回
 
-Ingest 产出：`raw_markdowns/{id}.md` 和 `assets/{id}/*`
+Ingest 产出：`raw_file.markdown_path` 和 `raw_file.asset_dir` 指向的对象。
 
 **文件**: `backend/app/workflows/ingest/fast_parse/lib/finalize.py`
 
@@ -498,23 +499,13 @@ async def finalize_success(state, ...):
     settings = get_settings()
 
     # 写入 markdown
-    md_storage_key = f"{state.subject}/raw_markdowns/{state.file_id}.md"
-    if settings.is_cloud_mode:
-        await store.write_bytes(md_storage_key, markdown_content.encode())
-    else:
-        md_path = build_raw_markdown_path(state.subject, state.file_id)
-        md_path.parent.mkdir(parents=True, exist_ok=True)
-        md_path.write_text(markdown_content, encoding="utf-8")
+    await store.write_bytes(state["record_markdown_path"], markdown_content.encode())
 
     # 写入 assets（如果有）
     if asset_files:
         for asset_path in asset_files:
-            asset_key = f"{state.subject}/assets/{state.file_id}/{asset_path.name}"
-            if settings.is_cloud_mode:
-                await store.write_file(asset_key, asset_path)
-            else:
-                # local模式：assets已在解析时写入本地，无需额外操作
-                pass
+            asset_key = f"{state['asset_upload_prefix']}{asset_path.name}"
+            await store.write_file(asset_key, asset_path)
 ```
 
 ### Step 3.5 — 改造 Digest 文档发布

@@ -155,6 +155,7 @@ def delete_subject_with_all_content(session: Session, *, subject: Subject) -> di
         _delete_chat_messages(session, subject=subject_slug)
         _delete_knowledge_and_curriculum(session, subject=subject_slug)
         _delete_documents_and_chunks(session, subject=subject_slug)
+        _clear_subject_vector_index_best_effort(subject_slug)
         _delete_planner_records(session, subject=subject_slug)
         _delete_raw_files_and_artifacts(session, subject=subject_slug, owner_user_id=owner_user_id)
         session.delete(subject)
@@ -254,6 +255,15 @@ def _delete_documents_and_chunks(session: Session, *, subject: str) -> None:
         knowledge_repo.delete_embeddings_by_chunk_ids(session, subject=subject, chunk_ids=chunk_ids)
     for chunk in chunks:
         session.delete(chunk)
+
+
+def _clear_subject_vector_index_best_effort(subject: str) -> None:
+    try:
+        from app.shared.infra.search.llamaindex_index import clear_subject_index
+
+        clear_subject_index(subject)
+    except Exception as exc:  # pragma: no cover - best-effort index cleanup
+        logger.warning("subject_vector_index_cleanup_failed", subject=subject, error=str(exc))
 
 
 def _delete_planner_records(session: Session, *, subject: str) -> None:

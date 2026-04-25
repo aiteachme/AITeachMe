@@ -386,10 +386,10 @@ def list_assets_by_raw_file_id(session: Session, raw_file_id: int) -> list[RawFi
     if not asset_dir:
         if raw_file.user_id:
             scope = get_content_store().user_file_scope(user_id=raw_file.user_id)
-            asset_dir = scope.asset_prefix(raw_file_id).rstrip("/")
+            asset_dir = scope.asset_prefix(file_uid=raw_file.uid, filename=raw_file.filename).rstrip("/")
         elif raw_file.subject:
             scope = resolve_subject_storage_scope(raw_file.subject)
-            asset_dir = scope.asset_prefix(raw_file_id).rstrip("/")
+            asset_dir = scope.asset_prefix(file_uid=raw_file.uid, filename=raw_file.filename).rstrip("/")
 
     cs = get_content_store()
     keys = run_store_sync(cs.list_prefix, asset_dir.rstrip("/") + "/", default=[]) or []

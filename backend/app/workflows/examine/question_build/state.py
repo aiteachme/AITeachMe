@@ -14,6 +14,7 @@ class QuestionBuildGraphInput(TypedDict, total=False):
     subject_description: str
     subject_user_intent: str
     exam_mode: str
+    subject_context: str
     focus_prompt: str
     user_prompt: str
     style_prompt: str

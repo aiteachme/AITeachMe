@@ -43,6 +43,7 @@ def build_generate_questions_node(*, context: WorkflowContext):
                 exam_mode=str(state.get("exam_mode") or "web_practice"),
                 units=list(state.get("units") or []),
                 specs=specs,
+                subject_context=str(state.get("subject_context") or ""),
                 focus_prompt=str(state.get("focus_prompt") or ""),
                 user_prompt=str(state.get("user_prompt") or ""),
                 style_prompt=str(state.get("style_prompt") or ""),

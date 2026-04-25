@@ -1,13 +1,15 @@
 import { defineConfig, loadEnv } from "vite";
 import react from "@vitejs/plugin-react";
 
+const LOCAL_HOST = "127.0.0.1";
+const DEFAULT_BACKEND_PORT = "9020";
+const DEFAULT_FRONTEND_PORT = 5180;
+
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, "..", "");
-  const backendHost = env.AITEACHME_BACKEND_HOST || "127.0.0.1";
-  const backendPort = env.AITEACHME_BACKEND_PORT || "9020";
-  const frontendHost = env.AITEACHME_FRONTEND_HOST || "127.0.0.1";
-  const frontendPort = Number(env.AITEACHME_FRONTEND_PORT || "5180");
-  const apiTarget = env.VITE_API_URL?.trim() || `http://${backendHost}:${backendPort}`;
+  const backendPort = env.AITEACHME_BACKEND_PORT || DEFAULT_BACKEND_PORT;
+  const frontendPort = Number(env.AITEACHME_FRONTEND_PORT || DEFAULT_FRONTEND_PORT);
+  const apiTarget = env.VITE_API_URL?.trim() || `http://${LOCAL_HOST}:${backendPort}`;
 
   return {
     base: "./",
@@ -15,7 +17,7 @@ export default defineConfig(({ mode }) => {
     root: ".",
     envDir: "..",
     server: {
-      host: frontendHost,
+      host: LOCAL_HOST,
       port: frontendPort,
       strictPort: true,
       proxy: {

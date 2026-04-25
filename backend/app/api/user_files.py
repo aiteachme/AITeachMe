@@ -15,7 +15,6 @@ from app.repositories.files_repo import get_raw_file_by_uid_for_user
 from app.schemas.common import ApiResponse, ok_response
 from app.schemas.files import FileDeleteData, FileDeleteRequest, FilesData, FilesUploadData
 from app.shared.infra.storage import get_content_store
-from app.utils.presenters import require_id
 from app.workflows.support.files import (
     delete_user_files,
     list_user_files,
@@ -134,8 +133,10 @@ async def serve_user_file_asset(
     if raw_file is None:
         return Response(status_code=404, content=b"Not found")
 
-    raw_file_id = require_id(raw_file.id, "RawFile.id")
-    base_prefix = raw_file.asset_dir or get_content_store().user_file_scope(user_id=user.user_id).asset_prefix(raw_file_id)
+    base_prefix = raw_file.asset_dir or get_content_store().user_file_scope(user_id=user.user_id).asset_prefix(
+        file_uid=raw_file.uid,
+        filename=raw_file.filename,
+    )
     normalized_asset_path = asset_path.lstrip("/\\")
     if not normalized_asset_path or ".." in FilePath(normalized_asset_path).parts:
         return Response(status_code=404, content=b"Not found")

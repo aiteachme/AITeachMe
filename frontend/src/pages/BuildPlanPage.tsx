@@ -37,6 +37,7 @@ import {
   buildKnowledgeBuildRuntimeQueryKey,
   fetchKnowledgeBuildRuntime,
 } from "../lib/knowledgeBuildRuntime";
+import { formatDigestModeLabel } from "../lib/digestMode";
 import { buildKnowledgeDocStateQueryKey, fetchKnowledgeDocState } from "../lib/knowledgeDocs";
 import { FILE_ACCEPT, extractPasteFiles } from "../lib/fileUpload";
 import { publicAssetPath } from "../lib/publicAsset";
@@ -370,7 +371,7 @@ function PlannerOutlineCard({
 
       <div className="mt-6 flex flex-wrap items-center gap-3">
         <span className="rounded-full border border-zinc-200 px-2 py-0.5 text-[11px] text-zinc-500">
-          {plan.digest_mode}
+          {formatDigestModeLabel(plan.digest_mode)}
         </span>
         {needsRefresh ? (
           <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] text-amber-700">

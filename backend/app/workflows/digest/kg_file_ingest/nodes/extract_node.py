@@ -254,7 +254,7 @@ async def extract_node(state: KnowledgeDigestState) -> KnowledgeDigestState:
             chunk_ids = list(state.get("chunk_ids", []))
             extract_parallelism = _resolve_extract_parallelism(len(chunk_ids))
             chapter_priors: Any | None = None
-            subject_context = ""
+            subject_context = str(state.get("subject_context") or "").strip()
             shared_inputs = state.get("shared_inputs")
             digest_mode = ""
             sibling_topics = ""
@@ -264,7 +264,13 @@ async def extract_node(state: KnowledgeDigestState) -> KnowledgeDigestState:
             )
             if shared_inputs is not None:
                 if getattr(shared_inputs, "subject_profile", None):
-                    subject_context = shared_inputs.subject_profile.build_context_string()
+                    shared_subject_context = shared_inputs.subject_profile.build_context_string()
+                    if shared_subject_context:
+                        subject_context = (
+                            f"{subject_context}\n\n{shared_subject_context}"
+                            if subject_context
+                            else shared_subject_context
+                        )
                 # Resolve digest mode for prompt context
                 if getattr(shared_inputs, "digest_mode_decision", None):
                     digest_mode = shared_inputs.digest_mode_decision.mode.value

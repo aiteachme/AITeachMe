@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import posixpath
 import tempfile
 from pathlib import Path
 
@@ -25,6 +26,12 @@ from app.workflows.ingest.common.parsing.types import ParserRunOptions
 from app.workflows.ingest.fast_parse.lib.runtime_helpers import _build_asset_rows
 
 logger = structlog.get_logger()
+
+
+def _relative_asset_link_prefix(*, markdown_key: str, asset_dir: str) -> str:
+    markdown_parent = posixpath.dirname(markdown_key.rstrip("/")) or "."
+    relative = posixpath.relpath(asset_dir.rstrip("/"), markdown_parent)
+    return "." if relative == "." else relative
 
 
 async def _materialize_stored_assets(
@@ -81,9 +88,19 @@ async def _run_deep_enhance_background(
 
                 file_path = await cs.materialize(raw_file.file_path or raw_file.storage_key, _temp_dir)
                 # Materialize markdown to temp for Phase 2 parsing
-                md_key = raw_file.markdown_path or file_scope.raw_markdown_key(file_id)
+                md_key = raw_file.markdown_path or file_scope.raw_markdown_key(
+                    file_uid=raw_file.uid,
+                    filename=raw_file.original_filename,
+                )
                 persisted_asset_prefix = (
-                    raw_file.asset_dir.rstrip("/") + "/" if raw_file.asset_dir else file_scope.asset_prefix(file_id)
+                    raw_file.asset_dir.rstrip("/") + "/" if raw_file.asset_dir else file_scope.asset_prefix(
+                        file_uid=raw_file.uid,
+                        filename=raw_file.original_filename,
+                    )
+                )
+                asset_link_prefix = _relative_asset_link_prefix(
+                    markdown_key=md_key,
+                    asset_dir=persisted_asset_prefix.rstrip("/"),
                 )
                 markdown_path = _temp_dir / f"{file_id}.md"
                 md_text = run_store_sync(cs.read_text, md_key, default=None)
@@ -174,7 +191,7 @@ async def _run_deep_enhance_background(
                         quality_result = canonicalize_markdown(
                             raw_quality,
                             asset_dir=asset_dir,
-                            asset_link_prefix=f"../assets/{file_id}",
+                            asset_link_prefix=asset_link_prefix,
                             asset_name_prefix=asset_name_prefix,
                         )
                         quality_md = quality_result.markdown
@@ -201,7 +218,7 @@ async def _run_deep_enhance_background(
                     markdown,
                     file_path=str(file_path),
                     asset_dir=str(asset_dir),
-                    asset_link_prefix=f"../assets/{file_id}",
+                    asset_link_prefix=asset_link_prefix,
                     asset_name_prefix=asset_name_prefix,
                     parse_plan=parse_plan,
                     classification=classification,
@@ -217,7 +234,10 @@ async def _run_deep_enhance_background(
 
             # Overwrite markdown with enhanced version and persist assets together.
             markdown_path.write_text(enhance_result.markdown, encoding="utf-8")
-            md_key = raw_file.markdown_path or file_scope.raw_markdown_key(file_id)
+            md_key = raw_file.markdown_path or file_scope.raw_markdown_key(
+                file_uid=raw_file.uid,
+                filename=raw_file.original_filename,
+            )
             await cs.write_text(md_key, enhance_result.markdown)
             asset_prefix = persisted_asset_prefix
             uploaded_asset_count = await cs.upload_dir(asset_dir, asset_prefix)

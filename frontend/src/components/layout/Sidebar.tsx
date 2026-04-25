@@ -573,9 +573,9 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
           ) : null}
         </div>
 
-        <div className={cn("min-h-0 flex-1 space-y-1 overflow-y-auto overflow-x-hidden pb-4 scrollbar-thin scrollbar-webkit", effectiveCollapsed ? "px-2" : "px-3")}>
+        <div className={cn("min-h-0 flex-1 space-y-0.5 overflow-y-auto overflow-x-hidden pb-4 scrollbar-thin scrollbar-webkit", effectiveCollapsed ? "px-2" : "px-3")}>
           {!effectiveCollapsed ? (
-            <div className="flex items-center gap-1.5 px-2 pb-1 pt-1">
+            <div className="flex items-center gap-1.5 px-2 pb-2 pt-1">
               <span className="whitespace-nowrap text-[11px] font-medium tracking-[0.08em] text-slate-400">学科</span>
               {isLoading ? <Loader2 className="h-3 w-3 animate-spin text-slate-400 dark:text-slate-500" /> : null}
             </div>
@@ -703,7 +703,7 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
                           className={cn(
                             "flex h-7 items-center overflow-hidden whitespace-nowrap rounded-md px-2 text-xs transition-colors",
                             isActive
-                              ? "bg-[#eef3f8] text-[#1f2937] ring-1 ring-[#d9e2ec] font-medium dark:bg-slate-800 dark:text-slate-200 dark:ring-slate-700"
+                              ? "bg-[#edf3f8] font-medium text-[#243246] dark:bg-slate-800 dark:text-slate-200"
                               : "text-slate-500 hover:bg-slate-50 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-slate-800/40 dark:hover:text-slate-200",
                           )}
                         >

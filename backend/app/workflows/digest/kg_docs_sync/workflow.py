@@ -21,6 +21,7 @@ async def run_graph_docs_sync_workflow(
     markdown: str,
     build_revision_no: int | None = None,
     build_session_id: str | None = None,
+    subject_context: str | None = None,
 ) -> WorkflowResult[KnowledgeSyncReport]:
     normalized_subject, normalized_markdown, normalized_revision = normalize_docs_sync_inputs(
         subject=subject,
@@ -46,6 +47,7 @@ async def run_graph_docs_sync_workflow(
                 markdown=normalized_markdown,
                 build_revision_no=normalized_revision,
                 build_session_id=build_session_id,
+                subject_context=subject_context,
             ),
             context=context,
         )

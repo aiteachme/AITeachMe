@@ -58,7 +58,7 @@ DEFAULT_SETTINGS_VALUES: dict[str, Any] = {
         "min_results": 2,
     },
     "knowledge_graph": {
-        "sync_after_docgen": False,
+        "sync_after_docgen": True,
     },
     "observability": {
         "llm_observability_enabled": True,

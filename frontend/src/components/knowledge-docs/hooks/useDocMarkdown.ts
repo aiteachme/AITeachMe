@@ -12,6 +12,7 @@ import {
   buildKnowledgeBuildRuntimeQueryKey,
   fetchKnowledgeBuildRuntime,
 } from "../../../lib/knowledgeBuildRuntime";
+import { formatDigestModeLabel } from "../../../lib/digestMode";
 import type {
   ApiResponse,
   DocGenBuildStatus,
@@ -108,11 +109,11 @@ export function useDocMarkdown(): DocMarkdownState {
     queryFn: () => fetchKnowledgeBuildRuntime(subjectId as string),
     enabled: Boolean(subjectId),
     refetchInterval: (query) => {
-      const aggregate = query.state.data?.aggregate;
-      const status = (aggregate?.status ?? "").trim();
+      const docgen = query.state.data?.docgen ?? query.state.data?.aggregate;
+      const status = (docgen?.status ?? "").trim();
       const liveMarkdown = cleanKnowledgeMarkdownForDisplay(docMarkdownQuery.data?.markdown ?? "");
       const hasLiveDocMarkdown = Boolean(docMarkdownQuery.data?.exists && liveMarkdown.trim().length > 0);
-      const targetRequestedAtMs = requestedAtMs ?? parseIsoTimestamp(aggregate?.requested_at ?? null);
+      const targetRequestedAtMs = requestedAtMs ?? parseIsoTimestamp(docgen?.requested_at ?? null);
       const updatedAtMs = parseIsoTimestamp(docMarkdownQuery.data?.updated_at ?? null);
       const hasRequestedLiveDoc =
         hasLiveDocMarkdown &&
@@ -130,7 +131,7 @@ export function useDocMarkdown(): DocMarkdownState {
 
   const liveMarkdown = cleanKnowledgeMarkdownForDisplay(docMarkdownQuery.data?.markdown ?? "");
   const draftMarkdown = cleanKnowledgeMarkdownForDisplay(docMarkdownQuery.data?.draft_markdown ?? "");
-  const buildMeta = runtimeQuery.data?.aggregate ?? docMarkdownQuery.data?.build ?? null;
+  const buildMeta = runtimeQuery.data?.docgen ?? docMarkdownQuery.data?.build ?? null;
   const buildPreview = runtimeQuery.data?.docgen_preview ?? docMarkdownQuery.data?.build_preview ?? null;
   const buildMetrics = runtimeQuery.data?.docgen_metrics ?? docMarkdownQuery.data?.build_metrics ?? null;
   const buildStatus = buildMeta?.status ?? null;
@@ -182,13 +183,7 @@ export function useDocMarkdown(): DocMarkdownState {
     [draftUpdatedAt, effectiveDocViewMode, liveUpdatedAt],
   );
 
-  const renderedDigestMode = buildPreview?.digest_mode ?? null;
-  const renderedDigestModeLabel =
-    renderedDigestMode === "systematic"
-      ? "系统讲义"
-      : renderedDigestMode === "sprint"
-        ? "冲刺讲义"
-        : "知识文档";
+  const renderedDigestModeLabel = formatDigestModeLabel(buildPreview?.digest_mode);
   const renderedChapterHighlights = (buildPreview?.latest_chapter_titles ?? []).slice(0, 4);
   const renderedSubjectLabel = (subjectId ?? "知识文档").replace(/[-_]+/g, " ");
   const renderedDocTitle =

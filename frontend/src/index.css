@@ -453,6 +453,45 @@
   background-color: rgba(161, 161, 170, 0.5);
 }
 
+.build-live-markdown {
+  overflow-wrap: anywhere;
+}
+
+.build-live-markdown h1 {
+  margin-top: 0;
+  padding-bottom: 0.75rem;
+  border-bottom-color: #e4e4e7;
+  font-size: 26px;
+  line-height: 1.35;
+  letter-spacing: 0;
+}
+
+.build-live-markdown h2 {
+  margin-top: 1.75rem;
+  font-size: 20px;
+  line-height: 1.45;
+  letter-spacing: 0;
+}
+
+.build-live-markdown h3 {
+  margin-top: 1.5rem;
+  font-size: 17px;
+  line-height: 1.5;
+}
+
+.build-live-markdown p,
+.build-live-markdown li {
+  font-size: 15px;
+  line-height: 1.78;
+}
+
+@supports (content-visibility: auto) {
+  .build-live-markdown > :where(p, ul, ol, blockquote, pre, table, figure, div) {
+    content-visibility: auto;
+    contain-intrinsic-size: 1px 96px;
+  }
+}
+
 .dark .knowledge-debug-page {
   color: rgb(226 232 240);
 }

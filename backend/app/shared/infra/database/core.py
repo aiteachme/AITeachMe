@@ -114,10 +114,28 @@ _REMOVED_SQLITE_COLUMNS = {
     "chat_session": ("user_goal",),
     "system_settings_snapshot": ("settings_path",),
 }
+_SQLITE_ADDITIVE_COLUMNS = {
+    "subject": (
+        ("description", "TEXT NOT NULL DEFAULT ''"),
+        ("user_intent", "TEXT NOT NULL DEFAULT ''"),
+        ("learning_intent_text", "TEXT NOT NULL DEFAULT ''"),
+        ("subject_intro_text", "TEXT NOT NULL DEFAULT ''"),
+        ("document_summary_json", "JSON NOT NULL DEFAULT '{}'"),
+        ("llm_context_text", "TEXT NOT NULL DEFAULT ''"),
+    ),
+}
 
 
 def _get_db_path():
     return get_sqlite_db_path()
+
+
+def _json_dumps(value: object) -> str:
+    return json.dumps(value, ensure_ascii=False, separators=(",", ":"))
+
+
+def _json_loads(value: str) -> object:
+    return json.loads(value)
 
 
 def reset_runtime_state() -> None:
@@ -278,58 +296,41 @@ def _drop_sqlite_removed_schema(engine: sa.Engine) -> None:
             connection.execute(sa.text("PRAGMA foreign_keys = ON"))
 
 
+def _apply_sqlite_additive_schema_updates(engine: sa.Engine) -> None:
+    inspector = sa.inspect(engine)
+    existing_tables = set(inspector.get_table_names())
+    if not existing_tables:
+        return
+
+    with engine.begin() as connection:
+        for table_name, columns in _SQLITE_ADDITIVE_COLUMNS.items():
+            if table_name not in existing_tables:
+                continue
+            existing_columns = {
+                column["name"]
+                for column in inspector.get_columns(table_name)
+            }
+            for column_name, column_sql in columns:
+                if column_name in existing_columns:
+                    continue
+                connection.execute(
+                    sa.text(
+                        f"ALTER TABLE {quote_sqlite_identifier(table_name)} "
+                        f"ADD COLUMN {quote_sqlite_identifier(column_name)} {column_sql}"
+                    )
+                )
+                existing_columns.add(column_name)
+                logger.info(
+                    "sqlite_additive_column_added",
+                    table_name=table_name,
+                    column_name=column_name,
+                )
+
+
 def _drop_sqlite_legacy_schema(engine: sa.Engine) -> None:
     """Backward-compatible alias for older tests and local tooling."""
 
     _drop_sqlite_removed_schema(engine)
-
-
-def _add_missing_sqlite_column(
-    connection: sa.Connection,
-    *,
-    table_name: str,
-    column_name: str,
-    column_sql: str,
-) -> None:
-    connection.execute(
-        sa.text(
-            f"ALTER TABLE {quote_sqlite_identifier(table_name)} "
-            f"ADD COLUMN {quote_sqlite_identifier(column_name)} {column_sql}"
-        )
-    )
-
-
-def _apply_sqlite_additive_schema_updates(engine: sa.Engine) -> None:
-    inspector = sa.inspect(engine)
-    existing_tables = set(inspector.get_table_names())
-    if "subject" not in existing_tables:
-        return
-
-    subject_columns = {
-        column["name"]
-        for column in inspector.get_columns("subject")
-    }
-    missing_subject_text_columns = [
-        column_name
-        for column_name in ("description", "user_intent")
-        if column_name not in subject_columns
-    ]
-    if not missing_subject_text_columns:
-        return
-
-    with engine.begin() as connection:
-        for column_name in missing_subject_text_columns:
-            _add_missing_sqlite_column(
-                connection,
-                table_name="subject",
-                column_name=column_name,
-                column_sql="TEXT NOT NULL DEFAULT ''",
-            )
-            logger.info(
-                "sqlite_subject_column_added",
-                table_name="subject",
-                column_name=column_name,
-            )
 
 
 def _ensure_local_sqlite_schema(engine: sa.Engine) -> sa.Engine:
@@ -375,6 +376,8 @@ def _build_sqlite_engine() -> sa.Engine:
     engine = create_engine(
         f"sqlite:///{db_path}",
         connect_args={"check_same_thread": False},
+        json_serializer=_json_dumps,
+        json_deserializer=_json_loads,
     )
 
     @sa.event.listens_for(engine, "connect")
@@ -403,6 +406,8 @@ def _build_postgres_engine(settings) -> sa.Engine:
         pool_size=5,
         max_overflow=10,
         pool_pre_ping=True,
+        json_serializer=_json_dumps,
+        json_deserializer=_json_loads,
     )
     logger.info("database_engine_created", dialect="postgresql")
     return engine

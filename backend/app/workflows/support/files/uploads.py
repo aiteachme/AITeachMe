@@ -85,6 +85,7 @@ async def save_uploaded_file(
 
     filename = file.filename or "unknown"
     extension = Path(filename).suffix.lower()
+    file_uid = _generate_file_uid()
     content_hash = hashlib.sha256(content).hexdigest()
     temp_dir = build_temp_dir(normalized_subject or "library", user_id=owner_user_id)
     temp_dir.mkdir(parents=True, exist_ok=True)
@@ -101,7 +102,7 @@ async def save_uploaded_file(
     raw_file = create_raw_file(
         session,
         RawFile(
-            uid=_generate_file_uid(),
+            uid=file_uid,
             subject=normalized_subject,
             user_id=owner_user_id,
             filename=filename,
@@ -116,10 +117,12 @@ async def save_uploaded_file(
             parse_metadata_json=parse_request_json or "{}",
         ),
     )
-    raw_file_id = require_id(raw_file.id, "RawFile.id")
+    raw_file_key = scope.raw_file_key(file_uid=file_uid, filename=filename, extension=extension)
+    raw_markdown_key = scope.raw_markdown_key(file_uid=file_uid, filename=filename)
+    asset_prefix = scope.asset_prefix(file_uid=file_uid, filename=filename)
 
     try:
-        await cs.write_file(scope.raw_file_key(raw_file_id, extension), temp_path)
+        await cs.write_file(raw_file_key, temp_path)
     except Exception as exc:
         delete_raw_file(session, raw_file)
         temp_path.unlink(missing_ok=True)
@@ -130,9 +133,9 @@ async def save_uploaded_file(
     return update_raw_file(
         session,
         raw_file,
-        file_path=scope.raw_file_key(raw_file_id, extension),
-        markdown_path=scope.raw_markdown_key(raw_file_id),
-        asset_dir=scope.asset_prefix(raw_file_id).rstrip("/"),
+        file_path=raw_file_key,
+        markdown_path=raw_markdown_key,
+        asset_dir=asset_prefix.rstrip("/"),
     )
 
 

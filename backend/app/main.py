@@ -5,7 +5,6 @@ from __future__ import annotations
 from contextlib import asynccontextmanager
 import json
 import sys
-import threading
 from time import perf_counter
 from typing import AsyncGenerator
 import uuid
@@ -17,7 +16,7 @@ from fastapi.responses import JSONResponse
 
 from app.shared.infra.settings import get_settings
 from app.shared.infra.database import init_db
-from app.shared.infra.env_support import get_env, get_env_bool, get_env_list
+from app.shared.infra.env_support import get_env, get_env_list
 from app.shared.infra.logger import (
     bind_logging_context,
     clear_logging_context,
@@ -49,47 +48,6 @@ from app.shared.infra.settings.support import (
 )
 
 logger = structlog.get_logger()
-_OPENAPI_EXPORT_LOCK = threading.Lock()
-_OPENAPI_EXPORT_STARTED = False
-
-
-def _maybe_export_openapi_schema(app: FastAPI) -> None:
-    global _OPENAPI_EXPORT_STARTED
-
-    if not get_env_bool("EXPORT_OPENAPI_ON_STARTUP", False):
-        return
-
-    with _OPENAPI_EXPORT_LOCK:
-        if _OPENAPI_EXPORT_STARTED:
-            logger.info("openapi_export_already_scheduled")
-            return
-        _OPENAPI_EXPORT_STARTED = True
-
-    def _run_export() -> None:
-        try:
-            import sys
-            from pathlib import Path
-
-            script_dir = Path(__file__).parent.parent / "scripts"
-            sys.path.insert(0, str(script_dir))
-            import export_api_docs
-
-            logger.info("openapi_export_started")
-            export_api_docs.export_openapi_schema(app)
-            logger.info("openapi_export_finished")
-        except Exception as exc:  # noqa: BLE001
-            logger.error("export_openapi_failed", error=str(exc))
-        finally:
-            try:
-                sys.path.pop(0)
-            except Exception:  # noqa: BLE001
-                pass
-
-    threading.Thread(
-        target=_run_export,
-        name="openapi-export",
-        daemon=True,
-    ).start()
 
 
 def _log_infra_diagnostics(settings) -> None:
@@ -126,7 +84,6 @@ def _log_infra_diagnostics(settings) -> None:
         f"    APP_MODE (resolved)    : {app_mode}",
         f"    DATABASE_URL           : {'SET' if os.environ.get('DATABASE_URL') else '!! NOT_SET !!'}",
         f"    STORAGE_BACKEND        : {os.environ.get('STORAGE_BACKEND', '!! NOT_SET !!')}",
-        f"    PROJECT_SETTINGS_PATH  : {os.environ.get('PROJECT_SETTINGS_PATH', 'NOT_SET')}",
         f"    Settings Source        : {project_settings_source}",
         f"    RENDER                 : {os.environ.get('RENDER', 'NOT_SET')}",
         f"    LLM_BASE_URL           : {'SET' if llm_base_url else '!! NOT_SET !!'}",
@@ -243,7 +200,6 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     app.state.background_task_registry = BackgroundTaskRegistry()
     init_db()
-    _maybe_export_openapi_schema(app)
 
     # ── 启动诊断日志 ──
     settings = get_settings()

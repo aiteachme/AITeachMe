@@ -131,7 +131,11 @@ async def load_source_packets(subject: str, file_ids: list[int]) -> list[SourceP
             return None
 
         file_id = int(raw_file.id)
-        md_key = raw_file.markdown_path or subject_scope.raw_markdown_key(file_id)
+        file_scope = cs.user_file_scope(user_id=raw_file.user_id or subject_scope.user_id)
+        md_key = raw_file.markdown_path or file_scope.raw_markdown_key(
+            file_uid=raw_file.uid,
+            filename=raw_file.original_filename,
+        )
         content = await cs.read_text(md_key, default="") or ""
 
         # fallback 到 DB 中的 parsed_markdown
@@ -139,7 +143,10 @@ async def load_source_packets(subject: str, file_ids: list[int]) -> list[SourceP
             content = raw_file.parsed_markdown
 
         markdown_path_str = md_key
-        asset_dir_str = getattr(raw_file, "asset_dir", None) or subject_scope.asset_prefix(file_id).rstrip("/")
+        asset_dir_str = getattr(raw_file, "asset_dir", None) or file_scope.asset_prefix(
+            file_uid=raw_file.uid,
+            filename=raw_file.original_filename,
+        ).rstrip("/")
 
         if not content.strip():
             return None

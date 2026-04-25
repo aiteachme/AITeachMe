@@ -67,6 +67,7 @@ def build_exam_question_blueprint_messages(
     user_prompt: str,
     style_prompt: str,
     units: list[dict[str, Any]],
+    subject_context: str = "",
 ) -> list[ChatMessage]:
     payload = {
         "subject": _subject_payload(
@@ -76,6 +77,7 @@ def build_exam_question_blueprint_messages(
             subject_user_intent=subject_user_intent,
         ),
         "exam_mode": exam_mode,
+        "subject_context": subject_context or "",
         "requested_question_count": requested_question_count,
         "requested_difficulty": requested_difficulty,
         "focus_prompt": focus_prompt or "",
@@ -126,6 +128,7 @@ def build_exam_question_messages(
     *,
     subject: str,
     exam_mode: str,
+    subject_context: str,
     focus_prompt: str,
     user_prompt: str,
     style_prompt: str,
@@ -144,6 +147,7 @@ def build_exam_question_messages(
             subject_user_intent=subject_user_intent,
         ),
         "exam_mode": exam_mode,
+        "subject_context": subject_context or "",
         "requested_question_count": requested_question_count,
         "focus_prompt": focus_prompt or "",
         "user_prompt": user_prompt or "",

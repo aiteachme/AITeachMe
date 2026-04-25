@@ -9,8 +9,8 @@ from __future__ import annotations
 
 import asyncio
 import re
-from collections.abc import Mapping
-from typing import Literal
+from collections.abc import Mapping, Sequence
+from typing import Literal, TypeVar
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
@@ -32,6 +32,9 @@ QuestionTypeLiteral = Literal[
     "short_answer",
 ]
 DifficultyLiteral = Literal["easy", "medium", "hard"]
+T = TypeVar("T")
+
+_MAX_BATCH_SIZE = 6
 _BLANK_TOKEN = "{{blank}}"
 _TEXT_UNDERSCORE_PLACEHOLDER_RE = re.compile(r"\\text\{(_+)\}")
 _CHOICE_LABEL_RE = re.compile(r"^\s*([A-Da-d])(?:[\.\)\]．、:：]\s*)(.+)$")
@@ -433,6 +436,13 @@ def _spec_payload(spec: ExamQuestionGenerationSpec) -> dict[str, object]:
     return spec.model_dump(mode="json")
 
 
+def _batched(items: Sequence[T], *, batch_size: int) -> list[list[T]]:
+    return [
+        list(items[index : index + batch_size])
+        for index in range(0, len(items), batch_size)
+    ]
+
+
 def _validate_batch_alignment(
     *,
     generated: list[ExamQuestionDraft],
@@ -603,6 +613,7 @@ async def plan_exam_question_blueprints(
     subject_name: str = "",
     subject_description: str = "",
     subject_user_intent: str = "",
+    subject_context: str = "",
     exam_mode: str,
     units: list[KnowledgeUnit],
     question_count: int,
@@ -623,6 +634,7 @@ async def plan_exam_question_blueprints(
         subject_description=subject_description,
         subject_user_intent=subject_user_intent,
         exam_mode=exam_mode,
+        subject_context=subject_context,
         requested_question_count=normalized_count,
         requested_difficulty=requested_difficulty,
         focus_prompt=focus_prompt,
@@ -670,6 +682,7 @@ async def _generate_one_exam_question(
     subject_description: str,
     subject_user_intent: str,
     exam_mode: str,
+    subject_context: str,
     unit_by_id: dict[int, KnowledgeUnit],
     spec: ExamQuestionGenerationSpec,
     focus_prompt: str,
@@ -683,6 +696,7 @@ async def _generate_one_exam_question(
         subject_description=subject_description,
         subject_user_intent=subject_user_intent,
         exam_mode=exam_mode,
+        subject_context=subject_context,
         focus_prompt=focus_prompt,
         user_prompt=user_prompt,
         style_prompt=style_prompt,
@@ -725,6 +739,7 @@ async def generate_exam_questions_for_units(
     exam_mode: str,
     units: list[KnowledgeUnit],
     specs: list[ExamQuestionGenerationSpec],
+    subject_context: str = "",
     focus_prompt: str = "",
     user_prompt: str = "",
     style_prompt: str = "",
@@ -752,6 +767,56 @@ async def generate_exam_questions_for_units(
     if missing_units:
         raise ValueError(f"missing KnowledgeUnits for specs: {missing_units}")
 
+    if len(specs) <= _MAX_BATCH_SIZE and all(len(spec.knowledge_unit_ids) == 1 for spec in specs):
+        generated_questions: list[ExamQuestionDraft] = []
+        batch_call_failed = False
+        for spec_batch in _batched(specs, batch_size=_MAX_BATCH_SIZE):
+            batch_unit_ids = {spec.knowledge_unit_id for spec in spec_batch}
+            batch_units = [unit_by_id[unit_id] for unit_id in batch_unit_ids]
+            messages = build_exam_question_messages(
+                subject=subject,
+                subject_name=subject_name,
+                subject_description=subject_description,
+                subject_user_intent=subject_user_intent,
+                exam_mode=exam_mode,
+                subject_context=subject_context,
+                focus_prompt=focus_prompt,
+                user_prompt=user_prompt,
+                style_prompt=style_prompt,
+                requested_question_count=len(spec_batch),
+                units=[_unit_payload(unit) for unit in batch_units],
+                specs=[_spec_payload(spec) for spec in spec_batch],
+            )
+            try:
+                result = await acompletion_with_fallback(
+                    messages,
+                    call_purpose=LLMCallPurpose.GENERATE,
+                    model="primary",
+                    response_model=ExamQuestionBatch,
+                    temperature=0.35,
+                    max_tokens=2400,
+                    extra_metadata={
+                        "substep": "exam.question_build",
+                        "subject": subject,
+                        "exam_mode": exam_mode,
+                        "batch_size": len(spec_batch),
+                    },
+                )
+            except Exception:
+                generated_questions = []
+                batch_call_failed = True
+                break
+            assert isinstance(result, ExamQuestionBatch)
+            generated_questions.extend(
+                _validate_batch_alignment(
+                    generated=result.questions,
+                    requested_specs=spec_batch,
+                )
+            )
+        if not batch_call_failed:
+            generated_questions.sort(key=lambda item: item.item_order)
+            return generated_questions
+
     generated_results = await asyncio.gather(
         *(
             _generate_one_exam_question(
@@ -760,6 +825,7 @@ async def generate_exam_questions_for_units(
                 subject_description=subject_description,
                 subject_user_intent=subject_user_intent,
                 exam_mode=exam_mode,
+                subject_context=subject_context,
                 unit_by_id=unit_by_id,
                 spec=spec,
                 focus_prompt=focus_prompt,

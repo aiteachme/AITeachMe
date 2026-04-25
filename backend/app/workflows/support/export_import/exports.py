@@ -21,6 +21,7 @@ from sqlmodel import Session, SQLModel, func, select
 
 from app.shared.infra.runtime import get_app_version, is_cloud_mode
 from app.shared.infra.storage import (
+    build_file_storage_segment,
     build_subject_storage_scope,
     get_content_store,
     run_store_sync,
@@ -453,7 +454,7 @@ def _import_table(
 
         # Clear absolute-path fields so they can be rebuilt during import
         if spec.name == "raw_file":
-            record_data["uid"] = str(uuid.uuid4())  # Prevent unique-constraint conflicts
+            record_data["uid"] = f"file_{uuid.uuid4().hex}"  # Prevent unique-constraint conflicts
             record_data["markdown_path"] = None
             record_data["asset_dir"] = None
             record_data["storage_uri"] = None
@@ -481,9 +482,19 @@ def _import_table(
         if spec.name == "raw_file" and isinstance(new_id, int):
             subject_scope = build_subject_storage_scope(user_id=user_id, subject=new_slug)
             ext = instance.filetype if instance.filetype.startswith(".") else f".{instance.filetype}"
-            instance.file_path = subject_scope.raw_file_key(new_id, ext)
-            instance.markdown_path = subject_scope.raw_markdown_key(new_id)
-            instance.asset_dir = subject_scope.asset_prefix(new_id).rstrip("/")
+            instance.file_path = subject_scope.raw_file_key(
+                file_uid=instance.uid,
+                filename=instance.filename,
+                extension=ext,
+            )
+            instance.markdown_path = subject_scope.raw_markdown_key(
+                file_uid=instance.uid,
+                filename=instance.filename,
+            )
+            instance.asset_dir = subject_scope.asset_prefix(
+                file_uid=instance.uid,
+                filename=instance.filename,
+            ).rstrip("/")
             instance.storage_backend = "s3" if is_cloud_mode() else "local"
         elif spec.name == "knowledge_document" and isinstance(new_id, int):
             subject_scope = build_subject_storage_scope(user_id=user_id, subject=new_slug)
@@ -639,21 +650,19 @@ def _pack_files(
         for raw_file in raw_files:
             if raw_file.id is None:
                 continue
+            file_segment = build_file_storage_segment(file_uid=raw_file.uid, filename=raw_file.filename)
             extension = Path(raw_file.file_path or "").suffix or (
                 f".{raw_file.filetype}" if raw_file.filetype else ""
             )
-            _pack_key(raw_file.file_path, f"files/raw_files/{raw_file.id}{extension}")
-            asset_prefix = (
-                raw_file.asset_dir.rstrip("/") + "/"
-                if raw_file.asset_dir
-                else f"{namespace}/assets/{raw_file.id}/"
-            )
-            _pack_prefix(asset_prefix, f"files/assets/{raw_file.id}")
+            _pack_key(raw_file.file_path, f"files/raw_files/{file_segment}/raw{extension}")
+            if raw_file.asset_dir:
+                _pack_prefix(raw_file.asset_dir.rstrip("/") + "/", f"files/assets/{file_segment}")
     if options.include_raw_markdowns:
         for raw_file in raw_files:
             if raw_file.id is None:
                 continue
-            _pack_key(raw_file.markdown_path, f"files/raw_markdowns/{raw_file.id}.md")
+            file_segment = build_file_storage_segment(file_uid=raw_file.uid, filename=raw_file.filename)
+            _pack_key(raw_file.markdown_path, f"files/raw_markdowns/{file_segment}/markdown.md")
 
     # knowledge markdowns
     if options.include_knowledge_docs:

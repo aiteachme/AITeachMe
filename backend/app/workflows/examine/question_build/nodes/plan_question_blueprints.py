@@ -47,6 +47,7 @@ def build_plan_question_blueprints_node(*, context: WorkflowContext):
                     subject_name=str(state.get("subject_name") or ""),
                     subject_description=str(state.get("subject_description") or ""),
                     subject_user_intent=str(state.get("subject_user_intent") or ""),
+                    subject_context=str(state.get("subject_context") or ""),
                     exam_mode=str(state.get("exam_mode") or "web_practice"),
                     units=list(state.get("units") or []),
                     question_count=int(state.get("question_count") or 1),
