@@ -9,12 +9,37 @@ export interface OpenAiInteractionOptions {
   scope?: AiConversationScope | null;
   sessionId?: string | null;
   draft?: string;
+  source?: string | null;
+  anchorId?: string | null;
+  selectedText?: string | null;
+  selectionContext?: {
+    selected_text: string;
+    anchor_id: string;
+    anchor_title?: string;
+    heading_path: string[];
+    before_text?: string;
+    after_text?: string;
+    section_title?: string;
+    section_excerpt?: string;
+    section_truncated: boolean;
+    local_context_truncated: boolean;
+  } | null;
+  clientThreadId?: string | null;
+  newSession?: boolean;
+  showSelectionContext?: boolean;
 }
 
 export interface AiInteractionOpenRequest {
   key: number;
   sessionId?: string | null;
   draft?: string;
+  source?: string | null;
+  anchorId?: string | null;
+  selectedText?: string | null;
+  selectionContext?: OpenAiInteractionOptions["selectionContext"];
+  clientThreadId?: string | null;
+  newSession?: boolean;
+  showSelectionContext?: boolean;
 }
 
 export function getAiConversationScopeKey(scope: AiConversationScope | null): string {
