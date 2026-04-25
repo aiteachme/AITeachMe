@@ -733,7 +733,7 @@ export function MarkdownViewer({
   variant = "default",
   headingAnchors = false,
 }: MarkdownViewerProps) {
-  const processedContent = preprocessMarkdownContent(content);
+  const processedContent = useMemo(() => preprocessMarkdownContent(content), [content]);
   const styles = VIEWER_STYLES[variant];
   const nextHeadingId = useMemo(() => createHeadingIdFactory(), [processedContent]);
 

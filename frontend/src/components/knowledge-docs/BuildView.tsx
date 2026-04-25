@@ -1,9 +1,10 @@
-import { memo, useEffect, useMemo, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
-import { Check, CheckCircle2, ChevronRight, Code2, Loader2, PanelRightClose, PanelRightOpen, PlayCircle } from "lucide-react";
+import { Check, CheckCircle2, ChevronRight, Code2, FileText, Loader2, PanelRightClose, PanelRightOpen, PlayCircle } from "lucide-react";
 
 import { cn } from "../../lib/utils";
 import type { FileRecord } from "../../api/generated/model";
+import { MarkdownViewer } from "../ui/MarkdownViewer";
 import type {
   KnowledgeBuildMetrics,
   KnowledgeBuildPreview,
@@ -62,6 +63,10 @@ const MERGE_PREVIEW_STAGES = new Set([
 
 const ACTIVE_CHAPTER_STATUSES = new Set(["generating", "drafting", "enhancing", "reviewing", "researching"]);
 const DONE_CHAPTER_STATUSES = new Set(["generated", "completed", "enhanced", "reviewed"]);
+const LIVE_MARKDOWN_RENDER_LIMIT = 24000;
+const LIVE_MARKDOWN_FLUSH_INTERVAL_MS = 320;
+const LIVE_MARKDOWN_IMMEDIATE_LENGTH = 1600;
+const LIVE_MARKDOWN_LARGE_JUMP = 4200;
 
 const BUILD_MODE_LABELS: Record<string, string> = {
   confirmed_build_plan: "已确认构建方案",
@@ -79,6 +84,99 @@ function formatBuildModeReason(reason?: string | null): string | null {
   const normalized = (reason ?? "").trim();
   if (!normalized) return null;
   return BUILD_MODE_LABELS[normalized] ?? null;
+}
+
+function formatCompactCount(value: number): string {
+  return Math.max(0, Math.round(value)).toLocaleString("zh-CN");
+}
+
+interface LiveMarkdownRenderState {
+  markdown: string;
+  sourceLength: number;
+  displayedLength: number;
+  truncated: boolean;
+}
+
+function prepareLiveMarkdownContent(content: string, isStreaming: boolean): LiveMarkdownRenderState {
+  const source = String(content ?? "");
+  const limit = isStreaming ? LIVE_MARKDOWN_RENDER_LIMIT : LIVE_MARKDOWN_RENDER_LIMIT * 2;
+  const shouldTruncate = source.length > limit;
+  const markdown = shouldTruncate ? source.slice(0, limit).trimEnd() : source;
+
+  return {
+    markdown,
+    sourceLength: source.length,
+    displayedLength: markdown.length,
+    truncated: shouldTruncate,
+  };
+}
+
+function useLiveMarkdownRenderState(content: string, isStreaming: boolean): LiveMarkdownRenderState & { pending: boolean } {
+  const [renderState, setRenderState] = useState<LiveMarkdownRenderState>(() => prepareLiveMarkdownContent(content, isStreaming));
+  const renderStateRef = useRef(renderState);
+  const latestPreparedRef = useRef(renderState);
+  const latestSourceRef = useRef(content);
+  const committedSourceRef = useRef(content);
+  const flushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    const clearTimer = () => {
+      if (flushTimerRef.current) {
+        clearTimeout(flushTimerRef.current);
+        flushTimerRef.current = null;
+      }
+    };
+
+    const commit = (next: LiveMarkdownRenderState, source: string) => {
+      renderStateRef.current = next;
+      committedSourceRef.current = source;
+      setRenderState(next);
+    };
+
+    const prepared = prepareLiveMarkdownContent(content, isStreaming);
+    latestPreparedRef.current = prepared;
+    latestSourceRef.current = content;
+
+    if (
+      committedSourceRef.current === content &&
+      renderStateRef.current.markdown === prepared.markdown &&
+      renderStateRef.current.truncated === prepared.truncated
+    ) {
+      return;
+    }
+
+    const shouldCommitImmediately =
+      !isStreaming ||
+      renderStateRef.current.sourceLength === 0 ||
+      prepared.sourceLength <= LIVE_MARKDOWN_IMMEDIATE_LENGTH ||
+      Math.abs(prepared.displayedLength - renderStateRef.current.displayedLength) >= LIVE_MARKDOWN_LARGE_JUMP;
+
+    if (shouldCommitImmediately) {
+      clearTimer();
+      commit(prepared, content);
+      return;
+    }
+
+    if (!flushTimerRef.current) {
+      flushTimerRef.current = setTimeout(() => {
+        flushTimerRef.current = null;
+        commit(latestPreparedRef.current, latestSourceRef.current);
+      }, LIVE_MARKDOWN_FLUSH_INTERVAL_MS);
+    }
+  }, [content, isStreaming]);
+
+  useEffect(() => {
+    return () => {
+      if (flushTimerRef.current) {
+        clearTimeout(flushTimerRef.current);
+      }
+    };
+  }, []);
+
+  return {
+    ...renderState,
+    pending: committedSourceRef.current !== content,
+  };
 }
 
 export function BuildView({
@@ -391,14 +489,16 @@ export function BuildView({
                 spotlightChapter?.chapter_index === selectedPreviewChapter ||
                 ["generating", "drafting", "enhancing", "reviewing"].includes(selectedStatus);
               const isDone = DONE_CHAPTER_STATUSES.has(selectedStatus);
-              const streamExcerpt = streamPreview?.text.trim() ?? "";
-              const previewExcerpt = preview?.excerpt?.trim() ?? "";
+              const streamExcerpt = streamPreview?.text ?? "";
+              const previewExcerpt = preview?.excerpt ?? "";
               const canUseMergeFallback = Boolean(buildStage && MERGE_PREVIEW_STAGES.has(buildStage));
-              const selectedExcerpt = (
-                streamExcerpt ||
-                previewExcerpt ||
-                (canUseMergeFallback ? draftExcerpt : "")
-              ).trim();
+              const selectedExcerpt = streamExcerpt.trim()
+                ? streamExcerpt
+                : previewExcerpt.trim()
+                  ? previewExcerpt
+                  : canUseMergeFallback
+                    ? draftExcerpt
+                    : "";
               const selectedHeadings = preview?.latest_headings ?? [];
               const selectedWordCount = preview?.word_count ?? selChapter?.word_count ?? 0;
               const selectedSourceCount = preview?.source_count ?? selChapter?.source_count ?? 0;
@@ -407,8 +507,8 @@ export function BuildView({
                 : preview?.updated_at
                   ? formatBuildEventTime(preview.updated_at)
                   : null;
-              const usingMergeFallback = !streamExcerpt && !previewExcerpt && canUseMergeFallback && Boolean(selectedExcerpt);
-              const usingSseDelta = Boolean(streamExcerpt);
+              const usingMergeFallback = !streamExcerpt.trim() && !previewExcerpt.trim() && canUseMergeFallback && Boolean(selectedExcerpt.trim());
+              const usingSseDelta = Boolean(streamExcerpt.trim());
 
               return (
                 <>
@@ -437,7 +537,7 @@ export function BuildView({
                   </div>
 
                   <div className="build-scroll flex-1 overflow-y-auto bg-white px-5 py-6 dark:bg-slate-900 md:px-8 md:py-8">
-                    {selectedExcerpt ? (
+                    {selectedExcerpt.trim() ? (
                       <div className="w-full max-w-[1120px] space-y-5 pb-12">
                         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-zinc-500 dark:text-slate-400">
                           <span className="font-medium text-zinc-600 dark:text-slate-300">
@@ -473,6 +573,7 @@ export function BuildView({
                         ) : null}
 
                         <LiveTextDocument
+                          key={selectedPreviewChapter}
                           content={selectedExcerpt}
                           isStreaming={isStreaming}
                         />
@@ -618,13 +719,62 @@ const LiveTextDocument = memo(function LiveTextDocument({
   content: string;
   isStreaming: boolean;
 }) {
+  const renderState = useLiveMarkdownRenderState(content, isStreaming);
+  const statusText = renderState.pending
+    ? "正在整理新片段"
+    : isStreaming
+      ? "Markdown 实时渲染"
+      : "预览已稳定";
+
   return (
-    <article className="pt-2">
-      <div className="whitespace-pre-wrap break-words text-[15px] leading-8 text-zinc-800 dark:text-slate-100">
-        {content}
-        {isStreaming && (
-          <motion.span className="ml-0.5 inline-block h-[16px] w-[2px] animate-blink bg-blue-500 align-middle dark:bg-blue-400" />
-        )}
+    <article className="overflow-hidden rounded-[22px] border border-stone-200/80 bg-[#fffdf8] shadow-[0_20px_60px_-48px_rgba(28,25,23,0.42)] dark:border-slate-800 dark:bg-slate-950/72 dark:shadow-[0_24px_60px_-42px_rgba(0,0,0,0.72)]">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-stone-200/70 bg-white/72 px-4 py-3 dark:border-slate-800 dark:bg-slate-950/70 md:px-5">
+        <div className="flex min-w-0 items-center gap-2">
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-stone-200 bg-stone-50 text-stone-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
+            <FileText className="h-4 w-4" />
+          </span>
+          <div className="min-w-0">
+            <p className="truncate text-[12px] font-semibold text-stone-900 dark:text-slate-100">章节草稿</p>
+            <p className="mt-0.5 text-[11px] text-stone-500 dark:text-slate-500">
+              {formatCompactCount(renderState.sourceLength)} 字符已接收
+            </p>
+          </div>
+        </div>
+        <div
+          className={cn(
+            "inline-flex items-center gap-2 rounded-full px-2.5 py-1 text-[11px] font-medium ring-1",
+            isStreaming
+              ? "bg-blue-50 text-blue-600 ring-blue-100 dark:bg-blue-500/10 dark:text-blue-300 dark:ring-blue-500/20"
+              : "bg-emerald-50 text-emerald-700 ring-emerald-100 dark:bg-emerald-500/10 dark:text-emerald-300 dark:ring-emerald-500/20",
+          )}
+          aria-live="polite"
+        >
+          <span
+            className={cn(
+              "h-1.5 w-1.5 rounded-full",
+              isStreaming ? "animate-pulse bg-blue-500" : "bg-emerald-500",
+            )}
+          />
+          {statusText}
+        </div>
+      </div>
+      <div className="relative px-5 py-5 md:px-7 md:py-7">
+        <div className="feishu-doc-content build-live-markdown max-w-[920px] break-words [&>*:first-child]:!mt-0 [&>*:last-child]:!mb-0">
+          <MarkdownViewer content={renderState.markdown} variant="document" />
+        </div>
+
+        {renderState.truncated ? (
+          <div className="mt-5 rounded-xl border border-amber-200/80 bg-amber-50/72 px-3.5 py-2.5 text-[12px] leading-5 text-amber-800 dark:border-amber-500/25 dark:bg-amber-500/10 dark:text-amber-200">
+            实时预览先渲染前 {formatCompactCount(renderState.displayedLength)} 字符，完整正文仍会继续写入最终文档。
+          </div>
+        ) : null}
+
+        {isStreaming ? (
+          <div className="mt-5 flex items-center gap-2 text-[12px] text-blue-600 dark:text-blue-300">
+            <motion.span className="inline-block h-[15px] w-[2px] animate-blink bg-blue-500 align-middle dark:bg-blue-400" />
+            <span>{renderState.pending ? "新内容已到达，正在排版..." : "保持接收中..."}</span>
+          </div>
+        ) : null}
       </div>
     </article>
   );

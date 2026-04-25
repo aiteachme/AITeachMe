@@ -453,6 +453,17 @@
   background-color: rgba(161, 161, 170, 0.5);
 }
 
+.build-live-markdown {
+  overflow-wrap: anywhere;
+}
+
+@supports (content-visibility: auto) {
+  .build-live-markdown > :where(p, ul, ol, blockquote, pre, table, figure, div) {
+    content-visibility: auto;
+    contain-intrinsic-size: 1px 96px;
+  }
+}
+
 .dark .knowledge-debug-page {
   color: rgb(226 232 240);
 }
