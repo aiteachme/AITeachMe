@@ -842,7 +842,7 @@ export function HomePage() {
           className="w-full relative z-10"
         >
           <div className={cn(
-            "w-full rounded-[30px] border-[1.5px] backdrop-blur-xl transition-all",
+            "w-full overflow-hidden rounded-[30px] border-[1.5px] backdrop-blur-xl transition-all",
             hasEntryFiles
               ? "border-indigo-300/80 bg-indigo-50/40 shadow-[0_8px_30px_rgb(99,102,241,0.10)] ring-2 ring-indigo-500/8 dark:border-indigo-500/30 dark:bg-indigo-900/10 dark:shadow-[0_8px_30px_rgb(99,102,241,0.2)]"
               : "border-zinc-200/80 bg-white/70 shadow-[0_8px_30px_rgb(0,0,0,0.06)] hover:border-zinc-300 hover:bg-white/80 hover:shadow-[0_8px_30px_rgb(0,0,0,0.1)] dark:border-slate-700 dark:bg-slate-900/70 dark:hover:border-slate-600 dark:hover:bg-slate-900/90",
@@ -851,7 +851,7 @@ export function HomePage() {
             <textarea
               ref={textareaRef}
               placeholder="直接输入学习目标，也可以先上传资料再一起规划"
-              className="w-full min-h-[108px] max-h-[240px] resize-none border-0 bg-transparent px-6 pb-4 pt-7 text-[15px] leading-[1.9] text-zinc-800 focus:outline-none placeholder:text-zinc-400 dark:text-slate-200 dark:placeholder:text-slate-500"
+              className="w-full min-h-[96px] max-h-[240px] resize-none border-0 bg-transparent px-4 pb-2 pt-4 text-[15px] leading-[1.8] text-zinc-800 focus:outline-none placeholder:text-zinc-400 dark:text-slate-200 dark:placeholder:text-slate-500"
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
               onKeyDown={handleKeyDown}
@@ -860,9 +860,7 @@ export function HomePage() {
               disabled={isCreatingDraftSubject}
             />
 
-            <div className="mx-5 h-px bg-zinc-100 dark:bg-slate-800" />
-
-            <div className="px-5 pb-4 pt-3 flex flex-col gap-3">
+            <div className="px-4 pb-3 pt-1 flex flex-col gap-2">
               {(hasEntryFiles || isUploadingFiles) && (
                 <div className="space-y-2">
                   <div className="flex flex-wrap gap-2">
@@ -908,7 +906,7 @@ export function HomePage() {
                 </div>
               )}
 
-              <div className="flex items-end justify-between px-1 pt-1">
+              <div className="flex items-center justify-between px-1">
                 <div className="flex items-center gap-2 flex-1">
                   <input 
                     type="file" 
@@ -922,18 +920,18 @@ export function HomePage() {
                   <button
                     type="button"
                     onClick={() => fileInputRef.current?.click()}
-                    className="flex min-h-10 items-center gap-1.5 rounded-lg px-3 py-1.5 text-[13px] font-medium text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+                    className="flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-[12px] font-medium text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200"
                   >
                     {isUploadingFiles || isCreatingDraftSubject ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
                     ) : (
-                      <Paperclip className="h-4 w-4" />
+                      <Paperclip className="h-3.5 w-3.5" />
                     )}
                     {hasEntryFiles ? "添加资料" : "添加资料"}
                   </button>
                   {isWorking && (
-                    <span className="ml-2 flex items-center text-[13px] font-medium text-zinc-500">
-                      <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                    <span className="ml-2 flex items-center text-[12px] font-medium text-zinc-500">
+                      <Loader2 className="mr-1.5 h-3 w-3 animate-spin" />
                       {isStartingBuild || isCreatingDraftSubject ? "正在创建学习空间..." : "正在上传并解析资料..."}
                     </span>
                   )}
@@ -943,7 +941,7 @@ export function HomePage() {
                   onClick={handleGenerate}
                   disabled={!canGenerate || isWorking}
                   className={cn(
-                    "flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl transition-all focus:outline-none focus:ring-4 focus:ring-zinc-900/10 active:scale-[0.98]",
+                    "flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition-all focus:outline-none focus:ring-4 focus:ring-zinc-900/10 active:scale-[0.98]",
                     canGenerate && !isWorking
                       ? "bg-zinc-900 text-white shadow-sm hover:bg-zinc-800 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white"
                       : "cursor-not-allowed bg-zinc-100 text-zinc-300 dark:bg-slate-800 dark:text-slate-600"

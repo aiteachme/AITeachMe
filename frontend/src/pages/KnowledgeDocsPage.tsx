@@ -25,7 +25,7 @@ import {
 import { cn } from "../lib/utils";
 import { getApiErrorMessage, postSseJson } from "../api/client";
 import { apiClient } from "../api/client";
-import { useSubjectAiAssistant } from "../components/ai/SubjectAiAssistant";
+import { useAiInteraction } from "../components/interaction";
 import { useResizablePanel } from "../hooks/useResizablePanel";
 import {
   BuildView,
@@ -988,7 +988,7 @@ function CommentThread({
   onSend,
   onFocus,
   onJumpToAnchor,
-  onOpenAssistant,
+  onOpenAiInteraction,
   compactMode,
   isAligned,
 }: {
@@ -1002,7 +1002,7 @@ function CommentThread({
   onSend: () => void;
   onFocus: () => void;
   onJumpToAnchor: (id: string) => void;
-  onOpenAssistant: () => void;
+  onOpenAiInteraction: () => void;
   compactMode: boolean;
   isAligned: boolean;
 }) {
@@ -1050,7 +1050,7 @@ function CommentThread({
             type="button"
             onClick={(e) => {
               e.stopPropagation();
-              onOpenAssistant();
+              onOpenAiInteraction();
             }}
             className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-500 transition hover:border-sky-200 hover:bg-sky-50 hover:text-sky-700"
             aria-label="在 AI 面板继续对话"
@@ -1132,7 +1132,7 @@ function CommentThread({
 /* ------------------------------------------------------------------ */
 
 export function KnowledgeDocsPage() {
-  const { openAssistant } = useSubjectAiAssistant();
+  const { openAiInteraction } = useAiInteraction();
   const {
     subjectId,
     docMarkdownQuery,
@@ -3138,16 +3138,16 @@ export function KnowledgeDocsPage() {
     }
     focusCommentThread(nextThreadId);
   }, [activeCommentIndex, commentThreadIds, focusCommentThread]);
-  const openAiAssistant = useCallback((threadId?: string) => {
+  const openAiInteractionFromThread = useCallback((threadId?: string) => {
     if (!subjectId) return;
     const targetThreadId = threadId ?? activeThreadId ?? commentThreadIds[0] ?? null;
     const targetSessionId = targetThreadId ? (threadSessionIds[targetThreadId] ?? null) : null;
     if (targetSessionId) {
-      openAssistant({ sessionId: targetSessionId });
+      openAiInteraction({ sessionId: targetSessionId });
       return;
     }
-    openAssistant();
-  }, [activeThreadId, commentThreadIds, openAssistant, subjectId, threadSessionIds]);
+    openAiInteraction();
+  }, [activeThreadId, commentThreadIds, openAiInteraction, subjectId, threadSessionIds]);
 
   const closeCommentPanel = useCallback(() => {
     if (isCompactComment) {
@@ -3480,7 +3480,7 @@ export function KnowledgeDocsPage() {
                     setIsAutoCommentHighlightSuppressed(false);
                     scrollToHeading(id);
                   }}
-                  onOpenAssistant={() => openAiAssistant(thread.threadId)}
+                  onOpenAiInteraction={() => openAiInteractionFromThread(thread.threadId)}
                   compactMode
                   isAligned
                 />
@@ -3595,7 +3595,7 @@ export function KnowledgeDocsPage() {
                         scrollThreadIntoView: false,
                       })}
                       onJumpToAnchor={() => focusCommentThread(thread.threadId, { pinToSelection: true, scrollThreadIntoView: false })}
-                      onOpenAssistant={() => openAiAssistant(thread.threadId)}
+                      onOpenAiInteraction={() => openAiInteractionFromThread(thread.threadId)}
                       compactMode={false}
                       isAligned={layout?.aligned ?? false}
                     />

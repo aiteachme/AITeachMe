@@ -2,7 +2,12 @@ const { app, BrowserWindow, Menu, ipcMain, nativeImage, shell } = require("elect
 const { spawn } = require("node:child_process");
 const path = require("node:path");
 
-const DEV_SERVER_URL = "http://127.0.0.1:5180";
+const { loadRepoDevEnv, resolveDevPorts } = require("./dev-env.cjs");
+
+loadRepoDevEnv();
+
+const devPorts = resolveDevPorts();
+const DEV_SERVER_URL = devPorts.frontendUrl;
 const isDevMode = process.argv.includes("--dev");
 
 function loadBuildConfig() {
@@ -35,6 +40,23 @@ app.setName(APP_NAME);
 let mainWindow = null;
 let backendProcess = null;
 
+function getCorsAllowedOrigins() {
+  const origins = new Set([
+    devPorts.frontendUrl,
+    "null",
+    "file://",
+  ]);
+
+  if (devPorts.frontendHost === "127.0.0.1") {
+    origins.add(`http://localhost:${devPorts.frontendPort}`);
+  }
+  if (devPorts.frontendHost === "localhost") {
+    origins.add(`http://127.0.0.1:${devPorts.frontendPort}`);
+  }
+
+  return Array.from(origins).join(",");
+}
+
 function getBundledBackendPath() {
   const executableName = process.platform === "win32" ? "aiteachme-backend.exe" : "aiteachme-backend";
   if (app.isPackaged) {
@@ -60,7 +82,7 @@ function startBundledBackend() {
       AITEACHME_ENABLE_BUILTIN_PDF: "false",
       AITEACHME_BACKEND_PORT: BACKEND_PORT,
       AITEACHME_DATA_DIR: backendDataDir,
-      CORS_ALLOWED_ORIGINS: "http://localhost:5180,http://127.0.0.1:5180,null,file://",
+      CORS_ALLOWED_ORIGINS: getCorsAllowedOrigins(),
     },
     stdio: "ignore",
     windowsHide: true,

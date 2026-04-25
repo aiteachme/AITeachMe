@@ -1,8 +1,8 @@
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { Outlet, useLocation } from "react-router-dom";
 import { Sidebar } from "./Sidebar";
 import { TopBar } from "./TopBar";
-import { SubjectAiAssistantProvider } from "../ai/SubjectAiAssistant";
+import { AiInteractionProvider, AiInteractionWindow, type AiConversationScope } from "../interaction";
 import { isFullBleedSubjectPath } from "../../lib/subjectNavigation";
 import { SettingsDialog } from "../settings/SettingsDialog";
 import { cn } from "../../lib/utils";
@@ -19,7 +19,15 @@ export function Layout() {
   const isFullBleed = isFullBleedSubjectPath(pathname);
   const isExamFocusPage = /^\/subject\/[^/]+\/exams\/[^/]+$/.test(pathname);
   const subjectId = pathname.match(/^\/subject\/([^/]+)/)?.[1] ?? null;
-  const assistantSubjectId = pathname === "/assistant" ? "global" : subjectId;
+  const activeInteractionScope = useMemo<AiConversationScope | null>(() => {
+    if (pathname === "/assistant") {
+      return { type: "global" };
+    }
+    if (subjectId) {
+      return { type: "subject", subjectId };
+    }
+    return null;
+  }, [pathname, subjectId]);
 
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const settingsOverview = useSyncExternalStore(
@@ -42,7 +50,7 @@ export function Layout() {
 
   return (
     <>
-      <SubjectAiAssistantProvider subjectId={assistantSubjectId}>
+      <AiInteractionProvider activeScope={activeInteractionScope}>
         <div
           className={cn(
             "app-shell relative flex min-h-0 overflow-hidden bg-[#fafafa] selection:bg-zinc-200 dark:bg-[#0b0f19] dark:selection:bg-slate-700",
@@ -84,8 +92,9 @@ export function Layout() {
               )}
             </main>
           </div>
+          <AiInteractionWindow variant="sidebar" />
         </div>
-      </SubjectAiAssistantProvider>
+      </AiInteractionProvider>
 
       <SettingsDialog isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} />
     </>

@@ -1,7 +1,11 @@
 const { contextBridge, ipcRenderer } = require("electron");
 
+const { loadRepoDevEnv, resolveDevPorts } = require("./dev-env.cjs");
+
+loadRepoDevEnv();
+
 const editCommands = new Set(["undo", "redo", "cut", "copy", "paste", "delete", "selectAll"]);
-const backendPort = process.env.AITEACHME_BACKEND_PORT || "9020";
+const devPorts = resolveDevPorts();
 
 function loadBuildConfig() {
   try {
@@ -12,7 +16,7 @@ function loadBuildConfig() {
 }
 
 const buildConfig = loadBuildConfig();
-const apiBaseUrl = (buildConfig.apiBaseUrl || `http://127.0.0.1:${backendPort}`).replace(/\/$/, "");
+const apiBaseUrl = (buildConfig.apiBaseUrl || devPorts.backendUrl).replace(/\/$/, "");
 
 contextBridge.exposeInMainWorld("aiteachmeDesktop", {
   apiBaseUrl,

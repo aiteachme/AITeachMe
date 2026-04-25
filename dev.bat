@@ -32,6 +32,20 @@ if /I "%~2"=="--no-electron" (
 rem Always run from repo root (where this script lives)
 pushd "%~dp0" >nul
 
+rem Local dev ports: environment overrides .env, then defaults.
+if exist ".env" (
+	for /f "usebackq tokens=1,* delims==" %%A in (".env") do (
+		if /I "%%A"=="AITEACHME_BACKEND_HOST" if not defined AITEACHME_BACKEND_HOST set "AITEACHME_BACKEND_HOST=%%B"
+		if /I "%%A"=="AITEACHME_BACKEND_PORT" if not defined AITEACHME_BACKEND_PORT set "AITEACHME_BACKEND_PORT=%%B"
+		if /I "%%A"=="AITEACHME_FRONTEND_HOST" if not defined AITEACHME_FRONTEND_HOST set "AITEACHME_FRONTEND_HOST=%%B"
+		if /I "%%A"=="AITEACHME_FRONTEND_PORT" if not defined AITEACHME_FRONTEND_PORT set "AITEACHME_FRONTEND_PORT=%%B"
+	)
+)
+if "%AITEACHME_BACKEND_HOST%"=="" set "AITEACHME_BACKEND_HOST=127.0.0.1"
+if "%AITEACHME_BACKEND_PORT%"=="" set "AITEACHME_BACKEND_PORT=9020"
+if "%AITEACHME_FRONTEND_HOST%"=="" set "AITEACHME_FRONTEND_HOST=127.0.0.1"
+if "%AITEACHME_FRONTEND_PORT%"=="" set "AITEACHME_FRONTEND_PORT=5180"
+
 rem Prefer explicit env override, then default
 set "CONDA_ENV_NAME=%AITEACHME_CONDA_ENV%"
 if "%CONDA_ENV_NAME%"=="" set "CONDA_ENV_NAME=aiteachme"
@@ -121,12 +135,12 @@ if /I "%FRONTEND_MODE%"=="conda" (
 
 set "BACKEND_PID="
 set "FRONTEND_PID="
-set "BACKEND_URL=http://localhost:9020"
-set "FRONTEND_URL=http://localhost:5180"
+set "BACKEND_URL=http://%AITEACHME_BACKEND_HOST%:%AITEACHME_BACKEND_PORT%"
+set "FRONTEND_URL=http://%AITEACHME_FRONTEND_HOST%:%AITEACHME_FRONTEND_PORT%"
 set "PORT_SCAN_FILE=%TEMP%\aiteachme-dev-ports-%RANDOM%.txt"
 netstat -ano -p tcp > "%PORT_SCAN_FILE%"
-for /f "tokens=5" %%P in ('findstr /R /C:":9020 .*LISTENING" "%PORT_SCAN_FILE%" 2^>nul') do if not defined BACKEND_PID set "BACKEND_PID=%%P"
-for /f "tokens=5" %%P in ('findstr /R /C:":5180 .*LISTENING" "%PORT_SCAN_FILE%" 2^>nul') do if not defined FRONTEND_PID set "FRONTEND_PID=%%P"
+for /f "tokens=5" %%P in ('findstr /R /C:":%AITEACHME_BACKEND_PORT% .*LISTENING" "%PORT_SCAN_FILE%" 2^>nul') do if not defined BACKEND_PID set "BACKEND_PID=%%P"
+for /f "tokens=5" %%P in ('findstr /R /C:":%AITEACHME_FRONTEND_PORT% .*LISTENING" "%PORT_SCAN_FILE%" 2^>nul') do if not defined FRONTEND_PID set "FRONTEND_PID=%%P"
 del "%PORT_SCAN_FILE%" >nul 2>nul
 
 if "%START_FLAGS%"=="" if not "%FRONTEND_PID%"=="" (
@@ -143,9 +157,9 @@ if not "%BACKEND_PID%"=="" (
 ) else (
 	echo [Backend] Starting FastAPI on %BACKEND_URL%...
 	if /I "%BACKEND_MODE%"=="venv" (
-		start "Backend" %START_FLAGS% /D "%~dp0backend" "%BACKEND_PY%" -m uvicorn app.main:app --reload --host 127.0.0.1 --port 9020
+		start "Backend" %START_FLAGS% /D "%~dp0backend" "%BACKEND_PY%" -m uvicorn app.main:app --reload --host %AITEACHME_BACKEND_HOST% --port %AITEACHME_BACKEND_PORT%
 	) else (
-		start "Backend" %START_FLAGS% /D "%~dp0backend" "%CONDA_CMD%" run -n %CONDA_ENV_NAME% --no-capture-output python -m uvicorn app.main:app --reload --host 127.0.0.1 --port 9020
+		start "Backend" %START_FLAGS% /D "%~dp0backend" "%CONDA_CMD%" run -n %CONDA_ENV_NAME% --no-capture-output python -m uvicorn app.main:app --reload --host %AITEACHME_BACKEND_HOST% --port %AITEACHME_BACKEND_PORT%
 	)
 )
 

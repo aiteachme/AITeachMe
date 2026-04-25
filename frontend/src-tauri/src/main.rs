@@ -17,20 +17,28 @@ fn backend_port() -> String {
     .unwrap_or_else(|| "9020".to_owned())
 }
 
+fn frontend_port() -> String {
+  std::env::var("AITEACHME_FRONTEND_PORT")
+    .ok()
+    .filter(|value| !value.trim().is_empty())
+    .unwrap_or_else(|| "5180".to_owned())
+}
+
 #[cfg(feature = "local-backend")]
 fn start_local_backend(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
   let port = backend_port();
+  let dev_frontend_port = frontend_port();
   let backend_data_dir = app.path().app_data_dir()?.join("backend-data");
   std::fs::create_dir_all(&backend_data_dir)?;
 
-  let cors_origins = [
-    "http://localhost:5180",
-    "http://127.0.0.1:5180",
-    "http://tauri.localhost",
-    "https://tauri.localhost",
-    "tauri://localhost",
-    "null",
-    "file://",
+  let cors_origins = vec![
+    format!("http://localhost:{dev_frontend_port}"),
+    format!("http://127.0.0.1:{dev_frontend_port}"),
+    "http://tauri.localhost".to_owned(),
+    "https://tauri.localhost".to_owned(),
+    "tauri://localhost".to_owned(),
+    "null".to_owned(),
+    "file://".to_owned(),
   ]
   .join(",");
 

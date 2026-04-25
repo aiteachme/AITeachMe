@@ -349,7 +349,7 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
                 }}
                 title="新建学科"
                 className={cn(
-                  "flex h-6 w-6 items-center justify-center rounded-md transition-colors",
+                  "flex h-7 w-7 items-center justify-center rounded-md transition-colors",
                   isCreateSubjectActive
                     ? "bg-[#eef2f6] text-[#243246] ring-1 ring-[#d9e1ea] hover:bg-[#e4ebf3] hover:text-[#182437] dark:bg-slate-800 dark:text-slate-200 dark:ring-slate-700 dark:hover:bg-slate-700/70 dark:hover:text-slate-50"
                     : "text-slate-500 hover:bg-[#eef3f8] hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800/60 dark:hover:text-slate-200",
@@ -369,7 +369,7 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
                 }}
                 title="全局助手"
                 className={cn(
-                  "flex h-6 w-6 items-center justify-center rounded-md transition-colors",
+                  "flex h-7 w-7 items-center justify-center rounded-md transition-colors",
                   isGlobalAssistantActive
                     ? "bg-[#eef2f6] text-[#243246] ring-1 ring-[#d9e1ea] hover:bg-[#e4ebf3] hover:text-[#182437] dark:bg-slate-800 dark:text-slate-200 dark:ring-slate-700 dark:hover:bg-slate-700/70 dark:hover:text-slate-50"
                     : "text-slate-500 hover:bg-[#eef3f8] hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800/60 dark:hover:text-slate-200",
@@ -389,7 +389,7 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
                 }}
                 title="我的学习空间"
                 className={cn(
-                  "flex h-6 w-6 items-center justify-center rounded-md transition-colors",
+                  "flex h-7 w-7 items-center justify-center rounded-md transition-colors",
                   isMyLearningSpaceActive
                     ? "bg-[#eef2f6] text-[#243246] ring-1 ring-[#d9e1ea] hover:bg-[#e4ebf3] hover:text-[#182437] dark:bg-slate-800 dark:text-slate-200 dark:ring-slate-700 dark:hover:bg-slate-700/70 dark:hover:text-slate-50"
                     : "text-slate-500 hover:bg-[#eef3f8] hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800/60 dark:hover:text-slate-200",
@@ -409,7 +409,7 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
                 }}
                 title="我的资料库"
                 className={cn(
-                  "flex h-6 w-6 items-center justify-center rounded-md transition-colors",
+                  "flex h-7 w-7 items-center justify-center rounded-md transition-colors",
                   isLibraryActive
                     ? "bg-[#eef2f6] text-[#243246] ring-1 ring-[#d9e1ea] hover:bg-[#e4ebf3] hover:text-[#182437] dark:bg-slate-800 dark:text-slate-200 dark:ring-slate-700 dark:hover:bg-slate-700/70 dark:hover:text-slate-50"
                     : "text-slate-500 hover:bg-[#eef3f8] hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800/60 dark:hover:text-slate-200",
@@ -423,7 +423,7 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
               <button
                 type="button"
                 className={cn(
-                  "group flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors",
+                  "group flex h-7 w-full items-center gap-2 rounded-md px-2 text-left transition-colors",
                   isCreateSubjectActive
                     ? "bg-[#f3f6f9] text-slate-950 ring-1 ring-[#dbe3ec] hover:bg-[#e8eef5] dark:bg-slate-800/80 dark:text-slate-100 dark:ring-slate-700 dark:hover:bg-slate-700/70"
                     : "text-slate-900 hover:bg-[#eef3f8] dark:text-slate-300 dark:hover:bg-slate-800/60",
@@ -448,7 +448,7 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
                 />
                 <span
                   className={cn(
-                    "text-xs tracking-[0.01em]",
+                    "whitespace-nowrap text-xs tracking-[0.01em]",
                     isCreateSubjectActive
                       ? "font-semibold text-[#1f2937] group-hover:text-[#172033] dark:text-slate-100 dark:group-hover:text-white"
                       : "font-normal text-slate-900 group-hover:text-slate-950 dark:text-slate-300 dark:group-hover:text-slate-100",
@@ -461,7 +461,7 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
               <button
                 type="button"
                 className={cn(
-                  "group flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors",
+                  "group flex h-7 w-full items-center gap-2 rounded-md px-2 text-left transition-colors",
                   isGlobalAssistantActive
                     ? "bg-[#f3f6f9] text-slate-950 ring-1 ring-[#dbe3ec] hover:bg-[#e8eef5] dark:bg-slate-800/80 dark:text-slate-100 dark:ring-slate-700 dark:hover:bg-slate-700/70"
                     : "text-slate-900 hover:bg-[#eef3f8] dark:text-slate-300 dark:hover:bg-slate-800/60",
@@ -484,7 +484,7 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
                 />
                 <span
                   className={cn(
-                    "text-xs tracking-[0.01em]",
+                    "whitespace-nowrap text-xs tracking-[0.01em]",
                     isGlobalAssistantActive
                       ? "font-semibold text-[#1f2937] group-hover:text-[#172033] dark:text-slate-100 dark:group-hover:text-white"
                       : "font-normal text-slate-900 group-hover:text-slate-950 dark:text-slate-300 dark:group-hover:text-slate-100",
@@ -497,7 +497,7 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
               <button
                 type="button"
                 className={cn(
-                  "group flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors",
+                  "group flex h-7 w-full items-center gap-2 rounded-md px-2 text-left transition-colors",
                   isMyLearningSpaceActive
                     ? "bg-[#f3f6f9] text-slate-950 ring-1 ring-[#dbe3ec] hover:bg-[#e8eef5] dark:bg-slate-800/80 dark:text-slate-100 dark:ring-slate-700 dark:hover:bg-slate-700/70"
                     : "text-slate-900 hover:bg-[#eef3f8] dark:text-slate-300 dark:hover:bg-slate-800/60",
@@ -520,7 +520,7 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
                 />
                 <span
                   className={cn(
-                    "text-xs tracking-[0.01em]",
+                    "whitespace-nowrap text-xs tracking-[0.01em]",
                     isMyLearningSpaceActive
                       ? "font-semibold text-[#1f2937] group-hover:text-[#172033] dark:text-slate-100 dark:group-hover:text-white"
                       : "font-normal text-slate-900 group-hover:text-slate-950 dark:text-slate-300 dark:group-hover:text-slate-100",
@@ -533,7 +533,7 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
               <button
                 type="button"
                 className={cn(
-                  "group flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors",
+                  "group flex h-7 w-full items-center gap-2 rounded-md px-2 text-left transition-colors",
                   isLibraryActive
                     ? "bg-[#f3f6f9] text-slate-950 ring-1 ring-[#dbe3ec] hover:bg-[#e8eef5] dark:bg-slate-800/80 dark:text-slate-100 dark:ring-slate-700 dark:hover:bg-slate-700/70"
                     : "text-slate-900 hover:bg-[#eef3f8] dark:text-slate-300 dark:hover:bg-slate-800/60",
@@ -556,7 +556,7 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
                 />
                 <span
                   className={cn(
-                    "text-xs tracking-[0.01em]",
+                    "whitespace-nowrap text-xs tracking-[0.01em]",
                     isLibraryActive
                       ? "font-semibold text-[#1f2937] group-hover:text-[#172033] dark:text-slate-100 dark:group-hover:text-white"
                       : "font-normal text-slate-900 group-hover:text-slate-950 dark:text-slate-300 dark:group-hover:text-slate-100",
@@ -576,13 +576,13 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
         <div className="min-h-0 flex-1 space-y-1 overflow-y-auto overflow-x-hidden px-3 pb-4 scrollbar-thin scrollbar-webkit">
           {!effectiveCollapsed ? (
             <div className="flex items-center gap-1.5 px-2 pb-2 pt-1">
-              <span className="text-[11px] font-medium tracking-[0.08em] text-slate-400">学科</span>
+              <span className="whitespace-nowrap text-[11px] font-medium tracking-[0.08em] text-slate-400">学科</span>
               {isLoading ? <Loader2 className="h-3 w-3 animate-spin text-slate-400 dark:text-slate-500" /> : null}
             </div>
           ) : null}
 
           {!isLoading && groupedSubjects.length === 0 && !effectiveCollapsed ? (
-            <p className="-mt-1 px-4 py-0 text-[11px] text-slate-300 dark:text-slate-600">暂无学科</p>
+            <p className="-mt-1 overflow-hidden whitespace-nowrap px-4 py-0 text-[11px] text-slate-300 dark:text-slate-600">暂无学科</p>
           ) : null}
 
           {groupedSubjects.map((subject) => {
@@ -700,7 +700,7 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
                           to={path}
                           onClick={() => setIsMobileOpen(false)}
                           className={cn(
-                            "flex min-h-10 items-center rounded-md px-2.5 py-2 text-sm transition-colors",
+                            "flex min-h-10 items-center overflow-hidden whitespace-nowrap rounded-md px-2.5 py-2 text-sm transition-colors",
                             isActive
                               ? "bg-[#eef3f8] text-[#1f2937] ring-1 ring-[#d9e2ec] font-medium dark:bg-slate-800 dark:text-slate-200 dark:ring-slate-700"
                               : "text-slate-500 hover:bg-slate-50 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-slate-800/40 dark:hover:text-slate-200",
@@ -726,24 +726,24 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
             onMouseEnter={ensureCommunityQrPreloaded}
             className={cn(
               "flex items-center text-slate-500 transition-colors hover:bg-[#eef3f8] hover:text-slate-900 focus:outline-none focus-visible:outline-none dark:text-slate-400 dark:hover:bg-slate-800/60 dark:hover:text-slate-200",
-              effectiveCollapsed ? "mx-auto h-6 w-6 justify-center rounded-md" : "w-full rounded-md px-2 py-1.5 gap-2",
+              effectiveCollapsed ? "mx-auto h-7 w-7 justify-center rounded-md" : "h-7 w-full rounded-md px-2 gap-2",
             )}
             title="社区"
           >
             <MessageCircle className="h-3.5 w-3.5 shrink-0" />
-            {!effectiveCollapsed ? <span className="text-xs tracking-[0.01em]">社区</span> : null}
+            {!effectiveCollapsed ? <span className="whitespace-nowrap text-xs tracking-[0.01em]">社区</span> : null}
           </button>
           <button
             type="button"
             onClick={onOpenSettings}
             className={cn(
               "flex items-center text-slate-500 transition-colors hover:bg-[#eef3f8] hover:text-slate-900 focus:outline-none focus-visible:outline-none dark:text-slate-400 dark:hover:bg-slate-800/60 dark:hover:text-slate-200",
-              effectiveCollapsed ? "mx-auto h-6 w-6 justify-center rounded-md" : "w-full rounded-md px-2 py-1.5 gap-2",
+              effectiveCollapsed ? "mx-auto h-7 w-7 justify-center rounded-md" : "h-7 w-full rounded-md px-2 gap-2",
             )}
             title="设置"
           >
             <Settings className="h-3.5 w-3.5 shrink-0" />
-            {!effectiveCollapsed ? <span className="text-xs tracking-[0.01em]">设置</span> : null}
+            {!effectiveCollapsed ? <span className="whitespace-nowrap text-xs tracking-[0.01em]">设置</span> : null}
           </button>
         </div>
       </aside>
