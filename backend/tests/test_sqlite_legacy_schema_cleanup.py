@@ -5,6 +5,7 @@ from app.shared.infra.database.core import (
     _apply_sqlite_additive_schema_updates,
     _drop_sqlite_legacy_schema,
     _inspect_sqlite_schema_drift,
+    _json_dumps,
 )
 
 
@@ -196,3 +197,7 @@ def test_sqlite_additive_schema_updates_add_subject_learning_context_columns(tmp
             )
         ).one()
     assert tuple(row) == ("", "", "{}", "")
+
+
+def test_database_json_serializer_keeps_unicode_readable():
+    assert "\\u" not in _json_dumps({"subject": "高等数学"})

@@ -37,6 +37,18 @@ def _clean_text(value: Any, *, max_chars: int | None = None) -> str:
     return cleaned
 
 
+def _clean_multiline_text(value: Any, *, max_chars: int | None = None) -> str:
+    cleaned_lines = [
+        cleaned
+        for line in str(value or "").splitlines()
+        if (cleaned := _clean_text(line))
+    ]
+    cleaned = "\n".join(cleaned_lines).strip()
+    if max_chars is not None:
+        return _truncate_text(cleaned, max_chars=max_chars)
+    return cleaned
+
+
 def _truncate_text(value: Any, *, max_chars: int) -> str:
     text = str(value or "").strip()
     if len(text) > max_chars:
@@ -343,23 +355,26 @@ def build_subject_learning_context_payload(
     top_terms = _clean_string_list(top_terms, limit=8, max_chars=80)
     chapter_titles = [chapter["title"] for chapter in chapters if chapter.get("title")]
 
-    intent_lines = [
-        f"用户请求：{user_prompt}" if user_prompt else "",
-        f"构建方案：{plan_summary}" if plan_summary else "",
-        (
-            "教学偏好："
-            f"文档风格={_clean_text(intent_profile.get('document_style')) or 'teaching_notes'}；"
-            f"讲解深度={_clean_text(intent_profile.get('explanation_depth')) or 'detailed'}；"
-            f"定义深度={_clean_text(intent_profile.get('definition_depth')) or 'standard'}；"
-            f"例题偏好={_clean_text(intent_profile.get('example_preference')) or 'balanced'}；"
-            f"考试导向={intent_profile.get('exam_orientation', 0.5)}；"
-            f"复习导向={intent_profile.get('review_orientation', 0.5)}"
-        ),
-    ]
+    intent_lines = []
+    if user_prompt:
+        intent_lines.append(f"用户请求：{user_prompt}")
+    if plan_summary:
+        intent_lines.append(f"构建方案：{plan_summary}")
+    intent_lines.extend(
+        [
+            "教学偏好：",
+            f"- 文档风格：{_clean_text(intent_profile.get('document_style')) or 'teaching_notes'}",
+            f"- 讲解深度：{_clean_text(intent_profile.get('explanation_depth')) or 'detailed'}",
+            f"- 定义深度：{_clean_text(intent_profile.get('definition_depth')) or 'standard'}",
+            f"- 例题偏好：{_clean_text(intent_profile.get('example_preference')) or 'balanced'}",
+            f"- 考试导向：{intent_profile.get('exam_orientation', 0.5)}",
+            f"- 复习导向：{intent_profile.get('review_orientation', 0.5)}",
+        ]
+    )
     avoid_list = _clean_string_list(intent_profile.get("avoid_list"), limit=8)
     if avoid_list:
         intent_lines.append("避免内容：" + "；".join(avoid_list))
-    learning_intent_text = _clean_text("\n".join(line for line in intent_lines if line), max_chars=_MAX_INTENT_TEXT_CHARS)
+    learning_intent_text = _clean_multiline_text("\n".join(intent_lines), max_chars=_MAX_INTENT_TEXT_CHARS)
 
     intro_bits = [
         f"「{display_name}」当前知识文档以 {digest_mode or 'general'} 模式组织",
@@ -414,7 +429,7 @@ def render_subject_llm_context(
     if subject_intro_text:
         lines.extend(["## 学科简介", _clean_text(subject_intro_text), ""])
     if learning_intent_text:
-        lines.extend(["## 用户学习意图", _clean_text(learning_intent_text, max_chars=_MAX_INTENT_TEXT_CHARS), ""])
+        lines.extend(["## 用户学习意图", _clean_multiline_text(learning_intent_text, max_chars=_MAX_INTENT_TEXT_CHARS), ""])
 
     lines.extend(
         [

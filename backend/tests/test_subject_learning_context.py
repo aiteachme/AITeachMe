@@ -54,6 +54,8 @@ def test_subject_learning_context_published_snapshot_roundtrip():
 
         assert updated is not None
         subject = session.exec(select(Subject).where(Subject.slug == "math")).one()
+        assert "用户请求：Focus on exam-ready derivatives." in subject.learning_intent_text
+        assert "\n- 文档风格：" in subject.learning_intent_text
         assert subject.document_summary_json["version_no"] == 3
         assert subject.document_summary_json["confirmed_plan"]["selected_file_ids"] == [7]
         assert subject.document_summary_json["chapters"][0]["source_file_ids"] == [7]

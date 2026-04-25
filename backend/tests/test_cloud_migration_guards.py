@@ -42,7 +42,7 @@ def test_alembic_has_single_head_revision() -> None:
     backend_root = Path(__file__).resolve().parents[1]
     script = ScriptDirectory.from_config(Config(str(backend_root / "alembic.ini")))
 
-    assert script.get_current_head() == "20260425_0004"
+    assert script.get_current_head() == "20260425_0005"
 
 
 def test_cloud_postgres_init_does_not_create_tables(monkeypatch: pytest.MonkeyPatch) -> None:

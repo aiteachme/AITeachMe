@@ -25,8 +25,8 @@ class Subject(SQLModel, table=True):
     preferred_digest_note: str | None = None
     detected_discipline: str | None = None
     detected_sub_discipline: str | None = None
-    profile_json: str = Field(default="{}")
-    settings_json: str = Field(default="{}")
+    profile_json: str = Field(default="{}", sa_column=sa.Column(sa.Text(), nullable=False))
+    settings_json: str = Field(default="{}", sa_column=sa.Column(sa.Text(), nullable=False))
     learning_intent_text: str = Field(default="", sa_column=sa.Column(sa.Text(), nullable=False))
     subject_intro_text: str = Field(default="", sa_column=sa.Column(sa.Text(), nullable=False))
     document_summary_json: dict[str, Any] = Field(default_factory=dict, sa_column=sa.Column(sa.JSON, nullable=False))

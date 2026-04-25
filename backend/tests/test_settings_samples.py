@@ -89,6 +89,7 @@ def test_resolve_runtime_llm_provider_prefers_explicit_env(monkeypatch) -> None:
 
 def test_provider_defaults_switch_by_provider() -> None:
     anthropic_defaults = get_llm_provider_model_defaults("anthropic")
+    openai_compatible_defaults = get_llm_provider_model_defaults("openai_compatible")
     gemini_defaults = get_llm_provider_model_defaults("gemini")
     azure_defaults = get_llm_provider_model_defaults("azure")
     vllm_defaults = get_llm_provider_model_defaults("vllm")
@@ -102,6 +103,7 @@ def test_provider_defaults_switch_by_provider() -> None:
     assert anthropic_defaults["embedding"] is None
     assert anthropic_defaults["rerank"] is None
     assert anthropic_defaults["image_generation"] is None
+    assert openai_compatible_defaults["embedding"] == "text-embedding-3-small"
     assert gemini_defaults["primary"] == "gemini-2.5-flash"
     assert gemini_defaults["light"] == "gemini-2.5-flash-lite"
     assert gemini_defaults["embedding"] == "text-embedding-004"

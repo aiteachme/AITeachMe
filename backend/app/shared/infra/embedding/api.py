@@ -15,7 +15,6 @@ import time
 import structlog
 
 from app.shared.infra.embedding.defaults import DEFAULT_EMBEDDING_BATCH_SIZE
-from app.shared.infra.settings import PROJECT_SETTINGS_ENV_NAME
 from app.shared.infra.exceptions import LLMCallError, MissingLLMApiKeyError
 from app.shared.infra.llm_support.common import (
     build_litellm_provider_kwargs,
@@ -83,9 +82,10 @@ async def _call_embedding(
             raise LLMCallError(
                 reason=(
                     f"Embedding 模型 `{configured_model}` 在当前供应商不可用或无权限。"
-                    f"请通过 {PROJECT_SETTINGS_ENV_NAME} 指向的外部项目配置文件，或通过本地设置页 / system runtime settings，将 `models.embedding` 改为账号可用模型后重启后端。"
+                    "请在本地设置页将 `models.embedding` 改为当前网关/账号可用的 embedding 模型。"
+                    "保存后对下一次请求或下一次构建生效；已经开始的构建不会中途切换。"
                     f"当前 LLM_BASE_URL={api_base}。"
-                    "常见可选：`text-embedding-3-small`（OpenAI 兼容）或 `text-embedding-v4`（DashScope）。"
+                    "可优先参考当前供应商控制台的 embedding 模型列表。"
                 )
             ) from exc
         raise

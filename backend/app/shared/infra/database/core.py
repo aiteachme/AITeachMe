@@ -128,6 +128,14 @@ def _get_db_path():
     return get_sqlite_db_path()
 
 
+def _json_dumps(value: object) -> str:
+    return json.dumps(value, ensure_ascii=False, separators=(",", ":"))
+
+
+def _json_loads(value: str) -> object:
+    return json.loads(value)
+
+
 def reset_runtime_state() -> None:
     """Reset runtime singletons before rebuilding the local SQLite database.
 
@@ -366,6 +374,8 @@ def _build_sqlite_engine() -> sa.Engine:
     engine = create_engine(
         f"sqlite:///{db_path}",
         connect_args={"check_same_thread": False},
+        json_serializer=_json_dumps,
+        json_deserializer=_json_loads,
     )
 
     @sa.event.listens_for(engine, "connect")
@@ -394,6 +404,8 @@ def _build_postgres_engine(settings) -> sa.Engine:
         pool_size=5,
         max_overflow=10,
         pool_pre_ping=True,
+        json_serializer=_json_dumps,
+        json_deserializer=_json_loads,
     )
     logger.info("database_engine_created", dialect="postgresql")
     return engine
