@@ -575,11 +575,15 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
 
         <div className={cn("min-h-0 flex-1 space-y-0.5 overflow-y-auto overflow-x-hidden pb-4 scrollbar-thin scrollbar-webkit", effectiveCollapsed ? "px-2" : "px-3")}>
           {!effectiveCollapsed ? (
-            <div className="flex items-center gap-1.5 px-1.5 pb-2 pt-1">
+            <div className="flex items-center gap-1.5 px-2 pb-2 pt-1">
               <span className="whitespace-nowrap text-[11px] font-medium tracking-[0.08em] text-slate-400">学科</span>
               {isLoading ? <Loader2 className="h-3 w-3 animate-spin text-slate-400 dark:text-slate-500" /> : null}
             </div>
-          ) : null}
+          ) : (
+            <div className="flex h-6 items-center px-1">
+              <div className="h-px w-full bg-slate-200 dark:bg-slate-800" />
+            </div>
+          )}
 
           {!isLoading && groupedSubjects.length === 0 && !effectiveCollapsed ? (
             <p className="-mt-1 overflow-hidden whitespace-nowrap px-4 py-0 text-[11px] text-slate-300 dark:text-slate-600">暂无学科</p>

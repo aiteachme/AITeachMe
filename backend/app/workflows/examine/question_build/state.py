@@ -10,20 +10,30 @@ from app.workflows.examine.question_build.lib.generator import ExamQuestionGener
 
 class QuestionBuildGraphInput(TypedDict, total=False):
     subject: str
+    subject_name: str
+    subject_description: str
+    subject_user_intent: str
     exam_mode: str
     subject_context: str
     focus_prompt: str
     user_prompt: str
     style_prompt: str
+    question_count: int
+    requested_difficulty: str
     units: list[KnowledgeUnit]
+    mastery_by_unit_id: dict[int, float]
     specs: list[ExamQuestionGenerationSpec]
     progress_callback: object | None
 
 
 class QuestionBuildGraphOutput(TypedDict, total=False):
+    question_blueprints: list[dict]
     generated_questions: list[dict]
     error: str
     workflow_elapsed_ms: int
+    plan_ms: int
+    generate_ms: int
+    weight_ms: int
 
 
 class QuestionBuildState(QuestionBuildGraphInput, QuestionBuildGraphOutput, total=False):

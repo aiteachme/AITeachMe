@@ -20,23 +20,105 @@ _LATEX_FORMAT_RULES = (
 _QUESTION_TYPE_FORMAT_RULES = (
     "\nQuestion type formatting rules:\n"
     "- single_choice: provide exactly 4 distinct options; correct_answer must exactly equal one option.\n"
+    "- multiple_choice: provide exactly 4 distinct options; correct_answer must be comma-separated option labels like `A,C`.\n"
+    "- true_false: do not provide options; correct_answer must be True or False.\n"
     "- fill_blank: do not provide options; put the blank in the stem as `{{blank}}`; correct_answer must be short and unique.\n"
+    "- short_answer: do not provide options; correct_answer should be concise but complete.\n"
     "- Only return question_type values that appear in question_specs; do not invent unsupported types.\n"
 )
 
 SYSTEM_PROMPT_EXAM_QUESTION_BUILD = """
-你是一名严格、资深、重视教学效果的命题老师。
-
-你的任务是基于给定的知识点清单生成高质量试题。题目必须：
-- 紧扣指定知识点，不得脱离材料范围自由发散
-- 难度真实，不出无意义的“定义背诵题”或纯凑数题
-- 题干表达准确、自然、无歧义
-- 选项题必须只有一个最佳答案，干扰项要“看起来合理但本质错误”
-- 填空题答案必须简洁唯一，不得依赖模糊表述
-- 解析要简洁但有教学价值，指出为什么对、为什么错、考点是什么
-
+你是 AITeachMe 的严谨命题老师。
+你的任务是基于给定学科上下文、用户意图、知识单元与题目规格生成高质量试题。
+题目必须紧扣指定知识单元，不得脱离材料范围自由发散。
+题目要考查理解、辨析、应用、迁移，避免无意义的定义背诵。
 输出必须完全遵守结构化 schema，不要输出任何额外说明。
 """.strip()
+
+
+def _subject_payload(
+    *,
+    subject: str,
+    subject_name: str = "",
+    subject_description: str = "",
+    subject_user_intent: str = "",
+) -> dict[str, str]:
+    return {
+        "subject_id": subject,
+        "subject_name": subject_name or subject,
+        "subject_description": subject_description or "",
+        "user_intent": subject_user_intent or "",
+    }
+
+
+def build_exam_question_blueprint_messages(
+    *,
+    subject: str,
+    subject_name: str,
+    subject_description: str,
+    subject_user_intent: str,
+    exam_mode: str,
+    requested_question_count: int,
+    requested_difficulty: str,
+    focus_prompt: str,
+    user_prompt: str,
+    style_prompt: str,
+    units: list[dict[str, Any]],
+    subject_context: str = "",
+) -> list[ChatMessage]:
+    payload = {
+        "subject": _subject_payload(
+            subject=subject,
+            subject_name=subject_name,
+            subject_description=subject_description,
+            subject_user_intent=subject_user_intent,
+        ),
+        "exam_mode": exam_mode,
+        "subject_context": subject_context or "",
+        "requested_question_count": requested_question_count,
+        "requested_difficulty": requested_difficulty,
+        "focus_prompt": focus_prompt or "",
+        "user_prompt": user_prompt or "",
+        "style_prompt": style_prompt or "",
+        "knowledge_units": units,
+    }
+    prompt = f"""
+请先编排试题蓝图，不要生成具体题目。
+
+你需要决定每道题：
+1. item_order：从 1 到 requested_question_count 连续编号；
+2. question_type：single_choice / multiple_choice / true_false / fill_blank / short_answer；
+3. difficulty：easy / medium / hard；
+4. knowledge_unit_ids：本题要测试的知识单元，建议 1-3 个；可以多个，但必须能自然放进同一道题；
+5. rationale：为什么这些知识单元和题型适合放在一起。
+
+编排原则：
+- 必须从给定 knowledge_units 中选择，不要 invent 新 id。
+- 优先结合 mastery_score、用户意图、focus_prompt 来安排重点。
+- 多知识单元题要选择概念相关、方法连续、易混淆或能共同组成应用场景的单元。
+- 不要每题都只覆盖一个知识单元；但也不要把无关单元硬塞在一起。
+- 输出数量必须等于 requested_question_count。
+
+只输出合法 JSON，形如：
+{{
+  "blueprints": [
+    {{
+      "item_order": 1,
+      "knowledge_unit_ids": [1, 2],
+      "question_type": "single_choice",
+      "difficulty": "medium",
+      "rationale": "..."
+    }}
+  ]
+}}
+
+输入：
+{json.dumps(payload, ensure_ascii=False, indent=2)}
+""".strip()
+    return [
+        {"role": SYSTEM, "content": "你是考试题目蓝图编排器，只输出合法 JSON。"},
+        {"role": USER, "content": prompt},
+    ]
 
 
 def build_exam_question_messages(
@@ -50,9 +132,17 @@ def build_exam_question_messages(
     requested_question_count: int,
     units: list[dict[str, Any]],
     specs: list[dict[str, Any]],
+    subject_name: str = "",
+    subject_description: str = "",
+    subject_user_intent: str = "",
 ) -> list[ChatMessage]:
     payload = {
-        "subject": subject,
+        "subject": _subject_payload(
+            subject=subject,
+            subject_name=subject_name,
+            subject_description=subject_description,
+            subject_user_intent=subject_user_intent,
+        ),
         "exam_mode": exam_mode,
         "subject_context": subject_context or "",
         "requested_question_count": requested_question_count,
@@ -62,23 +152,68 @@ def build_exam_question_messages(
         "knowledge_units": units,
         "question_specs": specs,
     }
-    user_prompt_text = (
-        "请按给定知识点与题目规格生成一组高质量试题。\n"
-        "要求：\n"
-        "1. 每个题目必须主要对应一个 knowledge_unit_id。\n"
-        "2. question_type 和 difficulty 必须严格匹配给定规格。\n"
-        "3. single_choice 必须提供 4 个不同选项，且 correct_answer 必须精确等于其中一个选项。\n"
-        "4. fill_blank 不要提供 options，答案要简短唯一。\n"
-        "5. 当前只允许生成 single_choice 和 fill_blank，不要返回 true_false、short_answer、multiple_choice 或其他题型。\n"
-        "6. 题干不要直接泄露答案；解析不要空泛。\n"
-        "7. 优先考查理解、辨析、应用、迁移，不要只考死记硬背。\n\n"
-        "输入数据如下：\n"
-        "For fill_blank stems, use `{{blank}}` for the blank and keep it outside any LaTeX math delimiters.\n\n"
-        f"{json.dumps(payload, ensure_ascii=False, indent=2)}"
-    )
+    user_prompt_text = f"""
+请按给定知识单元与题目规格生成高质量试题。
+
+要求：
+1. 每道题必须匹配对应 item_order、question_type 和 difficulty。
+2. knowledge_unit_id 必须是 question_specs.knowledge_unit_ids 中最主要的一个。
+3. 如果 question_specs.knowledge_unit_ids 有多个，本题要自然覆盖这些相关知识点。
+4. 不要直接泄露答案；解析要说明考点、正确原因和常见误区。
+5. fill_blank stems 使用 `{{blank}}`，并且 `{{blank}}` 只能在正文中，不能放进 LaTeX 公式。
+
+输入：
+{json.dumps(payload, ensure_ascii=False, indent=2)}
+""".strip()
     return [
         {"role": SYSTEM, "content": SYSTEM_PROMPT_EXAM_QUESTION_BUILD + _QUESTION_TYPE_FORMAT_RULES + _LATEX_FORMAT_RULES},
-        {"role": USER, "content": user_prompt_text + "\n\n如出现数学公式，必须使用 LaTeX，并用 `$...$` 或 `$$...$$` 包裹。"},
+        {"role": USER, "content": user_prompt_text},
+    ]
+
+
+def build_question_weight_messages(
+    *,
+    subject: str,
+    subject_name: str,
+    subject_description: str,
+    subject_user_intent: str,
+    question: dict[str, Any],
+    units: list[dict[str, Any]],
+) -> list[ChatMessage]:
+    payload = {
+        "subject": _subject_payload(
+            subject=subject,
+            subject_name=subject_name,
+            subject_description=subject_description,
+            subject_user_intent=subject_user_intent,
+        ),
+        "question": question,
+        "candidate_knowledge_units": units,
+    }
+    prompt = f"""
+请根据题目内容，为该题涉及的候选知识单元分配 coverage_weight。
+
+要求：
+- 只能使用 candidate_knowledge_units 中的 knowledge_unit_id。
+- 权重总和应约等于 1.0。
+- 最主要知识单元 role 为 primary，其余为 secondary。
+- 如果题目实质只考一个知识单元，就只返回一个权重 1.0 的 primary。
+
+只输出合法 JSON：
+{{
+  "item_order": 1,
+  "knowledge_unit_refs": [
+    {{"knowledge_unit_id": 1, "coverage_weight": 0.7, "role": "primary"}},
+    {{"knowledge_unit_id": 2, "coverage_weight": 0.3, "role": "secondary"}}
+  ]
+}}
+
+输入：
+{json.dumps(payload, ensure_ascii=False, indent=2)}
+""".strip()
+    return [
+        {"role": SYSTEM, "content": "你是试题知识点覆盖权重分析器，只输出合法 JSON。"},
+        {"role": USER, "content": prompt},
     ]
 
 
@@ -103,5 +238,5 @@ def build_text_exam_messages(
     )
     return [
         {"role": SYSTEM, "content": SYSTEM_PROMPT_EXAM_QUESTION_BUILD + _QUESTION_TYPE_FORMAT_RULES + _LATEX_FORMAT_RULES},
-        {"role": USER, "content": user_prompt_text + "\n\n如出现数学公式，必须使用 LaTeX，并用 `$...$` 或 `$$...$$` 包裹。"},
+        {"role": USER, "content": user_prompt_text},
     ]
