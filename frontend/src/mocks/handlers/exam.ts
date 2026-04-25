@@ -146,6 +146,7 @@ const papers = new Map<number, InternalPaper>();
 const generateJobs = new Map<number, GenerateJob>();
 const gradeJobs = new Map<number, GradeJob>();
 const activeGenerateSubject = new Set<string>();
+const PAPER_PREVIEW_ROW_LIMIT = 7;
 
 let nextPaperId = 10;
 let nextGenerateJobId = 200;
@@ -274,22 +275,27 @@ function previewDensity(difficulty: InternalItem["difficulty"]): number {
   return 2;
 }
 
+function previewResultStatus(isCorrect: InternalItem["is_correct"]): string {
+  if (isCorrect === true) return "correct";
+  if (isCorrect === false) return "incorrect";
+  return "ungraded";
+}
+
 function buildPaperPreview(paper: InternalPaper): Record<string, unknown> {
   const keywords = [...new Set(paper.items.map((item) => `KU-${item.knowledge_unit_id}`))].slice(0, 3);
   const questionTypes = [...new Set(paper.items.map((item) => item.question_type))].slice(0, 3);
-  const hasFormula = paper.items.some((item) => /f\(x\)|=|derivative|sequence/i.test(item.stem));
   return {
     keywords,
     question_types: questionTypes,
-    dominant_type: hasFormula ? "formula" : "text",
-    rows: paper.items.slice(0, 5).map((item) => ({
+    rows: paper.items.slice(0, PAPER_PREVIEW_ROW_LIMIT).map((item) => ({
       order: item.item_order,
       type: item.question_type,
       shape: previewShape(item.question_type),
       difficulty: item.difficulty,
       density: previewDensity(item.difficulty),
+      result_status: previewResultStatus(item.is_correct),
     })),
-    overflow_count: Math.max(0, paper.items.length - 5),
+    overflow_count: Math.max(0, paper.items.length - PAPER_PREVIEW_ROW_LIMIT),
   };
 }
 

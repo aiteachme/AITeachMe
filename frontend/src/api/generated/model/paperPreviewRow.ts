@@ -5,6 +5,7 @@
  * 本地优先的 AI 助教后端服务。
  * OpenAPI spec version: 0.0.1
  */
+import type { PaperPreviewRowResultStatus } from './paperPreviewRowResultStatus';
 import type { PaperPreviewRowShape } from './paperPreviewRowShape';
 
 export interface PaperPreviewRow {
@@ -17,4 +18,5 @@ export interface PaperPreviewRow {
      * @maximum 3
      */
   density?: number;
+  result_status?: PaperPreviewRowResultStatus;
 }

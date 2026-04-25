@@ -175,11 +175,6 @@ function formatDifficultyLabel(value: string) {
   return DIFFICULTIES.find((item) => item.value === value)?.label ?? value;
 }
 
-function getExamHistoryDifficulty(item: ExamHistoryItem) {
-  const difficulty = (item as ExamHistoryItem & { difficulty?: string | null }).difficulty;
-  return difficulty ? formatDifficultyLabel(difficulty) : null;
-}
-
 function getOptionLabel(index: number) {
   return String.fromCharCode(65 + index);
 }
@@ -227,22 +222,22 @@ function HeroOrb() {
 }
 
 type PreviewShape = PaperPreviewRow["shape"];
-type PreviewDominantType = PaperPreview["dominant_type"];
+type PreviewResultStatus = "ungraded" | "correct" | "incorrect";
 
-const PREVIEW_ROW_LIMIT = 5;
+const PREVIEW_ROW_LIMIT = 6;
 
 function buildFallbackPaperPreview(item: ExamHistoryItem): PaperPreview {
   const rowCount = Math.min(Math.max(item.total_items || 1, 1), PREVIEW_ROW_LIMIT);
   return {
     keywords: [],
     question_types: [],
-    dominant_type: "text",
     rows: Array.from({ length: rowCount }, (_, index) => ({
       order: index + 1,
       type: "text",
       shape: "text",
       difficulty: "medium",
       density: 2,
+      result_status: "ungraded",
     })),
     overflow_count: Math.max(0, (item.total_items || 0) - PREVIEW_ROW_LIMIT),
   };
@@ -256,20 +251,112 @@ function getPaperPreview(item: ExamHistoryItem): PaperPreview {
   return buildFallbackPaperPreview(item);
 }
 
+function getExamScorePercent(item: ExamHistoryItem): number | null {
+  const score = Number(item.score_obtained);
+  const total = Number(item.total_score);
+  if (!Number.isFinite(score) || !Number.isFinite(total) || total <= 0) {
+    return null;
+  }
+  return Math.max(0, Math.min(100, Math.round((score / total) * 100)));
+}
+
+function ScoreDigit({ digit, x }: { digit: string; x: number }) {
+  const pathsByDigit: Record<string, string[]> = {
+    "0": ["M10 3 C5 4 3 11 4 18 C5 26 13 28 16 21 C19 12 16 2 10 3"],
+    "1": ["M11 4 C9 6 7 8 6 11", "M10 5 C9 12 8 19 7 27"],
+    "2": ["M4 9 C5 4 15 3 16 9 C17 14 9 17 5 25 C8 24 13 24 17 25"],
+    "3": ["M5 6 C9 3 16 4 16 9 C16 12 12 14 9 15", "M9 15 C15 15 18 20 14 24 C11 28 5 26 3 23"],
+    "4": ["M14 4 C11 10 8 16 4 21 C8 21 13 20 17 20", "M14 5 C13 12 12 20 12 27"],
+    "5": ["M16 5 C12 5 8 5 5 6 C5 10 4 13 4 16", "M5 16 C10 13 17 16 17 21 C17 28 8 29 3 24"],
+    "6": ["M16 6 C9 5 4 11 4 18 C4 25 10 29 15 24 C19 20 16 14 10 15 C7 15 5 17 4 20"],
+    "7": ["M4 6 C8 5 13 5 17 6 C13 12 10 19 8 27"],
+    "8": ["M11 3 C16 4 17 10 13 13 C10 15 5 13 5 9 C5 5 8 3 11 3", "M11 14 C17 15 18 22 14 25 C10 29 4 26 4 21 C4 16 8 14 11 14"],
+    "9": ["M15 16 C12 19 6 17 5 12 C4 7 8 3 13 5 C19 8 17 19 10 27"],
+  };
+
+  return (
+    <g transform={`translate(${x} 0)`}>
+      {(pathsByDigit[digit] ?? pathsByDigit["0"]).map((path, index) => (
+        <path key={`${digit}-${path}-${index}`} d={path} />
+      ))}
+    </g>
+  );
+}
+
+function ExamPaperScoreMark({ score }: { score: number }) {
+  const digits = String(score);
+  const digitWidth = 18;
+  const digitGap = 2;
+  const contentWidth = digits.length * digitWidth + Math.max(0, digits.length - 1) * digitGap;
+  const startX = (78 - contentWidth) / 2;
+  const underlineStart = Math.max(16, startX + 2);
+  const underlineEnd = Math.min(62, startX + contentWidth - 2);
+  const underlineMid = (underlineStart + underlineEnd) / 2;
+
+  return (
+    <div className="pointer-events-none absolute right-16 top-[56%] z-20 -rotate-[12deg] select-none text-rose-600/90 dark:text-rose-400/85" aria-hidden="true">
+      <svg className="h-16 w-[78px] overflow-visible text-current" viewBox="0 0 78 54" role="presentation" aria-hidden="true">
+        <g
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="3.2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          transform="skewX(-8)"
+        >
+          {digits.split("").map((digit, index) => (
+            <ScoreDigit key={`${digit}-${index}`} digit={digit} x={startX + index * (digitWidth + digitGap)} />
+          ))}
+        </g>
+        <g fill="none" stroke="currentColor" strokeWidth="3.4" strokeLinecap="round" strokeLinejoin="round">
+          <path d={`M${underlineStart} 38 C${underlineStart + 9} 36.5 ${underlineMid - 8} 37.5 ${underlineMid} 36.8 S${underlineEnd - 9} 36.2 ${underlineEnd} 36.8`} />
+          <path d={`M${underlineStart - 1} 46 C${underlineStart + 8} 44.8 ${underlineMid - 7} 45.6 ${underlineMid} 45 S${underlineEnd - 8} 44.5 ${underlineEnd + 1} 45`} />
+        </g>
+      </svg>
+    </div>
+  );
+}
+
+function getPaperTags(preview: PaperPreview): string[] {
+  const tags = preview.keywords?.length ? preview.keywords : preview.question_types;
+  return (tags ?? []).map((tag) => tag.trim()).filter(Boolean).slice(0, 3);
+}
+
+function PaperTagLine({ preview }: { preview: PaperPreview }) {
+  const tags = getPaperTags(preview);
+  if (tags.length === 0) {
+    return <span className="text-slate-400 dark:text-slate-500">智能试卷</span>;
+  }
+  return (
+    <div className="flex min-w-0 items-center justify-center gap-1 overflow-hidden">
+      {tags.map((tag) => (
+        <span
+          key={tag}
+          title={tag}
+          aria-label={tag}
+          className="max-w-[4.8rem] truncate rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-semibold leading-4 text-slate-500 dark:border-slate-800 dark:bg-slate-800/80 dark:text-slate-400"
+        >
+          {tag}
+        </span>
+      ))}
+    </div>
+  );
+}
+
 function PreviewLine({ width = "w-16" }: { width?: string }) {
-  return <span className={`block h-1 rounded-full bg-slate-300/80 dark:bg-slate-600/80 ${width}`} />;
+  return <span className={`block h-1 rounded-full bg-current opacity-70 ${width}`} />;
 }
 
 function ChoicePreviewShape({ density }: { density: number }) {
   return (
-    <div className="flex h-6 min-w-0 flex-1 items-center gap-2">
+    <div className="flex h-5 min-w-0 flex-1 items-center gap-2">
       <div className="flex min-w-0 flex-1 items-center gap-1.5">
         <PreviewLine width={density > 1 ? "w-12" : "w-9"} />
         <PreviewLine width={density > 2 ? "w-10" : "w-7"} />
       </div>
       <div className="grid shrink-0 grid-cols-4 gap-1">
         {[0, 1, 2, 3].map((dot) => (
-          <span key={dot} className="h-1.5 w-1.5 rounded-full border border-slate-400/80 dark:border-slate-500" />
+          <span key={dot} className="h-1.5 w-1.5 rounded-full border border-current opacity-80" />
         ))}
       </div>
     </div>
@@ -278,9 +365,9 @@ function ChoicePreviewShape({ density }: { density: number }) {
 
 function BlankPreviewShape({ density }: { density: number }) {
   return (
-    <div className="flex h-6 min-w-0 flex-1 items-center gap-1.5">
+    <div className="flex h-5 min-w-0 flex-1 items-center gap-1.5">
       <PreviewLine width={density > 1 ? "w-10" : "w-7"} />
-      <span className="h-3 w-10 shrink-0 border-b border-slate-400/80 dark:border-slate-500" />
+      <span className="h-3 w-10 shrink-0 border-b border-current opacity-80" />
       <PreviewLine width={density > 2 ? "w-12" : "w-8"} />
     </div>
   );
@@ -289,7 +376,7 @@ function BlankPreviewShape({ density }: { density: number }) {
 function TextPreviewShape({ density }: { density: number }) {
   const lines = density > 2 ? ["w-20", "w-16", "w-12"] : density > 1 ? ["w-20", "w-14"] : ["w-16"];
   return (
-    <div className="flex h-6 min-w-0 flex-1 flex-col justify-center gap-1">
+    <div className="flex h-5 min-w-0 flex-1 flex-col justify-center gap-1">
       {lines.map((width, index) => (
         <PreviewLine key={`${width}-${index}`} width={width} />
       ))}
@@ -299,8 +386,8 @@ function TextPreviewShape({ density }: { density: number }) {
 
 function JudgePreviewShape({ density }: { density: number }) {
   return (
-    <div className="flex h-6 min-w-0 flex-1 items-center gap-2">
-      <span className="grid h-4 w-4 shrink-0 place-items-center rounded border border-slate-400/80 text-[9px] font-semibold text-slate-500 dark:border-slate-600 dark:text-slate-400">
+    <div className="flex h-5 min-w-0 flex-1 items-center gap-2">
+      <span className="grid h-4 w-4 shrink-0 place-items-center rounded border border-current text-[9px] font-semibold opacity-80">
         T
       </span>
       <PreviewLine width={density > 1 ? "w-20" : "w-14"} />
@@ -310,7 +397,7 @@ function JudgePreviewShape({ density }: { density: number }) {
 
 function ChartPreviewShape() {
   return (
-    <svg className="h-6 min-w-0 flex-1 text-slate-400 dark:text-slate-600" viewBox="0 0 96 24" role="presentation" aria-hidden="true">
+    <svg className="h-5 min-w-0 flex-1 text-current opacity-80" viewBox="0 0 96 24" role="presentation" aria-hidden="true">
       <rect x="2" y="3" width="44" height="18" rx="2.5" fill="none" stroke="currentColor" strokeWidth="1.4" />
       <path d="M8 17h32M8 17V7" fill="none" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" />
       <path d="M9 15l8-5 7 4 8-8 7 6" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
@@ -321,9 +408,9 @@ function ChartPreviewShape() {
 
 function FormulaPreviewShape() {
   return (
-    <div className="flex h-6 min-w-0 flex-1 items-center gap-2 text-[10px] font-semibold text-slate-500 dark:text-slate-400">
+    <div className="flex h-5 min-w-0 flex-1 items-center gap-2 text-[10px] font-semibold text-current">
       <span className="shrink-0 font-serif">f(x)</span>
-      <svg className="h-5 min-w-0 flex-1 text-slate-400 dark:text-slate-600" viewBox="0 0 72 20" role="presentation" aria-hidden="true">
+      <svg className="h-5 min-w-0 flex-1 text-current opacity-80" viewBox="0 0 72 20" role="presentation" aria-hidden="true">
         <path d="M3 14c8-13 18-13 28 0s20 6 36-8" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
       </svg>
     </div>
@@ -332,7 +419,7 @@ function FormulaPreviewShape() {
 
 function CodePreviewShape({ density }: { density: number }) {
   return (
-    <div className="flex h-6 min-w-0 flex-1 items-center gap-2 font-mono text-[11px] font-semibold text-slate-500 dark:text-slate-400">
+    <div className="flex h-5 min-w-0 flex-1 items-center gap-2 font-mono text-[11px] font-semibold text-current">
       <span className="shrink-0">{"{}"}</span>
       <div className="flex min-w-0 flex-1 flex-col gap-1">
         <PreviewLine width={density > 1 ? "w-20" : "w-14"} />
@@ -354,83 +441,74 @@ function PaperPreviewShape({ row }: { row: PaperPreviewRow }) {
   return <TextPreviewShape density={density} />;
 }
 
-function DominantPreviewMark({ type }: { type: PreviewDominantType }) {
-  if (type === "chart") {
+function getPreviewResultStatus(row: PaperPreviewRow): PreviewResultStatus {
+  const status = (row as PaperPreviewRow & { result_status?: PreviewResultStatus }).result_status;
+  if (status === "correct" || status === "incorrect") return status;
+  return "ungraded";
+}
+
+function getResultMarkJitter(row: PaperPreviewRow) {
+  const seed = row.order * 37 + row.type.length * 11 + row.difficulty.length * 7;
+  return {
+    x: [-6, -4, -2, 0, 2, 4][seed % 6],
+    y: [-5, -3, -1, 1, 3, 5][Math.floor(seed / 5) % 6],
+    rotate: [-11, -7, -3, 4, 8, 12][Math.floor(seed / 11) % 6],
+  };
+}
+
+function PaperPreviewResultMark({ status, row }: { status: PreviewResultStatus; row: PaperPreviewRow }) {
+  const jitter = getResultMarkJitter(row);
+  const style = {
+    transform: `translate(${jitter.x}px, calc(-50% + ${jitter.y}px)) rotate(${jitter.rotate}deg)`,
+    fontFamily: '"Segoe Print", "Comic Sans MS", cursive',
+  };
+  if (status === "correct") {
     return (
-      <svg className="h-8 w-8 text-slate-400 dark:text-slate-600" viewBox="0 0 32 32" role="presentation" aria-hidden="true">
-        <path d="M6 25V7M6 25h21" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
-        <path d="M8 21l5-7 5 4 7-10" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-      </svg>
+      <span className="absolute right-2 top-1/2 grid h-4 w-4 place-items-center text-[18px] font-semibold leading-none text-emerald-500 dark:text-emerald-400" style={style}>
+        ✓
+      </span>
     );
   }
-  if (type === "formula") {
-    return <span className="font-serif text-lg font-semibold text-slate-400 dark:text-slate-600">f(x)</span>;
-  }
-  if (type === "image") {
+  if (status === "incorrect") {
     return (
-      <svg className="h-8 w-8 text-slate-400 dark:text-slate-600" viewBox="0 0 32 32" role="presentation" aria-hidden="true">
-        <rect x="6" y="8" width="20" height="16" rx="3" fill="none" stroke="currentColor" strokeWidth="1.6" />
-        <path d="M9 21l5-6 4 4 3-3 3 5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-        <circle cx="20.5" cy="13" r="1.5" fill="currentColor" />
-      </svg>
+      <span className="absolute right-2 top-1/2 grid h-4 w-4 place-items-center text-[18px] font-semibold leading-none text-rose-500 dark:text-rose-400" style={style}>
+        ×
+      </span>
     );
   }
-  if (type === "code") {
-    return <span className="font-mono text-lg font-semibold text-slate-400 dark:text-slate-600">{"{}"}</span>;
-  }
-  return (
-    <div className="flex w-9 flex-col gap-1">
-      <PreviewLine width="w-8" />
-      <PreviewLine width="w-6" />
-      <PreviewLine width="w-7" />
-    </div>
-  );
+  return null;
 }
 
 function PaperFingerprintPreview({ preview }: { preview: PaperPreview }) {
   const rows = preview.rows?.slice(0, PREVIEW_ROW_LIMIT) ?? [];
-  const keywords = preview.keywords?.slice(0, 3) ?? [];
-  const overflowCount = preview.overflow_count || 0;
+  const hiddenPreviewRows = Math.max(0, (preview.rows?.length ?? 0) - PREVIEW_ROW_LIMIT);
+  const overflowCount = (preview.overflow_count || 0) + hiddenPreviewRows;
 
   return (
-    <div className="relative z-10 mt-3 flex min-h-[142px] flex-1 flex-col overflow-hidden">
-      <div className="mb-2 flex h-6 flex-wrap items-start gap-1 overflow-hidden">
-        {keywords.length > 0
-          ? keywords.map((keyword) => (
-              <span
-                key={keyword}
-                className="max-w-[5.5rem] truncate rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-medium leading-4 text-slate-500 dark:border-slate-800 dark:bg-slate-800/80 dark:text-slate-400"
-              >
-                {keyword}
-              </span>
-            ))
-          : preview.question_types?.slice(0, 2).map((type) => (
-              <span
-                key={type}
-                className="max-w-[5.5rem] truncate rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-medium leading-4 text-slate-500 dark:border-slate-800 dark:bg-slate-800/80 dark:text-slate-400"
-              >
-                {type}
-              </span>
-            ))}
-      </div>
-
-      <div className="space-y-1.5 pr-10">
-        {rows.map((row) => (
-          <div key={`${row.order}-${row.type}`} className="flex h-6 items-center gap-2 text-slate-400 dark:text-slate-600">
-            <span className="w-4 shrink-0 text-right text-[10px] font-semibold tabular-nums text-slate-400 dark:text-slate-600">
+    <div className="relative z-10 mt-3 flex flex-1 flex-col overflow-hidden pt-1">
+      <div className="space-y-1">
+        {rows.map((row) => {
+          const status = getPreviewResultStatus(row);
+          return (
+          <div key={`${row.order}-${row.type}`} className="flex h-5 items-center gap-2 text-slate-400 dark:text-slate-600">
+            <span className="w-4 shrink-0 text-right text-[10px] font-semibold tabular-nums opacity-80">
               {row.order}
             </span>
-            <PaperPreviewShape row={row} />
+            <div className="relative flex min-w-0 flex-1 pr-4">
+              <PaperPreviewShape row={row} />
+              <PaperPreviewResultMark status={status} row={row} />
+            </div>
           </div>
-        ))}
-      </div>
-
-      <div className="pointer-events-none absolute bottom-1 right-1 grid h-10 w-10 place-items-center rounded-full border border-slate-200/80 bg-white/75 backdrop-blur-sm dark:border-slate-700/70 dark:bg-slate-900/70">
-        <DominantPreviewMark type={preview.dominant_type || "text"} />
+          );
+        })}
       </div>
 
       {overflowCount > 0 ? (
-        <div className="mt-1 pl-6 text-[10px] font-medium text-slate-400 dark:text-slate-600">+{overflowCount}</div>
+        <div className="mt-1 flex h-4 items-center pl-6">
+          <span className="rounded-full border border-slate-200 bg-slate-50 px-2 text-[10px] font-semibold leading-4 text-slate-500 dark:border-slate-800 dark:bg-slate-800/80 dark:text-slate-400">
+            +{overflowCount}
+          </span>
+        </div>
       ) : null}
     </div>
   );
@@ -447,14 +525,8 @@ function ExamPaperCard({
   onOpen: () => void;
   onDelete: (event: MouseEvent<HTMLButtonElement>) => void;
 }) {
-  const createdDate = item.created_at
-    ? new Intl.DateTimeFormat("zh-CN", {
-        month: "numeric",
-        day: "numeric",
-      }).format(new Date(item.created_at))
-    : "-";
-  const difficultyLabel = getExamHistoryDifficulty(item);
   const preview = getPaperPreview(item);
+  const scorePercent = getExamScorePercent(item);
 
   const handleCardKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (event.key !== "Enter" && event.key !== " ") return;
@@ -483,15 +555,15 @@ function ExamPaperCard({
           <div className="mx-auto mt-2 h-px w-16 bg-slate-200 dark:bg-slate-700" />
         </div>
 
-        <div className="relative z-10 mt-4 border-y border-slate-100 py-2 text-center text-xs font-semibold text-slate-600 dark:border-slate-800 dark:text-slate-300">
-          {item.total_items}题目 · {createdDate}
-          {difficultyLabel ? ` · ${difficultyLabel}` : ""}
+        <div className="relative z-10 mt-4 border-y border-slate-100 px-1 py-2 text-center text-xs font-semibold text-slate-600 dark:border-slate-800 dark:text-slate-300">
+          <PaperTagLine preview={preview} />
         </div>
 
         <PaperFingerprintPreview preview={preview} />
 
-        <div className="relative z-10 mt-auto flex items-center justify-end gap-2 pt-3">
-          <div className="flex items-center gap-2">
+        {scorePercent !== null ? <ExamPaperScoreMark score={scorePercent} /> : null}
+
+        <div className="absolute bottom-5 right-5 z-20 flex items-center gap-2">
             <Button
               type="button"
               size="icon"
@@ -515,7 +587,6 @@ function ExamPaperCard({
             >
               <MoreVertical className="h-4 w-4" />
             </button>
-          </div>
         </div>
         </div>
         <svg
