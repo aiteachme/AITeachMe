@@ -261,20 +261,14 @@ def test_sync_markdown_knowledge_graph_resolves_cross_section_edges(monkeypatch)
                         knowledge_unit_type="concept",
                         local_summary="Derivative describes change rate.",
                         taxonomy_hint="Derivative",
-                    )
-                ],
-                edges=[],
-            )
-        if chunk_title == "Tangent Line":
-            return ChunkExtractionResult(
-                nodes=[
+                    ),
                     CandidateNode(
                         candidate_id="tangent-line-concept",
                         name="Tangent Line",
                         knowledge_unit_type="concept",
                         local_summary="Tangent line gives a geometric view of derivative.",
                         taxonomy_hint="Derivative",
-                    )
+                    ),
                 ],
                 edges=[
                     CandidateEdge(

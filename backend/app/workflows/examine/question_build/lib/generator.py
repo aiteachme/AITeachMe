@@ -7,6 +7,7 @@ mapping the generated drafts into QuestionTemplate / ExamPaperItem records.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Sequence
 from typing import Literal, TypeVar
 
@@ -31,6 +32,38 @@ DifficultyLiteral = Literal["easy", "medium", "hard"]
 T = TypeVar("T")
 
 _MAX_BATCH_SIZE = 6
+_BLANK_TOKEN = "{{blank}}"
+_TEXT_UNDERSCORE_PLACEHOLDER_RE = re.compile(r"\\text\{(_+)\}")
+
+
+def _escape_text_underscore_placeholders(value: str) -> str:
+    """Keep blank placeholders valid inside KaTeX/LaTeX text blocks."""
+
+    return _TEXT_UNDERSCORE_PLACEHOLDER_RE.sub(
+        lambda match: r"\text{" + r"\_" * len(match.group(1)) + "}",
+        value,
+    )
+
+
+def _contains_blank_token_inside_latex(value: str) -> bool:
+    in_math = False
+    delimiter = ""
+    index = 0
+    while index < len(value):
+        if in_math and value.startswith(_BLANK_TOKEN, index):
+            return True
+        if value[index] == "$" and (index == 0 or value[index - 1] != "\\"):
+            current_delimiter = "$$" if value.startswith("$$", index) else "$"
+            if in_math and delimiter == current_delimiter:
+                in_math = False
+                delimiter = ""
+            elif not in_math:
+                in_math = True
+                delimiter = current_delimiter
+            index += len(current_delimiter)
+            continue
+        index += 1
+    return False
 
 
 class ExamQuestionGenerationSpec(BaseModel):
@@ -60,7 +93,7 @@ class ExamQuestionDraft(BaseModel):
         cleaned = " ".join(str(value or "").split()).strip()
         if not cleaned:
             raise ValueError("text field cannot be empty")
-        return cleaned
+        return _escape_text_underscore_placeholders(cleaned)
 
     @field_validator("options")
     @classmethod
@@ -68,11 +101,16 @@ class ExamQuestionDraft(BaseModel):
         if value is None:
             return None
         cleaned = [" ".join(str(item or "").split()).strip() for item in value]
-        cleaned = [item for item in cleaned if item]
+        cleaned = [_escape_text_underscore_placeholders(item) for item in cleaned if item]
         return cleaned or None
 
     @model_validator(mode="after")
     def _validate_shape(self) -> "ExamQuestionDraft":
+        text_fields = [self.stem, self.correct_answer, self.explanation]
+        text_fields.extend(self.options or [])
+        if any(_contains_blank_token_inside_latex(value) for value in text_fields):
+            raise ValueError("{{blank}} placeholders must stay outside LaTeX math")
+
         if self.question_type == "single_choice":
             options = self.options or []
             if len(options) != 4:

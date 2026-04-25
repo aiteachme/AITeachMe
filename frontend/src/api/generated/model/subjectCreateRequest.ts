@@ -9,4 +9,8 @@
 export interface SubjectCreateRequest {
   /** 展示名称。可留空，Planner 会在首次对话后自动命名。 */
   name?: string;
+  /** 学科简单介绍。 */
+  description?: string;
+  /** 用户目标/意图描述。 */
+  user_intent?: string;
 }

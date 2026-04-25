@@ -32,6 +32,8 @@ def _to_subject_item(subject: Subject) -> SubjectItem:
         id=require_id(subject.id, "Subject.id"),
         subject_id=subject.slug,
         name=subject.name,
+        description=subject.description,
+        user_intent=subject.user_intent,
         icon_key=get_subject_icon_key(subject),
         created_at=subject.created_at,
         updated_at=subject.updated_at,
@@ -43,12 +45,16 @@ def create_subject_record(
     *,
     owner_user_id: str,
     name: str,
+    description: str = "",
+    user_intent: str = "",
     icon_key: str | None = None,
 ) -> SubjectItem:
     subject = Subject(
         user_id=owner_user_id,
         slug=_create_unique_subject_id(session),
         name=name.strip(),
+        description=description.strip(),
+        user_intent=user_intent.strip(),
     )
     if icon_key:
         set_subject_icon_key(subject, icon_key)
@@ -108,14 +114,18 @@ def update_subject_record(
     *,
     owner_user_id: str,
     subject_id: str,
-    name: str,
+    name: str | None = None,
+    description: str | None = None,
+    user_intent: str | None = None,
     icon_key: str | None = None,
 ) -> SubjectItem:
     subject = get_subject_record(session, subject_id, owner_user_id=owner_user_id)
     updated = update_subject(
         session,
         subject,
-        name=name.strip() or subject.name,
+        name=name.strip() if name is not None else None,
+        description=description.strip() if description is not None else None,
+        user_intent=user_intent.strip() if user_intent is not None else None,
     )
     if icon_key:
         set_subject_icon_key(updated, icon_key)

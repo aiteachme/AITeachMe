@@ -13,6 +13,7 @@ from app.shared.infra.workflow.events import InProcessEventBus
 logger = structlog.get_logger()
 
 LANGGRAPH_DEV_SUBJECT = "__langgraph_dev__"
+LOGGER_METADATA_RESERVED_KEYS = frozenset({"workflow", "subject", "correlation_id"})
 
 
 @dataclass(slots=True)
@@ -28,11 +29,16 @@ class WorkflowContext:
     def get_logger(self) -> structlog.stdlib.BoundLogger:
         """Return a logger pre-bound with workflow-level metadata."""
 
+        metadata = {
+            key: value
+            for key, value in self.metadata.items()
+            if key not in LOGGER_METADATA_RESERVED_KEYS
+        }
         return logger.bind(
             workflow=self.workflow_name,
             subject=self.subject,
             correlation_id=self.correlation_id,
-            **self.metadata,
+            **metadata,
         )
 
 
@@ -43,4 +49,3 @@ def create_langgraph_dev_context(workflow_name: str) -> WorkflowContext:
         workflow_name=workflow_name,
         subject=LANGGRAPH_DEV_SUBJECT,
     )
-

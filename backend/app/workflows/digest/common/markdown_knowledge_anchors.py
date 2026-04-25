@@ -294,6 +294,79 @@ def extract_markdown_section_chunks(markdown: str) -> list[MarkdownSectionChunk]
     return chunks
 
 
+def extract_markdown_chapter_chunks(markdown: str) -> list[MarkdownSectionChunk]:
+    """Extract top-level chapter chunks delimited by level-1 headings."""
+
+    lines = markdown.splitlines()
+    heading_meta: list[tuple[int, str, str]] = []
+    used_anchors = set(extract_knowledge_unit_anchor_ids(markdown))
+
+    for index, line in enumerate(lines):
+        heading_match = _HEADING_RE.match(line)
+        if heading_match is None:
+            continue
+        prefix = heading_match.group("prefix")
+        if prefix.count("#") != 1:
+            continue
+        title = _extract_unit_name(line)
+        if not title or _is_skippable_heading(title):
+            continue
+        anchor = _extract_anchor_from_line(line) or build_knowledge_unit_anchor(title, used=used_anchors)
+        heading_meta.append((index, title, anchor))
+
+    if not heading_meta:
+        section_chunks = extract_markdown_section_chunks(markdown)
+        if section_chunks:
+            first = section_chunks[0]
+            body_markdown = _build_body_markdown(lines)
+            return [
+                MarkdownSectionChunk(
+                    title=first.title,
+                    anchor=first.anchor,
+                    header_path=first.title,
+                    summary=_build_summary(lines) or first.summary,
+                    body_markdown=body_markdown,
+                    knowledge_images=_extract_knowledge_images(body_markdown),
+                    line_no=first.line_no,
+                    heading_level=1,
+                )
+            ]
+        if markdown.strip():
+            body_markdown = _build_body_markdown(lines)
+            return [
+                MarkdownSectionChunk(
+                    title="Knowledge Document",
+                    anchor=build_knowledge_unit_anchor("Knowledge Document", used=used_anchors),
+                    header_path="Knowledge Document",
+                    summary=_build_summary(lines),
+                    body_markdown=body_markdown,
+                    knowledge_images=_extract_knowledge_images(body_markdown),
+                    line_no=1,
+                    heading_level=1,
+                )
+            ]
+        return []
+
+    chunks: list[MarkdownSectionChunk] = []
+    for position, (index, title, anchor) in enumerate(heading_meta):
+        next_index = heading_meta[position + 1][0] if position + 1 < len(heading_meta) else len(lines)
+        chapter_lines = lines[index:next_index]
+        body_markdown = _build_body_markdown(chapter_lines)
+        chunks.append(
+            MarkdownSectionChunk(
+                title=title,
+                anchor=anchor,
+                header_path=title,
+                summary=_build_summary(chapter_lines),
+                body_markdown=body_markdown,
+                knowledge_images=_extract_knowledge_images(body_markdown),
+                line_no=index + 1,
+                heading_level=1,
+            )
+        )
+    return chunks
+
+
 def _strip_tags_and_anchor(text: str) -> str:
     text = _ANCHOR_RE.sub("", text)
     text = _INLINE_ANCHOR_RE.sub("", text)
@@ -412,6 +485,7 @@ __all__ = [
     "ensure_markdown_knowledge_unit_anchors",
     "extract_all_anchor_ids",
     "extract_knowledge_unit_anchor_ids",
+    "extract_markdown_chapter_chunks",
     "extract_markdown_section_chunks",
     "extract_markdown_knowledge_units",
     "validate_knowledge_unit_anchors",

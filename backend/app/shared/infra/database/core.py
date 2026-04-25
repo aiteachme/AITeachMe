@@ -116,6 +116,8 @@ _REMOVED_SQLITE_COLUMNS = {
 }
 _SQLITE_ADDITIVE_COLUMNS = {
     "subject": (
+        ("description", "TEXT NOT NULL DEFAULT ''"),
+        ("user_intent", "TEXT NOT NULL DEFAULT ''"),
         ("learning_intent_text", "TEXT NOT NULL DEFAULT ''"),
         ("subject_intro_text", "TEXT NOT NULL DEFAULT ''"),
         ("document_summary_json", "JSON NOT NULL DEFAULT '{}'"),

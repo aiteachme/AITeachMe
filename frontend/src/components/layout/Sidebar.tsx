@@ -290,7 +290,7 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
       <aside
         className={cn(
           "fixed inset-y-0 left-0 z-40 flex min-h-0 shrink-0 self-stretch flex-col overflow-hidden rounded-r-[22px] border-r border-slate-200/50 dark:border-slate-800/50 bg-gradient-to-b from-white/96 to-white/92 dark:from-[#0b0f19]/96 dark:to-[#0b0f19]/92 shadow-[4px_0_24px_rgba(0,0,0,0.03)] dark:shadow-[4px_0_24px_rgba(0,0,0,0.3)] ring-1 ring-white/50 dark:ring-white/5 transition-[width,transform] duration-200 lg:static",
-          effectiveCollapsed ? "w-[64px]" : "w-[240px]",
+          effectiveCollapsed ? "w-[56px]" : "w-[240px]",
           isMobileOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0",
         )}
       >
@@ -387,7 +387,7 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
                   setIsCollapsed(false);
                   navigate("/spaces");
                 }}
-                title="我的学习空间"
+                title="学习空间"
                 className={cn(
                   "flex h-7 w-7 items-center justify-center rounded-md transition-colors",
                   isMyLearningSpaceActive
@@ -526,7 +526,7 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
                       : "font-normal text-slate-900 group-hover:text-slate-950 dark:text-slate-300 dark:group-hover:text-slate-100",
                   )}
                 >
-                  我的学习空间
+                  学习空间
                 </span>
               </button>
 
@@ -573,7 +573,7 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
           ) : null}
         </div>
 
-        <div className="min-h-0 flex-1 space-y-0.5 overflow-y-auto overflow-x-hidden px-2.5 pb-4 scrollbar-thin scrollbar-webkit">
+        <div className={cn("min-h-0 flex-1 space-y-0.5 overflow-y-auto overflow-x-hidden pb-4 scrollbar-thin scrollbar-webkit", effectiveCollapsed ? "px-2" : "px-3")}>
           {!effectiveCollapsed ? (
             <div className="flex items-center gap-1.5 px-1.5 pb-2 pt-1">
               <span className="whitespace-nowrap text-[11px] font-medium tracking-[0.08em] text-slate-400">学科</span>
@@ -589,19 +589,14 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
             const expanded = expandedSubjects.has(subject.subject_id);
             const displayName = displaySubjectName(subject);
             const badgeClass = colorClassForSubject(subject.name || subject.subject_id);
-            const isSubjectRouteActive = location.pathname.startsWith(`/subject/${subject.subject_id}/`);
             const SubjectIcon = resolveSubjectIcon((subject as SubjectWithIcon).icon_key);
 
             return (
               <div key={subject.subject_id} className="relative">
                 <div
                   className={cn(
-                    "group flex items-center gap-0.5 rounded-md transition-colors",
-                    !effectiveCollapsed && isSubjectRouteActive
-                      ? "bg-slate-50/80 dark:bg-slate-800/45"
-                      : !effectiveCollapsed
-                        ? "hover:bg-slate-100/55 dark:hover:bg-slate-800/35"
-                        : "",
+                    "group flex items-center gap-1 rounded-md transition-colors",
+                    !effectiveCollapsed ? "hover:bg-[#eef3f8] dark:hover:bg-slate-800/60" : "",
                   )}
                 >
                   <button
@@ -618,17 +613,19 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
                     }}
                     className={cn(
                       "flex items-center transition-colors",
-                      effectiveCollapsed ? "h-8 w-full justify-center rounded px-0" : "h-8 flex-1 rounded-md px-1.5 py-1",
+                      effectiveCollapsed
+                        ? "h-7 w-full justify-center rounded-md px-0 hover:bg-[#eef3f8] dark:hover:bg-slate-800/60"
+                        : "h-7 flex-1 rounded-md px-2",
                     )}
                     title={effectiveCollapsed ? displayName : undefined}
                   >
                     <div className={cn("flex shrink-0 items-center justify-center font-bold text-white shadow-sm", 
-                      effectiveCollapsed ? "h-6 w-6 rounded text-[11px]" : "h-6 w-6 rounded-md text-[11px]",
+                      effectiveCollapsed ? "h-5 w-5 rounded text-[10px]" : "h-5 w-5 rounded text-[10px]",
                       badgeClass
                     )}>
                       <SubjectIcon className="h-3.5 w-3.5" strokeWidth={2.2} />
                     </div>
-                    {!effectiveCollapsed ? <span className="ml-2 truncate text-[13px] font-medium leading-5 text-slate-700 dark:text-slate-300">{displayName}</span> : null}
+                    {!effectiveCollapsed ? <span className="ml-2 truncate text-xs font-medium text-slate-700 dark:text-slate-300">{displayName}</span> : null}
                   </button>
 
                   {!effectiveCollapsed ? (
@@ -689,7 +686,7 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
                 </div>
 
                 {!effectiveCollapsed && expanded ? (
-                  <div className="ml-5 mt-1 space-y-0.5 border-l border-slate-200/70 pl-2.5 dark:border-slate-700/60">
+                  <div className="ml-4 mt-1 space-y-0.5 border-l border-slate-200 pl-2">
                     {MODULES.map((moduleItem) => {
                       const path = `/subject/${subject.subject_id}/${moduleItem.id}`;
                       const isActive = location.pathname === path;
@@ -700,7 +697,7 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
                           to={path}
                           onClick={() => setIsMobileOpen(false)}
                           className={cn(
-                            "flex min-h-8 items-center overflow-hidden whitespace-nowrap rounded-md px-2 py-1.5 text-[13px] leading-5 transition-colors",
+                            "flex h-7 items-center overflow-hidden whitespace-nowrap rounded-md px-2 text-xs transition-colors",
                             isActive
                               ? "bg-[#edf3f8] font-medium text-[#243246] dark:bg-slate-800 dark:text-slate-200"
                               : "text-slate-500 hover:bg-slate-50 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-slate-800/40 dark:hover:text-slate-200",

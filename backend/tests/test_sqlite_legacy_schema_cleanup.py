@@ -94,6 +94,48 @@ def test_drop_sqlite_legacy_schema_removes_local_legacy_columns(tmp_path):
     assert "settings_path" not in settings_snapshot_columns
 
 
+def test_sqlite_additive_schema_updates_add_subject_text_fields(tmp_path):
+    db_path = tmp_path / "legacy.sqlite"
+    engine = create_engine(f"sqlite:///{db_path}")
+
+    with engine.begin() as connection:
+        connection.execute(
+            sa.text(
+                """
+                CREATE TABLE subject (
+                    id INTEGER PRIMARY KEY,
+                    user_id VARCHAR NOT NULL,
+                    slug VARCHAR NOT NULL,
+                    name VARCHAR NOT NULL
+                )
+                """
+            )
+        )
+        connection.execute(
+            sa.text(
+                """
+                INSERT INTO subject (id, user_id, slug, name)
+                VALUES (1, 'local', 'subj_test', 'Test')
+                """
+            )
+        )
+
+    _apply_sqlite_additive_schema_updates(engine)
+
+    inspector = sa.inspect(engine)
+    subject_columns = {
+        column["name"]
+        for column in inspector.get_columns("subject")
+    }
+    with engine.connect() as connection:
+        row = connection.execute(
+            sa.text("SELECT description, user_intent FROM subject WHERE id = 1")
+        ).one()
+
+    assert {"description", "user_intent"} <= subject_columns
+    assert row == ("", "")
+
+
 def test_ensure_local_sqlite_schema_rebuilds_engine_after_drift(
     monkeypatch,
     tmp_path,
@@ -109,7 +151,7 @@ def test_ensure_local_sqlite_schema_rebuilds_engine_after_drift(
 
     monkeypatch.setattr(core, "_get_db_path", lambda: db_path)
     monkeypatch.setattr(core, "_drop_sqlite_removed_schema", lambda engine: calls.append(("drop", engine)))
-    monkeypatch.setattr(core, "_apply_sqlite_additive_schema_updates", lambda engine: calls.append(("add", engine)))
+    monkeypatch.setattr(core, "_apply_sqlite_additive_schema_updates", lambda engine: calls.append(("additive", engine)))
     monkeypatch.setattr(
         core,
         "_inspect_sqlite_schema_drift",
@@ -129,7 +171,7 @@ def test_ensure_local_sqlite_schema_rebuilds_engine_after_drift(
     assert result is rebuilt_engine
     assert calls == [
         ("drop", old_engine),
-        ("add", old_engine),
+        ("additive", old_engine),
         "reset",
         ("remove", db_path),
     ]
