@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from datetime import datetime
 
-from sqlalchemy import UniqueConstraint
+import sqlalchemy as sa
 from sqlmodel import Field, SQLModel
 
 from app.models.enums import IngestStatus, TaskStatus
@@ -26,15 +26,15 @@ class RawFile(SQLModel, table=True):
     file_path: str
     mime_type: str | None = None
     storage_backend: str = Field(default="local")
-    markdown_path: str | None = None
-    markdown_content: str = ""
-    asset_dir: str | None = None
-    storage_uri: str | None = None
-    markdown_uri: str | None = None
-    asset_manifest_json: str = Field(default="[]")
-    user_note: str | None = None
+    markdown_path: str | None = Field(default=None, sa_column=sa.Column(sa.Text(), nullable=True))
+    markdown_content: str = Field(default="", sa_column=sa.Column(sa.Text(), nullable=False, default=""))
+    asset_dir: str | None = Field(default=None, sa_column=sa.Column(sa.Text(), nullable=True))
+    storage_uri: str | None = Field(default=None, sa_column=sa.Column(sa.Text(), nullable=True))
+    markdown_uri: str | None = Field(default=None, sa_column=sa.Column(sa.Text(), nullable=True))
+    asset_manifest_json: str = Field(default="[]", sa_column=sa.Column(sa.Text(), nullable=False, default="[]"))
+    user_note: str | None = Field(default=None, sa_column=sa.Column(sa.Text(), nullable=True))
     status: str = Field(default=TaskStatus.PENDING.value, index=True)
-    error_message: str | None = None
+    error_message: str | None = Field(default=None, sa_column=sa.Column(sa.Text(), nullable=True))
     created_at: datetime = Field(default_factory=utcnow)
     updated_at: datetime = Field(default_factory=utcnow)
     content_hash: str | None = Field(default=None)
@@ -44,11 +44,11 @@ class RawFile(SQLModel, table=True):
     detected_discipline: str | None = Field(default=None, index=True)
     detected_sub_discipline: str | None = Field(default=None)
     detected_content_type: str | None = Field(default=None)
-    classification_result: str | None = Field(default=None)
+    classification_result: str | None = Field(default=None, sa_column=sa.Column(sa.Text(), nullable=True))
     quality_score: float | None = Field(default=None)
-    parse_metadata: str | None = Field(default=None)
-    material_profile_json: str = Field(default="{}")
-    parse_metadata_json: str = Field(default="{}")
+    parse_metadata: str | None = Field(default=None, sa_column=sa.Column(sa.Text(), nullable=True))
+    material_profile_json: str = Field(default="{}", sa_column=sa.Column(sa.Text(), nullable=False, default="{}"))
+    parse_metadata_json: str = Field(default="{}", sa_column=sa.Column(sa.Text(), nullable=False, default="{}"))
     image_count: int | None = Field(default=None)
     ingest_status: str = Field(default=IngestStatus.PENDING.value, index=True)
     current_step: str | None = Field(default=None, index=True)
@@ -162,7 +162,7 @@ class SubjectFileLink(SQLModel, table=True):
 
     __tablename__ = "subject_file"
     __table_args__ = (
-        UniqueConstraint("user_id", "subject", "raw_file_id", name="uq_subject_file_user_subject_raw_file"),
+        sa.UniqueConstraint("user_id", "subject", "raw_file_id", name="uq_subject_file_user_subject_raw_file"),
     )
 
     id: int | None = Field(default=None, primary_key=True)

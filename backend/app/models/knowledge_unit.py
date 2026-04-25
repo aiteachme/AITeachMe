@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
+import sqlalchemy as sa
 from sqlmodel import Field, Index, SQLModel, UniqueConstraint
 
 from app.models.enums import KnowledgeUnitStatus, KnowledgeUnitTypeSource
@@ -29,11 +30,11 @@ class KnowledgeUnit(SQLModel, table=True):
     knowledge_unit_type: str = Field(index=True)
     canonical_name: str
     normalized_name: str = Field(index=True)
-    summary: str = ""
-    body: str = ""
-    body_markdown: str = ""
-    aliases_json: str = Field(default="[]")
-    evidence_refs_json: str = Field(default="[]")
+    summary: str = Field(default="", sa_column=sa.Column(sa.Text(), nullable=False, default=""))
+    body: str = Field(default="", sa_column=sa.Column(sa.Text(), nullable=False, default=""))
+    body_markdown: str = Field(default="", sa_column=sa.Column(sa.Text(), nullable=False, default=""))
+    aliases_json: str = Field(default="[]", sa_column=sa.Column(sa.Text(), nullable=False, default="[]"))
+    evidence_refs_json: str = Field(default="[]", sa_column=sa.Column(sa.Text(), nullable=False, default="[]"))
     status: str = Field(default=KnowledgeUnitStatus.PENDING.value)
     confidence: float = Field(default=1.0)
     type_confidence: float = Field(default=1.0)
