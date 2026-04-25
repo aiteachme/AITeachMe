@@ -19,6 +19,7 @@ from app.models import IngestStatus
 from app.repositories.files_repo import get_raw_file_by_id, replace_raw_file_assets, update_raw_file
 from app.utils.path_helpers import build_asset_name_prefix
 from app.workflows.ingest.common.parsing.classifier import ClassificationResult
+from app.workflows.ingest.common.parsing.features import builtin_pdf_parsing_enabled
 from app.workflows.ingest.common.parsing.orchestrator import deep_enhance_file
 from app.workflows.ingest.common.parsing.strategy import build_parse_plan
 from app.workflows.ingest.common.parsing.types import ParserRunOptions
@@ -152,7 +153,11 @@ async def _run_deep_enhance_background(
             extension = Path(str(file_path)).suffix.lower()
             # Explicit external/local document providers already returned their chosen markdown;
             # avoid overriding them with the fallback quality parser here.
-            if extension == ".pdf" and original_parser_used not in {"mineru", "markitdown"}:
+            if (
+                extension == ".pdf"
+                and builtin_pdf_parsing_enabled()
+                and original_parser_used not in {"mineru", "markitdown"}
+            ):
                 try:
                     from app.workflows.ingest.common.parsing.pdf import parse_pdf_with_pymupdf4llm, PDF_PYMUPDF4LLM_AVAILABLE
                     from app.workflows.ingest.common.parsing.canonicalizer import canonicalize_markdown

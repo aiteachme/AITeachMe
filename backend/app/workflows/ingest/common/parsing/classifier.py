@@ -17,13 +17,9 @@ from app.workflows.ingest.common.parsing.formats import (
     is_text_extension,
     normalize_extension,
 )
+from app.workflows.ingest.common.parsing.features import builtin_pdf_parsing_enabled
 from app.workflows.ingest.common.parsing.text import is_probably_text_file, read_text_file
 
-
-try:
-    import fitz
-except ImportError:
-    fitz = None
 
 try:
     from docx import Document
@@ -102,6 +98,18 @@ def classify_file(file_path: str | Path, filetype: str) -> ClassificationResult:
 
 
 def _classify_pdf(path: Path) -> ClassificationResult:
+    if not builtin_pdf_parsing_enabled():
+        return ClassificationResult(
+            file_category="pdf_plugin_required",
+            recommended_parser="pdf_plugin",
+            fallback_parsers=[],
+        )
+
+    try:
+        import fitz
+    except ImportError:
+        fitz = None
+
     if fitz is None:
         return ClassificationResult(
             file_category="text_pdf",
@@ -338,4 +346,3 @@ def _detect_language(text: str) -> str:
     if en_count > zh_count * 2:
         return "en"
     return "mixed"
-

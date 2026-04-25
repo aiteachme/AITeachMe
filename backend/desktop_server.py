@@ -16,6 +16,7 @@ def configure_desktop_environment() -> None:
 
     os.environ.setdefault("APP_MODE", "local")
     os.environ.setdefault("AUTH_ENABLED", "false")
+    os.environ.setdefault("AITEACHME_ENABLE_BUILTIN_PDF", "false")
     os.environ.setdefault(
         "CORS_ALLOWED_ORIGINS",
         "http://localhost:5180,http://127.0.0.1:5180,null,file://",
