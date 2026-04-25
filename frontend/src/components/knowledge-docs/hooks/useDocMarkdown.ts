@@ -12,6 +12,7 @@ import {
   buildKnowledgeBuildRuntimeQueryKey,
   fetchKnowledgeBuildRuntime,
 } from "../../../lib/knowledgeBuildRuntime";
+import { formatDigestModeLabel } from "../../../lib/digestMode";
 import type {
   ApiResponse,
   DocGenBuildStatus,
@@ -182,13 +183,7 @@ export function useDocMarkdown(): DocMarkdownState {
     [draftUpdatedAt, effectiveDocViewMode, liveUpdatedAt],
   );
 
-  const renderedDigestMode = buildPreview?.digest_mode ?? null;
-  const renderedDigestModeLabel =
-    renderedDigestMode === "systematic"
-      ? "系统讲义"
-      : renderedDigestMode === "sprint"
-        ? "冲刺讲义"
-        : "知识文档";
+  const renderedDigestModeLabel = formatDigestModeLabel(buildPreview?.digest_mode);
   const renderedChapterHighlights = (buildPreview?.latest_chapter_titles ?? []).slice(0, 4);
   const renderedSubjectLabel = (subjectId ?? "知识文档").replace(/[-_]+/g, " ");
   const renderedDocTitle =

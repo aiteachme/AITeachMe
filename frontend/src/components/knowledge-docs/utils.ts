@@ -411,7 +411,7 @@ export function resolveFileProcessingLabel(file: { error_message?: string | null
       case "fast_parsing":
       case "parsing": return "正在提取正文与结构";
       case "enhancing": return "正在做公式、图片和结构增强";
-      case "ready_for_digest": return "已准备进入 digest";
+      case "ready_for_digest": return "已准备进入知识构建";
       default: return `处理中：${file.ingest_status.trim()}`;
     }
   }

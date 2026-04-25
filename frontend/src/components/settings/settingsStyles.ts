@@ -1,3 +1,5 @@
+import { DIGEST_MODE_OPTIONS } from "../../lib/digestMode";
+
 export const SETTINGS_STYLES = {
   panel: {
     root: "fixed inset-0 z-[100]",
@@ -163,8 +165,5 @@ export const SETTING_SELECT_OPTIONS: Record<
     { value: "mistral", label: "Mistral" },
     { value: "bedrock", label: "AWS Bedrock" },
   ],
-  "planner.default_digest_mode": [
-    { value: "sprint", label: "sprint" },
-    { value: "systematic", label: "systematic" },
-  ],
+  "planner.default_digest_mode": [...DIGEST_MODE_OPTIONS],
 };
