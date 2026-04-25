@@ -33,6 +33,7 @@ IGNORED_DIRS = {
     "__pycache__",
     "dist",
     "build",
+    "packaging",
     "coverage",
     ".next",
     ".nuxt",

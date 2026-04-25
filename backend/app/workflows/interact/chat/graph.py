@@ -14,6 +14,7 @@ from fastapi import Request
 from langgraph.graph import END, StateGraph
 from sqlmodel import Session
 
+from app.schemas.chats import ChatSelectionContext
 from app.shared.infra.workflow import workflow_tracer
 from app.shared.infra.workflow.context import WorkflowContext, create_langgraph_dev_context
 from app.shared.infra.workflow.events import InProcessEventBus
@@ -275,7 +276,9 @@ def create_interact_initial_state(
     question: str,
     source: str | None = None,
     anchor_id: str | None = None,
+    selected_text: str | None = None,
     selected_context: str | None = None,
+    selection_context: ChatSelectionContext | None = None,
     source_chunk_id: int | None = None,
 ) -> InteractWorkflowState:
     """Create the initial state for one interact workflow run."""
@@ -287,7 +290,9 @@ def create_interact_initial_state(
         "question": question,
         "source": source,
         "anchor_id": anchor_id,
+        "selected_text": selected_text,
         "selected_context": selected_context,
+        "selection_context": selection_context,
         "source_chunk_id": source_chunk_id,
         "stream_interrupted": False,
         "error": None,
@@ -305,7 +310,9 @@ async def run_interact_workflow(
     emitter: SSEEventEmitter,
     source: str | None = None,
     anchor_id: str | None = None,
+    selected_text: str | None = None,
     selected_context: str | None = None,
+    selection_context: ChatSelectionContext | None = None,
     source_chunk_id: int | None = None,
     event_bus: InProcessEventBus | None = None,
 ) -> WorkflowResult[InteractWorkflowState]:
@@ -333,7 +340,9 @@ async def run_interact_workflow(
             question=question,
             source=source,
             anchor_id=anchor_id,
+            selected_text=selected_text,
             selected_context=selected_context,
+            selection_context=selection_context,
             source_chunk_id=source_chunk_id,
         ),
         context=context,
@@ -377,7 +386,9 @@ async def stream_chat_workflow(
     question: str,
     source: str | None = None,
     anchor_id: str | None = None,
+    selected_text: str | None = None,
     selected_context: str | None = None,
+    selection_context: ChatSelectionContext | None = None,
     source_chunk_id: int | None = None,
     event_bus: InProcessEventBus | None = None,
 ) -> AsyncGenerator[str, None]:
@@ -393,7 +404,9 @@ async def stream_chat_workflow(
             session_id=session_id,
             source=source,
             anchor_id=anchor_id,
+            selected_text=selected_text,
             selected_context=selected_context,
+            selection_context=selection_context,
             session=session,
             source_chunk_id=source_chunk_id,
             subject=subject,
@@ -413,7 +426,9 @@ async def _execute_interact_workflow(
     session_id: str | None,
     source: str | None,
     anchor_id: str | None,
+    selected_text: str | None,
     selected_context: str | None,
+    selection_context: ChatSelectionContext | None,
     session: Session,
     source_chunk_id: int | None,
     subject: str,
@@ -430,7 +445,9 @@ async def _execute_interact_workflow(
             emitter=emitter,
             source=source,
             anchor_id=anchor_id,
+            selected_text=selected_text,
             selected_context=selected_context,
+            selection_context=selection_context,
             source_chunk_id=source_chunk_id,
             event_bus=event_bus,
         )

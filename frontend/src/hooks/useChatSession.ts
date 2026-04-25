@@ -26,18 +26,76 @@ interface SendMessageResult {
   sessionId: string | null;
 }
 
+interface SendMessageOptions {
+  localThreadId?: string | null;
+}
+
+interface ChatMessageLifecyclePayload {
+  input: ChatSendRequest;
+  question: string;
+  localThreadId: string;
+  userLocalId: string;
+  assistantLocalId: string;
+  sessionId: string | null;
+  createdAt: string;
+}
+
+interface ChatMessageTokenPayload {
+  input: ChatSendRequest;
+  localThreadId: string;
+  assistantLocalId: string;
+  sessionId: string | null;
+  content: string;
+}
+
+interface ChatMessageDonePayload {
+  input: ChatSendRequest;
+  localThreadId: string;
+  assistantLocalId: string;
+  sessionId: string | null;
+  sessionTitle: string | null;
+  turnId: string;
+}
+
+interface ChatMessageErrorPayload {
+  input: ChatSendRequest;
+  localThreadId: string;
+  assistantLocalId: string;
+  sessionId: string | null;
+  detail: string;
+}
+
+interface ChatMessageSettledPayload {
+  input: ChatSendRequest;
+  localThreadId: string;
+  assistantLocalId: string;
+  sessionId: string | null;
+}
+
 interface UseChatSessionOptions {
   sessionId?: string | null;
   enabled?: boolean;
   loadWithoutSession?: boolean;
+  preserveMessagesWithoutSession?: boolean;
   onSessionResolved?: (sessionId: string) => void;
+  onMessageStart?: (payload: ChatMessageLifecyclePayload) => void;
+  onMessageToken?: (payload: ChatMessageTokenPayload) => void;
+  onMessageDone?: (payload: ChatMessageDonePayload) => void;
+  onMessageError?: (payload: ChatMessageErrorPayload) => void;
+  onMessageSettled?: (payload: ChatMessageSettledPayload) => void;
 }
 
 export function useChatSession(subjectId: string, options: UseChatSessionOptions = {}) {
   const sessionId = options.sessionId ?? null;
   const enabled = options.enabled ?? true;
   const loadWithoutSession = options.loadWithoutSession ?? true;
+  const preserveMessagesWithoutSession = options.preserveMessagesWithoutSession ?? false;
   const onSessionResolved = options.onSessionResolved;
+  const onMessageStart = options.onMessageStart;
+  const onMessageToken = options.onMessageToken;
+  const onMessageDone = options.onMessageDone;
+  const onMessageError = options.onMessageError;
+  const onMessageSettled = options.onMessageSettled;
 
   const [messages, setMessages] = useState<ChatSessionMessage[]>([]);
   const [historyLoaded, setHistoryLoaded] = useState(false);
@@ -61,7 +119,9 @@ export function useChatSession(subjectId: string, options: UseChatSessionOptions
         return;
       }
       if (!sessionId && !loadWithoutSession) {
-        setMessages([]);
+        if (!preserveMessagesWithoutSession) {
+          setMessages([]);
+        }
         setHistoryError(null);
         setHistoryLoaded(true);
         return;
@@ -97,9 +157,8 @@ export function useChatSession(subjectId: string, options: UseChatSessionOptions
     void loadHistory();
     return () => {
       cancelled = true;
-      abortControllerRef.current?.abort();
     };
-  }, [enabled, loadWithoutSession, sessionId, subjectId]);
+  }, [enabled, loadWithoutSession, preserveMessagesWithoutSession, sessionId, subjectId]);
 
   useEffect(() => {
     return () => {
@@ -107,7 +166,13 @@ export function useChatSession(subjectId: string, options: UseChatSessionOptions
     };
   }, []);
 
-  async function sendMessage(input: ChatSendRequest): Promise<SendMessageResult> {
+  useEffect(() => {
+    return () => {
+      abortControllerRef.current?.abort();
+    };
+  }, [subjectId]);
+
+  async function sendMessage(input: ChatSendRequest, sendOptions: SendMessageOptions = {}): Promise<SendMessageResult> {
     const question = input.question.trim();
     if (!subjectId || !question || isStreaming) {
       return { accepted: false, sessionId: null };
@@ -116,6 +181,7 @@ export function useChatSession(subjectId: string, options: UseChatSessionOptions
     const resolvedSessionId = input.session_id ?? sessionId ?? null;
     const userLocalId = buildLocalId("user");
     const assistantLocalId = buildLocalId("assistant");
+    const localThreadId = sendOptions.localThreadId?.trim() || resolvedSessionId || `thread-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const now = new Date().toISOString();
     const userMessage: ChatSessionMessage = {
       localId: userLocalId,
@@ -141,6 +207,15 @@ export function useChatSession(subjectId: string, options: UseChatSessionOptions
     setMessages((current) => [...current, userMessage, assistantMessage]);
     setIsStreaming(true);
     setHistoryError(null);
+    onMessageStart?.({
+      input,
+      question,
+      localThreadId,
+      userLocalId,
+      assistantLocalId,
+      sessionId: resolvedSessionId,
+      createdAt: now,
+    });
 
     const controller = new AbortController();
     abortControllerRef.current = controller;
@@ -165,6 +240,13 @@ export function useChatSession(subjectId: string, options: UseChatSessionOptions
                 content: `${message.content}${event.content}`,
               })),
             );
+            onMessageToken?.({
+              input,
+              localThreadId,
+              assistantLocalId,
+              sessionId: streamSessionId,
+              content: event.content,
+            });
           },
           onDone: (payload) => {
             const donePayload = parseChatDonePayload(payload);
@@ -183,6 +265,14 @@ export function useChatSession(subjectId: string, options: UseChatSessionOptions
                 createdAt: message.createdAt ?? new Date().toISOString(),
               })),
             );
+            onMessageDone?.({
+              input,
+              localThreadId,
+              assistantLocalId,
+              sessionId: streamSessionId,
+              sessionTitle: donePayload.sessionTitle,
+              turnId: donePayload.turnId,
+            });
           },
           onError: (payload) => {
             terminalEventReceived = true;
@@ -194,6 +284,13 @@ export function useChatSession(subjectId: string, options: UseChatSessionOptions
                 errorDetail: streamFailedDetail,
               })),
             );
+            onMessageError?.({
+              input,
+              localThreadId,
+              assistantLocalId,
+              sessionId: streamSessionId,
+              detail: streamFailedDetail,
+            });
           },
         },
       );
@@ -203,13 +300,21 @@ export function useChatSession(subjectId: string, options: UseChatSessionOptions
       }
 
       if (!terminalEventReceived && !controller.signal.aborted) {
+        const detail = streamFailedDetail ?? "服务端没有返回完成事件，请稍后重试。";
         setMessages((current) =>
           updateMessage(current, assistantLocalId, (message) => ({
             ...message,
             status: "error",
-            errorDetail: streamFailedDetail ?? "服务端没有返回完成事件，请稍后重试。",
+            errorDetail: detail,
           })),
         );
+        onMessageError?.({
+          input,
+          localThreadId,
+          assistantLocalId,
+          sessionId: streamSessionId,
+          detail,
+        });
       }
     } catch (error: unknown) {
       if (controller.signal.aborted) {
@@ -220,6 +325,13 @@ export function useChatSession(subjectId: string, options: UseChatSessionOptions
             errorDetail: "已停止生成",
           })),
         );
+        onMessageError?.({
+          input,
+          localThreadId,
+          assistantLocalId,
+          sessionId: streamSessionId,
+          detail: "已停止生成",
+        });
       } else {
         const detail = getApiErrorMessage(error, "发送消息失败");
         setMessages((current) =>
@@ -229,10 +341,23 @@ export function useChatSession(subjectId: string, options: UseChatSessionOptions
             errorDetail: detail,
           })),
         );
+        onMessageError?.({
+          input,
+          localThreadId,
+          assistantLocalId,
+          sessionId: streamSessionId,
+          detail,
+        });
       }
     } finally {
       setIsStreaming(false);
       abortControllerRef.current = null;
+      onMessageSettled?.({
+        input,
+        localThreadId,
+        assistantLocalId,
+        sessionId: streamSessionId,
+      });
     }
 
     return {
@@ -264,6 +389,12 @@ export function useChatSession(subjectId: string, options: UseChatSessionOptions
     }
   }
 
+  function replaceMessages(nextMessages: ChatSessionMessage[]) {
+    setMessages(nextMessages);
+    setHistoryError(null);
+    setHistoryLoaded(true);
+  }
+
   return {
     messages,
     historyLoaded,
@@ -272,6 +403,7 @@ export function useChatSession(subjectId: string, options: UseChatSessionOptions
     sendMessage,
     abortStream,
     clearHistory,
+    replaceMessages,
   };
 }
 
@@ -307,12 +439,14 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 function parseChatDonePayload(payload: unknown): {
   turnId: string;
   sessionId: string | null;
+  sessionTitle: string | null;
   contexts: ChatContextItem[] | null;
 } {
   if (!isRecord(payload)) {
     return {
       turnId: "",
       sessionId: null,
+      sessionTitle: null,
       contexts: null,
     };
   }
@@ -320,6 +454,7 @@ function parseChatDonePayload(payload: unknown): {
   return {
     turnId: typeof payload.turn_id === "string" ? payload.turn_id : "",
     sessionId: typeof payload.session_id === "string" ? payload.session_id : null,
+    sessionTitle: typeof payload.session_title === "string" ? payload.session_title : null,
     contexts: Array.isArray(payload.contexts) ? (payload.contexts as ChatContextItem[]) : null,
   };
 }

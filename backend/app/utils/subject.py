@@ -15,6 +15,8 @@ except ImportError:
 SUBJECT_ID_ALPHABET = "0123456789abcdefghijklmnopqrstuvwxyz"
 SUBJECT_ID_PREFIX = "subj_"
 SUBJECT_ID_SIZE = 12
+GLOBAL_SUBJECT = ""
+GLOBAL_SUBJECT_ALIASES = frozenset({"", "global", "_global", "__global__"})
 _SUBJECT_ID_PATTERN = re.compile(r"^subj_[a-z0-9]{12}$")
 _SLUG_PATTERN = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 
@@ -53,3 +55,22 @@ def validate_subject(subject: str) -> str:
     if not _SLUG_PATTERN.match(normalized):
         raise InvalidSubjectError(subject)
     return normalized
+
+
+def is_global_subject(subject: str | None) -> bool:
+    """Return whether a raw subject token means the global chat scope."""
+
+    normalized = (subject or "").strip().lower()
+    return normalized in GLOBAL_SUBJECT_ALIASES
+
+
+def normalize_subject_scope(
+    subject: str | None,
+    *,
+    allow_global: bool = False,
+) -> str:
+    """Normalize a subject token, optionally accepting the global chat scope."""
+
+    if allow_global and is_global_subject(subject):
+        return GLOBAL_SUBJECT
+    return validate_subject(subject or "")

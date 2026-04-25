@@ -48,7 +48,7 @@ from app.models.knowledge_doc import KnowledgeDocument
 from app.models.knowledge_relation import KnowledgeEdge
 from app.models.knowledge_unit import KnowledgeUnit
 from app.models.profile import UserKnowledgeState
-from app.models.raw_file import RawFile
+from app.models.raw_file import RawFile, SubjectFileLink
 from app.models.subject import Subject
 from app.models.system import SystemRuntimeSettings, SystemSettingsSnapshot, UserRuntimeSettings
 from app.models.user import User
@@ -61,6 +61,7 @@ _SCHEMA_MODELS = (
     EmailVerificationCode,
     Subject,
     RawFile,
+    SubjectFileLink,
     ConfirmedBuildPlan,
     RetrievalChunk,
     KnowledgeDocument,

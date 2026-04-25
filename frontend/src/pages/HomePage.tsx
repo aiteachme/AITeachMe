@@ -25,6 +25,7 @@ import { apiClient } from "../api/client";
 import { unwrapOrvalResponse } from "../lib/unwrapOrvalResponse";
 import { getApiErrorMessage } from "../api/client";
 import { cn } from "../lib/utils";
+import { isElectronRuntime } from "../lib/electronRuntime";
 import { downloadSubjectPackage } from "../lib/subjectPackage";
 import { FILE_ACCEPT, extractPasteFiles } from "../lib/fileUpload";
 import { resolveFileProcessingLabel } from "../components/knowledge-docs";
@@ -36,26 +37,27 @@ import type { FileRecord, FilesData, FilesUploadData } from "../types/files";
 
 interface ApiResponse<T> { code: number; data: T; }
 
-async function uploadFiles(subject: string, files: File[]): Promise<FilesUploadData> {
+async function uploadFiles(files: File[]): Promise<FilesUploadData> {
   const formData = new FormData();
   for (const file of files) formData.append("files", file);
 
   const response = await apiClient<ApiResponse<FilesUploadData>>({
     method: "POST",
-    url: `/api/v1/subjects/${subject}/files/upload`,
+    url: `/api/v1/files/upload`,
     data: formData,
     headers: { "Content-Type": "multipart/form-data" },
   });
   return response.data;
 }
 
-async function fetchFiles(subject: string): Promise<FilesData> {
+async function fetchFiles(fileUids: string[]): Promise<FilesData> {
+  const query = fileUids.map((uid) => `file_uids=${encodeURIComponent(uid)}`).join("&");
   const response = await apiClient<ApiResponse<FilesData>>({
     method: "GET",
-    url: `/api/v1/subjects/${subject}/files`,
+    url: `/api/v1/files${query ? `?${query}` : ""}`,
   });
   return response.data ?? {
-    subject,
+    subject: "library",
     total: 0,
     ready_count: 0,
     processing_count: 0,
@@ -64,12 +66,21 @@ async function fetchFiles(subject: string): Promise<FilesData> {
   };
 }
 
-async function deleteFile(subject: string, uid: string) {
+async function deleteFile(uid: string) {
   await apiClient<ApiResponse<{ deleted_file_uids: string[] }>>({
     method: "POST",
-    url: `/api/v1/subjects/${subject}/files/delete`,
+    url: `/api/v1/files/delete`,
     data: { file_uid: uid },
   });
+}
+
+async function linkFilesToSubject(subject: string, fileUids: string[]): Promise<FilesData> {
+  const response = await apiClient<ApiResponse<FilesData>>({
+    method: "POST",
+    url: `/api/v1/subjects/${subject}/files/link`,
+    data: { file_uids: fileUids },
+  });
+  return response.data;
 }
 
 /* ── Export / Import API helpers ── */
@@ -155,7 +166,11 @@ async function importSubject(file: File, newName?: string): Promise<ImportResult
 }
 /* ── Helpers ── */
 
-const HOME_ENTRY_FILES_QUERY_KEY = (subjectId: string) => ["home-entry-files", subjectId] as const;
+const HOME_ENTRY_FILES_QUERY_KEY = (fileUids: string[]) => ["home-entry-files", fileUids.join(",")] as const;
+
+function uniqueStrings(values: string[]): string[] {
+  return Array.from(new Set(values.filter(Boolean)));
+}
 
 function formatFileSize(bytes?: number | null): string {
   if (bytes == null || !Number.isFinite(bytes)) return "未知";
@@ -520,14 +535,17 @@ export function HomePage() {
   const navigate = useNavigate();
   const location = useLocation();
   const queryClient = useQueryClient();
+  const isElectron = isElectronRuntime();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const [prompt, setPrompt] = useState("");
   const [draftSubjectId, setDraftSubjectId] = useState<string | null>(null);
   const [isCreatingDraftSubject, setIsCreatingDraftSubject] = useState(false);
+  const [isStartingBuild, setIsStartingBuild] = useState(false);
   const [isUploadingFiles, setIsUploadingFiles] = useState(false);
   const [uploadingFileNames, setUploadingFileNames] = useState<string[]>([]);
+  const [entryFileUids, setEntryFileUids] = useState<string[]>([]);
   const [recentOpen, setRecentOpen] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -544,17 +562,19 @@ export function HomePage() {
     setPrompt("");
     setDraftSubjectId(null);
     setIsCreatingDraftSubject(false);
+    setIsStartingBuild(false);
     setIsUploadingFiles(false);
     setUploadingFileNames([]);
+    setEntryFileUids([]);
     setError(null);
     navigate("/", { replace: true, state: null });
     window.requestAnimationFrame(() => textareaRef.current?.focus());
   }, [navigate, newEntryAt]);
 
   const { data: entryFilesData } = useQuery({
-    queryKey: HOME_ENTRY_FILES_QUERY_KEY(draftSubjectId ?? "pending"),
-    enabled: Boolean(draftSubjectId),
-    queryFn: () => fetchFiles(draftSubjectId!),
+    queryKey: HOME_ENTRY_FILES_QUERY_KEY(entryFileUids),
+    enabled: entryFileUids.length > 0,
+    queryFn: () => fetchFiles(entryFileUids),
     refetchInterval: (query) => {
       const data = query.state.data as FilesData | undefined;
       if (isUploadingFiles || (data?.processing_count ?? 0) > 0) {
@@ -604,8 +624,8 @@ export function HomePage() {
     }
   }, [draftSubjectId, queryClient]);
 
-  const syncEntryFilesCache = useCallback((subjectId: string, uploaded: FileRecord[]) => {
-    queryClient.setQueryData<FilesData>(HOME_ENTRY_FILES_QUERY_KEY(subjectId), (previous) => {
+  const syncEntryFilesCache = useCallback((fileUids: string[], uploaded: FileRecord[]) => {
+    queryClient.setQueryData<FilesData>(HOME_ENTRY_FILES_QUERY_KEY(fileUids), (previous) => {
       const previousItems = previous?.items ?? [];
       const nextByUid = new Map(previousItems.map((item) => [item.uid, item]));
       for (const item of uploaded) {
@@ -617,7 +637,7 @@ export function HomePage() {
           Date.parse(left.latest_updated_at || left.created_at || ""),
       );
       return {
-        subject: subjectId,
+        subject: "library",
         total: nextItems.length,
         ready_count: nextItems.filter((item) => item.markdown_ready).length,
         processing_count: nextItems.filter((item) => !item.markdown_ready && !item.error_message?.trim()).length,
@@ -631,21 +651,24 @@ export function HomePage() {
     if (!files.length) {
       return;
     }
-    const subjectId = await ensureDraftSubjectId();
     setError(null);
     setIsUploadingFiles(true);
     setUploadingFileNames(files.map((file) => file.name));
     try {
-      const result = await uploadFiles(subjectId, files);
-      syncEntryFilesCache(subjectId, result.uploaded_items ?? []);
-      await queryClient.invalidateQueries({ queryKey: HOME_ENTRY_FILES_QUERY_KEY(subjectId) });
+      const result = await uploadFiles(files);
+      const uploaded = result.uploaded_items ?? [];
+      const uploadedUids = uploaded.map((file) => file.uid);
+      const nextFileUids = uniqueStrings([...entryFileUids, ...uploadedUids]);
+      setEntryFileUids(nextFileUids);
+      syncEntryFilesCache(nextFileUids, uploaded);
+      await queryClient.invalidateQueries({ queryKey: HOME_ENTRY_FILES_QUERY_KEY(nextFileUids) });
     } catch (err: unknown) {
       setError(getApiErrorMessage(err, "文件上传失败"));
     } finally {
       setIsUploadingFiles(false);
       setUploadingFileNames([]);
     }
-  }, [ensureDraftSubjectId, queryClient, syncEntryFilesCache]);
+  }, [entryFileUids, queryClient, syncEntryFilesCache]);
 
   // ── Handlers ──
   const uploadedFiles = entryFilesData?.items ?? [];
@@ -655,7 +678,7 @@ export function HomePage() {
   const hasEntryFiles = uploadedFiles.length > 0 || optimisticUploadingFiles.length > 0;
   const entryFilesStatusText = useMemo(() => {
     if (isCreatingDraftSubject) {
-      return "正在创建学习空间，随后会立即上传资料。";
+      return "正在创建学习空间，并关联已上传资料。";
     }
     if (isUploadingFiles) {
       return "资料正在上传，上传完成后会继续后台解析；文件会保留在这里，除非你手动移除。";
@@ -690,8 +713,14 @@ export function HomePage() {
   const handleGenerate = async () => {
     if (!canGenerate) return;
     setError(null);
+    setIsStartingBuild(true);
     try {
       const subjectId = await ensureDraftSubjectId();
+      if (entryFileUids.length > 0) {
+        await linkFilesToSubject(subjectId, entryFileUids);
+        await queryClient.invalidateQueries({ queryKey: ["subjects"] });
+        await queryClient.invalidateQueries({ queryKey: ["files", subjectId] });
+      }
       const userGoal = prompt.trim();
       navigate(`/subject/${subjectId}/build`, {
         state: userGoal
@@ -700,6 +729,8 @@ export function HomePage() {
       });
     } catch {
       // ensureDraftSubjectId already writes user-facing error
+    } finally {
+      setIsStartingBuild(false);
     }
   };
 
@@ -733,22 +764,19 @@ export function HomePage() {
 
   const deleteEntryFileMutation = useMutation({
     mutationFn: async (uid: string) => {
-      if (!draftSubjectId) {
-        throw new Error("缺少临时学习空间，无法删除文件。");
-      }
-      await deleteFile(draftSubjectId, uid);
+      await deleteFile(uid);
+      return uid;
     },
-    onSuccess: async () => {
-      if (draftSubjectId) {
-        await queryClient.invalidateQueries({ queryKey: HOME_ENTRY_FILES_QUERY_KEY(draftSubjectId) });
-      }
+    onSuccess: async (uid) => {
+      setEntryFileUids((current) => current.filter((item) => item !== uid));
+      await queryClient.invalidateQueries({ queryKey: ["home-entry-files"] });
     },
     onError: (err: unknown) => {
       setError(getApiErrorMessage(err, "删除文件失败"));
     },
   });
 
-  const isWorking = isCreatingDraftSubject || isUploadingFiles;
+  const isWorking = isCreatingDraftSubject || isStartingBuild || isUploadingFiles;
 
   return (
     <>
@@ -758,7 +786,12 @@ export function HomePage() {
       }}
       disabled={isWorking || Boolean(exportSubjectId) || importOpen || Boolean(renameTarget)}
     />
-    <div className="relative flex min-h-[100dvh] w-full flex-col items-center overflow-x-hidden bg-transparent p-4 pt-24 md:p-8 md:pt-32 selection:bg-zinc-200">
+    <div
+      className={cn(
+        "relative flex w-full flex-col items-center overflow-x-clip bg-transparent p-4 pt-24 selection:bg-zinc-200 md:p-8 md:pt-32",
+        isElectron ? "min-h-full" : "min-h-[100dvh]",
+      )}
+    >
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
@@ -809,7 +842,7 @@ export function HomePage() {
           className="w-full relative z-10"
         >
           <div className={cn(
-            "w-full rounded-[30px] border-[1.5px] backdrop-blur-xl transition-all",
+            "w-full overflow-hidden rounded-[30px] border-[1.5px] backdrop-blur-xl transition-all",
             hasEntryFiles
               ? "border-indigo-300/80 bg-indigo-50/40 shadow-[0_8px_30px_rgb(99,102,241,0.10)] ring-2 ring-indigo-500/8 dark:border-indigo-500/30 dark:bg-indigo-900/10 dark:shadow-[0_8px_30px_rgb(99,102,241,0.2)]"
               : "border-zinc-200/80 bg-white/70 shadow-[0_8px_30px_rgb(0,0,0,0.06)] hover:border-zinc-300 hover:bg-white/80 hover:shadow-[0_8px_30px_rgb(0,0,0,0.1)] dark:border-slate-700 dark:bg-slate-900/70 dark:hover:border-slate-600 dark:hover:bg-slate-900/90",
@@ -818,7 +851,7 @@ export function HomePage() {
             <textarea
               ref={textareaRef}
               placeholder="直接输入学习目标，也可以先上传资料再一起规划"
-              className="w-full min-h-[108px] max-h-[240px] resize-none border-0 bg-transparent px-6 pb-4 pt-7 text-[15px] leading-[1.9] text-zinc-800 focus:outline-none placeholder:text-zinc-400 dark:text-slate-200 dark:placeholder:text-slate-500"
+              className="w-full min-h-[96px] max-h-[240px] resize-none border-0 bg-transparent px-4 pb-2 pt-4 text-[15px] leading-[1.8] text-zinc-800 focus:outline-none placeholder:text-zinc-400 dark:text-slate-200 dark:placeholder:text-slate-500"
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
               onKeyDown={handleKeyDown}
@@ -827,9 +860,7 @@ export function HomePage() {
               disabled={isCreatingDraftSubject}
             />
 
-            <div className="mx-5 h-px bg-zinc-100 dark:bg-slate-800" />
-
-            <div className="px-5 pb-4 pt-3 flex flex-col gap-3">
+            <div className="px-4 pb-3 pt-1 flex flex-col gap-2">
               {(hasEntryFiles || isUploadingFiles) && (
                 <div className="space-y-2">
                   <div className="flex flex-wrap gap-2">
@@ -875,7 +906,7 @@ export function HomePage() {
                 </div>
               )}
 
-              <div className="flex items-end justify-between px-1 pt-1">
+              <div className="flex items-center justify-between px-1">
                 <div className="flex items-center gap-2 flex-1">
                   <input 
                     type="file" 
@@ -889,19 +920,19 @@ export function HomePage() {
                   <button
                     type="button"
                     onClick={() => fileInputRef.current?.click()}
-                    className="flex min-h-10 items-center gap-1.5 rounded-lg px-3 py-1.5 text-[13px] font-medium text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+                    className="flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-[12px] font-medium text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200"
                   >
                     {isUploadingFiles || isCreatingDraftSubject ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
                     ) : (
-                      <Paperclip className="h-4 w-4" />
+                      <Paperclip className="h-3.5 w-3.5" />
                     )}
                     {hasEntryFiles ? "添加资料" : "添加资料"}
                   </button>
                   {isWorking && (
-                    <span className="ml-2 flex items-center text-[13px] font-medium text-zinc-500">
-                      <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
-                      {isCreatingDraftSubject ? "正在创建学习空间..." : "正在上传并解析资料..."}
+                    <span className="ml-2 flex items-center text-[12px] font-medium text-zinc-500">
+                      <Loader2 className="mr-1.5 h-3 w-3 animate-spin" />
+                      {isStartingBuild || isCreatingDraftSubject ? "正在创建学习空间..." : "正在上传并解析资料..."}
                     </span>
                   )}
                 </div>
@@ -910,7 +941,7 @@ export function HomePage() {
                   onClick={handleGenerate}
                   disabled={!canGenerate || isWorking}
                   className={cn(
-                    "flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl transition-all focus:outline-none focus:ring-4 focus:ring-zinc-900/10 active:scale-[0.98]",
+                    "flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition-all focus:outline-none focus:ring-4 focus:ring-zinc-900/10 active:scale-[0.98]",
                     canGenerate && !isWorking
                       ? "bg-zinc-900 text-white shadow-sm hover:bg-zinc-800 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white"
                       : "cursor-not-allowed bg-zinc-100 text-zinc-300 dark:bg-slate-800 dark:text-slate-600"

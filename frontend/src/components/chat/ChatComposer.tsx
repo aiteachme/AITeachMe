@@ -9,6 +9,8 @@ interface ChatComposerProps {
   onAbort: () => void;
   isStreaming: boolean;
   disabled?: boolean;
+  autoFocusKey?: number;
+  placeholder?: string;
 }
 
 export function ChatComposer({
@@ -18,6 +20,8 @@ export function ChatComposer({
   onAbort,
   isStreaming,
   disabled = false,
+  autoFocusKey,
+  placeholder = "问我一个问题，或者让我结合资料解释某个概念...",
 }: ChatComposerProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -29,6 +33,13 @@ export function ChatComposer({
     textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 200)}px`;
   }, [value]);
 
+  useEffect(() => {
+    if (autoFocusKey === undefined) {
+      return;
+    }
+    textareaRef.current?.focus({ preventScroll: true });
+  }, [autoFocusKey]);
+
   function handleKeyDown(event: React.KeyboardEvent<HTMLTextAreaElement>) {
     if (event.key === "Enter" && !event.shiftKey && !isStreaming) {
       event.preventDefault();
@@ -37,9 +48,9 @@ export function ChatComposer({
   }
 
   return (
-    <div className="absolute bottom-4 left-1/2 z-20 w-full max-w-3xl -translate-x-1/2 px-3 sm:bottom-6 sm:px-4">
-      <div className="mx-auto w-full">
-        <div className="rounded-2xl border border-zinc-200/80 bg-white/95 backdrop-blur-xl shadow-[0_8px_24px_-8px_rgba(0,0,0,0.12),0_16px_48px_-16px_rgba(0,0,0,0.12)] transition-all focus-within:border-zinc-300 focus-within:shadow-[0_12px_32px_-12px_rgba(0,0,0,0.16),0_24px_64px_-20px_rgba(0,0,0,0.16)] focus-within:bg-white dark:border-slate-800/80 dark:bg-slate-950/92 dark:shadow-[0_18px_40px_-18px_rgba(0,0,0,0.72)] dark:focus-within:border-slate-700 dark:focus-within:bg-slate-950">
+    <div className="w-full bg-gradient-to-t from-white via-white to-white/80 px-4 pb-5 pt-3 dark:from-slate-950 dark:via-slate-950 dark:to-slate-950/80 md:px-8">
+      <div className="mx-auto w-full max-w-3xl xl:max-w-4xl 2xl:max-w-5xl">
+        <div className="rounded-3xl border border-zinc-200/80 bg-white/95 backdrop-blur-xl shadow-[0_8px_24px_-8px_rgba(0,0,0,0.12),0_16px_48px_-16px_rgba(0,0,0,0.12)] transition-all focus-within:border-zinc-300 focus-within:shadow-[0_12px_32px_-12px_rgba(0,0,0,0.16),0_24px_64px_-20px_rgba(0,0,0,0.16)] focus-within:bg-white dark:border-slate-800/80 dark:bg-slate-950/92 dark:shadow-[0_18px_40px_-18px_rgba(0,0,0,0.72)] dark:focus-within:border-slate-700 dark:focus-within:bg-slate-950">
           <div className="flex items-end gap-3 px-3 py-2.5">
             <textarea
               ref={textareaRef}
@@ -48,7 +59,7 @@ export function ChatComposer({
               onChange={(event) => onChange(event.target.value)}
               onKeyDown={handleKeyDown}
               disabled={disabled}
-              placeholder="问我一个问题，或者让我结合资料解释某个概念..."
+              placeholder={placeholder}
               className="min-h-[48px] flex-1 resize-none bg-transparent px-3 py-3 text-[14px] leading-relaxed text-zinc-800 outline-none placeholder:text-zinc-400 disabled:cursor-not-allowed disabled:opacity-60 dark:text-slate-100 dark:placeholder:text-slate-500"
               style={{ maxHeight: "200px" }}
             />

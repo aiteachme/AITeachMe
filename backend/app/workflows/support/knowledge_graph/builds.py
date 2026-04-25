@@ -71,6 +71,7 @@ async def _prepare_debug_chunks_for_files(
 
         _document_ids, chunk_ids = await prepare_chunk_ids_for_files(
             session,
+            subject=subject,
             raw_files=raw_files,
             digest_logger=logger.bind(
                 subject=subject,

@@ -15,7 +15,7 @@ from pathlib import Path
 
 from app.shared.infra.database import managed_session
 from app.shared.infra.env_support import get_env_list
-from app.shared.infra.storage import get_content_store, resolve_subject_storage_scope
+from app.shared.infra.storage import get_content_store
 from app.models import IngestStatus
 from app.repositories.files_repo import get_raw_file_by_id, update_raw_file
 from app.shared.infra.workflow.context import WorkflowContext
@@ -121,16 +121,16 @@ def _resolve_parse_request(
 
 async def _load_raw_file_state(state: IngestParseState) -> IngestParseState:
     cs = get_content_store()
-    subject_scope = resolve_subject_storage_scope(state["subject"])
     with managed_session() as session:
         raw_file = get_raw_file_by_id(session, state["file_id"])
-        if raw_file is None or raw_file.subject != state["subject"]:
+        if raw_file is None or raw_file.user_id != state["user_id"]:
             return {
                 **state,
                 "error": f"raw_file_not_found:{state['file_id']}",
             }
 
         file_id = state["file_id"]
+        file_scope = cs.user_file_scope(user_id=raw_file.user_id)
         temp_dir = Path(tempfile.mkdtemp(prefix="atm_ingest_"))
         storage_key = raw_file.file_path or raw_file.storage_key
         local_path = await cs.materialize(storage_key, temp_dir)
@@ -187,9 +187,9 @@ async def _load_raw_file_state(state: IngestParseState) -> IngestParseState:
             markitdown_available=is_markitdown_available_for_extension(extension),
         )
 
-        record_markdown_path = raw_file.markdown_path or subject_scope.raw_markdown_key(file_id)
-        record_asset_dir = raw_file.asset_dir or subject_scope.asset_prefix(file_id).rstrip("/")
-        asset_upload_prefix = subject_scope.asset_prefix(file_id)
+        record_markdown_path = raw_file.markdown_path or file_scope.raw_markdown_key(file_id)
+        record_asset_dir = raw_file.asset_dir or file_scope.asset_prefix(file_id).rstrip("/")
+        asset_upload_prefix = file_scope.asset_prefix(file_id)
         asset_storage_dir = asset_upload_prefix.rstrip("/")
 
         return {
@@ -285,7 +285,7 @@ def build_classify_file_node(*, context: WorkflowContext):
             classification_payload = json.dumps(classification.to_dict(), ensure_ascii=False)
             with managed_session() as session:
                 raw_file = get_raw_file_by_id(session, state["file_id"])
-                if raw_file is None or raw_file.subject != state["subject"]:
+                if raw_file is None or raw_file.user_id != state["user_id"]:
                     return {
                         **state,
                         "error": f"raw_file_not_found:{state['file_id']}",

@@ -12,13 +12,13 @@ from app.shared.infra.settings import get_settings
 from app.shared.infra.database import managed_session
 from app.shared.infra.storage import (
     get_content_store,
-    resolve_subject_storage_scope,
     run_store_sync,
 )
 from app.models import IngestStatus
 from app.repositories.files_repo import get_raw_file_by_id, replace_raw_file_assets, update_raw_file
 from app.utils.path_helpers import build_asset_name_prefix
 from app.workflows.ingest.common.parsing.classifier import ClassificationResult
+from app.workflows.ingest.common.parsing.features import builtin_pdf_parsing_enabled
 from app.workflows.ingest.common.parsing.orchestrator import deep_enhance_file
 from app.workflows.ingest.common.parsing.strategy import build_parse_plan
 from app.workflows.ingest.common.parsing.types import ParserRunOptions
@@ -29,14 +29,13 @@ logger = structlog.get_logger()
 
 async def _materialize_stored_assets(
     *,
-    subject: str,
-    file_id: int,
+    asset_prefix: str,
     asset_dir: Path,
 ) -> int:
     """Copy persisted Phase 1 assets into the Phase 2 work directory."""
 
     cs = get_content_store()
-    prefix = resolve_subject_storage_scope(subject).asset_prefix(file_id)
+    prefix = asset_prefix.rstrip("/") + "/"
     keys = await cs.list_prefix(prefix)
     copied = 0
     for key in keys:
@@ -52,8 +51,9 @@ async def _materialize_stored_assets(
 
 async def _run_deep_enhance_background(
     *,
-    subject: str,
+    user_id: str,
     file_id: int,
+    subject: str = "",
 ) -> None:
     """Background Phase 2: LLM Vision OCR enhancement.
 
@@ -61,18 +61,18 @@ async def _run_deep_enhance_background(
     Phase 1 markdown, enhances it with OCR, and updates the DB status.
     """
 
-    enhance_logger = logger.bind(subject=subject, file_id=file_id, phase="deep_enhance")
+    enhance_logger = logger.bind(subject=subject, user_id=user_id, file_id=file_id, phase="deep_enhance")
     enhance_logger.info("deep_enhance_background_started")
 
     cs = get_content_store()
-    subject_scope = resolve_subject_storage_scope(subject)
+    file_scope = cs.user_file_scope(user_id=user_id)
     try:
         with tempfile.TemporaryDirectory(prefix="atm_enhance_") as tmp_dir_str:
             _temp_dir = Path(tmp_dir_str)
             # Load context from DB
             with managed_session() as session:
                 raw_file = get_raw_file_by_id(session, file_id)
-                if raw_file is None:
+                if raw_file is None or raw_file.user_id != user_id:
                     enhance_logger.warning("deep_enhance_raw_file_not_found")
                     return
 
@@ -81,7 +81,10 @@ async def _run_deep_enhance_background(
 
                 file_path = await cs.materialize(raw_file.file_path or raw_file.storage_key, _temp_dir)
                 # Materialize markdown to temp for Phase 2 parsing
-                md_key = raw_file.markdown_path or subject_scope.raw_markdown_key(file_id)
+                md_key = raw_file.markdown_path or file_scope.raw_markdown_key(file_id)
+                persisted_asset_prefix = (
+                    raw_file.asset_dir.rstrip("/") + "/" if raw_file.asset_dir else file_scope.asset_prefix(file_id)
+                )
                 markdown_path = _temp_dir / f"{file_id}.md"
                 md_text = run_store_sync(cs.read_text, md_key, default=None)
                 if md_text:
@@ -121,8 +124,7 @@ async def _run_deep_enhance_background(
                 )
 
             materialized_asset_count = await _materialize_stored_assets(
-                subject=subject,
-                file_id=file_id,
+                asset_prefix=persisted_asset_prefix,
                 asset_dir=asset_dir,
             )
             enhance_logger.info(
@@ -152,7 +154,11 @@ async def _run_deep_enhance_background(
             extension = Path(str(file_path)).suffix.lower()
             # Explicit external/local document providers already returned their chosen markdown;
             # avoid overriding them with the fallback quality parser here.
-            if extension == ".pdf" and original_parser_used not in {"mineru", "markitdown"}:
+            if (
+                extension == ".pdf"
+                and builtin_pdf_parsing_enabled()
+                and original_parser_used not in {"mineru", "markitdown"}
+            ):
                 try:
                     from app.workflows.ingest.common.parsing.pdf import parse_pdf_with_pymupdf4llm, PDF_PYMUPDF4LLM_AVAILABLE
                     from app.workflows.ingest.common.parsing.canonicalizer import canonicalize_markdown
@@ -211,9 +217,9 @@ async def _run_deep_enhance_background(
 
             # Overwrite markdown with enhanced version and persist assets together.
             markdown_path.write_text(enhance_result.markdown, encoding="utf-8")
-            md_key = raw_file.markdown_path or subject_scope.raw_markdown_key(file_id)
+            md_key = raw_file.markdown_path or file_scope.raw_markdown_key(file_id)
             await cs.write_text(md_key, enhance_result.markdown)
-            asset_prefix = subject_scope.asset_prefix(file_id)
+            asset_prefix = persisted_asset_prefix
             uploaded_asset_count = await cs.upload_dir(asset_dir, asset_prefix)
             asset_storage_dir = asset_prefix.rstrip("/")
             asset_rows = _build_asset_rows(
@@ -226,7 +232,7 @@ async def _run_deep_enhance_background(
             # Update DB: READY_FOR_DIGEST
             with managed_session() as session:
                 raw_file = get_raw_file_by_id(session, file_id)
-                if raw_file is not None:
+                if raw_file is not None and raw_file.user_id == user_id:
                     replace_raw_file_assets(session, raw_file_id=file_id, assets=asset_rows)
                     # Update parse_metadata with OCR stats and asset persistence stats.
                     parse_metadata = {}
@@ -265,7 +271,7 @@ async def _run_deep_enhance_background(
         try:
             with managed_session() as session:
                 raw_file = get_raw_file_by_id(session, file_id)
-                if raw_file is not None:
+                if raw_file is not None and raw_file.user_id == user_id:
                     update_raw_file(
                         session,
                         raw_file,

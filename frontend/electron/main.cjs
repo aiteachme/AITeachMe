@@ -2,20 +2,60 @@ const { app, BrowserWindow, Menu, ipcMain, nativeImage, shell } = require("elect
 const { spawn } = require("node:child_process");
 const path = require("node:path");
 
-const APP_ID = "com.aiteachme.desktop";
-const APP_NAME = "AiTeachMe";
-const DEV_SERVER_URL = "http://127.0.0.1:5180";
-const BACKEND_PORT = process.env.AITEACHME_BACKEND_PORT || "8010";
+const { loadRepoDevEnv, resolveDevPorts } = require("./dev-env.cjs");
+
+loadRepoDevEnv();
+
+const devPorts = resolveDevPorts();
+const DEV_SERVER_URL = devPorts.frontendUrl;
 const isDevMode = process.argv.includes("--dev");
+
+function loadBuildConfig() {
+  try {
+    return require("./build-config.cjs");
+  } catch {
+    return {};
+  }
+}
+
+const buildConfig = loadBuildConfig();
+const APP_ID =
+  process.env.AITEACHME_ELECTRON_APP_ID ||
+  buildConfig.appId ||
+  (isDevMode ? "com.aiteachme.desktop.dev" : "com.aiteachme.desktop");
+const APP_NAME =
+  process.env.AITEACHME_ELECTRON_PRODUCT_NAME ||
+  process.env.AITEACHME_ELECTRON_APP_NAME ||
+  buildConfig.appName ||
+  (isDevMode ? "AiTeachMe Dev" : "AiTeachMe");
+const BACKEND_MODE = buildConfig.backendMode || "local";
+const BACKEND_PORT = String(process.env.AITEACHME_BACKEND_PORT || buildConfig.backendPort || "9020");
 const appIconPath = app.isPackaged
   ? path.join(process.resourcesPath, "app-icon.ico")
-  : path.join(__dirname, "..", "..", "docs", "brand", "atm-logo-3_ico_96x96.ico");
+  : path.join(__dirname, "..", "..", "docs", "brand", "app-icon.ico");
 const appIcon = nativeImage.createFromPath(appIconPath);
 
 app.setName(APP_NAME);
 
 let mainWindow = null;
 let backendProcess = null;
+
+function getCorsAllowedOrigins() {
+  const origins = new Set([
+    devPorts.frontendUrl,
+    "null",
+    "file://",
+  ]);
+
+  if (devPorts.frontendHost === "127.0.0.1") {
+    origins.add(`http://localhost:${devPorts.frontendPort}`);
+  }
+  if (devPorts.frontendHost === "localhost") {
+    origins.add(`http://127.0.0.1:${devPorts.frontendPort}`);
+  }
+
+  return Array.from(origins).join(",");
+}
 
 function getBundledBackendPath() {
   const executableName = process.platform === "win32" ? "aiteachme-backend.exe" : "aiteachme-backend";
@@ -26,7 +66,7 @@ function getBundledBackendPath() {
 }
 
 function startBundledBackend() {
-  if (isDevMode || backendProcess) {
+  if (isDevMode || backendProcess || BACKEND_MODE !== "local") {
     return;
   }
 
@@ -39,9 +79,10 @@ function startBundledBackend() {
       ...process.env,
       APP_MODE: "local",
       AUTH_ENABLED: "false",
+      AITEACHME_ENABLE_BUILTIN_PDF: "false",
       AITEACHME_BACKEND_PORT: BACKEND_PORT,
       AITEACHME_DATA_DIR: backendDataDir,
-      CORS_ALLOWED_ORIGINS: "http://localhost:5180,http://127.0.0.1:5180,null,file://",
+      CORS_ALLOWED_ORIGINS: getCorsAllowedOrigins(),
     },
     stdio: "ignore",
     windowsHide: true,
@@ -69,6 +110,16 @@ function sendMaximizedState(window) {
     return;
   }
   window.webContents.send("window:maximized-change", window.isMaximized());
+}
+
+function sendNavigationState(window) {
+  if (!window || window.isDestroyed()) {
+    return;
+  }
+  window.webContents.send("view:navigation-state", {
+    canGoBack: window.webContents.canGoBack(),
+    canGoForward: window.webContents.canGoForward(),
+  });
 }
 
 function shouldOpenExternally(url) {
@@ -122,6 +173,7 @@ function createWindow() {
   window.once("ready-to-show", () => {
     window.show();
     sendMaximizedState(window);
+    sendNavigationState(window);
   });
 
   window.on("maximize", () => sendMaximizedState(window));
@@ -142,6 +194,9 @@ function createWindow() {
       void shell.openExternal(url);
     }
   });
+  window.webContents.on("did-finish-load", () => sendNavigationState(window));
+  window.webContents.on("did-navigate", () => sendNavigationState(window));
+  window.webContents.on("did-navigate-in-page", () => sendNavigationState(window));
 
   if (isDevMode) {
     void window.loadURL(DEV_SERVER_URL);
@@ -177,6 +232,30 @@ ipcMain.handle("window:isMaximized", (event) => {
 
 ipcMain.handle("view:reload", (event) => {
   event.sender.reload();
+});
+
+ipcMain.handle("view:goBack", (event) => {
+  if (!event.sender.canGoBack()) {
+    return false;
+  }
+  event.sender.goBack();
+  return true;
+});
+
+ipcMain.handle("view:goForward", (event) => {
+  if (!event.sender.canGoForward()) {
+    return false;
+  }
+  event.sender.goForward();
+  return true;
+});
+
+ipcMain.handle("view:canGoBack", (event) => {
+  return event.sender.canGoBack();
+});
+
+ipcMain.handle("view:canGoForward", (event) => {
+  return event.sender.canGoForward();
 });
 
 ipcMain.handle("view:toggleDevTools", (event) => {

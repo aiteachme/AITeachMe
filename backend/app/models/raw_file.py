@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from datetime import datetime
 
+from sqlalchemy import UniqueConstraint
 from sqlmodel import Field, SQLModel
 
 from app.models.enums import IngestStatus, TaskStatus
@@ -18,7 +19,8 @@ class RawFile(SQLModel, table=True):
 
     id: int | None = Field(default=None, primary_key=True)
     uid: str = Field(index=True, unique=True)
-    subject: str = Field(index=True)
+    user_id: str = Field(default="local", foreign_key="user.id", index=True)
+    subject: str | None = Field(default=None, index=True)
     filename: str
     filetype: str
     file_path: str
@@ -153,6 +155,22 @@ class RawFile(SQLModel, table=True):
     @checksum_sha256.setter
     def checksum_sha256(self, value: str | None) -> None:
         self.content_hash = value
+
+
+class SubjectFileLink(SQLModel, table=True):
+    """Many-to-many link between a subject workspace and a user-owned raw file."""
+
+    __tablename__ = "subject_file"
+    __table_args__ = (
+        UniqueConstraint("user_id", "subject", "raw_file_id", name="uq_subject_file_user_subject_raw_file"),
+    )
+
+    id: int | None = Field(default=None, primary_key=True)
+    user_id: str = Field(default="local", foreign_key="user.id", index=True)
+    subject: str = Field(foreign_key="subject.slug", index=True)
+    raw_file_id: int = Field(foreign_key="raw_file.id", index=True)
+    created_at: datetime = Field(default_factory=utcnow)
+    updated_at: datetime = Field(default_factory=utcnow)
 
 
 class RawFileAsset(SQLModel):

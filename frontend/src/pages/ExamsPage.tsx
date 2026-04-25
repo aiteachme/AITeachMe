@@ -10,6 +10,7 @@ import {
   FileText,
   GraduationCap,
   Layers3,
+  Loader2,
   Plus,
   Sparkles,
   Tags,
@@ -35,7 +36,7 @@ import type {
   ExamPaperItemResponse,
 } from "../api/generated/model";
 import { getMasteryOverviewApiV1SubjectsSubjectProfileMasteryGetQueryKey } from "../api/generated/profile";
-import { getApiErrorMessage, orvalApiClient } from "../api/client";
+import { buildApiUrl, getApiErrorMessage, orvalApiClient } from "../api/client";
 import { Button } from "../components/ui/Button";
 import { MarkdownViewer } from "../components/ui/MarkdownViewer";
 import { Modal } from "../components/ui/Modal";
@@ -54,6 +55,16 @@ const DIFFICULTIES = [
 ] as const;
 
 const STATUS_META: Record<string, { label: string; tone: string; accent: string }> = {
+  generating: {
+    label: "生成中",
+    tone: "bg-violet-50 text-violet-700 ring-1 ring-inset ring-violet-200",
+    accent: "from-violet-300 via-sky-300 to-emerald-300",
+  },
+  ready: {
+    label: "待作答",
+    tone: "bg-amber-50 text-amber-700 ring-1 ring-inset ring-amber-200",
+    accent: "from-amber-300 via-orange-300 to-pink-300",
+  },
   draft: {
     label: "待完成",
     tone: "bg-amber-50 text-amber-700 ring-1 ring-inset ring-amber-200",
@@ -68,6 +79,11 @@ const STATUS_META: Record<string, { label: string; tone: string; accent: string 
     label: "已完成",
     tone: "bg-emerald-50 text-emerald-700 ring-1 ring-inset ring-emerald-200",
     accent: "from-emerald-300 via-teal-300 to-cyan-300",
+  },
+  failed: {
+    label: "生成失败",
+    tone: "bg-rose-50 text-rose-700 ring-1 ring-inset ring-rose-200",
+    accent: "from-rose-300 via-orange-300 to-slate-300",
   },
 };
 
@@ -632,6 +648,66 @@ function ExamPaperWorkspace({ subjectId, paperId, backHref }: ExamPaperWorkspace
   });
 
   useEffect(() => {
+    if (!subjectId || !paperId || paper?.status !== "generating") return;
+    const stream = new EventSource(
+      buildApiUrl(`/api/v1/subjects/${encodeURIComponent(subjectId)}/exams/${paperId}/stream`),
+      { withCredentials: true },
+    );
+
+    const refreshPaper = () => {
+      void Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: getExamHistoryApiV1SubjectsSubjectExamsHistoryGetQueryKey(subjectId, { page: 1, size: 24 }),
+        }),
+        queryClient.invalidateQueries({
+          queryKey: getExamDetailApiV1SubjectsSubjectExamsExamPaperIdGetQueryKey(subjectId, paperId),
+        }),
+      ]);
+    };
+
+    const handleDone = (event: Event) => {
+      const message = event as MessageEvent<string>;
+      let payload: { status?: string; error_message?: string } = {};
+      try {
+        payload = JSON.parse(message.data || "{}");
+      } catch {
+        payload = {};
+      }
+      refreshPaper();
+      stream.close();
+      if (payload.status === "failed") {
+        toast({
+          title: "试卷生成失败",
+          description: payload.error_message || "请稍后重试。",
+          variant: "error",
+        });
+        return;
+      }
+      toast({
+        title: "试卷生成完成",
+        description: "题目已生成，可以开始作答。",
+        variant: "success",
+      });
+    };
+
+    const handleSnapshot = () => {
+      refreshPaper();
+    };
+
+    stream.addEventListener("done", handleDone);
+    stream.addEventListener("snapshot", handleSnapshot);
+    stream.onerror = () => {
+      refreshPaper();
+    };
+
+    return () => {
+      stream.removeEventListener("done", handleDone);
+      stream.removeEventListener("snapshot", handleSnapshot);
+      stream.close();
+    };
+  }, [paper?.status, paperId, queryClient, subjectId, toast]);
+
+  useEffect(() => {
     if (!paper?.items) return;
     setAnswers(
       Object.fromEntries(
@@ -716,7 +792,22 @@ function ExamPaperWorkspace({ subjectId, paperId, backHref }: ExamPaperWorkspace
 
           {paper && (
             <>
-              {activeStage !== 3 && (
+              {paper.status === "generating" && (
+                <div className="rounded-[28px] border border-violet-200 bg-violet-50 px-6 py-12 text-center text-sm text-violet-700">
+                  <Loader2 className="mx-auto mb-4 h-8 w-8 animate-spin" />
+                  <h2 className="text-lg font-semibold text-violet-950">试卷题目生成中</h2>
+                  <p className="mt-2">基础信息已创建，题目生成完成后会自动刷新。</p>
+                </div>
+              )}
+
+              {paper.status === "failed" && (
+                <div className="rounded-[28px] border border-rose-200 bg-rose-50 px-6 py-12 text-center text-sm text-rose-700">
+                  <h2 className="text-lg font-semibold text-rose-950">试卷生成失败</h2>
+                  <p className="mt-2">后台生成题目时出错，请返回列表后重新生成。</p>
+                </div>
+              )}
+
+              {paper.status !== "generating" && paper.status !== "failed" && activeStage !== 3 && (
                 <>
               <aside className="hidden lg:block">
                 <div className="fixed left-2 top-28 z-20 w-[112px] rounded-[28px] border border-slate-200/80 bg-white/92 px-3 py-4 shadow-[0_18px_40px_rgba(15,23,42,0.08)] backdrop-blur xl:left-3 xl:w-[136px] 2xl:w-[184px]">
@@ -1066,7 +1157,7 @@ function ExamPaperWorkspace({ subjectId, paperId, backHref }: ExamPaperWorkspace
                 </>
               )}
 
-              {activeStage === 3 && (
+              {paper.status !== "generating" && paper.status !== "failed" && activeStage === 3 && (
                 <div className="mx-auto max-w-6xl">
                   {studyGuideQuery.isLoading && (
                     <div className="rounded-[28px] border border-slate-200 bg-white px-6 py-12 text-center text-sm text-slate-500">

@@ -36,6 +36,7 @@ def test_export_packs_latest_docgen_cover_as_stable_cover_file(tmp_path, monkeyp
             zf,
             "users/local/subjects/math",
             ExportOptions(include_raw_files=False, include_raw_markdowns=False),
+            raw_files=[],
         )
 
     with zipfile.ZipFile(output, "r") as zf:

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   CheckCircle2,
@@ -10,6 +10,7 @@ import {
 
 import { apiClient } from "../../api/client";
 import type { ApiResponse } from "../../api/types";
+import { useBuildEventStream } from "../../hooks/useBuildEventStream";
 import { useKnowledgeBuildFlow } from "../../hooks/useKnowledgeBuildFlow";
 import type { FileRecord } from "../../types/files";
 import { Button } from "../ui/Button";
@@ -51,6 +52,7 @@ export function GraphBuildButton({
   const [selectedFileUids, setSelectedFileUids] = useState<Set<string>>(new Set());
   const [lastBuildError, setLastBuildError] = useState("");
   const [lastBuildMessage, setLastBuildMessage] = useState("");
+  const [streamEnabled, setStreamEnabled] = useState(false);
 
   const normalizedAutoLaunch = useMemo(() => {
     if (!autoLaunch?.requestKey?.trim()) {
@@ -83,6 +85,29 @@ export function GraphBuildButton({
     [readyFiles, selectedFileUids],
   );
 
+  const handleBuildDone = useCallback((status: string) => {
+    setStreamEnabled(false);
+    void queryClient.invalidateQueries({ queryKey: ["knowledge-doc-build", subject] });
+    void queryClient.invalidateQueries({ queryKey: ["knowledge-overview", subject] });
+    void queryClient.invalidateQueries({ queryKey: ["graph-node-detail", subject] });
+    void queryClient.invalidateQueries({ queryKey: ["docgen-content", subject] });
+
+    if (status === "completed") {
+      setLastBuildError("");
+      setLastBuildMessage("知识图谱构建已完成，图谱数据已刷新。");
+      return;
+    }
+
+    setLastBuildMessage("");
+    setLastBuildError(status === "cancelled" ? "知识图谱构建已取消。" : "知识图谱构建未完成，请查看构建状态。");
+  }, [queryClient, subject]);
+
+  const buildStream = useBuildEventStream({
+    subjectId: subject,
+    enabled: streamEnabled,
+    onDone: handleBuildDone,
+  });
+
   const knowledgeBuild = useKnowledgeBuildFlow({
     subjectId: subject,
     buildType: "graph",
@@ -95,6 +120,7 @@ export function GraphBuildButton({
       queryClient.invalidateQueries({ queryKey: ["knowledge-overview", subject] });
       queryClient.invalidateQueries({ queryKey: ["graph-node-detail", subject] });
       queryClient.invalidateQueries({ queryKey: ["docgen-content", subject] });
+      setStreamEnabled(true);
       setShowFileSelect(false);
       setSelectedFileUids(new Set());
       setLastBuildError("");
@@ -153,7 +179,12 @@ export function GraphBuildButton({
     knowledgeBuild.submitBuild({ file_uids: targetFileUids });
   }, [filesLoading, knowledgeBuild, normalizedAutoLaunch, readyFiles, toast]);
 
-  const isBuilding = knowledgeBuild.isPending;
+  const graphRuntime = buildStream.snapshot?.graph ?? buildStream.snapshot?.aggregate ?? null;
+  const graphStatus = String(graphRuntime?.status ?? "").trim();
+  const streamBuilding = streamEnabled && (!graphStatus || ["accepted", "running", "publishing"].includes(graphStatus));
+  const isBuilding = knowledgeBuild.isPending || streamBuilding;
+  const graphProgressPct = Number(graphRuntime?.progress_pct ?? 0);
+  const graphStageDescription = graphRuntime?.current_stage_description ?? "";
 
   const toggleFile = (fileUid: string) => {
     setSelectedFileUids((previous) => {
@@ -199,6 +230,12 @@ export function GraphBuildButton({
 
         {lastBuildMessage ? <p className="max-w-xs text-right text-xs leading-5 text-emerald-600">{lastBuildMessage}</p> : null}
         {lastBuildError ? <p className="max-w-xs text-right text-xs leading-5 text-rose-500">{lastBuildError}</p> : null}
+        {streamBuilding ? (
+          <p className="max-w-xs text-right text-xs leading-5 text-slate-500">
+            {graphStageDescription || "知识图谱构建运行中..."}
+            {graphProgressPct > 0 ? ` ${graphProgressPct}%` : ""}
+          </p>
+        ) : null}
       </div>
 
       <Modal open={showFileSelect} onClose={closeModal} title="选择本轮知识图谱构建使用的文件">

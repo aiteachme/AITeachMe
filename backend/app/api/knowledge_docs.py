@@ -6,7 +6,7 @@ import asyncio
 import uuid
 
 import structlog
-from fastapi import APIRouter, Body, Depends, Path, Request
+from fastapi import APIRouter, BackgroundTasks, Body, Depends, Path, Request
 from fastapi.responses import StreamingResponse
 from sqlmodel import Session
 
@@ -78,6 +78,24 @@ from app.shared.infra.exceptions import SubjectBuildLockConflictError
 
 router = APIRouter(tags=["knowledge"])
 logger = structlog.get_logger(__name__)
+
+
+async def _spawn_registered_task_after_response(
+    request: Request,
+    coro_factory,
+    *,
+    kind: str,
+    subject: str,
+    name: str,
+) -> None:
+    """Register a long-running workflow only after the HTTP response is flushed."""
+
+    request.app.state.background_task_registry.spawn(
+        coro_factory(),
+        kind=kind,
+        subject=subject,
+        name=name,
+    )
 
 
 def _planner_stream_response(
@@ -194,6 +212,7 @@ async def knowledge_build_plan_create(
 )
 async def knowledge_debug_kg_file_ingest(
     request: Request,
+    background_tasks: BackgroundTasks,
     subject: str = Path(...),
     body: KnowledgeDebugTriggerRequest = Body(default=KnowledgeDebugTriggerRequest()),
     user: CurrentUserContext = Depends(get_current_user_context),
@@ -211,8 +230,10 @@ async def knowledge_debug_kg_file_ingest(
         confirmed_plan_id=None,
         build_type="graph",
     )
-    request.app.state.background_task_registry.spawn(
-        run_graph_file_ingest_debug_background(
+    background_tasks.add_task(
+        _spawn_registered_task_after_response,
+        request,
+        lambda: run_graph_file_ingest_debug_background(
             subject=normalized,
             file_ids=accepted_file_ids,
             prompt=data.prompt,
@@ -241,6 +262,7 @@ async def knowledge_debug_kg_file_ingest(
 )
 async def knowledge_debug_kg_docs_sync(
     request: Request,
+    background_tasks: BackgroundTasks,
     subject: str = Path(...),
     body: KnowledgeDebugTriggerRequest = Body(default=KnowledgeDebugTriggerRequest()),
     user: CurrentUserContext = Depends(get_current_user_context),
@@ -266,8 +288,10 @@ async def knowledge_debug_kg_docs_sync(
         source_file_ids=[],
         current_stage_description="已接收 kg_docs_sync 调试请求，正在排队启动。",
     )
-    request.app.state.background_task_registry.spawn(
-        run_graph_docs_sync_debug_background(
+    background_tasks.add_task(
+        _spawn_registered_task_after_response,
+        request,
+        lambda: run_graph_docs_sync_debug_background(
             subject=normalized,
             prompt=body.prompt,
             requested_at=requested_at,
@@ -471,6 +495,7 @@ def knowledge_build_plan_confirm(
 )
 async def knowledge_build(
     request: Request,
+    background_tasks: BackgroundTasks,
     subject: str = Path(...),
     body: DocGenBuildRequest = Body(...),
     user: CurrentUserContext = Depends(get_current_user_context),
@@ -513,8 +538,10 @@ async def knowledge_build(
             accepted_file_count=len(accepted_file_ids),
             requested_at=data.requested_at.isoformat(),
         )
-        request.app.state.background_task_registry.spawn(
-            run_docgen_background(
+        background_tasks.add_task(
+            _spawn_registered_task_after_response,
+            request,
+            lambda: run_docgen_background(
                 subject=normalized,
                 file_ids=accepted_file_ids,
                 prompt=data.prompt,
@@ -536,8 +563,10 @@ async def knowledge_build(
             accepted_file_count=len(accepted_file_ids),
             requested_at=data.requested_at.isoformat(),
         )
-        request.app.state.background_task_registry.spawn(
-            run_graph_build_background(
+        background_tasks.add_task(
+            _spawn_registered_task_after_response,
+            request,
+            lambda: run_graph_build_background(
                 subject=normalized,
                 file_ids=accepted_file_ids,
                 prompt=data.prompt,
@@ -664,7 +693,7 @@ async def knowledge_build_stream(
     normalized = normalize_subject_slug(subject)
     get_subject_record(session, normalized, owner_user_id=user.user_id)
 
-    _TERMINAL_STATUSES = {"completed", "failed", "cancelled"}
+    _TERMINAL_STATUSES = {"completed", "failed", "cancelled", "partial_failed", "skipped"}
     _SNAPSHOT_FALLBACK_INTERVAL = 8.0
 
     async def event_generator():

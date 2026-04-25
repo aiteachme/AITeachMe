@@ -7,7 +7,7 @@ services:
       dockerfile: infra/deployment/docker/backend.Dockerfile
     container_name: aiteachme-backend
     ports:
-      - "8000:8000"
+      - "9020:9020"
     volumes:
       - ../../backend:/app
       - ../../models:/app/models

@@ -4,7 +4,7 @@ function resolveDesktopApiBaseUrl(): string {
   if (typeof window === "undefined" || window.location.protocol !== "file:") {
     return "";
   }
-  return window.aiteachmeDesktop?.apiBaseUrl ?? "http://127.0.0.1:8010";
+  return window.aiteachmeDesktop?.apiBaseUrl ?? "http://127.0.0.1:9020";
 }
 
 const API_BASE_URL = resolveDesktopApiBaseUrl() || (import.meta.env.VITE_API_URL ?? "").trim();
@@ -119,6 +119,8 @@ export interface SseTokenPayload {
 
 export interface SseDonePayload {
   turn_id?: string;
+  session_id?: string;
+  session_title?: string;
   contexts?: unknown;
 }
 

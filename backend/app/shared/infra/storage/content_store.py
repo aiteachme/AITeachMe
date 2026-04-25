@@ -21,7 +21,9 @@ from pydantic import BaseModel
 from app.shared.infra.storage.base import ArtifactStore, validate_delete_prefix
 from app.shared.infra.storage.subject_scope import (
     SubjectStorageScope,
+    UserFileStorageScope,
     build_subject_storage_scope,
+    build_user_file_storage_scope,
 )
 
 T = TypeVar("T", bound=BaseModel)
@@ -51,6 +53,12 @@ class ContentStore:
         """Return the canonical persisted storage scope for one subject."""
 
         return build_subject_storage_scope(user_id=user_id, subject=subject)
+
+    @staticmethod
+    def user_file_scope(*, user_id: str) -> UserFileStorageScope:
+        """Return the canonical persisted storage scope for one user's file library."""
+
+        return build_user_file_storage_scope(user_id=user_id)
 
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     #  2. 文本 / JSON 便捷操作

@@ -1,8 +1,8 @@
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { Outlet, useLocation } from "react-router-dom";
 import { Sidebar } from "./Sidebar";
 import { TopBar } from "./TopBar";
-import { SubjectAiAssistantProvider } from "../ai/SubjectAiAssistant";
+import { AiInteractionProvider, AiInteractionWindow, type AiConversationScope } from "../interaction";
 import { isFullBleedSubjectPath } from "../../lib/subjectNavigation";
 import { SettingsDialog } from "../settings/SettingsDialog";
 import { cn } from "../../lib/utils";
@@ -19,6 +19,15 @@ export function Layout() {
   const isFullBleed = isFullBleedSubjectPath(pathname);
   const isExamFocusPage = /^\/subject\/[^/]+\/exams\/[^/]+$/.test(pathname);
   const subjectId = pathname.match(/^\/subject\/([^/]+)/)?.[1] ?? null;
+  const activeInteractionScope = useMemo<AiConversationScope | null>(() => {
+    if (pathname === "/assistant") {
+      return { type: "global" };
+    }
+    if (subjectId) {
+      return { type: "subject", subjectId };
+    }
+    return null;
+  }, [pathname, subjectId]);
 
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const settingsOverview = useSyncExternalStore(
@@ -41,11 +50,11 @@ export function Layout() {
 
   return (
     <>
-      <SubjectAiAssistantProvider subjectId={subjectId}>
+      <AiInteractionProvider activeScope={activeInteractionScope}>
         <div
           className={cn(
-            "app-shell relative flex overflow-hidden bg-[#fafafa] selection:bg-zinc-200 dark:bg-[#0b0f19] dark:selection:bg-slate-700",
-            isElectron ? "h-full" : "h-dvh",
+            "app-shell relative flex min-h-0 overflow-hidden bg-[#fafafa] selection:bg-zinc-200 dark:bg-[#0b0f19] dark:selection:bg-slate-700",
+            isElectron ? "w-full flex-1" : "h-dvh w-screen max-w-full",
           )}
         >
           {!isSettingsOpen ? (
@@ -70,8 +79,8 @@ export function Layout() {
               {isFullBleed || pathname === "/" ? (
                 <div
                   className={cn(
-                    "flex w-full flex-1 flex-col",
-                    isElectron ? "min-h-full" : "min-h-[calc(100dvh-4rem)]",
+                    "flex min-h-0 w-full flex-1 flex-col",
+                    !isElectron && "min-h-[calc(100dvh-4rem)]",
                   )}
                 >
                   <Outlet />
@@ -83,8 +92,9 @@ export function Layout() {
               )}
             </main>
           </div>
+          <AiInteractionWindow variant="sidebar" />
         </div>
-      </SubjectAiAssistantProvider>
+      </AiInteractionProvider>
 
       <SettingsDialog isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} />
     </>

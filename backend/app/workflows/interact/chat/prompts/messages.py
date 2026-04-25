@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from langsmith import traceable
 
+from app.schemas.chats import ChatSelectionContext
 from app.schemas.llm import ASSISTANT, ChatMessage, USER
 from app.shared.infra.prompt_loader import populate_prompt
 from app.shared.infra.strategies import StrategyMode
@@ -29,6 +30,7 @@ def build_chat_messages(
     question: str,
     source: str | None = None,
     selected_context: str | None = None,
+    selection_context: ChatSelectionContext | None = None,
     source_chunk_id: int | None = None,
     context_window: ContextWindowManager | None = None,
 ) -> list[ChatMessage]:
@@ -42,7 +44,7 @@ def build_chat_messages(
         weak_points_context=_format_weak_points_context(weak_points),
         mistakes_context=_format_mistakes_context(recent_mistakes),
         interaction_entry=_format_interaction_entry(source),
-        selected_context=_format_selected_context(selected_context, source_chunk_id),
+        selected_context=_format_selected_context(selection_context, selected_context, source_chunk_id),
     )
     history_messages = [
         {
@@ -123,13 +125,75 @@ def _format_interaction_entry(source: str | None) -> str:
     return "常规学习对话。"
 
 
-def _format_selected_context(selected_context: str | None, source_chunk_id: int | None) -> str:
+def _clip_text(value: str | None, max_chars: int) -> str:
+    text = (value or "").strip()
+    if len(text) <= max_chars:
+        return text
+    if max_chars <= 1:
+        return text[:max_chars]
+    return f"{text[: max_chars - 1]}…"
+
+
+def _format_selected_context(
+    selection_context: ChatSelectionContext | None,
+    selected_context: str | None,
+    source_chunk_id: int | None,
+) -> str:
+    if selection_context is not None:
+        return _format_structured_selection_context(selection_context, selected_context, source_chunk_id)
     if not selected_context:
         return "无。"
-    selected = selected_context.strip()[:2400]
+    selected = _clip_text(selected_context, 2400)
     if source_chunk_id is None:
         return selected
     return f"[chunk_id={source_chunk_id}]\n{selected}"
+
+
+def _format_structured_selection_context(
+    context: ChatSelectionContext,
+    fallback_selected_context: str | None,
+    source_chunk_id: int | None,
+) -> str:
+    lines: list[str] = []
+    if source_chunk_id is not None:
+        lines.append(f"[chunk_id={source_chunk_id}]")
+
+    selected = _clip_text(context.selected_text or fallback_selected_context, 1200)
+    if selected:
+        lines.append(f"划选原文：\n{selected}")
+
+    heading_path = " > ".join(
+        part.strip()
+        for part in context.heading_path
+        if part and part.strip()
+    )
+    if heading_path:
+        lines.append(f"标题路径：{_clip_text(heading_path, 300)}")
+    elif context.anchor_title:
+        lines.append(f"所在标题：{_clip_text(context.anchor_title, 160)}")
+
+    before_text = _clip_text(context.before_text, 900)
+    after_text = _clip_text(context.after_text, 900)
+    if before_text or after_text:
+        local_parts = []
+        if before_text:
+            local_parts.append(f"上文：{before_text}")
+        if after_text:
+            local_parts.append(f"下文：{after_text}")
+        suffix = "（已截断）" if context.local_context_truncated else ""
+        lines.append(f"局部上下文{suffix}：\n" + "\n".join(local_parts))
+
+    section_excerpt = _clip_text(context.section_excerpt, 2600)
+    if section_excerpt:
+        section_title = _clip_text(context.section_title or context.anchor_title, 160)
+        suffix = "（已截断）" if context.section_truncated else ""
+        heading = f"上级标题内容{suffix}"
+        if section_title:
+            heading += f"：{section_title}"
+        lines.append(f"{heading}\n{section_excerpt}")
+
+    formatted = "\n\n".join(lines).strip()
+    return _clip_text(formatted, 5200) or "无。"
 
 
 __all__ = [

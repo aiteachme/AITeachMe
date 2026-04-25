@@ -1,5 +1,3 @@
-@import url('https://fonts.loli.net/css2?family=Inter:wght@300;400;500;600;700&family=Dancing+Script:wght@700&display=swap');
-
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -29,6 +27,8 @@
 
   body {
     @apply bg-background text-foreground;
+    margin: 0;
+    overflow: hidden;
     font-family: var(--font-sans);
     font-feature-settings: "rlig" 1, "calt" 1;
     -webkit-font-smoothing: antialiased;
@@ -37,16 +37,25 @@
 
   html,
   body,
-  #root {
+  #root,
+  #app {
+    width: 100%;
     height: 100%;
+  }
+
+  html,
+  body {
+    min-width: 100%;
   }
 }
 
 .electron-window-frame {
+  position: relative;
   display: flex;
-  height: 100vh;
-  min-height: 0;
   flex-direction: column;
+  height: 100vh;
+  max-height: 100vh;
+  min-height: 0;
   overflow: hidden;
   background: #fafafa;
 }
@@ -56,18 +65,26 @@
 }
 
 .electron-window-titlebar {
-  position: relative;
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
   z-index: 80;
-  height: 34px;
-  flex: 0 0 34px;
+  display: flex;
+  align-items: center;
+  height: 40px;
+  min-height: 0;
+  background: transparent;
   user-select: none;
   -webkit-app-region: drag;
 }
 
 .electron-window-drag-zone {
-  position: absolute;
-  inset: 0 144px 0 0;
+  position: relative;
   z-index: 0;
+  flex: 1 1 auto;
+  align-self: stretch;
+  min-width: 16px;
   -webkit-app-region: drag;
 }
 
@@ -76,9 +93,25 @@
 }
 
 .electron-window-content {
-  min-height: 0;
+  position: relative;
   flex: 1 1 auto;
+  height: 100%;
+  max-height: 100%;
+  min-height: 0;
+  min-width: 0;
+  display: flex;
   overflow: hidden;
+  transform: translateZ(0);
+}
+
+.electron-window-frame .app-shell {
+  flex: 1 1 auto;
+  width: 100%;
+  height: auto;
+  max-height: 100%;
+  min-height: 0;
+  min-width: 0;
+  padding-top: 40px;
 }
 
 @keyframes fadeIn {
@@ -119,27 +152,13 @@
 
   /* ----------- TOC sidebar scroll ----------- */
   .toc-scroll {
-    scrollbar-width: thin;
-    scrollbar-color: rgba(100, 116, 139, 0.25) transparent;
+    scrollbar-width: none;
     scroll-behavior: smooth;
   }
 
   .toc-scroll::-webkit-scrollbar {
-    width: 5px;
-  }
-
-  .toc-scroll::-webkit-scrollbar-track {
-    background: transparent;
-  }
-
-  .toc-scroll::-webkit-scrollbar-thumb {
-    background-color: transparent;
-    border-radius: 9999px;
-    transition: background-color 0.2s;
-  }
-
-  .toc-scroll:hover::-webkit-scrollbar-thumb {
-    background-color: rgba(100, 116, 139, 0.35);
+    width: 0;
+    height: 0;
   }
 
   /* ----------- Content area scrollbar ----------- */
@@ -203,6 +222,82 @@
 
   .feishu-doc-content table tbody tr:hover {
     background-color: #F5F6F7;
+  }
+
+  .feishu-doc-content pre code.hljs {
+    display: block;
+    min-width: max-content;
+    background: transparent;
+    color: #24292f;
+  }
+
+  .feishu-doc-content pre .hljs-keyword,
+  .feishu-doc-content pre .hljs-selector-tag,
+  .feishu-doc-content pre .hljs-literal,
+  .feishu-doc-content pre .hljs-doctag,
+  .feishu-doc-content pre .hljs-type {
+    color: #cf222e;
+  }
+
+  .feishu-doc-content pre .hljs-string,
+  .feishu-doc-content pre .hljs-regexp,
+  .feishu-doc-content pre .hljs-symbol,
+  .feishu-doc-content pre .hljs-bullet,
+  .feishu-doc-content pre .hljs-template-variable,
+  .feishu-doc-content pre .hljs-template-tag {
+    color: #0a3069;
+  }
+
+  .feishu-doc-content pre .hljs-number,
+  .feishu-doc-content pre .hljs-built_in {
+    color: #0550ae;
+  }
+
+  .feishu-doc-content pre .hljs-attr,
+  .feishu-doc-content pre .hljs-attribute,
+  .feishu-doc-content pre .hljs-variable,
+  .feishu-doc-content pre .hljs-variable.language_ {
+    color: #953800;
+  }
+
+  .feishu-doc-content pre .hljs-comment,
+  .feishu-doc-content pre .hljs-quote {
+    color: #6e7781;
+    font-style: italic;
+  }
+
+  .feishu-doc-content pre .hljs-title,
+  .feishu-doc-content pre .hljs-section,
+  .feishu-doc-content pre .hljs-function,
+  .feishu-doc-content pre .hljs-title.function_,
+  .feishu-doc-content pre .hljs-title.class_ {
+    color: #8250df;
+  }
+
+  .feishu-doc-content pre .hljs-name,
+  .feishu-doc-content pre .hljs-tag {
+    color: #116329;
+  }
+
+  .feishu-doc-content pre .hljs-meta,
+  .feishu-doc-content pre .hljs-meta .hljs-keyword {
+    color: #57606a;
+  }
+
+  .feishu-doc-content pre .hljs-operator,
+  .feishu-doc-content pre .hljs-punctuation,
+  .feishu-doc-content pre .hljs-subst {
+    color: #24292f;
+  }
+
+  .feishu-doc-content pre .hljs-deletion {
+    color: #cf222e;
+    background-color: #ffebe9;
+  }
+
+  .feishu-doc-content pre .hljs-addition {
+    color: #116329;
+    background-color: #dafbe1;
   }
 }
 

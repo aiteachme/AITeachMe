@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from app.workflows.ingest.common.parsing.features import builtin_pdf_parsing_enabled
 from app.workflows.ingest.common.parsing.formats import MARKITDOWN_GENERIC_EXTENSIONS, normalize_extension
 from app.workflows.ingest.common.parsing.provider_contracts import ParseDecision, ProviderCapability
 
@@ -49,11 +50,17 @@ def build_mineru_capability(*, available: bool) -> ProviderCapability:
 
 
 def build_markitdown_capability(*, available: bool) -> ProviderCapability:
+    supported_extensions = set(DEFAULT_MARKITDOWN_EXTENSIONS)
+    features = {"markdown", "office", "pdf", "html", "spreadsheet"}
+    if not builtin_pdf_parsing_enabled():
+        supported_extensions.discard(".pdf")
+        features.discard("pdf")
+
     return ProviderCapability(
         name="markitdown",
         available=available,
-        supported_extensions=set(DEFAULT_MARKITDOWN_EXTENSIONS),
-        features={"markdown", "office", "pdf", "html", "spreadsheet"},
+        supported_extensions=supported_extensions,
+        features=features,
         quality_level="medium",
         latency_level="medium",
         cost_level="local",

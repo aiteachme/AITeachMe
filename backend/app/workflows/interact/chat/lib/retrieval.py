@@ -40,6 +40,13 @@ async def retrieve_context(
     normalized_query = query.strip()
     if not normalized_query or top_k <= 0:
         return []
+    if not subject.strip():
+        logger.info(
+            "interact_retrieval_skipped",
+            subject=subject,
+            reason="global_chat_scope",
+        )
+        return []
 
     graph_results = _retrieve_knowledge_unit_context(
         session,

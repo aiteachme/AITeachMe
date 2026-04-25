@@ -182,8 +182,16 @@ class MissingLLMApiKeyError(AITeachMeError):
     error_code = "LLM_API_KEY_MISSING"
     status_code = HTTPStatus.SERVICE_UNAVAILABLE
 
-    def __init__(self) -> None:
-        super().__init__(detail="未配置 LLM_API_KEY。")
+    def __init__(self, *, provider: str | None = None, base_url_configured: bool | None = None) -> None:
+        hints: list[str] = []
+        if provider:
+            hints.append(f"当前推断模型供应商为 {provider}")
+        if base_url_configured is False:
+            hints.append("LLM_BASE_URL 未配置")
+        if hints:
+            super().__init__(detail=f"未配置 LLM_API_KEY（{'，'.join(hints)}）。")
+        else:
+            super().__init__(detail="未配置 LLM_API_KEY。")
 
 
 class LLMCallError(AITeachMeError):

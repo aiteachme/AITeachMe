@@ -11,6 +11,8 @@ import { MermaidBlock } from "./MermaidBlock";
 
 type MarkdownViewerVariant = "default" | "document" | "planner";
 type CalloutKind = "note" | "tip" | "important" | "warning" | "caution";
+const CALLOUT_PATTERN = "note|tip|important|warning|caution";
+const MERMAID_LANGUAGE_ALIASES = new Set(["mermaid", "maymaid", "mermaind", "mermaide"]);
 
 interface MarkdownViewerProps {
   content: string;
@@ -169,11 +171,11 @@ const VIEWER_STYLES: Record<MarkdownViewerVariant, ViewerStyles> = {
     list: "mb-4 list-disc space-y-1.5 pl-6 text-[15px] leading-[1.75] text-[#1F2329] dark:text-slate-300",
     orderedList: "mb-4 list-decimal space-y-1.5 pl-6 text-[15px] leading-[1.75] text-[#1F2329] dark:text-slate-300",
     listItem: "leading-[1.75] [&>p]:mb-0 [&>p]:inline",
-    blockquote: "my-4 border-l-[3px] border-[#DEE0E3] pl-4 pr-3 py-2 text-[#646A73] dark:border-slate-700 dark:text-slate-400",
-    codeInline: "rounded bg-[#F5F6F7] px-1.5 py-0.5 font-mono text-[0.9em] text-[#1F2329] dark:bg-slate-800 dark:text-slate-100",
-    codeShell: "my-5 overflow-hidden rounded-lg border border-[#DEE0E3] bg-[#1E1E1E] dark:border-slate-800",
-    codeLanguageBadge: "border-b border-[#333] bg-[#252525] px-4 py-2 text-[11px] font-medium uppercase tracking-[0.15em] text-[#999]",
-    codePre: "overflow-x-auto p-4 text-[13px] leading-7 text-[#D4D4D4] font-mono",
+    blockquote: "my-2.5 rounded-r-md border-l-[3px] border-[#DEE0E3] bg-[#FAFBFC]/88 pl-3 pr-2.5 py-1.25 text-[14px] leading-[1.68] text-[#646A73] dark:border-slate-700 dark:bg-slate-900/40 dark:text-slate-400",
+    codeInline: "rounded-md border border-[#E6EAF0] bg-[#F8FAFC] px-1.5 py-0.5 font-mono text-[0.9em] text-[#0F172A] shadow-[inset_0_1px_0_rgba(255,255,255,0.65)] dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100",
+    codeShell: "my-6 overflow-hidden rounded-xl border border-[#E5E7EB] bg-white shadow-[0_12px_30px_-26px_rgba(15,23,42,0.35)] dark:border-[#E5E7EB] dark:bg-white",
+    codeLanguageBadge: "border-b border-[#ECECF1] bg-[#F7F7F8] px-4 py-2.5 text-[11px] font-medium uppercase tracking-[0.16em] text-[#6B7280] dark:border-[#ECECF1] dark:bg-[#F7F7F8] dark:text-[#6B7280]",
+    codePre: "overflow-x-auto bg-white px-4 py-4 text-[13px] leading-6 text-[#111827] font-mono dark:bg-white dark:text-[#111827]",
     tableShell: "my-5 overflow-x-auto rounded-lg border border-[#DEE0E3] bg-white dark:border-slate-800 dark:bg-slate-950/60",
     table: "min-w-full text-[14px]",
     thead: "border-b border-[#DEE0E3] bg-[#F5F6F7] dark:border-slate-800 dark:bg-slate-900/80",
@@ -230,6 +232,256 @@ export function preprocessLaTeX(content: string): string {
   return processed;
 }
 
+function trimBlankLines(lines: string[]): string[] {
+  const next = [...lines];
+  while (next.length > 0 && !next[0].trim()) next.shift();
+  while (next.length > 0 && !next[next.length - 1].trim()) next.pop();
+  return next;
+}
+
+function pushCanonicalCallout(target: string[], kind: string, bodyLines: string[]) {
+  const body = trimBlankLines(bodyLines);
+  target.push(`> [!${kind.toUpperCase()}]`);
+  if (body.length === 0) {
+    return;
+  }
+  for (const line of body) {
+    target.push(line.trim() ? `> ${line}` : ">");
+  }
+}
+
+function isCalloutBoundary(line: string): boolean {
+  const trimmed = line.trim();
+  if (!trimmed) return false;
+  return Boolean(
+    trimmed.match(new RegExp(`^(?:#{1,6}\\s|>\\s*\\[!|:::|!(${CALLOUT_PATTERN})\\b)`, "i")) ||
+    trimmed === "---" ||
+    trimmed === "***"
+  );
+}
+
+function preprocessCalloutSyntax(content: string): string {
+  if (!content) return content;
+  const lines = String(content).replace(/\r\n?/g, "\n").split("\n");
+  const output: string[] = [];
+  let activeFence: string | null = null;
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
+    const fenceMatch = line.match(/^(```|~~~)/);
+    if (fenceMatch) {
+      if (activeFence === fenceMatch[1]) {
+        activeFence = null;
+      } else if (activeFence === null) {
+        activeFence = fenceMatch[1];
+      }
+      output.push(line);
+      continue;
+    }
+
+    if (activeFence) {
+      output.push(line);
+      continue;
+    }
+
+    const directiveMatch = line.match(new RegExp(`^:::\\s*(${CALLOUT_PATTERN})\\s*$`, "i"));
+    if (directiveMatch) {
+      const body: string[] = [];
+      const kind = directiveMatch[1];
+      let cursor = index + 1;
+      while (cursor < lines.length && !/^:::\s*$/.test(lines[cursor])) {
+        body.push(lines[cursor]);
+        cursor += 1;
+      }
+      if (cursor < lines.length && /^:::\s*$/.test(lines[cursor])) {
+        pushCanonicalCallout(output, kind, body);
+        index = cursor;
+        continue;
+      }
+    }
+
+    const singleLineBang = line.match(new RegExp(`^!(${CALLOUT_PATTERN})\\s+(.+)$`, "i"));
+    if (singleLineBang) {
+      pushCanonicalCallout(output, singleLineBang[1], [singleLineBang[2]]);
+      continue;
+    }
+
+    const blockBang = line.match(new RegExp(`^!(${CALLOUT_PATTERN})\\s*$`, "i"));
+    if (blockBang) {
+      const kind = blockBang[1];
+      const body: string[] = [];
+      let cursor = index + 1;
+
+      while (cursor < lines.length) {
+        const current = lines[cursor];
+        const next = lines[cursor + 1] ?? "";
+
+        if (!current.trim() && body.length === 0) {
+          cursor += 1;
+          continue;
+        }
+
+        if (!current.trim() && isCalloutBoundary(next)) {
+          break;
+        }
+
+        if (body.length > 0 && isCalloutBoundary(current)) {
+          break;
+        }
+
+        body.push(current);
+        cursor += 1;
+      }
+
+      pushCanonicalCallout(output, kind, body);
+      index = cursor - 1;
+      continue;
+    }
+
+    output.push(line);
+  }
+
+  return output.join("\n");
+}
+
+function isMarkdownBoundary(line: string): boolean {
+  return /^(#{1,6}\s+\S|[-*+]\s+\S|\d+\.\s+\S|>\s*\S|\|.+\||---\s*$)/.test(line.trim());
+}
+
+function isIndentedContextEcho(line: string): boolean {
+  if (!/^( {4,}|\t)/.test(line)) return false;
+  const trimmed = line.trim();
+  return Boolean(trimmed) && (
+    trimmed.startsWith("#") ||
+    trimmed.startsWith("**") ||
+    trimmed.startsWith(">") ||
+    trimmed.startsWith("|") ||
+    trimmed.length > 18
+  );
+}
+
+function looksLikeMermaidLine(line: string): boolean {
+  const trimmed = line.trim();
+  if (!trimmed) return true;
+  if (/^(mindmap|graph|flowchart|sequenceDiagram|classDiagram|stateDiagram(?:-v2)?|erDiagram|gantt|pie|journey|timeline|gitGraph)\b/i.test(trimmed)) return true;
+  if (/^\s/.test(line)) return true;
+  return /-->|---|==>|\||\[|\]|\(|\)|\{|\}/.test(trimmed);
+}
+
+function malformedMermaidFenceBody(line: string): string | null {
+  const match = line.match(/^\s*```\s*(.+)$/);
+  const body = match?.[1]?.trim() ?? "";
+  return body && looksLikeMermaidLine(body) ? body : null;
+}
+
+function repairMalformedMermaidFencesForRender(markdown: string): string {
+  if (!markdown.includes("```")) return markdown;
+
+  const lines = markdown.replace(/\r\n?/g, "\n").split("\n");
+  const output: string[] = [];
+  let inMermaid = false;
+  let afterMermaidClose = false;
+  let skippingArtifact = false;
+  let mermaidLines: string[] = [];
+
+  const flushMermaid = () => {
+    while (mermaidLines.length > 0 && !mermaidLines[0].trim()) mermaidLines.shift();
+    while (mermaidLines.length > 0 && !mermaidLines[mermaidLines.length - 1].trim()) mermaidLines.pop();
+    if (mermaidLines.length > 0) {
+      if (
+        !/^(mindmap|graph|flowchart|sequenceDiagram|classDiagram|stateDiagram(?:-v2)?|erDiagram|gantt|pie|journey|timeline|gitGraph)\b/i.test(mermaidLines[0].trim()) &&
+        mermaidLines.some((line) => /-->|==>/.test(line))
+      ) {
+        mermaidLines.unshift("flowchart TD");
+      }
+      output.push("```mermaid", ...mermaidLines, "```");
+    }
+    mermaidLines = [];
+  };
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
+    const trimmed = line.trim();
+
+    if (skippingArtifact) {
+      if (!trimmed) continue;
+      if (isIndentedContextEcho(line) || malformedMermaidFenceBody(line)) continue;
+      if (trimmed.startsWith("```")) {
+        skippingArtifact = false;
+        afterMermaidClose = false;
+        continue;
+      }
+      if (isMarkdownBoundary(line)) {
+        skippingArtifact = false;
+        afterMermaidClose = false;
+        index -= 1;
+        continue;
+      }
+      continue;
+    }
+
+    if (!inMermaid) {
+      if (afterMermaidClose) {
+        if (isIndentedContextEcho(line) || malformedMermaidFenceBody(line)) {
+          skippingArtifact = true;
+          continue;
+        }
+        afterMermaidClose = false;
+      }
+
+      const start = line.match(/^\s*```\s*(mermaid|maymaid|mermaind|mermaide|mindmap|graph|flowchart|sequenceDiagram|classDiagram|stateDiagram(?:-v2)?|erDiagram|gantt|pie|journey|timeline|gitGraph)\s*$/i);
+      if (start?.[1]) {
+        const lang = start[1];
+        inMermaid = true;
+        mermaidLines = MERMAID_LANGUAGE_ALIASES.has(lang.toLowerCase()) ? [] : [lang];
+        continue;
+      }
+
+      const malformedBody = malformedMermaidFenceBody(line);
+      if (malformedBody) {
+        inMermaid = true;
+        mermaidLines = [malformedBody];
+        continue;
+      }
+
+      output.push(line);
+      continue;
+    }
+
+    if (trimmed.startsWith("```")) {
+      flushMermaid();
+      inMermaid = false;
+      afterMermaidClose = true;
+      continue;
+    }
+
+    if (mermaidLines.length > 0 && isMarkdownBoundary(line)) {
+      flushMermaid();
+      inMermaid = false;
+      afterMermaidClose = false;
+      index -= 1;
+      continue;
+    }
+
+    if (mermaidLines.length > 0 && !looksLikeMermaidLine(line)) {
+      flushMermaid();
+      inMermaid = false;
+      afterMermaidClose = false;
+      index -= 1;
+      continue;
+    }
+
+    mermaidLines.push(line.replace(/^(>\s*)+/, "").trimEnd());
+  }
+
+  if (inMermaid) flushMermaid();
+  return output.join("\n");
+}
+
+function preprocessMarkdownContent(content: string): string {
+  return repairMalformedMermaidFencesForRender(preprocessLaTeX(preprocessCalloutSyntax(content)));
+}
+
 function textToId(text: string): string {
   return text
     .toLowerCase()
@@ -256,6 +508,42 @@ function createHeadingIdFactory() {
     counts.set(base, next);
     return next === 1 ? base : `${base}-${next}`;
   };
+}
+
+function looksLikeGitConflictBlock(codeText: string): boolean {
+  return /^<<<<<<<[\s\S]*\n=======[\s\S]*\n>>>>>>>/m.test(codeText);
+}
+
+function renderGitConflictLines(codeText: string): ReactNode[] {
+  let region: "base" | "current" | "incoming" = "base";
+
+  return codeText.split("\n").map((line, index) => {
+    let lineClass = "border-transparent text-[#24292F]";
+
+    if (/^<<<<<<<(?:\s|$)/.test(line)) {
+      lineClass = "border-rose-300 bg-rose-50 text-rose-700 font-semibold";
+      region = "current";
+    } else if (/^=======$/.test(line)) {
+      lineClass = "border-amber-300 bg-amber-50 text-amber-700 font-semibold";
+      region = "incoming";
+    } else if (/^>>>>>>>(?:\s|$)/.test(line)) {
+      lineClass = "border-emerald-300 bg-emerald-50 text-emerald-700 font-semibold";
+      region = "base";
+    } else if (region === "current") {
+      lineClass = "border-rose-100 bg-rose-50/35 text-[#24292F]";
+    } else if (region === "incoming") {
+      lineClass = "border-emerald-100 bg-emerald-50/35 text-[#24292F]";
+    }
+
+    return (
+      <span
+        key={`${index}-${line}`}
+        className={cn("block min-h-[1.5rem] border-l-4 px-4 whitespace-pre", lineClass)}
+      >
+        {line || "\u00A0"}
+      </span>
+    );
+  });
 }
 
 function isAbsoluteAssetUrl(value: string): boolean {
@@ -424,14 +712,17 @@ function parseCallout(children: ReactNode): { kind: CalloutKind; body: ReactNode
   }
 
   const firstText = extractText(nodes[0]).trim();
-  const match = firstText.match(/^\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]$/i);
+  const match = firstText.match(/^\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\](?:\s+(.+))?$/i);
   if (!match) {
     return null;
   }
 
+  const inlineTitle = match[2]?.trim();
+  const body = inlineTitle ? [inlineTitle, ...nodes.slice(1)] : nodes.slice(1);
+
   return {
     kind: match[1].toLowerCase() as CalloutKind,
-    body: nodes.slice(1),
+    body,
   };
 }
 
@@ -442,7 +733,7 @@ export function MarkdownViewer({
   variant = "default",
   headingAnchors = false,
 }: MarkdownViewerProps) {
-  const processedContent = preprocessLaTeX(content);
+  const processedContent = preprocessMarkdownContent(content);
   const styles = VIEWER_STYLES[variant];
   const nextHeadingId = useMemo(() => createHeadingIdFactory(), [processedContent]);
 
@@ -498,22 +789,31 @@ export function MarkdownViewer({
         },
         code: ({ className, children }) => {
           const codeText = extractText(children).replace(/\n$/, "");
-          const language = className?.replace(/^language-/, "").trim().toLowerCase() ?? "";
+          const language =
+            className?.match(/\blanguage-([A-Za-z0-9_-]+)/)?.[1]?.trim().toLowerCase() ??
+            className?.trim().toLowerCase().replace(/^language-/, "") ??
+            "";
           const isBlock = Boolean(className) || codeText.includes("\n");
-          const looksLikeMermaid = /^(mindmap|flowchart|graph|sequenceDiagram|classDiagram|stateDiagram|erDiagram|gantt)\b/i.test(codeText.trim());
+          const normalizedCodeText = codeText.trim().replace(/^(maymaid|mermaind|mermaide)\b/i, "mermaid");
+          const looksLikeMermaid = /^(mermaid|mindmap|flowchart|graph|sequenceDiagram|classDiagram|stateDiagram|erDiagram|gantt|pie|journey|timeline|gitGraph)\b/i.test(normalizedCodeText);
 
-          if (language === "mermaid" || (!language && looksLikeMermaid)) {
-            return <MermaidBlock chart={codeText} variant={variant === "planner" ? "default" : variant} />;
+          if (MERMAID_LANGUAGE_ALIASES.has(language) || (!language && looksLikeMermaid)) {
+            const mermaidChart = normalizedCodeText.replace(/^mermaid\s*/i, "").trimStart() || codeText;
+            return <MermaidBlock chart={mermaidChart} variant={variant === "planner" ? "default" : variant} />;
           }
 
           if (isBlock) {
+            const shouldRenderConflictBlock = looksLikeGitConflictBlock(codeText);
+
             return (
               <div className={styles.codeShell}>
                 {language ? (
                   <div className={styles.codeLanguageBadge}>{language}</div>
                 ) : null}
-                <pre className={styles.codePre}>
-                  <code className={cn("font-mono", className)}>{children}</code>
+                <pre className={cn(styles.codePre, shouldRenderConflictBlock ? "px-0 py-3" : "")}>
+                  <code className={cn("font-mono", className)}>
+                    {shouldRenderConflictBlock ? renderGitConflictLines(codeText) : children}
+                  </code>
                 </pre>
               </div>
             );
