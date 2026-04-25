@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, TypedDict
+from typing import TypedDict
 
-if TYPE_CHECKING:
-    from app.workflows.support.knowledge_graph.incremental_sync import KnowledgeSyncReport
+from app.workflows.support.knowledge_graph.incremental_sync import KnowledgeSyncReport
 
 
 class DocsSyncState(TypedDict, total=False):
