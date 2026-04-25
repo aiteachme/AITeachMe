@@ -178,10 +178,8 @@ function getExamHistoryDifficulty(item: ExamHistoryItem) {
   return difficulty ? formatDifficultyLabel(difficulty) : null;
 }
 
-function getOptionKey(option: string) {
-  const cleaned = option.trim();
-  const match = cleaned.match(/^([A-Da-d])(?:[.)、．\s]|$)/);
-  return (match?.[1] ?? cleaned.slice(0, 1)).toUpperCase();
+function getOptionLabel(index: number) {
+  return String.fromCharCode(65 + index);
 }
 
 function splitMultiChoiceAnswer(value?: string | null) {
@@ -719,6 +717,10 @@ function ExamPaperWorkspace({ subjectId, paperId, backHref }: ExamPaperWorkspace
     () => unwrapOrvalResponse<ExamPaperDetailResponse>(examDetailQuery.data),
     [examDetailQuery.data],
   );
+  const generationErrorMessage = useMemo(() => {
+    const raw = paper?.selection_context?.error_message;
+    return typeof raw === "string" ? raw.trim() : "";
+  }, [paper?.selection_context]);
 
   useEffect(() => {
     if (!paper) return;
@@ -894,7 +896,9 @@ function ExamPaperWorkspace({ subjectId, paperId, backHref }: ExamPaperWorkspace
               {paper.status === "failed" && (
                 <div className="rounded-[28px] border border-rose-200 bg-rose-50 px-6 py-12 text-center text-sm text-rose-700">
                   <h2 className="text-lg font-semibold text-rose-950">试卷生成失败</h2>
-                  <p className="mt-2">后台生成题目时出错，请返回列表后重新生成。</p>
+                  <p className="mt-2">
+                    {generationErrorMessage || "后台生成题目时出错，请返回列表后重新生成。"}
+                  </p>
                 </div>
               )}
 
@@ -1046,8 +1050,9 @@ function ExamPaperWorkspace({ subjectId, paperId, backHref }: ExamPaperWorkspace
                               role={isMultipleChoice ? "group" : "radiogroup"}
                               aria-label={`第 ${item.item_order} 题选项`}
                             >
-                              {choiceOptions.map((option: string) => {
-                                const optionValue = isMultipleChoice ? getOptionKey(option) : option;
+                              {choiceOptions.map((option: string, optionIndex: number) => {
+                                const optionLabel = isTrueFalse ? option : getOptionLabel(optionIndex);
+                                const optionValue = isTrueFalse ? option : optionLabel;
                                 const isSelected = isMultipleChoice
                                   ? selectedMultiChoice.has(optionValue)
                                   : answerValue === optionValue;
@@ -1149,7 +1154,14 @@ function ExamPaperWorkspace({ subjectId, paperId, backHref }: ExamPaperWorkspace
                                           ? "[&_p]:text-white"
                                           : "[&_p]:text-slate-800"
                                     }`}>
-                                      <ExamMarkdown content={option} />
+                                      <div className="flex gap-3">
+                                        {!isTrueFalse && (
+                                          <span className="shrink-0 font-semibold">{optionLabel}.</span>
+                                        )}
+                                        <div className="min-w-0 flex-1">
+                                          <ExamMarkdown content={option} />
+                                        </div>
+                                      </div>
                                     </div>
                                   </button>
                                 );
@@ -1435,12 +1447,13 @@ export function ExamsPage() {
                         [group.key]: !current[group.key],
                       }))
                     }
-                    className="flex w-full items-center justify-between px-1 py-2 text-left"
+                    className="flex w-full items-center gap-5 px-1 py-2 text-left"
                   >
-                    <h3 className="text-lg font-semibold tracking-[-0.02em] text-slate-950 dark:text-slate-100">
+                    <h3 className="shrink-0 text-lg font-semibold tracking-[-0.02em] text-slate-950 dark:text-slate-100">
                       {group.title}({group.items.length})
                     </h3>
-                    <div className="grid h-10 w-10 place-items-center rounded-full text-slate-500 dark:text-slate-400">
+                    <div className="h-px flex-1 bg-slate-200 dark:bg-slate-800" />
+                    <div className="grid h-10 w-10 shrink-0 place-items-center rounded-full text-slate-500 dark:text-slate-400">
                       <ChevronDown
                         className={`h-5 w-5 transition-transform ${
                           expandedGroups[group.key] ? "rotate-180" : ""
@@ -1454,7 +1467,7 @@ export function ExamsPage() {
                       {group.items.length === 0 ? (
                         <div className="px-1 py-1 text-sm text-slate-500">这个分组下暂时没有考卷。</div>
                       ) : (
-                        <div className="grid grid-cols-1 gap-5 md:grid-cols-2 2xl:grid-cols-3">
+                        <div className="grid grid-cols-[repeat(auto-fill,minmax(250px,250px))] justify-start gap-5">
                           {group.items.map((item: ExamHistoryItem) => {
                             const isDeleting = deleteExamMutation.isPending && deleteExamMutation.variables === item.id;
 

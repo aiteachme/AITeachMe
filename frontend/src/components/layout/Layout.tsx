@@ -17,7 +17,7 @@ export function Layout() {
   const { pathname } = useLocation();
   const isElectron = isElectronRuntime();
   const isFullBleed = isFullBleedSubjectPath(pathname);
-  const isExamFocusPage = /^\/subject\/[^/]+\/exams\/[^/]+$/.test(pathname);
+  const isExamFocusPage = /^\/subject\/[^/]+\/exams\/\d+$/.test(pathname);
   const subjectId = pathname.match(/^\/subject\/([^/]+)/)?.[1] ?? null;
   const activeInteractionScope = useMemo<AiConversationScope | null>(() => {
     if (pathname === "/assistant") {
