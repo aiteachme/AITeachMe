@@ -230,7 +230,7 @@ async def run_parse_file_workflow(
             "lane": "fast_parse",
             "langsmith_run_name": RUN_NAME_FAST_PARSE,
             "user_id": user_id,
-            "subject": subject,
+            "requested_subject": subject,
             "file_id": file_id,
         },
     )

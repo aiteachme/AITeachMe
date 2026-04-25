@@ -281,12 +281,61 @@ def _drop_sqlite_legacy_schema(engine: sa.Engine) -> None:
     _drop_sqlite_removed_schema(engine)
 
 
+def _add_missing_sqlite_column(
+    connection: sa.Connection,
+    *,
+    table_name: str,
+    column_name: str,
+    column_sql: str,
+) -> None:
+    connection.execute(
+        sa.text(
+            f"ALTER TABLE {quote_sqlite_identifier(table_name)} "
+            f"ADD COLUMN {quote_sqlite_identifier(column_name)} {column_sql}"
+        )
+    )
+
+
+def _apply_sqlite_additive_schema_updates(engine: sa.Engine) -> None:
+    inspector = sa.inspect(engine)
+    existing_tables = set(inspector.get_table_names())
+    if "subject" not in existing_tables:
+        return
+
+    subject_columns = {
+        column["name"]
+        for column in inspector.get_columns("subject")
+    }
+    missing_subject_text_columns = [
+        column_name
+        for column_name in ("description", "user_intent")
+        if column_name not in subject_columns
+    ]
+    if not missing_subject_text_columns:
+        return
+
+    with engine.begin() as connection:
+        for column_name in missing_subject_text_columns:
+            _add_missing_sqlite_column(
+                connection,
+                table_name="subject",
+                column_name=column_name,
+                column_sql="TEXT NOT NULL DEFAULT ''",
+            )
+            logger.info(
+                "sqlite_subject_column_added",
+                table_name="subject",
+                column_name=column_name,
+            )
+
+
 def _ensure_local_sqlite_schema(engine: sa.Engine) -> sa.Engine:
     db_path = _get_db_path()
     if not db_path.exists():
         return engine
 
     _drop_sqlite_removed_schema(engine)
+    _apply_sqlite_additive_schema_updates(engine)
     drift = _inspect_sqlite_schema_drift(engine)
     if drift is None:
         return engine

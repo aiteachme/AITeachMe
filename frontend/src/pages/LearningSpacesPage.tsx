@@ -55,10 +55,10 @@ export function LearningSpacesPage() {
           <div className="space-y-3">
             <div className="inline-flex items-center gap-2 rounded-full bg-white/85 dark:bg-slate-800/85 px-3 py-1 text-xs font-medium text-slate-500 dark:text-slate-400 ring-1 ring-slate-200/80 dark:ring-slate-700/80 backdrop-blur">
               <LayoutGrid className="h-3.5 w-3.5" />
-              我的学习空间
+              学习空间
             </div>
             <div>
-              <h1 className="text-2xl font-semibold tracking-tight text-slate-900 dark:text-slate-100 sm:text-[32px]">我的学习空间</h1>
+              <h1 className="text-2xl font-semibold tracking-tight text-slate-900 dark:text-slate-100 sm:text-[32px]">学习空间</h1>
               <p className="mt-2 text-sm leading-6 text-slate-500 dark:text-slate-400">
                 这里直接展示你已经创建的学科，每个学科都是一张独立卡片。
               </p>

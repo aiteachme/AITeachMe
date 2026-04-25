@@ -14254,12 +14254,26 @@
             "title": "Name",
             "description": "展示名称。可留空，Planner 会在首次对话后自动命名。",
             "default": ""
+          },
+          "description": {
+            "type": "string",
+            "title": "Description",
+            "description": "学科简单介绍。",
+            "default": ""
+          },
+          "user_intent": {
+            "type": "string",
+            "title": "User Intent",
+            "description": "用户目标/意图描述。",
+            "default": ""
           }
         },
         "type": "object",
         "title": "SubjectCreateRequest",
         "example": {
-          "name": ""
+          "description": "",
+          "name": "",
+          "user_intent": ""
         }
       },
       "SubjectDeleteData": {
@@ -14423,6 +14437,16 @@
             "title": "Name",
             "description": "展示名称。"
           },
+          "description": {
+            "type": "string",
+            "title": "Description",
+            "description": "学科简单介绍。"
+          },
+          "user_intent": {
+            "type": "string",
+            "title": "User Intent",
+            "description": "用户目标/意图描述。"
+          },
           "icon_key": {
             "anyOf": [
               {
@@ -14453,6 +14477,8 @@
           "id",
           "subject_id",
           "name",
+          "description",
+          "user_intent",
           "created_at",
           "updated_at"
         ],
@@ -14646,16 +14672,46 @@
             "description": "学科外部标识。"
           },
           "name": {
-            "type": "string",
-            "minLength": 1,
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Name",
             "description": "展示名称。"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description",
+            "description": "学科简单介绍。"
+          },
+          "user_intent": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User Intent",
+            "description": "用户目标/意图描述。"
           }
         },
         "type": "object",
         "required": [
-          "subject_id",
-          "name"
+          "subject_id"
         ],
         "title": "SubjectUpdateRequest"
       },

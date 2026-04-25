@@ -13,6 +13,19 @@ type MarkdownViewerVariant = "default" | "document" | "planner";
 type CalloutKind = "note" | "tip" | "important" | "warning" | "caution";
 const CALLOUT_PATTERN = "note|tip|important|warning|caution";
 const MERMAID_LANGUAGE_ALIASES = new Set(["mermaid", "maymaid", "mermaind", "mermaide"]);
+const BLANK_TOKEN = "{{blank}}";
+const BLANK_NODE_CLASS =
+  "mx-1 inline-block h-[0.9em] min-w-16 border-b-2 border-current align-baseline";
+
+type MarkdownAstNode = {
+  type?: string;
+  value?: string;
+  children?: MarkdownAstNode[];
+  data?: {
+    hName?: string;
+    hProperties?: Record<string, unknown>;
+  };
+};
 
 interface MarkdownViewerProps {
   content: string;
@@ -229,7 +242,55 @@ export function preprocessLaTeX(content: string): string {
   let processed = typeof content === "string" ? content : String(content);
   processed = processed.replace(/\\\[([\s\S]*?)\\\]/g, "$$$$$1$$$$");
   processed = processed.replace(/\\\(([\s\S]*?)\\\)/g, "$$$1$$");
+  processed = processed.replace(/\\text\{(_+)\}/g, (_match, underscores: string) => {
+    return `\\text{${"\\_".repeat(underscores.length)}}`;
+  });
   return processed;
+}
+
+function createBlankNode(): MarkdownAstNode {
+  return {
+    type: "blank",
+    data: {
+      hName: "span",
+      hProperties: {
+        "aria-hidden": "true",
+        className: BLANK_NODE_CLASS,
+        "data-blank": "true",
+      },
+    },
+    children: [{ type: "text", value: " " }],
+  };
+}
+
+function remarkBlankTokens() {
+  return (tree: MarkdownAstNode) => {
+    const visit = (node: MarkdownAstNode) => {
+      const children = node.children;
+      if (!Array.isArray(children)) return;
+
+      for (let index = 0; index < children.length; index += 1) {
+        const child = children[index];
+        if (child.type === "text" && typeof child.value === "string" && child.value.includes(BLANK_TOKEN)) {
+          const parts = child.value.split(BLANK_TOKEN);
+          const replacement: MarkdownAstNode[] = [];
+          parts.forEach((part, partIndex) => {
+            if (part) replacement.push({ type: "text", value: part });
+            if (partIndex < parts.length - 1) replacement.push(createBlankNode());
+          });
+          children.splice(index, 1, ...replacement);
+          index += replacement.length - 1;
+          continue;
+        }
+
+        if (child.type !== "math" && child.type !== "inlineMath") {
+          visit(child);
+        }
+      }
+    };
+
+    visit(tree);
+  };
 }
 
 function trimBlankLines(lines: string[]): string[] {
@@ -756,7 +817,7 @@ export function MarkdownViewer({
 
   return (
     <ReactMarkdown
-      remarkPlugins={[remarkGfm, remarkMath]}
+      remarkPlugins={[remarkGfm, remarkMath, remarkBlankTokens]}
       rehypePlugins={[rehypeKatex, rehypeHighlight]}
       components={{
         h1: makeHeading(1),

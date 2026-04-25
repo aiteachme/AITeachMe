@@ -4,13 +4,12 @@ import {
   ArrowLeft,
   ArrowRight,
   BookOpen,
-  CalendarDays,
   ChevronDown,
-  ChevronRight,
   FileText,
   GraduationCap,
   Layers3,
   Loader2,
+  MoreVertical,
   Plus,
   Sparkles,
   Tags,
@@ -53,39 +52,6 @@ const DIFFICULTIES = [
   { value: "medium", label: "标准" },
   { value: "hard", label: "挑战" },
 ] as const;
-
-const STATUS_META: Record<string, { label: string; tone: string; accent: string }> = {
-  generating: {
-    label: "生成中",
-    tone: "bg-violet-50 text-violet-700 ring-1 ring-inset ring-violet-200",
-    accent: "from-violet-300 via-sky-300 to-emerald-300",
-  },
-  ready: {
-    label: "待作答",
-    tone: "bg-amber-50 text-amber-700 ring-1 ring-inset ring-amber-200",
-    accent: "from-amber-300 via-orange-300 to-pink-300",
-  },
-  draft: {
-    label: "待完成",
-    tone: "bg-amber-50 text-amber-700 ring-1 ring-inset ring-amber-200",
-    accent: "from-amber-300 via-orange-300 to-pink-300",
-  },
-  submitted: {
-    label: "已提交",
-    tone: "bg-sky-50 text-sky-700 ring-1 ring-inset ring-sky-200",
-    accent: "from-sky-300 via-cyan-300 to-blue-300",
-  },
-  graded: {
-    label: "已完成",
-    tone: "bg-emerald-50 text-emerald-700 ring-1 ring-inset ring-emerald-200",
-    accent: "from-emerald-300 via-teal-300 to-cyan-300",
-  },
-  failed: {
-    label: "生成失败",
-    tone: "bg-rose-50 text-rose-700 ring-1 ring-inset ring-rose-200",
-    accent: "from-rose-300 via-orange-300 to-slate-300",
-  },
-};
 
 interface ExamStudyGuideFocusUnit {
   knowledge_unit_id?: number | null;
@@ -207,6 +173,11 @@ function formatDifficultyLabel(value: string) {
   return DIFFICULTIES.find((item) => item.value === value)?.label ?? value;
 }
 
+function getExamHistoryDifficulty(item: ExamHistoryItem) {
+  const difficulty = (item as ExamHistoryItem & { difficulty?: string | null }).difficulty;
+  return difficulty ? formatDifficultyLabel(difficulty) : null;
+}
+
 function getOptionKey(option: string) {
   const cleaned = option.trim();
   const match = cleaned.match(/^([A-Da-d])(?:[.)、．\s]|$)/);
@@ -221,11 +192,6 @@ function splitMultiChoiceAnswer(value?: string | null) {
       .map((item) => item.trim().replace(/[.)、．]$/g, "").toUpperCase())
       .filter(Boolean),
   );
-}
-
-function getStatusMeta(status?: string | null) {
-  if (!status) return STATUS_META.draft;
-  return STATUS_META[status] ?? STATUS_META.draft;
 }
 
 function buildExamTitle(item: Pick<ExamHistoryItem, "exam_mode" | "created_at">) {
@@ -260,6 +226,131 @@ function HeroOrb() {
   );
 }
 
+function ExamPaperCard({
+  item,
+  isDeleting,
+  onOpen,
+  onDelete,
+}: {
+  item: ExamHistoryItem;
+  isDeleting: boolean;
+  onOpen: () => void;
+  onDelete: (event: MouseEvent<HTMLButtonElement>) => void;
+}) {
+  const createdDate = item.created_at
+    ? new Intl.DateTimeFormat("zh-CN", {
+        month: "numeric",
+        day: "numeric",
+      }).format(new Date(item.created_at))
+    : "-";
+  const difficultyLabel = getExamHistoryDifficulty(item);
+
+  const handleCardKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.key !== "Enter" && event.key !== " ") return;
+    event.preventDefault();
+    onOpen();
+  };
+
+  return (
+    <article
+      role="button"
+      tabIndex={0}
+      onClick={onOpen}
+      onKeyDown={handleCardKeyDown}
+      className="group cursor-pointer rounded-[22px] bg-transparent p-1.5 text-left transition duration-200 hover:-translate-y-0.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2"
+    >
+      <div className="relative mx-auto aspect-[210/297] w-full max-w-[250px] drop-shadow-[0_16px_24px_rgba(15,23,42,0.10)] transition group-hover:drop-shadow-[0_22px_34px_rgba(15,23,42,0.14)]">
+        <div
+          className="absolute inset-0 flex flex-col overflow-hidden rounded-[18px] border border-slate-200 bg-white px-4 py-5 text-slate-950 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-100"
+          style={{ clipPath: "polygon(0 0, calc(100% - 48px) 0, 100% 48px, 100% 100%, 0 100%)" }}
+        >
+
+        <div className="relative z-10 px-3 pt-2 text-center">
+          <h3 className="mx-auto line-clamp-2 max-w-[180px] text-base font-semibold leading-snug tracking-[-0.02em] text-slate-950 dark:text-slate-100">
+            {buildExamTitle(item)}
+          </h3>
+          <div className="mx-auto mt-2 h-px w-16 bg-slate-200 dark:bg-slate-700" />
+        </div>
+
+        <div className="relative z-10 mt-4 border-y border-slate-100 py-2 text-center text-xs font-semibold text-slate-600 dark:border-slate-800 dark:text-slate-300">
+          {item.total_items}题目 · {createdDate}
+          {difficultyLabel ? ` · ${difficultyLabel}` : ""}
+        </div>
+
+        <svg
+          className="pointer-events-none absolute inset-x-5 bottom-[62px] top-[136px] z-0 h-auto w-[calc(100%-2.5rem)] text-slate-300 dark:text-slate-700"
+          viewBox="0 0 210 205"
+          role="presentation"
+          aria-hidden="true"
+          preserveAspectRatio="none"
+        >
+          <g fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round">
+            <path strokeWidth="2.4" d="M10 13h90" />
+            <path strokeWidth="1.7" d="M10 28h128M10 42h105M10 56h118M10 70h92" />
+            <rect x="150" y="18" width="46" height="46" rx="5" strokeWidth="1.9" />
+            <path strokeWidth="1.7" d="M157 55l10-15 9 8 11-22" />
+            <circle cx="162" cy="35" r="3" fill="currentColor" stroke="none" />
+
+            <path strokeWidth="2.4" d="M10 101h82" />
+            <path strokeWidth="1.7" d="M10 116h148M10 130h126M10 144h138M10 158h110" />
+            <rect x="14" y="169" width="20" height="20" rx="3.5" strokeWidth="1.6" />
+            <path strokeWidth="1.6" d="M46 175h62M46 185h92" />
+
+            <path strokeWidth="2" d="M145 120c10-25 43-25 54-5s-6 48-33 46c-20-1-30-21-21-41Z" />
+            <path strokeWidth="1.5" d="M153 153l15-28 12 17 9-12 15 23" />
+          </g>
+        </svg>
+
+        <div className="relative z-10 mt-auto flex items-center justify-end gap-2 pt-3">
+          <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              size="icon"
+              variant="outline"
+              className="!h-8 !w-8 shrink-0 rounded-full border-slate-200 bg-white text-slate-900 hover:border-red-200 hover:bg-red-50 hover:text-red-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:hover:border-red-500/40 dark:hover:bg-red-950/30 dark:hover:text-red-300"
+              aria-label={`删除考卷 ${buildExamTitle(item)}`}
+              title="删除考卷"
+              disabled={isDeleting}
+              onClick={onDelete}
+            >
+              {isDeleting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+            </Button>
+            <button
+              type="button"
+              className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-slate-100 text-slate-600 transition hover:bg-slate-900 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-300 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:bg-slate-800 dark:text-slate-400 dark:hover:bg-slate-700"
+              aria-label={`展开考卷操作 ${buildExamTitle(item)}`}
+              title="更多操作"
+              onClick={(event) => {
+                event.stopPropagation();
+              }}
+            >
+              <MoreVertical className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+        </div>
+        <svg
+          className="pointer-events-none absolute right-0 top-0 z-30 h-12 w-12 overflow-visible drop-shadow-[-6px_7px_10px_rgba(15,23,42,0.18)]"
+          viewBox="0 0 48 48"
+          role="presentation"
+          aria-hidden="true"
+        >
+          <defs>
+            <linearGradient id="exam-paper-fold" x1="48" y1="0" x2="0" y2="48" gradientUnits="userSpaceOnUse">
+              <stop offset="0" stopColor="#d2dbe7" />
+              <stop offset="0.36" stopColor="#e7edf5" />
+              <stop offset="0.72" stopColor="#f7f9fc" />
+              <stop offset="1" stopColor="#ffffff" />
+            </linearGradient>
+          </defs>
+          <path d="M0 0L48 48H7Q0 48 0 41Z" fill="url(#exam-paper-fold)" stroke="#e2e8f0" strokeWidth="1" strokeLinejoin="round" />
+          <path d="M0 0L48 48" fill="none" stroke="#dbe3ee" strokeWidth="1" strokeLinecap="round" />
+          <path d="M1 2V40Q1 47 8 47H47" fill="none" stroke="#f8fafc" strokeWidth="0.75" strokeLinejoin="round" />
+        </svg>
+      </div>
+    </article>
+  );
+}
 function ExamMarkdown({
   content,
   className,
@@ -750,7 +841,7 @@ function ExamPaperWorkspace({ subjectId, paperId, backHref }: ExamPaperWorkspace
   });
 
   return (
-    <div className="relative min-h-[calc(100vh-4rem)]">
+    <div className="relative min-h-full">
       <div className="pointer-events-none fixed inset-0 -z-10 bg-[linear-gradient(180deg,#ffffff_0%,#f7f9fc_36%,#eef3f8_100%)]" />
       <ExamStageHeader
         currentStep={paper?.status === "graded" ? activeStage : 1}
@@ -1243,7 +1334,7 @@ export function ExamsPage() {
 
   if (!subjectId) {
     return (
-      <div className="min-h-[calc(100vh-4rem)] bg-[#f7f8fc] px-6 py-8">
+      <div className="min-h-full bg-[#f7f8fc] px-6 py-8">
         <div className="mx-auto max-w-5xl rounded-[28px] border border-amber-200 bg-amber-50 px-5 py-4 text-amber-900 shadow-sm">
           缺少学科标识，暂时无法加载考试中心。
         </div>
@@ -1253,7 +1344,7 @@ export function ExamsPage() {
 
   return (
     <>
-      <div className="min-h-[calc(100vh-4rem)] bg-[linear-gradient(180deg,#fbfcff_0%,#f4f7fb_55%,#eef3f8_100%)] dark:bg-none dark:bg-slate-900 px-4 py-6 sm:px-6 lg:px-8">
+      <div className="min-h-full bg-[linear-gradient(180deg,#fbfcff_0%,#f4f7fb_55%,#eef3f8_100%)] dark:bg-none dark:bg-slate-900 px-4 py-6 sm:px-6 lg:px-8">
         <div className="mx-auto flex max-w-7xl flex-col gap-6">
           <section className="overflow-hidden px-2 py-4 sm:px-4 lg:px-6">
             <div className="flex flex-col gap-8 lg:flex-row lg:items-center lg:justify-between">
@@ -1271,31 +1362,42 @@ export function ExamsPage() {
                   一键创建新的练习卷，继续完成未做完的测试，也可以回看已经生成过的考卷与得分记录。
                 </p>
 
-                <div className="mt-8 flex flex-wrap gap-3">
-                  <Button
-                    size="lg"
-                    className="h-14 w-full rounded-full bg-black px-7 text-base font-semibold text-white hover:bg-slate-900 sm:w-auto"
-                    onClick={() => setIsCreateOpen(true)}
-                  >
-                    <Plus className="h-5 w-5" />
-                    创建新考卷
-                  </Button>
+                <div className="mt-8 flex flex-wrap gap-7">
+                  <div className="inline-flex h-12 w-full overflow-hidden rounded-[10px] bg-black text-white shadow-sm transition-colors hover:bg-slate-900 sm:w-auto">
+                    <button
+                      type="button"
+                      className="flex min-w-0 flex-1 items-center justify-center gap-2 px-6 text-sm font-semibold focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2 focus-visible:ring-offset-white active:scale-[0.99] sm:flex-none"
+                      onClick={() => setIsCreateOpen(true)}
+                    >
+                      <Plus className="h-4 w-4 shrink-0" />
+                      <span className="whitespace-nowrap">创建新考卷</span>
+                    </button>
+                    <button
+                      type="button"
+                      className="grid h-full w-10 shrink-0 place-items-center border-l border-white/20 text-white/85 transition-colors hover:bg-white/10 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
+                      onClick={() => setIsCreateOpen(true)}
+                      aria-label="更多考卷设置"
+                      title="更多设置"
+                    >
+                      <MoreVertical className="h-4 w-4" />
+                    </button>
+                  </div>
                   <Button
                     size="lg"
                     variant="outline"
-                    className="h-14 w-full rounded-full px-6 text-base font-semibold text-slate-800 dark:border-slate-700 dark:text-slate-200 sm:w-auto"
+                    className="!h-12 w-full rounded-[10px] px-6 text-sm font-semibold text-slate-800 dark:border-slate-700 dark:text-slate-200 sm:w-auto"
                     onClick={() => navigate(`/subject/${subjectId}/exams/question-templates`)}
                   >
-                    <BookOpen className="h-5 w-5" />
+                    <BookOpen className="h-4 w-4" />
                     题库查看
                   </Button>
                   <Button
                     size="lg"
                     variant="outline"
-                    className="h-14 w-full rounded-full px-6 text-base font-semibold text-slate-800 dark:border-slate-700 dark:text-slate-200 sm:w-auto"
+                    className="!h-12 w-full rounded-[10px] px-6 text-sm font-semibold text-slate-800 dark:border-slate-700 dark:text-slate-200 sm:w-auto"
                     onClick={() => navigate(`/subject/${subjectId}/exams/question-types`)}
                   >
-                    <Tags className="h-5 w-5" />
+                    <Tags className="h-4 w-4" />
                     题型查看
                   </Button>
                 </div>
@@ -1348,119 +1450,35 @@ export function ExamsPage() {
                   </button>
 
                   {expandedGroups[group.key] && (
-                    <div className="space-y-4">
+                    <div>
                       {group.items.length === 0 ? (
                         <div className="px-1 py-1 text-sm text-slate-500">这个分组下暂时没有考卷。</div>
                       ) : (
-                        group.items.map((item: ExamHistoryItem) => {
-                          const statusMeta = getStatusMeta(item.status);
-                          const scoreText =
-                            item.score_obtained != null && item.total_score != null
-                              ? `${item.score_obtained}/${item.total_score}`
-                              : "未评分";
-                          const isDeleting = deleteExamMutation.isPending && deleteExamMutation.variables === item.id;
+                        <div className="grid grid-cols-1 gap-5 md:grid-cols-2 2xl:grid-cols-3">
+                          {group.items.map((item: ExamHistoryItem) => {
+                            const isDeleting = deleteExamMutation.isPending && deleteExamMutation.variables === item.id;
 
-                          const handleDeleteExam = (event: MouseEvent<HTMLButtonElement>) => {
-                            event.stopPropagation();
-                            if (isDeleting) return;
-                            const confirmed = window.confirm(
-                              `确认删除这份考卷吗？\n\n${buildExamTitle(item)}\n\n删除后无法恢复。`,
+                            const handleDeleteExam = (event: MouseEvent<HTMLButtonElement>) => {
+                              event.stopPropagation();
+                              if (isDeleting) return;
+                              const confirmed = window.confirm(
+                                `确认删除这份考卷吗？\n\n${buildExamTitle(item)}\n\n删除后无法恢复。`,
+                              );
+                              if (!confirmed) return;
+                              deleteExamMutation.mutate(item.id);
+                            };
+
+                            return (
+                              <ExamPaperCard
+                                key={item.id}
+                                item={item}
+                                isDeleting={isDeleting}
+                                onOpen={() => navigate(`/subject/${subjectId}/exams/${item.id}`)}
+                                onDelete={handleDeleteExam}
+                              />
                             );
-                            if (!confirmed) return;
-                            deleteExamMutation.mutate(item.id);
-                          };
-
-                          const handleOpenExam = () => {
-                            navigate(`/subject/${subjectId}/exams/${item.id}`);
-                          };
-
-                          const handleCardKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
-                            if (event.key !== "Enter" && event.key !== " ") return;
-                            event.preventDefault();
-                            handleOpenExam();
-                          };
-
-                          return (
-                            <div
-                              key={item.id}
-                              role="button"
-                              tabIndex={0}
-                              onClick={handleOpenExam}
-                              onKeyDown={handleCardKeyDown}
-                              className="group w-full rounded-[28px] border border-slate-200/80 bg-[linear-gradient(180deg,#ffffff_0%,#fbfcff_100%)] px-5 py-5 text-left transition duration-200 hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-[0_18px_45px_rgba(15,23,42,0.08)] sm:px-6"
-                            >
-                              <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
-                                <div className="flex min-w-0 items-start gap-4">
-                                  <div className={`mt-1 grid h-14 w-14 shrink-0 place-items-center rounded-2xl bg-gradient-to-br ${statusMeta.accent} text-slate-950 shadow-lg`}>
-                                    <Target className="h-6 w-6" />
-                                  </div>
-
-                                  <div className="min-w-0">
-                                    <div className="flex flex-wrap items-center gap-3">
-                                      <h3 className="line-clamp-2 text-lg font-semibold tracking-[-0.03em] text-slate-950 dark:text-slate-100 sm:text-xl">
-                                        {buildExamTitle(item)}
-                                      </h3>
-                                      <span className={`rounded-full px-3 py-1 text-xs font-semibold ${statusMeta.tone}`}>
-                                        {statusMeta.label}
-                                      </span>
-                                    </div>
-
-                                    <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-2 text-sm text-slate-500 dark:text-slate-400">
-                                      <span className="inline-flex items-center gap-2">
-                                        <Layers3 className="h-4 w-4" />
-                                        {formatModeLabel(item.exam_mode)}
-                                      </span>
-                                      <span className="inline-flex items-center gap-2">
-                                        <FileText className="h-4 w-4" />
-                                        {item.total_items} 题
-                                      </span>
-                                      <span className="inline-flex items-center gap-2">
-                                        <CalendarDays className="h-4 w-4" />
-                                        创建于 {formatDateTime(item.created_at)}
-                                      </span>
-                                    </div>
-
-                                    <div className="mt-4 flex flex-wrap items-center gap-3">
-                                      <div className="rounded-full bg-slate-100 dark:bg-slate-800 px-3 py-1.5 text-sm font-medium text-slate-700 dark:text-slate-300">
-                                        得分：{scoreText}
-                                      </div>
-                                      <div className="rounded-full bg-slate-100 dark:bg-slate-800 px-3 py-1.5 text-sm font-medium text-slate-700 dark:text-slate-300">
-                                        学科：{item.subject}
-                                      </div>
-                                    </div>
-                                  </div>
-                                </div>
-
-                                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4 lg:justify-end">
-                                  <div className="flex items-center justify-between gap-3 sm:justify-start">
-                                    <div className="text-sm text-slate-400">
-                                      {item.graded_at
-                                        ? `最近批改 ${formatDateTime(item.graded_at)}`
-                                        : item.submitted_at
-                                          ? `最近提交 ${formatDateTime(item.submitted_at)}`
-                                          : "点击进入考试"}
-                                    </div>
-                                    <Button
-                                      type="button"
-                                      size="icon"
-                                      variant="outline"
-                                      className="h-12 w-12 rounded-full border-red-200 bg-white text-red-500 hover:bg-red-50 hover:text-red-600"
-                                      aria-label={`删除考卷 ${buildExamTitle(item)}`}
-                                      title="删除考卷"
-                                      disabled={isDeleting}
-                                      onClick={handleDeleteExam}
-                                    >
-                                      <Trash2 className="h-[18px] w-[18px]" />
-                                    </Button>
-                                  </div>
-                                  <div className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 transition group-hover:bg-slate-900 dark:group-hover:bg-slate-700 group-hover:text-white">
-                                    <ChevronRight className="h-5 w-5" />
-                                  </div>
-                                </div>
-                              </div>
-                            </div>
-                          );
-                        })
+                          })}
+                        </div>
                       )}
                     </div>
                   )}
@@ -1539,7 +1557,7 @@ function ExamCatalogShell({
 }) {
   const navigate = useNavigate();
   return (
-    <div className="min-h-[calc(100vh-4rem)] bg-[linear-gradient(180deg,#fbfcff_0%,#f4f7fb_55%,#eef3f8_100%)] dark:bg-none dark:bg-slate-900 px-4 py-6 sm:px-6 lg:px-8">
+    <div className="min-h-full bg-[linear-gradient(180deg,#fbfcff_0%,#f4f7fb_55%,#eef3f8_100%)] dark:bg-none dark:bg-slate-900 px-4 py-6 sm:px-6 lg:px-8">
       <div className="mx-auto flex max-w-7xl flex-col gap-6">
         <header className="px-2 py-4 sm:px-4 lg:px-6">
           <button
@@ -1588,7 +1606,7 @@ export function QuestionTemplatesPage() {
 
   if (!subjectId) {
     return (
-      <div className="min-h-[calc(100vh-4rem)] bg-[#f7f8fc] px-6 py-8">
+      <div className="min-h-full bg-[#f7f8fc] px-6 py-8">
         <div className="mx-auto max-w-5xl rounded-[28px] border border-amber-200 bg-amber-50 px-5 py-4 text-amber-900 shadow-sm">
           缺少学科标识，暂时无法加载题库。
         </div>
@@ -1710,7 +1728,7 @@ export function QuestionTypesPage() {
 
   if (!subjectId) {
     return (
-      <div className="min-h-[calc(100vh-4rem)] bg-[#f7f8fc] px-6 py-8">
+      <div className="min-h-full bg-[#f7f8fc] px-6 py-8">
         <div className="mx-auto max-w-5xl rounded-[28px] border border-amber-200 bg-amber-50 px-5 py-4 text-amber-900 shadow-sm">
           缺少学科标识，暂时无法加载题型。
         </div>
@@ -1819,7 +1837,7 @@ export function ExamPaperPage() {
 
   if (!subjectId || !examPaperId || Number.isNaN(Number(examPaperId))) {
     return (
-      <div className="min-h-[calc(100vh-4rem)] bg-[#f7f8fc] px-6 py-8">
+      <div className="min-h-full bg-[#f7f8fc] px-6 py-8">
         <div className="mx-auto max-w-5xl rounded-[28px] border border-amber-200 bg-amber-50 px-5 py-4 text-amber-900 shadow-sm">
           缺少考卷信息，暂时无法进入考试页面。
         </div>

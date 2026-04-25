@@ -13,12 +13,14 @@ _LATEX_FORMAT_RULES = (
     "- Inline math must use `$...$`; display math must use `$$...$$`.\n"
     "- Do not output bare TeX commands without `$` delimiters.\n"
     "- Do not use `\\(...\\)` or `\\[...\\]`.\n"
+    "- Never put `{{blank}}` inside `$...$` or `$$...$$` math.\n"
+    "- Do not create LaTeX blanks such as `\\text{___}`. Put `{{blank}}` in the surrounding body text instead.\n"
 )
 
 _QUESTION_TYPE_FORMAT_RULES = (
     "\nQuestion type formatting rules:\n"
     "- single_choice: provide exactly 4 distinct options; correct_answer must exactly equal one option.\n"
-    "- fill_blank: do not provide options; correct_answer must be short and unique.\n"
+    "- fill_blank: do not provide options; put the blank in the stem as `{{blank}}`; correct_answer must be short and unique.\n"
     "- Only return question_type values that appear in question_specs; do not invent unsupported types.\n"
 )
 
@@ -69,6 +71,7 @@ def build_exam_question_messages(
         "6. 题干不要直接泄露答案；解析不要空泛。\n"
         "7. 优先考查理解、辨析、应用、迁移，不要只考死记硬背。\n\n"
         "输入数据如下：\n"
+        "For fill_blank stems, use `{{blank}}` for the blank and keep it outside any LaTeX math delimiters.\n\n"
         f"{json.dumps(payload, ensure_ascii=False, indent=2)}"
     )
     return [
@@ -93,6 +96,7 @@ def build_text_exam_messages(
     user_prompt_text = (
         "请基于给定学习材料直接命制一组高质量试题。\n"
         "题目要覆盖核心概念、方法和易错点，避免重复，输出结构化结果。\n\n"
+        "For fill_blank stems, use `{{blank}}` for the blank and keep it outside any LaTeX math delimiters.\n\n"
         f"{json.dumps(payload, ensure_ascii=False, indent=2)}"
     )
     return [

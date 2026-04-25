@@ -47,6 +47,8 @@ async def create_subject_api(
             session,
             owner_user_id=user.user_id,
             name=body.name,
+            description=body.description,
+            user_intent=body.user_intent,
             icon_key=icon_key,
         )
     )
@@ -125,13 +127,15 @@ async def update_subject_api(
     user: CurrentUserContext = Depends(get_current_user_context),
     session: Session = Depends(get_db),
 ) -> ApiResponse[SubjectItem]:
-    icon_key = await choose_subject_icon_key(body.name)
+    icon_key = await choose_subject_icon_key(body.name) if body.name is not None else None
     return ok_response(
         update_subject_record(
             session,
             owner_user_id=user.user_id,
             subject_id=body.subject_id,
             name=body.name,
+            description=body.description,
+            user_intent=body.user_intent,
             icon_key=icon_key,
         )
     )

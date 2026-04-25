@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
+import sqlalchemy as sa
 from sqlmodel import Field, SQLModel
 
 from app.utils.time import utcnow
@@ -18,6 +19,8 @@ class Subject(SQLModel, table=True):
     user_id: str = Field(default="local", foreign_key="user.id", index=True)
     slug: str = Field(index=True, unique=True)
     name: str
+    description: str = Field(default="", sa_column=sa.Column(sa.Text(), nullable=False, default=""))
+    user_intent: str = Field(default="", sa_column=sa.Column(sa.Text(), nullable=False, default=""))
     normalized_name: str | None = Field(default=None, index=True)
     preferred_digest_mode: str | None = None
     preferred_digest_note: str | None = None

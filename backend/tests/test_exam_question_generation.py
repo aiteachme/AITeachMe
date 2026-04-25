@@ -187,3 +187,47 @@ def test_exam_question_draft_rejects_invalid_multiple_choice_answer():
             correct_answer="A,E",
             explanation="This should fail because E is not one of the available option labels.",
         )
+
+
+def test_exam_question_draft_escapes_text_underscore_placeholders():
+    draft = ExamQuestionDraft(
+        item_order=1,
+        knowledge_unit_id=401,
+        question_type="fill_blank",
+        difficulty="easy",
+        stem=r"从6个球中抽取2个，编号和为7的概率为 $\frac{\text{___}}{\text{___}}$。",
+        correct_answer=r"$\frac{\text{___}}{\text{___}}$",
+        explanation=r"分子和分母的空位应写成 $\text{___}$。",
+    )
+
+    assert r"\text{\_\_\_}" in draft.stem
+    assert r"\text{___}" not in draft.stem
+    assert r"\text{\_\_\_}" in draft.correct_answer
+    assert r"\text{\_\_\_}" in draft.explanation
+
+
+def test_exam_question_draft_rejects_blank_token_inside_latex():
+    with pytest.raises(ValueError, match=r"\{\{blank\}\} placeholders must stay outside LaTeX"):
+        ExamQuestionDraft(
+            item_order=1,
+            knowledge_unit_id=402,
+            question_type="fill_blank",
+            difficulty="easy",
+            stem=r"该概率可以写作 ${{blank}}$。",
+            correct_answer=r"$\frac{1}{3}$",
+            explanation="填空占位符只能放在正文里，不能放进 LaTeX 公式。",
+        )
+
+
+def test_exam_question_draft_accepts_blank_token_in_body_text():
+    draft = ExamQuestionDraft(
+        item_order=1,
+        knowledge_unit_id=403,
+        question_type="fill_blank",
+        difficulty="easy",
+        stem=r"该概率可以写作 {{blank}}。",
+        correct_answer=r"$\frac{1}{3}$",
+        explanation="正文里的占位符会由前端渲染成填空线。",
+    )
+
+    assert "{{blank}}" in draft.stem
