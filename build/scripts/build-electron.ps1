@@ -366,6 +366,9 @@ try {
     Set-ProcessEnv -Name "AITEACHME_ELECTRON_PRODUCT_NAME" -Value $productName
     Set-ProcessEnv -Name "AITEACHME_ELECTRON_APP_ID" -Value $appId
 
+    Write-Step "Generate frontend API client"
+    Invoke-External -File $npm -Arguments @("exec", "--", "orval", "--config", "orval.config.js") -WorkingDirectory $frontendDir
+
     Write-Step "Build frontend"
     Invoke-External -File $npm -Arguments @("run", "build") -WorkingDirectory $frontendDir
 
