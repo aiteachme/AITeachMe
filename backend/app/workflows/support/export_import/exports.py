@@ -37,9 +37,11 @@ from app.models import (
     QuestionTemplate,
     RawFile,
     RetrievalChunk,
+    SubjectFileLink,
     Subject,
     UserKnowledgeState,
 )
+from app.repositories.files_repo import list_all_raw_files_by_subject
 from app.schemas.export_import import (
     ExportOptions,
     ExportPreviewData,
@@ -119,6 +121,7 @@ class _TableSpec:
 TABLE_REGISTRY: list[_TableSpec] = [
     _TableSpec("subject", Subject, subject_field="slug"),
     _TableSpec("raw_file", RawFile),
+    _TableSpec("subject_file", SubjectFileLink, fk_remap={"raw_file_id": "raw_file"}),
     _TableSpec(
         "retrieval_chunk",
         RetrievalChunk,
@@ -218,7 +221,7 @@ def preview_export(session: Session, *, subject_slug: str) -> ExportPreviewData:
     """Build an export preview for one subject."""
 
     subject = _require_subject(session, subject_slug)
-    raw_files = session.exec(select(RawFile).where(RawFile.subject == subject_slug)).all()
+    raw_files = list_all_raw_files_by_subject(session, subject_slug)
     total_size = sum(r.file_size_bytes or 0 for r in raw_files)
 
     stats = ExportPreviewStats(
@@ -275,7 +278,8 @@ def export_subject(
                     ),
                 )
 
-            _pack_files(zf, subject_scope.namespace, options)
+            raw_files = list_all_raw_files_by_subject(session, subject_slug)
+            _pack_files(zf, subject_scope.namespace, options, raw_files=raw_files)
 
             manifest = _build_manifest(subject, exported, options)
             zf.writestr("manifest.json", manifest.model_dump_json(indent=2))
@@ -330,7 +334,9 @@ def _query_table(
             return stmt
         return stmt.order_by(order_col)
 
-    if spec.subject_field == "slug":
+    if spec.name == "raw_file":
+        rows = list_all_raw_files_by_subject(session, subject_slug)
+    elif spec.subject_field == "slug":
         rows = session.exec(_ordered(select(spec.model).where(spec.model.slug == subject_slug))).all()
     elif spec.subject_field:
         col = getattr(spec.model, spec.subject_field)
@@ -570,7 +576,13 @@ def _remap_id_list_field(
 # ===================================================================
 
 
-def _pack_files(zf: zipfile.ZipFile, namespace: str, options: ExportOptions) -> None:
+def _pack_files(
+    zf: zipfile.ZipFile,
+    namespace: str,
+    options: ExportOptions,
+    *,
+    raw_files: list[RawFile],
+) -> None:
     """Read files from ContentStore and pack them into the zip archive."""
     cs = get_content_store()
     skip_filenames = {
@@ -589,11 +601,28 @@ def _pack_files(zf: zipfile.ZipFile, namespace: str, options: ExportOptions) -> 
             if data is not None:
                 zf.writestr(f"{arc_prefix}/{relative}", data)
 
+    def _pack_key(key: str | None, archive_name: str) -> None:
+        if not key:
+            return
+        data = run_store_sync(cs.read_bytes, key, default=None)
+        if data is not None:
+            zf.writestr(archive_name, data)
+
     if options.include_raw_files:
-        _pack_prefix(f"{namespace}/raw_files/", "files/raw_files")
-        _pack_prefix(f"{namespace}/assets/", "files/assets")
+        for raw_file in raw_files:
+            if raw_file.id is None:
+                continue
+            extension = Path(raw_file.file_path or "").suffix or (
+                f".{raw_file.filetype}" if raw_file.filetype else ""
+            )
+            _pack_key(raw_file.file_path, f"files/raw_files/{raw_file.id}{extension}")
+            asset_prefix = raw_file.asset_dir.rstrip("/") + "/" if raw_file.asset_dir else f"{namespace}/assets/{raw_file.id}/"
+            _pack_prefix(asset_prefix, f"files/assets/{raw_file.id}")
     if options.include_raw_markdowns:
-        _pack_prefix(f"{namespace}/raw_markdowns/", "files/raw_markdowns")
+        for raw_file in raw_files:
+            if raw_file.id is None:
+                continue
+            _pack_key(raw_file.markdown_path, f"files/raw_markdowns/{raw_file.id}.md")
 
     # knowledge markdowns
     if options.include_knowledge_docs:

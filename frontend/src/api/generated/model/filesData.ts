@@ -8,10 +8,10 @@
 import type { FileRecord } from './fileRecord';
 
 /**
- * Aggregated subject files response.
+ * Aggregated files response.
  */
 export interface FilesData {
-  /** Subject slug. */
+  /** Subject slug, or library scope for unassigned files. */
   subject: string;
   /** Total file count. */
   total: number;

@@ -22,18 +22,21 @@ Thumbs.db
 .env.local
 .history
 
-# Root build workspace
-/build/*
-!/build/*.bat
-!/build/*.md
-!/build/scripts/
-!/build/scripts/*.ps1
-!/build/scripts/*.cjs
-/build/electron/
-/build/electron-local/
-/build/electron-remote/
-/build/tauri-local/
-/build/tauri-remote/
+# Root packaging workspace
+/packaging/*
+!/packaging/*.bat
+!/packaging/*.md
+!/packaging/scripts/
+!/packaging/scripts/*.ps1
+!/packaging/scripts/*.cjs
+/packaging/artifacts/
+/packaging/release/
+/packaging/electron/
+/packaging/electron-local/
+/packaging/electron-remote/
+/packaging/tauri-local/
+/packaging/tauri-remote/
+/build/
 
 # Tooling caches
 .langgraph_api/

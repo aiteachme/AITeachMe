@@ -159,12 +159,20 @@ function Copy-TauriArtifacts {
     }
 
     $projectVersion = Get-ProjectVersion -RepoRoot $RepoRoot
-    $outputDir = Join-Path $RepoRoot "build\artifacts"
-    New-Item -ItemType Directory -Path $outputDir -Force | Out-Null
-    Get-ChildItem -LiteralPath $outputDir -File -Filter "AiTeachMe-v*-$Flavor-*.*" -ErrorAction SilentlyContinue |
+    $artifactDir = Join-Path $RepoRoot "packaging\artifacts"
+    $releaseDir = Join-Path $RepoRoot "packaging\release"
+    New-Item -ItemType Directory -Path $artifactDir -Force | Out-Null
+    New-Item -ItemType Directory -Path $releaseDir -Force | Out-Null
+    Get-ChildItem -LiteralPath $releaseDir -File -Filter "AiTeachMe-v*-$Flavor-*.*" -ErrorAction SilentlyContinue |
         Remove-Item -Force
 
-    $directRoot = Join-Path $outputDir "direct"
+    $bundleArtifactDir = Join-Path $artifactDir $Flavor
+    if (Test-Path $bundleArtifactDir) {
+        Remove-Item -LiteralPath $bundleArtifactDir -Recurse -Force
+    }
+    New-Item -ItemType Directory -Path $bundleArtifactDir -Force | Out-Null
+
+    $directRoot = Join-Path $artifactDir "direct"
     $directDir = Join-Path $directRoot $Flavor
     if (Test-Path $directDir) {
         Remove-Item -LiteralPath $directDir -Recurse -Force
@@ -182,7 +190,10 @@ function Copy-TauriArtifacts {
     foreach ($artifact in $artifacts) {
         $artifactKind = if ($artifact.Extension -eq ".zip") { "bundle" } else { "installer" }
         $artifactName = "AiTeachMe-v$projectVersion-$Flavor-$artifactKind$($artifact.Extension)"
-        Copy-Item -LiteralPath $artifact.FullName -Destination (Join-Path $outputDir $artifactName) -Force
+        Copy-Item -LiteralPath $artifact.FullName -Destination (Join-Path $bundleArtifactDir $artifact.Name) -Force
+        if ($artifact.Extension -ne ".zip") {
+            Copy-Item -LiteralPath $artifact.FullName -Destination (Join-Path $releaseDir $artifactName) -Force
+        }
     }
 
     $releaseDir = Join-Path $RepoRoot "frontend\src-tauri\target\release"
@@ -204,16 +215,18 @@ function Copy-TauriArtifacts {
         Copy-Item -LiteralPath $sidecar -Destination (Join-Path $directDir "aiteachme-backend.exe") -Force
     }
 
-    $directZip = Join-Path $outputDir "AiTeachMe-v$projectVersion-$Flavor-direct.zip"
+    $directZip = Join-Path $releaseDir "AiTeachMe-v$projectVersion-$Flavor-direct.zip"
     if (Test-Path $directZip) {
         Remove-Item -LiteralPath $directZip -Force
     }
     Compress-Archive -Path (Join-Path $directDir "*") -DestinationPath $directZip -Force
 
     Write-Host ""
-    Write-Host "Tauri $Flavor artifacts:" -ForegroundColor Green
-    Get-ChildItem $outputDir -File | ForEach-Object {
+    Write-Host "Tauri $Flavor release packages:" -ForegroundColor Green
+    Get-ChildItem $releaseDir -File -Filter "AiTeachMe-v*-$Flavor-*.*" | ForEach-Object {
         Write-Host "  $($_.FullName)"
     }
+    Write-Host "Intermediate artifacts:" -ForegroundColor DarkGray
+    Write-Host "  $bundleArtifactDir"
     Write-Host "  $directDir"
 }

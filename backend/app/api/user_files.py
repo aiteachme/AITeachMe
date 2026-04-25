@@ -1,40 +1,39 @@
-"""File APIs."""
+"""User-level file library APIs."""
 
 from __future__ import annotations
 
 import mimetypes
+from pathlib import Path as FilePath
 
-from fastapi import APIRouter, Body, Depends, File, Form, Path, Request, UploadFile
+from fastapi import APIRouter, Body, Depends, File, Form, Path, Query, Request, UploadFile
 from fastapi.responses import RedirectResponse, Response
 from sqlmodel import Session
 
-from app.api.deps import CurrentUserContext, get_current_user_context, get_db, normalize_subject_slug
+from app.api.deps import CurrentUserContext, get_current_user_context, get_db
 from app.api.openapi import build_error_responses
+from app.repositories.files_repo import get_raw_file_by_uid_for_user
 from app.schemas.common import ApiResponse, ok_response
-from app.schemas.files import FileDeleteData, FileDeleteRequest, FileLinkRequest, FilesData, FilesUploadData
+from app.schemas.files import FileDeleteData, FileDeleteRequest, FilesData, FilesUploadData
 from app.shared.infra.storage import get_content_store
-from app.repositories.files_repo import link_raw_files_to_subject
+from app.utils.presenters import require_id
 from app.workflows.support.files import (
-    delete_files,
-    get_user_files_by_uid_or_raise,
-    list_subject_files,
+    delete_user_files,
+    list_user_files,
     run_parse_files_background,
     save_uploaded_files_and_request_parse,
 )
-from app.workflows.support.subjects import get_subject_record
 
-router = APIRouter(prefix="/api/v1/subjects/{subject}/files", tags=["files"])
+router = APIRouter(prefix="/api/v1/files", tags=["files"])
 
 
 @router.post(
     "/upload",
     response_model=ApiResponse[FilesUploadData],
-    summary="Upload files and start parsing immediately",
-    responses=build_error_responses([400, 404, 413, 422, 500]),
+    summary="Upload files to the user library and start parsing immediately",
+    responses=build_error_responses([400, 413, 422, 500]),
 )
-async def upload_files(
+async def upload_user_files(
     request: Request,
-    subject: str = Path(...),
     files: list[UploadFile] = File(...),
     parser_provider: str | None = Form(default=None),
     mineru_api_token: str | None = Form(default=None),
@@ -45,9 +44,6 @@ async def upload_files(
     user: CurrentUserContext = Depends(get_current_user_context),
     session: Session = Depends(get_db),
 ) -> ApiResponse[FilesUploadData]:
-    normalized_subject = normalize_subject_slug(subject)
-    get_subject_record(session, normalized_subject, owner_user_id=user.user_id)
-
     parse_request_metadata: dict[str, object] | None = None
     if parser_provider:
         parse_request_metadata = {
@@ -64,22 +60,22 @@ async def upload_files(
 
     data, parse_file_ids = await save_uploaded_files_and_request_parse(
         session,
-        subject=normalized_subject,
+        subject=None,
         owner_user_id=user.user_id,
         files=files,
         parse_request_metadata=parse_request_metadata,
     )
     if parse_file_ids:
+        registry_subject = f"files:{user.user_id}"
         request.app.state.background_task_registry.spawn(
             run_parse_files_background(
                 user_id=user.user_id,
-                subject=normalized_subject,
                 file_ids=parse_file_ids,
                 background_task_registry=request.app.state.background_task_registry,
             ),
             kind="files.parse",
-            subject=normalized_subject,
-            name=f"files.parse:{normalized_subject}",
+            subject=registry_subject,
+            name=f"files.parse:{registry_subject}",
         )
     return ok_response(data)
 
@@ -87,69 +83,36 @@ async def upload_files(
 @router.get(
     "",
     response_model=ApiResponse[FilesData],
-    summary="Get all subject files with full data",
-    responses=build_error_responses([400, 404, 500]),
+    summary="Get user library files with full data",
+    responses=build_error_responses([400, 500]),
 )
-async def list_files_api(
-    subject: str = Path(...),
+async def list_user_files_api(
+    file_uids: list[str] | None = Query(default=None),
     user: CurrentUserContext = Depends(get_current_user_context),
     session: Session = Depends(get_db),
 ) -> ApiResponse[FilesData]:
-    normalized_subject = normalize_subject_slug(subject)
-    get_subject_record(session, normalized_subject, owner_user_id=user.user_id)
-    return ok_response(list_subject_files(session, subject=normalized_subject))
-
-
-@router.post(
-    "/link",
-    response_model=ApiResponse[FilesData],
-    summary="Link existing user files to a subject",
-    responses=build_error_responses([400, 404, 422, 500]),
-)
-async def link_files_api(
-    subject: str = Path(...),
-    body: FileLinkRequest = Body(...),
-    user: CurrentUserContext = Depends(get_current_user_context),
-    session: Session = Depends(get_db),
-) -> ApiResponse[FilesData]:
-    normalized_subject = normalize_subject_slug(subject)
-    get_subject_record(session, normalized_subject, owner_user_id=user.user_id)
-    raw_files = get_user_files_by_uid_or_raise(
-        session,
-        owner_user_id=user.user_id,
-        file_uids=list(dict.fromkeys(body.file_uids)),
-    )
-    link_raw_files_to_subject(
-        session,
-        owner_user_id=user.user_id,
-        subject=normalized_subject,
-        raw_files=raw_files,
-    )
-    return ok_response(list_subject_files(session, subject=normalized_subject))
+    unique_file_uids = list(dict.fromkeys(file_uids or [])) or None
+    return ok_response(list_user_files(session, owner_user_id=user.user_id, file_uids=unique_file_uids))
 
 
 @router.post(
     "/delete",
     response_model=ApiResponse[FileDeleteData],
-    summary="Delete files",
+    summary="Delete files from the user library",
     responses=build_error_responses([400, 404, 409, 422, 500]),
 )
-async def delete_files_api(
-    subject: str = Path(...),
+async def delete_user_files_api(
     body: FileDeleteRequest = Body(...),
     user: CurrentUserContext = Depends(get_current_user_context),
     session: Session = Depends(get_db),
 ) -> ApiResponse[FileDeleteData]:
-    normalized_subject = normalize_subject_slug(subject)
-    get_subject_record(session, normalized_subject, owner_user_id=user.user_id)
     file_uids = [body.file_uid] if body.file_uid is not None else []
     if body.file_uids:
         file_uids.extend(body.file_uids)
     unique_file_uids = list(dict.fromkeys(file_uids))
     return ok_response(
-        await delete_files(
+        await delete_user_files(
             session,
-            subject=normalized_subject,
             owner_user_id=user.user_id,
             file_uids=unique_file_uids,
         )
@@ -157,30 +120,30 @@ async def delete_files_api(
 
 
 @router.get(
-    "/assets/{asset_path:path}",
-    summary="Serve file asset (images, etc.)",
+    "/assets/{file_uid}/{asset_path:path}",
+    summary="Serve a parsed asset for a user-library file",
     responses=build_error_responses([404, 500]),
 )
-async def serve_file_asset(
-    subject: str = Path(...),
+async def serve_user_file_asset(
+    file_uid: str = Path(...),
     asset_path: str = Path(...),
     user: CurrentUserContext = Depends(get_current_user_context),
     session: Session = Depends(get_db),
 ) -> Response:
-    """代理访问文件资产。
+    raw_file = get_raw_file_by_uid_for_user(session, user_id=user.user_id, file_uid=file_uid)
+    if raw_file is None:
+        return Response(status_code=404, content=b"Not found")
 
-    cloud 模式：优先 302 到 CDN，无 CDN 时流式返回。
-    local 模式：从本地文件系统返回。
-    """
-    normalized_subject = normalize_subject_slug(subject)
-    get_subject_record(session, normalized_subject, owner_user_id=user.user_id)
-
-    cs = get_content_store()
-    subject_scope = cs.subject_scope(user_id=user.user_id, subject=normalized_subject)
+    raw_file_id = require_id(raw_file.id, "RawFile.id")
+    base_prefix = raw_file.asset_dir or get_content_store().user_file_scope(user_id=user.user_id).asset_prefix(raw_file_id)
     normalized_asset_path = asset_path.lstrip("/\\")
-    storage_key = f"{subject_scope.namespace}/assets/{normalized_asset_path}"
+    if not normalized_asset_path or ".." in FilePath(normalized_asset_path).parts:
+        return Response(status_code=404, content=b"Not found")
+
+    storage_key = f"{base_prefix.rstrip('/')}/{normalized_asset_path}"
     media_type = mimetypes.guess_type(asset_path)[0] or "application/octet-stream"
 
+    cs = get_content_store()
     public_url = cs.public_url(storage_key)
     if public_url:
         return RedirectResponse(public_url)

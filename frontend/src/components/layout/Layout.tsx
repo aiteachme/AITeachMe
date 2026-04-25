@@ -19,6 +19,7 @@ export function Layout() {
   const isFullBleed = isFullBleedSubjectPath(pathname);
   const isExamFocusPage = /^\/subject\/[^/]+\/exams\/[^/]+$/.test(pathname);
   const subjectId = pathname.match(/^\/subject\/([^/]+)/)?.[1] ?? null;
+  const assistantSubjectId = pathname === "/assistant" ? "global" : subjectId;
 
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const settingsOverview = useSyncExternalStore(
@@ -41,7 +42,7 @@ export function Layout() {
 
   return (
     <>
-      <SubjectAiAssistantProvider subjectId={subjectId}>
+      <SubjectAiAssistantProvider subjectId={assistantSubjectId}>
         <div
           className={cn(
             "app-shell relative flex min-h-0 overflow-hidden bg-[#fafafa] selection:bg-zinc-200 dark:bg-[#0b0f19] dark:selection:bg-slate-700",

@@ -278,7 +278,8 @@ $repoRoot = Resolve-RepoRoot
 $backendDir = Join-Path $repoRoot "backend"
 $frontendDir = Join-Path $repoRoot "frontend"
 $frontendReleaseDir = Join-Path $frontendDir "release"
-$finalReleaseDir = Join-Path $repoRoot "build\artifacts"
+$packagingArtifactsDir = Join-Path $repoRoot "packaging\artifacts"
+$finalReleaseDir = Join-Path $repoRoot "packaging\release"
 $backendDistDir = Join-Path $backendDir "dist\aiteachme-backend"
 $projectVersion = Get-ProjectVersion -RepoRoot $repoRoot
 $productName = if ($Flavor -eq "local") { "AiTeachMe Electron Local" } else { "AiTeachMe Electron Remote" }
@@ -380,7 +381,7 @@ try {
         "-ExecutionPolicy",
         "Bypass",
         "-File",
-        (Join-Path $repoRoot "build\scripts\build-electron-portable-nsis.ps1"),
+        (Join-Path $repoRoot "packaging\scripts\build-electron-portable-nsis.ps1"),
         "-RepoRoot",
         $repoRoot,
         "-ProductName",
@@ -391,7 +392,11 @@ finally {
     Restore-ProcessEnv -PreviousValues $previousEnv
 }
 
-Write-Step "Collect artifacts"
+Write-Step "Collect release packages"
+New-Item -ItemType Directory -Path $packagingArtifactsDir -Force | Out-Null
+$electronArtifactDir = Join-Path $packagingArtifactsDir "electron-$Flavor"
+Remove-DirectoryIfExists -Path $electronArtifactDir -RepoRoot $repoRoot
+New-Item -ItemType Directory -Path $electronArtifactDir -Force | Out-Null
 New-Item -ItemType Directory -Path $finalReleaseDir -Force | Out-Null
 Get-ChildItem -LiteralPath $finalReleaseDir -File -Filter "AiTeachMe-v*-electron-$Flavor-*.*" -ErrorAction SilentlyContinue |
     Remove-Item -Force
@@ -416,9 +421,13 @@ if ($null -eq $portable) {
 
 $installerOutput = Join-Path $finalReleaseDir "AiTeachMe-v$projectVersion-electron-$Flavor-installer$($installer.Extension)"
 $portableOutput = Join-Path $finalReleaseDir "AiTeachMe-v$projectVersion-electron-$Flavor-portable$($portable.Extension)"
+$installerArtifact = Join-Path $electronArtifactDir $installer.Name
+$portableArtifact = Join-Path $electronArtifactDir $portable.Name
 
-Copy-Item -LiteralPath $installer.FullName -Destination $installerOutput -Force
-Copy-Item -LiteralPath $portable.FullName -Destination $portableOutput -Force
+Copy-Item -LiteralPath $installer.FullName -Destination $installerArtifact -Force
+Copy-Item -LiteralPath $portable.FullName -Destination $portableArtifact -Force
+Copy-Item -LiteralPath $installerArtifact -Destination $installerOutput -Force
+Copy-Item -LiteralPath $portableArtifact -Destination $portableOutput -Force
 
 Write-Host ""
 Write-Host "Done." -ForegroundColor Green

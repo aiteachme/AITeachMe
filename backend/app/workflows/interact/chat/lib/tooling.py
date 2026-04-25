@@ -48,6 +48,8 @@ def resolve_interact_tool_plan(
 
     if execution_mode != InteractExecutionMode.PLAN_EXECUTE:
         return InteractToolPlan(tool_names=[])
+    if not subject.strip():
+        return InteractToolPlan(tool_names=[])
 
     # When retrieval already found enough material we still allow one search
     # turn; the model can skip it, and the final answer remains token-streamed.

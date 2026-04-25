@@ -1,13 +1,13 @@
 # Tauri 桌面端打包
 
-除了 Electron 的本地/远程两种桌面端包，本项目也支持两种 Tauri 桌面端包。Electron 打包说明见 `build\desktop-electron.md`。
+除了 Electron 的本地/远程两种桌面端包，本项目也支持两种 Tauri 桌面端包。Electron 打包说明见 `packaging\desktop-electron.md`。
 
 ## 远程后端模式
 
 远程模式只打包 Vite 前端和 Tauri 壳，不包含 Python，也不包含本地 FastAPI 后端，因此这是安装包体积最小的模式。
 
 ```powershell
-.\build\tauri-remote.bat -ApiUrl https://api.example.com
+.\packaging\tauri-remote.bat -ApiUrl https://api.example.com
 ```
 
 你也可以先设置环境变量 `AITEACHME_REMOTE_API_URL`，然后省略 `-ApiUrl` 参数。
@@ -19,13 +19,13 @@
 本地模式会打包 Vite 前端、Tauri 壳，以及 PyInstaller 生成的 onefile 后端 sidecar。它不需要内置 Chromium，所以通常比 Electron 小，但仍然会包含 Python 运行时和后端依赖。
 
 ```powershell
-.\build\tauri-local.bat
+.\packaging\tauri-local.bat
 ```
 
 本地后端默认监听 `127.0.0.1:9020`。如果需要使用其他端口，可以这样构建：
 
 ```powershell
-.\build\tauri-local.bat -BackendPort 9020
+.\packaging\tauri-local.bat -BackendPort 9020
 ```
 
 ## 前置要求
@@ -39,8 +39,8 @@
 
 构建产物会复制到：
 
-- `build/artifacts`
+- `packaging/release`
 
-Tauri 每种模式会生成一个安装包和一个 `*-direct.zip`。`*-direct.zip` 解压后可以直接运行。未压缩的直运行目录会保留在 `build/artifacts/direct`。
+Tauri 每种模式会生成一个安装包和一个 `*-direct.zip`。`*-direct.zip` 解压后可以直接运行。打包过程的中间产物会保留在 `packaging/artifacts`，未压缩的直运行目录会保留在 `packaging/artifacts/direct`。
 
 Tauri 原始 bundle 输出仍然保留在 `frontend/src-tauri/target/release/bundle`。

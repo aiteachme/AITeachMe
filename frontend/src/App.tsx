@@ -6,7 +6,9 @@ import { ElectronWindowFrame } from "./components/layout/ElectronWindowFrame";
 import { Layout } from "./components/layout/Layout";
 import { ToastProvider } from "./components/ui/Toast";
 import { HomePage } from "./pages/HomePage";
+import { GlobalAssistantPage } from "./pages/GlobalAssistantPage";
 import { LearningSpacesPage } from "./pages/LearningSpacesPage";
+import { LibraryPage } from "./pages/LibraryPage";
 import { BuildPlanPage } from "./pages/BuildPlanPage";
 import { ExamPaperPage, ExamsPage, QuestionTemplatesPage, QuestionTypesPage } from "./pages/ExamsPage";
 import { ProfilePage } from "./pages/ProfilePage";
@@ -47,7 +49,9 @@ function App() {
               <Routes>
                 <Route path="/" element={<Layout />}>
                   <Route index element={<HomePage />} />
+                  <Route path="assistant" element={<GlobalAssistantPage />} />
                   <Route path="spaces" element={<LearningSpacesPage />} />
+                  <Route path="library" element={<LibraryPage />} />
                   {(Object.entries(SUBJECT_PAGE_ELEMENTS) as Array<[SubjectRouteId, ReactElement]>).map(
                     ([routeId, element]) => (
                       <Route key={routeId} path={`subject/:subjectId/${routeId}`} element={element} />

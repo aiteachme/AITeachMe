@@ -15,6 +15,7 @@ from app.shared.infra.subject import (
     set_subject_embedding_binding,
 )
 from app.models import RawFile, RetrievalChunk, Subject
+from app.repositories.files_repo import list_raw_files_by_ids
 from app.utils.time import utcnow
 
 logger = structlog.get_logger()
@@ -65,11 +66,7 @@ def get_documents_by_source_file_ids(
 ) -> list[RawFile]:
     if not source_file_ids:
         return []
-    statement = select(RawFile).where(
-        RawFile.subject == subject,
-        RawFile.id.in_(source_file_ids),
-    )
-    return list(session.exec(statement).all())
+    return list_raw_files_by_ids(session, subject, source_file_ids)
 
 
 def update_document_content(

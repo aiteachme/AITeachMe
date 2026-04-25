@@ -376,6 +376,7 @@ def _register_exception_handlers(app: FastAPI) -> None:
 
 def _register_routers(app: FastAPI) -> None:
     from app.api.auth import router as auth_router
+    from app.api.chats import global_router as global_chats_router
     from app.api.chats import router as chats_router
     from app.api.exams import router as exams_router
     from app.api.export_import import router as export_import_router
@@ -385,13 +386,16 @@ def _register_routers(app: FastAPI) -> None:
     from app.api.profile import router as profile_router
     from app.api.subjects import router as subjects_router
     from app.api.system import router as system_router
+    from app.api.user_files import router as user_files_router
 
     app.include_router(health_router)
     app.include_router(system_router)
     app.include_router(auth_router)
     app.include_router(subjects_router)
+    app.include_router(user_files_router)
     app.include_router(files_router)
     app.include_router(knowledge_router)
+    app.include_router(global_chats_router)
     app.include_router(chats_router)
     app.include_router(exams_router)
     app.include_router(profile_router)

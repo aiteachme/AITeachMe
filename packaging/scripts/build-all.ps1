@@ -57,4 +57,4 @@ Invoke-BuildStep `
 
 Write-Host ""
 Write-Host "All desktop packages generated under:" -ForegroundColor Green
-Write-Host "  $(Join-Path $repoRoot "build\artifacts")"
+Write-Host "  $(Join-Path $repoRoot "packaging\release")"
