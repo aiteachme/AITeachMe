@@ -18,7 +18,6 @@ import {
   fetchKnowledgeOverview,
 } from "../../lib/knowledgeOverview";
 import { DigestBuildProgress } from "../build-plan/DigestBuildPanel";
-import { GraphBuildButton } from "./GraphBuildButton";
 import { SubjectVectorNotice } from "./SubjectVectorNotice";
 import { Button } from "../ui/Button";
 import { Modal } from "../ui/Modal";
@@ -142,8 +141,6 @@ export function KnowledgeGraphSidePanel({
           </div>
 
           <div className="flex items-center gap-1.5">
-            <GraphBuildButton subject={subjectId} />
-            <div className="mx-1 h-4 w-px bg-slate-200" />
             <button
               type="button"
               onClick={() => setShowClearConfirm(true)}

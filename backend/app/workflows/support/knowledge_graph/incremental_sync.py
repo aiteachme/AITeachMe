@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextvars
 import json
 from dataclasses import dataclass, field
 from time import perf_counter
@@ -1100,7 +1101,13 @@ def _cosine_similarity(a: list[float], b: list[float]) -> float:
 
 def _run_async(coro):
     loop = _get_async_bridge_loop()
-    future = asyncio.run_coroutine_threadsafe(coro, loop)
+    context = contextvars.copy_context()
+
+    async def _run_with_context():
+        task = asyncio.create_task(coro, context=context)
+        return await task
+
+    future = asyncio.run_coroutine_threadsafe(_run_with_context(), loop)
     return future.result()
 
 

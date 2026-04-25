@@ -34,6 +34,7 @@ import {
   useDocBuildProgress,
   useDocMarkdown,
 } from "../components/knowledge-docs";
+import { KnowledgeGraphBuildProgress } from "../components/build-plan/DigestBuildPanel";
 import { SubjectVectorNotice } from "../components/knowledge-graph/SubjectVectorNotice";
 import { MarkdownViewer, preprocessLaTeX } from "../components/ui/MarkdownViewer";
 
@@ -4269,6 +4270,7 @@ export function KnowledgeDocsPage() {
               >
                 <article className="min-w-0 px-2 py-2 md:px-4">
                   <SubjectVectorNotice status={docMarkdownQuery.data?.vector_status} className="mb-6" />
+                  {subjectId ? <KnowledgeGraphBuildProgress subject={subjectId} className="mb-6" /> : null}
                   {docMarkdownQuery.isError ? (
                     <DocLoadErrorState
                       message={getApiErrorMessage(docMarkdownQuery.error, "获取知识文档失败，请稍后重试。")}
