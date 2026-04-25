@@ -14757,7 +14757,7 @@
               }
             ],
             "title": "Vector Table",
-            "description": "Current subject-scoped vector table, if any."
+            "description": "Current subject-scoped vector index reference, if any."
           }
         },
         "type": "object",

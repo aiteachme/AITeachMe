@@ -16,6 +16,6 @@ export interface SubjectVectorStatusResponse {
   notice?: string | null;
   /** Current subject-bound embedding model, if any. */
   embedding_model?: string | null;
-  /** Current subject-scoped vector table, if any. */
+  /** Current subject-scoped vector index reference, if any. */
   vector_table?: string | null;
 }

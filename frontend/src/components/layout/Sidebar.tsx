@@ -589,7 +589,6 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
             const expanded = expandedSubjects.has(subject.subject_id);
             const displayName = displaySubjectName(subject);
             const badgeClass = colorClassForSubject(subject.name || subject.subject_id);
-            const isSubjectRouteActive = location.pathname.startsWith(`/subject/${subject.subject_id}/`);
             const SubjectIcon = resolveSubjectIcon((subject as SubjectWithIcon).icon_key);
 
             return (
@@ -597,11 +596,7 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
                 <div
                   className={cn(
                     "group flex items-center gap-1 rounded-md transition-colors",
-                    !effectiveCollapsed && isSubjectRouteActive
-                      ? "bg-[#f7f9fb] ring-1 ring-[#e3e8ee] dark:bg-slate-800/60 dark:ring-slate-700/50"
-                      : !effectiveCollapsed
-                        ? "hover:bg-slate-100/60 dark:hover:bg-slate-800/40"
-                        : "",
+                    !effectiveCollapsed ? "hover:bg-[#eef3f8] dark:hover:bg-slate-800/60" : "",
                   )}
                 >
                   <button
@@ -618,7 +613,9 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
                     }}
                     className={cn(
                       "flex items-center transition-colors",
-                      effectiveCollapsed ? "h-7 w-full justify-center rounded-md px-0" : "h-7 flex-1 rounded-md px-2",
+                      effectiveCollapsed
+                        ? "h-7 w-full justify-center rounded-md px-0 hover:bg-[#eef3f8] dark:hover:bg-slate-800/60"
+                        : "h-7 flex-1 rounded-md px-2",
                     )}
                     title={effectiveCollapsed ? displayName : undefined}
                   >
