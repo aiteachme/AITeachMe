@@ -1,4 +1,4 @@
-﻿"""Bounded chapter critique and rewrite for DocGen."""
+﻿"""Bounded chapter quality critique and rewrite for DocGen."""
 
 from __future__ import annotations
 
@@ -6,11 +6,11 @@ from collections.abc import Sequence
 
 import structlog
 
-from app.shared.infra.llm_support.routing import TaskType
 from app.shared.infra.tools.builtin.markdown_processing import count_words
-from app.workflows.digest.docgen.lib.chapter_generation import estimate_quality_from_markdown
+from app.workflows.digest.docgen.lib.chapter_planning import estimate_quality_from_markdown
+from app.workflows.digest.docgen.lib.model_policy import DocGenModelStep, docgen_completion_kwargs
 from app.workflows.digest.docgen.lib.models import ChapterQualitySignals
-from app.workflows.digest.docgen.prompts.chapter_critic import build_chapter_rewrite_messages
+from app.workflows.digest.docgen.prompts import build_chapter_rewrite_messages
 
 logger = structlog.get_logger(__name__)
 
@@ -76,8 +76,7 @@ async def maybe_rewrite_chapter(
                 markdown=markdown,
                 dense_context=dense_context,
             ),
-            task_type=TaskType.DOCGEN,
-            model="primary",
+            **docgen_completion_kwargs(DocGenModelStep.CHAPTER_REWRITE),
             extra_metadata={**extra_metadata, "substep": "chapter_rewrite"},
         )
     except Exception as exc:

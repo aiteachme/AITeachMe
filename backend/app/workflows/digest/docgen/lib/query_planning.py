@@ -8,7 +8,7 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from app.shared.infra.llm_support import acompletion_with_fallback
-from app.shared.infra.llm_support.routing import TaskType
+from app.workflows.digest.docgen.lib.model_policy import DocGenModelStep, docgen_completion_kwargs
 from app.workflows.digest.docgen.prompts import (
     build_docgen_sub_query_messages,
     build_docgen_gap_query_messages,
@@ -174,8 +174,7 @@ async def generate_sub_queries(
             domain=domain,
             fallback_queries=fallback_queries,
         ),
-        task_type=TaskType.REASONING,
-        model="reason",
+        **docgen_completion_kwargs(DocGenModelStep.QUERY_PLANNING),
         response_model=ResearchSubQueryPlan,
         extra_metadata={
             "query_tool": "generate_sub_queries",
@@ -223,8 +222,7 @@ async def generate_gap_queries(
             max_queries=int(max_queries or 2),
             domain=domain,
         ),
-        task_type=TaskType.REASONING,
-        model="reason",
+        **docgen_completion_kwargs(DocGenModelStep.QUERY_PLANNING),
         response_model=ResearchSubQueryPlan,
         extra_metadata={
             "query_tool": "generate_gap_queries",

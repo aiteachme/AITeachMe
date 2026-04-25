@@ -8,9 +8,10 @@ from collections.abc import Mapping, Sequence
 import structlog
 
 from app.shared.infra.llm_support import acompletion_with_fallback
-from app.shared.infra.llm_support.routing import TaskType
 from app.workflows.digest.docgen.lib.defaults import DEFAULT_DOCGEN_CHAPTER_BRIEF_PARALLELISM
+from app.workflows.digest.docgen.lib.model_policy import DocGenModelStep, docgen_completion_kwargs
 from app.workflows.digest.docgen.lib.models import ChapterExecutionBrief, clean_string_list, clean_text
+from app.workflows.digest.docgen.mode_profiles import get_docgen_mode_profile
 from app.workflows.digest.docgen.prompts import build_chapter_execution_brief_messages
 
 logger = structlog.get_logger(__name__)
@@ -32,14 +33,10 @@ def fallback_chapter_execution_brief(
 ) -> ChapterExecutionBrief:
     chapter_index = int(chapter.get("chapter_index", 0) or 0) or 1
     required = clean_string_list(chapter.get("required_elements", []), limit=4)
-    normalized_mode = str(digest_mode or "").strip().lower()
-    if normalized_mode == "sprint":
-        teaching_outline = ["抓本章最重要的考点", "用典型题型带理解", "最后回看易错点"]
-    else:
-        teaching_outline = ["先讲清定义和主线", "再讲结构与推理", "最后用例子和边界收口"]
+    mode_profile = get_docgen_mode_profile(digest_mode)
     return ChapterExecutionBrief(
         chapter_index=chapter_index,
-        teaching_outline=teaching_outline[:3],
+        teaching_outline=list(mode_profile.fallback_teaching_outline),
         concept_targets=required[:2],
         definition_targets=required[:2],
         formula_targets=[item for item in required if any(marker in item for marker in ("公式", "定理", "性质"))][:2],
@@ -82,8 +79,7 @@ async def build_chapter_execution_brief(
                     claim_targets=claim_targets,
                     confusion_targets=confusion_targets,
                 ),
-                task_type=TaskType.REASONING,
-                model="reason",
+                **docgen_completion_kwargs(DocGenModelStep.CHAPTER_EXECUTION_BRIEF),
                 response_model=ChapterExecutionBrief,
                 temperature=0.1,
                 max_tokens=420,

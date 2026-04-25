@@ -1,12 +1,12 @@
-﻿"""Workflow-local asset runtime for digest DocGen enrichment."""
+﻿"""Workflow-local asset placeholder rendering for digest DocGen enrichment."""
 
 from __future__ import annotations
 
 import re
 
-from app.shared.infra.llm_support.routing import TaskType
 from app.shared.infra.execution import BaseTracedExecution, TracedExecutionContext, TracedExecutionResult
 from app.workflows.digest.docgen.lib.asset_requests import replace_asset_requests, strip_asset_requests
+from app.workflows.digest.docgen.lib.model_policy import DocGenModelStep, docgen_completion_kwargs
 from app.workflows.digest.docgen.prompts import build_docgen_mermaid_prompt
 
 _MERMAID_LANG_PATTERN = (
@@ -242,8 +242,7 @@ class _MermaidPlaceholderRuntime(BaseTracedExecution):
         try:
             response = await llm(
                 [{"role": "user", "content": build_docgen_mermaid_prompt(topic=topic, context=context)}],
-                task_type=TaskType.DOCGEN_LIGHT,
-                model="light",
+                **docgen_completion_kwargs(DocGenModelStep.MERMAID_PLACEHOLDER),
                 extra_metadata=self.context.trace_metadata(chapter_index=self.context.chapter_index),
             )
             raw_body = _extract_mermaid_body(str(response))

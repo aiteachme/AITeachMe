@@ -8,16 +8,16 @@ from typing import Any
 import structlog
 
 from app.shared.infra.llm_support import acompletion_with_fallback
-from app.shared.infra.llm_support.routing import TaskType
+from app.workflows.digest.docgen.lib.model_policy import DocGenModelStep, docgen_completion_kwargs
 from app.workflows.digest.docgen.lib.models import DocGenIntentProfile
-from app.workflows.digest.docgen.prompts.intent import build_intent_core_messages
+from app.workflows.digest.docgen.mode_profiles import is_sprint_docgen_mode
+from app.workflows.digest.docgen.prompts import build_intent_core_messages
 
 logger = structlog.get_logger(__name__)
 
 
 def fallback_intent_profile(*, digest_mode: str, chapter_count: int = 0) -> DocGenIntentProfile:
-    normalized_mode = str(digest_mode or "").strip().lower()
-    if normalized_mode == "sprint":
+    if is_sprint_docgen_mode(digest_mode):
         return DocGenIntentProfile(
             document_style="exam_sprint_notes",
             depth_level="compact",
@@ -67,8 +67,7 @@ async def infer_intent_core(
                 chapters=chapters,
                 docgen_history_brief=docgen_history_brief,
             ),
-            task_type=TaskType.CLASSIFY,
-            model="reason",
+            **docgen_completion_kwargs(DocGenModelStep.INTENT_CORE),
             response_model=DocGenIntentProfile,
             temperature=0.1,
             max_tokens=600,

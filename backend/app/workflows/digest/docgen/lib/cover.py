@@ -22,6 +22,7 @@ from app.shared.infra.settings.support import (
 from app.shared.infra.storage import get_content_store, resolve_subject_storage_scope
 from app.shared.infra.knowledge.build_store import append_knowledge_build_recent_event
 from app.utils.time import utcnow
+from app.workflows.digest.docgen.lib.model_policy import DocGenModelStep, get_docgen_model_policy
 
 logger = structlog.get_logger(__name__)
 
@@ -285,14 +286,17 @@ async def generate_docgen_cover_artifact(
         settings.models.image_generation,
         api_base=get_env("LLM_BASE_URL"),
     )
+    model_policy = get_docgen_model_policy(DocGenModelStep.COVER_IMAGE)
     for size in size_candidates:
         try:
             result = await agenerate_image(
                 prompt,
+                model=str(model_policy.model or "image_generation"),
                 size=size,
                 n=1,
                 extra_metadata={
                     "docgen_stage": "cover_generation",
+                    "docgen_model_step": model_policy.step.value,
                     "subject": subject,
                     "build_session_id": build_session_id,
                 },

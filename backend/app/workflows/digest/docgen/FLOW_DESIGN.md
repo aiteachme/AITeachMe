@@ -105,6 +105,7 @@ image_generation -> settings.models.image_generation（默认未配置）
 - 这里说的 `reason / primary / light` 是逻辑模型槽位，不是固定 provider 名。
 - 如果运行时 settings 覆盖了 `settings.models.*`，实际模型名会随之变化。
 - `docgen` 当前没有使用 `extract` 槽位。
+- DocGen 的 `call_purpose + model slot` 分配统一由 `lib/model_policy.py` 维护；节点和 lib 不应各自硬编码模型槽位。
 
 按当前代码，DocGen 各阶段的大模型使用如下：
 
@@ -121,14 +122,14 @@ image_generation -> settings.models.image_generation（默认未配置）
 | `generate_chapters.research_purify` | `lib/chapter_context.py` | 文本 | `light` | `qwen-flash` | 对 dense context 做轻量清洗，去掉噪声与重复 | 只是净化材料，不做深度推理 |
 | `generate_chapters.writer` | `lib/writer.py` | 文本 | `systematic -> reason` / `sprint -> primary` | `qwen-max` / `qwen-plus` | 把研究材料和执行合同写成章节正文 | 系统课更偏结构推理，冲刺课更偏快速成文 |
 | `generate_chapters.heading_repair` | `lib/writer.py` | 文本 | `light` | `qwen-flash` | 修正章节标题层级、学习脚手架和结构格式 | 轻量结构修正，不值得用更贵模型 |
-| `generate_chapters.rewrite` | `lib/chapter_critic.py` | 文本 | `primary` | `qwen-plus` | 当章节质量不够时做一次 bounded rewrite | 正文改写质量要求高于 light，但不需要最重推理 |
-| `enhance_chapters.mermaid_placeholder` | `lib/assets.py` | 文本 | `light` | `qwen-flash` | 把 Mermaid 占位符变成真正可渲染的结构图内容 | 资产生成是辅助增强，轻量模型足够 |
+| `generate_chapters.rewrite` | `lib/chapter_revision.py` | 文本 | `primary` | `qwen-plus` | 当章节质量不够时做一次 bounded rewrite | 正文改写质量要求高于 light，但不需要最重推理 |
+| `enhance_chapters.mermaid_placeholder` | `lib/asset_rendering.py` | 文本 | `light` | `qwen-flash` | 把 Mermaid 占位符变成真正可渲染的结构图内容 | 资产生成是辅助增强，轻量模型足够 |
 | `enhance_chapters.interactive_html_sidecar` | `lib/interactive_html.py` | 文本 | `primary` | `qwen-plus` | 为少量高价值章节生成独立 HTML 交互页 sidecar | 交互页比文生图更适合参数变化、步骤展开和几何/函数/方程可视化 |
 | `review_content.review_chapter` | `lib/chapter_review.py` | 结构化 | `light` | `qwen-flash` | 逐章复核覆盖率、证据支撑和写作质量，产出 review action | 并行、轻量、结构化审稿场景，优先控制成本和速度 |
 | `document_consistency_review` | 当前纯规则 | 无 LLM | 无 | 无 | 对整本文档做术语、章节数、重复和风格一致性检查 | 全局复核先用规则收口，减少漂移 |
 | `repair_or_route.surface/section patch` | `lib/repair.py` | 文本 | `primary` | `qwen-plus` | 按 review action 对章节做局部 patch 或记录 unresolved warning | 已经直接改正文，不能太轻；但又不需要最重 reason |
 | `merge_review` | 当前纯规则 | 无 LLM | 无 | 无 | 合并章节、整理 metadata、做发布前完整性检查 | 发布前规则收口，不负责重新思考内容 |
-| `finalize_titles` | 当前纯规则 | 无 LLM | 无 | 无 | 只把已锁定标题同步到最终 Markdown，不重新起标题 | 当前明确禁止 LLM 改标题，防止推翻 confirmed plan 语义 |
+| `sync_locked_titles` | 当前纯规则 | 无 LLM | 无 | 无 | 只把已锁定标题同步到最终 Markdown，不重新起标题 | 当前明确禁止 LLM 改标题，防止推翻 confirmed plan 语义 |
 | `publish_document` | 当前纯规则 | 无 LLM | 无 | 无 | 写出 Markdown、manifest、版本归档和数据库记录 | 发布阶段只做持久化，不承担内容生成 |
 | `cover sidecar` | `lib/cover.py` | 文生图 | `image_generation` | 取决于 `settings.models.image_generation` | 为整本文档生成横向抽象封面图 | 封面是独立 sidecar，不干扰正文链路 |
 
@@ -212,7 +213,7 @@ final_merge_patch
   只修合并后才暴露的小问题，不重新检索，不重写章节，不改变 claim/evidence。
   |
   v
-finalize_titles
+sync_locked_titles
   不再生成新标题；只同步 lock_titles_for_chapters 阶段已经锁定的标题。
   |
   v
@@ -284,11 +285,11 @@ prepare_global_seed
   作用：把前置阶段收口成“全局轻准备”，不再在这里生成整本执行大纲。
   当前模型方案：
     - `infer_intent_core`
-      - `task_type=CLASSIFY`
+      - `call_purpose=CLASSIFY`
       - `model="reason"`
       - 默认映射到 `qwen-max`
     - `summarize_files`
-      - `task_type=DOCGEN_LIGHT`
+      - `call_purpose=DOCGEN_LIGHT`
       - `model="light"`
       - 默认映射到 `qwen-flash`
 
@@ -304,7 +305,7 @@ lock_titles_for_chapters
     - 不生成 retrieval queries。
     - 不生成 media requests。
   当前模型方案：
-    - `task_type=REASONING`
+    - `call_purpose=REASONING`
     - `model="reason"`
     - 默认映射到 `qwen-max`
 
@@ -347,7 +348,7 @@ build_chapter_execution_briefs
     - 不输出 media_requests。
     - 不输出 practice_seed_policy。
   当前模型方案：
-    - `task_type=REASONING`
+    - `call_purpose=REASONING`
     - `model="reason"`
     - 默认映射到 `qwen-max`
 
@@ -382,14 +383,14 @@ generate_chapters
     1. retrieve_for_chapter：取 retrieval_queries / priority_section_refs，先本地，资料不足时外部补洞。
        当前模型方案：
          - 子查询规划 `generate_sub_queries` / `generate_gap_queries`
-         - `task_type=REASONING`
+         - `call_purpose=REASONING`
          - `model="reason"`
          - 默认映射到 `qwen-max`
     2. compress_context：读取命中内容并压缩为 dense_context，同时抽取 evidence_units。
        当前模型方案：
          - 当前主要依赖检索、reader、compressor 规则链。
          - 若触发 `research_purify`，使用：
-           - `task_type=DOCGEN_LIGHT`
+           - `call_purpose=DOCGEN_LIGHT`
            - `model="light"`
            - 默认映射到 `qwen-flash`
     3. extract_claims：基于 ChapterGenerationTask、dense_context 和 CanonicalClaimPool 生成 ClaimLedger。
@@ -398,19 +399,19 @@ generate_chapters
     6. draft_chapter：基于 resolved claims 和 claim-evidence map 写章节草稿，留下增强占位符。
        当前模型方案：
          - writer 主调用：
-           - `task_type=DOCGEN`
+           - `call_purpose=DOCGEN`
            - `digest_mode=systematic -> model="reason"`
            - `digest_mode=sprint -> model="primary"`
            - 默认映射到 `qwen-max / qwen-plus`
          - heading repair：
-           - `task_type=DOCGEN_LIGHT`
+           - `call_purpose=DOCGEN_LIGHT`
            - `model="light"`
            - 默认映射到 `qwen-flash`
     7. critic/rewrite：当前代码仍在单章内做轻量 critic 和最多一次 rewrite；目标上应逐步前移到 review_content。
        当前模型方案：
          - critic 本身是规则判断，不调模型
          - 若触发 rewrite：
-           - `task_type=DOCGEN`
+           - `call_purpose=DOCGEN`
            - `model="primary"`
            - 默认映射到 `qwen-plus`
   模式差异：sprint/systematic 的核心差异主要在 draft_chapter 体现。
@@ -431,11 +432,11 @@ enhance_chapters
     1. 解析章节中的 Mermaid / interactive 占位符，并清理残留 image 占位。
        当前模型方案：
          - Mermaid 占位生成：
-           - `task_type=DOCGEN_LIGHT`
+           - `call_purpose=DOCGEN_LIGHT`
            - `model="light"`
            - 默认映射到 `qwen-flash`
          - interactive HTML sidecar：
-           - `task_type=DOCGEN`
+           - `call_purpose=DOCGEN`
            - `model="primary"`
            - 默认映射到 `qwen-plus`
          - image 当前不走大模型生成正文资产
@@ -481,7 +482,7 @@ review_content / 当前 review_chapter Send x N + document_consistency_review
     - document_consistency_review 在章节 fan-in 后执行，不调工具、不检索、不改正文。
   当前模型方案：
     - `review_chapter`
-      - `task_type=DOCGEN`
+      - `call_purpose=DOCGEN`
       - `model="light"`
       - 默认映射到 `qwen-flash`
     - `document_consistency_review`
@@ -508,7 +509,7 @@ repair_or_route
       - 一旦某章已应用一次实质性 patch，同轮后续 patch 默认跳过；只有 `Markdown 渲染结构异常` 这类确定性表层修补不会锁死该章。
   当前模型方案：
     - `surface_patch / section_patch`
-      - `task_type=DOCGEN`
+      - `call_purpose=DOCGEN`
       - `model="primary"`
       - 默认映射到 `qwen-plus`
     - `evidence_patch / regenerate_chapter / re_dispatch / rebuild_backbone`
@@ -542,7 +543,7 @@ final_merge_patch
     - 改变 claim / evidence。
   当前状态：尚未独立实现。
 
-finalize_titles
+sync_locked_titles
   输入：chapter_metadatas / confirmed_plan.chapter_plan / enhanced titles / merge_review_report
   输出：final_chapter_titles / updated chapter_metadatas / title_review_report
   作用：标题收口，保持 chapter_index 和 confirmed plan 映射。
@@ -587,13 +588,13 @@ publish_document
 | `repair_or_route` | `repair_or_route` | 已落地局部 patch：可执行 surface/section patch；待补 evidence/regenerate 和真实 repair loop |
 | `merge_review` | `merge_review` | 已落地 |
 | `final_merge_patch` | 无 | 待新增，只处理合并后小问题 |
-| `finalize_titles` | `finalize_titles` | 已落地，锁定标题同步 + Markdown 一级标题同步；不再 LLM 改标题 |
+| `sync_locked_titles` | `sync_locked_titles` | 已落地，锁定标题同步 + Markdown 一级标题同步；不再 LLM 改标题 |
 | `publish_document` | `publish_document` | 已落地，已写 docgen artifacts manifest |
 
 说明：
 
-- 旧的 `prepare_parallel_inputs` / `confirm_and_dispatch` 节点文件仍保留在仓库里，主要用于过渡期参考；它们已经不再属于当前主图。
 - 当前主图已切换到“全局轻准备 + 两个单节点内部并行阶段 + 规则装配”的结构，不再让一次 outline enhance 调用承担完整执行大纲生成。
+- 过渡期旧节点及配套整本 outline enhancement 代码已移除，避免旧流程和当前主图并存造成误读。
 
 ## 3. 有限回流目标设计
 
@@ -760,7 +761,7 @@ repair_trace
 - 静默推翻 confirmed plan。
 - 在没有本地资料、已打开网页正文或明确 snippet fallback 的情况下补新断言。
 
-### 4.5 `merge_review` / `final_merge_patch` / `finalize_titles`
+### 4.5 `merge_review` / `final_merge_patch` / `sync_locked_titles`
 
 `merge_review` 只做发布前收口，不再承担重知识复核。
 
@@ -771,7 +772,7 @@ repair_trace
 - 重复摘要。
 - manifest 缺字段。
 
-`finalize_titles` 只执行一次，放在所有 patch 和最终一致性复核之后；它只同步已锁定标题，不再生成新标题。
+`sync_locked_titles` 只执行一次，放在所有 patch 和最终一致性复核之后；它只同步已锁定标题，不再生成新标题。
 
 ## 5. 当前重大问题判断
 

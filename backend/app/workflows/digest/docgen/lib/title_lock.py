@@ -10,8 +10,8 @@ from typing import Any
 import structlog
 
 from app.shared.infra.llm_support import acompletion_with_fallback
-from app.shared.infra.llm_support.routing import TaskType
 from app.workflows.digest.docgen.lib.defaults import DEFAULT_DOCGEN_TITLE_LOCK_PARALLELISM
+from app.workflows.digest.docgen.lib.model_policy import DocGenModelStep, docgen_completion_kwargs
 from app.workflows.digest.docgen.lib.models import LockedChapterTitle, clean_text
 from app.workflows.digest.docgen.prompts import build_title_lock_messages
 
@@ -120,8 +120,7 @@ async def lock_title_for_chapter(
                     chapter=chapter,
                     docgen_history_brief=docgen_history_brief,
                 ),
-                task_type=TaskType.REASONING,
-                model="reason",
+                **docgen_completion_kwargs(DocGenModelStep.TITLE_LOCK),
                 response_model=LockedChapterTitle,
                 temperature=0.1,
                 max_tokens=220,

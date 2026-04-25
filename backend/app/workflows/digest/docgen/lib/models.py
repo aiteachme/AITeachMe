@@ -304,58 +304,6 @@ class ChapterExecutionBrief(DocGenBaseModel):
         return clean_string_list(value)
 
 
-class EnhancedChapterOutline(DocGenBaseModel):
-    chapter_index: int = 1
-    confirmed_title: str = ""
-    enhanced_title: str = ""
-    objective: str = ""
-    teaching_outline: list[str] = Field(default_factory=list)
-    content_points: list[str] = Field(default_factory=list)
-    concept_targets: list[str] = Field(default_factory=list)
-    definition_targets: list[str] = Field(default_factory=list)
-    formula_targets: list[str] = Field(default_factory=list)
-    example_targets: list[str] = Field(default_factory=list)
-    pitfall_targets: list[str] = Field(default_factory=list)
-    summary_targets: list[str] = Field(default_factory=list)
-    media_requests: list[dict[str, Any]] = Field(default_factory=list)
-    practice_seed_policy: dict[str, Any] = Field(default_factory=dict)
-    retrieval_queries: list[str] = Field(default_factory=list)
-    plan_mismatch_warnings: list[str] = Field(default_factory=list)
-    fallback_used: bool = False
-
-    @field_validator("confirmed_title", "enhanced_title", "objective", mode="before")
-    @classmethod
-    def _text(cls, value: Any) -> str:
-        return clean_text(value)
-
-    @field_validator(
-        "teaching_outline",
-        "content_points",
-        "concept_targets",
-        "definition_targets",
-        "formula_targets",
-        "example_targets",
-        "pitfall_targets",
-        "summary_targets",
-        "retrieval_queries",
-        "plan_mismatch_warnings",
-        mode="before",
-    )
-    @classmethod
-    def _lists(cls, value: Any) -> list[str]:
-        return clean_string_list(value)
-
-
-class EnhancedChapterOutlineBatch(DocGenBaseModel):
-    chapters: list[EnhancedChapterOutline] = Field(default_factory=list)
-    plan_mismatch_warnings: list[str] = Field(default_factory=list)
-
-    @field_validator("plan_mismatch_warnings", mode="before")
-    @classmethod
-    def _warnings(cls, value: Any) -> list[str]:
-        return clean_string_list(value)
-
-
 class ChapterBudgetPolicy(DocGenBaseModel):
     max_research_rounds: int = 2
     max_local_queries: int = 3
@@ -1088,8 +1036,6 @@ __all__ = [
     "DocGenContext",
     "DocGenIntentProfile",
     "EnhancedChapterDraft",
-    "EnhancedChapterOutline",
-    "EnhancedChapterOutlineBatch",
     "EvidenceItem",
     "EvidenceLedger",
     "EvidenceUnit",

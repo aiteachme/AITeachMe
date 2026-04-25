@@ -74,25 +74,4 @@ Planner 对话与修改摘要：{docgen_history_brief or "暂无"}
     )
 
 
-def build_intent_messages(
-    *,
-    subject: str,
-    digest_mode: str,
-    user_prompt: str,
-    plan_summary: str,
-    material_profile: Mapping[str, Any],
-    chapters: Sequence[Mapping[str, Any]],
-    docgen_history_brief: str = "",
-) -> list[dict[str, str]]:
-    return build_intent_core_messages(
-        subject=subject,
-        digest_mode=digest_mode,
-        user_prompt=user_prompt,
-        plan_summary=plan_summary,
-        material_profile=material_profile,
-        chapters=chapters,
-        docgen_history_brief=docgen_history_brief,
-    )
-
-
-__all__ = ["build_intent_core_messages", "build_intent_messages"]
+__all__ = ["build_intent_core_messages"]
