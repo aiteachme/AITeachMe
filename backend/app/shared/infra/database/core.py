@@ -91,7 +91,10 @@ _ALLOWED_SQLITE_RUNTIME_TABLES = {
     "memory_entries",
     "learning_logs",
 }
-_ALLOWED_SQLITE_RUNTIME_PREFIXES: tuple[str, ...] = ()
+_ALLOWED_SQLITE_RUNTIME_PREFIXES: tuple[str, ...] = (
+    # sqlite-vec local vector tables and their shadow tables are runtime-owned.
+    "atm_vec_",
+)
 _REMOVED_POSTGRES_TABLES = (
     "unit_dependency",
     "theme_tree_node",

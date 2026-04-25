@@ -14,8 +14,8 @@ const PRECHECK_REASON_TITLES: Record<string, string> = {
   subject_not_bound: "当前学科还没有绑定专属的向量模型",
     embedding_model_mismatch: "当前运行时模型与学科已绑定模型不一致",
   embedding_dimension_mismatch: "当前运行时向量维度与学科绑定维度不一致",
-  vector_table_missing: "当前学科缺少可用的向量表",
-  vector_table_dimension_mismatch: "当前学科向量表维度与绑定配置不一致",
+  vector_table_missing: "当前学科缺少可用的向量索引",
+  vector_table_dimension_mismatch: "当前学科向量索引维度与绑定配置不一致",
 };
 
 function formatModelSummary(model?: string | null, dim?: number | null) {

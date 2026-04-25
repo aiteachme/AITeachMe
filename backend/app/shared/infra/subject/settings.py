@@ -13,7 +13,7 @@ from app.models.subject import Subject
 from app.shared.infra.runtime import is_cloud_mode
 from app.utils.time import utcnow
 
-_LOCAL_LLAMA_INDEX_REF_PREFIX = "llamaindex://local/"
+_LOCAL_LLAMA_INDEX_REF_PREFIX = "llamaindex://sqlite-vec/"
 _POSTGRES_LLAMA_INDEX_REF_PREFIX = "llamaindex://postgres/"
 _POSTGRES_LLAMA_INDEX_NAME_PREFIX = "atm_llamaindex_rag_"
 _POSTGRES_LLAMA_INDEX_DATA_PREFIX = "data_"

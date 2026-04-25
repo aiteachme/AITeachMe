@@ -179,7 +179,7 @@ class SubjectVectorStatusResponse(BaseModel):
     mode: str = Field(default="enabled", description="enabled / disabled")
     notice: str | None = Field(default=None, description="User-facing vector capability notice.")
     embedding_model: str | None = Field(default=None, description="Current subject-bound embedding model, if any.")
-    vector_table: str | None = Field(default=None, description="Current subject-scoped vector table, if any.")
+    vector_table: str | None = Field(default=None, description="Current subject-scoped vector index reference, if any.")
 
 
 class DocGenBuildData(BaseModel):

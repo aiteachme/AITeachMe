@@ -34,6 +34,8 @@ from app.workflows.support.export_import.exports import (
 
 logger = structlog.get_logger()
 
+_DOCGEN_COVER_IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
+
 
 def import_subject(
     session: Session,
@@ -225,6 +227,10 @@ def _unpack_files(
     if src_knowledge.exists():
         for item in sorted(src_knowledge.iterdir()):
             if not item.is_file():
+                continue
+            if item.stem == "cover" and item.suffix.lower() in _DOCGEN_COVER_IMAGE_EXTENSIONS:
+                key = f"{subject_scope.namespace}/assets/docgen/{item.name}"
+                run_store_sync(cs.write_bytes, key, item.read_bytes())
                 continue
             key = subject_scope.knowledge_doc_key(item.name)
             run_store_sync(cs.write_bytes, key, item.read_bytes())

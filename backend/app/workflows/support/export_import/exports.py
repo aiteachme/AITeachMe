@@ -6,6 +6,7 @@ The table registry drives export/import order and foreign-key remapping.
 from __future__ import annotations
 
 import json
+import mimetypes
 import tempfile
 import uuid
 import zipfile
@@ -601,6 +602,32 @@ def _pack_files(
             if data is not None:
                 zf.writestr(f"{arc_prefix}/{relative}", data)
 
+    def _pack_latest_docgen_cover() -> None:
+        cover_keys = run_store_sync(cs.list_prefix, f"{namespace}/assets/docgen/", default=[]) or []
+        latest_cover_key = next(
+            (
+                key
+                for key in sorted(cover_keys)
+                if key.rsplit("/", 1)[-1].startswith("cover.")
+            ),
+            "",
+        )
+        for key in sorted(cover_keys, reverse=True):
+            if latest_cover_key:
+                break
+            filename = key.rsplit("/", 1)[-1]
+            if filename.startswith("docgen_cover_"):
+                latest_cover_key = key
+                break
+        if not latest_cover_key:
+            return
+        data = run_store_sync(cs.read_bytes, latest_cover_key, default=None)
+        if data is None:
+            return
+        guessed_type, _ = mimetypes.guess_type(latest_cover_key)
+        extension = mimetypes.guess_extension(guessed_type or "") or Path(latest_cover_key).suffix or ".png"
+        zf.writestr(f"knowledge/cover{extension}", data)
+
     def _pack_key(key: str | None, archive_name: str) -> None:
         if not key:
             return
@@ -616,7 +643,11 @@ def _pack_files(
                 f".{raw_file.filetype}" if raw_file.filetype else ""
             )
             _pack_key(raw_file.file_path, f"files/raw_files/{raw_file.id}{extension}")
-            asset_prefix = raw_file.asset_dir.rstrip("/") + "/" if raw_file.asset_dir else f"{namespace}/assets/{raw_file.id}/"
+            asset_prefix = (
+                raw_file.asset_dir.rstrip("/") + "/"
+                if raw_file.asset_dir
+                else f"{namespace}/assets/{raw_file.id}/"
+            )
             _pack_prefix(asset_prefix, f"files/assets/{raw_file.id}")
     if options.include_raw_markdowns:
         for raw_file in raw_files:
@@ -626,6 +657,7 @@ def _pack_files(
 
     # knowledge markdowns
     if options.include_knowledge_docs:
+        _pack_latest_docgen_cover()
         keys = run_store_sync(cs.list_prefix, f"{namespace}/knowledge_markdowns/", default=[])
         for key in keys:
             prefix = f"{namespace}/knowledge_markdowns/"

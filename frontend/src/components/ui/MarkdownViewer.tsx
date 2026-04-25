@@ -685,7 +685,7 @@ function shouldFetchAuthorizedAsset(src: string | undefined): src is string {
 }
 
 function isDocgenCoverAsset(src: string | undefined): boolean {
-  return typeof src === "string" && /\/files\/assets\/docgen\/docgen_cover_/i.test(src);
+  return typeof src === "string" && /\/files\/assets\/docgen\/cover\./i.test(src);
 }
 
 function getBearerToken(): string {

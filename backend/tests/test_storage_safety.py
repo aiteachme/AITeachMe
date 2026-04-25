@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import asyncio
+
 import pytest
 
 from app.shared.infra.storage.base import validate_delete_prefix
 from app.shared.infra.storage.local_store import LocalArtifactStore
+from app.shared.infra.storage.sync_bridge import run_store_sync
 
 
 @pytest.fixture
@@ -46,3 +49,16 @@ async def test_local_delete_prefix_removes_only_safe_directory_scope(tmp_path) -
     assert deleted == 1
     assert not await store.exists("users/local/subjects/math/file.txt")
     assert await store.exists("users/local/subjects/physics/file.txt")
+
+
+@pytest.mark.anyio
+async def test_run_store_sync_reuses_background_loop_in_async_context() -> None:
+    loop_ids: list[int] = []
+
+    async def capture_loop_id() -> int:
+        return id(asyncio.get_running_loop())
+
+    for _ in range(20):
+        loop_ids.append(run_store_sync(capture_loop_id))
+
+    assert len(set(loop_ids)) == 1

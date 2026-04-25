@@ -42,7 +42,7 @@ export function SubjectVectorNotice({
           {status.embedding_model || status.vector_table ? (
             <p className="mt-2 text-xs opacity-80">
               {status.embedding_model ? `绑定模型：${status.embedding_model}` : "绑定模型：未记录"}
-              {status.vector_table ? ` · 向量表：${status.vector_table}` : ""}
+              {status.vector_table ? ` · 向量索引：${status.vector_table}` : ""}
             </p>
           ) : null}
         </div>

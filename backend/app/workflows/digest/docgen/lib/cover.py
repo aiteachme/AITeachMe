@@ -187,6 +187,33 @@ def build_docgen_cover_markdown(artifact: Mapping[str, Any] | None) -> str:
     return f"![]({asset_path})"
 
 
+def _is_docgen_cover_filename(filename: str) -> bool:
+    lowered = str(filename or "").strip().lower()
+    return lowered.startswith("docgen_cover_") or lowered.startswith("cover.")
+
+
+async def _cleanup_stale_docgen_covers(*, namespace: str, keep_key: str) -> None:
+    """Keep one stable DocGen cover in assets/docgen/.
+
+    Older builds used build-session-specific names. Once the current build
+    writes the stable cover path, those legacy images only create duplicate
+    files and confuse Markdown asset resolution.
+    """
+
+    cs = get_content_store()
+    prefix = f"{namespace}/assets/docgen/"
+    try:
+        keys = await cs.list_prefix(prefix)
+        for key in keys:
+            if key == keep_key:
+                continue
+            filename = key.rsplit("/", 1)[-1]
+            if _is_docgen_cover_filename(filename):
+                await cs.delete(key)
+    except Exception as exc:  # pragma: no cover - best-effort cleanup
+        logger.warning("docgen_cover_cleanup_failed", namespace=namespace, error=str(exc))
+
+
 async def read_docgen_cover_artifact(subject: str) -> dict[str, Any] | None:
     cs = get_content_store()
     subject_scope = resolve_subject_storage_scope(subject)
@@ -275,10 +302,13 @@ async def generate_docgen_cover_artifact(
             image = result.images[0]
             image_bytes, mime_type = await _image_bytes(image)
             extension = _mime_extension(mime_type)
-            filename = f"docgen_cover_{build_session_id}{extension}"
+            filename = f"cover{extension}"
             storage_key = f"{subject_scope.namespace}/assets/docgen/{filename}"
-            asset_path = f"assets/docgen/{filename}"
+            # merged_knowledge_base.md lives under knowledge_markdowns/, so it
+            # needs to walk up one level to reach the sibling assets/ tree.
+            asset_path = f"../assets/docgen/{filename}"
             await cs.write_bytes(storage_key, image_bytes)
+            await _cleanup_stale_docgen_covers(namespace=subject_scope.namespace, keep_key=storage_key)
             artifact = {
                 "kind": "docgen_cover",
                 "asset_path": asset_path,
