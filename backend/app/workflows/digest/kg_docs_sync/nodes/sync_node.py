@@ -5,16 +5,21 @@ from __future__ import annotations
 from app.shared.infra.database import managed_session
 from app.workflows.digest.kg_docs_sync.state import DocsSyncState
 from app.workflows.support.knowledge_graph.incremental_sync import sync_markdown_knowledge_graph
+from app.workflows.support.subjects.learning_context import load_subject_llm_context
 
 
 def run_docs_sync_node(state: DocsSyncState) -> DocsSyncState:
     try:
         with managed_session() as session:
+            subject_context = str(state.get("subject_context") or "").strip()
+            if not subject_context:
+                subject_context = load_subject_llm_context(session, subject=state["subject"])
             report = sync_markdown_knowledge_graph(
                 session,
                 subject=state["subject"],
                 markdown=state["markdown"],
                 build_revision_no=state.get("build_revision_no"),
+                subject_context=subject_context,
             )
         return {**state, "report": report, "error": None}
     except Exception as exc:
@@ -22,6 +27,5 @@ def run_docs_sync_node(state: DocsSyncState) -> DocsSyncState:
 
 
 __all__ = ["run_docs_sync_node"]
-
 
 

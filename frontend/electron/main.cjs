@@ -41,18 +41,14 @@ let mainWindow = null;
 let backendProcess = null;
 
 function getCorsAllowedOrigins() {
+  const frontendPort = devPorts.frontendPort;
   const origins = new Set([
     devPorts.frontendUrl,
+    `http://localhost:${frontendPort}`,
+    `http://127.0.0.1:${frontendPort}`,
     "null",
     "file://",
   ]);
-
-  if (devPorts.frontendHost === "127.0.0.1") {
-    origins.add(`http://localhost:${devPorts.frontendPort}`);
-  }
-  if (devPorts.frontendHost === "localhost") {
-    origins.add(`http://127.0.0.1:${devPorts.frontendPort}`);
-  }
 
   return Array.from(origins).join(",");
 }

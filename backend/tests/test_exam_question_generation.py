@@ -12,7 +12,10 @@ from app.workflows.examine.question_build.lib.generator import (
 
 @pytest.mark.anyio
 async def test_generate_exam_questions_for_units_returns_validated_llm_questions(monkeypatch):
+    observed_messages = []
+
     async def fake_acompletion_with_fallback(*args, **kwargs):
+        observed_messages.extend(args[0])
         return ExamQuestionBatch(
             questions=[
                 ExamQuestionDraft(
@@ -79,6 +82,7 @@ async def test_generate_exam_questions_for_units_returns_validated_llm_questions
         exam_mode="paper_exam",
         units=units,
         specs=specs,
+        subject_context="Calculus context: derivatives before Newton iteration.",
         focus_prompt="导数与数值方法",
         user_prompt="更重视理解与应用",
         style_prompt="风格接近高质量阶段测验",
@@ -88,6 +92,7 @@ async def test_generate_exam_questions_for_units_returns_validated_llm_questions
     assert questions[0].correct_answer == "瞬时变化率"
     assert questions[0].options is not None and len(questions[0].options) == 4
     assert questions[1].question_type == "short_answer"
+    assert "Calculus context: derivatives before Newton iteration." in observed_messages[1]["content"]
 
 
 @pytest.mark.anyio

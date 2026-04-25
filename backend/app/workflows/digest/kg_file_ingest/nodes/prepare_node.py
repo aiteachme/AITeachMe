@@ -7,6 +7,7 @@ import app.repositories.knowledge.knowledge_repo as knowledge_repo
 from app.workflows.digest.kg_file_ingest.lib.job_lifecycle import update_job_progress
 from app.workflows.digest.kg_file_ingest.state import KnowledgeDigestState
 from app.workflows.digest.kg_file_ingest.lib.support import workflow_logger
+from app.workflows.support.subjects.learning_context import load_subject_llm_context
 
 
 async def prepare_node(state: KnowledgeDigestState) -> KnowledgeDigestState:
@@ -38,6 +39,9 @@ async def prepare_node(state: KnowledgeDigestState) -> KnowledgeDigestState:
                 for chunk in chunks
                 if chunk.digest_chunk_uid and chunk.id is not None
             }
+            subject_context = str(state.get("subject_context") or "").strip()
+            if not subject_context:
+                subject_context = load_subject_llm_context(session, subject=state["subject"])
 
             update_job_progress(
                 session,
@@ -58,6 +62,7 @@ async def prepare_node(state: KnowledgeDigestState) -> KnowledgeDigestState:
                 "chunk_ids": chunk_ids,
                 "chunk_uid_to_chunk_id": chunk_uid_to_chunk_id,
                 "chunk_id_to_chunk_uid": chunk_id_to_chunk_uid,
+                "subject_context": subject_context,
             }
         except Exception as exc:
             digest_logger.error("knowledge_workflow_prepare_failed", error=str(exc), exc_info=True)
@@ -65,4 +70,3 @@ async def prepare_node(state: KnowledgeDigestState) -> KnowledgeDigestState:
 
 
 __all__ = ["prepare_node"]
-

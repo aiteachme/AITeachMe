@@ -175,6 +175,7 @@ def create_graph_digest_initial_state(
     build_session_id: str | None = None,
     user_prompt: str | None = None,
     doc_chapter_metadatas: list[dict[str, object]] | None = None,
+    subject_context: str | None = None,
 ) -> KnowledgeDigestState:
     """Create the initial state for digest graph building."""
 
@@ -184,6 +185,7 @@ def create_graph_digest_initial_state(
         "job_id": job_id,
         "build_session_id": build_session_id or "",
         "user_prompt": user_prompt,
+        "subject_context": subject_context or "",
         "doc_chapter_metadatas": list(doc_chapter_metadatas or []),
         "shared_inputs": None,
         "chunk_ids": [],

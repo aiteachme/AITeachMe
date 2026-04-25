@@ -33,6 +33,7 @@ from app.shared.infra.knowledge.build_store import (
     update_knowledge_build_status,
     write_knowledge_manifest,
 )
+from app.workflows.support.subjects.learning_context import update_subject_learning_context_from_docgen
 from app.utils.path_helpers import sanitize_doc_title
 from app.utils.time import utcnow
 from app.shared.infra.workflow.runtime import cancel_tasks_and_drain
@@ -342,6 +343,17 @@ def publish_staged_knowledge_docs(
     resolved_version_no = max(int(version_no or 0), latest_version_no + 1)
     package_key = f"{subject}:docgen:v{resolved_version_no:04d}"
     published_at = utcnow()
+    resolved_docgen_artifacts: dict[str, Any] | None = None
+    if docgen_artifacts is not None:
+        resolved_docgen_artifacts = dict(docgen_artifacts)
+        build_metadata = dict(resolved_docgen_artifacts.get("build_metadata") or {})
+        build_metadata.update(
+            {
+                "version_no": resolved_version_no,
+                "build_session_id": build_session_id or str(build_metadata.get("build_session_id") or ""),
+            }
+        )
+        resolved_docgen_artifacts["build_metadata"] = build_metadata
 
     clear_current_published_knowledge_docs_files(subject)
 
@@ -397,11 +409,11 @@ def publish_staged_knowledge_docs(
     )
     run_store_sync(cs.write_text, _build_versioned_merged_key(subject_scope.namespace, resolved_version_no), merged_markdown)
     run_store_sync(cs.write_text, subject_scope.knowledge_doc_key("merged_knowledge_base.md"), merged_markdown)
-    if docgen_artifacts is not None:
+    if resolved_docgen_artifacts is not None:
         versioned_manifest_key = _build_versioned_docgen_manifest_key(subject_scope.namespace, resolved_version_no)
         current_manifest_key = _build_current_docgen_manifest_key(subject_scope.namespace)
-        run_store_sync(cs.write_json_raw, versioned_manifest_key, docgen_artifacts)
-        run_store_sync(cs.write_json_raw, current_manifest_key, docgen_artifacts)
+        run_store_sync(cs.write_json_raw, versioned_manifest_key, resolved_docgen_artifacts)
+        run_store_sync(cs.write_json_raw, current_manifest_key, resolved_docgen_artifacts)
 
     with managed_session() as session:
         current_docs = docgen_repo.get_docs_by_subject(session, subject, only_current=True)
@@ -413,6 +425,19 @@ def publish_staged_knowledge_docs(
             session.add(doc)
         for doc in docs_to_create:
             session.add(doc)
+        session.flush()
+        update_subject_learning_context_from_docgen(
+            session,
+            subject=subject,
+            document_context=document_context,
+            chapter_metadatas=sorted_chapters,
+            chapter_assignments=chapter_assignments,
+            knowledge_docs=docs_to_create,
+            docgen_artifacts=resolved_docgen_artifacts,
+            version_no=resolved_version_no,
+            build_session_id=build_session_id,
+            requested_at=requested_at,
+        )
         session.commit()
         created_docs: list[KnowledgeDoc] = []
         for doc in docs_to_create:
@@ -439,9 +464,9 @@ def publish_staged_knowledge_docs(
             for chapter in sorted_chapters
         ],
     )
-    if docgen_artifacts is not None:
+    if resolved_docgen_artifacts is not None:
         manifest.docgen_manifest_key = _build_versioned_docgen_manifest_key(subject_scope.namespace, resolved_version_no)
-        manifest.merge_review_report = dict(docgen_artifacts.get("merge_review_report") or {})
+        manifest.merge_review_report = dict(resolved_docgen_artifacts.get("merge_review_report") or {})
     # Do not mark the build completed until live docs are committed and staging is cleared,
     # otherwise `/knowledge/docs` can briefly report 100% while no readable document is available.
     write_knowledge_manifest(subject, manifest)

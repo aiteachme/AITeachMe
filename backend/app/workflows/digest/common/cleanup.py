@@ -21,6 +21,7 @@ from app.models import (
 import app.repositories.knowledge.knowledge_repo as knowledge_repo
 from app.shared.infra.exceptions import KnowledgeClearConflictError, SubjectBuildLockConflictError
 from app.shared.infra.knowledge.build_store import clear_knowledge_runtime_artifacts, is_knowledge_build_locked
+from app.workflows.support.subjects.learning_context import clear_subject_learning_context
 
 logger = structlog.get_logger()
 
@@ -118,6 +119,7 @@ def clear_subject_knowledge(session: Session, *, subject: str) -> dict[str, int]
         KnowledgeUnit,
     ):
         _bulk_delete_by_subject(session, model, subject=subject)
+    clear_subject_learning_context(session, subject=subject)
     session.commit()
 
     clear_knowledge_runtime_artifacts(subject)

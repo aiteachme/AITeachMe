@@ -29,7 +29,30 @@ from app.workflows.digest.common.markdown_knowledge_anchors import (
     extract_markdown_section_chunks,
     validate_knowledge_unit_anchors,
 )
-from app.workflows.digest.kg_file_ingest.lib.extractor import extract_candidates_with_diagnostics
+from app.workflows.digest.kg_file_ingest.lib.extractor import (
+    CandidateExtractionDiagnostics,
+    ChunkExtractionResult,
+    extract_candidates as _extract_candidates,
+    extract_candidates_with_diagnostics as _extract_candidates_with_diagnostics,
+)
+
+extract_candidates = _extract_candidates
+
+
+async def extract_candidates_with_diagnostics(
+    **kwargs,
+) -> tuple[ChunkExtractionResult, CandidateExtractionDiagnostics]:
+    if extract_candidates is not _extract_candidates:
+        result = await extract_candidates(**kwargs)
+        return (
+            result,
+            CandidateExtractionDiagnostics(
+                llm_attempted=True,
+                node_count=len(result.nodes),
+                edge_count=len(result.edges),
+            ),
+        )
+    return await _extract_candidates_with_diagnostics(**kwargs)
 
 _ANCHOR_ALIAS_SOURCE = "markdown_anchor"
 _SYNC_EDGE_MARKER = "markdown_anchor_sync"
@@ -135,6 +158,7 @@ def sync_markdown_knowledge_graph(
     markdown: str,
     build_revision_no: int | None = None,
     enable_rag_dedup: bool = False,
+    subject_context: str | None = None,
 ) -> KnowledgeSyncReport:
     """Synchronize knowledge units and knowledge images from Markdown into the graph."""
 
@@ -147,7 +171,10 @@ def sync_markdown_knowledge_graph(
         )
 
     revision_no = build_revision_no or _next_revision_no(session, subject)
-    units, extracted_edges, diagnostics_totals = _extract_markdown_graph_items(markdown)
+    units, extracted_edges, diagnostics_totals = _extract_markdown_graph_items(
+        markdown,
+        subject_context=subject_context,
+    )
     report = KnowledgeSyncReport(
         subject=subject,
         build_revision_no=revision_no,
@@ -260,6 +287,8 @@ def _next_revision_no(session: Session, subject: str) -> int:
 
 def _extract_markdown_graph_items(
     markdown: str,
+    *,
+    subject_context: str | None = None,
 ) -> tuple[list[MarkdownKnowledgeUnit], list[MarkdownExtractedEdge], dict[str, int]]:
     sections = extract_markdown_section_chunks(markdown)
     if not sections:
@@ -279,7 +308,11 @@ def _extract_markdown_graph_items(
 
         async def _extract_with_queue(section_index: int, section) -> SectionExtractionPayload:
             async with semaphore:
-                return await _extract_section_with_retries(section_index, section)
+                return await _extract_section_with_retries(
+                    section_index,
+                    section,
+                    subject_context=subject_context or "",
+                )
 
         return await asyncio.gather(
             *[_extract_with_queue(section_index, section) for section_index, section in enumerate(sections)]
@@ -562,11 +595,20 @@ def _build_cross_section_semantic_edges(
     return pending_edges
 
 
-async def _extract_section_with_retries(section_index: int, section) -> SectionExtractionPayload:
+async def _extract_section_with_retries(
+    section_index: int,
+    section,
+    *,
+    subject_context: str = "",
+) -> SectionExtractionPayload:
     last_error: Exception | None = None
     for attempt in range(1, _DOCS_SYNC_SECTION_MAX_RETRIES + 1):
         try:
-            return await _extract_section_graph_items(section_index, section)
+            return await _extract_section_graph_items(
+                section_index,
+                section,
+                subject_context=subject_context,
+            )
         except asyncio.CancelledError:
             raise
         except Exception as exc:
@@ -647,12 +689,18 @@ def _build_section_fallback_payload(section_index: int, section) -> SectionExtra
     )
 
 
-async def _extract_section_graph_items(section_index: int, section) -> SectionExtractionPayload:
+async def _extract_section_graph_items(
+    section_index: int,
+    section,
+    *,
+    subject_context: str = "",
+) -> SectionExtractionPayload:
     result, diagnostics = await extract_candidates_with_diagnostics(
         chunk_content=section.body_markdown,
         chunk_title=section.title,
         header_path=section.header_path,
         doc_source_type="knowledge_doc_markdown",
+        subject_context=subject_context,
         prefer_fast_path=False,
         allow_markdown_anchor_short_circuit=False,
     )

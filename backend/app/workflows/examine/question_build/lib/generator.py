@@ -214,6 +214,7 @@ async def generate_exam_questions_for_units(
     exam_mode: str,
     units: list[KnowledgeUnit],
     specs: list[ExamQuestionGenerationSpec],
+    subject_context: str = "",
     focus_prompt: str = "",
     user_prompt: str = "",
     style_prompt: str = "",
@@ -240,6 +241,7 @@ async def generate_exam_questions_for_units(
         messages = build_exam_question_messages(
             subject=subject,
             exam_mode=exam_mode,
+            subject_context=subject_context,
             focus_prompt=focus_prompt,
             user_prompt=user_prompt,
             style_prompt=style_prompt,

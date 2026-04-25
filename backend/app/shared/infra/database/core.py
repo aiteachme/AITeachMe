@@ -114,6 +114,14 @@ _REMOVED_SQLITE_COLUMNS = {
     "chat_session": ("user_goal",),
     "system_settings_snapshot": ("settings_path",),
 }
+_SQLITE_ADDITIVE_COLUMNS = {
+    "subject": (
+        ("learning_intent_text", "TEXT NOT NULL DEFAULT ''"),
+        ("subject_intro_text", "TEXT NOT NULL DEFAULT ''"),
+        ("document_summary_json", "JSON NOT NULL DEFAULT '{}'"),
+        ("llm_context_text", "TEXT NOT NULL DEFAULT ''"),
+    ),
+}
 
 
 def _get_db_path():
@@ -278,6 +286,37 @@ def _drop_sqlite_removed_schema(engine: sa.Engine) -> None:
             connection.execute(sa.text("PRAGMA foreign_keys = ON"))
 
 
+def _apply_sqlite_additive_schema_updates(engine: sa.Engine) -> None:
+    inspector = sa.inspect(engine)
+    existing_tables = set(inspector.get_table_names())
+    if not existing_tables:
+        return
+
+    with engine.begin() as connection:
+        for table_name, columns in _SQLITE_ADDITIVE_COLUMNS.items():
+            if table_name not in existing_tables:
+                continue
+            existing_columns = {
+                column["name"]
+                for column in inspector.get_columns(table_name)
+            }
+            for column_name, column_sql in columns:
+                if column_name in existing_columns:
+                    continue
+                connection.execute(
+                    sa.text(
+                        f"ALTER TABLE {quote_sqlite_identifier(table_name)} "
+                        f"ADD COLUMN {quote_sqlite_identifier(column_name)} {column_sql}"
+                    )
+                )
+                existing_columns.add(column_name)
+                logger.info(
+                    "sqlite_additive_column_added",
+                    table_name=table_name,
+                    column_name=column_name,
+                )
+
+
 def _drop_sqlite_legacy_schema(engine: sa.Engine) -> None:
     """Backward-compatible alias for older tests and local tooling."""
 
@@ -290,6 +329,7 @@ def _ensure_local_sqlite_schema(engine: sa.Engine) -> sa.Engine:
         return engine
 
     _drop_sqlite_removed_schema(engine)
+    _apply_sqlite_additive_schema_updates(engine)
     drift = _inspect_sqlite_schema_drift(engine)
     if drift is None:
         return engine

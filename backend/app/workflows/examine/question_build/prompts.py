@@ -41,6 +41,7 @@ def build_exam_question_messages(
     *,
     subject: str,
     exam_mode: str,
+    subject_context: str,
     focus_prompt: str,
     user_prompt: str,
     style_prompt: str,
@@ -51,6 +52,7 @@ def build_exam_question_messages(
     payload = {
         "subject": subject,
         "exam_mode": exam_mode,
+        "subject_context": subject_context or "",
         "requested_question_count": requested_question_count,
         "focus_prompt": focus_prompt or "",
         "user_prompt": user_prompt or "",

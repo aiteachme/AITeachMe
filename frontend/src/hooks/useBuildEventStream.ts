@@ -11,8 +11,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { KnowledgeBuildRuntimeResponse } from "../lib/knowledgeBuildRuntime";
-
-const API_BASE_URL = import.meta.env.VITE_API_URL ?? "";
+import { buildApiUrl } from "../api/client";
 
 interface UseBuildEventStreamOptions {
   subjectId: string;
@@ -73,7 +72,7 @@ export function useBuildEventStream({
       return;
     }
 
-    const url = `${API_BASE_URL}/api/v1/subjects/${encodeURIComponent(subjectId)}/knowledge/build/stream`;
+    const url = buildApiUrl(`/api/v1/subjects/${encodeURIComponent(subjectId)}/knowledge/build/stream`);
     setPreviewStreams({});
     setBuildEvents([]);
     const es = new EventSource(url, { withCredentials: true });

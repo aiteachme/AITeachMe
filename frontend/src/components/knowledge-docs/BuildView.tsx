@@ -140,7 +140,7 @@ export function BuildView({
   const events = mergedEvents;
   const chapterPreviews = mergedChapterPreviews;
   const rawProgress = Math.max(0, Math.min(100, Math.round(
-    sseSnapshot?.aggregate?.progress_pct ?? progress
+    sseSnapshot?.docgen?.progress_pct ?? progress
   )));
   const isBuildFailed = FAILED_BUILD_STAGES.has((buildStage ?? "").trim());
   const isBuildCompleted = buildStage === "completed" || (rawProgress >= 95 && isCompletionStatusText(statusText));

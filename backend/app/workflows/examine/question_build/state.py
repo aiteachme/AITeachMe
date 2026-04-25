@@ -11,6 +11,7 @@ from app.workflows.examine.question_build.lib.generator import ExamQuestionGener
 class QuestionBuildGraphInput(TypedDict, total=False):
     subject: str
     exam_mode: str
+    subject_context: str
     focus_prompt: str
     user_prompt: str
     style_prompt: str

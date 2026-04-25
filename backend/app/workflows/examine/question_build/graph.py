@@ -54,11 +54,13 @@ def create_question_build_initial_state(
     style_prompt: str,
     units: list,
     specs: list,
+    subject_context: str = "",
     progress_callback: object | None = None,
 ) -> QuestionBuildState:
     return {
         "subject": subject,
         "exam_mode": exam_mode,
+        "subject_context": subject_context,
         "focus_prompt": focus_prompt,
         "user_prompt": user_prompt,
         "style_prompt": style_prompt,
@@ -86,6 +88,7 @@ async def run_question_build_workflow(
     style_prompt: str,
     units: list,
     specs: list,
+    subject_context: str = "",
     progress_callback: object | None = None,
 ) -> WorkflowResult[QuestionBuildState]:
     context = WorkflowContext(
@@ -104,6 +107,7 @@ async def run_question_build_workflow(
         initial_state=create_question_build_initial_state(
             subject=subject,
             exam_mode=exam_mode,
+            subject_context=subject_context,
             focus_prompt=focus_prompt,
             user_prompt=user_prompt,
             style_prompt=style_prompt,

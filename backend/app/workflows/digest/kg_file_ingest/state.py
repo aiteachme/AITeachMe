@@ -17,7 +17,9 @@ class KnowledgeDigestState(TypedDict, total=False):
     job_id: int
     build_session_id: str
     user_prompt: str | None
+    subject_context: str
     shared_inputs: Any
+    doc_chapter_metadatas: list[dict[str, Any]]
     chunk_ids: list[int]
     chunk_uid_to_chunk_id: dict[str, int]
     chunk_id_to_chunk_uid: dict[int, str]
@@ -69,5 +71,4 @@ KGDigestState = KnowledgeDigestState
 
 
 __all__ = ["KnowledgeDigestState", "KGDigestState"]
-
 
