@@ -26,11 +26,11 @@ import { unwrapOrvalResponse } from "../lib/unwrapOrvalResponse";
 import { getApiErrorMessage } from "../api/client";
 import { cn } from "../lib/utils";
 import { isElectronRuntime } from "../lib/electronRuntime";
-import { downloadSubjectPackage } from "../lib/subjectPackage";
 import { FILE_ACCEPT, extractPasteFiles } from "../lib/fileUpload";
 import { resolveFileProcessingLabel } from "../components/knowledge-docs";
 import { HeroAnimation } from "../components/ui/HeroAnimation";
 import { FullPageDropOverlay } from "../components/ui/FullPageDropOverlay";
+import { SubjectExportModal } from "../components/subject/SubjectExportModal";
 import type { FileRecord, FilesData, FilesUploadData } from "../types/files";
 
 /* ── API helpers (same as BuildPlanPage) ── */
@@ -85,25 +85,6 @@ async function linkFilesToSubject(subject: string, fileUids: string[]): Promise<
 
 /* ── Export / Import API helpers ── */
 
-interface ExportPreviewStats {
-  raw_file_count: number;
-  total_raw_file_size_bytes: number;
-  knowledge_document_count: number;
-  knowledge_unit_count: number;
-  knowledge_edge_count: number;
-  question_template_count: number;
-  exam_paper_count: number;
-  chat_session_count: number;
-  user_knowledge_state_count: number;
-}
-
-interface ExportPreviewData {
-  subject_id: string;
-  subject_name: string;
-  stats: ExportPreviewStats;
-  estimated_size_bytes: number;
-}
-
 interface ImportResultData {
   subject_id: string;
   subject_name: string;
@@ -137,18 +118,6 @@ async function importCourseByFilename(filename: string, newName?: string): Promi
     timeout: 120000,
   });
   return response.data;
-}
-
-async function fetchExportPreview(subject: string): Promise<ExportPreviewData> {
-  const response = await apiClient<ApiResponse<ExportPreviewData>>({
-    method: "POST",
-    url: `/api/v1/subjects/${subject}/export/preview`,
-  });
-  return response.data;
-}
-
-async function downloadExport(subject: string): Promise<void> {
-  await downloadSubjectPackage(subject);
 }
 
 async function importSubject(file: File, newName?: string): Promise<ImportResultData> {
@@ -218,109 +187,6 @@ function homeFileStatusMeta(file: Pick<FileRecord, "markdown_ready" | "error_mes
 }
 
 /* ── Export Modal ── */
-
-function ExportModal({
-  subjectId,
-  onClose,
-}: {
-  subjectId: string;
-  onClose: () => void;
-}) {
-  const { data: preview, isLoading } = useQuery({
-    queryKey: ["export-preview", subjectId],
-    queryFn: () => fetchExportPreview(subjectId),
-  });
-
-  const exportMutation = useMutation({
-    mutationFn: () => downloadExport(subjectId),
-    onSuccess: () => onClose(),
-  });
-
-  const stats = preview?.stats;
-
-  return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center">
-      <div className="absolute inset-0 modal-backdrop" onClick={onClose} />
-      <motion.div
-        initial={{ opacity: 0, scale: 0.95, y: 10 }}
-        animate={{ opacity: 1, scale: 1, y: 0 }}
-        exit={{ opacity: 0, scale: 0.95 }}
-        className="relative z-10 w-[480px] max-w-[90vw] bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden dark:bg-slate-900 dark:border-slate-800"
-      >
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 dark:border-slate-800/80">
-          <div className="flex items-center gap-3">
-            <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 shadow-sm">
-              <Package className="w-5 h-5 text-white" />
-            </div>
-            <div>
-              <h3 className="text-base font-bold text-slate-900 dark:text-slate-100">导出学科</h3>
-              <p className="text-xs text-slate-500 mt-0.5 dark:text-slate-400">{preview?.subject_name ?? "加载中…"}</p>
-            </div>
-          </div>
-          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors dark:hover:bg-slate-800 dark:text-slate-500 dark:hover:text-slate-300" title="关闭">
-            <X className="w-5 h-5" />
-          </button>
-        </div>
-        <div className="px-6 py-5">
-          {isLoading ? (
-            <div className="flex items-center justify-center py-8">
-              <Loader2 className="w-6 h-6 animate-spin text-slate-400" />
-              <span className="ml-2 text-sm text-slate-500">正在统计内容…</span>
-            </div>
-          ) : stats ? (
-            <div className="space-y-3">
-              <p className="text-sm text-slate-600 mb-4 dark:text-slate-400">
-                将以下内容打包为 <code className="px-1.5 py-0.5 bg-slate-100 rounded text-xs font-mono dark:bg-slate-800">.atmx</code> 文件，导入后即可直接使用。
-              </p>
-              <div className="grid grid-cols-2 gap-2">
-                {[
-                  { label: "上传文件", value: stats.raw_file_count, show: true },
-                  { label: "知识文档", value: stats.knowledge_document_count, show: true },
-                  { label: "知识图谱节点", value: stats.knowledge_unit_count, show: true },
-                  { label: "知识图谱边", value: stats.knowledge_edge_count, show: true },
-                  { label: "题目模板", value: stats.question_template_count, show: stats.question_template_count > 0 },
-                  { label: "考试记录", value: stats.exam_paper_count, show: stats.exam_paper_count > 0 },
-                  { label: "对话记录", value: stats.chat_session_count, show: stats.chat_session_count > 0 },
-                ].filter(s => s.show).map(({ label, value }) => (
-                  <div key={label} className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2 dark:bg-slate-800/50">
-                    <span className="text-xs text-slate-500 dark:text-slate-400">{label}</span>
-                    <span className="text-sm font-semibold text-slate-800 dark:text-slate-200">{value}</span>
-                  </div>
-                ))}
-              </div>
-              {stats.total_raw_file_size_bytes > 0 && (
-                <p className="text-xs text-slate-400 mt-2">
-                  文件体积约 {formatFileSize(stats.total_raw_file_size_bytes)}
-                </p>
-              )}
-            </div>
-          ) : null}
-        </div>
-        <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-slate-100 bg-slate-50/50 dark:border-slate-800/80 dark:bg-slate-900">
-          <button onClick={onClose} className="px-4 py-2 text-sm font-medium text-slate-600 hover:text-slate-800 rounded-lg hover:bg-slate-100 transition-colors dark:text-slate-400 dark:hover:text-slate-200 dark:hover:bg-slate-800">
-            取消
-          </button>
-          <button
-            onClick={() => exportMutation.mutate()}
-            disabled={isLoading || exportMutation.isPending}
-            className={cn(
-              "flex items-center gap-2 px-5 py-2 rounded-xl text-sm font-bold transition-all",
-              !isLoading && !exportMutation.isPending
-                ? "bg-slate-900 text-white hover:bg-slate-800 shadow-sm hover:shadow-md"
-                : "bg-slate-200 text-slate-400 cursor-not-allowed"
-            )}
-          >
-            {exportMutation.isPending ? (
-              <><Loader2 className="w-4 h-4 animate-spin" /> 导出中…</>
-            ) : (
-              <><Download className="w-4 h-4" /> 导出</>
-            )}
-          </button>
-        </div>
-      </motion.div>
-    </div>
-  );
-}
 
 /* ── Import Modal ── */
 
@@ -1125,7 +991,7 @@ export function HomePage() {
     {/* ═══ Modals ═══ */}
     <AnimatePresence>
       {exportSubjectId && (
-        <ExportModal
+        <SubjectExportModal
           key="export"
           subjectId={exportSubjectId}
           onClose={() => setExportSubjectId(null)}
