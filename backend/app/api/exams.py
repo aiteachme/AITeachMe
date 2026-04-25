@@ -42,7 +42,6 @@ from app.shared.infra.workflow.live_stream import (
 )
 from app.utils.time import utcnow
 from app.workflows.examine import (
-    ExamQuestionGenerationSpec,
     run_exam_grade_workflow,
     run_exam_study_guide_workflow,
     run_question_build_workflow,
@@ -196,7 +195,22 @@ def _pick_knowledge_units(
             continue
         seen_ids.add(unit.id)
         deduped.append(unit)
+    if limit <= 0:
+        return deduped
     return deduped[: max(1, limit)]
+
+
+def _mastery_by_unit_id(session: Session, *, user_id: str, subject: str) -> dict[int, float]:
+    return {
+        int(state.knowledge_unit_id): float(state.mastery_score)
+        for state in profile_repo.list_knowledge_states(
+            session,
+            user_id=user_id,
+            subject=subject,
+            target_kind="knowledge_unit",
+        )
+        if state.knowledge_unit_id is not None
+    }
 
 
 def _question_type_for_order(*, exam_mode: str, difficulty: str, item_order: int) -> str:
@@ -329,8 +343,10 @@ def _upsert_generated_template(
     answer: str,
     explanation: str,
     options: list[str] | None,
+    knowledge_unit_refs: list[dict[str, object]] | None = None,
 ) -> QuestionTemplate:
     stem_hash = _hash_stem(stem)
+    refs = knowledge_unit_refs or [{"knowledge_unit_id": unit.id, "coverage_weight": 1.0, "role": "primary"}]
     existing = session.exec(
         select(QuestionTemplate).where(
             QuestionTemplate.subject == subject,
@@ -346,10 +362,7 @@ def _upsert_generated_template(
         existing.answer = answer
         existing.explanation = explanation
         existing.options_json = json.dumps(options, ensure_ascii=False) if options else None
-        existing.knowledge_unit_refs_json = json.dumps(
-            [{"knowledge_unit_id": unit.id, "coverage_weight": 1.0, "role": "primary"}],
-            ensure_ascii=False,
-        )
+        existing.knowledge_unit_refs_json = json.dumps(refs, ensure_ascii=False)
         existing.updated_at = utcnow()
         session.add(existing)
         session.commit()
@@ -366,10 +379,7 @@ def _upsert_generated_template(
         answer=answer,
         explanation=explanation,
         options_json=json.dumps(options, ensure_ascii=False) if options else None,
-        knowledge_unit_refs_json=json.dumps(
-            [{"knowledge_unit_id": unit.id, "coverage_weight": 1.0, "role": "primary"}],
-            ensure_ascii=False,
-        ),
+        knowledge_unit_refs_json=json.dumps(refs, ensure_ascii=False),
     )
     return exams_repo.create_question_template(session, template)
 
@@ -381,6 +391,7 @@ async def _run_exam_generation_background(
     paper_id: int,
     exam_mode: str,
     unit_ids: list[int],
+    question_count: int,
     requested_difficulty: str,
     focus_prompt: str | None,
     user_prompt: str | None,
@@ -397,6 +408,7 @@ async def _run_exam_generation_background(
             paper = exams_repo.get_exam_paper_by_id(session, paper_id)
             if paper is None or paper.subject != subject or paper.user_id != user_id:
                 return
+            subject_row = _ensure_subject(session, subject, user_id)
             units = list(
                 session.exec(
                     select(KnowledgeUnit).where(
@@ -414,38 +426,26 @@ async def _run_exam_generation_background(
                     status_code=409,
                 )
 
-            question_specs = [
-                ExamQuestionGenerationSpec(
-                    item_order=order,
-                    knowledge_unit_id=int(unit.id or 0),
-                    question_type=_question_type_for_order(
-                        exam_mode=exam_mode,
-                        difficulty=_difficulty_for_order(
-                            requested_difficulty=requested_difficulty,
-                            item_order=order,
-                        ),
-                        item_order=order,
-                    ),
-                    difficulty=_difficulty_for_order(
-                        requested_difficulty=requested_difficulty,
-                        item_order=order,
-                    ),
-                )
-                for order, unit in enumerate(exam_units, start=1)
-            ]
+            mastery_by_unit_id = _mastery_by_unit_id(session, user_id=user_id, subject=subject)
 
         build_result = await run_question_build_workflow(
             subject=subject,
+            subject_name=subject_row.name,
+            subject_description=subject_row.description,
+            subject_user_intent=subject_row.user_intent,
             exam_mode=exam_mode,
             units=exam_units,
-            specs=question_specs,
+            specs=None,
+            question_count=question_count,
+            requested_difficulty=requested_difficulty,
+            mastery_by_unit_id=mastery_by_unit_id,
             focus_prompt=focus_prompt or "",
             user_prompt=user_prompt or "",
             style_prompt=style_prompt or "",
         )
         generated_by_order = _require_generated_questions_by_order(
             build_result=build_result,
-            expected_orders=[spec.item_order for spec in question_specs],
+            expected_orders=list(range(1, question_count + 1)),
         )
 
         with managed_session() as session:
@@ -462,11 +462,17 @@ async def _run_exam_generation_background(
             )
             unit_by_id = {int(unit.id): unit for unit in units if unit.id is not None}
             items: list[ExamPaperItem] = []
-            for order, unit_id in enumerate(unit_ids, start=1):
-                unit = unit_by_id.get(unit_id)
+            for order in range(1, question_count + 1):
+                generated = generated_by_order[order]
+                primary_unit_id = int(generated.get("knowledge_unit_id") or 0)
+                unit = unit_by_id.get(primary_unit_id)
                 if unit is None:
                     continue
-                generated = generated_by_order[order]
+                refs = [
+                    ref
+                    for ref in list(generated.get("knowledge_unit_refs") or [])
+                    if isinstance(ref, dict) and int(ref.get("knowledge_unit_id", 0) or 0) in unit_by_id
+                ] or [{"knowledge_unit_id": primary_unit_id, "coverage_weight": 1.0, "role": "primary"}]
                 template = _upsert_generated_template(
                     session,
                     subject=subject,
@@ -477,6 +483,7 @@ async def _run_exam_generation_background(
                     answer=str(generated["correct_answer"]),
                     explanation=str(generated["explanation"]),
                     options=list(generated.get("options") or []) or None,
+                    knowledge_unit_refs=refs,
                 )
                 items.append(
                     ExamPaperItem(
@@ -527,6 +534,7 @@ async def _spawn_exam_generation_after_response(
     paper_id: int,
     exam_mode: str,
     unit_ids: list[int],
+    question_count: int,
     requested_difficulty: str,
     focus_prompt: str | None,
     user_prompt: str | None,
@@ -539,6 +547,7 @@ async def _spawn_exam_generation_after_response(
             paper_id=paper_id,
             exam_mode=exam_mode,
             unit_ids=unit_ids,
+            question_count=question_count,
             requested_difficulty=requested_difficulty,
             focus_prompt=focus_prompt,
             user_prompt=user_prompt,
@@ -856,7 +865,7 @@ async def generate_exam(
         subject=normalized,
         exam_mode=body.exam_mode,
         focus_prompt=body.focus_prompt,
-        limit=question_count,
+        limit=0,
     )
     if not units:
         raise AITeachMeError(
@@ -881,8 +890,8 @@ async def generate_exam(
             user_id=user.user_id,
             exam_mode=mode,
             status="generating",
-            total_items=len(exam_units),
-            total_score=float(len(exam_units)),
+            total_items=question_count,
+            total_score=float(question_count),
             selection_context_json=_build_exam_selection_context(
                 source="knowledge_unit_llm",
                 knowledge_unit_ids=[int(unit.id or 0) for unit in exam_units],
@@ -903,6 +912,7 @@ async def generate_exam(
         paper_id=paper_id,
         exam_mode=mode,
         unit_ids=[int(unit.id or 0) for unit in exam_units],
+        question_count=question_count,
         requested_difficulty=requested_difficulty,
         focus_prompt=body.focus_prompt,
         user_prompt=body.user_prompt,
@@ -918,7 +928,7 @@ async def generate_exam(
             subject=paper.subject,
             user_id=paper.user_id,
             exam_mode=paper.exam_mode,
-            num_questions=len(exam_units),
+            num_questions=question_count,
             exam_paper_id=paper_id,
             sample_file_uids=body.sample_file_uids or [],
         )
