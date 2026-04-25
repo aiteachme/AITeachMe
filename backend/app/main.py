@@ -271,7 +271,16 @@ def _register_middlewares(app: FastAPI) -> None:
         except Exception:
             elapsed_ms = int((perf_counter() - started_at) * 1000)
             access_logger.exception("request_failed", elapsed_ms=elapsed_ms)
-            raise
+            return JSONResponse(
+                status_code=500,
+                headers={"x-request-id": request_id},
+                content={
+                    "code": 500,
+                    "error_code": "INTERNAL_SERVER_ERROR",
+                    "message": "服务内部异常。",
+                    "data": None,
+                },
+            )
         finally:
             clear_logging_context()
 

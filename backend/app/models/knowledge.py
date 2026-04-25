@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
+import sqlalchemy as sa
 from sqlmodel import Field, SQLModel, UniqueConstraint
 
 from app.utils.time import utcnow
@@ -31,11 +32,11 @@ class RetrievalChunk(SQLModel, table=True):
     document_id: int = Field(foreign_key="raw_file.id", index=True)
     title: str
     level: int
-    header_path: str
+    header_path: str = Field(sa_column=sa.Column(sa.Text(), nullable=False))
     chunk_index: int
     digest_chunk_uid: str = Field(default="", index=True)
     build_session_id: str = Field(default="", index=True)
-    content: str
+    content: str = Field(sa_column=sa.Column(sa.Text(), nullable=False))
     embedding_model: str | None = None
     vector_ref: str | None = None
     is_active: bool = Field(default=True, index=True)
