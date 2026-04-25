@@ -134,9 +134,9 @@ def build_file_record(raw_file: RawFile) -> FileRecord:
     file_uid = require_uid(raw_file.uid, "RawFile.uid")
     markdown_ready = _is_markdown_ready(raw_file)
     asset_dir_value = raw_file.asset_dir
-    if not asset_dir_value and raw_file.id is not None:
+    if not asset_dir_value:
         scope = get_content_store().user_file_scope(user_id=raw_file.user_id or "local")
-        asset_dir_value = scope.asset_prefix(raw_file.id).rstrip("/")
+        asset_dir_value = scope.asset_prefix(file_uid=file_uid, filename=raw_file.filename).rstrip("/")
     assets = _build_asset_items(
         file_uid=file_uid,
         asset_dir_value=asset_dir_value,

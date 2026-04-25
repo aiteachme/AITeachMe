@@ -12,7 +12,7 @@ from typing import Any
 import structlog
 from sqlmodel import Session, select
 
-from app.models import ChatSession, RetrievalChunk, Subject
+from app.models import ChatSession, RawFile, RetrievalChunk, Subject
 from app.repositories.knowledge import knowledge_repo
 from app.schemas.export_import import ImportOptions, ImportResultData
 from app.shared.infra.embedding import aembed_texts
@@ -21,6 +21,7 @@ from app.shared.infra.subject import (
     should_generate_subject_embeddings,
 )
 from app.shared.infra.storage import (
+    build_file_storage_segment,
     build_subject_storage_scope,
     get_content_store,
     run_store_sync,
@@ -84,6 +85,7 @@ def import_subject(
                 imported_counts[spec.name] = count
 
             _unpack_files(
+                session,
                 tmpdir,
                 new_slug,
                 user_id=user_id,
@@ -177,7 +179,27 @@ def _safe_extract_archive(zf: zipfile.ZipFile, target_dir: Path) -> None:
     zf.extractall(target_dir)
 
 
+def _exported_raw_file_segments(extract_dir: Path) -> dict[Any, str]:
+    db_file = extract_dir / "db" / "raw_file.json"
+    if not db_file.exists():
+        return {}
+
+    data = json.loads(db_file.read_text(encoding="utf-8"))
+    segments: dict[Any, str] = {}
+    for record in data.get("records", []):
+        old_id = record.get("id")
+        file_uid = record.get("uid")
+        if old_id is None or not file_uid:
+            continue
+        segments[old_id] = build_file_storage_segment(
+            file_uid=str(file_uid),
+            filename=record.get("filename"),
+        )
+    return segments
+
+
 def _unpack_files(
+    session: Session,
     extract_dir: Path,
     new_slug: str,
     *,
@@ -186,42 +208,37 @@ def _unpack_files(
 ) -> None:
     """Write packaged files into ContentStore using remapped file ids."""
 
-    cs = get_content_store()
     subject_scope = build_subject_storage_scope(user_id=user_id, subject=new_slug)
+    cs = get_content_store()
 
-    def _upload_remapped(src_dir: Path, prefix: str) -> None:
-        if not src_dir.exists():
-            return
-        for item in sorted(src_dir.iterdir()):
-            if not item.is_file():
-                continue
-            try:
-                old_id = int(item.stem)
-                new_id = file_id_map.get(old_id, old_id)
-                key = f"{subject_scope.namespace}/{prefix}/{new_id}{item.suffix}"
-            except ValueError:
-                key = f"{subject_scope.namespace}/{prefix}/{item.name}"
-            run_store_sync(cs.write_bytes, key, item.read_bytes())
+    def _raw_file_for_old_id(old_id: Any) -> RawFile | None:
+        new_id = _lookup_imported_id(old_id, file_id_map) or old_id
+        return session.get(RawFile, new_id) if isinstance(new_id, int) else None
 
-    _upload_remapped(extract_dir / "files" / "raw_files", "raw_files")
-    _upload_remapped(extract_dir / "files" / "raw_markdowns", "raw_markdowns")
+    file_segments = _exported_raw_file_segments(extract_dir)
+    for old_id, file_segment in file_segments.items():
+        raw_file = _raw_file_for_old_id(old_id)
+        if raw_file is None:
+            continue
 
-    src_assets = extract_dir / "files" / "assets"
-    if src_assets.exists():
-        for old_dir in sorted(src_assets.iterdir()):
-            if not old_dir.is_dir():
-                continue
-            try:
-                old_id = int(old_dir.name)
-            except ValueError:
-                continue
-            new_id = file_id_map.get(old_id, old_id)
-            for asset_file in sorted(old_dir.rglob("*")):
+        raw_dir = extract_dir / "files" / "raw_files" / file_segment
+        if raw_file.file_path and raw_dir.exists():
+            raw_candidates = sorted(item for item in raw_dir.iterdir() if item.is_file() and item.stem == "raw")
+            if raw_candidates:
+                run_store_sync(cs.write_bytes, raw_file.file_path, raw_candidates[0].read_bytes())
+
+        markdown_path = extract_dir / "files" / "raw_markdowns" / file_segment / "markdown.md"
+        if raw_file.markdown_path and markdown_path.exists():
+            run_store_sync(cs.write_bytes, raw_file.markdown_path, markdown_path.read_bytes())
+
+        asset_dir = extract_dir / "files" / "assets" / file_segment
+        if raw_file.asset_dir and asset_dir.exists():
+            asset_prefix = raw_file.asset_dir.rstrip("/") + "/"
+            for asset_file in sorted(asset_dir.rglob("*")):
                 if not asset_file.is_file():
                     continue
-                relative = asset_file.relative_to(old_dir).as_posix()
-                key = f"{subject_scope.namespace}/assets/{new_id}/{relative}"
-                run_store_sync(cs.write_bytes, key, asset_file.read_bytes())
+                relative = asset_file.relative_to(asset_dir).as_posix()
+                run_store_sync(cs.write_bytes, f"{asset_prefix}{relative}", asset_file.read_bytes())
 
     src_knowledge = extract_dir / "knowledge"
     if src_knowledge.exists():

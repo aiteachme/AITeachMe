@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import posixpath
 import secrets
 import tempfile
 from pathlib import Path
@@ -49,6 +50,12 @@ def _decode_json_object(raw: str | None) -> dict[str, object]:
     except Exception:
         return {}
     return decoded if isinstance(decoded, dict) else {}
+
+
+def _relative_asset_link_prefix(*, markdown_key: str, asset_dir: str) -> str:
+    markdown_parent = posixpath.dirname(markdown_key.rstrip("/")) or "."
+    relative = posixpath.relpath(asset_dir.rstrip("/"), markdown_parent)
+    return "." if relative == "." else relative
 
 
 def _coerce_optional_bool(value: object, *, default: bool) -> bool:
@@ -187,10 +194,20 @@ async def _load_raw_file_state(state: IngestParseState) -> IngestParseState:
             markitdown_available=is_markitdown_available_for_extension(extension),
         )
 
-        record_markdown_path = raw_file.markdown_path or file_scope.raw_markdown_key(file_id)
-        record_asset_dir = raw_file.asset_dir or file_scope.asset_prefix(file_id).rstrip("/")
-        asset_upload_prefix = file_scope.asset_prefix(file_id)
-        asset_storage_dir = asset_upload_prefix.rstrip("/")
+        record_markdown_path = raw_file.markdown_path or file_scope.raw_markdown_key(
+            file_uid=raw_file.uid,
+            filename=raw_file.original_filename,
+        )
+        record_asset_dir = raw_file.asset_dir or file_scope.asset_prefix(
+            file_uid=raw_file.uid,
+            filename=raw_file.original_filename,
+        ).rstrip("/")
+        asset_upload_prefix = record_asset_dir.rstrip("/") + "/"
+        asset_storage_dir = record_asset_dir
+        asset_link_prefix = _relative_asset_link_prefix(
+            markdown_key=record_markdown_path,
+            asset_dir=record_asset_dir,
+        )
 
         return {
             **state,
@@ -204,6 +221,7 @@ async def _load_raw_file_state(state: IngestParseState) -> IngestParseState:
             "record_asset_dir": record_asset_dir,
             "asset_upload_prefix": asset_upload_prefix,
             "asset_storage_dir": asset_storage_dir,
+            "asset_link_prefix": asset_link_prefix,
             "asset_name_prefix": build_asset_name_prefix(
                 filename=raw_file.original_filename,
                 file_uid=raw_file.uid,
