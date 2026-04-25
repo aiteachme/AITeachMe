@@ -6,6 +6,7 @@ import hashlib
 import json
 import re
 
+import structlog
 from fastapi import APIRouter, BackgroundTasks, Body, Depends, Path, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy import or_
@@ -50,6 +51,7 @@ from app.workflows.profile import schedule_reviews, update_mastery_from_exam
 from app.workflows.support.subjects.learning_context import load_subject_llm_context
 
 router = APIRouter(prefix="/api/v1/subjects/{subject}/exams", tags=["exams"])
+logger = structlog.get_logger(__name__)
 
 _HTML_COMMENT_RE = re.compile(r"<!--.*?-->", re.DOTALL)
 _WHITESPACE_RE = re.compile(r"\s+")
@@ -517,6 +519,15 @@ async def _run_exam_generation_background(
         )
     except Exception as exc:
         error_message = str(getattr(exc, "detail", None) or exc or "Exam question generation failed.")
+        logger.exception(
+            "exam_generation_background_failed",
+            subject=subject,
+            user_id=user_id,
+            paper_id=paper_id,
+            exam_mode=exam_mode,
+            question_count=question_count,
+            error_message=error_message,
+        )
         with managed_session() as session:
             paper = exams_repo.get_exam_paper_by_id(session, paper_id)
             if paper is not None:

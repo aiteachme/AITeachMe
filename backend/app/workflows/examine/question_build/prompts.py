@@ -19,8 +19,11 @@ _LATEX_FORMAT_RULES = (
 
 _QUESTION_TYPE_FORMAT_RULES = (
     "\nQuestion type formatting rules:\n"
-    "- single_choice: provide exactly 4 distinct options; correct_answer must exactly equal one option.\n"
-    "- multiple_choice: provide exactly 4 distinct options; correct_answer must be comma-separated option labels like `A,C`.\n"
+    "- Use one canonical choice format only: options must be a JSON array of strings, never an object/map.\n"
+    "- Choice options must be exactly 4 plain option texts in order; never prefix options with A/B/C/D labels.\n"
+    "- single_choice: provide exactly 4 distinct options and correct_indices with exactly one zero-based index, for example `[0]`.\n"
+    "- multiple_choice: provide exactly 4 distinct options and correct_indices with all correct zero-based indices, for example `[0, 2]`.\n"
+    "- For single_choice and multiple_choice, do not provide correct_answer; the backend derives A/B/C/D labels from correct_indices.\n"
     "- true_false: do not provide options; correct_answer must be True or False.\n"
     "- fill_blank: do not provide options; put the blank in the stem as `{{blank}}`; correct_answer must be short and unique.\n"
     "- short_answer: do not provide options; correct_answer should be concise but complete.\n"
@@ -160,7 +163,12 @@ def build_exam_question_messages(
 2. knowledge_unit_id 必须是 question_specs.knowledge_unit_ids 中最主要的一个。
 3. 如果 question_specs.knowledge_unit_ids 有多个，本题要自然覆盖这些相关知识点。
 4. 不要直接泄露答案；解析要说明考点、正确原因和常见误区。
-5. fill_blank stems 使用 `{{blank}}`，并且 `{{blank}}` 只能在正文中，不能放进 LaTeX 公式。
+5. fill_blank stems 使用 `{{{{blank}}}}`，并且 `{{{{blank}}}}` 只能在正文中，不能放进 LaTeX 公式。
+
+Choice output contract:
+- For single_choice and multiple_choice, `options` must be pure option text only, for example `["option one", "option two", "option three", "option four"]`.
+- For single_choice and multiple_choice, use `correct_indices` only, with zero-based indices, for example `[0]` or `[0, 2]`.
+- Do not put A/B/C/D labels inside options, and do not return `correct_answer` for choice questions.
 
 输入：
 {json.dumps(payload, ensure_ascii=False, indent=2)}

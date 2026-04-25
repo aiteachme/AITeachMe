@@ -8,6 +8,7 @@ from app.workflows.examine.question_build.lib.generator import (
     ExamQuestionBlueprintBatch,
     ExamQuestionDraft,
     ExamQuestionGenerationSpec,
+    ExamSingleQuestionResponse,
     ExamQuestionWeightResult,
     assign_question_knowledge_weights,
     generate_exam_questions_for_units,
@@ -20,6 +21,7 @@ async def test_generate_exam_questions_for_units_returns_validated_llm_questions
     observed_messages = []
 
     async def fake_acompletion_with_fallback(*args, **kwargs):
+        assert kwargs["response_model"] is ExamQuestionBatch
         observed_messages.extend(args[0])
         return ExamQuestionBatch(
             questions=[
@@ -28,19 +30,19 @@ async def test_generate_exam_questions_for_units_returns_validated_llm_questions
                     knowledge_unit_id=101,
                     question_type="single_choice",
                     difficulty="medium",
-                    stem="下列哪一项最能说明导数的核心含义？",
-                    options=["瞬时变化率", "面积和", "向量叉积", "集合并集"],
-                    correct_answer="瞬时变化率",
-                    explanation="导数描述函数在某一点附近的瞬时变化率，这是最核心的定义。",
+                    stem="Which option best describes the core meaning of a derivative?",
+                    options=["Instantaneous rate of change", "Area accumulation", "Vector cross product", "Set union"],
+                    correct_answer="A",
+                    explanation="A derivative describes local instantaneous change, which is its core definition.",
                 ),
                 ExamQuestionDraft(
                     item_order=2,
                     knowledge_unit_id=102,
                     question_type="short_answer",
                     difficulty="hard",
-                    stem="说明牛顿迭代法为何通常需要一个较好的初始值，并指出其局限。",
-                    correct_answer="初始值若足够接近真实根，局部线性化才更可能收敛；离得过远时可能震荡、发散或收敛到别的根。",
-                    explanation="题目考查对牛顿迭代法收敛条件与局限的理解，而不是只会套公式。",
+                    stem="Explain why Newton iteration usually needs a reasonable initial value.",
+                    correct_answer="A nearby initial value makes local linearization more likely to converge.",
+                    explanation="Newton iteration depends on local tangent approximations, so distant starts may diverge.",
                 ),
             ]
         )
@@ -94,7 +96,7 @@ async def test_generate_exam_questions_for_units_returns_validated_llm_questions
     )
 
     assert [item.item_order for item in questions] == [1, 2]
-    assert questions[0].correct_answer == "瞬时变化率"
+    assert questions[0].correct_answer == "A"
     assert questions[0].options is not None and len(questions[0].options) == 4
     assert questions[1].question_type == "short_answer"
     assert "Calculus context: derivatives before Newton iteration." in observed_messages[1]["content"]
@@ -103,18 +105,17 @@ async def test_generate_exam_questions_for_units_returns_validated_llm_questions
 @pytest.mark.anyio
 async def test_generate_exam_questions_for_units_rejects_misaligned_llm_output(monkeypatch):
     async def fake_acompletion_with_fallback(*args, **kwargs):
-        return ExamQuestionBatch(
-            questions=[
-                ExamQuestionDraft(
-                    item_order=1,
-                    knowledge_unit_id=999,
-                    question_type="fill_blank",
-                    difficulty="easy",
-                    stem="极限的定义中，趋近过程强调的是 ____ 。",
-                    correct_answer="变量的逼近关系",
-                    explanation="这是一个用于触发校验失败的错误样例。",
-                )
-            ]
+        assert kwargs["response_model"] is ExamSingleQuestionResponse
+        return ExamSingleQuestionResponse(
+            question=ExamQuestionDraft(
+                item_order=1,
+                knowledge_unit_id=999,
+                question_type="fill_blank",
+                difficulty="easy",
+                stem="In the definition of a limit, the process emphasizes {{blank}}.",
+                correct_answer="approach behavior",
+                explanation="This intentionally uses the wrong unit id so alignment validation fails.",
+            )
         )
 
     monkeypatch.setattr(generator, "acompletion_with_fallback", fake_acompletion_with_fallback)
@@ -140,6 +141,60 @@ async def test_generate_exam_questions_for_units_rejects_misaligned_llm_output(m
     ]
 
     with pytest.raises(ValueError, match="knowledge_unit_id"):
+        await generate_exam_questions_for_units(
+            subject="math",
+            exam_mode="web_practice",
+            units=units,
+            specs=specs,
+        )
+
+
+@pytest.mark.anyio
+async def test_generate_exam_questions_for_units_reports_failed_item_order(monkeypatch):
+    async def fake_acompletion_with_fallback(*args, **kwargs):
+        item_order = kwargs["extra_metadata"]["item_order"]
+        if item_order == 2:
+            raise RuntimeError("output truncated by max_tokens")
+        return ExamSingleQuestionResponse(
+            question=ExamQuestionDraft(
+                item_order=item_order,
+                knowledge_unit_id=301,
+                question_type="short_answer",
+                difficulty="medium",
+                stem="Explain the core idea behind this related knowledge unit.",
+                correct_answer="It connects the concept to a concrete reasoning step.",
+                explanation="This valid response lets the test isolate the failing item order.",
+            )
+        )
+
+    monkeypatch.setattr(generator, "acompletion_with_fallback", fake_acompletion_with_fallback)
+
+    units = [
+        KnowledgeUnit(
+            id=301,
+            subject="math",
+            knowledge_unit_type="concept",
+            canonical_name="Derivative",
+            normalized_name="derivative",
+            status="active",
+        ),
+    ]
+    specs = [
+        ExamQuestionGenerationSpec(
+            item_order=1,
+            knowledge_unit_id=301,
+            question_type="short_answer",
+            difficulty="medium",
+        ),
+        ExamQuestionGenerationSpec(
+            item_order=2,
+            knowledge_unit_id=301,
+            question_type="short_answer",
+            difficulty="medium",
+        ),
+    ]
+
+    with pytest.raises(ValueError, match=r"item_order values=\[2\]"):
         await generate_exam_questions_for_units(
             subject="math",
             exam_mode="web_practice",
@@ -243,12 +298,12 @@ def test_exam_question_draft_accepts_multiple_choice_and_true_false_shapes():
         difficulty="medium",
         stem="Which two statements correctly describe derivatives in this context?",
         options=[
-            "A. A derivative can describe an instantaneous rate of change.",
-            "B. A derivative is always equal to the function value.",
-            "C. A derivative can be represented by the slope of a tangent line.",
-            "D. A derivative is the area under a curve.",
+            "A derivative can describe an instantaneous rate of change.",
+            "A derivative is always equal to the function value.",
+            "A derivative can be represented by the slope of a tangent line.",
+            "A derivative is the area under a curve.",
         ],
-        correct_answer="A,C",
+        correct_indices=[0, 2],
         explanation="The derivative captures instantaneous change and tangent slope; function value and area are different concepts.",
     )
     true_false = ExamQuestionDraft(
@@ -263,12 +318,101 @@ def test_exam_question_draft_accepts_multiple_choice_and_true_false_shapes():
 
     assert multiple_choice.options is not None and len(multiple_choice.options) == 4
     assert multiple_choice.correct_answer == "A,C"
+    assert multiple_choice.correct_indices == [0, 2]
     assert true_false.options is None
     assert true_false.correct_answer == "True"
 
 
+def test_exam_question_draft_accepts_boolean_true_false_answer():
+    draft = ExamQuestionDraft(
+        item_order=1,
+        knowledge_unit_id=301,
+        question_type="true_false",
+        difficulty="easy",
+        stem="True or False: a zero derivative always means a global maximum.",
+        correct_answer=False,
+        explanation="A zero derivative identifies a critical point, not necessarily a global maximum.",
+    )
+
+    assert draft.correct_answer == "False"
+
+
+def test_exam_question_draft_accepts_labeled_single_choice_answer():
+    draft = ExamQuestionDraft(
+        item_order=1,
+        knowledge_unit_id=301,
+        question_type="single_choice",
+        difficulty="medium",
+        stem="Which statement best describes the derivative at a point?",
+        options=[
+            "Local instantaneous rate of change",
+            "Total accumulated area",
+            "A set membership operation",
+            "A vector cross product",
+        ],
+        correct_indices=[0],
+        explanation="The label answer should normalize to the full option text.",
+    )
+
+    assert draft.correct_answer == "A"
+    assert draft.correct_indices == [0]
+
+
+def test_exam_question_draft_accepts_option_mapping():
+    draft = ExamQuestionDraft(
+        item_order=1,
+        knowledge_unit_id=301,
+        question_type="single_choice",
+        difficulty="medium",
+        stem="Which condition makes this optimization interpretation correct?",
+        options={
+            "A": "The derivative is zero at the candidate point.",
+            "B": "The function must be constant everywhere.",
+            "C": "The input variable has no domain restrictions.",
+            "D": "The graph must be a straight line.",
+        },
+        correct_indices=[0],
+        explanation="Dictionary options are normalized into labeled option strings.",
+    )
+
+    assert draft.options == [
+        "The derivative is zero at the candidate point.",
+        "The function must be constant everywhere.",
+        "The input variable has no domain restrictions.",
+        "The graph must be a straight line.",
+    ]
+    assert draft.correct_answer == "A"
+    assert draft.correct_indices == [0]
+
+
+def test_exam_question_draft_strips_option_labels_from_llm_output():
+    draft = ExamQuestionDraft(
+        item_order=1,
+        knowledge_unit_id=301,
+        question_type="single_choice",
+        difficulty="medium",
+        stem="Which condition makes this optimization interpretation correct?",
+        options=[
+            "A. The derivative is zero at the candidate point.",
+            "B. The function must be constant everywhere.",
+            "C. The input variable has no domain restrictions.",
+            "D. The graph must be a straight line.",
+        ],
+        correct_answer="The derivative is zero at the candidate point.",
+        explanation="Labeled options are accepted as fallback but normalized to plain text.",
+    )
+
+    assert draft.options == [
+        "The derivative is zero at the candidate point.",
+        "The function must be constant everywhere.",
+        "The input variable has no domain restrictions.",
+        "The graph must be a straight line.",
+    ]
+    assert draft.correct_answer == "A"
+
+
 def test_exam_question_draft_rejects_invalid_multiple_choice_answer():
-    with pytest.raises(ValueError, match="multiple_choice correct_answer"):
+    with pytest.raises(ValueError, match="multiple_choice correct_indices"):
         ExamQuestionDraft(
             item_order=1,
             knowledge_unit_id=301,
@@ -328,3 +472,20 @@ def test_exam_question_draft_accepts_blank_token_in_body_text():
     )
 
     assert "{{blank}}" in draft.stem
+
+
+def test_exam_single_question_response_accepts_direct_question_payload():
+    parsed = ExamSingleQuestionResponse.model_validate(
+        {
+            "item_order": 1,
+            "knowledge_unit_id": 101,
+            "question_type": "short_answer",
+            "difficulty": "medium",
+            "stem": "Explain why a derivative can describe local change.",
+            "correct_answer": "It gives the instantaneous rate of change at a point.",
+            "explanation": "The direct payload shape is accepted because some models omit the wrapper key.",
+        }
+    )
+
+    assert parsed.question.item_order == 1
+    assert parsed.question.knowledge_unit_id == 101

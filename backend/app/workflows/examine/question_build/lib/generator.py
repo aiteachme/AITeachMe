@@ -37,6 +37,7 @@ T = TypeVar("T")
 _MAX_BATCH_SIZE = 6
 _BLANK_TOKEN = "{{blank}}"
 _TEXT_UNDERSCORE_PLACEHOLDER_RE = re.compile(r"\\text\{(_+)\}")
+_CHOICE_LABEL_RE = re.compile(r"^\s*([A-Da-d])(?:[\.\)\]．、:：]\s*)(.+)$")
 
 
 def _escape_text_underscore_placeholders(value: str) -> str:
@@ -138,7 +139,7 @@ class ExamQuestionBlueprint(BaseModel):
 class ExamQuestionBlueprintBatch(BaseModel):
     """Structured blueprint response from the planning step."""
 
-    blueprints: list[ExamQuestionBlueprint] = Field(default_factory=list)
+    blueprints: list[ExamQuestionBlueprint] = Field(default_factory=list, min_length=1)
 
 
 class ExamQuestionDraft(BaseModel):
@@ -149,12 +150,37 @@ class ExamQuestionDraft(BaseModel):
     question_type: QuestionTypeLiteral
     difficulty: DifficultyLiteral
     stem: str = Field(min_length=8, max_length=1000)
-    options: list[str] | None = None
-    correct_answer: str = Field(min_length=1, max_length=500)
+    options: list[str] | None = Field(
+        default=None,
+        description=(
+            "Canonical choice format only: for single_choice and multiple_choice, "
+            "return exactly four plain option-text strings in order. Do not prefix "
+            "options with A/B/C/D labels; the application renders labels by index. "
+            "For all other question types, omit options."
+        ),
+    )
+    correct_answer: str = Field(
+        default="",
+        min_length=1,
+        max_length=500,
+        description=(
+            "Derived answer text. For single_choice and multiple_choice, prefer correct_indices "
+            "and omit this field; the backend converts indices to A/B/C/D labels. "
+            "For true_false use True or False; fill_blank and short_answer use concise answer text."
+        ),
+    )
+    correct_indices: list[int] | None = Field(
+        default=None,
+        description=(
+            "Canonical choice-answer format only: for single_choice, return one zero-based index "
+            "such as [0]; for multiple_choice, return all correct zero-based indices such as [0, 2]. "
+            "Omit this field for non-choice questions."
+        ),
+    )
     explanation: str = Field(min_length=8, max_length=2000)
     knowledge_unit_refs: list[ExamQuestionUnitRef] = Field(default_factory=list)
 
-    @field_validator("stem", "correct_answer", "explanation")
+    @field_validator("stem", "explanation")
     @classmethod
     def _strip_required_text(cls, value: str) -> str:
         cleaned = " ".join(str(value or "").split()).strip()
@@ -162,18 +188,79 @@ class ExamQuestionDraft(BaseModel):
             raise ValueError("text field cannot be empty")
         return _escape_text_underscore_placeholders(cleaned)
 
-    @field_validator("options")
+    @field_validator("correct_answer", mode="before")
     @classmethod
-    def _normalize_options(cls, value: list[str] | None) -> list[str] | None:
+    def _strip_answer_text(cls, value: object) -> str:
+        if isinstance(value, bool):
+            return "True" if value else "False"
+        cleaned = " ".join(str(value or "").split()).strip()
+        return _escape_text_underscore_placeholders(cleaned) if cleaned else ""
+
+    @field_validator("correct_indices", mode="before")
+    @classmethod
+    def _normalize_correct_indices(cls, value: object) -> list[int] | None:
+        if value is None or value == "":
+            return None
+        if isinstance(value, int):
+            return [value]
+        if isinstance(value, str):
+            raw_items: list[object] = [
+                item.strip()
+                for item in value.replace("，", ",").replace("、", ",").split(",")
+                if item.strip()
+            ]
+        elif isinstance(value, list):
+            raw_items = value
+        else:
+            raise ValueError("correct_indices must be a list of zero-based integers")
+
+        indices: list[int] = []
+        for item in raw_items:
+            if isinstance(item, str) and item.strip().casefold() in {"a", "b", "c", "d"}:
+                index = ord(item.strip().casefold()) - ord("a")
+            else:
+                index = int(item)
+            if index not in indices:
+                indices.append(index)
+        return indices or None
+
+    @field_validator("options", mode="before")
+    @classmethod
+    def _normalize_options(cls, value: object) -> list[str] | None:
         if value is None:
             return None
-        cleaned = [" ".join(str(item or "").split()).strip() for item in value]
+
+        if isinstance(value, dict):
+            ordered_items = sorted(
+                value.items(),
+                key=lambda item: "abcd".find(str(item[0]).strip().casefold()[:1])
+                if str(item[0]).strip().casefold()[:1] in "abcd"
+                else 99,
+            )
+            raw_items = [
+                str(option or "").strip()
+                for key, option in ordered_items
+            ]
+        elif isinstance(value, list):
+            raw_items = [
+                str(item.get("text", item.get("value", ""))).strip()
+                if isinstance(item, dict)
+                else str(item or "")
+                for item in value
+            ]
+        else:
+            raise ValueError("options must be a list or label-to-option mapping")
+
+        cleaned = [" ".join(str(item or "").split()).strip() for item in raw_items]
+        cleaned = [_choice_body(item) for item in cleaned]
         cleaned = [_escape_text_underscore_placeholders(item) for item in cleaned if item]
         return cleaned or None
 
     @model_validator(mode="after")
     def _validate_shape(self) -> "ExamQuestionDraft":
-        text_fields = [self.stem, self.correct_answer, self.explanation]
+        text_fields = [self.stem, self.explanation]
+        if self.correct_answer:
+            text_fields.append(self.correct_answer)
         text_fields.extend(self.options or [])
         if any(_contains_blank_token_inside_latex(value) for value in text_fields):
             raise ValueError("{{blank}} placeholders must stay outside LaTeX math")
@@ -184,8 +271,13 @@ class ExamQuestionDraft(BaseModel):
                 raise ValueError("single_choice questions must contain exactly 4 options")
             if len({item.casefold() for item in options}) != 4:
                 raise ValueError("single_choice options must be distinct")
-            if self.correct_answer not in options:
-                raise ValueError("single_choice correct_answer must equal one option exactly")
+            indices = self.correct_indices or _choice_indices_from_answer(self.correct_answer, options)
+            if len(indices) != 1:
+                raise ValueError("single_choice correct_indices must contain exactly one index")
+            if any(index < 0 or index >= len(options) for index in indices):
+                raise ValueError("single_choice correct_indices must be in range 0..3")
+            self.correct_indices = indices
+            self.correct_answer = _choice_label(indices[0])
             return self
 
         if self.question_type == "multiple_choice":
@@ -194,15 +286,18 @@ class ExamQuestionDraft(BaseModel):
                 raise ValueError("multiple_choice questions must contain exactly 4 options")
             if len({item.casefold() for item in options}) != 4:
                 raise ValueError("multiple_choice options must be distinct")
-            selected = _split_multi_choice_answer(self.correct_answer)
-            option_keys = {_choice_key(option) for option in options}
-            if len(selected) < 2:
-                raise ValueError("multiple_choice correct_answer must contain at least 2 choices")
-            if not selected <= option_keys:
-                raise ValueError("multiple_choice correct_answer must use option labels from options")
+            indices = self.correct_indices or _choice_indices_from_answer(self.correct_answer, options)
+            if len(indices) < 2:
+                raise ValueError("multiple_choice correct_indices must contain at least 2 indices")
+            if any(index < 0 or index >= len(options) for index in indices):
+                raise ValueError("multiple_choice correct_indices must be in range 0..3")
+            self.correct_indices = sorted(indices)
+            self.correct_answer = ",".join(_choice_label(index) for index in self.correct_indices)
             return self
 
         if self.question_type == "true_false":
+            if self.correct_indices:
+                raise ValueError("non-choice questions must not provide correct_indices")
             options = self.options or []
             if options and {item.casefold() for item in options} != {"true", "false"}:
                 raise ValueError("true_false options must be omitted or exactly ['True', 'False']")
@@ -210,8 +305,14 @@ class ExamQuestionDraft(BaseModel):
                 raise ValueError("true_false correct_answer must be True or False")
             return self
 
+        if self.correct_indices:
+            raise ValueError("non-choice questions must not provide correct_indices")
+
         if self.options:
             raise ValueError("non-choice questions must not provide options")
+
+        if not self.correct_answer:
+            raise ValueError("correct_answer cannot be empty")
 
         if self.question_type == "fill_blank" and len(self.correct_answer) > 80:
             raise ValueError("fill_blank correct_answer must stay concise")
@@ -222,7 +323,20 @@ class ExamQuestionDraft(BaseModel):
 class ExamQuestionBatch(BaseModel):
     """Structured batch response for one LLM question-generation call."""
 
-    questions: list[ExamQuestionDraft] = Field(default_factory=list)
+    questions: list[ExamQuestionDraft] = Field(default_factory=list, min_length=1)
+
+
+class ExamSingleQuestionResponse(BaseModel):
+    """Structured response for one parallel question-generation call."""
+
+    question: ExamQuestionDraft
+
+    @model_validator(mode="before")
+    @classmethod
+    def _accept_direct_question_payload(cls, value: object) -> object:
+        if isinstance(value, dict) and "question" not in value and "item_order" in value:
+            return {"question": value}
+        return value
 
 
 class ExamQuestionWeightResult(BaseModel):
@@ -232,14 +346,52 @@ class ExamQuestionWeightResult(BaseModel):
     knowledge_unit_refs: list[ExamQuestionUnitRef] = Field(default_factory=list, min_length=1)
 
 
-def _choice_key(value: str) -> str:
+def _choice_label(index: int) -> str:
+    return chr(ord("A") + index)
+
+
+def _choice_answer_key(value: str) -> str:
     cleaned = " ".join(str(value or "").split()).strip()
     if not cleaned:
         return ""
-    head = cleaned[0].casefold()
-    if head in {"a", "b", "c", "d"}:
-        return head
+    if cleaned.casefold() in {"a", "b", "c", "d"}:
+        return cleaned.casefold()
+    label_match = _CHOICE_LABEL_RE.match(cleaned)
+    if label_match and label_match.group(2):
+        return label_match.group(1).casefold()
     return cleaned.casefold()
+
+
+def _choice_body(value: str) -> str:
+    cleaned = " ".join(str(value or "").split()).strip()
+    label_match = _CHOICE_LABEL_RE.match(cleaned)
+    if label_match and label_match.group(2):
+        return str(label_match.group(2) or "").strip()
+    return cleaned
+
+
+def _choice_indices_from_answer(value: str, options: list[str]) -> list[int]:
+    cleaned = " ".join(str(value or "").split()).strip()
+    if not cleaned:
+        return []
+
+    indices: list[int] = []
+    for token in _split_multi_choice_answer(cleaned):
+        if token in {"a", "b", "c", "d"}:
+            index = ord(token) - ord("a")
+            if index < len(options) and index not in indices:
+                indices.append(index)
+        elif len(token) == 1 and token.isalpha() and 99 not in indices:
+            indices.append(99)
+
+    if indices:
+        return sorted(indices)
+
+    answer_body = _choice_body(cleaned).casefold()
+    for index, option in enumerate(options):
+        if _choice_body(option).casefold() == answer_body:
+            return [index]
+    return []
 
 
 def _split_multi_choice_answer(value: str) -> set[str]:
@@ -303,7 +455,8 @@ def _validate_batch_alignment(
     extra_orders = sorted(set(generated_by_order) - set(spec_by_order))
     if missing_orders or extra_orders:
         raise ValueError(
-            f"llm question batch mismatch: missing_orders={missing_orders}, extra_orders={extra_orders}"
+            "LLM question generation returned an incomplete batch: "
+            f"missing item_order values={missing_orders}, unexpected item_order values={extra_orders}"
         )
 
     normalized: list[ExamQuestionDraft] = []
@@ -551,23 +704,33 @@ async def _generate_one_exam_question(
         units=[_unit_payload(unit) for unit in batch_units],
         specs=[_spec_payload(spec)],
     )
-    result = await acompletion_with_fallback(
-        messages,
-        call_purpose=LLMCallPurpose.GENERATE,
-        model="primary",
-        response_model=ExamQuestionBatch,
-        temperature=0.35,
-        max_tokens=1600,
-        extra_metadata={
-            "substep": "exam.question_build.generate_one",
-            "subject": subject,
-            "exam_mode": exam_mode,
-            "item_order": spec.item_order,
-            "unit_count": len(batch_units),
-        },
-    )
-    assert isinstance(result, ExamQuestionBatch)
-    return _validate_batch_alignment(generated=result.questions, requested_specs=[spec])[0]
+    last_error: Exception | None = None
+    for attempt, max_tokens in enumerate((2600, 3600), start=1):
+        try:
+            result = await acompletion_with_fallback(
+                messages,
+                call_purpose=LLMCallPurpose.GENERATE,
+                model="primary",
+                response_model=ExamSingleQuestionResponse,
+                temperature=0.35,
+                max_tokens=max_tokens,
+                extra_metadata={
+                    "substep": "exam.question_build.generate_one",
+                    "subject": subject,
+                    "exam_mode": exam_mode,
+                    "item_order": spec.item_order,
+                    "unit_count": len(batch_units),
+                    "attempt": attempt,
+                },
+            )
+            assert isinstance(result, ExamSingleQuestionResponse)
+            return _validate_batch_alignment(generated=[result.question], requested_specs=[spec])[0]
+        except Exception as exc:
+            last_error = exc
+    raise ValueError(
+        "LLM question generation failed for "
+        f"item_order={spec.item_order}: {last_error}"
+    ) from last_error
 
 
 async def generate_exam_questions_for_units(
@@ -606,6 +769,7 @@ async def generate_exam_questions_for_units(
 
     if len(specs) <= _MAX_BATCH_SIZE and all(len(spec.knowledge_unit_ids) == 1 for spec in specs):
         generated_questions: list[ExamQuestionDraft] = []
+        batch_call_failed = False
         for spec_batch in _batched(specs, batch_size=_MAX_BATCH_SIZE):
             batch_unit_ids = {spec.knowledge_unit_id for spec in spec_batch}
             batch_units = [unit_by_id[unit_id] for unit_id in batch_unit_ids]
@@ -623,20 +787,25 @@ async def generate_exam_questions_for_units(
                 units=[_unit_payload(unit) for unit in batch_units],
                 specs=[_spec_payload(spec) for spec in spec_batch],
             )
-            result = await acompletion_with_fallback(
-                messages,
-                call_purpose=LLMCallPurpose.GENERATE,
-                model="primary",
-                response_model=ExamQuestionBatch,
-                temperature=0.35,
-                max_tokens=2400,
-                extra_metadata={
-                    "substep": "exam.question_build",
-                    "subject": subject,
-                    "exam_mode": exam_mode,
-                    "batch_size": len(spec_batch),
-                },
-            )
+            try:
+                result = await acompletion_with_fallback(
+                    messages,
+                    call_purpose=LLMCallPurpose.GENERATE,
+                    model="primary",
+                    response_model=ExamQuestionBatch,
+                    temperature=0.35,
+                    max_tokens=2400,
+                    extra_metadata={
+                        "substep": "exam.question_build",
+                        "subject": subject,
+                        "exam_mode": exam_mode,
+                        "batch_size": len(spec_batch),
+                    },
+                )
+            except Exception:
+                generated_questions = []
+                batch_call_failed = True
+                break
             assert isinstance(result, ExamQuestionBatch)
             generated_questions.extend(
                 _validate_batch_alignment(
@@ -644,10 +813,11 @@ async def generate_exam_questions_for_units(
                     requested_specs=spec_batch,
                 )
             )
-        generated_questions.sort(key=lambda item: item.item_order)
-        return generated_questions
+        if not batch_call_failed:
+            generated_questions.sort(key=lambda item: item.item_order)
+            return generated_questions
 
-    generated = await asyncio.gather(
+    generated_results = await asyncio.gather(
         *(
             _generate_one_exam_question(
                 subject=subject,
@@ -663,8 +833,34 @@ async def generate_exam_questions_for_units(
                 style_prompt=style_prompt,
             )
             for spec in specs
-        )
+        ),
+        return_exceptions=True,
     )
+
+    generated: list[ExamQuestionDraft] = []
+    failures: list[str] = []
+    failed_orders: list[int] = []
+    for spec, result in zip(specs, generated_results, strict=True):
+        if isinstance(result, Exception):
+            failed_orders.append(spec.item_order)
+            failures.append(f"item_order={spec.item_order}: {result}")
+            continue
+        generated.append(result)
+
+    if failures:
+        raise ValueError(
+            "Exam question generation failed for "
+            f"item_order values={failed_orders}; " + "; ".join(failures)
+        )
+
+    requested_orders = {spec.item_order for spec in specs}
+    generated_orders = {item.item_order for item in generated}
+    missing_orders = sorted(requested_orders - generated_orders)
+    if missing_orders:
+        raise ValueError(
+            "LLM question generation returned an incomplete batch: "
+            f"missing item_order values={missing_orders}, unexpected item_order values=[]"
+        )
     return sorted(generated, key=lambda item: item.item_order)
 
 
@@ -770,6 +966,7 @@ __all__ = [
     "ExamQuestionBlueprintBatch",
     "ExamQuestionDraft",
     "ExamQuestionGenerationSpec",
+    "ExamSingleQuestionResponse",
     "ExamQuestionUnitRef",
     "ExamQuestionWeightResult",
     "assign_question_knowledge_weights",
