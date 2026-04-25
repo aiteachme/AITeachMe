@@ -24,6 +24,10 @@ contextBridge.exposeInMainWorld("electronWindow", {
   close: () => ipcRenderer.invoke("window:close"),
   isMaximized: () => ipcRenderer.invoke("window:isMaximized"),
   reload: () => ipcRenderer.invoke("view:reload"),
+  goBack: () => ipcRenderer.invoke("view:goBack"),
+  goForward: () => ipcRenderer.invoke("view:goForward"),
+  canGoBack: () => ipcRenderer.invoke("view:canGoBack"),
+  canGoForward: () => ipcRenderer.invoke("view:canGoForward"),
   toggleDevTools: () => ipcRenderer.invoke("view:toggleDevTools"),
   openExternal: (url) => ipcRenderer.invoke("shell:openExternal", url),
   runEditCommand: (command) => {
@@ -36,5 +40,13 @@ contextBridge.exposeInMainWorld("electronWindow", {
     const listener = (_event, isMaximized) => callback(Boolean(isMaximized));
     ipcRenderer.on("window:maximized-change", listener);
     return () => ipcRenderer.removeListener("window:maximized-change", listener);
+  },
+  onNavigationStateChange: (callback) => {
+    const listener = (_event, state) => callback({
+      canGoBack: Boolean(state?.canGoBack),
+      canGoForward: Boolean(state?.canGoForward),
+    });
+    ipcRenderer.on("view:navigation-state", listener);
+    return () => ipcRenderer.removeListener("view:navigation-state", listener);
   },
 });

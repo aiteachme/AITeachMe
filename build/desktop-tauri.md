@@ -1,47 +1,46 @@
-# Tauri desktop builds
+# Tauri 桌面端打包
 
-This repository supports two Tauri-based desktop flavors in addition to the Electron local/remote builds.
-See `build\desktop-electron.md` for Electron packaging.
+除了 Electron 的本地/远程两种桌面端包，本项目也支持两种 Tauri 桌面端包。Electron 打包说明见 `build\desktop-electron.md`。
 
-## Remote backend flavor
+## 远程后端模式
 
-The remote flavor packages only the Vite frontend and the Tauri shell. It does not bundle Python or the local FastAPI backend, so it is the flavor intended for a small installer.
+远程模式只打包 Vite 前端和 Tauri 壳，不包含 Python，也不包含本地 FastAPI 后端，因此这是安装包体积最小的模式。
 
 ```powershell
 .\build\tauri-remote.bat -ApiUrl https://api.example.com
 ```
 
-You can also set `AITEACHME_REMOTE_API_URL` and omit `-ApiUrl`.
+你也可以先设置环境变量 `AITEACHME_REMOTE_API_URL`，然后省略 `-ApiUrl` 参数。
 
-The remote API must allow the Tauri app origin in CORS. For Windows builds this is usually `http://tauri.localhost` when using the default Tauri asset protocol.
+远程 API 需要在 CORS 里允许 Tauri 应用的来源。Windows 构建在默认 Tauri asset protocol 下通常是 `http://tauri.localhost`。
 
-## Local backend flavor
+## 本地后端模式
 
-The local flavor packages the Vite frontend, the Tauri shell, and a PyInstaller onefile backend sidecar. It is smaller than Electron because it avoids bundling Chromium, but it still includes the Python runtime and backend dependencies.
+本地模式会打包 Vite 前端、Tauri 壳，以及 PyInstaller 生成的 onefile 后端 sidecar。它不需要内置 Chromium，所以通常比 Electron 小，但仍然会包含 Python 运行时和后端依赖。
 
 ```powershell
 .\build\tauri-local.bat
 ```
 
-The local backend listens on `127.0.0.1:9020` by default. To build a package with another port:
+本地后端默认监听 `127.0.0.1:9020`。如果需要使用其他端口，可以这样构建：
 
 ```powershell
 .\build\tauri-local.bat -BackendPort 9020
 ```
 
-## Prerequisites
+## 前置要求
 
-- Node.js and npm
-- Rust toolchain with `rustc` and `cargo`
-- Python 3.11 for the local backend flavor
-- WebView2 Runtime on Windows. The Tauri config uses the WebView2 download bootstrapper instead of bundling a fixed WebView2 runtime.
+- Node.js 和 npm
+- Rust 工具链，包含 `rustc` 和 `cargo`
+- Python 3.11，用于本地后端模式
+- Windows 上需要 WebView2 Runtime。Tauri 配置使用 WebView2 download bootstrapper，不会内置固定版本的 WebView2 Runtime。
 
-## Outputs
+## 输出位置
 
-Build artifacts are copied to:
+构建产物会复制到：
 
 - `build/artifacts`
 
-Tauri builds produce an installer plus `*-direct.zip` for direct launch after extraction. Unpacked direct-run folders are kept under `build/artifacts/direct`.
+Tauri 每种模式会生成一个安装包和一个 `*-direct.zip`。`*-direct.zip` 解压后可以直接运行。未压缩的直运行目录会保留在 `build/artifacts/direct`。
 
-Tauri's raw bundle output remains under `frontend/src-tauri/target/release/bundle`.
+Tauri 原始 bundle 输出仍然保留在 `frontend/src-tauri/target/release/bundle`。

@@ -39,6 +39,7 @@ fn start_local_backend(app: &mut tauri::App) -> Result<(), Box<dyn std::error::E
     .sidecar("aiteachme-backend")?
     .env("APP_MODE", "local")
     .env("AUTH_ENABLED", "false")
+    .env("AITEACHME_ENABLE_BUILTIN_PDF", "false")
     .env("AITEACHME_BACKEND_PORT", &port)
     .env("AITEACHME_DATA_DIR", backend_data_dir.to_string_lossy().to_string())
     .env("AITEACHME_BACKEND_LOG_FILE", backend_data_dir.join("backend.log").to_string_lossy().to_string())

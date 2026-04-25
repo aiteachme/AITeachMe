@@ -1,6 +1,6 @@
-# Desktop build entrypoints
+# 桌面端打包入口
 
-Run desktop builds from this folder:
+在项目根目录运行下面这些脚本：
 
 ```powershell
 .\build\all.bat -ApiUrl https://api.example.com
@@ -10,11 +10,11 @@ Run desktop builds from this folder:
 .\build\tauri-remote.bat -ApiUrl https://api.example.com
 ```
 
-Collected artifacts are written to:
+最终产物会统一收集到：
 
 - `build\artifacts`
 
-Package filenames include the version from `frontend\package.json` and use this format:
+文件名会自动带上 `frontend\package.json` 里的版本号，格式如下：
 
 - `AiTeachMe-v<version>-electron-local-installer.exe`
 - `AiTeachMe-v<version>-electron-local-portable.exe`
@@ -25,6 +25,8 @@ Package filenames include the version from `frontend\package.json` and use this 
 - `AiTeachMe-v<version>-tauri-remote-installer.exe`
 - `AiTeachMe-v<version>-tauri-remote-direct.zip`
 
-Electron builds produce an installer and a portable exe. Tauri builds produce an installer plus a versioned direct zip. Unpacked Tauri direct-run folders are kept under `build\artifacts\direct`.
+Electron 每种模式会生成一个安装包和一个便携版 exe。Tauri 每种模式会生成一个安装包和一个可直接运行的 zip。Tauri 的未压缩直运行目录会保留在 `build\artifacts\direct`。
 
-PowerShell build internals live in `build\scripts`.
+Electron 便携版 exe 是自解压启动器。第一次运行仍然需要解压应用，但后续运行会复用本机用户目录下的版本缓存，不会每次都重新解压再删除，因此再次打开会快很多。
+
+具体的 PowerShell 打包逻辑都在 `build\scripts` 目录里。

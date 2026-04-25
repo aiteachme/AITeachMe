@@ -168,13 +168,15 @@ if not "%FRONTEND_PID%"=="" (
 	)
 )
 
-if "%START_FLAGS%"=="" (
+if "%START_FLAGS%"=="" if not "%START_ELECTRON%"=="1" (
 	echo [Frontend] Opening %FRONTEND_URL%...
 	start "" "%FRONTEND_URL%"
 )
 
 if "%START_ELECTRON%"=="1" (
 	echo [Desktop] Starting Electron window...
+	set "AITEACHME_ELECTRON_APP_ID=com.aiteachme.desktop.dev"
+	set "AITEACHME_ELECTRON_PRODUCT_NAME=AiTeachMe Dev"
 	if /I "%FRONTEND_MODE%"=="system" (
 		start "Desktop" %START_FLAGS% /D "%~dp0frontend" npm run electron:window
 	) else (

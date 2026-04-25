@@ -94,16 +94,13 @@
         "to": "backend"
       },
       {
-        "from": "../docs/brand/atm-logo-3_ico_96x96.ico",
+        "from": "../docs/brand/app-icon.ico",
         "to": "app-icon.ico"
       }
     ],
     "win": {
-      "icon": "../docs/brand/atm-logo-3_ico_96x96.ico",
+      "icon": "../docs/brand/app-icon.ico",
       "signAndEditExecutable": false,
-      "signExts": [
-        "!.exe"
-      ],
       "target": [
         {
           "target": "nsis",
@@ -119,8 +116,8 @@
       "perMachine": false,
       "differentialPackage": false,
       "allowToChangeInstallationDirectory": true,
-      "installerIcon": "../docs/brand/atm-logo-3_ico_96x96.ico",
-      "uninstallerIcon": "../docs/brand/atm-logo-3_ico_96x96.ico",
+      "installerIcon": "../docs/brand/app-icon.ico",
+      "uninstallerIcon": "../docs/brand/app-icon.ico",
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true
     }

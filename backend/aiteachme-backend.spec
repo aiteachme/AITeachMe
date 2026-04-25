@@ -120,6 +120,7 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
+    icon="../docs/brand/app-icon.ico",
 )
 coll = COLLECT(
     exe,
