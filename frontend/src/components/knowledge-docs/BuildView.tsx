@@ -74,8 +74,6 @@ const BUILD_MODE_LABELS: Record<string, string> = {
   local_material_mode: "基于本地资料",
 };
 
-const FAILED_BUILD_STAGES = new Set(["failed", "cancelled"]);
-
 function isCompletionStatusText(statusText: string): boolean {
   return /完成|已发布|已生成/.test(statusText);
 }
@@ -240,10 +238,8 @@ export function BuildView({
   const rawProgress = Math.max(0, Math.min(100, Math.round(
     sseSnapshot?.docgen?.progress_pct ?? progress
   )));
-  const isBuildFailed = FAILED_BUILD_STAGES.has((buildStage ?? "").trim());
   const isBuildCompleted = buildStage === "completed" || (rawProgress >= 95 && isCompletionStatusText(statusText));
   const roundedProgress = isBuildCompleted ? 100 : rawProgress;
-  const shouldAnimateProgress = roundedProgress < 100 && !isBuildFailed;
 
   const draftExcerpt = (
     mergePreview?.draft_excerpt ||
@@ -297,12 +293,11 @@ export function BuildView({
         className
       )}
     >
-      <div className="relative overflow-hidden border-b border-zinc-100/80 bg-[radial-gradient(circle_at_12%_0%,rgba(99,102,241,0.10),transparent_30%),radial-gradient(circle_at_88%_8%,rgba(14,165,233,0.08),transparent_28%),linear-gradient(180deg,#ffffff_0%,#f8fbff_100%)] px-5 py-4 dark:border-slate-800 dark:bg-[radial-gradient(circle_at_12%_0%,rgba(99,102,241,0.16),transparent_30%),radial-gradient(circle_at_88%_8%,rgba(14,165,233,0.12),transparent_28%),linear-gradient(180deg,#0f172a_0%,#0b1120_100%)] lg:px-8">
-        <div className="pointer-events-none absolute right-8 top-3 h-24 w-24 rounded-full bg-blue-100/40 blur-3xl dark:bg-blue-500/10" />
+      <div className="relative border-b border-zinc-200 bg-white px-5 py-4 dark:border-slate-800 dark:bg-slate-950 lg:px-8">
         <div className="relative flex flex-col gap-4">
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
-              <span className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-zinc-950 text-white shadow-sm shadow-zinc-900/20 dark:bg-zinc-100 dark:text-slate-950 dark:shadow-none">
+              <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-zinc-950 text-white shadow-sm shadow-zinc-900/10 dark:bg-zinc-100 dark:text-slate-950 dark:shadow-none">
                 {isFetching ? <Loader2 className="h-4 w-4 animate-spin" /> : <Code2 className="h-4 w-4" />}
               </span>
               <div className="min-w-0">
@@ -310,16 +305,16 @@ export function BuildView({
                   {statusText || "正在准备知识文档..."}
                 </h2>
                 <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[11px] text-zinc-500 dark:text-slate-400">
-                  <span className="rounded-full bg-white/72 px-2 py-0.5 shadow-[inset_0_1px_2px_rgba(15,23,42,0.03)] ring-1 ring-zinc-200/70 backdrop-blur dark:bg-slate-900/70 dark:ring-slate-800">
+                  <span className="rounded-md bg-zinc-50 px-2 py-0.5 ring-1 ring-zinc-200 dark:bg-slate-900 dark:ring-slate-800">
                     {chapters.length > 0 ? `${chapters.length} 个章节` : "等待章节计划"}
                   </span>
                   {buildModeLabel ? (
-                    <span className="rounded-full bg-white/72 px-2 py-0.5 shadow-[inset_0_1px_2px_rgba(15,23,42,0.03)] ring-1 ring-zinc-200/70 backdrop-blur dark:bg-slate-900/70 dark:ring-slate-800">
+                    <span className="rounded-md bg-zinc-50 px-2 py-0.5 ring-1 ring-zinc-200 dark:bg-slate-900 dark:ring-slate-800">
                       {buildModeLabel}
                     </span>
                   ) : null}
                   {(sseConnected || isBuildActive) ? (
-                    <span className="inline-flex items-center gap-1.5 rounded-full bg-blue-50 px-2 py-0.5 text-blue-600 ring-1 ring-blue-100 dark:bg-blue-500/10 dark:text-blue-300 dark:ring-blue-500/20">
+                    <span className="inline-flex items-center gap-1.5 rounded-md bg-blue-50 px-2 py-0.5 text-blue-600 ring-1 ring-blue-100 dark:bg-blue-500/10 dark:text-blue-300 dark:ring-blue-500/20">
                       <span className={cn("h-1.5 w-1.5 rounded-full", sseConnected ? "animate-pulse bg-blue-500" : "bg-zinc-300 dark:bg-slate-600")} />
                       {sseConnected ? "实时更新" : "等待实时更新"}
                     </span>
@@ -329,10 +324,10 @@ export function BuildView({
                     onClick={() => setDetailsOpen((value) => !value)}
                     aria-expanded={detailsOpen}
                     className={cn(
-                      "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] ring-1 transition",
+                      "inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] ring-1 transition",
                       detailsOpen
                         ? "bg-zinc-950 text-white ring-zinc-950 dark:bg-zinc-100 dark:text-slate-950 dark:ring-zinc-100"
-                        : "bg-white/72 text-zinc-500 ring-zinc-200/70 hover:bg-white hover:text-zinc-900 dark:bg-slate-900/70 dark:text-slate-400 dark:ring-slate-800 dark:hover:text-slate-100"
+                        : "bg-zinc-50 text-zinc-500 ring-zinc-200 hover:bg-white hover:text-zinc-900 dark:bg-slate-900 dark:text-slate-400 dark:ring-slate-800 dark:hover:text-slate-100"
                     )}
                   >
                     {detailsOpen ? <PanelRightClose className="h-3 w-3" /> : <PanelRightOpen className="h-3 w-3" />}
@@ -342,41 +337,24 @@ export function BuildView({
               </div>
             </div>
             <div className="mt-4 flex items-center gap-4">
-              <div className="relative h-2.5 flex-1 overflow-hidden rounded-full bg-zinc-100 shadow-inner shadow-zinc-200/60 dark:bg-slate-800 dark:shadow-black/20">
+              <div className="relative h-1.5 flex-1 overflow-hidden rounded-sm bg-zinc-100 dark:bg-slate-800">
                 <motion.div
                   className={cn(
-                    "relative h-full overflow-hidden rounded-full",
+                    "relative h-full overflow-hidden rounded-sm",
                     roundedProgress === 100
                       ? "bg-gradient-to-r from-emerald-400 via-emerald-500 to-teal-500"
-                      : "bg-gradient-to-r from-blue-500 via-sky-400 to-blue-500"
+                      : "bg-blue-500"
                   )}
                   initial={{ width: 0 }}
                   animate={{
                     width: `${roundedProgress}%`,
-                    boxShadow: shouldAnimateProgress
-                      ? [
-                        "0 0 0 rgba(59,130,246,0)",
-                        "0 0 18px rgba(59,130,246,0.42)",
-                        "0 0 0 rgba(59,130,246,0)",
-                      ]
-                      : "0 0 0 rgba(59,130,246,0)",
                   }}
                   transition={{
-                    width: { duration: 0.45 },
-                    boxShadow: { duration: 1.8, repeat: shouldAnimateProgress ? Infinity : 0, ease: "easeInOut" },
+                    width: { duration: 0.35 },
                   }}
-                >
-                  {shouldAnimateProgress ? (
-                    <motion.span
-                      className="absolute inset-y-0 w-24 -skew-x-12 bg-gradient-to-r from-transparent via-white/55 to-transparent"
-                      initial={{ left: "-20%" }}
-                      animate={{ left: "105%" }}
-                      transition={{ duration: 1.9, repeat: Infinity, ease: "easeInOut" }}
-                    />
-                  ) : null}
-                </motion.div>
+                />
               </div>
-              <span className="w-12 rounded-full bg-white px-2 py-1 text-right text-[13px] font-semibold tabular-nums text-zinc-900 shadow-sm ring-1 ring-zinc-100 dark:bg-slate-900 dark:text-zinc-100 dark:ring-slate-800">
+              <span className="w-12 rounded-md bg-zinc-50 px-2 py-1 text-right text-[13px] font-semibold tabular-nums text-zinc-900 ring-1 ring-zinc-200 dark:bg-slate-900 dark:text-zinc-100 dark:ring-slate-800">
                 {roundedProgress}%
               </span>
             </div>
@@ -392,9 +370,9 @@ export function BuildView({
                 <div
                   key={step.key}
                   className={cn(
-                    "group flex items-center gap-2 rounded-full px-2 py-1.5 text-[12px] transition-colors",
+                    "group flex items-center gap-2 rounded-md px-2 py-1.5 text-[12px] transition-colors",
                     isActive
-                      ? "bg-white/82 text-indigo-700 shadow-sm ring-1 ring-indigo-100 dark:bg-indigo-500/10 dark:text-indigo-300 dark:ring-indigo-500/20"
+                      ? "bg-blue-50 text-blue-700 ring-1 ring-blue-100 dark:bg-blue-500/10 dark:text-blue-300 dark:ring-blue-500/20"
                       : isDone
                         ? "text-emerald-700 dark:text-emerald-300"
                         : "text-zinc-400 dark:text-slate-500",
@@ -405,13 +383,13 @@ export function BuildView({
                     isDone
                       ? "border-emerald-500 bg-emerald-500 text-white"
                       : isActive
-                        ? "border-indigo-500 bg-white text-indigo-600 dark:bg-slate-900"
+                        ? "border-blue-500 bg-white text-blue-600 dark:bg-slate-900"
                         : "border-zinc-200 text-zinc-400 dark:border-slate-700",
                   )}>
                     {isDone ? <Check className="h-2.5 w-2.5" strokeWidth={3} /> : idx + 1}
                   </span>
                   <span className="whitespace-nowrap font-medium">{step.title}</span>
-                  {isActive ? <span className="hidden text-[11px] text-indigo-500/70 md:inline">{step.description}</span> : null}
+                  {isActive ? <span className="hidden text-[11px] text-blue-500/70 md:inline">{step.description}</span> : null}
                 </div>
               );
             })}
@@ -419,9 +397,9 @@ export function BuildView({
         </div>
       </div>
 
-      <div className="flex-1 min-h-0 flex bg-[#fbfcff] dark:bg-slate-950">
+      <div className="flex-1 min-h-0 flex bg-white dark:bg-slate-950">
         <div className="flex-1 min-w-0 flex flex-col lg:flex-row">
-          <div className="w-full shrink-0 border-b border-zinc-200/60 bg-white/80 dark:border-slate-800 dark:bg-slate-950/60 lg:w-[292px] lg:border-b-0 lg:border-r">
+          <div className="w-full shrink-0 border-b border-zinc-200 bg-zinc-50/60 dark:border-slate-800 dark:bg-slate-950 lg:w-[292px] lg:border-b-0 lg:border-r">
             <div className="flex items-center justify-between px-4 py-3.5">
               <div>
                 <div className="text-[12px] font-semibold text-zinc-800 dark:text-slate-100">章节进度</div>
@@ -443,7 +421,7 @@ export function BuildView({
                     className={cn(
                       "w-full border-l-2 text-left px-3 py-3 text-[12px] transition-colors flex items-start gap-2.5",
                       isSelected
-                        ? "border-blue-500 bg-blue-50/60 text-zinc-950 dark:border-blue-400 dark:bg-blue-500/10 dark:text-zinc-100"
+                        ? "border-blue-500 bg-white text-zinc-950 shadow-[inset_0_0_0_1px_rgba(228,228,231,0.9)] dark:border-blue-400 dark:bg-slate-900 dark:text-zinc-100 dark:shadow-none"
                         : "border-transparent text-zinc-600 hover:border-zinc-200 hover:bg-white dark:text-slate-400 dark:hover:border-slate-700 dark:hover:bg-slate-900/60"
                     )}
                   >
@@ -512,7 +490,7 @@ export function BuildView({
 
               return (
                 <>
-                  <div className="flex items-center justify-between border-b border-zinc-100/80 bg-white px-5 py-3 dark:border-slate-800 dark:bg-slate-900 md:px-8">
+                  <div className="flex items-center justify-between border-b border-zinc-100 bg-white px-5 py-3 dark:border-slate-800 dark:bg-slate-900 md:px-8">
                     <div className="min-w-0">
                       <span className="text-[12px] font-medium text-zinc-500 dark:text-slate-400">
                         {buildChapterStatusLabel(selectedStatus)}
@@ -524,7 +502,7 @@ export function BuildView({
                       ) : null}
                     </div>
                     {(isStreaming || sseConnected) && (
-                      <div className="flex items-center gap-2 rounded-full bg-blue-50 px-2.5 py-1 ring-1 ring-blue-100 dark:bg-blue-500/10 dark:ring-blue-500/20">
+                      <div className="flex items-center gap-2 rounded-md bg-blue-50 px-2.5 py-1 ring-1 ring-blue-100 dark:bg-blue-500/10 dark:ring-blue-500/20">
                         <span className="relative flex h-2 w-2">
                           <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 dark:bg-blue-500 opacity-75" />
                           <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500 dark:bg-blue-400" />
@@ -538,7 +516,7 @@ export function BuildView({
 
                   <div className="build-scroll flex-1 overflow-y-auto bg-white px-5 py-6 dark:bg-slate-900 md:px-8 md:py-8">
                     {selectedExcerpt.trim() ? (
-                      <div className="w-full max-w-[1120px] space-y-5 pb-12">
+                      <div className="w-full max-w-[980px] space-y-5 pb-12">
                         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-zinc-500 dark:text-slate-400">
                           <span className="font-medium text-zinc-600 dark:text-slate-300">
                             {buildChapterStatusLabel(selectedStatus)}
@@ -727,22 +705,20 @@ const LiveTextDocument = memo(function LiveTextDocument({
       : "预览已稳定";
 
   return (
-    <article className="overflow-hidden rounded-[22px] border border-stone-200/80 bg-[#fffdf8] shadow-[0_20px_60px_-48px_rgba(28,25,23,0.42)] dark:border-slate-800 dark:bg-slate-950/72 dark:shadow-[0_24px_60px_-42px_rgba(0,0,0,0.72)]">
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-stone-200/70 bg-white/72 px-4 py-3 dark:border-slate-800 dark:bg-slate-950/70 md:px-5">
-        <div className="flex min-w-0 items-center gap-2">
-          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-stone-200 bg-stone-50 text-stone-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
-            <FileText className="h-4 w-4" />
-          </span>
+    <article>
+      <div className="mb-5 flex flex-wrap items-center justify-between gap-3 border-b border-zinc-100 pb-3 dark:border-slate-800">
+        <div className="flex min-w-0 items-center gap-2 text-zinc-500 dark:text-slate-400">
+          <FileText className="h-4 w-4 shrink-0" />
           <div className="min-w-0">
-            <p className="truncate text-[12px] font-semibold text-stone-900 dark:text-slate-100">章节草稿</p>
-            <p className="mt-0.5 text-[11px] text-stone-500 dark:text-slate-500">
+            <p className="truncate text-[12px] font-medium text-zinc-700 dark:text-slate-200">章节草稿</p>
+            <p className="mt-0.5 text-[11px] text-zinc-400 dark:text-slate-500">
               {formatCompactCount(renderState.sourceLength)} 字符已接收
             </p>
           </div>
         </div>
         <div
           className={cn(
-            "inline-flex items-center gap-2 rounded-full px-2.5 py-1 text-[11px] font-medium ring-1",
+            "inline-flex items-center gap-2 rounded-md px-2.5 py-1 text-[11px] font-medium ring-1",
             isStreaming
               ? "bg-blue-50 text-blue-600 ring-blue-100 dark:bg-blue-500/10 dark:text-blue-300 dark:ring-blue-500/20"
               : "bg-emerald-50 text-emerald-700 ring-emerald-100 dark:bg-emerald-500/10 dark:text-emerald-300 dark:ring-emerald-500/20",
@@ -758,24 +734,23 @@ const LiveTextDocument = memo(function LiveTextDocument({
           {statusText}
         </div>
       </div>
-      <div className="relative px-5 py-5 md:px-7 md:py-7">
-        <div className="feishu-doc-content build-live-markdown max-w-[920px] break-words [&>*:first-child]:!mt-0 [&>*:last-child]:!mb-0">
-          <MarkdownViewer content={renderState.markdown} variant="document" />
-        </div>
 
-        {renderState.truncated ? (
-          <div className="mt-5 rounded-xl border border-amber-200/80 bg-amber-50/72 px-3.5 py-2.5 text-[12px] leading-5 text-amber-800 dark:border-amber-500/25 dark:bg-amber-500/10 dark:text-amber-200">
-            实时预览先渲染前 {formatCompactCount(renderState.displayedLength)} 字符，完整正文仍会继续写入最终文档。
-          </div>
-        ) : null}
-
-        {isStreaming ? (
-          <div className="mt-5 flex items-center gap-2 text-[12px] text-blue-600 dark:text-blue-300">
-            <motion.span className="inline-block h-[15px] w-[2px] animate-blink bg-blue-500 align-middle dark:bg-blue-400" />
-            <span>{renderState.pending ? "新内容已到达，正在排版..." : "保持接收中..."}</span>
-          </div>
-        ) : null}
+      <div className="feishu-doc-content build-live-markdown max-w-[920px] break-words [&>*:first-child]:!mt-0 [&>*:last-child]:!mb-0">
+        <MarkdownViewer content={renderState.markdown} variant="document" />
       </div>
+
+      {renderState.truncated ? (
+        <div className="mt-5 border-l-2 border-amber-400 bg-amber-50/60 px-3 py-2 text-[12px] leading-5 text-amber-800 dark:bg-amber-500/10 dark:text-amber-200">
+          实时预览先渲染前 {formatCompactCount(renderState.displayedLength)} 字符，完整正文仍会继续写入最终文档。
+        </div>
+      ) : null}
+
+      {isStreaming ? (
+        <div className="mt-5 flex items-center gap-2 text-[12px] text-blue-600 dark:text-blue-300">
+          <motion.span className="inline-block h-[15px] w-[2px] animate-blink bg-blue-500 align-middle dark:bg-blue-400" />
+          <span>{renderState.pending ? "新内容已到达，正在排版..." : "保持接收中..."}</span>
+        </div>
+      ) : null}
     </article>
   );
 });
