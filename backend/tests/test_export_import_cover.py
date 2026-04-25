@@ -1,7 +1,9 @@
 ﻿from __future__ import annotations
 
+import json
 import zipfile
 
+from app.models import Subject
 from app.schemas.export_import import ExportOptions
 from app.workflows.support.export_import import exports
 from app.workflows.support.export_import import imports
@@ -66,6 +68,53 @@ def test_export_options_skip_unselected_db_groups() -> None:
     assert not exports._should_export(specs["chat_session"], options)
     assert not exports._should_export(specs["exam_paper"], options)
     assert not exports._should_export(specs["user_knowledge_state"], options)
+
+
+def test_export_filename_uses_subject_name_and_id() -> None:
+    subject = Subject(slug="subj_abc123", name="线性/代数")
+
+    assert exports.build_subject_export_filename(subject) == "线性_代数-subj_abc123.atmx"
+
+
+def test_export_manifest_keeps_extension_fields_for_future_readers() -> None:
+    subject = Subject(slug="subj_math", name="Math", description="demo", user_intent="learn")
+    manifest = exports._build_manifest(
+        subject,
+        {
+            "subject": [{"id": 1}],
+            "knowledge_unit": [{"id": 1}, {"id": 2}],
+            "knowledge_edge": [],
+        },
+        ExportOptions(include_chat_history=False, include_exam_history=False),
+    )
+
+    assert manifest.package.kind == exports.PACKAGE_KIND
+    assert manifest.package.manifest_schema == exports.MANIFEST_SCHEMA
+    assert "knowledge_graph" in manifest.package.capabilities
+    assert manifest.subject.slug == "subj_math"
+    assert manifest.subject.description == "demo"
+    assert manifest.stats.knowledge_unit_count == 2
+    assert {item.name: item.count for item in manifest.tables}["knowledge_unit"] == 2
+
+
+def test_read_manifest_accepts_legacy_manifest_without_package_fields(tmp_path) -> None:
+    (tmp_path / "manifest.json").write_text(
+        json.dumps(
+            {
+                "format_version": "1.0",
+                "app_version": "0.1.0",
+                "exporter": "AITeachMe",
+                "subject": {"slug": "legacy", "name": "Legacy"},
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    manifest = exports._read_manifest(tmp_path)
+
+    assert manifest.package.package_id == "legacy"
+    assert manifest.tables == []
 
 
 def test_import_restores_docgen_cover_to_asset_directory(tmp_path, monkeypatch) -> None:

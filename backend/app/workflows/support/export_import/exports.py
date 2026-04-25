@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Any
 
 import structlog
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from sqlmodel import Session, SQLModel, func, select
 
 from app.shared.infra.runtime import get_app_version, is_cloud_mode
@@ -61,6 +61,8 @@ from app.workflows.support.subjects.icons import (
 logger = structlog.get_logger()
 
 SUPPORTED_FORMAT_VERSIONS = {"1.0"}
+MANIFEST_SCHEMA = "aiteachme.atmx.manifest"
+PACKAGE_KIND = "subject_export"
 
 
 # ---------------------------------------------------------------------------
@@ -68,11 +70,20 @@ SUPPORTED_FORMAT_VERSIONS = {"1.0"}
 
 
 class _ManifestSubject(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
     slug: str
     name: str
+    description: str = ""
+    user_intent: str = ""
+    icon_key: str | None = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
 
 
 class _ManifestStats(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
     raw_file_count: int = 0
     knowledge_document_count: int = 0
     knowledge_unit_count: int = 0
@@ -86,14 +97,40 @@ class _ManifestStats(BaseModel):
     total_file_size_bytes: int = 0
 
 
+class _ManifestPackage(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    package_id: str
+    kind: str = PACKAGE_KIND
+    manifest_schema: str = MANIFEST_SCHEMA
+    content_roots: list[str] = Field(default_factory=lambda: ["db", "files", "knowledge"])
+    capabilities: list[str] = Field(default_factory=list)
+    min_reader_format_version: str = "1.0"
+
+
+class _ManifestTable(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    name: str
+    count: int = 0
+    optional_group: str | None = None
+    id_type: str = "auto"
+    subject_field: str | None = None
+
+
 class _ExportManifest(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
     format_version: str = "1.0"
     app_version: str = ""
     exported_at: datetime | None = None
     exporter: str = "AITeachMe"
+    package: _ManifestPackage = Field(default_factory=lambda: _ManifestPackage(package_id="legacy"))
     subject: _ManifestSubject
     stats: _ManifestStats = Field(default_factory=_ManifestStats)
     options: ExportOptions = Field(default_factory=ExportOptions)
+    tables: list[_ManifestTable] = Field(default_factory=list)
+    extensions: dict[str, Any] = Field(default_factory=dict)
 
 
 # ---------------------------------------------------------------------------
@@ -318,6 +355,14 @@ def export_subject(
     except Exception:
         tmp_path.unlink(missing_ok=True)
         raise
+
+
+def build_subject_export_filename(subject: Subject) -> str:
+    """Build a readable download filename anchored by subject name and id."""
+
+    name = sanitize_doc_title(subject.name or "未命名学科")
+    subject_id = sanitize_doc_title(subject.slug or str(subject.id or "subject"))
+    return f"{name}-{subject_id}.atmx"
 # ===================================================================
 # Internal: DB helpers
 # ===================================================================
@@ -731,9 +776,20 @@ def _build_manifest(
     return _ExportManifest(
         app_version=get_app_version(),
         exported_at=utcnow(),
+        package=_ManifestPackage(
+            package_id=f"atmx_{uuid.uuid4().hex}",
+            capabilities=_manifest_capabilities(options),
+        ),
         subject=_ManifestSubject(
             slug=subject.slug,
             name=subject.name,
+            description=subject.description,
+            user_intent=subject.user_intent,
+            icon_key=normalize_subject_icon_key(
+                _decode_settings_json(subject.settings_json).get(SUBJECT_ICON_SETTINGS_KEY)
+            ),
+            created_at=subject.created_at,
+            updated_at=subject.updated_at,
         ),
         stats=_ManifestStats(
             raw_file_count=len(exported.get("raw_file", [])),
@@ -746,9 +802,57 @@ def _build_manifest(
             exam_paper_count=len(exported.get("exam_paper", [])),
             chat_session_count=len(exported.get("chat_session", [])),
             user_knowledge_state_count=len(exported.get("user_knowledge_state", [])),
+            total_file_size_bytes=_sum_exported_file_size_bytes(exported.get("raw_file", [])),
         ),
         options=options,
+        tables=_build_manifest_tables(exported),
     )
+
+
+def _manifest_capabilities(options: ExportOptions) -> list[str]:
+    capabilities = ["subject_metadata", "knowledge_graph"]
+    if _exports_raw_file_metadata(options):
+        capabilities.append("raw_file_metadata")
+    if options.include_raw_files:
+        capabilities.append("raw_files")
+    if options.include_raw_markdowns:
+        capabilities.append("raw_markdowns")
+    if options.include_knowledge_docs:
+        capabilities.append("knowledge_docs")
+    if options.include_chat_history:
+        capabilities.append("chat_history")
+    if options.include_exam_history:
+        capabilities.append("exam_history")
+    if options.include_profile:
+        capabilities.append("profile")
+    return capabilities
+
+
+def _build_manifest_tables(exported: dict[str, list[dict]]) -> list[_ManifestTable]:
+    spec_by_name = {spec.name: spec for spec in TABLE_REGISTRY}
+    tables: list[_ManifestTable] = []
+    for name, records in exported.items():
+        spec = spec_by_name.get(name)
+        tables.append(
+            _ManifestTable(
+                name=name,
+                count=len(records),
+                optional_group=spec.optional_group if spec else None,
+                id_type=spec.id_type if spec else "auto",
+                subject_field=spec.subject_field if spec else None,
+            )
+        )
+    return tables
+
+
+def _sum_exported_file_size_bytes(records: list[dict]) -> int:
+    total = 0
+    for record in records:
+        try:
+            total += max(0, int(record.get("file_size_bytes") or 0))
+        except (TypeError, ValueError):
+            continue
+    return total
 
 
 def _read_manifest(extract_dir: Path) -> _ExportManifest:

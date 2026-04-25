@@ -85,10 +85,22 @@ subject_export.atmx (ZIP)
   "app_version": "0.1.0",
   "exported_at": "2026-04-03T00:00:00Z",
   "exporter": "AITeachMe",
+  "package": {
+    "package_id": "atmx_<uuid>",
+    "kind": "subject_export",
+    "manifest_schema": "aiteachme.atmx.manifest",
+    "content_roots": ["db", "files", "knowledge"],
+    "capabilities": ["subject_metadata", "knowledge_graph", "knowledge_docs"],
+    "min_reader_format_version": "1.0"
+  },
   "subject": {
     "slug": "gaodeng-shuxue",
     "name": "高等数学",
-    "description": "..."
+    "description": "...",
+    "user_intent": "...",
+    "icon_key": "math",
+    "created_at": "2026-04-03T00:00:00Z",
+    "updated_at": "2026-04-03T00:00:00Z"
   },
   "stats": {
     "raw_file_count": 3,
@@ -106,9 +118,16 @@ subject_export.atmx (ZIP)
     "include_chat_history": true,
     "include_exam_history": true,
     "include_profile": true
-  }
+  },
+  "tables": [
+    {"name": "subject", "count": 1, "id_type": "auto", "subject_field": "slug"},
+    {"name": "knowledge_unit", "count": 45, "id_type": "auto", "subject_field": "subject"}
+  ],
+  "extensions": {}
 }
 ```
+
+`manifest.json` 读取端必须允许未知字段，新增字段应优先放在 `package`、`tables` 或 `extensions` 下，避免未来扩展时破坏旧包导入。
 
 ---
 
@@ -166,6 +185,8 @@ subject_export.atmx (ZIP)
 POST /api/v1/subjects/{subject}/export/preview   — 导出预览（内容摘要）
 POST /api/v1/subjects/{subject}/export            — 下载导出包
 ```
+
+下载文件名使用 `学科名-学科id.atmx`，学科名和 id 会经过文件名安全清洗；包内真实身份仍以 `manifest.subject.slug` 为准。
 
 导出请求体：
 

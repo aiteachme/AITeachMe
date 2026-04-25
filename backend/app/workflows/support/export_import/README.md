@@ -5,7 +5,7 @@
 ## Responsibilities
 
 - Preview subject export size and table counts.
-- Export a subject into an `.atmx` package.
+- Export a subject into an `.atmx` package. Download filenames use `subject-name-subject-id.atmx`; the manifest keeps stable ids and extension metadata.
 - Import an `.atmx` package as a new subject.
 - List remote demo-course packages from the configured OSS catalog.
 
