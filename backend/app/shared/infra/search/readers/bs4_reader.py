@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 
+import httpx
 import structlog
 
 from app.shared.infra.search.readers.base import BaseReader
@@ -56,7 +57,10 @@ class BS4Reader(BaseReader):
             response = await fetch_url(url)
             html = response.text
         except Exception as exc:  # pragma: no cover - network/provider behavior
-            logger.warning("bs4_read_failed", url=url, error=str(exc))
+            log_method = logger.info
+            if not (isinstance(exc, httpx.HTTPStatusError) and exc.response.status_code in {403, 404, 429}):
+                log_method = logger.warning
+            log_method("bs4_read_failed", url=url, error=str(exc))
             return build_error_page(url, error=exc, content_type="text/html", reader_name=self.name)
 
         title = ""

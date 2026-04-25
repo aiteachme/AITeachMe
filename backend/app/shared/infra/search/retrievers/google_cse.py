@@ -5,7 +5,7 @@ from __future__ import annotations
 import httpx
 import structlog
 
-from app.shared.infra.env_support import get_env
+from app.shared.infra.env_support import get_env, get_env_choice
 from app.shared.infra.search.defaults import DEFAULT_SEARCH_PROVIDER_TIMEOUT_S
 from app.shared.infra.search.retrievers.base import BaseRetriever
 from app.shared.infra.search.retrievers.common import clamp_max_results, make_search_result, normalize_query
@@ -22,7 +22,7 @@ class GoogleCSERetriever(BaseRetriever):
 
     @classmethod
     def is_available(cls) -> bool:
-        return bool((get_env("GOOGLE_API_KEY") or "").strip() and (get_env("GOOGLE_CX_KEY") or "").strip())
+        return bool((get_env_choice("GOOGLE_API_KEY") or "").strip() and (get_env("GOOGLE_CX_KEY") or "").strip())
 
     @classmethod
     def availability_reason(cls) -> str | None:
@@ -34,7 +34,7 @@ class GoogleCSERetriever(BaseRetriever):
         normalized_query = normalize_query(query)
         if not normalized_query:
             return []
-        api_key = (get_env("GOOGLE_API_KEY") or "").strip()
+        api_key = (get_env_choice("GOOGLE_API_KEY") or "").strip()
         cx_key = (get_env("GOOGLE_CX_KEY") or "").strip()
         if not api_key or not cx_key:
             return []

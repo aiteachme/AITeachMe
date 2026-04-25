@@ -8,6 +8,18 @@ interface UseResizablePanelProps {
   direction?: "left" | "right";
 }
 
+function clampPanelWidth(width: number, minWidth: number, maxWidth: number) {
+  if (typeof window === "undefined") {
+    return Math.max(minWidth, Math.min(maxWidth, width));
+  }
+
+  const viewportWidth = window.innerWidth;
+  const maxAllowed = Math.min(maxWidth, viewportWidth);
+  const minAllowed = Math.min(minWidth, maxAllowed);
+
+  return Math.max(minAllowed, Math.min(maxAllowed, width));
+}
+
 export function useResizablePanel({
   defaultWidth = 420,
   minWidth = 320,
@@ -15,7 +27,11 @@ export function useResizablePanel({
   onResize,
   direction = "right",
 }: UseResizablePanelProps = {}) {
-  const [width, setWidth] = useState<number | string>(defaultWidth);
+  const [width, setWidth] = useState<number | string>(() =>
+    typeof defaultWidth === "number"
+      ? clampPanelWidth(defaultWidth, minWidth, maxWidth)
+      : defaultWidth,
+  );
   const [isDragging, setIsDragging] = useState(false);
   const isDraggingRef = useRef(isDragging);
 
@@ -29,8 +45,27 @@ export function useResizablePanel({
   }, []);
 
   const resetWidth = useCallback((newWidth: number | string) => {
-    setWidth(newWidth);
-  }, []);
+    setWidth(
+      typeof newWidth === "number"
+        ? clampPanelWidth(newWidth, minWidth, maxWidth)
+        : newWidth,
+    );
+  }, [maxWidth, minWidth]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const handleResize = () => {
+      setWidth((current) =>
+        typeof current === "number"
+          ? clampPanelWidth(current, minWidth, maxWidth)
+          : current,
+      );
+    };
+
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, [maxWidth, minWidth]);
 
   useEffect(() => {
     if (!isDragging) return;
@@ -46,9 +81,7 @@ export function useResizablePanel({
         newWidth = e.clientX;
       }
 
-      // If maxWidth is a huge number or percentage isn't handled here, we should clamp to max screen
-      const maxAllowed = Math.min(maxWidth, window.innerWidth * 0.9);
-      newWidth = Math.max(minWidth, Math.min(maxAllowed, newWidth));
+      newWidth = clampPanelWidth(newWidth, minWidth, maxWidth);
       
       setWidth(newWidth);
       onResize?.(newWidth);

@@ -187,7 +187,7 @@ export function KnowledgeGraphSidePanel({
                   <SemanticUniverse
                     subjectLabel={subjectLabel}
                     overviewGraph={overview?.graph ?? null}
-                    height="calc(100vh - 20rem)"
+                    height="calc(100dvh - 20rem)"
                   />
                 </Suspense>
               ) : null}

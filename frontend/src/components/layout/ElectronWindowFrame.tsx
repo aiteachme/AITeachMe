@@ -42,7 +42,7 @@ function ElectronWindowShell({ children }: PropsWithChildren) {
     <div className="electron-window-frame">
       <header className="electron-window-titlebar border-b border-slate-200 bg-white/95 text-slate-700 shadow-sm dark:border-slate-800 dark:bg-slate-950/95 dark:text-slate-200">
         <div className="electron-window-drag-zone" />
-        <div className="pointer-events-none relative z-10 flex h-full items-center gap-2 pl-3 pr-40">
+        <div className="pointer-events-none relative z-10 flex h-10 items-center gap-2 pl-3 pr-40">
           <img
             src="logo.svg"
             alt=""

@@ -17,7 +17,7 @@ from fastapi.responses import JSONResponse
 
 from app.shared.infra.settings import get_settings
 from app.shared.infra.database import init_db
-from app.shared.infra.env_support import get_env, get_env_bool
+from app.shared.infra.env_support import get_env, get_env_bool, get_env_list
 from app.shared.infra.logger import (
     bind_logging_context,
     clear_logging_context,
@@ -44,6 +44,7 @@ from app.shared.kernel.exceptions import AITeachMeError as KernelAITeachMeError
 from app.shared.infra.runtime import BackgroundTaskRegistry
 from app.shared.infra.settings.support import (
     get_llm_provider_model_defaults,
+    llm_provider_requires_api_key,
     resolve_runtime_llm_provider,
 )
 
@@ -103,7 +104,9 @@ def _log_infra_diagnostics(settings) -> None:
     engine = get_engine()
     dialect = engine.dialect.name
     project_settings_source = get_teaching_runtime_settings_source()
-    runtime_provider = resolve_runtime_llm_provider()
+    llm_base_url = get_env("LLM_BASE_URL")
+    llm_api_keys = get_env_list("LLM_API_KEY")
+    runtime_provider = resolve_runtime_llm_provider(base_url=llm_base_url)
     runtime_provider_defaults = get_llm_provider_model_defaults(runtime_provider)
     openai_compatible_defaults = get_llm_provider_model_defaults("openai_compatible")
 
@@ -126,6 +129,8 @@ def _log_infra_diagnostics(settings) -> None:
         f"    PROJECT_SETTINGS_PATH  : {os.environ.get('PROJECT_SETTINGS_PATH', 'NOT_SET')}",
         f"    Settings Source        : {project_settings_source}",
         f"    RENDER                 : {os.environ.get('RENDER', 'NOT_SET')}",
+        f"    LLM_BASE_URL           : {'SET' if llm_base_url else '!! NOT_SET !!'}",
+        f"    LLM_API_KEY            : {'SET' if llm_api_keys else '!! NOT_SET !!'}",
         "",
         "  [DATABASE]",
         f"    Dialect                : {dialect}",
@@ -189,9 +194,8 @@ def _log_infra_diagnostics(settings) -> None:
     lines.append(f"    Document OCR Model     : {settings.models.ocr or 'disabled'}")
     lines.append(f"    Embedding Model        : {settings.models.embedding}")
     lines.append(f"    Rerank Model           : {settings.models.rerank or 'disabled'}")
-    lines.append(
-        f"    MinerU Server Token    : {'SET' if get_env('MINERU_API_TOKEN') else 'not set'}"
-    )
+    mineru_tokens = get_env_list("MINERU_API_TOKENS") or get_env_list("MINERU_API_TOKEN")
+    lines.append(f"    MinerU Server Token    : {'SET' if mineru_tokens else 'not set'}")
     lines.append(
         f"    Image Generation Model : {settings.models.image_generation or 'disabled'}"
     )
@@ -199,6 +203,10 @@ def _log_infra_diagnostics(settings) -> None:
     lines.append(f"    Text->Speech Model     : {settings.models.text_to_speech or 'disabled'}")
     lines.append(f"    Video Model            : {settings.models.video_generation or 'disabled'}")
     lines.append(f"    Runtime Provider       : {runtime_provider}")
+    if llm_provider_requires_api_key(runtime_provider, base_url=llm_base_url) and not llm_api_keys:
+        lines.append("    LLM Connectivity       : NOT_READY (missing LLM_API_KEY)")
+    else:
+        lines.append("    LLM Connectivity       : READY")
     lines.append("    Runtime Provider Defaults:")
     for raw_line in json.dumps(
         runtime_provider_defaults,

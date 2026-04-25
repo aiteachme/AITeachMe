@@ -5,7 +5,10 @@ import asyncio
 import pytest
 
 from app.shared.infra.llm_support.context_window import ContextWindowManager
-from app.shared.infra.llm_support.stream import _stream_chunks_with_timeout
+from app.shared.infra.llm_support.stream import (
+    _is_stream_usage_calculation_error,
+    _stream_chunks_with_timeout,
+)
 
 
 @pytest.fixture
@@ -29,6 +32,13 @@ def test_context_window_does_not_invent_ellipsis_for_empty_sections() -> None:
     ]
     assert manager.truncate_text("", 0) == ""
     assert manager.estimate_tokens("") == 0
+
+
+def test_stream_usage_calculation_error_is_detected() -> None:
+    exc = RuntimeError("litellm.APIError: Error building chunks for logging/streaming usage calculation")
+
+    assert _is_stream_usage_calculation_error(exc)
+    assert not _is_stream_usage_calculation_error(RuntimeError("provider connection failed"))
 
 
 class _SlowStream:

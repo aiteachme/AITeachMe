@@ -14,7 +14,7 @@ interface ChatTranscriptProps {
 
 export function ChatTranscript({ messages, onOpenCitation }: ChatTranscriptProps) {
   return (
-    <div className="mx-auto flex w-full max-w-3xl flex-col gap-5 px-4 py-8 md:px-6">
+    <div className="mx-auto flex w-full max-w-3xl flex-col gap-7 px-4 py-8 md:px-8 xl:max-w-4xl 2xl:max-w-5xl">
       {messages.map((message) => {
         const isAssistant = message.role === "assistant";
         return (
@@ -27,13 +27,13 @@ export function ChatTranscript({ messages, onOpenCitation }: ChatTranscriptProps
           >
             <div
               className={cn(
-                "flex w-full gap-3",
-                isAssistant ? "max-w-[95%] items-start" : "max-w-[85%] flex-row-reverse items-end",
+                "flex gap-3 sm:gap-4",
+                isAssistant ? "w-full items-start" : "max-w-[82%] flex-row-reverse items-end",
               )}
             >
               <div
                 className={cn(
-                  "flex h-10 w-10 shrink-0 items-center justify-center shadow-sm",
+                  "flex h-9 w-9 shrink-0 items-center justify-center shadow-sm sm:h-10 sm:w-10",
                   isAssistant
                     ? "rounded-full bg-slate-50 ring-2 ring-slate-200/50 p-1.5 dark:bg-slate-900 dark:ring-slate-700/70"
                     : "rounded-full bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900",
@@ -53,7 +53,7 @@ export function ChatTranscript({ messages, onOpenCitation }: ChatTranscriptProps
                 </div>
 
                 {isAssistant ? (
-                  <div className="rounded-2xl bg-white/80 px-4 py-3 text-[15px] leading-7 text-slate-800 shadow-[0_10px_35px_-24px_rgba(15,23,42,0.42)] dark:bg-slate-950/90 dark:text-slate-100 dark:shadow-[0_20px_45px_-28px_rgba(0,0,0,0.78)]">
+                  <div className="max-w-none px-1 py-1 text-[15px] leading-7 text-slate-800 dark:text-slate-100">
                     <MarkdownViewer content={message.content || " "} />
                     {message.status === "streaming" ? (
                       <span className="ml-0.5 inline-block h-4 w-0.5 animate-pulse bg-slate-500 align-middle dark:bg-slate-400" />

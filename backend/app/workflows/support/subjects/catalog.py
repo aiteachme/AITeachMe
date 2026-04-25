@@ -10,12 +10,14 @@ from app.repositories.subject_repo import (
     create_subject,
     get_subject_by_slug,
     list_subjects,
+    save_subject,
     update_subject,
 )
 from app.schemas.common import PaginatedData, build_paginated_data
 from app.schemas.subject import SubjectItem
 from app.utils.presenters import require_id
 from app.utils.subject import generate_subject_id, validate_subject_id
+from app.workflows.support.subjects.icons import get_subject_icon_key, set_subject_icon_key
 
 
 def _create_unique_subject_id(session: Session) -> str:
@@ -30,6 +32,7 @@ def _to_subject_item(subject: Subject) -> SubjectItem:
         id=require_id(subject.id, "Subject.id"),
         subject_id=subject.slug,
         name=subject.name,
+        icon_key=get_subject_icon_key(subject),
         created_at=subject.created_at,
         updated_at=subject.updated_at,
     )
@@ -40,15 +43,16 @@ def create_subject_record(
     *,
     owner_user_id: str,
     name: str,
+    icon_key: str | None = None,
 ) -> SubjectItem:
-    subject = create_subject(
-        session,
-        Subject(
-            user_id=owner_user_id,
-            slug=_create_unique_subject_id(session),
-            name=name.strip(),
-        ),
+    subject = Subject(
+        user_id=owner_user_id,
+        slug=_create_unique_subject_id(session),
+        name=name.strip(),
     )
+    if icon_key:
+        set_subject_icon_key(subject, icon_key)
+    subject = create_subject(session, subject)
     return _to_subject_item(subject)
 
 
@@ -105,6 +109,7 @@ def update_subject_record(
     owner_user_id: str,
     subject_id: str,
     name: str,
+    icon_key: str | None = None,
 ) -> SubjectItem:
     subject = get_subject_record(session, subject_id, owner_user_id=owner_user_id)
     updated = update_subject(
@@ -112,6 +117,9 @@ def update_subject_record(
         subject,
         name=name.strip() or subject.name,
     )
+    if icon_key:
+        set_subject_icon_key(updated, icon_key)
+        updated = save_subject(session, updated)
     return _to_subject_item(updated)
 
 

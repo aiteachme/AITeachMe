@@ -7,7 +7,7 @@ import re
 from datetime import datetime
 from enum import Enum
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.models.subject import Subject
 from app.shared.infra.runtime import is_cloud_mode
@@ -40,6 +40,8 @@ class SubjectEmbeddingBinding(BaseModel):
 
 class SubjectSettingsPayload(BaseModel):
     """Structured representation of ``subject.settings_json``."""
+
+    model_config = ConfigDict(extra="allow")
 
     embedding: SubjectEmbeddingBinding | None = None
 def _sanitize_user_segment(user_id: str | None) -> str:

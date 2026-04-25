@@ -3,8 +3,9 @@
  * Do not edit manually.
  * AITeachMe
  * 本地优先的 AI 助教后端服务。
- * OpenAPI spec version: 0.2.0
+ * OpenAPI spec version: 0.0.1
  */
+import type { ChatSelectionContext } from './chatSelectionContext';
 
 /**
  * Request body for sending one chat message.
@@ -18,8 +19,12 @@ export interface ChatSendRequest {
   source?: string | null;
   /** Optional doc heading anchor for highlighted QA. */
   anchor_id?: string | null;
-  /** Optional highlighted context. */
+  /** Exact highlighted text for display and persistence. */
+  selected_text?: string | null;
+  /** Legacy highlighted context string. */
   selected_context?: string | null;
+  /** Structured doc-selection context for the prompt. */
+  selection_context?: ChatSelectionContext | null;
   /** Optional source chunk ID for the highlighted context. */
   source_chunk_id?: number | null;
 }

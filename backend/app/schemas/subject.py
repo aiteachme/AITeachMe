@@ -44,6 +44,7 @@ class SubjectItem(BaseModel):
     id: int = Field(description="学科 ID。")
     subject_id: str = Field(description="学科外部标识。")
     name: str = Field(description="展示名称。")
+    icon_key: str | None = Field(default=None, description="学科图标 key。")
     created_at: datetime = Field(description="创建时间。")
     updated_at: datetime = Field(description="更新时间。")
 

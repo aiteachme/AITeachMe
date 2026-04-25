@@ -10,6 +10,7 @@ import {
   FileText,
   GraduationCap,
   Layers3,
+  Loader2,
   Plus,
   Sparkles,
   Tags,
@@ -35,7 +36,7 @@ import type {
   ExamPaperItemResponse,
 } from "../api/generated/model";
 import { getMasteryOverviewApiV1SubjectsSubjectProfileMasteryGetQueryKey } from "../api/generated/profile";
-import { getApiErrorMessage, orvalApiClient } from "../api/client";
+import { buildApiUrl, getApiErrorMessage, orvalApiClient } from "../api/client";
 import { Button } from "../components/ui/Button";
 import { MarkdownViewer } from "../components/ui/MarkdownViewer";
 import { Modal } from "../components/ui/Modal";
@@ -54,6 +55,16 @@ const DIFFICULTIES = [
 ] as const;
 
 const STATUS_META: Record<string, { label: string; tone: string; accent: string }> = {
+  generating: {
+    label: "生成中",
+    tone: "bg-violet-50 text-violet-700 ring-1 ring-inset ring-violet-200",
+    accent: "from-violet-300 via-sky-300 to-emerald-300",
+  },
+  ready: {
+    label: "待作答",
+    tone: "bg-amber-50 text-amber-700 ring-1 ring-inset ring-amber-200",
+    accent: "from-amber-300 via-orange-300 to-pink-300",
+  },
   draft: {
     label: "待完成",
     tone: "bg-amber-50 text-amber-700 ring-1 ring-inset ring-amber-200",
@@ -68,6 +79,11 @@ const STATUS_META: Record<string, { label: string; tone: string; accent: string 
     label: "已完成",
     tone: "bg-emerald-50 text-emerald-700 ring-1 ring-inset ring-emerald-200",
     accent: "from-emerald-300 via-teal-300 to-cyan-300",
+  },
+  failed: {
+    label: "生成失败",
+    tone: "bg-rose-50 text-rose-700 ring-1 ring-inset ring-rose-200",
+    accent: "from-rose-300 via-orange-300 to-slate-300",
   },
 };
 
@@ -278,17 +294,17 @@ function ExamStageHeader({
 
   return (
     <div className="bg-transparent">
-      <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-4 px-5 py-4 sm:px-8">
+      <div className="flex flex-col gap-3 px-4 py-3 sm:grid sm:grid-cols-[1fr_auto_1fr] sm:items-center sm:gap-4 sm:px-8 sm:py-4">
         <button
           type="button"
           onClick={onBack}
-          className="justify-self-start inline-flex items-center gap-3 text-base font-medium text-slate-900 transition hover:text-slate-600"
+          className="inline-flex min-h-11 items-center gap-2 justify-self-start text-sm font-medium text-slate-900 transition hover:text-slate-600 sm:gap-3 sm:text-base"
         >
           <ArrowLeft className="h-5 w-5" />
           返回考卷列表
         </button>
 
-        <div className="col-start-2 flex items-center justify-center gap-1.5 sm:gap-2.5">
+        <div className="flex items-center justify-center gap-1.5 sm:col-start-2 sm:gap-2.5">
           {steps.map((step, index) => {
             const isActive = step === currentStep;
             const isCompleted = step < currentStep;
@@ -312,7 +328,7 @@ function ExamStageHeader({
                 </button>
                 {index < steps.length - 1 && (
                   <div
-                    className="h-px w-10 sm:w-16"
+                    className="h-px w-8 sm:w-16"
                     style={{
                       backgroundImage:
                         "repeating-linear-gradient(to right, rgb(203 213 225 / 1) 0 8px, transparent 8px 13px)",
@@ -632,6 +648,66 @@ function ExamPaperWorkspace({ subjectId, paperId, backHref }: ExamPaperWorkspace
   });
 
   useEffect(() => {
+    if (!subjectId || !paperId || paper?.status !== "generating") return;
+    const stream = new EventSource(
+      buildApiUrl(`/api/v1/subjects/${encodeURIComponent(subjectId)}/exams/${paperId}/stream`),
+      { withCredentials: true },
+    );
+
+    const refreshPaper = () => {
+      void Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: getExamHistoryApiV1SubjectsSubjectExamsHistoryGetQueryKey(subjectId, { page: 1, size: 24 }),
+        }),
+        queryClient.invalidateQueries({
+          queryKey: getExamDetailApiV1SubjectsSubjectExamsExamPaperIdGetQueryKey(subjectId, paperId),
+        }),
+      ]);
+    };
+
+    const handleDone = (event: Event) => {
+      const message = event as MessageEvent<string>;
+      let payload: { status?: string; error_message?: string } = {};
+      try {
+        payload = JSON.parse(message.data || "{}");
+      } catch {
+        payload = {};
+      }
+      refreshPaper();
+      stream.close();
+      if (payload.status === "failed") {
+        toast({
+          title: "试卷生成失败",
+          description: payload.error_message || "请稍后重试。",
+          variant: "error",
+        });
+        return;
+      }
+      toast({
+        title: "试卷生成完成",
+        description: "题目已生成，可以开始作答。",
+        variant: "success",
+      });
+    };
+
+    const handleSnapshot = () => {
+      refreshPaper();
+    };
+
+    stream.addEventListener("done", handleDone);
+    stream.addEventListener("snapshot", handleSnapshot);
+    stream.onerror = () => {
+      refreshPaper();
+    };
+
+    return () => {
+      stream.removeEventListener("done", handleDone);
+      stream.removeEventListener("snapshot", handleSnapshot);
+      stream.close();
+    };
+  }, [paper?.status, paperId, queryClient, subjectId, toast]);
+
+  useEffect(() => {
     if (!paper?.items) return;
     setAnswers(
       Object.fromEntries(
@@ -716,7 +792,22 @@ function ExamPaperWorkspace({ subjectId, paperId, backHref }: ExamPaperWorkspace
 
           {paper && (
             <>
-              {activeStage !== 3 && (
+              {paper.status === "generating" && (
+                <div className="rounded-[28px] border border-violet-200 bg-violet-50 px-6 py-12 text-center text-sm text-violet-700">
+                  <Loader2 className="mx-auto mb-4 h-8 w-8 animate-spin" />
+                  <h2 className="text-lg font-semibold text-violet-950">试卷题目生成中</h2>
+                  <p className="mt-2">基础信息已创建，题目生成完成后会自动刷新。</p>
+                </div>
+              )}
+
+              {paper.status === "failed" && (
+                <div className="rounded-[28px] border border-rose-200 bg-rose-50 px-6 py-12 text-center text-sm text-rose-700">
+                  <h2 className="text-lg font-semibold text-rose-950">试卷生成失败</h2>
+                  <p className="mt-2">后台生成题目时出错，请返回列表后重新生成。</p>
+                </div>
+              )}
+
+              {paper.status !== "generating" && paper.status !== "failed" && activeStage !== 3 && (
                 <>
               <aside className="hidden lg:block">
                 <div className="fixed left-2 top-28 z-20 w-[112px] rounded-[28px] border border-slate-200/80 bg-white/92 px-3 py-4 shadow-[0_18px_40px_rgba(15,23,42,0.08)] backdrop-blur xl:left-3 xl:w-[136px] 2xl:w-[184px]">
@@ -837,14 +928,14 @@ function ExamPaperWorkspace({ subjectId, paperId, backHref }: ExamPaperWorkspace
                         id={`exam-question-${item.item_order}`}
                         data-question-anchor="true"
                         data-question-order={item.item_order}
-                        className="scroll-mt-28 rounded-[36px] border border-slate-200/80 bg-white px-5 py-8 shadow-sm sm:px-8 sm:py-10"
+                        className="scroll-mt-28 rounded-[28px] border border-slate-200/80 bg-white px-4 py-6 shadow-sm sm:rounded-[36px] sm:px-8 sm:py-10"
                       >
                         <div className="mx-auto max-w-6xl">
                           <div className="text-center">
                             <p className="text-sm font-medium text-slate-400">
                               Question {item.item_order}/{paper.total_items}
                             </p>
-                            <div className="mx-auto mt-4 max-w-5xl text-slate-950 [&_p]:mb-0 [&_p]:text-2xl [&_p]:font-semibold [&_p]:leading-[1.5] [&_p]:tracking-[-0.03em] sm:[&_p]:text-3xl [&_.katex-display]:my-4 [&_.katex]:text-inherit">
+                            <div className="mx-auto mt-4 max-w-5xl text-slate-950 [&_p]:mb-0 [&_p]:text-xl [&_p]:font-semibold [&_p]:leading-[1.55] sm:[&_p]:text-3xl [&_.katex-display]:my-4 [&_.katex]:text-inherit">
                               <ExamMarkdown content={item.stem} />
                             </div>
                             {isReviewStage && (
@@ -901,7 +992,7 @@ function ExamPaperWorkspace({ subjectId, paperId, backHref }: ExamPaperWorkspace
                                         };
                                       });
                                     }}
-                                    className={`flex items-center gap-5 rounded-[28px] border px-7 py-6 text-left text-lg leading-8 transition ${
+                                    className={`flex items-center gap-3 rounded-2xl border px-4 py-4 text-left text-base leading-7 transition sm:gap-5 sm:rounded-[28px] sm:px-7 sm:py-6 sm:text-lg sm:leading-8 ${
                                       isReviewStage
                                         ? isRightOption
                                           ? "border-emerald-300 bg-emerald-50 text-emerald-900 shadow-[0_12px_30px_rgba(16,185,129,0.12)]"
@@ -918,7 +1009,7 @@ function ExamPaperWorkspace({ subjectId, paperId, backHref }: ExamPaperWorkspace
                                     } ${isReadonly ? "cursor-default" : ""} disabled:cursor-not-allowed`}
                                   >
                                     <span
-                                      className={`grid h-8 w-8 shrink-0 place-items-center rounded-full border-4 ${
+                                      className={`grid h-7 w-7 shrink-0 place-items-center rounded-full border-4 sm:h-8 sm:w-8 ${
                                         isReviewStage
                                           ? isRightOption
                                             ? "border-emerald-600 bg-white"
@@ -952,7 +1043,7 @@ function ExamPaperWorkspace({ subjectId, paperId, backHref }: ExamPaperWorkspace
                                         }`}
                                       />
                                     </span>
-                                    <div className={`min-w-0 flex-1 [&_p]:mb-0 [&_p]:text-lg [&_p]:leading-8 [&_.katex-display]:my-3 [&_.katex]:text-inherit ${
+                                    <div className={`min-w-0 flex-1 [&_p]:mb-0 [&_p]:text-base [&_p]:leading-7 sm:[&_p]:text-lg sm:[&_p]:leading-8 [&_.katex-display]:my-3 [&_.katex]:text-inherit ${
                                       isReviewStage
                                         ? isRightOption
                                           ? "[&_p]:text-emerald-900"
@@ -1066,7 +1157,7 @@ function ExamPaperWorkspace({ subjectId, paperId, backHref }: ExamPaperWorkspace
                 </>
               )}
 
-              {activeStage === 3 && (
+              {paper.status !== "generating" && paper.status !== "failed" && activeStage === 3 && (
                 <div className="mx-auto max-w-6xl">
                   {studyGuideQuery.isLoading && (
                     <div className="rounded-[28px] border border-slate-200 bg-white px-6 py-12 text-center text-sm text-slate-500">
@@ -1172,7 +1263,7 @@ export function ExamsPage() {
                   Exam Studio
                 </div>
 
-                <h1 className="mt-5 text-4xl font-semibold tracking-[-0.04em] text-slate-950 dark:text-slate-100 sm:text-5xl">
+                <h1 className="mt-5 text-3xl font-semibold tracking-[-0.04em] text-slate-950 dark:text-slate-100 sm:text-5xl">
                   所有考试卷都在这里
                 </h1>
 
@@ -1183,7 +1274,7 @@ export function ExamsPage() {
                 <div className="mt-8 flex flex-wrap gap-3">
                   <Button
                     size="lg"
-                    className="h-14 rounded-full bg-black px-7 text-base font-semibold text-white hover:bg-slate-900"
+                    className="h-14 w-full rounded-full bg-black px-7 text-base font-semibold text-white hover:bg-slate-900 sm:w-auto"
                     onClick={() => setIsCreateOpen(true)}
                   >
                     <Plus className="h-5 w-5" />
@@ -1192,7 +1283,7 @@ export function ExamsPage() {
                   <Button
                     size="lg"
                     variant="outline"
-                    className="h-14 rounded-full px-6 text-base font-semibold text-slate-800 dark:text-slate-200 dark:border-slate-700"
+                    className="h-14 w-full rounded-full px-6 text-base font-semibold text-slate-800 dark:border-slate-700 dark:text-slate-200 sm:w-auto"
                     onClick={() => navigate(`/subject/${subjectId}/exams/question-templates`)}
                   >
                     <BookOpen className="h-5 w-5" />
@@ -1201,7 +1292,7 @@ export function ExamsPage() {
                   <Button
                     size="lg"
                     variant="outline"
-                    className="h-14 rounded-full px-6 text-base font-semibold text-slate-800 dark:text-slate-200 dark:border-slate-700"
+                    className="h-14 w-full rounded-full px-6 text-base font-semibold text-slate-800 dark:border-slate-700 dark:text-slate-200 sm:w-auto"
                     onClick={() => navigate(`/subject/${subjectId}/exams/question-types`)}
                   >
                     <Tags className="h-5 w-5" />
@@ -1306,7 +1397,7 @@ export function ExamsPage() {
 
                                   <div className="min-w-0">
                                     <div className="flex flex-wrap items-center gap-3">
-                                      <h3 className="truncate text-xl font-semibold tracking-[-0.03em] text-slate-950 dark:text-slate-100">
+                                      <h3 className="line-clamp-2 text-lg font-semibold tracking-[-0.03em] text-slate-950 dark:text-slate-100 sm:text-xl">
                                         {buildExamTitle(item)}
                                       </h3>
                                       <span className={`rounded-full px-3 py-1 text-xs font-semibold ${statusMeta.tone}`}>
@@ -1340,8 +1431,8 @@ export function ExamsPage() {
                                   </div>
                                 </div>
 
-                                <div className="flex items-center justify-between gap-4 lg:justify-end">
-                                  <div className="flex items-center gap-3">
+                                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4 lg:justify-end">
+                                  <div className="flex items-center justify-between gap-3 sm:justify-start">
                                     <div className="text-sm text-slate-400">
                                       {item.graded_at
                                         ? `最近批改 ${formatDateTime(item.graded_at)}`

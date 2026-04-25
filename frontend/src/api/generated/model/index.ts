@@ -3,7 +3,7 @@
  * Do not edit manually.
  * AITeachMe
  * 本地优先的 AI 助教后端服务。
- * OpenAPI spec version: 0.2.0
+ * OpenAPI spec version: 0.0.1
  */
 
 export * from './aliasItem';
@@ -87,6 +87,7 @@ export * from './chatContextItem';
 export * from './chatListRequest';
 export * from './chatMessageItem';
 export * from './chatRoleValue';
+export * from './chatSelectionContext';
 export * from './chatSendRequest';
 export * from './chatSessionCreateData';
 export * from './chatSessionCreateRequest';

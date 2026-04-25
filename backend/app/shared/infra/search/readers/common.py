@@ -12,10 +12,17 @@ from app.shared.infra.search.types import ScrapedPage
 
 _CORE_TITLE_QNAME = "{http://purl.org/dc/elements/1.1/}title"
 
+DEFAULT_READER_HEADERS = {
+    "User-Agent": "AITeachMe/0.2 (educational knowledge builder; contact: support@aiteachme.local)",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,text/plain;q=0.8,*/*;q=0.7",
+    "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.7",
+}
+
 
 async def fetch_url(url: str, *, headers: dict[str, str] | None = None) -> httpx.Response:
     async with httpx.AsyncClient(timeout=DEFAULT_SEARCH_SCRAPE_TIMEOUT_S, follow_redirects=True) as client:
-        response = await client.get(url, headers=headers)
+        merged_headers = {**DEFAULT_READER_HEADERS, **(headers or {})}
+        response = await client.get(url, headers=merged_headers)
         response.raise_for_status()
         return response
 

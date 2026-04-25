@@ -51,6 +51,7 @@ from app.utils.time import utcnow
 from app.workflows.digest.common.runtime_config import get_teaching_runtime_config
 from app.workflows.digest.planner.lib.plans import normalize_planner_payload
 from app.workflows.digest.planner.lib.steps import STEP_TIMING_FIELDS
+from app.workflows.support.subjects.icons import normalize_subject_icon_key, set_subject_icon_key
 
 logger = structlog.get_logger(__name__)
 PLANNER_CHAT_SOURCE = "build_planner"
@@ -178,6 +179,7 @@ def _maybe_update_subject_name(
     subject: str,
     user_id: str,
     generated_name: str,
+    generated_icon_key: str | None = None,
 ) -> None:
     title = " ".join(str(generated_name or "").strip().split())
     if not title or title.casefold() in _AUTO_TITLE_PLACEHOLDERS:
@@ -188,6 +190,9 @@ def _maybe_update_subject_name(
     if subject_row is None or not _needs_auto_subject_name(subject_row.name):
         return
     subject_row.name = title
+    icon_key = normalize_subject_icon_key(generated_icon_key)
+    if icon_key:
+        set_subject_icon_key(subject_row, icon_key)
     subject_row.updated_at = utcnow()
     session.add(subject_row)
     session.commit()
@@ -736,6 +741,7 @@ def save_planner_result(
             subject=subject_slug,
             user_id=user_id,
             generated_name=generated_title,
+            generated_icon_key=str(state.get("generated_subject_icon_key") or ""),
         )
         record = _update_planner_session_meta(
             session,

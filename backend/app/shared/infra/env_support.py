@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import os
 import re
+import secrets
 from functools import lru_cache
 from pathlib import Path
 from typing import Mapping
@@ -18,20 +19,47 @@ from dotenv import dotenv_values
 
 _PROJECT_ROOT = Path(__file__).resolve().parents[4]
 _BACKEND_ROOT = _PROJECT_ROOT / "backend"
-_DOTENV_CANDIDATES = (
-    _PROJECT_ROOT / ".env",
-    _BACKEND_ROOT / ".env",
-)
 _TRUTHY_VALUES = {"1", "true", "yes", "on"}
 _FALSY_VALUES = {"0", "false", "no", "off"}
 _ENV_LINE_RE = re.compile(r"^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=")
+
+
+def _configured_data_dir() -> Path | None:
+    raw_value = os.getenv("AITEACHME_DATA_DIR")
+    if not raw_value or not raw_value.strip():
+        return None
+    return Path(raw_value).expanduser().resolve()
+
+
+def _dotenv_candidates() -> tuple[Path, ...]:
+    """Return dotenv lookup paths for both repo dev and packaged desktop runs."""
+
+    candidates: list[Path] = []
+    data_dir = _configured_data_dir()
+    if data_dir is not None:
+        candidates.append(data_dir / ".env")
+    candidates.extend(
+        [
+            _PROJECT_ROOT / ".env",
+            _BACKEND_ROOT / ".env",
+        ]
+    )
+
+    unique: list[Path] = []
+    seen: set[Path] = set()
+    for path in candidates:
+        if path in seen:
+            continue
+        seen.add(path)
+        unique.append(path)
+    return tuple(unique)
 
 
 @lru_cache(maxsize=1)
 def load_local_dotenv() -> None:
     """Load repo-local `.env` values into `os.environ` if they are unset."""
 
-    for path in _DOTENV_CANDIDATES:
+    for path in _dotenv_candidates():
         if not path.exists():
             continue
         try:
@@ -51,6 +79,29 @@ def get_env(name: str, default: str | None = None) -> str | None:
     if value is None:
         return default
     return value
+
+
+def get_env_list(name: str, default: list[str] | None = None) -> list[str]:
+    raw_value = get_env(name)
+    if raw_value is None:
+        return list(default or [])
+
+    values: list[str] = []
+    seen: set[str] = set()
+    for item in raw_value.split(","):
+        value = item.strip()
+        if not value or value in seen:
+            continue
+        seen.add(value)
+        values.append(value)
+    return values or list(default or [])
+
+
+def get_env_choice(name: str, default: str | None = None) -> str | None:
+    values = get_env_list(name)
+    if not values:
+        return default
+    return secrets.choice(values)
 
 
 def get_env_bool(name: str, default: bool) -> bool:
@@ -121,7 +172,11 @@ def describe_project_settings_source() -> str:
 
 
 def resolve_writable_local_env_path() -> Path:
-    for path in _DOTENV_CANDIDATES:
+    data_dir = _configured_data_dir()
+    if data_dir is not None:
+        return data_dir / ".env"
+
+    for path in _dotenv_candidates():
         if path.exists():
             return path
     return _PROJECT_ROOT / ".env"
@@ -176,8 +231,10 @@ def write_local_env_updates(updates: Mapping[str, str | None]) -> Path:
 __all__ = [
     "get_env",
     "get_env_bool",
+    "get_env_choice",
     "get_env_float",
     "get_env_int",
+    "get_env_list",
     "get_env_optional_bool",
     "get_project_root",
     "load_local_dotenv",

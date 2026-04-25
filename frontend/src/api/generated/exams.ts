@@ -3,7 +3,7 @@
  * Do not edit manually.
  * AITeachMe
  * 本地优先的 AI 助教后端服务。
- * OpenAPI spec version: 0.2.0
+ * OpenAPI spec version: 0.0.1
  */
 import {
   useMutation,
@@ -564,6 +564,148 @@ export function useQuestionTypesApiV1SubjectsSubjectExamsQuestionTypesGet<TData 
  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
 
   const queryOptions = getQuestionTypesApiV1SubjectsSubjectExamsQuestionTypesGetQueryOptions(subject,options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+/**
+ * @summary SSE stream for exam generation status
+ */
+export type examGenerationStreamApiV1SubjectsSubjectExamsExamPaperIdStreamGetResponse200 = {
+  data: unknown
+  status: 200
+}
+
+export type examGenerationStreamApiV1SubjectsSubjectExamsExamPaperIdStreamGetResponse400 = {
+  data: ErrorResponse
+  status: 400
+}
+
+export type examGenerationStreamApiV1SubjectsSubjectExamsExamPaperIdStreamGetResponse404 = {
+  data: ErrorResponse
+  status: 404
+}
+
+export type examGenerationStreamApiV1SubjectsSubjectExamsExamPaperIdStreamGetResponse422 = {
+  data: HTTPValidationError
+  status: 422
+}
+
+export type examGenerationStreamApiV1SubjectsSubjectExamsExamPaperIdStreamGetResponse500 = {
+  data: ErrorResponse
+  status: 500
+}
+
+export type examGenerationStreamApiV1SubjectsSubjectExamsExamPaperIdStreamGetResponseSuccess = (examGenerationStreamApiV1SubjectsSubjectExamsExamPaperIdStreamGetResponse200) & {
+  headers: Headers;
+};
+export type examGenerationStreamApiV1SubjectsSubjectExamsExamPaperIdStreamGetResponseError = (examGenerationStreamApiV1SubjectsSubjectExamsExamPaperIdStreamGetResponse400 | examGenerationStreamApiV1SubjectsSubjectExamsExamPaperIdStreamGetResponse404 | examGenerationStreamApiV1SubjectsSubjectExamsExamPaperIdStreamGetResponse422 | examGenerationStreamApiV1SubjectsSubjectExamsExamPaperIdStreamGetResponse500) & {
+  headers: Headers;
+};
+
+export type examGenerationStreamApiV1SubjectsSubjectExamsExamPaperIdStreamGetResponse = (examGenerationStreamApiV1SubjectsSubjectExamsExamPaperIdStreamGetResponseSuccess | examGenerationStreamApiV1SubjectsSubjectExamsExamPaperIdStreamGetResponseError)
+
+export const getExamGenerationStreamApiV1SubjectsSubjectExamsExamPaperIdStreamGetUrl = (subject: string,
+    examPaperId: number,) => {
+
+
+
+
+  return `/api/v1/subjects/${subject}/exams/${examPaperId}/stream`
+}
+
+export const examGenerationStreamApiV1SubjectsSubjectExamsExamPaperIdStreamGet = async (subject: string,
+    examPaperId: number, options?: RequestInit): Promise<examGenerationStreamApiV1SubjectsSubjectExamsExamPaperIdStreamGetResponse> => {
+
+  return orvalApiClient<examGenerationStreamApiV1SubjectsSubjectExamsExamPaperIdStreamGetResponse>(getExamGenerationStreamApiV1SubjectsSubjectExamsExamPaperIdStreamGetUrl(subject,examPaperId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getExamGenerationStreamApiV1SubjectsSubjectExamsExamPaperIdStreamGetQueryKey = (subject: string,
+    examPaperId: number,) => {
+    return [
+    `/api/v1/subjects/${subject}/exams/${examPaperId}/stream`
+    ] as const;
+    }
+
+
+export const getExamGenerationStreamApiV1SubjectsSubjectExamsExamPaperIdStreamGetQueryOptions = <TData = Awaited<ReturnType<typeof examGenerationStreamApiV1SubjectsSubjectExamsExamPaperIdStreamGet>>, TError = ErrorResponse | HTTPValidationError>(subject: string,
+    examPaperId: number, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof examGenerationStreamApiV1SubjectsSubjectExamsExamPaperIdStreamGet>>, TError, TData>>, request?: SecondParameter<typeof orvalApiClient>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getExamGenerationStreamApiV1SubjectsSubjectExamsExamPaperIdStreamGetQueryKey(subject,examPaperId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof examGenerationStreamApiV1SubjectsSubjectExamsExamPaperIdStreamGet>>> = ({ signal }) => examGenerationStreamApiV1SubjectsSubjectExamsExamPaperIdStreamGet(subject,examPaperId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(subject && examPaperId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof examGenerationStreamApiV1SubjectsSubjectExamsExamPaperIdStreamGet>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type ExamGenerationStreamApiV1SubjectsSubjectExamsExamPaperIdStreamGetQueryResult = NonNullable<Awaited<ReturnType<typeof examGenerationStreamApiV1SubjectsSubjectExamsExamPaperIdStreamGet>>>
+export type ExamGenerationStreamApiV1SubjectsSubjectExamsExamPaperIdStreamGetQueryError = ErrorResponse | HTTPValidationError
+
+
+export function useExamGenerationStreamApiV1SubjectsSubjectExamsExamPaperIdStreamGet<TData = Awaited<ReturnType<typeof examGenerationStreamApiV1SubjectsSubjectExamsExamPaperIdStreamGet>>, TError = ErrorResponse | HTTPValidationError>(
+ subject: string,
+    examPaperId: number, options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof examGenerationStreamApiV1SubjectsSubjectExamsExamPaperIdStreamGet>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof examGenerationStreamApiV1SubjectsSubjectExamsExamPaperIdStreamGet>>,
+          TError,
+          Awaited<ReturnType<typeof examGenerationStreamApiV1SubjectsSubjectExamsExamPaperIdStreamGet>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof orvalApiClient>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useExamGenerationStreamApiV1SubjectsSubjectExamsExamPaperIdStreamGet<TData = Awaited<ReturnType<typeof examGenerationStreamApiV1SubjectsSubjectExamsExamPaperIdStreamGet>>, TError = ErrorResponse | HTTPValidationError>(
+ subject: string,
+    examPaperId: number, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof examGenerationStreamApiV1SubjectsSubjectExamsExamPaperIdStreamGet>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof examGenerationStreamApiV1SubjectsSubjectExamsExamPaperIdStreamGet>>,
+          TError,
+          Awaited<ReturnType<typeof examGenerationStreamApiV1SubjectsSubjectExamsExamPaperIdStreamGet>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof orvalApiClient>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useExamGenerationStreamApiV1SubjectsSubjectExamsExamPaperIdStreamGet<TData = Awaited<ReturnType<typeof examGenerationStreamApiV1SubjectsSubjectExamsExamPaperIdStreamGet>>, TError = ErrorResponse | HTTPValidationError>(
+ subject: string,
+    examPaperId: number, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof examGenerationStreamApiV1SubjectsSubjectExamsExamPaperIdStreamGet>>, TError, TData>>, request?: SecondParameter<typeof orvalApiClient>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * @summary SSE stream for exam generation status
+ */
+
+export function useExamGenerationStreamApiV1SubjectsSubjectExamsExamPaperIdStreamGet<TData = Awaited<ReturnType<typeof examGenerationStreamApiV1SubjectsSubjectExamsExamPaperIdStreamGet>>, TError = ErrorResponse | HTTPValidationError>(
+ subject: string,
+    examPaperId: number, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof examGenerationStreamApiV1SubjectsSubjectExamsExamPaperIdStreamGet>>, TError, TData>>, request?: SecondParameter<typeof orvalApiClient>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getExamGenerationStreamApiV1SubjectsSubjectExamsExamPaperIdStreamGetQueryOptions(subject,examPaperId,options)
 
   const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
 

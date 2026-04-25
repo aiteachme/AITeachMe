@@ -4,6 +4,13 @@ import { BookOpen, LayoutGrid, Loader2, Plus } from "lucide-react";
 
 import { listSubjectsApiApiV1SubjectsListPost } from "../api/generated/subjects";
 import { unwrapOrvalResponse } from "../lib/unwrapOrvalResponse";
+import { resolveSubjectIcon } from "../lib/subjectIcons";
+
+type SubjectWithIcon = {
+  subject_id: string;
+  name?: string | null;
+  icon_key?: string | null;
+};
 
 function displaySubjectName(subject: { name?: string | null }) {
   return subject.name?.trim() || "未命名学科";
@@ -42,7 +49,7 @@ export function LearningSpacesPage() {
   });
 
   return (
-    <div className="min-h-full px-8 pb-12 pt-24 md:px-12">
+    <div className="min-h-full px-4 pb-12 pt-20 sm:px-6 sm:pt-24 md:px-12">
       <div className="mx-auto w-full max-w-[1400px]">
         <div className="flex flex-col gap-5 md:flex-row md:items-end md:justify-between">
           <div className="space-y-3">
@@ -51,7 +58,7 @@ export function LearningSpacesPage() {
               我的学习空间
             </div>
             <div>
-              <h1 className="text-[32px] font-semibold tracking-tight text-slate-900 dark:text-slate-100">我的学习空间</h1>
+              <h1 className="text-2xl font-semibold tracking-tight text-slate-900 dark:text-slate-100 sm:text-[32px]">我的学习空间</h1>
               <p className="mt-2 text-sm leading-6 text-slate-500 dark:text-slate-400">
                 这里直接展示你已经创建的学科，每个学科都是一张独立卡片。
               </p>
@@ -61,7 +68,7 @@ export function LearningSpacesPage() {
           <button
             type="button"
             onClick={() => navigate("/", { state: { newEntryAt: Date.now() } })}
-            className="inline-flex items-center justify-center gap-2 rounded-2xl bg-slate-900 dark:bg-zinc-100 px-4 py-3 text-sm font-medium text-white dark:text-zinc-900 transition hover:bg-slate-800 dark:hover:bg-white"
+            className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-slate-900 px-4 py-3 text-sm font-medium text-white transition hover:bg-slate-800 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-white sm:w-auto"
           >
             <Plus className="h-4 w-4" />
             新建学科
@@ -104,17 +111,17 @@ export function LearningSpacesPage() {
 
         {!isLoading && subjects.length > 0 ? (
           <div className="mt-6 grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-3">
-            {subjects.map((subject: any) => {
+            {subjects.map((subject: SubjectWithIcon) => {
               const displayName = displaySubjectName(subject);
-              const initial = displayName.charAt(0).toUpperCase();
+              const SubjectIcon = resolveSubjectIcon(subject.icon_key);
 
               return (
                 <Link
                   key={subject.subject_id}
                   to={`/subject/${subject.subject_id}/build`}
-                  className="group flex min-h-[328px] flex-col overflow-hidden rounded-[30px] border border-slate-200/80 dark:border-slate-800/80 bg-white dark:bg-slate-900 shadow-[0_6px_24px_rgba(15,23,42,0.06)] dark:shadow-[0_6px_24px_rgba(0,0,0,0.2)] transition duration-300 hover:-translate-y-1 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-[0_20px_48px_rgba(15,23,42,0.12)] dark:hover:shadow-[0_20px_48px_rgba(0,0,0,0.3)]"
+                  className="group flex min-h-[288px] flex-col overflow-hidden rounded-3xl border border-slate-200/80 bg-white shadow-[0_6px_24px_rgba(15,23,42,0.06)] transition duration-300 hover:-translate-y-1 hover:border-slate-300 hover:shadow-[0_20px_48px_rgba(15,23,42,0.12)] dark:border-slate-800/80 dark:bg-slate-900 dark:shadow-[0_6px_24px_rgba(0,0,0,0.2)] dark:hover:border-slate-700 dark:hover:shadow-[0_20px_48px_rgba(0,0,0,0.3)] sm:min-h-[328px] sm:rounded-[30px]"
                 >
-                  <div className="relative h-[176px] overflow-hidden border-b border-slate-100 dark:border-slate-800 bg-[linear-gradient(135deg,#f8fafc_0%,#eef2ff_50%,#f8fafc_100%)] dark:bg-[linear-gradient(135deg,#0f172a_0%,#1e1b4b_50%,#0f172a_100%)]">
+                  <div className="relative h-[140px] overflow-hidden border-b border-slate-100 bg-[linear-gradient(135deg,#f8fafc_0%,#eef2ff_50%,#f8fafc_100%)] dark:border-slate-800 dark:bg-[linear-gradient(135deg,#0f172a_0%,#1e1b4b_50%,#0f172a_100%)] sm:h-[176px]">
                     <div className="absolute left-5 top-5 inline-flex items-center gap-2 rounded-full bg-white/92 dark:bg-slate-800/92 px-3 py-1.5 text-xs font-medium text-slate-600 dark:text-slate-300 shadow-sm">
                       <span className="h-2.5 w-2.5 rounded-full bg-sky-400" />
                       Ready
@@ -125,7 +132,7 @@ export function LearningSpacesPage() {
                     <div
                       className={`absolute left-5 bottom-5 flex h-16 w-16 items-center justify-center rounded-[22px] bg-gradient-to-br ${subjectTone(displayName)} text-2xl font-semibold text-white shadow-lg`}
                     >
-                      {initial}
+                      <SubjectIcon className="h-8 w-8" strokeWidth={2.1} />
                     </div>
                     <div className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-white/60 dark:from-slate-900/60 to-transparent" />
                   </div>

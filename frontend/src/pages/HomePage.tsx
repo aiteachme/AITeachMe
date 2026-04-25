@@ -25,6 +25,7 @@ import { apiClient } from "../api/client";
 import { unwrapOrvalResponse } from "../lib/unwrapOrvalResponse";
 import { getApiErrorMessage } from "../api/client";
 import { cn } from "../lib/utils";
+import { isElectronRuntime } from "../lib/electronRuntime";
 import { downloadSubjectPackage } from "../lib/subjectPackage";
 import { FILE_ACCEPT, extractPasteFiles } from "../lib/fileUpload";
 import { resolveFileProcessingLabel } from "../components/knowledge-docs";
@@ -352,9 +353,9 @@ function ImportModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: (
             onChange={(e) => { const f = e.target.files?.[0]; if (f) setSelectedFile(f); }}
           />
           <div
-            onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
-            onDragLeave={() => setDragOver(false)}
-            onDrop={(e) => { e.preventDefault(); setDragOver(false); const f = e.dataTransfer.files[0]; if (f) setSelectedFile(f); }}
+            onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); setDragOver(true); }}
+            onDragLeave={(e) => { e.stopPropagation(); setDragOver(false); }}
+            onDrop={(e) => { e.preventDefault(); e.stopPropagation(); setDragOver(false); const f = e.dataTransfer.files[0]; if (f) setSelectedFile(f); }}
             onClick={() => inputRef.current?.click()}
             className={cn(
               "flex flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed px-6 py-8 cursor-pointer transition-all",
@@ -520,6 +521,7 @@ export function HomePage() {
   const navigate = useNavigate();
   const location = useLocation();
   const queryClient = useQueryClient();
+  const isElectron = isElectronRuntime();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -756,9 +758,14 @@ export function HomePage() {
       onDrop={(droppedFiles) => {
         handleFileDrop(droppedFiles);
       }}
-      disabled={isWorking}
+      disabled={isWorking || Boolean(exportSubjectId) || importOpen || Boolean(renameTarget)}
     />
-    <div className="relative flex min-h-[100dvh] w-full flex-col items-center overflow-x-hidden bg-transparent p-4 pt-24 md:p-8 md:pt-32 selection:bg-zinc-200">
+    <div
+      className={cn(
+        "relative flex w-full flex-col items-center overflow-x-clip bg-transparent p-4 pt-24 selection:bg-zinc-200 md:p-8 md:pt-32",
+        isElectron ? "min-h-full" : "min-h-[100dvh]",
+      )}
+    >
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
@@ -889,7 +896,7 @@ export function HomePage() {
                   <button
                     type="button"
                     onClick={() => fileInputRef.current?.click()}
-                    className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[13px] font-medium text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+                    className="flex min-h-10 items-center gap-1.5 rounded-lg px-3 py-1.5 text-[13px] font-medium text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200"
                   >
                     {isUploadingFiles || isCreatingDraftSubject ? (
                       <Loader2 className="h-4 w-4 animate-spin" />

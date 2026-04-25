@@ -37,9 +37,9 @@ export function ChatComposer({
   }
 
   return (
-    <div className="absolute bottom-6 left-1/2 w-full max-w-3xl -translate-x-1/2 px-4 z-20">
-      <div className="mx-auto w-full">
-        <div className="rounded-2xl border border-zinc-200/80 bg-white/95 backdrop-blur-xl shadow-[0_8px_24px_-8px_rgba(0,0,0,0.12),0_16px_48px_-16px_rgba(0,0,0,0.12)] transition-all focus-within:border-zinc-300 focus-within:shadow-[0_12px_32px_-12px_rgba(0,0,0,0.16),0_24px_64px_-20px_rgba(0,0,0,0.16)] focus-within:bg-white dark:border-slate-800/80 dark:bg-slate-950/92 dark:shadow-[0_18px_40px_-18px_rgba(0,0,0,0.72)] dark:focus-within:border-slate-700 dark:focus-within:bg-slate-950">
+    <div className="w-full bg-gradient-to-t from-white via-white to-white/80 px-4 pb-5 pt-3 dark:from-slate-950 dark:via-slate-950 dark:to-slate-950/80 md:px-8">
+      <div className="mx-auto w-full max-w-3xl xl:max-w-4xl 2xl:max-w-5xl">
+        <div className="rounded-3xl border border-zinc-200/80 bg-white/95 backdrop-blur-xl shadow-[0_8px_24px_-8px_rgba(0,0,0,0.12),0_16px_48px_-16px_rgba(0,0,0,0.12)] transition-all focus-within:border-zinc-300 focus-within:shadow-[0_12px_32px_-12px_rgba(0,0,0,0.16),0_24px_64px_-20px_rgba(0,0,0,0.16)] focus-within:bg-white dark:border-slate-800/80 dark:bg-slate-950/92 dark:shadow-[0_18px_40px_-18px_rgba(0,0,0,0.72)] dark:focus-within:border-slate-700 dark:focus-within:bg-slate-950">
           <div className="flex items-end gap-3 px-3 py-2.5">
             <textarea
               ref={textareaRef}
@@ -57,10 +57,11 @@ export function ChatComposer({
               <button
                 type="button"
                 onClick={onAbort}
-                className="inline-flex h-10 shrink-0 items-center justify-center gap-1.5 rounded-xl bg-zinc-800 px-3.5 text-[13px] font-medium text-white transition hover:bg-zinc-700 focus:outline-none focus:ring-4 focus:ring-zinc-900/10 active:scale-[0.98] dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white dark:focus:ring-slate-100/10"
+                aria-label="停止生成"
+                title="停止生成"
+                className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-zinc-100 text-zinc-950 shadow-sm transition-all hover:bg-zinc-200 focus:outline-none focus:ring-4 focus:ring-zinc-900/10 active:scale-[0.98] dark:bg-slate-100 dark:text-slate-950 dark:hover:bg-white dark:focus:ring-slate-100/10 sm:h-10 sm:w-10"
               >
-                <Square className="h-3.5 w-3.5 fill-current" />
-                停止
+                <Square className="h-3.5 w-3.5 fill-current stroke-0" />
               </button>
             ) : (
               <button
@@ -68,7 +69,7 @@ export function ChatComposer({
                 onClick={onSend}
                 disabled={!value.trim() || disabled}
                 className={cn(
-                  "inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-[14px] font-medium transition-all active:scale-[0.95] focus:outline-none focus:ring-4 focus:ring-zinc-900/10",
+                  "inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-[14px] font-medium transition-all active:scale-[0.95] focus:outline-none focus:ring-4 focus:ring-zinc-900/10 sm:h-10 sm:w-10",
                   value.trim() && !disabled
                     ? "bg-zinc-900 text-white shadow-sm hover:bg-zinc-800 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white"
                     : "cursor-not-allowed bg-zinc-100 text-zinc-300 dark:bg-slate-800 dark:text-slate-600",

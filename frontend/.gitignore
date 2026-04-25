@@ -4,6 +4,16 @@ node_modules/
 # Build output
 dist/
 dist-ssr/
+release/
+electron/build-config.cjs
+src-tauri/target/
+src-tauri/gen/
+src-tauri/binaries/*.exe
+src-tauri/binaries/*-pc-windows-msvc
+src-tauri/binaries/*-pc-windows-gnu
+desktop-release/
+desktop-release-electron/
+desktop-release-tauri/
 *.local
 
 # Editor directories

@@ -12,7 +12,7 @@ import structlog
 
 from app.schemas.llm import ChatMessage
 from app.shared.infra.settings import Settings, get_settings
-from app.shared.infra.env_support import get_env
+from app.shared.infra.env_support import get_env, get_env_choice
 from app.shared.infra.exceptions import LLMCallError, LLMTimeoutError, MissingLLMApiKeyError
 from app.shared.infra.llm_support.defaults import DEFAULT_LLM_CONCURRENCY_LIMIT
 from app.shared.infra.llm_support.routing import LLMCallProfile, LLMCallPurpose, get_call_profile
@@ -158,9 +158,12 @@ def build_completion_context(
     settings = get_settings()
     base_url = get_env("LLM_BASE_URL")
     provider = resolve_runtime_llm_provider(base_url=base_url)
-    api_key = (get_env("LLM_API_KEY") or "").strip() or None
+    api_key = (get_env_choice("LLM_API_KEY") or "").strip() or None
     if api_key is None and llm_provider_requires_api_key(provider, base_url=base_url):
-        raise MissingLLMApiKeyError()
+        raise MissingLLMApiKeyError(
+            provider=provider,
+            base_url_configured=bool((base_url or "").strip()),
+        )
     resolved_model, model_selector = resolve_settings_model(settings, model)
     return CompletionContext(
         call_purpose=resolved_purpose,
