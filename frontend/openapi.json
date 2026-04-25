@@ -8544,6 +8544,42 @@
             "title": "Source",
             "description": "Session source."
           },
+          "anchor_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Anchor Id",
+            "description": "Doc heading anchor for doc-selection sessions."
+          },
+          "selected_text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Selected Text",
+            "description": "Selected text for doc-selection sessions."
+          },
+          "source_chunk_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Chunk Id",
+            "description": "Optional source chunk ID for doc-selection sessions."
+          },
           "message_count": {
             "type": "integer",
             "minimum": 0.0,

@@ -16,6 +16,12 @@ export interface ChatSessionItem {
   title: string;
   /** Session source. */
   source?: string | null;
+  /** Doc heading anchor for doc-selection sessions. */
+  anchor_id?: string | null;
+  /** Selected text for doc-selection sessions. */
+  selected_text?: string | null;
+  /** Optional source chunk ID for doc-selection sessions. */
+  source_chunk_id?: number | null;
   /**
      * Message count in this session.
      * @minimum 0
