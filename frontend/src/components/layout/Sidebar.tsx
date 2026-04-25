@@ -30,10 +30,10 @@ import {
 import type { SubjectDeletePreviewData, SubjectItem } from "../../api/generated/model";
 import { apiClient, getApiErrorMessage } from "../../api/client";
 import { unwrapOrvalResponse } from "../../lib/unwrapOrvalResponse";
-import { downloadSubjectPackage } from "../../lib/subjectPackage";
 import { resolveSubjectIcon } from "../../lib/subjectIcons";
 import { cn } from "../../lib/utils";
 import { publicAssetPath } from "../../lib/publicAsset";
+import { SubjectExportModal } from "../subject/SubjectExportModal";
 import { SubjectDeleteConfirmModal } from "./SubjectDeleteConfirmModal";
 import { CommunityModal, ensureCommunityQrPreloaded } from "./CommunityPanel";
 
@@ -153,7 +153,7 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
   const [renameTarget, setRenameTarget] = useState<{ id: string; name: string } | null>(null);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [isCommunityModalOpen, setIsCommunityModalOpen] = useState(false);
-  const [exportingSubjectId, setExportingSubjectId] = useState<string | null>(null);
+  const [exportSubjectId, setExportSubjectId] = useState<string | null>(null);
 
   const menuRef = useRef<HTMLDivElement>(null);
   const location = useLocation();
@@ -259,18 +259,6 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
     deleteMutation.reset();
     deletePreviewMutation.mutate(subject.subject_id);
   };
-
-  async function handleExportSubject(subject: SubjectItem) {
-    setSubjectActionError(undefined);
-    setExportingSubjectId(subject.subject_id);
-    try {
-      await downloadSubjectPackage(subject.subject_id);
-    } catch (error: unknown) {
-      setSubjectActionError(getApiErrorMessage(error, "导出失败，请重试"));
-    } finally {
-      setExportingSubjectId((current) => (current === subject.subject_id ? null : current));
-    }
-  }
 
   return (
     <>
@@ -649,16 +637,12 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
                             type="button"
                             onClick={() => {
                               setOpenMenuId(null);
-                              void handleExportSubject(subject);
+                              setSubjectActionError(undefined);
+                              setExportSubjectId(subject.subject_id);
                             }}
-                            disabled={exportingSubjectId === subject.subject_id}
                             className="flex w-full items-center gap-2 px-3 py-2 text-xs text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:text-slate-400 dark:text-slate-200 dark:hover:bg-slate-700/50"
                           >
-                            {exportingSubjectId === subject.subject_id ? (
-                              <Loader2 className="h-3.5 w-3.5 animate-spin text-slate-400 dark:text-slate-500" />
-                            ) : (
-                              <Download className="h-3.5 w-3.5 text-slate-400 dark:text-slate-500" />
-                            )}
+                            <Download className="h-3.5 w-3.5 text-slate-400 dark:text-slate-500" />
                             导出 .atmx
                           </button>
                           <button
@@ -776,6 +760,10 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
           onClose={() => setRenameTarget(null)}
           onSuccess={() => void queryClient.invalidateQueries({ queryKey: ["subjects"] })}
         />
+      ) : null}
+
+      {exportSubjectId ? (
+        <SubjectExportModal subjectId={exportSubjectId} onClose={() => setExportSubjectId(null)} />
       ) : null}
 
       <CommunityModal isOpen={isCommunityModalOpen} onClose={() => setIsCommunityModalOpen(false)} />

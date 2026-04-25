@@ -12,6 +12,7 @@ from app.workflows.digest.common.contracts import (
     parse_digest_confirmed_plan_contract,
     resolve_digest_retrieval_profile,
 )
+from app.workflows.digest.docgen.mode_profiles import get_docgen_mode_profile
 from app.shared.infra.workflow.context import WorkflowContext
 from app.shared.infra.workflow.events import LoggedWorkflowEvent
 
@@ -126,7 +127,7 @@ def build_examine_markdown(
     review_prompts: list[str] | None = None,
 ) -> str:
     prompts = question_titles or ["整份文档"]
-    normalized_mode = str(digest_mode or "").strip().lower()
+    mode_profile = get_docgen_mode_profile(digest_mode)
     questions = list(exam_questions or [])
     if not questions:
         questions = [
@@ -138,7 +139,7 @@ def build_examine_markdown(
             for index, title in enumerate(prompts, start=1)
         ]
 
-    if normalized_mode == "sprint":
+    if mode_profile.is_sprint:
         lines = ["# 练习与自检", "", "## 高频题型自检", ""]
         for question in questions:
             lines.append(f"{int(question.get('question_index', 0) or 0) or 1}. {question.get('question', '')}")

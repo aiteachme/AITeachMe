@@ -13,7 +13,7 @@ from app.shared.infra.tools.builtin.markdown_processing import (
     normalize_mermaid_blocks,
 )
 from app.workflows.digest.docgen.lib.asset_requests import build_asset_request_block, extract_asset_request_descriptions, strip_asset_requests
-from app.workflows.digest.docgen.lib.assets import DocGenAssetRuntime
+from app.workflows.digest.docgen.lib.asset_rendering import DocGenAssetRuntime
 from app.workflows.digest.docgen.lib.interactive_html import maybe_generate_interactive_html_asset
 from app.workflows.digest.docgen.lib.models import (
     AssetManifest,
@@ -23,6 +23,7 @@ from app.workflows.digest.docgen.lib.models import (
     EnhancedChapterDraft,
     PracticeManifest,
 )
+from app.workflows.digest.docgen.mode_profiles import get_docgen_mode_profile
 
 def _ensure_requested_placeholders(markdown: str, requests: list[dict]) -> str:
     additions: list[str] = []
@@ -52,7 +53,7 @@ def _build_practice_questions(
     document_backbone: DocumentBackbone | None = None,
 ) -> list[dict]:
     title = draft.title
-    normalized_mode = str(digest_mode or "").strip().lower()
+    mode_profile = get_docgen_mode_profile(digest_mode)
     claim_items = list((claim_ledger or ClaimLedger(chapter_index=draft.chapter_index)).items or [])
     claim_prompts = [item.claim_text for item in claim_items if item.claim_text][:3]
     confusion_items = [
@@ -60,7 +61,7 @@ def _build_practice_questions(
         for item in list((document_backbone or DocumentBackbone()).confusion_map or [])
         if (not item.target_chapters or draft.chapter_index in item.target_chapters)
     ][:2]
-    if normalized_mode == "sprint":
+    if mode_profile.is_sprint:
         questions = [
             {
                 "practice_id": f"ch{draft.chapter_index:02d}_p01",

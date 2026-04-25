@@ -7,7 +7,7 @@ from time import perf_counter
 from app.shared.infra.workflow.context import WorkflowContext
 from app.shared.infra.knowledge.build_store import append_knowledge_build_recent_event, update_knowledge_build_status
 from app.utils.time import utcnow
-from app.workflows.digest.docgen.lib.chapter_generation import assemble_chapter_generation_plan
+from app.workflows.digest.docgen.lib.chapter_planning import assemble_chapter_generation_plan
 from app.workflows.digest.docgen.lib.document_backbone import apply_backbone_to_chapter_plan
 from app.workflows.digest.docgen.lib.models import (
     ChapterExecutionBrief,

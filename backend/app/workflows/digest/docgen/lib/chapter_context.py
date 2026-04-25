@@ -15,7 +15,6 @@ from app.shared.infra.search.defaults import (
     DEFAULT_SEARCH_MAX_RESULTS_PER_QUERY,
     DEFAULT_SEARCH_PROVIDER_TIMEOUT_S,
 )
-from app.shared.infra.llm_support.routing import TaskType
 from app.shared.infra.search import ContextCompressor, SourceCurator
 from app.shared.infra.search.factory import get_configured_retriever_names, get_retrievers_for_subject
 from app.shared.infra.search.retrievers.local_rag import LocalRAGRetriever
@@ -27,6 +26,8 @@ from app.workflows.digest.docgen.lib.defaults import (
     DEFAULT_DOCGEN_READ_TIMEOUT_S,
     DEFAULT_DOCGEN_RETRIEVAL_TIMEOUT_S,
 )
+from app.workflows.digest.docgen.lib.model_policy import DocGenModelStep, docgen_completion_kwargs
+from app.workflows.digest.docgen.mode_profiles import get_docgen_mode_profile
 from app.workflows.digest.docgen.lib.query_planning import (
     build_research_focus_text,
     dedupe_queries,
@@ -47,26 +48,6 @@ _OI_WIKI_DOMAINS = (
     "oi.wiki",
 )
 _TERM_SPLIT_RE = re.compile(r"[，。；：、,.!?\n\r/（）()\-]+")
-_MODE_RESEARCH_STRATEGIES = {
-    "sprint": {
-        "max_rounds": 2,
-        "queries_per_round": 2,
-        "query_cap": 4,
-        "coverage_target": 0.68,
-        "max_total_chars": 4200,
-        "min_score_gain": 0.08,
-        "max_gap_queries_per_round": 2,
-    },
-    "systematic": {
-        "max_rounds": 3,
-        "queries_per_round": 3,
-        "query_cap": 6,
-        "coverage_target": 0.82,
-        "max_total_chars": 6000,
-        "min_score_gain": 0.05,
-        "max_gap_queries_per_round": 3,
-    },
-}
 
 
 class DocGenChapterContextRuntime(BaseTracedExecution):
@@ -615,8 +596,7 @@ class DocGenChapterContextRuntime(BaseTracedExecution):
                     required_elements=required_elements,
                     digest_mode=digest_mode,
                 ),
-                task_type=TaskType.DOCGEN_LIGHT,
-                model="light",
+                **docgen_completion_kwargs(DocGenModelStep.RESEARCH_PURIFY),
                 extra_metadata=self.context.trace_metadata(
                     runtime_name=self.name,
                     research_stage="purify_material",
@@ -734,8 +714,7 @@ class DocGenChapterContextRuntime(BaseTracedExecution):
         }
 
     def _resolve_strategy(self, digest_mode: str) -> dict[str, Any]:
-        normalized = str(digest_mode or "").strip().lower()
-        return dict(_MODE_RESEARCH_STRATEGIES.get(normalized, _MODE_RESEARCH_STRATEGIES["systematic"]))
+        return dict(get_docgen_mode_profile(digest_mode).research_strategy())
 
     def _take_round_queries(
         self,
@@ -870,12 +849,7 @@ class DocGenChapterContextRuntime(BaseTracedExecution):
         digest_mode: str,
         max_queries: int,
     ) -> list[str]:
-        normalized_mode = str(digest_mode or "").strip().lower()
-        suffixes = (
-            ["高频题型", "易错点", "典型例题"]
-            if normalized_mode == "sprint"
-            else ["定义", "推导", "联系", "典型例子"]
-        )
+        suffixes = get_docgen_mode_profile(digest_mode).gap_query_suffixes
         seeds = gaps[: max(1, max_queries)]
         if objective.strip():
             seeds.extend(self._extract_objective_terms(objective)[:1])

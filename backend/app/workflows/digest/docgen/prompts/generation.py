@@ -1,32 +1,20 @@
-﻿"""DocGen prompt builders owned by the digest workflow layer."""
+﻿"""Prompt builders for DocGen generation-time support."""
 
 from __future__ import annotations
 
 from app.workflows.digest.common.prompt_tracing import trace_prompt_build
+from app.workflows.digest.docgen.mode_profiles import get_docgen_mode_profile
 
 
-def _normalize_mode(digest_mode: str) -> str:
-    return (digest_mode or "systematic").strip().lower()
+def _bullet_lines(items: tuple[str, ...]) -> str:
+    return "\n".join(f"- {item}" for item in items if item)
 
 
 def _chapter_shape_hint(*, digest_mode: str) -> str:
-    normalized_mode = _normalize_mode(digest_mode)
-    if normalized_mode == "sprint":
-        return """
-可参考的冲刺讲义写作路径，不是固定目录：
-- 先让学生知道本章最该抓住什么；
-- 再把核心概念、判断条件或关键结论讲稳；
-- 如果材料支持，再展开题型、审题抓手、步骤或变式；
-- 需要时收束易错点、混淆点和边界条件；
-- 结尾可以用精炼回顾、速记或小结收住。
-""".strip()
-    return """
-可参考的系统讲义写作路径，不是固定目录：
-- 先交代本章要解决的核心问题或学习入口；
-- 再讲核心定义、结构、符号或前置关系；
-- 如果材料支持，再解释推理、方法为什么成立；
-- 需要时用例子、应用或反例帮助落地；
-- 结尾可以做本章小结、迁移提醒或后续衔接。
+    profile = get_docgen_mode_profile(digest_mode)
+    return f"""
+可参考的{profile.prompt_label}讲义写作关注点，不是固定目录：
+{_bullet_lines(profile.chapter_format)}
 """.strip()
 
 
@@ -36,34 +24,20 @@ def _build_mode_contract(
     chapter_index: int | None = None,
     chapter_count: int | None = None,
 ) -> str:
-    normalized_mode = _normalize_mode(digest_mode)
-    if normalized_mode == "sprint":
-        chapter_specific = ""
-        if chapter_index == 1:
-            chapter_specific = "如果这是课程开篇，本章必须先用直观场景、常见题型或学习动机破题，再建立概念直觉。"
-        elif chapter_count and chapter_index == chapter_count:
-            chapter_specific = "如果这是课程收束章，本章必须回收高频题型、易错点和最后复盘抓手。"
-        return f"""
-文档模式契约：这是冲刺型知识文档。
-写作优先级是抓重点、抓题型、抓易错点。
-这些只是参考侧重点，不是固定目录：开篇导入、得分抓手、题型拆解、临考速记、易错辨析、最终回顾。
-请根据本章真实内容取舍和命名二级标题，优先写成自然、具体、像真实讲义的小标题。
-不要为了凑齐参考模块而硬塞小节，结尾要便于考前快速复盘。
-{chapter_specific}
-""".strip()
-    extra = ""
+    profile = get_docgen_mode_profile(digest_mode)
+    chapter_specific = ""
     if chapter_index == 1:
-        extra = "如果这是课程开篇，本章必须给出整体知识脉络；不要自行输出任何资产占位符。"
+        chapter_specific = profile.prompt_opening_guidance
     elif chapter_count and chapter_index == chapter_count:
-        extra = "如果这是课程收束章，本章必须回收全文主线，并给出进一步深入学习的建议。"
+        chapter_specific = profile.prompt_closing_guidance
+    extra_contract = f"\n{profile.prompt_extra_contract}" if profile.prompt_extra_contract else ""
     return f"""
-文档模式契约：这是系统型知识文档。
-写作优先级是定义、定理、推导、应用与章节之间的结构关系。
-这些只是参考侧重点，不是固定目录：章节导入、前置知识、学习动机、关键定义/定理、推理到应用、章节回收。
-请根据本章真实内容取舍和命名二级标题，优先体现本章主题与知识主线。
-不要为了凑齐参考模块而硬塞小节。
-如果涉及公式或定理，不能只写结论，必须解释适用前提、推理过程和常见边界。
-{extra}
+文档模式契约：这是{profile.prompt_label}知识文档。
+写作优先级是{profile.prompt_priority}。
+这些只是参考侧重点，不是固定目录：{"、".join(profile.chapter_format)}。
+请根据本章真实内容取舍和命名二级标题，优先体现本章主题、学习路径与知识主线。
+不要为了凑齐参考模块而硬塞小节。{extra_contract}
+{chapter_specific}
 """.strip()
 
 
@@ -86,7 +60,7 @@ def build_docgen_writer_messages(
     prompt builder 里静默截断材料。资产、自检和来源统一由后续节点处理。
     """
 
-    normalized_mode = _normalize_mode(digest_mode)
+    normalized_mode = get_docgen_mode_profile(digest_mode).mode
     required_text = "、".join(required_elements) if required_elements else "核心概念、推理过程、典型例子"
     execution_contract = dict(execution_contract or {})
     media_quota = dict(execution_contract.get("media_quota") or {})
@@ -191,7 +165,7 @@ def build_docgen_heading_repair_messages(
     chapter_index: int | None = None,
     chapter_count: int | None = None,
 ) -> list[dict[str, str]]:
-    normalized_mode = _normalize_mode(digest_mode)
+    normalized_mode = get_docgen_mode_profile(digest_mode).mode
     required_text = "、".join(required_elements) if required_elements else "核心概念、推理过程、典型例子"
     system_prompt = """
 你是 AITeachMe 的教学编辑助手。
@@ -266,7 +240,8 @@ def build_docgen_research_purify_messages(
     digest_mode: str,
 ) -> list[dict[str, str]]:
     must_cover = "、".join(required_elements) if required_elements else "与本章最相关的核心知识"
-    normalized_mode = _normalize_mode(digest_mode)
+    profile = get_docgen_mode_profile(digest_mode)
+    normalized_mode = profile.mode
     system_prompt = """
 你是 AITeachMe 的研究整理助手。
 你的任务是把杂乱素材提纯成适合章节写作使用的中文研究笔记。
@@ -286,8 +261,7 @@ def build_docgen_research_purify_messages(
 3. 删除空话、重复段落和无关背景。
 4. 输出应是中文 Markdown 研究笔记，不是最终成稿。
 5. 不能补充素材中没有出现的事实。
-6. 如果是 `sprint`，优先保留高频考点、题型线索和易错点。
-7. 如果是 `systematic`，优先保留定义、推导、适用条件和结构关系。
+6. 本模式优先保留：{profile.prompt_research_focus}。
 
 原始素材：
 {dense_context}

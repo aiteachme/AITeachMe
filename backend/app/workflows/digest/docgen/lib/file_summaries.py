@@ -10,8 +10,8 @@ from typing import Any
 import structlog
 
 from app.shared.infra.llm_support import acompletion_with_fallback
-from app.shared.infra.llm_support.routing import TaskType
 from app.workflows.digest.docgen.lib.defaults import DEFAULT_DOCGEN_FILE_SUMMARY_PARALLELISM
+from app.workflows.digest.docgen.lib.model_policy import DocGenModelStep, docgen_completion_kwargs
 from app.workflows.digest.common.models import DigestMaterialContext, SectionPacket, SourcePacket
 from app.workflows.digest.docgen.lib.models import (
     FileMaterialSummary,
@@ -19,7 +19,7 @@ from app.workflows.digest.docgen.lib.models import (
     SourceAffinityByChapter,
     clean_string_list,
 )
-from app.workflows.digest.docgen.prompts.file_summaries import build_file_summary_messages
+from app.workflows.digest.docgen.prompts import build_file_summary_messages
 
 logger = structlog.get_logger(__name__)
 
@@ -250,8 +250,7 @@ async def _summarize_one_file(
                     chapter_titles=chapter_titles,
                     excerpt=excerpt,
                 ),
-                task_type=TaskType.DOCGEN_LIGHT,
-                model="light",
+                **docgen_completion_kwargs(DocGenModelStep.FILE_SUMMARY),
                 response_model=FileMaterialSummary,
                 temperature=0.1,
                 max_tokens=5000,

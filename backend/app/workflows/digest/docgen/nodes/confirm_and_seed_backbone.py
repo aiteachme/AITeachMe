@@ -7,7 +7,7 @@ from time import perf_counter
 from app.shared.infra.workflow.context import WorkflowContext
 from app.shared.infra.knowledge.build_store import append_knowledge_build_recent_event, update_knowledge_build_status
 from app.utils.time import utcnow
-from app.workflows.digest.docgen.lib.chapter_generation import compose_seed_plan_and_backbone_agenda
+from app.workflows.digest.docgen.lib.chapter_planning import compose_seed_plan_and_backbone_agenda
 from app.workflows.digest.docgen.lib.models import (
     DocGenContext,
     FileMaterialSummary,

@@ -46,14 +46,14 @@ def _replace_first_h1(markdown: str, title: str) -> str:
     return f"# {final_title}\n\n{cleaned}\n"
 
 
-def build_finalize_titles_node(*, context: WorkflowContext):
+def build_sync_locked_titles_node(*, context: WorkflowContext):
     """构建标题同步节点。
 
     标题在 `lock_titles_for_chapters` 阶段已经锁定。这里只同步 metadata 和每章 Markdown 一级标题，不再
     调用 LLM，也不重新发明标题。
     """
 
-    async def finalize_titles_node(state: DocGenState) -> dict:
+    async def sync_locked_titles_node(state: DocGenState) -> dict:
         """把已锁定标题同步到章节 metadata、正文 H1 和整本 Markdown。"""
 
         started_at = perf_counter()
@@ -152,7 +152,7 @@ def build_finalize_titles_node(*, context: WorkflowContext):
             "llm_calls_total": 0,
         }
 
-    return finalize_titles_node
+    return sync_locked_titles_node
 
 
-__all__ = ["build_finalize_titles_node"]
+__all__ = ["build_sync_locked_titles_node"]

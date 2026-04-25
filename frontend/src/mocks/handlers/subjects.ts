@@ -158,4 +158,40 @@ export const subjectHandlers = [
       },
     });
   }),
+
+  http.post("/api/v1/subjects/:subjectId/export/preview", ({ params }) => {
+    const subjectId = String(params.subjectId);
+    const subject = mockSubjects.find((item) => item.subject_id === subjectId);
+    return HttpResponse.json({
+      code: 0,
+      data: {
+        subject_id: subjectId,
+        subject_name: subject?.name ?? subjectId,
+        stats: {
+          raw_file_count: 1,
+          total_raw_file_size_bytes: 1024 * 1024 * 4,
+          knowledge_document_count: 3,
+          knowledge_unit_count: 18,
+          knowledge_edge_count: 24,
+          confirmed_build_plan_count: 1,
+          question_type_registry_count: 0,
+          question_template_count: 12,
+          exam_paper_count: 2,
+          chat_session_count: 4,
+          user_knowledge_state_count: 18,
+        },
+        estimated_size_bytes: 1024 * 1024 * 5,
+      },
+    });
+  }),
+
+  http.post("/api/v1/subjects/:subjectId/export", ({ params }) => {
+    const subjectId = String(params.subjectId);
+    return new HttpResponse(`mock export for ${subjectId}`, {
+      headers: {
+        "Content-Type": "application/octet-stream",
+        "Content-Disposition": `attachment; filename="${subjectId}.atmx"`,
+      },
+    });
+  }),
 ];

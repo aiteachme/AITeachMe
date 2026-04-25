@@ -1,4 +1,4 @@
-﻿"""Prompts for DocGen chapter critique and bounded rewrite."""
+﻿"""Prompts for DocGen bounded chapter rewrite."""
 
 from __future__ import annotations
 
