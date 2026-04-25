@@ -1,6 +1,7 @@
 import { buildApiUrl, getDeviceKey } from "../api/client";
+import type { ExportOptions } from "../api/generated/model";
 
-export async function downloadSubjectPackage(subject: string): Promise<void> {
+export async function downloadSubjectPackage(subject: string, options: ExportOptions = {}): Promise<void> {
   const token = localStorage.getItem("token");
   const url = buildApiUrl(`/api/v1/subjects/${encodeURIComponent(subject)}/export`);
   const response = await fetch(url, {
@@ -11,7 +12,7 @@ export async function downloadSubjectPackage(subject: string): Promise<void> {
       "X-Device-Key": getDeviceKey(),
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
-    body: JSON.stringify({}),
+    body: JSON.stringify(options),
   });
   if (!response.ok) {
     const rawText = await response.text();
