@@ -57,7 +57,8 @@ Derivative can represent the slope of a tangent line.
         report = sync_markdown_knowledge_graph(session, subject="math", markdown=markdown)
 
     assert report.unit_change_count == 2
-    assert report.section_count == 2
-    assert report.llm_section_count == 2
+    assert report.chapter_count == 1
+    assert report.section_count == 1
+    assert report.llm_section_count == 1
     assert report.fallback_section_count == 0
-    assert observed_flags == [False, False]
+    assert observed_flags == [False]

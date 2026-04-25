@@ -26,18 +26,32 @@ from app.utils.time import utcnow
 from app.workflows.digest.common.markdown_knowledge_anchors import build_knowledge_unit_anchor
 from app.workflows.digest.common.markdown_knowledge_anchors import (
     MarkdownKnowledgeUnit,
+    extract_markdown_chapter_chunks,
     extract_markdown_section_chunks,
     validate_knowledge_unit_anchors,
 )
-from app.workflows.digest.kg_file_ingest.lib.extractor import extract_candidates_with_diagnostics
+from app.workflows.digest.kg_file_ingest.lib.extractor import (
+    CandidateExtractionDiagnostics,
+    CandidateNode,
+    ChunkExtractionResult,
+    extract_candidates,
+    extract_candidates_with_diagnostics,
+)
 
 _ANCHOR_ALIAS_SOURCE = "markdown_anchor"
 _SYNC_EDGE_MARKER = "markdown_anchor_sync"
 _RAG_DEDUP_TOP_K = 6
 _RAG_DEDUP_SIMILARITY_THRESHOLD = 0.82
-_DOCS_SYNC_SECTION_CONCURRENCY_LIMIT = 6
-_DOCS_SYNC_SECTION_MAX_RETRIES = 2
-_DOCS_SYNC_SECTION_RETRY_DELAY_S = 0.4
+_DEFAULT_DOCS_SYNC_CHAPTER_CONCURRENCY_LIMIT = 6
+_DEFAULT_DOCS_SYNC_CHAPTER_MAX_RETRIES = 2
+_DEFAULT_DOCS_SYNC_CHAPTER_RETRY_DELAY_S = 0.4
+_DOCS_SYNC_CHAPTER_CONCURRENCY_LIMIT = _DEFAULT_DOCS_SYNC_CHAPTER_CONCURRENCY_LIMIT
+_DOCS_SYNC_CHAPTER_MAX_RETRIES = _DEFAULT_DOCS_SYNC_CHAPTER_MAX_RETRIES
+_DOCS_SYNC_CHAPTER_RETRY_DELAY_S = _DEFAULT_DOCS_SYNC_CHAPTER_RETRY_DELAY_S
+_DOCS_SYNC_SECTION_CONCURRENCY_LIMIT = _DOCS_SYNC_CHAPTER_CONCURRENCY_LIMIT
+_DOCS_SYNC_SECTION_MAX_RETRIES = _DOCS_SYNC_CHAPTER_MAX_RETRIES
+_DOCS_SYNC_SECTION_RETRY_DELAY_S = _DOCS_SYNC_CHAPTER_RETRY_DELAY_S
+_DEFAULT_EXTRACT_CANDIDATES = extract_candidates
 _ASYNC_BRIDGE_LOCK = threading.Lock()
 _ASYNC_BRIDGE_READY = threading.Event()
 _ASYNC_BRIDGE_LOOP: asyncio.AbstractEventLoop | None = None
@@ -61,6 +75,7 @@ class KnowledgeSyncReport:
     updated_edge_ids: list[int] = field(default_factory=list)
     deprecated_edge_ids: list[int] = field(default_factory=list)
     section_count: int = 0
+    chapter_count: int = 0
     llm_section_count: int = 0
     fallback_section_count: int = 0
     question_fallback_section_count: int = 0
@@ -153,6 +168,7 @@ def sync_markdown_knowledge_graph(
         build_revision_no=revision_no,
         synced_unit_keys=[item.anchor for item in units],
         section_count=int(diagnostics_totals.get("section_count", 0) or 0),
+        chapter_count=int(diagnostics_totals.get("chapter_count", 0) or 0),
         llm_section_count=int(diagnostics_totals.get("llm_section_count", 0) or 0),
         fallback_section_count=int(diagnostics_totals.get("fallback_section_count", 0) or 0),
         question_fallback_section_count=int(diagnostics_totals.get("question_fallback_section_count", 0) or 0),
@@ -235,6 +251,7 @@ def sync_markdown_knowledge_graph(
         "knowledge_docs_sync_complete",
         subject=subject,
         build_revision_no=revision_no,
+        chapter_count=report.chapter_count,
         section_count=report.section_count,
         llm_section_count=report.llm_section_count,
         fallback_section_count=report.fallback_section_count,
@@ -258,44 +275,10 @@ def _next_revision_no(session: Session, subject: str) -> int:
     return current + 1
 
 
-def _extract_markdown_graph_items(
-    markdown: str,
-) -> tuple[list[MarkdownKnowledgeUnit], list[MarkdownExtractedEdge], dict[str, int]]:
-    sections = extract_markdown_section_chunks(markdown)
-    if not sections:
-        return [], [], {
-            "section_count": 0,
-            "llm_section_count": 0,
-            "fallback_section_count": 0,
-            "question_fallback_section_count": 0,
-            "topic_fallback_section_count": 0,
-            "markdown_short_circuit_section_count": 0,
-            "total_extracted_node_count": 0,
-            "total_extracted_edge_count": 0,
-        }
-
-    async def _extract_all_sections() -> list[SectionExtractionPayload]:
-        semaphore = asyncio.Semaphore(_DOCS_SYNC_SECTION_CONCURRENCY_LIMIT)
-
-        async def _extract_with_queue(section_index: int, section) -> SectionExtractionPayload:
-            async with semaphore:
-                return await _extract_section_with_retries(section_index, section)
-
-        return await asyncio.gather(
-            *[_extract_with_queue(section_index, section) for section_index, section in enumerate(sections)]
-        )
-
-    results = _run_async(_extract_all_sections()) or []
-    units: list[MarkdownKnowledgeUnit] = []
-    pending_edges: list[PendingMarkdownExtractedEdge] = []
-    candidate_id_to_anchor: dict[str, str] = {}
-    anchors_by_name: dict[str, list[str]] = {}
-    anchors_by_normalized_name: dict[str, list[str]] = {}
-    units_by_section_index: list[list[MarkdownKnowledgeUnit]] = []
-    node_contexts_by_anchor: dict[str, dict[str, object]] = {}
-    section_contexts: list[SectionExtractionContext] = []
-    diagnostics_totals = {
-        "section_count": len(sections),
+def _empty_extraction_diagnostics() -> dict[str, int]:
+    return {
+        "chapter_count": 0,
+        "section_count": 0,
         "llm_section_count": 0,
         "fallback_section_count": 0,
         "question_fallback_section_count": 0,
@@ -305,9 +288,61 @@ def _extract_markdown_graph_items(
         "total_extracted_edge_count": 0,
     }
 
+
+def _chapter_concurrency_limit() -> int:
+    configured = _DOCS_SYNC_CHAPTER_CONCURRENCY_LIMIT
+    if configured == _DEFAULT_DOCS_SYNC_CHAPTER_CONCURRENCY_LIMIT:
+        configured = _DOCS_SYNC_SECTION_CONCURRENCY_LIMIT
+    return max(1, int(configured))
+
+
+def _chapter_max_retries() -> int:
+    configured = _DOCS_SYNC_CHAPTER_MAX_RETRIES
+    if configured == _DEFAULT_DOCS_SYNC_CHAPTER_MAX_RETRIES:
+        configured = _DOCS_SYNC_SECTION_MAX_RETRIES
+    return max(1, int(configured))
+
+
+def _chapter_retry_delay_s() -> float:
+    configured = _DOCS_SYNC_CHAPTER_RETRY_DELAY_S
+    if configured == _DEFAULT_DOCS_SYNC_CHAPTER_RETRY_DELAY_S:
+        configured = _DOCS_SYNC_SECTION_RETRY_DELAY_S
+    return max(0.0, float(configured))
+
+
+def _extract_markdown_graph_items(
+    markdown: str,
+) -> tuple[list[MarkdownKnowledgeUnit], list[MarkdownExtractedEdge], dict[str, int]]:
+    chapters = extract_markdown_chapter_chunks(markdown)
+    sections = extract_markdown_section_chunks(markdown)
+    if not chapters:
+        return [], [], _empty_extraction_diagnostics()
+
+    async def _extract_all_chapters() -> list[SectionExtractionPayload]:
+        semaphore = asyncio.Semaphore(_chapter_concurrency_limit())
+
+        async def _extract_with_queue(chapter_index: int, chapter) -> SectionExtractionPayload:
+            async with semaphore:
+                return await _extract_chapter_with_retries(chapter_index, chapter)
+
+        return await asyncio.gather(
+            *[_extract_with_queue(chapter_index, chapter) for chapter_index, chapter in enumerate(chapters)]
+        )
+
+    results = _run_async(_extract_all_chapters()) or []
+    units: list[MarkdownKnowledgeUnit] = []
+    pending_edges: list[PendingMarkdownExtractedEdge] = []
+    candidate_id_to_anchor: dict[str, str] = {}
+    anchors_by_name: dict[str, list[str]] = {}
+    anchors_by_normalized_name: dict[str, list[str]] = {}
+    node_contexts_by_anchor: dict[str, dict[str, object]] = {}
+    section_contexts: list[SectionExtractionContext] = []
+    diagnostics_totals = _empty_extraction_diagnostics()
+    diagnostics_totals["chapter_count"] = len(chapters)
+    diagnostics_totals["section_count"] = len(chapters)
+
     for payload in results:
         units.extend(payload.units)
-        units_by_section_index.append(payload.units)
         pending_edges.extend(payload.pending_edges)
         candidate_id_to_anchor.update(payload.candidate_id_to_anchor)
         node_contexts_by_anchor.update(payload.node_contexts_by_anchor)
@@ -326,9 +361,8 @@ def _extract_markdown_graph_items(
                     bucket.append(anchor)
 
     pending_edges.extend(
-        _build_structural_section_edges(
+        _build_structural_heading_edges(
             sections=sections,
-            units_by_section_index=units_by_section_index,
             anchors_by_name=anchors_by_name,
             anchors_by_normalized_name=anchors_by_normalized_name,
         )
@@ -386,22 +420,28 @@ def _extract_markdown_graph_items(
     return units, edges, diagnostics_totals
 
 
-def _build_structural_section_edges(
+def _build_structural_heading_edges(
     *,
     sections,
-    units_by_section_index: list[list[MarkdownKnowledgeUnit]],
     anchors_by_name: dict[str, list[str]],
     anchors_by_normalized_name: dict[str, list[str]],
 ) -> list[PendingMarkdownExtractedEdge]:
     pending_edges: list[PendingMarkdownExtractedEdge] = []
     seen: set[tuple[str, str, str]] = set()
 
-    for section, section_units in zip(sections, units_by_section_index, strict=False):
+    for section in sections:
         path_parts = [part.strip() for part in str(section.header_path or "").split(" > ") if part.strip()]
-        if len(path_parts) < 2 or not section_units:
+        if len(path_parts) < 2:
             continue
 
         parent_title = path_parts[-2]
+        source_anchor = _resolve_edge_anchor(
+            candidate_id=None,
+            endpoint_name=section.title,
+            anchor_by_candidate_id={},
+            anchors_by_name=anchors_by_name,
+            anchors_by_normalized_name=anchors_by_normalized_name,
+        )
         parent_anchor = _resolve_edge_anchor(
             candidate_id=None,
             endpoint_name=parent_title,
@@ -409,33 +449,23 @@ def _build_structural_section_edges(
             anchors_by_name=anchors_by_name,
             anchors_by_normalized_name=anchors_by_normalized_name,
         )
-        if not parent_anchor:
+        if not source_anchor or not parent_anchor or source_anchor == parent_anchor:
             continue
 
-        section_title_normalized = normalize_name(section.title)
-        primary_units = [
-            unit
-            for unit in section_units
-            if section_title_normalized and normalize_name(unit.name) == section_title_normalized
-        ]
-        scoped_units = primary_units or section_units
-        for unit in scoped_units:
-            if unit.anchor == parent_anchor:
-                continue
-            key = (unit.anchor, parent_anchor, "derivation")
-            if key in seen:
-                continue
-            seen.add(key)
-            pending_edges.append(
-                PendingMarkdownExtractedEdge(
-                    source_candidate_id=None,
-                    target_candidate_id=None,
-                    source_name=unit.name,
-                    target_name=parent_title,
-                    edge_type="derivation",
-                    description=f"{unit.name} 属于主题 {parent_title}。",
-                )
+        key = (source_anchor, parent_anchor, "derivation")
+        if key in seen:
+            continue
+        seen.add(key)
+        pending_edges.append(
+            PendingMarkdownExtractedEdge(
+                source_candidate_id=None,
+                target_candidate_id=None,
+                source_name=section.title,
+                target_name=parent_title,
+                edge_type="derivation",
+                description=f"{section.title} 属于主题 {parent_title}。",
             )
+        )
 
     return pending_edges
 
@@ -562,76 +592,119 @@ def _build_cross_section_semantic_edges(
     return pending_edges
 
 
-async def _extract_section_with_retries(section_index: int, section) -> SectionExtractionPayload:
+async def _extract_candidates_with_diagnostics_adapter(**kwargs) -> tuple[ChunkExtractionResult, CandidateExtractionDiagnostics]:
+    if extract_candidates is not _DEFAULT_EXTRACT_CANDIDATES:
+        result = await extract_candidates(**kwargs)
+        return result, CandidateExtractionDiagnostics(
+            llm_attempted=True,
+            node_count=len(result.nodes),
+            edge_count=len(result.edges),
+        )
+    return await extract_candidates_with_diagnostics(**kwargs)
+
+
+def _merge_missing_chapter_heading_nodes(result: ChunkExtractionResult, chapter) -> ChunkExtractionResult:
+    section_chunks = extract_markdown_section_chunks(chapter.body_markdown)
+    had_extracted_nodes = bool(result.nodes)
+    seen_names = {normalize_name(node.name) for node in result.nodes if normalize_name(node.name)}
+
+    for section in section_chunks:
+        if had_extracted_nodes and int(section.heading_level or 1) <= 1:
+            continue
+        normalized_title = normalize_name(section.title)
+        if not normalized_title or normalized_title in seen_names:
+            continue
+        path_parts = [part.strip() for part in str(section.header_path or "").split(" > ") if part.strip()]
+        parent_title = path_parts[-2] if len(path_parts) >= 2 else ""
+        seen_names.add(normalized_title)
+        result.nodes.append(
+            CandidateNode(
+                candidate_id=section.anchor,
+                anchor_id=section.anchor,
+                name=section.title,
+                knowledge_unit_type="concept",
+                type_source="rule",
+                type_confidence=0.8,
+                local_summary=section.summary or section.title,
+                taxonomy_hint=parent_title or chapter.title,
+                parent_entity_name=parent_title or None,
+            )
+        )
+
+    return result
+
+
+async def _extract_chapter_with_retries(chapter_index: int, chapter) -> SectionExtractionPayload:
     last_error: Exception | None = None
-    for attempt in range(1, _DOCS_SYNC_SECTION_MAX_RETRIES + 1):
+    max_retries = _chapter_max_retries()
+    for attempt in range(1, max_retries + 1):
         try:
-            return await _extract_section_graph_items(section_index, section)
+            return await _extract_chapter_graph_items(chapter_index, chapter)
         except asyncio.CancelledError:
             raise
         except Exception as exc:
             last_error = exc
             logger.warning(
-                "knowledge_docs_sync_section_retry_scheduled",
-                section_index=section_index,
-                chunk_title=section.title,
-                header_path=section.header_path,
+                "knowledge_docs_sync_chapter_retry_scheduled",
+                chapter_index=chapter_index,
+                chunk_title=chapter.title,
+                header_path=chapter.header_path,
                 attempt=attempt,
-                max_retries=_DOCS_SYNC_SECTION_MAX_RETRIES,
+                max_retries=max_retries,
                 error_type=type(exc).__name__,
             )
-            if attempt >= _DOCS_SYNC_SECTION_MAX_RETRIES:
+            if attempt >= max_retries:
                 break
-            await asyncio.sleep(_DOCS_SYNC_SECTION_RETRY_DELAY_S * attempt)
+            await asyncio.sleep(_chapter_retry_delay_s() * attempt)
 
     logger.warning(
-        "knowledge_docs_sync_section_fallback_after_retries",
-        section_index=section_index,
-        chunk_title=section.title,
-        header_path=section.header_path,
+        "knowledge_docs_sync_chapter_fallback_after_retries",
+        chapter_index=chapter_index,
+        chunk_title=chapter.title,
+        header_path=chapter.header_path,
         error_type=(type(last_error).__name__ if last_error is not None else "UnknownError"),
     )
-    return _build_section_fallback_payload(section_index, section)
+    return _build_chapter_fallback_payload(chapter_index, chapter)
 
 
-def _build_section_fallback_payload(section_index: int, section) -> SectionExtractionPayload:
-    body_markdown = section.body_markdown[:8000]
-    primary_anchor = str(section.anchor or build_knowledge_unit_anchor(section.title))
+def _build_chapter_fallback_payload(chapter_index: int, chapter) -> SectionExtractionPayload:
+    body_markdown = chapter.body_markdown[:8000]
+    primary_anchor = str(chapter.anchor or build_knowledge_unit_anchor(chapter.title))
     primary_unit = MarkdownKnowledgeUnit(
         anchor=primary_anchor,
-        name=section.title,
+        name=chapter.title,
         knowledge_unit_type="concept",
-        summary=section.summary or section.title,
+        summary=chapter.summary or chapter.title,
         body_markdown=body_markdown,
-        knowledge_images=list(section.knowledge_images),
+        knowledge_images=list(chapter.knowledge_images),
         prerequisites=[],
         related=[],
-        line_no=section.line_no,
-        heading_level=section.heading_level,
+        line_no=chapter.line_no,
+        heading_level=chapter.heading_level,
     )
-    normalized_name = normalize_name(section.title)
+    normalized_name = normalize_name(chapter.title)
     return SectionExtractionPayload(
         units=[primary_unit],
         pending_edges=[],
         candidate_id_to_anchor={},
-        anchors_by_name={section.title: [primary_anchor]},
+        anchors_by_name={chapter.title: [primary_anchor]},
         anchors_by_normalized_name=({normalized_name: [primary_anchor]} if normalized_name else {}),
         node_contexts_by_anchor={
             primary_anchor: {
-                "name": section.title,
+                "name": chapter.title,
                 "knowledge_unit_type": "concept",
-                "taxonomy_hint": section.title,
+                "taxonomy_hint": chapter.title,
                 "parent_entity_name": "",
-                "section_index": section_index,
+                "section_index": chapter_index,
             }
         },
         section_context=SectionExtractionContext(
-            section_index=section_index,
-            title=section.title,
-            header_path=section.header_path,
+            section_index=chapter_index,
+            title=chapter.title,
+            header_path=chapter.header_path,
             body_markdown=body_markdown,
             primary_anchor=primary_anchor,
-            primary_name=section.title,
+            primary_name=chapter.title,
             primary_type="concept",
         ),
         diagnostics={
@@ -647,15 +720,18 @@ def _build_section_fallback_payload(section_index: int, section) -> SectionExtra
     )
 
 
-async def _extract_section_graph_items(section_index: int, section) -> SectionExtractionPayload:
-    result, diagnostics = await extract_candidates_with_diagnostics(
-        chunk_content=section.body_markdown,
-        chunk_title=section.title,
-        header_path=section.header_path,
+async def _extract_chapter_graph_items(chapter_index: int, chapter) -> SectionExtractionPayload:
+    result, diagnostics = await _extract_candidates_with_diagnostics_adapter(
+        chunk_content=chapter.body_markdown,
+        chunk_title=chapter.title,
+        header_path=chapter.header_path,
         doc_source_type="knowledge_doc_markdown",
         prefer_fast_path=False,
         allow_markdown_anchor_short_circuit=False,
     )
+    result = _merge_missing_chapter_heading_nodes(result, chapter)
+    diagnostics.node_count = len(result.nodes)
+    diagnostics.edge_count = len(result.edges)
 
     used_anchors: set[str] = set()
     units: list[MarkdownKnowledgeUnit] = []
@@ -663,15 +739,15 @@ async def _extract_section_graph_items(section_index: int, section) -> SectionEx
     anchors_by_name: dict[str, list[str]] = {}
     anchors_by_normalized_name: dict[str, list[str]] = {}
     node_contexts_by_anchor: dict[str, dict[str, object]] = {}
-    body_markdown = section.body_markdown[:8000]
-    knowledge_images = list(section.knowledge_images)
+    body_markdown = chapter.body_markdown[:8000]
+    knowledge_images = list(chapter.knowledge_images)
     primary_anchor: str | None = None
     primary_name = ""
     primary_type = ""
-    normalized_section_title = normalize_name(section.title)
+    normalized_section_title = normalize_name(chapter.title)
 
     for node in result.nodes:
-        anchor_seed = node.anchor_id or node.candidate_id or f"{section.anchor}-{node.knowledge_unit_type}-{node.name}"
+        anchor_seed = node.anchor_id or node.candidate_id or f"{chapter.anchor}-{node.knowledge_unit_type}-{node.name}"
         anchor = build_knowledge_unit_anchor(anchor_seed, used=used_anchors)
         unit = MarkdownKnowledgeUnit(
             anchor=anchor,
@@ -682,8 +758,8 @@ async def _extract_section_graph_items(section_index: int, section) -> SectionEx
             knowledge_images=knowledge_images,
             prerequisites=[],
             related=[],
-            line_no=section.line_no,
-            heading_level=section.heading_level,
+            line_no=chapter.line_no,
+            heading_level=chapter.heading_level,
         )
         units.append(unit)
         if node.candidate_id:
@@ -697,7 +773,7 @@ async def _extract_section_graph_items(section_index: int, section) -> SectionEx
             "knowledge_unit_type": node.knowledge_unit_type,
             "taxonomy_hint": node.taxonomy_hint or "",
             "parent_entity_name": node.parent_entity_name or "",
-            "section_index": section_index,
+            "section_index": chapter_index,
         }
         if primary_anchor is None:
             primary_anchor = anchor
@@ -729,9 +805,9 @@ async def _extract_section_graph_items(section_index: int, section) -> SectionEx
         anchors_by_normalized_name=anchors_by_normalized_name,
         node_contexts_by_anchor=node_contexts_by_anchor,
         section_context=SectionExtractionContext(
-            section_index=section_index,
-            title=section.title,
-            header_path=section.header_path,
+            section_index=chapter_index,
+            title=chapter.title,
+            header_path=chapter.header_path,
             body_markdown=body_markdown,
             primary_anchor=primary_anchor,
             primary_name=primary_name,
