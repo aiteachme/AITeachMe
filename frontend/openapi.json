@@ -10561,6 +10561,9 @@
               }
             ],
             "title": "Graded At"
+          },
+          "paper_preview": {
+            "$ref": "#/components/schemas/PaperPreview"
           }
         },
         "type": "object",
@@ -10713,6 +10716,9 @@
             "additionalProperties": true,
             "type": "object",
             "title": "Selection Context"
+          },
+          "paper_preview": {
+            "$ref": "#/components/schemas/PaperPreview"
           },
           "items": {
             "items": {
@@ -13607,6 +13613,98 @@
           "pages"
         ],
         "title": "PaginatedData[SubjectItem]"
+      },
+      "PaperPreview": {
+        "properties": {
+          "keywords": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Keywords"
+          },
+          "question_types": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Question Types"
+          },
+          "dominant_type": {
+            "type": "string",
+            "enum": [
+              "choice",
+              "blank",
+              "text",
+              "formula",
+              "chart",
+              "image",
+              "code"
+            ],
+            "title": "Dominant Type",
+            "default": "text"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/PaperPreviewRow"
+            },
+            "type": "array",
+            "title": "Rows"
+          },
+          "overflow_count": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Overflow Count",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "title": "PaperPreview"
+      },
+      "PaperPreviewRow": {
+        "properties": {
+          "order": {
+            "type": "integer",
+            "title": "Order"
+          },
+          "type": {
+            "type": "string",
+            "title": "Type"
+          },
+          "shape": {
+            "type": "string",
+            "enum": [
+              "choice",
+              "blank",
+              "short",
+              "judge",
+              "chart",
+              "formula",
+              "code",
+              "text"
+            ],
+            "title": "Shape"
+          },
+          "difficulty": {
+            "type": "string",
+            "title": "Difficulty"
+          },
+          "density": {
+            "type": "integer",
+            "maximum": 3.0,
+            "minimum": 1.0,
+            "title": "Density",
+            "default": 2
+          }
+        },
+        "type": "object",
+        "required": [
+          "order",
+          "type",
+          "shape",
+          "difficulty"
+        ],
+        "title": "PaperPreviewRow"
       },
       "QuestionTemplateItemResponse": {
         "properties": {

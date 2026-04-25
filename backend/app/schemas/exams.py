@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -80,6 +80,26 @@ class ExamStudyGuideResponse(BaseModel):
     focus_units: list[ExamStudyGuideFocusUnit] = Field(default_factory=list)
 
 
+PaperPreviewShape = Literal["choice", "blank", "short", "judge", "chart", "formula", "code", "text"]
+PaperPreviewDominantType = Literal["choice", "blank", "text", "formula", "chart", "image", "code"]
+
+
+class PaperPreviewRow(BaseModel):
+    order: int
+    type: str
+    shape: PaperPreviewShape
+    difficulty: str
+    density: int = Field(default=2, ge=1, le=3)
+
+
+class PaperPreview(BaseModel):
+    keywords: list[str] = Field(default_factory=list)
+    question_types: list[str] = Field(default_factory=list)
+    dominant_type: PaperPreviewDominantType = "text"
+    rows: list[PaperPreviewRow] = Field(default_factory=list)
+    overflow_count: int = Field(default=0, ge=0)
+
+
 class ExamHistoryItem(BaseModel):
     id: int
     subject: str
@@ -92,6 +112,7 @@ class ExamHistoryItem(BaseModel):
     created_at: datetime
     submitted_at: datetime | None = None
     graded_at: datetime | None = None
+    paper_preview: PaperPreview = Field(default_factory=PaperPreview)
 
 
 class ExamPaperDeleteResponse(BaseModel):
@@ -188,4 +209,5 @@ class ExamPaperDetailResponse(BaseModel):
     graded_at: datetime | None = None
     created_at: datetime
     selection_context: dict[str, Any] = Field(default_factory=dict)
+    paper_preview: PaperPreview = Field(default_factory=PaperPreview)
     items: list[ExamPaperItemResponse] = Field(default_factory=list)

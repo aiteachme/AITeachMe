@@ -261,6 +261,38 @@ function scoreItem(item: InternalItem): { correct: boolean; reason: string | nul
   return { correct: ok, reason: ok ? null : "concept_error" };
 }
 
+function previewShape(questionType: QuestionType): string {
+  if (questionType === "single_choice") return "choice";
+  if (questionType === "fill_blank") return "blank";
+  if (questionType === "short_answer") return "short";
+  return "text";
+}
+
+function previewDensity(difficulty: InternalItem["difficulty"]): number {
+  if (difficulty === "easy") return 1;
+  if (difficulty === "hard") return 3;
+  return 2;
+}
+
+function buildPaperPreview(paper: InternalPaper): Record<string, unknown> {
+  const keywords = [...new Set(paper.items.map((item) => `KU-${item.knowledge_unit_id}`))].slice(0, 3);
+  const questionTypes = [...new Set(paper.items.map((item) => item.question_type))].slice(0, 3);
+  const hasFormula = paper.items.some((item) => /f\(x\)|=|derivative|sequence/i.test(item.stem));
+  return {
+    keywords,
+    question_types: questionTypes,
+    dominant_type: hasFormula ? "formula" : "text",
+    rows: paper.items.slice(0, 5).map((item) => ({
+      order: item.item_order,
+      type: item.question_type,
+      shape: previewShape(item.question_type),
+      difficulty: item.difficulty,
+      density: previewDensity(item.difficulty),
+    })),
+    overflow_count: Math.max(0, paper.items.length - 5),
+  };
+}
+
 function toPublicPaper(paper: InternalPaper): Record<string, unknown> {
   return {
     id: paper.id,
@@ -274,6 +306,7 @@ function toPublicPaper(paper: InternalPaper): Record<string, unknown> {
     submitted_at: paper.submitted_at,
     graded_at: paper.graded_at,
     created_at: paper.created_at,
+    paper_preview: buildPaperPreview(paper),
     items: paper.items.map((item) => ({
       id: item.id,
       item_order: item.item_order,
@@ -474,6 +507,7 @@ export const examHandlers = [
         created_at: paper.created_at,
         submitted_at: paper.submitted_at,
         graded_at: paper.graded_at,
+        paper_preview: buildPaperPreview(paper),
       }));
 
     const start = (page - 1) * size;

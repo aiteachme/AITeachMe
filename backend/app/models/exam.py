@@ -83,6 +83,7 @@ class ExamPaper(SQLModel, table=True):
     score_obtained: float | None = Field(default=None, ge=0.0)
     duration_seconds: int | None = Field(default=None, ge=0)
     selection_context_json: str = Field(default="{}")
+    paper_preview_json: str = Field(default="{}")
     created_at: datetime = Field(default_factory=utcnow)
     updated_at: datetime = Field(default_factory=utcnow)
 
