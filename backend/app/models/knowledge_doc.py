@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
+import sqlalchemy as sa
 from sqlmodel import Field, SQLModel
 
 from app.utils.time import utcnow
@@ -23,22 +24,22 @@ class KnowledgeDocument(SQLModel, table=True):
     chapter_index: int
     order_index: int = Field(default=0)
     title: str
-    summary: str = ""
-    markdown_content: str = ""
-    content_markdown: str = ""
-    markdown_path: str | None = None
-    markdown_uri: str | None = None
-    tags: str = Field(default="[]")
-    source_file_ids: str = Field(default="[]")
+    summary: str = Field(default="", sa_column=sa.Column(sa.Text(), nullable=False, default=""))
+    markdown_content: str = Field(default="", sa_column=sa.Column(sa.Text(), nullable=False, default=""))
+    content_markdown: str = Field(default="", sa_column=sa.Column(sa.Text(), nullable=False, default=""))
+    markdown_path: str | None = Field(default=None, sa_column=sa.Column(sa.Text(), nullable=True))
+    markdown_uri: str | None = Field(default=None, sa_column=sa.Column(sa.Text(), nullable=True))
+    tags: str = Field(default="[]", sa_column=sa.Column(sa.Text(), nullable=False, default="[]"))
+    source_file_ids: str = Field(default="[]", sa_column=sa.Column(sa.Text(), nullable=False, default="[]"))
     word_count: int = Field(default=0)
     version: int = Field(default=1)
     version_no: int = Field(default=1)
     document_role: str = Field(default="chapter", index=True)
     digest_mode: str | None = Field(default=None, index=True)
     mode_confidence: float | None = Field(default=None)
-    mode_decision_json: str = Field(default="{}")
-    manifest_json: str = Field(default="{}")
-    source_scope_json: str = Field(default="{}")
+    mode_decision_json: str = Field(default="{}", sa_column=sa.Column(sa.Text(), nullable=False, default="{}"))
+    manifest_json: str = Field(default="{}", sa_column=sa.Column(sa.Text(), nullable=False, default="{}"))
+    source_scope_json: str = Field(default="{}", sa_column=sa.Column(sa.Text(), nullable=False, default="{}"))
     build_kind: str = Field(default="full")
     is_current: bool = Field(default=True, index=True)
     status: str = Field(default="draft", index=True)

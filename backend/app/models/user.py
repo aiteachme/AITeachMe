@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
+import sqlalchemy as sa
 from sqlmodel import Field, SQLModel
 
 from app.utils.time import utcnow
@@ -21,6 +22,6 @@ class User(SQLModel, table=True):
     password_hash: str | None = Field(default=None)
     is_registered: bool = Field(default=False, index=True)
     last_seen_ip: str | None = None
-    profile_json: str = Field(default="{}")
+    profile_json: str = Field(default="{}", sa_column=sa.Column(sa.Text(), nullable=False))
     created_at: datetime = Field(default_factory=utcnow)
     updated_at: datetime = Field(default_factory=utcnow)

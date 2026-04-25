@@ -23,10 +23,10 @@ class ChatMessage(SQLModel, table=True):
     turn_id: str = Field(index=True)
     source: str | None = Field(default=None, index=True)
     anchor_id: str | None = Field(default=None, index=True)
-    selected_text: str | None = Field(default=None)
+    selected_text: str | None = Field(default=None, sa_column=Column(sa.Text(), nullable=True))
     source_chunk_id: int | None = Field(default=None, foreign_key="retrieval_chunk.id", index=True)
     role: str
-    content: str
+    content: str = Field(sa_column=Column(sa.Text(), nullable=False))
     contexts_json: Any | None = Field(default=None, sa_column=Column(sa.JSON))
     meta_json: Any | None = Field(default=None, sa_column=Column(sa.JSON))
     created_at: datetime = Field(default_factory=utcnow, index=True)

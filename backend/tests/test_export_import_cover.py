@@ -44,6 +44,30 @@ def test_export_packs_latest_docgen_cover_as_stable_cover_file(tmp_path, monkeyp
         assert zf.read("knowledge/merged_knowledge_base.md") == b"# Doc"
 
 
+def test_export_options_skip_unselected_db_groups() -> None:
+    options = ExportOptions(
+        include_raw_files=False,
+        include_raw_markdowns=False,
+        include_knowledge_docs=False,
+        include_chat_history=False,
+        include_exam_history=False,
+        include_profile=False,
+    )
+    specs = {spec.name: spec for spec in exports.TABLE_REGISTRY}
+
+    assert exports._should_export(specs["subject"], options)
+    assert exports._should_export(specs["knowledge_unit"], options)
+    assert exports._should_export(specs["knowledge_edge"], options)
+    assert not exports._should_export(specs["raw_file"], options)
+    assert not exports._should_export(specs["subject_file"], options)
+    assert not exports._should_export(specs["retrieval_chunk"], options)
+    assert not exports._should_export(specs["knowledge_document"], options)
+    assert not exports._should_export(specs["confirmed_build_plan"], options)
+    assert not exports._should_export(specs["chat_session"], options)
+    assert not exports._should_export(specs["exam_paper"], options)
+    assert not exports._should_export(specs["user_knowledge_state"], options)
+
+
 def test_import_restores_docgen_cover_to_asset_directory(tmp_path, monkeypatch) -> None:
     fake = _FakeContentStore()
     monkeypatch.setattr(imports, "get_content_store", lambda: fake)
@@ -54,6 +78,7 @@ def test_import_restores_docgen_cover_to_asset_directory(tmp_path, monkeypatch) 
     (knowledge_dir / "merged_knowledge_base.md").write_text("# Doc", encoding="utf-8")
 
     imports._unpack_files(
+        None,
         extract_dir,
         "math-imported",
         user_id="user_a",

@@ -24,7 +24,7 @@ class Subject(SQLModel, table=True):
     user_intent: str = Field(default="", sa_column=sa.Column(sa.Text(), nullable=False, default=""))
     normalized_name: str | None = Field(default=None, index=True)
     preferred_digest_mode: str | None = None
-    preferred_digest_note: str | None = None
+    preferred_digest_note: str | None = Field(default=None, sa_column=sa.Column(sa.Text(), nullable=True))
     detected_discipline: str | None = None
     detected_sub_discipline: str | None = None
     profile_json: str = Field(default="{}", sa_column=sa.Column(sa.Text(), nullable=False))

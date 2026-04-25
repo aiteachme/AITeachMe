@@ -45,6 +45,7 @@ router = APIRouter(prefix="/api/v1", tags=["export-import"])
 )
 async def export_preview_api(
     subject: str,
+    body: ExportOptions = Body(default=ExportOptions()),
     user: CurrentUserContext = Depends(get_current_user_context),
     session: Session = Depends(get_db),
 ) -> ApiResponse[ExportPreviewData]:
@@ -52,7 +53,7 @@ async def export_preview_api(
 
     normalized = normalize_subject_slug(subject)
     subject_record = get_subject_record(session, normalized, owner_user_id=user.user_id)
-    return ok_response(preview_export(session, subject_slug=subject_record.slug))
+    return ok_response(preview_export(session, subject_slug=subject_record.slug, options=body))
 
 
 @router.post(

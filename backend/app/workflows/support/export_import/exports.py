@@ -82,6 +82,7 @@ class _ManifestStats(BaseModel):
     question_template_count: int = 0
     exam_paper_count: int = 0
     chat_session_count: int = 0
+    user_knowledge_state_count: int = 0
     total_file_size_bytes: int = 0
 
 
@@ -115,19 +116,26 @@ class _TableSpec:
     # Filter via parent table (for tables without a subject field)
     parent_fk: str | None = None
     parent_table: str | None = None
-    # Optional export group: "chat" | "exam" | "profile" | None (always export)
+    # Optional export group: "raw_file_metadata" | "raw_markdowns" |
+    # "knowledge_docs" | "chat" | "exam" | "profile" | None (always export)
     optional_group: str | None = None
 
 
 # Tables must be ordered by dependency: referenced tables come first.
 TABLE_REGISTRY: list[_TableSpec] = [
     _TableSpec("subject", Subject, subject_field="slug"),
-    _TableSpec("raw_file", RawFile),
-    _TableSpec("subject_file", SubjectFileLink, fk_remap={"raw_file_id": "raw_file"}),
+    _TableSpec("raw_file", RawFile, optional_group="raw_file_metadata"),
+    _TableSpec(
+        "subject_file",
+        SubjectFileLink,
+        fk_remap={"raw_file_id": "raw_file"},
+        optional_group="raw_file_metadata",
+    ),
     _TableSpec(
         "retrieval_chunk",
         RetrievalChunk,
         fk_remap={"document_id": "raw_file"},
+        optional_group="raw_markdowns",
     ),
     _TableSpec(
         "knowledge_document",
@@ -136,6 +144,7 @@ TABLE_REGISTRY: list[_TableSpec] = [
             "root_document_id": "knowledge_document",
             "parent_document_id": "knowledge_document",
         },
+        optional_group="knowledge_docs",
     ),
     _TableSpec(
         "knowledge_unit",
@@ -201,6 +210,7 @@ TABLE_REGISTRY: list[_TableSpec] = [
         ConfirmedBuildPlan,
         id_type="uuid",
         fk_remap={"planner_session_id": "chat_session"},
+        optional_group="knowledge_docs",
     ),
     _TableSpec(
         "chat_message",
@@ -219,25 +229,41 @@ TABLE_REGISTRY: list[_TableSpec] = [
 # ===================================================================
 
 
-def preview_export(session: Session, *, subject_slug: str) -> ExportPreviewData:
+def preview_export(
+    session: Session,
+    *,
+    subject_slug: str,
+    options: ExportOptions | None = None,
+) -> ExportPreviewData:
     """Build an export preview for one subject."""
 
+    options = options or ExportOptions()
     subject = _require_subject(session, subject_slug)
     raw_files = list_all_raw_files_by_subject(session, subject_slug)
-    total_size = sum(r.file_size_bytes or 0 for r in raw_files)
+    total_size = sum(r.file_size_bytes or 0 for r in raw_files) if options.include_raw_files else 0
 
     stats = ExportPreviewStats(
-        raw_file_count=len(raw_files),
+        raw_file_count=len(raw_files) if _exports_raw_file_metadata(options) else 0,
         total_raw_file_size_bytes=total_size,
-        knowledge_document_count=_count(session, KnowledgeDocument, subject_slug),
+        knowledge_document_count=_count(session, KnowledgeDocument, subject_slug)
+        if options.include_knowledge_docs
+        else 0,
         knowledge_unit_count=_count(session, KnowledgeUnit, subject_slug),
         knowledge_edge_count=_count(session, KnowledgeEdge, subject_slug),
-        confirmed_build_plan_count=_count(session, ConfirmedBuildPlan, subject_slug),
-        question_type_registry_count=_count(session, QuestionTypeRegistry, subject_slug),
-        question_template_count=_count(session, QuestionTemplate, subject_slug),
-        exam_paper_count=_count(session, ExamPaper, subject_slug),
-        chat_session_count=_count(session, ChatSession, subject_slug),
-        user_knowledge_state_count=_count(session, UserKnowledgeState, subject_slug),
+        confirmed_build_plan_count=_count(session, ConfirmedBuildPlan, subject_slug)
+        if options.include_knowledge_docs
+        else 0,
+        question_type_registry_count=_count(session, QuestionTypeRegistry, subject_slug)
+        if options.include_exam_history
+        else 0,
+        question_template_count=_count(session, QuestionTemplate, subject_slug)
+        if options.include_exam_history
+        else 0,
+        exam_paper_count=_count(session, ExamPaper, subject_slug) if options.include_exam_history else 0,
+        chat_session_count=_count(session, ChatSession, subject_slug) if options.include_chat_history else 0,
+        user_knowledge_state_count=_count(session, UserKnowledgeState, subject_slug)
+        if options.include_profile
+        else 0,
     )
     return ExportPreviewData(
         subject_id=subject.slug,
@@ -318,10 +344,17 @@ def _should_export(spec: _TableSpec, options: ExportOptions) -> bool:
     if spec.optional_group is None:
         return True
     return {
+        "raw_file_metadata": _exports_raw_file_metadata(options),
+        "raw_markdowns": options.include_raw_markdowns,
+        "knowledge_docs": options.include_knowledge_docs,
         "chat": options.include_chat_history,
         "exam": options.include_exam_history,
         "profile": options.include_profile,
     }.get(spec.optional_group, True)
+
+
+def _exports_raw_file_metadata(options: ExportOptions) -> bool:
+    return options.include_raw_files or options.include_raw_markdowns
 
 
 def _query_table(
@@ -709,6 +742,7 @@ def _build_manifest(
             question_template_count=len(exported.get("question_template", [])),
             exam_paper_count=len(exported.get("exam_paper", [])),
             chat_session_count=len(exported.get("chat_session", [])),
+            user_knowledge_state_count=len(exported.get("user_knowledge_state", [])),
         ),
         options=options,
     )
