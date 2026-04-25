@@ -156,7 +156,7 @@ workflow 作者通常不需要从这里直接导入。
 | 目录或文件 | 作用 |
 | --- | --- |
 | `settings/`、`env_support.py`、`runtime/` | 运行模式、项目设置、环境变量、路径 |
-| `database/` | 数据库引擎、Session、向量表能力 |
+| `database/` | 数据库引擎、Session、向量索引能力 |
 | `storage/` | 本地存储 / S3 / 内容存储接口 |
 | `llm_support/` | 文本、结构化、流式、tool call 等 LLM 主入口 |
 | `embedding/` | canonical embedding 调用入口与框架适配 |
