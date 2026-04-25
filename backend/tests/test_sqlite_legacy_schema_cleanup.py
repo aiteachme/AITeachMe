@@ -135,5 +135,8 @@ def test_sqlite_schema_drift_allows_memory_runtime_tables(tmp_path):
     with engine.begin() as connection:
         connection.execute(sa.text("CREATE TABLE memory_entries (id INTEGER PRIMARY KEY)"))
         connection.execute(sa.text("CREATE TABLE learning_logs (id INTEGER PRIMARY KEY)"))
+        connection.execute(sa.text("CREATE TABLE atm_vec_chunks_dim_3 (id INTEGER PRIMARY KEY)"))
+        connection.execute(sa.text("CREATE TABLE atm_vec_chunks_dim_3_chunks (id INTEGER PRIMARY KEY)"))
+        connection.execute(sa.text("CREATE TABLE atm_vec_chunks_dim_3_rowids (id INTEGER PRIMARY KEY)"))
 
     assert _inspect_sqlite_schema_drift(engine) is None

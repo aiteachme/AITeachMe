@@ -378,7 +378,14 @@ def build_generate_chapters_node(*, context: WorkflowContext):
             planner_session_id=state.get("planner_session_id", ""),
             confirmed_plan_id=state.get("confirmed_plan_id", ""),
             digest_mode=state.get("digest_mode", ""),
-            retrieval_profile=str(state.get("retrieval_profile") or resolve_docgen_retrieval_profile(state.get("digest_mode"))),
+            retrieval_profile=str(
+                state.get("retrieval_profile")
+                or resolve_docgen_retrieval_profile(
+                    state.get("digest_mode"),
+                    user_prompt=state.get("user_prompt"),
+                    subject_name=state.get("subject"),
+                )
+            ),
             teaching_action="chapter_generate",
             chapter_index=task.chapter_index,
         )

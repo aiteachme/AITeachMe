@@ -21,6 +21,37 @@ def _sanitize_user_segment(user_id: str) -> str:
 
 
 @dataclass(frozen=True)
+class UserFileStorageScope:
+    """Canonical persisted storage namespace for one user's source-file library."""
+
+    user_id: str
+
+    @property
+    def user_segment(self) -> str:
+        return _sanitize_user_segment(self.user_id)
+
+    @property
+    def namespace(self) -> str:
+        return f"users/{self.user_segment}/files"
+
+    def file_prefix(self, file_id: int) -> str:
+        return f"{self.namespace}/{file_id}/"
+
+    def raw_file_key(self, file_id: int, extension: str) -> str:
+        normalized_extension = extension if extension.startswith(".") else f".{extension}"
+        return f"{self.namespace}/{file_id}/raw{normalized_extension}"
+
+    def raw_markdown_key(self, file_id: int) -> str:
+        return f"{self.namespace}/{file_id}/markdown.md"
+
+    def asset_key(self, file_id: int, name: str) -> str:
+        return f"{self.namespace}/{file_id}/assets/{name}"
+
+    def asset_prefix(self, file_id: int) -> str:
+        return f"{self.namespace}/{file_id}/assets/"
+
+
+@dataclass(frozen=True)
 class SubjectStorageScope:
     """Canonical persisted storage namespace for one user-owned subject."""
 
@@ -82,6 +113,12 @@ def build_subject_storage_scope(*, user_id: str, subject: str) -> SubjectStorage
     )
 
 
+def build_user_file_storage_scope(*, user_id: str) -> UserFileStorageScope:
+    """Create the canonical storage scope for one user's file library."""
+
+    return UserFileStorageScope(user_id=str(user_id or "local"))
+
+
 def resolve_subject_storage_scope(subject: str) -> SubjectStorageScope:
     """Resolve a subject slug into its persisted storage scope."""
 
@@ -98,6 +135,8 @@ def resolve_subject_storage_scope(subject: str) -> SubjectStorageScope:
 
 __all__ = [
     "SubjectStorageScope",
+    "UserFileStorageScope",
     "build_subject_storage_scope",
+    "build_user_file_storage_scope",
     "resolve_subject_storage_scope",
 ]

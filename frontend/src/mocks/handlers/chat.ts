@@ -32,6 +32,10 @@ interface ChatSessionItem {
   id: string;
   title: string;
   source?: string | null;
+  anchor_id?: string | null;
+  selected_text?: string | null;
+  source_chunk_id?: number | null;
+  message_count?: number;
   created_at: string;
   updated_at: string;
   last_message_at: string;
@@ -133,7 +137,9 @@ const mockSessions: ChatSessionItem[] = [
   {
     id: "session-1",
     title: "导数的几何意义是什么？",
-    source: null,
+    source: "quick_chat",
+    anchor_id: "section",
+    selected_text: "导数是函数在某一点瞬时变化率的度量。",
     created_at: "2026-03-14T09:59:58Z",
     updated_at: "2026-03-14T10:00:05Z",
     last_message_at: "2026-03-14T10:00:05Z",
@@ -189,7 +195,7 @@ function buildSessionTitle(question: string): string {
   return text.length > 24 ? `${text.slice(0, 24)}...` : text;
 }
 
-function resolveSession(sessionId: string | null, question: string): ChatSessionItem {
+function resolveSession(sessionId: string | null, question: string, source: string | null): ChatSessionItem {
   if (sessionId) {
     const existing = mockSessions.find((item) => item.id === sessionId);
     if (existing) {
@@ -200,7 +206,7 @@ function resolveSession(sessionId: string | null, question: string): ChatSession
   const created: ChatSessionItem = {
     id: `session-${sessionSeq++}`,
     title: buildSessionTitle(question),
-    source: null,
+    source,
     created_at: now,
     updated_at: now,
     last_message_at: now,
@@ -232,6 +238,12 @@ function pushHistory(
 ) {
   const now = new Date();
   turnSessionMap.set(turnId, sessionId);
+  const sessionItem = mockSessions.find((item) => item.id === sessionId);
+  if (sessionItem && source === "quick_chat" && anchorId && selectedText) {
+    sessionItem.source = "quick_chat";
+    sessionItem.anchor_id = anchorId;
+    sessionItem.selected_text = selectedText;
+  }
   mockTurns.unshift({
     turn_id: turnId,
     session_id: sessionId,
@@ -266,8 +278,17 @@ function listSessionItems() {
   return [...mockSessions]
     .map((item) => {
       const messageCount = mockHistory.filter((entry) => turnSessionMap.get(entry.turn_id) === item.id).length;
+      const selectionTurn = mockTurns.find((turn) =>
+        turn.session_id === item.id &&
+        turn.source === "quick_chat" &&
+        typeof turn.anchor_id === "string" &&
+        turn.anchor_id.trim().length > 0
+      );
       return {
         ...item,
+        source: item.source ?? selectionTurn?.source ?? null,
+        anchor_id: item.anchor_id ?? selectionTurn?.anchor_id ?? null,
+        selected_text: item.selected_text ?? selectionTurn?.selected_text ?? null,
         message_count: messageCount,
       };
     })
@@ -298,7 +319,7 @@ async function streamChatResponse(request: Request) {
   const askedSessionId = typeof body.session_id === "string" && body.session_id.trim()
     ? body.session_id.trim()
     : null;
-  const sessionItem = resolveSession(askedSessionId, question);
+  const sessionItem = resolveSession(askedSessionId, question, source);
   const turnId = `turn-${turnSeq++}`;
   const answer = buildMockAnswer(question, selectedContext);
   const chunks = chunkText(answer);
@@ -317,7 +338,12 @@ async function streamChatResponse(request: Request) {
       }
       controller.enqueue(
         encoder.encode(
-          `event: done\ndata: ${JSON.stringify({ turn_id: turnId, session_id: sessionItem.id, contexts })}\n\n`,
+          `event: done\ndata: ${JSON.stringify({
+            turn_id: turnId,
+            session_id: sessionItem.id,
+            session_title: sessionItem.title,
+            contexts,
+          })}\n\n`,
         ),
       );
       controller.close();

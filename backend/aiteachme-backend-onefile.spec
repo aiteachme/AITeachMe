@@ -1,6 +1,38 @@
 # -*- mode: python ; coding: utf-8 -*-
 
+import os
+
 from PyInstaller.utils.hooks import collect_data_files, collect_submodules
+
+
+os.environ.setdefault("AITEACHME_ENABLE_BUILTIN_PDF", "false")
+
+_EXCLUDED_HIDDENIMPORT_PREFIXES = (
+    "app.workflows.ingest.common.parsing.pdf",
+)
+
+_EXCLUDED_MODULES = [
+    "app.workflows.ingest.common.parsing.pdf",
+    "app.workflows.ingest.common.parsing.pdf_page_fallback",
+    "app.workflows.ingest.common.parsing.pdf_pdfplumber",
+    "fitz",
+    "pymupdf",
+    "pymupdf4llm",
+    "pdfminer",
+    "pdfplumber",
+    "pypdfium2",
+    "pypdfium2_raw",
+    "pypdf",
+    "PyPDF2",
+]
+
+
+def _collect_app_submodules() -> list[str]:
+    return [
+        module_name
+        for module_name in collect_submodules("app")
+        if not module_name.startswith(_EXCLUDED_HIDDENIMPORT_PREFIXES)
+    ]
 
 
 datas = [
@@ -16,8 +48,6 @@ for package_name in (
     "markitdown",
     "pydantic",
     "pydantic_settings",
-    "pymupdf",
-    "pymupdf4llm",
     "sqlalchemy",
     "sqlmodel",
     "uvicorn",
@@ -53,7 +83,10 @@ for package_name in (
     "uvicorn.protocols.websockets",
     "uvicorn.protocols.websockets.auto",
 ):
-    hiddenimports += collect_submodules(package_name)
+    if package_name == "app":
+        hiddenimports += _collect_app_submodules()
+    else:
+        hiddenimports += collect_submodules(package_name)
 
 
 a = Analysis(
@@ -65,7 +98,7 @@ a = Analysis(
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=[],
+    excludes=_EXCLUDED_MODULES,
     noarchive=False,
     optimize=0,
 )
@@ -90,4 +123,5 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
+    icon="../docs/brand/app-icon.ico",
 )

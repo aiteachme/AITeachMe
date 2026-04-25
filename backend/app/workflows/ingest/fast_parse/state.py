@@ -16,6 +16,7 @@ from app.workflows.ingest.common.parsing.strategy import ParsePlan
 class IngestParseGraphInput(TypedDict):
     """Graph input for one file parse run."""
 
+    user_id: str
     subject: str
     file_id: int
 
@@ -23,6 +24,7 @@ class IngestParseGraphInput(TypedDict):
 class IngestParseGraphOutput(TypedDict, total=False):
     """Graph output surfaced to API-facing callers."""
 
+    user_id: str
     subject: str
     file_id: int
     filename: str
@@ -36,6 +38,7 @@ class IngestParseGraphOutput(TypedDict, total=False):
 class IngestParseState(TypedDict, total=False):
     """Phase 1 (Fast Parse) workflow state."""
 
+    user_id: str
     subject: str
     file_id: int
     filename: str

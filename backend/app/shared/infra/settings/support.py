@@ -327,7 +327,6 @@ ZH_EDU_RETRIEVERS: list[str] = [
     "zh_wikiversity",
     "zh_wikipedia",
     "zh_wiktionary",
-    "oi_wiki",
 ]
 DEFAULT_RETRIEVERS: list[str] = [
     "local_rag",
@@ -364,10 +363,16 @@ ZH_MATH_RETRIEVERS: list[str] = [
     "zh_wikibooks",
     "zh_wikiversity",
     "zh_wikipedia",
-    "oi_wiki",
     "zh_wiktionary",
     "arxiv",
     "semantic_scholar",
+    "duckduckgo",
+]
+OI_RETRIEVERS: list[str] = [
+    "local_rag",
+    "oi_wiki",
+    "zh_wikipedia",
+    "zh_wikibooks",
     "duckduckgo",
 ]
 DEFAULT_RETRIEVER_PROFILES: dict[str, list[str]] = {
@@ -383,6 +388,7 @@ DEFAULT_RETRIEVER_PROFILES: dict[str, list[str]] = {
         "duckduckgo",
     ],
     "docgen_zh_math": list(ZH_MATH_RETRIEVERS),
+    "docgen_oi": list(OI_RETRIEVERS),
 }
 RETRIEVER_PROFILES = DEFAULT_RETRIEVER_PROFILES
 

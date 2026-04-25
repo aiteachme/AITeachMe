@@ -8,10 +8,10 @@
     "dev": "vite",
     "desktop": "npm run electron:dev",
     "electron:dev": "concurrently -k \"npm run dev\" \"npm run electron:window\"",
-    "electron:window": "wait-on http://127.0.0.1:5180 && electron . --dev",
+    "electron:window": "node electron/wait-dev-server.cjs && electron . --dev",
     "electron:preview": "npm run build && electron .",
-    "electron:installer": "electron-builder --config ../build/scripts/electron-builder-config.cjs --win nsis",
-    "electron:portable": "powershell -NoProfile -ExecutionPolicy Bypass -File ../build/scripts/build-electron-portable-nsis.ps1 -ProductName \"AiTeachMe Electron Local\"",
+    "electron:installer": "electron-builder --config ../packaging/scripts/electron-builder-config.cjs --win nsis",
+    "electron:portable": "powershell -NoProfile -ExecutionPolicy Bypass -File ../packaging/scripts/build-electron-portable-nsis.ps1 -ProductName \"AiTeachMe Electron Local\"",
     "electron:dist": "npm run electron:installer && npm run electron:portable",
     "desktop:installer": "npm run electron:installer",
     "desktop:portable": "npm run electron:portable",
@@ -94,16 +94,13 @@
         "to": "backend"
       },
       {
-        "from": "../docs/brand/atm-logo-3_ico_96x96.ico",
+        "from": "../docs/brand/app-icon.ico",
         "to": "app-icon.ico"
       }
     ],
     "win": {
-      "icon": "../docs/brand/atm-logo-3_ico_96x96.ico",
+      "icon": "../docs/brand/app-icon.ico",
       "signAndEditExecutable": false,
-      "signExts": [
-        "!.exe"
-      ],
       "target": [
         {
           "target": "nsis",
@@ -119,8 +116,8 @@
       "perMachine": false,
       "differentialPackage": false,
       "allowToChangeInstallationDirectory": true,
-      "installerIcon": "../docs/brand/atm-logo-3_ico_96x96.ico",
-      "uninstallerIcon": "../docs/brand/atm-logo-3_ico_96x96.ico",
+      "installerIcon": "../docs/brand/app-icon.ico",
+      "uninstallerIcon": "../docs/brand/app-icon.ico",
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true
     }

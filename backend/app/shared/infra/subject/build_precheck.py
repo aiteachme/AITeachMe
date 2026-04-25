@@ -11,10 +11,8 @@ from app.schemas.knowledge import (
     KnowledgeBuildPrecheckConflictData,
     SubjectVectorStatusResponse,
 )
-from app.shared.infra.database import (
-    get_vector_table_dim,
-    vector_table_exists,
-)
+from app.shared.infra.database import get_vector_table_dim, vector_table_exists
+from app.shared.infra.runtime import is_cloud_mode
 from app.shared.infra.exceptions import KnowledgeBuildPrecheckConflictError
 from app.shared.infra.subject.settings import (
     build_subject_index_ref_for_subject,
@@ -37,6 +35,7 @@ from app.shared.infra.subject.vectors import (
     get_subject_vector_status,
     get_subject_vector_status_by_slug,
     should_generate_subject_embeddings,
+    subject_has_retrieval_chunks,
 )
 
 logger = structlog.get_logger()
@@ -103,6 +102,8 @@ def inspect_subject_build_precheck(
         )
     expected_ref = build_subject_index_ref_for_subject(subject)
     if not binding.vector_table or binding.vector_table != expected_ref:
+        if not subject_has_retrieval_chunks(session, subject.slug):
+            return None
         return _build_precheck_conflict(
             reason="vector_table_missing",
             binding=binding,
@@ -124,8 +125,18 @@ def inspect_subject_build_precheck(
             requires_full_rebuild=True,
         )
 
-    connection = session.connection()
-    if not vector_table_exists(connection, expected_ref):
+    if is_cloud_mode():
+        connection = session.connection()
+        index_exists = vector_table_exists(connection, expected_ref)
+    else:
+        from app.shared.infra.search.llamaindex_index import subject_index_exists
+
+        connection = None
+        index_exists = subject_index_exists(subject.slug)
+
+    if not index_exists:
+        if not subject_has_retrieval_chunks(session, subject.slug):
+            return None
         return _build_precheck_conflict(
             reason="vector_table_missing",
             binding=binding,
@@ -133,18 +144,19 @@ def inspect_subject_build_precheck(
             requires_full_rebuild=True,
         )
 
-    table_dim = get_vector_table_dim(connection, expected_ref)
-    if (
-        table_dim is not None
-        and binding.embedding_dim is not None
-        and table_dim != binding.embedding_dim
-    ):
-        return _build_precheck_conflict(
-            reason="vector_table_dimension_mismatch",
-            binding=binding,
-            runtime=runtime,
-            requires_full_rebuild=True,
-        )
+    if connection is not None:
+        table_dim = get_vector_table_dim(connection, expected_ref)
+        if (
+            table_dim is not None
+            and binding.embedding_dim is not None
+            and table_dim != binding.embedding_dim
+        ):
+            return _build_precheck_conflict(
+                reason="vector_table_dimension_mismatch",
+                binding=binding,
+                runtime=runtime,
+                requires_full_rebuild=True,
+            )
 
     return None
 
@@ -258,8 +270,9 @@ def resolve_subject_build_vector_status(
             "subject_not_bound": "已自动绑定当前 embedding 模型并初始化向量索引。",
             "embedding_model_mismatch": f"检测到 embedding 模型变更，已自动切换到 {runtime.embedding_model} 并重建向量索引。",
             "embedding_dimension_mismatch": "检测到 embedding 维度变更，已自动重建向量索引。",
-            "vector_table_missing": "向量表缺失，已自动重建。",
-            "vector_table_dimension_mismatch": "向量表维度不一致，已自动重建。",        }
+            "vector_table_missing": "向量索引缺失，已自动重建。",
+            "vector_table_dimension_mismatch": "向量索引维度不一致，已自动重建。",
+        }
         status.notice = auto_rebuild_notices.get(auto_rebuild_reason)
 
     return status
@@ -278,4 +291,5 @@ __all__ = [
     "inspect_subject_build_precheck",
     "resolve_subject_build_vector_status",
     "should_generate_subject_embeddings",
+    "subject_has_retrieval_chunks",
 ]

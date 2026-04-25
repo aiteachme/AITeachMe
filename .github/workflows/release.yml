@@ -12,9 +12,21 @@ on:
           - patch
           - minor
           - major
+      suffix:
+        description: Optional prerelease suffix
+        type: choice
+        required: true
+        default: none
+        options:
+          - none
+          - alpha
+          - beta
 
 permissions:
   contents: write
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 concurrency:
   group: publish-release
@@ -36,7 +48,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          LATEST_TAG="$(git tag -l 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | head -n 1)"
+          LATEST_TAG="$(git tag -l 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -n 1 || true)"
           if [ -z "$LATEST_TAG" ]; then
             LATEST_TAG="v0.0.0"
           fi
@@ -63,11 +75,26 @@ jobs:
               ;;
           esac
 
-          TAG="v${MAJOR}.${MINOR}.${PATCH}"
+          SUFFIX="${{ inputs.suffix }}"
+          case "$SUFFIX" in
+            none)
+              PRERELEASE=false
+              TAG="v${MAJOR}.${MINOR}.${PATCH}"
+              ;;
+            alpha|beta)
+              PRERELEASE=true
+              TAG="v${MAJOR}.${MINOR}.${PATCH}-${SUFFIX}"
+              ;;
+            *)
+              echo "Unsupported release suffix: $SUFFIX"
+              exit 1
+              ;;
+          esac
+
           RELEASE_VERSION="${TAG#v}"
 
-          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "Tag '$TAG' does not match required format vX.X.X."
+          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-alpha|-beta)?$ ]]; then
+            echo "Tag '$TAG' does not match required format vX.X.X, vX.X.X-alpha, or vX.X.X-beta."
             exit 1
           fi
 
@@ -78,6 +105,7 @@ jobs:
 
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "version=$RELEASE_VERSION" >> "$GITHUB_OUTPUT"
+          echo "prerelease=$PRERELEASE" >> "$GITHUB_OUTPUT"
 
       - name: Update project versions
         env:
@@ -173,12 +201,19 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ steps.release_tag.outputs.tag }}
+          PRERELEASE: ${{ steps.release_tag.outputs.prerelease }}
         run: |
           if gh release view "$TAG" >/dev/null 2>&1; then
             echo "Release '$TAG' already exists; nothing to create."
             exit 0
           fi
 
+          RELEASE_ARGS=()
+          if [ "$PRERELEASE" = "true" ]; then
+            RELEASE_ARGS+=(--prerelease)
+          fi
+
           gh release create "$TAG" \
             --title "$TAG" \
-            --generate-notes
+            --generate-notes \
+            "${RELEASE_ARGS[@]}"

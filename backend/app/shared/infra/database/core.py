@@ -48,7 +48,7 @@ from app.models.knowledge_doc import KnowledgeDocument
 from app.models.knowledge_relation import KnowledgeEdge
 from app.models.knowledge_unit import KnowledgeUnit
 from app.models.profile import UserKnowledgeState
-from app.models.raw_file import RawFile
+from app.models.raw_file import RawFile, SubjectFileLink
 from app.models.subject import Subject
 from app.models.system import SystemRuntimeSettings, SystemSettingsSnapshot, UserRuntimeSettings
 from app.models.user import User
@@ -61,6 +61,7 @@ _SCHEMA_MODELS = (
     EmailVerificationCode,
     Subject,
     RawFile,
+    SubjectFileLink,
     ConfirmedBuildPlan,
     RetrievalChunk,
     KnowledgeDocument,
@@ -90,7 +91,10 @@ _ALLOWED_SQLITE_RUNTIME_TABLES = {
     "memory_entries",
     "learning_logs",
 }
-_ALLOWED_SQLITE_RUNTIME_PREFIXES: tuple[str, ...] = ()
+_ALLOWED_SQLITE_RUNTIME_PREFIXES: tuple[str, ...] = (
+    # sqlite-vec local vector tables and their shadow tables are runtime-owned.
+    "atm_vec_",
+)
 _REMOVED_POSTGRES_TABLES = (
     "unit_dependency",
     "theme_tree_node",

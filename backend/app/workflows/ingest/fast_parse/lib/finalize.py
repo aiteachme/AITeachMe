@@ -70,7 +70,7 @@ def build_finalize_success_node(
 
             with managed_session() as session:
                 raw_file = get_raw_file_by_id(session, state["file_id"])
-                if raw_file is None or raw_file.subject != state["subject"]:
+                if raw_file is None or raw_file.user_id != state["user_id"]:
                     return {
                         **state,
                         "error": f"raw_file_not_found:{state['file_id']}",
@@ -132,7 +132,7 @@ def build_finalize_failure_node(*, context: WorkflowContext):
         try:
             with managed_session() as session:
                 raw_file = get_raw_file_by_id(session, state["file_id"])
-                if raw_file is not None and raw_file.subject == state["subject"]:
+                if raw_file is not None and raw_file.user_id == state["user_id"]:
                     update_raw_file(
                         session,
                         raw_file,

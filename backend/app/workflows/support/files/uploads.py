@@ -16,7 +16,7 @@ from app.shared.infra.exceptions import FileCountLimitError, FileParseError, Fil
 from app.shared.infra.runtime import is_cloud_mode
 from app.shared.infra.storage import get_content_store
 from app.models import IngestStatus, RawFile, TaskStatus
-from app.repositories.files_repo import create_raw_file, delete_raw_file, update_raw_file
+from app.repositories.files_repo import create_raw_file, delete_raw_file, link_raw_files_to_subject, update_raw_file
 from app.schemas.files import FilesUploadData
 from app.utils.path_helpers import (
     build_temp_dir,
@@ -31,9 +31,9 @@ def _generate_file_uid() -> str:
     return f"file_{uuid.uuid4().hex}"
 
 
-def _build_upload_data(*, subject: str, raw_files: list[RawFile], started_parse_count: int) -> FilesUploadData:
+def _build_upload_data(*, subject: str | None, raw_files: list[RawFile], started_parse_count: int) -> FilesUploadData:
     return FilesUploadData(
-        subject=subject,
+        subject=subject or "library",
         filenames=[item.filename for item in raw_files],
         uploaded_items=[build_file_record(item) for item in raw_files],
         started_parse_count=started_parse_count,
@@ -43,7 +43,7 @@ def _build_upload_data(*, subject: str, raw_files: list[RawFile], started_parse_
 async def _save_uploaded_raw_files(
     session: Session,
     *,
-    subject: str,
+    subject: str | None,
     owner_user_id: str,
     files: list[UploadFile],
     parse_request_metadata: dict[str, object] | None = None,
@@ -69,15 +69,15 @@ async def _save_uploaded_raw_files(
 async def save_uploaded_file(
     session: Session,
     *,
-    subject: str,
+    subject: str | None = None,
     owner_user_id: str,
     file: UploadFile,
     parse_request_metadata: dict[str, object] | None = None,
 ) -> RawFile:
     settings = get_settings()
     cs = get_content_store()
-    scope = cs.subject_scope(user_id=owner_user_id, subject=subject)
-    normalized_subject = validate_subject(subject)
+    scope = cs.user_file_scope(user_id=owner_user_id)
+    normalized_subject = validate_subject(subject) if subject else None
     content = await file.read()
     max_upload_size_mb = settings.ingest.max_upload_size_mb
     if len(content) > max_upload_size_mb * 1024 * 1024:
@@ -86,7 +86,7 @@ async def save_uploaded_file(
     filename = file.filename or "unknown"
     extension = Path(filename).suffix.lower()
     content_hash = hashlib.sha256(content).hexdigest()
-    temp_dir = build_temp_dir(normalized_subject, user_id=owner_user_id)
+    temp_dir = build_temp_dir(normalized_subject or "library", user_id=owner_user_id)
     temp_dir.mkdir(parents=True, exist_ok=True)
     temp_path = temp_dir / f"{uuid.uuid4().hex}{extension}"
     temp_path.write_bytes(content)
@@ -103,6 +103,7 @@ async def save_uploaded_file(
         RawFile(
             uid=_generate_file_uid(),
             subject=normalized_subject,
+            user_id=owner_user_id,
             filename=filename,
             filetype=extension.lstrip("."),
             file_path=str(temp_path),
@@ -138,7 +139,7 @@ async def save_uploaded_file(
 async def save_uploaded_files(
     session: Session,
     *,
-    subject: str,
+    subject: str | None = None,
     owner_user_id: str,
     files: list[UploadFile],
 ) -> FilesUploadData:
@@ -149,13 +150,20 @@ async def save_uploaded_files(
         files=files,
         parse_request_metadata=None,
     )
+    if subject:
+        saved = link_raw_files_to_subject(
+            session,
+            owner_user_id=owner_user_id,
+            subject=validate_subject(subject),
+            raw_files=saved,
+        )
     return _build_upload_data(subject=subject, raw_files=saved, started_parse_count=0)
 
 
 async def save_uploaded_files_and_request_parse(
     session: Session,
     *,
-    subject: str,
+    subject: str | None = None,
     owner_user_id: str,
     files: list[UploadFile],
     parse_request_metadata: dict[str, object] | None = None,
@@ -167,10 +175,23 @@ async def save_uploaded_files_and_request_parse(
         files=files,
         parse_request_metadata=parse_request_metadata,
     )
+    normalized_subject = validate_subject(subject) if subject else None
+    if normalized_subject:
+        saved = link_raw_files_to_subject(
+            session,
+            owner_user_id=owner_user_id,
+            subject=normalized_subject,
+            raw_files=saved,
+        )
     file_ids = [require_id(item.id, "RawFile.id") for item in saved]
-    refreshed_items = _start_parse_for_files(session, subject=subject, file_ids=file_ids)
+    refreshed_items = _start_parse_for_files(
+        session,
+        owner_user_id=owner_user_id,
+        subject=normalized_subject,
+        file_ids=file_ids,
+    )
     return _build_upload_data(
-        subject=subject,
+        subject=normalized_subject,
         raw_files=refreshed_items,
         started_parse_count=len(file_ids),
     ), file_ids

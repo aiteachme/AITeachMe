@@ -90,6 +90,23 @@ export const SETTINGS_STYLES = {
       "min-h-11 w-full rounded-md border border-zinc-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-[14px] text-zinc-900 dark:text-zinc-100 transition-colors placeholder:text-zinc-400 hover:border-zinc-400 dark:hover:border-slate-600 focus-visible:outline-none focus-visible:border-zinc-900 dark:focus-visible:border-zinc-100 focus-visible:ring-1 focus-visible:ring-zinc-900 dark:focus-visible:ring-zinc-100 disabled:cursor-not-allowed disabled:opacity-50 disabled:bg-zinc-50 dark:disabled:bg-slate-900",
     select:
       "appearance-none items-center justify-between whitespace-nowrap cursor-pointer bg-[url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20width%3D%2224%22%20height%3D%2224%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%3Cpath%20d%3D%22M6%209L12%2015L18%209%22%20stroke%3D%22%2371717A%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%2F%3E%3C%2Fsvg%3E')] bg-[length:16px_16px] bg-[position:right_10px_center] bg-no-repeat pr-10",
+    selectTrigger:
+      "inline-flex cursor-pointer items-center justify-between gap-3 pr-2.5 text-left shadow-sm hover:bg-zinc-50 dark:hover:bg-slate-800/70",
+    selectTriggerOpen:
+      "border-zinc-900 ring-1 ring-zinc-900 dark:border-zinc-100 dark:ring-zinc-100",
+    selectValue: "min-w-0 truncate",
+    selectChevron:
+      "h-4 w-4 shrink-0 text-zinc-400 dark:text-zinc-500 transition-transform",
+    selectChevronOpen: "rotate-180 text-zinc-700 dark:text-slate-200",
+    selectMenu:
+      "z-[120] max-h-64 w-full overflow-y-auto rounded-lg border border-zinc-200 bg-white p-1 shadow-lg shadow-zinc-900/10 dark:border-slate-700 dark:bg-slate-900 dark:shadow-black/30",
+    selectOption:
+      "flex min-h-9 w-full items-center justify-between gap-3 rounded-md px-2.5 py-2 text-left text-[14px] text-zinc-700 transition-colors dark:text-slate-200",
+    selectOptionActive:
+      "bg-zinc-100 text-zinc-950 dark:bg-slate-800 dark:text-slate-50",
+    selectOptionSelected:
+      "font-semibold text-zinc-950 dark:text-slate-50",
+    selectCheck: "h-4 w-4 shrink-0",
     switchRow:
       "flex flex-row items-center justify-between w-full py-5 transition-colors",
     switchCopy: "flex flex-col gap-1 pr-4",

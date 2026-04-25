@@ -11,7 +11,7 @@ const appId =
   (flavor === "remote"
     ? "com.aiteachme.desktop.electron.remote"
     : "com.aiteachme.desktop.electron.local");
-const iconPath = path.join(repoRoot, "docs", "brand", "atm-logo-3_ico_96x96.ico");
+const iconPath = path.join(repoRoot, "docs", "brand", "app-icon.ico");
 
 const extraResources = [
   {
@@ -39,8 +39,9 @@ module.exports = {
   extraResources,
   win: {
     icon: iconPath,
+    // afterPack runs rcedit for the app icon. Keeping this false avoids
+    // electron-builder downloading winCodeSign on unsigned local builds.
     signAndEditExecutable: false,
-    signExts: ["!.exe"],
     target: [
       {
         target: "nsis",

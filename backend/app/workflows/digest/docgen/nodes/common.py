@@ -70,8 +70,17 @@ def resolve_docgen_dependency(name: str, default: Any, *, owner_module: str | No
     return getattr(module, name, default)
 
 
-def resolve_docgen_retrieval_profile(digest_mode: str | None) -> str:
-    return resolve_digest_retrieval_profile(digest_mode)
+def resolve_docgen_retrieval_profile(
+    digest_mode: str | None,
+    *,
+    user_prompt: str | None = None,
+    subject_name: str | None = None,
+) -> str:
+    return resolve_digest_retrieval_profile(
+        digest_mode,
+        user_prompt=user_prompt,
+        subject_name=subject_name,
+    )
 
 
 def serialize_section(section: Any) -> dict[str, Any]:

@@ -27,7 +27,7 @@ module.exports = async function afterPack(context) {
 
   const productFilename = context.packager.appInfo.productFilename;
   const exePath = path.join(context.appOutDir, `${productFilename}.exe`);
-  const iconPath = path.join(__dirname, "..", "..", "docs", "brand", "atm-logo-3_ico_96x96.ico");
+  const iconPath = path.join(__dirname, "..", "..", "docs", "brand", "app-icon.ico");
   const rceditPath = path.join(
     context.packager.projectDir,
     "node_modules",

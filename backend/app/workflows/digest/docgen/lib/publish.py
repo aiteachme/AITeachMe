@@ -143,7 +143,25 @@ def _ensure_document_overview_structure(markdown: str) -> str:
     cleaned = str(markdown or "").strip()
     if not cleaned.startswith("# "):
         cleaned = "# 知识文档总览\n\n" + cleaned.lstrip("# \n")
+    if "\n## 目录" not in cleaned and "\n## 目錄" not in cleaned:
+        cleaned = _insert_toc_after_overview_intro(cleaned)
     return cleaned.strip()
+
+
+def _insert_toc_after_overview_intro(markdown: str) -> str:
+    lines = str(markdown or "").splitlines()
+    if not lines:
+        return "# 知识文档总览\n\n## 目录\n\n"
+    insert_at = len(lines)
+    for index, line in enumerate(lines[1:], start=1):
+        if line.startswith("## "):
+            insert_at = index
+            break
+    while insert_at > 0 and not lines[insert_at - 1].strip():
+        insert_at -= 1
+    toc_block = ["", "## 目录", ""]
+    lines[insert_at:insert_at] = toc_block
+    return "\n".join(lines).strip() + "\n"
 
 
 

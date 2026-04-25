@@ -1,5 +1,6 @@
-import { useState, type ReactNode } from "react";
-import { Eye, EyeOff } from "lucide-react";
+import { useEffect, useId, useLayoutEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from "react";
+import { createPortal } from "react-dom";
+import { Check, ChevronDown, Eye, EyeOff } from "lucide-react";
 
 import { cn } from "../../lib/utils";
 import { SETTINGS_STYLES } from "./settingsStyles";
@@ -190,19 +191,189 @@ interface SelectInputProps {
 }
 
 export function SelectInput({ id, value, onChange, options }: SelectInputProps) {
-  return (
-    <select
-      id={id}
-      value={value}
-      onChange={(event) => onChange(event.target.value)}
-      className={cn(SETTINGS_STYLES.field.control, SETTINGS_STYLES.field.select)}
+  const generatedId = useId();
+  const triggerId = id ?? `settings-select-${generatedId}`;
+  const listboxId = `${triggerId}-listbox`;
+  const rootRef = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const [open, setOpen] = useState(false);
+  const [highlightedValue, setHighlightedValue] = useState(value);
+  const [menuStyle, setMenuStyle] = useState<CSSProperties>();
+  const selectedOption = options.find((option) => option.value === value) ?? options[0];
+
+  const updateMenuPosition = () => {
+    const triggerRect = triggerRef.current?.getBoundingClientRect();
+    if (!triggerRect) return;
+
+    const viewportMargin = 12;
+    const gap = 4;
+    const minHeight = 120;
+    const preferredMaxHeight = 256;
+    const spaceBelow = window.innerHeight - triggerRect.bottom - viewportMargin;
+    const spaceAbove = triggerRect.top - viewportMargin;
+    const openAbove = spaceBelow < minHeight && spaceAbove > spaceBelow;
+    const availableHeight = Math.max(minHeight, openAbove ? spaceAbove : spaceBelow);
+    const maxHeight = Math.min(preferredMaxHeight, availableHeight - gap);
+    const width = Math.min(triggerRect.width, window.innerWidth - viewportMargin * 2);
+    const left = Math.min(
+      Math.max(viewportMargin, triggerRect.left),
+      window.innerWidth - viewportMargin - width,
+    );
+    const top = openAbove
+      ? Math.max(viewportMargin, triggerRect.top - maxHeight - gap)
+      : Math.min(triggerRect.bottom + gap, window.innerHeight - viewportMargin - maxHeight);
+
+    setMenuStyle({
+      left,
+      maxHeight,
+      position: "fixed",
+      top,
+      width,
+    });
+  };
+
+  useLayoutEffect(() => {
+    if (!open) return;
+
+    updateMenuPosition();
+    window.addEventListener("resize", updateMenuPosition);
+    window.addEventListener("scroll", updateMenuPosition, true);
+    return () => {
+      window.removeEventListener("resize", updateMenuPosition);
+      window.removeEventListener("scroll", updateMenuPosition, true);
+    };
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target as Node;
+      if (rootRef.current?.contains(target) || menuRef.current?.contains(target)) return;
+      setOpen(false);
+    };
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    return () => document.removeEventListener("pointerdown", handlePointerDown);
+  }, [open]);
+
+  useEffect(() => {
+    if (open) {
+      setHighlightedValue(value);
+    }
+  }, [open, value]);
+
+  const selectValue = (nextValue: string) => {
+    onChange(nextValue);
+    setOpen(false);
+    requestAnimationFrame(() => triggerRef.current?.focus());
+  };
+
+  const moveHighlight = (direction: 1 | -1) => {
+    if (options.length === 0) return;
+    const currentIndex = Math.max(
+      0,
+      options.findIndex((option) => option.value === highlightedValue),
+    );
+    const nextIndex = (currentIndex + direction + options.length) % options.length;
+    setHighlightedValue(options[nextIndex].value);
+  };
+
+  const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === "Escape") {
+      setOpen(false);
+      triggerRef.current?.focus();
+      return;
+    }
+
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      event.preventDefault();
+      if (!open) {
+        setOpen(true);
+        setHighlightedValue(value);
+        return;
+      }
+      moveHighlight(event.key === "ArrowDown" ? 1 : -1);
+      return;
+    }
+
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      if (!open) {
+        setOpen(true);
+        setHighlightedValue(value);
+        return;
+      }
+      selectValue(highlightedValue);
+    }
+  };
+
+  const menu = open ? (
+    <div
+      ref={menuRef}
+      id={listboxId}
+      role="listbox"
+      aria-labelledby={triggerId}
+      className={SETTINGS_STYLES.field.selectMenu}
+      style={menuStyle}
     >
-      {options.map((option) => (
-        <option key={option.value} value={option.value}>
-          {option.label}
-        </option>
-      ))}
-    </select>
+      {options.map((option) => {
+        const selected = option.value === value;
+        const highlighted = option.value === highlightedValue;
+        return (
+          <button
+            key={option.value}
+            type="button"
+            role="option"
+            aria-selected={selected}
+            onMouseEnter={() => setHighlightedValue(option.value)}
+            onClick={() => selectValue(option.value)}
+            className={cn(
+              SETTINGS_STYLES.field.selectOption,
+              highlighted ? SETTINGS_STYLES.field.selectOptionActive : undefined,
+              selected ? SETTINGS_STYLES.field.selectOptionSelected : undefined,
+            )}
+          >
+            <span className="min-w-0 truncate">{option.label}</span>
+            {selected ? <Check className={SETTINGS_STYLES.field.selectCheck} aria-hidden="true" /> : null}
+          </button>
+        );
+      })}
+    </div>
+  ) : null;
+
+  return (
+    <>
+      <div ref={rootRef} className="relative w-full" onKeyDown={handleKeyDown}>
+      <button
+        ref={triggerRef}
+        id={triggerId}
+        type="button"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        aria-controls={listboxId}
+        onClick={() => setOpen((current) => !current)}
+        className={cn(
+          SETTINGS_STYLES.field.control,
+          SETTINGS_STYLES.field.selectTrigger,
+          open ? SETTINGS_STYLES.field.selectTriggerOpen : undefined,
+        )}
+      >
+        <span className={SETTINGS_STYLES.field.selectValue}>
+          {selectedOption?.label ?? value}
+        </span>
+        <ChevronDown
+          className={cn(
+            SETTINGS_STYLES.field.selectChevron,
+            open ? SETTINGS_STYLES.field.selectChevronOpen : undefined,
+          )}
+          aria-hidden="true"
+        />
+      </button>
+      </div>
+      {menu && typeof document !== "undefined" ? createPortal(menu, document.body) : null}
+    </>
   );
 }
 

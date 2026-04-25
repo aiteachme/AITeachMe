@@ -20,7 +20,7 @@ from app.workflows.support.auth import (
     resolve_user_from_token,
     set_guest_cookie_for_user,
 )
-from app.utils.subject import validate_subject as _validate_subject
+from app.utils.subject import normalize_subject_scope
 
 logger = structlog.get_logger()
 
@@ -40,10 +40,10 @@ class CurrentUserContext:
     auth_source: str = "device"
 
 
-def normalize_subject_slug(subject: str) -> str:
+def normalize_subject_slug(subject: str | None, *, allow_global: bool = False) -> str:
     """统一规范化学科标识。"""
 
-    return _validate_subject(subject)
+    return normalize_subject_scope(subject, allow_global=allow_global)
 
 
 def get_db() -> Generator[Session, None, None]:

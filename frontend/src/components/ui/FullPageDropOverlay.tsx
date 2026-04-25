@@ -25,9 +25,14 @@ export function FullPageDropOverlay({
   const [isDragging, setIsDragging] = useState(false);
 
   useEffect(() => {
-    if (disabled) return;
+    if (disabled) {
+      setIsDragging(false);
+      return;
+    }
 
     let dragCounter = 0;
+    const isFileDrag = (event: globalThis.DragEvent) =>
+      Array.from(event.dataTransfer?.types ?? []).includes("Files");
 
     const isBlockedByModal = () =>
       Boolean(
@@ -38,21 +43,21 @@ export function FullPageDropOverlay({
 
     const handleDragEnter = (e: globalThis.DragEvent) => {
       if (e.defaultPrevented) return;
+      if (!isFileDrag(e)) return;
       if (isBlockedByModal()) {
-        if (e.dataTransfer?.types.includes("Files")) e.preventDefault();
+        e.preventDefault();
         return;
       }
       e.preventDefault();
-      if (e.dataTransfer?.types.includes("Files")) {
-        dragCounter++;
-        setIsDragging(true);
-      }
+      dragCounter++;
+      setIsDragging(true);
     };
 
     const handleDragLeave = (e: globalThis.DragEvent) => {
       if (e.defaultPrevented) return;
+      if (!isFileDrag(e)) return;
       if (isBlockedByModal()) {
-        if (e.dataTransfer?.types.includes("Files")) e.preventDefault();
+        e.preventDefault();
         return;
       }
       e.preventDefault();
@@ -65,8 +70,9 @@ export function FullPageDropOverlay({
 
     const handleDragOver = (e: globalThis.DragEvent) => {
       if (e.defaultPrevented) return;
+      if (!isFileDrag(e)) return;
       if (isBlockedByModal()) {
-        if (e.dataTransfer?.types.includes("Files")) e.preventDefault();
+        e.preventDefault();
         return;
       }
       e.preventDefault();
@@ -81,6 +87,7 @@ export function FullPageDropOverlay({
         setIsDragging(false);
         return;
       }
+      if (!isFileDrag(e)) return;
       if (isBlockedByModal()) {
         e.preventDefault();
         e.stopPropagation();

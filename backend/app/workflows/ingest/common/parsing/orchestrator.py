@@ -18,8 +18,8 @@ from app.utils.path_helpers import list_asset_files
 from app.workflows.ingest.common.parsing.asset_ocr import enhance_markdown_with_asset_ocr
 from app.workflows.ingest.common.parsing.canonicalizer import canonicalize_markdown
 from app.workflows.ingest.common.parsing.classifier import ClassificationResult
+from app.workflows.ingest.common.parsing.features import builtin_pdf_parsing_enabled
 from app.workflows.ingest.common.parsing.parsers import PARSER_REGISTRY, resolve_parser_extension
-from app.workflows.ingest.common.parsing.pdf_page_fallback import enhance_pdf_markdown_with_page_fallback
 from app.workflows.ingest.common.parsing.strategy import ParsePlan, build_parse_plan
 
 logger = structlog.get_logger()
@@ -232,7 +232,11 @@ async def deep_enhance_file(
     total_replacements = enhanced_result.placeholder_replacements
 
     # Step 2: PDF page-level OCR fallback
-    if extension == ".pdf":
+    if extension == ".pdf" and builtin_pdf_parsing_enabled():
+        from app.workflows.ingest.common.parsing.pdf_page_fallback import (
+            enhance_pdf_markdown_with_page_fallback,
+        )
+
         page_fallback_result = await enhance_pdf_markdown_with_page_fallback(
             final_markdown,
             pdf_path=path,

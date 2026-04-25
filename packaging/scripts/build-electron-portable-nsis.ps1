@@ -10,18 +10,48 @@ if (-not $RepoRoot) {
     $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
 }
 
+function Get-ProjectVersion {
+    param([string]$RepoRoot)
+
+    $packageJsonPath = Join-Path $RepoRoot "frontend\package.json"
+    if (-not (Test-Path $packageJsonPath)) {
+        throw "Cannot find frontend package.json: $packageJsonPath"
+    }
+
+    $packageJson = Get-Content -LiteralPath $packageJsonPath -Raw | ConvertFrom-Json
+    if ([string]::IsNullOrWhiteSpace($packageJson.version)) {
+        throw "frontend package.json does not contain a version."
+    }
+
+    return $packageJson.version
+}
+
+function Convert-ToPortableCacheName {
+    param([string]$Name)
+
+    $safeName = $Name -replace '[^A-Za-z0-9._-]', ''
+    if ([string]::IsNullOrWhiteSpace($safeName)) {
+        return "AiTeachMe"
+    }
+    return $safeName
+}
+
 $frontendDir = Join-Path $RepoRoot "frontend"
 $releaseDir = Join-Path $frontendDir "release"
 $unpackedDir = Join-Path $releaseDir "win-unpacked"
 $appExeName = "$ProductName.exe"
 $appExe = Join-Path $unpackedDir $appExeName
 $outputExe = Join-Path $releaseDir $appExeName
-$iconPath = Join-Path $RepoRoot "docs\brand\atm-logo-3_ico_96x96.ico"
+$iconPath = Join-Path $RepoRoot "docs\brand\app-icon.ico"
 $scriptPath = Join-Path $releaseDir "aiteachme-portable.nsi"
 
 if (-not (Test-Path $appExe)) {
     throw "Missing unpacked Electron app. Run the installer build first: $unpackedDir"
 }
+
+$projectVersion = Get-ProjectVersion -RepoRoot $RepoRoot
+$portableBuildId = (Get-Item -LiteralPath $appExe).LastWriteTimeUtc.ToString("yyyyMMddHHmmss")
+$portableCacheName = Convert-ToPortableCacheName "$ProductName-v$projectVersion-$portableBuildId"
 
 if (-not (Test-Path $iconPath)) {
     throw "Missing desktop icon: $iconPath"
@@ -50,6 +80,7 @@ function Convert-ToNsisPath {
 $outputNsisPath = Convert-ToNsisPath $outputExe
 $iconNsisPath = Convert-ToNsisPath $iconPath
 $sourceNsisPath = Convert-ToNsisPath (Join-Path $unpackedDir "*")
+$cacheNsisPath = "AiTeachMe\PortableCache\$portableCacheName"
 
 $nsisScript = @"
 Unicode true
@@ -61,15 +92,18 @@ SilentInstall silent
 AutoCloseWindow true
 ShowInstDetails nevershow
 SetCompressor /SOLID lzma
-InstallDir "`$TEMP\AiTeachMePortable"
+InstallDir "`$LOCALAPPDATA\$cacheNsisPath"
 
 Section
-  IfFileExists "`$INSTDIR\$appExeName" 0 +2
+  IfFileExists "`$INSTDIR\$appExeName" launch extract
+
+extract:
   RMDir /r "`$INSTDIR"
   SetOutPath "`$INSTDIR"
   File /r "$sourceNsisPath"
+
+launch:
   ExecWait '"`$INSTDIR\$appExeName"'
-  RMDir /r "`$INSTDIR"
 SectionEnd
 "@
 
@@ -86,3 +120,4 @@ if (-not (Test-Path $outputExe)) {
 }
 
 Write-Host "Portable exe: $outputExe"
+Write-Host "Portable cache: `$LOCALAPPDATA\$cacheNsisPath"

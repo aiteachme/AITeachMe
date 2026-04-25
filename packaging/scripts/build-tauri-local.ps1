@@ -27,7 +27,7 @@ $prepareArgs = @(
     "-ExecutionPolicy",
     "Bypass",
     "-File",
-    (Join-Path $repoRoot "build\scripts\prepare-tauri-sidecar.ps1"),
+    (Join-Path $repoRoot "packaging\scripts\prepare-tauri-sidecar.ps1"),
     "-BackendPort",
     $BackendPort
 )

@@ -1,6 +1,6 @@
 # DocGen 封面 Sidecar 设计
 
-最后更新：2026-04-21
+最后更新：2026-04-24
 
 ## 1. 目标
 
@@ -102,7 +102,8 @@
 
 当前封面图片写入：
 
-- `users/<user>/subjects/<subject>/assets/docgen/docgen_cover_<build_session_id>.<ext>`
+- `users/<user>/subjects/<subject>/assets/docgen/cover.<ext>`，
+  生成成功后会清理旧的 `docgen_cover_*` / `cover.*`，同一学科只保留当前封面。
 
 当前 sidecar 元数据写入：
 
@@ -111,10 +112,11 @@
 文档顶部插入的 Markdown 形式是：
 
 ```md
-![](assets/docgen/docgen_cover_<build_session_id>.png)
+![](../assets/docgen/cover.png)
 ```
 
-前端会把这个路径解析成受保护资源接口。
+`merged_knowledge_base.md` 位于 `knowledge_markdowns/`，所以这里用 `../assets/...`
+指向同级的 `assets/` 目录；前端会把这个路径解析成受保护资源接口。
 
 ## 7. 合成顺序
 
@@ -136,7 +138,7 @@
 - 只支持全局开关，不支持单次构建覆盖
 - 封面失败不会回滚正文
 - 不做复杂封面版本管理
-- 不对老版本封面资产做额外清理
+- 封面资产采用稳定文件名，生成成功后清理旧封面；历史版本 Markdown 仍保留自身内容快照
 
 这些取舍是有意的，因为这轮重点是：
 

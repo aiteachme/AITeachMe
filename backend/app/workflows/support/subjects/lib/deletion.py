@@ -29,6 +29,7 @@ from app.models import (
     UserKnowledgeState,
 )
 import app.repositories.knowledge.knowledge_repo as knowledge_repo
+from app.repositories.files_repo import list_all_raw_files_by_subject, unlink_raw_files_from_subject
 from app.schemas.subject import SubjectDeleteImpactItem, SubjectDeletePreviewData
 from app.utils.path_helpers import build_subject_dir, get_data_dir
 
@@ -67,7 +68,7 @@ def _bulk_delete_by_subject(session: Session, model: type, *, subject: str) -> N
 
 def collect_subject_delete_counts(session: Session, *, subject: str) -> dict[str, int]:
     return {
-        "raw_file": _count_rows(session, RawFile, RawFile.subject == subject),
+        "raw_file": len(list_all_raw_files_by_subject(session, subject)),
         "retrieval_chunk": _count_rows(session, RetrievalChunk, RetrievalChunk.subject == subject),
         "knowledge_document": _count_rows(
             session,
@@ -101,7 +102,7 @@ def build_subject_delete_preview(session: Session, *, subject: Subject) -> Subje
             key="files",
             label="上传文件与切块",
             count=detail_counts["raw_file"] + detail_counts["retrieval_chunk"],
-            description="会删除原始文件记录、切块与向量索引。",
+            description="会移除文件与该学科的关联，并删除该学科下的切块与向量索引。",
         ),
         SubjectDeleteImpactItem(
             key="knowledge",
@@ -154,8 +155,9 @@ def delete_subject_with_all_content(session: Session, *, subject: Subject) -> di
         _delete_chat_messages(session, subject=subject_slug)
         _delete_knowledge_and_curriculum(session, subject=subject_slug)
         _delete_documents_and_chunks(session, subject=subject_slug)
+        _clear_subject_vector_index_best_effort(subject_slug)
         _delete_planner_records(session, subject=subject_slug)
-        _delete_raw_files_and_artifacts(session, subject=subject_slug)
+        _delete_raw_files_and_artifacts(session, subject=subject_slug, owner_user_id=owner_user_id)
         session.delete(subject)
         session.commit()
     except Exception:
@@ -255,19 +257,33 @@ def _delete_documents_and_chunks(session: Session, *, subject: str) -> None:
         session.delete(chunk)
 
 
+def _clear_subject_vector_index_best_effort(subject: str) -> None:
+    try:
+        from app.shared.infra.search.llamaindex_index import clear_subject_index
+
+        clear_subject_index(subject)
+    except Exception as exc:  # pragma: no cover - best-effort index cleanup
+        logger.warning("subject_vector_index_cleanup_failed", subject=subject, error=str(exc))
+
+
 def _delete_planner_records(session: Session, *, subject: str) -> None:
     plans = list(session.exec(select(ConfirmedBuildPlan).where(ConfirmedBuildPlan.subject == subject)).all())
     for plan in plans:
         session.delete(plan)
 
 
-def _delete_raw_files_and_artifacts(session: Session, *, subject: str) -> None:
-    raw_files = list(session.exec(select(RawFile).where(RawFile.subject == subject)).all())
+def _delete_raw_files_and_artifacts(session: Session, *, subject: str, owner_user_id: str) -> None:
+    raw_files = list_all_raw_files_by_subject(session, subject)
     if not raw_files:
         return
 
-    for raw_file in raw_files:
-        session.delete(raw_file)
+    unlink_raw_files_from_subject(
+        session,
+        owner_user_id=owner_user_id,
+        subject=subject,
+        raw_files=raw_files,
+        commit=False,
+    )
 
 
 def _delete_subject_directory(subject: str, *, user_id: str | None = None) -> None:

@@ -273,7 +273,11 @@ def create_docgen_initial_state(
         "planner_session_id": planner_session_id or "",
         "confirmed_plan_id": confirmed_plan_id or "",
         "digest_mode": digest_mode or "",
-        "retrieval_profile": resolve_docgen_retrieval_profile(digest_mode),
+        "retrieval_profile": resolve_docgen_retrieval_profile(
+            digest_mode,
+            user_prompt=user_prompt,
+            subject_name=subject,
+        ),
         "teaching_action": "docgen_build",
         "document_context": None,
         "docgen_context": {},
