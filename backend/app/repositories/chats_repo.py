@@ -118,6 +118,40 @@ def list_sessions_by_subject(
     return list(session.exec(stmt).all()), total
 
 
+def list_session_selection_heads_by_session_ids(
+    session: Session,
+    *,
+    subject: str,
+    session_ids: list[str],
+    source: str = "quick_chat",
+    user_id: str = "local",
+) -> dict[str, ChatMessage]:
+    """Return the latest doc-selection turn head for each requested session."""
+
+    if not session_ids:
+        return {}
+
+    stmt = (
+        select(ChatMessage)
+        .where(
+            ChatMessage.subject == subject,
+            ChatMessage.user_id == user_id,
+            ChatMessage.session_id.in_(session_ids),
+            ChatMessage.role == "assistant",
+            ChatMessage.source == source,
+            ChatMessage.anchor_id.is_not(None),
+            ChatMessage.anchor_id != "",
+        )
+        .order_by(ChatMessage.created_at.desc())
+    )
+    rows = session.exec(stmt).all()
+    result: dict[str, ChatMessage] = {}
+    for item in rows:
+        if item.session_id not in result:
+            result[item.session_id] = item
+    return result
+
+
 def list_thread_turn_heads_by_subject(
     session: Session,
     subject: str,

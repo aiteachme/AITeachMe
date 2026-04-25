@@ -9,6 +9,8 @@ interface ChatComposerProps {
   onAbort: () => void;
   isStreaming: boolean;
   disabled?: boolean;
+  autoFocusKey?: number;
+  placeholder?: string;
 }
 
 export function ChatComposer({
@@ -18,6 +20,8 @@ export function ChatComposer({
   onAbort,
   isStreaming,
   disabled = false,
+  autoFocusKey,
+  placeholder = "问我一个问题，或者让我结合资料解释某个概念...",
 }: ChatComposerProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -28,6 +32,13 @@ export function ChatComposer({
     textareaRef.current.style.height = "auto";
     textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 200)}px`;
   }, [value]);
+
+  useEffect(() => {
+    if (autoFocusKey === undefined) {
+      return;
+    }
+    textareaRef.current?.focus({ preventScroll: true });
+  }, [autoFocusKey]);
 
   function handleKeyDown(event: React.KeyboardEvent<HTMLTextAreaElement>) {
     if (event.key === "Enter" && !event.shiftKey && !isStreaming) {
@@ -48,7 +59,7 @@ export function ChatComposer({
               onChange={(event) => onChange(event.target.value)}
               onKeyDown={handleKeyDown}
               disabled={disabled}
-              placeholder="问我一个问题，或者让我结合资料解释某个概念..."
+              placeholder={placeholder}
               className="min-h-[48px] flex-1 resize-none bg-transparent px-3 py-3 text-[14px] leading-relaxed text-zinc-800 outline-none placeholder:text-zinc-400 disabled:cursor-not-allowed disabled:opacity-60 dark:text-slate-100 dark:placeholder:text-slate-500"
               style={{ maxHeight: "200px" }}
             />

@@ -132,6 +132,9 @@ class ChatSessionItem(BaseModel):
     id: str = Field(description="Session ID.")
     title: str = Field(description="Session title.")
     source: str | None = Field(default=None, description="Session source.")
+    anchor_id: str | None = Field(default=None, description="Doc heading anchor for doc-selection sessions.")
+    selected_text: str | None = Field(default=None, description="Selected text for doc-selection sessions.")
+    source_chunk_id: int | None = Field(default=None, description="Optional source chunk ID for doc-selection sessions.")
     message_count: int = Field(description="Message count in this session.", ge=0)
     created_at: datetime = Field(description="Created time.")
     updated_at: datetime = Field(description="Updated time.")
@@ -162,6 +165,7 @@ class SSEDoneEvent(BaseModel):
 
     turn_id: str = Field(description="Persisted turn ID.")
     session_id: str = Field(description="Resolved session ID.")
+    session_title: str | None = Field(default=None, description="Generated session title when available.")
     contexts: list[ChatContextItem] | None = Field(default=None, description="Retrieved citation list.")
 
 

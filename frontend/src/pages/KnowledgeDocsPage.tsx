@@ -6,6 +6,7 @@ import remarkMath from "remark-math";
 import rehypeHighlight from "rehype-highlight";
 import rehypeKatex from "rehype-katex";
 import "katex/dist/katex.min.css";
+import { useLocation } from "react-router-dom";
 import {
   FileText,
   ChevronRight,
@@ -175,6 +176,36 @@ interface ThreadTurnItem {
   messages: ThreadMessageItem[];
 }
 
+type QuickChatSyncPhase = "start" | "token" | "done" | "error" | "settled";
+
+interface QuickChatSyncEventDetail {
+  phase?: QuickChatSyncPhase;
+  subjectId?: string | null;
+  source?: string | null;
+  anchorId?: string | null;
+  selectedText?: string | null;
+  localThreadId?: string | null;
+  sessionId?: string | null;
+  assistantLocalId?: string | null;
+  userLocalId?: string | null;
+  question?: string | null;
+  content?: string | null;
+  errorDetail?: string | null;
+  createdAt?: string | null;
+}
+
+interface SelectionJumpEventDetail {
+  subjectId?: string | null;
+  sessionId?: string | null;
+  anchorId?: string | null;
+  selectedText?: string | null;
+}
+
+interface KnowledgeDocsLocationState {
+  selectionJump?: SelectionJumpEventDetail | null;
+  selectionJumpAt?: number | null;
+}
+
 /* ------------------------------------------------------------------ */
 /*  Helpers                                                            */
 /* ------------------------------------------------------------------ */
@@ -205,9 +236,13 @@ function formatDocTimestamp(value: string | null | undefined): string | null {
 
 const TOC_DRAWER_BREAKPOINT = 960;
 const COMMENT_DRAWER_BREAKPOINT = 1280;
+const AI_ASSISTANT_DOCKED_BREAKPOINT = 1440;
+const AI_ASSISTANT_AUTO_COLLAPSE_TOC_BREAKPOINT = 1680;
 const THREAD_HISTORY_PAGE_SIZE = 100;
-const KNOWLEDGE_DOCS_VIEW_PREFS_VERSION = 1;
+const KNOWLEDGE_DOCS_VIEW_PREFS_VERSION = 2;
 const FLOATING_COMPOSER_THREAD_ID = "__floating-composer__";
+const QUICK_CHAT_UPDATED_EVENT = "aiteachme:quick-chat-updated";
+const SELECTION_JUMP_EVENT = "aiteachme:selection-jump";
 const SELECTION_SELECTED_TEXT_LIMIT = 1200;
 const SELECTION_LOCAL_CONTEXT_CHARS = 900;
 const SELECTION_SECTION_CONTEXT_CHARS = 3200;
@@ -220,7 +255,7 @@ function createDefaultKnowledgeDocsViewPrefs(): KnowledgeDocsViewPrefs {
   return {
     widePage: false,
     showToc: true,
-    showCommentPanel: true,
+    showCommentPanel: false,
   };
 }
 
@@ -233,7 +268,7 @@ function normalizeKnowledgeDocsViewPrefs(raw: unknown): KnowledgeDocsViewPrefs {
   return {
     widePage: candidate.widePage === true,
     showToc: candidate.showToc !== false,
-    showCommentPanel: candidate.showCommentPanel !== false,
+    showCommentPanel: candidate.showCommentPanel === true,
   };
 }
 
@@ -443,6 +478,206 @@ function collectSectionNodes(heading: HTMLElement): Node[] {
     node = node.nextSibling;
   }
   return nodes;
+}
+
+interface TextSearchPosition {
+  node: Text;
+  offset: number;
+  endOffset: number;
+}
+
+interface TextSearchIndex {
+  text: string;
+  positions: Array<TextSearchPosition | null>;
+}
+
+function normalizeSelectionSearchChar(char: string): string {
+  if (/[\u200B-\u200D\uFEFF]/u.test(char)) return "";
+  if (char === "\u00A0") return " ";
+  return char;
+}
+
+function normalizeSelectionSearchText(text: string): string {
+  return Array.from(text)
+    .map(normalizeSelectionSearchChar)
+    .join("")
+    .trim();
+}
+
+function shouldIgnoreSelectionTextNode(textNode: Text): boolean {
+  const parent = textNode.parentElement;
+  if (!parent) return true;
+  if (parent.closest("script, style, noscript, .katex-mathml, [hidden]")) {
+    return true;
+  }
+  try {
+    const style = window.getComputedStyle(parent);
+    return style.display === "none" || style.visibility === "hidden";
+  } catch {
+    return false;
+  }
+}
+
+function appendSearchTextNode(index: TextSearchIndex, textNode: Text) {
+  if (shouldIgnoreSelectionTextNode(textNode)) return;
+  const value = textNode.nodeValue ?? "";
+  let offset = 0;
+  for (const char of Array.from(value)) {
+    const endOffset = offset + char.length;
+    const normalized = normalizeSelectionSearchChar(char);
+    for (const normalizedChar of Array.from(normalized)) {
+      index.text += normalizedChar;
+      index.positions.push({ node: textNode, offset, endOffset });
+    }
+    offset = endOffset;
+  }
+}
+
+function appendVirtualSearchSeparator(index: TextSearchIndex) {
+  if (!index.text || /\s$/u.test(index.text)) return;
+  index.text += " ";
+  index.positions.push(null);
+}
+
+function buildTextSearchIndex(roots: Node[]): TextSearchIndex {
+  const index: TextSearchIndex = { text: "", positions: [] };
+  for (const rootNode of roots) {
+    if (rootNode.nodeType === Node.TEXT_NODE) {
+      appendSearchTextNode(index, rootNode as Text);
+      appendVirtualSearchSeparator(index);
+      continue;
+    }
+    const walker = document.createTreeWalker(rootNode, NodeFilter.SHOW_TEXT);
+    let current = walker.nextNode();
+    while (current) {
+      appendSearchTextNode(index, current as Text);
+      current = walker.nextNode();
+    }
+    appendVirtualSearchSeparator(index);
+  }
+  return index;
+}
+
+function createCondensedSearchText(text: string): { text: string; sourceIndexByCondensed: number[] } {
+  const chars: string[] = [];
+  const sourceIndexByCondensed: number[] = [];
+  Array.from(text).forEach((char, index) => {
+    if (/\s/u.test(char)) return;
+    chars.push(char);
+    sourceIndexByCondensed.push(index);
+  });
+  return {
+    text: chars.join(""),
+    sourceIndexByCondensed,
+  };
+}
+
+function rangeFromSearchSpan(index: TextSearchIndex, start: number, end: number): Range | null {
+  if (end <= start) return null;
+  let startPosition: TextSearchPosition | null = null;
+  let endPosition: TextSearchPosition | null = null;
+
+  for (let cursor = start; cursor < end; cursor += 1) {
+    const position = index.positions[cursor];
+    if (position) {
+      startPosition = position;
+      break;
+    }
+  }
+  for (let cursor = end - 1; cursor >= start; cursor -= 1) {
+    const position = index.positions[cursor];
+    if (position) {
+      endPosition = position;
+      break;
+    }
+  }
+
+  if (!startPosition || !endPosition) return null;
+
+  const range = document.createRange();
+  range.setStart(startPosition.node, startPosition.offset);
+  range.setEnd(endPosition.node, endPosition.endOffset);
+  return range;
+}
+
+function findRangeForSelectedText(index: TextSearchIndex, selectedText: string): Range | null {
+  const target = normalizeSelectionSearchText(selectedText);
+  if (!index.text || !target) return null;
+
+  const exactStart = index.text.indexOf(target);
+  if (exactStart >= 0) {
+    return rangeFromSearchSpan(index, exactStart, exactStart + target.length);
+  }
+
+  const condensedSource = createCondensedSearchText(index.text);
+  const condensedTarget = target.replace(/\s+/gu, "");
+  if (!condensedTarget) return null;
+
+  const condensedStart = condensedSource.text.indexOf(condensedTarget);
+  if (condensedStart < 0) return null;
+
+  const sourceStart = condensedSource.sourceIndexByCondensed[condensedStart];
+  const sourceEnd = condensedSource.sourceIndexByCondensed[condensedStart + condensedTarget.length - 1];
+  if (sourceStart === undefined || sourceEnd === undefined) return null;
+
+  return rangeFromSearchSpan(index, sourceStart, sourceEnd + 1);
+}
+
+function buildSelectionMatchTokens(selectedText: string): string[] {
+  const tokens = normalizeSelectionSearchText(selectedText)
+    .match(/[\u4e00-\u9fff]+|[A-Za-z_][A-Za-z0-9_]*|[\u0370-\u03FFA-Za-z0-9_]+|[0-9]+(?:\.[0-9]+)?/gu) ?? [];
+  const unique = new Set<string>();
+  for (const token of tokens) {
+    const condensed = token.replace(/\s+/gu, "");
+    if (!condensed) continue;
+    const meaningful =
+      condensed.length >= 2 ||
+      /[\u4e00-\u9fff]/u.test(condensed) ||
+      /[\u0370-\u03FF]/u.test(condensed);
+    if (meaningful) {
+      unique.add(condensed);
+    }
+  }
+  return Array.from(unique);
+}
+
+function findApproximateRangeForSelectedText(index: TextSearchIndex, selectedText: string): Range | null {
+  const tokens = buildSelectionMatchTokens(selectedText);
+  if (tokens.length === 0) return null;
+
+  const condensedSource = createCondensedSearchText(index.text);
+  let matchedCount = 0;
+  let matchedWeight = 0;
+  let totalWeight = 0;
+  let sourceStart = Number.POSITIVE_INFINITY;
+  let sourceEnd = -1;
+
+  for (const token of tokens) {
+    const tokenWeight = Math.min(token.length, 12);
+    totalWeight += tokenWeight;
+    const condensedStart = condensedSource.text.indexOf(token);
+    if (condensedStart < 0) continue;
+
+    const tokenSourceStart = condensedSource.sourceIndexByCondensed[condensedStart];
+    const tokenSourceEnd = condensedSource.sourceIndexByCondensed[condensedStart + token.length - 1];
+    if (tokenSourceStart === undefined || tokenSourceEnd === undefined) continue;
+
+    matchedCount += 1;
+    matchedWeight += tokenWeight;
+    sourceStart = Math.min(sourceStart, tokenSourceStart);
+    sourceEnd = Math.max(sourceEnd, tokenSourceEnd + 1);
+  }
+
+  const hasStrongSingleToken = matchedCount === 1 && matchedWeight >= 8;
+  const hasEnoughTokenCoverage =
+    matchedCount >= 2 &&
+    matchedWeight >= Math.min(10, Math.max(4, totalWeight * 0.35));
+
+  if ((!hasStrongSingleToken && !hasEnoughTokenCoverage) || !Number.isFinite(sourceStart) || sourceEnd <= sourceStart) {
+    return null;
+  }
+
+  return rangeFromSearchSpan(index, sourceStart, sourceEnd);
 }
 
 function findSelectionIndex(sectionText: string, selectedText: string): number {
@@ -981,11 +1216,7 @@ function CommentThread({
   anchorId,
   comments,
   selectedText,
-  draft,
-  isStreaming,
   isActive,
-  onDraftChange,
-  onSend,
   onFocus,
   onJumpToAnchor,
   onOpenAiInteraction,
@@ -995,11 +1226,7 @@ function CommentThread({
   anchorId: string;
   comments: Comment[];
   selectedText: string;
-  draft: string;
-  isStreaming: boolean;
   isActive: boolean;
-  onDraftChange: (value: string) => void;
-  onSend: () => void;
   onFocus: () => void;
   onJumpToAnchor: (id: string) => void;
   onOpenAiInteraction: () => void;
@@ -1087,39 +1314,17 @@ function CommentThread({
             ))}
           </div>
           <div className="border-t border-slate-200 bg-white p-2">
-            <textarea
-              value={draft}
-              onChange={(e) => onDraftChange(e.target.value)}
-              onClick={(e) => e.stopPropagation()}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault();
-                  onSend();
-                }
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onOpenAiInteraction();
               }}
-              rows={2}
-              disabled={isStreaming}
-              placeholder={isStreaming ? "AI 正在回复..." : "继续追问这段内容..."}
-              className="w-full resize-none rounded-md border border-slate-200 px-3 py-2 text-xs text-slate-700 focus:outline-none focus:ring-2 focus:ring-sky-100 focus:border-sky-300 disabled:bg-slate-50 disabled:text-slate-400"
-            />
-            <div className="mt-2 flex items-center justify-end">
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onSend();
-                }}
-                disabled={!draft.trim() || isStreaming}
-                className={cn(
-                  "inline-flex items-center gap-1 rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors",
-                  draft.trim() && !isStreaming
-                    ? "bg-slate-900 text-white hover:bg-slate-800"
-                    : "bg-slate-100 text-slate-300"
-                )}
-              >
-                {isStreaming ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
-                发送
-              </button>
-            </div>
+              className="flex w-full items-center justify-center gap-1.5 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-medium text-slate-600 transition hover:border-sky-200 hover:bg-sky-50 hover:text-sky-700"
+            >
+              <ExternalLink className="h-3.5 w-3.5" />
+              在右侧 AI 面板继续对话
+            </button>
           </div>
         </>
       )}
@@ -1132,7 +1337,8 @@ function CommentThread({
 /* ------------------------------------------------------------------ */
 
 export function KnowledgeDocsPage() {
-  const { openAiInteraction } = useAiInteraction();
+  const { openAiInteraction, isSidebarOpen: isAssistantOpen } = useAiInteraction();
+  const location = useLocation();
   const {
     subjectId,
     docMarkdownQuery,
@@ -1176,8 +1382,9 @@ export function KnowledgeDocsPage() {
   const [threadSessionIds, setThreadSessionIds] = useState<Record<string, string>>({});
   const [threadHistoryLoaded, setThreadHistoryLoaded] = useState(false);
   const [threadHistoryError, setThreadHistoryError] = useState<string | null>(null);
+  const [threadHistoryRefreshKey, setThreadHistoryRefreshKey] = useState(0);
   const [selectionHighlights, setSelectionHighlights] = useState<SelectionHighlight[]>([]);
-  const [threadDrafts, setThreadDrafts] = useState<Record<string, string>>({});
+  const [, setThreadDrafts] = useState<Record<string, string>>({});
   const [threadStreaming, setThreadStreaming] = useState<Record<string, boolean>>({});
   const [activeCommentThreadId, setActiveCommentThreadId] = useState<string | null>(null);
   const [pinnedThreadId, setPinnedThreadId] = useState<string | null>(null);
@@ -1204,12 +1411,14 @@ export function KnowledgeDocsPage() {
   const [tocScrollThumbStyle, setTocScrollThumbStyle] = useState<TocScrollThumbStyle>({ top: 0, height: 0 });
 
   const [isGraphDrawerOpen, setIsGraphDrawerOpen] = useState(false);
+  const graphDrawerRef = useRef<HTMLDivElement>(null);
   const initialViewportWidth = typeof window !== "undefined" ? window.innerWidth : 1200;
   const isNarrowInitialViewport = initialViewportWidth < 640;
   const { width: graphPanelWidth, isDragging: isGraphDragging, handleMouseDown: handleGraphMouseDown } = useResizablePanel({
     defaultWidth: isNarrowInitialViewport ? initialViewportWidth : initialViewportWidth * 0.6,
     minWidth: isNarrowInitialViewport ? initialViewportWidth : 400,
     maxWidth: isNarrowInitialViewport ? initialViewportWidth : initialViewportWidth * 0.8,
+    liveResizeRef: graphDrawerRef,
   });
 
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -1234,16 +1443,30 @@ export function KnowledgeDocsPage() {
   const tocAutoScrollReleaseTimerRef = useRef<number | null>(null);
   const activeHeadingLockRef = useRef<string | null>(null);
   const lastAutoCommentHighlightHeadingRef = useRef(activeHeading);
+  const pendingSelectionJumpRef = useRef<SelectionJumpEventDetail | null>(null);
+  const handledRouteSelectionJumpRef = useRef<number | null>(null);
 
   const isCompactToc = viewportWidth < TOC_DRAWER_BREAKPOINT;
   const isCompactComment = viewportWidth < COMMENT_DRAWER_BREAKPOINT;
   const isCompactPanels = isCompactToc || isCompactComment;
   const hasCompactTocControl = isCompactToc && viewPrefs.showToc;
-  const hasCompactCommentControl = isCompactComment && viewPrefs.showCommentPanel;
+  const shouldHideCommentPanelForAssistant = isAssistantOpen;
+  const hasCompactCommentControl = isCompactComment && viewPrefs.showCommentPanel && !shouldHideCommentPanelForAssistant;
   const isTocVisible = viewPrefs.showToc && (isCompactToc ? activeDrawer === "toc" : !isTocCollapsed);
-  const isCommentVisible = viewPrefs.showCommentPanel && (isCompactComment ? activeDrawer === "comment" : !isCommentCollapsed);
-  const showDesktopCommentPanel = !isCompactComment && viewPrefs.showCommentPanel && !isCommentCollapsed;
+  const isCommentVisible =
+    viewPrefs.showCommentPanel &&
+    !shouldHideCommentPanelForAssistant &&
+    (isCompactComment ? activeDrawer === "comment" : !isCommentCollapsed);
+  const showDesktopCommentPanel =
+    !isCompactComment &&
+    viewPrefs.showCommentPanel &&
+    !isCommentCollapsed &&
+    !shouldHideCommentPanelForAssistant;
   const pageWideMode = viewPrefs.widePage;
+  const shouldAutoCollapseTocForAssistant =
+    isAssistantOpen &&
+    viewportWidth >= AI_ASSISTANT_DOCKED_BREAKPOINT &&
+    viewportWidth < AI_ASSISTANT_AUTO_COLLAPSE_TOC_BREAKPOINT;
 
   const updateViewPrefs = useCallback((updater: (prev: KnowledgeDocsViewPrefs) => KnowledgeDocsViewPrefs) => {
     setViewPrefs((prev) => normalizeKnowledgeDocsViewPrefs(updater(prev)));
@@ -1443,6 +1666,22 @@ export function KnowledgeDocsPage() {
   }, [activeDrawer, viewPrefs.showCommentPanel, viewPrefs.showToc]);
 
   useEffect(() => {
+    if (isAssistantOpen && activeDrawer === "comment") {
+      setActiveDrawer(null);
+    }
+  }, [activeDrawer, isAssistantOpen]);
+
+  useEffect(() => {
+    if (!shouldAutoCollapseTocForAssistant || isCompactToc || !viewPrefs.showToc) {
+      return;
+    }
+    setIsTocCollapsed(true);
+    if (activeDrawer === "toc") {
+      setActiveDrawer(null);
+    }
+  }, [activeDrawer, isCompactToc, shouldAutoCollapseTocForAssistant, viewPrefs.showToc]);
+
+  useEffect(() => {
     if (!isSettingsPanelOpen) return;
     const handlePointerDown = (event: MouseEvent) => {
       if (settingsPanelRef.current?.contains(event.target as Node)) return;
@@ -1578,7 +1817,7 @@ export function KnowledgeDocsPage() {
     return () => {
       cancelled = true;
     };
-  }, [subjectId]);
+  }, [subjectId, threadHistoryRefreshKey]);
 
   // Track active heading from a single scroll position so the TOC highlight does not bounce.
   useEffect(() => {
@@ -1818,74 +2057,91 @@ export function KnowledgeDocsPage() {
       return [];
     }
 
-    const locateInRoots = (roots: Node[]): HighlightSegment[] => {
-      const textEntries: Array<{ node: Text; start: number; end: number }> = [];
-      let rawText = "";
-      const pushTextNode = (textNode: Text) => {
-        const value = textNode.nodeValue ?? "";
-        if (!value) return;
-        const start = rawText.length;
-        rawText += value;
-        textEntries.push({ node: textNode, start, end: rawText.length });
+    const segmentFromRect = (rect: DOMRect): HighlightSegment => {
+      const container = scrollRef.current;
+      if (!container) {
+        return {
+          top: rect.top,
+          left: rect.left,
+          width: Math.max(4, rect.width),
+          height: Math.max(12, rect.height),
+        };
+      }
+      const containerRect = container.getBoundingClientRect();
+      return {
+        top: rect.top - containerRect.top + container.scrollTop,
+        left: rect.left - containerRect.left + container.scrollLeft,
+        width: Math.max(4, rect.width),
+        height: Math.max(12, rect.height),
+      };
+    };
+
+    const captureElementSegments = (element: Element): HighlightSegment[] => (
+      Array.from(element.getClientRects())
+        .filter((rect) => rect.width > 1 && rect.height > 1)
+        .map(segmentFromRect)
+    );
+
+    const locateApproximateTableSelection = (roots: Node[]): HighlightSegment[] => {
+      const rows: HTMLTableRowElement[] = [];
+      const seen = new Set<HTMLTableRowElement>();
+      const addRow = (row: HTMLTableRowElement) => {
+        if (seen.has(row)) return;
+        seen.add(row);
+        rows.push(row);
       };
 
       for (const rootNode of roots) {
-        if (rootNode.nodeType === Node.TEXT_NODE) {
-          pushTextNode(rootNode as Text);
+        if (rootNode instanceof HTMLTableRowElement) {
+          addRow(rootNode);
           continue;
         }
-        const walker = document.createTreeWalker(rootNode, NodeFilter.SHOW_TEXT);
-        let current = walker.nextNode();
-        while (current) {
-          pushTextNode(current as Text);
-          current = walker.nextNode();
-        }
-      }
-      if (!rawText || textEntries.length === 0) {
-        return [];
-      }
-
-      let matchStart = rawText.indexOf(target);
-      let matchEnd = matchStart >= 0 ? matchStart + target.length : -1;
-      if (matchStart < 0) {
-        const condensedRawChars: string[] = [];
-        const rawIndexByCondensed: number[] = [];
-        for (let i = 0; i < rawText.length; i += 1) {
-          const char = rawText[i];
-          if (!/\s/u.test(char)) {
-            condensedRawChars.push(char);
-            rawIndexByCondensed.push(i);
+        if (rootNode instanceof Element) {
+          if (rootNode.matches("tr")) {
+            addRow(rootNode as HTMLTableRowElement);
           }
+          rootNode.querySelectorAll<HTMLTableRowElement>("tr").forEach(addRow);
         }
-        const condensedRaw = condensedRawChars.join("");
-        const condensedTarget = target.replace(/\s+/gu, "");
-        const condensedStart = condensedTarget ? condensedRaw.indexOf(condensedTarget) : -1;
-        if (condensedStart < 0) {
-          return [];
-        }
-        const rawStart = rawIndexByCondensed[condensedStart];
-        const rawEnd = rawIndexByCondensed[condensedStart + condensedTarget.length - 1];
-        if (rawStart === undefined || rawEnd === undefined) {
-          return [];
-        }
-        matchStart = rawStart;
-        matchEnd = rawEnd + 1;
       }
-      if (matchStart < 0 || matchEnd <= matchStart) {
+
+      let bestMatch: { row: HTMLTableRowElement; range: Range; score: number } | null = null;
+      const targetTokens = buildSelectionMatchTokens(target);
+      if (targetTokens.length === 0) {
         return [];
       }
 
-      const startEntry = textEntries.find((entry) => matchStart >= entry.start && matchStart < entry.end);
-      const endBoundary = Math.max(matchStart, matchEnd - 1);
-      const endEntry = textEntries.find((entry) => endBoundary >= entry.start && endBoundary < entry.end);
-      if (!startEntry || !endEntry) {
+      for (const row of rows) {
+        const index = buildTextSearchIndex([row]);
+        if (!index.text.trim()) continue;
+        const range = findApproximateRangeForSelectedText(index, target);
+        if (!range) continue;
+        const condensedRow = createCondensedSearchText(index.text).text;
+        const score = targetTokens.reduce((sum, token) => (
+          condensedRow.includes(token) ? sum + Math.min(token.length, 12) : sum
+        ), 0);
+        if (!bestMatch || score > bestMatch.score) {
+          bestMatch = { row, range, score };
+        }
+      }
+
+      if (!bestMatch) {
         return [];
       }
 
-      const range = document.createRange();
-      range.setStart(startEntry.node, matchStart - startEntry.start);
-      range.setEnd(endEntry.node, matchEnd - endEntry.start);
-      return captureRangeSegments(range);
+      const rangeSegments = captureRangeSegments(bestMatch.range);
+      return rangeSegments.length > 0 ? rangeSegments : captureElementSegments(bestMatch.row);
+    };
+
+    const locateInRoots = (roots: Node[]): HighlightSegment[] => {
+      const index = buildTextSearchIndex(roots);
+      const range = findRangeForSelectedText(index, target);
+      if (range) {
+        const segments = captureRangeSegments(range);
+        if (segments.length > 0) {
+          return segments;
+        }
+      }
+      return locateApproximateTableSelection(roots);
     };
 
     const heading = contentRoot.querySelector(`[data-heading-id="${anchorId}"]`) as HTMLElement | null;
@@ -1986,33 +2242,6 @@ export function KnowledgeDocsPage() {
     return Math.min(maxTop, Math.max(minTop, rawTop));
   }, [isCompactComment]);
 
-  const buildFloatingCommentFromToolbar = useCallback((toolbar: FloatingToolbar): FloatingComment => {
-    const container = scrollRef.current;
-    const range = selectedRangeRef.current;
-    let selectionViewportTop = toolbar.selectionViewportTop;
-    let selectionContentTop = toolbar.selectionContentTop;
-    let segments: HighlightSegment[] = [];
-
-    if (container && range) {
-      const rect = range.getBoundingClientRect();
-      if (rect.width > 0 || rect.height > 0) {
-        const containerRect = container.getBoundingClientRect();
-        selectionViewportTop = rect.top + rect.height / 2;
-        selectionContentTop = rect.top - containerRect.top + container.scrollTop + rect.height / 2;
-      }
-      segments = captureRangeSegments(range);
-    }
-
-    return {
-      anchorId: toolbar.anchorId,
-      selectedText: toolbar.selectedText,
-      selectionViewportTop,
-      selectionContentTop,
-      top: computeCommentComposerTop(selectionViewportTop),
-      segments,
-    };
-  }, [captureRangeSegments, computeCommentComposerTop]);
-
   // Keep document selection behavior close to Feishu:
   // any click outside toolbar clears highlighted range state.
   useEffect(() => {
@@ -2091,13 +2320,6 @@ export function KnowledgeDocsPage() {
     };
   }, [floatingComment, isCompactComment]);
 
-  const updateThreadDraft = useCallback((threadId: string, value: string) => {
-    setThreadDrafts((prev) => {
-      if (prev[threadId] === value) return prev;
-      return { ...prev, [threadId]: value };
-    });
-  }, []);
-
   const rebindThreadIdToSession = useCallback((threadId: string, candidateSessionId: string | null): string => {
     const resolvedSessionId = candidateSessionId?.trim() ?? "";
     if (!resolvedSessionId) {
@@ -2166,6 +2388,129 @@ export function KnowledgeDocsPage() {
 
     return resolvedSessionId;
   }, []);
+
+  useEffect(() => {
+    const handleQuickChatUpdated = (event: Event) => {
+      const detail = (event as CustomEvent<QuickChatSyncEventDetail>).detail;
+      if (detail?.subjectId && detail.subjectId !== subjectId) {
+        return;
+      }
+      if (!detail?.phase) {
+        setThreadHistoryRefreshKey((prev) => prev + 1);
+        return;
+      }
+
+      const localThreadId = detail.localThreadId?.trim() || detail.sessionId?.trim() || "";
+      const sessionId = detail.sessionId?.trim() || null;
+      const assistantLocalId = detail.assistantLocalId?.trim() || "";
+      if (!localThreadId) {
+        return;
+      }
+
+      if (detail.phase === "start") {
+        const anchorId = detail.anchorId?.trim() ?? "";
+        const selectedText = detail.selectedText?.trim() ?? "";
+        const question = detail.question?.trim() ?? "";
+        if (!anchorId || !selectedText || !question || !assistantLocalId) {
+          return;
+        }
+
+        const createdAt = detail.createdAt ? Date.parse(detail.createdAt) : Date.now();
+        const startedAt = Number.isFinite(createdAt) ? createdAt : Date.now();
+        const userLocalId = detail.userLocalId?.trim() || `${localThreadId}-user-${startedAt}`;
+        setComments((prev) => {
+          if (prev.some((item) => item.id === userLocalId || item.id === assistantLocalId)) {
+            return prev;
+          }
+          return [
+            ...prev,
+            {
+              id: userLocalId,
+              threadId: localThreadId,
+              sessionId,
+              anchorId,
+              selectedText,
+              role: "user",
+              content: question,
+              createdAt: startedAt,
+            },
+            {
+              id: assistantLocalId,
+              threadId: localThreadId,
+              sessionId,
+              anchorId,
+              selectedText,
+              role: "assistant",
+              content: "",
+              createdAt: startedAt + 1,
+              streaming: true,
+            },
+          ];
+        });
+        if (sessionId) {
+          setThreadSessionIds((prev) => ({ ...prev, [localThreadId]: sessionId }));
+        }
+        setThreadStreaming((prev) => ({ ...prev, [localThreadId]: true }));
+        const segments = buildSelectionSegmentsFromText(anchorId, selectedText);
+        addSelectionHighlight(localThreadId, anchorId, selectedText, segments.length > 0 ? segments : undefined);
+        setActiveCommentThreadId(localThreadId);
+        setPinnedThreadId(localThreadId);
+        setIsAutoCommentHighlightSuppressed(false);
+        return;
+      }
+
+      if (detail.phase === "token") {
+        const content = detail.content ?? "";
+        if (!assistantLocalId || !content) {
+          return;
+        }
+        setComments((prev) => prev.map((item) => (
+          item.id === assistantLocalId ? { ...item, content: item.content + content } : item
+        )));
+        return;
+      }
+
+      if (detail.phase === "done") {
+        const finalThreadId = sessionId ? rebindThreadIdToSession(localThreadId, sessionId) : localThreadId;
+        if (assistantLocalId) {
+          setComments((prev) => prev.map((item) => (
+            item.id === assistantLocalId
+              ? { ...item, threadId: finalThreadId, sessionId, streaming: false }
+              : item
+          )));
+        }
+        setThreadStreaming((prev) => ({ ...prev, [finalThreadId]: false }));
+        return;
+      }
+
+      if (detail.phase === "error") {
+        const finalThreadId = sessionId ? rebindThreadIdToSession(localThreadId, sessionId) : localThreadId;
+        if (assistantLocalId) {
+          setComments((prev) => prev.map((item) => (
+            item.id === assistantLocalId
+              ? {
+                ...item,
+                threadId: finalThreadId,
+                sessionId,
+                content: detail.errorDetail?.trim() || item.content || "请求失败，请重试。",
+                streaming: false,
+              }
+              : item
+          )));
+        }
+        setThreadStreaming((prev) => ({ ...prev, [finalThreadId]: false }));
+        return;
+      }
+
+      if (detail.phase === "settled") {
+        const finalThreadId = sessionId ? rebindThreadIdToSession(localThreadId, sessionId) : localThreadId;
+        setThreadStreaming((prev) => ({ ...prev, [finalThreadId]: false }));
+      }
+    };
+
+    window.addEventListener(QUICK_CHAT_UPDATED_EVENT, handleQuickChatUpdated);
+    return () => window.removeEventListener(QUICK_CHAT_UPDATED_EVENT, handleQuickChatUpdated);
+  }, [addSelectionHighlight, buildSelectionSegmentsFromText, rebindThreadIdToSession, subjectId]);
 
   const streamAssistantReply = useCallback(async (
     threadId: string,
@@ -2332,42 +2677,33 @@ export function KnowledgeDocsPage() {
     streamAssistantReply,
   ]);
 
-  const sendThreadReply = useCallback((threadId: string, anchorId: string, selectedText: string) => {
-    if (threadStreaming[threadId]) return;
-    const question = (threadDrafts[threadId] ?? "").trim();
-    if (!question) return;
-    setThreadDrafts((prev) => ({ ...prev, [threadId]: "" }));
-    setActiveCommentThreadId(threadId);
-    setPinnedThreadId(threadId);
-    setIsAutoCommentHighlightSuppressed(false);
-    void streamAssistantReply(threadId, anchorId, selectedText, question);
-  }, [streamAssistantReply, threadDrafts, threadStreaming]);
-
   const openCommentComposer = useCallback(() => {
     if (!floatingToolbar) return;
     const toolbar = floatingToolbar;
-    if (!viewPrefs.showCommentPanel) {
-      updateViewPrefs((prev) => ({ ...prev, showCommentPanel: true }));
-    }
-    if (isCompactComment) {
-      setActiveDrawer("comment");
-    } else {
-      setIsCommentCollapsed(false);
-    }
-    setFloatingToolbar(null);
-    setFloatingInput("");
-    const showComposer = () => {
-      setFloatingComment(buildFloatingCommentFromToolbar(toolbar));
-    };
-    if (isCommentVisible) {
-      showComposer();
-      window.requestAnimationFrame(showComposer);
-      return;
-    }
-    window.requestAnimationFrame(() => {
-      window.requestAnimationFrame(showComposer);
+    const threadId = createLocalThreadId(toolbar.anchorId);
+    const segments = captureSelectionSegments();
+    addSelectionHighlight(threadId, toolbar.anchorId, toolbar.selectedText, segments.length > 0 ? segments : undefined);
+    setActiveCommentThreadId(threadId);
+    setPinnedThreadId(threadId);
+    setIsAutoCommentHighlightSuppressed(false);
+    const selectionContext = buildSelectionContextPayload(contentAreaRef.current, toolbar.anchorId, toolbar.selectedText);
+    openAiInteraction({
+      sessionId: null,
+      draft: "",
+      source: "quick_chat",
+      anchorId: toolbar.anchorId,
+      selectedText: toolbar.selectedText,
+      selectionContext,
+      clientThreadId: threadId,
+      newSession: true,
+      showSelectionContext: true,
     });
-  }, [buildFloatingCommentFromToolbar, floatingToolbar, isCommentVisible, isCompactComment, updateViewPrefs, viewPrefs.showCommentPanel]);
+    setIsSettingsPanelOpen(false);
+    setFloatingToolbar(null);
+    setFloatingComment(null);
+    setFloatingInput("");
+    clearSelectionHighlight();
+  }, [addSelectionHighlight, captureSelectionSegments, clearSelectionHighlight, createLocalThreadId, floatingToolbar, openAiInteraction]);
 
   // Feishu-style: detect text selection and show a small ask-AI action first.
   const handleTextSelect = useCallback(() => {
@@ -2386,7 +2722,12 @@ export function KnowledgeDocsPage() {
     const contentArea = contentAreaRef.current;
     if (contentArea && !contentArea.contains(range.commonAncestorContainer)) return;
     if (rect.width < 1 && rect.height < 1) return;
+    const visibleClientRects = Array.from(range.getClientRects()).filter(
+      (item) => item.width > 1 && item.height > 1
+    );
+    const anchorRect = visibleClientRects[0] ?? rect;
     const containerRect = container.getBoundingClientRect();
+    const contentAreaRect = contentArea?.getBoundingClientRect();
 
     // Find nearest heading above the selection
     let node: Node | null = range.startContainer;
@@ -2421,13 +2762,23 @@ export function KnowledgeDocsPage() {
     const contentTop = rect.top - containerRect.top + container.scrollTop;
     const selectionViewportTop = rect.top + rect.height / 2;
     const toolbarWidth = 112;
-    const minToolbarLeft = container.scrollLeft + 12;
-    const maxToolbarLeft = container.scrollLeft + container.clientWidth - toolbarWidth - 12;
+    const contentLeft = (contentAreaRect?.left ?? containerRect.left) - containerRect.left + container.scrollLeft;
+    const contentRight = (contentAreaRect?.right ?? containerRect.right) - containerRect.left + container.scrollLeft;
+    const minToolbarLeft = Math.max(container.scrollLeft + 12, contentLeft + 8);
+    const maxToolbarLeft = Math.min(
+      container.scrollLeft + container.clientWidth - toolbarWidth - 12,
+      contentRight - toolbarWidth - 8
+    );
+    const preferredToolbarLeft = anchorRect.right - containerRect.left + container.scrollLeft + 8;
+    const fallbackToolbarLeft = anchorRect.right - containerRect.left + container.scrollLeft - toolbarWidth;
     const toolbarLeft = Math.max(
       minToolbarLeft,
-      Math.min(maxToolbarLeft, rect.right - containerRect.left + container.scrollLeft + 8)
+      Math.min(maxToolbarLeft, preferredToolbarLeft <= maxToolbarLeft ? preferredToolbarLeft : fallbackToolbarLeft)
     );
-    const toolbarTop = Math.max(container.scrollTop + 10, contentTop - 44);
+    const toolbarTop = Math.max(
+      container.scrollTop + 10,
+      anchorRect.top - containerRect.top + container.scrollTop - 46
+    );
 
     setFloatingComment(null);
     setFloatingToolbar({
@@ -2625,6 +2976,102 @@ export function KnowledgeDocsPage() {
     }
     setActiveHeading(thread.anchorId);
   }, [commentThreadById, flashHeading, selectionHighlights]);
+
+  const jumpToSelectionLocation = useCallback((detail: SelectionJumpEventDetail): boolean => {
+    if (detail.subjectId && detail.subjectId !== subjectId) {
+      return true;
+    }
+    const anchorId = detail.anchorId?.trim() ?? "";
+    const selectedText = detail.selectedText?.trim() ?? "";
+    if (!anchorId || !hasRenderedMarkdown) {
+      return false;
+    }
+
+    const container = scrollRef.current;
+    const contentRoot = contentAreaRef.current;
+    if (!container || !contentRoot) {
+      return false;
+    }
+
+    const heading = contentRoot.querySelector(`[data-heading-id="${anchorId}"]`) as HTMLElement | null;
+    const threadId = detail.sessionId?.trim() || `jump-${anchorId}-${selectedText.slice(0, 16)}`;
+    const segments = selectedText ? buildSelectionSegmentsFromText(anchorId, selectedText) : [];
+
+    if (selectedText && segments.length > 0) {
+      addSelectionHighlight(threadId, anchorId, selectedText, segments);
+      setActiveCommentThreadId(threadId);
+      setPinnedThreadId(threadId);
+      setIsAutoCommentHighlightSuppressed(false);
+
+      const targetTop = Math.min(...segments.map((segment) => segment.top));
+      const targetBottom = Math.max(...segments.map((segment) => segment.top + segment.height));
+      const targetCenter = (targetTop + targetBottom) / 2;
+      const maxScrollTop = Math.max(0, container.scrollHeight - container.clientHeight);
+      const nextTop = Math.max(0, Math.min(maxScrollTop, targetCenter - container.clientHeight / 2));
+      activeHeadingLockRef.current = anchorId;
+      setActiveHeading((prev) => (prev === anchorId ? prev : anchorId));
+      container.scrollTo({ top: nextTop, behavior: "smooth" });
+      if (heading) {
+        flashHeading(heading);
+      }
+      return true;
+    }
+
+    if (heading) {
+      scrollToHeading(anchorId);
+      if (selectedText) {
+        setActiveCommentThreadId(threadId);
+        setPinnedThreadId(threadId);
+        setIsAutoCommentHighlightSuppressed(false);
+      }
+      return true;
+    }
+
+    return false;
+  }, [addSelectionHighlight, buildSelectionSegmentsFromText, flashHeading, hasRenderedMarkdown, scrollToHeading, subjectId]);
+
+  useEffect(() => {
+    const handleSelectionJump = (event: Event) => {
+      const detail = (event as CustomEvent<SelectionJumpEventDetail>).detail;
+      if (!detail) {
+        return;
+      }
+      const handled = jumpToSelectionLocation(detail);
+      pendingSelectionJumpRef.current = handled ? null : detail;
+    };
+
+    window.addEventListener(SELECTION_JUMP_EVENT, handleSelectionJump);
+    return () => window.removeEventListener(SELECTION_JUMP_EVENT, handleSelectionJump);
+  }, [jumpToSelectionLocation]);
+
+  useEffect(() => {
+    const state = location.state as KnowledgeDocsLocationState | null;
+    const detail = state?.selectionJump ?? null;
+    if (!detail) {
+      return;
+    }
+    const marker = state?.selectionJumpAt ?? 0;
+    if (handledRouteSelectionJumpRef.current === marker) {
+      return;
+    }
+    handledRouteSelectionJumpRef.current = marker;
+    const handled = jumpToSelectionLocation(detail);
+    pendingSelectionJumpRef.current = handled ? null : detail;
+  }, [jumpToSelectionLocation, location.state]);
+
+  useEffect(() => {
+    const pending = pendingSelectionJumpRef.current;
+    if (!pending || !hasRenderedMarkdown) {
+      return;
+    }
+    const rafId = window.requestAnimationFrame(() => {
+      if (pendingSelectionJumpRef.current && jumpToSelectionLocation(pendingSelectionJumpRef.current)) {
+        pendingSelectionJumpRef.current = null;
+      }
+    });
+    return () => window.cancelAnimationFrame(rafId);
+  }, [hasRenderedMarkdown, jumpToSelectionLocation, renderedMarkdown]);
+
   const highlightTopByThreadId = useMemo(() => {
     const next = new Map<string, number>();
     for (const highlight of selectionHighlights) {
@@ -3117,14 +3564,6 @@ export function KnowledgeDocsPage() {
     }
   }, [centerThreadInViewport, commentThreadById, isCompactComment, updateViewPrefs, viewPrefs.showCommentPanel]);
 
-  const locateCommentThread = useCallback((threadId: string) => {
-    focusCommentThread(threadId, {
-      scrollToDoc: false,
-      pinToSelection: true,
-      scrollThreadIntoView: isCompactComment,
-    });
-  }, [focusCommentThread, isCompactComment]);
-
   const jumpCommentThread = useCallback((direction: -1 | 1) => {
     if (commentThreadIds.length === 0) return;
     const baseIndex = activeCommentIndex < 0 ? 0 : activeCommentIndex;
@@ -3141,13 +3580,59 @@ export function KnowledgeDocsPage() {
   const openAiInteractionFromThread = useCallback((threadId?: string) => {
     if (!subjectId) return;
     const targetThreadId = threadId ?? activeThreadId ?? commentThreadIds[0] ?? null;
+    const targetThread = targetThreadId ? commentThreadById.get(targetThreadId) ?? null : null;
+    const targetHighlight = targetThreadId
+      ? selectionHighlights.find((item) => item.threadId === targetThreadId) ?? null
+      : null;
     const targetSessionId = targetThreadId ? (threadSessionIds[targetThreadId] ?? null) : null;
+    const anchorId = targetThread?.anchorId ?? targetHighlight?.anchorId ?? "";
+    const selectedText = targetThread?.selectedText ?? targetHighlight?.selectedText ?? "";
     if (targetSessionId) {
+      if (anchorId && selectedText) {
+        openAiInteraction({
+          sessionId: targetSessionId,
+          source: "quick_chat",
+          anchorId,
+          selectedText,
+          selectionContext: buildSelectionContextPayload(contentAreaRef.current, anchorId, selectedText),
+          showSelectionContext: false,
+        });
+        return;
+      }
       openAiInteraction({ sessionId: targetSessionId });
       return;
     }
+    if (targetThreadId && anchorId && selectedText) {
+      openAiInteraction({
+        sessionId: null,
+        draft: "",
+        source: "quick_chat",
+        anchorId,
+        selectedText,
+        selectionContext: buildSelectionContextPayload(contentAreaRef.current, anchorId, selectedText),
+        clientThreadId: targetThreadId,
+        newSession: true,
+        showSelectionContext: true,
+      });
+      return;
+    }
     openAiInteraction();
-  }, [activeThreadId, commentThreadIds, openAiInteraction, subjectId, threadSessionIds]);
+  }, [activeThreadId, commentThreadById, commentThreadIds, openAiInteraction, selectionHighlights, subjectId, threadSessionIds]);
+
+  const openSelectionHighlightThread = useCallback((threadId: string) => {
+    if (viewPrefs.showCommentPanel && commentThreadById.has(threadId)) {
+      focusCommentThread(threadId, {
+        scrollToDoc: false,
+        pinToSelection: true,
+        scrollThreadIntoView: isCompactComment,
+      });
+    } else {
+      setActiveCommentThreadId(threadId);
+      setPinnedThreadId(threadId);
+      setIsAutoCommentHighlightSuppressed(false);
+    }
+    openAiInteractionFromThread(threadId);
+  }, [commentThreadById, focusCommentThread, isCompactComment, openAiInteractionFromThread, viewPrefs.showCommentPanel]);
 
   const closeCommentPanel = useCallback(() => {
     if (isCompactComment) {
@@ -3464,18 +3949,14 @@ export function KnowledgeDocsPage() {
                   }
                 }}
               >
-                <CommentThread
-                  anchorId={thread.anchorId}
-                  comments={thread.comments}
-                  selectedText={thread.selectedText}
-                  draft={threadDrafts[thread.threadId] ?? ""}
-                  isStreaming={Boolean(threadStreaming[thread.threadId])}
-                  isActive={highlightedThreadId === thread.threadId}
-                  onDraftChange={(value) => updateThreadDraft(thread.threadId, value)}
-                  onSend={() => sendThreadReply(thread.threadId, thread.anchorId, thread.selectedText)}
-                  onFocus={() => focusCommentThread(thread.threadId, { scrollToDoc: false, scrollThreadIntoView: false })}
-                  onJumpToAnchor={(id) => {
-                    setActiveCommentThreadId(thread.threadId);
+                  <CommentThread
+                    anchorId={thread.anchorId}
+                    comments={thread.comments}
+                    selectedText={thread.selectedText}
+                    isActive={highlightedThreadId === thread.threadId}
+                    onFocus={() => focusCommentThread(thread.threadId, { scrollToDoc: false, scrollThreadIntoView: false })}
+                    onJumpToAnchor={(id) => {
+                      setActiveCommentThreadId(thread.threadId);
                     setPinnedThreadId(thread.threadId);
                     setIsAutoCommentHighlightSuppressed(false);
                     scrollToHeading(id);
@@ -3585,11 +4066,7 @@ export function KnowledgeDocsPage() {
                       anchorId={thread.anchorId}
                       comments={thread.comments}
                       selectedText={thread.selectedText}
-                      draft={threadDrafts[thread.threadId] ?? ""}
-                      isStreaming={Boolean(threadStreaming[thread.threadId])}
                       isActive={highlightedThreadId === thread.threadId}
-                      onDraftChange={(value) => updateThreadDraft(thread.threadId, value)}
-                      onSend={() => sendThreadReply(thread.threadId, thread.anchorId, thread.selectedText)}
                       onFocus={() => focusCommentThread(thread.threadId, {
                         pinToSelection: true,
                         scrollThreadIntoView: false,
@@ -3613,7 +4090,7 @@ export function KnowledgeDocsPage() {
   const desktopCommentWidthClass = "w-[clamp(18rem,23vw,26rem)]";
   const pageShellMaxWidthClass = pageWideMode ? "max-w-none" : showDesktopCommentPanel ? "max-w-[1480px]" : "max-w-[1120px]";
   const docColumnMaxWidthClass = pageWideMode ? "max-w-none" : showDesktopCommentPanel ? "max-w-[920px]" : "max-w-[980px]";
-  const showFloatingActions = Boolean(subjectId && !isBuildActive && !showDocGeneratingState);
+  const showFloatingActions = Boolean(subjectId && !isBuildActive && !showDocGeneratingState && !isAssistantOpen);
 
   if (!hasRenderedMarkdown && (isBuildActive || isWaitingForRequestedBuild || showDocGeneratingState)) {
     return (
@@ -3757,7 +4234,7 @@ export function KnowledgeDocsPage() {
       )}
 
       <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
-        {!isCompactComment && viewPrefs.showCommentPanel && isCommentCollapsed && (
+        {!isCompactComment && viewPrefs.showCommentPanel && isCommentCollapsed && !shouldHideCommentPanelForAssistant && (
           <aside className="absolute right-4 top-4 z-20 hidden lg:flex">
             <button
               onClick={() => setIsCommentCollapsed(false)}
@@ -3859,7 +4336,7 @@ export function KnowledgeDocsPage() {
                 <button
                   key={`${highlight.id}-${index}`}
                   type="button"
-                  onClick={() => locateCommentThread(highlight.threadId)}
+                  onClick={() => openSelectionHighlightThread(highlight.threadId)}
                   data-highlight-thread-id={highlight.threadId}
                   className={cn(
                     "group absolute z-30 rounded-[2px] transition-[background-color,box-shadow] duration-150 focus-visible:outline-none",
@@ -3938,28 +4415,53 @@ export function KnowledgeDocsPage() {
       {showFloatingActions && isSettingsPanelOpen && (
         <div
           ref={settingsPanelRef}
-          className="fixed bottom-20 right-6 z-[87] w-[min(22rem,calc(100vw-2rem))] overflow-hidden rounded-3xl border border-slate-200/90 bg-white/96 shadow-[0_22px_60px_-32px_rgba(15,23,42,0.36)] backdrop-blur-xl"
+          className="fixed bottom-[11.75rem] right-6 z-[87] w-[min(23rem,calc(100vw-2rem))] overflow-hidden rounded-2xl border border-slate-200/90 bg-white/96 shadow-[0_22px_60px_-32px_rgba(15,23,42,0.42)] backdrop-blur-xl"
         >
           <div className="border-b border-slate-200/80 px-4 py-3">
-            <p className="text-sm font-semibold text-slate-900">页面设置</p>
-            <p className="mt-1 text-xs leading-5 text-slate-500">切换文档页的阅读宽度与侧栏显示方式。</p>
+            <p className="text-sm font-semibold text-slate-900">学科设置</p>
+            <p className="mt-1 text-xs leading-5 text-slate-500">仅作用于当前学科的知识文档阅读体验。</p>
           </div>
           <div className="p-3">
             <button
               type="button"
               onClick={() => {
+                updateViewPrefs((prev) => ({ ...prev, showCommentPanel: !prev.showCommentPanel }));
+                if (!viewPrefs.showCommentPanel) {
+                  setIsCommentCollapsed(false);
+                }
+              }}
+              className="flex w-full items-center justify-between rounded-xl px-3 py-3 text-left transition hover:bg-slate-50"
+              aria-pressed={viewPrefs.showCommentPanel}
+            >
+              <div className="flex min-w-0 items-start gap-3">
+                <span className="mt-0.5 inline-flex h-8 w-8 items-center justify-center rounded-lg bg-sky-50 text-sky-600">
+                  <Bot className="h-4 w-4" />
+                </span>
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-slate-900">显示问问 AI 列</p>
+                  <p className="mt-1 text-xs leading-5 text-slate-500">打开后只展示划词问答记录；新的划词对话仍从右侧 AI 面板开始。</p>
+                </div>
+              </div>
+              <span className={cn("ml-3 flex h-6 w-11 shrink-0 rounded-full p-0.5 transition", viewPrefs.showCommentPanel ? "bg-slate-900" : "bg-slate-200")}>
+                <span className={cn("h-5 w-5 rounded-full bg-white shadow-sm transition", viewPrefs.showCommentPanel ? "translate-x-5" : "translate-x-0")} />
+              </span>
+            </button>
+            <div className="my-2 h-px bg-slate-100" />
+            <button
+              type="button"
+              onClick={() => {
                 updateViewPrefs((prev) => ({ ...prev, widePage: !prev.widePage }));
               }}
-              className="flex w-full items-center justify-between rounded-2xl px-3 py-3 text-left transition hover:bg-slate-50"
+              className="flex w-full items-center justify-between rounded-xl px-3 py-3 text-left transition hover:bg-slate-50"
               aria-pressed={pageWideMode}
             >
               <div className="flex min-w-0 items-start gap-3">
-                <span className="mt-0.5 inline-flex h-8 w-8 items-center justify-center rounded-xl bg-slate-100 text-slate-600">
+                <span className="mt-0.5 inline-flex h-8 w-8 items-center justify-center rounded-lg bg-slate-100 text-slate-600">
                   <ExternalLink className="h-4 w-4" />
                 </span>
                 <div className="min-w-0">
                   <p className="text-sm font-medium text-slate-900">宽页模式</p>
-                  <p className="mt-1 text-xs leading-5 text-slate-500">正文根据剩余空间自适应铺开，目录和问答栏同步扩展。</p>
+                  <p className="mt-1 text-xs leading-5 text-slate-500">正文根据剩余空间自适应铺开。</p>
                 </div>
               </div>
               <span className={cn("ml-3 flex h-6 w-11 shrink-0 rounded-full p-0.5 transition", pageWideMode ? "bg-slate-900" : "bg-slate-200")}>
@@ -3974,11 +4476,11 @@ export function KnowledgeDocsPage() {
                   setIsTocCollapsed(false);
                 }
               }}
-              className="flex w-full items-center justify-between rounded-2xl px-3 py-3 text-left transition hover:bg-slate-50"
+              className="flex w-full items-center justify-between rounded-xl px-3 py-3 text-left transition hover:bg-slate-50"
               aria-pressed={viewPrefs.showToc}
             >
               <div className="flex min-w-0 items-start gap-3">
-                <span className="mt-0.5 inline-flex h-8 w-8 items-center justify-center rounded-xl bg-slate-100 text-slate-600">
+                <span className="mt-0.5 inline-flex h-8 w-8 items-center justify-center rounded-lg bg-slate-100 text-slate-600">
                   <FileText className="h-4 w-4" />
                 </span>
                 <div className="min-w-0">
@@ -3990,30 +4492,6 @@ export function KnowledgeDocsPage() {
                 <span className={cn("h-5 w-5 rounded-full bg-white shadow-sm transition", viewPrefs.showToc ? "translate-x-5" : "translate-x-0")} />
               </span>
             </button>
-            <button
-              type="button"
-              onClick={() => {
-                updateViewPrefs((prev) => ({ ...prev, showCommentPanel: !prev.showCommentPanel }));
-                if (!viewPrefs.showCommentPanel) {
-                  setIsCommentCollapsed(false);
-                }
-              }}
-              className="flex w-full items-center justify-between rounded-2xl px-3 py-3 text-left transition hover:bg-slate-50"
-              aria-pressed={viewPrefs.showCommentPanel}
-            >
-              <div className="flex min-w-0 items-start gap-3">
-                <span className="mt-0.5 inline-flex h-8 w-8 items-center justify-center rounded-xl bg-slate-100 text-slate-600">
-                  <Bot className="h-4 w-4" />
-                </span>
-                <div className="min-w-0">
-                  <p className="text-sm font-medium text-slate-900">显示问答栏</p>
-                  <p className="mt-1 text-xs leading-5 text-slate-500">显示右侧 AI 问答会话区，并让划词追问对齐到对应段落。</p>
-                </div>
-              </div>
-              <span className={cn("ml-3 flex h-6 w-11 shrink-0 rounded-full p-0.5 transition", viewPrefs.showCommentPanel ? "bg-slate-900" : "bg-slate-200")}>
-                <span className={cn("h-5 w-5 rounded-full bg-white shadow-sm transition", viewPrefs.showCommentPanel ? "translate-x-5" : "translate-x-0")} />
-              </span>
-            </button>
           </div>
         </div>
       )}
@@ -4023,11 +4501,12 @@ export function KnowledgeDocsPage() {
           ref={settingsButtonRef}
           type="button"
           onClick={() => setIsSettingsPanelOpen((prev) => !prev)}
-          className="fixed bottom-6 right-6 z-[88] inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-zinc-200/80 bg-white/95 text-zinc-700 shadow-[0_2px_8px_rgba(0,0,0,0.04),0_8px_24px_rgba(0,0,0,0.06)] backdrop-blur-xl transition duration-300 hover:border-zinc-300 hover:bg-white hover:text-zinc-900 active:scale-[0.98]"
-          aria-label="打开页面设置"
+          className="fixed bottom-32 right-6 z-[88] inline-flex h-11 items-center gap-2 rounded-2xl border border-zinc-200/80 bg-white/95 px-3 text-[14px] font-medium text-zinc-700 shadow-[0_2px_8px_rgba(0,0,0,0.04),0_8px_24px_rgba(0,0,0,0.06)] backdrop-blur-xl transition duration-300 hover:border-zinc-300 hover:bg-white hover:text-zinc-900 active:scale-[0.98]"
+          aria-label="打开学科设置"
           aria-expanded={isSettingsPanelOpen}
         >
           <SlidersHorizontal className="h-4 w-4" />
+          <span className="hidden sm:inline">学科设置</span>
         </button>
       )}
 
@@ -4049,12 +4528,16 @@ export function KnowledgeDocsPage() {
 
       {/* Graph Drawer Panel */}
       <div
+        ref={graphDrawerRef}
         className={cn(
           "fixed top-0 bottom-0 right-0 z-[84] bg-slate-50 border-l border-zinc-200/80 shadow-[0_0_40px_rgba(0,0,0,0.15)] flex",
           isGraphDrawerOpen && subjectId ? "translate-x-0 pointer-events-auto" : "translate-x-full pointer-events-none",
           !isGraphDragging && "transition-transform duration-300 ease-[cubic-bezier(0.2,0.8,0.2,1)]"
         )}
-        style={{ width: graphPanelWidth }}
+        style={{
+          width: graphPanelWidth,
+          willChange: isGraphDragging ? "width" : undefined,
+        }}
       >
         <div
           className={cn(

@@ -119,6 +119,8 @@ export interface SseTokenPayload {
 
 export interface SseDonePayload {
   turn_id?: string;
+  session_id?: string;
+  session_title?: string;
   contexts?: unknown;
 }
 

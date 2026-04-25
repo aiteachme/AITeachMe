@@ -63,6 +63,13 @@ export function AiInteractionProvider({ activeScope, children }: AiInteractionPr
       key: requestSeqRef.current,
       sessionId: options?.sessionId,
       draft: options?.draft,
+      source: options?.source,
+      anchorId: options?.anchorId,
+      selectedText: options?.selectedText,
+      selectionContext: options?.selectionContext,
+      clientThreadId: options?.clientThreadId,
+      newSession: options?.newSession,
+      showSelectionContext: options?.showSelectionContext,
     };
   }, []);
 
