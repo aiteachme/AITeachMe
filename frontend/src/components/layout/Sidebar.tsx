@@ -573,9 +573,9 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
           ) : null}
         </div>
 
-        <div className="min-h-0 flex-1 space-y-1 overflow-y-auto overflow-x-hidden px-3 pb-4 scrollbar-thin scrollbar-webkit">
+        <div className="min-h-0 flex-1 space-y-0.5 overflow-y-auto overflow-x-hidden px-2.5 pb-4 scrollbar-thin scrollbar-webkit">
           {!effectiveCollapsed ? (
-            <div className="flex items-center gap-1.5 px-2 pb-2 pt-1">
+            <div className="flex items-center gap-1.5 px-1.5 pb-2 pt-1">
               <span className="whitespace-nowrap text-[11px] font-medium tracking-[0.08em] text-slate-400">学科</span>
               {isLoading ? <Loader2 className="h-3 w-3 animate-spin text-slate-400 dark:text-slate-500" /> : null}
             </div>
@@ -596,11 +596,11 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
               <div key={subject.subject_id} className="relative">
                 <div
                   className={cn(
-                    "group flex items-center gap-1 rounded-lg transition-colors",
+                    "group flex items-center gap-0.5 rounded-md transition-colors",
                     !effectiveCollapsed && isSubjectRouteActive
-                      ? "bg-[#f7f9fb] ring-1 ring-[#e3e8ee] dark:bg-slate-800/60 dark:ring-slate-700/50"
+                      ? "bg-slate-50/80 dark:bg-slate-800/45"
                       : !effectiveCollapsed
-                        ? "hover:bg-slate-100/60 dark:hover:bg-slate-800/40"
+                        ? "hover:bg-slate-100/55 dark:hover:bg-slate-800/35"
                         : "",
                   )}
                 >
@@ -618,17 +618,17 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
                     }}
                     className={cn(
                       "flex items-center transition-colors",
-                      effectiveCollapsed ? "h-8 w-full justify-center rounded px-0" : "flex-1 rounded-lg px-2 py-2",
+                      effectiveCollapsed ? "h-8 w-full justify-center rounded px-0" : "h-8 flex-1 rounded-md px-1.5 py-1",
                     )}
                     title={effectiveCollapsed ? displayName : undefined}
                   >
                     <div className={cn("flex shrink-0 items-center justify-center font-bold text-white shadow-sm", 
-                      effectiveCollapsed ? "h-6 w-6 rounded text-[11px]" : "h-7 w-7 rounded-md text-xs",
+                      effectiveCollapsed ? "h-6 w-6 rounded text-[11px]" : "h-6 w-6 rounded-md text-[11px]",
                       badgeClass
                     )}>
-                      <SubjectIcon className={cn(effectiveCollapsed ? "h-3.5 w-3.5" : "h-4 w-4")} strokeWidth={2.2} />
+                      <SubjectIcon className="h-3.5 w-3.5" strokeWidth={2.2} />
                     </div>
-                    {!effectiveCollapsed ? <span className="ml-2 truncate text-sm font-medium text-slate-700 dark:text-slate-300">{displayName}</span> : null}
+                    {!effectiveCollapsed ? <span className="ml-2 truncate text-[13px] font-medium leading-5 text-slate-700 dark:text-slate-300">{displayName}</span> : null}
                   </button>
 
                   {!effectiveCollapsed ? (
@@ -636,10 +636,10 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
                       <button
                         type="button"
                         onClick={() => setOpenMenuId((prev) => (prev === subject.subject_id ? null : subject.subject_id))}
-                        className="flex h-8 w-8 items-center justify-center rounded-md text-slate-400 opacity-100 transition hover:bg-slate-100 hover:text-slate-700 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-300 sm:opacity-0 sm:group-hover:opacity-100"
+                        className="flex h-7 w-7 items-center justify-center rounded-md text-slate-400 opacity-100 transition hover:bg-slate-100 hover:text-slate-700 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-300 sm:opacity-0 sm:group-hover:opacity-100"
                         title="更多操作"
                       >
-                        <MoreVertical className="h-4 w-4" />
+                        <MoreVertical className="h-3.5 w-3.5" />
                       </button>
 
                       {openMenuId === subject.subject_id ? (
@@ -689,7 +689,7 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
                 </div>
 
                 {!effectiveCollapsed && expanded ? (
-                  <div className="ml-6 mt-1 space-y-1 border-l border-slate-200 pl-3">
+                  <div className="ml-5 mt-1 space-y-0.5 border-l border-slate-200/70 pl-2.5 dark:border-slate-700/60">
                     {MODULES.map((moduleItem) => {
                       const path = `/subject/${subject.subject_id}/${moduleItem.id}`;
                       const isActive = location.pathname === path;
@@ -700,13 +700,13 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
                           to={path}
                           onClick={() => setIsMobileOpen(false)}
                           className={cn(
-                            "flex min-h-10 items-center overflow-hidden whitespace-nowrap rounded-md px-2.5 py-2 text-sm transition-colors",
+                            "flex min-h-8 items-center overflow-hidden whitespace-nowrap rounded-md px-2 py-1.5 text-[13px] leading-5 transition-colors",
                             isActive
-                              ? "bg-[#eef3f8] text-[#1f2937] ring-1 ring-[#d9e2ec] font-medium dark:bg-slate-800 dark:text-slate-200 dark:ring-slate-700"
+                              ? "bg-[#edf3f8] font-medium text-[#243246] dark:bg-slate-800 dark:text-slate-200"
                               : "text-slate-500 hover:bg-slate-50 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-slate-800/40 dark:hover:text-slate-200",
                           )}
                         >
-                          <Icon className={cn("mr-2.5 h-4 w-4", isActive ? "text-[#556b86] dark:text-slate-300" : undefined)} />
+                          <Icon className={cn("mr-2 h-3.5 w-3.5", isActive ? "text-[#556b86] dark:text-slate-300" : undefined)} />
                           {moduleItem.name}
                         </Link>
                       );
