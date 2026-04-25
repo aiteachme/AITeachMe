@@ -11,6 +11,11 @@ from sqlmodel import select
 
 from app.models.knowledge import RetrievalChunk
 from app.shared.infra.database import managed_session
+from app.shared.infra.llm_support.common import (
+    LLMRuntimeSnapshot,
+    capture_llm_runtime_snapshot,
+    use_llm_runtime_snapshot,
+)
 from app.repositories.files_repo import list_raw_files_by_ids
 from app.shared.infra.knowledge.build_store import (
     release_knowledge_build_lock,
@@ -106,6 +111,7 @@ async def run_graph_docs_sync_after_doc_build(
     build_session_id: str,
     file_ids: list[int],
     prompt: str | None,
+    llm_snapshot: LLMRuntimeSnapshot | None = None,
 ) -> dict[str, int | str]:
     """Re-sync knowledge units and knowledge images from the latest knowledge document."""
 
@@ -146,11 +152,12 @@ async def run_graph_docs_sync_after_doc_build(
         knowledge_doc_chapter_count=len(doc_chapter_metadatas),
         current_stage_description="正在从最新知识文档同步知识点、知识图像和关系。",
     )
-    sync_result = await run_graph_docs_sync_workflow(
-        subject=subject,
-        markdown=knowledge_doc_markdown,
-        build_session_id=build_session_id,
-    )
+    with use_llm_runtime_snapshot(llm_snapshot):
+        sync_result = await run_graph_docs_sync_workflow(
+            subject=subject,
+            markdown=knowledge_doc_markdown,
+            build_session_id=build_session_id,
+        )
     if sync_result.failed:
         raise RuntimeError(sync_result.error.detail)
 
@@ -178,6 +185,7 @@ async def run_graph_file_ingest_background(
     build_group_id: str,
     build_session_id: str,
     doc_chapter_metadatas: list[dict[str, object]] | None = None,
+    llm_snapshot: LLMRuntimeSnapshot | None = None,
 ) -> dict[str, int]:
     """Build graph candidates from parsed files without owning the outer build lock."""
 
@@ -200,14 +208,15 @@ async def run_graph_file_ingest_background(
         current_stage_description="正在从已解析文件抽取候选并构建图谱。",
     )
     _cleanup_pending_digest_outputs(subject)
-    result = await run_graph_file_ingest_workflow(
-        subject=subject,
-        job_id=_new_graph_run_id(),
-        file_ids=file_ids,
-        user_prompt=prompt,
-        build_session_id=build_session_id,
-        doc_chapter_metadatas=doc_chapter_metadatas,
-    )
+    with use_llm_runtime_snapshot(llm_snapshot):
+        result = await run_graph_file_ingest_workflow(
+            subject=subject,
+            job_id=_new_graph_run_id(),
+            file_ids=file_ids,
+            user_prompt=prompt,
+            build_session_id=build_session_id,
+            doc_chapter_metadatas=doc_chapter_metadatas,
+        )
     if result.failed:
         raise RuntimeError(result.error.detail)
 
@@ -226,6 +235,7 @@ async def run_graph_build_background(
     build_group_id: str,
 ) -> None:
     build_session_id = _new_build_session_id()
+    llm_snapshot = capture_llm_runtime_snapshot()
     try:
         knowledge_doc_markdown, _knowledge_doc_source = load_knowledge_doc_markdown(subject)
         doc_chapter_metadatas = extract_doc_chapter_metadatas(knowledge_doc_markdown)
@@ -262,6 +272,7 @@ async def run_graph_build_background(
                 build_session_id=build_session_id,
                 file_ids=file_ids,
                 prompt=prompt,
+                llm_snapshot=llm_snapshot,
             )
 
         _write_graph_status(
@@ -294,6 +305,7 @@ async def run_graph_build_background(
             build_group_id=build_group_id,
             build_session_id=build_session_id,
             doc_chapter_metadatas=doc_chapter_metadatas,
+            llm_snapshot=llm_snapshot,
         )
 
         _write_graph_status(
@@ -349,6 +361,7 @@ async def run_graph_file_ingest_debug_background(
     """Run only the kg_file_ingest lane as a standalone debug action."""
 
     build_session_id = _new_build_session_id()
+    llm_snapshot = capture_llm_runtime_snapshot()
     try:
         if not file_ids:
             _write_graph_status(
@@ -396,6 +409,7 @@ async def run_graph_file_ingest_debug_background(
             build_group_id=build_group_id,
             build_session_id=build_session_id,
             doc_chapter_metadatas=[],
+            llm_snapshot=llm_snapshot,
         )
         _write_graph_status(
             subject,
@@ -448,6 +462,7 @@ async def run_graph_docs_sync_debug_background(
     """Run only the kg_docs_sync lane as a standalone debug action."""
 
     build_session_id = _new_build_session_id()
+    llm_snapshot = capture_llm_runtime_snapshot()
     try:
         knowledge_doc_markdown, knowledge_doc_source = load_knowledge_doc_markdown(subject)
         if not knowledge_doc_markdown.strip():
@@ -471,6 +486,7 @@ async def run_graph_docs_sync_debug_background(
             build_session_id=build_session_id,
             file_ids=[],
             prompt=prompt,
+            llm_snapshot=llm_snapshot,
         )
         _write_graph_status(
             subject,

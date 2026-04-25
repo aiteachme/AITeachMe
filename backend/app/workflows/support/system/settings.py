@@ -30,8 +30,6 @@ from app.shared.infra.env_support import (
 from app.shared.infra.exceptions import AITeachMeError
 from app.shared.infra.runtime import is_local_mode, resolve_app_mode
 from app.shared.infra.settings import (
-    PROJECT_SETTINGS_ENV_NAME,
-    PROJECT_SETTINGS_SOURCE_LABEL,
     Settings,
     get_project_settings,
     get_system_settings_override_payload,
@@ -440,10 +438,7 @@ def build_settings_overview_data(
         settings_source=context.settings_source,
         mode=context.mode,
         sections=_build_sections(context),
-        notes=build_settings_notes(
-            project_settings_env_name=PROJECT_SETTINGS_ENV_NAME,
-            project_settings_source_label=PROJECT_SETTINGS_SOURCE_LABEL,
-        ),
+        notes=build_settings_notes(),
     )
 
 

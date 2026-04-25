@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from functools import lru_cache
 
 from app.shared.infra.settings import get_settings
 from app.shared.infra.env_support import describe_project_settings_source
@@ -34,15 +33,15 @@ class TeachingRuntimeConfig:
     planner: PlannerRuntimeConfig
     settings_source: str
 
+
 def get_teaching_runtime_settings_source() -> str:
     """Return a human-readable project settings source description."""
 
     return describe_project_settings_source()
 
 
-@lru_cache
 def get_teaching_runtime_config() -> TeachingRuntimeConfig:
-    """Return the cached teaching runtime config."""
+    """Return the current teaching runtime config."""
 
     settings = get_settings()
     return TeachingRuntimeConfig(

@@ -37,6 +37,7 @@ from app.schemas.knowledge import (
     KnowledgeBuildStatusResponse,
 )
 from app.shared.infra.database import managed_session
+from app.shared.infra.llm_support.common import capture_llm_runtime_snapshot
 from app.shared.infra.settings import get_settings
 from app.shared.infra.storage import get_content_store, resolve_subject_storage_scope, run_store_sync
 from app.workflows.digest.planner import (
@@ -610,6 +611,7 @@ async def run_docgen_background(*, subject: str, file_ids: list[int], prompt: st
     kg_ingest_task: asyncio.Task[dict[str, int]] | None = None
     graph_seed_chapter_metadatas: list[dict[str, object]] = []
     sync_graph_after_docgen = bool(get_settings().knowledge_graph.sync_after_docgen)
+    graph_llm_snapshot = capture_llm_runtime_snapshot() if sync_graph_after_docgen else None
     docgen_published = False
     logger.info(
         "knowledge_build_background_started",
@@ -650,6 +652,7 @@ async def run_docgen_background(*, subject: str, file_ids: list[int], prompt: st
                     build_group_id=build_group_id,
                     build_session_id=build_session_id,
                     doc_chapter_metadatas=graph_seed_chapter_metadatas,
+                    llm_snapshot=graph_llm_snapshot,
                 )
             )
         result = await run_docgen_workflow(subject=subject, file_ids=file_ids, user_prompt=prompt, requested_at=requested_at, build_session_id=build_session_id, confirmed_plan=confirmed_plan_payload, planner_session_id=planner_session_id, confirmed_plan_id=confirmed_plan_id, digest_mode=resolved_digest_mode)
@@ -703,6 +706,7 @@ async def run_docgen_background(*, subject: str, file_ids: list[int], prompt: st
                     build_session_id=build_session_id,
                     file_ids=file_ids,
                     prompt=prompt,
+                    llm_snapshot=graph_llm_snapshot,
                 )
                 update_knowledge_build_lane_status(subject, lane="graph", requested_at=requested_at, build_group_id=build_group_id, status="completed", stage="completed", progress_pct=100, processed_chunks=int(ingest_metrics.get("processed_chunks", 0) or 0), current_stage_description="知识图谱与课程结构已同步完成。", metrics={"processed_chunks": int(ingest_metrics.get("processed_chunks", 0) or 0), **doc_sync_metrics})
             except Exception as exc:

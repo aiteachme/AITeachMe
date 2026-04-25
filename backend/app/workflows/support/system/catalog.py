@@ -609,21 +609,12 @@ ENV_ENTRY_KEY_MAP: dict[str, str] = {
 }
 
 
-def build_settings_notes(
-    *,
-    project_settings_env_name: str,
-    project_settings_source_label: str,
-) -> list[str]:
+def build_settings_notes() -> list[str]:
     return [
-        f"{project_settings_source_label} 始终作为项目默认值保留；如需额外项目覆盖，可配置 {project_settings_env_name} 指向外部文件。",
-        "本地模式下，服务端非敏感配置保存到 system_runtime_settings；环境变量写回本地 .env。",
+        "本地模式下，模型路由与学习引擎设置会保存到 system_runtime_settings，并在下一次调用生效。",
+        "本地模式下，密钥和 Provider 授权会写回本地 .env，并同步更新当前后端进程环境变量。",
         "云端模式下，普通用户只能查看状态，不能修改任何服务端配置。",
-        "APP_MODE、DATABASE_URL、对象存储等部署级变量不再出现在设置页里，请通过 .env、本地样例文件或部署平台环境变量管理。",
-        "多供应商场景下，后端会优先按 LLM_PROVIDER 或 LLM_BASE_URL 推断默认模型；如果手动覆盖 models.*，仍以手动覆盖为准。",
-        "LLM_API_KEY 与联网检索 Provider 的 API Key 支持英文逗号分隔多个同类 Key；后端会在每次调用时随机选择一个。需要成对配置的非密钥项（例如 GOOGLE_CX_KEY、BASE_URL）仍保持单值。",
-        "视觉理解模型用于图片、图表和截图语义理解；文档 OCR 模型用于扫描 PDF、教材页和板书照片的文本/版面提取，两者可以配置为同一模型，但能力语义保持分开。",
-        "RAG 重排序直接复用统一模型网关与凭证；只需要填写 models.rerank，不需要再单独配置一套 rerank 服务。",
-        "设置页应该覆盖所有用户侧 .env.sample 中的环境变量；如果 sample 新增了用户侧环境变量，catalog 也必须同步补上。",
+        "APP_MODE、DATABASE_URL、对象存储等部署级变量不在设置页修改，请通过 .env 或部署平台环境变量管理。",
     ]
 
 
