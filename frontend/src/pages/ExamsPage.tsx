@@ -4,10 +4,12 @@ import {
   ArrowLeft,
   ArrowRight,
   BookOpen,
+  Bookmark,
   ChevronDown,
   FileText,
   GraduationCap,
   Layers3,
+  Lightbulb,
   Loader2,
   MoreVertical,
   Plus,
@@ -630,6 +632,27 @@ function hasAnsweredQuestion(item: ExamPaperItemResponse, answers: Record<number
   return value.trim().length > 0;
 }
 
+function getQuestionMaxScore(item: ExamPaperItemResponse) {
+  const score = Number(item.score_max);
+  return Number.isFinite(score) && score > 0 ? score : 0;
+}
+
+function getExamTotalScore(paper: ExamPaperDetailResponse) {
+  const score = Number(paper.total_score);
+  if (Number.isFinite(score) && score > 0) return score;
+  return (paper.items ?? []).reduce((total, item) => total + getQuestionMaxScore(item), 0);
+}
+
+function getEstimatedExamMinutes(paper: ExamPaperDetailResponse) {
+  const itemCount = Math.max(1, paper.total_items || paper.items?.length || 1);
+  const minutesPerItem = paper.exam_mode === "paper_exam" ? 2.2 : 1.5;
+  return Math.max(8, Math.ceil(itemCount * minutesPerItem));
+}
+
+function getAnsweredCount(paper: ExamPaperDetailResponse, answers: Record<number, string>) {
+  return (paper.items ?? []).filter((item) => hasAnsweredQuestion(item, answers)).length;
+}
+
 function ExamStageHeader({
   currentStep,
   onBack,
@@ -1240,19 +1263,13 @@ function ExamPaperWorkspace({ subjectId, paperId, backHref }: ExamPaperWorkspace
               </aside>
 
               <div
-                className="space-y-8 transition-all duration-150"
+                className="transition-all duration-150"
                 style={{
                   zoom: pageScale,
                 }}
               >
-                <section className="px-1 py-2 text-center">
-                  <h1 className="text-3xl font-semibold tracking-[-0.04em] text-slate-950 sm:text-4xl">
-                    {buildExamTitle(paper)}
-                  </h1>
-                </section>
-
-                <section
-                  className="space-y-8"
+                <div
+                  className="relative mx-auto max-w-[1080px] pb-12"
                   style={
                     pageScale < 1
                       ? {
@@ -1263,7 +1280,30 @@ function ExamPaperWorkspace({ subjectId, paperId, backHref }: ExamPaperWorkspace
                       : undefined
                   }
                 >
-                  {(paper.items ?? []).map((item: ExamPaperItemResponse) => {
+                  <div className="absolute -right-5 top-5 bottom-8 hidden w-full border border-slate-200 bg-white shadow-[0_18px_36px_rgba(15,23,42,0.08)] lg:block" />
+                  <div className="absolute -right-2 top-2 bottom-4 hidden w-full border border-slate-200 bg-white shadow-[0_14px_30px_rgba(15,23,42,0.06)] lg:block" />
+                  <article className="relative overflow-hidden border border-slate-200 bg-white shadow-[0_26px_70px_rgba(15,23,42,0.15)]">
+                    <header className="px-6 pb-6 pt-12 text-center sm:px-10 sm:pt-16 lg:px-16">
+                      <h1 className="font-serif text-3xl font-bold tracking-[0.08em] text-slate-950 sm:text-4xl">
+                        {formatModeLabel(paper.exam_mode)}
+                      </h1>
+                      <div className="mx-auto mt-5 flex max-w-md items-center justify-center gap-3 text-slate-400">
+                        <span className="h-px flex-1 bg-slate-300" />
+                        <span className="h-2 w-2 rotate-45 bg-slate-800" />
+                        <span className="h-px flex-1 bg-slate-300" />
+                      </div>
+                      <p className="mt-4 font-serif text-base font-semibold text-slate-600">
+                        本试卷共 {paper.total_items} 题，满分 {getExamTotalScore(paper)} 分，预计用时 {getEstimatedExamMinutes(paper)} 分钟
+                      </p>
+                      <div className="mt-8 border-b border-dashed border-slate-300 pb-5 text-left font-serif text-sm leading-8 text-slate-700 sm:text-base">
+                        <p className="font-bold text-slate-800">注意事项：</p>
+                        <p>1. 请在作答区内选择或填写答案，系统会自动保存当前选择。</p>
+                        <p>2. 可使用右侧工具调整页面与字体大小；提交前请检查左侧题号状态。</p>
+                      </div>
+                    </header>
+
+                    <div className="px-4 pb-8 sm:px-8 lg:px-14">
+                      {(paper.items ?? []).map((item: ExamPaperItemResponse) => {
                     const answerValue = answers[item.id] ?? "";
                     const isSingleChoice = item.question_type === "single_choice";
                     const isMultipleChoice = item.question_type === "multiple_choice" || item.question_type === "multi_choice";
@@ -1285,18 +1325,33 @@ function ExamPaperWorkspace({ subjectId, paperId, backHref }: ExamPaperWorkspace
                         id={`exam-question-${item.item_order}`}
                         data-question-anchor="true"
                         data-question-order={item.item_order}
-                        className="scroll-mt-28 rounded-[28px] border border-slate-200/80 bg-white px-4 py-6 shadow-sm sm:rounded-[36px] sm:px-8 sm:py-10"
+                        className="scroll-mt-28 border-b-[1.5px] border-dashed border-slate-200/90 px-0 py-7 last:border-b-0 sm:py-9"
                       >
-                        <div className="mx-auto max-w-6xl">
-                          <div className="text-center">
-                            <p className="text-sm font-medium text-slate-400">
-                              Question {item.item_order}/{paper.total_items}
-                            </p>
-                            <div className="mx-auto mt-4 max-w-5xl text-slate-950 [&_p]:mb-0 [&_p]:text-xl [&_p]:font-semibold [&_p]:leading-[1.55] sm:[&_p]:text-3xl [&_.katex-display]:my-4 [&_.katex]:text-inherit">
+                        <div className="grid gap-5 md:grid-cols-[72px_minmax(0,1fr)]">
+                          <aside className="flex items-start gap-4 border-b border-slate-100 pb-4 text-slate-500 md:flex-col md:items-center md:border-b-0 md:border-r md:pb-0 md:pr-4">
+                            <div className="font-serif text-2xl font-bold leading-none text-slate-950">
+                              {item.item_order}.
+                            </div>
+                            <div className="flex gap-4 text-xs font-semibold text-slate-400 md:flex-col md:gap-3">
+                              <span className="inline-flex flex-col items-center gap-1">
+                                <Bookmark className="h-4 w-4" />
+                                标记
+                              </span>
+                              {isReviewStage && (
+                                <span className="inline-flex flex-col items-center gap-1">
+                                  <Lightbulb className="h-4 w-4" />
+                                  解析
+                                </span>
+                              )}
+                            </div>
+                          </aside>
+
+                          <div className="min-w-0">
+                            <div className="font-serif text-base font-semibold leading-8 text-slate-950 sm:text-lg [&_p]:mb-0 [&_p]:leading-8 [&_.katex-display]:my-4 [&_.katex]:text-inherit">
                               <ExamMarkdown content={item.stem} />
                             </div>
                             {isReviewStage && (
-                              <div className="mt-4 flex flex-wrap items-center justify-center gap-2 text-sm text-slate-500">
+                              <div className="mt-4 flex flex-wrap items-center gap-2 text-sm text-slate-500">
                                 <span>{formatDifficultyLabel(item.difficulty)}</span>
                                 <span>·</span>
                                 <span>{item.question_type}</span>
@@ -1304,11 +1359,9 @@ function ExamPaperWorkspace({ subjectId, paperId, backHref }: ExamPaperWorkspace
                                 <span>{buildKnowledgeLabel(item)}</span>
                               </div>
                             )}
-                          </div>
-
                           {isChoice ? (
                             <div
-                              className="mt-10 grid gap-4"
+                              className="mt-6 grid gap-3"
                               role={isMultipleChoice ? "group" : "radiogroup"}
                               aria-label={`第 ${item.item_order} 题选项`}
                             >
@@ -1322,10 +1375,10 @@ function ExamPaperWorkspace({ subjectId, paperId, backHref }: ExamPaperWorkspace
                                   ? correctMultiChoice.has(optionValue)
                                   : (item.correct_answer ?? "") === optionValue;
                                 const isWrongSelectedOption = isReviewStage && isSelected && !isCorrectOption;
-                                const isRightOption = isReviewStage && isSelected && isCorrectOption;
+                                const isRightOption = isReviewStage && isCorrectOption;
                                 return (
                                   <button
-                                    key={option}
+                                    key={`${item.id}-${optionIndex}`}
                                     type="button"
                                     role={isMultipleChoice ? "checkbox" : "radio"}
                                     aria-checked={isSelected}
@@ -1350,24 +1403,24 @@ function ExamPaperWorkspace({ subjectId, paperId, backHref }: ExamPaperWorkspace
                                         };
                                       });
                                     }}
-                                    className={`flex items-center gap-3 rounded-2xl border px-4 py-4 text-left text-base leading-7 transition sm:gap-5 sm:rounded-[28px] sm:px-7 sm:py-6 sm:text-lg sm:leading-8 ${
+                                    className={`flex items-center gap-3 rounded-lg border px-3 py-3 text-left text-sm leading-7 transition sm:gap-4 sm:px-4 sm:py-3.5 sm:text-base ${
                                       isReviewStage
                                         ? isRightOption
-                                          ? "border-emerald-300 bg-emerald-50 text-emerald-900 shadow-[0_12px_30px_rgba(16,185,129,0.12)]"
+                                          ? "border-emerald-300 bg-emerald-50 text-emerald-900"
                                           : isWrongSelectedOption
-                                            ? "border-rose-300 bg-rose-50 text-rose-900 shadow-[0_12px_30px_rgba(244,63,94,0.10)]"
+                                            ? "border-rose-300 bg-rose-50 text-rose-900"
                                             : "border-slate-200 bg-white text-slate-500"
                                         : isReadonly
                                           ? isSelected
-                                            ? "border-slate-900 bg-slate-900 text-white shadow-[0_18px_40px_rgba(15,23,42,0.16)]"
+                                            ? "border-violet-300 bg-violet-50 text-violet-900 shadow-[0_0_0_2px_rgba(139,92,246,0.12)]"
                                             : "border-slate-200 bg-white text-slate-700"
                                         : isSelected
-                                          ? "border-slate-900 bg-slate-900 text-white shadow-[0_18px_40px_rgba(15,23,42,0.16)]"
-                                          : "border-slate-200 bg-white text-slate-800 hover:border-slate-300 hover:bg-slate-50"
+                                          ? "border-violet-300 bg-violet-50 text-violet-900 shadow-[0_0_0_2px_rgba(139,92,246,0.12)]"
+                                          : "border-transparent bg-white text-slate-800 hover:border-slate-200 hover:bg-slate-50"
                                     } ${isReadonly ? "cursor-default" : ""} disabled:cursor-not-allowed`}
                                   >
                                     <span
-                                      className={`grid h-7 w-7 shrink-0 place-items-center rounded-full border-4 sm:h-8 sm:w-8 ${
+                                      className={`grid h-5 w-5 shrink-0 place-items-center border-2 ${isMultipleChoice ? "rounded-[5px]" : "rounded-full"} ${
                                         isReviewStage
                                           ? isRightOption
                                             ? "border-emerald-600 bg-white"
@@ -1376,15 +1429,15 @@ function ExamPaperWorkspace({ subjectId, paperId, backHref }: ExamPaperWorkspace
                                               : "border-slate-300 bg-white"
                                           : isReadonly
                                             ? isSelected
-                                              ? "border-white bg-white"
+                                              ? "border-violet-600 bg-white"
                                               : "border-slate-400 bg-white"
                                           : isSelected
-                                            ? "border-white bg-white"
-                                            : "border-slate-900 bg-white"
+                                            ? "border-violet-600 bg-white"
+                                            : "border-slate-300 bg-white"
                                       }`}
                                     >
                                       <span
-                                        className={`${isMultipleChoice ? "h-3.5 w-3.5 rounded-[4px]" : "h-3.5 w-3.5 rounded-full"} ${
+                                        className={`${isMultipleChoice ? "h-2.5 w-2.5 rounded-[3px]" : "h-2.5 w-2.5 rounded-full"} ${
                                           isReviewStage
                                             ? isRightOption
                                               ? "bg-emerald-600"
@@ -1393,15 +1446,15 @@ function ExamPaperWorkspace({ subjectId, paperId, backHref }: ExamPaperWorkspace
                                                 : "bg-transparent"
                                             : isReadonly
                                               ? isSelected
-                                                ? "bg-slate-900"
+                                                ? "bg-violet-600"
                                                 : "bg-transparent"
                                             : isSelected
-                                              ? "bg-slate-900"
+                                              ? "bg-violet-600"
                                               : "bg-transparent"
                                         }`}
                                       />
                                     </span>
-                                    <div className={`min-w-0 flex-1 [&_p]:mb-0 [&_p]:text-base [&_p]:leading-7 sm:[&_p]:text-lg sm:[&_p]:leading-8 [&_.katex-display]:my-3 [&_.katex]:text-inherit ${
+                                    <div className={`min-w-0 flex-1 [&_p]:mb-0 [&_p]:text-sm [&_p]:leading-7 sm:[&_p]:text-base sm:[&_p]:leading-7 [&_.katex-display]:my-3 [&_.katex]:text-inherit ${
                                       isReviewStage
                                         ? isRightOption
                                           ? "[&_p]:text-emerald-900"
@@ -1410,10 +1463,10 @@ function ExamPaperWorkspace({ subjectId, paperId, backHref }: ExamPaperWorkspace
                                             : "[&_p]:text-slate-500"
                                         : isReadonly
                                           ? isSelected
-                                            ? "[&_p]:text-white"
+                                            ? "[&_p]:text-violet-900"
                                             : "[&_p]:text-slate-700"
                                         : isSelected
-                                          ? "[&_p]:text-white"
+                                          ? "[&_p]:text-violet-900"
                                           : "[&_p]:text-slate-800"
                                     }`}>
                                       <div className="flex gap-3">
@@ -1430,16 +1483,16 @@ function ExamPaperWorkspace({ subjectId, paperId, backHref }: ExamPaperWorkspace
                               })}
                             </div>
                           ) : (
-                            <div className="mt-10">
+                            <div className="mt-6">
                               <textarea
-                                className={`min-h-36 w-full rounded-[28px] border px-6 py-5 text-lg leading-8 outline-none transition ${
+                                className={`min-h-32 w-full rounded-lg border px-4 py-3 text-base leading-8 outline-none transition ${
                                   isReviewStage
                                     ? isCorrect
                                       ? "border-emerald-300 bg-emerald-50 text-emerald-900"
                                       : "border-rose-300 bg-rose-50 text-rose-900"
                                     : isReadonly
                                       ? "border-slate-200 bg-slate-50 text-slate-900"
-                                    : "border-slate-200 bg-white text-slate-900 focus:border-slate-400"
+                                    : "border-slate-200 bg-white text-slate-900 focus:border-violet-300 focus:ring-2 focus:ring-violet-100"
                                 }`}
                                 placeholder={item.question_type === "fill_blank" ? "填写答案" : "输入你的作答"}
                                 value={answerValue}
@@ -1453,7 +1506,7 @@ function ExamPaperWorkspace({ subjectId, paperId, backHref }: ExamPaperWorkspace
                         </div>
 
                         {isReviewStage && (
-                          <div className="mx-auto mt-6 max-w-6xl rounded-[24px] bg-slate-50 px-5 py-5 text-sm leading-7 text-slate-600">
+                          <div className="mt-6 border-t border-dashed border-slate-200 pt-5 text-sm leading-7 text-slate-600 md:col-start-2">
                             <div className="[&_p]:mb-2 [&_.katex-display]:my-3">
                               <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">你的答案</p>
                               <ExamMarkdown content={item.user_answer || "未作答"} />
@@ -1474,10 +1527,16 @@ function ExamPaperWorkspace({ subjectId, paperId, backHref }: ExamPaperWorkspace
                             </div>
                           </div>
                         )}
+                        </div>
                       </div>
                     );
-                  })}
-                </section>
+                      })}
+                    </div>
+                    <div className="border-t border-slate-200 px-6 py-5 text-center font-serif text-base font-semibold text-slate-500">
+                      第 1 / 1 页 · 已作答 {getAnsweredCount(paper, answers)} / {paper.total_items} 题
+                    </div>
+                  </article>
+                </div>
 
                 <section className="flex flex-col items-center justify-center gap-3 border-t border-slate-100 pt-4 pb-12 text-center sm:pb-16">
                   <Button
