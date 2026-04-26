@@ -8,6 +8,8 @@
 import type { PaperPreviewRowResultStatus } from './paperPreviewRowResultStatus';
 import type { PaperPreviewRowShape } from './paperPreviewRowShape';
 
+export type PaperPreviewRowGenerationStatus = 'pending' | 'planned' | 'generated' | 'failed';
+
 export interface PaperPreviewRow {
   order: number;
   type: string;
@@ -19,4 +21,5 @@ export interface PaperPreviewRow {
    */
   density?: number;
   result_status?: PaperPreviewRowResultStatus;
+  generation_status?: PaperPreviewRowGenerationStatus;
 }

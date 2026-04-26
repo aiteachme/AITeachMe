@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
+import asyncio
 from time import perf_counter
 
 from app.shared.infra.workflow import emit_progress
 from app.shared.infra.workflow.context import WorkflowContext
 from app.workflows.examine.question_build.lib.generator import (
-    ExamQuestionGenerationSpec,
     plan_exam_question_blueprints,
 )
 from app.workflows.examine.question_build.state import QuestionBuildState
@@ -25,36 +25,18 @@ def build_plan_question_blueprints_node(*, context: WorkflowContext):
             step="plan_question_blueprints",
         )
         try:
-            explicit_specs = list(state.get("specs") or [])
-            if explicit_specs:
-                blueprints = [
-                    spec if isinstance(spec, ExamQuestionGenerationSpec) else ExamQuestionGenerationSpec.model_validate(spec)
-                    for spec in explicit_specs
-                ]
-                blueprint_payload = [
-                    {
-                        "item_order": spec.item_order,
-                        "knowledge_unit_ids": spec.knowledge_unit_ids,
-                        "question_type": spec.question_type,
-                        "difficulty": spec.difficulty,
-                        "rationale": "Provided by caller.",
-                        "generation_prompt": spec.generation_prompt,
-                    }
-                    for spec in blueprints
-                ]
-            else:
-                planned = await plan_exam_question_blueprints(
-                    subject_name=str(state.get("subject_name") or ""),
-                    subject_description=str(state.get("subject_description") or ""),
-                    subject_user_intent=str(state.get("subject_user_intent") or ""),
-                    exam_mode=str(state.get("exam_mode") or "web_practice"),
-                    units=list(state.get("units") or []),
-                    question_count=int(state.get("question_count") or 1),
-                    mastery_by_unit_id=dict(state.get("mastery_by_unit_id") or {}),
-                    user_prompt=str(state.get("user_prompt") or ""),
-                    system_constraints=str(state.get("system_constraints") or ""),
-                )
-                blueprint_payload = [item.model_dump(mode="json") for item in planned]
+            planned = await plan_exam_question_blueprints(
+                subject_name=str(state.get("subject_name") or ""),
+                subject_description=str(state.get("subject_description") or ""),
+                subject_user_intent=str(state.get("subject_user_intent") or ""),
+                exam_mode=str(state.get("exam_mode") or "web_practice"),
+                units=list(state.get("units") or []),
+                question_count=int(state.get("question_count") or 1),
+                mastery_by_unit_id=dict(state.get("mastery_by_unit_id") or {}),
+                user_prompt=str(state.get("user_prompt") or ""),
+                system_constraints=str(state.get("system_constraints") or ""),
+            )
+            blueprint_payload = [item.model_dump(mode="json") for item in planned]
 
             elapsed_ms = int((perf_counter() - started_at) * 1000)
             await emit_progress(
@@ -66,6 +48,20 @@ def build_plan_question_blueprints_node(*, context: WorkflowContext):
                 extra={"question_blueprints": blueprint_payload},
             )
             return {"question_blueprints": blueprint_payload, "plan_ms": elapsed_ms, "error": ""}
+        except asyncio.CancelledError:
+            elapsed_ms = int((perf_counter() - started_at) * 1000)
+            await emit_progress(
+                state,
+                stage="plan_exam_questions",
+                detail="题目蓝图编排被取消，试卷生成失败。",
+                step="plan_question_blueprints",
+                elapsed_ms=elapsed_ms,
+            )
+            return {
+                "question_blueprints": [],
+                "plan_ms": elapsed_ms,
+                "error": "Question blueprint planning was cancelled.",
+            }
         except Exception as exc:
             elapsed_ms = int((perf_counter() - started_at) * 1000)
             await emit_progress(

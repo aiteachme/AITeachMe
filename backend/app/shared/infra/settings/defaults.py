@@ -31,6 +31,9 @@ DEFAULT_SETTINGS_VALUES: dict[str, Any] = {
         "text_to_speech": None,
         "video_generation": None,
     },
+    "llm": {
+        "enforce_request_timeout": True,
+    },
     "interact": {
         "history_turns": 10,
     },

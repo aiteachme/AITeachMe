@@ -38,6 +38,21 @@ export function formatDifficultyLabel(value: string) {
   return DIFFICULTIES.find((item) => item.value === value)?.label ?? value;
 }
 
+export function formatQuestionTypeLabel(type: string) {
+  const normalized = String(type || "").trim();
+  if (!normalized || normalized === "pending") return "题型生成中";
+  const labels: Record<string, string> = {
+    single_choice: "单选题",
+    multiple_choice: "不定项选择题",
+    multi_choice: "不定项选择题",
+    fill_blank: "填空题",
+    true_false: "判断题",
+    short_answer: "简答题",
+    essay: "问答题",
+  };
+  return labels[normalized] ?? normalized;
+}
+
 export function getOptionLabel(index: number) {
   return String.fromCharCode(65 + index);
 }
@@ -86,7 +101,7 @@ export function buildKnowledgeLabel(item: ExamPaperItemResponse) {
 }
 
 export function hasAnsweredQuestion(item: ExamPaperItemResponse, answers: Record<number, string>) {
-  const value = answers[item.id] ?? "";
+  const value = answers[item.item_order] ?? "";
   return value.trim().length > 0;
 }
 

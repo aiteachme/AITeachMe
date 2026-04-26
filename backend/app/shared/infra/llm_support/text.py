@@ -24,7 +24,7 @@ from .common import (
     log_attempt_timeout,
     prepare_completion_attempt,
     raise_last_error,
-    request_timeout_s,
+    context_request_timeout_s,
     sleep_before_retry,
     track_call,
 )
@@ -85,7 +85,7 @@ async def acompletion(
                 ) as trace_run:
                     response = await asyncio.wait_for(
                         litellm.acompletion(**prepared.call_kwargs),
-                        timeout=request_timeout_s(context.profile.timeout_s),
+                        timeout=context_request_timeout_s(context),
                     )
                     prompt_t, completion_t, total_t = extract_usage(response)
                     content = response.choices[0].message.content or ""

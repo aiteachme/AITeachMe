@@ -258,10 +258,23 @@ def build_completion_context(
     )
 
 
-def request_timeout_s(timeout_s: int) -> int:
+def request_timeout_s(timeout_s: int, *, enabled: bool = True) -> int | None:
     """Apply a small grace window around provider-side timeouts."""
 
+    if not enabled:
+        return None
     return int(timeout_s) + _REQUEST_TIMEOUT_GRACE_S
+
+
+def should_enforce_request_timeout(context: CompletionContext) -> bool:
+    return bool(context.settings.llm.enforce_request_timeout)
+
+
+def context_request_timeout_s(context: CompletionContext) -> int | None:
+    return request_timeout_s(
+        context.profile.timeout_s,
+        enabled=should_enforce_request_timeout(context),
+    )
 
 
 def get_semaphore() -> asyncio.Semaphore:
@@ -354,9 +367,10 @@ def build_completion_kwargs(
     completion_kwargs = {
         "model": context.model,
         "messages": messages,
-        "timeout": context.profile.timeout_s,
         "temperature": remaining_kwargs.pop("temperature", context.profile.temperature),
     }
+    if should_enforce_request_timeout(context):
+        completion_kwargs["timeout"] = context.profile.timeout_s
     api_base = context.base_url
     if api_base:
         completion_kwargs["api_base"] = api_base

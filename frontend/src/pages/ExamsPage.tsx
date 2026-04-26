@@ -22,6 +22,10 @@ import {
   loadCreateExamConfig,
   toExamGenerateRequest,
 } from "../components/exams";
+import {
+  parseExamGenerationSnapshot,
+  patchExamHistoryQueryData,
+} from "../components/exams/examGenerationStream";
 import { useExamResultDisplayPreference } from "../lib/examResultDisplayPreference";
 import { unwrapOrvalResponse } from "../lib/unwrapOrvalResponse";
 
@@ -136,16 +140,27 @@ export function ExamsPage() {
     const refreshHistory = () => {
       void queryClient.invalidateQueries({ queryKey: historyQueryKey });
     };
+    const applySnapshot = (event: Event) => {
+      const payload = parseExamGenerationSnapshot((event as MessageEvent<string>).data);
+      if (!payload.exam_paper_id) {
+        refreshHistory();
+        return;
+      }
+      queryClient.setQueryData(historyQueryKey, (current: unknown) =>
+        patchExamHistoryQueryData(current, payload),
+      );
+    };
 
     const streams = generatingPaperIds.map((paperId) => {
       const stream = new EventSource(
         buildApiUrl(`/api/v1/subjects/${encodeURIComponent(subjectId)}/exams/${paperId}/stream`),
         { withCredentials: true },
       );
-      const handleSnapshot = () => {
-        refreshHistory();
+      const handleSnapshot = (event: Event) => {
+        applySnapshot(event);
       };
-      const handleDone = () => {
+      const handleDone = (event: Event) => {
+        applySnapshot(event);
         refreshHistory();
         stream.close();
       };

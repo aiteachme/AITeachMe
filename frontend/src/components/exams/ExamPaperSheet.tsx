@@ -1,12 +1,10 @@
 import type { Dispatch, SetStateAction } from "react";
-import { Bookmark, Lightbulb, MessageSquareText, Tags } from "lucide-react";
+import { AlertTriangle, Bookmark, Lightbulb, MessageSquareText } from "lucide-react";
 
 import type { ExamPaperDetailResponse, ExamPaperItemResponse, PaperPreviewRow } from "../../api/generated/model";
 import { cn } from "../../lib/utils";
 import { ExamMarkdown } from "./ExamMarkdown";
 import {
-  buildKnowledgeLabel,
-  formatDifficultyLabel,
   getAnsweredCount,
   getEstimatedExamMinutes,
   getExamPaperDisplayTitle,
@@ -29,9 +27,13 @@ interface ExamPaperSheetProps {
 }
 
 function buildGeneratingRows(paper: ExamPaperDetailResponse): PaperPreviewRow[] {
-  const previewRows = paper.paper_preview?.rows ?? [];
+  const previewRows = [
+    ...(paper.paper_preview?.rows ?? []),
+    ...buildFailedRowsFromSelectionContext(paper),
+  ];
   const previewByOrder = new Map(previewRows.map((row) => [row.order, row]));
-  const count = Math.max(Number(paper.total_items || 0), previewRows.length, 1);
+  const maxPreviewOrder = Math.max(0, ...previewRows.map((row) => Number(row.order) || 0));
+  const count = Math.max(Number(paper.total_items || 0), previewRows.length, maxPreviewOrder, 1);
   return Array.from({ length: count }, (_, index) => {
     const order = index + 1;
     return (
@@ -47,22 +49,66 @@ function buildGeneratingRows(paper: ExamPaperDetailResponse): PaperPreviewRow[] 
   });
 }
 
-function formatQuestionType(type: string) {
-  const normalized = String(type || "").trim();
-  if (!normalized || normalized === "pending") return "题型生成中";
-  const labels: Record<string, string> = {
-    single_choice: "单选题",
-    multiple_choice: "多选题",
-    multi_choice: "多选题",
-    fill_blank: "填空题",
-    true_false: "判断题",
-    short_answer: "简答题",
-    essay: "问答题",
-  };
-  return labels[normalized] ?? normalized;
+function buildFailedRowsFromSelectionContext(paper: ExamPaperDetailResponse): PaperPreviewRow[] {
+  const failedQuestions = paper.selection_context?.failed_questions;
+  if (!Array.isArray(failedQuestions)) return [];
+
+  return failedQuestions.flatMap((item): PaperPreviewRow[] => {
+    if (typeof item !== "object" || item === null) return [];
+    const record = item as Record<string, unknown>;
+    const order = Number(record.item_order);
+    if (!Number.isFinite(order) || order <= 0) return [];
+    return [{
+      order: Math.trunc(order),
+      type: typeof record.question_type === "string" && record.question_type.trim()
+        ? record.question_type
+        : "text",
+      shape: "text",
+      difficulty: typeof record.difficulty === "string" && record.difficulty.trim()
+        ? record.difficulty
+        : "medium",
+      density: 2,
+      result_status: "ungraded",
+      generation_status: "failed",
+    }];
+  });
+}
+
+function buildQuestionEntries(
+  paper: ExamPaperDetailResponse,
+  itemsByOrder: Map<number, ExamPaperItemResponse>,
+): Array<{
+  item: ExamPaperItemResponse | null;
+  row: PaperPreviewRow | null;
+}> {
+  if (paper.status === "generating") {
+    return buildGeneratingRows(paper).map((row) => ({
+      item: itemsByOrder.get(row.order) ?? null,
+      row,
+    }));
+  }
+
+  const previewRows = paper.paper_preview?.rows ?? [];
+  const failedRowsByOrder = new Map(
+    [...previewRows, ...buildFailedRowsFromSelectionContext(paper)]
+      .filter((row) => row.generation_status === "failed")
+      .map((row) => [row.order, row]),
+  );
+  const orders = new Set<number>([
+    ...(paper.items ?? []).map((item: ExamPaperItemResponse) => item.item_order),
+    ...failedRowsByOrder.keys(),
+  ]);
+
+  return Array.from(orders)
+    .sort((left, right) => left - right)
+    .map((order) => ({
+      item: itemsByOrder.get(order) ?? null,
+      row: failedRowsByOrder.get(order) ?? null,
+    }));
 }
 
 function GeneratingQuestionPlaceholder({ row }: { row: PaperPreviewRow }) {
+  const isFailed = row.generation_status === "failed";
   const isChoice =
     row.shape === "choice" ||
     row.shape === "judge" ||
@@ -91,15 +137,24 @@ function GeneratingQuestionPlaceholder({ row }: { row: PaperPreviewRow }) {
         </aside>
 
         <div className="min-w-0 overflow-hidden">
-          <div className="mb-4 flex flex-wrap items-center gap-2">
-            <span className="inline-flex rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600">
-              {formatQuestionType(row.type)}
-            </span>
-            <span className="inline-flex rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-500">
-              {formatDifficultyLabel(row.difficulty)}
-            </span>
-          </div>
+          {isFailed ? (
+            <div className="mb-4 flex flex-wrap items-center gap-2">
+              <span className="inline-flex items-center gap-1 rounded-full bg-rose-50 px-2.5 py-1 text-xs font-semibold text-rose-700">
+                <AlertTriangle className="h-3.5 w-3.5" />
+                生成失败
+              </span>
+            </div>
+          ) : null}
 
+          {isFailed ? (
+            <div className="rounded-xl border border-rose-200 bg-rose-50 px-5 py-6 text-sm leading-7 text-rose-700 sm:px-6">
+              <div className="flex items-center gap-2 font-semibold text-rose-800">
+                <AlertTriangle className="h-4 w-4" />
+                本题生成失败
+              </div>
+              <p className="mt-2 text-rose-600">这道题已跳过，不会计入本次试卷题量和批改。</p>
+            </div>
+          ) : (
           <div className="exam-preview-skeleton-panel rounded-xl border border-slate-200 p-5 sm:p-6">
             <div className="space-y-3">
               {lineWidths.map((width, index) => (
@@ -110,8 +165,9 @@ function GeneratingQuestionPlaceholder({ row }: { row: PaperPreviewRow }) {
               ))}
             </div>
           </div>
+          )}
 
-          {isChoice ? (
+          {!isFailed && isChoice ? (
             <div className="mt-6 grid gap-3">
               {[0, 1, 2, 3].map((optionIndex) => (
                 <div
@@ -127,7 +183,7 @@ function GeneratingQuestionPlaceholder({ row }: { row: PaperPreviewRow }) {
                 </div>
               ))}
             </div>
-          ) : (
+          ) : !isFailed ? (
             <div className="exam-preview-skeleton-panel mt-6 min-h-32 rounded-lg border border-slate-200 p-4">
               <div className="relative z-[1] space-y-3">
                 <span className="exam-preview-flow-line block h-3 w-7/12 rounded-full" />
@@ -135,7 +191,7 @@ function GeneratingQuestionPlaceholder({ row }: { row: PaperPreviewRow }) {
                 <span className="exam-preview-flow-line block h-3 w-5/12 rounded-full" />
               </div>
             </div>
-          )}
+          ) : null}
         </div>
       </div>
     </div>
@@ -155,8 +211,8 @@ export function ExamPaperSheet({
   onQuestionAi,
 }: ExamPaperSheetProps) {
   const items = paper.items ?? [];
-  const showGeneratingPlaceholders = paper.status === "generating" && items.length === 0;
-  const generatingRows = showGeneratingPlaceholders ? buildGeneratingRows(paper) : [];
+  const itemsByOrder = new Map(items.map((item: ExamPaperItemResponse) => [item.item_order, item]));
+  const questionEntries = buildQuestionEntries(paper, itemsByOrder);
 
   return (
                 <div
@@ -194,10 +250,12 @@ export function ExamPaperSheet({
                     </header>
 
                     <div className="px-4 pb-8 sm:px-8 lg:px-14">
-                      {showGeneratingPlaceholders
-                        ? generatingRows.map((row) => <GeneratingQuestionPlaceholder key={row.order} row={row} />)
-                        : items.map((item: ExamPaperItemResponse) => {
-                    const answerValue = answers[item.id] ?? "";
+                      {questionEntries.map((entry) => {
+                    if (!entry.item) {
+                      return entry.row ? <GeneratingQuestionPlaceholder key={entry.row.order} row={entry.row} /> : null;
+                    }
+                    const item = entry.item;
+                    const answerValue = answers[item.item_order] ?? "";
                     const isSingleChoice = item.question_type === "single_choice";
                     const isMultipleChoice = item.question_type === "multiple_choice" || item.question_type === "multi_choice";
                     const isTrueFalse = item.question_type === "true_false";
@@ -269,21 +327,6 @@ export function ExamPaperSheet({
                             <div className="break-words font-serif text-base font-semibold leading-8 text-slate-950 sm:text-lg [&_p]:mb-0 [&_p]:leading-8 [&_.katex-display]:my-4 [&_.katex]:text-inherit">
                               <ExamMarkdown content={item.stem} />
                             </div>
-                            {isReviewStage && (
-                              <div className="mt-4 flex flex-wrap items-center gap-2 text-sm">
-                                <span className="inline-flex rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-500">
-                                  {formatDifficultyLabel(item.difficulty)}
-                                </span>
-                                <span className="inline-flex rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-500">
-                                  {item.question_type}
-                                </span>
-                                <span className="mx-1 hidden h-4 w-px bg-slate-200 sm:inline-flex" />
-                                <span className="inline-flex max-w-full items-start gap-1.5 rounded-md border border-slate-200 bg-slate-50 px-2.5 py-1 font-semibold text-slate-500">
-                                  <Tags className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                                  <span className="min-w-0 break-words">{buildKnowledgeLabel(item)}</span>
-                                </span>
-                              </div>
-                            )}
                           {isChoice ? (
                             <div
                               className="mt-6 grid gap-3"
@@ -313,10 +356,10 @@ export function ExamPaperSheet({
                                         if (!isMultipleChoice) {
                                           return {
                                             ...current,
-                                            [item.id]: isSelected ? "" : optionValue,
+                                            [item.item_order]: isSelected ? "" : optionValue,
                                           };
                                         }
-                                        const next = splitMultiChoiceAnswer(current[item.id]);
+                                        const next = splitMultiChoiceAnswer(current[item.item_order]);
                                         if (next.has(optionValue)) {
                                           next.delete(optionValue);
                                         } else {
@@ -324,7 +367,7 @@ export function ExamPaperSheet({
                                         }
                                         return {
                                           ...current,
-                                          [item.id]: Array.from(next).sort().join(","),
+                                          [item.item_order]: Array.from(next).sort().join(","),
                                         };
                                       });
                                     }}
@@ -422,7 +465,7 @@ export function ExamPaperSheet({
                                 placeholder={item.question_type === "fill_blank" ? "填写答案" : "输入你的作答"}
                                 value={answerValue}
                                 onChange={(event) =>
-                                  setAnswers((current) => ({ ...current, [item.id]: event.target.value }))
+                                  setAnswers((current) => ({ ...current, [item.item_order]: event.target.value }))
                                 }
                                 disabled={isReadonly}
                               />

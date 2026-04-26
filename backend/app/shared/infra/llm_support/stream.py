@@ -24,7 +24,7 @@ from .common import (
     log_attempt_timeout,
     merge_usage,
     prepare_completion_attempt,
-    request_timeout_s,
+    context_request_timeout_s,
     track_call,
 )
 from .observability import (
@@ -49,7 +49,7 @@ def _is_stream_usage_calculation_error(exc: Exception) -> bool:
 async def _stream_chunks_with_timeout(
     response: Any,
     *,
-    timeout_s: int,
+    timeout_s: int | None,
 ) -> AsyncGenerator[Any, None]:
     """Yield streaming chunks while enforcing a timeout for each upstream read."""
 
@@ -122,13 +122,13 @@ async def acompletion_stream(
             ) as trace_run:
                 response = await asyncio.wait_for(
                     litellm.acompletion(**prepared.call_kwargs),
-                    timeout=request_timeout_s(context.profile.timeout_s),
+                    timeout=context_request_timeout_s(context),
                 )
                 usage = merge_usage(usage, extract_usage(response))
                 try:
                     async for chunk in _stream_chunks_with_timeout(
                         response,
-                        timeout_s=request_timeout_s(context.profile.timeout_s),
+                        timeout_s=context_request_timeout_s(context),
                     ):
                         usage = merge_usage(usage, extract_usage(chunk))
                         choices = getattr(chunk, "choices", None) or []

@@ -26,6 +26,11 @@ import { ExamPaperSheet } from "./ExamPaperSheet";
 import { ExamQuestionAnalysisSheet } from "./ExamQuestionAnalysisSheet";
 import { ExamStageHeader } from "./ExamStageHeader";
 import { ExamStudyGuideView } from "./ExamStudyGuideView";
+import {
+  parseExamGenerationSnapshot,
+  patchExamDetailQueryData,
+  patchExamHistoryQueryData,
+} from "./examGenerationStream";
 import type { ExamStudyGuideResponse } from "./types";
 import {
   buildQuestionAiDraft,
@@ -63,6 +68,10 @@ export function ExamPaperWorkspace({ subjectId, paperId, backHref }: ExamPaperWo
   const [selectedReviewItemId, setSelectedReviewItemId] = useState<number | null>(null);
   const [highlightedQuestionOrder, setHighlightedQuestionOrder] = useState<number | null>(null);
   const handledJumpMarkerRef = useRef<number | string | null>(null);
+  const answerStorageKey = useMemo(
+    () => `aiteachme:exam-draft-answers:${subjectId}:${paperId}`,
+    [paperId, subjectId],
+  );
 
   useEffect(() => {
     if (!isSidebarOpen) {
@@ -111,6 +120,94 @@ export function ExamPaperWorkspace({ subjectId, paperId, backHref }: ExamPaperWo
     );
   }, [paper?.id, paper?.items, paper?.status]);
 
+  useEffect(() => {
+    if (!isReviewLayout || !paper?.items?.length) return;
+
+    const itemByOrder = new Map(
+      (paper.items ?? []).map((item: ExamPaperItemResponse) => [item.item_order, item]),
+    );
+    let frameId = 0;
+    const questionSelector = "[data-question-anchor='true'][data-question-order]";
+    const getQuestionNodes = () => Array.from(
+      document.querySelectorAll<HTMLElement>(questionSelector),
+    );
+
+    const getScrollContainers = () => {
+      const containers = new Set<EventTarget>([window]);
+      const main = document.querySelector("main");
+      if (main instanceof HTMLElement) {
+        containers.add(main);
+      }
+
+      for (const node of getQuestionNodes()) {
+        let parent = node.parentElement;
+        while (parent && parent !== document.body) {
+          const style = window.getComputedStyle(parent);
+          const canScrollY = /(auto|scroll|overlay)/.test(style.overflowY);
+          if (canScrollY && parent.scrollHeight > parent.clientHeight + 1) {
+            containers.add(parent);
+          }
+          parent = parent.parentElement;
+        }
+      }
+      return containers;
+    };
+
+    const updateSelectedFromViewport = () => {
+      frameId = 0;
+      const questionNodes = getQuestionNodes();
+      const viewportTop = 96;
+      const viewportBottom = window.innerHeight;
+      const focusY = Math.max(viewportTop + 80, Math.min(window.innerHeight * 0.38, viewportBottom - 120));
+      let bestMatch: { item: ExamPaperItemResponse; distance: number } | null = null;
+
+      for (const node of questionNodes) {
+        const order = Number(node.dataset.questionOrder);
+        const item = itemByOrder.get(order);
+        if (!item) continue;
+
+        const rect = node.getBoundingClientRect();
+        if (rect.bottom <= viewportTop || rect.top >= viewportBottom) continue;
+
+        const distance = rect.top <= focusY && rect.bottom >= focusY
+          ? 0
+          : Math.min(Math.abs(rect.top - focusY), Math.abs(rect.bottom - focusY));
+        if (!bestMatch || distance < bestMatch.distance) {
+          bestMatch = { item, distance };
+        }
+      }
+
+      if (!bestMatch) return;
+      setSelectedReviewItemId((current) => (
+        current === bestMatch.item.id ? current : bestMatch.item.id
+      ));
+    };
+
+    const scheduleUpdate = () => {
+      if (frameId) return;
+      frameId = window.requestAnimationFrame(updateSelectedFromViewport);
+    };
+
+    scheduleUpdate();
+    const scrollContainers = getScrollContainers();
+    const scrollOptions: AddEventListenerOptions = { passive: true, capture: true };
+    for (const container of scrollContainers) {
+      container.addEventListener("scroll", scheduleUpdate, scrollOptions);
+    }
+    document.addEventListener("scroll", scheduleUpdate, scrollOptions);
+    window.addEventListener("resize", scheduleUpdate);
+    return () => {
+      for (const container of scrollContainers) {
+        container.removeEventListener("scroll", scheduleUpdate, scrollOptions);
+      }
+      document.removeEventListener("scroll", scheduleUpdate, scrollOptions);
+      window.removeEventListener("resize", scheduleUpdate);
+      if (frameId) {
+        window.cancelAnimationFrame(frameId);
+      }
+    };
+  }, [isReviewLayout, paper?.items]);
+
   const studyGuideQuery = useQuery({
     queryKey: ["exam-study-guide", subjectId, paperId],
     enabled: Boolean(subjectId && paperId && paper?.status === "graded" && activeStage === 3),
@@ -126,26 +223,34 @@ export function ExamPaperWorkspace({ subjectId, paperId, backHref }: ExamPaperWo
       buildApiUrl(`/api/v1/subjects/${encodeURIComponent(subjectId)}/exams/${paperId}/stream`),
       { withCredentials: true },
     );
+    const historyQueryKey = getExamHistoryApiV1SubjectsSubjectExamsHistoryGetQueryKey(subjectId, { page: 1, size: 24 });
+    const detailQueryKey = getExamDetailApiV1SubjectsSubjectExamsExamPaperIdGetQueryKey(subjectId, paperId);
 
     const refreshPaper = () => {
       void Promise.all([
-        queryClient.invalidateQueries({
-          queryKey: getExamHistoryApiV1SubjectsSubjectExamsHistoryGetQueryKey(subjectId, { page: 1, size: 24 }),
-        }),
-        queryClient.invalidateQueries({
-          queryKey: getExamDetailApiV1SubjectsSubjectExamsExamPaperIdGetQueryKey(subjectId, paperId),
-        }),
+        queryClient.invalidateQueries({ queryKey: historyQueryKey }),
+        queryClient.invalidateQueries({ queryKey: detailQueryKey }),
       ]);
+    };
+
+    const applySnapshotPayload = (message: MessageEvent<string>) => {
+      const payload = parseExamGenerationSnapshot(message.data);
+      if (!payload.exam_paper_id) {
+        refreshPaper();
+        return payload;
+      }
+      queryClient.setQueryData(detailQueryKey, (current: unknown) =>
+        patchExamDetailQueryData(current, payload),
+      );
+      queryClient.setQueryData(historyQueryKey, (current: unknown) =>
+        patchExamHistoryQueryData(current, payload),
+      );
+      return payload;
     };
 
     const handleDone = (event: Event) => {
       const message = event as MessageEvent<string>;
-      let payload: { status?: string; error_message?: string } = {};
-      try {
-        payload = JSON.parse(message.data || "{}");
-      } catch {
-        payload = {};
-      }
+      const payload = applySnapshotPayload(message);
       refreshPaper();
       stream.close();
       if (payload.status === "failed") {
@@ -163,8 +268,8 @@ export function ExamPaperWorkspace({ subjectId, paperId, backHref }: ExamPaperWo
       });
     };
 
-    const handleSnapshot = () => {
-      refreshPaper();
+    const handleSnapshot = (event: Event) => {
+      applySnapshotPayload(event as MessageEvent<string>);
     };
 
     stream.addEventListener("done", handleDone);
@@ -182,12 +287,50 @@ export function ExamPaperWorkspace({ subjectId, paperId, backHref }: ExamPaperWo
 
   useEffect(() => {
     if (!paper?.items) return;
-    setAnswers(
-      Object.fromEntries(
-        (paper.items ?? []).map((item: ExamPaperItemResponse) => [item.id, item.user_answer ?? ""]),
-      ),
-    );
-  }, [paper?.id, paper?.items]);
+    setAnswers((current) => {
+      let stored: Record<number, string> = {};
+      try {
+        const parsed = JSON.parse(window.localStorage.getItem(answerStorageKey) || "{}");
+        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+          for (const [key, value] of Object.entries(parsed)) {
+            const order = Number(key);
+            if (Number.isFinite(order) && order > 0) {
+              stored[order] = typeof value === "string" ? value : String(value ?? "");
+            }
+          }
+        }
+      } catch {
+        stored = {};
+      }
+
+      const next: Record<number, string> = { ...stored };
+      for (const item of paper.items ?? []) {
+        const serverAnswer = item.user_answer ?? "";
+        if (serverAnswer.trim()) {
+          next[item.item_order] = serverAnswer;
+        }
+      }
+      for (const [rawOrder, value] of Object.entries(current)) {
+        const order = Number(rawOrder);
+        if (Number.isFinite(order) && order > 0 && value.trim()) {
+          next[order] = value;
+        }
+      }
+      return next;
+    });
+  }, [answerStorageKey, paper?.id, paper?.items]);
+
+  useEffect(() => {
+    if (!paper || paper.status === "graded") return;
+    try {
+      const nonEmptyAnswers = Object.fromEntries(
+        Object.entries(answers).filter(([, value]) => value.trim().length > 0),
+      );
+      window.localStorage.setItem(answerStorageKey, JSON.stringify(nonEmptyAnswers));
+    } catch {
+      // Best-effort local draft persistence.
+    }
+  }, [answerStorageKey, answers, paper]);
 
   const keepQuestionHighlight = useCallback((questionOrder: number) => {
     setHighlightedQuestionOrder(questionOrder);
@@ -293,6 +436,11 @@ export function ExamPaperWorkspace({ subjectId, paperId, backHref }: ExamPaperWo
           description: `本次得分 ${graded?.score ?? 0}，掌握度已同步更新。`,
           variant: "success",
         });
+        try {
+          window.localStorage.removeItem(answerStorageKey);
+        } catch {
+          // Best-effort local draft cleanup.
+        }
         setActiveStage(2);
         window.scrollTo({ top: 0, behavior: "smooth" });
       },
@@ -531,7 +679,7 @@ export function ExamPaperWorkspace({ subjectId, paperId, backHref }: ExamPaperWo
                           answers: (paper.items ?? []).map((item: ExamPaperItemResponse) => ({
                             exam_paper_item_id: item.id,
                             item_order: item.item_order,
-                            answer: answers[item.id] ?? "",
+                            answer: answers[item.item_order] ?? "",
                           })),
                         },
                       })

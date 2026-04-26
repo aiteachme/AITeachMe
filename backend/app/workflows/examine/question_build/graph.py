@@ -9,7 +9,7 @@ from app.shared.infra.workflow.context import WorkflowContext, create_langgraph_
 from app.shared.infra.workflow.result import WorkflowError, WorkflowResult
 from app.shared.infra.workflow.runtime import run_state_graph
 from app.workflows.examine.question_build.nodes import (
-    build_assign_question_weights_node,
+    build_filter_knowledge_units_node,
     build_generate_questions_node,
     build_plan_question_blueprints_node,
 )
@@ -31,6 +31,14 @@ def build_question_build_graph(*, context: WorkflowContext | None = None) -> Sta
     )
     trace = workflow_tracer(context=context, workflow=workflow_name, lane="question_build")
     workflow.add_node(
+        "filter_knowledge_units",
+        trace.node(
+            build_filter_knowledge_units_node(context=context or create_langgraph_dev_context(workflow_name)),
+            name="filter_knowledge_units",
+            timing_field="filter_ms",
+        ),
+    )
+    workflow.add_node(
         "plan_question_blueprints",
         trace.node(
             build_plan_question_blueprints_node(context=context or create_langgraph_dev_context(workflow_name)),
@@ -46,18 +54,10 @@ def build_question_build_graph(*, context: WorkflowContext | None = None) -> Sta
             timing_field="generate_ms",
         ),
     )
-    workflow.add_node(
-        "assign_question_weights",
-        trace.node(
-            build_assign_question_weights_node(context=context or create_langgraph_dev_context(workflow_name)),
-            name="assign_question_weights",
-            timing_field="weight_ms",
-        ),
-    )
-    workflow.set_entry_point("plan_question_blueprints")
+    workflow.set_entry_point("filter_knowledge_units")
+    workflow.add_edge("filter_knowledge_units", "plan_question_blueprints")
     workflow.add_edge("plan_question_blueprints", "generate_questions")
-    workflow.add_edge("generate_questions", "assign_question_weights")
-    workflow.add_edge("assign_question_weights", END)
+    workflow.add_edge("generate_questions", END)
     return workflow
 
 
@@ -78,9 +78,10 @@ def create_question_build_initial_state(
     user_prompt: str = "",
     system_constraints: str = "",
     units: list | None = None,
-    specs: list | None = None,
+    knowledge_graph_edges: list[dict] | None = None,
     question_count: int | None = None,
     mastery_by_unit_id: dict[int, float] | None = None,
+    priority_unit_ids: list[int] | None = None,
     progress_callback: object | None = None,
 ) -> QuestionBuildState:
     return {
@@ -93,9 +94,10 @@ def create_question_build_initial_state(
         "user_prompt": user_prompt,
         "system_constraints": system_constraints,
         "units": list(units or []),
-        "specs": list(specs or []),
-        "question_count": int(question_count or len(specs or []) or len(units or []) or 1),
+        "knowledge_graph_edges": list(knowledge_graph_edges or []),
+        "question_count": int(question_count or len(units or []) or 1),
         "mastery_by_unit_id": dict(mastery_by_unit_id or {}),
+        "priority_unit_ids": list(priority_unit_ids or []),
         "progress_callback": progress_callback,
         "error": "",
     }
@@ -120,9 +122,10 @@ async def run_question_build_workflow(
     user_prompt: str = "",
     system_constraints: str = "",
     units: list | None = None,
-    specs: list | None = None,
+    knowledge_graph_edges: list[dict] | None = None,
     question_count: int | None = None,
     mastery_by_unit_id: dict[int, float] | None = None,
+    priority_unit_ids: list[int] | None = None,
     progress_callback: object | None = None,
 ) -> WorkflowResult[QuestionBuildState]:
     context = WorkflowContext(
@@ -131,7 +134,7 @@ async def run_question_build_workflow(
         metadata={
             "lane": "question_build",
             "langsmith_run_name": RUN_NAME_EXAM_QUESTION_BUILD,
-            "question_count": int(question_count or len(specs or []) or len(units or []) or 1),
+            "question_count": int(question_count or len(units or []) or 1),
             "exam_mode": exam_mode,
         },
     )
@@ -148,9 +151,10 @@ async def run_question_build_workflow(
             user_prompt=user_prompt,
             system_constraints=system_constraints,
             units=list(units or []),
-            specs=specs,
+            knowledge_graph_edges=list(knowledge_graph_edges or []),
             question_count=question_count,
             mastery_by_unit_id=mastery_by_unit_id,
+            priority_unit_ids=priority_unit_ids,
             progress_callback=progress_callback,
         ),
         context=context,

@@ -19,10 +19,11 @@ _LATEX_FORMAT_RULES = (
 
 _QUESTION_TYPE_FORMAT_RULES = (
     "\nQuestion type formatting rules:\n"
+    "- The stem must contain only the problem statement; never duplicate or embed options inside stem.\n"
     "- Use one canonical choice format only: options must be a JSON array of strings, never an object/map.\n"
     "- Choice options must be exactly 4 plain option texts in order; never prefix options with A/B/C/D labels.\n"
     "- single_choice: provide exactly 4 distinct options and correct_indices with exactly one zero-based index, for example `[0]`.\n"
-    "- multiple_choice: provide exactly 4 distinct options and correct_indices with all correct zero-based indices, for example `[0, 2]`.\n"
+    "- multiple_choice: provide exactly 4 distinct options and correct zero-based indices, for example `[0]` or `[0, 2]`.\n"
     "- For single_choice and multiple_choice, do not provide correct_answer; the backend derives A/B/C/D labels from correct_indices.\n"
     "- true_false: do not provide options; correct_answer must be True or False.\n"
     "- fill_blank: do not provide options; put the blank in the stem as `{{blank}}`; correct_answer must be short and unique.\n"
@@ -52,6 +53,80 @@ def _subject_payload(
         "subject_description": subject_description or "",
         "user_intent": subject_user_intent or "",
     }
+
+
+def build_exam_knowledge_unit_filter_messages(
+    *,
+    subject_name: str,
+    subject_description: str,
+    subject_user_intent: str,
+    exam_mode: str,
+    requested_question_count: int,
+    candidate_limit: int,
+    user_prompt: str,
+    nodes: list[dict[str, Any]],
+    edges: list[dict[str, Any]],
+    priority_unit_ids: list[int] | None = None,
+    weak_unit_ids: list[int] | None = None,
+    system_constraints: str = "",
+) -> list[ChatMessage]:
+    payload = {
+        "subject_profile": {
+            "subject_name": subject_name or "",
+            "subject_description": subject_description or "",
+            "user_intent": subject_user_intent or "",
+        },
+        "exam_mode": exam_mode,
+        "requested_question_count": requested_question_count,
+        "candidate_limit": candidate_limit,
+        "user_prompt": user_prompt or "",
+        "system_constraints": system_constraints or "",
+        "priority_knowledge_unit_ids": list(priority_unit_ids or []),
+        "weak_knowledge_unit_ids": list(weak_unit_ids or []),
+        "knowledge_graph": {
+            "nodes": nodes,
+            "edges": edges,
+        },
+    }
+    prompt = f"""
+请基于给定的轻量知识图谱筛选一批适合进入“试题蓝图规划阶段”的候选知识单元。
+这里只做知识单元筛选，不要生成题目，也不要编排题型。
+
+图谱输入说明：
+- knowledge_graph.nodes 只包含知识单元 id 和 name。
+- knowledge_graph.edges 只包含 source_id 和 target_id，用来判断知识单元之间的图结构关系。
+- 不要假设图谱之外还有其他知识单元。
+
+你需要理解 user_prompt 中的考察范围倾向：
+- 如果用户说“只考/仅考/范围是/限定”等，strict_scope 应为 true，并且只能选择该范围内的知识单元。
+- 如果用户说“重点考/主要考/围绕/关于/复习”等，应优先选择相关知识单元，但可以补充必要的基础或关联单元。
+- 如果用户说“不考/不要考/排除/避免/跳过”等，不要选择对应知识单元。
+- 如果 user_prompt 没有明确范围，就结合学科目标、exam_mode、priority_knowledge_unit_ids 和 weak_knowledge_unit_ids 选择最值得考察的知识单元。
+
+筛选原则：
+- knowledge_unit_ids 只能来自 knowledge_graph.nodes，不能 invent 新 id。
+- 输出顺序代表推荐优先级，越靠前越应该被蓝图阶段使用。
+- 最多输出 candidate_limit 个 id；如果严格范围内单元较少，可以少于 candidate_limit。
+- 覆盖面要适合 requested_question_count，避免只选一堆同义或高度重复的知识单元。
+- 对 paper_exam，优先兼顾薄弱点与综合覆盖；对 web_practice，优先贴合复习和练习价值。
+- rationale 简要说明选择依据，供后续排查使用。
+
+只输出合法 JSON，形如：
+{{
+  "knowledge_unit_ids": [1, 2, 3],
+  "scope_include_terms": ["..."],
+  "scope_exclude_terms": ["..."],
+  "scope_strict": false,
+  "rationale": "..."
+}}
+
+输入：
+{json.dumps(payload, ensure_ascii=False, indent=2)}
+""".strip()
+    return [
+        {"role": SYSTEM, "content": "你是考试知识单元筛选器，只输出合法 JSON。"},
+        {"role": USER, "content": prompt},
+    ]
 
 
 def build_exam_question_blueprint_messages(
@@ -85,7 +160,7 @@ def build_exam_question_blueprint_messages(
 2. question_type：single_choice / multiple_choice / true_false / fill_blank / short_answer；
 3. difficulty：easy / medium / hard；
 4. knowledge_unit_ids：本题要测试的知识单元，建议 1-3 个；可以多个，但必须能自然放进同一道题；
-5. rationale：为什么这些知识单元和题型适合放在一起。
+5. rationale：为什么这些知识单元、题型和难度适合放在一起。
 
 编排原则：
 - 必须从给定 knowledge_units 中选择，不要 invent 新 id。
@@ -137,11 +212,13 @@ def build_exam_question_messages(
 要求：
 0. generation_prompt 是本题的完整生成要求，必须严格遵守；不要再向外部寻找全局用户要求或学科要求。
 1. 每道题必须匹配对应 item_order、question_type 和 difficulty。
-2. 使用 knowledge_unit_refs 表达本题覆盖的知识单元，不要输出单独的 knowledge_unit_id 字段；knowledge_unit_refs 中的 knowledge_unit_id 必须来自 question_spec.knowledge_unit_ids。
-3. 如果 question_spec.knowledge_unit_ids 有多个，本题要自然覆盖这些相关知识点。
-4. knowledge_units 按 question_spec.knowledge_unit_ids 的顺序排列；不要要求 knowledge_units 自身包含 id。
-5. 不要直接泄露答案；解析要说明考点、正确原因和常见误区。
-6. fill_blank stems 使用 `{{{{blank}}}}`，并且 `{{{{blank}}}}` 只能在正文中，不能放进 LaTeX 公式。
+2. 使用 knowledge_unit_refs 表达本题覆盖的知识单元，不要输出单独的 knowledge_unit_id 字段；knowledge_unit_refs 中的 knowledge_unit_id 必须使用 knowledge_units 中的真实 knowledge_unit_id，且必须来自 question_spec.knowledge_unit_ids。
+3. knowledge_units 中每个对象都包含真实 knowledge_unit_id。不要把“知识单元1/知识单元2”这种位置序号当作 id；如果 generation_prompt 出现这种位置序号，要按 question_spec.knowledge_unit_ids 的顺序映射成真实 id。
+4. knowledge_unit_refs 中必须包含 coverage_weight 和 role。coverage_weight 表示本题对该知识单元的覆盖占比，权重总和应约等于 1.0；最主要知识单元 role 为 primary，其余为 secondary。
+5. 如果 question_spec.knowledge_unit_ids 有多个，本题要自然覆盖这些相关知识点；如果实质只考一个知识点，只返回一个 coverage_weight=1.0 的 primary。
+6. 题干、选项和解析不要暴露“知识单元1/知识单元2”或数据库 id 这类内部索引；需要表达考点时使用知识点名称。
+7. 不要直接泄露答案；解析要说明考点、正确原因和常见误区。
+8. fill_blank stems 使用 `{{{{blank}}}}`，并且 `{{{{blank}}}}` 只能在正文中，不能放进 LaTeX 公式。
 
 Choice output contract:
 - For single_choice and multiple_choice, `options` must be pure option text only, for example `["option one", "option two", "option three", "option four"]`.
@@ -154,52 +231,6 @@ Choice output contract:
     return [
         {"role": SYSTEM, "content": SYSTEM_PROMPT_EXAM_QUESTION_BUILD + _QUESTION_TYPE_FORMAT_RULES + _LATEX_FORMAT_RULES},
         {"role": USER, "content": user_prompt_text},
-    ]
-
-
-def build_question_weight_messages(
-    *,
-    subject: str,
-    subject_name: str,
-    subject_description: str,
-    subject_user_intent: str,
-    question: dict[str, Any],
-    units: list[dict[str, Any]],
-) -> list[ChatMessage]:
-    payload = {
-        "subject": _subject_payload(
-            subject=subject,
-            subject_name=subject_name,
-            subject_description=subject_description,
-            subject_user_intent=subject_user_intent,
-        ),
-        "question": question,
-        "candidate_knowledge_units": units,
-    }
-    prompt = f"""
-请根据题目内容，为该题涉及的候选知识单元分配 coverage_weight。
-
-要求：
-- 只能使用 candidate_knowledge_units 中的 knowledge_unit_id。
-- 权重总和应约等于 1.0。
-- 最主要知识单元 role 为 primary，其余为 secondary。
-- 如果题目实质只考一个知识单元，就只返回一个权重 1.0 的 primary。
-
-只输出合法 JSON：
-{{
-  "item_order": 1,
-  "knowledge_unit_refs": [
-    {{"knowledge_unit_id": 1, "coverage_weight": 0.7, "role": "primary"}},
-    {{"knowledge_unit_id": 2, "coverage_weight": 0.3, "role": "secondary"}}
-  ]
-}}
-
-输入：
-{json.dumps(payload, ensure_ascii=False, indent=2)}
-""".strip()
-    return [
-        {"role": SYSTEM, "content": "你是试题知识点覆盖权重分析器，只输出合法 JSON。"},
-        {"role": USER, "content": prompt},
     ]
 
 

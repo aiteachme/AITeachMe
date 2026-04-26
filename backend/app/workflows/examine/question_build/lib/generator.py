@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import re
-from collections.abc import Mapping
+from collections.abc import Awaitable, Callable, Mapping
 from typing import Literal, TypeVar
 
 from pydantic import BaseModel, Field, field_validator, model_validator
@@ -19,9 +19,9 @@ from app.shared.infra.exceptions import LLMTimeoutError
 from app.shared.infra.llm_support import acompletion_with_fallback
 from app.shared.infra.llm_support.routing import LLMCallPurpose
 from app.workflows.examine.question_build.prompts import (
+    build_exam_knowledge_unit_filter_messages,
     build_exam_question_blueprint_messages,
     build_exam_question_messages,
-    build_question_weight_messages,
     build_text_exam_messages,
 )
 
@@ -38,6 +38,7 @@ T = TypeVar("T")
 _BLANK_TOKEN = "{{blank}}"
 _TEXT_UNDERSCORE_PLACEHOLDER_RE = re.compile(r"\\text\{(_+)\}")
 _CHOICE_LABEL_RE = re.compile(r"^\s*([A-Da-d])(?:[\.\)\]．、:：]\s*)(.+)$")
+_INLINE_WHITESPACE_RE = re.compile(r"[ \t\f\v]+")
 
 
 def _escape_text_underscore_placeholders(value: str) -> str:
@@ -47,6 +48,24 @@ def _escape_text_underscore_placeholders(value: str) -> str:
         lambda match: r"\text{" + r"\_" * len(match.group(1)) + "}",
         value,
     )
+
+
+def _clean_multiline_text(value: object) -> str:
+    text = str(value or "").replace("\r\n", "\n").replace("\r", "\n")
+    lines = [_INLINE_WHITESPACE_RE.sub(" ", line).strip() for line in text.split("\n")]
+    cleaned_lines: list[str] = []
+    previous_blank = False
+    for line in lines:
+        if not line:
+            if cleaned_lines and not previous_blank:
+                cleaned_lines.append("")
+            previous_blank = True
+            continue
+        cleaned_lines.append(line)
+        previous_blank = False
+    while cleaned_lines and cleaned_lines[-1] == "":
+        cleaned_lines.pop()
+    return "\n".join(cleaned_lines).strip()
 
 
 def _contains_blank_token_inside_latex(value: str) -> bool:
@@ -76,6 +95,31 @@ class ExamQuestionUnitRef(BaseModel):
     knowledge_unit_id: int = Field(ge=1)
     coverage_weight: float = Field(ge=0.0, le=1.0)
     role: Literal["primary", "secondary"] = "secondary"
+
+
+class ExamKnowledgeUnitSelection(BaseModel):
+    """Structured response from the candidate knowledge-unit filter step."""
+
+    knowledge_unit_ids: list[int] = Field(default_factory=list)
+    scope_include_terms: list[str] = Field(default_factory=list)
+    scope_exclude_terms: list[str] = Field(default_factory=list)
+    scope_strict: bool = False
+    rationale: str = Field(default="", max_length=800)
+
+    @model_validator(mode="after")
+    def _dedupe_unit_ids(self) -> "ExamKnowledgeUnitSelection":
+        ids: list[int] = []
+        seen: set[int] = set()
+        for raw_id in self.knowledge_unit_ids:
+            unit_id = int(raw_id or 0)
+            if unit_id > 0 and unit_id not in seen:
+                seen.add(unit_id)
+                ids.append(unit_id)
+        self.knowledge_unit_ids = ids
+        self.scope_include_terms = _clean_short_terms(self.scope_include_terms)
+        self.scope_exclude_terms = _clean_short_terms(self.scope_exclude_terms)
+        self.rationale = " ".join(str(self.rationale or "").split()).strip()
+        return self
 
 
 class ExamQuestionGenerationSpec(BaseModel):
@@ -144,6 +188,36 @@ class ExamQuestionBlueprintBatch(BaseModel):
 
     blueprints: list[ExamQuestionBlueprint] = Field(default_factory=list, min_length=1)
 
+    @model_validator(mode="before")
+    @classmethod
+    def _normalize_zero_based_item_orders(cls, value: object) -> object:
+        if not isinstance(value, dict):
+            return value
+        raw_blueprints = value.get("blueprints")
+        if not isinstance(raw_blueprints, list):
+            return value
+
+        orders: list[int] = []
+        for item in raw_blueprints:
+            if not isinstance(item, dict):
+                return value
+            try:
+                orders.append(int(item.get("item_order", 0)))
+            except (TypeError, ValueError):
+                return value
+
+        expected_zero_based = set(range(len(raw_blueprints)))
+        if set(orders) != expected_zero_based:
+            return value
+
+        normalized = dict(value)
+        normalized["blueprints"] = [
+            {**item, "item_order": int(item.get("item_order", 0)) + 1}
+            for item in raw_blueprints
+            if isinstance(item, dict)
+        ]
+        return normalized
+
 
 class ExamQuestionDraft(BaseModel):
     """One validated exam question returned by the LLM workflow."""
@@ -201,7 +275,7 @@ class ExamQuestionDraft(BaseModel):
     @field_validator("stem", "explanation")
     @classmethod
     def _strip_required_text(cls, value: str) -> str:
-        cleaned = " ".join(str(value or "").split()).strip()
+        cleaned = _clean_multiline_text(value)
         if not cleaned:
             raise ValueError("text field cannot be empty")
         return _escape_text_underscore_placeholders(cleaned)
@@ -305,8 +379,8 @@ class ExamQuestionDraft(BaseModel):
             if len({item.casefold() for item in options}) != 4:
                 raise ValueError("multiple_choice options must be distinct")
             indices = self.correct_indices or _choice_indices_from_answer(self.correct_answer, options)
-            if len(indices) < 2:
-                raise ValueError("multiple_choice correct_indices must contain at least 2 indices")
+            if len(indices) < 1:
+                raise ValueError("multiple_choice correct_indices must contain at least one index")
             if any(index < 0 or index >= len(options) for index in indices):
                 raise ValueError("multiple_choice correct_indices must be in range 0..3")
             self.correct_indices = sorted(indices)
@@ -357,11 +431,14 @@ class ExamSingleQuestionResponse(BaseModel):
         return value
 
 
-class ExamQuestionWeightResult(BaseModel):
-    """Structured LLM response for one question's knowledge-unit weights."""
+class ExamQuestionGenerationFailure(BaseModel):
+    """One question-generation request that reached a terminal failed state."""
 
     item_order: int = Field(ge=1)
-    knowledge_unit_refs: list[ExamQuestionUnitRef] = Field(default_factory=list, min_length=1)
+    question_type: QuestionTypeLiteral
+    difficulty: DifficultyLiteral
+    knowledge_unit_ids: list[int] = Field(default_factory=list)
+    error_message: str = Field(default="", max_length=1200)
 
 
 def _choice_label(index: int) -> str:
@@ -439,14 +516,6 @@ def _unit_payload(unit: KnowledgeUnit) -> dict[str, object]:
     }
 
 
-def _unit_payload_without_id(unit: KnowledgeUnit) -> dict[str, object]:
-    return {
-        "name": str(unit.canonical_name or "").strip(),
-        "knowledge_unit_type": str(unit.knowledge_unit_type or "").strip(),
-        "summary": " ".join(str(unit.summary or "").split()).strip(),
-    }
-
-
 def _unit_payload_with_mastery(
     unit: KnowledgeUnit,
     mastery_by_unit_id: dict[int, float] | None = None,
@@ -456,6 +525,62 @@ def _unit_payload_with_mastery(
     if mastery_by_unit_id and unit_id in mastery_by_unit_id:
         payload["mastery_score"] = round(float(mastery_by_unit_id[unit_id]), 3)
     return payload
+
+
+def _clean_short_terms(values: list[str]) -> list[str]:
+    terms: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        cleaned = " ".join(str(value or "").split()).strip()
+        if len(cleaned) < 2:
+            continue
+        key = cleaned.casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        terms.append(cleaned[:80])
+    return terms[:12]
+
+
+def _unit_graph_node_payload(unit: KnowledgeUnit) -> dict[str, object]:
+    return {
+        "id": int(unit.id or 0),
+        "name": str(unit.canonical_name or "").strip(),
+    }
+
+
+def _edge_graph_payload(edge: Mapping[str, object]) -> dict[str, object] | None:
+    source_id = int(edge.get("source_id") or edge.get("source_node_id") or 0)
+    target_id = int(edge.get("target_id") or edge.get("target_node_id") or 0)
+    if source_id <= 0 or target_id <= 0:
+        return None
+    return {
+        "source_id": source_id,
+        "target_id": target_id,
+    }
+
+
+def _normalize_selection(
+    selection: ExamKnowledgeUnitSelection,
+    *,
+    allowed_unit_ids: list[int],
+    candidate_limit: int,
+) -> ExamKnowledgeUnitSelection:
+    allowed = set(allowed_unit_ids)
+    ids: list[int] = []
+    seen: set[int] = set()
+    for raw_id in selection.knowledge_unit_ids:
+        unit_id = int(raw_id or 0)
+        if unit_id in allowed and unit_id not in seen:
+            seen.add(unit_id)
+            ids.append(unit_id)
+    return ExamKnowledgeUnitSelection(
+        knowledge_unit_ids=ids[: max(1, int(candidate_limit or 1))],
+        scope_include_terms=selection.scope_include_terms,
+        scope_exclude_terms=selection.scope_exclude_terms,
+        scope_strict=selection.scope_strict,
+        rationale=selection.rationale,
+    )
 
 
 def _spec_payload(spec: ExamQuestionGenerationSpec) -> dict[str, object]:
@@ -500,6 +625,10 @@ def _validate_batch_alignment(
                 f"item_order={spec.item_order} difficulty={item.difficulty} "
                 f"expected={spec.difficulty}"
             )
+        item.knowledge_unit_refs = _normalize_weight_refs(
+            item.knowledge_unit_refs,
+            allowed_unit_ids=spec.knowledge_unit_ids,
+        )
         normalized.append(item)
     return normalized
 
@@ -624,6 +753,126 @@ def _validate_blueprints(
     )
 
 
+async def _select_exam_knowledge_units_once(
+    *,
+    subject: str,
+    subject_name: str,
+    subject_description: str,
+    subject_user_intent: str,
+    exam_mode: str,
+    units: list[KnowledgeUnit],
+    knowledge_graph_edges: list[dict[str, object]],
+    question_count: int,
+    candidate_limit: int,
+    mastery_by_unit_id: dict[int, float] | None,
+    priority_unit_ids: list[int],
+    user_prompt: str,
+    system_constraints: str,
+    round_name: str,
+) -> ExamKnowledgeUnitSelection:
+    unit_ids = {int(unit.id) for unit in units if unit.id is not None}
+    weak_unit_ids = [
+        int(unit_id)
+        for unit_id, mastery_score in (mastery_by_unit_id or {}).items()
+        if int(unit_id or 0) in unit_ids and float(mastery_score) < 0.8
+    ]
+    graph_edges = [
+        payload
+        for edge in knowledge_graph_edges
+        for payload in [_edge_graph_payload(edge)]
+        if payload is not None
+        and int(payload["source_id"]) in unit_ids
+        and int(payload["target_id"]) in unit_ids
+    ]
+    messages = build_exam_knowledge_unit_filter_messages(
+        subject_name=subject_name,
+        subject_description=subject_description,
+        subject_user_intent=subject_user_intent,
+        exam_mode=exam_mode,
+        requested_question_count=question_count,
+        candidate_limit=candidate_limit,
+        user_prompt=user_prompt,
+        nodes=[_unit_graph_node_payload(unit) for unit in units],
+        edges=graph_edges,
+        priority_unit_ids=[unit_id for unit_id in priority_unit_ids if unit_id in unit_ids],
+        weak_unit_ids=weak_unit_ids,
+        system_constraints=system_constraints,
+    )
+    result = await acompletion_with_fallback(
+        messages,
+        call_purpose=LLMCallPurpose.CLASSIFY,
+        model="light",
+        response_model=ExamKnowledgeUnitSelection,
+        temperature=0.1,
+        max_tokens=1400,
+        extra_metadata={
+            "substep": "exam.question_build.filter_units",
+            "subject": subject,
+            "exam_mode": exam_mode,
+            "question_count": question_count,
+            "candidate_limit": candidate_limit,
+            "unit_count": len(units),
+            "round": round_name,
+        },
+    )
+    assert isinstance(result, ExamKnowledgeUnitSelection)
+    return _normalize_selection(
+        result,
+        allowed_unit_ids=[int(unit.id) for unit in units if unit.id is not None],
+        candidate_limit=candidate_limit,
+    )
+
+
+async def select_exam_knowledge_units(
+    *,
+    subject: str = "",
+    subject_name: str = "",
+    subject_description: str = "",
+    subject_user_intent: str = "",
+    exam_mode: str,
+    units: list[KnowledgeUnit],
+    question_count: int,
+    candidate_limit: int,
+    knowledge_graph_edges: list[dict[str, object]] | None = None,
+    mastery_by_unit_id: dict[int, float] | None = None,
+    priority_unit_ids: list[int] | None = None,
+    user_prompt: str = "",
+    system_constraints: str = "",
+) -> ExamKnowledgeUnitSelection:
+    """Use the LLM to select a compact candidate pool for blueprint planning."""
+
+    eligible_units = [unit for unit in units if unit.id is not None]
+    if not eligible_units:
+        return ExamKnowledgeUnitSelection()
+
+    normalized_count = max(1, int(question_count or 1))
+    normalized_limit = min(
+        len(eligible_units),
+        max(1, int(candidate_limit or normalized_count or 1)),
+    )
+    priority_ids = [int(unit_id) for unit_id in list(priority_unit_ids or []) if int(unit_id or 0) > 0]
+
+    selection = await _select_exam_knowledge_units_once(
+        subject=subject,
+        subject_name=subject_name,
+        subject_description=subject_description,
+        subject_user_intent=subject_user_intent,
+        exam_mode=exam_mode,
+        units=eligible_units,
+        knowledge_graph_edges=list(knowledge_graph_edges or []),
+        question_count=normalized_count,
+        candidate_limit=normalized_limit,
+        mastery_by_unit_id=mastery_by_unit_id,
+        priority_unit_ids=priority_ids,
+        user_prompt=user_prompt,
+        system_constraints=system_constraints,
+        round_name="graph",
+    )
+    if not selection.knowledge_unit_ids:
+        raise ValueError("LLM knowledge-unit selection returned no usable ids")
+    return selection
+
+
 async def plan_exam_question_blueprints(
     *,
     subject: str = "",
@@ -642,6 +891,7 @@ async def plan_exam_question_blueprints(
     normalized_count = max(1, int(question_count or len(units) or 1))
     if not units:
         return []
+    max_tokens = min(9000, max(2200, normalized_count * 360))
     messages = build_exam_question_blueprint_messages(
         subject_name=subject_name,
         subject_description=subject_description,
@@ -655,11 +905,11 @@ async def plan_exam_question_blueprints(
     try:
         result = await acompletion_with_fallback(
             messages,
-            call_purpose=LLMCallPurpose.CLASSIFY,
+            call_purpose=LLMCallPurpose.REASONING,
             model="reason",
             response_model=ExamQuestionBlueprintBatch,
             temperature=0.45,
-            max_tokens=2200,
+            max_tokens=max_tokens,
             extra_metadata={
                 "substep": "exam.question_build.plan_blueprints",
                 "subject": subject,
@@ -692,7 +942,7 @@ async def _generate_one_exam_question(
 ) -> ExamQuestionDraft:
     batch_units = [unit_by_id[unit_id] for unit_id in spec.knowledge_unit_ids if unit_id in unit_by_id]
     messages = build_exam_question_messages(
-        units=[_unit_payload_without_id(unit) for unit in batch_units],
+        units=[_unit_payload(unit) for unit in batch_units],
         spec=_spec_payload(spec),
         generation_prompt=spec.generation_prompt,
     )
@@ -727,6 +977,9 @@ async def generate_exam_questions_for_units(
     *,
     units: list[KnowledgeUnit],
     specs: list[ExamQuestionGenerationSpec],
+    on_question_generated: Callable[[ExamQuestionDraft], Awaitable[None]] | None = None,
+    on_question_failed: Callable[[ExamQuestionGenerationFailure], Awaitable[None]] | None = None,
+    allow_partial: bool = False,
 ) -> list[ExamQuestionDraft]:
     """Generate exam questions for selected KnowledgeUnits via one LLM call per item."""
 
@@ -744,28 +997,44 @@ async def generate_exam_questions_for_units(
     if missing_units:
         raise ValueError(f"missing KnowledgeUnits for specs: {missing_units}")
 
-    generated_results = await asyncio.gather(
-        *(
-            _generate_one_exam_question(
+    async def generate_for_spec(
+        spec: ExamQuestionGenerationSpec,
+    ) -> tuple[ExamQuestionGenerationSpec, ExamQuestionDraft | Exception]:
+        try:
+            question = await _generate_one_exam_question(
                 unit_by_id=unit_by_id,
                 spec=spec,
             )
-            for spec in specs
-        ),
-        return_exceptions=True,
-    )
+            return spec, question
+        except Exception as exc:
+            return spec, exc
 
     generated: list[ExamQuestionDraft] = []
+    failed: list[ExamQuestionGenerationFailure] = []
     failures: list[str] = []
     failed_orders: list[int] = []
-    for spec, result in zip(specs, generated_results, strict=True):
+    tasks = [asyncio.create_task(generate_for_spec(spec)) for spec in specs]
+    for completed_task in asyncio.as_completed(tasks):
+        spec, result = await completed_task
         if isinstance(result, Exception):
             failed_orders.append(spec.item_order)
             failures.append(f"item_order={spec.item_order}: {result}")
+            failure = ExamQuestionGenerationFailure(
+                item_order=spec.item_order,
+                question_type=spec.question_type,
+                difficulty=spec.difficulty,
+                knowledge_unit_ids=spec.knowledge_unit_ids,
+                error_message=str(result),
+            )
+            failed.append(failure)
+            if on_question_failed is not None:
+                await on_question_failed(failure)
             continue
         generated.append(result)
+        if on_question_generated is not None:
+            await on_question_generated(result)
 
-    if failures:
+    if failures and not allow_partial:
         raise ValueError(
             "Exam question generation failed for "
             f"item_order values={failed_orders}; " + "; ".join(failures)
@@ -774,75 +1043,14 @@ async def generate_exam_questions_for_units(
     requested_orders = {spec.item_order for spec in specs}
     generated_orders = {item.item_order for item in generated}
     missing_orders = sorted(requested_orders - generated_orders)
-    if missing_orders:
+    failed_order_set = {item.item_order for item in failed}
+    unresolved_missing_orders = [order for order in missing_orders if order not in failed_order_set]
+    if unresolved_missing_orders:
         raise ValueError(
             "LLM question generation returned an incomplete batch: "
-            f"missing item_order values={missing_orders}, unexpected item_order values=[]"
+            f"missing item_order values={unresolved_missing_orders}, unexpected item_order values=[]"
         )
     return sorted(generated, key=lambda item: item.item_order)
-
-
-async def assign_question_knowledge_weights(
-    *,
-    subject: str,
-    subject_name: str = "",
-    subject_description: str = "",
-    subject_user_intent: str = "",
-    units: list[KnowledgeUnit],
-    blueprints: list[ExamQuestionBlueprint],
-    questions: list[ExamQuestionDraft],
-) -> list[ExamQuestionDraft]:
-    """Assign per-question coverage weights to related knowledge units in parallel."""
-
-    unit_by_id = {int(unit.id): unit for unit in units if unit.id is not None}
-    blueprint_by_order = {item.item_order: item for item in blueprints}
-
-    async def assign_one(question: ExamQuestionDraft) -> ExamQuestionDraft:
-        blueprint = blueprint_by_order.get(question.item_order)
-        existing_ids = [ref.knowledge_unit_id for ref in question.knowledge_unit_refs]
-        allowed_ids = list(blueprint.knowledge_unit_ids if blueprint is not None else existing_ids)
-        allowed_units = [unit_by_id[unit_id] for unit_id in allowed_ids if unit_id in unit_by_id]
-        fallback_refs = _normalize_weight_refs(
-            [
-                ExamQuestionUnitRef(
-                    knowledge_unit_id=unit_id,
-                    coverage_weight=1.0 if index == 0 else 0.35,
-                    role="primary" if index == 0 else "secondary",
-                )
-                for index, unit_id in enumerate(allowed_ids)
-            ],
-            allowed_unit_ids=allowed_ids,
-        )
-        try:
-            result = await acompletion_with_fallback(
-                build_question_weight_messages(
-                    subject=subject,
-                    subject_name=subject_name,
-                    subject_description=subject_description,
-                    subject_user_intent=subject_user_intent,
-                    question=question.model_dump(mode="json", exclude={"knowledge_unit_refs"}),
-                    units=[_unit_payload(unit) for unit in allowed_units],
-                ),
-                call_purpose=LLMCallPurpose.CLASSIFY,
-                model="reason",
-                response_model=ExamQuestionWeightResult,
-                temperature=0.0,
-                max_tokens=700,
-                extra_metadata={
-                    "substep": "exam.question_build.weight_units",
-                    "subject": subject,
-                    "item_order": question.item_order,
-                },
-            )
-            assert isinstance(result, ExamQuestionWeightResult)
-            refs = _normalize_weight_refs(result.knowledge_unit_refs, allowed_unit_ids=allowed_ids)
-        except Exception:
-            refs = fallback_refs
-        question.knowledge_unit_refs = refs
-        return question
-
-    weighted = await asyncio.gather(*(assign_one(question) for question in questions))
-    return sorted(weighted, key=lambda item: item.item_order)
 
 
 async def generate_exam_from_text(
@@ -879,16 +1087,17 @@ async def generate_exam_from_text(
 
 
 __all__ = [
+    "ExamKnowledgeUnitSelection",
     "ExamQuestionBatch",
     "ExamQuestionBlueprint",
     "ExamQuestionBlueprintBatch",
     "ExamQuestionDraft",
+    "ExamQuestionGenerationFailure",
     "ExamQuestionGenerationSpec",
     "ExamSingleQuestionResponse",
     "ExamQuestionUnitRef",
-    "ExamQuestionWeightResult",
-    "assign_question_knowledge_weights",
     "generate_exam_from_text",
     "generate_exam_questions_for_units",
     "plan_exam_question_blueprints",
+    "select_exam_knowledge_units",
 ]

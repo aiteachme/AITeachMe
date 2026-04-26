@@ -79,6 +79,7 @@ class ExamStudyGuideResponse(BaseModel):
 
 PaperPreviewShape = Literal["choice", "blank", "short", "judge", "chart", "formula", "code", "text"]
 PaperPreviewResultStatus = Literal["ungraded", "correct", "incorrect"]
+PaperPreviewGenerationStatus = Literal["pending", "planned", "generated", "failed"]
 
 
 class PaperPreviewRow(BaseModel):
@@ -88,6 +89,7 @@ class PaperPreviewRow(BaseModel):
     difficulty: str
     density: int = Field(default=2, ge=1, le=3)
     result_status: PaperPreviewResultStatus = "ungraded"
+    generation_status: PaperPreviewGenerationStatus = "generated"
 
 
 class PaperPreview(BaseModel):
@@ -185,6 +187,7 @@ class ExamPaperItemResponse(BaseModel):
     correct_answer: str | None = None
     explanation: str
     knowledge_unit_links: list[ExamNodeLinkResponse] = Field(default_factory=list)
+    selection_context: dict[str, Any] = Field(default_factory=dict)
     user_answer: str | None = None
     is_correct: bool | None = None
     score_obtained: float | None = None

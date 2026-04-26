@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import re
@@ -18,7 +19,7 @@ from app.api.openapi import build_error_responses
 from app.models import ExamPaper, ExamPaperItem, QuestionTemplate, QuestionTypeRegistry, exam_mode_value
 from app.models.knowledge_unit import KnowledgeUnit
 from app.models.subject import Subject
-from app.repositories import exams_repo
+from app.repositories import exams_repo, knowledge_relation_repo
 from app.repositories import profile_repo
 from app.schemas.common import ApiResponse, PageParams, PaginatedData, build_paginated_data, ok_response
 from app.schemas.exams import (
@@ -203,6 +204,7 @@ def _build_paper_preview(
                 "difficulty": item.difficulty,
                 "density": _preview_density(item.difficulty),
                 "result_status": _preview_result_status(item.is_correct),
+                "generation_status": "generated",
             }
             for item in ordered_items[:PAPER_PREVIEW_ROW_LIMIT]
         ],
@@ -221,6 +223,7 @@ def _build_placeholder_paper_preview(*, question_count: int) -> PaperPreview:
                 "difficulty": "medium",
                 "density": 2,
                 "result_status": "ungraded",
+                "generation_status": "pending",
             }
             for order in range(1, min(count, PAPER_PREVIEW_ROW_LIMIT) + 1)
         ],
@@ -234,6 +237,8 @@ def _build_blueprint_paper_preview(
     question_count: int,
     unit_name_by_id: dict[int, str],
 ) -> PaperPreview:
+    blueprints = _normalize_blueprint_item_orders(blueprints)
+
     def blueprint_order(item: dict[str, object]) -> int:
         try:
             return int(item.get("item_order", 0) or 0)
@@ -280,6 +285,7 @@ def _build_blueprint_paper_preview(
                 "difficulty": difficulty,
                 "density": _preview_density(difficulty),
                 "result_status": "ungraded",
+                "generation_status": "planned",
             }
         )
 
@@ -289,6 +295,245 @@ def _build_blueprint_paper_preview(
         rows=rows,
         overflow_count=max(0, count - PAPER_PREVIEW_ROW_LIMIT),
     )
+
+
+def _normalize_blueprint_item_orders(
+    blueprints: list[dict[str, object]],
+) -> list[dict[str, object]]:
+    normalized_blueprints = [dict(item) for item in blueprints if isinstance(item, dict)]
+    if not normalized_blueprints:
+        return []
+
+    orders: list[int] = []
+    for item in normalized_blueprints:
+        try:
+            orders.append(int(item.get("item_order", 0) or 0))
+        except (TypeError, ValueError):
+            return normalized_blueprints
+
+    if set(orders) != set(range(len(normalized_blueprints))):
+        return normalized_blueprints
+
+    for item in normalized_blueprints:
+        item["item_order"] = int(item.get("item_order", 0) or 0) + 1
+    return normalized_blueprints
+
+
+def _blueprints_by_one_based_order(
+    blueprints: object,
+) -> dict[int, dict[str, object]]:
+    if not isinstance(blueprints, list):
+        return {}
+    normalized = _normalize_blueprint_item_orders(
+        [item for item in blueprints if isinstance(item, dict)]
+    )
+    by_order: dict[int, dict[str, object]] = {}
+    for item in normalized:
+        try:
+            order = int(item.get("item_order", 0) or 0)
+        except (TypeError, ValueError):
+            continue
+        if order > 0:
+            by_order[order] = item
+    return by_order
+
+
+def _positive_int(value: object) -> int:
+    try:
+        parsed = int(value or 0)
+    except (TypeError, ValueError):
+        return 0
+    return parsed if parsed > 0 else 0
+
+
+def _merge_generated_question_into_preview(
+    preview: PaperPreview,
+    generated_question: dict[str, object],
+    *,
+    question_count: int,
+    unit_name_by_id: dict[int, str],
+) -> PaperPreview:
+    order = _positive_int(generated_question.get("item_order"))
+    if order <= 0:
+        return preview
+
+    count = max(1, int(question_count or len(preview.rows) or order or 1))
+    rows_by_order = {
+        int(row.order): row.model_dump(mode="json")
+        for row in preview.rows
+        if _positive_int(row.order) > 0
+    }
+    for pending_order in range(1, min(count, PAPER_PREVIEW_ROW_LIMIT) + 1):
+        rows_by_order.setdefault(
+            pending_order,
+            {
+                "order": pending_order,
+                "type": "pending",
+                "shape": "text",
+                "difficulty": "medium",
+                "density": 2,
+                "result_status": "ungraded",
+                "generation_status": "pending",
+            },
+        )
+
+    if order <= PAPER_PREVIEW_ROW_LIMIT:
+        existing = rows_by_order.get(order, {})
+        question_type = str(generated_question.get("question_type") or existing.get("type") or "text")
+        difficulty = str(generated_question.get("difficulty") or existing.get("difficulty") or "medium")
+        rows_by_order[order] = {
+            **existing,
+            "order": order,
+            "type": question_type,
+            "shape": _preview_shape(question_type),
+            "difficulty": difficulty,
+            "density": _preview_density(difficulty),
+            "result_status": str(existing.get("result_status") or "ungraded"),
+            "generation_status": "generated",
+        }
+
+    keyword_candidates = list(preview.keywords or [])
+    for ref in list(generated_question.get("knowledge_unit_refs") or []):
+        if not isinstance(ref, dict):
+            continue
+        unit_name = unit_name_by_id.get(_positive_int(ref.get("knowledge_unit_id")))
+        if unit_name:
+            keyword_candidates.append(unit_name)
+
+    question_types = list(preview.question_types or [])
+    generated_type = str(generated_question.get("question_type") or "").strip()
+    if generated_type:
+        question_types.append(generated_type)
+
+    return PaperPreview(
+        keywords=_dedupe_preview_keywords(keyword_candidates),
+        question_types=_dedupe_preview_keywords(question_types),
+        rows=[
+            rows_by_order[row_order]
+            for row_order in range(1, min(count, PAPER_PREVIEW_ROW_LIMIT) + 1)
+            if row_order in rows_by_order
+        ],
+        overflow_count=max(0, count - PAPER_PREVIEW_ROW_LIMIT),
+    )
+
+
+def _merge_failed_question_into_preview(
+    preview: PaperPreview,
+    failed_question: dict[str, object],
+    *,
+    question_count: int,
+) -> PaperPreview:
+    order = _positive_int(failed_question.get("item_order"))
+    if order <= 0:
+        return preview
+
+    count = max(1, int(question_count or len(preview.rows) or order or 1))
+    rows_by_order = {
+        int(row.order): row.model_dump(mode="json")
+        for row in preview.rows
+        if _positive_int(row.order) > 0
+    }
+    for pending_order in range(1, min(count, PAPER_PREVIEW_ROW_LIMIT) + 1):
+        rows_by_order.setdefault(
+            pending_order,
+            {
+                "order": pending_order,
+                "type": "pending",
+                "shape": "text",
+                "difficulty": "medium",
+                "density": 2,
+                "result_status": "ungraded",
+                "generation_status": "pending",
+            },
+        )
+
+    if order <= PAPER_PREVIEW_ROW_LIMIT:
+        existing = rows_by_order.get(order, {})
+        question_type = str(failed_question.get("question_type") or existing.get("type") or "text")
+        difficulty = str(failed_question.get("difficulty") or existing.get("difficulty") or "medium")
+        rows_by_order[order] = {
+            **existing,
+            "order": order,
+            "type": question_type,
+            "shape": _preview_shape(question_type),
+            "difficulty": difficulty,
+            "density": _preview_density(difficulty),
+            "result_status": "ungraded",
+            "generation_status": "failed",
+        }
+
+    return PaperPreview(
+        keywords=list(preview.keywords or []),
+        question_types=list(preview.question_types or []),
+        rows=[
+            rows_by_order[row_order]
+            for row_order in range(1, min(count, PAPER_PREVIEW_ROW_LIMIT) + 1)
+            if row_order in rows_by_order
+        ],
+        overflow_count=max(0, count - PAPER_PREVIEW_ROW_LIMIT),
+    )
+
+
+def _merge_generated_question_into_context(
+    context: dict[str, object],
+    generated_question: dict[str, object],
+    *,
+    question_count: int,
+) -> dict[str, object]:
+    order = _positive_int(generated_question.get("item_order"))
+    if order <= 0:
+        return context
+
+    existing_items = context.get("generated_questions")
+    generated_by_order: dict[int, dict[str, object]] = {}
+    if isinstance(existing_items, list):
+        for item in existing_items:
+            if not isinstance(item, dict):
+                continue
+            item_order = _positive_int(item.get("item_order"))
+            if item_order > 0:
+                generated_by_order[item_order] = item
+    generated_by_order[order] = generated_question
+
+    max_order = max(1, int(question_count or order or 1))
+    context["generated_questions"] = [
+        generated_by_order[item_order]
+        for item_order in range(1, max_order + 1)
+        if item_order in generated_by_order
+    ]
+    context["generated_question_count"] = len(generated_by_order)
+    return context
+
+
+def _merge_failed_question_into_context(
+    context: dict[str, object],
+    failed_question: dict[str, object],
+    *,
+    question_count: int,
+) -> dict[str, object]:
+    order = _positive_int(failed_question.get("item_order"))
+    if order <= 0:
+        return context
+
+    existing_items = context.get("failed_questions")
+    failed_by_order: dict[int, dict[str, object]] = {}
+    if isinstance(existing_items, list):
+        for item in existing_items:
+            if not isinstance(item, dict):
+                continue
+            item_order = _positive_int(item.get("item_order"))
+            if item_order > 0:
+                failed_by_order[item_order] = item
+    failed_by_order[order] = failed_question
+
+    max_order = max(1, int(question_count or order or 1))
+    context["failed_questions"] = [
+        failed_by_order[item_order]
+        for item_order in range(1, max_order + 1)
+        if item_order in failed_by_order
+    ]
+    context["failed_question_count"] = len(failed_by_order)
+    return context
 
 
 def _paper_preview_from_json(raw: str | None) -> PaperPreview:
@@ -333,6 +578,32 @@ def _paper_preview_for_response(
     )
 
 
+def _build_final_paper_preview(
+    items: list[ExamPaperItem],
+    *,
+    existing_preview: PaperPreview,
+    knowledge_unit_by_id: dict[int, KnowledgeUnit],
+    links_by_item_id: dict[int, list[dict[str, object]]],
+) -> PaperPreview:
+    base = _build_paper_preview(
+        items,
+        knowledge_unit_by_id=knowledge_unit_by_id,
+        links_by_item_id=links_by_item_id,
+    )
+    rows_by_order = {row.order: row.model_dump(mode="json") for row in base.rows}
+    for row in existing_preview.rows:
+        if row.generation_status == "failed" and row.order <= PAPER_PREVIEW_ROW_LIMIT:
+            rows_by_order[row.order] = row.model_dump(mode="json")
+
+    visible_orders = sorted(rows_by_order)[:PAPER_PREVIEW_ROW_LIMIT]
+    return PaperPreview(
+        keywords=base.keywords,
+        question_types=base.question_types,
+        rows=[rows_by_order[order] for order in visible_orders],
+        overflow_count=max(0, len(rows_by_order) - PAPER_PREVIEW_ROW_LIMIT),
+    )
+
+
 def _paper_generation_event_payload(
     paper: ExamPaper,
     *,
@@ -344,12 +615,25 @@ def _paper_generation_event_payload(
     effective_preview = preview or _paper_preview_from_json(getattr(paper, "paper_preview_json", "{}"))
     payload: dict[str, object] = {
         "exam_paper_id": int(paper.id or 0),
-        "status": paper.status,
+        "status": _effective_exam_paper_status(paper, context=context),
         "num_questions": paper.total_items,
         "paper_preview": effective_preview.model_dump(mode="json"),
+        "selection_context": context,
         "error_message": error_message if error_message is not None else context.get("error_message"),
         "updated_at": paper.updated_at,
     }
+    generated_questions = context.get("generated_questions")
+    if isinstance(generated_questions, list):
+        payload["generated_questions"] = [
+            item for item in generated_questions if isinstance(item, dict)
+        ]
+        payload["generated_question_count"] = len(payload["generated_questions"])
+    failed_questions = context.get("failed_questions")
+    if isinstance(failed_questions, list):
+        payload["failed_questions"] = [
+            item for item in failed_questions if isinstance(item, dict)
+        ]
+        payload["failed_question_count"] = len(payload["failed_questions"])
     if stage:
         payload["stage"] = stage
     return payload
@@ -391,24 +675,51 @@ def _is_exam_eligible_unit(unit: KnowledgeUnit) -> bool:
     return True
 
 
-def _pick_knowledge_units(
+def _list_exam_eligible_units(
     session: Session,
     *,
-    user_id: str,
     subject: str,
-    exam_mode: str,
-    user_prompt: str | None,
-    limit: int,
 ) -> list[KnowledgeUnit]:
     stmt = select(KnowledgeUnit).where(
         KnowledgeUnit.subject == subject,
         KnowledgeUnit.status == "active",
     )
     units = list(session.exec(stmt.order_by(KnowledgeUnit.id)).all())
-    units = [unit for unit in units if _is_exam_eligible_unit(unit)]
-    units_by_id = {unit.id: unit for unit in units if unit.id is not None}
-    ordered_units: list[KnowledgeUnit] = []
+    return [unit for unit in units if _is_exam_eligible_unit(unit)]
 
+
+def _exam_knowledge_graph_edges(
+    session: Session,
+    *,
+    subject: str,
+    unit_ids: list[int],
+) -> list[dict[str, object]]:
+    allowed_ids = {int(unit_id) for unit_id in unit_ids if int(unit_id or 0) > 0}
+    if not allowed_ids:
+        return []
+    edges: list[dict[str, object]] = []
+    for edge in knowledge_relation_repo.list_all_edges_by_subject(session, subject):
+        source_id = int(edge.source_node_id or 0)
+        target_id = int(edge.target_node_id or 0)
+        if source_id not in allowed_ids or target_id not in allowed_ids:
+            continue
+        edges.append(
+            {
+                "source_id": source_id,
+                "target_id": target_id,
+            }
+        )
+    return edges
+
+
+def _exam_priority_unit_ids(
+    session: Session,
+    *,
+    user_id: str,
+    subject: str,
+    exam_mode: str,
+) -> list[int]:
+    priority_ids: list[int] = []
     if exam_mode == "web_practice":
         due_states = profile_repo.list_due_knowledge_states(
             session,
@@ -424,12 +735,8 @@ def _pick_knowledge_units(
             target_kind="knowledge_unit",
         )
         for state in [*due_states, *weak_states]:
-            knowledge_unit_id = state.knowledge_unit_id
-            if knowledge_unit_id is None:
-                continue
-            unit = units_by_id.get(int(knowledge_unit_id))
-            if unit is not None and unit not in ordered_units:
-                ordered_units.append(unit)
+            if state.knowledge_unit_id is not None:
+                priority_ids.append(int(state.knowledge_unit_id))
 
     if exam_mode == "paper_exam":
         weak_states = profile_repo.list_weak_knowledge_states(
@@ -438,41 +745,20 @@ def _pick_knowledge_units(
             subject=subject,
             target_kind="knowledge_unit",
         )
-        weak_ids = {
+        priority_ids.extend(
             int(state.knowledge_unit_id)
             for state in weak_states
             if state.knowledge_unit_id is not None
-        }
-        strong_units = [unit for unit in units if unit.id not in weak_ids]
-        weak_units = [unit for unit in units if unit.id in weak_ids]
-        ordered_units.extend(weak_units[: max(1, limit // 2)])
-        ordered_units.extend([unit for unit in strong_units if unit not in ordered_units])
+        )
 
-    if not ordered_units:
-        ordered_units = units[:]
-
-    focus = (user_prompt or "").strip().casefold()
-    if focus:
-        focused = [
-            unit
-            for unit in ordered_units
-            if focus in unit.canonical_name.casefold()
-            or focus in (unit.summary or "").casefold()
-            or focus in unit.knowledge_unit_type.casefold()
-        ]
-        if focused:
-            ordered_units = focused
-
-    deduped: list[KnowledgeUnit] = []
-    seen_ids: set[int] = set()
-    for unit in ordered_units:
-        if unit.id is None or unit.id in seen_ids:
+    deduped: list[int] = []
+    seen: set[int] = set()
+    for unit_id in priority_ids:
+        if unit_id <= 0 or unit_id in seen:
             continue
-        seen_ids.add(unit.id)
-        deduped.append(unit)
-    if limit <= 0:
-        return deduped
-    return deduped[: max(1, limit)]
+        seen.add(unit_id)
+        deduped.append(unit_id)
+    return deduped
 
 
 def _mastery_by_unit_id(session: Session, *, user_id: str, subject: str) -> dict[int, float]:
@@ -513,6 +799,23 @@ def _build_exam_selection_context(
     if error_message:
         payload["error_message"] = error_message
     return json.dumps(payload, ensure_ascii=False)
+
+
+def _effective_exam_paper_status(
+    paper: ExamPaper,
+    *,
+    context: dict[str, object] | None = None,
+) -> str:
+    status = str(paper.status or "")
+    if status != "generating":
+        return status
+
+    effective_context = context if context is not None else _json_dict(paper.selection_context_json)
+    generation_status = str(effective_context.get("generation_status") or "").strip()
+    has_error_message = bool(str(effective_context.get("error_message") or "").strip())
+    if generation_status == "failed" or has_error_message:
+        return "failed"
+    return status
 
 
 def _set_exam_generation_status(
@@ -574,21 +877,66 @@ def _require_generated_questions_by_order(
         generated_by_order[item_order] = item
 
     if invalid_orders:
-        raise AITeachMeError(
-            detail=f"Exam question generation returned invalid item_order values: {invalid_orders}",
-            error_code="EXAM_QUESTION_BUILD_INVALID",
-            status_code=502,
+        logger.warning(
+            "exam_question_generation_invalid_item_orders_ignored",
+            invalid_orders=invalid_orders,
+            expected_orders=expected_orders,
         )
 
     missing_orders = [order for order in expected_orders if order not in generated_by_order]
-    if missing_orders:
-        raise AITeachMeError(
-            detail=f"Exam question generation returned incomplete results; missing item_order values: {missing_orders}",
-            error_code="EXAM_QUESTION_BUILD_INCOMPLETE",
-            status_code=502,
+    failed_questions = state.get("failed_questions") or []
+    failed_orders = {
+        _positive_int(item.get("item_order"))
+        for item in failed_questions
+        if isinstance(item, dict)
+    }
+    unresolved_missing_orders = [
+        order for order in missing_orders if order not in failed_orders
+    ]
+    if unresolved_missing_orders:
+        logger.warning(
+            "exam_question_generation_missing_terminal_items",
+            missing_orders=unresolved_missing_orders,
+            expected_orders=expected_orders,
         )
 
     return generated_by_order
+
+
+def _failed_questions_by_order(state: dict[str, object] | None) -> dict[int, dict[str, object]]:
+    failed_questions = (state or {}).get("failed_questions") if isinstance(state, dict) else []
+    if not isinstance(failed_questions, list):
+        return {}
+
+    by_order: dict[int, dict[str, object]] = {}
+    for item in failed_questions:
+        if not isinstance(item, dict):
+            continue
+        order = _positive_int(item.get("item_order"))
+        if order > 0:
+            by_order[order] = dict(item)
+    return by_order
+
+
+def _build_inferred_failed_question(
+    *,
+    order: int,
+    blueprint_by_order: dict[int, dict[str, object]],
+) -> dict[str, object]:
+    blueprint = blueprint_by_order.get(order, {})
+    knowledge_unit_ids: list[int] = []
+    for raw_unit_id in list(blueprint.get("knowledge_unit_ids") or []):
+        unit_id = _positive_int(raw_unit_id)
+        if unit_id > 0:
+            knowledge_unit_ids.append(unit_id)
+    return {
+        "item_order": order,
+        "question_type": str(blueprint.get("question_type") or "text"),
+        "difficulty": str(blueprint.get("difficulty") or "medium"),
+        "knowledge_unit_ids": knowledge_unit_ids,
+        "error_message": "Question generation reached the terminal workflow state without a generated item.",
+        "inferred": True,
+    }
 
 
 def _upsert_generated_template(
@@ -603,9 +951,11 @@ def _upsert_generated_template(
     explanation: str,
     options: list[str] | None,
     knowledge_unit_refs: list[dict[str, object]] | None = None,
+    rationale: str = "",
 ) -> QuestionTemplate:
     stem_hash = _hash_stem(stem)
     refs = knowledge_unit_refs or [{"knowledge_unit_id": unit.id, "coverage_weight": 1.0, "role": "primary"}]
+    selection_hints = {"rationale": rationale.strip()} if rationale.strip() else {}
     existing = exams_repo.find_template_by_stem_hash(session, subject, int(unit.id or 0), stem_hash)
     if existing is not None:
         existing.question_type = question_type
@@ -614,6 +964,10 @@ def _upsert_generated_template(
         existing.answer = answer
         existing.explanation = explanation
         existing.options_json = json.dumps(options, ensure_ascii=False) if options else None
+        existing_hints = _json_dict(existing.selection_hints_json)
+        if selection_hints:
+            existing_hints.update(selection_hints)
+            existing.selection_hints_json = json.dumps(existing_hints, ensure_ascii=False)
         existing.updated_at = utcnow()
         session.add(existing)
         session.commit()
@@ -630,6 +984,7 @@ def _upsert_generated_template(
         answer=answer,
         explanation=explanation,
         options_json=json.dumps(options, ensure_ascii=False) if options else None,
+        selection_hints_json=json.dumps(selection_hints, ensure_ascii=False),
     )
     template = exams_repo.create_question_template(session, template)
     exams_repo.replace_question_template_links(session, template_id=int(template.id or 0), refs=refs)
@@ -688,6 +1043,17 @@ async def _run_exam_generation_background(
             subject_context = load_subject_llm_context(session, subject=subject)
 
             mastery_by_unit_id = _mastery_by_unit_id(session, user_id=user_id, subject=subject)
+            priority_unit_ids = _exam_priority_unit_ids(
+                session,
+                user_id=user_id,
+                subject=subject,
+                exam_mode=exam_mode,
+            )
+            knowledge_graph_edges = _exam_knowledge_graph_edges(
+                session,
+                subject=subject,
+                unit_ids=[int(unit.id or 0) for unit in exam_units],
+            )
             recent_stems: list[str] = []
             for item, _asked_at, recent_paper_id in exams_repo.list_exam_item_snapshots_by_user(
                 session,
@@ -709,10 +1075,120 @@ async def _run_exam_generation_background(
         )
 
         async def handle_question_build_progress(payload: dict[str, object]) -> None:
+            candidate_unit_ids = payload.get("candidate_unit_ids")
+            if isinstance(candidate_unit_ids, list):
+                candidate_ids = [
+                    int(unit_id)
+                    for unit_id in candidate_unit_ids
+                    if isinstance(unit_id, int | str) and int(unit_id or 0) > 0
+                ]
+                with managed_session() as session:
+                    paper = exams_repo.get_exam_paper_by_id(session, paper_id)
+                    if paper is None or paper.subject != subject or paper.user_id != user_id:
+                        return
+                    context = _json_dict(paper.selection_context_json)
+                    context["source"] = "knowledge_unit_candidate_pool"
+                    context["knowledge_unit_ids"] = candidate_ids
+                    for key in (
+                        "candidate_unit_limit",
+                        "input_unit_count",
+                        "knowledge_graph_edge_count",
+                        "candidate_unit_count",
+                        "scope_include_terms",
+                        "scope_exclude_terms",
+                        "scope_strict",
+                        "filter_strategy",
+                        "filter_rationale",
+                    ):
+                        if key in payload:
+                            context[key] = payload[key]
+                    paper.selection_context_json = json.dumps(context, ensure_ascii=False)
+                    paper.updated_at = utcnow()
+                    session.add(paper)
+                    session.commit()
+                    session.refresh(paper)
+                    event_payload = _paper_generation_event_payload(
+                        paper,
+                        stage=str(payload.get("stage") or "filter_exam_units"),
+                    )
+                _publish_exam_event(subject, paper_id, "snapshot", event_payload)
+
+            generated_question = payload.get("generated_question")
+            if isinstance(generated_question, dict):
+                generated_payload = dict(generated_question)
+                with managed_session() as session:
+                    paper = exams_repo.get_exam_paper_by_id(session, paper_id)
+                    if paper is None or paper.subject != subject or paper.user_id != user_id:
+                        return
+                    context = _json_dict(paper.selection_context_json)
+                    context = _merge_generated_question_into_context(
+                        context,
+                        generated_payload,
+                        question_count=question_count,
+                    )
+                    preview = _merge_generated_question_into_preview(
+                        _paper_preview_from_json(paper.paper_preview_json),
+                        generated_payload,
+                        question_count=question_count,
+                        unit_name_by_id=unit_name_by_id,
+                    )
+                    paper.total_items = question_count
+                    paper.total_score = float(question_count)
+                    paper.selection_context_json = json.dumps(context, ensure_ascii=False)
+                    paper.paper_preview_json = preview.model_dump_json()
+                    paper.updated_at = utcnow()
+                    session.add(paper)
+                    session.commit()
+                    session.refresh(paper)
+                    event_payload = _paper_generation_event_payload(
+                        paper,
+                        preview=preview,
+                        stage=str(payload.get("stage") or "generate_exam_questions"),
+                    )
+                    event_payload["generated_question"] = generated_payload
+                    if "generated_question_count" in payload:
+                        event_payload["generated_question_count"] = payload["generated_question_count"]
+                _publish_exam_event(subject, paper_id, "snapshot", event_payload)
+
+            failed_question = payload.get("failed_question")
+            if isinstance(failed_question, dict):
+                failed_payload = dict(failed_question)
+                with managed_session() as session:
+                    paper = exams_repo.get_exam_paper_by_id(session, paper_id)
+                    if paper is None or paper.subject != subject or paper.user_id != user_id:
+                        return
+                    context = _json_dict(paper.selection_context_json)
+                    context = _merge_failed_question_into_context(
+                        context,
+                        failed_payload,
+                        question_count=question_count,
+                    )
+                    preview = _merge_failed_question_into_preview(
+                        _paper_preview_from_json(paper.paper_preview_json),
+                        failed_payload,
+                        question_count=question_count,
+                    )
+                    paper.selection_context_json = json.dumps(context, ensure_ascii=False)
+                    paper.paper_preview_json = preview.model_dump_json()
+                    paper.updated_at = utcnow()
+                    session.add(paper)
+                    session.commit()
+                    session.refresh(paper)
+                    event_payload = _paper_generation_event_payload(
+                        paper,
+                        preview=preview,
+                        stage=str(payload.get("stage") or "generate_exam_questions"),
+                    )
+                    event_payload["failed_question"] = failed_payload
+                    if "failed_question_count" in payload:
+                        event_payload["failed_question_count"] = payload["failed_question_count"]
+                _publish_exam_event(subject, paper_id, "snapshot", event_payload)
+
             blueprints = payload.get("question_blueprints")
             if not isinstance(blueprints, list):
                 return
             blueprint_payload = [item for item in blueprints if isinstance(item, dict)]
+            blueprint_payload = _normalize_blueprint_item_orders(blueprint_payload)
             preview = _build_blueprint_paper_preview(
                 blueprint_payload,
                 question_count=question_count,
@@ -743,9 +1219,10 @@ async def _run_exam_generation_background(
             subject_user_intent=subject_row.user_intent,
             exam_mode=exam_mode,
             units=exam_units,
-            specs=None,
+            knowledge_graph_edges=knowledge_graph_edges,
             question_count=question_count,
             mastery_by_unit_id=mastery_by_unit_id,
+            priority_unit_ids=priority_unit_ids,
             subject_context=subject_context,
             user_prompt=user_prompt or "",
             system_constraints=diversity_prompt,
@@ -755,11 +1232,54 @@ async def _run_exam_generation_background(
             build_result=build_result,
             expected_orders=list(range(1, question_count + 1)),
         )
+        build_state = build_result.value or {}
+        question_blueprints = build_state.get("question_blueprints") if isinstance(build_state, dict) else []
+        blueprint_by_order = _blueprints_by_one_based_order(question_blueprints)
+        failed_by_order = _failed_questions_by_order(build_state if isinstance(build_state, dict) else {})
+        inferred_missing_orders = [
+            order
+            for order in range(1, question_count + 1)
+            if order not in generated_by_order and order not in failed_by_order
+        ]
+        if inferred_missing_orders:
+            logger.warning(
+                "exam_generation_missing_question_terminal_records",
+                subject=subject,
+                user_id=user_id,
+                paper_id=paper_id,
+                missing_orders=inferred_missing_orders,
+            )
+            for order in inferred_missing_orders:
+                failed_by_order[order] = _build_inferred_failed_question(
+                    order=order,
+                    blueprint_by_order=blueprint_by_order,
+                )
+        terminal_failed_by_order = {
+            order: failed
+            for order, failed in failed_by_order.items()
+            if order not in generated_by_order
+        }
 
         with managed_session() as session:
             paper = exams_repo.get_exam_paper_by_id(session, paper_id)
             if paper is None or paper.subject != subject or paper.user_id != user_id:
                 return
+            paper_context = _json_dict(paper.selection_context_json)
+            final_preview = _paper_preview_from_json(paper.paper_preview_json)
+            for failed_payload in [
+                terminal_failed_by_order[order]
+                for order in sorted(terminal_failed_by_order)
+            ]:
+                paper_context = _merge_failed_question_into_context(
+                    paper_context,
+                    failed_payload,
+                    question_count=question_count,
+                )
+                final_preview = _merge_failed_question_into_preview(
+                    final_preview,
+                    failed_payload,
+                    question_count=question_count,
+                )
             units = list(
                 session.exec(
                     select(KnowledgeUnit).where(
@@ -771,7 +1291,7 @@ async def _run_exam_generation_background(
             unit_by_id = {int(unit.id): unit for unit in units if unit.id is not None}
             items: list[ExamPaperItem] = []
             refs_by_order: dict[int, list[dict[str, object]]] = {}
-            for order in range(1, question_count + 1):
+            for order in sorted(generated_by_order):
                 generated = generated_by_order[order]
                 refs = [
                     ref
@@ -785,6 +1305,29 @@ async def _run_exam_generation_background(
                 if not refs:
                     refs = [{"knowledge_unit_id": primary_unit_id, "coverage_weight": 1.0, "role": "primary"}]
                 refs_by_order[order] = refs
+                blueprint = blueprint_by_order.get(order, {})
+                rationale = str(blueprint.get("rationale") or "")
+                blueprint_unit_ids = [
+                    int(unit_id)
+                    for unit_id in list(blueprint.get("knowledge_unit_ids") or [])
+                    if int(unit_id or 0) > 0
+                ]
+                if not blueprint_unit_ids:
+                    blueprint_unit_ids = [
+                        int(ref.get("knowledge_unit_id", 0) or 0)
+                        for ref in refs
+                        if int(ref.get("knowledge_unit_id", 0) or 0) > 0
+                    ]
+                item_selection_context = {
+                    "blueprint": {
+                        "item_order": int(blueprint.get("item_order") or order),
+                        "knowledge_unit_ids": blueprint_unit_ids,
+                        "question_type": str(blueprint.get("question_type") or generated["question_type"]),
+                        "difficulty": str(blueprint.get("difficulty") or generated["difficulty"]),
+                        "rationale": rationale,
+                        "generation_prompt": str(blueprint.get("generation_prompt") or ""),
+                    }
+                }
                 template = _upsert_generated_template(
                     session,
                     subject=subject,
@@ -796,6 +1339,7 @@ async def _run_exam_generation_background(
                     explanation=str(generated["explanation"]),
                     options=list(generated.get("options") or []) or None,
                     knowledge_unit_refs=refs,
+                    rationale=rationale,
                 )
                 items.append(
                     ExamPaperItem(
@@ -806,6 +1350,7 @@ async def _run_exam_generation_background(
                         options_snapshot_json=template.options_json,
                         answer_snapshot=template.answer,
                         explanation_snapshot=template.explanation,
+                        selection_context_json=json.dumps(item_selection_context, ensure_ascii=False),
                         difficulty=template.difficulty,
                         question_type=template.question_type,
                         score=1.0,
@@ -825,11 +1370,15 @@ async def _run_exam_generation_background(
             session.commit()
             paper.total_items = len(items)
             paper.total_score = float(len(items))
-            paper.paper_preview_json = _build_paper_preview(
+            paper.paper_preview_json = _build_final_paper_preview(
                 items,
+                existing_preview=final_preview,
                 knowledge_unit_by_id=unit_by_id,
                 links_by_item_id=links_by_item_id,
             ).model_dump_json()
+            paper_context.pop("generated_questions", None)
+            paper_context.pop("generated_question_count", None)
+            paper.selection_context_json = json.dumps(paper_context, ensure_ascii=False)
             _set_exam_generation_status(session, paper, status="ready")
             done_payload = _paper_generation_event_payload(
                 paper,
@@ -837,11 +1386,52 @@ async def _run_exam_generation_background(
                 preview=_paper_preview_from_json(paper.paper_preview_json),
             )
 
+        for order in inferred_missing_orders:
+            failed_payload = terminal_failed_by_order.get(order)
+            if not failed_payload:
+                continue
+            snapshot_payload = dict(done_payload)
+            snapshot_payload["stage"] = "generate_exam_questions"
+            snapshot_payload["failed_question"] = failed_payload
+            _publish_exam_event(subject, paper_id, "snapshot", snapshot_payload)
+
         _publish_exam_event(
             subject,
             paper_id,
             "done",
             done_payload,
+        )
+    except asyncio.CancelledError:
+        error_message = "Exam question generation was cancelled during the planning stage."
+        logger.exception(
+            "exam_generation_background_cancelled",
+            subject=subject,
+            user_id=user_id,
+            paper_id=paper_id,
+            exam_mode=exam_mode,
+            question_count=question_count,
+            error_message=error_message,
+        )
+        with managed_session() as session:
+            paper = exams_repo.get_exam_paper_by_id(session, paper_id)
+            if paper is not None:
+                paper = _set_exam_generation_status(session, paper, status="failed", error_message=error_message)
+                failure_payload = _paper_generation_event_payload(
+                    paper,
+                    stage="failed",
+                    error_message=error_message,
+                )
+            else:
+                failure_payload = {
+                    "exam_paper_id": paper_id,
+                    "status": "failed",
+                    "error_message": error_message,
+                }
+        _publish_exam_event(
+            subject,
+            paper_id,
+            "done",
+            failure_payload,
         )
     except Exception as exc:
         error_message = str(getattr(exc, "detail", None) or exc or "Exam question generation failed.")
@@ -937,12 +1527,75 @@ def _paper_item_response(
             for knowledge_unit_id in [int(ref.get("knowledge_unit_id", 0) or 0)]
             if knowledge_unit_id > 0
         ],
+        selection_context=_json_dict(item.selection_context_json),
         user_answer=item.answer_content or None,
         is_correct=item.is_correct,
         score_obtained=item.score_obtained,
         score_max=item.score_max,
         error_cause_label=item.error_cause_label,
     )
+
+
+def _generated_question_item_responses(
+    context: dict[str, object],
+    *,
+    knowledge_unit_by_id: dict[int, KnowledgeUnit],
+    mastery_by_unit_id: dict[int, float],
+) -> list[ExamPaperItemResponse]:
+    generated_questions = context.get("generated_questions")
+    if not isinstance(generated_questions, list):
+        return []
+
+    responses: list[ExamPaperItemResponse] = []
+    for raw_item in generated_questions:
+        if not isinstance(raw_item, dict):
+            continue
+        order = _positive_int(raw_item.get("item_order"))
+        stem = _clean_exam_text(str(raw_item.get("stem") or ""))
+        if order <= 0 or not stem:
+            continue
+
+        options_payload = raw_item.get("options")
+        options = [str(option) for option in options_payload] if isinstance(options_payload, list) else None
+        knowledge_unit_links: list[dict[str, object]] = []
+        for ref in list(raw_item.get("knowledge_unit_refs") or []):
+            if not isinstance(ref, dict):
+                continue
+            knowledge_unit_id = _positive_int(ref.get("knowledge_unit_id"))
+            if knowledge_unit_id <= 0:
+                continue
+            unit = knowledge_unit_by_id.get(knowledge_unit_id)
+            knowledge_unit_links.append(
+                {
+                    "knowledge_unit_id": knowledge_unit_id,
+                    "knowledge_unit_name": unit.canonical_name if unit is not None else "",
+                    "coverage_weight": float(ref.get("coverage_weight", 1.0) or 1.0),
+                    "role": str(ref.get("role", "primary") or "primary"),
+                    "mastery_score": mastery_by_unit_id.get(knowledge_unit_id),
+                }
+            )
+
+        responses.append(
+            ExamPaperItemResponse(
+                id=-1_000_000 - order,
+                item_order=order,
+                question_template_id=0,
+                question_type=str(raw_item.get("question_type") or "text"),
+                difficulty=str(raw_item.get("difficulty") or "medium"),
+                stem=str(raw_item.get("stem") or ""),
+                options=options,
+                correct_answer=str(raw_item.get("correct_answer") or ""),
+                explanation=str(raw_item.get("explanation") or ""),
+                knowledge_unit_links=knowledge_unit_links,
+                selection_context={"generation_status": "generated"},
+                user_answer=None,
+                is_correct=None,
+                score_obtained=None,
+                score_max=1.0,
+                error_cause_label=None,
+            )
+        )
+    return sorted(responses, key=lambda item: item.item_order)
 
 
 def _question_template_response(
@@ -1001,7 +1654,28 @@ def _question_type_response(item: QuestionTypeRegistry) -> QuestionTypeRegistryI
 def _paper_detail(session: Session, paper: ExamPaper) -> ExamPaperDetailResponse:
     items = exams_repo.list_items_by_paper(session, paper.id or 0)
     links_by_item_id = _links_for_items(session, items)
+    context = _json_dict(paper.selection_context_json)
+    effective_status = _effective_exam_paper_status(paper, context=context)
     knowledge_unit_by_id = _knowledge_units_for_item_links(session, links_by_item_id)
+    generated_unit_ids = {
+        knowledge_unit_id
+        for raw_item in list(context.get("generated_questions") or [])
+        if isinstance(raw_item, dict)
+        for ref in list(raw_item.get("knowledge_unit_refs") or [])
+        if isinstance(ref, dict)
+        for knowledge_unit_id in [_positive_int(ref.get("knowledge_unit_id"))]
+        if knowledge_unit_id > 0
+    }
+    missing_generated_unit_ids = sorted(generated_unit_ids - set(knowledge_unit_by_id))
+    if missing_generated_unit_ids:
+        for unit in session.exec(
+            select(KnowledgeUnit).where(
+                KnowledgeUnit.subject == paper.subject,
+                KnowledgeUnit.id.in_(missing_generated_unit_ids),
+            )
+        ).all():
+            if unit.id is not None:
+                knowledge_unit_by_id[int(unit.id)] = unit
     mastery_by_unit_id = {
         int(state.knowledge_unit_id): state.mastery_score
         for state in profile_repo.list_knowledge_states(
@@ -1012,34 +1686,50 @@ def _paper_detail(session: Session, paper: ExamPaper) -> ExamPaperDetailResponse
         )
         if state.knowledge_unit_id is not None
     }
+    item_responses = [
+        _paper_item_response(
+            item,
+            knowledge_unit_by_id=knowledge_unit_by_id,
+            mastery_by_unit_id=mastery_by_unit_id,
+            knowledge_unit_refs=links_by_item_id.get(int(item.id or 0), []),
+        )
+        for item in items
+    ]
+    if effective_status == "generating":
+        response_by_order = {
+            item.item_order: item
+            for item in _generated_question_item_responses(
+                context,
+                knowledge_unit_by_id=knowledge_unit_by_id,
+                mastery_by_unit_id=mastery_by_unit_id,
+            )
+        }
+        response_by_order.update({item.item_order: item for item in item_responses})
+        item_responses = [
+            response_by_order[order]
+            for order in sorted(response_by_order)
+        ]
+
     return ExamPaperDetailResponse(
         id=paper.id,
         subject=paper.subject,
         user_id=paper.user_id,
         exam_mode=paper.exam_mode,
-        status=paper.status,
+        status=effective_status,
         total_items=paper.total_items,
         score_obtained=paper.score_obtained,
         total_score=paper.total_score,
         submitted_at=paper.submitted_at,
         graded_at=paper.graded_at,
         created_at=paper.created_at,
-        selection_context=json.loads(paper.selection_context_json or "{}"),
+        selection_context=context,
         paper_preview=_paper_preview_for_response(
             paper,
             items,
             knowledge_unit_by_id=knowledge_unit_by_id,
             links_by_item_id=links_by_item_id,
         ),
-        items=[
-            _paper_item_response(
-                item,
-                knowledge_unit_by_id=knowledge_unit_by_id,
-                mastery_by_unit_id=mastery_by_unit_id,
-                knowledge_unit_refs=links_by_item_id.get(int(item.id or 0), []),
-            )
-            for item in items
-        ],
+        items=item_responses,
     )
 
 
@@ -1204,13 +1894,9 @@ async def generate_exam(
     normalized = normalize_subject_slug(subject)
     _ensure_subject(session, normalized, user.user_id)
     question_count = max(1, int(body.num_questions or 5))
-    units = _pick_knowledge_units(
+    units = _list_exam_eligible_units(
         session,
-        user_id=user.user_id,
         subject=normalized,
-        exam_mode=body.exam_mode,
-        user_prompt=body.user_prompt,
-        limit=0,
     )
     if not units:
         raise AITeachMeError(
@@ -1239,7 +1925,7 @@ async def generate_exam(
             total_score=float(question_count),
             paper_preview_json=initial_preview.model_dump_json(),
             selection_context_json=_build_exam_selection_context(
-                source="knowledge_unit_llm",
+                source="knowledge_unit_pool",
                 knowledge_unit_ids=[int(unit.id or 0) for unit in exam_units],
                 user_prompt=body.user_prompt,
                 sample_file_uids=body.sample_file_uids or [],
@@ -1313,7 +1999,7 @@ async def exam_history(
                     subject=paper.subject,
                     user_id=paper.user_id,
                     exam_mode=paper.exam_mode,
-                    status=paper.status,
+                    status=_effective_exam_paper_status(paper),
                     total_items=paper.total_items,
                     score_obtained=paper.score_obtained,
                     total_score=paper.total_score,
