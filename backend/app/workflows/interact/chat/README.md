@@ -31,10 +31,10 @@
 
 - `解析或创建会话`：读取 `chat_session`，如果请求里没有可用 `session_id` 就创建新会话；同时发出 `status:session_resolved`，让前端先拿到真实会话 ID。
 - `读取对话状态`：读取近期对话、学科展示信息、用户整体画像、薄弱知识点和近期错题。它们只做个性化背景，不能覆盖本轮划选主题。
-- `检索学习上下文`：把用户问题和划选内容合成检索 query，优先查 KnowledgeUnit/知识图谱证据；只有图谱没有命中时才使用向量检索兜底。LangSmith 中该节点下会出现 `interact.retrieval.knowledge_unit_search` 和按需出现的 `interact.retrieval.vector_fallback_search` 子 span。
+- `检索学习上下文`：普通闲聊且没有入口上下文时跳过学科检索；学习问题会把用户问题和划选内容合成检索 query，优先查 KnowledgeUnit/知识图谱证据；只有图谱没有命中时才使用向量检索兜底。LangSmith 中该节点下会出现 `interact.retrieval.knowledge_unit_search` 和按需出现的 `interact.retrieval.vector_fallback_search` 子 span。
 - `选择教学策略`：根据问题和入口上下文选择讲解、引导、复盘、规划或练习策略。
-- `选择执行模式`：决定本轮是 `single_pass` 直接回答还是 `plan_execute` 受控工具模式；划词问答默认直接回答，避免工具调用稀释划选上下文。
-- `组装伴读提示词`：按“当前问题 > 划选入口 > 学科资料/图谱 > 薄弱项/近期错题”的优先级构造 messages。
+- `选择执行模式`：决定本轮是 `single_pass` 直接回答还是 `plan_execute` 受控工具模式；划词问答和通用闲聊默认直接回答，避免工具调用稀释划选上下文或把通用对话拉回学科。
+- `组装伴读提示词`：先解析场景，再选择专属 system prompt：通用对话、常规学习、知识文档划词、考试题讲解、知识库构建各自独立；没有入口上下文且用户只是闲聊时，学科只保留为会话归属，不展开完整背景。划词和考试题场景只保留极简学科背景；划词入口上下文足够时，不再把重复检索正文追加成 `参考资料`。
 - `流式生成回答`：调用主模型或受控工具，持续发出 SSE token；如果客户端断开，会标记 `stream_interrupted` 并停止后续写库。
 - `保存对话轮次`：将 user/assistant 两条消息写入同一个 `turn_id`，并保存引用上下文、划选 anchor 和 source 信息。
 - `更新会话元信息`：更新 `last_message_at`；如果仍是默认标题，生成或回退一个短标题。

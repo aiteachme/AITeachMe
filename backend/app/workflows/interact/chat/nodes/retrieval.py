@@ -17,6 +17,7 @@ from app.shared.infra.settings import get_settings
 from app.shared.infra.database import managed_session
 from app.shared.infra.workflow.context import WorkflowContext
 from app.workflows.interact.chat.state import InteractWorkflowState
+from app.workflows.interact.chat.lib.intent import has_entry_context, should_use_subject_grounding
 from app.workflows.interact.chat.lib.retrieval import retrieve_context
 
 
@@ -36,6 +37,25 @@ def build_retrieve_context_node(*, context: WorkflowContext, session: Session | 
     workflow_logger = context.get_logger()
 
     async def retrieve_context_node(state: InteractWorkflowState) -> InteractWorkflowState:
+        has_primary_context = has_entry_context(
+            selected_context=state.get("selected_context"),
+            selection_context=state.get("selection_context"),
+        )
+        if not should_use_subject_grounding(
+            question=state["question"],
+            source=state.get("source"),
+            has_primary_context=has_primary_context,
+        ):
+            workflow_logger.info(
+                "interact_context_retrieval_skipped",
+                reason="ordinary_chat_without_subject_intent",
+            )
+            return {
+                **state,
+                "retrieval_results": [],
+                "contexts": None,
+            }
+
         with _node_session(session) as db_session:
             retrieval_results = await retrieve_context(
                 session=db_session,

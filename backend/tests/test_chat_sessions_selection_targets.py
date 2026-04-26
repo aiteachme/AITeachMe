@@ -7,6 +7,7 @@ from app.schemas.chats import ChatSelectionContext
 from app.shared.infra.strategies import StrategyMode
 from app.shared.infra.workflow.context import WorkflowContext
 from app.workflows.interact.chat.lib import sessioning
+from app.workflows.interact.chat.lib.execution import InteractExecutionMode, select_execution_mode
 from app.workflows.interact.chat.lib.types import (
     MistakeSummary,
     RetrievedContext,
@@ -186,6 +187,7 @@ def test_selection_prompt_keeps_recent_mistakes_as_secondary_context():
     )
 
     system_prompt = messages[0]["content"]
+    assert "文档划词问答私教" in system_prompt
     assert "用户入口上下文（本轮主证据）" in system_prompt
     assert "近期错题只用于调整讲解深浅" in system_prompt
     assert system_prompt.index("用户入口上下文（本轮主证据）") < system_prompt.index("近期错题：")
@@ -250,6 +252,50 @@ def test_selection_prompt_omits_low_relevance_retrieval_context_when_selection_i
     assert system_prompt.count("Halo 是全天通用问候语") == 0
 
 
+def test_selection_prompt_skips_redundant_retrieval_when_primary_context_is_enough():
+    section_excerpt = (
+        "时间主题：线性不可逆的集体焦虑。"
+        "Time and tide wait for no man 强调时间不可逆，也反映工业化社会对效率、计划和准时的重视。"
+        "它不是单纯催促人快一点，而是在提醒个体需要提前判断后果并主动行动。"
+        "在非线性时间文化中，这句话可能被误解为冷漠或功利，但核心其实是提前干预比事后补救更有效。"
+        "这段内容已经足够作为划词问答的主证据，不需要再把同一个知识单元作为参考资料重复塞入模型输入。"
+    )
+    messages = build_chat_messages(
+        subject="英语谚语",
+        strategy_mode=StrategyMode.GUIDED,
+        retrieval_results=[
+            RetrievedContext(
+                chunk_id=1,
+                document_id=1,
+                title="时间主题：线性不可逆的集体焦虑",
+                header_path="英语谚语 > 时间主题",
+                content=section_excerpt,
+                score=1.0,
+                low_relevance=False,
+                retrieval_source="knowledge_unit",
+            )
+        ],
+        recent_messages=[],
+        weak_points=[],
+        recent_mistakes=[],
+        question="看不懂",
+        source="quick_chat",
+        selected_context=None,
+        selection_context=ChatSelectionContext(
+            selected_text="Time and tide wait for no man 强调时间不可逆。",
+            heading_path=["英语谚语", "时间主题"],
+            before_text=section_excerpt,
+            after_text=section_excerpt,
+        ),
+        source_chunk_id=None,
+    )
+
+    system_prompt = messages[0]["content"]
+    assert "用户入口上下文（本轮主证据）" in system_prompt
+    assert "参考资料：" not in system_prompt
+    assert "[资料:knowledge_unit]" not in system_prompt
+
+
 def test_selection_prompt_prioritizes_relevant_weak_points():
     messages = build_chat_messages(
         subject="英语",
@@ -308,10 +354,160 @@ def test_prompt_uses_subject_display_name_and_background():
     )
 
     system_prompt = messages[0]["content"]
-    assert "围绕「基础印尼语」" in system_prompt
-    assert "围绕「subj_okl1hpt8kwef」" not in system_prompt
-    assert "学科说明：问候语、自我介绍和简单时态。" in system_prompt
+    assert "文档划词问答私教" in system_prompt
+    assert "「基础印尼语」" in system_prompt
+    assert "「subj_okl1hpt8kwef」" not in system_prompt
+    assert "本轮以用户入口上下文为主" in system_prompt
+    assert "学科说明：问候语、自我介绍和简单时态。" not in system_prompt
     assert "用户整体画像：平均掌握度 34%" in system_prompt
+
+
+def test_regular_chitchat_prompt_does_not_force_subject_context():
+    messages = build_chat_messages(
+        subject="subj_6k6j1yrmzo5a",
+        strategy_mode=StrategyMode.EXPLAIN,
+        retrieval_results=[
+            RetrievedContext(
+                chunk_id=1,
+                document_id=1,
+                title="英语谚语",
+                header_path="英语谚语 > 文化隐喻",
+                content="Every cloud has a silver lining 用来表达逆境中也有希望。",
+                score=0.92,
+                low_relevance=False,
+                retrieval_source="knowledge_unit",
+            )
+        ],
+        recent_messages=[],
+        weak_points=[WeakPointSummary(knowledge_point="谚语应用", mastery_text="20%")],
+        recent_mistakes=[
+            MistakeSummary(
+                question_stem="Every cloud has a silver lining 适合什么场景？",
+                user_answer="",
+                correct_answer="安慰别人或表达乐观。",
+                analysis="knowledge_gap",
+            )
+        ],
+        question="好无聊",
+        subject_context=SubjectContextSummary(
+            subject_id="subj_6k6j1yrmzo5a",
+            subject_name="学谚语用起来",
+            description="围绕英语谚语的主题簇与文化语境展开。",
+            user_intent="系统学习英语谚语。",
+            learning_intent="建立语言文化理解与实际应用能力。",
+            subject_intro="当前知识文档重点覆盖按主题分类英语谚语。",
+        ),
+        source=None,
+        selected_context=None,
+        selection_context=None,
+        source_chunk_id=None,
+    )
+
+    system_prompt = messages[0]["content"]
+    assert "通用对话伙伴" in system_prompt
+    assert "通用对话：当前没有用户入口上下文" in system_prompt
+    assert "通用对话模式：先回应用户当下感受" in system_prompt
+    assert "讲解模式：先定义核心概念" not in system_prompt
+    assert "当前学习空间：学谚语用起来" in system_prompt
+    assert "学科说明：围绕英语谚语" not in system_prompt
+    assert "用户建课意图：系统学习英语谚语" not in system_prompt
+    assert "谚语应用（掌握度" not in system_prompt
+    assert "Every cloud has a silver lining" not in system_prompt
+
+
+def test_regular_learning_prompt_keeps_subject_context_when_requested():
+    messages = build_chat_messages(
+        subject="subj_6k6j1yrmzo5a",
+        strategy_mode=StrategyMode.PLANNING,
+        retrieval_results=[],
+        recent_messages=[],
+        weak_points=[],
+        recent_mistakes=[],
+        question="这门课怎么学比较好？",
+        subject_context=SubjectContextSummary(
+            subject_id="subj_6k6j1yrmzo5a",
+            subject_name="学谚语用起来",
+            description="围绕英语谚语的主题簇与文化语境展开。",
+            user_intent="系统学习英语谚语。",
+            learning_intent="建立语言文化理解与实际应用能力。",
+        ),
+        source=None,
+        selected_context=None,
+        selection_context=None,
+        source_chunk_id=None,
+    )
+
+    system_prompt = messages[0]["content"]
+    assert "常规学习对话" in system_prompt
+    assert "常规学习对话：可以使用当前学习空间背景" in system_prompt
+    assert "学科说明：围绕英语谚语" in system_prompt
+    assert "用户建课意图：系统学习英语谚语" in system_prompt
+
+
+def test_exam_question_prompt_uses_dedicated_template():
+    messages = build_chat_messages(
+        subject="数学",
+        strategy_mode=StrategyMode.REVIEW,
+        retrieval_results=[],
+        recent_messages=[],
+        weak_points=[WeakPointSummary(knowledge_point="一元二次方程", mastery_text="40%")],
+        recent_mistakes=[],
+        question="为什么这题错了？",
+        subject_context=SubjectContextSummary(
+            subject_id="math",
+            subject_name="数学",
+            description="初中数学。",
+        ),
+        source="exam_question",
+        selected_context="题干：求方程 x^2 - 5x + 6 = 0 的解。\n用户答案：x=1,6\n参考答案：x=2,3",
+        selection_context=None,
+        source_chunk_id=None,
+    )
+
+    system_prompt = messages[0]["content"]
+    assert "考试题讲解私教" in system_prompt
+    assert "题目入口上下文（本轮主证据）" in system_prompt
+    assert "这题 / 这个 / 这里 / 为什么错 / 答案" in system_prompt
+    assert "文档划词问答私教" not in system_prompt
+
+
+def test_build_assistant_prompt_uses_dedicated_template():
+    messages = build_chat_messages(
+        subject="英语谚语",
+        strategy_mode=StrategyMode.EXPLAIN,
+        retrieval_results=[],
+        recent_messages=[],
+        weak_points=[],
+        recent_mistakes=[],
+        question="为什么还没生成完？",
+        subject_context=SubjectContextSummary(
+            subject_id="proverbs",
+            subject_name="英语谚语",
+            description="按主题组织英语谚语。",
+        ),
+        source="build_assistant",
+        selected_context="当前阶段：docgen_chapter_enhancement；已生成 3/5 章。",
+        selection_context=None,
+        source_chunk_id=None,
+    )
+
+    system_prompt = messages[0]["content"]
+    assert "知识库构建助手" in system_prompt
+    assert "构建入口上下文（本轮主证据）" in system_prompt
+    assert "不要把构建过程问题误当成普通学科讲课" in system_prompt
+    assert "考试题讲解私教" not in system_prompt
+
+
+def test_general_chat_does_not_enable_subject_tool_mode_for_generic_planning():
+    execution_mode = select_execution_mode(
+        question="帮我计划一下今晚吃什么",
+        selected_context=None,
+        strategy_mode=StrategyMode.PLANNING,
+        retrieval_results=[],
+        allow_subject_tools=False,
+    )
+
+    assert execution_mode == InteractExecutionMode.SINGLE_PASS
 
 
 @pytest.mark.anyio
