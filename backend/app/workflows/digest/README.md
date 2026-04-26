@@ -60,6 +60,49 @@ from app.workflows.digest.planner import (
 - `planner -> docgen`
 - `docgen publish -> kg_doc_sync`
 
+## 两条核心链路介绍口径
+
+### DocGen：生成可教学的知识文档
+
+DocGen 消费 Planner 已确认的 `confirmed_plan`，不重新推翻用户确认过的章节语义。
+当前主线是：
+
+```text
+读取确认方案
+-> 准备全局种子
+-> 生成封面
+-> 锁定章节标题
+-> 确认骨架种子
+-> 构建文档知识骨架
+-> 生成章节执行简报
+-> 组装最终章节任务
+-> 生成章节草稿（LangGraph Send 按章 fan-out）
+-> 增强章节内容
+-> 复核章节内容（LangGraph Send 按章 fan-out）
+-> 复核整本一致性
+-> 记录复核回流动作
+-> 合并检查整本文档
+-> 同步锁定标题
+-> 发布知识文档
+```
+
+对外讲的时候可以概括成：先冻结用户确认方案，再用轻量全局准备和章级并行生成正文，最后通过复核、有限局部修补、合并和发布产出可追踪的知识文档。
+
+### KG Doc Sync：把知识文档同步成知识图谱
+
+KG 同步只消费 DocGen 发布后的知识文档和结构化产物，不再直接解析原始上传文件入图。
+当前主线是：
+
+```text
+prepare
+-> init_run
+-> extract（节点内部按章节 async gather + semaphore 并发）
+-> persist
+-> finalize
+```
+
+对外讲的时候可以概括成：先校验发布文档和创建同步批次，再按章节并发抽取知识单元与关系，随后统一写入 `knowledge_unit`、`knowledge_edge` 和 `knowledge_graph_source_ref`，并用 `knowledge_graph_sync_run` 记录本轮图谱同步结果。
+
 旧 `kg_file_ingest` 调试链路已经删除。知识图谱同步只保留 `kg_doc_sync`。
 KG 同步编排按 `prepare -> init_run -> extract -> persist -> finalize` 拆在 `kg_doc_sync/nodes/`，
 抽取、候选合并、增量写库等可复用实现位于 `kg_doc_sync/lib/`。

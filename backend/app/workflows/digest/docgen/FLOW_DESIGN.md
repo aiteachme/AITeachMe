@@ -202,16 +202,10 @@ review_content / 当前 review_chapter Send x N + document_consistency_review
 repair_or_route
   当前实现：对 surface_patch / section_patch 执行局部 Markdown patch；对 evidence_patch / regenerate_chapter / re_dispatch / rebuild_backbone 等重动作结构化记录。
   当前流水线：review_content -> repair_or_route -> merge_review。
-  目标流水线：review_content <-> repair_or_route，最多两轮有限闭环。
   |
   v
 merge_review
   reviewed drafts fan-in 后按 chapter_index 去重、排序、收口 chapter metadata。
-  |
-  v
-final_merge_patch
-  目标节点，当前尚未独立实现。
-  只修合并后才暴露的小问题，不重新检索，不重写章节，不改变 claim/evidence。
   |
   v
 sync_locked_titles
@@ -530,20 +524,10 @@ merge_review
   当前模型方案：
     - 当前无 LLM 调用；纯规则合并和检查。
 
-final_merge_patch
-  输入：merged_markdown / chapter_metadatas / merge_review_report / unresolved_warnings
-  输出：merged_markdown / chapter_metadatas / final_merge_patch_report
-  作用：目标节点，只修合并后才暴露的小问题。
-  允许：
-    - 目录重复。
-    - 跨章过渡缺失。
-    - 重复摘要。
-    - manifest 缺字段。
-  禁止：
-    - 重新检索。
-    - 重写章节。
-    - 改变 claim / evidence。
-  当前状态：尚未独立实现。
+未来可选 final_merge_patch
+  当前状态：不在主图中，当前发布收口由 merge_review + sync_locked_titles 承担。
+  设计边界：如果未来新增，只允许修合并后才暴露的小问题，例如目录重复、跨章过渡缺失、重复摘要或 manifest 缺字段。
+  明确禁止：重新检索、重写章节、改变 claim / evidence。
 
 sync_locked_titles
   输入：chapter_metadatas / confirmed_plan.chapter_plan / enhanced titles / merge_review_report
@@ -589,7 +573,7 @@ publish_document
 | `review_content.document_consistency_review` | `document_consistency_review` / `复核整本一致性` | 已落地，章节 review fan-in 后执行 |
 | `repair_or_route` | `repair_or_route` | 已落地局部 patch：可执行 surface/section patch；待补 evidence/regenerate 和真实 repair loop |
 | `merge_review` | `merge_review` | 已落地 |
-| `final_merge_patch` | 无 | 待新增，只处理合并后小问题 |
+| `final_merge_patch` | 无 | 未来可选，不属于当前主图；当前由 `merge_review + sync_locked_titles` 收口 |
 | `sync_locked_titles` | `sync_locked_titles` | 已落地，锁定标题同步 + Markdown 一级标题同步；不再 LLM 改标题 |
 | `publish_document` | `publish_document` | 已落地，已写 docgen artifacts manifest |
 
@@ -763,11 +747,14 @@ repair_trace
 - 静默推翻 confirmed plan。
 - 在没有本地资料、已打开网页正文或明确 snippet fallback 的情况下补新断言。
 
-### 4.5 `merge_review` / `final_merge_patch` / `sync_locked_titles`
+### 4.5 `merge_review` / `sync_locked_titles` / 未来 `final_merge_patch`
 
 `merge_review` 只做发布前收口，不再承担重知识复核。
 
-`final_merge_patch` 只修合并后才暴露的小问题：
+当前主图没有独立 `final_merge_patch` 节点。发布前小问题先由 `merge_review` 的规则检查和
+`sync_locked_titles` 的标题同步收口。
+
+未来如果新增 `final_merge_patch`，它只修合并后才暴露的小问题：
 
 - 目录重复。
 - 跨章过渡缺失。
@@ -778,20 +765,24 @@ repair_trace
 
 ## 5. 当前重大问题判断
 
-当前没有发现需要立刻推倒重写 DocGen 主图的问题。新的主图方向已经明确：把前置阶段从“两个超重全局调用”改成“短输出 + 章级并行 + 规则收口”，同时保持标题前置锁定和章节生成链路不倒退。
+当前没有发现需要立刻推倒重写 DocGen 主图的问题。现有主图已经清晰拆成：
 
-值得后续重构的重点是：
+```text
+入口合同冻结 -> 全局轻准备 -> 标题锁定 -> 骨架 seed -> 文档骨架
+-> 章节 brief -> 章节任务装配 -> 章节生成 Send fan-out
+-> 内容增强 -> 章节复核 Send fan-out -> 整本一致性复核
+-> 有限局部修补 -> 合并收口 -> 同步锁定标题 -> 发布
+```
 
-| 优先级 | 问题 | 为什么重要 |
+当前最需要关注的是“继续演进时不要把当前清晰主线弄乱”：
+
+| 优先级 | 关注点 | 为什么重要 |
 | --- | --- | --- |
-| P0 | 前置 prepare 阶段职责过重 | 原来的 outline enhance / intent inference 把标题锁定、执行脚手架、检索 seed 和章级风格生成塞进少数几个全局 `reason` 调用，直接拖垮 wall clock |
-| P0 | 图上并行粒度过细会让观测失真 | 标题锁定和 chapter brief 这类前置准备任务如果直接暴露成 graph-level fan-out，容易让 timing 变成 branch sum，而不是真实墙钟时间 |
-| P1 | 文档与代码漂移 | 新人会按过期主线理解当前 graph，后续改动容易补错位置 |
-| P1 | repair loop 还没形成闭环 | 复核只能记录，不能真正按问题级别修补 |
+| P1 | repair loop 尚未形成真正闭环 | 当前只能执行局部 patch 并记录重动作 warning；后续如果接入回流，必须先处理 reducer 去重和版本覆盖 |
 | P1 | evidence patch 尚未接入 | 证据不足目前只能结构化记录，不能定向补检索、补阅读、补 evidence binding |
-| P1 | state append reducer 与回流冲突 | 引入循环后容易重复发布过期章节或重复 manifest |
-| P1 | 交互式 HTML/课堂组件尚未接入 | Mermaid 适合结构图，复杂可视化后续应走 OpenMAIC 风格的可交互 HTML/scene 路线 |
-| P2 | `final_merge_patch` 未实现 | 合并后小问题只能靠人工或间接收口 |
+| P1 | 回流前的 state reducer 策略 | 引入循环后容易重复发布过期章节、重复 manifest 或重复 review action |
+| P1 | 复杂可视化仍是后续方向 | Mermaid 适合结构图，复杂可视化后续应走可交互 HTML/scene 路线 |
+| P2 | 未来 `final_merge_patch` | 可选增强，只处理合并后小问题；当前不属于主图 |
 | P2 | research budget 仍偏静态 | 还没充分根据覆盖度、证据缺口和章节难度动态调度 |
 
 ## 6. 近期不要做
