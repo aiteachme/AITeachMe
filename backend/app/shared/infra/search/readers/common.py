@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import ipaddress
 import io
 import re
 import zipfile
 from xml.etree import ElementTree
+from urllib.parse import urljoin, urlparse
 
 import httpx
 
@@ -17,14 +19,45 @@ DEFAULT_READER_HEADERS = {
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,text/plain;q=0.8,*/*;q=0.7",
     "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.7",
 }
+_REDIRECT_STATUS_CODES = {301, 302, 303, 307, 308}
+_MAX_FETCH_REDIRECTS = 5
+_LOCALHOST_NAMES = {"localhost", "localhost.localdomain"}
+
+
+def _validate_public_fetch_url(url: str) -> None:
+    parsed = urlparse(str(url or "").strip())
+    if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+        raise ValueError("Only http(s) URLs with a hostname can be fetched.")
+
+    hostname = parsed.hostname.rstrip(".").lower()
+    if hostname in _LOCALHOST_NAMES or hostname.endswith(".localhost"):
+        raise ValueError("Refusing to fetch localhost URLs.")
+
+    try:
+        ip = ipaddress.ip_address(hostname.strip("[]"))
+    except ValueError:
+        return
+    if not ip.is_global:
+        raise ValueError("Refusing to fetch non-public IP URLs.")
 
 
 async def fetch_url(url: str, *, headers: dict[str, str] | None = None) -> httpx.Response:
-    async with httpx.AsyncClient(timeout=DEFAULT_SEARCH_SCRAPE_TIMEOUT_S, follow_redirects=True) as client:
-        merged_headers = {**DEFAULT_READER_HEADERS, **(headers or {})}
-        response = await client.get(url, headers=merged_headers)
-        response.raise_for_status()
-        return response
+    merged_headers = {**DEFAULT_READER_HEADERS, **(headers or {})}
+    current_url = str(url or "").strip()
+
+    async with httpx.AsyncClient(timeout=DEFAULT_SEARCH_SCRAPE_TIMEOUT_S, follow_redirects=False) as client:
+        for _ in range(_MAX_FETCH_REDIRECTS + 1):
+            _validate_public_fetch_url(current_url)
+            response = await client.get(current_url, headers=merged_headers)
+            status_code = getattr(response, "status_code", None)
+            location = getattr(response, "headers", {}).get("location") if getattr(response, "headers", None) else None
+            if status_code in _REDIRECT_STATUS_CODES and location:
+                base_url = str(getattr(response, "url", None) or current_url)
+                current_url = urljoin(base_url, location)
+                continue
+            response.raise_for_status()
+            return response
+    raise httpx.TooManyRedirects(f"Exceeded {_MAX_FETCH_REDIRECTS} redirects while fetching {url!r}.")
 
 
 def build_error_page(url: str, *, error: Exception | str, content_type: str, reader_name: str) -> ScrapedPage:

@@ -4,7 +4,9 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+_MAX_FEEDBACK_IMAGE_CHARS = 2_500_000
 
 
 class InitRequest(BaseModel):
@@ -87,5 +89,15 @@ class UpdateUserSettingsRequest(BaseModel):
 class FeedbackRequest(BaseModel):
     """用户体验与问题反馈请求。"""
 
-    content: str = Field(description="反馈内容。")
-    images: list[str] = Field(default_factory=list, description="可选的 Base64 截图列表。")
+    content: str = Field(min_length=1, max_length=2000, description="反馈内容。")
+    images: list[str] = Field(default_factory=list, max_length=3, description="可选的 Base64 截图列表。")
+
+    @field_validator("images")
+    @classmethod
+    def validate_images(cls, images: list[str]) -> list[str]:
+        for image in images:
+            if len(image) > _MAX_FEEDBACK_IMAGE_CHARS:
+                raise ValueError("单张反馈截图过大。")
+            if not image.startswith("data:image/") or ";base64," not in image:
+                raise ValueError("反馈截图必须是 data:image/*;base64 格式。")
+        return images
