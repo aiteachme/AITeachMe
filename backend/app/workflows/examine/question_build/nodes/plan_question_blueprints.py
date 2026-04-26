@@ -7,7 +7,6 @@ from time import perf_counter
 from app.shared.infra.workflow import emit_progress
 from app.shared.infra.workflow.context import WorkflowContext
 from app.workflows.examine.question_build.lib.generator import (
-    ExamQuestionGenerationSpec,
     plan_exam_question_blueprints,
 )
 from app.workflows.examine.question_build.state import QuestionBuildState
@@ -25,36 +24,18 @@ def build_plan_question_blueprints_node(*, context: WorkflowContext):
             step="plan_question_blueprints",
         )
         try:
-            explicit_specs = list(state.get("specs") or [])
-            if explicit_specs:
-                blueprints = [
-                    spec if isinstance(spec, ExamQuestionGenerationSpec) else ExamQuestionGenerationSpec.model_validate(spec)
-                    for spec in explicit_specs
-                ]
-                blueprint_payload = [
-                    {
-                        "item_order": spec.item_order,
-                        "knowledge_unit_ids": spec.knowledge_unit_ids,
-                        "question_type": spec.question_type,
-                        "difficulty": spec.difficulty,
-                        "rationale": "Provided by caller.",
-                        "generation_prompt": spec.generation_prompt,
-                    }
-                    for spec in blueprints
-                ]
-            else:
-                planned = await plan_exam_question_blueprints(
-                    subject_name=str(state.get("subject_name") or ""),
-                    subject_description=str(state.get("subject_description") or ""),
-                    subject_user_intent=str(state.get("subject_user_intent") or ""),
-                    exam_mode=str(state.get("exam_mode") or "web_practice"),
-                    units=list(state.get("units") or []),
-                    question_count=int(state.get("question_count") or 1),
-                    mastery_by_unit_id=dict(state.get("mastery_by_unit_id") or {}),
-                    user_prompt=str(state.get("user_prompt") or ""),
-                    system_constraints=str(state.get("system_constraints") or ""),
-                )
-                blueprint_payload = [item.model_dump(mode="json") for item in planned]
+            planned = await plan_exam_question_blueprints(
+                subject_name=str(state.get("subject_name") or ""),
+                subject_description=str(state.get("subject_description") or ""),
+                subject_user_intent=str(state.get("subject_user_intent") or ""),
+                exam_mode=str(state.get("exam_mode") or "web_practice"),
+                units=list(state.get("units") or []),
+                question_count=int(state.get("question_count") or 1),
+                mastery_by_unit_id=dict(state.get("mastery_by_unit_id") or {}),
+                user_prompt=str(state.get("user_prompt") or ""),
+                system_constraints=str(state.get("system_constraints") or ""),
+            )
+            blueprint_payload = [item.model_dump(mode="json") for item in planned]
 
             elapsed_ms = int((perf_counter() - started_at) * 1000)
             await emit_progress(

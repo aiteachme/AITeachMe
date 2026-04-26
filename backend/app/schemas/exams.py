@@ -185,6 +185,7 @@ class ExamPaperItemResponse(BaseModel):
     correct_answer: str | None = None
     explanation: str
     knowledge_unit_links: list[ExamNodeLinkResponse] = Field(default_factory=list)
+    selection_context: dict[str, Any] = Field(default_factory=dict)
     user_answer: str | None = None
     is_correct: bool | None = None
     score_obtained: float | None = None

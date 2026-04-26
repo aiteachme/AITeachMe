@@ -18,7 +18,7 @@ from app.api.openapi import build_error_responses
 from app.models import ExamPaper, ExamPaperItem, QuestionTemplate, QuestionTypeRegistry, exam_mode_value
 from app.models.knowledge_unit import KnowledgeUnit
 from app.models.subject import Subject
-from app.repositories import exams_repo
+from app.repositories import exams_repo, knowledge_relation_repo
 from app.repositories import profile_repo
 from app.schemas.common import ApiResponse, PageParams, PaginatedData, build_paginated_data, ok_response
 from app.schemas.exams import (
@@ -391,24 +391,51 @@ def _is_exam_eligible_unit(unit: KnowledgeUnit) -> bool:
     return True
 
 
-def _pick_knowledge_units(
+def _list_exam_eligible_units(
     session: Session,
     *,
-    user_id: str,
     subject: str,
-    exam_mode: str,
-    user_prompt: str | None,
-    limit: int,
 ) -> list[KnowledgeUnit]:
     stmt = select(KnowledgeUnit).where(
         KnowledgeUnit.subject == subject,
         KnowledgeUnit.status == "active",
     )
     units = list(session.exec(stmt.order_by(KnowledgeUnit.id)).all())
-    units = [unit for unit in units if _is_exam_eligible_unit(unit)]
-    units_by_id = {unit.id: unit for unit in units if unit.id is not None}
-    ordered_units: list[KnowledgeUnit] = []
+    return [unit for unit in units if _is_exam_eligible_unit(unit)]
 
+
+def _exam_knowledge_graph_edges(
+    session: Session,
+    *,
+    subject: str,
+    unit_ids: list[int],
+) -> list[dict[str, object]]:
+    allowed_ids = {int(unit_id) for unit_id in unit_ids if int(unit_id or 0) > 0}
+    if not allowed_ids:
+        return []
+    edges: list[dict[str, object]] = []
+    for edge in knowledge_relation_repo.list_all_edges_by_subject(session, subject):
+        source_id = int(edge.source_node_id or 0)
+        target_id = int(edge.target_node_id or 0)
+        if source_id not in allowed_ids or target_id not in allowed_ids:
+            continue
+        edges.append(
+            {
+                "source_id": source_id,
+                "target_id": target_id,
+            }
+        )
+    return edges
+
+
+def _exam_priority_unit_ids(
+    session: Session,
+    *,
+    user_id: str,
+    subject: str,
+    exam_mode: str,
+) -> list[int]:
+    priority_ids: list[int] = []
     if exam_mode == "web_practice":
         due_states = profile_repo.list_due_knowledge_states(
             session,
@@ -424,12 +451,8 @@ def _pick_knowledge_units(
             target_kind="knowledge_unit",
         )
         for state in [*due_states, *weak_states]:
-            knowledge_unit_id = state.knowledge_unit_id
-            if knowledge_unit_id is None:
-                continue
-            unit = units_by_id.get(int(knowledge_unit_id))
-            if unit is not None and unit not in ordered_units:
-                ordered_units.append(unit)
+            if state.knowledge_unit_id is not None:
+                priority_ids.append(int(state.knowledge_unit_id))
 
     if exam_mode == "paper_exam":
         weak_states = profile_repo.list_weak_knowledge_states(
@@ -438,41 +461,20 @@ def _pick_knowledge_units(
             subject=subject,
             target_kind="knowledge_unit",
         )
-        weak_ids = {
+        priority_ids.extend(
             int(state.knowledge_unit_id)
             for state in weak_states
             if state.knowledge_unit_id is not None
-        }
-        strong_units = [unit for unit in units if unit.id not in weak_ids]
-        weak_units = [unit for unit in units if unit.id in weak_ids]
-        ordered_units.extend(weak_units[: max(1, limit // 2)])
-        ordered_units.extend([unit for unit in strong_units if unit not in ordered_units])
+        )
 
-    if not ordered_units:
-        ordered_units = units[:]
-
-    focus = (user_prompt or "").strip().casefold()
-    if focus:
-        focused = [
-            unit
-            for unit in ordered_units
-            if focus in unit.canonical_name.casefold()
-            or focus in (unit.summary or "").casefold()
-            or focus in unit.knowledge_unit_type.casefold()
-        ]
-        if focused:
-            ordered_units = focused
-
-    deduped: list[KnowledgeUnit] = []
-    seen_ids: set[int] = set()
-    for unit in ordered_units:
-        if unit.id is None or unit.id in seen_ids:
+    deduped: list[int] = []
+    seen: set[int] = set()
+    for unit_id in priority_ids:
+        if unit_id <= 0 or unit_id in seen:
             continue
-        seen_ids.add(unit.id)
-        deduped.append(unit)
-    if limit <= 0:
-        return deduped
-    return deduped[: max(1, limit)]
+        seen.add(unit_id)
+        deduped.append(unit_id)
+    return deduped
 
 
 def _mastery_by_unit_id(session: Session, *, user_id: str, subject: str) -> dict[int, float]:
@@ -603,9 +605,11 @@ def _upsert_generated_template(
     explanation: str,
     options: list[str] | None,
     knowledge_unit_refs: list[dict[str, object]] | None = None,
+    rationale: str = "",
 ) -> QuestionTemplate:
     stem_hash = _hash_stem(stem)
     refs = knowledge_unit_refs or [{"knowledge_unit_id": unit.id, "coverage_weight": 1.0, "role": "primary"}]
+    selection_hints = {"rationale": rationale.strip()} if rationale.strip() else {}
     existing = exams_repo.find_template_by_stem_hash(session, subject, int(unit.id or 0), stem_hash)
     if existing is not None:
         existing.question_type = question_type
@@ -614,6 +618,10 @@ def _upsert_generated_template(
         existing.answer = answer
         existing.explanation = explanation
         existing.options_json = json.dumps(options, ensure_ascii=False) if options else None
+        existing_hints = _json_dict(existing.selection_hints_json)
+        if selection_hints:
+            existing_hints.update(selection_hints)
+            existing.selection_hints_json = json.dumps(existing_hints, ensure_ascii=False)
         existing.updated_at = utcnow()
         session.add(existing)
         session.commit()
@@ -630,6 +638,7 @@ def _upsert_generated_template(
         answer=answer,
         explanation=explanation,
         options_json=json.dumps(options, ensure_ascii=False) if options else None,
+        selection_hints_json=json.dumps(selection_hints, ensure_ascii=False),
     )
     template = exams_repo.create_question_template(session, template)
     exams_repo.replace_question_template_links(session, template_id=int(template.id or 0), refs=refs)
@@ -688,6 +697,17 @@ async def _run_exam_generation_background(
             subject_context = load_subject_llm_context(session, subject=subject)
 
             mastery_by_unit_id = _mastery_by_unit_id(session, user_id=user_id, subject=subject)
+            priority_unit_ids = _exam_priority_unit_ids(
+                session,
+                user_id=user_id,
+                subject=subject,
+                exam_mode=exam_mode,
+            )
+            knowledge_graph_edges = _exam_knowledge_graph_edges(
+                session,
+                subject=subject,
+                unit_ids=[int(unit.id or 0) for unit in exam_units],
+            )
             recent_stems: list[str] = []
             for item, _asked_at, recent_paper_id in exams_repo.list_exam_item_snapshots_by_user(
                 session,
@@ -709,6 +729,44 @@ async def _run_exam_generation_background(
         )
 
         async def handle_question_build_progress(payload: dict[str, object]) -> None:
+            candidate_unit_ids = payload.get("candidate_unit_ids")
+            if isinstance(candidate_unit_ids, list):
+                candidate_ids = [
+                    int(unit_id)
+                    for unit_id in candidate_unit_ids
+                    if isinstance(unit_id, int | str) and int(unit_id or 0) > 0
+                ]
+                with managed_session() as session:
+                    paper = exams_repo.get_exam_paper_by_id(session, paper_id)
+                    if paper is None or paper.subject != subject or paper.user_id != user_id:
+                        return
+                    context = _json_dict(paper.selection_context_json)
+                    context["source"] = "knowledge_unit_candidate_pool"
+                    context["knowledge_unit_ids"] = candidate_ids
+                    for key in (
+                        "candidate_unit_limit",
+                        "input_unit_count",
+                        "knowledge_graph_edge_count",
+                        "candidate_unit_count",
+                        "scope_include_terms",
+                        "scope_exclude_terms",
+                        "scope_strict",
+                        "filter_strategy",
+                        "filter_rationale",
+                    ):
+                        if key in payload:
+                            context[key] = payload[key]
+                    paper.selection_context_json = json.dumps(context, ensure_ascii=False)
+                    paper.updated_at = utcnow()
+                    session.add(paper)
+                    session.commit()
+                    session.refresh(paper)
+                    event_payload = _paper_generation_event_payload(
+                        paper,
+                        stage=str(payload.get("stage") or "filter_exam_units"),
+                    )
+                _publish_exam_event(subject, paper_id, "snapshot", event_payload)
+
             blueprints = payload.get("question_blueprints")
             if not isinstance(blueprints, list):
                 return
@@ -743,9 +801,10 @@ async def _run_exam_generation_background(
             subject_user_intent=subject_row.user_intent,
             exam_mode=exam_mode,
             units=exam_units,
-            specs=None,
+            knowledge_graph_edges=knowledge_graph_edges,
             question_count=question_count,
             mastery_by_unit_id=mastery_by_unit_id,
+            priority_unit_ids=priority_unit_ids,
             subject_context=subject_context,
             user_prompt=user_prompt or "",
             system_constraints=diversity_prompt,
@@ -755,6 +814,12 @@ async def _run_exam_generation_background(
             build_result=build_result,
             expected_orders=list(range(1, question_count + 1)),
         )
+        question_blueprints = build_result.value.get("question_blueprints") if build_result.value else []
+        blueprint_by_order = {
+            int(item.get("item_order", 0) or 0): item
+            for item in question_blueprints
+            if isinstance(item, dict)
+        }
 
         with managed_session() as session:
             paper = exams_repo.get_exam_paper_by_id(session, paper_id)
@@ -785,6 +850,29 @@ async def _run_exam_generation_background(
                 if not refs:
                     refs = [{"knowledge_unit_id": primary_unit_id, "coverage_weight": 1.0, "role": "primary"}]
                 refs_by_order[order] = refs
+                blueprint = blueprint_by_order.get(order, {})
+                rationale = str(blueprint.get("rationale") or "")
+                blueprint_unit_ids = [
+                    int(unit_id)
+                    for unit_id in list(blueprint.get("knowledge_unit_ids") or [])
+                    if int(unit_id or 0) > 0
+                ]
+                if not blueprint_unit_ids:
+                    blueprint_unit_ids = [
+                        int(ref.get("knowledge_unit_id", 0) or 0)
+                        for ref in refs
+                        if int(ref.get("knowledge_unit_id", 0) or 0) > 0
+                    ]
+                item_selection_context = {
+                    "blueprint": {
+                        "item_order": int(blueprint.get("item_order") or order),
+                        "knowledge_unit_ids": blueprint_unit_ids,
+                        "question_type": str(blueprint.get("question_type") or generated["question_type"]),
+                        "difficulty": str(blueprint.get("difficulty") or generated["difficulty"]),
+                        "rationale": rationale,
+                        "generation_prompt": str(blueprint.get("generation_prompt") or ""),
+                    }
+                }
                 template = _upsert_generated_template(
                     session,
                     subject=subject,
@@ -796,6 +884,7 @@ async def _run_exam_generation_background(
                     explanation=str(generated["explanation"]),
                     options=list(generated.get("options") or []) or None,
                     knowledge_unit_refs=refs,
+                    rationale=rationale,
                 )
                 items.append(
                     ExamPaperItem(
@@ -806,6 +895,7 @@ async def _run_exam_generation_background(
                         options_snapshot_json=template.options_json,
                         answer_snapshot=template.answer,
                         explanation_snapshot=template.explanation,
+                        selection_context_json=json.dumps(item_selection_context, ensure_ascii=False),
                         difficulty=template.difficulty,
                         question_type=template.question_type,
                         score=1.0,
@@ -937,6 +1027,7 @@ def _paper_item_response(
             for knowledge_unit_id in [int(ref.get("knowledge_unit_id", 0) or 0)]
             if knowledge_unit_id > 0
         ],
+        selection_context=_json_dict(item.selection_context_json),
         user_answer=item.answer_content or None,
         is_correct=item.is_correct,
         score_obtained=item.score_obtained,
@@ -1204,13 +1295,9 @@ async def generate_exam(
     normalized = normalize_subject_slug(subject)
     _ensure_subject(session, normalized, user.user_id)
     question_count = max(1, int(body.num_questions or 5))
-    units = _pick_knowledge_units(
+    units = _list_exam_eligible_units(
         session,
-        user_id=user.user_id,
         subject=normalized,
-        exam_mode=body.exam_mode,
-        user_prompt=body.user_prompt,
-        limit=0,
     )
     if not units:
         raise AITeachMeError(
@@ -1239,7 +1326,7 @@ async def generate_exam(
             total_score=float(question_count),
             paper_preview_json=initial_preview.model_dump_json(),
             selection_context_json=_build_exam_selection_context(
-                source="knowledge_unit_llm",
+                source="knowledge_unit_pool",
                 knowledge_unit_ids=[int(unit.id or 0) for unit in exam_units],
                 user_prompt=body.user_prompt,
                 sample_file_uids=body.sample_file_uids or [],

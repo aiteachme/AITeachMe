@@ -5,7 +5,6 @@ from __future__ import annotations
 from typing import TypedDict
 
 from app.models.knowledge_unit import KnowledgeUnit
-from app.workflows.examine.question_build.lib.generator import ExamQuestionGenerationSpec
 
 
 class QuestionBuildGraphInput(TypedDict, total=False):
@@ -19,19 +18,30 @@ class QuestionBuildGraphInput(TypedDict, total=False):
     system_constraints: str
     question_count: int
     units: list[KnowledgeUnit]
+    knowledge_graph_edges: list[dict]
     mastery_by_unit_id: dict[int, float]
-    specs: list[ExamQuestionGenerationSpec]
+    priority_unit_ids: list[int]
     progress_callback: object | None
 
 
 class QuestionBuildGraphOutput(TypedDict, total=False):
+    candidate_unit_ids: list[int]
+    candidate_unit_limit: int
+    input_unit_count: int
+    knowledge_graph_edge_count: int
+    candidate_unit_count: int
+    scope_include_terms: list[str]
+    scope_exclude_terms: list[str]
+    scope_strict: bool
+    filter_strategy: str
+    filter_rationale: str
     question_blueprints: list[dict]
     generated_questions: list[dict]
     error: str
     workflow_elapsed_ms: int
+    filter_ms: int
     plan_ms: int
     generate_ms: int
-    weight_ms: int
 
 
 class QuestionBuildState(QuestionBuildGraphInput, QuestionBuildGraphOutput, total=False):

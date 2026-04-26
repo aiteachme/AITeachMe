@@ -102,6 +102,7 @@ class ExamPaperItem(SQLModel, table=True):
     options_snapshot_json: str | None = Field(default=None, sa_column=sa.Column(sa.Text(), nullable=True))
     answer_snapshot: str = Field(sa_column=sa.Column(sa.Text(), nullable=False))
     explanation_snapshot: str = Field(sa_column=sa.Column(sa.Text(), nullable=False))
+    selection_context_json: str = Field(default="{}", sa_column=sa.Column(sa.Text(), nullable=False, default="{}"))
     difficulty: str
     question_type: str
     score: float = Field(default=1.0, ge=0.0)
