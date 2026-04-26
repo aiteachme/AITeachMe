@@ -6,6 +6,7 @@ from pydantic import ValidationError
 from app.shared.infra.settings import (
     Settings,
     clear_system_settings_override,
+    combine_runtime_settings_payload,
     get_project_settings,
     get_settings,
     set_system_settings_override,
@@ -57,6 +58,41 @@ def test_settings_overview_local_mode_marks_system_override_editable(
     assert primary_entry.source == "system_settings"
     assert primary_entry.editable is True
     assert primary_entry.value == "local-override"
+
+
+def test_settings_overview_reads_db_env_overrides_without_exposing_secret(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        "app.workflows.support.system.settings.is_local_mode",
+        lambda: True,
+    )
+    monkeypatch.setattr(
+        "app.workflows.support.system.settings.resolve_app_mode",
+        lambda: "local",
+    )
+    monkeypatch.setattr(
+        "app.workflows.support.system.settings.get_system_settings_override_payload",
+        lambda: combine_runtime_settings_payload(
+            {},
+            {
+                "LLM_BASE_URL": "https://db.example.com/v1",
+                "MINERU_API_TOKEN": "db-secret-token",
+            },
+        ),
+    )
+
+    overview = build_settings_overview_data(session=None, user_id=None)
+    entries = {
+        entry.key: entry
+        for section in overview.sections
+        for entry in section.entries
+    }
+
+    assert entries["llm.base_url"].value == "https://db.example.com/v1"
+    assert entries["mineru.api_token"].status == "configured"
+    assert entries["mineru.api_token"].value is None
+    assert entries["mineru.api_token"].display_value == "已配置"
 
 
 def test_settings_overview_cloud_mode_is_read_only(monkeypatch) -> None:

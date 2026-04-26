@@ -36,38 +36,81 @@ interface UseSettingsOverviewOptions {
   isOpen: boolean;
 }
 
+interface DraftBundle {
+  settingsDraft: DraftRecord;
+  savedSettingsDraft: DraftRecord;
+  defaultSettingsDraft: DraftRecord;
+  envDraft: DraftRecord;
+  savedEnvDraft: DraftRecord;
+  defaultEnvDraft: DraftRecord;
+}
+
+function buildDraftBundle(overview: SettingsOverviewData | null): DraftBundle {
+  const sections = overview?.sections ?? [];
+  const serverEntries = collectEditableServerEntries(sections);
+  const envEntries = collectEditableEnvEntries(sections);
+  const settingsDraft = draftFromEntries(serverEntries);
+  const envDraft = draftFromEntries(envEntries);
+
+  return {
+    settingsDraft,
+    savedSettingsDraft: settingsDraft,
+    defaultSettingsDraft: draftFromEntries(serverEntries, "default_value"),
+    envDraft,
+    savedEnvDraft: envDraft,
+    defaultEnvDraft: draftFromEntries(envEntries, "default_value"),
+  };
+}
+
 export function useSettingsOverview({ isOpen }: UseSettingsOverviewOptions) {
+  const [initialState] = useState(() => {
+    const overview = getStoredSystemSettingsOverview();
+    return {
+      overview,
+      drafts: buildDraftBundle(overview),
+    };
+  });
   const [overview, setOverview] = useState<SettingsOverviewData | null>(
-    () => getStoredSystemSettingsOverview(),
+    initialState.overview,
   );
   const [isOverviewLoading, setIsOverviewLoading] = useState(false);
   const [overviewError, setOverviewError] = useState<string | null>(null);
 
-  const [settingsDraft, setSettingsDraft] = useState<DraftRecord>({});
-  const [savedSettingsDraft, setSavedSettingsDraft] = useState<DraftRecord>({});
-  const [defaultSettingsDraft, setDefaultSettingsDraft] = useState<DraftRecord>({});
-  const [envDraft, setEnvDraft] = useState<DraftRecord>({});
-  const [savedEnvDraft, setSavedEnvDraft] = useState<DraftRecord>({});
-  const [defaultEnvDraft, setDefaultEnvDraft] = useState<DraftRecord>({});
+  const [settingsDraft, setSettingsDraft] = useState<DraftRecord>(
+    initialState.drafts.settingsDraft,
+  );
+  const [savedSettingsDraft, setSavedSettingsDraft] = useState<DraftRecord>(
+    initialState.drafts.savedSettingsDraft,
+  );
+  const [defaultSettingsDraft, setDefaultSettingsDraft] = useState<DraftRecord>(
+    initialState.drafts.defaultSettingsDraft,
+  );
+  const [envDraft, setEnvDraft] = useState<DraftRecord>(
+    initialState.drafts.envDraft,
+  );
+  const [savedEnvDraft, setSavedEnvDraft] = useState<DraftRecord>(
+    initialState.drafts.savedEnvDraft,
+  );
+  const [defaultEnvDraft, setDefaultEnvDraft] = useState<DraftRecord>(
+    initialState.drafts.defaultEnvDraft,
+  );
+  const [resetRequested, setResetRequested] = useState(false);
 
   const [saveState, setSaveState] = useState<SaveState>("idle");
   const [saveError, setSaveError] = useState<string | null>(null);
 
   const applyOverview = useCallback((next: SettingsOverviewData) => {
-    const sections = next.sections ?? [];
-    const serverEntries = collectEditableServerEntries(sections);
-    const envEntries = collectEditableEnvEntries(sections);
-    const nextSettingsDraft = draftFromEntries(serverEntries);
-    const nextEnvDraft = draftFromEntries(envEntries);
+    const drafts = buildDraftBundle(next);
 
     setOverview(next);
     storeSystemSettingsOverview(next);
-    setSettingsDraft(nextSettingsDraft);
-    setSavedSettingsDraft(nextSettingsDraft);
-    setDefaultSettingsDraft(draftFromEntries(serverEntries, "default_value"));
-    setEnvDraft(nextEnvDraft);
-    setSavedEnvDraft(nextEnvDraft);
-    setDefaultEnvDraft(draftFromEntries(envEntries, "default_value"));
+    setSettingsDraft(drafts.settingsDraft);
+    setSavedSettingsDraft(drafts.savedSettingsDraft);
+    setDefaultSettingsDraft(drafts.defaultSettingsDraft);
+    setEnvDraft(drafts.envDraft);
+    setSavedEnvDraft(drafts.savedEnvDraft);
+    setDefaultEnvDraft(drafts.defaultEnvDraft);
+    setResetRequested(false);
   }, []);
 
   useEffect(() => {
@@ -116,6 +159,7 @@ export function useSettingsOverview({ isOpen }: UseSettingsOverviewOptions) {
 
   const patchServerSetting = useCallback(
     (key: string, value: DraftRecord[string]) => {
+      setResetRequested(false);
       setSettingsDraft((prev) => (prev[key] === value ? prev : { ...prev, [key]: value }));
     },
     [],
@@ -123,6 +167,7 @@ export function useSettingsOverview({ isOpen }: UseSettingsOverviewOptions) {
 
   const patchEnvSetting = useCallback(
     (key: string, value: DraftRecord[string]) => {
+      setResetRequested(false);
       setEnvDraft((prev) => (prev[key] === value ? prev : { ...prev, [key]: value }));
     },
     [],
@@ -131,6 +176,7 @@ export function useSettingsOverview({ isOpen }: UseSettingsOverviewOptions) {
   const resetServerDrafts = useCallback(() => {
     setSettingsDraft(defaultSettingsDraft);
     setEnvDraft(defaultEnvDraft);
+    setResetRequested(true);
     setSaveError(null);
   }, [defaultSettingsDraft, defaultEnvDraft]);
 
@@ -144,7 +190,7 @@ export function useSettingsOverview({ isOpen }: UseSettingsOverviewOptions) {
     setSaveState("saving");
     setSaveError(null);
     try {
-      const reset = sameDraft(settingsDraft, defaultSettingsDraft);
+      const reset = resetRequested;
       const response = await apiClient<ApiEnvelope<SettingsOverviewData>>({
         url: "/api/v1/system/settings",
         method: "PATCH",
@@ -175,6 +221,7 @@ export function useSettingsOverview({ isOpen }: UseSettingsOverviewOptions) {
     hasEnvChanges,
     hasServerChanges,
     savedEnvDraft,
+    resetRequested,
     settingsDraft,
   ]);
 

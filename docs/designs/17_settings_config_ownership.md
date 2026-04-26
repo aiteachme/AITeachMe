@@ -6,9 +6,9 @@
 
 配置分成三层：
 
-1. `env`：部署级、敏感、基础设施连接
+1. `env`：部署级、基础设施连接、本地首次启动默认值
 2. `code defaults`：代码里的项目默认行为
-3. `system_runtime_settings`：数据库中的全局非敏感运行覆盖
+3. `system_runtime_settings`：数据库中的本地设置页覆盖
 
 另外存在一个**可选**来源：
 
@@ -32,7 +32,7 @@
 - 各搜索 provider 的 API key / endpoint
 - `MINERU_API_TOKEN`
 
-这些属于部署输入，不属于普通业务策略参数。
+在云端部署里，这些属于部署输入；在本地模式里，`.env` 只作为首次启动或数据库未覆盖某个 key 时的默认来源。用户在设置页保存后的值不再写回 `.env`，而是保存到 `system_runtime_settings` 的运行时 env 覆盖层。
 
 ### 2.2 code defaults
 
@@ -54,16 +54,18 @@
 
 ### 2.3 system_runtime_settings
 
-负责本地模式下的系统级非敏感覆盖。
+负责本地模式下的系统级设置覆盖。
 
 当前它是数据库里的全局真相层，用来覆盖：
 
 - code defaults
 - optional external project override
+- `.env` 中同名的设置页可编辑 env key
 
 适合保存：
 
 - `models.*`
+- 设置页暴露的模型、搜索、解析、观测授权
 - `ingest.max_upload_size_mb`
 - `ingest.max_files_per_upload`
 - `planner.*`
@@ -95,8 +97,8 @@
 
 ### 本地模式
 
-- `.env` 可写
-- `system_runtime_settings` 可写
+- `.env` 只作为 bootstrap/default source，不由设置页写回
+- `system_runtime_settings` 可写，设置页保存值逐 key 优先于 `.env`
 - 只读项继续展示派生状态
 
 ### 云端模式
@@ -110,7 +112,7 @@
 
 额外约束：
 
-- 部署级 env 只保留在 `.env` / 部署平台变量中管理
+- 部署级 env 仍保留在 `.env` / 部署平台变量中管理；本地设置页保存的是数据库覆盖值
 - `APP_MODE`、`DATABASE_URL`、对象存储连接、底层 provider endpoint 等不再作为产品设置页字段展示
 - 设置页优先承载“项目运行策略 + 常用外部服务授权”
 

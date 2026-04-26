@@ -15,6 +15,7 @@ import {
   isPrimitive,
   parseInputValue,
   resolveEntryInputType,
+  SECRET_PRESERVE_VALUE,
 } from "./settingsHelpers";
 import type { DraftRecord, SettingEntry, SettingPrimitive } from "./settingsTypes";
 
@@ -111,12 +112,15 @@ const EditableSettingsRow = memo(function EditableSettingsRow({
   const selectOptions = useMemo(() => SETTING_SELECT_OPTIONS[entry.key], [entry.key]);
   const controlId = `settings-${entry.key.replace(/[^a-z0-9]+/gi, "-").toLowerCase()}`;
   const resolvedInputType = resolveEntryInputType(entry, value);
-  const [localValue, setLocalValue] = useState(() => (value === null ? "" : String(value)));
+  const isPreservedSecret = entry.secret && value === SECRET_PRESERVE_VALUE;
+  const [localValue, setLocalValue] = useState(() =>
+    value === null || isPreservedSecret ? "" : String(value),
+  );
 
   useEffect(() => {
-    const nextValue = value === null ? "" : String(value);
+    const nextValue = value === null || isPreservedSecret ? "" : String(value);
     setLocalValue((prev) => (prev === nextValue ? prev : nextValue));
-  }, [value]);
+  }, [isPreservedSecret, value]);
 
   const handleBooleanToggle = useCallback(() => {
     if (typeof value === "boolean") {
@@ -132,12 +136,15 @@ const EditableSettingsRow = memo(function EditableSettingsRow({
     if (typeof value === "boolean" || selectOptions) {
       return;
     }
-    const parsed = parseInputValue(localValue, value);
+    if (isPreservedSecret && !localValue.trim()) {
+      return;
+    }
+    const parsed = parseInputValue(localValue, isPreservedSecret ? null : value);
     if (parsed === value) {
       return;
     }
     onChange(entry.key, parsed);
-  }, [entry.key, localValue, onChange, selectOptions, value]);
+  }, [entry.key, isPreservedSecret, localValue, onChange, selectOptions, value]);
 
   const handleSelectChange = useCallback(
     (next: string) => {
@@ -184,9 +191,11 @@ const EditableSettingsRow = memo(function EditableSettingsRow({
             onChange={handleValueChange}
             onBlur={commitLocalValue}
             placeholder={
-              entry.default_value === null || entry.default_value === undefined
-                ? "留空"
-                : String(entry.default_value)
+              entry.secret && entry.status === "configured"
+                ? "已配置，留空保持不变"
+                : entry.default_value === null || entry.default_value === undefined
+                  ? "留空"
+                  : String(entry.default_value)
             }
           />
         ) : (

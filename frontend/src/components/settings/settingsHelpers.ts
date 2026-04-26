@@ -6,6 +6,8 @@ import type {
   SettingSource,
 } from "./settingsTypes";
 
+export const SECRET_PRESERVE_VALUE = "__AITM_SECRET_PRESERVE__";
+
 export function isCredentialKey(key: string): boolean {
   const normalizedKey = key.toLowerCase();
   return (
@@ -53,7 +55,12 @@ export function draftFromEntries(
   source: "value" | "default_value" = "value",
 ): DraftRecord {
   return Object.fromEntries(
-    entries.map((entry) => [entry.key, isPrimitive(entry[source]) ? entry[source] : null]),
+    entries.map((entry) => {
+      if (source === "value" && entry.secret && entry.status === "configured") {
+        return [entry.key, SECRET_PRESERVE_VALUE];
+      }
+      return [entry.key, isPrimitive(entry[source]) ? entry[source] : null];
+    }),
   ) as DraftRecord;
 }
 

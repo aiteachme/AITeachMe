@@ -28,10 +28,12 @@ from app.shared.infra.settings import (
     get_settings,
     reset_project_settings_cache,
     set_system_settings_override,
+    split_runtime_settings_payload,
 )
 from app.shared.infra.env_support import (
     describe_project_settings_source,
     get_env,
+    set_runtime_env_overrides,
 )
 from app.shared.infra.runtime import get_backend_root, is_cloud_mode, is_local_mode
 from app.shared.infra.runtime import get_sqlite_db_path
@@ -883,7 +885,9 @@ def _refresh_system_settings_override(engine: sa.Engine) -> None:
     with Session(engine, expire_on_commit=False) as session:
         row = session.get(SystemRuntimeSettings, "runtime")
         payload = row.settings_json if row is not None and isinstance(row.settings_json, dict) else {}
-    set_system_settings_override(payload)
+    settings_payload, env_overrides = split_runtime_settings_payload(payload)
+    set_runtime_env_overrides(env_overrides)
+    set_system_settings_override(settings_payload)
 
 
 def init_db() -> None:

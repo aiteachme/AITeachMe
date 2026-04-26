@@ -24,8 +24,7 @@ from app.schemas.system import SettingEntry, SettingSection, SettingsOverviewDat
 from app.shared.infra.env_support import (
     describe_project_settings_source,
     get_env,
-    resolve_writable_local_env_path,
-    write_local_env_updates,
+    set_runtime_env_overrides,
 )
 from app.shared.infra.exceptions import AITeachMeError
 from app.shared.infra.runtime import is_local_mode, resolve_app_mode
@@ -34,8 +33,9 @@ from app.shared.infra.settings import (
     get_project_settings,
     get_system_settings_override_payload,
     merge_settings_values,
-    reset_project_settings_cache,
     set_system_settings_override,
+    combine_runtime_settings_payload,
+    split_runtime_settings_payload,
     upgrade_legacy_settings_payload,
 )
 from app.shared.infra.settings.support import (
@@ -51,6 +51,7 @@ from app.workflows.support.system.catalog import (
 )
 
 _MISSING = object()
+SECRET_PRESERVE_SENTINEL = "__AITM_SECRET_PRESERVE__"
 logger = structlog.get_logger(__name__)
 
 
@@ -60,6 +61,7 @@ class _OverviewContext:
     base_payload: dict[str, Any]
     settings_payload: dict[str, Any]
     system_payload: Mapping[str, Any]
+    env_overrides: Mapping[str, str]
     user_payload: Mapping[str, Any]
     mode: str
     settings_source: str
@@ -67,10 +69,6 @@ class _OverviewContext:
     llm_api_version: str | None
     llm_base_url: str | None
     llm_api_key: str | None
-
-
-def _has_env(name: str) -> bool:
-    return bool((get_env(name) or "").strip())
 
 
 def _display(value: Any) -> str:
@@ -195,6 +193,10 @@ def _lookup_path(payload: Mapping[str, Any], dotted_key: str) -> tuple[bool, Any
     return True, current
 
 
+def _has_configured_value(value: Any) -> bool:
+    return value not in (None, "", [], {})
+
+
 def _require_path(payload: Mapping[str, Any], dotted_key: str) -> Any:
     found, value = _lookup_path(payload, dotted_key)
     if not found:
@@ -245,7 +247,8 @@ def _editable_settings_entry(
         source = "user_settings"
     else:
         source = "settings"
-    status = "configured" if has_system_value or has_user_value or value not in (None, "", [], {}) else "default"
+    configured = has_system_value or has_user_value or _has_configured_value(value)
+    status = "configured" if configured else "default"
     editable = editable_in_local if is_local_mode() else editable_in_cloud
     return SettingEntry(
         key=key,
@@ -272,15 +275,17 @@ def _env_entry(
     *,
     secret: bool = False,
     value: Any | None = None,
+    override_value: str | None = None,
+    has_override: bool = False,
     restart_required: bool = True,
     ui_group: str = "",
     ui_order: int = 0,
 ) -> SettingEntry:
-    configured = _has_env(env_name)
+    env_value = override_value if has_override else get_env(env_name)
+    configured = _has_configured_value(env_value)
     local_mode = is_local_mode()
-    env_value = get_env(env_name)
     actual_value = env_value if env_value is not None and str(env_value).strip() else value
-    safe_secret = bool(secret and not local_mode)
+    safe_secret = bool(secret)
     safe_value = None if safe_secret else actual_value
     if safe_secret and configured:
         display_value = "已配置"
@@ -346,13 +351,17 @@ def _build_catalog_entry(entry: SettingsCatalogEntry, context: _OverviewContext)
 
     if entry.kind == "env":
         resolved_value = _require_attr_path(context, entry.value_path) if entry.value_path else None
+        env_name = entry.env_name or ""
+        has_override = env_name in context.env_overrides
         return _env_entry(
             entry.key,
             entry.label,
-            entry.env_name or "",
+            env_name,
             entry.description,
             secret=entry.secret,
             value=resolved_value,
+            override_value=context.env_overrides.get(env_name),
+            has_override=has_override,
             restart_required=entry.restart_required,
             ui_group=entry.ui_group,
             ui_order=entry.ui_order,
@@ -398,20 +407,25 @@ def build_settings_overview_data(
         if session is not None
         else get_system_settings_override_payload()
     )
+    raw_system_settings_payload, env_overrides = split_runtime_settings_payload(raw_system_payload)
     raw_user_payload = (
         get_user_runtime_settings_payload(session, user_id)
         if session is not None and user_id and is_local_mode()
         else {}
     )
-    system_payload = _safe_user_settings_payload(raw_system_payload)
+    system_payload = _safe_user_settings_payload(raw_system_settings_payload)
     user_payload = _safe_user_settings_payload(raw_user_payload)
 
     if session is not None:
-        if raw_system_payload != system_payload:
+        if raw_system_settings_payload != system_payload:
+            combined_payload = combine_runtime_settings_payload(system_payload, env_overrides)
             if system_payload:
-                upsert_system_runtime_settings_payload(session, payload=system_payload)
+                upsert_system_runtime_settings_payload(session, payload=combined_payload)
             else:
-                clear_system_runtime_settings(session)
+                if env_overrides:
+                    upsert_system_runtime_settings_payload(session, payload=combined_payload)
+                else:
+                    clear_system_runtime_settings(session)
             set_system_settings_override(system_payload)
         if user_id and raw_user_payload != user_payload:
             if user_payload:
@@ -420,7 +434,10 @@ def build_settings_overview_data(
                 clear_user_runtime_settings(session, user_id=user_id)
 
     if is_local_mode() and session is not None and not system_payload and user_payload:
-        upsert_system_runtime_settings_payload(session, payload=user_payload)
+        upsert_system_runtime_settings_payload(
+            session,
+            payload=combine_runtime_settings_payload(user_payload, env_overrides),
+        )
         set_system_settings_override(user_payload)
         system_payload = user_payload
 
@@ -430,6 +447,7 @@ def build_settings_overview_data(
         base_payload=base_settings.model_dump(mode="json"),
         settings_payload=settings.model_dump(mode="json"),
         system_payload=system_payload,
+        env_overrides=env_overrides,
         user_payload=user_payload,
         mode=resolve_app_mode(),
         settings_source=describe_project_settings_source(),
@@ -471,23 +489,32 @@ def update_user_settings_overview_data(
             status_code=403,
         )
 
-    if env_updates:
-        write_local_env_updates(env_updates)
-        reset_project_settings_cache()
-        logger.info(
-            "local_env_updated_via_settings",
-            env_path=str(resolve_writable_local_env_path()),
-            updated_keys=sorted(env_updates),
-        )
-
     if reset:
         clear_system_runtime_settings(session)
         clear_user_runtime_settings(session, user_id=user_id)
+        set_runtime_env_overrides({})
         set_system_settings_override({})
     else:
+        raw_existing_payload = get_system_runtime_settings_payload(session)
+        _, env_overrides = split_runtime_settings_payload(raw_existing_payload)
+        for env_name, value in env_updates.items():
+            if value == SECRET_PRESERVE_SENTINEL:
+                continue
+            env_overrides[env_name] = "" if value is None else str(value)
+
         normalized_payload = _normalize_user_settings_payload(settings_payload)
-        upsert_system_runtime_settings_payload(session, payload=normalized_payload)
+        combined_payload = combine_runtime_settings_payload(normalized_payload, env_overrides)
+        if combined_payload:
+            upsert_system_runtime_settings_payload(session, payload=combined_payload)
+        else:
+            clear_system_runtime_settings(session)
+        set_runtime_env_overrides(env_overrides)
         set_system_settings_override(normalized_payload)
+        if env_updates:
+            logger.info(
+                "local_env_overrides_updated_via_settings",
+                updated_keys=sorted(env_updates),
+            )
 
     return build_settings_overview_data(session=session, user_id=user_id)
 
