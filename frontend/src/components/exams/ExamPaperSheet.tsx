@@ -1,7 +1,8 @@
 import type { Dispatch, SetStateAction } from "react";
-import { Bookmark, Lightbulb, Tags } from "lucide-react";
+import { Bookmark, Lightbulb, MessageSquareText, Tags } from "lucide-react";
 
 import type { ExamPaperDetailResponse, ExamPaperItemResponse } from "../../api/generated/model";
+import { cn } from "../../lib/utils";
 import { ExamMarkdown } from "./ExamMarkdown";
 import {
   buildKnowledgeLabel,
@@ -19,10 +20,12 @@ interface ExamPaperSheetProps {
   answers: Record<number, string>;
   activeStage: 1 | 2 | 3;
   pageScale: number;
+  highlightedQuestionOrder?: number | null;
   setAnswers: Dispatch<SetStateAction<Record<number, string>>>;
   selectedItemId?: number | null;
   showInlineReviewDetails?: boolean;
   onSelectQuestion?: (item: ExamPaperItemResponse) => void;
+  onQuestionAi?: (item: ExamPaperItemResponse, isReviewStage: boolean, answerValue: string) => void;
 }
 
 export function ExamPaperSheet({
@@ -30,10 +33,12 @@ export function ExamPaperSheet({
   answers,
   activeStage,
   pageScale,
+  highlightedQuestionOrder,
   setAnswers,
   selectedItemId,
   showInlineReviewDetails = true,
   onSelectQuestion,
+  onQuestionAi,
 }: ExamPaperSheetProps) {
   return (
                 <div
@@ -87,6 +92,7 @@ export function ExamPaperSheet({
                     const isReadonly = isGraded;
                     const isCorrect = item.is_correct === true;
                     const isSelectedReviewItem = isReviewStage && selectedItemId === item.id;
+                    const isQuestionHighlighted = highlightedQuestionOrder === item.item_order;
 
                     return (
                       <div
@@ -99,11 +105,13 @@ export function ExamPaperSheet({
                             onSelectQuestion?.(item);
                           }
                         }}
-                        className={`scroll-mt-28 border-b-[1.5px] border-dashed border-slate-200/90 px-0 py-7 last:border-b-0 sm:py-9 ${
-                          isReviewStage ? "cursor-pointer rounded-xl transition" : ""
-                        } ${
-                          isSelectedReviewItem ? "bg-slate-50/80 outline outline-1 outline-slate-200" : ""
-                        }`}
+                        className={cn(
+                          "scroll-mt-28 border-b-[1.5px] border-dashed border-slate-200/90 px-0 py-7 transition-[background-color,box-shadow] duration-300 last:border-b-0 sm:py-9",
+                          isReviewStage && "cursor-pointer rounded-xl",
+                          isSelectedReviewItem && "bg-slate-50/80 outline outline-1 outline-slate-200",
+                          isQuestionHighlighted &&
+                            "rounded-2xl bg-violet-50/80 ring-2 ring-violet-300/80 shadow-[0_16px_34px_rgba(139,92,246,0.14)]",
+                        )}
                         aria-selected={isSelectedReviewItem || undefined}
                       >
                         <div className="grid gap-5 md:grid-cols-[72px_minmax(0,1fr)]">
@@ -111,7 +119,19 @@ export function ExamPaperSheet({
                             <div className="font-serif text-2xl font-bold leading-none text-slate-950">
                               {item.item_order}.
                             </div>
-                            <div className="flex gap-4 text-xs font-semibold text-slate-400 md:flex-col md:gap-3">
+                            <div className="flex flex-wrap gap-2 text-xs font-semibold text-slate-400 md:flex-col md:gap-2">
+                              {onQuestionAi && (
+                                <button
+                                  type="button"
+                                  onClick={() => onQuestionAi(item, isReviewStage, answerValue)}
+                                  className="inline-flex min-h-10 min-w-10 flex-col items-center justify-center gap-1 rounded-xl border border-violet-200 bg-violet-50 px-2 text-[11px] font-semibold text-violet-700 shadow-sm transition hover:border-violet-300 hover:bg-violet-100 hover:text-violet-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-300 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
+                                  title={`围绕第 ${item.item_order} 题问 AI`}
+                                  aria-label={`围绕第 ${item.item_order} 题问 AI`}
+                                >
+                                  <MessageSquareText className="h-4 w-4" />
+                                  问AI
+                                </button>
+                              )}
                               <span className="inline-flex flex-col items-center gap-1">
                                 <Bookmark className="h-4 w-4" />
                                 标记

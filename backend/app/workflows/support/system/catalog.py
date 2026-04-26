@@ -538,20 +538,6 @@ SETTINGS_CATALOG: tuple[SettingsCatalogSection, ...] = (
         ),
     ),
     SettingsCatalogSection(
-        id="demo_courses",
-        label="演示课程",
-        description="演示课程公共对象存储入口。",
-        entries=(
-            env(
-                "storage.s3_public_base_url",
-                "S3 公共根地址",
-                "S3_PUBLIC_BASE_URL",
-                ui_group="演示课程 OSS",
-                ui_order=10,
-            ),
-        ),
-    ),
-    SettingsCatalogSection(
         id="observability",
         label="观测与集成",
         description="观测开关与 LangSmith 接入状态。",

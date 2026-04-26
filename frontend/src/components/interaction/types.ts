@@ -1,8 +1,42 @@
+import type { ChatSelectionContext } from "../../api/generated/model";
+
 export type AiInteractionDisplayMode = "sidebar" | "fullscreen";
 
 export type AiConversationScope =
   | { type: "global" }
   | { type: "subject"; subjectId: string };
+
+export const AI_SOURCE_DOCUMENT_SELECTION = "quick_chat";
+export const AI_SOURCE_EXAM_QUESTION = "exam_question";
+export const EXAM_QUESTION_JUMP_EVENT = "aiteachme:exam-question-jump";
+
+export interface ExamQuestionJumpDetail {
+  subjectId: string;
+  paperId: number;
+  questionOrder: number;
+  anchorId: string;
+  selectedText?: string;
+  sessionId?: string | null;
+}
+
+const EXAM_QUESTION_ANCHOR_PATTERN = /^exam-paper-(\d+)-question-(\d+)$/;
+
+export function buildExamQuestionAnchorId(paperId: number, questionOrder: number): string {
+  return `exam-paper-${paperId}-question-${questionOrder}`;
+}
+
+export function parseExamQuestionAnchorId(anchorId?: string | null): { paperId: number; questionOrder: number } | null {
+  const match = anchorId?.trim().match(EXAM_QUESTION_ANCHOR_PATTERN);
+  if (!match) {
+    return null;
+  }
+  const paperId = Number(match[1]);
+  const questionOrder = Number(match[2]);
+  if (!Number.isFinite(paperId) || !Number.isFinite(questionOrder)) {
+    return null;
+  }
+  return { paperId, questionOrder };
+}
 
 export interface OpenAiInteractionOptions {
   mode?: AiInteractionDisplayMode;
@@ -12,18 +46,7 @@ export interface OpenAiInteractionOptions {
   source?: string | null;
   anchorId?: string | null;
   selectedText?: string | null;
-  selectionContext?: {
-    selected_text: string;
-    anchor_id: string;
-    anchor_title?: string;
-    heading_path: string[];
-    before_text?: string;
-    after_text?: string;
-    section_title?: string;
-    section_excerpt?: string;
-    section_truncated: boolean;
-    local_context_truncated: boolean;
-  } | null;
+  selectionContext?: ChatSelectionContext | null;
   clientThreadId?: string | null;
   newSession?: boolean;
   showSelectionContext?: boolean;

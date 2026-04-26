@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { CheckCircle2, Download, FileArchive, FileText, Loader2, MessageSquareText, Package, Radar, X } from "lucide-react";
+import { CheckCircle2, Download, FileText, Loader2, MessageSquareText, Package, Radar, X } from "lucide-react";
 
 import { apiClient, getApiErrorMessage } from "../../api/client";
 import type { ExportOptions, ExportPreviewData } from "../../api/generated/model";
@@ -8,9 +8,10 @@ import type { ApiResponse } from "../../api/types";
 import { downloadSubjectPackage } from "../../lib/subjectPackage";
 import { cn } from "../../lib/utils";
 import { Button } from "../ui/Button";
+import { useToast } from "../ui/Toast";
 
 const DEFAULT_EXPORT_OPTIONS: Required<ExportOptions> = {
-  include_raw_files: true,
+  include_raw_files: false,
   include_raw_markdowns: true,
   include_knowledge_docs: true,
   include_chat_history: true,
@@ -37,20 +38,9 @@ async function fetchExportPreview(subject: string): Promise<ExportPreviewData> {
   return response.data;
 }
 
-function formatFileSize(bytes?: number | null): string {
-  if (bytes == null || !Number.isFinite(bytes)) return "未知";
-  const units = ["B", "KB", "MB", "GB"];
-  let value = bytes;
-  let unitIndex = 0;
-  while (value >= 1024 && unitIndex < units.length - 1) {
-    value /= 1024;
-    unitIndex += 1;
-  }
-  return `${value >= 10 || unitIndex === 0 ? value.toFixed(0) : value.toFixed(1)} ${units[unitIndex]}`;
-}
-
 export function SubjectExportModal({ subjectId, onClose }: SubjectExportModalProps) {
   const [options, setOptions] = useState<Required<ExportOptions>>(DEFAULT_EXPORT_OPTIONS);
+  const { toast } = useToast();
 
   const previewQuery = useQuery({
     queryKey: ["subject-export-preview", subjectId],
@@ -59,23 +49,23 @@ export function SubjectExportModal({ subjectId, onClose }: SubjectExportModalPro
 
   const exportMutation = useMutation({
     mutationFn: () => downloadSubjectPackage(subjectId, options),
-    onSuccess: onClose,
+    onSuccess: () => {
+      toast({
+        title: "导出已开始",
+        description: "浏览器正在下载 .atmx 课程包。",
+        variant: "success",
+      });
+      onClose();
+    },
   });
 
   const stats = previewQuery.data?.stats;
   const optionRows = useMemo(
     () => [
       {
-        key: "include_raw_files" as const,
-        title: "原始上传文件",
-        description: stats?.total_raw_file_size_bytes ? formatFileSize(stats.total_raw_file_size_bytes) : "不包含解析缓存",
-        count: stats?.raw_file_count ?? 0,
-        icon: FileArchive,
-      },
-      {
         key: "include_raw_markdowns" as const,
-        title: "解析 Markdown 与检索切片",
-        description: "用于导入后继续资料级检索",
+        title: "资料解析缓存",
+        description: "资料记录、解析 Markdown 字段与检索切片",
         count: stats?.raw_file_count ?? 0,
         icon: FileText,
       },
@@ -153,7 +143,7 @@ export function SubjectExportModal({ subjectId, onClose }: SubjectExportModalPro
                   学科信息、知识图谱节点与关系
                 </div>
                 <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                  {coreCount} 条核心知识结构；向量索引、临时构建状态和运行时锁不会导出。
+                  {(stats?.knowledge_unit_count ?? 0)} 个知识点 / {(stats?.knowledge_edge_count ?? 0)} 条关系；原始上传文件、向量索引、临时构建状态和运行时锁不会导出。
                 </div>
               </div>
 
