@@ -2,12 +2,8 @@
 
 from __future__ import annotations
 
-import uuid
 from datetime import datetime
 
-import structlog
-
-from app.shared.infra.database import managed_session
 from app.shared.infra.llm_support.common import (
     LLMRuntimeSnapshot,
     use_llm_runtime_snapshot,
@@ -17,15 +13,11 @@ from app.shared.infra.knowledge.build_store import (
     read_knowledge_manifest,
     update_knowledge_build_lane_status,
 )
-from app.workflows.digest.kg_file_ingest.lib.job_lifecycle import cleanup_pending_by_subject
 from app.workflows.digest.kg_docs_sync.inputs import (
     extract_doc_chapter_metadatas,
     load_knowledge_doc_sync_input,
     resolve_graph_input_paths,
 )
-
-logger = structlog.get_logger()
-
 
 def _end_trace_run(trace_run: object | None, outputs: dict[str, object]) -> None:
     if trace_run is not None:
@@ -43,21 +35,9 @@ def _write_graph_status(subject: str, *, requested_at: datetime, status: str, st
     )
 
 
-def _new_graph_run_id() -> int:
-    return (uuid.uuid4().int % 2_000_000_000) + 1
-
-
 def _current_doc_version_no(subject: str) -> int:
     manifest = read_knowledge_manifest(subject)
     return int(manifest.version_no or 0) if manifest is not None else 0
-
-
-def _cleanup_pending_digest_outputs(subject: str) -> None:
-    try:
-        with managed_session() as session:
-            cleanup_pending_by_subject(session, subject=subject, job_type="graph")
-    except Exception:
-        logger.exception("knowledge_pending_cleanup_failed", subject=subject)
 
 
 async def run_graph_docs_sync_after_doc_build(
@@ -183,86 +163,6 @@ async def run_graph_docs_sync_after_doc_build(
         return completed_metrics
 
 
-async def run_graph_file_ingest_background(
-    *,
-    subject: str,
-    file_ids: list[int],
-    prompt: str | None,
-    requested_at: datetime,
-    build_group_id: str,
-    build_session_id: str,
-    doc_chapter_metadatas: list[dict[str, object]] | None = None,
-    llm_snapshot: LLMRuntimeSnapshot | None = None,
-) -> dict[str, int]:
-    """Build graph candidates from parsed files without owning the outer build lock."""
-
-    from app.workflows.digest.kg_file_ingest import run_graph_file_ingest_workflow
-
-    with langsmith_trace(
-        name="知识图谱摄取：文件解析结果入图",
-        run_type="chain",
-        inputs={
-            "subject": subject,
-            "file_count": len(file_ids),
-            "prompt_present": bool((prompt or "").strip()),
-            "chapter_metadata_count": len(doc_chapter_metadatas or []),
-        },
-        subject=subject,
-        build_session_id=build_session_id,
-        workflow="digest.kg_file_ingest",
-        lane="graph",
-        extra_metadata={"build_group_id": build_group_id},
-    ) as trace_run:
-        if not file_ids:
-            skipped_metrics = {"processed_chunks": 0}
-            _end_trace_run(trace_run, {"status": "skipped", **skipped_metrics})
-            return skipped_metrics
-
-        _write_graph_status(
-            subject,
-            requested_at=requested_at,
-            build_group_id=build_group_id,
-            status="running",
-            stage="graph_file_ingest",
-            build_session_id=build_session_id,
-            error_message=None,
-            draft_available=False,
-            source_file_ids=file_ids,
-            prompt=prompt,
-            current_stage_description="正在从已解析文件抽取候选并构建图谱。",
-        )
-        _cleanup_pending_digest_outputs(subject)
-        with use_llm_runtime_snapshot(llm_snapshot):
-            result = await run_graph_file_ingest_workflow(
-                subject=subject,
-                job_id=_new_graph_run_id(),
-                file_ids=file_ids,
-                user_prompt=prompt,
-                build_session_id=build_session_id,
-                doc_chapter_metadatas=doc_chapter_metadatas,
-            )
-        if result.failed:
-            if result.error.detail == "no_ready_digest_inputs":
-                skipped_metrics = {"processed_chunks": 0}
-                _end_trace_run(
-                    trace_run,
-                    {
-                        "status": "skipped",
-                        "reason": result.error.detail,
-                        **skipped_metrics,
-                    },
-                )
-                return skipped_metrics
-            _end_trace_run(trace_run, {"status": "failed", "error": result.error.detail})
-            raise RuntimeError(result.error.detail)
-
-        final_state = result.require_value()
-        completed_metrics = {"processed_chunks": len(final_state.get("chunk_ids", []))}
-        _end_trace_run(trace_run, {"status": "completed", **completed_metrics})
-        return completed_metrics
-
-
 __all__ = [
     "run_graph_docs_sync_after_doc_build",
-    "run_graph_file_ingest_background",
 ]

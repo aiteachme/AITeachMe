@@ -20,9 +20,9 @@ export interface ChatSessionItem {
   subject_name?: string | null;
   /** Session source. */
   source?: string | null;
-  /** Doc heading anchor for doc-selection sessions. */
+  /** Doc heading or exam-question anchor for anchored sessions. */
   anchor_id?: string | null;
-  /** Selected text for doc-selection sessions. */
+  /** Selected text or question preview for anchored sessions. */
   selected_text?: string | null;
   /** Optional source chunk ID for doc-selection sessions. */
   source_chunk_id?: number | null;

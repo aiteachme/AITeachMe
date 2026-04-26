@@ -10,9 +10,9 @@
  * Export options payload.
  */
 export interface ExportOptions {
-  /** Include original uploaded files such as PDF/DOCX. */
+  /** Deprecated compatibility flag. Original uploaded files are not exported. */
   include_raw_files?: boolean;
-  /** Include parsed raw markdown files. */
+  /** Include parsed source metadata and retrieval chunks. Parsed markdown content is stored in raw_file rows. */
   include_raw_markdowns?: boolean;
   /** Include generated knowledge docs. */
   include_knowledge_docs?: boolean;

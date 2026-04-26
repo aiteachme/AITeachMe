@@ -283,7 +283,7 @@ class KnowledgeBuildMetricsResponse(BaseModel):
 class KnowledgeGraphBuildMetricsResponse(BaseModel):
     """Stable graph-build metrics used by docs and graph progress UIs."""
 
-    processed_chunks: int = Field(default=0, description="Parsed-file chunks processed by kg_file_ingest.")
+    processed_chunks: int = Field(default=0, description="Legacy parsed-file chunk count; docs-sync builds keep this at 0.")
     doc_sync_section_count: int = Field(default=0, description="Knowledge-doc sections analyzed by kg_docs_sync.")
     doc_sync_unit_changes: int = Field(default=0, description="Knowledge units created or updated by docs-sync.")
     doc_sync_edge_changes: int = Field(default=0, description="Graph edges created or updated by docs-sync.")

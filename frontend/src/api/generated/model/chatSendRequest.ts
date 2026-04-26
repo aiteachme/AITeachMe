@@ -15,11 +15,11 @@ export interface ChatSendRequest {
   question: string;
   /** Optional session ID. Auto-created when omitted. */
   session_id?: string | null;
-  /** Optional source tag, e.g. quick_chat or build_assistant. */
+  /** Optional source tag, e.g. quick_chat, exam_question, or build_assistant. */
   source?: string | null;
-  /** Optional doc heading anchor for highlighted QA. */
+  /** Optional doc heading or exam-question anchor for highlighted QA. */
   anchor_id?: string | null;
-  /** Exact highlighted text for display and persistence. */
+  /** Exact highlighted text or question preview for display and persistence. */
   selected_text?: string | null;
   /** Legacy highlighted context string. */
   selected_context?: string | null;

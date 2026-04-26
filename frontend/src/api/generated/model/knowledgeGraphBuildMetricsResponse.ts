@@ -10,7 +10,7 @@
  * Stable graph-build metrics used by docs and graph progress UIs.
  */
 export interface KnowledgeGraphBuildMetricsResponse {
-  /** Parsed-file chunks processed by kg_file_ingest. */
+  /** Legacy parsed-file chunk count; docs-sync builds keep this at 0. */
   processed_chunks?: number;
   /** Knowledge-doc sections analyzed by kg_docs_sync. */
   doc_sync_section_count?: number;

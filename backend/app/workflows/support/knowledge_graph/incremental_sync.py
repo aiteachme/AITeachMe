@@ -84,6 +84,29 @@ _DOCS_UNIT_WRAPPER_TERMS = (
     "速判",
     "题眼",
     "必会",
+    "主干划分",
+    "学习顺序",
+    "认知难度",
+    "区分标准",
+    "常见误解",
+    "错误推理",
+    "失分点",
+    "预警",
+    "过渡设计",
+    "解决思路",
+    "综合题结构",
+    "知识组合",
+    "跨模块",
+)
+_DOCS_UNIT_META_PHRASE_RE = re.compile(
+    r"(?:"
+    r"主干划分|学习顺序|认知难度(?:排序)?|区分标准|常见误解|错误推理|"
+    r"路径的归纳|解释路径|关键判断逻辑|步骤拆解|失分点|预警|"
+    r"过渡设计|解决思路|体现方式|完整推导链条|综合题结构|知识组合|跨模块|"
+    r"(?:各模块|模块).{0,12}(?:权重|认知难度|排序)|"
+    r"(?:考试|常考).{0,12}(?:权重|排序|模块|结构|题)|"
+    r"(?:实验设计|现象解释).{0,12}对应关系"
+    r")"
 )
 _DOCS_UNIT_ACTION_PREFIX_RE = re.compile(
     r"^(?:"
@@ -172,6 +195,8 @@ def _is_low_quality_docs_unit_name(name: str, *, node_type: str = "") -> bool:
         return True
     if any(term in cleaned for term in _DOCS_UNIT_WRAPPER_TERMS):
         return True
+    if normalized_type in {"concept", "method", "remark", "example", "exercise"} and _DOCS_UNIT_META_PHRASE_RE.search(cleaned):
+        return True
     if _DOCS_UNIT_QUESTION_STEM_RE.search(cleaned):
         return True
     if normalized_type in {"example", "exercise"} and re.search(r"[；;。]|[:：]", cleaned):
@@ -187,13 +212,18 @@ def _filter_docs_candidate_result(result: ChunkExtractionResult) -> ChunkExtract
     kept_nodes: list[CandidateNode] = []
     dropped_candidate_ids: set[str] = set()
     dropped_names: set[str] = set()
+    dropped_normalized_names: set[str] = set()
     kept_names: set[str] = set()
+    kept_normalized_names: set[str] = set()
 
     for node in result.nodes:
         if _is_low_quality_docs_unit_name(node.name, node_type=node.knowledge_unit_type):
             if node.candidate_id:
                 dropped_candidate_ids.add(node.candidate_id)
             dropped_names.add(node.name)
+            normalized_name = normalize_name(node.name)
+            if normalized_name:
+                dropped_normalized_names.add(normalized_name)
             logger.info(
                 "knowledge_docs_sync_node_dropped_low_quality_name",
                 node_name=node.name,
@@ -202,16 +232,23 @@ def _filter_docs_candidate_result(result: ChunkExtractionResult) -> ChunkExtract
             continue
         kept_nodes.append(node)
         kept_names.add(node.name)
+        normalized_name = normalize_name(node.name)
+        if normalized_name:
+            kept_normalized_names.add(normalized_name)
+
+    def _edge_endpoint_kept(name: str, candidate_id: str | None) -> bool:
+        if candidate_id and candidate_id in dropped_candidate_ids:
+            return False
+        normalized = normalize_name(name)
+        if name in dropped_names or (normalized and normalized in dropped_normalized_names):
+            return False
+        return name in kept_names or bool(normalized and normalized in kept_normalized_names)
 
     kept_edges = [
         edge
         for edge in result.edges
-        if edge.source_name in kept_names
-        and edge.target_name in kept_names
-        and (not edge.source_candidate_id or edge.source_candidate_id not in dropped_candidate_ids)
-        and (not edge.target_candidate_id or edge.target_candidate_id not in dropped_candidate_ids)
-        and edge.source_name not in dropped_names
-        and edge.target_name not in dropped_names
+        if _edge_endpoint_kept(edge.source_name, edge.source_candidate_id)
+        and _edge_endpoint_kept(edge.target_name, edge.target_candidate_id)
     ]
     return ChunkExtractionResult(nodes=kept_nodes, edges=kept_edges)
 
@@ -1250,12 +1287,13 @@ async def _extract_candidates_with_diagnostics_adapter(**kwargs) -> tuple[ChunkE
 
 
 def _merge_missing_chapter_heading_nodes(result: ChunkExtractionResult, chapter) -> ChunkExtractionResult:
-    if result.nodes:
-        return result
     section_chunks = extract_markdown_section_chunks(chapter.body_markdown)
     seen_names = {normalize_name(node.name) for node in result.nodes if normalize_name(node.name)}
+    has_extracted_nodes = bool(result.nodes)
 
     for section in section_chunks:
+        if has_extracted_nodes and section.heading_level <= chapter.heading_level:
+            continue
         normalized_title = normalize_name(section.title)
         if not normalized_title or normalized_title in seen_names:
             continue

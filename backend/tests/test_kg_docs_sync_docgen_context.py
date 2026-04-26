@@ -57,6 +57,26 @@ def test_docs_sync_rejects_outline_titles_and_speedrun_wrappers():
     )
     assert incremental_sync._is_low_quality_docs_unit_name("速判技巧", node_type="method")
     assert incremental_sync._is_low_quality_docs_unit_name("找已知边角关系", node_type="method")
+    assert incremental_sync._is_low_quality_docs_unit_name(
+        "力学、热学、光学、电学与磁学的主干划分",
+        node_type="concept",
+    )
+    assert incremental_sync._is_low_quality_docs_unit_name(
+        "各模块在考试中的权重与认知难度排序",
+        node_type="concept",
+    )
+    assert incremental_sync._is_low_quality_docs_unit_name(
+        "实验设计与现象解释的对应关系",
+        node_type="concept",
+    )
+    assert incremental_sync._is_low_quality_docs_unit_name(
+        "从现象观察到原理的完整推导链条",
+        node_type="concept",
+    )
+    assert not incremental_sync._is_low_quality_docs_unit_name("重力", node_type="concept")
+    assert not incremental_sync._is_low_quality_docs_unit_name("权重", node_type="concept")
+    assert not incremental_sync._is_low_quality_docs_unit_name("优先级队列", node_type="concept")
+    assert not incremental_sync._is_low_quality_docs_unit_name("W = F s cosθ", node_type="formula")
 
 
 def test_docs_sync_uses_docgen_backbone_and_source_refs(monkeypatch):

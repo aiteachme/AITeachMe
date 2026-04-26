@@ -7,7 +7,6 @@ from typing import TYPE_CHECKING
 from app.workflows.support.knowledge_graph.cleanup import clear_subject_graph_entities
 from app.workflows.support.knowledge_graph.builds import (
     run_graph_docs_sync_after_doc_build,
-    run_graph_file_ingest_background,
 )
 from app.workflows.support.knowledge_graph.incremental_sync import (
     KnowledgeSyncReport,
@@ -27,7 +26,6 @@ from app.workflows.support.knowledge_graph.query import (
 
 if TYPE_CHECKING:
     from app.workflows.digest.kg_docs_sync import run_graph_docs_sync_workflow
-    from app.workflows.digest.kg_file_ingest import run_graph_file_ingest_workflow
 
 
 def __getattr__(name: str) -> object:
@@ -35,10 +33,6 @@ def __getattr__(name: str) -> object:
         from app.workflows.digest.kg_docs_sync import run_graph_docs_sync_workflow
 
         return run_graph_docs_sync_workflow
-    if name == "run_graph_file_ingest_workflow":
-        from app.workflows.digest.kg_file_ingest import run_graph_file_ingest_workflow
-
-        return run_graph_file_ingest_workflow
     raise AttributeError(name)
 
 
@@ -55,8 +49,6 @@ __all__ = [
     "get_knowledge_unit_relations",
     "get_knowledge_units",
     "run_graph_docs_sync_after_doc_build",
-    "run_graph_file_ingest_background",
     "run_graph_docs_sync_workflow",
-    "run_graph_file_ingest_workflow",
     "sync_markdown_knowledge_graph",
 ]

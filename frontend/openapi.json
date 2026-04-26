@@ -3638,7 +3638,8 @@
                 "$ref": "#/components/schemas/ChatSessionListRequest",
                 "default": {
                   "page": 1,
-                  "size": 20
+                  "size": 20,
+                  "include_all_subjects": false
                 }
               }
             }
@@ -4168,7 +4169,8 @@
                 "$ref": "#/components/schemas/ChatSessionListRequest",
                 "default": {
                   "page": 1,
-                  "size": 20
+                  "size": 20,
+                  "include_all_subjects": false
                 }
               }
             }
@@ -5487,7 +5489,7 @@
               "schema": {
                 "$ref": "#/components/schemas/ExportOptions",
                 "default": {
-                  "include_raw_files": true,
+                  "include_raw_files": false,
                   "include_raw_markdowns": true,
                   "include_knowledge_docs": true,
                   "include_chat_history": true,
@@ -5567,7 +5569,7 @@
               "schema": {
                 "$ref": "#/components/schemas/ExportOptions",
                 "default": {
-                  "include_raw_files": true,
+                  "include_raw_files": false,
                   "include_raw_markdowns": true,
                   "include_knowledge_docs": true,
                   "include_chat_history": true,
@@ -8975,7 +8977,7 @@
               }
             ],
             "title": "Source",
-            "description": "Optional source tag, e.g. quick_chat or build_assistant."
+            "description": "Optional source tag, e.g. quick_chat, exam_question, or build_assistant."
           },
           "anchor_id": {
             "anyOf": [
@@ -8987,7 +8989,7 @@
               }
             ],
             "title": "Anchor Id",
-            "description": "Optional doc heading anchor for highlighted QA."
+            "description": "Optional doc heading or exam-question anchor for highlighted QA."
           },
           "selected_text": {
             "anyOf": [
@@ -8999,7 +9001,7 @@
               }
             ],
             "title": "Selected Text",
-            "description": "Exact highlighted text for display and persistence."
+            "description": "Exact highlighted text or question preview for display and persistence."
           },
           "selected_context": {
             "anyOf": [
@@ -9160,6 +9162,30 @@
             "title": "Title",
             "description": "Session title."
           },
+          "subject_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subject Id",
+            "description": "Subject slug this session belongs to."
+          },
+          "subject_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subject Name",
+            "description": "Display name of the subject this session belongs to."
+          },
           "source": {
             "anyOf": [
               {
@@ -9182,7 +9208,7 @@
               }
             ],
             "title": "Anchor Id",
-            "description": "Doc heading anchor for doc-selection sessions."
+            "description": "Doc heading or exam-question anchor for anchored sessions."
           },
           "selected_text": {
             "anyOf": [
@@ -9194,7 +9220,7 @@
               }
             ],
             "title": "Selected Text",
-            "description": "Selected text for doc-selection sessions."
+            "description": "Selected text or question preview for anchored sessions."
           },
           "source_chunk_id": {
             "anyOf": [
@@ -9261,6 +9287,12 @@
             "title": "Size",
             "description": "每页数量。",
             "default": 20
+          },
+          "include_all_subjects": {
+            "type": "boolean",
+            "title": "Include All Subjects",
+            "description": "When true, list recent sessions across all subjects owned by the user.",
+            "default": false
           }
         },
         "type": "object",
@@ -10745,13 +10777,13 @@
           "include_raw_files": {
             "type": "boolean",
             "title": "Include Raw Files",
-            "description": "Include original uploaded files such as PDF/DOCX.",
-            "default": true
+            "description": "Deprecated compatibility flag. Original uploaded files are not exported.",
+            "default": false
           },
           "include_raw_markdowns": {
             "type": "boolean",
             "title": "Include Raw Markdowns",
-            "description": "Include parsed raw markdown files.",
+            "description": "Include parsed source metadata and retrieval chunks. Parsed markdown content is stored in raw_file rows.",
             "default": true
           },
           "include_knowledge_docs": {
@@ -12094,7 +12126,7 @@
           "processed_chunks": {
             "type": "integer",
             "title": "Processed Chunks",
-            "description": "Parsed-file chunks processed by kg_file_ingest.",
+            "description": "Legacy parsed-file chunk count; docs-sync builds keep this at 0.",
             "default": 0
           },
           "doc_sync_section_count": {
