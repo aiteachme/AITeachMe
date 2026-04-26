@@ -1,17 +1,26 @@
 import { useMemo, useState, type MouseEvent, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, BookOpen, ChevronDown, Layers3, MoreVertical, Plus, Sparkles, Tags } from "lucide-react";
+import { ArrowLeft, BookOpen, ChevronDown, Layers3, Loader2, MoreVertical, Plus, Sparkles, Tags } from "lucide-react";
 import { useNavigate, useParams } from "react-router-dom";
 
 import {
   getExamHistoryApiV1SubjectsSubjectExamsHistoryGetQueryKey,
   useExamHistoryApiV1SubjectsSubjectExamsHistoryGet,
+  useGenerateExamApiV1SubjectsSubjectExamsGeneratePost,
 } from "../api/generated/exams";
 import type { ExamHistoryItem } from "../api/generated/model";
 import { getApiErrorMessage, orvalApiClient } from "../api/client";
 import { Button } from "../components/ui/Button";
 import { useToast } from "../components/ui/Toast";
-import { CreateExamModal, ExamHeroOrb, ExamMarkdown, ExamPaperCard, ExamPaperWorkspace, buildExamTitle } from "../components/exams";
+import {
+  CreateExamModal,
+  ExamMarkdown,
+  ExamPaperCard,
+  ExamPaperWorkspace,
+  buildExamTitle,
+  loadCreateExamConfig,
+  toExamGenerateRequest,
+} from "../components/exams";
 import { useExamResultDisplayPreference } from "../lib/examResultDisplayPreference";
 import { unwrapOrvalResponse } from "../lib/unwrapOrvalResponse";
 
@@ -95,7 +104,7 @@ export function ExamsPage() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const { mode: examResultDisplayMode } = useExamResultDisplayPreference();
-  const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [isCreateConfigOpen, setIsCreateConfigOpen] = useState(false);
   const [expandedGroups, setExpandedGroups] = useState({
     active: true,
     completed: true,
@@ -143,6 +152,39 @@ export function ExamsPage() {
     },
   });
 
+  const generateExam = useGenerateExamApiV1SubjectsSubjectExamsGeneratePost({
+    mutation: {
+      onSuccess: async (response) => {
+        const created = unwrapOrvalResponse(response);
+        if (!created?.exam_paper_id) return;
+        await queryClient.invalidateQueries({
+          queryKey: getExamHistoryApiV1SubjectsSubjectExamsHistoryGetQueryKey(subjectId ?? "", { page: 1, size: 24 }),
+        });
+        navigate(`/subject/${subjectId}/exams/${created.exam_paper_id}`);
+        toast({
+          title: "试卷已创建",
+          description: `已生成 ${created.num_questions} 题，马上开始考试。`,
+          variant: "success",
+        });
+      },
+      onError: (error) => {
+        toast({
+          title: "创建失败",
+          description: getApiErrorMessage(error, "请稍后重试"),
+          variant: "error",
+        });
+      },
+    },
+  });
+
+  const handleCreateExam = () => {
+    if (!subjectId || generateExam.isPending) return;
+    generateExam.mutate({
+      subject: subjectId,
+      data: toExamGenerateRequest(loadCreateExamConfig(subjectId)),
+    });
+  };
+
   if (!subjectId) {
     return (
       <div className="min-h-full bg-[#f7f8fc] px-6 py-8">
@@ -178,15 +220,20 @@ export function ExamsPage() {
                     <button
                       type="button"
                       className="flex min-w-0 flex-1 items-center justify-center gap-2 px-6 text-sm font-semibold focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2 focus-visible:ring-offset-white active:scale-[0.99] sm:flex-none"
-                      onClick={() => setIsCreateOpen(true)}
+                      onClick={handleCreateExam}
+                      disabled={generateExam.isPending}
                     >
-                      <Plus className="h-4 w-4 shrink-0" />
-                      <span className="whitespace-nowrap">创建新考卷</span>
+                      {generateExam.isPending ? (
+                        <Loader2 className="h-4 w-4 shrink-0 animate-spin" />
+                      ) : (
+                        <Plus className="h-4 w-4 shrink-0" />
+                      )}
+                      <span className="whitespace-nowrap">{generateExam.isPending ? "创建中..." : "创建新考卷"}</span>
                     </button>
                     <button
                       type="button"
                       className="grid h-full w-10 shrink-0 place-items-center border-l border-white/20 text-white/85 transition-colors hover:bg-white/10 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
-                      onClick={() => setIsCreateOpen(true)}
+                      onClick={() => setIsCreateConfigOpen(true)}
                       aria-label="更多考卷设置"
                       title="更多设置"
                     >
@@ -213,8 +260,6 @@ export function ExamsPage() {
                   </Button>
                 </div>
               </div>
-
-              <ExamHeroOrb />
             </div>
           </section>
 
@@ -303,10 +348,9 @@ export function ExamsPage() {
       </div>
 
       <CreateExamModal
-        open={isCreateOpen}
+        open={isCreateConfigOpen}
         subjectId={subjectId}
-        onClose={() => setIsCreateOpen(false)}
-        onCreated={(paperId) => navigate(`/subject/${subjectId}/exams/${paperId}`)}
+        onClose={() => setIsCreateConfigOpen(false)}
       />
     </>
   );

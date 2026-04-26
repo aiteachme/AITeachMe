@@ -1,64 +1,129 @@
-import { useState } from "react";
-import { useQueryClient } from "@tanstack/react-query";
-import { ArrowRight } from "lucide-react";
+import { useEffect, useState } from "react";
+import { RotateCcw, Save } from "lucide-react";
 
-import { getExamHistoryApiV1SubjectsSubjectExamsHistoryGetQueryKey, useGenerateExamApiV1SubjectsSubjectExamsGeneratePost } from "../../api/generated/exams";
-import { getApiErrorMessage } from "../../api/client";
 import { Button } from "../ui/Button";
 import { Modal } from "../ui/Modal";
 import { useToast } from "../ui/Toast";
-import { unwrapOrvalResponse } from "../../lib/unwrapOrvalResponse";
 import { DIFFICULTIES, EXAM_MODES, formatDifficultyLabel } from "./examDisplay";
+
+export interface CreateExamConfig {
+  examMode: (typeof EXAM_MODES)[number]["value"];
+  difficulty: (typeof DIFFICULTIES)[number]["value"];
+  numQuestions: number;
+  focusPrompt: string;
+}
+
+export const DEFAULT_CREATE_EXAM_CONFIG: CreateExamConfig = {
+  examMode: "web_practice",
+  difficulty: "medium",
+  numQuestions: 8,
+  focusPrompt: "",
+};
+
+const CREATE_EXAM_CONFIG_STORAGE_PREFIX = "aiteachme.exam.createConfig.v1";
+
+function getCreateExamConfigStorageKey(subjectId: string) {
+  return `${CREATE_EXAM_CONFIG_STORAGE_PREFIX}.${subjectId}`;
+}
+
+function normalizeCreateExamConfig(value: Partial<CreateExamConfig> | null | undefined): CreateExamConfig {
+  const examModeValues = new Set<string>(EXAM_MODES.map((item) => item.value));
+  const difficultyValues = new Set<string>(DIFFICULTIES.map((item) => item.value));
+  const numQuestions = Number(value?.numQuestions);
+
+  return {
+    examMode: examModeValues.has(value?.examMode ?? "")
+      ? (value?.examMode as CreateExamConfig["examMode"])
+      : DEFAULT_CREATE_EXAM_CONFIG.examMode,
+    difficulty: difficultyValues.has(value?.difficulty ?? "")
+      ? (value?.difficulty as CreateExamConfig["difficulty"])
+      : DEFAULT_CREATE_EXAM_CONFIG.difficulty,
+    numQuestions: Math.min(
+      40,
+      Math.max(1, Number.isFinite(numQuestions) ? numQuestions : DEFAULT_CREATE_EXAM_CONFIG.numQuestions),
+    ),
+    focusPrompt: typeof value?.focusPrompt === "string" ? value.focusPrompt : DEFAULT_CREATE_EXAM_CONFIG.focusPrompt,
+  };
+}
+
+export function loadCreateExamConfig(subjectId: string): CreateExamConfig {
+  if (typeof window === "undefined") {
+    return DEFAULT_CREATE_EXAM_CONFIG;
+  }
+
+  try {
+    const raw = window.localStorage.getItem(getCreateExamConfigStorageKey(subjectId));
+    return normalizeCreateExamConfig(raw ? JSON.parse(raw) : null);
+  } catch {
+    return DEFAULT_CREATE_EXAM_CONFIG;
+  }
+}
+
+export function saveCreateExamConfig(subjectId: string, config: CreateExamConfig) {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  window.localStorage.setItem(
+    getCreateExamConfigStorageKey(subjectId),
+    JSON.stringify(normalizeCreateExamConfig(config)),
+  );
+}
+
+export function toExamGenerateRequest(config: CreateExamConfig) {
+  const normalized = normalizeCreateExamConfig(config);
+
+  return {
+    exam_mode: normalized.examMode,
+    difficulty: normalized.difficulty,
+    focus_prompt: normalized.focusPrompt.trim() || undefined,
+    num_questions: normalized.numQuestions,
+  };
+}
 
 interface CreateExamModalProps {
   open: boolean;
   subjectId: string;
   onClose: () => void;
-  onCreated: (paperId: number) => void;
 }
 
-export function CreateExamModal({ open, subjectId, onClose, onCreated }: CreateExamModalProps) {
-  const queryClient = useQueryClient();
+export function CreateExamModal({ open, subjectId, onClose }: CreateExamModalProps) {
   const { toast } = useToast();
-  const [examMode, setExamMode] = useState<(typeof EXAM_MODES)[number]["value"]>("web_practice");
-  const [difficulty, setDifficulty] = useState<(typeof DIFFICULTIES)[number]["value"]>("medium");
-  const [numQuestions, setNumQuestions] = useState(8);
-  const [focusPrompt, setFocusPrompt] = useState("");
+  const [config, setConfig] = useState<CreateExamConfig>(() => loadCreateExamConfig(subjectId));
 
-  const generateExam = useGenerateExamApiV1SubjectsSubjectExamsGeneratePost({
-    mutation: {
-      onSuccess: async (response) => {
-        const created = unwrapOrvalResponse(response);
-        if (!created?.exam_paper_id) return;
-        await queryClient.invalidateQueries({
-          queryKey: getExamHistoryApiV1SubjectsSubjectExamsHistoryGetQueryKey(subjectId, { page: 1, size: 24 }),
-        });
-        onClose();
-        onCreated(created.exam_paper_id);
-        toast({
-          title: "试卷已创建",
-          description: `已生成 ${created.num_questions} 题，马上开始考试。`,
-          variant: "success",
-        });
-      },
-      onError: (error) => {
-        toast({
-          title: "创建失败",
-          description: getApiErrorMessage(error, "请稍后重试"),
-          variant: "error",
-        });
-      },
-    },
-  });
+  useEffect(() => {
+    if (!open) return;
+    setConfig(loadCreateExamConfig(subjectId));
+  }, [open, subjectId]);
+
+  const handleReset = () => {
+    setConfig(DEFAULT_CREATE_EXAM_CONFIG);
+    saveCreateExamConfig(subjectId, DEFAULT_CREATE_EXAM_CONFIG);
+    toast({
+      title: "配置已重置",
+      description: "之后会使用默认配置创建新考卷。",
+      variant: "success",
+    });
+  };
+
+  const handleSave = () => {
+    saveCreateExamConfig(subjectId, config);
+    toast({
+      title: "配置已保存",
+      description: "下次点击创建新考卷会直接使用这套配置。",
+      variant: "success",
+    });
+    onClose();
+  };
 
   return (
-    <Modal open={open} onClose={onClose} title="创建新考卷" className="max-w-2xl rounded-[28px]">
+    <Modal open={open} onClose={onClose} title="新考卷配置" className="max-w-2xl rounded-[28px]">
       <div className="space-y-6">
         <div className="rounded-[24px] border border-slate-200 bg-[linear-gradient(180deg,#fbfcff_0%,#f5f8ff_100%)] p-5">
           <p className="text-sm font-medium text-sky-600">面向当前学科</p>
           <h3 className="mt-2 text-2xl font-semibold tracking-[-0.03em] text-slate-950">{subjectId}</h3>
           <p className="mt-3 text-sm leading-7 text-slate-600">
-            选择出题模式、题量和难度后，系统会结合当前学科内容自动创建一份新考卷。
+            保存后，创建新考卷按钮会直接使用这套配置开始出题；需要调整时再从右侧更多按钮进入这里。
           </p>
         </div>
 
@@ -67,8 +132,13 @@ export function CreateExamModal({ open, subjectId, onClose, onCreated }: CreateE
             出题模式
             <select
               className="mt-2 h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm text-slate-900 outline-none transition focus:border-slate-400"
-              value={examMode}
-              onChange={(event) => setExamMode(event.target.value as typeof examMode)}
+              value={config.examMode}
+              onChange={(event) =>
+                setConfig((current) => ({
+                  ...current,
+                  examMode: event.target.value as CreateExamConfig["examMode"],
+                }))
+              }
             >
               {EXAM_MODES.map((mode) => (
                 <option key={mode.value} value={mode.value}>
@@ -77,7 +147,7 @@ export function CreateExamModal({ open, subjectId, onClose, onCreated }: CreateE
               ))}
             </select>
             <span className="mt-2 block text-xs leading-6 text-slate-400">
-              {EXAM_MODES.find((item) => item.value === examMode)?.description}
+              {EXAM_MODES.find((item) => item.value === config.examMode)?.description}
             </span>
           </label>
 
@@ -85,8 +155,13 @@ export function CreateExamModal({ open, subjectId, onClose, onCreated }: CreateE
             难度
             <select
               className="mt-2 h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm text-slate-900 outline-none transition focus:border-slate-400"
-              value={difficulty}
-              onChange={(event) => setDifficulty(event.target.value as typeof difficulty)}
+              value={config.difficulty}
+              onChange={(event) =>
+                setConfig((current) => ({
+                  ...current,
+                  difficulty: event.target.value as CreateExamConfig["difficulty"],
+                }))
+              }
             >
               {DIFFICULTIES.map((item) => (
                 <option key={item.value} value={item.value}>
@@ -95,7 +170,7 @@ export function CreateExamModal({ open, subjectId, onClose, onCreated }: CreateE
               ))}
             </select>
             <span className="mt-2 block text-xs leading-6 text-slate-400">
-              当前选择：{formatDifficultyLabel(difficulty)}
+              当前选择：{formatDifficultyLabel(config.difficulty)}
             </span>
           </label>
 
@@ -106,8 +181,13 @@ export function CreateExamModal({ open, subjectId, onClose, onCreated }: CreateE
               type="number"
               min={1}
               max={40}
-              value={numQuestions}
-              onChange={(event) => setNumQuestions(Math.min(40, Math.max(1, Number(event.target.value) || 1)))}
+              value={config.numQuestions}
+              onChange={(event) =>
+                setConfig((current) => ({
+                  ...current,
+                  numQuestions: Math.min(40, Math.max(1, Number(event.target.value) || 1)),
+                }))
+              }
             />
           </label>
 
@@ -124,40 +204,26 @@ export function CreateExamModal({ open, subjectId, onClose, onCreated }: CreateE
           <textarea
             className="mt-2 min-h-32 w-full rounded-[24px] border border-slate-200 bg-white px-4 py-4 text-sm leading-7 text-slate-900 outline-none transition focus:border-slate-400"
             placeholder="例如：递归、动态规划、函数极限、SQL 聚合、近代史时间线"
-            value={focusPrompt}
-            onChange={(event) => setFocusPrompt(event.target.value)}
+            value={config.focusPrompt}
+            onChange={(event) =>
+              setConfig((current) => ({
+                ...current,
+                focusPrompt: event.target.value,
+              }))
+            }
           />
         </label>
 
-        {generateExam.error && (
-          <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-            {getApiErrorMessage(generateExam.error, "创建失败")}
-          </div>
-        )}
-
         <div className="flex flex-col-reverse gap-3 border-t border-slate-100 pt-4 sm:flex-row sm:items-center sm:justify-between">
-          <p className="text-sm text-slate-500">创建后会自动写入试卷列表，并直接进入考试页面。</p>
+          <p className="text-sm text-slate-500">配置保存在当前浏览器中，不会影响其他设备。</p>
           <div className="flex gap-3">
-            <Button variant="outline" className="rounded-full px-5" onClick={onClose}>
-              取消
+            <Button variant="outline" className="rounded-full px-5" onClick={handleReset}>
+              <RotateCcw className="h-4 w-4" />
+              重置
             </Button>
-            <Button
-              className="rounded-full bg-black px-6"
-              onClick={() =>
-                generateExam.mutate({
-                  subject: subjectId,
-                  data: {
-                    exam_mode: examMode,
-                    difficulty,
-                    focus_prompt: focusPrompt.trim() || undefined,
-                    num_questions: numQuestions,
-                  },
-                })
-              }
-              disabled={generateExam.isPending}
-            >
-              {generateExam.isPending ? "创建中..." : "确认创建"}
-              {!generateExam.isPending && <ArrowRight className="h-4 w-4" />}
+            <Button className="rounded-full bg-black px-6" onClick={handleSave}>
+              <Save className="h-4 w-4" />
+              保存
             </Button>
           </div>
         </div>

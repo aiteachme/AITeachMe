@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Loader2, ZoomIn, ZoomOut } from "lucide-react";
+import { ListChecks, Loader2, ZoomIn, ZoomOut } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
 
 import {
@@ -59,6 +59,7 @@ export function ExamPaperWorkspace({ subjectId, paperId, backHref }: ExamPaperWo
   const [answers, setAnswers] = useState<Record<number, string>>({});
   const [pageScale, setPageScale] = useState(1);
   const [activeStage, setActiveStage] = useState<1 | 2 | 3>(1);
+  const [isQuestionNavOpen, setIsQuestionNavOpen] = useState(false);
   const [selectedReviewItemId, setSelectedReviewItemId] = useState<number | null>(null);
   const [highlightedQuestionOrder, setHighlightedQuestionOrder] = useState<number | null>(null);
   const handledJumpMarkerRef = useRef<number | string | null>(null);
@@ -321,7 +322,13 @@ export function ExamPaperWorkspace({ subjectId, paperId, backHref }: ExamPaperWo
       />
 
       <div className="px-4 py-6 sm:px-6 lg:px-8">
-        <div className="mx-auto max-w-7xl space-y-6">
+        <div
+          className={`mx-auto space-y-6 ${
+            isReviewLayout
+              ? "max-w-none lg:mr-16 xl:mr-20 2xl:mr-24"
+              : "max-w-7xl"
+          }`}
+        >
           {examDetailQuery.isLoading && (
             <div className="rounded-[28px] border border-slate-200 bg-white px-6 py-12 text-center text-sm text-slate-500">
               正在加载考卷内容...
@@ -362,79 +369,99 @@ export function ExamPaperWorkspace({ subjectId, paperId, backHref }: ExamPaperWo
               {paper.status !== "generating" && paper.status !== "failed" && activeStage !== 3 && (
                 <>
               <aside className="hidden lg:block">
-                <div className="fixed left-2 top-28 z-20 w-[112px] rounded-[28px] border border-slate-200/80 bg-white/92 px-3 py-4 shadow-[0_18px_40px_rgba(15,23,42,0.08)] backdrop-blur xl:left-3 xl:w-[136px] 2xl:w-[184px]">
-                  <div className="mb-3 px-2 text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
-                    题目导航
-                  </div>
-                  <div
-                    className="grid gap-2"
-                    style={{ gridTemplateColumns: "repeat(auto-fit, minmax(2rem, 1fr))" }}
-                  >
-                    {(paper.items ?? []).map((item) => {
-                      const isAnswered = hasAnsweredQuestion(item, answers);
-                      const isSelectedReviewItem = isReviewLayout && selectedReviewItemId === item.id;
-                      const navTone =
-                        paper.status === "graded"
-                          ? item.is_correct
-                            ? "bg-emerald-50 text-emerald-700 ring-1 ring-inset ring-emerald-200 hover:bg-emerald-100"
-                            : "bg-rose-50 text-rose-700 ring-1 ring-inset ring-rose-200 hover:bg-rose-100"
-                          : isAnswered
-                            ? "bg-slate-900 text-white hover:bg-slate-800"
-                            : "bg-slate-100 text-slate-600 hover:bg-slate-200";
+                <div className="fixed right-4 top-28 z-30 flex items-start gap-3 xl:right-6">
+                  {isQuestionNavOpen && (
+                    <div
+                      id="exam-question-nav-panel"
+                      className="max-h-[calc(100vh-9rem)] w-52 overflow-y-auto rounded-2xl border border-slate-200/80 bg-white/95 px-3 py-4 shadow-[0_18px_40px_rgba(15,23,42,0.1)] backdrop-blur 2xl:w-60"
+                    >
+                      <div className="mb-3 px-2 text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+                        题目导航
+                      </div>
+                      <div className="grid grid-cols-4 gap-2 2xl:grid-cols-5">
+                        {(paper.items ?? []).map((item) => {
+                          const isAnswered = hasAnsweredQuestion(item, answers);
+                          const isSelectedReviewItem = isReviewLayout && selectedReviewItemId === item.id;
+                          const navTone =
+                            paper.status === "graded"
+                              ? item.is_correct
+                                ? "bg-emerald-50 text-emerald-700 ring-1 ring-inset ring-emerald-200 hover:bg-emerald-100"
+                                : "bg-rose-50 text-rose-700 ring-1 ring-inset ring-rose-200 hover:bg-rose-100"
+                              : isAnswered
+                                ? "bg-slate-900 text-white hover:bg-slate-800"
+                                : "bg-slate-100 text-slate-600 hover:bg-slate-200";
 
-                      return (
-                        <button
-                          key={item.id}
-                          type="button"
-                          onClick={() => {
-                            if (isReviewLayout) {
-                              setSelectedReviewItemId(item.id);
-                            }
-                            revealQuestion(item.item_order);
-                          }}
-                          className={`grid aspect-square w-full max-w-8 justify-self-center place-items-center rounded-lg text-xs font-semibold transition ${navTone} ${
-                            isSelectedReviewItem ? "ring-2 ring-slate-900 ring-offset-2 ring-offset-white" : ""
-                          }`}
-                          aria-label={`跳转到第 ${item.item_order} 题`}
-                        >
-                          {item.item_order}
-                        </button>
-                      );
-                    })}
-                  </div>
+                          return (
+                            <button
+                              key={item.id}
+                              type="button"
+                              onClick={() => {
+                                if (isReviewLayout) {
+                                  setSelectedReviewItemId(item.id);
+                                }
+                                revealQuestion(item.item_order);
+                              }}
+                              className={`grid aspect-square w-full place-items-center rounded-lg text-xs font-semibold transition ${navTone} ${
+                                isSelectedReviewItem ? "ring-2 ring-slate-900 ring-offset-2 ring-offset-white" : ""
+                              }`}
+                              aria-label={`跳转到第 ${item.item_order} 题`}
+                            >
+                              {item.item_order}
+                            </button>
+                          );
+                        })}
+                      </div>
 
-                  <div className="mt-4 space-y-2 px-2 text-xs text-slate-500">
-                    <div className="flex items-center gap-2">
-                      <span className={`h-2.5 w-2.5 rounded-full ${paper.status === "graded" ? "bg-emerald-500" : "bg-slate-900"}`} />
-                      <span>{paper.status === "graded" ? "正确" : "已作答"}</span>
+                      <div className="mt-4 space-y-2 px-2 text-xs text-slate-500">
+                        <div className="flex items-center gap-2">
+                          <span className={`h-2.5 w-2.5 rounded-full ${paper.status === "graded" ? "bg-emerald-500" : "bg-slate-900"}`} />
+                          <span>{paper.status === "graded" ? "正确" : "已作答"}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className={`h-2.5 w-2.5 rounded-full ${paper.status === "graded" ? "bg-rose-500" : "bg-slate-400"}`} />
+                          <span>{paper.status === "graded" ? "错误 / 未作答" : "未作答"}</span>
+                        </div>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <span className={`h-2.5 w-2.5 rounded-full ${paper.status === "graded" ? "bg-rose-500" : "bg-slate-400"}`} />
-                      <span>{paper.status === "graded" ? "错误 / 未作答" : "未作答"}</span>
-                    </div>
+                  )}
+
+                  <div className="flex flex-col gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setIsQuestionNavOpen((current) => !current)}
+                      className={`grid h-10 w-10 place-items-center rounded-xl border shadow-[0_18px_40px_rgba(15,23,42,0.08)] backdrop-blur transition ${
+                        isQuestionNavOpen
+                          ? "border-violet-300 bg-violet-50 text-violet-700 hover:bg-violet-100"
+                          : "border-slate-200/80 bg-white/92 text-slate-700 hover:bg-slate-100"
+                      }`}
+                      aria-label={isQuestionNavOpen ? "收起题目导航" : "展开题目导航"}
+                      aria-expanded={isQuestionNavOpen}
+                      aria-controls="exam-question-nav-panel"
+                      title={isQuestionNavOpen ? "收起题目导航" : "展开题目导航"}
+                    >
+                      <ListChecks className="h-5.5 w-5.5" />
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setPageScale((current) => Math.min(1.4, Number((current + 0.05).toFixed(2))))}
+                      className="grid h-10 w-10 place-items-center rounded-xl border border-slate-200/80 bg-white/92 text-slate-700 shadow-[0_18px_40px_rgba(15,23,42,0.08)] backdrop-blur transition hover:bg-slate-100"
+                      aria-label="放大页面"
+                      title="放大页面"
+                    >
+                      <ZoomIn className="h-5.5 w-5.5" />
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setPageScale((current) => Math.max(0.7, Number((current - 0.05).toFixed(2))))}
+                      className="grid h-10 w-10 place-items-center rounded-xl border border-slate-200/80 bg-white/92 text-slate-700 shadow-[0_18px_40px_rgba(15,23,42,0.08)] backdrop-blur transition hover:bg-slate-100"
+                      aria-label="缩小页面"
+                      title="缩小页面"
+                    >
+                      <ZoomOut className="h-5.5 w-5.5" />
+                    </button>
                   </div>
-                </div>
-              </aside>
-
-              <aside className="hidden lg:block">
-                <div className="fixed right-4 top-28 z-20 flex flex-col gap-3 xl:right-6">
-                <button
-                  type="button"
-                    onClick={() => setPageScale((current) => Math.min(1.4, Number((current + 0.05).toFixed(2))))}
-                    className="grid h-10 w-10 place-items-center rounded-xl border border-slate-200/80 bg-white/92 text-slate-700 shadow-[0_18px_40px_rgba(15,23,42,0.08)] backdrop-blur transition hover:bg-slate-100"
-                  aria-label="放大页面"
-                >
-                    <ZoomIn className="h-5.5 w-5.5" />
-                </button>
-
-                <button
-                  type="button"
-                    onClick={() => setPageScale((current) => Math.max(0.7, Number((current - 0.05).toFixed(2))))}
-                    className="grid h-10 w-10 place-items-center rounded-xl border border-slate-200/80 bg-white/92 text-slate-700 shadow-[0_18px_40px_rgba(15,23,42,0.08)] backdrop-blur transition hover:bg-slate-100"
-                  aria-label="缩小页面"
-                >
-                    <ZoomOut className="h-5.5 w-5.5" />
-                </button>
                 </div>
               </aside>
 
@@ -445,8 +472,8 @@ export function ExamPaperWorkspace({ subjectId, paperId, backHref }: ExamPaperWo
                 }}
               >
                 {isReviewLayout ? (
-                  <div className="overflow-x-auto pb-4">
-                    <div className="mx-auto grid w-full grid-cols-1 items-start gap-6 lg:w-max lg:min-w-[1360px] lg:grid-cols-[minmax(780px,900px)_minmax(540px,760px)] 2xl:min-w-[1560px] 2xl:grid-cols-[minmax(900px,1040px)_minmax(600px,820px)] 2xl:gap-8">
+                  <div className="pb-4">
+                    <div className="grid w-full grid-cols-1 items-start gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(420px,0.62fr)] 2xl:grid-cols-[minmax(820px,1fr)_minmax(520px,0.72fr)] 2xl:gap-8">
                     <ExamPaperSheet
                       paper={paper}
                       answers={answers}

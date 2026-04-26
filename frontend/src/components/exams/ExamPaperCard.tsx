@@ -1,4 +1,4 @@
-import type { KeyboardEvent, MouseEvent } from "react";
+import type { CSSProperties, KeyboardEvent, MouseEvent } from "react";
 import { Loader2, MoreVertical, Trash2 } from "lucide-react";
 
 import type { ExamHistoryItem, PaperPreview, PaperPreviewRow } from "../../api/generated/model";
@@ -145,54 +145,156 @@ function PaperTagLine({ preview }: { preview: PaperPreview }) {
   );
 }
 
-function PreviewLine({ width = "w-16" }: { width?: string }) {
-  return <span className={`block h-1 rounded-full bg-current opacity-70 ${width}`} />;
+const PREVIEW_LINE_WIDTH_REM: Record<string, number> = {
+  "w-7": 1.75,
+  "w-8": 2,
+  "w-9": 2.25,
+  "w-10": 2.5,
+  "w-12": 3,
+  "w-14": 3.5,
+  "w-16": 4,
+  "w-20": 5,
+};
+
+const PREVIEW_ROW_FLOW_STEP_REM = 1.5;
+const PREVIEW_ROW_LINE_START_REM = 1.5;
+
+function getPreviewLineWidthRem(width: string) {
+  return PREVIEW_LINE_WIDTH_REM[width] ?? PREVIEW_LINE_WIDTH_REM["w-16"];
 }
 
-function ChoicePreviewShape({ density }: { density: number }) {
+function PreviewLine({
+  width = "w-16",
+  flow = false,
+  flowLeftRem = PREVIEW_ROW_LINE_START_REM,
+  flowTopRem = 0,
+}: {
+  width?: string;
+  flow?: boolean;
+  flowLeftRem?: number;
+  flowTopRem?: number;
+}) {
+  return (
+    <span
+      className={`block h-1 rounded-full ${
+        flow ? "exam-preview-flow-line opacity-100" : "bg-current opacity-70"
+      } ${width}`}
+      style={
+        flow
+          ? ({
+              "--exam-preview-line-x": `${flowLeftRem}rem`,
+              "--exam-preview-line-y": `${-flowTopRem}rem`,
+            } as CSSProperties)
+          : undefined
+      }
+    />
+  );
+}
+
+function ChoicePreviewShape({
+  density,
+  flow = false,
+  rowTopRem = 0,
+}: {
+  density: number;
+  flow?: boolean;
+  rowTopRem?: number;
+}) {
+  const firstWidth = density > 1 ? "w-12" : "w-9";
+  const secondWidth = density > 2 ? "w-10" : "w-7";
+  const lineTopRem = rowTopRem + 0.5;
+  const secondLeftRem = PREVIEW_ROW_LINE_START_REM + getPreviewLineWidthRem(firstWidth) + 0.375;
+
   return (
     <div className="flex h-5 min-w-0 flex-1 items-center gap-2">
       <div className="flex min-w-0 flex-1 items-center gap-1.5">
-        <PreviewLine width={density > 1 ? "w-12" : "w-9"} />
-        <PreviewLine width={density > 2 ? "w-10" : "w-7"} />
+        <PreviewLine width={firstWidth} flow={flow} flowTopRem={lineTopRem} />
+        <PreviewLine width={secondWidth} flow={flow} flowLeftRem={secondLeftRem} flowTopRem={lineTopRem} />
       </div>
       <div className="grid shrink-0 grid-cols-4 gap-1">
         {[0, 1, 2, 3].map((dot) => (
-          <span key={dot} className="h-1.5 w-1.5 rounded-full border border-current opacity-80" />
+          <span
+            key={dot}
+            className={`h-1.5 w-1.5 rounded-full border border-current ${flow ? "opacity-0" : "opacity-80"}`}
+          />
         ))}
       </div>
     </div>
   );
 }
 
-function BlankPreviewShape({ density }: { density: number }) {
+function BlankPreviewShape({
+  density,
+  flow = false,
+  rowTopRem = 0,
+}: {
+  density: number;
+  flow?: boolean;
+  rowTopRem?: number;
+}) {
+  const firstWidth = density > 1 ? "w-10" : "w-7";
+  const thirdWidth = density > 2 ? "w-12" : "w-8";
+  const lineTopRem = rowTopRem + 0.5;
+  const thirdLeftRem = PREVIEW_ROW_LINE_START_REM + getPreviewLineWidthRem(firstWidth) + 3.25;
+
   return (
     <div className="flex h-5 min-w-0 flex-1 items-center gap-1.5">
-      <PreviewLine width={density > 1 ? "w-10" : "w-7"} />
-      <span className="h-3 w-10 shrink-0 border-b border-current opacity-80" />
-      <PreviewLine width={density > 2 ? "w-12" : "w-8"} />
+      <PreviewLine width={firstWidth} flow={flow} flowTopRem={lineTopRem} />
+      <span className={`h-3 w-10 shrink-0 border-b border-current ${flow ? "opacity-0" : "opacity-80"}`} />
+      <PreviewLine width={thirdWidth} flow={flow} flowLeftRem={thirdLeftRem} flowTopRem={lineTopRem} />
     </div>
   );
 }
 
-function TextPreviewShape({ density }: { density: number }) {
+function TextPreviewShape({
+  density,
+  flow = false,
+  rowTopRem = 0,
+}: {
+  density: number;
+  flow?: boolean;
+  rowTopRem?: number;
+}) {
   const lines = density > 2 ? ["w-20", "w-16", "w-12"] : density > 1 ? ["w-20", "w-14"] : ["w-16"];
+  const firstLineTopRem = density > 2 ? rowTopRem : rowTopRem + (density > 1 ? 0.25 : 0.5);
   return (
     <div className="flex h-5 min-w-0 flex-1 flex-col justify-center gap-1">
       {lines.map((width, index) => (
-        <PreviewLine key={`${width}-${index}`} width={width} />
+        <PreviewLine
+          key={`${width}-${index}`}
+          width={width}
+          flow={flow}
+          flowTopRem={firstLineTopRem + index * 0.5}
+        />
       ))}
     </div>
   );
 }
 
-function JudgePreviewShape({ density }: { density: number }) {
+function JudgePreviewShape({
+  density,
+  flow = false,
+  rowTopRem = 0,
+}: {
+  density: number;
+  flow?: boolean;
+  rowTopRem?: number;
+}) {
   return (
     <div className="flex h-5 min-w-0 flex-1 items-center gap-2">
-      <span className="grid h-4 w-4 shrink-0 place-items-center rounded border border-current text-[9px] font-semibold opacity-80">
+      <span
+        className={`grid h-4 w-4 shrink-0 place-items-center rounded border border-current text-[9px] font-semibold ${
+          flow ? "opacity-0" : "opacity-80"
+        }`}
+      >
         T
       </span>
-      <PreviewLine width={density > 1 ? "w-20" : "w-14"} />
+      <PreviewLine
+        width={density > 1 ? "w-20" : "w-14"}
+        flow={flow}
+        flowLeftRem={PREVIEW_ROW_LINE_START_REM + 1.5}
+        flowTopRem={rowTopRem + 0.5}
+      />
     </div>
   );
 }
@@ -219,28 +321,73 @@ function FormulaPreviewShape() {
   );
 }
 
-function CodePreviewShape({ density }: { density: number }) {
+function CodePreviewShape({
+  density,
+  flow = false,
+  rowTopRem = 0,
+}: {
+  density: number;
+  flow?: boolean;
+  rowTopRem?: number;
+}) {
+  const firstLineTopRem = rowTopRem + (density > 2 ? 0.25 : 0.5);
+  const lineLeftRem = PREVIEW_ROW_LINE_START_REM + 1.35;
+
   return (
     <div className="flex h-5 min-w-0 flex-1 items-center gap-2 font-mono text-[11px] font-semibold text-current">
-      <span className="shrink-0">{"{}"}</span>
+      <span className={`shrink-0 ${flow ? "opacity-0" : ""}`}>{"{}"}</span>
       <div className="flex min-w-0 flex-1 flex-col gap-1">
-        <PreviewLine width={density > 1 ? "w-20" : "w-14"} />
-        {density > 2 ? <PreviewLine width="w-12" /> : null}
+        <PreviewLine
+          width={density > 1 ? "w-20" : "w-14"}
+          flow={flow}
+          flowLeftRem={lineLeftRem}
+          flowTopRem={firstLineTopRem}
+        />
+        {density > 2 ? (
+          <PreviewLine width="w-12" flow={flow} flowLeftRem={lineLeftRem} flowTopRem={firstLineTopRem + 0.5} />
+        ) : null}
       </div>
     </div>
   );
 }
 
-function PaperPreviewShape({ row }: { row: PaperPreviewRow }) {
+function PaperPreviewShape({
+  row,
+  flow = false,
+  flowRowIndex = 0,
+}: {
+  row: PaperPreviewRow;
+  flow?: boolean;
+  flowRowIndex?: number;
+}) {
   const shape = (row.shape || "text") as PreviewShape;
   const density = row.density || 2;
-  if (shape === "choice") return <ChoicePreviewShape density={density} />;
-  if (shape === "blank") return <BlankPreviewShape density={density} />;
-  if (shape === "judge") return <JudgePreviewShape density={density} />;
+  const rowTopRem = flowRowIndex * PREVIEW_ROW_FLOW_STEP_REM;
+  if (shape === "choice") return <ChoicePreviewShape density={density} flow={flow} rowTopRem={rowTopRem} />;
+  if (shape === "blank") return <BlankPreviewShape density={density} flow={flow} rowTopRem={rowTopRem} />;
+  if (shape === "judge") return <JudgePreviewShape density={density} flow={flow} rowTopRem={rowTopRem} />;
+  if (flow && (shape === "chart" || shape === "formula")) return <TextPreviewShape density={2} flow rowTopRem={rowTopRem} />;
   if (shape === "chart") return <ChartPreviewShape />;
   if (shape === "formula") return <FormulaPreviewShape />;
-  if (shape === "code") return <CodePreviewShape density={density} />;
-  return <TextPreviewShape density={density} />;
+  if (shape === "code") return <CodePreviewShape density={density} flow={flow} rowTopRem={rowTopRem} />;
+  return <TextPreviewShape density={density} flow={flow} rowTopRem={rowTopRem} />;
+}
+
+function PaperPreviewFlowOverlay({ rows }: { rows: PaperPreviewRow[] }) {
+  return (
+    <div className="exam-preview-flow-overlay" aria-hidden="true">
+      {rows.map((row, index) => (
+        <div key={`flow-${row.order}-${row.type}`} className="flex h-5 items-center gap-2 text-transparent">
+          <span className="w-4 shrink-0 text-right text-[10px] font-semibold tabular-nums opacity-0">
+            {row.order}
+          </span>
+          <div className="relative flex min-w-0 flex-1 pr-4">
+            <PaperPreviewShape row={row} flow flowRowIndex={index} />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
 }
 
 function getPreviewResultStatus(row: PaperPreviewRow): PreviewResultStatus {
@@ -283,9 +430,11 @@ function PaperPreviewResultMark({ status, row }: { status: PreviewResultStatus; 
 
 function PaperFingerprintPreview({
   preview,
+  isGenerating = false,
   showResultMarks = false,
 }: {
   preview: PaperPreview;
+  isGenerating?: boolean;
   showResultMarks?: boolean;
 }) {
   const rows = preview.rows?.slice(0, PREVIEW_ROW_LIMIT) ?? [];
@@ -293,22 +442,33 @@ function PaperFingerprintPreview({
   const overflowCount = (preview.overflow_count || 0) + hiddenPreviewRows;
 
   return (
-    <div className="relative z-10 mt-3 flex flex-1 flex-col overflow-hidden pt-1">
-      <div className="space-y-1">
-        {rows.map((row) => {
-          const status = getPreviewResultStatus(row);
-          return (
-          <div key={`${row.order}-${row.type}`} className="flex h-5 items-center gap-2 text-slate-400 dark:text-slate-600">
-            <span className="w-4 shrink-0 text-right text-[10px] font-semibold tabular-nums opacity-80">
-              {row.order}
-            </span>
-            <div className="relative flex min-w-0 flex-1 pr-4">
-              <PaperPreviewShape row={row} />
-              {showResultMarks ? <PaperPreviewResultMark status={status} row={row} /> : null}
-            </div>
-          </div>
-          );
-        })}
+    <div
+      className={`relative z-10 mt-3 flex flex-1 flex-col overflow-hidden pt-1 ${
+        isGenerating ? "exam-preview-unified-flow" : ""
+      }`}
+      aria-busy={isGenerating || undefined}
+    >
+      <div className="relative">
+        <div className="space-y-1">
+          {rows.map((row) => {
+            const status = getPreviewResultStatus(row);
+            return (
+              <div
+                key={`${row.order}-${row.type}`}
+                className="flex h-5 items-center gap-2 text-slate-400 dark:text-slate-600"
+              >
+                <span className="w-4 shrink-0 text-right text-[10px] font-semibold tabular-nums opacity-80">
+                  {row.order}
+                </span>
+                <div className="relative flex min-w-0 flex-1 pr-4">
+                  <PaperPreviewShape row={row} />
+                  {showResultMarks ? <PaperPreviewResultMark status={status} row={row} /> : null}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+        {isGenerating ? <PaperPreviewFlowOverlay rows={rows} /> : null}
       </div>
 
       {overflowCount > 0 ? (
@@ -318,6 +478,7 @@ function PaperFingerprintPreview({
           </span>
         </div>
       ) : null}
+
     </div>
   );
 }
@@ -337,6 +498,7 @@ export function ExamPaperCard({
 }) {
   const preview = getPaperPreview(item);
   const isGraded = item.status === "graded";
+  const isGenerating = item.status === "generating";
   const showDetailedResult = isGraded && resultDisplayMode === "score";
   const showPassMark = isGraded && resultDisplayMode === "completed";
   const scorePercent = getExamScorePercent(item);
@@ -372,7 +534,11 @@ export function ExamPaperCard({
           <PaperTagLine preview={preview} />
         </div>
 
-        <PaperFingerprintPreview preview={preview} showResultMarks={showDetailedResult} />
+        <PaperFingerprintPreview
+          preview={preview}
+          isGenerating={isGenerating}
+          showResultMarks={showDetailedResult}
+        />
 
         {showDetailedResult && scorePercent !== null ? <ExamPaperScoreMark score={scorePercent} /> : null}
         {showPassMark ? <ExamPaperPassMark /> : null}

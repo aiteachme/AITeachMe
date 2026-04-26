@@ -1,4 +1,4 @@
-export { CreateExamModal } from "./CreateExamModal";
+export { CreateExamModal, loadCreateExamConfig, toExamGenerateRequest } from "./CreateExamModal";
 export { ExamHeroOrb } from "./ExamHeroOrb";
 export { ExamMarkdown } from "./ExamMarkdown";
 export { ExamPaperCard } from "./ExamPaperCard";

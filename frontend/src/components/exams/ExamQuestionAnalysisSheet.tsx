@@ -12,7 +12,7 @@ function AnalysisBlock({ title, content }: { title: string; content: string }) {
   return (
     <section className="border-t border-slate-200 pt-5">
       <h3 className="font-serif text-lg font-bold text-slate-950">{title}</h3>
-      <div className="mt-3 text-sm leading-8 text-slate-700 [&_p]:mb-2 [&_.katex-display]:my-3">
+      <div className="mt-3 break-words text-sm leading-8 text-slate-700 [&_p]:mb-2 [&_.katex-display]:my-3">
         <ExamMarkdown content={content} />
       </div>
     </section>
@@ -22,7 +22,7 @@ function AnalysisBlock({ title, content }: { title: string; content: string }) {
 export function ExamQuestionAnalysisSheet({ item }: ExamQuestionAnalysisSheetProps) {
   if (!item) {
     return (
-      <aside className="relative min-h-[560px] border border-slate-200 bg-white px-8 py-8 shadow-[0_26px_70px_rgba(15,23,42,0.12)]">
+      <aside className="relative min-h-[560px] w-full min-w-0 overflow-hidden border border-slate-200 bg-white px-8 py-8 shadow-[0_26px_70px_rgba(15,23,42,0.12)]">
         <h2 className="font-serif text-2xl font-bold text-slate-950">题目解析</h2>
         <div className="mt-8 rounded-xl border border-dashed border-slate-200 px-5 py-8 text-center text-sm text-slate-500">
           请选择左侧题目查看解析。
@@ -34,7 +34,7 @@ export function ExamQuestionAnalysisSheet({ item }: ExamQuestionAnalysisSheetPro
   const isCorrect = item.is_correct === true;
 
   return (
-    <aside className="relative min-h-[720px] border border-slate-200 bg-white px-6 py-7 shadow-[0_26px_70px_rgba(15,23,42,0.12)] sm:px-8 lg:sticky lg:top-24">
+    <aside className="relative min-h-[720px] w-full min-w-0 overflow-hidden border border-slate-200 bg-white px-6 py-7 shadow-[0_26px_70px_rgba(15,23,42,0.12)] sm:px-8 lg:sticky lg:top-24">
       <header className="border-b border-slate-200 pb-5">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
@@ -53,7 +53,7 @@ export function ExamQuestionAnalysisSheet({ item }: ExamQuestionAnalysisSheetPro
         <div className="mt-4 flex flex-wrap items-center gap-2 text-xs font-semibold text-slate-500">
           <span className="rounded-full bg-slate-100 px-2.5 py-1">{formatDifficultyLabel(item.difficulty)}</span>
           <span className="rounded-full bg-slate-100 px-2.5 py-1">{item.question_type}</span>
-          <span className="max-w-full rounded-md bg-slate-50 px-2.5 py-1 text-slate-500 ring-1 ring-inset ring-slate-200">
+          <span className="max-w-full break-words rounded-md bg-slate-50 px-2.5 py-1 text-slate-500 ring-1 ring-inset ring-slate-200">
             {buildKnowledgeLabel(item)}
           </span>
         </div>
@@ -62,7 +62,7 @@ export function ExamQuestionAnalysisSheet({ item }: ExamQuestionAnalysisSheetPro
       <div className="mt-6 space-y-6">
         <section>
           <h3 className="font-serif text-lg font-bold text-slate-950">题干</h3>
-          <div className="mt-3 text-sm leading-8 text-slate-700 [&_p]:mb-2 [&_.katex-display]:my-3">
+          <div className="mt-3 break-words text-sm leading-8 text-slate-700 [&_p]:mb-2 [&_.katex-display]:my-3">
             <ExamMarkdown content={item.stem} />
           </div>
         </section>
