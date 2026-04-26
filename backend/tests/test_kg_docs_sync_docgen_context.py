@@ -50,6 +50,15 @@ def _docgen_context(*, doc_version_no: int = 3) -> dict[str, object]:
     }
 
 
+def test_docs_sync_rejects_outline_titles_and_speedrun_wrappers():
+    assert incremental_sync._is_low_quality_docs_unit_name(
+        "一、 一元一次方程建模路径与速判技巧",
+        node_type="example",
+    )
+    assert incremental_sync._is_low_quality_docs_unit_name("速判技巧", node_type="method")
+    assert incremental_sync._is_low_quality_docs_unit_name("找已知边角关系", node_type="method")
+
+
 def test_docs_sync_uses_docgen_backbone_and_source_refs(monkeypatch):
     engine = create_engine("sqlite:///:memory:")
     SQLModel.metadata.create_all(engine)
@@ -129,6 +138,49 @@ def test_docs_sync_uses_docgen_backbone_and_source_refs(monkeypatch):
     assert detail.source_refs[0].chapter_title == "Derivative"
     assert detail.source_refs[0].doc_version_no == 3
     assert detail.source_refs[0].source_file_ids == [7]
+
+
+def test_docs_sync_backbone_only_fills_missing_units(monkeypatch):
+    engine = create_engine("sqlite:///:memory:")
+    SQLModel.metadata.create_all(engine)
+
+    async def fake_extract_candidates(**kwargs):
+        return ChunkExtractionResult(
+            nodes=[
+                CandidateNode(
+                    name="Derivative",
+                    knowledge_unit_type="definition",
+                    local_summary="Derivative is the rate of change.",
+                    taxonomy_hint="Derivative",
+                ),
+                CandidateNode(
+                    name="Gradient",
+                    knowledge_unit_type="concept",
+                    local_summary="Gradient is the local slope direction.",
+                    taxonomy_hint="Derivative",
+                ),
+            ],
+            edges=[],
+        )
+
+    monkeypatch.setattr(incremental_sync, "extract_candidates", fake_extract_candidates)
+    monkeypatch.setattr(incremental_sync, "search_knowledge", _empty_search_knowledge)
+
+    markdown = "# Derivative\n\nDerivative describes change rate and gradient.\n"
+
+    with Session(engine) as session:
+        report = sync_markdown_knowledge_graph(
+            session,
+            subject="math",
+            markdown=markdown,
+            structured_context=_docgen_context(doc_version_no=3),
+            build_session_id="build-1",
+        )
+
+        units = list(session.exec(select(KnowledgeUnit)).all())
+
+    assert report.backbone_unit_count == 0
+    assert [unit.canonical_name for unit in units].count("Gradient") == 1
 
 
 def test_docs_sync_keeps_unit_identity_across_doc_versions(monkeypatch):

@@ -81,13 +81,14 @@ _DOCS_UNIT_WRAPPER_TERMS = (
     "应试策略",
     "解题入口",
     "解题模板",
+    "速判",
     "题眼",
     "必会",
 )
 _DOCS_UNIT_ACTION_PREFIX_RE = re.compile(
     r"^(?:"
     r"分析|总结|提炼|设计|建立|明确|强调|归纳|梳理|围绕|揭示|说明|复述|判断|区分|比较|"
-    r"计算|求|证明|写出|改造|构造|抓住|先标|标出|把"
+    r"计算|求|证明|写出|改造|构造|抓住|先标|标出|把|找|寻找"
     r")"
 )
 _DOCS_UNIT_QUESTION_STEM_RE = re.compile(
@@ -167,7 +168,7 @@ def _is_low_quality_docs_unit_name(name: str, *, node_type: str = "") -> bool:
         return True
     if _looks_like_formula_unit_name(cleaned, node_type=normalized_type):
         return False
-    if _DOCS_UNIT_OUTLINE_PREFIX_RE.match(raw) and normalized_type in {"concept", "method", "remark"}:
+    if _DOCS_UNIT_OUTLINE_PREFIX_RE.match(raw):
         return True
     if any(term in cleaned for term in _DOCS_UNIT_WRAPPER_TERMS):
         return True
@@ -782,6 +783,7 @@ def _extract_markdown_graph_items(
         structured_context=structured_context,
         chapter_contexts=chapter_contexts,
         used_anchors=used_anchors,
+        existing_normalized_names=set(anchors_by_normalized_name),
     )
     if backbone_units:
         units = [*backbone_units, *units]
@@ -937,11 +939,13 @@ def _build_backbone_graph_items(
     structured_context: dict[str, object],
     chapter_contexts: dict[int, ChapterSourceContext],
     used_anchors: set[str],
+    existing_normalized_names: set[str] | None = None,
 ) -> tuple[list[MarkdownKnowledgeUnit], list[PendingMarkdownExtractedEdge]]:
     backbone = _document_backbone_payload(structured_context)
     if not backbone:
         return [], []
 
+    existing_normalized_names = set(existing_normalized_names or set())
     target_chapters_by_term: dict[str, list[int]] = {}
     units: list[MarkdownKnowledgeUnit] = []
     for item in _as_list(backbone.get("canonical_glossary")):
@@ -952,7 +956,10 @@ def _build_backbone_graph_items(
         if _is_low_quality_docs_unit_name(term, node_type="concept"):
             continue
         target_chapters = _clean_int_list(payload.get("target_chapters"))
-        target_chapters_by_term[normalize_name(term)] = target_chapters
+        normalized_term = normalize_name(term)
+        target_chapters_by_term[normalized_term] = target_chapters
+        if normalized_term and normalized_term in existing_normalized_names:
+            continue
         chapter_index = target_chapters[0] if target_chapters else 0
         chapter_context = chapter_contexts.get(chapter_index) or ChapterSourceContext(chapter_index=chapter_index)
         definition = str(payload.get("definition") or "").strip()

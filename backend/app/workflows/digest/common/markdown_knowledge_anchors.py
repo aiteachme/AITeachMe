@@ -319,6 +319,27 @@ def extract_markdown_chapter_chunks(markdown: str) -> list[MarkdownSectionChunk]
         anchor = _extract_anchor_from_line(line) or build_knowledge_unit_anchor(title, used=used_anchors)
         heading_meta.append((index, title, anchor))
 
+    if len(heading_meta) == 1:
+        h2_chunks = [
+            chunk
+            for chunk in extract_markdown_section_chunks(markdown)
+            if chunk.heading_level == 2
+        ]
+        if len(h2_chunks) >= 2:
+            return [
+                MarkdownSectionChunk(
+                    title=chunk.title,
+                    anchor=chunk.anchor,
+                    header_path=chunk.title,
+                    summary=chunk.summary,
+                    body_markdown=chunk.body_markdown,
+                    knowledge_images=chunk.knowledge_images,
+                    line_no=chunk.line_no,
+                    heading_level=1,
+                )
+                for chunk in h2_chunks
+            ]
+
     if not heading_meta:
         section_chunks = extract_markdown_section_chunks(markdown)
         if section_chunks:
