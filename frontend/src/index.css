@@ -455,6 +455,7 @@
 }
 
 .exam-preview-flow-line::after,
+.exam-preview-flow-tag::after,
 .exam-preview-skeleton-panel::after {
   position: absolute;
   inset: 0;
@@ -470,6 +471,27 @@
   );
   animation: exam-preview-skeleton-sweep var(--exam-preview-flow-duration, 2.2s) ease-in-out infinite;
   transform: translateX(-140%);
+}
+
+.exam-preview-flow-tag {
+  position: relative;
+  display: inline-block;
+  overflow: hidden;
+  isolation: isolate;
+}
+
+.exam-preview-flow-tag-loading {
+  border-color: rgba(203, 213, 225, 0.42);
+  background: linear-gradient(90deg, rgba(226, 232, 240, 0.78), rgba(241, 245, 249, 0.92));
+  color: rgba(100, 116, 139, 0.86);
+  box-shadow: inset 0 0 0 1px rgba(203, 213, 225, 0.18);
+}
+
+.dark .exam-preview-flow-tag-loading {
+  border-color: rgba(51, 65, 85, 0.8);
+  background: linear-gradient(90deg, rgba(30, 41, 59, 0.88), rgba(51, 65, 85, 0.78));
+  color: rgba(203, 213, 225, 0.78);
+  box-shadow: inset 0 0 0 1px rgba(148, 163, 184, 0.1);
 }
 
 .exam-preview-skeleton-panel {

@@ -8,7 +8,7 @@
 import type { PaperPreviewRowResultStatus } from './paperPreviewRowResultStatus';
 import type { PaperPreviewRowShape } from './paperPreviewRowShape';
 
-export type PaperPreviewRowGenerationStatus = 'pending' | 'planned' | 'generated';
+export type PaperPreviewRowGenerationStatus = 'pending' | 'planned' | 'generated' | 'failed';
 
 export interface PaperPreviewRow {
   order: number;

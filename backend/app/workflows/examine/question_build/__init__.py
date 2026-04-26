@@ -5,6 +5,7 @@ from app.workflows.examine.question_build.graph import run_question_build_workfl
 from app.workflows.examine.question_build.lib.generator import (
     ExamQuestionBlueprint,
     ExamQuestionDraft,
+    ExamQuestionGenerationFailure,
     ExamQuestionGenerationSpec,
     ExamQuestionUnitRef,
     generate_exam_from_text,
@@ -15,6 +16,7 @@ from app.workflows.examine.question_build.lib.generator import (
 __all__ = [
     "ExamQuestionBlueprint",
     "ExamQuestionDraft",
+    "ExamQuestionGenerationFailure",
     "ExamQuestionGenerationSpec",
     "ExamQuestionUnitRef",
     "build_question_build_graph",

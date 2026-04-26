@@ -221,6 +221,68 @@ async def test_generate_exam_questions_for_units_reports_failed_item_order(monke
 
 
 @pytest.mark.anyio
+async def test_generate_exam_questions_for_units_can_return_partial_with_failed_callback(monkeypatch):
+    async def fake_acompletion_with_fallback(*args, **kwargs):
+        item_order = kwargs["extra_metadata"]["item_order"]
+        if item_order == 2:
+            raise RuntimeError("output truncated by max_tokens")
+        return ExamSingleQuestionResponse(
+            question=ExamQuestionDraft(
+                item_order=item_order,
+                knowledge_unit_id=301,
+                question_type="short_answer",
+                difficulty="medium",
+                stem="Explain the core idea behind this related knowledge unit.",
+                correct_answer="It connects the concept to a concrete reasoning step.",
+                explanation="This valid response lets the test isolate the failing item order.",
+            )
+        )
+
+    monkeypatch.setattr(generator, "acompletion_with_fallback", fake_acompletion_with_fallback)
+
+    units = [
+        KnowledgeUnit(
+            id=301,
+            subject="math",
+            knowledge_unit_type="concept",
+            canonical_name="Derivative",
+            normalized_name="derivative",
+            status="active",
+        ),
+    ]
+    specs = [
+        ExamQuestionGenerationSpec(
+            item_order=1,
+            knowledge_unit_id=301,
+            question_type="short_answer",
+            difficulty="medium",
+            generation_prompt="Generate a medium short-answer item.",
+        ),
+        ExamQuestionGenerationSpec(
+            item_order=2,
+            knowledge_unit_id=301,
+            question_type="short_answer",
+            difficulty="medium",
+            generation_prompt="Generate another medium short-answer item.",
+        ),
+    ]
+    failed_orders: list[int] = []
+
+    async def handle_failed(failure) -> None:
+        failed_orders.append(failure.item_order)
+
+    questions = await generate_exam_questions_for_units(
+        units=units,
+        specs=specs,
+        on_question_failed=handle_failed,
+        allow_partial=True,
+    )
+
+    assert [item.item_order for item in questions] == [1]
+    assert failed_orders == [2]
+
+
+@pytest.mark.anyio
 async def test_plan_exam_question_blueprints_can_select_multiple_related_units(monkeypatch):
     observed_messages = []
 

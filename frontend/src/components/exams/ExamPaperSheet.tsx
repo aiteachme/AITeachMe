@@ -1,5 +1,5 @@
 import type { Dispatch, SetStateAction } from "react";
-import { Bookmark, Lightbulb, MessageSquareText, Tags } from "lucide-react";
+import { AlertTriangle, Bookmark, Lightbulb, MessageSquareText, Tags } from "lucide-react";
 
 import type { ExamPaperDetailResponse, ExamPaperItemResponse, PaperPreviewRow } from "../../api/generated/model";
 import { cn } from "../../lib/utils";
@@ -7,6 +7,7 @@ import { ExamMarkdown } from "./ExamMarkdown";
 import {
   buildKnowledgeLabel,
   formatDifficultyLabel,
+  formatQuestionTypeLabel,
   getAnsweredCount,
   getEstimatedExamMinutes,
   getExamPaperDisplayTitle,
@@ -47,22 +48,45 @@ function buildGeneratingRows(paper: ExamPaperDetailResponse): PaperPreviewRow[] 
   });
 }
 
+function buildQuestionEntries(
+  paper: ExamPaperDetailResponse,
+  itemsByOrder: Map<number, ExamPaperItemResponse>,
+): Array<{
+  item: ExamPaperItemResponse | null;
+  row: PaperPreviewRow | null;
+}> {
+  if (paper.status === "generating") {
+    return buildGeneratingRows(paper).map((row) => ({
+      item: itemsByOrder.get(row.order) ?? null,
+      row,
+    }));
+  }
+
+  const previewRows = paper.paper_preview?.rows ?? [];
+  const failedRowsByOrder = new Map(
+    previewRows
+      .filter((row) => row.generation_status === "failed")
+      .map((row) => [row.order, row]),
+  );
+  const orders = new Set<number>([
+    ...(paper.items ?? []).map((item: ExamPaperItemResponse) => item.item_order),
+    ...failedRowsByOrder.keys(),
+  ]);
+
+  return Array.from(orders)
+    .sort((left, right) => left - right)
+    .map((order) => ({
+      item: itemsByOrder.get(order) ?? null,
+      row: failedRowsByOrder.get(order) ?? null,
+    }));
+}
+
 function formatQuestionType(type: string) {
-  const normalized = String(type || "").trim();
-  if (!normalized || normalized === "pending") return "题型生成中";
-  const labels: Record<string, string> = {
-    single_choice: "单选题",
-    multiple_choice: "多选题",
-    multi_choice: "多选题",
-    fill_blank: "填空题",
-    true_false: "判断题",
-    short_answer: "简答题",
-    essay: "问答题",
-  };
-  return labels[normalized] ?? normalized;
+  return formatQuestionTypeLabel(type);
 }
 
 function GeneratingQuestionPlaceholder({ row }: { row: PaperPreviewRow }) {
+  const isFailed = row.generation_status === "failed";
   const isChoice =
     row.shape === "choice" ||
     row.shape === "judge" ||
@@ -98,8 +122,23 @@ function GeneratingQuestionPlaceholder({ row }: { row: PaperPreviewRow }) {
             <span className="inline-flex rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-500">
               {formatDifficultyLabel(row.difficulty)}
             </span>
+            {isFailed ? (
+              <span className="inline-flex items-center gap-1 rounded-full bg-rose-50 px-2.5 py-1 text-xs font-semibold text-rose-700">
+                <AlertTriangle className="h-3.5 w-3.5" />
+                生成失败
+              </span>
+            ) : null}
           </div>
 
+          {isFailed ? (
+            <div className="rounded-xl border border-rose-200 bg-rose-50 px-5 py-6 text-sm leading-7 text-rose-700 sm:px-6">
+              <div className="flex items-center gap-2 font-semibold text-rose-800">
+                <AlertTriangle className="h-4 w-4" />
+                本题生成失败
+              </div>
+              <p className="mt-2 text-rose-600">这道题已跳过，不会计入本次试卷题量和批改。</p>
+            </div>
+          ) : (
           <div className="exam-preview-skeleton-panel rounded-xl border border-slate-200 p-5 sm:p-6">
             <div className="space-y-3">
               {lineWidths.map((width, index) => (
@@ -110,8 +149,9 @@ function GeneratingQuestionPlaceholder({ row }: { row: PaperPreviewRow }) {
               ))}
             </div>
           </div>
+          )}
 
-          {isChoice ? (
+          {!isFailed && isChoice ? (
             <div className="mt-6 grid gap-3">
               {[0, 1, 2, 3].map((optionIndex) => (
                 <div
@@ -127,7 +167,7 @@ function GeneratingQuestionPlaceholder({ row }: { row: PaperPreviewRow }) {
                 </div>
               ))}
             </div>
-          ) : (
+          ) : !isFailed ? (
             <div className="exam-preview-skeleton-panel mt-6 min-h-32 rounded-lg border border-slate-200 p-4">
               <div className="relative z-[1] space-y-3">
                 <span className="exam-preview-flow-line block h-3 w-7/12 rounded-full" />
@@ -135,7 +175,7 @@ function GeneratingQuestionPlaceholder({ row }: { row: PaperPreviewRow }) {
                 <span className="exam-preview-flow-line block h-3 w-5/12 rounded-full" />
               </div>
             </div>
-          )}
+          ) : null}
         </div>
       </div>
     </div>
@@ -156,18 +196,7 @@ export function ExamPaperSheet({
 }: ExamPaperSheetProps) {
   const items = paper.items ?? [];
   const itemsByOrder = new Map(items.map((item: ExamPaperItemResponse) => [item.item_order, item]));
-  const questionEntries: Array<{
-    item: ExamPaperItemResponse | null;
-    row: PaperPreviewRow | null;
-  }> = paper.status === "generating"
-    ? buildGeneratingRows(paper).map((row) => ({
-        item: itemsByOrder.get(row.order) ?? null,
-        row,
-      }))
-    : items.map((item: ExamPaperItemResponse) => ({
-        item,
-        row: null,
-      }));
+  const questionEntries = buildQuestionEntries(paper, itemsByOrder);
 
   return (
                 <div
@@ -288,7 +317,7 @@ export function ExamPaperSheet({
                                   {formatDifficultyLabel(item.difficulty)}
                                 </span>
                                 <span className="inline-flex rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-500">
-                                  {item.question_type}
+                                  {formatQuestionTypeLabel(item.question_type)}
                                 </span>
                                 <span className="mx-1 hidden h-4 w-px bg-slate-200 sm:inline-flex" />
                                 <span className="inline-flex max-w-full items-start gap-1.5 rounded-md border border-slate-200 bg-slate-50 px-2.5 py-1 font-semibold text-slate-500">

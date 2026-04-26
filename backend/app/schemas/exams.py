@@ -79,7 +79,7 @@ class ExamStudyGuideResponse(BaseModel):
 
 PaperPreviewShape = Literal["choice", "blank", "short", "judge", "chart", "formula", "code", "text"]
 PaperPreviewResultStatus = Literal["ungraded", "correct", "incorrect"]
-PaperPreviewGenerationStatus = Literal["pending", "planned", "generated"]
+PaperPreviewGenerationStatus = Literal["pending", "planned", "generated", "failed"]
 
 
 class PaperPreviewRow(BaseModel):

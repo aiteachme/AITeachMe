@@ -16,6 +16,9 @@ export interface ExamGenerationSnapshotPayload {
   generated_question?: Record<string, unknown>;
   generated_questions?: Record<string, unknown>[];
   generated_question_count?: number;
+  failed_question?: Record<string, unknown>;
+  failed_questions?: Record<string, unknown>[];
+  failed_question_count?: number;
   error_message?: string;
 }
 
@@ -74,6 +77,19 @@ function generatedQuestionsFromPayload(
   return Array.from(byOrder.entries())
     .sort(([left], [right]) => left - right)
     .map(([, item]) => item);
+}
+
+function getEffectiveExamStatus(status: unknown, selectionContext: unknown): unknown {
+  const rawStatus = toText(status);
+  if (rawStatus !== "generating" || !isRecord(selectionContext)) {
+    return status;
+  }
+  const generationStatus = toText(selectionContext.generation_status).trim();
+  const errorMessage = toText(selectionContext.error_message).trim();
+  if (generationStatus === "failed" || errorMessage) {
+    return "failed";
+  }
+  return status;
 }
 
 function buildKnowledgeLinks(value: unknown): ExamNodeLinkResponse[] {
@@ -152,12 +168,14 @@ export function patchExamDetailQueryData(
   const currentItems = Array.isArray(paper.items)
     ? paper.items.filter(isRecord) as unknown as ExamPaperItemResponse[]
     : [];
+  const nextSelectionContext = payload.selection_context ?? paper.selection_context;
+  const nextStatus = getEffectiveExamStatus(payload.status ?? paper.status, nextSelectionContext);
   const nextPaper: QueryEnvelope = {
     ...paper,
-    status: payload.status ?? paper.status,
+    status: nextStatus,
     total_items: payload.num_questions ?? paper.total_items,
     paper_preview: payload.paper_preview ?? paper.paper_preview,
-    selection_context: payload.selection_context ?? paper.selection_context,
+    selection_context: nextSelectionContext,
     items: generatedQuestions.length
       ? mergeGeneratedItems(currentItems, generatedQuestions)
       : currentItems,
@@ -184,9 +202,10 @@ export function patchExamHistoryQueryData(
   const items = apiPayload.data.items as ExamHistoryItem[];
   const nextItems = items.map((item) => {
     if (item.id !== paperId) return item;
+    const nextStatus = getEffectiveExamStatus(payload.status ?? item.status, payload.selection_context);
     return {
       ...item,
-      status: payload.status ?? item.status,
+      status: nextStatus as string,
       total_items: payload.num_questions ?? item.total_items,
       paper_preview: payload.paper_preview ?? item.paper_preview,
     };

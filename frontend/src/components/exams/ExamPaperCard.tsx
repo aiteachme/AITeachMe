@@ -411,6 +411,7 @@ function getPreviewResultStatus(row: PaperPreviewRow): PreviewResultStatus {
 
 function isPreviewRowLoading(row: PaperPreviewRow, isGenerating: boolean): boolean {
   if (!isGenerating) return false;
+  if (row.generation_status === "failed") return false;
   return row.generation_status !== "generated";
 }
 
@@ -446,6 +447,24 @@ function PaperPreviewResultMark({ status, row }: { status: PreviewResultStatus; 
   return null;
 }
 
+function PaperPreviewGenerationMark({ row }: { row: PaperPreviewRow }) {
+  if (row.generation_status !== "failed") return null;
+  const jitter = getResultMarkJitter(row);
+  return (
+    <span
+      className="absolute right-2 top-1/2 grid h-4 w-4 place-items-center text-[16px] font-semibold leading-none text-rose-500 dark:text-rose-400"
+      style={{
+        transform: `translate(${jitter.x}px, calc(-50% + ${jitter.y}px)) rotate(${jitter.rotate}deg)`,
+        fontFamily: '"Segoe Print", "Comic Sans MS", cursive',
+      }}
+      title="本题生成失败"
+      aria-label="本题生成失败"
+    >
+      !
+    </span>
+  );
+}
+
 function PaperFingerprintPreview({
   preview,
   isGenerating = false,
@@ -455,13 +474,14 @@ function PaperFingerprintPreview({
   isGenerating?: boolean;
   showResultMarks?: boolean;
 }) {
-  const rows = preview.rows?.slice(0, PREVIEW_ROW_LIMIT) ?? [];
-  const hiddenPreviewRows = Math.max(0, (preview.rows?.length ?? 0) - PREVIEW_ROW_LIMIT);
+  const allRows = preview.rows ?? [];
+  const rows = allRows.slice(0, PREVIEW_ROW_LIMIT);
+  const hiddenPreviewRows = Math.max(0, allRows.length - PREVIEW_ROW_LIMIT);
   const overflowCount = (preview.overflow_count || 0) + hiddenPreviewRows;
-  const loadingOrders = new Set(
+  const visibleLoadingOrders = new Set(
     rows.filter((row) => isPreviewRowLoading(row, isGenerating)).map((row) => row.order),
   );
-  const hasLoadingRows = loadingOrders.size > 0;
+  const hasLoadingRows = allRows.some((row) => isPreviewRowLoading(row, isGenerating));
 
   return (
     <div
@@ -484,18 +504,23 @@ function PaperFingerprintPreview({
                 </span>
                 <div className="relative flex min-w-0 flex-1 pr-4">
                   <PaperPreviewShape row={row} />
+                  <PaperPreviewGenerationMark row={row} />
                   {showResultMarks ? <PaperPreviewResultMark status={status} row={row} /> : null}
                 </div>
               </div>
             );
           })}
         </div>
-        {hasLoadingRows ? <PaperPreviewFlowOverlay rows={rows} loadingOrders={loadingOrders} /> : null}
+        {visibleLoadingOrders.size > 0 ? <PaperPreviewFlowOverlay rows={rows} loadingOrders={visibleLoadingOrders} /> : null}
       </div>
 
       {overflowCount > 0 ? (
         <div className="mt-1 flex h-4 items-center pl-6">
-          <span className="rounded-full border border-slate-200 bg-slate-50 px-2 text-[10px] font-semibold leading-4 text-slate-500 dark:border-slate-800 dark:bg-slate-800/80 dark:text-slate-400">
+          <span
+            className={`rounded-full border border-slate-200 bg-slate-50 px-2 text-[10px] font-semibold leading-4 text-slate-500 dark:border-slate-800 dark:bg-slate-800/80 dark:text-slate-400 ${
+              hasLoadingRows ? "exam-preview-flow-tag exam-preview-flow-tag-loading" : ""
+            }`}
+          >
             +{overflowCount}
           </span>
         </div>
@@ -595,6 +620,11 @@ export function ExamPaperCard({
             <span className="inline-flex items-center justify-center gap-1">
               <AlertTriangle className="h-3.5 w-3.5" />
               试卷生成失败
+            </span>
+          ) : isGenerating ? (
+            <span className="inline-flex items-center justify-center gap-1.5" aria-label="试卷题目生成中">
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              生成中
             </span>
           ) : (
             <PaperTagLine preview={preview} />

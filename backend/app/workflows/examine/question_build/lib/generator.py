@@ -360,8 +360,8 @@ class ExamQuestionDraft(BaseModel):
             if len({item.casefold() for item in options}) != 4:
                 raise ValueError("multiple_choice options must be distinct")
             indices = self.correct_indices or _choice_indices_from_answer(self.correct_answer, options)
-            if len(indices) < 2:
-                raise ValueError("multiple_choice correct_indices must contain at least 2 indices")
+            if len(indices) < 1:
+                raise ValueError("multiple_choice correct_indices must contain at least one index")
             if any(index < 0 or index >= len(options) for index in indices):
                 raise ValueError("multiple_choice correct_indices must be in range 0..3")
             self.correct_indices = sorted(indices)
@@ -410,6 +410,16 @@ class ExamSingleQuestionResponse(BaseModel):
         if isinstance(value, dict) and "question" not in value and "item_order" in value:
             return {"question": value}
         return value
+
+
+class ExamQuestionGenerationFailure(BaseModel):
+    """One question-generation request that reached a terminal failed state."""
+
+    item_order: int = Field(ge=1)
+    question_type: QuestionTypeLiteral
+    difficulty: DifficultyLiteral
+    knowledge_unit_ids: list[int] = Field(default_factory=list)
+    error_message: str = Field(default="", max_length=1200)
 
 
 def _choice_label(index: int) -> str:
@@ -949,6 +959,8 @@ async def generate_exam_questions_for_units(
     units: list[KnowledgeUnit],
     specs: list[ExamQuestionGenerationSpec],
     on_question_generated: Callable[[ExamQuestionDraft], Awaitable[None]] | None = None,
+    on_question_failed: Callable[[ExamQuestionGenerationFailure], Awaitable[None]] | None = None,
+    allow_partial: bool = False,
 ) -> list[ExamQuestionDraft]:
     """Generate exam questions for selected KnowledgeUnits via one LLM call per item."""
 
@@ -979,6 +991,7 @@ async def generate_exam_questions_for_units(
             return spec, exc
 
     generated: list[ExamQuestionDraft] = []
+    failed: list[ExamQuestionGenerationFailure] = []
     failures: list[str] = []
     failed_orders: list[int] = []
     tasks = [asyncio.create_task(generate_for_spec(spec)) for spec in specs]
@@ -987,24 +1000,41 @@ async def generate_exam_questions_for_units(
         if isinstance(result, Exception):
             failed_orders.append(spec.item_order)
             failures.append(f"item_order={spec.item_order}: {result}")
+            failure = ExamQuestionGenerationFailure(
+                item_order=spec.item_order,
+                question_type=spec.question_type,
+                difficulty=spec.difficulty,
+                knowledge_unit_ids=spec.knowledge_unit_ids,
+                error_message=str(result),
+            )
+            failed.append(failure)
+            if on_question_failed is not None:
+                await on_question_failed(failure)
             continue
         generated.append(result)
         if on_question_generated is not None:
             await on_question_generated(result)
 
-    if failures:
+    if failures and not allow_partial:
         raise ValueError(
             "Exam question generation failed for "
+            f"item_order values={failed_orders}; " + "; ".join(failures)
+        )
+    if failures and not generated:
+        raise ValueError(
+            "Exam question generation failed for all requested "
             f"item_order values={failed_orders}; " + "; ".join(failures)
         )
 
     requested_orders = {spec.item_order for spec in specs}
     generated_orders = {item.item_order for item in generated}
     missing_orders = sorted(requested_orders - generated_orders)
-    if missing_orders:
+    failed_order_set = {item.item_order for item in failed}
+    unresolved_missing_orders = [order for order in missing_orders if order not in failed_order_set]
+    if unresolved_missing_orders:
         raise ValueError(
             "LLM question generation returned an incomplete batch: "
-            f"missing item_order values={missing_orders}, unexpected item_order values=[]"
+            f"missing item_order values={unresolved_missing_orders}, unexpected item_order values=[]"
         )
     return sorted(generated, key=lambda item: item.item_order)
 
@@ -1048,6 +1078,7 @@ __all__ = [
     "ExamQuestionBlueprint",
     "ExamQuestionBlueprintBatch",
     "ExamQuestionDraft",
+    "ExamQuestionGenerationFailure",
     "ExamQuestionGenerationSpec",
     "ExamSingleQuestionResponse",
     "ExamQuestionUnitRef",

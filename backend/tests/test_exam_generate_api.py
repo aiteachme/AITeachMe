@@ -1,13 +1,21 @@
 import json
 
-from app.api.exams import _build_paper_preview, _paper_preview_for_response, _question_type_for_order, _require_generated_questions_by_order
+from app.api.exams import (
+    _build_paper_preview,
+    _effective_exam_paper_status,
+    _generated_question_item_responses,
+    _paper_generation_event_payload,
+    _paper_preview_for_response,
+    _question_type_for_order,
+    _require_generated_questions_by_order,
+)
 from app.models import ExamPaper, ExamPaperItem
 from app.models.knowledge_unit import KnowledgeUnit
 from app.shared.infra.exceptions import AITeachMeError
 from app.shared.infra.workflow.result import err_result, ok_result
 
 
-def test_require_generated_questions_by_order_raises_when_workflow_returns_partial_results():
+def test_require_generated_questions_by_order_accepts_declared_partial_results():
     build_result = ok_result(
         {
             "generated_questions": [
@@ -21,17 +29,21 @@ def test_require_generated_questions_by_order_raises_when_workflow_returns_parti
                     "explanation": "This is enough structure for the API helper test.",
                 }
             ],
+            "failed_questions": [
+                {
+                    "item_order": 1,
+                    "question_type": "short_answer",
+                    "difficulty": "medium",
+                    "error_message": "LLM output did not validate.",
+                }
+            ],
             "error": "",
         }
     )
 
-    try:
-        _require_generated_questions_by_order(build_result=build_result, expected_orders=[1, 2])
-        raise AssertionError("Expected AITeachMeError to be raised for missing item_order.")
-    except AITeachMeError as exc:
-        assert exc.error_code == "EXAM_QUESTION_BUILD_INCOMPLETE"
-        assert exc.status_code == 502
-        assert "missing item_order values: [1]" in exc.detail
+    generated_by_order = _require_generated_questions_by_order(build_result=build_result, expected_orders=[1, 2])
+
+    assert sorted(generated_by_order) == [2]
 
 
 def test_require_generated_questions_by_order_raises_when_workflow_fails():
@@ -205,3 +217,62 @@ def test_paper_preview_for_response_regenerates_with_graded_result_status():
     )
 
     assert [row.result_status for row in preview.rows] == ["correct", "incorrect"]
+
+
+def test_generated_question_item_responses_restore_streamed_drafts():
+    context = {
+        "generated_questions": [
+            {
+                "item_order": 2,
+                "question_type": "short_answer",
+                "difficulty": "medium",
+                "stem": "Explain why the derivative describes local change.",
+                "correct_answer": "It measures instantaneous rate of change.",
+                "explanation": "The derivative captures local change through tangent slope.",
+                "knowledge_unit_refs": [
+                    {"knowledge_unit_id": 101, "coverage_weight": 0.7, "role": "primary"},
+                    {"knowledge_unit_id": 102, "coverage_weight": 0.3, "role": "secondary"},
+                ],
+            }
+        ]
+    }
+    units = {
+        101: KnowledgeUnit(id=101, subject="math", knowledge_unit_type="concept", canonical_name="Derivative", normalized_name="derivative"),
+        102: KnowledgeUnit(id=102, subject="math", knowledge_unit_type="method", canonical_name="Tangent Line", normalized_name="tangent-line"),
+    }
+
+    responses = _generated_question_item_responses(
+        context,
+        knowledge_unit_by_id=units,
+        mastery_by_unit_id={101: 0.42},
+    )
+
+    assert len(responses) == 1
+    assert responses[0].id < 0
+    assert responses[0].item_order == 2
+    assert responses[0].question_template_id == 0
+    assert responses[0].knowledge_unit_links[0].knowledge_unit_name == "Derivative"
+    assert responses[0].knowledge_unit_links[0].mastery_score == 0.42
+
+
+def test_effective_exam_status_uses_failed_generation_context_as_fallback():
+    paper = ExamPaper(
+        id=7,
+        subject="math",
+        user_id="local",
+        exam_mode="web_practice",
+        status="generating",
+        selection_context_json=json.dumps(
+            {
+                "generation_status": "failed",
+                "error_message": "LLM timeout",
+            }
+        ),
+    )
+
+    assert _effective_exam_paper_status(paper) == "failed"
+
+    payload = _paper_generation_event_payload(paper)
+
+    assert payload["status"] == "failed"
+    assert payload["error_message"] == "LLM timeout"

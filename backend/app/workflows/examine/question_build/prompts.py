@@ -22,7 +22,7 @@ _QUESTION_TYPE_FORMAT_RULES = (
     "- Use one canonical choice format only: options must be a JSON array of strings, never an object/map.\n"
     "- Choice options must be exactly 4 plain option texts in order; never prefix options with A/B/C/D labels.\n"
     "- single_choice: provide exactly 4 distinct options and correct_indices with exactly one zero-based index, for example `[0]`.\n"
-    "- multiple_choice: provide exactly 4 distinct options and correct_indices with all correct zero-based indices, for example `[0, 2]`.\n"
+    "- multiple_choice: provide exactly 4 distinct options and correct zero-based indices, for example `[0]` or `[0, 2]`.\n"
     "- For single_choice and multiple_choice, do not provide correct_answer; the backend derives A/B/C/D labels from correct_indices.\n"
     "- true_false: do not provide options; correct_answer must be True or False.\n"
     "- fill_blank: do not provide options; put the blank in the stem as `{{blank}}`; correct_answer must be short and unique.\n"

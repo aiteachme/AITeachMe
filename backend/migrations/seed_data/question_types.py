@@ -15,8 +15,8 @@ BUILTIN_QUESTION_TYPE_ROWS = (
     },
     {
         "type_key": "multiple_choice",
-        "display_name": "多选题",
-        "description": "从多个选项中选择两个或以上正确答案。",
+        "display_name": "不定项选择题",
+        "description": "从多个选项中选择一个或多个正确答案。",
         "answer_format": "correct_answer must be comma-separated option labels, such as A,C.",
         "grading_method": "objective",
         "option_schema_json": '{"required": true, "count": 4, "multiple": true}',
@@ -50,4 +50,3 @@ BUILTIN_QUESTION_TYPE_ROWS = (
         "rubric_json": '{"score": "grade according to key points in answer and explanation"}',
     },
 )
-

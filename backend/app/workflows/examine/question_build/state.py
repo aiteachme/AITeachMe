@@ -38,6 +38,8 @@ class QuestionBuildGraphOutput(TypedDict, total=False):
     question_blueprints: list[dict]
     generated_questions: list[dict]
     generated_question_count: int
+    failed_questions: list[dict]
+    failed_question_count: int
     error: str
     workflow_elapsed_ms: int
     filter_ms: int
