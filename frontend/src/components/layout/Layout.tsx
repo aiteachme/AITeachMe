@@ -18,7 +18,17 @@ export function Layout() {
   const isElectron = isElectronRuntime();
   const isFullBleed = isFullBleedSubjectPath(pathname);
   const isExamFocusPage = /^\/subject\/[^/]+\/exams\/\d+$/.test(pathname);
-  const subjectId = pathname.match(/^\/subject\/([^/]+)/)?.[1] ?? null;
+  const rawSubjectId = pathname.match(/^\/subject\/([^/]+)/)?.[1] ?? null;
+  const subjectId = useMemo(() => {
+    if (!rawSubjectId) {
+      return null;
+    }
+    try {
+      return decodeURIComponent(rawSubjectId);
+    } catch {
+      return rawSubjectId;
+    }
+  }, [rawSubjectId]);
   const activeInteractionScope = useMemo<AiConversationScope | null>(() => {
     if (pathname === "/assistant") {
       return { type: "global" };

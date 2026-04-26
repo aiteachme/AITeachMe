@@ -38,24 +38,21 @@ def build_plan_question_blueprints_node(*, context: WorkflowContext):
                         "question_type": spec.question_type,
                         "difficulty": spec.difficulty,
                         "rationale": "Provided by caller.",
+                        "generation_prompt": spec.generation_prompt,
                     }
                     for spec in blueprints
                 ]
             else:
                 planned = await plan_exam_question_blueprints(
-                    subject=str(state.get("subject") or ""),
                     subject_name=str(state.get("subject_name") or ""),
                     subject_description=str(state.get("subject_description") or ""),
                     subject_user_intent=str(state.get("subject_user_intent") or ""),
-                    subject_context=str(state.get("subject_context") or ""),
                     exam_mode=str(state.get("exam_mode") or "web_practice"),
                     units=list(state.get("units") or []),
                     question_count=int(state.get("question_count") or 1),
-                    requested_difficulty=str(state.get("requested_difficulty") or "medium"),
                     mastery_by_unit_id=dict(state.get("mastery_by_unit_id") or {}),
-                    focus_prompt=str(state.get("focus_prompt") or ""),
                     user_prompt=str(state.get("user_prompt") or ""),
-                    style_prompt=str(state.get("style_prompt") or ""),
+                    system_constraints=str(state.get("system_constraints") or ""),
                 )
                 blueprint_payload = [item.model_dump(mode="json") for item in planned]
 
@@ -66,6 +63,7 @@ def build_plan_question_blueprints_node(*, context: WorkflowContext):
                 detail=f"已编排 {len(blueprint_payload)} 道题的题型与知识点组合。",
                 step="plan_question_blueprints",
                 elapsed_ms=elapsed_ms,
+                extra={"question_blueprints": blueprint_payload},
             )
             return {"question_blueprints": blueprint_payload, "plan_ms": elapsed_ms, "error": ""}
         except Exception as exc:

@@ -1,5 +1,5 @@
 import type { CSSProperties, KeyboardEvent, MouseEvent } from "react";
-import { Loader2, MoreVertical, Trash2 } from "lucide-react";
+import { AlertTriangle, Loader2, MoreVertical, Trash2 } from "lucide-react";
 
 import type { ExamHistoryItem, PaperPreview, PaperPreviewRow } from "../../api/generated/model";
 import { Button } from "../ui/Button";
@@ -483,6 +483,29 @@ function PaperFingerprintPreview({
   );
 }
 
+function FailedPaperPreview() {
+  return (
+    <div
+      className="relative z-10 mt-3 flex flex-1 flex-col items-center justify-center overflow-hidden rounded-md border border-rose-100 bg-rose-50/60 px-4 text-center text-rose-600 dark:border-rose-900/60 dark:bg-rose-950/20 dark:text-rose-300"
+      aria-label="试卷生成失败"
+    >
+      <div className="grid h-12 w-12 place-items-center rounded-full bg-white shadow-sm ring-1 ring-rose-100 dark:bg-rose-950/40 dark:ring-rose-900/70">
+        <AlertTriangle className="h-6 w-6" />
+      </div>
+      <div className="mt-3 text-sm font-semibold">生成失败</div>
+      <div className="mt-1 max-w-[9rem] text-[11px] leading-5 text-rose-500/80 dark:text-rose-300/75">
+        这份试卷没有生成完成
+      </div>
+      <div className="mt-4 h-px w-full bg-rose-100 dark:bg-rose-900/70" />
+      <div className="mt-3 grid w-full gap-1.5 text-rose-300/80 dark:text-rose-700">
+        <span className="mx-auto block h-1 w-24 rounded-full bg-current" />
+        <span className="mx-auto block h-1 w-16 rounded-full bg-current" />
+        <span className="mx-auto block h-1 w-20 rounded-full bg-current" />
+      </div>
+    </div>
+  );
+}
+
 export function ExamPaperCard({
   item,
   resultDisplayMode,
@@ -499,6 +522,7 @@ export function ExamPaperCard({
   const preview = getPaperPreview(item);
   const isGraded = item.status === "graded";
   const isGenerating = item.status === "generating";
+  const isFailed = item.status === "failed";
   const showDetailedResult = isGraded && resultDisplayMode === "score";
   const showPassMark = isGraded && resultDisplayMode === "completed";
   const scorePercent = getExamScorePercent(item);
@@ -517,9 +541,17 @@ export function ExamPaperCard({
       onKeyDown={handleCardKeyDown}
       className="group cursor-pointer rounded-[22px] bg-transparent p-1.5 text-left transition duration-200 hover:-translate-y-0.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2"
     >
-      <div className="relative mx-auto aspect-[210/297] w-full max-w-[250px] drop-shadow-[0_16px_24px_rgba(15,23,42,0.10)] transition group-hover:drop-shadow-[0_22px_34px_rgba(15,23,42,0.14)]">
+      <div
+        className={`relative mx-auto aspect-[210/297] w-full max-w-[250px] transition ${
+          isFailed
+            ? "drop-shadow-[0_16px_24px_rgba(190,18,60,0.14)] group-hover:drop-shadow-[0_22px_34px_rgba(190,18,60,0.18)]"
+            : "drop-shadow-[0_16px_24px_rgba(15,23,42,0.10)] group-hover:drop-shadow-[0_22px_34px_rgba(15,23,42,0.14)]"
+        }`}
+      >
         <div
-          className="absolute inset-0 flex flex-col overflow-hidden rounded-[18px] border border-slate-200 bg-white px-4 py-5 text-slate-950 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-100"
+          className={`absolute inset-0 flex flex-col overflow-hidden rounded-[18px] border bg-white px-4 py-5 text-slate-950 dark:bg-slate-900 dark:text-slate-100 ${
+            isFailed ? "border-rose-200 dark:border-rose-900/70" : "border-slate-200 dark:border-slate-800"
+          }`}
           style={{ clipPath: "polygon(0 0, calc(100% - 48px) 0, 100% 48px, 100% 100%, 0 100%)" }}
         >
 
@@ -530,15 +562,32 @@ export function ExamPaperCard({
           <div className="mx-auto mt-2 h-px w-16 bg-slate-200 dark:bg-slate-700" />
         </div>
 
-        <div className="relative z-10 mt-4 border-y border-slate-100 px-1 py-2 text-center text-xs font-semibold text-slate-600 dark:border-slate-800 dark:text-slate-300">
-          <PaperTagLine preview={preview} />
+        <div
+          className={`relative z-10 mt-4 border-y px-1 py-2 text-center text-xs font-semibold ${
+            isFailed
+              ? "border-rose-100 text-rose-600 dark:border-rose-900/60 dark:text-rose-300"
+              : "border-slate-100 text-slate-600 dark:border-slate-800 dark:text-slate-300"
+          }`}
+        >
+          {isFailed ? (
+            <span className="inline-flex items-center justify-center gap-1">
+              <AlertTriangle className="h-3.5 w-3.5" />
+              试卷生成失败
+            </span>
+          ) : (
+            <PaperTagLine preview={preview} />
+          )}
         </div>
 
-        <PaperFingerprintPreview
-          preview={preview}
-          isGenerating={isGenerating}
-          showResultMarks={showDetailedResult}
-        />
+        {isFailed ? (
+          <FailedPaperPreview />
+        ) : (
+          <PaperFingerprintPreview
+            preview={preview}
+            isGenerating={isGenerating}
+            showResultMarks={showDetailedResult}
+          />
+        )}
 
         {showDetailedResult && scorePercent !== null ? <ExamPaperScoreMark score={scorePercent} /> : null}
         {showPassMark ? <ExamPaperPassMark /> : null}

@@ -1,9 +1,11 @@
+import json
+
 import pytest
 
 from app.models.knowledge_unit import KnowledgeUnit
+from app.shared.infra.exceptions import LLMTimeoutError
 from app.workflows.examine.question_build.lib import generator
 from app.workflows.examine.question_build.lib.generator import (
-    ExamQuestionBatch,
     ExamQuestionBlueprint,
     ExamQuestionBlueprintBatch,
     ExamQuestionDraft,
@@ -21,11 +23,12 @@ async def test_generate_exam_questions_for_units_returns_validated_llm_questions
     observed_messages = []
 
     async def fake_acompletion_with_fallback(*args, **kwargs):
-        assert kwargs["response_model"] is ExamQuestionBatch
+        assert kwargs["response_model"] is ExamSingleQuestionResponse
         observed_messages.extend(args[0])
-        return ExamQuestionBatch(
-            questions=[
-                ExamQuestionDraft(
+        item_order = kwargs["extra_metadata"]["item_order"]
+        if item_order == 1:
+            return ExamSingleQuestionResponse(
+                question=ExamQuestionDraft(
                     item_order=1,
                     knowledge_unit_id=101,
                     question_type="single_choice",
@@ -34,8 +37,10 @@ async def test_generate_exam_questions_for_units_returns_validated_llm_questions
                     options=["Instantaneous rate of change", "Area accumulation", "Vector cross product", "Set union"],
                     correct_answer="A",
                     explanation="A derivative describes local instantaneous change, which is its core definition.",
-                ),
-                ExamQuestionDraft(
+                )
+            )
+        return ExamSingleQuestionResponse(
+            question=ExamQuestionDraft(
                     item_order=2,
                     knowledge_unit_id=102,
                     question_type="short_answer",
@@ -43,8 +48,7 @@ async def test_generate_exam_questions_for_units_returns_validated_llm_questions
                     stem="Explain why Newton iteration usually needs a reasonable initial value.",
                     correct_answer="A nearby initial value makes local linearization more likely to converge.",
                     explanation="Newton iteration depends on local tangent approximations, so distant starts may diverge.",
-                ),
-            ]
+            )
         )
 
     monkeypatch.setattr(generator, "acompletion_with_fallback", fake_acompletion_with_fallback)
@@ -75,31 +79,46 @@ async def test_generate_exam_questions_for_units_returns_validated_llm_questions
             knowledge_unit_id=101,
             question_type="single_choice",
             difficulty="medium",
+            generation_prompt="Design a conceptual application item about derivatives.",
         ),
         ExamQuestionGenerationSpec(
             item_order=2,
             knowledge_unit_id=102,
             question_type="short_answer",
             difficulty="hard",
+            generation_prompt="Design a hard short-answer item about Newton iteration.",
         ),
     ]
 
     questions = await generate_exam_questions_for_units(
-        subject="math",
-        exam_mode="paper_exam",
         units=units,
         specs=specs,
-        subject_context="Calculus context: derivatives before Newton iteration.",
-        focus_prompt="导数与数值方法",
-        user_prompt="更重视理解与应用",
-        style_prompt="风格接近高质量阶段测验",
     )
 
     assert [item.item_order for item in questions] == [1, 2]
     assert questions[0].correct_answer == "A"
     assert questions[0].options is not None and len(questions[0].options) == 4
     assert questions[1].question_type == "short_answer"
-    assert "Calculus context: derivatives before Newton iteration." in observed_messages[1]["content"]
+    question_prompt = observed_messages[1]["content"]
+    assert '"subject_context"' not in question_prompt
+    assert '"subject_id"' not in question_prompt
+    assert '"subject_profile"' not in question_prompt
+    assert '"exam_mode"' not in question_prompt
+    assert '"user_prompt"' not in question_prompt
+    assert '"system_constraints"' not in question_prompt
+    payload_start = question_prompt.find('{\n  "generation_prompt"')
+    assert payload_start >= 0
+    payload = json.loads(question_prompt[payload_start:])
+    assert "requested_question_count" not in payload
+    assert payload["generation_prompt"] == "Design a conceptual application item about derivatives."
+    assert "knowledge_units" in payload
+    assert "question_spec" in payload
+    assert "question_specs" not in payload
+    assert all("knowledge_unit_id" not in unit for unit in payload["knowledge_units"])
+    assert all({"name", "knowledge_unit_type", "summary"}.issubset(unit) for unit in payload["knowledge_units"])
+    assert "knowledge_unit_ids" in payload["question_spec"]
+    assert "knowledge_unit_id" not in payload["question_spec"]
+    assert "generation_prompt" not in payload["question_spec"]
 
 
 @pytest.mark.anyio
@@ -115,6 +134,7 @@ async def test_generate_exam_questions_for_units_rejects_misaligned_llm_output(m
                 stem="In the definition of a limit, the process emphasizes {{blank}}.",
                 correct_answer="approach behavior",
                 explanation="This intentionally uses the wrong unit id so alignment validation fails.",
+                knowledge_unit_refs=[{"knowledge_unit_id": 999, "coverage_weight": 1.0, "role": "primary"}],
             )
         )
 
@@ -137,13 +157,12 @@ async def test_generate_exam_questions_for_units_rejects_misaligned_llm_output(m
             knowledge_unit_id=201,
             question_type="fill_blank",
             difficulty="easy",
+            generation_prompt="Generate a fill-blank item about limits.",
         ),
     ]
 
-    with pytest.raises(ValueError, match="knowledge_unit_id"):
+    with pytest.raises(ValueError, match="knowledge_unit_refs"):
         await generate_exam_questions_for_units(
-            subject="math",
-            exam_mode="web_practice",
             units=units,
             specs=specs,
         )
@@ -185,19 +204,19 @@ async def test_generate_exam_questions_for_units_reports_failed_item_order(monke
             knowledge_unit_id=301,
             question_type="short_answer",
             difficulty="medium",
+            generation_prompt="Generate a medium short-answer item.",
         ),
         ExamQuestionGenerationSpec(
             item_order=2,
             knowledge_unit_id=301,
             question_type="short_answer",
             difficulty="medium",
+            generation_prompt="Generate another medium short-answer item.",
         ),
     ]
 
     with pytest.raises(ValueError, match=r"item_order values=\[2\]"):
         await generate_exam_questions_for_units(
-            subject="math",
-            exam_mode="web_practice",
             units=units,
             specs=specs,
         )
@@ -205,8 +224,11 @@ async def test_generate_exam_questions_for_units_reports_failed_item_order(monke
 
 @pytest.mark.anyio
 async def test_plan_exam_question_blueprints_can_select_multiple_related_units(monkeypatch):
+    observed_messages = []
+
     async def fake_acompletion_with_fallback(*args, **kwargs):
         assert kwargs["response_model"] is ExamQuestionBlueprintBatch
+        observed_messages.extend(args[0])
         return ExamQuestionBlueprintBatch(
             blueprints=[
                 ExamQuestionBlueprint(
@@ -215,6 +237,10 @@ async def test_plan_exam_question_blueprints_can_select_multiple_related_units(m
                     question_type="short_answer",
                     difficulty="medium",
                     rationale="Derivative and Newton iteration can form one application question.",
+                    generation_prompt=(
+                        "Create an application-focused short-answer item that connects derivatives "
+                        "to Newton iteration and matches a final-exam practice style."
+                    ),
                 )
             ]
         )
@@ -234,12 +260,46 @@ async def test_plan_exam_question_blueprints_can_select_multiple_related_units(m
         exam_mode="paper_exam",
         units=units,
         question_count=1,
-        requested_difficulty="medium",
         mastery_by_unit_id={101: 0.3, 102: 0.6},
+        user_prompt="Focus on applications.",
+        system_constraints="Avoid near-duplicate recent stems.",
     )
 
     assert blueprints[0].knowledge_unit_ids == [101, 102]
     assert blueprints[0].question_type == "short_answer"
+    blueprint_prompt = observed_messages[1]["content"]
+    assert '"subject_context"' not in blueprint_prompt
+    assert '"subject_id"' not in blueprint_prompt
+    assert "subj_math" not in blueprint_prompt
+    payload_start = blueprint_prompt.find('{\n  "subject_profile"')
+    assert payload_start >= 0
+    payload = json.loads(blueprint_prompt[payload_start:])
+    assert payload["user_prompt"] == "Focus on applications."
+    assert payload["system_constraints"] == "Avoid near-duplicate recent stems."
+    assert "requested_difficulty" not in payload
+    assert "generation_prompt" in blueprint_prompt
+    assert blueprints[0].generation_prompt.startswith("Create an application-focused")
+
+
+@pytest.mark.anyio
+async def test_plan_exam_question_blueprints_timeout_is_not_downgraded(monkeypatch):
+    async def fake_acompletion_with_fallback(*args, **kwargs):
+        raise LLMTimeoutError(timeout_s=30)
+
+    monkeypatch.setattr(generator, "acompletion_with_fallback", fake_acompletion_with_fallback)
+
+    units = [
+        KnowledgeUnit(id=101, subject="math", knowledge_unit_type="concept", canonical_name="Derivative", normalized_name="derivative"),
+    ]
+
+    with pytest.raises(LLMTimeoutError):
+        await plan_exam_question_blueprints(
+            subject="subj_math",
+            subject_name="Calculus",
+            exam_mode="web_practice",
+            units=units,
+            question_count=1,
+        )
 
 
 @pytest.mark.anyio
@@ -488,4 +548,4 @@ def test_exam_single_question_response_accepts_direct_question_payload():
     )
 
     assert parsed.question.item_order == 1
-    assert parsed.question.knowledge_unit_id == 101
+    assert [ref.knowledge_unit_id for ref in parsed.question.knowledge_unit_refs] == [101]

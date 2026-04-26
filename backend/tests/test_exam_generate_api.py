@@ -69,6 +69,7 @@ def _preview_item(
     is_correct: bool | None = None,
 ) -> ExamPaperItem:
     return ExamPaperItem(
+        id=order,
         exam_paper_id=1,
         question_template_id=order,
         item_order=order,
@@ -76,8 +77,6 @@ def _preview_item(
         options_snapshot_json=json.dumps(["A", "B", "C", "D"]) if question_type == "single_choice" else None,
         answer_snapshot="A",
         explanation_snapshot="Explanation",
-        knowledge_unit_id=unit_id,
-        knowledge_unit_refs_json=json.dumps([{"knowledge_unit_id": unit_id, "coverage_weight": 1.0, "role": "primary"}]),
         difficulty=difficulty,
         question_type=question_type,
         is_correct=is_correct,
@@ -101,7 +100,18 @@ def test_build_paper_preview_dedupes_keywords_limits_rows_and_counts_overflow():
         3: KnowledgeUnit(id=3, subject="math", knowledge_unit_type="concept", canonical_name="Integral", normalized_name="integral"),
     }
 
-    preview = _build_paper_preview(items, knowledge_unit_by_id=units)
+    links_by_item_id = {
+        1: [{"knowledge_unit_id": 1, "coverage_weight": 1.0, "role": "primary"}],
+        2: [{"knowledge_unit_id": 1, "coverage_weight": 1.0, "role": "primary"}],
+        3: [{"knowledge_unit_id": 2, "coverage_weight": 1.0, "role": "primary"}],
+        4: [{"knowledge_unit_id": 2, "coverage_weight": 1.0, "role": "primary"}],
+        5: [{"knowledge_unit_id": 3, "coverage_weight": 1.0, "role": "primary"}],
+        6: [{"knowledge_unit_id": 3, "coverage_weight": 1.0, "role": "primary"}],
+        7: [{"knowledge_unit_id": 1, "coverage_weight": 1.0, "role": "primary"}],
+        8: [{"knowledge_unit_id": 2, "coverage_weight": 1.0, "role": "primary"}],
+    }
+
+    preview = _build_paper_preview(items, knowledge_unit_by_id=units, links_by_item_id=links_by_item_id)
 
     assert preview.keywords == ["Derivative", "Limit", "Integral"]
     assert [row.shape for row in preview.rows] == ["choice", "blank", "short", "choice", "blank", "short", "choice"]
@@ -117,7 +127,12 @@ def test_paper_preview_for_response_falls_back_for_legacy_empty_json():
         1: KnowledgeUnit(id=1, subject="math", knowledge_unit_type="concept", canonical_name="Derivative", normalized_name="derivative"),
     }
 
-    preview = _paper_preview_for_response(paper, [item], knowledge_unit_by_id=units)
+    preview = _paper_preview_for_response(
+        paper,
+        [item],
+        knowledge_unit_by_id=units,
+        links_by_item_id={1: [{"knowledge_unit_id": 1, "coverage_weight": 1.0, "role": "primary"}]},
+    )
 
     assert preview.keywords == ["Derivative"]
     assert preview.rows[0].shape == "blank"
@@ -147,7 +162,12 @@ def test_paper_preview_for_response_regenerates_legacy_five_row_preview():
         1: KnowledgeUnit(id=1, subject="math", knowledge_unit_type="concept", canonical_name="Derivative", normalized_name="derivative"),
     }
 
-    preview = _paper_preview_for_response(paper, items, knowledge_unit_by_id=units)
+    preview = _paper_preview_for_response(
+        paper,
+        items,
+        knowledge_unit_by_id=units,
+        links_by_item_id={int(item.id or 0): [{"knowledge_unit_id": 1, "coverage_weight": 1.0, "role": "primary"}] for item in items},
+    )
 
     assert [row.order for row in preview.rows] == [1, 2, 3, 4, 5, 6, 7]
     assert preview.overflow_count == 1
@@ -177,6 +197,11 @@ def test_paper_preview_for_response_regenerates_with_graded_result_status():
         1: KnowledgeUnit(id=1, subject="math", knowledge_unit_type="concept", canonical_name="Derivative", normalized_name="derivative"),
     }
 
-    preview = _paper_preview_for_response(paper, items, knowledge_unit_by_id=units)
+    preview = _paper_preview_for_response(
+        paper,
+        items,
+        knowledge_unit_by_id=units,
+        links_by_item_id={int(item.id or 0): [{"knowledge_unit_id": 1, "coverage_weight": 1.0, "role": "primary"}] for item in items},
+    )
 
     assert [row.result_status for row in preview.rows] == ["correct", "incorrect"]

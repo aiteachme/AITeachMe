@@ -12,14 +12,8 @@
 export interface ExamGenerateRequest {
   /** Exam mode: web_practice | paper_exam (legacy values are compatible). */
   exam_mode: string;
-  /** Optional difficulty override: easy | medium | hard | mixed. Omit for auto/profile-driven difficulty. */
-  difficulty?: string | null;
-  /** Optional user prompt for general generation hints. */
+  /** Optional user requirements for exam generation. */
   user_prompt?: string | null;
-  /** Optional prompt that describes the desired paper style. */
-  style_prompt?: string | null;
-  /** Optional prompt describing key focus areas. */
-  focus_prompt?: string | null;
   /** Optional uploaded sample-paper file UIDs. */
   sample_file_uids?: string[] | null;
   /** Optional target question count. */

@@ -27,7 +27,7 @@ _QUESTION_TYPE_FORMAT_RULES = (
     "- true_false: do not provide options; correct_answer must be True or False.\n"
     "- fill_blank: do not provide options; put the blank in the stem as `{{blank}}`; correct_answer must be short and unique.\n"
     "- short_answer: do not provide options; correct_answer should be concise but complete.\n"
-    "- Only return question_type values that appear in question_specs; do not invent unsupported types.\n"
+    "- Only return question_type values that appear in the provided question spec; do not invent unsupported types.\n"
 )
 
 SYSTEM_PROMPT_EXAM_QUESTION_BUILD = """
@@ -56,33 +56,25 @@ def _subject_payload(
 
 def build_exam_question_blueprint_messages(
     *,
-    subject: str,
     subject_name: str,
     subject_description: str,
     subject_user_intent: str,
     exam_mode: str,
     requested_question_count: int,
-    requested_difficulty: str,
-    focus_prompt: str,
     user_prompt: str,
-    style_prompt: str,
     units: list[dict[str, Any]],
-    subject_context: str = "",
+    system_constraints: str = "",
 ) -> list[ChatMessage]:
     payload = {
-        "subject": _subject_payload(
-            subject=subject,
-            subject_name=subject_name,
-            subject_description=subject_description,
-            subject_user_intent=subject_user_intent,
-        ),
+        "subject_profile": {
+            "subject_name": subject_name or "",
+            "subject_description": subject_description or "",
+            "user_intent": subject_user_intent or "",
+        },
         "exam_mode": exam_mode,
-        "subject_context": subject_context or "",
         "requested_question_count": requested_question_count,
-        "requested_difficulty": requested_difficulty,
-        "focus_prompt": focus_prompt or "",
         "user_prompt": user_prompt or "",
-        "style_prompt": style_prompt or "",
+        "system_constraints": system_constraints or "",
         "knowledge_units": units,
     }
     prompt = f"""
@@ -97,7 +89,10 @@ def build_exam_question_blueprint_messages(
 
 编排原则：
 - 必须从给定 knowledge_units 中选择，不要 invent 新 id。
-- 优先结合 mastery_score、用户意图、focus_prompt 来安排重点。
+- 优先结合 mastery_score、用户意图、user_prompt 来安排重点。
+- 必须为每道题生成 generation_prompt。它是单题生成阶段唯一承接整体要求与本题特殊要求的字段。
+- generation_prompt 要综合 user_prompt（最高优先级）、subject_description、user_intent、exam_mode、system_constraints，并具体说明本题的风格、设计方式、情境、能力层级、避免事项和与整卷的配合。
+- 如果用户对某个题号、某类题、整体风格或难度有要求，要在对应题目的 generation_prompt 中明确落地。
 - 多知识单元题要选择概念相关、方法连续、易混淆或能共同组成应用场景的单元。
 - 不要每题都只覆盖一个知识单元；但也不要把无关单元硬塞在一起。
 - 输出数量必须等于 requested_question_count。
@@ -110,7 +105,8 @@ def build_exam_question_blueprint_messages(
       "knowledge_unit_ids": [1, 2],
       "question_type": "single_choice",
       "difficulty": "medium",
-      "rationale": "..."
+      "rationale": "...",
+      "generation_prompt": "..."
     }}
   ]
 }}
@@ -126,44 +122,26 @@ def build_exam_question_blueprint_messages(
 
 def build_exam_question_messages(
     *,
-    subject: str,
-    exam_mode: str,
-    subject_context: str,
-    focus_prompt: str,
-    user_prompt: str,
-    style_prompt: str,
-    requested_question_count: int,
     units: list[dict[str, Any]],
-    specs: list[dict[str, Any]],
-    subject_name: str = "",
-    subject_description: str = "",
-    subject_user_intent: str = "",
+    spec: dict[str, Any],
+    generation_prompt: str,
 ) -> list[ChatMessage]:
     payload = {
-        "subject": _subject_payload(
-            subject=subject,
-            subject_name=subject_name,
-            subject_description=subject_description,
-            subject_user_intent=subject_user_intent,
-        ),
-        "exam_mode": exam_mode,
-        "subject_context": subject_context or "",
-        "requested_question_count": requested_question_count,
-        "focus_prompt": focus_prompt or "",
-        "user_prompt": user_prompt or "",
-        "style_prompt": style_prompt or "",
+        "generation_prompt": generation_prompt or "",
         "knowledge_units": units,
-        "question_specs": specs,
+        "question_spec": spec,
     }
     user_prompt_text = f"""
 请按给定知识单元与题目规格生成高质量试题。
 
 要求：
+0. generation_prompt 是本题的完整生成要求，必须严格遵守；不要再向外部寻找全局用户要求或学科要求。
 1. 每道题必须匹配对应 item_order、question_type 和 difficulty。
-2. knowledge_unit_id 必须是 question_specs.knowledge_unit_ids 中最主要的一个。
-3. 如果 question_specs.knowledge_unit_ids 有多个，本题要自然覆盖这些相关知识点。
-4. 不要直接泄露答案；解析要说明考点、正确原因和常见误区。
-5. fill_blank stems 使用 `{{{{blank}}}}`，并且 `{{{{blank}}}}` 只能在正文中，不能放进 LaTeX 公式。
+2. 使用 knowledge_unit_refs 表达本题覆盖的知识单元，不要输出单独的 knowledge_unit_id 字段；knowledge_unit_refs 中的 knowledge_unit_id 必须来自 question_spec.knowledge_unit_ids。
+3. 如果 question_spec.knowledge_unit_ids 有多个，本题要自然覆盖这些相关知识点。
+4. knowledge_units 按 question_spec.knowledge_unit_ids 的顺序排列；不要要求 knowledge_units 自身包含 id。
+5. 不要直接泄露答案；解析要说明考点、正确原因和常见误区。
+6. fill_blank stems 使用 `{{{{blank}}}}`，并且 `{{{{blank}}}}` 只能在正文中，不能放进 LaTeX 公式。
 
 Choice output contract:
 - For single_choice and multiple_choice, `options` must be pure option text only, for example `["option one", "option two", "option three", "option four"]`.
