@@ -7,7 +7,7 @@ import re
 
 from app.shared.infra.llm_support import acompletion_with_fallback
 from app.shared.infra.tools.builtin.markdown_processing import normalize_markdown_rendering
-from app.workflows.digest.docgen.lib.model_policy import DocGenModelStep, docgen_completion_kwargs
+from app.workflows.digest.docgen.lib.model_policy import DocGenModelStep, docgen_completion_kwargs_with_metadata
 from app.workflows.digest.docgen.lib.models import RepairTraceItem, ReviewAction, ReviewedChapterDraft
 from app.workflows.digest.docgen.prompts import build_chapter_patch_messages
 
@@ -84,12 +84,12 @@ async def _apply_patch_action(
                 action=action.model_dump(mode="json"),
                 markdown=chapter.markdown,
             ),
-            **docgen_completion_kwargs(DocGenModelStep.REPAIR_PATCH),
-            extra_metadata={
-                "chapter_index": chapter.chapter_index,
-                "repair_action_id": action.action_id,
-                "repair_action_type": action.action_type,
-            },
+            **docgen_completion_kwargs_with_metadata(
+                DocGenModelStep.REPAIR_PATCH,
+                chapter_index=chapter.chapter_index,
+                repair_action_id=action.action_id,
+                repair_action_type=action.action_type,
+            ),
         )
         patched = normalize_markdown_rendering(_strip_markdown_fence(str(patched_markdown)))
         if not patched or patched == chapter.markdown:

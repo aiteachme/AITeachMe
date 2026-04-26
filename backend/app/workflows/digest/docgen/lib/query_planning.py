@@ -8,7 +8,7 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from app.shared.infra.llm_support import acompletion_with_fallback
-from app.workflows.digest.docgen.lib.model_policy import DocGenModelStep, docgen_completion_kwargs
+from app.workflows.digest.docgen.lib.model_policy import DocGenModelStep, docgen_completion_kwargs_with_metadata
 from app.workflows.digest.docgen.prompts import (
     build_docgen_sub_query_messages,
     build_docgen_gap_query_messages,
@@ -174,13 +174,13 @@ async def generate_sub_queries(
             domain=domain,
             fallback_queries=fallback_queries,
         ),
-        **docgen_completion_kwargs(DocGenModelStep.QUERY_PLANNING),
+        **docgen_completion_kwargs_with_metadata(
+            DocGenModelStep.QUERY_PLANNING,
+            extra_metadata=extra_metadata,
+            query_tool="generate_sub_queries",
+            query_domain=domain,
+        ),
         response_model=ResearchSubQueryPlan,
-        extra_metadata={
-            "query_tool": "generate_sub_queries",
-            "query_domain": domain,
-            **dict(extra_metadata or {}),
-        },
     )
 
     if isinstance(response, ResearchSubQueryPlan):
@@ -222,13 +222,13 @@ async def generate_gap_queries(
             max_queries=int(max_queries or 2),
             domain=domain,
         ),
-        **docgen_completion_kwargs(DocGenModelStep.QUERY_PLANNING),
+        **docgen_completion_kwargs_with_metadata(
+            DocGenModelStep.QUERY_PLANNING,
+            extra_metadata=extra_metadata,
+            query_tool="generate_gap_queries",
+            query_domain=domain,
+        ),
         response_model=ResearchSubQueryPlan,
-        extra_metadata={
-            "query_tool": "generate_gap_queries",
-            "query_domain": domain,
-            **dict(extra_metadata or {}),
-        },
     )
 
     if isinstance(response, ResearchSubQueryPlan):

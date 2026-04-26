@@ -26,7 +26,7 @@ from app.workflows.digest.docgen.lib.defaults import (
     DEFAULT_DOCGEN_READ_TIMEOUT_S,
     DEFAULT_DOCGEN_RETRIEVAL_TIMEOUT_S,
 )
-from app.workflows.digest.docgen.lib.model_policy import DocGenModelStep, docgen_completion_kwargs
+from app.workflows.digest.docgen.lib.model_policy import DocGenModelStep, docgen_completion_kwargs_with_metadata
 from app.workflows.digest.docgen.mode_profiles import get_docgen_mode_profile
 from app.workflows.digest.docgen.lib.query_planning import (
     build_research_focus_text,
@@ -596,10 +596,13 @@ class DocGenChapterContextRuntime(BaseTracedExecution):
                     required_elements=required_elements,
                     digest_mode=digest_mode,
                 ),
-                **docgen_completion_kwargs(DocGenModelStep.RESEARCH_PURIFY),
-                extra_metadata=self.context.trace_metadata(
-                    runtime_name=self.name,
-                    research_stage="purify_material",
+                **docgen_completion_kwargs_with_metadata(
+                    DocGenModelStep.RESEARCH_PURIFY,
+                    digest_mode=digest_mode,
+                    extra_metadata=self.context.trace_metadata(
+                        runtime_name=self.name,
+                        research_stage="purify_material",
+                    ),
                 ),
             )
         except Exception as exc:  # pragma: no cover - integration-heavy fallback

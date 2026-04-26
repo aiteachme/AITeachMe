@@ -26,7 +26,7 @@ class PlannerModelPolicy:
     call_purpose: LLMCallPurpose
     model: PlannerModelSlot
     max_tokens: int | None = None
-    temperature: float | None = None
+    temperature_override: float | None = None
     note: str = ""
 
     def completion_kwargs(self) -> dict[str, object]:
@@ -38,8 +38,8 @@ class PlannerModelPolicy:
         }
         if self.max_tokens is not None:
             kwargs["max_tokens"] = self.max_tokens
-        if self.temperature is not None:
-            kwargs["temperature"] = self.temperature
+        if self.temperature_override is not None:
+            kwargs["temperature"] = self.temperature_override
         return kwargs
 
     def metadata(self) -> dict[str, object]:
@@ -54,8 +54,8 @@ class PlannerModelPolicy:
     def completion_kwargs_with_metadata(self, **extra_metadata: object) -> dict[str, object]:
         kwargs = self.completion_kwargs()
         kwargs["extra_metadata"] = {
-            **self.metadata(),
             **{key: value for key, value in extra_metadata.items() if value not in (None, "", [], {})},
+            **self.metadata(),
         }
         return kwargs
 
@@ -88,11 +88,10 @@ _POLICIES: dict[PlannerModelStep, PlannerModelPolicy] = {
     PlannerModelStep.SUBJECT_NAME: PlannerModelPolicy(
         step=PlannerModelStep.SUBJECT_NAME,
         call_type="text",
-        call_purpose=LLMCallPurpose.CLASSIFY,
+        call_purpose=LLMCallPurpose.GENERATE,
         model="light",
         max_tokens=40,
-        temperature=0.2,
-        note="短标题生成，轻量模型即可。",
+        note="短标题生成属于轻量生成，使用 GENERATE 的默认采样配置。",
     ),
     PlannerModelStep.SUBJECT_ICON: PlannerModelPolicy(
         step=PlannerModelStep.SUBJECT_ICON,
@@ -100,8 +99,7 @@ _POLICIES: dict[PlannerModelStep, PlannerModelPolicy] = {
         call_purpose=LLMCallPurpose.CLASSIFY,
         model="light",
         max_tokens=20,
-        temperature=0,
-        note="图标候选选择，输出极短，失败后走本地规则兜底。",
+        note="图标候选选择属于分类任务，失败后走本地规则兜底。",
     ),
 }
 

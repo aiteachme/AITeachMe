@@ -8,7 +8,7 @@ import structlog
 
 from app.shared.infra.tools.builtin.markdown_processing import count_words
 from app.workflows.digest.docgen.lib.chapter_planning import estimate_quality_from_markdown
-from app.workflows.digest.docgen.lib.model_policy import DocGenModelStep, docgen_completion_kwargs
+from app.workflows.digest.docgen.lib.model_policy import DocGenModelStep, docgen_completion_kwargs_with_metadata
 from app.workflows.digest.docgen.lib.models import ChapterQualitySignals
 from app.workflows.digest.docgen.prompts import build_chapter_rewrite_messages
 
@@ -76,8 +76,12 @@ async def maybe_rewrite_chapter(
                 markdown=markdown,
                 dense_context=dense_context,
             ),
-            **docgen_completion_kwargs(DocGenModelStep.CHAPTER_REWRITE),
-            extra_metadata={**extra_metadata, "substep": "chapter_rewrite"},
+            **docgen_completion_kwargs_with_metadata(
+                DocGenModelStep.CHAPTER_REWRITE,
+                digest_mode=digest_mode,
+                extra_metadata=extra_metadata,
+                substep="chapter_rewrite",
+            ),
         )
     except Exception as exc:
         logger.warning("docgen_chapter_rewrite_failed", title=title, error=str(exc))

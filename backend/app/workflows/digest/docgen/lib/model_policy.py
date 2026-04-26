@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, replace
 from enum import Enum
 from typing import Literal
@@ -35,6 +36,8 @@ class DocGenModelPolicy:
     call_type: Literal["structured", "text", "image"]
     call_purpose: LLMCallPurpose | None
     model: DocGenModelSlot | None
+    max_tokens: int | None = None
+    temperature_override: float | None = None
     note: str = ""
 
     def completion_kwargs(self) -> dict[str, object]:
@@ -45,6 +48,32 @@ class DocGenModelPolicy:
             kwargs["call_purpose"] = self.call_purpose
         if self.model is not None and self.model != "image_generation":
             kwargs["model"] = self.model
+        if self.max_tokens is not None:
+            kwargs["max_tokens"] = self.max_tokens
+        if self.temperature_override is not None:
+            kwargs["temperature"] = self.temperature_override
+        return kwargs
+
+    def metadata(self) -> dict[str, object]:
+        """Return stable observability metadata for one DocGen model call."""
+
+        return {
+            "docgen_model_step": self.step.value,
+            "docgen_model_slot": self.model or "",
+            "docgen_call_type": self.call_type,
+        }
+
+    def completion_kwargs_with_metadata(
+        self,
+        extra_metadata: Mapping[str, object] | None = None,
+        **metadata: object,
+    ) -> dict[str, object]:
+        kwargs = self.completion_kwargs()
+        kwargs["extra_metadata"] = {
+            **_compact_metadata(dict(extra_metadata or {})),
+            **_compact_metadata(metadata),
+            **self.metadata(),
+        }
         return kwargs
 
 
@@ -54,6 +83,7 @@ _POLICIES: dict[DocGenModelStep, DocGenModelPolicy] = {
         call_type="structured",
         call_purpose=LLMCallPurpose.CLASSIFY,
         model="reason",
+        max_tokens=600,
         note="文档级短意图判断，保留策略推理能力。",
     ),
     DocGenModelStep.FILE_SUMMARY: DocGenModelPolicy(
@@ -61,6 +91,7 @@ _POLICIES: dict[DocGenModelStep, DocGenModelPolicy] = {
         call_type="structured",
         call_purpose=LLMCallPurpose.DOCGEN_LIGHT,
         model="light",
+        max_tokens=5000,
         note="文件级任务数量多，优先轻量并发。",
     ),
     DocGenModelStep.TITLE_LOCK: DocGenModelPolicy(
@@ -68,6 +99,8 @@ _POLICIES: dict[DocGenModelStep, DocGenModelPolicy] = {
         call_type="structured",
         call_purpose=LLMCallPurpose.REASONING,
         model="reason",
+        max_tokens=220,
+        temperature_override=0.1,
         note="标题输出极短，但要守住 confirmed plan 语义。",
     ),
     DocGenModelStep.CHAPTER_EXECUTION_BRIEF: DocGenModelPolicy(
@@ -75,6 +108,8 @@ _POLICIES: dict[DocGenModelStep, DocGenModelPolicy] = {
         call_type="structured",
         call_purpose=LLMCallPurpose.REASONING,
         model="reason",
+        max_tokens=420,
+        temperature_override=0.1,
         note="章级最小执行 brief，需要稳定抽取教学目标。",
     ),
     DocGenModelStep.QUERY_PLANNING: DocGenModelPolicy(
@@ -124,6 +159,8 @@ _POLICIES: dict[DocGenModelStep, DocGenModelPolicy] = {
         call_type="text",
         call_purpose=LLMCallPurpose.DOCGEN,
         model="primary",
+        max_tokens=2600,
+        temperature_override=0.1,
         note="交互页需要较完整的 HTML 生成能力。",
     ),
     DocGenModelStep.CHAPTER_REVIEW: DocGenModelPolicy(
@@ -150,6 +187,14 @@ _POLICIES: dict[DocGenModelStep, DocGenModelPolicy] = {
 }
 
 
+def _compact_metadata(metadata: Mapping[str, object]) -> dict[str, object]:
+    return {
+        key: value
+        for key, value in metadata.items()
+        if value not in (None, "", [], {})
+    }
+
+
 def get_docgen_model_policy(
     step: DocGenModelStep | str,
     *,
@@ -171,10 +216,24 @@ def docgen_completion_kwargs(
     return get_docgen_model_policy(step, digest_mode=digest_mode).completion_kwargs()
 
 
+def docgen_completion_kwargs_with_metadata(
+    step: DocGenModelStep | str,
+    *,
+    digest_mode: str | None = None,
+    extra_metadata: Mapping[str, object] | None = None,
+    **metadata: object,
+) -> dict[str, object]:
+    return get_docgen_model_policy(step, digest_mode=digest_mode).completion_kwargs_with_metadata(
+        extra_metadata=extra_metadata,
+        **metadata,
+    )
+
+
 __all__ = [
     "DocGenModelPolicy",
     "DocGenModelSlot",
     "DocGenModelStep",
     "docgen_completion_kwargs",
+    "docgen_completion_kwargs_with_metadata",
     "get_docgen_model_policy",
 ]
