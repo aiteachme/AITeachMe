@@ -12,7 +12,7 @@ from app.workflows.digest.docgen.lib.defaults import DEFAULT_DOCGEN_CHAPTER_BRIE
 from app.workflows.digest.docgen.lib.model_policy import DocGenModelStep, docgen_completion_kwargs_with_metadata
 from app.workflows.digest.docgen.lib.models import ChapterExecutionBrief, clean_string_list, clean_text
 from app.workflows.digest.docgen.mode_profiles import get_docgen_mode_profile
-from app.workflows.digest.docgen.prompts import build_chapter_execution_brief_messages
+from app.workflows.digest.docgen.prompts.chapter_execution_brief import build_chapter_execution_brief_messages
 
 logger = structlog.get_logger(__name__)
 

@@ -7,6 +7,7 @@ from enum import Enum
 from typing import Literal
 
 from app.shared.infra.llm_support.routing import LLMCallPurpose
+from app.workflows.digest.common.model_policy import compact_metadata
 
 PlannerModelSlot = Literal["light", "primary", "reason"]
 
@@ -53,10 +54,7 @@ class PlannerModelPolicy:
 
     def completion_kwargs_with_metadata(self, **extra_metadata: object) -> dict[str, object]:
         kwargs = self.completion_kwargs()
-        kwargs["extra_metadata"] = {
-            **{key: value for key, value in extra_metadata.items() if value not in (None, "", [], {})},
-            **self.metadata(),
-        }
+        kwargs["extra_metadata"] = compact_metadata(extra_metadata, self.metadata())
         return kwargs
 
 
@@ -67,7 +65,7 @@ _POLICIES: dict[PlannerModelStep, PlannerModelPolicy] = {
         call_purpose=LLMCallPurpose.GENERATE,
         model="light",
         max_tokens=900,
-        note="用户可见的资料边界判断，不负责最终合同，用 primary 降低首屏等待。",
+        note="用户可见的资料边界判断，不负责最终合同，用 light 降低首屏等待。",
     ),
     PlannerModelStep.EXTRACT_INTENT: PlannerModelPolicy(
         step=PlannerModelStep.EXTRACT_INTENT,
@@ -75,7 +73,7 @@ _POLICIES: dict[PlannerModelStep, PlannerModelPolicy] = {
         call_purpose=LLMCallPurpose.CLASSIFY,
         model="light",
         max_tokens=700,
-        note="结构化抽取内部规划抓手，输出短但需要比 light 更稳。",
+        note="结构化抽取内部规划抓手，输出短且有规则兜底，优先 light 提速。",
     ),
     PlannerModelStep.COMPOSE_PLAN: PlannerModelPolicy(
         step=PlannerModelStep.COMPOSE_PLAN,

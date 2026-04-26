@@ -1,6 +1,6 @@
 ﻿# DocGen 流程设计
 
-最后更新：2026-04-23
+最后更新：2026-04-27
 
 这份文档是 `backend/app/workflows/digest/docgen/` 当前唯一的文档文件，同时兼任入口说明和流程权威文档。
 
@@ -75,6 +75,7 @@ docgen/
 
 - `__init__.py` 只保留稳定导出。
 - `graph.py` 承接图定义、Send fan-out/fan-in 和单次 `run_docgen_workflow`。
+- LangGraph 节点的 `node_description`、输入输出字段和 metadata 统一通过 `digest.common.node_tracing` 生成，避免文档化信息在多个 graph 里漂移。
 - `lib/build_lifecycle.py` 承接 API 触发后的构建锁、后台任务、状态装配和结果组装。
 - `graph.get_langgraph_dev_docgen_graph()` 只服务 `langgraph dev` / 图可视化调试，不是业务运行入口。
 
@@ -95,7 +96,7 @@ docgen/
 
 ```text
 reason  -> qwen-max
-primary -> qwen-plus
+primary -> qwen-flash
 light   -> qwen-flash
 image_generation -> settings.models.image_generation（默认未配置）
 ```
@@ -120,14 +121,14 @@ image_generation -> settings.models.image_generation（默认未配置）
 | `assemble_chapter_tasks` | 当前纯规则 | 无 LLM | 无 | 无 | 合并 locked title、intent core、backbone、chapter brief，组装最终章节任务 | 任务装配是规则问题，不需要再调用模型 |
 | `generate_chapters.query_planning` | `lib/query_planning.py` | 结构化 | `reason` | `qwen-max` | 把章节目标拆成 research sub-queries / gap queries | 研究问题拆解仍然适合推理式规划 |
 | `generate_chapters.research_purify` | `lib/chapter_context.py` | 文本 | `light` | `qwen-flash` | 对 dense context 做轻量清洗，去掉噪声与重复 | 只是净化材料，不做深度推理 |
-| `generate_chapters.writer` | `lib/writer.py` | 文本 | `systematic -> reason` / `sprint -> primary` | `qwen-max` / `qwen-plus` | 把研究材料和执行合同写成章节正文 | 系统课更偏结构推理，冲刺课更偏快速成文 |
+| `generate_chapters.writer` | `lib/writer.py` | 文本 | `systematic -> reason` / `sprint -> primary` | `qwen-max` / `qwen-flash` | 把研究材料和执行合同写成章节正文 | 系统课更偏结构推理，冲刺课更偏快速成文 |
 | `generate_chapters.heading_repair` | `lib/writer.py` | 文本 | `light` | `qwen-flash` | 修正章节标题层级、学习脚手架和结构格式 | 轻量结构修正，不值得用更贵模型 |
-| `generate_chapters.rewrite` | `lib/chapter_revision.py` | 文本 | `primary` | `qwen-plus` | 当章节质量不够时做一次 bounded rewrite | 正文改写质量要求高于 light，但不需要最重推理 |
+| `generate_chapters.rewrite` | `lib/chapter_revision.py` | 文本 | `primary` | `qwen-flash` | 当章节质量不够时做一次 bounded rewrite | 正文改写质量要求高于 light，但不需要最重推理 |
 | `enhance_chapters.mermaid_placeholder` | `lib/asset_rendering.py` | 文本 | `light` | `qwen-flash` | 把 Mermaid 占位符变成真正可渲染的结构图内容 | 资产生成是辅助增强，轻量模型足够 |
-| `enhance_chapters.interactive_html_sidecar` | `lib/interactive_html.py` | 文本 | `primary` | `qwen-plus` | 为少量高价值章节生成独立 HTML 交互页 sidecar | 交互页比文生图更适合参数变化、步骤展开和几何/函数/方程可视化 |
+| `enhance_chapters.interactive_html_sidecar` | `lib/interactive_html.py` | 文本 | `primary` | `qwen-flash` | 为少量高价值章节生成独立 HTML 交互页 sidecar | 交互页比文生图更适合参数变化、步骤展开和几何/函数/方程可视化 |
 | `review_content.review_chapter` | `lib/chapter_review.py` | 结构化 | `light` | `qwen-flash` | 逐章复核覆盖率、证据支撑和写作质量，产出 review action | 并行、轻量、结构化审稿场景，优先控制成本和速度 |
 | `document_consistency_review` | 当前纯规则 | 无 LLM | 无 | 无 | 对整本文档做术语、章节数、重复和风格一致性检查 | 全局复核先用规则收口，减少漂移 |
-| `repair_or_route.surface/section patch` | `lib/repair.py` | 文本 | `primary` | `qwen-plus` | 按 review action 对章节做局部 patch 或记录 unresolved warning | 已经直接改正文，不能太轻；但又不需要最重 reason |
+| `repair_or_route.surface/section patch` | `lib/repair.py` | 文本 | `primary` | `qwen-flash` | 按 review action 对章节做局部 patch 或记录 unresolved warning | 已经直接改正文，不能太轻；但又不需要最重 reason |
 | `merge_review` | 当前纯规则 | 无 LLM | 无 | 无 | 合并章节、整理 metadata、做发布前完整性检查 | 发布前规则收口，不负责重新思考内容 |
 | `sync_locked_titles` | 当前纯规则 | 无 LLM | 无 | 无 | 只把已锁定标题同步到最终 Markdown，不重新起标题 | 当前明确禁止 LLM 改标题，防止推翻 confirmed plan 语义 |
 | `publish_document` | 当前纯规则 | 无 LLM | 无 | 无 | 写出 Markdown、manifest、版本归档和数据库记录 | 发布阶段只做持久化，不承担内容生成 |
@@ -402,7 +403,7 @@ generate_chapters
            - `call_purpose=DOCGEN`
            - `digest_mode=systematic -> model="reason"`
            - `digest_mode=sprint -> model="primary"`
-           - 默认映射到 `qwen-max / qwen-plus`
+         - 默认映射到 `qwen-max / qwen-flash`
          - heading repair：
            - `call_purpose=DOCGEN_LIGHT`
            - `model="light"`
@@ -413,7 +414,7 @@ generate_chapters
          - 若触发 rewrite：
            - `call_purpose=DOCGEN`
            - `model="primary"`
-           - 默认映射到 `qwen-plus`
+           - 默认映射到 `qwen-flash`
   模式差异：sprint/systematic 的核心差异主要在 draft_chapter 体现。
     - sprint：短、密、题型导向，参考突击课常见的“考点/分值感/题型 -> 题眼 -> 最短方法 -> 变式练习 -> 易错辨析”节奏。
     - systematic：长、稳、结构导向，参考系统课常见的“知识地图 -> 定义/性质 -> 推理路径 -> 例题落地 -> 迁移练习 -> 边界回收”节奏。
@@ -439,7 +440,7 @@ enhance_chapters
          - interactive HTML sidecar：
            - `call_purpose=DOCGEN`
            - `model="primary"`
-           - 默认映射到 `qwen-plus`
+           - 默认映射到 `qwen-flash`
          - image 当前不走大模型生成正文资产
     2. 对少量高价值章节生成独立、自包含的 HTML 交互页 sidecar，并在 Markdown 中插入新标签页打开链接。
     3. 统一公式、Mermaid、Markdown 结构。
@@ -512,7 +513,7 @@ repair_or_route
     - `surface_patch / section_patch`
       - `call_purpose=DOCGEN`
       - `model="primary"`
-      - 默认映射到 `qwen-plus`
+      - 默认映射到 `qwen-flash`
     - `evidence_patch / regenerate_chapter / re_dispatch / rebuild_backbone`
       - 当前只记录，不自动发起新的大模型调用
   目标实现：

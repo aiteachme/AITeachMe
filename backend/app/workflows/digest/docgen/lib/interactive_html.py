@@ -12,7 +12,7 @@ from app.shared.infra.storage import get_content_store, resolve_subject_storage_
 from app.utils.path_helpers import sanitize_doc_title
 from app.workflows.digest.docgen.lib.model_policy import DocGenModelStep, docgen_completion_kwargs_with_metadata
 from app.workflows.digest.docgen.lib.models import ChapterDraft, ClaimLedger, DocumentBackbone
-from app.workflows.digest.docgen.prompts import build_interactive_html_messages
+from app.workflows.digest.docgen.prompts.interactive_html import build_interactive_html_messages
 
 InteractiveMode = Literal["parameter_explorer", "process_stepper", "concept_mapper"]
 

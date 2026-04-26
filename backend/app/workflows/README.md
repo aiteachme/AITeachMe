@@ -25,7 +25,7 @@
 
 - `support`
 
-`support/` 承接不属于五大引擎、但仍属于后端业务层的模块，例如 `system`、`auth`、`subjects`、`knowledge_graph`、`files`、`export_import`。
+`support/` 承接不属于五大引擎、但仍属于后端业务层的模块，例如 `system`、`auth`、`subjects`、`files`、`export_import`。
 
 ## 模块根目录规则
 
@@ -70,7 +70,7 @@ workflows/<module>/
 - `ingest/fast_parse`
 - `digest/planner`
 - `digest/docgen`
-- `digest/kg_docs_sync`
+- `digest/kg_doc_sync`
 - `interact/chat`
 - `examine/question_build`
 - `examine/exam_grade`
@@ -188,7 +188,6 @@ workflows/support/<module>/
 - `subjects`
 - `system`
 - `export_import`
-- `knowledge_graph`
 
 规则：
 
@@ -224,7 +223,7 @@ teaching tool 不是新的独立教学层。当前通用实现是内置 tool，�
 - 教学工具注册、枚举、执行、registry sync 属于基础设施，放在 `app.shared.infra.tools.teaching_registry`。
 - 通用内置教学工具实现放在 `app.shared.infra.tools.builtin.teaching_tools`。
 - 只服务单条链路的教学逻辑，放在对应 lane 的 `nodes/` 或 `lib/`。
-- 只服务 Digest 文档生成的教学表达块，放在 `workflows/digest/common/pedagogy`。
+- 只服务 Digest 文档生成的教学表达块，放在 `workflows/digest/common/pedagogy.py`。
 - 禁止为了“教学语义”重新创建 `app/teaching` 层。
 
 ## 文件头说明
@@ -381,10 +380,11 @@ api -> workflows -> repositories / shared.infra / models / schemas
 `digest/` 当前主线是：
 
 ```text
-planner -> docgen -> kg_docs_sync
+planner -> docgen -> kg_doc_sync
 ```
 
-`digest/kg_file_ingest` 是历史调试包，不再作为 canonical lane；仅保留少量 extractor 复用，后续应迁移到中性 common 包。
+旧 `digest/kg_file_ingest` 历史调试包已删除；图谱构建只保留 `digest/kg_doc_sync`，
+抽取、候选合并、增量入图、查询、总览和清理实现都位于 `digest/kg_doc_sync/`。
 
 `digest/planner` 是组织样板：
 
@@ -419,13 +419,13 @@ planner -> docgen -> kg_docs_sync
   Digest 跨链路事件与 workflow export 落点
 - `digest/common/runtime_config.py`
   Digest 教学运行时配置 facade
-- `digest/common/pedagogy/`
-  Digest 教学语义 facade
-- `support/knowledge_graph/overview.py`
+- `digest/common/pedagogy.py`
+  Digest 文档教学语义 helper
+- `digest/kg_doc_sync/lib/overview.py`
   基于知识图谱的总览用例
 - `support/system/init.py`、`support/system/settings.py`
   系统初始化与设置总览位置
-- `support/files/catalog.py`、`support/files/uploads.py`、`support/files/parsing.py`、`support/files/deletion.py`
+- `ingest/files/catalog.py`、`ingest/files/uploads.py`、`ingest/files/parsing.py`、`ingest/files/deletion.py`
   文件模块按用例拆分后的位置
 - `profile/pipeline/lib/`
   Profile 的掌握度、复习调度、画像摘要与报告建议 helper 落点

@@ -20,7 +20,7 @@ from app.workflows.digest.docgen.lib.models import (
     clean_string_list,
 )
 from app.workflows.digest.docgen.lib.quality import evidence_support_score
-from app.workflows.digest.docgen.prompts import build_chapter_review_messages
+from app.workflows.digest.docgen.prompts.chapter_review import build_chapter_review_messages
 
 
 def _coverage(markdown: str, targets: list[str]) -> tuple[float, list[str]]:

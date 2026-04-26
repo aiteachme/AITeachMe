@@ -1,36 +1,6 @@
-"""DocGen top-level graph nodes."""
+"""DocGen graph node modules.
 
-from .load_context import build_load_context_node
-from .prepare_global_seed import build_prepare_global_seed_node
-from .generate_cover import build_generate_cover_node
-from .lock_titles_for_chapters import build_lock_titles_for_chapters_node
-from .confirm_and_seed_backbone import build_confirm_and_seed_backbone_node
-from .build_document_backbone import build_document_backbone_node
-from .build_chapter_execution_briefs import build_chapter_execution_briefs_node
-from .assemble_chapter_tasks import build_assemble_chapter_tasks_node
-from .generate_chapters import build_generate_chapters_node
-from .enhance_chapters import build_enhance_chapters_node
-from .review_content import build_document_consistency_review_node, build_review_chapter_node
-from .repair_or_route import build_repair_or_route_node
-from .merge_review import build_merge_review_node
-from .sync_locked_titles import build_sync_locked_titles_node
-from .publish_document import build_publish_document_node
+Import node builders from their concrete modules to keep graph dependencies explicit.
+"""
 
-__all__ = [
-    "build_load_context_node",
-    "build_prepare_global_seed_node",
-    "build_generate_cover_node",
-    "build_lock_titles_for_chapters_node",
-    "build_confirm_and_seed_backbone_node",
-    "build_document_backbone_node",
-    "build_chapter_execution_briefs_node",
-    "build_assemble_chapter_tasks_node",
-    "build_generate_chapters_node",
-    "build_enhance_chapters_node",
-    "build_review_chapter_node",
-    "build_document_consistency_review_node",
-    "build_repair_or_route_node",
-    "build_merge_review_node",
-    "build_sync_locked_titles_node",
-    "build_publish_document_node",
-]
+__all__: list[str] = []

@@ -27,7 +27,7 @@ RawFile
 上传入口：
 
 - `backend/app/api/files.py`
-- `backend/app/workflows/support/files/uploads.py`
+- `backend/app/workflows/ingest/files/uploads.py`
 
 解析入口：
 
@@ -46,12 +46,17 @@ RawFile
 workflows/ingest/
   __init__.py
   README.md
+  files/
+    catalog.py
+    uploads.py
+    parsing.py
+    deletion.py
   fast_parse/
     graph.py
     state.py
     nodes/
     lib/
-      runtime.py
+      runtime_helpers.py
       enhance.py
       recovery.py
   common/

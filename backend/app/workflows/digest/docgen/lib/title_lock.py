@@ -13,7 +13,7 @@ from app.shared.infra.llm_support import acompletion_with_fallback
 from app.workflows.digest.docgen.lib.defaults import DEFAULT_DOCGEN_TITLE_LOCK_PARALLELISM
 from app.workflows.digest.docgen.lib.model_policy import DocGenModelStep, docgen_completion_kwargs_with_metadata
 from app.workflows.digest.docgen.lib.models import LockedChapterTitle, clean_text
-from app.workflows.digest.docgen.prompts import build_title_lock_messages
+from app.workflows.digest.docgen.prompts.title_lock import build_title_lock_messages
 
 logger = structlog.get_logger(__name__)
 

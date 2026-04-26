@@ -30,7 +30,7 @@ from app.schemas.knowledge import (
     KnowledgeUnitRelationsRequest,
     KnowledgeUnitResponse,
 )
-from app.workflows.support.knowledge_graph import (
+from app.workflows.digest.kg_doc_sync import (
     explain_relation_path,
     find_knowledge_path,
     get_chunk_context,
@@ -228,4 +228,3 @@ async def chunk_context(
     normalized = normalize_subject_slug(subject)
     get_subject_record(session, normalized, owner_user_id=user.user_id)
     return ok_response(get_chunk_context(session, subject=normalized, chunk_id=body.chunk_id))
-

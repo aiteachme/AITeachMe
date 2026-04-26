@@ -18,6 +18,7 @@ from app.shared.infra.workflow import workflow_tracer
 from app.shared.infra.workflow.context import WorkflowContext, create_langgraph_dev_context
 from app.shared.infra.workflow.result import WorkflowError, WorkflowResult
 from app.shared.infra.workflow.runtime import run_state_graph
+from app.workflows.digest.common.node_tracing import named_route, node_metadata, traced_digest_node
 from app.workflows.digest.common.runtime_config import get_teaching_runtime_config
 from app.workflows.digest.planner.lib.store import (
     mark_planner_session_cancelled,
@@ -33,11 +34,15 @@ from app.workflows.digest.planner.lib.steps import (
     STEP_SAVE_PLAN,
     STEP_UNDERSTAND_GOAL,
 )
-from app.workflows.digest.planner.nodes import (
-    build_generate_subject_name_node,
-    build_load_planner_materials_node,
+from app.workflows.digest.planner.nodes.generate_subject_name import build_generate_subject_name_node
+from app.workflows.digest.planner.nodes.load_planner_materials import build_load_planner_materials_node
+from app.workflows.digest.planner.nodes.normalize_and_persist_plan import (
     build_normalize_and_persist_plan_node,
+)
+from app.workflows.digest.planner.nodes.stream_and_parse_plan_draft import (
     build_stream_and_parse_plan_draft_node,
+)
+from app.workflows.digest.planner.nodes.stream_brief_and_extract_intent import (
     build_stream_brief_and_extract_intent_node,
 )
 from app.workflows.digest.planner.state import (
@@ -181,33 +186,22 @@ def _require_success_state(result: WorkflowResult[BuildPlannerState]) -> BuildPl
 
 def _trace_planner_node(trace, step: str, handler, *, timing_field: str):
     details = NODE_TRACE_DETAILS[step]
-    return trace.node(
-        handler,
-        name=STEP_DISPLAY_NAMES[step],
-        description=str(details["description"]),
+    return traced_digest_node(
+        trace,
+        node_key=step,
+        display_name=STEP_DISPLAY_NAMES[step],
+        details=details,
+        handler=handler,
         timing_field=timing_field,
-        input_keys=list(details.get("input_keys") or []),
-        output_keys=list(details.get("output_keys") or []),
-        metadata=_langgraph_node_metadata(step),
     )
 
 
 def _langgraph_node_metadata(step: str) -> dict[str, object]:
-    details = NODE_TRACE_DETAILS[step]
-    metadata: dict[str, object] = {
-        "node_key": step,
-        "node_display_name": STEP_DISPLAY_NAMES[step],
-        "node_description": str(details["description"]),
-        "reads": list(details.get("reads") or []),
-        "writes": list(details.get("writes") or []),
-        "state_inputs": list(details.get("input_keys") or []),
-        "state_outputs": list(details.get("output_keys") or []),
-    }
-    for key in ("fanout", "fanin", "routing"):
-        value = details.get(key)
-        if value:
-            metadata[key] = str(value)
-    return metadata
+    return node_metadata(
+        node_key=step,
+        display_name=STEP_DISPLAY_NAMES[step],
+        details=NODE_TRACE_DETAILS[step],
+    )
 
 
 def build_planner_graph(*, context: WorkflowContext) -> StateGraph:
@@ -298,8 +292,7 @@ def route_after_step_for_trace(state: BuildPlannerState) -> str:
     return route_after_step(state)
 
 
-route_after_step_for_trace.__name__ = "检查是否继续"
-route_after_step_for_trace.__qualname__ = "检查是否继续"
+route_after_step_for_trace = named_route(route_after_step_for_trace, "检查是否继续")
 
 
 def create_planner_initial_state(

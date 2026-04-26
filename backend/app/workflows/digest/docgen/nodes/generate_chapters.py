@@ -15,7 +15,8 @@ from app.shared.infra.knowledge.build_store import (
 from app.shared.infra.workflow.live_stream import publish_workflow_stream_event
 from app.utils.time import utcnow
 from app.shared.infra.workflow.context import WorkflowContext
-from app.workflows.digest.docgen.lib import DocGenChapterContextRuntime, DocGenWriterRuntime
+from app.workflows.digest.docgen.lib.chapter_context import DocGenChapterContextRuntime
+from app.workflows.digest.docgen.lib.writer import DocGenWriterRuntime
 from app.workflows.digest.docgen.lib.chapter_planning import build_fallback_chapter_markdown
 from app.workflows.digest.docgen.lib.chapter_revision import critique_chapter, maybe_rewrite_chapter
 from app.workflows.digest.docgen.lib.models import (

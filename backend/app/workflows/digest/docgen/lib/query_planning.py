@@ -9,9 +9,9 @@ from pydantic import BaseModel, Field
 
 from app.shared.infra.llm_support import acompletion_with_fallback
 from app.workflows.digest.docgen.lib.model_policy import DocGenModelStep, docgen_completion_kwargs_with_metadata
-from app.workflows.digest.docgen.prompts import (
-    build_docgen_sub_query_messages,
+from app.workflows.digest.docgen.prompts.generation import (
     build_docgen_gap_query_messages,
+    build_docgen_sub_query_messages,
 )
 
 EDUCATION_SITE_FILTERS: dict[str, list[str]] = {

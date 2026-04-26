@@ -11,7 +11,7 @@ from app.shared.infra.llm_support import acompletion_with_fallback
 from app.workflows.digest.docgen.lib.model_policy import DocGenModelStep, docgen_completion_kwargs_with_metadata
 from app.workflows.digest.docgen.lib.models import DocGenIntentProfile
 from app.workflows.digest.docgen.mode_profiles import is_sprint_docgen_mode
-from app.workflows.digest.docgen.prompts import build_intent_core_messages
+from app.workflows.digest.docgen.prompts.intent import build_intent_core_messages
 
 logger = structlog.get_logger(__name__)
 

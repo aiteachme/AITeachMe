@@ -1,4 +1,4 @@
-"""Knowledge docs API routes."""
+﻿"""Knowledge docs API routes."""
 
 from __future__ import annotations
 
@@ -46,7 +46,7 @@ from app.workflows.digest.docgen import (
     run_docgen_background,
     trigger_docgen_build,
 )
-from app.workflows.support.knowledge_graph import (
+from app.workflows.digest.kg_doc_sync import (
     get_knowledge_overview,
 )
 from app.workflows.support.subjects import get_subject_record

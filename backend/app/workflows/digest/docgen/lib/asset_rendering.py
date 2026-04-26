@@ -7,7 +7,7 @@ import re
 from app.shared.infra.execution import BaseTracedExecution, TracedExecutionContext, TracedExecutionResult
 from app.workflows.digest.docgen.lib.asset_requests import replace_asset_requests, strip_asset_requests
 from app.workflows.digest.docgen.lib.model_policy import DocGenModelStep, docgen_completion_kwargs_with_metadata
-from app.workflows.digest.docgen.prompts import build_docgen_mermaid_prompt
+from app.workflows.digest.docgen.prompts.generation import build_docgen_mermaid_prompt
 
 _MERMAID_LANG_PATTERN = (
     r"mermaid|mindmap|graph|flowchart|sequenceDiagram|classDiagram|"

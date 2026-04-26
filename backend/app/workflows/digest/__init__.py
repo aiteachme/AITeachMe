@@ -19,7 +19,7 @@ _ATTR_TO_MODULE = {
     "build_docgen_graph": "app.workflows.digest.docgen",
     "create_docgen_initial_state": "app.workflows.digest.docgen",
     "run_docgen_workflow": "app.workflows.digest.docgen",
-    "run_graph_docs_sync_workflow": "app.workflows.digest.kg_docs_sync",
+    "run_graph_docs_sync_workflow": "app.workflows.digest.kg_doc_sync",
 }
 
 

@@ -13,7 +13,7 @@ from typing import Any
 import structlog
 from sqlmodel import Session, select
 
-from app.models import ChatMessage, ChatSession, IngestStatus, TaskStatus
+from app.models import ChatMessage, ChatSession
 from app.models.build_planner import ConfirmedBuildPlan
 from app.models.raw_file import RawFile
 from app.models.subject import Subject
@@ -48,6 +48,7 @@ from app.shared.infra.exceptions import (
 )
 from app.utils.presenters import require_id, require_uid
 from app.utils.time import utcnow
+from app.workflows.digest.common.file_status import is_markdown_ready_for_digest
 from app.workflows.digest.common.runtime_config import get_teaching_runtime_config
 from app.workflows.digest.planner.lib.plans import normalize_planner_payload
 from app.workflows.digest.planner.lib.steps import STEP_TIMING_FIELDS
@@ -56,20 +57,6 @@ from app.workflows.support.subjects.icons import normalize_subject_icon_key, set
 logger = structlog.get_logger(__name__)
 PLANNER_CHAT_SOURCE = "build_planner"
 _AUTO_TITLE_PLACEHOLDERS = {"", "untitled subject", "新学科", "无标题", "未命名", "未命名学科"}
-
-
-def _markdown_ready(raw_file: RawFile) -> bool:
-    return (
-        raw_file.status == TaskStatus.COMPLETED.value
-        and raw_file.ingest_status
-        in {
-            IngestStatus.FAST_PARSED.value,
-            IngestStatus.ENHANCING.value,
-            IngestStatus.READY_FOR_DIGEST.value,
-            IngestStatus.ENHANCE_FAILED.value,
-        }
-        and bool((raw_file.parsed_markdown or "").strip())
-    )
 
 
 def _select_planner_files(
@@ -91,7 +78,7 @@ def _select_planner_files(
 
 
 def _select_planner_workflow_files(raw_files: list[RawFile]) -> list[RawFile]:
-    ready = [item for item in raw_files if _markdown_ready(item)]
+    ready = [item for item in raw_files if is_markdown_ready_for_digest(item)]
     return ready or raw_files
 
 
@@ -553,15 +540,20 @@ def _render_final_plan_markdown(plan_payload: dict[str, Any]) -> str:
     if plan_steps:
         lines.extend(["", "## 计划步骤"])
         lines.extend(f"{index}. {item}" for index, item in enumerate(plan_steps, start=1))
+    chapter_lines = []
+    for index, chapter in enumerate(chapters, start=1):
+        title = str(chapter.get("title") or "").strip()
+        required_text = "；".join(
+            str(item).strip()
+            for item in list(chapter.get("required_elements") or [])[:3]
+            if str(item).strip()
+        )
+        chapter_lines.append(f"{index}. {title}：{required_text}")
     lines.extend(
         [
             "",
             "## 章节安排",
-            *[
-                f"{index}. {str(chapter.get('title') or '').strip()}："
-                f"{'；'.join(str(item).strip() for item in list(chapter.get('required_elements') or [])[:3] if str(item).strip())}"
-                for index, chapter in enumerate(chapters, start=1)
-            ],
+            *chapter_lines,
         ]
     )
     return "\n".join(lines).strip()
@@ -668,7 +660,12 @@ def prepare_planner_run(state: Mapping[str, Any]) -> dict[str, Any]:
             selected_file_ids = _file_ids(planner_files)
             workflow_file_ids = _file_ids(workflow_files)
             selected_file_uids = _file_uids(planner_files)
-            session_title = str(state.get("session_title") or user_prompt or getattr(subject_row, "name", "") or subject_slug)
+            session_title = str(
+                state.get("session_title")
+                or user_prompt
+                or getattr(subject_row, "name", "")
+                or subject_slug
+            )
             record = create_chat_session(
                 session,
                 subject=subject_slug,
@@ -1004,7 +1001,10 @@ def confirm_planner_session(
             plan_id=str(meta.get("confirmed_plan_id")),
             user_id=user_id,
         )
-    if current_confirmed is not None and _normalized_plan_payload(dict(current_confirmed.plan_json or {})) == plan_payload:
+    if (
+        current_confirmed is not None
+        and _normalized_plan_payload(dict(current_confirmed.plan_json or {})) == plan_payload
+    ):
         confirmed = current_confirmed
     else:
         confirmed = create_confirmed_plan(
@@ -1078,7 +1078,11 @@ def get_latest_planner_session(
     return _planner_session_response(
         record,
         subject=subject.slug,
-        selected_file_uids=_file_uids_from_ids(session, subject=subject.slug, file_ids=_planner_selected_file_ids(record)),
+        selected_file_uids=_file_uids_from_ids(
+            session,
+            subject=subject.slug,
+            file_ids=_planner_selected_file_ids(record),
+        ),
         plan=plan_payload,
         turns=turns,
     )

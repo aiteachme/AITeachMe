@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import json
 from datetime import datetime, timezone
@@ -80,7 +80,7 @@ def test_aggregate_runtime_supports_graph_only_builds() -> None:
             build_group_id="group-3",
             build_kind="graph",
             status="running",
-            stage="graph_file_ingest",
+            stage="graph_docs_sync",
             progress_pct=42,
         ),
     )
@@ -89,7 +89,7 @@ def test_aggregate_runtime_supports_graph_only_builds() -> None:
 
     assert aggregate is not None
     assert aggregate.status == "running"
-    assert aggregate.stage == "graph_file_ingest"
+    assert aggregate.stage == "graph_docs_sync"
     assert aggregate.progress_pct >= 42
 
 
@@ -100,6 +100,6 @@ def test_langgraph_config_uses_current_digest_graph_entries() -> None:
 
     assert "digest_kg" not in graphs
     assert "kg_file_ingest" not in graphs
-    assert graphs["kg_docs_sync"]["path"].endswith(
-        "app/workflows/digest/kg_docs_sync/graph.py:get_langgraph_dev_kg_docs_sync_graph"
+    assert graphs["kg_doc_sync"]["path"].endswith(
+        "app/workflows/digest/kg_doc_sync/graph.py:get_langgraph_dev_kg_doc_sync_graph"
     )

@@ -6,7 +6,7 @@
 
 ## 目标
 
-- 放置 `auth`、`files`、`subjects`、`system`、`export_import` 这类非引擎业务模块
+- 放置 `auth`、`subjects`、`system`、`export_import` 这类非引擎业务模块
 - 避免把这类逻辑重新塞回 `api/` 或 `shared.infra/`
 - 与 `ingest / digest / interact / examine / profile` 保持平级，但不强制使用 LangGraph
 
@@ -24,7 +24,7 @@ workflows/support/<module>/
 
 推荐做法：
 
-- 按用例或链路命名文件，例如 `catalog.py`、`uploads.py`、`deletion.py`
+- 按用例或链路命名文件，例如 `catalog.py`、`sessions.py`、`settings.py`、`deletion.py`
 - 没有真实调用方的旧兼容壳直接删除，不保留空门面
 
 ## 当前已落地模块
@@ -37,10 +37,6 @@ workflows/support/<module>/
   学科级课程包导入导出的 canonical 代码位置，承接原 `app.services.export_import_service`。
 - `export_import/exports.py`、`export_import/imports.py`、`export_import/courses.py`
   当前课程包模块的 canonical 子入口。
-- `files/`
-  文件上传、列表、删除与解析触发的 canonical 代码位置，承接原 `app.services.file_service`。
-- `files/catalog.py`、`files/uploads.py`、`files/parsing.py`、`files/deletion.py`
-  当前文件模块的 canonical 子入口。
 - `system/`
   系统初始化与运行时信息查询的 canonical 代码位置，承接原 `app.services.system_service`。
 - `system/init.py`、`system/settings.py`
@@ -53,3 +49,5 @@ workflows/support/<module>/
 ## 一句话总结
 
 `support/` 不是新的杂项目录，而是 workflows 单层化之后承接“非引擎业务用例”的正式区域。
+
+文件上传、列表、删除与解析触发已经收口到 `workflows/ingest/files/`，因为它们直接管理 Ingest 的 `RawFile` 生命周期。

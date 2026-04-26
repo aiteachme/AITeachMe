@@ -70,7 +70,7 @@ shared.infra -> shared.kernel
 入口：
 
 - `api/files.py`
-- `workflows/support/files/`
+- `workflows/ingest/files/`
 - `workflows/ingest/fast_parse/`
 
 职责：
@@ -87,7 +87,7 @@ shared.infra -> shared.kernel
 - `api/knowledge_docs.py`
 - `workflows/digest/planner/`
 - `workflows/digest/docgen/`
-- `workflows/digest/kg_docs_sync/`
+- `workflows/digest/kg_doc_sync/`
 - `workflows/support/knowledge_graph/`
 
 职责：

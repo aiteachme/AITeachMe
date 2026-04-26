@@ -14,7 +14,7 @@ from app.workflows.digest.common.pedagogy import (
     ensure_chapter_learning_scaffold,
     resolve_effective_chapter_title,
 )
-from app.workflows.digest.docgen.prompts import (
+from app.workflows.digest.docgen.prompts.generation import (
     build_docgen_heading_repair_messages,
     build_docgen_writer_messages,
 )

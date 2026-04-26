@@ -1,27 +1,6 @@
-﻿"""Planner lane prompts."""
+"""Planner prompt modules.
 
-from app.workflows.digest.planner.prompts.build_plan_composer import (
-    PLAN_JSON_END_MARKER,
-    PLAN_JSON_MARKER,
-    build_plan_composer_messages,
-)
-from app.workflows.digest.planner.prompts.examples import (
-    render_composer_examples,
-    render_plan_intent_examples,
-    render_plan_sketch_examples,
-)
-from app.workflows.digest.planner.prompts.plan_intent import build_plan_intent_messages
-from app.workflows.digest.planner.prompts.plan_sketch import build_plan_sketch_prompt
-from app.workflows.digest.planner.prompts.subject_name import build_subject_name_prompt
+Import prompt builders from their concrete modules to avoid package-level fan-in.
+"""
 
-__all__ = [
-    "PLAN_JSON_END_MARKER",
-    "PLAN_JSON_MARKER",
-    "build_plan_intent_messages",
-    "build_plan_composer_messages",
-    "build_plan_sketch_prompt",
-    "build_subject_name_prompt",
-    "render_composer_examples",
-    "render_plan_intent_examples",
-    "render_plan_sketch_examples",
-]
+__all__: list[str] = []

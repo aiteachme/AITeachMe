@@ -15,7 +15,7 @@ from app.repositories.files_repo import get_raw_file_by_uid_for_user
 from app.schemas.common import ApiResponse, ok_response
 from app.schemas.files import FileDeleteData, FileDeleteRequest, FilesData, FilesUploadData
 from app.shared.infra.storage import get_content_store
-from app.workflows.support.files import (
+from app.workflows.ingest.files import (
     delete_user_files,
     list_user_files,
     run_parse_files_background,

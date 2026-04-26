@@ -1,6 +1,6 @@
-# Digest 模块说明
+﻿# Digest 模块说明
 
-最后更新：2026-04-17
+最后更新：2026-04-27
 
 `digest/` 负责把原始学习材料组织成可教学、可生成、可追踪的知识产物。
 
@@ -13,8 +13,7 @@ digest/
   common/
   planner/
   docgen/
-  kg_file_ingest/          # legacy/debug-only; only extractor utilities are still reused
-  kg_docs_sync/
+  kg_doc_sync/
 ```
 
 ## 各目录做什么
@@ -23,15 +22,11 @@ digest/
   负责根据文件内容和历史对话生成 confirmed plan
 - `docgen/`
   负责根据 confirmed plan 生成知识文档
-- `kg_file_ingest/`
-  历史调试链路，不再作为产品图谱构建入口；短期仅保留 extractor 复用，后续迁出 extractor 后删除旧 workflow 壳
-- `kg_docs_sync/`
+- `kg_doc_sync/`
   负责知识文档和知识图谱的正式同步链路
 - `common/`
-  放跨 lane 共用能力，例如 events、exports、contracts、prepare、material profile、metrics、runtime config、pedagogy
+  放跨 lane 共用能力，例如 events、exports、contracts、prepare、material profile、metrics、runtime config、file status、pedagogy
   以及 subject 级知识产物清理 `cleanup.py`
-- `workflows/support/knowledge_graph/`
-  图谱触发、状态更新、总览和查询的 API-facing 用例；不属于 `digest/` 下的新 lane
 
 ## 当前公开入口
 
@@ -52,7 +47,9 @@ from app.workflows.digest.planner import (
 - 新的 API-facing 用例必须进入具体 lane 或 `common/`
 - 新 prompt 放各自链路 `prompts/`
 - 新 helper 放各自链路 `lib/`
-- 跨链路共享能力统一放 `common/`
+- 跨 digest lane 共享能力统一放 `common/`；KG 图谱同步、查询、总览和清理都归入 `kg_doc_sync/`
+- `common/__init__.py` 不做 re-export；跨模块引用时按职责从 `common.models`、`common.prepare` 等具体文件导入
+- lane 内部的 `lib/__init__.py`、`nodes/__init__.py`、`prompts/__init__.py` 不做导出壳；graph 和节点代码从具体模块导入
 - 各链路自己的构建摘要放在对应链路 `lib/reporting.py`
 - 不要再新增顶层伪链路，例如 `runtime.py`、`observability.py`
 
@@ -61,9 +58,9 @@ from app.workflows.digest.planner import (
 当前 digest 的 canonical 主线是：
 
 - `planner -> docgen`
-- `docgen publish -> kg_docs_sync`
+- `docgen publish -> kg_doc_sync`
 
-`kg_file_ingest` 只保留为 legacy/debug-only 包；不要从上层继续调用它的 workflow。后续删除顺序是先迁出
-`lib/extractor.py` 到中性包，再删除旧 workflow 壳。
+旧 `kg_file_ingest` 调试链路已经删除。知识图谱同步只保留 `kg_doc_sync`，
+图谱抽取、候选合并、增量写库等主体实现位于 `kg_doc_sync/lib/`。
 
 如果要看具体编排，优先进入各链路下的 `graph.py`、`state.py`；API-facing 构建入口优先看对应 lane 的 `lib/*lifecycle*.py`
