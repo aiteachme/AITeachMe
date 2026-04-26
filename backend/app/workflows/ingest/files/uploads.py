@@ -18,13 +18,11 @@ from app.shared.infra.storage import get_content_store
 from app.models import IngestStatus, RawFile, TaskStatus
 from app.repositories.files_repo import create_raw_file, delete_raw_file, link_raw_files_to_subject, update_raw_file
 from app.schemas.files import FilesUploadData
-from app.utils.path_helpers import (
-    build_temp_dir,
-)
+from app.utils.path_helpers import build_temp_dir
 from app.utils.presenters import require_id
 from app.utils.subject import validate_subject
-from app.workflows.support.files.catalog import build_file_record
-from app.workflows.support.files.parsing import _start_parse_for_files
+from app.workflows.ingest.files.catalog import build_file_record
+from app.workflows.ingest.files.parsing import _start_parse_for_files
 
 
 SUPPORTED_UPLOAD_EXTENSIONS = frozenset({".txt", ".doc", ".docx", ".pdf", ".ppt", ".pptx", ".md"})

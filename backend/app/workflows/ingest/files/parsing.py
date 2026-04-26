@@ -7,7 +7,6 @@ import asyncio
 import structlog
 from sqlmodel import Session
 
-from app.shared.infra.settings import get_settings
 from app.shared.infra.exceptions import InvalidRawFileStateError
 from app.models import IngestStatus, RawFile, TaskStatus
 from app.repositories.files_repo import update_raw_file
@@ -17,7 +16,7 @@ from app.workflows.ingest.fast_parse.lib.lifecycle import (
     dispatch_enhancement_if_needed,
     mark_parse_workflow_failed,
 )
-from app.workflows.support.files.catalog import get_subject_files_or_raise, get_user_files_or_raise
+from app.workflows.ingest.files.catalog import get_subject_files_or_raise, get_user_files_or_raise
 from app.workflows.ingest.common.parsing.defaults import DEFAULT_PARSE_CONCURRENCY
 
 logger = structlog.get_logger()

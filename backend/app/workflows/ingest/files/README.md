@@ -1,6 +1,6 @@
-# Files Support
+# Ingest Files
 
-`workflows/support/files/` is the canonical home for file upload, listing, deletion, and parse-trigger use cases.
+`workflows/ingest/files/` is the canonical home for file upload, listing, deletion, and parse-trigger use cases.
 
 ## Responsibilities
 
@@ -11,8 +11,8 @@
 
 ## Notes
 
-- This module is a support workflow, not a LangGraph engine lane.
-- Long-running parsing still belongs to `workflows/ingest`; this module only coordinates the API-facing command.
+- This module is part of the Ingest engine, but it is not a LangGraph lane.
+- Long-running parsing still belongs to `workflows/ingest/fast_parse`; this module coordinates the API-facing file commands.
 - Persisted upload artifacts are keyed by stable file uid plus a sanitized filename stem:
   `users/{user}/files/{file_uid}__{safe_stem}/raw.ext`, `markdown.md`, and `assets/`.
   The database keeps the original filename for display; storage keys should not use bare auto-increment ids.

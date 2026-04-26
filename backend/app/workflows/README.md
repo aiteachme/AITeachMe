@@ -1,4 +1,4 @@
-﻿# Workflows 说明
+# Workflows 说明
 
 最后更新：2026-04-19
 
@@ -425,7 +425,7 @@ planner -> docgen -> kg_doc_sync
   基于知识图谱的总览用例
 - `support/system/init.py`、`support/system/settings.py`
   系统初始化与设置总览位置
-- `support/files/catalog.py`、`support/files/uploads.py`、`support/files/parsing.py`、`support/files/deletion.py`
+- `ingest/files/catalog.py`、`ingest/files/uploads.py`、`ingest/files/parsing.py`、`ingest/files/deletion.py`
   文件模块按用例拆分后的位置
 - `profile/pipeline/lib/`
   Profile 的掌握度、复习调度、画像摘要与报告建议 helper 落点

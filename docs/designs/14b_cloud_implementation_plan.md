@@ -398,7 +398,7 @@ def is_vec_ready() -> bool:
 
 ### Step 3.1 — 改造文件上传用例
 
-**文件**: `backend/app/workflows/support/files/uploads.py`
+**文件**: `backend/app/workflows/ingest/files/uploads.py`
 
 当前流程：`temp写入 → shutil.move → 更新DB路径`
 
@@ -444,7 +444,7 @@ async def save_uploaded_file(subject, filename, content, ...):
 
 ### Step 3.2 — 改造文件读取/下载
 
-**文件**: `backend/app/workflows/support/files/catalog.py` / `uploads.py` / `deletion.py`
+**文件**: `backend/app/workflows/ingest/files/catalog.py` / `uploads.py` / `deletion.py`
 
 需要新增一个统一的文件读取方法：
 
@@ -833,7 +833,7 @@ Render 创建 PostgreSQL 后：
 | `backend/app/utils/docgen_store.py` | 文档读写走 store 抽象 |
 | `backend/app/models/raw_file.py` | storage_key 在 cloud 模式下的语义 |
 | `backend/app/repositories/knowledge/knowledge_repo.py` | 向量写入/检索按方言分支 |
-| `backend/app/workflows/support/files/uploads.py` | 文件上传走 store |
+| `backend/app/workflows/ingest/files/uploads.py` | 文件上传走 store |
 | `backend/app/workflows/support/subjects/lib/deletion.py` | 删除走 store |
 | `backend/app/workflows/support/export_import/exports.py` | 导出导入走 store |
 | `backend/app/main.py` | 静态挂载条件化 + init_db 适配 |

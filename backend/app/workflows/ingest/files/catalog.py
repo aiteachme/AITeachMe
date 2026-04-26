@@ -26,7 +26,6 @@ from app.repositories.files_repo import (
     raw_file_belongs_to_subject,
 )
 from app.schemas.files import FileAssetItem, FileRecord, FilesData
-from app.utils.path_helpers import build_asset_name_prefix
 from app.utils.presenters import require_id, require_uid
 
 
@@ -41,14 +40,6 @@ def _is_markdown_ready(raw_file: RawFile) -> bool:
             IngestStatus.ENHANCE_FAILED.value,
         }
         and bool((raw_file.parsed_markdown or "").strip())
-    )
-
-
-def _build_asset_name_prefix_for_raw_file(raw_file: RawFile) -> str:
-    return build_asset_name_prefix(
-        filename=raw_file.filename,
-        file_uid=require_uid(raw_file.uid, "RawFile.uid"),
-        file_id=require_id(raw_file.id, "RawFile.id"),
     )
 
 

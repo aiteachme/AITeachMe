@@ -28,6 +28,11 @@ Ingest 做的事就是：把上传的 PDF、Word、PPT、图片或文本先快�
 ingest/
   __init__.py
   README.md
+  files/
+    catalog.py
+    uploads.py
+    parsing.py
+    deletion.py
   fast_parse/
     graph.py
     state.py
@@ -42,6 +47,7 @@ ingest/
 说明：
 
 - `__init__.py` 只提供稳定导入面，不承载业务实现。
+- `files/` 承接上传、列表、删除和 parse 派发等 API-facing 文件用例。
 - `fast_parse/` 是 Phase 1 快速解析链路。
 - `fast_parse/graph.py` 是单文件 parse workflow 的真实入口，并负责统一 graph/state/node 的运行收口。
 - `fast_parse/lib/enhance.py` 承接 Phase 2 后台增强 worker。
@@ -60,11 +66,13 @@ ingest/
 
 ## 对外入口
 
-上层业务只应该调用模块稳定入口：
+解析图的稳定入口：
 
 ```python
 from app.workflows.ingest import run_parse_file_workflow
 ```
+
+上传、列表、删除和批量解析派发等 API-facing 文件用例从 `app.workflows.ingest.files` 导入。
 
 如果只看图结构，可以看：
 
@@ -75,18 +83,18 @@ from app.workflows.ingest import run_parse_file_workflow
 ```text
 前端上传文件
   -> api/files.py
-  -> workflows/support/files/uploads.py
+  -> workflows/ingest/files/uploads.py
   -> 保存 raw_file 记录与原始文件
   -> background_task_registry.spawn(run_parse_files_background)
   -> run_parse_file_workflow
   -> Phase 1 fast parse
-  -> support/files/parsing.py 按最终 state 必要时派发 Phase 2 deep enhance
+  -> ingest/files/parsing.py 按最终 state 必要时派发 Phase 2 deep enhance
   -> raw_file.ingest_status 进入 Digest 可消费态
 ```
 
 ## Phase 0：上传与排队
 
-入口在 `workflows/support/files/uploads.py`。
+入口在 `workflows/ingest/files/uploads.py`。
 
 1. `save_uploaded_file()` 读取上传内容，计算 SHA256，写入本地或对象存储。
 2. 创建 `RawFile` 记录：
@@ -223,7 +231,7 @@ Digest 当前允许消费以下状态：
 
 真实入口是 `fast_parse/lib/enhance.py::_run_deep_enhance_background()`。
 
-Phase 2 由 `support/files/parsing.py` 在 Phase 1 成功后按最终 state 派发。API 运行时优先进入 `background_task_registry`；脚本或非 API 调用场景仍保留 `_background_tasks` 兜底引用，避免 task 被回收。
+Phase 2 由 `ingest/files/parsing.py` 在 Phase 1 成功后按最终 state 派发。API 运行时优先进入 `background_task_registry`；脚本或非 API 调用场景仍保留 `_background_tasks` 兜底引用，避免 task 被回收。
 
 ### 1. 加载增强上下文
 

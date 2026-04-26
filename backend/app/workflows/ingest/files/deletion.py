@@ -8,7 +8,7 @@ from app.shared.infra.storage import get_content_store
 from app.repositories.files_repo import delete_raw_file, unlink_raw_files_from_subject
 from app.schemas.files import FileDeleteData
 from app.utils.presenters import require_uid
-from app.workflows.support.files.catalog import get_subject_files_by_uid_or_raise, get_user_files_by_uid_or_raise
+from app.workflows.ingest.files.catalog import get_subject_files_by_uid_or_raise, get_user_files_by_uid_or_raise
 
 
 async def delete_files(
