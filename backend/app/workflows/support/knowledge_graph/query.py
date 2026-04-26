@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import json
 from collections import deque
 
-from sqlmodel import Session
+from sqlmodel import Session, select
 
+from app.models.knowledge_doc import KnowledgeDocument
+from app.models.knowledge_graph_sync import KnowledgeGraphSourceRef, KnowledgeGraphSyncRun
 from app.shared.infra.exceptions import (
     KnowledgeChunkNotFoundError,
     KnowledgeUnitNotFoundError,
@@ -24,6 +27,7 @@ from app.schemas.knowledge import (
     KnowledgeRelationEvidenceItem,
     KnowledgeRelationExplanationResponse,
     KnowledgeRelationResponse,
+    KnowledgeGraphSourceRefResponse,
     KnowledgeSubgraphResponse,
     KnowledgeUnitDetailResponse,
     KnowledgeUnitResponse,
@@ -70,6 +74,77 @@ def _to_relation_response(session: Session, edge) -> KnowledgeRelationResponse:
         weight=edge.weight,
         confidence=edge.confidence,
     )
+
+
+def _json_int_list(raw: str | None) -> list[int]:
+    try:
+        payload = json.loads(raw or "[]")
+    except json.JSONDecodeError:
+        return []
+    if not isinstance(payload, list):
+        return []
+    cleaned: list[int] = []
+    seen: set[int] = set()
+    for item in payload:
+        try:
+            parsed = int(item)
+        except (TypeError, ValueError):
+            continue
+        if parsed <= 0 or parsed in seen:
+            continue
+        seen.add(parsed)
+        cleaned.append(parsed)
+    return cleaned
+
+
+def _list_source_refs_by_entity(
+    session: Session,
+    *,
+    subject: str,
+    entity_type: str,
+    entity_id: int,
+    limit: int = 12,
+) -> list[KnowledgeGraphSourceRefResponse]:
+    refs = list(
+        session.exec(
+            select(KnowledgeGraphSourceRef)
+            .where(
+                KnowledgeGraphSourceRef.subject == subject,
+                KnowledgeGraphSourceRef.entity_type == entity_type,
+                KnowledgeGraphSourceRef.entity_id == entity_id,
+            )
+            .order_by(KnowledgeGraphSourceRef.id.desc())
+            .limit(limit)
+        ).all()
+    )
+    responses: list[KnowledgeGraphSourceRefResponse] = []
+    for ref in refs:
+        sync_run = session.get(KnowledgeGraphSyncRun, ref.sync_run_id) if ref.sync_run_id is not None else None
+        doc = (
+            session.get(KnowledgeDocument, ref.knowledge_document_id)
+            if ref.knowledge_document_id is not None
+            else None
+        )
+        responses.append(
+            KnowledgeGraphSourceRefResponse(
+                id=ref.id or 0,
+                entity_type=ref.entity_type,
+                entity_id=ref.entity_id,
+                sync_run_id=ref.sync_run_id,
+                knowledge_document_id=ref.knowledge_document_id,
+                chapter_index=ref.chapter_index,
+                chapter_title=(doc.title if doc is not None else None),
+                doc_version_no=(int(sync_run.doc_version_no or 0) if sync_run is not None else 0),
+                graph_revision_no=(int(sync_run.graph_revision_no or 0) if sync_run is not None else 0),
+                source_kind=ref.source_kind,
+                anchor=ref.anchor,
+                source_file_ids=_json_int_list(ref.source_file_ids_json),
+                quote_text=ref.quote_text,
+                confidence=ref.confidence,
+                created_at=ref.created_at,
+            )
+        )
+    return responses
 
 
 def get_knowledge_units(
@@ -177,6 +252,12 @@ def get_knowledge_unit_detail(
         current_revision=current_rev,
         aliases=aliases,
         evidence=evidence,
+        source_refs=_list_source_refs_by_entity(
+            session,
+            subject=subject,
+            entity_type="unit",
+            entity_id=knowledge_unit_id,
+        ),
         incident_edges=incident_edges,
         created_at=node.created_at,
         updated_at=node.updated_at,

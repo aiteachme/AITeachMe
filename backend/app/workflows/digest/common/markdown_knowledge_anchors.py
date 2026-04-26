@@ -105,6 +105,11 @@ class MarkdownKnowledgeUnit:
     related: list[str] = field(default_factory=list)
     line_no: int = 0
     heading_level: int = 1
+    source_kind: str = "markdown"
+    knowledge_document_id: int | None = None
+    chapter_index: int = 0
+    source_file_ids: list[int] = field(default_factory=list)
+    quote_text: str = ""
 
 
 @dataclass(frozen=True)

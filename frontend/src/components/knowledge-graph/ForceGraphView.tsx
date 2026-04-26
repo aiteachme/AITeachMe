@@ -88,6 +88,7 @@ function NodeDetailSidebar({
   const aliases = data.aliases ?? [];
   const incidentEdges = data.incident_edges ?? [];
   const evidenceList = data.evidence ?? [];
+  const sourceRefs = data.source_refs ?? [];
 
   return (
     <div className="animate-in slide-in-from-right-4 space-y-4 duration-200">
@@ -155,6 +156,31 @@ function NodeDetailSidebar({
                 <span className="text-[10px] text-slate-400">{edge.edge_type}</span>
                 <ChevronRight className="h-3 w-3 text-slate-300" />
               </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {sourceRefs.length > 0 && (
+        <div>
+          <div className="mb-2 flex items-center gap-1.5 text-xs font-medium text-slate-500">
+            <FileText className="h-3 w-3" />图谱来源 ({sourceRefs.length})
+          </div>
+          <div className="max-h-40 space-y-1.5 overflow-y-auto">
+            {sourceRefs.map((ref: { id: number; chapter_index?: number; chapter_title?: string | null; doc_version_no?: number; source_kind?: string; source_file_ids?: number[]; quote_text?: string }) => (
+              <div key={ref.id} className="rounded border border-slate-100 bg-slate-50 p-2 text-xs text-slate-600">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="truncate font-medium text-slate-700">
+                    {ref.chapter_title || (ref.chapter_index ? `第 ${ref.chapter_index} 章` : "知识文档")}
+                  </span>
+                  {ref.doc_version_no ? <span className="shrink-0 text-[10px] text-slate-400">v{ref.doc_version_no}</span> : null}
+                </div>
+                <div className="mt-1 flex flex-wrap gap-1 text-[10px] text-slate-400">
+                  {ref.source_kind ? <span>{ref.source_kind}</span> : null}
+                  {ref.source_file_ids?.length ? <span>资料 {ref.source_file_ids.join(", ")}</span> : null}
+                </div>
+                {ref.quote_text ? <p className="mt-1 line-clamp-2 text-slate-500">{ref.quote_text}</p> : null}
+              </div>
             ))}
           </div>
         </div>

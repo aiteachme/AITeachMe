@@ -20,7 +20,7 @@ from app.shared.infra.knowledge.build_store import (
 from app.workflows.digest.kg_file_ingest.lib.job_lifecycle import cleanup_pending_by_subject
 from app.workflows.digest.kg_docs_sync.inputs import (
     extract_doc_chapter_metadatas,
-    load_knowledge_doc_markdown,
+    load_knowledge_doc_sync_input,
     resolve_graph_input_paths,
 )
 
@@ -88,9 +88,11 @@ async def run_graph_docs_sync_after_doc_build(
         lane="graph",
         extra_metadata={"build_group_id": build_group_id},
     ) as trace_run:
-        knowledge_doc_markdown, knowledge_doc_source = load_knowledge_doc_markdown(subject)
+        sync_input = load_knowledge_doc_sync_input(subject)
+        knowledge_doc_markdown = sync_input.markdown
+        knowledge_doc_source = sync_input.source
         doc_chapter_metadatas = extract_doc_chapter_metadatas(knowledge_doc_markdown)
-        doc_version_no = _current_doc_version_no(subject)
+        doc_version_no = int(sync_input.structured_context.get("doc_version_no") or _current_doc_version_no(subject))
         if not knowledge_doc_markdown.strip():
             skipped_metrics = {
                 "knowledge_doc_source": knowledge_doc_source,
@@ -106,6 +108,12 @@ async def run_graph_docs_sync_after_doc_build(
                 "doc_sync_fallback_section_count": 0,
                 "doc_sync_question_fallback_section_count": 0,
                 "doc_sync_topic_fallback_section_count": 0,
+                "source_ref_count": 0,
+                "backbone_unit_count": 0,
+                "backbone_edge_count": 0,
+                "stable_anchor_count": 0,
+                "deprecated_unit_count": 0,
+                "deprecated_edge_count": 0,
             }
             _end_trace_run(trace_run, {"status": "skipped", **skipped_metrics})
             return skipped_metrics
@@ -129,6 +137,12 @@ async def run_graph_docs_sync_after_doc_build(
                 "knowledge_doc_source": knowledge_doc_source,
                 "knowledge_doc_chapter_count": len(doc_chapter_metadatas),
                 "last_synced_doc_version_no": doc_version_no,
+                "source_ref_count": 0,
+                "backbone_unit_count": 0,
+                "backbone_edge_count": 0,
+                "stable_anchor_count": 0,
+                "deprecated_unit_count": 0,
+                "deprecated_edge_count": 0,
             },
             current_stage_description="正在从最新知识文档同步知识点、知识图像和关系。",
         )
@@ -137,6 +151,7 @@ async def run_graph_docs_sync_after_doc_build(
                 subject=subject,
                 markdown=knowledge_doc_markdown,
                 build_session_id=build_session_id,
+                structured_context=sync_input.structured_context,
             )
         if sync_result.failed:
             _end_trace_run(trace_run, {"status": "failed", "error": sync_result.error.detail})
@@ -157,6 +172,12 @@ async def run_graph_docs_sync_after_doc_build(
             "doc_sync_fallback_section_count": sync_report.fallback_section_count,
             "doc_sync_question_fallback_section_count": sync_report.question_fallback_section_count,
             "doc_sync_topic_fallback_section_count": sync_report.topic_fallback_section_count,
+            "source_ref_count": sync_report.source_ref_count,
+            "backbone_unit_count": sync_report.backbone_unit_count,
+            "backbone_edge_count": sync_report.backbone_edge_count,
+            "stable_anchor_count": sync_report.stable_anchor_count,
+            "deprecated_unit_count": sync_report.deprecated_unit_count,
+            "deprecated_edge_count": sync_report.deprecated_edge_count,
         }
         _end_trace_run(trace_run, {"status": "completed", **completed_metrics})
         return completed_metrics

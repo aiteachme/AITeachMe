@@ -704,6 +704,12 @@ async def run_docgen_background(*, subject: str, file_ids: list[int], prompt: st
             "elapsed_ms": 0,
             "revision_no": 0,
             "last_synced_doc_version_no": 0,
+            "source_ref_count": 0,
+            "backbone_unit_count": 0,
+            "backbone_edge_count": 0,
+            "stable_anchor_count": 0,
+            "deprecated_unit_count": 0,
+            "deprecated_edge_count": 0,
         }
         if sync_graph_after_docgen:
             try:

@@ -154,6 +154,7 @@ export * from './knowledgeBuildPreviewResponseDiscoveredNodeTypes';
 export * from './knowledgeBuildRuntimeResponse';
 export * from './knowledgeBuildStatusResponse';
 export * from './knowledgeGraphBuildMetricsResponse';
+export * from './knowledgeGraphSourceRefResponse';
 export * from './knowledgeOverviewRequest';
 export * from './knowledgeOverviewResponse';
 export * from './knowledgeOverviewStats';

@@ -8,6 +8,7 @@
 import type { AliasItem } from './aliasItem';
 import type { EvidenceSummary } from './evidenceSummary';
 import type { IncidentEdgeItem } from './incidentEdgeItem';
+import type { KnowledgeGraphSourceRefResponse } from './knowledgeGraphSourceRefResponse';
 import type { NodeRevisionItem } from './nodeRevisionItem';
 
 /**
@@ -26,6 +27,7 @@ export interface KnowledgeUnitDetailResponse {
   current_revision?: NodeRevisionItem | null;
   aliases?: AliasItem[];
   evidence?: EvidenceSummary[];
+  source_refs?: KnowledgeGraphSourceRefResponse[];
   incident_edges?: IncidentEdgeItem[];
   created_at: string;
   updated_at: string;

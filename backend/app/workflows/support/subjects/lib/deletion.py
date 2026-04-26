@@ -20,6 +20,8 @@ from app.models import (
     ExamPaperItem,
     KnowledgeDocument,
     KnowledgeEdge,
+    KnowledgeGraphSourceRef,
+    KnowledgeGraphSyncRun,
     KnowledgeUnit,
     QuestionTemplate,
     QuestionTypeRegistry,
@@ -44,6 +46,8 @@ _EXAM_KEYS = [
 _PROFILE_KEYS = ["user_knowledge_state"]
 _PLANNER_KEYS = ["confirmed_build_plan"]
 _KNOWLEDGE_KEYS = [
+    "knowledge_graph_source_ref",
+    "knowledge_graph_sync_run",
     "knowledge_document",
     "knowledge_edge",
     "knowledge_unit",
@@ -90,6 +94,12 @@ def collect_subject_delete_counts(session: Session, *, subject: str) -> dict[str
         "user_knowledge_state": _count_rows(session, UserKnowledgeState, UserKnowledgeState.subject == subject),
         "knowledge_edge": _count_rows(session, KnowledgeEdge, KnowledgeEdge.subject == subject),
         "knowledge_unit": _count_rows(session, KnowledgeUnit, KnowledgeUnit.subject == subject),
+        "knowledge_graph_sync_run": _count_rows(session, KnowledgeGraphSyncRun, KnowledgeGraphSyncRun.subject == subject),
+        "knowledge_graph_source_ref": _count_rows(
+            session,
+            KnowledgeGraphSourceRef,
+            KnowledgeGraphSourceRef.subject == subject,
+        ),
         "confirmed_build_plan": _count_rows(session, ConfirmedBuildPlan, ConfirmedBuildPlan.subject == subject),
     }
 
@@ -241,6 +251,8 @@ def _delete_profiles(session: Session, *, subject: str) -> None:
 
 def _delete_knowledge_and_curriculum(session: Session, *, subject: str) -> None:
     for model in (
+        KnowledgeGraphSourceRef,
+        KnowledgeGraphSyncRun,
         KnowledgeDocument,
         KnowledgeEdge,
         KnowledgeUnit,

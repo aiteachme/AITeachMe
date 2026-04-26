@@ -13,6 +13,8 @@ from app.models import (
     ExamPaperItem,
     KnowledgeDocument,
     KnowledgeEdge,
+    KnowledgeGraphSourceRef,
+    KnowledgeGraphSyncRun,
     KnowledgeUnit,
     QuestionTemplate,
     RetrievalChunk,
@@ -113,7 +115,19 @@ def clear_subject_knowledge(session: Session, *, subject: str) -> dict[str, int]
     nodes = list(session.exec(select(KnowledgeUnit).where(KnowledgeUnit.subject == subject)).all())
     counts["knowledge_unit"] = len(nodes)
 
+    source_refs = list(
+        session.exec(select(KnowledgeGraphSourceRef).where(KnowledgeGraphSourceRef.subject == subject)).all()
+    )
+    counts["knowledge_graph_source_ref"] = len(source_refs)
+
+    sync_runs = list(
+        session.exec(select(KnowledgeGraphSyncRun).where(KnowledgeGraphSyncRun.subject == subject)).all()
+    )
+    counts["knowledge_graph_sync_run"] = len(sync_runs)
+
     for model in (
+        KnowledgeGraphSourceRef,
+        KnowledgeGraphSyncRun,
         KnowledgeDocument,
         KnowledgeEdge,
         KnowledgeUnit,

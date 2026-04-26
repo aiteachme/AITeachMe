@@ -20,6 +20,8 @@ def run_docs_sync_node(state: DocsSyncState) -> DocsSyncState:
                 markdown=state["markdown"],
                 build_revision_no=state.get("build_revision_no"),
                 subject_context=subject_context,
+                structured_context=dict(state.get("structured_context") or {}),
+                build_session_id=state.get("build_session_id"),
             )
         return {**state, "report": report, "error": None}
     except Exception as exc:
@@ -27,5 +29,4 @@ def run_docs_sync_node(state: DocsSyncState) -> DocsSyncState:
 
 
 __all__ = ["run_docs_sync_node"]
-
 

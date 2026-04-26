@@ -65,8 +65,16 @@
 - `elapsed_ms`
 - `revision_no`
 - `last_synced_doc_version_no`
+- `source_ref_count`
+- `backbone_unit_count`
+- `backbone_edge_count`
+- `stable_anchor_count`
+- `deprecated_unit_count`
+- `deprecated_edge_count`
 
 前端应优先读取 `graph_metrics` 展示图谱进度；`graph.metrics` 仅作为 lane 级诊断兜底。
+
+节点详情接口会返回 `source_refs`，用于展示节点来自哪个知识文档章节、文档版本、源文件和同步批次；旧 `evidence` 字段继续保留兼容。
 
 ## 已删除的公开调试契约
 

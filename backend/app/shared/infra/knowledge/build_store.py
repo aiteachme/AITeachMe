@@ -42,6 +42,12 @@ _GRAPH_RUNTIME_METRIC_KEYS = {
     "knowledge_doc_source",
     "knowledge_doc_chapter_count",
     "graph_input_paths",
+    "source_ref_count",
+    "backbone_unit_count",
+    "backbone_edge_count",
+    "stable_anchor_count",
+    "deprecated_unit_count",
+    "deprecated_edge_count",
 }
 _GRAPH_RUNTIME_INT_METRIC_KEYS = {
     "processed_chunks",
@@ -57,6 +63,12 @@ _GRAPH_RUNTIME_INT_METRIC_KEYS = {
     "revision_no",
     "last_synced_doc_version_no",
     "knowledge_doc_chapter_count",
+    "source_ref_count",
+    "backbone_unit_count",
+    "backbone_edge_count",
+    "stable_anchor_count",
+    "deprecated_unit_count",
+    "deprecated_edge_count",
 }
 
 _STAGE_PROGRESS = {

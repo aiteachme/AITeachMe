@@ -335,6 +335,11 @@ export function KnowledgeGraphBuildProgress({
   const edgeChanges = Number(graphMetrics?.doc_sync_edge_changes ?? metrics.doc_sync_edge_changes ?? 0);
   const revisionNo = Number(graphMetrics?.revision_no ?? metrics.revision_no ?? 0);
   const docVersionNo = Number(graphMetrics?.last_synced_doc_version_no ?? metrics.last_synced_doc_version_no ?? 0);
+  const sourceRefCount = Number(graphMetrics?.source_ref_count ?? metrics.source_ref_count ?? 0);
+  const backboneUnitCount = Number(graphMetrics?.backbone_unit_count ?? metrics.backbone_unit_count ?? 0);
+  const backboneEdgeCount = Number(graphMetrics?.backbone_edge_count ?? metrics.backbone_edge_count ?? 0);
+  const deprecatedUnitCount = Number(graphMetrics?.deprecated_unit_count ?? metrics.deprecated_unit_count ?? 0);
+  const deprecatedEdgeCount = Number(graphMetrics?.deprecated_edge_count ?? metrics.deprecated_edge_count ?? 0);
   const tone = state.isFailed
     ? "border-rose-200 bg-rose-50"
     : state.isCompleted
@@ -371,12 +376,17 @@ export function KnowledgeGraphBuildProgress({
           style={{ width: `${state.progress}%` }}
         />
       </div>
-      {(processedChunks > 0 || docSyncSections > 0 || unitChanges > 0 || edgeChanges > 0 || revisionNo > 0 || state.activeLane.started_at) && (
+      {(processedChunks > 0 || docSyncSections > 0 || unitChanges > 0 || edgeChanges > 0 || sourceRefCount > 0 || revisionNo > 0 || state.activeLane.started_at) && (
         <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-slate-500">
           {processedChunks > 0 ? <span>已处理 {processedChunks} 个片段</span> : null}
           {docSyncSections > 0 ? <span>已同步 {docSyncSections} 个章节段落</span> : null}
           {unitChanges > 0 ? <span>知识点更新 {unitChanges} 个</span> : null}
           {edgeChanges > 0 ? <span>关系更新 {edgeChanges} 条</span> : null}
+          {sourceRefCount > 0 ? <span>来源记录 {sourceRefCount} 条</span> : null}
+          {backboneUnitCount > 0 ? <span>骨架知识点 {backboneUnitCount} 个</span> : null}
+          {backboneEdgeCount > 0 ? <span>骨架关系 {backboneEdgeCount} 条</span> : null}
+          {deprecatedUnitCount > 0 ? <span>下线知识点 {deprecatedUnitCount} 个</span> : null}
+          {deprecatedEdgeCount > 0 ? <span>下线关系 {deprecatedEdgeCount} 条</span> : null}
           {revisionNo > 0 ? <span>图谱版本 {revisionNo}</span> : null}
           {docVersionNo > 0 ? <span>文档版本 {docVersionNo}</span> : null}
           {state.activeLane.started_at ? (

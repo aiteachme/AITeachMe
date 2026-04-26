@@ -11,6 +11,7 @@ class DocsSyncState(TypedDict, total=False):
     subject: str
     markdown: str
     subject_context: str
+    structured_context: dict[str, object]
     build_revision_no: int | None
     build_session_id: str
     report: KnowledgeSyncReport | None

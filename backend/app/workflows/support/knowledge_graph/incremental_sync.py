@@ -6,12 +6,14 @@ import asyncio
 import contextvars
 import json
 from dataclasses import dataclass, field
+from dataclasses import replace
 from time import perf_counter
 import threading
 
 import structlog
 from sqlmodel import Session, select
 
+from app.models.knowledge_graph_sync import KnowledgeGraphSourceRef, KnowledgeGraphSyncRun
 from app.models.knowledge_relation import KnowledgeEdge
 from app.models.knowledge_unit import KnowledgeUnit
 from app.models.knowledge_taxonomy import (
@@ -61,6 +63,85 @@ _ASYNC_BRIDGE_THREAD: threading.Thread | None = None
 logger = structlog.get_logger()
 
 
+def _as_mapping(value: object) -> dict[str, object]:
+    return dict(value) if isinstance(value, dict) else {}
+
+
+def _as_list(value: object) -> list[object]:
+    if isinstance(value, list):
+        return list(value)
+    if isinstance(value, tuple):
+        return list(value)
+    return []
+
+
+def _safe_int(value: object, *, default: int = 0) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _clean_int_list(value: object) -> list[int]:
+    cleaned: list[int] = []
+    seen: set[int] = set()
+    for item in _as_list(value) if isinstance(value, (list, tuple)) else ([] if value is None else [value]):
+        parsed = _safe_int(item)
+        if parsed <= 0 or parsed in seen:
+            continue
+        seen.add(parsed)
+        cleaned.append(parsed)
+    return cleaned
+
+
+def _json_dumps(value: object) -> str:
+    return json.dumps(value, ensure_ascii=False)
+
+
+def _source_quote(text: str, *, max_chars: int = 500) -> str:
+    cleaned = " ".join(str(text or "").split()).strip()
+    if len(cleaned) > max_chars:
+        return cleaned[: max(0, max_chars - 3)].rstrip() + "..."
+    return cleaned
+
+
+def _structured_context_payload(value: dict[str, object] | None) -> dict[str, object]:
+    return dict(value or {})
+
+
+def _chapter_context_lookup(structured_context: dict[str, object]) -> dict[int, ChapterSourceContext]:
+    lookup: dict[int, ChapterSourceContext] = {}
+    for item in _as_list(structured_context.get("chapters")):
+        payload = _as_mapping(item)
+        chapter_index = _safe_int(payload.get("chapter_index"))
+        if chapter_index <= 0:
+            continue
+        lookup[chapter_index] = ChapterSourceContext(
+            knowledge_document_id=(_safe_int(payload.get("knowledge_document_id")) or None),
+            chapter_index=chapter_index,
+            title=str(payload.get("title") or "").strip(),
+            summary=str(payload.get("summary") or "").strip(),
+            source_file_ids=_clean_int_list(payload.get("source_file_ids")),
+        )
+    return lookup
+
+
+def _chapter_context_for_index(
+    chapter_contexts: dict[int, ChapterSourceContext],
+    chapter_index: int,
+) -> ChapterSourceContext:
+    return chapter_contexts.get(chapter_index) or ChapterSourceContext(chapter_index=chapter_index)
+
+
+def _document_backbone_payload(structured_context: dict[str, object]) -> dict[str, object]:
+    manifest = _as_mapping(structured_context.get("docgen_manifest"))
+    backbone = _as_mapping(manifest.get("document_backbone_snapshot"))
+    if backbone:
+        return backbone
+    summary = _as_mapping(structured_context.get("document_summary_json"))
+    return _as_mapping(summary.get("document_backbone"))
+
+
 @dataclass(slots=True)
 class KnowledgeSyncReport:
     """Summary of one incremental sync pass."""
@@ -85,6 +166,12 @@ class KnowledgeSyncReport:
     total_extracted_node_count: int = 0
     total_extracted_edge_count: int = 0
     elapsed_ms: int = 0
+    sync_run_id: int | None = None
+    doc_version_no: int = 0
+    source_ref_count: int = 0
+    backbone_unit_count: int = 0
+    backbone_edge_count: int = 0
+    stable_anchor_count: int = 0
 
     @property
     def unit_change_count(self) -> int:
@@ -93,6 +180,14 @@ class KnowledgeSyncReport:
     @property
     def edge_change_count(self) -> int:
         return len(self.created_edge_ids) + len(self.updated_edge_ids) + len(self.deprecated_edge_ids)
+
+    @property
+    def deprecated_unit_count(self) -> int:
+        return len(self.deprecated_unit_ids)
+
+    @property
+    def deprecated_edge_count(self) -> int:
+        return len(self.deprecated_edge_ids)
 
 
 @dataclass(slots=True)
@@ -103,6 +198,11 @@ class MarkdownExtractedEdge:
     target_anchor: str
     edge_type: str
     description: str
+    source_kind: str = "llm_relation"
+    knowledge_document_id: int | None = None
+    chapter_index: int = 0
+    source_file_ids: list[int] = field(default_factory=list)
+    quote_text: str = ""
 
 
 @dataclass(slots=True)
@@ -115,6 +215,11 @@ class PendingMarkdownExtractedEdge:
     target_name: str
     edge_type: str
     description: str
+    source_kind: str = "llm_relation"
+    knowledge_document_id: int | None = None
+    chapter_index: int = 0
+    source_file_ids: list[int] = field(default_factory=list)
+    quote_text: str = ""
 
 
 @dataclass(slots=True)
@@ -128,6 +233,19 @@ class SectionExtractionContext:
     primary_anchor: str | None = None
     primary_name: str = ""
     primary_type: str = ""
+    knowledge_document_id: int | None = None
+    source_file_ids: list[int] = field(default_factory=list)
+
+
+@dataclass(slots=True, frozen=True)
+class ChapterSourceContext:
+    """DocGen source metadata for one published chapter."""
+
+    knowledge_document_id: int | None = None
+    chapter_index: int = 0
+    title: str = ""
+    summary: str = ""
+    source_file_ids: list[int] = field(default_factory=list)
 
 
 @dataclass(slots=True)
@@ -152,6 +270,8 @@ def sync_markdown_knowledge_graph(
     build_revision_no: int | None = None,
     enable_rag_dedup: bool = False,
     subject_context: str | None = None,
+    structured_context: dict[str, object] | None = None,
+    build_session_id: str | None = None,
 ) -> KnowledgeSyncReport:
     """Synchronize knowledge units and knowledge images from Markdown into the graph."""
 
@@ -163,14 +283,37 @@ def sync_markdown_knowledge_graph(
             f"duplicates={validation.duplicate_anchors}, invalid={validation.invalid_anchors}"
         )
 
+    structured_context = _structured_context_payload(structured_context)
     revision_no = build_revision_no or _next_revision_no(session, subject)
-    units, extracted_edges, diagnostics_totals = _extract_markdown_graph_items(
-        markdown,
-        subject_context=subject_context,
+    doc_version_no = _safe_int(structured_context.get("doc_version_no"))
+    sync_run = _create_sync_run(
+        session,
+        subject=subject,
+        build_session_id=build_session_id,
+        doc_version_no=doc_version_no,
+        graph_revision_no=revision_no,
     )
+    try:
+        units, extracted_edges, diagnostics_totals = _extract_markdown_graph_items(
+            markdown,
+            subject_context=subject_context,
+            structured_context=structured_context,
+        )
+    except Exception as exc:
+        _finish_sync_run(
+            session,
+            sync_run,
+            status="failed",
+            metrics={},
+            error_message=str(exc),
+        )
+        session.flush()
+        raise
     report = KnowledgeSyncReport(
         subject=subject,
         build_revision_no=revision_no,
+        sync_run_id=sync_run.id,
+        doc_version_no=doc_version_no,
         synced_unit_keys=[item.anchor for item in units],
         section_count=int(diagnostics_totals.get("section_count", 0) or 0),
         chapter_count=int(diagnostics_totals.get("chapter_count", 0) or 0),
@@ -181,81 +324,108 @@ def sync_markdown_knowledge_graph(
         markdown_short_circuit_section_count=int(diagnostics_totals.get("markdown_short_circuit_section_count", 0) or 0),
         total_extracted_node_count=int(diagnostics_totals.get("total_extracted_node_count", 0) or 0),
         total_extracted_edge_count=int(diagnostics_totals.get("total_extracted_edge_count", 0) or 0),
+        backbone_unit_count=int(diagnostics_totals.get("backbone_unit_count", 0) or 0),
+        backbone_edge_count=int(diagnostics_totals.get("backbone_edge_count", 0) or 0),
+        stable_anchor_count=len({item.anchor for item in units if item.anchor}),
     )
     unit_by_anchor: dict[str, KnowledgeUnit] = {}
     report.knowledge_image_count = sum(len(item.knowledge_images) for item in units)
 
-    for item in units:
-        unit, created = _upsert_unit(
-            session,
-            subject=subject,
-            item=item,
-            build_revision_no=revision_no,
-            enable_rag_dedup=enable_rag_dedup,
-        )
-        if unit.id is None:
-            continue
-        unit_by_anchor[item.anchor] = unit
-        if created:
-            report.created_unit_ids.append(unit.id)
-        else:
-            report.updated_unit_ids.append(unit.id)
+    try:
+        for item in units:
+            unit, created = _upsert_unit(
+                session,
+                subject=subject,
+                item=item,
+                build_revision_no=revision_no,
+                enable_rag_dedup=enable_rag_dedup,
+            )
+            if unit.id is None:
+                continue
+            unit_by_anchor[item.anchor] = unit
+            if created:
+                report.created_unit_ids.append(unit.id)
+            else:
+                report.updated_unit_ids.append(unit.id)
+            if _create_source_ref_for_unit(session, sync_run=sync_run, subject=subject, unit=unit, item=item):
+                report.source_ref_count += 1
 
-    seen_edge_keys: set[tuple[int, int, str]] = set()
-    for extracted_edge in extracted_edges:
-        source = unit_by_anchor.get(extracted_edge.source_anchor)
-        target = unit_by_anchor.get(extracted_edge.target_anchor)
-        if source is None or target is None or source.id is None or target.id is None:
-            continue
-        if not validate_relation_direction(
-            edge_type=extracted_edge.edge_type,
-            source_type=source.knowledge_unit_type,
-            target_type=target.knowledge_unit_type,
-        ):
-            logger.warning(
-                "knowledge_docs_sync_edge_skipped_invalid_direction",
+        seen_edge_keys: set[tuple[int, int, str]] = set()
+        for extracted_edge in extracted_edges:
+            source = unit_by_anchor.get(extracted_edge.source_anchor)
+            target = unit_by_anchor.get(extracted_edge.target_anchor)
+            if source is None or target is None or source.id is None or target.id is None:
+                continue
+            if not validate_relation_direction(
                 edge_type=extracted_edge.edge_type,
                 source_type=source.knowledge_unit_type,
                 target_type=target.knowledge_unit_type,
-                source_anchor=extracted_edge.source_anchor,
-                target_anchor=extracted_edge.target_anchor,
+            ):
+                logger.warning(
+                    "knowledge_docs_sync_edge_skipped_invalid_direction",
+                    edge_type=extracted_edge.edge_type,
+                    source_type=source.knowledge_unit_type,
+                    target_type=target.knowledge_unit_type,
+                    source_anchor=extracted_edge.source_anchor,
+                    target_anchor=extracted_edge.target_anchor,
+                )
+                continue
+            edge, created = _upsert_edge(
+                session,
+                subject=subject,
+                source_node_id=source.id,
+                target_node_id=target.id,
+                edge_type=extracted_edge.edge_type,
+                description=extracted_edge.description,
+                build_revision_no=revision_no,
             )
-            continue
-        edge, created = _upsert_edge(
-            session,
-            subject=subject,
-            source_node_id=source.id,
-            target_node_id=target.id,
-            edge_type=extracted_edge.edge_type,
-            description=extracted_edge.description,
-            build_revision_no=revision_no,
-        )
-        if edge.id is not None:
-            seen_edge_keys.add((edge.source_node_id, edge.target_node_id, edge.edge_type))
-            (report.created_edge_ids if created else report.updated_edge_ids).append(edge.id)
+            if edge.id is not None:
+                seen_edge_keys.add((edge.source_node_id, edge.target_node_id, edge.edge_type))
+                (report.created_edge_ids if created else report.updated_edge_ids).append(edge.id)
+                if _create_source_ref_for_edge(
+                    session,
+                    sync_run=sync_run,
+                    subject=subject,
+                    edge=edge,
+                    extracted_edge=extracted_edge,
+                ):
+                    report.source_ref_count += 1
 
-    report.deprecated_unit_ids.extend(
-        _deprecate_removed_anchor_units(
-            session,
-            subject=subject,
-            active_anchors=set(report.synced_unit_keys),
-            build_revision_no=revision_no,
+        report.deprecated_unit_ids.extend(
+            _deprecate_removed_anchor_units(
+                session,
+                subject=subject,
+                active_anchors=set(report.synced_unit_keys),
+                build_revision_no=revision_no,
+            )
         )
-    )
-    report.deprecated_edge_ids.extend(
-        _deprecate_removed_sync_edges(
-            session,
-            subject=subject,
-            seen_edge_keys=seen_edge_keys,
-            build_revision_no=revision_no,
+        report.deprecated_edge_ids.extend(
+            _deprecate_removed_sync_edges(
+                session,
+                subject=subject,
+                seen_edge_keys=seen_edge_keys,
+                build_revision_no=revision_no,
+            )
         )
-    )
-    session.commit()
+    except Exception as exc:
+        _finish_sync_run(
+            session,
+            sync_run,
+            status="failed",
+            metrics=_sync_run_metrics(report),
+            error_message=str(exc),
+        )
+        session.flush()
+        raise
     report.elapsed_ms = int((perf_counter() - started_at) * 1000)
+    _finish_sync_run(session, sync_run, status="completed", metrics=_sync_run_metrics(report))
+    session.commit()
     logger.info(
         "knowledge_docs_sync_complete",
         subject=subject,
         build_revision_no=revision_no,
+        sync_run_id=sync_run.id,
+        doc_version_no=report.doc_version_no,
         chapter_count=report.chapter_count,
         section_count=report.section_count,
         llm_section_count=report.llm_section_count,
@@ -264,6 +434,9 @@ def sync_markdown_knowledge_graph(
         topic_fallback_section_count=report.topic_fallback_section_count,
         unit_change_count=report.unit_change_count,
         edge_change_count=report.edge_change_count,
+        source_ref_count=report.source_ref_count,
+        backbone_unit_count=report.backbone_unit_count,
+        backbone_edge_count=report.backbone_edge_count,
         elapsed_ms=report.elapsed_ms,
     )
     return report
@@ -280,6 +453,122 @@ def _next_revision_no(session: Session, subject: str) -> int:
     return current + 1
 
 
+def _create_sync_run(
+    session: Session,
+    *,
+    subject: str,
+    build_session_id: str | None,
+    doc_version_no: int,
+    graph_revision_no: int,
+) -> KnowledgeGraphSyncRun:
+    now = utcnow()
+    sync_run = KnowledgeGraphSyncRun(
+        subject=subject,
+        build_session_id=(build_session_id or None),
+        doc_version_no=doc_version_no,
+        graph_revision_no=graph_revision_no,
+        status="running",
+        started_at=now,
+        created_at=now,
+        updated_at=now,
+    )
+    session.add(sync_run)
+    session.flush()
+    return sync_run
+
+
+def _sync_run_metrics(report: KnowledgeSyncReport) -> dict[str, int]:
+    return {
+        "chapter_count": report.chapter_count,
+        "section_count": report.section_count,
+        "llm_section_count": report.llm_section_count,
+        "fallback_section_count": report.fallback_section_count,
+        "question_fallback_section_count": report.question_fallback_section_count,
+        "topic_fallback_section_count": report.topic_fallback_section_count,
+        "unit_change_count": report.unit_change_count,
+        "edge_change_count": report.edge_change_count,
+        "deprecated_unit_count": report.deprecated_unit_count,
+        "deprecated_edge_count": report.deprecated_edge_count,
+        "source_ref_count": report.source_ref_count,
+        "backbone_unit_count": report.backbone_unit_count,
+        "backbone_edge_count": report.backbone_edge_count,
+        "stable_anchor_count": report.stable_anchor_count,
+        "elapsed_ms": report.elapsed_ms,
+    }
+
+
+def _finish_sync_run(
+    session: Session,
+    sync_run: KnowledgeGraphSyncRun,
+    *,
+    status: str,
+    metrics: dict[str, int],
+    error_message: str = "",
+) -> None:
+    sync_run.status = status
+    sync_run.metrics_json = _json_dumps(metrics)
+    sync_run.error_message = error_message
+    sync_run.finished_at = utcnow()
+    sync_run.updated_at = sync_run.finished_at
+    session.add(sync_run)
+
+
+def _create_source_ref_for_unit(
+    session: Session,
+    *,
+    sync_run: KnowledgeGraphSyncRun,
+    subject: str,
+    unit: KnowledgeUnit,
+    item: MarkdownKnowledgeUnit,
+) -> bool:
+    if unit.id is None:
+        return False
+    source_ref = KnowledgeGraphSourceRef(
+        subject=subject,
+        entity_type="unit",
+        entity_id=unit.id,
+        sync_run_id=sync_run.id,
+        knowledge_document_id=item.knowledge_document_id,
+        chapter_index=int(item.chapter_index or 0),
+        anchor=item.anchor,
+        source_kind=item.source_kind,
+        source_file_ids_json=_json_dumps(_clean_int_list(item.source_file_ids)),
+        quote_text=_source_quote(item.quote_text or item.summary or item.body_markdown),
+        confidence=1.0,
+    )
+    session.add(source_ref)
+    session.flush()
+    return True
+
+
+def _create_source_ref_for_edge(
+    session: Session,
+    *,
+    sync_run: KnowledgeGraphSyncRun,
+    subject: str,
+    edge: KnowledgeEdge,
+    extracted_edge: MarkdownExtractedEdge,
+) -> bool:
+    if edge.id is None:
+        return False
+    source_ref = KnowledgeGraphSourceRef(
+        subject=subject,
+        entity_type="edge",
+        entity_id=edge.id,
+        sync_run_id=sync_run.id,
+        knowledge_document_id=extracted_edge.knowledge_document_id,
+        chapter_index=int(extracted_edge.chapter_index or 0),
+        anchor=f"{extracted_edge.source_anchor}->{extracted_edge.target_anchor}",
+        source_kind=extracted_edge.source_kind,
+        source_file_ids_json=_json_dumps(_clean_int_list(extracted_edge.source_file_ids)),
+        quote_text=_source_quote(extracted_edge.quote_text or extracted_edge.description),
+        confidence=1.0,
+    )
+    session.add(source_ref)
+    session.flush()
+    return True
+
+
 def _empty_extraction_diagnostics() -> dict[str, int]:
     return {
         "chapter_count": 0,
@@ -291,6 +580,8 @@ def _empty_extraction_diagnostics() -> dict[str, int]:
         "markdown_short_circuit_section_count": 0,
         "total_extracted_node_count": 0,
         "total_extracted_edge_count": 0,
+        "backbone_unit_count": 0,
+        "backbone_edge_count": 0,
     }
 
 
@@ -319,11 +610,14 @@ def _extract_markdown_graph_items(
     markdown: str,
     *,
     subject_context: str | None = None,
+    structured_context: dict[str, object] | None = None,
 ) -> tuple[list[MarkdownKnowledgeUnit], list[MarkdownExtractedEdge], dict[str, int]]:
     chapters = extract_markdown_chapter_chunks(markdown)
     sections = extract_markdown_section_chunks(markdown)
     if not chapters:
         return [], [], _empty_extraction_diagnostics()
+    structured_context = _structured_context_payload(structured_context)
+    chapter_contexts = _chapter_context_lookup(structured_context)
 
     async def _extract_all_chapters() -> list[SectionExtractionPayload]:
         semaphore = asyncio.Semaphore(_chapter_concurrency_limit())
@@ -334,10 +628,11 @@ def _extract_markdown_graph_items(
                     chapter_index,
                     chapter,
                     subject_context=subject_context or "",
+                    chapter_context=_chapter_context_for_index(chapter_contexts, chapter_index),
                 )
 
         return await asyncio.gather(
-            *[_extract_with_queue(chapter_index, chapter) for chapter_index, chapter in enumerate(chapters)]
+            *[_extract_with_queue(chapter_index, chapter) for chapter_index, chapter in enumerate(chapters, start=1)]
         )
 
     results = _run_async(_extract_all_chapters()) or []
@@ -351,8 +646,10 @@ def _extract_markdown_graph_items(
     diagnostics_totals = _empty_extraction_diagnostics()
     diagnostics_totals["chapter_count"] = len(chapters)
     diagnostics_totals["section_count"] = len(chapters)
+    used_anchors: set[str] = set()
 
     for payload in results:
+        payload = _make_payload_anchors_unique(payload, used_anchors)
         units.extend(payload.units)
         pending_edges.extend(payload.pending_edges)
         candidate_id_to_anchor.update(payload.candidate_id_to_anchor)
@@ -370,6 +667,32 @@ def _extract_markdown_graph_items(
             for anchor in anchors:
                 if anchor not in bucket:
                     bucket.append(anchor)
+
+    backbone_units, backbone_edges = _build_backbone_graph_items(
+        structured_context=structured_context,
+        chapter_contexts=chapter_contexts,
+        used_anchors=used_anchors,
+    )
+    if backbone_units:
+        units = [*backbone_units, *units]
+        diagnostics_totals["backbone_unit_count"] = len(backbone_units)
+        for unit in backbone_units:
+            anchors_by_name.setdefault(unit.name, []).append(unit.anchor)
+            normalized_name = normalize_name(unit.name)
+            if normalized_name:
+                anchors_by_normalized_name.setdefault(normalized_name, []).append(unit.anchor)
+            node_contexts_by_anchor[unit.anchor] = {
+                "name": unit.name,
+                "knowledge_unit_type": unit.knowledge_unit_type,
+                "taxonomy_hint": unit.name,
+                "parent_entity_name": "",
+                "section_index": int(unit.chapter_index or 0),
+                "knowledge_document_id": unit.knowledge_document_id,
+                "source_file_ids": list(unit.source_file_ids),
+            }
+    if backbone_edges:
+        pending_edges.extend(backbone_edges)
+        diagnostics_totals["backbone_edge_count"] = len(backbone_edges)
 
     pending_edges.extend(
         _build_structural_heading_edges(
@@ -426,9 +749,164 @@ def _extract_markdown_graph_items(
                 target_anchor=target_anchor,
                 edge_type=edge.edge_type,
                 description=edge.description,
+                source_kind=edge.source_kind,
+                knowledge_document_id=edge.knowledge_document_id,
+                chapter_index=edge.chapter_index,
+                source_file_ids=list(edge.source_file_ids),
+                quote_text=edge.quote_text,
             )
         )
     return units, edges, diagnostics_totals
+
+
+def _make_payload_anchors_unique(
+    payload: SectionExtractionPayload,
+    used_anchors: set[str],
+) -> SectionExtractionPayload:
+    remap: dict[str, str] = {}
+    updated_units: list[MarkdownKnowledgeUnit] = []
+    for unit in payload.units:
+        old_anchor = unit.anchor
+        if old_anchor and old_anchor not in used_anchors:
+            used_anchors.add(old_anchor)
+            new_anchor = old_anchor
+        else:
+            new_anchor = build_knowledge_unit_anchor(
+                f"docgen ch{unit.chapter_index or payload.section_context.section_index} {unit.knowledge_unit_type} {unit.name}",
+                used=used_anchors,
+            )
+        if old_anchor != new_anchor:
+            remap[old_anchor] = new_anchor
+            updated_units.append(replace(unit, anchor=new_anchor))
+        else:
+            updated_units.append(unit)
+
+    if not remap:
+        return payload
+
+    def _remap_anchor(anchor: str) -> str:
+        return remap.get(anchor, anchor)
+
+    candidate_id_to_anchor = {
+        candidate_id: _remap_anchor(anchor)
+        for candidate_id, anchor in payload.candidate_id_to_anchor.items()
+    }
+    anchors_by_name = {
+        name: [_remap_anchor(anchor) for anchor in anchors]
+        for name, anchors in payload.anchors_by_name.items()
+    }
+    anchors_by_normalized_name = {
+        name: [_remap_anchor(anchor) for anchor in anchors]
+        for name, anchors in payload.anchors_by_normalized_name.items()
+    }
+    node_contexts_by_anchor = {
+        _remap_anchor(anchor): context
+        for anchor, context in payload.node_contexts_by_anchor.items()
+    }
+    section_context = payload.section_context
+    if section_context.primary_anchor:
+        section_context = replace(
+            section_context,
+            primary_anchor=_remap_anchor(section_context.primary_anchor),
+        )
+
+    return SectionExtractionPayload(
+        units=updated_units,
+        pending_edges=payload.pending_edges,
+        candidate_id_to_anchor=candidate_id_to_anchor,
+        anchors_by_name=anchors_by_name,
+        anchors_by_normalized_name=anchors_by_normalized_name,
+        node_contexts_by_anchor=node_contexts_by_anchor,
+        section_context=section_context,
+        diagnostics=payload.diagnostics,
+    )
+
+
+def _build_backbone_graph_items(
+    *,
+    structured_context: dict[str, object],
+    chapter_contexts: dict[int, ChapterSourceContext],
+    used_anchors: set[str],
+) -> tuple[list[MarkdownKnowledgeUnit], list[PendingMarkdownExtractedEdge]]:
+    backbone = _document_backbone_payload(structured_context)
+    if not backbone:
+        return [], []
+
+    target_chapters_by_term: dict[str, list[int]] = {}
+    units: list[MarkdownKnowledgeUnit] = []
+    for item in _as_list(backbone.get("canonical_glossary")):
+        payload = _as_mapping(item)
+        term = str(payload.get("term") or "").strip()
+        if not term:
+            continue
+        target_chapters = _clean_int_list(payload.get("target_chapters"))
+        target_chapters_by_term[normalize_name(term)] = target_chapters
+        chapter_index = target_chapters[0] if target_chapters else 0
+        chapter_context = chapter_contexts.get(chapter_index) or ChapterSourceContext(chapter_index=chapter_index)
+        definition = str(payload.get("definition") or "").strip()
+        anchor = build_knowledge_unit_anchor(
+            f"docgen ch{chapter_index} concept {term}",
+            used=used_anchors,
+        )
+        units.append(
+            MarkdownKnowledgeUnit(
+                anchor=anchor,
+                name=term,
+                knowledge_unit_type="concept",
+                summary=definition or term,
+                body_markdown=definition or term,
+                knowledge_images=[],
+                prerequisites=[],
+                related=[],
+                line_no=0,
+                heading_level=1,
+                source_kind="docgen_backbone",
+                knowledge_document_id=chapter_context.knowledge_document_id,
+                chapter_index=chapter_index,
+                source_file_ids=list(chapter_context.source_file_ids),
+                quote_text=definition or str(payload.get("source_hint") or ""),
+            )
+        )
+
+    edges: list[PendingMarkdownExtractedEdge] = []
+    seen_edges: set[tuple[str, str, str]] = set()
+    for item in _as_list(backbone.get("concept_dependency_graph")):
+        payload = _as_mapping(item)
+        source_name = str(payload.get("from_concept") or "").strip()
+        target_name = str(payload.get("to_concept") or "").strip()
+        if not source_name or not target_name:
+            continue
+        raw_relation = str(payload.get("relation") or "").strip()
+        edge_type = "prerequisite" if raw_relation == "chapter_order" else normalize_relation_type(raw_relation)
+        key = (normalize_name(source_name), normalize_name(target_name), edge_type)
+        if not key[0] or not key[1] or key[0] == key[1] or key in seen_edges:
+            continue
+        seen_edges.add(key)
+        chapter_candidates = (
+            target_chapters_by_term.get(normalize_name(target_name))
+            or target_chapters_by_term.get(normalize_name(source_name))
+            or []
+        )
+        chapter_index = chapter_candidates[0] if chapter_candidates else 0
+        chapter_context = chapter_contexts.get(chapter_index) or ChapterSourceContext(chapter_index=chapter_index)
+        reason = str(payload.get("reason") or "").strip()
+        edges.append(
+            PendingMarkdownExtractedEdge(
+                source_candidate_id=None,
+                target_candidate_id=None,
+                source_name=source_name,
+                target_name=target_name,
+                edge_type=edge_type,
+                description=reason or f"{source_name} supports {target_name}.",
+                source_kind="docgen_backbone",
+                knowledge_document_id=chapter_context.knowledge_document_id,
+                chapter_index=chapter_index,
+                source_file_ids=list(chapter_context.source_file_ids),
+                quote_text=reason,
+            )
+        )
+
+    return units, edges
 
 
 def _build_structural_heading_edges(
@@ -475,6 +953,8 @@ def _build_structural_heading_edges(
                 target_name=parent_title,
                 edge_type="derivation",
                 description=f"{section.title} 属于主题 {parent_title}。",
+                source_kind="structural_heading",
+                quote_text=section.header_path,
             )
         )
 
@@ -520,11 +1000,19 @@ def _build_cross_section_semantic_edges(
     seen: set[tuple[str, str, str]] = set()
     primary_contexts = [ctx for ctx in section_contexts if ctx.primary_anchor and ctx.primary_name]
 
-    def _push_edge(source_name: str, target_name: str, edge_type: str, description: str) -> None:
+    def _push_edge(
+        source_name: str,
+        target_name: str,
+        edge_type: str,
+        description: str,
+        *,
+        source_context: dict[str, object] | None = None,
+    ) -> None:
         key = (normalize_name(source_name), normalize_name(target_name), edge_type)
         if not key[0] or not key[1] or key in seen or key[0] == key[1]:
             return
         seen.add(key)
+        source_context = source_context or {}
         pending_edges.append(
             PendingMarkdownExtractedEdge(
                 source_candidate_id=None,
@@ -533,6 +1021,13 @@ def _build_cross_section_semantic_edges(
                 target_name=target_name,
                 edge_type=edge_type,
                 description=description,
+                source_kind="cross_section_semantic",
+                knowledge_document_id=(
+                    _safe_int(source_context.get("knowledge_document_id")) or None
+                ),
+                chapter_index=_safe_int(source_context.get("section_index")),
+                source_file_ids=_clean_int_list(source_context.get("source_file_ids")),
+                quote_text=description,
             )
         )
 
@@ -561,6 +1056,7 @@ def _build_cross_section_semantic_edges(
                 str(target_context.get("name") or hint_name),
                 _hint_edge_type_for_unit(source_type),
                 f"{source_name} references {hint_name} across sections via {hint_field}.",
+                source_context=context,
             )
 
     for context in primary_contexts:
@@ -584,6 +1080,11 @@ def _build_cross_section_semantic_edges(
                     other.primary_name,
                     relation,
                     f"{context.primary_name} is presented as an example of {other.primary_name}.",
+                    source_context={
+                        "knowledge_document_id": context.knowledge_document_id,
+                        "section_index": context.section_index,
+                        "source_file_ids": context.source_file_ids,
+                    },
                 )
             elif relation in {"similar", "contrast"}:
                 _push_edge(
@@ -591,6 +1092,11 @@ def _build_cross_section_semantic_edges(
                     other.primary_name,
                     relation,
                     f"{context.primary_name} is discussed together with {other.primary_name}.",
+                    source_context={
+                        "knowledge_document_id": context.knowledge_document_id,
+                        "section_index": context.section_index,
+                        "source_file_ids": context.source_file_ids,
+                    },
                 )
             else:
                 _push_edge(
@@ -598,6 +1104,11 @@ def _build_cross_section_semantic_edges(
                     context.primary_name,
                     relation,
                     f"{other.primary_name} supports section {context.primary_name}.",
+                    source_context={
+                        "knowledge_document_id": context.knowledge_document_id,
+                        "section_index": context.section_index,
+                        "source_file_ids": context.source_file_ids,
+                    },
                 )
 
     return pending_edges
@@ -650,6 +1161,7 @@ async def _extract_chapter_with_retries(
     chapter,
     *,
     subject_context: str = "",
+    chapter_context: ChapterSourceContext | None = None,
 ) -> SectionExtractionPayload:
     last_error: Exception | None = None
     max_retries = _chapter_max_retries()
@@ -659,6 +1171,7 @@ async def _extract_chapter_with_retries(
                 chapter_index,
                 chapter,
                 subject_context=subject_context,
+                chapter_context=chapter_context,
             )
         except asyncio.CancelledError:
             raise
@@ -684,10 +1197,16 @@ async def _extract_chapter_with_retries(
         header_path=chapter.header_path,
         error_type=(type(last_error).__name__ if last_error is not None else "UnknownError"),
     )
-    return _build_chapter_fallback_payload(chapter_index, chapter)
+    return _build_chapter_fallback_payload(chapter_index, chapter, chapter_context=chapter_context)
 
 
-def _build_chapter_fallback_payload(chapter_index: int, chapter) -> SectionExtractionPayload:
+def _build_chapter_fallback_payload(
+    chapter_index: int,
+    chapter,
+    *,
+    chapter_context: ChapterSourceContext | None = None,
+) -> SectionExtractionPayload:
+    chapter_context = chapter_context or ChapterSourceContext(chapter_index=chapter_index)
     body_markdown = chapter.body_markdown[:8000]
     primary_anchor = str(chapter.anchor or build_knowledge_unit_anchor(chapter.title))
     primary_unit = MarkdownKnowledgeUnit(
@@ -701,6 +1220,11 @@ def _build_chapter_fallback_payload(chapter_index: int, chapter) -> SectionExtra
         related=[],
         line_no=chapter.line_no,
         heading_level=chapter.heading_level,
+        source_kind="fallback_topic",
+        knowledge_document_id=chapter_context.knowledge_document_id,
+        chapter_index=chapter_context.chapter_index or chapter_index,
+        source_file_ids=list(chapter_context.source_file_ids),
+        quote_text=chapter.summary or chapter.title,
     )
     normalized_name = normalize_name(chapter.title)
     return SectionExtractionPayload(
@@ -714,10 +1238,12 @@ def _build_chapter_fallback_payload(chapter_index: int, chapter) -> SectionExtra
                 "name": chapter.title,
                 "knowledge_unit_type": "concept",
                 "taxonomy_hint": chapter.title,
-                "parent_entity_name": "",
-                "section_index": chapter_index,
-            }
-        },
+            "parent_entity_name": "",
+            "section_index": chapter_index,
+            "knowledge_document_id": chapter_context.knowledge_document_id,
+            "source_file_ids": list(chapter_context.source_file_ids),
+        }
+    },
         section_context=SectionExtractionContext(
             section_index=chapter_index,
             title=chapter.title,
@@ -726,6 +1252,8 @@ def _build_chapter_fallback_payload(chapter_index: int, chapter) -> SectionExtra
             primary_anchor=primary_anchor,
             primary_name=chapter.title,
             primary_type="concept",
+            knowledge_document_id=chapter_context.knowledge_document_id,
+            source_file_ids=list(chapter_context.source_file_ids),
         ),
         diagnostics={
             "section_count": 0,
@@ -745,7 +1273,9 @@ async def _extract_chapter_graph_items(
     chapter,
     *,
     subject_context: str = "",
+    chapter_context: ChapterSourceContext | None = None,
 ) -> SectionExtractionPayload:
+    chapter_context = chapter_context or ChapterSourceContext(chapter_index=chapter_index)
     result, diagnostics = await _extract_candidates_with_diagnostics_adapter(
         chunk_content=chapter.body_markdown,
         chunk_title=chapter.title,
@@ -786,6 +1316,11 @@ async def _extract_chapter_graph_items(
             related=[],
             line_no=chapter.line_no,
             heading_level=chapter.heading_level,
+            source_kind="llm_section",
+            knowledge_document_id=chapter_context.knowledge_document_id,
+            chapter_index=chapter_context.chapter_index or chapter_index,
+            source_file_ids=list(chapter_context.source_file_ids),
+            quote_text=node.local_summary or chapter.summary or node.name,
         )
         units.append(unit)
         if node.candidate_id:
@@ -800,6 +1335,8 @@ async def _extract_chapter_graph_items(
             "taxonomy_hint": node.taxonomy_hint or "",
             "parent_entity_name": node.parent_entity_name or "",
             "section_index": chapter_index,
+            "knowledge_document_id": chapter_context.knowledge_document_id,
+            "source_file_ids": list(chapter_context.source_file_ids),
         }
         if primary_anchor is None:
             primary_anchor = anchor
@@ -820,6 +1357,11 @@ async def _extract_chapter_graph_items(
                 target_name=edge.target_name,
                 edge_type=edge.edge_type,
                 description=edge.description,
+                source_kind="llm_relation",
+                knowledge_document_id=chapter_context.knowledge_document_id,
+                chapter_index=chapter_context.chapter_index or chapter_index,
+                source_file_ids=list(chapter_context.source_file_ids),
+                quote_text=edge.description,
             )
         )
 
@@ -838,6 +1380,8 @@ async def _extract_chapter_graph_items(
             primary_anchor=primary_anchor,
             primary_name=primary_name,
             primary_type=primary_type,
+            knowledge_document_id=chapter_context.knowledge_document_id,
+            source_file_ids=list(chapter_context.source_file_ids),
         ),
         diagnostics={
             "section_count": 0,

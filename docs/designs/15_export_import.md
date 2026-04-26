@@ -13,6 +13,8 @@
 - `knowledge_document`
 - `knowledge_unit`
 - `knowledge_edge`
+- `knowledge_graph_sync_run`
+- `knowledge_graph_source_ref`
 - `question_type_registry`
 - `question_template`
 - `exam_paper`
@@ -22,7 +24,7 @@
 - `chat_message`
 - `confirmed_build_plan`
 
-知识图谱当前由 `knowledge_unit + knowledge_edge` 表达；旧设计中的 `knowledge_node` 不再作为导出表名。
+知识图谱当前由 `knowledge_unit + knowledge_edge` 表达，并通过 `knowledge_graph_sync_run + knowledge_graph_source_ref` 保留同步批次和章节/源文件溯源。旧设计中的 `knowledge_node` 不再作为导出表名。
 
 ## 不导出的表
 
@@ -52,13 +54,14 @@
 
 导入流程需要保证以下依赖顺序：
 
-`subject -> raw_file -> subject_file -> retrieval_chunk -> knowledge_document -> knowledge_unit -> knowledge_edge -> question_type_registry -> question_template -> exam_paper -> exam_paper_item -> user_knowledge_state -> chat_session -> chat_message -> confirmed_build_plan`
+`subject -> raw_file -> subject_file -> retrieval_chunk -> knowledge_document -> knowledge_unit -> knowledge_edge -> knowledge_graph_sync_run -> knowledge_graph_source_ref -> question_type_registry -> question_template -> exam_paper -> exam_paper_item -> user_knowledge_state -> chat_session -> chat_message -> confirmed_build_plan`
 
 重点规则：
 
 - `subject.slug` 可按导入策略保留或生成新 slug。
 - `raw_file.uid`、`confirmed_build_plan.id` 等外部标识需要保持可追溯。
 - `retrieval_chunk.document_id`、`knowledge_edge.source_node_id / target_node_id`、试题和画像中的 `knowledge_unit_id` 必须按新 ID 重映射。
+- `knowledge_graph_source_ref.sync_run_id / knowledge_document_id / entity_id / source_file_ids_json` 必须按导入后的同步记录、知识文档、节点/关系和源文件 ID 重映射。
 - `confirmed_build_plan.selected_file_ids_json` 需要按 `raw_file` 新 ID 重映射。
 
 ## MVP 约束

@@ -10838,6 +10838,16 @@
             "title": "Knowledge Edge Count",
             "default": 0
           },
+          "knowledge_graph_sync_run_count": {
+            "type": "integer",
+            "title": "Knowledge Graph Sync Run Count",
+            "default": 0
+          },
+          "knowledge_graph_source_ref_count": {
+            "type": "integer",
+            "title": "Knowledge Graph Source Ref Count",
+            "default": 0
+          },
           "confirmed_build_plan_count": {
             "type": "integer",
             "title": "Confirmed Build Plan Count",
@@ -12140,11 +12150,152 @@
             "title": "Knowledge Doc Chapter Count",
             "description": "Knowledge document chapter count seen by docs-sync.",
             "default": 0
+          },
+          "source_ref_count": {
+            "type": "integer",
+            "title": "Source Ref Count",
+            "description": "Structured provenance refs written by the latest graph sync.",
+            "default": 0
+          },
+          "backbone_unit_count": {
+            "type": "integer",
+            "title": "Backbone Unit Count",
+            "description": "Knowledge units seeded from DocGen document_backbone.",
+            "default": 0
+          },
+          "backbone_edge_count": {
+            "type": "integer",
+            "title": "Backbone Edge Count",
+            "description": "Knowledge edges seeded from DocGen document_backbone.",
+            "default": 0
+          },
+          "stable_anchor_count": {
+            "type": "integer",
+            "title": "Stable Anchor Count",
+            "description": "Stable graph anchors seen during the latest docs-sync.",
+            "default": 0
+          },
+          "deprecated_unit_count": {
+            "type": "integer",
+            "title": "Deprecated Unit Count",
+            "description": "Knowledge units deprecated by the latest docs-sync.",
+            "default": 0
+          },
+          "deprecated_edge_count": {
+            "type": "integer",
+            "title": "Deprecated Edge Count",
+            "description": "Knowledge edges deprecated by the latest docs-sync.",
+            "default": 0
           }
         },
         "type": "object",
         "title": "KnowledgeGraphBuildMetricsResponse",
         "description": "Stable graph-build metrics used by docs and graph progress UIs."
+      },
+      "KnowledgeGraphSourceRefResponse": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "entity_type": {
+            "type": "string",
+            "title": "Entity Type"
+          },
+          "entity_id": {
+            "type": "integer",
+            "title": "Entity Id"
+          },
+          "sync_run_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sync Run Id"
+          },
+          "knowledge_document_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Knowledge Document Id"
+          },
+          "chapter_index": {
+            "type": "integer",
+            "title": "Chapter Index",
+            "default": 0
+          },
+          "chapter_title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Chapter Title"
+          },
+          "doc_version_no": {
+            "type": "integer",
+            "title": "Doc Version No",
+            "default": 0
+          },
+          "graph_revision_no": {
+            "type": "integer",
+            "title": "Graph Revision No",
+            "default": 0
+          },
+          "source_kind": {
+            "type": "string",
+            "title": "Source Kind",
+            "default": ""
+          },
+          "anchor": {
+            "type": "string",
+            "title": "Anchor",
+            "default": ""
+          },
+          "source_file_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "title": "Source File Ids"
+          },
+          "quote_text": {
+            "type": "string",
+            "title": "Quote Text",
+            "default": ""
+          },
+          "confidence": {
+            "type": "number",
+            "title": "Confidence",
+            "default": 1.0
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "entity_type",
+          "entity_id",
+          "created_at"
+        ],
+        "title": "KnowledgeGraphSourceRefResponse",
+        "description": "Structured source reference for a graph unit or edge."
       },
       "KnowledgeOverviewRequest": {
         "properties": {
@@ -12624,6 +12775,13 @@
             },
             "type": "array",
             "title": "Evidence"
+          },
+          "source_refs": {
+            "items": {
+              "$ref": "#/components/schemas/KnowledgeGraphSourceRefResponse"
+            },
+            "type": "array",
+            "title": "Source Refs"
           },
           "incident_edges": {
             "items": {

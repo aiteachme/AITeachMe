@@ -28,4 +28,16 @@ export interface KnowledgeGraphBuildMetricsResponse {
   knowledge_doc_source?: string | null;
   /** Knowledge document chapter count seen by docs-sync. */
   knowledge_doc_chapter_count?: number;
+  /** Structured provenance refs written by the latest graph sync. */
+  source_ref_count?: number;
+  /** Knowledge units seeded from DocGen document_backbone. */
+  backbone_unit_count?: number;
+  /** Knowledge edges seeded from DocGen document_backbone. */
+  backbone_edge_count?: number;
+  /** Stable graph anchors seen during the latest docs-sync. */
+  stable_anchor_count?: number;
+  /** Knowledge units deprecated by the latest docs-sync. */
+  deprecated_unit_count?: number;
+  /** Knowledge edges deprecated by the latest docs-sync. */
+  deprecated_edge_count?: number;
 }

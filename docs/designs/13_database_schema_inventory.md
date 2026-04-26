@@ -24,6 +24,8 @@
 
 - `knowledge_unit`：当前图谱节点表，对外 API 使用 KnowledgeUnit 命名；旧设计中的 `knowledge_node` 不再是物理表名。
 - `knowledge_edge`：当前图谱边表，连接两个 `knowledge_unit`。
+- `knowledge_graph_sync_run`：每次知识文档同步到图谱的运行记录，保存文档版本、图谱修订、状态和质量指标。
+- `knowledge_graph_source_ref`：图谱节点/关系的轻量溯源记录，可追到同步批次、知识文档章节、源文件和摘录。
 
 当前 MVP 将别名、证据、轻量 revision 内容并入 JSON 字段：
 
@@ -31,7 +33,7 @@
 - `knowledge_unit.evidence_refs_json`
 - `knowledge_edge.evidence_refs_json`
 
-这能减少表数量并降低导入导出复杂度。规模化后如果需要高频 alias/evidence 查询，再单独设计规范化表。
+这能减少表数量并降低导入导出复杂度。新增的 `knowledge_graph_source_ref` 只承接图谱同步溯源，不替代 alias/evidence 的兼容字段。规模化后如果需要高频 alias/evidence 查询，再单独设计规范化表。
 
 ### Examine、Profile 与 Chat
 
@@ -60,10 +62,11 @@
 - `knowledge_document.version_no` 是当前知识文档发布版本号。
 - `knowledge_unit.build_revision_no` 与 `knowledge_edge.build_revision_no` 是图谱构建修订号，不再声明必须等于不存在的 `curriculum.version_no`。
 - `/knowledge/build/runtime` 会额外暴露 `graph_metrics.revision_no` 与 `graph_metrics.last_synced_doc_version_no`，用于追踪某次图谱同步对应的图谱修订和文档版本。
+- `knowledge_graph_sync_run.doc_version_no` 与 `graph_revision_no` 是图谱溯源的数据库落点；`knowledge_graph_source_ref.sync_run_id` 负责把节点/关系证据挂到同一批同步上。
 - 构建运行态不落业务 job 表；当前由 content store 中的 `KnowledgeBuildRuntimeEnvelope` 维护 `docgen_runtime` 与 `graph_runtime`，旧 `build_status.json` 仅作为兼容读写。
 
 ## 设计约束
 
 - 不手动新增旧课程结构表。
-- API、导入导出和前端展示都以 `knowledge_document + knowledge_unit + knowledge_edge` 为当前 Digest 产物。
+- API、导入导出和前端展示都以 `knowledge_document + knowledge_unit + knowledge_edge + knowledge_graph_source_ref` 为当前 Digest/图谱产物。
 - 数据库迁移仍是 PostgreSQL 的生产来源；本地 SQLite 由模型创建并清理历史结构。

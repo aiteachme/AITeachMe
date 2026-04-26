@@ -292,6 +292,12 @@ class KnowledgeGraphBuildMetricsResponse(BaseModel):
     last_synced_doc_version_no: int = Field(default=0, description="Knowledge document version number last synced into the graph.")
     knowledge_doc_source: str | None = Field(default=None, description="Source of the knowledge document markdown used for docs-sync.")
     knowledge_doc_chapter_count: int = Field(default=0, description="Knowledge document chapter count seen by docs-sync.")
+    source_ref_count: int = Field(default=0, description="Structured provenance refs written by the latest graph sync.")
+    backbone_unit_count: int = Field(default=0, description="Knowledge units seeded from DocGen document_backbone.")
+    backbone_edge_count: int = Field(default=0, description="Knowledge edges seeded from DocGen document_backbone.")
+    stable_anchor_count: int = Field(default=0, description="Stable graph anchors seen during the latest docs-sync.")
+    deprecated_unit_count: int = Field(default=0, description="Knowledge units deprecated by the latest docs-sync.")
+    deprecated_edge_count: int = Field(default=0, description="Knowledge edges deprecated by the latest docs-sync.")
 
 
 class KnowledgeBuildStatusResponse(BaseModel):
@@ -427,6 +433,26 @@ class IncidentEdgeItem(BaseModel):
     confidence: float
 
 
+class KnowledgeGraphSourceRefResponse(BaseModel):
+    """Structured source reference for a graph unit or edge."""
+
+    id: int
+    entity_type: str
+    entity_id: int
+    sync_run_id: int | None = None
+    knowledge_document_id: int | None = None
+    chapter_index: int = 0
+    chapter_title: str | None = None
+    doc_version_no: int = 0
+    graph_revision_no: int = 0
+    source_kind: str = ""
+    anchor: str = ""
+    source_file_ids: list[int] = Field(default_factory=list)
+    quote_text: str = ""
+    confidence: float = 1.0
+    created_at: datetime
+
+
 class NodeRevisionItem(BaseModel):
     """Current revision content for a knowledge node."""
 
@@ -450,6 +476,7 @@ class KnowledgeUnitDetailResponse(BaseModel):
     current_revision: NodeRevisionItem | None = None
     aliases: list[AliasItem] = Field(default_factory=list)
     evidence: list[EvidenceSummary] = Field(default_factory=list)
+    source_refs: list[KnowledgeGraphSourceRefResponse] = Field(default_factory=list)
     incident_edges: list[IncidentEdgeItem] = Field(default_factory=list)
     created_at: datetime
     updated_at: datetime
