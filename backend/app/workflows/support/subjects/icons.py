@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import re
 import secrets
+from collections.abc import Mapping
 
 import structlog
 
@@ -225,7 +226,35 @@ def set_subject_icon_key(subject: Subject, icon_key: str | None) -> None:
     subject.settings_json = json.dumps(payload, ensure_ascii=False)
 
 
-async def choose_subject_icon_key(subject_name: str, *, hints: list[str] | None = None) -> str:
+def _merge_icon_completion_kwargs(
+    overrides: Mapping[str, object] | None,
+) -> dict[str, object]:
+    kwargs: dict[str, object] = {
+        "call_purpose": LLMCallPurpose.CLASSIFY,
+        "model": "light",
+        "max_tokens": 20,
+        "temperature": 0,
+        "extra_metadata": {"substep": "select_subject_icon"},
+    }
+    if not overrides:
+        return kwargs
+
+    incoming = dict(overrides)
+    incoming_metadata = incoming.pop("extra_metadata", {}) or {}
+    metadata = dict(kwargs.get("extra_metadata") or {})
+    if isinstance(incoming_metadata, Mapping):
+        metadata.update(incoming_metadata)
+    kwargs.update(incoming)
+    kwargs["extra_metadata"] = metadata
+    return kwargs
+
+
+async def choose_subject_icon_key(
+    subject_name: str,
+    *,
+    hints: list[str] | None = None,
+    completion_kwargs: Mapping[str, object] | None = None,
+) -> str:
     fallback = infer_subject_icon_key(subject_name)
     name = " ".join(str(subject_name or "").split()).strip()
     if not name:
@@ -252,11 +281,7 @@ async def choose_subject_icon_key(subject_name: str, *, hints: list[str] | None 
     try:
         result = await acompletion_with_fallback(
             messages,
-            call_purpose=LLMCallPurpose.CLASSIFY,
-            model="light",
-            max_tokens=20,
-            temperature=0,
-            extra_metadata={"substep": "select_subject_icon"},
+            **_merge_icon_completion_kwargs(completion_kwargs),
         )
     except Exception as exc:
         logger.warning("subject_icon_selection_failed", subject_name=name, error=str(exc))

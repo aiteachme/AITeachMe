@@ -9,7 +9,10 @@ import structlog
 
 from app.shared.infra.llm_support import acompletion_stream, acompletion_with_fallback
 from app.shared.infra.workflow.context import WorkflowContext
-from app.workflows.digest.planner.lib.model_policy import PlannerModelStep, planner_completion_kwargs
+from app.workflows.digest.planner.lib.model_policy import (
+    PlannerModelStep,
+    planner_completion_kwargs_with_metadata,
+)
 from app.workflows.digest.planner.lib.plan_sketch import parse_planner_brief_text
 from app.workflows.digest.planner.lib.planner_events import emit_planner_event, emit_planner_token
 from app.workflows.digest.planner.lib.plans import _resolve_subject_display_name
@@ -59,13 +62,11 @@ async def _stream_planner_brief(state: BuildPlannerState, fallback: PlannerBrief
     try:
         stream = acompletion_stream(
             [{"role": "user", "content": prompt}],
-            **planner_completion_kwargs(PlannerModelStep.STREAM_BRIEF),
-            max_tokens=1000,
-            extra_metadata={
-                "planner_session_id": state.get("planner_session_id") or "",
-                "planner_model_step": PlannerModelStep.STREAM_BRIEF.value,
-                "substep": "生成可见判断",
-            },
+            **planner_completion_kwargs_with_metadata(
+                PlannerModelStep.STREAM_BRIEF,
+                planner_session_id=state.get("planner_session_id") or "",
+                substep="生成可见判断",
+            ),
         )
         async for token in stream:
             if first_token_ms is None:
@@ -127,14 +128,12 @@ async def _extract_plan_intent(state: BuildPlannerState) -> PlanIntent:
                 material_context=material_context,
                 message_history=list(state.get("message_history", [])),
             ),
-            **planner_completion_kwargs(PlannerModelStep.EXTRACT_INTENT),
+            **planner_completion_kwargs_with_metadata(
+                PlannerModelStep.EXTRACT_INTENT,
+                planner_session_id=state.get("planner_session_id") or "",
+                substep="生成规划抓手",
+            ),
             response_model=PlanIntent,
-            max_tokens=1000,
-            extra_metadata={
-                "planner_session_id": state.get("planner_session_id") or "",
-                "planner_model_step": PlannerModelStep.EXTRACT_INTENT.value,
-                "substep": "生成规划抓手",
-            },
         )
         plan_intent.plan_queries = _normalize_plan_queries(
             [*plan_intent.plan_queries, *_fallback_plan_queries(state)]

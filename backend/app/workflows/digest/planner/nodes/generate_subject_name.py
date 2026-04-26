@@ -6,7 +6,10 @@ import structlog
 
 from app.shared.infra.llm_support import acompletion_with_fallback
 from app.shared.infra.workflow.context import WorkflowContext
-from app.workflows.digest.planner.lib.model_policy import PlannerModelStep, planner_completion_kwargs
+from app.workflows.digest.planner.lib.model_policy import (
+    PlannerModelStep,
+    planner_completion_kwargs_with_metadata,
+)
 from app.workflows.digest.planner.lib.models import PlanIntent, PlannerBrief
 from app.workflows.digest.planner.prompts import build_subject_name_prompt
 from app.workflows.digest.planner.state import BuildPlannerState
@@ -86,14 +89,11 @@ def build_generate_subject_name_node(*, context: WorkflowContext):
             )
             title = await acompletion_with_fallback(
                 [{"role": "user", "content": prompt}],
-                **planner_completion_kwargs(PlannerModelStep.SUBJECT_NAME),
-                max_tokens=40,
-                temperature=0.2,
-                extra_metadata={
-                    "planner_session_id": state.get("planner_session_id") or "",
-                    "planner_model_step": PlannerModelStep.SUBJECT_NAME.value,
-                    "substep": "生成学科标题",
-                },
+                **planner_completion_kwargs_with_metadata(
+                    PlannerModelStep.SUBJECT_NAME,
+                    planner_session_id=state.get("planner_session_id") or "",
+                    substep="生成学科标题",
+                ),
             )
         except Exception:
             logger.exception(
@@ -110,7 +110,19 @@ def build_generate_subject_name_node(*, context: WorkflowContext):
             subject=state.get("subject") or "",
             generated_subject_name=cleaned or None,
         )
-        icon_key = await choose_subject_icon_key(cleaned, hints=topic_hints) if cleaned else ""
+        icon_key = (
+            await choose_subject_icon_key(
+                cleaned,
+                hints=topic_hints,
+                completion_kwargs=planner_completion_kwargs_with_metadata(
+                    PlannerModelStep.SUBJECT_ICON,
+                    planner_session_id=state.get("planner_session_id") or "",
+                    substep="选择学科图标",
+                ),
+            )
+            if cleaned
+            else ""
+        )
         return {"generated_subject_name": cleaned, "generated_subject_icon_key": icon_key}
 
     return generate_subject_name_node

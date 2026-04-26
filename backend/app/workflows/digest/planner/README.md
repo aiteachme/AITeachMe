@@ -137,19 +137,20 @@ flowchart TD
 | `load_planner_materials` | 读取资料 | `nodes/load_planner_materials.py` | 读取 Planner 对话会话、文件和历史消息，生成并打包 `DigestMaterialContext` |
 | `stream_brief_and_extract_intent` | 理解目标 | `nodes/stream_brief_and_extract_intent.py` | 并行做两件事：流式输出思考过程；生成内部 `plan_intent / plan_queries` |
 | `stream_and_parse_plan_draft` | 合成大纲 | `nodes/stream_and_parse_plan_draft.py` | 一次 reason 流式调用，输出可见计划说明和 `<PLAN_JSON>` 初步大纲 |
-| `generate_subject_name` | 生成学科名 | `nodes/generate_subject_name.py` | 基于 brief、intent 和资料线索并行生成展示标题 |
+| `generate_subject_name` | 生成学科名 | `nodes/generate_subject_name.py` | 在与大纲合成并行的展示分支中，基于 brief、intent 和资料线索生成标题与图标 |
 | `normalize_and_persist_plan` | 保存方案 | `nodes/normalize_and_persist_plan.py` | 规范化 plan，保存 Planner 对话 session 和 assistant message |
 
 ## LLM 调用
 
-一次正常 planner run 有 4 个逻辑 LLM 步骤：
+一次正常 planner run 有 5 个逻辑 LLM 步骤：
 
 | 顺序 | 步骤 | 模型 | 产物 |
 | --- | --- | --- | --- |
-| 1 | `stream_planner_brief` | `reason` | 用户可见的思考过程 |
+| 1 | `stream_planner_brief` | `primary` | 用户可见的思考过程 |
 | 2 | `extract_plan_intent` | `primary` | `PlanIntent` |
 | 3 | `stream_and_parse_plan_draft` | `reason` | 可见计划说明 + 极简 JSON 初步大纲 |
 | 4 | `generate_subject_name` | `light` | 基于可见判断、规划抓手和资料线索生成学科名 |
+| 5 | `select_subject_icon` | `light` | 为生成的学科名选择图标候选并随机收口 |
 
 模型策略来源：`lib/model_policy.py`。这里的 `reason / primary / light` 是逻辑模型槽位，最终 provider 模型名仍由运行时 settings 决定。
 
