@@ -17,13 +17,20 @@ async def prepare_node(state: KnowledgeDigestState) -> KnowledgeDigestState:
         digest_logger = workflow_logger(state)
         try:
             build_session_id = state.get("build_session_id", "")
+            source_file_ids = state.get("file_ids", [])
             if build_session_id:
                 chunks = knowledge_repo.get_chunks_by_build_session(session, build_session_id)
+                if not chunks and source_file_ids:
+                    chunks = knowledge_repo.get_chunks_by_source_file_ids(
+                        session,
+                        subject=state["subject"],
+                        source_file_ids=source_file_ids,
+                    )
             else:
                 chunks = knowledge_repo.get_chunks_by_source_file_ids(
                     session,
                     subject=state["subject"],
-                    source_file_ids=state.get("file_ids", []),
+                    source_file_ids=source_file_ids,
                 )
             chunks = [chunk for chunk in chunks if chunk.id is not None and chunk.is_active]
             chunk_ids = [int(chunk.id) for chunk in chunks]
@@ -55,7 +62,7 @@ async def prepare_node(state: KnowledgeDigestState) -> KnowledgeDigestState:
                 "knowledge_workflow_prepare_complete",
                 build_session_id=build_session_id,
                 chunk_count=len(chunk_ids),
-                source_file_ids=state.get("file_ids", []),
+                source_file_ids=source_file_ids,
             )
             return {
                 **state,

@@ -242,6 +242,17 @@ async def run_graph_file_ingest_background(
                 doc_chapter_metadatas=doc_chapter_metadatas,
             )
         if result.failed:
+            if result.error.detail == "no_ready_digest_inputs":
+                skipped_metrics = {"processed_chunks": 0}
+                _end_trace_run(
+                    trace_run,
+                    {
+                        "status": "skipped",
+                        "reason": result.error.detail,
+                        **skipped_metrics,
+                    },
+                )
+                return skipped_metrics
             _end_trace_run(trace_run, {"status": "failed", "error": result.error.detail})
             raise RuntimeError(result.error.detail)
 
