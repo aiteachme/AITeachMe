@@ -30,7 +30,7 @@ from .common import (
     log_attempt_timeout,
     prepare_completion_attempt,
     raise_last_error,
-    request_timeout_s,
+    context_request_timeout_s,
     sleep_before_retry,
     trace_log_fields,
     track_call,
@@ -130,7 +130,7 @@ async def acompletion_structured(
                                     max_retries=0,
                                     **prepared.call_kwargs,
                                 ),
-                                timeout=request_timeout_s(context.profile.timeout_s),
+                                timeout=context_request_timeout_s(context),
                             )
                             prompt_t, completion_t, total_t = extract_usage(result)
                         except asyncio.TimeoutError:
@@ -146,7 +146,7 @@ async def acompletion_structured(
                             )
                             raw_response = await asyncio.wait_for(
                                 litellm.acompletion(**prepared.call_kwargs),
-                                timeout=request_timeout_s(context.profile.timeout_s),
+                                timeout=context_request_timeout_s(context),
                             )
                             prompt_t, completion_t, total_t = extract_usage(raw_response)
                             raw_text = ""
@@ -160,7 +160,7 @@ async def acompletion_structured(
                     else:
                         response = await asyncio.wait_for(
                             litellm.acompletion(**prepared.call_kwargs),
-                            timeout=request_timeout_s(context.profile.timeout_s),
+                            timeout=context_request_timeout_s(context),
                         )
                         prompt_t, completion_t, total_t = extract_usage(response)
                         raw_content = response.choices[0].message.content or ""

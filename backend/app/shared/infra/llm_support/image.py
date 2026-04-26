@@ -23,10 +23,11 @@ from app.shared.infra.settings.support import (
 
 from .common import (
     build_completion_context,
+    context_request_timeout_s,
     get_semaphore,
     logger,
     raise_last_error,
-    request_timeout_s,
+    should_enforce_request_timeout,
     trace_log_fields,
     track_call,
 )
@@ -268,7 +269,7 @@ def _response_metadata(response: Any) -> dict[str, Any]:
 async def _materialize_b64_images(
     images: list[GeneratedImage],
     *,
-    timeout_s: int,
+    timeout_s: int | None,
 ) -> list[GeneratedImage]:
     materialized: list[GeneratedImage] = []
     async with httpx.AsyncClient(timeout=timeout_s) as client:
@@ -298,7 +299,7 @@ def _build_litellm_image_kwargs(
     runtime_provider: str,
     api_base: str | None,
     api_key: str | None,
-    timeout_s: int,
+    timeout_s: int | None,
     size: str,
     n: int,
     response_format: str | None,
@@ -307,10 +308,11 @@ def _build_litellm_image_kwargs(
     call_kwargs: dict[str, Any] = {
         "model": _resolve_litellm_image_model(model, runtime_provider=runtime_provider),
         "prompt": prompt,
-        "timeout": timeout_s,
         "n": max(1, int(n or 1)),
         "size": size,
     }
+    if timeout_s is not None:
+        call_kwargs["timeout"] = timeout_s
     if api_base:
         call_kwargs["api_base"] = api_base
     if api_key:
@@ -335,7 +337,7 @@ async def _agenerate_litellm_image(
     *,
     call_kwargs: Mapping[str, Any],
     prompt: str,
-    timeout_s: int,
+    timeout_s: int | None,
 ) -> ImageGenerationResult:
     response = await asyncio.wait_for(
         litellm.aimage_generation(**dict(call_kwargs)),
@@ -386,7 +388,8 @@ async def agenerate_image(
 
     api_base = kwargs.pop("api_base", None) or get_env("LLM_BASE_URL") or None
     api_key = kwargs.pop("api_key", None) or context.api_key
-    timeout_s = int(kwargs.pop("timeout", context.profile.timeout_s) or context.profile.timeout_s)
+    raw_timeout_s = int(kwargs.pop("timeout", context.profile.timeout_s) or context.profile.timeout_s)
+    timeout_s = raw_timeout_s if should_enforce_request_timeout(context) else None
     prediction_input = kwargs.pop("prediction_input", None)
     kwargs.pop("endpoint_mode", None)
     if isinstance(prediction_input, Mapping):
@@ -445,7 +448,7 @@ async def agenerate_image(
                     result = await _agenerate_litellm_image(
                         call_kwargs=call_kwargs,
                         prompt=prompt_text,
-                        timeout_s=request_timeout_s(timeout_s),
+                        timeout_s=context_request_timeout_s(context),
                     )
                     if response_format == "b64_json" and any(not image.b64_json and image.url for image in result.images):
                         result = ImageGenerationResult(
@@ -453,7 +456,7 @@ async def agenerate_image(
                             prompt=result.prompt,
                             images=await _materialize_b64_images(
                                 result.images,
-                                timeout_s=request_timeout_s(timeout_s),
+                                timeout_s=context_request_timeout_s(context),
                             ),
                             raw_metadata=dict(result.raw_metadata),
                         )
@@ -474,7 +477,7 @@ async def agenerate_image(
                 )
                 return result
             except asyncio.TimeoutError:
-                last_error = LLMTimeoutError(timeout_s=timeout_s)
+                last_error = LLMTimeoutError(timeout_s=raw_timeout_s)
                 logger.warning(
                     "llm_image_generation_timeout",
                     attempt=attempt,

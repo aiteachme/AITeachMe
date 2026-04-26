@@ -61,6 +61,10 @@ class ModelsSettings(_SettingsModel):
         return self.light
 
 
+class LLMSettings(_SettingsModel):
+    enforce_request_timeout: bool
+
+
 class InteractSettings(_SettingsModel):
     history_turns: int
 
@@ -121,6 +125,7 @@ class Settings(_SettingsModel):
     """
 
     models: ModelsSettings
+    llm: LLMSettings
     interact: InteractSettings
     planner: PlannerSettings
     docgen: DocgenSettings

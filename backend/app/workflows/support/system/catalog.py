@@ -147,6 +147,13 @@ SETTINGS_CATALOG: tuple[SettingsCatalogSection, ...] = (
                 ui_group="统一模型接入",
                 ui_order=20,
             ),
+            setting(
+                "llm.enforce_request_timeout",
+                "使用系统最大等待时限",
+                description="开启后按任务类型限制模型调用最长等待时间；关闭后不再由应用层主动中断慢请求，改由上游 SDK 或网关自行超时。",
+                ui_group="统一模型接入",
+                ui_order=25,
+            ),
         ),
     ),
     SettingsCatalogSection(
