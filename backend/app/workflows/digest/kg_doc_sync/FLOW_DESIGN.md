@@ -16,6 +16,8 @@
 LangGraph 节点的 `node_description`、输入输出字段和 metadata 统一通过
 `digest.common.node_tracing` 生成；阶段 API 内部再用 `trace_substep`
 标记 anchor 校验、候选抽取和图谱写入三个关键阶段。
+每个节点都会写入 `node_metrics.<node>`，用于在 trace 和最终 state 中查看本阶段输入规模、
+并发配置、sync_run id、抽取统计、写库变更数和失败标记结果。
 
 ## 1. 流程总览与执行合同
 
@@ -159,6 +161,7 @@ finalize--error--> fail --> END
 LangGraph 层
   prepare -> init_run -> extract -> persist -> finalize
   当前没有 LangGraph Send fan-out。
+  每个节点负责本阶段输入合同、数据库会话边界、错误归一化和 `node_metrics`。
 
 extract 节点内部
   extract_markdown_chapter_chunks
@@ -539,7 +542,7 @@ none           -> 没有可同步输入
 
 | 现象 | 高概率原因 | 优先检查 |
 | --- | --- | --- |
-| “题型例练 / 速判口诀 / 学习目标”入图 | LLM 抽取太宽或过滤词表没覆盖 | `_filter_docs_candidate_result`、extractor prompt、节点 `source_kind` |
+| “题型例练 / 速判口诀 / 学习目标”入图 | LLM 抽取太宽或过滤词表没覆盖 | `candidate_quality.filter_docs_candidate_result`、extractor prompt、节点 `source_kind` |
 | 节点来自 `docgen_backbone` 且像规划句 | DocGen `canonical_glossary` 把章节计划词当 term | `document_backbone_snapshot.canonical_glossary` |
 | 节点标题像整本文档标题 | 切章规则没有按 H2 下沉 | `extract_markdown_chapter_chunks`、DocGen 发布 Markdown 标题层级 |
 | 图上边很少 | LLM 边被过滤、endpoint 未解析、方向不合法 | `knowledge_graph_edge_skipped_unresolved_endpoint` 日志、`validate_relation_direction` |

@@ -589,6 +589,16 @@ def _chapter_retry_delay_s() -> float:
     return max(0.0, float(configured))
 
 
+def graph_extraction_parallelism() -> dict[str, int | float]:
+    """Return the effective internal fan-out settings for docs-sync extraction."""
+
+    return {
+        "chapter_concurrency_limit": _chapter_concurrency_limit(),
+        "chapter_max_retries": _chapter_max_retries(),
+        "chapter_retry_delay_s": _chapter_retry_delay_s(),
+    }
+
+
 def _extract_markdown_graph_items(
     markdown: str,
     *,
@@ -1810,6 +1820,7 @@ __all__ = [
     "KnowledgeSyncReport",
     "KnowledgeSyncRunContext",
     "extract_knowledge_graph_items",
+    "graph_extraction_parallelism",
     "initialize_knowledge_graph_sync_run",
     "mark_knowledge_graph_sync_run_failed",
     "persist_knowledge_graph_items",

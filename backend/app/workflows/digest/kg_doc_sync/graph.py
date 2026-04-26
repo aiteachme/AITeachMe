@@ -41,9 +41,9 @@ NODE_TRACE_DETAILS: dict[str, dict[str, object]] = {
             "这些内容后续用于稳定节点身份、来源追踪和图谱质量指标。"
         ),
         "reads": ["KnowledgeDoc markdown", "structured_context", "Subject.document_summary_json"],
-        "writes": ["validated docs-sync state", "error"],
+        "writes": ["validated docs-sync state", "node_metrics.prepare", "error"],
         "input_keys": ["subject", "markdown", "structured_context", "subject_context", "build_revision_no"],
-        "output_keys": ["subject", "markdown", "structured_context", "error"],
+        "output_keys": ["subject", "markdown", "structured_context", "node_metrics", "error"],
     },
     NODE_INIT_RUN: {
         "description": (
@@ -57,9 +57,9 @@ NODE_TRACE_DETAILS: dict[str, dict[str, object]] = {
             "knowledge_unit",
             "knowledge_edge",
         ],
-        "writes": ["knowledge_graph_sync_run", "sync_run_context", "error"],
+        "writes": ["knowledge_graph_sync_run", "sync_run_context", "node_metrics.init_run", "error"],
         "input_keys": ["subject", "markdown", "structured_context", "build_revision_no", "build_session_id"],
-        "output_keys": ["sync_run_context", "build_revision_no", "structured_context", "error"],
+        "output_keys": ["sync_run_context", "build_revision_no", "structured_context", "node_metrics", "error"],
     },
     NODE_EXTRACT: {
         "description": (
@@ -67,9 +67,9 @@ NODE_TRACE_DETAILS: dict[str, dict[str, object]] = {
             "标题结构边和跨章节语义边；本节点不写图谱表。LLM 子调用集中在 extractor 内部。"
         ),
         "reads": ["markdown", "subject_context", "structured_context", "sync_run_context", "Subject.document_summary_json"],
-        "writes": ["extraction_payload", "subject_context", "error"],
+        "writes": ["extraction_payload", "subject_context", "node_metrics.extract", "error"],
         "input_keys": ["subject", "markdown", "subject_context", "sync_run_context"],
-        "output_keys": ["extraction_payload", "subject_context", "error"],
+        "output_keys": ["extraction_payload", "subject_context", "node_metrics", "error"],
         "fanout": "节点内部按章节 async gather + semaphore 并发抽取，完成后 fan-in 为 extraction_payload。",
     },
     NODE_PERSIST: {
@@ -78,9 +78,16 @@ NODE_TRACE_DETAILS: dict[str, dict[str, object]] = {
             "执行稳定 anchor 去重、可选 RAG 去重和旧节点/旧边 deprecated 标记，最后完成 sync run。"
         ),
         "reads": ["extraction_payload", "sync_run_context", "knowledge_unit", "knowledge_edge"],
-        "writes": ["knowledge_unit", "knowledge_edge", "knowledge_graph_source_ref", "knowledge_graph_sync_run", "KnowledgeSyncReport"],
+        "writes": [
+            "knowledge_unit",
+            "knowledge_edge",
+            "knowledge_graph_source_ref",
+            "knowledge_graph_sync_run",
+            "KnowledgeSyncReport",
+            "node_metrics.persist",
+        ],
         "input_keys": ["sync_run_context", "extraction_payload"],
-        "output_keys": ["report", "error"],
+        "output_keys": ["report", "node_metrics", "error"],
     },
     NODE_FINALIZE: {
         "description": (
@@ -88,9 +95,9 @@ NODE_TRACE_DETAILS: dict[str, dict[str, object]] = {
             "报告里包含 unit/edge 变更数、章节处理数、LLM/fallback 统计、source_ref 数量、backbone 命中数、稳定 anchor 数和废弃实体数。"
         ),
         "reads": ["KnowledgeSyncReport"],
-        "writes": ["final docs-sync state", "error"],
+        "writes": ["final docs-sync state", "node_metrics.finalize", "error"],
         "input_keys": ["report", "error"],
-        "output_keys": ["report", "error"],
+        "output_keys": ["report", "node_metrics", "error"],
     },
     NODE_FAIL: {
         "description": (
@@ -98,9 +105,9 @@ NODE_TRACE_DETAILS: dict[str, dict[str, object]] = {
             "这里不再吞掉错误，只把 error 留在 state 中让 workflow result 和 graph runtime 显示失败。"
         ),
         "reads": ["error", "subject", "build_session_id", "sync_run_context"],
-        "writes": ["error", "knowledge_graph_sync_run"],
+        "writes": ["error", "knowledge_graph_sync_run", "node_metrics.fail"],
         "input_keys": ["subject", "build_session_id", "sync_run_context", "error"],
-        "output_keys": ["error"],
+        "output_keys": ["node_metrics", "error"],
     },
 }
 
@@ -231,6 +238,7 @@ def create_docs_sync_initial_state(
         "structured_context": dict(structured_context or {}),
         "build_revision_no": build_revision_no,
         "build_session_id": build_session_id or "",
+        "node_metrics": {},
         "sync_run_context": None,
         "extraction_payload": None,
         "report": None,

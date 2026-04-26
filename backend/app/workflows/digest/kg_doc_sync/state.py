@@ -18,6 +18,7 @@ class DocsSyncState(TypedDict, total=False):
     structured_context: dict[str, object]
     build_revision_no: int | None
     build_session_id: str
+    node_metrics: dict[str, dict[str, object]]
     sync_run_context: KnowledgeSyncRunContext | None
     extraction_payload: KnowledgeSyncExtractionPayload | None
     report: KnowledgeSyncReport | None
