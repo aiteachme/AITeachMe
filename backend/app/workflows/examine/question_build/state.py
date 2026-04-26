@@ -15,11 +15,9 @@ class QuestionBuildGraphInput(TypedDict, total=False):
     subject_user_intent: str
     exam_mode: str
     subject_context: str
-    focus_prompt: str
     user_prompt: str
-    style_prompt: str
+    system_constraints: str
     question_count: int
-    requested_difficulty: str
     units: list[KnowledgeUnit]
     mastery_by_unit_id: dict[int, float]
     specs: list[ExamQuestionGenerationSpec]

@@ -65,6 +65,8 @@ class _OverviewContext:
     settings_source: str
     llm_provider: str | None
     llm_api_version: str | None
+    llm_base_url: str | None
+    llm_api_key: str | None
 
 
 def _has_env(name: str) -> bool:
@@ -276,7 +278,8 @@ def _env_entry(
 ) -> SettingEntry:
     configured = _has_env(env_name)
     local_mode = is_local_mode()
-    actual_value = value if value is not None else get_env(env_name)
+    env_value = get_env(env_name)
+    actual_value = env_value if env_value is not None and str(env_value).strip() else value
     safe_secret = bool(secret and not local_mode)
     safe_value = None if safe_secret else actual_value
     if safe_secret and configured:
@@ -432,6 +435,8 @@ def build_settings_overview_data(
         settings_source=describe_project_settings_source(),
         llm_provider=resolve_runtime_llm_provider(),
         llm_api_version=get_llm_api_version(),
+        llm_base_url=get_env("LLM_BASE_URL"),
+        llm_api_key=get_env("LLM_API_KEY"),
     )
 
     return SettingsOverviewData(

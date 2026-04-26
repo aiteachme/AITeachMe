@@ -90,26 +90,26 @@ _GENERIC_FOCUS_TERMS = {
     "本章内容",
 }
 _SPRINT_HEADING_KEYWORDS: dict[str, tuple[str, ...]] = {
-    "guide": ("导读", "先看", "先拿", "破题", "切入", "抓什么"),
+    "guide": ("考点结构", "知识结构", "核心问题", "主线"),
     "glossary": ("术语", "概念", "名词"),
-    "objectives": ("目标", "学完", "做到"),
-    "main": ("抓手", "重点", "核心", "得分"),
-    "drills": ("题型", "拆解", "做题", "例题"),
-    "memory": ("速记", "速查", "记忆", "清单"),
+    "objectives": ("结论", "方法", "掌握", "目标"),
+    "main": ("高频考法", "考法", "抓手", "重点", "核心"),
+    "drills": ("典型例题", "例题", "题型", "解析"),
+    "memory": ("公式", "判定", "速查", "结论"),
     "pitfalls": ("易错", "误区", "陷阱", "边界"),
-    "recap": ("回顾", "复盘", "总结", "带走"),
+    "recap": ("核心总结", "小结", "总结"),
 }
 _SYSTEMATIC_HEADING_KEYWORDS: dict[str, tuple[str, ...]] = {
-    "guide": ("导读", "先看", "进入", "切入", "主线"),
+    "guide": ("知识结构", "核心问题", "主线", "框架"),
     "glossary": ("术语", "概念", "名词"),
-    "objectives": ("目标", "学完", "做到"),
-    "prereq": ("前置", "准备", "基础"),
-    "motivation": ("为什么", "动机", "问题"),
+    "objectives": ("结论", "方法", "目标", "掌握"),
+    "prereq": ("前置基础", "前置", "准备", "基础"),
+    "motivation": ("解决的问题", "动机", "问题"),
     "definitions": ("定义", "定理", "结构", "框架"),
-    "reasoning": ("推理", "应用", "证明", "怎么走"),
-    "map": ("脉络", "位置", "地图", "全局"),
-    "extension": ("延伸", "继续", "进阶"),
-    "recap": ("回收", "总结", "要点", "带走"),
+    "reasoning": ("推理与应用", "推理", "应用", "证明"),
+    "map": ("课程位置", "位置", "地图", "全局"),
+    "extension": ("延伸应用", "延伸", "进阶"),
+    "recap": ("核心总结", "小结", "总结"),
 }
 
 
@@ -413,26 +413,26 @@ def _build_scaffold_headings(
     focus = _pick_heading_focus(title, required_elements, fallback=short_title or "本章内容")
     if normalized_mode == "sprint":
         return {
-            "guide": "## 这一章先看什么",
-            "glossary": "## 先把核心概念讲清楚",
-            "objectives": "## 学完这章你要会什么",
-            "main": f"## {focus}的核心结论与判断抓手",
-            "drills": "## 典型题型怎么审怎么做",
-            "memory": "## 临考速记：最后要记住什么",
-            "pitfalls": "## 易错点和混淆点集中辨析",
-            "recap": "## 本章最后复盘",
+            "guide": f"## {focus}的考点结构",
+            "glossary": f"## {focus}的核心概念",
+            "objectives": f"## {focus}要掌握的结论与方法",
+            "main": f"## {focus}的高频考法",
+            "drills": f"## {focus}的典型例题解析",
+            "memory": f"## {focus}的公式与判定速查",
+            "pitfalls": f"## {focus}的易错点辨析",
+            "recap": f"## {focus}的核心总结",
         }
     return {
-        "guide": f"## 进入《{short_title}》前先抓哪条主线",
-        "glossary": "## 关键概念先讲清楚",
-        "objectives": f"## 学完《{short_title}》后你应该会什么",
-        "prereq": f"## 学《{short_title}》前要先补什么",
-        "motivation": f"## 为什么这一章必须现在学",
-        "definitions": f"## {focus}的定义、结构与核心关系",
-        "reasoning": f"## {focus}怎样一步步走到应用",
-        "map": f"## 《{short_title}》在整门课里的位置",
-        "extension": f"## 学完《{short_title}》后还能往哪里接",
-        "recap": f"## 《{short_title}》最后要带走什么",
+        "guide": f"## {focus}的知识结构",
+        "glossary": f"## {focus}的关键概念",
+        "objectives": f"## {focus}的核心结论与方法",
+        "prereq": f"## {focus}的前置基础",
+        "motivation": f"## {focus}要解决的问题",
+        "definitions": f"## {focus}的定义与结构",
+        "reasoning": f"## {focus}的推理与应用",
+        "map": f"## {focus}在课程中的位置",
+        "extension": f"## {focus}的延伸应用",
+        "recap": f"## {focus}的核心总结",
     }
 
 
@@ -572,7 +572,7 @@ def build_chapter_guide(
     )
 
     lines = [
-        heading or ("## 这一章先看什么" if normalized_mode == "sprint" else "## 本章导读"),
+        heading or ("## 核心考点结构" if normalized_mode == "sprint" else "## 知识结构"),
         "",
         f"> [!{note_kind}]",
         f"> 本章目标：{goal_line}",
@@ -593,7 +593,7 @@ def build_chapter_recap(
     heading: str | None = None,
 ) -> str:
     normalized_mode = _normalize_mode(digest_mode)
-    resolved_heading = heading or ("## 快速回顾" if normalized_mode == "sprint" else "## 本章要点")
+    resolved_heading = heading or ("## 核心总结" if normalized_mode == "sprint" else "## 本章小结")
     items = required_elements[:3] or _default_required_elements(normalized_mode)
     prompts = (
         [
@@ -757,7 +757,7 @@ def _build_mode_sections(
                     [
                         resolved_headings["extension"],
                         "",
-                        "- 回看全文时，优先串联核心定义、关键推理和典型应用。",
+                        "- 复习全文时，优先串联核心定义、关键推理和典型应用。",
                         "- 如果继续深入，建议按“基础定义 -> 关键方法 -> 综合问题”继续扩展。",
                     ]
                 ).strip(),
@@ -777,12 +777,12 @@ def _reading_guidance(digest_mode: str) -> list[str]:
         return [
             "先看每章开头，先确认这一章到底在考什么、常见问法是什么，再进入细节。",
             "每章都按“概念讲清楚 -> 题型拆开讲 -> 易错点收口”的顺序读，不要只扫结论。",
-            "考前回看时优先扫“典型题型”“易错点”“本章复盘”三块，而不是从头重读。",
+            "考前复习时优先扫“典型题型”“易错点”“核心总结”三块，而不是从头重读。",
         ]
     return [
         "建议按章节顺序阅读，因为后面的推理和应用通常依赖前面建立的定义与结构。",
         "每章优先读懂“定义/结构 -> 推理 -> 例子”这条主线，不要把知识点切碎了记。",
-        "每读完一章就回看一次本章总结，确认自己能讲清概念、关系和使用边界，再进入下一章。",
+        "每读完一章就整理一次本章总结，确认自己能讲清概念、关系和使用边界，再进入下一章。",
     ]
 
 
@@ -869,26 +869,26 @@ def _insert_after_first_heading(markdown: str, block: str) -> str:
 # contract. We keep these overrides near the bottom so they win over any older
 # phrasing retained above for backward-compatibility during refactors.
 _SPRINT_HEADING_KEYWORDS = {
-    "guide": ("导读", "先看", "先拿下", "切入", "抓什么"),
-    "glossary": ("概念先对齐", "术语", "概念", "名词"),
-    "objectives": ("目标", "学完", "会什么", "做到"),
-    "main": ("得分抓手", "抓手", "重点", "核心"),
-    "drills": ("题怎么拆", "题型", "拆解", "做题", "例题"),
-    "memory": ("临考", "最该记", "速记", "速查", "记忆"),
-    "pitfalls": ("最容易错", "易错", "误区", "陷阱", "边界"),
-    "recap": ("最后 3 分钟", "回看", "复盘", "总结"),
+    "guide": ("考点结构", "知识结构", "核心问题", "主线"),
+    "glossary": ("核心概念", "术语", "概念", "名词"),
+    "objectives": ("结论", "方法", "掌握", "目标"),
+    "main": ("高频考法", "考法", "抓手", "重点", "核心"),
+    "drills": ("典型例题", "例题", "题型", "解析"),
+    "memory": ("公式", "判定", "速查", "结论"),
+    "pitfalls": ("易错", "误区", "陷阱", "边界"),
+    "recap": ("核心总结", "小结", "总结"),
 }
 _SYSTEMATIC_HEADING_KEYWORDS = {
-    "guide": ("先用什么视角进入", "导读", "进入", "切入", "主线"),
-    "glossary": ("关键概念先对齐", "术语", "概念", "名词"),
-    "objectives": ("学完", "应该会什么", "目标", "做到"),
-    "prereq": ("前要补什么", "前置", "准备", "基础"),
-    "motivation": ("为什么要学", "动机", "问题"),
+    "guide": ("知识结构", "核心问题", "主线", "框架"),
+    "glossary": ("关键概念", "术语", "概念", "名词"),
+    "objectives": ("结论", "方法", "目标", "掌握"),
+    "prereq": ("前置基础", "前置", "准备", "基础"),
+    "motivation": ("解决的问题", "动机", "问题"),
     "definitions": ("定义与结构", "定义", "结构", "框架"),
-    "reasoning": ("怎么走到应用", "推理", "应用", "证明"),
-    "map": ("在整门课里的位置", "位置", "地图", "全局"),
-    "extension": ("还能往哪里接", "延伸", "继续", "进阶"),
-    "recap": ("真正要带走什么", "带走", "总结", "回收"),
+    "reasoning": ("推理与应用", "推理", "应用", "证明"),
+    "map": ("课程位置", "位置", "地图", "全局"),
+    "extension": ("延伸应用", "延伸", "进阶"),
+    "recap": ("核心总结", "小结", "总结"),
 }
 
 
@@ -903,26 +903,26 @@ def _build_scaffold_headings(
     focus = _pick_heading_focus(title, required_elements, fallback=short_title or "本章内容")
     if normalized_mode == "sprint":
         return {
-            "guide": "## 这章先拿下什么",
-            "glossary": "## 本章概念先对齐",
-            "objectives": "## 学完这章你要会什么",
-            "main": f"## {focus}的得分抓手",
-            "drills": "## 题怎么拆",
-            "memory": "## 临考前最该记什么",
-            "pitfalls": "## 最容易错在哪",
-            "recap": "## 考前最后 3 分钟回看什么",
+            "guide": f"## {focus}的考点结构",
+            "glossary": f"## {focus}的核心概念",
+            "objectives": f"## {focus}要掌握的结论与方法",
+            "main": f"## {focus}的高频考法",
+            "drills": f"## {focus}的典型例题解析",
+            "memory": f"## {focus}的公式与判定速查",
+            "pitfalls": f"## {focus}的易错点辨析",
+            "recap": f"## {focus}的核心总结",
         }
     return {
-        "guide": f"## 先用什么视角进入《{short_title}》",
-        "glossary": "## 关键概念先对齐",
-        "objectives": f"## 学完《{short_title}》后你应该会什么",
-        "prereq": f"## 学《{short_title}》前要补什么",
-        "motivation": f"## 为什么要学《{short_title}》",
+        "guide": f"## {focus}的知识结构",
+        "glossary": f"## {focus}的关键概念",
+        "objectives": f"## {focus}的核心结论与方法",
+        "prereq": f"## {focus}的前置基础",
+        "motivation": f"## {focus}要解决的问题",
         "definitions": f"## {focus}的定义与结构",
-        "reasoning": f"## {focus}怎么走到应用",
-        "map": f"## 《{short_title}》在整门课里的位置",
-        "extension": f"## 学完《{short_title}》后还能往哪里接",
-        "recap": f"## 《{short_title}》真正要带走什么",
+        "reasoning": f"## {focus}的推理与应用",
+        "map": f"## {focus}在课程中的位置",
+        "extension": f"## {focus}的延伸应用",
+        "recap": f"## {focus}的核心总结",
     }
 
 

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 import json
-import re
 
 from sqlmodel import Session, select
 
@@ -15,8 +14,7 @@ from app.shared.infra.storage import get_content_store, run_store_sync
 from app.shared.infra.tools.builtin.markdown_processing import normalize_mermaid_blocks
 from app.models.knowledge_doc import KnowledgeDoc
 from app.models.subject import Subject
-
-_HEADING_RE = re.compile(r"^\s*(?P<prefix>#{1,6})\s+(?P<title>.+?)\s*$")
+from app.workflows.digest.common.markdown_knowledge_anchors import extract_markdown_chapter_chunks
 
 
 @dataclass(slots=True)
@@ -26,13 +24,6 @@ class KnowledgeDocSyncInput:
     markdown: str = ""
     source: str = "none"
     structured_context: dict[str, object] = field(default_factory=dict)
-
-
-def _clean_heading_title(raw: str) -> str:
-    title = re.sub(r"\{#ku_[\w-]+\}", "", raw).strip()
-    title = re.sub(r"<!--\s*ATM_KU:\s*ku_[\w-]+\s*-->", "", title).strip()
-    title = re.sub(r"\[(type|prerequisite|related):[^\]]+\]", "", title, flags=re.IGNORECASE).strip()
-    return title
 
 
 def _load_json_dict(raw: str | None) -> dict[str, object]:
@@ -68,51 +59,29 @@ def _clean_int_list(value: object) -> list[int]:
 
 
 def extract_doc_chapter_metadatas(markdown: str) -> list[dict[str, object]]:
-    lines = markdown.splitlines()
     chapters: list[dict[str, object]] = []
-    current_title: str | None = None
-    current_content: list[str] = []
-
-    def _flush() -> None:
-        nonlocal current_title, current_content
-        if not current_title:
-            return
-        summary = " ".join(
-            segment.strip()
-            for segment in current_content
-            if segment.strip() and not segment.strip().startswith("#")
-        ).strip()
+    for chunk in extract_markdown_chapter_chunks(markdown)[:60]:
+        summary = str(chunk.summary or "").strip()
+        if not summary:
+            summary = " ".join(
+                segment.strip()
+                for segment in str(chunk.body_markdown or "").splitlines()
+                if segment.strip() and not segment.strip().startswith("#")
+            ).strip()
         if len(summary) > 1200:
             summary = summary[:1200].rstrip() + "..."
+        title = str(chunk.title or "").strip() or f"Chapter {len(chapters) + 1}"
         chapters.append(
             {
                 "chapter_index": len(chapters) + 1,
-                "title": current_title,
+                "title": title,
                 "summary": summary,
                 "research_summary": "",
                 "tags": [],
                 "source_file_ids": [],
             }
         )
-        current_title = None
-        current_content = []
-
-    for line in lines:
-        match = _HEADING_RE.match(line)
-        if match:
-            if match.group("prefix").count("#") != 1:
-                if current_title:
-                    current_content.append(line)
-                continue
-            title = _clean_heading_title(match.group("title"))
-            if title:
-                _flush()
-                current_title = title
-            continue
-        if current_title:
-            current_content.append(line)
-    _flush()
-    return chapters[:60]
+    return chapters
 
 
 def _merge_doc_markdown(docs: list[KnowledgeDoc]) -> str:
@@ -192,11 +161,11 @@ def load_knowledge_doc_markdown(subject: str) -> tuple[str, str]:
 
 def resolve_graph_input_paths(*, file_ids: list[int], knowledge_doc_markdown: str) -> list[str]:
     paths: list[str] = []
-    if file_ids:
-        paths.append("chunks")
     if knowledge_doc_markdown.strip():
         paths.append("knowledge_doc")
-    return paths or ["chunks"]
+    if file_ids:
+        paths.append("source_files")
+    return paths or ["none"]
 
 
 __all__ = [

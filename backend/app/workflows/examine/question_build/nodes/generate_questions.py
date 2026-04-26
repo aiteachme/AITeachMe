@@ -36,17 +36,8 @@ def build_generate_questions_node(*, context: WorkflowContext):
                 raise ValueError("question blueprint planning returned no items")
             specs = [blueprint.to_generation_spec() for blueprint in blueprints]
             questions = await generate_exam_questions_for_units(
-                subject=str(state.get("subject") or ""),
-                subject_name=str(state.get("subject_name") or ""),
-                subject_description=str(state.get("subject_description") or ""),
-                subject_user_intent=str(state.get("subject_user_intent") or ""),
-                exam_mode=str(state.get("exam_mode") or "web_practice"),
                 units=list(state.get("units") or []),
                 specs=specs,
-                subject_context=str(state.get("subject_context") or ""),
-                focus_prompt=str(state.get("focus_prompt") or ""),
-                user_prompt=str(state.get("user_prompt") or ""),
-                style_prompt=str(state.get("style_prompt") or ""),
             )
         except Exception as exc:
             elapsed_ms = int((perf_counter() - started_at) * 1000)

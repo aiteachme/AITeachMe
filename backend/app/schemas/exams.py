@@ -12,10 +12,7 @@ class ExamGenerateRequest(BaseModel):
     """Trigger exam generation request."""
 
     exam_mode: str = Field(description="Exam mode: web_practice | paper_exam (legacy values are compatible).")
-    difficulty: str | None = Field(default=None, description="Optional difficulty override: easy | medium | hard | mixed. Omit for auto/profile-driven difficulty.")
-    user_prompt: str | None = Field(default=None, description="Optional user prompt for general generation hints.")
-    style_prompt: str | None = Field(default=None, description="Optional prompt that describes the desired paper style.")
-    focus_prompt: str | None = Field(default=None, description="Optional prompt describing key focus areas.")
+    user_prompt: str | None = Field(default=None, description="Optional user requirements for exam generation.")
     sample_file_uids: list[str] | None = Field(default=None, description="Optional uploaded sample-paper file UIDs.")
     num_questions: int | None = Field(default=None, ge=1, le=200, description="Optional target question count.")
 
@@ -136,7 +133,6 @@ class QuestionBankItemResponse(BaseModel):
 class QuestionTemplateItemResponse(BaseModel):
     id: int
     subject: str
-    knowledge_unit_id: int | None = None
     question_type: str
     difficulty: str
     stem: str

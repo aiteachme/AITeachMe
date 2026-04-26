@@ -1,9 +1,9 @@
 import { useEffect, useId, useMemo, useState } from "react";
-import mermaid from "mermaid";
 import { Loader2, Sparkles, TriangleAlert } from "lucide-react";
 
 import { cn } from "../../lib/utils";
 
+type MermaidApi = typeof import("mermaid").default;
 type MermaidBlockVariant = "default" | "document";
 
 interface MermaidBlockProps {
@@ -12,11 +12,17 @@ interface MermaidBlockProps {
 }
 
 let mermaidConfigured = false;
+let mermaidModulePromise: Promise<MermaidApi> | null = null;
 const MINDMAP_ROOT_RE = /^root\(\((.+)\)\)$/i;
 const MINDMAP_MIXED_SYNTAX_RE =
   /-->|==>|\b(?:graph|flowchart|sequencediagram|classdiagram|statediagram|erdiagram|gantt)\b/i;
 
-function ensureMermaidConfigured() {
+function loadMermaid() {
+  mermaidModulePromise ??= import("mermaid").then((module) => module.default);
+  return mermaidModulePromise;
+}
+
+function ensureMermaidConfigured(mermaid: MermaidApi) {
   if (mermaidConfigured) {
     return;
   }
@@ -208,7 +214,8 @@ function buildChartCandidates(chart: string): string[] {
 }
 
 async function renderMermaidChart(diagramId: string, chart: string) {
-  ensureMermaidConfigured();
+  const mermaid = await loadMermaid();
+  ensureMermaidConfigured(mermaid);
   const candidates = buildChartCandidates(chart);
   let lastError: unknown = null;
   for (let index = 0; index < candidates.length; index += 1) {

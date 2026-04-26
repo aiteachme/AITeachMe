@@ -415,7 +415,7 @@ generate_chapters
            - `model="primary"`
            - 默认映射到 `qwen-plus`
   模式差异：sprint/systematic 的核心差异主要在 draft_chapter 体现。
-    - sprint：短、密、题型导向，参考突击课常见的“考点/分值感/题型 -> 题眼 -> 最短方法 -> 变式练习 -> 易错回看”节奏。
+    - sprint：短、密、题型导向，参考突击课常见的“考点/分值感/题型 -> 题眼 -> 最短方法 -> 变式练习 -> 易错辨析”节奏。
     - systematic：长、稳、结构导向，参考系统课常见的“知识地图 -> 定义/性质 -> 推理路径 -> 例题落地 -> 迁移练习 -> 边界回收”节奏。
     - 这些节奏只作为写作建议，不是固定目录；章节标题应由本章内容自然决定。
 
@@ -427,8 +427,8 @@ enhance_chapters
   输出：EnhancedChapterDraft[] / AssetManifest[] / PracticeManifest[]
     - EnhancedChapterDraft：增强后的章节正文。
     - AssetManifest：Mermaid、交互块等资产清单。
-    - PracticeManifest：例题、题型例练和迁移练习种子。
-  作用：处理 Mermaid、交互 HTML sidecar、公式清洗、例题/练习；image 占位会被剥离，不进入发布正文。
+    - PracticeManifest：典型例题解析、变式题和迁移练习种子。
+  作用：处理 Mermaid、交互 HTML sidecar、公式清洗、例题解析与练习；image 占位会被剥离，不进入发布正文。
   enhance_chapter 内部步骤：
     1. 解析章节中的 Mermaid / interactive 占位符，并清理残留 image 占位。
        当前模型方案：

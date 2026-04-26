@@ -25,6 +25,11 @@ from app.workflows.digest.docgen.lib.asset_requests import (
     strip_asset_requests,
 )
 from app.workflows.digest.docgen.lib.model_policy import DocGenModelStep, docgen_completion_kwargs_with_metadata
+from app.workflows.digest.docgen.lib.textbook_style import (
+    build_textbook_heading,
+    choose_heading_focus,
+    normalize_textbook_headings,
+)
 from app.workflows.digest.docgen.mode_profiles import get_docgen_mode_profile
 
 _PLACEHOLDER_TOKEN_MAP = {
@@ -170,7 +175,12 @@ class DocGenWriterRuntime(BaseTracedExecution):
             dense_context=dense_context,
             execution_contract=execution_contract,
         )
-        markdown = self._sanitize_student_facing_markdown(markdown, title=title)
+        markdown = self._sanitize_student_facing_markdown(
+            markdown,
+            title=title,
+            digest_mode=digest_mode,
+            focus_items=required_elements,
+        )
         return TracedExecutionResult(
             content=markdown,
             metadata={
@@ -337,36 +347,42 @@ class DocGenWriterRuntime(BaseTracedExecution):
         dense_context: str,
     ) -> str:
         mode_profile = get_docgen_mode_profile(digest_mode)
-        heading = "## 再把关键点压实一遍" if mode_profile.is_sprint else "## 再把关键结构补稳"
+        focus = choose_heading_focus(missing_requirements, fallback=title)
+        heading = build_textbook_heading(
+            "coverage",
+            digest_mode=digest_mode,
+            focus=focus,
+            fallback_title=title,
+        )
         lines = [
             heading,
             "",
-            f"如果只看一遍还不够稳，下面这些内容需要回到《{title}》里再压一遍。",
+            f"这一节补齐《{title}》中还需要讲清的知识点，重点放在定义、判断依据和典型问法上。",
         ]
         if objective.strip():
             lines.append(f"本章目标：{objective.strip()}")
-        lines.extend(["", "### 这几项不能漏", ""])
-        lines.extend(f"- {item}：回看定义、判断依据和题目中最常见的问法。" for item in missing_requirements[:5])
+        lines.extend(["", build_textbook_heading("points", digest_mode=digest_mode, level=3), ""])
+        lines.extend(f"- {item}：说明它的定义、适用条件和在题目中的常见问法。" for item in missing_requirements[:5])
         if mode_profile.is_sprint:
             lines.extend(
                 [
                     "",
-                    "### 回看时优先问自己",
+                    build_textbook_heading("questions", digest_mode=digest_mode, level=3),
                     "",
-                    "- 这一点到底在考哪个概念、条件或结论？",
-                    "- 我能不能说清它为什么成立，而不是只记结果？",
-                    "- 如果题目换个问法，我还能不能用同一套判断路径？",
+                    "- 题目中的哪个条件决定了可以使用这一结论？",
+                    "- 这一类题最短的判断路径是什么？",
+                    "- 换一种问法时，哪些步骤仍然不变？",
                 ]
             )
         else:
             lines.extend(
                 [
                     "",
-                    "### 回看时优先问自己",
+                    build_textbook_heading("questions", digest_mode=digest_mode, level=3),
                     "",
                     "- 这一部分的前提、结论和结构关系分别是什么？",
                     "- 哪一步推理最容易跳步，必须补解释？",
-                    "- 哪个例子最能帮助我把抽象结论落到具体情境？",
+                    "- 哪个例子最能帮助把抽象结论落到具体情境？",
                 ]
             )
         return "\n".join(lines).strip()
@@ -380,16 +396,22 @@ class DocGenWriterRuntime(BaseTracedExecution):
         dense_context: str,
     ) -> str:
         mode_profile = get_docgen_mode_profile(digest_mode)
-        heading = "## 本章压缩复盘" if mode_profile.is_sprint else "## 本章补充理解"
         focus_items = required_elements[:4] or (
             ["核心概念", "关键方法", "典型例子"] if mode_profile.is_sprint else ["定义", "推理", "应用"]
+        )
+        focus = choose_heading_focus(focus_items, fallback=title)
+        heading = build_textbook_heading(
+            "summary",
+            digest_mode=digest_mode,
+            focus=focus,
+            fallback_title=title,
         )
         lines = [
             heading,
             "",
-            f"下面把《{title}》里最该继续记牢的内容压缩成一组复盘抓手。",
+            f"下面把《{title}》里最重要的知识压缩成适合整理笔记的结构。",
             "",
-            "### 优先回看这些内容",
+            build_textbook_heading("points", digest_mode=digest_mode, level=3),
             "",
         ]
         lines.extend(f"- {item}" for item in focus_items)
@@ -397,27 +419,34 @@ class DocGenWriterRuntime(BaseTracedExecution):
             lines.extend(
                 [
                     "",
-                    "### 做题时要主动问自己",
+                    build_textbook_heading("questions", digest_mode=digest_mode, level=3),
                     "",
                     "- 这一步到底在判断什么条件？",
                     "- 这个结论什么时候能直接用，什么时候不能硬套？",
-                    "- 如果题目换一个问法，我还能不能把同一套路迁过去？",
+                    "- 题目换一种表述时，判断路径是否仍然成立？",
                 ]
             )
         else:
             lines.extend(
                 [
                     "",
-                    "### 继续往下学时要串起来的关系",
+                    build_textbook_heading("links", digest_mode=digest_mode, level=3),
                     "",
                     "- 先把定义、符号和成立条件串成一条稳定主线。",
                     "- 再把推理过程和应用场景对应起来，避免只记孤立结论。",
-                    "- 最后回看边界与反例，确认自己不是“看懂了但其实没真懂”。",
+                    "- 最后补上边界与反例，避免把结论用到不适用的场景。",
                 ]
             )
         return "\n".join(lines).strip()
 
-    def _sanitize_student_facing_markdown(self, markdown: str, *, title: str) -> str:
+    def _sanitize_student_facing_markdown(
+        self,
+        markdown: str,
+        *,
+        title: str,
+        digest_mode: str,
+        focus_items: list[str],
+    ) -> str:
         cleaned = str(markdown or "").replace("\r\n", "\n").replace("\r", "\n")
         cleaned = re.sub(r"```markdown\s*.*?```", "", cleaned, flags=re.IGNORECASE | re.DOTALL)
         cleaned = re.sub(rf"(?im)^\s*学科：\s*subj_[\w-]+\s*$", "", cleaned)
@@ -429,15 +458,13 @@ class DocGenWriterRuntime(BaseTracedExecution):
             r"(?ms)^##\s*临考补充笔记\s*\n.*?(?=^##\s|\Z)",
             r"(?ms)^##\s*深入理解补充\s*\n.*?(?=^##\s|\Z)",
             r"(?ms)^###\s*仍需重点覆盖\s*\n.*?(?=^##\s|^###\s|\Z)",
-            r"(?ms)^###\s*可直接回看这些研究线索\s*\n.*?(?=^##\s|^###\s|\Z)",
-            r"(?ms)^###\s*研究材料重组\s*\n.*?(?=^##\s|^###\s|\Z)",
+            r"(?ms)^###\s*研究材料.*?\n.*?(?=^##\s|^###\s|\Z)",
         ]
         for pattern in forbidden_section_patterns:
             cleaned = re.sub(pattern, "", cleaned)
 
         forbidden_line_fragments = (
             "研究笔记",
-            "可直接回看这些研究线索",
             "研究材料重组",
             "重点补全",
             "结构补全",
@@ -454,6 +481,12 @@ class DocGenWriterRuntime(BaseTracedExecution):
             previous = line
 
         cleaned = "\n".join(lines)
+        cleaned = normalize_textbook_headings(
+            cleaned,
+            digest_mode=digest_mode,
+            fallback_title=title,
+            focus_items=focus_items,
+        )
         cleaned = normalize_markdown_rendering(cleaned)
         cleaned = re.sub(r"\n{3,}", "\n\n", cleaned).strip()
         if not cleaned.startswith("#"):

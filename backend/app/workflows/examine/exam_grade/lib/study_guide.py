@@ -110,7 +110,7 @@ async def generate_exam_study_guide(
                 pending_reviews=pending_reviews,
             ),
             call_purpose=LLMCallPurpose.SUMMARIZE,
-            model="primary",
+            model="reason",
             response_model=ExamStudyGuidePayload,
             temperature=0.2,
             max_tokens=1400,

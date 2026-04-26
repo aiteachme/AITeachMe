@@ -117,6 +117,7 @@ _POLICIES: dict[DocGenModelStep, DocGenModelPolicy] = {
         call_type="structured",
         call_purpose=LLMCallPurpose.REASONING,
         model="reason",
+        max_tokens=700,
         note="研究查询拆解需要覆盖缺口判断。",
     ),
     DocGenModelStep.RESEARCH_PURIFY: DocGenModelPolicy(
@@ -124,6 +125,7 @@ _POLICIES: dict[DocGenModelStep, DocGenModelPolicy] = {
         call_type="text",
         call_purpose=LLMCallPurpose.DOCGEN_LIGHT,
         model="light",
+        max_tokens=2200,
         note="清洗 dense context，不做重推理。",
     ),
     DocGenModelStep.WRITER: DocGenModelPolicy(

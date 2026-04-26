@@ -28,7 +28,7 @@ from app.models.enums import (
     validate_status_transition,
 )
 from app.models.email_verification import EmailVerificationCode
-from app.models.exam import ExamPaper, ExamPaperItem, QuestionTemplate, QuestionTypeRegistry
+from app.models.exam import ExamPaper, ExamPaperItem, QuestionKnowledgeUnitLink, QuestionTemplate, QuestionTypeRegistry
 from app.models.knowledge import RetrievalChunk
 from app.models.knowledge_doc import KnowledgeDoc, KnowledgeDocument
 from app.models.knowledge_graph_sync import KnowledgeGraphSourceRef, KnowledgeGraphSyncRun
@@ -70,6 +70,7 @@ __all__ = [
     "EvidenceLink",
     "MasteryGranularity",
     "QuestionTemplate",
+    "QuestionKnowledgeUnitLink",
     "QuestionTemplateStatus",
     "QuestionType",
     "QuestionTypeRegistry",

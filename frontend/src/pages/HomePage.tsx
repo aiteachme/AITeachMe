@@ -24,7 +24,12 @@ import { apiClient, getApiErrorMessage } from "../api/client";
 import { unwrapOrvalResponse } from "../lib/unwrapOrvalResponse";
 import { cn } from "../lib/utils";
 import { isElectronRuntime } from "../lib/electronRuntime";
-import { FILE_ACCEPT, extractPasteFiles } from "../lib/fileUpload";
+import {
+  buildUnsupportedFilesMessage,
+  FILE_ACCEPT,
+  extractPasteFiles,
+  partitionUploadFiles,
+} from "../lib/fileUpload";
 import { resolveFileProcessingLabel } from "../components/knowledge-docs";
 import { HeroAnimation } from "../components/ui/HeroAnimation";
 import { FullPageDropOverlay } from "../components/ui/FullPageDropOverlay";
@@ -538,11 +543,18 @@ export function HomePage() {
     if (!files.length) {
       return;
     }
-    setError(null);
+    const { supportedFiles, unsupportedFiles } = partitionUploadFiles(files);
+    const unsupportedMessage = unsupportedFiles.length
+      ? buildUnsupportedFilesMessage(unsupportedFiles)
+      : null;
+    setError(unsupportedMessage);
+    if (!supportedFiles.length) {
+      return;
+    }
     setIsUploadingFiles(true);
-    setUploadingFileNames(files.map((file) => file.name));
+    setUploadingFileNames(supportedFiles.map((file) => file.name));
     try {
-      const result = await uploadFiles(files);
+      const result = await uploadFiles(supportedFiles);
       const uploaded = result.uploaded_items ?? [];
       const uploadedUids = uploaded.map((file) => file.uid);
       const nextFileUids = uniqueStrings([...entryFileUids, ...uploadedUids]);

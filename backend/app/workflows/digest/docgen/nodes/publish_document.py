@@ -162,7 +162,7 @@ def build_publish_document_node(*, context: WorkflowContext):
                 chapter,
                 fallback_index=int(chapter.get("chapter_index", 0) or 0) or None,
             )
-            if title in {"练习与自检", "练习与回看"}:
+            if title == "练习与自检":
                 continue
             upsert_knowledge_build_chapter_progress(
                 subject,

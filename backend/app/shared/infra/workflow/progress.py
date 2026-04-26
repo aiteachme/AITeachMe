@@ -14,6 +14,7 @@ async def emit_progress(
     detail: str,
     step: str | None = None,
     elapsed_ms: int | None = None,
+    extra: Mapping[str, Any] | None = None,
 ) -> None:
     """Emit one compact progress event without coupling it to tracing."""
 
@@ -29,6 +30,8 @@ async def emit_progress(
         payload["step"] = str(step).strip()
     if elapsed_ms is not None:
         payload["elapsed_ms"] = int(elapsed_ms)
+    if extra:
+        payload.update(dict(extra))
 
     try:
         maybe_awaitable = callback(payload)
