@@ -37,33 +37,33 @@ LangGraph 节点的 `node_description`、输入输出字段和 metadata 统一�
 reason  -> qwen-max
 primary -> qwen-flash
 light   -> qwen-flash
-extract -> settings.models.light or settings.models.primary（当前默认 qwen-flash）
 image_generation -> settings.models.image_generation（默认未配置）
 ```
 
 注意：
 
-- 这里说的 `reason / primary / light / extract` 是逻辑模型槽位，不是固定 provider 名。
+- 这里说的 `reason / primary / light` 是逻辑模型槽位，不是固定 provider 名。
 - 如果运行时 settings 覆盖了 `settings.models.*`，实际模型名会随之变化。
-- KG docs-sync 当前会使用 `extract` 槽位；`extract` 在路由层解析为 `models.light`，缺失时回退到 `models.primary`。
-- `kg_docs_sync` 的 LangGraph 节点本身不直接写死模型，LLM 调用集中在复用的 extractor 内部。
+- KG docs-sync 当前使用 `light` 槽位；抽取任务意图由 `call_purpose=EXTRACT` 表达。
+- 路由层仍保留 `extract` 兼容别名，但新代码不应继续把它当模型槽位使用。
+- `kg_docs_sync` 的 LangGraph 节点本身不直接写死模型，LLM 调用集中在复用的 extractor 内部；`call_purpose + model slot + max_tokens` 统一由 `kg_docs_sync/lib/model_policy.py` 维护。
 
 按当前代码，KG docs-sync 各阶段的大模型使用如下：
 
-| 阶段 / 子步骤 | 当前代码位置 | 调用类型 | 逻辑模型槽位 | 当前默认模型 | 这一步做什么 | 为什么这样配 |
+| 阶段 / 子步骤 | 当前代码位置 | 调用类型 | call_purpose | 逻辑模型槽位 | 当前默认模型 | 这一步做什么 |
 | --- | --- | --- | --- | --- | --- | --- |
-| `run_graph_docs_sync_after_doc_build` | `support/knowledge_graph/builds.py` | 无 LLM | 无 | 无 | 读取发布文档、写 graph lane runtime、挂 LangSmith root trace | 入口编排只负责状态和上下文，不做抽取 |
-| `load_knowledge_doc_sync_input` | `kg_docs_sync/inputs.py` | 无 LLM | 无 | 无 | 读取 `KnowledgeDoc` rows、DocGen manifest、文档摘要和章节来源映射 | 输入组装必须稳定可复现 |
-| `prepare` | `kg_docs_sync/nodes/prepare.py` | 无 LLM | 无 | 无 | 校验 `subject` 和合并 Markdown | 只做合同检查 |
-| `sync` | `kg_docs_sync/nodes/sync.py` | 间接 LLM | 由内部 extractor 决定 | 见下方 | 打开 DB session，加载学科上下文，调用增量同步 | 图谱复杂逻辑收敛在 support 层 |
-| `_extract_chapter_graph_items` 主抽取 | `support/knowledge_graph/incremental_sync.py` -> `support/knowledge_graph/extraction.py` | 结构化 | `extract` | `qwen-flash` | 从单章 Markdown 抽取候选 KnowledgeUnit 和关系 | 正式链路只走 support 层抽取入口，不再依赖旧 file-ingest lane |
-| `_repair_docs_extraction_after_empty` | `support/knowledge_graph/extraction.py` | 结构化 | `extract` | `qwen-flash` | 当 docs-sync 主抽取为空时做一次极短修复抽取 | 只补明显漏抽，不重做重推理 |
-| `_llm_extract_concepts_from_questions` | `support/knowledge_graph/extraction.py` | 结构化 | `light` | `qwen-flash` | 题目密集内容下从题干反推少量概念/方法 | 这是 fallback，不应成为重成本路径 |
-| `_filter_docs_candidate_result` | `support/knowledge_graph/incremental_sync.py` | 无 LLM | 无 | 无 | 丢弃学习目标、题型例练、速判口诀、计划句等非知识点 | LLM 负责语义抽取，规则负责硬挡明显坏节点 |
-| `_build_backbone_graph_items` | `support/knowledge_graph/incremental_sync.py` | 无 LLM | 无 | 无 | 把 DocGen `document_backbone` 的 glossary/dependency 转成保底节点和边 | Backbone 是已生成的结构化产物，同步阶段只消费 |
-| `_build_structural_heading_edges` | `support/knowledge_graph/incremental_sync.py` | 无 LLM | 无 | 无 | 用标题层级补结构边 | 结构关系可规则化 |
-| `_build_cross_section_semantic_edges` | `support/knowledge_graph/incremental_sync.py` | 无 LLM | 无 | 无 | 基于节点上下文补跨章节语义边 | 当前只做保守规则推断 |
-| upsert / source ref / deprecate | `support/knowledge_graph/incremental_sync.py` | 无 LLM | 无 | 无 | 写入节点、关系、同步批次、来源引用和过期标记 | 持久化阶段必须确定性 |
+| `run_graph_docs_sync_after_doc_build` | `kg_docs_sync/builds.py` | 无 LLM | 无 | 无 | 无 | 读取发布文档、写 graph lane runtime、挂 LangSmith root trace |
+| `load_knowledge_doc_sync_input` | `kg_docs_sync/inputs.py` | 无 LLM | 无 | 无 | 无 | 读取 `KnowledgeDoc` rows、DocGen manifest、文档摘要和章节来源映射 |
+| `prepare` | `kg_docs_sync/nodes/prepare_node.py` | 无 LLM | 无 | 无 | 无 | 校验 `subject` 和合并 Markdown |
+| `sync` | `kg_docs_sync/nodes/sync_node.py` | 间接 LLM | 由内部 extractor 决定 | 由 policy 决定 | 见下方 | 打开 DB session，加载学科上下文，调用增量同步 |
+| `_extract_chapter_graph_items` 主抽取 | `kg_docs_sync/lib/incremental_sync.py` -> `kg_docs_sync/lib/extraction.py` | 结构化 | `EXTRACT` | `light` | `qwen-flash` | 从单章 Markdown 抽取候选 KnowledgeUnit 和关系 |
+| `_repair_docs_extraction_after_empty` | `kg_docs_sync/lib/extraction.py` | 结构化 | `EXTRACT` | `light` | `qwen-flash` | 当 docs-sync 主抽取为空时做一次极短修复抽取 |
+| `_llm_extract_concepts_from_questions` | `kg_docs_sync/lib/extraction.py` | 结构化 | `DOCGEN_LIGHT` | `light` | `qwen-flash` | 题目密集内容下从题干反推少量概念/方法 |
+| `_filter_docs_candidate_result` | `kg_docs_sync/lib/incremental_sync.py` | 无 LLM | 无 | 无 | 无 | 丢弃学习目标、题型例练、速判口诀、计划句等非知识点 |
+| `_build_backbone_graph_items` | `kg_docs_sync/lib/incremental_sync.py` | 无 LLM | 无 | 无 | 无 | 把 DocGen `document_backbone` 的 glossary/dependency 转成保底节点和边 |
+| `_build_structural_heading_edges` | `kg_docs_sync/lib/incremental_sync.py` | 无 LLM | 无 | 无 | 无 | 用标题层级补结构边 |
+| `_build_cross_section_semantic_edges` | `kg_docs_sync/lib/incremental_sync.py` | 无 LLM | 无 | 无 | 无 | 基于节点上下文补跨章节语义边 |
+| upsert / source ref / deprecate | `kg_docs_sync/lib/incremental_sync.py` | 无 LLM | 无 | 无 | 无 | 写入节点、关系、同步批次、来源引用和过期标记 |
 
 当前主线：
 
@@ -332,9 +332,9 @@ _extract_chapter_with_retries
     - section_context：本章主节点和来源上下文。
     - diagnostics：本章抽取计数。
   当前模型方案：
-    - 主抽取走 `TaskType.EXTRACT + model="extract"`。
-    - docs 空结果修复也走 `TaskType.EXTRACT + model="extract"`。
-    - 题目 fallback 中的 LLM 概念抽取走 `TaskType.DOCGEN_LIGHT + model="light"`。
+    - 主抽取走 `KGDocsSyncModelStep.SECTION_GRAPH`，即 `call_purpose=EXTRACT + model="light"`。
+    - docs 空结果修复走 `KGDocsSyncModelStep.EMPTY_REPAIR`，即 `call_purpose=EXTRACT + model="light"`。
+    - 题目 fallback 中的 LLM 概念抽取走 `KGDocsSyncModelStep.QUESTION_CONCEPTS`，即 `call_purpose=DOCGEN_LIGHT + model="light"`。
 
 _extract_chapter_graph_items
   输入：
@@ -509,7 +509,7 @@ none           -> 没有可同步输入
 
 ## 4. 当前仍需关注的问题
 
-1. 旧 `kg_file_ingest` workflow 已删除；`support/knowledge_graph/extraction.py` 是 docs-sync 的正式抽取实现入口。
-2. docs-sync 的 LLM 主抽取默认走 `extract -> light`，速度可控，但复杂学科的概念归并仍可能偏保守。后续如果要提高质量，应增加一个“章级候选审稿/归并”步骤，而不是放开所有候选直接入图。
+1. 旧 `kg_file_ingest` workflow 已删除；`kg_docs_sync/lib/extraction.py` 是 docs-sync 的正式抽取实现入口。
+2. docs-sync 的 LLM 主抽取默认走 `call_purpose=EXTRACT + model="light"`，速度可控，但复杂学科的概念归并仍可能偏保守。后续如果要提高质量，应增加一个“章级候选审稿/归并”步骤，而不是放开所有候选直接入图。
 3. 规则过滤只能挡明显坏节点，不能替代 LLM 的语义判断。过滤词表应该短、强、可解释；如果持续出现某类坏节点，优先修 extractor prompt 和候选审稿。
 4. `aliases_json/evidence_refs_json` 仍是兼容字段。新查询应优先使用 `knowledge_graph_source_ref`，等图谱查询稳定后再考虑数据规模化优化。

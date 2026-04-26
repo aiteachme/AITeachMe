@@ -6,10 +6,10 @@ from app.models.knowledge_doc import KnowledgeDocument
 from app.models.knowledge_graph_sync import KnowledgeGraphSourceRef, KnowledgeGraphSyncRun
 from app.models.knowledge_relation import KnowledgeEdge
 from app.models.knowledge_unit import KnowledgeUnit
-from app.workflows.support.knowledge_graph.extraction import CandidateNode, ChunkExtractionResult
-from app.workflows.support.knowledge_graph import incremental_sync
-from app.workflows.support.knowledge_graph.incremental_sync import sync_markdown_knowledge_graph
-from app.workflows.support.knowledge_graph.query import get_knowledge_unit_detail
+from app.workflows.digest.kg_docs_sync.lib.extraction import CandidateNode, ChunkExtractionResult
+import app.workflows.digest.kg_docs_sync.lib.incremental_sync as incremental_sync
+from app.workflows.digest.kg_docs_sync.lib.incremental_sync import sync_markdown_knowledge_graph
+from app.workflows.digest.kg_docs_sync.lib.query import get_knowledge_unit_detail
 
 
 async def _empty_search_knowledge(*args, **kwargs):

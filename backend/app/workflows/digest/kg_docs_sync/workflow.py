@@ -10,9 +10,17 @@ from app.workflows.digest.kg_docs_sync.graph import (
     build_docs_sync_graph,
     create_docs_sync_initial_state,
 )
-from app.workflows.digest.kg_docs_sync.lib.support import normalize_docs_sync_inputs
+from app.workflows.digest.kg_docs_sync.lib.incremental_sync import KnowledgeSyncReport
 from app.workflows.digest.kg_docs_sync.state import DocsSyncState
-from app.workflows.support.knowledge_graph.incremental_sync import KnowledgeSyncReport
+
+
+def _normalize_docs_sync_inputs(
+    *,
+    subject: str,
+    markdown: str,
+    build_revision_no: int | None = None,
+) -> tuple[str, str, int | None]:
+    return subject.strip(), markdown or "", build_revision_no
 
 
 async def run_graph_docs_sync_workflow(
@@ -26,7 +34,7 @@ async def run_graph_docs_sync_workflow(
 ) -> WorkflowResult[KnowledgeSyncReport]:
     fallback_subject = str(subject or "").strip()
     try:
-        normalized_subject, normalized_markdown, normalized_revision = normalize_docs_sync_inputs(
+        normalized_subject, normalized_markdown, normalized_revision = _normalize_docs_sync_inputs(
             subject=subject,
             markdown=markdown,
             build_revision_no=build_revision_no,

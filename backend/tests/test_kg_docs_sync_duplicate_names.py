@@ -1,12 +1,12 @@
 from sqlmodel import SQLModel, Session, create_engine
 
-from app.workflows.support.knowledge_graph.extraction import (
+from app.workflows.digest.kg_docs_sync.lib.extraction import (
     CandidateExtractionDiagnostics,
     CandidateNode,
     ChunkExtractionResult,
 )
-import app.workflows.support.knowledge_graph.incremental_sync as incremental_sync
-from app.workflows.support.knowledge_graph.incremental_sync import sync_markdown_knowledge_graph
+import app.workflows.digest.kg_docs_sync.lib.incremental_sync as incremental_sync
+from app.workflows.digest.kg_docs_sync.lib.incremental_sync import sync_markdown_knowledge_graph
 
 
 async def _empty_search_knowledge(*args, **kwargs):

@@ -11,7 +11,7 @@ from app.schemas.knowledge import (
 )
 from app.shared.infra.subject import get_subject_vector_status_by_slug
 from app.utils.time import utcnow
-from app.workflows.support.knowledge_graph.query import get_full_graph
+from app.workflows.digest.kg_docs_sync.lib.query import get_full_graph
 
 _DEFAULT_OVERVIEW_SECTIONS = {
     "graph",
@@ -62,4 +62,3 @@ def get_knowledge_overview(
 
 
 __all__ = ["get_knowledge_overview"]
-

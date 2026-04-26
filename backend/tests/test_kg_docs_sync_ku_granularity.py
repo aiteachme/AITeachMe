@@ -1,7 +1,7 @@
 import asyncio
 
-import app.workflows.support.knowledge_graph.extraction as extractor
-from app.workflows.support.knowledge_graph.extraction import ChunkExtractionResult
+import app.workflows.digest.kg_docs_sync.lib.extraction as extractor
+from app.workflows.digest.kg_docs_sync.lib.extraction import ChunkExtractionResult
 
 
 def test_docs_fallback_qualifies_generic_subsection_heading(monkeypatch):

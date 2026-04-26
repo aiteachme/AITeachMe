@@ -12,11 +12,14 @@ from pydantic import BaseModel, Field
 import structlog
 
 from app.shared.infra.llm_support import acompletion_structured
-from app.shared.infra.llm_support.routing import TaskType
 from app.shared.infra.prompt_loader import populate_prompt
 from app.schemas.llm import ChatMessage, SYSTEM, USER
-from app.workflows.support.knowledge_graph.candidate_identity import build_candidate_stable_id
-from app.workflows.support.knowledge_graph.chunker import QuestionBlock, parse_question_blocks
+from app.workflows.digest.kg_docs_sync.lib.model_policy import (
+    KGDocsSyncModelStep,
+    kg_docs_sync_completion_kwargs_with_metadata,
+)
+from app.workflows.digest.kg_docs_sync.lib.candidate_identity import build_candidate_stable_id
+from app.workflows.digest.kg_docs_sync.lib.chunker import QuestionBlock, parse_question_blocks
 from app.models.knowledge_taxonomy import (
     normalize_knowledge_unit_type,
     normalize_relation_type,
@@ -24,7 +27,10 @@ from app.models.knowledge_taxonomy import (
     validate_relation_direction,
 )
 from app.utils.knowledge_helpers import normalize_name
-from app.workflows.support.knowledge_graph.prompts import SYSTEM_PROMPT_KNOWLEDGE_EXTRACT, USER_PROMPT_KNOWLEDGE_EXTRACT
+from app.workflows.digest.kg_docs_sync.prompts.extraction import (
+    SYSTEM_PROMPT_KNOWLEDGE_EXTRACT,
+    USER_PROMPT_KNOWLEDGE_EXTRACT,
+)
 from app.workflows.digest.common.semantic_titles import (
     DEFAULT_QUESTION_TOPIC,
     choose_semantic_topic_path,
@@ -288,8 +294,10 @@ async def _llm_extract_concepts_from_questions(
         result = await acompletion_structured(
             response_model=_ConceptExtractResult,
             messages=messages,
-            task_type=TaskType.DOCGEN_LIGHT,
-            model="light",
+            **kg_docs_sync_completion_kwargs_with_metadata(
+                KGDocsSyncModelStep.QUESTION_CONCEPTS,
+                question_count=len(questions),
+            ),
         )
         return [
             (item.name.strip(), item.knowledge_unit_type)
@@ -581,6 +589,8 @@ def _qualify_docs_unit_name(
 async def _repair_docs_extraction_after_empty(
     *,
     messages: list[ChatMessage],
+    chunk_title: str,
+    header_path: str,
 ) -> ChunkExtractionResult:
     repair_messages = list(messages)
     repair_messages.append(
@@ -596,8 +606,11 @@ async def _repair_docs_extraction_after_empty(
     return await acompletion_structured(
         response_model=ChunkExtractionResult,
         messages=repair_messages,
-        task_type=TaskType.EXTRACT,
-        model="extract",
+        **kg_docs_sync_completion_kwargs_with_metadata(
+            KGDocsSyncModelStep.EMPTY_REPAIR,
+            chunk_title=chunk_title,
+            header_path=header_path,
+        ),
     )
 
 
@@ -1227,8 +1240,13 @@ async def _extract_candidates_internal(
         llm_call = acompletion_structured(
             response_model=ChunkExtractionResult,
             messages=messages,
-            task_type=TaskType.EXTRACT,
-            model="extract",
+            **kg_docs_sync_completion_kwargs_with_metadata(
+                KGDocsSyncModelStep.SECTION_GRAPH,
+                chunk_title=chunk_title,
+                header_path=header_path,
+                doc_source_type=doc_source_type,
+                digest_mode=digest_mode,
+            ),
         )
         if doc_source_type == "knowledge_doc_markdown":
             result = await asyncio.wait_for(llm_call, timeout=_DOCS_SYNC_SECTION_LLM_TIMEOUT_S)
@@ -1261,7 +1279,11 @@ async def _extract_candidates_internal(
                 chunk_title=chunk_title,
             ):
                 try:
-                    result = await _repair_docs_extraction_after_empty(messages=messages)
+                    result = await _repair_docs_extraction_after_empty(
+                        messages=messages,
+                        chunk_title=chunk_title,
+                        header_path=header_path,
+                    )
                 except Exception as exc:
                     logger.warning(
                         "knowledge_extract_docs_retry_failed",

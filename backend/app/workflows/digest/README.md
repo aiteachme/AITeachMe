@@ -27,8 +27,6 @@ digest/
 - `common/`
   放跨 lane 共用能力，例如 events、exports、contracts、prepare、material profile、metrics、runtime config、file status、pedagogy
   以及 subject 级知识产物清理 `cleanup.py`
-- `workflows/support/knowledge_graph/`
-  图谱触发、状态更新、总览和查询的 API-facing 用例；不属于 `digest/` 下的新 lane
 
 ## 当前公开入口
 
@@ -49,7 +47,7 @@ from app.workflows.digest.planner import (
 - 新的 API-facing 用例必须进入具体 lane 或 `common/`
 - 新 prompt 放各自链路 `prompts/`
 - 新 helper 放各自链路 `lib/`
-- 跨 digest lane 共享能力统一放 `common/`，图谱 support 层共享能力放 `workflows/support/knowledge_graph/`
+- 跨 digest lane 共享能力统一放 `common/`；KG 图谱同步、查询、总览和清理都归入 `kg_docs_sync/`
 - `common/__init__.py` 不做 re-export；跨模块引用时按职责从 `common.models`、`common.prepare` 等具体文件导入
 - lane 内部的 `lib/__init__.py`、`nodes/__init__.py`、`prompts/__init__.py` 不做导出壳；graph 和节点代码从具体模块导入
 - 各链路自己的构建摘要放在对应链路 `lib/reporting.py`
@@ -63,6 +61,6 @@ from app.workflows.digest.planner import (
 - `docgen publish -> kg_docs_sync`
 
 旧 `kg_file_ingest` 调试链路已经删除。知识图谱同步只保留 `kg_docs_sync`，
-可复用的图谱抽取能力迁入 `workflows/support/knowledge_graph/extraction.py`。
+图谱抽取、候选合并、增量写库等主体实现位于 `kg_docs_sync/lib/`。
 
 如果要看具体编排，优先进入各链路下的 `graph.py`、`state.py`；API-facing 构建入口优先看对应 lane 的 `lib/*lifecycle*.py`

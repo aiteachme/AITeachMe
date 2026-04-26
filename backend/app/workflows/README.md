@@ -25,7 +25,7 @@
 
 - `support`
 
-`support/` 承接不属于五大引擎、但仍属于后端业务层的模块，例如 `system`、`auth`、`subjects`、`knowledge_graph`、`files`、`export_import`。
+`support/` 承接不属于五大引擎、但仍属于后端业务层的模块，例如 `system`、`auth`、`subjects`、`files`、`export_import`。
 
 ## 模块根目录规则
 
@@ -188,7 +188,6 @@ workflows/support/<module>/
 - `subjects`
 - `system`
 - `export_import`
-- `knowledge_graph`
 
 规则：
 
@@ -385,7 +384,7 @@ planner -> docgen -> kg_docs_sync
 ```
 
 旧 `digest/kg_file_ingest` 历史调试包已删除；图谱构建只保留 `digest/kg_docs_sync`，
-抽取实现位于 `workflows/support/knowledge_graph/extraction.py`。
+抽取、候选合并、增量入图、查询、总览和清理实现都位于 `digest/kg_docs_sync/`。
 
 `digest/planner` 是组织样板：
 
@@ -422,7 +421,7 @@ planner -> docgen -> kg_docs_sync
   Digest 教学运行时配置 facade
 - `digest/common/pedagogy.py`
   Digest 文档教学语义 helper
-- `support/knowledge_graph/overview.py`
+- `digest/kg_docs_sync/lib/overview.py`
   基于知识图谱的总览用例
 - `support/system/init.py`、`support/system/settings.py`
   系统初始化与设置总览位置

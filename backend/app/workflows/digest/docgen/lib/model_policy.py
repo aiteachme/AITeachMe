@@ -8,6 +8,7 @@ from enum import Enum
 from typing import Literal
 
 from app.shared.infra.llm_support.routing import LLMCallPurpose
+from app.workflows.digest.common.model_policy import compact_metadata
 from app.workflows.digest.docgen.mode_profiles import get_docgen_mode_profile
 
 DocGenModelSlot = Literal["light", "primary", "reason", "image_generation"]
@@ -69,11 +70,7 @@ class DocGenModelPolicy:
         **metadata: object,
     ) -> dict[str, object]:
         kwargs = self.completion_kwargs()
-        kwargs["extra_metadata"] = {
-            **_compact_metadata(dict(extra_metadata or {})),
-            **_compact_metadata(metadata),
-            **self.metadata(),
-        }
+        kwargs["extra_metadata"] = compact_metadata(extra_metadata, metadata, self.metadata())
         return kwargs
 
 
@@ -187,14 +184,6 @@ _POLICIES: dict[DocGenModelStep, DocGenModelPolicy] = {
         note="图片模型由 settings.models.image_generation 决定。",
     ),
 }
-
-
-def _compact_metadata(metadata: Mapping[str, object]) -> dict[str, object]:
-    return {
-        key: value
-        for key, value in metadata.items()
-        if value not in (None, "", [], {})
-    }
 
 
 def get_docgen_model_policy(

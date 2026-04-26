@@ -7,6 +7,7 @@ from enum import Enum
 from typing import Literal
 
 from app.shared.infra.llm_support.routing import LLMCallPurpose
+from app.workflows.digest.common.model_policy import compact_metadata
 
 PlannerModelSlot = Literal["light", "primary", "reason"]
 
@@ -53,10 +54,7 @@ class PlannerModelPolicy:
 
     def completion_kwargs_with_metadata(self, **extra_metadata: object) -> dict[str, object]:
         kwargs = self.completion_kwargs()
-        kwargs["extra_metadata"] = {
-            **{key: value for key, value in extra_metadata.items() if value not in (None, "", [], {})},
-            **self.metadata(),
-        }
+        kwargs["extra_metadata"] = compact_metadata(extra_metadata, self.metadata())
         return kwargs
 
 

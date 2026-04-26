@@ -35,7 +35,7 @@ from app.workflows.digest.common.markdown_knowledge_anchors import (
     extract_markdown_section_chunks,
     validate_knowledge_unit_anchors,
 )
-from app.workflows.support.knowledge_graph.extraction import (
+from app.workflows.digest.kg_docs_sync.lib.extraction import (
     CandidateExtractionDiagnostics,
     CandidateNode,
     ChunkExtractionResult,

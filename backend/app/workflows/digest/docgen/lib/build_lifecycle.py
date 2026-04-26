@@ -375,6 +375,25 @@ def _build_graph_metrics(*, build_status) -> KnowledgeGraphBuildMetricsResponse:
     return KnowledgeGraphBuildMetricsResponse.model_validate(dict(build_status.metrics or {}))
 
 
+def _default_doc_sync_metrics() -> dict[str, int | str]:
+    return {
+        "knowledge_doc_source": "not_synced",
+        "knowledge_doc_chapter_count": 0,
+        "doc_sync_unit_changes": 0,
+        "doc_sync_edge_changes": 0,
+        "doc_sync_elapsed_ms": 0,
+        "elapsed_ms": 0,
+        "revision_no": 0,
+        "last_synced_doc_version_no": 0,
+        "source_ref_count": 0,
+        "backbone_unit_count": 0,
+        "backbone_edge_count": 0,
+        "stable_anchor_count": 0,
+        "deprecated_unit_count": 0,
+        "deprecated_edge_count": 0,
+    }
+
+
 def _resolve_runtime_build_status(*, subject: str) -> KnowledgeBuildStatusResponse | None:
     build_lock = read_knowledge_build_lock(subject)
     runtime = read_knowledge_build_runtime(subject)
@@ -674,7 +693,7 @@ async def run_docgen_background(
 
     from app.workflows.digest import run_docgen_workflow
     from app.shared.infra.knowledge.build_store import release_knowledge_build_lock
-    from app.workflows.support.knowledge_graph import (
+    from app.workflows.digest.kg_docs_sync.builds import (
         run_graph_docs_sync_after_doc_build,
     )
     build_session_id = _new_build_session_id()
@@ -826,22 +845,7 @@ async def run_docgen_background(
         )
         docgen_published = True
         graph_error_message: str | None = None
-        doc_sync_metrics: dict[str, int | str] = {
-            "knowledge_doc_source": "not_synced",
-            "knowledge_doc_chapter_count": 0,
-            "doc_sync_unit_changes": 0,
-            "doc_sync_edge_changes": 0,
-            "doc_sync_elapsed_ms": 0,
-            "elapsed_ms": 0,
-            "revision_no": 0,
-            "last_synced_doc_version_no": 0,
-            "source_ref_count": 0,
-            "backbone_unit_count": 0,
-            "backbone_edge_count": 0,
-            "stable_anchor_count": 0,
-            "deprecated_unit_count": 0,
-            "deprecated_edge_count": 0,
-        }
+        doc_sync_metrics = _default_doc_sync_metrics()
         if sync_graph_after_docgen:
             try:
                 doc_sync_metrics = await run_graph_docs_sync_after_doc_build(

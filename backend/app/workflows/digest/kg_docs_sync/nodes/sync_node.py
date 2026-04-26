@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+import structlog
+
 from app.shared.infra.database import managed_session
+from app.workflows.digest.kg_docs_sync.lib.incremental_sync import sync_markdown_knowledge_graph
 from app.workflows.digest.kg_docs_sync.state import DocsSyncState
-from app.workflows.support.knowledge_graph.incremental_sync import sync_markdown_knowledge_graph
 from app.workflows.support.subjects.learning_context import load_subject_llm_context
+
+logger = structlog.get_logger()
 
 
 def run_docs_sync_node(state: DocsSyncState) -> DocsSyncState:
@@ -25,8 +29,14 @@ def run_docs_sync_node(state: DocsSyncState) -> DocsSyncState:
             )
         return {**state, "report": report, "error": None}
     except Exception as exc:
+        logger.warning(
+            "kg_docs_sync_node_failed",
+            subject=state.get("subject"),
+            build_session_id=state.get("build_session_id"),
+            error_type=type(exc).__name__,
+            error=str(exc),
+        )
         return {**state, "report": None, "error": str(exc)}
 
 
 __all__ = ["run_docs_sync_node"]
-

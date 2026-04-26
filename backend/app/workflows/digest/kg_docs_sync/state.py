@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TypedDict
 
-from app.workflows.support.knowledge_graph.incremental_sync import KnowledgeSyncReport
+from app.workflows.digest.kg_docs_sync.lib.incremental_sync import KnowledgeSyncReport
 
 
 class DocsSyncState(TypedDict, total=False):

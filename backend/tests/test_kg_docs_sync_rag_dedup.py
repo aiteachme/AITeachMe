@@ -2,7 +2,7 @@ from sqlmodel import Session, SQLModel, create_engine
 
 from app.models.knowledge_unit import KnowledgeUnit
 from app.workflows.digest.common.markdown_knowledge_anchors import MarkdownKnowledgeUnit
-import app.workflows.support.knowledge_graph.incremental_sync as incremental_sync
+import app.workflows.digest.kg_docs_sync.lib.incremental_sync as incremental_sync
 
 
 def test_find_unit_with_rag_reuses_existing_unit(monkeypatch):

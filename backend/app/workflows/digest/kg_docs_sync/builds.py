@@ -19,6 +19,7 @@ from app.workflows.digest.kg_docs_sync.inputs import (
     resolve_graph_input_paths,
 )
 
+
 def _end_trace_run(trace_run: object | None, outputs: dict[str, object]) -> None:
     if trace_run is not None:
         trace_run.end(outputs=outputs)
@@ -38,6 +39,70 @@ def _write_graph_status(subject: str, *, requested_at: datetime, status: str, st
 def _current_doc_version_no(subject: str) -> int:
     manifest = read_knowledge_manifest(subject)
     return int(manifest.version_no or 0) if manifest is not None else 0
+
+
+def _base_doc_sync_metrics(
+    *,
+    knowledge_doc_source: str,
+    chapter_count: int,
+    doc_version_no: int,
+) -> dict[str, int | str]:
+    return {
+        "knowledge_doc_source": knowledge_doc_source,
+        "knowledge_doc_chapter_count": chapter_count,
+        "doc_sync_unit_changes": 0,
+        "doc_sync_edge_changes": 0,
+        "doc_sync_elapsed_ms": 0,
+        "elapsed_ms": 0,
+        "revision_no": 0,
+        "last_synced_doc_version_no": doc_version_no,
+        "doc_sync_section_count": 0,
+        "doc_sync_llm_section_count": 0,
+        "doc_sync_fallback_section_count": 0,
+        "doc_sync_question_fallback_section_count": 0,
+        "doc_sync_topic_fallback_section_count": 0,
+        "source_ref_count": 0,
+        "backbone_unit_count": 0,
+        "backbone_edge_count": 0,
+        "stable_anchor_count": 0,
+        "deprecated_unit_count": 0,
+        "deprecated_edge_count": 0,
+    }
+
+
+def _completed_doc_sync_metrics(
+    *,
+    knowledge_doc_source: str,
+    chapter_count: int,
+    doc_version_no: int,
+    sync_report,
+) -> dict[str, int | str]:
+    metrics = _base_doc_sync_metrics(
+        knowledge_doc_source=knowledge_doc_source,
+        chapter_count=chapter_count,
+        doc_version_no=doc_version_no,
+    )
+    metrics.update(
+        {
+            "doc_sync_unit_changes": sync_report.unit_change_count,
+            "doc_sync_edge_changes": sync_report.edge_change_count,
+            "doc_sync_elapsed_ms": sync_report.elapsed_ms,
+            "elapsed_ms": sync_report.elapsed_ms,
+            "revision_no": sync_report.build_revision_no,
+            "doc_sync_section_count": sync_report.section_count,
+            "doc_sync_llm_section_count": sync_report.llm_section_count,
+            "doc_sync_fallback_section_count": sync_report.fallback_section_count,
+            "doc_sync_question_fallback_section_count": sync_report.question_fallback_section_count,
+            "doc_sync_topic_fallback_section_count": sync_report.topic_fallback_section_count,
+            "source_ref_count": sync_report.source_ref_count,
+            "backbone_unit_count": sync_report.backbone_unit_count,
+            "backbone_edge_count": sync_report.backbone_edge_count,
+            "stable_anchor_count": sync_report.stable_anchor_count,
+            "deprecated_unit_count": sync_report.deprecated_unit_count,
+            "deprecated_edge_count": sync_report.deprecated_edge_count,
+        }
+    )
+    return metrics
 
 
 async def run_graph_docs_sync_after_doc_build(
@@ -74,27 +139,11 @@ async def run_graph_docs_sync_after_doc_build(
         doc_chapter_metadatas = extract_doc_chapter_metadatas(knowledge_doc_markdown)
         doc_version_no = int(sync_input.structured_context.get("doc_version_no") or _current_doc_version_no(subject))
         if not knowledge_doc_markdown.strip():
-            skipped_metrics = {
-                "knowledge_doc_source": knowledge_doc_source,
-                "knowledge_doc_chapter_count": len(doc_chapter_metadatas),
-                "doc_sync_unit_changes": 0,
-                "doc_sync_edge_changes": 0,
-                "doc_sync_elapsed_ms": 0,
-                "elapsed_ms": 0,
-                "revision_no": 0,
-                "last_synced_doc_version_no": doc_version_no,
-                "doc_sync_section_count": 0,
-                "doc_sync_llm_section_count": 0,
-                "doc_sync_fallback_section_count": 0,
-                "doc_sync_question_fallback_section_count": 0,
-                "doc_sync_topic_fallback_section_count": 0,
-                "source_ref_count": 0,
-                "backbone_unit_count": 0,
-                "backbone_edge_count": 0,
-                "stable_anchor_count": 0,
-                "deprecated_unit_count": 0,
-                "deprecated_edge_count": 0,
-            }
+            skipped_metrics = _base_doc_sync_metrics(
+                knowledge_doc_source=knowledge_doc_source,
+                chapter_count=len(doc_chapter_metadatas),
+                doc_version_no=doc_version_no,
+            )
             _end_trace_run(trace_run, {"status": "skipped", **skipped_metrics})
             return skipped_metrics
 
@@ -138,27 +187,12 @@ async def run_graph_docs_sync_after_doc_build(
             raise RuntimeError(sync_result.error.detail)
 
         sync_report = sync_result.require_value()
-        completed_metrics = {
-            "knowledge_doc_source": knowledge_doc_source,
-            "knowledge_doc_chapter_count": len(doc_chapter_metadatas),
-            "doc_sync_unit_changes": sync_report.unit_change_count,
-            "doc_sync_edge_changes": sync_report.edge_change_count,
-            "doc_sync_elapsed_ms": sync_report.elapsed_ms,
-            "elapsed_ms": sync_report.elapsed_ms,
-            "revision_no": sync_report.build_revision_no,
-            "last_synced_doc_version_no": doc_version_no,
-            "doc_sync_section_count": sync_report.section_count,
-            "doc_sync_llm_section_count": sync_report.llm_section_count,
-            "doc_sync_fallback_section_count": sync_report.fallback_section_count,
-            "doc_sync_question_fallback_section_count": sync_report.question_fallback_section_count,
-            "doc_sync_topic_fallback_section_count": sync_report.topic_fallback_section_count,
-            "source_ref_count": sync_report.source_ref_count,
-            "backbone_unit_count": sync_report.backbone_unit_count,
-            "backbone_edge_count": sync_report.backbone_edge_count,
-            "stable_anchor_count": sync_report.stable_anchor_count,
-            "deprecated_unit_count": sync_report.deprecated_unit_count,
-            "deprecated_edge_count": sync_report.deprecated_edge_count,
-        }
+        completed_metrics = _completed_doc_sync_metrics(
+            knowledge_doc_source=knowledge_doc_source,
+            chapter_count=len(doc_chapter_metadatas),
+            doc_version_no=doc_version_no,
+            sync_report=sync_report,
+        )
         _end_trace_run(trace_run, {"status": "completed", **completed_metrics})
         return completed_metrics
 

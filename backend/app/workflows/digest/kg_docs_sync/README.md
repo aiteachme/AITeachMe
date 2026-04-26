@@ -25,8 +25,16 @@ LangGraph nodes carry `node_description` metadata through
 `digest.common.node_tracing`. The heavy `sync` node also emits LangSmith
 substeps for anchor validation, graph-item extraction, and graph upsert.
 
+## Model Policy
+
+LLM calls used by the docs-sync extractor must take `call_purpose`, model slot,
+token limit, and tracing metadata from `lib/model_policy.py`.
+
 ## Extraction Boundary
 
-Use `app.workflows.support.knowledge_graph.extraction` as the import surface for
-extractor types and functions. The old `digest.kg_file_ingest` workflow has
-been removed; docs-sync is the only graph-building digest lane.
+Use `app.workflows.digest.kg_docs_sync.lib.extraction` and
+`app.workflows.digest.kg_docs_sync.lib.incremental_sync` for docs-sync
+extraction and graph-writing internals. The old `digest.kg_file_ingest`
+workflow has been removed; docs-sync is the only graph-building digest lane.
+Graph query, overview, and cleanup use-cases also live in `lib/query.py`,
+`lib/overview.py`, and `lib/cleanup.py`.
