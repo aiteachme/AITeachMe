@@ -51,8 +51,8 @@ async def main() -> None:
         start = time.monotonic()
         llm_kwargs = {
             "model": settings.models.primary,
-            messages=[{"role": "user", "content": "用一句话介绍你自己"}],
-            max_tokens=100,
+            "messages": [{"role": "user", "content": "用一句话介绍你自己"}],
+            "max_tokens": 100,
             **build_litellm_provider_kwargs(settings.models.primary),
         }
         if llm_base_url:

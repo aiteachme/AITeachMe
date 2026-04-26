@@ -93,9 +93,9 @@ export const subjectHandlers = [
           },
           {
             key: "knowledge",
-            label: "知识图谱与课程结构",
+            label: "知识文档与知识图谱",
             count: 4,
-            description: "会删除知识点、边、证据、课程结构和构建任务等派生数据。",
+            description: "会删除知识文档、知识点、边、证据和构建任务等派生数据。",
           },
           {
             key: "chat",

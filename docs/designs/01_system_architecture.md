@@ -87,7 +87,6 @@ shared.infra -> shared.kernel
 - `api/knowledge_docs.py`
 - `workflows/digest/planner/`
 - `workflows/digest/docgen/`
-- `workflows/digest/kg_file_ingest/`
 - `workflows/digest/kg_docs_sync/`
 - `workflows/support/knowledge_graph/`
 

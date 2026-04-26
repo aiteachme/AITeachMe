@@ -1,3 +1,4 @@
+import { memo } from "react";
 import { AlertCircle, UserRound } from "lucide-react";
 import { type ChatSessionMessage } from "../../hooks/useChatSession";
 import { cn } from "../../lib/utils";
@@ -12,7 +13,7 @@ interface ChatTranscriptProps {
   onOpenCitation: (chunkId: number) => void;
 }
 
-export function ChatTranscript({ messages, onOpenCitation }: ChatTranscriptProps) {
+export const ChatTranscript = memo(function ChatTranscript({ messages, onOpenCitation }: ChatTranscriptProps) {
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-7 px-4 py-8 md:px-8 xl:max-w-4xl 2xl:max-w-5xl">
       {messages.map((message) => {
@@ -92,4 +93,4 @@ export function ChatTranscript({ messages, onOpenCitation }: ChatTranscriptProps
       })}
     </div>
   );
-}
+});

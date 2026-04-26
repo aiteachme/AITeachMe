@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import uuid
 
 import structlog
 from fastapi import APIRouter, BackgroundTasks, Body, Depends, Path, Request
@@ -29,8 +28,6 @@ from app.schemas.knowledge import (
     DocGenBuildRequest,
     DocGenGetResponse,
     KnowledgeBuildRuntimeResponse,
-    KnowledgeDebugTriggerRequest,
-    KnowledgeDebugTriggerResponse,
     KnowledgeOverviewRequest,
     KnowledgeOverviewResponse,
 )
@@ -50,11 +47,7 @@ from app.workflows.digest.docgen import (
     trigger_docgen_build,
 )
 from app.workflows.support.knowledge_graph import (
-    clear_subject_graph_entities,
     get_knowledge_overview,
-    run_graph_build_background,
-    run_graph_docs_sync_debug_background,
-    run_graph_file_ingest_debug_background,
 )
 from app.workflows.support.subjects import get_subject_record
 from app.workflows.interact.chat.lib.streaming import SSEEventEmitter
@@ -64,17 +57,12 @@ from app.shared.infra.workflow.live_stream import (
     subscribe_workflow_stream,
 )
 from app.shared.infra.knowledge.build_store import (
-    KnowledgeBuildLock,
-    acquire_knowledge_build_lock,
     build_aggregate_knowledge_build_status,
     read_knowledge_build_runtime,
-    read_knowledge_build_status,
     release_knowledge_build_lock,
     update_knowledge_build_lane_status,
-    update_knowledge_build_status,
 )
 from app.utils.time import utcnow
-from app.shared.infra.exceptions import SubjectBuildLockConflictError
 
 router = APIRouter(tags=["knowledge"])
 logger = structlog.get_logger(__name__)
@@ -202,130 +190,6 @@ async def knowledge_build_plan_create(
         payload=body,
     )
     return ok_response(data)
-
-
-@router.post(
-    "/debug/kg-file-ingest",
-    response_model=ApiResponse[KnowledgeDebugTriggerResponse],
-    summary="Trigger kg_file_ingest only for debugging",
-    responses=build_error_responses([400, 404, 409, 422, 500]),
-)
-async def knowledge_debug_kg_file_ingest(
-    request: Request,
-    background_tasks: BackgroundTasks,
-    subject: str = Path(...),
-    body: KnowledgeDebugTriggerRequest = Body(default=KnowledgeDebugTriggerRequest()),
-    user: CurrentUserContext = Depends(get_current_user_context),
-    session: Session = Depends(get_db),
-) -> ApiResponse[KnowledgeDebugTriggerResponse]:
-    normalized = normalize_subject_slug(subject)
-    subject_record = get_subject_record(session, normalized, owner_user_id=user.user_id)
-    data, accepted_file_ids, build_group_id = trigger_docgen_build(
-        session,
-        subject=subject_record,
-        user_id=user.user_id,
-        file_uids=body.file_uids,
-        prompt=body.prompt,
-        embedding_resolution=body.embedding_resolution,
-        confirmed_plan_id=None,
-        build_type="graph",
-    )
-    background_tasks.add_task(
-        _spawn_registered_task_after_response,
-        request,
-        lambda: run_graph_file_ingest_debug_background(
-            subject=normalized,
-            file_ids=accepted_file_ids,
-            prompt=data.prompt,
-            requested_at=data.requested_at,
-            build_group_id=build_group_id,
-        ),
-        kind="knowledge.debug.kg_file_ingest",
-        subject=normalized,
-        name=f"knowledge.debug.kg_file_ingest:{normalized}",
-    )
-    return ok_response(
-        KnowledgeDebugTriggerResponse(
-            action="kg_file_ingest",
-            requested_at=data.requested_at,
-            accepted_file_uids=data.accepted_file_uids,
-            message=f"已触发 kg_file_ingest，本轮纳入 {len(data.accepted_file_uids)} 份已解析资料。",
-        )
-    )
-
-
-@router.post(
-    "/debug/kg-docs-sync",
-    response_model=ApiResponse[KnowledgeDebugTriggerResponse],
-    summary="Trigger kg_docs_sync only for debugging",
-    responses=build_error_responses([400, 404, 409, 500]),
-)
-async def knowledge_debug_kg_docs_sync(
-    request: Request,
-    background_tasks: BackgroundTasks,
-    subject: str = Path(...),
-    body: KnowledgeDebugTriggerRequest = Body(default=KnowledgeDebugTriggerRequest()),
-    user: CurrentUserContext = Depends(get_current_user_context),
-    session: Session = Depends(get_db),
-) -> ApiResponse[KnowledgeDebugTriggerResponse]:
-    normalized = normalize_subject_slug(subject)
-    get_subject_record(session, normalized, owner_user_id=user.user_id)
-    requested_at = utcnow()
-    build_group_id = uuid.uuid4().hex
-    if not acquire_knowledge_build_lock(
-        normalized,
-        KnowledgeBuildLock(requested_at=requested_at, build_group_id=build_group_id, source_file_ids=[], prompt=body.prompt),
-    ):
-        raise SubjectBuildLockConflictError(normalized)
-    update_knowledge_build_status(
-        normalized,
-        requested_at=requested_at,
-        build_group_id=build_group_id,
-        build_kind="graph",
-        status="accepted",
-        stage="graph_docs_sync",
-        prompt=body.prompt,
-        source_file_ids=[],
-        current_stage_description="已接收 kg_docs_sync 调试请求，正在排队启动。",
-    )
-    background_tasks.add_task(
-        _spawn_registered_task_after_response,
-        request,
-        lambda: run_graph_docs_sync_debug_background(
-            subject=normalized,
-            prompt=body.prompt,
-            requested_at=requested_at,
-            build_group_id=build_group_id,
-        ),
-        kind="knowledge.debug.kg_docs_sync",
-        subject=normalized,
-        name=f"knowledge.debug.kg_docs_sync:{normalized}",
-    )
-    return ok_response(
-        KnowledgeDebugTriggerResponse(
-            action="kg_docs_sync",
-            requested_at=requested_at,
-            accepted_file_uids=[],
-            message="已触发 kg_docs_sync，将基于当前已发布知识文档同步知识单元、知识图片与图谱关系。",
-        )
-    )
-
-
-@router.post(
-    "/debug/clear-graph",
-    response_model=ApiResponse[ClearKnowledgeResponse],
-    summary="Clear knowledge units and graph edges only for debugging",
-    responses=build_error_responses([400, 404, 409, 500]),
-)
-async def knowledge_debug_clear_graph(
-    subject: str = Path(...),
-    user: CurrentUserContext = Depends(get_current_user_context),
-    session: Session = Depends(get_db),
-) -> ApiResponse[ClearKnowledgeResponse]:
-    normalized = normalize_subject_slug(subject)
-    get_subject_record(session, normalized, owner_user_id=user.user_id)
-    counts = clear_subject_graph_entities(session, subject=normalized)
-    return ok_response(ClearKnowledgeResponse(subject=normalized, deleted_counts=counts))
 
 
 @router.post(
@@ -490,7 +354,7 @@ def knowledge_build_plan_confirm(
 @router.post(
     "/build",
     response_model=ApiResponse[DocGenBuildData],
-    summary="Trigger docs and/or graph digest build",
+    summary="Trigger a knowledge-doc build with optional graph sync",
     responses=build_error_responses([400, 404, 409, 422, 500]),
 )
 async def knowledge_build(
@@ -506,7 +370,7 @@ async def knowledge_build(
         "knowledge_build_request_received",
         subject=normalized,
         user_id=user.user_id,
-        build_type=body.build_type or "docs",
+        build_type=body.build_type,
         confirmed_plan_id=body.confirmed_plan_id,
         file_uid_count=len(body.file_uids or []),
     )
@@ -524,64 +388,38 @@ async def knowledge_build(
         prompt=body.prompt,
         embedding_resolution=body.embedding_resolution,
         confirmed_plan_id=body.confirmed_plan_id,
-        build_type=body.build_type or "docs",
     )
 
-    build_type = body.build_type or "docs"
-
-    if build_type == "docs":
-        logger.info(
-            "knowledge_build_docs_background_spawning",
+    logger.info(
+        "knowledge_build_docs_background_spawning",
+        subject=normalized,
+        user_id=user.user_id,
+        confirmed_plan_id=data.confirmed_plan_id,
+        accepted_file_count=len(accepted_file_ids),
+        requested_at=data.requested_at.isoformat(),
+    )
+    background_tasks.add_task(
+        _spawn_registered_task_after_response,
+        request,
+        lambda: run_docgen_background(
             subject=normalized,
-            user_id=user.user_id,
+            file_ids=accepted_file_ids,
+            prompt=data.prompt,
+            requested_at=data.requested_at,
+            build_group_id=build_group_id,
+            planner_session_id=data.planner_session_id,
             confirmed_plan_id=data.confirmed_plan_id,
-            accepted_file_count=len(accepted_file_ids),
-            requested_at=data.requested_at.isoformat(),
-        )
-        background_tasks.add_task(
-            _spawn_registered_task_after_response,
-            request,
-            lambda: run_docgen_background(
-                subject=normalized,
-                file_ids=accepted_file_ids,
-                prompt=data.prompt,
-                requested_at=data.requested_at,
-                build_group_id=build_group_id,
-                planner_session_id=data.planner_session_id,
-                confirmed_plan_id=data.confirmed_plan_id,
-                user_id=user.user_id,
-            ),
-            kind="knowledge.build.docs",
-            subject=normalized,
-            name=f"knowledge.build.docs:{normalized}",
-        )
-    elif build_type == "graph":
-        logger.info(
-            "knowledge_build_graph_background_spawning",
-            subject=normalized,
             user_id=user.user_id,
-            accepted_file_count=len(accepted_file_ids),
-            requested_at=data.requested_at.isoformat(),
-        )
-        background_tasks.add_task(
-            _spawn_registered_task_after_response,
-            request,
-            lambda: run_graph_build_background(
-                subject=normalized,
-                file_ids=accepted_file_ids,
-                prompt=data.prompt,
-                requested_at=data.requested_at,
-                build_group_id=build_group_id,
-            ),
-            kind="knowledge.build.graph",
-            subject=normalized,
-            name=f"knowledge.build.graph:{normalized}",
-        )
+        ),
+        kind="knowledge.build.docs",
+        subject=normalized,
+        name=f"knowledge.build.docs:{normalized}",
+    )
     logger.info(
         "knowledge_build_request_accepted",
         subject=normalized,
         user_id=user.user_id,
-        build_type=build_type,
+        build_type=body.build_type,
         confirmed_plan_id=data.confirmed_plan_id,
         accepted_file_count=len(accepted_file_ids),
         requested_at=data.requested_at.isoformat(),

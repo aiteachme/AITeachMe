@@ -1,4 +1,4 @@
-import { memo, Suspense, lazy, useState, useRef, useEffect, useMemo, useCallback } from "react";
+import { memo, Suspense, lazy, useState, useRef, useEffect, useMemo, useCallback, useLayoutEffect } from "react";
 
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -34,6 +34,7 @@ import {
   useDocBuildProgress,
   useDocMarkdown,
 } from "../components/knowledge-docs";
+import { KnowledgeGraphBuildProgress } from "../components/build-plan/DigestBuildPanel";
 import { SubjectVectorNotice } from "../components/knowledge-graph/SubjectVectorNotice";
 import { MarkdownViewer, preprocessLaTeX } from "../components/ui/MarkdownViewer";
 
@@ -176,7 +177,7 @@ interface ThreadTurnItem {
   messages: ThreadMessageItem[];
 }
 
-type QuickChatSyncPhase = "start" | "token" | "done" | "error" | "settled";
+type QuickChatSyncPhase = "start" | "session" | "token" | "done" | "error" | "settled";
 
 interface QuickChatSyncEventDetail {
   phase?: QuickChatSyncPhase;
@@ -243,9 +244,33 @@ const KNOWLEDGE_DOCS_VIEW_PREFS_VERSION = 2;
 const FLOATING_COMPOSER_THREAD_ID = "__floating-composer__";
 const QUICK_CHAT_UPDATED_EVENT = "aiteachme:quick-chat-updated";
 const SELECTION_JUMP_EVENT = "aiteachme:selection-jump";
+const AI_INTERACTION_CLOSED_EVENT = "aiteachme:ai-sidebar-closed";
 const SELECTION_SELECTED_TEXT_LIMIT = 1200;
 const SELECTION_LOCAL_CONTEXT_CHARS = 900;
 const SELECTION_SECTION_CONTEXT_CHARS = 3200;
+
+function isTransientSelectionThreadId(threadId: string): boolean {
+  return (
+    threadId === FLOATING_COMPOSER_THREAD_ID ||
+    threadId.startsWith("local-") ||
+    threadId.startsWith("jump-")
+  );
+}
+
+function resolveSelectionThreadSessionId(
+  threadId: string | null,
+  threadSessionIds: Record<string, string>,
+): string | null {
+  const normalizedThreadId = threadId?.trim() ?? "";
+  if (!normalizedThreadId) {
+    return null;
+  }
+  const mappedSessionId = threadSessionIds[normalizedThreadId]?.trim();
+  if (mappedSessionId) {
+    return mappedSessionId;
+  }
+  return isTransientSelectionThreadId(normalizedThreadId) ? null : normalizedThreadId;
+}
 
 function getHeadingActivationOffset(container: HTMLElement): number {
   return Math.min(128, Math.max(76, container.clientHeight * 0.18));
@@ -600,27 +625,44 @@ function rangeFromSearchSpan(index: TextSearchIndex, start: number, end: number)
   return range;
 }
 
-function findRangeForSelectedText(index: TextSearchIndex, selectedText: string): Range | null {
+function findRangesForSelectedText(index: TextSearchIndex, selectedText: string): Range[] {
   const target = normalizeSelectionSearchText(selectedText);
-  if (!index.text || !target) return null;
+  if (!index.text || !target) return [];
 
-  const exactStart = index.text.indexOf(target);
-  if (exactStart >= 0) {
-    return rangeFromSearchSpan(index, exactStart, exactStart + target.length);
+  const exactRanges: Range[] = [];
+  let exactStart = index.text.indexOf(target);
+  while (exactStart >= 0) {
+    const range = rangeFromSearchSpan(index, exactStart, exactStart + target.length);
+    if (range) {
+      exactRanges.push(range);
+    }
+    exactStart = index.text.indexOf(target, exactStart + Math.max(target.length, 1));
+  }
+  if (exactRanges.length > 0) {
+    return exactRanges;
   }
 
   const condensedSource = createCondensedSearchText(index.text);
   const condensedTarget = target.replace(/\s+/gu, "");
-  if (!condensedTarget) return null;
+  if (!condensedTarget) return [];
 
-  const condensedStart = condensedSource.text.indexOf(condensedTarget);
-  if (condensedStart < 0) return null;
-
-  const sourceStart = condensedSource.sourceIndexByCondensed[condensedStart];
-  const sourceEnd = condensedSource.sourceIndexByCondensed[condensedStart + condensedTarget.length - 1];
-  if (sourceStart === undefined || sourceEnd === undefined) return null;
-
-  return rangeFromSearchSpan(index, sourceStart, sourceEnd + 1);
+  const ranges: Range[] = [];
+  let condensedStart = condensedSource.text.indexOf(condensedTarget);
+  while (condensedStart >= 0) {
+    const sourceStart = condensedSource.sourceIndexByCondensed[condensedStart];
+    const sourceEnd = condensedSource.sourceIndexByCondensed[condensedStart + condensedTarget.length - 1];
+    if (sourceStart !== undefined && sourceEnd !== undefined) {
+      const range = rangeFromSearchSpan(index, sourceStart, sourceEnd + 1);
+      if (range) {
+        ranges.push(range);
+      }
+    }
+    condensedStart = condensedSource.text.indexOf(
+      condensedTarget,
+      condensedStart + Math.max(condensedTarget.length, 1),
+    );
+  }
+  return ranges;
 }
 
 function buildSelectionMatchTokens(selectedText: string): string[] {
@@ -809,7 +851,7 @@ function buildCommentThreadLayout(
   desiredTopByThreadId: Map<string, number>,
   pinnedThreadId: string | null
 ): CommentThreadLayoutResult {
-  const gap = 12;
+  const gap = 16;
   const estimatedHeight = 236;
 
   if (threads.length === 0) {
@@ -852,6 +894,14 @@ function buildCommentThreadLayout(
       const desiredTop = desiredTopByThreadId.get(threads[i].threadId);
       positions[i] = desiredTop === undefined ? maxTop : Math.min(maxTop, desiredTop);
       upCursor = positions[i];
+    }
+
+    const minTop = Math.min(...positions);
+    if (minTop < 0) {
+      const shift = -minTop;
+      for (let i = 0; i < positions.length; i += 1) {
+        positions[i] += shift;
+      }
     }
   }
 
@@ -1082,14 +1132,34 @@ function GraphPanelFallback() {
 function CommentCard({
   comment,
   defaultCollapsed = false,
+  onSizeChange,
 }: {
   comment: Comment;
   defaultCollapsed?: boolean;
+  onSizeChange?: () => void;
 }) {
   const isAssistant = comment.role === "assistant";
   const contentRef = useRef<HTMLDivElement>(null);
   const [isCollapsed, setIsCollapsed] = useState(defaultCollapsed);
   const [canCollapse, setCanCollapse] = useState(false);
+
+  useLayoutEffect(() => {
+    if (!onSizeChange || typeof window === "undefined") return;
+
+    let secondFrameId = 0;
+    onSizeChange();
+    const firstFrameId = window.requestAnimationFrame(() => {
+      onSizeChange();
+      secondFrameId = window.requestAnimationFrame(onSizeChange);
+    });
+
+    return () => {
+      window.cancelAnimationFrame(firstFrameId);
+      if (secondFrameId) {
+        window.cancelAnimationFrame(secondFrameId);
+      }
+    };
+  }, [canCollapse, comment.content, isCollapsed, onSizeChange]);
 
   useEffect(() => {
     const rafId = window.requestAnimationFrame(() => {
@@ -1220,6 +1290,7 @@ function CommentThread({
   onFocus,
   onJumpToAnchor,
   onOpenAiInteraction,
+  onSizeChange,
   compactMode,
   isAligned,
 }: {
@@ -1230,6 +1301,7 @@ function CommentThread({
   onFocus: () => void;
   onJumpToAnchor: (id: string) => void;
   onOpenAiInteraction: () => void;
+  onSizeChange?: () => void;
   compactMode: boolean;
   isAligned: boolean;
 }) {
@@ -1310,6 +1382,7 @@ function CommentThread({
                 key={comment.id}
                 comment={comment}
                 defaultCollapsed={isHistoryComment(comment)}
+                onSizeChange={onSizeChange}
               />
             ))}
           </div>
@@ -1337,7 +1410,13 @@ function CommentThread({
 /* ------------------------------------------------------------------ */
 
 export function KnowledgeDocsPage() {
-  const { openAiInteraction, isSidebarOpen: isAssistantOpen } = useAiInteraction();
+  const {
+    openAiInteraction,
+    isSidebarOpen: isAssistantOpen,
+    activeConversationSessionId,
+    activeConversationSelectionTarget,
+    sidebarRequest,
+  } = useAiInteraction();
   const location = useLocation();
   const {
     subjectId,
@@ -1433,6 +1512,9 @@ export function KnowledgeDocsPage() {
   const settingsPanelRef = useRef<HTMLDivElement>(null);
   const settingsButtonRef = useRef<HTMLButtonElement>(null);
   const selectedRangeRef = useRef<Range | null>(null);
+  const selectedRangeThreadIdRef = useRef<string | null>(null);
+  const commentsRef = useRef<Comment[]>([]);
+  const quickChatStartedThreadIdsRef = useRef(new Set<string>());
   const threadRefs = useRef(new Map<string, HTMLDivElement>());
   const headingFlashTimersRef = useRef(new Map<string, number>());
   const tocNavRef = useRef<HTMLElement>(null);
@@ -1796,7 +1878,10 @@ export function KnowledgeDocsPage() {
         nextComments.sort((left, right) => left.createdAt - right.createdAt);
         setComments(nextComments);
         setThreadSessionIds(nextSessionIds);
-        setSelectionHighlights([]);
+        setSelectionHighlights((prev) => {
+          const next = prev.filter((item) => isTransientSelectionThreadId(item.threadId));
+          return next.length === prev.length ? prev : next;
+        });
       } catch (error: unknown) {
         if (cancelled) {
           return;
@@ -1818,6 +1903,10 @@ export function KnowledgeDocsPage() {
       cancelled = true;
     };
   }, [subjectId, threadHistoryRefreshKey]);
+
+  useEffect(() => {
+    commentsRef.current = comments;
+  }, [comments]);
 
   // Track active heading from a single scroll position so the TOC highlight does not bounce.
   useEffect(() => {
@@ -2047,7 +2136,11 @@ export function KnowledgeDocsPage() {
     return captureRangeSegments(range);
   }, [captureRangeSegments]);
 
-  const buildSelectionSegmentsFromText = useCallback((anchorId: string, selectedText: string): HighlightSegment[] => {
+  const buildSelectionSegmentsFromText = useCallback((
+    anchorId: string,
+    selectedText: string,
+    preferredSegments?: HighlightSegment[],
+  ): HighlightSegment[] => {
     const contentRoot = contentAreaRef.current;
     if (!contentRoot) {
       return [];
@@ -2081,6 +2174,31 @@ export function KnowledgeDocsPage() {
         .filter((rect) => rect.width > 1 && rect.height > 1)
         .map(segmentFromRect)
     );
+
+    const chooseNearestSegments = (candidates: HighlightSegment[][]): HighlightSegment[] => {
+      const validCandidates = candidates.filter((segments) => segments.length > 0);
+      if (validCandidates.length === 0) {
+        return [];
+      }
+      if (!preferredSegments || preferredSegments.length === 0) {
+        return validCandidates[0];
+      }
+
+      const preferredTop = Math.min(...preferredSegments.map((segment) => segment.top));
+      const preferredLeft = Math.min(...preferredSegments.map((segment) => segment.left));
+      let best = validCandidates[0];
+      let bestScore = Number.POSITIVE_INFINITY;
+      for (const segments of validCandidates) {
+        const top = Math.min(...segments.map((segment) => segment.top));
+        const left = Math.min(...segments.map((segment) => segment.left));
+        const score = Math.abs(top - preferredTop) * 3 + Math.abs(left - preferredLeft);
+        if (score < bestScore) {
+          best = segments;
+          bestScore = score;
+        }
+      }
+      return best;
+    };
 
     const locateApproximateTableSelection = (roots: Node[]): HighlightSegment[] => {
       const rows: HTMLTableRowElement[] = [];
@@ -2134,12 +2252,11 @@ export function KnowledgeDocsPage() {
 
     const locateInRoots = (roots: Node[]): HighlightSegment[] => {
       const index = buildTextSearchIndex(roots);
-      const range = findRangeForSelectedText(index, target);
-      if (range) {
-        const segments = captureRangeSegments(range);
-        if (segments.length > 0) {
-          return segments;
-        }
+      const matchedSegments = findRangesForSelectedText(index, target)
+        .map((range) => captureRangeSegments(range))
+        .filter((segments) => segments.length > 0);
+      if (matchedSegments.length > 0) {
+        return chooseNearestSegments(matchedSegments);
       }
       return locateApproximateTableSelection(roots);
     };
@@ -2163,6 +2280,20 @@ export function KnowledgeDocsPage() {
 
     return locateInRoots([contentRoot]);
   }, [captureRangeSegments]);
+
+  const resolveHighlightSegments = useCallback((highlight: SelectionHighlight): HighlightSegment[] => {
+    if (selectedRangeThreadIdRef.current === highlight.threadId && selectedRangeRef.current) {
+      const liveSegments = captureSelectionSegments();
+      if (liveSegments.length > 0) {
+        return liveSegments;
+      }
+    }
+    return buildSelectionSegmentsFromText(
+      highlight.anchorId,
+      highlight.selectedText,
+      highlight.segments,
+    );
+  }, [buildSelectionSegmentsFromText, captureSelectionSegments]);
 
   const createLocalThreadId = useCallback((anchorId: string) => (
     `local-${anchorId}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
@@ -2223,13 +2354,75 @@ export function KnowledgeDocsPage() {
     setFloatingInput("");
   }, []);
 
-  const clearSelectionHighlight = useCallback(() => {
-    selectedRangeRef.current = null;
+  const clearSelectionHighlight = useCallback((options?: { keepStoredRange?: boolean }) => {
+    if (!options?.keepStoredRange) {
+      selectedRangeRef.current = null;
+      selectedRangeThreadIdRef.current = null;
+    }
     const selection = window.getSelection();
     if (selection && !selection.isCollapsed) {
       selection.removeAllRanges();
     }
   }, []);
+
+  useEffect(() => {
+    const handleAiInteractionClosed = () => {
+      const currentThreadId = selectedRangeThreadIdRef.current?.trim() ?? "";
+
+      const shouldRemoveUnstartedThread = (threadId: string | null | undefined) => {
+        const normalizedThreadId = threadId?.trim() ?? "";
+        if (!normalizedThreadId) {
+          return false;
+        }
+        const shouldConsider =
+          normalizedThreadId.startsWith("local-") ||
+          (currentThreadId !== "" && normalizedThreadId === currentThreadId);
+        if (!shouldConsider || !isTransientSelectionThreadId(normalizedThreadId)) {
+          return false;
+        }
+        const hasStartedConversation =
+          quickChatStartedThreadIdsRef.current.has(normalizedThreadId) ||
+          commentsRef.current.some((item) => (
+            item.threadId === normalizedThreadId || item.sessionId === normalizedThreadId
+          ));
+        return !hasStartedConversation;
+      };
+
+      setSelectionHighlights((prev) => {
+        const next = prev.filter((item) => !shouldRemoveUnstartedThread(item.threadId));
+        return next.length === prev.length ? prev : next;
+      });
+      setActiveCommentThreadId((prev) => (shouldRemoveUnstartedThread(prev) ? null : prev));
+      setPinnedThreadId((prev) => (shouldRemoveUnstartedThread(prev) ? null : prev));
+      setThreadStreaming((prev) => {
+        let changed = false;
+        const next = { ...prev };
+        for (const threadId of Object.keys(next)) {
+          if (shouldRemoveUnstartedThread(threadId)) {
+            delete next[threadId];
+            changed = true;
+          }
+        }
+        return changed ? next : prev;
+      });
+      setThreadDrafts((prev) => {
+        let changed = false;
+        const next = { ...prev };
+        for (const threadId of Object.keys(next)) {
+          if (shouldRemoveUnstartedThread(threadId)) {
+            delete next[threadId];
+            changed = true;
+          }
+        }
+        return changed ? next : prev;
+      });
+
+      clearSelectionHighlight();
+    };
+
+    window.addEventListener(AI_INTERACTION_CLOSED_EVENT, handleAiInteractionClosed);
+    return () => window.removeEventListener(AI_INTERACTION_CLOSED_EVENT, handleAiInteractionClosed);
+  }, [clearSelectionHighlight]);
 
   const computeCommentComposerTop = useCallback((selectionViewportTop: number) => {
     const panel = commentPanelRef.current;
@@ -2246,6 +2439,9 @@ export function KnowledgeDocsPage() {
   // any click outside toolbar clears highlighted range state.
   useEffect(() => {
     const handlePointerDown = (e: MouseEvent) => {
+      const targetElement = e.target instanceof Element ? e.target : null;
+      if (targetElement?.closest("[data-app-sidebar='true']")) return;
+      if (targetElement?.closest("[data-ai-interaction-window='true']")) return;
       if (floatingRef.current?.contains(e.target as Node)) return;
       if (floatingComposerCardRef.current?.contains(e.target as Node)) return;
       if (commentPanelRef.current?.contains(e.target as Node)) return;
@@ -2379,6 +2575,13 @@ export function KnowledgeDocsPage() {
       return Array.from(deduped.values());
     });
     setActiveCommentThreadId((prev) => (prev === threadId ? resolvedSessionId : prev));
+    if (selectedRangeThreadIdRef.current === threadId) {
+      selectedRangeThreadIdRef.current = resolvedSessionId;
+    }
+    if (quickChatStartedThreadIdsRef.current.has(threadId)) {
+      quickChatStartedThreadIdsRef.current.delete(threadId);
+      quickChatStartedThreadIdsRef.current.add(resolvedSessionId);
+    }
 
     const controller = streamControllersRef.current.get(threadId);
     if (controller) {
@@ -2415,6 +2618,7 @@ export function KnowledgeDocsPage() {
           return;
         }
 
+        quickChatStartedThreadIdsRef.current.add(localThreadId);
         const createdAt = detail.createdAt ? Date.parse(detail.createdAt) : Date.now();
         const startedAt = Number.isFinite(createdAt) ? createdAt : Date.now();
         const userLocalId = detail.userLocalId?.trim() || `${localThreadId}-user-${startedAt}`;
@@ -2456,6 +2660,13 @@ export function KnowledgeDocsPage() {
         setActiveCommentThreadId(localThreadId);
         setPinnedThreadId(localThreadId);
         setIsAutoCommentHighlightSuppressed(false);
+        return;
+      }
+
+      if (detail.phase === "session") {
+        if (sessionId) {
+          rebindThreadIdToSession(localThreadId, sessionId);
+        }
         return;
       }
 
@@ -2678,16 +2889,18 @@ export function KnowledgeDocsPage() {
   ]);
 
   const openCommentComposer = useCallback(() => {
-    if (!floatingToolbar) return;
+    if (!floatingToolbar || !subjectId) return;
     const toolbar = floatingToolbar;
     const threadId = createLocalThreadId(toolbar.anchorId);
     const segments = captureSelectionSegments();
+    selectedRangeThreadIdRef.current = threadId;
     addSelectionHighlight(threadId, toolbar.anchorId, toolbar.selectedText, segments.length > 0 ? segments : undefined);
     setActiveCommentThreadId(threadId);
     setPinnedThreadId(threadId);
     setIsAutoCommentHighlightSuppressed(false);
     const selectionContext = buildSelectionContextPayload(contentAreaRef.current, toolbar.anchorId, toolbar.selectedText);
     openAiInteraction({
+      scope: { type: "subject", subjectId },
       sessionId: null,
       draft: "",
       source: "quick_chat",
@@ -2702,8 +2915,8 @@ export function KnowledgeDocsPage() {
     setFloatingToolbar(null);
     setFloatingComment(null);
     setFloatingInput("");
-    clearSelectionHighlight();
-  }, [addSelectionHighlight, captureSelectionSegments, clearSelectionHighlight, createLocalThreadId, floatingToolbar, openAiInteraction]);
+    clearSelectionHighlight({ keepStoredRange: true });
+  }, [addSelectionHighlight, captureSelectionSegments, clearSelectionHighlight, createLocalThreadId, floatingToolbar, openAiInteraction, subjectId]);
 
   // Feishu-style: detect text selection and show a small ask-AI action first.
   const handleTextSelect = useCallback(() => {
@@ -2711,6 +2924,7 @@ export function KnowledgeDocsPage() {
     if (!sel || sel.isCollapsed || !sel.toString().trim()) {
       setFloatingToolbar(null);
       selectedRangeRef.current = null;
+      selectedRangeThreadIdRef.current = null;
       return;
     }
 
@@ -2754,6 +2968,7 @@ export function KnowledgeDocsPage() {
     }
 
     selectedRangeRef.current = range.cloneRange();
+    selectedRangeThreadIdRef.current = null;
     const segments = captureRangeSegments(range);
     if (segments.length === 0) {
       return;
@@ -2799,6 +3014,9 @@ export function KnowledgeDocsPage() {
   useEffect(() => {
     const handleDocumentMouseUp = (event: MouseEvent) => {
       const target = event.target as Node;
+      const targetElement = event.target instanceof Element ? event.target : null;
+      if (targetElement?.closest("[data-app-sidebar='true']")) return;
+      if (targetElement?.closest("[data-ai-interaction-window='true']")) return;
       if (commentPanelRef.current?.contains(target)) return;
       if (floatingRef.current?.contains(target)) return;
       window.requestAnimationFrame(() => {
@@ -2943,6 +3161,7 @@ export function KnowledgeDocsPage() {
     () => new Map(commentThreads.map((item) => [item.threadId, item] as const)),
     [commentThreads]
   );
+
   const centerThreadInViewport = useCallback((threadId: string) => {
     const container = scrollRef.current;
     if (!container) return;
@@ -2994,7 +3213,11 @@ export function KnowledgeDocsPage() {
     }
 
     const heading = contentRoot.querySelector(`[data-heading-id="${anchorId}"]`) as HTMLElement | null;
-    const threadId = detail.sessionId?.trim() || `jump-${anchorId}-${selectedText.slice(0, 16)}`;
+    const sessionId = detail.sessionId?.trim() ?? "";
+    const threadId = sessionId || `jump-${anchorId}-${selectedText.slice(0, 16)}`;
+    if (sessionId) {
+      setThreadSessionIds((prev) => (prev[threadId] === sessionId ? prev : { ...prev, [threadId]: sessionId }));
+    }
     const segments = selectedText ? buildSelectionSegmentsFromText(anchorId, selectedText) : [];
 
     if (selectedText && segments.length > 0) {
@@ -3403,6 +3626,27 @@ export function KnowledgeDocsPage() {
     };
   }, [commentThreads, isCompactComment, refreshThreadHeights]);
 
+  const scheduleDesktopCommentLayoutRefresh = useCallback(() => {
+    if (isCompactComment || typeof window === "undefined") {
+      return;
+    }
+
+    const refresh = () => {
+      refreshThreadHeights();
+      updateDesktopCommentScrollExtent();
+      syncDesktopCommentTrack();
+    };
+
+    refresh();
+    window.requestAnimationFrame(refresh);
+    window.setTimeout(refresh, 80);
+  }, [
+    isCompactComment,
+    refreshThreadHeights,
+    syncDesktopCommentTrack,
+    updateDesktopCommentScrollExtent,
+  ]);
+
   useEffect(() => {
     if (!activeCommentThreadId) {
       return;
@@ -3419,7 +3663,7 @@ export function KnowledgeDocsPage() {
     }
     setSelectionHighlights((prev) => {
       const threadIdSet = new Set(commentThreads.map((item) => item.threadId));
-      const kept = prev.filter((item) => threadIdSet.has(item.threadId));
+      const kept = prev.filter((item) => threadIdSet.has(item.threadId) || isTransientSelectionThreadId(item.threadId));
       const existing = new Set(kept.map((item) => item.threadId));
       const next: SelectionHighlight[] = [...kept];
       let changed = kept.length !== prev.length;
@@ -3456,7 +3700,7 @@ export function KnowledgeDocsPage() {
         setSelectionHighlights((prev) => {
           let changed = false;
           const next = prev.map((highlight) => {
-            const segments = buildSelectionSegmentsFromText(highlight.anchorId, highlight.selectedText);
+            const segments = resolveHighlightSegments(highlight);
             if (segments.length === 0 || highlightSegmentsEqual(highlight.segments, segments)) {
               return highlight;
             }
@@ -3497,11 +3741,52 @@ export function KnowledgeDocsPage() {
     hasRenderedMarkdown,
     isCommentCollapsed,
     isCompactComment,
+    resolveHighlightSegments,
     isTocCollapsed,
     pageWideMode,
     viewPrefs.showCommentPanel,
     viewPrefs.showToc,
   ]);
+
+  useLayoutEffect(() => {
+    if (!isAssistantOpen || !hasRenderedMarkdown) {
+      return;
+    }
+
+    let rafId = 0;
+    let settleTimer = 0;
+    const refreshHighlights = () => {
+      setSelectionHighlights((prev) => {
+        let changed = false;
+        const next = prev.map((highlight) => {
+          const segments = resolveHighlightSegments(highlight);
+          if (segments.length === 0 || highlightSegmentsEqual(highlight.segments, segments)) {
+            return highlight;
+          }
+          changed = true;
+          return { ...highlight, segments };
+        });
+        return changed ? next : prev;
+      });
+    };
+
+    const startedAt = performance.now();
+    const tick = () => {
+      refreshHighlights();
+      if (performance.now() - startedAt < 1200) {
+        rafId = window.requestAnimationFrame(tick);
+      }
+    };
+
+    refreshHighlights();
+    rafId = window.requestAnimationFrame(tick);
+    settleTimer = window.setTimeout(refreshHighlights, 1400);
+
+    return () => {
+      window.cancelAnimationFrame(rafId);
+      window.clearTimeout(settleTimer);
+    };
+  }, [hasRenderedMarkdown, isAssistantOpen, resolveHighlightSegments]);
 
   const activeCommentIndex = useMemo(() => {
     if (commentThreadIds.length === 0) return -1;
@@ -3531,6 +3816,63 @@ export function KnowledgeDocsPage() {
     ? commentThreadIds[activeCommentIndex]
     : null;
   const highlightedThreadId = activeCommentThreadId ?? (isAutoCommentHighlightSuppressed ? null : activeThreadId);
+  const aiMatchedHighlightedThreadId = useMemo(() => {
+    if (!isAssistantOpen || selectionHighlights.length === 0) {
+      return null;
+    }
+
+    const activeSessionId = activeConversationSessionId?.trim() ?? "";
+    const requestSessionId = typeof sidebarRequest?.sessionId === "string"
+      ? sidebarRequest.sessionId.trim()
+      : "";
+    const requestThreadId = sidebarRequest?.clientThreadId?.trim() ?? "";
+    const requestAnchorId = sidebarRequest?.anchorId?.trim() ?? "";
+    const requestSelectedText = sidebarRequest?.selectedText?.trim() ?? "";
+    const activeSelectionSessionId = activeConversationSelectionTarget?.sessionId?.trim() ?? "";
+    const activeSelectionAnchorId = activeConversationSelectionTarget?.anchorId.trim() ?? "";
+    const activeSelectionText = activeConversationSelectionTarget?.selectedText.trim() ?? "";
+
+    return selectionHighlights.find((highlight) => {
+      const threadId = highlight.threadId.trim();
+      const resolvedSessionId = resolveSelectionThreadSessionId(threadId, threadSessionIds);
+      if (
+        activeSelectionSessionId &&
+        (threadId === activeSelectionSessionId || resolvedSessionId === activeSelectionSessionId)
+      ) {
+        return true;
+      }
+      if (
+        activeSelectionAnchorId &&
+        activeSelectionText &&
+        highlight.anchorId === activeSelectionAnchorId &&
+        highlight.selectedText.trim() === activeSelectionText
+      ) {
+        return true;
+      }
+      if (activeSessionId && (threadId === activeSessionId || resolvedSessionId === activeSessionId)) {
+        return true;
+      }
+      if (requestSessionId && (threadId === requestSessionId || resolvedSessionId === requestSessionId)) {
+        return true;
+      }
+      if (requestThreadId && threadId === requestThreadId) {
+        return true;
+      }
+      return Boolean(
+        requestAnchorId &&
+        requestSelectedText &&
+        highlight.anchorId === requestAnchorId &&
+        highlight.selectedText.trim() === requestSelectedText,
+      );
+    })?.threadId ?? null;
+  }, [
+    activeConversationSessionId,
+    activeConversationSelectionTarget,
+    isAssistantOpen,
+    selectionHighlights,
+    sidebarRequest,
+    threadSessionIds,
+  ]);
 
   const focusCommentThread = useCallback((
     threadId: string,
@@ -3584,12 +3926,13 @@ export function KnowledgeDocsPage() {
     const targetHighlight = targetThreadId
       ? selectionHighlights.find((item) => item.threadId === targetThreadId) ?? null
       : null;
-    const targetSessionId = targetThreadId ? (threadSessionIds[targetThreadId] ?? null) : null;
+    const targetSessionId = resolveSelectionThreadSessionId(targetThreadId, threadSessionIds);
     const anchorId = targetThread?.anchorId ?? targetHighlight?.anchorId ?? "";
     const selectedText = targetThread?.selectedText ?? targetHighlight?.selectedText ?? "";
     if (targetSessionId) {
       if (anchorId && selectedText) {
         openAiInteraction({
+          scope: { type: "subject", subjectId },
           sessionId: targetSessionId,
           source: "quick_chat",
           anchorId,
@@ -3599,11 +3942,12 @@ export function KnowledgeDocsPage() {
         });
         return;
       }
-      openAiInteraction({ sessionId: targetSessionId });
+      openAiInteraction({ scope: { type: "subject", subjectId }, sessionId: targetSessionId });
       return;
     }
     if (targetThreadId && anchorId && selectedText) {
       openAiInteraction({
+        scope: { type: "subject", subjectId },
         sessionId: null,
         draft: "",
         source: "quick_chat",
@@ -3616,7 +3960,7 @@ export function KnowledgeDocsPage() {
       });
       return;
     }
-    openAiInteraction();
+    openAiInteraction({ scope: { type: "subject", subjectId } });
   }, [activeThreadId, commentThreadById, commentThreadIds, openAiInteraction, selectionHighlights, subjectId, threadSessionIds]);
 
   const openSelectionHighlightThread = useCallback((threadId: string) => {
@@ -3962,6 +4306,7 @@ export function KnowledgeDocsPage() {
                     scrollToHeading(id);
                   }}
                   onOpenAiInteraction={() => openAiInteractionFromThread(thread.threadId)}
+                  onSizeChange={scheduleDesktopCommentLayoutRefresh}
                   compactMode
                   isAligned
                 />
@@ -4073,6 +4418,7 @@ export function KnowledgeDocsPage() {
                       })}
                       onJumpToAnchor={() => focusCommentThread(thread.threadId, { pinToSelection: true, scrollThreadIntoView: false })}
                       onOpenAiInteraction={() => openAiInteractionFromThread(thread.threadId)}
+                      onSizeChange={scheduleDesktopCommentLayoutRefresh}
                       compactMode={false}
                       isAligned={layout?.aligned ?? false}
                     />
@@ -4269,6 +4615,7 @@ export function KnowledgeDocsPage() {
               >
                 <article className="min-w-0 px-2 py-2 md:px-4">
                   <SubjectVectorNotice status={docMarkdownQuery.data?.vector_status} className="mb-6" />
+                  {subjectId ? <KnowledgeGraphBuildProgress subject={subjectId} className="mb-6" /> : null}
                   {docMarkdownQuery.isError ? (
                     <DocLoadErrorState
                       message={getApiErrorMessage(docMarkdownQuery.error, "获取知识文档失败，请稍后重试。")}
@@ -4332,37 +4679,41 @@ export function KnowledgeDocsPage() {
 
           {selectionHighlights.map((highlight) => (
             <div key={highlight.id}>
-              {highlight.segments.map((segment, index) => (
-                <button
-                  key={`${highlight.id}-${index}`}
-                  type="button"
-                  onClick={() => openSelectionHighlightThread(highlight.threadId)}
-                  data-highlight-thread-id={highlight.threadId}
-                  className={cn(
-                    "group absolute z-30 rounded-[2px] transition-[background-color,box-shadow] duration-150 focus-visible:outline-none",
-                    highlightedThreadId === highlight.threadId
-                      ? "bg-amber-100/60 shadow-[0_4px_12px_-14px_rgba(180,83,9,0.65)]"
-                      : "bg-transparent hover:bg-amber-50/25 focus-visible:ring-2 focus-visible:ring-amber-300/45"
-                  )}
-                  style={{
-                    top: segment.top,
-                    left: segment.left,
-                    width: segment.width,
-                    height: segment.height,
-                  }}
-                  title={`定位问答：${highlight.selectedText}`}
-                  aria-label="定位划词问答"
-                >
-                  <span
+              {highlight.segments.map((segment, index) => {
+                const isAiMatchedHighlight = aiMatchedHighlightedThreadId === highlight.threadId;
+                return (
+                  <button
+                    key={`${highlight.id}-${index}`}
+                    type="button"
+                    onClick={() => openSelectionHighlightThread(highlight.threadId)}
+                    data-highlight-thread-id={highlight.threadId}
                     className={cn(
-                      "pointer-events-none absolute inset-x-[1px] bottom-[-3px] rounded-full transition-all duration-150",
-                      highlightedThreadId === highlight.threadId
-                        ? "h-[1.5px] bg-amber-600/95 shadow-[0_3px_8px_-5px_rgba(180,83,9,0.85)]"
-                        : "h-px bg-amber-400/65 shadow-[0_2px_6px_-5px_rgba(180,83,9,0.65)] group-hover:bg-amber-500/75"
+                      "group absolute z-30 rounded-[2px] transition-shadow duration-150 focus-visible:outline-none",
+                      isAiMatchedHighlight
+                        ? "bg-amber-100/60 shadow-[0_4px_12px_-14px_rgba(180,83,9,0.65)]"
+                        : "bg-transparent focus-visible:ring-2 focus-visible:ring-amber-300/45"
                     )}
-                  />
-                </button>
-              ))}
+                    style={{
+                      top: segment.top,
+                      left: segment.left,
+                      width: segment.width,
+                      height: segment.height,
+                      backgroundColor: isAiMatchedHighlight ? "rgba(254, 243, 199, 0.6)" : undefined,
+                    }}
+                    title={`定位问答：${highlight.selectedText}`}
+                    aria-label="定位划词问答"
+                  >
+                    <span
+                      className={cn(
+                        "pointer-events-none absolute inset-x-[1px] bottom-[-3px] rounded-full transition-shadow duration-150",
+                        isAiMatchedHighlight
+                          ? "h-[1.5px] bg-amber-600/95 shadow-[0_3px_8px_-5px_rgba(180,83,9,0.85)]"
+                          : "h-px bg-amber-400/65 shadow-[0_2px_6px_-5px_rgba(180,83,9,0.65)] group-hover:bg-amber-500/75"
+                      )}
+                    />
+                  </button>
+                );
+              })}
             </div>
           ))}
 

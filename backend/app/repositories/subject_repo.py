@@ -38,7 +38,7 @@ def list_subjects(
         session.exec(
             select(Subject)
             .where(Subject.user_id == owner_user_id)
-            .order_by(Subject.updated_at.desc())
+            .order_by(Subject.created_at.desc(), Subject.id.desc())
             .offset(offset)
             .limit(limit)
         ).all()

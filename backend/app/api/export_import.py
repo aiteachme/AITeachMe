@@ -21,6 +21,7 @@ from app.schemas.export_import import (
     ImportResultData,
 )
 from app.workflows.support.export_import import (
+    build_subject_export_filename,
     download_course_package,
     export_subject,
     import_subject,
@@ -72,7 +73,7 @@ async def export_subject_api(
     normalized = normalize_subject_slug(subject)
     subject_record = get_subject_record(session, normalized, owner_user_id=user.user_id)
     tmp_path = export_subject(session, subject_slug=subject_record.slug, options=body)
-    filename = f"{subject_record.slug}.atmx"
+    filename = build_subject_export_filename(subject_record)
     return FileResponse(
         path=tmp_path,
         media_type="application/octet-stream",

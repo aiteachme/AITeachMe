@@ -9,7 +9,6 @@ import {
 export type SubjectRouteId =
   | "build"
   | "knowledge-docs"
-  | "knowledge-debug"
   | "exams"
   | "profile";
 
@@ -32,12 +31,6 @@ export const SUBJECT_NAV_ITEMS: SubjectNavItem[] = [
     label: "知识库",
     icon: BookOpen,
     description: "查看知识文档、讲义与知识图谱",
-  },
-  {
-    id: "knowledge-debug",
-    label: "知识调试",
-    icon: BookOpen,
-    description: "查看知识单元、知识图谱并单独触发图谱 lane",
   },
   {
     id: "exams",

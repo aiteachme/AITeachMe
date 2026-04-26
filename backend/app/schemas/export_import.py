@@ -10,8 +10,14 @@ from pydantic import BaseModel, Field
 class ExportOptions(BaseModel):
     """Export options payload."""
 
-    include_raw_files: bool = Field(default=True, description="Include original uploaded files such as PDF/DOCX.")
-    include_raw_markdowns: bool = Field(default=True, description="Include parsed raw markdown files.")
+    include_raw_files: bool = Field(
+        default=False,
+        description="Deprecated compatibility flag. Original uploaded files are not exported.",
+    )
+    include_raw_markdowns: bool = Field(
+        default=True,
+        description="Include parsed source metadata and retrieval chunks. Parsed markdown content is stored in raw_file rows.",
+    )
     include_knowledge_docs: bool = Field(default=True, description="Include generated knowledge docs.")
     include_chat_history: bool = Field(default=True, description="Include chat history.")
     include_exam_history: bool = Field(default=True, description="Include question templates and exam history.")
@@ -26,6 +32,8 @@ class ExportPreviewStats(BaseModel):
     knowledge_document_count: int = 0
     knowledge_unit_count: int = 0
     knowledge_edge_count: int = 0
+    knowledge_graph_sync_run_count: int = 0
+    knowledge_graph_source_ref_count: int = 0
     confirmed_build_plan_count: int = 0
     question_type_registry_count: int = 0
     question_template_count: int = 0

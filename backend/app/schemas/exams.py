@@ -81,7 +81,7 @@ class ExamStudyGuideResponse(BaseModel):
 
 
 PaperPreviewShape = Literal["choice", "blank", "short", "judge", "chart", "formula", "code", "text"]
-PaperPreviewDominantType = Literal["choice", "blank", "text", "formula", "chart", "image", "code"]
+PaperPreviewResultStatus = Literal["ungraded", "correct", "incorrect"]
 
 
 class PaperPreviewRow(BaseModel):
@@ -90,12 +90,12 @@ class PaperPreviewRow(BaseModel):
     shape: PaperPreviewShape
     difficulty: str
     density: int = Field(default=2, ge=1, le=3)
+    result_status: PaperPreviewResultStatus = "ungraded"
 
 
 class PaperPreview(BaseModel):
     keywords: list[str] = Field(default_factory=list)
     question_types: list[str] = Field(default_factory=list)
-    dominant_type: PaperPreviewDominantType = "text"
     rows: list[PaperPreviewRow] = Field(default_factory=list)
     overflow_count: int = Field(default=0, ge=0)
 

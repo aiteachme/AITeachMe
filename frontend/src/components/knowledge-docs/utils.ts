@@ -478,7 +478,7 @@ export function buildCommentThreadLayout(
   desiredTopByThreadId: Map<string, number>,
   pinnedThreadId: string | null,
 ): CommentThreadLayoutResult {
-  const gap = 12;
+  const gap = 16;
   const estimatedHeight = 236;
 
   if (threads.length === 0) {

@@ -35,13 +35,13 @@ export interface KnowledgeBuildRequestInput {
 
 interface KnowledgeBuildRequestPayload extends KnowledgeBuildRequestInput {
   embedding_resolution?: KnowledgeBuildResolution;
-  build_type?: "docs" | "graph";
+  build_type?: "docs";
 }
 
 interface UseKnowledgeBuildFlowOptions {
   subjectId: string;
   buildRequest: () => KnowledgeBuildRequestInput;
-  buildType?: "docs" | "graph";
+  buildType?: "docs";
   fallbackErrorMessage?: string;
   onSuccess?: (data: DocGenBuildData) => void;
 }
@@ -188,7 +188,7 @@ export function useKnowledgeBuildFlow({
           vectorNoticeShownRef.current = notice;
           toast({
             title: "本轮已跳过向量检索",
-            description: `${notice} 知识文档、图谱和课程结构会继续构建。`,
+            description: `${notice} 知识文档和知识图谱会继续构建。`,
             variant: "warning",
             duration: 7000,
           });
@@ -220,7 +220,7 @@ export function useKnowledgeBuildFlow({
       build_type: buildType,
     } satisfies KnowledgeBuildRequestPayload;
 
-    if (buildType === "docs" && !requestPayload.confirmed_plan_id) {
+    if (!requestPayload.confirmed_plan_id) {
       setErrorMessage("知识文档构建必须先在构建方案页确认计划。请先生成并确认方案，再开始构建。");
       setPrecheckConflict(null);
       return;

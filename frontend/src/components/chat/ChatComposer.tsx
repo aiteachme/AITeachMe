@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef } from "react";
 import { Loader2, Send, Square } from "lucide-react";
 import { cn } from "../../lib/utils";
 
@@ -13,6 +13,9 @@ interface ChatComposerProps {
   placeholder?: string;
 }
 
+const TEXTAREA_MIN_HEIGHT = 48;
+const TEXTAREA_MAX_HEIGHT = 160;
+
 export function ChatComposer({
   value,
   onChange,
@@ -25,13 +28,24 @@ export function ChatComposer({
 }: ChatComposerProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  useEffect(() => {
-    if (!textareaRef.current) {
+  useLayoutEffect(() => {
+    const textarea = textareaRef.current;
+    if (!textarea) {
       return;
     }
-    textareaRef.current.style.height = "auto";
-    textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 200)}px`;
-  }, [value]);
+
+    textarea.style.height = `${TEXTAREA_MIN_HEIGHT}px`;
+    textarea.style.overflowY = "hidden";
+
+    if (value.length > 0) {
+      const nextHeight = Math.min(
+        Math.max(textarea.scrollHeight, TEXTAREA_MIN_HEIGHT),
+        TEXTAREA_MAX_HEIGHT,
+      );
+      textarea.style.height = `${nextHeight}px`;
+      textarea.style.overflowY = textarea.scrollHeight > TEXTAREA_MAX_HEIGHT ? "auto" : "hidden";
+    }
+  }, [autoFocusKey, placeholder, value]);
 
   useEffect(() => {
     if (autoFocusKey === undefined) {
@@ -50,7 +64,7 @@ export function ChatComposer({
   return (
     <div className="w-full bg-gradient-to-t from-white via-white to-white/80 px-4 pb-5 pt-3 dark:from-slate-950 dark:via-slate-950 dark:to-slate-950/80 md:px-8">
       <div className="mx-auto w-full max-w-3xl xl:max-w-4xl 2xl:max-w-5xl">
-        <div className="rounded-3xl border border-zinc-200/80 bg-white/95 backdrop-blur-xl shadow-[0_8px_24px_-8px_rgba(0,0,0,0.12),0_16px_48px_-16px_rgba(0,0,0,0.12)] transition-all focus-within:border-zinc-300 focus-within:shadow-[0_12px_32px_-12px_rgba(0,0,0,0.16),0_24px_64px_-20px_rgba(0,0,0,0.16)] focus-within:bg-white dark:border-slate-800/80 dark:bg-slate-950/92 dark:shadow-[0_18px_40px_-18px_rgba(0,0,0,0.72)] dark:focus-within:border-slate-700 dark:focus-within:bg-slate-950">
+        <div className="rounded-3xl border border-zinc-200/80 bg-white/95 backdrop-blur-xl shadow-[0_8px_24px_-8px_rgba(0,0,0,0.12),0_16px_48px_-16px_rgba(0,0,0,0.12)] transition-[border-color,box-shadow,background-color] focus-within:border-zinc-300 focus-within:bg-white focus-within:shadow-[0_12px_32px_-12px_rgba(0,0,0,0.16),0_24px_64px_-20px_rgba(0,0,0,0.16)] dark:border-slate-800/80 dark:bg-slate-950/92 dark:shadow-[0_18px_40px_-18px_rgba(0,0,0,0.72)] dark:focus-within:border-slate-700 dark:focus-within:bg-slate-950">
           <div className="flex items-end gap-3 px-3 py-2.5">
             <textarea
               ref={textareaRef}
@@ -60,8 +74,8 @@ export function ChatComposer({
               onKeyDown={handleKeyDown}
               disabled={disabled}
               placeholder={placeholder}
-              className="min-h-[48px] flex-1 resize-none bg-transparent px-3 py-3 text-[14px] leading-relaxed text-zinc-800 outline-none placeholder:text-zinc-400 disabled:cursor-not-allowed disabled:opacity-60 dark:text-slate-100 dark:placeholder:text-slate-500"
-              style={{ maxHeight: "200px" }}
+              className="h-12 min-h-12 max-h-40 flex-1 resize-none overflow-y-hidden bg-transparent px-3 py-3 text-[14px] leading-6 text-zinc-800 outline-none placeholder:text-zinc-400 disabled:cursor-not-allowed disabled:opacity-60 dark:text-slate-100 dark:placeholder:text-slate-500"
+              style={{ maxHeight: `${TEXTAREA_MAX_HEIGHT}px` }}
             />
 
             {isStreaming ? (

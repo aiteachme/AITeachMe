@@ -70,7 +70,6 @@ workflows/<module>/
 - `ingest/fast_parse`
 - `digest/planner`
 - `digest/docgen`
-- `digest/kg_file_ingest`
 - `digest/kg_docs_sync`
 - `interact/chat`
 - `examine/question_build`
@@ -382,10 +381,10 @@ api -> workflows -> repositories / shared.infra / models / schemas
 `digest/` 当前主线是：
 
 ```text
-planner -> docgen
-kg_file_ingest
-kg_docs_sync
+planner -> docgen -> kg_docs_sync
 ```
+
+`digest/kg_file_ingest` 是历史调试包，不再作为 canonical lane；仅保留少量 extractor 复用，后续应迁移到中性 common 包。
 
 `digest/planner` 是组织样板：
 

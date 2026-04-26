@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { motion } from "framer-motion";
 
 /**
@@ -47,8 +47,17 @@ const CIRCLES = [
 // Ellipse
 const ELLIPSE = { cx: 217.36, cy: 328.21, rx: 14.46, ry: 14.28, rotate: -91.7 };
 
-export function HeroAnimation() {
+interface HeroAnimationProps {
+  width?: number;
+  height?: number;
+  className?: string;
+}
+
+export function HeroAnimation({ width = 130, height = 120, className }: HeroAnimationProps) {
   const [isDrawn, setIsDrawn] = useState(false);
+  const id = useId().replace(/:/g, "");
+  const strokeGradientId = `${id}-hero-stroke-grad`;
+  const fillGradientId = `${id}-hero-fill-grad`;
 
   useEffect(() => {
     const timer = setTimeout(() => setIsDrawn(true), 2800);
@@ -57,8 +66,8 @@ export function HeroAnimation() {
 
   return (
     <motion.div
-      className="relative flex items-center justify-center shrink-0"
-      style={{ width: 130, height: 120 }}
+      className={["relative flex items-center justify-center shrink-0", className].filter(Boolean).join(" ")}
+      style={{ width, height }}
       animate={{ y: [0, -5, 0] }}
       transition={{ repeat: Infinity, duration: 4, ease: "easeInOut" }}
     >
@@ -113,13 +122,13 @@ export function HeroAnimation() {
       >
         <defs>
           {/* Gradient for stroke draw-on */}
-          <linearGradient id="hero-stroke-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+          <linearGradient id={strokeGradientId} x1="0%" y1="0%" x2="100%" y2="100%">
             <stop offset="0%" stopColor="#6366f1" />
             <stop offset="50%" stopColor="#8b5cf6" />
             <stop offset="100%" stopColor="#a855f7" />
           </linearGradient>
           {/* Gradient for filled state */}
-          <linearGradient id="hero-fill-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+          <linearGradient id={fillGradientId} x1="0%" y1="0%" x2="100%" y2="100%">
             <stop offset="0%" stopColor="#1e1b4b" />
             <stop offset="40%" stopColor="#0f172a" />
             <stop offset="100%" stopColor="#1e1b4b" />
@@ -132,7 +141,7 @@ export function HeroAnimation() {
             key={`path-${i}`}
             d={d}
             fill="none"
-            stroke="url(#hero-stroke-grad)"
+            stroke={`url(#${strokeGradientId})`}
             strokeWidth={2.5}
             strokeLinecap="round"
             strokeLinejoin="round"

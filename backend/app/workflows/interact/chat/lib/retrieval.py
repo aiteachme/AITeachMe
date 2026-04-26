@@ -6,6 +6,7 @@ import math
 import re
 
 import structlog
+from langsmith import traceable
 from sqlmodel import Session
 
 from app.models.knowledge_relation import KnowledgeEdge
@@ -19,6 +20,50 @@ logger = structlog.get_logger(__name__)
 _TOKEN_RE = re.compile(r"[\w]+|[\u4e00-\u9fff]", re.UNICODE)
 
 
+def _trace_retrieval_inputs(inputs: dict[str, object]) -> dict[str, object]:
+    query = str(inputs.get("query") or "")
+    return {
+        "subject": inputs.get("subject"),
+        "query_preview": query[:500],
+        "query_chars": len(query),
+        "top_k": inputs.get("top_k"),
+        "similarity_threshold": inputs.get("similarity_threshold"),
+        "user_id": inputs.get("user_id"),
+    }
+
+
+def _trace_retrieval_outputs(outputs: object) -> dict[str, object]:
+    results = outputs if isinstance(outputs, list) else []
+    return {
+        "result_count": len(results),
+        "results": [
+            {
+                "title": item.title,
+                "source": item.retrieval_source,
+                "score": round(item.score, 4),
+                "low_relevance": item.low_relevance,
+                "knowledge_unit_id": item.knowledge_unit_id,
+            }
+            for item in results[:8]
+            if isinstance(item, RetrievedContext)
+        ],
+    }
+
+
+def _trace_kg_inputs(inputs: dict[str, object]) -> dict[str, object]:
+    return _trace_retrieval_inputs(inputs)
+
+
+def _trace_vector_inputs(inputs: dict[str, object]) -> dict[str, object]:
+    return _trace_retrieval_inputs(inputs)
+
+
+@traceable(
+    name="interact.retrieval.route",
+    run_type="retriever",
+    process_inputs=_trace_retrieval_inputs,
+    process_outputs=_trace_retrieval_outputs,
+)
 async def retrieve_context(
     *,
     session: Session,
@@ -82,6 +127,12 @@ async def retrieve_context(
     return vector_results
 
 
+@traceable(
+    name="interact.retrieval.knowledge_unit_search",
+    run_type="retriever",
+    process_inputs=_trace_kg_inputs,
+    process_outputs=_trace_retrieval_outputs,
+)
 def _retrieve_knowledge_unit_context(
     session: Session,
     *,
@@ -267,6 +318,12 @@ def _first_unit_evidence(session: Session, unit: KnowledgeUnit) -> dict[str, obj
     }
 
 
+@traceable(
+    name="interact.retrieval.vector_fallback_search",
+    run_type="retriever",
+    process_inputs=_trace_vector_inputs,
+    process_outputs=_trace_retrieval_outputs,
+)
 async def _retrieve_vector_context(
     *,
     session: Session,

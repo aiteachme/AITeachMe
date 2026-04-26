@@ -30,6 +30,7 @@ from app.workflows.interact.chat import (
     create_session,
     delete_session,
     list_chat_history,
+    list_recent_chat_sessions,
     list_chat_threads,
     list_chat_sessions,
 )
@@ -149,6 +150,16 @@ def _list_chat_sessions_response(
     user: CurrentUserContext,
     session: Session,
 ) -> ApiResponse[PaginatedData[ChatSessionItem]]:
+    if body.include_all_subjects:
+        return ok_response(
+            list_recent_chat_sessions(
+                session,
+                user_id=user.user_id,
+                page=body.page,
+                size=body.size,
+            )
+        )
+
     normalized_subject = _prepare_chat_subject(
         session,
         raw_subject=raw_subject,

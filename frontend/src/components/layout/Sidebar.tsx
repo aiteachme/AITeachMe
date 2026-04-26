@@ -1,9 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
   BarChart3,
   BookOpen,
-  Bot,
   Download,
   Edit3,
   FileText,
@@ -36,6 +35,7 @@ import { publicAssetPath } from "../../lib/publicAsset";
 import { SubjectExportModal } from "../subject/SubjectExportModal";
 import { SubjectDeleteConfirmModal } from "./SubjectDeleteConfirmModal";
 import { CommunityModal, ensureCommunityQrPreloaded } from "./CommunityPanel";
+import { AiConversationSidebarSection } from "../interaction/AiConversationSidebarSection";
 
 import { Button } from "../ui/Button";
 
@@ -44,7 +44,6 @@ const MODULES = [
   { id: "knowledge-docs", name: "知识库", icon: BookOpen },
   { id: "exams", name: "考试", icon: FileText },
   { id: "profile", name: "学习画像", icon: BarChart3 },
-  { id: "knowledge-debug", name: "知识调试", icon: BookOpen },
 ] as const;
 
 const COLOR_CLASSES = [
@@ -160,7 +159,6 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const effectiveCollapsed = !isMobileOpen && isCollapsed;
-  const isGlobalAssistantActive = location.pathname === "/assistant";
   const isCreateSubjectActive = location.pathname === "/";
   const isMyLearningSpaceActive = location.pathname === "/spaces";
   const isLibraryActive = location.pathname === "/library";
@@ -233,6 +231,12 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
   });
 
   const groupedSubjects = useMemo(() => subjects as SubjectItem[], [subjects]);
+  const expandNavigationSidebar = useCallback(() => {
+    setIsCollapsed(false);
+  }, []);
+  const closeMobileNavigation = useCallback(() => {
+    setIsMobileOpen(false);
+  }, []);
 
   const toggleSubject = (subjectId: string) => {
     if (effectiveCollapsed) {
@@ -276,8 +280,9 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
       ) : null}
 
       <aside
+        data-app-sidebar="true"
         className={cn(
-          "fixed inset-y-0 left-0 z-40 flex min-h-0 shrink-0 self-stretch flex-col overflow-hidden rounded-r-[22px] border-r border-slate-200/50 dark:border-slate-800/50 bg-gradient-to-b from-white/96 to-white/92 dark:from-[#0b0f19]/96 dark:to-[#0b0f19]/92 shadow-[4px_0_24px_rgba(0,0,0,0.03)] dark:shadow-[4px_0_24px_rgba(0,0,0,0.3)] ring-1 ring-white/50 dark:ring-white/5 transition-[width,transform] duration-200 lg:static",
+          "fixed inset-y-0 left-0 z-40 flex min-h-0 shrink-0 self-stretch flex-col overflow-hidden rounded-r-[22px] border-r border-slate-200/50 dark:border-slate-800/50 bg-gradient-to-b from-white/96 to-white/92 dark:from-[#0b0f19]/96 dark:to-[#0b0f19]/92 shadow-[4px_0_24px_rgba(0,0,0,0.03)] dark:shadow-[4px_0_24px_rgba(0,0,0,0.3)] ring-1 ring-white/50 dark:ring-white/5 transition-[width,transform] duration-200 lg:relative lg:z-[90]",
           effectiveCollapsed ? "w-[56px]" : "w-[240px]",
           isMobileOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0",
         )}
@@ -344,26 +349,6 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
                 )}
               >
                 <Edit3 className="h-3.5 w-3.5 shrink-0" strokeWidth={2.2} />
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setSubjectActionError(undefined);
-                  setOpenMenuId(null);
-                  setIsMobileOpen(false);
-                  setIsCollapsed(false);
-                  navigate("/assistant");
-                }}
-                title="全局助手"
-                className={cn(
-                  "flex h-7 w-7 items-center justify-center rounded-md transition-colors",
-                  isGlobalAssistantActive
-                    ? "bg-[#eef2f6] text-[#243246] ring-1 ring-[#d9e1ea] hover:bg-[#e4ebf3] hover:text-[#182437] dark:bg-slate-800 dark:text-slate-200 dark:ring-slate-700 dark:hover:bg-slate-700/70 dark:hover:text-slate-50"
-                    : "text-slate-500 hover:bg-[#eef3f8] hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800/60 dark:hover:text-slate-200",
-                )}
-              >
-                <Bot className="h-3.5 w-3.5 shrink-0" strokeWidth={2.2} />
               </button>
 
               <button
@@ -443,42 +428,6 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
                   )}
                 >
                   新建学科
-                </span>
-              </button>
-
-              <button
-                type="button"
-                className={cn(
-                  "group flex h-7 w-full items-center gap-2 rounded-md px-2 text-left transition-colors",
-                  isGlobalAssistantActive
-                    ? "bg-[#f3f6f9] text-slate-950 ring-1 ring-[#dbe3ec] hover:bg-[#e8eef5] dark:bg-slate-800/80 dark:text-slate-100 dark:ring-slate-700 dark:hover:bg-slate-700/70"
-                    : "text-slate-900 hover:bg-[#eef3f8] dark:text-slate-300 dark:hover:bg-slate-800/60",
-                )}
-                onClick={() => {
-                  setSubjectActionError(undefined);
-                  setOpenMenuId(null);
-                  setIsMobileOpen(false);
-                  navigate("/assistant");
-                }}
-              >
-                <Bot
-                  className={cn(
-                    "h-3.5 w-3.5 shrink-0 transition-colors",
-                    isGlobalAssistantActive
-                      ? "text-[#4b607b] group-hover:text-[#324761] dark:text-slate-300 dark:group-hover:text-slate-100"
-                      : "text-slate-500 group-hover:text-slate-700 dark:text-slate-400 dark:group-hover:text-slate-200",
-                  )}
-                  strokeWidth={2.2}
-                />
-                <span
-                  className={cn(
-                    "whitespace-nowrap text-xs tracking-[0.01em]",
-                    isGlobalAssistantActive
-                      ? "font-semibold text-[#1f2937] group-hover:text-[#172033] dark:text-slate-100 dark:group-hover:text-white"
-                      : "font-normal text-slate-900 group-hover:text-slate-950 dark:text-slate-300 dark:group-hover:text-slate-100",
-                  )}
-                >
-                  全局助手
                 </span>
               </button>
 
@@ -701,6 +650,12 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
               </div>
             );
           })}
+
+          <AiConversationSidebarSection
+            collapsed={effectiveCollapsed}
+            onExpandSidebar={expandNavigationSidebar}
+            onNavigate={closeMobileNavigation}
+          />
         </div>
 
         {/* Bottom actions */}

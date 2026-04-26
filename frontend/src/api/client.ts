@@ -134,6 +134,8 @@ export interface SseStatusPayload {
   detail?: string;
   step?: string;
   elapsed_ms?: number;
+  session_id?: string;
+  session_title?: string;
 }
 
 export interface PostSseJsonOptions {

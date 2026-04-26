@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.schemas.chats import ChatContextItem
 
@@ -21,6 +21,27 @@ class WeakPointSummary(BaseModel):
 
     knowledge_point: str
     mastery_text: str
+
+
+class SubjectContextSummary(BaseModel):
+    """Subject and learner profile summary used as tutoring background."""
+
+    subject_id: str
+    subject_name: str
+    description: str = ""
+    user_intent: str = ""
+    learning_intent: str = ""
+    subject_intro: str = ""
+    llm_context: str = ""
+    discipline: str | None = None
+    sub_discipline: str | None = None
+    avg_mastery: float | None = None
+    weak_knowledge_unit_count: int | None = None
+    pending_review_count: int | None = None
+    due_review_count: int | None = None
+    difficulty_focus: str | None = None
+    recommended_question_types: list[str] = Field(default_factory=list)
+    recommended_exam_mode: str | None = None
 
 
 class MistakeSummary(BaseModel):

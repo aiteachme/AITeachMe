@@ -66,6 +66,7 @@ def _preview_item(
     difficulty: str = "medium",
     stem: str = "Question stem",
     unit_id: int = 1,
+    is_correct: bool | None = None,
 ) -> ExamPaperItem:
     return ExamPaperItem(
         exam_paper_id=1,
@@ -79,6 +80,7 @@ def _preview_item(
         knowledge_unit_refs_json=json.dumps([{"knowledge_unit_id": unit_id, "coverage_weight": 1.0, "role": "primary"}]),
         difficulty=difficulty,
         question_type=question_type,
+        is_correct=is_correct,
     )
 
 
@@ -90,6 +92,8 @@ def test_build_paper_preview_dedupes_keywords_limits_rows_and_counts_overflow():
         _preview_item(4, question_type="single_choice", unit_id=2),
         _preview_item(5, question_type="fill_blank", unit_id=3),
         _preview_item(6, question_type="short_answer", unit_id=3),
+        _preview_item(7, question_type="single_choice", unit_id=1),
+        _preview_item(8, question_type="fill_blank", unit_id=2),
     ]
     units = {
         1: KnowledgeUnit(id=1, subject="math", knowledge_unit_type="concept", canonical_name="Derivative", normalized_name="derivative"),
@@ -100,31 +104,10 @@ def test_build_paper_preview_dedupes_keywords_limits_rows_and_counts_overflow():
     preview = _build_paper_preview(items, knowledge_unit_by_id=units)
 
     assert preview.keywords == ["Derivative", "Limit", "Integral"]
-    assert [row.shape for row in preview.rows] == ["choice", "blank", "short", "choice", "blank"]
+    assert [row.shape for row in preview.rows] == ["choice", "blank", "short", "choice", "blank", "short", "choice"]
     assert [row.density for row in preview.rows[:3]] == [1, 2, 3]
+    assert [row.result_status for row in preview.rows[:3]] == ["ungraded", "ungraded", "ungraded"]
     assert preview.overflow_count == 1
-
-
-def test_build_paper_preview_uses_content_rules_for_dominant_type():
-    units = {
-        1: KnowledgeUnit(id=1, subject="cs", knowledge_unit_type="concept", canonical_name="Python", normalized_name="python"),
-    }
-    code_preview = _build_paper_preview(
-        [_preview_item(1, question_type="short_answer", stem="Read this Python function: def score(x): return x + 1")],
-        knowledge_unit_by_id=units,
-    )
-    chart_preview = _build_paper_preview(
-        [_preview_item(1, question_type="short_answer", stem="Analyze the trend in this chart and axis labels")],
-        knowledge_unit_by_id=units,
-    )
-    formula_preview = _build_paper_preview(
-        [_preview_item(1, question_type="short_answer", stem="Use the formula f(x)=x^2 to calculate the derivative")],
-        knowledge_unit_by_id=units,
-    )
-
-    assert code_preview.dominant_type == "code"
-    assert chart_preview.dominant_type == "chart"
-    assert formula_preview.dominant_type == "formula"
 
 
 def test_paper_preview_for_response_falls_back_for_legacy_empty_json():
@@ -138,3 +121,62 @@ def test_paper_preview_for_response_falls_back_for_legacy_empty_json():
 
     assert preview.keywords == ["Derivative"]
     assert preview.rows[0].shape == "blank"
+
+
+def test_paper_preview_for_response_regenerates_legacy_five_row_preview():
+    old_preview = {
+        "keywords": ["Derivative"],
+        "question_types": ["single_choice", "fill_blank", "short_answer"],
+        "rows": [
+            {"order": order, "type": "single_choice", "shape": "choice", "difficulty": "medium", "density": 2}
+            for order in range(1, 6)
+        ],
+        "overflow_count": 3,
+    }
+    paper = ExamPaper(
+        subject="math",
+        user_id="local",
+        exam_mode="web_practice",
+        paper_preview_json=json.dumps(old_preview),
+    )
+    items = [
+        _preview_item(order, question_type="single_choice" if order % 2 else "fill_blank", unit_id=1)
+        for order in range(1, 9)
+    ]
+    units = {
+        1: KnowledgeUnit(id=1, subject="math", knowledge_unit_type="concept", canonical_name="Derivative", normalized_name="derivative"),
+    }
+
+    preview = _paper_preview_for_response(paper, items, knowledge_unit_by_id=units)
+
+    assert [row.order for row in preview.rows] == [1, 2, 3, 4, 5, 6, 7]
+    assert preview.overflow_count == 1
+
+
+def test_paper_preview_for_response_regenerates_with_graded_result_status():
+    old_preview = {
+        "keywords": ["Derivative"],
+        "question_types": ["single_choice"],
+        "rows": [
+            {"order": 1, "type": "single_choice", "shape": "choice", "difficulty": "medium", "density": 2},
+            {"order": 2, "type": "single_choice", "shape": "choice", "difficulty": "medium", "density": 2},
+        ],
+        "overflow_count": 0,
+    }
+    paper = ExamPaper(
+        subject="math",
+        user_id="local",
+        exam_mode="web_practice",
+        paper_preview_json=json.dumps(old_preview),
+    )
+    items = [
+        _preview_item(1, question_type="single_choice", unit_id=1, is_correct=True),
+        _preview_item(2, question_type="single_choice", unit_id=1, is_correct=False),
+    ]
+    units = {
+        1: KnowledgeUnit(id=1, subject="math", knowledge_unit_type="concept", canonical_name="Derivative", normalized_name="derivative"),
+    }
+
+    preview = _paper_preview_for_response(paper, items, knowledge_unit_by_id=units)
+
+    assert [row.result_status for row in preview.rows] == ["correct", "incorrect"]

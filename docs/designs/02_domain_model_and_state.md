@@ -44,15 +44,16 @@
 ### 2.3 知识层
 
 - `KnowledgeDocument`
-- `KnowledgeNode`
+- `KnowledgeUnit`
 - `KnowledgeEdge`
 
 说明：
 
 - `KnowledgeDocument` 负责对外阅读与章节包元数据
-- `KnowledgeNode / KnowledgeEdge` 负责系统内部知识真相
+- `KnowledgeUnit / KnowledgeEdge` 负责系统内部知识真相
+- 历史文档中的 `KnowledgeNode` 对应当前物理表和 API 里的 `KnowledgeUnit`
 
-### 2.4 课程层
+### 2.4 未来课程层（当前未落地）
 
 - `TeachingUnit`
 - `TaxonomyAnchor`
@@ -62,9 +63,9 @@
 
 说明：
 
-- `TeachingUnit` 是 digest / examine / profile 共同消费的稳定锚点
-- `Curriculum` 是课程构建主表
-- `ThemeTreeNode` 和 `UnitDependency` 直接挂在当前课程快照上
+- 这些不是当前数据库表，也不是当前公开 API 契约
+- 后续如果 Examine/Profile 需要教学单元、课程版本或主题树，需要另起 schema 设计和迁移
+- 当前主链路先以 `knowledge_document + knowledge_unit + knowledge_edge` 为 Digest 产物
 
 ### 2.5 交互与评测层
 
@@ -78,7 +79,7 @@
 说明：
 
 - 聊天层消费知识层，不反向定义知识真相
-- Examine 与 Profile 共享 `TeachingUnit / KnowledgeNode / Curriculum` 这些锚点
+- Examine 与 Profile 当前主要共享 `KnowledgeUnit` 这些知识锚点
 
 ---
 
@@ -86,14 +87,10 @@
 
 ### 3.1 兼容别名
 
-当前代码里有一些名字仍然保留，但语义已经收敛：
+当前代码里仍可能出现旧术语，但它们不代表独立主表：
 
-- `CurriculumSnapshot = Curriculum`
-- `CurriculumVersion = Curriculum`
-- `ThemeTreeVersion = Curriculum`
-- `PrereqDagVersion = Curriculum`
-
-这些别名是为了兼容已有调用，不代表还存在独立主表。
+- `KnowledgeNode`：历史术语，当前以 `KnowledgeUnit` 为准。
+- `CurriculumSnapshot / CurriculumVersion / ThemeTreeVersion / PrereqDagVersion`：未来课程结构占位术语，当前不落表。
 
 ### 3.2 文件资产兼容对象
 
@@ -123,7 +120,6 @@
 
 - workflow `State` TypedDict
 - `graph_job_id`
-- `curriculum_job_id`
 - `build_session_id`
 - ingest 事件与 digest 事件 payload
 - `knowledge_markdowns/_build/`
@@ -144,14 +140,14 @@
 
 ### 5.1 当前版本语义
 
-当前系统采用“共享构建版号”：
+当前系统采用“文档版本 + 图谱修订”的轻量语义：
 
-- `curriculum.version_no`
 - `knowledge_document.version_no`
-- `knowledge_node.build_revision_no`
+- `knowledge_unit.build_revision_no`
 - `knowledge_edge.build_revision_no`
 
-同一轮 digest 中，这几个版本必须对齐。
+`curriculum.version_no` 当前不存在。图谱构建运行态会通过 `graph_metrics.revision_no` 和
+`graph_metrics.last_synced_doc_version_no` 记录图谱修订与被同步的知识文档版本。
 
 ### 5.2 当前 ingest 状态语义
 

@@ -14,7 +14,6 @@ import { ExamPaperPage, ExamsPage, QuestionTemplatesPage, QuestionTypesPage } fr
 import { ProfilePage } from "./pages/ProfilePage";
 import { KnowledgeDocsPage } from "./pages/KnowledgeDocsPage";
 import { KnowledgeInteractivePage } from "./pages/KnowledgeInteractivePage";
-import { KnowledgeDebugPage } from "./pages/KnowledgeDebugPage";
 import { SUBJECT_ROUTE_REDIRECTS, type SubjectRouteId } from "./lib/subjectNavigation";
 import { ensureSystemSettingsOverviewLoaded } from "./lib/systemSettings";
 import { isElectronRuntime } from "./lib/electronRuntime";
@@ -24,7 +23,6 @@ const queryClient = new QueryClient();
 const SUBJECT_PAGE_ELEMENTS: Record<SubjectRouteId, ReactElement> = {
   build: <BuildPlanPage />,
   "knowledge-docs": <KnowledgeDocsPage />,
-  "knowledge-debug": <KnowledgeDebugPage />,
   exams: <ExamsPage />,
   profile: <ProfilePage />,
 };
@@ -44,7 +42,7 @@ function App() {
       <QueryClientProvider client={queryClient}>
         <RuntimeSettingsBootstrap />
         <ToastProvider>
-          <Router>
+          <Router unstable_useTransitions={false}>
             <ElectronWindowFrame>
               <Routes>
                 <Route path="/" element={<Layout />}>

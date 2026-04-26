@@ -16,12 +16,11 @@ from pathlib import Path
 from typing import Any
 
 import structlog
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from sqlmodel import Session, SQLModel, func, select
 
 from app.shared.infra.runtime import get_app_version, is_cloud_mode
 from app.shared.infra.storage import (
-    build_file_storage_segment,
     build_subject_storage_scope,
     get_content_store,
     run_store_sync,
@@ -34,6 +33,8 @@ from app.models import (
     ExamPaperItem,
     KnowledgeDocument,
     KnowledgeEdge,
+    KnowledgeGraphSourceRef,
+    KnowledgeGraphSyncRun,
     KnowledgeUnit,
     QuestionTypeRegistry,
     QuestionTemplate,
@@ -61,6 +62,8 @@ from app.workflows.support.subjects.icons import (
 logger = structlog.get_logger()
 
 SUPPORTED_FORMAT_VERSIONS = {"1.0"}
+MANIFEST_SCHEMA = "aiteachme.atmx.manifest"
+PACKAGE_KIND = "subject_export"
 
 
 # ---------------------------------------------------------------------------
@@ -68,15 +71,26 @@ SUPPORTED_FORMAT_VERSIONS = {"1.0"}
 
 
 class _ManifestSubject(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
     slug: str
     name: str
+    description: str = ""
+    user_intent: str = ""
+    icon_key: str | None = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
 
 
 class _ManifestStats(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
     raw_file_count: int = 0
     knowledge_document_count: int = 0
     knowledge_unit_count: int = 0
     knowledge_edge_count: int = 0
+    knowledge_graph_sync_run_count: int = 0
+    knowledge_graph_source_ref_count: int = 0
     confirmed_build_plan_count: int = 0
     question_type_registry_count: int = 0
     question_template_count: int = 0
@@ -86,14 +100,40 @@ class _ManifestStats(BaseModel):
     total_file_size_bytes: int = 0
 
 
+class _ManifestPackage(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    package_id: str
+    kind: str = PACKAGE_KIND
+    manifest_schema: str = MANIFEST_SCHEMA
+    content_roots: list[str] = Field(default_factory=lambda: ["db", "files", "knowledge"])
+    capabilities: list[str] = Field(default_factory=list)
+    min_reader_format_version: str = "1.0"
+
+
+class _ManifestTable(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    name: str
+    count: int = 0
+    optional_group: str | None = None
+    id_type: str = "auto"
+    subject_field: str | None = None
+
+
 class _ExportManifest(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
     format_version: str = "1.0"
     app_version: str = ""
     exported_at: datetime | None = None
     exporter: str = "AITeachMe"
+    package: _ManifestPackage = Field(default_factory=lambda: _ManifestPackage(package_id="legacy"))
     subject: _ManifestSubject
     stats: _ManifestStats = Field(default_factory=_ManifestStats)
     options: ExportOptions = Field(default_factory=ExportOptions)
+    tables: list[_ManifestTable] = Field(default_factory=list)
+    extensions: dict[str, Any] = Field(default_factory=dict)
 
 
 # ---------------------------------------------------------------------------
@@ -157,6 +197,15 @@ TABLE_REGISTRY: list[_TableSpec] = [
         fk_remap={
             "source_node_id": "knowledge_unit",
             "target_node_id": "knowledge_unit",
+        },
+    ),
+    _TableSpec("knowledge_graph_sync_run", KnowledgeGraphSyncRun),
+    _TableSpec(
+        "knowledge_graph_source_ref",
+        KnowledgeGraphSourceRef,
+        fk_remap={
+            "sync_run_id": "knowledge_graph_sync_run",
+            "knowledge_document_id": "knowledge_document",
         },
     ),
     _TableSpec(
@@ -240,16 +289,17 @@ def preview_export(
     options = options or ExportOptions()
     subject = _require_subject(session, subject_slug)
     raw_files = list_all_raw_files_by_subject(session, subject_slug)
-    total_size = sum(r.file_size_bytes or 0 for r in raw_files) if options.include_raw_files else 0
 
     stats = ExportPreviewStats(
         raw_file_count=len(raw_files) if _exports_raw_file_metadata(options) else 0,
-        total_raw_file_size_bytes=total_size,
+        total_raw_file_size_bytes=0,
         knowledge_document_count=_count(session, KnowledgeDocument, subject_slug)
         if options.include_knowledge_docs
         else 0,
         knowledge_unit_count=_count(session, KnowledgeUnit, subject_slug),
         knowledge_edge_count=_count(session, KnowledgeEdge, subject_slug),
+        knowledge_graph_sync_run_count=_count(session, KnowledgeGraphSyncRun, subject_slug),
+        knowledge_graph_source_ref_count=_count(session, KnowledgeGraphSourceRef, subject_slug),
         confirmed_build_plan_count=_count(session, ConfirmedBuildPlan, subject_slug)
         if options.include_knowledge_docs
         else 0,
@@ -269,7 +319,7 @@ def preview_export(
         subject_id=subject.slug,
         subject_name=subject.name,
         stats=stats,
-        estimated_size_bytes=total_size * 2,
+        estimated_size_bytes=0,
     )
 
 
@@ -318,6 +368,14 @@ def export_subject(
     except Exception:
         tmp_path.unlink(missing_ok=True)
         raise
+
+
+def build_subject_export_filename(subject: Subject) -> str:
+    """Build a readable download filename anchored by subject name and id."""
+
+    name = sanitize_doc_title(subject.name or "未命名学科")
+    subject_id = sanitize_doc_title(subject.slug or str(subject.id or "subject"))
+    return f"{name}-{subject_id}.atmx"
 # ===================================================================
 # Internal: DB helpers
 # ===================================================================
@@ -354,7 +412,7 @@ def _should_export(spec: _TableSpec, options: ExportOptions) -> bool:
 
 
 def _exports_raw_file_metadata(options: ExportOptions) -> bool:
-    return options.include_raw_files or options.include_raw_markdowns
+    return options.include_raw_markdowns
 
 
 def _query_table(
@@ -443,6 +501,7 @@ def _import_table(
     id_map[spec.name] = table_id_map  # Register early to support self-referencing foreign keys
     self_fk_fields = {fk_field for fk_field, ref_table in spec.fk_remap.items() if ref_table == spec.name}
     pending_self_refs: list[tuple[SQLModel, dict[str, Any], Any]] = []
+    imported_at = utcnow()
 
     for raw_record in records:
         record_data = dict(raw_record)
@@ -460,6 +519,8 @@ def _import_table(
             record_data["slug"] = new_slug
             record_data["name"] = new_name
             record_data["normalized_name"] = None
+            record_data["created_at"] = imported_at
+            record_data["updated_at"] = imported_at
             _ensure_subject_icon(record_data, new_name)
         elif spec.subject_field and spec.subject_field != "slug":
             record_data[spec.subject_field] = new_slug
@@ -479,6 +540,16 @@ def _import_table(
             _remap_id_list_field(
                 record_data,
                 "selected_file_ids_json",
+                "raw_file",
+                id_map,
+                spec.name,
+                warnings,
+            )
+        elif spec.name == "knowledge_graph_source_ref":
+            _remap_graph_source_ref_entity(record_data, id_map, warnings)
+            _remap_json_int_list_text_field(
+                record_data,
+                "source_file_ids_json",
                 "raw_file",
                 id_map,
                 spec.name,
@@ -530,12 +601,7 @@ def _import_table(
             ).rstrip("/")
             instance.storage_backend = "s3" if is_cloud_mode() else "local"
         elif spec.name == "knowledge_document" and isinstance(new_id, int):
-            subject_scope = build_subject_storage_scope(user_id=user_id, subject=new_slug)
-            chapter_index = max(1, int(instance.chapter_index or 1))
-            safe_title = sanitize_doc_title(instance.title or f"chapter_{chapter_index}")
-            instance.markdown_path = subject_scope.knowledge_doc_key(
-                f"chapter_{chapter_index:02d}_{safe_title}.md"
-            )
+            instance.markdown_path = None
 
         if old_id is not None:
             table_id_map[old_id] = new_id
@@ -616,6 +682,49 @@ def _remap_id_list_field(
     record[field_name] = remapped
 
 
+def _remap_json_int_list_text_field(
+    record: dict,
+    field_name: str,
+    ref_table: str,
+    id_map: dict[str, dict[Any, Any]],
+    table_name: str,
+    warnings: list[str],
+) -> None:
+    try:
+        values = json.loads(str(record.get(field_name) or "[]"))
+    except Exception:
+        values = []
+    if not isinstance(values, list):
+        values = []
+
+    ref_map = id_map.get(ref_table) or {}
+    remapped: list[int] = []
+    for old_id in values:
+        new_id = _lookup_mapped_id(old_id, ref_map)
+        if new_id is None:
+            warnings.append(f"{table_name}.{field_name}: ref {old_id} not found in {ref_table}")
+            continue
+        try:
+            remapped.append(int(new_id))
+        except (TypeError, ValueError):
+            continue
+    record[field_name] = json.dumps(remapped, ensure_ascii=False)
+
+
+def _remap_graph_source_ref_entity(
+    record: dict,
+    id_map: dict[str, dict[Any, Any]],
+    warnings: list[str],
+) -> None:
+    entity_type = str(record.get("entity_type") or "").strip()
+    ref_table = "knowledge_unit" if entity_type == "unit" else "knowledge_edge" if entity_type == "edge" else ""
+    if not ref_table:
+        record["entity_id"] = 0
+        warnings.append(f"knowledge_graph_source_ref.entity_id: unsupported entity_type {entity_type!r}")
+        return
+    _remap_fk(record, "entity_id", ref_table, id_map, "knowledge_graph_source_ref", warnings)
+
+
 # ===================================================================
 # Internal: file packing and unpacking
 # ===================================================================
@@ -630,21 +739,6 @@ def _pack_files(
 ) -> None:
     """Read files from ContentStore and pack them into the zip archive."""
     cs = get_content_store()
-    skip_filenames = {
-        ".build.lock",
-        "build_status.json",
-        "chunk_manifest.json",
-        "manifest.json",
-        "node_embedding_cache.json",
-    }
-
-    def _pack_prefix(prefix: str, arc_prefix: str) -> None:
-        keys = run_store_sync(cs.list_prefix, prefix, default=[])
-        for key in keys:
-            relative = key[len(prefix):] if key.startswith(prefix) else key.rsplit("/", 1)[-1]
-            data = run_store_sync(cs.read_bytes, key, default=None)
-            if data is not None:
-                zf.writestr(f"{arc_prefix}/{relative}", data)
 
     def _pack_latest_docgen_cover() -> None:
         cover_keys = run_store_sync(cs.list_prefix, f"{namespace}/assets/docgen/", default=[]) or []
@@ -672,49 +766,10 @@ def _pack_files(
         extension = mimetypes.guess_extension(guessed_type or "") or Path(latest_cover_key).suffix or ".png"
         zf.writestr(f"knowledge/cover{extension}", data)
 
-    def _pack_key(key: str | None, archive_name: str) -> None:
-        if not key:
-            return
-        data = run_store_sync(cs.read_bytes, key, default=None)
-        if data is not None:
-            zf.writestr(archive_name, data)
-
-    if options.include_raw_files:
-        for raw_file in raw_files:
-            if raw_file.id is None:
-                continue
-            file_segment = build_file_storage_segment(file_uid=raw_file.uid, filename=raw_file.filename)
-            extension = Path(raw_file.file_path or "").suffix or (
-                f".{raw_file.filetype}" if raw_file.filetype else ""
-            )
-            _pack_key(raw_file.file_path, f"files/raw_files/{file_segment}/raw{extension}")
-            if raw_file.asset_dir:
-                _pack_prefix(raw_file.asset_dir.rstrip("/") + "/", f"files/assets/{file_segment}")
-    if options.include_raw_markdowns:
-        for raw_file in raw_files:
-            if raw_file.id is None:
-                continue
-            file_segment = build_file_storage_segment(file_uid=raw_file.uid, filename=raw_file.filename)
-            _pack_key(raw_file.markdown_path, f"files/raw_markdowns/{file_segment}/markdown.md")
-
-    # knowledge markdowns
+    # KnowledgeDocument rows already carry the published markdown content. The package only
+    # needs non-DB docgen assets such as the cover image.
     if options.include_knowledge_docs:
         _pack_latest_docgen_cover()
-        keys = run_store_sync(cs.list_prefix, f"{namespace}/knowledge_markdowns/", default=[])
-        for key in keys:
-            prefix = f"{namespace}/knowledge_markdowns/"
-            relative = key[len(prefix):] if key.startswith(prefix) else key.rsplit("/", 1)[-1]
-            filename = relative.rsplit("/", 1)[-1]
-            if (
-                filename in skip_filenames
-                or relative.startswith("_build/")
-                or relative.startswith("versions/")
-                or "/" in relative
-            ):
-                continue
-            data = run_store_sync(cs.read_bytes, key, default=None)
-            if data is not None:
-                zf.writestr(f"knowledge/{filename}", data)
 # ===================================================================
 # Internal: Manifest
 # ===================================================================
@@ -728,24 +783,73 @@ def _build_manifest(
     return _ExportManifest(
         app_version=get_app_version(),
         exported_at=utcnow(),
+        package=_ManifestPackage(
+            package_id=f"atmx_{uuid.uuid4().hex}",
+            capabilities=_manifest_capabilities(options),
+        ),
         subject=_ManifestSubject(
             slug=subject.slug,
             name=subject.name,
+            description=subject.description,
+            user_intent=subject.user_intent,
+            icon_key=normalize_subject_icon_key(
+                _decode_settings_json(subject.settings_json).get(SUBJECT_ICON_SETTINGS_KEY)
+            ),
+            created_at=subject.created_at,
+            updated_at=subject.updated_at,
         ),
         stats=_ManifestStats(
             raw_file_count=len(exported.get("raw_file", [])),
             knowledge_document_count=len(exported.get("knowledge_document", [])),
             knowledge_unit_count=len(exported.get("knowledge_unit", [])),
             knowledge_edge_count=len(exported.get("knowledge_edge", [])),
+            knowledge_graph_sync_run_count=len(exported.get("knowledge_graph_sync_run", [])),
+            knowledge_graph_source_ref_count=len(exported.get("knowledge_graph_source_ref", [])),
             confirmed_build_plan_count=len(exported.get("confirmed_build_plan", [])),
             question_type_registry_count=len(exported.get("question_type_registry", [])),
             question_template_count=len(exported.get("question_template", [])),
             exam_paper_count=len(exported.get("exam_paper", [])),
             chat_session_count=len(exported.get("chat_session", [])),
             user_knowledge_state_count=len(exported.get("user_knowledge_state", [])),
+            total_file_size_bytes=0,
         ),
         options=options,
+        tables=_build_manifest_tables(exported),
     )
+
+
+def _manifest_capabilities(options: ExportOptions) -> list[str]:
+    capabilities = ["subject_metadata", "knowledge_graph"]
+    if _exports_raw_file_metadata(options):
+        capabilities.append("raw_file_metadata")
+    if options.include_raw_markdowns:
+        capabilities.append("raw_markdowns")
+    if options.include_knowledge_docs:
+        capabilities.append("knowledge_docs")
+    if options.include_chat_history:
+        capabilities.append("chat_history")
+    if options.include_exam_history:
+        capabilities.append("exam_history")
+    if options.include_profile:
+        capabilities.append("profile")
+    return capabilities
+
+
+def _build_manifest_tables(exported: dict[str, list[dict]]) -> list[_ManifestTable]:
+    spec_by_name = {spec.name: spec for spec in TABLE_REGISTRY}
+    tables: list[_ManifestTable] = []
+    for name, records in exported.items():
+        spec = spec_by_name.get(name)
+        tables.append(
+            _ManifestTable(
+                name=name,
+                count=len(records),
+                optional_group=spec.optional_group if spec else None,
+                id_type=spec.id_type if spec else "auto",
+                subject_field=spec.subject_field if spec else None,
+            )
+        )
+    return tables
 
 
 def _read_manifest(extract_dir: Path) -> _ExportManifest:

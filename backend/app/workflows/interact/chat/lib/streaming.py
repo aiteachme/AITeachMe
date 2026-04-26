@@ -47,11 +47,17 @@ class SSEEventEmitter:
         *,
         turn_id: str,
         contexts: list[ChatContextItem] | None,
+        session_id: str | None = None,
+        session_title: str | None = None,
     ) -> None:
         payload = {
             "turn_id": turn_id,
             "contexts": [item.model_dump() for item in contexts] if contexts else None,
         }
+        if session_id:
+            payload["session_id"] = session_id
+        if session_title:
+            payload["session_title"] = session_title
         await self.emit_event("done", payload)
 
     async def close(self) -> None:

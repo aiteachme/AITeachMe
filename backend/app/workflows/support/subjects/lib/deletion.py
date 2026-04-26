@@ -20,6 +20,8 @@ from app.models import (
     ExamPaperItem,
     KnowledgeDocument,
     KnowledgeEdge,
+    KnowledgeGraphSourceRef,
+    KnowledgeGraphSyncRun,
     KnowledgeUnit,
     QuestionTemplate,
     QuestionTypeRegistry,
@@ -44,6 +46,8 @@ _EXAM_KEYS = [
 _PROFILE_KEYS = ["user_knowledge_state"]
 _PLANNER_KEYS = ["confirmed_build_plan"]
 _KNOWLEDGE_KEYS = [
+    "knowledge_graph_source_ref",
+    "knowledge_graph_sync_run",
     "knowledge_document",
     "knowledge_edge",
     "knowledge_unit",
@@ -90,6 +94,12 @@ def collect_subject_delete_counts(session: Session, *, subject: str) -> dict[str
         "user_knowledge_state": _count_rows(session, UserKnowledgeState, UserKnowledgeState.subject == subject),
         "knowledge_edge": _count_rows(session, KnowledgeEdge, KnowledgeEdge.subject == subject),
         "knowledge_unit": _count_rows(session, KnowledgeUnit, KnowledgeUnit.subject == subject),
+        "knowledge_graph_sync_run": _count_rows(session, KnowledgeGraphSyncRun, KnowledgeGraphSyncRun.subject == subject),
+        "knowledge_graph_source_ref": _count_rows(
+            session,
+            KnowledgeGraphSourceRef,
+            KnowledgeGraphSourceRef.subject == subject,
+        ),
         "confirmed_build_plan": _count_rows(session, ConfirmedBuildPlan, ConfirmedBuildPlan.subject == subject),
     }
 
@@ -195,57 +205,52 @@ def _delete_subject_artifacts_best_effort(subject_slug: str, *, user_id: str | N
 
 
 def _delete_exam_records(session: Session, *, subject: str) -> None:
-    paper_items = list(
-        session.exec(
-            select(ExamPaperItem)
-            .join(ExamPaper, ExamPaperItem.exam_paper_id == ExamPaper.id)
-            .where(ExamPaper.subject == subject)
-        ).all()
-    )
-    papers = list(session.exec(select(ExamPaper).where(ExamPaper.subject == subject)).all())
-    templates = list(session.exec(select(QuestionTemplate).where(QuestionTemplate.subject == subject)).all())
+    paper_ids = [
+        paper_id
+        for paper_id in session.exec(select(ExamPaper.id).where(ExamPaper.subject == subject)).all()
+        if paper_id is not None
+    ]
+    template_ids = [
+        template_id
+        for template_id in session.exec(select(QuestionTemplate.id).where(QuestionTemplate.subject == subject)).all()
+        if template_id is not None
+    ]
 
-    for item in paper_items:
-        session.delete(item)
+    if paper_ids:
+        session.exec(sa.delete(ExamPaperItem).where(ExamPaperItem.exam_paper_id.in_(paper_ids)))
+    if template_ids:
+        session.exec(sa.delete(ExamPaperItem).where(ExamPaperItem.question_template_id.in_(template_ids)))
 
-    for paper in papers:
-        session.delete(paper)
-
-    for template in templates:
-        session.delete(template)
-
-    registry_items = list(
-        session.exec(select(QuestionTypeRegistry).where(QuestionTypeRegistry.subject == subject)).all()
-    )
-    for registry_item in registry_items:
-        session.delete(registry_item)
+    _bulk_delete_by_subject(session, ExamPaper, subject=subject)
+    _bulk_delete_by_subject(session, QuestionTemplate, subject=subject)
+    _bulk_delete_by_subject(session, QuestionTypeRegistry, subject=subject)
 
 
 def _delete_chat_messages(session: Session, *, subject: str) -> None:
-    messages = list(session.exec(select(ChatMessage).where(ChatMessage.subject == subject)).all())
-    for message in messages:
-        session.delete(message)
-
-    sessions = list(session.exec(select(ChatSession).where(ChatSession.subject == subject)).all())
-    for item in sessions:
-        session.delete(item)
+    _bulk_delete_by_subject(session, ChatMessage, subject=subject)
+    _bulk_delete_by_subject(session, ChatSession, subject=subject)
 
 
 def _delete_profiles(session: Session, *, subject: str) -> None:
-    knowledge_states = list(
-        session.exec(select(UserKnowledgeState).where(UserKnowledgeState.subject == subject)).all()
-    )
-    for state in knowledge_states:
-        session.delete(state)
+    _bulk_delete_by_subject(session, UserKnowledgeState, subject=subject)
 
 
 def _delete_knowledge_and_curriculum(session: Session, *, subject: str) -> None:
-    for model in (
-        KnowledgeDocument,
-        KnowledgeEdge,
-        KnowledgeUnit,
-    ):
-        _bulk_delete_by_subject(session, model, subject=subject)
+    session.exec(
+        sa.update(KnowledgeDocument)
+        .where(KnowledgeDocument.subject == subject)
+        .values(root_document_id=None, parent_document_id=None)
+    )
+    session.exec(
+        sa.update(KnowledgeUnit)
+        .where(KnowledgeUnit.subject == subject)
+        .values(merged_into_knowledge_unit_id=None)
+    )
+    _bulk_delete_by_subject(session, KnowledgeGraphSourceRef, subject=subject)
+    _bulk_delete_by_subject(session, KnowledgeGraphSyncRun, subject=subject)
+    _bulk_delete_by_subject(session, KnowledgeEdge, subject=subject)
+    _bulk_delete_by_subject(session, KnowledgeDocument, subject=subject)
+    _bulk_delete_by_subject(session, KnowledgeUnit, subject=subject)
 
 
 def _delete_documents_and_chunks(session: Session, *, subject: str) -> None:
@@ -253,8 +258,7 @@ def _delete_documents_and_chunks(session: Session, *, subject: str) -> None:
     chunk_ids = [chunk.id for chunk in chunks if chunk.id is not None]
     if chunk_ids:
         knowledge_repo.delete_embeddings_by_chunk_ids(session, subject=subject, chunk_ids=chunk_ids)
-    for chunk in chunks:
-        session.delete(chunk)
+    _bulk_delete_by_subject(session, RetrievalChunk, subject=subject)
 
 
 def _clear_subject_vector_index_best_effort(subject: str) -> None:
@@ -267,9 +271,7 @@ def _clear_subject_vector_index_best_effort(subject: str) -> None:
 
 
 def _delete_planner_records(session: Session, *, subject: str) -> None:
-    plans = list(session.exec(select(ConfirmedBuildPlan).where(ConfirmedBuildPlan.subject == subject)).all())
-    for plan in plans:
-        session.delete(plan)
+    _bulk_delete_by_subject(session, ConfirmedBuildPlan, subject=subject)
 
 
 def _delete_raw_files_and_artifacts(session: Session, *, subject: str, owner_user_id: str) -> None:

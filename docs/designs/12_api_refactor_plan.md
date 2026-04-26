@@ -40,7 +40,7 @@
 | --- | --- | --- |
 | `/subjects` | 学科创建、删除、清空、状态查询 | `user`, `subject` |
 | `/files` | 上传、列文件、删文件、重新解析 | `raw_file` |
-| `/knowledge` | 构建、文档、总览、图谱详情、chunk 上下文、课程详情 | `knowledge_document`, `retrieval_chunk`, `knowledge_node`, `knowledge_edge`, `teaching_unit`, `curriculum` |
+| `/knowledge` | 构建、文档、总览、图谱详情、chunk 上下文 | `knowledge_document`, `retrieval_chunk`, `knowledge_unit`, `knowledge_edge` |
 | `/chats` | 会话、消息、流式问答、引用上下文 | `chat_session`, `chat_message`, `retrieval_chunk`, `user.profile_json`, `subject.profile_json`, `user_knowledge_state`, `exam_paper_item` |
 | `/exams` | 出题、组卷、历史、详情、交卷、判卷、题库视图 | `question_template`, `exam_paper`, `exam_paper_item`, `subject.profile_json`, `user_knowledge_state` |
 | `/profile` | 掌握度、复习任务、学习报告、错题视图 | `user.profile_json`, `subject.profile_json`, `user_knowledge_state`, `exam_paper_item` |
@@ -58,15 +58,14 @@
 - `POST /knowledge/build`
 - `POST /knowledge/docs`
 - `POST /knowledge/overview`
-- `POST /knowledge/graph/nodes/detail`
+- `POST /knowledge/graph/knowledge-units/detail`
 - `POST /knowledge/chunks/context`
-- `POST /knowledge/units/detail`
 - `POST /knowledge/clear`
 
 新的数据落点：
 
 - `docs` -> `knowledge_document`
-- `overview` -> `curriculum + knowledge_* + teaching_unit`
+- `overview` -> `knowledge_unit + knowledge_edge`
 - `chunks/context` -> `retrieval_chunk`
 
 ### 4.2 `/chats`
@@ -159,17 +158,13 @@
 
 返回主块：
 
-- `snapshot`
-- `theme_tree`
-- `prereq_dag`
 - `graph`
-- `units`
 - `stats`
 
 注意：
 
-- 这里对外仍然可以叫 `snapshot/theme_tree/prereq_dag`
-- 但数据库底层已经统一收敛为 `curriculum` 当前态单表；短期兼容实现可暂沿用旧表名 `curriculum_version`
+- 当前 `/knowledge/overview` 只承载知识图谱和统计摘要。
+- `snapshot / theme_tree / prereq_dag` 属于未来课程结构能力，不属于当前 API。
 
 ### 6.2 `/profile`
 
@@ -215,7 +210,7 @@
 
 - `generate` 最终产物是 `exam_paper`
 - `grade` 最终结果回写 `exam_paper + exam_paper_item + user_knowledge_state + subject.profile_json`
-- `build` 最终产物是 `knowledge_document + curriculum + knowledge_*`
+- `build` 最终产物是 `knowledge_document + knowledge_unit + knowledge_edge`
 
 ---
 

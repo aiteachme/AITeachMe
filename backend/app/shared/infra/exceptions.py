@@ -134,9 +134,8 @@ class DemoCourseCatalogNotConfiguredError(AITeachMeError):
     def __init__(self) -> None:
         super().__init__(
             detail=(
-                "当前未配置演示课程目录。"
-                "请先配置现有对象存储公共根地址 `S3_PUBLIC_BASE_URL`，"
-                "后端会固定从 `<S3_PUBLIC_BASE_URL>/demo-courses/` 读取课程索引。"
+                "当前发行版未配置演示课程目录。"
+                "演示课程由部署侧统一发布到公共对象存储后提供。"
             )
         )
 
