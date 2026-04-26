@@ -25,6 +25,7 @@ from app.workflows.digest.docgen.lib.models import (
 )
 from app.workflows.digest.docgen.mode_profiles import get_docgen_mode_profile
 
+
 def _ensure_requested_placeholders(markdown: str, requests: list[dict]) -> str:
     additions: list[str] = []
     existing = {
@@ -62,18 +63,19 @@ def _build_practice_questions(
         if (not item.target_chapters or draft.chapter_index in item.target_chapters)
     ][:2]
     if mode_profile.is_sprint:
+        first_claim = claim_prompts[0] if claim_prompts else "核心考点"
         questions = [
             {
                 "practice_id": f"ch{draft.chapter_index:02d}_p01",
                 "chapter_index": draft.chapter_index,
-                "type": "pattern_check",
-                "question": f"围绕《{title}》中“{claim_prompts[0] if claim_prompts else '核心抓手'}”，写出题眼、方法和易错点。",
+                "type": "rapid_pattern_example",
+                "question": f"围绕《{title}》设计一道速判例题：先标出题眼，再写出最短解题路径。",
             },
             {
                 "practice_id": f"ch{draft.chapter_index:02d}_p02",
                 "chapter_index": draft.chapter_index,
-                "type": "self_check",
-                "question": f"不看正文，用 60 秒复盘《{title}》的核心抓手。",
+                "type": "variant_drill",
+                "question": f"把“{first_claim}”改造成一道变式练习，写出题型特征、方法选择和易错点。",
             },
         ]
         if confusion_items:
@@ -82,19 +84,26 @@ def _build_practice_questions(
                     "practice_id": f"ch{draft.chapter_index:02d}_p03",
                     "chapter_index": draft.chapter_index,
                     "type": "pitfall_check",
-                    "question": f"辨析“{confusion_items[0]}”：什么时候能用，什么时候不能硬套？",
+                    "question": f"辨析“{confusion_items[0]}”：列出一个能用的条件和一个不能硬套的反例场景。",
                 }
             )
         return questions
+    first_claim = claim_prompts[0] if claim_prompts else "核心概念"
     questions = [
         {
             "practice_id": f"ch{draft.chapter_index:02d}_p01",
             "chapter_index": draft.chapter_index,
-            "type": "comprehension",
-            "question": f"请用自己的话解释《{title}》中“{claim_prompts[0] if claim_prompts else '核心概念'}”解决的核心问题。",
+            "type": "concept_example",
+            "question": f"为《{title}》中的“{first_claim}”设计一个概念例题，并说明它检验了哪些定义条件。",
         },
         {
             "practice_id": f"ch{draft.chapter_index:02d}_p02",
+            "chapter_index": draft.chapter_index,
+            "type": "reasoning_replay",
+            "question": f"复述《{title}》里一条方法或结论的推理路径：前提、关键步骤、结论各是什么？",
+        },
+        {
+            "practice_id": f"ch{draft.chapter_index:02d}_p03",
             "chapter_index": draft.chapter_index,
             "type": "transfer",
             "question": f"把《{title}》中的一个主张或方法迁移到新场景，并说明适用条件。",
@@ -103,7 +112,7 @@ def _build_practice_questions(
     if confusion_items:
         questions.append(
             {
-                "practice_id": f"ch{draft.chapter_index:02d}_p03",
+                "practice_id": f"ch{draft.chapter_index:02d}_p04",
                 "chapter_index": draft.chapter_index,
                 "type": "boundary",
                 "question": f"说明“{confusion_items[0]}”的边界条件，并举一个容易混淆的反例或场景。",
@@ -112,10 +121,16 @@ def _build_practice_questions(
     return questions
 
 
-def _append_practice_section(markdown: str, questions: list[dict]) -> str:
+_PRACTICE_HEADING_RE = re.compile(r"^##\s+.*(?:例题|练习|自测|自检|迁移).*$", re.MULTILINE)
+
+
+def _append_practice_section(markdown: str, questions: list[dict], *, digest_mode: str) -> str:
     if not questions:
         return markdown
-    lines = [markdown.rstrip(), "", "## 本章自检", ""]
+    if _PRACTICE_HEADING_RE.search(markdown):
+        return markdown
+    heading = "题型例练" if get_docgen_mode_profile(digest_mode).is_sprint else "例题与迁移"
+    lines = [markdown.rstrip(), "", f"## {heading}", ""]
     for index, question in enumerate(questions, start=1):
         lines.append(f"{index}. {question['question']}")
     return "\n".join(lines).strip() + "\n"
@@ -137,10 +152,11 @@ async def enhance_chapter_draft(
     digest_mode: str,
     claim_ledger: ClaimLedger | None = None,
     document_backbone: DocumentBackbone | None = None,
+    include_practice: bool = True,
 ) -> tuple[EnhancedChapterDraft, AssetManifest, PracticeManifest]:
     """增强单章草稿的表现层内容。
 
-    这里只处理资产、公式、Markdown 结构和自检题。它不能修核心定义、
+    这里只处理资产、公式、Markdown 结构和例题/练习。它不能修核心定义、
     新增知识结论或改变 claim/evidence 关系；这些问题必须走 review /
     repair 回流。
     """
@@ -203,13 +219,17 @@ async def enhance_chapter_draft(
         except Exception as exc:
             warnings.append(f"交互页生成失败，已跳过交互增强：{str(exc)[:120]}")
 
-    questions = _build_practice_questions(
-        draft,
-        digest_mode=digest_mode,
-        claim_ledger=claim_ledger,
-        document_backbone=document_backbone,
+    questions = (
+        _build_practice_questions(
+            draft,
+            digest_mode=digest_mode,
+            claim_ledger=claim_ledger,
+            document_backbone=document_backbone,
+        )
+        if include_practice
+        else []
     )
-    markdown = _append_practice_section(markdown, questions)
+    markdown = _append_practice_section(markdown, questions, digest_mode=digest_mode)
     enhanced = EnhancedChapterDraft(
         chapter_index=draft.chapter_index,
         title=draft.title,

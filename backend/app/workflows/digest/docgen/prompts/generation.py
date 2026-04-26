@@ -15,6 +15,12 @@ def _chapter_shape_hint(*, digest_mode: str) -> str:
     return f"""
 可参考的{profile.prompt_label}讲义写作关注点，不是固定目录：
 {_bullet_lines(profile.chapter_format)}
+
+可参考的课程化节奏，不要求逐条出现：
+{_bullet_lines(profile.course_flow_hints)}
+
+例题/练习可以优先采用这些方向：
+{_bullet_lines(profile.practice_focuses)}
 """.strip()
 
 
@@ -35,7 +41,8 @@ def _build_mode_contract(
 文档模式契约：这是{profile.prompt_label}知识文档。
 写作优先级是{profile.prompt_priority}。
 这些只是参考侧重点，不是固定目录：{"、".join(profile.chapter_format)}。
-请根据本章真实内容取舍和命名二级标题，优先体现本章主题、学习路径与知识主线。
+课程化节奏也只是参考：{"、".join(profile.course_flow_hints)}。
+请根据本章真实内容取舍和命名二级标题，优先体现本章主题、学习路径、例题价值与知识主线。
 不要为了凑齐参考模块而硬塞小节。{extra_contract}
 {chapter_specific}
 """.strip()
@@ -57,7 +64,7 @@ def build_docgen_writer_messages(
     """构造章节 writer 提示词。
 
     Writer prompt 消费上游已经准备好的 dense_context 和章节执行合同，不在
-    prompt builder 里静默截断材料。资产、自检和来源统一由后续节点处理。
+    prompt builder 里静默截断材料。资产、练习和来源统一由后续节点处理。
     """
 
     normalized_mode = get_docgen_mode_profile(digest_mode).mode
@@ -82,7 +89,7 @@ def build_docgen_writer_messages(
         f"- 最低证据支撑：{execution_contract.get('min_evidence_support') or '未指定'}\n"
         f"- 解释深度：{execution_contract.get('explanation_depth') or '未指定'}\n"
         f"- 媒体配额：Mermaid {media_quota.get('mermaid', 0)}；不要请求文生图配图\n"
-        f"- 练习配额：简答 {practice_quota.get('short_answer', 0)} / 自检 {practice_quota.get('self_check', 0)} / 推理 {practice_quota.get('reasoning', 0)} / 应用 {practice_quota.get('application', 0)}\n"
+        f"- 练习配额：简答 {practice_quota.get('short_answer', 0)} / 快速检测 {practice_quota.get('self_check', 0)} / 推理 {practice_quota.get('reasoning', 0)} / 应用 {practice_quota.get('application', 0)}\n"
         f"- 本章主张目标：{'；'.join(claim_targets) if claim_targets else '按章节合同覆盖'}\n"
         f"- 需谨慎处理的冲突/低证据点：{'；'.join(conflict_warnings) if conflict_warnings else '无'}"
     )

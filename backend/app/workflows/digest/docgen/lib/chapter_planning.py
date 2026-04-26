@@ -312,7 +312,7 @@ def build_fallback_chapter_markdown(
         lines = [
             f"# {title}",
             "",
-            "## 这章先拿下什么",
+            "## 先抓住本章目标",
             "",
             task.objective or f"先把《{title}》最常考的抓手讲清楚。",
             "",
@@ -326,9 +326,9 @@ def build_fallback_chapter_markdown(
             "2. 再选方法，确认为什么这条路径能用。",
             "3. 最后回看易错点，避免机械套结论。",
             "",
-            "## 本章自检",
+            "## 题型例练",
             "",
-            f"- 不看正文，试着用 60 秒讲清《{title}》的核心判断路径。",
+            f"- 自拟一道围绕《{title}》核心抓手的变式题，写出题眼、方法和易错点。",
         ]
     else:
         lines = [
@@ -346,9 +346,9 @@ def build_fallback_chapter_markdown(
             "",
             "先明确概念和条件，再说明结论为什么成立，最后用例子把抽象内容落到具体情境。",
             "",
-            "## 本章小结",
+            "## 例题与迁移",
             "",
-            f"- 《{title}》需要回收为一条可复述的知识主线。",
+            f"- 选择《{title}》中的一个概念或方法，举一个新场景并说明适用条件。",
         ]
     lines.extend(["", f"> [!NOTE]", f"> 本章使用降级草稿生成：{reason}"])
     return "\n".join(lines).strip() + "\n"

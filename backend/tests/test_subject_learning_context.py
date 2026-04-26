@@ -1,6 +1,7 @@
 from sqlmodel import Session, SQLModel, create_engine, select
 
 from app.models.knowledge_doc import KnowledgeDoc
+from app.models.raw_file import RawFile, SubjectFileLink
 from app.models.subject import Subject
 from app.models.user import User
 from app.workflows.support.subjects.learning_context import (
@@ -12,7 +13,10 @@ from app.workflows.support.subjects.learning_context import (
 
 def test_subject_learning_context_published_snapshot_roundtrip():
     engine = create_engine("sqlite:///:memory:")
-    SQLModel.metadata.create_all(engine, tables=[User.__table__, Subject.__table__])
+    SQLModel.metadata.create_all(
+        engine,
+        tables=[User.__table__, Subject.__table__, RawFile.__table__, SubjectFileLink.__table__],
+    )
 
     doc = KnowledgeDoc(
         id=11,
@@ -26,7 +30,28 @@ def test_subject_learning_context_published_snapshot_roundtrip():
 
     with Session(engine) as session:
         session.add(User(id="local", username="local"))
-        session.add(Subject(user_id="local", slug="math", name="Calculus"))
+        session.add(
+            Subject(
+                user_id="local",
+                slug="math",
+                name="Calculus",
+                description="Differential calculus study space.",
+                user_intent="Prepare for final exam weak points.",
+            )
+        )
+        session.add(
+            RawFile(
+                id=7,
+                uid="file_derivatives",
+                user_id="local",
+                subject="math",
+                filename="derivatives.md",
+                filetype="md",
+                file_path="uploads/derivatives.md",
+                markdown_path="users/local/files/file_derivatives/raw.md",
+                markdown_content="# Derivatives",
+            )
+        )
         session.commit()
 
         updated = update_subject_learning_context_from_docgen(
@@ -54,11 +79,17 @@ def test_subject_learning_context_published_snapshot_roundtrip():
 
         assert updated is not None
         subject = session.exec(select(Subject).where(Subject.slug == "math")).one()
-        assert "用户请求：Focus on exam-ready derivatives." in subject.learning_intent_text
+        assert "长期学习意图：Prepare for final exam weak points." in subject.learning_intent_text
+        assert "本次构建请求：Focus on exam-ready derivatives." in subject.learning_intent_text
         assert "\n- 文档风格：" in subject.learning_intent_text
         assert subject.document_summary_json["version_no"] == 3
+        assert subject.document_summary_json["subject_user_intent"] == "Prepare for final exam weak points."
         assert subject.document_summary_json["confirmed_plan"]["selected_file_ids"] == [7]
         assert subject.document_summary_json["chapters"][0]["source_file_ids"] == [7]
+        assert subject.document_summary_json["chapters"][0]["source_raw_file_ids"] == [7]
+        assert subject.document_summary_json["chapters"][0]["source_file_uids"] == ["file_derivatives"]
+        assert subject.document_summary_json["source_files"][0]["raw_file_id"] == 7
+        assert subject.document_summary_json["source_files"][0]["file_uid"] == "file_derivatives"
         assert "Derivatives" in load_subject_llm_context(session, subject="math")
 
         assert clear_subject_learning_context(session, subject="math") is True

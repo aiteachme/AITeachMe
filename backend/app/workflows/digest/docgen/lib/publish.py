@@ -258,6 +258,60 @@ def _build_source_scope(chapter: dict) -> dict[str, object]:
     }
 
 
+def _clean_source_file_ids(value: object) -> list[int]:
+    raw_items = value if isinstance(value, list) else ([] if value is None else [value])
+    cleaned: list[int] = []
+    seen: set[int] = set()
+    for item in raw_items:
+        try:
+            file_id = int(item)
+        except (TypeError, ValueError):
+            continue
+        if file_id <= 0 or file_id in seen:
+            continue
+        seen.add(file_id)
+        cleaned.append(file_id)
+    return cleaned
+
+
+def _assignments_by_chapter_index(chapter_assignments: list[dict]) -> dict[int, dict]:
+    indexed: dict[int, dict] = {}
+    for fallback_index, assignment in enumerate(chapter_assignments, start=1):
+        if not isinstance(assignment, dict):
+            continue
+        try:
+            chapter_index = int(assignment.get("chapter_index", fallback_index) or fallback_index)
+        except (TypeError, ValueError):
+            chapter_index = fallback_index
+        if chapter_index > 0:
+            indexed[chapter_index] = assignment
+    return indexed
+
+
+def _resolve_published_chapter_source_file_ids(
+    chapter: dict,
+    *,
+    chapter_index: int,
+    fallback_assignment: dict | None,
+    assignments_by_index: dict[int, dict],
+) -> list[int]:
+    """Resolve internal RawFile.id values for a published chapter.
+
+    DocGen stores public file selection as RawFile.uid at API boundaries, but
+    persisted chapter/source manifests use RawFile.id because parsed markdown
+    rows and retrieval chunks are keyed by the database id.
+    """
+
+    ids = _clean_source_file_ids(chapter.get("source_file_ids"))
+    if ids:
+        return ids
+    indexed_assignment = assignments_by_index.get(chapter_index) or {}
+    ids = _clean_source_file_ids(indexed_assignment.get("source_file_ids"))
+    if ids:
+        return ids
+    return _clean_source_file_ids((fallback_assignment or {}).get("source_file_ids"))
+
+
 async def stage_knowledge_docs(
     *,
     subject: str,
@@ -343,6 +397,7 @@ def publish_staged_knowledge_docs(
     resolved_version_no = max(int(version_no or 0), latest_version_no + 1)
     package_key = f"{subject}:docgen:v{resolved_version_no:04d}"
     published_at = utcnow()
+    assignments_by_index = _assignments_by_chapter_index(chapter_assignments)
     resolved_docgen_artifacts: dict[str, Any] | None = None
     if docgen_artifacts is not None:
         resolved_docgen_artifacts = dict(docgen_artifacts)
@@ -364,9 +419,18 @@ def publish_staged_knowledge_docs(
         chapter_markdown = _prepare_chapter_markdown(str(chapter.get("markdown") or ""))
         summary = str(chapter.get("summary") or "")
         tags = list(chapter.get("tags") or [])
-        source_file_ids = list(chapter.get("source_file_ids") or [])
-        if not source_file_ids and index < len(chapter_assignments):
-            source_file_ids = list(chapter_assignments[index].get("source_file_ids") or [])
+        fallback_assignment = chapter_assignments[index] if index < len(chapter_assignments) else None
+        source_file_ids = _resolve_published_chapter_source_file_ids(
+            chapter,
+            chapter_index=chapter_index,
+            fallback_assignment=fallback_assignment,
+            assignments_by_index=assignments_by_index,
+        )
+        chapter["source_file_ids"] = source_file_ids
+        source_scope = dict(chapter.get("source_scope") or {})
+        if source_file_ids:
+            source_scope["source_file_ids"] = source_file_ids
+            chapter["source_scope"] = source_scope
 
         final_key = _build_chapter_key(subject_scope.namespace, chapter_index, chapter_title)
         archive_key = _build_versioned_chapter_key(
@@ -451,7 +515,7 @@ def publish_staged_knowledge_docs(
             {
                 int(file_id)
                 for chapter in sorted_chapters
-                for file_id in chapter.get("source_file_ids", [])
+                for file_id in _clean_source_file_ids(chapter.get("source_file_ids"))
             }
         ),
         prompt=user_prompt,
