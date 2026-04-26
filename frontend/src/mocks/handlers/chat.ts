@@ -365,6 +365,15 @@ async function streamChatResponse(request: Request, subjectId: string | null = "
   const encoder = new TextEncoder();
   const stream = new ReadableStream({
     async start(controller) {
+      controller.enqueue(
+        encoder.encode(
+          `event: status\ndata: ${JSON.stringify({
+            stage: "session_resolved",
+            session_id: sessionItem.id,
+            session_title: sessionItem.title,
+          })}\n\n`,
+        ),
+      );
       for (const chunk of chunks) {
         await sleep(60);
         controller.enqueue(

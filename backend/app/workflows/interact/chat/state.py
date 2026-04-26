@@ -12,6 +12,7 @@ from app.workflows.interact.chat.lib.types import (
     MistakeSummary,
     RetrievedContext,
     RecentMessage,
+    SubjectContextSummary,
     WeakPointSummary,
 )
 
@@ -20,6 +21,8 @@ class InteractWorkflowState(TypedDict, total=False):
     subject: str
     user_id: str
     session_id: str | None
+    session_title: str | None
+    session_created: bool
     question: str
     source: str | None
     anchor_id: str | None
@@ -28,6 +31,7 @@ class InteractWorkflowState(TypedDict, total=False):
     selection_context: ChatSelectionContext | None
     source_chunk_id: int | None
     recent_messages: list[RecentMessage]
+    subject_context: SubjectContextSummary
     weak_points: list[WeakPointSummary]
     recent_mistakes: list[MistakeSummary]
     retrieval_results: list[RetrievedContext]

@@ -19,6 +19,7 @@ def build_prompt_node(*, context: WorkflowContext):
             strategy_mode=state["strategy_mode"],
             retrieval_results=state.get("retrieval_results", []),
             recent_messages=state.get("recent_messages", []),
+            subject_context=state.get("subject_context"),
             weak_points=state.get("weak_points", []),
             recent_mistakes=state.get("recent_mistakes", []),
             question=state["question"],

@@ -30,6 +30,7 @@ export function AiInteractionWindow({ variant, scope, className }: AiInteraction
     sidebarRequest,
     fullscreenRequest,
     isSidebarOpen,
+    isSidebarStreaming,
     openAiInteraction,
     closeAiInteraction,
   } = useAiInteraction();
@@ -47,7 +48,8 @@ export function AiInteractionWindow({ variant, scope, className }: AiInteraction
   const canShowSidebar = variant === "sidebar" && Boolean(activeScope) && !isBuildPage && !isAssistantPage;
   const panelScope = sidebarScope ?? activeScope;
   const shouldShowSidebarPanel = isSidebarOpen && Boolean(panelScope) && canShowSidebar;
-  const shouldRenderSidebarPanel = canShowSidebar && (shouldShowSidebarPanel || isSidebarMounted);
+  const shouldReserveSidebarWidth = shouldShowSidebarPanel || isSidebarMounted;
+  const shouldRenderSidebarPanel = canShowSidebar && (shouldReserveSidebarWidth || isSidebarStreaming);
   const isSidebarVisuallyOpen = shouldShowSidebarPanel && isSidebarVisible;
   const { width: panelWidth, isDragging, handleMouseDown } = useResizablePanel({
     defaultWidth: defaultSidebarWidth,
@@ -183,7 +185,7 @@ export function AiInteractionWindow({ variant, scope, className }: AiInteraction
           "relative z-[85] h-full min-h-0 shrink-0 overflow-hidden [contain:layout_paint_style]",
           shouldShowSidebarPanel ? "pointer-events-auto" : "pointer-events-none",
         )}
-        style={{ width: shouldRenderSidebarPanel ? panelWidth : 0 }}
+        style={{ width: shouldReserveSidebarWidth ? panelWidth : 0 }}
         aria-hidden={!shouldShowSidebarPanel}
       >
         {shouldRenderSidebarPanel ? (

@@ -62,18 +62,26 @@ class WorkflowTraceBinding:
         handler: Any,
         *,
         name: str,
+        description: str | None = None,
         timing_field: str | None = None,
         input_keys: Sequence[str] | None = None,
         output_keys: Sequence[str] | None = None,
+        metadata: Mapping[str, Any] | None = None,
     ):
         """Wrap one workflow node without creating duplicate LangSmith spans."""
 
-        del input_keys, output_keys
         if handler is None:
             raise TypeError("workflow_tracer().node(...) requires a handler argument.")
         workflow_name = self.workflow
         lane = self.lane
         tag_node_name = f"{lane}.{name}" if lane else name
+        node_extra_metadata = {
+            "node_display_name": name,
+            "node_description": description,
+            "state_inputs": list(input_keys or []),
+            "state_outputs": list(output_keys or []),
+            **dict(metadata or {}),
+        }
 
         @functools.wraps(handler)
         async def wrapper(state):
@@ -87,6 +95,7 @@ class WorkflowTraceBinding:
                 workflow=workflow_name,
                 lane=lane,
                 node=name,
+                extra_metadata=node_extra_metadata,
             )
             node_tags = build_langsmith_tags(
                 workflow=workflow_name,

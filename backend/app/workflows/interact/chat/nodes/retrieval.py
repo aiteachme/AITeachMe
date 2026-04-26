@@ -42,6 +42,7 @@ def build_retrieve_context_node(*, context: WorkflowContext, session: Session | 
                 query=_build_retrieval_query(
                     question=state["question"],
                     selected_context=state.get("selected_context"),
+                    selection_context=state.get("selection_context"),
                 ),
                 subject=state["subject"],
                 top_k=settings.rag.top_k,
@@ -63,9 +64,26 @@ def build_retrieve_context_node(*, context: WorkflowContext, session: Session | 
     return retrieve_context_node
 
 
-def _build_retrieval_query(*, question: str, selected_context: str | None) -> str:
-    selected = (selected_context or "").strip()
+def _build_retrieval_query(
+    *,
+    question: str,
+    selected_context: str | None,
+    selection_context: object | None,
+) -> str:
+    selected = (selected_context or _selected_context_fallback(selection_context)).strip()
     if not selected:
         return question
     clipped = selected[:1200]
     return f"{question}\n\n用户划选内容：{clipped}"
+
+
+def _selected_context_fallback(selection_context: object | None) -> str:
+    if selection_context is None:
+        return ""
+    values = [
+        getattr(selection_context, "selected_text", None),
+        getattr(selection_context, "anchor_title", None),
+        getattr(selection_context, "section_title", None),
+        getattr(selection_context, "section_excerpt", None),
+    ]
+    return "\n".join(str(value).strip() for value in values if str(value or "").strip())
