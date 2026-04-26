@@ -79,6 +79,7 @@ class ExamStudyGuideResponse(BaseModel):
 
 PaperPreviewShape = Literal["choice", "blank", "short", "judge", "chart", "formula", "code", "text"]
 PaperPreviewResultStatus = Literal["ungraded", "correct", "incorrect"]
+PaperPreviewGenerationStatus = Literal["pending", "planned", "generated"]
 
 
 class PaperPreviewRow(BaseModel):
@@ -88,6 +89,7 @@ class PaperPreviewRow(BaseModel):
     difficulty: str
     density: int = Field(default=2, ge=1, le=3)
     result_status: PaperPreviewResultStatus = "ungraded"
+    generation_status: PaperPreviewGenerationStatus = "generated"
 
 
 class PaperPreview(BaseModel):

@@ -203,6 +203,7 @@ def _build_paper_preview(
                 "difficulty": item.difficulty,
                 "density": _preview_density(item.difficulty),
                 "result_status": _preview_result_status(item.is_correct),
+                "generation_status": "generated",
             }
             for item in ordered_items[:PAPER_PREVIEW_ROW_LIMIT]
         ],
@@ -221,6 +222,7 @@ def _build_placeholder_paper_preview(*, question_count: int) -> PaperPreview:
                 "difficulty": "medium",
                 "density": 2,
                 "result_status": "ungraded",
+                "generation_status": "pending",
             }
             for order in range(1, min(count, PAPER_PREVIEW_ROW_LIMIT) + 1)
         ],
@@ -234,6 +236,8 @@ def _build_blueprint_paper_preview(
     question_count: int,
     unit_name_by_id: dict[int, str],
 ) -> PaperPreview:
+    blueprints = _normalize_blueprint_item_orders(blueprints)
+
     def blueprint_order(item: dict[str, object]) -> int:
         try:
             return int(item.get("item_order", 0) or 0)
@@ -280,6 +284,7 @@ def _build_blueprint_paper_preview(
                 "difficulty": difficulty,
                 "density": _preview_density(difficulty),
                 "result_status": "ungraded",
+                "generation_status": "planned",
             }
         )
 
@@ -289,6 +294,157 @@ def _build_blueprint_paper_preview(
         rows=rows,
         overflow_count=max(0, count - PAPER_PREVIEW_ROW_LIMIT),
     )
+
+
+def _normalize_blueprint_item_orders(
+    blueprints: list[dict[str, object]],
+) -> list[dict[str, object]]:
+    normalized_blueprints = [dict(item) for item in blueprints if isinstance(item, dict)]
+    if not normalized_blueprints:
+        return []
+
+    orders: list[int] = []
+    for item in normalized_blueprints:
+        try:
+            orders.append(int(item.get("item_order", 0) or 0))
+        except (TypeError, ValueError):
+            return normalized_blueprints
+
+    if set(orders) != set(range(len(normalized_blueprints))):
+        return normalized_blueprints
+
+    for item in normalized_blueprints:
+        item["item_order"] = int(item.get("item_order", 0) or 0) + 1
+    return normalized_blueprints
+
+
+def _blueprints_by_one_based_order(
+    blueprints: object,
+) -> dict[int, dict[str, object]]:
+    if not isinstance(blueprints, list):
+        return {}
+    normalized = _normalize_blueprint_item_orders(
+        [item for item in blueprints if isinstance(item, dict)]
+    )
+    by_order: dict[int, dict[str, object]] = {}
+    for item in normalized:
+        try:
+            order = int(item.get("item_order", 0) or 0)
+        except (TypeError, ValueError):
+            continue
+        if order > 0:
+            by_order[order] = item
+    return by_order
+
+
+def _positive_int(value: object) -> int:
+    try:
+        parsed = int(value or 0)
+    except (TypeError, ValueError):
+        return 0
+    return parsed if parsed > 0 else 0
+
+
+def _merge_generated_question_into_preview(
+    preview: PaperPreview,
+    generated_question: dict[str, object],
+    *,
+    question_count: int,
+    unit_name_by_id: dict[int, str],
+) -> PaperPreview:
+    order = _positive_int(generated_question.get("item_order"))
+    if order <= 0:
+        return preview
+
+    count = max(1, int(question_count or len(preview.rows) or order or 1))
+    rows_by_order = {
+        int(row.order): row.model_dump(mode="json")
+        for row in preview.rows
+        if _positive_int(row.order) > 0
+    }
+    for pending_order in range(1, min(count, PAPER_PREVIEW_ROW_LIMIT) + 1):
+        rows_by_order.setdefault(
+            pending_order,
+            {
+                "order": pending_order,
+                "type": "pending",
+                "shape": "text",
+                "difficulty": "medium",
+                "density": 2,
+                "result_status": "ungraded",
+                "generation_status": "pending",
+            },
+        )
+
+    if order <= PAPER_PREVIEW_ROW_LIMIT:
+        existing = rows_by_order.get(order, {})
+        question_type = str(generated_question.get("question_type") or existing.get("type") or "text")
+        difficulty = str(generated_question.get("difficulty") or existing.get("difficulty") or "medium")
+        rows_by_order[order] = {
+            **existing,
+            "order": order,
+            "type": question_type,
+            "shape": _preview_shape(question_type),
+            "difficulty": difficulty,
+            "density": _preview_density(difficulty),
+            "result_status": str(existing.get("result_status") or "ungraded"),
+            "generation_status": "generated",
+        }
+
+    keyword_candidates = list(preview.keywords or [])
+    for ref in list(generated_question.get("knowledge_unit_refs") or []):
+        if not isinstance(ref, dict):
+            continue
+        unit_name = unit_name_by_id.get(_positive_int(ref.get("knowledge_unit_id")))
+        if unit_name:
+            keyword_candidates.append(unit_name)
+
+    question_types = list(preview.question_types or [])
+    generated_type = str(generated_question.get("question_type") or "").strip()
+    if generated_type:
+        question_types.append(generated_type)
+
+    return PaperPreview(
+        keywords=_dedupe_preview_keywords(keyword_candidates),
+        question_types=_dedupe_preview_keywords(question_types),
+        rows=[
+            rows_by_order[row_order]
+            for row_order in range(1, min(count, PAPER_PREVIEW_ROW_LIMIT) + 1)
+            if row_order in rows_by_order
+        ],
+        overflow_count=max(0, count - PAPER_PREVIEW_ROW_LIMIT),
+    )
+
+
+def _merge_generated_question_into_context(
+    context: dict[str, object],
+    generated_question: dict[str, object],
+    *,
+    question_count: int,
+) -> dict[str, object]:
+    order = _positive_int(generated_question.get("item_order"))
+    if order <= 0:
+        return context
+
+    existing_items = context.get("generated_questions")
+    generated_by_order: dict[int, dict[str, object]] = {}
+    if isinstance(existing_items, list):
+        for item in existing_items:
+            if not isinstance(item, dict):
+                continue
+            item_order = _positive_int(item.get("item_order"))
+            if item_order > 0:
+                generated_by_order[item_order] = item
+    generated_by_order[order] = generated_question
+
+    max_order = max(1, int(question_count or order or 1))
+    context["generated_questions"] = [
+        generated_by_order[item_order]
+        for item_order in range(1, max_order + 1)
+        if item_order in generated_by_order
+    ]
+    context["generated_question_count"] = len(generated_by_order)
+    return context
 
 
 def _paper_preview_from_json(raw: str | None) -> PaperPreview:
@@ -347,9 +503,16 @@ def _paper_generation_event_payload(
         "status": paper.status,
         "num_questions": paper.total_items,
         "paper_preview": effective_preview.model_dump(mode="json"),
+        "selection_context": context,
         "error_message": error_message if error_message is not None else context.get("error_message"),
         "updated_at": paper.updated_at,
     }
+    generated_questions = context.get("generated_questions")
+    if isinstance(generated_questions, list):
+        payload["generated_questions"] = [
+            item for item in generated_questions if isinstance(item, dict)
+        ]
+        payload["generated_question_count"] = len(payload["generated_questions"])
     if stage:
         payload["stage"] = stage
     return payload
@@ -767,10 +930,48 @@ async def _run_exam_generation_background(
                     )
                 _publish_exam_event(subject, paper_id, "snapshot", event_payload)
 
+            generated_question = payload.get("generated_question")
+            if isinstance(generated_question, dict):
+                generated_payload = dict(generated_question)
+                with managed_session() as session:
+                    paper = exams_repo.get_exam_paper_by_id(session, paper_id)
+                    if paper is None or paper.subject != subject or paper.user_id != user_id:
+                        return
+                    context = _json_dict(paper.selection_context_json)
+                    context = _merge_generated_question_into_context(
+                        context,
+                        generated_payload,
+                        question_count=question_count,
+                    )
+                    preview = _merge_generated_question_into_preview(
+                        _paper_preview_from_json(paper.paper_preview_json),
+                        generated_payload,
+                        question_count=question_count,
+                        unit_name_by_id=unit_name_by_id,
+                    )
+                    paper.total_items = question_count
+                    paper.total_score = float(question_count)
+                    paper.selection_context_json = json.dumps(context, ensure_ascii=False)
+                    paper.paper_preview_json = preview.model_dump_json()
+                    paper.updated_at = utcnow()
+                    session.add(paper)
+                    session.commit()
+                    session.refresh(paper)
+                    event_payload = _paper_generation_event_payload(
+                        paper,
+                        preview=preview,
+                        stage=str(payload.get("stage") or "generate_exam_questions"),
+                    )
+                    event_payload["generated_question"] = generated_payload
+                    if "generated_question_count" in payload:
+                        event_payload["generated_question_count"] = payload["generated_question_count"]
+                _publish_exam_event(subject, paper_id, "snapshot", event_payload)
+
             blueprints = payload.get("question_blueprints")
             if not isinstance(blueprints, list):
                 return
             blueprint_payload = [item for item in blueprints if isinstance(item, dict)]
+            blueprint_payload = _normalize_blueprint_item_orders(blueprint_payload)
             preview = _build_blueprint_paper_preview(
                 blueprint_payload,
                 question_count=question_count,
@@ -815,11 +1016,7 @@ async def _run_exam_generation_background(
             expected_orders=list(range(1, question_count + 1)),
         )
         question_blueprints = build_result.value.get("question_blueprints") if build_result.value else []
-        blueprint_by_order = {
-            int(item.get("item_order", 0) or 0): item
-            for item in question_blueprints
-            if isinstance(item, dict)
-        }
+        blueprint_by_order = _blueprints_by_one_based_order(question_blueprints)
 
         with managed_session() as session:
             paper = exams_repo.get_exam_paper_by_id(session, paper_id)
@@ -920,6 +1117,10 @@ async def _run_exam_generation_background(
                 knowledge_unit_by_id=unit_by_id,
                 links_by_item_id=links_by_item_id,
             ).model_dump_json()
+            paper_context = _json_dict(paper.selection_context_json)
+            paper_context.pop("generated_questions", None)
+            paper_context.pop("generated_question_count", None)
+            paper.selection_context_json = json.dumps(paper_context, ensure_ascii=False)
             _set_exam_generation_status(session, paper, status="ready")
             done_payload = _paper_generation_event_payload(
                 paper,

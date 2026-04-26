@@ -26,6 +26,11 @@ import { ExamPaperSheet } from "./ExamPaperSheet";
 import { ExamQuestionAnalysisSheet } from "./ExamQuestionAnalysisSheet";
 import { ExamStageHeader } from "./ExamStageHeader";
 import { ExamStudyGuideView } from "./ExamStudyGuideView";
+import {
+  parseExamGenerationSnapshot,
+  patchExamDetailQueryData,
+  patchExamHistoryQueryData,
+} from "./examGenerationStream";
 import type { ExamStudyGuideResponse } from "./types";
 import {
   buildQuestionAiDraft,
@@ -126,26 +131,34 @@ export function ExamPaperWorkspace({ subjectId, paperId, backHref }: ExamPaperWo
       buildApiUrl(`/api/v1/subjects/${encodeURIComponent(subjectId)}/exams/${paperId}/stream`),
       { withCredentials: true },
     );
+    const historyQueryKey = getExamHistoryApiV1SubjectsSubjectExamsHistoryGetQueryKey(subjectId, { page: 1, size: 24 });
+    const detailQueryKey = getExamDetailApiV1SubjectsSubjectExamsExamPaperIdGetQueryKey(subjectId, paperId);
 
     const refreshPaper = () => {
       void Promise.all([
-        queryClient.invalidateQueries({
-          queryKey: getExamHistoryApiV1SubjectsSubjectExamsHistoryGetQueryKey(subjectId, { page: 1, size: 24 }),
-        }),
-        queryClient.invalidateQueries({
-          queryKey: getExamDetailApiV1SubjectsSubjectExamsExamPaperIdGetQueryKey(subjectId, paperId),
-        }),
+        queryClient.invalidateQueries({ queryKey: historyQueryKey }),
+        queryClient.invalidateQueries({ queryKey: detailQueryKey }),
       ]);
+    };
+
+    const applySnapshotPayload = (message: MessageEvent<string>) => {
+      const payload = parseExamGenerationSnapshot(message.data);
+      if (!payload.exam_paper_id) {
+        refreshPaper();
+        return payload;
+      }
+      queryClient.setQueryData(detailQueryKey, (current: unknown) =>
+        patchExamDetailQueryData(current, payload),
+      );
+      queryClient.setQueryData(historyQueryKey, (current: unknown) =>
+        patchExamHistoryQueryData(current, payload),
+      );
+      return payload;
     };
 
     const handleDone = (event: Event) => {
       const message = event as MessageEvent<string>;
-      let payload: { status?: string; error_message?: string } = {};
-      try {
-        payload = JSON.parse(message.data || "{}");
-      } catch {
-        payload = {};
-      }
+      const payload = applySnapshotPayload(message);
       refreshPaper();
       stream.close();
       if (payload.status === "failed") {
@@ -163,8 +176,8 @@ export function ExamPaperWorkspace({ subjectId, paperId, backHref }: ExamPaperWo
       });
     };
 
-    const handleSnapshot = () => {
-      refreshPaper();
+    const handleSnapshot = (event: Event) => {
+      applySnapshotPayload(event as MessageEvent<string>);
     };
 
     stream.addEventListener("done", handleDone);

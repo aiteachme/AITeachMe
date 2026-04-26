@@ -35,9 +35,28 @@ def build_generate_questions_node(*, context: WorkflowContext):
             if not blueprints:
                 raise ValueError("question blueprint planning returned no items")
             specs = [blueprint.to_generation_spec() for blueprint in blueprints]
+
+            generated_count = 0
+
+            async def handle_question_generated(question) -> None:
+                nonlocal generated_count
+                generated_count += 1
+                await emit_progress(
+                    state,
+                    stage="generate_exam_questions",
+                    detail=f"已生成第 {question.item_order} 题。",
+                    step="generate_question",
+                    extra={
+                        "generated_question": question.model_dump(mode="json"),
+                        "generated_question_count": generated_count,
+                        "question_count": len(specs),
+                    },
+                )
+
             questions = await generate_exam_questions_for_units(
                 units=list(state.get("units") or []),
                 specs=specs,
+                on_question_generated=handle_question_generated,
             )
         except Exception as exc:
             elapsed_ms = int((perf_counter() - started_at) * 1000)

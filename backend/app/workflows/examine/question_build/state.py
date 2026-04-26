@@ -37,6 +37,7 @@ class QuestionBuildGraphOutput(TypedDict, total=False):
     filter_rationale: str
     question_blueprints: list[dict]
     generated_questions: list[dict]
+    generated_question_count: int
     error: str
     workflow_elapsed_ms: int
     filter_ms: int

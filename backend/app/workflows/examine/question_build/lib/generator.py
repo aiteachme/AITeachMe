@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import re
-from collections.abc import Mapping
+from collections.abc import Awaitable, Callable, Mapping
 from typing import Literal, TypeVar
 
 from pydantic import BaseModel, Field, field_validator, model_validator
@@ -168,6 +168,36 @@ class ExamQuestionBlueprintBatch(BaseModel):
     """Structured blueprint response from the planning step."""
 
     blueprints: list[ExamQuestionBlueprint] = Field(default_factory=list, min_length=1)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _normalize_zero_based_item_orders(cls, value: object) -> object:
+        if not isinstance(value, dict):
+            return value
+        raw_blueprints = value.get("blueprints")
+        if not isinstance(raw_blueprints, list):
+            return value
+
+        orders: list[int] = []
+        for item in raw_blueprints:
+            if not isinstance(item, dict):
+                return value
+            try:
+                orders.append(int(item.get("item_order", 0)))
+            except (TypeError, ValueError):
+                return value
+
+        expected_zero_based = set(range(len(raw_blueprints)))
+        if set(orders) != expected_zero_based:
+            return value
+
+        normalized = dict(value)
+        normalized["blueprints"] = [
+            {**item, "item_order": int(item.get("item_order", 0)) + 1}
+            for item in raw_blueprints
+            if isinstance(item, dict)
+        ]
+        return normalized
 
 
 class ExamQuestionDraft(BaseModel):
@@ -918,6 +948,7 @@ async def generate_exam_questions_for_units(
     *,
     units: list[KnowledgeUnit],
     specs: list[ExamQuestionGenerationSpec],
+    on_question_generated: Callable[[ExamQuestionDraft], Awaitable[None]] | None = None,
 ) -> list[ExamQuestionDraft]:
     """Generate exam questions for selected KnowledgeUnits via one LLM call per item."""
 
@@ -935,26 +966,31 @@ async def generate_exam_questions_for_units(
     if missing_units:
         raise ValueError(f"missing KnowledgeUnits for specs: {missing_units}")
 
-    generated_results = await asyncio.gather(
-        *(
-            _generate_one_exam_question(
+    async def generate_for_spec(
+        spec: ExamQuestionGenerationSpec,
+    ) -> tuple[ExamQuestionGenerationSpec, ExamQuestionDraft | Exception]:
+        try:
+            question = await _generate_one_exam_question(
                 unit_by_id=unit_by_id,
                 spec=spec,
             )
-            for spec in specs
-        ),
-        return_exceptions=True,
-    )
+            return spec, question
+        except Exception as exc:
+            return spec, exc
 
     generated: list[ExamQuestionDraft] = []
     failures: list[str] = []
     failed_orders: list[int] = []
-    for spec, result in zip(specs, generated_results, strict=True):
+    tasks = [asyncio.create_task(generate_for_spec(spec)) for spec in specs]
+    for completed_task in asyncio.as_completed(tasks):
+        spec, result = await completed_task
         if isinstance(result, Exception):
             failed_orders.append(spec.item_order)
             failures.append(f"item_order={spec.item_order}: {result}")
             continue
         generated.append(result)
+        if on_question_generated is not None:
+            await on_question_generated(result)
 
     if failures:
         raise ValueError(

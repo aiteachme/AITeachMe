@@ -155,8 +155,19 @@ export function ExamPaperSheet({
   onQuestionAi,
 }: ExamPaperSheetProps) {
   const items = paper.items ?? [];
-  const showGeneratingPlaceholders = paper.status === "generating" && items.length === 0;
-  const generatingRows = showGeneratingPlaceholders ? buildGeneratingRows(paper) : [];
+  const itemsByOrder = new Map(items.map((item: ExamPaperItemResponse) => [item.item_order, item]));
+  const questionEntries: Array<{
+    item: ExamPaperItemResponse | null;
+    row: PaperPreviewRow | null;
+  }> = paper.status === "generating"
+    ? buildGeneratingRows(paper).map((row) => ({
+        item: itemsByOrder.get(row.order) ?? null,
+        row,
+      }))
+    : items.map((item: ExamPaperItemResponse) => ({
+        item,
+        row: null,
+      }));
 
   return (
                 <div
@@ -194,9 +205,11 @@ export function ExamPaperSheet({
                     </header>
 
                     <div className="px-4 pb-8 sm:px-8 lg:px-14">
-                      {showGeneratingPlaceholders
-                        ? generatingRows.map((row) => <GeneratingQuestionPlaceholder key={row.order} row={row} />)
-                        : items.map((item: ExamPaperItemResponse) => {
+                      {questionEntries.map((entry) => {
+                    if (!entry.item) {
+                      return entry.row ? <GeneratingQuestionPlaceholder key={entry.row.order} row={entry.row} /> : null;
+                    }
+                    const item = entry.item;
                     const answerValue = answers[item.id] ?? "";
                     const isSingleChoice = item.question_type === "single_choice";
                     const isMultipleChoice = item.question_type === "multiple_choice" || item.question_type === "multi_choice";
@@ -209,7 +222,7 @@ export function ExamPaperSheet({
                     const correctMultiChoice = splitMultiChoiceAnswer(item.correct_answer);
                     const isGraded = paper.status === "graded";
                     const isReviewStage = isGraded && activeStage === 2;
-                    const isReadonly = isGraded;
+                    const isReadonly = isGraded || paper.status === "generating";
                     const isCorrect = item.is_correct === true;
                     const isSelectedReviewItem = isReviewStage && selectedItemId === item.id;
                     const isQuestionHighlighted = highlightedQuestionOrder === item.item_order;

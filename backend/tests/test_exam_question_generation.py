@@ -11,8 +11,6 @@ from app.workflows.examine.question_build.lib.generator import (
     ExamQuestionDraft,
     ExamQuestionGenerationSpec,
     ExamSingleQuestionResponse,
-    ExamQuestionWeightResult,
-    assign_question_knowledge_weights,
     generate_exam_questions_for_units,
     plan_exam_question_blueprints,
 )
@@ -114,8 +112,8 @@ async def test_generate_exam_questions_for_units_returns_validated_llm_questions
     assert "knowledge_units" in payload
     assert "question_spec" in payload
     assert "question_specs" not in payload
-    assert all("knowledge_unit_id" not in unit for unit in payload["knowledge_units"])
-    assert all({"name", "knowledge_unit_type", "summary"}.issubset(unit) for unit in payload["knowledge_units"])
+    assert all("knowledge_unit_id" in unit for unit in payload["knowledge_units"])
+    assert all({"knowledge_unit_id", "name", "knowledge_unit_type", "summary"}.issubset(unit) for unit in payload["knowledge_units"])
     assert "knowledge_unit_ids" in payload["question_spec"]
     assert "knowledge_unit_id" not in payload["question_spec"]
     assert "generation_prompt" not in payload["question_spec"]
@@ -303,48 +301,45 @@ async def test_plan_exam_question_blueprints_timeout_is_not_downgraded(monkeypat
 
 
 @pytest.mark.anyio
-async def test_assign_question_knowledge_weights_normalizes_refs(monkeypatch):
+async def test_generate_exam_questions_for_units_normalizes_weight_refs(monkeypatch):
     async def fake_acompletion_with_fallback(*args, **kwargs):
-        assert kwargs["response_model"] is ExamQuestionWeightResult
-        return ExamQuestionWeightResult(
-            item_order=1,
-            knowledge_unit_refs=[
-                {"knowledge_unit_id": 101, "coverage_weight": 0.7, "role": "primary"},
-                {"knowledge_unit_id": 102, "coverage_weight": 0.7, "role": "secondary"},
-                {"knowledge_unit_id": 999, "coverage_weight": 1.0, "role": "secondary"},
-            ],
-        )
-
-    monkeypatch.setattr(generator, "acompletion_with_fallback", fake_acompletion_with_fallback)
-
-    weighted = await assign_question_knowledge_weights(
-        subject="subj_math",
-        units=[
-            KnowledgeUnit(id=101, subject="math", knowledge_unit_type="concept", canonical_name="Derivative", normalized_name="derivative"),
-            KnowledgeUnit(id=102, subject="math", knowledge_unit_type="method", canonical_name="Newton Method", normalized_name="newton"),
-        ],
-        blueprints=[
-            ExamQuestionBlueprint(
+        assert kwargs["response_model"] is ExamSingleQuestionResponse
+        return ExamSingleQuestionResponse(
+            question=ExamQuestionDraft(
                 item_order=1,
-                knowledge_unit_ids=[101, 102],
-                question_type="short_answer",
-                difficulty="medium",
-            )
-        ],
-        questions=[
-            ExamQuestionDraft(
-                item_order=1,
-                knowledge_unit_id=101,
                 question_type="short_answer",
                 difficulty="medium",
                 stem="Explain how derivatives guide Newton iteration updates.",
                 correct_answer="Use tangent-line linearization to approximate the next root estimate.",
                 explanation="The method uses derivative information to build a local linear approximation.",
+                knowledge_unit_refs=[
+                    {"knowledge_unit_id": 101, "coverage_weight": 0.7, "role": "primary"},
+                    {"knowledge_unit_id": 102, "coverage_weight": 0.7, "role": "secondary"},
+                    {"knowledge_unit_id": 999, "coverage_weight": 1.0, "role": "secondary"},
+                ],
+            )
+        )
+
+    monkeypatch.setattr(generator, "acompletion_with_fallback", fake_acompletion_with_fallback)
+
+    questions = await generate_exam_questions_for_units(
+        units=[
+            KnowledgeUnit(id=101, subject="math", knowledge_unit_type="concept", canonical_name="Derivative", normalized_name="derivative"),
+            KnowledgeUnit(id=102, subject="math", knowledge_unit_type="method", canonical_name="Newton Method", normalized_name="newton"),
+        ],
+        specs=[
+            ExamQuestionGenerationSpec(
+                item_order=1,
+                knowledge_unit_id=101,
+                knowledge_unit_ids=[101, 102],
+                question_type="short_answer",
+                difficulty="medium",
+                generation_prompt="Generate a medium short-answer item.",
             )
         ],
     )
 
-    refs = weighted[0].knowledge_unit_refs
+    refs = questions[0].knowledge_unit_refs
     assert [ref.knowledge_unit_id for ref in refs] == [101, 102]
     assert refs[0].role == "primary"
     assert round(sum(ref.coverage_weight for ref in refs), 4) == 1.0
