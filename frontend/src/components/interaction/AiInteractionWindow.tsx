@@ -84,6 +84,11 @@ export function AiInteractionWindow({ variant, scope, className }: AiInteraction
     return Boolean(node && panelRef.current?.contains(node));
   }, []);
 
+  const isInsideAppSidebar = useCallback((target: EventTarget | null) => {
+    const element = target instanceof Element ? target : null;
+    return Boolean(element?.closest("[data-app-sidebar='true']"));
+  }, []);
+
   useEffect(() => {
     if (!shouldShowSidebarPanel) {
       outsidePointerRef.current = null;
@@ -96,7 +101,11 @@ export function AiInteractionWindow({ variant, scope, className }: AiInteraction
     };
 
     const handlePointerDown = (event: PointerEvent) => {
-      if ((event.pointerType === "mouse" && event.button !== 0) || isInsidePanel(event.target)) {
+      if (
+        (event.pointerType === "mouse" && event.button !== 0) ||
+        isInsidePanel(event.target) ||
+        isInsideAppSidebar(event.target)
+      ) {
         outsidePointerRef.current = null;
         return;
       }
@@ -108,7 +117,7 @@ export function AiInteractionWindow({ variant, scope, className }: AiInteraction
     };
 
     const handleClick = (event: MouseEvent) => {
-      if (isInsidePanel(event.target)) {
+      if (isInsidePanel(event.target) || isInsideAppSidebar(event.target)) {
         outsidePointerRef.current = null;
         return;
       }
@@ -139,7 +148,7 @@ export function AiInteractionWindow({ variant, scope, className }: AiInteraction
       document.removeEventListener("click", handleClick, true);
       document.removeEventListener("pointercancel", clearPointer, true);
     };
-  }, [closeAiInteraction, isInsidePanel, shouldShowSidebarPanel]);
+  }, [closeAiInteraction, isInsideAppSidebar, isInsidePanel, shouldShowSidebarPanel]);
 
   if (variant === "fullscreen") {
     const fullscreenConversationScope = scope ?? fullscreenScope ?? activeScope ?? { type: "global" };

@@ -850,7 +850,7 @@ function buildCommentThreadLayout(
   desiredTopByThreadId: Map<string, number>,
   pinnedThreadId: string | null
 ): CommentThreadLayoutResult {
-  const gap = 12;
+  const gap = 16;
   const estimatedHeight = 236;
 
   if (threads.length === 0) {
@@ -893,6 +893,14 @@ function buildCommentThreadLayout(
       const desiredTop = desiredTopByThreadId.get(threads[i].threadId);
       positions[i] = desiredTop === undefined ? maxTop : Math.min(maxTop, desiredTop);
       upCursor = positions[i];
+    }
+
+    const minTop = Math.min(...positions);
+    if (minTop < 0) {
+      const shift = -minTop;
+      for (let i = 0; i < positions.length; i += 1) {
+        positions[i] += shift;
+      }
     }
   }
 
@@ -1123,14 +1131,34 @@ function GraphPanelFallback() {
 function CommentCard({
   comment,
   defaultCollapsed = false,
+  onSizeChange,
 }: {
   comment: Comment;
   defaultCollapsed?: boolean;
+  onSizeChange?: () => void;
 }) {
   const isAssistant = comment.role === "assistant";
   const contentRef = useRef<HTMLDivElement>(null);
   const [isCollapsed, setIsCollapsed] = useState(defaultCollapsed);
   const [canCollapse, setCanCollapse] = useState(false);
+
+  useLayoutEffect(() => {
+    if (!onSizeChange || typeof window === "undefined") return;
+
+    let secondFrameId = 0;
+    onSizeChange();
+    const firstFrameId = window.requestAnimationFrame(() => {
+      onSizeChange();
+      secondFrameId = window.requestAnimationFrame(onSizeChange);
+    });
+
+    return () => {
+      window.cancelAnimationFrame(firstFrameId);
+      if (secondFrameId) {
+        window.cancelAnimationFrame(secondFrameId);
+      }
+    };
+  }, [canCollapse, comment.content, isCollapsed, onSizeChange]);
 
   useEffect(() => {
     const rafId = window.requestAnimationFrame(() => {
@@ -1261,6 +1289,7 @@ function CommentThread({
   onFocus,
   onJumpToAnchor,
   onOpenAiInteraction,
+  onSizeChange,
   compactMode,
   isAligned,
 }: {
@@ -1271,6 +1300,7 @@ function CommentThread({
   onFocus: () => void;
   onJumpToAnchor: (id: string) => void;
   onOpenAiInteraction: () => void;
+  onSizeChange?: () => void;
   compactMode: boolean;
   isAligned: boolean;
 }) {
@@ -1351,6 +1381,7 @@ function CommentThread({
                 key={comment.id}
                 comment={comment}
                 defaultCollapsed={isHistoryComment(comment)}
+                onSizeChange={onSizeChange}
               />
             ))}
           </div>
@@ -2408,6 +2439,7 @@ export function KnowledgeDocsPage() {
   useEffect(() => {
     const handlePointerDown = (e: MouseEvent) => {
       const targetElement = e.target instanceof Element ? e.target : null;
+      if (targetElement?.closest("[data-app-sidebar='true']")) return;
       if (targetElement?.closest("[data-ai-interaction-window='true']")) return;
       if (floatingRef.current?.contains(e.target as Node)) return;
       if (floatingComposerCardRef.current?.contains(e.target as Node)) return;
@@ -2982,6 +3014,7 @@ export function KnowledgeDocsPage() {
     const handleDocumentMouseUp = (event: MouseEvent) => {
       const target = event.target as Node;
       const targetElement = event.target instanceof Element ? event.target : null;
+      if (targetElement?.closest("[data-app-sidebar='true']")) return;
       if (targetElement?.closest("[data-ai-interaction-window='true']")) return;
       if (commentPanelRef.current?.contains(target)) return;
       if (floatingRef.current?.contains(target)) return;
@@ -3591,6 +3624,27 @@ export function KnowledgeDocsPage() {
       window.removeEventListener("resize", scheduleMeasure);
     };
   }, [commentThreads, isCompactComment, refreshThreadHeights]);
+
+  const scheduleDesktopCommentLayoutRefresh = useCallback(() => {
+    if (isCompactComment || typeof window === "undefined") {
+      return;
+    }
+
+    const refresh = () => {
+      refreshThreadHeights();
+      updateDesktopCommentScrollExtent();
+      syncDesktopCommentTrack();
+    };
+
+    refresh();
+    window.requestAnimationFrame(refresh);
+    window.setTimeout(refresh, 80);
+  }, [
+    isCompactComment,
+    refreshThreadHeights,
+    syncDesktopCommentTrack,
+    updateDesktopCommentScrollExtent,
+  ]);
 
   useEffect(() => {
     if (!activeCommentThreadId) {
@@ -4251,6 +4305,7 @@ export function KnowledgeDocsPage() {
                     scrollToHeading(id);
                   }}
                   onOpenAiInteraction={() => openAiInteractionFromThread(thread.threadId)}
+                  onSizeChange={scheduleDesktopCommentLayoutRefresh}
                   compactMode
                   isAligned
                 />
@@ -4362,6 +4417,7 @@ export function KnowledgeDocsPage() {
                       })}
                       onJumpToAnchor={() => focusCommentThread(thread.threadId, { pinToSelection: true, scrollThreadIntoView: false })}
                       onOpenAiInteraction={() => openAiInteractionFromThread(thread.threadId)}
+                      onSizeChange={scheduleDesktopCommentLayoutRefresh}
                       compactMode={false}
                       isAligned={layout?.aligned ?? false}
                     />
