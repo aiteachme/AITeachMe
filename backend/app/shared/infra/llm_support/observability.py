@@ -273,17 +273,14 @@ def _langsmith_trace_kwargs(
     call_kwargs: Mapping[str, Any] | None = None,
     attempt: int | None = None,
     tools: list[dict] | None = None,
+    extra_metadata: Mapping[str, Any] | None = None,
+    extra_tags: list[str] | None = None,
 ) -> dict[str, Any]:
     trace_context = get_llm_trace_context()
     invocation_params = _langsmith_invocation_params(call_kwargs or {})
-    return {
-        "inputs": _langsmith_inputs(call_model=call_model, messages=messages, tools=tools),
-        "subject": trace_context.subject,
-        "build_session_id": trace_context.build_session_id,
-        "workflow": trace_context.workflow,
-        "lane": trace_context.lane,
-        "node": trace_context.node,
-        "extra_metadata": _langsmith_llm_metadata(
+    metadata = {
+        **dict(extra_metadata or {}),
+        **_langsmith_llm_metadata(
             task_type=task_type,
             provider=provider,
             model_name=model_name,
@@ -291,5 +288,14 @@ def _langsmith_trace_kwargs(
             attempt=attempt,
             mode=mode,
         ),
-        "extra_tags": [f"purpose:{task_type.value}", f"task:{task_type.value}"],
+    }
+    return {
+        "inputs": _langsmith_inputs(call_model=call_model, messages=messages, tools=tools),
+        "subject": trace_context.subject,
+        "build_session_id": trace_context.build_session_id,
+        "workflow": trace_context.workflow,
+        "lane": trace_context.lane,
+        "node": trace_context.node,
+        "extra_metadata": metadata,
+        "extra_tags": [f"purpose:{task_type.value}", f"task:{task_type.value}", *(extra_tags or [])],
     }

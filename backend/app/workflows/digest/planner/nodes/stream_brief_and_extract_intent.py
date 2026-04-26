@@ -8,8 +8,8 @@ import time
 import structlog
 
 from app.shared.infra.llm_support import acompletion_stream, acompletion_with_fallback
-from app.shared.infra.llm_support.routing import LLMCallPurpose
 from app.shared.infra.workflow.context import WorkflowContext
+from app.workflows.digest.planner.lib.model_policy import PlannerModelStep, planner_completion_kwargs
 from app.workflows.digest.planner.lib.plan_sketch import parse_planner_brief_text
 from app.workflows.digest.planner.lib.planner_events import emit_planner_event, emit_planner_token
 from app.workflows.digest.planner.lib.plans import _resolve_subject_display_name
@@ -59,11 +59,11 @@ async def _stream_planner_brief(state: BuildPlannerState, fallback: PlannerBrief
     try:
         stream = acompletion_stream(
             [{"role": "user", "content": prompt}],
-            call_purpose=LLMCallPurpose.GENERATE,
-            model="light",
+            **planner_completion_kwargs(PlannerModelStep.STREAM_BRIEF),
             max_tokens=1000,
             extra_metadata={
                 "planner_session_id": state.get("planner_session_id") or "",
+                "planner_model_step": PlannerModelStep.STREAM_BRIEF.value,
                 "substep": "生成可见判断",
             },
         )
@@ -127,12 +127,12 @@ async def _extract_plan_intent(state: BuildPlannerState) -> PlanIntent:
                 material_context=material_context,
                 message_history=list(state.get("message_history", [])),
             ),
-            call_purpose=LLMCallPurpose.CLASSIFY,
-            model="light",
+            **planner_completion_kwargs(PlannerModelStep.EXTRACT_INTENT),
             response_model=PlanIntent,
             max_tokens=1000,
             extra_metadata={
                 "planner_session_id": state.get("planner_session_id") or "",
+                "planner_model_step": PlannerModelStep.EXTRACT_INTENT.value,
                 "substep": "生成规划抓手",
             },
         )

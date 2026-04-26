@@ -5,8 +5,8 @@ from __future__ import annotations
 import structlog
 
 from app.shared.infra.llm_support import acompletion_with_fallback
-from app.shared.infra.llm_support.routing import LLMCallPurpose
 from app.shared.infra.workflow.context import WorkflowContext
+from app.workflows.digest.planner.lib.model_policy import PlannerModelStep, planner_completion_kwargs
 from app.workflows.digest.planner.lib.models import PlanIntent, PlannerBrief
 from app.workflows.digest.planner.prompts import build_subject_name_prompt
 from app.workflows.digest.planner.state import BuildPlannerState
@@ -86,12 +86,12 @@ def build_generate_subject_name_node(*, context: WorkflowContext):
             )
             title = await acompletion_with_fallback(
                 [{"role": "user", "content": prompt}],
-                call_purpose=LLMCallPurpose.CLASSIFY,
-                model="light",
+                **planner_completion_kwargs(PlannerModelStep.SUBJECT_NAME),
                 max_tokens=40,
                 temperature=0.2,
                 extra_metadata={
                     "planner_session_id": state.get("planner_session_id") or "",
+                    "planner_model_step": PlannerModelStep.SUBJECT_NAME.value,
                     "substep": "生成学科标题",
                 },
             )

@@ -10,6 +10,7 @@
 - Planner 不做本地 RAG 检索。
 - Planner 不做外部 Web 检索。
 - 后续真正写文档时，DocGen 自己决定是否检索。
+- Planner 的 `call_purpose + model slot` 分配统一由 `lib/model_policy.py` 维护，节点里不再硬编码模型层级。
 
 ## 命名约定
 
@@ -25,6 +26,7 @@ load_planner_materials              # 读取资料
        ├─ stream_planner_brief
        └─ extract_plan_intent
   -> stream_and_parse_plan_draft     # 合成大纲
+  -> generate_subject_name           # 并行生成学科名
   -> normalize_and_persist_plan      # 保存方案
 ```
 
@@ -73,12 +75,12 @@ stream_and_parse_plan_draft
     4. 转成待 normalize 的 `chapter_plan`。
 
 normalize_and_persist_plan
-  输入：build_plan_draft / material_context / latest_plan / planner_brief / plan_intent
+  输入：build_plan_draft / material_context / latest_plan / planner_brief / plan_intent / generated_subject_name
   输出：plan / plan_summary / planner_record / planner_turns
     - plan：API、确认接口和 DocGen 消费的最终 plan payload。
     - plan_summary：计划摘要。
     - planner_record / planner_turns：保存到 `chat_session` / `chat_message` 后的会话快照。
-  作用：规范化章节数、模式、媒体计划、构建约束；在看到完整思考、意图和章节草稿后再生成学科名；最后保存 assistant turn。
+  作用：规范化章节数、模式、媒体计划、构建约束；吸收并行标题结果；最后保存 assistant turn。
 ```
 
 ## Planner -> DocGen 交接
@@ -114,6 +116,7 @@ flowchart TD
     B1["生成可见判断<br/>stream_planner_brief"]
     B2["生成规划抓手<br/>extract_plan_intent"]
     C["合成大纲<br/>stream_and_parse_plan_draft"]
+    E["生成学科名<br/>generate_subject_name"]
     D["保存方案<br/>normalize_and_persist_plan"]
 
     A --> B
@@ -121,7 +124,10 @@ flowchart TD
     B --> B2
     B1 --> C
     B2 --> C
+    B1 --> E
+    B2 --> E
     C --> D
+    E --> D
 ```
 
 ## 节点职责
@@ -131,6 +137,7 @@ flowchart TD
 | `load_planner_materials` | 读取资料 | `nodes/load_planner_materials.py` | 读取 Planner 对话会话、文件和历史消息，生成并打包 `DigestMaterialContext` |
 | `stream_brief_and_extract_intent` | 理解目标 | `nodes/stream_brief_and_extract_intent.py` | 并行做两件事：流式输出思考过程；生成内部 `plan_intent / plan_queries` |
 | `stream_and_parse_plan_draft` | 合成大纲 | `nodes/stream_and_parse_plan_draft.py` | 一次 reason 流式调用，输出可见计划说明和 `<PLAN_JSON>` 初步大纲 |
+| `generate_subject_name` | 生成学科名 | `nodes/generate_subject_name.py` | 基于 brief、intent 和资料线索并行生成展示标题 |
 | `normalize_and_persist_plan` | 保存方案 | `nodes/normalize_and_persist_plan.py` | 规范化 plan，保存 Planner 对话 session 和 assistant message |
 
 ## LLM 调用
@@ -142,7 +149,9 @@ flowchart TD
 | 1 | `stream_planner_brief` | `reason` | 用户可见的思考过程 |
 | 2 | `extract_plan_intent` | `primary` | `PlanIntent` |
 | 3 | `stream_and_parse_plan_draft` | `reason` | 可见计划说明 + 极简 JSON 初步大纲 |
-| 4 | `generate_subject_name` | `light` | 基于完整思考、意图和章节骨架生成学科名 |
+| 4 | `generate_subject_name` | `light` | 基于可见判断、规划抓手和资料线索生成学科名 |
+
+模型策略来源：`lib/model_policy.py`。这里的 `reason / primary / light` 是逻辑模型槽位，最终 provider 模型名仍由运行时 settings 决定。
 
 ## State
 
