@@ -482,6 +482,45 @@ def test_exam_question_draft_accepts_multiple_choice_and_true_false_shapes():
     assert true_false.correct_answer == "True"
 
 
+def test_exam_question_draft_preserves_stem_and_explanation_line_breaks():
+    draft = ExamQuestionDraft(
+        item_order=1,
+        knowledge_unit_id=301,
+        question_type="multiple_choice",
+        difficulty="medium",
+        stem=(
+            "Which statements are correct?\n"
+            "  - (A) Derivatives can describe local change.\n"
+            "\n\n"
+            "  - (B) Integrals can describe accumulation.  "
+        ),
+        options=[
+            "Only (A)",
+            "Only (B)",
+            "(A) and (B)",
+            "Neither",
+        ],
+        correct_indices=[2],
+        explanation=(
+            "Both statements are correct.\n"
+            "  The first is about instantaneous change.\n"
+            "  The second is about accumulation."
+        ),
+    )
+
+    assert draft.stem == (
+        "Which statements are correct?\n"
+        "- (A) Derivatives can describe local change.\n"
+        "\n"
+        "- (B) Integrals can describe accumulation."
+    )
+    assert draft.explanation == (
+        "Both statements are correct.\n"
+        "The first is about instantaneous change.\n"
+        "The second is about accumulation."
+    )
+
+
 def test_exam_question_draft_accepts_boolean_true_false_answer():
     draft = ExamQuestionDraft(
         item_order=1,

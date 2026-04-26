@@ -38,6 +38,7 @@ T = TypeVar("T")
 _BLANK_TOKEN = "{{blank}}"
 _TEXT_UNDERSCORE_PLACEHOLDER_RE = re.compile(r"\\text\{(_+)\}")
 _CHOICE_LABEL_RE = re.compile(r"^\s*([A-Da-d])(?:[\.\)\]．、:：]\s*)(.+)$")
+_INLINE_WHITESPACE_RE = re.compile(r"[ \t\f\v]+")
 
 
 def _escape_text_underscore_placeholders(value: str) -> str:
@@ -47,6 +48,24 @@ def _escape_text_underscore_placeholders(value: str) -> str:
         lambda match: r"\text{" + r"\_" * len(match.group(1)) + "}",
         value,
     )
+
+
+def _clean_multiline_text(value: object) -> str:
+    text = str(value or "").replace("\r\n", "\n").replace("\r", "\n")
+    lines = [_INLINE_WHITESPACE_RE.sub(" ", line).strip() for line in text.split("\n")]
+    cleaned_lines: list[str] = []
+    previous_blank = False
+    for line in lines:
+        if not line:
+            if cleaned_lines and not previous_blank:
+                cleaned_lines.append("")
+            previous_blank = True
+            continue
+        cleaned_lines.append(line)
+        previous_blank = False
+    while cleaned_lines and cleaned_lines[-1] == "":
+        cleaned_lines.pop()
+    return "\n".join(cleaned_lines).strip()
 
 
 def _contains_blank_token_inside_latex(value: str) -> bool:
@@ -256,7 +275,7 @@ class ExamQuestionDraft(BaseModel):
     @field_validator("stem", "explanation")
     @classmethod
     def _strip_required_text(cls, value: str) -> str:
-        cleaned = " ".join(str(value or "").split()).strip()
+        cleaned = _clean_multiline_text(value)
         if not cleaned:
             raise ValueError("text field cannot be empty")
         return _escape_text_underscore_placeholders(cleaned)
