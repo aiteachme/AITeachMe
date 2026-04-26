@@ -22,7 +22,12 @@ BASE_WRITING_RULES: tuple[str, ...] = (
 @dataclass(frozen=True)
 class DocGenModeProfile:
     mode: DocGenMode
+    # These are writer/editor hints, not required headings. Keep them phrased
+    # as teaching focuses so downstream prompts do not turn them into a rigid
+    # chapter template.
     chapter_format: tuple[str, ...]
+    course_flow_hints: tuple[str, ...]
+    practice_focuses: tuple[str, ...]
     mode_writing_rule: str
     prompt_label: str
     prompt_priority: str
@@ -92,13 +97,22 @@ class DocGenModeProfile:
 _SPRINT_PROFILE = DocGenModeProfile(
     mode="sprint",
     chapter_format=(
-        "这一章先拿下什么",
-        "高频考点和速判抓手",
-        "核心概念最短路径",
-        "典型题型拆解",
-        "最容易错在哪",
-        "考前回看清单",
-        "本章自检",
+        "优先点明本章最可能考什么、先拿什么分",
+        "用高频考点表意识提炼重要程度、分值感和常见题型",
+        "把核心概念压成最短可执行判断路径",
+        "用题眼、解题模板和变式练习带出方法",
+        "点出易错边界、不能硬套的条件和考前回看抓手",
+    ),
+    course_flow_hints=(
+        "课时开头先给考点/题型/分值感，再进入概念或公式",
+        "每个方法尽量接一道短例题或小变式，直接暴露题眼",
+        "讲完一组题型后，用练习或复盘问题收束",
+    ),
+    practice_focuses=(
+        "速判例题",
+        "题眼定位",
+        "变式训练",
+        "易错辨析",
     ),
     mode_writing_rule="冲刺模式要突出题型、速判、易错点和考前复盘。",
     prompt_label="冲刺型",
@@ -107,7 +121,7 @@ _SPRINT_PROFILE = DocGenModeProfile(
     prompt_closing_guidance="如果这是课程收束章，本章必须回收高频题型、易错点和最后复盘抓手。",
     prompt_research_focus="高频考点、题型线索、易错点和考前复盘抓手",
     seed_target_length=950,
-    fallback_teaching_outline=("抓本章最重要的考点", "用典型题型带理解", "最后回看易错点"),
+    fallback_teaching_outline=("先标出高频考点和题型", "用典型题带出最短方法", "最后回看易错边界"),
     gap_query_suffixes=("高频题型", "易错点", "典型例题"),
     practice_style="exam",
     coverage_threshold=0.6,
@@ -130,14 +144,23 @@ _SPRINT_PROFILE = DocGenModeProfile(
 _SYSTEMATIC_PROFILE = DocGenModeProfile(
     mode="systematic",
     chapter_format=(
-        "章节导读",
-        "学习目标",
-        "关键概念与定义",
-        "方法、结构与推理路径",
-        "例子、例题与迁移",
-        "易错点与边界",
-        "本章小结",
-        "本章摘要",
+        "先建立本章在整门课里的位置和前后依赖",
+        "把学习目标转成几个可理解的问题",
+        "讲清关键概念、定义、性质、公式和适用前提",
+        "展开方法、结构、推理路径和必要的证明直觉",
+        "用例子、例题或迁移场景把抽象知识落地",
+        "说明易错点、边界条件、反例和跨章联系",
+    ),
+    course_flow_hints=(
+        "课时开头先给知识地图或问题动机，再展开定义与性质",
+        "概念、公式或定理后接一个能体现条件的小例子",
+        "章节收束时回到知识主线，并安排迁移练习或复盘问题",
+    ),
+    practice_focuses=(
+        "概念例题",
+        "推理复述",
+        "条件辨析",
+        "迁移应用",
     ),
     mode_writing_rule="系统模式要突出定义、结构、推理、例子和迁移。",
     prompt_label="系统型",
@@ -147,7 +170,7 @@ _SYSTEMATIC_PROFILE = DocGenModeProfile(
     prompt_research_focus="定义、推导、适用条件、结构关系和可迁移例子",
     prompt_extra_contract="如果涉及公式或定理，不能只写结论，必须解释适用前提、推理过程和常见边界。",
     seed_target_length=1300,
-    fallback_teaching_outline=("先讲清定义和主线", "再讲结构与推理", "最后用例子和边界收口"),
+    fallback_teaching_outline=("先讲清知识地图和定义", "再讲结构、条件与推理", "最后用例子和迁移收口"),
     gap_query_suffixes=("定义", "推导", "联系", "典型例子"),
     practice_style="reasoning",
     coverage_threshold=0.72,

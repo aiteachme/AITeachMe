@@ -140,7 +140,7 @@ def build_examine_markdown(
         ]
 
     if mode_profile.is_sprint:
-        lines = ["# 练习与自检", "", "## 高频题型自检", ""]
+        lines = ["# 练习与回看", "", "## 高频题型例练", ""]
         for question in questions:
             lines.append(f"{int(question.get('question_index', 0) or 0) or 1}. {question.get('question', '')}")
         lines.extend(
@@ -157,7 +157,7 @@ def build_examine_markdown(
         )
         return "\n".join(lines).strip() + "\n"
 
-    lines = ["# 练习与自检", "", "## 理解与推理题", ""]
+    lines = ["# 练习与回看", "", "## 理解与推理题", ""]
     for question in questions:
         lines.append(f"{int(question.get('question_index', 0) or 0) or 1}. {question.get('question', '')}")
     lines.extend(

@@ -15,7 +15,7 @@ def build_chapter_patch_messages(
 你是 AITeachMe 的章节修补器。
 你只能根据给定 ReviewAction 对当前章节做局部修补。
 禁止新增、删除或重排章节；禁止引入没有证据支撑的新事实；禁止输出解释。
-你必须返回完整的修补后 Markdown，保留原一级标题、已有 Mermaid、图片、自检题和来源口径。
+你必须返回完整的修补后 Markdown，保留原一级标题、已有 Mermaid、图片、例题/练习和来源口径。
 """.strip()
     user_prompt = f"""
 章节标题：{chapter_title}
