@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import re
+from typing import Literal
 
 from langsmith import traceable
 
@@ -12,7 +13,8 @@ from app.schemas.llm import ASSISTANT, ChatMessage, USER
 from app.shared.infra.prompt_loader import populate_prompt
 from app.shared.infra.strategies import StrategyMode
 from app.shared.infra.llm_support.context_window import ContextWindowManager
-from app.workflows.interact.chat.prompts.prompts import SYSTEM_PROMPT_TUTOR, get_strategy_instruction
+from app.workflows.interact.chat.lib.intent import ChatPromptScene, resolve_prompt_scene
+from app.workflows.interact.chat.prompts.prompts import get_strategy_instruction, get_system_prompt_template
 from app.workflows.interact.chat.lib.types import (
     MistakeSummary,
     RecentMessage,
@@ -51,6 +53,8 @@ _MAX_RELEVANT_WEAK_POINTS = 4
 _MAX_RECENT_MISTAKES = 3
 _MAX_RETRIEVAL_ITEMS_WITH_PRIMARY = 2
 _MAX_RETRIEVAL_ITEMS_WITHOUT_PRIMARY = 4
+_DOCUMENT_SELECTION_PRIMARY_CONTEXT_SUFFICIENT_CHARS = 360
+_SubjectBackgroundMode = Literal["full", "chat_scope", "entry_context"]
 
 
 @traceable(name="interact.build_chat_messages", run_type="prompt")
@@ -75,6 +79,12 @@ def build_chat_messages(
     manager = context_window or ContextWindowManager()
     primary_context = _format_selected_context(source, selection_context, selected_context, source_chunk_id)
     has_primary_context = bool(primary_context.strip() and primary_context.strip() != "无。")
+    prompt_scene = resolve_prompt_scene(
+        question=question,
+        source=source,
+        has_primary_context=has_primary_context,
+    )
+    use_subject_grounding = prompt_scene != ChatPromptScene.GENERAL
     focus_text = _build_focus_text(
         question=question,
         selected_context=selected_context,
@@ -86,17 +96,36 @@ def build_chat_messages(
         primary_context=primary_context,
     )
     system_prompt = populate_prompt(
-        SYSTEM_PROMPT_TUTOR,
+        get_system_prompt_template(prompt_scene),
         subject_name=_subject_display_name(subject, subject_context),
-        subject_background=_format_subject_background(subject, subject_context),
-        teaching_strategy=get_strategy_instruction(strategy_mode),
-        weak_points_context=_format_weak_points_context(
-            weak_points,
-            focus_text=focus_text,
-            only_relevant=has_primary_context,
+        subject_background=_format_subject_background(
+            subject,
+            subject_context,
+            mode=_subject_background_mode(prompt_scene),
         ),
-        mistakes_context=_format_mistakes_context(recent_mistakes, compact=compact_mistakes),
-        interaction_entry=_format_interaction_entry(source),
+        teaching_strategy=(
+            get_strategy_instruction(strategy_mode)
+            if prompt_scene != ChatPromptScene.GENERAL
+            else "通用对话模式：先回应用户当下感受；可以轻松陪聊或给一个很小的可选行动，不主动讲授课程知识。"
+        ),
+        weak_points_context=(
+            _format_weak_points_context(
+                weak_points,
+                focus_text=focus_text,
+                only_relevant=has_primary_context,
+            )
+            if use_subject_grounding
+            else "本轮为通用对话，暂不使用薄弱项画像。"
+        ),
+        mistakes_context=(
+            _format_mistakes_context(recent_mistakes, compact=compact_mistakes)
+            if use_subject_grounding
+            else "本轮为通用对话，暂不使用近期错题。"
+        ),
+        interaction_entry=_format_interaction_entry(
+            source,
+            scene=prompt_scene,
+        ),
         selected_context=primary_context,
     )
     history_messages = [
@@ -107,11 +136,12 @@ def build_chat_messages(
         for item in recent_messages
     ]
     retrieval_chunks = build_retrieval_context_items(
-        retrieval_results,
+        retrieval_results if use_subject_grounding else [],
         question=question,
         selected_context=selected_context,
         selection_context=selection_context,
         primary_context=primary_context,
+        prompt_scene=prompt_scene,
     )
     return manager.build_context(
         system_prompt=system_prompt,
@@ -128,6 +158,7 @@ def build_retrieval_context_items(
     selected_context: str | None = None,
     selection_context: ChatSelectionContext | None = None,
     primary_context: str | None = None,
+    prompt_scene: ChatPromptScene | None = None,
 ) -> list[str]:
     """Build compact, de-duplicated retrieval blocks for the prompt."""
 
@@ -135,6 +166,12 @@ def build_retrieval_context_items(
         return []
 
     has_primary_context = bool((primary_context or "").strip() and (primary_context or "").strip() != "无。")
+    if (
+        prompt_scene == ChatPromptScene.DOCUMENT_SELECTION
+        and _has_sufficient_document_selection_context(primary_context)
+    ):
+        return []
+
     focus_text = _build_focus_text(
         question=question,
         selected_context=selected_context,
@@ -144,7 +181,8 @@ def build_retrieval_context_items(
     high_relevance = [item for item in unique_results if not item.low_relevance]
 
     if has_primary_context:
-        chosen = high_relevance[:_MAX_RETRIEVAL_ITEMS_WITH_PRIMARY]
+        chosen_count = 1 if prompt_scene == ChatPromptScene.DOCUMENT_SELECTION else _MAX_RETRIEVAL_ITEMS_WITH_PRIMARY
+        chosen = high_relevance[:chosen_count]
     else:
         chosen = unique_results[:_MAX_RETRIEVAL_ITEMS_WITHOUT_PRIMARY]
 
@@ -156,6 +194,13 @@ def build_retrieval_context_items(
         )
         for item in chosen
     ]
+
+
+def _has_sufficient_document_selection_context(primary_context: str | None) -> bool:
+    text = (primary_context or "").strip()
+    if not text or text == "无。":
+        return False
+    return len(text) >= _DOCUMENT_SELECTION_PRIMARY_CONTEXT_SUFFICIENT_CHARS
 
 
 def format_retrieval_context_item(
@@ -351,14 +396,42 @@ def _tokens(text: str) -> list[str]:
 
 def _subject_display_name(subject: str, context: SubjectContextSummary | None) -> str:
     name = (context.subject_name if context else "").strip()
-    return name or subject or "当前学科"
+    if name:
+        return name
+    if _is_global_subject_label(subject):
+        return "通用"
+    return subject or "当前学习空间"
 
 
-def _format_subject_background(subject: str, context: SubjectContextSummary | None) -> str:
+def _format_subject_background(
+    subject: str,
+    context: SubjectContextSummary | None,
+    *,
+    mode: _SubjectBackgroundMode = "full",
+) -> str:
+    display_name = _subject_display_name(subject, context)
+    if mode == "chat_scope":
+        return "\n".join(
+            [
+                f"- 当前学习空间：{display_name}",
+                "- 使用规则：仅在用户明确聊到学习、课程内容、练习、计划，或对话历史需要延续学科主题时使用；本轮普通闲聊不要主动展开学科内容。",
+            ]
+        )
+
+    if mode == "entry_context":
+        lines = [
+            f"- 学科：{display_name}",
+            "- 使用规则：本轮以用户入口上下文为主；学科背景只用于术语理解和难度调节，不展开建课意图或完整学科摘要。",
+        ]
+        profile_summary = _format_profile_summary(context)
+        if profile_summary:
+            lines.append(profile_summary)
+        return "\n".join(lines)
+
     if context is None:
-        return f"- 学科：{subject or '当前学科'}"
+        return f"- 学科：{display_name}"
 
-    lines = [f"- 学科：{context.subject_name}"]
+    lines = [f"- 学科：{display_name}"]
     if context.discipline or context.sub_discipline:
         discipline = " / ".join(
             item for item in [context.discipline, context.sub_discipline] if item
@@ -375,6 +448,29 @@ def _format_subject_background(subject: str, context: SubjectContextSummary | No
     if context.llm_context:
         lines.append(f"- 教学背景摘要：{_clip_text(context.llm_context, 260)}")
 
+    profile_summary = _format_profile_summary(context)
+    if profile_summary:
+        lines.append(profile_summary)
+
+    if context.recommended_question_types:
+        lines.append("- 推荐练习题型：" + "、".join(context.recommended_question_types[:3]))
+    if context.recommended_exam_mode:
+        lines.append(f"- 推荐练习模式：{context.recommended_exam_mode}")
+
+    return "\n".join(lines)
+
+
+def _subject_background_mode(scene: ChatPromptScene) -> _SubjectBackgroundMode:
+    if scene == ChatPromptScene.GENERAL:
+        return "chat_scope"
+    if scene in {ChatPromptScene.DOCUMENT_SELECTION, ChatPromptScene.EXAM_QUESTION}:
+        return "entry_context"
+    return "full"
+
+
+def _format_profile_summary(context: SubjectContextSummary | None) -> str:
+    if context is None:
+        return ""
     profile_items = []
     if context.avg_mastery is not None:
         profile_items.append(f"平均掌握度 {context.avg_mastery:.0%}")
@@ -386,15 +482,9 @@ def _format_subject_background(subject: str, context: SubjectContextSummary | No
         profile_items.append(f"已到期复习 {context.due_review_count} 项")
     if context.difficulty_focus:
         profile_items.append(f"建议难度 {context.difficulty_focus}")
-    if profile_items:
-        lines.append("- 用户整体画像：" + "；".join(profile_items))
-
-    if context.recommended_question_types:
-        lines.append("- 推荐练习题型：" + "、".join(context.recommended_question_types[:3]))
-    if context.recommended_exam_mode:
-        lines.append(f"- 推荐练习模式：{context.recommended_exam_mode}")
-
-    return "\n".join(lines)
+    if not profile_items:
+        return ""
+    return "- 用户整体画像：" + "；".join(profile_items)
 
 
 def _format_weak_points_context(
@@ -515,20 +605,30 @@ def _normalize_mistake_analysis(value: str | None) -> str:
     return _clip_text(text, 80) or "未标注错因"
 
 
-def _format_interaction_entry(source: str | None) -> str:
+def _format_interaction_entry(source: str | None, *, scene: ChatPromptScene) -> str:
     normalized = (source or "").strip()
-    if normalized == "quick_chat":
+    if scene == ChatPromptScene.DOCUMENT_SELECTION:
         return (
             "知识文档划选提问。回答时必须优先解释用户划选内容，并把它放回原知识脉络中；"
             "近期错题和薄弱项只能辅助讲解，不能作为本轮问题主题。"
         )
-    if normalized == "exam_question":
-        return "考卷题目触发。回答时优先围绕这一道题讲解，未批改时先给提示和思路，不要直接泄露标准答案。"
-    if normalized == "build_assistant":
+    if scene == ChatPromptScene.EXAM_QUESTION:
+        return "考卷题目触发。回答时优先围绕当前题目、题干、选项、用户答案或批改结果。"
+    if scene == ChatPromptScene.BUILD_ASSISTANT:
         return "知识库构建过程触发。回答时优先解释当前构建阶段、资料处理或知识文档生成结果。"
-    if normalized:
+    if scene == ChatPromptScene.SUBJECT_LEARNING and normalized == "quick_chat":
+        return "普通侧边栏学习对话：当前没有划选主证据；可以使用当前学习空间背景，但不要虚构具体划选内容。"
+    if scene == ChatPromptScene.SUBJECT_LEARNING and normalized:
         return f"外部入口触发：{normalized}。回答时保留入口上下文，但不要虚构来源。"
-    return "常规学习对话。"
+    if scene == ChatPromptScene.SUBJECT_LEARNING:
+        return "常规学习对话：可以使用当前学习空间背景，但以用户最后一句问题为准。"
+    if normalized == "quick_chat":
+        return "普通侧边栏通用对话：当前没有划选主证据；不要把知识文档或当前学科当作默认主题。"
+    return "通用对话：当前没有用户入口上下文；自然回应用户，只有用户明确提出学习需求时才进入教学。"
+
+
+def _is_global_subject_label(subject: str | None) -> bool:
+    return (subject or "").strip().casefold() in {"", "global", "_global", "__global__"}
 
 
 def _clip_text(value: str | None, max_chars: int) -> str:
