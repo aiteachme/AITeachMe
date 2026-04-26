@@ -283,6 +283,48 @@ async def test_generate_exam_questions_for_units_can_return_partial_with_failed_
 
 
 @pytest.mark.anyio
+async def test_generate_exam_questions_for_units_can_finish_when_all_partial_items_fail(monkeypatch):
+    async def fake_acompletion_with_fallback(*args, **kwargs):
+        raise RuntimeError("structured output did not validate")
+
+    monkeypatch.setattr(generator, "acompletion_with_fallback", fake_acompletion_with_fallback)
+
+    units = [
+        KnowledgeUnit(
+            id=301,
+            subject="math",
+            knowledge_unit_type="concept",
+            canonical_name="Derivative",
+            normalized_name="derivative",
+            status="active",
+        ),
+    ]
+    specs = [
+        ExamQuestionGenerationSpec(
+            item_order=1,
+            knowledge_unit_id=301,
+            question_type="short_answer",
+            difficulty="medium",
+            generation_prompt="Generate a medium short-answer item.",
+        )
+    ]
+    failed_orders: list[int] = []
+
+    async def handle_failed(failure) -> None:
+        failed_orders.append(failure.item_order)
+
+    questions = await generate_exam_questions_for_units(
+        units=units,
+        specs=specs,
+        on_question_failed=handle_failed,
+        allow_partial=True,
+    )
+
+    assert questions == []
+    assert failed_orders == [1]
+
+
+@pytest.mark.anyio
 async def test_plan_exam_question_blueprints_can_select_multiple_related_units(monkeypatch):
     observed_messages = []
 

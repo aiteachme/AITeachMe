@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from time import perf_counter
 
 from app.shared.infra.workflow import emit_progress
@@ -47,6 +48,20 @@ def build_plan_question_blueprints_node(*, context: WorkflowContext):
                 extra={"question_blueprints": blueprint_payload},
             )
             return {"question_blueprints": blueprint_payload, "plan_ms": elapsed_ms, "error": ""}
+        except asyncio.CancelledError:
+            elapsed_ms = int((perf_counter() - started_at) * 1000)
+            await emit_progress(
+                state,
+                stage="plan_exam_questions",
+                detail="题目蓝图编排被取消，试卷生成失败。",
+                step="plan_question_blueprints",
+                elapsed_ms=elapsed_ms,
+            )
+            return {
+                "question_blueprints": [],
+                "plan_ms": elapsed_ms,
+                "error": "Question blueprint planning was cancelled.",
+            }
         except Exception as exc:
             elapsed_ms = int((perf_counter() - started_at) * 1000)
             await emit_progress(

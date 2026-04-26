@@ -1020,11 +1020,6 @@ async def generate_exam_questions_for_units(
             "Exam question generation failed for "
             f"item_order values={failed_orders}; " + "; ".join(failures)
         )
-    if failures and not generated:
-        raise ValueError(
-            "Exam question generation failed for all requested "
-            f"item_order values={failed_orders}; " + "; ".join(failures)
-        )
 
     requested_orders = {spec.item_order for spec in specs}
     generated_orders = {item.item_order for item in generated}

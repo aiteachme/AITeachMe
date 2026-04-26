@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import re
 from dataclasses import dataclass
 from time import perf_counter
@@ -449,6 +450,21 @@ def build_filter_knowledge_units_node(*, context: WorkflowContext):
                 "filter_rationale": filter_rationale,
                 "filter_ms": elapsed_ms,
                 "error": "",
+            }
+        except asyncio.CancelledError:
+            elapsed_ms = int((perf_counter() - started_at) * 1000)
+            await emit_progress(
+                state,
+                stage="filter_exam_units",
+                detail="知识点筛选被取消，试卷生成失败。",
+                step="filter_knowledge_units",
+                elapsed_ms=elapsed_ms,
+            )
+            return {
+                "units": [],
+                "candidate_unit_ids": [],
+                "filter_ms": elapsed_ms,
+                "error": "Question candidate filtering was cancelled.",
             }
         except Exception as exc:
             elapsed_ms = int((perf_counter() - started_at) * 1000)

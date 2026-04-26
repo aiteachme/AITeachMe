@@ -22,6 +22,7 @@ def build_generate_questions_node(*, context: WorkflowContext):
             return {}
 
         started_at = perf_counter()
+        failed_questions: list[dict] = []
         await emit_progress(
             state,
             stage="generate_exam_questions",
@@ -39,7 +40,6 @@ def build_generate_questions_node(*, context: WorkflowContext):
 
             generated_count = 0
             failed_count = 0
-            failed_questions: list[dict] = []
 
             async def handle_question_generated(question) -> None:
                 nonlocal generated_count
@@ -91,7 +91,8 @@ def build_generate_questions_node(*, context: WorkflowContext):
             )
             return {
                 "generated_questions": [],
-                "failed_questions": [],
+                "failed_questions": failed_questions,
+                "failed_question_count": len(failed_questions),
                 "generate_ms": elapsed_ms,
                 "error": str(exc),
             }

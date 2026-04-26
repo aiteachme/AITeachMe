@@ -101,7 +101,7 @@ export function buildKnowledgeLabel(item: ExamPaperItemResponse) {
 }
 
 export function hasAnsweredQuestion(item: ExamPaperItemResponse, answers: Record<number, string>) {
-  const value = answers[item.id] ?? "";
+  const value = answers[item.item_order] ?? "";
   return value.trim().length > 0;
 }
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import re
@@ -876,10 +877,10 @@ def _require_generated_questions_by_order(
         generated_by_order[item_order] = item
 
     if invalid_orders:
-        raise AITeachMeError(
-            detail=f"Exam question generation returned invalid item_order values: {invalid_orders}",
-            error_code="EXAM_QUESTION_BUILD_INVALID",
-            status_code=502,
+        logger.warning(
+            "exam_question_generation_invalid_item_orders_ignored",
+            invalid_orders=invalid_orders,
+            expected_orders=expected_orders,
         )
 
     missing_orders = [order for order in expected_orders if order not in generated_by_order]
@@ -893,19 +894,49 @@ def _require_generated_questions_by_order(
         order for order in missing_orders if order not in failed_orders
     ]
     if unresolved_missing_orders:
-        raise AITeachMeError(
-            detail=f"Exam question generation returned incomplete results; missing item_order values: {unresolved_missing_orders}",
-            error_code="EXAM_QUESTION_BUILD_INCOMPLETE",
-            status_code=502,
-        )
-    if not generated_by_order:
-        raise AITeachMeError(
-            detail="Exam question generation returned no usable questions.",
-            error_code="EXAM_QUESTION_BUILD_EMPTY",
-            status_code=502,
+        logger.warning(
+            "exam_question_generation_missing_terminal_items",
+            missing_orders=unresolved_missing_orders,
+            expected_orders=expected_orders,
         )
 
     return generated_by_order
+
+
+def _failed_questions_by_order(state: dict[str, object] | None) -> dict[int, dict[str, object]]:
+    failed_questions = (state or {}).get("failed_questions") if isinstance(state, dict) else []
+    if not isinstance(failed_questions, list):
+        return {}
+
+    by_order: dict[int, dict[str, object]] = {}
+    for item in failed_questions:
+        if not isinstance(item, dict):
+            continue
+        order = _positive_int(item.get("item_order"))
+        if order > 0:
+            by_order[order] = dict(item)
+    return by_order
+
+
+def _build_inferred_failed_question(
+    *,
+    order: int,
+    blueprint_by_order: dict[int, dict[str, object]],
+) -> dict[str, object]:
+    blueprint = blueprint_by_order.get(order, {})
+    knowledge_unit_ids: list[int] = []
+    for raw_unit_id in list(blueprint.get("knowledge_unit_ids") or []):
+        unit_id = _positive_int(raw_unit_id)
+        if unit_id > 0:
+            knowledge_unit_ids.append(unit_id)
+    return {
+        "item_order": order,
+        "question_type": str(blueprint.get("question_type") or "text"),
+        "difficulty": str(blueprint.get("difficulty") or "medium"),
+        "knowledge_unit_ids": knowledge_unit_ids,
+        "error_message": "Question generation reached the terminal workflow state without a generated item.",
+        "inferred": True,
+    }
 
 
 def _upsert_generated_template(
@@ -1201,13 +1232,54 @@ async def _run_exam_generation_background(
             build_result=build_result,
             expected_orders=list(range(1, question_count + 1)),
         )
-        question_blueprints = build_result.value.get("question_blueprints") if build_result.value else []
+        build_state = build_result.value or {}
+        question_blueprints = build_state.get("question_blueprints") if isinstance(build_state, dict) else []
         blueprint_by_order = _blueprints_by_one_based_order(question_blueprints)
+        failed_by_order = _failed_questions_by_order(build_state if isinstance(build_state, dict) else {})
+        inferred_missing_orders = [
+            order
+            for order in range(1, question_count + 1)
+            if order not in generated_by_order and order not in failed_by_order
+        ]
+        if inferred_missing_orders:
+            logger.warning(
+                "exam_generation_missing_question_terminal_records",
+                subject=subject,
+                user_id=user_id,
+                paper_id=paper_id,
+                missing_orders=inferred_missing_orders,
+            )
+            for order in inferred_missing_orders:
+                failed_by_order[order] = _build_inferred_failed_question(
+                    order=order,
+                    blueprint_by_order=blueprint_by_order,
+                )
+        terminal_failed_by_order = {
+            order: failed
+            for order, failed in failed_by_order.items()
+            if order not in generated_by_order
+        }
 
         with managed_session() as session:
             paper = exams_repo.get_exam_paper_by_id(session, paper_id)
             if paper is None or paper.subject != subject or paper.user_id != user_id:
                 return
+            paper_context = _json_dict(paper.selection_context_json)
+            final_preview = _paper_preview_from_json(paper.paper_preview_json)
+            for failed_payload in [
+                terminal_failed_by_order[order]
+                for order in sorted(terminal_failed_by_order)
+            ]:
+                paper_context = _merge_failed_question_into_context(
+                    paper_context,
+                    failed_payload,
+                    question_count=question_count,
+                )
+                final_preview = _merge_failed_question_into_preview(
+                    final_preview,
+                    failed_payload,
+                    question_count=question_count,
+                )
             units = list(
                 session.exec(
                     select(KnowledgeUnit).where(
@@ -1300,11 +1372,10 @@ async def _run_exam_generation_background(
             paper.total_score = float(len(items))
             paper.paper_preview_json = _build_final_paper_preview(
                 items,
-                existing_preview=_paper_preview_from_json(paper.paper_preview_json),
+                existing_preview=final_preview,
                 knowledge_unit_by_id=unit_by_id,
                 links_by_item_id=links_by_item_id,
             ).model_dump_json()
-            paper_context = _json_dict(paper.selection_context_json)
             paper_context.pop("generated_questions", None)
             paper_context.pop("generated_question_count", None)
             paper.selection_context_json = json.dumps(paper_context, ensure_ascii=False)
@@ -1315,11 +1386,52 @@ async def _run_exam_generation_background(
                 preview=_paper_preview_from_json(paper.paper_preview_json),
             )
 
+        for order in inferred_missing_orders:
+            failed_payload = terminal_failed_by_order.get(order)
+            if not failed_payload:
+                continue
+            snapshot_payload = dict(done_payload)
+            snapshot_payload["stage"] = "generate_exam_questions"
+            snapshot_payload["failed_question"] = failed_payload
+            _publish_exam_event(subject, paper_id, "snapshot", snapshot_payload)
+
         _publish_exam_event(
             subject,
             paper_id,
             "done",
             done_payload,
+        )
+    except asyncio.CancelledError:
+        error_message = "Exam question generation was cancelled during the planning stage."
+        logger.exception(
+            "exam_generation_background_cancelled",
+            subject=subject,
+            user_id=user_id,
+            paper_id=paper_id,
+            exam_mode=exam_mode,
+            question_count=question_count,
+            error_message=error_message,
+        )
+        with managed_session() as session:
+            paper = exams_repo.get_exam_paper_by_id(session, paper_id)
+            if paper is not None:
+                paper = _set_exam_generation_status(session, paper, status="failed", error_message=error_message)
+                failure_payload = _paper_generation_event_payload(
+                    paper,
+                    stage="failed",
+                    error_message=error_message,
+                )
+            else:
+                failure_payload = {
+                    "exam_paper_id": paper_id,
+                    "status": "failed",
+                    "error_message": error_message,
+                }
+        _publish_exam_event(
+            subject,
+            paper_id,
+            "done",
+            failure_payload,
         )
     except Exception as exc:
         error_message = str(getattr(exc, "detail", None) or exc or "Exam question generation failed.")

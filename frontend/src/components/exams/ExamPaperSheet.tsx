@@ -30,9 +30,13 @@ interface ExamPaperSheetProps {
 }
 
 function buildGeneratingRows(paper: ExamPaperDetailResponse): PaperPreviewRow[] {
-  const previewRows = paper.paper_preview?.rows ?? [];
+  const previewRows = [
+    ...(paper.paper_preview?.rows ?? []),
+    ...buildFailedRowsFromSelectionContext(paper),
+  ];
   const previewByOrder = new Map(previewRows.map((row) => [row.order, row]));
-  const count = Math.max(Number(paper.total_items || 0), previewRows.length, 1);
+  const maxPreviewOrder = Math.max(0, ...previewRows.map((row) => Number(row.order) || 0));
+  const count = Math.max(Number(paper.total_items || 0), previewRows.length, maxPreviewOrder, 1);
   return Array.from({ length: count }, (_, index) => {
     const order = index + 1;
     return (
@@ -45,6 +49,31 @@ function buildGeneratingRows(paper: ExamPaperDetailResponse): PaperPreviewRow[] 
         result_status: "ungraded",
       }
     );
+  });
+}
+
+function buildFailedRowsFromSelectionContext(paper: ExamPaperDetailResponse): PaperPreviewRow[] {
+  const failedQuestions = paper.selection_context?.failed_questions;
+  if (!Array.isArray(failedQuestions)) return [];
+
+  return failedQuestions.flatMap((item): PaperPreviewRow[] => {
+    if (typeof item !== "object" || item === null) return [];
+    const record = item as Record<string, unknown>;
+    const order = Number(record.item_order);
+    if (!Number.isFinite(order) || order <= 0) return [];
+    return [{
+      order: Math.trunc(order),
+      type: typeof record.question_type === "string" && record.question_type.trim()
+        ? record.question_type
+        : "text",
+      shape: "text",
+      difficulty: typeof record.difficulty === "string" && record.difficulty.trim()
+        ? record.difficulty
+        : "medium",
+      density: 2,
+      result_status: "ungraded",
+      generation_status: "failed",
+    }];
   });
 }
 
@@ -64,7 +93,7 @@ function buildQuestionEntries(
 
   const previewRows = paper.paper_preview?.rows ?? [];
   const failedRowsByOrder = new Map(
-    previewRows
+    [...previewRows, ...buildFailedRowsFromSelectionContext(paper)]
       .filter((row) => row.generation_status === "failed")
       .map((row) => [row.order, row]),
   );
@@ -239,7 +268,7 @@ export function ExamPaperSheet({
                       return entry.row ? <GeneratingQuestionPlaceholder key={entry.row.order} row={entry.row} /> : null;
                     }
                     const item = entry.item;
-                    const answerValue = answers[item.id] ?? "";
+                    const answerValue = answers[item.item_order] ?? "";
                     const isSingleChoice = item.question_type === "single_choice";
                     const isMultipleChoice = item.question_type === "multiple_choice" || item.question_type === "multi_choice";
                     const isTrueFalse = item.question_type === "true_false";
@@ -251,7 +280,7 @@ export function ExamPaperSheet({
                     const correctMultiChoice = splitMultiChoiceAnswer(item.correct_answer);
                     const isGraded = paper.status === "graded";
                     const isReviewStage = isGraded && activeStage === 2;
-                    const isReadonly = isGraded || paper.status === "generating";
+                    const isReadonly = isGraded;
                     const isCorrect = item.is_correct === true;
                     const isSelectedReviewItem = isReviewStage && selectedItemId === item.id;
                     const isQuestionHighlighted = highlightedQuestionOrder === item.item_order;
@@ -355,10 +384,10 @@ export function ExamPaperSheet({
                                         if (!isMultipleChoice) {
                                           return {
                                             ...current,
-                                            [item.id]: isSelected ? "" : optionValue,
+                                            [item.item_order]: isSelected ? "" : optionValue,
                                           };
                                         }
-                                        const next = splitMultiChoiceAnswer(current[item.id]);
+                                        const next = splitMultiChoiceAnswer(current[item.item_order]);
                                         if (next.has(optionValue)) {
                                           next.delete(optionValue);
                                         } else {
@@ -366,7 +395,7 @@ export function ExamPaperSheet({
                                         }
                                         return {
                                           ...current,
-                                          [item.id]: Array.from(next).sort().join(","),
+                                          [item.item_order]: Array.from(next).sort().join(","),
                                         };
                                       });
                                     }}
@@ -464,7 +493,7 @@ export function ExamPaperSheet({
                                 placeholder={item.question_type === "fill_blank" ? "填写答案" : "输入你的作答"}
                                 value={answerValue}
                                 onChange={(event) =>
-                                  setAnswers((current) => ({ ...current, [item.id]: event.target.value }))
+                                  setAnswers((current) => ({ ...current, [item.item_order]: event.target.value }))
                                 }
                                 disabled={isReadonly}
                               />

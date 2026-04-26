@@ -46,6 +46,30 @@ def test_require_generated_questions_by_order_accepts_declared_partial_results()
     assert sorted(generated_by_order) == [2]
 
 
+def test_require_generated_questions_by_order_accepts_unrecorded_missing_results():
+    build_result = ok_result(
+        {
+            "generated_questions": [
+                {
+                    "item_order": 2,
+                    "knowledge_unit_id": 102,
+                    "question_type": "short_answer",
+                    "difficulty": "medium",
+                    "stem": "Explain why the derivative describes local change.",
+                    "correct_answer": "It measures instantaneous rate of change.",
+                    "explanation": "This is enough structure for the API helper test.",
+                }
+            ],
+            "failed_questions": [],
+            "error": "",
+        }
+    )
+
+    generated_by_order = _require_generated_questions_by_order(build_result=build_result, expected_orders=[1, 2])
+
+    assert sorted(generated_by_order) == [2]
+
+
 def test_require_generated_questions_by_order_raises_when_workflow_fails():
     build_result = err_result("workflow_execution_failed", "LLM timeout")
 

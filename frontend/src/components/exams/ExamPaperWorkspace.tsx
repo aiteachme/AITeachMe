@@ -68,6 +68,10 @@ export function ExamPaperWorkspace({ subjectId, paperId, backHref }: ExamPaperWo
   const [selectedReviewItemId, setSelectedReviewItemId] = useState<number | null>(null);
   const [highlightedQuestionOrder, setHighlightedQuestionOrder] = useState<number | null>(null);
   const handledJumpMarkerRef = useRef<number | string | null>(null);
+  const answerStorageKey = useMemo(
+    () => `aiteachme:exam-draft-answers:${subjectId}:${paperId}`,
+    [paperId, subjectId],
+  );
 
   useEffect(() => {
     if (!isSidebarOpen) {
@@ -195,12 +199,50 @@ export function ExamPaperWorkspace({ subjectId, paperId, backHref }: ExamPaperWo
 
   useEffect(() => {
     if (!paper?.items) return;
-    setAnswers(
-      Object.fromEntries(
-        (paper.items ?? []).map((item: ExamPaperItemResponse) => [item.id, item.user_answer ?? ""]),
-      ),
-    );
-  }, [paper?.id, paper?.items]);
+    setAnswers((current) => {
+      let stored: Record<number, string> = {};
+      try {
+        const parsed = JSON.parse(window.localStorage.getItem(answerStorageKey) || "{}");
+        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+          for (const [key, value] of Object.entries(parsed)) {
+            const order = Number(key);
+            if (Number.isFinite(order) && order > 0) {
+              stored[order] = typeof value === "string" ? value : String(value ?? "");
+            }
+          }
+        }
+      } catch {
+        stored = {};
+      }
+
+      const next: Record<number, string> = { ...stored };
+      for (const item of paper.items ?? []) {
+        const serverAnswer = item.user_answer ?? "";
+        if (serverAnswer.trim()) {
+          next[item.item_order] = serverAnswer;
+        }
+      }
+      for (const [rawOrder, value] of Object.entries(current)) {
+        const order = Number(rawOrder);
+        if (Number.isFinite(order) && order > 0 && value.trim()) {
+          next[order] = value;
+        }
+      }
+      return next;
+    });
+  }, [answerStorageKey, paper?.id, paper?.items]);
+
+  useEffect(() => {
+    if (!paper || paper.status === "graded") return;
+    try {
+      const nonEmptyAnswers = Object.fromEntries(
+        Object.entries(answers).filter(([, value]) => value.trim().length > 0),
+      );
+      window.localStorage.setItem(answerStorageKey, JSON.stringify(nonEmptyAnswers));
+    } catch {
+      // Best-effort local draft persistence.
+    }
+  }, [answerStorageKey, answers, paper]);
 
   const keepQuestionHighlight = useCallback((questionOrder: number) => {
     setHighlightedQuestionOrder(questionOrder);
@@ -306,6 +348,11 @@ export function ExamPaperWorkspace({ subjectId, paperId, backHref }: ExamPaperWo
           description: `本次得分 ${graded?.score ?? 0}，掌握度已同步更新。`,
           variant: "success",
         });
+        try {
+          window.localStorage.removeItem(answerStorageKey);
+        } catch {
+          // Best-effort local draft cleanup.
+        }
         setActiveStage(2);
         window.scrollTo({ top: 0, behavior: "smooth" });
       },
@@ -544,7 +591,7 @@ export function ExamPaperWorkspace({ subjectId, paperId, backHref }: ExamPaperWo
                           answers: (paper.items ?? []).map((item: ExamPaperItemResponse) => ({
                             exam_paper_item_id: item.id,
                             item_order: item.item_order,
-                            answer: answers[item.id] ?? "",
+                            answer: answers[item.item_order] ?? "",
                           })),
                         },
                       })
