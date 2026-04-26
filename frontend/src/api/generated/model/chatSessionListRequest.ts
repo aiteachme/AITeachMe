@@ -10,6 +10,8 @@
  * Pagination request for chat sessions.
  */
 export interface ChatSessionListRequest {
+  /** When true, list recent sessions across all subjects owned by the user. */
+  include_all_subjects?: boolean;
   /**
      * 页码，从 1 开始。
      * @minimum 1

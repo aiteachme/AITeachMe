@@ -26,7 +26,7 @@ export function Layout() {
     if (subjectId) {
       return { type: "subject", subjectId };
     }
-    return null;
+    return { type: "global" };
   }, [pathname, subjectId]);
 
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);

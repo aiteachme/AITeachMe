@@ -25,11 +25,16 @@ interface AiInteractionContextValue {
   sidebarRequest: AiInteractionOpenRequest | null;
   fullscreenRequest: AiInteractionOpenRequest | null;
   isSidebarOpen: boolean;
+  activeConversationSessionId: string | null;
+  sessionListVersion: number;
   openAiInteraction: (options?: OpenAiInteractionOptions) => void;
   closeAiInteraction: () => void;
+  setActiveConversationSessionId: (sessionId: string | null) => void;
+  notifyConversationSessionsChanged: () => void;
 }
 
 const AiInteractionContext = createContext<AiInteractionContextValue | null>(null);
+const AI_INTERACTION_CLOSED_EVENT = "aiteachme:ai-sidebar-closed";
 
 export function AiInteractionProvider({ activeScope, children }: AiInteractionProviderProps) {
   const navigate = useNavigate();
@@ -39,8 +44,14 @@ export function AiInteractionProvider({ activeScope, children }: AiInteractionPr
   const [fullscreenScope, setFullscreenScope] = useState<AiConversationScope | null>(null);
   const [sidebarRequest, setSidebarRequest] = useState<AiInteractionOpenRequest | null>(null);
   const [fullscreenRequest, setFullscreenRequest] = useState<AiInteractionOpenRequest | null>(null);
+  const [activeConversationSessionId, setActiveConversationSessionId] = useState<string | null>(null);
+  const [sessionListVersion, setSessionListVersion] = useState(0);
 
   const activeScopeKey = getAiConversationScopeKey(activeScope);
+
+  useEffect(() => {
+    setActiveConversationSessionId(null);
+  }, [activeScopeKey]);
 
   useEffect(() => {
     if (!activeScope) {
@@ -75,6 +86,18 @@ export function AiInteractionProvider({ activeScope, children }: AiInteractionPr
 
   const closeAiInteraction = useCallback(() => {
     setIsSidebarOpen(false);
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent(AI_INTERACTION_CLOSED_EVENT, {
+        detail: {
+          scope: sidebarScope,
+          closedAt: Date.now(),
+        },
+      }));
+    }
+  }, [sidebarScope]);
+
+  const notifyConversationSessionsChanged = useCallback(() => {
+    setSessionListVersion((value) => value + 1);
   }, []);
 
   const openAiInteraction = useCallback((options?: OpenAiInteractionOptions) => {
@@ -96,6 +119,9 @@ export function AiInteractionProvider({ activeScope, children }: AiInteractionPr
 
     setSidebarScope(nextScope);
     setSidebarRequest(request);
+    if (options?.sessionId !== undefined) {
+      setActiveConversationSessionId(options.sessionId);
+    }
     setIsSidebarOpen(true);
   }, [activeScope, makeOpenRequest, navigate]);
 
@@ -106,8 +132,12 @@ export function AiInteractionProvider({ activeScope, children }: AiInteractionPr
     sidebarRequest,
     fullscreenRequest,
     isSidebarOpen,
+    activeConversationSessionId,
+    sessionListVersion,
     openAiInteraction,
     closeAiInteraction,
+    setActiveConversationSessionId,
+    notifyConversationSessionsChanged,
   }), [
     activeScope,
     sidebarScope,
@@ -115,8 +145,11 @@ export function AiInteractionProvider({ activeScope, children }: AiInteractionPr
     sidebarRequest,
     fullscreenRequest,
     isSidebarOpen,
+    activeConversationSessionId,
+    sessionListVersion,
     openAiInteraction,
     closeAiInteraction,
+    notifyConversationSessionsChanged,
   ]);
 
   return (

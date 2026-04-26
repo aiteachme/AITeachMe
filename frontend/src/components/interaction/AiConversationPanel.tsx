@@ -1,10 +1,9 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ChevronRight,
   Loader2,
   MapPin,
   MessageSquareText,
-  PanelLeft,
   Plus,
   Trash2,
   X,
@@ -13,7 +12,6 @@ import { useLocation, useNavigate } from "react-router-dom";
 
 import { apiClient, getApiErrorMessage } from "../../api/client";
 import type {
-  ApiResponseChatSessionCreateData,
   ApiResponsePaginatedDataChatSessionItem,
   ChatSelectionContext,
   ChatSendRequest,
@@ -21,10 +19,11 @@ import type {
 } from "../../api/generated/model";
 import { type ChatSessionMessage, useChatSession } from "../../hooks/useChatSession";
 import { cn } from "../../lib/utils";
-import { publicAssetPath } from "../../lib/publicAsset";
 import { ChatCitationModal } from "../chat/ChatCitationModal";
 import { ChatComposer } from "../chat/ChatComposer";
 import { ChatTranscript } from "../chat/ChatTranscript";
+import { HeroAnimation } from "../ui/HeroAnimation";
+import { useAiInteraction } from "./AiInteractionProvider";
 import type { AiConversationScope, AiInteractionOpenRequest } from "./types";
 import { getAiConversationBackendSubjectId } from "./types";
 
@@ -59,7 +58,6 @@ interface ChatSessionSelectionTarget {
   selectedText: string;
 }
 
-const LOGO_SRC = publicAssetPath("logo.svg");
 const QUICK_CHAT_UPDATED_EVENT = "aiteachme:quick-chat-updated";
 const SELECTION_JUMP_EVENT = "aiteachme:selection-jump";
 
@@ -89,6 +87,15 @@ function getSessionSelectionTarget(session: ChatSessionItem | null): ChatSession
   };
 }
 
+function getChatSessionItemId(session: ChatSessionItem | null): string | null {
+  const sessionId = session?.id?.trim();
+  if (sessionId) {
+    return sessionId;
+  }
+  const legacySessionId = (session as { session_id?: string | null } | null)?.session_id?.trim();
+  return legacySessionId || null;
+}
+
 function getContextSelectionTarget(context: PendingSelectionContext | null): ChatSessionSelectionTarget | null {
   const anchorId = context?.anchorId?.trim() ?? "";
   const selectedText = context?.selectedText?.trim() ?? "";
@@ -102,7 +109,67 @@ function getContextSelectionTarget(context: PendingSelectionContext | null): Cha
   };
 }
 
-export function AiConversationPanel({
+function ConversationEmptyState({
+  title,
+  description,
+  animationKey,
+}: {
+  title: string;
+  description: string;
+  animationKey: number;
+}) {
+  return (
+    <div className="flex h-full items-center justify-center px-6">
+      <div className="max-w-md text-center">
+        <div className="flex justify-center">
+          <HeroAnimation key={animationKey} width={84} height={78} />
+        </div>
+        <h3 className="mt-4 text-[17px] font-semibold tracking-tight text-zinc-900 dark:text-slate-100">
+          {title}
+        </h3>
+        <p className="mt-2 text-[13px] leading-relaxed text-zinc-500 dark:text-slate-400">
+          {description}
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function SelectionTextPreview({
+  prefix,
+  text,
+  className,
+  placement = "below",
+}: {
+  prefix: string;
+  text: string;
+  className?: string;
+  placement?: "above" | "below";
+}) {
+  const normalizedText = text.replace(/\s+/g, " ").trim();
+  if (!normalizedText) {
+    return null;
+  }
+
+  return (
+    <div className={cn("group relative min-w-0 max-w-full", className)} aria-label={`${prefix}${normalizedText}`}>
+      <p className="block min-w-0 max-w-full truncate whitespace-nowrap">
+        {prefix}{normalizedText}
+      </p>
+      <div
+        className={cn(
+          "absolute left-0 z-[70] hidden max-h-44 w-max max-w-[min(34rem,calc(100vw-2rem))] overflow-y-auto whitespace-normal break-words rounded-lg border border-slate-200 bg-white px-3 py-2 text-[12px] leading-5 text-slate-700 shadow-xl shadow-slate-900/10 [overflow-wrap:anywhere] group-hover:block dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100",
+          placement === "above" ? "bottom-full mb-2" : "top-full mt-2",
+        )}
+      >
+        <span className="font-semibold text-slate-500 dark:text-slate-300">{prefix}</span>
+        {normalizedText}
+      </div>
+    </div>
+  );
+}
+
+export const AiConversationPanel = memo(function AiConversationPanel({
   scope,
   request,
   active,
@@ -112,21 +179,29 @@ export function AiConversationPanel({
 }: AiConversationPanelProps) {
   const navigate = useNavigate();
   const { pathname } = useLocation();
+  const {
+    sessionListVersion,
+    setActiveConversationSessionId,
+    notifyConversationSessionsChanged,
+  } = useAiInteraction();
   const subjectId = getAiConversationBackendSubjectId(scope);
   const docsSubjectId = scope?.type === "subject" ? scope.subjectId : null;
   const isKnowledgeDocsPage = Boolean(docsSubjectId && /^\/subject\/[^/]+\/knowledge-docs$/.test(pathname));
 
   const [draft, setDraft] = useState("");
   const [sessions, setSessions] = useState<ChatSessionItem[]>([]);
-  const [sessionsLoaded, setSessionsLoaded] = useState(false);
   const [sessionsError, setSessionsError] = useState<string | null>(null);
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
-  const [isSessionDrawerOpen, setIsSessionDrawerOpen] = useState(false);
   const [selectedChunkId, setSelectedChunkId] = useState<number | null>(null);
   const [pendingSelectionContext, setPendingSelectionContext] = useState<PendingSelectionContext | null>(null);
   const [activeQuickChatContext, setActiveQuickChatContext] = useState<PendingSelectionContext | null>(null);
   const [composerFocusKey, setComposerFocusKey] = useState(0);
+  const [emptyAnimationKey, setEmptyAnimationKey] = useState(0);
   const preferEmptySessionRef = useRef(false);
+  const wasActiveRef = useRef(false);
+  const pendingSelectionContextRef = useRef<PendingSelectionContext | null>(null);
+  const pendingSelectionSubmittedRef = useRef(false);
+  const requestedSessionIdRef = useRef<string | null>(null);
   const quickChatMessagesRef = useRef<Record<string, ChatSessionMessage[]>>({});
   const messagesRef = useRef<ChatSessionMessage[]>([]);
   const activeQuickChatThreadIdRef = useRef("");
@@ -179,12 +254,13 @@ export function AiConversationPanel({
       return;
     }
     setSessions((current) =>
-      current.map((item) => (item.id === sessionId ? { ...item, title: nextTitle } : item)),
+      current.map((item) => (getChatSessionItemId(item) === sessionId ? { ...item, title: nextTitle } : item)),
     );
   }, []);
 
   const {
     messages,
+    messagesSessionId,
     historyLoaded,
     historyError,
     isStreaming,
@@ -207,22 +283,37 @@ export function AiConversationPanel({
     onMessageDone: (payload) => {
       applyResolvedSessionTitle(payload.sessionId, payload.sessionTitle);
       dispatchQuickChatSync("done", payload);
+      notifyConversationSessionsChanged();
     },
     onMessageError: (payload) => dispatchQuickChatSync("error", payload),
     onMessageSettled: (payload) => dispatchQuickChatSync("settled", payload),
   });
 
   const selectedSession = useMemo(
-    () => sessions.find((item) => item.id === selectedSessionId) ?? null,
+    () => sessions.find((item) => getChatSessionItemId(item) === selectedSessionId) ?? null,
     [selectedSessionId, sessions],
   );
   const isPlannerConversation = selectedSession?.source === "build_planner";
   const isFullscreen = presentation === "fullscreen";
+  const currentMessagesSessionId = selectedSessionId ?? null;
+  const messagesBelongToCurrentSession = messagesSessionId === currentMessagesSessionId;
+  const visibleMessages = messagesBelongToCurrentSession ? messages : [];
+  const currentHistoryLoaded = historyLoaded && messagesBelongToCurrentSession;
+  const panelTitle = selectedSession?.title ?? (
+    selectedSessionId
+      ? "加载会话..."
+      : pendingSelectionContext || activeQuickChatContext
+        ? "划词提问"
+        : "新会话"
+  );
   const activeQuickChatThreadId = activeQuickChatContext?.clientThreadId?.trim() ?? "";
   const currentSelectionTarget = useMemo(
     () => getSessionSelectionTarget(selectedSession) ?? getContextSelectionTarget(activeQuickChatContext),
     [activeQuickChatContext, selectedSession],
   );
+  const handleOpenCitation = useCallback((chunkId: number) => {
+    setSelectedChunkId(chunkId);
+  }, []);
 
   const jumpToSelectionTarget = useCallback((target: ChatSessionSelectionTarget | null) => {
     if (!docsSubjectId || !target) {
@@ -250,11 +341,9 @@ export function AiConversationPanel({
     if (!subjectId) {
       setSessions([]);
       setSelectedSessionId(null);
-      setSessionsLoaded(true);
       return;
     }
 
-    setSessionsLoaded(false);
     setSessionsError(null);
     try {
       const res = await apiClient<ApiResponsePaginatedDataChatSessionItem>({
@@ -266,25 +355,29 @@ export function AiConversationPanel({
         },
       });
       const items = res.data?.items ?? [];
+      const requestedSessionId =
+        preferredSessionId !== undefined
+          ? preferredSessionId
+          : request?.sessionId !== undefined
+            ? request.sessionId
+            : requestedSessionIdRef.current;
       setSessions(items);
       setSelectedSessionId((current) => {
-        if (preferredSessionId && items.some((item) => item.id === preferredSessionId)) {
-          return preferredSessionId;
+        if (requestedSessionId && items.some((item) => getChatSessionItemId(item) === requestedSessionId)) {
+          return requestedSessionId;
         }
-        if (current && items.some((item) => item.id === current)) {
-          return current;
-        }
-        if (preferEmptySessionRef.current) {
+        if (preferEmptySessionRef.current || pendingSelectionContextRef.current) {
           return null;
         }
-        return items[0]?.id ?? null;
+        if (current && items.some((item) => getChatSessionItemId(item) === current)) {
+          return current;
+        }
+        return null;
       });
     } catch (error: unknown) {
       setSessionsError(getApiErrorMessage(error, "加载会话历史失败"));
-    } finally {
-      setSessionsLoaded(true);
     }
-  }, [subjectId]);
+  }, [request?.sessionId, subjectId]);
 
   useEffect(() => {
     messagesRef.current = messages;
@@ -293,6 +386,25 @@ export function AiConversationPanel({
   useEffect(() => {
     activeQuickChatThreadIdRef.current = activeQuickChatThreadId;
   }, [activeQuickChatThreadId]);
+
+  useEffect(() => {
+    if (active) {
+      setActiveConversationSessionId(selectedSessionId);
+    }
+  }, [active, selectedSessionId, setActiveConversationSessionId]);
+
+  useEffect(() => {
+    if (!active) {
+      abortStream();
+    }
+  }, [abortStream, active]);
+
+  useEffect(() => {
+    if (active && !wasActiveRef.current) {
+      setEmptyAnimationKey((prev) => prev + 1);
+    }
+    wasActiveRef.current = active;
+  }, [active]);
 
   useEffect(() => {
     if (!activeQuickChatThreadId || messages.length === 0) {
@@ -304,13 +416,13 @@ export function AiConversationPanel({
   useEffect(() => {
     setDraft("");
     setSessions([]);
-    setSessionsLoaded(false);
     setSessionsError(null);
     setSelectedSessionId(null);
-    setIsSessionDrawerOpen(false);
     setSelectedChunkId(null);
     setPendingSelectionContext(null);
     setActiveQuickChatContext(null);
+    pendingSelectionContextRef.current = null;
+    pendingSelectionSubmittedRef.current = false;
     preferEmptySessionRef.current = false;
   }, [subjectId]);
 
@@ -318,6 +430,7 @@ export function AiConversationPanel({
     if (!request) {
       return;
     }
+
     setComposerFocusKey((prev) => prev + 1);
     if (request.draft !== undefined) {
       setDraft(request.draft);
@@ -329,8 +442,11 @@ export function AiConversationPanel({
       Boolean(selectedText && (request.newSession ?? request.sessionId === undefined));
 
     if (shouldOpenEmptySession) {
+      requestedSessionIdRef.current = null;
       preferEmptySessionRef.current = true;
+      pendingSelectionSubmittedRef.current = false;
       setSelectedSessionId(null);
+      setActiveConversationSessionId(null);
       const clientThreadId = request.clientThreadId?.trim() ?? "";
       const cachedMessages = clientThreadId ? quickChatMessagesRef.current[clientThreadId] : null;
       const currentThreadMessages =
@@ -339,10 +455,12 @@ export function AiConversationPanel({
         messagesRef.current.length > 0
           ? messagesRef.current
           : null;
-      replaceMessages(cachedMessages ?? currentThreadMessages ?? []);
+      replaceMessages(cachedMessages ?? currentThreadMessages ?? [], null);
     } else {
       preferEmptySessionRef.current = false;
+      pendingSelectionSubmittedRef.current = false;
       if (request.sessionId !== undefined) {
+        requestedSessionIdRef.current = request.sessionId;
         setSelectedSessionId(request.sessionId);
       }
     }
@@ -355,95 +473,57 @@ export function AiConversationPanel({
         selectionContext: request.selectionContext ?? null,
         clientThreadId: request.clientThreadId?.trim() || null,
       };
+      const shouldShowSelectionContext = request.showSelectionContext ?? shouldOpenEmptySession;
+      pendingSelectionContextRef.current = shouldShowSelectionContext ? nextContext : null;
       setActiveQuickChatContext(nextContext);
-      if (request.showSelectionContext ?? shouldOpenEmptySession) {
+      if (shouldShowSelectionContext) {
         setPendingSelectionContext(nextContext);
       } else {
         setPendingSelectionContext(null);
       }
     } else {
+      pendingSelectionContextRef.current = null;
+      pendingSelectionSubmittedRef.current = false;
       setPendingSelectionContext(null);
       setActiveQuickChatContext(null);
     }
-  }, [request, replaceMessages]);
+    // Apply once per open request key. React StrictMode replays effects in dev, so this
+    // effect must be safe to run twice for the same request after scope reset runs.
+  }, [request?.key]);
+
+  useEffect(() => {
+    pendingSelectionContextRef.current = pendingSelectionContext;
+  }, [pendingSelectionContext]);
+
+  useEffect(() => {
+    if (!pendingSelectionContext || pendingSelectionSubmittedRef.current || !selectedSessionId) {
+      return;
+    }
+    preferEmptySessionRef.current = true;
+    setSelectedSessionId(null);
+    setActiveConversationSessionId(null);
+    replaceMessages([], null);
+  }, [pendingSelectionContext, replaceMessages, selectedSessionId, setActiveConversationSessionId]);
 
   useEffect(() => {
     if (!active || !subjectId) {
       return;
     }
     void reloadSessions();
-  }, [active, reloadSessions, subjectId]);
+  }, [active, reloadSessions, sessionListVersion, subjectId]);
 
-  async function handleCreateSession() {
-    if (!subjectId) {
-      return;
-    }
-    try {
-      const res = await apiClient<ApiResponseChatSessionCreateData>({
-        method: "POST",
-        url: `/api/v1/subjects/${subjectId}/chats/sessions/create`,
-        data: {},
-      });
-      const created = res.data?.session;
-      if (!created) {
-        throw new Error("创建会话成功，但响应缺少 session 数据。");
-      }
-      preferEmptySessionRef.current = false;
-      setSessions((prev) => [created, ...prev.filter((item) => item.id !== created.id)]);
-      setSelectedSessionId(created.id);
-      setPendingSelectionContext(null);
-      setActiveQuickChatContext(null);
-      setSessionsError(null);
-      setIsSessionDrawerOpen(false);
-    } catch (error: unknown) {
-      setSessionsError(getApiErrorMessage(error, "创建会话失败"));
-    }
-  }
-
-  async function handleDeleteSession(sessionId: string) {
-    if (!subjectId) {
-      return;
-    }
-    try {
-      await apiClient({
-        method: "POST",
-        url: `/api/v1/subjects/${subjectId}/chats/sessions/delete`,
-        data: {
-          session_id: sessionId,
-        },
-      });
-      const nextSessions = sessions.filter((item) => item.id !== sessionId);
-      setSessions(nextSessions);
-      if (selectedSessionId === sessionId) {
-        setSelectedSessionId(nextSessions[0]?.id ?? null);
-      }
-      setSessionsError(null);
-    } catch (error: unknown) {
-      setSessionsError(getApiErrorMessage(error, "删除会话失败"));
-    }
-  }
-
-  const selectHistorySession = useCallback((item: ChatSessionItem) => {
-    preferEmptySessionRef.current = false;
-    setSelectedSessionId(item.id);
+  const handleStartNewSession = useCallback(() => {
+    preferEmptySessionRef.current = true;
+    setDraft("");
+    setSelectedSessionId(null);
     setPendingSelectionContext(null);
-    const selectionTarget = getSessionSelectionTarget(item);
-    setActiveQuickChatContext(selectionTarget
-      ? {
-        source: "quick_chat",
-        anchorId: selectionTarget.anchorId,
-        selectedText: selectionTarget.selectedText,
-        selectionContext: null,
-        clientThreadId: null,
-      }
-      : null);
-  }, []);
-
-  const locateHistorySession = useCallback((item: ChatSessionItem, target: ChatSessionSelectionTarget) => {
-    selectHistorySession(item);
-    setIsSessionDrawerOpen(false);
-    jumpToSelectionTarget(target);
-  }, [jumpToSelectionTarget, selectHistorySession]);
+    setActiveQuickChatContext(null);
+    pendingSelectionContextRef.current = null;
+    pendingSelectionSubmittedRef.current = false;
+    requestedSessionIdRef.current = null;
+    replaceMessages([], null);
+    setActiveConversationSessionId(null);
+  }, [replaceMessages, setActiveConversationSessionId]);
 
   async function handleSend() {
     const question = draft.trim();
@@ -452,6 +532,9 @@ export function AiConversationPanel({
     }
 
     const selectionContext = pendingSelectionContext ?? activeQuickChatContext;
+    if (pendingSelectionContext) {
+      pendingSelectionSubmittedRef.current = true;
+    }
     setDraft("");
     const result = await sendMessage(
       {
@@ -468,22 +551,28 @@ export function AiConversationPanel({
       },
     );
     if (!result.accepted) {
+      pendingSelectionSubmittedRef.current = false;
       setDraft(question);
       return;
     }
     if (pendingSelectionContext) {
+      pendingSelectionContextRef.current = null;
+      pendingSelectionSubmittedRef.current = false;
       setPendingSelectionContext(null);
     }
     const nextSessionId = result.sessionId ?? selectedSessionId;
     if (nextSessionId) {
       preferEmptySessionRef.current = false;
+      requestedSessionIdRef.current = nextSessionId;
       setSelectedSessionId(nextSessionId);
     }
+    notifyConversationSessionsChanged();
     void reloadSessions(nextSessionId);
   }
 
   async function handleClearCurrentSession() {
     await clearHistory();
+    notifyConversationSessionsChanged();
     void reloadSessions(selectedSessionId);
   }
 
@@ -496,34 +585,26 @@ export function AiConversationPanel({
       )}
     >
       <div className="flex shrink-0 items-center justify-between border-b border-zinc-200/60 bg-white px-4 py-2.5 dark:border-slate-800 dark:bg-slate-950">
-        <div className="flex min-w-0 items-center gap-2">
+        <div className="flex min-w-0 flex-1 items-center gap-2">
           {onClose ? (
             <>
               <button
                 type="button"
                 onClick={onClose}
-                className="inline-flex h-8 items-center justify-center gap-1.5 rounded-md px-2 text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100"
+                className="inline-flex h-8 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-md px-2 text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100"
                 aria-label="收起"
               >
-                <ChevronRight className="h-4 w-4" />
-                <span className="hidden text-[13px] font-medium lg:inline">收起</span>
+                <ChevronRight className="h-4 w-4 shrink-0" />
+                <span className="hidden whitespace-nowrap text-[13px] font-medium lg:inline">收起</span>
               </button>
-              <div className="mx-1 h-4 w-px bg-slate-200 dark:bg-slate-800" />
+              <div className="mx-1 h-4 w-px shrink-0 bg-slate-200 dark:bg-slate-800" />
             </>
           ) : null}
 
-          <button
-            type="button"
-            onClick={() => setIsSessionDrawerOpen(!isSessionDrawerOpen)}
-            className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-zinc-200/60 bg-white text-zinc-600 shadow-[0_1px_2px_rgba(0,0,0,0.02)] transition hover:bg-zinc-50 hover:text-zinc-900 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-slate-100"
-            aria-label="打开会话列表"
-          >
-            <PanelLeft className="h-4 w-4" />
-          </button>
-          <div className="min-w-0 pr-2">
+          <div className="min-w-0 flex-1 pr-2">
             <div className="flex min-w-0 items-center gap-2">
               <h2 className="truncate text-[14px] font-semibold tracking-tight text-zinc-900 dark:text-slate-100">
-                {selectedSession?.title ?? "新会话"}
+                {panelTitle}
               </h2>
               {currentSelectionTarget ? (
                 <button
@@ -539,14 +620,26 @@ export function AiConversationPanel({
               ) : null}
             </div>
             {currentSelectionTarget ? (
-              <p className="mt-0.5 hidden max-w-[32rem] truncate text-[11px] text-zinc-400 dark:text-slate-500 md:block">
-                划词：{currentSelectionTarget.selectedText}
-              </p>
+              <SelectionTextPreview
+                prefix="划词："
+                text={currentSelectionTarget.selectedText}
+                className="mt-0.5 hidden max-w-[32rem] text-[11px] text-zinc-400 dark:text-slate-500 md:block"
+              />
             ) : null}
           </div>
         </div>
 
         <div className="flex shrink-0 items-center gap-1">
+          <button
+            type="button"
+            onClick={handleStartNewSession}
+            disabled={isStreaming}
+            className="inline-flex h-8 w-8 items-center justify-center rounded-md text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-900 disabled:opacity-50 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100"
+            aria-label="新建会话"
+            title="新建会话"
+          >
+            <Plus className="h-4 w-4" />
+          </button>
           <button
             type="button"
             onClick={() => void handleClearCurrentSession()}
@@ -559,46 +652,35 @@ export function AiConversationPanel({
         </div>
       </div>
 
-      {historyError ? (
+      {historyError || sessionsError ? (
         <div className="shrink-0 border-b border-red-100 bg-red-50/80 px-4 py-2 text-[13px] text-red-600 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-300">
-          {historyError}
+          {historyError ?? sessionsError}
         </div>
       ) : null}
 
       <div className="min-h-0 flex-1 overflow-y-auto pt-2">
-        {messages.length > 0 && (!selectedSessionId || historyLoaded || isStreaming) ? (
+        {visibleMessages.length > 0 && (!selectedSessionId || currentHistoryLoaded || isStreaming) ? (
           <ChatTranscript
-            messages={messages}
-            onOpenCitation={(chunkId) => setSelectedChunkId(chunkId)}
+            messages={visibleMessages}
+            onOpenCitation={handleOpenCitation}
           />
         ) : !selectedSessionId ? (
-          <div className="flex h-full items-center justify-center px-6">
-            <div className="max-w-md text-center">
-              <div className="mx-auto inline-flex h-14 w-14 items-center justify-center rounded-xl border border-zinc-200/60 bg-white p-2 text-zinc-600 shadow-sm dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300">
-                <img src={LOGO_SRC} alt="AI" className="h-full w-full object-contain" />
-              </div>
-              <h3 className="mt-5 text-[17px] font-semibold tracking-tight text-zinc-900 dark:text-slate-100">
-                开始对话
-              </h3>
-              <p className="mt-2 text-[13px] leading-relaxed text-zinc-500 dark:text-slate-400">
-                直接从下方输入问题发送即可开始。系统会自动创建全新会话。
-              </p>
-            </div>
-          </div>
-        ) : !historyLoaded ? (
+          <ConversationEmptyState
+            animationKey={emptyAnimationKey}
+            title="开始对话"
+            description="直接从下方输入问题发送即可开始。系统会自动创建全新会话。"
+          />
+        ) : !currentHistoryLoaded ? (
           <div className="flex h-full items-center justify-center text-[13px] text-zinc-500 dark:text-slate-400">
             <Loader2 className="mr-2 h-4 w-4 animate-spin" />
             加载会话中...
           </div>
         ) : (
-          <div className="flex h-full flex-col items-center justify-center px-6 text-center">
-            <MessageSquareText className="mb-3 h-8 w-8 text-zinc-300 dark:text-slate-600" />
-            <p className="text-[13px] text-zinc-500 dark:text-slate-400">
-              这个会话还没有消息
-              <br />
-              开始提问吧
-            </p>
-          </div>
+          <ConversationEmptyState
+            animationKey={emptyAnimationKey}
+            title="这个会话还没有消息"
+            description="开始提问后，这里会展示你和 AITeachMe 的对话记录。"
+          />
         )}
       </div>
 
@@ -610,20 +692,26 @@ export function AiConversationPanel({
         ) : null}
         {pendingSelectionContext ? (
           <div className="mx-auto max-w-3xl px-4 pt-3 md:px-8 xl:max-w-4xl 2xl:max-w-5xl">
-            <div className="flex items-start gap-2 rounded-2xl border border-sky-100 bg-sky-50/80 px-3 py-2.5 text-sky-900 shadow-sm">
+            <div className="flex items-start gap-2 rounded-2xl border border-sky-100 bg-sky-50/80 px-3 py-2.5 text-sky-900 shadow-sm dark:border-sky-500/20 dark:bg-sky-500/10 dark:text-sky-100">
               <MessageSquareText className="mt-0.5 h-4 w-4 shrink-0 text-sky-600" />
               <div className="min-w-0 flex-1">
-                <p className="text-[12px] font-semibold">已带入划词上下文</p>
-                <p className="mt-1 line-clamp-2 text-[12px] leading-5 text-sky-700">
-                  {pendingSelectionContext.selectedText}
+                <p className="text-[12px] font-semibold">已附加原文与相关上下文</p>
+                <p className="mt-0.5 text-[11px] leading-4 text-sky-600 dark:text-sky-200/80">
+                  将结合选中片段、所在段落和相关资料回答。
                 </p>
+                <SelectionTextPreview
+                  prefix="选中："
+                  text={pendingSelectionContext.selectedText}
+                  placement="above"
+                  className="mt-1 text-[12px] leading-5 text-sky-700 dark:text-sky-100/90"
+                />
               </div>
               <button
                 type="button"
                 onClick={() => setPendingSelectionContext(null)}
                 className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-sky-500 transition hover:bg-sky-100 hover:text-sky-800"
-                aria-label="移除划词上下文"
-                title="移除划词上下文"
+                aria-label="移除参考上下文"
+                title="移除参考上下文"
               >
                 <X className="h-3.5 w-3.5" />
               </button>
@@ -638,154 +726,9 @@ export function AiConversationPanel({
           isStreaming={isStreaming}
           disabled={!subjectId || isPlannerConversation}
           autoFocusKey={composerFocusKey}
-          placeholder={pendingSelectionContext ? "围绕选中的这段内容提问..." : undefined}
+          placeholder={pendingSelectionContext ? "结合原文上下文提问..." : undefined}
         />
       </div>
-
-      <div
-        className={cn(
-          "absolute inset-0 z-20 bg-slate-900/14 transition-opacity duration-300 dark:bg-black/45",
-          isSessionDrawerOpen ? "pointer-events-auto opacity-100" : "pointer-events-none opacity-0",
-        )}
-        onClick={() => setIsSessionDrawerOpen(false)}
-      />
-      <aside
-        className={cn(
-          "absolute bottom-0 left-0 top-0 z-30 flex w-[304px] flex-col border-r border-zinc-200/80 bg-white/96 shadow-[8px_0_32px_rgba(15,23,42,0.08)] backdrop-blur-xl transition-transform duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] dark:border-slate-800 dark:bg-slate-950/96 dark:shadow-[8px_0_32px_rgba(0,0,0,0.45)]",
-          isSessionDrawerOpen ? "translate-x-0" : "-translate-x-full",
-        )}
-      >
-        <div className="flex shrink-0 items-center justify-between border-b border-zinc-200/70 bg-white/90 px-4 py-3 dark:border-slate-800 dark:bg-slate-950/90">
-          <div className="min-w-0">
-            <span className="text-[13px] font-semibold tracking-tight text-zinc-900 dark:text-slate-100">会话历史</span>
-            <p className="mt-0.5 text-[11px] text-zinc-400 dark:text-slate-500">
-              {sessions.length > 0 ? `${sessions.length} 个会话` : "暂无会话"}
-            </p>
-          </div>
-          <div className="flex items-center gap-1">
-            <button
-              type="button"
-              onClick={handleCreateSession}
-              className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-transparent text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100"
-              aria-label="新建会话"
-            >
-              <Plus className="h-4 w-4" />
-            </button>
-            <button
-              type="button"
-              onClick={() => setIsSessionDrawerOpen(false)}
-              className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-zinc-500 transition hover:bg-zinc-100 dark:text-slate-400 dark:hover:bg-slate-800"
-              aria-label="关闭"
-            >
-              <X className="h-4 w-4" />
-            </button>
-          </div>
-        </div>
-
-        {sessionsError ? (
-          <div className="mx-3 mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-600 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300">
-            {sessionsError}
-          </div>
-        ) : null}
-
-        <div className="min-h-0 flex-1 overflow-y-auto px-2 py-2">
-          {sessionsLoaded ? (
-            sessions.length > 0 ? (
-              sessions.map((item) => {
-                const selectionTarget = getSessionSelectionTarget(item);
-                const isSelected = selectedSessionId === item.id;
-                const sourceLabel = item.source === "build_planner" ? "规划" : selectionTarget ? "划词" : "普通";
-                return (
-                  <div
-                    key={item.id}
-                    className={cn(
-                      "group relative mb-1.5 overflow-hidden rounded-xl border transition-colors",
-                      isSelected
-                        ? "border-zinc-200 bg-zinc-50/95 shadow-sm ring-1 ring-zinc-100 dark:border-slate-700 dark:bg-slate-900/80 dark:ring-slate-800"
-                        : "border-transparent hover:border-zinc-200/80 hover:bg-zinc-50/90 dark:hover:border-slate-800 dark:hover:bg-slate-900/70",
-                    )}
-                  >
-                    {isSelected ? (
-                      <span className="absolute bottom-3 left-0 top-3 w-0.5 rounded-r-full bg-zinc-900 dark:bg-slate-100" />
-                    ) : null}
-                    <button
-                      type="button"
-                      onClick={() => {
-                        selectHistorySession(item);
-                        setIsSessionDrawerOpen(false);
-                      }}
-                      className="block w-full px-3 py-2.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/30"
-                    >
-                      <p className="line-clamp-2 pr-7 text-[13px] font-medium leading-relaxed text-zinc-800 dark:text-slate-200">
-                        {item.title || "未命名会话"}
-                      </p>
-                      <div className="mt-1.5 flex min-w-0 items-center gap-1.5 text-[11px] text-zinc-400 dark:text-slate-500">
-                        <span
-                          className={cn(
-                            "inline-flex h-5 shrink-0 items-center rounded-full px-1.5 text-[10px] font-medium",
-                            selectionTarget
-                              ? "bg-sky-50 text-sky-600 dark:bg-sky-500/10 dark:text-sky-300"
-                              : item.source === "build_planner"
-                                ? "bg-violet-50 text-violet-600 dark:bg-violet-500/10 dark:text-violet-300"
-                                : "bg-zinc-100 text-zinc-500 dark:bg-slate-800 dark:text-slate-400",
-                          )}
-                        >
-                          {sourceLabel}
-                        </span>
-                        <span className="truncate">{formatSessionTime(item.last_message_at)}</span>
-                        <span>·</span>
-                        <span className="shrink-0">{item.message_count} 条</span>
-                      </div>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={(event) => {
-                        event.preventDefault();
-                        event.stopPropagation();
-                        void handleDeleteSession(item.id);
-                      }}
-                      className="absolute right-2.5 top-2.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-zinc-400 opacity-0 transition-all hover:bg-red-50 hover:text-red-500 group-hover:opacity-100 dark:text-slate-500 dark:hover:bg-red-500/10 dark:hover:text-red-300"
-                      aria-label="删除会话"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </button>
-                    {selectionTarget ? (
-                      <div className="mx-3 mb-2.5 flex items-start gap-2 rounded-lg border border-zinc-200/70 bg-white px-2.5 py-2 shadow-[0_1px_2px_rgba(15,23,42,0.03)] dark:border-slate-800 dark:bg-slate-950/55">
-                        <MessageSquareText className="mt-0.5 h-3.5 w-3.5 shrink-0 text-sky-500 dark:text-sky-300" />
-                        <p className="min-w-0 flex-1 line-clamp-2 text-[11px] leading-4 text-zinc-500 dark:text-slate-400">
-                          {selectionTarget.selectedText}
-                        </p>
-                        <button
-                          type="button"
-                          onClick={(event) => {
-                            event.preventDefault();
-                            event.stopPropagation();
-                            locateHistorySession(item, selectionTarget);
-                          }}
-                          className="inline-flex h-6 shrink-0 items-center gap-1 rounded-md border border-zinc-200 bg-white px-1.5 text-[11px] font-medium text-zinc-600 transition hover:border-sky-200 hover:bg-sky-50 hover:text-sky-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-sky-500/40 dark:hover:bg-sky-500/10 dark:hover:text-sky-200"
-                          title={`定位原文：${selectionTarget.selectedText}`}
-                          aria-label="定位原文"
-                        >
-                          <MapPin className="h-3.5 w-3.5" />
-                          定位
-                        </button>
-                      </div>
-                    ) : null}
-                  </div>
-                );
-              })
-            ) : (
-              <div className="flex h-full items-center justify-center px-4 text-center text-[12px] text-zinc-400 dark:text-slate-500">
-                还没有会话，点击右上角创建一个。
-              </div>
-            )
-          ) : (
-            <div className="flex h-full items-center justify-center text-zinc-400 dark:text-slate-500">
-              <Loader2 className="h-4 w-4 animate-spin" />
-            </div>
-          )}
-        </div>
-      </aside>
 
       <ChatCitationModal
         open={selectedChunkId !== null}
@@ -795,17 +738,4 @@ export function AiConversationPanel({
       />
     </div>
   );
-}
-
-function formatSessionTime(value: string): string {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return "刚刚";
-  }
-  return date.toLocaleString("zh-CN", {
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
+});

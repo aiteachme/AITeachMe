@@ -15,6 +15,7 @@ from app.workflows.interact.chat.use_cases import (
     create_session,
     delete_session,
     list_chat_history,
+    list_recent_chat_sessions,
     list_chat_sessions,
     list_chat_threads,
 )
@@ -30,6 +31,7 @@ __all__ = [
     "create_interact_initial_state",
     "get_langgraph_dev_interact_graph",
     "list_chat_history",
+    "list_recent_chat_sessions",
     "list_chat_sessions",
     "list_chat_threads",
     "run_interact_workflow",
