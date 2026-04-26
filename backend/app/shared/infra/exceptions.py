@@ -127,6 +127,38 @@ class RawFileNotFoundError(AITeachMeError):
         super().__init__(detail=f"文件 `{file_id}` 不存在。")
 
 
+class DemoCourseCatalogNotConfiguredError(AITeachMeError):
+    error_code = "DEMO_COURSE_CATALOG_NOT_CONFIGURED"
+    status_code = HTTPStatus.SERVICE_UNAVAILABLE
+
+    def __init__(self) -> None:
+        super().__init__(
+            detail=(
+                "当前发行版未配置演示课程目录。"
+                "演示课程由部署侧统一发布到公共对象存储后提供。"
+            )
+        )
+
+
+class DemoCourseCatalogUnavailableError(AITeachMeError):
+    error_code = "DEMO_COURSE_CATALOG_UNAVAILABLE"
+    status_code = HTTPStatus.BAD_GATEWAY
+
+    def __init__(self, reason: str = "") -> None:
+        detail = "演示课程目录当前不可用。"
+        if reason:
+            detail = f"{detail}{reason}"
+        super().__init__(detail=detail)
+
+
+class DemoCoursePackageNotFoundError(AITeachMeError):
+    error_code = "DEMO_COURSE_PACKAGE_NOT_FOUND"
+    status_code = HTTPStatus.NOT_FOUND
+
+    def __init__(self, course_id: str) -> None:
+        super().__init__(detail=f"演示课程 `{course_id}` 不存在。")
+
+
 class InvalidRawFileStateError(AITeachMeError):
     error_code = "INVALID_RAW_FILE_STATE"
     status_code = HTTPStatus.UNPROCESSABLE_ENTITY
@@ -149,8 +181,16 @@ class MissingLLMApiKeyError(AITeachMeError):
     error_code = "LLM_API_KEY_MISSING"
     status_code = HTTPStatus.SERVICE_UNAVAILABLE
 
-    def __init__(self) -> None:
-        super().__init__(detail="未配置 LLM_API_KEY。")
+    def __init__(self, *, provider: str | None = None, base_url_configured: bool | None = None) -> None:
+        hints: list[str] = []
+        if provider:
+            hints.append(f"当前推断模型供应商为 {provider}")
+        if base_url_configured is False:
+            hints.append("LLM_BASE_URL 未配置")
+        if hints:
+            super().__init__(detail=f"未配置 LLM_API_KEY（{'，'.join(hints)}）。")
+        else:
+            super().__init__(detail="未配置 LLM_API_KEY。")
 
 
 class LLMCallError(AITeachMeError):

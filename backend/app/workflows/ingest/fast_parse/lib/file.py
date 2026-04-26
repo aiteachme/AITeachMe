@@ -9,14 +9,16 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import posixpath
+import secrets
 import tempfile
 from pathlib import Path
 
 from app.shared.infra.database import managed_session
-from app.shared.infra.env_support import get_env
+from app.shared.infra.env_support import get_env, get_env_list
 from app.shared.infra.settings import get_settings
 from app.shared.infra.settings.support import llm_provider_requires_api_key
-from app.shared.infra.storage import get_content_store, resolve_subject_storage_scope
+from app.shared.infra.storage import get_content_store
 from app.models import IngestStatus
 from app.repositories.files_repo import get_raw_file_by_id, update_raw_file
 from app.shared.infra.workflow.context import WorkflowContext
@@ -52,6 +54,12 @@ def _decode_json_object(raw: str | None) -> dict[str, object]:
     except Exception:
         return {}
     return decoded if isinstance(decoded, dict) else {}
+
+
+def _relative_asset_link_prefix(*, markdown_key: str, asset_dir: str) -> str:
+    markdown_parent = posixpath.dirname(markdown_key.rstrip("/")) or "."
+    relative = posixpath.relpath(asset_dir.rstrip("/"), markdown_parent)
+    return "." if relative == "." else relative
 
 
 def _coerce_optional_bool(value: object, *, default: bool) -> bool:
@@ -164,16 +172,16 @@ def _resolve_parse_request(
 
 async def _load_raw_file_state(state: IngestParseState) -> IngestParseState:
     cs = get_content_store()
-    subject_scope = resolve_subject_storage_scope(state["subject"])
     with managed_session() as session:
         raw_file = get_raw_file_by_id(session, state["file_id"])
-        if raw_file is None or raw_file.subject != state["subject"]:
+        if raw_file is None or raw_file.user_id != state["user_id"]:
             return {
                 **state,
                 "error": f"raw_file_not_found:{state['file_id']}",
             }
 
         file_id = state["file_id"]
+        file_scope = cs.user_file_scope(user_id=raw_file.user_id)
         temp_dir = Path(tempfile.mkdtemp(prefix="atm_ingest_"))
         storage_key = raw_file.file_path or raw_file.storage_key
         local_path = await cs.materialize(storage_key, temp_dir)
@@ -221,10 +229,10 @@ async def _load_raw_file_state(state: IngestParseState) -> IngestParseState:
             if mineru_token:
                 mineru_token_source = "request"
             else:
-                env_token = (get_env("MINERU_API_TOKEN") or "").strip()
-                if env_token:
-                    mineru_token = env_token
-                    mineru_token_source = "server_env"
+                env_tokens = get_env_list("MINERU_API_TOKENS") or get_env_list("MINERU_API_TOKEN")
+                if env_tokens:
+                    mineru_token = secrets.choice(env_tokens)
+                    mineru_token_source = "server_env_pool" if len(env_tokens) > 1 else "server_env"
                 else:
                     mineru_token_source = "missing"
         if requested_parser_provider == "paddle_ocr":
@@ -248,10 +256,20 @@ async def _load_raw_file_state(state: IngestParseState) -> IngestParseState:
             markitdown_available=is_markitdown_available_for_extension(extension),
         )
 
-        record_markdown_path = raw_file.markdown_path or subject_scope.raw_markdown_key(file_id)
-        record_asset_dir = raw_file.asset_dir or subject_scope.asset_prefix(file_id).rstrip("/")
-        asset_upload_prefix = subject_scope.asset_prefix(file_id)
-        asset_storage_dir = asset_upload_prefix.rstrip("/")
+        record_markdown_path = raw_file.markdown_path or file_scope.raw_markdown_key(
+            file_uid=raw_file.uid,
+            filename=raw_file.original_filename,
+        )
+        record_asset_dir = raw_file.asset_dir or file_scope.asset_prefix(
+            file_uid=raw_file.uid,
+            filename=raw_file.original_filename,
+        ).rstrip("/")
+        asset_upload_prefix = record_asset_dir.rstrip("/") + "/"
+        asset_storage_dir = record_asset_dir
+        asset_link_prefix = _relative_asset_link_prefix(
+            markdown_key=record_markdown_path,
+            asset_dir=record_asset_dir,
+        )
 
         return {
             **state,
@@ -265,6 +283,7 @@ async def _load_raw_file_state(state: IngestParseState) -> IngestParseState:
             "record_asset_dir": record_asset_dir,
             "asset_upload_prefix": asset_upload_prefix,
             "asset_storage_dir": asset_storage_dir,
+            "asset_link_prefix": asset_link_prefix,
             "asset_name_prefix": build_asset_name_prefix(
                 filename=raw_file.original_filename,
                 file_uid=raw_file.uid,
@@ -349,7 +368,7 @@ def build_classify_file_node(*, context: WorkflowContext):
             classification_payload = json.dumps(classification.to_dict(), ensure_ascii=False)
             with managed_session() as session:
                 raw_file = get_raw_file_by_id(session, state["file_id"])
-                if raw_file is None or raw_file.subject != state["subject"]:
+                if raw_file is None or raw_file.user_id != state["user_id"]:
                     return {
                         **state,
                         "error": f"raw_file_not_found:{state['file_id']}",

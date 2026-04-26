@@ -22,6 +22,7 @@ SYSTEMATIC_MODE_DEFAULTS: dict[str, Any] = {
 
 DEFAULT_SETTINGS_VALUES: dict[str, Any] = {
     "models": {
+        "vision": None,
         "embedding_dim": None,
         "rerank": None,
         "ocr": None,
@@ -41,6 +42,7 @@ DEFAULT_SETTINGS_VALUES: dict[str, Any] = {
     "docgen": {
         "allow_external_search": True,
         "generate_cover_image": False,
+        "generate_interactive_html": False,
     },
     "ingest": {
         "max_upload_size_mb": 10,
@@ -57,7 +59,7 @@ DEFAULT_SETTINGS_VALUES: dict[str, Any] = {
         "min_results": 2,
     },
     "knowledge_graph": {
-        "sync_after_docgen": False,
+        "sync_after_docgen": True,
     },
     "observability": {
         "llm_observability_enabled": True,

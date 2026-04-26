@@ -118,7 +118,7 @@ from app.workflows.ingest import run_parse_file_workflow
 如果 `parse_metadata_json` 里包含前端传来的 MinerU 参数：
 
 1. 读取本次请求 token。
-2. 如果请求里没有 token，则尝试从 `MINERU_API_TOKEN` 读取。
+2. 如果请求里没有 token，则尝试从 `MINERU_API_TOKENS` 或 `MINERU_API_TOKEN` 读取，支持英文逗号分隔多个 token 并随机选择一个。
 3. 立刻从 DB 里擦除 `api_token`，避免敏感信息长期落盘。
 4. 后续解析结果只保留 `token_source` 这类安全诊断信息。
 
@@ -187,7 +187,7 @@ parser_chain 按顺序尝试
 
 Markdown 规范化会做：
 
-- 图片引用改写为 `../assets/<file_id>/...`
+- 图片引用改写为相对资产路径（例如同一文件目录下的 `assets/...`）
 - base64 data URI 图片抽取成真实资产文件
 - 追加未被正文引用但已提取的资产图片
 - 统计 `rewritten_image_refs / extracted_data_images / appended_asset_images`
@@ -198,8 +198,8 @@ MinerU 分支会先把 MinerU 输出的 Markdown 和图片复制到当前规范�
 
 解析成功后统一写入：
 
-- `ContentStore.subject_scope(user_id=..., subject=...).raw_markdown_key(file_id)`
-- `ContentStore.subject_scope(user_id=..., subject=...).asset_prefix(file_id)`
+- `raw_file.markdown_path` 指向的 `markdown.md`
+- `raw_file.asset_dir` 指向的 `assets/`
 - `raw_file_asset` 表
 - `raw_file.parsed_markdown`
 - `raw_file.parser_used`
@@ -243,21 +243,21 @@ Phase 2 由 `support/files/parsing.py` 在 Phase 1 成功后按最终 state 派�
 
 ### 3. Vision OCR 增强
 
-如果配置了 `OCR_MODEL`：
+如果配置了“文档 OCR 模型”（`settings.models.ocr`）：
 
 1. 扫描 Markdown 图片引用。
 2. 对图片资产调用 LLM Vision OCR。
 3. 用 OCR 结果替换或补充图片占位内容。
 4. 对低文本密度 PDF 页做整页 fallback OCR。
 
-如果没有配置 Vision 模型，则跳过 OCR，只保留质量重解析结果。
+如果没有配置文档 OCR 模型，则跳过 OCR，只保留质量重解析结果。
 
 ### 4. Phase 2 持久化
 
 成功后：
 
 - 覆盖 raw Markdown。
-- 上传增强阶段工作目录中的资产到 `subject_scope.asset_prefix(file_id)`。
+- 上传增强阶段工作目录中的资产到 `raw_file.asset_dir`。
 - 刷新 `image_count` 与资产元数据。
 - 更新 `parse_metadata_json` 中的 OCR 统计。
 - `ingest_status = ready_for_digest`

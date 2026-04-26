@@ -257,7 +257,7 @@ def build_parse_file_node(*, context: WorkflowContext):
                 canonical_result = canonicalize_markdown(
                     mineru_markdown_raw,
                     asset_dir=local_asset_dir,
-                    asset_link_prefix=f"../assets/{state['file_id']}",
+                    asset_link_prefix=state["asset_link_prefix"],
                     asset_name_prefix=state["asset_name_prefix"],
                     asset_gallery_limit=parse_plan.options.asset_gallery_limit if parse_plan else 12,
                 )
@@ -325,7 +325,7 @@ def build_parse_file_node(*, context: WorkflowContext):
                     asset_dir=local_asset_dir,
                     classification=state.get("classification"),
                     parse_plan=parse_plan,
-                    asset_link_prefix=f"../assets/{state['file_id']}",
+                    asset_link_prefix=state["asset_link_prefix"],
                 )
 
             local_markdown_path.write_text(parse_result.markdown, encoding="utf-8")

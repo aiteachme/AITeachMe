@@ -29,6 +29,7 @@ from app.workflows.ingest.fast_parse.state import (
     IngestParseGraphOutput,
     IngestParseState,
 )
+from app.workflows.ingest.fast_parse.lib.lifecycle import mark_parse_workflow_failed
 
 logger = structlog.get_logger(__name__)
 
@@ -173,8 +174,9 @@ def build_fast_parse_graph(
     return workflow
 
 
-def create_parse_file_initial_state(*, subject: str, file_id: int) -> IngestParseState:
+def create_parse_file_initial_state(*, user_id: str, subject: str, file_id: int) -> IngestParseState:
     return {
+        "user_id": user_id,
         "subject": subject,
         "file_id": file_id,
         "error": None,
@@ -196,6 +198,7 @@ def _build_export_graph() -> StateGraph:
 def _build_error_metadata(state: IngestParseState) -> dict[str, object]:
     parse_plan = state.get("parse_plan")
     return {
+        "user_id": state.get("user_id", ""),
         "subject": state.get("subject", ""),
         "file_id": state.get("file_id", 0),
         "filename": state.get("filename", ""),
@@ -207,29 +210,34 @@ def _build_error_metadata(state: IngestParseState) -> dict[str, object]:
 
 async def run_parse_file_workflow(
     *,
-    subject: str,
+    user_id: str,
     file_id: int,
+    subject: str = "",
 ) -> WorkflowResult[IngestParseState]:
     """Run one ingest file parse workflow and normalize result handling."""
 
+    context_subject = subject or f"files:{user_id}"
     logger.info(
         "ingest_workflow_starting",
         subject=subject,
+        user_id=user_id,
         file_id=file_id,
     )
     context = WorkflowContext(
         workflow_name="ingest.fast_parse",
-        subject=subject,
+        subject=context_subject,
         metadata={
             "lane": "fast_parse",
             "langsmith_run_name": RUN_NAME_FAST_PARSE,
+            "user_id": user_id,
+            "requested_subject": subject,
             "file_id": file_id,
         },
     )
     result = await run_state_graph(
         workflow_name="ingest.fast_parse",
         graph_builder=lambda: build_fast_parse_graph(context=context),
-        initial_state=create_parse_file_initial_state(subject=subject, file_id=file_id),
+        initial_state=create_parse_file_initial_state(user_id=user_id, subject=subject, file_id=file_id),
         context=context,
     )
     if result.failed:
@@ -238,11 +246,12 @@ async def run_parse_file_workflow(
     final_state = result.require_value()
     error = str(final_state.get("error") or "").strip()
     if error:
-        _mark_parse_failed(
-            subject=subject,
+        mark_parse_workflow_failed(
+            user_id=user_id,
             file_id=file_id,
             error=error,
             step="ingest.parse.failed",
+            subject=subject,
         )
         return err_result(
             "ingest_parse_failed",
@@ -253,6 +262,7 @@ async def run_parse_file_workflow(
     logger.info(
         "ingest_workflow_completed",
         subject=subject,
+        user_id=user_id,
         file_id=file_id,
         parser_used=final_state.get("parser_used"),
         needs_enhance=bool(final_state.get("needs_enhance", False)),

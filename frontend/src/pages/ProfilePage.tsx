@@ -27,10 +27,10 @@ function StatTile({
   hint: string;
 }) {
   return (
-    <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
-      <p className="text-sm text-slate-500">{label}</p>
-      <p className="mt-2 text-2xl font-semibold text-slate-900">{value}</p>
-      <p className="mt-2 text-sm text-slate-600">{hint}</p>
+    <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-950/70 dark:shadow-[0_18px_36px_-28px_rgba(0,0,0,0.7)]">
+      <p className="text-sm text-slate-500 dark:text-slate-400">{label}</p>
+      <p className="mt-2 text-2xl font-semibold text-slate-900 dark:text-slate-100">{value}</p>
+      <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">{hint}</p>
     </div>
   );
 }
@@ -89,8 +89,8 @@ export function ProfilePage() {
 
   if (!subjectId) {
     return (
-      <div className="min-h-[calc(100vh-4rem)] bg-slate-50 px-6 py-8">
-        <div className="mx-auto max-w-5xl rounded-lg border border-amber-200 bg-amber-50 px-5 py-4 text-amber-900">
+      <div className="min-h-[calc(100dvh-4rem)] bg-slate-50 px-4 py-6 dark:bg-slate-950 sm:px-6 sm:py-8">
+        <div className="mx-auto max-w-5xl rounded-lg border border-amber-200 bg-amber-50 px-5 py-4 text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300">
           缺少学科标识，暂时无法加载学习画像。
         </div>
       </div>
@@ -98,18 +98,18 @@ export function ProfilePage() {
   }
 
   return (
-    <div className="min-h-[calc(100vh-4rem)] bg-slate-50 px-6 py-8">
+    <div className="min-h-[calc(100dvh-4rem)] bg-slate-50 px-4 py-6 dark:bg-slate-950 sm:px-6 sm:py-8">
       <div className="mx-auto flex max-w-6xl flex-col gap-6">
-        <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+        <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-950/70 dark:shadow-[0_18px_36px_-28px_rgba(0,0,0,0.72)]">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
             <div>
-              <p className="text-sm font-medium text-slate-500">Profile</p>
-              <h1 className="mt-1 text-3xl font-semibold text-slate-950">{subjectId}</h1>
-              <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-600">
+              <p className="text-sm font-medium text-slate-500 dark:text-slate-400">Profile</p>
+              <h1 className="mt-1 break-words text-2xl font-semibold text-slate-950 dark:text-slate-100 sm:text-3xl">{subjectId}</h1>
+              <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-600 dark:text-slate-300">
                 基于当前 KnowledgeUnit 掌握度、最近答题结果和待复习任务生成个性化画像。
               </p>
             </div>
-            <div className="flex items-center gap-2 rounded-lg border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900">
+            <div className="flex items-start gap-2 rounded-lg border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-300 sm:items-center">
               <Sparkles className="h-4 w-4" />
               推荐模式 {subjectProfile?.recommended_exam_mode ?? "web_practice"}，建议{" "}
               {subjectProfile?.recommended_question_count ?? 10} 题
@@ -118,7 +118,7 @@ export function ProfilePage() {
         </section>
 
         {(masteryQuery.error || reviewsQuery.error) && (
-          <div className="rounded-lg border border-red-200 bg-red-50 px-5 py-4 text-sm text-red-700">
+          <div className="rounded-lg border border-red-200 bg-red-50 px-5 py-4 text-sm text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300">
             {getApiErrorMessage(masteryQuery.error ?? reviewsQuery.error, "画像加载失败")}
           </div>
         )}
@@ -147,26 +147,26 @@ export function ProfilePage() {
         </section>
 
         <section className="grid gap-6 xl:grid-cols-[1.3fr_0.9fr]">
-          <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+          <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-950/70 dark:shadow-[0_18px_36px_-28px_rgba(0,0,0,0.72)]">
             <div className="flex items-center justify-between gap-3">
               <div>
                 <h2 className="text-lg font-semibold text-slate-950">重点知识点</h2>
                 <p className="mt-1 text-sm text-slate-500">按掌握度从低到高排序</p>
               </div>
-              <div className="rounded-md bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600">
+              <div className="rounded-md bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600 dark:bg-slate-900 dark:text-slate-300">
                 推荐难度 {subjectProfile?.difficulty_focus ?? "medium"}
               </div>
             </div>
 
             <div className="mt-5 space-y-3">
               {masteryQuery.isLoading && (
-                <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-500">
+                <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-500 dark:border-slate-800 dark:bg-slate-900/80 dark:text-slate-400">
                   正在加载画像数据...
                 </div>
               )}
 
               {!masteryQuery.isLoading && weakStates.length === 0 && (
-                <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-6 text-sm text-emerald-700">
+                <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-6 text-sm text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300">
                   暂时没有薄弱知识点，已经可以进入更完整的综合练习。
                 </div>
               )}
@@ -175,22 +175,22 @@ export function ProfilePage() {
                 const masteryScore = Math.max(0, Math.min(1, state.mastery_score));
                 const reviewPriority = Math.round(state.review_priority * 100);
                 return (
-                  <div key={state.id} className="rounded-lg border border-slate-200 px-4 py-4">
+                  <div key={state.id} className="rounded-lg border border-slate-200 px-4 py-4 dark:border-slate-800">
                     <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                       <div>
-                        <p className="text-base font-medium text-slate-900">
+                        <p className="text-base font-medium text-slate-900 dark:text-slate-100">
                           {state.knowledge_unit_name ?? `KnowledgeUnit ${state.knowledge_unit_id}`}
                         </p>
-                        <p className="mt-1 text-sm text-slate-500">
+                        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
                           {state.knowledge_unit_type ?? "knowledge_unit"} · 尝试 {state.total_attempts} 次 · 正确{" "}
                           {state.correct_attempts} 次
                         </p>
                       </div>
-                      <div className="text-sm text-slate-600">
+                      <div className="text-sm text-slate-600 dark:text-slate-300">
                         优先级 {Number.isFinite(reviewPriority) ? `${reviewPriority}%` : "--"}
                       </div>
                     </div>
-                    <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-100">
+                    <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-900">
                       <div
                         className={cn(
                           "h-full rounded-full",
@@ -208,54 +208,54 @@ export function ProfilePage() {
           </div>
 
           <div className="flex flex-col gap-6">
-            <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+            <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-950/70 dark:shadow-[0_18px_36px_-28px_rgba(0,0,0,0.72)]">
               <h2 className="text-lg font-semibold text-slate-950">个性化建议</h2>
-              <div className="mt-4 space-y-3 text-sm text-slate-600">
-                <div className="rounded-lg border border-slate-200 px-4 py-3">
+              <div className="mt-4 space-y-3 text-sm text-slate-600 dark:text-slate-300">
+                <div className="rounded-lg border border-slate-200 px-4 py-3 dark:border-slate-800">
                   常用题型 {userProfile?.preferred_question_types?.join(", ") || "暂无历史数据"}
                 </div>
-                <div className="rounded-lg border border-slate-200 px-4 py-3">
+                <div className="rounded-lg border border-slate-200 px-4 py-3 dark:border-slate-800">
                   推荐题型 {subjectProfile?.recommended_question_types?.join(", ") || "single_choice, short_answer"}
                 </div>
-                <div className="rounded-lg border border-slate-200 px-4 py-3">
+                <div className="rounded-lg border border-slate-200 px-4 py-3 dark:border-slate-800">
                   讲解风格 {userProfile?.explanation_style ?? "balanced"}
                 </div>
-                <div className="rounded-lg border border-slate-200 px-4 py-3">
+                <div className="rounded-lg border border-slate-200 px-4 py-3 dark:border-slate-800">
                   常用模式 {userProfile?.preferred_exam_modes?.join(", ") || userProfile?.dominant_exam_mode || "--"}
                 </div>
               </div>
             </section>
 
-            <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+            <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-950/70 dark:shadow-[0_18px_36px_-28px_rgba(0,0,0,0.72)]">
               <div className="flex items-center justify-between">
                 <div>
                   <h2 className="text-lg font-semibold text-slate-950">待复习任务</h2>
                   <p className="mt-1 text-sm text-slate-500">完成后会立即刷新画像</p>
                 </div>
-                <Clock3 className="h-5 w-5 text-slate-400" />
+                <Clock3 className="h-5 w-5 text-slate-400 dark:text-slate-500" />
               </div>
 
               <div className="mt-5 space-y-3">
                 {reviewsQuery.isLoading && (
-                  <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-500">
+                  <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-500 dark:border-slate-800 dark:bg-slate-900/80 dark:text-slate-400">
                     正在加载复习任务...
                   </div>
                 )}
 
                 {!reviewsQuery.isLoading && reviewTasks.length === 0 && (
-                  <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-6 text-sm text-emerald-700">
+                  <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-6 text-sm text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300">
                     当前没有待处理复习任务。
                   </div>
                 )}
 
                 {reviewTasks.map((task: ReviewTaskResponse) => (
-                  <div key={task.id} className="rounded-lg border border-slate-200 px-4 py-4">
+                  <div key={task.id} className="rounded-lg border border-slate-200 px-4 py-4 dark:border-slate-800">
                     <div className="flex items-start justify-between gap-4">
                       <div>
-                        <p className="text-sm font-medium text-slate-900">
+                        <p className="text-sm font-medium text-slate-900 dark:text-slate-100">
                           {task.knowledge_unit_name ?? `KnowledgeUnit ${task.knowledge_unit_id}`}
                         </p>
-                        <p className="mt-1 text-xs text-slate-500">
+                        <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
                           {task.reason || "复习巩固"} · {task.knowledge_unit_type ?? "knowledge_unit"}
                         </p>
                       </div>
@@ -272,19 +272,19 @@ export function ProfilePage() {
               </div>
             </section>
 
-            <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
-              <div className="flex items-center gap-2 text-slate-900">
+            <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-950/70 dark:shadow-[0_18px_36px_-28px_rgba(0,0,0,0.72)]">
+              <div className="flex items-center gap-2 text-slate-900 dark:text-slate-100">
                 <AlertCircle className="h-4 w-4 text-amber-500" />
                 <h2 className="text-lg font-semibold">画像备注</h2>
               </div>
               <div className="mt-4 space-y-2">
                 {(subjectProfile?.notes ?? userProfile?.notes ?? []).map((note: string) => (
-                  <div key={note} className="rounded-lg bg-slate-50 px-4 py-3 text-sm text-slate-600">
+                  <div key={note} className="rounded-lg bg-slate-50 px-4 py-3 text-sm text-slate-600 dark:bg-slate-900/80 dark:text-slate-300">
                     {note}
                   </div>
                 ))}
                 {!(subjectProfile?.notes?.length || userProfile?.notes?.length) && (
-                  <div className="rounded-lg bg-slate-50 px-4 py-3 text-sm text-slate-500">
+                  <div className="rounded-lg bg-slate-50 px-4 py-3 text-sm text-slate-500 dark:bg-slate-900/80 dark:text-slate-400">
                     还没有足够的行为数据，先完成几次练习会更准。
                   </div>
                 )}
@@ -293,7 +293,7 @@ export function ProfilePage() {
           </div>
         </section>
 
-        <div className="flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+        <div className="flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300">
           <CheckCircle2 className="h-4 w-4" />
           当前画像完全基于 KnowledgeUnit 掌握状态，旧课程层残留已不参与任何逻辑。
         </div>

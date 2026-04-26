@@ -12,15 +12,18 @@ from sqlmodel import Session
 from app.shared.infra.exceptions import RawFileNotFoundError
 from app.shared.infra.storage import (
     get_content_store,
-    resolve_subject_storage_scope,
     run_store_sync,
 )
 from app.models import IngestStatus, RawFile, TaskStatus
 from app.repositories.files_repo import (
     get_raw_file_by_id,
     list_raw_files_by_ids,
+    list_raw_files_by_ids_for_user,
     list_raw_files_by_subject,
+    list_raw_files_by_user,
     list_raw_files_by_uids,
+    list_raw_files_by_uids_for_user,
+    raw_file_belongs_to_subject,
 )
 from app.schemas.files import FileAssetItem, FileRecord, FilesData
 from app.utils.path_helpers import build_asset_name_prefix
@@ -70,16 +73,16 @@ def _quote_path_parts(path_value: str) -> str:
     return "/".join(quote(part) for part in Path(path_value).parts if part)
 
 
-def _build_runtime_asset_url(*, subject: str, asset_relative_path: str | None) -> str | None:
+def _build_runtime_asset_url(*, file_uid: str, asset_relative_path: str | None) -> str | None:
     if not asset_relative_path:
         return None
 
-    return f"/api/v1/subjects/{quote(subject)}/files/assets/{_quote_path_parts(asset_relative_path)}"
+    return f"/api/v1/files/assets/{quote(file_uid)}/{_quote_path_parts(asset_relative_path)}"
 
 
 def _build_asset_items(
     *,
-    subject: str,
+    file_uid: str,
     asset_dir_value: str | None,
 ) -> list[FileAssetItem]:
     if not asset_dir_value:
@@ -90,8 +93,8 @@ def _build_asset_items(
     keys = run_store_sync(cs.list_prefix, prefix, default=[]) or []
     assets: list[FileAssetItem] = []
     for key in keys:
-        relative_path = _to_subject_relative_storage_path(subject=subject, storage_key=key)
-        asset_url = _build_runtime_asset_url(subject=subject, asset_relative_path=relative_path)
+        relative_path = _to_file_relative_storage_path(asset_dir_value=asset_dir_value, storage_key=key)
+        asset_url = _build_runtime_asset_url(file_uid=file_uid, asset_relative_path=relative_path)
         if not asset_url:
             continue
 
@@ -105,16 +108,21 @@ def _build_asset_items(
     return assets
 
 
-def _to_subject_relative_storage_path(*, subject: str, storage_key: str) -> str | None:
-    scope = resolve_subject_storage_scope(subject)
-    prefix = f"{scope.namespace}/assets/"
+def _to_file_relative_storage_path(*, asset_dir_value: str | None, storage_key: str) -> str | None:
+    if not asset_dir_value or not storage_key:
+        return None
+    prefix = asset_dir_value.rstrip("/") + "/"
     if not storage_key.startswith(prefix):
         return None
     relative = storage_key[len(prefix):].lstrip("/\\")
     return relative or None
 
 
-def _read_markdown(markdown_path_value: str | None) -> str:
+def _read_markdown(markdown_path_value: str | None, *, markdown_content: str | None = None) -> str:
+    in_db = str(markdown_content or "").strip()
+    if in_db:
+        return in_db
+
     if not markdown_path_value:
         return ""
 
@@ -126,20 +134,14 @@ def build_file_record(raw_file: RawFile) -> FileRecord:
     file_uid = require_uid(raw_file.uid, "RawFile.uid")
     markdown_ready = _is_markdown_ready(raw_file)
     asset_dir_value = raw_file.asset_dir
-    if not asset_dir_value and raw_file.id is not None:
-        scope = resolve_subject_storage_scope(raw_file.subject)
-        asset_dir_value = scope.asset_prefix(raw_file.id).rstrip("/")
+    if not asset_dir_value:
+        scope = get_content_store().user_file_scope(user_id=raw_file.user_id or "local")
+        asset_dir_value = scope.asset_prefix(file_uid=file_uid, filename=raw_file.filename).rstrip("/")
     assets = _build_asset_items(
-        subject=raw_file.subject,
+        file_uid=file_uid,
         asset_dir_value=asset_dir_value,
     )
-    asset_base_url = _build_runtime_asset_url(
-        subject=raw_file.subject,
-        asset_relative_path=_to_subject_relative_storage_path(
-            subject=raw_file.subject,
-            storage_key=asset_dir_value or "",
-        ),
-    ) if assets else None
+    asset_base_url = f"/api/v1/files/assets/{quote(file_uid)}/" if assets else None
     return FileRecord(
         uid=file_uid,
         filename=raw_file.filename,
@@ -154,7 +156,10 @@ def build_file_record(raw_file: RawFile) -> FileRecord:
         estimated_pages=raw_file.estimated_pages,
         image_count=raw_file.image_count,
         parser_used=_extract_parser_used(raw_file),
-        markdown_content=_read_markdown(raw_file.markdown_path),
+        markdown_content=_read_markdown(
+            raw_file.markdown_path,
+            markdown_content=raw_file.markdown_content,
+        ),
         asset_base_url=asset_base_url,
         assets=assets,
         classification_json=raw_file.classification_json,
@@ -168,9 +173,25 @@ def build_file_record(raw_file: RawFile) -> FileRecord:
 
 def get_subject_file_or_raise(session: Session, *, subject: str, file_id: int) -> RawFile:
     raw_file = get_raw_file_by_id(session, file_id)
-    if raw_file is None or raw_file.subject != subject:
+    if raw_file is None or not raw_file_belongs_to_subject(session, raw_file=raw_file, subject=subject):
         raise RawFileNotFoundError(file_id)
     return raw_file
+
+
+def get_user_files_or_raise(
+    session: Session,
+    *,
+    owner_user_id: str,
+    file_ids: list[int],
+) -> list[RawFile]:
+    items = list_raw_files_by_ids_for_user(session, user_id=owner_user_id, file_ids=file_ids)
+    found_ids = {require_id(item.id, "RawFile.id") for item in items}
+    missing = [file_id for file_id in file_ids if file_id not in found_ids]
+    if missing:
+        raise RawFileNotFoundError(missing[0])
+
+    order = {file_id: index for index, file_id in enumerate(file_ids)}
+    return sorted(items, key=lambda item: order[require_id(item.id, "RawFile.id")])
 
 
 def get_subject_files_or_raise(
@@ -205,6 +226,22 @@ def get_subject_files_by_uid_or_raise(
     return sorted(items, key=lambda item: order[require_uid(item.uid, "RawFile.uid")])
 
 
+def get_user_files_by_uid_or_raise(
+    session: Session,
+    *,
+    owner_user_id: str,
+    file_uids: list[str],
+) -> list[RawFile]:
+    items = list_raw_files_by_uids_for_user(session, user_id=owner_user_id, file_uids=file_uids)
+    found_uids = {require_uid(item.uid, "RawFile.uid") for item in items}
+    missing = [file_uid for file_uid in file_uids if file_uid not in found_uids]
+    if missing:
+        raise RawFileNotFoundError(missing[0])
+
+    order = {file_uid: index for index, file_uid in enumerate(file_uids)}
+    return sorted(items, key=lambda item: order[require_uid(item.uid, "RawFile.uid")])
+
+
 def list_subject_files(
     session: Session,
     *,
@@ -230,10 +267,40 @@ def list_subject_files(
     )
 
 
+def list_user_files(
+    session: Session,
+    *,
+    owner_user_id: str,
+    file_uids: list[str] | None = None,
+) -> FilesData:
+    raw_files, total = list_raw_files_by_user(
+        session,
+        user_id=owner_user_id,
+        file_uids=file_uids,
+        limit=1000,
+        offset=0,
+        status=None,
+    )
+    records = [build_file_record(item) for item in raw_files]
+    return FilesData(
+        subject="library",
+        total=total,
+        ready_count=sum(1 for item in records if item.markdown_ready),
+        processing_count=sum(
+            1 for item in records if not item.markdown_ready and item.status != TaskStatus.FAILED.value
+        ),
+        failed_count=sum(1 for item in records if item.status == TaskStatus.FAILED.value),
+        items=records,
+    )
+
+
 __all__ = [
     "build_file_record",
     "get_subject_file_or_raise",
     "get_subject_files_by_uid_or_raise",
     "get_subject_files_or_raise",
+    "get_user_files_by_uid_or_raise",
+    "get_user_files_or_raise",
     "list_subject_files",
+    "list_user_files",
 ]

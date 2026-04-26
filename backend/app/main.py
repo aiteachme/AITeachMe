@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from contextlib import asynccontextmanager
 import json
-import threading
+import sys
 from time import perf_counter
 from typing import AsyncGenerator
 import uuid
@@ -16,7 +16,7 @@ from fastapi.responses import JSONResponse
 
 from app.shared.infra.settings import get_settings
 from app.shared.infra.database import init_db
-from app.shared.infra.env_support import get_env, get_env_bool
+from app.shared.infra.env_support import get_env, get_env_list
 from app.shared.infra.logger import (
     bind_logging_context,
     clear_logging_context,
@@ -25,7 +25,6 @@ from app.shared.infra.logger import (
 from app.shared.infra.runtime import get_runtime_data_dir
 from app.shared.infra.runtime import (
     get_app_version,
-    is_local_mode,
     resolve_auth_enabled,
     resolve_app_mode,
     resolve_guest_cookie_samesite,
@@ -44,51 +43,11 @@ from app.shared.kernel.exceptions import AITeachMeError as KernelAITeachMeError
 from app.shared.infra.runtime import BackgroundTaskRegistry
 from app.shared.infra.settings.support import (
     get_llm_provider_model_defaults,
+    llm_provider_requires_api_key,
     resolve_runtime_llm_provider,
 )
 
 logger = structlog.get_logger()
-_OPENAPI_EXPORT_LOCK = threading.Lock()
-_OPENAPI_EXPORT_STARTED = False
-
-
-def _maybe_export_openapi_schema(app: FastAPI) -> None:
-    global _OPENAPI_EXPORT_STARTED
-
-    if not get_env_bool("EXPORT_OPENAPI_ON_STARTUP", False):
-        return
-
-    with _OPENAPI_EXPORT_LOCK:
-        if _OPENAPI_EXPORT_STARTED:
-            logger.info("openapi_export_already_scheduled")
-            return
-        _OPENAPI_EXPORT_STARTED = True
-
-    def _run_export() -> None:
-        try:
-            import sys
-            from pathlib import Path
-
-            script_dir = Path(__file__).parent.parent / "scripts"
-            sys.path.insert(0, str(script_dir))
-            import export_api_docs
-
-            logger.info("openapi_export_started")
-            export_api_docs.export_openapi_schema(app)
-            logger.info("openapi_export_finished")
-        except Exception as exc:  # noqa: BLE001
-            logger.error("export_openapi_failed", error=str(exc))
-        finally:
-            try:
-                sys.path.pop(0)
-            except Exception:  # noqa: BLE001
-                pass
-
-    threading.Thread(
-        target=_run_export,
-        name="openapi-export",
-        daemon=True,
-    ).start()
 
 
 def _log_infra_diagnostics(settings) -> None:
@@ -103,7 +62,9 @@ def _log_infra_diagnostics(settings) -> None:
     engine = get_engine()
     dialect = engine.dialect.name
     project_settings_source = get_teaching_runtime_settings_source()
-    runtime_provider = resolve_runtime_llm_provider()
+    llm_base_url = get_env("LLM_BASE_URL")
+    llm_api_keys = get_env_list("LLM_API_KEY")
+    runtime_provider = resolve_runtime_llm_provider(base_url=llm_base_url)
     runtime_provider_defaults = get_llm_provider_model_defaults(runtime_provider)
     openai_compatible_defaults = get_llm_provider_model_defaults("openai_compatible")
 
@@ -123,9 +84,10 @@ def _log_infra_diagnostics(settings) -> None:
         f"    APP_MODE (resolved)    : {app_mode}",
         f"    DATABASE_URL           : {'SET' if os.environ.get('DATABASE_URL') else '!! NOT_SET !!'}",
         f"    STORAGE_BACKEND        : {os.environ.get('STORAGE_BACKEND', '!! NOT_SET !!')}",
-        f"    PROJECT_SETTINGS_PATH  : {os.environ.get('PROJECT_SETTINGS_PATH', 'NOT_SET')}",
         f"    Settings Source        : {project_settings_source}",
         f"    RENDER                 : {os.environ.get('RENDER', 'NOT_SET')}",
+        f"    LLM_BASE_URL           : {'SET' if llm_base_url else '!! NOT_SET !!'}",
+        f"    LLM_API_KEY            : {'SET' if llm_api_keys else '!! NOT_SET !!'}",
         "",
         "  [DATABASE]",
         f"    Dialect                : {dialect}",
@@ -178,7 +140,6 @@ def _log_infra_diagnostics(settings) -> None:
         except Exception as exc:
             lines.append(f"    S3 Smoke Test          : FAILED - {exc}")
     else:
-        from app.shared.infra.runtime import get_runtime_data_dir
         lines.append(f"    Data Dir               : {get_runtime_data_dir()}")
 
     lines.append("")
@@ -186,19 +147,23 @@ def _log_infra_diagnostics(settings) -> None:
     lines.append(f"    Reason Model           : {settings.models.reason or settings.models.primary}")
     lines.append(f"    Primary Text Model     : {settings.models.primary}")
     lines.append(f"    Light Text Model       : {settings.models.light or settings.models.primary}")
+    lines.append(f"    Vision Model           : {settings.models.vision or 'disabled'}")
+    lines.append(f"    Document OCR Model     : {settings.models.ocr or 'disabled'}")
     lines.append(f"    Embedding Model        : {settings.models.embedding}")
     lines.append(f"    Rerank Model           : {settings.models.rerank or 'disabled'}")
-    lines.append(f"    OCR Model              : {settings.models.ocr or '(uses primary)'}")
+    mineru_tokens = get_env_list("MINERU_API_TOKENS") or get_env_list("MINERU_API_TOKEN")
+    lines.append(f"    MinerU Server Token    : {'SET' if mineru_tokens else 'not set'}")
     lines.append(
-        f"    MinerU Server Token    : {'SET' if get_env('MINERU_API_TOKEN') else 'not set'}"
-    )
-    lines.append(
-        f"    Image Model            : {settings.models.image_generation or 'disabled'}"
+        f"    Image Generation Model : {settings.models.image_generation or 'disabled'}"
     )
     lines.append(f"    Speech->Text Model     : {settings.models.speech_to_text or 'disabled'}")
     lines.append(f"    Text->Speech Model     : {settings.models.text_to_speech or 'disabled'}")
     lines.append(f"    Video Model            : {settings.models.video_generation or 'disabled'}")
     lines.append(f"    Runtime Provider       : {runtime_provider}")
+    if llm_provider_requires_api_key(runtime_provider, base_url=llm_base_url) and not llm_api_keys:
+        lines.append("    LLM Connectivity       : NOT_READY (missing LLM_API_KEY)")
+    else:
+        lines.append("    LLM Connectivity       : READY")
     lines.append("    Runtime Provider Defaults:")
     for raw_line in json.dumps(
         runtime_provider_defaults,
@@ -225,10 +190,8 @@ def _log_infra_diagnostics(settings) -> None:
     lines.append("=" * 60)
     lines.append("")
 
-    logger.info(
-        "startup_infra_diagnostics",
-        diagnostics="\n".join(lines),
-    )
+    diagnostics_text = "\n".join(lines).lstrip("\n")
+    print(diagnostics_text, file=sys.stderr, flush=True)
 
 
 @asynccontextmanager
@@ -237,7 +200,6 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     app.state.background_task_registry = BackgroundTaskRegistry()
     init_db()
-    _maybe_export_openapi_schema(app)
 
     # ── 启动诊断日志 ──
     settings = get_settings()
@@ -309,7 +271,16 @@ def _register_middlewares(app: FastAPI) -> None:
         except Exception:
             elapsed_ms = int((perf_counter() - started_at) * 1000)
             access_logger.exception("request_failed", elapsed_ms=elapsed_ms)
-            raise
+            return JSONResponse(
+                status_code=500,
+                headers={"x-request-id": request_id},
+                content={
+                    "code": 500,
+                    "error_code": "INTERNAL_SERVER_ERROR",
+                    "message": "服务内部异常。",
+                    "data": None,
+                },
+            )
         finally:
             clear_logging_context()
 
@@ -318,10 +289,8 @@ def _register_middlewares(app: FastAPI) -> None:
         "https://aiteachme.cn",
         "https://www.aiteachme.cn",
         "https://aiteachme.pages.dev",
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-        "http://localhost:5174",
-        "http://127.0.0.1:5174",
+        "http://localhost:5180",
+        "http://127.0.0.1:5180",
         "http://localhost:3000",
         "http://127.0.0.1:3000",
     ]
@@ -372,6 +341,7 @@ def _register_exception_handlers(app: FastAPI) -> None:
 
 def _register_routers(app: FastAPI) -> None:
     from app.api.auth import router as auth_router
+    from app.api.chats import global_router as global_chats_router
     from app.api.chats import router as chats_router
     from app.api.exams import router as exams_router
     from app.api.export_import import router as export_import_router
@@ -381,13 +351,16 @@ def _register_routers(app: FastAPI) -> None:
     from app.api.profile import router as profile_router
     from app.api.subjects import router as subjects_router
     from app.api.system import router as system_router
+    from app.api.user_files import router as user_files_router
 
     app.include_router(health_router)
     app.include_router(system_router)
     app.include_router(auth_router)
     app.include_router(subjects_router)
+    app.include_router(user_files_router)
     app.include_router(files_router)
     app.include_router(knowledge_router)
+    app.include_router(global_chats_router)
     app.include_router(chats_router)
     app.include_router(exams_router)
     app.include_router(profile_router)

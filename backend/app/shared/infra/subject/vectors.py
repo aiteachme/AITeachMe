@@ -5,11 +5,12 @@ from __future__ import annotations
 import importlib.util
 
 from pydantic import BaseModel
-from sqlmodel import Session, select
+from sqlmodel import Session, func, select
 
 from app.models.subject import Subject
+from app.models.knowledge import RetrievalChunk
 from app.schemas.knowledge import SubjectVectorStatusResponse
-from app.shared.infra.env_support import get_env
+from app.shared.infra.env_support import get_env, get_env_choice
 from app.shared.infra.runtime import is_cloud_mode
 from app.shared.infra.settings import get_settings
 from app.shared.infra.settings.support import llm_provider_requires_api_key, resolve_runtime_llm_provider
@@ -29,8 +30,8 @@ SUBJECT_VECTOR_PRECHECK_DETAIL_MAP: dict[str, str] = {
     "subject_not_bound": "当前学科尚未绑定 embedding 模型，请先确认是全量重建当前学科向量，还是继续以非向量模式构建。",
     "embedding_model_mismatch": "当前运行时 embedding 模型与学科已绑定模型不一致，请全量重建当前学科向量，或继续以非向量模式构建。",
     "embedding_dimension_mismatch": "当前运行时 embedding 维度与学科已绑定维度不一致，请全量重建当前学科向量，或继续以非向量模式构建。",
-    "vector_table_missing": "当前学科缺少可用的向量表，请全量重建当前学科向量，或继续以非向量模式构建。",
-    "vector_table_dimension_mismatch": "当前学科向量表维度与学科绑定配置不一致，请全量重建当前学科向量，或继续以非向量模式构建。",
+    "vector_table_missing": "当前学科缺少可用的向量索引，请全量重建当前学科向量，或继续以非向量模式构建。",
+    "vector_table_dimension_mismatch": "当前学科向量索引维度与学科绑定配置不一致，请全量重建当前学科向量，或继续以非向量模式构建。",
 }
 
 _DISABLED_SEARCH_NOTICE = "当前学科未启用向量检索。"
@@ -54,6 +55,7 @@ class SubjectVectorCapability(BaseModel):
     binding: SubjectEmbeddingBinding | None = None
     status: SubjectVectorStatusResponse
     queryable: bool = False
+    writable: bool = False
 
 
 def get_runtime_embedding_config() -> RuntimeEmbeddingConfig:
@@ -68,7 +70,7 @@ def get_runtime_embedding_config() -> RuntimeEmbeddingConfig:
 
     if model is None:
         return RuntimeEmbeddingConfig(reason="embedding_not_configured")
-    if llm_provider_requires_api_key(provider, base_url=base_url) and not get_env("LLM_API_KEY"):
+    if llm_provider_requires_api_key(provider, base_url=base_url) and not get_env_choice("LLM_API_KEY"):
         return RuntimeEmbeddingConfig(
             configured=True,
             embedding_model=model,
@@ -103,6 +105,19 @@ def get_runtime_embedding_config() -> RuntimeEmbeddingConfig:
                 dimension_explicit=dimension_explicit,
                 reason="llamaindex_postgres_unavailable",
             )
+    else:
+        try:
+            sqlite_vec_spec = importlib.util.find_spec("sqlite_vec")
+        except ModuleNotFoundError:
+            sqlite_vec_spec = None
+        if sqlite_vec_spec is None:
+            return RuntimeEmbeddingConfig(
+                configured=True,
+                embedding_model=model,
+                embedding_dim=embedding_dim,
+                dimension_explicit=dimension_explicit,
+                reason="vector_extension_unavailable",
+            )
 
     if embedding_dim is None or embedding_dim <= 0:
         return RuntimeEmbeddingConfig(
@@ -126,6 +141,15 @@ def get_subject_record_by_slug(session: Session, subject_slug: str) -> Subject |
     """Return one subject record by slug."""
 
     return session.exec(select(Subject).where(Subject.slug == subject_slug)).first()
+
+
+def subject_has_retrieval_chunks(session: Session, subject_slug: str) -> bool:
+    """Return whether a subject currently has materialized retrieval chunks."""
+
+    count = session.exec(
+        select(func.count(RetrievalChunk.id)).where(RetrievalChunk.subject == subject_slug)
+    ).one()
+    return int(count or 0) > 0
 
 
 def build_subject_vector_status(
@@ -195,40 +219,99 @@ def get_subject_vector_capability(
     if status.vector_table is None and binding is not None:
         status.vector_table = expected_ref
 
-    if binding is None or binding.mode == SubjectEmbeddingMode.DISABLED:
-        return SubjectVectorCapability(binding=binding, status=status, queryable=False)
+    if binding is None:
+        return SubjectVectorCapability(
+            binding=binding,
+            status=status,
+            queryable=False,
+            writable=runtime.available,
+        )
+    if binding.mode == SubjectEmbeddingMode.DISABLED:
+        return SubjectVectorCapability(
+            binding=binding,
+            status=status,
+            queryable=False,
+            writable=False,
+        )
     if not runtime.available:
-        return SubjectVectorCapability(binding=binding, status=status, queryable=False)
+        return SubjectVectorCapability(
+            binding=binding,
+            status=status,
+            queryable=False,
+            writable=False,
+        )
     if binding.embedding_model != runtime.embedding_model:
-        return SubjectVectorCapability(binding=binding, status=status, queryable=False)
+        return SubjectVectorCapability(
+            binding=binding,
+            status=status,
+            queryable=False,
+            writable=False,
+        )
     if binding.embedding_dim is None:
-        return SubjectVectorCapability(binding=binding, status=status, queryable=False)
+        return SubjectVectorCapability(
+            binding=binding,
+            status=status,
+            queryable=False,
+            writable=False,
+        )
     if runtime.dimension_explicit and binding.embedding_dim != runtime.embedding_dim:
-        return SubjectVectorCapability(binding=binding, status=status, queryable=False)
+        return SubjectVectorCapability(
+            binding=binding,
+            status=status,
+            queryable=False,
+            writable=False,
+        )
     if not binding.vector_table or binding.vector_table != expected_ref:
+        if not subject_has_retrieval_chunks(session, subject.slug):
+            return SubjectVectorCapability(
+                binding=binding,
+                status=status,
+                queryable=False,
+                writable=True,
+            )
         return SubjectVectorCapability(
             binding=binding,
             status=_build_table_conflict_status(binding, reason="vector_table_missing"),
             queryable=False,
+            writable=True,
         )
-    from app.shared.infra.database import get_vector_table_dim, vector_table_exists
+    if is_cloud_mode():
+        from app.shared.infra.database import get_vector_table_dim, vector_table_exists
 
-    connection = session.connection()
-    if not vector_table_exists(connection, expected_ref):
+        connection = session.connection()
+        index_exists = vector_table_exists(connection, expected_ref)
+    else:
+        from app.shared.infra.search.llamaindex_index import subject_index_exists
+
+        connection = None
+        index_exists = subject_index_exists(subject.slug)
+
+    if not index_exists:
+        if not subject_has_retrieval_chunks(session, subject.slug):
+            return SubjectVectorCapability(
+                binding=binding,
+                status=status,
+                queryable=False,
+                writable=True,
+            )
         return SubjectVectorCapability(
             binding=binding,
             status=_build_table_conflict_status(binding, reason="vector_table_missing"),
             queryable=False,
-        )
-    table_dim = get_vector_table_dim(connection, expected_ref)
-    if table_dim is not None and table_dim != binding.embedding_dim:
-        return SubjectVectorCapability(
-            binding=binding,
-            status=_build_table_conflict_status(binding, reason="vector_table_dimension_mismatch"),
-            queryable=False,
+            writable=True,
         )
 
-    return SubjectVectorCapability(binding=binding, status=status, queryable=True)
+    if connection is not None:
+        table_dim = get_vector_table_dim(connection, expected_ref)
+        if table_dim is not None and table_dim != binding.embedding_dim:
+            return SubjectVectorCapability(
+                binding=binding,
+                status=_build_table_conflict_status(binding, reason="vector_table_dimension_mismatch"),
+                queryable=False,
+                writable=False,
+            )
+
+    return SubjectVectorCapability(binding=binding, status=status, queryable=True, writable=True)
 
 
 def get_subject_vector_status(
@@ -264,7 +347,7 @@ def should_generate_subject_embeddings(
         return False
 
     capability = get_subject_vector_capability(session, subject)
-    return capability.queryable
+    return capability.writable
 
 
 def get_subject_vector_search_notice(
@@ -300,4 +383,5 @@ __all__ = [
     "get_subject_vector_status",
     "get_subject_vector_status_by_slug",
     "should_generate_subject_embeddings",
+    "subject_has_retrieval_chunks",
 ]

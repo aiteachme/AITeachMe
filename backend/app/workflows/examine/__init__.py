@@ -12,20 +12,32 @@ from importlib import import_module
 __all__ = [
     "ExamQuestionDraft",
     "ExamQuestionGenerationSpec",
+    "ExamQuestionBlueprint",
+    "ExamQuestionUnitRef",
+    "assign_question_knowledge_weights",
     "build_exam_grade_graph",
     "build_question_build_graph",
     "generate_exam_from_text",
     "generate_exam_questions_for_units",
+    "plan_exam_question_blueprints",
+    "run_exam_grade_workflow",
+    "run_exam_study_guide_workflow",
     "run_question_build_workflow",
 ]
 
 _ATTR_TO_MODULE = {
     "ExamQuestionDraft": "app.workflows.examine.question_build.lib.generator",
     "ExamQuestionGenerationSpec": "app.workflows.examine.question_build.lib.generator",
+    "ExamQuestionBlueprint": "app.workflows.examine.question_build.lib.generator",
+    "ExamQuestionUnitRef": "app.workflows.examine.question_build.lib.generator",
+    "assign_question_knowledge_weights": "app.workflows.examine.question_build.lib.generator",
     "build_exam_grade_graph": "app.workflows.examine.exam_grade.graph",
     "build_question_build_graph": "app.workflows.examine.question_build.graph",
     "generate_exam_from_text": "app.workflows.examine.question_build.lib.generator",
     "generate_exam_questions_for_units": "app.workflows.examine.question_build.lib.generator",
+    "plan_exam_question_blueprints": "app.workflows.examine.question_build.lib.generator",
+    "run_exam_grade_workflow": "app.workflows.examine.exam_grade.graph",
+    "run_exam_study_guide_workflow": "app.workflows.examine.exam_grade.graph",
     "run_question_build_workflow": "app.workflows.examine.question_build.graph",
 }
 

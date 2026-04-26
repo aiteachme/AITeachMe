@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import structlog
 
+from app.shared.infra.env_support import get_env_bool
 from app.shared.infra.search.readers.base import BaseReader
 from app.shared.infra.search.readers.common import build_error_page, fetch_url, normalize_read_text
 from app.shared.infra.search.types import ScrapedPage
@@ -17,6 +18,8 @@ class PDFReader(BaseReader):
 
     @classmethod
     def supports_url(cls, url: str) -> bool:
+        if not get_env_bool("AITEACHME_ENABLE_BUILTIN_PDF", True):
+            return False
         normalized = str(url or "").strip().lower()
         if not normalized.startswith(("http://", "https://")):
             return False

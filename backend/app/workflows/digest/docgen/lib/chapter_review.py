@@ -5,8 +5,8 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 from app.shared.infra.llm_support import acompletion_with_fallback
-from app.shared.infra.llm_support.routing import TaskType
 from app.shared.infra.tools.builtin.markdown_processing import count_words, find_markdown_rendering_issues
+from app.workflows.digest.docgen.lib.model_policy import DocGenModelStep, docgen_completion_kwargs
 from app.workflows.digest.docgen.lib.models import (
     ChapterGenerationTask,
     ChapterReviewReport,
@@ -244,8 +244,7 @@ async def review_chapter(
                 conflict_report=(conflict_report or ConflictReport(chapter_index=draft.chapter_index)).model_dump(mode="json"),
                 rule_review=rule_report.model_dump(mode="json"),
             ),
-            task_type=TaskType.DOCGEN_LIGHT,
-            model="light",
+            **docgen_completion_kwargs(DocGenModelStep.CHAPTER_REVIEW),
             response_model=LLMChapterReviewResult,
             extra_metadata={"chapter_index": draft.chapter_index, "review_mode": "docgen_content_review"},
         )

@@ -18,83 +18,55 @@ def get_data_dir() -> Path:
     return get_runtime_data_dir()
 
 
-def build_subject_dir(subject: str) -> Path:
+def _canonical_subject_dir(subject: str, *, user_id: str | None = None) -> Path:
+    """Return the canonical subject directory under `users/<user>/subjects/`.
+
+    Falls back to the legacy `data/<subject>/` layout only when the user scope
+    cannot be resolved yet.
+    """
+
+    try:
+        if user_id is not None:
+            from app.shared.infra.storage import build_subject_storage_scope
+
+            scope = build_subject_storage_scope(user_id=user_id, subject=subject)
+        else:
+            from app.shared.infra.storage import resolve_subject_storage_scope
+
+            scope = resolve_subject_storage_scope(subject)
+        return get_data_dir() / scope.namespace
+    except Exception:
+        return get_data_dir() / subject
+
+
+def build_subject_dir(subject: str, *, user_id: str | None = None) -> Path:
     """Return the subject data directory."""
 
-    return get_data_dir() / subject
+    return _canonical_subject_dir(subject, user_id=user_id)
 
 
-def build_raw_dir(subject: str) -> Path:
-    """Return the raw file directory."""
-
-    return build_subject_dir(subject) / "raw_files"
-
-
-def build_raw_markdown_dir(subject: str) -> Path:
-    """Return the parsed raw-markdown directory."""
-
-    return build_subject_dir(subject) / "raw_markdowns"
-
-
-def build_markdown_dir(subject: str) -> Path:
-    """Compatibility alias for the parsed raw-markdown directory."""
-
-    return build_raw_markdown_dir(subject)
-
-
-def build_assets_dir(subject: str) -> Path:
-    """Return the extracted-assets root directory."""
-
-    return build_subject_dir(subject) / "assets"
-
-
-def build_temp_dir(subject: str) -> Path:
+def build_temp_dir(subject: str, *, user_id: str | None = None) -> Path:
     """Return the temp directory."""
 
-    return build_subject_dir(subject) / "temp"
+    return build_subject_dir(subject, user_id=user_id) / "temp"
 
 
-def build_debug_dir(subject: str) -> Path:
+def build_debug_dir(subject: str, *, user_id: str | None = None) -> Path:
     """Return the subject-level debug directory."""
 
-    return build_subject_dir(subject) / "debug"
+    return build_subject_dir(subject, user_id=user_id) / "debug"
 
 
-def build_exam_dir(subject: str) -> Path:
+def build_exam_dir(subject: str, *, user_id: str | None = None) -> Path:
     """Return the subject-level exam export directory."""
 
-    return build_subject_dir(subject) / "exam"
+    return build_subject_dir(subject, user_id=user_id) / "exam"
 
 
-def build_raw_file_path(subject: str, record_id: int, extension: str) -> Path:
-    """Build the raw file path from a file id and extension."""
-
-    normalized_extension = extension if extension.startswith(".") else f".{extension}"
-    return build_raw_dir(subject) / f"{record_id}{normalized_extension}"
-
-
-def build_raw_markdown_path(subject: str, raw_file_id: int) -> Path:
-    """Build the parsed raw-markdown path for a raw file."""
-
-    return build_raw_markdown_dir(subject) / f"{raw_file_id}.md"
-
-
-def build_markdown_path(subject: str, raw_file_id: int) -> Path:
-    """Compatibility alias for the parsed raw-markdown path."""
-
-    return build_raw_markdown_path(subject, raw_file_id)
-
-
-def build_asset_dir(subject: str, raw_file_id: int) -> Path:
-    """Return the per-file assets directory."""
-
-    return build_assets_dir(subject) / str(raw_file_id)
-
-
-def build_knowledge_markdown_dir(subject: str) -> Path:
+def build_knowledge_markdown_dir(subject: str, *, user_id: str | None = None) -> Path:
     """Return the published knowledge-markdown directory."""
 
-    return build_subject_dir(subject) / "knowledge_markdowns"
+    return build_subject_dir(subject, user_id=user_id) / "knowledge_markdowns"
 
 
 def build_knowledge_docs_dir(subject: str) -> Path:
@@ -215,9 +187,10 @@ def build_asset_name_prefix(
 ) -> str:
     """Build a deterministic asset filename prefix for one raw file."""
 
+    del file_id
     stem = Path(filename or "").stem or "file"
     safe_stem = _sanitize_storage_token(stem)[:24]
-    identity = file_uid or (f"raw_{file_id}" if file_id is not None else safe_stem)
+    identity = file_uid or safe_stem
     safe_identity = _sanitize_storage_token(identity)[:48]
     return f"{safe_stem}__{safe_identity}__"
 
@@ -287,13 +260,3 @@ def resolve_storage_key_path(storage_key: str) -> Path:
     """Resolve a local storage key into an absolute runtime path."""
 
     return (get_data_dir() / storage_key).resolve()
-
-
-def build_courses_dir() -> Path:
-    """Return the shared course packages directory.
-
-    This folder holds pre-built ``.atmx`` files that can be listed
-    and imported by any user of the instance.
-    """
-
-    return get_data_dir() / "_courses"

@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 import re
-from collections.abc import Mapping
+from collections.abc import Awaitable, Callable, Mapping
 from typing import Any
 
 from app.shared.infra.execution import BaseTracedExecution, TracedExecutionResult
-from app.shared.infra.llm_support.routing import TaskType
+from app.shared.infra.llm_support import acompletion_stream
 from app.shared.infra.tools.builtin.markdown_processing import count_words, normalize_markdown_rendering
 from app.workflows.digest.common.pedagogy import (
     analyze_chapter_heading_quality,
@@ -24,6 +24,8 @@ from app.workflows.digest.docgen.lib.asset_requests import (
     has_asset_request,
     strip_asset_requests,
 )
+from app.workflows.digest.docgen.lib.model_policy import DocGenModelStep, docgen_completion_kwargs
+from app.workflows.digest.docgen.mode_profiles import get_docgen_mode_profile
 
 _PLACEHOLDER_TOKEN_MAP = {
     "asset_request": ASSET_REQUEST_LANGUAGE,
@@ -45,6 +47,7 @@ class DocGenWriterRuntime(BaseTracedExecution):
         chapter_plan: Mapping[str, Any],
         dense_context: str,
         digest_mode: str,
+        on_stream_update: Callable[[str], Awaitable[None]] | None = None,
     ) -> TracedExecutionResult:
         """根据章节执行合同和 dense_context 生成学生可读草稿。
 
@@ -75,12 +78,33 @@ class DocGenWriterRuntime(BaseTracedExecution):
             chapter_count=chapter_count,
             execution_contract=execution_contract,
         )
-        markdown = await llm(
-            messages,
-            task_type=TaskType.DOCGEN,
-            model="reason" if digest_mode == "systematic" else "primary",
-            extra_metadata=self.context.trace_metadata(chapter_index=self.context.chapter_index),
-        )
+        writer_model_kwargs = docgen_completion_kwargs(DocGenModelStep.WRITER, digest_mode=digest_mode)
+        markdown = ""
+        if on_stream_update is not None and self.context.llm_caller is None:
+            chunks: list[str] = []
+            try:
+                async for chunk in acompletion_stream(
+                    messages,
+                    **writer_model_kwargs,
+                ):
+                    chunks.append(str(chunk))
+                    await self._safe_stream_update(on_stream_update, "".join(chunks))
+                markdown = "".join(chunks)
+                await self._safe_stream_update(on_stream_update, markdown)
+            except Exception as exc:
+                self.logger.warning(
+                    "docgen_writer_stream_failed_falling_back",
+                    chapter_index=chapter_index,
+                    streamed_chars=sum(len(item) for item in chunks),
+                    error=str(exc),
+                )
+
+        if not markdown.strip():
+            markdown = await llm(
+                messages,
+                **writer_model_kwargs,
+                extra_metadata=self.context.trace_metadata(chapter_index=self.context.chapter_index),
+            )
 
         markdown = strip_asset_requests(str(markdown).strip())
         heading_quality = analyze_chapter_heading_quality(
@@ -159,6 +183,20 @@ class DocGenWriterRuntime(BaseTracedExecution):
             },
         )
 
+    async def _safe_stream_update(
+        self,
+        callback: Callable[[str], Awaitable[None]],
+        markdown: str,
+    ) -> None:
+        try:
+            await callback(markdown)
+        except Exception as exc:
+            self.logger.warning(
+                "docgen_writer_stream_preview_update_failed",
+                chapter_index=self.context.chapter_index,
+                error=str(exc),
+            )
+
     async def _repair_heading_structure(
         self,
         *,
@@ -189,8 +227,7 @@ class DocGenWriterRuntime(BaseTracedExecution):
         try:
             repaired = await llm(
                 messages,
-                task_type=TaskType.DOCGEN_LIGHT,
-                model="light",
+                **docgen_completion_kwargs(DocGenModelStep.HEADING_REPAIR),
                 extra_metadata=self.context.trace_metadata(
                     chapter_index=chapter_index,
                     substep="heading_repair",
@@ -293,7 +330,8 @@ class DocGenWriterRuntime(BaseTracedExecution):
         missing_requirements: list[str],
         dense_context: str,
     ) -> str:
-        heading = "## 再把关键点压实一遍" if str(digest_mode or "").strip().lower() == "sprint" else "## 再把关键结构补稳"
+        mode_profile = get_docgen_mode_profile(digest_mode)
+        heading = "## 再把关键点压实一遍" if mode_profile.is_sprint else "## 再把关键结构补稳"
         lines = [
             heading,
             "",
@@ -303,7 +341,7 @@ class DocGenWriterRuntime(BaseTracedExecution):
             lines.append(f"本章目标：{objective.strip()}")
         lines.extend(["", "### 这几项不能漏", ""])
         lines.extend(f"- {item}：回看定义、判断依据和题目中最常见的问法。" for item in missing_requirements[:5])
-        if str(digest_mode or "").strip().lower() == "sprint":
+        if mode_profile.is_sprint:
             lines.extend(
                 [
                     "",
@@ -335,9 +373,11 @@ class DocGenWriterRuntime(BaseTracedExecution):
         required_elements: list[str],
         dense_context: str,
     ) -> str:
-        normalized_mode = str(digest_mode or "").strip().lower()
-        heading = "## 本章压缩复盘" if normalized_mode == "sprint" else "## 本章补充理解"
-        focus_items = required_elements[:4] or (["核心概念", "关键方法", "典型例子"] if normalized_mode == "sprint" else ["定义", "推理", "应用"])
+        mode_profile = get_docgen_mode_profile(digest_mode)
+        heading = "## 本章压缩复盘" if mode_profile.is_sprint else "## 本章补充理解"
+        focus_items = required_elements[:4] or (
+            ["核心概念", "关键方法", "典型例子"] if mode_profile.is_sprint else ["定义", "推理", "应用"]
+        )
         lines = [
             heading,
             "",
@@ -347,7 +387,7 @@ class DocGenWriterRuntime(BaseTracedExecution):
             "",
         ]
         lines.extend(f"- {item}" for item in focus_items)
-        if normalized_mode == "sprint":
+        if mode_profile.is_sprint:
             lines.extend(
                 [
                     "",

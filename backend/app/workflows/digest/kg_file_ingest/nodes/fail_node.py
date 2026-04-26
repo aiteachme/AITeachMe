@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from app.shared.infra.database import managed_session
 from app.repositories import knowledge_build_repo
-from app.utils.job_helpers import cleanup_pending_by_job
+from app.workflows.digest.kg_file_ingest.lib.job_lifecycle import cleanup_pending_by_job
 from app.workflows.digest.kg_file_ingest.state import KnowledgeDigestState
 from app.workflows.digest.kg_file_ingest.lib.support import workflow_logger
 
@@ -69,5 +69,4 @@ def _resolve_failure_step(error_message: str) -> str:
 
 
 __all__ = ["fail_node"]
-
 

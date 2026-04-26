@@ -52,7 +52,7 @@ subject_export.atmx (ZIP)
 │   ├── raw_file.json
 │   ├── retrieval_chunk.json
 │   ├── knowledge_document.json
-│   ├── knowledge_node.json
+│   ├── knowledge_unit.json
 │   ├── knowledge_edge.json
 │   ├── teaching_unit.json
 │   ├── taxonomy_anchor.json
@@ -65,15 +65,8 @@ subject_export.atmx (ZIP)
 │   ├── user_knowledge_state.json
 │   ├── chat_session.json
 │   └── chat_message.json
-├── files/                     # 原始上传文件与解析产物
-│   ├── raw_files/
-│   ├── raw_markdowns/
-│   └── assets/
-│       └── <file_id>/
-├── knowledge/                 # 知识文档产物
-│   ├── chapter_*.md
-│   ├── merged_knowledge_base.md
-│   └── manifest.json
+├── knowledge/                 # 非 DB 知识文档资产
+│   └── cover.png              # 可选，章节正文从 DB 记录恢复
 └── exam/                      # 考试导出产物（如有）
 ```
 
@@ -85,15 +78,27 @@ subject_export.atmx (ZIP)
   "app_version": "0.1.0",
   "exported_at": "2026-04-03T00:00:00Z",
   "exporter": "AITeachMe",
+  "package": {
+    "package_id": "atmx_<uuid>",
+    "kind": "subject_export",
+    "manifest_schema": "aiteachme.atmx.manifest",
+    "content_roots": ["db", "files", "knowledge"],
+    "capabilities": ["subject_metadata", "knowledge_graph", "knowledge_docs"],
+    "min_reader_format_version": "1.0"
+  },
   "subject": {
     "slug": "gaodeng-shuxue",
     "name": "高等数学",
-    "description": "..."
+    "description": "...",
+    "user_intent": "...",
+    "icon_key": "math",
+    "created_at": "2026-04-03T00:00:00Z",
+    "updated_at": "2026-04-03T00:00:00Z"
   },
   "stats": {
     "raw_file_count": 3,
     "knowledge_document_count": 8,
-    "knowledge_node_count": 45,
+    "knowledge_unit_count": 45,
     "knowledge_edge_count": 62,
     "teaching_unit_count": 12,
     "question_template_count": 50,
@@ -102,13 +107,22 @@ subject_export.atmx (ZIP)
     "total_file_size_bytes": 15234567
   },
   "options": {
-    "include_raw_files": true,
+    "include_raw_files": false,
+    "include_raw_markdowns": true,
+    "include_knowledge_docs": true,
     "include_chat_history": true,
     "include_exam_history": true,
     "include_profile": true
-  }
+  },
+  "tables": [
+    {"name": "subject", "count": 1, "id_type": "auto", "subject_field": "slug"},
+    {"name": "knowledge_unit", "count": 45, "id_type": "auto", "subject_field": "subject"}
+  ],
+  "extensions": {}
 }
 ```
+
+`manifest.json` 读取端必须允许未知字段，新增字段应优先放在 `package`、`tables` 或 `extensions` 下，避免未来扩展时破坏旧包导入。
 
 ---
 
@@ -119,13 +133,8 @@ subject_export.atmx (ZIP)
 | 层级 | 数据 | 来源 |
 | --- | --- | --- |
 | 学科元数据 | `subject` | DB |
-| 原始文件元数据 | `raw_file` | DB |
-| 原始文件二进制 | `raw_files/*` | 文件系统 |
-| 解析后 Markdown | `raw_markdowns/*` | 文件系统 |
-| 文件资产 | `assets/<file_id>/*` | 文件系统 |
-| 检索切块 | `retrieval_chunk` | DB |
-| 知识文档 | `knowledge_document` + `knowledge_markdowns/*` | DB + 文件系统 |
-| 知识图谱 | `knowledge_node` + `knowledge_edge` | DB |
+| 知识文档 | `knowledge_document` | DB |
+| 知识图谱 | `knowledge_unit` + `knowledge_edge` | DB |
 | 教学单元 | `teaching_unit` | DB |
 | 分类锚点 | `taxonomy_anchor` | DB |
 | 课程结构 | `curriculum` + `theme_tree_node` + `unit_dependency` | DB |
@@ -134,18 +143,18 @@ subject_export.atmx (ZIP)
 
 | 数据 | 选项字段 | 默认 | 说明 |
 | --- | --- | --- | --- |
-| 原始文件二进制 | `include_raw_files` | ✅ | PDF/DOCX 等原始上传文件，关闭后可大幅减小体积 |
-| 解析后 Markdown | `include_raw_markdowns` | ✅ | ingest 产出的原始 Markdown |
-| 知识文档 | `include_knowledge_docs` | ✅ | digest 构建后的 chapter_*.md 等 |
+| 原始文件二进制 | `include_raw_files` | ❌ | 兼容旧 API 字段；当前不再打包 PDF/DOCX/PPT 等原始上传文件 |
+| 资料解析缓存 | `include_raw_markdowns` | ✅ | `raw_file.markdown_content` 与 `retrieval_chunk`；不再重复打包 `files/raw_markdowns/*.md` |
+| 知识文档 | `include_knowledge_docs` | ✅ | `knowledge_document` 表中的章节正文与封面资产 |
 | 聊天记录 | `include_chat_history` | ✅ | `chat_session` + `chat_message` |
 | 题库与考试记录 | `include_exam_history` | ✅ | `question_template` + `exam_paper` + `exam_paper_item` |
 | 学习画像 | `include_profile` | ✅ | `user_knowledge_state` |
 
 **常见用法**：
 
-- **教师分发预构建课程包**：关闭 `include_raw_files`、`include_chat_history`、`include_profile`，只保留知识文档和图谱
-- **设备迁移/完整备份**：全部打开（默认）
-- **只分享构建结果**：关闭 `include_raw_files` + `include_raw_markdowns`
+- **教师分发预构建课程包**：默认可保留 `include_raw_markdowns`，如不想携带资料解析记录可关闭；通常关闭 `include_chat_history`、`include_profile`
+- **设备迁移/完整备份**：按需打开解析缓存、对话、考试与画像；原始上传文件仍不导出
+- **只分享构建结果**：保持 `include_raw_files=false` 且关闭 `include_raw_markdowns`
 
 ### 4.3 不导出的数据
 
@@ -153,8 +162,10 @@ subject_export.atmx (ZIP)
 | --- | --- |
 | `chunk_embeddings` | 向量依赖 embedding 模型版本，导入后重建 |
 | `user` 表 | 用户身份绑定导入端 |
+| 原始上传文件二进制 | 避免隐私泄漏与包体膨胀；后续 raw 文件模型会逐步弱化 |
 | `build_status.json` / `.build.lock` | 运行时状态 |
 | `_build/` / `temp/` / `debug/` | 中间产物与临时文件 |
+| `merged_knowledge_base.md` | 已可由 `knowledge_document.markdown_content` 重新拼装，是派生文件 |
 
 ---
 
@@ -167,11 +178,13 @@ POST /api/v1/subjects/{subject}/export/preview   — 导出预览（内容摘要
 POST /api/v1/subjects/{subject}/export            — 下载导出包
 ```
 
+下载文件名使用 `学科名-学科id.atmx`，学科名和 id 会经过文件名安全清洗；包内真实身份仍以 `manifest.subject.slug` 为准。
+
 导出请求体：
 
 ```json
 {
-  "include_raw_files": true,
+  "include_raw_files": false,
   "include_raw_markdowns": true,
   "include_knowledge_docs": true,
   "include_chat_history": true,
@@ -197,7 +210,7 @@ POST /api/v1/subjects/{subject}/export            — 下载导出包
 
 ```json
 {
-  "table": "knowledge_node",
+  "table": "knowledge_unit",
   "count": 45,
   "records": [{ "id": 1, "subject": "...", "..." : "..." }]
 }
@@ -234,7 +247,7 @@ POST /api/v1/subjects/import   — 上传并导入 .atmx 文件
 4. **按依赖顺序**导入 DB 数据，维护 `old_id → new_id` 映射表：
    ```text
    subject → raw_file → retrieval_chunk
-           → knowledge_document → knowledge_node → knowledge_edge
+           → knowledge_document → knowledge_unit → knowledge_edge
            → teaching_unit → taxonomy_anchor
            → curriculum → theme_tree_node → unit_dependency
            → question_template → exam_paper → exam_paper_item
@@ -272,17 +285,11 @@ POST /api/v1/subjects/import   — 上传并导入 .atmx 文件
 ## 7.1 演示课程分发建议（线上 / 线下统一口径）
 
 后续如果首页增加“演示课程”Tab，前端**不要直接硬编码 OSS 路径**，而是统一只请求后端课程目录接口；  
-后端再决定当前是读本地共享目录，还是读 OSS 上的公开课程索引。
+后端统一读取 OSS 上的公开课程索引，本地模式与云端模式共用同一套线上课程源。
 
 推荐落点如下：
 
-### 本地 / 开发环境
-
-- 本地共享课程目录：`backend/data/_courses/`
-- 手工放入或脚本同步的 `.atmx` 文件都落这里
-- 首页“导入课程”Tab 直接列出这个目录里的课程包
-
-### 云端 / 演示课程 OSS
+### 演示课程 OSS
 
 推荐在 OSS 中固定一套公开前缀：
 
@@ -301,20 +308,28 @@ demo-courses/
 
 其中：
 
-- `index.json`：课程卡片列表、版本、下载地址、封面、简介
+- `index.json`：课程卡片列表、版本、下载地址、封面、简介；由本机私有脚本自动维护，不建议人工编辑
 - `packages/.../*.atmx`：真正的课程包
 - `covers/`：可选课程封面
 
 ### 运行时职责
 
-- 本地模式：后端优先扫描 `backend/data/_courses/`
-- 云端模式：后端可额外读取 OSS 的 `demo-courses/catalog/v1/index.json`
-- 前端只消费统一后的 `/api/v1/courses` 结果，不感知本地目录还是 OSS
+- 本地模式：后端同样读取 OSS 的 `demo-courses/catalog/v1/index.json`
+- 云端模式：后端读取同一份 OSS 课程索引；如有需要可额外做启动预热缓存
+- 前端只消费统一后的 `/api/v1/courses` 结果，不感知当前后端跑在本地还是云端
 - 真正导入时，应由后端下载到临时目录后复用同一套 `import_subject()` 逻辑，不依赖浏览器写服务器文件系统
+- 云端页面的“导入”导入的是当前云端账号；本地页面的“导入”导入的是本机后端，成功后直接进入左侧学科列表
+- 需要离线分发时，运维侧用私有脚本下载 `.atmx`，再通过前端“上传导入”入口导入
+- 推荐由部署/发行侧复用现有对象存储公共根地址：`S3_PUBLIC_BASE_URL=https://<your-cdn-domain>`；该项不面向普通本地用户设置。
+- 后端代码中固定拼接 `demo-courses/catalog/v1/index.json`
+- 运维侧通过本机私有脚本执行上传、下载、删除：
+  - `python scripts/private/demo_course_package.py --mode upload --file xxx.atmx`
+  - `python scripts/private/demo_course_package.py --mode download --file <course_id-or-filename>`
+  - `python scripts/private/demo_course_package.py --mode delete --file <course_id-or-filename> --yes`
 
 一句话原则：
 
-> **课程分发源可以是本地目录，也可以是 OSS；但导入执行器只能有一套。**
+> **课程分发主源统一为 OSS；导入执行器也始终只有一套。**
 
 ---
 

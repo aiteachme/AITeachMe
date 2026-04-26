@@ -3,12 +3,404 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>AI TEACHE ME - 智能学习平台</title>
-  <meta name="description" content="AI TEACHE ME - AI-powered learning platform" />
-  <link href="https://fonts.font.im/css?family=Dancing+Script|Pacifico" rel="stylesheet">
+  <link rel="icon" type="image/svg+xml" href="/logo.svg" />
+  <title>AiTeachMe - &#26234;&#33021;&#23398;&#20064;&#24179;&#21488;</title>
+  <meta name="description" content="AiTeachMe - AI-powered learning platform" />
+  <script>
+    if (window.electronWindow) {
+      document.documentElement.classList.add("is-desktop-shell");
+    }
+  </script>
+  <style>
+    html,
+    body,
+    #app {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+    }
+
+    *,
+    *::before,
+    *::after {
+      box-sizing: border-box;
+    }
+
+    body {
+      background: #fafafa;
+      color: #1f2329;
+      font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", "Helvetica Neue", Arial, sans-serif;
+      overflow: hidden;
+    }
+
+    .startup-shell {
+      position: relative;
+      display: grid;
+      place-items: center;
+      min-height: 100%;
+      background:
+        linear-gradient(135deg, rgba(99, 102, 241, 0.13) 0%, rgba(139, 92, 246, 0.08) 28%, rgba(255, 255, 255, 0) 58%),
+        linear-gradient(315deg, rgba(14, 165, 233, 0.07) 0%, rgba(255, 255, 255, 0) 45%),
+        linear-gradient(180deg, #ffffff 0%, #fafafa 46%, #f4f5f8 100%);
+    }
+
+    .is-desktop-shell .startup-shell {
+      grid-template-rows: minmax(0, 1fr);
+      place-items: center;
+    }
+
+    .startup-titlebar {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      z-index: 10;
+      display: none;
+      align-items: center;
+      height: 40px;
+      min-height: 40px;
+      background: transparent;
+      user-select: none;
+      -webkit-app-region: drag;
+    }
+
+    .dark .startup-titlebar {
+      background: transparent;
+      color: #e2e8f0;
+    }
+
+    .is-desktop-shell .startup-titlebar {
+      display: flex;
+    }
+
+    .startup-nav-controls {
+      position: relative;
+      z-index: 1;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      height: 100%;
+      padding-left: 8px;
+      -webkit-app-region: no-drag;
+    }
+
+    .startup-icon {
+      width: 16px;
+      height: 16px;
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 2;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
+    .startup-icon-small {
+      width: 14px;
+      height: 14px;
+    }
+
+    .startup-restore-icon {
+      display: none;
+    }
+
+    .is-window-maximized .startup-maximize-icon {
+      display: none;
+    }
+
+    .is-window-maximized .startup-restore-icon {
+      display: block;
+    }
+
+    .startup-titlebar-button {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 32px;
+      height: 32px;
+      border: 0;
+      border-radius: 4px;
+      background: transparent;
+      color: #64748b;
+      font: inherit;
+      line-height: 1;
+      transition: background-color 120ms ease, color 120ms ease, opacity 120ms ease;
+      -webkit-app-region: no-drag;
+    }
+
+    .startup-titlebar-button:hover {
+      background: rgba(15, 23, 42, 0.045);
+      color: #1f2937;
+    }
+
+    .startup-titlebar-button:disabled {
+      pointer-events: none;
+      opacity: 0.35;
+    }
+
+    .dark .startup-titlebar-button {
+      color: #94a3b8;
+    }
+
+    .dark .startup-titlebar-button:hover {
+      background: rgba(255, 255, 255, 0.07);
+      color: #f1f5f9;
+    }
+
+    .startup-window-controls {
+      display: flex;
+      height: 100%;
+      -webkit-app-region: no-drag;
+    }
+
+    .startup-drag-region {
+      flex: 1 1 auto;
+      align-self: stretch;
+      min-width: 16px;
+      -webkit-app-region: drag;
+    }
+
+    .startup-window-button {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 48px;
+      height: 100%;
+      border: 0;
+      background: transparent;
+      color: #475569;
+      font: inherit;
+      line-height: 1;
+      transition: background-color 120ms ease, color 120ms ease;
+      -webkit-app-region: no-drag;
+    }
+
+    .startup-window-button:hover {
+      background: rgba(15, 23, 42, 0.045);
+    }
+
+    .startup-window-button.close:hover {
+      background: #ef4444;
+      color: #ffffff;
+    }
+
+    .dark .startup-window-button {
+      color: #cbd5e1;
+    }
+
+    .dark .startup-window-button:hover {
+      background: rgba(255, 255, 255, 0.07);
+    }
+
+    .startup-content {
+      display: grid;
+      place-items: center;
+      min-height: 100%;
+    }
+
+    .is-desktop-shell .startup-content {
+      min-height: 0;
+    }
+
+    .startup-panel {
+      display: grid;
+      justify-items: center;
+      gap: 14px;
+      color: #1f2329;
+    }
+
+    .startup-logo {
+      box-sizing: border-box;
+      width: 64px;
+      height: 64px;
+      padding: 8px;
+      border-radius: 16px;
+      object-fit: contain;
+      box-shadow: 0 18px 44px rgba(31, 35, 41, 0.12);
+    }
+
+    .startup-title {
+      margin: 0;
+      font-size: 20px;
+      font-weight: 650;
+      line-height: 1.25;
+    }
+
+    .startup-status {
+      margin: 0;
+      color: #646a73;
+      font-size: 13px;
+      line-height: 1.5;
+    }
+
+    .startup-progress {
+      position: relative;
+      width: 168px;
+      height: 3px;
+      overflow: hidden;
+      border-radius: 999px;
+      background: rgba(99, 102, 241, 0.14);
+    }
+
+    .startup-progress::after {
+      position: absolute;
+      inset: 0;
+      width: 42%;
+      content: "";
+      border-radius: inherit;
+      background: linear-gradient(90deg, #6366f1 0%, #8b5cf6 100%);
+      animation: startup-progress 1.2s ease-in-out infinite;
+    }
+
+    @keyframes startup-progress {
+      0% {
+        transform: translateX(-110%);
+      }
+
+      100% {
+        transform: translateX(260%);
+      }
+    }
+  </style>
 </head>
 <body>
-  <div id="app"></div>
+  <div id="app">
+    <div class="startup-shell">
+      <div class="startup-titlebar">
+        <div class="startup-nav-controls">
+          <button class="startup-titlebar-button" id="startup-back" type="button" title="Back" aria-label="Back" disabled>
+            <svg class="startup-icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="m12 19-7-7 7-7"></path>
+              <path d="M19 12H5"></path>
+            </svg>
+          </button>
+          <button class="startup-titlebar-button" id="startup-forward" type="button" title="Forward" aria-label="Forward" disabled>
+            <svg class="startup-icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M5 12h14"></path>
+              <path d="m12 5 7 7-7 7"></path>
+            </svg>
+          </button>
+          <button class="startup-titlebar-button" id="startup-reload" type="button" title="Refresh" aria-label="Refresh">
+            <svg class="startup-icon startup-icon-small" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M21 12a9 9 0 1 1-2.64-6.36"></path>
+              <path d="M21 3v6h-6"></path>
+            </svg>
+          </button>
+        </div>
+        <div class="startup-drag-region" aria-hidden="true"></div>
+        <div class="startup-window-controls">
+          <button class="startup-window-button" id="startup-minimize" type="button" title="Minimize" aria-label="Minimize">
+            <svg class="startup-icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M5 12h14"></path>
+            </svg>
+          </button>
+          <button class="startup-window-button" id="startup-maximize" type="button" title="Maximize" aria-label="Maximize">
+            <svg class="startup-icon startup-icon-small startup-maximize-icon" viewBox="0 0 24 24" aria-hidden="true">
+              <rect width="18" height="18" x="3" y="3" rx="2"></rect>
+            </svg>
+            <svg class="startup-icon startup-icon-small startup-restore-icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M8 8V5.75C8 4.78 8.78 4 9.75 4h8.5C19.22 4 20 4.78 20 5.75v8.5c0 .97-.78 1.75-1.75 1.75H16"></path>
+              <rect width="12" height="12" x="4" y="8" rx="1.5"></rect>
+            </svg>
+          </button>
+          <button class="startup-window-button close" id="startup-close" type="button" title="Close" aria-label="Close">
+            <svg class="startup-icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M18 6 6 18"></path>
+              <path d="m6 6 12 12"></path>
+            </svg>
+          </button>
+        </div>
+      </div>
+      <div class="startup-content">
+        <div class="startup-panel">
+          <img class="startup-logo" src="./logo.svg" alt="AiTeachMe" />
+          <p class="startup-title">AiTeachMe</p>
+          <p class="startup-status" id="startup-status">&#27491;&#22312;&#21551;&#21160;...</p>
+          <div class="startup-progress" aria-hidden="true"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <script>
+    (function () {
+      var electronWindow = window.electronWindow;
+      if (!electronWindow) {
+        return;
+      }
+
+      document.documentElement.classList.add("is-desktop-shell");
+
+      function bind(id, action) {
+        var element = document.getElementById(id);
+        if (!element) {
+          return;
+        }
+        element.addEventListener("click", function () {
+          Promise.resolve(action()).catch(function () {});
+        });
+      }
+
+      function updateHistoryButtons() {
+        Promise.all([
+          electronWindow.canGoBack ? electronWindow.canGoBack() : Promise.resolve(false),
+          electronWindow.canGoForward ? electronWindow.canGoForward() : Promise.resolve(false),
+        ]).then(function (state) {
+          var back = document.getElementById("startup-back");
+          var forward = document.getElementById("startup-forward");
+          if (back) {
+            back.disabled = !state[0];
+          }
+          if (forward) {
+            forward.disabled = !state[1];
+          }
+        }).catch(function () {});
+      }
+
+      function updateMaximizeButton(isMaximized) {
+        var maximize = document.getElementById("startup-maximize");
+        document.documentElement.classList.toggle("is-window-maximized", Boolean(isMaximized));
+        if (maximize) {
+          var label = isMaximized ? "Restore" : "Maximize";
+          maximize.title = label;
+          maximize.setAttribute("aria-label", label);
+        }
+      }
+
+      function syncMaximizedState() {
+        if (!electronWindow.isMaximized) {
+          return;
+        }
+        electronWindow.isMaximized().then(updateMaximizeButton).catch(function () {});
+      }
+
+      bind("startup-back", function () { return electronWindow.goBack && electronWindow.goBack(); });
+      bind("startup-forward", function () { return electronWindow.goForward && electronWindow.goForward(); });
+      bind("startup-reload", function () { return electronWindow.reload(); });
+      bind("startup-minimize", function () { return electronWindow.minimize(); });
+      bind("startup-maximize", function () {
+        return electronWindow.toggleMaximize().then(updateMaximizeButton);
+      });
+      bind("startup-close", function () { return electronWindow.close(); });
+      updateHistoryButtons();
+      syncMaximizedState();
+
+      if (electronWindow.onMaximizedChange) {
+        electronWindow.onMaximizedChange(updateMaximizeButton);
+      }
+
+      if (electronWindow.onNavigationStateChange) {
+        electronWindow.onNavigationStateChange(function (state) {
+          var back = document.getElementById("startup-back");
+          var forward = document.getElementById("startup-forward");
+          if (back) {
+            back.disabled = !state.canGoBack;
+          }
+          if (forward) {
+            forward.disabled = !state.canGoForward;
+          }
+        });
+      }
+    })();
+  </script>
   <script type="module" src="/src/main.tsx"></script>
 </body>
 </html>

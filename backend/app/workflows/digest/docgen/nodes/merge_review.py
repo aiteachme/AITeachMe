@@ -1,19 +1,26 @@
-﻿"""Merge enhanced chapters and run whole-document review."""
+"""Merge enhanced chapters and run whole-document review."""
 
 from __future__ import annotations
 
+import re
 from time import perf_counter
 
+from app.shared.infra.tools.builtin.markdown_processing import build_draft_excerpt
 from app.shared.infra.tools.builtin.markdown_processing import count_words
-from app.utils.docgen_store import append_knowledge_build_recent_event, update_knowledge_build_status
+from app.shared.infra.knowledge.build_store import (
+    append_knowledge_build_recent_event,
+    update_knowledge_build_merge_preview,
+    update_knowledge_build_status,
+)
 from app.utils.time import utcnow
 from app.shared.infra.workflow.context import WorkflowContext
-from app.workflows.digest.docgen.lib.cover import build_docgen_cover_markdown, read_docgen_cover_artifact
 from app.workflows.digest.docgen.lib.models import EnhancedChapterDraft
 from app.workflows.digest.docgen.lib.publish import build_merged_markdown
 from app.workflows.digest.docgen.lib.quality import build_merge_review_report
 from app.workflows.digest.docgen.nodes.common import publish_docgen_progress
 from app.workflows.digest.docgen.state import DocGenState
+
+_LOCAL_SOURCE_FILE_RE = re.compile(r"^local://file/(\d+)(?:/|$)")
 
 
 def _dedupe_enhanced(chapters: list[EnhancedChapterDraft]) -> list[EnhancedChapterDraft]:
@@ -23,6 +30,33 @@ def _dedupe_enhanced(chapters: list[EnhancedChapterDraft]) -> list[EnhancedChapt
         if existing is None or len(chapter.markdown) >= len(existing.markdown):
             best[chapter.chapter_index] = chapter
     return [best[index] for index in sorted(best)]
+
+
+def _source_file_id_from_url(value: object) -> int | None:
+    match = _LOCAL_SOURCE_FILE_RE.match(str(value or "").strip())
+    if match is None:
+        return None
+    try:
+        file_id = int(match.group(1))
+    except (TypeError, ValueError):
+        return None
+    return file_id if file_id > 0 else None
+
+
+def _source_file_ids_from_chapter(chapter: EnhancedChapterDraft) -> list[int]:
+    file_ids: list[int] = []
+    for source in list(chapter.sources or []):
+        file_id = _source_file_id_from_url(source)
+        if file_id is not None:
+            file_ids.append(file_id)
+    for detail in list(chapter.source_details or []):
+        if not isinstance(detail, dict):
+            continue
+        for key in ("url", "source_ref"):
+            file_id = _source_file_id_from_url(detail.get(key))
+            if file_id is not None:
+                file_ids.append(file_id)
+    return list(dict.fromkeys(file_ids))
 
 
 def _chapter_metadata(
@@ -36,6 +70,9 @@ def _chapter_metadata(
 ) -> dict:
     # 这里是发布 manifest 的结构化收口，不改写正文；内容修复必须发生在更早的 review/repair 阶段。
     source_scope = dict(chapter.source_scope or {})
+    source_file_ids = _source_file_ids_from_chapter(chapter)
+    if source_file_ids:
+        source_scope["source_file_ids"] = source_file_ids
     return {
         "chapter_index": chapter.chapter_index,
         "title": chapter.title,
@@ -44,7 +81,7 @@ def _chapter_metadata(
         "summary": chapter.summary,
         "tags": [],
         "digest_mode": digest_mode,
-        "source_file_ids": [],
+        "source_file_ids": source_file_ids,
         "sources": list(chapter.sources),
         "source_details": list(chapter.source_details),
         "source_scope": source_scope,
@@ -123,8 +160,8 @@ def build_merge_review_node(*, context: WorkflowContext):
                     chapter_review_report=review_reports_by_chapter.get(chapter.chapter_index),
                 )
             )
-        cover_artifact = await read_docgen_cover_artifact(state["subject"])
-        cover_markdown = build_docgen_cover_markdown(cover_artifact)
+        cover_artifact = dict(state.get("cover_artifact") or {})
+        cover_markdown = str(state.get("cover_markdown") or "").strip()
         merged_markdown = build_merged_markdown(
             chapter_metadatas,
             document_context=dict(state.get("document_context") or {}),
@@ -144,6 +181,14 @@ def build_merge_review_node(*, context: WorkflowContext):
                 else f"整本文档检查完成，带 {len(review.issues)} 个 warning 发布。"
             ),
             draft_available=bool(merged_markdown.strip()),
+        )
+        update_knowledge_build_merge_preview(
+            state["subject"],
+            requested_at=state["requested_at"],
+            merge_preview={
+                "latest_chapter_titles": [chapter["title"] for chapter in chapter_metadatas],
+                "draft_excerpt": build_draft_excerpt(merged_markdown, max_chars=1600),
+            },
         )
         append_knowledge_build_recent_event(
             state["subject"],

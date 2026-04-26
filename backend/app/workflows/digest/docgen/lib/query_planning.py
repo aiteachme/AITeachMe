@@ -8,7 +8,7 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from app.shared.infra.llm_support import acompletion_with_fallback
-from app.shared.infra.llm_support.routing import TaskType
+from app.workflows.digest.docgen.lib.model_policy import DocGenModelStep, docgen_completion_kwargs
 from app.workflows.digest.docgen.prompts import (
     build_docgen_sub_query_messages,
     build_docgen_gap_query_messages,
@@ -35,6 +35,8 @@ EDUCATION_SITE_FILTERS: dict[str, list[str]] = {
         "site:mathworld.wolfram.com",
     ],
 }
+QUERY_CONTEXT_ITEM_COUNT_BUDGET = 6
+QUERY_CONTEXT_ITEM_CHAR_BUDGET = 180
 
 class ResearchSubQueryPlan(BaseModel):
     queries: list[str] = Field(default_factory=list, description="围绕当前章节主题拆解出的研究子查询")
@@ -99,13 +101,17 @@ def build_research_focus_text(
 
 def _serialize_query_context(context: Sequence[str | Mapping[str, Any]] | None) -> list[dict[str, str]]:
     serialized: list[dict[str, str]] = []
-    for item in context or []:
+    for item in list(context or [])[:QUERY_CONTEXT_ITEM_COUNT_BUDGET]:
         if isinstance(item, Mapping):
             title = str(item.get("title") or item.get("label") or item.get("name") or "").strip()
             detail = str(item.get("detail") or item.get("value") or item.get("objective") or "").strip()
+            if len(detail) > QUERY_CONTEXT_ITEM_CHAR_BUDGET:
+                detail = detail[:QUERY_CONTEXT_ITEM_CHAR_BUDGET].rstrip() + "..."
             text = " | ".join(part for part in [title, detail] if part).strip()
         else:
             text = str(item or "").strip()
+            if len(text) > QUERY_CONTEXT_ITEM_CHAR_BUDGET:
+                text = text[:QUERY_CONTEXT_ITEM_CHAR_BUDGET].rstrip() + "..."
         if not text:
             continue
         serialized.append({"text": text})
@@ -168,8 +174,7 @@ async def generate_sub_queries(
             domain=domain,
             fallback_queries=fallback_queries,
         ),
-        task_type=TaskType.REASONING,
-        model="reason",
+        **docgen_completion_kwargs(DocGenModelStep.QUERY_PLANNING),
         response_model=ResearchSubQueryPlan,
         extra_metadata={
             "query_tool": "generate_sub_queries",
@@ -217,8 +222,7 @@ async def generate_gap_queries(
             max_queries=int(max_queries or 2),
             domain=domain,
         ),
-        task_type=TaskType.REASONING,
-        model="reason",
+        **docgen_completion_kwargs(DocGenModelStep.QUERY_PLANNING),
         response_model=ResearchSubQueryPlan,
         extra_metadata={
             "query_tool": "generate_gap_queries",
@@ -246,6 +250,8 @@ async def generate_gap_queries(
 
 __all__ = [
     "EDUCATION_SITE_FILTERS",
+    "QUERY_CONTEXT_ITEM_CHAR_BUDGET",
+    "QUERY_CONTEXT_ITEM_COUNT_BUDGET",
     "ResearchSubQueryPlan",
     "build_research_focus_text",
     "dedupe_queries",

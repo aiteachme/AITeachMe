@@ -49,21 +49,25 @@ async def recover_stalled_enhancements(*, task_registry=None) -> int:
                 if raw_file.id is None:
                     continue
 
-                subject = (raw_file.subject or "").strip()
-                if not subject:
+                user_id = (raw_file.user_id or "").strip()
+                if not user_id:
                     logger.warning(
-                        "recover_stalled_skip_no_subject",
+                        "recover_stalled_skip_no_user",
                         file_id=raw_file.id,
                     )
                     continue
+                subject = (raw_file.subject or "").strip()
+                registry_subject = subject or f"files:{user_id}"
 
                 logger.info(
                     "recover_stalled_dispatching",
                     file_id=raw_file.id,
                     subject=subject,
+                    user_id=user_id,
                     current_status=raw_file.ingest_status,
                 )
                 enhance_coro = _run_deep_enhance_background(
+                    user_id=user_id,
                     subject=subject,
                     file_id=raw_file.id,
                 )
@@ -71,8 +75,8 @@ async def recover_stalled_enhancements(*, task_registry=None) -> int:
                     task_registry.spawn(
                         enhance_coro,
                         kind="ingest.enhance.recovery",
-                        subject=subject,
-                        name=f"ingest.enhance.recover:{subject}:{raw_file.id}",
+                        subject=registry_subject,
+                        name=f"ingest.enhance.recover:{registry_subject}:{raw_file.id}",
                     )
                 else:
                     task = asyncio.create_task(enhance_coro)

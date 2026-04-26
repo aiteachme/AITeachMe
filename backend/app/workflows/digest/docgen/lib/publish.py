@@ -1,4 +1,4 @@
-﻿"""Helpers for staging and publishing knowledge docs."""
+"""Helpers for staging and publishing knowledge docs."""
 
 from __future__ import annotations
 
@@ -27,12 +27,13 @@ from app.shared.infra.tools.builtin.markdown_processing import (
     normalize_source_details,
     normalize_mermaid_blocks,
 )
-from app.utils.docgen_store import (
+from app.shared.infra.knowledge.build_store import (
     KnowledgeDocsManifest,
     clear_current_published_knowledge_docs_files,
     update_knowledge_build_status,
     write_knowledge_manifest,
 )
+from app.workflows.support.subjects.learning_context import update_subject_learning_context_from_docgen
 from app.utils.path_helpers import sanitize_doc_title
 from app.utils.time import utcnow
 from app.shared.infra.workflow.runtime import cancel_tasks_and_drain
@@ -143,7 +144,25 @@ def _ensure_document_overview_structure(markdown: str) -> str:
     cleaned = str(markdown or "").strip()
     if not cleaned.startswith("# "):
         cleaned = "# 知识文档总览\n\n" + cleaned.lstrip("# \n")
+    if "\n## 目录" not in cleaned and "\n## 目錄" not in cleaned:
+        cleaned = _insert_toc_after_overview_intro(cleaned)
     return cleaned.strip()
+
+
+def _insert_toc_after_overview_intro(markdown: str) -> str:
+    lines = str(markdown or "").splitlines()
+    if not lines:
+        return "# 知识文档总览\n\n## 目录\n\n"
+    insert_at = len(lines)
+    for index, line in enumerate(lines[1:], start=1):
+        if line.startswith("## "):
+            insert_at = index
+            break
+    while insert_at > 0 and not lines[insert_at - 1].strip():
+        insert_at -= 1
+    toc_block = ["", "## 目录", ""]
+    lines[insert_at:insert_at] = toc_block
+    return "\n".join(lines).strip() + "\n"
 
 
 
@@ -323,6 +342,18 @@ def publish_staged_knowledge_docs(
         latest_version_no = docgen_repo.get_latest_version_no(session, subject)
     resolved_version_no = max(int(version_no or 0), latest_version_no + 1)
     package_key = f"{subject}:docgen:v{resolved_version_no:04d}"
+    published_at = utcnow()
+    resolved_docgen_artifacts: dict[str, Any] | None = None
+    if docgen_artifacts is not None:
+        resolved_docgen_artifacts = dict(docgen_artifacts)
+        build_metadata = dict(resolved_docgen_artifacts.get("build_metadata") or {})
+        build_metadata.update(
+            {
+                "version_no": resolved_version_no,
+                "build_session_id": build_session_id or str(build_metadata.get("build_session_id") or ""),
+            }
+        )
+        resolved_docgen_artifacts["build_metadata"] = build_metadata
 
     clear_current_published_knowledge_docs_files(subject)
 
@@ -364,7 +395,7 @@ def publish_staged_knowledge_docs(
                 build_session_id=build_session_id,
                 is_current=True,
                 status="published",
-                published_at=requested_at,
+                published_at=published_at,
                 digest_mode=str(chapter.get("digest_mode") or "") or None,
                 manifest_json=json.dumps(_build_chapter_manifest(chapter), ensure_ascii=False),
                 source_scope_json=json.dumps(_build_source_scope(chapter), ensure_ascii=False),
@@ -378,15 +409,43 @@ def publish_staged_knowledge_docs(
     )
     run_store_sync(cs.write_text, _build_versioned_merged_key(subject_scope.namespace, resolved_version_no), merged_markdown)
     run_store_sync(cs.write_text, subject_scope.knowledge_doc_key("merged_knowledge_base.md"), merged_markdown)
-    if docgen_artifacts is not None:
+    if resolved_docgen_artifacts is not None:
         versioned_manifest_key = _build_versioned_docgen_manifest_key(subject_scope.namespace, resolved_version_no)
         current_manifest_key = _build_current_docgen_manifest_key(subject_scope.namespace)
-        run_store_sync(cs.write_json_raw, versioned_manifest_key, docgen_artifacts)
-        run_store_sync(cs.write_json_raw, current_manifest_key, docgen_artifacts)
-    run_store_sync(cs.delete_prefix, subject_scope.knowledge_build_prefix(), default=0)
+        run_store_sync(cs.write_json_raw, versioned_manifest_key, resolved_docgen_artifacts)
+        run_store_sync(cs.write_json_raw, current_manifest_key, resolved_docgen_artifacts)
+
+    with managed_session() as session:
+        current_docs = docgen_repo.get_docs_by_subject(session, subject, only_current=True)
+        for doc in current_docs:
+            doc.is_current = False
+            doc.status = "superseded"
+            doc.superseded_at = published_at
+            doc.updated_at = published_at
+            session.add(doc)
+        for doc in docs_to_create:
+            session.add(doc)
+        session.flush()
+        update_subject_learning_context_from_docgen(
+            session,
+            subject=subject,
+            document_context=document_context,
+            chapter_metadatas=sorted_chapters,
+            chapter_assignments=chapter_assignments,
+            knowledge_docs=docs_to_create,
+            docgen_artifacts=resolved_docgen_artifacts,
+            version_no=resolved_version_no,
+            build_session_id=build_session_id,
+            requested_at=requested_at,
+        )
+        session.commit()
+        created_docs: list[KnowledgeDoc] = []
+        for doc in docs_to_create:
+            session.refresh(doc)
+            created_docs.append(doc)
 
     manifest = KnowledgeDocsManifest(
-        updated_at=requested_at,
+        updated_at=published_at,
         version_no=resolved_version_no,
         source_file_ids=sorted(
             {
@@ -405,10 +464,13 @@ def publish_staged_knowledge_docs(
             for chapter in sorted_chapters
         ],
     )
-    if docgen_artifacts is not None:
+    if resolved_docgen_artifacts is not None:
         manifest.docgen_manifest_key = _build_versioned_docgen_manifest_key(subject_scope.namespace, resolved_version_no)
-        manifest.merge_review_report = dict(docgen_artifacts.get("merge_review_report") or {})
+        manifest.merge_review_report = dict(resolved_docgen_artifacts.get("merge_review_report") or {})
+    # Do not mark the build completed until live docs are committed and staging is cleared,
+    # otherwise `/knowledge/docs` can briefly report 100% while no readable document is available.
     write_knowledge_manifest(subject, manifest)
+    run_store_sync(cs.delete_prefix, subject_scope.knowledge_build_prefix(), default=0)
     update_knowledge_build_status(
         subject,
         requested_at=requested_at,
@@ -420,21 +482,5 @@ def publish_staged_knowledge_docs(
         staged_chapter_count=len(sorted_chapters),
         published_doc_count=len(docs_to_create),
     )
-
-    with managed_session() as session:
-        current_docs = docgen_repo.get_docs_by_subject(session, subject, only_current=True)
-        for doc in current_docs:
-            doc.is_current = False
-            doc.status = "superseded"
-            doc.superseded_at = requested_at
-            doc.updated_at = requested_at
-            session.add(doc)
-        for doc in docs_to_create:
-            session.add(doc)
-        session.commit()
-        created_docs: list[KnowledgeDoc] = []
-        for doc in docs_to_create:
-            session.refresh(doc)
-            created_docs.append(doc)
 
     return [doc.id for doc in created_docs if doc.id is not None]

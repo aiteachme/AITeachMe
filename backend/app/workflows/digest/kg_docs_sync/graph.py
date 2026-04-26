@@ -74,10 +74,12 @@ def create_docs_sync_initial_state(
     markdown: str,
     build_revision_no: int | None,
     build_session_id: str | None = None,
+    subject_context: str | None = None,
 ) -> DocsSyncState:
     return {
         "subject": subject,
         "markdown": markdown,
+        "subject_context": subject_context or "",
         "build_revision_no": build_revision_no,
         "build_session_id": build_session_id or "",
         "report": None,

@@ -7,7 +7,7 @@ from urllib.parse import quote
 import httpx
 import structlog
 
-from app.shared.infra.env_support import get_env, get_env_bool
+from app.shared.infra.env_support import get_env_bool, get_env_choice
 from app.shared.infra.search.defaults import DEFAULT_SEARCH_PROVIDER_TIMEOUT_S
 from app.shared.infra.search.retrievers.base import BaseRetriever
 from app.shared.infra.search.retrievers.common import clamp_max_results, make_search_result, normalize_query
@@ -24,7 +24,7 @@ class JinaSearchRetriever(BaseRetriever):
 
     @classmethod
     def is_available(cls) -> bool:
-        return bool((get_env("JINA_API_KEY") or "").strip())
+        return bool((get_env_choice("JINA_API_KEY") or "").strip())
 
     @classmethod
     def availability_reason(cls) -> str | None:
@@ -36,7 +36,7 @@ class JinaSearchRetriever(BaseRetriever):
         normalized_query = normalize_query(query)
         if not normalized_query:
             return []
-        api_key = (get_env("JINA_API_KEY") or "").strip()
+        api_key = (get_env_choice("JINA_API_KEY") or "").strip()
         if not api_key:
             return []
         count = clamp_max_results(max_results, upper=20)

@@ -115,7 +115,7 @@ async def materialize_shared_inputs(
             [
                 RawFile(
                     id=packet.file_id,
-                    uid=f"raw_{packet.file_id}",
+                    uid=f"file_{uuid4().hex}",
                     subject=subject,
                     filename=packet.filename,
                     filetype="markdown",

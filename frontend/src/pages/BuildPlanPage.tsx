@@ -13,6 +13,7 @@ import {
   Loader2,
   Paperclip,
   RefreshCw,
+  Square,
   Sparkles,
   X,
 } from "lucide-react";
@@ -24,16 +25,22 @@ import type {
   BuildPlannerSessionResponse,
   DocGenBuildCancelData,
   DocGenBuildData,
-  FileRecord as ApiFileRecord,
 } from "../api/generated/model";
 import type { ApiResponse } from "../api/types";
-import { BuildView, ACTIVE_DOC_BUILD_STATUSES, parseIsoTimestamp, useDocBuildProgress } from "../components/knowledge-docs";
-import { KnowledgeBuildResolutionModal } from "../components/pages/KnowledgeBuildResolutionModal";
-import { PlannerPreviewMarkdown } from "../components/pages/PlannerPreviewMarkdown";
+import { ACTIVE_DOC_BUILD_STATUSES, parseIsoTimestamp, useDocBuildProgress } from "../components/knowledge-docs";
+import { KnowledgeBuildResolutionModal } from "../components/build-plan/KnowledgeBuildResolutionModal";
+import { PlannerPreviewMarkdown } from "../components/build-plan/PlannerPreviewMarkdown";
 import { FullPageDropOverlay } from "../components/ui/FullPageDropOverlay";
 import { useToast } from "../components/ui/Toast";
 import { useKnowledgeBuildFlow } from "../hooks/useKnowledgeBuildFlow";
+import {
+  buildKnowledgeBuildRuntimeQueryKey,
+  fetchKnowledgeBuildRuntime,
+} from "../lib/knowledgeBuildRuntime";
+import { formatDigestModeLabel } from "../lib/digestMode";
 import { buildKnowledgeDocStateQueryKey, fetchKnowledgeDocState } from "../lib/knowledgeDocs";
+import { FILE_ACCEPT, extractPasteFiles } from "../lib/fileUpload";
+import { publicAssetPath } from "../lib/publicAsset";
 import type { FileRecord, FilesData, FilesUploadData } from "../types/files";
 
 type ChatRole = "user" | "assistant" | "system";
@@ -45,6 +52,7 @@ interface ChatMessage {
   timestamp: string;
   plan?: BuildPlannerPlanResponse | null;
   runtimeStats?: PlannerRuntimeStats | null;
+  streaming?: boolean;
 }
 
 interface PersistedPlannerState {
@@ -56,8 +64,8 @@ interface PersistedPlannerState {
   plannerNeedsRefresh: boolean;
 }
 
-const ACCEPT = ".pdf,.docx,.doc,.ppt,.pptx,.md,.markdown,.txt,.png,.jpg,.jpeg,.webp";
 const STORAGE_PREFIX = "aiteachme:files-page-planner";
+const LOGO_SRC = publicAssetPath("logo.svg");
 const PLANNER_STATE_VERSION = 4;
 const LEGACY_WELCOME_MESSAGE_CONTENT =
   "可以直接告诉我你的学习目标，也可以先上传资料。我会先思考资料边界，再给出几条计划大纲，你确认后再正式开始知识文档构建。";
@@ -88,13 +96,6 @@ interface PlannerRuntimeStats {
   steps?: PlannerRuntimeStep[];
 }
 
-interface PlannerStreamEvent {
-  id: string;
-  text: string;
-  stage?: string;
-  details?: string[];
-}
-
 interface PlannerOutlineItem {
   title: string;
   description?: string;
@@ -109,6 +110,7 @@ function createMessage(
   content: string,
   plan: BuildPlannerPlanResponse | null = null,
   runtimeStats: PlannerRuntimeStats | null = null,
+  streaming = false,
 ): ChatMessage {
   return {
     id: nextMessageId(),
@@ -117,6 +119,19 @@ function createMessage(
     timestamp: new Date().toISOString(),
     plan,
     runtimeStats,
+    streaming,
+  };
+}
+
+function createStreamingAssistantMessage(id: string): ChatMessage {
+  return {
+    id,
+    role: "assistant",
+    content: "",
+    timestamp: new Date().toISOString(),
+    plan: null,
+    runtimeStats: null,
+    streaming: true,
   };
 }
 
@@ -137,6 +152,43 @@ function sanitizePlannerMessages(messages: ChatMessage[]): ChatMessage[] {
 
 function appendUserMessage(messages: ChatMessage[], prompt: string): ChatMessage[] {
   return [...sanitizePlannerMessages(messages), createMessage("user", prompt)];
+}
+
+function replaceMessageById(
+  messages: ChatMessage[],
+  id: string,
+  updater: (message: ChatMessage) => ChatMessage,
+): ChatMessage[] {
+  let replaced = false;
+  const next = messages.map((message) => {
+    if (message.id !== id) {
+      return message;
+    }
+    replaced = true;
+    return updater(message);
+  });
+  return replaced ? next : messages;
+}
+
+function removeMessageById(messages: ChatMessage[], id: string): ChatMessage[] {
+  return messages.filter((message) => message.id !== id);
+}
+
+function settleAbortedPlannerMessages(
+  messages: ChatMessage[],
+  partialContent: string,
+  systemContent: string,
+): ChatMessage[] {
+  const content = partialContent.trim();
+  const next = messages.filter(
+    (message) => !(message.role === "assistant" && message.streaming && !message.plan),
+  );
+
+  if (content) {
+    next.push(createMessage("assistant", content));
+  }
+  next.push(createMessage("system", systemContent));
+  return next;
 }
 
 function readPersistedPlannerState(subjectId: string): PersistedPlannerState | null {
@@ -274,87 +326,6 @@ function buildPlannerOutlineItems(plan: BuildPlannerPlanResponse | null | undefi
   return [];
 }
 
-function plannerPayloadOutlineDetails(payload: Record<string, unknown>): string[] {
-  const items = Array.isArray(payload.outline_items) ? payload.outline_items : [];
-  return items
-    .map((item) => {
-      if (!isRecord(item)) {
-        return "";
-      }
-      const title = typeof item.title === "string" ? item.title.trim() : "";
-      const objective = typeof item.objective === "string" ? item.objective.trim() : "";
-      return title && objective ? `${title}：${objective}` : title;
-    })
-    .filter(Boolean)
-    .slice(0, 8);
-}
-
-function buildPlannerStreamDetails(payload: Record<string, unknown>): string[] {
-  const stage = typeof payload.event === "string"
-    ? payload.event.trim()
-    : typeof payload.stage === "string"
-      ? payload.stage.trim()
-      : "";
-
-  switch (stage) {
-    case "planner.thinking.started":
-      return [];
-    case "planner.intent.ready":
-      return [];
-    case "planner.plan.composing":
-      return ["正在生成计划说明和可调整的初步大纲。"];
-    case "planner.plan.finalizing":
-      return ["正在校验计划结构，并写入草稿记录。"];
-    case "planner.plan.ready":
-      return plannerPayloadOutlineDetails(payload);
-    default:
-      return [];
-  }
-}
-
-function normalizePlannerStreamEvent(payload: unknown): PlannerStreamEvent | null {
-  if (typeof payload === "string") {
-    const cleaned = payload.trim();
-    return cleaned ? { id: nextMessageId(), text: cleaned } : null;
-  }
-  if (!isRecord(payload)) {
-    return null;
-  }
-
-  const text = resolvePlannerStatusText(payload).trim();
-  if (!text) {
-    return null;
-  }
-
-  const stage = typeof payload.event === "string"
-    ? payload.event.trim()
-    : typeof payload.stage === "string"
-      ? payload.stage.trim()
-      : "";
-
-  return {
-    id: nextMessageId(),
-    text,
-    stage: stage || undefined,
-    details: buildPlannerStreamDetails(payload),
-  };
-}
-
-function appendPlannerStreamEvent(events: PlannerStreamEvent[], payload: unknown): PlannerStreamEvent[] {
-  const nextEvent = normalizePlannerStreamEvent(payload);
-  if (!nextEvent) {
-    return events;
-  }
-  const last = events[events.length - 1];
-  if (
-    last?.text === nextEvent.text &&
-    JSON.stringify(last.details ?? []) === JSON.stringify(nextEvent.details ?? [])
-  ) {
-    return events;
-  }
-  return [...events.slice(-5), nextEvent];
-}
-
 function PlannerOutlineCard({
   plan,
   needsRefresh,
@@ -398,9 +369,9 @@ function PlannerOutlineCard({
         ))}
       </div>
 
-      <div className="mt-6 flex items-center gap-3">
+      <div className="mt-6 flex flex-wrap items-center gap-3">
         <span className="rounded-full border border-zinc-200 px-2 py-0.5 text-[11px] text-zinc-500">
-          {plan.digest_mode}
+          {formatDigestModeLabel(plan.digest_mode)}
         </span>
         {needsRefresh ? (
           <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] text-amber-700">
@@ -412,31 +383,29 @@ function PlannerOutlineCard({
           <button
             type="button"
             onClick={onOpenKnowledgeDocs}
-            className="inline-flex items-center justify-center gap-2 rounded-lg bg-zinc-950 px-5 py-2.5 text-sm font-semibold text-white"
+            className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-zinc-200 bg-white px-4 py-2.5 text-sm font-medium text-zinc-700"
           >
             <BookOpen className="h-4 w-4" />
-            进入
+            进入文档
           </button>
-        ) : (
-          <>
-            <button
-              type="button"
-              onClick={onAdjust}
-              className="rounded-lg border border-zinc-200 bg-white px-4 py-2.5 text-sm font-medium text-zinc-700"
-            >
-              调整
-            </button>
-            <button
-              type="button"
-              onClick={onConfirm}
-              disabled={isDisabled}
-              className="inline-flex items-center justify-center gap-2 rounded-lg bg-zinc-950 px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
-            >
-              {isBuilding ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-              开始
-            </button>
-          </>
-        )}
+        ) : null}
+        <button
+          type="button"
+          onClick={onAdjust}
+          disabled={isDisabled}
+          className="min-h-11 rounded-lg border border-zinc-200 bg-white px-4 py-2.5 text-sm font-medium text-zinc-700 disabled:opacity-50"
+        >
+          调整
+        </button>
+        <button
+          type="button"
+          onClick={onConfirm}
+          disabled={isDisabled}
+          className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-zinc-950 px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
+        >
+          {isBuilding ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+          开始构建
+        </button>
       </div>
     </div>
   );
@@ -445,27 +414,31 @@ function PlannerOutlineCard({
 function BuildInProgressBubble({
   progress,
   statusText,
+  isActive,
+  canOpenKnowledgeDocs,
   onOpen,
 }: {
   progress: number;
   statusText: string;
+  isActive: boolean;
+  canOpenKnowledgeDocs: boolean;
   onOpen: () => void;
 }) {
   return (
-    <button
-      type="button"
-      onClick={onOpen}
-      className="w-full rounded-lg border border-zinc-200 bg-white px-4 py-4 text-left shadow-sm transition hover:border-zinc-300 hover:shadow-md"
-    >
+    <div className="w-full rounded-2xl border border-zinc-200 bg-white px-4 py-4 text-left shadow-sm">
       <div className="flex items-start gap-3">
         <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-zinc-950 text-white">
-          <Loader2 className="h-4 w-4 animate-spin" />
+          {isActive ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <p className="text-sm font-semibold text-zinc-950">知识库正在构建</p>
-              <p className="mt-1 text-xs leading-5 text-zinc-500">点击查看完整构建进度</p>
+              <p className="text-sm font-semibold text-zinc-950">
+                {isActive ? "知识库正在构建" : "知识库构建状态"}
+              </p>
+              <p className="mt-1 text-xs leading-5 text-zinc-500">
+                可进入知识文档页面查看完整实时进度。
+              </p>
             </div>
             <span className="shrink-0 text-xs font-semibold text-zinc-700">{Math.round(progress)}%</span>
           </div>
@@ -474,13 +447,25 @@ function BuildInProgressBubble({
           </p>
           <div className="mt-4 h-1.5 overflow-hidden rounded-full bg-zinc-100">
             <div
-              className="h-full rounded-full bg-zinc-950 transition-all duration-500"
+              className="h-full rounded-full bg-zinc-950 animate-pulse transition-all duration-500"
               style={{ width: `${Math.max(8, Math.min(100, progress))}%` }}
             />
           </div>
+          {canOpenKnowledgeDocs ? (
+            <div className="mt-4 flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={onOpen}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-zinc-950 px-3 py-2 text-xs font-semibold text-white"
+              >
+                <BookOpen className="h-3.5 w-3.5" />
+                进入知识文档
+              </button>
+            </div>
+          ) : null}
         </div>
       </div>
-    </button>
+    </div>
   );
 }
 
@@ -677,17 +662,21 @@ export function BuildPlanPage() {
     () => new URLSearchParams(location.search).get("requested_at"),
     [location.search],
   );
+  const requestedAtMs = useMemo(() => parseIsoTimestamp(requestedAt), [requestedAt]);
   const chatEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const plannerSessionIdRef = useRef<string | null>(null);
   const currentPlanRef = useRef<BuildPlannerPlanResponse | null>(null);
-  const loadedSubjectRef = useRef<string | null>(null);
+  const hydratedSubjectRef = useRef<string | null>(null);
+  const localInteractionSubjectRef = useRef<string | null>(null);
   const plannerStreamingRawRef = useRef("");
   const plannerAbortControllerRef = useRef<AbortController | null>(null);
+  const plannerPendingMessageIdRef = useRef<string | null>(null);
   const autoStartFiredRef = useRef(false);
 
   const markPlannerLocalInteraction = useCallback(() => {
-    loadedSubjectRef.current = subjectId;
+    localInteractionSubjectRef.current = subjectId;
+    hydratedSubjectRef.current = subjectId;
   }, [subjectId]);
 
   const [messages, setMessages] = useState<ChatMessage[]>(() => createInitialMessages());
@@ -699,7 +688,6 @@ export function BuildPlanPage() {
   const [plannerStreaming, setPlannerStreaming] = useState(false);
   const [plannerStreamingPreview, setPlannerStreamingPreview] = useState("");
   const [plannerStreamingStatus, setPlannerStreamingStatus] = useState("正在思考目标与资料...");
-  const [plannerStreamingEvents, setPlannerStreamingEvents] = useState<PlannerStreamEvent[]>([]);
   const [isRevisingPlan, setIsRevisingPlan] = useState(false);
 
   const filesQuery = useQuery({
@@ -721,22 +709,59 @@ export function BuildPlanPage() {
       const data = query.state.data;
       const build = data?.build;
       const status = build?.status ?? null;
+      const liveMarkdown = data?.markdown ?? "";
+      const hasLiveDocMarkdown = Boolean(data?.exists && liveMarkdown.trim().length > 0);
+      const targetRequestedAtMs = requestedAtMs ?? parseIsoTimestamp(build?.requested_at ?? null);
+      const updatedAtMs = parseIsoTimestamp(data?.updated_at ?? null);
+      const hasRequestedLiveDoc =
+        hasLiveDocMarkdown &&
+        (targetRequestedAtMs === null || (updatedAtMs !== null && updatedAtMs >= targetRequestedAtMs));
 
       if (status && ACTIVE_DOC_BUILD_STATUSES.has(status)) {
         return 2500;
       }
-      if (status === "failed" || status === "cancelled" || status === "completed") {
+      if (status === "completed") {
+        return hasRequestedLiveDoc ? false : 1200;
+      }
+      if (status === "failed" || status === "cancelled") {
         return false;
       }
-
-      const targetRequestedAtMs = parseIsoTimestamp(requestedAt) ?? parseIsoTimestamp(build?.requested_at ?? null);
-      if (targetRequestedAtMs === null) {
+      if (!status || status === "idle") {
         return false;
       }
+      return hasRequestedLiveDoc ? false : 2500;
+    },
+  });
 
-      const updatedAtMs = parseIsoTimestamp(data?.updated_at ?? null);
-      const isReady = updatedAtMs !== null && updatedAtMs >= targetRequestedAtMs;
-      return isReady ? false : 2500;
+  const buildRuntimeQuery = useQuery({
+    queryKey: [...buildKnowledgeBuildRuntimeQueryKey(subjectId), requestedAt],
+    queryFn: () => fetchKnowledgeBuildRuntime(subjectId),
+    enabled: Boolean(subjectId),
+    retry: false,
+    refetchInterval: (query) => {
+      const aggregate = query.state.data?.aggregate;
+      const status = (aggregate?.status ?? "").trim();
+      const liveMarkdown = knowledgeDocState.data?.markdown ?? "";
+      const hasLiveDocMarkdown = Boolean(knowledgeDocState.data?.exists && liveMarkdown.trim().length > 0);
+      const targetRequestedAtMs = requestedAtMs ?? parseIsoTimestamp(aggregate?.requested_at ?? null);
+      const updatedAtMs = parseIsoTimestamp(knowledgeDocState.data?.updated_at ?? null);
+      const hasRequestedLiveDoc =
+        hasLiveDocMarkdown &&
+        (targetRequestedAtMs === null || (updatedAtMs !== null && updatedAtMs >= targetRequestedAtMs));
+
+      if (status && ACTIVE_DOC_BUILD_STATUSES.has(status)) {
+        return 2500;
+      }
+      if (status === "completed" || status === "partial_failed" || status === "skipped") {
+        return hasRequestedLiveDoc ? false : 1200;
+      }
+      if (status === "failed" || status === "cancelled") {
+        return false;
+      }
+      if (!status || status === "idle") {
+        return false;
+      }
+      return hasRequestedLiveDoc ? false : 2500;
     },
   });
 
@@ -749,24 +774,13 @@ export function BuildPlanPage() {
     () => (readyFileUids.length > 0 ? readyFileUids : plannerFileUids),
     [plannerFileUids, readyFileUids],
   );
-  const buildSourceFiles = useMemo<ApiFileRecord[]>(
-    () =>
-      files.map((file) => ({
-        ...file,
-        status: file.status as ApiFileRecord["status"],
-      })),
-    [files],
-  );
-
-  const buildMeta = knowledgeDocState.data?.build ?? null;
-  const buildPreview = knowledgeDocState.data?.build_preview ?? null;
-  const buildMetrics = knowledgeDocState.data?.build_metrics ?? null;
+  const buildMeta = buildRuntimeQuery.data?.aggregate ?? knowledgeDocState.data?.build ?? null;
+  const buildPreview = buildRuntimeQuery.data?.docgen_preview ?? knowledgeDocState.data?.build_preview ?? null;
   const buildStatus = buildMeta?.status ?? null;
   const liveMarkdown = knowledgeDocState.data?.markdown ?? "";
   const draftMarkdown = knowledgeDocState.data?.draft_markdown ?? "";
   const hasLiveDocMarkdown = Boolean(knowledgeDocState.data?.exists && liveMarkdown.trim().length > 0);
   const hasDraftDocMarkdown = Boolean(draftMarkdown.trim().length > 0);
-  const requestedAtMs = useMemo(() => parseIsoTimestamp(requestedAt), [requestedAt]);
   const buildRequestedAtMs = useMemo(
     () => parseIsoTimestamp(buildMeta?.requested_at ?? null),
     [buildMeta?.requested_at],
@@ -780,15 +794,12 @@ export function BuildPlanPage() {
   const isBuildFailure = buildStatus === "failed" || buildStatus === "cancelled";
   const isRequestedBuildReady =
     targetRequestedAtMs !== null
-      ? publishedUpdatedAtMs !== null && publishedUpdatedAtMs >= targetRequestedAtMs
-      : buildStatus === "completed" && hasLiveDocMarkdown;
+      ? hasLiveDocMarkdown && publishedUpdatedAtMs !== null && publishedUpdatedAtMs >= targetRequestedAtMs
+      : hasLiveDocMarkdown;
   const isWaitingForRequestedBuild =
-    targetRequestedAtMs !== null &&
-    !isRequestedBuildReady &&
     !isBuildFailure &&
-    (isBuildActive || hasDraftDocMarkdown);
-  const shouldShowBuildView = false;
-  const buildStage = buildMeta?.stage ?? null;
+    !isRequestedBuildReady &&
+    (isBuildActive || buildStatus === "completed" || hasDraftDocMarkdown || (targetRequestedAtMs !== null && !hasLiveDocMarkdown));
   const { buildProgress, buildStatusText } = useDocBuildProgress({
     buildMeta,
     buildStatus,
@@ -805,7 +816,16 @@ export function BuildPlanPage() {
       return;
     }
     let cancelled = false;
-    loadedSubjectRef.current = null;
+
+    // 如果用户在页面初次挂载后的极短时间内已经开始本地交互
+    // （例如很快发送了一条 planner 消息），不要再执行后续恢复逻辑，
+    // 否则异步恢复结果会把本地插入的 assistant 占位消息覆盖掉。
+    if (localInteractionSubjectRef.current === subjectId) {
+      logPlannerDebug("skip_restore_after_local_interaction", { subjectId });
+      return;
+    }
+
+    hydratedSubjectRef.current = null;
 
     // 先尝试恢复本地缓存，但只有存在真实 planner session 时才信任。
     const persisted = readPersistedPlannerState(subjectId);
@@ -823,7 +843,7 @@ export function BuildPlanPage() {
       setPlannerNeedsRefresh(Boolean(persisted.plannerNeedsRefresh));
       setHasAutoUploaded(false);
       setIsRevisingPlan(false);
-      loadedSubjectRef.current = subjectId;
+      hydratedSubjectRef.current = subjectId;
       return;
     }
 
@@ -835,7 +855,7 @@ export function BuildPlanPage() {
           method: "POST",
           url: `/api/v1/subjects/${subjectId}/knowledge/build/plans/latest`,
         });
-        if (cancelled || loadedSubjectRef.current === subjectId) return;
+        if (cancelled || localInteractionSubjectRef.current === subjectId) return;
         const session = response.data;
         if (!session || !session.turns?.length) {
           logPlannerDebug("restore_latest_empty", {
@@ -850,7 +870,7 @@ export function BuildPlanPage() {
           setPlannerNeedsRefresh(false);
           setHasAutoUploaded(false);
           setIsRevisingPlan(false);
-          loadedSubjectRef.current = subjectId;
+          hydratedSubjectRef.current = subjectId;
           return;
         }
 
@@ -878,10 +898,10 @@ export function BuildPlanPage() {
         setPlannerNeedsRefresh(false);
         setHasAutoUploaded(false);
         setIsRevisingPlan(false);
-        loadedSubjectRef.current = subjectId;
+        hydratedSubjectRef.current = subjectId;
       } catch {
         // 后端恢复失败时，回到一个干净的新会话。
-        if (cancelled || loadedSubjectRef.current === subjectId) return;
+        if (cancelled || localInteractionSubjectRef.current === subjectId) return;
         logPlannerDebug("restore_latest_failed", { subjectId });
         setMessages(createInitialMessages());
         setPlannerSessionId(null);
@@ -890,7 +910,7 @@ export function BuildPlanPage() {
         setPlannerNeedsRefresh(false);
         setHasAutoUploaded(false);
         setIsRevisingPlan(false);
-        loadedSubjectRef.current = subjectId;
+        hydratedSubjectRef.current = subjectId;
       }
     }
 
@@ -905,7 +925,7 @@ export function BuildPlanPage() {
   }, [plannerSessionId, currentPlan]);
 
   useEffect(() => {
-    if (!subjectId || loadedSubjectRef.current !== subjectId) {
+    if (!subjectId || hydratedSubjectRef.current !== subjectId) {
       return;
     }
     persistPlannerState(subjectId, {
@@ -918,7 +938,7 @@ export function BuildPlanPage() {
   }, [currentPlan, inputValue, messages, plannerNeedsRefresh, plannerSessionId, subjectId]);
 
   useEffect(() => {
-    if (loadedSubjectRef.current !== subjectId || !currentPlan) {
+    if (hydratedSubjectRef.current !== subjectId || !currentPlan) {
       return;
     }
     const selected = currentPlan.selected_file_uids ?? [];
@@ -948,9 +968,16 @@ export function BuildPlanPage() {
 
     // Fire the planner immediately — capture the prompt before clearing navState.
     markPlannerLocalInteraction();
-    setMessages((prev) => appendUserMessage(prev, prompt));
+    const pendingAssistantId = nextMessageId();
+    plannerPendingMessageIdRef.current = pendingAssistantId;
+    setMessages((prev) => [
+      ...appendUserMessage(prev, prompt),
+      createStreamingAssistantMessage(pendingAssistantId),
+    ]);
     setInputValue("");
     setPlannerStreaming(true);
+    const controller = new AbortController();
+    plannerAbortControllerRef.current = controller;
     plannerStreamingRawRef.current = "";
     setPlannerStreamingPreview("");
     setPlannerStreamingStatus("正在理解目标和资料，整理思考过程...");
@@ -964,9 +991,9 @@ export function BuildPlanPage() {
           subjectId,
           { file_uids: plannerEffectiveFileUids, user_prompt: prompt },
           {
+            signal: controller.signal,
             onStatus: (payload) => {
               setPlannerStreamingStatus(resolvePlannerStatusText(payload));
-              setPlannerStreamingEvents((prev) => appendPlannerStreamEvent(prev, payload));
             },
             onToken: (token) => {
               plannerStreamingRawRef.current += token;
@@ -980,16 +1007,34 @@ export function BuildPlanPage() {
           plannerStreamingRawRef.current.replace(/\r/g, "").trim(),
         );
       } catch (error) {
-        setMessages((prev) => [
-          ...prev,
-          createMessage("system", getApiErrorMessage(error, "主模型调用失败，未生成结果，请修改设置后重试。")),
-        ]);
+        if (isAbortError(error)) {
+          const partialContent = plannerStreamingRawRef.current.replace(/\r/g, "").trim();
+          setMessages((prev) => settleAbortedPlannerMessages(
+            prev,
+            partialContent,
+            partialContent
+              ? "已停止生成，以上是已输出的部分内容。你可以继续输入新的要求。"
+              : "已停止生成，你可以继续输入新的要求。",
+          ));
+          plannerPendingMessageIdRef.current = null;
+          return;
+        }
+        setMessages((prev) => {
+          const next = plannerPendingMessageIdRef.current
+            ? removeMessageById(prev, plannerPendingMessageIdRef.current)
+            : prev;
+          return [
+            ...next,
+            createMessage("system", getApiErrorMessage(error, "主模型调用失败，未生成结果，请修改设置后重试。")),
+          ];
+        });
+        plannerPendingMessageIdRef.current = null;
       } finally {
+        plannerAbortControllerRef.current = null;
         setPlannerStreaming(false);
         plannerStreamingRawRef.current = "";
         setPlannerStreamingPreview("");
         setPlannerStreamingStatus("正在思考目标与资料...");
-        setPlannerStreamingEvents([]);
       }
     })();
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1025,6 +1070,7 @@ export function BuildPlanPage() {
     mutationFn: () => cancelKnowledgeBuild(subjectId),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: buildKnowledgeDocStateQueryKey(subjectId) });
+      void queryClient.invalidateQueries({ queryKey: buildKnowledgeBuildRuntimeQueryKey(subjectId) });
     },
   });
 
@@ -1039,6 +1085,7 @@ export function BuildPlanPage() {
     fallbackErrorMessage: "知识文档构建失败。",
     onSuccess: (data: DocGenBuildData) => {
       void queryClient.invalidateQueries({ queryKey: buildKnowledgeDocStateQueryKey(subjectId) });
+      void queryClient.invalidateQueries({ queryKey: buildKnowledgeBuildRuntimeQueryKey(subjectId) });
       toast({
         title: "已开始构建知识文档",
         description:
@@ -1075,12 +1122,7 @@ export function BuildPlanPage() {
 
   const isPlannerPending = plannerStreaming || confirmPlannerMutation.isPending;
   const isBuilding = knowledgeBuild.isPending || isBuildActive;
-  const shouldShowBuildDialog = isBuilding || isWaitingForRequestedBuild;
-  const plannerPendingBadgeText = plannerStreaming
-    ? "思考中"
-    : confirmPlannerMutation.isPending
-      ? "正在确认方案"
-      : "正在启动构建";
+  const shouldShowBuildDialog = isBuilding || isWaitingForRequestedBuild || isBuildFailure;
   const plannerPendingStatusText = plannerStreaming
     ? plannerStreamingStatus
     : confirmPlannerMutation.isPending
@@ -1133,20 +1175,34 @@ export function BuildPlanPage() {
   const appendPlannerResponse = useCallback(
     (response: BuildPlannerSessionResponse, fallbackContent: string, contentOverride?: string | null) => {
       const runtimeStats = parsePlannerRuntimeStats(response);
+      const resolvedContent = contentOverride?.trim() || pickAssistantReply(response, fallbackContent);
+      const pendingId = plannerPendingMessageIdRef.current;
       setPlannerSessionId(response.session_id);
       setCurrentPlan(response.latest_plan);
       setPlannerNeedsRefresh(false);
       setIsRevisingPlan(false);
       void queryClient.invalidateQueries({ queryKey: ["subjects"] });
-      setMessages((prev) => [
-        ...prev,
-        createMessage(
-          "assistant",
-          contentOverride?.trim() || pickAssistantReply(response, fallbackContent),
-          response.latest_plan,
-          runtimeStats,
-        ),
-      ]);
+      setMessages((prev) => {
+        if (pendingId) {
+          return replaceMessageById(prev, pendingId, (message) => ({
+            ...message,
+            content: resolvedContent,
+            plan: response.latest_plan,
+            runtimeStats,
+            streaming: false,
+          }));
+        }
+        return [
+          ...prev,
+          createMessage(
+            "assistant",
+            resolvedContent,
+            response.latest_plan,
+            runtimeStats,
+          ),
+        ];
+      });
+      plannerPendingMessageIdRef.current = null;
     },
     [queryClient],
   );
@@ -1165,22 +1221,6 @@ export function BuildPlanPage() {
     }
     cancelBuildMutation.mutate();
   }, [cancelBuildMutation, subjectId]);
-
-  const handleReturnToPlanner = useCallback(() => {
-    if (!subjectId) {
-      return;
-    }
-    navigate(
-      {
-        pathname: `/subject/${subjectId}/build`,
-        search: "",
-      },
-      {
-        replace: true,
-        state: null,
-      },
-    );
-  }, [navigate, subjectId]);
 
   const handleSend = useCallback(async () => {
     if (plannerStreaming) {
@@ -1214,7 +1254,12 @@ export function BuildPlanPage() {
       effectiveFileCount: plannerEffectiveFileUids.length,
     });
     markPlannerLocalInteraction();
-    setMessages((prev) => appendUserMessage(prev, text));
+    const pendingAssistantId = nextMessageId();
+    plannerPendingMessageIdRef.current = pendingAssistantId;
+    setMessages((prev) => [
+      ...appendUserMessage(prev, text),
+      createStreamingAssistantMessage(pendingAssistantId),
+    ]);
     setInputValue("");
     setIsRevisingPlan(false);
     setPlannerStreaming(true);
@@ -1228,7 +1273,6 @@ export function BuildPlanPage() {
         : "正在理解目标和资料，整理思考过程..."
       : "正在根据你的补充重新思考大纲...";
     setPlannerStreamingStatus(initialStatus);
-    setPlannerStreamingEvents([{ id: nextMessageId(), text: initialStatus }]);
 
     try {
       if (shouldCreateSession) {
@@ -1242,7 +1286,6 @@ export function BuildPlanPage() {
             signal: controller.signal,
             onStatus: (payload) => {
               setPlannerStreamingStatus(resolvePlannerStatusText(payload));
-              setPlannerStreamingEvents((prev) => appendPlannerStreamEvent(prev, payload));
             },
             onToken: (token) => {
               plannerStreamingRawRef.current += token;
@@ -1268,7 +1311,6 @@ export function BuildPlanPage() {
         signal: controller.signal,
         onStatus: (payload) => {
           setPlannerStreamingStatus(resolvePlannerStatusText(payload));
-          setPlannerStreamingEvents((prev) => appendPlannerStreamEvent(prev, payload));
         },
         onToken: (token) => {
           plannerStreamingRawRef.current += token;
@@ -1289,24 +1331,37 @@ export function BuildPlanPage() {
     } catch (error) {
       if (isAbortError(error)) {
         logPlannerDebug("send_plan_message_aborted", { subjectId });
-        setMessages((prev) => [...prev, createMessage("system", "已停止生成，你可以继续输入新的调整。")]);
+        const partialContent = plannerStreamingRawRef.current.replace(/\r/g, "").trim();
+        setMessages((prev) => settleAbortedPlannerMessages(
+          prev,
+          partialContent,
+          partialContent
+            ? "已停止生成，以上是已输出的部分内容。你可以继续输入新的调整。"
+            : "已停止生成，你可以继续输入新的调整。",
+        ));
+        plannerPendingMessageIdRef.current = null;
         return;
       }
       logPlannerDebug("send_plan_message_failed", {
         subjectId,
         error: getApiErrorMessage(error, "unknown"),
       });
-      setMessages((prev) => [
-        ...prev,
-        createMessage("system", getApiErrorMessage(error, "主模型调用失败，未生成结果，请修改设置后重试。")),
-      ]);
+      setMessages((prev) => {
+        const next = plannerPendingMessageIdRef.current
+          ? removeMessageById(prev, plannerPendingMessageIdRef.current)
+          : prev;
+        return [
+          ...next,
+          createMessage("system", getApiErrorMessage(error, "主模型调用失败，未生成结果，请修改设置后重试。")),
+        ];
+      });
+      plannerPendingMessageIdRef.current = null;
     } finally {
       plannerAbortControllerRef.current = null;
       setPlannerStreaming(false);
       plannerStreamingRawRef.current = "";
       setPlannerStreamingPreview("");
       setPlannerStreamingStatus("正在思考目标与资料...");
-      setPlannerStreamingEvents([]);
     }
   }, [
     appendPlannerResponse,
@@ -1413,7 +1468,7 @@ export function BuildPlanPage() {
     : "直接输入学习目标，也可以先上传资料再一起规划";
 
   const canOpenKnowledgeDocs =
-    shouldShowBuildView && (isRequestedBuildReady || buildStatus === "completed" || hasLiveDocMarkdown);
+    isRequestedBuildReady || hasLiveDocMarkdown || hasDraftDocMarkdown;
 
   return (
     <>
@@ -1422,109 +1477,16 @@ export function BuildPlanPage() {
         disabled={uploadMutation.isPending}
       />
 
-      <div className="relative flex h-full w-full flex-col overflow-hidden bg-transparent">
-        <div className="relative z-10 flex h-full w-full flex-col">
+      <div className="relative flex min-h-0 w-full flex-1 flex-col overflow-hidden bg-transparent">
+        <div className="relative z-10 flex min-h-0 w-full flex-1 flex-col">
           <div className="flex items-center justify-center pb-2 pt-6">
-            <div className="inline-flex items-center gap-2 rounded-full border border-zinc-200/80 bg-white px-3 py-1.5 text-[11px] font-semibold uppercase tracking-widest text-zinc-500 shadow-sm">
+            <div className="inline-flex items-center gap-2 rounded-full border border-zinc-200/80 dark:border-slate-800/80 bg-white dark:bg-slate-900 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-widest text-zinc-500 dark:text-slate-400 shadow-sm">
               <Sparkles className="h-3 w-3" />
               方案规划
             </div>
           </div>
 
-        {shouldShowBuildView ? (
-          <div className="flex-1 overflow-y-auto px-4 pb-6 md:px-8 lg:px-16">
-            <div className="mx-auto max-w-[1100px] rounded-[28px] border border-zinc-200/80 bg-white/90 p-5 shadow-[0_28px_70px_-48px_rgba(24,24,27,0.35)] backdrop-blur-sm md:p-6">
-              <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                <div className="space-y-2">
-                  <div className="inline-flex items-center gap-2 rounded-full border border-sky-200 bg-sky-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-widest text-sky-700">
-                    <Sparkles className="h-3 w-3" />
-                    知识构建
-                  </div>
-                  <h2 className="text-xl font-semibold text-zinc-900">
-                    {isBuildFailure ? "本轮构建失败" : canOpenKnowledgeDocs ? "知识文档已就绪" : "知识文档构建中"}
-                  </h2>
-                  <p className="max-w-2xl text-sm leading-6 text-zinc-600">
-                    {isBuildFailure
-                      ? buildMeta?.error_message?.trim() || "构建过程中出现了问题，你可以回到方案规划后重新发起。"
-                      : canOpenKnowledgeDocs
-                        ? "正式知识文档已经可以打开。你也可以先在这里检查章节推进、检索来源和草稿片段。"
-                        : "这里会持续展示材料处理、检索来源、章节推进和草稿片段，不再把构建过程丢到知识文档页里。"}
-                  </p>
-                </div>
-
-                <div className="flex flex-wrap items-center gap-3">
-                  {canOpenKnowledgeDocs ? (
-                    <button
-                      type="button"
-                      onClick={handleOpenKnowledgeDocs}
-                      className="inline-flex items-center gap-2 rounded-xl bg-zinc-900 px-4 py-2.5 text-sm font-semibold text-white"
-                    >
-                      <BookOpen className="h-4 w-4" />
-                      进入知识文档
-                    </button>
-                  ) : null}
-                  {isBuildActive ? (
-                    <button
-                      type="button"
-                      onClick={handleCancelBuild}
-                      disabled={cancelBuildMutation.isPending}
-                      className="inline-flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-2.5 text-sm font-semibold text-red-700 disabled:opacity-60"
-                    >
-                      {cancelBuildMutation.isPending ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : (
-                        <X className="h-4 w-4" />
-                      )}
-                      终止当前构建
-                    </button>
-                  ) : null}
-                  <button
-                    type="button"
-                    onClick={handleReturnToPlanner}
-                    className="inline-flex items-center gap-2 rounded-xl border border-zinc-200 bg-white px-4 py-2.5 text-sm font-medium text-zinc-600"
-                  >
-                    <RefreshCw className="h-4 w-4" />
-                    返回方案规划
-                  </button>
-                </div>
-              </div>
-
-              {knowledgeDocState.isError ? (
-                <div className="mt-5 rounded-2xl border border-red-200 bg-red-50 px-4 py-4 text-sm text-red-700">
-                  <div className="flex items-start gap-3">
-                    <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-                    <div className="space-y-2">
-                      <p className="font-medium">构建状态拉取失败</p>
-                      <p>如果后端已经受理，重新刷新即可恢复；如果问题持续，可以先回到规划态重新发起。</p>
-                      <button
-                        type="button"
-                        onClick={() => void knowledgeDocState.refetch()}
-                        className="inline-flex items-center gap-2 rounded-lg border border-red-200 bg-white px-3 py-2 text-xs font-medium text-red-700"
-                      >
-                        <RefreshCw className="h-3.5 w-3.5" />
-                        重新拉取状态
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                <BuildView
-                  className="pt-2"
-                  isFetching={knowledgeDocState.isFetching}
-                  progress={buildProgress}
-                  statusText={buildStatusText}
-                  buildPreview={buildPreview}
-                  buildMetrics={buildMetrics}
-                  sourceFiles={buildSourceFiles}
-                  sourceFilesFetching={filesQuery.isFetching}
-                  buildStage={buildStage}
-                />
-              )}
-            </div>
-          </div>
-        ) : null}
-
-        <div className={shouldShowBuildView ? "hidden" : "flex-1 overflow-y-auto px-4 pb-4 md:px-8 lg:px-16"}>
+        <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-4 md:px-8 lg:px-16">
           <div className="mx-auto max-w-3xl space-y-3">
             {messages.map((message) => (
               <div
@@ -1538,8 +1500,8 @@ export function BuildPlanPage() {
                 }
               >
                 {message.role === "assistant" ? (
-                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-violet-500 to-indigo-600 shadow-sm">
-                    <Sparkles className="h-4 w-4 text-white" />
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-50 ring-1 ring-slate-200/50 p-1 shadow-sm">
+                    <img src={LOGO_SRC} alt="AI" className="h-full w-full object-contain" />
                   </div>
                 ) : null}
 
@@ -1548,14 +1510,27 @@ export function BuildPlanPage() {
                     message.role === "user"
                       ? "max-w-[80%] rounded-2xl rounded-tr-md bg-zinc-900 px-4 py-3 text-sm text-white shadow-sm"
                       : message.role === "system"
-                        ? "rounded-full bg-zinc-100 px-3 py-1 text-xs text-zinc-500"
+                        ? "rounded-full bg-zinc-100 dark:bg-slate-800 px-3 py-1 text-xs text-zinc-500 dark:text-slate-400"
                         : "max-w-[85%] space-y-2"
                   }
                 >
                   {message.role === "assistant" ? (
                     <>
+                      {message.streaming && !message.plan ? (
+                        <div className="rounded-2xl rounded-tl-md border border-zinc-100 dark:border-slate-800 bg-white dark:bg-slate-900 px-4 py-3 shadow-sm">
+                          {plannerStreamingPreview.trim() ? (
+                            <PlannerPreviewMarkdown markdown={plannerStreamingPreview} streaming />
+                          ) : (
+                            <div className="flex items-center gap-2 text-sm text-zinc-500 dark:text-slate-400">
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                              <span>{plannerPendingStatusText}</span>
+                            </div>
+                          )}
+                        </div>
+                      ) : null}
+
                       {!message.plan && message.content ? (
-                        <div className="rounded-2xl rounded-tl-md border border-zinc-100 bg-white px-4 py-3 shadow-sm">
+                        <div className="rounded-2xl rounded-tl-md border border-zinc-100 dark:border-slate-800 bg-white dark:bg-slate-900 px-4 py-3 shadow-sm">
                           <PlannerPreviewMarkdown markdown={message.content} />
                         </div>
                       ) : null}
@@ -1580,68 +1555,17 @@ export function BuildPlanPage() {
               </div>
             ))}
 
-            {isPlannerPending ? (
-              <div className="flex gap-3">
-                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-violet-500 to-indigo-600 shadow-sm">
-                  <Sparkles className="h-4 w-4 text-white" />
-                </div>
-                <div className="w-full max-w-[85%] rounded-lg border border-zinc-200 bg-white px-4 py-4 shadow-sm">
-                  <div className="mb-3 flex flex-wrap items-center gap-2">
-                    <span className="inline-flex items-center gap-1.5 rounded-full border border-zinc-200 bg-zinc-50 px-2.5 py-1 text-[11px] font-medium text-zinc-700">
-                      <Loader2 className="h-3 w-3 animate-spin" />
-                      {plannerPendingBadgeText}
-                    </span>
-                    <span className="text-xs text-zinc-500">
-                      {plannerPendingStatusText}
-                    </span>
-                  </div>
-                  {plannerStreamingEvents.length ? (
-                    <div className="mb-3 space-y-1.5 rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2">
-                      {plannerStreamingEvents.map((event, index) => (
-                        <div key={event.id} className="flex items-start gap-2 text-xs leading-5 text-zinc-700">
-                          <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-zinc-400" />
-                          <div className="min-w-0 flex-1">
-                            <div>
-                              {index === plannerStreamingEvents.length - 1 ? "当前：" : "已完成："}
-                              {event.text}
-                            </div>
-                            {event.details?.length ? (
-                              <div className="mt-1.5 space-y-1 text-[11px] leading-5 text-zinc-600">
-                                {event.details.map((detail) => (
-                                  <div key={`${event.id}-${detail}`} className="rounded-md bg-white px-2 py-1">
-                                    {detail}
-                                  </div>
-                                ))}
-                              </div>
-                            ) : null}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : null}
-                  {plannerStreamingPreview.trim() ? (
-                    <div className="mb-3">
-                      <PlannerPreviewMarkdown markdown={plannerStreamingPreview} />
-                    </div>
-                  ) : null}
-                  {!plannerStreaming || !plannerStreamingPreview.trim() ? (
-                    <div className="rounded-lg border border-dashed border-zinc-200 bg-zinc-50 px-3 py-3 text-sm text-zinc-500">
-                      正在等待后端推送第一段思考内容，请稍等...
-                    </div>
-                  ) : null}
-                </div>
-              </div>
-            ) : null}
-
             {shouldShowBuildDialog ? (
               <div className="flex gap-3">
-                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-violet-500 to-indigo-600 shadow-sm">
-                  <Sparkles className="h-4 w-4 text-white" />
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-50 ring-1 ring-slate-200/50 p-1 shadow-sm">
+                  <img src={LOGO_SRC} alt="AI" className="h-full w-full object-contain" />
                 </div>
                 <div className="w-full max-w-[85%]">
                   <BuildInProgressBubble
                     progress={buildProgress}
                     statusText={buildPreview?.current_stage_description?.trim() || buildStatusText}
+                    isActive={isBuildActive || knowledgeBuild.isPending}
+                    canOpenKnowledgeDocs={canOpenKnowledgeDocs}
                     onOpen={handleOpenKnowledgeDocs}
                   />
                 </div>
@@ -1663,7 +1587,7 @@ export function BuildPlanPage() {
           </div>
         </div>
 
-        <div className={shouldShowBuildView ? "hidden" : "px-4 pb-6 pt-2 md:px-8 lg:px-16"}>
+        <div className="shrink-0 px-4 pb-6 pt-2 md:px-8 lg:px-16">
           <div className="mx-auto max-w-3xl">
             {isRevisingPlan ? (
               <div className="mb-2 flex items-center justify-between gap-3 rounded-2xl border border-violet-200 bg-violet-50 px-4 py-3 text-sm text-violet-700">
@@ -1681,7 +1605,7 @@ export function BuildPlanPage() {
               </div>
             ) : null}
 
-            <div className="w-full rounded-2xl border border-zinc-200/60 bg-white shadow-[0_2px_8px_rgba(0,0,0,0.04)] transition-all focus-within:border-zinc-300 focus-within:shadow-[0_4px_16px_rgba(0,0,0,0.06)] focus-within:ring-4 focus-within:ring-zinc-900/5">
+            <div className="w-full rounded-2xl border border-zinc-200/60 dark:border-slate-800/60 bg-white dark:bg-slate-900 shadow-[0_2px_8px_rgba(0,0,0,0.04)] dark:shadow-[0_2px_8px_rgba(0,0,0,0.2)] transition-all focus-within:border-zinc-300 dark:focus-within:border-slate-700 focus-within:shadow-[0_4px_16px_rgba(0,0,0,0.06)] dark:focus-within:shadow-[0_4px_16px_rgba(0,0,0,0.3)] focus-within:ring-4 focus-within:ring-zinc-900/5 dark:focus-within:ring-slate-800/50">
               <textarea
                 ref={inputRef}
                 value={inputValue}
@@ -1692,10 +1616,17 @@ export function BuildPlanPage() {
                     void handleSend();
                   }
                 }}
+                onPaste={(event) => {
+                  const files = extractPasteFiles(event);
+                  if (files.length > 0) {
+                    event.preventDefault();
+                    void uploadMutation.mutateAsync(files);
+                  }
+                }}
                 disabled={isBuilding || plannerStreaming}
                 placeholder={plannerStreaming ? "正在生成方案，点击右侧按钮可停止当前生成" : inputPlaceholder}
                 rows={1}
-                className="w-full min-h-[56px] max-h-[120px] resize-none border-0 bg-transparent px-4 pb-3 pt-4 text-[14px] leading-relaxed text-zinc-800 placeholder:text-zinc-400 focus:outline-none"
+                className="w-full min-h-[56px] max-h-[120px] resize-none border-0 bg-transparent px-4 pb-3 pt-4 text-[14px] leading-relaxed text-zinc-800 dark:text-zinc-200 placeholder:text-zinc-400 dark:placeholder:text-slate-500 focus:outline-none"
                 style={{ minHeight: "56px" }}
                 onInput={(event) => {
                   const target = event.currentTarget;
@@ -1706,13 +1637,13 @@ export function BuildPlanPage() {
 
               <div className="px-3 pb-3 flex flex-col gap-2">
                 {files.length > 0 && (
-                  <div className="flex flex-wrap gap-2 px-1 py-2 border-t border-zinc-100">
+                  <div className="flex flex-wrap gap-2 px-1 py-2 border-t border-zinc-100 dark:border-slate-800">
                     {files.map((file) => {
                       const meta = fileMeta(file);
                       return (
                         <div
                           key={file.uid}
-                          className="group relative flex items-center gap-1.5 rounded-lg border border-zinc-200/60 bg-zinc-50 px-2.5 py-1.5 text-[13px] text-zinc-700 transition-colors hover:bg-white hover:border-zinc-300 hover:shadow-sm"
+                          className="group relative flex items-center gap-1.5 rounded-lg border border-zinc-200/60 dark:border-slate-700/60 bg-zinc-50 dark:bg-slate-800/50 px-2.5 py-1.5 text-[13px] text-zinc-700 dark:text-slate-300 transition-colors hover:bg-white dark:hover:bg-slate-800 hover:border-zinc-300 dark:hover:border-slate-600 hover:shadow-sm"
                         >
                           {fileIcon(file)}
                           <span className="max-w-[140px] truncate font-medium">
@@ -1739,7 +1670,7 @@ export function BuildPlanPage() {
                     <input
                       type="file"
                       multiple
-                      accept={ACCEPT}
+                      accept={FILE_ACCEPT}
                       className="hidden"
                       id="files-page-upload"
                       onChange={(event: ChangeEvent<HTMLInputElement>) => {
@@ -1752,7 +1683,7 @@ export function BuildPlanPage() {
                     />
                     <label
                       htmlFor="files-page-upload"
-                      className="flex cursor-pointer items-center gap-1.5 rounded-lg px-3 py-1.5 text-[13px] font-medium text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-900"
+                      className="flex min-h-10 cursor-pointer items-center gap-1.5 rounded-lg px-3 py-1.5 text-[13px] font-medium text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-900"
                     >
                       {uploadMutation.isPending ? (
                         <Loader2 className="h-4 w-4 animate-spin" />
@@ -1785,9 +1716,9 @@ export function BuildPlanPage() {
                     }
                     title={isBuilding ? "终止当前构建" : plannerStreaming ? "停止当前生成" : "发送"}
                     className={
-                      "flex h-9 w-9 shrink-0 items-center justify-center rounded-xl transition-all " +
+                      "flex h-11 w-11 shrink-0 items-center justify-center rounded-xl transition-all sm:h-9 sm:w-9 " +
                       (isBuilding || plannerStreaming
-                        ? "bg-red-600 text-white hover:bg-red-700 shadow-sm"
+                        ? "rounded-full bg-zinc-100 text-zinc-950 shadow-sm hover:bg-zinc-200 focus:outline-none focus:ring-4 focus:ring-zinc-900/10 active:scale-[0.98]"
                         : (!inputValue.trim() || confirmPlannerMutation.isPending)
                         ? "cursor-not-allowed bg-zinc-100 text-zinc-300"
                         : "bg-zinc-900 text-white shadow-sm hover:bg-zinc-800 focus:outline-none focus:ring-4 focus:ring-zinc-900/10 active:scale-[0.98]")
@@ -1796,7 +1727,7 @@ export function BuildPlanPage() {
                     {cancelBuildMutation.isPending ? (
                       <Loader2 className="h-4 w-4 animate-spin" />
                     ) : isBuilding || plannerStreaming ? (
-                      <X className="h-4 w-4" />
+                      <Square className="h-3.5 w-3.5 fill-current stroke-0" />
                     ) : (
                       <ArrowUp className="h-4 w-4" />
                     )}

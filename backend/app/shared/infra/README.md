@@ -156,7 +156,7 @@ workflow 作者通常不需要从这里直接导入。
 | 目录或文件 | 作用 |
 | --- | --- |
 | `settings/`、`env_support.py`、`runtime/` | 运行模式、项目设置、环境变量、路径 |
-| `database/` | 数据库引擎、Session、向量表能力 |
+| `database/` | 数据库引擎、Session、向量索引能力 |
 | `storage/` | 本地存储 / S3 / 内容存储接口 |
 | `llm_support/` | 文本、结构化、流式、tool call 等 LLM 主入口 |
 | `embedding/` | canonical embedding 调用入口与框架适配 |
@@ -179,7 +179,7 @@ await acompletion_with_fallback(messages, model="primary")
 await acompletion_with_fallback(messages, model="light")
 ```
 
-这些逻辑名直接对应运行时 settings 的 `models.reason / primary / light`。也可以传具体模型名。`task_type` 仍可用于默认温度、超时、重试和观测归类，但不应再作为业务代码选择模型的主要方式。
+这些逻辑名直接对应运行时 settings 的 `models.reason / primary / light`。也可以传具体模型名。`call_purpose` 可用于默认温度、超时、重试和观测归类，但不应作为业务代码选择模型的主要方式。旧参数名 `task_type` 仅保留给存量调用兼容使用。
 
 ## 什么不该放进 Infra
 

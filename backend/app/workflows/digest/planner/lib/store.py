@@ -51,6 +51,7 @@ from app.utils.time import utcnow
 from app.workflows.digest.common.runtime_config import get_teaching_runtime_config
 from app.workflows.digest.planner.lib.plans import normalize_planner_payload
 from app.workflows.digest.planner.lib.steps import STEP_TIMING_FIELDS
+from app.workflows.support.subjects.icons import normalize_subject_icon_key, set_subject_icon_key
 
 logger = structlog.get_logger(__name__)
 PLANNER_CHAT_SOURCE = "build_planner"
@@ -172,30 +173,122 @@ def _needs_auto_subject_name(value: str | None) -> bool:
     return str(value or "").strip().casefold() in _AUTO_TITLE_PLACEHOLDERS
 
 
-def _maybe_update_subject_name(
+def _clean_subject_metadata_text(value: str | None, *, max_chars: int = 800) -> str:
+    text = " ".join(str(value or "").split()).strip()
+    if len(text) <= max_chars:
+        return text
+    return text[:max_chars].rstrip()
+
+
+def _build_subject_description_from_plan(
+    plan_payload: Mapping[str, Any],
+    *,
+    material_context: Any,
+) -> str:
+    profile = getattr(material_context, "learning_domain_profile", None)
+    profile_description = _clean_subject_metadata_text(
+        getattr(profile, "subject_description", "") if profile is not None else "",
+        max_chars=360,
+    )
+    discipline = _clean_subject_metadata_text(
+        getattr(profile, "discipline", "") if profile is not None else "",
+        max_chars=80,
+    )
+    sub_discipline = _clean_subject_metadata_text(
+        getattr(profile, "sub_discipline", "") if profile is not None else "",
+        max_chars=80,
+    )
+    topics = (
+        [
+            _clean_subject_metadata_text(str(item), max_chars=40)
+            for item in list(getattr(profile, "key_topics", []) or [])[:6]
+            if str(item or "").strip()
+        ]
+        if profile is not None
+        else []
+    )
+    summary = _clean_subject_metadata_text(str(plan_payload.get("plan_summary") or ""), max_chars=420)
+
+    parts: list[str] = []
+    if profile_description:
+        parts.append(profile_description)
+    elif discipline or sub_discipline or topics:
+        label = " > ".join(item for item in [discipline, sub_discipline] if item)
+        topic_text = "、".join(topics)
+        if label and topic_text:
+            parts.append(f"{label}学习空间，围绕{topic_text}展开。")
+        elif label:
+            parts.append(f"{label}学习空间。")
+        elif topic_text:
+            parts.append(f"围绕{topic_text}展开的学习空间。")
+    if summary and summary not in parts:
+        parts.append(summary)
+    return _clean_subject_metadata_text(" ".join(parts), max_chars=800)
+
+
+def _build_subject_user_intent_from_state(state: Mapping[str, Any]) -> str:
+    raw_intent = state.get("plan_intent") or {}
+    if isinstance(raw_intent, Mapping):
+        intent = _clean_subject_metadata_text(str(raw_intent.get("plan_intent") or ""), max_chars=420)
+        if intent:
+            return intent
+    return _clean_subject_metadata_text(str(state.get("user_prompt") or ""), max_chars=420)
+
+
+def _maybe_update_subject_from_planner(
     session: Session,
     *,
     subject: str,
     user_id: str,
     generated_name: str,
+    generated_icon_key: str | None = None,
+    description: str = "",
+    user_intent: str = "",
 ) -> None:
-    title = " ".join(str(generated_name or "").strip().split())[:16]
-    if not title or title.casefold() in _AUTO_TITLE_PLACEHOLDERS:
-        return
+    title = " ".join(str(generated_name or "").strip().split())
+    should_apply_title = bool(title) and title.casefold() not in _AUTO_TITLE_PLACEHOLDERS
+    description = _clean_subject_metadata_text(description, max_chars=800)
+    user_intent = _clean_subject_metadata_text(user_intent, max_chars=420)
     subject_row = session.exec(
         select(Subject).where(Subject.slug == subject, Subject.user_id == user_id)
     ).first()
-    if subject_row is None or not _needs_auto_subject_name(subject_row.name):
+    if subject_row is None:
         return
-    subject_row.name = title
+
+    updated = False
+    if should_apply_title and _needs_auto_subject_name(subject_row.name):
+        subject_row.name = title
+        icon_key = normalize_subject_icon_key(generated_icon_key)
+        if icon_key:
+            set_subject_icon_key(subject_row, icon_key)
+        updated = True
+    if description and subject_row.description != description:
+        subject_row.description = description
+        updated = True
+    if user_intent and subject_row.user_intent != user_intent:
+        subject_row.user_intent = user_intent
+        updated = True
+    if not updated:
+        return
+
     subject_row.updated_at = utcnow()
     session.add(subject_row)
     session.commit()
     logger.info(
-        "planner_subject_auto_named",
+        "planner_subject_metadata_updated",
         subject=subject,
-        generated_name=title,
+        generated_name=title or None,
+        description_chars=len(description),
+        user_intent_chars=len(user_intent),
     )
+
+
+def _apply_generated_subject_name(plan_payload: dict[str, Any], generated_name: str) -> str:
+    title = " ".join(str(generated_name or "").strip().split())
+    if not title or title.casefold() in _AUTO_TITLE_PLACEHOLDERS:
+        return ""
+    plan_payload["subject"] = title
+    return title
 
 
 def _update_planner_session_meta(
@@ -719,11 +812,23 @@ def save_planner_result(
             material_context=material_context,
             latest_plan=_planner_plan(record),
         )
-        _maybe_update_subject_name(
+        generated_title = _apply_generated_subject_name(
+            persisted_plan,
+            str(state.get("generated_subject_name") or ""),
+        )
+        subject_description = _build_subject_description_from_plan(
+            persisted_plan,
+            material_context=material_context,
+        )
+        subject_user_intent = _build_subject_user_intent_from_state(state)
+        _maybe_update_subject_from_planner(
             session,
             subject=subject_slug,
             user_id=user_id,
-            generated_name=str(state.get("generated_subject_name") or ""),
+            generated_name=generated_title,
+            generated_icon_key=str(state.get("generated_subject_icon_key") or ""),
+            description=subject_description,
+            user_intent=subject_user_intent,
         )
         record = _update_planner_session_meta(
             session,
@@ -734,6 +839,12 @@ def save_planner_result(
             planner_status="draft",
             confirmed_plan_id=None,
         )
+        if generated_title and str(record.title or "").strip() != generated_title:
+            record.title = generated_title
+            record.updated_at = utcnow()
+            session.add(record)
+            session.commit()
+            session.refresh(record)
         _create_planner_message(
             session,
             record=record,

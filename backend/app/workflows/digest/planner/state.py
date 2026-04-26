@@ -35,6 +35,7 @@ class BuildPlannerState(TypedDict, total=False):
     planner_brief: dict[str, Any]
     plan_intent: dict[str, Any]
     generated_subject_name: str
+    generated_subject_icon_key: str
     plan_outline_markdown: str
     build_plan_draft: dict[str, Any]
 
@@ -49,6 +50,7 @@ class BuildPlannerState(TypedDict, total=False):
     prepare_ms: int
     bootstrap_ms: int
     compose_ms: int
+    title_ms: int
     finalize_ms: int
 
     # Runtime callbacks and failure marker
@@ -93,6 +95,7 @@ BuildPlannerGraphOutput = project_typed_dict_schema(
         "prepare_ms",
         "bootstrap_ms",
         "compose_ms",
+        "title_ms",
         "finalize_ms",
         "error",
     ],

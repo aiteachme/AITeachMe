@@ -15,8 +15,10 @@ from .support import (
     DEFAULT_RUNTIME_RETRIEVER_PROFILE,
     get_retriever_profiles,
     load_project_settings_values,
+    normalize_openai_compatible_image_model_name,
     normalize_profile_name,
     normalize_retriever_name,
+    resolve_runtime_llm_provider,
     resolve_embedding_dimension,
     upgrade_legacy_settings_payload,
 )
@@ -34,6 +36,7 @@ class ModelsSettings(_SettingsModel):
     reason: str | None
     primary: str
     light: str | None
+    vision: str | None
     embedding: str | None
     embedding_dim: int | None = None
     rerank: str | None
@@ -77,6 +80,7 @@ class PlannerSettings(_SettingsModel):
 class DocgenSettings(_SettingsModel):
     allow_external_search: bool
     generate_cover_image: bool
+    generate_interactive_html: bool
 
 
 class IngestSettings(_SettingsModel):
@@ -157,8 +161,18 @@ class Settings(_SettingsModel):
         return value is not None and int(value) > 0
 
     @property
-    def has_vision_ocr_model(self) -> bool:
+    def has_vision_model(self) -> bool:
+        return bool((self.models.vision or "").strip())
+
+    @property
+    def has_document_ocr_model(self) -> bool:
         return bool((self.models.ocr or "").strip())
+
+    @property
+    def has_vision_ocr_model(self) -> bool:
+        """Backward-compatible alias for older ingest call sites."""
+
+        return self.has_document_ocr_model
 
     @property
     def rerank_configured(self) -> bool:
@@ -247,8 +261,15 @@ def get_system_settings_override_payload() -> dict[str, Any]:
 
 def set_system_settings_override(payload: Mapping[str, Any] | None) -> Settings:
     global _SYSTEM_SETTINGS_OVERRIDE, _EFFECTIVE_SETTINGS_CACHE
+
     base_payload = get_project_settings().model_dump(mode="json")
     candidate_override = upgrade_legacy_settings_payload(payload)
+    models_payload = candidate_override.get("models")
+    if isinstance(models_payload, dict) and "image_generation" in models_payload:
+        models_payload["image_generation"] = normalize_openai_compatible_image_model_name(
+            models_payload.get("image_generation"),
+            runtime_provider=resolve_runtime_llm_provider(),
+        )
     candidate_payload = merge_settings_values(base_payload, candidate_override)
     effective = Settings.model_validate(candidate_payload)
     normalized_override = {

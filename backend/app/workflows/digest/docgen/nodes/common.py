@@ -12,6 +12,7 @@ from app.workflows.digest.common.contracts import (
     parse_digest_confirmed_plan_contract,
     resolve_digest_retrieval_profile,
 )
+from app.workflows.digest.docgen.mode_profiles import get_docgen_mode_profile
 from app.shared.infra.workflow.context import WorkflowContext
 from app.shared.infra.workflow.events import LoggedWorkflowEvent
 
@@ -70,8 +71,17 @@ def resolve_docgen_dependency(name: str, default: Any, *, owner_module: str | No
     return getattr(module, name, default)
 
 
-def resolve_docgen_retrieval_profile(digest_mode: str | None) -> str:
-    return resolve_digest_retrieval_profile(digest_mode)
+def resolve_docgen_retrieval_profile(
+    digest_mode: str | None,
+    *,
+    user_prompt: str | None = None,
+    subject_name: str | None = None,
+) -> str:
+    return resolve_digest_retrieval_profile(
+        digest_mode,
+        user_prompt=user_prompt,
+        subject_name=subject_name,
+    )
 
 
 def serialize_section(section: Any) -> dict[str, Any]:
@@ -87,6 +97,28 @@ def ensure_chapter_heading(title: str, markdown: str) -> str:
     return cleaned + "\n"
 
 
+def extract_markdown_preview_headings(markdown: str, *, limit: int = 4) -> list[str]:
+    secondary: list[str] = []
+    primary: list[str] = []
+    seen: set[str] = set()
+
+    for raw_line in str(markdown or "").splitlines():
+        stripped = raw_line.strip()
+        if stripped.startswith("## "):
+            title = stripped[3:].strip()
+            if title and title not in seen:
+                secondary.append(title)
+                seen.add(title)
+        elif stripped.startswith("# "):
+            title = stripped[2:].strip()
+            if title and title not in seen:
+                primary.append(title)
+                seen.add(title)
+
+    ordered = secondary or primary
+    return ordered[: max(1, int(limit))]
+
+
 def build_examine_markdown(
     question_titles: list[str] | None = None,
     *,
@@ -95,7 +127,7 @@ def build_examine_markdown(
     review_prompts: list[str] | None = None,
 ) -> str:
     prompts = question_titles or ["整份文档"]
-    normalized_mode = str(digest_mode or "").strip().lower()
+    mode_profile = get_docgen_mode_profile(digest_mode)
     questions = list(exam_questions or [])
     if not questions:
         questions = [
@@ -107,7 +139,7 @@ def build_examine_markdown(
             for index, title in enumerate(prompts, start=1)
         ]
 
-    if normalized_mode == "sprint":
+    if mode_profile.is_sprint:
         lines = ["# 练习与自检", "", "## 高频题型自检", ""]
         for question in questions:
             lines.append(f"{int(question.get('question_index', 0) or 0) or 1}. {question.get('question', '')}")
@@ -146,6 +178,7 @@ def build_examine_markdown(
 __all__ = [
     "build_examine_markdown",
     "ensure_chapter_heading",
+    "extract_markdown_preview_headings",
     "get_effective_chapter_title",
     "normalize_chapter_assignments",
     "normalize_confirmed_plan_contract",
@@ -154,4 +187,3 @@ __all__ = [
     "resolve_docgen_retrieval_profile",
     "serialize_section",
 ]
-

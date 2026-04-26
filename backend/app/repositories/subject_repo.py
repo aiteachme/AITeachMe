@@ -38,7 +38,7 @@ def list_subjects(
         session.exec(
             select(Subject)
             .where(Subject.user_id == owner_user_id)
-            .order_by(Subject.updated_at.desc())
+            .order_by(Subject.created_at.desc(), Subject.id.desc())
             .offset(offset)
             .limit(limit)
         ).all()
@@ -50,9 +50,16 @@ def update_subject(
     session: Session,
     subject: Subject,
     *,
-    name: str,
+    name: str | None = None,
+    description: str | None = None,
+    user_intent: str | None = None,
 ) -> Subject:
-    subject.name = name
+    if name is not None:
+        subject.name = name or subject.name
+    if description is not None:
+        subject.description = description
+    if user_intent is not None:
+        subject.user_intent = user_intent
     subject.updated_at = utcnow()
     session.add(subject)
     session.commit()

@@ -1,5 +1,5 @@
 import { useCallback, useRef, useState } from "react";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 import {
   apiClient,
@@ -12,7 +12,8 @@ import type {
   SubjectVectorStatusResponse,
 } from "../api/generated/model";
 import type { ApiResponse } from "../api/types";
-import { useToast } from "../components/ui/Toast";
+import { useToast, type ToastVariant } from "../components/ui/Toast";
+import { buildKnowledgeBuildRuntimeQueryKey } from "../lib/knowledgeBuildRuntime";
 
 export type KnowledgeBuildResolution = "rebuild" | "disable";
 
@@ -78,6 +79,47 @@ function buildVectorSkipNotice(reason?: string) {
   }
 }
 
+interface VectorNoticeToast {
+  title: string;
+  description: string;
+  variant: ToastVariant;
+  duration?: number;
+}
+
+function buildVectorNoticeToast(
+  status?: SubjectVectorStatusResponse | null,
+): VectorNoticeToast | null {
+  const notice = status?.notice?.trim();
+  if (!notice) {
+    return null;
+  }
+
+  if (status?.mode === "disabled") {
+    return {
+      title: "已切换为非向量构建",
+      description: notice,
+      variant: "warning",
+      duration: 7000,
+    };
+  }
+
+  if (notice.includes("已自动绑定当前 embedding 模型并初始化向量索引")) {
+    return {
+      title: "知识检索索引已准备好",
+      description: "系统已完成当前学科的检索索引初始化，后续构建和问答会使用资料检索增强。",
+      variant: "success",
+      duration: 4500,
+    };
+  }
+
+  return {
+    title: "知识检索状态已更新",
+    description: notice,
+    variant: "info",
+    duration: 5000,
+  };
+}
+
 async function triggerKnowledgeBuild(
   subjectId: string,
   payload: KnowledgeBuildRequestPayload,
@@ -99,6 +141,7 @@ export function useKnowledgeBuildFlow({
   onSuccess,
 }: UseKnowledgeBuildFlowOptions) {
   const { toast } = useToast();
+  const queryClient = useQueryClient();
   const pendingRequestRef = useRef<KnowledgeBuildRequestPayload | null>(null);
   const vectorNoticeShownRef = useRef("");
   const [errorMessage, setErrorMessage] = useState("");
@@ -115,14 +158,13 @@ export function useKnowledgeBuildFlow({
       setPrecheckConflict(null);
       setErrorMessage("");
       setLatestVectorStatus(data.vector_status ?? null);
-      const notice = data.vector_status?.notice?.trim();
-      if (notice && notice !== vectorNoticeShownRef.current) {
-        vectorNoticeShownRef.current = notice;
+      void queryClient.invalidateQueries({ queryKey: buildKnowledgeBuildRuntimeQueryKey(subjectId) });
+      const vectorToast = buildVectorNoticeToast(data.vector_status);
+      if (vectorToast && vectorToast.description !== vectorNoticeShownRef.current) {
+        vectorNoticeShownRef.current = vectorToast.description;
         toast({
-          title: "已跳过向量能力",
-          description: notice,
-          variant: "warning",
-          duration: 7000,
+          ...vectorToast,
+          duration: vectorToast.duration ?? 5000,
         });
       }
       onSuccess?.(data);
@@ -145,7 +187,7 @@ export function useKnowledgeBuildFlow({
           const notice = buildVectorSkipNotice(errorData.reason);
           vectorNoticeShownRef.current = notice;
           toast({
-            title: "已跳过向量能力",
+            title: "本轮已跳过向量检索",
             description: `${notice} 知识文档、图谱和课程结构会继续构建。`,
             variant: "warning",
             duration: 7000,

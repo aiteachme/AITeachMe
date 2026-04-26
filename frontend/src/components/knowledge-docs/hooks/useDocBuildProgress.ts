@@ -42,13 +42,16 @@ export function useDocBuildProgress(opts: {
   } = opts;
 
   const buildStatusText = resolveDocBuildStatusText(buildMeta, hasLiveDocMarkdown, hasDraftDocMarkdown);
+  const fallbackProgress = resolveDocBuildProgressFloor(buildMeta, hasDraftDocMarkdown, hasLiveDocMarkdown);
+  const rawPersistedProgress = clampProgress(Number(buildMeta?.progress_pct ?? fallbackProgress));
+  const persistedProgress =
+    buildStatus === "completed" && !hasLiveDocMarkdown
+      ? Math.min(rawPersistedProgress, fallbackProgress)
+      : rawPersistedProgress;
 
-  if (buildStatus === "completed" || isRequestedBuildReady) {
+  if (isRequestedBuildReady || (buildStatus === "completed" && hasLiveDocMarkdown)) {
     return { buildProgress: 100, buildStatusText };
   }
-
-  const fallbackProgress = resolveDocBuildProgressFloor(buildMeta, hasDraftDocMarkdown);
-  const persistedProgress = clampProgress(Number(buildMeta?.progress_pct ?? fallbackProgress));
 
   if (isBuildFailure || (!isBuildActive && !isWaitingForRequestedBuild)) {
     return { buildProgress: persistedProgress, buildStatusText };

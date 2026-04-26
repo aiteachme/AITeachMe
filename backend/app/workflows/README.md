@@ -91,7 +91,7 @@ lane_name/
   nodes/               # 顶层 LangGraph 节点
   lib/                 # 节点内部复用逻辑、运行时、模型转换、持久化辅助
   prompts/             # prompt builder / template
-  README.md            # 本 lane 的职责、流程、节点、状态和边界
+  README.md / FLOW_DESIGN.md   # 本 lane 的主文档
 ```
 
 可选文件：
@@ -158,13 +158,14 @@ lane_name/
 - 大段 prompt 要有预算常量，避免调用点散落魔法数字。
 - 多个文件只是 re-export 时要合并，避免 `write_chapters.py` 这种只转发的空层。
 
-### README / 设计文档
+### 主文档 / 设计文档
 
-每个核心 lane 必须有 README。复杂 lane 还要有流程设计文档：
+每个核心 lane 必须至少保留一份主文档。默认是 `README.md`；复杂 lane 也可以直接用 `FLOW_DESIGN.md` 兼任入口说明和流程权威文档：
 
-- README 写当前真实主线、节点职责、目录边界、公开入口。
-- 流程设计文档写短流程和长合同。
-- 改 graph 时同步改 README 和流程文档。
+- 主文档写当前真实主线、目录边界、公开入口和阅读顺序。
+- 如果存在独立流程设计文档，它负责短流程和长合同。
+- 如果 `FLOW_DESIGN.md` 已经兼任主文档，就不要再维护第二份平行 README。
+- 改 graph 时同步改 lane 的主文档。
 - 文档不得描述已经移除的主线为当前实现。
 
 ## Support 模块结构
@@ -399,6 +400,7 @@ kg_docs_sync
 - `graph.py` 定义图、Send 分发、单次 `run_docgen_workflow`。
 - `lib/build_lifecycle.py` 只处理 API 触发后的构建锁、后台任务、状态和结果组装。
 - `__init__.py` 只导出稳定入口。
+- `FLOW_DESIGN.md` 是 DocGen 当前唯一文档文件，兼任入口说明和流程权威文档。
 - 不新增 `workflow.py` 作为默认入口。
 - 复杂质量逻辑优先收口到同责文件，例如 `lib/quality.py`。
 
@@ -446,7 +448,7 @@ kg_docs_sync
 5. 复杂逻辑是否已经从 node 下沉到 `lib/`？
 6. prompt 是否只在 `prompts/`，且有 trace？
 7. 是否需要 `Send` fan-out 才能在 LangSmith 看到并行？
-8. README / FLOW_DESIGN 是否同步更新？
+8. lane 主文档 / FLOW_DESIGN 是否同步更新？
 9. 新文件是否有清晰文件头说明？
 
 这份 README 是 workflow 层唯一结构规范入口；不要再把结构或 LangSmith 规则拆到新文档里。

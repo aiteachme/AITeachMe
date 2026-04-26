@@ -220,6 +220,8 @@ def build_docgen_lane_summary(
         int(chapter.get("interactive_block_count", 0) or 0)
         for chapter in [*chapter_drafts, *chapter_metadatas]
     )
+    if interactive_block_count <= 0:
+        interactive_block_count = sum(1 for asset in asset_items if asset.get("kind") == "interactive")
     mermaid_block_count = int(state.get("mermaid_block_count", 0) or 0)
     if mermaid_block_count <= 0:
         mermaid_block_count = sum(
@@ -284,7 +286,14 @@ def build_docgen_lane_summary(
         "chapter_count": chapter_count,
         "workflow_elapsed_ms": int(state.get("workflow_elapsed_ms", 0)),
         "load_ms": int(state.get("load_ms", 0)),
+        "prepare_ms": int(state.get("prepare_ms", 0)),
+        "intent_core_ms": int(state.get("intent_core_ms", 0)),
+        "title_lock_ms": int(state.get("title_lock_ms", 0)),
         "planner_ms": int(state.get("planner_ms", 0)),
+        "seed_backbone_ms": int(state.get("seed_backbone_ms", 0)),
+        "backbone_ms": int(state.get("backbone_ms", 0)),
+        "chapter_prepare_ms": int(state.get("chapter_prepare_ms", 0)),
+        "assemble_tasks_ms": int(state.get("assemble_tasks_ms", 0)),
         "research_ms": int(state.get("research_ms", 0)),
         "draft_ms": int(state.get("draft_ms", 0)),
         "enrich_ms": int(state.get("enrich_ms", 0) or state.get("enhance_ms", 0) or 0),

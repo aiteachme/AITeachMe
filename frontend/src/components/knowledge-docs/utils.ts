@@ -19,9 +19,12 @@ export const DOC_BUILD_STAGE_PROGRESS: Record<string, number> = {
   build_accepted: 8,
   planner_confirmed: 16,
   prepare_shared: 24,
+  preparing_docgen_global_seed: 28,
   preparing_docgen_context: 30,
   dispatch_ready: 34,
+  backbone_seed_ready: 36,
   building_document_backbone: 38,
+  preparing_chapter_execution_briefs: 42,
   generating_chapters: 46,
   enhancing_chapters: 62,
   chapters_enhanced: 72,
@@ -42,9 +45,12 @@ export const DOC_BUILD_STAGE_TEXT: Record<string, string> = {
   build_accepted: "已接收知识构建请求",
   planner_confirmed: "已读取确认方案",
   prepare_shared: "正在分析材料结构与内容画像",
+  preparing_docgen_global_seed: "正在准备全局写作种子与文件摘要",
   preparing_docgen_context: "正在增强大纲、识别写法并摘要材料",
   dispatch_ready: "正在收口章节执行计划",
+  backbone_seed_ready: "章节标题与骨架 seed 已确认",
   building_document_backbone: "正在构建整本文档知识骨架",
+  preparing_chapter_execution_briefs: "正在并行准备章节执行 brief",
   generating_chapters: "正在并行研究并生成章节",
   enhancing_chapters: "正在增强章节图示、例题和小结",
   chapters_enhanced: "章节增强已完成",
@@ -359,12 +365,16 @@ export function resolveDocBuildStatusText(
     if (hasLiveVersion) return "当前显示已发布的正式版知识文档";
     return "等待发起新的知识文档构建";
   }
+  if (build.status === "partial_failed") {
+    return build.error_message?.trim() ? `图谱失败：${build.error_message}` : "知识文档已发布，但图谱构建失败";
+  }
   if (build.status === "failed") {
     return build.error_message?.trim() ? `构建失败：${build.error_message}` : "知识构建失败，请稍后重试";
   }
   if (build.status === "cancelled") return "本轮知识构建已取消";
+  if (build.status === "skipped") return build.current_stage_description?.trim() || "本轮图谱步骤已跳过";
   if (build.status === "completed") {
-    return hasLiveVersion ? "最新知识文档已发布" : "构建已完成";
+    return hasLiveVersion ? "最新知识文档已发布" : "构建已完成，正在同步正式文档";
   }
   const stage = build.stage?.trim();
   if (stage && DOC_BUILD_STAGE_TEXT[stage]) return DOC_BUILD_STAGE_TEXT[stage];
@@ -378,9 +388,11 @@ export function resolveDocBuildStatusText(
 export function resolveDocBuildProgressFloor(
   build: DocGenBuildStatus | null | undefined,
   hasDraftVersion: boolean,
+  hasLiveVersion = false,
 ): number {
   if (!build || build.status === "idle") return hasDraftVersion ? 62 : 0;
-  if (build.status === "completed") return 100;
+  if (build.status === "partial_failed" || build.status === "skipped") return hasLiveVersion ? 100 : 97;
+  if (build.status === "completed") return hasLiveVersion ? 100 : 97;
   const stage = build.stage?.trim();
   if (stage && DOC_BUILD_STAGE_PROGRESS[stage] !== undefined) return DOC_BUILD_STAGE_PROGRESS[stage];
   if (hasDraftVersion || build.draft_available) return 62;
@@ -399,7 +411,7 @@ export function resolveFileProcessingLabel(file: { error_message?: string | null
       case "fast_parsing":
       case "parsing": return "正在提取正文与结构";
       case "enhancing": return "正在做公式、图片和结构增强";
-      case "ready_for_digest": return "已准备进入 digest";
+      case "ready_for_digest": return "已准备进入知识构建";
       default: return `处理中：${file.ingest_status.trim()}`;
     }
   }
@@ -431,6 +443,8 @@ export function buildChapterStatusLabel(status: string | undefined): string {
     case "generated": return "初稿完成";
     case "enhancing": return "增强中";
     case "enhanced": return "增强完成";
+    case "reviewing": return "复核中";
+    case "reviewed": return "复核完成";
     case "researching": return "检索中";
     case "researched": return "研究完成";
     case "drafting": return "写作中";
@@ -443,11 +457,13 @@ export function buildChapterStatusLabel(status: string | undefined): string {
 export function chapterStatusClasses(status: string | undefined): string {
   switch ((status ?? "").trim()) {
     case "completed": return "bg-emerald-500";
+    case "reviewed": return "bg-teal-500";
     case "enhanced":
     case "drafted":
     case "drafting": return "bg-sky-500";
     case "generated":
     case "enhancing":
+    case "reviewing":
     case "researched":
     case "researching": return "bg-amber-500";
     default: return "bg-slate-300";

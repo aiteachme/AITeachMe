@@ -1,162 +1,199 @@
-import { useState, useEffect } from "react";
-import { motion, AnimatePresence } from "framer-motion";
-import { Bot, GraduationCap, Sparkles, FileText, Database, Network } from "lucide-react";
+import { useEffect, useId, useState } from "react";
+import { motion } from "framer-motion";
 
-export function HeroAnimation() {
-  const [scene, setScene] = useState<"learning" | "teaching">("learning");
+/**
+ * HeroAnimation — 首页 Logo 动画
+ *
+ * 使用项目 SVG Logo，搭配：
+ * 1. 描边动画（stroke draw-on）逐路径描出 Logo
+ * 2. 填充淡入
+ * 3. 背景发光脉冲
+ * 4. 浮动循环
+ */
+
+/* ── Logo SVG paths (from logo.svg) ── */
+const LOGO_PATHS = [
+  // Star / spark at top
+  `M 492.13 0.56 C 495.03 0.56 496.33 2.82 497.09 5.50 Q 504.52 31.73 515.47 55.63 C 518.69 62.66 521.39 67.74 527.48 72.13 Q 531.20 74.81 541.01 79.13 Q 563.24 88.89 586.31 94.33 C 589.19 95.01 592.11 96.42 592.11 99.45 C 592.11 102.48 589.19 103.89 586.31 104.57 Q 563.24 110.01 541.00 119.76 Q 531.19 124.08 527.47 126.76 C 521.38 131.15 518.68 136.23 515.46 143.26 Q 504.50 167.15 497.06 193.38 C 496.31 196.05 495.01 198.32 492.11 198.32 C 489.21 198.32 487.91 196.05 487.15 193.38 Q 479.72 167.15 468.77 143.25 C 465.55 136.22 462.85 131.14 456.76 126.75 Q 453.04 124.07 443.23 119.75 Q 421.00 109.99 397.93 104.54 C 395.05 103.86 392.13 102.46 392.13 99.43 C 392.13 96.40 395.05 94.99 397.93 94.31 Q 421.00 88.87 443.24 79.12 Q 453.05 74.80 456.77 72.12 C 462.86 67.73 465.56 62.65 468.78 55.62 Q 479.74 31.72 487.17 5.50 C 487.93 2.82 489.23 0.56 492.13 0.56 Z`,
+  // Left small star
+  `M 361.43 233.72 Q 363.61 233.72 364.19 235.95 Q 366.30 244.09 369.38 252.04 C 371.16 256.63 373.75 261.86 377.31 265.42 C 380.87 268.98 386.11 271.57 390.70 273.34 Q 398.65 276.42 406.79 278.52 Q 409.02 279.10 409.03 281.28 Q 409.03 283.46 406.79 284.04 Q 398.65 286.15 390.70 289.23 C 386.12 291.01 380.88 293.60 377.32 297.16 C 373.76 300.72 371.18 305.96 369.40 310.55 Q 366.33 318.50 364.23 326.64 Q 363.65 328.88 361.47 328.88 Q 359.29 328.88 358.71 326.64 Q 356.60 318.51 353.52 310.56 C 351.74 305.97 349.15 300.73 345.58 297.17 C 342.02 293.61 336.79 291.03 332.20 289.25 Q 324.24 286.18 316.10 284.08 Q 313.87 283.50 313.87 281.32 Q 313.87 279.14 316.10 278.56 Q 324.24 276.45 332.19 273.37 C 336.78 271.59 342.01 269.00 345.57 265.43 C 349.13 261.87 351.72 256.64 353.49 252.05 Q 356.57 244.09 358.67 235.95 Q 359.25 233.72 361.43 233.72 Z`,
+  // Right small star
+  `M 730.08 317.09 A 2.29 2.23 15.1 0 1 728.97 317.71 Q 716.89 320.38 706.14 325.91 C 694.44 331.93 691.70 346.71 688.12 357.86 A 2.90 2.88 -81.3 0 1 685.40 359.87 C 683.54 359.89 682.78 358.78 682.31 357.00 Q 680.27 349.37 677.17 341.83 C 674.43 335.16 671.41 329.56 664.85 326.04 Q 655.40 320.97 642.85 317.94 C 641.27 317.56 639.09 316.05 640.23 314.19 Q 641.13 312.72 641.85 312.54 Q 648.49 310.87 656.68 307.92 C 666.30 304.46 672.72 299.75 676.57 290.02 Q 679.99 281.38 682.40 272.44 C 683.34 268.98 687.38 269.08 688.14 272.40 Q 691.06 285.17 696.73 295.73 C 701.72 305.04 718.70 309.92 729.00 312.42 A 1.89 1.88 -18.6 0 1 729.77 312.80 Q 732.24 314.82 730.08 317.09 Z`,
+  // Two small circles
+  // Left dot
+  // Right dot
+  // Left body swirl
+  `M 437.30 539.75 A 0.46 0.46 0.0 0 1 436.54 540.13 Q 432.00 536.12 427.80 531.46 C 411.00 512.83 398.20 490.31 393.92 465.65 C 388.49 434.41 398.22 402.30 418.98 378.22 Q 427.32 368.53 436.57 360.58 Q 454.69 345.01 477.55 331.04 Q 508.54 312.11 513.65 308.90 C 531.24 297.83 547.67 286.27 561.19 271.25 C 581.66 248.51 591.34 215.33 582.30 185.42 Q 579.02 174.57 578.54 172.49 Q 578.44 172.06 578.55 171.92 A 0.97 0.93 -46.7 0 1 579.99 171.85 Q 593.71 186.90 601.96 205.04 C 621.40 247.79 612.40 294.98 583.71 331.22 C 566.12 353.43 543.18 371.83 520.73 387.98 C 497.97 404.35 476.73 420.43 460.53 441.27 C 440.60 466.89 431.62 500.39 436.32 532.49 Q 437.23 538.72 437.30 539.75 Z`,
+  // Main base body (large)
+  `M 849.49 421.51 C 849.16 419.69 849.84 417.73 851.83 417.64 Q 879.05 416.47 897.74 416.16 Q 899.30 416.13 900.43 417.72 A 2.05 2.01 -68.1 0 1 900.75 418.49 Q 925.99 553.85 949.40 684.95 C 949.85 687.50 949.53 690.93 946.25 690.46 Q 904.39 684.51 866.76 683.96 Q 777.12 682.66 695.67 706.48 Q 629.07 725.95 568.99 761.81 A 5.56 5.52 88.8 0 0 566.93 763.97 C 564.69 768.15 561.98 773.35 558.98 777.44 C 541.84 800.89 515.49 814.28 486.71 817.20 C 443.18 821.62 398.28 804.83 378.89 763.44 Q 378.44 762.49 376.00 760.98 Q 271.21 696.04 150.25 685.59 Q 118.62 682.85 79.81 684.17 Q 43.16 685.42 6.37 690.30 C 3.10 690.73 0.10 690.39 0.86 686.31 Q 12.73 622.47 49.81 418.29 C 50.15 416.42 52.66 415.91 54.43 415.98 Q 86.15 417.27 98.22 417.67 A 2.71 2.71 0.0 0 1 100.80 420.86 L 62.85 627.98 A 2.19 2.18 -86.2 0 0 65.10 630.56 Q 80.73 629.80 86.50 629.64 Q 127.25 628.51 165.50 632.70 Q 251.67 642.15 334.15 679.15 Q 369.47 694.99 401.64 715.66 C 408.68 720.18 413.81 723.33 418.09 728.84 C 420.72 732.22 422.44 737.70 424.39 740.87 C 438.29 763.48 468.53 768.51 492.22 761.96 Q 514.11 755.91 523.22 736.55 Q 526.05 730.55 527.69 728.58 Q 531.40 724.12 535.00 721.74 C 569.71 698.76 607.49 680.71 646.91 666.29 C 722.74 638.57 804.03 626.04 885.02 630.31 C 887.77 630.45 887.54 628.55 887.15 626.45 Q 858.69 473.01 849.49 421.51 Z`,
+  // Left inner arc (leaf)
+  `M 451.92 670.04 Q 451.54 669.88 451.17 669.34 Q 406.78 604.48 341.35 561.66 C 276.81 519.43 201.85 496.07 124.81 492.26 A 2.18 2.17 -83.5 0 1 122.78 489.70 L 142.75 377.29 A 0.78 0.67 67.5 0 1 142.83 377.05 Q 143.86 374.88 147.28 375.45 Q 176.58 380.36 204.79 390.70 C 280.71 418.52 345.22 470.89 392.28 536.50 Q 430.24 589.42 447.85 650.63 Q 450.74 660.68 452.36 669.69 A 0.32 0.32 0.0 0 1 451.92 670.04 Z`,
+  // Right inner arc (leaf)
+  `M 492.96 670.45 A 0.44 0.43 6.2 0 1 492.54 669.94 Q 496.74 646.36 505.27 623.51 Q 520.10 583.74 543.57 548.80 Q 598.72 466.72 684.54 417.55 C 720.44 396.98 760.81 382.09 801.70 375.36 C 804.74 374.86 805.59 375.91 806.09 378.83 Q 814.24 425.85 826.22 489.27 A 2.52 2.51 -7.5 0 1 823.93 492.25 Q 804.92 493.63 785.57 496.32 Q 682.28 510.72 595.76 568.24 C 555.39 595.08 519.69 629.78 493.63 670.13 Q 493.41 670.46 492.96 670.45 Z`,
+  // Inner body right detail
+  `M 471.65 629.40 A 0.76 0.76 0.0 0 1 470.53 628.93 C 461.45 594.32 457.15 557.02 471.46 522.99 C 486.53 487.16 517.99 462.46 556.61 456.66 C 557.72 456.50 559.03 456.01 559.82 456.73 A 2.39 2.33 37.7 0 1 560.24 459.72 C 547.86 479.17 532.67 500.33 519.09 521.35 C 497.28 555.11 480.37 590.34 471.86 629.07 Q 471.80 629.31 471.65 629.40 Z`,
+  // Right wing data path
+  `M 515.69 698.47 A 0.51 0.51 0.0 0 1 514.99 697.76 Q 526.18 681.05 540.52 665.74 Q 598.93 603.35 675.96 569.70 Q 749.99 537.37 831.28 532.25 Q 834.32 532.06 834.75 534.38 Q 842.75 577.99 844.66 588.07 C 845.23 591.08 843.65 592.09 840.82 592.06 Q 834.75 592.02 831.68 592.13 Q 793.54 593.48 755.20 600.22 Q 638.89 620.67 539.72 683.00 Q 527.00 691.00 515.69 698.47 Z`,
+  // Left wing data path
+  `M 429.97 697.79 A 0.51 0.51 0.0 0 1 429.24 698.48 Q 350.99 641.17 257.64 613.29 Q 183.78 591.23 106.77 592.08 Q 104.74 592.10 104.49 589.59 A 0.76 0.70 -42.6 0 1 104.50 589.47 L 114.59 534.10 A 2.11 2.11 0.0 0 1 116.77 532.37 C 219.89 537.16 318.26 577.03 390.97 650.25 Q 413.12 672.57 429.97 697.79 Z`,
+];
+
+// Circles data
+const CIRCLES = [
+  { cx: 287.67, cy: 184.20, r: 14.34 },
+  { cx: 708.98, cy: 184.24, r: 14.34 },
+];
+
+// Ellipse
+const ELLIPSE = { cx: 217.36, cy: 328.21, rx: 14.46, ry: 14.28, rotate: -91.7 };
+
+interface HeroAnimationProps {
+  width?: number;
+  height?: number;
+  className?: string;
+}
+
+export function HeroAnimation({ width = 130, height = 120, className }: HeroAnimationProps) {
+  const [isDrawn, setIsDrawn] = useState(false);
+  const id = useId().replace(/:/g, "");
+  const strokeGradientId = `${id}-hero-stroke-grad`;
+  const fillGradientId = `${id}-hero-fill-grad`;
 
   useEffect(() => {
-    let timers: ReturnType<typeof setTimeout>[] = [];
-    
-    const runCycle = () => {
-      setScene("learning");
-      timers.push(setTimeout(() => setScene("teaching"), 4500));
-      timers.push(setTimeout(() => runCycle(), 9000));
-    };
-
-    timers.push(setTimeout(() => setScene("teaching"), 4500));
-    timers.push(setTimeout(() => runCycle(), 9000));
-
-    return () => timers.forEach(clearTimeout);
+    const timer = setTimeout(() => setIsDrawn(true), 2800);
+    return () => clearTimeout(timer);
   }, []);
 
   return (
-    <div className="relative w-[110px] h-[110px] flex items-center justify-center shrink-0">
-      {/* Dynamic Background Glow */}
-      <motion.div 
-        animate={
-          scene === "teaching" 
-            ? {
-                scale: [1, 1.5, 1.2],
-                opacity: [0.2, 0.9, 0.4],
-                backgroundColor: ["#6366f1", "#4f46e5", "#3b82f6"],
-                borderRadius: ["50%", "30%", "50%"]
-              }
-            : {
-                scale: [1.2, 1.5, 1],
-                opacity: [0.4, 0.9, 0.2],
-                backgroundColor: ["#3b82f6", "#4f46e5", "#6366f1"],
-                borderRadius: ["50%", "30%", "50%"]
-              }
-        }
-        transition={{ duration: 1.0, times: [0, 0.5, 1], ease: "easeInOut" }}
-        className="absolute inset-0 blur-xl pointer-events-none"
+    <motion.div
+      className={["relative flex items-center justify-center shrink-0", className].filter(Boolean).join(" ")}
+      style={{ width, height }}
+      animate={{ y: [0, -5, 0] }}
+      transition={{ repeat: Infinity, duration: 4, ease: "easeInOut" }}
+    >
+      {/* Background glow pulse */}
+      <motion.div
+        className="absolute rounded-full pointer-events-none"
+        style={{
+          width: "140%",
+          height: "140%",
+          left: "-20%",
+          top: "-20%",
+          background: "radial-gradient(circle, rgba(99,102,241,0.18) 0%, rgba(139,92,246,0.08) 50%, transparent 70%)",
+        }}
+        animate={{
+          scale: [1, 1.25, 1],
+          opacity: [0.6, 1, 0.6],
+        }}
+        transition={{ repeat: Infinity, duration: 3, ease: "easeInOut" }}
       />
-      
-      <AnimatePresence mode="wait">
-        {scene === "learning" && (
-          <motion.div
-            key="learning"
-            initial={{ opacity: 0, scale: 0.8, filter: "blur(4px)" }}
-            animate={{ opacity: 1, scale: 1, filter: "blur(0px)" }}
-            exit={{ opacity: 0, scale: 0.5, rotateY: -180, filter: "blur(8px)" }}
-            transition={{ duration: 0.5, type: "spring", stiffness: 200 }}
-            className="flex items-center justify-center relative z-10 w-full h-full perspective-1000"
-          >
-            {/* The Learning Robot Center */}
-            <motion.div
-              animate={{ y: [0, -3, 0] }}
-              transition={{ repeat: Infinity, duration: 2, ease: "easeInOut" }}
-              className="bg-gradient-to-br from-indigo-600 to-slate-900 border border-indigo-400/30 text-white p-3.5 rounded-[1.2rem] shadow-[0_8px_30px_rgb(79,70,229,0.3)] relative z-20 flex items-center justify-center"
-            >
-              <Bot className="w-8 h-8" />
-              {/* Internal scanning laser blip */}
-              <motion.div 
-                animate={{ opacity: [0, 0.8, 0], scaleY: [0.1, 1, 0.1] }}
-                transition={{ repeat: Infinity, duration: 1.5 }}
-                className="absolute inset-x-3 top-1/2 h-0.5 bg-indigo-300/60 shadow-[0_0_8px_rgb(165,180,252)] pointer-events-none mix-blend-screen"
-              />
-            </motion.div>
-            
-            {/* Knowledge being absorbed (Documents, Databases, Graphs) */}
-            <motion.div
-              animate={{ x: [35, 0], y: [-30, 0], scale: [1, 0], opacity: [0, 1, 0], rotate: [-20, 10] }}
-              transition={{ repeat: Infinity, duration: 1.4, ease: "easeIn", delay: 0 }}
-              className="absolute z-10 text-blue-500 bg-white p-1.5 rounded-lg shadow-sm border border-blue-100"
-              style={{ left: "55%", top: "-10%" }}
-            >
-              <FileText className="w-12 h-12" />
-            </motion.div>
 
-            <motion.div
-              animate={{ x: [-35, 0], y: [20, 0], scale: [1, 0], opacity: [0, 1, 0], rotate: [20, -10] }}
-              transition={{ repeat: Infinity, duration: 1.7, ease: "easeIn", delay: 0.5 }}
-              className="absolute z-10 text-indigo-500 bg-white p-1.5 rounded-lg shadow-sm border border-indigo-100"
-              style={{ right: "55%", bottom: "-5%" }}
-            >
-              <Database className="w-12 h-12" />
-            </motion.div>
+      {/* Sparkle particles around logo */}
+      {[0, 1, 2, 3, 4].map((i) => (
+        <motion.div
+          key={`sparkle-${i}`}
+          className="absolute rounded-full pointer-events-none"
+          style={{
+            width: i % 2 === 0 ? 3 : 2,
+            height: i % 2 === 0 ? 3 : 2,
+            background: i % 3 === 0 ? "#818cf8" : i % 3 === 1 ? "#a78bfa" : "#c4b5fd",
+          }}
+          animate={{
+            x: [0, Math.cos((i * 72 * Math.PI) / 180) * 55, 0],
+            y: [0, Math.sin((i * 72 * Math.PI) / 180) * 55, 0],
+            opacity: [0, 0.9, 0],
+            scale: [0, 1.2, 0],
+          }}
+          transition={{
+            repeat: Infinity,
+            duration: 2.5 + i * 0.3,
+            delay: i * 0.5,
+            ease: "easeInOut",
+          }}
+        />
+      ))}
 
-            <motion.div
-              animate={{ x: [25, 0], y: [25, 0], scale: [1, 0], opacity: [0, 1, 0], rotate: [15, -5] }}
-              transition={{ repeat: Infinity, duration: 1.5, ease: "easeIn", delay: 1.1 }}
-              className="absolute z-10 text-emerald-500 bg-white p-1.5 rounded-lg shadow-sm border border-emerald-100"
-              style={{ left: "55%", bottom: "-5%" }}
-            >
-              <Network className="w-12 h-12" />
-            </motion.div>
-          </motion.div>
-        )}
+      {/* SVG Logo with stroke draw-on animation */}
+      <svg
+        xmlns="http://www.w3.org/2000/svg"
+        viewBox="0 0 951 819"
+        className="relative z-10 w-full h-full drop-shadow-lg"
+        style={{ filter: "drop-shadow(0 4px 20px rgba(99,102,241,0.2))" }}
+      >
+        <defs>
+          {/* Gradient for stroke draw-on */}
+          <linearGradient id={strokeGradientId} x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stopColor="#6366f1" />
+            <stop offset="50%" stopColor="#8b5cf6" />
+            <stop offset="100%" stopColor="#a855f7" />
+          </linearGradient>
+          {/* Gradient for filled state */}
+          <linearGradient id={fillGradientId} x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stopColor="#1e1b4b" />
+            <stop offset="40%" stopColor="#0f172a" />
+            <stop offset="100%" stopColor="#1e1b4b" />
+          </linearGradient>
+        </defs>
 
-        {scene === "teaching" && (
-          <motion.div
-            key="teaching"
-            initial={{ opacity: 0, scale: 0.5, rotateY: 180, filter: "blur(8px)" }}
-            animate={{ opacity: 1, scale: 1, rotateY: 0, filter: "blur(0px)" }}
-            exit={{ opacity: 0, scale: 0.8 }}
-            transition={{ type: "spring", stiffness: 200, damping: 20 }}
-            className="flex relative z-10 w-full h-full items-center justify-center perspective-1000"
-          >
-            {/* Teacher / AI Companion */}
-            <motion.div
-              animate={{ y: [0, -6, 0] }}
-              transition={{ repeat: Infinity, duration: 3, ease: "easeInOut" }}
-              className="bg-gradient-to-tr from-blue-600 to-indigo-500 text-white p-4 rounded-[1.3rem] shadow-[0_12px_40px_rgb(59,130,246,0.4)] border border-blue-300/40 relative z-20"
-            >
-              <div className="relative">
-                <Bot className="w-9 h-9" />
-                {/* Floating Graduation Cap */}
-                <motion.div
-                  animate={{ y: [0, -3, 0], rotate: [12, 16, 12] }}
-                  transition={{ repeat: Infinity, duration: 2.5, ease: "easeInOut" }}
-                  className="absolute -top-[1.1rem] -right-3 drop-shadow-md"
-                >
-                  <GraduationCap className="w-7 h-7 text-amber-300" />
-                </motion.div>
-              </div>
-              
-              {/* Teaching aura expanding outward */}
-              <motion.div
-                animate={{ scale: [1, 1.6], opacity: [0.6, 0] }}
-                transition={{ repeat: Infinity, duration: 2, ease: "easeOut" }}
-                className="absolute inset-0 border-[3px] border-blue-300 rounded-[1.3rem] pointer-events-none"
-              />
-              <motion.div
-                animate={{ scale: [1, 1.9], opacity: [0.3, 0] }}
-                transition={{ repeat: Infinity, duration: 2, delay: 0.5, ease: "easeOut" }}
-                className="absolute inset-0 border-[2px] border-blue-200 rounded-[1.3rem] pointer-events-none"
-              />
-            </motion.div>
-            
-            {/* Teaching Output Sparkles: "Enlightenment" */}
-            <motion.div
-              animate={{ opacity: [0, 1, 0], y: [0, -18], x: [0, 22], scale: [0.5, 1.2, 0.8] }}
-              transition={{ repeat: Infinity, duration: 2 }}
-              className="absolute top-0 right-0 z-30 drop-shadow-md text-amber-300"
-            >
-              <Sparkles className="w-5 h-5 fill-amber-300" />
-            </motion.div>
-            
-            <motion.div
-              animate={{ opacity: [0, 1, 0], y: [0, 18], x: [0, -18], scale: [0.5, 1, 0.5] }}
-              transition={{ repeat: Infinity, duration: 2.5, delay: 0.8 }}
-              className="absolute bottom-0 left-0 z-30 drop-shadow-sm text-blue-200"
-            >
-              <Sparkles className="w-4 h-4 fill-blue-200" />
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </div>
+        {/* Paths with stroke animation */}
+        {LOGO_PATHS.map((d, i) => (
+          <motion.path
+            key={`path-${i}`}
+            d={d}
+            fill="none"
+            stroke={`url(#${strokeGradientId})`}
+            strokeWidth={2.5}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            initial={{ pathLength: 0, opacity: 0 }}
+            animate={{ pathLength: 1, opacity: 1 }}
+            transition={{
+              pathLength: { duration: 1.8, delay: i * 0.15, ease: "easeInOut" },
+              opacity: { duration: 0.3, delay: i * 0.15 },
+            }}
+          />
+        ))}
+
+        {/* Filled paths that fade in after stroke is drawn */}
+        {LOGO_PATHS.map((d, i) => (
+          <motion.path
+            key={`fill-${i}`}
+            d={d}
+            className="fill-[#0b0c0b] dark:fill-slate-100"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: isDrawn ? 1 : 0 }}
+            transition={{ duration: 0.6, delay: i * 0.04, ease: "easeOut" }}
+          />
+        ))}
+
+        {/* Circles with pop-in */}
+        {CIRCLES.map((c, i) => (
+          <motion.circle
+            key={`circle-${i}`}
+            cx={c.cx}
+            cy={c.cy}
+            r={c.r}
+            className="fill-[#0b0c0b] dark:fill-slate-100"
+            initial={{ scale: 0, opacity: 0 }}
+            animate={{ scale: isDrawn ? 1 : 0, opacity: isDrawn ? 1 : 0 }}
+            transition={{ duration: 0.4, delay: 0.1 * i, type: "spring", stiffness: 300 }}
+            style={{ transformOrigin: `${c.cx}px ${c.cy}px` }}
+          />
+        ))}
+
+        {/* Ellipse with pop-in */}
+        <motion.ellipse
+          cx="0"
+          cy="0"
+          rx={ELLIPSE.rx}
+          ry={ELLIPSE.ry}
+          className="fill-[#0b0c0b] dark:fill-slate-100"
+          transform={`translate(${ELLIPSE.cx},${ELLIPSE.cy}) rotate(${ELLIPSE.rotate})`}
+          initial={{ scale: 0, opacity: 0 }}
+          animate={{ scale: isDrawn ? 1 : 0, opacity: isDrawn ? 1 : 0 }}
+          transition={{ duration: 0.4, delay: 0.2, type: "spring", stiffness: 300 }}
+        />
+      </svg>
+    </motion.div>
   );
 }

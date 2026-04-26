@@ -1,4 +1,4 @@
-import { memo, Suspense, lazy, useState, useRef, useEffect, useMemo, useCallback } from "react";
+import { memo, Suspense, lazy, useState, useRef, useEffect, useMemo, useCallback, useLayoutEffect } from "react";
 
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -6,9 +6,12 @@ import remarkMath from "remark-math";
 import rehypeHighlight from "rehype-highlight";
 import rehypeKatex from "rehype-katex";
 import "katex/dist/katex.min.css";
+import { useLocation } from "react-router-dom";
 import {
   FileText,
   ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
   ChevronDown,
   ChevronUp,
   Send,
@@ -18,11 +21,12 @@ import {
   Sparkles,
   RefreshCw,
   ExternalLink,
+  SlidersHorizontal,
 } from "lucide-react";
 import { cn } from "../lib/utils";
 import { getApiErrorMessage, postSseJson } from "../api/client";
 import { apiClient } from "../api/client";
-import { useSubjectAiAssistant } from "../components/ai/SubjectAiAssistant";
+import { useAiInteraction } from "../components/interaction";
 import { useResizablePanel } from "../hooks/useResizablePanel";
 import {
   BuildView,
@@ -30,11 +34,11 @@ import {
   useDocBuildProgress,
   useDocMarkdown,
 } from "../components/knowledge-docs";
-import { SubjectVectorNotice } from "../components/pages/SubjectVectorNotice";
+import { SubjectVectorNotice } from "../components/knowledge-graph/SubjectVectorNotice";
 import { MarkdownViewer, preprocessLaTeX } from "../components/ui/MarkdownViewer";
 
 const KnowledgeGraphSidePanel = lazy(() =>
-  import("../components/pages/KnowledgeGraphSidePanel").then((module) => ({
+  import("../components/knowledge-graph/KnowledgeGraphSidePanel").then((module) => ({
     default: module.KnowledgeGraphSidePanel,
   })),
 );
@@ -70,7 +74,22 @@ interface FloatingComment {
   anchorId: string;
   selectedText: string;
   selectionViewportTop: number;
+  selectionContentTop: number;
   top: number;
+  segments: HighlightSegment[];
+}
+
+interface SelectionContextPayload {
+  selected_text: string;
+  anchor_id: string;
+  anchor_title?: string;
+  heading_path: string[];
+  before_text?: string;
+  after_text?: string;
+  section_title?: string;
+  section_excerpt?: string;
+  section_truncated: boolean;
+  local_context_truncated: boolean;
 }
 
 interface FloatingToolbar {
@@ -79,6 +98,7 @@ interface FloatingToolbar {
   top: number;
   left: number;
   selectionViewportTop: number;
+  selectionContentTop: number;
 }
 
 interface HighlightSegment {
@@ -86,6 +106,12 @@ interface HighlightSegment {
   left: number;
   width: number;
   height: number;
+}
+
+interface KnowledgeDocsViewPrefs {
+  widePage: boolean;
+  showToc: boolean;
+  showCommentPanel: boolean;
 }
 
 interface SelectionHighlight {
@@ -112,6 +138,11 @@ interface CommentThreadLayout {
 interface CommentThreadLayoutResult {
   positions: Record<string, CommentThreadLayout>;
   totalHeight: number;
+}
+
+interface TocScrollThumbStyle {
+  top: number;
+  height: number;
 }
 
 interface ApiResponse<T> {
@@ -145,6 +176,36 @@ interface ThreadTurnItem {
   messages: ThreadMessageItem[];
 }
 
+type QuickChatSyncPhase = "start" | "session" | "token" | "done" | "error" | "settled";
+
+interface QuickChatSyncEventDetail {
+  phase?: QuickChatSyncPhase;
+  subjectId?: string | null;
+  source?: string | null;
+  anchorId?: string | null;
+  selectedText?: string | null;
+  localThreadId?: string | null;
+  sessionId?: string | null;
+  assistantLocalId?: string | null;
+  userLocalId?: string | null;
+  question?: string | null;
+  content?: string | null;
+  errorDetail?: string | null;
+  createdAt?: string | null;
+}
+
+interface SelectionJumpEventDetail {
+  subjectId?: string | null;
+  sessionId?: string | null;
+  anchorId?: string | null;
+  selectedText?: string | null;
+}
+
+interface KnowledgeDocsLocationState {
+  selectionJump?: SelectionJumpEventDetail | null;
+  selectionJumpAt?: number | null;
+}
+
 /* ------------------------------------------------------------------ */
 /*  Helpers                                                            */
 /* ------------------------------------------------------------------ */
@@ -153,6 +214,10 @@ function formatTime(ts: number): string {
   const d = new Date(ts);
   const pad = (n: number) => String(n).padStart(2, "0");
   return `${d.getMonth() + 1}/${d.getDate()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function isHistoryComment(comment: Pick<Comment, "id">): boolean {
+  return comment.id.startsWith("history-");
 }
 
 function formatDocTimestamp(value: string | null | undefined): string | null {
@@ -169,8 +234,103 @@ function formatDocTimestamp(value: string | null | undefined): string | null {
   });
 }
 
-const COMPACT_PANEL_BREAKPOINT = 1536;
+const TOC_DRAWER_BREAKPOINT = 960;
+const COMMENT_DRAWER_BREAKPOINT = 1280;
+const AI_ASSISTANT_DOCKED_BREAKPOINT = 1440;
+const AI_ASSISTANT_AUTO_COLLAPSE_TOC_BREAKPOINT = 1680;
 const THREAD_HISTORY_PAGE_SIZE = 100;
+const KNOWLEDGE_DOCS_VIEW_PREFS_VERSION = 2;
+const FLOATING_COMPOSER_THREAD_ID = "__floating-composer__";
+const QUICK_CHAT_UPDATED_EVENT = "aiteachme:quick-chat-updated";
+const SELECTION_JUMP_EVENT = "aiteachme:selection-jump";
+const AI_INTERACTION_CLOSED_EVENT = "aiteachme:ai-sidebar-closed";
+const SELECTION_SELECTED_TEXT_LIMIT = 1200;
+const SELECTION_LOCAL_CONTEXT_CHARS = 900;
+const SELECTION_SECTION_CONTEXT_CHARS = 3200;
+
+function isTransientSelectionThreadId(threadId: string): boolean {
+  return (
+    threadId === FLOATING_COMPOSER_THREAD_ID ||
+    threadId.startsWith("local-") ||
+    threadId.startsWith("jump-")
+  );
+}
+
+function resolveSelectionThreadSessionId(
+  threadId: string | null,
+  threadSessionIds: Record<string, string>,
+): string | null {
+  const normalizedThreadId = threadId?.trim() ?? "";
+  if (!normalizedThreadId) {
+    return null;
+  }
+  const mappedSessionId = threadSessionIds[normalizedThreadId]?.trim();
+  if (mappedSessionId) {
+    return mappedSessionId;
+  }
+  return isTransientSelectionThreadId(normalizedThreadId) ? null : normalizedThreadId;
+}
+
+function getHeadingActivationOffset(container: HTMLElement): number {
+  return Math.min(128, Math.max(76, container.clientHeight * 0.18));
+}
+
+function createDefaultKnowledgeDocsViewPrefs(): KnowledgeDocsViewPrefs {
+  return {
+    widePage: false,
+    showToc: true,
+    showCommentPanel: false,
+  };
+}
+
+function normalizeKnowledgeDocsViewPrefs(raw: unknown): KnowledgeDocsViewPrefs {
+  const defaults = createDefaultKnowledgeDocsViewPrefs();
+  if (!raw || typeof raw !== "object") {
+    return defaults;
+  }
+  const candidate = raw as Partial<KnowledgeDocsViewPrefs>;
+  return {
+    widePage: candidate.widePage === true,
+    showToc: candidate.showToc !== false,
+    showCommentPanel: candidate.showCommentPanel === true,
+  };
+}
+
+function knowledgeDocsViewPrefsStorageKey(subjectId?: string): string {
+  return `aiteachme:knowledge-docs-view:v${KNOWLEDGE_DOCS_VIEW_PREFS_VERSION}:${subjectId ?? "default"}`;
+}
+
+function readKnowledgeDocsViewPrefs(subjectId?: string): KnowledgeDocsViewPrefs {
+  if (!subjectId || typeof window === "undefined") {
+    return createDefaultKnowledgeDocsViewPrefs();
+  }
+  try {
+    const raw = window.localStorage.getItem(knowledgeDocsViewPrefsStorageKey(subjectId));
+    if (!raw) {
+      return createDefaultKnowledgeDocsViewPrefs();
+    }
+    return normalizeKnowledgeDocsViewPrefs(JSON.parse(raw));
+  } catch {
+    return createDefaultKnowledgeDocsViewPrefs();
+  }
+}
+
+function persistKnowledgeDocsViewPrefs(subjectId: string | undefined, prefs: KnowledgeDocsViewPrefs) {
+  if (!subjectId || typeof window === "undefined") {
+    return;
+  }
+  try {
+    window.localStorage.setItem(
+      knowledgeDocsViewPrefsStorageKey(subjectId),
+      JSON.stringify({
+        version: KNOWLEDGE_DOCS_VIEW_PREFS_VERSION,
+        ...prefs,
+      }),
+    );
+  } catch {
+    // Ignore storage failures and fall back to in-memory state.
+  }
+}
 
 function tocEqual(a: TocItem[], b: TocItem[]): boolean {
   if (a.length !== b.length) return false;
@@ -179,6 +339,21 @@ function tocEqual(a: TocItem[], b: TocItem[]): boolean {
       a[i].id !== b[i].id ||
       a[i].text !== b[i].text ||
       a[i].level !== b[i].level
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function highlightSegmentsEqual(a: HighlightSegment[], b: HighlightSegment[]): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i += 1) {
+    if (
+      Math.abs(a[i].top - b[i].top) > 0.5 ||
+      Math.abs(a[i].left - b[i].left) > 0.5 ||
+      Math.abs(a[i].width - b[i].width) > 0.5 ||
+      Math.abs(a[i].height - b[i].height) > 0.5
     ) {
       return false;
     }
@@ -236,20 +411,409 @@ function buildTocTree(items: TocItem[]): TocTreeNode[] {
   return roots;
 }
 
-/** Find ancestor IDs for a given heading id in the tree */
-function findAncestorIds(roots: TocTreeNode[], targetId: string): string[] {
-  const path: string[] = [];
+function findTocPath(roots: TocTreeNode[], targetId: string): TocTreeNode[] {
+  const path: TocTreeNode[] = [];
   const search = (nodes: TocTreeNode[]): boolean => {
     for (const node of nodes) {
       if (node.item.id === targetId) return true;
-      path.push(node.item.id);
+      path.push(node);
       if (search(node.children)) return true;
       path.pop();
     }
     return false;
   };
-  search(roots);
-  return path;
+  return search(roots) ? path : [];
+}
+
+function resolveVisibleActiveTocId(
+  roots: TocTreeNode[],
+  activeId: string,
+  collapsedIds: Set<string>
+): string {
+  if (!activeId) return "";
+  const ancestorPath = findTocPath(roots, activeId);
+  for (const ancestor of ancestorPath) {
+    if (collapsedIds.has(ancestor.item.id)) {
+      return ancestor.item.id;
+    }
+  }
+  return activeId;
+}
+
+function getHeadingLevel(node: Element | null | undefined): number {
+  if (!node) return 0;
+  const level = Number(node.tagName.replace("H", ""));
+  return Number.isInteger(level) ? level : 0;
+}
+
+function normalizeSelectionContextText(text: string): string {
+  return text
+    .replace(/\u00a0/g, " ")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n[ \t]+/g, "\n")
+    .replace(/[ \t]{2,}/g, " ")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+function clipContextText(text: string, limit: number): string {
+  const normalized = normalizeSelectionContextText(text);
+  if (normalized.length <= limit) return normalized;
+  return `${normalized.slice(0, Math.max(0, limit - 1)).trimEnd()}…`;
+}
+
+function collectNodeText(nodes: Node[]): string {
+  return normalizeSelectionContextText(
+    nodes
+      .map((node) => node.textContent ?? "")
+      .filter(Boolean)
+      .join("\n")
+  );
+}
+
+function findHeadingPath(contentRoot: HTMLElement, anchorId: string): HTMLElement[] {
+  const headings = Array.from(contentRoot.querySelectorAll<HTMLElement>("[data-heading-id]"));
+  const targetIndex = headings.findIndex((heading) => heading.getAttribute("data-heading-id") === anchorId);
+  if (targetIndex < 0) return [];
+
+  const stack: HTMLElement[] = [];
+  for (let index = 0; index <= targetIndex; index += 1) {
+    const heading = headings[index];
+    const level = getHeadingLevel(heading);
+    if (!level) continue;
+    while (stack.length > 0 && getHeadingLevel(stack[stack.length - 1]) >= level) {
+      stack.pop();
+    }
+    stack.push(heading);
+  }
+  return stack;
+}
+
+function collectSectionNodes(heading: HTMLElement): Node[] {
+  const boundaryLevel = getHeadingLevel(heading);
+  const nodes: Node[] = [heading];
+  let node = heading.nextSibling;
+  while (node) {
+    if (node instanceof HTMLElement && node.hasAttribute("data-heading-id")) {
+      const level = getHeadingLevel(node);
+      if (level > 0 && level <= boundaryLevel) break;
+    }
+    nodes.push(node);
+    node = node.nextSibling;
+  }
+  return nodes;
+}
+
+interface TextSearchPosition {
+  node: Text;
+  offset: number;
+  endOffset: number;
+}
+
+interface TextSearchIndex {
+  text: string;
+  positions: Array<TextSearchPosition | null>;
+}
+
+function normalizeSelectionSearchChar(char: string): string {
+  if (/[\u200B-\u200D\uFEFF]/u.test(char)) return "";
+  if (char === "\u00A0") return " ";
+  return char;
+}
+
+function normalizeSelectionSearchText(text: string): string {
+  return Array.from(text)
+    .map(normalizeSelectionSearchChar)
+    .join("")
+    .trim();
+}
+
+function shouldIgnoreSelectionTextNode(textNode: Text): boolean {
+  const parent = textNode.parentElement;
+  if (!parent) return true;
+  if (parent.closest("script, style, noscript, .katex-mathml, [hidden]")) {
+    return true;
+  }
+  try {
+    const style = window.getComputedStyle(parent);
+    return style.display === "none" || style.visibility === "hidden";
+  } catch {
+    return false;
+  }
+}
+
+function appendSearchTextNode(index: TextSearchIndex, textNode: Text) {
+  if (shouldIgnoreSelectionTextNode(textNode)) return;
+  const value = textNode.nodeValue ?? "";
+  let offset = 0;
+  for (const char of Array.from(value)) {
+    const endOffset = offset + char.length;
+    const normalized = normalizeSelectionSearchChar(char);
+    for (const normalizedChar of Array.from(normalized)) {
+      index.text += normalizedChar;
+      index.positions.push({ node: textNode, offset, endOffset });
+    }
+    offset = endOffset;
+  }
+}
+
+function appendVirtualSearchSeparator(index: TextSearchIndex) {
+  if (!index.text || /\s$/u.test(index.text)) return;
+  index.text += " ";
+  index.positions.push(null);
+}
+
+function buildTextSearchIndex(roots: Node[]): TextSearchIndex {
+  const index: TextSearchIndex = { text: "", positions: [] };
+  for (const rootNode of roots) {
+    if (rootNode.nodeType === Node.TEXT_NODE) {
+      appendSearchTextNode(index, rootNode as Text);
+      appendVirtualSearchSeparator(index);
+      continue;
+    }
+    const walker = document.createTreeWalker(rootNode, NodeFilter.SHOW_TEXT);
+    let current = walker.nextNode();
+    while (current) {
+      appendSearchTextNode(index, current as Text);
+      current = walker.nextNode();
+    }
+    appendVirtualSearchSeparator(index);
+  }
+  return index;
+}
+
+function createCondensedSearchText(text: string): { text: string; sourceIndexByCondensed: number[] } {
+  const chars: string[] = [];
+  const sourceIndexByCondensed: number[] = [];
+  Array.from(text).forEach((char, index) => {
+    if (/\s/u.test(char)) return;
+    chars.push(char);
+    sourceIndexByCondensed.push(index);
+  });
+  return {
+    text: chars.join(""),
+    sourceIndexByCondensed,
+  };
+}
+
+function rangeFromSearchSpan(index: TextSearchIndex, start: number, end: number): Range | null {
+  if (end <= start) return null;
+  let startPosition: TextSearchPosition | null = null;
+  let endPosition: TextSearchPosition | null = null;
+
+  for (let cursor = start; cursor < end; cursor += 1) {
+    const position = index.positions[cursor];
+    if (position) {
+      startPosition = position;
+      break;
+    }
+  }
+  for (let cursor = end - 1; cursor >= start; cursor -= 1) {
+    const position = index.positions[cursor];
+    if (position) {
+      endPosition = position;
+      break;
+    }
+  }
+
+  if (!startPosition || !endPosition) return null;
+
+  const range = document.createRange();
+  range.setStart(startPosition.node, startPosition.offset);
+  range.setEnd(endPosition.node, endPosition.endOffset);
+  return range;
+}
+
+function findRangesForSelectedText(index: TextSearchIndex, selectedText: string): Range[] {
+  const target = normalizeSelectionSearchText(selectedText);
+  if (!index.text || !target) return [];
+
+  const exactRanges: Range[] = [];
+  let exactStart = index.text.indexOf(target);
+  while (exactStart >= 0) {
+    const range = rangeFromSearchSpan(index, exactStart, exactStart + target.length);
+    if (range) {
+      exactRanges.push(range);
+    }
+    exactStart = index.text.indexOf(target, exactStart + Math.max(target.length, 1));
+  }
+  if (exactRanges.length > 0) {
+    return exactRanges;
+  }
+
+  const condensedSource = createCondensedSearchText(index.text);
+  const condensedTarget = target.replace(/\s+/gu, "");
+  if (!condensedTarget) return [];
+
+  const ranges: Range[] = [];
+  let condensedStart = condensedSource.text.indexOf(condensedTarget);
+  while (condensedStart >= 0) {
+    const sourceStart = condensedSource.sourceIndexByCondensed[condensedStart];
+    const sourceEnd = condensedSource.sourceIndexByCondensed[condensedStart + condensedTarget.length - 1];
+    if (sourceStart !== undefined && sourceEnd !== undefined) {
+      const range = rangeFromSearchSpan(index, sourceStart, sourceEnd + 1);
+      if (range) {
+        ranges.push(range);
+      }
+    }
+    condensedStart = condensedSource.text.indexOf(
+      condensedTarget,
+      condensedStart + Math.max(condensedTarget.length, 1),
+    );
+  }
+  return ranges;
+}
+
+function buildSelectionMatchTokens(selectedText: string): string[] {
+  const tokens = normalizeSelectionSearchText(selectedText)
+    .match(/[\u4e00-\u9fff]+|[A-Za-z_][A-Za-z0-9_]*|[\u0370-\u03FFA-Za-z0-9_]+|[0-9]+(?:\.[0-9]+)?/gu) ?? [];
+  const unique = new Set<string>();
+  for (const token of tokens) {
+    const condensed = token.replace(/\s+/gu, "");
+    if (!condensed) continue;
+    const meaningful =
+      condensed.length >= 2 ||
+      /[\u4e00-\u9fff]/u.test(condensed) ||
+      /[\u0370-\u03FF]/u.test(condensed);
+    if (meaningful) {
+      unique.add(condensed);
+    }
+  }
+  return Array.from(unique);
+}
+
+function findApproximateRangeForSelectedText(index: TextSearchIndex, selectedText: string): Range | null {
+  const tokens = buildSelectionMatchTokens(selectedText);
+  if (tokens.length === 0) return null;
+
+  const condensedSource = createCondensedSearchText(index.text);
+  let matchedCount = 0;
+  let matchedWeight = 0;
+  let totalWeight = 0;
+  let sourceStart = Number.POSITIVE_INFINITY;
+  let sourceEnd = -1;
+
+  for (const token of tokens) {
+    const tokenWeight = Math.min(token.length, 12);
+    totalWeight += tokenWeight;
+    const condensedStart = condensedSource.text.indexOf(token);
+    if (condensedStart < 0) continue;
+
+    const tokenSourceStart = condensedSource.sourceIndexByCondensed[condensedStart];
+    const tokenSourceEnd = condensedSource.sourceIndexByCondensed[condensedStart + token.length - 1];
+    if (tokenSourceStart === undefined || tokenSourceEnd === undefined) continue;
+
+    matchedCount += 1;
+    matchedWeight += tokenWeight;
+    sourceStart = Math.min(sourceStart, tokenSourceStart);
+    sourceEnd = Math.max(sourceEnd, tokenSourceEnd + 1);
+  }
+
+  const hasStrongSingleToken = matchedCount === 1 && matchedWeight >= 8;
+  const hasEnoughTokenCoverage =
+    matchedCount >= 2 &&
+    matchedWeight >= Math.min(10, Math.max(4, totalWeight * 0.35));
+
+  if ((!hasStrongSingleToken && !hasEnoughTokenCoverage) || !Number.isFinite(sourceStart) || sourceEnd <= sourceStart) {
+    return null;
+  }
+
+  return rangeFromSearchSpan(index, sourceStart, sourceEnd);
+}
+
+function findSelectionIndex(sectionText: string, selectedText: string): number {
+  const normalizedSelection = normalizeSelectionContextText(selectedText);
+  if (!normalizedSelection) return -1;
+
+  const exactIndex = sectionText.indexOf(normalizedSelection);
+  if (exactIndex >= 0) return exactIndex;
+
+  const compactSection = sectionText.replace(/\s+/g, "");
+  const compactSelection = normalizedSelection.replace(/\s+/g, "");
+  if (!compactSelection) return -1;
+  const compactIndex = compactSection.indexOf(compactSelection.slice(0, Math.min(120, compactSelection.length)));
+  if (compactIndex < 0) return -1;
+
+  let compactCursor = 0;
+  for (let index = 0; index < sectionText.length; index += 1) {
+    if (/\s/.test(sectionText[index])) continue;
+    if (compactCursor === compactIndex) return index;
+    compactCursor += 1;
+  }
+  return -1;
+}
+
+function excerptAroundSelection(sectionText: string, selectedText: string, maxChars: number): { text: string; truncated: boolean } {
+  if (sectionText.length <= maxChars) {
+    return { text: sectionText, truncated: false };
+  }
+
+  const selectionIndex = findSelectionIndex(sectionText, selectedText);
+  const selectedLength = Math.max(clipContextText(selectedText, SELECTION_SELECTED_TEXT_LIMIT).length, 1);
+  const fallbackStart = Math.max(0, Math.floor((sectionText.length - maxChars) / 2));
+  const start = selectionIndex >= 0
+    ? Math.max(0, selectionIndex - Math.floor(maxChars * 0.42))
+    : fallbackStart;
+  const adjustedStart = Math.min(start, Math.max(0, sectionText.length - maxChars));
+  const end = Math.min(sectionText.length, Math.max(adjustedStart + maxChars, selectionIndex + selectedLength));
+  const finalStart = Math.max(0, Math.min(adjustedStart, end - maxChars));
+  const prefix = finalStart > 0 ? "… " : "";
+  const suffix = end < sectionText.length ? " …" : "";
+  return {
+    text: `${prefix}${sectionText.slice(finalStart, end).trim()}${suffix}`,
+    truncated: true,
+  };
+}
+
+function buildSelectionContextPayload(
+  contentRoot: HTMLElement | null,
+  anchorId: string,
+  selectedText: string
+): SelectionContextPayload {
+  const fallbackSelectedText = clipContextText(selectedText, SELECTION_SELECTED_TEXT_LIMIT);
+  if (!contentRoot) {
+    return {
+      selected_text: fallbackSelectedText,
+      anchor_id: anchorId,
+      heading_path: [],
+      section_truncated: false,
+      local_context_truncated: false,
+    };
+  }
+
+  const headingPath = findHeadingPath(contentRoot, anchorId);
+  const currentHeading = headingPath[headingPath.length - 1] ?? null;
+  const currentLevel = getHeadingLevel(currentHeading);
+  const sectionHeading = currentLevel >= 3
+    ? [...headingPath].reverse().find((heading) => getHeadingLevel(heading) < currentLevel) ?? currentHeading
+    : currentHeading;
+  const sectionText = sectionHeading ? collectNodeText(collectSectionNodes(sectionHeading)) : normalizeSelectionContextText(contentRoot.textContent ?? "");
+  const selectedIndex = findSelectionIndex(sectionText, selectedText);
+  const normalizedSelectedText = normalizeSelectionContextText(selectedText);
+  const beforeRaw = selectedIndex >= 0 ? sectionText.slice(0, selectedIndex) : "";
+  const afterRaw = selectedIndex >= 0 ? sectionText.slice(selectedIndex + normalizedSelectedText.length) : "";
+  const beforeText = beforeRaw.length > SELECTION_LOCAL_CONTEXT_CHARS
+    ? `… ${beforeRaw.slice(-SELECTION_LOCAL_CONTEXT_CHARS).trimStart()}`
+    : beforeRaw;
+  const afterText = afterRaw.length > SELECTION_LOCAL_CONTEXT_CHARS
+    ? `${afterRaw.slice(0, SELECTION_LOCAL_CONTEXT_CHARS).trimEnd()} …`
+    : afterRaw;
+  const sectionExcerpt = excerptAroundSelection(sectionText, selectedText, SELECTION_SECTION_CONTEXT_CHARS);
+
+  return {
+    selected_text: fallbackSelectedText,
+    anchor_id: anchorId,
+    anchor_title: currentHeading?.textContent?.trim() || undefined,
+    heading_path: headingPath
+      .map((heading) => heading.textContent?.trim() ?? "")
+      .filter(Boolean),
+    before_text: beforeText ? clipContextText(beforeText, SELECTION_LOCAL_CONTEXT_CHARS + 4) : undefined,
+    after_text: afterText ? clipContextText(afterText, SELECTION_LOCAL_CONTEXT_CHARS + 4) : undefined,
+    section_title: sectionHeading?.textContent?.trim() || undefined,
+    section_excerpt: sectionExcerpt.text ? clipContextText(sectionExcerpt.text, SELECTION_SECTION_CONTEXT_CHARS + 4) : undefined,
+    section_truncated: sectionExcerpt.truncated,
+    local_context_truncated: beforeRaw.length > SELECTION_LOCAL_CONTEXT_CHARS || afterRaw.length > SELECTION_LOCAL_CONTEXT_CHARS,
+  };
 }
 
 function moveRecordKey<T>(
@@ -304,16 +868,16 @@ function buildCommentThreadLayout(
     : -1;
 
   if (pinnedIndex < 0) {
-    let cursor = 0;
+    let cursor = desiredTopByThreadId.get(threads[0].threadId) ?? 0;
     for (let i = 0; i < threads.length; i += 1) {
       const desiredTop = desiredTopByThreadId.get(threads[i].threadId);
-      const top = desiredTop === undefined ? cursor : Math.max(cursor, desiredTop);
+      const top = desiredTop === undefined ? cursor : (i === 0 ? desiredTop : Math.max(cursor, desiredTop));
       positions[i] = top;
       cursor = top + heights[i] + gap;
     }
   } else {
     const pinnedDesiredTop = desiredTopByThreadId.get(threads[pinnedIndex].threadId) ?? 0;
-    positions[pinnedIndex] = Math.max(0, pinnedDesiredTop);
+    positions[pinnedIndex] = pinnedDesiredTop;
 
     let downCursor = positions[pinnedIndex] + heights[pinnedIndex] + gap;
     for (let i = pinnedIndex + 1; i < threads.length; i += 1) {
@@ -329,14 +893,6 @@ function buildCommentThreadLayout(
       const desiredTop = desiredTopByThreadId.get(threads[i].threadId);
       positions[i] = desiredTop === undefined ? maxTop : Math.min(maxTop, desiredTop);
       upCursor = positions[i];
-    }
-
-    const minTop = Math.min(...positions);
-    if (minTop < 0) {
-      const shift = -minTop;
-      for (let i = 0; i < positions.length; i += 1) {
-        positions[i] += shift;
-      }
     }
   }
 
@@ -488,7 +1044,7 @@ function DocUpdatingBanner({
               className={cn(
                 "rounded-full px-3 py-1 text-xs font-medium transition-colors",
                 viewMode === "draft"
-                  ? "bg-slate-900 text-white shadow-sm"
+                    ? "bg-slate-900 text-white shadow-sm"
                   : hasDraftVersion
                     ? "text-slate-600 hover:text-slate-900"
                     : "cursor-not-allowed text-slate-300",
@@ -518,12 +1074,12 @@ function DocUpdatingBanner({
 
 function DocEmptyState() {
   return (
-    <section className="rounded-3xl border border-dashed border-slate-200 bg-white p-7 text-center shadow-sm">
-      <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-100 text-slate-500">
+    <section className="rounded-3xl border border-dashed border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-7 text-center shadow-sm dark:shadow-[0_4px_16px_rgba(0,0,0,0.2)]">
+      <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400">
         <FileText className="h-6 w-6" />
       </div>
-      <h2 className="mt-4 text-lg font-semibold text-slate-900">暂时还没有知识文档</h2>
-      <p className="mt-2 text-sm leading-6 text-slate-600">
+      <h2 className="mt-4 text-lg font-semibold text-slate-900 dark:text-slate-100">暂时还没有知识文档</h2>
+      <p className="mt-2 text-sm leading-6 text-slate-600 dark:text-slate-400">
         先回到文件页发起一次知识文档构建，这里会展示最终发布的 merged 文档。
       </p>
     </section>
@@ -566,26 +1122,46 @@ function GraphPanelFallback() {
 
 function CommentCard({
   comment,
+  defaultCollapsed = false,
 }: {
   comment: Comment;
+  defaultCollapsed?: boolean;
 }) {
   const isAssistant = comment.role === "assistant";
+  const contentRef = useRef<HTMLDivElement>(null);
+  const [isCollapsed, setIsCollapsed] = useState(defaultCollapsed);
+  const [canCollapse, setCanCollapse] = useState(false);
+
+  useEffect(() => {
+    const rafId = window.requestAnimationFrame(() => {
+      const node = contentRef.current;
+      if (!node) return;
+      const lineHeight = Number.parseFloat(window.getComputedStyle(node).lineHeight) || 18;
+      const nextCanCollapse = node.scrollHeight > lineHeight * 3 + 8;
+      setCanCollapse(nextCanCollapse);
+      if (!nextCanCollapse) {
+        setIsCollapsed(false);
+      }
+    });
+    return () => window.cancelAnimationFrame(rafId);
+  }, [comment.content]);
+
   return (
     <div
       className={cn(
-        "w-full rounded-lg border shadow-sm transition-shadow",
+        "w-full rounded-lg border transition-colors",
         isAssistant
-          ? "border-blue-100 bg-blue-50/60 hover:shadow-blue-100/70"
-          : "border-slate-200 bg-white hover:shadow-md"
+          ? "border-sky-100 bg-sky-50/60"
+          : "border-slate-200 bg-white"
       )}
     >
       <div className="px-3 py-2">
-        <div className="mb-1 flex items-center justify-between">
+        <div className="mb-1.5 flex items-center justify-between gap-2">
           <div className="flex items-center gap-1.5">
             <div
               className={cn(
-                "flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-semibold text-white",
-                isAssistant ? "bg-blue-500" : "bg-slate-900"
+                "flex h-5 w-5 items-center justify-center rounded-md text-[10px] font-semibold text-white",
+                isAssistant ? "bg-sky-500" : "bg-slate-900"
               )}
             >
               {isAssistant ? "AI" : "我"}
@@ -597,15 +1173,81 @@ function CommentCard({
               {formatTime(comment.createdAt)}
             </span>
           </div>
-          {comment.streaming && <Loader2 className="h-3.5 w-3.5 animate-spin text-blue-400" />}
+          <div className="flex items-center gap-1">
+            {comment.streaming && <Loader2 className="h-3.5 w-3.5 animate-spin text-sky-400" />}
+            {canCollapse && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setIsCollapsed((prev) => !prev);
+                }}
+                className={cn(
+                  "inline-flex h-6 items-center justify-center rounded-md transition",
+                  isCollapsed
+                    ? isAssistant
+                      ? "gap-1 bg-sky-100 px-2 text-[10px] font-medium text-sky-700 hover:bg-sky-200"
+                      : "gap-1 bg-slate-100 px-2 text-[10px] font-medium text-slate-700 hover:bg-slate-200"
+                    : "w-6 text-slate-400 hover:bg-white/80 hover:text-slate-700"
+                )}
+                aria-label={isCollapsed ? "展开消息" : "收起消息"}
+                title={isCollapsed ? "展开消息" : "收起消息"}
+              >
+                {isCollapsed ? (
+                  <>
+                    <ChevronDown className="h-3.5 w-3.5" />
+                    <span>展开</span>
+                  </>
+                ) : (
+                  <ChevronUp className="h-3.5 w-3.5" />
+                )}
+              </button>
+            )}
+          </div>
         </div>
-        {isAssistant ? (
-          <CommentMarkdown content={comment.content} />
-        ) : (
-          <p className="text-xs leading-relaxed text-slate-700 whitespace-pre-wrap">
-            {comment.content}
-          </p>
-        )}
+        <div
+          ref={contentRef}
+          className={cn(
+            "relative text-xs leading-relaxed text-slate-700",
+            isCollapsed && "max-h-[5.1rem] overflow-hidden rounded-md"
+          )}
+        >
+          {isAssistant ? (
+            <CommentMarkdown content={comment.content} />
+          ) : (
+            <p className="whitespace-pre-wrap">
+              {comment.content}
+            </p>
+          )}
+          {isCollapsed && (
+            <>
+              <div
+                className={cn(
+                  "pointer-events-none absolute inset-x-0 bottom-0 h-12 bg-gradient-to-t via-70% to-transparent",
+                  isAssistant ? "from-sky-50 via-sky-50/95" : "from-white via-white/95"
+                )}
+              />
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setIsCollapsed(false);
+                }}
+                className={cn(
+                  "absolute bottom-1 right-1 inline-flex h-6 items-center gap-1 rounded-md border px-2 text-[10px] font-medium shadow-sm transition",
+                  isAssistant
+                    ? "border-sky-200 bg-white/95 text-sky-700 hover:border-sky-300 hover:bg-sky-50"
+                    : "border-slate-200 bg-white/95 text-slate-700 hover:border-slate-300 hover:bg-slate-50"
+                )}
+                aria-label="展开完整内容"
+                title="展开完整内容"
+              >
+                <ChevronDown className="h-3 w-3" />
+                已收起，展开全部
+              </button>
+            </>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -613,123 +1255,120 @@ function CommentCard({
 
 function CommentThread({
   anchorId,
-  title,
   comments,
   selectedText,
-  draft,
-  isStreaming,
   isActive,
-  onDraftChange,
-  onSend,
   onFocus,
   onJumpToAnchor,
-  onOpenAssistant,
+  onOpenAiInteraction,
   compactMode,
   isAligned,
 }: {
   anchorId: string;
-  title: string;
   comments: Comment[];
   selectedText: string;
-  draft: string;
-  isStreaming: boolean;
   isActive: boolean;
-  onDraftChange: (value: string) => void;
-  onSend: () => void;
   onFocus: () => void;
   onJumpToAnchor: (id: string) => void;
-  onOpenAssistant: () => void;
+  onOpenAiInteraction: () => void;
   compactMode: boolean;
   isAligned: boolean;
 }) {
+  const [isThreadCollapsed, setIsThreadCollapsed] = useState(false);
+  const selectedPreview = selectedText.trim() || "定位划词位置";
+
   return (
     <section
       onClick={onFocus}
       className={cn(
-        "rounded-xl border bg-slate-50/60 shadow-sm overflow-hidden transition-colors",
+        "rounded-lg border bg-white overflow-hidden transition-colors",
         isActive
-          ? "border-blue-400 bg-blue-50/35 shadow-[0_0_0_1px_rgba(59,130,246,0.18),0_8px_26px_-18px_rgba(59,130,246,0.6)]"
+          ? "border-sky-300 bg-sky-50/25"
           : "border-slate-200",
         isAligned && !isActive && "border-slate-300/80"
       )}
     >
-      <div className="px-3 py-2 border-b border-slate-200 bg-white flex items-center justify-between gap-2">
+      <div className="px-3 py-2 border-b border-slate-200/80 bg-white flex items-center justify-between gap-2">
         <button
           type="button"
           onClick={() => onJumpToAnchor(anchorId)}
+          title={selectedText ? `定位划词：${selectedText}` : "定位划词位置"}
           className={cn(
-            "text-left text-xs font-semibold truncate transition-colors",
-            isActive ? "text-blue-700" : "text-slate-700 hover:text-blue-600"
+            "group flex min-w-0 flex-1 items-center gap-2 rounded-md px-1 py-0.5 text-left transition-colors hover:bg-slate-50",
+            isActive && "bg-sky-50/70"
           )}
         >
-          {title}
+          <span
+            className={cn(
+              "h-5 w-[3px] shrink-0 rounded-full",
+              isActive ? "bg-sky-400" : "bg-slate-300"
+            )}
+          />
+          <span
+            className={cn(
+              "min-w-0 truncate text-[11px] font-medium",
+              isActive ? "text-sky-700" : "text-slate-600 group-hover:text-slate-800"
+            )}
+          >
+            {selectedPreview}
+          </span>
         </button>
         <div className="flex items-center gap-1.5">
           <button
             type="button"
-            onClick={onOpenAssistant}
-            className={cn(
-              "inline-flex h-6 items-center gap-1 rounded-md border border-sky-200 bg-gradient-to-r from-sky-50 to-cyan-50 px-2 text-[10px] font-semibold text-sky-700 transition hover:border-sky-300 hover:from-sky-100 hover:to-cyan-100",
-            )}
+            onClick={(e) => {
+              e.stopPropagation();
+              onOpenAiInteraction();
+            }}
+            className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-500 transition hover:border-sky-200 hover:bg-sky-50 hover:text-sky-700"
+            aria-label="在 AI 面板继续对话"
             title="在 AI 面板继续对话"
           >
-            <ExternalLink className="h-2.5 w-2.5" />
-            AI 面板
+            <ExternalLink className="h-3.5 w-3.5" />
           </button>
-          <span className="shrink-0 rounded-full bg-blue-100 text-blue-700 text-[10px] px-2 py-0.5 font-medium">
+          <span className="shrink-0 rounded-full bg-slate-100 text-slate-600 text-[10px] px-2 py-0.5 font-medium">
             {comments.length}
           </span>
-        </div>
-      </div>
-      {selectedText && (
-        <div className={cn(
-          "px-3 py-2 border-b border-slate-100 bg-white/80 transition-colors",
-          isActive && "bg-blue-50/70 border-blue-100"
-        )}>
-          <p className={cn("truncate text-[11px]", isActive ? "text-blue-700 font-medium" : "text-blue-500")}>
-            &ldquo;{selectedText}&rdquo;
-          </p>
-        </div>
-      )}
-      <div className={cn("p-2 space-y-2", compactMode ? "max-h-64 overflow-y-auto" : "overflow-visible")}>
-        {comments.map((comment) => (
-          <CommentCard
-            key={comment.id}
-            comment={comment}
-          />
-        ))}
-      </div>
-      <div className="border-t border-slate-200 bg-white p-2">
-        <textarea
-          value={draft}
-          onChange={(e) => onDraftChange(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey) {
-              e.preventDefault();
-              onSend();
-            }
-          }}
-          rows={2}
-          disabled={isStreaming}
-          placeholder={isStreaming ? "AI 正在回复..." : "继续追问这段内容..."}
-          className="w-full resize-none rounded-lg border border-slate-200 px-3 py-2 text-xs text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-300 disabled:bg-slate-50 disabled:text-slate-400"
-        />
-        <div className="mt-2 flex items-center justify-end">
           <button
-            onClick={onSend}
-            disabled={!draft.trim() || isStreaming}
-            className={cn(
-              "inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors",
-              draft.trim() && !isStreaming
-                ? "bg-blue-500 text-white hover:bg-blue-600"
-                : "bg-slate-100 text-slate-300"
-            )}
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              setIsThreadCollapsed((prev) => !prev);
+            }}
+            className="flex h-6 w-6 items-center justify-center rounded-md text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
+            aria-label={isThreadCollapsed ? "展开问答" : "收起问答"}
+            title={isThreadCollapsed ? "展开问答" : "收起问答"}
           >
-            {isStreaming ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
-            发送
+            {isThreadCollapsed ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronUp className="h-3.5 w-3.5" />}
           </button>
         </div>
       </div>
+      {!isThreadCollapsed && (
+        <>
+          <div className={cn("p-2 space-y-2", compactMode ? "max-h-64 overflow-y-auto" : "overflow-visible")}>
+            {comments.map((comment) => (
+              <CommentCard
+                key={comment.id}
+                comment={comment}
+                defaultCollapsed={isHistoryComment(comment)}
+              />
+            ))}
+          </div>
+          <div className="border-t border-slate-200 bg-white p-2">
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onOpenAiInteraction();
+              }}
+              className="flex w-full items-center justify-center gap-1.5 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-medium text-slate-600 transition hover:border-sky-200 hover:bg-sky-50 hover:text-sky-700"
+            >
+              <ExternalLink className="h-3.5 w-3.5" />
+              在右侧 AI 面板继续对话
+            </button>
+          </div>
+        </>
+      )}
     </section>
   );
 }
@@ -739,7 +1378,14 @@ function CommentThread({
 /* ------------------------------------------------------------------ */
 
 export function KnowledgeDocsPage() {
-  const { openAssistant } = useSubjectAiAssistant();
+  const {
+    openAiInteraction,
+    isSidebarOpen: isAssistantOpen,
+    activeConversationSessionId,
+    activeConversationSelectionTarget,
+    sidebarRequest,
+  } = useAiInteraction();
+  const location = useLocation();
   const {
     subjectId,
     docMarkdownQuery,
@@ -783,12 +1429,15 @@ export function KnowledgeDocsPage() {
   const [threadSessionIds, setThreadSessionIds] = useState<Record<string, string>>({});
   const [threadHistoryLoaded, setThreadHistoryLoaded] = useState(false);
   const [threadHistoryError, setThreadHistoryError] = useState<string | null>(null);
+  const [threadHistoryRefreshKey, setThreadHistoryRefreshKey] = useState(0);
   const [selectionHighlights, setSelectionHighlights] = useState<SelectionHighlight[]>([]);
-  const [threadDrafts, setThreadDrafts] = useState<Record<string, string>>({});
+  const [, setThreadDrafts] = useState<Record<string, string>>({});
   const [threadStreaming, setThreadStreaming] = useState<Record<string, boolean>>({});
   const [activeCommentThreadId, setActiveCommentThreadId] = useState<string | null>(null);
   const [pinnedThreadId, setPinnedThreadId] = useState<string | null>(null);
+  const [isAutoCommentHighlightSuppressed, setIsAutoCommentHighlightSuppressed] = useState(false);
   const [commentListOriginTop, setCommentListOriginTop] = useState<number | null>(null);
+  const [desktopCommentScrollMinHeight, setDesktopCommentScrollMinHeight] = useState(0);
   const [threadHeightsById, setThreadHeightsById] = useState<Record<string, number>>({});
   const [isTocCollapsed, setIsTocCollapsed] = useState(false);
   const [isCommentCollapsed, setIsCommentCollapsed] = useState(false);
@@ -798,16 +1447,25 @@ export function KnowledgeDocsPage() {
   const [floatingToolbar, setFloatingToolbar] = useState<FloatingToolbar | null>(null);
   const [floatingComment, setFloatingComment] = useState<FloatingComment | null>(null);
   const [floatingInput, setFloatingInput] = useState("");
-  const [isCompactPanels, setIsCompactPanels] = useState(() =>
-    typeof window !== "undefined" ? window.innerWidth < COMPACT_PANEL_BREAKPOINT : false
+  const [floatingComposerHeight, setFloatingComposerHeight] = useState(236);
+  const [viewportWidth, setViewportWidth] = useState(() =>
+    typeof window !== "undefined" ? window.innerWidth : COMMENT_DRAWER_BREAKPOINT
   );
+  const [viewPrefs, setViewPrefs] = useState<KnowledgeDocsViewPrefs>(() => readKnowledgeDocsViewPrefs(subjectId));
+  const [isSettingsPanelOpen, setIsSettingsPanelOpen] = useState(false);
   const [activeDrawer, setActiveDrawer] = useState<"toc" | "comment" | null>(null);
+  const [isTocScrollbarVisible, setIsTocScrollbarVisible] = useState(false);
+  const [tocScrollThumbStyle, setTocScrollThumbStyle] = useState<TocScrollThumbStyle>({ top: 0, height: 0 });
 
   const [isGraphDrawerOpen, setIsGraphDrawerOpen] = useState(false);
+  const graphDrawerRef = useRef<HTMLDivElement>(null);
+  const initialViewportWidth = typeof window !== "undefined" ? window.innerWidth : 1200;
+  const isNarrowInitialViewport = initialViewportWidth < 640;
   const { width: graphPanelWidth, isDragging: isGraphDragging, handleMouseDown: handleGraphMouseDown } = useResizablePanel({
-    defaultWidth: typeof window !== 'undefined' ? window.innerWidth * 0.6 : 800,
-    minWidth: 400,
-    maxWidth: typeof window !== 'undefined' ? window.innerWidth * 0.8 : 1200,
+    defaultWidth: isNarrowInitialViewport ? initialViewportWidth : initialViewportWidth * 0.6,
+    minWidth: isNarrowInitialViewport ? initialViewportWidth : 400,
+    maxWidth: isNarrowInitialViewport ? initialViewportWidth : initialViewportWidth * 0.8,
+    liveResizeRef: graphDrawerRef,
   });
 
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -816,17 +1474,105 @@ export function KnowledgeDocsPage() {
   const commentPanelRef = useRef<HTMLDivElement>(null);
   const commentViewportRef = useRef<HTMLDivElement>(null);
   const commentThreadListRef = useRef<HTMLDivElement>(null);
+  const desktopCommentTrackRef = useRef<HTMLDivElement>(null);
+  const floatingComposerCardRef = useRef<HTMLDivElement>(null);
+  const floatingComposerTextareaRef = useRef<HTMLTextAreaElement>(null);
+  const settingsPanelRef = useRef<HTMLDivElement>(null);
+  const settingsButtonRef = useRef<HTMLButtonElement>(null);
   const selectedRangeRef = useRef<Range | null>(null);
+  const selectedRangeThreadIdRef = useRef<string | null>(null);
+  const commentsRef = useRef<Comment[]>([]);
+  const quickChatStartedThreadIdsRef = useRef(new Set<string>());
   const threadRefs = useRef(new Map<string, HTMLDivElement>());
   const headingFlashTimersRef = useRef(new Map<string, number>());
   const tocNavRef = useRef<HTMLElement>(null);
   const tocDefaultInitializedRef = useRef(false);
   const streamControllersRef = useRef(new Map<string, AbortController>());
+  const tocScrollbarTimerRef = useRef<number | null>(null);
+  const tocAutoScrollingRef = useRef(false);
+  const tocAutoScrollReleaseTimerRef = useRef<number | null>(null);
+  const activeHeadingLockRef = useRef<string | null>(null);
+  const lastAutoCommentHighlightHeadingRef = useRef(activeHeading);
+  const pendingSelectionJumpRef = useRef<SelectionJumpEventDetail | null>(null);
+  const handledRouteSelectionJumpRef = useRef<number | null>(null);
 
-  const isTocVisible = isCompactPanels ? activeDrawer === "toc" : !isTocCollapsed;
-  const isCommentVisible = isCompactPanels ? activeDrawer === "comment" : !isCommentCollapsed;
+  const isCompactToc = viewportWidth < TOC_DRAWER_BREAKPOINT;
+  const isCompactComment = viewportWidth < COMMENT_DRAWER_BREAKPOINT;
+  const isCompactPanels = isCompactToc || isCompactComment;
+  const hasCompactTocControl = isCompactToc && viewPrefs.showToc;
+  const shouldHideCommentPanelForAssistant = isAssistantOpen;
+  const hasCompactCommentControl = isCompactComment && viewPrefs.showCommentPanel && !shouldHideCommentPanelForAssistant;
+  const isTocVisible = viewPrefs.showToc && (isCompactToc ? activeDrawer === "toc" : !isTocCollapsed);
+  const isCommentVisible =
+    viewPrefs.showCommentPanel &&
+    !shouldHideCommentPanelForAssistant &&
+    (isCompactComment ? activeDrawer === "comment" : !isCommentCollapsed);
+  const showDesktopCommentPanel =
+    !isCompactComment &&
+    viewPrefs.showCommentPanel &&
+    !isCommentCollapsed &&
+    !shouldHideCommentPanelForAssistant;
+  const pageWideMode = viewPrefs.widePage;
+  const shouldAutoCollapseTocForAssistant =
+    isAssistantOpen &&
+    viewportWidth >= AI_ASSISTANT_DOCKED_BREAKPOINT &&
+    viewportWidth < AI_ASSISTANT_AUTO_COLLAPSE_TOC_BREAKPOINT;
+
+  const updateViewPrefs = useCallback((updater: (prev: KnowledgeDocsViewPrefs) => KnowledgeDocsViewPrefs) => {
+    setViewPrefs((prev) => normalizeKnowledgeDocsViewPrefs(updater(prev)));
+  }, []);
+
+  const showTocScrollbarTemporarily = useCallback(() => {
+    setIsTocScrollbarVisible(true);
+    if (tocScrollbarTimerRef.current !== null) {
+      window.clearTimeout(tocScrollbarTimerRef.current);
+    }
+    tocScrollbarTimerRef.current = window.setTimeout(() => {
+      setIsTocScrollbarVisible(false);
+      tocScrollbarTimerRef.current = null;
+    }, 680);
+  }, []);
+
+  const updateTocScrollThumb = useCallback(() => {
+    const nav = tocNavRef.current;
+    if (!nav) {
+      setTocScrollThumbStyle((prev) => (prev.height === 0 ? prev : { top: 0, height: 0 }));
+      return;
+    }
+    const maxScrollTop = nav.scrollHeight - nav.clientHeight;
+    if (maxScrollTop <= 0) {
+      setTocScrollThumbStyle((prev) => (prev.height === 0 ? prev : { top: 0, height: 0 }));
+      return;
+    }
+
+    const trackInset = 8;
+    const trackHeight = Math.max(0, nav.clientHeight - trackInset * 2);
+    const minThumbHeight = 26;
+    const thumbHeight = Math.max(minThumbHeight, (nav.clientHeight / nav.scrollHeight) * trackHeight);
+    const maxThumbTop = Math.max(0, trackHeight - thumbHeight);
+    const top = trackInset + (nav.scrollTop / maxScrollTop) * maxThumbTop;
+
+    setTocScrollThumbStyle((prev) => {
+      if (Math.abs(prev.top - top) < 0.5 && Math.abs(prev.height - thumbHeight) < 0.5) {
+        return prev;
+      }
+      return { top, height: thumbHeight };
+    });
+  }, []);
+
+  const markTocAutoScrolling = useCallback(() => {
+    tocAutoScrollingRef.current = true;
+    if (tocAutoScrollReleaseTimerRef.current !== null) {
+      window.clearTimeout(tocAutoScrollReleaseTimerRef.current);
+    }
+    tocAutoScrollReleaseTimerRef.current = window.setTimeout(() => {
+      tocAutoScrollingRef.current = false;
+      tocAutoScrollReleaseTimerRef.current = null;
+    }, 260);
+  }, []);
 
   const openGraphPanel = useCallback(() => {
+    setIsSettingsPanelOpen(false);
     setIsGraphDrawerOpen(true);
   }, []);
 
@@ -834,44 +1580,77 @@ export function KnowledgeDocsPage() {
     setIsGraphDrawerOpen(false);
   }, []);
 
-  const activeTocItem = useMemo(
-    () => toc.find((item) => item.id === activeHeading) ?? null,
-    [activeHeading, toc]
-  );
-
   // Build hierarchical tree from flat TOC (Feishu-style)
   const tocTree = useMemo(() => buildTocTree(toc), [toc]);
 
-  // Auto-expand ancestors of active heading
-  useEffect(() => {
-    if (!activeHeading || tocTree.length === 0) return;
-    const ancestors = findAncestorIds(tocTree, activeHeading);
-    if (ancestors.length === 0) return;
-    setCollapsedTocIds((prev) => {
-      let changed = false;
-      const next = new Set(prev);
-      for (const id of ancestors) {
-        if (next.has(id)) {
-          next.delete(id);
-          changed = true;
-        }
-      }
-      return changed ? next : prev;
-    });
-  }, [activeHeading, tocTree]);
+  const visibleActiveHeading = useMemo(
+    () => resolveVisibleActiveTocId(tocTree, activeHeading, collapsedTocIds),
+    [activeHeading, collapsedTocIds, tocTree]
+  );
 
-  // Auto-scroll TOC sidebar to keep active item visible
-  useEffect(() => {
-    if (!activeHeading || !tocNavRef.current) return;
-    const activeBtn = tocNavRef.current.querySelector(`[data-toc-id="${activeHeading}"]`) as HTMLElement | null;
-    if (!activeBtn) return;
+  const activeTocItem = useMemo(
+    () => toc.find((item) => item.id === visibleActiveHeading) ?? null,
+    [toc, visibleActiveHeading]
+  );
+
+  const alignActiveTocItem = useCallback((behavior: ScrollBehavior = "auto") => {
+    if (!visibleActiveHeading || !isTocVisible) return;
     const nav = tocNavRef.current;
-    const navRect = nav.getBoundingClientRect();
-    const btnRect = activeBtn.getBoundingClientRect();
-    if (btnRect.top < navRect.top + 8 || btnRect.bottom > navRect.bottom - 8) {
-      activeBtn.scrollIntoView({ behavior: "smooth", block: "center" });
+    if (!nav) return;
+
+    const activeNode = nav.querySelector(`[data-toc-id="${visibleActiveHeading}"]`) as HTMLElement | null;
+    if (!activeNode) return;
+
+    const activeTop = activeNode.offsetTop;
+    const activeBottom = activeTop + activeNode.offsetHeight;
+    const edgeGuard = Math.min(34, Math.max(16, nav.clientHeight * 0.08));
+    const visibleTop = nav.scrollTop + edgeGuard;
+    const visibleBottom = Math.max(
+      visibleTop + activeNode.offsetHeight,
+      nav.scrollTop + nav.clientHeight - edgeGuard,
+    );
+
+    let nextScrollTop = nav.scrollTop;
+    if (activeBottom > visibleBottom) {
+      nextScrollTop = activeBottom - nav.clientHeight + edgeGuard;
+    } else if (activeTop < visibleTop) {
+      nextScrollTop = activeTop - edgeGuard;
+    } else {
+      return;
     }
+
+    const maxScrollTop = Math.max(0, nav.scrollHeight - nav.clientHeight);
+    nextScrollTop = Math.max(0, Math.min(maxScrollTop, nextScrollTop));
+    if (Math.abs(nextScrollTop - nav.scrollTop) < 1) return;
+
+    markTocAutoScrolling();
+    if (behavior === "smooth") {
+      nav.scrollTo({ top: nextScrollTop, behavior });
+      return;
+    }
+
+    const previousScrollBehavior = nav.style.scrollBehavior;
+    nav.style.scrollBehavior = "auto";
+    nav.scrollTop = nextScrollTop;
+    if (previousScrollBehavior) {
+      nav.style.scrollBehavior = previousScrollBehavior;
+    } else {
+      nav.style.removeProperty("scroll-behavior");
+    }
+  }, [isTocVisible, markTocAutoScrolling, visibleActiveHeading]);
+
+  useEffect(() => {
+    if (lastAutoCommentHighlightHeadingRef.current === activeHeading) {
+      return;
+    }
+    lastAutoCommentHighlightHeadingRef.current = activeHeading;
+    setIsAutoCommentHighlightSuppressed(false);
   }, [activeHeading]);
+
+  // Keep the active TOC item visible without mirroring the document's scroll position.
+  useEffect(() => {
+    alignActiveTocItem();
+  }, [visibleActiveHeading, collapsedTocIds, alignActiveTocItem]);
 
   useEffect(() => {
     tocDefaultInitializedRef.current = false;
@@ -899,19 +1678,69 @@ export function KnowledgeDocsPage() {
   }, [renderedMarkdown]);
 
   useEffect(() => {
-    const syncCompactMode = () => {
-      setIsCompactPanels(window.innerWidth < COMPACT_PANEL_BREAKPOINT);
+    setViewPrefs(readKnowledgeDocsViewPrefs(subjectId));
+  }, [subjectId]);
+
+  useEffect(() => {
+    persistKnowledgeDocsViewPrefs(subjectId, viewPrefs);
+  }, [subjectId, viewPrefs]);
+
+  useEffect(() => {
+    const syncViewportWidth = () => {
+      setViewportWidth(window.innerWidth);
     };
-    syncCompactMode();
-    window.addEventListener("resize", syncCompactMode);
-    return () => window.removeEventListener("resize", syncCompactMode);
+    syncViewportWidth();
+    window.addEventListener("resize", syncViewportWidth);
+    return () => window.removeEventListener("resize", syncViewportWidth);
   }, []);
 
   useEffect(() => {
-    if (!isCompactPanels) {
+    if (
+      (activeDrawer === "toc" && (!isCompactToc || !viewPrefs.showToc)) ||
+      (activeDrawer === "comment" && (!isCompactComment || !viewPrefs.showCommentPanel))
+    ) {
       setActiveDrawer(null);
     }
-  }, [isCompactPanels]);
+  }, [activeDrawer, isCompactComment, isCompactToc, viewPrefs.showCommentPanel, viewPrefs.showToc]);
+
+  useEffect(() => {
+    if (!viewPrefs.showCommentPanel) {
+      setFloatingComment(null);
+      if (activeDrawer === "comment") {
+        setActiveDrawer(null);
+      }
+    }
+    if (!viewPrefs.showToc && activeDrawer === "toc") {
+      setActiveDrawer(null);
+    }
+  }, [activeDrawer, viewPrefs.showCommentPanel, viewPrefs.showToc]);
+
+  useEffect(() => {
+    if (isAssistantOpen && activeDrawer === "comment") {
+      setActiveDrawer(null);
+    }
+  }, [activeDrawer, isAssistantOpen]);
+
+  useEffect(() => {
+    if (!shouldAutoCollapseTocForAssistant || isCompactToc || !viewPrefs.showToc) {
+      return;
+    }
+    setIsTocCollapsed(true);
+    if (activeDrawer === "toc") {
+      setActiveDrawer(null);
+    }
+  }, [activeDrawer, isCompactToc, shouldAutoCollapseTocForAssistant, viewPrefs.showToc]);
+
+  useEffect(() => {
+    if (!isSettingsPanelOpen) return;
+    const handlePointerDown = (event: MouseEvent) => {
+      if (settingsPanelRef.current?.contains(event.target as Node)) return;
+      if (settingsButtonRef.current?.contains(event.target as Node)) return;
+      setIsSettingsPanelOpen(false);
+    };
+    document.addEventListener("mousedown", handlePointerDown);
+    return () => document.removeEventListener("mousedown", handlePointerDown);
+  }, [isSettingsPanelOpen]);
 
   useEffect(() => {
     return () => {
@@ -919,6 +1748,12 @@ export function KnowledgeDocsPage() {
         window.clearTimeout(timer);
       }
       headingFlashTimersRef.current.clear();
+      if (tocScrollbarTimerRef.current !== null) {
+        window.clearTimeout(tocScrollbarTimerRef.current);
+      }
+      if (tocAutoScrollReleaseTimerRef.current !== null) {
+        window.clearTimeout(tocAutoScrollReleaseTimerRef.current);
+      }
       for (const controller of streamControllersRef.current.values()) {
         controller.abort();
       }
@@ -1011,7 +1846,10 @@ export function KnowledgeDocsPage() {
         nextComments.sort((left, right) => left.createdAt - right.createdAt);
         setComments(nextComments);
         setThreadSessionIds(nextSessionIds);
-        setSelectionHighlights([]);
+        setSelectionHighlights((prev) => {
+          const next = prev.filter((item) => isTransientSelectionThreadId(item.threadId));
+          return next.length === prev.length ? prev : next;
+        });
       } catch (error: unknown) {
         if (cancelled) {
           return;
@@ -1032,35 +1870,112 @@ export function KnowledgeDocsPage() {
     return () => {
       cancelled = true;
     };
-  }, [subjectId]);
+  }, [subjectId, threadHistoryRefreshKey]);
 
-  // Track active heading on scroll with throttle (Feishu-style)
+  useEffect(() => {
+    commentsRef.current = comments;
+  }, [comments]);
+
+  // Track active heading from a single scroll position so the TOC highlight does not bounce.
   useEffect(() => {
     const container = scrollRef.current;
     if (!container) return;
 
-    let rafPending = false;
-    const handleScroll = () => {
-      if (rafPending) return;
-      rafPending = true;
-      window.requestAnimationFrame(() => {
-        rafPending = false;
-        const headings = container.querySelectorAll("[data-heading-id]");
-        let current = "";
-        for (const el of headings) {
-          const rect = el.getBoundingClientRect();
-          if (rect.top <= 120) {
-            current = el.getAttribute("data-heading-id") ?? "";
-          }
+    const headingRoot = contentAreaRef.current;
+    const headings = Array.from((headingRoot ?? container).querySelectorAll<HTMLElement>("[data-heading-id]"));
+    if (headings.length === 0) {
+      setActiveHeading("");
+      return;
+    }
+
+    let rafId = 0;
+
+    const findActiveHeadingId = () => {
+      const containerRect = container.getBoundingClientRect();
+      const activationTop = containerRect.top + getHeadingActivationOffset(container);
+      let current = headings[0]?.getAttribute("data-heading-id") ?? "";
+      for (const heading of headings) {
+        const rect = heading.getBoundingClientRect();
+        const id = heading.getAttribute("data-heading-id") ?? "";
+        if (!id) continue;
+        if (rect.top <= activationTop) {
+          current = id;
+        } else {
+          break;
         }
-        setActiveHeading(current);
+      }
+      return current;
+    };
+
+    const syncActiveHeading = () => {
+      window.cancelAnimationFrame(rafId);
+      rafId = window.requestAnimationFrame(() => {
+        const lockedHeadingId = activeHeadingLockRef.current;
+        if (lockedHeadingId && headings.some((heading) => heading.getAttribute("data-heading-id") === lockedHeadingId)) {
+          setActiveHeading((prev) => (prev === lockedHeadingId ? prev : lockedHeadingId));
+          return;
+        }
+
+        const nextId = findActiveHeadingId();
+        setActiveHeading((prev) => (prev === nextId ? prev : nextId));
       });
     };
 
+    const handleScroll = () => {
+      syncActiveHeading();
+    };
+    const clearHeadingLock = () => {
+      activeHeadingLockRef.current = null;
+      syncActiveHeading();
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End", " "].includes(event.key)) {
+        clearHeadingLock();
+      }
+    };
+
     container.addEventListener("scroll", handleScroll, { passive: true });
-    handleScroll();
-    return () => container.removeEventListener("scroll", handleScroll);
+    container.addEventListener("wheel", clearHeadingLock, { passive: true });
+    container.addEventListener("touchstart", clearHeadingLock, { passive: true });
+    container.addEventListener("pointerdown", clearHeadingLock);
+    window.addEventListener("resize", handleScroll);
+    window.addEventListener("keydown", handleKeyDown);
+    syncActiveHeading();
+
+    return () => {
+      window.cancelAnimationFrame(rafId);
+      container.removeEventListener("scroll", handleScroll);
+      container.removeEventListener("wheel", clearHeadingLock);
+      container.removeEventListener("touchstart", clearHeadingLock);
+      container.removeEventListener("pointerdown", clearHeadingLock);
+      window.removeEventListener("resize", handleScroll);
+      window.removeEventListener("keydown", handleKeyDown);
+    };
   }, [renderedMarkdown]);
+
+  useEffect(() => {
+    if (!isTocVisible) return;
+    const container = scrollRef.current;
+    if (!container) return;
+
+    let rafId = 0;
+    const syncTocPosition = () => {
+      window.cancelAnimationFrame(rafId);
+      rafId = window.requestAnimationFrame(() => {
+        alignActiveTocItem();
+      });
+    };
+
+    container.addEventListener("scroll", syncTocPosition, { passive: true });
+    window.addEventListener("resize", syncTocPosition);
+    syncTocPosition();
+
+    return () => {
+      window.cancelAnimationFrame(rafId);
+      container.removeEventListener("scroll", syncTocPosition);
+      window.removeEventListener("resize", syncTocPosition);
+    };
+  }, [alignActiveTocItem, isTocVisible]);
 
   const flashHeading = useCallback((node: HTMLElement) => {
     const headingId = node.getAttribute("data-heading-id") ?? node.id;
@@ -1078,20 +1993,27 @@ export function KnowledgeDocsPage() {
     headingFlashTimersRef.current.set(headingId, timer);
   }, []);
 
-  const scrollToHeading = useCallback((id: string) => {
+  const scrollToHeading = useCallback((id: string, options: { lockActive?: boolean } = {}) => {
     const container = scrollRef.current;
     if (!container) return;
-    const el = container.querySelector(`[data-heading-id="${id}"]`) as HTMLElement | null;
+    const headingRoot = contentAreaRef.current;
+    const el = (headingRoot ?? container).querySelector(`[data-heading-id="${id}"]`) as HTMLElement | null;
     if (!el) return;
+
+    if (options.lockActive !== false) {
+      activeHeadingLockRef.current = id;
+      setActiveHeading((prev) => (prev === id ? prev : id));
+    }
 
     const containerRect = container.getBoundingClientRect();
     const elRect = el.getBoundingClientRect();
     const headingTop = container.scrollTop + (elRect.top - containerRect.top);
     const maxScrollTop = Math.max(0, container.scrollHeight - container.clientHeight);
-    const targetTop = Math.max(0, Math.min(maxScrollTop, headingTop - 8));
+    const targetTop = Math.max(0, Math.min(maxScrollTop, headingTop - getHeadingActivationOffset(container)));
     container.scrollTo({ top: targetTop, behavior: "smooth" });
     flashHeading(el);
   }, [flashHeading]);
+
 
   const captureRangeSegments = useCallback((range: Range): HighlightSegment[] => {
     const container = scrollRef.current;
@@ -1100,14 +2022,67 @@ export function KnowledgeDocsPage() {
     }
 
     const containerRect = container.getBoundingClientRect();
-    const rects = Array.from(range.getClientRects()).filter(
-      (rect) => rect.width > 1 || rect.height > 1,
-    );
+    const rangeRoot = range.commonAncestorContainer.nodeType === Node.TEXT_NODE
+      ? range.commonAncestorContainer.parentNode
+      : range.commonAncestorContainer;
+    const textNodes: Text[] = [];
+
+    if (range.commonAncestorContainer.nodeType === Node.TEXT_NODE) {
+      textNodes.push(range.commonAncestorContainer as Text);
+    } else if (rangeRoot) {
+      const walker = document.createTreeWalker(rangeRoot, NodeFilter.SHOW_TEXT);
+      let current = walker.nextNode();
+      while (current) {
+        const textNode = current as Text;
+        if ((textNode.nodeValue ?? "").trim()) {
+          try {
+            if (range.intersectsNode(textNode)) {
+              textNodes.push(textNode);
+            }
+          } catch {
+            // Ignore nodes that cannot be compared against this range.
+          }
+        }
+        current = walker.nextNode();
+      }
+    }
+
+    const textRects: DOMRect[] = [];
+    for (const textNode of textNodes) {
+      const value = textNode.nodeValue ?? "";
+      if (!value) continue;
+
+      let startOffset = textNode === range.startContainer ? range.startOffset : 0;
+      let endOffset = textNode === range.endContainer ? range.endOffset : value.length;
+      startOffset = Math.max(0, Math.min(value.length, startOffset));
+      endOffset = Math.max(0, Math.min(value.length, endOffset));
+      if (endOffset <= startOffset) continue;
+
+      const selectedSlice = value.slice(startOffset, endOffset);
+      const firstVisibleOffset = selectedSlice.search(/\S/u);
+      if (firstVisibleOffset < 0) continue;
+      const trailingWhitespaceLength = selectedSlice.match(/\s+$/u)?.[0].length ?? 0;
+      const visibleStartOffset = startOffset + firstVisibleOffset;
+      const visibleEndOffset = endOffset - trailingWhitespaceLength;
+      if (visibleEndOffset <= visibleStartOffset) continue;
+
+      const textRange = document.createRange();
+      textRange.setStart(textNode, visibleStartOffset);
+      textRange.setEnd(textNode, visibleEndOffset);
+      textRects.push(
+        ...Array.from(textRange.getClientRects()).filter((rect) => rect.width > 1 && rect.height > 1),
+      );
+    }
+
+    const rects = textRects.length > 0
+      ? textRects
+      : Array.from(range.getClientRects()).filter((rect) => rect.width > 1 && rect.height > 1);
+
     const toSegment = (rect: DOMRect): HighlightSegment => ({
       top: rect.top - containerRect.top + container.scrollTop,
       left: rect.left - containerRect.left + container.scrollLeft,
-      width: Math.max(16, rect.width),
-      height: Math.max(18, rect.height),
+      width: Math.max(4, rect.width),
+      height: Math.max(12, rect.height),
     });
 
     if (rects.length === 0) {
@@ -1129,7 +2104,11 @@ export function KnowledgeDocsPage() {
     return captureRangeSegments(range);
   }, [captureRangeSegments]);
 
-  const buildSelectionSegmentsFromText = useCallback((anchorId: string, selectedText: string): HighlightSegment[] => {
+  const buildSelectionSegmentsFromText = useCallback((
+    anchorId: string,
+    selectedText: string,
+    preferredSegments?: HighlightSegment[],
+  ): HighlightSegment[] => {
     const contentRoot = contentAreaRef.current;
     if (!contentRoot) {
       return [];
@@ -1138,85 +2117,151 @@ export function KnowledgeDocsPage() {
     if (!target) {
       return [];
     }
+
+    const segmentFromRect = (rect: DOMRect): HighlightSegment => {
+      const container = scrollRef.current;
+      if (!container) {
+        return {
+          top: rect.top,
+          left: rect.left,
+          width: Math.max(4, rect.width),
+          height: Math.max(12, rect.height),
+        };
+      }
+      const containerRect = container.getBoundingClientRect();
+      return {
+        top: rect.top - containerRect.top + container.scrollTop,
+        left: rect.left - containerRect.left + container.scrollLeft,
+        width: Math.max(4, rect.width),
+        height: Math.max(12, rect.height),
+      };
+    };
+
+    const captureElementSegments = (element: Element): HighlightSegment[] => (
+      Array.from(element.getClientRects())
+        .filter((rect) => rect.width > 1 && rect.height > 1)
+        .map(segmentFromRect)
+    );
+
+    const chooseNearestSegments = (candidates: HighlightSegment[][]): HighlightSegment[] => {
+      const validCandidates = candidates.filter((segments) => segments.length > 0);
+      if (validCandidates.length === 0) {
+        return [];
+      }
+      if (!preferredSegments || preferredSegments.length === 0) {
+        return validCandidates[0];
+      }
+
+      const preferredTop = Math.min(...preferredSegments.map((segment) => segment.top));
+      const preferredLeft = Math.min(...preferredSegments.map((segment) => segment.left));
+      let best = validCandidates[0];
+      let bestScore = Number.POSITIVE_INFINITY;
+      for (const segments of validCandidates) {
+        const top = Math.min(...segments.map((segment) => segment.top));
+        const left = Math.min(...segments.map((segment) => segment.left));
+        const score = Math.abs(top - preferredTop) * 3 + Math.abs(left - preferredLeft);
+        if (score < bestScore) {
+          best = segments;
+          bestScore = score;
+        }
+      }
+      return best;
+    };
+
+    const locateApproximateTableSelection = (roots: Node[]): HighlightSegment[] => {
+      const rows: HTMLTableRowElement[] = [];
+      const seen = new Set<HTMLTableRowElement>();
+      const addRow = (row: HTMLTableRowElement) => {
+        if (seen.has(row)) return;
+        seen.add(row);
+        rows.push(row);
+      };
+
+      for (const rootNode of roots) {
+        if (rootNode instanceof HTMLTableRowElement) {
+          addRow(rootNode);
+          continue;
+        }
+        if (rootNode instanceof Element) {
+          if (rootNode.matches("tr")) {
+            addRow(rootNode as HTMLTableRowElement);
+          }
+          rootNode.querySelectorAll<HTMLTableRowElement>("tr").forEach(addRow);
+        }
+      }
+
+      let bestMatch: { row: HTMLTableRowElement; range: Range; score: number } | null = null;
+      const targetTokens = buildSelectionMatchTokens(target);
+      if (targetTokens.length === 0) {
+        return [];
+      }
+
+      for (const row of rows) {
+        const index = buildTextSearchIndex([row]);
+        if (!index.text.trim()) continue;
+        const range = findApproximateRangeForSelectedText(index, target);
+        if (!range) continue;
+        const condensedRow = createCondensedSearchText(index.text).text;
+        const score = targetTokens.reduce((sum, token) => (
+          condensedRow.includes(token) ? sum + Math.min(token.length, 12) : sum
+        ), 0);
+        if (!bestMatch || score > bestMatch.score) {
+          bestMatch = { row, range, score };
+        }
+      }
+
+      if (!bestMatch) {
+        return [];
+      }
+
+      const rangeSegments = captureRangeSegments(bestMatch.range);
+      return rangeSegments.length > 0 ? rangeSegments : captureElementSegments(bestMatch.row);
+    };
+
+    const locateInRoots = (roots: Node[]): HighlightSegment[] => {
+      const index = buildTextSearchIndex(roots);
+      const matchedSegments = findRangesForSelectedText(index, target)
+        .map((range) => captureRangeSegments(range))
+        .filter((segments) => segments.length > 0);
+      if (matchedSegments.length > 0) {
+        return chooseNearestSegments(matchedSegments);
+      }
+      return locateApproximateTableSelection(roots);
+    };
+
     const heading = contentRoot.querySelector(`[data-heading-id="${anchorId}"]`) as HTMLElement | null;
-    if (!heading) {
-      return [];
-    }
-    const allHeadings = Array.from(contentRoot.querySelectorAll<HTMLElement>("[data-heading-id]"));
-    const headingIndex = allHeadings.findIndex((node) => node === heading);
-    const nextHeading = headingIndex >= 0 ? allHeadings[headingIndex + 1] ?? null : null;
-    const sectionRoots: Node[] = [];
-    let node: Node | null = heading;
-    while (node && node !== nextHeading) {
-      sectionRoots.push(node);
-      node = node.nextSibling;
-    }
-    if (sectionRoots.length === 0) {
-      return [];
-    }
-
-    const textEntries: Array<{ node: Text; start: number; end: number }> = [];
-    let rawText = "";
-    for (const rootNode of sectionRoots) {
-      const walker = document.createTreeWalker(rootNode, NodeFilter.SHOW_TEXT);
-      let current = walker.nextNode();
-      while (current) {
-        const textNode = current as Text;
-        const value = textNode.nodeValue ?? "";
-        if (value.length > 0) {
-          const start = rawText.length;
-          rawText += value;
-          textEntries.push({ node: textNode, start, end: rawText.length });
-        }
-        current = walker.nextNode();
+    if (heading) {
+      const allHeadings = Array.from(contentRoot.querySelectorAll<HTMLElement>("[data-heading-id]"));
+      const headingIndex = allHeadings.findIndex((node) => node === heading);
+      const nextHeading = headingIndex >= 0 ? allHeadings[headingIndex + 1] ?? null : null;
+      const sectionRoots: Node[] = [];
+      let node: Node | null = heading;
+      while (node && node !== nextHeading) {
+        sectionRoots.push(node);
+        node = node.nextSibling;
+      }
+      const sectionSegments = locateInRoots(sectionRoots);
+      if (sectionSegments.length > 0) {
+        return sectionSegments;
       }
     }
-    if (!rawText || textEntries.length === 0) {
-      return [];
-    }
 
-    let matchStart = rawText.indexOf(target);
-    let matchEnd = matchStart >= 0 ? matchStart + target.length : -1;
-    if (matchStart < 0) {
-      const condensedRawChars: string[] = [];
-      const rawIndexByCondensed: number[] = [];
-      for (let i = 0; i < rawText.length; i += 1) {
-        const char = rawText[i];
-        if (!/\s/u.test(char)) {
-          condensedRawChars.push(char);
-          rawIndexByCondensed.push(i);
-        }
-      }
-      const condensedRaw = condensedRawChars.join("");
-      const condensedTarget = target.replace(/\s+/gu, "");
-      const condensedStart = condensedTarget ? condensedRaw.indexOf(condensedTarget) : -1;
-      if (condensedStart < 0) {
-        return [];
-      }
-      const rawStart = rawIndexByCondensed[condensedStart];
-      const rawEnd = rawIndexByCondensed[condensedStart + condensedTarget.length - 1];
-      if (rawStart === undefined || rawEnd === undefined) {
-        return [];
-      }
-      matchStart = rawStart;
-      matchEnd = rawEnd + 1;
-    }
-    if (matchStart < 0 || matchEnd <= matchStart) {
-      return [];
-    }
-
-    const startEntry = textEntries.find((entry) => matchStart >= entry.start && matchStart < entry.end);
-    const endBoundary = Math.max(matchStart, matchEnd - 1);
-    const endEntry = textEntries.find((entry) => endBoundary >= entry.start && endBoundary < entry.end);
-    if (!startEntry || !endEntry) {
-      return [];
-    }
-
-    const range = document.createRange();
-    range.setStart(startEntry.node, matchStart - startEntry.start);
-    range.setEnd(endEntry.node, matchEnd - endEntry.start);
-    return captureRangeSegments(range);
+    return locateInRoots([contentRoot]);
   }, [captureRangeSegments]);
+
+  const resolveHighlightSegments = useCallback((highlight: SelectionHighlight): HighlightSegment[] => {
+    if (selectedRangeThreadIdRef.current === highlight.threadId && selectedRangeRef.current) {
+      const liveSegments = captureSelectionSegments();
+      if (liveSegments.length > 0) {
+        return liveSegments;
+      }
+    }
+    return buildSelectionSegmentsFromText(
+      highlight.anchorId,
+      highlight.selectedText,
+      highlight.segments,
+    );
+  }, [buildSelectionSegmentsFromText, captureSelectionSegments]);
 
   const createLocalThreadId = useCallback((anchorId: string) => (
     `local-${anchorId}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
@@ -1252,45 +2297,128 @@ export function KnowledgeDocsPage() {
     setActiveDrawer(null);
   }, []);
 
+  const handleTocManualScrollStart = useCallback(() => {
+    updateTocScrollThumb();
+    showTocScrollbarTemporarily();
+  }, [showTocScrollbarTemporarily, updateTocScrollThumb]);
+
+  const handleTocNavScroll = useCallback(() => {
+    updateTocScrollThumb();
+    if (tocAutoScrollingRef.current) {
+      return;
+    }
+    showTocScrollbarTemporarily();
+  }, [showTocScrollbarTemporarily, updateTocScrollThumb]);
+
   const handleTocItemClick = useCallback((id: string) => {
-    setActiveHeading(id);
     scrollToHeading(id);
-    if (isCompactPanels) {
+    if (isCompactToc) {
       setActiveDrawer(null);
     }
-  }, [isCompactPanels, scrollToHeading]);
+  }, [isCompactToc, scrollToHeading]);
 
   const dismissCommentComposer = useCallback(() => {
     setFloatingComment(null);
     setFloatingInput("");
   }, []);
 
-  const clearSelectionHighlight = useCallback(() => {
-    selectedRangeRef.current = null;
+  const clearSelectionHighlight = useCallback((options?: { keepStoredRange?: boolean }) => {
+    if (!options?.keepStoredRange) {
+      selectedRangeRef.current = null;
+      selectedRangeThreadIdRef.current = null;
+    }
     const selection = window.getSelection();
     if (selection && !selection.isCollapsed) {
       selection.removeAllRanges();
     }
   }, []);
 
+  useEffect(() => {
+    const handleAiInteractionClosed = () => {
+      const currentThreadId = selectedRangeThreadIdRef.current?.trim() ?? "";
+
+      const shouldRemoveUnstartedThread = (threadId: string | null | undefined) => {
+        const normalizedThreadId = threadId?.trim() ?? "";
+        if (!normalizedThreadId) {
+          return false;
+        }
+        const shouldConsider =
+          normalizedThreadId.startsWith("local-") ||
+          (currentThreadId !== "" && normalizedThreadId === currentThreadId);
+        if (!shouldConsider || !isTransientSelectionThreadId(normalizedThreadId)) {
+          return false;
+        }
+        const hasStartedConversation =
+          quickChatStartedThreadIdsRef.current.has(normalizedThreadId) ||
+          commentsRef.current.some((item) => (
+            item.threadId === normalizedThreadId || item.sessionId === normalizedThreadId
+          ));
+        return !hasStartedConversation;
+      };
+
+      setSelectionHighlights((prev) => {
+        const next = prev.filter((item) => !shouldRemoveUnstartedThread(item.threadId));
+        return next.length === prev.length ? prev : next;
+      });
+      setActiveCommentThreadId((prev) => (shouldRemoveUnstartedThread(prev) ? null : prev));
+      setPinnedThreadId((prev) => (shouldRemoveUnstartedThread(prev) ? null : prev));
+      setThreadStreaming((prev) => {
+        let changed = false;
+        const next = { ...prev };
+        for (const threadId of Object.keys(next)) {
+          if (shouldRemoveUnstartedThread(threadId)) {
+            delete next[threadId];
+            changed = true;
+          }
+        }
+        return changed ? next : prev;
+      });
+      setThreadDrafts((prev) => {
+        let changed = false;
+        const next = { ...prev };
+        for (const threadId of Object.keys(next)) {
+          if (shouldRemoveUnstartedThread(threadId)) {
+            delete next[threadId];
+            changed = true;
+          }
+        }
+        return changed ? next : prev;
+      });
+
+      clearSelectionHighlight();
+    };
+
+    window.addEventListener(AI_INTERACTION_CLOSED_EVENT, handleAiInteractionClosed);
+    return () => window.removeEventListener(AI_INTERACTION_CLOSED_EVENT, handleAiInteractionClosed);
+  }, [clearSelectionHighlight]);
+
   const computeCommentComposerTop = useCallback((selectionViewportTop: number) => {
     const panel = commentPanelRef.current;
-    if (!panel) return 56;
+    if (!panel) return isCompactComment ? 18 : 56;
     const panelRect = panel.getBoundingClientRect();
-    const rawTop = selectionViewportTop - panelRect.top - 24;
-    const minTop = 56;
+    const rawTop = selectionViewportTop - panelRect.top - (isCompactComment ? 18 : 24);
+    const minTop = isCompactComment ? 18 : 56;
     const estimatedComposerHeight = 208;
-    const maxTop = Math.max(minTop, panelRect.height - estimatedComposerHeight - 12);
+    const maxTop = Math.max(minTop, panelRect.height - estimatedComposerHeight - (isCompactComment ? 18 : 14));
     return Math.min(maxTop, Math.max(minTop, rawTop));
-  }, []);
+  }, [isCompactComment]);
 
   // Keep document selection behavior close to Feishu:
   // any click outside toolbar clears highlighted range state.
   useEffect(() => {
     const handlePointerDown = (e: MouseEvent) => {
+      const targetElement = e.target instanceof Element ? e.target : null;
+      if (targetElement?.closest("[data-ai-interaction-window='true']")) return;
       if (floatingRef.current?.contains(e.target as Node)) return;
+      if (floatingComposerCardRef.current?.contains(e.target as Node)) return;
+      if (commentPanelRef.current?.contains(e.target as Node)) return;
       clearSelectionHighlight();
       setFloatingToolbar(null);
+      setFloatingComment(null);
+      setFloatingInput("");
+      setActiveCommentThreadId(null);
+      setPinnedThreadId(null);
+      setIsAutoCommentHighlightSuppressed(true);
     };
     document.addEventListener("mousedown", handlePointerDown);
     return () => document.removeEventListener("mousedown", handlePointerDown);
@@ -1314,12 +2442,46 @@ export function KnowledgeDocsPage() {
     return () => window.cancelAnimationFrame(raf);
   }, [floatingToolbar]);
 
-  const updateThreadDraft = useCallback((threadId: string, value: string) => {
-    setThreadDrafts((prev) => {
-      if (prev[threadId] === value) return prev;
-      return { ...prev, [threadId]: value };
+  useEffect(() => {
+    if (!floatingComment || !isCommentVisible) return;
+    const raf = window.requestAnimationFrame(() => {
+      const textarea = floatingComposerTextareaRef.current;
+      if (!textarea) return;
+      textarea.focus({ preventScroll: true });
+      const valueLength = textarea.value.length;
+      textarea.setSelectionRange(valueLength, valueLength);
     });
-  }, []);
+    return () => window.cancelAnimationFrame(raf);
+  }, [floatingComment, isCommentVisible]);
+
+  useEffect(() => {
+    if (isCompactComment || !floatingComment) {
+      setFloatingComposerHeight(236);
+      return;
+    }
+
+    const measure = () => {
+      const node = floatingComposerCardRef.current;
+      if (!node) return;
+      const nextHeight = Math.ceil(node.getBoundingClientRect().height);
+      if (nextHeight > 0) {
+        setFloatingComposerHeight((prev) => (Math.abs(prev - nextHeight) < 1 ? prev : nextHeight));
+      }
+    };
+
+    measure();
+    const observer = typeof ResizeObserver !== "undefined"
+      ? new ResizeObserver(() => measure())
+      : null;
+    if (observer && floatingComposerCardRef.current) {
+      observer.observe(floatingComposerCardRef.current);
+    }
+    window.addEventListener("resize", measure);
+    return () => {
+      observer?.disconnect();
+      window.removeEventListener("resize", measure);
+    };
+  }, [floatingComment, isCompactComment]);
 
   const rebindThreadIdToSession = useCallback((threadId: string, candidateSessionId: string | null): string => {
     const resolvedSessionId = candidateSessionId?.trim() ?? "";
@@ -1380,6 +2542,13 @@ export function KnowledgeDocsPage() {
       return Array.from(deduped.values());
     });
     setActiveCommentThreadId((prev) => (prev === threadId ? resolvedSessionId : prev));
+    if (selectedRangeThreadIdRef.current === threadId) {
+      selectedRangeThreadIdRef.current = resolvedSessionId;
+    }
+    if (quickChatStartedThreadIdsRef.current.has(threadId)) {
+      quickChatStartedThreadIdsRef.current.delete(threadId);
+      quickChatStartedThreadIdsRef.current.add(resolvedSessionId);
+    }
 
     const controller = streamControllersRef.current.get(threadId);
     if (controller) {
@@ -1389,6 +2558,137 @@ export function KnowledgeDocsPage() {
 
     return resolvedSessionId;
   }, []);
+
+  useEffect(() => {
+    const handleQuickChatUpdated = (event: Event) => {
+      const detail = (event as CustomEvent<QuickChatSyncEventDetail>).detail;
+      if (detail?.subjectId && detail.subjectId !== subjectId) {
+        return;
+      }
+      if (!detail?.phase) {
+        setThreadHistoryRefreshKey((prev) => prev + 1);
+        return;
+      }
+
+      const localThreadId = detail.localThreadId?.trim() || detail.sessionId?.trim() || "";
+      const sessionId = detail.sessionId?.trim() || null;
+      const assistantLocalId = detail.assistantLocalId?.trim() || "";
+      if (!localThreadId) {
+        return;
+      }
+
+      if (detail.phase === "start") {
+        const anchorId = detail.anchorId?.trim() ?? "";
+        const selectedText = detail.selectedText?.trim() ?? "";
+        const question = detail.question?.trim() ?? "";
+        if (!anchorId || !selectedText || !question || !assistantLocalId) {
+          return;
+        }
+
+        quickChatStartedThreadIdsRef.current.add(localThreadId);
+        const createdAt = detail.createdAt ? Date.parse(detail.createdAt) : Date.now();
+        const startedAt = Number.isFinite(createdAt) ? createdAt : Date.now();
+        const userLocalId = detail.userLocalId?.trim() || `${localThreadId}-user-${startedAt}`;
+        setComments((prev) => {
+          if (prev.some((item) => item.id === userLocalId || item.id === assistantLocalId)) {
+            return prev;
+          }
+          return [
+            ...prev,
+            {
+              id: userLocalId,
+              threadId: localThreadId,
+              sessionId,
+              anchorId,
+              selectedText,
+              role: "user",
+              content: question,
+              createdAt: startedAt,
+            },
+            {
+              id: assistantLocalId,
+              threadId: localThreadId,
+              sessionId,
+              anchorId,
+              selectedText,
+              role: "assistant",
+              content: "",
+              createdAt: startedAt + 1,
+              streaming: true,
+            },
+          ];
+        });
+        if (sessionId) {
+          setThreadSessionIds((prev) => ({ ...prev, [localThreadId]: sessionId }));
+        }
+        setThreadStreaming((prev) => ({ ...prev, [localThreadId]: true }));
+        const segments = buildSelectionSegmentsFromText(anchorId, selectedText);
+        addSelectionHighlight(localThreadId, anchorId, selectedText, segments.length > 0 ? segments : undefined);
+        setActiveCommentThreadId(localThreadId);
+        setPinnedThreadId(localThreadId);
+        setIsAutoCommentHighlightSuppressed(false);
+        return;
+      }
+
+      if (detail.phase === "session") {
+        if (sessionId) {
+          rebindThreadIdToSession(localThreadId, sessionId);
+        }
+        return;
+      }
+
+      if (detail.phase === "token") {
+        const content = detail.content ?? "";
+        if (!assistantLocalId || !content) {
+          return;
+        }
+        setComments((prev) => prev.map((item) => (
+          item.id === assistantLocalId ? { ...item, content: item.content + content } : item
+        )));
+        return;
+      }
+
+      if (detail.phase === "done") {
+        const finalThreadId = sessionId ? rebindThreadIdToSession(localThreadId, sessionId) : localThreadId;
+        if (assistantLocalId) {
+          setComments((prev) => prev.map((item) => (
+            item.id === assistantLocalId
+              ? { ...item, threadId: finalThreadId, sessionId, streaming: false }
+              : item
+          )));
+        }
+        setThreadStreaming((prev) => ({ ...prev, [finalThreadId]: false }));
+        return;
+      }
+
+      if (detail.phase === "error") {
+        const finalThreadId = sessionId ? rebindThreadIdToSession(localThreadId, sessionId) : localThreadId;
+        if (assistantLocalId) {
+          setComments((prev) => prev.map((item) => (
+            item.id === assistantLocalId
+              ? {
+                ...item,
+                threadId: finalThreadId,
+                sessionId,
+                content: detail.errorDetail?.trim() || item.content || "请求失败，请重试。",
+                streaming: false,
+              }
+              : item
+          )));
+        }
+        setThreadStreaming((prev) => ({ ...prev, [finalThreadId]: false }));
+        return;
+      }
+
+      if (detail.phase === "settled") {
+        const finalThreadId = sessionId ? rebindThreadIdToSession(localThreadId, sessionId) : localThreadId;
+        setThreadStreaming((prev) => ({ ...prev, [finalThreadId]: false }));
+      }
+    };
+
+    window.addEventListener(QUICK_CHAT_UPDATED_EVENT, handleQuickChatUpdated);
+    return () => window.removeEventListener(QUICK_CHAT_UPDATED_EVENT, handleQuickChatUpdated);
+  }, [addSelectionHighlight, buildSelectionSegmentsFromText, rebindThreadIdToSession, subjectId]);
 
   const streamAssistantReply = useCallback(async (
     threadId: string,
@@ -1464,6 +2764,7 @@ export function KnowledgeDocsPage() {
 
     try {
       const subject = subjectId ?? "demo";
+      const selectionContext = buildSelectionContextPayload(contentAreaRef.current, anchorId, selectedText);
       const result = await postSseJson(
         `/api/v1/subjects/${subject}/chats/send`,
         {
@@ -1471,7 +2772,9 @@ export function KnowledgeDocsPage() {
           source: "quick_chat",
           session_id: threadSessionIds[threadId] ?? undefined,
           anchor_id: anchorId,
+          selected_text: selectedText || undefined,
           selected_context: selectedText || undefined,
+          selection_context: selectionContext,
         },
         {
           signal: controller.signal,
@@ -1530,10 +2833,11 @@ export function KnowledgeDocsPage() {
     const question = floatingInput.trim();
     const { anchorId, selectedText } = floatingComment;
     const threadId = createLocalThreadId(anchorId);
-    const segments = captureSelectionSegments();
+    const segments = floatingComment.segments.length > 0 ? floatingComment.segments : captureSelectionSegments();
     addSelectionHighlight(threadId, anchorId, selectedText, segments);
     setActiveCommentThreadId(threadId);
     setPinnedThreadId(threadId);
+    setIsAutoCommentHighlightSuppressed(false);
     setFloatingInput("");
     setThreadDrafts((prev) => ({ ...prev, [threadId]: "" }));
     dismissCommentComposer();
@@ -1551,39 +2855,43 @@ export function KnowledgeDocsPage() {
     streamAssistantReply,
   ]);
 
-  const sendThreadReply = useCallback((threadId: string, anchorId: string, selectedText: string) => {
-    if (threadStreaming[threadId]) return;
-    const question = (threadDrafts[threadId] ?? "").trim();
-    if (!question) return;
-    setThreadDrafts((prev) => ({ ...prev, [threadId]: "" }));
+  const openCommentComposer = useCallback(() => {
+    if (!floatingToolbar || !subjectId) return;
+    const toolbar = floatingToolbar;
+    const threadId = createLocalThreadId(toolbar.anchorId);
+    const segments = captureSelectionSegments();
+    selectedRangeThreadIdRef.current = threadId;
+    addSelectionHighlight(threadId, toolbar.anchorId, toolbar.selectedText, segments.length > 0 ? segments : undefined);
     setActiveCommentThreadId(threadId);
     setPinnedThreadId(threadId);
-    void streamAssistantReply(threadId, anchorId, selectedText, question);
-  }, [streamAssistantReply, threadDrafts, threadStreaming]);
-
-  const openCommentComposer = useCallback(() => {
-    if (!floatingToolbar) return;
-    if (isCompactPanels) {
-      setActiveDrawer("comment");
-    } else {
-      setIsCommentCollapsed(false);
-    }
-    setFloatingComment({
-      anchorId: floatingToolbar.anchorId,
-      selectedText: floatingToolbar.selectedText,
-      selectionViewportTop: floatingToolbar.selectionViewportTop,
-      top: computeCommentComposerTop(floatingToolbar.selectionViewportTop),
+    setIsAutoCommentHighlightSuppressed(false);
+    const selectionContext = buildSelectionContextPayload(contentAreaRef.current, toolbar.anchorId, toolbar.selectedText);
+    openAiInteraction({
+      scope: { type: "subject", subjectId },
+      sessionId: null,
+      draft: "",
+      source: "quick_chat",
+      anchorId: toolbar.anchorId,
+      selectedText: toolbar.selectedText,
+      selectionContext,
+      clientThreadId: threadId,
+      newSession: true,
+      showSelectionContext: true,
     });
+    setIsSettingsPanelOpen(false);
     setFloatingToolbar(null);
+    setFloatingComment(null);
     setFloatingInput("");
-  }, [computeCommentComposerTop, floatingToolbar, isCompactPanels]);
+    clearSelectionHighlight({ keepStoredRange: true });
+  }, [addSelectionHighlight, captureSelectionSegments, clearSelectionHighlight, createLocalThreadId, floatingToolbar, openAiInteraction, subjectId]);
 
-  // Feishu-style: detect text selection and show action toolbar near selection first
+  // Feishu-style: detect text selection and show a small ask-AI action first.
   const handleTextSelect = useCallback(() => {
     const sel = window.getSelection();
     if (!sel || sel.isCollapsed || !sel.toString().trim()) {
       setFloatingToolbar(null);
       selectedRangeRef.current = null;
+      selectedRangeThreadIdRef.current = null;
       return;
     }
 
@@ -1594,10 +2902,16 @@ export function KnowledgeDocsPage() {
     if (!container) return;
     const contentArea = contentAreaRef.current;
     if (contentArea && !contentArea.contains(range.commonAncestorContainer)) return;
+    if (rect.width < 1 && rect.height < 1) return;
+    const visibleClientRects = Array.from(range.getClientRects()).filter(
+      (item) => item.width > 1 && item.height > 1
+    );
+    const anchorRect = visibleClientRects[0] ?? rect;
     const containerRect = container.getBoundingClientRect();
+    const contentAreaRect = contentArea?.getBoundingClientRect();
 
     // Find nearest heading above the selection
-    let node: Node | null = sel.anchorNode;
+    let node: Node | null = range.startContainer;
     let headingId = "";
     while (node && node !== container) {
       if (node instanceof HTMLElement) {
@@ -1607,7 +2921,7 @@ export function KnowledgeDocsPage() {
       node = node.parentNode;
     }
     if (!headingId) {
-      const allHeadings = container.querySelectorAll("[data-heading-id]");
+      const allHeadings = (contentArea ?? container).querySelectorAll("[data-heading-id]");
       for (const h of allHeadings) {
         const hRange = document.createRange();
         hRange.selectNode(h);
@@ -1616,27 +2930,77 @@ export function KnowledgeDocsPage() {
         }
       }
     }
-
-    if (headingId) {
-      selectedRangeRef.current = range.cloneRange();
-      const contentTop = rect.top - containerRect.top + container.scrollTop;
-      const contentLeft = rect.left - containerRect.left + container.scrollLeft + rect.width / 2;
-      const top = Math.max(container.scrollTop + 8, contentTop - 46);
-      const left = Math.min(
-        container.scrollLeft + container.clientWidth - 170,
-        Math.max(container.scrollLeft + 170, contentLeft)
-      );
-      setFloatingToolbar({
-        anchorId: headingId,
-        selectedText,
-        top,
-        left,
-        selectionViewportTop: rect.top + rect.height / 2,
-      });
-      setFloatingComment(null);
-      setFloatingInput("");
+    if (!headingId) {
+      headingId = activeHeading || "document";
     }
-  }, []);
+
+    selectedRangeRef.current = range.cloneRange();
+    selectedRangeThreadIdRef.current = null;
+    const segments = captureRangeSegments(range);
+    if (segments.length === 0) {
+      return;
+    }
+
+    const contentTop = rect.top - containerRect.top + container.scrollTop;
+    const selectionViewportTop = rect.top + rect.height / 2;
+    const toolbarWidth = 112;
+    const contentLeft = (contentAreaRect?.left ?? containerRect.left) - containerRect.left + container.scrollLeft;
+    const contentRight = (contentAreaRect?.right ?? containerRect.right) - containerRect.left + container.scrollLeft;
+    const minToolbarLeft = Math.max(container.scrollLeft + 12, contentLeft + 8);
+    const maxToolbarLeft = Math.min(
+      container.scrollLeft + container.clientWidth - toolbarWidth - 12,
+      contentRight - toolbarWidth - 8
+    );
+    const preferredToolbarLeft = anchorRect.right - containerRect.left + container.scrollLeft + 8;
+    const fallbackToolbarLeft = anchorRect.right - containerRect.left + container.scrollLeft - toolbarWidth;
+    const toolbarLeft = Math.max(
+      minToolbarLeft,
+      Math.min(maxToolbarLeft, preferredToolbarLeft <= maxToolbarLeft ? preferredToolbarLeft : fallbackToolbarLeft)
+    );
+    const toolbarTop = Math.max(
+      container.scrollTop + 10,
+      anchorRect.top - containerRect.top + container.scrollTop - 46
+    );
+
+    setFloatingComment(null);
+    setFloatingToolbar({
+      anchorId: headingId,
+      selectedText,
+      top: toolbarTop,
+      left: toolbarLeft,
+      selectionViewportTop,
+      selectionContentTop: contentTop + rect.height / 2,
+    });
+    setFloatingInput("");
+    setActiveCommentThreadId(null);
+  }, [
+    activeHeading,
+    captureRangeSegments,
+  ]);
+
+  useEffect(() => {
+    const handleDocumentMouseUp = (event: MouseEvent) => {
+      const target = event.target as Node;
+      const targetElement = event.target instanceof Element ? event.target : null;
+      if (targetElement?.closest("[data-ai-interaction-window='true']")) return;
+      if (commentPanelRef.current?.contains(target)) return;
+      if (floatingRef.current?.contains(target)) return;
+      window.requestAnimationFrame(() => {
+        handleTextSelect();
+      });
+    };
+    const handleDocumentKeyUp = () => {
+      window.requestAnimationFrame(() => {
+        handleTextSelect();
+      });
+    };
+    document.addEventListener("mouseup", handleDocumentMouseUp);
+    document.addEventListener("keyup", handleDocumentKeyUp);
+    return () => {
+      document.removeEventListener("mouseup", handleDocumentMouseUp);
+      document.removeEventListener("keyup", handleDocumentKeyUp);
+    };
+  }, [handleTextSelect]);
 
   useEffect(() => {
     if (!floatingComment) return;
@@ -1649,24 +3013,37 @@ export function KnowledgeDocsPage() {
         setFloatingComment((prev) => {
           if (!prev) return null;
           let selectionViewportTop = prev.selectionViewportTop;
+          let selectionContentTop = prev.selectionContentTop;
+          let segments = prev.segments;
           const range = selectedRangeRef.current;
-          if (range) {
+          const containerNode = scrollRef.current;
+          if (range && containerNode) {
             const rect = range.getBoundingClientRect();
             if (rect.width > 0 || rect.height > 0) {
+              const containerRect = containerNode.getBoundingClientRect();
               selectionViewportTop = rect.top + rect.height / 2;
+              selectionContentTop = rect.top - containerRect.top + containerNode.scrollTop + rect.height / 2;
+            }
+            const nextSegments = captureRangeSegments(range);
+            if (nextSegments.length > 0) {
+              segments = nextSegments;
             }
           }
           const nextTop = computeCommentComposerTop(selectionViewportTop);
           if (
             Math.abs(prev.top - nextTop) < 0.5 &&
-            Math.abs(prev.selectionViewportTop - selectionViewportTop) < 0.5
+            Math.abs(prev.selectionViewportTop - selectionViewportTop) < 0.5 &&
+            Math.abs(prev.selectionContentTop - selectionContentTop) < 0.5 &&
+            highlightSegmentsEqual(prev.segments, segments)
           ) {
             return prev;
           }
           return {
             ...prev,
             selectionViewportTop,
+            selectionContentTop,
             top: nextTop,
+            segments,
           };
         });
       });
@@ -1675,12 +3052,26 @@ export function KnowledgeDocsPage() {
     updateTop();
     window.addEventListener("resize", updateTop);
     container?.addEventListener("scroll", updateTop, { passive: true });
+
+    const observer = typeof ResizeObserver !== "undefined"
+      ? new ResizeObserver(() => updateTop())
+      : null;
+    if (observer) {
+      if (contentAreaRef.current) {
+        observer.observe(contentAreaRef.current);
+      }
+      if (commentPanelRef.current) {
+        observer.observe(commentPanelRef.current);
+      }
+    }
+
     return () => {
       window.cancelAnimationFrame(rafId);
       window.removeEventListener("resize", updateTop);
       container?.removeEventListener("scroll", updateTop);
+      observer?.disconnect();
     };
-  }, [computeCommentComposerTop, floatingComment?.anchorId, isCommentVisible]);
+  }, [captureRangeSegments, computeCommentComposerTop, floatingComment?.anchorId, isCommentVisible, showDesktopCommentPanel]);
 
   const activeStreamingCount = useMemo(
     () => Object.values(threadStreaming).filter(Boolean).length,
@@ -1702,10 +3093,6 @@ export function KnowledgeDocsPage() {
 
   const tocOrderMap = useMemo(
     () => new Map(toc.map((item, index) => [item.id, index])),
-    [toc]
-  );
-  const tocTitleMap = useMemo(
-    () => new Map(toc.map((item) => [item.id, item.text])),
     [toc]
   );
   const commentThreads = useMemo<CommentThreadView[]>(() => (
@@ -1740,6 +3127,140 @@ export function KnowledgeDocsPage() {
     () => new Map(commentThreads.map((item) => [item.threadId, item] as const)),
     [commentThreads]
   );
+
+  const centerThreadInViewport = useCallback((threadId: string) => {
+    const container = scrollRef.current;
+    if (!container) return;
+
+    const thread = commentThreadById.get(threadId);
+    if (!thread) return;
+
+    const highlight = selectionHighlights.find((item) => item.threadId === threadId);
+    const headingRoot = contentAreaRef.current;
+    const heading = (headingRoot ?? container).querySelector(`[data-heading-id="${thread.anchorId}"]`) as HTMLElement | null;
+
+    let targetCenter = 0;
+    if (highlight && highlight.segments.length > 0) {
+      const top = Math.min(...highlight.segments.map((segment) => segment.top));
+      const bottom = Math.max(...highlight.segments.map((segment) => segment.top + segment.height));
+      targetCenter = (top + bottom) / 2;
+    } else if (heading) {
+      const containerRect = container.getBoundingClientRect();
+      const headingRect = heading.getBoundingClientRect();
+      targetCenter = container.scrollTop + (headingRect.top - containerRect.top) + headingRect.height / 2;
+    } else {
+      return;
+    }
+
+    const maxScrollTop = Math.max(0, container.scrollHeight - container.clientHeight);
+    const targetTop = Math.max(0, Math.min(maxScrollTop, targetCenter - container.clientHeight / 2));
+    container.scrollTo({ top: targetTop, behavior: "smooth" });
+
+    if (heading) {
+      flashHeading(heading);
+    }
+    setActiveHeading(thread.anchorId);
+  }, [commentThreadById, flashHeading, selectionHighlights]);
+
+  const jumpToSelectionLocation = useCallback((detail: SelectionJumpEventDetail): boolean => {
+    if (detail.subjectId && detail.subjectId !== subjectId) {
+      return true;
+    }
+    const anchorId = detail.anchorId?.trim() ?? "";
+    const selectedText = detail.selectedText?.trim() ?? "";
+    if (!anchorId || !hasRenderedMarkdown) {
+      return false;
+    }
+
+    const container = scrollRef.current;
+    const contentRoot = contentAreaRef.current;
+    if (!container || !contentRoot) {
+      return false;
+    }
+
+    const heading = contentRoot.querySelector(`[data-heading-id="${anchorId}"]`) as HTMLElement | null;
+    const sessionId = detail.sessionId?.trim() ?? "";
+    const threadId = sessionId || `jump-${anchorId}-${selectedText.slice(0, 16)}`;
+    if (sessionId) {
+      setThreadSessionIds((prev) => (prev[threadId] === sessionId ? prev : { ...prev, [threadId]: sessionId }));
+    }
+    const segments = selectedText ? buildSelectionSegmentsFromText(anchorId, selectedText) : [];
+
+    if (selectedText && segments.length > 0) {
+      addSelectionHighlight(threadId, anchorId, selectedText, segments);
+      setActiveCommentThreadId(threadId);
+      setPinnedThreadId(threadId);
+      setIsAutoCommentHighlightSuppressed(false);
+
+      const targetTop = Math.min(...segments.map((segment) => segment.top));
+      const targetBottom = Math.max(...segments.map((segment) => segment.top + segment.height));
+      const targetCenter = (targetTop + targetBottom) / 2;
+      const maxScrollTop = Math.max(0, container.scrollHeight - container.clientHeight);
+      const nextTop = Math.max(0, Math.min(maxScrollTop, targetCenter - container.clientHeight / 2));
+      activeHeadingLockRef.current = anchorId;
+      setActiveHeading((prev) => (prev === anchorId ? prev : anchorId));
+      container.scrollTo({ top: nextTop, behavior: "smooth" });
+      if (heading) {
+        flashHeading(heading);
+      }
+      return true;
+    }
+
+    if (heading) {
+      scrollToHeading(anchorId);
+      if (selectedText) {
+        setActiveCommentThreadId(threadId);
+        setPinnedThreadId(threadId);
+        setIsAutoCommentHighlightSuppressed(false);
+      }
+      return true;
+    }
+
+    return false;
+  }, [addSelectionHighlight, buildSelectionSegmentsFromText, flashHeading, hasRenderedMarkdown, scrollToHeading, subjectId]);
+
+  useEffect(() => {
+    const handleSelectionJump = (event: Event) => {
+      const detail = (event as CustomEvent<SelectionJumpEventDetail>).detail;
+      if (!detail) {
+        return;
+      }
+      const handled = jumpToSelectionLocation(detail);
+      pendingSelectionJumpRef.current = handled ? null : detail;
+    };
+
+    window.addEventListener(SELECTION_JUMP_EVENT, handleSelectionJump);
+    return () => window.removeEventListener(SELECTION_JUMP_EVENT, handleSelectionJump);
+  }, [jumpToSelectionLocation]);
+
+  useEffect(() => {
+    const state = location.state as KnowledgeDocsLocationState | null;
+    const detail = state?.selectionJump ?? null;
+    if (!detail) {
+      return;
+    }
+    const marker = state?.selectionJumpAt ?? 0;
+    if (handledRouteSelectionJumpRef.current === marker) {
+      return;
+    }
+    handledRouteSelectionJumpRef.current = marker;
+    const handled = jumpToSelectionLocation(detail);
+    pendingSelectionJumpRef.current = handled ? null : detail;
+  }, [jumpToSelectionLocation, location.state]);
+
+  useEffect(() => {
+    const pending = pendingSelectionJumpRef.current;
+    if (!pending || !hasRenderedMarkdown) {
+      return;
+    }
+    const rafId = window.requestAnimationFrame(() => {
+      if (pendingSelectionJumpRef.current && jumpToSelectionLocation(pendingSelectionJumpRef.current)) {
+        pendingSelectionJumpRef.current = null;
+      }
+    });
+    return () => window.cancelAnimationFrame(rafId);
+  }, [hasRenderedMarkdown, jumpToSelectionLocation, renderedMarkdown]);
+
   const highlightTopByThreadId = useMemo(() => {
     const next = new Map<string, number>();
     for (const highlight of selectionHighlights) {
@@ -1753,7 +3274,7 @@ export function KnowledgeDocsPage() {
     return next;
   }, [selectionHighlights]);
   const measureCommentListOrigin = useCallback(() => {
-    if (isCompactPanels) {
+    if (isCompactComment) {
       setCommentListOriginTop(null);
       return;
     }
@@ -1764,21 +3285,39 @@ export function KnowledgeDocsPage() {
     }
     const containerRect = container.getBoundingClientRect();
     const listRect = list.getBoundingClientRect();
-    const nextTop = listRect.top - containerRect.top + container.scrollTop;
+    const nextTop = listRect.top - containerRect.top;
     setCommentListOriginTop((prev) => {
       if (prev !== null && Math.abs(prev - nextTop) < 0.5) {
         return prev;
       }
       return nextTop;
     });
-  }, [isCompactPanels]);
+  }, [isCompactComment]);
+
+  const syncDesktopCommentTrack = useCallback(() => {
+    const track = desktopCommentTrackRef.current;
+    if (!track) return;
+    if (isCompactComment || !isCommentVisible) {
+      track.style.removeProperty("transform");
+      return;
+    }
+    const container = scrollRef.current;
+    const list = commentThreadListRef.current;
+    if (!container || !list) return;
+    const containerRect = container.getBoundingClientRect();
+    const listRect = list.getBoundingClientRect();
+    const currentTop = listRect.top - containerRect.top;
+    const baseTop = commentListOriginTop ?? currentTop;
+    const translateY = baseTop - currentTop - container.scrollTop;
+    track.style.transform = `translate3d(0, ${translateY}px, 0)`;
+  }, [commentListOriginTop, isCommentVisible, isCompactComment]);
   const threadHeightMap = useMemo(
     () => new Map(Object.entries(threadHeightsById)),
     [threadHeightsById]
   );
   const desiredTopByThreadId = useMemo(() => {
     const next = new Map<string, number>();
-    if (isCompactPanels || commentListOriginTop === null) {
+    if (isCompactComment || commentListOriginTop === null) {
       return next;
     }
     for (const thread of commentThreads) {
@@ -1786,14 +3325,93 @@ export function KnowledgeDocsPage() {
       if (highlightTop === undefined) {
         continue;
       }
-      next.set(thread.threadId, Math.max(0, highlightTop - commentListOriginTop - 2));
+      next.set(thread.threadId, highlightTop - commentListOriginTop - 2);
+    }
+    if (floatingComment) {
+      next.set(
+        FLOATING_COMPOSER_THREAD_ID,
+        floatingComment.selectionContentTop - commentListOriginTop - 18,
+      );
     }
     return next;
-  }, [commentListOriginTop, commentThreads, highlightTopByThreadId, isCompactPanels]);
+  }, [commentListOriginTop, commentThreads, floatingComment, highlightTopByThreadId, isCompactComment]);
+  const desktopCommentLayoutThreads = useMemo<CommentThreadView[]>(() => {
+    const threads = isCompactComment || !floatingComment
+      ? commentThreads
+      : [...commentThreads, {
+      threadId: FLOATING_COMPOSER_THREAD_ID,
+      anchorId: floatingComment.anchorId,
+      selectedText: floatingComment.selectedText,
+      comments: [],
+      createdAt: Number.MAX_SAFE_INTEGER,
+    }];
+
+    return [...threads].sort((left, right) => {
+      const leftTop = desiredTopByThreadId.get(left.threadId);
+      const rightTop = desiredTopByThreadId.get(right.threadId);
+      if (leftTop !== undefined && rightTop !== undefined && Math.abs(leftTop - rightTop) > 2) {
+        return leftTop - rightTop;
+      }
+      if (leftTop !== undefined && rightTop === undefined) {
+        return -1;
+      }
+      if (leftTop === undefined && rightTop !== undefined) {
+        return 1;
+      }
+      const leftOrder = tocOrderMap.get(left.anchorId) ?? Number.MAX_SAFE_INTEGER;
+      const rightOrder = tocOrderMap.get(right.anchorId) ?? Number.MAX_SAFE_INTEGER;
+      if (leftOrder !== rightOrder) {
+        return leftOrder - rightOrder;
+      }
+      return left.createdAt - right.createdAt;
+    });
+  }, [commentThreads, desiredTopByThreadId, floatingComment, isCompactComment, tocOrderMap]);
+  const desktopThreadHeightMap = useMemo(() => {
+    const next = new Map(threadHeightMap);
+    if (!isCompactComment && floatingComment) {
+      next.set(FLOATING_COMPOSER_THREAD_ID, Math.max(180, floatingComposerHeight));
+    }
+    return next;
+  }, [floatingComment, floatingComposerHeight, isCompactComment, threadHeightMap]);
   const desktopThreadLayout = useMemo(
-    () => buildCommentThreadLayout(commentThreads, threadHeightMap, desiredTopByThreadId, pinnedThreadId),
-    [commentThreads, desiredTopByThreadId, pinnedThreadId, threadHeightMap]
+    () => buildCommentThreadLayout(
+      desktopCommentLayoutThreads,
+      desktopThreadHeightMap,
+      desiredTopByThreadId,
+      floatingComment ? FLOATING_COMPOSER_THREAD_ID : pinnedThreadId,
+    ),
+    [desktopCommentLayoutThreads, desktopThreadHeightMap, desiredTopByThreadId, floatingComment, pinnedThreadId]
   );
+  const updateDesktopCommentScrollExtent = useCallback(() => {
+    if (!showDesktopCommentPanel || !isCommentVisible || commentListOriginTop === null || desktopThreadLayout.totalHeight <= 0) {
+      setDesktopCommentScrollMinHeight((prev) => (prev === 0 ? prev : 0));
+      return;
+    }
+
+    const container = scrollRef.current;
+    const viewport = commentViewportRef.current;
+    if (!container || !viewport) {
+      return;
+    }
+
+    const containerRect = container.getBoundingClientRect();
+    const viewportRect = viewport.getBoundingClientRect();
+    const viewportBottom = viewportRect.bottom - containerRect.top;
+    const bottomGutter = 32;
+    const trackHeight = desktopThreadLayout.totalHeight + 24;
+    const requiredScrollHeight = Math.ceil(
+      commentListOriginTop +
+      trackHeight +
+      container.clientHeight -
+      viewportBottom +
+      bottomGutter
+    );
+    const nextMinHeight = Math.max(container.clientHeight, requiredScrollHeight);
+
+    setDesktopCommentScrollMinHeight((prev) => (
+      Math.abs(prev - nextMinHeight) < 1 ? prev : nextMinHeight
+    ));
+  }, [commentListOriginTop, desktopThreadLayout.totalHeight, isCommentVisible, showDesktopCommentPanel]);
   const threadCountByAnchor = useMemo(() => {
     const next = new Map<string, number>();
     for (const item of commentThreads) {
@@ -1817,17 +3435,22 @@ export function KnowledgeDocsPage() {
   }, [commentThreadById, pinnedThreadId]);
 
   useEffect(() => {
-    if (isCompactPanels) {
+    if (isCompactComment) {
       setCommentListOriginTop(null);
+      syncDesktopCommentTrack();
       return;
     }
     const rafId = window.requestAnimationFrame(() => {
       measureCommentListOrigin();
+      syncDesktopCommentTrack();
+      updateDesktopCommentScrollExtent();
     });
     return () => window.cancelAnimationFrame(rafId);
   }, [
-    isCompactPanels,
+    isCompactComment,
     measureCommentListOrigin,
+    syncDesktopCommentTrack,
+    updateDesktopCommentScrollExtent,
     commentThreads.length,
     isCommentCollapsed,
     activeDrawer,
@@ -1835,15 +3458,21 @@ export function KnowledgeDocsPage() {
   ]);
 
   useEffect(() => {
-    if (isCompactPanels) {
+    if (isCompactComment) {
+      syncDesktopCommentTrack();
       return;
     }
     const handleLayoutChange = () => {
       measureCommentListOrigin();
+      syncDesktopCommentTrack();
+      updateDesktopCommentScrollExtent();
+    };
+    const handleDocumentScroll = () => {
+      syncDesktopCommentTrack();
     };
     const container = scrollRef.current;
     window.addEventListener("resize", handleLayoutChange);
-    container?.addEventListener("scroll", handleLayoutChange, { passive: true });
+    container?.addEventListener("scroll", handleDocumentScroll, { passive: true });
 
     const observer = typeof ResizeObserver !== "undefined"
       ? new ResizeObserver(() => handleLayoutChange())
@@ -1859,16 +3488,39 @@ export function KnowledgeDocsPage() {
 
     return () => {
       window.removeEventListener("resize", handleLayoutChange);
-      container?.removeEventListener("scroll", handleLayoutChange);
+      container?.removeEventListener("scroll", handleDocumentScroll);
       observer?.disconnect();
     };
-  }, [isCompactPanels, measureCommentListOrigin]);
+  }, [isCompactComment, measureCommentListOrigin, syncDesktopCommentTrack, updateDesktopCommentScrollExtent]);
 
   useEffect(() => {
-    if (isCompactPanels) {
-      setThreadHeightsById({});
+    if (isCompactComment || !showDesktopCommentPanel) {
+      setDesktopCommentScrollMinHeight((prev) => (prev === 0 ? prev : 0));
       return;
     }
+
+    const rafId = window.requestAnimationFrame(() => {
+      updateDesktopCommentScrollExtent();
+      syncDesktopCommentTrack();
+    });
+    return () => window.cancelAnimationFrame(rafId);
+  }, [
+    isCompactComment,
+    showDesktopCommentPanel,
+    updateDesktopCommentScrollExtent,
+    syncDesktopCommentTrack,
+    desktopThreadLayout.totalHeight,
+    threadHeightsById,
+    floatingComposerHeight,
+    commentThreads.length,
+  ]);
+
+  const refreshThreadHeights = useCallback(() => {
+    if (isCompactComment) {
+      setThreadHeightsById((prev) => (Object.keys(prev).length === 0 ? prev : {}));
+      return;
+    }
+
     const next: Record<string, number> = {};
     for (const thread of commentThreads) {
       const node = threadRefs.current.get(thread.threadId);
@@ -1897,7 +3549,48 @@ export function KnowledgeDocsPage() {
       }
       return next;
     });
-  }, [commentThreads, comments, isCompactPanels, threadDrafts, threadStreaming]);
+  }, [commentThreads, isCompactComment]);
+
+  useEffect(() => {
+    if (isCompactComment) {
+      refreshThreadHeights();
+      return;
+    }
+
+    let rafId = 0;
+    const scheduleMeasure = () => {
+      if (rafId) {
+        return;
+      }
+      rafId = window.requestAnimationFrame(() => {
+        rafId = 0;
+        refreshThreadHeights();
+      });
+    };
+
+    refreshThreadHeights();
+
+    const observer = typeof ResizeObserver !== "undefined"
+      ? new ResizeObserver(() => scheduleMeasure())
+      : null;
+    if (observer) {
+      for (const thread of commentThreads) {
+        const node = threadRefs.current.get(thread.threadId);
+        if (node) {
+          observer.observe(node);
+        }
+      }
+    }
+    window.addEventListener("resize", scheduleMeasure);
+
+    return () => {
+      if (rafId) {
+        window.cancelAnimationFrame(rafId);
+      }
+      observer?.disconnect();
+      window.removeEventListener("resize", scheduleMeasure);
+    };
+  }, [commentThreads, isCompactComment, refreshThreadHeights]);
 
   useEffect(() => {
     if (!activeCommentThreadId) {
@@ -1915,7 +3608,7 @@ export function KnowledgeDocsPage() {
     }
     setSelectionHighlights((prev) => {
       const threadIdSet = new Set(commentThreads.map((item) => item.threadId));
-      const kept = prev.filter((item) => threadIdSet.has(item.threadId));
+      const kept = prev.filter((item) => threadIdSet.has(item.threadId) || isTransientSelectionThreadId(item.threadId));
       const existing = new Set(kept.map((item) => item.threadId));
       const next: SelectionHighlight[] = [...kept];
       let changed = kept.length !== prev.length;
@@ -1939,6 +3632,106 @@ export function KnowledgeDocsPage() {
       return changed ? next.slice(0, 200) : prev;
     });
   }, [buildSelectionSegmentsFromText, commentThreads, hasRenderedMarkdown]);
+
+  useEffect(() => {
+    if (!hasRenderedMarkdown) {
+      return;
+    }
+
+    let rafId = 0;
+    const refreshHighlightLayout = () => {
+      window.cancelAnimationFrame(rafId);
+      rafId = window.requestAnimationFrame(() => {
+        setSelectionHighlights((prev) => {
+          let changed = false;
+          const next = prev.map((highlight) => {
+            const segments = resolveHighlightSegments(highlight);
+            if (segments.length === 0 || highlightSegmentsEqual(highlight.segments, segments)) {
+              return highlight;
+            }
+            changed = true;
+            return {
+              ...highlight,
+              segments,
+            };
+          });
+          return changed ? next : prev;
+        });
+      });
+    };
+
+    const container = scrollRef.current;
+    const contentArea = contentAreaRef.current;
+    const observer = typeof ResizeObserver !== "undefined"
+      ? new ResizeObserver(() => refreshHighlightLayout())
+      : null;
+
+    if (observer && container) {
+      observer.observe(container);
+    }
+    if (observer && contentArea) {
+      observer.observe(contentArea);
+    }
+
+    window.addEventListener("resize", refreshHighlightLayout);
+    refreshHighlightLayout();
+
+    return () => {
+      window.cancelAnimationFrame(rafId);
+      window.removeEventListener("resize", refreshHighlightLayout);
+      observer?.disconnect();
+    };
+  }, [
+    buildSelectionSegmentsFromText,
+    hasRenderedMarkdown,
+    isCommentCollapsed,
+    isCompactComment,
+    resolveHighlightSegments,
+    isTocCollapsed,
+    pageWideMode,
+    viewPrefs.showCommentPanel,
+    viewPrefs.showToc,
+  ]);
+
+  useLayoutEffect(() => {
+    if (!isAssistantOpen || !hasRenderedMarkdown) {
+      return;
+    }
+
+    let rafId = 0;
+    let settleTimer = 0;
+    const refreshHighlights = () => {
+      setSelectionHighlights((prev) => {
+        let changed = false;
+        const next = prev.map((highlight) => {
+          const segments = resolveHighlightSegments(highlight);
+          if (segments.length === 0 || highlightSegmentsEqual(highlight.segments, segments)) {
+            return highlight;
+          }
+          changed = true;
+          return { ...highlight, segments };
+        });
+        return changed ? next : prev;
+      });
+    };
+
+    const startedAt = performance.now();
+    const tick = () => {
+      refreshHighlights();
+      if (performance.now() - startedAt < 1200) {
+        rafId = window.requestAnimationFrame(tick);
+      }
+    };
+
+    refreshHighlights();
+    rafId = window.requestAnimationFrame(tick);
+    settleTimer = window.setTimeout(refreshHighlights, 1400);
+
+    return () => {
+      window.cancelAnimationFrame(rafId);
+      window.clearTimeout(settleTimer);
+    };
+  }, [hasRenderedMarkdown, isAssistantOpen, resolveHighlightSegments]);
 
   const activeCommentIndex = useMemo(() => {
     if (commentThreadIds.length === 0) return -1;
@@ -1967,7 +3760,64 @@ export function KnowledgeDocsPage() {
   const activeThreadId = activeCommentIndex >= 0
     ? commentThreadIds[activeCommentIndex]
     : null;
-  const highlightedThreadId = activeCommentThreadId ?? activeThreadId;
+  const highlightedThreadId = activeCommentThreadId ?? (isAutoCommentHighlightSuppressed ? null : activeThreadId);
+  const aiMatchedHighlightedThreadId = useMemo(() => {
+    if (!isAssistantOpen || selectionHighlights.length === 0) {
+      return null;
+    }
+
+    const activeSessionId = activeConversationSessionId?.trim() ?? "";
+    const requestSessionId = typeof sidebarRequest?.sessionId === "string"
+      ? sidebarRequest.sessionId.trim()
+      : "";
+    const requestThreadId = sidebarRequest?.clientThreadId?.trim() ?? "";
+    const requestAnchorId = sidebarRequest?.anchorId?.trim() ?? "";
+    const requestSelectedText = sidebarRequest?.selectedText?.trim() ?? "";
+    const activeSelectionSessionId = activeConversationSelectionTarget?.sessionId?.trim() ?? "";
+    const activeSelectionAnchorId = activeConversationSelectionTarget?.anchorId.trim() ?? "";
+    const activeSelectionText = activeConversationSelectionTarget?.selectedText.trim() ?? "";
+
+    return selectionHighlights.find((highlight) => {
+      const threadId = highlight.threadId.trim();
+      const resolvedSessionId = resolveSelectionThreadSessionId(threadId, threadSessionIds);
+      if (
+        activeSelectionSessionId &&
+        (threadId === activeSelectionSessionId || resolvedSessionId === activeSelectionSessionId)
+      ) {
+        return true;
+      }
+      if (
+        activeSelectionAnchorId &&
+        activeSelectionText &&
+        highlight.anchorId === activeSelectionAnchorId &&
+        highlight.selectedText.trim() === activeSelectionText
+      ) {
+        return true;
+      }
+      if (activeSessionId && (threadId === activeSessionId || resolvedSessionId === activeSessionId)) {
+        return true;
+      }
+      if (requestSessionId && (threadId === requestSessionId || resolvedSessionId === requestSessionId)) {
+        return true;
+      }
+      if (requestThreadId && threadId === requestThreadId) {
+        return true;
+      }
+      return Boolean(
+        requestAnchorId &&
+        requestSelectedText &&
+        highlight.anchorId === requestAnchorId &&
+        highlight.selectedText.trim() === requestSelectedText,
+      );
+    })?.threadId ?? null;
+  }, [
+    activeConversationSessionId,
+    activeConversationSelectionTarget,
+    isAssistantOpen,
+    selectionHighlights,
+    sidebarRequest,
+    threadSessionIds,
+  ]);
 
   const focusCommentThread = useCallback((
     threadId: string,
@@ -1977,32 +3827,29 @@ export function KnowledgeDocsPage() {
     if (!thread) {
       return;
     }
-    if (isCompactPanels) {
+    if (!viewPrefs.showCommentPanel) {
+      updateViewPrefs((prev) => ({ ...prev, showCommentPanel: true }));
+    }
+    if (isCompactComment) {
       setActiveDrawer("comment");
     } else {
       setIsCommentCollapsed(false);
     }
     setActiveCommentThreadId(threadId);
-    if (options.pinToSelection) {
+    setIsAutoCommentHighlightSuppressed(false);
+    const shouldPin = options.pinToSelection ?? !isCompactComment;
+    if (shouldPin) {
       setPinnedThreadId(threadId);
     }
     if (options.scrollToDoc !== false) {
-      scrollToHeading(thread.anchorId);
+      centerThreadInViewport(threadId);
     }
-    if (options.scrollThreadIntoView !== false) {
+    if (isCompactComment && options.scrollThreadIntoView !== false) {
       window.requestAnimationFrame(() => {
         threadRefs.current.get(threadId)?.scrollIntoView({ behavior: "smooth", block: "center" });
       });
     }
-  }, [commentThreadById, isCompactPanels, scrollToHeading]);
-
-  const locateCommentThread = useCallback((threadId: string) => {
-    focusCommentThread(threadId, {
-      scrollToDoc: false,
-      pinToSelection: true,
-      scrollThreadIntoView: isCompactPanels,
-    });
-  }, [focusCommentThread, isCompactPanels]);
+  }, [centerThreadInViewport, commentThreadById, isCompactComment, updateViewPrefs, viewPrefs.showCommentPanel]);
 
   const jumpCommentThread = useCallback((direction: -1 | 1) => {
     if (commentThreadIds.length === 0) return;
@@ -2017,24 +3864,72 @@ export function KnowledgeDocsPage() {
     }
     focusCommentThread(nextThreadId);
   }, [activeCommentIndex, commentThreadIds, focusCommentThread]);
-  const openAiAssistant = useCallback((threadId?: string) => {
+  const openAiInteractionFromThread = useCallback((threadId?: string) => {
     if (!subjectId) return;
     const targetThreadId = threadId ?? activeThreadId ?? commentThreadIds[0] ?? null;
-    const targetSessionId = targetThreadId ? (threadSessionIds[targetThreadId] ?? null) : null;
+    const targetThread = targetThreadId ? commentThreadById.get(targetThreadId) ?? null : null;
+    const targetHighlight = targetThreadId
+      ? selectionHighlights.find((item) => item.threadId === targetThreadId) ?? null
+      : null;
+    const targetSessionId = resolveSelectionThreadSessionId(targetThreadId, threadSessionIds);
+    const anchorId = targetThread?.anchorId ?? targetHighlight?.anchorId ?? "";
+    const selectedText = targetThread?.selectedText ?? targetHighlight?.selectedText ?? "";
     if (targetSessionId) {
-      openAssistant({ sessionId: targetSessionId });
+      if (anchorId && selectedText) {
+        openAiInteraction({
+          scope: { type: "subject", subjectId },
+          sessionId: targetSessionId,
+          source: "quick_chat",
+          anchorId,
+          selectedText,
+          selectionContext: buildSelectionContextPayload(contentAreaRef.current, anchorId, selectedText),
+          showSelectionContext: false,
+        });
+        return;
+      }
+      openAiInteraction({ scope: { type: "subject", subjectId }, sessionId: targetSessionId });
       return;
     }
-    openAssistant();
-  }, [activeThreadId, commentThreadIds, openAssistant, subjectId, threadSessionIds]);
+    if (targetThreadId && anchorId && selectedText) {
+      openAiInteraction({
+        scope: { type: "subject", subjectId },
+        sessionId: null,
+        draft: "",
+        source: "quick_chat",
+        anchorId,
+        selectedText,
+        selectionContext: buildSelectionContextPayload(contentAreaRef.current, anchorId, selectedText),
+        clientThreadId: targetThreadId,
+        newSession: true,
+        showSelectionContext: true,
+      });
+      return;
+    }
+    openAiInteraction({ scope: { type: "subject", subjectId } });
+  }, [activeThreadId, commentThreadById, commentThreadIds, openAiInteraction, selectionHighlights, subjectId, threadSessionIds]);
+
+  const openSelectionHighlightThread = useCallback((threadId: string) => {
+    if (viewPrefs.showCommentPanel && commentThreadById.has(threadId)) {
+      focusCommentThread(threadId, {
+        scrollToDoc: false,
+        pinToSelection: true,
+        scrollThreadIntoView: isCompactComment,
+      });
+    } else {
+      setActiveCommentThreadId(threadId);
+      setPinnedThreadId(threadId);
+      setIsAutoCommentHighlightSuppressed(false);
+    }
+    openAiInteractionFromThread(threadId);
+  }, [commentThreadById, focusCommentThread, isCompactComment, openAiInteractionFromThread, viewPrefs.showCommentPanel]);
 
   const closeCommentPanel = useCallback(() => {
-    if (isCompactPanels) {
+    if (isCompactComment) {
       closeDrawer();
     } else {
       setIsCommentCollapsed(true);
     }
-  }, [closeDrawer, isCompactPanels]);
+  }, [closeDrawer, isCompactComment]);
 
   const toggleTocCollapse = useCallback((id: string) => {
     setCollapsedTocIds((prev) => {
@@ -2053,7 +3948,7 @@ export function KnowledgeDocsPage() {
       const { item } = node;
       const hasChildren = node.children.length > 0;
       const isCollapsed = collapsedTocIds.has(item.id);
-      const isActive = activeHeading === item.id;
+      const isActive = visibleActiveHeading === item.id;
       const count = commentsForAnchor(item.id);
       const indent = depth * 16;
 
@@ -2128,26 +4023,64 @@ export function KnowledgeDocsPage() {
         </div>
       );
     });
-  }, [activeHeading, collapsedTocIds, commentsForAnchor, handleTocItemClick, toggleTocCollapse]);
+  }, [collapsedTocIds, commentsForAnchor, handleTocItemClick, toggleTocCollapse, visibleActiveHeading]);
+
+  useEffect(() => {
+    if (!isTocVisible) {
+      setTocScrollThumbStyle((prev) => (prev.height === 0 ? prev : { top: 0, height: 0 }));
+      return;
+    }
+
+    const syncThumb = () => {
+      window.requestAnimationFrame(() => {
+        updateTocScrollThumb();
+      });
+    };
+
+    syncThumb();
+    window.addEventListener("resize", syncThumb);
+    return () => window.removeEventListener("resize", syncThumb);
+  }, [collapsedTocIds, isTocVisible, tocTree, updateTocScrollThumb]);
 
   const tocNav = (
-    <nav ref={tocNavRef} className="toc-scroll flex-1 overflow-y-auto py-2 pr-1">
-      {tocTree.length > 0 ? (
-        renderTocNodes(tocTree)
-      ) : (
-        <div className="px-3 py-4 text-xs text-slate-400 text-center">暂无目录</div>
+    <div className="relative h-full">
+      <nav
+        ref={tocNavRef}
+        className="toc-scroll h-full overflow-y-auto py-2 pr-2"
+        onWheel={handleTocManualScrollStart}
+        onTouchStart={handleTocManualScrollStart}
+        onPointerDown={handleTocManualScrollStart}
+        onScroll={handleTocNavScroll}
+      >
+        {tocTree.length > 0 ? (
+          renderTocNodes(tocTree)
+        ) : (
+          <div className="px-3 py-4 text-xs text-slate-400 text-center">暂无目录</div>
+        )}
+      </nav>
+      {tocScrollThumbStyle.height > 0 && (
+        <div
+          className={cn(
+            "pointer-events-none absolute right-[3px] w-[3px] rounded-full bg-slate-400/55 transition-opacity duration-150",
+            isTocScrollbarVisible ? "opacity-100" : "opacity-0"
+          )}
+          style={{
+            top: tocScrollThumbStyle.top,
+            height: tocScrollThumbStyle.height,
+          }}
+        />
       )}
-    </nav>
+    </div>
   );
 
   const commentPanel = (
     <div
       ref={commentPanelRef}
       className={cn(
-        "relative w-full",
-        isCompactPanels
+        "relative flex h-full w-full min-h-0 flex-col",
+        isCompactComment
           ? "h-full rounded-2xl border border-slate-200 bg-white shadow-2xl flex flex-col overflow-hidden"
-          : "border-l border-slate-200/90 pl-3 bg-transparent overflow-visible"
+          : "bg-white/86 overflow-hidden"
       )}
     >
       <div className="px-1 h-11 border-b border-slate-200/80 flex items-center justify-between">
@@ -2193,12 +4126,12 @@ export function KnowledgeDocsPage() {
             className="w-7 h-7 rounded-lg hover:bg-slate-100 transition-colors flex items-center justify-center text-slate-500 hover:text-slate-700"
             aria-label="收起问答栏"
           >
-            <ChevronRight className={cn("w-4 h-4", isCompactPanels && "rotate-180")} />
+            <ChevronRight className={cn("w-4 h-4", isCompactComment && "rotate-180")} />
           </button>
         </div>
       </div>
 
-      {floatingComment && (
+      {isCompactComment && floatingComment && (
         <div
           className="absolute left-3 right-3 z-30 overflow-hidden rounded-2xl border border-slate-200/90 bg-white/95 shadow-[0_28px_56px_-30px_rgba(15,23,42,0.68)] backdrop-blur"
           style={{ top: floatingComment.top }}
@@ -2216,6 +4149,7 @@ export function KnowledgeDocsPage() {
           </div>
           <div className="space-y-2.5 p-3">
             <textarea
+              ref={floatingComposerTextareaRef}
               value={floatingInput}
               onChange={(e) => setFloatingInput(e.target.value)}
               onKeyDown={(e) => {
@@ -2230,7 +4164,6 @@ export function KnowledgeDocsPage() {
               placeholder="基于这段内容向 AI 提问..."
               rows={3}
               className="w-full resize-none rounded-xl border border-slate-200/90 bg-white px-3 py-2.5 text-sm leading-6 text-slate-800 shadow-inner shadow-slate-100/70 outline-none transition focus:border-slate-300 focus:ring-4 focus:ring-sky-100/80"
-              autoFocus
             />
             <div className="flex items-center justify-between">
               <button
@@ -2257,35 +4190,41 @@ export function KnowledgeDocsPage() {
         </div>
       )}
 
-      <div ref={commentViewportRef} className={cn("relative", isCompactPanels && "flex-1 overflow-y-auto")}>
-        {isCompactPanels && (
+      <div
+        ref={commentViewportRef}
+        className={cn(
+          "relative min-h-0 flex-1",
+          isCompactComment ? "overflow-y-auto bg-slate-50/80" : "overflow-hidden pr-1"
+        )}
+      >
+        {isCompactComment && (
           <>
             <div className="pointer-events-none absolute inset-x-0 top-0 h-12 z-20 bg-gradient-to-b from-slate-50 via-slate-50/80 to-transparent" />
             <div className="pointer-events-none absolute inset-x-0 bottom-0 h-12 z-20 bg-gradient-to-t from-slate-50 via-slate-50/80 to-transparent" />
           </>
         )}
         {!threadHistoryLoaded ? (
-          <div className={cn("p-3", isCompactPanels && "h-full")}>
+          <div className={cn("p-3", isCompactComment && "h-full")}>
             <div className={cn(
               "flex items-center justify-center rounded-xl border border-dashed border-slate-200 bg-slate-50 text-slate-400",
-              isCompactPanels ? "h-full" : "h-24"
+              isCompactComment ? "h-full" : "h-24"
             )}>
               <Loader2 className="h-4 w-4 animate-spin" />
             </div>
           </div>
         ) : threadHistoryError ? (
-          <div className={cn("p-3", isCompactPanels && "h-full")}>
+          <div className={cn("p-3", isCompactComment && "h-full")}>
             <div className="rounded-xl border border-rose-200 bg-rose-50/70 px-4 py-4 text-xs leading-5 text-rose-600">
               {threadHistoryError}
             </div>
           </div>
-        ) : commentThreads.length === 0 ? (
-          <div className={cn("p-3", isCompactPanels && "h-full")}>
+        ) : commentThreads.length === 0 && !floatingComment ? (
+          <div className={cn("p-3", isCompactComment && "h-full")}>
             <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-center">
               <p className="text-sm text-slate-500">选中文本后点击“问问 AI”即可开始对话</p>
             </div>
           </div>
-        ) : isCompactPanels ? (
+        ) : isCompactComment ? (
           <div ref={commentThreadListRef} className="relative p-3 space-y-3">
             {commentThreads.map((thread) => (
               <div
@@ -2299,23 +4238,19 @@ export function KnowledgeDocsPage() {
                   }
                 }}
               >
-                <CommentThread
-                  anchorId={thread.anchorId}
-                  title={tocTitleMap.get(thread.anchorId) ?? thread.anchorId}
-                  comments={thread.comments}
-                  selectedText={thread.selectedText}
-                  draft={threadDrafts[thread.threadId] ?? ""}
-                  isStreaming={Boolean(threadStreaming[thread.threadId])}
-                  isActive={highlightedThreadId === thread.threadId}
-                  onDraftChange={(value) => updateThreadDraft(thread.threadId, value)}
-                  onSend={() => sendThreadReply(thread.threadId, thread.anchorId, thread.selectedText)}
-                  onFocus={() => focusCommentThread(thread.threadId, { scrollToDoc: false, scrollThreadIntoView: false })}
-                  onJumpToAnchor={(id) => {
-                    setActiveCommentThreadId(thread.threadId);
+                  <CommentThread
+                    anchorId={thread.anchorId}
+                    comments={thread.comments}
+                    selectedText={thread.selectedText}
+                    isActive={highlightedThreadId === thread.threadId}
+                    onFocus={() => focusCommentThread(thread.threadId, { scrollToDoc: false, scrollThreadIntoView: false })}
+                    onJumpToAnchor={(id) => {
+                      setActiveCommentThreadId(thread.threadId);
                     setPinnedThreadId(thread.threadId);
+                    setIsAutoCommentHighlightSuppressed(false);
                     scrollToHeading(id);
                   }}
-                  onOpenAssistant={() => openAiAssistant(thread.threadId)}
+                  onOpenAiInteraction={() => openAiInteractionFromThread(thread.threadId)}
                   compactMode
                   isAligned
                 />
@@ -2326,61 +4261,129 @@ export function KnowledgeDocsPage() {
           <div
             ref={commentThreadListRef}
             className="relative px-3 py-3"
-            style={{ minHeight: Math.max(160, desktopThreadLayout.totalHeight + 24) }}
           >
-            {commentThreads.map((thread) => {
-              const layout = desktopThreadLayout.positions[thread.threadId];
-              const top = layout?.top ?? 0;
-              return (
-                <div
-                  key={thread.threadId}
-                  data-thread-id={thread.threadId}
-                  ref={(node: HTMLDivElement | null) => {
-                    if (node) {
-                      threadRefs.current.set(thread.threadId, node);
-                    } else {
-                      threadRefs.current.delete(thread.threadId);
-                    }
-                  }}
-                  className="absolute left-3 right-3 transition-[top] duration-200 ease-out"
-                  style={{ top }}
-                >
-                  <CommentThread
-                    anchorId={thread.anchorId}
-                    title={tocTitleMap.get(thread.anchorId) ?? thread.anchorId}
-                    comments={thread.comments}
-                    selectedText={thread.selectedText}
-                    draft={threadDrafts[thread.threadId] ?? ""}
-                    isStreaming={Boolean(threadStreaming[thread.threadId])}
-                    isActive={highlightedThreadId === thread.threadId}
-                    onDraftChange={(value) => updateThreadDraft(thread.threadId, value)}
-                    onSend={() => sendThreadReply(thread.threadId, thread.anchorId, thread.selectedText)}
-                    onFocus={() => focusCommentThread(thread.threadId, {
-                      scrollToDoc: false,
-                      pinToSelection: true,
-                      scrollThreadIntoView: false,
-                    })}
-                    onJumpToAnchor={(id) => {
-                      setActiveCommentThreadId(thread.threadId);
-                      setPinnedThreadId(thread.threadId);
-                      scrollToHeading(id);
+            <div
+              ref={desktopCommentTrackRef}
+              className="relative will-change-transform"
+              style={{ minHeight: Math.max(160, desktopThreadLayout.totalHeight + 24) }}
+            >
+              {desktopCommentLayoutThreads.map((thread) => {
+                if (thread.threadId === FLOATING_COMPOSER_THREAD_ID && floatingComment) {
+                  const layout = desktopThreadLayout.positions[FLOATING_COMPOSER_THREAD_ID];
+                  const top = layout?.top ?? 0;
+                  return (
+                    <div
+                      key={FLOATING_COMPOSER_THREAD_ID}
+                      ref={floatingComposerCardRef}
+                      className="absolute left-0 right-0"
+                      style={{ top }}
+                    >
+                      <div className="overflow-hidden rounded-2xl border border-slate-200/90 bg-white shadow-[0_22px_48px_-32px_rgba(15,23,42,0.45)]">
+                        <div className="border-b border-slate-200/80 bg-[linear-gradient(130deg,rgba(236,253,255,0.82),rgba(248,250,252,0.96),rgba(239,246,255,0.88))] px-3 py-2.5">
+                          <div className="flex items-center gap-2">
+                            <span className="inline-flex h-7 w-7 items-center justify-center rounded-xl bg-slate-900 text-white shadow-sm">
+                              <Sparkles className="h-3.5 w-3.5" />
+                            </span>
+                            <div className="min-w-0">
+                              <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">问问 AI</p>
+                              <p className="truncate text-xs text-slate-700">&ldquo;{floatingComment.selectedText.slice(0, 72)}&rdquo;</p>
+                            </div>
+                          </div>
+                        </div>
+                        <div className="space-y-2.5 p-3">
+                          <textarea
+                            ref={floatingComposerTextareaRef}
+                            value={floatingInput}
+                            onChange={(e) => setFloatingInput(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter" && !e.shiftKey) {
+                                e.preventDefault();
+                                addComment();
+                              }
+                              if (e.key === "Escape") {
+                                dismissCommentComposer();
+                              }
+                            }}
+                            placeholder="基于这段内容向 AI 提问..."
+                            rows={3}
+                            className="w-full resize-none rounded-xl border border-slate-200/90 bg-white px-3 py-2.5 text-sm leading-6 text-slate-800 shadow-inner shadow-slate-100/70 outline-none transition focus:border-slate-300 focus:ring-4 focus:ring-sky-100/80"
+                          />
+                          <div className="flex items-center justify-between">
+                            <button
+                              onClick={dismissCommentComposer}
+                              className="rounded-lg px-2.5 py-1 text-xs text-slate-500 transition hover:bg-slate-100 hover:text-slate-700"
+                            >
+                              取消
+                            </button>
+                            <button
+                              onClick={addComment}
+                              disabled={!floatingInput.trim()}
+                              className={cn(
+                                "inline-flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-medium transition",
+                                floatingInput.trim()
+                                  ? "bg-slate-900 text-white shadow-sm hover:bg-slate-800"
+                                  : "bg-slate-100 text-slate-300"
+                              )}
+                            >
+                              <Send className="h-3.5 w-3.5" />
+                              发送
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                }
+
+                const layout = desktopThreadLayout.positions[thread.threadId];
+                const top = layout?.top ?? 0;
+                return (
+                  <div
+                    key={thread.threadId}
+                    data-thread-id={thread.threadId}
+                    ref={(node: HTMLDivElement | null) => {
+                      if (node) {
+                        threadRefs.current.set(thread.threadId, node);
+                      } else {
+                        threadRefs.current.delete(thread.threadId);
+                      }
                     }}
-                    onOpenAssistant={() => openAiAssistant(thread.threadId)}
-                    compactMode={false}
-                    isAligned={layout?.aligned ?? false}
-                  />
-                </div>
-              );
-            })}
+                    className="absolute left-0 right-0"
+                    style={{ top }}
+                  >
+                    <CommentThread
+                      anchorId={thread.anchorId}
+                      comments={thread.comments}
+                      selectedText={thread.selectedText}
+                      isActive={highlightedThreadId === thread.threadId}
+                      onFocus={() => focusCommentThread(thread.threadId, {
+                        pinToSelection: true,
+                        scrollThreadIntoView: false,
+                      })}
+                      onJumpToAnchor={() => focusCommentThread(thread.threadId, { pinToSelection: true, scrollThreadIntoView: false })}
+                      onOpenAiInteraction={() => openAiInteractionFromThread(thread.threadId)}
+                      compactMode={false}
+                      isAligned={layout?.aligned ?? false}
+                    />
+                  </div>
+                );
+              })}
+            </div>
           </div>
         )}
       </div>
     </div>
   );
 
-  if (isBuildActive || isWaitingForRequestedBuild || showDocGeneratingState) {
+  const desktopTocWidthClass = "w-[clamp(14rem,16vw,18rem)]";
+  const desktopCommentWidthClass = "w-[clamp(18rem,23vw,26rem)]";
+  const pageShellMaxWidthClass = pageWideMode ? "max-w-none" : showDesktopCommentPanel ? "max-w-[1480px]" : "max-w-[1120px]";
+  const docColumnMaxWidthClass = pageWideMode ? "max-w-none" : showDesktopCommentPanel ? "max-w-[920px]" : "max-w-[980px]";
+  const showFloatingActions = Boolean(subjectId && !isBuildActive && !showDocGeneratingState && !isAssistantOpen);
+
+  if (!hasRenderedMarkdown && (isBuildActive || isWaitingForRequestedBuild || showDocGeneratingState)) {
     return (
-      <div className="relative flex min-h-[100dvh] w-full flex-col overflow-x-hidden bg-transparent px-4 py-16 md:px-8">
+      <div className="relative flex h-[100dvh] w-full overflow-hidden bg-white">
         <BuildView
           isFetching={docMarkdownQuery.isFetching}
           progress={buildProgress}
@@ -2390,54 +4393,17 @@ export function KnowledgeDocsPage() {
           sourceFiles={sourceFiles}
           sourceFilesFetching={sourceFilesFetching}
           buildStage={buildMeta?.stage}
+          subjectId={subjectId}
         />
       </div>
     );
   }
 
   return (
-    <div className="relative flex-1 w-full min-h-full overflow-hidden bg-slate-50 flex flex-row">
-      
-      {/* Main Doc Wrapper */}
-      <div className="relative h-full transition-all duration-500 ease-[cubic-bezier(0.25,1,0.5,1)] flex flex-col w-full bg-white z-10">
-        {!isCompactPanels && (
-        <div className="hidden lg:block absolute left-4 top-16 z-30">
-          {isTocCollapsed ? (
-            <aside className="w-11 h-11">
-              <button
-                onClick={() => setIsTocCollapsed(false)}
-                className="w-11 h-11 rounded-xl border border-slate-200/80 bg-slate-50/95 backdrop-blur-sm shadow-sm text-slate-600 hover:text-slate-900 hover:bg-white transition-colors flex items-center justify-center"
-                aria-label="展开目录"
-                title={activeTocItem?.text ? `展开目录（当前：${activeTocItem.text}）` : "展开目录"}
-              >
-                <FileText className="w-4 h-4" />
-                <ChevronRight className="w-3.5 h-3.5 -ml-0.5" />
-              </button>
-            </aside>
-          ) : (
-            <aside className="w-[16%] min-w-[200px] max-w-[280px] h-[calc(100vh-7rem)] max-h-[820px] flex flex-col overflow-hidden">
-              <div className="px-2 h-10 flex items-center justify-between">
-                <div className="flex items-center gap-2 text-slate-900">
-                  <FileText className="w-4 h-4" />
-                  <span className="text-sm font-semibold">目录</span>
-                </div>
-                <button
-                  onClick={() => setIsTocCollapsed(true)}
-                  className="w-7 h-7 rounded-lg hover:bg-slate-100 transition-colors flex items-center justify-center text-slate-500 hover:text-slate-700"
-                  aria-label="收起目录"
-                >
-                  <ChevronRight className="w-4 h-4 rotate-180" />
-                </button>
-              </div>
-              {tocNav}
-            </aside>
-          )}
-        </div>
-      )}
-
-      {isCompactPanels && (
-        <>
-          <div className="fixed top-3 left-16 lg:left-[17rem] z-[79] flex items-center gap-2">
+    <div className="relative flex h-full min-h-0 flex-1 w-full overflow-hidden bg-slate-50 dark:bg-slate-900">
+      <div className="relative z-10 flex min-h-0 h-full w-full bg-white dark:bg-slate-900">
+      {hasCompactTocControl && (
+          <div className="fixed left-3 top-3 z-[79] flex items-center gap-2">
             <button
               onClick={openTocDrawer}
               className={cn(
@@ -2449,6 +4415,11 @@ export function KnowledgeDocsPage() {
             >
               <FileText className="w-4 h-4" />
             </button>
+          </div>
+      )}
+
+      {hasCompactCommentControl && (
+          <div className="fixed top-3 right-6 z-[79] flex items-center gap-2">
             <button
               onClick={openCommentDrawer}
               className={cn(
@@ -2466,15 +4437,17 @@ export function KnowledgeDocsPage() {
               )}
             </button>
           </div>
+      )}
 
-          {activeDrawer && (
-            <button
-              onClick={closeDrawer}
-              className="fixed inset-0 z-[76] bg-slate-900/25 backdrop-blur-[1px]"
-              aria-label="关闭抽屉遮罩"
-            />
-          )}
+      {activeDrawer && isCompactPanels && (
+        <button
+          onClick={closeDrawer}
+          className="fixed inset-0 z-[76] bg-slate-900/24"
+          aria-label="关闭抽屉遮罩"
+        />
+      )}
 
+      {hasCompactTocControl && (
           <aside
             className={cn(
               "fixed left-3 top-14 bottom-4 z-[78] w-[min(20rem,calc(100vw-1.5rem))] rounded-2xl border border-slate-200 bg-white/98 shadow-2xl flex flex-col overflow-hidden transition-transform duration-200",
@@ -2496,23 +4469,9 @@ export function KnowledgeDocsPage() {
             </div>
             <div className="px-1 pb-2 flex-1 overflow-hidden">{tocNav}</div>
           </aside>
-        </>
       )}
 
-      {!isCompactPanels && isCommentCollapsed && (
-        <aside className="hidden lg:flex absolute right-4 top-16 z-20">
-          <button
-            onClick={() => setIsCommentCollapsed(false)}
-            className="rounded-xl border border-slate-200 bg-white/95 backdrop-blur-sm shadow-sm px-2 py-2.5 text-slate-600 hover:text-slate-900 hover:bg-white transition-colors flex items-center gap-1"
-            aria-label="展开问答栏"
-          >
-            <Bot className="w-4 h-4" />
-            <ChevronRight className="w-4 h-4 rotate-180" />
-          </button>
-        </aside>
-      )}
-
-      {isCompactPanels && (
+      {hasCompactCommentControl && (
         <aside
           className={cn(
             "fixed right-3 top-14 bottom-4 z-[78] w-[min(24rem,calc(100vw-1.5rem))] transition-transform duration-200",
@@ -2523,32 +4482,81 @@ export function KnowledgeDocsPage() {
         </aside>
       )}
 
-      <div
-        ref={scrollRef}
-        className="h-full overflow-y-auto relative doc-scroll-container content-scroll"
-        onMouseUp={handleTextSelect}
-      >
-        <div
+      {!isCompactToc && viewPrefs.showToc && (
+        <aside
           className={cn(
-            "min-h-full pr-4 transition-[padding-left,padding-right] duration-300 pl-4 md:pl-6",
-            isCompactPanels
-              ? "lg:pr-6 lg:pl-6"
-              : "lg:pr-6",
-            isCompactPanels
-              ? null
-              : isTocCollapsed
-                ? "lg:pl-20"
-                : "lg:pl-[17%]"
+            "h-full min-h-0 shrink-0 overflow-hidden bg-white/88 backdrop-blur-md transition-[width] duration-300 ease-out",
+            isTocCollapsed ? "w-[56px]" : desktopTocWidthClass
           )}
         >
-          <div className="mx-auto max-w-[1800px] px-6 py-8">
-            <div
-              ref={contentAreaRef}
-              className="feishu-doc-content mx-auto flex min-h-full w-full max-w-[1380px] items-start gap-3"
-              >
-                <article
-                  className="min-w-0 flex-1 px-6 py-8 md:px-10 md:py-10"
+          <div className="flex h-full flex-col">
+            {isTocCollapsed ? (
+              <div className="flex flex-1 items-start justify-start px-2 py-3">
+                <button
+                  onClick={() => setIsTocCollapsed(false)}
+                  className="flex h-8 w-8 items-center justify-center rounded-lg text-[#3370FF] transition-colors hover:bg-[#EDF3FF] hover:text-[#245BDB]"
+                  aria-label="展开目录"
+                  title={activeTocItem?.text ? `展开目录（当前：${activeTocItem.text}）` : "展开目录"}
                 >
+                  <ChevronsRight className="h-4 w-4" />
+                </button>
+              </div>
+            ) : (
+              <>
+                <div className="sticky top-0 z-10 bg-white/92 px-3 pb-1 pt-3 backdrop-blur-md">
+                  <button
+                    onClick={() => setIsTocCollapsed(true)}
+                    className="flex h-8 w-8 items-center justify-center rounded-lg text-[#3370FF] transition-colors hover:bg-[#EDF3FF] hover:text-[#245BDB]"
+                    aria-label="收起目录"
+                    title="收起目录"
+                  >
+                    <ChevronsLeft className="h-4 w-4" />
+                  </button>
+                </div>
+                <div className="min-h-0 flex-1 overflow-hidden px-2 pb-3 pt-0.5">
+                  {tocNav}
+                </div>
+              </>
+            )}
+          </div>
+        </aside>
+      )}
+
+      <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
+        {!isCompactComment && viewPrefs.showCommentPanel && isCommentCollapsed && !shouldHideCommentPanelForAssistant && (
+          <aside className="absolute right-4 top-4 z-20 hidden lg:flex">
+            <button
+              onClick={() => setIsCommentCollapsed(false)}
+              className="rounded-xl border border-slate-200 bg-white/95 px-2 py-2.5 text-slate-600 shadow-sm transition-colors hover:bg-white hover:text-slate-900"
+              aria-label="展开问答栏"
+            >
+              <Bot className="w-4 h-4" />
+            </button>
+          </aside>
+        )}
+
+        <div
+          ref={scrollRef}
+          className="relative h-full overflow-y-auto doc-scroll-container content-scroll"
+          onMouseUp={handleTextSelect}
+        >
+          <div
+            className="min-h-full px-4 py-8 md:px-6 lg:px-8"
+            style={desktopCommentScrollMinHeight > 0 ? { minHeight: desktopCommentScrollMinHeight } : undefined}
+          >
+            <div
+              className={cn(
+                "mx-auto flex min-h-full w-full items-start justify-center",
+                showDesktopCommentPanel && "gap-4 xl:gap-5",
+                pageShellMaxWidthClass,
+              )}
+              style={desktopCommentScrollMinHeight > 0 ? { minHeight: desktopCommentScrollMinHeight } : undefined}
+            >
+              <div
+                ref={contentAreaRef}
+                className={cn("feishu-doc-content min-w-0 w-full", docColumnMaxWidthClass)}
+              >
+                <article className="min-w-0 px-2 py-2 md:px-4">
                   <SubjectVectorNotice status={docMarkdownQuery.data?.vector_status} className="mb-6" />
                   {docMarkdownQuery.isError ? (
                     <DocLoadErrorState
@@ -2559,6 +4567,7 @@ export function KnowledgeDocsPage() {
                     />
                   ) : showDocGeneratingState ? (
                     <BuildView
+                      className="min-h-[600px] h-[70vh] rounded-xl border border-zinc-100 overflow-hidden"
                       isFetching={docMarkdownQuery.isFetching}
                       progress={buildProgress}
                       statusText={buildPreview?.current_stage_description?.trim() || buildStatusText}
@@ -2567,6 +4576,7 @@ export function KnowledgeDocsPage() {
                       sourceFiles={sourceFiles}
                       sourceFilesFetching={sourceFilesFetching}
                       buildStage={buildMeta?.stage}
+                      subjectId={subjectId}
                     />
                   ) : showDocBuildFailureState ? (
                     <DocLoadErrorState
@@ -2596,108 +4606,235 @@ export function KnowledgeDocsPage() {
                     </>
                   )}
                 </article>
-                {!isCompactPanels && !isCommentCollapsed && (
-                  <aside className="hidden lg:block w-[22%] min-w-[260px] max-w-[380px] shrink-0 py-8">
-                    {commentPanel}
-                  </aside>
-                )}
+              </div>
+              {showDesktopCommentPanel && (
+                <aside
+                  className={cn(
+                    "sticky top-4 h-[calc(100dvh-2rem)] min-h-0 shrink-0 border-l border-slate-200/80 bg-white/92 px-3 py-4 backdrop-blur-md",
+                    desktopCommentWidthClass,
+                  )}
+                >
+                  {commentPanel}
+                </aside>
+              )}
             </div>
-          </div>
 
           {selectionHighlights.map((highlight) => (
             <div key={highlight.id}>
-              {highlight.segments.map((segment, index) => (
-                <button
-                  key={`${highlight.id}-${index}`}
-                  type="button"
-                  onClick={() => locateCommentThread(highlight.threadId)}
-                  data-highlight-thread-id={highlight.threadId}
-                  className={cn(
-                    "group absolute z-30 rounded-[3px] transition-colors focus-visible:outline-none",
-                    highlightedThreadId === highlight.threadId
-                      ? "bg-blue-100/45 ring-1 ring-blue-300/70 shadow-[0_0_0_1px_rgba(59,130,246,0.18)]"
-                      : "bg-transparent hover:bg-amber-100/35 focus-visible:ring-2 focus-visible:ring-amber-300/70"
-                  )}
-                  style={{
-                    top: segment.top,
-                    left: segment.left,
-                    width: segment.width,
-                    height: segment.height,
-                  }}
-                  title={`定位问答：${highlight.selectedText}`}
-                  aria-label="定位划词问答"
-                >
-                  <span
+              {highlight.segments.map((segment, index) => {
+                const isAiMatchedHighlight = aiMatchedHighlightedThreadId === highlight.threadId;
+                return (
+                  <button
+                    key={`${highlight.id}-${index}`}
+                    type="button"
+                    onClick={() => openSelectionHighlightThread(highlight.threadId)}
+                    data-highlight-thread-id={highlight.threadId}
                     className={cn(
-                      "pointer-events-none absolute inset-x-0 bottom-0 rounded-full transition-all",
-                      highlightedThreadId === highlight.threadId
-                        ? "h-[2.5px] bg-blue-500 shadow-[0_0_0_1px_rgba(59,130,246,0.28),0_4px_10px_-6px_rgba(37,99,235,0.85)]"
-                        : "h-[1.5px] bg-amber-300/90 shadow-[0_0_0_1px_rgba(245,158,11,0.24),0_2px_8px_-6px_rgba(245,158,11,0.7)] group-hover:h-[2px] group-hover:bg-amber-400/95"
+                      "group absolute z-30 rounded-[2px] transition-shadow duration-150 focus-visible:outline-none",
+                      isAiMatchedHighlight
+                        ? "bg-amber-100/60 shadow-[0_4px_12px_-14px_rgba(180,83,9,0.65)]"
+                        : "bg-transparent focus-visible:ring-2 focus-visible:ring-amber-300/45"
                     )}
-                  />
-                </button>
-              ))}
+                    style={{
+                      top: segment.top,
+                      left: segment.left,
+                      width: segment.width,
+                      height: segment.height,
+                      backgroundColor: isAiMatchedHighlight ? "rgba(254, 243, 199, 0.6)" : undefined,
+                    }}
+                    title={`定位问答：${highlight.selectedText}`}
+                    aria-label="定位划词问答"
+                  >
+                    <span
+                      className={cn(
+                        "pointer-events-none absolute inset-x-[1px] bottom-[-3px] rounded-full transition-shadow duration-150",
+                        isAiMatchedHighlight
+                          ? "h-[1.5px] bg-amber-600/95 shadow-[0_3px_8px_-5px_rgba(180,83,9,0.85)]"
+                          : "h-px bg-amber-400/65 shadow-[0_2px_6px_-5px_rgba(180,83,9,0.65)] group-hover:bg-amber-500/75"
+                      )}
+                    />
+                  </button>
+                );
+              })}
+            </div>
+          ))}
+
+          {floatingComment?.segments.map((segment, index) => (
+            <div
+              key={`floating-selection-${index}`}
+              className="pointer-events-none absolute z-30 rounded-[2px] bg-amber-50/40"
+              style={{
+                top: segment.top,
+                left: segment.left,
+                width: segment.width,
+                height: segment.height,
+              }}
+            >
+              <span className="absolute inset-x-[1px] bottom-[-3px] h-px rounded-full bg-amber-500/80 shadow-[0_2px_6px_-5px_rgba(180,83,9,0.75)]" />
             </div>
           ))}
 
           {floatingToolbar && (
             <div
               ref={floatingRef}
-              className="absolute z-50 -translate-x-1/2"
+              className="absolute z-50"
               style={{
                 top: floatingToolbar.top,
                 left: floatingToolbar.left,
               }}
               onMouseUp={(e) => e.stopPropagation()}
             >
-              <div className="inline-flex items-center gap-2 rounded-2xl border border-slate-200/90 bg-white/95 px-2 py-1.5 shadow-[0_22px_44px_-28px_rgba(15,23,42,0.82)] backdrop-blur">
-                <span className="max-w-40 truncate px-1 text-[11px] text-slate-500">
-                  &ldquo;{floatingToolbar.selectedText.slice(0, 60)}&rdquo;
-                </span>
-                <button
-                  onMouseDown={(e) => e.preventDefault()}
-                  onClick={openCommentComposer}
-                  className="inline-flex h-8 items-center gap-1.5 rounded-xl bg-slate-900 px-3 text-xs font-medium text-white shadow-sm transition hover:bg-slate-800"
-                >
+              <button
+                type="button"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={openCommentComposer}
+                className="group inline-flex h-10 items-center gap-2 rounded-full border border-slate-200/90 bg-white/96 px-2.5 pr-3 text-xs font-medium text-slate-700 shadow-[0_18px_42px_-24px_rgba(15,23,42,0.85)] backdrop-blur transition hover:border-sky-200 hover:bg-sky-50 hover:text-sky-700"
+                title="基于选中内容问问 AI"
+                aria-label="基于选中内容问问 AI"
+              >
+                <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-slate-900 text-white shadow-sm transition group-hover:bg-sky-600">
                   <Sparkles className="h-3.5 w-3.5" />
-                  问问AI
-                </button>
-              </div>
+                </span>
+                问问 AI
+              </button>
             </div>
           )}
-
+        </div>
         </div>
       </div>
+
       </div>
 
+      {showFloatingActions && isSettingsPanelOpen && (
+        <div
+          ref={settingsPanelRef}
+          className="fixed bottom-[11.75rem] right-6 z-[87] w-[min(23rem,calc(100vw-2rem))] overflow-hidden rounded-2xl border border-slate-200/90 bg-white/96 shadow-[0_22px_60px_-32px_rgba(15,23,42,0.42)] backdrop-blur-xl"
+        >
+          <div className="border-b border-slate-200/80 px-4 py-3">
+            <p className="text-sm font-semibold text-slate-900">学科设置</p>
+            <p className="mt-1 text-xs leading-5 text-slate-500">仅作用于当前学科的知识文档阅读体验。</p>
+          </div>
+          <div className="p-3">
+            <button
+              type="button"
+              onClick={() => {
+                updateViewPrefs((prev) => ({ ...prev, showCommentPanel: !prev.showCommentPanel }));
+                if (!viewPrefs.showCommentPanel) {
+                  setIsCommentCollapsed(false);
+                }
+              }}
+              className="flex w-full items-center justify-between rounded-xl px-3 py-3 text-left transition hover:bg-slate-50"
+              aria-pressed={viewPrefs.showCommentPanel}
+            >
+              <div className="flex min-w-0 items-start gap-3">
+                <span className="mt-0.5 inline-flex h-8 w-8 items-center justify-center rounded-lg bg-sky-50 text-sky-600">
+                  <Bot className="h-4 w-4" />
+                </span>
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-slate-900">显示问问 AI 列</p>
+                  <p className="mt-1 text-xs leading-5 text-slate-500">打开后只展示划词问答记录；新的划词对话仍从右侧 AI 面板开始。</p>
+                </div>
+              </div>
+              <span className={cn("ml-3 flex h-6 w-11 shrink-0 rounded-full p-0.5 transition", viewPrefs.showCommentPanel ? "bg-slate-900" : "bg-slate-200")}>
+                <span className={cn("h-5 w-5 rounded-full bg-white shadow-sm transition", viewPrefs.showCommentPanel ? "translate-x-5" : "translate-x-0")} />
+              </span>
+            </button>
+            <div className="my-2 h-px bg-slate-100" />
+            <button
+              type="button"
+              onClick={() => {
+                updateViewPrefs((prev) => ({ ...prev, widePage: !prev.widePage }));
+              }}
+              className="flex w-full items-center justify-between rounded-xl px-3 py-3 text-left transition hover:bg-slate-50"
+              aria-pressed={pageWideMode}
+            >
+              <div className="flex min-w-0 items-start gap-3">
+                <span className="mt-0.5 inline-flex h-8 w-8 items-center justify-center rounded-lg bg-slate-100 text-slate-600">
+                  <ExternalLink className="h-4 w-4" />
+                </span>
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-slate-900">宽页模式</p>
+                  <p className="mt-1 text-xs leading-5 text-slate-500">正文根据剩余空间自适应铺开。</p>
+                </div>
+              </div>
+              <span className={cn("ml-3 flex h-6 w-11 shrink-0 rounded-full p-0.5 transition", pageWideMode ? "bg-slate-900" : "bg-slate-200")}>
+                <span className={cn("h-5 w-5 rounded-full bg-white shadow-sm transition", pageWideMode ? "translate-x-5" : "translate-x-0")} />
+              </span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                updateViewPrefs((prev) => ({ ...prev, showToc: !prev.showToc }));
+                if (!viewPrefs.showToc) {
+                  setIsTocCollapsed(false);
+                }
+              }}
+              className="flex w-full items-center justify-between rounded-xl px-3 py-3 text-left transition hover:bg-slate-50"
+              aria-pressed={viewPrefs.showToc}
+            >
+              <div className="flex min-w-0 items-start gap-3">
+                <span className="mt-0.5 inline-flex h-8 w-8 items-center justify-center rounded-lg bg-slate-100 text-slate-600">
+                  <FileText className="h-4 w-4" />
+                </span>
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-slate-900">显示目录</p>
+                  <p className="mt-1 text-xs leading-5 text-slate-500">保留左侧目录轨道，跟随正文标题高亮。</p>
+                </div>
+              </div>
+              <span className={cn("ml-3 flex h-6 w-11 shrink-0 rounded-full p-0.5 transition", viewPrefs.showToc ? "bg-slate-900" : "bg-slate-200")}>
+                <span className={cn("h-5 w-5 rounded-full bg-white shadow-sm transition", viewPrefs.showToc ? "translate-x-5" : "translate-x-0")} />
+              </span>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {showFloatingActions && (
+        <button
+          ref={settingsButtonRef}
+          type="button"
+          onClick={() => setIsSettingsPanelOpen((prev) => !prev)}
+          className="fixed bottom-32 right-6 z-[88] inline-flex h-11 items-center gap-2 rounded-2xl border border-zinc-200/80 bg-white/95 px-3 text-[14px] font-medium text-zinc-700 shadow-[0_2px_8px_rgba(0,0,0,0.04),0_8px_24px_rgba(0,0,0,0.06)] backdrop-blur-xl transition duration-300 hover:border-zinc-300 hover:bg-white hover:text-zinc-900 active:scale-[0.98]"
+          aria-label="打开学科设置"
+          aria-expanded={isSettingsPanelOpen}
+        >
+          <SlidersHorizontal className="h-4 w-4" />
+          <span className="hidden sm:inline">学科设置</span>
+        </button>
+      )}
+
       {/* Graph Floating Button */}
-      {subjectId && !isBuildActive && !showDocGeneratingState && (
+      {showFloatingActions && (
         <button
           type="button"
           onClick={openGraphPanel}
           className={cn(
             "fixed bottom-20 right-6 z-[86] inline-flex h-11 items-center gap-2 rounded-2xl border border-zinc-200/80 bg-white/95 px-4 text-[14px] font-medium text-zinc-700 shadow-[0_2px_8px_rgba(0,0,0,0.04),0_8px_24px_rgba(0,0,0,0.06)] backdrop-blur-xl transition duration-300 hover:border-zinc-300 hover:bg-white hover:text-zinc-900 active:scale-[0.98]",
-            isGraphDrawerOpen ? "pointer-events-none translate-y-4 opacity-0" : "translate-y-0 opacity-100"
+            isGraphDrawerOpen || isSettingsPanelOpen ? "pointer-events-none translate-y-4 opacity-0" : "translate-y-0 opacity-100"
           )}
           aria-label="打开知识图谱"
         >
           <Network className="h-4 w-4 text-zinc-500" />
-          <span>知识图谱</span>
+          <span className="hidden sm:inline">知识图谱</span>
         </button>
       )}
 
       {/* Graph Drawer Panel */}
       <div
+        ref={graphDrawerRef}
         className={cn(
           "fixed top-0 bottom-0 right-0 z-[84] bg-slate-50 border-l border-zinc-200/80 shadow-[0_0_40px_rgba(0,0,0,0.15)] flex",
           isGraphDrawerOpen && subjectId ? "translate-x-0 pointer-events-auto" : "translate-x-full pointer-events-none",
           !isGraphDragging && "transition-transform duration-300 ease-[cubic-bezier(0.2,0.8,0.2,1)]"
         )}
-        style={{ width: graphPanelWidth }}
+        style={{
+          width: graphPanelWidth,
+          willChange: isGraphDragging ? "width" : undefined,
+        }}
       >
         <div
           className={cn(
-            "absolute top-0 bottom-0 left-0 w-2 -ml-[1px] cursor-col-resize z-50 hover:bg-blue-500/30 transition-colors",
+            "absolute bottom-0 left-0 top-0 z-50 -ml-[1px] hidden w-2 cursor-col-resize transition-colors hover:bg-blue-500/30 sm:block",
             isGraphDragging && "bg-blue-500/30"
           )}
           onMouseDown={handleGraphMouseDown}

@@ -5,8 +5,11 @@ from __future__ import annotations
 import structlog
 
 from collections.abc import Awaitable, Callable
+from importlib import import_module
+from importlib.util import find_spec
 from pathlib import Path
 
+from app.shared.infra.exceptions import FileParseError
 from app.workflows.ingest.common.parsing.audio import (
     AUDIO_NATIVE_AVAILABLE,
     is_audio_transcription_available,
@@ -28,20 +31,7 @@ from app.workflows.ingest.common.parsing.generic import (
     parse_with_markitdown_generic,
 )
 from app.workflows.ingest.common.parsing.image import parse_image_with_llm_vision
-from app.workflows.ingest.common.parsing.pdf import (
-    PDF_MARKITDOWN_AVAILABLE,
-    PDF_PYMUPDF_OCR_VISION_AVAILABLE,
-    PDF_PYMUPDF4LLM_AVAILABLE,
-    PDF_PYMUPDF_NATIVE_AVAILABLE,
-    parse_pdf_with_markitdown,
-    parse_pdf_with_pymupdf_ocr_vision,
-    parse_pdf_with_pymupdf4llm,
-    parse_pdf_with_pymupdf_native,
-)
-from app.workflows.ingest.common.parsing.pdf_pdfplumber import (
-    PDF_PDFPLUMBER_AVAILABLE,
-    parse_pdf_with_pdfplumber,
-)
+from app.workflows.ingest.common.parsing.features import builtin_pdf_parsing_enabled
 from app.workflows.ingest.common.parsing.pptx import (
     PPTX_MARKITDOWN_AVAILABLE,
     PPTX_NATIVE_AVAILABLE,
@@ -61,6 +51,147 @@ from app.workflows.ingest.common.parsing.text import (
 from app.workflows.ingest.common.parsing.types import ParserRunOptions
 
 Parser = Callable[[str | Path, Path, ParserRunOptions], Awaitable[str]]
+
+_PDF_PARSER_IMPORTS: dict[str, tuple[str, str]] = {
+    "ocr_vision": (
+        "app.workflows.ingest.common.parsing.pdf",
+        "parse_pdf_with_pymupdf_ocr_vision",
+    ),
+    "pymupdf_ocr_vision": (
+        "app.workflows.ingest.common.parsing.pdf",
+        "parse_pdf_with_pymupdf_ocr_vision",
+    ),
+    "pymupdf4llm": (
+        "app.workflows.ingest.common.parsing.pdf",
+        "parse_pdf_with_pymupdf4llm",
+    ),
+    "pdfplumber": (
+        "app.workflows.ingest.common.parsing.pdf_pdfplumber",
+        "parse_pdf_with_pdfplumber",
+    ),
+    "markitdown": (
+        "app.workflows.ingest.common.parsing.pdf",
+        "parse_pdf_with_markitdown",
+    ),
+    "pymupdf_native": (
+        "app.workflows.ingest.common.parsing.pdf",
+        "parse_pdf_with_pymupdf_native",
+    ),
+}
+
+_PDF_PARSER_PACKAGE_SPECS: dict[str, tuple[str, ...]] = {
+    "ocr_vision": ("fitz",),
+    "pymupdf_ocr_vision": ("fitz",),
+    "pymupdf4llm": ("pymupdf4llm",),
+    "pdfplumber": ("pdfplumber",),
+    "markitdown": ("markitdown",),
+    "pymupdf_native": ("fitz",),
+}
+
+
+def _packages_available(package_names: tuple[str, ...]) -> bool:
+    return all(find_spec(package_name) is not None for package_name in package_names)
+
+
+def _pdf_parser_available(parser_name: str) -> bool:
+    if not builtin_pdf_parsing_enabled():
+        return False
+    package_names = _PDF_PARSER_PACKAGE_SPECS.get(parser_name)
+    return bool(package_names and _packages_available(package_names))
+
+
+async def _parse_pdf_with(
+    parser_name: str,
+    file_path: str | Path,
+    asset_dir: Path,
+    options: ParserRunOptions,
+) -> str:
+    if not builtin_pdf_parsing_enabled():
+        raise FileParseError(
+            Path(file_path).name,
+            reason="Built-in PDF parsing is disabled. Install the PDF parser plugin to parse PDF files.",
+        )
+
+    module_name, function_name = _PDF_PARSER_IMPORTS[parser_name]
+    parser = getattr(import_module(module_name), function_name)
+    return await parser(file_path, asset_dir, options)
+
+
+async def parse_pdf_with_pymupdf_ocr_vision(
+    file_path: str | Path,
+    asset_dir: Path,
+    options: ParserRunOptions,
+) -> str:
+    return await _parse_pdf_with("pymupdf_ocr_vision", file_path, asset_dir, options)
+
+
+async def parse_pdf_with_pymupdf4llm(
+    file_path: str | Path,
+    asset_dir: Path,
+    options: ParserRunOptions,
+) -> str:
+    return await _parse_pdf_with("pymupdf4llm", file_path, asset_dir, options)
+
+
+async def parse_pdf_with_pdfplumber(
+    file_path: str | Path,
+    asset_dir: Path,
+    options: ParserRunOptions,
+) -> str:
+    return await _parse_pdf_with("pdfplumber", file_path, asset_dir, options)
+
+
+async def parse_pdf_with_markitdown(
+    file_path: str | Path,
+    asset_dir: Path,
+    options: ParserRunOptions,
+) -> str:
+    return await _parse_pdf_with("markitdown", file_path, asset_dir, options)
+
+
+async def parse_pdf_with_pymupdf_native(
+    file_path: str | Path,
+    asset_dir: Path,
+    options: ParserRunOptions,
+) -> str:
+    return await _parse_pdf_with("pymupdf_native", file_path, asset_dir, options)
+
+
+def _build_pdf_parser_mapping() -> dict[str, dict[str, Parser]]:
+    if not builtin_pdf_parsing_enabled():
+        return {}
+    return {
+        ".pdf": {
+            "ocr_vision": parse_pdf_with_pymupdf_ocr_vision,
+            "pymupdf_ocr_vision": parse_pdf_with_pymupdf_ocr_vision,
+            "pymupdf4llm": parse_pdf_with_pymupdf4llm,
+            "pdfplumber": parse_pdf_with_pdfplumber,
+            "markitdown": parse_pdf_with_markitdown,
+            "pymupdf_native": parse_pdf_with_pymupdf_native,
+        }
+    }
+
+
+def _build_pdf_parser_chain() -> dict[str, list[str]]:
+    if not builtin_pdf_parsing_enabled():
+        return {}
+    return {
+        ".pdf": ["pymupdf_native", "pymupdf4llm", "pdfplumber", "markitdown"],
+    }
+
+
+def _build_pdf_parser_availability() -> dict[str, dict[str, bool]]:
+    if not builtin_pdf_parsing_enabled():
+        return {}
+    return {
+        ".pdf": {
+            "pymupdf_ocr_vision": _pdf_parser_available("pymupdf_ocr_vision"),
+            "pymupdf4llm": _pdf_parser_available("pymupdf4llm"),
+            "pdfplumber": _pdf_parser_available("pdfplumber"),
+            "markitdown": _pdf_parser_available("markitdown"),
+            "pymupdf_native": _pdf_parser_available("pymupdf_native"),
+        }
+    }
 
 
 def _build_text_parser_mapping() -> dict[str, dict[str, Parser]]:
@@ -109,14 +240,7 @@ def _build_markitdown_generic_availability() -> dict[str, dict[str, bool]]:
 
 
 PARSER_REGISTRY: dict[str, dict[str, Parser]] = {
-    ".pdf": {
-        "ocr_vision": parse_pdf_with_pymupdf_ocr_vision,
-        "pymupdf_ocr_vision": parse_pdf_with_pymupdf_ocr_vision,
-        "pymupdf4llm": parse_pdf_with_pymupdf4llm,
-        "pdfplumber": parse_pdf_with_pdfplumber,
-        "markitdown": parse_pdf_with_markitdown,
-        "pymupdf_native": parse_pdf_with_pymupdf_native,
-    },
+    **_build_pdf_parser_mapping(),
     ".docx": {
         "mammoth": parse_docx_with_mammoth,
         "markitdown": parse_docx_with_markitdown,
@@ -162,7 +286,7 @@ PARSER_REGISTRY: dict[str, dict[str, Parser]] = {
 }
 
 DEFAULT_PARSER_CHAIN: dict[str, list[str]] = {
-    ".pdf": ["pymupdf_native", "pymupdf4llm", "pdfplumber", "markitdown"],
+    **_build_pdf_parser_chain(),
     ".docx": ["markitdown", "mammoth", "docx_native"],
     ".ppt": ["markitdown", "python_pptx_native"],
     ".pptx": ["markitdown", "python_pptx_native"],
@@ -180,14 +304,7 @@ DEFAULT_PARSER_CHAIN: dict[str, list[str]] = {
 }
 
 _PARSER_AVAILABILITY: dict[str, dict[str, bool]] = {
-    ".pdf": {
-        "ocr_vision": PDF_PYMUPDF_OCR_VISION_AVAILABLE,
-        "pymupdf_ocr_vision": PDF_PYMUPDF_OCR_VISION_AVAILABLE,
-        "pymupdf4llm": PDF_PYMUPDF4LLM_AVAILABLE,
-        "pdfplumber": PDF_PDFPLUMBER_AVAILABLE,
-        "markitdown": PDF_MARKITDOWN_AVAILABLE,
-        "pymupdf_native": PDF_PYMUPDF_NATIVE_AVAILABLE,
-    },
+    **_build_pdf_parser_availability(),
     ".docx": {
         "mammoth": DOCX_MAMMOTH_AVAILABLE,
         "markitdown": DOCX_MARKITDOWN_AVAILABLE,
@@ -269,11 +386,11 @@ def log_parser_availability() -> None:
     environment. Missing packages result in degraded capability, not crashes.
     """
     core_parsers = {
-        "pymupdf_native": PDF_PYMUPDF_NATIVE_AVAILABLE,
-        "pymupdf4llm": PDF_PYMUPDF4LLM_AVAILABLE,
-        "pdfplumber": PDF_PDFPLUMBER_AVAILABLE,
-        "pymupdf_ocr_vision": PDF_PYMUPDF_OCR_VISION_AVAILABLE,
-        "markitdown (pdf)": PDF_MARKITDOWN_AVAILABLE,
+        "pymupdf_native": _pdf_parser_available("pymupdf_native"),
+        "pymupdf4llm": _pdf_parser_available("pymupdf4llm"),
+        "pdfplumber": _pdf_parser_available("pdfplumber"),
+        "pymupdf_ocr_vision": _pdf_parser_available("pymupdf_ocr_vision"),
+        "markitdown (pdf)": _pdf_parser_available("markitdown"),
         "mammoth (docx)": DOCX_MAMMOTH_AVAILABLE,
         "docx_native": DOCX_NATIVE_AVAILABLE,
         "markitdown (docx)": DOCX_MARKITDOWN_AVAILABLE,

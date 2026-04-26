@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -61,6 +61,45 @@ class ExamGradeResponse(RuntimeStatusResponse):
     mastery_consumed: bool
 
 
+class ExamStudyGuideFocusUnit(BaseModel):
+    knowledge_unit_id: int | None = None
+    knowledge_unit_name: str
+    mastery_score: float | None = None
+    reason: str
+
+
+class ExamStudyGuideResponse(BaseModel):
+    exam_paper_id: int
+    subject: str
+    generated_at: datetime
+    overall_summary: str
+    strengths: list[str] = Field(default_factory=list)
+    priority_gaps: list[str] = Field(default_factory=list)
+    action_steps: list[str] = Field(default_factory=list)
+    review_tasks: list[str] = Field(default_factory=list)
+    focus_units: list[ExamStudyGuideFocusUnit] = Field(default_factory=list)
+
+
+PaperPreviewShape = Literal["choice", "blank", "short", "judge", "chart", "formula", "code", "text"]
+PaperPreviewResultStatus = Literal["ungraded", "correct", "incorrect"]
+
+
+class PaperPreviewRow(BaseModel):
+    order: int
+    type: str
+    shape: PaperPreviewShape
+    difficulty: str
+    density: int = Field(default=2, ge=1, le=3)
+    result_status: PaperPreviewResultStatus = "ungraded"
+
+
+class PaperPreview(BaseModel):
+    keywords: list[str] = Field(default_factory=list)
+    question_types: list[str] = Field(default_factory=list)
+    rows: list[PaperPreviewRow] = Field(default_factory=list)
+    overflow_count: int = Field(default=0, ge=0)
+
+
 class ExamHistoryItem(BaseModel):
     id: int
     subject: str
@@ -73,6 +112,7 @@ class ExamHistoryItem(BaseModel):
     created_at: datetime
     submitted_at: datetime | None = None
     graded_at: datetime | None = None
+    paper_preview: PaperPreview = Field(default_factory=PaperPreview)
 
 
 class ExamPaperDeleteResponse(BaseModel):
@@ -91,6 +131,43 @@ class QuestionBankItemResponse(BaseModel):
     last_exam_paper_id: int
     knowledge_points: list[str] = Field(default_factory=list)
     style_summary: str | None = None
+
+
+class QuestionTemplateItemResponse(BaseModel):
+    id: int
+    subject: str
+    knowledge_unit_id: int | None = None
+    question_type: str
+    difficulty: str
+    stem: str
+    options: list[str] | None = None
+    answer: str
+    explanation: str
+    knowledge_unit_refs: list[dict[str, Any]] = Field(default_factory=list)
+    selection_hints: dict[str, Any] = Field(default_factory=dict)
+    template_version: int
+    status: str
+    created_at: datetime
+    updated_at: datetime
+
+
+class QuestionTypeRegistryItemResponse(BaseModel):
+    id: int
+    type_key: str
+    display_name: str
+    scope: str
+    subject: str
+    description: str
+    answer_format: str
+    grading_method: str
+    option_schema: dict[str, Any] = Field(default_factory=dict)
+    rubric: dict[str, Any] = Field(default_factory=dict)
+    source: str
+    confidence: float
+    is_system: bool
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
 
 
 class ExamNodeLinkResponse(BaseModel):
@@ -132,4 +209,5 @@ class ExamPaperDetailResponse(BaseModel):
     graded_at: datetime | None = None
     created_at: datetime
     selection_context: dict[str, Any] = Field(default_factory=dict)
+    paper_preview: PaperPreview = Field(default_factory=PaperPreview)
     items: list[ExamPaperItemResponse] = Field(default_factory=list)

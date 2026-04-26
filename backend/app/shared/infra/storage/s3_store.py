@@ -20,7 +20,7 @@ from botocore.exceptions import ClientError
 from pydantic import AliasChoices, BaseModel, Field
 
 from app.shared.infra.env_support import get_env
-from app.shared.infra.storage.base import ArtifactStore
+from app.shared.infra.storage.base import ArtifactStore, validate_delete_prefix
 from app.shared.infra.storage.config import (
     resolve_dogecloud_api_access_key,
     resolve_dogecloud_api_secret_key,
@@ -315,7 +315,8 @@ class S3ArtifactStore(ArtifactStore):
         return keys
 
     async def delete_prefix(self, prefix: str) -> int:
-        keys = await self.list_prefix(prefix)
+        safe_prefix = validate_delete_prefix(prefix)
+        keys = await self.list_prefix(safe_prefix)
         if not keys:
             return 0
 

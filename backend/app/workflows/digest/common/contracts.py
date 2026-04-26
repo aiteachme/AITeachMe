@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Mapping
 from typing import Any
 
@@ -172,7 +173,11 @@ class DigestConfirmedPlanContract(BaseModel):
         return normalize_digest_mode(self.digest_mode)
 
     def resolve_retrieval_profile(self) -> str:
-        return resolve_digest_retrieval_profile(self.digest_mode)
+        return resolve_digest_retrieval_profile(
+            self.digest_mode,
+            user_prompt=self.user_prompt,
+            subject_name=self.subject,
+        )
 
     def to_payload(self) -> dict[str, Any]:
         return self.model_dump(mode="json")
@@ -216,8 +221,120 @@ def normalize_digest_mode(digest_mode: str | None) -> str:
     return DEFAULT_DIGEST_MODE
 
 
-def resolve_digest_retrieval_profile(digest_mode: str | None) -> str:
-    """Resolve the retrieval profile that should be used for doc generation."""
+_OI_TOPIC_KEYWORDS: tuple[str, ...] = (
+    "信息学奥赛",
+    "信息学竞赛",
+    "算法竞赛",
+    "程序设计竞赛",
+)
+_OI_ASCII_TOPIC_KEYWORDS: tuple[str, ...] = (
+    "oi",
+    "oi-wiki",
+    "oiwiki",
+    "noi",
+    "noip",
+    "csp-s",
+    "csp-j",
+    "acm",
+    "icpc",
+    "codeforces",
+    "atcoder",
+)
+_MATH_TOPIC_KEYWORDS: tuple[str, ...] = (
+    "数学",
+    "初中数学",
+    "小学数学",
+    "高中数学",
+    "高等数学",
+    "线性代数",
+    "概率论",
+    "数与代数",
+    "几何",
+    "代数",
+    "函数",
+    "方程",
+    "不等式",
+    "三角",
+    "统计",
+    "概率",
+    "中考",
+)
+_MATH_ASCII_TOPIC_KEYWORDS: tuple[str, ...] = (
+    "math",
+    "mathematics",
+    "algebra",
+    "geometry",
+    "calculus",
+)
+_ASCII_TOKEN_RE = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)?")
+
+
+def _looks_like_oi_topic(
+    *,
+    user_prompt: str | None,
+    subject_name: str | None,
+) -> bool:
+    """Return True when the requested subject reads like an OI/algorithm-contest topic.
+
+    We intentionally key off the user-facing labels (subject name and the
+    build prompt) rather than content-derived signals. For non-file builds
+    (e.g. "初中数学") a subject profile has not been recognized yet, so we
+    must decide profile selection from what the user typed.
+    """
+
+    haystack = " ".join(
+        part for part in (user_prompt, subject_name) if part and str(part).strip()
+    ).lower()
+    if not haystack:
+        return False
+    for keyword in _OI_TOPIC_KEYWORDS:
+        if keyword in haystack:
+            return True
+    ascii_tokens = set(_ASCII_TOKEN_RE.findall(haystack))
+    if ascii_tokens.intersection(_OI_ASCII_TOPIC_KEYWORDS):
+        return True
+    return False
+
+
+def _looks_like_math_topic(
+    *,
+    user_prompt: str | None,
+    subject_name: str | None,
+) -> bool:
+    haystack = " ".join(
+        part for part in (user_prompt, subject_name) if part and str(part).strip()
+    ).lower()
+    if not haystack:
+        return False
+    for keyword in _MATH_TOPIC_KEYWORDS:
+        if keyword in haystack:
+            return True
+    ascii_tokens = set(_ASCII_TOKEN_RE.findall(haystack))
+    if ascii_tokens.intersection(_MATH_ASCII_TOPIC_KEYWORDS):
+        return True
+    return False
+
+
+def resolve_digest_retrieval_profile(
+    digest_mode: str | None,
+    *,
+    user_prompt: str | None = None,
+    subject_name: str | None = None,
+) -> str:
+    """Resolve the retrieval profile that should be used for doc generation.
+
+    The primary selector is still ``digest_mode`` (sprint vs systematic). On
+    top of that we route explicit OI/algorithm-contest topics to the OI
+    profile so OI Wiki is only consulted when the user actually asked for
+    that domain. Math topics use a tighter Chinese math profile. Other topics
+    stay on the default DocGen profiles and never see OI Wiki as a source,
+    even as a ranking boost.
+    """
+
+    if _looks_like_oi_topic(user_prompt=user_prompt, subject_name=subject_name):
+        return "docgen_oi"
+    if _looks_like_math_topic(user_prompt=user_prompt, subject_name=subject_name):
+        return "docgen_zh_math"
 
     normalized_mode = normalize_digest_mode(digest_mode)
     if normalized_mode == SPRINT_DIGEST_MODE:

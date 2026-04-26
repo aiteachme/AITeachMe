@@ -35,7 +35,6 @@ def build_plan_composer_messages(
     *,
     subject: str,
     user_prompt: str | None = None,
-    user_goal: str | None = None,
     digest_mode: str,
     material_context: DigestMaterialContext,
     planner_brief: PlannerBrief,
@@ -49,7 +48,7 @@ def build_plan_composer_messages(
     plan_text / plan_steps / chapters。前端只展示 marker 之前的内容。
     """
 
-    resolved_user_prompt = (user_prompt or user_goal or "").strip()
+    resolved_user_prompt = (user_prompt or "").strip()
     sketch = planner_brief.markdown.strip() or "暂无可见规划判断"
     plan_queries = _render_plan_queries(plan_intent)
     plan_intent_text = plan_intent.plan_intent.strip() or DEFAULT_PLAN_INTENT

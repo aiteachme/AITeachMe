@@ -100,7 +100,7 @@ def parse_file_to_dir(
 
     if not options.api_token.strip():
         raise RuntimeError(
-            "MinerU API Token 为空：请在前端设置中填写 Token，或在后端环境变量 MINERU_API_TOKEN 中配置 Token。"
+            "MinerU API Token 为空：请在前端设置中填写 Token，或在后端环境变量 MINERU_API_TOKENS / MINERU_API_TOKEN 中配置 Token。"
         )
 
     base = base_url.rstrip("/")
@@ -142,7 +142,7 @@ def parse_file_to_dir(
 
     # 5) 解压并定位 full.md 与 images/
     with zipfile.ZipFile(zip_path, "r") as zf:
-        zf.extractall(output_dir)
+        _safe_extract_zip(zf, output_dir)
 
     markdown_path = _find_first(output_dir, "full.md")
     if markdown_path is None:
@@ -393,6 +393,18 @@ def _request_json(
     if not isinstance(decoded, dict):
         raise RuntimeError("MinerU 返回 JSON 结构异常（非对象）")
     return decoded
+
+
+def _safe_extract_zip(zf: zipfile.ZipFile, target_dir: Path) -> None:
+    target_root = target_dir.resolve()
+    for member in zf.infolist():
+        member_path = target_dir / member.filename
+        resolved = member_path.resolve()
+        try:
+            resolved.relative_to(target_root)
+        except ValueError as exc:
+            raise RuntimeError(f"MinerU result zip contains unsafe path: {member.filename!r}") from exc
+    zf.extractall(target_dir)
 
 
 def _find_first(root: Path, filename: str) -> Path | None:

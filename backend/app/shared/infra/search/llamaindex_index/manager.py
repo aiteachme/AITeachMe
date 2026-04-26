@@ -16,7 +16,6 @@ from typing import Any
 import structlog
 import sqlalchemy as sa
 from llama_index.core.schema import TextNode
-from llama_index.core.vector_stores.simple import SimpleVectorStore
 from llama_index.core.vector_stores.types import (
     MetadataFilter,
     MetadataFilters,
@@ -28,6 +27,7 @@ from app.shared.infra.settings import get_settings
 from app.shared.infra.env_support import get_env
 from app.shared.infra.runtime import is_cloud_mode
 from app.shared.infra.storage import get_content_store, resolve_subject_storage_scope, run_store_sync
+from app.shared.infra.search.llamaindex_index.sqlite_vec_store import SQLiteVecVectorStore
 from app.shared.infra.subject.settings import (
     build_postgres_subject_index_name,
     build_subject_index_ref_for_subject,
@@ -37,7 +37,6 @@ from app.shared.infra.subject.settings import (
 
 logger = structlog.get_logger(__name__)
 
-_LOCAL_VECTOR_STORE_FILENAME = "vector_store.json"
 _SUBJECT_LOCKS: dict[str, RLock] = {}
 _SUBJECT_LOCKS_GUARD = RLock()
 
@@ -81,10 +80,6 @@ def _local_index_prefix(subject: str) -> str:
     return f"{scope.namespace}/rag_index/"
 
 
-def _local_vector_store_key(subject: str) -> str:
-    return f"{_local_index_prefix(subject)}{_LOCAL_VECTOR_STORE_FILENAME}"
-
-
 def _node_id(chunk_id: int) -> str:
     return str(int(chunk_id))
 
@@ -119,21 +114,15 @@ def _to_text_node(chunk: IndexedChunk, embedding: list[float]) -> TextNode:
     )
 
 
-def _load_local_store(subject: str) -> SimpleVectorStore:
-    cs = get_content_store()
-    payload = run_store_sync(cs.read_text, _local_vector_store_key(subject), default=None)
-    if not payload:
-        return SimpleVectorStore()
-    try:
-        return SimpleVectorStore.from_json(payload)
-    except Exception as exc:
-        logger.warning("llamaindex_local_store_load_failed", subject=subject, error=str(exc))
-        return SimpleVectorStore()
-
-
-def _persist_local_store(subject: str, vector_store: SimpleVectorStore) -> None:
-    cs = get_content_store()
-    run_store_sync(cs.write_text, _local_vector_store_key(subject), vector_store.to_json())
+def _load_local_store(
+    subject: str,
+    *,
+    embedding_dim: int | None = None,
+) -> SQLiteVecVectorStore:
+    return SQLiteVecVectorStore(
+        subject=subject.strip(),
+        embedding_dim=embedding_dim,
+    )
 
 
 def _subject_filter(subject: str) -> MetadataFilters:
@@ -281,7 +270,7 @@ def _load_store(
             subject=subject,
             embedding_dim=embedding_dim,
         )
-    return _load_local_store(subject)
+    return _load_local_store(subject, embedding_dim=embedding_dim)
 
 
 def _delete_node_ids(vector_store: Any, chunk_ids: list[int], *, subject: str) -> None:
@@ -335,14 +324,12 @@ def upsert_chunks(subject: str, chunks: list[IndexedChunk]) -> None:
             subject=normalized_subject,
         )
         vector_store.add(nodes)
-        if not is_cloud_mode():
-            _persist_local_store(normalized_subject, vector_store)
 
     logger.info(
         "llamaindex_chunks_upserted",
         subject=normalized_subject,
         chunk_count=len(chunks),
-        backend="postgres" if is_cloud_mode() else "simple",
+        backend="postgres" if is_cloud_mode() else "sqlite-vec",
     )
 
 
@@ -366,8 +353,6 @@ def delete_chunks(subject: str, chunk_ids: list[int]) -> None:
     with _subject_lock(normalized_subject):
         vector_store = _load_store(normalized_subject)
         _delete_node_ids(vector_store, normalized_ids, subject=normalized_subject)
-        if not is_cloud_mode():
-            _persist_local_store(normalized_subject, vector_store)
 
     logger.info(
         "llamaindex_chunks_deleted",
@@ -382,18 +367,34 @@ def clear_subject_index(subject: str) -> None:
     normalized_subject = subject.strip()
     if not normalized_subject:
         return
-    if not subject_index_exists(normalized_subject):
-        return
-
     with _subject_lock(normalized_subject):
         if is_cloud_mode():
-            vector_store = _load_postgres_store(subject=normalized_subject)
-            delete_nodes = getattr(vector_store, "delete_nodes", None)
-            if callable(delete_nodes):
-                delete_nodes(filters=_subject_filter(normalized_subject))
+            if not subject_index_exists(normalized_subject):
+                return
+            from app.shared.infra.database import get_engine
+
+            subject_row = _subject_record_snapshot(normalized_subject)
+            if subject_row is None:
+                return
+            vector_ref = build_subject_index_ref_for_subject(subject_row)
+            data_table = extract_postgres_subject_index_data_table_name(vector_ref)
+            if not _postgres_identifier_is_safe(data_table):
+                return
+            with get_engine().begin() as connection:
+                connection.execute(sa.text(f"DROP TABLE IF EXISTS public.{data_table}"))
         else:
-            cs = get_content_store()
-            run_store_sync(cs.delete_prefix, _local_index_prefix(normalized_subject), default=0)
+            vector_store = _load_local_store(normalized_subject)
+            vector_store.clear()
+            # Remove legacy SimpleVectorStore JSON payloads from older builds.
+            try:
+                cs = get_content_store()
+                run_store_sync(cs.delete_prefix, _local_index_prefix(normalized_subject), default=0)
+            except Exception as exc:  # pragma: no cover - legacy cleanup only
+                logger.warning(
+                    "llamaindex_legacy_local_store_cleanup_failed",
+                    subject=normalized_subject,
+                    error=str(exc),
+                )
 
     logger.info("llamaindex_subject_index_cleared", subject=normalized_subject)
 
@@ -413,8 +414,7 @@ def subject_index_exists(subject: str) -> bool:
         expected_ref = build_subject_index_ref_for_subject(subject_row)
         with get_engine().connect() as connection:
             return vector_table_exists(connection, expected_ref)
-    cs = get_content_store()
-    return bool(run_store_sync(cs.exists, _local_vector_store_key(normalized_subject), default=False))
+    return _load_local_store(normalized_subject).subject_has_rows()
 
 
 def count_indexed_chunks(subject: str, chunk_ids: list[int]) -> int:
@@ -449,7 +449,7 @@ def count_indexed_chunks(subject: str, chunk_ids: list[int]) -> int:
         return int(result or 0)
 
     vector_store = _load_local_store(normalized_subject)
-    return sum(1 for node_id in normalized_ids if node_id in vector_store.data.embedding_dict)
+    return vector_store.count_node_ids(normalized_ids)
 
 
 def query_subject_index(

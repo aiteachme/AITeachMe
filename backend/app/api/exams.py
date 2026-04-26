@@ -6,12 +6,15 @@ import hashlib
 import json
 import re
 
-from fastapi import APIRouter, Body, Depends, Path
+import structlog
+from fastapi import APIRouter, BackgroundTasks, Body, Depends, Path, Request
+from fastapi.responses import StreamingResponse
+from sqlalchemy import or_
 from sqlmodel import Session, select
 
 from app.api.deps import CurrentUserContext, get_current_user_context, get_db, normalize_subject_slug
 from app.api.openapi import build_error_responses
-from app.models import ExamPaper, ExamPaperItem, QuestionTemplate, exam_mode_value
+from app.models import ExamPaper, ExamPaperItem, QuestionTemplate, QuestionTypeRegistry, exam_mode_value
 from app.models.knowledge_unit import KnowledgeUnit
 from app.models.subject import Subject
 from app.repositories import exams_repo
@@ -22,22 +25,46 @@ from app.schemas.exams import (
     ExamGenerateResponse,
     ExamGradeResponse,
     ExamHistoryItem,
+    ExamPaperDeleteResponse,
     ExamPaperDetailResponse,
     ExamPaperItemResponse,
+    QuestionTemplateItemResponse,
+    QuestionTypeRegistryItemResponse,
+    PaperPreview,
+    ExamStudyGuideFocusUnit,
+    ExamStudyGuideResponse,
     ExamSubmitRequest,
 )
 from app.shared.infra.exceptions import AITeachMeError
+from app.shared.infra.database import managed_session
+from app.shared.infra.workflow.live_stream import (
+    format_sse_event,
+    publish_workflow_stream_event,
+    subscribe_workflow_stream,
+)
 from app.utils.time import utcnow
 from app.workflows.examine import (
-    ExamQuestionGenerationSpec,
+    run_exam_grade_workflow,
+    run_exam_study_guide_workflow,
     run_question_build_workflow,
 )
 from app.workflows.profile import schedule_reviews, update_mastery_from_exam
+from app.workflows.support.subjects.learning_context import load_subject_llm_context
 
 router = APIRouter(prefix="/api/v1/subjects/{subject}/exams", tags=["exams"])
+logger = structlog.get_logger(__name__)
 
 _HTML_COMMENT_RE = re.compile(r"<!--.*?-->", re.DOTALL)
 _WHITESPACE_RE = re.compile(r"\s+")
+PAPER_PREVIEW_ROW_LIMIT = 7
+
+
+def _exam_stream_channel(subject: str, paper_id: int) -> str:
+    return f"exam:{subject}:{paper_id}"
+
+
+def _publish_exam_event(subject: str, paper_id: int, event: str, data: dict[str, object]) -> None:
+    publish_workflow_stream_event(_exam_stream_channel(subject, paper_id), event, data)
 
 
 def _ensure_subject(session: Session, subject: str, user_id: str) -> Subject:
@@ -55,6 +82,14 @@ def _json_list(raw: str | None) -> list[dict[str, object]]:
     return [item for item in payload if isinstance(item, dict)] if isinstance(payload, list) else []
 
 
+def _json_dict(raw: str | None) -> dict[str, object]:
+    try:
+        payload = json.loads(raw or "{}")
+    except json.JSONDecodeError:
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
 def _hash_stem(stem: str) -> str:
     return hashlib.sha1(stem.encode("utf-8")).hexdigest()
 
@@ -68,6 +103,149 @@ def _clean_exam_text(value: str | None) -> str:
     text = _HTML_COMMENT_RE.sub(" ", text)
     text = _WHITESPACE_RE.sub(" ", text).strip()
     return text
+
+
+def _build_exam_title(paper: ExamPaper) -> str:
+    return f"{paper.exam_mode} · {paper.created_at.strftime('%m/%d %H:%M')}"
+
+
+def _preview_density(difficulty: str | None) -> int:
+    normalized = str(difficulty or "").lower()
+    if normalized == "easy":
+        return 1
+    if normalized == "hard":
+        return 3
+    return 2
+
+
+def _preview_result_status(is_correct: bool | None) -> str:
+    if is_correct is True:
+        return "correct"
+    if is_correct is False:
+        return "incorrect"
+    return "ungraded"
+
+
+def _preview_shape(question_type: str | None) -> str:
+    normalized = str(question_type or "").lower()
+    if "choice" in normalized or normalized in {"single", "multiple"}:
+        return "choice"
+    if "blank" in normalized or "fill" in normalized:
+        return "blank"
+    if "judge" in normalized or "true_false" in normalized or "boolean" in normalized:
+        return "judge"
+    if "chart" in normalized or "graph" in normalized:
+        return "chart"
+    if "formula" in normalized or "calc" in normalized or "math" in normalized:
+        return "formula"
+    if "code" in normalized or "program" in normalized:
+        return "code"
+    if "short" in normalized or "essay" in normalized or "answer" in normalized:
+        return "short"
+    return "text"
+
+
+def _dedupe_preview_keywords(values: list[str]) -> list[str]:
+    seen: set[str] = set()
+    keywords: list[str] = []
+    for value in values:
+        cleaned = _clean_exam_text(value)
+        if not cleaned:
+            continue
+        key = cleaned.casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        keywords.append(cleaned[:18])
+        if len(keywords) >= 3:
+            break
+    return keywords
+
+
+def _build_paper_preview(
+    items: list[ExamPaperItem],
+    *,
+    knowledge_unit_by_id: dict[int, KnowledgeUnit],
+) -> PaperPreview:
+    ordered_items = sorted(items, key=lambda item: item.item_order)
+    keyword_candidates: list[str] = []
+    for item in ordered_items:
+        for ref in _json_list(item.knowledge_unit_refs_json):
+            knowledge_unit_id = int(ref.get("knowledge_unit_id", 0) or 0)
+            unit = knowledge_unit_by_id.get(knowledge_unit_id)
+            if unit is not None:
+                keyword_candidates.append(unit.canonical_name)
+
+    return PaperPreview(
+        keywords=_dedupe_preview_keywords(keyword_candidates),
+        question_types=_dedupe_preview_keywords([item.question_type for item in ordered_items]),
+        rows=[
+            {
+                "order": item.item_order,
+                "type": item.question_type,
+                "shape": _preview_shape(item.question_type),
+                "difficulty": item.difficulty,
+                "density": _preview_density(item.difficulty),
+                "result_status": _preview_result_status(item.is_correct),
+            }
+            for item in ordered_items[:PAPER_PREVIEW_ROW_LIMIT]
+        ],
+        overflow_count=max(0, len(ordered_items) - PAPER_PREVIEW_ROW_LIMIT),
+    )
+
+
+def _paper_preview_from_json(raw: str | None) -> PaperPreview:
+    payload = _json_dict(raw)
+    if not payload:
+        return PaperPreview()
+    try:
+        return PaperPreview.model_validate(payload)
+    except Exception:
+        return PaperPreview()
+
+
+def _paper_preview_for_response(
+    paper: ExamPaper,
+    items: list[ExamPaperItem],
+    *,
+    knowledge_unit_by_id: dict[int, KnowledgeUnit],
+) -> PaperPreview:
+    saved_preview = _paper_preview_from_json(getattr(paper, "paper_preview_json", "{}"))
+    expected_row_count = min(len(items), PAPER_PREVIEW_ROW_LIMIT)
+    saved_preview_is_complete = not items or len(saved_preview.rows) >= expected_row_count
+    graded_orders = {item.item_order for item in items if item.is_correct is not None}
+    saved_result_by_order = {row.order: row.result_status for row in saved_preview.rows}
+    saved_preview_has_current_results = not graded_orders or all(
+        saved_result_by_order.get(order) in {"correct", "incorrect"}
+        for order in graded_orders
+        if order <= PAPER_PREVIEW_ROW_LIMIT
+    )
+    if (
+        (saved_preview.rows or saved_preview.keywords or saved_preview.question_types)
+        and saved_preview_is_complete
+        and saved_preview_has_current_results
+    ):
+        return saved_preview
+    if not items:
+        return saved_preview
+    return _build_paper_preview(items, knowledge_unit_by_id=knowledge_unit_by_id)
+
+
+def _knowledge_units_for_items(session: Session, items: list[ExamPaperItem]) -> dict[int, KnowledgeUnit]:
+    knowledge_unit_ids = {
+        knowledge_unit_id
+        for item in items
+        for ref in _json_list(item.knowledge_unit_refs_json)
+        for knowledge_unit_id in [int(ref.get("knowledge_unit_id", 0) or 0)]
+        if knowledge_unit_id > 0
+    }
+    return {
+        unit.id: unit
+        for unit in session.exec(
+            select(KnowledgeUnit).where(KnowledgeUnit.id.in_(knowledge_unit_ids))
+        ).all()
+        if unit.id is not None
+    } if knowledge_unit_ids else {}
 
 
 def _is_exam_eligible_unit(unit: KnowledgeUnit) -> bool:
@@ -161,18 +339,27 @@ def _pick_knowledge_units(
             continue
         seen_ids.add(unit.id)
         deduped.append(unit)
+    if limit <= 0:
+        return deduped
     return deduped[: max(1, limit)]
 
 
+def _mastery_by_unit_id(session: Session, *, user_id: str, subject: str) -> dict[int, float]:
+    return {
+        int(state.knowledge_unit_id): float(state.mastery_score)
+        for state in profile_repo.list_knowledge_states(
+            session,
+            user_id=user_id,
+            subject=subject,
+            target_kind="knowledge_unit",
+        )
+        if state.knowledge_unit_id is not None
+    }
+
+
 def _question_type_for_order(*, exam_mode: str, difficulty: str, item_order: int) -> str:
-    if exam_mode == "paper_exam":
-        cycle = ["single_choice", "fill_blank", "short_answer"]
-    elif difficulty == "easy":
-        cycle = ["single_choice", "fill_blank"]
-    elif difficulty == "hard":
-        cycle = ["short_answer", "fill_blank", "single_choice"]
-    else:
-        cycle = ["single_choice", "short_answer", "fill_blank"]
+    del exam_mode, difficulty
+    cycle = ["single_choice", "fill_blank"]
     return cycle[(item_order - 1) % len(cycle)]
 
 
@@ -186,6 +373,109 @@ def _difficulty_for_order(*, requested_difficulty: str, item_order: int) -> str:
     return "medium"
 
 
+def _build_exam_selection_context(
+    *,
+    source: str,
+    knowledge_unit_ids: list[int],
+    focus_prompt: str | None,
+    user_prompt: str | None,
+    style_prompt: str | None,
+    requested_difficulty: str,
+    sample_file_uids: list[str],
+    generation_status: str = "generating",
+    error_message: str | None = None,
+) -> str:
+    payload: dict[str, object] = {
+        "source": source,
+        "knowledge_unit_ids": knowledge_unit_ids,
+        "focus_prompt": focus_prompt,
+        "user_prompt": user_prompt,
+        "style_prompt": style_prompt,
+        "requested_difficulty": requested_difficulty,
+        "sample_file_uids": sample_file_uids,
+        "generation_status": generation_status,
+    }
+    if error_message:
+        payload["error_message"] = error_message
+    return json.dumps(payload, ensure_ascii=False)
+
+
+def _set_exam_generation_status(
+    session: Session,
+    paper: ExamPaper,
+    *,
+    status: str,
+    error_message: str | None = None,
+) -> ExamPaper:
+    context = _json_dict(paper.selection_context_json)
+    context["generation_status"] = status
+    if error_message:
+        context["error_message"] = error_message
+    else:
+        context.pop("error_message", None)
+    paper.selection_context_json = json.dumps(context, ensure_ascii=False)
+    paper.status = status
+    paper.updated_at = utcnow()
+    session.add(paper)
+    session.commit()
+    session.refresh(paper)
+    return paper
+
+
+def _require_generated_questions_by_order(
+    *,
+    build_result,
+    expected_orders: list[int],
+) -> dict[int, dict[str, object]]:
+    if build_result.failed:
+        detail = str(build_result.error.detail if build_result.error is not None else "").strip()
+        raise AITeachMeError(
+            detail=detail or "Exam question generation failed.",
+            error_code="EXAM_QUESTION_BUILD_FAILED",
+            status_code=502,
+        )
+
+    state = build_result.require_value()
+    build_error = str(state.get("error") or "").strip()
+    if build_error:
+        raise AITeachMeError(
+            detail=build_error,
+            error_code="EXAM_QUESTION_BUILD_FAILED",
+            status_code=502,
+        )
+
+    generated_questions = state.get("generated_questions") or []
+    generated_by_order: dict[int, dict[str, object]] = {}
+    invalid_orders: list[object] = []
+    for item in generated_questions:
+        if not isinstance(item, dict):
+            invalid_orders.append(item)
+            continue
+        try:
+            item_order = int(item["item_order"])
+        except (KeyError, TypeError, ValueError):
+            invalid_orders.append(item.get("item_order"))
+            continue
+        generated_by_order[item_order] = item
+
+    if invalid_orders:
+        raise AITeachMeError(
+            detail=f"Exam question generation returned invalid item_order values: {invalid_orders}",
+            error_code="EXAM_QUESTION_BUILD_INVALID",
+            status_code=502,
+        )
+
+    missing_orders = [order for order in expected_orders if order not in generated_by_order]
+    if missing_orders:
+        raise AITeachMeError(
+            detail=f"Exam question generation returned incomplete results; missing item_order values: {missing_orders}",
+            error_code="EXAM_QUESTION_BUILD_INCOMPLETE",
+            status_code=502,
+        )
+
+    return generated_by_order
+
+
 def _upsert_generated_template(
     session: Session,
     *,
@@ -197,8 +487,10 @@ def _upsert_generated_template(
     answer: str,
     explanation: str,
     options: list[str] | None,
+    knowledge_unit_refs: list[dict[str, object]] | None = None,
 ) -> QuestionTemplate:
     stem_hash = _hash_stem(stem)
+    refs = knowledge_unit_refs or [{"knowledge_unit_id": unit.id, "coverage_weight": 1.0, "role": "primary"}]
     existing = session.exec(
         select(QuestionTemplate).where(
             QuestionTemplate.subject == subject,
@@ -214,10 +506,7 @@ def _upsert_generated_template(
         existing.answer = answer
         existing.explanation = explanation
         existing.options_json = json.dumps(options, ensure_ascii=False) if options else None
-        existing.knowledge_unit_refs_json = json.dumps(
-            [{"knowledge_unit_id": unit.id, "coverage_weight": 1.0, "role": "primary"}],
-            ensure_ascii=False,
-        )
+        existing.knowledge_unit_refs_json = json.dumps(refs, ensure_ascii=False)
         existing.updated_at = utcnow()
         session.add(existing)
         session.commit()
@@ -234,12 +523,199 @@ def _upsert_generated_template(
         answer=answer,
         explanation=explanation,
         options_json=json.dumps(options, ensure_ascii=False) if options else None,
-        knowledge_unit_refs_json=json.dumps(
-            [{"knowledge_unit_id": unit.id, "coverage_weight": 1.0, "role": "primary"}],
-            ensure_ascii=False,
-        ),
+        knowledge_unit_refs_json=json.dumps(refs, ensure_ascii=False),
     )
     return exams_repo.create_question_template(session, template)
+
+
+async def _run_exam_generation_background(
+    *,
+    subject: str,
+    user_id: str,
+    paper_id: int,
+    exam_mode: str,
+    unit_ids: list[int],
+    question_count: int,
+    requested_difficulty: str,
+    focus_prompt: str | None,
+    user_prompt: str | None,
+    style_prompt: str | None,
+) -> None:
+    _publish_exam_event(
+        subject,
+        paper_id,
+        "snapshot",
+        {"exam_paper_id": paper_id, "status": "generating", "stage": "question_build"},
+    )
+    try:
+        with managed_session() as session:
+            paper = exams_repo.get_exam_paper_by_id(session, paper_id)
+            if paper is None or paper.subject != subject or paper.user_id != user_id:
+                return
+            subject_row = _ensure_subject(session, subject, user_id)
+            units = list(
+                session.exec(
+                    select(KnowledgeUnit).where(
+                        KnowledgeUnit.subject == subject,
+                        KnowledgeUnit.id.in_(unit_ids),
+                    )
+                ).all()
+            )
+            unit_by_id = {int(unit.id): unit for unit in units if unit.id is not None}
+            exam_units = [unit_by_id[unit_id] for unit_id in unit_ids if unit_id in unit_by_id]
+            if not exam_units:
+                raise AITeachMeError(
+                    detail="No persisted KnowledgeUnits are available for exam generation.",
+                    error_code="NO_PERSISTED_KNOWLEDGE_UNITS_FOR_EXAM",
+                    status_code=409,
+                )
+            subject_context = load_subject_llm_context(session, subject=subject)
+
+            mastery_by_unit_id = _mastery_by_unit_id(session, user_id=user_id, subject=subject)
+
+        build_result = await run_question_build_workflow(
+            subject=subject,
+            subject_name=subject_row.name,
+            subject_description=subject_row.description,
+            subject_user_intent=subject_row.user_intent,
+            exam_mode=exam_mode,
+            units=exam_units,
+            specs=None,
+            question_count=question_count,
+            requested_difficulty=requested_difficulty,
+            mastery_by_unit_id=mastery_by_unit_id,
+            subject_context=subject_context,
+            focus_prompt=focus_prompt or "",
+            user_prompt=user_prompt or "",
+            style_prompt=style_prompt or "",
+        )
+        generated_by_order = _require_generated_questions_by_order(
+            build_result=build_result,
+            expected_orders=list(range(1, question_count + 1)),
+        )
+
+        with managed_session() as session:
+            paper = exams_repo.get_exam_paper_by_id(session, paper_id)
+            if paper is None or paper.subject != subject or paper.user_id != user_id:
+                return
+            units = list(
+                session.exec(
+                    select(KnowledgeUnit).where(
+                        KnowledgeUnit.subject == subject,
+                        KnowledgeUnit.id.in_(unit_ids),
+                    )
+                ).all()
+            )
+            unit_by_id = {int(unit.id): unit for unit in units if unit.id is not None}
+            items: list[ExamPaperItem] = []
+            for order in range(1, question_count + 1):
+                generated = generated_by_order[order]
+                primary_unit_id = int(generated.get("knowledge_unit_id") or 0)
+                unit = unit_by_id.get(primary_unit_id)
+                if unit is None:
+                    continue
+                refs = [
+                    ref
+                    for ref in list(generated.get("knowledge_unit_refs") or [])
+                    if isinstance(ref, dict) and int(ref.get("knowledge_unit_id", 0) or 0) in unit_by_id
+                ] or [{"knowledge_unit_id": primary_unit_id, "coverage_weight": 1.0, "role": "primary"}]
+                template = _upsert_generated_template(
+                    session,
+                    subject=subject,
+                    unit=unit,
+                    difficulty=str(generated["difficulty"]),
+                    question_type=str(generated["question_type"]),
+                    stem=str(generated["stem"]),
+                    answer=str(generated["correct_answer"]),
+                    explanation=str(generated["explanation"]),
+                    options=list(generated.get("options") or []) or None,
+                    knowledge_unit_refs=refs,
+                )
+                items.append(
+                    ExamPaperItem(
+                        exam_paper_id=paper.id or 0,
+                        question_template_id=template.id or 0,
+                        item_order=order,
+                        stem_snapshot=template.stem,
+                        options_snapshot_json=template.options_json,
+                        answer_snapshot=template.answer,
+                        explanation_snapshot=template.explanation,
+                        knowledge_unit_id=unit.id,
+                        knowledge_unit_refs_json=template.knowledge_unit_refs_json,
+                        difficulty=template.difficulty,
+                        question_type=template.question_type,
+                        score=1.0,
+                    )
+                )
+            exams_repo.create_exam_paper_items(session, items)
+            paper.total_items = len(items)
+            paper.total_score = float(len(items))
+            paper.paper_preview_json = _build_paper_preview(
+                items,
+                knowledge_unit_by_id=unit_by_id,
+            ).model_dump_json()
+            _set_exam_generation_status(session, paper, status="ready")
+
+        _publish_exam_event(
+            subject,
+            paper_id,
+            "done",
+            {"exam_paper_id": paper_id, "status": "ready", "num_questions": len(items)},
+        )
+    except Exception as exc:
+        error_message = str(getattr(exc, "detail", None) or exc or "Exam question generation failed.")
+        logger.exception(
+            "exam_generation_background_failed",
+            subject=subject,
+            user_id=user_id,
+            paper_id=paper_id,
+            exam_mode=exam_mode,
+            question_count=question_count,
+            error_message=error_message,
+        )
+        with managed_session() as session:
+            paper = exams_repo.get_exam_paper_by_id(session, paper_id)
+            if paper is not None:
+                _set_exam_generation_status(session, paper, status="failed", error_message=error_message)
+        _publish_exam_event(
+            subject,
+            paper_id,
+            "done",
+            {"exam_paper_id": paper_id, "status": "failed", "error_message": error_message},
+        )
+
+
+async def _spawn_exam_generation_after_response(
+    request: Request,
+    *,
+    subject: str,
+    user_id: str,
+    paper_id: int,
+    exam_mode: str,
+    unit_ids: list[int],
+    question_count: int,
+    requested_difficulty: str,
+    focus_prompt: str | None,
+    user_prompt: str | None,
+    style_prompt: str | None,
+) -> None:
+    request.app.state.background_task_registry.spawn(
+        _run_exam_generation_background(
+            subject=subject,
+            user_id=user_id,
+            paper_id=paper_id,
+            exam_mode=exam_mode,
+            unit_ids=unit_ids,
+            question_count=question_count,
+            requested_difficulty=requested_difficulty,
+            focus_prompt=focus_prompt,
+            user_prompt=user_prompt,
+            style_prompt=style_prompt,
+        ),
+        kind="exam.generate",
+        subject=subject,
+        name=f"exam.generate:{subject}:{paper_id}",
+    )
 
 
 def _paper_item_response(
@@ -257,7 +733,7 @@ def _paper_item_response(
         stem=item.stem_snapshot,
         options=json.loads(item.options_snapshot_json) if item.options_snapshot_json else None,
         correct_answer=item.answer_snapshot,
-        explanation=item.explanation_snapshot,
+        explanation=item.feedback_text or item.explanation_snapshot,
         knowledge_unit_links=[
             {
                 "knowledge_unit_id": knowledge_unit_id,
@@ -282,22 +758,59 @@ def _paper_item_response(
     )
 
 
+def _question_template_response(template: QuestionTemplate) -> QuestionTemplateItemResponse:
+    options_payload = None
+    if template.options_json:
+        try:
+            decoded_options = json.loads(template.options_json)
+            if isinstance(decoded_options, list):
+                options_payload = [str(item) for item in decoded_options]
+        except json.JSONDecodeError:
+            options_payload = None
+
+    return QuestionTemplateItemResponse(
+        id=template.id or 0,
+        subject=template.subject,
+        knowledge_unit_id=template.knowledge_unit_id,
+        question_type=template.question_type,
+        difficulty=template.difficulty,
+        stem=template.stem,
+        options=options_payload,
+        answer=template.answer,
+        explanation=template.explanation,
+        knowledge_unit_refs=_json_list(template.knowledge_unit_refs_json),
+        selection_hints=_json_dict(template.selection_hints_json),
+        template_version=template.template_version,
+        status=template.status,
+        created_at=template.created_at,
+        updated_at=template.updated_at,
+    )
+
+
+def _question_type_response(item: QuestionTypeRegistry) -> QuestionTypeRegistryItemResponse:
+    return QuestionTypeRegistryItemResponse(
+        id=item.id or 0,
+        type_key=item.type_key,
+        display_name=item.display_name,
+        scope=item.scope,
+        subject=item.subject,
+        description=item.description,
+        answer_format=item.answer_format,
+        grading_method=item.grading_method,
+        option_schema=_json_dict(item.option_schema_json),
+        rubric=_json_dict(item.rubric_json),
+        source=item.source,
+        confidence=item.confidence,
+        is_system=item.is_system,
+        is_active=item.is_active,
+        created_at=item.created_at,
+        updated_at=item.updated_at,
+    )
+
+
 def _paper_detail(session: Session, paper: ExamPaper) -> ExamPaperDetailResponse:
     items = exams_repo.list_items_by_paper(session, paper.id or 0)
-    knowledge_unit_ids = {
-        knowledge_unit_id
-        for item in items
-        for ref in _json_list(item.knowledge_unit_refs_json)
-        for knowledge_unit_id in [int(ref.get("knowledge_unit_id", 0) or 0)]
-        if knowledge_unit_id > 0
-    }
-    knowledge_unit_by_id = {
-        unit.id: unit
-        for unit in session.exec(
-            select(KnowledgeUnit).where(KnowledgeUnit.id.in_(knowledge_unit_ids))
-        ).all()
-        if unit.id is not None
-    } if knowledge_unit_ids else {}
+    knowledge_unit_by_id = _knowledge_units_for_items(session, items)
     mastery_by_unit_id = {
         int(state.knowledge_unit_id): state.mastery_score
         for state in profile_repo.list_knowledge_states(
@@ -321,6 +834,11 @@ def _paper_detail(session: Session, paper: ExamPaper) -> ExamPaperDetailResponse
         graded_at=paper.graded_at,
         created_at=paper.created_at,
         selection_context=json.loads(paper.selection_context_json or "{}"),
+        paper_preview=_paper_preview_for_response(
+            paper,
+            items,
+            knowledge_unit_by_id=knowledge_unit_by_id,
+        ),
         items=[
             _paper_item_response(
                 item,
@@ -332,20 +850,113 @@ def _paper_detail(session: Session, paper: ExamPaper) -> ExamPaperDetailResponse
     )
 
 
-def _grade_exam(session: Session, paper: ExamPaper) -> ExamGradeResponse:
+async def _study_guide_detail(session: Session, paper: ExamPaper) -> ExamStudyGuideResponse:
     items = exams_repo.list_items_by_paper(session, paper.id or 0)
+    knowledge_unit_ids = {
+        knowledge_unit_id
+        for item in items
+        for ref in _json_list(item.knowledge_unit_refs_json)
+        for knowledge_unit_id in [int(ref.get("knowledge_unit_id", 0) or 0)]
+        if knowledge_unit_id > 0
+    }
+    knowledge_unit_by_id = {
+        unit.id: unit
+        for unit in session.exec(
+            select(KnowledgeUnit).where(KnowledgeUnit.id.in_(knowledge_unit_ids))
+        ).all()
+        if unit.id is not None
+    } if knowledge_unit_ids else {}
+
+    weak_states = profile_repo.list_weak_knowledge_states(
+        session,
+        user_id=paper.user_id,
+        subject=paper.subject,
+        target_kind="knowledge_unit",
+    )
+    pending_reviews = profile_repo.list_pending_reviews(
+        session,
+        user_id=paper.user_id,
+        subject=paper.subject,
+    )
+    wrong_question_summaries = profile_repo.list_recent_wrong_attempt_summaries(
+        session,
+        user_id=paper.user_id,
+        subject=paper.subject,
+        knowledge_unit_ids=[
+            int(state.knowledge_unit_id)
+            for state in weak_states
+            if state.knowledge_unit_id is not None
+        ],
+        limit=5,
+    )
+
+    score_summary = (
+        f"得分 {paper.score_obtained or 0:.1f}/{paper.total_score or 0:.1f}，"
+        f"共 {paper.total_items} 题，"
+        f"正确 {sum(1 for item in items if item.is_correct)} 题，"
+        f"错误或未作答 {sum(1 for item in items if item.is_correct is not True)} 题。"
+    )
+    weak_point_payload = [
+        {
+            "knowledge_unit_id": int(state.knowledge_unit_id) if state.knowledge_unit_id is not None else None,
+            "knowledge_unit_name": (
+                knowledge_unit_by_id[int(state.knowledge_unit_id)].canonical_name
+                if state.knowledge_unit_id is not None and int(state.knowledge_unit_id) in knowledge_unit_by_id
+                else "未命名知识点"
+            ),
+            "mastery_score": round(float(state.mastery_score), 3),
+            "reason": (
+                f"掌握度 {float(state.mastery_score):.0%}，"
+                f"累计 {state.total_attempts} 次练习，"
+                f"正确 {state.correct_attempts} 次。"
+            ),
+        }
+        for state in weak_states[:5]
+    ]
+    review_payload = [
+        {
+            "knowledge_unit_name": (
+                knowledge_unit_by_id[int(state.knowledge_unit_id)].canonical_name
+                if state.knowledge_unit_id is not None and int(state.knowledge_unit_id) in knowledge_unit_by_id
+                else "未命名知识点"
+            ),
+            "reason": state.review_reason or "建议尽快回顾",
+            "priority": round(float(state.review_priority), 3),
+        }
+        for state in pending_reviews[:5]
+    ]
+
+    response = await run_exam_study_guide_workflow(
+        exam_paper_id=paper.id or 0,
+        subject=paper.subject,
+        exam_title=_build_exam_title(paper),
+        score_summary=score_summary,
+        wrong_question_summaries=wrong_question_summaries,
+        weak_points=weak_point_payload,
+        pending_reviews=review_payload,
+        generated_at=utcnow(),
+    )
+    if response.focus_units:
+        normalized_focus_units: list[ExamStudyGuideFocusUnit] = []
+        for item in response.focus_units:
+            if item.knowledge_unit_name.strip():
+                normalized_focus_units.append(item)
+        response.focus_units = normalized_focus_units
+    return response
+
+
+async def _grade_exam(session: Session, paper: ExamPaper) -> ExamGradeResponse:
+    items = exams_repo.list_items_by_paper(session, paper.id or 0)
+    decisions = await run_exam_grade_workflow(subject=paper.subject, items=items)
     total_score = 0.0
     score_obtained = 0.0
     now = utcnow()
-    for item in items:
-        expected = " ".join((item.answer_snapshot or "").casefold().split())
-        answer = " ".join((item.answer_content or "").casefold().split())
-        is_correct = bool(answer and (answer == expected or answer in expected or expected in answer))
-        item.is_correct = is_correct
-        item.score_max = item.score
-        item.score_obtained = item.score if is_correct else 0.0
-        item.error_cause_label = None if is_correct else "knowledge_gap"
-        item.feedback_text = "Correct." if is_correct else "Review the linked KnowledgeUnit and try again."
+    for item, decision in zip(items, decisions, strict=False):
+        item.is_correct = decision.is_correct
+        item.score_max = decision.score_max
+        item.score_obtained = decision.score_obtained
+        item.error_cause_label = decision.error_cause_label
+        item.feedback_text = decision.feedback_text
         item.graded_at = now
         item.updated_at = now
         total_score += item.score
@@ -389,6 +1000,8 @@ def _grade_exam(session: Session, paper: ExamPaper) -> ExamGradeResponse:
     responses=build_error_responses([400, 404, 409, 500]),
 )
 async def generate_exam(
+    request: Request,
+    background_tasks: BackgroundTasks,
     subject: str = Path(...),
     body: ExamGenerateRequest = Body(...),
     user: CurrentUserContext = Depends(get_current_user_context),
@@ -403,7 +1016,7 @@ async def generate_exam(
         subject=normalized,
         exam_mode=body.exam_mode,
         focus_prompt=body.focus_prompt,
-        limit=question_count,
+        limit=0,
     )
     if not units:
         raise AITeachMeError(
@@ -411,98 +1024,54 @@ async def generate_exam(
             error_code="NO_KNOWLEDGE_UNITS_FOR_EXAM",
             status_code=409,
         )
+    exam_units = [unit for unit in units if unit.id is not None]
+    if not exam_units:
+        raise AITeachMeError(
+            detail="No persisted KnowledgeUnits are available for exam generation.",
+            error_code="NO_PERSISTED_KNOWLEDGE_UNITS_FOR_EXAM",
+            status_code=409,
+        )
 
     mode = exam_mode_value(body.exam_mode)
     requested_difficulty = body.difficulty or "medium"
-    question_specs = [
-        ExamQuestionGenerationSpec(
-            item_order=order,
-            knowledge_unit_id=int(unit.id or 0),
-            question_type=_question_type_for_order(
-                exam_mode=mode,
-                difficulty=_difficulty_for_order(
-                    requested_difficulty=requested_difficulty,
-                    item_order=order,
-                ),
-                item_order=order,
-            ),
-            difficulty=_difficulty_for_order(
-                requested_difficulty=requested_difficulty,
-                item_order=order,
-            ),
-        )
-        for order, unit in enumerate(units, start=1)
-        if unit.id is not None
-    ]
-    build_result = await run_question_build_workflow(
-        subject=normalized,
-        exam_mode=mode,
-        units=units,
-        specs=question_specs,
-        focus_prompt=body.focus_prompt or "",
-        user_prompt=body.user_prompt or "",
-        style_prompt=body.style_prompt or "",
-    )
-    generated_questions = build_result.require_value().get("generated_questions") or []
-
     paper = exams_repo.create_exam_paper(
         session,
         ExamPaper(
             subject=normalized,
             user_id=user.user_id,
             exam_mode=mode,
-            status="ready",
-            total_items=len(units),
-            total_score=float(len(units)),
-            selection_context_json=json.dumps(
-                {
-                    "source": "knowledge_unit_llm",
-                    "knowledge_unit_ids": [unit.id for unit in units],
-                    "focus_prompt": body.focus_prompt,
-                    "user_prompt": body.user_prompt,
-                    "style_prompt": body.style_prompt,
-                    "requested_difficulty": requested_difficulty,
-                    "sample_file_uids": body.sample_file_uids or [],
-                },
-                ensure_ascii=False,
+            status="generating",
+            total_items=question_count,
+            total_score=float(question_count),
+            selection_context_json=_build_exam_selection_context(
+                source="knowledge_unit_llm",
+                knowledge_unit_ids=[int(unit.id or 0) for unit in exam_units],
+                focus_prompt=body.focus_prompt,
+                user_prompt=body.user_prompt,
+                style_prompt=body.style_prompt,
+                requested_difficulty=requested_difficulty,
+                sample_file_uids=body.sample_file_uids or [],
             ),
         ),
     )
-    items: list[ExamPaperItem] = []
-    generated_by_order = {int(item["item_order"]): item for item in generated_questions}
-    for order, unit in enumerate(units, start=1):
-        generated = generated_by_order[order]
-        template = _upsert_generated_template(
-            session,
-            subject=normalized,
-            unit=unit,
-            difficulty=str(generated["difficulty"]),
-            question_type=str(generated["question_type"]),
-            stem=str(generated["stem"]),
-            answer=str(generated["correct_answer"]),
-            explanation=str(generated["explanation"]),
-            options=list(generated.get("options") or []) or None,
-        )
-        items.append(
-            ExamPaperItem(
-                exam_paper_id=paper.id or 0,
-                question_template_id=template.id or 0,
-                item_order=order,
-                stem_snapshot=template.stem,
-                options_snapshot_json=template.options_json,
-                answer_snapshot=template.answer,
-                explanation_snapshot=template.explanation,
-                knowledge_unit_id=unit.id,
-                knowledge_unit_refs_json=template.knowledge_unit_refs_json,
-                difficulty=template.difficulty,
-                question_type=template.question_type,
-                score=1.0,
-            )
-        )
-    exams_repo.create_exam_paper_items(session, items)
+    paper_id = paper.id or 0
+    background_tasks.add_task(
+        _spawn_exam_generation_after_response,
+        request,
+        subject=normalized,
+        user_id=user.user_id,
+        paper_id=paper_id,
+        exam_mode=mode,
+        unit_ids=[int(unit.id or 0) for unit in exam_units],
+        question_count=question_count,
+        requested_difficulty=requested_difficulty,
+        focus_prompt=body.focus_prompt,
+        user_prompt=body.user_prompt,
+        style_prompt=body.style_prompt,
+    )
     return ok_response(
         ExamGenerateResponse(
-            id=paper.id or 0,
+            id=paper_id,
             status=paper.status,
             error_message=None,
             created_at=paper.created_at,
@@ -510,8 +1079,8 @@ async def generate_exam(
             subject=paper.subject,
             user_id=paper.user_id,
             exam_mode=paper.exam_mode,
-            num_questions=len(items),
-            exam_paper_id=paper.id,
+            num_questions=question_count,
+            exam_paper_id=paper_id,
             sample_file_uids=body.sample_file_uids or [],
         )
     )
@@ -539,6 +1108,15 @@ async def exam_history(
         limit=size,
         offset=PageParams(page=page, size=size).offset,
     )
+    items_by_paper_id = {
+        int(paper.id or 0): exams_repo.list_items_by_paper(session, int(paper.id or 0))
+        for paper in rows
+        if paper.id is not None
+    }
+    knowledge_unit_by_id = _knowledge_units_for_items(
+        session,
+        [item for items in items_by_paper_id.values() for item in items],
+    )
     return ok_response(
         build_paginated_data(
             items=[
@@ -554,6 +1132,11 @@ async def exam_history(
                     created_at=paper.created_at,
                     submitted_at=paper.submitted_at,
                     graded_at=paper.graded_at,
+                    paper_preview=_paper_preview_for_response(
+                        paper,
+                        items_by_paper_id.get(int(paper.id or 0), []),
+                        knowledge_unit_by_id=knowledge_unit_by_id,
+                    ),
                 )
                 for paper in rows
             ],
@@ -561,6 +1144,128 @@ async def exam_history(
             size=size,
             total=total,
         )
+    )
+
+
+@router.get(
+    "/question-templates",
+    response_model=ApiResponse[list[QuestionTemplateItemResponse]],
+    summary="List question templates for the subject",
+    responses=build_error_responses([400, 404, 500]),
+)
+async def question_templates(
+    subject: str = Path(...),
+    user: CurrentUserContext = Depends(get_current_user_context),
+    session: Session = Depends(get_db),
+) -> ApiResponse[list[QuestionTemplateItemResponse]]:
+    normalized = normalize_subject_slug(subject)
+    _ensure_subject(session, normalized, user.user_id)
+    rows = list(
+        session.exec(
+            select(QuestionTemplate)
+            .where(QuestionTemplate.subject == normalized)
+            .order_by(QuestionTemplate.created_at.desc(), QuestionTemplate.id.desc())
+        ).all()
+    )
+    return ok_response([_question_template_response(item) for item in rows])
+
+
+@router.get(
+    "/question-types",
+    response_model=ApiResponse[list[QuestionTypeRegistryItemResponse]],
+    summary="List global and subject question types",
+    responses=build_error_responses([400, 404, 500]),
+)
+async def question_types(
+    subject: str = Path(...),
+    user: CurrentUserContext = Depends(get_current_user_context),
+    session: Session = Depends(get_db),
+) -> ApiResponse[list[QuestionTypeRegistryItemResponse]]:
+    normalized = normalize_subject_slug(subject)
+    _ensure_subject(session, normalized, user.user_id)
+    rows = list(
+        session.exec(
+            select(QuestionTypeRegistry)
+            .where(
+                QuestionTypeRegistry.is_active == True,  # noqa: E712
+                or_(
+                    QuestionTypeRegistry.scope == "global",
+                    QuestionTypeRegistry.subject == normalized,
+                ),
+            )
+            .order_by(
+                QuestionTypeRegistry.scope.asc(),
+                QuestionTypeRegistry.subject.asc(),
+                QuestionTypeRegistry.type_key.asc(),
+            )
+        ).all()
+    )
+    return ok_response([_question_type_response(item) for item in rows])
+
+
+@router.get(
+    "/{exam_paper_id}/stream",
+    summary="SSE stream for exam generation status",
+    responses=build_error_responses([400, 404, 500]),
+)
+async def exam_generation_stream(
+    request: Request,
+    subject: str = Path(...),
+    exam_paper_id: int = Path(...),
+    user: CurrentUserContext = Depends(get_current_user_context),
+    session: Session = Depends(get_db),
+) -> StreamingResponse:
+    normalized = normalize_subject_slug(subject)
+    _ensure_subject(session, normalized, user.user_id)
+    paper = exams_repo.get_exam_paper_by_id(session, exam_paper_id)
+    if paper is None or paper.subject != normalized or paper.user_id != user.user_id:
+        _raise_not_found(f"Exam paper `{exam_paper_id}` not found.")
+
+    async def event_generator():
+        def snapshot_payload() -> dict[str, object]:
+            with managed_session() as stream_session:
+                current = exams_repo.get_exam_paper_by_id(stream_session, exam_paper_id)
+                if current is None:
+                    return {
+                        "exam_paper_id": exam_paper_id,
+                        "status": "failed",
+                        "error_message": "Exam paper no longer exists.",
+                    }
+                context = _json_dict(current.selection_context_json)
+                return {
+                    "exam_paper_id": exam_paper_id,
+                    "status": current.status,
+                    "num_questions": current.total_items,
+                    "error_message": context.get("error_message"),
+                    "updated_at": current.updated_at,
+                }
+
+        initial = snapshot_payload()
+        yield format_sse_event("snapshot", initial)
+        if str(initial.get("status") or "") in {"ready", "failed", "graded", "submitted"}:
+            yield format_sse_event("done", initial)
+            return
+
+        with subscribe_workflow_stream(_exam_stream_channel(normalized, exam_paper_id)) as queue:
+            while True:
+                if await request.is_disconnected():
+                    break
+                try:
+                    event = await queue.get()
+                except Exception:
+                    break
+                yield format_sse_event(event.event, event.data)
+                if event.event == "done":
+                    break
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+            "Connection": "keep-alive",
+        },
     )
 
 
@@ -584,6 +1289,54 @@ async def exam_detail(
     return ok_response(_paper_detail(session, paper))
 
 
+@router.delete(
+    "/{exam_paper_id}",
+    response_model=ApiResponse[ExamPaperDeleteResponse],
+    summary="Delete exam paper",
+    responses=build_error_responses([400, 404, 500]),
+)
+async def delete_exam_paper(
+    subject: str = Path(...),
+    exam_paper_id: int = Path(...),
+    user: CurrentUserContext = Depends(get_current_user_context),
+    session: Session = Depends(get_db),
+) -> ApiResponse[ExamPaperDeleteResponse]:
+    normalized = normalize_subject_slug(subject)
+    _ensure_subject(session, normalized, user.user_id)
+    paper = exams_repo.get_exam_paper_by_id(session, exam_paper_id)
+    if paper is None or paper.subject != normalized or paper.user_id != user.user_id:
+        _raise_not_found(f"Exam paper `{exam_paper_id}` not found.")
+
+    exams_repo.delete_exam_paper_cascade(session, paper_id=exam_paper_id)
+    return ok_response(ExamPaperDeleteResponse(deleted=True, exam_paper_id=exam_paper_id))
+
+
+@router.get(
+    "/{exam_paper_id}/study-guide",
+    response_model=ApiResponse[ExamStudyGuideResponse],
+    summary="Generate study guide from a graded exam",
+    responses=build_error_responses([400, 404, 409, 500]),
+)
+async def exam_study_guide(
+    subject: str = Path(...),
+    exam_paper_id: int = Path(...),
+    user: CurrentUserContext = Depends(get_current_user_context),
+    session: Session = Depends(get_db),
+) -> ApiResponse[ExamStudyGuideResponse]:
+    normalized = normalize_subject_slug(subject)
+    _ensure_subject(session, normalized, user.user_id)
+    paper = exams_repo.get_exam_paper_by_id(session, exam_paper_id)
+    if paper is None or paper.subject != normalized or paper.user_id != user.user_id:
+        _raise_not_found(f"Exam paper `{exam_paper_id}` not found.")
+    if paper.status != "graded":
+        raise AITeachMeError(
+            detail="Study guide is available only after grading is complete.",
+            error_code="EXAM_NOT_GRADED",
+            status_code=409,
+        )
+    return ok_response(await _study_guide_detail(session, paper))
+
+
 @router.post(
     "/{exam_paper_id}/submit",
     response_model=ApiResponse[ExamGradeResponse],
@@ -602,6 +1355,10 @@ async def submit_exam(
     paper = exams_repo.get_exam_paper_by_id(session, exam_paper_id)
     if paper is None or paper.subject != normalized or paper.user_id != user.user_id:
         _raise_not_found(f"Exam paper `{exam_paper_id}` not found.")
+    if paper.status == "generating":
+        raise AITeachMeError(detail="Exam is still generating.", error_code="EXAM_STILL_GENERATING", status_code=409)
+    if paper.status == "failed":
+        raise AITeachMeError(detail="Exam generation failed.", error_code="EXAM_GENERATION_FAILED", status_code=409)
     if paper.status == "graded":
         raise AITeachMeError(detail="Exam already graded.", error_code="EXAM_ALREADY_GRADED", status_code=409)
 
@@ -619,4 +1376,4 @@ async def submit_exam(
     session.add(paper)
     session.commit()
     session.refresh(paper)
-    return ok_response(_grade_exam(session, paper))
+    return ok_response(await _grade_exam(session, paper))

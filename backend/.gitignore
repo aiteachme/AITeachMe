@@ -1,13 +1,27 @@
 .venv/
 __pycache__/
-*.pyc
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+*.egg-info/
+dist/
+build/
+.hypothesis/
+.pytest_cache/
 
+uploads/
 data/
-
+data/*.db
+data/*.sqlite
 app/data/
-
+app/data/*.db
+app/data/*.sqlite
 /playground/inputs/
 /playground/outputs/
 
 
 .env
+.env.local

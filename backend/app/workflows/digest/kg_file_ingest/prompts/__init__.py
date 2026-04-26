@@ -1,142 +1,154 @@
-"""知识图谱抽取相关 prompts。"""
+"""Knowledge-graph extraction prompts."""
 
 SYSTEM_PROMPT_KNOWLEDGE_EXTRACT = r"""
-你是知识图谱抽取助手。请从给定的学习资料切片中抽取 KnowledgeUnit 节点与知识图谱关系。
+You extract a structured knowledge graph from one study-material chunk.
 
-## KnowledgeUnit 类型
-只能使用以下小写值：
-- `concept`：核心概念、主题级知识点或更高层级的类别
-- `definition`：概念的正式定义或关键解释
-- `theorem`：定理、引理、命题、公理或重要性质
-- `formula`：公式、方程、恒等式或计算规则
-- `example`：完整例题、案例或情境化说明
-- `exercise`：需要作答的问题、习题或题目
-- `method`：方法、算法、解题技巧或步骤性流程
-- `proof_step`：证明步骤或推导步骤
-- `remark`：备注、注意事项、易错点、补充说明或适用条件
+Return only nodes and edges that are directly supported by the chunk.
 
-## Relation 类型
-只能使用以下小写值：
-- `prerequisite`：source 是学习 target 的前置知识
-- `derivation`：source 可推出、定义、组成或支撑 target
-- `application`：source 被用于 target，或 source 属于 target 的应用语境
-- `example_of`：source 是 target 的例子、习题或案例
-- `similar`：source 与 target 相似
-- `contrast`：source 与 target 构成对比，或两者容易混淆
+## Allowed node types
+- `concept`: one atomic, reusable concept that can stand alone as a Knowledge Unit
+- `definition`: explicit definition or interpretation
+- `theorem`: theorem, property, lemma, proposition, axiom
+- `formula`: formula, equation, rule, identity
+- `example`: worked example or illustrative case
+- `exercise`: question or practice item
+- `method`: method, strategy, technique, algorithm
+- `proof_step`: proof or derivation step
+- `remark`: caveat, note, common mistake, condition
 
-## 习题识别规则
-如果切片内容是题目、习题、试题或练习：
-1. 每一道完整题目抽取为一个 `exercise`，名称尽量简洁。
-2. 讲解过程或完整解例可以抽取为 `example`。
-3. 试卷结构性文字本身不要当作 KnowledgeUnit。
-4. 题目考查的一般知识点仍应抽取为 `concept` 或 `method`，并让 `exercise/example` 通过 `example_of` 指向这些知识点。
-5. 仅为当前题目临时引入的定义，优先放进 `exercise.local_summary`，不要单独抽成独立 `definition`。
+## Allowed edge types
+- `prerequisite`: source is needed before target
+- `derivation`: source defines, derives, supports, or belongs under target
+- `application`: source is used in target
+- `example_of`: source is an example or exercise of target
+- `similar`: source is similar to target
+- `contrast`: source contrasts with target
 
-## 层级与父节点规则
-1. 明显属于章节、主题或类别层级的条目，优先使用 `concept`。
-2. `definition`、`formula`、`example`、`exercise`、`proof_step`、`remark` 在可能时都应填写 `parent_entity_name`。
-3. `taxonomy_hint` 应指向最近的上层 `concept`，不要指向过于宽泛的总根节点。
+## Extraction rules
+1. Prefer academically reusable knowledge units, not temporary wording.
+2. Keep names short and canonical. Use LaTeX for math symbols when needed.
+3. `local_summary` must summarize only what this chunk states.
+4. Edge endpoints must exactly match returned node names.
+5. Do not invent nodes or edges not grounded in the chunk.
+6. Use Knowledge Unit granularity: one definition, one formula, one derivation step, one example, or one method step is a good unit.
+7. Do not create nodes for whole chapters, whole sections, reading guides, or container headings unless the heading itself names one atomic concept.
+8. Prefer 1-3 strong nodes over many weak nodes. Do not explode one section into many near-duplicate topic shells.
 
-## 通用抽取规则
-1. 每个 KnowledgeUnit 都必须有明确的 `name` 和 `node_type`。
-2. `name` 中的数学符号必须使用 LaTeX，例如 `$\cos^2 x$`、`$a_n$`。
-3. `local_summary` 需要概括该单元在当前切片中的核心内容，数学内容用 LaTeX 表示。
-4. 边的 `source_name` 和 `target_name` 必须与已抽取的 KnowledgeUnit 名称完全一致。
-5. 不要编造文本中没有明确支持的知识点或关系。
-6. 如果没有可抽取内容，返回空列表。
+## Hierarchy rules
+1. If the chunk heading names a real concept/topic, include that concept unless the chunk is purely procedural noise.
+2. For `definition`, `formula`, `theorem`, `example`, `exercise`, `proof_step`, and `remark`, fill `parent_entity_name` when a parent concept/method is clear.
+3. For `concept` and `method`, fill `taxonomy_hint` with the nearest broader concept when possible.
+
+## Knowledge-doc specific rules
+When the source is a structured knowledge document section:
+1. Use the heading and body together.
+2. Follow KU granularity strictly: chapter and section containers are usually not KUs; atomic definitions, formulas, proof steps, examples, and method steps usually are.
+3. If the body contains an interpretation, property, formula, method, example, or note, extract it explicitly.
+4. If labeled lines such as `定义:`, `公式:`, `例题:`, `Remark:` appear, convert them into typed nodes instead of leaving the section empty.
+5. If the heading is generic like "几何意义", "性质", "方法", or "注意事项", combine it with the parent topic mentally and return the qualified atomic unit, not the generic heading alone.
+6. Unless the chunk is truly empty, return at least one node.
+7. Prefer a sparse but non-empty graph over an empty result.
 """.strip()
 
 USER_PROMPT_KNOWLEDGE_EXTRACT = """
-## 切片元数据
+## Chunk Metadata
+- Title: {{ chunk_title }}
+- Header path: {{ header_path }}
+{% if doc_source_type %}- Source type: {{ doc_source_type }}{% endif %}
+{% if subject_context %}- Subject context: {{ subject_context }}{% endif %}
+{% if sibling_topics %}- Sibling topics: {{ sibling_topics }}{% endif %}
+{% if digest_mode == "sprint" %}- Digest mode: sprint, prioritize methods, question types, and common mistakes.{% endif %}
+{% if digest_mode == "systematic" %}- Digest mode: systematic, prioritize complete concepts, rigorous definitions, and prerequisite links.{% endif %}
 
-- 标题：{{ chunk_title }}
-- 标题路径：{{ header_path }}
-{% if doc_source_type %}- 文档类型：{{ doc_source_type }}{% endif %}
-{% if subject_context %}- 学科上下文：{{ subject_context }}{% endif %}
-{% if sibling_topics %}- 同级主题：{{ sibling_topics }}{% endif %}
-{% if digest_mode == "sprint" %}- 构建模式：冲刺课，重点关注方法、题型与常见错误{% endif %}
-{% if digest_mode == "systematic" %}- 构建模式：系统课，重点关注概念完整性、定义严谨性与前置链路{% endif %}
+{% if doc_source_type == "knowledge_doc_markdown" %}
+## Special Instructions For This Chunk
+- This chunk comes from a heading-scoped knowledge document.
+- Use the heading and body together.
+- If the body is explanatory rather than question-only, avoid returning an empty result.
+- If the section describes a meaning, formula, property, method, example, or warning, extract those items explicitly.
+- Favor KU-quality atomic units over broad section wrappers.
+{% endif %}
 
-## 切片内容
+## Chunk Content
 
 {{ chunk_content }}
 """.strip()
 
 SYSTEM_PROMPT_KNOWLEDGE_ENTITY_MATCH = """
-你是知识图谱实体匹配助手。请判断下面两个 KnowledgeUnit 是否指向同一个知识点。
+You are a knowledge-graph entity matcher. Decide whether two KnowledgeUnits refer
+to the same underlying concept.
 
-## 可选结论
-- EXACT：是同一个知识点，只是表述不同
-- ALIAS：是同一个知识点的别名、简称、翻译名或同义表达
-- NO_MATCH：不是同一个知识点
+## Allowed answers
+- EXACT: same knowledge point with different phrasing
+- ALIAS: same knowledge point but one is an alias, shorthand, translation, or synonym
+- NO_MATCH: related but not the same knowledge point
 
-## 判断规则
-1. 含义完全一致时，选择 EXACT。
-2. 如果一个只是另一个的别名或替代表达，选择 ALIAS。
-3. 如果两者有关联，但并不是同一知识点，选择 NO_MATCH。
-4. 只能依据提供的信息判断，不要猜测。
+## Rules
+1. Choose EXACT only for semantic identity.
+2. Choose ALIAS only for naming variants of the same thing.
+3. Choose NO_MATCH for merely related concepts.
+4. Use only the provided information.
 """.strip()
 
 USER_PROMPT_KNOWLEDGE_ENTITY_MATCH = """
-## 候选 KnowledgeUnit
-- 名称：{{ candidate_name }}
-- 类型：{{ candidate_type }}
-- 摘要：{{ candidate_summary }}
+## Candidate KnowledgeUnit
+- Name: {{ candidate_name }}
+- Type: {{ candidate_type }}
+- Summary: {{ candidate_summary }}
 
-## 已有 KnowledgeUnit
-- 名称：{{ existing_name }}
-- 类型：{{ existing_type }}
-- 摘要：{{ existing_summary }}
+## Existing KnowledgeUnit
+- Name: {{ existing_name }}
+- Type: {{ existing_type }}
+- Summary: {{ existing_summary }}
 
-请只从 EXACT / ALIAS / NO_MATCH 中选择一个结果。
+Reply with exactly one of: EXACT / ALIAS / NO_MATCH.
 """.strip()
 
 SYSTEM_PROMPT_KNOWLEDGE_UNIT_NAMING = """
-你是教学设计助手。下面这些 KnowledgeUnit 共同构成一个教学单元，请为它生成单元名称、单元摘要和学习目标。
+You are an instructional-design assistant. The items below form one teaching unit.
+Generate a unit title, a concise summary, and learning goals.
 
-## 输出要求
-1. 单元名称：简洁、准确，适合作为课程目录标题
-2. 单元摘要：用一段话概括核心内容
-3. 学习目标：输出 2-4 条，以“学完本单元后，学生能够……”开头
+## Output requirements
+1. Unit title: short, precise, suitable for a course outline
+2. Unit summary: one paragraph capturing the core content
+3. Learning goals: 2-4 items beginning with "After this unit, students can..."
 """.strip()
 
 USER_PROMPT_KNOWLEDGE_UNIT_NAMING = """
-## 核心概念
+## Core Concepts
 
 {{ core_nodes }}
 
-## 支撑定义与方法
-
+## Supporting Definitions And Methods
 {{ support_nodes }}
 
-## 例子与习题
-
+## Examples And Exercises
 {{ example_nodes }}
 """.strip()
 
 SYSTEM_PROMPT_KNOWLEDGE_THEME_TREE = """
-你是课程结构设计助手。给定一组教学单元，请设计一个分层主题树。
+You are a curriculum-structure assistant. Given a list of teaching units, design a
+two-level module/chapter tree.
 
-## 输出要求
-1. 产出两层结构：module 与 chapter
-2. 每个 module 下包含 1-5 个 chapter
-3. 每个 chapter 下包含 1-5 个教学单元
-4. 结构应体现知识上的逻辑组织关系
-5. 标题要简洁、准确，适合作为课程目录标题
-6. 如果教学单元非常少（<= 3），可以只输出一个 module
-7. module 与 chapter 的顺序应体现推荐学习路径
+## Output requirements
+1. Produce `module -> chapter`
+2. Each module should contain 1-5 chapters
+3. Each chapter should contain 1-5 teaching units
+4. The ordering should reflect a reasonable learning path
+5. Titles should be concise and precise
+6. If there are very few units, a single module is acceptable
 """.strip()
 
 USER_PROMPT_KNOWLEDGE_THEME_TREE = """
-## 学科：{{ subject }}
+## Subject: {{ subject }}
 
-## 教学单元
+## Teaching Units
 
 {% for unit in units %}
-- {{ unit.name }}：{{ unit.summary }}
+- {{ unit.name }}: {{ unit.summary }}
 {% endfor %}
 
-请为这些教学单元设计一个合理的 module/chapter 层级结构。
+Design a reasonable module/chapter hierarchy for these teaching units.
 """.strip()
 
 KNOWLEDGE_PROMPTS: dict[str, str] = {

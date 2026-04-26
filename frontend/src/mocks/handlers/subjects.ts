@@ -5,6 +5,9 @@ export interface SubjectItem {
   id: number;
   subject_id: string;
   name: string;
+  description?: string;
+  user_intent?: string;
+  icon_key?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -14,6 +17,9 @@ let mockSubjects: SubjectItem[] = [
     id: 1,
     subject_id: "subj_2gr8k4m9q7pn",
     name: "高数",
+    description: "",
+    user_intent: "",
+    icon_key: "sigma",
     created_at: "2026-03-01T00:00:00Z",
     updated_at: "2026-03-01T00:00:00Z",
   },
@@ -34,17 +40,38 @@ export const subjectHandlers = [
   }),
 
   http.post("/api/v1/subjects/add", async ({ request }) => {
-    const body = (await request.json()) as { name: string };
+    const body = (await request.json()) as { name: string; description?: string; user_intent?: string };
     const now = new Date().toISOString();
     const newSubject: SubjectItem = {
       id: nextId++,
       subject_id: buildMockSubjectId(),
       name: body.name,
+      description: body.description ?? "",
+      user_intent: body.user_intent ?? "",
+      icon_key: "book-open",
       created_at: now,
       updated_at: now,
     };
     mockSubjects.push(newSubject);
     return HttpResponse.json({ code: 0, data: newSubject }, { status: 201 });
+  }),
+
+  http.post("/api/v1/subjects/update", async ({ request }) => {
+    const body = (await request.json()) as {
+      subject_id: string;
+      name?: string | null;
+      description?: string | null;
+      user_intent?: string | null;
+    };
+    const subject = mockSubjects.find((item) => item.subject_id === body.subject_id);
+    if (!subject) {
+      return HttpResponse.json({ code: 404, detail: "Subject not found" }, { status: 404 });
+    }
+    if (body.name !== undefined && body.name !== null) subject.name = body.name;
+    if (body.description !== undefined && body.description !== null) subject.description = body.description;
+    if (body.user_intent !== undefined && body.user_intent !== null) subject.user_intent = body.user_intent;
+    subject.updated_at = new Date().toISOString();
+    return HttpResponse.json({ code: 0, data: subject });
   }),
 
   http.post("/api/v1/subjects/delete/preview", async ({ request }) => {
@@ -128,6 +155,42 @@ export const subjectHandlers = [
             plan_summary: "系统渲染 Mock 数据效果预览，确保样式与排版完全正确。",
             latest_chapter_titles: ["Mock 样式概览"]
         }
+      },
+    });
+  }),
+
+  http.post("/api/v1/subjects/:subjectId/export/preview", ({ params }) => {
+    const subjectId = String(params.subjectId);
+    const subject = mockSubjects.find((item) => item.subject_id === subjectId);
+    return HttpResponse.json({
+      code: 0,
+      data: {
+        subject_id: subjectId,
+        subject_name: subject?.name ?? subjectId,
+        stats: {
+          raw_file_count: 1,
+          total_raw_file_size_bytes: 1024 * 1024 * 4,
+          knowledge_document_count: 3,
+          knowledge_unit_count: 18,
+          knowledge_edge_count: 24,
+          confirmed_build_plan_count: 1,
+          question_type_registry_count: 0,
+          question_template_count: 12,
+          exam_paper_count: 2,
+          chat_session_count: 4,
+          user_knowledge_state_count: 18,
+        },
+        estimated_size_bytes: 1024 * 1024 * 5,
+      },
+    });
+  }),
+
+  http.post("/api/v1/subjects/:subjectId/export", ({ params }) => {
+    const subjectId = String(params.subjectId);
+    return new HttpResponse(`mock export for ${subjectId}`, {
+      headers: {
+        "Content-Type": "application/octet-stream",
+        "Content-Disposition": `attachment; filename="${subjectId}.atmx"`,
       },
     });
   }),

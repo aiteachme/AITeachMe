@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import asyncio
+import secrets
 import time
 from collections.abc import Mapping
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass
-from typing import Any, NoReturn
+from typing import Any, Iterator, NoReturn
 
 import structlog
 
@@ -31,6 +34,24 @@ logger = structlog.get_logger()
 
 _REQUEST_TIMEOUT_GRACE_S = 2
 _LLM_SEMAPHORE: asyncio.Semaphore | None = None
+_LLM_RUNTIME_SNAPSHOT: ContextVar["LLMRuntimeSnapshot | None"] = ContextVar(
+    "llm_runtime_snapshot",
+    default=None,
+)
+
+
+@dataclass(frozen=True)
+class LLMRuntimeSnapshot:
+    """LLM-facing runtime config captured at the start of one long task."""
+
+    settings: Settings
+    base_url: str | None
+    api_keys: tuple[str, ...]
+    provider: str
+    api_version: str | None
+
+    def choose_api_key(self) -> str | None:
+        return secrets.choice(self.api_keys) if self.api_keys else None
 
 
 @dataclass(frozen=True)
@@ -39,6 +60,9 @@ class CompletionContext:
 
     call_purpose: LLMCallPurpose
     settings: Settings
+    base_url: str | None
+    provider: str | None
+    api_version: str | None
     api_key: str | None
     profile: LLMCallProfile
     model: str
@@ -72,7 +96,61 @@ def normalize_model_selector(value: str | None) -> str | None:
     return normalized or None
 
 
-def build_litellm_provider_kwargs(model: str | None) -> dict[str, str]:
+def capture_llm_runtime_snapshot() -> LLMRuntimeSnapshot:
+    """Capture current LLM runtime settings for a long-running workflow."""
+
+    return get_llm_runtime_snapshot()
+
+
+def _current_api_keys() -> tuple[str, ...]:
+    raw_value = get_env("LLM_API_KEY") or ""
+    values: list[str] = []
+    seen: set[str] = set()
+    for item in raw_value.split(","):
+        value = item.strip()
+        if not value or value in seen:
+            continue
+        seen.add(value)
+        values.append(value)
+    return tuple(values)
+
+
+def get_llm_runtime_snapshot() -> LLMRuntimeSnapshot:
+    snapshot = _LLM_RUNTIME_SNAPSHOT.get()
+    if snapshot is not None:
+        return snapshot
+    base_url = get_env("LLM_BASE_URL")
+    explicit_provider = get_env("LLM_PROVIDER")
+    return LLMRuntimeSnapshot(
+        settings=get_settings(),
+        base_url=base_url,
+        api_keys=_current_api_keys(),
+        provider=resolve_runtime_llm_provider(
+            explicit_provider=explicit_provider,
+            base_url=base_url,
+        ),
+        api_version=get_llm_api_version(),
+    )
+
+
+@contextmanager
+def use_llm_runtime_snapshot(snapshot: LLMRuntimeSnapshot | None = None) -> Iterator[LLMRuntimeSnapshot]:
+    """Freeze LLM-facing runtime config for work started inside the context."""
+
+    resolved = snapshot or get_llm_runtime_snapshot()
+    token = _LLM_RUNTIME_SNAPSHOT.set(resolved)
+    try:
+        yield resolved
+    finally:
+        _LLM_RUNTIME_SNAPSHOT.reset(token)
+
+
+def build_litellm_provider_kwargs(
+    model: str | None,
+    *,
+    runtime_provider: str | None = None,
+    api_version: str | None = None,
+) -> dict[str, str]:
     """Infer LiteLLM provider kwargs while keeping raw model names in app code.
 
     Current project convention: business code and settings store plain model
@@ -86,9 +164,10 @@ def build_litellm_provider_kwargs(model: str | None) -> dict[str, str]:
     if not normalized:
         return {}
     explicit_provider, _model_name = split_provider_model_name(normalized)
-    runtime_provider = normalize_llm_provider_name(resolve_runtime_llm_provider())
-    routed_provider = runtime_provider
-    if explicit_provider and runtime_provider != "openrouter":
+    snapshot = get_llm_runtime_snapshot()
+    resolved_runtime_provider = normalize_llm_provider_name(runtime_provider or snapshot.provider)
+    routed_provider = resolved_runtime_provider
+    if explicit_provider and resolved_runtime_provider != "openrouter":
         routed_provider = explicit_provider
 
     litellm_provider = resolve_litellm_provider_name(routed_provider)
@@ -97,9 +176,9 @@ def build_litellm_provider_kwargs(model: str | None) -> dict[str, str]:
 
     kwargs = {"custom_llm_provider": litellm_provider}
     if litellm_provider == "azure":
-        api_version = get_llm_api_version()
-        if api_version:
-            kwargs["api_version"] = api_version
+        resolved_api_version = api_version if api_version is not None else snapshot.api_version
+        if resolved_api_version:
+            kwargs["api_version"] = resolved_api_version
     return kwargs
 
 
@@ -119,6 +198,8 @@ def resolve_settings_model(settings: Settings, model: str | None = None) -> tupl
         return models.light or fallback_model, "light"
     if normalized == "extract":
         return models.light or fallback_model, "extract"
+    if normalized == "vision":
+        return models.vision or fallback_model, "vision"
     if normalized == "rerank":
         return models.rerank or fallback_model, "rerank"
     if normalized == "ocr":
@@ -153,16 +234,23 @@ def build_completion_context(
     """Resolve config and credentials for one task-scoped LLM call."""
 
     resolved_purpose = resolve_call_purpose(call_purpose=call_purpose, task_type=task_type)
-    settings = get_settings()
-    base_url = get_env("LLM_BASE_URL")
-    provider = resolve_runtime_llm_provider(base_url=base_url)
-    api_key = (get_env("LLM_API_KEY") or "").strip() or None
+    snapshot = get_llm_runtime_snapshot()
+    settings = snapshot.settings
+    base_url = snapshot.base_url
+    provider = snapshot.provider
+    api_key = snapshot.choose_api_key()
     if api_key is None and llm_provider_requires_api_key(provider, base_url=base_url):
-        raise MissingLLMApiKeyError()
+        raise MissingLLMApiKeyError(
+            provider=provider,
+            base_url_configured=bool((base_url or "").strip()),
+        )
     resolved_model, model_selector = resolve_settings_model(settings, model)
     return CompletionContext(
         call_purpose=resolved_purpose,
         settings=settings,
+        base_url=base_url,
+        provider=provider,
+        api_version=snapshot.api_version,
         api_key=api_key,
         profile=get_call_profile(resolved_purpose),
         model=resolved_model,
@@ -269,12 +357,18 @@ def build_completion_kwargs(
         "timeout": context.profile.timeout_s,
         "temperature": remaining_kwargs.pop("temperature", context.profile.temperature),
     }
-    api_base = get_env("LLM_BASE_URL")
+    api_base = context.base_url
     if api_base:
         completion_kwargs["api_base"] = api_base
     if context.api_key is not None:
         completion_kwargs["api_key"] = context.api_key
-    completion_kwargs.update(build_litellm_provider_kwargs(context.model))
+    completion_kwargs.update(
+        build_litellm_provider_kwargs(
+            context.model,
+            runtime_provider=context.provider,
+            api_version=context.api_version,
+        )
+    )
     if context.profile.max_tokens is not None:
         completion_kwargs["max_tokens"] = context.profile.max_tokens
     completion_kwargs.update(remaining_kwargs)
@@ -417,7 +511,7 @@ def track_call(
 ) -> None:
     """Record one LLM call in the in-memory observability tracker."""
 
-    settings = get_settings()
+    settings = get_llm_runtime_snapshot().settings
     if not settings.observability.llm_observability_enabled:
         return
 

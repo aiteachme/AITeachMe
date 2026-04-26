@@ -34,7 +34,8 @@ class AgentLoopConfig:
         max_iterations: 最大循环次数（安全阀，防止无限循环）。
         max_tool_calls_per_turn: 同一轮 LLM 响应中最多执行几个工具调用。
         tool_timeout_s: 单个工具执行超时（秒）。
-        task_type: 任务类型，影响模型路由。
+        task_type: 任务类型，用于调用 profile 和观测标签。
+        model: 模型选择器，默认固定使用 settings.models.primary。
         result_max_chars: 工具返回结果截断长度（防止 context 爆炸）。
     """
 
@@ -42,6 +43,7 @@ class AgentLoopConfig:
     max_tool_calls_per_turn: int = 5
     tool_timeout_s: int = 30
     task_type: TaskType = TaskType.CHAT
+    model: str = "primary"
     result_max_chars: int = 2000
     tool_argument_overrides: dict[str, dict[str, Any]] = field(default_factory=dict)
 
@@ -114,7 +116,7 @@ async def run_agent_loop(
     available_tools = _get_tool_definitions(registry, tools)
     if not available_tools:
         # 无可用工具 → 直接走普通补全（极简路径）
-        answer = await acompletion(messages, task_type=cfg.task_type)
+        answer = await acompletion(messages, task_type=cfg.task_type, model=cfg.model)
         return AgentLoopResult(final_answer=answer, iterations=1)
 
     all_tool_calls: list[ToolCallRecord] = []
@@ -128,6 +130,7 @@ async def run_agent_loop(
             current_messages,
             tools=available_tools,
             task_type=cfg.task_type,
+            model=cfg.model,
         )
 
         message = response.choices[0].message
@@ -159,7 +162,7 @@ async def run_agent_loop(
     logger.warning("agent_loop_max_iterations", max=cfg.max_iterations)
 
     # 最后一轮强制普通补全获取回答
-    final_answer = await acompletion(current_messages, task_type=cfg.task_type)
+    final_answer = await acompletion(current_messages, task_type=cfg.task_type, model=cfg.model)
     return AgentLoopResult(
         final_answer=final_answer,
         iterations=cfg.max_iterations,
@@ -202,7 +205,7 @@ async def run_agent_loop_stream(
 
     available_tools = _get_tool_definitions(registry, tools)
     if not available_tools:
-        async for chunk in acompletion_stream(messages, task_type=cfg.task_type):
+        async for chunk in acompletion_stream(messages, task_type=cfg.task_type, model=cfg.model):
             yield chunk
         return
 
@@ -214,16 +217,20 @@ async def run_agent_loop_stream(
             current_messages,
             tools=available_tools,
             task_type=cfg.task_type,
+            model=cfg.model,
         )
 
         message = response.choices[0].message
         tool_calls = getattr(message, "tool_calls", None)
 
         if not tool_calls:
-            # 最后一轮没有工具调用 → 此结果就是最终回答
-            # 但我们已经用非流式拿到了，需要把内容 yield 出去
-            if message.content:
-                yield message.content
+            # 工具选择使用非流式调用；最终回答必须重新走流式补全，保证前端拿到真实 token SSE。
+            async for chunk in acompletion_stream(
+                current_messages,
+                task_type=cfg.task_type,
+                model=cfg.model,
+            ):
+                yield chunk
             return
 
         # 执行工具
@@ -237,7 +244,7 @@ async def run_agent_loop_stream(
             })
 
     # 安全阀 → 流式获取最终回答
-    async for chunk in acompletion_stream(current_messages, task_type=cfg.task_type):
+    async for chunk in acompletion_stream(current_messages, task_type=cfg.task_type, model=cfg.model):
         yield chunk
 
 

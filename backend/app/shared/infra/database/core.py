@@ -21,7 +21,7 @@ from typing import Generator
 
 import sqlalchemy as sa
 import structlog
-from sqlmodel import Session, SQLModel, create_engine
+from sqlmodel import Session, SQLModel, create_engine, select
 
 from app.shared.infra.settings import (
     clear_system_settings_override,
@@ -38,16 +38,17 @@ from app.shared.infra.runtime import get_sqlite_db_path
 from app.shared.infra.subject import (
     extract_postgres_subject_index_data_table_name,
 )
+from migrations.seed_data.question_types import BUILTIN_QUESTION_TYPE_ROWS
 from app.models.build_planner import ConfirmedBuildPlan
 from app.models.chat import ChatMessage, ChatSession
 from app.models.email_verification import EmailVerificationCode
-from app.models.exam import ExamPaper, ExamPaperItem, QuestionTemplate
+from app.models.exam import ExamPaper, ExamPaperItem, QuestionTemplate, QuestionTypeRegistry
 from app.models.knowledge import RetrievalChunk
 from app.models.knowledge_doc import KnowledgeDocument
 from app.models.knowledge_relation import KnowledgeEdge
 from app.models.knowledge_unit import KnowledgeUnit
 from app.models.profile import UserKnowledgeState
-from app.models.raw_file import RawFile
+from app.models.raw_file import RawFile, SubjectFileLink
 from app.models.subject import Subject
 from app.models.system import SystemRuntimeSettings, SystemSettingsSnapshot, UserRuntimeSettings
 from app.models.user import User
@@ -60,11 +61,13 @@ _SCHEMA_MODELS = (
     EmailVerificationCode,
     Subject,
     RawFile,
+    SubjectFileLink,
     ConfirmedBuildPlan,
     RetrievalChunk,
     KnowledgeDocument,
     KnowledgeUnit,
     KnowledgeEdge,
+    QuestionTypeRegistry,
     QuestionTemplate,
     ExamPaper,
     ExamPaperItem,
@@ -80,8 +83,18 @@ _EXPECTED_SCHEMA_COLUMNS = {
     table.name: {column.name for column in table.columns}
     for table in _SCHEMA_TABLES
 }
-_ALLOWED_SQLITE_RUNTIME_TABLES = {"sqlite_sequence"}
-_ALLOWED_SQLITE_RUNTIME_PREFIXES: tuple[str, ...] = ()
+_ALLOWED_SQLITE_RUNTIME_TABLES = {
+    "sqlite_sequence",
+    # Memory keeps its own lightweight runtime tables for now. They are not
+    # part of the SQLModel schema, but they are legitimate local app state and
+    # must not trigger SQLite drift recovery.
+    "memory_entries",
+    "learning_logs",
+}
+_ALLOWED_SQLITE_RUNTIME_PREFIXES: tuple[str, ...] = (
+    # sqlite-vec local vector tables and their shadow tables are runtime-owned.
+    "atm_vec_",
+)
 _REMOVED_POSTGRES_TABLES = (
     "unit_dependency",
     "theme_tree_node",
@@ -96,11 +109,33 @@ _REMOVED_POSTGRES_COLUMNS = {
     "exam_paper": ("curriculum_version_id", "theme_tree_node_id"),
 }
 _REMOVED_SQLITE_TABLES = _REMOVED_POSTGRES_TABLES
-_REMOVED_SQLITE_COLUMNS = _REMOVED_POSTGRES_COLUMNS
+_REMOVED_SQLITE_COLUMNS = {
+    **_REMOVED_POSTGRES_COLUMNS,
+    "chat_session": ("user_goal",),
+    "system_settings_snapshot": ("settings_path",),
+}
+_SQLITE_ADDITIVE_COLUMNS = {
+    "subject": (
+        ("description", "TEXT NOT NULL DEFAULT ''"),
+        ("user_intent", "TEXT NOT NULL DEFAULT ''"),
+        ("learning_intent_text", "TEXT NOT NULL DEFAULT ''"),
+        ("subject_intro_text", "TEXT NOT NULL DEFAULT ''"),
+        ("document_summary_json", "JSON NOT NULL DEFAULT '{}'"),
+        ("llm_context_text", "TEXT NOT NULL DEFAULT ''"),
+    ),
+}
 
 
 def _get_db_path():
     return get_sqlite_db_path()
+
+
+def _json_dumps(value: object) -> str:
+    return json.dumps(value, ensure_ascii=False, separators=(",", ":"))
+
+
+def _json_loads(value: str) -> object:
+    return json.loads(value)
 
 
 def reset_runtime_state() -> None:
@@ -261,6 +296,37 @@ def _drop_sqlite_removed_schema(engine: sa.Engine) -> None:
             connection.execute(sa.text("PRAGMA foreign_keys = ON"))
 
 
+def _apply_sqlite_additive_schema_updates(engine: sa.Engine) -> None:
+    inspector = sa.inspect(engine)
+    existing_tables = set(inspector.get_table_names())
+    if not existing_tables:
+        return
+
+    with engine.begin() as connection:
+        for table_name, columns in _SQLITE_ADDITIVE_COLUMNS.items():
+            if table_name not in existing_tables:
+                continue
+            existing_columns = {
+                column["name"]
+                for column in inspector.get_columns(table_name)
+            }
+            for column_name, column_sql in columns:
+                if column_name in existing_columns:
+                    continue
+                connection.execute(
+                    sa.text(
+                        f"ALTER TABLE {quote_sqlite_identifier(table_name)} "
+                        f"ADD COLUMN {quote_sqlite_identifier(column_name)} {column_sql}"
+                    )
+                )
+                existing_columns.add(column_name)
+                logger.info(
+                    "sqlite_additive_column_added",
+                    table_name=table_name,
+                    column_name=column_name,
+                )
+
+
 def _drop_sqlite_legacy_schema(engine: sa.Engine) -> None:
     """Backward-compatible alias for older tests and local tooling."""
 
@@ -273,6 +339,7 @@ def _ensure_local_sqlite_schema(engine: sa.Engine) -> sa.Engine:
         return engine
 
     _drop_sqlite_removed_schema(engine)
+    _apply_sqlite_additive_schema_updates(engine)
     drift = _inspect_sqlite_schema_drift(engine)
     if drift is None:
         return engine
@@ -309,6 +376,8 @@ def _build_sqlite_engine() -> sa.Engine:
     engine = create_engine(
         f"sqlite:///{db_path}",
         connect_args={"check_same_thread": False},
+        json_serializer=_json_dumps,
+        json_deserializer=_json_loads,
     )
 
     @sa.event.listens_for(engine, "connect")
@@ -337,6 +406,8 @@ def _build_postgres_engine(settings) -> sa.Engine:
         pool_size=5,
         max_overflow=10,
         pool_pre_ping=True,
+        json_serializer=_json_dumps,
+        json_deserializer=_json_loads,
     )
     logger.info("database_engine_created", dialect="postgresql")
     return engine
@@ -641,6 +712,34 @@ def _ensure_default_local_user(engine) -> None:
             session.commit()
 
 
+def _ensure_builtin_question_types(engine: sa.Engine) -> None:
+    now = datetime.now(timezone.utc)
+    with Session(engine, expire_on_commit=False) as session:
+        for payload in BUILTIN_QUESTION_TYPE_ROWS:
+            existing = session.exec(
+                select(QuestionTypeRegistry).where(
+                    QuestionTypeRegistry.scope == "global",
+                    QuestionTypeRegistry.subject == "",
+                    QuestionTypeRegistry.type_key == payload["type_key"],
+                )
+            ).first()
+            if existing is None:
+                existing = QuestionTypeRegistry(
+                    scope="global",
+                    subject="",
+                    source="system",
+                    is_system=True,
+                    is_active=True,
+                    confidence=1.0,
+                    created_at=now,
+                )
+            for key, value in payload.items():
+                setattr(existing, key, value)
+            existing.updated_at = now
+            session.add(existing)
+        session.commit()
+
+
 def _settings_snapshot_payload(settings) -> dict[str, object]:
     return settings.model_dump(mode="json")
 
@@ -694,6 +793,7 @@ def _init_local_sqlite_db(settings) -> None:
     SQLModel.metadata.create_all(engine, tables=_SCHEMA_TABLES)
     _refresh_system_settings_override(engine)
     _ensure_default_local_user(engine)
+    _ensure_builtin_question_types(engine)
     _upsert_settings_snapshot(engine, get_settings())
 
     logger.info(

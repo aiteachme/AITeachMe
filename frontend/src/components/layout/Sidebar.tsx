@@ -1,11 +1,13 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
   BarChart3,
   BookOpen,
+  Bot,
   Download,
   Edit3,
   FileText,
+  FolderOpen,
   LayoutGrid,
   Loader2,
   Menu,
@@ -28,10 +30,13 @@ import {
 import type { SubjectDeletePreviewData, SubjectItem } from "../../api/generated/model";
 import { apiClient, getApiErrorMessage } from "../../api/client";
 import { unwrapOrvalResponse } from "../../lib/unwrapOrvalResponse";
-import { downloadSubjectPackage } from "../../lib/subjectPackage";
+import { resolveSubjectIcon } from "../../lib/subjectIcons";
 import { cn } from "../../lib/utils";
+import { publicAssetPath } from "../../lib/publicAsset";
+import { SubjectExportModal } from "../subject/SubjectExportModal";
 import { SubjectDeleteConfirmModal } from "./SubjectDeleteConfirmModal";
 import { CommunityModal, ensureCommunityQrPreloaded } from "./CommunityPanel";
+import { AiConversationSidebarSection } from "../interaction/AiConversationSidebarSection";
 
 import { Button } from "../ui/Button";
 
@@ -51,6 +56,10 @@ const COLOR_CLASSES = [
   "bg-cyan-600",
   "bg-amber-600",
 ];
+
+const LOGO_SRC = publicAssetPath("logo.svg");
+
+type SubjectWithIcon = SubjectItem & { icon_key?: string | null };
 
 function colorClassForSubject(name: string) {
   let hash = 0;
@@ -89,11 +98,14 @@ function RenameSubjectModal({
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center">
-      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative z-10 w-[380px] max-w-[90vw] rounded-2xl border border-slate-200 bg-white shadow-2xl">
-        <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
+      <div
+        className="absolute inset-0 modal-backdrop"
+        onClick={onClose}
+      />
+      <div className="relative z-10 w-[380px] max-w-[90vw] rounded-2xl border border-slate-200 bg-white shadow-[0_18px_48px_-24px_rgba(15,23,42,0.35)] dark:border-slate-800 dark:bg-slate-950 dark:shadow-[0_24px_56px_-28px_rgba(0,0,0,0.72)]">
+        <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4 dark:border-slate-800">
           <h3 className="text-sm font-bold text-slate-900">重命名学科</h3>
-          <button onClick={onClose} className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600">
+          <button onClick={onClose} className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-200">
             <X className="h-4 w-4" />
           </button>
         </div>
@@ -107,7 +119,7 @@ function RenameSubjectModal({
                 renameMutation.mutate();
               }
             }}
-            className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-300"
+            className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-300 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:ring-slate-700"
             placeholder="输入学科名称"
             autoFocus
           />
@@ -115,7 +127,7 @@ function RenameSubjectModal({
             <p className="text-xs text-red-600">{getApiErrorMessage(renameMutation.error, "重命名失败，请重试")}</p>
           ) : null}
         </div>
-        <div className="flex justify-end gap-2 border-t border-slate-100 bg-slate-50 px-5 py-3">
+        <div className="flex justify-end gap-2 border-t border-slate-100 bg-slate-50 px-5 py-3 dark:border-slate-800 dark:bg-slate-900/80">
           <Button variant="outline" onClick={onClose}>取消</Button>
           <Button onClick={() => renameMutation.mutate()} disabled={!name.trim() || renameMutation.isPending}>
             {renameMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
@@ -142,15 +154,17 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
   const [renameTarget, setRenameTarget] = useState<{ id: string; name: string } | null>(null);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [isCommunityModalOpen, setIsCommunityModalOpen] = useState(false);
-  const [exportingSubjectId, setExportingSubjectId] = useState<string | null>(null);
+  const [exportSubjectId, setExportSubjectId] = useState<string | null>(null);
 
   const menuRef = useRef<HTMLDivElement>(null);
   const location = useLocation();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const effectiveCollapsed = !isMobileOpen && isCollapsed;
+  const isGlobalAssistantActive = location.pathname === "/assistant";
   const isCreateSubjectActive = location.pathname === "/";
   const isMyLearningSpaceActive = location.pathname === "/spaces";
+  const isLibraryActive = location.pathname === "/library";
 
   const { data: subjects = [], isLoading } = useQuery({
     queryKey: ["subjects"],
@@ -220,6 +234,12 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
   });
 
   const groupedSubjects = useMemo(() => subjects as SubjectItem[], [subjects]);
+  const expandNavigationSidebar = useCallback(() => {
+    setIsCollapsed(false);
+  }, []);
+  const closeMobileNavigation = useCallback(() => {
+    setIsMobileOpen(false);
+  }, []);
 
   const toggleSubject = (subjectId: string) => {
     if (effectiveCollapsed) {
@@ -247,63 +267,70 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
     deletePreviewMutation.mutate(subject.subject_id);
   };
 
-  async function handleExportSubject(subject: SubjectItem) {
-    setSubjectActionError(undefined);
-    setExportingSubjectId(subject.subject_id);
-    try {
-      await downloadSubjectPackage(subject.subject_id);
-    } catch (error: unknown) {
-      setSubjectActionError(getApiErrorMessage(error, "导出失败，请重试"));
-    } finally {
-      setExportingSubjectId((current) => (current === subject.subject_id ? null : current));
-    }
-  }
-
   return (
     <>
       <button
         type="button"
         onClick={() => setIsMobileOpen((prev) => !prev)}
-        className="fixed left-4 top-4 z-50 rounded-lg border border-slate-200 bg-white p-2 shadow-sm lg:hidden"
+        className="fixed left-4 top-4 z-50 flex h-11 w-11 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-700 shadow-sm dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300 lg:hidden"
+        aria-label={isMobileOpen ? "关闭导航" : "打开导航"}
       >
         {isMobileOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
       </button>
 
       {isMobileOpen ? (
-        <div className="fixed inset-0 z-30 bg-black/20 backdrop-blur-sm lg:hidden" onClick={() => setIsMobileOpen(false)} />
+        <div className="fixed inset-0 z-30 modal-backdrop lg:hidden" onClick={() => setIsMobileOpen(false)} />
       ) : null}
 
       <aside
         className={cn(
-          "fixed inset-y-0 left-0 z-40 flex shrink-0 flex-col border-r border-slate-200/50 bg-gradient-to-b from-white/90 to-white/50 backdrop-blur-2xl shadow-[4px_0_30px_rgba(0,0,0,0.03)] ring-1 ring-white/50 transition-all lg:static",
-          effectiveCollapsed ? "w-[64px]" : "w-[240px]",
+          "fixed inset-y-0 left-0 z-40 flex min-h-0 shrink-0 self-stretch flex-col overflow-hidden rounded-r-[22px] border-r border-slate-200/50 dark:border-slate-800/50 bg-gradient-to-b from-white/96 to-white/92 dark:from-[#0b0f19]/96 dark:to-[#0b0f19]/92 shadow-[4px_0_24px_rgba(0,0,0,0.03)] dark:shadow-[4px_0_24px_rgba(0,0,0,0.3)] ring-1 ring-white/50 dark:ring-white/5 transition-[width,transform] duration-200 lg:static",
+          effectiveCollapsed ? "w-[56px]" : "w-[240px]",
           isMobileOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0",
         )}
       >
         <div
           className={cn(
-            "flex h-14 items-center border-b border-slate-100",
+            "flex h-12 shrink-0 items-center border-b border-slate-100 dark:border-slate-800/50",
             effectiveCollapsed ? "justify-center px-0" : "justify-between px-4",
           )}
         >
-          {!effectiveCollapsed ? (
-            <Link to="/" className="flex items-center gap-2 text-slate-900">
-              <span className="text-lg font-bold">AITeachMe</span>
-            </Link>
-          ) : null}
-          <button
-            type="button"
-            onClick={() => setIsCollapsed((prev) => !prev)}
-            className="flex h-6 w-6 items-center justify-center rounded text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors"
-            title={effectiveCollapsed ? "展开侧边栏" : "收起侧边栏"}
-          >
-            {effectiveCollapsed ? <PanelLeftOpen className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
-          </button>
+          {effectiveCollapsed ? (
+            <div className="group relative h-8 w-8">
+              <img
+                src={LOGO_SRC}
+                alt="AITeachMe"
+                className="pointer-events-none absolute inset-0 m-auto h-6 w-6 object-contain opacity-100 transition-opacity duration-150 group-hover:opacity-0 dark:invert dark:opacity-90 dark:group-hover:opacity-0"
+              />
+              <button
+                type="button"
+                onClick={() => setIsCollapsed(false)}
+                className="absolute inset-0 flex h-8 w-8 items-center justify-center rounded text-slate-400 opacity-0 transition-all duration-150 group-hover:opacity-100 hover:bg-slate-100 hover:text-slate-600 dark:text-slate-500 dark:hover:bg-slate-800/50 dark:hover:text-slate-300"
+                title="展开侧边栏"
+              >
+                <PanelLeftOpen className="h-4 w-4" />
+              </button>
+            </div>
+          ) : (
+            <>
+              <Link to="/" className="flex items-center gap-2 text-slate-900 dark:text-slate-100">
+                <img src={LOGO_SRC} alt="AITeachMe" className="h-5 w-auto dark:invert dark:opacity-90" />
+              </Link>
+              <button
+                type="button"
+                onClick={() => setIsCollapsed(true)}
+                className="flex h-11 w-11 items-center justify-center rounded text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600 dark:text-slate-500 dark:hover:bg-slate-800/50 dark:hover:text-slate-300 lg:h-8 lg:w-8"
+                title="收起侧边栏"
+              >
+                <PanelLeftClose className="h-4 w-4" />
+              </button>
+            </>
+          )}
         </div>
 
-        <div className={cn("space-y-2", effectiveCollapsed ? "px-0 py-3" : "p-3")}>
+        <div className={cn("shrink-0 space-y-1", effectiveCollapsed ? "px-0 pb-2 pt-1" : "px-2 pb-2 pt-1")}>
           {effectiveCollapsed ? (
-            <div className="flex flex-col items-center gap-2">
+            <div className="flex flex-col items-center gap-1">
               <button
                 type="button"
                 onClick={() => {
@@ -317,13 +344,33 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
                 }}
                 title="新建学科"
                 className={cn(
-                  "flex h-8 w-8 items-center justify-center rounded-lg transition-all",
+                  "flex h-7 w-7 items-center justify-center rounded-md transition-colors",
                   isCreateSubjectActive
-                    ? "bg-slate-100 text-slate-900"
-                    : "text-slate-500 hover:bg-slate-100 hover:text-slate-900",
+                    ? "bg-[#eef2f6] text-[#243246] ring-1 ring-[#d9e1ea] hover:bg-[#e4ebf3] hover:text-[#182437] dark:bg-slate-800 dark:text-slate-200 dark:ring-slate-700 dark:hover:bg-slate-700/70 dark:hover:text-slate-50"
+                    : "text-slate-500 hover:bg-[#eef3f8] hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800/60 dark:hover:text-slate-200",
                 )}
               >
-                <Edit3 className="h-4 w-4 shrink-0" strokeWidth={2.2} />
+                <Edit3 className="h-3.5 w-3.5 shrink-0" strokeWidth={2.2} />
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setSubjectActionError(undefined);
+                  setOpenMenuId(null);
+                  setIsMobileOpen(false);
+                  setIsCollapsed(false);
+                  navigate("/assistant");
+                }}
+                title="全局助手"
+                className={cn(
+                  "flex h-7 w-7 items-center justify-center rounded-md transition-colors",
+                  isGlobalAssistantActive
+                    ? "bg-[#eef2f6] text-[#243246] ring-1 ring-[#d9e1ea] hover:bg-[#e4ebf3] hover:text-[#182437] dark:bg-slate-800 dark:text-slate-200 dark:ring-slate-700 dark:hover:bg-slate-700/70 dark:hover:text-slate-50"
+                    : "text-slate-500 hover:bg-[#eef3f8] hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800/60 dark:hover:text-slate-200",
+                )}
+              >
+                <Bot className="h-3.5 w-3.5 shrink-0" strokeWidth={2.2} />
               </button>
 
               <button
@@ -335,15 +382,35 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
                   setIsCollapsed(false);
                   navigate("/spaces");
                 }}
-                title="我的学习空间"
+                title="学习空间"
                 className={cn(
-                  "flex h-8 w-8 items-center justify-center rounded-lg transition-all",
+                  "flex h-7 w-7 items-center justify-center rounded-md transition-colors",
                   isMyLearningSpaceActive
-                    ? "bg-slate-100 text-slate-900"
-                    : "text-slate-500 hover:bg-slate-100 hover:text-slate-900",
+                    ? "bg-[#eef2f6] text-[#243246] ring-1 ring-[#d9e1ea] hover:bg-[#e4ebf3] hover:text-[#182437] dark:bg-slate-800 dark:text-slate-200 dark:ring-slate-700 dark:hover:bg-slate-700/70 dark:hover:text-slate-50"
+                    : "text-slate-500 hover:bg-[#eef3f8] hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800/60 dark:hover:text-slate-200",
                 )}
               >
-                <LayoutGrid className="h-4 w-4 shrink-0" strokeWidth={2.2} />
+                <LayoutGrid className="h-3.5 w-3.5 shrink-0" strokeWidth={2.2} />
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setSubjectActionError(undefined);
+                  setOpenMenuId(null);
+                  setIsMobileOpen(false);
+                  setIsCollapsed(false);
+                  navigate("/library");
+                }}
+                title="我的资料库"
+                className={cn(
+                  "flex h-7 w-7 items-center justify-center rounded-md transition-colors",
+                  isLibraryActive
+                    ? "bg-[#eef2f6] text-[#243246] ring-1 ring-[#d9e1ea] hover:bg-[#e4ebf3] hover:text-[#182437] dark:bg-slate-800 dark:text-slate-200 dark:ring-slate-700 dark:hover:bg-slate-700/70 dark:hover:text-slate-50"
+                    : "text-slate-500 hover:bg-[#eef3f8] hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800/60 dark:hover:text-slate-200",
+                )}
+              >
+                <FolderOpen className="h-3.5 w-3.5 shrink-0" strokeWidth={2.2} />
               </button>
             </div>
           ) : (
@@ -351,10 +418,10 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
               <button
                 type="button"
                 className={cn(
-                  "flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left transition-colors",
+                  "group flex h-7 w-full items-center gap-2 rounded-md px-2 text-left transition-colors",
                   isCreateSubjectActive
-                    ? "bg-slate-100/80 text-slate-900"
-                    : "text-slate-900 hover:bg-slate-100/80",
+                    ? "bg-[#f3f6f9] text-slate-950 ring-1 ring-[#dbe3ec] hover:bg-[#e8eef5] dark:bg-slate-800/80 dark:text-slate-100 dark:ring-slate-700 dark:hover:bg-slate-700/70"
+                    : "text-slate-900 hover:bg-[#eef3f8] dark:text-slate-300 dark:hover:bg-slate-800/60",
                 )}
                 onClick={() => {
                   setSubjectActionError(undefined);
@@ -366,19 +433,69 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
                 }}
               >
                 <Edit3
-                  className={cn("h-5 w-5 shrink-0", isCreateSubjectActive ? "text-slate-700" : "text-slate-500")}
+                  className={cn(
+                    "h-3.5 w-3.5 shrink-0 transition-colors",
+                    isCreateSubjectActive
+                      ? "text-[#4b607b] group-hover:text-[#324761] dark:text-slate-300 dark:group-hover:text-slate-100"
+                      : "text-slate-500 group-hover:text-slate-700 dark:text-slate-400 dark:group-hover:text-slate-200",
+                  )}
                   strokeWidth={2.2}
                 />
-                <span className="text-[15px] font-normal tracking-[0.01em] text-slate-900">新建学科</span>
+                <span
+                  className={cn(
+                    "whitespace-nowrap text-xs tracking-[0.01em]",
+                    isCreateSubjectActive
+                      ? "font-semibold text-[#1f2937] group-hover:text-[#172033] dark:text-slate-100 dark:group-hover:text-white"
+                      : "font-normal text-slate-900 group-hover:text-slate-950 dark:text-slate-300 dark:group-hover:text-slate-100",
+                  )}
+                >
+                  新建学科
+                </span>
               </button>
 
               <button
                 type="button"
                 className={cn(
-                  "flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left transition-colors",
+                  "group flex h-7 w-full items-center gap-2 rounded-md px-2 text-left transition-colors",
+                  isGlobalAssistantActive
+                    ? "bg-[#f3f6f9] text-slate-950 ring-1 ring-[#dbe3ec] hover:bg-[#e8eef5] dark:bg-slate-800/80 dark:text-slate-100 dark:ring-slate-700 dark:hover:bg-slate-700/70"
+                    : "text-slate-900 hover:bg-[#eef3f8] dark:text-slate-300 dark:hover:bg-slate-800/60",
+                )}
+                onClick={() => {
+                  setSubjectActionError(undefined);
+                  setOpenMenuId(null);
+                  setIsMobileOpen(false);
+                  navigate("/assistant");
+                }}
+              >
+                <Bot
+                  className={cn(
+                    "h-3.5 w-3.5 shrink-0 transition-colors",
+                    isGlobalAssistantActive
+                      ? "text-[#4b607b] group-hover:text-[#324761] dark:text-slate-300 dark:group-hover:text-slate-100"
+                      : "text-slate-500 group-hover:text-slate-700 dark:text-slate-400 dark:group-hover:text-slate-200",
+                  )}
+                  strokeWidth={2.2}
+                />
+                <span
+                  className={cn(
+                    "whitespace-nowrap text-xs tracking-[0.01em]",
+                    isGlobalAssistantActive
+                      ? "font-semibold text-[#1f2937] group-hover:text-[#172033] dark:text-slate-100 dark:group-hover:text-white"
+                      : "font-normal text-slate-900 group-hover:text-slate-950 dark:text-slate-300 dark:group-hover:text-slate-100",
+                  )}
+                >
+                  全局助手
+                </span>
+              </button>
+
+              <button
+                type="button"
+                className={cn(
+                  "group flex h-7 w-full items-center gap-2 rounded-md px-2 text-left transition-colors",
                   isMyLearningSpaceActive
-                    ? "bg-slate-100/80 text-slate-900"
-                    : "text-slate-900 hover:bg-slate-100/80",
+                    ? "bg-[#f3f6f9] text-slate-950 ring-1 ring-[#dbe3ec] hover:bg-[#e8eef5] dark:bg-slate-800/80 dark:text-slate-100 dark:ring-slate-700 dark:hover:bg-slate-700/70"
+                    : "text-slate-900 hover:bg-[#eef3f8] dark:text-slate-300 dark:hover:bg-slate-800/60",
                 )}
                 onClick={() => {
                   setSubjectActionError(undefined);
@@ -388,10 +505,60 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
                 }}
               >
                 <LayoutGrid
-                  className={cn("h-5 w-5 shrink-0", isMyLearningSpaceActive ? "text-slate-700" : "text-slate-500")}
+                  className={cn(
+                    "h-3.5 w-3.5 shrink-0 transition-colors",
+                    isMyLearningSpaceActive
+                      ? "text-[#4b607b] group-hover:text-[#324761] dark:text-slate-300 dark:group-hover:text-slate-100"
+                      : "text-slate-500 group-hover:text-slate-700 dark:text-slate-400 dark:group-hover:text-slate-200",
+                  )}
                   strokeWidth={2.2}
                 />
-                <span className="text-[15px] font-normal tracking-[0.01em] text-slate-900">我的学习空间</span>
+                <span
+                  className={cn(
+                    "whitespace-nowrap text-xs tracking-[0.01em]",
+                    isMyLearningSpaceActive
+                      ? "font-semibold text-[#1f2937] group-hover:text-[#172033] dark:text-slate-100 dark:group-hover:text-white"
+                      : "font-normal text-slate-900 group-hover:text-slate-950 dark:text-slate-300 dark:group-hover:text-slate-100",
+                  )}
+                >
+                  学习空间
+                </span>
+              </button>
+
+              <button
+                type="button"
+                className={cn(
+                  "group flex h-7 w-full items-center gap-2 rounded-md px-2 text-left transition-colors",
+                  isLibraryActive
+                    ? "bg-[#f3f6f9] text-slate-950 ring-1 ring-[#dbe3ec] hover:bg-[#e8eef5] dark:bg-slate-800/80 dark:text-slate-100 dark:ring-slate-700 dark:hover:bg-slate-700/70"
+                    : "text-slate-900 hover:bg-[#eef3f8] dark:text-slate-300 dark:hover:bg-slate-800/60",
+                )}
+                onClick={() => {
+                  setSubjectActionError(undefined);
+                  setOpenMenuId(null);
+                  setIsMobileOpen(false);
+                  navigate("/library");
+                }}
+              >
+                <FolderOpen
+                  className={cn(
+                    "h-3.5 w-3.5 shrink-0 transition-colors",
+                    isLibraryActive
+                      ? "text-[#4b607b] group-hover:text-[#324761] dark:text-slate-300 dark:group-hover:text-slate-100"
+                      : "text-slate-500 group-hover:text-slate-700 dark:text-slate-400 dark:group-hover:text-slate-200",
+                  )}
+                  strokeWidth={2.2}
+                />
+                <span
+                  className={cn(
+                    "whitespace-nowrap text-xs tracking-[0.01em]",
+                    isLibraryActive
+                      ? "font-semibold text-[#1f2937] group-hover:text-[#172033] dark:text-slate-100 dark:group-hover:text-white"
+                      : "font-normal text-slate-900 group-hover:text-slate-950 dark:text-slate-300 dark:group-hover:text-slate-100",
+                  )}
+                >
+                  我的资料库
+                </span>
               </button>
             </>
           )}
@@ -401,31 +568,34 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
           ) : null}
         </div>
 
-        <div className="flex-1 overflow-y-auto overflow-x-hidden px-3 pb-4 space-y-1 scrollbar-thin scrollbar-webkit">
+        <div className={cn("min-h-0 flex-1 space-y-0.5 overflow-y-auto overflow-x-hidden pb-4 scrollbar-thin scrollbar-webkit", effectiveCollapsed ? "px-2" : "px-3")}>
           {!effectiveCollapsed ? (
-            <div className="px-2 pb-2 pt-1">
-              <span className="text-[11px] font-medium tracking-[0.08em] text-slate-400">学科</span>
+            <div className="flex items-center gap-1.5 px-2 pb-2 pt-1">
+              <span className="whitespace-nowrap text-[11px] font-medium tracking-[0.08em] text-slate-400">学科</span>
+              {isLoading ? <Loader2 className="h-3 w-3 animate-spin text-slate-400 dark:text-slate-500" /> : null}
             </div>
-          ) : null}
+          ) : (
+            <div className="flex h-6 items-center px-1">
+              <div className="h-px w-full bg-slate-200 dark:bg-slate-800" />
+            </div>
+          )}
 
-          {isLoading ? (
-            <div className="flex flex-col items-center justify-center py-6 text-slate-400">
-              <Loader2 className="h-5 w-5 animate-spin" />
-              {!effectiveCollapsed ? <span className="mt-2 text-xs">加载中…</span> : null}
-            </div>
+          {!isLoading && groupedSubjects.length === 0 && !effectiveCollapsed ? (
+            <p className="-mt-1 overflow-hidden whitespace-nowrap px-4 py-0 text-[11px] text-slate-300 dark:text-slate-600">暂无学科</p>
           ) : null}
 
           {groupedSubjects.map((subject) => {
             const expanded = expandedSubjects.has(subject.subject_id);
             const displayName = displaySubjectName(subject);
             const badgeClass = colorClassForSubject(subject.name || subject.subject_id);
+            const SubjectIcon = resolveSubjectIcon((subject as SubjectWithIcon).icon_key);
 
             return (
               <div key={subject.subject_id} className="relative">
                 <div
                   className={cn(
-                    "group flex items-center gap-1 rounded-lg transition-colors",
-                    !effectiveCollapsed ? "hover:bg-slate-100/60" : "",
+                    "group flex items-center gap-1 rounded-md transition-colors",
+                    !effectiveCollapsed ? "hover:bg-[#eef3f8] dark:hover:bg-slate-800/60" : "",
                   )}
                 >
                   <button
@@ -442,17 +612,19 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
                     }}
                     className={cn(
                       "flex items-center transition-colors",
-                      effectiveCollapsed ? "h-8 w-full justify-center rounded px-0" : "flex-1 rounded-lg px-2 py-2",
+                      effectiveCollapsed
+                        ? "h-7 w-full justify-center rounded-md px-0 hover:bg-[#eef3f8] dark:hover:bg-slate-800/60"
+                        : "h-7 flex-1 rounded-md px-2",
                     )}
                     title={effectiveCollapsed ? displayName : undefined}
                   >
                     <div className={cn("flex shrink-0 items-center justify-center font-bold text-white shadow-sm", 
-                      effectiveCollapsed ? "h-6 w-6 rounded text-[11px]" : "h-7 w-7 rounded-md text-xs",
+                      effectiveCollapsed ? "h-5 w-5 rounded text-[10px]" : "h-5 w-5 rounded text-[10px]",
                       badgeClass
                     )}>
-                      {(subject.name.trim().charAt(0) || "新").toUpperCase()}
+                      <SubjectIcon className="h-3.5 w-3.5" strokeWidth={2.2} />
                     </div>
-                    {!effectiveCollapsed ? <span className="ml-2 truncate text-sm font-medium text-slate-700">{displayName}</span> : null}
+                    {!effectiveCollapsed ? <span className="ml-2 truncate text-xs font-medium text-slate-700 dark:text-slate-300">{displayName}</span> : null}
                   </button>
 
                   {!effectiveCollapsed ? (
@@ -460,28 +632,24 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
                       <button
                         type="button"
                         onClick={() => setOpenMenuId((prev) => (prev === subject.subject_id ? null : subject.subject_id))}
-                        className="rounded-md p-1.5 text-slate-400 opacity-0 transition hover:text-slate-700 group-hover:opacity-100"
+                        className="flex h-7 w-7 items-center justify-center rounded-md text-slate-400 opacity-100 transition hover:bg-slate-100 hover:text-slate-700 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-300 sm:opacity-0 sm:group-hover:opacity-100"
                         title="更多操作"
                       >
-                        <MoreVertical className="h-4 w-4" />
+                        <MoreVertical className="h-3.5 w-3.5" />
                       </button>
 
                       {openMenuId === subject.subject_id ? (
-                        <div className="absolute right-0 top-full z-50 mt-1 w-32 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-lg">
+                        <div className="absolute right-0 top-full z-50 mt-1 w-32 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-lg dark:border-slate-700 dark:bg-slate-800">
                           <button
                             type="button"
                             onClick={() => {
                               setOpenMenuId(null);
-                              void handleExportSubject(subject);
+                              setSubjectActionError(undefined);
+                              setExportSubjectId(subject.subject_id);
                             }}
-                            disabled={exportingSubjectId === subject.subject_id}
-                            className="flex w-full items-center gap-2 px-3 py-2 text-xs text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:text-slate-400"
+                            className="flex w-full items-center gap-2 px-3 py-2 text-xs text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:text-slate-400 dark:text-slate-200 dark:hover:bg-slate-700/50"
                           >
-                            {exportingSubjectId === subject.subject_id ? (
-                              <Loader2 className="h-3.5 w-3.5 animate-spin text-slate-400" />
-                            ) : (
-                              <Download className="h-3.5 w-3.5 text-slate-400" />
-                            )}
+                            <Download className="h-3.5 w-3.5 text-slate-400 dark:text-slate-500" />
                             导出 .atmx
                           </button>
                           <button
@@ -490,9 +658,9 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
                               setOpenMenuId(null);
                               setRenameTarget({ id: subject.subject_id, name: displayName === "无标题" ? "" : subject.name });
                             }}
-                            className="flex w-full items-center gap-2 border-t border-slate-100 px-3 py-2 text-xs text-slate-700 hover:bg-slate-50"
+                            className="flex w-full items-center gap-2 border-t border-slate-100 px-3 py-2 text-xs text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-700/50"
                           >
-                            <Edit3 className="h-3.5 w-3.5 text-slate-400" />
+                            <Edit3 className="h-3.5 w-3.5 text-slate-400 dark:text-slate-500" />
                             重命名
                           </button>
                           <button
@@ -501,7 +669,7 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
                               setOpenMenuId(null);
                               openDeleteModal(subject);
                             }}
-                            className="flex w-full items-center gap-2 border-t border-slate-100 px-3 py-2 text-xs text-red-600 hover:bg-red-50"
+                            className="flex w-full items-center gap-2 border-t border-slate-100 px-3 py-2 text-xs text-red-600 hover:bg-red-50 dark:border-slate-700 dark:text-red-400 dark:hover:bg-red-900/20"
                           >
                             <Trash2 className="h-3.5 w-3.5" />
                             删除
@@ -513,7 +681,7 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
                 </div>
 
                 {!effectiveCollapsed && expanded ? (
-                  <div className="ml-6 mt-1 space-y-1 border-l border-slate-200 pl-3">
+                  <div className="ml-4 mt-1 space-y-0.5 border-l border-slate-200 pl-2">
                     {MODULES.map((moduleItem) => {
                       const path = `/subject/${subject.subject_id}/${moduleItem.id}`;
                       const isActive = location.pathname === path;
@@ -524,11 +692,13 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
                           to={path}
                           onClick={() => setIsMobileOpen(false)}
                           className={cn(
-                            "flex items-center rounded-md px-2.5 py-1.5 text-sm transition-colors",
-                            isActive ? "bg-slate-100 text-slate-900" : "text-slate-500 hover:bg-slate-50 hover:text-slate-700",
+                            "flex h-7 items-center overflow-hidden whitespace-nowrap rounded-md px-2 text-xs transition-colors",
+                            isActive
+                              ? "bg-[#edf3f8] font-medium text-[#243246] dark:bg-slate-800 dark:text-slate-200"
+                              : "text-slate-500 hover:bg-slate-50 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-slate-800/40 dark:hover:text-slate-200",
                           )}
                         >
-                          <Icon className="mr-2.5 h-4 w-4" />
+                          <Icon className={cn("mr-2 h-3.5 w-3.5", isActive ? "text-[#556b86] dark:text-slate-300" : undefined)} />
                           {moduleItem.name}
                         </Link>
                       );
@@ -538,35 +708,40 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
               </div>
             );
           })}
+
+          <AiConversationSidebarSection
+            collapsed={effectiveCollapsed}
+            onExpandSidebar={expandNavigationSidebar}
+            onNavigate={closeMobileNavigation}
+          />
         </div>
 
         {/* Bottom actions */}
-        <div className="border-t border-slate-200/80 p-2.5 space-y-1 z-10">
+        <div className="z-10 mt-auto shrink-0 space-y-1 border-t border-slate-200/80 p-2 dark:border-slate-800/50">
           <button
             type="button"
             onClick={() => setIsCommunityModalOpen(true)}
             onMouseEnter={ensureCommunityQrPreloaded}
-            onFocus={ensureCommunityQrPreloaded}
             className={cn(
-              "flex items-center text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700",
-              effectiveCollapsed ? "h-6 w-6 justify-center rounded mx-auto" : "w-full rounded-lg py-2 gap-2.5 px-3",
+              "flex items-center text-slate-500 transition-colors hover:bg-[#eef3f8] hover:text-slate-900 focus:outline-none focus-visible:outline-none dark:text-slate-400 dark:hover:bg-slate-800/60 dark:hover:text-slate-200",
+              effectiveCollapsed ? "mx-auto h-7 w-7 justify-center rounded-md" : "h-7 w-full rounded-md px-2 gap-2",
             )}
             title="社区"
           >
-            <MessageCircle className="h-4 w-4 shrink-0" />
-            {!effectiveCollapsed ? <span className="text-sm">社区</span> : null}
+            <MessageCircle className="h-3.5 w-3.5 shrink-0" />
+            {!effectiveCollapsed ? <span className="whitespace-nowrap text-xs tracking-[0.01em]">社区</span> : null}
           </button>
           <button
             type="button"
             onClick={onOpenSettings}
             className={cn(
-              "flex items-center text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700",
-              effectiveCollapsed ? "h-6 w-6 justify-center rounded mx-auto" : "w-full rounded-lg py-2 gap-2.5 px-3",
+              "flex items-center text-slate-500 transition-colors hover:bg-[#eef3f8] hover:text-slate-900 focus:outline-none focus-visible:outline-none dark:text-slate-400 dark:hover:bg-slate-800/60 dark:hover:text-slate-200",
+              effectiveCollapsed ? "mx-auto h-7 w-7 justify-center rounded-md" : "h-7 w-full rounded-md px-2 gap-2",
             )}
             title="设置"
           >
-            <Settings className="h-4 w-4 shrink-0" />
-            {!effectiveCollapsed ? <span className="text-sm">设置</span> : null}
+            <Settings className="h-3.5 w-3.5 shrink-0" />
+            {!effectiveCollapsed ? <span className="whitespace-nowrap text-xs tracking-[0.01em]">设置</span> : null}
           </button>
         </div>
       </aside>
@@ -598,6 +773,10 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
           onClose={() => setRenameTarget(null)}
           onSuccess={() => void queryClient.invalidateQueries({ queryKey: ["subjects"] })}
         />
+      ) : null}
+
+      {exportSubjectId ? (
+        <SubjectExportModal subjectId={exportSubjectId} onClose={() => setExportSubjectId(null)} />
       ) : null}
 
       <CommunityModal isOpen={isCommunityModalOpen} onClose={() => setIsCommunityModalOpen(false)} />

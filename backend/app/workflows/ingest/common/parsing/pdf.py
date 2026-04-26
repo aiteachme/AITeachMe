@@ -143,6 +143,7 @@ async def _run_page_ocr(
                 page.image_bytes,
                 mime_type="image/png",
                 language_mode=options.ocr_language_mode,
+                model_selector="ocr",
             )
         ocr_map[page.page_number] = text
 

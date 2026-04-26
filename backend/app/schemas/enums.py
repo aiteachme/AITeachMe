@@ -35,6 +35,8 @@ class QuestionTypeValue(str, Enum):
     """题目类型。"""
 
     SINGLE_CHOICE = "single_choice"
+    MULTIPLE_CHOICE = "multiple_choice"
+    TRUE_FALSE = "true_false"
     FILL_BLANK = "fill_blank"
     SHORT_ANSWER = "short_answer"
 

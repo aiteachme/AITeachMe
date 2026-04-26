@@ -28,13 +28,13 @@ from app.models.enums import (
     validate_status_transition,
 )
 from app.models.email_verification import EmailVerificationCode
-from app.models.exam import ExamPaper, ExamPaperItem, QuestionTemplate
+from app.models.exam import ExamPaper, ExamPaperItem, QuestionTemplate, QuestionTypeRegistry
 from app.models.knowledge import RetrievalChunk
 from app.models.knowledge_doc import KnowledgeDoc, KnowledgeDocument
 from app.models.knowledge_relation import EdgeRevision, EvidenceLink, KnowledgeEdge
 from app.models.knowledge_unit import KnowledgeAlias, KnowledgeRevision, KnowledgeUnit
 from app.models.profile import UserKnowledgeState
-from app.models.raw_file import RawFile, RawFileAsset
+from app.models.raw_file import RawFile, RawFileAsset, SubjectFileLink
 from app.models.subject import Subject
 from app.models.system import SystemRuntimeSettings, SystemSettingsSnapshot, UserRuntimeSettings
 from app.models.user import User
@@ -69,12 +69,14 @@ __all__ = [
     "QuestionTemplate",
     "QuestionTemplateStatus",
     "QuestionType",
+    "QuestionTypeRegistry",
     "RawFile",
     "RawFileAsset",
     "RetrievalChunk",
     "ReviewTaskStatus",
     "ReviewTaskType",
     "Subject",
+    "SubjectFileLink",
     "SystemSettingsSnapshot",
     "SystemRuntimeSettings",
     "UserRuntimeSettings",

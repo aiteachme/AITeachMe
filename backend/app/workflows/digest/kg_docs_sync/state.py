@@ -10,6 +10,7 @@ from app.workflows.support.knowledge_graph.incremental_sync import KnowledgeSync
 class DocsSyncState(TypedDict, total=False):
     subject: str
     markdown: str
+    subject_context: str
     build_revision_no: int | None
     build_session_id: str
     report: KnowledgeSyncReport | None
@@ -17,4 +18,3 @@ class DocsSyncState(TypedDict, total=False):
 
 
 __all__ = ["DocsSyncState"]
-

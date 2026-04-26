@@ -6,8 +6,9 @@ from pathlib import Path
 
 from pydantic import BaseModel, Field
 
-from app.shared.infra.env_support import get_env
-from app.shared.infra.exceptions import MissingLLMApiKeyError, UnsupportedFileTypeError
+from app.shared.infra.env_support import get_env, get_env_choice
+from app.shared.infra.exceptions import FileParseError, MissingLLMApiKeyError, UnsupportedFileTypeError
+from app.shared.infra.settings import get_settings
 from app.shared.infra.settings.support import llm_provider_requires_api_key
 from app.workflows.ingest.common.parsing.defaults import (
     DEFAULT_PARSE_CONCURRENCY,
@@ -38,6 +39,7 @@ _VISION_MAX_MB = 8
 _MIN_INTERNAL_PARALLELISM = 5
 _MAX_INTERNAL_PARALLELISM = 10
 
+
 class ParsePlan(BaseModel):
     """Materialized parser execution plan stored in workflow state."""
 
@@ -56,13 +58,16 @@ def build_parse_plan(
 ) -> ParsePlan:
     """Choose parser chain and runtime budget from file signals and capabilities."""
 
+    settings = get_settings()
     extension = resolve_parser_extension(file_path, normalize_extension(filetype))
-    allow_llm_vision = bool(get_env("LLM_API_KEY")) or not llm_provider_requires_api_key(
-        base_url=get_env("LLM_BASE_URL")
-    )
-    available_parsers = get_available_parsers(extension, allow_llm_vision=allow_llm_vision)
+    visual_calls_available = _llm_visual_calls_available()
+    allow_image_vision = settings.has_vision_model and visual_calls_available
+    allow_document_ocr = settings.has_document_ocr_model and visual_calls_available
+    available_parsers = get_available_parsers(extension, allow_llm_vision=allow_image_vision)
     if not available_parsers:
         if is_image_extension(extension):
+            if not settings.has_vision_model:
+                raise FileParseError(Path(file_path).name, reason="未配置视觉理解模型，当前不处理图片文件。")
             raise MissingLLMApiKeyError()
         raise UnsupportedFileTypeError(extension)
 
@@ -85,7 +90,7 @@ def build_parse_plan(
         file_mb=file_mb,
         estimated_pages=estimated_pages,
         classification=classification,
-        llm_enabled=allow_llm_vision,
+        image_vision_enabled=allow_image_vision,
     )
 
     parser_chain = [name for name in preferred_order if name in available_parsers]
@@ -99,7 +104,7 @@ def build_parse_plan(
         file_mb=file_mb,
         estimated_pages=estimated_pages,
         classification=classification,
-        llm_enabled=allow_llm_vision,
+        document_ocr_enabled=allow_document_ocr,
         options=options,
     )
     return ParsePlan(
@@ -116,10 +121,10 @@ def _preferred_parser_order(
     file_mb: float,
     estimated_pages: int,
     classification: ClassificationResult | None,
-    llm_enabled: bool,
+    image_vision_enabled: bool,
 ) -> list[str]:
     if is_image_extension(extension):
-        if not llm_enabled:
+        if not image_vision_enabled:
             return []
         return ["llm_vision"]
 
@@ -166,7 +171,7 @@ def _decide_mode_and_options(
     file_mb: float,
     estimated_pages: int,
     classification: ClassificationResult | None,
-    llm_enabled: bool,
+    document_ocr_enabled: bool,
     options: ParserRunOptions,
 ) -> tuple[str, str]:
     if is_image_extension(extension):
@@ -190,40 +195,40 @@ def _decide_mode_and_options(
             options.asset_image_limit = 8
             options.ocr_page_limit = 18
             options.timeout_s = max(options.timeout_s, 140)
-            options.enable_page_vision_ocr = True
-            options.enable_asset_vision_ocr = llm_enabled
+            options.enable_page_vision_ocr = document_ocr_enabled
+            options.enable_asset_vision_ocr = document_ocr_enabled
             options.asset_vision_ocr_limit = 12
-            return "fast_scanned_pdf", "Scanned PDF enables page-level OCR with parallel extraction."
+            return "fast_scanned_pdf", "Scanned PDF enables page-level document OCR with parallel extraction."
         if classification and classification.file_category == "formula_heavy_pdf":
-            # 数学试卷类：大量提取 drawing，强化 vision OCR
+            # 数学试卷类：大量提取 drawing，强化文档 OCR
             options.asset_image_limit = 32
             options.skip_image_supplement = False
             options.timeout_s = max(options.timeout_s, 150)
-            options.enable_asset_vision_ocr = llm_enabled
+            options.enable_asset_vision_ocr = document_ocr_enabled
             options.asset_vision_ocr_limit = 24
             options.ocr_page_limit = 6
             options.enable_page_vision_ocr = False
-            return "formula_heavy_pdf", "Formula-heavy PDF maximizes drawing extraction with vision OCR."
+            return "formula_heavy_pdf", "Formula-heavy PDF maximizes drawing extraction with document OCR."
         if classification and classification.file_category == "complex_pdf":
             options.asset_image_limit = max(options.asset_image_limit, 24)
             options.timeout_s = max(options.timeout_s, 120)
-            options.enable_asset_vision_ocr = llm_enabled
+            options.enable_asset_vision_ocr = document_ocr_enabled
             options.asset_vision_ocr_limit = 16
-            return "quality_complex_pdf", "Complex PDF enables larger asset extraction and vision OCR budget."
+            return "quality_complex_pdf", "Complex PDF enables larger asset extraction and document OCR budget."
         if file_mb >= _LARGE_FILE_MB or estimated_pages >= _LARGE_DOC_PAGES:
             options.asset_image_limit = 12
             options.skip_image_supplement = True
             options.timeout_s = max(options.timeout_s, 120)
-            options.enable_asset_vision_ocr = llm_enabled
+            options.enable_asset_vision_ocr = document_ocr_enabled
             options.asset_vision_ocr_limit = 10 if classification and classification.has_formulas else 6
             return "fast_large_pdf", "Large PDF uses faster parser order and caps image extraction."
         if estimated_pages >= _MEDIUM_DOC_PAGES:
             options.asset_image_limit = 16
             options.ocr_page_limit = 10
-            options.enable_asset_vision_ocr = llm_enabled
+            options.enable_asset_vision_ocr = document_ocr_enabled
             options.asset_vision_ocr_limit = 16 if classification and classification.has_formulas else 8
             return "balanced_medium_pdf", "Medium PDF keeps balanced extraction with moderate asset budget."
-        options.enable_asset_vision_ocr = llm_enabled
+        options.enable_asset_vision_ocr = document_ocr_enabled
         options.asset_vision_ocr_limit = 16 if classification and classification.has_formulas else 8
         return "quality_pdf", "Text-heavy PDF keeps quality-first parser ordering."
 
@@ -231,10 +236,10 @@ def _decide_mode_and_options(
         if file_mb >= 10 or estimated_pages >= _LARGE_DOCX_PAGE_COUNT:
             options.asset_image_limit = 10
             options.skip_image_supplement = True
-            options.enable_asset_vision_ocr = llm_enabled
+            options.enable_asset_vision_ocr = document_ocr_enabled
             options.asset_vision_ocr_limit = 6
             return "fast_docx", "Large DOCX prefers native parsing and skips secondary image sweep."
-        options.enable_asset_vision_ocr = llm_enabled
+        options.enable_asset_vision_ocr = document_ocr_enabled
         options.asset_vision_ocr_limit = 8
         return "balanced_docx", "DOCX uses balanced parser ordering."
 
@@ -242,16 +247,16 @@ def _decide_mode_and_options(
         if file_mb >= 15 or estimated_pages >= _LARGE_SLIDE_COUNT:
             options.asset_image_limit = 10
             options.skip_image_supplement = True
-            options.enable_asset_vision_ocr = llm_enabled
+            options.enable_asset_vision_ocr = document_ocr_enabled
             options.asset_vision_ocr_limit = 6
             return "fast_pptx", "Large slide deck prefers native parsing and skips secondary image sweep."
-        options.enable_asset_vision_ocr = llm_enabled
+        options.enable_asset_vision_ocr = document_ocr_enabled
         options.asset_vision_ocr_limit = 8
         return "balanced_pptx", "Slide deck uses balanced parser ordering."
 
     if is_markitdown_generic_extension(extension):
         options.asset_image_limit = 12
-        options.enable_asset_vision_ocr = llm_enabled
+        options.enable_asset_vision_ocr = document_ocr_enabled
         options.asset_vision_ocr_limit = 6
         return "generic_markitdown", "Generic document format routed to MarkItDown parser."
 
@@ -280,3 +285,9 @@ def _derive_ocr_language_mode(classification: ClassificationResult | None) -> st
     if classification and classification.detected_language == "en":
         return "en"
     return "zh"
+
+
+def _llm_visual_calls_available() -> bool:
+    return bool(get_env_choice("LLM_API_KEY")) or not llm_provider_requires_api_key(
+        base_url=get_env("LLM_BASE_URL")
+    )

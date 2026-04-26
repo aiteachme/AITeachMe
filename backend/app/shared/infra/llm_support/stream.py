@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import time
-from typing import AsyncGenerator
+from typing import Any, AsyncGenerator
 
 from app.schemas.llm import ChatMessage
 from app.shared.infra.exceptions import LLMCallError, LLMTimeoutError
@@ -33,6 +33,39 @@ from .observability import (
 )
 
 litellm = load_litellm()
+
+
+def _is_stream_usage_calculation_error(exc: Exception) -> bool:
+    """Return whether LiteLLM failed only while calculating final stream usage."""
+
+    message = str(exc).lower()
+    return (
+        "error building chunks for logging/streaming usage calculation" in message
+        or "streaming usage calculation" in message
+    )
+
+
+async def _stream_chunks_with_timeout(
+    response: Any,
+    *,
+    timeout_s: int,
+) -> AsyncGenerator[Any, None]:
+    """Yield streaming chunks while enforcing a timeout for each upstream read."""
+
+    iterator = response.__aiter__()
+    try:
+        while True:
+            try:
+                yield await asyncio.wait_for(iterator.__anext__(), timeout=timeout_s)
+            except StopAsyncIteration:
+                break
+    finally:
+        close = getattr(iterator, "aclose", None) or getattr(response, "aclose", None)
+        if callable(close):
+            try:
+                await close()
+            except Exception:
+                pass
 
 
 async def acompletion_stream(
@@ -89,20 +122,33 @@ async def acompletion_stream(
                     timeout=request_timeout_s(context.profile.timeout_s),
                 )
                 usage = merge_usage(usage, extract_usage(response))
-                async for chunk in response:
-                    usage = merge_usage(usage, extract_usage(chunk))
-                    choices = getattr(chunk, "choices", None) or []
-                    if not choices:
-                        continue
-                    delta = getattr(choices[0], "delta", None)
-                    content = getattr(delta, "content", None) if delta is not None else None
-                    if not content:
-                        continue
-                    if not first_token_seen:
-                        _record_new_token_event(trace_run)
-                        first_token_seen = True
-                    streamed_chunks.append(content)
-                    yield content
+                try:
+                    async for chunk in _stream_chunks_with_timeout(
+                        response,
+                        timeout_s=request_timeout_s(context.profile.timeout_s),
+                    ):
+                        usage = merge_usage(usage, extract_usage(chunk))
+                        choices = getattr(chunk, "choices", None) or []
+                        if not choices:
+                            continue
+                        delta = getattr(choices[0], "delta", None)
+                        content = getattr(delta, "content", None) if delta is not None else None
+                        if not content:
+                            continue
+                        if not first_token_seen:
+                            _record_new_token_event(trace_run)
+                            first_token_seen = True
+                        streamed_chunks.append(content)
+                        yield content
+                except Exception as exc:
+                    if not streamed_chunks or not _is_stream_usage_calculation_error(exc):
+                        raise
+                    logger.info(
+                        "llm_stream_usage_calculation_failed_ignored",
+                        model=tracked_model,
+                        task_type=context.task_type.value,
+                        error=str(exc),
+                    )
                 prompt_t, completion_t, total_t = usage
                 _end_langsmith_trace(
                     trace_run,

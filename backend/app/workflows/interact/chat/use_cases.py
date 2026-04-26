@@ -1,49 +1,52 @@
 """API-facing chat use cases built on top of the interact chat lane.
 
-These helpers coordinate session CRUD, history reads, and SSE chat streaming
-for HTTP routes. LangGraph internals remain in ``graph.py``.
+These helpers coordinate session-list CRUD, history reads, and the SSE shell
+for HTTP routes. Send-time session writes live inside the LangGraph workflow.
 """
 
 from __future__ import annotations
 
-import json
 from collections.abc import AsyncGenerator
-from uuid import uuid4
 
 from fastapi import Request
 from pydantic import TypeAdapter
-from sqlmodel import Session
+from sqlmodel import Session, select
 
-from app.shared.infra.llm_support import acompletion_stream
-from app.shared.infra.llm_support.routing import TaskType
-from app.models import ChatMessage, ChatSession
+from app.models import ChatMessage, ChatSession, Subject
 from app.repositories.chats_repo import (
     clear_messages_by_subject,
     count_messages_by_session_ids,
+    count_messages_by_session_ids_for_user,
     create_chat_session,
-    create_message_pair,
     delete_chat_session,
-    get_chat_session,
+    list_session_selection_heads_by_session_ids,
+    list_session_selection_heads_by_session_ids_for_user,
     list_messages_by_subject,
     list_messages_by_turn_ids,
     list_sessions_by_subject,
+    list_sessions_by_user,
     list_thread_turn_heads_by_subject,
-    touch_chat_session,
 )
 from app.schemas.chats import (
     ChatClearData,
     ChatContextItem,
     ChatMessageItem,
+    ChatSelectionContext,
     ChatSessionDeleteData,
     ChatSessionItem,
     ChatThreadTurnItem,
 )
 from app.schemas.common import PaginatedData, build_paginated_data
 from app.utils.presenters import require_id
+from app.utils.subject import GLOBAL_SUBJECT
 from app.workflows.interact.chat.graph import stream_chat_workflow
-from app.workflows.interact.chat.lib.streaming import format_sse_event
-from app.workflows.interact.chat.lib.strategies import select_teaching_strategy
-from app.workflows.interact.chat.prompts import build_chat_messages
+from app.workflows.interact.chat.lib.sessioning import (
+    build_session_title,
+    clean_generated_session_title,
+    clip_title_material,
+    generate_session_title,
+    should_generate_session_title,
+)
 
 _CHAT_CONTEXT_LIST_ADAPTER = TypeAdapter(list[ChatContextItem])
 
@@ -69,11 +72,68 @@ def list_chat_sessions(
         user_id=user_id,
         session_ids=[item.id for item in items],
     )
+    selection_heads = list_session_selection_heads_by_session_ids(
+        session,
+        subject=subject,
+        user_id=user_id,
+        session_ids=[item.id for item in items],
+    )
+    subject_names = _load_subject_names(
+        session,
+        user_id=user_id,
+        subject_ids={item.subject for item in items},
+    )
     return build_paginated_data(
         items=[
             _to_chat_session_item(
                 item,
                 message_count=counts.get(item.id, 0),
+                selection_head=selection_heads.get(item.id),
+                subject_name=subject_names.get(item.subject),
+            )
+            for item in items
+        ],
+        page=page,
+        size=size,
+        total=total,
+    )
+
+
+def list_recent_chat_sessions(
+    session: Session,
+    *,
+    user_id: str,
+    page: int,
+    size: int,
+) -> PaginatedData[ChatSessionItem]:
+    items, total = list_sessions_by_user(
+        session,
+        user_id=user_id,
+        limit=size,
+        offset=(page - 1) * size,
+    )
+    counts = count_messages_by_session_ids_for_user(
+        session,
+        user_id=user_id,
+        session_ids=[item.id for item in items],
+    )
+    selection_heads = list_session_selection_heads_by_session_ids_for_user(
+        session,
+        user_id=user_id,
+        session_ids=[item.id for item in items],
+    )
+    subject_names = _load_subject_names(
+        session,
+        user_id=user_id,
+        subject_ids={item.subject for item in items},
+    )
+    return build_paginated_data(
+        items=[
+            _to_chat_session_item(
+                item,
+                message_count=counts.get(item.id, 0),
+                selection_head=selection_heads.get(item.id),
+                subject_name=subject_names.get(item.subject),
             )
             for item in items
         ],
@@ -214,202 +274,68 @@ async def chat_stream(
     question: str,
     source: str | None = None,
     anchor_id: str | None = None,
+    selected_text: str | None = None,
     selected_context: str | None = None,
+    selection_context: ChatSelectionContext | None = None,
     source_chunk_id: int | None = None,
 ) -> AsyncGenerator[str, None]:
-    resolved_session = _resolve_chat_session(
-        session,
-        subject=subject,
-        user_id=user_id,
-        session_id=session_id,
-        question=question,
-        source=source,
-    )
-
-    if source and source.strip():
-        async for payload in _stream_direct_chat(
-            request=request,
-            session=session,
-            subject=subject,
-            user_id=user_id,
-            chat_session=resolved_session,
-            question=question,
-            source=source,
-            anchor_id=anchor_id,
-            selected_context=selected_context,
-            source_chunk_id=source_chunk_id,
-        ):
-            yield payload
-        return
-
     async for payload in stream_chat_workflow(
         request=request,
         session=session,
         subject=subject,
         user_id=user_id,
-        session_id=resolved_session.id,
+        session_id=_clean_optional(session_id),
         question=question,
+        source=_clean_optional(source),
+        anchor_id=_clean_optional(anchor_id),
+        selected_text=selected_text,
         selected_context=selected_context,
+        selection_context=selection_context,
         source_chunk_id=source_chunk_id,
     ):
-        event_name, data = _parse_sse_payload(payload)
-        if event_name != "done" or not isinstance(data, dict):
-            yield payload
-            continue
-
-        turn_id = str(data.get("turn_id", "")).strip()
-        if turn_id:
-            touch_chat_session(
-                session,
-                subject=subject,
-                user_id=user_id,
-                session_id=resolved_session.id,
-                title=_build_session_title(question) if _is_placeholder_title(resolved_session.title) else None,
-            )
-
-        done_payload = {
-            **data,
-            "session_id": resolved_session.id,
-        }
-        yield format_sse_event("done", done_payload)
+        yield payload
 
 
-async def _stream_direct_chat(
+async def _generate_session_title(
     *,
-    request: Request,
-    session: Session,
     subject: str,
-    user_id: str,
-    chat_session: ChatSession,
     question: str,
-    source: str,
-    anchor_id: str | None,
-    selected_context: str | None,
-    source_chunk_id: int | None,
-) -> AsyncGenerator[str, None]:
-    messages = build_chat_messages(
+    selected_text: str | None,
+    assistant_response: str,
+) -> str:
+    return await generate_session_title(
         subject=subject,
-        strategy_mode=select_teaching_strategy(question, selected_context),
-        retrieval_results=[],
-        recent_messages=[],
-        weak_points=[],
-        recent_mistakes=[],
         question=question,
-        selected_context=selected_context,
-        source_chunk_id=source_chunk_id,
-    )
-    stream = acompletion_stream(messages, task_type=TaskType.CHAT)
-    assistant_tokens: list[str] = []
-    turn_id = str(uuid4())
-
-    try:
-        async for token in stream:
-            if await request.is_disconnected():
-                await stream.aclose()
-                return
-            assistant_tokens.append(token)
-            yield format_sse_event("token", {"content": token})
-    except Exception as exc:
-        yield format_sse_event(
-            "error",
-            {"detail": str(exc), "error_code": "STREAM_ERROR"},
-        )
-        return
-
-    assistant_content = "".join(assistant_tokens).strip()
-    if not assistant_content:
-        assistant_content = "I received the question, but no answer content was generated."
-
-    create_message_pair(
-        session,
-        subject=subject,
-        user_id=user_id,
-        session_id=chat_session.id,
-        user_content=question,
-        assistant_content=assistant_content,
-        contexts=None,
-        turn_id=turn_id,
-        source=source,
-        anchor_id=anchor_id,
-        selected_text=selected_context,
-        source_chunk_id=source_chunk_id,
-    )
-    touch_chat_session(
-        session,
-        subject=subject,
-        user_id=user_id,
-        session_id=chat_session.id,
-        title=_build_session_title(question) if _is_placeholder_title(chat_session.title) else None,
-    )
-
-    yield format_sse_event(
-        "done",
-        {
-            "turn_id": turn_id,
-            "session_id": chat_session.id,
-            "contexts": None,
-        },
-    )
-
-
-def _resolve_chat_session(
-    session: Session,
-    *,
-    subject: str,
-    user_id: str,
-    session_id: str | None,
-    question: str,
-    source: str | None,
-) -> ChatSession:
-    if session_id and session_id.strip():
-        existing = get_chat_session(
-            session,
-            subject=subject,
-            user_id=user_id,
-            session_id=session_id.strip(),
-        )
-        if existing:
-            return existing
-
-    return create_chat_session(
-        session,
-        subject=subject,
-        user_id=user_id,
-        source=source,
-        title=_build_session_title(question),
+        selected_text=selected_text,
+        assistant_response=assistant_response,
     )
 
 
 def _build_session_title(question: str) -> str:
-    text = " ".join(question.strip().split())
-    if not text:
-        return "New Chat"
-    max_len = 24
-    return text[:max_len] if len(text) <= max_len else f"{text[:max_len]}..."
+    return build_session_title(question)
+
+
+def _clip_title_material(value: str | None, max_chars: int) -> str:
+    return clip_title_material(value, max_chars)
+
+
+def _clean_generated_session_title(raw_title: str, *, fallback: str) -> str:
+    return clean_generated_session_title(raw_title, fallback=fallback)
+
+
+def _clean_optional(value: str | None) -> str | None:
+    if value is None:
+        return None
+    cleaned = value.strip()
+    return cleaned or None
 
 
 def _is_placeholder_title(title: str) -> bool:
-    normalized = title.strip().lower()
-    return normalized in {"", "new chat"}
+    return should_generate_session_title(title, "")
 
 
-def _parse_sse_payload(payload: str) -> tuple[str | None, object | None]:
-    event_name: str | None = None
-    data_lines: list[str] = []
-    for line in payload.splitlines():
-        if line.startswith("event:"):
-            event_name = line[6:].strip()
-        elif line.startswith("data:"):
-            data_lines.append(line[5:].strip())
-
-    if not data_lines:
-        return event_name, None
-
-    raw_data = "\n".join(data_lines)
-    try:
-        return event_name, json.loads(raw_data)
-    except json.JSONDecodeError:
-        return event_name, raw_data
+def _should_generate_session_title(title: str, question: str) -> bool:
+    return should_generate_session_title(title, question)
 
 
 def _to_chat_message_item(message: ChatMessage) -> ChatMessageItem:
@@ -423,16 +349,50 @@ def _to_chat_message_item(message: ChatMessage) -> ChatMessageItem:
     )
 
 
-def _to_chat_session_item(item: ChatSession, *, message_count: int) -> ChatSessionItem:
+def _to_chat_session_item(
+    item: ChatSession,
+    *,
+    message_count: int,
+    selection_head: ChatMessage | None = None,
+    subject_name: str | None = None,
+) -> ChatSessionItem:
     return ChatSessionItem(
         id=item.id,
         title=item.title,
-        source=item.source,
+        subject_id=item.subject,
+        subject_name=subject_name,
+        source=item.source or (selection_head.source if selection_head else None),
+        anchor_id=selection_head.anchor_id if selection_head else None,
+        selected_text=selection_head.selected_text if selection_head else None,
+        source_chunk_id=selection_head.source_chunk_id if selection_head else None,
         message_count=message_count,
         created_at=item.created_at,
         updated_at=item.updated_at,
         last_message_at=item.last_message_at,
     )
+
+
+def _load_subject_names(
+    session: Session,
+    *,
+    user_id: str,
+    subject_ids: set[str],
+) -> dict[str, str]:
+    result: dict[str, str] = {}
+    if GLOBAL_SUBJECT in subject_ids:
+        result[GLOBAL_SUBJECT] = "通用"
+
+    lookup_ids = [subject_id for subject_id in subject_ids if subject_id and subject_id != GLOBAL_SUBJECT]
+    if not lookup_ids:
+        return result
+
+    stmt = select(Subject).where(
+        Subject.user_id == user_id,
+        Subject.slug.in_(lookup_ids),
+    )
+    for item in session.exec(stmt).all():
+        result[item.slug] = item.name or item.slug
+    return result
 
 
 def _to_chat_thread_turn_item(
@@ -464,6 +424,7 @@ __all__ = [
     "create_session",
     "delete_session",
     "list_chat_history",
+    "list_recent_chat_sessions",
     "list_chat_sessions",
     "list_chat_threads",
 ]

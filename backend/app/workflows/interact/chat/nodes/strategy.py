@@ -15,7 +15,10 @@ def build_select_teaching_strategy_node(*, context: WorkflowContext):
     def select_strategy(state: InteractWorkflowState) -> InteractWorkflowState:
         strategy_mode = select_teaching_strategy(
             question=state["question"],
-            selected_context=state.get("selected_context"),
+            selected_context=(
+                state.get("selected_context")
+                or _selection_text(state.get("selection_context"))
+            ),
         )
         workflow_logger.info(
             "interact_strategy_selected",
@@ -28,3 +31,8 @@ def build_select_teaching_strategy_node(*, context: WorkflowContext):
 
     return select_strategy
 
+
+def _selection_text(selection_context: object | None) -> str:
+    if selection_context is None:
+        return ""
+    return str(getattr(selection_context, "selected_text", "") or "")

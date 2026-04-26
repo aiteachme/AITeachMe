@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import { apiClient, getApiErrorMessage } from "../../api/client";
 import {
@@ -12,7 +12,7 @@ import {
   draftFromEntries,
   editableEntries,
   sameDraft,
-} from "./helpers";
+} from "./settingsHelpers";
 import type {
   ApiEnvelope,
   DraftRecord,
@@ -20,7 +20,7 @@ import type {
   SettingEntry,
   SettingSection,
   SettingsOverviewData,
-} from "./types";
+} from "./settingsTypes";
 
 function collectEditableServerEntries(sections: SettingSection[]): SettingEntry[] {
   return editableEntries(sections, "settings").concat(
@@ -59,6 +59,7 @@ export function useSettingsOverview({ isOpen }: UseSettingsOverviewOptions) {
     const envEntries = collectEditableEnvEntries(sections);
     const nextSettingsDraft = draftFromEntries(serverEntries);
     const nextEnvDraft = draftFromEntries(envEntries);
+
     setOverview(next);
     storeSystemSettingsOverview(next);
     setSettingsDraft(nextSettingsDraft);
@@ -109,34 +110,20 @@ export function useSettingsOverview({ isOpen }: UseSettingsOverviewOptions) {
     }
   }, [isOpen]);
 
-  const editableServerEntries = useMemo(
-    () => collectEditableServerEntries(overview?.sections ?? []),
-    [overview],
-  );
-
-  const hasServerChanges = useMemo(
-    () => !sameDraft(settingsDraft, savedSettingsDraft),
-    [savedSettingsDraft, settingsDraft],
-  );
-  const hasEnvChanges = useMemo(
-    () => !sameDraft(envDraft, savedEnvDraft),
-    [envDraft, savedEnvDraft],
-  );
+  const editableServerEntries = collectEditableServerEntries(overview?.sections ?? []);
+  const hasServerChanges = !sameDraft(settingsDraft, savedSettingsDraft);
+  const hasEnvChanges = !sameDraft(envDraft, savedEnvDraft);
 
   const patchServerSetting = useCallback(
     (key: string, value: DraftRecord[string]) => {
-      setSettingsDraft((prev) => (
-        prev[key] === value ? prev : { ...prev, [key]: value }
-      ));
+      setSettingsDraft((prev) => (prev[key] === value ? prev : { ...prev, [key]: value }));
     },
     [],
   );
 
   const patchEnvSetting = useCallback(
     (key: string, value: DraftRecord[string]) => {
-      setEnvDraft((prev) => (
-        prev[key] === value ? prev : { ...prev, [key]: value }
-      ));
+      setEnvDraft((prev) => (prev[key] === value ? prev : { ...prev, [key]: value }));
     },
     [],
   );

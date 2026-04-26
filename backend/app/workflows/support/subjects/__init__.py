@@ -15,9 +15,20 @@ from app.workflows.support.subjects.deletion import (
     delete_subject_with_all_content,
     preview_subject_delete,
 )
+from app.workflows.support.subjects.icons import choose_subject_icon_key
+from app.workflows.support.subjects.learning_context import (
+    build_subject_learning_context_payload,
+    clear_subject_learning_context,
+    load_subject_llm_context,
+    render_subject_llm_context,
+    update_subject_learning_context_from_docgen,
+)
 
 __all__ = [
     "build_subject_delete_preview",
+    "build_subject_learning_context_payload",
+    "choose_subject_icon_key",
+    "clear_subject_learning_context",
     "collect_subject_delete_counts",
     "create_subject_record",
     "delete_subject_artifacts_async",
@@ -25,7 +36,10 @@ __all__ = [
     "delete_subject_with_all_content",
     "get_subject_detail",
     "get_subject_record",
+    "load_subject_llm_context",
     "list_subject_records",
     "preview_subject_delete",
+    "render_subject_llm_context",
+    "update_subject_learning_context_from_docgen",
     "update_subject_record",
 ]

@@ -139,6 +139,7 @@ LITELLM_PROVIDER_BY_RUNTIME_PROVIDER: dict[str, str] = {
     "bedrock": "bedrock",
 }
 _OPTIONAL_MODEL_CAPABILITY_DEFAULTS: dict[str, Any] = {
+    "vision": None,
     "rerank": None,
     "ocr": None,
     "image_generation": None,
@@ -171,13 +172,14 @@ LLM_PROVIDER_MODEL_DEFAULTS: dict[str, dict[str, Any]] = {
     # offers a clear speed-first option. Other capability slots remain empty
     # by default and are opt-in.
     #
-    # Default path for OpenAI-compatible gateways such as DashScope compatible
-    # mode, LiteLLM Gateway, vLLM, LM Studio, Ollama OpenAI mode, etc.
+    # Default path for generic OpenAI-compatible gateways such as LiteLLM
+    # Gateway, LM Studio, and third-party API aggregators. DashScope/Qwen has
+    # its own provider-specific defaults below.
     "openai_compatible": _provider_model_defaults(
         reason="qwen-max",
         primary="qwen-flash",
         light="qwen-flash",
-        embedding="text-embedding-v3",
+        embedding="text-embedding-3-small",
     ),
     "vllm": _provider_model_defaults(
         reason="Qwen/Qwen2.5-7B-Instruct",
@@ -326,7 +328,6 @@ ZH_EDU_RETRIEVERS: list[str] = [
     "zh_wikiversity",
     "zh_wikipedia",
     "zh_wiktionary",
-    "oi_wiki",
 ]
 DEFAULT_RETRIEVERS: list[str] = [
     "local_rag",
@@ -363,10 +364,16 @@ ZH_MATH_RETRIEVERS: list[str] = [
     "zh_wikibooks",
     "zh_wikiversity",
     "zh_wikipedia",
-    "oi_wiki",
     "zh_wiktionary",
     "arxiv",
     "semantic_scholar",
+    "duckduckgo",
+]
+OI_RETRIEVERS: list[str] = [
+    "local_rag",
+    "oi_wiki",
+    "zh_wikipedia",
+    "zh_wikibooks",
     "duckduckgo",
 ]
 DEFAULT_RETRIEVER_PROFILES: dict[str, list[str]] = {
@@ -382,6 +389,7 @@ DEFAULT_RETRIEVER_PROFILES: dict[str, list[str]] = {
         "duckduckgo",
     ],
     "docgen_zh_math": list(ZH_MATH_RETRIEVERS),
+    "docgen_oi": list(OI_RETRIEVERS),
 }
 RETRIEVER_PROFILES = DEFAULT_RETRIEVER_PROFILES
 
@@ -402,6 +410,21 @@ def split_provider_model_name(model: str | None) -> tuple[str | None, str]:
     if normalized_provider not in LLM_MODEL_PREFIX_PROVIDERS:
         return None, normalized
     return normalized_provider, model_name.strip()
+
+
+def normalize_openai_compatible_image_model_name(
+    model: str | None,
+    *,
+    runtime_provider: str | None = None,
+) -> str | None:
+    normalized = (model or "").strip()
+    if not normalized:
+        return None
+    if normalize_llm_provider_name(runtime_provider) != "openai_compatible":
+        return normalized
+    if "/" in normalized:
+        return normalized
+    return f"openai/{normalized}"
 
 
 def detect_llm_provider_from_base_url(base_url: str | None) -> str | None:
@@ -749,6 +772,7 @@ __all__ = [
     "is_local_llm_base_url",
     "llm_provider_requires_api_key",
     "load_project_settings_values",
+    "normalize_openai_compatible_image_model_name",
     "normalize_llm_provider_name",
     "normalize_profile_name",
     "normalize_retriever_name",

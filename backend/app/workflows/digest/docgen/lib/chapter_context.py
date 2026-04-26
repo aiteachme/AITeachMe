@@ -15,7 +15,6 @@ from app.shared.infra.search.defaults import (
     DEFAULT_SEARCH_MAX_RESULTS_PER_QUERY,
     DEFAULT_SEARCH_PROVIDER_TIMEOUT_S,
 )
-from app.shared.infra.llm_support.routing import TaskType
 from app.shared.infra.search import ContextCompressor, SourceCurator
 from app.shared.infra.search.factory import get_configured_retriever_names, get_retrievers_for_subject
 from app.shared.infra.search.retrievers.local_rag import LocalRAGRetriever
@@ -27,6 +26,8 @@ from app.workflows.digest.docgen.lib.defaults import (
     DEFAULT_DOCGEN_READ_TIMEOUT_S,
     DEFAULT_DOCGEN_RETRIEVAL_TIMEOUT_S,
 )
+from app.workflows.digest.docgen.lib.model_policy import DocGenModelStep, docgen_completion_kwargs
+from app.workflows.digest.docgen.mode_profiles import get_docgen_mode_profile
 from app.workflows.digest.docgen.lib.query_planning import (
     build_research_focus_text,
     dedupe_queries,
@@ -40,27 +41,13 @@ _LOW_VALUE_SOURCE_MARKERS = (
     "360doc.com",
     "docin.com",
 )
+_OI_WIKI_DOMAINS = (
+    "oi-wiki.org",
+    "oi-wiki.com",
+    "oiwiki.com",
+    "oi.wiki",
+)
 _TERM_SPLIT_RE = re.compile(r"[，。；：、,.!?\n\r/（）()\-]+")
-_MODE_RESEARCH_STRATEGIES = {
-    "sprint": {
-        "max_rounds": 2,
-        "queries_per_round": 2,
-        "query_cap": 4,
-        "coverage_target": 0.68,
-        "max_total_chars": 4200,
-        "min_score_gain": 0.08,
-        "max_gap_queries_per_round": 2,
-    },
-    "systematic": {
-        "max_rounds": 3,
-        "queries_per_round": 3,
-        "query_cap": 6,
-        "coverage_target": 0.82,
-        "max_total_chars": 6000,
-        "min_score_gain": 0.05,
-        "max_gap_queries_per_round": 3,
-    },
-}
 
 
 class DocGenChapterContextRuntime(BaseTracedExecution):
@@ -149,6 +136,7 @@ class DocGenChapterContextRuntime(BaseTracedExecution):
         )
         pending_queries = dedupe_queries([*base_queries, *planned_queries], limit=resolved_query_cap)
         resolved_retrieval_profile = str(retrieval_profile or self.context.retrieval_profile or "").strip()
+        allow_oi_wiki_sources = self._allows_oi_wiki_sources(resolved_retrieval_profile)
         external_search_enabled = bool(settings.docgen.allow_external_search)
         local_retriever = LocalRAGRetriever(subject=local_rag_subject, local_sections=local_sections)
         other_retrievers = [
@@ -225,6 +213,7 @@ class DocGenChapterContextRuntime(BaseTracedExecution):
                 retrieval_started_at=retrieval_started_at,
                 retrieval_budget_s=retrieval_budget_s,
                 provider_budget_s=provider_budget_s,
+                allow_oi_wiki_sources=allow_oi_wiki_sources,
             )
             local_hits = int(round_result["local_hits_total"])
             web_hits = int(round_result["web_hits_total"])
@@ -234,7 +223,10 @@ class DocGenChapterContextRuntime(BaseTracedExecution):
             round_external_queries = list(round_result.get("round_external_queries", []) or [])
 
             merged_results = self._dedupe_results(
-                self._filter_search_results(all_results),
+                self._filter_search_results(
+                    all_results,
+                    allow_oi_wiki_sources=allow_oi_wiki_sources,
+                ),
                 max_results=max(query_limit * max(1, len(executed_queries)), query_limit),
             )
             curated_results, curator_metadata = await curator.curate_sources(
@@ -389,6 +381,7 @@ class DocGenChapterContextRuntime(BaseTracedExecution):
         retrieval_started_at: float,
         retrieval_budget_s: float,
         provider_budget_s: float,
+        allow_oi_wiki_sources: bool,
     ) -> dict[str, Any]:
         """执行一轮章节检索并累计检索状态。
 
@@ -411,7 +404,8 @@ class DocGenChapterContextRuntime(BaseTracedExecution):
                     provider_budget_s=provider_budget_s,
                     retrieval_started_at=retrieval_started_at,
                     retrieval_budget_s=retrieval_budget_s,
-                )
+                ),
+                allow_oi_wiki_sources=allow_oi_wiki_sources,
             )
             self._record_retriever_call(
                 retriever_stats,
@@ -440,7 +434,8 @@ class DocGenChapterContextRuntime(BaseTracedExecution):
                                 provider_budget_s=provider_budget_s,
                                 retrieval_started_at=retrieval_started_at,
                                 retrieval_budget_s=retrieval_budget_s,
-                            )
+                            ),
+                            allow_oi_wiki_sources=allow_oi_wiki_sources,
                         )
                         self._record_retriever_call(
                             retriever_stats,
@@ -601,8 +596,7 @@ class DocGenChapterContextRuntime(BaseTracedExecution):
                     required_elements=required_elements,
                     digest_mode=digest_mode,
                 ),
-                task_type=TaskType.DOCGEN_LIGHT,
-                model="light",
+                **docgen_completion_kwargs(DocGenModelStep.RESEARCH_PURIFY),
                 extra_metadata=self.context.trace_metadata(
                     runtime_name=self.name,
                     research_stage="purify_material",
@@ -618,12 +612,26 @@ class DocGenChapterContextRuntime(BaseTracedExecution):
                 return cleaned, True
         return dense_context, False
 
-    def _filter_search_results(self, results: Iterable[SearchResult]) -> list[SearchResult]:
+    def _allows_oi_wiki_sources(self, retrieval_profile: str | None) -> bool:
+        return str(retrieval_profile or "").strip().lower() == "docgen_oi"
+
+    def _is_oi_wiki_url(self, url: str) -> bool:
+        domain = urlparse(str(url or "")).netloc.lower()
+        return any(domain == item or domain.endswith(f".{item}") for item in _OI_WIKI_DOMAINS)
+
+    def _filter_search_results(
+        self,
+        results: Iterable[SearchResult],
+        *,
+        allow_oi_wiki_sources: bool = False,
+    ) -> list[SearchResult]:
         filtered: list[SearchResult] = []
         for item in results:
             url = item.url.strip().lower()
             if url.startswith("local://"):
                 filtered.append(item)
+                continue
+            if url and not allow_oi_wiki_sources and self._is_oi_wiki_url(url):
                 continue
             if url and any(marker in url for marker in _LOW_VALUE_SOURCE_MARKERS):
                 continue
@@ -706,8 +714,7 @@ class DocGenChapterContextRuntime(BaseTracedExecution):
         }
 
     def _resolve_strategy(self, digest_mode: str) -> dict[str, Any]:
-        normalized = str(digest_mode or "").strip().lower()
-        return dict(_MODE_RESEARCH_STRATEGIES.get(normalized, _MODE_RESEARCH_STRATEGIES["systematic"]))
+        return dict(get_docgen_mode_profile(digest_mode).research_strategy())
 
     def _take_round_queries(
         self,
@@ -842,12 +849,7 @@ class DocGenChapterContextRuntime(BaseTracedExecution):
         digest_mode: str,
         max_queries: int,
     ) -> list[str]:
-        normalized_mode = str(digest_mode or "").strip().lower()
-        suffixes = (
-            ["高频题型", "易错点", "典型例题"]
-            if normalized_mode == "sprint"
-            else ["定义", "推导", "联系", "典型例子"]
-        )
+        suffixes = get_docgen_mode_profile(digest_mode).gap_query_suffixes
         seeds = gaps[: max(1, max_queries)]
         if objective.strip():
             seeds.extend(self._extract_objective_terms(objective)[:1])

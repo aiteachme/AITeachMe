@@ -15,14 +15,17 @@ def build_prompt_node(*, context: WorkflowContext):
 
     def build_prompt(state: InteractWorkflowState) -> InteractWorkflowState:
         messages = build_chat_messages(
-            subject=state["subject"],
+            subject=state["subject"] or "global",
             strategy_mode=state["strategy_mode"],
             retrieval_results=state.get("retrieval_results", []),
             recent_messages=state.get("recent_messages", []),
+            subject_context=state.get("subject_context"),
             weak_points=state.get("weak_points", []),
             recent_mistakes=state.get("recent_mistakes", []),
             question=state["question"],
+            source=state.get("source"),
             selected_context=state.get("selected_context"),
+            selection_context=state.get("selection_context"),
             source_chunk_id=state.get("source_chunk_id"),
         )
         execution_instruction = get_execution_instruction(state["execution_mode"])
@@ -47,4 +50,3 @@ def build_prompt_node(*, context: WorkflowContext):
         }
 
     return build_prompt
-

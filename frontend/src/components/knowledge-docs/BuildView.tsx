@@ -1,15 +1,17 @@
-import { useEffect, useState } from "react";
-import { motion, AnimatePresence } from "framer-motion";
-import { Check, CheckCircle2, FileText, Loader2, Activity, PlayCircle, FileSearch, Code2 } from "lucide-react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
+import { motion } from "framer-motion";
+import { Check, CheckCircle2, ChevronRight, Code2, FileText, Loader2, PanelRightClose, PanelRightOpen, PlayCircle } from "lucide-react";
 
 import { cn } from "../../lib/utils";
 import type { FileRecord } from "../../api/generated/model";
+import { MarkdownViewer } from "../ui/MarkdownViewer";
 import type {
   KnowledgeBuildMetrics,
   KnowledgeBuildPreview,
 } from "./types";
 import { useBuildTimelineSteps } from "./BuildProcessTimeline";
-import { buildChapterStatusLabel, formatBuildEventTime, resolveFileProcessingLabel } from "./utils";
+import { buildChapterStatusLabel, formatBuildEventTime } from "./utils";
+import { useBuildEventStream } from "../../hooks/useBuildEventStream";
 
 interface Props {
   isFetching: boolean;
@@ -21,6 +23,8 @@ interface Props {
   sourceFilesFetching: boolean;
   buildStage: string | null | undefined;
   className?: string;
+  /** Subject ID for SSE streaming — enables live build updates */
+  subjectId?: string;
 }
 
 const EVENT_STAGE_LABELS: Record<string, string> = {
@@ -31,9 +35,14 @@ const EVENT_STAGE_LABELS: Record<string, string> = {
   dispatch_ready: "执行合同",
   building_document_backbone: "文档骨架",
   generating_chapters: "章节写作",
+  chapter_generating: "章节启动",
+  chapter_research_ready: "检索完成",
+  chapter_generated: "初稿完成",
   enhancing_chapters: "章节增强",
+  chapter_enhanced: "增强完成",
   chapters_enhanced: "增强完成",
   reviewing_content: "复核中",
+  chapter_reviewed: "章节复核",
   content_reviewed: "复核完成",
   repairing_or_routing: "回流处理",
   repair_routed: "回流记录",
@@ -43,55 +52,236 @@ const EVENT_STAGE_LABELS: Record<string, string> = {
   completed: "已发布",
 };
 
-const TABS = [
-  { id: "logs", label: "构建日志" },
-  { id: "files", label: "文件解析" },
-  { id: "outline", label: "大纲内容" },
-  { id: "preview", label: "动态生成" },
-];
+const MERGE_PREVIEW_STAGES = new Set([
+  "merge_reviewed",
+  "titles_finalized",
+  "doc_lane_staged",
+  "docgen_finalized",
+  "publishing",
+  "completed",
+]);
+
+const ACTIVE_CHAPTER_STATUSES = new Set(["generating", "drafting", "enhancing", "reviewing", "researching"]);
+const DONE_CHAPTER_STATUSES = new Set(["generated", "completed", "enhanced", "reviewed"]);
+const LIVE_MARKDOWN_RENDER_LIMIT = 24000;
+const LIVE_MARKDOWN_FLUSH_INTERVAL_MS = 320;
+const LIVE_MARKDOWN_IMMEDIATE_LENGTH = 1600;
+const LIVE_MARKDOWN_LARGE_JUMP = 4200;
+
+const BUILD_MODE_LABELS: Record<string, string> = {
+  confirmed_build_plan: "已确认构建方案",
+  search_only_mode: "仅使用联网资料",
+  local_material_mode: "基于本地资料",
+};
+
+function isCompletionStatusText(statusText: string): boolean {
+  return /完成|已发布|已生成/.test(statusText);
+}
+
+function formatBuildModeReason(reason?: string | null): string | null {
+  const normalized = (reason ?? "").trim();
+  if (!normalized) return null;
+  return BUILD_MODE_LABELS[normalized] ?? null;
+}
+
+function formatCompactCount(value: number): string {
+  return Math.max(0, Math.round(value)).toLocaleString("zh-CN");
+}
+
+interface LiveMarkdownRenderState {
+  markdown: string;
+  sourceLength: number;
+  displayedLength: number;
+  truncated: boolean;
+}
+
+function prepareLiveMarkdownContent(content: string, isStreaming: boolean): LiveMarkdownRenderState {
+  const source = String(content ?? "");
+  const limit = isStreaming ? LIVE_MARKDOWN_RENDER_LIMIT : LIVE_MARKDOWN_RENDER_LIMIT * 2;
+  const shouldTruncate = source.length > limit;
+  const markdown = shouldTruncate ? source.slice(0, limit).trimEnd() : source;
+
+  return {
+    markdown,
+    sourceLength: source.length,
+    displayedLength: markdown.length,
+    truncated: shouldTruncate,
+  };
+}
+
+function useLiveMarkdownRenderState(content: string, isStreaming: boolean): LiveMarkdownRenderState & { pending: boolean } {
+  const [renderState, setRenderState] = useState<LiveMarkdownRenderState>(() => prepareLiveMarkdownContent(content, isStreaming));
+  const renderStateRef = useRef(renderState);
+  const latestPreparedRef = useRef(renderState);
+  const latestSourceRef = useRef(content);
+  const committedSourceRef = useRef(content);
+  const flushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    const clearTimer = () => {
+      if (flushTimerRef.current) {
+        clearTimeout(flushTimerRef.current);
+        flushTimerRef.current = null;
+      }
+    };
+
+    const commit = (next: LiveMarkdownRenderState, source: string) => {
+      renderStateRef.current = next;
+      committedSourceRef.current = source;
+      setRenderState(next);
+    };
+
+    const prepared = prepareLiveMarkdownContent(content, isStreaming);
+    latestPreparedRef.current = prepared;
+    latestSourceRef.current = content;
+
+    if (
+      committedSourceRef.current === content &&
+      renderStateRef.current.markdown === prepared.markdown &&
+      renderStateRef.current.truncated === prepared.truncated
+    ) {
+      return;
+    }
+
+    const shouldCommitImmediately =
+      !isStreaming ||
+      renderStateRef.current.sourceLength === 0 ||
+      prepared.sourceLength <= LIVE_MARKDOWN_IMMEDIATE_LENGTH ||
+      Math.abs(prepared.displayedLength - renderStateRef.current.displayedLength) >= LIVE_MARKDOWN_LARGE_JUMP;
+
+    if (shouldCommitImmediately) {
+      clearTimer();
+      commit(prepared, content);
+      return;
+    }
+
+    if (!flushTimerRef.current) {
+      flushTimerRef.current = setTimeout(() => {
+        flushTimerRef.current = null;
+        commit(latestPreparedRef.current, latestSourceRef.current);
+      }, LIVE_MARKDOWN_FLUSH_INTERVAL_MS);
+    }
+  }, [content, isStreaming]);
+
+  useEffect(() => {
+    return () => {
+      if (flushTimerRef.current) {
+        clearTimeout(flushTimerRef.current);
+      }
+    };
+  }, []);
+
+  return {
+    ...renderState,
+    pending: committedSourceRef.current !== content,
+  };
+}
 
 export function BuildView({
   isFetching,
   progress,
   statusText,
   buildPreview,
-  sourceFiles,
   buildStage,
   className,
+  subjectId,
 }: Props) {
-  const [activeTab, setActiveTab] = useState<string>("preview");
   const [selectedPreviewChapter, setSelectedPreviewChapter] = useState<number | null>(null);
+  const [detailsOpen, setDetailsOpen] = useState(false);
+
+  const isBuildActive = Boolean(
+    buildStage && !(["completed", "failed", "cancelled"] as string[]).includes(buildStage)
+  );
+  const { snapshot: sseSnapshot, connected: sseConnected, previewStreams, buildEvents } = useBuildEventStream({
+    subjectId: subjectId ?? "",
+    enabled: Boolean(subjectId) && isBuildActive,
+  });
+
+  const mergedChapters = useMemo(() => {
+    const sseChapters = sseSnapshot?.docgen_preview?.chapter_progress;
+    if (sseChapters && sseChapters.length > 0) return sseChapters;
+    return buildPreview?.chapter_progress ?? [];
+  }, [sseSnapshot?.docgen_preview?.chapter_progress, buildPreview?.chapter_progress]);
+
+  const mergedEvents = useMemo(() => {
+    const sseEvents = sseSnapshot?.docgen_preview?.recent_events;
+    const baseEvents = sseEvents && sseEvents.length > 0 ? sseEvents : buildPreview?.recent_events ?? [];
+    if (buildEvents.length === 0) return baseEvents;
+    const seen = new Set<string>();
+    return [...buildEvents, ...baseEvents].filter((event) => {
+      const key = [
+        event.created_at ?? "",
+        event.stage ?? "",
+        event.chapter_index ?? "",
+        event.summary ?? "",
+      ].join("|");
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }, [sseSnapshot?.docgen_preview?.recent_events, buildPreview?.recent_events, buildEvents]);
+
+  const mergedChapterPreviews = useMemo(() => {
+    const sseChapterPreviews = sseSnapshot?.docgen_preview?.chapter_previews;
+    if (sseChapterPreviews && sseChapterPreviews.length > 0) return sseChapterPreviews;
+    return buildPreview?.chapter_previews ?? [];
+  }, [sseSnapshot?.docgen_preview?.chapter_previews, buildPreview?.chapter_previews]);
+
+  const mergePreview = useMemo(() => {
+    return sseSnapshot?.docgen_preview?.merge_preview ?? buildPreview?.merge_preview ?? null;
+  }, [sseSnapshot?.docgen_preview?.merge_preview, buildPreview?.merge_preview]);
 
   const timelineSteps = useBuildTimelineSteps(buildStage);
-  const chapters = buildPreview?.chapter_progress ?? [];
-  const events = buildPreview?.recent_events ?? [];
-  const roundedProgress = Math.max(0, Math.min(100, Math.round(progress)));
+  const chapters = mergedChapters;
+  const events = mergedEvents;
+  const chapterPreviews = mergedChapterPreviews;
+  const rawProgress = Math.max(0, Math.min(100, Math.round(
+    sseSnapshot?.docgen?.progress_pct ?? progress
+  )));
+  const isBuildCompleted = buildStage === "completed" || (rawProgress >= 95 && isCompletionStatusText(statusText));
+  const roundedProgress = isBuildCompleted ? 100 : rawProgress;
 
-  const draftExcerpt = buildPreview?.draft_excerpt?.trim() ?? "";
-  const planSummary = buildPreview?.plan_summary?.trim() ?? "";
+  const draftExcerpt = (
+    mergePreview?.draft_excerpt ||
+    sseSnapshot?.docgen_preview?.draft_excerpt ||
+    buildPreview?.draft_excerpt ||
+    ""
+  ).trim();
+  const planSummary = (sseSnapshot?.docgen_preview?.plan_summary ?? buildPreview?.plan_summary ?? "").trim();
 
-  const spotlightChapter = chapters.find((c) =>
-    ["generating", "enhancing", "reviewing", "drafting", "researching"].includes(c.status)
-  ) ?? chapters.find(c => c.status !== "pending") ?? null;
+  const spotlightChapter = chapters.find((chapter) => ACTIVE_CHAPTER_STATUSES.has(chapter.status))
+    ?? chapters.find((chapter) => chapter.status !== "pending")
+    ?? null;
 
-  // Auto-switch to preview and select active chapter when streaming starts
+  const chapterPreviewByIndex = useMemo(
+    () => new Map(chapterPreviews.map((item) => [item.chapter_index, item])),
+    [chapterPreviews],
+  );
+
+  const selectedChapterPreview = selectedPreviewChapter !== null
+    ? chapterPreviewByIndex.get(selectedPreviewChapter) ?? null
+    : null;
+
+  const selectedChapterEvents = useMemo(() => {
+    if (selectedPreviewChapter === null) return [];
+    return events.filter((event) => event.chapter_index === selectedPreviewChapter).slice(0, 5);
+  }, [events, selectedPreviewChapter]);
+
+  const recentEvents = events.slice(0, 8);
+  const buildModeLabel = formatBuildModeReason(buildPreview?.mode_reason);
+
   useEffect(() => {
-    if (draftExcerpt) {
-      if (activeTab === "outline" || activeTab === "logs" || activeTab === "files") {
-        setActiveTab("preview");
-      }
-      if (spotlightChapter && selectedPreviewChapter !== spotlightChapter.chapter_index) {
-        setSelectedPreviewChapter(spotlightChapter.chapter_index);
-      }
+    if (chapters.length === 0) {
+      setSelectedPreviewChapter(null);
+      return;
     }
-  }, [draftExcerpt, spotlightChapter]);
-
-  // Ensure selected chapter in preview defaults to spotlight or first chapter
-  useEffect(() => {
-    if (activeTab === "preview" && selectedPreviewChapter === null && chapters.length > 0) {
+    if (
+      selectedPreviewChapter === null ||
+      !chapters.some((chapter) => chapter.chapter_index === selectedPreviewChapter)
+    ) {
       setSelectedPreviewChapter(spotlightChapter?.chapter_index ?? chapters[0].chapter_index);
     }
-  }, [activeTab, chapters, spotlightChapter]);
+  }, [chapters, selectedPreviewChapter, spotlightChapter]);
 
   return (
     <motion.div
@@ -99,390 +289,468 @@ export function BuildView({
       animate={{ opacity: 1 }}
       transition={{ duration: 0.35 }}
       className={cn(
-        "mx-auto w-full max-w-[1300px] h-[75vh] min-h-[600px] flex flex-col lg:flex-row bg-white rounded-xl border border-zinc-200 overflow-hidden shadow-sm",
+        "w-full h-full flex flex-col bg-white dark:bg-slate-900 overflow-hidden",
         className
       )}
     >
-      {/* -------------------------------------------------------- */}
-      {/* LEFT COLUMN: Ultra Minimal Progress & Timeline             */}
-      {/* -------------------------------------------------------- */}
-      <div className="flex-shrink-0 w-full lg:w-[260px] flex flex-col border-r border-[#E5E7EB] bg-[#FAFAFA]">
-        {/* Progress Header */}
-        <div className="p-6 pb-5 border-b border-[#E5E7EB]">
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="text-[13px] font-semibold text-zinc-900 tracking-wide flex items-center gap-1.5">
-              {isFetching && <Loader2 className="w-3.5 h-3.5 animate-spin text-zinc-400" />}
-              {statusText || "任务初始化..."}
-            </h2>
-            <span className={cn(
-              "text-[12px] font-medium px-2 py-0.5 rounded-full border",
-              roundedProgress === 100 
-                ? "bg-emerald-50 text-emerald-600 border-emerald-100"
-                : "bg-blue-50 text-blue-600 border-blue-100"
-            )}>
-              {roundedProgress}%
-            </span>
+      <div className="relative border-b border-zinc-200 bg-white px-5 py-4 dark:border-slate-800 dark:bg-slate-950 lg:px-8">
+        <div className="relative flex flex-col gap-4">
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-zinc-950 text-white shadow-sm shadow-zinc-900/10 dark:bg-zinc-100 dark:text-slate-950 dark:shadow-none">
+                {isFetching ? <Loader2 className="h-4 w-4 animate-spin" /> : <Code2 className="h-4 w-4" />}
+              </span>
+              <div className="min-w-0">
+                <h2 className="truncate text-[16px] font-semibold leading-6 text-zinc-950 dark:text-zinc-50">
+                  {statusText || "正在准备知识文档..."}
+                </h2>
+                <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[11px] text-zinc-500 dark:text-slate-400">
+                  <span className="rounded-md bg-zinc-50 px-2 py-0.5 ring-1 ring-zinc-200 dark:bg-slate-900 dark:ring-slate-800">
+                    {chapters.length > 0 ? `${chapters.length} 个章节` : "等待章节计划"}
+                  </span>
+                  {buildModeLabel ? (
+                    <span className="rounded-md bg-zinc-50 px-2 py-0.5 ring-1 ring-zinc-200 dark:bg-slate-900 dark:ring-slate-800">
+                      {buildModeLabel}
+                    </span>
+                  ) : null}
+                  {(sseConnected || isBuildActive) ? (
+                    <span className="inline-flex items-center gap-1.5 rounded-md bg-blue-50 px-2 py-0.5 text-blue-600 ring-1 ring-blue-100 dark:bg-blue-500/10 dark:text-blue-300 dark:ring-blue-500/20">
+                      <span className={cn("h-1.5 w-1.5 rounded-full", sseConnected ? "animate-pulse bg-blue-500" : "bg-zinc-300 dark:bg-slate-600")} />
+                      {sseConnected ? "实时更新" : "等待实时更新"}
+                    </span>
+                  ) : null}
+                  <button
+                    type="button"
+                    onClick={() => setDetailsOpen((value) => !value)}
+                    aria-expanded={detailsOpen}
+                    className={cn(
+                      "inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] ring-1 transition",
+                      detailsOpen
+                        ? "bg-zinc-950 text-white ring-zinc-950 dark:bg-zinc-100 dark:text-slate-950 dark:ring-zinc-100"
+                        : "bg-zinc-50 text-zinc-500 ring-zinc-200 hover:bg-white hover:text-zinc-900 dark:bg-slate-900 dark:text-slate-400 dark:ring-slate-800 dark:hover:text-slate-100"
+                    )}
+                  >
+                    {detailsOpen ? <PanelRightClose className="h-3 w-3" /> : <PanelRightOpen className="h-3 w-3" />}
+                    {detailsOpen ? "收起细节" : "查看细节"}
+                  </button>
+                </div>
+              </div>
+            </div>
+            <div className="mt-4 flex items-center gap-4">
+              <div className="relative h-1.5 flex-1 overflow-hidden rounded-sm bg-zinc-100 dark:bg-slate-800">
+                <motion.div
+                  className={cn(
+                    "relative h-full overflow-hidden rounded-sm",
+                    roundedProgress === 100
+                      ? "bg-gradient-to-r from-emerald-400 via-emerald-500 to-teal-500"
+                      : "bg-blue-500"
+                  )}
+                  initial={{ width: 0 }}
+                  animate={{
+                    width: `${roundedProgress}%`,
+                  }}
+                  transition={{
+                    width: { duration: 0.35 },
+                  }}
+                />
+              </div>
+              <span className="w-12 rounded-md bg-zinc-50 px-2 py-1 text-right text-[13px] font-semibold tabular-nums text-zinc-900 ring-1 ring-zinc-200 dark:bg-slate-900 dark:text-zinc-100 dark:ring-slate-800">
+                {roundedProgress}%
+              </span>
+            </div>
           </div>
-          <div className="h-[3px] w-full bg-zinc-200/60 rounded-full overflow-hidden">
-             <motion.div 
-                className="h-full bg-blue-500 rounded-full" 
-                initial={{width:0}} 
-                animate={{width:`${roundedProgress}%`}} 
-                transition={{ duration: 0.5 }} 
-             />
-          </div>
-          {buildPreview?.mode_reason?.trim() ? (
-             <div className="mt-4">
-               <span className="inline-block text-[10.5px] font-mono text-zinc-500 bg-zinc-200/40 rounded px-2 py-1 leading-none">
-                 {buildPreview.mode_reason.trim()}
-               </span>
-             </div>
-          ) : null}
         </div>
 
-        {/* Minimal Timeline Rail */}
-        <div className="flex-1 overflow-y-auto px-6 py-6 scrollbar-thin scrollbar-webkit">
-           <h3 className="text-[10px] font-semibold text-zinc-400 uppercase tracking-widest mb-6">Phase Flow</h3>
-           <div className="relative border-l border-zinc-200 ml-[7px] space-y-7">
-             {timelineSteps.map((step, idx) => {
-                const isDone = step.state === "done";
-                const isActive = step.state === "active";
-                return (
-                  <div key={step.key} className="relative pl-6">
-                     {/* Node Dot */}
-                     <div className={cn(
-                       "absolute left-[-9px] top-[1px] w-4 h-4 rounded-full border bg-[#FAFAFA] flex items-center justify-center transition-colors",
-                       isDone ? "border-blue-500 bg-blue-500" : isActive ? "border-blue-500" : "border-zinc-200"
-                     )}>
-                       {isDone && <Check className="w-2.5 h-2.5 text-white" strokeWidth={3} />}
-                       {isActive && <div className="w-1.5 h-1.5 rounded-full bg-blue-500" />}
-                     </div>
-                     {/* Content */}
-                     <div>
-                       <div className={cn("text-[13px] leading-none mb-1.5 flex items-center gap-1.5", 
-                          isActive ? "text-blue-600 font-medium" : isDone ? "text-zinc-700" : "text-zinc-400"
-                       )}>
-                         <span className="text-[10px] font-mono opacity-60">0{idx + 1}</span>
-                         {step.title}
-                       </div>
-                       {isActive && (
-                         <div className="text-[11px] text-zinc-500 leading-snug">
-                           {step.description}
-                         </div>
-                       )}
-                     </div>
-                  </div>
-                )
-             })}
-           </div>
+        <div className="relative mt-4 overflow-x-auto pb-1 build-scroll">
+          <div className="flex min-w-max items-center gap-3">
+            {timelineSteps.map((step, idx) => {
+              const isDone = step.state === "done";
+              const isActive = step.state === "active";
+              return (
+                <div
+                  key={step.key}
+                  className={cn(
+                    "group flex items-center gap-2 rounded-md px-2 py-1.5 text-[12px] transition-colors",
+                    isActive
+                      ? "bg-blue-50 text-blue-700 ring-1 ring-blue-100 dark:bg-blue-500/10 dark:text-blue-300 dark:ring-blue-500/20"
+                      : isDone
+                        ? "text-emerald-700 dark:text-emerald-300"
+                        : "text-zinc-400 dark:text-slate-500",
+                  )}
+                >
+                  <span className={cn(
+                    "flex h-4 w-4 items-center justify-center rounded-full border text-[9px]",
+                    isDone
+                      ? "border-emerald-500 bg-emerald-500 text-white"
+                      : isActive
+                        ? "border-blue-500 bg-white text-blue-600 dark:bg-slate-900"
+                        : "border-zinc-200 text-zinc-400 dark:border-slate-700",
+                  )}>
+                    {isDone ? <Check className="h-2.5 w-2.5" strokeWidth={3} /> : idx + 1}
+                  </span>
+                  <span className="whitespace-nowrap font-medium">{step.title}</span>
+                  {isActive ? <span className="hidden text-[11px] text-blue-500/70 md:inline">{step.description}</span> : null}
+                </div>
+              );
+            })}
+          </div>
         </div>
       </div>
 
-      {/* -------------------------------------------------------- */}
-      {/* RIGHT COLUMN: Minimal Tosea Tab Canvas                   */}
-      {/* -------------------------------------------------------- */}
-      <div className="flex-1 min-w-0 flex flex-col relative bg-white">
-        {/* Navigation Tabs (Top Edge) */}
-        <div className="h-14 flex items-end px-8 gap-8 border-b border-[#E5E7EB]">
-          {TABS.map((tab) => {
-            const isActive = activeTab === tab.id;
-            return (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                className={cn(
-                  "relative pb-3.5 text-[14px] transition-colors outline-none",
-                  isActive ? "text-black font-semibold" : "text-zinc-500 hover:text-zinc-800 font-medium min-w-max"
-                )}
-              >
-                {isActive && (
-                  <motion.div
-                    layoutId="tosea-tab-indicator"
-                    className="absolute bottom-0 left-0 right-0 h-[2px] bg-black"
-                  />
-                )}
-                {tab.label}
-              </button>
-            );
-          })}
-        </div>
+      <div className="flex-1 min-h-0 flex bg-white dark:bg-slate-950">
+        <div className="flex-1 min-w-0 flex flex-col lg:flex-row">
+          <div className="w-full shrink-0 border-b border-zinc-200 bg-zinc-50/60 dark:border-slate-800 dark:bg-slate-950 lg:w-[292px] lg:border-b-0 lg:border-r">
+            <div className="flex items-center justify-between px-4 py-3.5">
+              <div>
+                <div className="text-[12px] font-semibold text-zinc-800 dark:text-slate-100">章节进度</div>
+                <div className="mt-0.5 text-[11px] text-zinc-400 dark:text-slate-500">选择章节查看生成预览</div>
+              </div>
+              <ChevronRight className="hidden h-4 w-4 text-zinc-300 lg:block" />
+            </div>
+            <div className="max-h-52 overflow-y-auto px-2.5 pb-3 build-scroll lg:max-h-none lg:h-[calc(100%-64px)]">
+              {chapters.map((chapter) => {
+                const isSelected = selectedPreviewChapter === chapter.chapter_index;
+                const isStreaming = spotlightChapter?.chapter_index === chapter.chapter_index;
+                const isDone = DONE_CHAPTER_STATUSES.has(chapter.status);
 
-        {/* Dynamic Canvas Panel */}
-        <div className="flex-1 overflow-hidden relative">
-          <AnimatePresence mode="wait">
-            {activeTab === "files" && (
-              <motion.div
-                key="files"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.15 }}
-                className="absolute inset-0 overflow-y-auto px-10 py-8 scrollbar-thin scrollbar-webkit"
-              >
-                <div className="w-full">
-                  <h3 className="text-[14px] font-semibold text-black mb-5 tracking-tight flex items-center gap-2">
-                    本地文献提取结果
-                    <span className="font-normal text-[12px] text-zinc-500 bg-zinc-100 px-2 py-0.5 rounded">{sourceFiles.length} 份</span>
-                  </h3>
-                  
-                  {sourceFiles.length === 0 ? (
-                    <div className="text-[13px] text-zinc-400 py-10 flex flex-col items-center gap-2">
-                      <FileSearch className="w-8 h-8 text-zinc-200" />
-                      当前没有引入本地文件。
+                return (
+                  <button
+                    key={chapter.chapter_index}
+                    onClick={() => setSelectedPreviewChapter(chapter.chapter_index)}
+                    aria-pressed={isSelected}
+                    className={cn(
+                      "w-full border-l-2 text-left px-3 py-3 text-[12px] transition-colors flex items-start gap-2.5",
+                      isSelected
+                        ? "border-blue-500 bg-white text-zinc-950 shadow-[inset_0_0_0_1px_rgba(228,228,231,0.9)] dark:border-blue-400 dark:bg-slate-900 dark:text-zinc-100 dark:shadow-none"
+                        : "border-transparent text-zinc-600 hover:border-zinc-200 hover:bg-white dark:text-slate-400 dark:hover:border-slate-700 dark:hover:bg-slate-900/60"
+                    )}
+                  >
+                    <div className="mt-1 relative flex items-center justify-center shrink-0 w-3 h-3">
+                      {isStreaming ? (
+                        <>
+                          <span className={cn("animate-ping absolute inline-flex h-full w-full rounded-full opacity-75", isSelected ? "bg-blue-300" : "bg-blue-400")} />
+                          <span className={cn("relative inline-flex rounded-full h-1.5 w-1.5", isSelected ? "bg-blue-300" : "bg-blue-500")} />
+                        </>
+                      ) : isDone ? (
+                        <div className={cn("w-1.5 h-1.5 rounded-full", isSelected ? "bg-emerald-300" : "bg-emerald-400")} />
+                      ) : (
+                        <div className={cn("w-1.5 h-1.5 rounded-full", isSelected ? "bg-zinc-400" : "bg-zinc-300")} />
+                      )}
                     </div>
-                  ) : (
-                    <div className="flex flex-col">
-                      {sourceFiles.map((file) => {
-                         const hasError = Boolean(file.error_message?.trim());
-                         const isDone = Boolean(file.markdown_ready);
-                         const label = resolveFileProcessingLabel(file);
-                         
-                         return (
-                           <div key={file.uid} className="group relative border-b border-[#F3F4F6] py-4 hover:bg-zinc-50 transition-all bg-white cursor-pointer overflow-hidden -mx-4 px-4">
-                             <div className="flex items-start gap-4">
-                               <div className={cn(
-                                 "w-9 h-9 rounded-md flex items-center justify-center shrink-0",
-                                 hasError ? "bg-red-50 text-red-500" : isDone ? "bg-emerald-50 text-emerald-500" : "bg-zinc-50 text-zinc-400"
-                               )}>
-                                  {isDone ? <CheckCircle2 className="w-5 h-5" /> : <FileText className="w-5 h-5" />}
-                               </div>
-                               <div className="flex-1 min-w-0">
-                                 <h4 className="text-[13px] font-medium text-zinc-900 truncate mb-1 pr-6" title={file.filename}>{file.filename}</h4>
-                                 <p className={cn("text-[11px]", hasError ? "text-red-500" : "text-zinc-500")}>
-                                   {hasError ? file.error_message : label}
-                                 </p>
-                               </div>
-                               
-                               <div className="absolute right-4 top-4 opacity-0 group-hover:opacity-100 transition-opacity">
-                                  <div className="text-[11px] text-blue-600 bg-blue-50 px-2 py-0.5 rounded border border-blue-100 font-medium">查看解析</div>
-                               </div>
-                             </div>
-                           </div>
-                         );
-                      })}
-                    </div>
-                  )}
-                </div>
-              </motion.div>
-            )}
-
-            {activeTab === "logs" && (
-              <motion.div
-                key="logs"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.15 }}
-                className="absolute inset-0 overflow-y-auto px-10 py-8 scrollbar-thin scrollbar-webkit"
-              >
-                <div className="w-full">
-                  {/* Terminal Style Log Stream */}
-                  <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-[14px] font-semibold text-black tracking-tight flex items-center gap-2">
-                       系统构建日志
-                       <span className="font-mono font-normal text-[11px] text-zinc-500 bg-zinc-100 px-2 py-0.5 rounded">{events.length}</span>
-                    </h3>
-                  </div>
-                  
-                  <div className="font-mono text-[12px] space-y-1 bg-[#FAFAFA] border border-[#E5E7EB] text-zinc-800 p-4 rounded-xl overflow-x-auto shadow-sm min-h-[400px]">
-                     {events.map((event, index) => {
-                       const stageLabel = EVENT_STAGE_LABELS[(event.stage ?? "").trim()] ?? (event.stage?.trim() || "EVENT");
-                       return (
-                         <div key={`${event.stage}-${index}`} className="flex gap-3 hover:bg-white px-2 py-1 rounded transition-colors group">
-                           <span className="text-zinc-400 shrink-0 select-none w-12">{event.created_at ? formatBuildEventTime(event.created_at) : ""}</span>
-                           <span className="text-blue-600 font-medium shrink-0 w-[100px] truncate select-none">[{stageLabel}]</span>
-                           <span className="text-zinc-800 whitespace-pre-wrap flex-1 leading-relaxed">{event.summary}</span>
-                         </div>
-                       );
-                     })}
-                     {events.length === 0 && (
-                        <div className="text-zinc-400 italic py-2 px-2 animate-pulse">Waiting for system events...</div>
-                     )}
-                  </div>
-                </div>
-              </motion.div>
-            )}
-
-            {activeTab === "outline" && (
-              <motion.div
-                key="outline"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.15 }}
-                className="absolute inset-0 overflow-y-auto px-10 py-10 scrollbar-thin scrollbar-webkit"
-              >
-                <div className="w-full space-y-12 pr-6">
-                  <div>
-                     <h3 className="text-[14px] font-semibold text-zinc-900 tracking-tight mb-4">摘要与框架思路</h3>
-                     <p className="text-[13px] leading-relaxed text-zinc-600 border-l-[2px] border-zinc-200 pl-4 py-1">
-                       {planSummary || "系统正在理解资料范围与章节边界..."}
-                     </p>
-                  </div>
-
-                  <div>
-                    <h3 className="text-[14px] font-semibold text-zinc-900 tracking-tight mb-5 flex items-center justify-between">
-                       生成的章节大纲
-                       <span className="text-zinc-500 font-normal text-[12px] bg-zinc-100 px-2 py-0.5 rounded">总体 {chapters.length} 节</span>
-                    </h3>
-                    
-                    {chapters.length > 0 ? (
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
-                        {chapters.map((chapter) => {
-                          const isDone = ["generated", "completed", "enhanced", "reviewed"].includes(chapter.status);
-                          const isActive = ["generating", "drafting", "enhancing"].includes(chapter.status);
-                          
-                          return (
-                            <div key={chapter.chapter_index} className={cn(
-                              "flex flex-col py-3 px-2 border-b transition-all duration-200",
-                              isActive
-                                ? "border-black"
-                                : "border-[#E5E7EB]"
-                            )}>
-                               <div className="flex items-start gap-4">
-                                  <span className="font-mono text-zinc-300 text-[11px] mt-[3px]">
-                                    {String(chapter.chapter_index).padStart(2, "0")}
-                                  </span>
-                                  <div className="flex-1">
-                                    <h4 className={cn(
-                                      "text-[13px] font-medium leading-relaxed",
-                                      isActive ? "text-black" : isDone ? "text-zinc-800" : "text-zinc-400"
-                                    )}>{chapter.title}</h4>
-                                    <p className="text-[11px] text-zinc-400 flex items-center gap-1.5 mt-1.5">
-                                      {isActive && <Activity className="w-3 h-3 text-sky-500 animate-pulse" />}
-                                      {buildChapterStatusLabel(chapter.status)}
-                                    </p>
-                                  </div>
-                               </div>
-                            </div>
-                          );
-                        })}
+                    <div className="flex-1 pr-1">
+                      <div className="line-clamp-2 font-medium leading-snug">
+                        {String(chapter.chapter_index).padStart(2, "0")}. {chapter.title}
                       </div>
-                    ) : (
-                      <div className="text-[12px] text-zinc-400 text-center py-16 bg-[#FAFAFA] rounded-xl border border-zinc-100">
-                         骨架生成尚未就绪
+                      <div className={cn("mt-1 text-[10.5px]", isSelected ? "text-blue-500 dark:text-blue-300" : "text-zinc-400 dark:text-slate-500")}>
+                        {buildChapterStatusLabel(chapter.status)}
+                      </div>
+                    </div>
+                  </button>
+                );
+              })}
+              {chapters.length === 0 && (
+                <div className="text-[12px] text-zinc-300 text-center py-10">大纲未就绪</div>
+              )}
+            </div>
+          </div>
+
+          <div className="relative flex h-full min-w-0 flex-1 flex-col bg-white dark:bg-slate-900">
+            {selectedPreviewChapter ? (() => {
+              const selChapter = chapters.find((chapter) => chapter.chapter_index === selectedPreviewChapter);
+              const preview = selectedChapterPreview;
+              const streamPreview = previewStreams[selectedPreviewChapter] ?? null;
+              const selectedStatus =
+                streamPreview?.status === "drafting"
+                  ? streamPreview.status
+                  : preview?.status ?? streamPreview?.status ?? selChapter?.status ?? "planned";
+              const isStreaming =
+                spotlightChapter?.chapter_index === selectedPreviewChapter ||
+                ["generating", "drafting", "enhancing", "reviewing"].includes(selectedStatus);
+              const isDone = DONE_CHAPTER_STATUSES.has(selectedStatus);
+              const streamExcerpt = streamPreview?.text ?? "";
+              const previewExcerpt = preview?.excerpt ?? "";
+              const canUseMergeFallback = Boolean(buildStage && MERGE_PREVIEW_STAGES.has(buildStage));
+              const selectedExcerpt = streamExcerpt.trim()
+                ? streamExcerpt
+                : previewExcerpt.trim()
+                  ? previewExcerpt
+                  : canUseMergeFallback
+                    ? draftExcerpt
+                    : "";
+              const selectedHeadings = preview?.latest_headings ?? [];
+              const selectedWordCount = preview?.word_count ?? selChapter?.word_count ?? 0;
+              const selectedSourceCount = preview?.source_count ?? selChapter?.source_count ?? 0;
+              const previewUpdatedAt = streamPreview?.updatedAt
+                ? formatBuildEventTime(streamPreview.updatedAt)
+                : preview?.updated_at
+                  ? formatBuildEventTime(preview.updated_at)
+                  : null;
+              const usingMergeFallback = !streamExcerpt.trim() && !previewExcerpt.trim() && canUseMergeFallback && Boolean(selectedExcerpt.trim());
+              const usingSseDelta = Boolean(streamExcerpt.trim());
+
+              return (
+                <>
+                  <div className="flex items-center justify-between border-b border-zinc-100 bg-white px-5 py-3 dark:border-slate-800 dark:bg-slate-900 md:px-8">
+                    <div className="min-w-0">
+                      <span className="text-[12px] font-medium text-zinc-500 dark:text-slate-400">
+                        {buildChapterStatusLabel(selectedStatus)}
+                      </span>
+                      {previewUpdatedAt ? (
+                        <span className="ml-2 text-[11px] text-zinc-300 dark:text-slate-600">
+                          更新于 {previewUpdatedAt}
+                        </span>
+                      ) : null}
+                    </div>
+                    {(isStreaming || sseConnected) && (
+                      <div className="flex items-center gap-2 rounded-md bg-blue-50 px-2.5 py-1 ring-1 ring-blue-100 dark:bg-blue-500/10 dark:ring-blue-500/20">
+                        <span className="relative flex h-2 w-2">
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 dark:bg-blue-500 opacity-75" />
+                          <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500 dark:bg-blue-400" />
+                        </span>
+                        <span className="text-[11px] text-blue-500 dark:text-blue-400 font-medium">
+                          {usingSseDelta ? "实时流" : "进行中"}
+                        </span>
                       </div>
                     )}
                   </div>
-                </div>
-              </motion.div>
-            )}
 
-            {activeTab === "preview" && (
-              <motion.div
-                key="preview"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.15 }}
-                className="absolute inset-0 flex h-full"
-              >
-                {/* Left Sub-Tab: Chapter List */}
-                <div className="w-[280px] flex-shrink-0 border-r border-[#E5E7EB] bg-white flex flex-col h-full">
-                  <div className="p-4 border-b border-[#E5E7EB]">
-                     <h3 className="text-[13px] font-medium text-zinc-800 flex items-center gap-2">
-                       <Code2 className="w-4 h-4 text-zinc-400" /> 在线生成流 ({chapters.length})
-                     </h3>
-                  </div>
-                  <div className="flex-1 overflow-y-auto p-3 space-y-1 scrollbar-thin scrollbar-webkit">
-                     {chapters.map(chapter => {
-                        const isSelected = selectedPreviewChapter === chapter.chapter_index;
-                        const isStreaming = spotlightChapter?.chapter_index === chapter.chapter_index;
-                        const isDone = ["generated", "completed", "enhanced", "reviewed"].includes(chapter.status);
-                        
-                        return (
-                          <button
-                            key={chapter.chapter_index}
-                            onClick={() => setSelectedPreviewChapter(chapter.chapter_index)}
-                            className={cn(
-                              "w-full text-left px-3 py-2.5 rounded-lg text-[12px] transition-colors flex items-start gap-3",
-                              isSelected ? "bg-zinc-50/80 font-medium" : "hover:bg-zinc-50 border border-transparent text-zinc-600"
-                            )}
-                          >
-                             <div className="mt-0.5 relative flex items-center justify-center shrink-0 w-3 h-3">
-                                {isStreaming ? (
-                                   <>
-                                     <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
-                                     <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-blue-500"></span>
-                                   </>
-                                ) : isDone ? (
-                                   <div className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                                ) : (
-                                   <div className="w-1.5 h-1.5 rounded-full bg-zinc-300" />
-                                )}
-                             </div>
-                             <div className="flex-1 pr-2">
-                               <div className="line-clamp-2">
-                                 {String(chapter.chapter_index).padStart(2, '0')}. {chapter.title}
-                               </div>
-                             </div>
-                          </button>
-                        );
-                     })}
-                     {chapters.length === 0 && (
-                        <div className="text-[12px] text-zinc-400 text-center py-10">大纲未就绪</div>
-                     )}
-                  </div>
-                </div>
+                  <div className="build-scroll flex-1 overflow-y-auto bg-white px-5 py-6 dark:bg-slate-900 md:px-8 md:py-8">
+                    {selectedExcerpt.trim() ? (
+                      <div className="w-full max-w-[980px] space-y-5 pb-12">
+                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-zinc-500 dark:text-slate-400">
+                          <span className="font-medium text-zinc-600 dark:text-slate-300">
+                            {buildChapterStatusLabel(selectedStatus)}
+                          </span>
+                          {selectedWordCount > 0 ? (
+                            <span>
+                              约 {selectedWordCount} 字
+                            </span>
+                          ) : null}
+                          {selectedSourceCount > 0 ? (
+                            <span>
+                              {selectedSourceCount} 个来源
+                            </span>
+                          ) : null}
+                          {usingMergeFallback ? (
+                            <span className="text-blue-600 dark:text-blue-400">
+                              当前显示整本合并预览
+                            </span>
+                          ) : null}
+                          {usingSseDelta ? (
+                            <span className="text-blue-600 dark:text-blue-400">
+                              实时增量
+                            </span>
+                          ) : null}
+                        </div>
 
-                {/* Right Area: SSE Preview */}
-                <div className="flex-1 min-w-0 flex flex-col h-full bg-white relative">
-                   {selectedPreviewChapter ? (() => {
-                      const selChapter = chapters.find(c => c.chapter_index === selectedPreviewChapter);
-                      const isStreaming = spotlightChapter?.chapter_index === selectedPreviewChapter;
-                      const isDone = selChapter ? ["generated", "completed", "enhanced", "reviewed"].includes(selChapter.status) : false;
+                        {selectedHeadings.length > 0 ? (
+                          <p className="max-w-[960px] text-[12px] leading-6 text-zinc-500 dark:text-slate-400">
+                            <span className="text-zinc-400 dark:text-slate-500">生成聚焦：</span>
+                            {selectedHeadings.join(" / ")}
+                          </p>
+                        ) : null}
 
-                      return (
-                         <>
-                           <div className="flex items-center justify-between px-8 py-3 border-b border-[#E5E7EB]">
-                              <span className="text-[12px] font-medium text-zinc-600">
-                                {isStreaming ? "正在实时推流..." : isDone ? "生成已完成" : "等待生成..."}
-                              </span>
-                           </div>
-                           <div className="flex-1 overflow-y-auto px-10 py-10 scrollbar-thin scrollbar-webkit bg-white">
-                              {isStreaming && draftExcerpt ? (
-                                 <div className="max-w-[700px] mx-auto pb-10">
-                                   <pre
-                                     className="whitespace-pre-wrap text-[14px] leading-[1.8] text-zinc-800 break-words"
-                                     style={{ fontFamily: 'var(--font-serif)' }}
-                                   >
-                                     {draftExcerpt}
-                                     <motion.span className="ml-[2px] inline-block h-[15px] w-[2px] animate-blink bg-blue-500 align-middle" />
-                                   </pre>
-                                 </div>
-                              ) : isDone ? (
-                                 <div className="h-full flex flex-col items-center justify-center text-zinc-400 space-y-4">
-                                    <CheckCircle2 className="w-8 h-8 text-emerald-300" strokeWidth={1.5} />
-                                    <p className="text-[13px] text-zinc-500">此章已生成，等待最终合并...</p>
-                                 </div>
-                              ) : (
-                                 <div className="h-full flex flex-col items-center justify-center text-zinc-400 space-y-4">
-                                    <Loader2 className="w-8 h-8 text-zinc-200 animate-spin" strokeWidth={1.5} />
-                                    <p className="text-[13px] text-zinc-500">排列中，等待系统推进到此章...</p>
-                                 </div>
-                              )}
-                           </div>
-                         </>
-                      )
-                   })() : (
-                      <div className="h-full flex flex-col items-center justify-center text-zinc-300 gap-3">
-                         <PlayCircle className="w-8 h-8 text-zinc-200" strokeWidth={1.5} />
-                         <span className="text-[12px]">选择左侧章节查看流</span>
+                        <LiveTextDocument
+                          key={selectedPreviewChapter}
+                          content={selectedExcerpt}
+                          isStreaming={isStreaming}
+                        />
+
+                        {detailsOpen && selectedChapterEvents.length > 0 ? (
+                          <EventTrail events={selectedChapterEvents} selectedPreviewChapter={selectedPreviewChapter} />
+                        ) : null}
                       </div>
-                   )}
-                </div>
-              </motion.div>
+                    ) : selectedChapterEvents.length > 0 ? (
+                      <div className="w-full max-w-[1120px] space-y-4 pb-10">
+                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-zinc-500 dark:text-slate-400">
+                          <span className="font-medium text-zinc-600 dark:text-slate-300">
+                            {buildChapterStatusLabel(selectedStatus)}
+                          </span>
+                          <span className="text-blue-600 dark:text-blue-400">
+                            正在捕获章节执行事件
+                          </span>
+                        </div>
+                        <EventTrail events={selectedChapterEvents} selectedPreviewChapter={selectedPreviewChapter} />
+                      </div>
+                    ) : isDone ? (
+                      <div className="h-full flex flex-col items-center justify-center text-zinc-400 dark:text-slate-500 space-y-3">
+                        <CheckCircle2 className="w-10 h-10 text-emerald-200 dark:text-emerald-500/30" strokeWidth={1.5} />
+                        <p className="text-[13px] text-zinc-400 dark:text-slate-500">此章已完成，但章节预览尚未刷新到工作台。</p>
+                      </div>
+                    ) : (
+                      <div className="h-full flex flex-col items-center justify-center text-zinc-400 dark:text-slate-500 space-y-3">
+                        <Loader2 className="w-10 h-10 text-zinc-200 dark:text-slate-700 animate-spin" strokeWidth={1.5} />
+                        <p className="text-[13px] text-zinc-400 dark:text-slate-500">排列中，等待系统推进到此章...</p>
+                      </div>
+                    )}
+                  </div>
+                </>
+              );
+            })() : (
+              <div className="h-full flex flex-col items-center justify-center text-zinc-300 gap-3">
+                <PlayCircle className="w-10 h-10 text-zinc-200" strokeWidth={1.5} />
+                <span className="text-[12px]">选择左侧章节查看流</span>
+              </div>
             )}
-          </AnimatePresence>
+          </div>
         </div>
-      </div>
 
-      <style>{`
-        .scrollbar-webkit::-webkit-scrollbar { width: 5px; }
-        .scrollbar-webkit::-webkit-scrollbar-track { background: transparent; }
-        .scrollbar-webkit::-webkit-scrollbar-thumb { background-color: rgba(161, 161, 170, 0.3); border-radius: 4px; }
-        .scrollbar-webkit::-webkit-scrollbar-thumb:hover { background-color: rgba(161, 161, 170, 0.5); }
-      `}</style>
+        {detailsOpen ? (
+          <>
+          <button
+            type="button"
+            className="fixed inset-0 z-[89] bg-slate-950/20 lg:hidden"
+            aria-label="收起构建细节"
+            onClick={() => setDetailsOpen(false)}
+          />
+          <aside className="fixed bottom-0 right-0 top-0 z-[90] flex w-[min(330px,calc(100vw-1rem))] shrink-0 flex-col border-l border-zinc-100 bg-white shadow-2xl dark:border-slate-800 dark:bg-slate-950 lg:static lg:z-auto lg:w-[330px] lg:shadow-none">
+            <div className="flex items-center justify-between border-b border-zinc-100 px-4 py-4 dark:border-slate-800">
+              <div>
+                <p className="text-[12px] font-semibold text-zinc-800 dark:text-slate-100">构建细节</p>
+                <p className="mt-1 text-[11px] text-zinc-400 dark:text-slate-500">记录实时事件和方案摘要</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setDetailsOpen(false)}
+                className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-zinc-400 transition hover:bg-white hover:text-zinc-700 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+                aria-label="收起构建细节"
+              >
+                <PanelRightClose className="h-4 w-4" />
+              </button>
+            </div>
+            {planSummary ? (
+              <div className="border-b border-zinc-100 px-4 py-4 dark:border-slate-800">
+                <p className="text-[11px] font-medium tracking-[0.18em] text-zinc-400 dark:text-slate-500">方案摘要</p>
+                <p className="mt-2 line-clamp-6 text-[12px] leading-6 text-zinc-600 dark:text-slate-300">
+                  {planSummary}
+                </p>
+              </div>
+            ) : null}
+            <div className="flex-1 overflow-y-auto px-3 py-3 build-scroll">
+              <p className="px-1 pb-2 text-[11px] font-medium tracking-[0.18em] text-zinc-400 dark:text-slate-500">
+                最近事件
+              </p>
+              <div className="divide-y divide-zinc-100 dark:divide-slate-800">
+                {recentEvents.map((event, index) => {
+                  const stage = (event.stage ?? "").trim();
+                  const stageLabel = EVENT_STAGE_LABELS[stage] ?? (stage || "事件");
+                  return (
+                    <div
+                      key={`${event.stage}-${event.created_at}-${index}`}
+                      className="px-1 py-3 text-[11.5px] leading-5 text-zinc-600 dark:text-slate-300"
+                    >
+                      <div className="mb-1 flex items-center justify-between gap-2">
+                        <span className="truncate font-medium text-blue-500 dark:text-blue-400">{stageLabel}</span>
+                        <span className="shrink-0 text-[10px] text-zinc-300 dark:text-slate-600">
+                          {event.created_at ? formatBuildEventTime(event.created_at) : ""}
+                        </span>
+                      </div>
+                      <p className="line-clamp-3">{event.summary}</p>
+                    </div>
+                  );
+                })}
+                {recentEvents.length === 0 ? (
+                  <div className="py-8 text-center text-[12px] text-zinc-300 dark:text-slate-600">
+                    等待构建事件...
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          </aside>
+          </>
+        ) : null}
+      </div>
     </motion.div>
   );
 }
+
+function EventTrail({
+  events,
+  selectedPreviewChapter,
+}: {
+  events: Array<{ stage?: string | null; summary?: string | null }>;
+  selectedPreviewChapter: number;
+}) {
+  return (
+    <div className="space-y-2 border-t border-zinc-100 pt-5 dark:border-slate-800">
+      <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-zinc-400 dark:text-slate-500">
+        改进轨迹
+      </p>
+      <div className="divide-y divide-zinc-100 border-y border-zinc-100 dark:divide-slate-800 dark:border-slate-800">
+        {events.map((event, index) => (
+          <div
+            key={`${selectedPreviewChapter}-${event.stage}-${index}`}
+            className="py-3 text-[12px] leading-6 text-zinc-600 dark:text-slate-300"
+          >
+            {event.summary}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+const LiveTextDocument = memo(function LiveTextDocument({
+  content,
+  isStreaming,
+}: {
+  content: string;
+  isStreaming: boolean;
+}) {
+  const renderState = useLiveMarkdownRenderState(content, isStreaming);
+  const statusText = renderState.pending
+    ? "正在整理新片段"
+    : isStreaming
+      ? "Markdown 实时渲染"
+      : "预览已稳定";
+
+  return (
+    <article>
+      <div className="mb-5 flex flex-wrap items-center justify-between gap-3 border-b border-zinc-100 pb-3 dark:border-slate-800">
+        <div className="flex min-w-0 items-center gap-2 text-zinc-500 dark:text-slate-400">
+          <FileText className="h-4 w-4 shrink-0" />
+          <div className="min-w-0">
+            <p className="truncate text-[12px] font-medium text-zinc-700 dark:text-slate-200">章节草稿</p>
+            <p className="mt-0.5 text-[11px] text-zinc-400 dark:text-slate-500">
+              {formatCompactCount(renderState.sourceLength)} 字符已接收
+            </p>
+          </div>
+        </div>
+        <div
+          className={cn(
+            "inline-flex items-center gap-2 rounded-md px-2.5 py-1 text-[11px] font-medium ring-1",
+            isStreaming
+              ? "bg-blue-50 text-blue-600 ring-blue-100 dark:bg-blue-500/10 dark:text-blue-300 dark:ring-blue-500/20"
+              : "bg-emerald-50 text-emerald-700 ring-emerald-100 dark:bg-emerald-500/10 dark:text-emerald-300 dark:ring-emerald-500/20",
+          )}
+          aria-live="polite"
+        >
+          <span
+            className={cn(
+              "h-1.5 w-1.5 rounded-full",
+              isStreaming ? "animate-pulse bg-blue-500" : "bg-emerald-500",
+            )}
+          />
+          {statusText}
+        </div>
+      </div>
+
+      <div className="feishu-doc-content build-live-markdown max-w-[920px] break-words [&>*:first-child]:!mt-0 [&>*:last-child]:!mb-0">
+        <MarkdownViewer content={renderState.markdown} variant="document" />
+      </div>
+
+      {renderState.truncated ? (
+        <div className="mt-5 border-l-2 border-amber-400 bg-amber-50/60 px-3 py-2 text-[12px] leading-5 text-amber-800 dark:bg-amber-500/10 dark:text-amber-200">
+          实时预览先渲染前 {formatCompactCount(renderState.displayedLength)} 字符，完整正文仍会继续写入最终文档。
+        </div>
+      ) : null}
+
+      {isStreaming ? (
+        <div className="mt-5 flex items-center gap-2 text-[12px] text-blue-600 dark:text-blue-300">
+          <motion.span className="inline-block h-[15px] w-[2px] animate-blink bg-blue-500 align-middle dark:bg-blue-400" />
+          <span>{renderState.pending ? "新内容已到达，正在排版..." : "保持接收中..."}</span>
+        </div>
+      ) : null}
+    </article>
+  );
+});

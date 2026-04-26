@@ -40,6 +40,7 @@ if TYPE_CHECKING:
         get_subject_vector_status,
         get_subject_vector_status_by_slug,
         should_generate_subject_embeddings,
+        subject_has_retrieval_chunks,
     )
 
 _VECTOR_EXPORTS = {
@@ -54,6 +55,7 @@ _VECTOR_EXPORTS = {
     "get_subject_vector_status",
     "get_subject_vector_status_by_slug",
     "should_generate_subject_embeddings",
+    "subject_has_retrieval_chunks",
 }
 _BUILD_PRECHECK_EXPORTS = {
     "inspect_subject_build_precheck",
@@ -105,4 +107,5 @@ __all__ = [
     "resolve_subject_build_vector_status",
     "set_subject_embedding_binding",
     "should_generate_subject_embeddings",
+    "subject_has_retrieval_chunks",
 ]

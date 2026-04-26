@@ -31,6 +31,14 @@ class SSEEventEmitter:
     async def emit_token(self, content: str) -> None:
         await self.emit_event("token", {"content": content})
 
+    async def emit_status(self, *, stage: str, detail: str, **extra: object) -> None:
+        payload = {
+            "stage": stage,
+            "detail": detail,
+            **extra,
+        }
+        await self.emit_event("status", payload)
+
     async def emit_error(self, *, detail: str, error_code: str) -> None:
         await self.emit_event("error", {"detail": detail, "error_code": error_code})
 
@@ -39,11 +47,17 @@ class SSEEventEmitter:
         *,
         turn_id: str,
         contexts: list[ChatContextItem] | None,
+        session_id: str | None = None,
+        session_title: str | None = None,
     ) -> None:
         payload = {
             "turn_id": turn_id,
             "contexts": [item.model_dump() for item in contexts] if contexts else None,
         }
+        if session_id:
+            payload["session_id"] = session_id
+        if session_title:
+            payload["session_title"] = session_title
         await self.emit_event("done", payload)
 
     async def close(self) -> None:

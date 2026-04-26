@@ -1,6 +1,38 @@
 import { buildApiUrl, getDeviceKey } from "../api/client";
+import type { ExportOptions } from "../api/generated/model";
 
-export async function downloadSubjectPackage(subject: string): Promise<void> {
+function stripQuotes(value: string): string {
+  const trimmed = value.trim();
+  if ((trimmed.startsWith("\"") && trimmed.endsWith("\"")) || (trimmed.startsWith("'") && trimmed.endsWith("'"))) {
+    return trimmed.slice(1, -1);
+  }
+  return trimmed;
+}
+
+function decodeHeaderFilename(value: string): string {
+  const cleaned = stripQuotes(value);
+  try {
+    return decodeURIComponent(cleaned);
+  } catch {
+    return cleaned;
+  }
+}
+
+function parseContentDispositionFilename(disposition: string | null): string | null {
+  if (!disposition) return null;
+
+  const encodedMatch = disposition.match(/filename\*\s*=\s*([^;]+)/i);
+  if (encodedMatch?.[1]) {
+    const value = stripQuotes(encodedMatch[1]);
+    const parts = value.split("''");
+    return decodeHeaderFilename(parts.length > 1 ? parts.slice(1).join("''") : value);
+  }
+
+  const plainMatch = disposition.match(/filename\s*=\s*([^;]+)/i);
+  return plainMatch?.[1] ? decodeHeaderFilename(plainMatch[1]) : null;
+}
+
+export async function downloadSubjectPackage(subject: string, options: ExportOptions = {}): Promise<void> {
   const token = localStorage.getItem("token");
   const url = buildApiUrl(`/api/v1/subjects/${encodeURIComponent(subject)}/export`);
   const response = await fetch(url, {
@@ -11,7 +43,7 @@ export async function downloadSubjectPackage(subject: string): Promise<void> {
       "X-Device-Key": getDeviceKey(),
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
-    body: JSON.stringify({}),
+    body: JSON.stringify(options),
   });
   if (!response.ok) {
     const rawText = await response.text();
@@ -25,13 +57,7 @@ export async function downloadSubjectPackage(subject: string): Promise<void> {
 
   const blob = await response.blob();
   const disposition = response.headers.get("content-disposition");
-  let filename = `${subject}.atmx`;
-  if (disposition) {
-    const match = disposition.match(/filename[^;=\n]*=["']?([^"';\n]*)["']?/);
-    if (match?.[1]) {
-      filename = match[1];
-    }
-  }
+  const filename = parseContentDispositionFilename(disposition) ?? `${subject}.atmx`;
 
   const link = document.createElement("a");
   const blobUrl = URL.createObjectURL(blob);

@@ -118,6 +118,100 @@ def list_sessions_by_subject(
     return list(session.exec(stmt).all()), total
 
 
+def list_sessions_by_user(
+    session: Session,
+    *,
+    limit: int,
+    offset: int,
+    user_id: str = "local",
+) -> tuple[list[ChatSession], int]:
+    total = session.exec(
+        select(func.count())
+        .select_from(ChatSession)
+        .where(ChatSession.user_id == user_id)
+    ).one()
+    stmt = (
+        select(ChatSession)
+        .where(ChatSession.user_id == user_id)
+        .order_by(ChatSession.last_message_at.desc(), ChatSession.created_at.desc())
+        .offset(offset)
+        .limit(limit)
+    )
+    return list(session.exec(stmt).all()), total
+
+
+def list_session_selection_heads_by_session_ids(
+    session: Session,
+    *,
+    subject: str,
+    session_ids: list[str],
+    source: str | None = None,
+    user_id: str = "local",
+) -> dict[str, ChatMessage]:
+    """Return the latest anchored turn head for each requested session."""
+
+    if not session_ids:
+        return {}
+
+    conditions = [
+        ChatMessage.subject == subject,
+        ChatMessage.user_id == user_id,
+        ChatMessage.session_id.in_(session_ids),
+        ChatMessage.role == "assistant",
+        ChatMessage.anchor_id.is_not(None),
+        ChatMessage.anchor_id != "",
+    ]
+    if source is not None:
+        conditions.append(ChatMessage.source == source)
+
+    stmt = (
+        select(ChatMessage)
+        .where(*conditions)
+        .order_by(ChatMessage.created_at.desc())
+    )
+    rows = session.exec(stmt).all()
+    result: dict[str, ChatMessage] = {}
+    for item in rows:
+        if item.session_id not in result:
+            result[item.session_id] = item
+    return result
+
+
+def list_session_selection_heads_by_session_ids_for_user(
+    session: Session,
+    *,
+    session_ids: list[str],
+    source: str | None = None,
+    user_id: str = "local",
+) -> dict[str, ChatMessage]:
+    """Return the latest anchored turn head for each requested session across subjects."""
+
+    if not session_ids:
+        return {}
+
+    conditions = [
+        ChatMessage.user_id == user_id,
+        ChatMessage.session_id.in_(session_ids),
+        ChatMessage.role == "assistant",
+        ChatMessage.anchor_id.is_not(None),
+        ChatMessage.anchor_id != "",
+    ]
+    if source is not None:
+        conditions.append(ChatMessage.source == source)
+
+    stmt = (
+        select(ChatMessage)
+        .where(*conditions)
+        .order_by(ChatMessage.created_at.desc())
+    )
+    rows = session.exec(stmt).all()
+    result: dict[str, ChatMessage] = {}
+    for item in rows:
+        if item.session_id not in result:
+            result[item.session_id] = item
+    return result
+
+
 def list_thread_turn_heads_by_subject(
     session: Session,
     subject: str,
@@ -198,6 +292,27 @@ def count_messages_by_session_ids(
         select(ChatMessage.session_id, func.count(ChatMessage.id))
         .where(
             ChatMessage.subject == subject,
+            ChatMessage.user_id == user_id,
+            ChatMessage.session_id.in_(session_ids),
+        )
+        .group_by(ChatMessage.session_id)
+    )
+    rows = session.exec(stmt).all()
+    return {session_id: int(count) for session_id, count in rows}
+
+
+def count_messages_by_session_ids_for_user(
+    session: Session,
+    *,
+    session_ids: list[str],
+    user_id: str = "local",
+) -> dict[str, int]:
+    if not session_ids:
+        return {}
+
+    stmt = (
+        select(ChatMessage.session_id, func.count(ChatMessage.id))
+        .where(
             ChatMessage.user_id == user_id,
             ChatMessage.session_id.in_(session_ids),
         )

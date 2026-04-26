@@ -3,7 +3,7 @@
 ## Start service
 
 ```bash
-uvicorn app.main:app --reload --port 8000
+uvicorn app.main:app --reload --port 9020
 ```
 
 ## Basic checks
@@ -11,13 +11,13 @@ uvicorn app.main:app --reload --port 8000
 ### Health
 
 ```bash
-curl http://localhost:8000/api/health
+curl http://localhost:9020/api/health
 ```
 
 ### Init
 
 ```bash
-curl -X POST http://localhost:8000/api/v1/system/init ^
+curl -X POST http://localhost:9020/api/v1/system/init ^
   -H "Content-Type: application/json" ^
   -d "{}"
 ```
@@ -27,7 +27,7 @@ curl -X POST http://localhost:8000/api/v1/system/init ^
 ### Create subject
 
 ```bash
-curl -X POST http://localhost:8000/api/v1/subjects/add ^
+curl -X POST http://localhost:9020/api/v1/subjects/add ^
   -H "Content-Type: application/json" ^
   -d "{\"subject\":\"math\",\"name\":\"Mathematics\",\"description\":\"Manual testing subject\"}"
 ```
@@ -35,7 +35,7 @@ curl -X POST http://localhost:8000/api/v1/subjects/add ^
 ### List subjects
 
 ```bash
-curl -X POST http://localhost:8000/api/v1/subjects/list ^
+curl -X POST http://localhost:9020/api/v1/subjects/list ^
   -H "Content-Type: application/json" ^
   -d "{\"page\":1,\"size\":20}"
 ```
@@ -47,7 +47,7 @@ curl -X POST http://localhost:8000/api/v1/subjects/list ^
 Upload immediately starts parsing in the background.
 
 ```bash
-curl -X POST "http://localhost:8000/api/v1/subjects/math/files/upload" ^
+curl -X POST "http://localhost:9020/api/v1/subjects/math/files/upload" ^
   -F "files=@C:\path\to\lesson1.pdf" ^
   -F "files=@C:\path\to\lesson2.docx"
 ```
@@ -57,7 +57,7 @@ curl -X POST "http://localhost:8000/api/v1/subjects/math/files/upload" ^
 This is now the single read endpoint for file list, parse status, Markdown preview metadata, and asset URLs.
 
 ```bash
-curl "http://localhost:8000/api/v1/subjects/math/files"
+curl "http://localhost:9020/api/v1/subjects/math/files"
 ```
 
 ### Delete files
@@ -67,7 +67,7 @@ Use the same endpoint for single delete and batch delete.
 Delete one:
 
 ```bash
-curl -X POST "http://localhost:8000/api/v1/subjects/math/files/delete" ^
+curl -X POST "http://localhost:9020/api/v1/subjects/math/files/delete" ^
   -H "Content-Type: application/json" ^
   -d "{\"file_id\":1}"
 ```
@@ -75,7 +75,7 @@ curl -X POST "http://localhost:8000/api/v1/subjects/math/files/delete" ^
 Delete many:
 
 ```bash
-curl -X POST "http://localhost:8000/api/v1/subjects/math/files/delete" ^
+curl -X POST "http://localhost:9020/api/v1/subjects/math/files/delete" ^
   -H "Content-Type: application/json" ^
   -d "{\"file_ids\":[2,3]}"
 ```
@@ -85,7 +85,7 @@ curl -X POST "http://localhost:8000/api/v1/subjects/math/files/delete" ^
 ### Build document
 
 ```bash
-curl -X POST "http://localhost:8000/api/v1/subjects/math/knowledge/docgen/build" ^
+curl -X POST "http://localhost:9020/api/v1/subjects/math/knowledge/docgen/build" ^
   -H "Content-Type: application/json" ^
   -d "{\"prompt\":\"Focus on final exam review and key formulas.\"}"
 ```
@@ -93,7 +93,7 @@ curl -X POST "http://localhost:8000/api/v1/subjects/math/knowledge/docgen/build"
 ### Query built document
 
 ```bash
-curl -X POST "http://localhost:8000/api/v1/subjects/math/knowledge/docgen/get" ^
+curl -X POST "http://localhost:9020/api/v1/subjects/math/knowledge/docgen/get" ^
   -H "Content-Type: application/json" ^
   -d "{}"
 ```

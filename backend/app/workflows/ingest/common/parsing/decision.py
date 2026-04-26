@@ -7,6 +7,7 @@ from app.workflows.ingest.common.parsing.formats import (
     MARKITDOWN_GENERIC_EXTENSIONS,
     normalize_extension,
 )
+from app.workflows.ingest.common.parsing.features import builtin_pdf_parsing_enabled
 from app.workflows.ingest.common.parsing.provider_contracts import ParseDecision, ProviderCapability
 
 
@@ -91,11 +92,17 @@ def build_paddle_ocr_capability(*, available: bool) -> ProviderCapability:
 
 
 def build_markitdown_capability(*, available: bool) -> ProviderCapability:
+    supported_extensions = set(DEFAULT_MARKITDOWN_EXTENSIONS)
+    features = {"markdown", "office", "pdf", "html", "spreadsheet"}
+    if not builtin_pdf_parsing_enabled():
+        supported_extensions.discard(".pdf")
+        features.discard("pdf")
+
     return ProviderCapability(
         name="markitdown",
         available=available,
-        supported_extensions=set(DEFAULT_MARKITDOWN_EXTENSIONS),
-        features={"markdown", "office", "pdf", "html", "spreadsheet"},
+        supported_extensions=supported_extensions,
+        features=features,
         quality_level="medium",
         latency_level="medium",
         cost_level="local",
@@ -198,7 +205,7 @@ def build_parse_decision(
                 "markitdown_supported": markitdown_supports_extension,
                 "markitdown_available": markitdown.available,
             },
-            )
+        )
 
     if normalized_request == "ocr":
         ocr_supports_extension = ocr.supports(normalized_extension)

@@ -1,4 +1,4 @@
-﻿"""Knowledge graph extract node."""
+"""Knowledge graph extract node."""
 
 
 from __future__ import annotations
@@ -12,7 +12,7 @@ from sqlmodel import select
 from app.shared.infra.database import managed_session
 from app.shared.infra.llm_support.defaults import DEFAULT_LLM_CONCURRENCY_LIMIT
 from app.models import RetrievalChunk
-from app.utils.job_helpers import update_job_progress
+from app.workflows.digest.kg_file_ingest.lib.job_lifecycle import update_job_progress
 from app.workflows.digest.kg_file_ingest.lib.extractor import (
     CandidateEdge,
     ChunkExtractionResult,
@@ -193,7 +193,7 @@ async def _extract_doc_summary_candidates(
         target_index = chunk_id_to_index.get(chunk_id)
         if target_index is None:
             continue
-        chapter_title = str(chapter.get("title") or "").strip() or f"绔犺妭{int(chapter.get('chapter_index', 0) or 0)}"
+        chapter_title = str(chapter.get("title") or "").strip() or f"章节{int(chapter.get('chapter_index', 0) or 0)}"
         summary_jobs.append((target_index, chunk_id, chapter_title, content))
 
     if not summary_jobs:
@@ -254,7 +254,7 @@ async def extract_node(state: KnowledgeDigestState) -> KnowledgeDigestState:
             chunk_ids = list(state.get("chunk_ids", []))
             extract_parallelism = _resolve_extract_parallelism(len(chunk_ids))
             chapter_priors: Any | None = None
-            subject_context = ""
+            subject_context = str(state.get("subject_context") or "").strip()
             shared_inputs = state.get("shared_inputs")
             digest_mode = ""
             sibling_topics = ""
@@ -264,7 +264,13 @@ async def extract_node(state: KnowledgeDigestState) -> KnowledgeDigestState:
             )
             if shared_inputs is not None:
                 if getattr(shared_inputs, "subject_profile", None):
-                    subject_context = shared_inputs.subject_profile.build_context_string()
+                    shared_subject_context = shared_inputs.subject_profile.build_context_string()
+                    if shared_subject_context:
+                        subject_context = (
+                            f"{subject_context}\n\n{shared_subject_context}"
+                            if subject_context
+                            else shared_subject_context
+                        )
                 # Resolve digest mode for prompt context
                 if getattr(shared_inputs, "digest_mode_decision", None):
                     digest_mode = shared_inputs.digest_mode_decision.mode.value
@@ -476,9 +482,10 @@ async def extract_node(state: KnowledgeDigestState) -> KnowledgeDigestState:
                                 if len(sample_nodes) < 6 and n.knowledge_unit_type in ("concept", "method"):
                                     sample_nodes.append({"name": n.name, "type": n.knowledge_unit_type})
                         try:
-                            from app.utils.docgen_store import update_knowledge_build_status
+                            from app.shared.infra.knowledge.build_store import update_knowledge_build_status
                             update_knowledge_build_status(
                                 state["subject"],
+                                build_kind="graph",
                                 progress_pct=min(progress, 40),
                                 discovered_node_count=total_nodes,
                                 discovered_node_types=type_counts,
@@ -529,10 +536,11 @@ async def extract_node(state: KnowledgeDigestState) -> KnowledgeDigestState:
                 subject=state["subject"],
             )
             try:
-                from app.utils.docgen_store import update_knowledge_build_status
+                from app.shared.infra.knowledge.build_store import update_knowledge_build_status
 
                 update_knowledge_build_status(
                     state["subject"],
+                    build_kind="graph",
                     progress_pct=40,
                     processed_chunks=len(chunk_ids),
                     total_chunks=len(chunk_ids),

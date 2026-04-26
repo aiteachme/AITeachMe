@@ -1,4 +1,4 @@
-﻿"""Finalize knowledge docs by staging or publishing them."""
+"""Finalize knowledge docs by staging or publishing them."""
 
 from __future__ import annotations
 
@@ -6,10 +6,15 @@ from time import perf_counter
 
 import structlog
 
-from app.utils.docgen_store import append_knowledge_build_recent_event, upsert_knowledge_build_chapter_progress
+from app.shared.infra.tools.builtin.markdown_processing import build_draft_excerpt
+from app.shared.infra.knowledge.build_store import (
+    append_knowledge_build_recent_event,
+    update_knowledge_build_status,
+    update_knowledge_build_merge_preview,
+    upsert_knowledge_build_chapter_progress,
+)
 from app.utils.time import utcnow
 from app.shared.infra.workflow.context import WorkflowContext
-from app.workflows.digest.docgen.lib.cover import build_docgen_cover_markdown, read_docgen_cover_artifact
 from app.workflows.digest.docgen.nodes.common import get_effective_chapter_title, publish_docgen_progress
 from app.workflows.digest.docgen.lib.publish import (
     publish_staged_knowledge_docs,
@@ -40,13 +45,10 @@ def build_publish_document_node(*, context: WorkflowContext):
         chapter_assignments = list(state.get("chapter_assignments", []))
         document_context = dict(state.get("document_context") or {})
         cover_artifact = dict(state.get("cover_artifact") or {})
-        if not cover_artifact:
-            cover_artifact = dict(await read_docgen_cover_artifact(subject) or {})
         cover_markdown = str(state.get("cover_markdown") or "").strip()
-        if not cover_markdown:
-            cover_markdown = build_docgen_cover_markdown(cover_artifact)
         # 这份快照给后续调试、问答/出题复用和失败追踪用；不要只因为前端暂时不用就删。
         docgen_artifacts = {
+            "confirmed_plan": dict(state.get("confirmed_plan") or {}),
             "docgen_context": dict(state.get("docgen_context") or {}),
             "intent_profile": dict(state.get("intent_profile") or {}),
             "file_summaries": list(state.get("file_summaries") or []),
@@ -92,6 +94,12 @@ def build_publish_document_node(*, context: WorkflowContext):
             "final_chapter_titles": list(state.get("final_chapter_titles") or []),
             "title_review_report": dict(state.get("title_review_report") or {}),
             "cover_artifact": cover_artifact,
+            "build_metadata": {
+                "build_session_id": state.get("build_session_id") or "",
+                "planner_session_id": state.get("planner_session_id") or "",
+                "confirmed_plan_id": state.get("confirmed_plan_id") or "",
+                "digest_mode": state.get("digest_mode") or "",
+            },
         }
         user_prompt = state.get("user_prompt")
         requested_at = state["requested_at"]
@@ -100,6 +108,15 @@ def build_publish_document_node(*, context: WorkflowContext):
         if not chapter_metadatas:
             return {"error": "当前没有可用于最终发布的章节内容。"}
 
+        update_knowledge_build_status(
+            subject,
+            requested_at=requested_at,
+            status="publishing",
+            stage="publishing",
+            draft_available=True,
+            staged_chapter_count=len(chapter_metadatas),
+            current_stage_description="正在发布最终知识文档。",
+        )
         node_logger.info(
             "docgen_finalize_started",
             chapter_count=len(chapter_metadatas),
@@ -130,6 +147,15 @@ def build_publish_document_node(*, context: WorkflowContext):
                 docgen_artifacts=docgen_artifacts,
             )
             node_logger.info("docgen_standalone_publish_completed", doc_count=len(doc_ids))
+
+        update_knowledge_build_merge_preview(
+            subject,
+            requested_at=requested_at,
+            merge_preview={
+                "latest_chapter_titles": [str(chapter.get("title") or "").strip() for chapter in chapter_metadatas],
+                "draft_excerpt": build_draft_excerpt(staged_docs.merged_markdown, max_chars=1600),
+            },
+        )
 
         for chapter in chapter_metadatas:
             title = get_effective_chapter_title(

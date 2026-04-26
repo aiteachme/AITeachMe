@@ -9,7 +9,7 @@ from app.shared.infra.database import managed_session
 from app.models.knowledge_relation import KnowledgeEdge
 from app.models.knowledge_unit import KnowledgeUnit
 from app.repositories import knowledge_build_repo
-from app.utils.job_helpers import (
+from app.workflows.digest.kg_file_ingest.lib.job_lifecycle import (
     activate_graph_entities_by_job,
     update_job_progress,
 )
@@ -142,5 +142,4 @@ def build_finalize_graph_node():
     return finalize_graph_node
 
 __all__ = ["build_finalize_graph_node"]
-
 

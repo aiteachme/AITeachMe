@@ -10,7 +10,7 @@ from app.repositories.knowledge.docgen_repo import get_current_published_docs
 from app.shared.infra.database import managed_session
 from app.shared.infra.tools.builtin.markdown_processing import normalize_mermaid_blocks
 
-_HEADING_RE = re.compile(r"^\s*#{1,6}\s+(?P<title>.+?)\s*$")
+_HEADING_RE = re.compile(r"^\s*(?P<prefix>#{1,6})\s+(?P<title>.+?)\s*$")
 
 
 def _clean_heading_title(raw: str) -> str:
@@ -53,6 +53,10 @@ def extract_doc_chapter_metadatas(markdown: str) -> list[dict[str, object]]:
     for line in lines:
         match = _HEADING_RE.match(line)
         if match:
+            if match.group("prefix").count("#") != 1:
+                if current_title:
+                    current_content.append(line)
+                continue
             title = _clean_heading_title(match.group("title"))
             if title:
                 _flush()

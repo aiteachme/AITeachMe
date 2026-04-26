@@ -1,4 +1,4 @@
-﻿import { useState, useRef, useCallback, useEffect, useMemo } from "react";
+import { useState, useRef, useCallback, useEffect, useMemo } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
@@ -7,7 +7,6 @@ import {
   ArrowUp,
   CheckCircle2,
   ChevronDown,
-  Download,
   FileCode,
   FileImage,
   Loader2,
@@ -21,40 +20,43 @@ import {
 } from "lucide-react";
 
 import { createSubjectApiApiV1SubjectsAddPost } from "../api/generated/subjects";
-import { apiClient } from "../api/client";
+import { apiClient, getApiErrorMessage } from "../api/client";
 import { unwrapOrvalResponse } from "../lib/unwrapOrvalResponse";
-import { getApiErrorMessage } from "../api/client";
 import { cn } from "../lib/utils";
-import { downloadSubjectPackage } from "../lib/subjectPackage";
+import { isElectronRuntime } from "../lib/electronRuntime";
+import { FILE_ACCEPT, extractPasteFiles } from "../lib/fileUpload";
 import { resolveFileProcessingLabel } from "../components/knowledge-docs";
 import { HeroAnimation } from "../components/ui/HeroAnimation";
 import { FullPageDropOverlay } from "../components/ui/FullPageDropOverlay";
+import { SubjectExportModal } from "../components/subject/SubjectExportModal";
+import { useToast } from "../components/ui/Toast";
 import type { FileRecord, FilesData, FilesUploadData } from "../types/files";
 
 /* ── API helpers (same as BuildPlanPage) ── */
 
 interface ApiResponse<T> { code: number; data: T; }
 
-async function uploadFiles(subject: string, files: File[]): Promise<FilesUploadData> {
+async function uploadFiles(files: File[]): Promise<FilesUploadData> {
   const formData = new FormData();
   for (const file of files) formData.append("files", file);
 
   const response = await apiClient<ApiResponse<FilesUploadData>>({
     method: "POST",
-    url: `/api/v1/subjects/${subject}/files/upload`,
+    url: `/api/v1/files/upload`,
     data: formData,
     headers: { "Content-Type": "multipart/form-data" },
   });
   return response.data;
 }
 
-async function fetchFiles(subject: string): Promise<FilesData> {
+async function fetchFiles(fileUids: string[]): Promise<FilesData> {
+  const query = fileUids.map((uid) => `file_uids=${encodeURIComponent(uid)}`).join("&");
   const response = await apiClient<ApiResponse<FilesData>>({
     method: "GET",
-    url: `/api/v1/subjects/${subject}/files`,
+    url: `/api/v1/files${query ? `?${query}` : ""}`,
   });
   return response.data ?? {
-    subject,
+    subject: "library",
     total: 0,
     ready_count: 0,
     processing_count: 0,
@@ -63,34 +65,24 @@ async function fetchFiles(subject: string): Promise<FilesData> {
   };
 }
 
-async function deleteFile(subject: string, uid: string) {
+async function deleteFile(uid: string) {
   await apiClient<ApiResponse<{ deleted_file_uids: string[] }>>({
     method: "POST",
-    url: `/api/v1/subjects/${subject}/files/delete`,
+    url: `/api/v1/files/delete`,
     data: { file_uid: uid },
   });
 }
 
+async function linkFilesToSubject(subject: string, fileUids: string[]): Promise<FilesData> {
+  const response = await apiClient<ApiResponse<FilesData>>({
+    method: "POST",
+    url: `/api/v1/subjects/${subject}/files/link`,
+    data: { file_uids: fileUids },
+  });
+  return response.data;
+}
+
 /* ── Export / Import API helpers ── */
-
-interface ExportPreviewStats {
-  raw_file_count: number;
-  total_raw_file_size_bytes: number;
-  knowledge_document_count: number;
-  knowledge_unit_count: number;
-  knowledge_edge_count: number;
-  question_template_count: number;
-  exam_paper_count: number;
-  chat_session_count: number;
-  user_knowledge_state_count: number;
-}
-
-interface ExportPreviewData {
-  subject_id: string;
-  subject_name: string;
-  stats: ExportPreviewStats;
-  estimated_size_bytes: number;
-}
 
 interface ImportResultData {
   subject_id: string;
@@ -99,7 +91,7 @@ interface ImportResultData {
   warnings: string[];
 }
 
-/* ── Courses folder API ── */
+/* ── Demo courses API ── */
 
 interface CoursePackageItem {
   filename: string;
@@ -127,18 +119,6 @@ async function importCourseByFilename(filename: string, newName?: string): Promi
   return response.data;
 }
 
-async function fetchExportPreview(subject: string): Promise<ExportPreviewData> {
-  const response = await apiClient<ApiResponse<ExportPreviewData>>({
-    method: "POST",
-    url: `/api/v1/subjects/${subject}/export/preview`,
-  });
-  return response.data;
-}
-
-async function downloadExport(subject: string): Promise<void> {
-  await downloadSubjectPackage(subject);
-}
-
 async function importSubject(file: File, newName?: string): Promise<ImportResultData> {
   const formData = new FormData();
   formData.append("file", file);
@@ -154,8 +134,11 @@ async function importSubject(file: File, newName?: string): Promise<ImportResult
 }
 /* ── Helpers ── */
 
-const ACCEPT_TEXT = ".pdf,.docx,.doc,.ppt,.pptx,.md,.markdown,.txt,.png,.jpg,.jpeg,.webp";
-const HOME_ENTRY_FILES_QUERY_KEY = (subjectId: string) => ["home-entry-files", subjectId] as const;
+const HOME_ENTRY_FILES_QUERY_KEY = (fileUids: string[]) => ["home-entry-files", fileUids.join(",")] as const;
+
+function uniqueStrings(values: string[]): string[] {
+  return Array.from(new Set(values.filter(Boolean)));
+}
 
 function formatFileSize(bytes?: number | null): string {
   if (bytes == null || !Number.isFinite(bytes)) return "未知";
@@ -204,112 +187,15 @@ function homeFileStatusMeta(file: Pick<FileRecord, "markdown_ready" | "error_mes
 
 /* ── Export Modal ── */
 
-function ExportModal({
-  subjectId,
-  onClose,
-}: {
-  subjectId: string;
-  onClose: () => void;
-}) {
-  const { data: preview, isLoading } = useQuery({
-    queryKey: ["export-preview", subjectId],
-    queryFn: () => fetchExportPreview(subjectId),
-  });
-
-  const exportMutation = useMutation({
-    mutationFn: () => downloadExport(subjectId),
-    onSuccess: () => onClose(),
-  });
-
-  const stats = preview?.stats;
-
-  return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center">
-      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
-      <motion.div
-        initial={{ opacity: 0, scale: 0.95, y: 10 }}
-        animate={{ opacity: 1, scale: 1, y: 0 }}
-        exit={{ opacity: 0, scale: 0.95 }}
-        className="relative z-10 w-[480px] max-w-[90vw] bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden"
-      >
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
-          <div className="flex items-center gap-3">
-            <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 shadow-sm">
-              <Package className="w-5 h-5 text-white" />
-            </div>
-            <div>
-              <h3 className="text-base font-bold text-slate-900">导出学科</h3>
-              <p className="text-xs text-slate-500 mt-0.5">{preview?.subject_name ?? "加载中…"}</p>
-            </div>
-          </div>
-          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors" title="关闭">
-            <X className="w-5 h-5" />
-          </button>
-        </div>
-        <div className="px-6 py-5">
-          {isLoading ? (
-            <div className="flex items-center justify-center py-8">
-              <Loader2 className="w-6 h-6 animate-spin text-slate-400" />
-              <span className="ml-2 text-sm text-slate-500">正在统计内容…</span>
-            </div>
-          ) : stats ? (
-            <div className="space-y-3">
-              <p className="text-sm text-slate-600 mb-4">
-                将以下内容打包为 <code className="px-1.5 py-0.5 bg-slate-100 rounded text-xs font-mono">.atmx</code> 文件，导入后即可直接使用。
-              </p>
-              <div className="grid grid-cols-2 gap-2">
-                {[
-                  { label: "上传文件", value: stats.raw_file_count, show: true },
-                  { label: "知识文档", value: stats.knowledge_document_count, show: true },
-                  { label: "知识图谱节点", value: stats.knowledge_unit_count, show: true },
-                  { label: "知识图谱边", value: stats.knowledge_edge_count, show: true },
-                  { label: "题目模板", value: stats.question_template_count, show: stats.question_template_count > 0 },
-                  { label: "考试记录", value: stats.exam_paper_count, show: stats.exam_paper_count > 0 },
-                  { label: "对话记录", value: stats.chat_session_count, show: stats.chat_session_count > 0 },
-                ].filter(s => s.show).map(({ label, value }) => (
-                  <div key={label} className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2">
-                    <span className="text-xs text-slate-500">{label}</span>
-                    <span className="text-sm font-semibold text-slate-800">{value}</span>
-                  </div>
-                ))}
-              </div>
-              {stats.total_raw_file_size_bytes > 0 && (
-                <p className="text-xs text-slate-400 mt-2">
-                  文件体积约 {formatFileSize(stats.total_raw_file_size_bytes)}
-                </p>
-              )}
-            </div>
-          ) : null}
-        </div>
-        <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-slate-100 bg-slate-50/50">
-          <button onClick={onClose} className="px-4 py-2 text-sm font-medium text-slate-600 hover:text-slate-800 rounded-lg hover:bg-slate-100 transition-colors">
-            取消
-          </button>
-          <button
-            onClick={() => exportMutation.mutate()}
-            disabled={isLoading || exportMutation.isPending}
-            className={cn(
-              "flex items-center gap-2 px-5 py-2 rounded-xl text-sm font-bold transition-all",
-              !isLoading && !exportMutation.isPending
-                ? "bg-slate-900 text-white hover:bg-slate-800 shadow-sm hover:shadow-md"
-                : "bg-slate-200 text-slate-400 cursor-not-allowed"
-            )}
-          >
-            {exportMutation.isPending ? (
-              <><Loader2 className="w-4 h-4 animate-spin" /> 导出中…</>
-            ) : (
-              <><Download className="w-4 h-4" /> 导出</>
-            )}
-          </button>
-        </div>
-      </motion.div>
-    </div>
-  );
-}
-
 /* ── Import Modal ── */
 
-function ImportModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: () => void }) {
+function ImportModal({
+  onClose,
+  onSuccess,
+}: {
+  onClose: () => void;
+  onSuccess: (result: ImportResultData) => void;
+}) {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [customName, setCustomName] = useState("");
   const [dragOver, setDragOver] = useState(false);
@@ -317,29 +203,29 @@ function ImportModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: (
 
   const importMutation = useMutation({
     mutationFn: () => importSubject(selectedFile!, customName.trim() || undefined),
-    onSuccess: () => { onSuccess(); onClose(); },
+    onSuccess: (result) => { onSuccess(result); onClose(); },
   });
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center">
-      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
+      <div className="absolute inset-0 modal-backdrop" onClick={onClose} />
       <motion.div
         initial={{ opacity: 0, scale: 0.95, y: 10 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.95 }}
-        className="relative z-10 w-[480px] max-w-[90vw] bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden"
+        className="relative z-10 w-[480px] max-w-[90vw] bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden dark:bg-slate-900 dark:border-slate-800"
       >
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 dark:border-slate-800/80">
           <div className="flex items-center gap-3">
             <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 shadow-sm">
               <Upload className="w-5 h-5 text-white" />
             </div>
             <div>
-              <h3 className="text-base font-bold text-slate-900">导入学科</h3>
-              <p className="text-xs text-slate-500 mt-0.5">从 .atmx 文件导入已构建的学科</p>
+              <h3 className="text-base font-bold text-slate-900 dark:text-slate-100">导入学科</h3>
+              <p className="text-xs text-slate-500 mt-0.5 dark:text-slate-400">从 .atmx 文件导入已构建的学科</p>
             </div>
           </div>
-          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors" title="关闭">
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors dark:hover:bg-slate-800 dark:text-slate-500 dark:hover:text-slate-300" title="关闭">
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -352,56 +238,56 @@ function ImportModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: (
             onChange={(e) => { const f = e.target.files?.[0]; if (f) setSelectedFile(f); }}
           />
           <div
-            onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
-            onDragLeave={() => setDragOver(false)}
-            onDrop={(e) => { e.preventDefault(); setDragOver(false); const f = e.dataTransfer.files[0]; if (f) setSelectedFile(f); }}
+            onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); setDragOver(true); }}
+            onDragLeave={(e) => { e.stopPropagation(); setDragOver(false); }}
+            onDrop={(e) => { e.preventDefault(); e.stopPropagation(); setDragOver(false); const f = e.dataTransfer.files[0]; if (f) setSelectedFile(f); }}
             onClick={() => inputRef.current?.click()}
             className={cn(
               "flex flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed px-6 py-8 cursor-pointer transition-all",
               dragOver
-                ? "border-emerald-400 bg-emerald-50"
+                ? "border-emerald-400 bg-emerald-50 dark:bg-emerald-900/10"
                 : selectedFile
-                  ? "border-slate-300 bg-slate-50"
-                  : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50"
+                  ? "border-slate-300 bg-slate-50 dark:border-slate-700 dark:bg-slate-800/50"
+                  : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:hover:border-slate-700 dark:hover:bg-slate-800/80"
             )}
           >
             {selectedFile ? (
               <>
-                <div className="flex items-center justify-center w-12 h-12 rounded-xl bg-emerald-100">
-                  <Package className="w-6 h-6 text-emerald-600" />
+                <div className="flex items-center justify-center w-12 h-12 rounded-xl bg-emerald-100 dark:bg-emerald-900/30">
+                  <Package className="w-6 h-6 text-emerald-600 dark:text-emerald-400" />
                 </div>
                 <div className="text-center">
-                  <p className="text-sm font-semibold text-slate-800">{selectedFile.name}</p>
+                  <p className="text-sm font-semibold text-slate-800 dark:text-slate-200">{selectedFile.name}</p>
                   <p className="text-xs text-slate-400 mt-1">{formatFileSize(selectedFile.size)}</p>
                 </div>
                 <button
                   type="button"
                   onClick={(e) => { e.stopPropagation(); setSelectedFile(null); }}
-                  className="text-xs text-slate-500 hover:text-red-500 underline"
+                  className="text-xs text-slate-500 hover:text-red-500 dark:text-slate-400 dark:hover:text-red-400 underline"
                 >
                   重新选择
                 </button>
               </>
             ) : (
               <>
-                <div className="flex items-center justify-center w-12 h-12 rounded-xl bg-slate-100">
-                  <Upload className="w-6 h-6 text-slate-400" />
+                <div className="flex items-center justify-center w-12 h-12 rounded-xl bg-slate-100 dark:bg-slate-800">
+                  <Upload className="w-6 h-6 text-slate-400 dark:text-slate-500" />
                 </div>
                 <div className="text-center">
-                  <p className="text-sm font-medium text-slate-600">点击选择或拖拽 .atmx 文件</p>
-                  <p className="text-xs text-slate-400 mt-1">支持 AITeachMe 导出包</p>
+                  <p className="text-sm font-medium text-slate-600 dark:text-slate-300">点击选择或拖拽 .atmx 文件</p>
+                  <p className="text-xs text-slate-400 mt-1 dark:text-slate-500">支持 AITeachMe 导出包</p>
                 </div>
               </>
             )}
           </div>
           <div>
-            <label className="block text-xs font-medium text-slate-500 mb-1.5">自定义学科名称（可选）</label>
+            <label className="block text-xs font-medium text-slate-500 mb-1.5 dark:text-slate-400">自定义学科名称（可选）</label>
             <input
               type="text"
               value={customName}
               onChange={(e) => setCustomName(e.target.value)}
               placeholder="留空则使用导出时的原名"
-              className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-300 transition-colors"
+              className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-300 transition-colors dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:placeholder:text-slate-500 dark:focus:ring-slate-100/10"
             />
           </div>
           {importMutation.isError && (
@@ -410,8 +296,8 @@ function ImportModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: (
             </div>
           )}
         </div>
-        <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-slate-100 bg-slate-50/50">
-          <button onClick={onClose} className="px-4 py-2 text-sm font-medium text-slate-600 hover:text-slate-800 rounded-lg hover:bg-slate-100 transition-colors">
+        <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-slate-100 bg-slate-50/50 dark:border-slate-800/80 dark:bg-slate-900">
+          <button onClick={onClose} className="px-4 py-2 text-sm font-medium text-slate-600 hover:text-slate-800 rounded-lg hover:bg-slate-100 transition-colors dark:text-slate-400 dark:hover:text-slate-200 dark:hover:bg-slate-800">
             取消
           </button>
           <button
@@ -464,16 +350,16 @@ function RenameModal({
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center">
-      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
+      <div className="absolute inset-0 modal-backdrop" onClick={onClose} />
       <motion.div
         initial={{ opacity: 0, scale: 0.95, y: 10 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.95 }}
-        className="relative z-10 w-[420px] max-w-[90vw] bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden"
+        className="relative z-10 w-[420px] max-w-[90vw] bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden dark:bg-slate-900 dark:border-slate-800"
       >
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
-          <h3 className="text-base font-bold text-slate-900">重命名学科</h3>
-          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors" title="关闭">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 dark:border-slate-800/80">
+          <h3 className="text-base font-bold text-slate-900 dark:text-slate-100">重命名学科</h3>
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors dark:hover:bg-slate-800 dark:text-slate-500 dark:hover:text-slate-300" title="关闭">
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -484,15 +370,15 @@ function RenameModal({
             onChange={(e) => setName(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter" && name.trim()) renameMutation.mutate(); }}
             placeholder="输入学科名称"
-            className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-300 transition-colors"
+            className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-300 transition-colors dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:placeholder:text-slate-500 dark:focus:ring-slate-100/10"
             autoFocus
           />
           {renameMutation.isError && (
             <p className="mt-2 text-sm text-red-600">{getApiErrorMessage(renameMutation.error, "重命名失败")}</p>
           )}
         </div>
-        <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-slate-100 bg-slate-50/50">
-          <button onClick={onClose} className="px-4 py-2 text-sm font-medium text-slate-600 hover:text-slate-800 rounded-lg hover:bg-slate-100 transition-colors">
+        <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-slate-100 bg-slate-50/50 dark:border-slate-800/80 dark:bg-slate-900">
+          <button onClick={onClose} className="px-4 py-2 text-sm font-medium text-slate-600 hover:text-slate-800 rounded-lg hover:bg-slate-100 transition-colors dark:text-slate-400 dark:hover:text-slate-200 dark:hover:bg-slate-800">
             取消
           </button>
           <button
@@ -520,14 +406,18 @@ export function HomePage() {
   const navigate = useNavigate();
   const location = useLocation();
   const queryClient = useQueryClient();
+  const { toast } = useToast();
+  const isElectron = isElectronRuntime();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const [prompt, setPrompt] = useState("");
   const [draftSubjectId, setDraftSubjectId] = useState<string | null>(null);
   const [isCreatingDraftSubject, setIsCreatingDraftSubject] = useState(false);
+  const [isStartingBuild, setIsStartingBuild] = useState(false);
   const [isUploadingFiles, setIsUploadingFiles] = useState(false);
   const [uploadingFileNames, setUploadingFileNames] = useState<string[]>([]);
+  const [entryFileUids, setEntryFileUids] = useState<string[]>([]);
   const [recentOpen, setRecentOpen] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -544,17 +434,19 @@ export function HomePage() {
     setPrompt("");
     setDraftSubjectId(null);
     setIsCreatingDraftSubject(false);
+    setIsStartingBuild(false);
     setIsUploadingFiles(false);
     setUploadingFileNames([]);
+    setEntryFileUids([]);
     setError(null);
     navigate("/", { replace: true, state: null });
     window.requestAnimationFrame(() => textareaRef.current?.focus());
   }, [navigate, newEntryAt]);
 
   const { data: entryFilesData } = useQuery({
-    queryKey: HOME_ENTRY_FILES_QUERY_KEY(draftSubjectId ?? "pending"),
-    enabled: Boolean(draftSubjectId),
-    queryFn: () => fetchFiles(draftSubjectId!),
+    queryKey: HOME_ENTRY_FILES_QUERY_KEY(entryFileUids),
+    enabled: entryFileUids.length > 0,
+    queryFn: () => fetchFiles(entryFileUids),
     refetchInterval: (query) => {
       const data = query.state.data as FilesData | undefined;
       if (isUploadingFiles || (data?.processing_count ?? 0) > 0) {
@@ -573,9 +465,24 @@ export function HomePage() {
   const courseImportMutation = useMutation({
     mutationFn: ({ filename, newName }: { filename: string; newName?: string }) =>
       importCourseByFilename(filename, newName),
-    onSuccess: () => {
+    onSuccess: (result) => {
+      setError(null);
       queryClient.invalidateQueries({ queryKey: ["subjects"] });
       queryClient.invalidateQueries({ queryKey: ["available-courses"] });
+      toast({
+        title: "导入成功",
+        description: `${result.subject_name} 已加入左侧学科列表。`,
+        variant: "success",
+      });
+    },
+    onError: (err: unknown) => {
+      const message = getApiErrorMessage(err, "演示课程导入失败");
+      setError(message);
+      toast({
+        title: "导入失败",
+        description: message,
+        variant: "error",
+      });
     },
   });
 
@@ -604,8 +511,8 @@ export function HomePage() {
     }
   }, [draftSubjectId, queryClient]);
 
-  const syncEntryFilesCache = useCallback((subjectId: string, uploaded: FileRecord[]) => {
-    queryClient.setQueryData<FilesData>(HOME_ENTRY_FILES_QUERY_KEY(subjectId), (previous) => {
+  const syncEntryFilesCache = useCallback((fileUids: string[], uploaded: FileRecord[]) => {
+    queryClient.setQueryData<FilesData>(HOME_ENTRY_FILES_QUERY_KEY(fileUids), (previous) => {
       const previousItems = previous?.items ?? [];
       const nextByUid = new Map(previousItems.map((item) => [item.uid, item]));
       for (const item of uploaded) {
@@ -617,7 +524,7 @@ export function HomePage() {
           Date.parse(left.latest_updated_at || left.created_at || ""),
       );
       return {
-        subject: subjectId,
+        subject: "library",
         total: nextItems.length,
         ready_count: nextItems.filter((item) => item.markdown_ready).length,
         processing_count: nextItems.filter((item) => !item.markdown_ready && !item.error_message?.trim()).length,
@@ -631,21 +538,24 @@ export function HomePage() {
     if (!files.length) {
       return;
     }
-    const subjectId = await ensureDraftSubjectId();
     setError(null);
     setIsUploadingFiles(true);
     setUploadingFileNames(files.map((file) => file.name));
     try {
-      const result = await uploadFiles(subjectId, files);
-      syncEntryFilesCache(subjectId, result.uploaded_items ?? []);
-      await queryClient.invalidateQueries({ queryKey: HOME_ENTRY_FILES_QUERY_KEY(subjectId) });
+      const result = await uploadFiles(files);
+      const uploaded = result.uploaded_items ?? [];
+      const uploadedUids = uploaded.map((file) => file.uid);
+      const nextFileUids = uniqueStrings([...entryFileUids, ...uploadedUids]);
+      setEntryFileUids(nextFileUids);
+      syncEntryFilesCache(nextFileUids, uploaded);
+      await queryClient.invalidateQueries({ queryKey: HOME_ENTRY_FILES_QUERY_KEY(nextFileUids) });
     } catch (err: unknown) {
       setError(getApiErrorMessage(err, "文件上传失败"));
     } finally {
       setIsUploadingFiles(false);
       setUploadingFileNames([]);
     }
-  }, [ensureDraftSubjectId, queryClient, syncEntryFilesCache]);
+  }, [entryFileUids, queryClient, syncEntryFilesCache]);
 
   // ── Handlers ──
   const uploadedFiles = entryFilesData?.items ?? [];
@@ -655,7 +565,7 @@ export function HomePage() {
   const hasEntryFiles = uploadedFiles.length > 0 || optimisticUploadingFiles.length > 0;
   const entryFilesStatusText = useMemo(() => {
     if (isCreatingDraftSubject) {
-      return "正在创建学习空间，随后会立即上传资料。";
+      return "正在创建学习空间，并关联已上传资料。";
     }
     if (isUploadingFiles) {
       return "资料正在上传，上传完成后会继续后台解析；文件会保留在这里，除非你手动移除。";
@@ -690,8 +600,14 @@ export function HomePage() {
   const handleGenerate = async () => {
     if (!canGenerate) return;
     setError(null);
+    setIsStartingBuild(true);
     try {
       const subjectId = await ensureDraftSubjectId();
+      if (entryFileUids.length > 0) {
+        await linkFilesToSubject(subjectId, entryFileUids);
+        await queryClient.invalidateQueries({ queryKey: ["subjects"] });
+        await queryClient.invalidateQueries({ queryKey: ["files", subjectId] });
+      }
       const userGoal = prompt.trim();
       navigate(`/subject/${subjectId}/build`, {
         state: userGoal
@@ -700,6 +616,8 @@ export function HomePage() {
       });
     } catch {
       // ensureDraftSubjectId already writes user-facing error
+    } finally {
+      setIsStartingBuild(false);
     }
   };
 
@@ -709,6 +627,15 @@ export function HomePage() {
       handleGenerate();
     }
   };
+
+  const handlePaste = useCallback((e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const files = extractPasteFiles(e);
+    if (files.length > 0) {
+      e.preventDefault();
+      void uploadPendingFiles(files);
+    }
+    // If no files, let the default text paste proceed
+  }, [uploadPendingFiles]);
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const newFiles = Array.from(e.target.files ?? []);
@@ -724,22 +651,19 @@ export function HomePage() {
 
   const deleteEntryFileMutation = useMutation({
     mutationFn: async (uid: string) => {
-      if (!draftSubjectId) {
-        throw new Error("缺少临时学习空间，无法删除文件。");
-      }
-      await deleteFile(draftSubjectId, uid);
+      await deleteFile(uid);
+      return uid;
     },
-    onSuccess: async () => {
-      if (draftSubjectId) {
-        await queryClient.invalidateQueries({ queryKey: HOME_ENTRY_FILES_QUERY_KEY(draftSubjectId) });
-      }
+    onSuccess: async (uid) => {
+      setEntryFileUids((current) => current.filter((item) => item !== uid));
+      await queryClient.invalidateQueries({ queryKey: ["home-entry-files"] });
     },
     onError: (err: unknown) => {
       setError(getApiErrorMessage(err, "删除文件失败"));
     },
   });
 
-  const isWorking = isCreatingDraftSubject || isUploadingFiles;
+  const isWorking = isCreatingDraftSubject || isStartingBuild || isUploadingFiles;
 
   return (
     <>
@@ -747,9 +671,14 @@ export function HomePage() {
       onDrop={(droppedFiles) => {
         handleFileDrop(droppedFiles);
       }}
-      disabled={isWorking}
+      disabled={isWorking || Boolean(exportSubjectId) || importOpen || Boolean(renameTarget)}
     />
-    <div className="relative flex min-h-[100dvh] w-full flex-col items-center overflow-x-hidden bg-transparent p-4 pt-24 md:p-8 md:pt-32 selection:bg-zinc-200">
+    <div
+      className={cn(
+        "relative flex w-full flex-col items-center overflow-x-clip bg-transparent p-4 pt-24 selection:bg-zinc-200 md:p-8 md:pt-32",
+        isElectron ? "min-h-full" : "min-h-[100dvh]",
+      )}
+    >
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
@@ -764,32 +693,30 @@ export function HomePage() {
           initial={{ opacity: 0, scale: 0.9 }}
           animate={{ opacity: 1, scale: 1 }}
           transition={{ delay: 0.1, type: "spring", stiffness: 200, damping: 20 }}
-          className="flex items-center justify-center gap-5 mb-4"
+          className="flex flex-col items-center justify-center mb-2"
         >
           <HeroAnimation />
           <motion.div
-            initial={{ opacity: 0, x: -10, filter: "blur(8px)" }}
-            animate={{ opacity: 1, x: 0, filter: "blur(0px)" }}
-            transition={{ duration: 1, ease: "easeOut", delay: 0.2 }}
-            className="flex items-center pt-2"
+            initial={{ opacity: 0, y: 10, filter: "blur(6px)" }}
+            animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+            transition={{ duration: 0.8, ease: "easeOut", delay: 2.8 }}
+            className="flex flex-col items-center mt-3"
           >
-            <motion.h1 
-              className="text-5xl md:text-6xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-blue-500 via-violet-500 to-fuchsia-500 pb-2 drop-shadow-md animate-text-gradient py-2 px-4 -mx-4 tracking-wide"
-              style={{ fontFamily: "'Edwardian Script ITC', 'Vivaldi', 'Vladimir Script', 'Brush Script MT', 'Dancing Script', 'Pacifico', cursive", lineHeight: "1.2", wordSpacing: "0.15em" }}
-              animate={{ y: [0, -4, 0] }}
-              transition={{ repeat: Infinity, duration: 3, ease: "easeInOut" }}
+            <h1
+              className="text-2xl md:text-3xl font-bold tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-slate-800 via-indigo-700 to-violet-600 animate-text-gradient dark:from-slate-100 dark:via-indigo-400 dark:to-violet-400"
+              style={{ backgroundSize: "200% auto" }}
             >
-              AI Teach Me
-            </motion.h1>
+              AITeachMe
+            </h1>
           </motion.div>
         </motion.div>
 
         {/* ── Slogan ── */}
         <motion.p
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.25 }}
-          className="mb-8 px-4 text-center text-[15px] leading-relaxed text-zinc-500"
+          initial={{ opacity: 0, y: 6 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 3.0, duration: 0.6 }}
+          className="mb-8 px-4 text-center text-[15px] leading-relaxed text-zinc-500 dark:text-slate-400"
         >
           把任何令人头疼的学习资料，变成你的 24 小时专属"赛博私教"。
         </motion.p>
@@ -801,21 +728,26 @@ export function HomePage() {
           transition={{ delay: 0.35 }}
           className="w-full relative z-10"
         >
-          <div className="w-full rounded-[30px] border-[1.5px] border-zinc-200/80 bg-white/70 backdrop-blur-xl shadow-[0_8px_30px_rgb(0,0,0,0.06)] transition-all focus-within:border-indigo-300 focus-within:shadow-[0_8px_30px_rgb(99,102,241,0.15)] focus-within:ring-4 focus-within:ring-indigo-500/10 hover:border-zinc-300 hover:bg-white/80 hover:shadow-[0_8px_30px_rgb(0,0,0,0.1)]">
+          <div className={cn(
+            "w-full overflow-hidden rounded-[30px] border-[1.5px] backdrop-blur-xl transition-all",
+            hasEntryFiles
+              ? "border-indigo-300/80 bg-indigo-50/40 shadow-[0_8px_30px_rgb(99,102,241,0.10)] ring-2 ring-indigo-500/8 dark:border-indigo-500/30 dark:bg-indigo-900/10 dark:shadow-[0_8px_30px_rgb(99,102,241,0.2)]"
+              : "border-zinc-200/80 bg-white/70 shadow-[0_8px_30px_rgb(0,0,0,0.06)] hover:border-zinc-300 hover:bg-white/80 hover:shadow-[0_8px_30px_rgb(0,0,0,0.1)] dark:border-slate-700 dark:bg-slate-900/70 dark:hover:border-slate-600 dark:hover:bg-slate-900/90",
+            "focus-within:border-indigo-300 focus-within:shadow-[0_8px_30px_rgb(99,102,241,0.15)] focus-within:ring-4 focus-within:ring-indigo-500/10 dark:focus-within:border-indigo-500/50"
+          )}>
             <textarea
               ref={textareaRef}
               placeholder="直接输入学习目标，也可以先上传资料再一起规划"
-              className="w-full min-h-[108px] max-h-[240px] resize-none border-0 bg-transparent px-6 pb-4 pt-7 text-[15px] leading-[1.9] text-zinc-800 focus:outline-none placeholder:text-zinc-400"
+              className="w-full min-h-[96px] max-h-[240px] resize-none border-0 bg-transparent px-4 pb-2 pt-4 text-[15px] leading-[1.8] text-zinc-800 focus:outline-none placeholder:text-zinc-400 dark:text-slate-200 dark:placeholder:text-slate-500"
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
               onKeyDown={handleKeyDown}
+              onPaste={handlePaste}
               rows={3}
               disabled={isCreatingDraftSubject}
             />
 
-            <div className="mx-5 h-px bg-zinc-100" />
-
-            <div className="px-5 pb-4 pt-3 flex flex-col gap-3">
+            <div className="px-4 pb-3 pt-1 flex flex-col gap-2">
               {(hasEntryFiles || isUploadingFiles) && (
                 <div className="space-y-2">
                   <div className="flex flex-wrap gap-2">
@@ -824,10 +756,10 @@ export function HomePage() {
                     return (
                       <div
                         key={file.uid}
-                        className="group inline-flex max-w-full items-center gap-2 rounded-2xl border border-zinc-200/80 bg-zinc-50/90 px-3 py-2 text-[13px] text-zinc-700 transition-colors hover:border-zinc-300 hover:bg-white"
+                        className="group inline-flex max-w-full items-center gap-2 rounded-2xl border border-zinc-200/80 bg-zinc-50/90 px-3 py-2 text-[13px] text-zinc-700 transition-colors hover:border-zinc-300 hover:bg-white dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:border-slate-600 dark:hover:bg-slate-800/80"
                       >
                         <span className="shrink-0">{homeFileIcon(file)}</span>
-                        <span className="max-w-[220px] truncate font-medium text-zinc-800">{file.filename}</span>
+                        <span className="max-w-[220px] truncate font-medium text-zinc-800 dark:text-slate-200">{file.filename}</span>
                         <span className={cn("shrink-0", meta.tone)} title={resolveFileProcessingLabel(file)}>
                           {meta.icon}
                         </span>
@@ -847,10 +779,10 @@ export function HomePage() {
                   {optimisticUploadingFiles.map((filename) => (
                     <div
                       key={`uploading-${filename}`}
-                      className="inline-flex max-w-full items-center gap-2 rounded-2xl border border-zinc-200/80 bg-zinc-50/90 px-3 py-2 text-[13px] text-zinc-700"
+                      className="inline-flex max-w-full items-center gap-2 rounded-2xl border border-zinc-200/80 bg-zinc-50/90 px-3 py-2 text-[13px] text-zinc-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
                     >
-                      <FileUp className="h-3.5 w-3.5 shrink-0 text-zinc-400" />
-                      <span className="max-w-[220px] truncate font-medium text-zinc-800">{filename}</span>
+                      <FileUp className="h-3.5 w-3.5 shrink-0 text-zinc-400 dark:text-slate-500" />
+                      <span className="max-w-[220px] truncate font-medium text-zinc-800 dark:text-slate-200">{filename}</span>
                       <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-sky-500" />
                     </div>
                   ))}
@@ -861,7 +793,7 @@ export function HomePage() {
                 </div>
               )}
 
-              <div className="flex items-end justify-between px-1 pt-1">
+              <div className="flex items-center justify-between px-1">
                 <div className="flex items-center gap-2 flex-1">
                   <input 
                     type="file" 
@@ -870,24 +802,24 @@ export function HomePage() {
                     className="hidden" 
                     ref={fileInputRef} 
                     onChange={handleFileSelect}
-                    accept={ACCEPT_TEXT}
+                    accept={FILE_ACCEPT}
                   />
                   <button
                     type="button"
                     onClick={() => fileInputRef.current?.click()}
-                    className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[13px] font-medium text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-900"
+                    className="flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-[12px] font-medium text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200"
                   >
                     {isUploadingFiles || isCreatingDraftSubject ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
                     ) : (
-                      <Paperclip className="h-4 w-4" />
+                      <Paperclip className="h-3.5 w-3.5" />
                     )}
                     {hasEntryFiles ? "添加资料" : "添加资料"}
                   </button>
                   {isWorking && (
-                    <span className="ml-2 flex items-center text-[13px] font-medium text-zinc-500">
-                      <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
-                      {isCreatingDraftSubject ? "正在创建学习空间..." : "正在上传并解析资料..."}
+                    <span className="ml-2 flex items-center text-[12px] font-medium text-zinc-500">
+                      <Loader2 className="mr-1.5 h-3 w-3 animate-spin" />
+                      {isStartingBuild || isCreatingDraftSubject ? "正在创建学习空间..." : "正在上传并解析资料..."}
                     </span>
                   )}
                 </div>
@@ -896,10 +828,10 @@ export function HomePage() {
                   onClick={handleGenerate}
                   disabled={!canGenerate || isWorking}
                   className={cn(
-                    "flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl transition-all focus:outline-none focus:ring-4 focus:ring-zinc-900/10 active:scale-[0.98]",
+                    "flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition-all focus:outline-none focus:ring-4 focus:ring-zinc-900/10 active:scale-[0.98]",
                     canGenerate && !isWorking
-                      ? "bg-zinc-900 text-white shadow-sm hover:bg-zinc-800"
-                      : "cursor-not-allowed bg-zinc-100 text-zinc-300"
+                      ? "bg-zinc-900 text-white shadow-sm hover:bg-zinc-800 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white"
+                      : "cursor-not-allowed bg-zinc-100 text-zinc-300 dark:bg-slate-800 dark:text-slate-600"
                   )}
                 >
                   <ArrowUp className="h-4 w-4" />
@@ -938,11 +870,11 @@ export function HomePage() {
             onClick={() => setRecentOpen(!recentOpen)}
             className="group flex w-full cursor-pointer items-center gap-4 py-3"
           >
-            <div className="flex-1 h-[1px] bg-zinc-200 group-hover:bg-zinc-300 transition-colors" />
-            <span className="flex shrink-0 select-none items-center gap-2 text-[13px] font-semibold tracking-tight text-zinc-400 transition-colors group-hover:text-zinc-800">
+            <div className="flex-1 h-[1px] bg-zinc-200 group-hover:bg-zinc-300 transition-colors dark:bg-slate-800 dark:group-hover:bg-slate-700" />
+            <span className="flex shrink-0 select-none items-center gap-2 text-[13px] font-semibold tracking-tight text-zinc-400 transition-colors group-hover:text-zinc-800 dark:text-slate-500 dark:group-hover:text-slate-300">
               <Package className="h-4 w-4" />
               演示课程
-              <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-[11px] text-zinc-500 shadow-[inset_0_1px_2px_rgba(0,0,0,0.02)]">{courses.length}</span>
+              <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-[11px] text-zinc-500 shadow-[inset_0_1px_2px_rgba(0,0,0,0.02)] dark:bg-slate-800 dark:text-slate-400">{courses.length}</span>
               <motion.div
                 animate={{ rotate: recentOpen ? 180 : 0 }}
                 transition={{ duration: 0.3, ease: "easeInOut" }}
@@ -950,7 +882,7 @@ export function HomePage() {
                 <ChevronDown className="h-4 w-4" />
               </motion.div>
             </span>
-            <div className="flex-1 h-[1px] bg-zinc-200 group-hover:bg-zinc-300 transition-colors" />
+            <div className="flex-1 h-[1px] bg-zinc-200 group-hover:bg-zinc-300 transition-colors dark:bg-slate-800 dark:group-hover:bg-slate-700" />
           </button>
 
           {/* Expandable Content */}
@@ -966,7 +898,7 @@ export function HomePage() {
                 <div className="flex items-center justify-end pt-4 pb-2 px-1">
                   <button
                     onClick={() => setImportOpen(true)}
-                    className="flex items-center gap-2 px-3.5 py-2 rounded-xl text-sm font-medium text-slate-600 bg-white border border-slate-200 hover:border-slate-300 hover:bg-slate-50 shadow-sm hover:shadow transition-all"
+                    className="flex items-center gap-2 px-3.5 py-2 rounded-xl text-sm font-medium text-slate-600 bg-white border border-slate-200 hover:border-slate-300 hover:bg-slate-50 shadow-sm hover:shadow transition-all dark:bg-slate-900 dark:border-slate-800 dark:text-slate-300 dark:hover:border-slate-700 dark:hover:bg-slate-800"
                     title="从文件导入学科包"
                   >
                     <Upload className="w-4 h-4 text-emerald-500" />
@@ -986,10 +918,7 @@ export function HomePage() {
                           <Package className="w-8 h-8 text-slate-400" />
                         </div>
                         <p className="text-sm font-medium text-slate-600 mb-1">暂无演示课程</p>
-                        <p className="text-xs text-slate-400">
-                          将 <code className="px-1 py-0.5 bg-slate-100 rounded text-xs">.atmx</code> 文件放入{" "}
-                          <code className="px-1 py-0.5 bg-slate-100 rounded text-xs">backend/data/_courses/</code> 目录即可在此显示为演示课程
-                        </p>
+                        <p className="text-xs text-slate-400">也可以通过上传导入 .atmx 课程包</p>
                       </div>
                     )}
                     {courses.length > 0 && (
@@ -1032,22 +961,22 @@ export function HomePage() {
                               </div>
 
                               {/* Footer */}
-                              <div className="mt-auto pt-3 border-t border-slate-100">
+                              <div className="mt-auto border-t border-slate-100 pt-3">
                                 <button
                                   onClick={() => courseImportMutation.mutate({ filename: course.filename })}
                                   disabled={courseImportMutation.isPending}
                                   className={cn(
-                                    "w-full flex items-center justify-center gap-2 py-2 rounded-xl text-sm font-bold transition-all",
+                                    "flex min-h-9 w-full items-center justify-center gap-2 rounded-xl px-3 py-2 text-sm font-bold transition-all",
                                     !courseImportMutation.isPending
                                       ? "bg-slate-900 text-white hover:bg-slate-800 shadow-sm hover:shadow-md"
                                       : "bg-slate-200 text-slate-400 cursor-not-allowed"
                                   )}
-                                  title={`导入 ${course.subject_name}`}
+                                  title={`导入 ${course.subject_name} 到左侧学科列表`}
                                 >
                                   {courseImportMutation.isPending ? (
-                                    <><Loader2 className="w-4 h-4 animate-spin" /> 导入中…</>
+                                    <><Loader2 className="h-4 w-4 animate-spin" /> 导入中</>
                                   ) : (
-                                    <><Download className="w-4 h-4" /> 导入体验</>
+                                    <><Upload className="h-4 w-4" /> 导入</>
                                   )}
                                 </button>
                               </div>
@@ -1077,7 +1006,7 @@ export function HomePage() {
     {/* ═══ Modals ═══ */}
     <AnimatePresence>
       {exportSubjectId && (
-        <ExportModal
+        <SubjectExportModal
           key="export"
           subjectId={exportSubjectId}
           onClose={() => setExportSubjectId(null)}
@@ -1087,7 +1016,14 @@ export function HomePage() {
         <ImportModal
           key="import"
           onClose={() => setImportOpen(false)}
-          onSuccess={() => queryClient.invalidateQueries({ queryKey: ["subjects"] })}
+          onSuccess={(result) => {
+            queryClient.invalidateQueries({ queryKey: ["subjects"] });
+            toast({
+              title: "导入成功",
+              description: `${result.subject_name} 已加入左侧学科列表。`,
+              variant: "success",
+            });
+          }}
         />
       )}
       {renameTarget && (

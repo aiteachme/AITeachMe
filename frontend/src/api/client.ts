@@ -1,6 +1,13 @@
 import axios, { AxiosHeaders, AxiosRequestConfig, AxiosResponse } from "axios";
 
-const API_BASE_URL = import.meta.env.VITE_API_URL ?? "";
+function resolveDesktopApiBaseUrl(): string {
+  if (typeof window === "undefined" || window.location.protocol !== "file:") {
+    return "";
+  }
+  return window.aiteachmeDesktop?.apiBaseUrl ?? "http://127.0.0.1:9020";
+}
+
+const API_BASE_URL = resolveDesktopApiBaseUrl() || (import.meta.env.VITE_API_URL ?? "").trim();
 const DEVICE_KEY_STORAGE_KEY = "device_key";
 const DEVICE_KEY_RE = /^[A-Za-z0-9._:-]{8,128}$/;
 
@@ -112,6 +119,8 @@ export interface SseTokenPayload {
 
 export interface SseDonePayload {
   turn_id?: string;
+  session_id?: string;
+  session_title?: string;
   contexts?: unknown;
 }
 
@@ -125,6 +134,8 @@ export interface SseStatusPayload {
   detail?: string;
   step?: string;
   elapsed_ms?: number;
+  session_id?: string;
+  session_title?: string;
 }
 
 export interface PostSseJsonOptions {

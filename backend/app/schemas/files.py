@@ -50,9 +50,9 @@ class FileRecord(BaseModel):
 
 
 class FilesData(BaseModel):
-    """Aggregated subject files response."""
+    """Aggregated files response."""
 
-    subject: str = Field(description="Subject slug.")
+    subject: str = Field(description="Subject slug, or library scope for unassigned files.")
     total: int = Field(description="Total file count.")
     ready_count: int = Field(description="Count of markdown-ready files.")
     processing_count: int = Field(description="Count of files still processing.")
@@ -63,7 +63,7 @@ class FilesData(BaseModel):
 class FilesUploadData(BaseModel):
     """Upload response."""
 
-    subject: str = Field(description="Subject slug.")
+    subject: str = Field(description="Subject slug, or library scope for unassigned files.")
     filenames: list[str] = Field(description="Uploaded filenames.")
     uploaded_items: list[FileRecord] = Field(default_factory=list, description="Uploaded file records.")
     started_parse_count: int = Field(default=0, description="Count of auto-started parse files.")
@@ -86,6 +86,18 @@ class FileDeleteData(BaseModel):
     """Delete result."""
 
     deleted_file_uids: list[str] = Field(default_factory=list, description="Deleted public file UIDs.")
+
+
+class FileLinkRequest(BaseModel):
+    """Link existing user-library files to a subject."""
+
+    file_uids: list[str] = Field(default_factory=list, description="Public file UIDs to link.")
+
+    @model_validator(mode="after")
+    def validate_ids(self) -> "FileLinkRequest":
+        if not self.file_uids:
+            raise ValueError("file_uids is required.")
+        return self
 
 
 FilesUploadData.model_rebuild()

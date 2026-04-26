@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
+import sqlalchemy as sa
 from sqlmodel import Field, Index, SQLModel, UniqueConstraint
 
 from app.models.enums import KnowledgeRelationStatus
@@ -30,8 +31,8 @@ class KnowledgeEdge(SQLModel, table=True):
     source_node_id: int = Field(foreign_key="knowledge_unit.id", index=True)
     target_node_id: int = Field(foreign_key="knowledge_unit.id", index=True)
     edge_type: str = Field(index=True)
-    description: str = ""
-    evidence_refs_json: str = Field(default="[]")
+    description: str = Field(default="", sa_column=sa.Column(sa.Text(), nullable=False, default=""))
+    evidence_refs_json: str = Field(default="[]", sa_column=sa.Column(sa.Text(), nullable=False, default="[]"))
     weight: float = Field(default=1.0)
     confidence: float = Field(default=0.5)
     status: str = Field(default=KnowledgeRelationStatus.PENDING.value)
@@ -74,4 +75,3 @@ class EvidenceLink(SQLModel):
     confidence: float = Field(default=1.0)
     is_active: bool = Field(default=True)
     created_at: datetime = Field(default_factory=utcnow)
-

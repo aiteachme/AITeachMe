@@ -12,11 +12,15 @@ class SubjectCreateRequest(BaseModel):
         json_schema_extra={
             "example": {
                 "name": "",
+                "description": "",
+                "user_intent": "",
             }
         }
     )
 
     name: str = Field(default="", description="展示名称。可留空，Planner 会在首次对话后自动命名。")
+    description: str = Field(default="", description="学科简单介绍。")
+    user_intent: str = Field(default="", description="用户目标/意图描述。")
 
 
 class SubjectDetailRequest(BaseModel):
@@ -25,7 +29,9 @@ class SubjectDetailRequest(BaseModel):
 
 class SubjectUpdateRequest(BaseModel):
     subject_id: str = Field(description="学科外部标识。")
-    name: str = Field(min_length=1, description="展示名称。")
+    name: str | None = Field(default=None, min_length=1, description="展示名称。")
+    description: str | None = Field(default=None, description="学科简单介绍。")
+    user_intent: str | None = Field(default=None, description="用户目标/意图描述。")
 
 
 class SubjectDeleteRequest(SubjectDetailRequest):
@@ -44,6 +50,9 @@ class SubjectItem(BaseModel):
     id: int = Field(description="学科 ID。")
     subject_id: str = Field(description="学科外部标识。")
     name: str = Field(description="展示名称。")
+    description: str = Field(description="学科简单介绍。")
+    user_intent: str = Field(description="用户目标/意图描述。")
+    icon_key: str | None = Field(default=None, description="学科图标 key。")
     created_at: datetime = Field(description="创建时间。")
     updated_at: datetime = Field(description="更新时间。")
 

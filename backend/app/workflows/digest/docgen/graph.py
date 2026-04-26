@@ -12,7 +12,6 @@ from typing import Any, Literal
 
 from langgraph.graph import END, StateGraph
 from langgraph.types import Send
-
 from app.shared.infra.workflow import workflow_tracer
 from app.shared.infra.workflow.context import WorkflowContext, create_langgraph_dev_context
 from app.shared.infra.workflow.events import InProcessEventBus
@@ -27,33 +26,41 @@ from app.workflows.digest.common.metrics import build_token_summary
 from app.workflows.digest.docgen.lib.defaults import DEFAULT_DOCGEN_MAX_PARALLEL_CHAPTERS
 from app.workflows.digest.docgen.lib.reporting import build_docgen_lane_summary
 from app.workflows.digest.docgen.nodes import (
-    build_confirm_and_dispatch_node,
+    build_assemble_chapter_tasks_node,
+    build_chapter_execution_briefs_node,
+    build_confirm_and_seed_backbone_node,
     build_document_backbone_node,
     build_document_consistency_review_node,
     build_enhance_chapters_node,
-    build_finalize_titles_node,
+    build_generate_cover_node,
     build_generate_chapters_node,
+    build_lock_titles_for_chapters_node,
     build_load_context_node,
     build_merge_review_node,
-    build_prepare_parallel_inputs_node,
+    build_prepare_global_seed_node,
     build_publish_document_node,
     build_repair_or_route_node,
     build_review_chapter_node,
+    build_sync_locked_titles_node,
 )
 from app.workflows.digest.docgen.nodes.common import resolve_docgen_retrieval_profile
 from app.workflows.digest.docgen.state import DocGenState
 
 NODE_LOAD_CONTEXT = "读取确认方案"
-NODE_PREPARE_CONTEXT = "并行准备写作上下文"
-NODE_DISPATCH = "确认章节生成计划"
+NODE_PREPARE_GLOBAL_SEED = "准备全局种子"
+NODE_GENERATE_COVER = "生成封面"
+NODE_LOCK_TITLES = "锁定章节标题"
+NODE_CONFIRM_BACKBONE_SEED = "确认骨架种子"
 NODE_BUILD_BACKBONE = "构建文档知识骨架"
+NODE_BUILD_CHAPTER_BRIEFS = "生成章节执行简报"
+NODE_ASSEMBLE_CHAPTER_TASKS = "组装最终章节任务"
 NODE_GENERATE_CHAPTERS = "生成章节草稿"
 NODE_ENHANCE_CHAPTERS = "增强章节内容"
 NODE_REVIEW_CHAPTERS = "复核章节内容"
 NODE_DOCUMENT_CONSISTENCY_REVIEW = "复核整本一致性"
 NODE_REPAIR_OR_ROUTE = "记录复核回流动作"
 NODE_MERGE_REVIEW = "合并检查整本文档"
-NODE_FINALIZE_TITLES = "收口章节标题"
+NODE_SYNC_LOCKED_TITLES = "同步锁定标题"
 NODE_PUBLISH = "发布知识文档"
 RUN_NAME_DOCGEN = "织网引擎：生成知识文档"
 
@@ -76,19 +83,35 @@ def build_docgen_graph(*, context: WorkflowContext) -> StateGraph:
         trace.node(build_load_context_node(context=context), name=NODE_LOAD_CONTEXT, timing_field="load_ms"),
     )
     workflow.add_node(
-        NODE_PREPARE_CONTEXT,
+        NODE_PREPARE_GLOBAL_SEED,
         trace.node(
-            build_prepare_parallel_inputs_node(context=context),
-            name=NODE_PREPARE_CONTEXT,
+            build_prepare_global_seed_node(context=context),
+            name=NODE_PREPARE_GLOBAL_SEED,
             timing_field="prepare_ms",
         ),
     )
     workflow.add_node(
-        NODE_DISPATCH,
+        NODE_GENERATE_COVER,
         trace.node(
-            build_confirm_and_dispatch_node(context=context),
-            name=NODE_DISPATCH,
-            timing_field="dispatch_ms",
+            build_generate_cover_node(context=context),
+            name=NODE_GENERATE_COVER,
+            timing_field="cover_ms",
+        ),
+    )
+    workflow.add_node(
+        NODE_LOCK_TITLES,
+        trace.node(
+            build_lock_titles_for_chapters_node(context=context),
+            name=NODE_LOCK_TITLES,
+            timing_field="title_lock_ms",
+        ),
+    )
+    workflow.add_node(
+        NODE_CONFIRM_BACKBONE_SEED,
+        trace.node(
+            build_confirm_and_seed_backbone_node(context=context),
+            name=NODE_CONFIRM_BACKBONE_SEED,
+            timing_field="seed_backbone_ms",
         ),
     )
     workflow.add_node(
@@ -97,6 +120,22 @@ def build_docgen_graph(*, context: WorkflowContext) -> StateGraph:
             build_document_backbone_node(context=context),
             name=NODE_BUILD_BACKBONE,
             timing_field="backbone_ms",
+        ),
+    )
+    workflow.add_node(
+        NODE_BUILD_CHAPTER_BRIEFS,
+        trace.node(
+            build_chapter_execution_briefs_node(context=context),
+            name=NODE_BUILD_CHAPTER_BRIEFS,
+            timing_field="chapter_prepare_ms",
+        ),
+    )
+    workflow.add_node(
+        NODE_ASSEMBLE_CHAPTER_TASKS,
+        trace.node(
+            build_assemble_chapter_tasks_node(context=context),
+            name=NODE_ASSEMBLE_CHAPTER_TASKS,
+            timing_field="assemble_tasks_ms",
         ),
     )
     workflow.add_node(
@@ -128,8 +167,12 @@ def build_docgen_graph(*, context: WorkflowContext) -> StateGraph:
         trace.node(build_merge_review_node(context=context), name=NODE_MERGE_REVIEW, timing_field="merge_review_ms"),
     )
     workflow.add_node(
-        NODE_FINALIZE_TITLES,
-        trace.node(build_finalize_titles_node(context=context), name=NODE_FINALIZE_TITLES, timing_field="finalize_ms"),
+        NODE_SYNC_LOCKED_TITLES,
+        trace.node(
+            build_sync_locked_titles_node(context=context),
+            name=NODE_SYNC_LOCKED_TITLES,
+            timing_field="finalize_ms",
+        ),
     )
     workflow.add_node(
         NODE_PUBLISH,
@@ -140,20 +183,40 @@ def build_docgen_graph(*, context: WorkflowContext) -> StateGraph:
     workflow.add_conditional_edges(
         NODE_LOAD_CONTEXT,
         route_after_step_for_trace,
-        {"continue": NODE_PREPARE_CONTEXT, "fail": END},
+        {"continue": NODE_PREPARE_GLOBAL_SEED, "fail": END},
     )
     workflow.add_conditional_edges(
-        NODE_PREPARE_CONTEXT,
+        NODE_PREPARE_GLOBAL_SEED,
         route_after_step_for_trace,
-        {"continue": NODE_DISPATCH, "fail": END},
+        {"continue": NODE_GENERATE_COVER, "fail": END},
     )
     workflow.add_conditional_edges(
-        NODE_DISPATCH,
+        NODE_GENERATE_COVER,
+        route_after_step_for_trace,
+        {"continue": NODE_LOCK_TITLES, "fail": END},
+    )
+    workflow.add_conditional_edges(
+        NODE_LOCK_TITLES,
+        route_after_step_for_trace,
+        {"continue": NODE_CONFIRM_BACKBONE_SEED, "fail": END},
+    )
+    workflow.add_conditional_edges(
+        NODE_CONFIRM_BACKBONE_SEED,
         route_after_step_for_trace,
         {"continue": NODE_BUILD_BACKBONE, "fail": END},
     )
     workflow.add_conditional_edges(
         NODE_BUILD_BACKBONE,
+        route_after_step_for_trace,
+        {"continue": NODE_BUILD_CHAPTER_BRIEFS, "fail": END},
+    )
+    workflow.add_conditional_edges(
+        NODE_BUILD_CHAPTER_BRIEFS,
+        route_after_step_for_trace,
+        {"continue": NODE_ASSEMBLE_CHAPTER_TASKS, "fail": END},
+    )
+    workflow.add_conditional_edges(
+        NODE_ASSEMBLE_CHAPTER_TASKS,
         build_generation_sends_for_trace,
         {"fail": END},
     )
@@ -177,10 +240,10 @@ def build_docgen_graph(*, context: WorkflowContext) -> StateGraph:
     workflow.add_conditional_edges(
         NODE_MERGE_REVIEW,
         route_after_step_for_trace,
-        {"continue": NODE_FINALIZE_TITLES, "fail": END},
+        {"continue": NODE_SYNC_LOCKED_TITLES, "fail": END},
     )
     workflow.add_conditional_edges(
-        NODE_FINALIZE_TITLES,
+        NODE_SYNC_LOCKED_TITLES,
         route_after_step_for_trace,
         {"continue": NODE_PUBLISH, "fail": END},
     )
@@ -214,7 +277,11 @@ def create_docgen_initial_state(
         "planner_session_id": planner_session_id or "",
         "confirmed_plan_id": confirmed_plan_id or "",
         "digest_mode": digest_mode or "",
-        "retrieval_profile": resolve_docgen_retrieval_profile(digest_mode),
+        "retrieval_profile": resolve_docgen_retrieval_profile(
+            digest_mode,
+            user_prompt=user_prompt,
+            subject_name=subject,
+        ),
         "teaching_action": "docgen_build",
         "document_context": None,
         "docgen_context": {},
@@ -233,6 +300,19 @@ def route_after_step_for_trace(state: DocGenState) -> Literal["fail", "continue"
 route_after_step_for_trace = _named_route(route_after_step_for_trace, "检查是否继续")
 
 
+def _child_state_base(state: DocGenState, *, teaching_action: str) -> dict[str, Any]:
+    return {
+        "subject": state["subject"],
+        "requested_at": state["requested_at"],
+        "build_session_id": state.get("build_session_id", ""),
+        "planner_session_id": state.get("planner_session_id", ""),
+        "confirmed_plan_id": state.get("confirmed_plan_id", ""),
+        "digest_mode": state.get("digest_mode", ""),
+        "retrieval_profile": state.get("retrieval_profile", ""),
+        "teaching_action": teaching_action,
+    }
+
+
 def build_generation_sends(state: DocGenState) -> list[Send] | Literal["fail"]:
     if state.get("error"):
         return "fail"
@@ -247,14 +327,7 @@ def build_generation_sends(state: DocGenState) -> list[Send] | Literal["fail"]:
         Send(
             NODE_GENERATE_CHAPTERS,
             {
-                "subject": state["subject"],
-                "requested_at": state["requested_at"],
-                "build_session_id": state.get("build_session_id", ""),
-                "planner_session_id": state.get("planner_session_id", ""),
-                "confirmed_plan_id": state.get("confirmed_plan_id", ""),
-                "digest_mode": state.get("digest_mode", ""),
-                "retrieval_profile": state.get("retrieval_profile", ""),
-                "teaching_action": "chapter_generate",
+                **_child_state_base(state, teaching_action="chapter_generate"),
                 "shared_inputs": state.get("shared_inputs"),
                 "document_context": state.get("document_context"),
                 "docgen_context": state.get("docgen_context"),
@@ -288,14 +361,7 @@ def build_review_sends(state: DocGenState) -> list[Send] | Literal["fail"]:
         Send(
             NODE_REVIEW_CHAPTERS,
             {
-                "subject": state["subject"],
-                "requested_at": state["requested_at"],
-                "build_session_id": state.get("build_session_id", ""),
-                "planner_session_id": state.get("planner_session_id", ""),
-                "confirmed_plan_id": state.get("confirmed_plan_id", ""),
-                "digest_mode": state.get("digest_mode", ""),
-                "retrieval_profile": state.get("retrieval_profile", ""),
-                "teaching_action": "chapter_review",
+                **_child_state_base(state, teaching_action="chapter_review"),
                 "enhanced_chapter_draft": draft,
                 "chapter_tasks": list(state.get("chapter_tasks") or []),
                 "claim_ledgers": list(state.get("claim_ledgers") or []),

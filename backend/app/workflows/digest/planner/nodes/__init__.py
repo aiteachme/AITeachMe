@@ -1,11 +1,13 @@
-﻿"""Planner top-level graph nodes."""
+"""Planner top-level graph nodes."""
 
+from .generate_subject_name import build_generate_subject_name_node
 from .load_planner_materials import build_load_planner_materials_node
 from .normalize_and_persist_plan import build_normalize_and_persist_plan_node
 from .stream_and_parse_plan_draft import build_stream_and_parse_plan_draft_node
 from .stream_brief_and_extract_intent import build_stream_brief_and_extract_intent_node
 
 __all__ = [
+    "build_generate_subject_name_node",
     "build_load_planner_materials_node",
     "build_normalize_and_persist_plan_node",
     "build_stream_and_parse_plan_draft_node",

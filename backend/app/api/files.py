@@ -11,10 +11,12 @@ from sqlmodel import Session
 from app.api.deps import CurrentUserContext, get_current_user_context, get_db, normalize_subject_slug
 from app.api.openapi import build_error_responses
 from app.schemas.common import ApiResponse, ok_response
-from app.schemas.files import FileDeleteData, FileDeleteRequest, FilesData, FilesUploadData
+from app.schemas.files import FileDeleteData, FileDeleteRequest, FileLinkRequest, FilesData, FilesUploadData
 from app.shared.infra.storage import get_content_store
+from app.repositories.files_repo import link_raw_files_to_subject
 from app.workflows.support.files import (
     delete_files,
+    get_user_files_by_uid_or_raise,
     list_subject_files,
     run_parse_files_background,
     save_uploaded_files_and_request_parse,
@@ -75,6 +77,7 @@ async def upload_files(
     if parse_file_ids:
         request.app.state.background_task_registry.spawn(
             run_parse_files_background(
+                user_id=user.user_id,
                 subject=normalized_subject,
                 file_ids=parse_file_ids,
                 background_task_registry=request.app.state.background_task_registry,
@@ -99,6 +102,34 @@ async def list_files_api(
 ) -> ApiResponse[FilesData]:
     normalized_subject = normalize_subject_slug(subject)
     get_subject_record(session, normalized_subject, owner_user_id=user.user_id)
+    return ok_response(list_subject_files(session, subject=normalized_subject))
+
+
+@router.post(
+    "/link",
+    response_model=ApiResponse[FilesData],
+    summary="Link existing user files to a subject",
+    responses=build_error_responses([400, 404, 422, 500]),
+)
+async def link_files_api(
+    subject: str = Path(...),
+    body: FileLinkRequest = Body(...),
+    user: CurrentUserContext = Depends(get_current_user_context),
+    session: Session = Depends(get_db),
+) -> ApiResponse[FilesData]:
+    normalized_subject = normalize_subject_slug(subject)
+    get_subject_record(session, normalized_subject, owner_user_id=user.user_id)
+    raw_files = get_user_files_by_uid_or_raise(
+        session,
+        owner_user_id=user.user_id,
+        file_uids=list(dict.fromkeys(body.file_uids)),
+    )
+    link_raw_files_to_subject(
+        session,
+        owner_user_id=user.user_id,
+        subject=normalized_subject,
+        raw_files=raw_files,
+    )
     return ok_response(list_subject_files(session, subject=normalized_subject))
 
 
