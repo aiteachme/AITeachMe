@@ -21,7 +21,7 @@ backend/app/workflows/digest/
   planner/
   docgen/
   kg_file_ingest/      # legacy/debug-only; only extractor utilities are still reused
-  kg_docs_sync/
+  kg_doc_sync/
   common/
 ```
 
@@ -30,7 +30,7 @@ backend/app/workflows/digest/
 - `planner/`：确认式学习方案生成。
 - `docgen/`：知识文档生成。
 - `kg_file_ingest/`：历史调试链路，不再作为产品图谱构建入口。
-- `kg_docs_sync/`：知识文档和知识图谱同步的正式链路。
+- `kg_doc_sync/`：知识文档和知识图谱同步的正式链路。
 - `common/`：跨 lane 共享能力。
 - `workflows/support/knowledge_graph/`：图谱触发、状态、总览和查询用例，不是 digest lane。
 
@@ -143,10 +143,10 @@ Search 层只负责找来源和读来源，不直接生成最终答案。
 
 当前图谱主线是：
 
-- `kg_docs_sync/`
+- `kg_doc_sync/`
 - `workflows/support/knowledge_graph/`
 
-`kg_file_ingest/` 仅保留 legacy/debug-only 代码和少量 extractor 复用，后续新增图谱构建逻辑优先进入 `kg_docs_sync/` 或明确的 common 包；API-facing 查询和触发继续放在 support 模块。
+`kg_file_ingest/` 已移除，后续新增图谱构建逻辑优先进入 `kg_doc_sync/` 或明确的 common 包；API-facing 查询和触发也收口在 `kg_doc_sync`。
 
 ## 8. common 使用规则
 

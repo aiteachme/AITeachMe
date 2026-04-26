@@ -1,4 +1,4 @@
-# Workflows 调试指南
+﻿# Workflows 调试指南
 
 最后更新：2026-04-15
 
@@ -29,7 +29,7 @@
 - `ingest_fast_parse`
 - `digest_planner`
 - `digest_docgen`
-- `kg_docs_sync`
+- `kg_doc_sync`
 - `interact_chat`
 - `examine_question_build`
 - `examine_exam_grade`

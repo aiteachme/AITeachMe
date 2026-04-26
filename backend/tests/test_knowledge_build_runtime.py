@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import json
 from datetime import datetime, timezone
@@ -100,6 +100,6 @@ def test_langgraph_config_uses_current_digest_graph_entries() -> None:
 
     assert "digest_kg" not in graphs
     assert "kg_file_ingest" not in graphs
-    assert graphs["kg_docs_sync"]["path"].endswith(
-        "app/workflows/digest/kg_docs_sync/graph.py:get_langgraph_dev_kg_docs_sync_graph"
+    assert graphs["kg_doc_sync"]["path"].endswith(
+        "app/workflows/digest/kg_doc_sync/graph.py:get_langgraph_dev_kg_doc_sync_graph"
     )

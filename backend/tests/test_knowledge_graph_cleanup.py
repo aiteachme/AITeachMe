@@ -1,7 +1,7 @@
-from sqlmodel import Session, SQLModel, create_engine, select
+﻿from sqlmodel import Session, SQLModel, create_engine, select
 
 from app.models import ExamPaper, ExamPaperItem, KnowledgeEdge, KnowledgeUnit, QuestionKnowledgeUnitLink, QuestionTemplate, UserKnowledgeState
-from app.workflows.digest.kg_docs_sync.lib.cleanup import clear_subject_graph_entities
+from app.workflows.digest.kg_doc_sync.lib.cleanup import clear_subject_graph_entities
 
 
 def test_clear_subject_graph_entities_detaches_foreign_keys_before_delete():

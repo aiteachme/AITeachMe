@@ -30,7 +30,7 @@ from app.schemas.knowledge import (
     KnowledgeUnitRelationsRequest,
     KnowledgeUnitResponse,
 )
-from app.workflows.digest.kg_docs_sync import (
+from app.workflows.digest.kg_doc_sync import (
     explain_relation_path,
     find_knowledge_path,
     get_chunk_context,

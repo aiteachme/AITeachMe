@@ -1,4 +1,4 @@
-# Workflows 说明
+﻿# Workflows 说明
 
 最后更新：2026-04-19
 
@@ -70,7 +70,7 @@ workflows/<module>/
 - `ingest/fast_parse`
 - `digest/planner`
 - `digest/docgen`
-- `digest/kg_docs_sync`
+- `digest/kg_doc_sync`
 - `interact/chat`
 - `examine/question_build`
 - `examine/exam_grade`
@@ -380,11 +380,11 @@ api -> workflows -> repositories / shared.infra / models / schemas
 `digest/` 当前主线是：
 
 ```text
-planner -> docgen -> kg_docs_sync
+planner -> docgen -> kg_doc_sync
 ```
 
-旧 `digest/kg_file_ingest` 历史调试包已删除；图谱构建只保留 `digest/kg_docs_sync`，
-抽取、候选合并、增量入图、查询、总览和清理实现都位于 `digest/kg_docs_sync/`。
+旧 `digest/kg_file_ingest` 历史调试包已删除；图谱构建只保留 `digest/kg_doc_sync`，
+抽取、候选合并、增量入图、查询、总览和清理实现都位于 `digest/kg_doc_sync/`。
 
 `digest/planner` 是组织样板：
 
@@ -421,7 +421,7 @@ planner -> docgen -> kg_docs_sync
   Digest 教学运行时配置 facade
 - `digest/common/pedagogy.py`
   Digest 文档教学语义 helper
-- `digest/kg_docs_sync/lib/overview.py`
+- `digest/kg_doc_sync/lib/overview.py`
   基于知识图谱的总览用例
 - `support/system/init.py`、`support/system/settings.py`
   系统初始化与设置总览位置

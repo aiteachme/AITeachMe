@@ -1,4 +1,4 @@
-"""DocGen build lifecycle around the graph runtime.
+﻿"""DocGen build lifecycle around the graph runtime.
 
 This module owns the API-facing lifecycle around one DocGen request:
 file selection, confirmed-plan loading, build locking, background
@@ -693,7 +693,7 @@ async def run_docgen_background(
 
     from app.workflows.digest import run_docgen_workflow
     from app.shared.infra.knowledge.build_store import release_knowledge_build_lock
-    from app.workflows.digest.kg_docs_sync.builds import (
+    from app.workflows.digest.kg_doc_sync.builds import (
         run_graph_docs_sync_after_doc_build,
     )
     build_session_id = _new_build_session_id()

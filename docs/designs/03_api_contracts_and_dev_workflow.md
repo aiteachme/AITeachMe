@@ -81,7 +81,7 @@
 以下入口已从公开 API 和 OpenAPI 中移除：
 
 - `POST /debug/kg-file-ingest`
-- `POST /debug/kg-docs-sync`
+- `POST /debug/kg-doc-sync`
 - `POST /debug/clear-graph`
 
 前端不再提供知识调试 tab。排查图谱链路时，应通过 LangSmith、workflow 日志和 `/build/runtime` 判断状态。

@@ -8,8 +8,8 @@
       "path": "./app/workflows/ingest/fast_parse/graph.py:get_langgraph_dev_fast_parse_graph",
       "description": "Ingest Phase 1 fast-parse workflow."
     },
-    "kg_docs_sync": {
-      "path": "./app/workflows/digest/kg_docs_sync/graph.py:get_langgraph_dev_kg_docs_sync_graph",
+    "kg_doc_sync": {
+      "path": "./app/workflows/digest/kg_doc_sync/graph.py:get_langgraph_dev_kg_doc_sync_graph",
       "description": "Digest knowledge-graph docs-sync lane."
     },
     "digest_docgen": {
