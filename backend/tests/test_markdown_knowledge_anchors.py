@@ -14,9 +14,9 @@ def test_docs_sync_ignores_teaching_scaffold_headings():
 
 ## 洛必达法则
 
-### 再把关键点压实一遍
+### 本章要点
 
-### 这几项不能漏
+### 学习目标
 
 ### 本章自检
 
@@ -31,8 +31,8 @@ def test_docs_sync_ignores_teaching_scaffold_headings():
     assert "洛必达法则" in names
     assert "等价无穷小替换" in names
     assert "章节路线图" not in names
-    assert "再把关键点压实一遍" not in names
-    assert "这几项不能漏" not in names
+    assert "本章要点" not in names
+    assert "学习目标" not in names
     assert "本章自检" not in names
 
 

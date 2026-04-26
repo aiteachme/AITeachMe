@@ -1,6 +1,7 @@
 from app.workflows.digest.docgen.lib.chapter_enhancement import _append_practice_section
 from app.workflows.digest.docgen.mode_profiles import get_docgen_mode_profile
 from app.workflows.digest.docgen.prompts.generation import build_docgen_writer_messages
+from app.workflows.digest.docgen.lib.textbook_style import normalize_textbook_headings
 
 
 def test_docgen_mode_profile_uses_flexible_course_hints():
@@ -33,10 +34,48 @@ def test_writer_prompt_marks_course_flow_as_non_required():
 
 
 def test_append_practice_section_uses_mode_specific_headings():
-    questions = [{"question": "写出题眼和最短解法。"}]
+    questions = [
+        {
+            "label": "行列式性质",
+            "stem": "已知一个三阶行列式，判断交换两行后符号如何变化。",
+            "analysis_steps": ["识别操作类型。", "调用行列式交换两行变号的性质。"],
+            "pitfall": "不要把交换两行和倍乘某一行混在一起。",
+        }
+    ]
 
-    sprint = _append_practice_section("# 行列式\n\n正文", questions, digest_mode="sprint")
-    systematic = _append_practice_section("# 行列式\n\n正文", questions, digest_mode="systematic")
+    sprint = _append_practice_section("# 行列式\n\n正文", questions, digest_mode="sprint", title="行列式")
+    systematic = _append_practice_section("# 行列式\n\n正文", questions, digest_mode="systematic", title="行列式")
 
-    assert "## 题型例练" in sprint
-    assert "## 例题与迁移" in systematic
+    assert "## 行列式性质的典型例题解析" in sprint
+    assert "**题目**" in sprint
+    assert "**解析**" in sprint
+    assert "**易错点**" in sprint
+    assert "## 行列式性质的例题与迁移" in systematic
+
+
+def test_textbook_heading_policy_rewrites_low_information_headings_by_shape():
+    markdown = """# 行列式
+
+## 本章要点
+
+正文
+
+### 本章问题
+
+问题
+
+## 行列式的性质与计算
+
+正文
+"""
+
+    normalized = normalize_textbook_headings(
+        markdown,
+        digest_mode="sprint",
+        fallback_title="行列式",
+        focus_items=["行列式性质"],
+    )
+
+    assert "## 行列式性质的核心要点" in normalized
+    assert "### 行列式性质的典型判断问题" in normalized
+    assert "## 行列式的性质与计算" in normalized
