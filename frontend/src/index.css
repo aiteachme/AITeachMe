@@ -191,7 +191,12 @@
 @layer utilities {
   /* ----------- Feishu-style document scroll container ----------- */
   .doc-scroll-container {
+    overflow-anchor: none;
     scroll-behavior: smooth;
+  }
+
+  .doc-scroll-container * {
+    overflow-anchor: none;
   }
 
   /* ----------- TOC sidebar scroll ----------- */
@@ -257,6 +262,44 @@
     border-radius: 6px;
     padding-left: 6px;
     margin-left: -6px;
+  }
+
+  .markdown-collapsible-section[data-collapsed="true"] > :not(:first-child) {
+    display: none !important;
+  }
+
+  .markdown-collapsible-section [data-collapsible-heading="true"] > button {
+    touch-action: manipulation;
+  }
+
+  @media (hover: hover) and (pointer: fine) {
+    .markdown-collapsible-section > [data-collapsible-heading="true"] [data-heading-toggle="true"] {
+      opacity: 0;
+      pointer-events: auto;
+      transform: translateX(-2px);
+      transition:
+        opacity 0.16s ease,
+        transform 0.16s ease,
+        color 0.16s ease,
+        background-color 0.16s ease;
+    }
+
+    .markdown-collapsible-section > [data-collapsible-heading="true"] [data-heading-toggle="true"]::before {
+      content: "";
+      position: absolute;
+      inset: -12px -18px;
+      border-radius: 10px;
+    }
+
+    .markdown-collapsible-section:hover > [data-collapsible-heading="true"] [data-heading-toggle="true"],
+    .markdown-collapsible-section:focus-within > [data-collapsible-heading="true"] [data-heading-toggle="true"],
+    .markdown-collapsible-section > [data-collapsible-heading="true"]:hover [data-heading-toggle="true"],
+    .markdown-collapsible-section > [data-collapsible-heading="true"] [data-heading-toggle="true"]:hover,
+    .markdown-collapsible-section > [data-collapsible-heading="true"] [data-heading-toggle="true"]:focus-visible {
+      opacity: 1;
+      pointer-events: auto;
+      transform: translateX(0);
+    }
   }
 
   /* ----------- Feishu-style text selection ----------- */
