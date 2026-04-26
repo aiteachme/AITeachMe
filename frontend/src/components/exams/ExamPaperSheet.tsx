@@ -22,6 +22,9 @@ interface ExamPaperSheetProps {
   pageScale: number;
   highlightedQuestionOrder?: number | null;
   setAnswers: Dispatch<SetStateAction<Record<number, string>>>;
+  selectedItemId?: number | null;
+  showInlineReviewDetails?: boolean;
+  onSelectQuestion?: (item: ExamPaperItemResponse) => void;
   onQuestionAi?: (item: ExamPaperItemResponse, isReviewStage: boolean, answerValue: string) => void;
 }
 
@@ -32,6 +35,9 @@ export function ExamPaperSheet({
   pageScale,
   highlightedQuestionOrder,
   setAnswers,
+  selectedItemId,
+  showInlineReviewDetails = true,
+  onSelectQuestion,
   onQuestionAi,
 }: ExamPaperSheetProps) {
   return (
@@ -85,6 +91,7 @@ export function ExamPaperSheet({
                     const isReviewStage = isGraded && activeStage === 2;
                     const isReadonly = isGraded;
                     const isCorrect = item.is_correct === true;
+                    const isSelectedReviewItem = isReviewStage && selectedItemId === item.id;
                     const isQuestionHighlighted = highlightedQuestionOrder === item.item_order;
 
                     return (
@@ -93,13 +100,21 @@ export function ExamPaperSheet({
                         id={`exam-question-${item.item_order}`}
                         data-question-anchor="true"
                         data-question-order={item.item_order}
+                        onClick={() => {
+                          if (isReviewStage) {
+                            onSelectQuestion?.(item);
+                          }
+                        }}
                         className={cn(
                           "scroll-mt-28 border-b-[1.5px] border-dashed border-slate-200/90 px-0 py-7 transition-[background-color,box-shadow] duration-300 last:border-b-0 sm:py-9",
-                          isQuestionHighlighted &&
-                            "rounded-2xl bg-violet-50/80 ring-2 ring-violet-300/80 shadow-[0_16px_34px_rgba(139,92,246,0.14)]",
+                          (isReviewStage || isQuestionHighlighted) && "px-4 sm:px-5 lg:px-6",
+                          isReviewStage && "cursor-pointer rounded-xl",
+                          isSelectedReviewItem && "bg-slate-50/80 outline outline-1 outline-slate-200",
+                          isQuestionHighlighted && "rounded-xl bg-slate-50/80 outline outline-1 outline-slate-200",
                         )}
+                        aria-selected={isSelectedReviewItem || undefined}
                       >
-                        <div className="grid gap-5 md:grid-cols-[72px_minmax(0,1fr)]">
+                        <div className="grid min-w-0 gap-5 md:grid-cols-[72px_minmax(0,1fr)]">
                           <aside className="flex items-start gap-4 border-b border-slate-100 pb-4 text-slate-500 md:flex-col md:items-center md:border-b-0 md:border-r md:pb-0 md:pr-4">
                             <div className="font-serif text-2xl font-bold leading-none text-slate-950">
                               {item.item_order}.
@@ -130,8 +145,8 @@ export function ExamPaperSheet({
                             </div>
                           </aside>
 
-                          <div className="min-w-0">
-                            <div className="font-serif text-base font-semibold leading-8 text-slate-950 sm:text-lg [&_p]:mb-0 [&_p]:leading-8 [&_.katex-display]:my-4 [&_.katex]:text-inherit">
+                          <div className="min-w-0 overflow-hidden">
+                            <div className="break-words font-serif text-base font-semibold leading-8 text-slate-950 sm:text-lg [&_p]:mb-0 [&_p]:leading-8 [&_.katex-display]:my-4 [&_.katex]:text-inherit">
                               <ExamMarkdown content={item.stem} />
                             </div>
                             {isReviewStage && (
@@ -273,9 +288,9 @@ export function ExamPaperSheet({
                               })}
                             </div>
                           ) : (
-                            <div className="mt-6">
+                            <div className="mt-6 min-w-0">
                               <textarea
-                                className={`min-h-32 w-full rounded-lg border px-4 py-3 text-base leading-8 outline-none transition ${
+                                className={`min-h-32 w-full max-w-full rounded-lg border px-4 py-3 text-base leading-8 outline-none transition ${
                                   isReviewStage
                                     ? isCorrect
                                       ? "border-emerald-300 bg-emerald-50 text-emerald-900"
@@ -295,7 +310,7 @@ export function ExamPaperSheet({
                           )}
                         </div>
 
-                        {isReviewStage && (
+                        {isReviewStage && showInlineReviewDetails && (
                           <div className="mt-6 border-t border-dashed border-slate-200 pt-5 text-sm leading-7 text-slate-600 md:col-start-2">
                             <div className="[&_p]:mb-2 [&_.katex-display]:my-3">
                               <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">你的答案</p>

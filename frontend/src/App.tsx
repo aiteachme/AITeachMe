@@ -42,7 +42,7 @@ function App() {
       <QueryClientProvider client={queryClient}>
         <RuntimeSettingsBootstrap />
         <ToastProvider>
-          <Router>
+          <Router unstable_useTransitions={false}>
             <ElectronWindowFrame>
               <Routes>
                 <Route path="/" element={<Layout />}>
