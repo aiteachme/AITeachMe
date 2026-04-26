@@ -88,6 +88,7 @@ function NodeDetailSidebar({
   const aliases = data.aliases ?? [];
   const incidentEdges = data.incident_edges ?? [];
   const evidenceList = data.evidence ?? [];
+  const sourceRefs = data.source_refs ?? [];
 
   return (
     <div className="animate-in slide-in-from-right-4 space-y-4 duration-200">
@@ -155,6 +156,31 @@ function NodeDetailSidebar({
                 <span className="text-[10px] text-slate-400">{edge.edge_type}</span>
                 <ChevronRight className="h-3 w-3 text-slate-300" />
               </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {sourceRefs.length > 0 && (
+        <div>
+          <div className="mb-2 flex items-center gap-1.5 text-xs font-medium text-slate-500">
+            <FileText className="h-3 w-3" />图谱来源 ({sourceRefs.length})
+          </div>
+          <div className="max-h-40 space-y-1.5 overflow-y-auto">
+            {sourceRefs.map((ref: { id: number; chapter_index?: number; chapter_title?: string | null; doc_version_no?: number; source_kind?: string; source_file_ids?: number[]; quote_text?: string }) => (
+              <div key={ref.id} className="rounded border border-slate-100 bg-slate-50 p-2 text-xs text-slate-600">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="truncate font-medium text-slate-700">
+                    {ref.chapter_title || (ref.chapter_index ? `第 ${ref.chapter_index} 章` : "知识文档")}
+                  </span>
+                  {ref.doc_version_no ? <span className="shrink-0 text-[10px] text-slate-400">v{ref.doc_version_no}</span> : null}
+                </div>
+                <div className="mt-1 flex flex-wrap gap-1 text-[10px] text-slate-400">
+                  {ref.source_kind ? <span>{ref.source_kind}</span> : null}
+                  {ref.source_file_ids?.length ? <span>资料 {ref.source_file_ids.join(", ")}</span> : null}
+                </div>
+                {ref.quote_text ? <p className="mt-1 line-clamp-2 text-slate-500">{ref.quote_text}</p> : null}
+              </div>
             ))}
           </div>
         </div>
@@ -242,7 +268,9 @@ export function ForceGraphView({
       const rect = el.getBoundingClientRect();
       const w = Math.round(rect.width || el.clientWidth || 0);
       const h = Math.round(rect.height || el.clientHeight || 0);
-      if (w > 0 && h > 0) setDimensions({ width: w, height: h });
+      if (w > 0 && h > 0) {
+        setDimensions((prev) => (prev.width === w && prev.height === h ? prev : { width: w, height: h }));
+      }
     };
     measure();
     const obs = new ResizeObserver(measure);
@@ -463,7 +491,7 @@ export function ForceGraphView({
 
   return (
     <div className="flex h-full min-h-[520px] flex-col gap-0 lg:min-h-[640px] lg:flex-row">
-      {/* 鈹€鈹€ Graph Panel 鈹€鈹€ */}
+      {/* Graph panel */}
       <div className="relative min-h-[420px] min-w-0 flex-1 lg:min-h-[640px]">
         <div ref={containerRef} className="absolute inset-0">
           <svg ref={svgRef} className="h-full w-full" />
@@ -473,7 +501,7 @@ export function ForceGraphView({
         <div className="pointer-events-auto absolute left-3 top-3 z-10 flex max-w-[calc(100%-1.5rem)] flex-wrap items-center gap-2">
           {toolbar}
           <span className="rounded-full bg-white/90 px-2.5 py-1 text-[10px] font-medium text-slate-500 shadow-sm ring-1 ring-slate-200/60">
-            {nodeCount} 鑺傜偣 路 {edgeCount} 杈?
+            {nodeCount} 节点 · {edgeCount} 边
           </span>
           <button
             onClick={() => setShowEdgeLabels((v) => !v)}
@@ -482,7 +510,7 @@ export function ForceGraphView({
             <span className="inline-block h-3.5 w-7 rounded-full p-0.5 transition-colors" style={{ backgroundColor: showEdgeLabels ? "#8b5cf6" : "#d1d5db" }}>
               <span className="block h-2.5 w-2.5 rounded-full bg-white shadow transition-transform" style={{ transform: showEdgeLabels ? "translateX(14px)" : "translateX(0)" }} />
             </span>
-            杈规爣绛?
+            边标签
           </button>
         </div>
 

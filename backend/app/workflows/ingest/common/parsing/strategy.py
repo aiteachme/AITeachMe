@@ -140,6 +140,10 @@ def _preferred_parser_order(
         # markitdown (Microsoft) 对 LLM 场景最优化，mammoth 语义保留好作为 fallback
         return ["markitdown", "mammoth", "docx_native"]
 
+    if extension == ".doc":
+        # Convert DOC to DOCX first, then reuse the DOCX parser chain.
+        return ["doc_markitdown", "doc_mammoth", "doc_native"]
+
     if extension in {".ppt", ".pptx"}:
         if file_mb >= 15 or estimated_pages >= _LARGE_SLIDE_COUNT:
             return ["python_pptx_native", "markitdown"]
@@ -242,6 +246,17 @@ def _decide_mode_and_options(
         options.enable_asset_vision_ocr = document_ocr_enabled
         options.asset_vision_ocr_limit = 8
         return "balanced_docx", "DOCX uses balanced parser ordering."
+
+    if extension == ".doc":
+        if file_mb >= 10 or estimated_pages >= _LARGE_DOCX_PAGE_COUNT:
+            options.asset_image_limit = 10
+            options.skip_image_supplement = True
+            options.enable_asset_vision_ocr = document_ocr_enabled
+            options.asset_vision_ocr_limit = 6
+            return "fast_doc_via_docx", "Large DOC converts to DOCX first, then uses the DOCX parser chain."
+        options.enable_asset_vision_ocr = document_ocr_enabled
+        options.asset_vision_ocr_limit = 8
+        return "balanced_doc_via_docx", "DOC converts to DOCX first, then uses the DOCX parser chain."
 
     if extension in {".ppt", ".pptx"}:
         if file_mb >= 15 or estimated_pages >= _LARGE_SLIDE_COUNT:

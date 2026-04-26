@@ -13,7 +13,7 @@ digest/
   common/
   planner/
   docgen/
-  kg_file_ingest/
+  kg_file_ingest/          # legacy/debug-only; only extractor utilities are still reused
   kg_docs_sync/
 ```
 
@@ -24,9 +24,9 @@ digest/
 - `docgen/`
   负责根据 confirmed plan 生成知识文档
 - `kg_file_ingest/`
-  负责知识图谱文件入图链路
+  历史调试链路，不再作为产品图谱构建入口；短期仅保留 extractor 复用
 - `kg_docs_sync/`
-  负责知识文档和知识图谱的同步链路
+  负责知识文档和知识图谱的正式同步链路
 - `common/`
   放跨 lane 共用能力，例如 events、exports、contracts、prepare、material profile、metrics、runtime config、pedagogy
   以及 subject 级知识产物清理 `cleanup.py`
@@ -40,7 +40,6 @@ digest/
 ```python
 from app.workflows.digest import run_docgen_workflow
 from app.workflows.digest import run_graph_docs_sync_workflow
-from app.workflows.digest import run_graph_file_ingest_workflow
 from app.workflows.digest.planner import (
     create_build_planner_session,
     run_build_planner_workflow,
@@ -62,7 +61,8 @@ from app.workflows.digest.planner import (
 当前 digest 的 canonical 主线是：
 
 - `planner -> docgen`
-- `kg_file_ingest`
-- `kg_docs_sync`
+- `docgen publish -> kg_docs_sync`
+
+`kg_file_ingest` 只保留为 legacy/debug-only 包；不要从上层继续调用它的 workflow。
 
 如果要看具体编排，优先进入各链路下的 `graph.py`、`state.py`；API-facing 构建入口优先看对应 lane 的 `lib/*lifecycle*.py`

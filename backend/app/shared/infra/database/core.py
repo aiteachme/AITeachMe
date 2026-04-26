@@ -45,6 +45,7 @@ from app.models.email_verification import EmailVerificationCode
 from app.models.exam import ExamPaper, ExamPaperItem, QuestionKnowledgeUnitLink, QuestionTemplate, QuestionTypeRegistry
 from app.models.knowledge import RetrievalChunk
 from app.models.knowledge_doc import KnowledgeDocument
+from app.models.knowledge_graph_sync import KnowledgeGraphSourceRef, KnowledgeGraphSyncRun
 from app.models.knowledge_relation import KnowledgeEdge
 from app.models.knowledge_unit import KnowledgeUnit
 from app.models.profile import UserKnowledgeState
@@ -67,6 +68,8 @@ _SCHEMA_MODELS = (
     KnowledgeDocument,
     KnowledgeUnit,
     KnowledgeEdge,
+    KnowledgeGraphSyncRun,
+    KnowledgeGraphSourceRef,
     QuestionTypeRegistry,
     QuestionTemplate,
     ExamPaper,

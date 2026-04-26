@@ -6,6 +6,7 @@ from collections.abc import Mapping, Sequence
 from typing import Any
 
 from app.workflows.digest.common.prompt_tracing import trace_prompt_build
+from app.workflows.digest.docgen.mode_profiles import get_docgen_mode_profile
 
 
 def build_chapter_execution_brief_messages(
@@ -19,6 +20,9 @@ def build_chapter_execution_brief_messages(
     claim_targets: Sequence[str],
     confusion_targets: Sequence[str],
 ) -> list[dict[str, str]]:
+    profile = get_docgen_mode_profile(digest_mode)
+    course_flow = "；".join(profile.course_flow_hints)
+    practice_focus = "；".join(profile.practice_focuses)
     system_prompt = """
 你是 AITeachMe 的 DocGen 章节执行 brief 设计器。
 你只输出合法 JSON，不输出 Markdown、解释、注释或额外文本。
@@ -28,7 +32,7 @@ def build_chapter_execution_brief_messages(
 请为下面这一章生成简短执行 brief。
 
 主题：{subject}
-模式：{digest_mode}
+模式：{profile.mode}（{profile.prompt_label}）
 锁定标题：{locked_title}
 
 章节合同：
@@ -43,6 +47,11 @@ def build_chapter_execution_brief_messages(
 - glossary_terms: {", ".join(str(item) for item in glossary_terms)}
 - claim_targets: {", ".join(str(item) for item in claim_targets)}
 - confusion_targets: {", ".join(str(item) for item in confusion_targets)}
+
+模式参考，不是固定目录：
+- 写作优先级：{profile.prompt_priority}
+- 课程化节奏：{course_flow}
+- 例题/练习方向：{practice_focus}
 
 请输出 JSON：
 {{
@@ -59,12 +68,12 @@ def build_chapter_execution_brief_messages(
 
 要求：
 1. 这是最小执行 brief，不是完整教学大纲。
-2. `teaching_outline` 最多 3 条。
-3. `concept_targets`、`definition_targets`、`formula_targets`、`example_targets`、`pitfall_targets` 各最多 2 条。
+2. `teaching_outline` 最多 3 条，要写成教学动作，不要写固定章节标题。
+3. `concept_targets`、`definition_targets`、`formula_targets`、`example_targets`、`pitfall_targets` 各最多 2 条；`example_targets` 要优先体现本模式的例题/练习方向。
 4. `retrieval_queries` 最多 2 条。
- 5. 不允许顺带修改标题。
- 6. 不要输出媒体请求或练习策略，这些后续由规则节点派生。
- 7. 只输出简短、可执行的字段，不要输出长段解释。
+5. 不允许顺带修改标题。
+6. 不要输出媒体请求或练习策略，这些后续由规则节点派生。
+7. 只输出简短、可执行的字段，不要输出长段解释。
 """.strip()
     messages = [
         {"role": "system", "content": system_prompt},

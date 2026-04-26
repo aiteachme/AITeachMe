@@ -7,11 +7,15 @@ import re
 from typing import Any
 
 import structlog
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from app.shared.infra.llm_support import acompletion_stream
-from app.shared.infra.llm_support.routing import LLMCallPurpose
 from app.shared.infra.workflow.context import WorkflowContext
+from app.workflows.digest.common.runtime_config import get_planner_mode_runtime_config
+from app.workflows.digest.planner.lib.model_policy import (
+    PlannerModelStep,
+    planner_completion_kwargs_with_metadata,
+)
 from app.workflows.digest.planner.lib.planner_events import emit_planner_event, emit_planner_token
 from app.workflows.digest.planner.lib.models import PlanIntent, PlannerBrief
 from app.workflows.digest.planner.lib.plans import _resolve_subject_display_name
@@ -36,11 +40,131 @@ class PlannerChapterSketch(BaseModel):
     title: str = ""
     key_points: list[str] = Field(default_factory=list)
 
+    @field_validator("key_points", mode="before")
+    @classmethod
+    def _coerce_key_points(cls, value: Any) -> list[str]:
+        return _coerce_string_list(value)
+
 
 class PlannerOutlineSketch(BaseModel):
     plan_text: str = ""
     plan_steps: list[str] = Field(default_factory=list)
     chapters: list[PlannerChapterSketch] = Field(default_factory=list)
+
+    @field_validator("plan_steps", mode="before")
+    @classmethod
+    def _coerce_plan_steps(cls, value: Any) -> list[str]:
+        return _coerce_string_list(value)
+
+
+def _clean_text(value: Any, *, max_chars: int | None = None) -> str:
+    text = " ".join(str(value or "").split()).strip()
+    if max_chars is not None and len(text) > max_chars:
+        return text[:max_chars].rstrip()
+    return text
+
+
+def _coerce_string_list(value: Any) -> list[str]:
+    if value in (None, ""):
+        return []
+    if isinstance(value, str):
+        raw_items = re.split(r"[\n,，;；、]+", value)
+    elif isinstance(value, dict):
+        raw_items = value.values()
+    elif isinstance(value, (list, tuple, set)):
+        raw_items = value
+    else:
+        raw_items = [value]
+
+    cleaned: list[str] = []
+    seen: set[str] = set()
+    for item in raw_items:
+        text = _clean_text(item)
+        key = text.casefold()
+        if not text or key in seen:
+            continue
+        seen.add(key)
+        cleaned.append(text)
+    return cleaned
+
+
+def _fallback_topics(state: BuildPlannerState, material_context, plan_intent: PlanIntent) -> list[str]:
+    raw_topics = [
+        *list(plan_intent.plan_queries or []),
+        *list(material_context.material_hints.chapter_candidates or []),
+        *list(material_context.learning_domain_profile.key_topics or []),
+        state.get("user_prompt") or "",
+        _subject_for_prompt(state),
+    ]
+    return _coerce_string_list(raw_topics)
+
+
+def _fallback_plan_steps(*, digest_mode: str, topics: list[str]) -> list[str]:
+    anchors = topics[:4] or ["当前主题"]
+    if str(digest_mode or "").strip().lower() == "sprint":
+        return [
+            f"先锁定{anchors[0]}的高频考点和题型边界",
+            "再把相近知识点合并成可快速复盘的章节",
+            "补齐每章的典型题型、速判抓手和易错点",
+            "最后形成适合考前确认和继续修改的初步大纲",
+        ]
+    return [
+        f"先确认{anchors[0]}的知识边界和主线结构",
+        "再按概念依赖关系归并相近内容",
+        "补齐每章的定义、结构、例子和迁移方向",
+        "最后形成适合系统学习和继续修改的初步大纲",
+    ]
+
+
+def _build_fallback_plan_payload(
+    state: BuildPlannerState,
+    *,
+    material_context,
+    plan_intent: PlanIntent,
+    visible_outline: str,
+) -> dict[str, Any]:
+    digest_mode = state.get("digest_mode") or material_context.course_mode_decision.mode.value
+    config = get_planner_mode_runtime_config(digest_mode)
+    topics = _fallback_topics(state, material_context, plan_intent)
+    if not topics:
+        topics = ["核心概念总览", "关键结构与流程", "例题与应用", "易错点与复盘"]
+
+    chapters: list[dict[str, Any]] = []
+    used_titles: set[str] = set()
+    topic_index = 0
+    while len(chapters) < config.min_chapters:
+        topic = topics[topic_index % len(topics)]
+        topic_index += 1
+        title = _clean_text(topic, max_chars=28) or f"补充章节 {len(chapters) + 1}"
+        if title.casefold() in used_titles:
+            title = f"{title} {len(chapters) + 1}"
+        used_titles.add(title.casefold())
+        if str(digest_mode).strip().lower() == "sprint":
+            key_points = [f"{title} 的高频考点", f"{title} 的典型题型", f"{title} 的易错点"]
+            writing = "按冲刺课节奏组织：抓考点、抓题型、抓易错点。"
+        else:
+            key_points = [f"{title} 的核心概念", f"{title} 的结构关系", f"{title} 的例子与迁移"]
+            writing = "按系统课节奏组织：讲清定义、结构、推理和应用。"
+        chapters.append(
+            {
+                "chapter_index": len(chapters) + 1,
+                "title": title,
+                "objective": "；".join(key_points),
+                "required_elements": key_points,
+                "writing_instructions": writing,
+            }
+        )
+
+    plan_summary = (
+        _clean_text(visible_outline, max_chars=260)
+        or _clean_text(plan_intent.plan_intent, max_chars=260)
+        or f"围绕{_subject_for_prompt(state)}生成一份可继续调整的初步学习大纲。"
+    )
+    return {
+        "plan_summary": plan_summary,
+        "plan_steps": _fallback_plan_steps(digest_mode=digest_mode, topics=topics),
+        "chapter_plan": chapters,
+    }
 
 
 def _marker_holdback_length(text: str, marker: str) -> int:
@@ -156,13 +280,11 @@ async def _stream_composer_response(
                 message_history=list(state.get("message_history", [])),
                 latest_plan=state.get("latest_plan"),
             ),
-            call_purpose=LLMCallPurpose.GENERATE,
-            model="light",
-            max_tokens=5000,
-            extra_metadata={
-                "planner_session_id": state.get("planner_session_id") or "",
-                "substep": "合成计划大纲",
-            },
+            **planner_completion_kwargs_with_metadata(
+                PlannerModelStep.COMPOSE_PLAN,
+                planner_session_id=state.get("planner_session_id") or "",
+                substep="合成计划大纲",
+            ),
         )
         async for token in stream:
             tokens.append(token)
@@ -262,15 +384,18 @@ def build_stream_and_parse_plan_draft_node(*, context: WorkflowContext):
                 planner_session_id=state.get("planner_session_id") or "",
                 subject=state.get("subject") or "",
             )
+            draft_payload = _build_fallback_plan_payload(
+                state,
+                material_context=material_context,
+                plan_intent=plan_intent,
+                visible_outline=visible_outline,
+            )
             await emit_planner_event(
                 state,
-                event="planner.plan.failed",
-                detail="最终大纲合成失败，模型没有返回可用章节，请调整目标后重试。",
+                event="planner.plan.recovered",
+                detail="模型返回结构不完整，已使用规则兜底生成可继续调整的初步大纲。",
             )
-            return {
-                "error": "最终大纲合成失败，模型没有返回可用章节，请调整目标后重试。",
-                "plan_outline_markdown": visible_outline,
-            }
+            visible_outline = visible_outline or str(draft_payload.get("plan_summary") or "")
         result = {
             "build_plan_draft": draft_payload,
             "plan_outline_markdown": visible_outline,

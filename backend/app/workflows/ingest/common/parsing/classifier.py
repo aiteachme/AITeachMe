@@ -74,6 +74,8 @@ def classify_file(file_path: str | Path, filetype: str) -> ClassificationResult:
         return _classify_pdf(path)
     if extension in {".ppt", ".pptx"}:
         return _classify_pptx(path)
+    if extension == ".doc":
+        return _classify_doc(path)
     if extension == ".docx":
         return _classify_docx(path)
     if is_text_extension(extension):
@@ -281,6 +283,15 @@ def _classify_docx(path: Path) -> ClassificationResult:
         has_formulas=bool(_FORMULA_RE.search(sample_text[:10000])),
         recommended_parser="markitdown",
         fallback_parsers=["docx_native"],
+    )
+
+
+def _classify_doc(path: Path) -> ClassificationResult:
+    return ClassificationResult(
+        file_category="doc",
+        text_density=0.0,
+        recommended_parser="doc_markitdown",
+        fallback_parsers=["doc_mammoth", "doc_native"],
     )
 
 

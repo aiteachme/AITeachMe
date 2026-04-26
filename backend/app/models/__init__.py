@@ -31,6 +31,7 @@ from app.models.email_verification import EmailVerificationCode
 from app.models.exam import ExamPaper, ExamPaperItem, QuestionKnowledgeUnitLink, QuestionTemplate, QuestionTypeRegistry
 from app.models.knowledge import RetrievalChunk
 from app.models.knowledge_doc import KnowledgeDoc, KnowledgeDocument
+from app.models.knowledge_graph_sync import KnowledgeGraphSourceRef, KnowledgeGraphSyncRun
 from app.models.knowledge_relation import EdgeRevision, EvidenceLink, KnowledgeEdge
 from app.models.knowledge_unit import KnowledgeAlias, KnowledgeRevision, KnowledgeUnit
 from app.models.profile import UserKnowledgeState
@@ -57,6 +58,8 @@ __all__ = [
     "KnowledgeDoc",
     "KnowledgeDocument",
     "KnowledgeDocStatus",
+    "KnowledgeGraphSourceRef",
+    "KnowledgeGraphSyncRun",
     "KnowledgeAlias",
     "KnowledgeRevision",
     "KnowledgeUnitStatus",

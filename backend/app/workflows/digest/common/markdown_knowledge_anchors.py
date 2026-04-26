@@ -44,7 +44,8 @@ _SKIPPABLE_HEADING_PATTERNS = (
     re.compile(r"\u5b66\u4e60\u5efa\u8bae"),
     re.compile(r"\u672c\u7ae0\u5bfc\u8bfb"),
     re.compile(r"\u7ae0\u8282\u5bfc\u8bfb"),
-    re.compile(r"\u5148\u770b\u4ec0\u4e48"),
+    re.compile(r"^(?:\u672c\u7ae0|\u7ae0\u8282).*(?:\u8def\u7ebf\u56fe|\u81ea\u68c0|\u5b66\u4e60\u76ee\u6807|\u5b66\u4e60\u5efa\u8bae|\u9605\u8bfb\u6307\u5357|\u4f7f\u7528\u8bf4\u660e)$"),
+    re.compile(r"^(?:\u672c\u7ae0|\u7ae0\u8282).*(?:\u8981\u70b9|\u95ee\u9898)$"),
 )
 _SKIPPABLE_HEADING_EXACT = {
     "table of contents",
@@ -52,23 +53,14 @@ _SKIPPABLE_HEADING_EXACT = {
     "\u76ee\u5f55",
     "\u77e5\u8bc6\u6587\u6863\u603b\u89c8",
     "\u53c2\u8003\u8d44\u6599\u4e0e\u5ef6\u4f38\u9605\u8bfb",
-    "\u8fd9\u4efd\u6587\u6863\u600e\u4e48\u8bfb",
     "\u7ae0\u8282\u8def\u7ebf\u56fe",
     "\u672c\u7ae0\u81ea\u68c0",
-    "\u8fd9\u51e0\u9879\u4e0d\u80fd\u6f0f",
-    "\u56de\u770b\u65f6\u4f18\u5148\u95ee\u81ea\u5df1",
 }
 _SKIPPABLE_HEADING_PREFIXES = (
-    "\u8003\u524d\u6700\u540e",
-    "\u518d\u628a\u5173\u952e\u70b9\u538b\u5b9e",
-    "\u518d\u628a\u5173\u952e\u7ed3\u6784\u8865\u7a33",
-    "\u6700\u7ec8\u56de\u987e",
-    "\u4e34\u8003\u901f\u8bb0",
     "\u672c\u7ae0\u5728\u8003\u4ec0\u4e48",
     "\u672c\u7ae0\u6838\u5fc3\u8003\u70b9",
     "\u672c\u7ae0\u6838\u5fc3\u5730\u4f4d",
     "\u672c\u7ae0\u4e3a\u4f55",
-    "\u6613\u9519\u70b9\u590d\u76d8",
     "\u9ad8\u9891\u9677\u9631",
 )
 
@@ -105,6 +97,11 @@ class MarkdownKnowledgeUnit:
     related: list[str] = field(default_factory=list)
     line_no: int = 0
     heading_level: int = 1
+    source_kind: str = "markdown"
+    knowledge_document_id: int | None = None
+    chapter_index: int = 0
+    source_file_ids: list[int] = field(default_factory=list)
+    quote_text: str = ""
 
 
 @dataclass(frozen=True)
@@ -313,6 +310,27 @@ def extract_markdown_chapter_chunks(markdown: str) -> list[MarkdownSectionChunk]
             continue
         anchor = _extract_anchor_from_line(line) or build_knowledge_unit_anchor(title, used=used_anchors)
         heading_meta.append((index, title, anchor))
+
+    if len(heading_meta) == 1:
+        h2_chunks = [
+            chunk
+            for chunk in extract_markdown_section_chunks(markdown)
+            if chunk.heading_level == 2
+        ]
+        if len(h2_chunks) >= 2:
+            return [
+                MarkdownSectionChunk(
+                    title=chunk.title,
+                    anchor=chunk.anchor,
+                    header_path=chunk.title,
+                    summary=chunk.summary,
+                    body_markdown=chunk.body_markdown,
+                    knowledge_images=chunk.knowledge_images,
+                    line_no=chunk.line_no,
+                    heading_level=1,
+                )
+                for chunk in h2_chunks
+            ]
 
     if not heading_meta:
         section_chunks = extract_markdown_section_chunks(markdown)

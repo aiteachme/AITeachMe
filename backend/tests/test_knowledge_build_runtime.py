@@ -99,9 +99,7 @@ def test_langgraph_config_uses_current_digest_graph_entries() -> None:
     graphs = payload.get("graphs", {})
 
     assert "digest_kg" not in graphs
-    assert graphs["kg_file_ingest"]["path"].endswith(
-        "app/workflows/digest/kg_file_ingest/graph.py:get_langgraph_dev_kg_file_ingest_graph"
-    )
+    assert "kg_file_ingest" not in graphs
     assert graphs["kg_docs_sync"]["path"].endswith(
         "app/workflows/digest/kg_docs_sync/graph.py:get_langgraph_dev_kg_docs_sync_graph"
     )

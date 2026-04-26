@@ -22,7 +22,7 @@ _background_tasks: set[asyncio.Task] = set()
 
 
 @dataclass(frozen=True, slots=True)
-class _MinerUFastParseResult:
+class _ExternalFastParseResult:
     markdown: str
     parser_used: str
     attempted_parsers: list[str]
@@ -33,6 +33,8 @@ class _MinerUFastParseResult:
     needs_enhance: bool
     needs_quality_reparse: bool = False
     needs_asset_ocr: bool = False
+
+
 def _guess_asset_kind(filename: str) -> str:
     lowered = filename.lower()
     if "formula" in lowered or "equation" in lowered or "latex" in lowered:

@@ -10,4 +10,6 @@ This support module hosts non-workflow knowledge-graph business services.
 - Release/rollback and migration utilities
 
 ## Note
-Graph workflows themselves live under `workflows/digest/kg_file_ingest` and `workflows/digest/kg_docs_sync`.
+The canonical graph workflow is `workflows/digest/kg_docs_sync`. The old
+`workflows/digest/kg_file_ingest` package is legacy/debug-only; only a few
+extractor utilities are still reused until they are moved to a neutral package.

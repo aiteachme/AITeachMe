@@ -39,9 +39,6 @@ const KnowledgeDocsPage = lazy(() =>
 const KnowledgeInteractivePage = lazy(() =>
   import("./pages/KnowledgeInteractivePage").then((module) => ({ default: module.KnowledgeInteractivePage })),
 );
-const KnowledgeDebugPage = lazy(() =>
-  import("./pages/KnowledgeDebugPage").then((module) => ({ default: module.KnowledgeDebugPage })),
-);
 
 function RouteLoadingFallback() {
   return (
@@ -58,7 +55,6 @@ function withRouteFallback(element: ReactElement) {
 const SUBJECT_PAGE_ELEMENTS: Record<SubjectRouteId, ReactElement> = {
   build: withRouteFallback(<BuildPlanPage />),
   "knowledge-docs": withRouteFallback(<KnowledgeDocsPage />),
-  "knowledge-debug": withRouteFallback(<KnowledgeDebugPage />),
   exams: withRouteFallback(<ExamsPage />),
   profile: withRouteFallback(<ProfilePage />),
 };

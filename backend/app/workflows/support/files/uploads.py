@@ -11,8 +11,8 @@ from pathlib import Path
 from fastapi import UploadFile
 from sqlmodel import Session
 
+from app.shared.infra.exceptions import FileCountLimitError, FileParseError, FileTooLargeError, UnsupportedFileTypeError
 from app.shared.infra.settings import get_settings
-from app.shared.infra.exceptions import FileCountLimitError, FileParseError, FileTooLargeError
 from app.shared.infra.runtime import is_cloud_mode
 from app.shared.infra.storage import get_content_store
 from app.models import IngestStatus, RawFile, TaskStatus
@@ -27,8 +27,18 @@ from app.workflows.support.files.catalog import build_file_record
 from app.workflows.support.files.parsing import _start_parse_for_files
 
 
+SUPPORTED_UPLOAD_EXTENSIONS = frozenset({".txt", ".doc", ".docx", ".pdf", ".ppt", ".pptx", ".md"})
+
+
 def _generate_file_uid() -> str:
     return f"file_{uuid.uuid4().hex}"
+
+
+def _validate_upload_extension(filename: str) -> str:
+    extension = Path(filename).suffix.lower()
+    if extension not in SUPPORTED_UPLOAD_EXTENSIONS:
+        raise UnsupportedFileTypeError(extension or filename or "unknown")
+    return extension
 
 
 def _build_upload_data(*, subject: str | None, raw_files: list[RawFile], started_parse_count: int) -> FilesUploadData:
@@ -84,7 +94,7 @@ async def save_uploaded_file(
         raise FileTooLargeError(max_upload_size_mb)
 
     filename = file.filename or "unknown"
-    extension = Path(filename).suffix.lower()
+    extension = _validate_upload_extension(filename)
     file_uid = _generate_file_uid()
     content_hash = hashlib.sha256(content).hexdigest()
     temp_dir = build_temp_dir(normalized_subject or "library", user_id=owner_user_id)

@@ -191,7 +191,7 @@ enhance_chapters
     ├─ enhance_chapter 1
     ├─ enhance_chapter 2
     └─ enhance_chapter N
-  处理 Mermaid、交互 HTML sidecar、公式清洗、Markdown 结构和本章自检题。
+  处理 Mermaid、交互 HTML sidecar、公式清洗、Markdown 结构，以及按构建约束追加例题/练习。
   |
   v
 review_content / 当前 review_chapter Send x N + document_consistency_review
@@ -415,8 +415,9 @@ generate_chapters
            - `model="primary"`
            - 默认映射到 `qwen-plus`
   模式差异：sprint/systematic 的核心差异主要在 draft_chapter 体现。
-    - sprint：短、密、题型导向，强调考点、速判、易错点、复盘清单。
-    - systematic：长、稳、结构导向，强调定义、推理、例子、迁移和前置关系。
+    - sprint：短、密、题型导向，参考突击课常见的“考点/分值感/题型 -> 题眼 -> 最短方法 -> 变式练习 -> 易错辨析”节奏。
+    - systematic：长、稳、结构导向，参考系统课常见的“知识地图 -> 定义/性质 -> 推理路径 -> 例题落地 -> 迁移练习 -> 边界回收”节奏。
+    - 这些节奏只作为写作建议，不是固定目录；章节标题应由本章内容自然决定。
 
 enhance_chapters
   ├─ enhance_chapter 1
@@ -426,8 +427,8 @@ enhance_chapters
   输出：EnhancedChapterDraft[] / AssetManifest[] / PracticeManifest[]
     - EnhancedChapterDraft：增强后的章节正文。
     - AssetManifest：Mermaid、交互块等资产清单。
-    - PracticeManifest：本章自检题和练习种子。
-  作用：处理 Mermaid、交互 HTML sidecar、公式清洗、本章自检；image 占位会被剥离，不进入发布正文。
+    - PracticeManifest：典型例题解析、变式题和迁移练习种子。
+  作用：处理 Mermaid、交互 HTML sidecar、公式清洗、例题解析与练习；image 占位会被剥离，不进入发布正文。
   enhance_chapter 内部步骤：
     1. 解析章节中的 Mermaid / interactive 占位符，并清理残留 image 占位。
        当前模型方案：
@@ -442,7 +443,7 @@ enhance_chapters
          - image 当前不走大模型生成正文资产
     2. 对少量高价值章节生成独立、自包含的 HTML 交互页 sidecar，并在 Markdown 中插入新标签页打开链接。
     3. 统一公式、Mermaid、Markdown 结构。
-    4. 根据 ClaimLedger 和 ConfusionMap 追加本章自检题。
+    4. 根据 ClaimLedger、ConfusionMap 和构建约束决定是否追加例题/练习；若正文已有自然练习小节，不重复追加固定标题。
     5. 产出 asset / practice manifest。
   约束：
     - 不大幅改写知识内容。
@@ -727,7 +728,7 @@ repair_trace
 
 可以：
 
-- Mermaid、交互占位处理、公式清洗、Markdown 结构和本章自检。
+- Mermaid、交互占位处理、公式清洗、Markdown 结构，以及按需追加例题/练习。
 - 根据 digest mode 和章节合同决定表现层策略；当前不再生成讲义配图。
 
 不能：

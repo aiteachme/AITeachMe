@@ -32,6 +32,8 @@ class ExportPreviewStats(BaseModel):
     knowledge_document_count: int = 0
     knowledge_unit_count: int = 0
     knowledge_edge_count: int = 0
+    knowledge_graph_sync_run_count: int = 0
+    knowledge_graph_source_ref_count: int = 0
     confirmed_build_plan_count: int = 0
     question_type_registry_count: int = 0
     question_template_count: int = 0

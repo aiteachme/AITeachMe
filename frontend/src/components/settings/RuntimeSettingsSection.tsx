@@ -23,6 +23,15 @@ interface PreparedEntryGroup {
   readonlyEntries: SettingEntry[];
 }
 
+function renderGroupNote(label: string) {
+  if (label === "解析服务授权") {
+    return (
+      <InfoCard text="请填入解析服务的 API；若均未填入 API 或当前均不可用，系统将自动回退到本地服务解析。" />
+    );
+  }
+  return null;
+}
+
 function compareEntries(a: SettingEntry, b: SettingEntry): number {
   const orderA = Number(a.ui_order ?? 0);
   const orderB = Number(b.ui_order ?? 0);
@@ -96,6 +105,7 @@ export const RuntimeSettingsSection = memo(function RuntimeSettingsSection({
       {groups.map((group, index) => (
         <div key={`${group.label || "group"}-${index}`} className={SETTINGS_STYLES.section.groupBlock}>
           {group.label ? <SectionDivider label={group.label} compact={index === 0} /> : null}
+          {renderGroupNote(group.label)}
 
           <div className={SETTINGS_STYLES.section.cardWrapper}>
             {group.serverEditableEntries.length > 0 ? (

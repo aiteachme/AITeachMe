@@ -8,6 +8,7 @@ import type {
   BuildSampleCardResponse,
   KnowledgeBuildMetricsResponse,
   KnowledgeBuildPreviewResponse,
+  KnowledgeGraphBuildMetricsResponse,
 } from "../api/generated/model";
 import type { ApiResponse } from "../api/types";
 
@@ -32,10 +33,12 @@ export interface KnowledgeBuildRuntimeResponse {
   graph?: KnowledgeBuildLaneRuntime | null;
   docgen_preview?: KnowledgeBuildPreviewResponse | null;
   docgen_metrics?: KnowledgeBuildMetricsResponse | null;
+  graph_metrics?: KnowledgeGraphBuildMetricsResponse | null;
 }
 
 export type KnowledgeBuildPreview = KnowledgeBuildPreviewResponse;
 export type KnowledgeBuildMetrics = KnowledgeBuildMetricsResponse;
+export type KnowledgeGraphBuildMetrics = KnowledgeGraphBuildMetricsResponse;
 export type BuildPreviewNode = BuildPreviewNodeResponse;
 export type BuildPreviewRecentEvent = BuildPreviewRecentEventResponse;
 export type BuildPreviewChapterProgress = BuildPreviewChapterProgressResponse;
