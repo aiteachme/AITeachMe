@@ -463,6 +463,11 @@ export function BuildView({
                 streamPreview?.status === "drafting"
                   ? streamPreview.status
                   : preview?.status ?? streamPreview?.status ?? selChapter?.status ?? "planned";
+              const selectedTitle =
+                preview?.title ??
+                streamPreview?.title ??
+                selChapter?.title ??
+                `第 ${selectedPreviewChapter} 章`;
               const isStreaming =
                 spotlightChapter?.chapter_index === selectedPreviewChapter ||
                 ["generating", "drafting", "enhancing", "reviewing"].includes(selectedStatus);
@@ -487,22 +492,32 @@ export function BuildView({
                   : null;
               const usingMergeFallback = !streamExcerpt.trim() && !previewExcerpt.trim() && canUseMergeFallback && Boolean(selectedExcerpt.trim());
               const usingSseDelta = Boolean(streamExcerpt.trim());
+              const hasPreviewMeta =
+                selectedWordCount > 0 ||
+                selectedSourceCount > 0 ||
+                usingMergeFallback ||
+                usingSseDelta;
 
               return (
                 <>
-                  <div className="flex items-center justify-between border-b border-zinc-100 bg-white px-5 py-3 dark:border-slate-800 dark:bg-slate-900 md:px-8">
+                  <div className="flex items-center justify-between gap-4 border-b border-zinc-100 bg-white px-5 py-3 dark:border-slate-800 dark:bg-slate-900 md:px-8">
                     <div className="min-w-0">
-                      <span className="text-[12px] font-medium text-zinc-500 dark:text-slate-400">
-                        {buildChapterStatusLabel(selectedStatus)}
-                      </span>
-                      {previewUpdatedAt ? (
-                        <span className="ml-2 text-[11px] text-zinc-300 dark:text-slate-600">
-                          更新于 {previewUpdatedAt}
+                      <div className="truncate text-[13px] font-semibold leading-5 text-zinc-900 dark:text-slate-100">
+                        {String(selectedPreviewChapter).padStart(2, "0")}. {selectedTitle}
+                      </div>
+                      <div className="mt-1 flex flex-wrap items-center gap-2">
+                        <span className="rounded-md bg-zinc-50 px-2 py-0.5 text-[11px] font-medium text-zinc-500 ring-1 ring-zinc-200 dark:bg-slate-950 dark:text-slate-400 dark:ring-slate-800">
+                          {buildChapterStatusLabel(selectedStatus)}
                         </span>
-                      ) : null}
+                        {previewUpdatedAt ? (
+                          <span className="text-[11px] text-zinc-400 dark:text-slate-500">
+                            更新于 {previewUpdatedAt}
+                          </span>
+                        ) : null}
+                      </div>
                     </div>
                     {(isStreaming || sseConnected) && (
-                      <div className="flex items-center gap-2 rounded-md bg-blue-50 px-2.5 py-1 ring-1 ring-blue-100 dark:bg-blue-500/10 dark:ring-blue-500/20">
+                      <div className="shrink-0 flex items-center gap-2 rounded-md bg-blue-50 px-2.5 py-1 ring-1 ring-blue-100 dark:bg-blue-500/10 dark:ring-blue-500/20">
                         <span className="relative flex h-2 w-2">
                           <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 dark:bg-blue-500 opacity-75" />
                           <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500 dark:bg-blue-400" />
@@ -517,31 +532,30 @@ export function BuildView({
                   <div className="build-scroll flex-1 overflow-y-auto bg-white px-5 py-6 dark:bg-slate-900 md:px-8 md:py-8">
                     {selectedExcerpt.trim() ? (
                       <div className="w-full max-w-[980px] space-y-5 pb-12">
-                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-zinc-500 dark:text-slate-400">
-                          <span className="font-medium text-zinc-600 dark:text-slate-300">
-                            {buildChapterStatusLabel(selectedStatus)}
-                          </span>
-                          {selectedWordCount > 0 ? (
-                            <span>
-                              约 {selectedWordCount} 字
-                            </span>
-                          ) : null}
-                          {selectedSourceCount > 0 ? (
-                            <span>
-                              {selectedSourceCount} 个来源
-                            </span>
-                          ) : null}
-                          {usingMergeFallback ? (
-                            <span className="text-blue-600 dark:text-blue-400">
-                              当前显示整本合并预览
-                            </span>
-                          ) : null}
-                          {usingSseDelta ? (
-                            <span className="text-blue-600 dark:text-blue-400">
-                              实时增量
-                            </span>
-                          ) : null}
-                        </div>
+                        {hasPreviewMeta ? (
+                          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-zinc-500 dark:text-slate-400">
+                            {selectedWordCount > 0 ? (
+                              <span>
+                                约 {selectedWordCount} 字
+                              </span>
+                            ) : null}
+                            {selectedSourceCount > 0 ? (
+                              <span>
+                                {selectedSourceCount} 个来源
+                              </span>
+                            ) : null}
+                            {usingMergeFallback ? (
+                              <span className="text-blue-600 dark:text-blue-400">
+                                当前显示整本合并预览
+                              </span>
+                            ) : null}
+                            {usingSseDelta ? (
+                              <span className="text-blue-600 dark:text-blue-400">
+                                实时增量
+                              </span>
+                            ) : null}
+                          </div>
+                        ) : null}
 
                         {selectedHeadings.length > 0 ? (
                           <p className="max-w-[960px] text-[12px] leading-6 text-zinc-500 dark:text-slate-400">
@@ -563,9 +577,6 @@ export function BuildView({
                     ) : selectedChapterEvents.length > 0 ? (
                       <div className="w-full max-w-[1120px] space-y-4 pb-10">
                         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-zinc-500 dark:text-slate-400">
-                          <span className="font-medium text-zinc-600 dark:text-slate-300">
-                            {buildChapterStatusLabel(selectedStatus)}
-                          </span>
                           <span className="text-blue-600 dark:text-blue-400">
                             正在捕获章节执行事件
                           </span>

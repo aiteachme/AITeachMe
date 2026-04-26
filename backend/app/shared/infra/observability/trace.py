@@ -106,6 +106,10 @@ def get_langsmith_probe_ttl_s() -> float:
     return max(5.0, value)
 
 
+def langsmith_require_endpoint_probe() -> bool:
+    return get_env_bool("LANGSMITH_REQUIRE_ENDPOINT_PROBE", False)
+
+
 def langsmith_capture_inputs_enabled() -> bool:
     return is_local_mode()
 
@@ -145,12 +149,16 @@ def langsmith_tracing_enabled() -> bool:
     """Whether LangSmith tracing should be enabled for the current process."""
 
     settings = get_settings()
-    return (
+    base_enabled = (
         settings.observability.tracing_enabled
         and langsmith_tracing_requested()
         and _langsmith_api_key_present()
-        and _langsmith_endpoint_reachable()
     )
+    if not base_enabled:
+        return False
+    if langsmith_require_endpoint_probe():
+        return _langsmith_endpoint_reachable()
+    return True
 
 
 def normalize_langsmith_run_type(

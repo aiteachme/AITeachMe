@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import asyncio
 import time
+from collections.abc import Mapping
+from typing import Any
 from typing import TypeVar
 
 try:
@@ -51,6 +53,7 @@ async def acompletion_structured(
     call_purpose: LLMCallPurpose | None = None,
     task_type: LLMCallPurpose | None = None,
     model: str | None = None,
+    extra_metadata: Mapping[str, Any] | None = None,
     **kwargs,
 ) -> T:
     """Async structured completion."""
@@ -115,6 +118,7 @@ async def acompletion_structured(
                         messages=trace_messages,
                         call_kwargs=prepared.call_kwargs,
                         attempt=prepared.attempt,
+                        extra_metadata=extra_metadata,
                     ),
                 ) as trace_run:
                     if use_instructor:

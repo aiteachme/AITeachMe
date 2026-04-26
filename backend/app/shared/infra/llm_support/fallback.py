@@ -62,12 +62,14 @@ async def acompletion_with_fallback(
                     messages,
                     call_purpose=resolved_purpose,
                     model=model_selector,
+                    extra_metadata=metadata,
                     **kwargs,
                 )
             return await acompletion(
                 messages,
                 call_purpose=resolved_purpose,
                 model=model_selector,
+                extra_metadata=metadata,
                 **kwargs,
             )
     except Exception as exc:  # pragma: no cover - integration-heavy behavior
