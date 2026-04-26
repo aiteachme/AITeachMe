@@ -1,4 +1,4 @@
-﻿"""Named parser registry and capability helpers for ingest workflows."""
+"""Named parser registry and capability helpers for ingest workflows."""
 
 from __future__ import annotations
 
@@ -10,12 +10,12 @@ from importlib.util import find_spec
 from pathlib import Path
 
 from app.shared.infra.exceptions import FileParseError
-from app.workflows.ingest.common.parsing.audio import (
+from app.workflows.ingest.parsing.audio import (
     AUDIO_NATIVE_AVAILABLE,
     is_audio_transcription_available,
     parse_audio_with_transcription,
 )
-from app.workflows.ingest.common.parsing.doc import (
+from app.workflows.ingest.parsing.doc import (
     DOC_SOFFICE_AVAILABLE,
     DOC_VIA_DOCX_AVAILABLE,
     DOC_WORD_COM_AVAILABLE,
@@ -23,66 +23,66 @@ from app.workflows.ingest.common.parsing.doc import (
     parse_doc_with_mammoth,
     parse_doc_with_native,
 )
-from app.workflows.ingest.common.parsing.docx import (
+from app.workflows.ingest.parsing.docx import (
     DOCX_MARKITDOWN_AVAILABLE,
     DOCX_NATIVE_AVAILABLE,
     parse_docx_with_markitdown,
     parse_docx_with_native,
 )
-from app.workflows.ingest.common.parsing.docx_mammoth import (
+from app.workflows.ingest.parsing.docx_mammoth import (
     DOCX_MAMMOTH_AVAILABLE,
     parse_docx_with_mammoth,
 )
-from app.workflows.ingest.common.parsing.formats import AUDIO_EXTENSIONS, MARKITDOWN_GENERIC_EXTENSIONS, TEXT_EXTENSIONS, normalize_extension
-from app.workflows.ingest.common.parsing.generic import (
+from app.workflows.ingest.parsing.formats import AUDIO_EXTENSIONS, MARKITDOWN_GENERIC_EXTENSIONS, TEXT_EXTENSIONS, normalize_extension
+from app.workflows.ingest.parsing.generic import (
     GENERIC_MARKITDOWN_AVAILABLE,
     parse_with_markitdown_generic,
 )
-from app.workflows.ingest.common.parsing.image import parse_image_with_llm_vision
-from app.workflows.ingest.common.parsing.features import builtin_pdf_parsing_enabled
-from app.workflows.ingest.common.parsing.pptx import (
+from app.workflows.ingest.parsing.image import parse_image_with_llm_vision
+from app.workflows.ingest.parsing.features import builtin_pdf_parsing_enabled
+from app.workflows.ingest.parsing.pptx import (
     PPTX_MARKITDOWN_AVAILABLE,
     PPTX_NATIVE_AVAILABLE,
     parse_pptx_with_markitdown,
     parse_pptx_with_python_pptx,
 )
-from app.workflows.ingest.common.parsing.ppt_ocr import (
+from app.workflows.ingest.parsing.ppt_ocr import (
     PPT_OCR_VISION_AVAILABLE,
     parse_ppt_with_ocr_vision,
 )
-from app.workflows.ingest.common.parsing.text import (
+from app.workflows.ingest.parsing.text import (
     TEXT_FALLBACK_EXTENSION,
     TEXT_NATIVE_AVAILABLE,
     is_probably_text_file,
     parse_text_with_native,
 )
-from app.workflows.ingest.common.parsing.types import ParserRunOptions
+from app.workflows.ingest.parsing.types import ParserRunOptions
 
 Parser = Callable[[str | Path, Path, ParserRunOptions], Awaitable[str]]
 
 _PDF_PARSER_IMPORTS: dict[str, tuple[str, str]] = {
     "ocr_vision": (
-        "app.workflows.ingest.common.parsing.pdf",
+        "app.workflows.ingest.parsing.pdf",
         "parse_pdf_with_pymupdf_ocr_vision",
     ),
     "pymupdf_ocr_vision": (
-        "app.workflows.ingest.common.parsing.pdf",
+        "app.workflows.ingest.parsing.pdf",
         "parse_pdf_with_pymupdf_ocr_vision",
     ),
     "pymupdf4llm": (
-        "app.workflows.ingest.common.parsing.pdf",
+        "app.workflows.ingest.parsing.pdf",
         "parse_pdf_with_pymupdf4llm",
     ),
     "pdfplumber": (
-        "app.workflows.ingest.common.parsing.pdf_pdfplumber",
+        "app.workflows.ingest.parsing.pdf_pdfplumber",
         "parse_pdf_with_pdfplumber",
     ),
     "markitdown": (
-        "app.workflows.ingest.common.parsing.pdf",
+        "app.workflows.ingest.parsing.pdf",
         "parse_pdf_with_markitdown",
     ),
     "pymupdf_native": (
-        "app.workflows.ingest.common.parsing.pdf",
+        "app.workflows.ingest.parsing.pdf",
         "parse_pdf_with_pymupdf_native",
     ),
 }

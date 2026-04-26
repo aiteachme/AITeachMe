@@ -11,12 +11,12 @@ from collections.abc import Awaitable, Callable
 from pathlib import Path
 
 from app.shared.infra.exceptions import FileParseError
-from app.workflows.ingest.common.parsing.docx import (
+from app.workflows.ingest.parsing.docx import (
     parse_docx_with_markitdown,
     parse_docx_with_native,
 )
-from app.workflows.ingest.common.parsing.docx_mammoth import parse_docx_with_mammoth
-from app.workflows.ingest.common.parsing.types import ParserRunOptions
+from app.workflows.ingest.parsing.docx_mammoth import parse_docx_with_mammoth
+from app.workflows.ingest.parsing.types import ParserRunOptions
 
 try:
     import pythoncom

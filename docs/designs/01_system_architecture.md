@@ -70,7 +70,7 @@ shared.infra -> shared.kernel
 入口：
 
 - `api/files.py`
-- `workflows/ingest/files/`
+- `workflows/ingest/intake/`
 - `workflows/ingest/fast_parse/`
 
 职责：

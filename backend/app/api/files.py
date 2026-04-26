@@ -15,7 +15,7 @@ from app.schemas.common import ApiResponse, ok_response
 from app.schemas.files import FileDeleteData, FileDeleteRequest, FileLinkRequest, FilesData, FilesUploadData
 from app.shared.infra.storage import get_content_store
 from app.repositories.files_repo import link_raw_files_to_subject
-from app.workflows.ingest.files import (
+from app.workflows.ingest.intake import (
     delete_files,
     get_user_files_by_uid_or_raise,
     list_subject_files,

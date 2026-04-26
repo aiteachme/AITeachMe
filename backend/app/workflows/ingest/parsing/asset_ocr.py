@@ -1,4 +1,4 @@
-﻿"""Asset-level OCR enrichment for parsed markdown."""
+"""Asset-level OCR enrichment for parsed markdown."""
 
 from __future__ import annotations
 
@@ -12,9 +12,9 @@ from pydantic import BaseModel
 import structlog
 
 from app.utils.path_helpers import list_asset_files
-from app.workflows.ingest.common.parsing.image import parse_image_bytes_with_llm_vision
-from app.workflows.ingest.common.parsing.markdown_pages import MarkdownPageSection, join_markdown_pages, split_markdown_pages
-from app.workflows.ingest.common.parsing.utils import MIME_MAP
+from app.workflows.ingest.parsing.image import parse_image_bytes_with_llm_vision
+from app.workflows.ingest.parsing.markdown_pages import MarkdownPageSection, join_markdown_pages, split_markdown_pages
+from app.workflows.ingest.parsing.utils import MIME_MAP
 
 logger = structlog.get_logger()
 

@@ -1,4 +1,4 @@
-﻿"""Lightweight ingest classification used to plan parser routing."""
+"""Lightweight ingest classification used to plan parser routing."""
 
 from __future__ import annotations
 
@@ -9,16 +9,16 @@ from typing import Any
 import structlog
 from pydantic import BaseModel, Field
 
-from app.workflows.ingest.common.parsing.docx_archive import summarize_docx_archive
-from app.workflows.ingest.common.parsing.formats import (
+from app.workflows.ingest.parsing.docx_archive import summarize_docx_archive
+from app.workflows.ingest.parsing.formats import (
     categorize_text_extension,
     is_image_extension,
     is_markitdown_generic_extension,
     is_text_extension,
     normalize_extension,
 )
-from app.workflows.ingest.common.parsing.features import builtin_pdf_parsing_enabled
-from app.workflows.ingest.common.parsing.text import is_probably_text_file, read_text_file
+from app.workflows.ingest.parsing.features import builtin_pdf_parsing_enabled
+from app.workflows.ingest.parsing.text import is_probably_text_file, read_text_file
 
 
 try:

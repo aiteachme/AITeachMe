@@ -1,4 +1,4 @@
-﻿"""pdfplumber-based PDF parser — best for table-heavy documents.
+"""pdfplumber-based PDF parser — best for table-heavy documents.
 
 pdfplumber (built on pdfminer.six) excels at:
 - Precise table detection and extraction
@@ -18,7 +18,7 @@ from pathlib import Path
 import structlog
 
 from app.shared.infra.exceptions import FileParseError
-from app.workflows.ingest.common.parsing.types import ParserRunOptions
+from app.workflows.ingest.parsing.types import ParserRunOptions
 
 try:
     import pdfplumber

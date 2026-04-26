@@ -44,7 +44,7 @@
 
 | 文件 | 改动内容 |
 |------|----------|
-| `backend/app/workflows/ingest/files/uploads.py` | `save_uploaded_file()` 已添加 cloud 分支（上传到 OSS，file_path 存 storage_key）；`delete_files()` 已改为 async 并添加 cloud 分支（从 OSS 删除）；`_read_markdown()` cloud 模式返回空串；已导入 `get_artifact_store` |
+| `backend/app/workflows/ingest/intake/uploads.py` | `save_uploaded_file()` 已添加 cloud 分支（上传到 OSS，file_path 存 storage_key）；`delete_files()` 已改为 async 并添加 cloud 分支（从 OSS 删除）；`_read_markdown()` cloud 模式返回空串；已导入 `get_artifact_store` |
 | `backend/app/workflows/support/subjects/lib/deletion.py` | `delete_subject_with_all_content()` cloud 模式跳过本地目录删除；新增 `delete_subject_artifacts_async()` 异步删除 OSS prefix |
 | `backend/app/main.py` | `_register_static_mounts()` 仅在 local 模式挂载 `/_assets` 静态文件 |
 

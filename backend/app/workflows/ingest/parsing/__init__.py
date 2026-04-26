@@ -1,8 +1,8 @@
-﻿"""Ingest parsing package."""
+"""Ingest parsing package."""
 
 from __future__ import annotations
 
-from app.workflows.ingest.common.parsing.decision import (
+from app.workflows.ingest.parsing.decision import (
     DEFAULT_MARKITDOWN_EXTENSIONS,
     DEFAULT_MINERU_EXTENSIONS,
     DEFAULT_PADDLE_OCR_EXTENSIONS,
@@ -11,7 +11,7 @@ from app.workflows.ingest.common.parsing.decision import (
     build_paddle_ocr_capability,
     build_parse_decision,
 )
-from app.workflows.ingest.common.parsing.provider_contracts import (
+from app.workflows.ingest.parsing.provider_contracts import (
     ParseDecision,
     ProviderCapability,
 )

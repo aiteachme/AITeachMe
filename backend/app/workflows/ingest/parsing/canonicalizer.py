@@ -1,4 +1,4 @@
-﻿"""Markdown normalization helpers for ingest workflows."""
+"""Markdown normalization helpers for ingest workflows."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from urllib.parse import unquote
 
 from pydantic import BaseModel
 
-from app.workflows.ingest.common.parsing.utils import save_image_bytes
+from app.workflows.ingest.parsing.utils import save_image_bytes
 
 
 _HEADING_RE = re.compile(r"^(#{1,6})\s*(.*)", re.MULTILINE)

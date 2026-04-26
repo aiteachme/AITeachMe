@@ -17,14 +17,14 @@ from pathlib import Path
 
 from app.shared.infra.workflow.context import WorkflowContext
 from app.utils.path_helpers import list_asset_files
-from app.workflows.ingest.common.parsing.canonicalizer import canonicalize_markdown
-from app.workflows.ingest.common.parsing.mineru_cloud import MinerURequestOptions, parse_file_to_dir
-from app.workflows.ingest.common.parsing.paddle_ocr_cloud import (
+from app.workflows.ingest.parsing.canonicalizer import canonicalize_markdown
+from app.workflows.ingest.parsing.mineru_cloud import MinerURequestOptions, parse_file_to_dir
+from app.workflows.ingest.parsing.paddle_ocr_cloud import (
     PaddleOCRRequestOptions,
     parse_file_to_dir as parse_file_to_dir_with_paddle_ocr,
 )
-from app.workflows.ingest.common.parsing.orchestrator import fast_parse_file
-from app.workflows.ingest.common.parsing.strategy import ParsePlan, build_parse_plan
+from app.workflows.ingest.parsing.orchestrator import fast_parse_file
+from app.workflows.ingest.parsing.strategy import ParsePlan, build_parse_plan
 from app.workflows.ingest.fast_parse.lib.common import workflow_logger
 from app.workflows.ingest.fast_parse.lib.runtime_helpers import (
     _ExternalFastParseResult,

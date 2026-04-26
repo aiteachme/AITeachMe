@@ -1,4 +1,4 @@
-"""File parsing workflow entrypoints."""
+"""Parse dispatch entrypoints for ingested RawFiles."""
 
 from __future__ import annotations
 
@@ -16,8 +16,8 @@ from app.workflows.ingest.fast_parse.lib.lifecycle import (
     dispatch_enhancement_if_needed,
     mark_parse_workflow_failed,
 )
-from app.workflows.ingest.files.catalog import get_subject_files_or_raise, get_user_files_or_raise
-from app.workflows.ingest.common.parsing.defaults import DEFAULT_PARSE_CONCURRENCY
+from app.workflows.ingest.intake.catalog import get_subject_files_or_raise, get_user_files_or_raise
+from app.workflows.ingest.parsing.defaults import DEFAULT_PARSE_CONCURRENCY
 
 logger = structlog.get_logger()
 

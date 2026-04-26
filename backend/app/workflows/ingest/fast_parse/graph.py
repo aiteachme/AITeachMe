@@ -14,7 +14,7 @@ from app.shared.infra.workflow.context import WorkflowContext, create_langgraph_
 from app.shared.infra.workflow.graph_export import WorkflowGraphExport
 from app.shared.infra.workflow.result import WorkflowResult, err_result, ok_result
 from app.shared.infra.workflow.runtime import run_state_graph
-from app.workflows.ingest.common.parsing.prompts import PROMPTS
+from app.workflows.ingest.parsing.prompts import PROMPTS
 from app.workflows.ingest.fast_parse.nodes import (
     build_classify_file_node,
     build_compute_fingerprint_node,

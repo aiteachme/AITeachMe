@@ -1,4 +1,4 @@
-﻿"""Mammoth-based DOCX parser — best for style-preserving HTML→Markdown conversion.
+"""Mammoth-based DOCX parser — best for style-preserving HTML→Markdown conversion.
 
 mammoth specializes in semantic DOCX conversion:
 - Preserves heading hierarchy, lists, bold/italic
@@ -18,7 +18,7 @@ from pathlib import Path
 import structlog
 
 from app.shared.infra.exceptions import FileParseError
-from app.workflows.ingest.common.parsing.types import ParserRunOptions
+from app.workflows.ingest.parsing.types import ParserRunOptions
 
 try:
     import mammoth
@@ -69,7 +69,7 @@ def _parse_docx_with_mammoth_sync(path: Path, asset_dir: Path, options: ParserRu
 
     # Supplement images from DOCX archive (mammoth doesn't extract them to disk)
     if not options.skip_image_supplement:
-        from app.workflows.ingest.common.parsing.docx import supplement_docx_images
+        from app.workflows.ingest.parsing.docx import supplement_docx_images
         supplement_docx_images(
             path,
             asset_dir,

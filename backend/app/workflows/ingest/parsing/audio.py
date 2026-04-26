@@ -1,4 +1,4 @@
-﻿"""Audio transcription parser — converts audio files to text markdown.
+"""Audio transcription parser — converts audio files to text markdown.
 
 Uses SpeechRecognition for transcription and optionally pydub + ffmpeg for
 format conversion. Native support is strongest for WAV / FLAC / AIFF inputs;
@@ -16,7 +16,7 @@ from shutil import which
 import structlog
 
 from app.shared.infra.exceptions import FileParseError
-from app.workflows.ingest.common.parsing.types import ParserRunOptions
+from app.workflows.ingest.parsing.types import ParserRunOptions
 
 try:
     import speech_recognition as sr

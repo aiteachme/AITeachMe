@@ -27,7 +27,7 @@ RawFile
 上传入口：
 
 - `backend/app/api/files.py`
-- `backend/app/workflows/ingest/files/uploads.py`
+- `backend/app/workflows/ingest/intake/uploads.py`
 
 解析入口：
 
@@ -46,10 +46,10 @@ RawFile
 workflows/ingest/
   __init__.py
   README.md
-  files/
+  intake/
     catalog.py
     uploads.py
-    parsing.py
+    parse_dispatch.py
     deletion.py
   fast_parse/
     graph.py
@@ -59,8 +59,7 @@ workflows/ingest/
       runtime_helpers.py
       enhance.py
       recovery.py
-  common/
-    parsing/
+  parsing/
 ```
 
 当前只有 `fast_parse` 一条真实 workflow graph。
@@ -137,7 +136,7 @@ Digest 当前允许消费：
 
 - Ingest 不感知 Planner / DocGen / Examine / Profile。
 - Ingest 不通过事件层通知下游；下游读取状态字段和 ContentStore 产物。
-- `common/parsing/` 只放解析共享实现，不提前做大而全 provider 框架。
+- `parsing/` 只放解析共享实现，不提前做大而全 provider 框架。
 
 ## 8. 后续事项
 

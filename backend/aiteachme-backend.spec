@@ -8,13 +8,13 @@ from PyInstaller.utils.hooks import collect_data_files, collect_submodules
 os.environ.setdefault("AITEACHME_ENABLE_BUILTIN_PDF", "false")
 
 _EXCLUDED_HIDDENIMPORT_PREFIXES = (
-    "app.workflows.ingest.common.parsing.pdf",
+    "app.workflows.ingest.parsing.pdf",
 )
 
 _EXCLUDED_MODULES = [
-    "app.workflows.ingest.common.parsing.pdf",
-    "app.workflows.ingest.common.parsing.pdf_page_fallback",
-    "app.workflows.ingest.common.parsing.pdf_pdfplumber",
+    "app.workflows.ingest.parsing.pdf",
+    "app.workflows.ingest.parsing.pdf_page_fallback",
+    "app.workflows.ingest.parsing.pdf_pdfplumber",
     "fitz",
     "pymupdf",
     "pymupdf4llm",

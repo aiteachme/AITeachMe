@@ -525,7 +525,7 @@ SELECT extname FROM pg_extension WHERE extname = 'vector';
 
 主要涉及：
 
-- [`workflows/ingest/files/uploads.py`](/c:/Project/Project1GIT/AITeachMe1/backend/app/workflows/ingest/files/uploads.py)
+- [`workflows/ingest/intake/uploads.py`](/c:/Project/Project1GIT/AITeachMe1/backend/app/workflows/ingest/intake/uploads.py)
 - [`workflows/support/subjects/lib/deletion.py`](/c:/Project/Project1GIT/AITeachMe1/backend/app/workflows/support/subjects/lib/deletion.py)
 - ingest workflow 相关文件
 - digest docs publish 相关文件
@@ -551,7 +551,7 @@ SELECT extname FROM pg_extension WHERE extname = 'vector';
 
 高优先级文件通常包括：
 
-- [`workflows/ingest/files/uploads.py`](/c:/Project/Project1GIT/AITeachMe1/backend/app/workflows/ingest/files/uploads.py)
+- [`workflows/ingest/intake/uploads.py`](/c:/Project/Project1GIT/AITeachMe1/backend/app/workflows/ingest/intake/uploads.py)
 - [`workflows/support/subjects/lib/deletion.py`](/c:/Project/Project1GIT/AITeachMe1/backend/app/workflows/support/subjects/lib/deletion.py)
 - [`docgen_store.py`](/c:/Project/Project1GIT/AITeachMe1/backend/app/utils/docgen_store.py)
 - [`graph.py`](/c:/Project/Project1GIT/AITeachMe1/backend/app/workflows/ingest/fast_parse/graph.py)

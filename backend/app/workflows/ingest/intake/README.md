@@ -1,6 +1,6 @@
-# Ingest Files
+# Ingest Intake
 
-`workflows/ingest/files/` is the canonical home for file upload, listing, deletion, and parse-trigger use cases.
+`workflows/ingest/intake/` is the canonical home for Phase 0 file intake: upload, library listing, deletion, and parse dispatch.
 
 ## Responsibilities
 
@@ -12,7 +12,7 @@
 ## Notes
 
 - This module is part of the Ingest engine, but it is not a LangGraph lane.
-- Long-running parsing still belongs to `workflows/ingest/fast_parse`; this module coordinates the API-facing file commands.
+- It is not a generic file service; it owns RawFile intake and hands parsing off to `workflows/ingest/fast_parse`.
 - Persisted upload artifacts are keyed by stable file uid plus a sanitized filename stem:
   `users/{user}/files/{file_uid}__{safe_stem}/raw.ext`, `markdown.md`, and `assets/`.
   The database keeps the original filename for display; storage keys should not use bare auto-increment ids.
