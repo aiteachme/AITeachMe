@@ -1,6 +1,6 @@
 # 10. 仓库结构与运行时文件
 
-最后更新：2026-04-19
+最后更新：2026-04-27
 
 本文说明当前仓库怎么读、运行时文件落在哪里、哪些目录不要手改。
 
@@ -93,7 +93,7 @@ backend/app/api/knowledge_docs.py
 6. `backend/app/workflows/digest/docgen/state.py`
 7. `backend/app/workflows/digest/docgen/lib/models.py`
 
-其中 `docgen/` 目录当前只保留 `FLOW_DESIGN.md` 这一份文档文件；入口说明和流程判断都以它为准。
+其中 `docgen/` 目录当前只保留 `FLOW_DESIGN.md` 这一份主文档；入口说明和流程判断都以它为准。
 
 ## 5. 运行时文件
 
@@ -196,6 +196,7 @@ frontend/dist/
 - 文件读写统一 UTF-8。
 - 修改前确认目标不是生成文件。
 - 架构判断优先看当前代码、`backend/app/workflows/*.md`、`backend/app/shared/infra/*.md`。
+- `docs/designs/README.md` 是设计文档导航；模块落点以代码目录 README 为准。
 
 ## 10. 推荐阅读顺序
 
@@ -204,6 +205,5 @@ frontend/dist/
 3. `docs/designs/01_system_architecture.md`
 4. `docs/designs/09_ai_stack_and_infra_guide.md`
 5. `backend/app/workflows/README.md`
-6. `backend/app/workflows/STRUCTURE.md`
-7. `backend/app/shared/infra/README.md`
-8. 进入具体 engine README
+6. `backend/app/shared/infra/README.md`
+7. 进入具体 engine 或 support README
