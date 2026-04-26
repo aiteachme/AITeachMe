@@ -17,7 +17,7 @@ from app.workflows.digest.docgen.graph import (
     NODE_SYNC_LOCKED_TITLES,
     build_docgen_graph,
 )
-from app.workflows.digest.kg_file_ingest.graph import build_kg_digest_graph
+from app.workflows.digest.kg_docs_sync.graph import get_langgraph_dev_kg_docs_sync_graph
 from app.workflows.digest.kg_file_ingest.prompts import KG_PROMPTS
 from app.workflows.digest.planner.lib.steps import STEP_DISPLAY_NAMES
 from app.workflows.digest.planner.graph import get_langgraph_dev_planner_graph
@@ -52,15 +52,6 @@ def _build_docgen_graph_for_export():
     return build_docgen_graph(context=context)
 
 
-def _build_kg_graph_for_export():
-    context = WorkflowContext(
-        workflow_name="digest.kg_file_ingest",
-        subject="__export__",
-        event_bus=InProcessEventBus(),
-    )
-    return build_kg_digest_graph(context=context)
-
-
 _DOCGEN_SEND_EDGES = (
     f"{NODE_ASSEMBLE_CHAPTER_TASKS} -. Send xN .-> {NODE_GENERATE_CHAPTERS}",
     f"{NODE_GENERATE_CHAPTERS} --> {NODE_ENHANCE_CHAPTERS}",
@@ -93,9 +84,9 @@ WORKFLOW_EXPORTS = (
     ),
     WorkflowGraphExport(
         key="digest_graph",
-        title="Digest Graph Workflow",
-        description="Incremental knowledge-graph build workflow.",
-        build_graph=_build_kg_graph_for_export,
+        title="Digest Knowledge-Doc Graph Sync",
+        description="Knowledge-document based graph sync workflow. Parsed-file graph ingest is legacy debug-only.",
+        build_graph=get_langgraph_dev_kg_docs_sync_graph,
         prompts=KG_PROMPTS,
     ),
 )

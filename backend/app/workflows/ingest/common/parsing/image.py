@@ -83,8 +83,7 @@ async def parse_image_bytes_with_llm_vision(
         return _UNCLEAR_MARKDOWN
 
     resolved_model = _resolve_visual_model(model_selector)
-    api_key = (get_env_choice("LLM_API_KEY") or "").strip() or None
-    base_url = get_env("LLM_BASE_URL", "https://api.openai.com/v1")
+    api_key, base_url = _resolve_visual_endpoint(model_selector)
     if llm_provider_requires_api_key(base_url=base_url) and not api_key:
         raise MissingLLMApiKeyError()
 
@@ -162,12 +161,32 @@ async def parse_image_bytes_with_llm_vision(
 def _resolve_visual_model(model_selector: _VisualModelSelector) -> str:
     settings = get_settings()
     if model_selector == "vision":
-        candidate = (settings.models.vision or "").strip()
+        candidate = (settings.models.vision or "").strip() or (settings.models.primary or "").strip()
         if candidate:
             return candidate
         raise LLMCallError(reason="models.vision is not configured")
 
-    candidate = (settings.models.ocr or "").strip()
+    candidate = (settings.models.ocr or "").strip() or (settings.models.primary or "").strip()
     if candidate:
         return candidate
     raise LLMCallError(reason="models.ocr is not configured")
+
+
+def _resolve_visual_endpoint(
+    model_selector: _VisualModelSelector,
+) -> tuple[str | None, str]:
+    if model_selector == "ocr":
+        api_key = (
+            (get_env_choice("OCR_API_KEY") or "").strip()
+            or (get_env_choice("LLM_API_KEY") or "").strip()
+            or None
+        )
+        base_url = (
+            (get_env("OCR_BASE_URL") or "").strip()
+            or get_env("LLM_BASE_URL", "https://api.openai.com/v1")
+        )
+        return api_key, base_url
+
+    api_key = (get_env_choice("LLM_API_KEY") or "").strip() or None
+    base_url = get_env("LLM_BASE_URL", "https://api.openai.com/v1")
+    return api_key, base_url

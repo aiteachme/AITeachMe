@@ -466,6 +466,15 @@
   }
 }
 
+@keyframes exam-preview-skeleton-sweep {
+  0% {
+    transform: translateX(-140%);
+  }
+  100% {
+    transform: translateX(240%);
+  }
+}
+
 .exam-preview-unified-flow {
   --exam-preview-flow-duration: 2.2s;
 }
@@ -482,20 +491,36 @@
 }
 
 .exam-preview-flow-line {
-  background-image: linear-gradient(
-    112deg,
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(90deg, rgba(226, 232, 240, 0.78), rgba(241, 245, 249, 0.92));
+  box-shadow: inset 0 0 0 1px rgba(203, 213, 225, 0.18);
+}
+
+.exam-preview-flow-line::after,
+.exam-preview-skeleton-panel::after {
+  position: absolute;
+  inset: 0;
+  content: "";
+  pointer-events: none;
+  background: linear-gradient(
+    100deg,
     rgba(255, 255, 255, 0) 0%,
-    rgba(255, 255, 255, 0) 34%,
-    rgba(255, 255, 255, 0.34) 44%,
-    rgba(255, 255, 255, 0.72) 50%,
-    rgba(255, 255, 255, 0.34) 56%,
-    rgba(255, 255, 255, 0) 66%,
+    rgba(255, 255, 255, 0.16) 36%,
+    rgba(255, 255, 255, 0.88) 50%,
+    rgba(255, 255, 255, 0.16) 64%,
     rgba(255, 255, 255, 0) 100%
   );
-  background-repeat: no-repeat;
-  background-size: 18rem 12rem;
-  animation: exam-preview-flow var(--exam-preview-flow-duration, 2.2s) linear infinite;
-  box-shadow: 0 0 5px rgba(255, 255, 255, 0.14);
+  animation: exam-preview-skeleton-sweep var(--exam-preview-flow-duration, 2.2s) ease-in-out infinite;
+  transform: translateX(-140%);
+}
+
+.exam-preview-skeleton-panel {
+  position: relative;
+  overflow: hidden;
+  background:
+    linear-gradient(180deg, rgba(248, 250, 252, 0.96), rgba(255, 255, 255, 0.9)),
+    linear-gradient(90deg, rgba(226, 232, 240, 0.62), rgba(241, 245, 249, 0.88));
 }
 /* ----------- Text Gradient Animation ----------- */
 @keyframes text-gradient {
@@ -661,85 +686,6 @@
     content-visibility: auto;
     contain-intrinsic-size: 1px 96px;
   }
-}
-
-.dark .knowledge-debug-page {
-  color: rgb(226 232 240);
-}
-
-.dark .knowledge-debug-page .debug-header-shell {
-  background: rgba(2, 6, 23, 0.95);
-  border-color: rgba(51, 65, 85, 0.85);
-}
-
-.dark .knowledge-debug-page .debug-surface {
-  background: rgba(2, 6, 23, 0.72);
-  border-color: rgba(51, 65, 85, 0.85);
-}
-
-.dark .knowledge-debug-page .debug-tabbar {
-  border-color: rgba(51, 65, 85, 0.85);
-}
-
-.dark .knowledge-debug-page .debug-tab-active {
-  border-color: rgb(248 250 252);
-  color: rgb(248 250 252);
-}
-
-.dark .knowledge-debug-page .debug-tab-idle {
-  color: rgb(148 163 184);
-}
-
-.dark .knowledge-debug-page .debug-tab-idle:hover {
-  color: rgb(226 232 240);
-}
-
-.dark .knowledge-debug-page .debug-filter-active {
-  background: rgb(248 250 252);
-  color: rgb(15 23 42);
-}
-
-.dark .knowledge-debug-page .debug-filter-idle {
-  background: rgba(2, 6, 23, 0.72);
-  border-color: rgba(51, 65, 85, 0.85);
-  color: rgb(203 213 225);
-}
-
-.dark .knowledge-debug-page .border-emerald-200.bg-emerald-50 {
-  border-color: rgba(16, 185, 129, 0.35);
-  background: rgba(16, 185, 129, 0.1);
-  color: rgb(167 243 208);
-}
-
-.dark .knowledge-debug-page .border-rose-200.bg-rose-50 {
-  border-color: rgba(244, 63, 94, 0.35);
-  background: rgba(244, 63, 94, 0.1);
-  color: rgb(253 164 175);
-}
-
-.dark .knowledge-debug-page .border-rose-300.text-rose-700 {
-  border-color: rgba(244, 63, 94, 0.35);
-  color: rgb(253 164 175);
-}
-
-.dark .knowledge-debug-page .border-rose-300.text-rose-700:hover {
-  background: rgba(244, 63, 94, 0.1);
-}
-
-.dark .knowledge-debug-page .text-slate-900 {
-  color: rgb(248 250 252);
-}
-
-.dark .knowledge-debug-page .text-slate-600 {
-  color: rgb(203 213 225);
-}
-
-.dark .knowledge-debug-page .text-slate-500 {
-  color: rgb(148 163 184);
-}
-
-.dark .knowledge-debug-page .border-slate-200 {
-  border-color: rgba(51, 65, 85, 0.85);
 }
 
 .dark .knowledge-graph-view .bg-white {

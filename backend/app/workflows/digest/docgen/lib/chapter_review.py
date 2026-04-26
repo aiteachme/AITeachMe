@@ -109,9 +109,9 @@ def _rule_review_chapter(
                 action_type="section_patch",
                 chapter_index=draft.chapter_index,
                 severity="warning",
-                reason="缺少关键覆盖点：" + "、".join(missing[:5]),
+                reason="缺少章节合同项：" + "、".join(missing[:5]),
                 target_anchor=_chapter_anchor(draft),
-                instruction="补齐章节中缺失的关键覆盖点：" + "、".join(missing[:8]),
+                instruction="补齐章节中缺失的合同项：" + "、".join(missing[:8]),
                 constraints=[
                     "不得新增、删除或重排 confirmed plan 章节。",
                     "只允许修改本章相关小节。",

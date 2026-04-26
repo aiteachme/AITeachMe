@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import asyncio
 import time
+from collections.abc import Mapping
+from typing import Any
 
 from app.schemas.llm import ChatMessage
 from app.shared.infra.exceptions import LLMTimeoutError
@@ -37,6 +39,7 @@ async def acompletion(
     call_purpose: LLMCallPurpose | None = None,
     task_type: LLMCallPurpose | None = None,
     model: str | None = None,
+    extra_metadata: Mapping[str, Any] | None = None,
     **kwargs,
 ) -> str:
     """Async text completion."""
@@ -77,6 +80,7 @@ async def acompletion(
                         messages=messages,
                         call_kwargs=prepared.call_kwargs,
                         attempt=prepared.attempt,
+                        extra_metadata=extra_metadata,
                     ),
                 ) as trace_run:
                     response = await asyncio.wait_for(

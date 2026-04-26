@@ -86,6 +86,7 @@ class DocgenSettings(_SettingsModel):
 class IngestSettings(_SettingsModel):
     max_upload_size_mb: int
     max_files_per_upload: int
+    parser_provider: str
 
 
 class RagSettings(_SettingsModel):

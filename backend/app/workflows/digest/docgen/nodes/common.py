@@ -140,30 +140,30 @@ def build_examine_markdown(
         ]
 
     if mode_profile.is_sprint:
-        lines = ["# 练习与自检", "", "## 高频题型自检", ""]
+        lines = ["# 练习与巩固", "", "## 典型题型与例题", ""]
         for question in questions:
             lines.append(f"{int(question.get('question_index', 0) or 0) or 1}. {question.get('question', '')}")
         lines.extend(
             [
                 "",
-                "## 易错复盘",
+                "## 易错点辨析",
                 "",
                 *[f"- {item}" for item in (review_prompts or [
                     "哪一道题你是靠感觉做出来的？把它改成可复述的判断步骤。",
                     "哪一个公式你会背但还不会判断使用条件？",
-                    "如果考试时间很紧，这份文档里你最该先回看哪两章？",
+                    "如果考试时间很紧，这份文档里你应该优先复习哪两章？",
                 ])],
             ]
         )
         return "\n".join(lines).strip() + "\n"
 
-    lines = ["# 练习与自检", "", "## 理解与推理题", ""]
+    lines = ["# 练习与巩固", "", "## 理解与推理题", ""]
     for question in questions:
         lines.append(f"{int(question.get('question_index', 0) or 0) or 1}. {question.get('question', '')}")
     lines.extend(
         [
             "",
-            "## 章节收束与迁移",
+            "## 综合迁移",
             "",
             *[f"- {item}" for item in (review_prompts or [
                 "把一章里的核心定义、方法和例子串成一条完整主线。",

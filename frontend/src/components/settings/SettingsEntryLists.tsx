@@ -18,6 +18,34 @@ import {
 } from "./settingsHelpers";
 import type { DraftRecord, SettingEntry, SettingPrimitive } from "./settingsTypes";
 
+function renderEntryHelper(entryKey: string) {
+  if (entryKey === "mineru.api_token") {
+    return (
+      <a
+        href="https://mineru.net/apiManage/token"
+        target="_blank"
+        rel="noreferrer"
+        className="text-xs font-medium text-sky-600 underline underline-offset-4 transition-colors hover:text-sky-700"
+      >
+        去 MinerU 获取 API Token
+      </a>
+    );
+  }
+  if (entryKey === "paddle_ocr.api_token") {
+    return (
+      <a
+        href="https://aistudio.baidu.com/account/accessToken"
+        target="_blank"
+        rel="noreferrer"
+        className="text-xs font-medium text-sky-600 underline underline-offset-4 transition-colors hover:text-sky-700"
+      >
+        去 PaddleOCR 获取 API Token
+      </a>
+    );
+  }
+  return null;
+}
+
 interface ReadonlySettingsListProps {
   entries: SettingEntry[];
   loading: boolean;
@@ -31,7 +59,11 @@ const ReadonlySettingsRow = memo(function ReadonlySettingsRow({
 }) {
   return (
     <div className={SETTINGS_STYLES.list.readonlyItem}>
-      <FieldLabelBlock label={entry.label} description={entry.description} />
+      <FieldLabelBlock
+        label={entry.label}
+        description={entry.description}
+        helper={renderEntryHelper(entry.key)}
+      />
       <div className={SETTINGS_STYLES.list.readonlyControl}>
         <ReadonlyValue>{displayValue(entry)}</ReadonlyValue>
       </div>
@@ -130,7 +162,12 @@ const EditableSettingsRow = memo(function EditableSettingsRow({
 
   return (
     <div className={SETTINGS_STYLES.list.item}>
-      <FieldLabelBlock label={entry.label} description={entry.description} htmlFor={controlId} />
+      <FieldLabelBlock
+        label={entry.label}
+        description={entry.description}
+        helper={renderEntryHelper(entry.key)}
+        htmlFor={controlId}
+      />
 
       <div className={SETTINGS_STYLES.list.controlWrap}>
         {selectOptions ? (

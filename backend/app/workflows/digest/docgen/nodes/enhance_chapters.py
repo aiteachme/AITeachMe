@@ -25,7 +25,7 @@ def build_enhance_chapters_node(*, context: WorkflowContext):
     """构建章节增强节点。
 
     该节点在所有章节草稿 fan-in 后运行，但内部会并行增强每章。增强只
-    处理表现层：资产占位、公式、Markdown 结构和自检题，不负责修核心知识。
+    处理表现层：资产占位、公式、Markdown 结构和例题/练习，不负责修核心知识。
     """
 
     async def enhance_chapters_node(state: DocGenState) -> dict:
@@ -41,6 +41,8 @@ def build_enhance_chapters_node(*, context: WorkflowContext):
         ]
         if not drafts:
             return {"error": "没有可增强的章节草稿。"}
+        build_constraints = dict((state.get("confirmed_plan") or {}).get("build_constraints") or {})
+        include_practice = bool(build_constraints.get("include_exercises", True))
         claim_ledgers_by_chapter = {
             int(item.get("chapter_index", 0) or 0): ClaimLedger.model_validate(item)
             for item in list(state.get("claim_ledgers") or [])
@@ -86,6 +88,7 @@ def build_enhance_chapters_node(*, context: WorkflowContext):
                 digest_mode=state.get("digest_mode") or "systematic",
                 claim_ledger=claim_ledgers_by_chapter.get(draft.chapter_index),
                 document_backbone=document_backbone,
+                include_practice=include_practice,
             )
             word_count = count_words(enhanced.markdown)
             upsert_knowledge_build_chapter_preview(
@@ -119,7 +122,7 @@ def build_enhance_chapters_node(*, context: WorkflowContext):
                     "stage": "chapter_enhanced",
                     "chapter_index": draft.chapter_index,
                     "title": enhanced.title,
-                    "summary": f"{enhanced.title} 章节增强完成，资产 {len(asset_manifest.assets)} 个，自检题 {len(practice_manifest.questions)} 个。",
+                    "summary": f"{enhanced.title} 章节增强完成，资产 {len(asset_manifest.assets)} 个，练习题 {len(practice_manifest.questions)} 个。",
                     "created_at": utcnow(),
                 },
             )

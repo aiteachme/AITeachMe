@@ -7,6 +7,7 @@ from app.models import (
     ExamPaper,
     ExamPaperItem,
     KnowledgeUnit,
+    QuestionKnowledgeUnitLink,
     QuestionTemplate,
     QuestionTypeRegistry,
     Subject,
@@ -46,7 +47,6 @@ def test_delete_subject_removes_exam_fk_dependents_before_papers(monkeypatch) ->
 
         template = QuestionTemplate(
             subject="subj_demo",
-            knowledge_unit_id=unit.id,
             question_type="short_answer",
             difficulty="easy",
             stem="Question",
@@ -60,17 +60,28 @@ def test_delete_subject_removes_exam_fk_dependents_before_papers(monkeypatch) ->
         session.add_all([template, paper_a, paper_b, registry])
         session.flush()
 
+        item = ExamPaperItem(
+            exam_paper_id=paper_a.id,
+            question_template_id=template.id,
+            item_order=1,
+            stem_snapshot="Question",
+            answer_snapshot="Answer",
+            explanation_snapshot="Explanation",
+            difficulty="easy",
+            question_type="short_answer",
+        )
+        session.add(item)
+        session.flush()
         session.add(
-            ExamPaperItem(
-                exam_paper_id=paper_a.id,
+            QuestionKnowledgeUnitLink(
                 question_template_id=template.id,
-                item_order=1,
-                stem_snapshot="Question",
-                answer_snapshot="Answer",
-                explanation_snapshot="Explanation",
                 knowledge_unit_id=unit.id,
-                difficulty="easy",
-                question_type="short_answer",
+            )
+        )
+        session.add(
+            QuestionKnowledgeUnitLink(
+                exam_paper_item_id=item.id,
+                knowledge_unit_id=unit.id,
             )
         )
         session.add(
@@ -91,6 +102,7 @@ def test_delete_subject_removes_exam_fk_dependents_before_papers(monkeypatch) ->
         assert _count(session, Subject) == 0
         assert _count(session, ExamPaper) == 0
         assert _count(session, ExamPaperItem) == 0
+        assert _count(session, QuestionKnowledgeUnitLink) == 0
         assert _count(session, UserKnowledgeState) == 0
 
 

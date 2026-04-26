@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ListChecks, Loader2, ZoomIn, ZoomOut } from "lucide-react";
+import { ListChecks, ZoomIn, ZoomOut } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
 
 import {
@@ -356,10 +356,20 @@ export function ExamPaperWorkspace({ subjectId, paperId, backHref }: ExamPaperWo
           {paper && (
             <>
               {paper.status === "generating" && (
-                <div className="rounded-[28px] border border-violet-200 bg-violet-50 px-6 py-12 text-center text-sm text-violet-700">
-                  <Loader2 className="mx-auto mb-4 h-8 w-8 animate-spin" />
-                  <h2 className="text-lg font-semibold text-violet-950">试卷题目生成中</h2>
-                  <p className="mt-2">基础信息已创建，题目生成完成后会自动刷新。</p>
+                <div
+                  className="transition-all duration-150"
+                  style={{
+                    zoom: pageScale,
+                  }}
+                >
+                  <ExamPaperSheet
+                    paper={paper}
+                    answers={answers}
+                    activeStage={activeStage}
+                    pageScale={pageScale}
+                    highlightedQuestionOrder={highlightedQuestionOrder}
+                    setAnswers={setAnswers}
+                  />
                 </div>
               )}
 

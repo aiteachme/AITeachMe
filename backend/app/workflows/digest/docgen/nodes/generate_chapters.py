@@ -93,6 +93,8 @@ def _execution_contract_for_writer(
     claim_evidence_map: ClaimEvidenceMap | None,
     conflict_report: ConflictReport | None,
 ) -> dict:
+    practice_style = str((task.practice_seed_policy or {}).get("style") or "").strip().lower()
+    worked_example_target = 3 if practice_style == "exam" else 1
     return {
         "target_word_count": task.target_word_count,
         "min_word_count": task.min_word_count,
@@ -103,6 +105,13 @@ def _execution_contract_for_writer(
         "evidence_bindings": _evidence_bindings_for_writer(claim_evidence_map),
         "conflict_warnings": _conflict_warnings_for_writer(conflict_report),
         "repair_enabled": True,
+        "practice_quota": {
+            "worked_examples": worked_example_target,
+            "short_answer": 0,
+            "self_check": 0,
+            "reasoning": 1 if practice_style != "exam" else 0,
+            "application": 1 if practice_style != "exam" else 0,
+        },
         "media_quota": {
             "mermaid": len(media_hints["mermaid"]),
         },

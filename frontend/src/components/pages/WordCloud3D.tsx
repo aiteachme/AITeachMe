@@ -333,7 +333,7 @@ export function WordCloud3D({ subjectLabel, nodes, height, onNodeClick }: WordCl
               <path d="M8 12h8M12 8v8" />
             </svg>
           </div>
-          <p className="text-sm font-medium text-slate-500">鏆傛棤鍥捐氨鏁版嵁</p>
+          <p className="text-sm font-medium text-slate-500">暂无图谱数据</p>
           <p className="mt-1 text-xs text-slate-400">构建知识资产后自动生成词云</p>
         </div>
       </div>
@@ -408,7 +408,7 @@ export function WordCloud3D({ subjectLabel, nodes, height, onNodeClick }: WordCl
           <div>
             <p className="text-sm font-bold text-slate-800">{subjectLabel}</p>
             <p className="mt-0.5 text-[9px] text-slate-400">
-              {nodes.length} 涓煡璇嗚妭鐐?路 鐐瑰嚮鏌ョ湅璇︽儏 路 婊氳疆缂╂斁 路 鎷栨嫿骞崇Щ
+              {nodes.length} 个知识节点 · 点击查看详情 · 滚轮缩放 · 拖拽平移
             </p>
           </div>
           <div className="flex flex-wrap justify-end gap-1.5">

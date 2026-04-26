@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import uuid
 
 import structlog
 from fastapi import APIRouter, BackgroundTasks, Body, Depends, Path, Request
@@ -57,6 +58,7 @@ logger = structlog.get_logger(__name__)
 _HTML_COMMENT_RE = re.compile(r"<!--.*?-->", re.DOTALL)
 _WHITESPACE_RE = re.compile(r"\s+")
 PAPER_PREVIEW_ROW_LIMIT = 7
+RECENT_EXAM_STEM_AVOID_LIMIT = 18
 
 
 def _exam_stream_channel(subject: str, paper_id: int) -> str:
@@ -103,6 +105,19 @@ def _clean_exam_text(value: str | None) -> str:
     text = _HTML_COMMENT_RE.sub(" ", text)
     text = _WHITESPACE_RE.sub(" ", text).strip()
     return text
+
+
+def _build_exam_diversity_prompt(*, run_id: str, recent_stems: list[str]) -> str:
+    lines = [
+        "Generation diversity constraints:",
+        f"- This exam generation run id is `{run_id}`. Use it only to vary scenarios, numbers, wording, examples, and distractors.",
+        "- Do not reuse exact or near-duplicate stems, options, answers, or worked examples from recent exams.",
+        "- Prefer fresh surface contexts while preserving the requested knowledge units, difficulty, and question types.",
+    ]
+    if recent_stems:
+        lines.append("- Recent stems to avoid:")
+        lines.extend(f"  {index}. {stem}" for index, stem in enumerate(recent_stems, start=1))
+    return "\n".join(lines)
 
 
 def _build_exam_title(paper: ExamPaper) -> str:
@@ -166,11 +181,12 @@ def _build_paper_preview(
     items: list[ExamPaperItem],
     *,
     knowledge_unit_by_id: dict[int, KnowledgeUnit],
+    links_by_item_id: dict[int, list[dict[str, object]]],
 ) -> PaperPreview:
     ordered_items = sorted(items, key=lambda item: item.item_order)
     keyword_candidates: list[str] = []
     for item in ordered_items:
-        for ref in _json_list(item.knowledge_unit_refs_json):
+        for ref in links_by_item_id.get(int(item.id or 0), []):
             knowledge_unit_id = int(ref.get("knowledge_unit_id", 0) or 0)
             unit = knowledge_unit_by_id.get(knowledge_unit_id)
             if unit is not None:
@@ -194,6 +210,87 @@ def _build_paper_preview(
     )
 
 
+def _build_placeholder_paper_preview(*, question_count: int) -> PaperPreview:
+    count = max(1, int(question_count or 1))
+    return PaperPreview(
+        rows=[
+            {
+                "order": order,
+                "type": "pending",
+                "shape": "text",
+                "difficulty": "medium",
+                "density": 2,
+                "result_status": "ungraded",
+            }
+            for order in range(1, min(count, PAPER_PREVIEW_ROW_LIMIT) + 1)
+        ],
+        overflow_count=max(0, count - PAPER_PREVIEW_ROW_LIMIT),
+    )
+
+
+def _build_blueprint_paper_preview(
+    blueprints: list[dict[str, object]],
+    *,
+    question_count: int,
+    unit_name_by_id: dict[int, str],
+) -> PaperPreview:
+    def blueprint_order(item: dict[str, object]) -> int:
+        try:
+            return int(item.get("item_order", 0) or 0)
+        except (TypeError, ValueError):
+            return 0
+
+    ordered_blueprints = sorted(
+        [item for item in blueprints if isinstance(item, dict)],
+        key=blueprint_order,
+    )
+    rows: list[dict[str, object]] = []
+    keyword_candidates: list[str] = []
+    question_types: list[str] = []
+    blueprint_by_order: dict[int, dict[str, object]] = {}
+    for blueprint in ordered_blueprints:
+        try:
+            order = int(blueprint.get("item_order", 0) or 0)
+        except (TypeError, ValueError):
+            continue
+        if order <= 0:
+            continue
+        blueprint_by_order[order] = blueprint
+        question_type = str(blueprint.get("question_type") or "").strip()
+        if question_type:
+            question_types.append(question_type)
+        for unit_id in list(blueprint.get("knowledge_unit_ids") or []):
+            try:
+                name = unit_name_by_id.get(int(unit_id))
+            except (TypeError, ValueError):
+                name = None
+            if name:
+                keyword_candidates.append(name)
+
+    count = max(1, int(question_count or len(blueprint_by_order) or 1))
+    for order in range(1, min(count, PAPER_PREVIEW_ROW_LIMIT) + 1):
+        blueprint = blueprint_by_order.get(order, {})
+        question_type = str(blueprint.get("question_type") or "pending")
+        difficulty = str(blueprint.get("difficulty") or "medium")
+        rows.append(
+            {
+                "order": order,
+                "type": question_type,
+                "shape": _preview_shape(question_type),
+                "difficulty": difficulty,
+                "density": _preview_density(difficulty),
+                "result_status": "ungraded",
+            }
+        )
+
+    return PaperPreview(
+        keywords=_dedupe_preview_keywords(keyword_candidates),
+        question_types=_dedupe_preview_keywords(question_types),
+        rows=rows,
+        overflow_count=max(0, count - PAPER_PREVIEW_ROW_LIMIT),
+    )
+
+
 def _paper_preview_from_json(raw: str | None) -> PaperPreview:
     payload = _json_dict(raw)
     if not payload:
@@ -209,6 +306,7 @@ def _paper_preview_for_response(
     items: list[ExamPaperItem],
     *,
     knowledge_unit_by_id: dict[int, KnowledgeUnit],
+    links_by_item_id: dict[int, list[dict[str, object]]],
 ) -> PaperPreview:
     saved_preview = _paper_preview_from_json(getattr(paper, "paper_preview_json", "{}"))
     expected_row_count = min(len(items), PAPER_PREVIEW_ROW_LIMIT)
@@ -228,14 +326,47 @@ def _paper_preview_for_response(
         return saved_preview
     if not items:
         return saved_preview
-    return _build_paper_preview(items, knowledge_unit_by_id=knowledge_unit_by_id)
+    return _build_paper_preview(
+        items,
+        knowledge_unit_by_id=knowledge_unit_by_id,
+        links_by_item_id=links_by_item_id,
+    )
 
 
-def _knowledge_units_for_items(session: Session, items: list[ExamPaperItem]) -> dict[int, KnowledgeUnit]:
+def _paper_generation_event_payload(
+    paper: ExamPaper,
+    *,
+    preview: PaperPreview | None = None,
+    stage: str | None = None,
+    error_message: str | None = None,
+) -> dict[str, object]:
+    context = _json_dict(paper.selection_context_json)
+    effective_preview = preview or _paper_preview_from_json(getattr(paper, "paper_preview_json", "{}"))
+    payload: dict[str, object] = {
+        "exam_paper_id": int(paper.id or 0),
+        "status": paper.status,
+        "num_questions": paper.total_items,
+        "paper_preview": effective_preview.model_dump(mode="json"),
+        "error_message": error_message if error_message is not None else context.get("error_message"),
+        "updated_at": paper.updated_at,
+    }
+    if stage:
+        payload["stage"] = stage
+    return payload
+
+
+def _links_for_items(session: Session, items: list[ExamPaperItem]) -> dict[int, list[dict[str, object]]]:
+    return exams_repo.list_links_for_exam_items(session, [int(item.id or 0) for item in items])
+
+
+def _knowledge_units_for_item_links(
+    session: Session,
+    links_by_item_id: dict[int, list[dict[str, object]]],
+) -> dict[int, KnowledgeUnit]:
     knowledge_unit_ids = {
         knowledge_unit_id
-        for item in items
-        for ref in _json_list(item.knowledge_unit_refs_json)
+        for refs in links_by_item_id.values()
+        for ref in refs
         for knowledge_unit_id in [int(ref.get("knowledge_unit_id", 0) or 0)]
         if knowledge_unit_id > 0
     }
@@ -266,7 +397,7 @@ def _pick_knowledge_units(
     user_id: str,
     subject: str,
     exam_mode: str,
-    focus_prompt: str | None,
+    user_prompt: str | None,
     limit: int,
 ) -> list[KnowledgeUnit]:
     stmt = select(KnowledgeUnit).where(
@@ -320,7 +451,7 @@ def _pick_knowledge_units(
     if not ordered_units:
         ordered_units = units[:]
 
-    focus = (focus_prompt or "").strip().casefold()
+    focus = (user_prompt or "").strip().casefold()
     if focus:
         focused = [
             unit
@@ -363,24 +494,11 @@ def _question_type_for_order(*, exam_mode: str, difficulty: str, item_order: int
     return cycle[(item_order - 1) % len(cycle)]
 
 
-def _difficulty_for_order(*, requested_difficulty: str, item_order: int) -> str:
-    normalized = str(requested_difficulty or "medium").strip().lower()
-    if normalized in {"easy", "medium", "hard"}:
-        return normalized
-    if normalized == "mixed":
-        cycle = ["easy", "medium", "hard"]
-        return cycle[(item_order - 1) % len(cycle)]
-    return "medium"
-
-
 def _build_exam_selection_context(
     *,
     source: str,
     knowledge_unit_ids: list[int],
-    focus_prompt: str | None,
     user_prompt: str | None,
-    style_prompt: str | None,
-    requested_difficulty: str,
     sample_file_uids: list[str],
     generation_status: str = "generating",
     error_message: str | None = None,
@@ -388,10 +506,7 @@ def _build_exam_selection_context(
     payload: dict[str, object] = {
         "source": source,
         "knowledge_unit_ids": knowledge_unit_ids,
-        "focus_prompt": focus_prompt,
         "user_prompt": user_prompt,
-        "style_prompt": style_prompt,
-        "requested_difficulty": requested_difficulty,
         "sample_file_uids": sample_file_uids,
         "generation_status": generation_status,
     }
@@ -491,14 +606,7 @@ def _upsert_generated_template(
 ) -> QuestionTemplate:
     stem_hash = _hash_stem(stem)
     refs = knowledge_unit_refs or [{"knowledge_unit_id": unit.id, "coverage_weight": 1.0, "role": "primary"}]
-    existing = session.exec(
-        select(QuestionTemplate).where(
-            QuestionTemplate.subject == subject,
-            QuestionTemplate.knowledge_unit_id == unit.id,
-            QuestionTemplate.stem_hash == stem_hash,
-            QuestionTemplate.status == "active",
-        )
-    ).first()
+    existing = exams_repo.find_template_by_stem_hash(session, subject, int(unit.id or 0), stem_hash)
     if existing is not None:
         existing.question_type = question_type
         existing.difficulty = difficulty
@@ -506,16 +614,15 @@ def _upsert_generated_template(
         existing.answer = answer
         existing.explanation = explanation
         existing.options_json = json.dumps(options, ensure_ascii=False) if options else None
-        existing.knowledge_unit_refs_json = json.dumps(refs, ensure_ascii=False)
         existing.updated_at = utcnow()
         session.add(existing)
         session.commit()
         session.refresh(existing)
+        exams_repo.replace_question_template_links(session, template_id=int(existing.id or 0), refs=refs)
         return existing
 
     template = QuestionTemplate(
         subject=subject,
-        knowledge_unit_id=unit.id,
         question_type=question_type,
         difficulty=difficulty,
         stem=stem,
@@ -523,9 +630,10 @@ def _upsert_generated_template(
         answer=answer,
         explanation=explanation,
         options_json=json.dumps(options, ensure_ascii=False) if options else None,
-        knowledge_unit_refs_json=json.dumps(refs, ensure_ascii=False),
     )
-    return exams_repo.create_question_template(session, template)
+    template = exams_repo.create_question_template(session, template)
+    exams_repo.replace_question_template_links(session, template_id=int(template.id or 0), refs=refs)
+    return template
 
 
 async def _run_exam_generation_background(
@@ -536,10 +644,7 @@ async def _run_exam_generation_background(
     exam_mode: str,
     unit_ids: list[int],
     question_count: int,
-    requested_difficulty: str,
-    focus_prompt: str | None,
     user_prompt: str | None,
-    style_prompt: str | None,
 ) -> None:
     _publish_exam_event(
         subject,
@@ -552,6 +657,12 @@ async def _run_exam_generation_background(
             paper = exams_repo.get_exam_paper_by_id(session, paper_id)
             if paper is None or paper.subject != subject or paper.user_id != user_id:
                 return
+            _publish_exam_event(
+                subject,
+                paper_id,
+                "snapshot",
+                _paper_generation_event_payload(paper, stage="question_build"),
+            )
             subject_row = _ensure_subject(session, subject, user_id)
             units = list(
                 session.exec(
@@ -563,6 +674,11 @@ async def _run_exam_generation_background(
             )
             unit_by_id = {int(unit.id): unit for unit in units if unit.id is not None}
             exam_units = [unit_by_id[unit_id] for unit_id in unit_ids if unit_id in unit_by_id]
+            unit_name_by_id = {
+                int(unit.id): unit.canonical_name
+                for unit in exam_units
+                if unit.id is not None and unit.canonical_name
+            }
             if not exam_units:
                 raise AITeachMeError(
                     detail="No persisted KnowledgeUnits are available for exam generation.",
@@ -572,6 +688,53 @@ async def _run_exam_generation_background(
             subject_context = load_subject_llm_context(session, subject=subject)
 
             mastery_by_unit_id = _mastery_by_unit_id(session, user_id=user_id, subject=subject)
+            recent_stems: list[str] = []
+            for item, _asked_at, recent_paper_id in exams_repo.list_exam_item_snapshots_by_user(
+                session,
+                subject=subject,
+                user_id=user_id,
+                limit=RECENT_EXAM_STEM_AVOID_LIMIT + question_count,
+            ):
+                if int(recent_paper_id) == paper_id:
+                    continue
+                stem = _clean_exam_text(item.stem_snapshot)
+                if stem:
+                    recent_stems.append(stem[:220])
+                if len(recent_stems) >= RECENT_EXAM_STEM_AVOID_LIMIT:
+                    break
+
+        diversity_prompt = _build_exam_diversity_prompt(
+            run_id=uuid.uuid4().hex,
+            recent_stems=recent_stems,
+        )
+
+        async def handle_question_build_progress(payload: dict[str, object]) -> None:
+            blueprints = payload.get("question_blueprints")
+            if not isinstance(blueprints, list):
+                return
+            blueprint_payload = [item for item in blueprints if isinstance(item, dict)]
+            preview = _build_blueprint_paper_preview(
+                blueprint_payload,
+                question_count=question_count,
+                unit_name_by_id=unit_name_by_id,
+            )
+            with managed_session() as session:
+                paper = exams_repo.get_exam_paper_by_id(session, paper_id)
+                if paper is None or paper.subject != subject or paper.user_id != user_id:
+                    return
+                paper.total_items = question_count
+                paper.total_score = float(question_count)
+                paper.paper_preview_json = preview.model_dump_json()
+                paper.updated_at = utcnow()
+                session.add(paper)
+                session.commit()
+                session.refresh(paper)
+                event_payload = _paper_generation_event_payload(
+                    paper,
+                    preview=preview,
+                    stage=str(payload.get("stage") or "plan_exam_questions"),
+                )
+            _publish_exam_event(subject, paper_id, "snapshot", event_payload)
 
         build_result = await run_question_build_workflow(
             subject=subject,
@@ -582,12 +745,11 @@ async def _run_exam_generation_background(
             units=exam_units,
             specs=None,
             question_count=question_count,
-            requested_difficulty=requested_difficulty,
             mastery_by_unit_id=mastery_by_unit_id,
             subject_context=subject_context,
-            focus_prompt=focus_prompt or "",
             user_prompt=user_prompt or "",
-            style_prompt=style_prompt or "",
+            system_constraints=diversity_prompt,
+            progress_callback=handle_question_build_progress,
         )
         generated_by_order = _require_generated_questions_by_order(
             build_result=build_result,
@@ -608,17 +770,21 @@ async def _run_exam_generation_background(
             )
             unit_by_id = {int(unit.id): unit for unit in units if unit.id is not None}
             items: list[ExamPaperItem] = []
+            refs_by_order: dict[int, list[dict[str, object]]] = {}
             for order in range(1, question_count + 1):
                 generated = generated_by_order[order]
-                primary_unit_id = int(generated.get("knowledge_unit_id") or 0)
-                unit = unit_by_id.get(primary_unit_id)
-                if unit is None:
-                    continue
                 refs = [
                     ref
                     for ref in list(generated.get("knowledge_unit_refs") or [])
                     if isinstance(ref, dict) and int(ref.get("knowledge_unit_id", 0) or 0) in unit_by_id
-                ] or [{"knowledge_unit_id": primary_unit_id, "coverage_weight": 1.0, "role": "primary"}]
+                ]
+                primary_unit_id = int((refs[0] if refs else {}).get("knowledge_unit_id", 0) or 0)
+                unit = unit_by_id.get(primary_unit_id)
+                if unit is None:
+                    continue
+                if not refs:
+                    refs = [{"knowledge_unit_id": primary_unit_id, "coverage_weight": 1.0, "role": "primary"}]
+                refs_by_order[order] = refs
                 template = _upsert_generated_template(
                     session,
                     subject=subject,
@@ -640,27 +806,42 @@ async def _run_exam_generation_background(
                         options_snapshot_json=template.options_json,
                         answer_snapshot=template.answer,
                         explanation_snapshot=template.explanation,
-                        knowledge_unit_id=unit.id,
-                        knowledge_unit_refs_json=template.knowledge_unit_refs_json,
                         difficulty=template.difficulty,
                         question_type=template.question_type,
                         score=1.0,
                     )
                 )
             exams_repo.create_exam_paper_items(session, items)
+            links_by_item_id: dict[int, list[dict[str, object]]] = {}
+            for item in items:
+                refs = refs_by_order.get(item.item_order, [])
+                exams_repo.replace_exam_paper_item_links(
+                    session,
+                    item_id=int(item.id or 0),
+                    refs=refs,
+                    auto_commit=False,
+                )
+                links_by_item_id[int(item.id or 0)] = refs
+            session.commit()
             paper.total_items = len(items)
             paper.total_score = float(len(items))
             paper.paper_preview_json = _build_paper_preview(
                 items,
                 knowledge_unit_by_id=unit_by_id,
+                links_by_item_id=links_by_item_id,
             ).model_dump_json()
             _set_exam_generation_status(session, paper, status="ready")
+            done_payload = _paper_generation_event_payload(
+                paper,
+                stage="ready",
+                preview=_paper_preview_from_json(paper.paper_preview_json),
+            )
 
         _publish_exam_event(
             subject,
             paper_id,
             "done",
-            {"exam_paper_id": paper_id, "status": "ready", "num_questions": len(items)},
+            done_payload,
         )
     except Exception as exc:
         error_message = str(getattr(exc, "detail", None) or exc or "Exam question generation failed.")
@@ -676,12 +857,23 @@ async def _run_exam_generation_background(
         with managed_session() as session:
             paper = exams_repo.get_exam_paper_by_id(session, paper_id)
             if paper is not None:
-                _set_exam_generation_status(session, paper, status="failed", error_message=error_message)
+                paper = _set_exam_generation_status(session, paper, status="failed", error_message=error_message)
+                failure_payload = _paper_generation_event_payload(
+                    paper,
+                    stage="failed",
+                    error_message=error_message,
+                )
+            else:
+                failure_payload = {
+                    "exam_paper_id": paper_id,
+                    "status": "failed",
+                    "error_message": error_message,
+                }
         _publish_exam_event(
             subject,
             paper_id,
             "done",
-            {"exam_paper_id": paper_id, "status": "failed", "error_message": error_message},
+            failure_payload,
         )
 
 
@@ -694,10 +886,7 @@ async def _spawn_exam_generation_after_response(
     exam_mode: str,
     unit_ids: list[int],
     question_count: int,
-    requested_difficulty: str,
-    focus_prompt: str | None,
     user_prompt: str | None,
-    style_prompt: str | None,
 ) -> None:
     request.app.state.background_task_registry.spawn(
         _run_exam_generation_background(
@@ -707,10 +896,7 @@ async def _spawn_exam_generation_after_response(
             exam_mode=exam_mode,
             unit_ids=unit_ids,
             question_count=question_count,
-            requested_difficulty=requested_difficulty,
-            focus_prompt=focus_prompt,
             user_prompt=user_prompt,
-            style_prompt=style_prompt,
         ),
         kind="exam.generate",
         subject=subject,
@@ -723,6 +909,7 @@ def _paper_item_response(
     *,
     knowledge_unit_by_id: dict[int, KnowledgeUnit],
     mastery_by_unit_id: dict[int, float],
+    knowledge_unit_refs: list[dict[str, object]],
 ) -> ExamPaperItemResponse:
     return ExamPaperItemResponse(
         id=item.id,
@@ -746,7 +933,7 @@ def _paper_item_response(
                 "role": str(ref.get("role", "primary")),
                 "mastery_score": mastery_by_unit_id.get(knowledge_unit_id),
             }
-            for ref in _json_list(item.knowledge_unit_refs_json)
+            for ref in knowledge_unit_refs
             for knowledge_unit_id in [int(ref.get("knowledge_unit_id", 0) or 0)]
             if knowledge_unit_id > 0
         ],
@@ -758,7 +945,11 @@ def _paper_item_response(
     )
 
 
-def _question_template_response(template: QuestionTemplate) -> QuestionTemplateItemResponse:
+def _question_template_response(
+    template: QuestionTemplate,
+    *,
+    knowledge_unit_refs: list[dict[str, object]],
+) -> QuestionTemplateItemResponse:
     options_payload = None
     if template.options_json:
         try:
@@ -771,14 +962,13 @@ def _question_template_response(template: QuestionTemplate) -> QuestionTemplateI
     return QuestionTemplateItemResponse(
         id=template.id or 0,
         subject=template.subject,
-        knowledge_unit_id=template.knowledge_unit_id,
         question_type=template.question_type,
         difficulty=template.difficulty,
         stem=template.stem,
         options=options_payload,
         answer=template.answer,
         explanation=template.explanation,
-        knowledge_unit_refs=_json_list(template.knowledge_unit_refs_json),
+        knowledge_unit_refs=knowledge_unit_refs,
         selection_hints=_json_dict(template.selection_hints_json),
         template_version=template.template_version,
         status=template.status,
@@ -810,7 +1000,8 @@ def _question_type_response(item: QuestionTypeRegistry) -> QuestionTypeRegistryI
 
 def _paper_detail(session: Session, paper: ExamPaper) -> ExamPaperDetailResponse:
     items = exams_repo.list_items_by_paper(session, paper.id or 0)
-    knowledge_unit_by_id = _knowledge_units_for_items(session, items)
+    links_by_item_id = _links_for_items(session, items)
+    knowledge_unit_by_id = _knowledge_units_for_item_links(session, links_by_item_id)
     mastery_by_unit_id = {
         int(state.knowledge_unit_id): state.mastery_score
         for state in profile_repo.list_knowledge_states(
@@ -838,12 +1029,14 @@ def _paper_detail(session: Session, paper: ExamPaper) -> ExamPaperDetailResponse
             paper,
             items,
             knowledge_unit_by_id=knowledge_unit_by_id,
+            links_by_item_id=links_by_item_id,
         ),
         items=[
             _paper_item_response(
                 item,
                 knowledge_unit_by_id=knowledge_unit_by_id,
                 mastery_by_unit_id=mastery_by_unit_id,
+                knowledge_unit_refs=links_by_item_id.get(int(item.id or 0), []),
             )
             for item in items
         ],
@@ -852,10 +1045,11 @@ def _paper_detail(session: Session, paper: ExamPaper) -> ExamPaperDetailResponse
 
 async def _study_guide_detail(session: Session, paper: ExamPaper) -> ExamStudyGuideResponse:
     items = exams_repo.list_items_by_paper(session, paper.id or 0)
+    links_by_item_id = _links_for_items(session, items)
     knowledge_unit_ids = {
         knowledge_unit_id
-        for item in items
-        for ref in _json_list(item.knowledge_unit_refs_json)
+        for refs in links_by_item_id.values()
+        for ref in refs
         for knowledge_unit_id in [int(ref.get("knowledge_unit_id", 0) or 0)]
         if knowledge_unit_id > 0
     }
@@ -1015,7 +1209,7 @@ async def generate_exam(
         user_id=user.user_id,
         subject=normalized,
         exam_mode=body.exam_mode,
-        focus_prompt=body.focus_prompt,
+        user_prompt=body.user_prompt,
         limit=0,
     )
     if not units:
@@ -1033,7 +1227,7 @@ async def generate_exam(
         )
 
     mode = exam_mode_value(body.exam_mode)
-    requested_difficulty = body.difficulty or "medium"
+    initial_preview = _build_placeholder_paper_preview(question_count=question_count)
     paper = exams_repo.create_exam_paper(
         session,
         ExamPaper(
@@ -1043,13 +1237,11 @@ async def generate_exam(
             status="generating",
             total_items=question_count,
             total_score=float(question_count),
+            paper_preview_json=initial_preview.model_dump_json(),
             selection_context_json=_build_exam_selection_context(
                 source="knowledge_unit_llm",
                 knowledge_unit_ids=[int(unit.id or 0) for unit in exam_units],
-                focus_prompt=body.focus_prompt,
                 user_prompt=body.user_prompt,
-                style_prompt=body.style_prompt,
-                requested_difficulty=requested_difficulty,
                 sample_file_uids=body.sample_file_uids or [],
             ),
         ),
@@ -1064,10 +1256,7 @@ async def generate_exam(
         exam_mode=mode,
         unit_ids=[int(unit.id or 0) for unit in exam_units],
         question_count=question_count,
-        requested_difficulty=requested_difficulty,
-        focus_prompt=body.focus_prompt,
         user_prompt=body.user_prompt,
-        style_prompt=body.style_prompt,
     )
     return ok_response(
         ExamGenerateResponse(
@@ -1113,10 +1302,9 @@ async def exam_history(
         for paper in rows
         if paper.id is not None
     }
-    knowledge_unit_by_id = _knowledge_units_for_items(
-        session,
-        [item for items in items_by_paper_id.values() for item in items],
-    )
+    all_items = [item for items in items_by_paper_id.values() for item in items]
+    links_by_item_id = _links_for_items(session, all_items)
+    knowledge_unit_by_id = _knowledge_units_for_item_links(session, links_by_item_id)
     return ok_response(
         build_paginated_data(
             items=[
@@ -1136,6 +1324,7 @@ async def exam_history(
                         paper,
                         items_by_paper_id.get(int(paper.id or 0), []),
                         knowledge_unit_by_id=knowledge_unit_by_id,
+                        links_by_item_id=links_by_item_id,
                     ),
                 )
                 for paper in rows
@@ -1167,7 +1356,14 @@ async def question_templates(
             .order_by(QuestionTemplate.created_at.desc(), QuestionTemplate.id.desc())
         ).all()
     )
-    return ok_response([_question_template_response(item) for item in rows])
+    links_by_template_id = exams_repo.list_links_for_templates(session, [int(item.id or 0) for item in rows])
+    return ok_response([
+        _question_template_response(
+            item,
+            knowledge_unit_refs=links_by_template_id.get(int(item.id or 0), []),
+        )
+        for item in rows
+    ])
 
 
 @router.get(
@@ -1231,14 +1427,7 @@ async def exam_generation_stream(
                         "status": "failed",
                         "error_message": "Exam paper no longer exists.",
                     }
-                context = _json_dict(current.selection_context_json)
-                return {
-                    "exam_paper_id": exam_paper_id,
-                    "status": current.status,
-                    "num_questions": current.total_items,
-                    "error_message": context.get("error_message"),
-                    "updated_at": current.updated_at,
-                }
+                return _paper_generation_event_payload(current)
 
         initial = snapshot_payload()
         yield format_sse_event("snapshot", initial)

@@ -33,7 +33,10 @@ from app.models import (
     ExamPaperItem,
     KnowledgeDocument,
     KnowledgeEdge,
+    KnowledgeGraphSourceRef,
+    KnowledgeGraphSyncRun,
     KnowledgeUnit,
+    QuestionKnowledgeUnitLink,
     QuestionTypeRegistry,
     QuestionTemplate,
     RawFile,
@@ -87,6 +90,8 @@ class _ManifestStats(BaseModel):
     knowledge_document_count: int = 0
     knowledge_unit_count: int = 0
     knowledge_edge_count: int = 0
+    knowledge_graph_sync_run_count: int = 0
+    knowledge_graph_source_ref_count: int = 0
     confirmed_build_plan_count: int = 0
     question_type_registry_count: int = 0
     question_template_count: int = 0
@@ -195,6 +200,15 @@ TABLE_REGISTRY: list[_TableSpec] = [
             "target_node_id": "knowledge_unit",
         },
     ),
+    _TableSpec("knowledge_graph_sync_run", KnowledgeGraphSyncRun),
+    _TableSpec(
+        "knowledge_graph_source_ref",
+        KnowledgeGraphSourceRef,
+        fk_remap={
+            "sync_run_id": "knowledge_graph_sync_run",
+            "knowledge_document_id": "knowledge_document",
+        },
+    ),
     _TableSpec(
         "question_type_registry",
         QuestionTypeRegistry,
@@ -203,9 +217,6 @@ TABLE_REGISTRY: list[_TableSpec] = [
     _TableSpec(
         "question_template",
         QuestionTemplate,
-        fk_remap={
-            "knowledge_unit_id": "knowledge_unit",
-        },
         optional_group="exam",
     ),
     _TableSpec(
@@ -222,6 +233,16 @@ TABLE_REGISTRY: list[_TableSpec] = [
         fk_remap={
             "exam_paper_id": "exam_paper",
             "question_template_id": "question_template",
+        },
+        optional_group="exam",
+    ),
+    _TableSpec(
+        "question_knowledge_unit_link",
+        QuestionKnowledgeUnitLink,
+        subject_field=None,
+        fk_remap={
+            "question_template_id": "question_template",
+            "exam_paper_item_id": "exam_paper_item",
             "knowledge_unit_id": "knowledge_unit",
         },
         optional_group="exam",
@@ -285,6 +306,8 @@ def preview_export(
         else 0,
         knowledge_unit_count=_count(session, KnowledgeUnit, subject_slug),
         knowledge_edge_count=_count(session, KnowledgeEdge, subject_slug),
+        knowledge_graph_sync_run_count=_count(session, KnowledgeGraphSyncRun, subject_slug),
+        knowledge_graph_source_ref_count=_count(session, KnowledgeGraphSourceRef, subject_slug),
         confirmed_build_plan_count=_count(session, ConfirmedBuildPlan, subject_slug)
         if options.include_knowledge_docs
         else 0,
@@ -419,6 +442,24 @@ def _query_table(
     elif spec.subject_field:
         col = getattr(spec.model, spec.subject_field)
         rows = session.exec(_ordered(select(spec.model).where(col == subject_slug))).all()
+    elif spec.name == "question_knowledge_unit_link":
+        template_ids = {r["id"] for r in exported.get("question_template", [])}
+        item_ids = {r["id"] for r in exported.get("exam_paper_item", [])}
+        predicates = []
+        if template_ids:
+            predicates.append(QuestionKnowledgeUnitLink.question_template_id.in_(template_ids))
+        if item_ids:
+            predicates.append(QuestionKnowledgeUnitLink.exam_paper_item_id.in_(item_ids))
+        if not predicates:
+            return []
+        stmt = select(QuestionKnowledgeUnitLink)
+        if len(predicates) == 1:
+            stmt = stmt.where(predicates[0])
+        else:
+            from sqlalchemy import or_
+
+            stmt = stmt.where(or_(*predicates))
+        rows = session.exec(_ordered(stmt)).all()
     elif spec.parent_fk and spec.parent_table:
         parent_ids = {r["id"] for r in exported.get(spec.parent_table, [])}
         if not parent_ids:
@@ -525,6 +566,16 @@ def _import_table(
             _remap_id_list_field(
                 record_data,
                 "selected_file_ids_json",
+                "raw_file",
+                id_map,
+                spec.name,
+                warnings,
+            )
+        elif spec.name == "knowledge_graph_source_ref":
+            _remap_graph_source_ref_entity(record_data, id_map, warnings)
+            _remap_json_int_list_text_field(
+                record_data,
+                "source_file_ids_json",
                 "raw_file",
                 id_map,
                 spec.name,
@@ -657,6 +708,49 @@ def _remap_id_list_field(
     record[field_name] = remapped
 
 
+def _remap_json_int_list_text_field(
+    record: dict,
+    field_name: str,
+    ref_table: str,
+    id_map: dict[str, dict[Any, Any]],
+    table_name: str,
+    warnings: list[str],
+) -> None:
+    try:
+        values = json.loads(str(record.get(field_name) or "[]"))
+    except Exception:
+        values = []
+    if not isinstance(values, list):
+        values = []
+
+    ref_map = id_map.get(ref_table) or {}
+    remapped: list[int] = []
+    for old_id in values:
+        new_id = _lookup_mapped_id(old_id, ref_map)
+        if new_id is None:
+            warnings.append(f"{table_name}.{field_name}: ref {old_id} not found in {ref_table}")
+            continue
+        try:
+            remapped.append(int(new_id))
+        except (TypeError, ValueError):
+            continue
+    record[field_name] = json.dumps(remapped, ensure_ascii=False)
+
+
+def _remap_graph_source_ref_entity(
+    record: dict,
+    id_map: dict[str, dict[Any, Any]],
+    warnings: list[str],
+) -> None:
+    entity_type = str(record.get("entity_type") or "").strip()
+    ref_table = "knowledge_unit" if entity_type == "unit" else "knowledge_edge" if entity_type == "edge" else ""
+    if not ref_table:
+        record["entity_id"] = 0
+        warnings.append(f"knowledge_graph_source_ref.entity_id: unsupported entity_type {entity_type!r}")
+        return
+    _remap_fk(record, "entity_id", ref_table, id_map, "knowledge_graph_source_ref", warnings)
+
+
 # ===================================================================
 # Internal: file packing and unpacking
 # ===================================================================
@@ -735,6 +829,8 @@ def _build_manifest(
             knowledge_document_count=len(exported.get("knowledge_document", [])),
             knowledge_unit_count=len(exported.get("knowledge_unit", [])),
             knowledge_edge_count=len(exported.get("knowledge_edge", [])),
+            knowledge_graph_sync_run_count=len(exported.get("knowledge_graph_sync_run", [])),
+            knowledge_graph_source_ref_count=len(exported.get("knowledge_graph_source_ref", [])),
             confirmed_build_plan_count=len(exported.get("confirmed_build_plan", [])),
             question_type_registry_count=len(exported.get("question_type_registry", [])),
             question_template_count=len(exported.get("question_template", [])),

@@ -1,7 +1,5 @@
-﻿"""Knowledge-graph lane-local helper exports."""
+"""Legacy extractor helper package for docs-sync reuse."""
 
-from app.workflows.digest.kg_file_ingest.lib.reporting import build_kg_lane_summary
+from __future__ import annotations
 
-__all__ = ["build_kg_lane_summary"]
-
-
+__all__: list[str] = []

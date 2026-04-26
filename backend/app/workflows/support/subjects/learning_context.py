@@ -184,19 +184,73 @@ def _document_backbone_snapshot(docgen_artifacts: Mapping[str, Any]) -> dict[str
     }
 
 
-def _file_summary_snapshot(docgen_artifacts: Mapping[str, Any]) -> list[dict[str, Any]]:
+def _source_file_metadata(
+    *,
+    raw_file_id: int,
+    source_file_lookup: Mapping[int, Mapping[str, Any]] | None,
+) -> dict[str, Any]:
+    metadata = _as_mapping((source_file_lookup or {}).get(raw_file_id))
+    result: dict[str, Any] = {
+        "file_id": raw_file_id,
+        "raw_file_id": raw_file_id,
+    }
+    file_uid = _clean_text(metadata.get("uid") or metadata.get("file_uid"), max_chars=120)
+    filename = _clean_text(metadata.get("filename"), max_chars=180)
+    markdown_path = _clean_text(metadata.get("markdown_path"), max_chars=500)
+    markdown_uri = _clean_text(metadata.get("markdown_uri"), max_chars=500)
+    if file_uid:
+        result["file_uid"] = file_uid
+    if filename:
+        result["filename"] = filename
+    if markdown_path:
+        result["markdown_path"] = markdown_path
+    if markdown_uri:
+        result["markdown_uri"] = markdown_uri
+    return result
+
+
+def _file_uids_for_ids(
+    source_file_ids: Sequence[int],
+    *,
+    source_file_lookup: Mapping[int, Mapping[str, Any]] | None,
+) -> list[str]:
+    uids: list[str] = []
+    seen: set[str] = set()
+    for raw_file_id in source_file_ids:
+        metadata = _as_mapping((source_file_lookup or {}).get(int(raw_file_id)))
+        uid = _clean_text(metadata.get("uid") or metadata.get("file_uid"), max_chars=120)
+        if not uid or uid in seen:
+            continue
+        seen.add(uid)
+        uids.append(uid)
+    return uids
+
+
+def _file_summary_snapshot(
+    docgen_artifacts: Mapping[str, Any],
+    *,
+    source_file_lookup: Mapping[int, Mapping[str, Any]] | None = None,
+) -> list[dict[str, Any]]:
     summaries: list[dict[str, Any]] = []
     for item in _mapping_items(docgen_artifacts.get("file_summaries"), limit=12):
-        summaries.append(
+        raw_file_id = _safe_int(item.get("file_id"))
+        file_payload = _source_file_metadata(
+            raw_file_id=raw_file_id,
+            source_file_lookup=source_file_lookup,
+        )
+        file_payload["filename"] = _clean_text(
+            item.get("filename") or file_payload.get("filename"),
+            max_chars=180,
+        )
+        file_payload.update(
             {
-                "file_id": _safe_int(item.get("file_id")),
-                "filename": _clean_text(item.get("filename"), max_chars=180),
                 "summary": _clean_text(item.get("summary"), max_chars=_MAX_SUMMARY_TEXT_CHARS),
                 "concepts": _clean_string_list(item.get("concepts"), limit=10),
                 "question_types": _clean_string_list(item.get("question_types"), limit=8),
                 "high_value_sections": _clean_string_list(item.get("high_value_sections"), limit=8, max_chars=180),
             }
         )
+        summaries.append(file_payload)
     return summaries
 
 
@@ -253,6 +307,7 @@ def _build_chapter_snapshots(
     chapter_assignments: Sequence[Mapping[str, Any]],
     knowledge_docs: Sequence[KnowledgeDoc],
     docgen_artifacts: Mapping[str, Any],
+    source_file_lookup: Mapping[int, Mapping[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
     plan_by_index = _chapter_plan_lookup(docgen_artifacts)
     docs_by_index = {_safe_int(doc.chapter_index): doc for doc in knowledge_docs}
@@ -279,9 +334,12 @@ def _build_chapter_snapshots(
         }
         for field_name, limit, max_chars in _CHAPTER_LIST_FIELDS:
             chapter_payload[field_name] = _clean_string_list(plan.get(field_name), limit=limit, max_chars=max_chars)
+        source_file_ids = _source_file_ids_for_chapter(chapter=chapter, assignment=assignment, doc=doc)
         chapter_payload.update(
             {
-                "source_file_ids": _source_file_ids_for_chapter(chapter=chapter, assignment=assignment, doc=doc),
+                "source_file_ids": source_file_ids,
+                "source_raw_file_ids": source_file_ids,
+                "source_file_uids": _file_uids_for_ids(source_file_ids, source_file_lookup=source_file_lookup),
                 "digest_mode": _clean_text(
                     chapter.get("digest_mode") or (doc.digest_mode if doc is not None else ""),
                     max_chars=80,
@@ -302,6 +360,9 @@ def build_subject_learning_context_payload(
     chapter_assignments: Sequence[Mapping[str, Any]] | None = None,
     knowledge_docs: Sequence[KnowledgeDoc] | None = None,
     docgen_artifacts: Mapping[str, Any] | None = None,
+    subject_user_intent: str | None = None,
+    subject_description: str | None = None,
+    source_file_lookup: Mapping[int, Mapping[str, Any]] | None = None,
     version_no: int | None = None,
     build_session_id: str | None = None,
     requested_at: datetime | None = None,
@@ -317,6 +378,8 @@ def build_subject_learning_context_payload(
     chapter_assignments = _mapping_items(chapter_assignments)
     knowledge_docs = list(knowledge_docs or [])
     confirmed_plan = _confirmed_plan_snapshot(docgen_artifacts)
+    subject_user_intent = _clean_text(subject_user_intent, max_chars=1200)
+    subject_description = _clean_text(subject_description, max_chars=1200)
 
     display_name = (
         _clean_text(document_context.get("subject_display_name"))
@@ -338,8 +401,9 @@ def build_subject_learning_context_payload(
         chapter_assignments=chapter_assignments,
         knowledge_docs=knowledge_docs,
         docgen_artifacts=docgen_artifacts,
+        source_file_lookup=source_file_lookup,
     )
-    file_summaries = _file_summary_snapshot(docgen_artifacts)
+    file_summaries = _file_summary_snapshot(docgen_artifacts, source_file_lookup=source_file_lookup)
     backbone = _document_backbone_snapshot(docgen_artifacts)
 
     top_terms = [
@@ -356,8 +420,10 @@ def build_subject_learning_context_payload(
     chapter_titles = [chapter["title"] for chapter in chapters if chapter.get("title")]
 
     intent_lines = []
+    if subject_user_intent:
+        intent_lines.append(f"长期学习意图：{subject_user_intent}")
     if user_prompt:
-        intent_lines.append(f"用户请求：{user_prompt}")
+        intent_lines.append(f"本次构建请求：{user_prompt}")
     if plan_summary:
         intent_lines.append(f"构建方案：{plan_summary}")
     intent_lines.extend(
@@ -376,13 +442,16 @@ def build_subject_learning_context_payload(
         intent_lines.append("避免内容：" + "；".join(avoid_list))
     learning_intent_text = _clean_multiline_text("\n".join(intent_lines), max_chars=_MAX_INTENT_TEXT_CHARS)
 
-    intro_bits = [
-        f"「{display_name}」当前知识文档以 {digest_mode or 'general'} 模式组织",
-        f"共 {len(chapters)} 章",
-    ]
+    intro_bits = []
+    if subject_description:
+        intro_bits.append(f"「{display_name}」：{subject_description}")
+    else:
+        intro_bits.append(f"「{display_name}」当前知识文档以 {digest_mode or 'general'} 模式组织")
+    intro_bits.append(f"共 {len(chapters)} 章")
     if top_terms:
         intro_bits.append("重点覆盖 " + "、".join(top_terms[:8]))
     subject_intro_text = _clean_text("，".join(intro_bits) + "。", max_chars=_MAX_INTRO_TEXT_CHARS)
+    source_file_ids = sorted({file_id for chapter in chapters for file_id in chapter.get("source_file_ids", [])})
 
     summary_payload: dict[str, Any] = {
         "schema_version": 1,
@@ -391,16 +460,25 @@ def build_subject_learning_context_payload(
         "requested_at": requested_at.isoformat() if requested_at is not None else None,
         "subject": subject,
         "subject_display_name": display_name,
+        "subject_description": subject_description,
+        "subject_user_intent": subject_user_intent,
         "version_no": _safe_int(version_no or build_metadata.get("version_no")),
         "build_session_id": build_session_id or _clean_text(build_metadata.get("build_session_id")),
         "planner_session_id": _clean_text(build_metadata.get("planner_session_id")),
         "confirmed_plan_id": _clean_text(build_metadata.get("confirmed_plan_id")),
         "digest_mode": digest_mode,
         "user_prompt": user_prompt,
+        "docgen_user_prompt": user_prompt,
         "plan_summary": plan_summary,
         "chapter_count": len(chapters),
         "chapter_titles": chapter_titles,
-        "source_file_ids": sorted({file_id for chapter in chapters for file_id in chapter.get("source_file_ids", [])}),
+        "source_file_ids": source_file_ids,
+        "source_raw_file_ids": source_file_ids,
+        "source_file_uids": _file_uids_for_ids(source_file_ids, source_file_lookup=source_file_lookup),
+        "source_files": [
+            _source_file_metadata(raw_file_id=file_id, source_file_lookup=source_file_lookup)
+            for file_id in source_file_ids
+        ],
         "confirmed_plan": confirmed_plan,
         "chapters": chapters,
         "file_summaries": file_summaries,
@@ -501,6 +579,15 @@ def update_subject_learning_context_from_docgen(
     if record is None:
         return None
 
+    source_file_lookup = _build_source_file_lookup(
+        session,
+        subject=subject,
+        chapter_metadatas=chapter_metadatas,
+        chapter_assignments=chapter_assignments,
+        knowledge_docs=knowledge_docs,
+        docgen_artifacts=docgen_artifacts,
+    )
+
     learning_intent_text, subject_intro_text, document_summary_json, llm_context_text = (
         build_subject_learning_context_payload(
             subject=subject,
@@ -510,6 +597,9 @@ def update_subject_learning_context_from_docgen(
             chapter_assignments=chapter_assignments,
             knowledge_docs=knowledge_docs,
             docgen_artifacts=docgen_artifacts,
+            subject_user_intent=record.user_intent,
+            subject_description=record.description,
+            source_file_lookup=source_file_lookup,
             version_no=version_no,
             build_session_id=build_session_id,
             requested_at=requested_at,
@@ -522,6 +612,64 @@ def update_subject_learning_context_from_docgen(
     record.updated_at = utcnow()
     session.add(record)
     return record
+
+
+def _collect_source_file_ids_for_lookup(
+    *,
+    chapter_metadatas: Sequence[Mapping[str, Any]] | None,
+    chapter_assignments: Sequence[Mapping[str, Any]] | None,
+    knowledge_docs: Sequence[KnowledgeDoc] | None,
+    docgen_artifacts: Mapping[str, Any] | None,
+) -> list[int]:
+    ids: list[int] = []
+    for item in _mapping_items(chapter_metadatas):
+        ids.extend(_clean_int_list(item.get("source_file_ids"), limit=100))
+    for item in _mapping_items(chapter_assignments):
+        ids.extend(_clean_int_list(item.get("source_file_ids"), limit=100))
+    for doc in list(knowledge_docs or []):
+        ids.extend(_clean_int_list(_load_json_list(doc.source_file_ids), limit=100))
+    artifacts = _as_mapping(docgen_artifacts)
+    confirmed_plan = _as_mapping(artifacts.get("confirmed_plan"))
+    ids.extend(_clean_int_list(confirmed_plan.get("selected_file_ids"), limit=100))
+    for item in _mapping_items(artifacts.get("file_summaries"), limit=100):
+        ids.extend(_clean_int_list(item.get("file_id"), limit=1))
+    return sorted(set(ids))
+
+
+def _build_source_file_lookup(
+    session: Session,
+    *,
+    subject: str,
+    chapter_metadatas: Sequence[Mapping[str, Any]] | None,
+    chapter_assignments: Sequence[Mapping[str, Any]] | None,
+    knowledge_docs: Sequence[KnowledgeDoc] | None,
+    docgen_artifacts: Mapping[str, Any] | None,
+) -> dict[int, dict[str, Any]]:
+    source_file_ids = _collect_source_file_ids_for_lookup(
+        chapter_metadatas=chapter_metadatas,
+        chapter_assignments=chapter_assignments,
+        knowledge_docs=knowledge_docs,
+        docgen_artifacts=docgen_artifacts,
+    )
+    if not source_file_ids:
+        return {}
+    try:
+        from app.repositories.files_repo import list_raw_files_by_ids
+
+        raw_files = list_raw_files_by_ids(session, subject, source_file_ids)
+    except Exception:
+        return {}
+    lookup: dict[int, dict[str, Any]] = {}
+    for raw_file in raw_files:
+        if raw_file.id is None:
+            continue
+        lookup[int(raw_file.id)] = {
+            "uid": raw_file.uid,
+            "filename": raw_file.filename,
+            "markdown_path": raw_file.markdown_path,
+            "markdown_uri": raw_file.markdown_uri,
+        }
+    return lookup
 
 
 def clear_subject_learning_context(session: Session, *, subject: str) -> bool:

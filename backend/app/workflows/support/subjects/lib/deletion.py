@@ -20,7 +20,10 @@ from app.models import (
     ExamPaperItem,
     KnowledgeDocument,
     KnowledgeEdge,
+    KnowledgeGraphSourceRef,
+    KnowledgeGraphSyncRun,
     KnowledgeUnit,
+    QuestionKnowledgeUnitLink,
     QuestionTemplate,
     QuestionTypeRegistry,
     RawFile,
@@ -44,6 +47,8 @@ _EXAM_KEYS = [
 _PROFILE_KEYS = ["user_knowledge_state"]
 _PLANNER_KEYS = ["confirmed_build_plan"]
 _KNOWLEDGE_KEYS = [
+    "knowledge_graph_source_ref",
+    "knowledge_graph_sync_run",
     "knowledge_document",
     "knowledge_edge",
     "knowledge_unit",
@@ -90,6 +95,12 @@ def collect_subject_delete_counts(session: Session, *, subject: str) -> dict[str
         "user_knowledge_state": _count_rows(session, UserKnowledgeState, UserKnowledgeState.subject == subject),
         "knowledge_edge": _count_rows(session, KnowledgeEdge, KnowledgeEdge.subject == subject),
         "knowledge_unit": _count_rows(session, KnowledgeUnit, KnowledgeUnit.subject == subject),
+        "knowledge_graph_sync_run": _count_rows(session, KnowledgeGraphSyncRun, KnowledgeGraphSyncRun.subject == subject),
+        "knowledge_graph_source_ref": _count_rows(
+            session,
+            KnowledgeGraphSourceRef,
+            KnowledgeGraphSourceRef.subject == subject,
+        ),
         "confirmed_build_plan": _count_rows(session, ConfirmedBuildPlan, ConfirmedBuildPlan.subject == subject),
     }
 
@@ -207,8 +218,37 @@ def _delete_exam_records(session: Session, *, subject: str) -> None:
     ]
 
     if paper_ids:
+        item_ids = [
+            item_id
+            for item_id in session.exec(select(ExamPaperItem.id).where(ExamPaperItem.exam_paper_id.in_(paper_ids))).all()
+            if item_id is not None
+        ]
+        if item_ids:
+            session.exec(
+                sa.delete(QuestionKnowledgeUnitLink).where(
+                    QuestionKnowledgeUnitLink.exam_paper_item_id.in_(item_ids)
+                )
+            )
         session.exec(sa.delete(ExamPaperItem).where(ExamPaperItem.exam_paper_id.in_(paper_ids)))
     if template_ids:
+        template_item_ids = [
+            item_id
+            for item_id in session.exec(
+                select(ExamPaperItem.id).where(ExamPaperItem.question_template_id.in_(template_ids))
+            ).all()
+            if item_id is not None
+        ]
+        if template_item_ids:
+            session.exec(
+                sa.delete(QuestionKnowledgeUnitLink).where(
+                    QuestionKnowledgeUnitLink.exam_paper_item_id.in_(template_item_ids)
+                )
+            )
+        session.exec(
+            sa.delete(QuestionKnowledgeUnitLink).where(
+                QuestionKnowledgeUnitLink.question_template_id.in_(template_ids)
+            )
+        )
         session.exec(sa.delete(ExamPaperItem).where(ExamPaperItem.question_template_id.in_(template_ids)))
 
     _bulk_delete_by_subject(session, ExamPaper, subject=subject)
@@ -236,6 +276,8 @@ def _delete_knowledge_and_curriculum(session: Session, *, subject: str) -> None:
         .where(KnowledgeUnit.subject == subject)
         .values(merged_into_knowledge_unit_id=None)
     )
+    _bulk_delete_by_subject(session, KnowledgeGraphSourceRef, subject=subject)
+    _bulk_delete_by_subject(session, KnowledgeGraphSyncRun, subject=subject)
     _bulk_delete_by_subject(session, KnowledgeEdge, subject=subject)
     _bulk_delete_by_subject(session, KnowledgeDocument, subject=subject)
     _bulk_delete_by_subject(session, KnowledgeUnit, subject=subject)

@@ -51,10 +51,10 @@ backend/data/
 数据库负责结构化真相：
 
 - `raw_file`
+- `subject_file`
 - `retrieval_chunk`
 - `knowledge_document`
-- `knowledge_node / knowledge_edge`
-- `curriculum / theme_tree_node / unit_dependency`
+- `knowledge_unit / knowledge_edge`
 - `question_template / exam_paper / exam_paper_item`
 - `user_knowledge_state`
 
@@ -196,10 +196,10 @@ ContentStore 对业务代码完全透明——同一套代码在两种模式下�
 
 当前数据库和存储层还必须遵守两个约束：
 
-1. `curriculum` 是课程构建主表，不回退到多张 version 表。
-2. 知识文档、知识图谱、课程结构在同一轮 digest 中共享同一版号语义。
+1. 当前 Digest 产物以 `knowledge_document + knowledge_unit + knowledge_edge` 为准，不恢复旧课程结构表。
+2. 构建 runtime / staging / debug 产物不进入业务表，只通过 ContentStore 和运行态 envelope 管理。
 
-也就是说，存储层迁移可以做，版本语义不能重新分叉。
+也就是说，存储层迁移可以做，但不能把已移除的课程结构重新写成当前主表。
 
 ---
 

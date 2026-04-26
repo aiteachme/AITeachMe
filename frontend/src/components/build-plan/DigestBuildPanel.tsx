@@ -5,6 +5,7 @@ import {
   CheckCircle2,
   Clock3,
   Loader2,
+  Network,
   Sparkles,
 } from "lucide-react";
 
@@ -213,10 +214,10 @@ export function DigestBuildProgress({
           </div>
           <p className="mt-1 text-xs leading-5 text-slate-600">
             {state.focus === "graph"
-              ? "当前显示知识图谱 runtime 进度。"
+              ? "文档发布后会自动抽取知识点与关系。"
               : state.focus === "docgen"
-                ? "当前显示知识文档 runtime 进度。"
-                : "当前状态以 aggregate/docgen/graph 三层 runtime 聚合结果为准。"}
+                ? "正在整理章节、证据和发布状态。"
+                : "知识文档与知识图谱会按顺序推进。"}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -307,6 +308,92 @@ export function DigestBuildProgress({
 
       {state.activeLane.error_message ? <p className="mt-3 text-xs text-rose-600">{state.activeLane.error_message}</p> : null}
       {isFetching ? <p className="mt-2 text-[11px] text-slate-500">Syncing latest build state...</p> : null}
+    </section>
+  );
+}
+
+export function KnowledgeGraphBuildProgress({
+  subject,
+  className = "",
+}: {
+  subject: string;
+  className?: string;
+}) {
+  const { data, isFetching } = useKnowledgeDocsBuildState(subject);
+  const state = useMemo(() => deriveBuildState(data, "graph"), [data]);
+  const status = String(state.activeLane.status ?? "").trim();
+
+  if (!status || status === "idle" || status === "skipped") {
+    return null;
+  }
+
+  const metrics = state.activeLane.metrics ?? {};
+  const graphMetrics = data?.graph_metrics ?? null;
+  const processedChunks = Number(graphMetrics?.processed_chunks ?? metrics.processed_chunks ?? 0);
+  const docSyncSections = Number(graphMetrics?.doc_sync_section_count ?? metrics.doc_sync_section_count ?? 0);
+  const unitChanges = Number(graphMetrics?.doc_sync_unit_changes ?? metrics.doc_sync_unit_changes ?? 0);
+  const edgeChanges = Number(graphMetrics?.doc_sync_edge_changes ?? metrics.doc_sync_edge_changes ?? 0);
+  const revisionNo = Number(graphMetrics?.revision_no ?? metrics.revision_no ?? 0);
+  const docVersionNo = Number(graphMetrics?.last_synced_doc_version_no ?? metrics.last_synced_doc_version_no ?? 0);
+  const sourceRefCount = Number(graphMetrics?.source_ref_count ?? metrics.source_ref_count ?? 0);
+  const backboneUnitCount = Number(graphMetrics?.backbone_unit_count ?? metrics.backbone_unit_count ?? 0);
+  const backboneEdgeCount = Number(graphMetrics?.backbone_edge_count ?? metrics.backbone_edge_count ?? 0);
+  const deprecatedUnitCount = Number(graphMetrics?.deprecated_unit_count ?? metrics.deprecated_unit_count ?? 0);
+  const deprecatedEdgeCount = Number(graphMetrics?.deprecated_edge_count ?? metrics.deprecated_edge_count ?? 0);
+  const tone = state.isFailed
+    ? "border-rose-200 bg-rose-50"
+    : state.isCompleted
+      ? "border-emerald-200 bg-emerald-50"
+      : "border-sky-200 bg-sky-50";
+  const icon = state.isFailed ? (
+    <AlertTriangle className="h-4 w-4 text-rose-600" />
+  ) : state.isCompleted ? (
+    <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+  ) : state.isActive || isFetching ? (
+    <Loader2 className="h-4 w-4 animate-spin text-sky-600" />
+  ) : (
+    <Network className="h-4 w-4 text-slate-500" />
+  );
+
+  return (
+    <section className={`rounded-lg border px-4 py-3 shadow-sm ${tone} ${className}`.trim()}>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2 text-slate-900">
+            {icon}
+            <p className="text-sm font-semibold">知识图谱构建</p>
+          </div>
+          <p className="mt-1 text-xs leading-5 text-slate-600">{state.statusText}</p>
+        </div>
+        <div className="flex items-center gap-2 text-xs text-slate-600">
+          <span>{stageLabel(state.activeLane.stage)}</span>
+          <span className="font-medium tabular-nums">{state.progress}%</span>
+        </div>
+      </div>
+      <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-white/90">
+        <div
+          className="h-full rounded-full bg-[linear-gradient(90deg,#0f172a_0%,#0ea5e9_55%,#22c55e_100%)] transition-[width] duration-500"
+          style={{ width: `${state.progress}%` }}
+        />
+      </div>
+      {(processedChunks > 0 || docSyncSections > 0 || unitChanges > 0 || edgeChanges > 0 || sourceRefCount > 0 || revisionNo > 0 || state.activeLane.started_at) && (
+        <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-slate-500">
+          {processedChunks > 0 ? <span>已处理 {processedChunks} 个片段</span> : null}
+          {docSyncSections > 0 ? <span>已同步 {docSyncSections} 个章节段落</span> : null}
+          {unitChanges > 0 ? <span>知识点更新 {unitChanges} 个</span> : null}
+          {edgeChanges > 0 ? <span>关系更新 {edgeChanges} 条</span> : null}
+          {sourceRefCount > 0 ? <span>来源记录 {sourceRefCount} 条</span> : null}
+          {backboneUnitCount > 0 ? <span>骨架知识点 {backboneUnitCount} 个</span> : null}
+          {backboneEdgeCount > 0 ? <span>骨架关系 {backboneEdgeCount} 条</span> : null}
+          {deprecatedUnitCount > 0 ? <span>下线知识点 {deprecatedUnitCount} 个</span> : null}
+          {deprecatedEdgeCount > 0 ? <span>下线关系 {deprecatedEdgeCount} 条</span> : null}
+          {revisionNo > 0 ? <span>图谱版本 {revisionNo}</span> : null}
+          {docVersionNo > 0 ? <span>文档版本 {docVersionNo}</span> : null}
+          {state.activeLane.started_at ? (
+            <span>开始于 {new Date(state.activeLane.started_at).toLocaleString("zh-CN")}</span>
+          ) : null}
+        </div>
+      )}
     </section>
   );
 }

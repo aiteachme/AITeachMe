@@ -73,7 +73,6 @@ AUDIO_EXTENSIONS = frozenset(
 
 MARKITDOWN_GENERIC_EXTENSIONS = frozenset(
     {
-        ".doc",
         ".docm",
         ".odt",
         ".rtf",

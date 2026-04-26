@@ -16,7 +16,7 @@ import {
 
 import { apiClient, getApiErrorMessage } from "../api/client";
 import { resolveFileProcessingLabel } from "../components/knowledge-docs";
-import { FILE_ACCEPT } from "../lib/fileUpload";
+import { buildUnsupportedFilesMessage, FILE_ACCEPT, partitionUploadFiles } from "../lib/fileUpload";
 import { cn } from "../lib/utils";
 import type { FileRecord, FilesData, FilesUploadData } from "../types/files";
 
@@ -189,7 +189,11 @@ export function LibraryPage() {
               const selected = Array.from(event.target.files ?? []);
               if (fileInputRef.current) fileInputRef.current.value = "";
               if (selected.length > 0) {
-                uploadMutation.mutate(selected);
+                const { supportedFiles, unsupportedFiles } = partitionUploadFiles(selected);
+                setError(unsupportedFiles.length ? buildUnsupportedFilesMessage(unsupportedFiles) : null);
+                if (supportedFiles.length > 0) {
+                  uploadMutation.mutate(supportedFiles);
+                }
               }
             }}
           />

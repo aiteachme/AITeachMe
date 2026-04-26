@@ -5,7 +5,7 @@ from __future__ import annotations
 import sqlalchemy as sa
 from sqlmodel import Session, func, select
 
-from app.models import ExamPaperItem, KnowledgeEdge, KnowledgeUnit, QuestionTemplate, UserKnowledgeState
+from app.models import ExamPaper, ExamPaperItem, KnowledgeEdge, KnowledgeUnit, QuestionKnowledgeUnitLink, QuestionTemplate, UserKnowledgeState
 from app.shared.infra.exceptions import SubjectBuildLockConflictError
 from app.shared.infra.knowledge.build_store import is_knowledge_build_locked
 
@@ -38,22 +38,31 @@ def clear_subject_graph_entities(session: Session, *, subject: str) -> dict[str,
     if unit_ids:
         detached_template_count = int(
             session.exec(
-                sa.update(QuestionTemplate)
+                select(func.count(func.distinct(QuestionKnowledgeUnitLink.question_template_id)))
+                .select_from(QuestionKnowledgeUnitLink)
+                .join(QuestionTemplate, QuestionKnowledgeUnitLink.question_template_id == QuestionTemplate.id)
                 .where(
                     QuestionTemplate.subject == subject,
-                    QuestionTemplate.knowledge_unit_id.in_(unit_ids),
+                    QuestionKnowledgeUnitLink.knowledge_unit_id.in_(unit_ids),
                 )
-                .values(knowledge_unit_id=None, knowledge_unit_refs_json="[]")
-            ).rowcount
-            or 0
+            ).one()
         )
         detached_exam_item_count = int(
             session.exec(
-                sa.update(ExamPaperItem)
-                .where(ExamPaperItem.knowledge_unit_id.in_(unit_ids))
-                .values(knowledge_unit_id=None, knowledge_unit_refs_json="[]")
-            ).rowcount
-            or 0
+                select(func.count(func.distinct(QuestionKnowledgeUnitLink.exam_paper_item_id)))
+                .select_from(QuestionKnowledgeUnitLink)
+                .join(ExamPaperItem, QuestionKnowledgeUnitLink.exam_paper_item_id == ExamPaperItem.id)
+                .join(ExamPaper, ExamPaperItem.exam_paper_id == ExamPaper.id)
+                .where(
+                    ExamPaper.subject == subject,
+                    QuestionKnowledgeUnitLink.knowledge_unit_id.in_(unit_ids),
+                )
+            ).one()
+        )
+        session.exec(
+            sa.delete(QuestionKnowledgeUnitLink).where(
+                QuestionKnowledgeUnitLink.knowledge_unit_id.in_(unit_ids)
+            )
         )
         detached_state_count = int(
             session.exec(
