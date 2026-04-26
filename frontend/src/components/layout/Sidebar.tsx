@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
   BarChart3,
@@ -36,6 +36,7 @@ import { publicAssetPath } from "../../lib/publicAsset";
 import { SubjectExportModal } from "../subject/SubjectExportModal";
 import { SubjectDeleteConfirmModal } from "./SubjectDeleteConfirmModal";
 import { CommunityModal, ensureCommunityQrPreloaded } from "./CommunityPanel";
+import { AiConversationSidebarSection } from "../interaction/AiConversationSidebarSection";
 
 import { Button } from "../ui/Button";
 
@@ -233,6 +234,12 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
   });
 
   const groupedSubjects = useMemo(() => subjects as SubjectItem[], [subjects]);
+  const expandNavigationSidebar = useCallback(() => {
+    setIsCollapsed(false);
+  }, []);
+  const closeMobileNavigation = useCallback(() => {
+    setIsMobileOpen(false);
+  }, []);
 
   const toggleSubject = (subjectId: string) => {
     if (effectiveCollapsed) {
@@ -701,6 +708,12 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
               </div>
             );
           })}
+
+          <AiConversationSidebarSection
+            collapsed={effectiveCollapsed}
+            onExpandSidebar={expandNavigationSidebar}
+            onNavigate={closeMobileNavigation}
+          />
         </div>
 
         {/* Bottom actions */}

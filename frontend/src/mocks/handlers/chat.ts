@@ -22,6 +22,7 @@ interface ChatHistoryItem {
 interface ChatTurnItem {
   turn_id: string;
   session_id: string;
+  subject_id?: string | null;
   source?: string | null;
   anchor_id?: string | null;
   selected_text?: string | null;
@@ -31,6 +32,8 @@ interface ChatTurnItem {
 interface ChatSessionItem {
   id: string;
   title: string;
+  subject_id?: string | null;
+  subject_name?: string | null;
   source?: string | null;
   anchor_id?: string | null;
   selected_text?: string | null;
@@ -107,7 +110,7 @@ const mockHistory: ChatHistoryItem[] = [
     id: 1,
     turn_id: "turn-1",
     role: "user",
-    content: "导数的几何意义是什么？",
+    content: "矩阵乘法为什么常见？",
     contexts: null,
     created_at: "2026-03-14T10:00:00Z",
   },
@@ -116,7 +119,7 @@ const mockHistory: ChatHistoryItem[] = [
     turn_id: "turn-1",
     role: "assistant",
     content:
-      "导数 f'(x₀) 表示曲线 y=f(x) 在点 (x₀, f(x₀)) 处切线的斜率，描述函数在该点的瞬时变化率。",
+      "矩阵乘法能把大量线性变换批量表达出来，所以在前向传播、特征映射和注意力计算里都会高频出现。",
     contexts: mockContexts,
     created_at: "2026-03-14T10:00:05Z",
   },
@@ -126,9 +129,10 @@ const mockTurns: ChatTurnItem[] = [
   {
     turn_id: "turn-1",
     session_id: "session-1",
+    subject_id: "math",
     source: "quick_chat",
-    anchor_id: "section",
-    selected_text: "导数是函数在某一点瞬时变化率的度量。",
+    anchor_id: "2-矩阵乘法-空间的变换",
+    selected_text: "矩阵乘法可能是机器学习中最频繁进行的操作",
     created_at: "2026-03-14T10:00:00Z",
   },
 ];
@@ -136,10 +140,12 @@ const mockTurns: ChatTurnItem[] = [
 const mockSessions: ChatSessionItem[] = [
   {
     id: "session-1",
-    title: "导数的几何意义是什么？",
+    title: "矩阵乘法为什么常见？",
+    subject_id: "math",
+    subject_name: "数学",
     source: "quick_chat",
-    anchor_id: "section",
-    selected_text: "导数是函数在某一点瞬时变化率的度量。",
+    anchor_id: "2-矩阵乘法-空间的变换",
+    selected_text: "矩阵乘法可能是机器学习中最频繁进行的操作",
     created_at: "2026-03-14T09:59:58Z",
     updated_at: "2026-03-14T10:00:05Z",
     last_message_at: "2026-03-14T10:00:05Z",
@@ -150,6 +156,10 @@ const turnSessionMap = new Map<string, string>([["turn-1", "session-1"]]);
 let nextMessageId = mockHistory.length + 1;
 let turnSeq = 2;
 let sessionSeq = 2;
+
+function getParamText(value: string | readonly string[] | undefined): string {
+  return typeof value === "string" ? value : value?.[0] ?? "";
+}
 
 function chunkText(text: string): string[] {
   const chars = Array.from(text);
@@ -195,7 +205,23 @@ function buildSessionTitle(question: string): string {
   return text.length > 24 ? `${text.slice(0, 24)}...` : text;
 }
 
-function resolveSession(sessionId: string | null, question: string, source: string | null): ChatSessionItem {
+function getMockSubjectName(subjectId: string | null): string {
+  if (!subjectId || subjectId === "global") {
+    return "通用";
+  }
+  const names: Record<string, string> = {
+    math: "数学",
+    physics: "物理",
+  };
+  return names[subjectId] ?? subjectId;
+}
+
+function resolveSession(
+  sessionId: string | null,
+  question: string,
+  source: string | null,
+  subjectId: string | null,
+): ChatSessionItem {
   if (sessionId) {
     const existing = mockSessions.find((item) => item.id === sessionId);
     if (existing) {
@@ -206,6 +232,8 @@ function resolveSession(sessionId: string | null, question: string, source: stri
   const created: ChatSessionItem = {
     id: `session-${sessionSeq++}`,
     title: buildSessionTitle(question),
+    subject_id: subjectId ?? "global",
+    subject_name: getMockSubjectName(subjectId),
     source,
     created_at: now,
     updated_at: now,
@@ -235,6 +263,7 @@ function pushHistory(
   source: string | null,
   anchorId: string | null,
   selectedText: string | null,
+  subjectId: string | null,
 ) {
   const now = new Date();
   turnSessionMap.set(turnId, sessionId);
@@ -243,10 +272,13 @@ function pushHistory(
     sessionItem.source = "quick_chat";
     sessionItem.anchor_id = anchorId;
     sessionItem.selected_text = selectedText;
+    sessionItem.subject_id = subjectId ?? sessionItem.subject_id ?? "global";
+    sessionItem.subject_name = getMockSubjectName(sessionItem.subject_id ?? null);
   }
   mockTurns.unshift({
     turn_id: turnId,
     session_id: sessionId,
+    subject_id: subjectId ?? "global",
     source,
     anchor_id: anchorId,
     selected_text: selectedText,
@@ -274,8 +306,10 @@ function pushHistory(
   touchSession(sessionId, question);
 }
 
-function listSessionItems() {
+function listSessionItems(subjectId: string | null = null, includeAllSubjects = false) {
+  const normalizedSubjectId = subjectId ?? "global";
   return [...mockSessions]
+    .filter((item) => includeAllSubjects || (item.subject_id ?? "global") === normalizedSubjectId)
     .map((item) => {
       const messageCount = mockHistory.filter((entry) => turnSessionMap.get(entry.turn_id) === item.id).length;
       const selectionTurn = mockTurns.find((turn) =>
@@ -289,13 +323,15 @@ function listSessionItems() {
         source: item.source ?? selectionTurn?.source ?? null,
         anchor_id: item.anchor_id ?? selectionTurn?.anchor_id ?? null,
         selected_text: item.selected_text ?? selectionTurn?.selected_text ?? null,
+        subject_id: item.subject_id ?? "global",
+        subject_name: item.subject_name ?? getMockSubjectName(item.subject_id ?? null),
         message_count: messageCount,
       };
     })
     .sort((a, b) => b.last_message_at.localeCompare(a.last_message_at));
 }
 
-async function streamChatResponse(request: Request) {
+async function streamChatResponse(request: Request, subjectId: string | null = "global") {
   let body: ChatSendBody = {};
   try {
     body = (await request.json()) as ChatSendBody;
@@ -319,13 +355,13 @@ async function streamChatResponse(request: Request) {
   const askedSessionId = typeof body.session_id === "string" && body.session_id.trim()
     ? body.session_id.trim()
     : null;
-  const sessionItem = resolveSession(askedSessionId, question, source);
+  const sessionItem = resolveSession(askedSessionId, question, source, subjectId);
   const turnId = `turn-${turnSeq++}`;
   const answer = buildMockAnswer(question, selectedContext);
   const chunks = chunkText(answer);
   const contexts = mockContexts;
 
-  pushHistory(sessionItem.id, turnId, question, answer, contexts, source, anchorId, selectedText || null);
+  pushHistory(sessionItem.id, turnId, question, answer, contexts, source, anchorId, selectedText || null, subjectId);
 
   const encoder = new TextEncoder();
   const stream = new ReadableStream({
@@ -424,8 +460,10 @@ async function clearHistoryPayload(request: Request) {
 }
 
 export const chatHandlers = [
-  http.post("/api/v1/subjects/:subject/chat/send", async ({ request }) => streamChatResponse(request)),
-  http.post("/api/v1/subjects/:subject/chats/send", async ({ request }) => streamChatResponse(request)),
+  http.post("/api/v1/subjects/:subject/chat/send", async ({ request, params }) =>
+    streamChatResponse(request, getParamText(params.subject))),
+  http.post("/api/v1/subjects/:subject/chats/send", async ({ request, params }) =>
+    streamChatResponse(request, getParamText(params.subject))),
 
   http.post("/api/v1/subjects/:subject/chat/list", async ({ request }) => {
     const body = (await request.json()) as { session_id?: unknown };
@@ -441,27 +479,49 @@ export const chatHandlers = [
   http.post("/api/v1/subjects/:subject/chat/clear", async ({ request }) => HttpResponse.json(await clearHistoryPayload(request))),
   http.post("/api/v1/subjects/:subject/chats/clear", async ({ request }) => HttpResponse.json(await clearHistoryPayload(request))),
 
-  http.post("/api/v1/subjects/:subject/chats/sessions/list", () =>
-    HttpResponse.json({
+  http.post("/api/v1/chats/sessions/list", async ({ request }) => {
+    const body = (await request.json().catch(() => ({}))) as { include_all_subjects?: unknown };
+    const items = listSessionItems(null, body.include_all_subjects === true);
+    return HttpResponse.json({
       code: 0,
       message: "ok",
       data: {
-        items: listSessionItems(),
-        total: mockSessions.length,
+        items,
+        total: items.length,
         page: 1,
         size: 100,
         pages: 1,
       },
-    })),
+    });
+  }),
 
-  http.post("/api/v1/subjects/:subject/chats/sessions/create", async ({ request }) => {
+  http.post("/api/v1/subjects/:subject/chats/sessions/list", ({ params }) => {
+    const subjectId = getParamText(params.subject) || "global";
+    const items = listSessionItems(subjectId, false);
+    return HttpResponse.json({
+      code: 0,
+      message: "ok",
+      data: {
+        items,
+        total: items.length,
+        page: 1,
+        size: 100,
+        pages: 1,
+      },
+    });
+  }),
+
+  http.post("/api/v1/subjects/:subject/chats/sessions/create", async ({ request, params }) => {
     const body = (await request.json()) as { title?: unknown; source?: unknown };
     const title = typeof body.title === "string" && body.title.trim() ? body.title.trim() : "新会话";
     const source = typeof body.source === "string" ? body.source : null;
     const now = new Date().toISOString();
+    const subjectId = getParamText(params.subject) || "global";
     const created: ChatSessionItem = {
       id: `session-${sessionSeq++}`,
       title,
+      subject_id: subjectId,
+      subject_name: getMockSubjectName(subjectId),
       source,
       created_at: now,
       updated_at: now,
@@ -476,6 +536,42 @@ export const chatHandlers = [
           ...created,
           message_count: 0,
         },
+      },
+    });
+  }),
+
+  http.post("/api/v1/chats/sessions/delete", async ({ request }) => {
+    const body = (await request.json()) as { session_id?: unknown };
+    const sessionId = typeof body.session_id === "string" ? body.session_id : "";
+    if (!sessionId) {
+      return HttpResponse.json(
+        { code: 400, message: "session_id 不能为空", data: null },
+        { status: 400 },
+      );
+    }
+
+    const before = mockHistory.length;
+    const keepItems = mockHistory.filter((item) => turnSessionMap.get(item.turn_id) !== sessionId);
+    mockHistory.length = 0;
+    mockHistory.push(...keepItems);
+    for (const [turnId, mappedSessionId] of turnSessionMap.entries()) {
+      if (mappedSessionId === sessionId) {
+        turnSessionMap.delete(turnId);
+      }
+    }
+    const nextTurns = mockTurns.filter((item) => item.session_id !== sessionId);
+    mockTurns.length = 0;
+    mockTurns.push(...nextTurns);
+    const nextSessions = mockSessions.filter((item) => item.id !== sessionId);
+    mockSessions.length = 0;
+    mockSessions.push(...nextSessions);
+
+    return HttpResponse.json({
+      code: 0,
+      message: "ok",
+      data: {
+        deleted: true,
+        deleted_message_count: before - keepItems.length,
       },
     });
   }),

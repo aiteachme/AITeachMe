@@ -12,20 +12,23 @@ from collections.abc import AsyncGenerator
 
 from fastapi import Request
 from pydantic import TypeAdapter
-from sqlmodel import Session
+from sqlmodel import Session, select
 
-from app.models import ChatMessage, ChatSession
+from app.models import ChatMessage, ChatSession, Subject
 from app.schemas.llm import SYSTEM, USER, ChatMessage as LLMChatMessage
 from app.repositories.chats_repo import (
     clear_messages_by_subject,
     count_messages_by_session_ids,
+    count_messages_by_session_ids_for_user,
     create_chat_session,
     delete_chat_session,
     get_chat_session,
     list_session_selection_heads_by_session_ids,
+    list_session_selection_heads_by_session_ids_for_user,
     list_messages_by_subject,
     list_messages_by_turn_ids,
     list_sessions_by_subject,
+    list_sessions_by_user,
     list_thread_turn_heads_by_subject,
     touch_chat_session,
 )
@@ -40,6 +43,7 @@ from app.schemas.chats import (
 )
 from app.schemas.common import PaginatedData, build_paginated_data
 from app.utils.presenters import require_id
+from app.utils.subject import GLOBAL_SUBJECT
 from app.shared.infra.llm_support import acompletion
 from app.shared.infra.llm_support.routing import LLMCallPurpose
 from app.workflows.interact.chat.graph import stream_chat_workflow
@@ -78,12 +82,62 @@ def list_chat_sessions(
         user_id=user_id,
         session_ids=[item.id for item in items],
     )
+    subject_names = _load_subject_names(
+        session,
+        user_id=user_id,
+        subject_ids={item.subject for item in items},
+    )
     return build_paginated_data(
         items=[
             _to_chat_session_item(
                 item,
                 message_count=counts.get(item.id, 0),
                 selection_head=selection_heads.get(item.id),
+                subject_name=subject_names.get(item.subject),
+            )
+            for item in items
+        ],
+        page=page,
+        size=size,
+        total=total,
+    )
+
+
+def list_recent_chat_sessions(
+    session: Session,
+    *,
+    user_id: str,
+    page: int,
+    size: int,
+) -> PaginatedData[ChatSessionItem]:
+    items, total = list_sessions_by_user(
+        session,
+        user_id=user_id,
+        limit=size,
+        offset=(page - 1) * size,
+    )
+    counts = count_messages_by_session_ids_for_user(
+        session,
+        user_id=user_id,
+        session_ids=[item.id for item in items],
+    )
+    selection_heads = list_session_selection_heads_by_session_ids_for_user(
+        session,
+        user_id=user_id,
+        session_ids=[item.id for item in items],
+    )
+    subject_names = _load_subject_names(
+        session,
+        user_id=user_id,
+        subject_ids={item.subject for item in items},
+    )
+    return build_paginated_data(
+        items=[
+            _to_chat_session_item(
+                item,
+                message_count=counts.get(item.id, 0),
+                selection_head=selection_heads.get(item.id),
+                subject_name=subject_names.get(item.subject),
             )
             for item in items
         ],
@@ -484,10 +538,13 @@ def _to_chat_session_item(
     *,
     message_count: int,
     selection_head: ChatMessage | None = None,
+    subject_name: str | None = None,
 ) -> ChatSessionItem:
     return ChatSessionItem(
         id=item.id,
         title=item.title,
+        subject_id=item.subject,
+        subject_name=subject_name,
         source=item.source or (selection_head.source if selection_head else None),
         anchor_id=selection_head.anchor_id if selection_head else None,
         selected_text=selection_head.selected_text if selection_head else None,
@@ -497,6 +554,29 @@ def _to_chat_session_item(
         updated_at=item.updated_at,
         last_message_at=item.last_message_at,
     )
+
+
+def _load_subject_names(
+    session: Session,
+    *,
+    user_id: str,
+    subject_ids: set[str],
+) -> dict[str, str]:
+    result: dict[str, str] = {}
+    if GLOBAL_SUBJECT in subject_ids:
+        result[GLOBAL_SUBJECT] = "通用"
+
+    lookup_ids = [subject_id for subject_id in subject_ids if subject_id and subject_id != GLOBAL_SUBJECT]
+    if not lookup_ids:
+        return result
+
+    stmt = select(Subject).where(
+        Subject.user_id == user_id,
+        Subject.slug.in_(lookup_ids),
+    )
+    for item in session.exec(stmt).all():
+        result[item.slug] = item.name or item.slug
+    return result
 
 
 def _to_chat_thread_turn_item(
@@ -528,6 +608,7 @@ __all__ = [
     "create_session",
     "delete_session",
     "list_chat_history",
+    "list_recent_chat_sessions",
     "list_chat_sessions",
     "list_chat_threads",
 ]
