@@ -44,6 +44,7 @@ import { Button } from "../components/ui/Button";
 import { MarkdownViewer } from "../components/ui/MarkdownViewer";
 import { Modal } from "../components/ui/Modal";
 import { useToast } from "../components/ui/Toast";
+import { useExamResultDisplayPreference, type ExamResultDisplayMode } from "../lib/examResultDisplayPreference";
 import { unwrapOrvalResponse } from "../lib/unwrapOrvalResponse";
 
 const EXAM_MODES = [
@@ -195,6 +196,26 @@ function buildExamTitle(item: Pick<ExamHistoryItem, "exam_mode" | "created_at">)
   return `${formatModeLabel(item.exam_mode)} · ${formatDateTime(item.created_at)}`;
 }
 
+function getOptionalString(value: unknown) {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function getStringCandidate(source: Record<string, unknown>, keys: string[]) {
+  return keys.map((key) => getOptionalString(source[key])).find(Boolean);
+}
+
+function getExamPaperDisplayTitle(paper: ExamPaperDetailResponse) {
+  const dynamicPaper = paper as ExamPaperDetailResponse & Record<string, unknown>;
+  const directTitle = getStringCandidate(dynamicPaper, ["title", "name", "exam_title", "paper_title"]);
+  if (directTitle) return directTitle;
+
+  const context = (paper.selection_context ?? {}) as Record<string, unknown>;
+  const contextTitle = getStringCandidate(context, ["title", "name", "exam_title", "paper_title"]);
+  if (contextTitle) return contextTitle;
+
+  return buildExamTitle(paper);
+}
+
 function buildKnowledgeLabel(item: ExamPaperItemResponse) {
   return (
     item.knowledge_unit_links
@@ -254,6 +275,9 @@ function getPaperPreview(item: ExamHistoryItem): PaperPreview {
 }
 
 function getExamScorePercent(item: ExamHistoryItem): number | null {
+  if (item.status !== "graded" || item.score_obtained == null || item.total_score == null) {
+    return null;
+  }
   const score = Number(item.score_obtained);
   const total = Number(item.total_score);
   if (!Number.isFinite(score) || !Number.isFinite(total) || total <= 0) {
@@ -315,6 +339,20 @@ function ExamPaperScoreMark({ score }: { score: number }) {
           <path d={`M${underlineStart - 1} 46 C${underlineStart + 8} 44.8 ${underlineMid - 7} 45.6 ${underlineMid} 45 S${underlineEnd - 8} 44.5 ${underlineEnd + 1} 45`} />
         </g>
       </svg>
+    </div>
+  );
+}
+
+function ExamPaperPassMark() {
+  return (
+    <div
+      className="pointer-events-none absolute right-12 top-[56%] z-20 -rotate-[13deg] select-none text-emerald-600/90 dark:text-emerald-400/85"
+      aria-hidden="true"
+    >
+      <div className="relative rounded-[10px] border-[3px] border-current px-4 py-2 font-serif text-2xl font-black uppercase leading-none tracking-[0.22em] shadow-[0_0_0_2px_rgba(16,185,129,0.16)_inset]">
+        PASS
+        <span className="absolute inset-1 rounded-[6px] border border-current opacity-55" />
+      </div>
     </div>
   );
 }
@@ -481,7 +519,13 @@ function PaperPreviewResultMark({ status, row }: { status: PreviewResultStatus; 
   return null;
 }
 
-function PaperFingerprintPreview({ preview }: { preview: PaperPreview }) {
+function PaperFingerprintPreview({
+  preview,
+  showResultMarks = false,
+}: {
+  preview: PaperPreview;
+  showResultMarks?: boolean;
+}) {
   const rows = preview.rows?.slice(0, PREVIEW_ROW_LIMIT) ?? [];
   const hiddenPreviewRows = Math.max(0, (preview.rows?.length ?? 0) - PREVIEW_ROW_LIMIT);
   const overflowCount = (preview.overflow_count || 0) + hiddenPreviewRows;
@@ -498,7 +542,7 @@ function PaperFingerprintPreview({ preview }: { preview: PaperPreview }) {
             </span>
             <div className="relative flex min-w-0 flex-1 pr-4">
               <PaperPreviewShape row={row} />
-              <PaperPreviewResultMark status={status} row={row} />
+              {showResultMarks ? <PaperPreviewResultMark status={status} row={row} /> : null}
             </div>
           </div>
           );
@@ -518,16 +562,21 @@ function PaperFingerprintPreview({ preview }: { preview: PaperPreview }) {
 
 function ExamPaperCard({
   item,
+  resultDisplayMode,
   isDeleting,
   onOpen,
   onDelete,
 }: {
   item: ExamHistoryItem;
+  resultDisplayMode: ExamResultDisplayMode;
   isDeleting: boolean;
   onOpen: () => void;
   onDelete: (event: MouseEvent<HTMLButtonElement>) => void;
 }) {
   const preview = getPaperPreview(item);
+  const isGraded = item.status === "graded";
+  const showDetailedResult = isGraded && resultDisplayMode === "score";
+  const showPassMark = isGraded && resultDisplayMode === "completed";
   const scorePercent = getExamScorePercent(item);
 
   const handleCardKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
@@ -561,9 +610,10 @@ function ExamPaperCard({
           <PaperTagLine preview={preview} />
         </div>
 
-        <PaperFingerprintPreview preview={preview} />
+        <PaperFingerprintPreview preview={preview} showResultMarks={showDetailedResult} />
 
-        {scorePercent !== null ? <ExamPaperScoreMark score={scorePercent} /> : null}
+        {showDetailedResult && scorePercent !== null ? <ExamPaperScoreMark score={scorePercent} /> : null}
+        {showPassMark ? <ExamPaperPassMark /> : null}
 
         <div className="absolute bottom-5 right-5 z-20 flex items-center gap-2">
             <Button
@@ -1285,7 +1335,7 @@ function ExamPaperWorkspace({ subjectId, paperId, backHref }: ExamPaperWorkspace
                   <article className="relative overflow-hidden border border-slate-200 bg-white shadow-[0_26px_70px_rgba(15,23,42,0.15)]">
                     <header className="px-6 pb-6 pt-12 text-center sm:px-10 sm:pt-16 lg:px-16">
                       <h1 className="font-serif text-3xl font-bold tracking-[0.08em] text-slate-950 sm:text-4xl">
-                        {formatModeLabel(paper.exam_mode)}
+                        {getExamPaperDisplayTitle(paper)}
                       </h1>
                       <div className="mx-auto mt-5 flex max-w-md items-center justify-center gap-3 text-slate-400">
                         <span className="h-px flex-1 bg-slate-300" />
@@ -1351,12 +1401,18 @@ function ExamPaperWorkspace({ subjectId, paperId, backHref }: ExamPaperWorkspace
                               <ExamMarkdown content={item.stem} />
                             </div>
                             {isReviewStage && (
-                              <div className="mt-4 flex flex-wrap items-center gap-2 text-sm text-slate-500">
-                                <span>{formatDifficultyLabel(item.difficulty)}</span>
-                                <span>·</span>
-                                <span>{item.question_type}</span>
-                                <span>·</span>
-                                <span>{buildKnowledgeLabel(item)}</span>
+                              <div className="mt-4 flex flex-wrap items-center gap-2 text-sm">
+                                <span className="inline-flex rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-500">
+                                  {formatDifficultyLabel(item.difficulty)}
+                                </span>
+                                <span className="inline-flex rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-500">
+                                  {item.question_type}
+                                </span>
+                                <span className="mx-1 hidden h-4 w-px bg-slate-200 sm:inline-flex" />
+                                <span className="inline-flex max-w-full items-start gap-1.5 rounded-md border border-slate-200 bg-slate-50 px-2.5 py-1 font-semibold text-slate-500">
+                                  <Tags className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                                  <span className="min-w-0 break-words">{buildKnowledgeLabel(item)}</span>
+                                </span>
                               </div>
                             )}
                           {isChoice ? (
@@ -1617,6 +1673,7 @@ export function ExamsPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const { mode: examResultDisplayMode } = useExamResultDisplayPreference();
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [expandedGroups, setExpandedGroups] = useState({
     active: true,
@@ -1806,6 +1863,7 @@ export function ExamsPage() {
                               <ExamPaperCard
                                 key={item.id}
                                 item={item}
+                                resultDisplayMode={examResultDisplayMode}
                                 isDeleting={isDeleting}
                                 onOpen={() => navigate(`/subject/${subjectId}/exams/${item.id}`)}
                                 onDelete={handleDeleteExam}
