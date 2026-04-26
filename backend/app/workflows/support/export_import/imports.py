@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 import structlog
+from pydantic import ValidationError
 from sqlmodel import Session, select
 
 from app.models import ChatSession, RawFile, RetrievalChunk, Subject
@@ -26,11 +27,20 @@ from app.shared.infra.storage import (
     get_content_store,
     run_store_sync,
 )
+from app.shared.infra.exceptions import (
+    ImportPackageTooLargeError,
+    InvalidImportPackageError,
+)
 from app.workflows.support.export_import.exports import (
     TABLE_REGISTRY,
     _create_unique_slug,
     _import_table,
     _read_manifest,
+)
+from app.workflows.support.export_import.limits import (
+    MAX_IMPORT_ARCHIVE_MEMBERS,
+    MAX_IMPORT_PACKAGE_BYTES,
+    MAX_IMPORT_PACKAGE_SIZE_MB,
 )
 
 logger = structlog.get_logger()
@@ -52,12 +62,21 @@ def import_subject(
     with tempfile.TemporaryDirectory() as tmpdir_str:
         tmpdir = Path(tmpdir_str)
 
-        with zipfile.ZipFile(file_path, "r") as zf:
-            _safe_extract_archive(zf, tmpdir)
+        try:
+            with zipfile.ZipFile(file_path, "r") as zf:
+                _safe_extract_archive(zf, tmpdir)
+            manifest = _read_manifest(tmpdir)
+        except InvalidImportPackageError:
+            raise
+        except ImportPackageTooLargeError:
+            raise
+        except zipfile.BadZipFile as exc:
+            raise InvalidImportPackageError("请上传有效的 .atmx 文件。") from exc
+        except (OSError, ValueError, ValidationError) as exc:
+            raise InvalidImportPackageError(str(exc)) from exc
 
-        manifest = _read_manifest(tmpdir)
         new_slug = _create_unique_slug(session)
-        new_name = options.new_subject_name or manifest.subject.name
+        new_name = (options.new_subject_name or manifest.subject.name or "导入课程").strip() or "导入课程"
 
         id_map: dict[str, dict[Any, Any]] = {}
         imported_counts: dict[str, int] = {}
@@ -68,8 +87,7 @@ def import_subject(
                 db_file = tmpdir / "db" / f"{spec.name}.json"
                 if not db_file.exists():
                     continue
-                data = json.loads(db_file.read_text(encoding="utf-8"))
-                records = data.get("records", [])
+                records = _read_table_records(db_file, spec.name)
                 if not records:
                     continue
                 count = _import_table(
@@ -84,6 +102,11 @@ def import_subject(
                 )
                 imported_counts[spec.name] = count
 
+            _require_imported_subject(
+                session,
+                subject_slug=new_slug,
+                imported_counts=imported_counts,
+            )
             _unpack_files(
                 session,
                 tmpdir,
@@ -166,17 +189,68 @@ def _lookup_imported_id(old_id: Any, value_map: dict[Any, Any]) -> Any | None:
 
 
 def _safe_extract_archive(zf: zipfile.ZipFile, target_dir: Path) -> None:
-    """Extract a subject package without allowing paths outside target_dir."""
+    """Extract a subject package after validating paths and archive size."""
 
     target_root = target_dir.resolve()
-    for member in zf.infolist():
+    members = zf.infolist()
+    if len(members) > MAX_IMPORT_ARCHIVE_MEMBERS:
+        raise InvalidImportPackageError(
+            f"压缩包文件数超过 {MAX_IMPORT_ARCHIVE_MEMBERS} 个。"
+        )
+
+    total_size = 0
+    for member in members:
+        total_size += int(member.file_size or 0)
+        if total_size > MAX_IMPORT_PACKAGE_BYTES:
+            raise ImportPackageTooLargeError(MAX_IMPORT_PACKAGE_SIZE_MB)
         member_path = target_dir / member.filename
         resolved = member_path.resolve()
         try:
             resolved.relative_to(target_root)
         except ValueError as exc:
-            raise ValueError(f"Invalid .atmx file: unsafe archive path {member.filename!r}") from exc
+            raise InvalidImportPackageError(f"压缩包包含不安全路径 `{member.filename}`。") from exc
     zf.extractall(target_dir)
+
+
+def _read_table_records(db_file: Path, table_name: str) -> list[dict[str, Any]]:
+    """Read one exported table JSON file with strict shape checks."""
+
+    try:
+        data = json.loads(db_file.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise InvalidImportPackageError(f"`db/{table_name}.json` 不是有效 JSON。") from exc
+
+    if not isinstance(data, dict):
+        raise InvalidImportPackageError(f"`db/{table_name}.json` 顶层必须是对象。")
+
+    records = data.get("records", [])
+    if not isinstance(records, list):
+        raise InvalidImportPackageError(f"`db/{table_name}.json` 的 records 必须是数组。")
+
+    normalized: list[dict[str, Any]] = []
+    for index, record in enumerate(records, start=1):
+        if not isinstance(record, dict):
+            raise InvalidImportPackageError(
+                f"`db/{table_name}.json` 第 {index} 条记录必须是对象。"
+            )
+        normalized.append(record)
+    return normalized
+
+
+def _require_imported_subject(
+    session: Session,
+    *,
+    subject_slug: str,
+    imported_counts: dict[str, int],
+) -> None:
+    """Fail malformed packages before returning a phantom import success."""
+
+    if int(imported_counts.get("subject", 0) or 0) != 1:
+        raise InvalidImportPackageError("课程包缺少有效的 subject 数据。")
+
+    subject = session.exec(select(Subject).where(Subject.slug == subject_slug)).first()
+    if subject is None:
+        raise InvalidImportPackageError("课程包未能生成有效课程。")
 
 
 def _exported_raw_file_segments(extract_dir: Path) -> dict[Any, str]:

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from app.shared.infra.exceptions import DemoCourseCatalogNotConfiguredError
+from app.shared.infra.exceptions import DemoCourseCatalogNotConfiguredError, ImportPackageTooLargeError
 from app.workflows.support.export_import import courses
 
 
@@ -65,3 +65,46 @@ def test_local_mode_does_not_read_or_download_demo_courses(monkeypatch) -> None:
     assert courses.list_available_courses() == []
     with pytest.raises(DemoCourseCatalogNotConfiguredError):
         courses.download_course_package("linear-algebra")
+
+
+def test_demo_course_catalog_skips_package_urls_outside_configured_base(monkeypatch) -> None:
+    payload = {
+        "courses": [
+            {
+                "course_id": "unsafe",
+                "subject_name": "Unsafe",
+                "package_url": "https://other.example.test/demo.atmx",
+            },
+            {
+                "course_id": "traversal",
+                "subject_name": "Traversal",
+                "package_url": "https://cdn.example.test/demo-courses/%2e%2e/private.atmx",
+            }
+        ]
+    }
+
+    monkeypatch.setenv("APP_MODE", "cloud")
+    monkeypatch.setenv("S3_PUBLIC_BASE_URL", "https://cdn.example.test")
+    monkeypatch.setattr(courses, "_fetch_remote_catalog_payload", lambda _catalog_url: payload)
+
+    assert courses.list_available_courses() == []
+
+
+def test_demo_course_download_rejects_declared_oversized_package(monkeypatch) -> None:
+    payload = {
+        "courses": [
+            {
+                "course_id": "large",
+                "subject_name": "Large",
+                "package": "packages/large.atmx",
+                "file_size_bytes": courses.MAX_IMPORT_PACKAGE_BYTES + 1,
+            }
+        ]
+    }
+
+    monkeypatch.setenv("APP_MODE", "cloud")
+    monkeypatch.setenv("S3_PUBLIC_BASE_URL", "https://cdn.example.test")
+    monkeypatch.setattr(courses, "_fetch_remote_catalog_payload", lambda _catalog_url: payload)
+
+    with pytest.raises(ImportPackageTooLargeError):
+        courses.download_course_package("large")

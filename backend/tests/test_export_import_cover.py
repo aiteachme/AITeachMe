@@ -3,7 +3,11 @@
 import json
 import zipfile
 
+import pytest
+from sqlmodel import Session, SQLModel, create_engine
+
 from app.models import RawFile, Subject
+from app.shared.infra.exceptions import ImportPackageTooLargeError, InvalidImportPackageError
 from app.schemas.export_import import ExportOptions
 from app.workflows.support.export_import import exports
 from app.workflows.support.export_import import imports
@@ -183,3 +187,51 @@ def test_import_restores_docgen_cover_to_asset_directory_only(tmp_path, monkeypa
     assert fake.writes["users/user_a/subjects/math-imported/assets/docgen/cover.png"] == b"cover"
     assert "users/user_a/subjects/math-imported/knowledge_markdowns/merged_knowledge_base.md" not in fake.writes
     assert "users/user_a/subjects/math-imported/knowledge_markdowns/cover.png" not in fake.writes
+
+
+def test_import_rejects_package_without_subject_table(tmp_path) -> None:
+    package_path = tmp_path / "missing-subject.atmx"
+    with zipfile.ZipFile(package_path, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr(
+            "manifest.json",
+            json.dumps(
+                {
+                    "format_version": "1.0",
+                    "app_version": "0.1.0",
+                    "exporter": "AITeachMe",
+                    "subject": {"slug": "legacy", "name": "Legacy"},
+                },
+                ensure_ascii=False,
+            ),
+        )
+
+    engine = create_engine("sqlite:///:memory:")
+    SQLModel.metadata.create_all(engine)
+    with Session(engine) as session:
+        with pytest.raises(InvalidImportPackageError):
+            imports.import_subject(session, file_path=package_path, user_id="local")
+
+
+def test_import_rejects_archive_path_traversal(tmp_path) -> None:
+    package_path = tmp_path / "unsafe.atmx"
+    with zipfile.ZipFile(package_path, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr("../evil.txt", "bad")
+
+    extract_dir = tmp_path / "extract"
+    extract_dir.mkdir()
+    with zipfile.ZipFile(package_path, "r") as zf:
+        with pytest.raises(InvalidImportPackageError):
+            imports._safe_extract_archive(zf, extract_dir)
+
+
+def test_import_rejects_oversized_archive_payload(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(imports, "MAX_IMPORT_PACKAGE_BYTES", 4)
+    monkeypatch.setattr(imports, "MAX_IMPORT_PACKAGE_SIZE_MB", 1)
+
+    package_path = tmp_path / "too-large.atmx"
+    with zipfile.ZipFile(package_path, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr("manifest.json", "12345")
+
+    with zipfile.ZipFile(package_path, "r") as zf:
+        with pytest.raises(ImportPackageTooLargeError):
+            imports._safe_extract_archive(zf, tmp_path / "extract-large")
