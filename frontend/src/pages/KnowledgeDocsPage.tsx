@@ -4098,7 +4098,7 @@ export function KnowledgeDocsPage() {
         <BuildView
           isFetching={docMarkdownQuery.isFetching}
           progress={buildProgress}
-          statusText={buildPreview?.current_stage_description?.trim() || buildStatusText}
+          statusText={buildStatusText}
           buildPreview={buildPreview}
           buildMetrics={buildMetrics}
           sourceFiles={sourceFiles}
@@ -4281,7 +4281,7 @@ export function KnowledgeDocsPage() {
                       className="min-h-[600px] h-[70vh] rounded-xl border border-zinc-100 overflow-hidden"
                       isFetching={docMarkdownQuery.isFetching}
                       progress={buildProgress}
-                      statusText={buildPreview?.current_stage_description?.trim() || buildStatusText}
+                      statusText={buildStatusText}
                       buildPreview={buildPreview}
                       buildMetrics={buildMetrics}
                       sourceFiles={sourceFiles}
