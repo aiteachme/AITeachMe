@@ -235,8 +235,8 @@ class AuthNotReadyError(AITeachMeError):
     error_code = "AUTH_NOT_READY"
     status_code = HTTPStatus.SERVICE_UNAVAILABLE
 
-    def __init__(self) -> None:
-        super().__init__(detail="鉴权脚手架已预留，但当前尚未实现。")
+    def __init__(self, detail: str = "鉴权配置尚未就绪。") -> None:
+        super().__init__(detail=detail)
 
 
 # ── 知识图谱增量构建 + 多视图课程结构派生 ──

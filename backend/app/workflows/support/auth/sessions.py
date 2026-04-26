@@ -26,9 +26,10 @@ from app.shared.infra.env_support import (
     get_env_bool,
     get_env_int,
 )
-from app.shared.infra.exceptions import AITeachMeError, AuthDisabledError
+from app.shared.infra.exceptions import AITeachMeError, AuthDisabledError, AuthNotReadyError
 from app.shared.infra.runtime import (
     get_guest_cookie_name,
+    is_cloud_mode,
     is_local_mode,
     resolve_auth_enabled,
     resolve_guest_cookie_samesite,
@@ -51,6 +52,8 @@ logger = structlog.get_logger()
 
 _PASSWORD_SCHEME = "pbkdf2_sha256"
 _PASSWORD_ITERATIONS = 120_000
+_DEV_AUTH_TOKEN_SECRET = "aiteachme-dev-token-secret"
+_MIN_AUTH_TOKEN_SECRET_LENGTH = 32
 _GUEST_TOKEN_KIND = "guest"
 _VERIFICATION_PURPOSE_REGISTER = "register"
 _EMAIL_RE = re.compile(r"^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$")
@@ -69,7 +72,16 @@ def _as_utc(dt: datetime) -> datetime:
 
 
 def _auth_token_secret() -> str:
-    return get_env("AUTH_TOKEN_SECRET", "aiteachme-dev-token-secret") or "aiteachme-dev-token-secret"
+    secret = (get_env("AUTH_TOKEN_SECRET") or "").strip()
+    if len(secret) >= _MIN_AUTH_TOKEN_SECRET_LENGTH:
+        return secret
+
+    if resolve_auth_enabled() and is_cloud_mode():
+        raise AuthNotReadyError(
+            detail=f"云端鉴权已启用，但 AUTH_TOKEN_SECRET 未配置或长度不足 {_MIN_AUTH_TOKEN_SECRET_LENGTH} 位。"
+        )
+
+    return secret or _DEV_AUTH_TOKEN_SECRET
 
 
 def ensure_auth_enabled() -> None:
