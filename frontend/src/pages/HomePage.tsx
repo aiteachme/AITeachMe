@@ -24,6 +24,7 @@ import { apiClient, getApiErrorMessage } from "../api/client";
 import { unwrapOrvalResponse } from "../lib/unwrapOrvalResponse";
 import { cn } from "../lib/utils";
 import { isElectronRuntime } from "../lib/electronRuntime";
+import { useSystemSettingsOverview } from "../hooks/useSystemSettingsOverview";
 import {
   buildUnsupportedFilesMessage,
   FILE_ACCEPT,
@@ -415,6 +416,7 @@ export function HomePage() {
   const isElectron = isElectronRuntime();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const settingsOverview = useSystemSettingsOverview();
 
   const [prompt, setPrompt] = useState("");
   const [draftSubjectId, setDraftSubjectId] = useState<string | null>(null);
@@ -462,9 +464,13 @@ export function HomePage() {
   });
 
   // ── Courses query ──
+  const settingsOverviewReady = Boolean(settingsOverview);
+  const shouldShowDemoCourses = settingsOverview?.mode === "cloud";
+  const shouldShowLocalImportShortcut = settingsOverviewReady && !shouldShowDemoCourses;
   const { data: courses = [], isLoading: coursesLoading } = useQuery({
     queryKey: ["available-courses"],
     queryFn: fetchAvailableCourses,
+    enabled: shouldShowDemoCourses,
   });
 
   const courseImportMutation = useMutation({
@@ -676,6 +682,8 @@ export function HomePage() {
   });
 
   const isWorking = isCreatingDraftSubject || isStartingBuild || isUploadingFiles;
+  const hasDemoCourses = shouldShowDemoCourses && courses.length > 0;
+  const shouldShowDemoCourseSection = shouldShowDemoCourses && (coursesLoading || hasDemoCourses);
 
   return (
     <>
@@ -697,7 +705,9 @@ export function HomePage() {
         transition={{ duration: 0.6, ease: "easeOut" }}
         className={cn(
           "relative z-20 w-full max-w-[800px] flex flex-col items-center",
-          courses.length === 0 ? "justify-center min-h-[calc(100dvh-9rem)] translate-y-[8vh] md:translate-y-[11vh]" : "mt-[10vh]"
+          !shouldShowDemoCourseSection
+            ? "justify-center min-h-[calc(100dvh-9rem)] translate-y-[8vh] md:translate-y-[11vh]"
+            : "mt-[10vh]"
         )}
       >
         {/* ── Logo & Title ── */}
@@ -828,6 +838,17 @@ export function HomePage() {
                     )}
                     {hasEntryFiles ? "添加资料" : "添加资料"}
                   </button>
+                  {shouldShowLocalImportShortcut && (
+                    <button
+                      type="button"
+                      onClick={() => setImportOpen(true)}
+                      className="flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-[12px] font-medium text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+                      title="导入 .atmx 课程包"
+                    >
+                      <Package className="h-3.5 w-3.5" />
+                      导入课程包
+                    </button>
+                  )}
                   {isWorking && (
                     <span className="ml-2 flex items-center text-[12px] font-medium text-zinc-500">
                       <Loader2 className="mr-1.5 h-3 w-3 animate-spin" />
@@ -871,12 +892,13 @@ export function HomePage() {
       </motion.div>
 
       {/* ═══ Recent Classrooms / Demo Courses ═══ */}
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ delay: 0.5 }}
-        className="relative z-10 mt-12 w-full max-w-5xl flex flex-col items-center"
-      >
+      {shouldShowDemoCourseSection && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.5 }}
+          className="relative z-10 mt-12 w-full max-w-5xl flex flex-col items-center"
+        >
           {/* Section Toggle */}
           <button
             onClick={() => setRecentOpen(!recentOpen)}
@@ -922,15 +944,6 @@ export function HomePage() {
                     {coursesLoading && (
                       <div className="py-8 flex justify-center">
                         <Loader2 className="w-6 h-6 animate-spin text-slate-400" />
-                      </div>
-                    )}
-                    {!coursesLoading && courses.length === 0 && (
-                      <div className="py-12 text-center">
-                        <div className="flex items-center justify-center w-16 h-16 rounded-2xl bg-slate-100 mx-auto mb-4">
-                          <Package className="w-8 h-8 text-slate-400" />
-                        </div>
-                        <p className="text-sm font-medium text-slate-600 mb-1">暂无演示课程</p>
-                        <p className="text-xs text-slate-400">也可以通过上传导入 .atmx 课程包</p>
                       </div>
                     )}
                     {courses.length > 0 && (
@@ -1001,7 +1014,8 @@ export function HomePage() {
               </motion.div>
             )}
           </AnimatePresence>
-      </motion.div>
+        </motion.div>
+      )}
 
       {/* Footer */}
       <div className="mt-auto pt-12 pb-6 text-center text-sm text-slate-400 font-medium tracking-wide">

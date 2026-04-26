@@ -19,6 +19,7 @@ from app.shared.infra.exceptions import (
     DemoCourseCatalogUnavailableError,
     DemoCoursePackageNotFoundError,
 )
+from app.shared.infra.runtime import is_cloud_mode
 
 logger = structlog.get_logger()
 
@@ -50,6 +51,9 @@ class _RemoteCourseDescriptor:
 def list_available_courses() -> list[CoursePackageItem]:
     """List remote demo courses declared in the configured OSS catalog."""
 
+    if not _demo_courses_enabled():
+        return []
+
     catalog_url = get_demo_courses_index_url()
     if not catalog_url:
         return []
@@ -58,6 +62,9 @@ def list_available_courses() -> list[CoursePackageItem]:
 
 def download_course_package(identifier: str) -> tuple[Path, str]:
     """Download one remote `.atmx` package into a temporary local file."""
+
+    if not _demo_courses_enabled():
+        raise DemoCourseCatalogNotConfiguredError()
 
     descriptor = get_remote_course_descriptor(identifier)
     suffix = Path(descriptor.package_filename or "").suffix or ".atmx"
@@ -85,6 +92,9 @@ def download_course_package(identifier: str) -> tuple[Path, str]:
 def get_remote_course_descriptor(identifier: str) -> _RemoteCourseDescriptor:
     """Resolve one demo course descriptor by its stable identifier."""
 
+    if not _demo_courses_enabled():
+        raise DemoCourseCatalogNotConfiguredError()
+
     normalized = str(identifier or "").strip()
     if not normalized:
         raise DemoCoursePackageNotFoundError(identifier)
@@ -111,6 +121,10 @@ def get_demo_courses_index_url() -> str | None:
     if not base_url:
         return None
     return urljoin(base_url, _DEMO_COURSES_INDEX_PATH)
+
+
+def _demo_courses_enabled() -> bool:
+    return is_cloud_mode()
 
 
 def _get_demo_courses_timeout_s() -> float:

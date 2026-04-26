@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import pytest
+
+from app.shared.infra.exceptions import DemoCourseCatalogNotConfiguredError
 from app.workflows.support.export_import import courses
 
 
@@ -29,6 +32,7 @@ def test_script_generated_demo_course_catalog_shape_loads(monkeypatch) -> None:
         ],
     }
 
+    monkeypatch.setenv("APP_MODE", "cloud")
     monkeypatch.setenv("S3_PUBLIC_BASE_URL", "https://cdn.example.test")
     monkeypatch.setattr(courses, "_fetch_remote_catalog_payload", lambda _catalog_url: payload)
 
@@ -47,3 +51,17 @@ def test_script_generated_demo_course_catalog_shape_loads(monkeypatch) -> None:
         descriptor.package_url
         == "https://cdn.example.test/demo-courses/packages/linear-algebra/v20260426_120000/linear-algebra.atmx"
     )
+
+
+def test_local_mode_does_not_read_or_download_demo_courses(monkeypatch) -> None:
+    monkeypatch.setenv("APP_MODE", "local")
+    monkeypatch.setenv("S3_PUBLIC_BASE_URL", "https://cdn.example.test")
+
+    def fail_fetch(_catalog_url: str):
+        raise AssertionError("local mode should not fetch remote demo courses")
+
+    monkeypatch.setattr(courses, "_fetch_remote_catalog_payload", fail_fetch)
+
+    assert courses.list_available_courses() == []
+    with pytest.raises(DemoCourseCatalogNotConfiguredError):
+        courses.download_course_package("linear-algebra")

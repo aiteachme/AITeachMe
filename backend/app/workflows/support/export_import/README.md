@@ -7,24 +7,25 @@
 - Preview subject export size and table counts.
 - Export a subject into an `.atmx` package. Download filenames use `subject-name-subject-id.atmx`; the manifest keeps stable ids and extension metadata. Original uploaded files are intentionally not packaged.
 - Import an `.atmx` package as a new subject.
-- List remote demo-course packages from the configured OSS catalog.
+- List remote demo-course packages from the configured OSS catalog in cloud mode.
 
 ## Module Split
 
 - `exports.py`: 导出预览、打包、manifest 与导出侧共享规则
 - `imports.py`: 导入事务、ID 重映射、文件落盘与失败清理
-- `courses.py`: 线上演示课程目录读取与远程 `.atmx` 下载
+- `courses.py`: 云端演示课程目录读取与远程 `.atmx` 下载；本地模式不读取 OSS
 
 ## Runtime Paths
 
-- 演示课程主源：现有 `S3_PUBLIC_BASE_URL` 下固定的 `demo-courses/`
+- 演示课程主源：仅云端模式使用现有 `S3_PUBLIC_BASE_URL` 下固定的 `demo-courses/`
 - 默认课程索引：`<S3_PUBLIC_BASE_URL>/demo-courses/catalog/v1/index.json`
 - 课程索引由本机私有脚本 `scripts/private/demo_course_package.py` 自动维护；不要手写 OSS 上的 `index.json`
+- 本地模式：不请求 OSS，`GET /api/v1/courses` 返回空列表，手动 `.atmx` 上传导入仍可用
 
 ## Demo Course Paths
 
-- `GET /api/v1/courses`: 前端展示课程卡片。
-- `POST /api/v1/courses/{filename}/import`: 后端从 OSS 拉取 `.atmx` 后导入当前连接的运行环境；导入成功后出现在左侧学科列表。本地后端就是本机，云端后端就是云端账号。
+- `GET /api/v1/courses`: 云端前端展示课程卡片。
+- `POST /api/v1/courses/{filename}/import`: 云端后端从 OSS 拉取 `.atmx` 后导入当前账号；导入成功后出现在左侧学科列表。
 
 ## Export Data Boundary
 

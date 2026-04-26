@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { useMemo, useState } from "react";
 import { Outlet, useLocation } from "react-router-dom";
 import { Sidebar } from "./Sidebar";
 import { TopBar } from "./TopBar";
@@ -6,11 +6,7 @@ import { AiInteractionProvider, AiInteractionWindow, type AiConversationScope } 
 import { isFullBleedSubjectPath } from "../../lib/subjectNavigation";
 import { SettingsDialog } from "../settings/SettingsDialog";
 import { cn } from "../../lib/utils";
-import {
-  ensureSystemSettingsOverviewLoaded,
-  getStoredSystemSettingsOverview,
-  subscribeSystemSettingsOverview,
-} from "../../lib/systemSettings";
+import { useSystemSettingsOverview } from "../../hooks/useSystemSettingsOverview";
 import { isElectronRuntime } from "../../lib/electronRuntime";
 
 export function Layout() {
@@ -40,18 +36,7 @@ export function Layout() {
   }, [pathname, subjectId]);
 
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const settingsOverview = useSyncExternalStore(
-    subscribeSystemSettingsOverview,
-    getStoredSystemSettingsOverview,
-    () => null,
-  );
-
-  useEffect(() => {
-    if (!settingsOverview) {
-      void ensureSystemSettingsOverviewLoaded();
-    }
-  }, [settingsOverview]);
-
+  const settingsOverview = useSystemSettingsOverview();
   const isCloudRuntime = settingsOverview?.mode === "cloud";
   const shouldShowTopBar = !isExamFocusPage && isCloudRuntime;
   const routeOutlet = <Outlet key={pathname} />;

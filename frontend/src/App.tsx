@@ -61,7 +61,7 @@ const SUBJECT_PAGE_ELEMENTS: Record<SubjectRouteId, ReactElement> = {
 
 function RuntimeSettingsBootstrap() {
   useEffect(() => {
-    void ensureSystemSettingsOverviewLoaded();
+    void ensureSystemSettingsOverviewLoaded(true);
   }, []);
   return null;
 }
