@@ -63,7 +63,15 @@ function formatQuestionType(type: string) {
 }
 
 function GeneratingQuestionPlaceholder({ row }: { row: PaperPreviewRow }) {
-  const isChoice = row.shape === "choice" || row.type === "single_choice" || row.type === "multiple_choice";
+  const isChoice =
+    row.shape === "choice" ||
+    row.shape === "judge" ||
+    row.type === "single_choice" ||
+    row.type === "multiple_choice" ||
+    row.type === "true_false";
+  const lineWidths = row.density && row.density > 2
+    ? ["w-11/12", "w-8/12", "w-10/12", "w-6/12"]
+    : ["w-11/12", "w-8/12", "w-10/12"];
   return (
     <div
       id={`exam-question-${row.order}`}
@@ -92,11 +100,14 @@ function GeneratingQuestionPlaceholder({ row }: { row: PaperPreviewRow }) {
             </span>
           </div>
 
-          <div className="relative overflow-hidden rounded-xl border border-slate-200 bg-slate-50/80 p-4">
+          <div className="exam-preview-skeleton-panel rounded-xl border border-slate-200 p-5 sm:p-6">
             <div className="space-y-3">
-              <span className="exam-preview-flow-line block h-3 w-11/12 rounded-full" />
-              <span className="exam-preview-flow-line block h-3 w-8/12 rounded-full" />
-              <span className="exam-preview-flow-line block h-3 w-10/12 rounded-full" />
+              {lineWidths.map((width, index) => (
+                <span
+                  key={`${row.order}-stem-${index}`}
+                  className={`exam-preview-flow-line relative z-[1] block h-3 rounded-full ${width}`}
+                />
+              ))}
             </div>
           </div>
 
@@ -105,16 +116,24 @@ function GeneratingQuestionPlaceholder({ row }: { row: PaperPreviewRow }) {
               {[0, 1, 2, 3].map((optionIndex) => (
                 <div
                   key={optionIndex}
-                  className="flex items-center gap-3 rounded-lg border border-slate-200 bg-white px-3 py-3 sm:gap-4 sm:px-4 sm:py-3.5"
+                  className="exam-preview-skeleton-panel flex items-center gap-3 rounded-lg border border-slate-200 px-3 py-3 sm:gap-4 sm:px-4 sm:py-3.5"
                 >
-                  <span className="h-5 w-5 shrink-0 rounded-full border-2 border-slate-300 bg-white" />
-                  <span className="exam-preview-flow-line block h-2.5 w-8/12 rounded-full" />
+                  <span className="relative z-[1] h-5 w-5 shrink-0 rounded-full border-2 border-slate-300 bg-white" />
+                  <span
+                    className={`exam-preview-flow-line relative z-[1] block h-2.5 rounded-full ${
+                      optionIndex % 2 === 0 ? "w-8/12" : "w-6/12"
+                    }`}
+                  />
                 </div>
               ))}
             </div>
           ) : (
-            <div className="mt-6 min-h-32 rounded-lg border border-slate-200 bg-white p-4">
-              <span className="exam-preview-flow-line block h-3 w-7/12 rounded-full" />
+            <div className="exam-preview-skeleton-panel mt-6 min-h-32 rounded-lg border border-slate-200 p-4">
+              <div className="relative z-[1] space-y-3">
+                <span className="exam-preview-flow-line block h-3 w-7/12 rounded-full" />
+                <span className="exam-preview-flow-line block h-3 w-10/12 rounded-full" />
+                <span className="exam-preview-flow-line block h-3 w-5/12 rounded-full" />
+              </div>
             </div>
           )}
         </div>

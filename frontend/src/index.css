@@ -423,6 +423,15 @@
   }
 }
 
+@keyframes exam-preview-skeleton-sweep {
+  0% {
+    transform: translateX(-140%);
+  }
+  100% {
+    transform: translateX(240%);
+  }
+}
+
 .exam-preview-unified-flow {
   --exam-preview-flow-duration: 2.2s;
 }
@@ -439,20 +448,36 @@
 }
 
 .exam-preview-flow-line {
-  background-image: linear-gradient(
-    112deg,
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(90deg, rgba(226, 232, 240, 0.78), rgba(241, 245, 249, 0.92));
+  box-shadow: inset 0 0 0 1px rgba(203, 213, 225, 0.18);
+}
+
+.exam-preview-flow-line::after,
+.exam-preview-skeleton-panel::after {
+  position: absolute;
+  inset: 0;
+  content: "";
+  pointer-events: none;
+  background: linear-gradient(
+    100deg,
     rgba(255, 255, 255, 0) 0%,
-    rgba(255, 255, 255, 0) 34%,
-    rgba(255, 255, 255, 0.34) 44%,
-    rgba(255, 255, 255, 0.72) 50%,
-    rgba(255, 255, 255, 0.34) 56%,
-    rgba(255, 255, 255, 0) 66%,
+    rgba(255, 255, 255, 0.16) 36%,
+    rgba(255, 255, 255, 0.88) 50%,
+    rgba(255, 255, 255, 0.16) 64%,
     rgba(255, 255, 255, 0) 100%
   );
-  background-repeat: no-repeat;
-  background-size: 18rem 12rem;
-  animation: exam-preview-flow var(--exam-preview-flow-duration, 2.2s) linear infinite;
-  box-shadow: 0 0 5px rgba(255, 255, 255, 0.14);
+  animation: exam-preview-skeleton-sweep var(--exam-preview-flow-duration, 2.2s) ease-in-out infinite;
+  transform: translateX(-140%);
+}
+
+.exam-preview-skeleton-panel {
+  position: relative;
+  overflow: hidden;
+  background:
+    linear-gradient(180deg, rgba(248, 250, 252, 0.96), rgba(255, 255, 255, 0.9)),
+    linear-gradient(90deg, rgba(226, 232, 240, 0.62), rgba(241, 245, 249, 0.88));
 }
 /* ----------- Text Gradient Animation ----------- */
 @keyframes text-gradient {
