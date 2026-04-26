@@ -5,12 +5,14 @@ from __future__ import annotations
 import json
 from datetime import datetime
 
+import sqlalchemy as sa
 from sqlmodel import Session, func, select
 
 from app.models import (
     ExamPaper,
     ExamPaperItem,
     QuestionTemplate,
+    UserKnowledgeState,
 )
 
 
@@ -253,9 +255,13 @@ def delete_exam_paper_cascade(session: Session, *, paper_id: int) -> bool:
     if paper is None:
         return False
 
-    paper_items = list_items_by_paper(session, paper_id)
-    for item in paper_items:
-        session.delete(item)
+    session.exec(
+        sa.update(UserKnowledgeState)
+        .where(UserKnowledgeState.source_exam_paper_id == paper_id)
+        .values(source_exam_paper_id=None)
+    )
+
+    session.exec(sa.delete(ExamPaperItem).where(ExamPaperItem.exam_paper_id == paper_id))
 
     session.delete(paper)
     session.commit()
