@@ -98,15 +98,24 @@ export function useChatSession(subjectId: string, options: UseChatSessionOptions
   const onMessageSettled = options.onMessageSettled;
 
   const [messages, setMessages] = useState<ChatSessionMessage[]>([]);
+  const [messagesSessionId, setMessagesSessionId] = useState<string | null>(sessionId);
   const [historyLoaded, setHistoryLoaded] = useState(false);
   const [historyError, setHistoryError] = useState<string | null>(null);
   const [isStreaming, setIsStreaming] = useState(false);
   const abortControllerRef = useRef<AbortController | null>(null);
+  const isStreamingRef = useRef(false);
+  const streamSeqRef = useRef(0);
+
+  function setStreamingState(nextValue: boolean) {
+    isStreamingRef.current = nextValue;
+    setIsStreaming(nextValue);
+  }
 
   useEffect(() => {
     let cancelled = false;
 
     async function loadHistory() {
+      const requestedSessionId = sessionId;
       if (!enabled) {
         setHistoryLoaded(true);
         return;
@@ -114,6 +123,7 @@ export function useChatSession(subjectId: string, options: UseChatSessionOptions
 
       if (!subjectId) {
         setMessages([]);
+        setMessagesSessionId(null);
         setHistoryError(null);
         setHistoryLoaded(true);
         return;
@@ -121,6 +131,7 @@ export function useChatSession(subjectId: string, options: UseChatSessionOptions
       if (!sessionId && !loadWithoutSession) {
         if (!preserveMessagesWithoutSession) {
           setMessages([]);
+          setMessagesSessionId(null);
         }
         setHistoryError(null);
         setHistoryLoaded(true);
@@ -141,6 +152,7 @@ export function useChatSession(subjectId: string, options: UseChatSessionOptions
           return;
         }
         setMessages(items.map(mapHistoryItemToSessionMessage));
+        setMessagesSessionId(requestedSessionId);
         setHistoryError(null);
       } catch (error: unknown) {
         if (cancelled) {
@@ -174,7 +186,7 @@ export function useChatSession(subjectId: string, options: UseChatSessionOptions
 
   async function sendMessage(input: ChatSendRequest, sendOptions: SendMessageOptions = {}): Promise<SendMessageResult> {
     const question = input.question.trim();
-    if (!subjectId || !question || isStreaming) {
+    if (!subjectId || !question || isStreamingRef.current) {
       return { accepted: false, sessionId: null };
     }
 
@@ -205,7 +217,8 @@ export function useChatSession(subjectId: string, options: UseChatSessionOptions
     };
 
     setMessages((current) => [...current, userMessage, assistantMessage]);
-    setIsStreaming(true);
+    setMessagesSessionId(resolvedSessionId);
+    setStreamingState(true);
     setHistoryError(null);
     onMessageStart?.({
       input,
@@ -218,6 +231,8 @@ export function useChatSession(subjectId: string, options: UseChatSessionOptions
     });
 
     const controller = new AbortController();
+    const streamSeq = streamSeqRef.current + 1;
+    streamSeqRef.current = streamSeq;
     abortControllerRef.current = controller;
     let terminalEventReceived = false;
     let streamFailedDetail: string | null = null;
@@ -252,6 +267,7 @@ export function useChatSession(subjectId: string, options: UseChatSessionOptions
             const donePayload = parseChatDonePayload(payload);
             terminalEventReceived = true;
             streamSessionId = donePayload.sessionId ?? streamSessionId;
+            setMessagesSessionId(streamSessionId);
             if (donePayload.sessionId) {
               onSessionResolved?.(donePayload.sessionId);
             }
@@ -350,8 +366,10 @@ export function useChatSession(subjectId: string, options: UseChatSessionOptions
         });
       }
     } finally {
-      setIsStreaming(false);
-      abortControllerRef.current = null;
+      if (streamSeqRef.current === streamSeq) {
+        setStreamingState(false);
+        abortControllerRef.current = null;
+      }
       onMessageSettled?.({
         input,
         localThreadId,
@@ -368,6 +386,7 @@ export function useChatSession(subjectId: string, options: UseChatSessionOptions
 
   function abortStream() {
     abortControllerRef.current?.abort();
+    setStreamingState(false);
   }
 
   async function clearHistory() {
@@ -383,20 +402,23 @@ export function useChatSession(subjectId: string, options: UseChatSessionOptions
         await clearChatApiApiV1SubjectsSubjectChatsClearPost(subjectId, {});
       }
       setMessages([]);
+      setMessagesSessionId(sessionId ?? null);
       setHistoryError(null);
     } catch (error: unknown) {
       setHistoryError(getApiErrorMessage(error, "清空聊天记录失败"));
     }
   }
 
-  function replaceMessages(nextMessages: ChatSessionMessage[]) {
+  function replaceMessages(nextMessages: ChatSessionMessage[], nextSessionId: string | null = sessionId) {
     setMessages(nextMessages);
+    setMessagesSessionId(nextSessionId);
     setHistoryError(null);
     setHistoryLoaded(true);
   }
 
   return {
     messages,
+    messagesSessionId,
     historyLoaded,
     historyError,
     isStreaming,
