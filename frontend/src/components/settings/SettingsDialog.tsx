@@ -163,7 +163,7 @@ export function SettingsDialog({ isOpen, onClose }: SettingsDialogProps) {
                     envDraft={envDraft}
                     onServerChange={patchServerSetting}
                     onEnvChange={patchEnvSetting}
-                    loading={isOverviewLoading}
+                    loading={isOverviewLoading && !overview}
                     error={overviewError}
                   />
                 )}

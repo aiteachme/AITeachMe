@@ -17,6 +17,16 @@ code defaults
 
 - `backend/app/shared/infra/settings/settings.py::get_settings()`
 
+设置页暴露的 env 类配置另有一层轻量运行时覆盖：
+
+```text
+system_runtime_settings.__env_overrides__
+  -> .env / deployment env
+  -> get_env()
+```
+
+也就是说，本地用户在设置页保存的模型网关、搜索、解析服务授权会优先于 `.env`；某个 key 没有数据库覆盖时，才继续使用 `.env` / 部署平台变量。
+
 ## 2. 什么进入 effective settings
 
 只有明确属于“项目级运行策略”的配置才进入 `Settings` schema，例如：
@@ -55,7 +65,7 @@ code defaults
 
 ## 5. system_runtime_settings 的加载时机
 
-数据库初始化完成后，会从 `system_runtime_settings` 表读取全局覆盖，并写入当前进程内的 settings override。
+数据库初始化完成后，会从 `system_runtime_settings` 表读取全局覆盖，并写入当前进程内的 settings override；同时会加载 `__env_overrides__`，让 `get_env()` 先读数据库覆盖值。
 
 因此：
 

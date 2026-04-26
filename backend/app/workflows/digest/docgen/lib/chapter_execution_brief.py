@@ -9,7 +9,7 @@ import structlog
 
 from app.shared.infra.llm_support import acompletion_with_fallback
 from app.workflows.digest.docgen.lib.defaults import DEFAULT_DOCGEN_CHAPTER_BRIEF_PARALLELISM
-from app.workflows.digest.docgen.lib.model_policy import DocGenModelStep, docgen_completion_kwargs
+from app.workflows.digest.docgen.lib.model_policy import DocGenModelStep, docgen_completion_kwargs_with_metadata
 from app.workflows.digest.docgen.lib.models import ChapterExecutionBrief, clean_string_list, clean_text
 from app.workflows.digest.docgen.mode_profiles import get_docgen_mode_profile
 from app.workflows.digest.docgen.prompts import build_chapter_execution_brief_messages
@@ -79,11 +79,13 @@ async def build_chapter_execution_brief(
                     claim_targets=claim_targets,
                     confusion_targets=confusion_targets,
                 ),
-                **docgen_completion_kwargs(DocGenModelStep.CHAPTER_EXECUTION_BRIEF),
+                **docgen_completion_kwargs_with_metadata(
+                    DocGenModelStep.CHAPTER_EXECUTION_BRIEF,
+                    digest_mode=digest_mode,
+                    extra_metadata=extra_metadata,
+                    docgen_stage="build_chapter_execution_brief",
+                ),
                 response_model=ChapterExecutionBrief,
-                temperature=0.1,
-                max_tokens=420,
-                extra_metadata={"docgen_stage": "build_chapter_execution_brief", **dict(extra_metadata or {})},
             )
     except Exception as exc:
         logger.warning("docgen_chapter_brief_failed", chapter_index=fallback.chapter_index, error=str(exc))

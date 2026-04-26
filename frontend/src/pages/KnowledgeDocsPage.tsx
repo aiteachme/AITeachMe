@@ -21,6 +21,7 @@ import {
   Sparkles,
   RefreshCw,
   ExternalLink,
+  ListOrdered,
   SlidersHorizontal,
 } from "lucide-react";
 import { cn } from "../lib/utils";
@@ -113,6 +114,7 @@ interface KnowledgeDocsViewPrefs {
   widePage: boolean;
   showToc: boolean;
   showCommentPanel: boolean;
+  autoHeadingNumbering: boolean;
 }
 
 interface SelectionHighlight {
@@ -129,6 +131,7 @@ interface CommentThreadView {
   selectedText: string;
   comments: Comment[];
   createdAt: number;
+  sourceOrder: number;
 }
 
 interface CommentThreadLayout {
@@ -248,6 +251,7 @@ const AI_INTERACTION_CLOSED_EVENT = "aiteachme:ai-sidebar-closed";
 const SELECTION_SELECTED_TEXT_LIMIT = 1200;
 const SELECTION_LOCAL_CONTEXT_CHARS = 900;
 const SELECTION_SECTION_CONTEXT_CHARS = 3200;
+const SELECTION_SOURCE_ORDER_STRIDE = 1_000_000;
 
 function isTransientSelectionThreadId(threadId: string): boolean {
   return (
@@ -281,6 +285,7 @@ function createDefaultKnowledgeDocsViewPrefs(): KnowledgeDocsViewPrefs {
     widePage: false,
     showToc: true,
     showCommentPanel: false,
+    autoHeadingNumbering: true,
   };
 }
 
@@ -294,6 +299,7 @@ function normalizeKnowledgeDocsViewPrefs(raw: unknown): KnowledgeDocsViewPrefs {
     widePage: candidate.widePage === true,
     showToc: candidate.showToc !== false,
     showCommentPanel: candidate.showCommentPanel === true,
+    autoHeadingNumbering: candidate.autoHeadingNumbering !== false,
   };
 }
 
@@ -463,6 +469,20 @@ function clipContextText(text: string, limit: number): string {
   return `${normalized.slice(0, Math.max(0, limit - 1)).trimEnd()}…`;
 }
 
+function decodeRoutePart(value: string): string {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
+function routeIdsEqual(a: string | null | undefined, b: string | null | undefined): boolean {
+  const left = a?.trim() ?? "";
+  const right = b?.trim() ?? "";
+  return left === right || (Boolean(left) && Boolean(right) && decodeRoutePart(left) === decodeRoutePart(right));
+}
+
 function collectNodeText(nodes: Node[]): string {
   return normalizeSelectionContextText(
     nodes
@@ -490,7 +510,57 @@ function findHeadingPath(contentRoot: HTMLElement, anchorId: string): HTMLElemen
   return stack;
 }
 
+function isVisibleHeading(heading: HTMLElement): boolean {
+  return heading.getClientRects().length > 0;
+}
+
+function findHeadingSectionElement(heading: HTMLElement): HTMLElement | null {
+  const headingId = heading.getAttribute("data-heading-id");
+  if (!headingId) return null;
+  const section = heading.parentElement;
+  if (!section?.matches("[data-heading-section-id]")) return null;
+  return section.getAttribute("data-heading-section-id") === headingId ? section : null;
+}
+
+function findDirectSectionHeading(section: HTMLElement): HTMLElement | null {
+  for (const child of Array.from(section.children)) {
+    if (child instanceof HTMLElement && child.hasAttribute("data-heading-id")) {
+      return child;
+    }
+  }
+  return null;
+}
+
+function findNearestVisibleHeadingForTarget(heading: HTMLElement): HTMLElement | null {
+  if (isVisibleHeading(heading)) {
+    return heading;
+  }
+
+  let node = heading.parentElement;
+  while (node) {
+    if (node.matches("[data-heading-section-id]")) {
+      const sectionHeading = findDirectSectionHeading(node);
+      if (sectionHeading && isVisibleHeading(sectionHeading)) {
+        return sectionHeading;
+      }
+    }
+    node = node.parentElement;
+  }
+  return null;
+}
+
+function getElementContentTop(container: HTMLElement, element: HTMLElement): number {
+  const containerRect = container.getBoundingClientRect();
+  const rect = element.getBoundingClientRect();
+  return rect.top - containerRect.top + container.scrollTop;
+}
+
 function collectSectionNodes(heading: HTMLElement): Node[] {
+  const section = findHeadingSectionElement(heading);
+  if (section) {
+    return [section];
+  }
+
   const boundaryLevel = getHeadingLevel(heading);
   const nodes: Node[] = [heading];
   let node = heading.nextSibling;
@@ -503,6 +573,168 @@ function collectSectionNodes(heading: HTMLElement): Node[] {
     node = node.nextSibling;
   }
   return nodes;
+}
+
+function findHeadingById(contentRoot: HTMLElement | null, headingId: string): HTMLElement | null {
+  if (!contentRoot || !headingId) {
+    return null;
+  }
+  return Array.from(contentRoot.querySelectorAll<HTMLElement>("[data-heading-id]"))
+    .find((heading) => heading.getAttribute("data-heading-id") === headingId) ?? null;
+}
+
+function findSelectionHeading(anchorHeading: HTMLElement | null, selectedText: string): HTMLElement | null {
+  if (!anchorHeading) {
+    return null;
+  }
+
+  const target = selectedText.trim();
+  if (!target) {
+    return anchorHeading;
+  }
+
+  const anchorSection = findHeadingSectionElement(anchorHeading);
+  if (!anchorSection) {
+    return anchorHeading;
+  }
+
+  let bestHeading: HTMLElement = anchorHeading;
+  let bestLevel = getHeadingLevel(anchorHeading);
+  let bestScore = 0;
+  let bestTextLength = Number.POSITIVE_INFINITY;
+  let bestIndex = Number.MAX_SAFE_INTEGER;
+  const candidateSections = [
+    anchorSection,
+    ...Array.from(anchorSection.querySelectorAll<HTMLElement>("[data-heading-section-id]")),
+  ];
+
+  for (const section of candidateSections) {
+    const heading = findDirectSectionHeading(section);
+    if (!heading) {
+      continue;
+    }
+    const sectionText = collectNodeText([section]);
+    const match = scoreSelectionInText(sectionText, target);
+    if (match.score <= 0) {
+      continue;
+    }
+
+    const level = getHeadingLevel(heading);
+    const textLength = sectionText.length;
+    const isBetter =
+      match.score > bestScore ||
+      (match.score === bestScore && level > bestLevel) ||
+      (match.score === bestScore && level === bestLevel && textLength < bestTextLength) ||
+      (match.score === bestScore && level === bestLevel && textLength === bestTextLength && match.index < bestIndex);
+    if (isBetter) {
+      bestHeading = heading;
+      bestLevel = level;
+      bestScore = match.score;
+      bestTextLength = textLength;
+      bestIndex = match.index;
+    }
+  }
+
+  return bestHeading;
+}
+
+function findSelectionHeadingInDocument(
+  contentRoot: HTMLElement | null,
+  anchorId: string,
+  selectedText: string
+): HTMLElement | null {
+  if (!contentRoot) {
+    return null;
+  }
+
+  const target = selectedText.trim();
+  const anchorHeading = findHeadingById(contentRoot, anchorId);
+  if (!target) {
+    return anchorHeading;
+  }
+
+  if (anchorHeading) {
+    const anchorSectionText = collectNodeText(collectSectionNodes(anchorHeading));
+    if (scoreSelectionInText(anchorSectionText, target).score > 0) {
+      return findSelectionHeading(anchorHeading, target);
+    }
+  }
+
+  let bestHeading: HTMLElement | null = null;
+  let bestLevel = 0;
+  let bestScore = 0;
+  let bestTextLength = Number.POSITIVE_INFINITY;
+  let bestIndex = Number.MAX_SAFE_INTEGER;
+  const candidateSections = Array.from(contentRoot.querySelectorAll<HTMLElement>("[data-heading-section-id]"));
+
+  for (const section of candidateSections) {
+    const heading = findDirectSectionHeading(section);
+    if (!heading) {
+      continue;
+    }
+    const sectionText = collectNodeText([section]);
+    const match = scoreSelectionInText(sectionText, target);
+    if (match.score <= 0) {
+      continue;
+    }
+
+    const level = getHeadingLevel(heading);
+    const textLength = sectionText.length;
+    const isBetter =
+      !bestHeading ||
+      match.score > bestScore ||
+      (match.score === bestScore && level > bestLevel) ||
+      (match.score === bestScore && level === bestLevel && textLength < bestTextLength) ||
+      (match.score === bestScore && level === bestLevel && textLength === bestTextLength && match.index < bestIndex);
+    if (isBetter) {
+      bestHeading = heading;
+      bestLevel = level;
+      bestScore = match.score;
+      bestTextLength = textLength;
+      bestIndex = match.index;
+    }
+  }
+
+  return bestHeading ?? anchorHeading;
+}
+
+function resolveSelectionSourceOrder(
+  contentRoot: HTMLElement | null,
+  anchorId: string,
+  selectedText: string,
+  tocOrderMap: Map<string, number>
+): number {
+  const fallbackOrder = tocOrderMap.get(anchorId) ?? Number.MAX_SAFE_INTEGER;
+  if (!contentRoot || !anchorId) {
+    return fallbackOrder;
+  }
+
+  const anchorHeading = findHeadingById(contentRoot, anchorId);
+  const selectionHeading = findSelectionHeadingInDocument(contentRoot, anchorId, selectedText) ?? anchorHeading;
+  const selectionHeadingId = selectionHeading?.getAttribute("data-heading-id") ?? anchorId;
+  const headingOrder = tocOrderMap.get(selectionHeadingId) ?? fallbackOrder;
+  if (headingOrder === Number.MAX_SAFE_INTEGER) {
+    return headingOrder;
+  }
+  if (!selectionHeading || !selectedText.trim()) {
+    return headingOrder * SELECTION_SOURCE_ORDER_STRIDE;
+  }
+
+  let selectionIndex = scoreSelectionInText(collectNodeText(collectSectionNodes(selectionHeading)), selectedText).index;
+  if (selectionIndex < 0 && anchorHeading && anchorHeading !== selectionHeading) {
+    selectionIndex = scoreSelectionInText(collectNodeText(collectSectionNodes(anchorHeading)), selectedText).index;
+  }
+  const boundedIndex = selectionIndex >= 0
+    ? Math.min(selectionIndex, SELECTION_SOURCE_ORDER_STRIDE - 1)
+    : 0;
+  return headingOrder * SELECTION_SOURCE_ORDER_STRIDE + boundedIndex;
+}
+
+function compareCommentThreadViewOrder(left: CommentThreadView, right: CommentThreadView): number {
+  if (left.sourceOrder !== right.sourceOrder) {
+    return left.sourceOrder - right.sourceOrder;
+  }
+  return left.createdAt - right.createdAt;
 }
 
 interface TextSearchPosition {
@@ -532,7 +764,7 @@ function normalizeSelectionSearchText(text: string): string {
 function shouldIgnoreSelectionTextNode(textNode: Text): boolean {
   const parent = textNode.parentElement;
   if (!parent) return true;
-  if (parent.closest("script, style, noscript, .katex-mathml, [hidden]")) {
+  if (parent.closest("script, style, noscript, .katex-mathml, [hidden], [data-heading-number], [data-heading-toggle]")) {
     return true;
   }
   try {
@@ -744,6 +976,59 @@ function findSelectionIndex(sectionText: string, selectedText: string): number {
   return -1;
 }
 
+function scoreSelectionInText(sectionText: string, selectedText: string): { score: number; index: number } {
+  const exactIndex = findSelectionIndex(sectionText, selectedText);
+  if (exactIndex >= 0) {
+    return { score: 10_000 + Math.min(normalizeSelectionContextText(selectedText).length, 1_000), index: exactIndex };
+  }
+
+  const tokens = buildSelectionMatchTokens(selectedText);
+  if (tokens.length === 0) {
+    return { score: 0, index: -1 };
+  }
+
+  const condensedSource = createCondensedSearchText(normalizeSelectionSearchText(sectionText));
+  if (!condensedSource.text) {
+    return { score: 0, index: -1 };
+  }
+
+  let matchedCount = 0;
+  let matchedWeight = 0;
+  let totalWeight = 0;
+  let sourceStart = Number.POSITIVE_INFINITY;
+
+  for (const token of tokens) {
+    const tokenWeight = Math.min(token.length, 12);
+    totalWeight += tokenWeight;
+    const tokenIndex = condensedSource.text.indexOf(token);
+    if (tokenIndex < 0) {
+      continue;
+    }
+    const tokenSourceStart = condensedSource.sourceIndexByCondensed[tokenIndex];
+    if (tokenSourceStart === undefined) {
+      continue;
+    }
+    matchedCount += 1;
+    matchedWeight += tokenWeight;
+    sourceStart = Math.min(sourceStart, tokenSourceStart);
+  }
+
+  const hasStrongSingleToken = matchedCount === 1 && matchedWeight >= 8;
+  const hasEnoughTokenCoverage =
+    matchedCount >= 2 &&
+    matchedWeight >= Math.min(10, Math.max(4, totalWeight * 0.35));
+
+  if ((!hasStrongSingleToken && !hasEnoughTokenCoverage) || !Number.isFinite(sourceStart)) {
+    return { score: 0, index: -1 };
+  }
+
+  const coverage = totalWeight > 0 ? matchedWeight / totalWeight : 0;
+  return {
+    score: Math.round(coverage * 1_000) + matchedWeight,
+    index: sourceStart,
+  };
+}
+
 function excerptAroundSelection(sectionText: string, selectedText: string, maxChars: number): { text: string; truncated: boolean } {
   if (sectionText.length <= maxChars) {
     return { text: sectionText, truncated: false };
@@ -932,15 +1217,25 @@ function buildCommentThreadLayout(
 const DocMarkdown = memo(function DocMarkdown({
   content,
   subjectId,
+  headingNumbering,
+  collapsedHeadingIds,
+  onHeadingCollapseChange,
 }: {
   content: string;
   subjectId?: string;
+  headingNumbering: boolean;
+  collapsedHeadingIds: ReadonlySet<string>;
+  onHeadingCollapseChange: (id: string, collapsed: boolean) => void;
 }) {
   return (
     <MarkdownViewer
       content={content}
       variant="document"
       headingAnchors
+      headingNumbering={headingNumbering}
+      collapsibleHeadings
+      collapsedHeadingIds={collapsedHeadingIds}
+      onHeadingCollapseChange={onHeadingCollapseChange}
       assetSubject={subjectId}
     />
   );
@@ -1474,6 +1769,7 @@ export function KnowledgeDocsPage() {
   const [isTocCollapsed, setIsTocCollapsed] = useState(false);
   const [isCommentCollapsed, setIsCommentCollapsed] = useState(false);
   const [collapsedTocIds, setCollapsedTocIds] = useState<Set<string>>(new Set());
+  const [collapsedDocHeadingIds, setCollapsedDocHeadingIds] = useState<Set<string>>(new Set());
 
   // Floating selection toolbar state
   const [floatingToolbar, setFloatingToolbar] = useState<FloatingToolbar | null>(null);
@@ -1527,6 +1823,8 @@ export function KnowledgeDocsPage() {
   const lastAutoCommentHighlightHeadingRef = useRef(activeHeading);
   const pendingSelectionJumpRef = useRef<SelectionJumpEventDetail | null>(null);
   const handledRouteSelectionJumpRef = useRef<number | null>(null);
+  const collapsedDocHeadingIdsRef = useRef<Set<string>>(new Set());
+  const pendingHeadingCollapseScrollRef = useRef<{ id: string; top: number } | null>(null);
 
   const isCompactToc = viewportWidth < TOC_DRAWER_BREAKPOINT;
   const isCompactComment = viewportWidth < COMMENT_DRAWER_BREAKPOINT;
@@ -1552,6 +1850,101 @@ export function KnowledgeDocsPage() {
 
   const updateViewPrefs = useCallback((updater: (prev: KnowledgeDocsViewPrefs) => KnowledgeDocsViewPrefs) => {
     setViewPrefs((prev) => normalizeKnowledgeDocsViewPrefs(updater(prev)));
+  }, []);
+
+  const handleDocHeadingCollapseChange = useCallback((id: string, collapsed: boolean) => {
+    const container = scrollRef.current;
+    const heading = findHeadingById(contentAreaRef.current, id);
+    if (container && heading && isVisibleHeading(heading)) {
+      pendingHeadingCollapseScrollRef.current = {
+        id,
+        top: heading.getBoundingClientRect().top,
+      };
+    }
+
+    const next = new Set(collapsedDocHeadingIdsRef.current);
+    if (collapsed) {
+      next.add(id);
+    } else {
+      next.delete(id);
+    }
+    collapsedDocHeadingIdsRef.current = next;
+    setCollapsedDocHeadingIds(next);
+  }, []);
+
+  useLayoutEffect(() => {
+    const restoreHeadingPosition = () => {
+      const pending = pendingHeadingCollapseScrollRef.current;
+      if (!pending) {
+        return;
+      }
+
+      const container = scrollRef.current;
+      const heading = findHeadingById(contentAreaRef.current, pending.id);
+      if (!container || !heading || !isVisibleHeading(heading)) {
+        return;
+      }
+
+      const nextTop = heading.getBoundingClientRect().top;
+      const delta = nextTop - pending.top;
+      if (Math.abs(delta) < 0.5) {
+        return;
+      }
+
+      const previousScrollBehavior = container.style.scrollBehavior;
+      container.style.scrollBehavior = "auto";
+      container.scrollTop += delta;
+      if (previousScrollBehavior) {
+        container.style.scrollBehavior = previousScrollBehavior;
+      } else {
+        container.style.removeProperty("scroll-behavior");
+      }
+    };
+
+    restoreHeadingPosition();
+    const rafId = window.requestAnimationFrame(() => {
+      restoreHeadingPosition();
+      pendingHeadingCollapseScrollRef.current = null;
+    });
+
+    return () => window.cancelAnimationFrame(rafId);
+  }, [collapsedDocHeadingIds]);
+
+  const expandCollapsedDocHeadingSections = useCallback((heading: HTMLElement, options?: { includeSelf?: boolean }): boolean => {
+    const headingId = heading.getAttribute("data-heading-id") ?? "";
+    const includeSelf = options?.includeSelf === true;
+    const idsToExpand: string[] = [];
+    let node = heading.parentElement;
+    const collapsedIds = collapsedDocHeadingIdsRef.current;
+
+    while (node) {
+      if (node.matches("[data-heading-section-id]")) {
+        const sectionId = node.getAttribute("data-heading-section-id") ?? "";
+        const isSelfSection = sectionId === headingId;
+        if (sectionId && (includeSelf || !isSelfSection) && collapsedIds.has(sectionId)) {
+          idsToExpand.push(sectionId);
+        }
+      }
+      node = node.parentElement;
+    }
+
+    if (idsToExpand.length === 0) {
+      return false;
+    }
+
+    const next = new Set(collapsedIds);
+    let changed = false;
+    for (const id of idsToExpand) {
+      if (next.delete(id)) {
+        changed = true;
+      }
+    }
+    if (!changed) {
+      return false;
+    }
+    collapsedDocHeadingIdsRef.current = next;
+    setCollapsedDocHeadingIds(next);
+    return true;
   }, []);
 
   const showTocScrollbarTemporarily = useCallback(() => {
@@ -1707,6 +2100,12 @@ export function KnowledgeDocsPage() {
       }
     });
     return () => window.cancelAnimationFrame(rafId);
+  }, [renderedMarkdown, viewPrefs.autoHeadingNumbering]);
+
+  useEffect(() => {
+    const next = new Set<string>();
+    collapsedDocHeadingIdsRef.current = next;
+    setCollapsedDocHeadingIds(next);
   }, [renderedMarkdown]);
 
   useEffect(() => {
@@ -1925,8 +2324,11 @@ export function KnowledgeDocsPage() {
     const findActiveHeadingId = () => {
       const containerRect = container.getBoundingClientRect();
       const activationTop = containerRect.top + getHeadingActivationOffset(container);
-      let current = headings[0]?.getAttribute("data-heading-id") ?? "";
+      let current = headings.find(isVisibleHeading)?.getAttribute("data-heading-id") ?? "";
       for (const heading of headings) {
+        if (!isVisibleHeading(heading)) {
+          continue;
+        }
         const rect = heading.getBoundingClientRect();
         const id = heading.getAttribute("data-heading-id") ?? "";
         if (!id) continue;
@@ -1943,7 +2345,7 @@ export function KnowledgeDocsPage() {
       window.cancelAnimationFrame(rafId);
       rafId = window.requestAnimationFrame(() => {
         const lockedHeadingId = activeHeadingLockRef.current;
-        if (lockedHeadingId && headings.some((heading) => heading.getAttribute("data-heading-id") === lockedHeadingId)) {
+        if (lockedHeadingId && headings.some((heading) => heading.getAttribute("data-heading-id") === lockedHeadingId && isVisibleHeading(heading))) {
           setActiveHeading((prev) => (prev === lockedHeadingId ? prev : lockedHeadingId));
           return;
         }
@@ -1983,7 +2385,7 @@ export function KnowledgeDocsPage() {
       window.removeEventListener("resize", handleScroll);
       window.removeEventListener("keydown", handleKeyDown);
     };
-  }, [renderedMarkdown]);
+  }, [collapsedDocHeadingIds, renderedMarkdown]);
 
   useEffect(() => {
     if (!isTocVisible) return;
@@ -2025,12 +2427,19 @@ export function KnowledgeDocsPage() {
     headingFlashTimersRef.current.set(headingId, timer);
   }, []);
 
-  const scrollToHeading = useCallback((id: string, options: { lockActive?: boolean } = {}) => {
+  const scrollToHeading = useCallback((id: string, options: { lockActive?: boolean; retryingAfterExpand?: boolean } = {}) => {
     const container = scrollRef.current;
     if (!container) return;
     const headingRoot = contentAreaRef.current;
-    const el = (headingRoot ?? container).querySelector(`[data-heading-id="${id}"]`) as HTMLElement | null;
+    const el = findHeadingById(headingRoot ?? container, id);
     if (!el) return;
+
+    if (!options.retryingAfterExpand && expandCollapsedDocHeadingSections(el)) {
+      window.requestAnimationFrame(() => {
+        scrollToHeading(id, { ...options, retryingAfterExpand: true });
+      });
+      return;
+    }
 
     if (options.lockActive !== false) {
       activeHeadingLockRef.current = id;
@@ -2044,7 +2453,7 @@ export function KnowledgeDocsPage() {
     const targetTop = Math.max(0, Math.min(maxScrollTop, headingTop - getHeadingActivationOffset(container)));
     container.scrollTo({ top: targetTop, behavior: "smooth" });
     flashHeading(el);
-  }, [flashHeading]);
+  }, [expandCollapsedDocHeadingSections, flashHeading]);
 
 
   const captureRangeSegments = useCallback((range: Range): HighlightSegment[] => {
@@ -2258,23 +2667,28 @@ export function KnowledgeDocsPage() {
       if (matchedSegments.length > 0) {
         return chooseNearestSegments(matchedSegments);
       }
+      const approximateRange = findApproximateRangeForSelectedText(index, target);
+      if (approximateRange) {
+        const approximateSegments = captureRangeSegments(approximateRange);
+        if (approximateSegments.length > 0) {
+          return approximateSegments;
+        }
+      }
       return locateApproximateTableSelection(roots);
     };
 
-    const heading = contentRoot.querySelector(`[data-heading-id="${anchorId}"]`) as HTMLElement | null;
+    const heading = findHeadingById(contentRoot, anchorId);
     if (heading) {
-      const allHeadings = Array.from(contentRoot.querySelectorAll<HTMLElement>("[data-heading-id]"));
-      const headingIndex = allHeadings.findIndex((node) => node === heading);
-      const nextHeading = headingIndex >= 0 ? allHeadings[headingIndex + 1] ?? null : null;
-      const sectionRoots: Node[] = [];
-      let node: Node | null = heading;
-      while (node && node !== nextHeading) {
-        sectionRoots.push(node);
-        node = node.nextSibling;
-      }
-      const sectionSegments = locateInRoots(sectionRoots);
+      const selectionHeading = findSelectionHeadingInDocument(contentRoot, anchorId, target);
+      const sectionSegments = locateInRoots(collectSectionNodes(selectionHeading ?? heading));
       if (sectionSegments.length > 0) {
         return sectionSegments;
+      }
+      if (selectionHeading && selectionHeading !== heading) {
+        const anchorSegments = locateInRoots(collectSectionNodes(heading));
+        if (anchorSegments.length > 0) {
+          return anchorSegments;
+        }
       }
     }
 
@@ -2294,6 +2708,24 @@ export function KnowledgeDocsPage() {
       highlight.segments,
     );
   }, [buildSelectionSegmentsFromText, captureSelectionSegments]);
+
+  const refreshSelectionHighlightSegments = useCallback(() => {
+    setSelectionHighlights((prev) => {
+      let changed = false;
+      const next = prev.map((highlight) => {
+        const segments = resolveHighlightSegments(highlight);
+        if (highlightSegmentsEqual(highlight.segments, segments)) {
+          return highlight;
+        }
+        changed = true;
+        return {
+          ...highlight,
+          segments,
+        };
+      });
+      return changed ? next : prev;
+    });
+  }, [resolveHighlightSegments]);
 
   const createLocalThreadId = useCallback((anchorId: string) => (
     `local-${anchorId}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
@@ -2595,7 +3027,7 @@ export function KnowledgeDocsPage() {
   useEffect(() => {
     const handleQuickChatUpdated = (event: Event) => {
       const detail = (event as CustomEvent<QuickChatSyncEventDetail>).detail;
-      if (detail?.subjectId && detail.subjectId !== subjectId) {
+      if (detail?.subjectId && !routeIdsEqual(detail.subjectId, subjectId)) {
         return;
       }
       if (!detail?.phase) {
@@ -3059,9 +3491,7 @@ export function KnowledgeDocsPage() {
               selectionContentTop = rect.top - containerRect.top + containerNode.scrollTop + rect.height / 2;
             }
             const nextSegments = captureRangeSegments(range);
-            if (nextSegments.length > 0) {
-              segments = nextSegments;
-            }
+            segments = nextSegments;
           }
           const nextTop = computeCommentComposerTop(selectionViewportTop);
           if (
@@ -3105,7 +3535,7 @@ export function KnowledgeDocsPage() {
       container?.removeEventListener("scroll", updateTop);
       observer?.disconnect();
     };
-  }, [captureRangeSegments, computeCommentComposerTop, floatingComment?.anchorId, isCommentVisible, showDesktopCommentPanel]);
+  }, [captureRangeSegments, collapsedDocHeadingIds, computeCommentComposerTop, floatingComment?.anchorId, isCommentVisible, showDesktopCommentPanel]);
 
   const activeStreamingCount = useMemo(
     () => Object.values(threadStreaming).filter(Boolean).length,
@@ -3135,24 +3565,19 @@ export function KnowledgeDocsPage() {
         const anchorId = threadComments.find((item) => item.anchorId)?.anchorId ?? "";
         const selectedText = threadComments.find((item) => item.selectedText)?.selectedText ?? "";
         const createdAt = threadComments[0]?.createdAt ?? 0;
+        const sourceOrder = resolveSelectionSourceOrder(contentAreaRef.current, anchorId, selectedText, tocOrderMap);
         return {
           threadId,
           anchorId,
           selectedText,
           comments: threadComments,
           createdAt,
+          sourceOrder,
         };
       })
       .filter((item) => item.anchorId)
-      .sort((left, right) => {
-        const leftOrder = tocOrderMap.get(left.anchorId) ?? Number.MAX_SAFE_INTEGER;
-        const rightOrder = tocOrderMap.get(right.anchorId) ?? Number.MAX_SAFE_INTEGER;
-        if (leftOrder !== rightOrder) {
-          return leftOrder - rightOrder;
-        }
-        return left.createdAt - right.createdAt;
-      })
-  ), [commentsByThread, tocOrderMap]);
+      .sort(compareCommentThreadViewOrder)
+  ), [commentsByThread, hasRenderedMarkdown, renderedMarkdown, tocOrderMap]);
   const commentThreadIds = useMemo(
     () => commentThreads.map((item) => item.threadId),
     [commentThreads]
@@ -3171,16 +3596,60 @@ export function KnowledgeDocsPage() {
 
     const highlight = selectionHighlights.find((item) => item.threadId === threadId);
     const headingRoot = contentAreaRef.current;
-    const heading = (headingRoot ?? container).querySelector(`[data-heading-id="${thread.anchorId}"]`) as HTMLElement | null;
+    const heading = findHeadingById(headingRoot ?? container, thread.anchorId);
+    const selectionHeading = findSelectionHeadingInDocument(headingRoot ?? container, thread.anchorId, thread.selectedText);
+    const fallbackHeading = selectionHeading ?? heading;
+
+    if (selectionHeading && expandCollapsedDocHeadingSections(selectionHeading, { includeSelf: true })) {
+      window.requestAnimationFrame(() => {
+        centerThreadInViewport(threadId);
+      });
+      return;
+    }
+
+    const currentSegments = thread.selectedText
+      ? buildSelectionSegmentsFromText(thread.anchorId, thread.selectedText, highlight?.segments)
+      : [];
+    if (currentSegments.length > 0) {
+      setSelectionHighlights((prev) => {
+        const existingIndex = prev.findIndex((item) => item.threadId === threadId);
+        const nextHighlight: SelectionHighlight = {
+          id: `highlight-${threadId}`,
+          threadId,
+          anchorId: thread.anchorId,
+          selectedText: thread.selectedText,
+          segments: currentSegments,
+        };
+        if (existingIndex < 0) {
+          return [nextHighlight, ...prev].slice(0, 200);
+        }
+        if (
+          prev[existingIndex].anchorId === thread.anchorId &&
+          prev[existingIndex].selectedText === thread.selectedText &&
+          highlightSegmentsEqual(prev[existingIndex].segments, currentSegments)
+        ) {
+          return prev;
+        }
+        const next = [...prev];
+        next[existingIndex] = {
+          ...next[existingIndex],
+          anchorId: thread.anchorId,
+          selectedText: thread.selectedText,
+          segments: currentSegments,
+        };
+        return next;
+      });
+    }
 
     let targetCenter = 0;
-    if (highlight && highlight.segments.length > 0) {
-      const top = Math.min(...highlight.segments.map((segment) => segment.top));
-      const bottom = Math.max(...highlight.segments.map((segment) => segment.top + segment.height));
+    const targetSegments = currentSegments.length > 0 ? currentSegments : highlight?.segments ?? [];
+    if (targetSegments.length > 0) {
+      const top = Math.min(...targetSegments.map((segment) => segment.top));
+      const bottom = Math.max(...targetSegments.map((segment) => segment.top + segment.height));
       targetCenter = (top + bottom) / 2;
-    } else if (heading) {
+    } else if (fallbackHeading) {
       const containerRect = container.getBoundingClientRect();
-      const headingRect = heading.getBoundingClientRect();
+      const headingRect = fallbackHeading.getBoundingClientRect();
       targetCenter = container.scrollTop + (headingRect.top - containerRect.top) + headingRect.height / 2;
     } else {
       return;
@@ -3190,19 +3659,20 @@ export function KnowledgeDocsPage() {
     const targetTop = Math.max(0, Math.min(maxScrollTop, targetCenter - container.clientHeight / 2));
     container.scrollTo({ top: targetTop, behavior: "smooth" });
 
-    if (heading) {
-      flashHeading(heading);
+    const targetHeadingId = selectionHeading?.getAttribute("data-heading-id") ?? thread.anchorId;
+    if (fallbackHeading) {
+      flashHeading(fallbackHeading);
     }
-    setActiveHeading(thread.anchorId);
-  }, [commentThreadById, flashHeading, selectionHighlights]);
+    setActiveHeading(targetHeadingId);
+  }, [buildSelectionSegmentsFromText, commentThreadById, expandCollapsedDocHeadingSections, flashHeading, selectionHighlights]);
 
   const jumpToSelectionLocation = useCallback((detail: SelectionJumpEventDetail): boolean => {
-    if (detail.subjectId && detail.subjectId !== subjectId) {
+    if (detail.subjectId && !routeIdsEqual(detail.subjectId, subjectId)) {
       return true;
     }
     const anchorId = detail.anchorId?.trim() ?? "";
     const selectedText = detail.selectedText?.trim() ?? "";
-    if (!anchorId || !hasRenderedMarkdown) {
+    if ((!anchorId && !selectedText) || !hasRenderedMarkdown) {
       return false;
     }
 
@@ -3212,12 +3682,22 @@ export function KnowledgeDocsPage() {
       return false;
     }
 
-    const heading = contentRoot.querySelector(`[data-heading-id="${anchorId}"]`) as HTMLElement | null;
+    const heading = findHeadingById(contentRoot, anchorId);
+    const selectionHeading = findSelectionHeadingInDocument(contentRoot, anchorId, selectedText);
+    const fallbackHeading = selectionHeading ?? heading;
     const sessionId = detail.sessionId?.trim() ?? "";
-    const threadId = sessionId || `jump-${anchorId}-${selectedText.slice(0, 16)}`;
+    const threadId = sessionId || `jump-${anchorId || "selection"}-${selectedText.slice(0, 16)}`;
     if (sessionId) {
       setThreadSessionIds((prev) => (prev[threadId] === sessionId ? prev : { ...prev, [threadId]: sessionId }));
     }
+
+    if (selectionHeading && expandCollapsedDocHeadingSections(selectionHeading, { includeSelf: true })) {
+      window.requestAnimationFrame(() => {
+        jumpToSelectionLocation(detail);
+      });
+      return true;
+    }
+
     const segments = selectedText ? buildSelectionSegmentsFromText(anchorId, selectedText) : [];
 
     if (selectedText && segments.length > 0) {
@@ -3231,17 +3711,18 @@ export function KnowledgeDocsPage() {
       const targetCenter = (targetTop + targetBottom) / 2;
       const maxScrollTop = Math.max(0, container.scrollHeight - container.clientHeight);
       const nextTop = Math.max(0, Math.min(maxScrollTop, targetCenter - container.clientHeight / 2));
-      activeHeadingLockRef.current = anchorId;
-      setActiveHeading((prev) => (prev === anchorId ? prev : anchorId));
+      const activeTargetHeadingId = selectionHeading?.getAttribute("data-heading-id") ?? anchorId;
+      activeHeadingLockRef.current = activeTargetHeadingId;
+      setActiveHeading((prev) => (prev === activeTargetHeadingId ? prev : activeTargetHeadingId));
       container.scrollTo({ top: nextTop, behavior: "smooth" });
-      if (heading) {
-        flashHeading(heading);
+      if (fallbackHeading) {
+        flashHeading(fallbackHeading);
       }
       return true;
     }
 
-    if (heading) {
-      scrollToHeading(anchorId);
+    if (fallbackHeading) {
+      scrollToHeading(selectionHeading?.getAttribute("data-heading-id") ?? anchorId);
       if (selectedText) {
         setActiveCommentThreadId(threadId);
         setPinnedThreadId(threadId);
@@ -3251,7 +3732,7 @@ export function KnowledgeDocsPage() {
     }
 
     return false;
-  }, [addSelectionHighlight, buildSelectionSegmentsFromText, flashHeading, hasRenderedMarkdown, scrollToHeading, subjectId]);
+  }, [addSelectionHighlight, buildSelectionSegmentsFromText, expandCollapsedDocHeadingSections, flashHeading, hasRenderedMarkdown, scrollToHeading, subjectId]);
 
   useEffect(() => {
     const handleSelectionJump = (event: Event) => {
@@ -3354,8 +3835,23 @@ export function KnowledgeDocsPage() {
     if (isCompactComment || commentListOriginTop === null) {
       return next;
     }
+    const container = scrollRef.current;
+    const headingRoot = contentAreaRef.current;
+    const resolveThreadDocumentTop = (thread: CommentThreadView): number | undefined => {
+      if (!container || !headingRoot) {
+        return undefined;
+      }
+      const heading = findHeadingById(headingRoot, thread.anchorId);
+      const selectionHeading = findSelectionHeadingInDocument(headingRoot, thread.anchorId, thread.selectedText);
+      const targetHeading = selectionHeading ?? heading;
+      if (!targetHeading) {
+        return undefined;
+      }
+      const visibleHeading = findNearestVisibleHeadingForTarget(targetHeading);
+      return visibleHeading ? getElementContentTop(container, visibleHeading) : undefined;
+    };
     for (const thread of commentThreads) {
-      const highlightTop = highlightTopByThreadId.get(thread.threadId);
+      const highlightTop = highlightTopByThreadId.get(thread.threadId) ?? resolveThreadDocumentTop(thread);
       if (highlightTop === undefined) {
         continue;
       }
@@ -3368,7 +3864,7 @@ export function KnowledgeDocsPage() {
       );
     }
     return next;
-  }, [commentListOriginTop, commentThreads, floatingComment, highlightTopByThreadId, isCompactComment]);
+  }, [collapsedDocHeadingIds, commentListOriginTop, commentThreads, floatingComment, highlightTopByThreadId, isCompactComment]);
   const desktopCommentLayoutThreads = useMemo<CommentThreadView[]>(() => {
     const threads = isCompactComment || !floatingComment
       ? commentThreads
@@ -3378,24 +3874,22 @@ export function KnowledgeDocsPage() {
       selectedText: floatingComment.selectedText,
       comments: [],
       createdAt: Number.MAX_SAFE_INTEGER,
+      sourceOrder: resolveSelectionSourceOrder(
+        contentAreaRef.current,
+        floatingComment.anchorId,
+        floatingComment.selectedText,
+        tocOrderMap,
+      ),
     }];
 
     return [...threads].sort((left, right) => {
+      if (left.sourceOrder !== right.sourceOrder) {
+        return left.sourceOrder - right.sourceOrder;
+      }
       const leftTop = desiredTopByThreadId.get(left.threadId);
       const rightTop = desiredTopByThreadId.get(right.threadId);
       if (leftTop !== undefined && rightTop !== undefined && Math.abs(leftTop - rightTop) > 2) {
         return leftTop - rightTop;
-      }
-      if (leftTop !== undefined && rightTop === undefined) {
-        return -1;
-      }
-      if (leftTop === undefined && rightTop !== undefined) {
-        return 1;
-      }
-      const leftOrder = tocOrderMap.get(left.anchorId) ?? Number.MAX_SAFE_INTEGER;
-      const rightOrder = tocOrderMap.get(right.anchorId) ?? Number.MAX_SAFE_INTEGER;
-      if (leftOrder !== rightOrder) {
-        return leftOrder - rightOrder;
       }
       return left.createdAt - right.createdAt;
     });
@@ -3697,21 +4191,7 @@ export function KnowledgeDocsPage() {
     const refreshHighlightLayout = () => {
       window.cancelAnimationFrame(rafId);
       rafId = window.requestAnimationFrame(() => {
-        setSelectionHighlights((prev) => {
-          let changed = false;
-          const next = prev.map((highlight) => {
-            const segments = resolveHighlightSegments(highlight);
-            if (segments.length === 0 || highlightSegmentsEqual(highlight.segments, segments)) {
-              return highlight;
-            }
-            changed = true;
-            return {
-              ...highlight,
-              segments,
-            };
-          });
-          return changed ? next : prev;
-        });
+        refreshSelectionHighlightSegments();
       });
     };
 
@@ -3737,11 +4217,11 @@ export function KnowledgeDocsPage() {
       observer?.disconnect();
     };
   }, [
-    buildSelectionSegmentsFromText,
+    collapsedDocHeadingIds,
     hasRenderedMarkdown,
     isCommentCollapsed,
     isCompactComment,
-    resolveHighlightSegments,
+    refreshSelectionHighlightSegments,
     isTocCollapsed,
     pageWideMode,
     viewPrefs.showCommentPanel,
@@ -3755,38 +4235,24 @@ export function KnowledgeDocsPage() {
 
     let rafId = 0;
     let settleTimer = 0;
-    const refreshHighlights = () => {
-      setSelectionHighlights((prev) => {
-        let changed = false;
-        const next = prev.map((highlight) => {
-          const segments = resolveHighlightSegments(highlight);
-          if (segments.length === 0 || highlightSegmentsEqual(highlight.segments, segments)) {
-            return highlight;
-          }
-          changed = true;
-          return { ...highlight, segments };
-        });
-        return changed ? next : prev;
-      });
-    };
 
     const startedAt = performance.now();
     const tick = () => {
-      refreshHighlights();
+      refreshSelectionHighlightSegments();
       if (performance.now() - startedAt < 1200) {
         rafId = window.requestAnimationFrame(tick);
       }
     };
 
-    refreshHighlights();
+    refreshSelectionHighlightSegments();
     rafId = window.requestAnimationFrame(tick);
-    settleTimer = window.setTimeout(refreshHighlights, 1400);
+    settleTimer = window.setTimeout(refreshSelectionHighlightSegments, 1400);
 
     return () => {
       window.cancelAnimationFrame(rafId);
       window.clearTimeout(settleTimer);
     };
-  }, [hasRenderedMarkdown, isAssistantOpen, resolveHighlightSegments]);
+  }, [collapsedDocHeadingIds, hasRenderedMarkdown, isAssistantOpen, refreshSelectionHighlightSegments]);
 
   const activeCommentIndex = useMemo(() => {
     if (commentThreadIds.length === 0) return -1;
@@ -4299,12 +4765,7 @@ export function KnowledgeDocsPage() {
                     selectedText={thread.selectedText}
                     isActive={highlightedThreadId === thread.threadId}
                     onFocus={() => focusCommentThread(thread.threadId, { scrollToDoc: false, scrollThreadIntoView: false })}
-                    onJumpToAnchor={(id) => {
-                      setActiveCommentThreadId(thread.threadId);
-                    setPinnedThreadId(thread.threadId);
-                    setIsAutoCommentHighlightSuppressed(false);
-                    scrollToHeading(id);
-                  }}
+                    onJumpToAnchor={() => focusCommentThread(thread.threadId, { pinToSelection: true, scrollThreadIntoView: false })}
                   onOpenAiInteraction={() => openAiInteractionFromThread(thread.threadId)}
                   onSizeChange={scheduleDesktopCommentLayoutRefresh}
                   compactMode
@@ -4660,7 +5121,13 @@ export function KnowledgeDocsPage() {
                           onViewModeChange={setDocViewMode}
                         />
                       )}
-                      <DocMarkdown content={renderedMarkdown} subjectId={subjectId} />
+                      <DocMarkdown
+                        content={renderedMarkdown}
+                        subjectId={subjectId}
+                        headingNumbering={viewPrefs.autoHeadingNumbering}
+                        collapsedHeadingIds={collapsedDocHeadingIds}
+                        onHeadingCollapseChange={handleDocHeadingCollapseChange}
+                      />
                     </>
                   )}
                 </article>
@@ -4795,6 +5262,28 @@ export function KnowledgeDocsPage() {
               </div>
               <span className={cn("ml-3 flex h-6 w-11 shrink-0 rounded-full p-0.5 transition", viewPrefs.showCommentPanel ? "bg-slate-900" : "bg-slate-200")}>
                 <span className={cn("h-5 w-5 rounded-full bg-white shadow-sm transition", viewPrefs.showCommentPanel ? "translate-x-5" : "translate-x-0")} />
+              </span>
+            </button>
+            <div className="my-2 h-px bg-slate-100" />
+            <button
+              type="button"
+              onClick={() => {
+                updateViewPrefs((prev) => ({ ...prev, autoHeadingNumbering: !prev.autoHeadingNumbering }));
+              }}
+              className="flex w-full items-center justify-between rounded-xl px-3 py-3 text-left transition hover:bg-slate-50"
+              aria-pressed={viewPrefs.autoHeadingNumbering}
+            >
+              <div className="flex min-w-0 items-start gap-3">
+                <span className="mt-0.5 inline-flex h-8 w-8 items-center justify-center rounded-lg bg-blue-50 text-blue-600">
+                  <ListOrdered className="h-4 w-4" />
+                </span>
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-slate-900">标题自动编号</p>
+                  <p className="mt-1 text-xs leading-5 text-slate-500">为一二三级标题显示飞书风格序号；序号不会进入划词内容。</p>
+                </div>
+              </div>
+              <span className={cn("ml-3 flex h-6 w-11 shrink-0 rounded-full p-0.5 transition", viewPrefs.autoHeadingNumbering ? "bg-slate-900" : "bg-slate-200")}>
+                <span className={cn("h-5 w-5 rounded-full bg-white shadow-sm transition", viewPrefs.autoHeadingNumbering ? "translate-x-5" : "translate-x-0")} />
               </span>
             </button>
             <div className="my-2 h-px bg-slate-100" />

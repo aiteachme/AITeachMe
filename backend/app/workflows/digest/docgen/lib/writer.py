@@ -24,7 +24,7 @@ from app.workflows.digest.docgen.lib.asset_requests import (
     has_asset_request,
     strip_asset_requests,
 )
-from app.workflows.digest.docgen.lib.model_policy import DocGenModelStep, docgen_completion_kwargs
+from app.workflows.digest.docgen.lib.model_policy import DocGenModelStep, docgen_completion_kwargs_with_metadata
 from app.workflows.digest.docgen.lib.textbook_style import (
     build_textbook_heading,
     choose_heading_focus,
@@ -35,6 +35,7 @@ from app.workflows.digest.docgen.mode_profiles import get_docgen_mode_profile
 _PLACEHOLDER_TOKEN_MAP = {
     "asset_request": ASSET_REQUEST_LANGUAGE,
 }
+
 
 class DocGenWriterRuntime(BaseTracedExecution):
     @property
@@ -82,7 +83,11 @@ class DocGenWriterRuntime(BaseTracedExecution):
             chapter_count=chapter_count,
             execution_contract=execution_contract,
         )
-        writer_model_kwargs = docgen_completion_kwargs(DocGenModelStep.WRITER, digest_mode=digest_mode)
+        writer_model_kwargs = docgen_completion_kwargs_with_metadata(
+            DocGenModelStep.WRITER,
+            digest_mode=digest_mode,
+            extra_metadata=self.context.trace_metadata(chapter_index=self.context.chapter_index),
+        )
         markdown = ""
         if on_stream_update is not None and self.context.llm_caller is None:
             chunks: list[str] = []
@@ -107,7 +112,6 @@ class DocGenWriterRuntime(BaseTracedExecution):
             markdown = await llm(
                 messages,
                 **writer_model_kwargs,
-                extra_metadata=self.context.trace_metadata(chapter_index=self.context.chapter_index),
             )
 
         markdown = strip_asset_requests(str(markdown).strip())
@@ -236,10 +240,13 @@ class DocGenWriterRuntime(BaseTracedExecution):
         try:
             repaired = await llm(
                 messages,
-                **docgen_completion_kwargs(DocGenModelStep.HEADING_REPAIR),
-                extra_metadata=self.context.trace_metadata(
-                    chapter_index=chapter_index,
-                    substep="heading_repair",
+                **docgen_completion_kwargs_with_metadata(
+                    DocGenModelStep.HEADING_REPAIR,
+                    digest_mode=digest_mode,
+                    extra_metadata=self.context.trace_metadata(
+                        chapter_index=chapter_index,
+                        substep="heading_repair",
+                    ),
                 ),
             )
         except Exception:

@@ -1,9 +1,10 @@
-import { Children, useEffect, useMemo, useState, type ReactNode } from "react";
+import { Children, useCallback, useEffect, useMemo, useState, type ComponentPropsWithoutRef, type ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import rehypeHighlight from "rehype-highlight";
 import rehypeKatex from "rehype-katex";
+import { ChevronRight } from "lucide-react";
 import "katex/dist/katex.min.css";
 
 import { cn } from "../../lib/utils";
@@ -11,6 +12,7 @@ import { MermaidBlock } from "./MermaidBlock";
 
 type MarkdownViewerVariant = "default" | "document" | "planner";
 type CalloutKind = "note" | "tip" | "important" | "warning" | "caution";
+type CollapsibleHeadings = boolean | readonly number[];
 const CALLOUT_PATTERN = "note|tip|important|warning|caution";
 const MERMAID_LANGUAGE_ALIASES = new Set(["mermaid", "maymaid", "mermaind", "mermaide"]);
 const BLANK_TOKEN = "{{blank}}";
@@ -19,6 +21,7 @@ const BLANK_NODE_CLASS =
 
 type MarkdownAstNode = {
   type?: string;
+  depth?: number;
   value?: string;
   children?: MarkdownAstNode[];
   data?: {
@@ -33,6 +36,10 @@ interface MarkdownViewerProps {
   assetSubject?: string;
   variant?: MarkdownViewerVariant;
   headingAnchors?: boolean;
+  headingNumbering?: boolean;
+  collapsibleHeadings?: CollapsibleHeadings;
+  collapsedHeadingIds?: ReadonlySet<string>;
+  onHeadingCollapseChange?: (id: string, collapsed: boolean) => void;
 }
 
 interface ViewerStyles {
@@ -60,6 +67,14 @@ interface ViewerStyles {
   image: string;
   imageCaption: string;
 }
+
+type MarkdownHeadingComponentProps = ComponentPropsWithoutRef<"h1"> & {
+  node?: unknown;
+};
+
+type MarkdownSectionComponentProps = ComponentPropsWithoutRef<"section"> & {
+  node?: unknown;
+};
 
 const CALLOUT_LABELS: Record<CalloutKind, string> = {
   note: "提示",
@@ -571,6 +586,175 @@ function createHeadingIdFactory() {
   };
 }
 
+function readStringProp(props: object, key: string): string | undefined {
+  const value = (props as Record<string, unknown>)[key];
+  return typeof value === "string" && value ? value : undefined;
+}
+
+function resolveCollapsibleHeadingLevels(value: CollapsibleHeadings | undefined): Set<number> {
+  if (value === true) {
+    return new Set([1, 2, 3]);
+  }
+  if (!Array.isArray(value)) {
+    return new Set();
+  }
+  return new Set(value.filter((level) => Number.isInteger(level) && level >= 1 && level <= 6));
+}
+
+function extractMarkdownAstText(node: MarkdownAstNode | undefined): string {
+  if (!node) return "";
+  if (typeof node.value === "string") return node.value;
+  if (!Array.isArray(node.children)) return "";
+  return node.children.map(extractMarkdownAstText).join("");
+}
+
+function isHeadingNode(node: MarkdownAstNode): node is MarkdownAstNode & { depth: number } {
+  return node.type === "heading" && Number.isInteger(node.depth) && (node.depth ?? 0) >= 1 && (node.depth ?? 0) <= 6;
+}
+
+function getHeadingAstId(node: MarkdownAstNode): string | undefined {
+  const value = node.data?.hProperties?.["data-heading-id"] ?? node.data?.hProperties?.id;
+  return typeof value === "string" && value ? value : undefined;
+}
+
+function formatHeadingNumber(level: number, counters: number[]): string {
+  const parts: number[] = [];
+  for (let index = 1; index <= level; index += 1) {
+    if (counters[index] === 0) {
+      counters[index] = 1;
+    }
+    parts.push(counters[index]);
+  }
+  return level === 1 ? `${parts[0]}.` : parts.join(".");
+}
+
+function annotateHeadingIds(node: MarkdownAstNode, nextHeadingId: (text: string) => string) {
+  if (isHeadingNode(node)) {
+    const id = nextHeadingId(extractMarkdownAstText(node));
+    const hProperties = {
+      ...(node.data?.hProperties ?? {}),
+      id,
+      "data-heading-id": id,
+      "data-heading-level": String(node.depth),
+    };
+    node.data = {
+      ...(node.data ?? {}),
+      hProperties,
+    };
+  }
+
+  if (Array.isArray(node.children)) {
+    node.children.forEach((child) => annotateHeadingIds(child, nextHeadingId));
+  }
+}
+
+function annotateHeadingNumbers(node: MarkdownAstNode, numberedLevels: Set<number>, counters: number[] = Array(7).fill(0)) {
+  if (isHeadingNode(node)) {
+    const level = node.depth;
+    if (numberedLevels.has(level)) {
+      counters[level] += 1;
+      for (let index = level + 1; index < counters.length; index += 1) {
+        counters[index] = 0;
+      }
+      const hProperties = {
+        ...(node.data?.hProperties ?? {}),
+        "data-heading-number": formatHeadingNumber(level, counters),
+      };
+      node.data = {
+        ...(node.data ?? {}),
+        hProperties,
+      };
+    }
+  }
+
+  if (Array.isArray(node.children)) {
+    node.children.forEach((child) => annotateHeadingNumbers(child, numberedLevels, counters));
+  }
+}
+
+function groupHeadingSections(nodes: MarkdownAstNode[], collapsibleLevels: Set<number>): MarkdownAstNode[] {
+  const roots: MarkdownAstNode[] = [];
+  const stack: Array<{ level: number; children: MarkdownAstNode[] }> = [];
+
+  for (const node of nodes) {
+    if (!isHeadingNode(node)) {
+      const parent = stack[stack.length - 1];
+      if (parent) {
+        parent.children.push(node);
+      } else {
+        roots.push(node);
+      }
+      continue;
+    }
+
+    const level = node.depth;
+    const id = getHeadingAstId(node);
+    while (stack.length > 0 && stack[stack.length - 1].level >= level) {
+      stack.pop();
+    }
+
+    const hProperties: Record<string, unknown> = {
+      "data-heading-section": "true",
+      "data-heading-section-level": String(level),
+    };
+    if (id) {
+      hProperties["data-heading-section-id"] = id;
+    }
+    if (collapsibleLevels.has(level)) {
+      hProperties["data-collapsible-section"] = "true";
+    }
+
+    const section: MarkdownAstNode = {
+      type: "headingSection",
+      data: {
+        hName: "section",
+        hProperties,
+      },
+      children: [node],
+    };
+
+    const parent = stack[stack.length - 1];
+    if (parent) {
+      parent.children.push(section);
+    } else {
+      roots.push(section);
+    }
+    stack.push({ level, children: section.children ?? [] });
+  }
+
+  return roots;
+}
+
+function createHeadingStructurePlugin({
+  headingAnchors,
+  numberedLevels,
+  collapsibleLevels,
+}: {
+  headingAnchors: boolean;
+  numberedLevels: Set<number>;
+  collapsibleLevels: Set<number>;
+}) {
+  return () => {
+    return (tree: MarkdownAstNode) => {
+      const shouldAnnotateHeadings = headingAnchors || collapsibleLevels.size > 0 || numberedLevels.size > 0;
+      if (!shouldAnnotateHeadings) {
+        return;
+      }
+
+      annotateHeadingIds(tree, createHeadingIdFactory());
+      if (numberedLevels.size > 0) {
+        annotateHeadingNumbers(tree, numberedLevels);
+      }
+
+      if (collapsibleLevels.size === 0 || !Array.isArray(tree.children)) {
+        return;
+      }
+
+      tree.children = groupHeadingSections(tree.children, collapsibleLevels);
+    };
+  };
+}
+
 function looksLikeGitConflictBlock(codeText: string): boolean {
   return /^<<<<<<<[\s\S]*\n=======[\s\S]*\n>>>>>>>/m.test(codeText);
 }
@@ -793,23 +977,122 @@ export function MarkdownViewer({
   assetSubject,
   variant = "default",
   headingAnchors = false,
+  headingNumbering = false,
+  collapsibleHeadings,
+  collapsedHeadingIds: controlledCollapsedHeadingIds,
+  onHeadingCollapseChange,
 }: MarkdownViewerProps) {
   const processedContent = useMemo(() => preprocessMarkdownContent(content), [content]);
   const styles = VIEWER_STYLES[variant];
   const nextHeadingId = useMemo(() => createHeadingIdFactory(), [processedContent]);
+  const collapsibleHeadingLevels = useMemo(
+    () => resolveCollapsibleHeadingLevels(collapsibleHeadings),
+    [collapsibleHeadings],
+  );
+  const collapsibleHeadingLevelsKey = useMemo(
+    () => Array.from(collapsibleHeadingLevels).sort((left, right) => left - right).join(","),
+    [collapsibleHeadingLevels],
+  );
+  const numberedHeadingLevels = useMemo(
+    () => (headingNumbering ? new Set([1, 2, 3]) : new Set<number>()),
+    [headingNumbering],
+  );
+  const numberedHeadingLevelsKey = useMemo(
+    () => Array.from(numberedHeadingLevels).sort((left, right) => left - right).join(","),
+    [numberedHeadingLevels],
+  );
+  const headingStructurePlugin = useMemo(
+    () => createHeadingStructurePlugin({
+      headingAnchors,
+      numberedLevels: numberedHeadingLevels,
+      collapsibleLevels: collapsibleHeadingLevels,
+    }),
+    [collapsibleHeadingLevelsKey, headingAnchors, numberedHeadingLevelsKey],
+  );
+  const [internalCollapsedHeadingIds, setInternalCollapsedHeadingIds] = useState<Set<string>>(new Set());
+  const collapsedHeadingIds = controlledCollapsedHeadingIds ?? internalCollapsedHeadingIds;
+
+  useEffect(() => {
+    if (!controlledCollapsedHeadingIds) {
+      setInternalCollapsedHeadingIds(new Set());
+    }
+  }, [controlledCollapsedHeadingIds, processedContent]);
+
+  const toggleHeadingCollapse = useCallback((id: string) => {
+    const nextCollapsed = !collapsedHeadingIds.has(id);
+    if (onHeadingCollapseChange) {
+      onHeadingCollapseChange(id, nextCollapsed);
+      return;
+    }
+    setInternalCollapsedHeadingIds((prev) => {
+      const next = new Set(prev);
+      if (nextCollapsed) {
+        next.add(id);
+      } else {
+        next.delete(id);
+      }
+      return next;
+    });
+  }, [collapsedHeadingIds, onHeadingCollapseChange]);
 
   const makeHeading = (level: 1 | 2 | 3 | 4 | 5 | 6) => {
     const Tag = `h${level}` as const;
-    return ({ children }: { children?: ReactNode }) => {
+    return ({
+      children,
+      id: incomingId,
+      ...props
+    }: MarkdownHeadingComponentProps) => {
       const text = extractText(children);
-      const id = headingAnchors ? nextHeadingId(text) : undefined;
+      const dataHeadingId = readStringProp(props, "data-heading-id");
+      const headingNumber = readStringProp(props, "data-heading-number");
+      const id = incomingId || dataHeadingId || (headingAnchors ? nextHeadingId(text) : undefined);
+      const headingId = dataHeadingId || id;
+      const isCollapsible = Boolean(headingId) && collapsibleHeadingLevels.has(level);
+      const isCollapsed = headingId ? collapsedHeadingIds.has(headingId) : false;
       return (
         <Tag
           id={id}
-          data-heading-id={id}
-          className={styles.heading[level]}
+          data-heading-id={headingId}
+          data-collapsible-heading={isCollapsible ? "true" : undefined}
+          data-heading-collapsed={isCollapsible && isCollapsed ? "true" : undefined}
+          className={cn(styles.heading[level], isCollapsible && "group/heading relative scroll-mt-24")}
         >
-          {children}
+          {isCollapsible && headingId ? (
+            <button
+              type="button"
+              data-heading-toggle="true"
+              aria-label={isCollapsed ? "展开标题内容" : "折叠标题内容"}
+              aria-expanded={!isCollapsed}
+              title={isCollapsed ? "展开标题内容" : "折叠标题内容"}
+              className={cn(
+                "mr-1 inline-flex h-6 w-6 -ml-1 align-middle items-center justify-center rounded-md text-[#8F959E] transition-colors hover:bg-[#EFF1F3] hover:text-[#3370FF] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3370FF]/35 sm:absolute sm:right-full sm:top-[0.16em] sm:mr-1.5 sm:ml-0",
+                isCollapsed && "text-[#3370FF]",
+              )}
+              onClick={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                toggleHeadingCollapse(headingId);
+              }}
+            >
+              <ChevronRight
+                aria-hidden="true"
+                className={cn(
+                  "h-4 w-4 transition-transform duration-200",
+                  !isCollapsed && "rotate-90",
+                )}
+              />
+            </button>
+          ) : null}
+          {headingNumber ? (
+            <span
+              aria-hidden="true"
+              data-heading-number={headingNumber}
+              className="mr-1.5 inline-block select-none whitespace-nowrap text-[#1456F0] [-webkit-user-select:none]"
+            >
+              {headingNumber}&nbsp;
+            </span>
+          ) : null}
+          <span>{children}</span>
         </Tag>
       );
     };
@@ -817,7 +1100,7 @@ export function MarkdownViewer({
 
   return (
     <ReactMarkdown
-      remarkPlugins={[remarkGfm, remarkMath, remarkBlankTokens]}
+      remarkPlugins={[remarkGfm, remarkMath, remarkBlankTokens, headingStructurePlugin]}
       rehypePlugins={[rehypeKatex, rehypeHighlight]}
       components={{
         h1: makeHeading(1),
@@ -826,6 +1109,25 @@ export function MarkdownViewer({
         h4: makeHeading(4),
         h5: makeHeading(5),
         h6: makeHeading(6),
+        section: ({ children, className, ...props }: MarkdownSectionComponentProps) => {
+          const sectionId = readStringProp(props, "data-heading-section-id");
+          const sectionLevel = readStringProp(props, "data-heading-section-level");
+          const isHeadingSection = readStringProp(props, "data-heading-section") === "true";
+          const isCollapsibleSection = readStringProp(props, "data-collapsible-section") === "true";
+          const isCollapsed = sectionId ? collapsedHeadingIds.has(sectionId) : false;
+          return (
+            <section
+              data-heading-section={isHeadingSection ? "true" : undefined}
+              data-heading-section-level={sectionLevel}
+              data-heading-section-id={sectionId}
+              data-collapsible-section={isCollapsibleSection ? "true" : undefined}
+              data-collapsed={isCollapsibleSection && isCollapsed ? "true" : undefined}
+              className={cn(isCollapsibleSection && "markdown-collapsible-section", className)}
+            >
+              {children}
+            </section>
+          );
+        },
         p: ({ children }) => <p className={styles.paragraph}>{children}</p>,
         ul: ({ children }) => <ul className={styles.list}>{children}</ul>,
         ol: ({ children }) => <ol className={styles.orderedList}>{children}</ol>,

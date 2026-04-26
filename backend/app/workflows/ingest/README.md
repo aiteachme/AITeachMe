@@ -118,7 +118,7 @@ from app.workflows.ingest import run_parse_file_workflow
 如果 `parse_metadata_json` 里包含前端传来的 MinerU 参数：
 
 1. 读取本次请求 token。
-2. 如果请求里没有 token，则尝试从 `MINERU_API_TOKENS` 或 `MINERU_API_TOKEN` 读取，支持英文逗号分隔多个 token 并随机选择一个。
+2. 如果请求里没有 token，则通过 `get_env()` 读取运行时配置：本地模式下设置页保存到 DB 的值优先，其次才是 `.env` / 部署环境变量里的 `MINERU_API_TOKENS` 或 `MINERU_API_TOKEN`，支持英文逗号分隔多个 token 并随机选择一个。
 3. 立刻从 DB 里擦除 `api_token`，避免敏感信息长期落盘。
 4. 后续解析结果只保留 `token_source` 这类安全诊断信息。
 

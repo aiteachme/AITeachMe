@@ -6,7 +6,7 @@ import re
 
 from app.shared.infra.execution import BaseTracedExecution, TracedExecutionContext, TracedExecutionResult
 from app.workflows.digest.docgen.lib.asset_requests import replace_asset_requests, strip_asset_requests
-from app.workflows.digest.docgen.lib.model_policy import DocGenModelStep, docgen_completion_kwargs
+from app.workflows.digest.docgen.lib.model_policy import DocGenModelStep, docgen_completion_kwargs_with_metadata
 from app.workflows.digest.docgen.prompts import build_docgen_mermaid_prompt
 
 _MERMAID_LANG_PATTERN = (
@@ -242,8 +242,11 @@ class _MermaidPlaceholderRuntime(BaseTracedExecution):
         try:
             response = await llm(
                 [{"role": "user", "content": build_docgen_mermaid_prompt(topic=topic, context=context)}],
-                **docgen_completion_kwargs(DocGenModelStep.MERMAID_PLACEHOLDER),
-                extra_metadata=self.context.trace_metadata(chapter_index=self.context.chapter_index),
+                **docgen_completion_kwargs_with_metadata(
+                    DocGenModelStep.MERMAID_PLACEHOLDER,
+                    digest_mode=self.context.digest_mode,
+                    extra_metadata=self.context.trace_metadata(chapter_index=self.context.chapter_index),
+                ),
             )
             raw_body = _extract_mermaid_body(str(response))
             body = _sanitize_mermaid_body(str(response), topic=topic)

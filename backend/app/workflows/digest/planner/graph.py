@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import asyncio
 import uuid
+from typing import Any
 
 import structlog
 from langgraph.graph import END, StateGraph
@@ -49,6 +50,120 @@ logger = structlog.get_logger(__name__)
 
 RUN_NAME_PLANNER = "规划引擎：生成构建方案"
 
+NODE_TRACE_DETAILS: dict[str, dict[str, Any]] = {
+    STEP_LOAD_MATERIALS: {
+        "description": (
+            "读取或创建 Planner 会话，解析 create/append 请求中的资料选择、历史消息和最新方案，"
+            "并加载本轮可用的 DigestMaterialContext。若资料正文尚未解析完成，会基于文件名、用户提示和学科元信息生成 seed context，"
+            "保证 Planner 能先产出可继续修改的临时方案。"
+        ),
+        "reads": ["planner_session", "raw_file", "parsed_markdown", "material_digest_cache", "latest_plan"],
+        "writes": ["selected_file_ids", "selected_file_uids", "material_context", "digest_mode"],
+        "input_keys": [
+            "subject",
+            "user_id",
+            "planner_operation",
+            "requested_file_uids",
+            "session_title",
+            "feedback_message",
+            "file_ids",
+            "user_prompt",
+            "digest_mode",
+            "planner_session_id",
+            "message_history",
+            "latest_plan",
+        ],
+        "output_keys": [
+            "selected_file_ids",
+            "selected_file_uids",
+            "material_context",
+            "digest_mode",
+            "prepare_ms",
+            "error",
+        ],
+    },
+    STEP_UNDERSTAND_GOAL: {
+        "description": (
+            "并行执行两个轻规划动作：一边流式生成用户可见的资料边界/学习目标判断，一边抽取内部 PlanIntent。"
+            "输出 planner_brief 和 plan_intent，供后续大纲合成与标题生成共用；这个节点不写最终章节合同。"
+        ),
+        "reads": ["material_context", "user_prompt", "digest_mode", "message_history"],
+        "writes": ["planner_brief", "plan_intent"],
+        "input_keys": ["subject", "material_context", "user_prompt", "digest_mode", "message_history", "planner_session_id"],
+        "output_keys": ["planner_brief", "plan_intent", "bootstrap_ms", "error"],
+        "fanout": "internal_async_brief_and_intent",
+        "routing": "after this node, LangGraph runs compose_plan and generate_title in parallel",
+    },
+    STEP_COMPOSE_PLAN: {
+        "description": (
+            "基于 material_context、planner_brief、plan_intent、历史消息和 latest_plan 流式生成可见计划说明，"
+            "同时解析隐藏 JSON 机器合同，得到 build_plan_draft。若模型 JSON 不完整，会用规则兜底生成可继续调整的大纲草稿。"
+        ),
+        "reads": ["material_context", "planner_brief", "plan_intent", "message_history", "latest_plan"],
+        "writes": ["build_plan_draft", "plan_outline_markdown"],
+        "input_keys": [
+            "subject",
+            "material_context",
+            "planner_brief",
+            "plan_intent",
+            "user_prompt",
+            "digest_mode",
+            "message_history",
+            "latest_plan",
+            "planner_session_id",
+        ],
+        "output_keys": ["build_plan_draft", "plan_outline_markdown", "compose_ms", "error"],
+        "fanin": "joins STEP_GENERATE_TITLE at STEP_SAVE_PLAN",
+    },
+    STEP_GENERATE_TITLE: {
+        "description": (
+            "仅在创建新 Planner 会话时运行，和大纲合成并行。它根据资料文件名、topic hints、planner_brief 和 plan_intent "
+            "生成短学科标题，并选择学科图标；不会依赖最终大纲，也不会改章节计划。"
+        ),
+        "reads": ["material_context", "planner_brief", "plan_intent", "user_prompt", "digest_mode"],
+        "writes": ["generated_subject_name", "generated_subject_icon_key"],
+        "input_keys": [
+            "planner_operation",
+            "material_context",
+            "planner_brief",
+            "plan_intent",
+            "user_prompt",
+            "digest_mode",
+            "planner_session_id",
+        ],
+        "output_keys": ["generated_subject_name", "generated_subject_icon_key", "title_ms"],
+        "fanin": "joins STEP_COMPOSE_PLAN at STEP_SAVE_PLAN",
+    },
+    STEP_SAVE_PLAN: {
+        "description": (
+            "等待大纲草稿和标题分支 fan-in 后，把 build_plan_draft 规范化成稳定 BuildPlan 合同，"
+            "补齐章节索引、目标、required_elements、模式和摘要，再写入 planner session / chat mirror。"
+            "这是 Planner 的发布边界，DocGen 只消费这里保存后的 confirmed plan。"
+        ),
+        "reads": ["build_plan_draft", "generated_subject_name", "material_context", "latest_plan"],
+        "writes": ["plan", "plan_summary", "planner_record", "planner_turns", "digest_mode"],
+        "input_keys": [
+            "subject",
+            "user_id",
+            "planner_session_id",
+            "build_plan_draft",
+            "generated_subject_name",
+            "material_context",
+            "latest_plan",
+        ],
+        "output_keys": [
+            "plan",
+            "plan_summary",
+            "planner_record",
+            "planner_turns",
+            "digest_mode",
+            "finalize_ms",
+            "error",
+        ],
+        "fanin": "STEP_COMPOSE_PLAN + STEP_GENERATE_TITLE",
+    },
+}
+
 
 def _require_success_state(result: WorkflowResult[BuildPlannerState]) -> BuildPlannerState:
     state = result.require_value()
@@ -62,6 +177,37 @@ def _require_success_state(result: WorkflowResult[BuildPlannerState]) -> BuildPl
         )
         raise WorkflowError(code="planner_failed", detail=error)
     return state
+
+
+def _trace_planner_node(trace, step: str, handler, *, timing_field: str):
+    details = NODE_TRACE_DETAILS[step]
+    return trace.node(
+        handler,
+        name=STEP_DISPLAY_NAMES[step],
+        description=str(details["description"]),
+        timing_field=timing_field,
+        input_keys=list(details.get("input_keys") or []),
+        output_keys=list(details.get("output_keys") or []),
+        metadata=_langgraph_node_metadata(step),
+    )
+
+
+def _langgraph_node_metadata(step: str) -> dict[str, object]:
+    details = NODE_TRACE_DETAILS[step]
+    metadata: dict[str, object] = {
+        "node_key": step,
+        "node_display_name": STEP_DISPLAY_NAMES[step],
+        "node_description": str(details["description"]),
+        "reads": list(details.get("reads") or []),
+        "writes": list(details.get("writes") or []),
+        "state_inputs": list(details.get("input_keys") or []),
+        "state_outputs": list(details.get("output_keys") or []),
+    }
+    for key in ("fanout", "fanin", "routing"):
+        value = details.get(key)
+        if value:
+            metadata[key] = str(value)
+    return metadata
 
 
 def build_planner_graph(*, context: WorkflowContext) -> StateGraph:
@@ -81,43 +227,53 @@ def build_planner_graph(*, context: WorkflowContext) -> StateGraph:
 
     workflow.add_node(
         STEP_LOAD_MATERIALS,
-        trace.node(
+        _trace_planner_node(
+            trace,
+            STEP_LOAD_MATERIALS,
             build_load_planner_materials_node(context=context),
-            name=STEP_DISPLAY_NAMES[STEP_LOAD_MATERIALS],
             timing_field="prepare_ms",
         ),
+        metadata=_langgraph_node_metadata(STEP_LOAD_MATERIALS),
     )
     workflow.add_node(
         STEP_UNDERSTAND_GOAL,
-        trace.node(
+        _trace_planner_node(
+            trace,
+            STEP_UNDERSTAND_GOAL,
             build_stream_brief_and_extract_intent_node(context=context),
-            name=STEP_DISPLAY_NAMES[STEP_UNDERSTAND_GOAL],
             timing_field="bootstrap_ms",
         ),
+        metadata=_langgraph_node_metadata(STEP_UNDERSTAND_GOAL),
     )
     workflow.add_node(
         STEP_COMPOSE_PLAN,
-        trace.node(
+        _trace_planner_node(
+            trace,
+            STEP_COMPOSE_PLAN,
             build_stream_and_parse_plan_draft_node(context=context),
-            name=STEP_DISPLAY_NAMES[STEP_COMPOSE_PLAN],
             timing_field="compose_ms",
         ),
+        metadata=_langgraph_node_metadata(STEP_COMPOSE_PLAN),
     )
     workflow.add_node(
         STEP_GENERATE_TITLE,
-        trace.node(
+        _trace_planner_node(
+            trace,
+            STEP_GENERATE_TITLE,
             build_generate_subject_name_node(context=context),
-            name=STEP_DISPLAY_NAMES[STEP_GENERATE_TITLE],
             timing_field="title_ms",
         ),
+        metadata=_langgraph_node_metadata(STEP_GENERATE_TITLE),
     )
     workflow.add_node(
         STEP_SAVE_PLAN,
-        trace.node(
+        _trace_planner_node(
+            trace,
+            STEP_SAVE_PLAN,
             build_normalize_and_persist_plan_node(context=context),
-            name=STEP_DISPLAY_NAMES[STEP_SAVE_PLAN],
             timing_field="finalize_ms",
         ),
+        metadata=_langgraph_node_metadata(STEP_SAVE_PLAN),
     )
 
     workflow.set_entry_point(STEP_LOAD_MATERIALS)

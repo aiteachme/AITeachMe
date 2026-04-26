@@ -610,11 +610,10 @@ ENV_ENTRY_KEY_MAP: dict[str, str] = {
     if entry.kind == "env" and entry.env_name
 }
 
-
 def build_settings_notes() -> list[str]:
     return [
-        "本地模式下，模型路由与学习引擎设置会保存到 system_runtime_settings，并在下一次调用生效。",
-        "本地模式下，密钥和 Provider 授权会写回本地 .env，并同步更新当前后端进程环境变量。",
+        "本地模式下，设置页修改会保存到 system_runtime_settings，并在下一次调用生效。",
+        "本地模式下，.env 只作为首次启动或数据库未覆盖某个 key 时的默认来源；设置页不会再写回 .env。",
         "云端模式下，普通用户只能查看状态，不能修改任何服务端配置。",
         "APP_MODE、DATABASE_URL、对象存储等部署级变量不在设置页修改，请通过 .env 或部署平台环境变量管理。",
     ]

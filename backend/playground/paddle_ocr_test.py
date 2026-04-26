@@ -7,10 +7,13 @@ import sys
 import time
 
 JOB_URL = "https://paddleocr.aistudio-app.com/api/v2/ocr/jobs"
-TOKEN = "6fcd008a18b0926dbdc520ac476e1beb638c80e9"
+TOKEN = os.getenv("PADDLE_OCR_API_TOKEN", "").strip()
 MODEL = "PaddleOCR-VL-1.5"
 
 file_path = "<local file path or file url>"
+
+if not TOKEN:
+    raise RuntimeError("Please set PADDLE_OCR_API_TOKEN before running this playground script.")
 
 headers = {
     "Authorization": f"bearer {TOKEN}",
@@ -38,12 +41,12 @@ else:
     if not os.path.exists(file_path):
         print(f"Error: File not found at {file_path}")
         sys.exit(1)
-        
+
     data = {
         "model": MODEL,
         "optionalPayload": json.dumps(optional_payload)
     }
-    
+
     with open(file_path, "rb") as f:
         files = {"file": f}
         job_response = requests.post(JOB_URL, headers=headers, data=data, files=files)
