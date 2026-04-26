@@ -1,4 +1,4 @@
-"""Knowledge-graph extraction prompts."""
+"""Prompts for extracting graph candidates from one knowledge-doc section."""
 
 SYSTEM_PROMPT_KNOWLEDGE_EXTRACT = r"""
 You extract a structured knowledge graph from one study-material chunk.
@@ -75,99 +75,13 @@ USER_PROMPT_KNOWLEDGE_EXTRACT = """
 {{ chunk_content }}
 """.strip()
 
-SYSTEM_PROMPT_KNOWLEDGE_ENTITY_MATCH = """
-You are a knowledge-graph entity matcher. Decide whether two KnowledgeUnits refer
-to the same underlying concept.
-
-## Allowed answers
-- EXACT: same knowledge point with different phrasing
-- ALIAS: same knowledge point but one is an alias, shorthand, translation, or synonym
-- NO_MATCH: related but not the same knowledge point
-
-## Rules
-1. Choose EXACT only for semantic identity.
-2. Choose ALIAS only for naming variants of the same thing.
-3. Choose NO_MATCH for merely related concepts.
-4. Use only the provided information.
-""".strip()
-
-USER_PROMPT_KNOWLEDGE_ENTITY_MATCH = """
-## Candidate KnowledgeUnit
-- Name: {{ candidate_name }}
-- Type: {{ candidate_type }}
-- Summary: {{ candidate_summary }}
-
-## Existing KnowledgeUnit
-- Name: {{ existing_name }}
-- Type: {{ existing_type }}
-- Summary: {{ existing_summary }}
-
-Reply with exactly one of: EXACT / ALIAS / NO_MATCH.
-""".strip()
-
-SYSTEM_PROMPT_KNOWLEDGE_UNIT_NAMING = """
-You are an instructional-design assistant. The items below form one teaching unit.
-Generate a unit title, a concise summary, and learning goals.
-
-## Output requirements
-1. Unit title: short, precise, suitable for a course outline
-2. Unit summary: one paragraph capturing the core content
-3. Learning goals: 2-4 items beginning with "After this unit, students can..."
-""".strip()
-
-USER_PROMPT_KNOWLEDGE_UNIT_NAMING = """
-## Core Concepts
-
-{{ core_nodes }}
-
-## Supporting Definitions And Methods
-{{ support_nodes }}
-
-## Examples And Exercises
-{{ example_nodes }}
-""".strip()
-
-SYSTEM_PROMPT_KNOWLEDGE_THEME_TREE = """
-You are a curriculum-structure assistant. Given a list of teaching units, design a
-two-level module/chapter tree.
-
-## Output requirements
-1. Produce `module -> chapter`
-2. Each module should contain 1-5 chapters
-3. Each chapter should contain 1-5 teaching units
-4. The ordering should reflect a reasonable learning path
-5. Titles should be concise and precise
-6. If there are very few units, a single module is acceptable
-""".strip()
-
-USER_PROMPT_KNOWLEDGE_THEME_TREE = """
-## Subject: {{ subject }}
-
-## Teaching Units
-
-{% for unit in units %}
-- {{ unit.name }}: {{ unit.summary }}
-{% endfor %}
-
-Design a reasonable module/chapter hierarchy for these teaching units.
-""".strip()
-
-KNOWLEDGE_PROMPTS: dict[str, str] = {
+SECTION_GRAPH_PROMPTS = {
     "knowledge_extract_system": SYSTEM_PROMPT_KNOWLEDGE_EXTRACT,
     "knowledge_extract_user": USER_PROMPT_KNOWLEDGE_EXTRACT,
-    "knowledge_entity_match_system": SYSTEM_PROMPT_KNOWLEDGE_ENTITY_MATCH,
-    "knowledge_entity_match_user": USER_PROMPT_KNOWLEDGE_ENTITY_MATCH,
-    "knowledge_unit_naming_system": SYSTEM_PROMPT_KNOWLEDGE_UNIT_NAMING,
-    "knowledge_unit_naming_user": USER_PROMPT_KNOWLEDGE_UNIT_NAMING,
-    "knowledge_theme_tree_system": SYSTEM_PROMPT_KNOWLEDGE_THEME_TREE,
-    "knowledge_theme_tree_user": USER_PROMPT_KNOWLEDGE_THEME_TREE,
 }
 
-KG_PROMPTS = KNOWLEDGE_PROMPTS
-
 __all__ = [
-    "KG_PROMPTS",
-    "KNOWLEDGE_PROMPTS",
+    "SECTION_GRAPH_PROMPTS",
     "SYSTEM_PROMPT_KNOWLEDGE_EXTRACT",
     "USER_PROMPT_KNOWLEDGE_EXTRACT",
 ]

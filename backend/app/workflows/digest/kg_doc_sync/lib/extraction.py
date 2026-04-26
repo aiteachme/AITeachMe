@@ -27,7 +27,11 @@ from app.models.knowledge_taxonomy import (
     validate_relation_direction,
 )
 from app.utils.knowledge_helpers import normalize_name
-from app.workflows.digest.kg_doc_sync.prompts.extraction import (
+from app.workflows.digest.kg_doc_sync.prompts.question_concepts import (
+    SYSTEM_PROMPT_CONCEPT_EXTRACT,
+    USER_PROMPT_CONCEPT_EXTRACT,
+)
+from app.workflows.digest.kg_doc_sync.prompts.section_graph import (
     SYSTEM_PROMPT_KNOWLEDGE_EXTRACT,
     USER_PROMPT_KNOWLEDGE_EXTRACT,
 )
@@ -115,26 +119,6 @@ _CONCEPT_STOPWORDS = frozenset({
     "以下", "其中", "所有", "任意", "存在", "满足", "条件",
     "正确", "错误", "答案", "解析", "分析", "结果", "过程",
 })
-
-# LLM 轻量概念提取 prompt
-_SYSTEM_PROMPT_CONCEPT_EXTRACT = """
-你是一名知识点识别助手。请从以下题目内容中提取背后考查的核心知识点。
-
-## 输出要求
-- 每个知识点用一个简短名称表示（2-8个字）
-- 标注类型：`concept`（概念）或 `method`（方法/技巧）
-- 只提取学科通用知识点，不提取题目专属设定
-- 最多返回 8 个知识点
-""".strip()
-
-_USER_PROMPT_CONCEPT_EXTRACT = """
-## 题目内容
-
-{{ questions_text }}
-
-请提取这些题目背后考查的核心知识点。
-""".strip()
-
 
 class _ConceptItem(BaseModel):
     name: str = Field(description="知识点名称")
@@ -283,11 +267,11 @@ async def _llm_extract_concepts_from_questions(
         return []
 
     user_content = populate_prompt(
-        _USER_PROMPT_CONCEPT_EXTRACT,
+        USER_PROMPT_CONCEPT_EXTRACT,
         questions_text=questions_text,
     )
     messages: list[ChatMessage] = [
-        {"role": SYSTEM, "content": _SYSTEM_PROMPT_CONCEPT_EXTRACT},
+        {"role": SYSTEM, "content": SYSTEM_PROMPT_CONCEPT_EXTRACT},
         {"role": USER, "content": user_content},
     ]
     try:

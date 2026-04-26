@@ -1,42 +1,43 @@
-﻿"""Docs-sync execution node."""
+"""Docs-sync run initialization node."""
 
 from __future__ import annotations
 
 import structlog
 
 from app.shared.infra.database import managed_session
-from app.workflows.digest.kg_doc_sync.lib.incremental_sync import sync_markdown_knowledge_graph
+from app.workflows.digest.kg_doc_sync.lib.incremental_sync import initialize_knowledge_graph_sync_run
 from app.workflows.digest.kg_doc_sync.state import DocsSyncState
-from app.workflows.support.subjects.learning_context import load_subject_llm_context
 
 logger = structlog.get_logger()
 
 
-def run_docs_sync_node(state: DocsSyncState) -> DocsSyncState:
+def init_run_node(state: DocsSyncState) -> DocsSyncState:
     try:
         with managed_session() as session:
-            subject_context = str(state.get("subject_context") or "").strip()
-            if not subject_context:
-                subject_context = load_subject_llm_context(session, subject=state["subject"])
-            report = sync_markdown_knowledge_graph(
+            run_context = initialize_knowledge_graph_sync_run(
                 session,
                 subject=state["subject"],
                 markdown=state["markdown"],
                 build_revision_no=state.get("build_revision_no"),
-                subject_context=subject_context,
                 structured_context=dict(state.get("structured_context") or {}),
                 build_session_id=state.get("build_session_id"),
             )
-        return {**state, "report": report, "error": None}
+        return {
+            **state,
+            "build_revision_no": run_context.build_revision_no,
+            "structured_context": run_context.structured_context,
+            "sync_run_context": run_context,
+            "error": None,
+        }
     except Exception as exc:
         logger.warning(
-            "kg_doc_sync_node_failed",
+            "kg_doc_sync_init_run_failed",
             subject=state.get("subject"),
             build_session_id=state.get("build_session_id"),
             error_type=type(exc).__name__,
             error=str(exc),
         )
-        return {**state, "report": None, "error": str(exc)}
+        return {**state, "sync_run_context": None, "error": str(exc)}
 
 
-__all__ = ["run_docs_sync_node"]
+__all__ = ["init_run_node"]

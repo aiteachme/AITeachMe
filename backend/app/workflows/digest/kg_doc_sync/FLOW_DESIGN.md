@@ -14,8 +14,8 @@
 本链路不会创建 `curriculum / teaching_unit / taxonomy_anchor / theme_tree_node / unit_dependency` 等未来大表。节点和关系的可解释来源先由轻量溯源表承接。
 
 LangGraph 节点的 `node_description`、输入输出字段和 metadata 统一通过
-`digest.common.node_tracing` 生成；`sync_markdown_knowledge_graph` 内部再用
-`trace_substep` 标记 anchor 校验、候选抽取和图谱写入三个关键阶段。
+`digest.common.node_tracing` 生成；阶段 API 内部再用 `trace_substep`
+标记 anchor 校验、候选抽取和图谱写入三个关键阶段。
 
 ## 1. 流程总览与执行合同
 
@@ -47,6 +47,7 @@ image_generation -> settings.models.image_generation（默认未配置）
 - KG docs-sync 当前使用 `light` 槽位；抽取任务意图由 `call_purpose=EXTRACT` 表达。
 - 路由层仍保留 `extract` 兼容别名，但新代码不应继续把它当模型槽位使用。
 - `kg_doc_sync` 的 LangGraph 节点本身不直接写死模型，LLM 调用集中在复用的 extractor 内部；`call_purpose + model slot + max_tokens` 统一由 `kg_doc_sync/lib/model_policy.py` 维护。
+- Prompt 文件按真实调用拆分：章节图谱抽取在 `prompts/section_graph.py`，题目 fallback 概念识别在 `prompts/question_concepts.py`，导出聚合在 `prompts/registry.py`。
 
 按当前代码，KG docs-sync 各阶段的大模型使用如下：
 
@@ -55,7 +56,9 @@ image_generation -> settings.models.image_generation（默认未配置）
 | `run_graph_docs_sync_after_doc_build` | `kg_doc_sync/builds.py` | 无 LLM | 无 | 无 | 无 | 读取发布文档、写 graph lane runtime、挂 LangSmith root trace |
 | `load_knowledge_doc_sync_input` | `kg_doc_sync/inputs.py` | 无 LLM | 无 | 无 | 无 | 读取 `KnowledgeDoc` rows、DocGen manifest、文档摘要和章节来源映射 |
 | `prepare` | `kg_doc_sync/nodes/prepare_node.py` | 无 LLM | 无 | 无 | 无 | 校验 `subject` 和合并 Markdown |
-| `sync` | `kg_doc_sync/nodes/sync_node.py` | 间接 LLM | 由内部 extractor 决定 | 由 policy 决定 | 见下方 | 打开 DB session，加载学科上下文，调用增量同步 |
+| `init_run` | `kg_doc_sync/nodes/init_run_node.py` | 无 LLM | 无 | 无 | 无 | 校验 Markdown anchors，创建 `knowledge_graph_sync_run`，确定 revision/doc_version |
+| `extract` | `kg_doc_sync/nodes/extract_node.py` | 间接 LLM | 由内部 extractor 决定 | 由 policy 决定 | 见下方 | 加载学科上下文，按章节并发抽取图谱候选并合并 fallback/backbone/结构边 |
+| `persist` | `kg_doc_sync/nodes/persist_node.py` | 无 LLM | 无 | 无 | 无 | 写入节点、关系、source_ref，标记旧同步实体 deprecated，并完成 sync run |
 | `_extract_chapter_graph_items` 主抽取 | `kg_doc_sync/lib/incremental_sync.py` -> `kg_doc_sync/lib/extraction.py` | 结构化 | `EXTRACT` | `light` | `qwen-flash` | 从单章 Markdown 抽取候选 KnowledgeUnit 和关系 |
 | `_repair_docs_extraction_after_empty` | `kg_doc_sync/lib/extraction.py` | 结构化 | `EXTRACT` | `light` | `qwen-flash` | 当 docs-sync 主抽取为空时做一次极短修复抽取 |
 | `_llm_extract_concepts_from_questions` | `kg_doc_sync/lib/extraction.py` | 结构化 | `DOCGEN_LIGHT` | `light` | `qwen-flash` | 题目密集内容下从题干反推少量概念/方法 |
@@ -94,16 +97,14 @@ prepare
   校验 subject 和 Markdown。
   |
   v
-sync
-  打开 DB session。
-  如果 subject_context 为空，则从学科 LLM context 读取。
-  调用 sync_markdown_knowledge_graph。
+init_run
+  校验 Markdown anchors。
+  创建 KnowledgeGraphSyncRun(status="running")。
+  生成 sync_run_context。
   |
   v
-sync_markdown_knowledge_graph
-  校验 Markdown anchors。
-  LangSmith 子步骤：`validate_markdown_anchors`。
-  创建 KnowledgeGraphSyncRun(status="running")。
+extract
+  如果 subject_context 为空，则从学科 LLM context 读取。
   按真实章节切分 Markdown。
   LangSmith 子步骤：`extract_graph_items`。
   |
@@ -125,6 +126,7 @@ fan-in extraction payloads
   |
   v
 upsert graph
+persist
   按 subject + type + normalized_name 复用稳定 KnowledgeUnit。
   写 KnowledgeEdge。
   写 KnowledgeGraphSourceRef。
@@ -144,7 +146,9 @@ run_graph_docs_sync_after_doc_build
 
 ```text
 prepare --error--> fail --> END
-sync    --error--> fail --> END
+init_run--error--> fail --> END
+extract --error--> fail --> END
+persist --error--> fail --> END
 finalize--error--> fail --> END
 ```
 
@@ -152,10 +156,10 @@ finalize--error--> fail --> END
 
 ```text
 LangGraph 层
-  prepare -> sync -> finalize
+  prepare -> init_run -> extract -> persist -> finalize
   当前没有 LangGraph Send fan-out。
 
-sync_markdown_knowledge_graph 内部
+extract 节点内部
   extract_markdown_chapter_chunks
     chapter 1 ┐
     chapter 2 ├─ async gather + semaphore -> payload fan-in
@@ -252,25 +256,64 @@ prepare
   当前模型方案：
     - 无 LLM。
 
-sync
+init_run
   输入：
     - subject
     - markdown
     - build_revision_no
     - build_session_id
-    - subject_context
     - structured_context
   输出：
-    - report: KnowledgeSyncReport
+    - sync_run_context
+    - build_revision_no
+    - structured_context
     - error
   作用：
     - 打开 managed_session。
-    - 如果 subject_context 为空，从学科上下文读取。
-    - 调用 sync_markdown_knowledge_graph。
+    - 校验 Markdown KnowledgeUnit anchors。
+    - 创建 KnowledgeGraphSyncRun(status="running")。
+    - 把 revision、doc_version、sync_run_id 收口为 sync_run_context。
   失败：
-    - DB 写入失败、Markdown anchor 非法、抽取异常都会写入 error。
+    - Markdown anchor 非法或 sync run 创建失败都会写入 error。
   当前模型方案：
-    - sync 节点无直接 LLM；内部抽取步骤可能调用 LLM。
+    - 无 LLM。
+
+extract
+  输入：
+    - subject
+    - markdown
+    - subject_context
+    - sync_run_context
+  输出：
+    - extraction_payload
+    - subject_context
+    - error
+  作用：
+    - 如果 subject_context 为空，从学科上下文读取。
+    - 按真实章节切分 Markdown。
+    - 并发抽取图谱候选。
+    - 合并 LLM/fallback units、DocGen backbone、结构边和跨章节语义边。
+  失败：
+    - 抽取异常写入 error，fail 节点会标记 sync run failed。
+  当前模型方案：
+    - 节点本身无直接 LLM；内部 extractor 可能调用 LLM。
+
+persist
+  输入：
+    - sync_run_context
+    - extraction_payload
+  输出：
+    - KnowledgeSyncReport
+    - error
+  作用：
+    - 写入 KnowledgeUnit / KnowledgeEdge。
+    - 写 KnowledgeGraphSourceRef。
+    - 标记本轮消失的旧同步节点/边为 deprecated。
+    - 结束 sync run 为 completed。
+  失败：
+    - DB 写入异常写入 error，persist 阶段或 fail 节点会标记 sync run failed。
+  当前模型方案：
+    - 无 LLM。
 
 sync_markdown_knowledge_graph
   输入：
@@ -285,15 +328,9 @@ sync_markdown_knowledge_graph
   输出：
     - KnowledgeSyncReport
   作用：
-    - 校验 Markdown KnowledgeUnit anchors。
-    - 创建 KnowledgeGraphSyncRun(status="running")。
-    - 抽取图谱候选并写库。
-    - 结束 sync run 为 completed / failed。
-  失败：
-    - anchor 重复或非法：抛 ValueError。
-    - 抽取或写库异常：sync run 标记 failed 后继续抛出。
+    - 兼容旧调用方的一口气 façade，内部顺序调用 init_run / extract / persist 阶段 API。
   当前模型方案：
-    - 函数本身无 LLM；抽取候选时调用 extractor。
+    - 函数本身无 LLM；extract 阶段可能调用 extractor。
 
 extract_markdown_chapter_chunks
   输入：
@@ -417,7 +454,7 @@ finalize
   输出：
     - 原 state
   作用：
-    - 确保 sync 阶段已经产生 report。
+    - 确保 persist 阶段已经产生 report。
   失败：
     - report 缺失 -> error。
   当前模型方案：
@@ -430,6 +467,7 @@ fail
     - 原 state
   作用：
     - LangGraph 失败收口节点。
+    - 如果 state 中已经有 sync_run_context，会尽量把对应 sync run 标记为 failed。
   当前模型方案：
     - 无 LLM。
 ```

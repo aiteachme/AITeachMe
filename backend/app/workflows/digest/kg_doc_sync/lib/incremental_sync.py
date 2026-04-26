@@ -416,6 +416,27 @@ class SectionExtractionPayload:
     diagnostics: dict[str, int]
 
 
+@dataclass(slots=True)
+class KnowledgeSyncRunContext:
+    """Persistent run context shared by kg_doc_sync graph nodes."""
+
+    subject: str
+    build_revision_no: int
+    sync_run_id: int
+    doc_version_no: int
+    structured_context: dict[str, object] = field(default_factory=dict)
+    started_at: float = 0.0
+
+
+@dataclass(slots=True)
+class KnowledgeSyncExtractionPayload:
+    """Pure extraction output before database persistence."""
+
+    units: list[MarkdownKnowledgeUnit]
+    extracted_edges: list[MarkdownExtractedEdge]
+    diagnostics_totals: dict[str, int]
+
+
 def sync_markdown_knowledge_graph(
     session: Session,
     *,
@@ -430,6 +451,49 @@ def sync_markdown_knowledge_graph(
     """Synchronize knowledge units and knowledge images from Markdown into the graph."""
 
     started_at = perf_counter()
+    run_context = initialize_knowledge_graph_sync_run(
+        session,
+        subject=subject,
+        markdown=markdown,
+        build_revision_no=build_revision_no,
+        structured_context=structured_context,
+        build_session_id=build_session_id,
+        started_at=started_at,
+    )
+    try:
+        payload = extract_knowledge_graph_items(
+            markdown=markdown,
+            subject_context=subject_context,
+            run_context=run_context,
+        )
+    except Exception as exc:
+        mark_knowledge_graph_sync_run_failed(
+            session,
+            sync_run_id=run_context.sync_run_id,
+            error_message=str(exc),
+        )
+        session.flush()
+        raise
+    return persist_knowledge_graph_items(
+        session,
+        run_context=run_context,
+        payload=payload,
+        enable_rag_dedup=enable_rag_dedup,
+    )
+
+
+def initialize_knowledge_graph_sync_run(
+    session: Session,
+    *,
+    subject: str,
+    markdown: str,
+    build_revision_no: int | None = None,
+    structured_context: dict[str, object] | None = None,
+    build_session_id: str | None = None,
+    started_at: float | None = None,
+) -> KnowledgeSyncRunContext:
+    """Validate Markdown anchors and create a running sync-run row."""
+
     with trace_substep(
         "KG docs-sync：校验 Markdown anchors",
         metadata={"kg_doc_sync_phase": "validate_markdown_anchors"},
@@ -450,9 +514,9 @@ def sync_markdown_knowledge_graph(
                 f"duplicates={validation.duplicate_anchors}, invalid={validation.invalid_anchors}"
             )
 
-    structured_context = _structured_context_payload(structured_context)
+    normalized_context = _structured_context_payload(structured_context)
     revision_no = build_revision_no or _next_revision_no(session, subject)
-    doc_version_no = _safe_int(structured_context.get("doc_version_no"))
+    doc_version_no = _safe_int(normalized_context.get("doc_version_no"))
     sync_run = _create_sync_run(
         session,
         subject=subject,
@@ -460,47 +524,76 @@ def sync_markdown_knowledge_graph(
         doc_version_no=doc_version_no,
         graph_revision_no=revision_no,
     )
-    try:
-        with trace_substep(
-            "KG docs-sync：抽取章节候选",
-            metadata={"kg_doc_sync_phase": "extract_graph_items"},
-            inputs={
-                "markdown_chars": len(markdown or ""),
-                "doc_version_no": doc_version_no,
-                "build_revision_no": revision_no,
-            },
-        ) as trace_run:
-            units, extracted_edges, diagnostics_totals = _extract_markdown_graph_items(
-                markdown,
-                subject_context=subject_context,
-                structured_context=structured_context,
-            )
-            _end_trace_substep(
-                trace_run,
-                {
-                    "unit_count": len(units),
-                    "edge_count": len(extracted_edges),
-                    "chapter_count": int(diagnostics_totals.get("chapter_count", 0) or 0),
-                    "section_count": int(diagnostics_totals.get("section_count", 0) or 0),
-                    "llm_section_count": int(diagnostics_totals.get("llm_section_count", 0) or 0),
-                    "fallback_section_count": int(diagnostics_totals.get("fallback_section_count", 0) or 0),
-                },
-            )
-    except Exception as exc:
-        _finish_sync_run(
-            session,
-            sync_run,
-            status="failed",
-            metrics={},
-            error_message=str(exc),
-        )
-        session.flush()
-        raise
-    report = KnowledgeSyncReport(
+    if sync_run.id is None:
+        raise RuntimeError("knowledge_graph_sync_run_id_missing")
+    return KnowledgeSyncRunContext(
         subject=subject,
         build_revision_no=revision_no,
         sync_run_id=sync_run.id,
         doc_version_no=doc_version_no,
+        structured_context=normalized_context,
+        started_at=started_at or perf_counter(),
+    )
+
+
+def extract_knowledge_graph_items(
+    *,
+    markdown: str,
+    subject_context: str | None,
+    run_context: KnowledgeSyncRunContext,
+) -> KnowledgeSyncExtractionPayload:
+    """Extract units and edges without writing graph rows."""
+
+    with trace_substep(
+        "KG docs-sync：抽取章节候选",
+        metadata={"kg_doc_sync_phase": "extract_graph_items"},
+        inputs={
+            "markdown_chars": len(markdown or ""),
+            "doc_version_no": run_context.doc_version_no,
+            "build_revision_no": run_context.build_revision_no,
+        },
+    ) as trace_run:
+        units, extracted_edges, diagnostics_totals = _extract_markdown_graph_items(
+            markdown,
+            subject_context=subject_context,
+            structured_context=run_context.structured_context,
+        )
+        _end_trace_substep(
+            trace_run,
+            {
+                "unit_count": len(units),
+                "edge_count": len(extracted_edges),
+                "chapter_count": int(diagnostics_totals.get("chapter_count", 0) or 0),
+                "section_count": int(diagnostics_totals.get("section_count", 0) or 0),
+                "llm_section_count": int(diagnostics_totals.get("llm_section_count", 0) or 0),
+                "fallback_section_count": int(diagnostics_totals.get("fallback_section_count", 0) or 0),
+            },
+        )
+    return KnowledgeSyncExtractionPayload(
+        units=units,
+        extracted_edges=extracted_edges,
+        diagnostics_totals=diagnostics_totals,
+    )
+
+
+def persist_knowledge_graph_items(
+    session: Session,
+    *,
+    run_context: KnowledgeSyncRunContext,
+    payload: KnowledgeSyncExtractionPayload,
+    enable_rag_dedup: bool = False,
+) -> KnowledgeSyncReport:
+    """Persist extracted graph items and finish the sync run."""
+
+    units = payload.units
+    extracted_edges = payload.extracted_edges
+    diagnostics_totals = payload.diagnostics_totals
+    sync_run = _get_sync_run_or_raise(session, run_context.sync_run_id)
+    report = KnowledgeSyncReport(
+        subject=run_context.subject,
+        build_revision_no=run_context.build_revision_no,
+        sync_run_id=sync_run.id,
+        doc_version_no=run_context.doc_version_no,
         synced_unit_keys=[item.anchor for item in units],
         section_count=int(diagnostics_totals.get("section_count", 0) or 0),
         chapter_count=int(diagnostics_totals.get("chapter_count", 0) or 0),
@@ -524,16 +617,16 @@ def sync_markdown_knowledge_graph(
             inputs={
                 "unit_count": len(units),
                 "edge_count": len(extracted_edges),
-                "build_revision_no": revision_no,
+                "build_revision_no": run_context.build_revision_no,
             },
         ) as trace_run:
             _apply_extracted_graph_items(
                 session,
-                subject=subject,
+                subject=run_context.subject,
                 units=units,
                 extracted_edges=extracted_edges,
                 sync_run=sync_run,
-                build_revision_no=revision_no,
+                build_revision_no=run_context.build_revision_no,
                 enable_rag_dedup=enable_rag_dedup,
                 report=report,
             )
@@ -548,13 +641,13 @@ def sync_markdown_knowledge_graph(
         )
         session.flush()
         raise
-    report.elapsed_ms = int((perf_counter() - started_at) * 1000)
+    report.elapsed_ms = int((perf_counter() - run_context.started_at) * 1000)
     _finish_sync_run(session, sync_run, status="completed", metrics=_sync_run_metrics(report))
     session.commit()
     logger.info(
         "knowledge_docs_sync_complete",
-        subject=subject,
-        build_revision_no=revision_no,
+        subject=run_context.subject,
+        build_revision_no=run_context.build_revision_no,
         sync_run_id=sync_run.id,
         doc_version_no=report.doc_version_no,
         chapter_count=report.chapter_count,
@@ -697,6 +790,15 @@ def _create_sync_run(
     return sync_run
 
 
+def _get_sync_run_or_raise(session: Session, sync_run_id: int | None) -> KnowledgeGraphSyncRun:
+    if not sync_run_id:
+        raise RuntimeError("knowledge_graph_sync_run_id_missing")
+    sync_run = session.get(KnowledgeGraphSyncRun, sync_run_id)
+    if sync_run is None:
+        raise RuntimeError(f"knowledge_graph_sync_run_not_found:{sync_run_id}")
+    return sync_run
+
+
 def _sync_run_metrics(report: KnowledgeSyncReport) -> dict[str, int]:
     return {
         "chapter_count": report.chapter_count,
@@ -731,6 +833,33 @@ def _finish_sync_run(
     sync_run.finished_at = utcnow()
     sync_run.updated_at = sync_run.finished_at
     session.add(sync_run)
+
+
+def mark_knowledge_graph_sync_run_failed(
+    session: Session,
+    *,
+    sync_run_id: int | None,
+    error_message: str,
+    metrics: dict[str, int] | None = None,
+) -> None:
+    """Best-effort failure marker used by split graph nodes."""
+
+    try:
+        sync_run = _get_sync_run_or_raise(session, sync_run_id)
+    except Exception:
+        logger.warning(
+            "knowledge_docs_sync_fail_marker_skipped",
+            sync_run_id=sync_run_id,
+            error=error_message,
+        )
+        return
+    _finish_sync_run(
+        session,
+        sync_run,
+        status="failed",
+        metrics=metrics or {},
+        error_message=error_message,
+    )
 
 
 def _create_source_ref_for_unit(
@@ -2042,4 +2171,13 @@ def _deprecate_removed_sync_edges(
     return deprecated
 
 
-__all__ = ["KnowledgeSyncReport", "sync_markdown_knowledge_graph"]
+__all__ = [
+    "KnowledgeSyncExtractionPayload",
+    "KnowledgeSyncReport",
+    "KnowledgeSyncRunContext",
+    "extract_knowledge_graph_items",
+    "initialize_knowledge_graph_sync_run",
+    "mark_knowledge_graph_sync_run_failed",
+    "persist_knowledge_graph_items",
+    "sync_markdown_knowledge_graph",
+]
