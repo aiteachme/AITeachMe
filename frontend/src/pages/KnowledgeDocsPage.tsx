@@ -176,7 +176,7 @@ interface ThreadTurnItem {
   messages: ThreadMessageItem[];
 }
 
-type QuickChatSyncPhase = "start" | "token" | "done" | "error" | "settled";
+type QuickChatSyncPhase = "start" | "session" | "token" | "done" | "error" | "settled";
 
 interface QuickChatSyncEventDetail {
   phase?: QuickChatSyncPhase;
@@ -1378,7 +1378,13 @@ function CommentThread({
 /* ------------------------------------------------------------------ */
 
 export function KnowledgeDocsPage() {
-  const { openAiInteraction, isSidebarOpen: isAssistantOpen } = useAiInteraction();
+  const {
+    openAiInteraction,
+    isSidebarOpen: isAssistantOpen,
+    activeConversationSessionId,
+    activeConversationSelectionTarget,
+    sidebarRequest,
+  } = useAiInteraction();
   const location = useLocation();
   const {
     subjectId,
@@ -2624,6 +2630,13 @@ export function KnowledgeDocsPage() {
         return;
       }
 
+      if (detail.phase === "session") {
+        if (sessionId) {
+          rebindThreadIdToSession(localThreadId, sessionId);
+        }
+        return;
+      }
+
       if (detail.phase === "token") {
         const content = detail.content ?? "";
         if (!assistantLocalId || !content) {
@@ -3748,6 +3761,63 @@ export function KnowledgeDocsPage() {
     ? commentThreadIds[activeCommentIndex]
     : null;
   const highlightedThreadId = activeCommentThreadId ?? (isAutoCommentHighlightSuppressed ? null : activeThreadId);
+  const aiMatchedHighlightedThreadId = useMemo(() => {
+    if (!isAssistantOpen || selectionHighlights.length === 0) {
+      return null;
+    }
+
+    const activeSessionId = activeConversationSessionId?.trim() ?? "";
+    const requestSessionId = typeof sidebarRequest?.sessionId === "string"
+      ? sidebarRequest.sessionId.trim()
+      : "";
+    const requestThreadId = sidebarRequest?.clientThreadId?.trim() ?? "";
+    const requestAnchorId = sidebarRequest?.anchorId?.trim() ?? "";
+    const requestSelectedText = sidebarRequest?.selectedText?.trim() ?? "";
+    const activeSelectionSessionId = activeConversationSelectionTarget?.sessionId?.trim() ?? "";
+    const activeSelectionAnchorId = activeConversationSelectionTarget?.anchorId.trim() ?? "";
+    const activeSelectionText = activeConversationSelectionTarget?.selectedText.trim() ?? "";
+
+    return selectionHighlights.find((highlight) => {
+      const threadId = highlight.threadId.trim();
+      const resolvedSessionId = resolveSelectionThreadSessionId(threadId, threadSessionIds);
+      if (
+        activeSelectionSessionId &&
+        (threadId === activeSelectionSessionId || resolvedSessionId === activeSelectionSessionId)
+      ) {
+        return true;
+      }
+      if (
+        activeSelectionAnchorId &&
+        activeSelectionText &&
+        highlight.anchorId === activeSelectionAnchorId &&
+        highlight.selectedText.trim() === activeSelectionText
+      ) {
+        return true;
+      }
+      if (activeSessionId && (threadId === activeSessionId || resolvedSessionId === activeSessionId)) {
+        return true;
+      }
+      if (requestSessionId && (threadId === requestSessionId || resolvedSessionId === requestSessionId)) {
+        return true;
+      }
+      if (requestThreadId && threadId === requestThreadId) {
+        return true;
+      }
+      return Boolean(
+        requestAnchorId &&
+        requestSelectedText &&
+        highlight.anchorId === requestAnchorId &&
+        highlight.selectedText.trim() === requestSelectedText,
+      );
+    })?.threadId ?? null;
+  }, [
+    activeConversationSessionId,
+    activeConversationSelectionTarget,
+    isAssistantOpen,
+    selectionHighlights,
+    sidebarRequest,
+    threadSessionIds,
+  ]);
 
   const focusCommentThread = useCallback((
     threadId: string,
@@ -4551,37 +4621,41 @@ export function KnowledgeDocsPage() {
 
           {selectionHighlights.map((highlight) => (
             <div key={highlight.id}>
-              {highlight.segments.map((segment, index) => (
-                <button
-                  key={`${highlight.id}-${index}`}
-                  type="button"
-                  onClick={() => openSelectionHighlightThread(highlight.threadId)}
-                  data-highlight-thread-id={highlight.threadId}
-                  className={cn(
-                    "group absolute z-30 rounded-[2px] transition-[background-color,box-shadow] duration-150 focus-visible:outline-none",
-                    highlightedThreadId === highlight.threadId
-                      ? "bg-amber-100/60 shadow-[0_4px_12px_-14px_rgba(180,83,9,0.65)]"
-                      : "bg-transparent hover:bg-amber-50/25 focus-visible:ring-2 focus-visible:ring-amber-300/45"
-                  )}
-                  style={{
-                    top: segment.top,
-                    left: segment.left,
-                    width: segment.width,
-                    height: segment.height,
-                  }}
-                  title={`定位问答：${highlight.selectedText}`}
-                  aria-label="定位划词问答"
-                >
-                  <span
+              {highlight.segments.map((segment, index) => {
+                const isAiMatchedHighlight = aiMatchedHighlightedThreadId === highlight.threadId;
+                return (
+                  <button
+                    key={`${highlight.id}-${index}`}
+                    type="button"
+                    onClick={() => openSelectionHighlightThread(highlight.threadId)}
+                    data-highlight-thread-id={highlight.threadId}
                     className={cn(
-                      "pointer-events-none absolute inset-x-[1px] bottom-[-3px] rounded-full transition-all duration-150",
-                      highlightedThreadId === highlight.threadId
-                        ? "h-[1.5px] bg-amber-600/95 shadow-[0_3px_8px_-5px_rgba(180,83,9,0.85)]"
-                        : "h-px bg-amber-400/65 shadow-[0_2px_6px_-5px_rgba(180,83,9,0.65)] group-hover:bg-amber-500/75"
+                      "group absolute z-30 rounded-[2px] transition-shadow duration-150 focus-visible:outline-none",
+                      isAiMatchedHighlight
+                        ? "bg-amber-100/60 shadow-[0_4px_12px_-14px_rgba(180,83,9,0.65)]"
+                        : "bg-transparent focus-visible:ring-2 focus-visible:ring-amber-300/45"
                     )}
-                  />
-                </button>
-              ))}
+                    style={{
+                      top: segment.top,
+                      left: segment.left,
+                      width: segment.width,
+                      height: segment.height,
+                      backgroundColor: isAiMatchedHighlight ? "rgba(254, 243, 199, 0.6)" : undefined,
+                    }}
+                    title={`定位问答：${highlight.selectedText}`}
+                    aria-label="定位划词问答"
+                  >
+                    <span
+                      className={cn(
+                        "pointer-events-none absolute inset-x-[1px] bottom-[-3px] rounded-full transition-shadow duration-150",
+                        isAiMatchedHighlight
+                          ? "h-[1.5px] bg-amber-600/95 shadow-[0_3px_8px_-5px_rgba(180,83,9,0.85)]"
+                          : "h-px bg-amber-400/65 shadow-[0_2px_6px_-5px_rgba(180,83,9,0.65)] group-hover:bg-amber-500/75"
+                      )}
+                    />
+                  </button>
+                );
+              })}
             </div>
           ))}
 

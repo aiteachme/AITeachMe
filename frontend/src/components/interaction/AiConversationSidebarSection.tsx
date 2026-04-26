@@ -3,6 +3,7 @@ import {
   ChevronRight,
   Loader2,
   MessageSquareText,
+  Plus,
   Sparkles,
   Trash2,
 } from "lucide-react";
@@ -182,7 +183,6 @@ export function AiConversationSidebarSection({
   const [isExpanded, setIsExpanded] = useState(readRecentSectionExpanded);
   const [sessions, setSessions] = useState<ChatSessionItem[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const shouldLoadSessions = !collapsed && (isExpanded || isSidebarOpen);
@@ -227,11 +227,9 @@ export function AiConversationSidebarSection({
           return;
         }
         setSessions(res.data?.items ?? []);
-        setLoaded(true);
       } catch (requestError: unknown) {
         if (!cancelled) {
           setError(getApiErrorMessage(requestError, "加载对话失败"));
-          setLoaded(true);
         }
       } finally {
         if (!cancelled) {
@@ -323,7 +321,7 @@ export function AiConversationSidebarSection({
 
   return (
     <section className="mt-3 border-t border-slate-200/70 pt-2 dark:border-slate-800/70">
-      <div className="flex h-7 items-center">
+      <div className="flex h-7 items-center gap-1">
         <button
           type="button"
           onClick={() => updateExpanded((value) => !value)}
@@ -338,6 +336,15 @@ export function AiConversationSidebarSection({
             )}
           />
           {isLoading ? <Loader2 className="h-3 w-3 animate-spin text-current opacity-70" /> : null}
+        </button>
+        <button
+          type="button"
+          onClick={openNewConversation}
+          className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-slate-400 transition hover:bg-[#eef3f8] hover:text-sky-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#9fb0c4]/45 dark:text-slate-500 dark:hover:bg-slate-800/60 dark:hover:text-sky-300"
+          aria-label="新建 AI 对话"
+          title="新建 AI 对话"
+        >
+          <Plus className="h-3.5 w-3.5" />
         </button>
       </div>
 
@@ -364,16 +371,6 @@ export function AiConversationSidebarSection({
                 {activeEmptyStyle.label}
               </span>
               <span className="min-w-0 flex-1 truncate text-xs font-medium">新会话</span>
-            </button>
-          ) : null}
-
-          {loaded && visibleSessions.length === 0 && !hasActiveEmptyConversation ? (
-            <button
-              type="button"
-              onClick={openNewConversation}
-              className="flex h-7 w-full items-center rounded-md px-2 text-left text-xs text-slate-400 transition hover:bg-[#eef3f8] hover:text-slate-700 dark:text-slate-500 dark:hover:bg-slate-800/60 dark:hover:text-slate-300"
-            >
-              开始新对话
             </button>
           ) : null}
 

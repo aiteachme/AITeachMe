@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   ChevronRight,
   Loader2,
@@ -50,7 +50,7 @@ interface PendingSelectionContext {
   clientThreadId: string | null;
 }
 
-type QuickChatSyncPhase = "start" | "token" | "done" | "error" | "settled";
+type QuickChatSyncPhase = "start" | "session" | "token" | "done" | "error" | "settled";
 
 interface QuickChatInputContext {
   source: string;
@@ -69,6 +69,7 @@ interface ChatSessionSelectionTarget {
 
 const QUICK_CHAT_UPDATED_EVENT = "aiteachme:quick-chat-updated";
 const SELECTION_JUMP_EVENT = "aiteachme:selection-jump";
+const AUTO_SCROLL_BOTTOM_THRESHOLD = 96;
 
 function getQuickChatInputContext(input: ChatSendRequest): QuickChatInputContext | null {
   const source = input.source?.trim() ?? "";
@@ -78,6 +79,26 @@ function getQuickChatInputContext(input: ChatSendRequest): QuickChatInputContext
     return null;
   }
   return { source, anchorId, selectedText };
+}
+
+function normalizeQuickChatSelectionText(value: string | null | undefined): string {
+  return (value ?? "").replace(/\s+/g, "").trim();
+}
+
+function updateQuickChatCachedMessage(
+  messages: ChatSessionMessage[],
+  localId: string,
+  updater: (message: ChatSessionMessage) => ChatSessionMessage,
+): ChatSessionMessage[] {
+  let found = false;
+  const nextMessages = messages.map((message) => {
+    if (message.localId !== localId) {
+      return message;
+    }
+    found = true;
+    return updater(message);
+  });
+  return found ? nextMessages : messages;
 }
 
 function getSessionSelectionTarget(session: ChatSessionItem | null): ChatSessionSelectionTarget | null {
@@ -224,6 +245,12 @@ export const AiConversationPanel = memo(function AiConversationPanel({
   const {
     sessionListVersion,
     setActiveConversationSessionId,
+    setActiveConversationSelectionTarget,
+    setSidebarStreaming,
+    getQuickChatSessionId,
+    bindQuickChatSession,
+    getCachedQuickChatMessages,
+    cacheQuickChatMessages,
     notifyConversationSessionsChanged,
   } = useAiInteraction();
   const subjectId = getAiConversationBackendSubjectId(scope);
@@ -246,7 +273,15 @@ export const AiConversationPanel = memo(function AiConversationPanel({
   const requestedSessionIdRef = useRef<string | null>(null);
   const quickChatMessagesRef = useRef<Record<string, ChatSessionMessage[]>>({});
   const messagesRef = useRef<ChatSessionMessage[]>([]);
+  const messagesSessionIdRef = useRef<string | null>(null);
+  const selectedSessionIdRef = useRef<string | null>(null);
+  const activeQuickChatContextRef = useRef<PendingSelectionContext | null>(null);
   const activeQuickChatThreadIdRef = useRef("");
+  const messageScrollRef = useRef<HTMLDivElement | null>(null);
+  const shouldStickToBottomRef = useRef(true);
+  const lastMessageScrollKeyRef = useRef("");
+  const lastStreamingRef = useRef(false);
+  const scrollFrameRef = useRef<number | null>(null);
 
   const dispatchQuickChatSync = useCallback((
     phase: QuickChatSyncPhase,
@@ -300,6 +335,45 @@ export const AiConversationPanel = memo(function AiConversationPanel({
     );
   }, []);
 
+  const rememberQuickChatMessages = useCallback((
+    localThreadId: string | null | undefined,
+    sessionId: string | null | undefined,
+    nextMessages: ChatSessionMessage[],
+  ) => {
+    if (nextMessages.length === 0) {
+      return;
+    }
+    const ids = Array.from(new Set([
+      localThreadId?.trim() || null,
+      sessionId?.trim() || null,
+    ].filter((value): value is string => Boolean(value))));
+    for (const id of ids) {
+      quickChatMessagesRef.current[id] = nextMessages;
+      cacheQuickChatMessages(id, nextMessages);
+    }
+  }, [cacheQuickChatMessages]);
+
+  const updateRememberedQuickChatMessages = useCallback((
+    localThreadId: string | null | undefined,
+    sessionId: string | null | undefined,
+    updater: (messages: ChatSessionMessage[]) => ChatSessionMessage[],
+  ) => {
+    const ids = Array.from(new Set([
+      localThreadId?.trim() || null,
+      sessionId?.trim() || null,
+    ].filter((value): value is string => Boolean(value))));
+    if (ids.length === 0) {
+      return;
+    }
+    const baseMessages =
+      ids.map((id) => quickChatMessagesRef.current[id] ?? getCachedQuickChatMessages(id)).find((item) => (item?.length ?? 0) > 0) ??
+      (messagesRef.current.length > 0 ? messagesRef.current : null);
+    if (!baseMessages) {
+      return;
+    }
+    rememberQuickChatMessages(localThreadId, sessionId, updater(baseMessages));
+  }, [getCachedQuickChatMessages, rememberQuickChatMessages]);
+
   const {
     messages,
     messagesSessionId,
@@ -317,17 +391,80 @@ export const AiConversationPanel = memo(function AiConversationPanel({
     preserveMessagesWithoutSession: true,
     onSessionResolved: (nextSessionId) => {
       preferEmptySessionRef.current = false;
+      requestedSessionIdRef.current = nextSessionId;
       setSelectedSessionId(nextSessionId);
-      void reloadSessions(nextSessionId);
+      setActiveConversationSessionId(nextSessionId);
     },
-    onMessageStart: (payload) => dispatchQuickChatSync("start", payload),
-    onMessageToken: (payload) => dispatchQuickChatSync("token", payload),
+    onMessageStart: (payload) => {
+      if (getQuickChatInputContext(payload.input)) {
+        rememberQuickChatMessages(payload.localThreadId, payload.sessionId, [
+          {
+            localId: payload.userLocalId,
+            role: "user",
+            content: payload.question,
+            turnId: null,
+            contexts: null,
+            createdAt: payload.createdAt,
+            status: "ready",
+            errorDetail: null,
+          },
+          {
+            localId: payload.assistantLocalId,
+            role: "assistant",
+            content: "",
+            turnId: null,
+            contexts: null,
+            createdAt: payload.createdAt,
+            status: "streaming",
+            errorDetail: null,
+          },
+        ]);
+      }
+      dispatchQuickChatSync("start", payload);
+    },
+    onMessageSessionResolved: (payload) => {
+      bindQuickChatSession(payload.localThreadId, payload.sessionId);
+      const currentMessages = messagesRef.current;
+      if (currentMessages.length > 0) {
+        cacheQuickChatMessages(payload.localThreadId, currentMessages);
+        cacheQuickChatMessages(payload.sessionId, currentMessages);
+      }
+      dispatchQuickChatSync("session", payload);
+      notifyConversationSessionsChanged();
+    },
+    onMessageToken: (payload) => {
+      updateRememberedQuickChatMessages(payload.localThreadId, payload.sessionId, (current) =>
+        updateQuickChatCachedMessage(current, payload.assistantLocalId, (message) => ({
+          ...message,
+          content: `${message.content}${payload.content}`,
+        })),
+      );
+      dispatchQuickChatSync("token", payload);
+    },
     onMessageDone: (payload) => {
+      bindQuickChatSession(payload.localThreadId, payload.sessionId);
+      updateRememberedQuickChatMessages(payload.localThreadId, payload.sessionId, (current) =>
+        updateQuickChatCachedMessage(current, payload.assistantLocalId, (message) => ({
+          ...message,
+          turnId: payload.turnId,
+          status: "ready",
+          errorDetail: null,
+        })),
+      );
       applyResolvedSessionTitle(payload.sessionId, payload.sessionTitle);
       dispatchQuickChatSync("done", payload);
       notifyConversationSessionsChanged();
     },
-    onMessageError: (payload) => dispatchQuickChatSync("error", payload),
+    onMessageError: (payload) => {
+      updateRememberedQuickChatMessages(payload.localThreadId, payload.sessionId, (current) =>
+        updateQuickChatCachedMessage(current, payload.assistantLocalId, (message) => ({
+          ...message,
+          status: "error",
+          errorDetail: payload.detail,
+        })),
+      );
+      dispatchQuickChatSync("error", payload);
+    },
     onMessageSettled: (payload) => dispatchQuickChatSync("settled", payload),
   });
 
@@ -338,22 +475,83 @@ export const AiConversationPanel = memo(function AiConversationPanel({
   const isPlannerConversation = selectedSession?.source === "build_planner";
   const isFullscreen = presentation === "fullscreen";
   const currentMessagesSessionId = selectedSessionId ?? null;
-  const messagesBelongToCurrentSession = messagesSessionId === currentMessagesSessionId;
+  const hasLocalStreamingMessages = isStreaming && messages.length > 0;
+  const messagesBelongToCurrentSession = messagesSessionId === currentMessagesSessionId || hasLocalStreamingMessages;
   const visibleMessages = messagesBelongToCurrentSession ? messages : [];
-  const currentHistoryLoaded = historyLoaded && messagesBelongToCurrentSession;
+  const currentHistoryLoaded = hasLocalStreamingMessages || (historyLoaded && messagesBelongToCurrentSession);
   const isQuestionContext = (pendingSelectionContext ?? activeQuickChatContext)?.source === AI_SOURCE_EXAM_QUESTION;
   const panelTitle = selectedSession?.title ?? (
     selectedSessionId
-      ? "加载会话..."
+      ? pendingSelectionContext || activeQuickChatContext
+        ? isQuestionContext ? "题目提问" : "划词提问"
+        : "加载会话..."
       : pendingSelectionContext || activeQuickChatContext
         ? isQuestionContext ? "题目提问" : "划词提问"
         : "新会话"
   );
   const activeQuickChatThreadId = activeQuickChatContext?.clientThreadId?.trim() ?? "";
+  const messageScrollKey = useMemo(() => {
+    const lastMessage = visibleMessages[visibleMessages.length - 1];
+    return [
+      currentMessagesSessionId ?? "",
+      visibleMessages.length,
+      lastMessage?.localId ?? "",
+      lastMessage?.status ?? "",
+      lastMessage?.content.length ?? 0,
+    ].join(":");
+  }, [currentMessagesSessionId, visibleMessages]);
   const currentSelectionTarget = useMemo(
     () => getSessionSelectionTarget(selectedSession) ?? getContextSelectionTarget(activeQuickChatContext),
     [activeQuickChatContext, selectedSession],
   );
+
+  useEffect(() => {
+    if (presentation !== "sidebar") {
+      return;
+    }
+    if (!active) {
+      setActiveConversationSelectionTarget(null);
+      return;
+    }
+    if (!currentSelectionTarget) {
+      return;
+    }
+    setActiveConversationSelectionTarget({
+      sessionId: currentSelectionTarget.sessionId ?? selectedSessionId ?? null,
+      anchorId: currentSelectionTarget.anchorId,
+      selectedText: currentSelectionTarget.selectedText,
+    });
+  }, [active, currentSelectionTarget, presentation, selectedSessionId, setActiveConversationSelectionTarget]);
+
+  const scrollMessagesToBottom = useCallback(() => {
+    const currentScrollElement = messageScrollRef.current;
+    if (currentScrollElement) {
+      currentScrollElement.scrollTop = currentScrollElement.scrollHeight;
+    }
+    if (scrollFrameRef.current !== null) {
+      window.cancelAnimationFrame(scrollFrameRef.current);
+    }
+    scrollFrameRef.current = window.requestAnimationFrame(() => {
+      scrollFrameRef.current = null;
+      const scrollElement = messageScrollRef.current;
+      if (!scrollElement) {
+        return;
+      }
+      scrollElement.scrollTo({
+        top: scrollElement.scrollHeight,
+        behavior: "auto",
+      });
+    });
+  }, []);
+
+  const handleMessageScroll = useCallback(() => {
+    const scrollElement = messageScrollRef.current;
+    if (!scrollElement) {
+      return;
+    }
+    const distanceToBottom = scrollElement.scrollHeight - scrollElement.scrollTop - scrollElement.clientHeight;
+    shouldStickToBottomRef.current = distanceToBottom <= AUTO_SCROLL_BOTTOM_THRESHOLD;
+  }, []);
   const handleOpenCitation = useCallback((chunkId: number) => {
     setSelectedChunkId(chunkId);
   }, []);
@@ -434,7 +632,10 @@ export const AiConversationPanel = memo(function AiConversationPanel({
         if (requestedSessionId && items.some((item) => getChatSessionItemId(item) === requestedSessionId)) {
           return requestedSessionId;
         }
-        if (preferEmptySessionRef.current || pendingSelectionContextRef.current) {
+        if (requestedSessionId && (pendingSelectionSubmittedRef.current || isStreaming || current === requestedSessionId)) {
+          return requestedSessionId;
+        }
+        if (preferEmptySessionRef.current || (pendingSelectionContextRef.current && !pendingSelectionSubmittedRef.current)) {
           return null;
         }
         if (current && items.some((item) => getChatSessionItemId(item) === current)) {
@@ -445,11 +646,23 @@ export const AiConversationPanel = memo(function AiConversationPanel({
     } catch (error: unknown) {
       setSessionsError(getApiErrorMessage(error, "加载会话历史失败"));
     }
-  }, [request?.sessionId, subjectId]);
+  }, [isStreaming, request?.sessionId, subjectId]);
 
   useEffect(() => {
     messagesRef.current = messages;
   }, [messages]);
+
+  useEffect(() => {
+    messagesSessionIdRef.current = messagesSessionId;
+  }, [messagesSessionId]);
+
+  useEffect(() => {
+    selectedSessionIdRef.current = selectedSessionId;
+  }, [selectedSessionId]);
+
+  useEffect(() => {
+    activeQuickChatContextRef.current = activeQuickChatContext;
+  }, [activeQuickChatContext]);
 
   useEffect(() => {
     activeQuickChatThreadIdRef.current = activeQuickChatThreadId;
@@ -462,10 +675,33 @@ export const AiConversationPanel = memo(function AiConversationPanel({
   }, [active, selectedSessionId, setActiveConversationSessionId]);
 
   useEffect(() => {
-    if (!active) {
-      abortStream();
+    return () => {
+      if (scrollFrameRef.current !== null) {
+        window.cancelAnimationFrame(scrollFrameRef.current);
+      }
+    };
+  }, []);
+
+  useLayoutEffect(() => {
+    if (visibleMessages.length === 0) {
+      shouldStickToBottomRef.current = true;
+      lastMessageScrollKeyRef.current = messageScrollKey;
+      lastStreamingRef.current = isStreaming;
+      return;
     }
-  }, [abortStream, active]);
+
+    const messageChanged = lastMessageScrollKeyRef.current !== messageScrollKey;
+    const streamingStarted = isStreaming && !lastStreamingRef.current;
+    if (streamingStarted) {
+      shouldStickToBottomRef.current = true;
+    }
+    if (messageChanged && (streamingStarted || shouldStickToBottomRef.current)) {
+      scrollMessagesToBottom();
+    }
+
+    lastMessageScrollKeyRef.current = messageScrollKey;
+    lastStreamingRef.current = isStreaming;
+  }, [isStreaming, messageScrollKey, scrollMessagesToBottom, visibleMessages]);
 
   useEffect(() => {
     if (active && !wasActiveRef.current) {
@@ -479,7 +715,20 @@ export const AiConversationPanel = memo(function AiConversationPanel({
       return;
     }
     quickChatMessagesRef.current[activeQuickChatThreadId] = messages;
-  }, [activeQuickChatThreadId, messages]);
+    cacheQuickChatMessages(activeQuickChatThreadId, messages);
+    if (messagesSessionId) {
+      bindQuickChatSession(activeQuickChatThreadId, messagesSessionId);
+      cacheQuickChatMessages(messagesSessionId, messages);
+    }
+  }, [activeQuickChatThreadId, bindQuickChatSession, cacheQuickChatMessages, messages, messagesSessionId]);
+
+  useEffect(() => {
+    if (presentation !== "sidebar") {
+      return;
+    }
+    setSidebarStreaming(isStreaming);
+    return () => setSidebarStreaming(false);
+  }, [isStreaming, presentation, setSidebarStreaming]);
 
   useEffect(() => {
     setDraft("");
@@ -505,9 +754,51 @@ export const AiConversationPanel = memo(function AiConversationPanel({
     }
 
     const selectedText = request.selectedText?.trim() ?? "";
+    const requestSource = request.source?.trim() || "quick_chat";
+    const requestAnchorId = request.anchorId?.trim() || null;
+    const requestedClientThreadId = request.clientThreadId?.trim() ?? "";
+    const existingQuickChatContext = activeQuickChatContextRef.current;
+    const normalizedSelectedText = normalizeQuickChatSelectionText(selectedText);
+    const isSameActiveQuickChatSelection = Boolean(
+      normalizedSelectedText &&
+      normalizeQuickChatSelectionText(existingQuickChatContext?.selectedText) === normalizedSelectedText &&
+      existingQuickChatContext?.anchorId === requestAnchorId &&
+      (existingQuickChatContext?.source || "quick_chat") === requestSource,
+    );
+    const effectiveClientThreadId =
+      requestedClientThreadId ||
+      (isSameActiveQuickChatSelection ? existingQuickChatContext?.clientThreadId?.trim() ?? "" : "");
+    const mappedSessionId = getQuickChatSessionId(effectiveClientThreadId);
+    const currentStreamingMessages =
+      isStreaming &&
+      messagesRef.current.length > 0 &&
+      (
+        isSameActiveQuickChatSelection ||
+        Boolean(requestedClientThreadId && requestedClientThreadId === activeQuickChatThreadIdRef.current) ||
+        Boolean(request.sessionId && request.sessionId === messagesSessionIdRef.current) ||
+        Boolean(mappedSessionId && mappedSessionId === messagesSessionIdRef.current)
+      )
+        ? messagesRef.current
+        : null;
+    const activeStreamingSessionId =
+      currentStreamingMessages
+        ? messagesSessionIdRef.current ?? selectedSessionIdRef.current
+        : null;
+    const requestSessionId =
+      request.sessionId === undefined
+        ? undefined
+        : request.sessionId?.trim() || null;
+    const effectiveRequestSessionId =
+      requestSessionId === undefined
+        ? mappedSessionId ?? activeStreamingSessionId
+        : requestSessionId ?? mappedSessionId ?? activeStreamingSessionId;
     const shouldOpenEmptySession =
-      request.sessionId === null ||
-      Boolean(selectedText && (request.newSession ?? request.sessionId === undefined));
+      !effectiveRequestSessionId &&
+      (
+        request.sessionId === null ||
+        Boolean(selectedText && (request.newSession ?? request.sessionId === undefined))
+      );
+    let restoredQuickChatMessages: ChatSessionMessage[] | null = null;
 
     if (shouldOpenEmptySession) {
       requestedSessionIdRef.current = null;
@@ -515,33 +806,61 @@ export const AiConversationPanel = memo(function AiConversationPanel({
       pendingSelectionSubmittedRef.current = false;
       setSelectedSessionId(null);
       setActiveConversationSessionId(null);
-      const clientThreadId = request.clientThreadId?.trim() ?? "";
-      const cachedMessages = clientThreadId ? quickChatMessagesRef.current[clientThreadId] : null;
+      const providerCachedMessages = getCachedQuickChatMessages(effectiveClientThreadId);
+      const cachedMessages = effectiveClientThreadId ? quickChatMessagesRef.current[effectiveClientThreadId] : null;
       const currentThreadMessages =
-        clientThreadId &&
-        clientThreadId === activeQuickChatThreadIdRef.current &&
+        effectiveClientThreadId &&
+        effectiveClientThreadId === activeQuickChatThreadIdRef.current &&
         messagesRef.current.length > 0
           ? messagesRef.current
           : null;
-      replaceMessages(cachedMessages ?? currentThreadMessages ?? [], null);
+      restoredQuickChatMessages = currentStreamingMessages ?? currentThreadMessages ?? providerCachedMessages ?? cachedMessages ?? null;
+      if (restoredQuickChatMessages?.length) {
+        replaceMessages(restoredQuickChatMessages, activeStreamingSessionId ?? mappedSessionId ?? null);
+      } else if (!isStreaming) {
+        replaceMessages([], null);
+      }
     } else {
       preferEmptySessionRef.current = false;
       pendingSelectionSubmittedRef.current = false;
-      if (request.sessionId !== undefined) {
-        requestedSessionIdRef.current = request.sessionId;
-        setSelectedSessionId(request.sessionId);
+      if (effectiveRequestSessionId !== undefined) {
+        requestedSessionIdRef.current = effectiveRequestSessionId;
+        setSelectedSessionId(effectiveRequestSessionId);
+        setActiveConversationSessionId(effectiveRequestSessionId);
+        const providerCachedMessages =
+          getCachedQuickChatMessages(effectiveClientThreadId) ??
+          getCachedQuickChatMessages(effectiveRequestSessionId);
+        const currentThreadMessages =
+          (
+            effectiveClientThreadId &&
+            effectiveClientThreadId === activeQuickChatThreadIdRef.current &&
+            messagesRef.current.length > 0
+          ) ||
+          (
+            effectiveRequestSessionId &&
+            effectiveRequestSessionId === messagesSessionIdRef.current &&
+            messagesRef.current.length > 0
+          )
+            ? messagesRef.current
+            : null;
+        restoredQuickChatMessages = currentStreamingMessages ?? currentThreadMessages ?? providerCachedMessages ?? null;
+        if (restoredQuickChatMessages?.length) {
+          replaceMessages(restoredQuickChatMessages, effectiveRequestSessionId);
+        }
       }
     }
 
     if (selectedText) {
       const nextContext = {
-        source: request.source?.trim() || "quick_chat",
-        anchorId: request.anchorId?.trim() || null,
+        source: requestSource,
+        anchorId: requestAnchorId,
         selectedText,
         selectionContext: request.selectionContext ?? null,
-        clientThreadId: request.clientThreadId?.trim() || null,
+        clientThreadId: effectiveClientThreadId || null,
       };
-      const shouldShowSelectionContext = request.showSelectionContext ?? shouldOpenEmptySession;
+      const hasRestoredQuickChatMessages = (restoredQuickChatMessages?.length ?? 0) > 0;
+      const shouldShowSelectionContext =
+        (request.showSelectionContext ?? shouldOpenEmptySession) && !hasRestoredQuickChatMessages;
       pendingSelectionContextRef.current = shouldShowSelectionContext ? nextContext : null;
       setActiveQuickChatContext(nextContext);
       if (shouldShowSelectionContext) {
@@ -574,11 +893,18 @@ export const AiConversationPanel = memo(function AiConversationPanel({
   }, [pendingSelectionContext, replaceMessages, selectedSessionId, setActiveConversationSessionId]);
 
   useEffect(() => {
-    if (!active || !subjectId) {
+    if (pendingSelectionContext || isStreaming || !pendingSelectionSubmittedRef.current) {
+      return;
+    }
+    pendingSelectionSubmittedRef.current = false;
+  }, [isStreaming, pendingSelectionContext]);
+
+  useEffect(() => {
+    if (!active || !subjectId || isStreaming) {
       return;
     }
     void reloadSessions();
-  }, [active, reloadSessions, sessionListVersion, subjectId]);
+  }, [active, isStreaming, reloadSessions, sessionListVersion, subjectId]);
 
   const handleStartNewSession = useCallback(() => {
     preferEmptySessionRef.current = true;
@@ -625,7 +951,6 @@ export const AiConversationPanel = memo(function AiConversationPanel({
     }
     if (pendingSelectionContext) {
       pendingSelectionContextRef.current = null;
-      pendingSelectionSubmittedRef.current = false;
       setPendingSelectionContext(null);
     }
     const nextSessionId = result.sessionId ?? selectedSessionId;
@@ -733,7 +1058,11 @@ export const AiConversationPanel = memo(function AiConversationPanel({
         </div>
       ) : null}
 
-      <div className="min-h-0 flex-1 overflow-y-auto pt-2">
+      <div
+        ref={messageScrollRef}
+        onScroll={handleMessageScroll}
+        className="min-h-0 flex-1 overflow-y-auto pt-2"
+      >
         {visibleMessages.length > 0 && (!selectedSessionId || currentHistoryLoaded || isStreaming) ? (
           <ChatTranscript
             messages={visibleMessages}

@@ -54,7 +54,7 @@ export function ExamPaperWorkspace({ subjectId, paperId, backHref }: ExamPaperWo
   const navigate = useNavigate();
   const location = useLocation();
   const queryClient = useQueryClient();
-  const { openAiInteraction } = useAiInteraction();
+  const { openAiInteraction, isSidebarOpen } = useAiInteraction();
   const { toast } = useToast();
   const [answers, setAnswers] = useState<Record<number, string>>({});
   const [pageScale, setPageScale] = useState(1);
@@ -63,6 +63,12 @@ export function ExamPaperWorkspace({ subjectId, paperId, backHref }: ExamPaperWo
   const [selectedReviewItemId, setSelectedReviewItemId] = useState<number | null>(null);
   const [highlightedQuestionOrder, setHighlightedQuestionOrder] = useState<number | null>(null);
   const handledJumpMarkerRef = useRef<number | string | null>(null);
+
+  useEffect(() => {
+    if (!isSidebarOpen) {
+      setHighlightedQuestionOrder(null);
+    }
+  }, [isSidebarOpen]);
 
   const examDetailQuery = useExamDetailApiV1SubjectsSubjectExamsExamPaperIdGet(subjectId, paperId, {
     query: {
