@@ -1,12 +1,11 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState, type ComponentType } from "react";
 import { Bot } from "lucide-react";
 import { useLocation } from "react-router-dom";
 
 import { useResizablePanel } from "../../hooks/useResizablePanel";
 import { cn } from "../../lib/utils";
-import { AiConversationPanel } from "./AiConversationPanel";
 import { useAiInteraction } from "./AiInteractionProvider";
-import type { AiConversationScope } from "./types";
+import type { AiConversationScope, AiInteractionOpenRequest } from "./types";
 
 interface AiInteractionWindowProps {
   variant: "sidebar" | "fullscreen";
@@ -14,7 +13,30 @@ interface AiInteractionWindowProps {
   className?: string;
 }
 
+interface AiConversationPanelLoaderProps {
+  scope: AiConversationScope | null;
+  request?: AiInteractionOpenRequest | null;
+  active: boolean;
+  presentation: "sidebar" | "fullscreen";
+  onClose?: () => void;
+  className?: string;
+}
+
 const SIDEBAR_TRANSITION_MS = 220;
+
+const LazyAiConversationPanel = lazy(() =>
+  import("./AiConversationPanel").then((module) => ({
+    default: module.AiConversationPanel as ComponentType<AiConversationPanelLoaderProps>,
+  })),
+);
+
+function AiConversationPanelFallback() {
+  return (
+    <div className="flex h-full w-full items-center justify-center text-sm text-zinc-500 dark:text-slate-400">
+      加载中...
+    </div>
+  );
+}
 
 export function AiInteractionWindow({ variant, scope, className }: AiInteractionWindowProps) {
   const { pathname } = useLocation();
@@ -84,6 +106,11 @@ export function AiInteractionWindow({ variant, scope, className }: AiInteraction
     return Boolean(node && panelRef.current?.contains(node));
   }, []);
 
+  const isInsideAppSidebar = useCallback((target: EventTarget | null) => {
+    const element = target instanceof Element ? target : null;
+    return Boolean(element?.closest("[data-app-sidebar='true']"));
+  }, []);
+
   useEffect(() => {
     if (!shouldShowSidebarPanel) {
       outsidePointerRef.current = null;
@@ -96,7 +123,11 @@ export function AiInteractionWindow({ variant, scope, className }: AiInteraction
     };
 
     const handlePointerDown = (event: PointerEvent) => {
-      if ((event.pointerType === "mouse" && event.button !== 0) || isInsidePanel(event.target)) {
+      if (
+        (event.pointerType === "mouse" && event.button !== 0) ||
+        isInsidePanel(event.target) ||
+        isInsideAppSidebar(event.target)
+      ) {
         outsidePointerRef.current = null;
         return;
       }
@@ -108,7 +139,7 @@ export function AiInteractionWindow({ variant, scope, className }: AiInteraction
     };
 
     const handleClick = (event: MouseEvent) => {
-      if (isInsidePanel(event.target)) {
+      if (isInsidePanel(event.target) || isInsideAppSidebar(event.target)) {
         outsidePointerRef.current = null;
         return;
       }
@@ -139,7 +170,7 @@ export function AiInteractionWindow({ variant, scope, className }: AiInteraction
       document.removeEventListener("click", handleClick, true);
       document.removeEventListener("pointercancel", clearPointer, true);
     };
-  }, [closeAiInteraction, isInsidePanel, shouldShowSidebarPanel]);
+  }, [closeAiInteraction, isInsideAppSidebar, isInsidePanel, shouldShowSidebarPanel]);
 
   if (variant === "fullscreen") {
     const fullscreenConversationScope = scope ?? fullscreenScope ?? activeScope ?? { type: "global" };
@@ -151,12 +182,14 @@ export function AiInteractionWindow({ variant, scope, className }: AiInteraction
           className,
         )}
       >
-        <AiConversationPanel
-          scope={fullscreenConversationScope}
-          request={fullscreenRequest}
-          active
-          presentation="fullscreen"
-        />
+        <Suspense fallback={<AiConversationPanelFallback />}>
+          <LazyAiConversationPanel
+            scope={fullscreenConversationScope}
+            request={fullscreenRequest}
+            active
+            presentation="fullscreen"
+          />
+        </Suspense>
       </section>
     );
   }
@@ -206,13 +239,15 @@ export function AiInteractionWindow({ variant, scope, className }: AiInteraction
               )}
               onMouseDown={handleMouseDown}
             />
-            <AiConversationPanel
-              scope={panelScope}
-              request={sidebarRequest}
-              active={shouldShowSidebarPanel}
-              presentation="sidebar"
-              onClose={closeAiInteraction}
-            />
+            <Suspense fallback={<AiConversationPanelFallback />}>
+              <LazyAiConversationPanel
+                scope={panelScope}
+                request={sidebarRequest}
+                active={shouldShowSidebarPanel}
+                presentation="sidebar"
+                onClose={closeAiInteraction}
+              />
+            </Suspense>
           </div>
         ) : null}
       </div>
