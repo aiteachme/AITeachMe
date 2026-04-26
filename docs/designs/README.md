@@ -37,8 +37,7 @@
 | `13_database_schema_inventory.md` | 当前事实 | 当前数据库结构清单 |
 | `15_export_import.md` | 当前事实 | `.atmx` 导入导出、演示课程分发、安全边界 |
 | `16_cloud_db_migrations.md` | 当前事实 | 云端 PostgreSQL 迁移、校验与运维流程 |
-| `17_settings_config_ownership.md` | 当前事实 | 设置、环境变量、数据库覆盖与 local/cloud 页面边界 |
-| `18_effective_settings_runtime.md` | 当前事实 | effective settings 合并规则与运行时真相 |
+| `17_settings_config_ownership.md` | 当前事实 | 设置、环境变量、数据库覆盖、effective settings 与 local/cloud 页面边界 |
 
 ## 4. 五大引擎
 
@@ -49,7 +48,7 @@
 | `04_ingest_engine.md` | 模块设计 | Ingest 两阶段解析与 Digest 准入 |
 | `05_digest_engine.md` | 模块设计 | Digest 主线：Planner、DocGen、KG lanes |
 | `06_interact_engine.md` | 模块设计 | Interact 对话引擎设计 |
-| `07_examine_engine.md` | 模块设计 | Examine 诊断测评设计和目标态 |
+| `07_examine_engine.md` | 模块设计 | Examine 诊断测评当前链路 |
 | `08_profile_engine.md` | 模块设计 | Profile 掌握度、复习、画像设计 |
 
 ## 5. 部署与迁移
@@ -68,24 +67,17 @@
 | --- | --- | --- |
 | `19_docgen_cover_sidecar.md` | 当前事实 | DocGen 封面 sidecar、配置归属与发布接入 |
 
-## 7. 近期计划
-
-这些文档仍留在当前目录，是因为相关边界还会影响后续开发判断。
-
-| 文档 | 状态 | 作用 |
-| --- | --- | --- |
-| `03_api_contracts_and_dev_workflow.md` | 当前事实 | 当前 API 契约和联调方式 |
-| `15_export_import.md` | 当前事实 | `.atmx` 与演示课程分发边界 |
-
-## 8. 归档文档
+## 7. 归档文档
 
 以下文档曾用于规划或交接，但不再放在当前设计目录中：
 
 | 文档 | 原因 |
 | --- | --- |
 | `../archive/designs/12_api_refactor_plan.md` | API 收敛计划已沉淀到当前 API 契约和代码中 |
+| `../archive/designs/14_cloud_deployment_architecture_full.md` | 云端部署长实施方案已浓缩为当前事实页 |
 | `../archive/designs/14b_cloud_implementation_plan.md` | 云端实施计划已完成主要结论 |
 | `../archive/designs/14c_cloud_dev_handover.md` | 云端开发交接稿属于历史上下文 |
+| `../archive/designs/18_effective_settings_runtime.md` | 已合并到 `17_settings_config_ownership.md` |
 | `../archive/designs/20_docgen_live_build_experience.md` | DocGen 体验规划稿，未作为当前事实源 |
 | `../archive/designs/20_docgen_workspace_ui_design.md` | DocGen UI/UX 草稿，和后续视觉稿重复 |
 | `../archive/designs/21_docgen_build_workspace_experience.md` | DocGen SSE/工作台落地计划，当前未落成事实 |
@@ -93,7 +85,7 @@
 | `../archive/designs/22_docgen_build_workspace_visual_style.md` | 视觉实现稿，作为历史方案保留 |
 | `../archive/designs/future.md` | 未来路线探索，不作为当前实现约束 |
 
-## 9. 推荐阅读顺序
+## 8. 推荐阅读顺序
 
 ### 新加入项目
 
@@ -132,15 +124,16 @@
 2. `10_repo_structure_and_runtime_files.md`
 3. `backend/app/workflows/support/export_import/README.md`
 
-## 10. 维护规则
+## 9. 维护规则
 
 - 新增设计文档必须同步更新本 README。
 - 一个主题只保留一个当前事实源；规划稿、交接稿、体验草稿默认进 archive。
 - 阶段性探索、外部项目对比、临时迁移计划不要继续扩散到当前设计目录。
 - 如果一篇文档和当前代码明显冲突，要么修正，要么移到 archive，不保留“仅供参考”的旧权威文档。
 - 文件名优先保持编号顺序；同一主题的补充文档可使用 `14b / 14c` 这类后缀，但不要无限扩散。
+- 当前目录里的单篇文档优先写“职责、入口、流程、约束”，长 prompt、节点详解和实施流水账放回模块 README 或 archive。
 
-## 11. 当前统一口径
+## 10. 当前统一口径
 
 - 后端业务层是 `api -> workflows -> repositories / shared.infra / models / schemas`。
 - `backend/app/services` 和 `backend/app/teaching` 不再存在。
