@@ -40,3 +40,4 @@ Thumbs.db
 
 # Tooling caches
 .langgraph_api/
+.playwright-mcp/

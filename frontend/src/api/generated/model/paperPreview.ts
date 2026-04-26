@@ -5,13 +5,11 @@
  * 本地优先的 AI 助教后端服务。
  * OpenAPI spec version: 0.0.1
  */
-import type { PaperPreviewDominantType } from './paperPreviewDominantType';
 import type { PaperPreviewRow } from './paperPreviewRow';
 
 export interface PaperPreview {
   keywords?: string[];
   question_types?: string[];
-  dominant_type?: PaperPreviewDominantType;
   rows?: PaperPreviewRow[];
   /** @minimum 0 */
   overflow_count?: number;

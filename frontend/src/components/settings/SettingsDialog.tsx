@@ -4,7 +4,8 @@ import { X } from "lucide-react";
 
 import { useTheme, type Theme } from "../providers/ThemeProvider";
 
-import { FieldLabelBlock, SelectInput } from "./SettingsFields";
+import { useExamResultDisplayPreference } from "../../lib/examResultDisplayPreference";
+import { FieldLabelBlock, SelectInput, SwitchRow } from "./SettingsFields";
 import { RuntimeSettingsSection } from "./RuntimeSettingsSection";
 import { SettingsFooter } from "./SettingsFooter";
 import { SettingsSidebar } from "./SettingsSidebar";
@@ -31,6 +32,7 @@ const THEME_OPTIONS: Array<{ value: Theme; label: string }> = [
 
 export function SettingsDialog({ isOpen, onClose }: SettingsDialogProps) {
   const { theme, setTheme } = useTheme();
+  const { mode: examResultDisplayMode, setMode: setExamResultDisplayMode } = useExamResultDisplayPreference();
   const [activeSection, setActiveSection] = useState<SectionId>("");
   const {
     overview,
@@ -49,6 +51,7 @@ export function SettingsDialog({ isOpen, onClose }: SettingsDialogProps) {
   } = useSettingsOverview({ isOpen });
 
   const isCloudRuntime = overview?.mode === "cloud";
+  const showExamScores = examResultDisplayMode === "score";
   const sections = useMemo(
     () => (isCloudRuntime ? [SYSTEM_SECTION] : [...(overview?.sections ?? []), SYSTEM_SECTION]),
     [isCloudRuntime, overview?.sections],
@@ -143,6 +146,12 @@ export function SettingsDialog({ isOpen, onClose }: SettingsDialogProps) {
                             />
                           </div>
                         </div>
+                        <SwitchRow
+                          title="显示具体分数"
+                          description="开启后显示分数盖章和题目对错标记；关闭后只显示已完成 PASS 印章。"
+                          enabled={showExamScores}
+                          onToggle={() => setExamResultDisplayMode(showExamScores ? "completed" : "score")}
+                        />
                       </div>
                     </div>
                   </div>

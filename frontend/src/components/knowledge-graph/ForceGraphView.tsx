@@ -268,7 +268,9 @@ export function ForceGraphView({
       const rect = el.getBoundingClientRect();
       const w = Math.round(rect.width || el.clientWidth || 0);
       const h = Math.round(rect.height || el.clientHeight || 0);
-      if (w > 0 && h > 0) setDimensions({ width: w, height: h });
+      if (w > 0 && h > 0) {
+        setDimensions((prev) => (prev.width === w && prev.height === h ? prev : { width: w, height: h }));
+      }
     };
     measure();
     const obs = new ResizeObserver(measure);

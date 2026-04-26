@@ -33,6 +33,7 @@ Return only nodes and edges that are directly supported by the chunk.
 6. Use Knowledge Unit granularity: one definition, one formula, one derivation step, one example, or one method step is a good unit.
 7. Do not create nodes for whole chapters, whole sections, reading guides, or container headings unless the heading itself names one atomic concept.
 8. Prefer 1-3 strong nodes over many weak nodes. Do not explode one section into many near-duplicate topic shells.
+9. Reject pedagogical wrappers such as objectives, outlines, review slogans, task instructions, and question stems; extract only explicit reusable concepts or methods.
 
 ## Hierarchy rules
 1. If the chunk heading names a real concept/topic, include that concept unless the chunk is purely procedural noise.
@@ -46,8 +47,8 @@ When the source is a structured knowledge document section:
 3. If the body contains an interpretation, property, formula, method, example, or note, extract it explicitly.
 4. If labeled lines such as `定义:`, `公式:`, `例题:`, `Remark:` appear, convert them into typed nodes instead of leaving the section empty.
 5. If the heading is generic like "几何意义", "性质", "方法", or "注意事项", combine it with the parent topic mentally and return the qualified atomic unit, not the generic heading alone.
-6. Unless the chunk is truly empty, return at least one node.
-7. Prefer a sparse but non-empty graph over an empty result.
+6. It is acceptable to return an empty result when the section only contains objectives, outlines, review checklists, slogans, question stems, or procedural instructions.
+7. Prefer a sparse high-quality graph over a non-empty graph padded with headings or task phrases.
 """.strip()
 
 USER_PROMPT_KNOWLEDGE_EXTRACT = """

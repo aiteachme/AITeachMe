@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import contextvars
 import json
+import re
 from dataclasses import dataclass, field
 from dataclasses import replace
 from time import perf_counter
@@ -62,6 +63,43 @@ _ASYNC_BRIDGE_THREAD: threading.Thread | None = None
 
 logger = structlog.get_logger()
 
+_DOCS_UNIT_WRAPPER_TERMS = (
+    "题型例练",
+    "例题精练",
+    "典型题型",
+    "速判口诀",
+    "速判例题",
+    "考前复盘",
+    "复盘口诀",
+    "回看清单",
+    "本章自检",
+    "本章小结",
+    "本章摘要",
+    "章节导读",
+    "学习目标",
+    "知识主线",
+    "应试策略",
+    "解题入口",
+    "解题模板",
+    "题眼",
+    "必会",
+)
+_DOCS_UNIT_ACTION_PREFIX_RE = re.compile(
+    r"^(?:"
+    r"分析|总结|提炼|设计|建立|明确|强调|归纳|梳理|围绕|揭示|说明|复述|判断|区分|比较|"
+    r"计算|求|证明|写出|改造|构造|抓住|先标|标出|把"
+    r")"
+)
+_DOCS_UNIT_QUESTION_STEM_RE = re.compile(
+    r"^(?:题\s*\d*|例题\s*\d*|练习\s*\d*|问题\s*\d*)\s*[:：]"
+    r"|^点\s*[A-Za-z]\s*\("
+    r"|^(?:已知|若|设|求|计算|证明|判断)(?:\s|$|[，,：:])"
+)
+_DOCS_UNIT_OUTLINE_PREFIX_RE = re.compile(r"^\s*[一二三四五六七八九十]+[、.．]\s*")
+_DOCS_UNIT_FORMULA_HINT_RE = re.compile(
+    r"(?:\\[A-Za-z]+|\$|[=<>≤≥≈∑∫√]|λ|alpha|beta|gamma|theta|det|lim|sin|cos|tan)"
+)
+
 
 def _as_mapping(value: object) -> dict[str, object]:
     return dict(value) if isinstance(value, dict) else {}
@@ -103,6 +141,78 @@ def _source_quote(text: str, *, max_chars: int = 500) -> str:
     if len(cleaned) > max_chars:
         return cleaned[: max(0, max_chars - 3)].rstrip() + "..."
     return cleaned
+
+
+def _strip_docs_unit_outline_prefix(name: str) -> str:
+    return _DOCS_UNIT_OUTLINE_PREFIX_RE.sub("", str(name or "").strip()).strip()
+
+
+def _looks_like_formula_unit_name(name: str, *, node_type: str = "") -> bool:
+    normalized_type = normalize_knowledge_unit_type(node_type or "concept")
+    return normalized_type == "formula" or bool(_DOCS_UNIT_FORMULA_HINT_RE.search(str(name or "")))
+
+
+def _is_low_quality_docs_unit_name(name: str, *, node_type: str = "") -> bool:
+    """Reject doc-sync candidates that are teaching wrappers rather than KUs.
+
+    LLM still decides the semantic candidates. This guard only blocks names
+    that are visibly objectives, exercise stems, outline labels, or review
+    slogans; those belong in source evidence, not as graph nodes.
+    """
+
+    raw = str(name or "").strip()
+    cleaned = _strip_docs_unit_outline_prefix(raw)
+    normalized_type = normalize_knowledge_unit_type(node_type or "concept")
+    if not cleaned or len(cleaned) <= 1:
+        return True
+    if _looks_like_formula_unit_name(cleaned, node_type=normalized_type):
+        return False
+    if _DOCS_UNIT_OUTLINE_PREFIX_RE.match(raw) and normalized_type in {"concept", "method", "remark"}:
+        return True
+    if any(term in cleaned for term in _DOCS_UNIT_WRAPPER_TERMS):
+        return True
+    if _DOCS_UNIT_QUESTION_STEM_RE.search(cleaned):
+        return True
+    if normalized_type in {"example", "exercise"} and re.search(r"[；;。]|[:：]", cleaned):
+        return True
+    if normalized_type in {"concept", "method", "remark"} and _DOCS_UNIT_ACTION_PREFIX_RE.search(cleaned):
+        return True
+    if len(cleaned) > 34 and re.search(r"[，,；;。！？!?：:]", cleaned):
+        return True
+    return False
+
+
+def _filter_docs_candidate_result(result: ChunkExtractionResult) -> ChunkExtractionResult:
+    kept_nodes: list[CandidateNode] = []
+    dropped_candidate_ids: set[str] = set()
+    dropped_names: set[str] = set()
+    kept_names: set[str] = set()
+
+    for node in result.nodes:
+        if _is_low_quality_docs_unit_name(node.name, node_type=node.knowledge_unit_type):
+            if node.candidate_id:
+                dropped_candidate_ids.add(node.candidate_id)
+            dropped_names.add(node.name)
+            logger.info(
+                "knowledge_docs_sync_node_dropped_low_quality_name",
+                node_name=node.name,
+                node_type=node.knowledge_unit_type,
+            )
+            continue
+        kept_nodes.append(node)
+        kept_names.add(node.name)
+
+    kept_edges = [
+        edge
+        for edge in result.edges
+        if edge.source_name in kept_names
+        and edge.target_name in kept_names
+        and (not edge.source_candidate_id or edge.source_candidate_id not in dropped_candidate_ids)
+        and (not edge.target_candidate_id or edge.target_candidate_id not in dropped_candidate_ids)
+        and edge.source_name not in dropped_names
+        and edge.target_name not in dropped_names
+    ]
+    return ChunkExtractionResult(nodes=kept_nodes, edges=kept_edges)
 
 
 def _structured_context_payload(value: dict[str, object] | None) -> dict[str, object]:
@@ -839,6 +949,8 @@ def _build_backbone_graph_items(
         term = str(payload.get("term") or "").strip()
         if not term:
             continue
+        if _is_low_quality_docs_unit_name(term, node_type="concept"):
+            continue
         target_chapters = _clean_int_list(payload.get("target_chapters"))
         target_chapters_by_term[normalize_name(term)] = target_chapters
         chapter_index = target_chapters[0] if target_chapters else 0
@@ -875,6 +987,11 @@ def _build_backbone_graph_items(
         source_name = str(payload.get("from_concept") or "").strip()
         target_name = str(payload.get("to_concept") or "").strip()
         if not source_name or not target_name:
+            continue
+        if _is_low_quality_docs_unit_name(source_name, node_type="concept") or _is_low_quality_docs_unit_name(
+            target_name,
+            node_type="concept",
+        ):
             continue
         raw_relation = str(payload.get("relation") or "").strip()
         edge_type = "prerequisite" if raw_relation == "chapter_order" else normalize_relation_type(raw_relation)
@@ -1126,15 +1243,16 @@ async def _extract_candidates_with_diagnostics_adapter(**kwargs) -> tuple[ChunkE
 
 
 def _merge_missing_chapter_heading_nodes(result: ChunkExtractionResult, chapter) -> ChunkExtractionResult:
+    if result.nodes:
+        return result
     section_chunks = extract_markdown_section_chunks(chapter.body_markdown)
-    had_extracted_nodes = bool(result.nodes)
     seen_names = {normalize_name(node.name) for node in result.nodes if normalize_name(node.name)}
 
     for section in section_chunks:
-        if had_extracted_nodes and int(section.heading_level or 1) <= 1:
-            continue
         normalized_title = normalize_name(section.title)
         if not normalized_title or normalized_title in seen_names:
+            continue
+        if _is_low_quality_docs_unit_name(section.title, node_type="concept"):
             continue
         path_parts = [part.strip() for part in str(section.header_path or "").split(" > ") if part.strip()]
         parent_title = path_parts[-2] if len(path_parts) >= 2 else ""
@@ -1209,6 +1327,33 @@ def _build_chapter_fallback_payload(
     chapter_context = chapter_context or ChapterSourceContext(chapter_index=chapter_index)
     body_markdown = chapter.body_markdown[:8000]
     primary_anchor = str(chapter.anchor or build_knowledge_unit_anchor(chapter.title))
+    if _is_low_quality_docs_unit_name(chapter.title, node_type="concept"):
+        return SectionExtractionPayload(
+            units=[],
+            pending_edges=[],
+            candidate_id_to_anchor={},
+            anchors_by_name={},
+            anchors_by_normalized_name={},
+            node_contexts_by_anchor={},
+            section_context=SectionExtractionContext(
+                section_index=chapter_index,
+                title=chapter.title,
+                header_path=chapter.header_path,
+                body_markdown=body_markdown,
+                knowledge_document_id=chapter_context.knowledge_document_id,
+                source_file_ids=list(chapter_context.source_file_ids),
+            ),
+            diagnostics={
+                "section_count": 0,
+                "llm_section_count": 0,
+                "fallback_section_count": 1,
+                "question_fallback_section_count": 0,
+                "topic_fallback_section_count": 1,
+                "markdown_short_circuit_section_count": 0,
+                "total_extracted_node_count": 0,
+                "total_extracted_edge_count": 0,
+            },
+        )
     primary_unit = MarkdownKnowledgeUnit(
         anchor=primary_anchor,
         name=chapter.title,
@@ -1286,6 +1431,7 @@ async def _extract_chapter_graph_items(
         allow_markdown_anchor_short_circuit=False,
     )
     result = _merge_missing_chapter_heading_nodes(result, chapter)
+    result = _filter_docs_candidate_result(result)
     diagnostics.node_count = len(result.nodes)
     diagnostics.edge_count = len(result.edges)
 

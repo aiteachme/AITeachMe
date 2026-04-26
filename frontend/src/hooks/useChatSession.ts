@@ -57,6 +57,13 @@ interface ChatMessageDonePayload {
   turnId: string;
 }
 
+interface ChatMessageSessionPayload {
+  input: ChatSendRequest;
+  localThreadId: string;
+  assistantLocalId: string;
+  sessionId: string;
+}
+
 interface ChatMessageErrorPayload {
   input: ChatSendRequest;
   localThreadId: string;
@@ -79,6 +86,7 @@ interface UseChatSessionOptions {
   preserveMessagesWithoutSession?: boolean;
   onSessionResolved?: (sessionId: string) => void;
   onMessageStart?: (payload: ChatMessageLifecyclePayload) => void;
+  onMessageSessionResolved?: (payload: ChatMessageSessionPayload) => void;
   onMessageToken?: (payload: ChatMessageTokenPayload) => void;
   onMessageDone?: (payload: ChatMessageDonePayload) => void;
   onMessageError?: (payload: ChatMessageErrorPayload) => void;
@@ -92,21 +100,38 @@ export function useChatSession(subjectId: string, options: UseChatSessionOptions
   const preserveMessagesWithoutSession = options.preserveMessagesWithoutSession ?? false;
   const onSessionResolved = options.onSessionResolved;
   const onMessageStart = options.onMessageStart;
+  const onMessageSessionResolved = options.onMessageSessionResolved;
   const onMessageToken = options.onMessageToken;
   const onMessageDone = options.onMessageDone;
   const onMessageError = options.onMessageError;
   const onMessageSettled = options.onMessageSettled;
 
   const [messages, setMessages] = useState<ChatSessionMessage[]>([]);
+  const [messagesSessionId, setMessagesSessionIdState] = useState<string | null>(sessionId);
   const [historyLoaded, setHistoryLoaded] = useState(false);
   const [historyError, setHistoryError] = useState<string | null>(null);
   const [isStreaming, setIsStreaming] = useState(false);
   const abortControllerRef = useRef<AbortController | null>(null);
+  const isStreamingRef = useRef(false);
+  const streamSeqRef = useRef(0);
+  const activeStreamSessionIdRef = useRef<string | null>(null);
+  const messagesSessionIdRef = useRef<string | null>(sessionId);
+
+  function setStreamingState(nextValue: boolean) {
+    isStreamingRef.current = nextValue;
+    setIsStreaming(nextValue);
+  }
+
+  function setMessagesSessionId(nextSessionId: string | null) {
+    messagesSessionIdRef.current = nextSessionId;
+    setMessagesSessionIdState(nextSessionId);
+  }
 
   useEffect(() => {
     let cancelled = false;
 
     async function loadHistory() {
+      const requestedSessionId = sessionId;
       if (!enabled) {
         setHistoryLoaded(true);
         return;
@@ -114,6 +139,7 @@ export function useChatSession(subjectId: string, options: UseChatSessionOptions
 
       if (!subjectId) {
         setMessages([]);
+        setMessagesSessionId(null);
         setHistoryError(null);
         setHistoryLoaded(true);
         return;
@@ -121,7 +147,17 @@ export function useChatSession(subjectId: string, options: UseChatSessionOptions
       if (!sessionId && !loadWithoutSession) {
         if (!preserveMessagesWithoutSession) {
           setMessages([]);
+          setMessagesSessionId(null);
         }
+        setHistoryError(null);
+        setHistoryLoaded(true);
+        return;
+      }
+      if (
+        isStreamingRef.current &&
+        sessionId &&
+        (sessionId === messagesSessionIdRef.current || sessionId === activeStreamSessionIdRef.current)
+      ) {
         setHistoryError(null);
         setHistoryLoaded(true);
         return;
@@ -140,7 +176,16 @@ export function useChatSession(subjectId: string, options: UseChatSessionOptions
         if (cancelled) {
           return;
         }
+        if (
+          isStreamingRef.current &&
+          requestedSessionId &&
+          requestedSessionId === activeStreamSessionIdRef.current
+        ) {
+          setHistoryError(null);
+          return;
+        }
         setMessages(items.map(mapHistoryItemToSessionMessage));
+        setMessagesSessionId(requestedSessionId);
         setHistoryError(null);
       } catch (error: unknown) {
         if (cancelled) {
@@ -174,7 +219,7 @@ export function useChatSession(subjectId: string, options: UseChatSessionOptions
 
   async function sendMessage(input: ChatSendRequest, sendOptions: SendMessageOptions = {}): Promise<SendMessageResult> {
     const question = input.question.trim();
-    if (!subjectId || !question || isStreaming) {
+    if (!subjectId || !question || isStreamingRef.current) {
       return { accepted: false, sessionId: null };
     }
 
@@ -205,7 +250,9 @@ export function useChatSession(subjectId: string, options: UseChatSessionOptions
     };
 
     setMessages((current) => [...current, userMessage, assistantMessage]);
-    setIsStreaming(true);
+    setMessagesSessionId(resolvedSessionId);
+    activeStreamSessionIdRef.current = resolvedSessionId;
+    setStreamingState(true);
     setHistoryError(null);
     onMessageStart?.({
       input,
@@ -218,6 +265,8 @@ export function useChatSession(subjectId: string, options: UseChatSessionOptions
     });
 
     const controller = new AbortController();
+    const streamSeq = streamSeqRef.current + 1;
+    streamSeqRef.current = streamSeq;
     abortControllerRef.current = controller;
     let terminalEventReceived = false;
     let streamFailedDetail: string | null = null;
@@ -234,12 +283,21 @@ export function useChatSession(subjectId: string, options: UseChatSessionOptions
         {
           signal: controller.signal,
           onToken: (event) => {
-            setMessages((current) =>
-              updateMessage(current, assistantLocalId, (message) => ({
+            setMessages((current) => {
+              const hasUserMessage = current.some((message) => message.localId === userLocalId);
+              const hasAssistantMessage = current.some((message) => message.localId === assistantLocalId);
+              let baseMessages = current;
+              if (!hasUserMessage) {
+                baseMessages = [...baseMessages, userMessage];
+              }
+              if (!hasAssistantMessage) {
+                baseMessages = [...baseMessages, assistantMessage];
+              }
+              return updateMessage(baseMessages, assistantLocalId, (message) => ({
                 ...message,
                 content: `${message.content}${event.content}`,
-              })),
-            );
+              }));
+            });
             onMessageToken?.({
               input,
               localThreadId,
@@ -248,10 +306,28 @@ export function useChatSession(subjectId: string, options: UseChatSessionOptions
               content: event.content,
             });
           },
+          onStatus: (payload) => {
+            const statusSessionId = parseChatStatusSessionId(payload);
+            if (!statusSessionId || statusSessionId === streamSessionId) {
+              return;
+            }
+            streamSessionId = statusSessionId;
+            activeStreamSessionIdRef.current = streamSessionId;
+            setMessagesSessionId(streamSessionId);
+            onSessionResolved?.(streamSessionId);
+            onMessageSessionResolved?.({
+              input,
+              localThreadId,
+              assistantLocalId,
+              sessionId: streamSessionId,
+            });
+          },
           onDone: (payload) => {
             const donePayload = parseChatDonePayload(payload);
             terminalEventReceived = true;
             streamSessionId = donePayload.sessionId ?? streamSessionId;
+            activeStreamSessionIdRef.current = streamSessionId;
+            setMessagesSessionId(streamSessionId);
             if (donePayload.sessionId) {
               onSessionResolved?.(donePayload.sessionId);
             }
@@ -350,8 +426,11 @@ export function useChatSession(subjectId: string, options: UseChatSessionOptions
         });
       }
     } finally {
-      setIsStreaming(false);
-      abortControllerRef.current = null;
+      if (streamSeqRef.current === streamSeq) {
+        setStreamingState(false);
+        abortControllerRef.current = null;
+        activeStreamSessionIdRef.current = null;
+      }
       onMessageSettled?.({
         input,
         localThreadId,
@@ -368,6 +447,8 @@ export function useChatSession(subjectId: string, options: UseChatSessionOptions
 
   function abortStream() {
     abortControllerRef.current?.abort();
+    setStreamingState(false);
+    activeStreamSessionIdRef.current = null;
   }
 
   async function clearHistory() {
@@ -383,20 +464,32 @@ export function useChatSession(subjectId: string, options: UseChatSessionOptions
         await clearChatApiApiV1SubjectsSubjectChatsClearPost(subjectId, {});
       }
       setMessages([]);
+      setMessagesSessionId(sessionId ?? null);
       setHistoryError(null);
     } catch (error: unknown) {
       setHistoryError(getApiErrorMessage(error, "清空聊天记录失败"));
     }
   }
 
-  function replaceMessages(nextMessages: ChatSessionMessage[]) {
-    setMessages(nextMessages);
+  function replaceMessages(nextMessages: ChatSessionMessage[], nextSessionId: string | null = sessionId) {
+    setMessages((current) => {
+      if (
+        isStreamingRef.current &&
+        nextMessages.length === 0 &&
+        current.some((message) => message.status === "streaming")
+      ) {
+        return current;
+      }
+      return nextMessages;
+    });
+    setMessagesSessionId(nextSessionId);
     setHistoryError(null);
     setHistoryLoaded(true);
   }
 
   return {
     messages,
+    messagesSessionId,
     historyLoaded,
     historyError,
     isStreaming,
@@ -457,6 +550,17 @@ function parseChatDonePayload(payload: unknown): {
     sessionTitle: typeof payload.session_title === "string" ? payload.session_title : null,
     contexts: Array.isArray(payload.contexts) ? (payload.contexts as ChatContextItem[]) : null,
   };
+}
+
+function parseChatStatusSessionId(payload: unknown): string | null {
+  if (!isRecord(payload)) {
+    return null;
+  }
+  if (payload.stage !== "session_resolved") {
+    return null;
+  }
+  const sessionId = payload.session_id;
+  return typeof sessionId === "string" && sessionId.trim() ? sessionId.trim() : null;
 }
 
 function parseChatErrorDetail(payload: unknown): string {

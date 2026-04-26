@@ -56,10 +56,7 @@ logger = structlog.get_logger(__name__)
 
 _HTML_COMMENT_RE = re.compile(r"<!--.*?-->", re.DOTALL)
 _WHITESPACE_RE = re.compile(r"\s+")
-_CODE_PREVIEW_RE = re.compile(r"(```|`[^`]+`|\b(def|class|function|return|for|while|if|else|const|let|var)\b|[{};])", re.IGNORECASE)
-_CHART_PREVIEW_RE = re.compile(r"(图表|图像|折线|柱状|坐标|曲线图|统计图|chart|graph|plot|axis|trend)", re.IGNORECASE)
-_FORMULA_PREVIEW_RE = re.compile(r"(公式|方程|函数|求导|积分|计算|证明|derive|formula|equation|∑|√|≤|≥|≈|≠|=|\bf\s*\()", re.IGNORECASE)
-_IMAGE_PREVIEW_RE = re.compile(r"(图片|如图|示意图|image|figure|photo|diagram)", re.IGNORECASE)
+PAPER_PREVIEW_ROW_LIMIT = 7
 
 
 def _exam_stream_channel(subject: str, paper_id: int) -> str:
@@ -121,6 +118,14 @@ def _preview_density(difficulty: str | None) -> int:
     return 2
 
 
+def _preview_result_status(is_correct: bool | None) -> str:
+    if is_correct is True:
+        return "correct"
+    if is_correct is False:
+        return "incorrect"
+    return "ungraded"
+
+
 def _preview_shape(question_type: str | None) -> str:
     normalized = str(question_type or "").lower()
     if "choice" in normalized or normalized in {"single", "multiple"}:
@@ -137,46 +142,6 @@ def _preview_shape(question_type: str | None) -> str:
         return "code"
     if "short" in normalized or "essay" in normalized or "answer" in normalized:
         return "short"
-    return "text"
-
-
-def _content_preview_type(text: str) -> str | None:
-    if _CODE_PREVIEW_RE.search(text):
-        return "code"
-    if _CHART_PREVIEW_RE.search(text):
-        return "chart"
-    if _FORMULA_PREVIEW_RE.search(text):
-        return "formula"
-    if _IMAGE_PREVIEW_RE.search(text):
-        return "image"
-    return None
-
-
-def _dominant_preview_type(items: list[ExamPaperItem]) -> str:
-    detected: set[str] = set()
-    shapes: list[str] = []
-    for item in items:
-        shapes.append(_preview_shape(item.question_type))
-        text = " ".join(
-            part
-            for part in [
-                item.stem_snapshot,
-                item.explanation_snapshot,
-                item.options_snapshot_json or "",
-            ]
-            if part
-        )
-        content_type = _content_preview_type(text)
-        if content_type:
-            detected.add(content_type)
-
-    for candidate in ["code", "chart", "formula", "image"]:
-        if candidate in detected:
-            return candidate
-    if shapes and shapes.count("choice") >= max(shapes.count("blank"), shapes.count("text"), shapes.count("short")):
-        return "choice"
-    if "blank" in shapes:
-        return "blank"
     return "text"
 
 
@@ -214,7 +179,6 @@ def _build_paper_preview(
     return PaperPreview(
         keywords=_dedupe_preview_keywords(keyword_candidates),
         question_types=_dedupe_preview_keywords([item.question_type for item in ordered_items]),
-        dominant_type=_dominant_preview_type(ordered_items),
         rows=[
             {
                 "order": item.item_order,
@@ -222,10 +186,11 @@ def _build_paper_preview(
                 "shape": _preview_shape(item.question_type),
                 "difficulty": item.difficulty,
                 "density": _preview_density(item.difficulty),
+                "result_status": _preview_result_status(item.is_correct),
             }
-            for item in ordered_items[:5]
+            for item in ordered_items[:PAPER_PREVIEW_ROW_LIMIT]
         ],
-        overflow_count=max(0, len(ordered_items) - 5),
+        overflow_count=max(0, len(ordered_items) - PAPER_PREVIEW_ROW_LIMIT),
     )
 
 
@@ -246,7 +211,20 @@ def _paper_preview_for_response(
     knowledge_unit_by_id: dict[int, KnowledgeUnit],
 ) -> PaperPreview:
     saved_preview = _paper_preview_from_json(getattr(paper, "paper_preview_json", "{}"))
-    if saved_preview.rows or saved_preview.keywords or saved_preview.question_types:
+    expected_row_count = min(len(items), PAPER_PREVIEW_ROW_LIMIT)
+    saved_preview_is_complete = not items or len(saved_preview.rows) >= expected_row_count
+    graded_orders = {item.item_order for item in items if item.is_correct is not None}
+    saved_result_by_order = {row.order: row.result_status for row in saved_preview.rows}
+    saved_preview_has_current_results = not graded_orders or all(
+        saved_result_by_order.get(order) in {"correct", "incorrect"}
+        for order in graded_orders
+        if order <= PAPER_PREVIEW_ROW_LIMIT
+    )
+    if (
+        (saved_preview.rows or saved_preview.keywords or saved_preview.question_types)
+        and saved_preview_is_complete
+        and saved_preview_has_current_results
+    ):
         return saved_preview
     if not items:
         return saved_preview

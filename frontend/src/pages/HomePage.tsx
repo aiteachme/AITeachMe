@@ -7,7 +7,6 @@ import {
   ArrowUp,
   CheckCircle2,
   ChevronDown,
-  Download,
   FileCode,
   FileImage,
   Loader2,
@@ -21,9 +20,8 @@ import {
 } from "lucide-react";
 
 import { createSubjectApiApiV1SubjectsAddPost } from "../api/generated/subjects";
-import { apiClient } from "../api/client";
+import { apiClient, getApiErrorMessage } from "../api/client";
 import { unwrapOrvalResponse } from "../lib/unwrapOrvalResponse";
-import { getApiErrorMessage } from "../api/client";
 import { cn } from "../lib/utils";
 import { isElectronRuntime } from "../lib/electronRuntime";
 import { FILE_ACCEPT, extractPasteFiles } from "../lib/fileUpload";
@@ -31,6 +29,7 @@ import { resolveFileProcessingLabel } from "../components/knowledge-docs";
 import { HeroAnimation } from "../components/ui/HeroAnimation";
 import { FullPageDropOverlay } from "../components/ui/FullPageDropOverlay";
 import { SubjectExportModal } from "../components/subject/SubjectExportModal";
+import { useToast } from "../components/ui/Toast";
 import type { FileRecord, FilesData, FilesUploadData } from "../types/files";
 
 /* ── API helpers (same as BuildPlanPage) ── */
@@ -190,7 +189,13 @@ function homeFileStatusMeta(file: Pick<FileRecord, "markdown_ready" | "error_mes
 
 /* ── Import Modal ── */
 
-function ImportModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: () => void }) {
+function ImportModal({
+  onClose,
+  onSuccess,
+}: {
+  onClose: () => void;
+  onSuccess: (result: ImportResultData) => void;
+}) {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [customName, setCustomName] = useState("");
   const [dragOver, setDragOver] = useState(false);
@@ -198,7 +203,7 @@ function ImportModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: (
 
   const importMutation = useMutation({
     mutationFn: () => importSubject(selectedFile!, customName.trim() || undefined),
-    onSuccess: () => { onSuccess(); onClose(); },
+    onSuccess: (result) => { onSuccess(result); onClose(); },
   });
 
   return (
@@ -401,6 +406,7 @@ export function HomePage() {
   const navigate = useNavigate();
   const location = useLocation();
   const queryClient = useQueryClient();
+  const { toast } = useToast();
   const isElectron = isElectronRuntime();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -459,9 +465,24 @@ export function HomePage() {
   const courseImportMutation = useMutation({
     mutationFn: ({ filename, newName }: { filename: string; newName?: string }) =>
       importCourseByFilename(filename, newName),
-    onSuccess: () => {
+    onSuccess: (result) => {
+      setError(null);
       queryClient.invalidateQueries({ queryKey: ["subjects"] });
       queryClient.invalidateQueries({ queryKey: ["available-courses"] });
+      toast({
+        title: "导入成功",
+        description: `${result.subject_name} 已加入左侧学科列表。`,
+        variant: "success",
+      });
+    },
+    onError: (err: unknown) => {
+      const message = getApiErrorMessage(err, "演示课程导入失败");
+      setError(message);
+      toast({
+        title: "导入失败",
+        description: message,
+        variant: "error",
+      });
     },
   });
 
@@ -897,13 +918,7 @@ export function HomePage() {
                           <Package className="w-8 h-8 text-slate-400" />
                         </div>
                         <p className="text-sm font-medium text-slate-600 mb-1">暂无演示课程</p>
-                        <p className="text-xs text-slate-400">
-                          请在后端配置现有的{" "}
-                          <code className="px-1 py-0.5 bg-slate-100 rounded text-xs">S3_PUBLIC_BASE_URL</code>
-                          ，系统会固定从{" "}
-                          <code className="px-1 py-0.5 bg-slate-100 rounded text-xs">demo-courses/catalog/v1/index.json</code>
-                          读取线上 <code className="px-1 py-0.5 bg-slate-100 rounded text-xs">.atmx</code> 课程包
-                        </p>
+                        <p className="text-xs text-slate-400">也可以通过上传导入 .atmx 课程包</p>
                       </div>
                     )}
                     {courses.length > 0 && (
@@ -946,22 +961,22 @@ export function HomePage() {
                               </div>
 
                               {/* Footer */}
-                              <div className="mt-auto pt-3 border-t border-slate-100">
+                              <div className="mt-auto border-t border-slate-100 pt-3">
                                 <button
                                   onClick={() => courseImportMutation.mutate({ filename: course.filename })}
                                   disabled={courseImportMutation.isPending}
                                   className={cn(
-                                    "w-full flex items-center justify-center gap-2 py-2 rounded-xl text-sm font-bold transition-all",
+                                    "flex min-h-9 w-full items-center justify-center gap-2 rounded-xl px-3 py-2 text-sm font-bold transition-all",
                                     !courseImportMutation.isPending
                                       ? "bg-slate-900 text-white hover:bg-slate-800 shadow-sm hover:shadow-md"
                                       : "bg-slate-200 text-slate-400 cursor-not-allowed"
                                   )}
-                                  title={`导入 ${course.subject_name}`}
+                                  title={`导入 ${course.subject_name} 到左侧学科列表`}
                                 >
                                   {courseImportMutation.isPending ? (
-                                    <><Loader2 className="w-4 h-4 animate-spin" /> 导入中…</>
+                                    <><Loader2 className="h-4 w-4 animate-spin" /> 导入中</>
                                   ) : (
-                                    <><Download className="w-4 h-4" /> 导入体验</>
+                                    <><Upload className="h-4 w-4" /> 导入</>
                                   )}
                                 </button>
                               </div>
@@ -1001,7 +1016,14 @@ export function HomePage() {
         <ImportModal
           key="import"
           onClose={() => setImportOpen(false)}
-          onSuccess={() => queryClient.invalidateQueries({ queryKey: ["subjects"] })}
+          onSuccess={(result) => {
+            queryClient.invalidateQueries({ queryKey: ["subjects"] });
+            toast({
+              title: "导入成功",
+              description: `${result.subject_name} 已加入左侧学科列表。`,
+              variant: "success",
+            });
+          }}
         />
       )}
       {renameTarget && (

@@ -15,7 +15,10 @@ def build_select_execution_mode_node(*, context: WorkflowContext):
     def select_mode(state: InteractWorkflowState) -> InteractWorkflowState:
         execution_mode = select_execution_mode(
             question=state["question"],
-            selected_context=state.get("selected_context"),
+            selected_context=(
+                state.get("selected_context")
+                or _selection_text(state.get("selection_context"))
+            ),
             strategy_mode=state["strategy_mode"],
             retrieval_results=state.get("retrieval_results", []),
         )
@@ -32,5 +35,10 @@ def build_select_execution_mode_node(*, context: WorkflowContext):
     return select_mode
 
 
-__all__ = ["build_select_execution_mode_node"]
+def _selection_text(selection_context: object | None) -> str:
+    if selection_context is None:
+        return ""
+    return str(getattr(selection_context, "selected_text", "") or "")
 
+
+__all__ = ["build_select_execution_mode_node"]
