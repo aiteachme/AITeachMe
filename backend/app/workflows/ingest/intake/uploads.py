@@ -21,8 +21,8 @@ from app.schemas.files import FilesUploadData
 from app.utils.path_helpers import build_temp_dir
 from app.utils.presenters import require_id
 from app.utils.subject import validate_subject
-from app.workflows.ingest.files.catalog import build_file_record
-from app.workflows.ingest.files.parsing import _start_parse_for_files
+from app.workflows.ingest.intake.catalog import build_file_record
+from app.workflows.ingest.intake.parse_dispatch import _start_parse_for_files
 
 
 SUPPORTED_UPLOAD_EXTENSIONS = frozenset({".txt", ".doc", ".docx", ".pdf", ".ppt", ".pptx", ".md"})

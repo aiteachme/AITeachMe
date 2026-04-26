@@ -13,8 +13,8 @@ import tempfile
 from pathlib import Path
 
 from app.shared.infra.exceptions import FileParseError
-from app.workflows.ingest.common.parsing.pdf import parse_pdf_with_pymupdf_ocr_vision
-from app.workflows.ingest.common.parsing.types import ParserRunOptions
+from app.workflows.ingest.parsing.pdf import parse_pdf_with_pymupdf_ocr_vision
+from app.workflows.ingest.parsing.types import ParserRunOptions
 
 
 def _find_soffice() -> str | None:

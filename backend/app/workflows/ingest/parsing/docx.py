@@ -1,4 +1,4 @@
-﻿"""DOCX parsers used by the ingest workflow."""
+"""DOCX parsers used by the ingest workflow."""
 
 from __future__ import annotations
 
@@ -9,9 +9,9 @@ from pathlib import Path
 import structlog
 
 from app.shared.infra.exceptions import FileParseError
-from app.workflows.ingest.common.parsing.docx_archive import load_docx_archive
-from app.workflows.ingest.common.parsing.types import ParserRunOptions
-from app.workflows.ingest.common.parsing.utils import save_image_bytes
+from app.workflows.ingest.parsing.docx_archive import load_docx_archive
+from app.workflows.ingest.parsing.types import ParserRunOptions
+from app.workflows.ingest.parsing.utils import save_image_bytes
 
 
 try:

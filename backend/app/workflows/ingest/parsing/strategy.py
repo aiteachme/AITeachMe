@@ -10,12 +10,12 @@ from app.shared.infra.env_support import get_env, get_env_choice
 from app.shared.infra.exceptions import FileParseError, MissingLLMApiKeyError, UnsupportedFileTypeError
 from app.shared.infra.settings import get_settings
 from app.shared.infra.settings.support import llm_provider_requires_api_key
-from app.workflows.ingest.common.parsing.defaults import (
+from app.workflows.ingest.parsing.defaults import (
     DEFAULT_PARSE_CONCURRENCY,
     DEFAULT_PARSER_TIMEOUT_S,
 )
-from app.workflows.ingest.common.parsing.classifier import ClassificationResult
-from app.workflows.ingest.common.parsing.formats import (
+from app.workflows.ingest.parsing.classifier import ClassificationResult
+from app.workflows.ingest.parsing.formats import (
     categorize_text_extension,
     is_audio_extension,
     is_image_extension,
@@ -23,12 +23,12 @@ from app.workflows.ingest.common.parsing.formats import (
     is_text_extension,
     normalize_extension,
 )
-from app.workflows.ingest.common.parsing.parsers import (
+from app.workflows.ingest.parsing.parsers import (
     DEFAULT_PARSER_CHAIN,
     get_available_parsers,
     resolve_parser_extension,
 )
-from app.workflows.ingest.common.parsing.types import ParserRunOptions
+from app.workflows.ingest.parsing.types import ParserRunOptions
 
 _LARGE_FILE_MB = 20
 _LARGE_DOC_PAGES = 120

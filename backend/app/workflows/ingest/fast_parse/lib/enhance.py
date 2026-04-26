@@ -18,11 +18,11 @@ from app.shared.infra.storage import (
 from app.models import IngestStatus
 from app.repositories.files_repo import get_raw_file_by_id, replace_raw_file_assets, update_raw_file
 from app.utils.path_helpers import build_asset_name_prefix
-from app.workflows.ingest.common.parsing.classifier import ClassificationResult
-from app.workflows.ingest.common.parsing.features import builtin_pdf_parsing_enabled
-from app.workflows.ingest.common.parsing.orchestrator import deep_enhance_file
-from app.workflows.ingest.common.parsing.strategy import build_parse_plan
-from app.workflows.ingest.common.parsing.types import ParserRunOptions
+from app.workflows.ingest.parsing.classifier import ClassificationResult
+from app.workflows.ingest.parsing.features import builtin_pdf_parsing_enabled
+from app.workflows.ingest.parsing.orchestrator import deep_enhance_file
+from app.workflows.ingest.parsing.strategy import build_parse_plan
+from app.workflows.ingest.parsing.types import ParserRunOptions
 from app.workflows.ingest.fast_parse.lib.runtime_helpers import _build_asset_rows
 
 logger = structlog.get_logger()
@@ -177,8 +177,8 @@ async def _run_deep_enhance_background(
                 and original_parser_used not in {"mineru", "markitdown"}
             ):
                 try:
-                    from app.workflows.ingest.common.parsing.pdf import parse_pdf_with_pymupdf4llm, PDF_PYMUPDF4LLM_AVAILABLE
-                    from app.workflows.ingest.common.parsing.canonicalizer import canonicalize_markdown
+                    from app.workflows.ingest.parsing.pdf import parse_pdf_with_pymupdf4llm, PDF_PYMUPDF4LLM_AVAILABLE
+                    from app.workflows.ingest.parsing.canonicalizer import canonicalize_markdown
 
                     if PDF_PYMUPDF4LLM_AVAILABLE:
                         quality_options = ParserRunOptions(
@@ -229,7 +229,7 @@ async def _run_deep_enhance_background(
                     hint="在设置页配置“文档 OCR 模型”后，才会对扫描页和文档图片执行 OCR 增强。",
                 )
                 # Create a dummy result; no OCR was done.
-                from app.workflows.ingest.common.parsing.orchestrator import DeepEnhanceResult
+                from app.workflows.ingest.parsing.orchestrator import DeepEnhanceResult
                 enhance_result = DeepEnhanceResult(markdown=markdown)
 
             # Overwrite markdown with enhanced version and persist assets together.

@@ -1,4 +1,4 @@
-﻿"""PDF parser variants used by the ingest workflow."""
+"""PDF parser variants used by the ingest workflow."""
 
 from __future__ import annotations
 
@@ -10,10 +10,10 @@ from pydantic import BaseModel
 import structlog
 
 from app.shared.infra.exceptions import FileParseError
-from app.workflows.ingest.common.parsing.image import parse_image_bytes_with_llm_vision
-from app.workflows.ingest.common.parsing.markdown_pages import MarkdownPageSection, join_markdown_pages
-from app.workflows.ingest.common.parsing.types import ParserRunOptions
-from app.workflows.ingest.common.parsing.utils import save_image_bytes
+from app.workflows.ingest.parsing.image import parse_image_bytes_with_llm_vision
+from app.workflows.ingest.parsing.markdown_pages import MarkdownPageSection, join_markdown_pages
+from app.workflows.ingest.parsing.types import ParserRunOptions
+from app.workflows.ingest.parsing.utils import save_image_bytes
 
 
 try:

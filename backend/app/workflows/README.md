@@ -25,11 +25,11 @@
 
 - `support`
 
-`support/` 承接不属于五大引擎、但仍属于后端业务层的模块，例如 `system`、`auth`、`subjects`、`files`、`export_import`。
+`support/` 承接不属于五大引擎、但仍属于后端业务层的模块，例如 `system`、`auth`、`subjects`、`export_import`。
 
 ## 模块根目录规则
 
-五大引擎模块根目录只允许做“稳定导入面 + README + lane/common 聚合”：
+五大引擎模块根目录只允许做“稳定导入面 + README + lane/明确共享包聚合”：
 
 ```text
 workflows/<module>/
@@ -37,13 +37,13 @@ workflows/<module>/
   README.md
   <lane_a>/
   <lane_b>/
-  common/                  # 仅当 >=2 条链路真实复用时才建立
+  common/                  # 仅当 >=2 条链路真实复用且没有更明确命名时才建立
 ```
 
 模块根 `__init__.py`：
 
 - 只提供稳定导入面。
-- 可以懒加载并转发到真实 lane 或 `common/`。
+- 可以懒加载并转发到真实 lane 或明确共享包。
 - 不承载业务实现。
 - 不创建 workflow context。
 - 不跑图。
@@ -67,6 +67,7 @@ workflows/<module>/
 
 当前稳定链路如下：
 
+- `ingest/intake`
 - `ingest/fast_parse`
 - `digest/planner`
 - `digest/docgen`
@@ -184,7 +185,6 @@ workflows/support/<module>/
 适用模块包括：
 
 - `auth`
-- `files`
 - `subjects`
 - `system`
 - `export_import`
@@ -194,7 +194,7 @@ workflows/support/<module>/
 - support 模块默认不用 LangGraph。
 - 如果需要长链 AI 流程，只调用已有 engine lane。
 - 不在 support 里平行复制五大引擎的能力。
-- 新代码优先按 use case 命名文件，例如 `catalog.py`、`uploads.py`、`deletion.py`。
+- 新代码优先按 use case 命名文件，例如 `catalog.py`、`sessions.py`、`settings.py`、`deletion.py`。
 - 不保留无调用方的旧壳；如确需兼容，必须先有真实外部调用方。
 
 ## 模块级 `common/` 规则
@@ -205,7 +205,7 @@ workflows/support/<module>/
 
 - Digest 的共享 contracts / models / prepare。
 - Digest 的跨链路 metrics 基础模型与 token / slow-item 汇总。
-- Ingest 的共享 parsing / recovery / logging。
+- Ingest 的解析适配优先放明确包名 `parsing/`；只有多类共享能力混在一起时才建立 `common/`。
 
 不应进入模块级 `common/` 的内容：
 
@@ -425,7 +425,7 @@ planner -> docgen -> kg_doc_sync
   基于知识图谱的总览用例
 - `support/system/init.py`、`support/system/settings.py`
   系统初始化与设置总览位置
-- `ingest/files/catalog.py`、`ingest/files/uploads.py`、`ingest/files/parsing.py`、`ingest/files/deletion.py`
+- `ingest/intake/catalog.py`、`ingest/intake/uploads.py`、`ingest/intake/parse_dispatch.py`、`ingest/intake/deletion.py`
   文件模块按用例拆分后的位置
 - `profile/pipeline/lib/`
   Profile 的掌握度、复习调度、画像摘要与报告建议 helper 落点

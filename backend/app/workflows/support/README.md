@@ -50,4 +50,4 @@ workflows/support/<module>/
 
 `support/` 不是新的杂项目录，而是 workflows 单层化之后承接“非引擎业务用例”的正式区域。
 
-文件上传、列表、删除与解析触发已经收口到 `workflows/ingest/files/`，因为它们直接管理 Ingest 的 `RawFile` 生命周期。
+文件上传、列表、删除与解析触发已经收口到 `workflows/ingest/intake/`，因为它们直接管理 Ingest 的 `RawFile` 生命周期。

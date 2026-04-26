@@ -1,14 +1,14 @@
-﻿"""Parse route decisions for ingest workflows."""
+"""Parse route decisions for ingest workflows."""
 
 from __future__ import annotations
 
-from app.workflows.ingest.common.parsing.formats import (
+from app.workflows.ingest.parsing.formats import (
     IMAGE_EXTENSIONS,
     MARKITDOWN_GENERIC_EXTENSIONS,
     normalize_extension,
 )
-from app.workflows.ingest.common.parsing.features import builtin_pdf_parsing_enabled
-from app.workflows.ingest.common.parsing.provider_contracts import ParseDecision, ProviderCapability
+from app.workflows.ingest.parsing.features import builtin_pdf_parsing_enabled
+from app.workflows.ingest.parsing.provider_contracts import ParseDecision, ProviderCapability
 
 
 # Conservative defaults for MinerU Cloud-style document parsing. Deployments may

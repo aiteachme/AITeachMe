@@ -1,4 +1,4 @@
-﻿"""Parser routing for ingest workflows — two-phase architecture.
+"""Parser routing for ingest workflows — two-phase architecture.
 
 Phase 1 (fast_parse_file): Traditional parsing only, no LLM calls.
 Phase 2 (deep_enhance_file): LLM Vision OCR enhancement, runs in background.
@@ -15,12 +15,12 @@ import structlog
 
 from app.shared.infra.exceptions import UnsupportedFileTypeError
 from app.utils.path_helpers import list_asset_files
-from app.workflows.ingest.common.parsing.asset_ocr import enhance_markdown_with_asset_ocr
-from app.workflows.ingest.common.parsing.canonicalizer import canonicalize_markdown
-from app.workflows.ingest.common.parsing.classifier import ClassificationResult
-from app.workflows.ingest.common.parsing.features import builtin_pdf_parsing_enabled
-from app.workflows.ingest.common.parsing.parsers import PARSER_REGISTRY, resolve_parser_extension
-from app.workflows.ingest.common.parsing.strategy import ParsePlan, build_parse_plan
+from app.workflows.ingest.parsing.asset_ocr import enhance_markdown_with_asset_ocr
+from app.workflows.ingest.parsing.canonicalizer import canonicalize_markdown
+from app.workflows.ingest.parsing.classifier import ClassificationResult
+from app.workflows.ingest.parsing.features import builtin_pdf_parsing_enabled
+from app.workflows.ingest.parsing.parsers import PARSER_REGISTRY, resolve_parser_extension
+from app.workflows.ingest.parsing.strategy import ParsePlan, build_parse_plan
 
 logger = structlog.get_logger()
 
@@ -122,7 +122,7 @@ async def fast_parse_file(
             )
 
             # Determine if Phase 2 is needed
-            from app.workflows.ingest.common.parsing.formats import is_text_extension
+            from app.workflows.ingest.parsing.formats import is_text_extension
             needs_quality_reparse = (
                 extension == ".pdf"
                 and parser_name != "pymupdf4llm"
@@ -236,7 +236,7 @@ async def deep_enhance_file(
 
     # Step 2: PDF page-level OCR fallback
     if extension == ".pdf" and builtin_pdf_parsing_enabled():
-        from app.workflows.ingest.common.parsing.pdf_page_fallback import (
+        from app.workflows.ingest.parsing.pdf_page_fallback import (
             enhance_pdf_markdown_with_page_fallback,
         )
 

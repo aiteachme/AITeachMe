@@ -16,9 +16,9 @@ from app.shared.infra.llm_support.routing import TaskType
 from app.shared.infra.settings.support import llm_provider_requires_api_key
 from app.shared.infra.prompt_loader import populate_prompt
 from app.schemas.llm import ChatMessage, USER
-from app.workflows.ingest.common.parsing.types import ParserRunOptions
-from app.workflows.ingest.common.parsing.utils import MIME_MAP, save_image_bytes
-from app.workflows.ingest.common.parsing.prompts import get_image_parse_prompt
+from app.workflows.ingest.parsing.types import ParserRunOptions
+from app.workflows.ingest.parsing.utils import MIME_MAP, save_image_bytes
+from app.workflows.ingest.parsing.prompts import get_image_parse_prompt
 
 
 logger = structlog.get_logger()

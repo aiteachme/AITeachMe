@@ -1,4 +1,4 @@
-﻿"""Generic MarkItDown parser for broad ingest format coverage."""
+"""Generic MarkItDown parser for broad ingest format coverage."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ from pathlib import Path
 import structlog
 
 from app.shared.infra.exceptions import FileParseError
-from app.workflows.ingest.common.parsing.types import ParserRunOptions
+from app.workflows.ingest.parsing.types import ParserRunOptions
 
 
 try:

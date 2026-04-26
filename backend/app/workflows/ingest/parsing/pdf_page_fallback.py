@@ -1,4 +1,4 @@
-﻿"""Page-level fallback for PDF placeholder recovery."""
+"""Page-level fallback for PDF placeholder recovery."""
 
 from __future__ import annotations
 
@@ -9,9 +9,9 @@ import re
 from pydantic import BaseModel
 import structlog
 
-from app.workflows.ingest.common.parsing.image import parse_image_bytes_with_llm_vision
-from app.workflows.ingest.common.parsing.markdown_pages import MarkdownPageSection, join_markdown_pages, split_markdown_pages
-from app.workflows.ingest.common.parsing.utils import save_image_bytes
+from app.workflows.ingest.parsing.image import parse_image_bytes_with_llm_vision
+from app.workflows.ingest.parsing.markdown_pages import MarkdownPageSection, join_markdown_pages, split_markdown_pages
+from app.workflows.ingest.parsing.utils import save_image_bytes
 
 
 try:
