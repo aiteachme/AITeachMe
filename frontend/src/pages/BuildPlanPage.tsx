@@ -39,7 +39,12 @@ import {
 } from "../lib/knowledgeBuildRuntime";
 import { formatDigestModeLabel } from "../lib/digestMode";
 import { buildKnowledgeDocStateQueryKey, fetchKnowledgeDocState } from "../lib/knowledgeDocs";
-import { FILE_ACCEPT, extractPasteFiles } from "../lib/fileUpload";
+import {
+  buildUnsupportedFilesMessage,
+  FILE_ACCEPT,
+  extractPasteFiles,
+  partitionUploadFiles,
+} from "../lib/fileUpload";
 import { publicAssetPath } from "../lib/publicAsset";
 import type { FileRecord, FilesData, FilesUploadData } from "../types/files";
 
@@ -1055,7 +1060,35 @@ export function BuildPlanPage() {
         ]);
       }
     },
+    onError: (error: unknown) => {
+      const message = getApiErrorMessage(error, "资料上传失败，请稍后重试。");
+      toast({
+        title: "上传失败",
+        description: message,
+        variant: "error",
+      });
+      setMessages((prev) => [...prev, createMessage("system", message)]);
+    },
   });
+
+  const queueUploadFiles = useCallback((candidateFiles: File[]) => {
+    if (!candidateFiles.length) {
+      return;
+    }
+    const { supportedFiles, unsupportedFiles } = partitionUploadFiles(candidateFiles);
+    if (unsupportedFiles.length > 0) {
+      const message = buildUnsupportedFilesMessage(unsupportedFiles);
+      toast({
+        title: "文件类型暂不支持",
+        description: message,
+        variant: "error",
+      });
+      setMessages((prev) => [...prev, createMessage("system", message)]);
+    }
+    if (supportedFiles.length > 0) {
+      uploadMutation.mutate(supportedFiles);
+    }
+  }, [toast, uploadMutation]);
 
   const deleteMutation = useMutation({
     mutationFn: (uid: string) => deleteFile(subjectId, uid),
@@ -1446,7 +1479,7 @@ export function BuildPlanPage() {
       return;
     }
     setHasAutoUploaded(true);
-    void uploadMutation.mutateAsync(navState.initialFiles);
+    queueUploadFiles(navState.initialFiles);
     navigate(location.pathname, {
       replace: true,
       state: navState?.initialPrompt ? { initialPrompt: navState.initialPrompt } : null,
@@ -1458,7 +1491,7 @@ export function BuildPlanPage() {
     navState?.initialPrompt,
     navigate,
     subjectId,
-    uploadMutation,
+    queueUploadFiles,
   ]);
 
   const inputPlaceholder = currentPlan
@@ -1473,7 +1506,9 @@ export function BuildPlanPage() {
   return (
     <>
       <FullPageDropOverlay
-        onDrop={(droppedFiles) => void uploadMutation.mutateAsync(droppedFiles)}
+        onDrop={(droppedFiles) => {
+          queueUploadFiles(droppedFiles);
+        }}
         disabled={uploadMutation.isPending}
       />
 
@@ -1616,13 +1651,13 @@ export function BuildPlanPage() {
                     void handleSend();
                   }
                 }}
-                onPaste={(event) => {
-                  const files = extractPasteFiles(event);
-                  if (files.length > 0) {
-                    event.preventDefault();
-                    void uploadMutation.mutateAsync(files);
-                  }
-                }}
+                  onPaste={(event) => {
+                    const files = extractPasteFiles(event);
+                    if (files.length > 0) {
+                      event.preventDefault();
+                      queueUploadFiles(files);
+                    }
+                  }}
                 disabled={isBuilding || plannerStreaming}
                 placeholder={plannerStreaming ? "正在生成方案，点击右侧按钮可停止当前生成" : inputPlaceholder}
                 rows={1}
@@ -1673,13 +1708,13 @@ export function BuildPlanPage() {
                       accept={FILE_ACCEPT}
                       className="hidden"
                       id="files-page-upload"
-                      onChange={(event: ChangeEvent<HTMLInputElement>) => {
-                        const selected = Array.from(event.target.files ?? []);
-                        event.target.value = "";
-                        if (selected.length) {
-                          void uploadMutation.mutateAsync(selected);
-                        }
-                      }}
+                        onChange={(event: ChangeEvent<HTMLInputElement>) => {
+                          const selected = Array.from(event.target.files ?? []);
+                          event.target.value = "";
+                          if (selected.length) {
+                            queueUploadFiles(selected);
+                          }
+                        }}
                     />
                     <label
                       htmlFor="files-page-upload"

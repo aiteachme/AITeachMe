@@ -142,13 +142,6 @@ export const SETTING_SELECT_OPTIONS: Record<
   string,
   Array<{ value: string; label: string }>
 > = {
-  "ingest.parser_provider": [
-    { value: "local", label: "默认本地解析" },
-    { value: "mineru", label: "MinerU" },
-    { value: "paddle_ocr", label: "PaddleOCR" },
-    { value: "ocr", label: "OCR" },
-    { value: "markitdown", label: "MarkItDown" },
-  ],
   "llm.provider": [
     { value: "", label: "自动识别" },
     { value: "openai_compatible", label: "OpenAI Compatible" },

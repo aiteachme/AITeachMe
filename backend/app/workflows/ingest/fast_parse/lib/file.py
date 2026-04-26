@@ -16,7 +16,6 @@ from pathlib import Path
 
 from app.shared.infra.database import managed_session
 from app.shared.infra.env_support import get_env, get_env_list
-from app.shared.infra.settings import get_settings
 from app.shared.infra.settings.support import llm_provider_requires_api_key
 from app.shared.infra.storage import get_content_store
 from app.models import IngestStatus
@@ -122,7 +121,7 @@ def _resolve_parse_request(
 
     sanitized_payload = dict(raw_payload)
     mineru_block = sanitized_payload.get("mineru")
-    if requested_parser_provider == "mineru" and isinstance(mineru_block, dict):
+    if isinstance(mineru_block, dict):
         token_value = mineru_block.get("api_token")
         mineru_token = str(token_value).strip() if token_value else None
 
@@ -150,7 +149,7 @@ def _resolve_parse_request(
         sanitized_payload["mineru"] = sanitized_block
 
     paddle_ocr_block = sanitized_payload.get("paddle_ocr")
-    if requested_parser_provider == "paddle_ocr" and isinstance(paddle_ocr_block, dict):
+    if isinstance(paddle_ocr_block, dict):
         token_value = paddle_ocr_block.get("api_token")
         paddle_ocr_token = str(token_value).strip() if token_value else None
 
@@ -210,10 +209,6 @@ async def _load_raw_file_state(state: IngestParseState) -> IngestParseState:
             mineru_enable_table,
             mineru_is_ocr,
         ) = _resolve_parse_request(raw_payload=parse_request_payload)
-        default_parser_provider = _normalize_parser_provider(
-            get_settings().ingest.parser_provider
-        )
-        requested_parser_provider = requested_parser_provider or default_parser_provider
 
         if sanitized_payload != parse_request_payload:
             update_raw_file(
@@ -223,28 +218,19 @@ async def _load_raw_file_state(state: IngestParseState) -> IngestParseState:
             )
             raw_file = get_raw_file_by_id(session, file_id) or raw_file
 
-        mineru_token_source = "not_requested"
-        paddle_ocr_token_source = "not_requested"
-        if requested_parser_provider == "mineru":
-            if mineru_token:
-                mineru_token_source = "request"
-            else:
-                env_tokens = get_env_list("MINERU_API_TOKENS") or get_env_list("MINERU_API_TOKEN")
-                if env_tokens:
-                    mineru_token = secrets.choice(env_tokens)
-                    mineru_token_source = "server_env_pool" if len(env_tokens) > 1 else "server_env"
-                else:
-                    mineru_token_source = "missing"
-        if requested_parser_provider == "paddle_ocr":
-            if paddle_ocr_token:
-                paddle_ocr_token_source = "request"
-            else:
-                env_token = (get_env("PADDLE_OCR_API_TOKEN") or "").strip()
-                if env_token:
-                    paddle_ocr_token = env_token
-                    paddle_ocr_token_source = "server_env"
-                else:
-                    paddle_ocr_token_source = "missing"
+        mineru_token_source = "request" if mineru_token else "missing"
+        if not mineru_token:
+            env_tokens = get_env_list("MINERU_API_TOKENS") or get_env_list("MINERU_API_TOKEN")
+            if env_tokens:
+                mineru_token = secrets.choice(env_tokens)
+                mineru_token_source = "server_env_pool" if len(env_tokens) > 1 else "server_env"
+
+        paddle_ocr_token_source = "request" if paddle_ocr_token else "missing"
+        if not paddle_ocr_token:
+            env_token = (get_env("PADDLE_OCR_API_TOKEN") or "").strip()
+            if env_token:
+                paddle_ocr_token = env_token
+                paddle_ocr_token_source = "server_env"
 
         extension = raw_file.file_ext.lower()
         parse_decision = build_parse_decision(

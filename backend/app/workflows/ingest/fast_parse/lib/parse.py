@@ -24,6 +24,7 @@ from app.workflows.ingest.common.parsing.paddle_ocr_cloud import (
     parse_file_to_dir as parse_file_to_dir_with_paddle_ocr,
 )
 from app.workflows.ingest.common.parsing.orchestrator import fast_parse_file
+from app.workflows.ingest.common.parsing.strategy import ParsePlan, build_parse_plan
 from app.workflows.ingest.fast_parse.lib.common import workflow_logger
 from app.workflows.ingest.fast_parse.lib.runtime_helpers import (
     _ExternalFastParseResult,
@@ -59,10 +60,11 @@ def _build_parse_metadata(
     needs_enhance: bool,
     needs_quality_reparse: bool,
     needs_asset_ocr: bool,
+    effective_parse_plan: ParsePlan | None = None,
     provider_metadata: dict[str, object] | None = None,
     fast_path: bool = False,
 ) -> str:
-    parse_plan = state.get("parse_plan")
+    parse_plan = effective_parse_plan or state.get("parse_plan")
     parse_decision = state.get("parse_decision")
     payload = {
         "provider_used": parser_used,
@@ -103,12 +105,12 @@ def _build_parse_metadata(
             "enable_table": state.get("mineru_enable_table"),
             "is_ocr": state.get("mineru_is_ocr"),
         }
-        if state.get("requested_parser_provider") == "mineru"
+        if state.get("mineru_token") or parser_used == "mineru"
         else None,
         "paddle_ocr": {
             "token_source": state.get("paddle_ocr_token_source"),
         }
-        if state.get("requested_parser_provider") == "paddle_ocr"
+        if state.get("paddle_ocr_token") or parser_used == "paddle_ocr"
         else None,
         "ocr": {
             "base_url_source": "OCR_BASE_URL" if state.get("requested_parser_provider") == "ocr" else None,
@@ -156,6 +158,112 @@ def _copy_external_assets(
     return copied_assets
 
 
+async def _run_mineru_external_parse(
+    *,
+    state: IngestParseState,
+    local_asset_dir: Path,
+    parse_plan: ParsePlan | None,
+) -> tuple[_ExternalFastParseResult, dict[str, object]]:
+    started_at = time.monotonic()
+    extracted = await asyncio.to_thread(
+        parse_file_to_dir,
+        file_path=Path(state["file_path"]),
+        options=MinerURequestOptions(
+            api_token=state.get("mineru_token") or "",
+            model_version=state.get("mineru_model_version") or "vlm",
+            enable_formula=bool(state.get("mineru_enable_formula", True)),
+            enable_table=bool(state.get("mineru_enable_table", True)),
+            is_ocr=bool(state.get("mineru_is_ocr", False)),
+        ),
+        output_dir=Path(state["temp_dir"]) / "mineru_output",
+    )
+
+    mineru_markdown_raw = extracted.markdown_path.read_text(encoding="utf-8", errors="replace")
+    copied_assets = _copy_external_assets(
+        source_dir=extracted.images_dir,
+        dest_dir=local_asset_dir,
+        asset_name_prefix=state["asset_name_prefix"],
+    )
+
+    canonical_result = canonicalize_markdown(
+        mineru_markdown_raw,
+        asset_dir=local_asset_dir,
+        asset_link_prefix=state["asset_link_prefix"],
+        asset_name_prefix=state["asset_name_prefix"],
+        asset_gallery_limit=parse_plan.options.asset_gallery_limit if parse_plan else 12,
+    )
+    elapsed = round(time.monotonic() - started_at, 2)
+    return (
+        _ExternalFastParseResult(
+            markdown=canonical_result.markdown,
+            parser_used="mineru",
+            attempted_parsers=["mineru"],
+            parser_elapsed_s={"mineru": elapsed},
+            rewritten_image_refs=canonical_result.rewritten_image_refs,
+            extracted_data_images=canonical_result.extracted_data_images,
+            appended_asset_images=canonical_result.appended_asset_images,
+            needs_enhance=False,
+        ),
+        {
+            "batch_id": extracted.batch_id,
+            "file_name": extracted.file_name,
+            "copied_assets": copied_assets,
+            "token_source": state.get("mineru_token_source"),
+        },
+    )
+
+
+async def _run_paddle_ocr_external_parse(
+    *,
+    state: IngestParseState,
+    local_asset_dir: Path,
+    parse_plan: ParsePlan | None,
+) -> tuple[_ExternalFastParseResult, dict[str, object]]:
+    started_at = time.monotonic()
+    extracted = await asyncio.to_thread(
+        parse_file_to_dir_with_paddle_ocr,
+        file_path=Path(state["file_path"]),
+        options=PaddleOCRRequestOptions(
+            api_token=state.get("paddle_ocr_token") or "",
+        ),
+        output_dir=Path(state["temp_dir"]) / "paddle_ocr_output",
+    )
+
+    paddle_ocr_markdown_raw = extracted.markdown_path.read_text(encoding="utf-8", errors="replace")
+    copied_assets = _copy_external_assets(
+        source_dir=extracted.images_dir,
+        dest_dir=local_asset_dir,
+        asset_name_prefix=state["asset_name_prefix"],
+    )
+
+    canonical_result = canonicalize_markdown(
+        paddle_ocr_markdown_raw,
+        asset_dir=local_asset_dir,
+        asset_link_prefix=state["asset_link_prefix"],
+        asset_name_prefix=state["asset_name_prefix"],
+        asset_gallery_limit=parse_plan.options.asset_gallery_limit if parse_plan else 12,
+    )
+    elapsed = round(time.monotonic() - started_at, 2)
+    return (
+        _ExternalFastParseResult(
+            markdown=canonical_result.markdown,
+            parser_used="paddle_ocr",
+            attempted_parsers=["paddle_ocr"],
+            parser_elapsed_s={"paddle_ocr": elapsed},
+            rewritten_image_refs=canonical_result.rewritten_image_refs,
+            extracted_data_images=canonical_result.extracted_data_images,
+            appended_asset_images=canonical_result.appended_asset_images,
+            needs_enhance=False,
+        ),
+        {
+            "job_id": extracted.job_id,
+            "model": extracted.model,
+            "copied_assets": copied_assets,
+            "token_source": state.get("paddle_ocr_token_source"),
+        },
+    )
+
+
 def build_parse_file_node(*, context: WorkflowContext):
     """Phase 1 fast parse node — text fast path, external providers, or local parser chain."""
 
@@ -169,6 +277,7 @@ def build_parse_file_node(*, context: WorkflowContext):
         started_at = time.monotonic()
         parse_plan = state.get("parse_plan")
         parse_decision = state.get("parse_decision")
+        effective_parse_plan = parse_plan
         logger.info(
             "ingest_fast_parse_started",
             local_markdown_path=str(local_markdown_path),
@@ -233,92 +342,104 @@ def build_parse_file_node(*, context: WorkflowContext):
                     "error": None,
                 }
 
-            if parse_decision and parse_decision.uses_mineru:
-                extracted = await asyncio.to_thread(
-                    parse_file_to_dir,
-                    file_path=Path(state["file_path"]),
-                    options=MinerURequestOptions(
-                        api_token=state.get("mineru_token") or "",
-                        model_version=state.get("mineru_model_version") or "vlm",
-                        enable_formula=bool(state.get("mineru_enable_formula", True)),
-                        enable_table=bool(state.get("mineru_enable_table", True)),
-                        is_ocr=bool(state.get("mineru_is_ocr", False)),
-                    ),
-                    output_dir=Path(state["temp_dir"]) / "mineru_output",
-                )
+            if parse_decision and (parse_decision.uses_mineru or parse_decision.uses_paddle_ocr):
+                provider_failures: dict[str, str] = {}
+                attempted_external_parsers: list[str] = []
+                external_elapsed_s: dict[str, float] = {}
+                provider_order: list[str] = []
+                for provider_name in [parse_decision.primary_provider, *parse_decision.fallback_chain]:
+                    if provider_name in {"mineru", "paddle_ocr"} and provider_name not in provider_order:
+                        provider_order.append(provider_name)
 
-                mineru_markdown_raw = extracted.markdown_path.read_text(encoding="utf-8", errors="replace")
-                copied_assets = _copy_external_assets(
-                    source_dir=extracted.images_dir,
-                    dest_dir=local_asset_dir,
-                    asset_name_prefix=state["asset_name_prefix"],
-                )
+                parse_result = None
+                for provider_name in provider_order:
+                    provider_started_at = time.monotonic()
+                    try:
+                        if provider_name == "mineru":
+                            external_result, current_provider_metadata = await _run_mineru_external_parse(
+                                state=state,
+                                local_asset_dir=local_asset_dir,
+                                parse_plan=parse_plan,
+                            )
+                        else:
+                            external_result, current_provider_metadata = await _run_paddle_ocr_external_parse(
+                                state=state,
+                                local_asset_dir=local_asset_dir,
+                                parse_plan=parse_plan,
+                            )
+                        parse_result = _ExternalFastParseResult(
+                            markdown=external_result.markdown,
+                            parser_used=external_result.parser_used,
+                            attempted_parsers=[*attempted_external_parsers, *external_result.attempted_parsers],
+                            parser_elapsed_s={**external_elapsed_s, **external_result.parser_elapsed_s},
+                            rewritten_image_refs=external_result.rewritten_image_refs,
+                            extracted_data_images=external_result.extracted_data_images,
+                            appended_asset_images=external_result.appended_asset_images,
+                            needs_enhance=external_result.needs_enhance,
+                            needs_quality_reparse=external_result.needs_quality_reparse,
+                            needs_asset_ocr=external_result.needs_asset_ocr,
+                        )
+                        if provider_name != parse_decision.primary_provider:
+                            effective_parse_plan = ParsePlan(
+                                mode=f"external_{provider_name}",
+                                parser_chain=[provider_name],
+                                decision_reason=parse_decision.primary_reason,
+                            )
+                        provider_metadata = current_provider_metadata
+                        if provider_failures:
+                            provider_metadata = {
+                                **provider_metadata,
+                                "provider_failures": provider_failures,
+                            }
+                        break
+                    except Exception as exc:
+                        attempted_external_parsers.append(provider_name)
+                        provider_failures[provider_name] = str(exc)
+                        logger.warning(
+                            "ingest_external_provider_attempt_failed",
+                            provider=provider_name,
+                            error=str(exc),
+                        )
+                        if provider_name == "mineru":
+                            external_elapsed_s["mineru"] = round(time.monotonic() - provider_started_at, 2)
+                        else:
+                            external_elapsed_s["paddle_ocr"] = round(time.monotonic() - provider_started_at, 2)
 
-                canonical_result = canonicalize_markdown(
-                    mineru_markdown_raw,
-                    asset_dir=local_asset_dir,
-                    asset_link_prefix=state["asset_link_prefix"],
-                    asset_name_prefix=state["asset_name_prefix"],
-                    asset_gallery_limit=parse_plan.options.asset_gallery_limit if parse_plan else 12,
-                )
-                elapsed = round(time.monotonic() - started_at, 2)
-                parse_result = _ExternalFastParseResult(
-                    markdown=canonical_result.markdown,
-                    parser_used="mineru",
-                    attempted_parsers=["mineru"],
-                    parser_elapsed_s={"mineru": elapsed},
-                    rewritten_image_refs=canonical_result.rewritten_image_refs,
-                    extracted_data_images=canonical_result.extracted_data_images,
-                    appended_asset_images=canonical_result.appended_asset_images,
-                    needs_enhance=False,
-                )
-                provider_metadata = {
-                    "batch_id": extracted.batch_id,
-                    "file_name": extracted.file_name,
-                    "copied_assets": copied_assets,
-                    "token_source": state.get("mineru_token_source"),
-                }
-            elif parse_decision and parse_decision.uses_paddle_ocr:
-                extracted = await asyncio.to_thread(
-                    parse_file_to_dir_with_paddle_ocr,
-                    file_path=Path(state["file_path"]),
-                    options=PaddleOCRRequestOptions(
-                        api_token=state.get("paddle_ocr_token") or "",
-                    ),
-                    output_dir=Path(state["temp_dir"]) / "paddle_ocr_output",
-                )
-
-                paddle_ocr_markdown_raw = extracted.markdown_path.read_text(encoding="utf-8", errors="replace")
-                copied_assets = _copy_external_assets(
-                    source_dir=extracted.images_dir,
-                    dest_dir=local_asset_dir,
-                    asset_name_prefix=state["asset_name_prefix"],
-                )
-
-                canonical_result = canonicalize_markdown(
-                    paddle_ocr_markdown_raw,
-                    asset_dir=local_asset_dir,
-                    asset_link_prefix=f"../assets/{state['file_id']}",
-                    asset_name_prefix=state["asset_name_prefix"],
-                    asset_gallery_limit=parse_plan.options.asset_gallery_limit if parse_plan else 12,
-                )
-                elapsed = round(time.monotonic() - started_at, 2)
-                parse_result = _ExternalFastParseResult(
-                    markdown=canonical_result.markdown,
-                    parser_used="paddle_ocr",
-                    attempted_parsers=["paddle_ocr"],
-                    parser_elapsed_s={"paddle_ocr": elapsed},
-                    rewritten_image_refs=canonical_result.rewritten_image_refs,
-                    extracted_data_images=canonical_result.extracted_data_images,
-                    appended_asset_images=canonical_result.appended_asset_images,
-                    needs_enhance=False,
-                )
-                provider_metadata = {
-                    "job_id": extracted.job_id,
-                    "model": extracted.model,
-                    "copied_assets": copied_assets,
-                    "token_source": state.get("paddle_ocr_token_source"),
-                }
+                if parse_result is None:
+                    effective_parse_plan = build_parse_plan(
+                        file_path=state["file_path"],
+                        filetype=state["filetype"],
+                        file_size_bytes=state.get("file_size_bytes"),
+                        classification=state.get("classification"),
+                    )
+                    local_parse_result = await fast_parse_file(
+                        file_path=state["file_path"],
+                        asset_dir=local_asset_dir,
+                        classification=state.get("classification"),
+                        parse_plan=effective_parse_plan,
+                        asset_link_prefix=state["asset_link_prefix"],
+                    )
+                    parse_result = _ExternalFastParseResult(
+                        markdown=local_parse_result.markdown,
+                        parser_used=local_parse_result.parser_used,
+                        attempted_parsers=[*attempted_external_parsers, *local_parse_result.attempted_parsers],
+                        parser_elapsed_s={**external_elapsed_s, **local_parse_result.parser_elapsed_s},
+                        rewritten_image_refs=local_parse_result.rewritten_image_refs,
+                        extracted_data_images=local_parse_result.extracted_data_images,
+                        appended_asset_images=local_parse_result.appended_asset_images,
+                        needs_enhance=local_parse_result.needs_enhance,
+                        needs_quality_reparse=local_parse_result.needs_quality_reparse,
+                        needs_asset_ocr=local_parse_result.needs_asset_ocr,
+                    )
+                    provider_metadata = {
+                        "provider_failures": provider_failures,
+                        "fallback_to": "local",
+                    }
+                    logger.info(
+                        "ingest_external_provider_fell_back_to_local",
+                        attempted_providers=attempted_external_parsers,
+                        local_parser=local_parse_result.parser_used,
+                    )
             else:
                 parse_result = await fast_parse_file(
                     file_path=state["file_path"],
@@ -351,11 +472,12 @@ def build_parse_file_node(*, context: WorkflowContext):
                 needs_enhance=parse_result.needs_enhance,
                 needs_quality_reparse=getattr(parse_result, "needs_quality_reparse", False),
                 needs_asset_ocr=getattr(parse_result, "needs_asset_ocr", False),
+                effective_parse_plan=effective_parse_plan,
                 provider_metadata=provider_metadata,
             )
             logger.info(
                 "ingest_fast_parse_completed",
-                parse_mode=parse_plan.mode if parse_plan else None,
+                parse_mode=effective_parse_plan.mode if effective_parse_plan else None,
                 parser_used=parse_result.parser_used,
                 attempted_parsers=parse_result.attempted_parsers,
                 markdown_chars=len(parse_result.markdown),

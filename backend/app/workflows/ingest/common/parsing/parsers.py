@@ -15,6 +15,14 @@ from app.workflows.ingest.common.parsing.audio import (
     is_audio_transcription_available,
     parse_audio_with_transcription,
 )
+from app.workflows.ingest.common.parsing.doc import (
+    DOC_SOFFICE_AVAILABLE,
+    DOC_VIA_DOCX_AVAILABLE,
+    DOC_WORD_COM_AVAILABLE,
+    parse_doc_with_markitdown,
+    parse_doc_with_mammoth,
+    parse_doc_with_native,
+)
 from app.workflows.ingest.common.parsing.docx import (
     DOCX_MARKITDOWN_AVAILABLE,
     DOCX_NATIVE_AVAILABLE,
@@ -241,6 +249,11 @@ def _build_markitdown_generic_availability() -> dict[str, dict[str, bool]]:
 
 PARSER_REGISTRY: dict[str, dict[str, Parser]] = {
     **_build_pdf_parser_mapping(),
+    ".doc": {
+        "doc_markitdown": parse_doc_with_markitdown,
+        "doc_mammoth": parse_doc_with_mammoth,
+        "doc_native": parse_doc_with_native,
+    },
     ".docx": {
         "mammoth": parse_docx_with_mammoth,
         "markitdown": parse_docx_with_markitdown,
@@ -287,6 +300,7 @@ PARSER_REGISTRY: dict[str, dict[str, Parser]] = {
 
 DEFAULT_PARSER_CHAIN: dict[str, list[str]] = {
     **_build_pdf_parser_chain(),
+    ".doc": ["doc_markitdown", "doc_mammoth", "doc_native"],
     ".docx": ["markitdown", "mammoth", "docx_native"],
     ".ppt": ["markitdown", "python_pptx_native"],
     ".pptx": ["markitdown", "python_pptx_native"],
@@ -305,6 +319,11 @@ DEFAULT_PARSER_CHAIN: dict[str, list[str]] = {
 
 _PARSER_AVAILABILITY: dict[str, dict[str, bool]] = {
     **_build_pdf_parser_availability(),
+    ".doc": {
+        "doc_markitdown": DOCX_MARKITDOWN_AVAILABLE,
+        "doc_mammoth": DOCX_MAMMOTH_AVAILABLE,
+        "doc_native": DOCX_NATIVE_AVAILABLE,
+    },
     ".docx": {
         "mammoth": DOCX_MAMMOTH_AVAILABLE,
         "markitdown": DOCX_MARKITDOWN_AVAILABLE,
@@ -363,6 +382,8 @@ def resolve_markitdown_parser_name(extension: str) -> str | None:
 
     normalized = normalize_extension(extension)
     available = get_available_parsers(normalized, allow_llm_vision=False)
+    if "doc_markitdown" in available:
+        return "doc_markitdown"
     if "markitdown" in available:
         return "markitdown"
     if "markitdown_generic" in available:
@@ -386,6 +407,9 @@ def log_parser_availability() -> None:
     environment. Missing packages result in degraded capability, not crashes.
     """
     core_parsers = {
+        "doc_via_docx": DOC_VIA_DOCX_AVAILABLE,
+        "doc_word_com": DOC_WORD_COM_AVAILABLE,
+        "doc_soffice": DOC_SOFFICE_AVAILABLE,
         "pymupdf_native": _pdf_parser_available("pymupdf_native"),
         "pymupdf4llm": _pdf_parser_available("pymupdf4llm"),
         "pdfplumber": _pdf_parser_available("pdfplumber"),

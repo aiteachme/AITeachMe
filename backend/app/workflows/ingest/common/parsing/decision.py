@@ -50,6 +50,7 @@ DEFAULT_PADDLE_OCR_EXTENSIONS = frozenset(
 DEFAULT_MARKITDOWN_EXTENSIONS = frozenset(
     {
         ".pdf",
+        ".doc",
         ".docx",
         ".ppt",
         ".pptx",
@@ -63,6 +64,16 @@ DEFAULT_OCR_EXTENSIONS = frozenset(
         ".ppt",
         ".pptx",
         *IMAGE_EXTENSIONS,
+    }
+)
+
+AUTO_EXTERNAL_DOCUMENT_EXTENSIONS = frozenset(
+    {
+        ".doc",
+        ".docx",
+        ".pdf",
+        ".ppt",
+        ".pptx",
     }
 )
 
@@ -133,10 +144,10 @@ def build_parse_decision(
 ) -> ParseDecision:
     """Choose the primary parsing provider for the current file.
 
-    This is intentionally small for the first landing:
-    - explicit MinerU wins when the extension is supported;
-    - unsupported explicit MinerU falls back to local unless strict is true;
-    - auto/default stays local for now.
+    Current default behavior:
+    - text / markdown stay local;
+    - supported document types auto-route as MinerU -> PaddleOCR -> local;
+    - explicit provider requests are still honored for backward compatibility.
     """
 
     normalized_extension = normalize_extension(extension)
@@ -383,6 +394,71 @@ def build_parse_decision(
             unsupported_requested_provider=True,
             metadata={
                 "extension": normalized_extension,
+                "paddle_ocr_supported": paddle_ocr_supports_extension,
+                "paddle_ocr_available": paddle_ocr.available,
+            },
+        )
+
+    if normalized_request is None and normalized_extension in AUTO_EXTERNAL_DOCUMENT_EXTENSIONS:
+        mineru_supports_extension = mineru.supports(normalized_extension)
+        paddle_ocr_supports_extension = paddle_ocr.supports(normalized_extension)
+
+        if mineru.available and mineru_supports_extension:
+            fallback_chain = ["local"]
+            if paddle_ocr.available and paddle_ocr_supports_extension:
+                fallback_chain = ["paddle_ocr", "local"]
+            return ParseDecision(
+                requested_provider=None,
+                primary_provider="mineru",
+                primary_reason=(
+                    "当前文件类型支持文档解析增强，且已检测到 MinerU Token；"
+                    "优先使用 MinerU，失败后自动回退到 PaddleOCR 或本地解析。"
+                ),
+                fallback_chain=fallback_chain,
+                can_preview_before_primary=False,
+                metadata={
+                    "extension": normalized_extension,
+                    "route_mode": "auto_external_then_local",
+                    "mineru_supported": True,
+                    "mineru_available": True,
+                    "paddle_ocr_supported": paddle_ocr_supports_extension,
+                    "paddle_ocr_available": paddle_ocr.available,
+                },
+            )
+
+        if paddle_ocr.available and paddle_ocr_supports_extension:
+            return ParseDecision(
+                requested_provider=None,
+                primary_provider="paddle_ocr",
+                primary_reason=(
+                    "当前文件类型支持文档解析增强，MinerU 不可用；"
+                    "自动改用 PaddleOCR，失败后回退到本地解析。"
+                ),
+                fallback_chain=["local"],
+                can_preview_before_primary=False,
+                metadata={
+                    "extension": normalized_extension,
+                    "route_mode": "auto_external_then_local",
+                    "mineru_supported": mineru_supports_extension,
+                    "mineru_available": mineru.available,
+                    "paddle_ocr_supported": True,
+                    "paddle_ocr_available": True,
+                },
+            )
+
+        return ParseDecision(
+            requested_provider=None,
+            primary_provider="local",
+            primary_reason=(
+                "当前文件类型支持外部增强解析，但 MinerU / PaddleOCR Token 均不可用；"
+                "自动回退到本地解析链路。"
+            ),
+            fallback_chain=[],
+            metadata={
+                "extension": normalized_extension,
+                "route_mode": "auto_local_only",
+                "mineru_supported": mineru_supports_extension,
+                "mineru_available": mineru.available,
                 "paddle_ocr_supported": paddle_ocr_supports_extension,
                 "paddle_ocr_available": paddle_ocr.available,
             },
