@@ -224,7 +224,7 @@ teaching tool 不是新的独立教学层。当前通用实现是内置 tool，�
 - 教学工具注册、枚举、执行、registry sync 属于基础设施，放在 `app.shared.infra.tools.teaching_registry`。
 - 通用内置教学工具实现放在 `app.shared.infra.tools.builtin.teaching_tools`。
 - 只服务单条链路的教学逻辑，放在对应 lane 的 `nodes/` 或 `lib/`。
-- 只服务 Digest 文档生成的教学表达块，放在 `workflows/digest/common/pedagogy`。
+- 只服务 Digest 文档生成的教学表达块，放在 `workflows/digest/common/pedagogy.py`。
 - 禁止为了“教学语义”重新创建 `app/teaching` 层。
 
 ## 文件头说明
@@ -420,8 +420,8 @@ planner -> docgen -> kg_docs_sync
   Digest 跨链路事件与 workflow export 落点
 - `digest/common/runtime_config.py`
   Digest 教学运行时配置 facade
-- `digest/common/pedagogy/`
-  Digest 教学语义 facade
+- `digest/common/pedagogy.py`
+  Digest 文档教学语义 helper
 - `support/knowledge_graph/overview.py`
   基于知识图谱的总览用例
 - `support/system/init.py`、`support/system/settings.py`

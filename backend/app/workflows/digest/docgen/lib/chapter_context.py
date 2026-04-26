@@ -34,7 +34,7 @@ from app.workflows.digest.docgen.lib.query_planning import (
     enrich_queries_for_education,
     generate_sub_queries,
 )
-from app.workflows.digest.docgen.prompts import build_docgen_research_purify_messages
+from app.workflows.digest.docgen.prompts.generation import build_docgen_research_purify_messages
 
 _LOW_VALUE_SOURCE_MARKERS = (
     "baidu.com/zhidao",

@@ -9,7 +9,7 @@ from app.shared.infra.llm_support import acompletion_with_fallback
 from app.shared.infra.tools.builtin.markdown_processing import normalize_markdown_rendering
 from app.workflows.digest.docgen.lib.model_policy import DocGenModelStep, docgen_completion_kwargs_with_metadata
 from app.workflows.digest.docgen.lib.models import RepairTraceItem, ReviewAction, ReviewedChapterDraft
-from app.workflows.digest.docgen.prompts import build_chapter_patch_messages
+from app.workflows.digest.docgen.prompts.repair import build_chapter_patch_messages
 
 
 _ACTION_REQUIRES_FUTURE_REPAIR = {

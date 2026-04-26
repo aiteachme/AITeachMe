@@ -21,7 +21,8 @@ from app.workflows.digest.planner.lib.models import (
     PlannerBrief,
     build_empty_planner_brief,
 )
-from app.workflows.digest.planner.prompts import build_plan_intent_messages, build_plan_sketch_prompt
+from app.workflows.digest.planner.prompts.plan_intent import build_plan_intent_messages
+from app.workflows.digest.planner.prompts.plan_sketch import build_plan_sketch_prompt
 from app.workflows.digest.planner.state import BuildPlannerState
 
 logger = structlog.get_logger(__name__)

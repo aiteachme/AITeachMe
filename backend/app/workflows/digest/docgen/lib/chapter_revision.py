@@ -10,7 +10,7 @@ from app.shared.infra.tools.builtin.markdown_processing import count_words
 from app.workflows.digest.docgen.lib.chapter_planning import estimate_quality_from_markdown
 from app.workflows.digest.docgen.lib.model_policy import DocGenModelStep, docgen_completion_kwargs_with_metadata
 from app.workflows.digest.docgen.lib.models import ChapterQualitySignals
-from app.workflows.digest.docgen.prompts import build_chapter_rewrite_messages
+from app.workflows.digest.docgen.prompts.chapter_rewrite import build_chapter_rewrite_messages
 
 logger = structlog.get_logger(__name__)
 

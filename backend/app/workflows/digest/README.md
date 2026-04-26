@@ -50,6 +50,8 @@ from app.workflows.digest.planner import (
 - 新 prompt 放各自链路 `prompts/`
 - 新 helper 放各自链路 `lib/`
 - 跨 digest lane 共享能力统一放 `common/`，图谱 support 层共享能力放 `workflows/support/knowledge_graph/`
+- `common/__init__.py` 不做 re-export；跨模块引用时按职责从 `common.models`、`common.prepare` 等具体文件导入
+- lane 内部的 `lib/__init__.py`、`nodes/__init__.py`、`prompts/__init__.py` 不做导出壳；graph 和节点代码从具体模块导入
 - 各链路自己的构建摘要放在对应链路 `lib/reporting.py`
 - 不要再新增顶层伪链路，例如 `runtime.py`、`observability.py`
 

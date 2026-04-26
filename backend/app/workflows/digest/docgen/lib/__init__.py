@@ -1,9 +1,6 @@
-"""Tiny DocGen helper facade used by graph nodes."""
+"""DocGen lane-local helper modules.
 
-from app.workflows.digest.docgen.lib.chapter_context import DocGenChapterContextRuntime
-from app.workflows.digest.docgen.lib.writer import DocGenWriterRuntime
+Import helpers from their concrete modules to keep dependencies explicit.
+"""
 
-__all__ = [
-    "DocGenChapterContextRuntime",
-    "DocGenWriterRuntime",
-]
+__all__: list[str] = []

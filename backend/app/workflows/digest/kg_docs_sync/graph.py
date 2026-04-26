@@ -7,12 +7,10 @@ from langgraph.graph import END, StateGraph
 from app.shared.infra.workflow import workflow_tracer
 from app.shared.infra.workflow.context import WorkflowContext, create_langgraph_dev_context
 from app.workflows.digest.common.node_tracing import named_route, node_metadata, traced_digest_node
-from app.workflows.digest.kg_docs_sync.nodes import (
-    fail_node,
-    finalize_node,
-    prepare_node,
-    run_docs_sync_node,
-)
+from app.workflows.digest.kg_docs_sync.nodes.fail_node import fail_node
+from app.workflows.digest.kg_docs_sync.nodes.finalize_node import finalize_node
+from app.workflows.digest.kg_docs_sync.nodes.prepare_node import prepare_node
+from app.workflows.digest.kg_docs_sync.nodes.sync_node import run_docs_sync_node
 from app.workflows.digest.kg_docs_sync.state import DocsSyncState
 
 RUN_NAME_KG_DOCS_SYNC = "知识图谱同步：根据知识文档更新图谱"

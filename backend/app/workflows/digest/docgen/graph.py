@@ -26,24 +26,28 @@ from app.workflows.digest.common.metrics import build_token_summary
 from app.workflows.digest.common.node_tracing import named_route, node_metadata, traced_digest_node
 from app.workflows.digest.docgen.lib.defaults import DEFAULT_DOCGEN_MAX_PARALLEL_CHAPTERS
 from app.workflows.digest.docgen.lib.reporting import build_docgen_lane_summary
-from app.workflows.digest.docgen.nodes import (
+from app.workflows.digest.docgen.nodes.assemble_chapter_tasks import (
     build_assemble_chapter_tasks_node,
-    build_chapter_execution_briefs_node,
-    build_confirm_and_seed_backbone_node,
-    build_document_backbone_node,
-    build_document_consistency_review_node,
-    build_enhance_chapters_node,
-    build_generate_cover_node,
-    build_generate_chapters_node,
-    build_lock_titles_for_chapters_node,
-    build_load_context_node,
-    build_merge_review_node,
-    build_prepare_global_seed_node,
-    build_publish_document_node,
-    build_repair_or_route_node,
-    build_review_chapter_node,
-    build_sync_locked_titles_node,
 )
+from app.workflows.digest.docgen.nodes.build_chapter_execution_briefs import (
+    build_chapter_execution_briefs_node,
+)
+from app.workflows.digest.docgen.nodes.build_document_backbone import build_document_backbone_node
+from app.workflows.digest.docgen.nodes.confirm_and_seed_backbone import build_confirm_and_seed_backbone_node
+from app.workflows.digest.docgen.nodes.enhance_chapters import build_enhance_chapters_node
+from app.workflows.digest.docgen.nodes.generate_chapters import build_generate_chapters_node
+from app.workflows.digest.docgen.nodes.generate_cover import build_generate_cover_node
+from app.workflows.digest.docgen.nodes.load_context import build_load_context_node
+from app.workflows.digest.docgen.nodes.lock_titles_for_chapters import build_lock_titles_for_chapters_node
+from app.workflows.digest.docgen.nodes.merge_review import build_merge_review_node
+from app.workflows.digest.docgen.nodes.prepare_global_seed import build_prepare_global_seed_node
+from app.workflows.digest.docgen.nodes.publish_document import build_publish_document_node
+from app.workflows.digest.docgen.nodes.repair_or_route import build_repair_or_route_node
+from app.workflows.digest.docgen.nodes.review_content import (
+    build_document_consistency_review_node,
+    build_review_chapter_node,
+)
+from app.workflows.digest.docgen.nodes.sync_locked_titles import build_sync_locked_titles_node
 from app.workflows.digest.docgen.nodes.common import resolve_docgen_retrieval_profile
 from app.workflows.digest.docgen.state import DocGenState
 

@@ -10,7 +10,7 @@ from app.workflows.digest.kg_docs_sync.graph import (
     build_docs_sync_graph,
     create_docs_sync_initial_state,
 )
-from app.workflows.digest.kg_docs_sync.lib import normalize_docs_sync_inputs
+from app.workflows.digest.kg_docs_sync.lib.support import normalize_docs_sync_inputs
 from app.workflows.digest.kg_docs_sync.state import DocsSyncState
 from app.workflows.support.knowledge_graph.incremental_sync import KnowledgeSyncReport
 
@@ -24,12 +24,14 @@ async def run_graph_docs_sync_workflow(
     subject_context: str | None = None,
     structured_context: dict[str, object] | None = None,
 ) -> WorkflowResult[KnowledgeSyncReport]:
-    normalized_subject, normalized_markdown, normalized_revision = normalize_docs_sync_inputs(
-        subject=subject,
-        markdown=markdown,
-        build_revision_no=build_revision_no,
-    )
+    fallback_subject = str(subject or "").strip()
     try:
+        normalized_subject, normalized_markdown, normalized_revision = normalize_docs_sync_inputs(
+            subject=subject,
+            markdown=markdown,
+            build_revision_no=build_revision_no,
+        )
+        fallback_subject = normalized_subject
         context = WorkflowContext(
             workflow_name="digest.kg_docs_sync",
             subject=normalized_subject,
@@ -61,13 +63,18 @@ async def run_graph_docs_sync_workflow(
             )
 
         final_state: DocsSyncState = result.require_value()
-        report = final_state.get("report")
-        if report is None:
-            raise RuntimeError(final_state.get("error") or "docs_sync_report_missing")
-        if final_state.get("error"):
+        state_error = str(final_state.get("error") or "").strip()
+        if state_error:
             return err_result(
                 "digest_graph_docs_sync_failed",
-                str(final_state.get("error") or "docs_sync_report_missing"),
+                state_error,
+                metadata={"subject": normalized_subject},
+            )
+        report = final_state.get("report")
+        if report is None:
+            return err_result(
+                "digest_graph_docs_sync_failed",
+                "docs_sync_report_missing",
                 metadata={"subject": normalized_subject},
             )
         return ok_result(report)
@@ -75,13 +82,13 @@ async def run_graph_docs_sync_workflow(
         return err_result(
             "digest_graph_docs_sync_invalid_markdown",
             str(exc),
-            metadata={"subject": normalized_subject},
+            metadata={"subject": fallback_subject},
         )
     except Exception as exc:
         return err_result(
             "digest_graph_docs_sync_failed",
             str(exc),
-            metadata={"subject": normalized_subject},
+            metadata={"subject": fallback_subject},
         )
 
 

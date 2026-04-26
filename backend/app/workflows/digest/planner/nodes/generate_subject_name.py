@@ -11,7 +11,7 @@ from app.workflows.digest.planner.lib.model_policy import (
     planner_completion_kwargs_with_metadata,
 )
 from app.workflows.digest.planner.lib.models import PlanIntent, PlannerBrief
-from app.workflows.digest.planner.prompts import build_subject_name_prompt
+from app.workflows.digest.planner.prompts.subject_name import build_subject_name_prompt
 from app.workflows.digest.planner.state import BuildPlannerState
 from app.workflows.support.subjects.icons import choose_subject_icon_key
 

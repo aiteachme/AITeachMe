@@ -19,7 +19,11 @@ from app.workflows.digest.planner.lib.model_policy import (
 from app.workflows.digest.planner.lib.planner_events import emit_planner_event, emit_planner_token
 from app.workflows.digest.planner.lib.models import PlanIntent, PlannerBrief
 from app.workflows.digest.planner.lib.plans import _resolve_subject_display_name
-from app.workflows.digest.planner.prompts import PLAN_JSON_END_MARKER, PLAN_JSON_MARKER, build_plan_composer_messages
+from app.workflows.digest.planner.prompts.build_plan_composer import (
+    PLAN_JSON_END_MARKER,
+    PLAN_JSON_MARKER,
+    build_plan_composer_messages,
+)
 from app.workflows.digest.planner.state import BuildPlannerState
 
 logger = structlog.get_logger(__name__)

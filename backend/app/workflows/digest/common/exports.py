@@ -85,7 +85,7 @@ WORKFLOW_EXPORTS = (
     WorkflowGraphExport(
         key="digest_graph",
         title="Digest Knowledge-Doc Graph Sync",
-        description="Knowledge-document based graph sync workflow. Parsed-file graph ingest is legacy debug-only.",
+        description="Knowledge-document based graph sync workflow. Parsed-file graph ingest has been removed.",
         build_graph=get_langgraph_dev_kg_docs_sync_graph,
         prompts=KG_PROMPTS,
     ),

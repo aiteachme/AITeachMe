@@ -19,7 +19,7 @@ from app.workflows.digest.docgen.lib.models import (
     SourceAffinityByChapter,
     clean_string_list,
 )
-from app.workflows.digest.docgen.prompts import build_file_summary_messages
+from app.workflows.digest.docgen.prompts.file_summaries import build_file_summary_messages
 
 logger = structlog.get_logger(__name__)
 

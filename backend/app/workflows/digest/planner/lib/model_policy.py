@@ -67,7 +67,7 @@ _POLICIES: dict[PlannerModelStep, PlannerModelPolicy] = {
         call_purpose=LLMCallPurpose.GENERATE,
         model="light",
         max_tokens=900,
-        note="用户可见的资料边界判断，不负责最终合同，用 primary 降低首屏等待。",
+        note="用户可见的资料边界判断，不负责最终合同，用 light 降低首屏等待。",
     ),
     PlannerModelStep.EXTRACT_INTENT: PlannerModelPolicy(
         step=PlannerModelStep.EXTRACT_INTENT,
@@ -75,7 +75,7 @@ _POLICIES: dict[PlannerModelStep, PlannerModelPolicy] = {
         call_purpose=LLMCallPurpose.CLASSIFY,
         model="light",
         max_tokens=700,
-        note="结构化抽取内部规划抓手，输出短但需要比 light 更稳。",
+        note="结构化抽取内部规划抓手，输出短且有规则兜底，优先 light 提速。",
     ),
     PlannerModelStep.COMPOSE_PLAN: PlannerModelPolicy(
         step=PlannerModelStep.COMPOSE_PLAN,
