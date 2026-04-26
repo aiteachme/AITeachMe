@@ -49,7 +49,6 @@ export const SUBJECT_NAV_ITEMS: SubjectNavItem[] = [
 export const SUBJECT_ROUTE_REDIRECTS = {
   files: "build",
   upload: "build",
-  "knowledge-debug": "knowledge-docs",
   summary: "knowledge-docs",
   "knowledge-graph": "knowledge-docs",
   chat: "knowledge-docs",

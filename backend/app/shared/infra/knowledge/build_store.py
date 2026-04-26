@@ -26,6 +26,38 @@ from app.utils.time import ensure_utc_datetime, utcnow
 STALE_BUILD_LOCK_TTL = timedelta(minutes=30)
 _ACTIVE_BUILD_STATUSES = {"accepted", "running", "publishing"}
 _TERMINAL_BUILD_STATUSES = {"completed", "failed", "cancelled", "skipped", "partial_failed"}
+_GRAPH_RUNTIME_METRIC_KEYS = {
+    "processed_chunks",
+    "doc_sync_section_count",
+    "doc_sync_llm_section_count",
+    "doc_sync_fallback_section_count",
+    "doc_sync_question_fallback_section_count",
+    "doc_sync_topic_fallback_section_count",
+    "doc_sync_unit_changes",
+    "doc_sync_edge_changes",
+    "doc_sync_elapsed_ms",
+    "elapsed_ms",
+    "revision_no",
+    "last_synced_doc_version_no",
+    "knowledge_doc_source",
+    "knowledge_doc_chapter_count",
+    "graph_input_paths",
+}
+_GRAPH_RUNTIME_INT_METRIC_KEYS = {
+    "processed_chunks",
+    "doc_sync_section_count",
+    "doc_sync_llm_section_count",
+    "doc_sync_fallback_section_count",
+    "doc_sync_question_fallback_section_count",
+    "doc_sync_topic_fallback_section_count",
+    "doc_sync_unit_changes",
+    "doc_sync_edge_changes",
+    "doc_sync_elapsed_ms",
+    "elapsed_ms",
+    "revision_no",
+    "last_synced_doc_version_no",
+    "knowledge_doc_chapter_count",
+}
 
 _STAGE_PROGRESS = {
     "idle": 0,
@@ -347,6 +379,65 @@ def _normalize_merge_preview_entry(entry: dict[str, object]) -> dict[str, object
     }
 
 
+def _coerce_graph_metric_int(value: object) -> int:
+    try:
+        return max(0, int(value or 0))
+    except (TypeError, ValueError):
+        return 0
+
+
+def _normalize_graph_runtime_metrics(status: KnowledgeBuildRuntimeStatus) -> KnowledgeBuildRuntimeStatus:
+    metrics = dict(status.metrics or {})
+    legacy_values = {
+        "processed_chunks": status.processed_chunks,
+        "doc_sync_section_count": status.doc_sync_section_count,
+        "doc_sync_llm_section_count": status.doc_sync_llm_section_count,
+        "doc_sync_fallback_section_count": status.doc_sync_fallback_section_count,
+        "doc_sync_question_fallback_section_count": status.doc_sync_question_fallback_section_count,
+        "doc_sync_topic_fallback_section_count": status.doc_sync_topic_fallback_section_count,
+    }
+    for key, value in legacy_values.items():
+        if key not in metrics or metrics.get(key) in (None, ""):
+            metrics[key] = value
+
+    if "elapsed_ms" not in metrics and "doc_sync_elapsed_ms" in metrics:
+        metrics["elapsed_ms"] = metrics.get("doc_sync_elapsed_ms")
+
+    for key in _GRAPH_RUNTIME_INT_METRIC_KEYS:
+        metrics[key] = _coerce_graph_metric_int(metrics.get(key))
+
+    status.processed_chunks = _coerce_graph_metric_int(metrics.get("processed_chunks"))
+    status.doc_sync_section_count = _coerce_graph_metric_int(metrics.get("doc_sync_section_count"))
+    status.doc_sync_llm_section_count = _coerce_graph_metric_int(metrics.get("doc_sync_llm_section_count"))
+    status.doc_sync_fallback_section_count = _coerce_graph_metric_int(metrics.get("doc_sync_fallback_section_count"))
+    status.doc_sync_question_fallback_section_count = _coerce_graph_metric_int(metrics.get("doc_sync_question_fallback_section_count"))
+    status.doc_sync_topic_fallback_section_count = _coerce_graph_metric_int(metrics.get("doc_sync_topic_fallback_section_count"))
+    status.metrics = metrics
+    return status
+
+
+def _merge_graph_runtime_metrics(
+    existing: KnowledgeBuildRuntimeStatus,
+    payload: dict[str, object],
+) -> dict[str, object]:
+    metrics = dict(existing.metrics or {})
+    incoming_metrics = payload.get("metrics")
+    if isinstance(incoming_metrics, dict):
+        metrics.update(incoming_metrics)
+
+    for key in _GRAPH_RUNTIME_METRIC_KEYS:
+        if key in payload:
+            metrics[key] = payload[key]
+
+    if "elapsed_ms" not in metrics and "doc_sync_elapsed_ms" in metrics:
+        metrics["elapsed_ms"] = metrics.get("doc_sync_elapsed_ms")
+
+    for key in _GRAPH_RUNTIME_INT_METRIC_KEYS:
+        metrics[key] = _coerce_graph_metric_int(metrics.get(key))
+
+    return metrics
+
+
 def _derive_progress_from_chapters(status: KnowledgeBuildRuntimeStatus) -> int:
     chapters = [
         _normalize_chapter_progress_entry(dict(item))
@@ -380,6 +471,9 @@ def _hydrate_runtime_status(status: KnowledgeBuildRuntimeStatus) -> KnowledgeBui
     status.finished_at = ensure_utc_datetime(status.finished_at)
     status.build_kind = str(status.build_kind or "docgen").strip() or "docgen"
     status.metrics = dict(status.metrics or {})
+    is_graph_lane = _normalize_build_lane(status.build_kind) == "graph"
+    if is_graph_lane:
+        status = _normalize_graph_runtime_metrics(status)
     if not status.current_stage_description:
         status.current_stage_description = _STAGE_DESCRIPTION.get(status.stage, "知识文档构建进行中。")
 
@@ -396,6 +490,11 @@ def _hydrate_runtime_status(status: KnowledgeBuildRuntimeStatus) -> KnowledgeBui
     if status.status == "completed" and status.total_chunks > 0:
         status.current_chunk = status.total_chunks
         status.processed_chunks = status.total_chunks
+        if is_graph_lane:
+            status.metrics["processed_chunks"] = max(
+                _coerce_graph_metric_int(status.metrics.get("processed_chunks")),
+                status.processed_chunks,
+            )
 
     if status.status == "completed":
         status.estimated_remaining_seconds = 0
@@ -829,6 +928,12 @@ def update_knowledge_build_lane_status(
                 payload.get("error_message"),
                 build_kind=lane,
             )
+        if lane == "graph":
+            payload["metrics"] = _merge_graph_runtime_metrics(existing, payload)
+            runtime_fields = set(KnowledgeBuildRuntimeStatus.model_fields)
+            for key in list(payload.keys()):
+                if key in _GRAPH_RUNTIME_METRIC_KEYS and key not in runtime_fields:
+                    payload.pop(key, None)
 
         updated = existing.model_copy(update=payload)
         updated = _hydrate_runtime_status(updated)

@@ -42,10 +42,10 @@ class DocGenBuildRequest(BaseModel):
         default=None,
         description="Optional subject-level embedding resolution chosen after a precheck conflict.",
     )
-    build_type: Literal["docs", "graph"] = Field(
+    build_type: Literal["docs"] = Field(
         default="docs",
         description=(
-            "Build type: 'docs' for knowledge documents only, 'graph' for knowledge graph only."
+            "Build type. Public builds generate knowledge docs and may sync the graph according to settings."
         ),
     )
     confirmed_plan_id: str | None = Field(
@@ -55,33 +55,6 @@ class DocGenBuildRequest(BaseModel):
             "when provided, the build uses the frozen file selection, chapter plan, and User prompt."
         ),
     )
-
-
-class KnowledgeDebugTriggerRequest(BaseModel):
-    """Trigger one knowledge debug lane directly."""
-
-    file_uids: list[str] | None = Field(
-        default=None,
-        description="Optional parsed raw file UIDs used by kg_file_ingest; omitted means auto-pick all ready files.",
-    )
-    prompt: str | None = Field(
-        default=None,
-        description="Optional debug prompt passed through to the workflow.",
-    )
-    embedding_resolution: Literal["rebuild", "disable"] | None = Field(
-        default=None,
-        description="Optional subject-level embedding resolution chosen after a precheck conflict.",
-    )
-
-
-class KnowledgeDebugTriggerResponse(BaseModel):
-    """Accepted debug lane trigger result."""
-
-    action: Literal["kg_docs_sync", "kg_file_ingest"]
-    requested_at: datetime
-    accepted_file_uids: list[str] = Field(default_factory=list)
-    message: str = ""
-
 
 class KnowledgeUnitsQueryRequest(PageParams):
     """Paginated KnowledgeUnit query."""
@@ -307,6 +280,20 @@ class KnowledgeBuildMetricsResponse(BaseModel):
     call_count_by_lane: dict[str, int] = Field(default_factory=dict, description="LLM call count grouped by workflow lane.")
 
 
+class KnowledgeGraphBuildMetricsResponse(BaseModel):
+    """Stable graph-build metrics used by docs and graph progress UIs."""
+
+    processed_chunks: int = Field(default=0, description="Parsed-file chunks processed by kg_file_ingest.")
+    doc_sync_section_count: int = Field(default=0, description="Knowledge-doc sections analyzed by kg_docs_sync.")
+    doc_sync_unit_changes: int = Field(default=0, description="Knowledge units created or updated by docs-sync.")
+    doc_sync_edge_changes: int = Field(default=0, description="Graph edges created or updated by docs-sync.")
+    elapsed_ms: int = Field(default=0, description="Elapsed milliseconds for the latest graph-sync step.")
+    revision_no: int = Field(default=0, description="Knowledge graph revision number produced by the latest docs-sync.")
+    last_synced_doc_version_no: int = Field(default=0, description="Knowledge document version number last synced into the graph.")
+    knowledge_doc_source: str | None = Field(default=None, description="Source of the knowledge document markdown used for docs-sync.")
+    knowledge_doc_chapter_count: int = Field(default=0, description="Knowledge document chapter count seen by docs-sync.")
+
+
 class KnowledgeBuildStatusResponse(BaseModel):
     """Minimal runtime metadata exposed to clients for docs polling."""
 
@@ -348,6 +335,7 @@ class KnowledgeBuildRuntimeResponse(BaseModel):
     graph: KnowledgeBuildLaneRuntimeResponse | None = Field(default=None, description="Graph lane runtime.")
     docgen_preview: KnowledgeBuildPreviewResponse | None = Field(default=None, description="DocGen-oriented preview payload for waiting UIs.")
     docgen_metrics: KnowledgeBuildMetricsResponse | None = Field(default=None, description="DocGen-oriented live diagnostics for waiting UIs.")
+    graph_metrics: KnowledgeGraphBuildMetricsResponse = Field(default_factory=KnowledgeGraphBuildMetricsResponse, description="Stable graph-build metrics for progress UIs.")
 
 
 class DocGenGetResponse(BaseModel):

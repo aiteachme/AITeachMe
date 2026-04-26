@@ -31,6 +31,7 @@ from app.schemas.knowledge import (
     DocGenBuildData,
     DocGenGetResponse,
     KnowledgeBuildLaneRuntimeResponse,
+    KnowledgeGraphBuildMetricsResponse,
     KnowledgeBuildMetricsResponse,
     KnowledgeBuildPreviewResponse,
     KnowledgeBuildRuntimeResponse,
@@ -330,6 +331,12 @@ def _build_runtime_metrics(*, build_status) -> KnowledgeBuildMetricsResponse | N
     return KnowledgeBuildMetricsResponse(llm_total_calls=token_summary.total_calls, failed_llm_call_count=token_summary.failed_call_count, llm_avg_latency_ms=token_summary.avg_latency_ms, call_count_by_lane=lane_counts)
 
 
+def _build_graph_metrics(*, build_status) -> KnowledgeGraphBuildMetricsResponse:
+    if build_status is None:
+        return KnowledgeGraphBuildMetricsResponse()
+    return KnowledgeGraphBuildMetricsResponse.model_validate(dict(build_status.metrics or {}))
+
+
 def _resolve_runtime_build_status(*, subject: str) -> KnowledgeBuildStatusResponse | None:
     build_lock = read_knowledge_build_lock(subject)
     runtime = read_knowledge_build_runtime(subject)
@@ -413,6 +420,7 @@ def get_knowledge_build_runtime_result(session: Session, *, subject: str) -> Kno
             manifest=manifest,
         ),
         docgen_metrics=_build_runtime_metrics(build_status=docgen_runtime),
+        graph_metrics=_build_graph_metrics(build_status=graph_runtime),
     )
 
 
@@ -470,7 +478,7 @@ def _build_graph_seed_chapter_metadatas(confirmed_plan_payload: dict[str, Any] |
     return normalized
 
 
-def trigger_docgen_build(session: Session, *, subject: Subject, user_id: str, file_uids: list[str] | None, prompt: str | None, embedding_resolution: str | None, confirmed_plan_id: str | None, build_type: str = "docs") -> tuple[DocGenBuildData, list[int], str]:
+def trigger_docgen_build(session: Session, *, subject: Subject, user_id: str, file_uids: list[str] | None, prompt: str | None, embedding_resolution: str | None, confirmed_plan_id: str | None) -> tuple[DocGenBuildData, list[int], str]:
     """处理知识文档构建请求的同步前置阶段。
 
     这里还没有启动 LangGraph。它只负责确认 plan、选择可用文件、处理向量
@@ -489,9 +497,9 @@ def trigger_docgen_build(session: Session, *, subject: Subject, user_id: str, fi
     chapter_progress: list[dict[str, object]] = []
     recent_events: list[dict[str, object]] = []
     cleaned_prompt = _clean_prompt(prompt)
-    allow_search_only = build_type == "docs"
-    if build_type != "graph" and not confirmed_plan_id:
-        raise ConfirmedBuildPlanRequiredError(build_type)
+    allow_search_only = True
+    if not confirmed_plan_id:
+        raise ConfirmedBuildPlanRequiredError("docs")
     if confirmed_plan_id:
         plan = get_confirmed_build_plan(session, subject=subject.slug, user_id=user_id, plan_id=confirmed_plan_id)
         if plan.status == "building":
@@ -550,10 +558,9 @@ def trigger_docgen_build(session: Session, *, subject: Subject, user_id: str, fi
     if not acquire_knowledge_build_lock(subject.slug, KnowledgeBuildLock(requested_at=requested_at, build_group_id=build_group_id, source_file_ids=accepted_file_ids, prompt=cleaned_prompt)):
         raise SubjectBuildLockConflictError(subject.slug)
     clear_docgen_staging(subject.slug)
-    initial_lane = "graph" if (build_type or "docs") == "graph" else "docgen"
     update_knowledge_build_lane_status(
         subject.slug,
-        lane=initial_lane,
+        lane="docgen",
         requested_at=requested_at,
         build_group_id=build_group_id,
         status="accepted",
@@ -694,6 +701,9 @@ async def run_docgen_background(*, subject: str, file_ids: list[int], prompt: st
             "doc_sync_unit_changes": 0,
             "doc_sync_edge_changes": 0,
             "doc_sync_elapsed_ms": 0,
+            "elapsed_ms": 0,
+            "revision_no": 0,
+            "last_synced_doc_version_no": 0,
         }
         if sync_graph_after_docgen:
             try:
@@ -708,7 +718,7 @@ async def run_docgen_background(*, subject: str, file_ids: list[int], prompt: st
                     prompt=prompt,
                     llm_snapshot=graph_llm_snapshot,
                 )
-                update_knowledge_build_lane_status(subject, lane="graph", requested_at=requested_at, build_group_id=build_group_id, status="completed", stage="completed", progress_pct=100, processed_chunks=int(ingest_metrics.get("processed_chunks", 0) or 0), current_stage_description="知识图谱与课程结构已同步完成。", metrics={"processed_chunks": int(ingest_metrics.get("processed_chunks", 0) or 0), **doc_sync_metrics})
+                update_knowledge_build_lane_status(subject, lane="graph", requested_at=requested_at, build_group_id=build_group_id, status="completed", stage="completed", progress_pct=100, processed_chunks=int(ingest_metrics.get("processed_chunks", 0) or 0), current_stage_description="知识图谱已同步完成。", metrics={"processed_chunks": int(ingest_metrics.get("processed_chunks", 0) or 0), **doc_sync_metrics})
             except Exception as exc:
                 graph_error_message = sanitize_knowledge_build_error_message(str(exc), build_kind="graph")
                 update_knowledge_build_lane_status(subject, lane="graph", requested_at=requested_at, build_group_id=build_group_id, status="failed", stage="failed", error_message=str(exc) or "build_crashed", processed_chunks=int(ingest_metrics.get("processed_chunks", 0) or 0), current_stage_description=graph_error_message, metrics={"processed_chunks": int(ingest_metrics.get("processed_chunks", 0) or 0), **doc_sync_metrics})

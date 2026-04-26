@@ -6,10 +6,7 @@ from typing import TYPE_CHECKING
 
 from app.workflows.support.knowledge_graph.cleanup import clear_subject_graph_entities
 from app.workflows.support.knowledge_graph.builds import (
-    run_graph_build_background,
-    run_graph_docs_sync_debug_background,
     run_graph_docs_sync_after_doc_build,
-    run_graph_file_ingest_debug_background,
     run_graph_file_ingest_background,
 )
 from app.workflows.support.knowledge_graph.incremental_sync import (
@@ -57,10 +54,7 @@ __all__ = [
     "get_knowledge_unit_detail",
     "get_knowledge_unit_relations",
     "get_knowledge_units",
-    "run_graph_build_background",
-    "run_graph_docs_sync_debug_background",
     "run_graph_docs_sync_after_doc_build",
-    "run_graph_file_ingest_debug_background",
     "run_graph_file_ingest_background",
     "run_graph_docs_sync_workflow",
     "run_graph_file_ingest_workflow",

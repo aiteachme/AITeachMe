@@ -1797,275 +1797,6 @@
         }
       }
     },
-    "/api/v1/subjects/{subject}/knowledge/debug/kg-file-ingest": {
-      "post": {
-        "tags": [
-          "knowledge",
-          "knowledge"
-        ],
-        "summary": "Trigger kg_file_ingest only for debugging",
-        "operationId": "knowledge_debug_kg_file_ingest_api_v1_subjects__subject__knowledge_debug_kg_file_ingest_post",
-        "parameters": [
-          {
-            "name": "subject",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Subject"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/KnowledgeDebugTriggerRequest",
-                "default": {}
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiResponse_KnowledgeDebugTriggerResponse_"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "请求参数不合法。",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "资源不存在。",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "当前资源状态不允许执行该操作。",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "业务校验未通过。",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "服务内部异常。",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/subjects/{subject}/knowledge/debug/kg-docs-sync": {
-      "post": {
-        "tags": [
-          "knowledge",
-          "knowledge"
-        ],
-        "summary": "Trigger kg_docs_sync only for debugging",
-        "operationId": "knowledge_debug_kg_docs_sync_api_v1_subjects__subject__knowledge_debug_kg_docs_sync_post",
-        "parameters": [
-          {
-            "name": "subject",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Subject"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/KnowledgeDebugTriggerRequest",
-                "default": {}
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiResponse_KnowledgeDebugTriggerResponse_"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "请求参数不合法。",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "资源不存在。",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "当前资源状态不允许执行该操作。",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "服务内部异常。",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/subjects/{subject}/knowledge/debug/clear-graph": {
-      "post": {
-        "tags": [
-          "knowledge",
-          "knowledge"
-        ],
-        "summary": "Clear knowledge units and graph edges only for debugging",
-        "operationId": "knowledge_debug_clear_graph_api_v1_subjects__subject__knowledge_debug_clear_graph_post",
-        "parameters": [
-          {
-            "name": "subject",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Subject"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiResponse_ClearKnowledgeResponse_"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "请求参数不合法。",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "资源不存在。",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "当前资源状态不允许执行该操作。",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "服务内部异常。",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/api/v1/subjects/{subject}/knowledge/build/plans/latest": {
       "post": {
         "tags": [
@@ -2490,7 +2221,7 @@
           "knowledge",
           "knowledge"
         ],
-        "summary": "Trigger docs and/or graph digest build",
+        "summary": "Trigger a knowledge-doc build with optional graph sync",
         "operationId": "knowledge_build_api_v1_subjects__subject__knowledge_build_post",
         "parameters": [
           {
@@ -5750,6 +5481,23 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExportOptions",
+                "default": {
+                  "include_raw_files": true,
+                  "include_raw_markdowns": true,
+                  "include_knowledge_docs": true,
+                  "include_chat_history": true,
+                  "include_exam_history": true,
+                  "include_profile": true
+                }
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -6964,40 +6712,6 @@
         },
         "type": "object",
         "title": "ApiResponse[KnowledgeBuildRuntimeResponse]",
-        "example": {
-          "code": 0,
-          "data": {},
-          "message": "ok"
-        }
-      },
-      "ApiResponse_KnowledgeDebugTriggerResponse_": {
-        "properties": {
-          "code": {
-            "type": "integer",
-            "title": "Code",
-            "description": "业务码，0 表示成功。",
-            "default": 0
-          },
-          "message": {
-            "type": "string",
-            "title": "Message",
-            "description": "响应消息。",
-            "default": "ok"
-          },
-          "data": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/KnowledgeDebugTriggerResponse"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "业务数据。"
-          }
-        },
-        "type": "object",
-        "title": "ApiResponse[KnowledgeDebugTriggerResponse]",
         "example": {
           "code": 0,
           "data": {},
@@ -9970,12 +9684,9 @@
           },
           "build_type": {
             "type": "string",
-            "enum": [
-              "docs",
-              "graph"
-            ],
+            "const": "docs",
             "title": "Build Type",
-            "description": "Build type: 'docs' for knowledge documents only, 'graph' for knowledge graph only.",
+            "description": "Build type. Public builds generate knowledge docs and may sync the graph according to settings.",
             "default": "docs"
           },
           "confirmed_plan_id": {
@@ -12246,6 +11957,10 @@
               }
             ],
             "description": "DocGen-oriented live diagnostics for waiting UIs."
+          },
+          "graph_metrics": {
+            "$ref": "#/components/schemas/KnowledgeGraphBuildMetricsResponse",
+            "description": "Stable graph-build metrics for progress UIs."
           }
         },
         "type": "object",
@@ -12364,24 +12079,51 @@
         "title": "KnowledgeBuildStatusResponse",
         "description": "Minimal runtime metadata exposed to clients for docs polling."
       },
-      "KnowledgeDebugTriggerRequest": {
+      "KnowledgeGraphBuildMetricsResponse": {
         "properties": {
-          "file_uids": {
-            "anyOf": [
-              {
-                "items": {
-                  "type": "string"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "File Uids",
-            "description": "Optional parsed raw file UIDs used by kg_file_ingest; omitted means auto-pick all ready files."
+          "processed_chunks": {
+            "type": "integer",
+            "title": "Processed Chunks",
+            "description": "Parsed-file chunks processed by kg_file_ingest.",
+            "default": 0
           },
-          "prompt": {
+          "doc_sync_section_count": {
+            "type": "integer",
+            "title": "Doc Sync Section Count",
+            "description": "Knowledge-doc sections analyzed by kg_docs_sync.",
+            "default": 0
+          },
+          "doc_sync_unit_changes": {
+            "type": "integer",
+            "title": "Doc Sync Unit Changes",
+            "description": "Knowledge units created or updated by docs-sync.",
+            "default": 0
+          },
+          "doc_sync_edge_changes": {
+            "type": "integer",
+            "title": "Doc Sync Edge Changes",
+            "description": "Graph edges created or updated by docs-sync.",
+            "default": 0
+          },
+          "elapsed_ms": {
+            "type": "integer",
+            "title": "Elapsed Ms",
+            "description": "Elapsed milliseconds for the latest graph-sync step.",
+            "default": 0
+          },
+          "revision_no": {
+            "type": "integer",
+            "title": "Revision No",
+            "description": "Knowledge graph revision number produced by the latest docs-sync.",
+            "default": 0
+          },
+          "last_synced_doc_version_no": {
+            "type": "integer",
+            "title": "Last Synced Doc Version No",
+            "description": "Knowledge document version number last synced into the graph.",
+            "default": 0
+          },
+          "knowledge_doc_source": {
             "anyOf": [
               {
                 "type": "string"
@@ -12390,65 +12132,19 @@
                 "type": "null"
               }
             ],
-            "title": "Prompt",
-            "description": "Optional debug prompt passed through to the workflow."
+            "title": "Knowledge Doc Source",
+            "description": "Source of the knowledge document markdown used for docs-sync."
           },
-          "embedding_resolution": {
-            "anyOf": [
-              {
-                "type": "string",
-                "enum": [
-                  "rebuild",
-                  "disable"
-                ]
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Embedding Resolution",
-            "description": "Optional subject-level embedding resolution chosen after a precheck conflict."
+          "knowledge_doc_chapter_count": {
+            "type": "integer",
+            "title": "Knowledge Doc Chapter Count",
+            "description": "Knowledge document chapter count seen by docs-sync.",
+            "default": 0
           }
         },
         "type": "object",
-        "title": "KnowledgeDebugTriggerRequest",
-        "description": "Trigger one knowledge debug lane directly."
-      },
-      "KnowledgeDebugTriggerResponse": {
-        "properties": {
-          "action": {
-            "type": "string",
-            "enum": [
-              "kg_docs_sync",
-              "kg_file_ingest"
-            ],
-            "title": "Action"
-          },
-          "requested_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Requested At"
-          },
-          "accepted_file_uids": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Accepted File Uids"
-          },
-          "message": {
-            "type": "string",
-            "title": "Message",
-            "default": ""
-          }
-        },
-        "type": "object",
-        "required": [
-          "action",
-          "requested_at"
-        ],
-        "title": "KnowledgeDebugTriggerResponse",
-        "description": "Accepted debug lane trigger result."
+        "title": "KnowledgeGraphBuildMetricsResponse",
+        "description": "Stable graph-build metrics used by docs and graph progress UIs."
       },
       "KnowledgeOverviewRequest": {
         "properties": {

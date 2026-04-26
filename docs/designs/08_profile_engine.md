@@ -2,6 +2,8 @@
 
 > **最后更新**: 2026-04-16 · 基于 `backend/app/workflows/profile/` 代码实现
 
+> 当前数据库以 `knowledge_unit / user_knowledge_state` 为准；本文中出现的 `teaching_unit / knowledge_node` 属于目标态或历史术语，教学单元表尚未落地。
+
 ---
 
 ## 1. 引擎定位与职责

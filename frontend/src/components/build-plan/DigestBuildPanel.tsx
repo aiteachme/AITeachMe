@@ -214,10 +214,10 @@ export function DigestBuildProgress({
           </div>
           <p className="mt-1 text-xs leading-5 text-slate-600">
             {state.focus === "graph"
-              ? "当前显示知识图谱 runtime 进度。"
+              ? "文档发布后会自动抽取知识点与关系。"
               : state.focus === "docgen"
-                ? "当前显示知识文档 runtime 进度。"
-                : "当前状态以 aggregate/docgen/graph 三层 runtime 聚合结果为准。"}
+                ? "正在整理章节、证据和发布状态。"
+                : "知识文档与知识图谱会按顺序推进。"}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -328,8 +328,13 @@ export function KnowledgeGraphBuildProgress({
   }
 
   const metrics = state.activeLane.metrics ?? {};
-  const processedChunks = Number(metrics.processed_chunks ?? 0);
-  const docSyncSections = Number(metrics.doc_sync_section_count ?? 0);
+  const graphMetrics = data?.graph_metrics ?? null;
+  const processedChunks = Number(graphMetrics?.processed_chunks ?? metrics.processed_chunks ?? 0);
+  const docSyncSections = Number(graphMetrics?.doc_sync_section_count ?? metrics.doc_sync_section_count ?? 0);
+  const unitChanges = Number(graphMetrics?.doc_sync_unit_changes ?? metrics.doc_sync_unit_changes ?? 0);
+  const edgeChanges = Number(graphMetrics?.doc_sync_edge_changes ?? metrics.doc_sync_edge_changes ?? 0);
+  const revisionNo = Number(graphMetrics?.revision_no ?? metrics.revision_no ?? 0);
+  const docVersionNo = Number(graphMetrics?.last_synced_doc_version_no ?? metrics.last_synced_doc_version_no ?? 0);
   const tone = state.isFailed
     ? "border-rose-200 bg-rose-50"
     : state.isCompleted
@@ -366,10 +371,14 @@ export function KnowledgeGraphBuildProgress({
           style={{ width: `${state.progress}%` }}
         />
       </div>
-      {(processedChunks > 0 || docSyncSections > 0 || state.activeLane.started_at) && (
+      {(processedChunks > 0 || docSyncSections > 0 || unitChanges > 0 || edgeChanges > 0 || revisionNo > 0 || state.activeLane.started_at) && (
         <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-slate-500">
           {processedChunks > 0 ? <span>已处理 {processedChunks} 个片段</span> : null}
           {docSyncSections > 0 ? <span>已同步 {docSyncSections} 个章节段落</span> : null}
+          {unitChanges > 0 ? <span>知识点更新 {unitChanges} 个</span> : null}
+          {edgeChanges > 0 ? <span>关系更新 {edgeChanges} 条</span> : null}
+          {revisionNo > 0 ? <span>图谱版本 {revisionNo}</span> : null}
+          {docVersionNo > 0 ? <span>文档版本 {docVersionNo}</span> : null}
           {state.activeLane.started_at ? (
             <span>开始于 {new Date(state.activeLane.started_at).toLocaleString("zh-CN")}</span>
           ) : null}

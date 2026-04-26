@@ -2,6 +2,8 @@
 
 > **最后更新**: 2026-04-16 · 基于 `backend/app/workflows/examine/` 代码实现
 
+> 当前数据库以 `knowledge_unit / knowledge_edge` 为准；本文中出现的 `curriculum / teaching_unit / knowledge_node` 属于目标态或历史术语，课程结构表尚未落地。
+
 ---
 
 ## 1. 引擎定位与职责
