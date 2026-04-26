@@ -646,7 +646,7 @@ async def plan_exam_question_blueprints(
         result = await acompletion_with_fallback(
             messages,
             call_purpose=LLMCallPurpose.CLASSIFY,
-            model="light",
+            model="reason",
             response_model=ExamQuestionBlueprintBatch,
             temperature=0.2,
             max_tokens=2200,
@@ -710,7 +710,7 @@ async def _generate_one_exam_question(
             result = await acompletion_with_fallback(
                 messages,
                 call_purpose=LLMCallPurpose.GENERATE,
-                model="primary",
+                model="reason",
                 response_model=ExamSingleQuestionResponse,
                 temperature=0.35,
                 max_tokens=max_tokens,
@@ -791,7 +791,7 @@ async def generate_exam_questions_for_units(
                 result = await acompletion_with_fallback(
                     messages,
                     call_purpose=LLMCallPurpose.GENERATE,
-                    model="primary",
+                    model="reason",
                     response_model=ExamQuestionBatch,
                     temperature=0.35,
                     max_tokens=2400,
@@ -905,7 +905,7 @@ async def assign_question_knowledge_weights(
                     units=[_unit_payload(unit) for unit in allowed_units],
                 ),
                 call_purpose=LLMCallPurpose.CLASSIFY,
-                model="light",
+                model="reason",
                 response_model=ExamQuestionWeightResult,
                 temperature=0.0,
                 max_tokens=700,
@@ -946,7 +946,7 @@ async def generate_exam_from_text(
     result = await acompletion_with_fallback(
         messages,
         call_purpose=LLMCallPurpose.GENERATE,
-        model="primary",
+        model="reason",
         response_model=ExamQuestionBatch,
         temperature=0.35,
         max_tokens=2800,
