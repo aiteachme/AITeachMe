@@ -11,7 +11,7 @@ import structlog
 
 from app.shared.infra.llm_support import acompletion_with_fallback
 from app.workflows.digest.docgen.lib.defaults import DEFAULT_DOCGEN_FILE_SUMMARY_PARALLELISM
-from app.workflows.digest.docgen.lib.model_policy import DocGenModelStep, docgen_completion_kwargs
+from app.workflows.digest.docgen.lib.model_policy import DocGenModelStep, docgen_completion_kwargs_with_metadata
 from app.workflows.digest.common.models import DigestMaterialContext, SectionPacket, SourcePacket
 from app.workflows.digest.docgen.lib.models import (
     FileMaterialSummary,
@@ -250,15 +250,14 @@ async def _summarize_one_file(
                     chapter_titles=chapter_titles,
                     excerpt=excerpt,
                 ),
-                **docgen_completion_kwargs(DocGenModelStep.FILE_SUMMARY),
+                **docgen_completion_kwargs_with_metadata(
+                    DocGenModelStep.FILE_SUMMARY,
+                    digest_mode=digest_mode,
+                    extra_metadata=extra_metadata,
+                    docgen_stage="summarize_file",
+                    file_id=packet.file_id,
+                ),
                 response_model=FileMaterialSummary,
-                temperature=0.1,
-                max_tokens=5000,
-                extra_metadata={
-                    "docgen_stage": "summarize_file",
-                    "file_id": packet.file_id,
-                    **dict(extra_metadata),
-                },
             )
     except Exception as exc:
         logger.warning("docgen_file_summary_failed", file_id=packet.file_id, error=str(exc))

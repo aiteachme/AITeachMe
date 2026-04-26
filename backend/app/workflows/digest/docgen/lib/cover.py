@@ -295,8 +295,8 @@ async def generate_docgen_cover_artifact(
                 size=size,
                 n=1,
                 extra_metadata={
+                    **model_policy.metadata(),
                     "docgen_stage": "cover_generation",
-                    "docgen_model_step": model_policy.step.value,
                     "subject": subject,
                     "build_session_id": build_session_id,
                 },

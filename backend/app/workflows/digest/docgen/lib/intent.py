@@ -8,7 +8,7 @@ from typing import Any
 import structlog
 
 from app.shared.infra.llm_support import acompletion_with_fallback
-from app.workflows.digest.docgen.lib.model_policy import DocGenModelStep, docgen_completion_kwargs
+from app.workflows.digest.docgen.lib.model_policy import DocGenModelStep, docgen_completion_kwargs_with_metadata
 from app.workflows.digest.docgen.lib.models import DocGenIntentProfile
 from app.workflows.digest.docgen.mode_profiles import is_sprint_docgen_mode
 from app.workflows.digest.docgen.prompts import build_intent_core_messages
@@ -67,11 +67,13 @@ async def infer_intent_core(
                 chapters=chapters,
                 docgen_history_brief=docgen_history_brief,
             ),
-            **docgen_completion_kwargs(DocGenModelStep.INTENT_CORE),
+            **docgen_completion_kwargs_with_metadata(
+                DocGenModelStep.INTENT_CORE,
+                digest_mode=digest_mode,
+                extra_metadata=extra_metadata,
+                docgen_stage="infer_intent_core",
+            ),
             response_model=DocGenIntentProfile,
-            temperature=0.1,
-            max_tokens=600,
-            extra_metadata={"docgen_stage": "infer_intent_core", **dict(extra_metadata or {})},
         )
     except Exception as exc:
         logger.warning("docgen_intent_core_failed", error=str(exc))

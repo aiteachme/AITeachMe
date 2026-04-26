@@ -10,7 +10,7 @@ from app.shared.infra.execution import TracedExecutionContext
 from app.shared.infra.llm_support import acompletion_with_fallback
 from app.shared.infra.storage import get_content_store, resolve_subject_storage_scope
 from app.utils.path_helpers import sanitize_doc_title
-from app.workflows.digest.docgen.lib.model_policy import DocGenModelStep, docgen_completion_kwargs
+from app.workflows.digest.docgen.lib.model_policy import DocGenModelStep, docgen_completion_kwargs_with_metadata
 from app.workflows.digest.docgen.lib.models import ChapterDraft, ClaimLedger, DocumentBackbone
 from app.workflows.digest.docgen.prompts import build_interactive_html_messages
 
@@ -196,13 +196,14 @@ async def maybe_generate_interactive_html_asset(
             claim_targets=claim_targets,
             chapter_context=chapter_context,
         ),
-        **docgen_completion_kwargs(DocGenModelStep.INTERACTIVE_HTML),
-        temperature=0.1,
-        max_tokens=2600,
-        extra_metadata=traced_context.trace_metadata(
-            docgen_stage="interactive_html_sidecar",
-            asset_kind="interactive_html",
-            chapter_index=draft.chapter_index,
+        **docgen_completion_kwargs_with_metadata(
+            DocGenModelStep.INTERACTIVE_HTML,
+            digest_mode=digest_mode,
+            extra_metadata=traced_context.trace_metadata(
+                docgen_stage="interactive_html_sidecar",
+                asset_kind="interactive_html",
+                chapter_index=draft.chapter_index,
+            ),
         ),
     )
     cleaned_html = _sanitize_generated_html(str(html), title=draft.title)
