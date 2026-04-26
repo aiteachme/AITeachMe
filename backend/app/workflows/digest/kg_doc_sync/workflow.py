@@ -10,7 +10,7 @@ from app.workflows.digest.kg_doc_sync.graph import (
     build_docs_sync_graph,
     create_docs_sync_initial_state,
 )
-from app.workflows.digest.kg_doc_sync.lib.incremental_sync import KnowledgeSyncReport
+from app.workflows.digest.kg_doc_sync.lib.models import KnowledgeSyncReport
 from app.workflows.digest.kg_doc_sync.state import DocsSyncState
 
 

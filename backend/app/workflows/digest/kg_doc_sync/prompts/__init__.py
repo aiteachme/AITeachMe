@@ -1,1 +1,1 @@
-﻿"""Prompts for kg_doc_sync workflow."""
+"""Prompt templates for kg_doc_sync."""

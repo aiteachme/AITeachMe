@@ -60,7 +60,8 @@ from app.workflows.digest.planner import (
 - `planner -> docgen`
 - `docgen publish -> kg_doc_sync`
 
-旧 `kg_file_ingest` 调试链路已经删除。知识图谱同步只保留 `kg_doc_sync`，
-图谱抽取、候选合并、增量写库等主体实现位于 `kg_doc_sync/lib/`。
+旧 `kg_file_ingest` 调试链路已经删除。知识图谱同步只保留 `kg_doc_sync`。
+KG 同步编排按 `prepare -> init_run -> extract -> persist -> finalize` 拆在 `kg_doc_sync/nodes/`，
+抽取、候选合并、增量写库等可复用实现位于 `kg_doc_sync/lib/`。
 
 如果要看具体编排，优先进入各链路下的 `graph.py`、`state.py`；API-facing 构建入口优先看对应 lane 的 `lib/*lifecycle*.py`

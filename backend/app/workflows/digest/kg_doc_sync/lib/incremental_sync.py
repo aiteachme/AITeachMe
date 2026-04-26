@@ -5,8 +5,6 @@ from __future__ import annotations
 import asyncio
 import contextvars
 import json
-import re
-from dataclasses import dataclass, field
 from dataclasses import replace
 from time import perf_counter
 import threading
@@ -42,6 +40,27 @@ from app.workflows.digest.kg_doc_sync.lib.extraction import (
     extract_candidates,
     extract_candidates_with_diagnostics,
 )
+from app.workflows.digest.kg_doc_sync.lib.candidate_quality import (
+    filter_docs_candidate_result,
+    is_low_quality_docs_unit_name,
+)
+from app.workflows.digest.kg_doc_sync.lib.models import (
+    ChapterSourceContext,
+    KnowledgeSyncExtractionPayload,
+    KnowledgeSyncReport,
+    KnowledgeSyncRunContext,
+    MarkdownExtractedEdge,
+    PendingMarkdownExtractedEdge,
+    SectionExtractionContext,
+    SectionExtractionPayload,
+)
+from app.workflows.digest.kg_doc_sync.lib.sync_runs import (
+    create_sync_run,
+    finish_sync_run,
+    get_sync_run_or_raise,
+    mark_knowledge_graph_sync_run_failed,
+    sync_run_metrics,
+)
 
 _ANCHOR_ALIAS_SOURCE = "markdown_anchor"
 _SYNC_EDGE_MARKER = "markdown_anchor_sync"
@@ -68,68 +87,6 @@ logger = structlog.get_logger()
 def _end_trace_substep(run: object | None, outputs: dict[str, object]) -> None:
     if run is not None:
         run.end(outputs=outputs)
-
-_DOCS_UNIT_WRAPPER_TERMS = (
-    "题型例练",
-    "例题精练",
-    "典型题型",
-    "速判口诀",
-    "速判例题",
-    "考前复盘",
-    "复盘口诀",
-    "回看清单",
-    "本章自检",
-    "本章小结",
-    "本章摘要",
-    "章节导读",
-    "学习目标",
-    "知识主线",
-    "应试策略",
-    "解题入口",
-    "解题模板",
-    "速判",
-    "题眼",
-    "必会",
-    "主干划分",
-    "学习顺序",
-    "认知难度",
-    "区分标准",
-    "常见误解",
-    "错误推理",
-    "失分点",
-    "预警",
-    "过渡设计",
-    "解决思路",
-    "综合题结构",
-    "知识组合",
-    "跨模块",
-)
-_DOCS_UNIT_META_PHRASE_RE = re.compile(
-    r"(?:"
-    r"主干划分|学习顺序|认知难度(?:排序)?|区分标准|常见误解|错误推理|"
-    r"路径的归纳|解释路径|关键判断逻辑|步骤拆解|失分点|预警|"
-    r"过渡设计|解决思路|体现方式|完整推导链条|综合题结构|知识组合|跨模块|"
-    r"(?:各模块|模块).{0,12}(?:权重|认知难度|排序)|"
-    r"(?:考试|常考).{0,12}(?:权重|排序|模块|结构|题)|"
-    r"(?:实验设计|现象解释).{0,12}对应关系"
-    r")"
-)
-_DOCS_UNIT_ACTION_PREFIX_RE = re.compile(
-    r"^(?:"
-    r"分析|总结|提炼|设计|建立|明确|强调|归纳|梳理|围绕|揭示|说明|复述|判断|区分|比较|"
-    r"计算|求|证明|写出|改造|构造|抓住|先标|标出|把|找|寻找"
-    r")"
-)
-_DOCS_UNIT_QUESTION_STEM_RE = re.compile(
-    r"^(?:题\s*\d*|例题\s*\d*|练习\s*\d*|问题\s*\d*)\s*[:：]"
-    r"|^点\s*[A-Za-z]\s*\("
-    r"|^(?:已知|若|设|求|计算|证明|判断)(?:\s|$|[，,：:])"
-)
-_DOCS_UNIT_OUTLINE_PREFIX_RE = re.compile(r"^\s*[一二三四五六七八九十]+[、.．]\s*")
-_DOCS_UNIT_FORMULA_HINT_RE = re.compile(
-    r"(?:\\[A-Za-z]+|\$|[=<>≤≥≈∑∫√]|λ|alpha|beta|gamma|theta|det|lim|sin|cos|tan)"
-)
-
 
 def _as_mapping(value: object) -> dict[str, object]:
     return dict(value) if isinstance(value, dict) else {}
@@ -173,92 +130,6 @@ def _source_quote(text: str, *, max_chars: int = 500) -> str:
     return cleaned
 
 
-def _strip_docs_unit_outline_prefix(name: str) -> str:
-    return _DOCS_UNIT_OUTLINE_PREFIX_RE.sub("", str(name or "").strip()).strip()
-
-
-def _looks_like_formula_unit_name(name: str, *, node_type: str = "") -> bool:
-    normalized_type = normalize_knowledge_unit_type(node_type or "concept")
-    return normalized_type == "formula" or bool(_DOCS_UNIT_FORMULA_HINT_RE.search(str(name or "")))
-
-
-def _is_low_quality_docs_unit_name(name: str, *, node_type: str = "") -> bool:
-    """Reject doc-sync candidates that are teaching wrappers rather than KUs.
-
-    LLM still decides the semantic candidates. This guard only blocks names
-    that are visibly objectives, exercise stems, outline labels, or review
-    slogans; those belong in source evidence, not as graph nodes.
-    """
-
-    raw = str(name or "").strip()
-    cleaned = _strip_docs_unit_outline_prefix(raw)
-    normalized_type = normalize_knowledge_unit_type(node_type or "concept")
-    if not cleaned or len(cleaned) <= 1:
-        return True
-    if _looks_like_formula_unit_name(cleaned, node_type=normalized_type):
-        return False
-    if _DOCS_UNIT_OUTLINE_PREFIX_RE.match(raw):
-        return True
-    if any(term in cleaned for term in _DOCS_UNIT_WRAPPER_TERMS):
-        return True
-    if normalized_type in {"concept", "method", "remark", "example", "exercise"} and _DOCS_UNIT_META_PHRASE_RE.search(cleaned):
-        return True
-    if _DOCS_UNIT_QUESTION_STEM_RE.search(cleaned):
-        return True
-    if normalized_type in {"example", "exercise"} and re.search(r"[；;。]|[:：]", cleaned):
-        return True
-    if normalized_type in {"concept", "method", "remark"} and _DOCS_UNIT_ACTION_PREFIX_RE.search(cleaned):
-        return True
-    if len(cleaned) > 34 and re.search(r"[，,；;。！？!?：:]", cleaned):
-        return True
-    return False
-
-
-def _filter_docs_candidate_result(result: ChunkExtractionResult) -> ChunkExtractionResult:
-    kept_nodes: list[CandidateNode] = []
-    dropped_candidate_ids: set[str] = set()
-    dropped_names: set[str] = set()
-    dropped_normalized_names: set[str] = set()
-    kept_names: set[str] = set()
-    kept_normalized_names: set[str] = set()
-
-    for node in result.nodes:
-        if _is_low_quality_docs_unit_name(node.name, node_type=node.knowledge_unit_type):
-            if node.candidate_id:
-                dropped_candidate_ids.add(node.candidate_id)
-            dropped_names.add(node.name)
-            normalized_name = normalize_name(node.name)
-            if normalized_name:
-                dropped_normalized_names.add(normalized_name)
-            logger.info(
-                "knowledge_docs_sync_node_dropped_low_quality_name",
-                node_name=node.name,
-                node_type=node.knowledge_unit_type,
-            )
-            continue
-        kept_nodes.append(node)
-        kept_names.add(node.name)
-        normalized_name = normalize_name(node.name)
-        if normalized_name:
-            kept_normalized_names.add(normalized_name)
-
-    def _edge_endpoint_kept(name: str, candidate_id: str | None) -> bool:
-        if candidate_id and candidate_id in dropped_candidate_ids:
-            return False
-        normalized = normalize_name(name)
-        if name in dropped_names or (normalized and normalized in dropped_normalized_names):
-            return False
-        return name in kept_names or bool(normalized and normalized in kept_normalized_names)
-
-    kept_edges = [
-        edge
-        for edge in result.edges
-        if _edge_endpoint_kept(edge.source_name, edge.source_candidate_id)
-        and _edge_endpoint_kept(edge.target_name, edge.target_candidate_id)
-    ]
-    return ChunkExtractionResult(nodes=kept_nodes, edges=kept_edges)
-
-
 def _structured_context_payload(value: dict[str, object] | None) -> dict[str, object]:
     return dict(value or {})
 
@@ -296,126 +167,6 @@ def _document_backbone_payload(structured_context: dict[str, object]) -> dict[st
     return _as_mapping(summary.get("document_backbone"))
 
 
-@dataclass(slots=True)
-class KnowledgeSyncReport:
-    """Summary of one incremental sync pass."""
-
-    subject: str
-    build_revision_no: int
-    synced_unit_keys: list[str] = field(default_factory=list)
-    knowledge_image_count: int = 0
-    created_unit_ids: list[int] = field(default_factory=list)
-    updated_unit_ids: list[int] = field(default_factory=list)
-    deprecated_unit_ids: list[int] = field(default_factory=list)
-    created_edge_ids: list[int] = field(default_factory=list)
-    updated_edge_ids: list[int] = field(default_factory=list)
-    deprecated_edge_ids: list[int] = field(default_factory=list)
-    section_count: int = 0
-    chapter_count: int = 0
-    llm_section_count: int = 0
-    fallback_section_count: int = 0
-    question_fallback_section_count: int = 0
-    topic_fallback_section_count: int = 0
-    markdown_short_circuit_section_count: int = 0
-    total_extracted_node_count: int = 0
-    total_extracted_edge_count: int = 0
-    elapsed_ms: int = 0
-    sync_run_id: int | None = None
-    doc_version_no: int = 0
-    source_ref_count: int = 0
-    backbone_unit_count: int = 0
-    backbone_edge_count: int = 0
-    stable_anchor_count: int = 0
-
-    @property
-    def unit_change_count(self) -> int:
-        return len(self.created_unit_ids) + len(self.updated_unit_ids) + len(self.deprecated_unit_ids)
-
-    @property
-    def edge_change_count(self) -> int:
-        return len(self.created_edge_ids) + len(self.updated_edge_ids) + len(self.deprecated_edge_ids)
-
-    @property
-    def deprecated_unit_count(self) -> int:
-        return len(self.deprecated_unit_ids)
-
-    @property
-    def deprecated_edge_count(self) -> int:
-        return len(self.deprecated_edge_ids)
-
-
-@dataclass(slots=True)
-class MarkdownExtractedEdge:
-    """Chunk-level extracted edge resolved to markdown-sync anchors."""
-
-    source_anchor: str
-    target_anchor: str
-    edge_type: str
-    description: str
-    source_kind: str = "llm_relation"
-    knowledge_document_id: int | None = None
-    chapter_index: int = 0
-    source_file_ids: list[int] = field(default_factory=list)
-    quote_text: str = ""
-
-
-@dataclass(slots=True)
-class PendingMarkdownExtractedEdge:
-    """Chunk-level extracted edge before endpoint anchors are resolved."""
-
-    source_candidate_id: str | None
-    target_candidate_id: str | None
-    source_name: str
-    target_name: str
-    edge_type: str
-    description: str
-    source_kind: str = "llm_relation"
-    knowledge_document_id: int | None = None
-    chapter_index: int = 0
-    source_file_ids: list[int] = field(default_factory=list)
-    quote_text: str = ""
-
-
-@dataclass(slots=True)
-class SectionExtractionContext:
-    """Context retained after one section extraction for cross-section merging."""
-
-    section_index: int
-    title: str
-    header_path: str
-    body_markdown: str
-    primary_anchor: str | None = None
-    primary_name: str = ""
-    primary_type: str = ""
-    knowledge_document_id: int | None = None
-    source_file_ids: list[int] = field(default_factory=list)
-
-
-@dataclass(slots=True, frozen=True)
-class ChapterSourceContext:
-    """DocGen source metadata for one published chapter."""
-
-    knowledge_document_id: int | None = None
-    chapter_index: int = 0
-    title: str = ""
-    summary: str = ""
-    source_file_ids: list[int] = field(default_factory=list)
-
-
-@dataclass(slots=True)
-class SectionExtractionPayload:
-    """Normalized result for one extracted markdown section."""
-
-    units: list[MarkdownKnowledgeUnit]
-    pending_edges: list[PendingMarkdownExtractedEdge]
-    candidate_id_to_anchor: dict[str, str]
-    anchors_by_name: dict[str, list[str]]
-    anchors_by_normalized_name: dict[str, list[str]]
-    node_contexts_by_anchor: dict[str, dict[str, object]]
-    section_context: SectionExtractionContext
-    diagnostics: dict[str, int]
-
-
 def sync_markdown_knowledge_graph(
     session: Session,
     *,
@@ -430,6 +181,49 @@ def sync_markdown_knowledge_graph(
     """Synchronize knowledge units and knowledge images from Markdown into the graph."""
 
     started_at = perf_counter()
+    run_context = initialize_knowledge_graph_sync_run(
+        session,
+        subject=subject,
+        markdown=markdown,
+        build_revision_no=build_revision_no,
+        structured_context=structured_context,
+        build_session_id=build_session_id,
+        started_at=started_at,
+    )
+    try:
+        payload = extract_knowledge_graph_items(
+            markdown=markdown,
+            subject_context=subject_context,
+            run_context=run_context,
+        )
+    except Exception as exc:
+        mark_knowledge_graph_sync_run_failed(
+            session,
+            sync_run_id=run_context.sync_run_id,
+            error_message=str(exc),
+        )
+        session.flush()
+        raise
+    return persist_knowledge_graph_items(
+        session,
+        run_context=run_context,
+        payload=payload,
+        enable_rag_dedup=enable_rag_dedup,
+    )
+
+
+def initialize_knowledge_graph_sync_run(
+    session: Session,
+    *,
+    subject: str,
+    markdown: str,
+    build_revision_no: int | None = None,
+    structured_context: dict[str, object] | None = None,
+    build_session_id: str | None = None,
+    started_at: float | None = None,
+) -> KnowledgeSyncRunContext:
+    """Validate Markdown anchors and create a running sync-run row."""
+
     with trace_substep(
         "KG docs-sync：校验 Markdown anchors",
         metadata={"kg_doc_sync_phase": "validate_markdown_anchors"},
@@ -450,57 +244,86 @@ def sync_markdown_knowledge_graph(
                 f"duplicates={validation.duplicate_anchors}, invalid={validation.invalid_anchors}"
             )
 
-    structured_context = _structured_context_payload(structured_context)
+    normalized_context = _structured_context_payload(structured_context)
     revision_no = build_revision_no or _next_revision_no(session, subject)
-    doc_version_no = _safe_int(structured_context.get("doc_version_no"))
-    sync_run = _create_sync_run(
+    doc_version_no = _safe_int(normalized_context.get("doc_version_no"))
+    sync_run = create_sync_run(
         session,
         subject=subject,
         build_session_id=build_session_id,
         doc_version_no=doc_version_no,
         graph_revision_no=revision_no,
     )
-    try:
-        with trace_substep(
-            "KG docs-sync：抽取章节候选",
-            metadata={"kg_doc_sync_phase": "extract_graph_items"},
-            inputs={
-                "markdown_chars": len(markdown or ""),
-                "doc_version_no": doc_version_no,
-                "build_revision_no": revision_no,
-            },
-        ) as trace_run:
-            units, extracted_edges, diagnostics_totals = _extract_markdown_graph_items(
-                markdown,
-                subject_context=subject_context,
-                structured_context=structured_context,
-            )
-            _end_trace_substep(
-                trace_run,
-                {
-                    "unit_count": len(units),
-                    "edge_count": len(extracted_edges),
-                    "chapter_count": int(diagnostics_totals.get("chapter_count", 0) or 0),
-                    "section_count": int(diagnostics_totals.get("section_count", 0) or 0),
-                    "llm_section_count": int(diagnostics_totals.get("llm_section_count", 0) or 0),
-                    "fallback_section_count": int(diagnostics_totals.get("fallback_section_count", 0) or 0),
-                },
-            )
-    except Exception as exc:
-        _finish_sync_run(
-            session,
-            sync_run,
-            status="failed",
-            metrics={},
-            error_message=str(exc),
-        )
-        session.flush()
-        raise
-    report = KnowledgeSyncReport(
+    if sync_run.id is None:
+        raise RuntimeError("knowledge_graph_sync_run_id_missing")
+    return KnowledgeSyncRunContext(
         subject=subject,
         build_revision_no=revision_no,
         sync_run_id=sync_run.id,
         doc_version_no=doc_version_no,
+        structured_context=normalized_context,
+        started_at=started_at or perf_counter(),
+    )
+
+
+def extract_knowledge_graph_items(
+    *,
+    markdown: str,
+    subject_context: str | None,
+    run_context: KnowledgeSyncRunContext,
+) -> KnowledgeSyncExtractionPayload:
+    """Extract units and edges without writing graph rows."""
+
+    with trace_substep(
+        "KG docs-sync：抽取章节候选",
+        metadata={"kg_doc_sync_phase": "extract_graph_items"},
+        inputs={
+            "markdown_chars": len(markdown or ""),
+            "doc_version_no": run_context.doc_version_no,
+            "build_revision_no": run_context.build_revision_no,
+        },
+    ) as trace_run:
+        units, extracted_edges, diagnostics_totals = _extract_markdown_graph_items(
+            markdown,
+            subject_context=subject_context,
+            structured_context=run_context.structured_context,
+        )
+        _end_trace_substep(
+            trace_run,
+            {
+                "unit_count": len(units),
+                "edge_count": len(extracted_edges),
+                "chapter_count": int(diagnostics_totals.get("chapter_count", 0) or 0),
+                "section_count": int(diagnostics_totals.get("section_count", 0) or 0),
+                "llm_section_count": int(diagnostics_totals.get("llm_section_count", 0) or 0),
+                "fallback_section_count": int(diagnostics_totals.get("fallback_section_count", 0) or 0),
+            },
+        )
+    return KnowledgeSyncExtractionPayload(
+        units=units,
+        extracted_edges=extracted_edges,
+        diagnostics_totals=diagnostics_totals,
+    )
+
+
+def persist_knowledge_graph_items(
+    session: Session,
+    *,
+    run_context: KnowledgeSyncRunContext,
+    payload: KnowledgeSyncExtractionPayload,
+    enable_rag_dedup: bool = False,
+) -> KnowledgeSyncReport:
+    """Persist extracted graph items and finish the sync run."""
+
+    units = payload.units
+    extracted_edges = payload.extracted_edges
+    diagnostics_totals = payload.diagnostics_totals
+    sync_run = get_sync_run_or_raise(session, run_context.sync_run_id)
+    report = KnowledgeSyncReport(
+        subject=run_context.subject,
+        build_revision_no=run_context.build_revision_no,
+        sync_run_id=sync_run.id,
+        doc_version_no=run_context.doc_version_no,
         synced_unit_keys=[item.anchor for item in units],
         section_count=int(diagnostics_totals.get("section_count", 0) or 0),
         chapter_count=int(diagnostics_totals.get("chapter_count", 0) or 0),
@@ -524,37 +347,37 @@ def sync_markdown_knowledge_graph(
             inputs={
                 "unit_count": len(units),
                 "edge_count": len(extracted_edges),
-                "build_revision_no": revision_no,
+                "build_revision_no": run_context.build_revision_no,
             },
         ) as trace_run:
             _apply_extracted_graph_items(
                 session,
-                subject=subject,
+                subject=run_context.subject,
                 units=units,
                 extracted_edges=extracted_edges,
                 sync_run=sync_run,
-                build_revision_no=revision_no,
+                build_revision_no=run_context.build_revision_no,
                 enable_rag_dedup=enable_rag_dedup,
                 report=report,
             )
-            _end_trace_substep(trace_run, _sync_run_metrics(report))
+            _end_trace_substep(trace_run, sync_run_metrics(report))
     except Exception as exc:
-        _finish_sync_run(
+        finish_sync_run(
             session,
             sync_run,
             status="failed",
-            metrics=_sync_run_metrics(report),
+            metrics=sync_run_metrics(report),
             error_message=str(exc),
         )
         session.flush()
         raise
-    report.elapsed_ms = int((perf_counter() - started_at) * 1000)
-    _finish_sync_run(session, sync_run, status="completed", metrics=_sync_run_metrics(report))
+    report.elapsed_ms = int((perf_counter() - run_context.started_at) * 1000)
+    finish_sync_run(session, sync_run, status="completed", metrics=sync_run_metrics(report))
     session.commit()
     logger.info(
         "knowledge_docs_sync_complete",
-        subject=subject,
-        build_revision_no=revision_no,
+        subject=run_context.subject,
+        build_revision_no=run_context.build_revision_no,
         sync_run_id=sync_run.id,
         doc_version_no=report.doc_version_no,
         chapter_count=report.chapter_count,
@@ -673,66 +496,6 @@ def _next_revision_no(session: Session, subject: str) -> int:
     return current + 1
 
 
-def _create_sync_run(
-    session: Session,
-    *,
-    subject: str,
-    build_session_id: str | None,
-    doc_version_no: int,
-    graph_revision_no: int,
-) -> KnowledgeGraphSyncRun:
-    now = utcnow()
-    sync_run = KnowledgeGraphSyncRun(
-        subject=subject,
-        build_session_id=(build_session_id or None),
-        doc_version_no=doc_version_no,
-        graph_revision_no=graph_revision_no,
-        status="running",
-        started_at=now,
-        created_at=now,
-        updated_at=now,
-    )
-    session.add(sync_run)
-    session.flush()
-    return sync_run
-
-
-def _sync_run_metrics(report: KnowledgeSyncReport) -> dict[str, int]:
-    return {
-        "chapter_count": report.chapter_count,
-        "section_count": report.section_count,
-        "llm_section_count": report.llm_section_count,
-        "fallback_section_count": report.fallback_section_count,
-        "question_fallback_section_count": report.question_fallback_section_count,
-        "topic_fallback_section_count": report.topic_fallback_section_count,
-        "unit_change_count": report.unit_change_count,
-        "edge_change_count": report.edge_change_count,
-        "deprecated_unit_count": report.deprecated_unit_count,
-        "deprecated_edge_count": report.deprecated_edge_count,
-        "source_ref_count": report.source_ref_count,
-        "backbone_unit_count": report.backbone_unit_count,
-        "backbone_edge_count": report.backbone_edge_count,
-        "stable_anchor_count": report.stable_anchor_count,
-        "elapsed_ms": report.elapsed_ms,
-    }
-
-
-def _finish_sync_run(
-    session: Session,
-    sync_run: KnowledgeGraphSyncRun,
-    *,
-    status: str,
-    metrics: dict[str, int],
-    error_message: str = "",
-) -> None:
-    sync_run.status = status
-    sync_run.metrics_json = _json_dumps(metrics)
-    sync_run.error_message = error_message
-    sync_run.finished_at = utcnow()
-    sync_run.updated_at = sync_run.finished_at
-    session.add(sync_run)
-
-
 def _create_source_ref_for_unit(
     session: Session,
     *,
@@ -824,6 +587,16 @@ def _chapter_retry_delay_s() -> float:
     if configured == _DEFAULT_DOCS_SYNC_CHAPTER_RETRY_DELAY_S:
         configured = _DOCS_SYNC_SECTION_RETRY_DELAY_S
     return max(0.0, float(configured))
+
+
+def graph_extraction_parallelism() -> dict[str, int | float]:
+    """Return the effective internal fan-out settings for docs-sync extraction."""
+
+    return {
+        "chapter_concurrency_limit": _chapter_concurrency_limit(),
+        "chapter_max_retries": _chapter_max_retries(),
+        "chapter_retry_delay_s": _chapter_retry_delay_s(),
+    }
 
 
 def _extract_markdown_graph_items(
@@ -1062,7 +835,7 @@ def _build_backbone_graph_items(
         term = str(payload.get("term") or "").strip()
         if not term:
             continue
-        if _is_low_quality_docs_unit_name(term, node_type="concept"):
+        if is_low_quality_docs_unit_name(term, node_type="concept"):
             continue
         target_chapters = _clean_int_list(payload.get("target_chapters"))
         normalized_term = normalize_name(term)
@@ -1104,7 +877,7 @@ def _build_backbone_graph_items(
         target_name = str(payload.get("to_concept") or "").strip()
         if not source_name or not target_name:
             continue
-        if _is_low_quality_docs_unit_name(source_name, node_type="concept") or _is_low_quality_docs_unit_name(
+        if is_low_quality_docs_unit_name(source_name, node_type="concept") or is_low_quality_docs_unit_name(
             target_name,
             node_type="concept",
         ):
@@ -1369,7 +1142,7 @@ def _merge_missing_chapter_heading_nodes(result: ChunkExtractionResult, chapter)
         normalized_title = normalize_name(section.title)
         if not normalized_title or normalized_title in seen_names:
             continue
-        if _is_low_quality_docs_unit_name(section.title, node_type="concept"):
+        if is_low_quality_docs_unit_name(section.title, node_type="concept"):
             continue
         path_parts = [part.strip() for part in str(section.header_path or "").split(" > ") if part.strip()]
         parent_title = path_parts[-2] if len(path_parts) >= 2 else ""
@@ -1444,7 +1217,7 @@ def _build_chapter_fallback_payload(
     chapter_context = chapter_context or ChapterSourceContext(chapter_index=chapter_index)
     body_markdown = chapter.body_markdown[:8000]
     primary_anchor = str(chapter.anchor or build_knowledge_unit_anchor(chapter.title))
-    if _is_low_quality_docs_unit_name(chapter.title, node_type="concept"):
+    if is_low_quality_docs_unit_name(chapter.title, node_type="concept"):
         return SectionExtractionPayload(
             units=[],
             pending_edges=[],
@@ -1548,7 +1321,7 @@ async def _extract_chapter_graph_items(
         allow_markdown_anchor_short_circuit=False,
     )
     result = _merge_missing_chapter_heading_nodes(result, chapter)
-    result = _filter_docs_candidate_result(result)
+    result = filter_docs_candidate_result(result)
     diagnostics.node_count = len(result.nodes)
     diagnostics.edge_count = len(result.edges)
 
@@ -2042,4 +1815,14 @@ def _deprecate_removed_sync_edges(
     return deprecated
 
 
-__all__ = ["KnowledgeSyncReport", "sync_markdown_knowledge_graph"]
+__all__ = [
+    "KnowledgeSyncExtractionPayload",
+    "KnowledgeSyncReport",
+    "KnowledgeSyncRunContext",
+    "extract_knowledge_graph_items",
+    "graph_extraction_parallelism",
+    "initialize_knowledge_graph_sync_run",
+    "mark_knowledge_graph_sync_run_failed",
+    "persist_knowledge_graph_items",
+    "sync_markdown_knowledge_graph",
+]
