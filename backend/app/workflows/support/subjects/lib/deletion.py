@@ -21,6 +21,7 @@ from app.models import (
     KnowledgeDocument,
     KnowledgeEdge,
     KnowledgeUnit,
+    QuestionKnowledgeUnitLink,
     QuestionTemplate,
     QuestionTypeRegistry,
     RawFile,
@@ -207,8 +208,37 @@ def _delete_exam_records(session: Session, *, subject: str) -> None:
     ]
 
     if paper_ids:
+        item_ids = [
+            item_id
+            for item_id in session.exec(select(ExamPaperItem.id).where(ExamPaperItem.exam_paper_id.in_(paper_ids))).all()
+            if item_id is not None
+        ]
+        if item_ids:
+            session.exec(
+                sa.delete(QuestionKnowledgeUnitLink).where(
+                    QuestionKnowledgeUnitLink.exam_paper_item_id.in_(item_ids)
+                )
+            )
         session.exec(sa.delete(ExamPaperItem).where(ExamPaperItem.exam_paper_id.in_(paper_ids)))
     if template_ids:
+        template_item_ids = [
+            item_id
+            for item_id in session.exec(
+                select(ExamPaperItem.id).where(ExamPaperItem.question_template_id.in_(template_ids))
+            ).all()
+            if item_id is not None
+        ]
+        if template_item_ids:
+            session.exec(
+                sa.delete(QuestionKnowledgeUnitLink).where(
+                    QuestionKnowledgeUnitLink.exam_paper_item_id.in_(template_item_ids)
+                )
+            )
+        session.exec(
+            sa.delete(QuestionKnowledgeUnitLink).where(
+                QuestionKnowledgeUnitLink.question_template_id.in_(template_ids)
+            )
+        )
         session.exec(sa.delete(ExamPaperItem).where(ExamPaperItem.question_template_id.in_(template_ids)))
 
     _bulk_delete_by_subject(session, ExamPaper, subject=subject)

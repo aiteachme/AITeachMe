@@ -13712,17 +13712,6 @@
             "type": "string",
             "title": "Subject"
           },
-          "knowledge_unit_id": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Knowledge Unit Id"
-          },
           "question_type": {
             "type": "string",
             "title": "Question Type"

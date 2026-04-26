@@ -42,7 +42,7 @@ from migrations.seed_data.question_types import BUILTIN_QUESTION_TYPE_ROWS
 from app.models.build_planner import ConfirmedBuildPlan
 from app.models.chat import ChatMessage, ChatSession
 from app.models.email_verification import EmailVerificationCode
-from app.models.exam import ExamPaper, ExamPaperItem, QuestionTemplate, QuestionTypeRegistry
+from app.models.exam import ExamPaper, ExamPaperItem, QuestionKnowledgeUnitLink, QuestionTemplate, QuestionTypeRegistry
 from app.models.knowledge import RetrievalChunk
 from app.models.knowledge_doc import KnowledgeDocument
 from app.models.knowledge_relation import KnowledgeEdge
@@ -71,6 +71,7 @@ _SCHEMA_MODELS = (
     QuestionTemplate,
     ExamPaper,
     ExamPaperItem,
+    QuestionKnowledgeUnitLink,
     UserKnowledgeState,
     ChatSession,
     ChatMessage,
@@ -105,8 +106,9 @@ _REMOVED_POSTGRES_TABLES = (
     "build_planner_session",
 )
 _REMOVED_POSTGRES_COLUMNS = {
-    "question_template": ("curriculum_version_id",),
+    "question_template": ("curriculum_version_id", "knowledge_unit_id", "knowledge_unit_refs_json"),
     "exam_paper": ("curriculum_version_id", "theme_tree_node_id"),
+    "exam_paper_item": ("knowledge_unit_id", "knowledge_unit_refs_json"),
 }
 _REMOVED_SQLITE_TABLES = _REMOVED_POSTGRES_TABLES
 _REMOVED_SQLITE_COLUMNS = {
@@ -234,7 +236,114 @@ def _drop_sqlite_indexes_for_columns(
         )
 
 
+def _normalize_legacy_question_refs(raw_refs: object, fallback_unit_id: object = None) -> list[dict[str, object]]:
+    refs: list[dict[str, object]] = []
+    if isinstance(raw_refs, str) and raw_refs.strip():
+        try:
+            decoded = json.loads(raw_refs)
+        except json.JSONDecodeError:
+            decoded = []
+        if isinstance(decoded, list):
+            refs.extend(item for item in decoded if isinstance(item, dict))
+
+    if not refs and fallback_unit_id is not None:
+        try:
+            unit_id = int(fallback_unit_id or 0)
+        except (TypeError, ValueError):
+            unit_id = 0
+        if unit_id > 0:
+            refs.append({"knowledge_unit_id": unit_id, "coverage_weight": 1.0, "role": "primary"})
+
+    normalized: list[dict[str, object]] = []
+    seen: set[int] = set()
+    for ref in refs:
+        try:
+            unit_id = int(ref.get("knowledge_unit_id", 0) or 0)
+        except (TypeError, ValueError):
+            continue
+        if unit_id <= 0 or unit_id in seen:
+            continue
+        seen.add(unit_id)
+        try:
+            weight = float(ref.get("coverage_weight", 1.0) or 1.0)
+        except (TypeError, ValueError):
+            weight = 1.0
+        normalized.append(
+            {
+                "knowledge_unit_id": unit_id,
+                "coverage_weight": max(0.0, min(weight, 1.0)),
+                "role": str(ref.get("role", "primary" if not normalized else "secondary") or "secondary"),
+            }
+        )
+    return normalized
+
+
+def _migrate_sqlite_question_knowledge_links(engine: sa.Engine) -> None:
+    inspector = sa.inspect(engine)
+    existing_tables = set(inspector.get_table_names())
+    if not {"question_template", "exam_paper_item"} & existing_tables:
+        return
+
+    with engine.begin() as connection:
+        QuestionKnowledgeUnitLink.__table__.create(connection, checkfirst=True)
+
+        if "question_template" in existing_tables:
+            template_columns = {column["name"] for column in inspector.get_columns("question_template")}
+            if {"id"} <= template_columns and (
+                "knowledge_unit_refs_json" in template_columns or "knowledge_unit_id" in template_columns
+            ):
+                select_columns = ["id"]
+                select_columns.append("knowledge_unit_refs_json" if "knowledge_unit_refs_json" in template_columns else "NULL AS knowledge_unit_refs_json")
+                select_columns.append("knowledge_unit_id" if "knowledge_unit_id" in template_columns else "NULL AS knowledge_unit_id")
+                rows = connection.execute(sa.text(f"SELECT {', '.join(select_columns)} FROM question_template")).mappings()
+                for row in rows:
+                    for ref in _normalize_legacy_question_refs(row["knowledge_unit_refs_json"], row["knowledge_unit_id"]):
+                        connection.execute(
+                            sa.text(
+                                """
+                                INSERT OR IGNORE INTO question_knowledge_unit_link
+                                (question_template_id, exam_paper_item_id, knowledge_unit_id, coverage_weight, role, created_at, updated_at)
+                                VALUES (:template_id, NULL, :unit_id, :weight, :role, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                                """
+                            ),
+                            {
+                                "template_id": int(row["id"]),
+                                "unit_id": int(ref["knowledge_unit_id"]),
+                                "weight": float(ref["coverage_weight"]),
+                                "role": str(ref["role"]),
+                            },
+                        )
+
+        if "exam_paper_item" in existing_tables:
+            item_columns = {column["name"] for column in inspector.get_columns("exam_paper_item")}
+            if {"id"} <= item_columns and (
+                "knowledge_unit_refs_json" in item_columns or "knowledge_unit_id" in item_columns
+            ):
+                select_columns = ["id"]
+                select_columns.append("knowledge_unit_refs_json" if "knowledge_unit_refs_json" in item_columns else "NULL AS knowledge_unit_refs_json")
+                select_columns.append("knowledge_unit_id" if "knowledge_unit_id" in item_columns else "NULL AS knowledge_unit_id")
+                rows = connection.execute(sa.text(f"SELECT {', '.join(select_columns)} FROM exam_paper_item")).mappings()
+                for row in rows:
+                    for ref in _normalize_legacy_question_refs(row["knowledge_unit_refs_json"], row["knowledge_unit_id"]):
+                        connection.execute(
+                            sa.text(
+                                """
+                                INSERT OR IGNORE INTO question_knowledge_unit_link
+                                (question_template_id, exam_paper_item_id, knowledge_unit_id, coverage_weight, role, created_at, updated_at)
+                                VALUES (NULL, :item_id, :unit_id, :weight, :role, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                                """
+                            ),
+                            {
+                                "item_id": int(row["id"]),
+                                "unit_id": int(ref["knowledge_unit_id"]),
+                                "weight": float(ref["coverage_weight"]),
+                                "role": str(ref["role"]),
+                            },
+                        )
+
+
 def _drop_sqlite_removed_schema(engine: sa.Engine) -> None:
+    _migrate_sqlite_question_knowledge_links(engine)
     inspector = sa.inspect(engine)
     existing_tables = set(inspector.get_table_names())
     if not existing_tables:

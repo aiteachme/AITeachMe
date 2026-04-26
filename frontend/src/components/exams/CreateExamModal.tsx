@@ -1,23 +1,21 @@
-import { useEffect, useState } from "react";
+﻿import { useEffect, useState } from "react";
 import { RotateCcw, Save } from "lucide-react";
 
 import { Button } from "../ui/Button";
 import { Modal } from "../ui/Modal";
 import { useToast } from "../ui/Toast";
-import { DIFFICULTIES, EXAM_MODES, formatDifficultyLabel } from "./examDisplay";
+import { EXAM_MODES } from "./examDisplay";
 
 export interface CreateExamConfig {
   examMode: (typeof EXAM_MODES)[number]["value"];
-  difficulty: (typeof DIFFICULTIES)[number]["value"];
   numQuestions: number;
-  focusPrompt: string;
+  userPrompt: string;
 }
 
 export const DEFAULT_CREATE_EXAM_CONFIG: CreateExamConfig = {
   examMode: "web_practice",
-  difficulty: "medium",
   numQuestions: 8,
-  focusPrompt: "",
+  userPrompt: "",
 };
 
 const CREATE_EXAM_CONFIG_STORAGE_PREFIX = "aiteachme.exam.createConfig.v1";
@@ -26,23 +24,26 @@ function getCreateExamConfigStorageKey(subjectId: string) {
   return `${CREATE_EXAM_CONFIG_STORAGE_PREFIX}.${subjectId}`;
 }
 
-function normalizeCreateExamConfig(value: Partial<CreateExamConfig> | null | undefined): CreateExamConfig {
+function normalizeCreateExamConfig(
+  value: (Partial<CreateExamConfig> & { focusPrompt?: string }) | null | undefined,
+): CreateExamConfig {
   const examModeValues = new Set<string>(EXAM_MODES.map((item) => item.value));
-  const difficultyValues = new Set<string>(DIFFICULTIES.map((item) => item.value));
   const numQuestions = Number(value?.numQuestions);
 
   return {
     examMode: examModeValues.has(value?.examMode ?? "")
       ? (value?.examMode as CreateExamConfig["examMode"])
       : DEFAULT_CREATE_EXAM_CONFIG.examMode,
-    difficulty: difficultyValues.has(value?.difficulty ?? "")
-      ? (value?.difficulty as CreateExamConfig["difficulty"])
-      : DEFAULT_CREATE_EXAM_CONFIG.difficulty,
     numQuestions: Math.min(
       40,
       Math.max(1, Number.isFinite(numQuestions) ? numQuestions : DEFAULT_CREATE_EXAM_CONFIG.numQuestions),
     ),
-    focusPrompt: typeof value?.focusPrompt === "string" ? value.focusPrompt : DEFAULT_CREATE_EXAM_CONFIG.focusPrompt,
+    userPrompt:
+      typeof value?.userPrompt === "string"
+        ? value.userPrompt
+        : typeof value?.focusPrompt === "string"
+          ? value.focusPrompt
+          : DEFAULT_CREATE_EXAM_CONFIG.userPrompt,
   };
 }
 
@@ -75,8 +76,7 @@ export function toExamGenerateRequest(config: CreateExamConfig) {
 
   return {
     exam_mode: normalized.examMode,
-    difficulty: normalized.difficulty,
-    focus_prompt: normalized.focusPrompt.trim() || undefined,
+    user_prompt: normalized.userPrompt.trim() || undefined,
     num_questions: normalized.numQuestions,
   };
 }
@@ -123,7 +123,7 @@ export function CreateExamModal({ open, subjectId, onClose }: CreateExamModalPro
           <p className="text-sm font-medium text-sky-600">面向当前学科</p>
           <h3 className="mt-2 text-2xl font-semibold tracking-[-0.03em] text-slate-950">{subjectId}</h3>
           <p className="mt-3 text-sm leading-7 text-slate-600">
-            保存后，创建新考卷按钮会直接使用这套配置开始出题；需要调整时再从右侧更多按钮进入这里。
+            保存后，创建新考卷按钮会直接使用这套配置开始出题；需要调整时可再次进入这里。
           </p>
         </div>
 
@@ -152,29 +152,6 @@ export function CreateExamModal({ open, subjectId, onClose }: CreateExamModalPro
           </label>
 
           <label className="text-sm text-slate-600">
-            难度
-            <select
-              className="mt-2 h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm text-slate-900 outline-none transition focus:border-slate-400"
-              value={config.difficulty}
-              onChange={(event) =>
-                setConfig((current) => ({
-                  ...current,
-                  difficulty: event.target.value as CreateExamConfig["difficulty"],
-                }))
-              }
-            >
-              {DIFFICULTIES.map((item) => (
-                <option key={item.value} value={item.value}>
-                  {item.label}
-                </option>
-              ))}
-            </select>
-            <span className="mt-2 block text-xs leading-6 text-slate-400">
-              当前选择：{formatDifficultyLabel(config.difficulty)}
-            </span>
-          </label>
-
-          <label className="text-sm text-slate-600">
             题目数量
             <input
               className="mt-2 h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm text-slate-900 outline-none transition focus:border-slate-400"
@@ -194,21 +171,21 @@ export function CreateExamModal({ open, subjectId, onClose }: CreateExamModalPro
           <div className="rounded-[24px] border border-slate-200 bg-slate-50 p-4">
             <p className="text-sm font-medium text-slate-700">智能策略</p>
             <p className="mt-2 text-sm leading-7 text-slate-500">
-              系统会优先结合知识点覆盖与练习状态进行出题，适合作为当前学科的练习入口。
+              系统会结合知识点覆盖、练习状态和我的要求自动规划题型与难度。
             </p>
           </div>
         </div>
 
         <label className="block text-sm text-slate-600">
-          重点考察范围
+          我的要求
           <textarea
             className="mt-2 min-h-32 w-full rounded-[24px] border border-slate-200 bg-white px-4 py-4 text-sm leading-7 text-slate-900 outline-none transition focus:border-slate-400"
-            placeholder="例如：递归、动态规划、函数极限、SQL 聚合、近代史时间线"
-            value={config.focusPrompt}
+            placeholder="例如：重点考递归和动态规划，题目接近期末考试，难度偏高，选项要有迷惑性"
+            value={config.userPrompt}
             onChange={(event) =>
               setConfig((current) => ({
                 ...current,
-                focusPrompt: event.target.value,
+                userPrompt: event.target.value,
               }))
             }
           />

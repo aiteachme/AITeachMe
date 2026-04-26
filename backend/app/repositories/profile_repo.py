@@ -8,7 +8,7 @@ from datetime import datetime
 import sqlalchemy as sa
 from sqlmodel import Session, select
 
-from app.models import ExamPaper, ExamPaperItem, KnowledgeUnit, UserKnowledgeState
+from app.models import ExamPaper, ExamPaperItem, KnowledgeUnit, QuestionKnowledgeUnitLink, UserKnowledgeState
 from app.shared.infra.database import is_postgres
 from app.utils.time import utcnow
 
@@ -216,24 +216,6 @@ def list_weak_knowledge_unit_summaries(
     ]
 
 
-def _extract_knowledge_unit_ids_from_refs(knowledge_unit_refs_json: str | None) -> set[int]:
-    if not knowledge_unit_refs_json:
-        return set()
-    try:
-        payload = json.loads(knowledge_unit_refs_json)
-    except json.JSONDecodeError:
-        return set()
-    if not isinstance(payload, list):
-        return set()
-    return {
-        int(raw_node_id)
-        for row in payload
-        if isinstance(row, dict)
-        for raw_node_id in [row.get("knowledge_unit_id")]
-        if isinstance(raw_node_id, int) and raw_node_id > 0
-    }
-
-
 def list_recent_wrong_attempt_summaries(
     session: Session,
     *,
@@ -258,7 +240,7 @@ def list_recent_wrong_attempt_summaries(
             ExamPaperItem.answer_snapshot,
             ExamPaperItem.error_cause_label,
             ExamPaperItem.explanation_snapshot,
-            ExamPaperItem.knowledge_unit_refs_json,
+            ExamPaperItem.id,
         )
         .join(ExamPaper, ExamPaperItem.exam_paper_id == ExamPaper.id)
         .where(
@@ -273,17 +255,29 @@ def list_recent_wrong_attempt_summaries(
 
     ordered_rows = list(rows)
     if target_knowledge_unit_ids:
-        overlapping_rows: list[tuple[str, str, str, str | None, str | None, str]] = []
-        other_rows: list[tuple[str, str, str, str | None, str | None, str]] = []
+        item_ids = [int(row[5]) for row in rows if row[5] is not None]
+        link_rows = list(
+            session.exec(
+                select(QuestionKnowledgeUnitLink.exam_paper_item_id, QuestionKnowledgeUnitLink.knowledge_unit_id)
+                .where(QuestionKnowledgeUnitLink.exam_paper_item_id.in_(item_ids))
+            ).all()
+        )
+        unit_ids_by_item_id: dict[int, set[int]] = {}
+        for item_id, unit_id in link_rows:
+            if item_id is None:
+                continue
+            unit_ids_by_item_id.setdefault(int(item_id), set()).add(int(unit_id))
+        overlapping_rows: list[tuple[str, str, str, str | None, str | None, int]] = []
+        other_rows: list[tuple[str, str, str, str | None, str | None, int]] = []
         for row in rows:
-            if _extract_knowledge_unit_ids_from_refs(row[5]) & target_knowledge_unit_ids:
+            if unit_ids_by_item_id.get(int(row[5]), set()) & target_knowledge_unit_ids:
                 overlapping_rows.append(row)
                 continue
             other_rows.append(row)
         ordered_rows = overlapping_rows + other_rows
 
     items: list[dict[str, str]] = []
-    for stem, answer_content, correct_answer, error_label, explanation, _knowledge_unit_refs_json in ordered_rows[:limit]:
+    for stem, answer_content, correct_answer, error_label, explanation, _item_id in ordered_rows[:limit]:
         analysis = ""
         if error_label and error_label != "unknown":
             analysis = f"Possible error cause: {error_label}"

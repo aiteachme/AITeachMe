@@ -34,6 +34,7 @@ from app.models import (
     KnowledgeDocument,
     KnowledgeEdge,
     KnowledgeUnit,
+    QuestionKnowledgeUnitLink,
     QuestionTypeRegistry,
     QuestionTemplate,
     RawFile,
@@ -203,9 +204,6 @@ TABLE_REGISTRY: list[_TableSpec] = [
     _TableSpec(
         "question_template",
         QuestionTemplate,
-        fk_remap={
-            "knowledge_unit_id": "knowledge_unit",
-        },
         optional_group="exam",
     ),
     _TableSpec(
@@ -222,6 +220,16 @@ TABLE_REGISTRY: list[_TableSpec] = [
         fk_remap={
             "exam_paper_id": "exam_paper",
             "question_template_id": "question_template",
+        },
+        optional_group="exam",
+    ),
+    _TableSpec(
+        "question_knowledge_unit_link",
+        QuestionKnowledgeUnitLink,
+        subject_field=None,
+        fk_remap={
+            "question_template_id": "question_template",
+            "exam_paper_item_id": "exam_paper_item",
             "knowledge_unit_id": "knowledge_unit",
         },
         optional_group="exam",
@@ -419,6 +427,24 @@ def _query_table(
     elif spec.subject_field:
         col = getattr(spec.model, spec.subject_field)
         rows = session.exec(_ordered(select(spec.model).where(col == subject_slug))).all()
+    elif spec.name == "question_knowledge_unit_link":
+        template_ids = {r["id"] for r in exported.get("question_template", [])}
+        item_ids = {r["id"] for r in exported.get("exam_paper_item", [])}
+        predicates = []
+        if template_ids:
+            predicates.append(QuestionKnowledgeUnitLink.question_template_id.in_(template_ids))
+        if item_ids:
+            predicates.append(QuestionKnowledgeUnitLink.exam_paper_item_id.in_(item_ids))
+        if not predicates:
+            return []
+        stmt = select(QuestionKnowledgeUnitLink)
+        if len(predicates) == 1:
+            stmt = stmt.where(predicates[0])
+        else:
+            from sqlalchemy import or_
+
+            stmt = stmt.where(or_(*predicates))
+        rows = session.exec(_ordered(stmt)).all()
     elif spec.parent_fk and spec.parent_table:
         parent_ids = {r["id"] for r in exported.get(spec.parent_table, [])}
         if not parent_ids:

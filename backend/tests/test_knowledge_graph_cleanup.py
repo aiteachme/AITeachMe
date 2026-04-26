@@ -1,6 +1,6 @@
 from sqlmodel import Session, SQLModel, create_engine, select
 
-from app.models import ExamPaper, ExamPaperItem, KnowledgeEdge, KnowledgeUnit, QuestionTemplate, UserKnowledgeState
+from app.models import ExamPaper, ExamPaperItem, KnowledgeEdge, KnowledgeUnit, QuestionKnowledgeUnitLink, QuestionTemplate, UserKnowledgeState
 from app.workflows.support.knowledge_graph.cleanup import clear_subject_graph_entities
 
 
@@ -39,14 +39,12 @@ def test_clear_subject_graph_entities_detaches_foreign_keys_before_delete():
         )
         template = QuestionTemplate(
             subject="math",
-            knowledge_unit_id=unit_a.id,
             question_type="single_choice",
             difficulty="medium",
             stem="What is a derivative?",
             stem_hash="stem-1",
             answer="rate of change",
             explanation="Derivative measures rate of change.",
-            knowledge_unit_refs_json=f'[{{"knowledge_unit_id": {unit_a.id}}}]',
         )
         paper = ExamPaper(subject="math", exam_mode="practice")
         state = UserKnowledgeState(subject="math", knowledge_unit_id=unit_a.id)
@@ -63,12 +61,27 @@ def test_clear_subject_graph_entities_detaches_foreign_keys_before_delete():
             stem_snapshot="What is a derivative?",
             answer_snapshot="rate of change",
             explanation_snapshot="Derivative measures rate of change.",
-            knowledge_unit_id=unit_a.id,
-            knowledge_unit_refs_json=f'[{{"knowledge_unit_id": {unit_a.id}}}]',
             difficulty="medium",
             question_type="single_choice",
         )
         session.add(item)
+        session.flush()
+        session.add(
+            QuestionKnowledgeUnitLink(
+                question_template_id=template.id,
+                knowledge_unit_id=unit_a.id,
+                coverage_weight=1.0,
+                role="primary",
+            )
+        )
+        session.add(
+            QuestionKnowledgeUnitLink(
+                exam_paper_item_id=item.id,
+                knowledge_unit_id=unit_a.id,
+                coverage_weight=1.0,
+                role="primary",
+            )
+        )
         session.commit()
 
         counts = clear_subject_graph_entities(session, subject="math")
@@ -78,6 +91,7 @@ def test_clear_subject_graph_entities_detaches_foreign_keys_before_delete():
         stored_template = session.get(QuestionTemplate, template.id)
         stored_item = session.get(ExamPaperItem, item.id)
         stored_state = session.get(UserKnowledgeState, state.id)
+        remaining_links = list(session.exec(select(QuestionKnowledgeUnitLink)).all())
 
     assert counts["knowledge_unit"] == 2
     assert counts["knowledge_edge"] == 1
@@ -87,8 +101,7 @@ def test_clear_subject_graph_entities_detaches_foreign_keys_before_delete():
     assert counts["detached_unit_merge_ref"] == 1
     assert remaining_units == []
     assert remaining_edges == []
-    assert stored_template is not None and stored_template.knowledge_unit_id is None
-    assert stored_template.knowledge_unit_refs_json == "[]"
-    assert stored_item is not None and stored_item.knowledge_unit_id is None
-    assert stored_item.knowledge_unit_refs_json == "[]"
+    assert stored_template is not None
+    assert stored_item is not None
+    assert remaining_links == []
     assert stored_state is not None and stored_state.knowledge_unit_id is None

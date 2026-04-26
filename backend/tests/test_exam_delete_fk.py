@@ -3,7 +3,14 @@ from __future__ import annotations
 import sqlalchemy as sa
 from sqlmodel import Session, SQLModel, create_engine, select
 
-from app.models import ExamPaper, ExamPaperItem, KnowledgeUnit, QuestionTemplate, UserKnowledgeState
+from app.models import (
+    ExamPaper,
+    ExamPaperItem,
+    KnowledgeUnit,
+    QuestionKnowledgeUnitLink,
+    QuestionTemplate,
+    UserKnowledgeState,
+)
 from app.repositories import exams_repo
 
 
@@ -28,7 +35,6 @@ def test_delete_exam_paper_cascade_clears_profile_source_fk() -> None:
 
         template = QuestionTemplate(
             subject="subj_demo",
-            knowledge_unit_id=unit.id,
             question_type="short_answer",
             difficulty="easy",
             stem="Question",
@@ -40,17 +46,28 @@ def test_delete_exam_paper_cascade_clears_profile_source_fk() -> None:
         session.add_all([template, paper])
         session.flush()
 
+        item = ExamPaperItem(
+            exam_paper_id=paper.id,
+            question_template_id=template.id,
+            item_order=1,
+            stem_snapshot="Question",
+            answer_snapshot="Answer",
+            explanation_snapshot="Explanation",
+            difficulty="easy",
+            question_type="short_answer",
+        )
+        session.add(item)
+        session.flush()
         session.add(
-            ExamPaperItem(
-                exam_paper_id=paper.id,
+            QuestionKnowledgeUnitLink(
                 question_template_id=template.id,
-                item_order=1,
-                stem_snapshot="Question",
-                answer_snapshot="Answer",
-                explanation_snapshot="Explanation",
                 knowledge_unit_id=unit.id,
-                difficulty="easy",
-                question_type="short_answer",
+            )
+        )
+        session.add(
+            QuestionKnowledgeUnitLink(
+                exam_paper_item_id=item.id,
+                knowledge_unit_id=unit.id,
             )
         )
         state = UserKnowledgeState(
@@ -69,3 +86,7 @@ def test_delete_exam_paper_cascade_clears_profile_source_fk() -> None:
         assert stored_state.source_exam_paper_id is None
         assert session.exec(select(ExamPaper)).all() == []
         assert session.exec(select(ExamPaperItem)).all() == []
+        item_links = session.exec(
+            select(QuestionKnowledgeUnitLink).where(QuestionKnowledgeUnitLink.exam_paper_item_id.is_not(None))
+        ).all()
+        assert item_links == []

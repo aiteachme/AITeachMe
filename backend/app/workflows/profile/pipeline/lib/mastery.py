@@ -222,14 +222,7 @@ def _merge_attempt_stats(
     return json.dumps(payload, ensure_ascii=False)
 
 
-def _parse_knowledge_unit_links(knowledge_unit_refs_json: str) -> list[tuple[int, float]]:
-    try:
-        payload = json.loads(knowledge_unit_refs_json or "[]")
-    except json.JSONDecodeError:
-        return []
-    if not isinstance(payload, list):
-        return []
-
+def _normalize_knowledge_unit_links(payload: list[dict[str, object]]) -> list[tuple[int, float]]:
     links: list[tuple[int, float]] = []
     for row in payload:
         if not isinstance(row, dict):
@@ -340,6 +333,7 @@ def update_mastery_from_exam(
         raise ValueError(f"ExamPaper `{exam_paper_id}` not found.")
 
     items = exams_repo.list_items_by_paper(session, exam_paper_id)
+    links_by_item_id = exams_repo.list_links_for_exam_items(session, [int(item.id or 0) for item in items])
 
     node_attempts: dict[int, list[_WeightedAttempt]] = {}
 
@@ -358,9 +352,7 @@ def update_mastery_from_exam(
             confidence_self_report=item.confidence_self_report,
             error_cause_label=item.error_cause_label,
         )
-        knowledge_unit_links = _parse_knowledge_unit_links(item.knowledge_unit_refs_json)
-        if not knowledge_unit_links and item.knowledge_unit_id is not None:
-            knowledge_unit_links = [(item.knowledge_unit_id, 1.0)]
+        knowledge_unit_links = _normalize_knowledge_unit_links(links_by_item_id.get(int(item.id or 0), []))
         for node_id, normalized_weight in knowledge_unit_links:
             node_attempts.setdefault(node_id, []).append(
                 _WeightedAttempt(

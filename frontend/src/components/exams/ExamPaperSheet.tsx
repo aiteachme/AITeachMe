@@ -1,7 +1,7 @@
 import type { Dispatch, SetStateAction } from "react";
 import { Bookmark, Lightbulb, MessageSquareText, Tags } from "lucide-react";
 
-import type { ExamPaperDetailResponse, ExamPaperItemResponse } from "../../api/generated/model";
+import type { ExamPaperDetailResponse, ExamPaperItemResponse, PaperPreviewRow } from "../../api/generated/model";
 import { cn } from "../../lib/utils";
 import { ExamMarkdown } from "./ExamMarkdown";
 import {
@@ -28,6 +28,101 @@ interface ExamPaperSheetProps {
   onQuestionAi?: (item: ExamPaperItemResponse, isReviewStage: boolean, answerValue: string) => void;
 }
 
+function buildGeneratingRows(paper: ExamPaperDetailResponse): PaperPreviewRow[] {
+  const previewRows = paper.paper_preview?.rows ?? [];
+  const previewByOrder = new Map(previewRows.map((row) => [row.order, row]));
+  const count = Math.max(Number(paper.total_items || 0), previewRows.length, 1);
+  return Array.from({ length: count }, (_, index) => {
+    const order = index + 1;
+    return (
+      previewByOrder.get(order) ?? {
+        order,
+        type: "pending",
+        shape: "text",
+        difficulty: "medium",
+        density: 2,
+        result_status: "ungraded",
+      }
+    );
+  });
+}
+
+function formatQuestionType(type: string) {
+  const normalized = String(type || "").trim();
+  if (!normalized || normalized === "pending") return "题型生成中";
+  const labels: Record<string, string> = {
+    single_choice: "单选题",
+    multiple_choice: "多选题",
+    multi_choice: "多选题",
+    fill_blank: "填空题",
+    true_false: "判断题",
+    short_answer: "简答题",
+    essay: "问答题",
+  };
+  return labels[normalized] ?? normalized;
+}
+
+function GeneratingQuestionPlaceholder({ row }: { row: PaperPreviewRow }) {
+  const isChoice = row.shape === "choice" || row.type === "single_choice" || row.type === "multiple_choice";
+  return (
+    <div
+      id={`exam-question-${row.order}`}
+      data-question-anchor="true"
+      data-question-order={row.order}
+      className="exam-preview-unified-flow scroll-mt-28 border-b-[1.5px] border-dashed border-slate-200/90 px-0 py-7 last:border-b-0 sm:py-9"
+    >
+      <div className="grid min-w-0 gap-5 md:grid-cols-[72px_minmax(0,1fr)]">
+        <aside className="flex items-start gap-4 border-b border-slate-100 pb-4 text-slate-500 md:flex-col md:items-center md:border-b-0 md:border-r md:pb-0 md:pr-4">
+          <div className="font-serif text-2xl font-bold leading-none text-slate-950">{row.order}.</div>
+          <div className="flex flex-wrap gap-2 text-xs font-semibold text-slate-400 md:flex-col md:gap-2">
+            <span className="inline-flex flex-col items-center gap-1">
+              <Bookmark className="h-4 w-4" />
+              标记
+            </span>
+          </div>
+        </aside>
+
+        <div className="min-w-0 overflow-hidden">
+          <div className="mb-4 flex flex-wrap items-center gap-2">
+            <span className="inline-flex rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600">
+              {formatQuestionType(row.type)}
+            </span>
+            <span className="inline-flex rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-500">
+              {formatDifficultyLabel(row.difficulty)}
+            </span>
+          </div>
+
+          <div className="relative overflow-hidden rounded-xl border border-slate-200 bg-slate-50/80 p-4">
+            <div className="space-y-3">
+              <span className="exam-preview-flow-line block h-3 w-11/12 rounded-full" />
+              <span className="exam-preview-flow-line block h-3 w-8/12 rounded-full" />
+              <span className="exam-preview-flow-line block h-3 w-10/12 rounded-full" />
+            </div>
+          </div>
+
+          {isChoice ? (
+            <div className="mt-6 grid gap-3">
+              {[0, 1, 2, 3].map((optionIndex) => (
+                <div
+                  key={optionIndex}
+                  className="flex items-center gap-3 rounded-lg border border-slate-200 bg-white px-3 py-3 sm:gap-4 sm:px-4 sm:py-3.5"
+                >
+                  <span className="h-5 w-5 shrink-0 rounded-full border-2 border-slate-300 bg-white" />
+                  <span className="exam-preview-flow-line block h-2.5 w-8/12 rounded-full" />
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="mt-6 min-h-32 rounded-lg border border-slate-200 bg-white p-4">
+              <span className="exam-preview-flow-line block h-3 w-7/12 rounded-full" />
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function ExamPaperSheet({
   paper,
   answers,
@@ -40,6 +135,10 @@ export function ExamPaperSheet({
   onSelectQuestion,
   onQuestionAi,
 }: ExamPaperSheetProps) {
+  const items = paper.items ?? [];
+  const showGeneratingPlaceholders = paper.status === "generating" && items.length === 0;
+  const generatingRows = showGeneratingPlaceholders ? buildGeneratingRows(paper) : [];
+
   return (
                 <div
                   className="relative mx-auto max-w-[1080px] pb-12"
@@ -76,7 +175,9 @@ export function ExamPaperSheet({
                     </header>
 
                     <div className="px-4 pb-8 sm:px-8 lg:px-14">
-                      {(paper.items ?? []).map((item: ExamPaperItemResponse) => {
+                      {showGeneratingPlaceholders
+                        ? generatingRows.map((row) => <GeneratingQuestionPlaceholder key={row.order} row={row} />)
+                        : items.map((item: ExamPaperItemResponse) => {
                     const answerValue = answers[item.id] ?? "";
                     const isSingleChoice = item.question_type === "single_choice";
                     const isMultipleChoice = item.question_type === "multiple_choice" || item.question_type === "multi_choice";

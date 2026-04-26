@@ -11,7 +11,6 @@ import type { QuestionTemplateItemResponseSelectionHints } from './questionTempl
 export interface QuestionTemplateItemResponse {
   id: number;
   subject: string;
-  knowledge_unit_id?: number | null;
   question_type: string;
   difficulty: string;
   stem: string;

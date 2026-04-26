@@ -2,14 +2,13 @@
 
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
 from sqlmodel import Session, select
 
 from app.models import ExamPaper, ExamPaperItem, UserKnowledgeState, WeaknessReason
-from app.repositories import profile_repo
+from app.repositories import exams_repo, profile_repo
 from app.utils.time import utcnow
 
 
@@ -17,26 +16,6 @@ def _as_utc(dt: datetime) -> datetime:
     if dt.tzinfo is None:
         return dt.replace(tzinfo=timezone.utc)
     return dt.astimezone(timezone.utc)
-
-
-def _extract_knowledge_unit_ids(unit_refs_json: str) -> list[int]:
-    try:
-        payload = json.loads(unit_refs_json or "[]")
-    except json.JSONDecodeError:
-        return []
-    if not isinstance(payload, list):
-        return []
-
-    knowledge_unit_ids: list[int] = []
-    for item in payload:
-        if not isinstance(item, dict):
-            continue
-        raw_id = item.get("knowledge_unit_id")
-        if isinstance(raw_id, int):
-            knowledge_unit_ids.append(raw_id)
-        elif isinstance(raw_id, str) and raw_id.isdigit():
-            knowledge_unit_ids.append(int(raw_id))
-    return knowledge_unit_ids
 
 
 @dataclass(frozen=True)
@@ -71,10 +50,13 @@ def _recent_error_stats_by_knowledge_unit(
     )
 
     stats: dict[int, tuple[int, int]] = {}
+    links_by_item_id = exams_repo.list_links_for_exam_items(session, [int(item.id or 0) for item in rows])
     for item in rows:
-        knowledge_unit_ids = _extract_knowledge_unit_ids(item.knowledge_unit_refs_json)
-        if not knowledge_unit_ids and item.knowledge_unit_id is not None:
-            knowledge_unit_ids = [int(item.knowledge_unit_id)]
+        knowledge_unit_ids = [
+            int(ref["knowledge_unit_id"])
+            for ref in links_by_item_id.get(int(item.id or 0), [])
+            if int(ref.get("knowledge_unit_id", 0) or 0) > 0
+        ]
         for knowledge_unit_id in knowledge_unit_ids:
             total, wrong = stats.get(knowledge_unit_id, (0, 0))
             total += 1
