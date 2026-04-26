@@ -145,25 +145,28 @@ def list_session_selection_heads_by_session_ids(
     *,
     subject: str,
     session_ids: list[str],
-    source: str = "quick_chat",
+    source: str | None = None,
     user_id: str = "local",
 ) -> dict[str, ChatMessage]:
-    """Return the latest doc-selection turn head for each requested session."""
+    """Return the latest anchored turn head for each requested session."""
 
     if not session_ids:
         return {}
 
+    conditions = [
+        ChatMessage.subject == subject,
+        ChatMessage.user_id == user_id,
+        ChatMessage.session_id.in_(session_ids),
+        ChatMessage.role == "assistant",
+        ChatMessage.anchor_id.is_not(None),
+        ChatMessage.anchor_id != "",
+    ]
+    if source is not None:
+        conditions.append(ChatMessage.source == source)
+
     stmt = (
         select(ChatMessage)
-        .where(
-            ChatMessage.subject == subject,
-            ChatMessage.user_id == user_id,
-            ChatMessage.session_id.in_(session_ids),
-            ChatMessage.role == "assistant",
-            ChatMessage.source == source,
-            ChatMessage.anchor_id.is_not(None),
-            ChatMessage.anchor_id != "",
-        )
+        .where(*conditions)
         .order_by(ChatMessage.created_at.desc())
     )
     rows = session.exec(stmt).all()
@@ -178,24 +181,27 @@ def list_session_selection_heads_by_session_ids_for_user(
     session: Session,
     *,
     session_ids: list[str],
-    source: str = "quick_chat",
+    source: str | None = None,
     user_id: str = "local",
 ) -> dict[str, ChatMessage]:
-    """Return the latest doc-selection turn head for each requested session across subjects."""
+    """Return the latest anchored turn head for each requested session across subjects."""
 
     if not session_ids:
         return {}
 
+    conditions = [
+        ChatMessage.user_id == user_id,
+        ChatMessage.session_id.in_(session_ids),
+        ChatMessage.role == "assistant",
+        ChatMessage.anchor_id.is_not(None),
+        ChatMessage.anchor_id != "",
+    ]
+    if source is not None:
+        conditions.append(ChatMessage.source == source)
+
     stmt = (
         select(ChatMessage)
-        .where(
-            ChatMessage.user_id == user_id,
-            ChatMessage.session_id.in_(session_ids),
-            ChatMessage.role == "assistant",
-            ChatMessage.source == source,
-            ChatMessage.anchor_id.is_not(None),
-            ChatMessage.anchor_id != "",
-        )
+        .where(*conditions)
         .order_by(ChatMessage.created_at.desc())
     )
     rows = session.exec(stmt).all()

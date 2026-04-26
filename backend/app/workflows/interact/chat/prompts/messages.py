@@ -44,7 +44,7 @@ def build_chat_messages(
         weak_points_context=_format_weak_points_context(weak_points),
         mistakes_context=_format_mistakes_context(recent_mistakes),
         interaction_entry=_format_interaction_entry(source),
-        selected_context=_format_selected_context(selection_context, selected_context, source_chunk_id),
+        selected_context=_format_selected_context(source, selection_context, selected_context, source_chunk_id),
     )
     history_messages = [
         {
@@ -118,6 +118,8 @@ def _format_interaction_entry(source: str | None) -> str:
     normalized = (source or "").strip()
     if normalized == "quick_chat":
         return "知识文档划选提问。回答时优先解释用户划选内容，并把它放回原知识脉络中。"
+    if normalized == "exam_question":
+        return "考卷题目触发。回答时优先围绕这一道题讲解，未批改时先给提示和思路，不要直接泄露标准答案。"
     if normalized == "build_assistant":
         return "知识库构建过程触发。回答时优先解释当前构建阶段、资料处理或知识文档生成结果。"
     if normalized:
@@ -135,12 +137,13 @@ def _clip_text(value: str | None, max_chars: int) -> str:
 
 
 def _format_selected_context(
+    source: str | None,
     selection_context: ChatSelectionContext | None,
     selected_context: str | None,
     source_chunk_id: int | None,
 ) -> str:
     if selection_context is not None:
-        return _format_structured_selection_context(selection_context, selected_context, source_chunk_id)
+        return _format_structured_selection_context(source, selection_context, selected_context, source_chunk_id)
     if not selected_context:
         return "无。"
     selected = _clip_text(selected_context, 2400)
@@ -150,6 +153,7 @@ def _format_selected_context(
 
 
 def _format_structured_selection_context(
+    source: str | None,
     context: ChatSelectionContext,
     fallback_selected_context: str | None,
     source_chunk_id: int | None,
@@ -160,7 +164,8 @@ def _format_structured_selection_context(
 
     selected = _clip_text(context.selected_text or fallback_selected_context, 1200)
     if selected:
-        lines.append(f"划选原文：\n{selected}")
+        selected_label = "题目内容" if (source or "").strip() == "exam_question" else "划选原文"
+        lines.append(f"{selected_label}：\n{selected}")
 
     heading_path = " > ".join(
         part.strip()

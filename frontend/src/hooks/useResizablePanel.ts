@@ -7,6 +7,7 @@ interface UseResizablePanelProps {
   onResize?: (width: number) => void;
   direction?: "left" | "right";
   liveResizeRef?: RefObject<HTMLElement | null>;
+  liveResizeEnabled?: boolean;
   dragGuideRef?: RefObject<HTMLElement | null>;
   commitResizeOnDragEnd?: boolean;
 }
@@ -30,6 +31,7 @@ export function useResizablePanel({
   onResize,
   direction = "right",
   liveResizeRef,
+  liveResizeEnabled = true,
   dragGuideRef,
   commitResizeOnDragEnd = false,
 }: UseResizablePanelProps = {}) {
@@ -53,11 +55,15 @@ export function useResizablePanel({
   }, [width]);
 
   const applyLiveWidth = useCallback((nextWidth: number) => {
+    if (!liveResizeEnabled) {
+      return;
+    }
+
     const element = liveResizeRef?.current;
     if (element) {
       element.style.width = `${nextWidth}px`;
     }
-  }, [liveResizeRef]);
+  }, [liveResizeEnabled, liveResizeRef]);
 
   const positionDragGuide = useCallback((nextWidth: number) => {
     const guide = dragGuideRef?.current;

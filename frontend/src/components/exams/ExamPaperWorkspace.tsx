@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Loader2, ZoomIn, ZoomOut } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 
 import {
   getExamDetailApiV1SubjectsSubjectExamsExamPaperIdGetQueryKey,
@@ -12,6 +12,13 @@ import {
 import type { ExamPaperDetailResponse, ExamPaperItemResponse } from "../../api/generated/model";
 import { getMasteryOverviewApiV1SubjectsSubjectProfileMasteryGetQueryKey } from "../../api/generated/profile";
 import { buildApiUrl, getApiErrorMessage, orvalApiClient } from "../../api/client";
+import {
+  AI_SOURCE_EXAM_QUESTION,
+  EXAM_QUESTION_JUMP_EVENT,
+  buildExamQuestionAnchorId,
+  useAiInteraction,
+  type ExamQuestionJumpDetail,
+} from "../interaction";
 import { Button } from "../ui/Button";
 import { useToast } from "../ui/Toast";
 import { unwrapOrvalResponse } from "../../lib/unwrapOrvalResponse";
@@ -19,7 +26,12 @@ import { ExamPaperSheet } from "./ExamPaperSheet";
 import { ExamStageHeader } from "./ExamStageHeader";
 import { ExamStudyGuideView } from "./ExamStudyGuideView";
 import type { ExamStudyGuideResponse } from "./types";
-import { hasAnsweredQuestion } from "./examDisplay";
+import {
+  buildQuestionAiDraft,
+  buildQuestionSelectedText,
+  buildQuestionSelectionContext,
+  hasAnsweredQuestion,
+} from "./examDisplay";
 
 async function getExamStudyGuide(subjectId: string, paperId: number, signal?: AbortSignal) {
   return orvalApiClient<{ data?: { code?: number; message?: string; data?: ExamStudyGuideResponse } }>(
@@ -39,11 +51,15 @@ interface ExamPaperWorkspaceProps {
 
 export function ExamPaperWorkspace({ subjectId, paperId, backHref }: ExamPaperWorkspaceProps) {
   const navigate = useNavigate();
+  const location = useLocation();
   const queryClient = useQueryClient();
+  const { openAiInteraction } = useAiInteraction();
   const { toast } = useToast();
   const [answers, setAnswers] = useState<Record<number, string>>({});
   const [pageScale, setPageScale] = useState(1);
   const [activeStage, setActiveStage] = useState<1 | 2 | 3>(1);
+  const [highlightedQuestionOrder, setHighlightedQuestionOrder] = useState<number | null>(null);
+  const handledJumpMarkerRef = useRef<number | string | null>(null);
 
   const examDetailQuery = useExamDetailApiV1SubjectsSubjectExamsExamPaperIdGet(subjectId, paperId, {
     query: {
@@ -146,6 +162,84 @@ export function ExamPaperWorkspace({ subjectId, paperId, backHref }: ExamPaperWo
       ),
     );
   }, [paper?.id, paper?.items]);
+
+  const keepQuestionHighlight = useCallback((questionOrder: number) => {
+    setHighlightedQuestionOrder(questionOrder);
+  }, []);
+
+  const revealQuestion = useCallback((questionOrder: number, behavior: ScrollBehavior = "smooth") => {
+    if (!Number.isFinite(questionOrder) || questionOrder <= 0) {
+      return;
+    }
+    setActiveStage(paper?.status === "graded" ? 2 : 1);
+    window.setTimeout(() => {
+      const target = document.getElementById(`exam-question-${questionOrder}`);
+      if (!target) {
+        return;
+      }
+      target.scrollIntoView({ behavior, block: "start" });
+      keepQuestionHighlight(questionOrder);
+    }, 80);
+  }, [keepQuestionHighlight, paper?.status]);
+
+  useEffect(() => {
+    const handleExamQuestionJump = (event: Event) => {
+      const detail = (event as CustomEvent<ExamQuestionJumpDetail>).detail;
+      if (!detail || detail.subjectId !== subjectId || detail.paperId !== paperId) {
+        return;
+      }
+      revealQuestion(detail.questionOrder);
+    };
+
+    window.addEventListener(EXAM_QUESTION_JUMP_EVENT, handleExamQuestionJump);
+    return () => window.removeEventListener(EXAM_QUESTION_JUMP_EVENT, handleExamQuestionJump);
+  }, [paperId, revealQuestion, subjectId]);
+
+  useEffect(() => {
+    if (!paper) {
+      return;
+    }
+    const state = location.state as {
+      examQuestionJump?: ExamQuestionJumpDetail | null;
+      examQuestionJumpAt?: number | null;
+    } | null;
+    const detail = state?.examQuestionJump ?? null;
+    if (!detail || detail.subjectId !== subjectId || detail.paperId !== paperId) {
+      return;
+    }
+    const marker = state?.examQuestionJumpAt ?? `${detail.paperId}-${detail.questionOrder}`;
+    if (handledJumpMarkerRef.current === marker) {
+      return;
+    }
+    handledJumpMarkerRef.current = marker;
+    revealQuestion(detail.questionOrder);
+  }, [location.state, paper, paperId, revealQuestion, subjectId]);
+
+  const openQuestionAi = useCallback((
+    item: ExamPaperItemResponse,
+    isReviewStage: boolean,
+    answerValue: string,
+  ) => {
+    if (!paper) {
+      return;
+    }
+    const anchorId = buildExamQuestionAnchorId(paper.id, item.item_order);
+    const selectedText = buildQuestionSelectedText(item);
+    keepQuestionHighlight(item.item_order);
+    openAiInteraction({
+      mode: "sidebar",
+      scope: { type: "subject", subjectId },
+      sessionId: null,
+      draft: buildQuestionAiDraft(item, isReviewStage),
+      source: AI_SOURCE_EXAM_QUESTION,
+      anchorId,
+      selectedText,
+      selectionContext: buildQuestionSelectionContext(paper, item, answerValue, isReviewStage),
+      clientThreadId: `${anchorId}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      newSession: true,
+      showSelectionContext: true,
+    });
+  }, [keepQuestionHighlight, openAiInteraction, paper, subjectId]);
 
   const submitExam = useSubmitExamApiV1SubjectsSubjectExamsExamPaperIdSubmitPost({
     mutation: {
@@ -266,11 +360,7 @@ export function ExamPaperWorkspace({ subjectId, paperId, backHref }: ExamPaperWo
                         <button
                           key={item.id}
                           type="button"
-                          onClick={() =>
-                            document
-                              .getElementById(`exam-question-${item.item_order}`)
-                              ?.scrollIntoView({ behavior: "smooth", block: "start" })
-                          }
+                          onClick={() => revealQuestion(item.item_order)}
                           className={`grid aspect-square w-full max-w-8 justify-self-center place-items-center rounded-lg text-xs font-semibold transition ${navTone}`}
                           aria-label={`跳转到第 ${item.item_order} 题`}
                         >
@@ -326,7 +416,9 @@ export function ExamPaperWorkspace({ subjectId, paperId, backHref }: ExamPaperWo
                   answers={answers}
                   activeStage={activeStage}
                   pageScale={pageScale}
+                  highlightedQuestionOrder={highlightedQuestionOrder}
                   setAnswers={setAnswers}
+                  onQuestionAi={openQuestionAi}
                 />
 
                 <section className="flex flex-col items-center justify-center gap-3 border-t border-slate-100 pt-4 pb-12 text-center sm:pb-16">

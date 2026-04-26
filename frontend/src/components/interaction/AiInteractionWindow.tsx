@@ -42,13 +42,6 @@ export function AiInteractionWindow({ variant, scope, className }: AiInteraction
   const maxSidebarWidth = isNarrowInitialViewport
     ? initialViewportWidth
     : Math.min(820, initialViewportWidth * 0.5);
-  const { width: panelWidth, isDragging, handleMouseDown } = useResizablePanel({
-    defaultWidth: defaultSidebarWidth,
-    minWidth: isNarrowInitialViewport ? initialViewportWidth : 400,
-    maxWidth: maxSidebarWidth,
-    liveResizeRef: panelShellRef,
-  });
-
   const isBuildPage = /\/subject\/[^/]+\/build\b/.test(pathname);
   const isAssistantPage = pathname === "/assistant";
   const canShowSidebar = variant === "sidebar" && Boolean(activeScope) && !isBuildPage && !isAssistantPage;
@@ -56,6 +49,13 @@ export function AiInteractionWindow({ variant, scope, className }: AiInteraction
   const shouldShowSidebarPanel = isSidebarOpen && Boolean(panelScope) && canShowSidebar;
   const shouldRenderSidebarPanel = canShowSidebar && (shouldShowSidebarPanel || isSidebarMounted);
   const isSidebarVisuallyOpen = shouldShowSidebarPanel && isSidebarVisible;
+  const { width: panelWidth, isDragging, handleMouseDown } = useResizablePanel({
+    defaultWidth: defaultSidebarWidth,
+    minWidth: isNarrowInitialViewport ? initialViewportWidth : 400,
+    maxWidth: maxSidebarWidth,
+    liveResizeRef: panelShellRef,
+    liveResizeEnabled: shouldRenderSidebarPanel,
+  });
 
   useEffect(() => {
     if (!canShowSidebar) {

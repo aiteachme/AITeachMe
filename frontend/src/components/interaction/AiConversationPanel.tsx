@@ -24,8 +24,14 @@ import { ChatComposer } from "../chat/ChatComposer";
 import { ChatTranscript } from "../chat/ChatTranscript";
 import { HeroAnimation } from "../ui/HeroAnimation";
 import { useAiInteraction } from "./AiInteractionProvider";
-import type { AiConversationScope, AiInteractionOpenRequest } from "./types";
-import { getAiConversationBackendSubjectId } from "./types";
+import type { AiConversationScope, AiInteractionOpenRequest, ExamQuestionJumpDetail } from "./types";
+import {
+  AI_SOURCE_DOCUMENT_SELECTION,
+  AI_SOURCE_EXAM_QUESTION,
+  EXAM_QUESTION_JUMP_EVENT,
+  getAiConversationBackendSubjectId,
+  parseExamQuestionAnchorId,
+} from "./types";
 
 interface AiConversationPanelProps {
   scope: AiConversationScope | null;
@@ -53,9 +59,12 @@ interface QuickChatInputContext {
 }
 
 interface ChatSessionSelectionTarget {
+  kind: "document" | "exam_question";
   sessionId: string | null;
   anchorId: string;
   selectedText: string;
+  paperId?: number;
+  questionOrder?: number;
 }
 
 const QUICK_CHAT_UPDATED_EVENT = "aiteachme:quick-chat-updated";
@@ -65,7 +74,7 @@ function getQuickChatInputContext(input: ChatSendRequest): QuickChatInputContext
   const source = input.source?.trim() ?? "";
   const anchorId = input.anchor_id?.trim() ?? "";
   const selectedText = input.selected_text?.trim() ?? input.selection_context?.selected_text?.trim() ?? "";
-  if (source !== "quick_chat" || !anchorId || !selectedText) {
+  if (source !== AI_SOURCE_DOCUMENT_SELECTION || !anchorId || !selectedText) {
     return null;
   }
   return { source, anchorId, selectedText };
@@ -77,10 +86,28 @@ function getSessionSelectionTarget(session: ChatSessionItem | null): ChatSession
   }
   const anchorId = session.anchor_id?.trim() ?? "";
   const selectedText = session.selected_text?.trim() ?? "";
-  if (session.source !== "quick_chat" || !anchorId || !selectedText) {
+  if (!anchorId || !selectedText) {
+    return null;
+  }
+  if (session.source === AI_SOURCE_EXAM_QUESTION) {
+    const parsed = parseExamQuestionAnchorId(anchorId);
+    if (!parsed) {
+      return null;
+    }
+    return {
+      kind: "exam_question",
+      sessionId: session.id,
+      anchorId,
+      selectedText,
+      paperId: parsed.paperId,
+      questionOrder: parsed.questionOrder,
+    };
+  }
+  if (session.source !== AI_SOURCE_DOCUMENT_SELECTION) {
     return null;
   }
   return {
+    kind: "document",
     sessionId: session.id,
     anchorId,
     selectedText,
@@ -102,7 +129,22 @@ function getContextSelectionTarget(context: PendingSelectionContext | null): Cha
   if (!anchorId || !selectedText) {
     return null;
   }
+  if (context?.source === AI_SOURCE_EXAM_QUESTION) {
+    const parsed = parseExamQuestionAnchorId(anchorId);
+    if (!parsed) {
+      return null;
+    }
+    return {
+      kind: "exam_question",
+      sessionId: null,
+      anchorId,
+      selectedText,
+      paperId: parsed.paperId,
+      questionOrder: parsed.questionOrder,
+    };
+  }
   return {
+    kind: "document",
     sessionId: null,
     anchorId,
     selectedText,
@@ -299,11 +341,12 @@ export const AiConversationPanel = memo(function AiConversationPanel({
   const messagesBelongToCurrentSession = messagesSessionId === currentMessagesSessionId;
   const visibleMessages = messagesBelongToCurrentSession ? messages : [];
   const currentHistoryLoaded = historyLoaded && messagesBelongToCurrentSession;
+  const isQuestionContext = (pendingSelectionContext ?? activeQuickChatContext)?.source === AI_SOURCE_EXAM_QUESTION;
   const panelTitle = selectedSession?.title ?? (
     selectedSessionId
       ? "加载会话..."
       : pendingSelectionContext || activeQuickChatContext
-        ? "划词提问"
+        ? isQuestionContext ? "题目提问" : "划词提问"
         : "新会话"
   );
   const activeQuickChatThreadId = activeQuickChatContext?.clientThreadId?.trim() ?? "";
@@ -317,6 +360,31 @@ export const AiConversationPanel = memo(function AiConversationPanel({
 
   const jumpToSelectionTarget = useCallback((target: ChatSessionSelectionTarget | null) => {
     if (!docsSubjectId || !target) {
+      return;
+    }
+    if (target.kind === "exam_question") {
+      if (!target.paperId || !target.questionOrder) {
+        return;
+      }
+      const detail: ExamQuestionJumpDetail = {
+        subjectId: docsSubjectId,
+        paperId: target.paperId,
+        questionOrder: target.questionOrder,
+        anchorId: target.anchorId,
+        selectedText: target.selectedText,
+        sessionId: target.sessionId,
+      };
+      const targetPath = `/subject/${docsSubjectId}/exams/${target.paperId}`;
+      if (pathname !== targetPath) {
+        navigate(targetPath, {
+          state: {
+            examQuestionJump: detail,
+            examQuestionJumpAt: Date.now(),
+          },
+        });
+        return;
+      }
+      window.dispatchEvent(new CustomEvent(EXAM_QUESTION_JUMP_EVENT, { detail }));
       return;
     }
     const detail = {
@@ -335,7 +403,7 @@ export const AiConversationPanel = memo(function AiConversationPanel({
       return;
     }
     window.dispatchEvent(new CustomEvent(SELECTION_JUMP_EVENT, { detail }));
-  }, [docsSubjectId, isKnowledgeDocsPage, navigate]);
+  }, [docsSubjectId, isKnowledgeDocsPage, navigate, pathname]);
 
   const reloadSessions = useCallback(async (preferredSessionId?: string | null) => {
     if (!subjectId) {
@@ -610,18 +678,25 @@ export const AiConversationPanel = memo(function AiConversationPanel({
                 <button
                   type="button"
                   onClick={() => jumpToSelectionTarget(currentSelectionTarget)}
-                  className="inline-flex h-7 shrink-0 items-center gap-1 rounded-md border border-amber-200 bg-amber-50 px-2 text-[12px] font-medium text-amber-700 transition hover:border-amber-300 hover:bg-amber-100 hover:text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200 dark:hover:bg-amber-500/15"
-                  title={`定位原文：${currentSelectionTarget.selectedText}`}
-                  aria-label="定位原文"
+                  className={cn(
+                    "inline-flex h-7 shrink-0 items-center gap-1 rounded-md border px-2 text-[12px] font-medium transition",
+                    currentSelectionTarget.kind === "exam_question"
+                      ? "border-violet-200 bg-violet-50 text-violet-700 hover:border-violet-300 hover:bg-violet-100 hover:text-violet-800 dark:border-violet-500/30 dark:bg-violet-500/10 dark:text-violet-200 dark:hover:bg-violet-500/15"
+                      : "border-amber-200 bg-amber-50 text-amber-700 hover:border-amber-300 hover:bg-amber-100 hover:text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200 dark:hover:bg-amber-500/15",
+                  )}
+                  title={`${currentSelectionTarget.kind === "exam_question" ? "定位题目" : "定位原文"}：${currentSelectionTarget.selectedText}`}
+                  aria-label={currentSelectionTarget.kind === "exam_question" ? "定位题目" : "定位原文"}
                 >
                   <MapPin className="h-3.5 w-3.5" />
-                  <span className="hidden sm:inline">定位原文</span>
+                  <span className="hidden sm:inline">
+                    {currentSelectionTarget.kind === "exam_question" ? "定位题目" : "定位原文"}
+                  </span>
                 </button>
               ) : null}
             </div>
             {currentSelectionTarget ? (
               <SelectionTextPreview
-                prefix="划词："
+                prefix={currentSelectionTarget.kind === "exam_question" ? "题目：" : "划词："}
                 text={currentSelectionTarget.selectedText}
                 className="mt-0.5 hidden max-w-[32rem] text-[11px] text-zinc-400 dark:text-slate-500 md:block"
               />
@@ -692,24 +767,57 @@ export const AiConversationPanel = memo(function AiConversationPanel({
         ) : null}
         {pendingSelectionContext ? (
           <div className="mx-auto max-w-3xl px-4 pt-3 md:px-8 xl:max-w-4xl 2xl:max-w-5xl">
-            <div className="flex items-start gap-2 rounded-2xl border border-sky-100 bg-sky-50/80 px-3 py-2.5 text-sky-900 shadow-sm dark:border-sky-500/20 dark:bg-sky-500/10 dark:text-sky-100">
-              <MessageSquareText className="mt-0.5 h-4 w-4 shrink-0 text-sky-600" />
+            <div
+              className={cn(
+                "flex items-start gap-2 rounded-2xl border px-3 py-2.5 shadow-sm",
+                pendingSelectionContext.source === AI_SOURCE_EXAM_QUESTION
+                  ? "border-violet-100 bg-violet-50/80 text-violet-950 dark:border-violet-500/20 dark:bg-violet-500/10 dark:text-violet-100"
+                  : "border-sky-100 bg-sky-50/80 text-sky-900 dark:border-sky-500/20 dark:bg-sky-500/10 dark:text-sky-100",
+              )}
+            >
+              <MessageSquareText
+                className={cn(
+                  "mt-0.5 h-4 w-4 shrink-0",
+                  pendingSelectionContext.source === AI_SOURCE_EXAM_QUESTION ? "text-violet-600" : "text-sky-600",
+                )}
+              />
               <div className="min-w-0 flex-1">
-                <p className="text-[12px] font-semibold">已附加原文与相关上下文</p>
-                <p className="mt-0.5 text-[11px] leading-4 text-sky-600 dark:text-sky-200/80">
-                  将结合选中片段、所在段落和相关资料回答。
+                <p className="text-[12px] font-semibold">
+                  {pendingSelectionContext.source === AI_SOURCE_EXAM_QUESTION ? "已附加这道题的上下文" : "已附加原文与相关上下文"}
+                </p>
+                <p
+                  className={cn(
+                    "mt-0.5 text-[11px] leading-4",
+                    pendingSelectionContext.source === AI_SOURCE_EXAM_QUESTION
+                      ? "text-violet-600 dark:text-violet-200/80"
+                      : "text-sky-600 dark:text-sky-200/80",
+                  )}
+                >
+                  {pendingSelectionContext.source === AI_SOURCE_EXAM_QUESTION
+                    ? "将结合题干、选项和当前作答状态回答；未批改时不会主动泄露标准答案。"
+                    : "将结合选中片段、所在段落和相关资料回答。"}
                 </p>
                 <SelectionTextPreview
-                  prefix="选中："
+                  prefix={pendingSelectionContext.source === AI_SOURCE_EXAM_QUESTION ? "题目：" : "选中："}
                   text={pendingSelectionContext.selectedText}
                   placement="above"
-                  className="mt-1 text-[12px] leading-5 text-sky-700 dark:text-sky-100/90"
+                  className={cn(
+                    "mt-1 text-[12px] leading-5",
+                    pendingSelectionContext.source === AI_SOURCE_EXAM_QUESTION
+                      ? "text-violet-700 dark:text-violet-100/90"
+                      : "text-sky-700 dark:text-sky-100/90",
+                  )}
                 />
               </div>
               <button
                 type="button"
                 onClick={() => setPendingSelectionContext(null)}
-                className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-sky-500 transition hover:bg-sky-100 hover:text-sky-800"
+                className={cn(
+                  "inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg transition",
+                  pendingSelectionContext.source === AI_SOURCE_EXAM_QUESTION
+                    ? "text-violet-500 hover:bg-violet-100 hover:text-violet-800"
+                    : "text-sky-500 hover:bg-sky-100 hover:text-sky-800",
+                )}
                 aria-label="移除参考上下文"
                 title="移除参考上下文"
               >
@@ -726,7 +834,9 @@ export const AiConversationPanel = memo(function AiConversationPanel({
           isStreaming={isStreaming}
           disabled={!subjectId || isPlannerConversation}
           autoFocusKey={composerFocusKey}
-          placeholder={pendingSelectionContext ? "结合原文上下文提问..." : undefined}
+          placeholder={pendingSelectionContext ? (
+            pendingSelectionContext.source === AI_SOURCE_EXAM_QUESTION ? "围绕这道题提问..." : "结合原文上下文提问..."
+          ) : undefined}
         />
       </div>
 

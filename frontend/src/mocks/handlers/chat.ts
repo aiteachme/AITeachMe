@@ -268,8 +268,8 @@ function pushHistory(
   const now = new Date();
   turnSessionMap.set(turnId, sessionId);
   const sessionItem = mockSessions.find((item) => item.id === sessionId);
-  if (sessionItem && source === "quick_chat" && anchorId && selectedText) {
-    sessionItem.source = "quick_chat";
+  if (sessionItem && source && anchorId && selectedText) {
+    sessionItem.source = source;
     sessionItem.anchor_id = anchorId;
     sessionItem.selected_text = selectedText;
     sessionItem.subject_id = subjectId ?? sessionItem.subject_id ?? "global";
@@ -314,7 +314,6 @@ function listSessionItems(subjectId: string | null = null, includeAllSubjects = 
       const messageCount = mockHistory.filter((entry) => turnSessionMap.get(entry.turn_id) === item.id).length;
       const selectionTurn = mockTurns.find((turn) =>
         turn.session_id === item.id &&
-        turn.source === "quick_chat" &&
         typeof turn.anchor_id === "string" &&
         turn.anchor_id.trim().length > 0
       );

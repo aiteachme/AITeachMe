@@ -15,7 +15,7 @@ import type {
 import { cn } from "../../lib/utils";
 import { useAiInteraction } from "./AiInteractionProvider";
 import type { AiConversationScope, AiInteractionOpenRequest } from "./types";
-import { getAiConversationBackendSubjectId } from "./types";
+import { AI_SOURCE_DOCUMENT_SELECTION, AI_SOURCE_EXAM_QUESTION } from "./types";
 
 interface AiConversationSidebarSectionProps {
   collapsed: boolean;
@@ -23,7 +23,7 @@ interface AiConversationSidebarSectionProps {
   onNavigate?: () => void;
 }
 
-type ConversationKind = "document" | "builder" | "general";
+type ConversationKind = "document" | "question" | "builder" | "general";
 
 const GLOBAL_SUBJECT_ID = "global";
 const RECENT_SECTION_EXPANDED_STORAGE_KEY = "aiteachme.aiConversations.recentExpanded";
@@ -43,6 +43,14 @@ const CONVERSATION_KIND_STYLES: Record<ConversationKind, {
     stripClassName: "bg-sky-500 dark:bg-sky-300",
     pulseClassName: "ring-sky-300/80 dark:ring-sky-300/45",
     iconClassName: "text-sky-600 dark:text-sky-200",
+  },
+  question: {
+    label: "题目",
+    badgeClassName: "bg-violet-100 text-violet-700 dark:bg-violet-500/15 dark:text-violet-200",
+    selectedClassName: "bg-violet-50 text-violet-950 ring-2 ring-violet-300/70 shadow-[0_0_0_4px_rgba(139,92,246,0.10)] dark:bg-violet-500/14 dark:text-violet-50 dark:ring-violet-400/45 dark:shadow-[0_0_0_4px_rgba(167,139,250,0.10)]",
+    stripClassName: "bg-violet-500 dark:bg-violet-300",
+    pulseClassName: "ring-violet-300/80 dark:ring-violet-300/45",
+    iconClassName: "text-violet-600 dark:text-violet-200",
   },
   builder: {
     label: "构建",
@@ -68,7 +76,10 @@ function hasSelectionTarget(session: ChatSessionItem): boolean {
 
 function getConversationKindBySource(source?: string | null, hasSelection = false): ConversationKind {
   const normalizedSource = source?.trim() ?? "";
-  if (normalizedSource === "quick_chat" || hasSelection) {
+  if (normalizedSource === AI_SOURCE_EXAM_QUESTION) {
+    return "question";
+  }
+  if (normalizedSource === AI_SOURCE_DOCUMENT_SELECTION || hasSelection) {
     return "document";
   }
   if (normalizedSource === "build_planner" || normalizedSource.includes("build")) {
@@ -88,10 +99,9 @@ function getRequestKind(request: AiInteractionOpenRequest | null): ConversationK
   );
 }
 
-function isPendingSelectionRequest(request: AiInteractionOpenRequest | null): boolean {
+function isPendingAnchoredRequest(request: AiInteractionOpenRequest | null): boolean {
   return Boolean(
     request?.sessionId === null &&
-    request.source === "quick_chat" &&
     request.anchorId?.trim() &&
     request.selectedText?.trim(),
   );
@@ -169,7 +179,6 @@ export function AiConversationSidebarSection({
   } = useAiInteraction();
   const scope = sidebarScope ?? activeScope;
   const newConversationScope = activeScope ?? scope ?? { type: "global" as const };
-  const currentSubjectId = getAiConversationBackendSubjectId(scope);
   const [isExpanded, setIsExpanded] = useState(readRecentSectionExpanded);
   const [sessions, setSessions] = useState<ChatSessionItem[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -178,7 +187,7 @@ export function AiConversationSidebarSection({
 
   const shouldLoadSessions = !collapsed && (isExpanded || isSidebarOpen);
   const hasActiveEmptyConversation =
-    isSidebarOpen && activeConversationSessionId === null && !isPendingSelectionRequest(sidebarRequest);
+    isSidebarOpen && activeConversationSessionId === null && !isPendingAnchoredRequest(sidebarRequest);
   const activeEmptyKind = getRequestKind(sidebarRequest);
   const activeEmptyStyle = CONVERSATION_KIND_STYLES[activeEmptyKind];
   const visibleSessions = useMemo(() => sessions.slice(0, 30), [sessions]);
@@ -198,12 +207,6 @@ export function AiConversationSidebarSection({
       }
     }
   }, [collapsed, isSidebarOpen, onExpandSidebar, updateExpanded]);
-
-  useEffect(() => {
-    setSessions([]);
-    setLoaded(false);
-    setError(null);
-  }, [currentSubjectId]);
 
   useEffect(() => {
     if (!shouldLoadSessions) {
