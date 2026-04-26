@@ -29,6 +29,7 @@ import { resolveFileProcessingLabel } from "../components/knowledge-docs";
 import { HeroAnimation } from "../components/ui/HeroAnimation";
 import { FullPageDropOverlay } from "../components/ui/FullPageDropOverlay";
 import { SubjectExportModal } from "../components/subject/SubjectExportModal";
+import { useToast } from "../components/ui/Toast";
 import type { FileRecord, FilesData, FilesUploadData } from "../types/files";
 
 /* ── API helpers (same as BuildPlanPage) ── */
@@ -188,7 +189,13 @@ function homeFileStatusMeta(file: Pick<FileRecord, "markdown_ready" | "error_mes
 
 /* ── Import Modal ── */
 
-function ImportModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: () => void }) {
+function ImportModal({
+  onClose,
+  onSuccess,
+}: {
+  onClose: () => void;
+  onSuccess: (result: ImportResultData) => void;
+}) {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [customName, setCustomName] = useState("");
   const [dragOver, setDragOver] = useState(false);
@@ -196,7 +203,7 @@ function ImportModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: (
 
   const importMutation = useMutation({
     mutationFn: () => importSubject(selectedFile!, customName.trim() || undefined),
-    onSuccess: () => { onSuccess(); onClose(); },
+    onSuccess: (result) => { onSuccess(result); onClose(); },
   });
 
   return (
@@ -399,6 +406,7 @@ export function HomePage() {
   const navigate = useNavigate();
   const location = useLocation();
   const queryClient = useQueryClient();
+  const { toast } = useToast();
   const isElectron = isElectronRuntime();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -457,12 +465,24 @@ export function HomePage() {
   const courseImportMutation = useMutation({
     mutationFn: ({ filename, newName }: { filename: string; newName?: string }) =>
       importCourseByFilename(filename, newName),
-    onSuccess: () => {
+    onSuccess: (result) => {
+      setError(null);
       queryClient.invalidateQueries({ queryKey: ["subjects"] });
       queryClient.invalidateQueries({ queryKey: ["available-courses"] });
+      toast({
+        title: "导入成功",
+        description: `${result.subject_name} 已加入左侧学科列表。`,
+        variant: "success",
+      });
     },
     onError: (err: unknown) => {
-      setError(getApiErrorMessage(err, "演示课程导入失败"));
+      const message = getApiErrorMessage(err, "演示课程导入失败");
+      setError(message);
+      toast({
+        title: "导入失败",
+        description: message,
+        variant: "error",
+      });
     },
   });
 
@@ -996,7 +1016,14 @@ export function HomePage() {
         <ImportModal
           key="import"
           onClose={() => setImportOpen(false)}
-          onSuccess={() => queryClient.invalidateQueries({ queryKey: ["subjects"] })}
+          onSuccess={(result) => {
+            queryClient.invalidateQueries({ queryKey: ["subjects"] });
+            toast({
+              title: "导入成功",
+              description: `${result.subject_name} 已加入左侧学科列表。`,
+              variant: "success",
+            });
+          }}
         />
       )}
       {renameTarget && (

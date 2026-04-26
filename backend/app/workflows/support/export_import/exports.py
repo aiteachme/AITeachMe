@@ -277,11 +277,10 @@ def preview_export(
     options = options or ExportOptions()
     subject = _require_subject(session, subject_slug)
     raw_files = list_all_raw_files_by_subject(session, subject_slug)
-    total_size = sum(r.file_size_bytes or 0 for r in raw_files) if options.include_raw_files else 0
 
     stats = ExportPreviewStats(
         raw_file_count=len(raw_files) if _exports_raw_file_metadata(options) else 0,
-        total_raw_file_size_bytes=total_size,
+        total_raw_file_size_bytes=0,
         knowledge_document_count=_count(session, KnowledgeDocument, subject_slug)
         if options.include_knowledge_docs
         else 0,
@@ -306,7 +305,7 @@ def preview_export(
         subject_id=subject.slug,
         subject_name=subject.name,
         stats=stats,
-        estimated_size_bytes=total_size * 2,
+        estimated_size_bytes=0,
     )
 
 
@@ -399,7 +398,7 @@ def _should_export(spec: _TableSpec, options: ExportOptions) -> bool:
 
 
 def _exports_raw_file_metadata(options: ExportOptions) -> bool:
-    return options.include_raw_files or options.include_raw_markdowns
+    return options.include_raw_markdowns
 
 
 def _query_table(
@@ -578,12 +577,7 @@ def _import_table(
             ).rstrip("/")
             instance.storage_backend = "s3" if is_cloud_mode() else "local"
         elif spec.name == "knowledge_document" and isinstance(new_id, int):
-            subject_scope = build_subject_storage_scope(user_id=user_id, subject=new_slug)
-            chapter_index = max(1, int(instance.chapter_index or 1))
-            safe_title = sanitize_doc_title(instance.title or f"chapter_{chapter_index}")
-            instance.markdown_path = subject_scope.knowledge_doc_key(
-                f"chapter_{chapter_index:02d}_{safe_title}.md"
-            )
+            instance.markdown_path = None
 
         if old_id is not None:
             table_id_map[old_id] = new_id
@@ -678,21 +672,6 @@ def _pack_files(
 ) -> None:
     """Read files from ContentStore and pack them into the zip archive."""
     cs = get_content_store()
-    skip_filenames = {
-        ".build.lock",
-        "build_status.json",
-        "chunk_manifest.json",
-        "manifest.json",
-        "node_embedding_cache.json",
-    }
-
-    def _pack_prefix(prefix: str, arc_prefix: str) -> None:
-        keys = run_store_sync(cs.list_prefix, prefix, default=[])
-        for key in keys:
-            relative = key[len(prefix):] if key.startswith(prefix) else key.rsplit("/", 1)[-1]
-            data = run_store_sync(cs.read_bytes, key, default=None)
-            if data is not None:
-                zf.writestr(f"{arc_prefix}/{relative}", data)
 
     def _pack_latest_docgen_cover() -> None:
         cover_keys = run_store_sync(cs.list_prefix, f"{namespace}/assets/docgen/", default=[]) or []
@@ -727,17 +706,6 @@ def _pack_files(
         if data is not None:
             zf.writestr(archive_name, data)
 
-    if options.include_raw_files:
-        for raw_file in raw_files:
-            if raw_file.id is None:
-                continue
-            file_segment = build_file_storage_segment(file_uid=raw_file.uid, filename=raw_file.filename)
-            extension = Path(raw_file.file_path or "").suffix or (
-                f".{raw_file.filetype}" if raw_file.filetype else ""
-            )
-            _pack_key(raw_file.file_path, f"files/raw_files/{file_segment}/raw{extension}")
-            if raw_file.asset_dir:
-                _pack_prefix(raw_file.asset_dir.rstrip("/") + "/", f"files/assets/{file_segment}")
     if options.include_raw_markdowns:
         for raw_file in raw_files:
             if raw_file.id is None:
@@ -745,24 +713,10 @@ def _pack_files(
             file_segment = build_file_storage_segment(file_uid=raw_file.uid, filename=raw_file.filename)
             _pack_key(raw_file.markdown_path, f"files/raw_markdowns/{file_segment}/markdown.md")
 
-    # knowledge markdowns
+    # KnowledgeDocument rows already carry the published markdown content. The package only
+    # needs non-DB docgen assets such as the cover image.
     if options.include_knowledge_docs:
         _pack_latest_docgen_cover()
-        keys = run_store_sync(cs.list_prefix, f"{namespace}/knowledge_markdowns/", default=[])
-        for key in keys:
-            prefix = f"{namespace}/knowledge_markdowns/"
-            relative = key[len(prefix):] if key.startswith(prefix) else key.rsplit("/", 1)[-1]
-            filename = relative.rsplit("/", 1)[-1]
-            if (
-                filename in skip_filenames
-                or relative.startswith("_build/")
-                or relative.startswith("versions/")
-                or "/" in relative
-            ):
-                continue
-            data = run_store_sync(cs.read_bytes, key, default=None)
-            if data is not None:
-                zf.writestr(f"knowledge/{filename}", data)
 # ===================================================================
 # Internal: Manifest
 # ===================================================================
@@ -802,7 +756,7 @@ def _build_manifest(
             exam_paper_count=len(exported.get("exam_paper", [])),
             chat_session_count=len(exported.get("chat_session", [])),
             user_knowledge_state_count=len(exported.get("user_knowledge_state", [])),
-            total_file_size_bytes=_sum_exported_file_size_bytes(exported.get("raw_file", [])),
+            total_file_size_bytes=0,
         ),
         options=options,
         tables=_build_manifest_tables(exported),
@@ -813,8 +767,6 @@ def _manifest_capabilities(options: ExportOptions) -> list[str]:
     capabilities = ["subject_metadata", "knowledge_graph"]
     if _exports_raw_file_metadata(options):
         capabilities.append("raw_file_metadata")
-    if options.include_raw_files:
-        capabilities.append("raw_files")
     if options.include_raw_markdowns:
         capabilities.append("raw_markdowns")
     if options.include_knowledge_docs:
@@ -843,16 +795,6 @@ def _build_manifest_tables(exported: dict[str, list[dict]]) -> list[_ManifestTab
             )
         )
     return tables
-
-
-def _sum_exported_file_size_bytes(records: list[dict]) -> int:
-    total = 0
-    for record in records:
-        try:
-            total += max(0, int(record.get("file_size_bytes") or 0))
-        except (TypeError, ValueError):
-            continue
-    return total
 
 
 def _read_manifest(extract_dir: Path) -> _ExportManifest:

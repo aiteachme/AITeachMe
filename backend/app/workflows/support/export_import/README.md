@@ -5,7 +5,7 @@
 ## Responsibilities
 
 - Preview subject export size and table counts.
-- Export a subject into an `.atmx` package. Download filenames use `subject-name-subject-id.atmx`; the manifest keeps stable ids and extension metadata.
+- Export a subject into an `.atmx` package. Download filenames use `subject-name-subject-id.atmx`; the manifest keeps stable ids and extension metadata. Original uploaded files are intentionally not packaged.
 - Import an `.atmx` package as a new subject.
 - List remote demo-course packages from the configured OSS catalog.
 
@@ -25,5 +25,12 @@
 
 - `GET /api/v1/courses`: 前端展示课程卡片。
 - `POST /api/v1/courses/{filename}/import`: 后端从 OSS 拉取 `.atmx` 后导入当前连接的运行环境；导入成功后出现在左侧学科列表。本地后端就是本机，云端后端就是云端账号。
+
+## Export Data Boundary
+
+- Always included: subject metadata plus `knowledge_unit` / `knowledge_edge` graph tables.
+- Optional: generated knowledge documents, exam history, chat history, learning profile, and parsed source markdown cache.
+- Not exported: original uploaded binaries (`PDF/DOCX/PPT/...`), vector embeddings, build locks, temporary `_build/` files, and derived `merged_knowledge_base.md` files.
+- Published knowledge-document markdown is restored from `knowledge_document.markdown_content`; the archive only carries docgen assets that are not in DB, such as the cover image.
 
 This module is a support workflow. It should coordinate repositories, schemas, storage, and models without introducing a parallel engine lane.

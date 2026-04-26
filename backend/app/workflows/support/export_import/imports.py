@@ -242,15 +242,14 @@ def _unpack_files(
 
     src_knowledge = extract_dir / "knowledge"
     if src_knowledge.exists():
+        # Published chapter markdown is imported from KnowledgeDocument rows; only
+        # non-DB docgen assets need to be restored.
         for item in sorted(src_knowledge.iterdir()):
             if not item.is_file():
                 continue
             if item.stem == "cover" and item.suffix.lower() in _DOCGEN_COVER_IMAGE_EXTENSIONS:
                 key = f"{subject_scope.namespace}/assets/docgen/{item.name}"
                 run_store_sync(cs.write_bytes, key, item.read_bytes())
-                continue
-            key = subject_scope.knowledge_doc_key(item.name)
-            run_store_sync(cs.write_bytes, key, item.read_bytes())
 
 
 def _cleanup_import_artifacts(subject_slug: str, *, user_id: str) -> None:

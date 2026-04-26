@@ -52,7 +52,7 @@ subject_export.atmx (ZIP)
 │   ├── raw_file.json
 │   ├── retrieval_chunk.json
 │   ├── knowledge_document.json
-│   ├── knowledge_node.json
+│   ├── knowledge_unit.json
 │   ├── knowledge_edge.json
 │   ├── teaching_unit.json
 │   ├── taxonomy_anchor.json
@@ -65,15 +65,11 @@ subject_export.atmx (ZIP)
 │   ├── user_knowledge_state.json
 │   ├── chat_session.json
 │   └── chat_message.json
-├── files/                     # 原始上传文件与解析产物
-│   ├── raw_files/
-│   ├── raw_markdowns/
-│   └── assets/
-│       └── <file_id>/
-├── knowledge/                 # 知识文档产物
-│   ├── chapter_*.md
-│   ├── merged_knowledge_base.md
-│   └── manifest.json
+├── files/                     # 可选解析缓存，不包含原始上传文件
+│   └── raw_markdowns/
+│       └── <file_id>/markdown.md
+├── knowledge/                 # 非 DB 知识文档资产
+│   └── cover.png              # 可选，章节正文从 DB 记录恢复
 └── exam/                      # 考试导出产物（如有）
 ```
 
@@ -105,7 +101,7 @@ subject_export.atmx (ZIP)
   "stats": {
     "raw_file_count": 3,
     "knowledge_document_count": 8,
-    "knowledge_node_count": 45,
+    "knowledge_unit_count": 45,
     "knowledge_edge_count": 62,
     "teaching_unit_count": 12,
     "question_template_count": 50,
@@ -114,7 +110,9 @@ subject_export.atmx (ZIP)
     "total_file_size_bytes": 15234567
   },
   "options": {
-    "include_raw_files": true,
+    "include_raw_files": false,
+    "include_raw_markdowns": false,
+    "include_knowledge_docs": true,
     "include_chat_history": true,
     "include_exam_history": true,
     "include_profile": true
@@ -138,13 +136,8 @@ subject_export.atmx (ZIP)
 | 层级 | 数据 | 来源 |
 | --- | --- | --- |
 | 学科元数据 | `subject` | DB |
-| 原始文件元数据 | `raw_file` | DB |
-| 原始文件二进制 | `raw_files/*` | 文件系统 |
-| 解析后 Markdown | `raw_markdowns/*` | 文件系统 |
-| 文件资产 | `assets/<file_id>/*` | 文件系统 |
-| 检索切块 | `retrieval_chunk` | DB |
-| 知识文档 | `knowledge_document` + `knowledge_markdowns/*` | DB + 文件系统 |
-| 知识图谱 | `knowledge_node` + `knowledge_edge` | DB |
+| 知识文档 | `knowledge_document` | DB |
+| 知识图谱 | `knowledge_unit` + `knowledge_edge` | DB |
 | 教学单元 | `teaching_unit` | DB |
 | 分类锚点 | `taxonomy_anchor` | DB |
 | 课程结构 | `curriculum` + `theme_tree_node` + `unit_dependency` | DB |
@@ -153,18 +146,18 @@ subject_export.atmx (ZIP)
 
 | 数据 | 选项字段 | 默认 | 说明 |
 | --- | --- | --- | --- |
-| 原始文件二进制 | `include_raw_files` | ✅ | PDF/DOCX 等原始上传文件，关闭后可大幅减小体积 |
-| 解析后 Markdown | `include_raw_markdowns` | ✅ | ingest 产出的原始 Markdown |
-| 知识文档 | `include_knowledge_docs` | ✅ | digest 构建后的 chapter_*.md 等 |
+| 原始文件二进制 | `include_raw_files` | ❌ | 兼容旧 API 字段；当前不再打包 PDF/DOCX/PPT 等原始上传文件 |
+| 解析后 Markdown | `include_raw_markdowns` | ❌ | ingest 产出的原始 Markdown 与检索切块，用于内部迁移场景 |
+| 知识文档 | `include_knowledge_docs` | ✅ | `knowledge_document` 表中的章节正文与封面资产 |
 | 聊天记录 | `include_chat_history` | ✅ | `chat_session` + `chat_message` |
 | 题库与考试记录 | `include_exam_history` | ✅ | `question_template` + `exam_paper` + `exam_paper_item` |
 | 学习画像 | `include_profile` | ✅ | `user_knowledge_state` |
 
 **常见用法**：
 
-- **教师分发预构建课程包**：关闭 `include_raw_files`、`include_chat_history`、`include_profile`，只保留知识文档和图谱
-- **设备迁移/完整备份**：全部打开（默认）
-- **只分享构建结果**：关闭 `include_raw_files` + `include_raw_markdowns`
+- **教师分发预构建课程包**：关闭 `include_raw_markdowns`、`include_chat_history`、`include_profile`，只保留知识文档和图谱
+- **设备迁移/完整备份**：按需打开解析缓存、对话、考试与画像；原始上传文件仍不导出
+- **只分享构建结果**：保持 `include_raw_files=false` 且关闭 `include_raw_markdowns`
 
 ### 4.3 不导出的数据
 
@@ -172,8 +165,10 @@ subject_export.atmx (ZIP)
 | --- | --- |
 | `chunk_embeddings` | 向量依赖 embedding 模型版本，导入后重建 |
 | `user` 表 | 用户身份绑定导入端 |
+| 原始上传文件二进制 | 避免隐私泄漏与包体膨胀；后续 raw 文件模型会逐步弱化 |
 | `build_status.json` / `.build.lock` | 运行时状态 |
 | `_build/` / `temp/` / `debug/` | 中间产物与临时文件 |
+| `merged_knowledge_base.md` | 已可由 `knowledge_document.markdown_content` 重新拼装，是派生文件 |
 
 ---
 
@@ -192,8 +187,8 @@ POST /api/v1/subjects/{subject}/export            — 下载导出包
 
 ```json
 {
-  "include_raw_files": true,
-  "include_raw_markdowns": true,
+  "include_raw_files": false,
+  "include_raw_markdowns": false,
   "include_knowledge_docs": true,
   "include_chat_history": true,
   "include_exam_history": true,
@@ -218,7 +213,7 @@ POST /api/v1/subjects/{subject}/export            — 下载导出包
 
 ```json
 {
-  "table": "knowledge_node",
+  "table": "knowledge_unit",
   "count": 45,
   "records": [{ "id": 1, "subject": "...", "..." : "..." }]
 }
@@ -255,7 +250,7 @@ POST /api/v1/subjects/import   — 上传并导入 .atmx 文件
 4. **按依赖顺序**导入 DB 数据，维护 `old_id → new_id` 映射表：
    ```text
    subject → raw_file → retrieval_chunk
-           → knowledge_document → knowledge_node → knowledge_edge
+           → knowledge_document → knowledge_unit → knowledge_edge
            → teaching_unit → taxonomy_anchor
            → curriculum → theme_tree_node → unit_dependency
            → question_template → exam_paper → exam_paper_item
