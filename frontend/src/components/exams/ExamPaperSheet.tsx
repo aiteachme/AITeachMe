@@ -20,9 +20,21 @@ interface ExamPaperSheetProps {
   activeStage: 1 | 2 | 3;
   pageScale: number;
   setAnswers: Dispatch<SetStateAction<Record<number, string>>>;
+  selectedItemId?: number | null;
+  showInlineReviewDetails?: boolean;
+  onSelectQuestion?: (item: ExamPaperItemResponse) => void;
 }
 
-export function ExamPaperSheet({ paper, answers, activeStage, pageScale, setAnswers }: ExamPaperSheetProps) {
+export function ExamPaperSheet({
+  paper,
+  answers,
+  activeStage,
+  pageScale,
+  setAnswers,
+  selectedItemId,
+  showInlineReviewDetails = true,
+  onSelectQuestion,
+}: ExamPaperSheetProps) {
   return (
                 <div
                   className="relative mx-auto max-w-[1080px] pb-12"
@@ -74,6 +86,7 @@ export function ExamPaperSheet({ paper, answers, activeStage, pageScale, setAnsw
                     const isReviewStage = isGraded && activeStage === 2;
                     const isReadonly = isGraded;
                     const isCorrect = item.is_correct === true;
+                    const isSelectedReviewItem = isReviewStage && selectedItemId === item.id;
 
                     return (
                       <div
@@ -81,7 +94,17 @@ export function ExamPaperSheet({ paper, answers, activeStage, pageScale, setAnsw
                         id={`exam-question-${item.item_order}`}
                         data-question-anchor="true"
                         data-question-order={item.item_order}
-                        className="scroll-mt-28 border-b-[1.5px] border-dashed border-slate-200/90 px-0 py-7 last:border-b-0 sm:py-9"
+                        onClick={() => {
+                          if (isReviewStage) {
+                            onSelectQuestion?.(item);
+                          }
+                        }}
+                        className={`scroll-mt-28 border-b-[1.5px] border-dashed border-slate-200/90 px-0 py-7 last:border-b-0 sm:py-9 ${
+                          isReviewStage ? "cursor-pointer rounded-xl transition" : ""
+                        } ${
+                          isSelectedReviewItem ? "bg-slate-50/80 outline outline-1 outline-slate-200" : ""
+                        }`}
+                        aria-selected={isSelectedReviewItem || undefined}
                       >
                         <div className="grid gap-5 md:grid-cols-[72px_minmax(0,1fr)]">
                           <aside className="flex items-start gap-4 border-b border-slate-100 pb-4 text-slate-500 md:flex-col md:items-center md:border-b-0 md:border-r md:pb-0 md:pr-4">
@@ -267,7 +290,7 @@ export function ExamPaperSheet({ paper, answers, activeStage, pageScale, setAnsw
                           )}
                         </div>
 
-                        {isReviewStage && (
+                        {isReviewStage && showInlineReviewDetails && (
                           <div className="mt-6 border-t border-dashed border-slate-200 pt-5 text-sm leading-7 text-slate-600 md:col-start-2">
                             <div className="[&_p]:mb-2 [&_.katex-display]:my-3">
                               <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">你的答案</p>

@@ -16,6 +16,7 @@ import { Button } from "../ui/Button";
 import { useToast } from "../ui/Toast";
 import { unwrapOrvalResponse } from "../../lib/unwrapOrvalResponse";
 import { ExamPaperSheet } from "./ExamPaperSheet";
+import { ExamQuestionAnalysisSheet } from "./ExamQuestionAnalysisSheet";
 import { ExamStageHeader } from "./ExamStageHeader";
 import { ExamStudyGuideView } from "./ExamStudyGuideView";
 import type { ExamStudyGuideResponse } from "./types";
@@ -44,6 +45,7 @@ export function ExamPaperWorkspace({ subjectId, paperId, backHref }: ExamPaperWo
   const [answers, setAnswers] = useState<Record<number, string>>({});
   const [pageScale, setPageScale] = useState(1);
   const [activeStage, setActiveStage] = useState<1 | 2 | 3>(1);
+  const [selectedReviewItemId, setSelectedReviewItemId] = useState<number | null>(null);
 
   const examDetailQuery = useExamDetailApiV1SubjectsSubjectExamsExamPaperIdGet(subjectId, paperId, {
     query: {
@@ -59,6 +61,14 @@ export function ExamPaperWorkspace({ subjectId, paperId, backHref }: ExamPaperWo
     const raw = paper?.selection_context?.error_message;
     return typeof raw === "string" ? raw.trim() : "";
   }, [paper?.selection_context]);
+  const selectedReviewItem = useMemo(
+    () =>
+      (paper?.items ?? []).find((item: ExamPaperItemResponse) => item.id === selectedReviewItemId) ??
+      (paper?.items ?? [])[0] ??
+      null,
+    [paper?.items, selectedReviewItemId],
+  );
+  const isReviewLayout = paper?.status === "graded" && activeStage === 2;
 
   useEffect(() => {
     if (!paper) return;
@@ -68,6 +78,15 @@ export function ExamPaperWorkspace({ subjectId, paperId, backHref }: ExamPaperWo
     }
     setActiveStage(1);
   }, [paper?.id, paper?.status]);
+
+  useEffect(() => {
+    if (paper?.status !== "graded") return;
+    const items = paper.items ?? [];
+    if (!items.length) return;
+    setSelectedReviewItemId((current) =>
+      items.some((item: ExamPaperItemResponse) => item.id === current) ? current : items[0].id,
+    );
+  }, [paper?.id, paper?.items, paper?.status]);
 
   const studyGuideQuery = useQuery({
     queryKey: ["exam-study-guide", subjectId, paperId],
@@ -253,6 +272,7 @@ export function ExamPaperWorkspace({ subjectId, paperId, backHref }: ExamPaperWo
                   >
                     {(paper.items ?? []).map((item) => {
                       const isAnswered = hasAnsweredQuestion(item, answers);
+                      const isSelectedReviewItem = isReviewLayout && selectedReviewItemId === item.id;
                       const navTone =
                         paper.status === "graded"
                           ? item.is_correct
@@ -266,12 +286,17 @@ export function ExamPaperWorkspace({ subjectId, paperId, backHref }: ExamPaperWo
                         <button
                           key={item.id}
                           type="button"
-                          onClick={() =>
+                          onClick={() => {
+                            if (isReviewLayout) {
+                              setSelectedReviewItemId(item.id);
+                            }
                             document
                               .getElementById(`exam-question-${item.item_order}`)
-                              ?.scrollIntoView({ behavior: "smooth", block: "start" })
-                          }
-                          className={`grid aspect-square w-full max-w-8 justify-self-center place-items-center rounded-lg text-xs font-semibold transition ${navTone}`}
+                              ?.scrollIntoView({ behavior: "smooth", block: "start" });
+                          }}
+                          className={`grid aspect-square w-full max-w-8 justify-self-center place-items-center rounded-lg text-xs font-semibold transition ${navTone} ${
+                            isSelectedReviewItem ? "ring-2 ring-slate-900 ring-offset-2 ring-offset-white" : ""
+                          }`}
                           aria-label={`跳转到第 ${item.item_order} 题`}
                         >
                           {item.item_order}
@@ -321,13 +346,31 @@ export function ExamPaperWorkspace({ subjectId, paperId, backHref }: ExamPaperWo
                   zoom: pageScale,
                 }}
               >
-                <ExamPaperSheet
-                  paper={paper}
-                  answers={answers}
-                  activeStage={activeStage}
-                  pageScale={pageScale}
-                  setAnswers={setAnswers}
-                />
+                {isReviewLayout ? (
+                  <div className="overflow-x-auto pb-4">
+                    <div className="mx-auto grid w-full grid-cols-1 items-start gap-6 lg:w-max lg:min-w-[1360px] lg:grid-cols-[minmax(780px,900px)_minmax(540px,760px)] 2xl:min-w-[1560px] 2xl:grid-cols-[minmax(900px,1040px)_minmax(600px,820px)] 2xl:gap-8">
+                    <ExamPaperSheet
+                      paper={paper}
+                      answers={answers}
+                      activeStage={activeStage}
+                      pageScale={1}
+                      setAnswers={setAnswers}
+                      selectedItemId={selectedReviewItem?.id ?? null}
+                      showInlineReviewDetails={false}
+                      onSelectQuestion={(item) => setSelectedReviewItemId(item.id)}
+                    />
+                    <ExamQuestionAnalysisSheet item={selectedReviewItem} />
+                    </div>
+                  </div>
+                ) : (
+                  <ExamPaperSheet
+                    paper={paper}
+                    answers={answers}
+                    activeStage={activeStage}
+                    pageScale={pageScale}
+                    setAnswers={setAnswers}
+                  />
+                )}
 
                 <section className="flex flex-col items-center justify-center gap-3 border-t border-slate-100 pt-4 pb-12 text-center sm:pb-16">
                   <Button
