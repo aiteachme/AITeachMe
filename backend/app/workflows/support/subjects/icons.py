@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import re
+import secrets
 
 import structlog
 
@@ -123,6 +124,8 @@ SUBJECT_ICON_OPTIONS: tuple[str, ...] = (
     "flower-2",
 )
 
+DEFAULT_SUBJECT_ICON_KEY = "book-open"
+SUBJECT_ICON_OPTION_SET = frozenset(SUBJECT_ICON_OPTIONS)
 _ICON_KEY_RE = re.compile(r"[a-z][a-z0-9-]*")
 _KEYWORD_ICON_RULES: tuple[tuple[tuple[str, ...], str], ...] = (
     (("中考", "高考", "小学", "初中", "高中", "课堂", "school"), "school"),
@@ -167,15 +170,38 @@ _KEYWORD_ICON_RULES: tuple[tuple[tuple[str, ...], str], ...] = (
 )
 
 
-def normalize_subject_icon_key(value: str | None) -> str | None:
-    cleaned = str(value or "").strip().strip("`'\"").lower()
-    if cleaned in SUBJECT_ICON_OPTIONS:
-        return cleaned
+def _normalize_icon_text(value: object | None) -> str:
+    return str(value or "").strip().strip("`'\"").lower()
 
-    for candidate in _ICON_KEY_RE.findall(cleaned):
-        if candidate in SUBJECT_ICON_OPTIONS:
-            return candidate
-    return None
+
+def normalize_subject_icon_candidates(value: object | None) -> list[str]:
+    cleaned = _normalize_icon_text(value)
+    raw_candidates = (cleaned,) if cleaned in SUBJECT_ICON_OPTION_SET else _ICON_KEY_RE.findall(cleaned)
+    return list(
+        dict.fromkeys(
+            candidate
+            for candidate in raw_candidates
+            if candidate in SUBJECT_ICON_OPTION_SET
+        )
+    )
+
+
+def normalize_subject_icon_key(value: object | None) -> str | None:
+    return next(iter(normalize_subject_icon_candidates(value)), None)
+
+
+def select_subject_icon_candidate(value: object, *, fallback: str) -> str:
+    normalized_fallback = normalize_subject_icon_key(fallback) or DEFAULT_SUBJECT_ICON_KEY
+    try:
+        candidates = normalize_subject_icon_candidates(value)
+        return secrets.choice(candidates) if candidates else normalized_fallback
+    except Exception as exc:
+        logger.warning(
+            "subject_icon_selection_candidate_failed",
+            error=str(exc),
+            fallback=normalized_fallback,
+        )
+        return normalized_fallback
 
 
 def infer_subject_icon_key(subject_name: str | None) -> str:
@@ -183,7 +209,7 @@ def infer_subject_icon_key(subject_name: str | None) -> str:
     for keywords, icon_key in _KEYWORD_ICON_RULES:
         if any(keyword.casefold() in text for keyword in keywords):
             return icon_key
-    return "book-open"
+    return DEFAULT_SUBJECT_ICON_KEY
 
 
 def get_subject_icon_key(subject: Subject) -> str:
@@ -208,8 +234,9 @@ async def choose_subject_icon_key(subject_name: str, *, hints: list[str] | None 
     options_text = ",".join(SUBJECT_ICON_OPTIONS)
     hint_text = "\n".join(f"- {item}" for item in list(hints or [])[:8] if str(item).strip())
     user_content = (
-        "请为这个学习学科选择一个最合适的图标 key。\n"
-        "只能从候选列表中选择，输出必须只有一个 key，不要解释。\n\n"
+        "请为这个学习学科选择 1-4 个合适的图标 key。\n"
+        "只能从候选列表中选择；多个 key 用英文逗号分隔，不要解释。\n"
+        "系统会从这些候选中随机挑一个作为最终图标。\n\n"
         f"学科名称：{name}\n"
         f"线索：\n{hint_text or '- 无'}\n\n"
         f"候选图标 key（英文逗号分隔）：{options_text}"
@@ -235,7 +262,7 @@ async def choose_subject_icon_key(subject_name: str, *, hints: list[str] | None 
         logger.warning("subject_icon_selection_failed", subject_name=name, error=str(exc))
         return fallback
 
-    return normalize_subject_icon_key(str(result)) or fallback
+    return select_subject_icon_candidate(result, fallback=fallback)
 
 
 def _read_settings(subject: Subject) -> dict[str, object]:
@@ -250,10 +277,13 @@ def _read_settings(subject: Subject) -> dict[str, object]:
 
 
 __all__ = [
+    "DEFAULT_SUBJECT_ICON_KEY",
     "SUBJECT_ICON_OPTIONS",
     "choose_subject_icon_key",
     "get_subject_icon_key",
     "infer_subject_icon_key",
+    "normalize_subject_icon_candidates",
     "normalize_subject_icon_key",
+    "select_subject_icon_candidate",
     "set_subject_icon_key",
 ]
