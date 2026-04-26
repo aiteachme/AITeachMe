@@ -4,6 +4,7 @@ import asyncio
 
 import pytest
 
+from app.api.files import _normalize_safe_asset_path
 from app.shared.infra.storage.base import validate_delete_prefix
 from app.shared.infra.storage.local_store import LocalArtifactStore
 from app.shared.infra.storage.sync_bridge import run_store_sync
@@ -23,6 +24,15 @@ def test_validate_delete_prefix_rejects_root_and_file_like_values() -> None:
 def test_validate_delete_prefix_accepts_directory_like_scope() -> None:
     assert validate_delete_prefix("users/local/subjects/math/") == "users/local/subjects/math/"
     assert validate_delete_prefix("users\\local\\subjects\\math\\") == "users/local/subjects/math/"
+
+
+def test_subject_asset_path_rejects_traversal_segments() -> None:
+    for asset_path in ("", "../secret.txt", "docgen/../../secret.txt", r"docgen\..\secret.txt"):
+        assert _normalize_safe_asset_path(asset_path) is None
+
+
+def test_subject_asset_path_accepts_relative_assets() -> None:
+    assert _normalize_safe_asset_path("/docgen/interactive/card.png") == "docgen/interactive/card.png"
 
 
 @pytest.mark.anyio

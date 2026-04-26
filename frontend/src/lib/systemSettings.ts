@@ -111,6 +111,6 @@ export async function ensureSystemSettingsOverviewLoaded(
     .catch(() => null)
     .finally(() => {
       inFlightOverview = null;
-    });
+  });
   return inFlightOverview;
 }

@@ -119,6 +119,25 @@ class UnsupportedFileTypeError(AITeachMeError):
         super().__init__(detail=f"暂不支持文件类型 `{filetype}`。")
 
 
+class InvalidImportPackageError(AITeachMeError):
+    error_code = "INVALID_IMPORT_PACKAGE"
+    status_code = HTTPStatus.UNPROCESSABLE_ENTITY
+
+    def __init__(self, reason: str = "") -> None:
+        detail = "导入课程包格式不正确。"
+        if reason:
+            detail = f"{detail}{reason}"
+        super().__init__(detail=detail)
+
+
+class ImportPackageTooLargeError(AITeachMeError):
+    error_code = "IMPORT_PACKAGE_TOO_LARGE"
+    status_code = HTTPStatus.REQUEST_ENTITY_TOO_LARGE
+
+    def __init__(self, max_size_mb: int) -> None:
+        super().__init__(detail=f"导入课程包超过 {max_size_mb} MB 限制。")
+
+
 class RawFileNotFoundError(AITeachMeError):
     error_code = "RAW_FILE_NOT_FOUND"
     status_code = HTTPStatus.NOT_FOUND
@@ -235,8 +254,8 @@ class AuthNotReadyError(AITeachMeError):
     error_code = "AUTH_NOT_READY"
     status_code = HTTPStatus.SERVICE_UNAVAILABLE
 
-    def __init__(self) -> None:
-        super().__init__(detail="鉴权脚手架已预留，但当前尚未实现。")
+    def __init__(self, detail: str = "鉴权配置尚未就绪。") -> None:
+        super().__init__(detail=detail)
 
 
 # ── 知识图谱增量构建 + 多视图课程结构派生 ──

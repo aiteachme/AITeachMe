@@ -163,7 +163,7 @@ async def serve_user_file_asset(
         filename=raw_file.filename,
     )
     normalized_asset_path = asset_path.lstrip("/\\")
-    if not normalized_asset_path or ".." in FilePath(normalized_asset_path).parts:
+    if not normalized_asset_path or ".." in FilePath(normalized_asset_path.replace("\\", "/")).parts:
         return Response(status_code=404, content=b"Not found")
 
     storage_key = f"{base_prefix.rstrip('/')}/{normalized_asset_path}"

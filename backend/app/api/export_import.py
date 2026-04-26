@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import shutil
 import tempfile
 from pathlib import Path
 
@@ -20,6 +19,7 @@ from app.schemas.export_import import (
     ImportOptions,
     ImportResultData,
 )
+from app.shared.infra.exceptions import ImportPackageTooLargeError, UnsupportedFileTypeError
 from app.workflows.support.export_import import (
     build_subject_export_filename,
     download_course_package,
@@ -28,9 +28,16 @@ from app.workflows.support.export_import import (
     list_available_courses,
     preview_export,
 )
+from app.workflows.support.export_import.limits import (
+    MAX_IMPORT_PACKAGE_BYTES,
+    MAX_IMPORT_PACKAGE_SIZE_MB,
+    UPLOAD_COPY_CHUNK_BYTES,
+)
 from app.workflows.support.subjects import get_subject_record
 
 router = APIRouter(prefix="/api/v1", tags=["export-import"])
+
+_SUPPORTED_IMPORT_SUFFIXES = {".atmx", ".zip"}
 
 
 # ---------------------------------------------------------------------------
@@ -91,7 +98,7 @@ async def export_subject_api(
     "/subjects/import",
     response_model=ApiResponse[ImportResultData],
     summary="导入学科（上传）",
-    responses=build_error_responses([400, 409, 500]),
+    responses=build_error_responses([400, 409, 413, 422, 500]),
 )
 async def import_subject_api(
     file: UploadFile = File(..., description="上传 .atmx 导出包。"),
@@ -101,12 +108,14 @@ async def import_subject_api(
 ) -> ApiResponse[ImportResultData]:
     """从上传的 .atmx 文件导入学科。"""
 
-    suffix = Path(file.filename or "upload.atmx").suffix or ".atmx"
+    filename = file.filename or "upload.atmx"
+    _validate_import_package_filename(filename)
+    suffix = Path(filename).suffix or ".atmx"
     with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
-        shutil.copyfileobj(file.file, tmp)
         tmp_path = Path(tmp.name)
 
     try:
+        await _copy_upload_to_temp_file(file, tmp_path)
         result = import_subject(
             session,
             file_path=tmp_path,
@@ -139,7 +148,7 @@ async def list_courses_api() -> ApiResponse[list[CoursePackageItem]]:
     "/courses/{filename}/import",
     response_model=ApiResponse[ImportResultData],
     summary="从演示课程导入",
-    responses=build_error_responses([404, 500, 502, 503]),
+    responses=build_error_responses([404, 413, 422, 500, 502, 503]),
 )
 async def import_course_api(
     filename: str,
@@ -173,3 +182,22 @@ def _cleanup_task(path: Path):
     from starlette.background import BackgroundTask
 
     return BackgroundTask(lambda: path.unlink(missing_ok=True))
+
+
+def _validate_import_package_filename(filename: str) -> None:
+    suffix = Path(filename or "upload.atmx").suffix.lower() or ".atmx"
+    if suffix not in _SUPPORTED_IMPORT_SUFFIXES:
+        raise UnsupportedFileTypeError(suffix)
+
+
+async def _copy_upload_to_temp_file(file: UploadFile, target_path: Path) -> None:
+    bytes_written = 0
+    with target_path.open("wb") as fh:
+        while True:
+            chunk = await file.read(UPLOAD_COPY_CHUNK_BYTES)
+            if not chunk:
+                break
+            bytes_written += len(chunk)
+            if bytes_written > MAX_IMPORT_PACKAGE_BYTES:
+                raise ImportPackageTooLargeError(MAX_IMPORT_PACKAGE_SIZE_MB)
+            fh.write(chunk)

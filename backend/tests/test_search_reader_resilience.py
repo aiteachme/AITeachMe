@@ -96,6 +96,56 @@ async def test_fetch_url_applies_default_reader_headers(monkeypatch):
     assert "zh-CN" in captured["headers"]["Accept-Language"]
 
 
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    "url",
+    [
+        "ftp://example.com/file.txt",
+        "http://localhost/page",
+        "http://127.0.0.1/page",
+        "http://169.254.169.254/latest/meta-data",
+        "http://10.0.0.1/page",
+    ],
+)
+async def test_fetch_url_rejects_unsafe_targets_before_request(url):
+    with pytest.raises(ValueError):
+        await fetch_url(url)
+
+
+@pytest.mark.anyio
+async def test_fetch_url_rejects_redirect_to_unsafe_target(monkeypatch):
+    captured: dict[str, object] = {"urls": []}
+
+    class FakeResponse:
+        status_code = 302
+        headers = {"location": "http://127.0.0.1/private"}
+        url = "https://example.com/start"
+
+        def raise_for_status(self) -> None:
+            return None
+
+    class FakeClient:
+        def __init__(self, **kwargs):
+            captured["client_kwargs"] = kwargs
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+        async def get(self, url, *, headers):
+            captured["urls"].append(url)
+            return FakeResponse()
+
+    monkeypatch.setattr("app.shared.infra.search.readers.common.httpx.AsyncClient", FakeClient)
+
+    with pytest.raises(ValueError):
+        await fetch_url("https://example.com/start")
+
+    assert captured["urls"] == ["https://example.com/start"]
+
+
 @pytest.mark.parametrize(
     ("title", "snippet"),
     [

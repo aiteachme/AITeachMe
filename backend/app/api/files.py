@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import mimetypes
+from pathlib import Path as FilePath
 
 from fastapi import APIRouter, Body, Depends, File, Form, Path, Request, UploadFile
 from fastapi.responses import RedirectResponse, Response
@@ -24,6 +25,15 @@ from app.workflows.ingest.intake import (
 from app.workflows.support.subjects import get_subject_record
 
 router = APIRouter(prefix="/api/v1/subjects/{subject}/files", tags=["files"])
+
+
+def _normalize_safe_asset_path(asset_path: str) -> str | None:
+    """Return a storage-relative asset path, or None when traversal is attempted."""
+
+    normalized = str(asset_path or "").lstrip("/\\")
+    if not normalized or ".." in FilePath(normalized.replace("\\", "/")).parts:
+        return None
+    return normalized
 
 
 @router.post(
@@ -202,7 +212,9 @@ async def serve_file_asset(
 
     cs = get_content_store()
     subject_scope = cs.subject_scope(user_id=user.user_id, subject=normalized_subject)
-    normalized_asset_path = asset_path.lstrip("/\\")
+    normalized_asset_path = _normalize_safe_asset_path(asset_path)
+    if normalized_asset_path is None:
+        return Response(status_code=404, content=b"Not found")
     storage_key = f"{subject_scope.namespace}/assets/{normalized_asset_path}"
     media_type = mimetypes.guess_type(asset_path)[0] or "application/octet-stream"
 

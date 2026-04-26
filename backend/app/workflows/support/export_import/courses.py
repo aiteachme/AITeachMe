@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import hashlib
+import posixpath
 import tempfile
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Any
-from urllib.parse import urljoin, urlparse
+from urllib.parse import unquote, urljoin, urlparse
 
 import httpx
 import structlog
@@ -18,6 +20,12 @@ from app.shared.infra.exceptions import (
     DemoCourseCatalogNotConfiguredError,
     DemoCourseCatalogUnavailableError,
     DemoCoursePackageNotFoundError,
+    ImportPackageTooLargeError,
+)
+from app.shared.infra.runtime import is_cloud_mode
+from app.workflows.support.export_import.limits import (
+    MAX_IMPORT_PACKAGE_BYTES,
+    MAX_IMPORT_PACKAGE_SIZE_MB,
 )
 
 logger = structlog.get_logger()
@@ -34,6 +42,7 @@ class _RemoteCourseDescriptor:
     package_url: str
     package_filename: str
     file_size_bytes: int = 0
+    sha256: str | None = None
     exported_at: datetime | None = None
     stats: dict[str, int] | None = None
 
@@ -50,6 +59,9 @@ class _RemoteCourseDescriptor:
 def list_available_courses() -> list[CoursePackageItem]:
     """List remote demo courses declared in the configured OSS catalog."""
 
+    if not _demo_courses_enabled():
+        return []
+
     catalog_url = get_demo_courses_index_url()
     if not catalog_url:
         return []
@@ -59,7 +71,13 @@ def list_available_courses() -> list[CoursePackageItem]:
 def download_course_package(identifier: str) -> tuple[Path, str]:
     """Download one remote `.atmx` package into a temporary local file."""
 
+    if not _demo_courses_enabled():
+        raise DemoCourseCatalogNotConfiguredError()
+
     descriptor = get_remote_course_descriptor(identifier)
+    if descriptor.file_size_bytes > MAX_IMPORT_PACKAGE_BYTES:
+        raise ImportPackageTooLargeError(MAX_IMPORT_PACKAGE_SIZE_MB)
+
     suffix = Path(descriptor.package_filename or "").suffix or ".atmx"
     with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
         tmp_path = Path(tmp.name)
@@ -72,10 +90,20 @@ def download_course_package(identifier: str) -> tuple[Path, str]:
                     response,
                     action=f"下载课程包 `{descriptor.identifier}`",
                 )
+                _validate_remote_content_length(response)
+                hasher = hashlib.sha256() if descriptor.sha256 else None
+                bytes_written = 0
                 with tmp_path.open("wb") as fh:
                     for chunk in response.iter_bytes():
                         if chunk:
+                            bytes_written += len(chunk)
+                            if bytes_written > MAX_IMPORT_PACKAGE_BYTES:
+                                raise ImportPackageTooLargeError(MAX_IMPORT_PACKAGE_SIZE_MB)
+                            if hasher is not None:
+                                hasher.update(chunk)
                             fh.write(chunk)
+                if hasher is not None and hasher.hexdigest().lower() != descriptor.sha256:
+                    raise DemoCourseCatalogUnavailableError(reason="课程包校验失败。")
         return tmp_path, descriptor.package_filename
     except Exception:
         tmp_path.unlink(missing_ok=True)
@@ -84,6 +112,9 @@ def download_course_package(identifier: str) -> tuple[Path, str]:
 
 def get_remote_course_descriptor(identifier: str) -> _RemoteCourseDescriptor:
     """Resolve one demo course descriptor by its stable identifier."""
+
+    if not _demo_courses_enabled():
+        raise DemoCourseCatalogNotConfiguredError()
 
     normalized = str(identifier or "").strip()
     if not normalized:
@@ -111,6 +142,10 @@ def get_demo_courses_index_url() -> str | None:
     if not base_url:
         return None
     return urljoin(base_url, _DEMO_COURSES_INDEX_PATH)
+
+
+def _demo_courses_enabled() -> bool:
+    return is_cloud_mode()
 
 
 def _get_demo_courses_timeout_s() -> float:
@@ -203,11 +238,21 @@ def _build_remote_course_descriptor(
         )
         return None
 
-    package_url = _resolve_remote_url(
-        package_ref,
-        catalog_url=catalog_url,
-        base_url=base_url,
-    )
+    try:
+        package_url = _resolve_remote_url(
+            package_ref,
+            catalog_url=catalog_url,
+            base_url=base_url,
+        )
+        _ensure_demo_package_url_allowed(package_url, base_url=base_url)
+    except ValueError as exc:
+        logger.warning(
+            "demo_course_catalog_item_skipped",
+            index=index,
+            reason=str(exc),
+        )
+        return None
+
     package_filename = _first_non_empty_str(
         item.get("package_filename"),
         item.get("download_name"),
@@ -232,6 +277,11 @@ def _build_remote_course_descriptor(
             item.get("size_bytes"),
             item.get("size"),
         ),
+        sha256=_coerce_sha256(
+            item.get("sha256"),
+            item.get("package_sha256"),
+            item.get("checksum_sha256"),
+        ),
         exported_at=_coerce_datetime(
             item.get("exported_at"),
             item.get("updated_at"),
@@ -255,6 +305,30 @@ def _resolve_remote_url(
     if base_url:
         return urljoin(base_url, raw.lstrip("/"))
     return urljoin(catalog_url, raw)
+
+
+def _ensure_demo_package_url_allowed(url: str, *, base_url: str | None) -> None:
+    parsed = urlparse(url)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        raise ValueError("package_url must be an absolute http(s) URL")
+
+    if not base_url:
+        return
+
+    base = urlparse(base_url.rstrip("/") + "/")
+    same_origin = parsed.scheme == base.scheme and parsed.netloc == base.netloc
+    base_path = _normalized_url_path(base.path).rstrip("/") + "/"
+    package_path = _normalized_url_path(parsed.path)
+    under_base_path = package_path.startswith(base_path)
+    if not same_origin or not under_base_path:
+        raise ValueError("package_url is outside the configured demo-course base")
+
+
+def _normalized_url_path(path: str) -> str:
+    normalized = posixpath.normpath(unquote(path or "/"))
+    if not normalized.startswith("/"):
+        normalized = "/" + normalized
+    return normalized
 
 
 def _guess_filename_from_url(url: str, *, fallback: str) -> str:
@@ -287,6 +361,16 @@ def _coerce_datetime(*values: Any) -> datetime | None:
             return datetime.fromisoformat(normalized)
         except ValueError:
             continue
+    return None
+
+
+def _coerce_sha256(*values: Any) -> str | None:
+    for value in values:
+        if value is None:
+            continue
+        text = str(value).strip().lower()
+        if len(text) == 64 and all(char in "0123456789abcdef" for char in text):
+            return text
     return None
 
 
@@ -323,6 +407,18 @@ def _raise_for_http_status(response: httpx.Response, *, action: str) -> None:
         raise DemoCourseCatalogUnavailableError(
             reason=f"{action}失败（HTTP {exc.response.status_code}）。"
         ) from exc
+
+
+def _validate_remote_content_length(response: httpx.Response) -> None:
+    raw = response.headers.get("content-length")
+    if raw is None:
+        return
+    try:
+        content_length = int(raw)
+    except (TypeError, ValueError):
+        return
+    if content_length > MAX_IMPORT_PACKAGE_BYTES:
+        raise ImportPackageTooLargeError(MAX_IMPORT_PACKAGE_SIZE_MB)
 
 
 __all__ = [

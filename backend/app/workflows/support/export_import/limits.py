@@ -1,0 +1,16 @@
+"""Shared limits for subject package import and demo-course downloads."""
+
+from __future__ import annotations
+
+MAX_IMPORT_PACKAGE_SIZE_MB = 256
+MAX_IMPORT_PACKAGE_BYTES = MAX_IMPORT_PACKAGE_SIZE_MB * 1024 * 1024
+MAX_IMPORT_ARCHIVE_MEMBERS = 5000
+
+UPLOAD_COPY_CHUNK_BYTES = 1024 * 1024
+
+__all__ = [
+    "MAX_IMPORT_ARCHIVE_MEMBERS",
+    "MAX_IMPORT_PACKAGE_BYTES",
+    "MAX_IMPORT_PACKAGE_SIZE_MB",
+    "UPLOAD_COPY_CHUNK_BYTES",
+]
