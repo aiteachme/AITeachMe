@@ -120,6 +120,94 @@ export function ExamPaperWorkspace({ subjectId, paperId, backHref }: ExamPaperWo
     );
   }, [paper?.id, paper?.items, paper?.status]);
 
+  useEffect(() => {
+    if (!isReviewLayout || !paper?.items?.length) return;
+
+    const itemByOrder = new Map(
+      (paper.items ?? []).map((item: ExamPaperItemResponse) => [item.item_order, item]),
+    );
+    let frameId = 0;
+    const questionSelector = "[data-question-anchor='true'][data-question-order]";
+    const getQuestionNodes = () => Array.from(
+      document.querySelectorAll<HTMLElement>(questionSelector),
+    );
+
+    const getScrollContainers = () => {
+      const containers = new Set<EventTarget>([window]);
+      const main = document.querySelector("main");
+      if (main instanceof HTMLElement) {
+        containers.add(main);
+      }
+
+      for (const node of getQuestionNodes()) {
+        let parent = node.parentElement;
+        while (parent && parent !== document.body) {
+          const style = window.getComputedStyle(parent);
+          const canScrollY = /(auto|scroll|overlay)/.test(style.overflowY);
+          if (canScrollY && parent.scrollHeight > parent.clientHeight + 1) {
+            containers.add(parent);
+          }
+          parent = parent.parentElement;
+        }
+      }
+      return containers;
+    };
+
+    const updateSelectedFromViewport = () => {
+      frameId = 0;
+      const questionNodes = getQuestionNodes();
+      const viewportTop = 96;
+      const viewportBottom = window.innerHeight;
+      const focusY = Math.max(viewportTop + 80, Math.min(window.innerHeight * 0.38, viewportBottom - 120));
+      let bestMatch: { item: ExamPaperItemResponse; distance: number } | null = null;
+
+      for (const node of questionNodes) {
+        const order = Number(node.dataset.questionOrder);
+        const item = itemByOrder.get(order);
+        if (!item) continue;
+
+        const rect = node.getBoundingClientRect();
+        if (rect.bottom <= viewportTop || rect.top >= viewportBottom) continue;
+
+        const distance = rect.top <= focusY && rect.bottom >= focusY
+          ? 0
+          : Math.min(Math.abs(rect.top - focusY), Math.abs(rect.bottom - focusY));
+        if (!bestMatch || distance < bestMatch.distance) {
+          bestMatch = { item, distance };
+        }
+      }
+
+      if (!bestMatch) return;
+      setSelectedReviewItemId((current) => (
+        current === bestMatch.item.id ? current : bestMatch.item.id
+      ));
+    };
+
+    const scheduleUpdate = () => {
+      if (frameId) return;
+      frameId = window.requestAnimationFrame(updateSelectedFromViewport);
+    };
+
+    scheduleUpdate();
+    const scrollContainers = getScrollContainers();
+    const scrollOptions: AddEventListenerOptions = { passive: true, capture: true };
+    for (const container of scrollContainers) {
+      container.addEventListener("scroll", scheduleUpdate, scrollOptions);
+    }
+    document.addEventListener("scroll", scheduleUpdate, scrollOptions);
+    window.addEventListener("resize", scheduleUpdate);
+    return () => {
+      for (const container of scrollContainers) {
+        container.removeEventListener("scroll", scheduleUpdate, scrollOptions);
+      }
+      document.removeEventListener("scroll", scheduleUpdate, scrollOptions);
+      window.removeEventListener("resize", scheduleUpdate);
+      if (frameId) {
+        window.cancelAnimationFrame(frameId);
+      }
+    };
+  }, [isReviewLayout, paper?.items]);
+
   const studyGuideQuery = useQuery({
     queryKey: ["exam-study-guide", subjectId, paperId],
     enabled: Boolean(subjectId && paperId && paper?.status === "graded" && activeStage === 3),

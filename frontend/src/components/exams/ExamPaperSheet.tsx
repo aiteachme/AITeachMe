@@ -1,13 +1,10 @@
 import type { Dispatch, SetStateAction } from "react";
-import { AlertTriangle, Bookmark, Lightbulb, MessageSquareText, Tags } from "lucide-react";
+import { AlertTriangle, Bookmark, Lightbulb, MessageSquareText } from "lucide-react";
 
 import type { ExamPaperDetailResponse, ExamPaperItemResponse, PaperPreviewRow } from "../../api/generated/model";
 import { cn } from "../../lib/utils";
 import { ExamMarkdown } from "./ExamMarkdown";
 import {
-  buildKnowledgeLabel,
-  formatDifficultyLabel,
-  formatQuestionTypeLabel,
   getAnsweredCount,
   getEstimatedExamMinutes,
   getExamPaperDisplayTitle,
@@ -110,10 +107,6 @@ function buildQuestionEntries(
     }));
 }
 
-function formatQuestionType(type: string) {
-  return formatQuestionTypeLabel(type);
-}
-
 function GeneratingQuestionPlaceholder({ row }: { row: PaperPreviewRow }) {
   const isFailed = row.generation_status === "failed";
   const isChoice =
@@ -144,20 +137,14 @@ function GeneratingQuestionPlaceholder({ row }: { row: PaperPreviewRow }) {
         </aside>
 
         <div className="min-w-0 overflow-hidden">
-          <div className="mb-4 flex flex-wrap items-center gap-2">
-            <span className="inline-flex rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600">
-              {formatQuestionType(row.type)}
-            </span>
-            <span className="inline-flex rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-500">
-              {formatDifficultyLabel(row.difficulty)}
-            </span>
-            {isFailed ? (
+          {isFailed ? (
+            <div className="mb-4 flex flex-wrap items-center gap-2">
               <span className="inline-flex items-center gap-1 rounded-full bg-rose-50 px-2.5 py-1 text-xs font-semibold text-rose-700">
                 <AlertTriangle className="h-3.5 w-3.5" />
                 生成失败
               </span>
-            ) : null}
-          </div>
+            </div>
+          ) : null}
 
           {isFailed ? (
             <div className="rounded-xl border border-rose-200 bg-rose-50 px-5 py-6 text-sm leading-7 text-rose-700 sm:px-6">
@@ -340,21 +327,6 @@ export function ExamPaperSheet({
                             <div className="break-words font-serif text-base font-semibold leading-8 text-slate-950 sm:text-lg [&_p]:mb-0 [&_p]:leading-8 [&_.katex-display]:my-4 [&_.katex]:text-inherit">
                               <ExamMarkdown content={item.stem} />
                             </div>
-                            {isReviewStage && (
-                              <div className="mt-4 flex flex-wrap items-center gap-2 text-sm">
-                                <span className="inline-flex rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-500">
-                                  {formatDifficultyLabel(item.difficulty)}
-                                </span>
-                                <span className="inline-flex rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-500">
-                                  {formatQuestionTypeLabel(item.question_type)}
-                                </span>
-                                <span className="mx-1 hidden h-4 w-px bg-slate-200 sm:inline-flex" />
-                                <span className="inline-flex max-w-full items-start gap-1.5 rounded-md border border-slate-200 bg-slate-50 px-2.5 py-1 font-semibold text-slate-500">
-                                  <Tags className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                                  <span className="min-w-0 break-words">{buildKnowledgeLabel(item)}</span>
-                                </span>
-                              </div>
-                            )}
                           {isChoice ? (
                             <div
                               className="mt-6 grid gap-3"

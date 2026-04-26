@@ -19,6 +19,7 @@ _LATEX_FORMAT_RULES = (
 
 _QUESTION_TYPE_FORMAT_RULES = (
     "\nQuestion type formatting rules:\n"
+    "- The stem must contain only the problem statement; never duplicate or embed options inside stem.\n"
     "- Use one canonical choice format only: options must be a JSON array of strings, never an object/map.\n"
     "- Choice options must be exactly 4 plain option texts in order; never prefix options with A/B/C/D labels.\n"
     "- single_choice: provide exactly 4 distinct options and correct_indices with exactly one zero-based index, for example `[0]`.\n"
