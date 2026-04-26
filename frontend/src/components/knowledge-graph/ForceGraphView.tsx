@@ -489,7 +489,7 @@ export function ForceGraphView({
 
   return (
     <div className="flex h-full min-h-[520px] flex-col gap-0 lg:min-h-[640px] lg:flex-row">
-      {/* 鈹€鈹€ Graph Panel 鈹€鈹€ */}
+      {/* Graph panel */}
       <div className="relative min-h-[420px] min-w-0 flex-1 lg:min-h-[640px]">
         <div ref={containerRef} className="absolute inset-0">
           <svg ref={svgRef} className="h-full w-full" />
@@ -499,7 +499,7 @@ export function ForceGraphView({
         <div className="pointer-events-auto absolute left-3 top-3 z-10 flex max-w-[calc(100%-1.5rem)] flex-wrap items-center gap-2">
           {toolbar}
           <span className="rounded-full bg-white/90 px-2.5 py-1 text-[10px] font-medium text-slate-500 shadow-sm ring-1 ring-slate-200/60">
-            {nodeCount} 鑺傜偣 路 {edgeCount} 杈?
+            {nodeCount} 节点 · {edgeCount} 边
           </span>
           <button
             onClick={() => setShowEdgeLabels((v) => !v)}
@@ -508,7 +508,7 @@ export function ForceGraphView({
             <span className="inline-block h-3.5 w-7 rounded-full p-0.5 transition-colors" style={{ backgroundColor: showEdgeLabels ? "#8b5cf6" : "#d1d5db" }}>
               <span className="block h-2.5 w-2.5 rounded-full bg-white shadow transition-transform" style={{ transform: showEdgeLabels ? "translateX(14px)" : "translateX(0)" }} />
             </span>
-            杈规爣绛?
+            边标签
           </button>
         </div>
 
