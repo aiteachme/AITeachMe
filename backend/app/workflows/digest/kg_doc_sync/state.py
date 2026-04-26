@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TypedDict
 
-from app.workflows.digest.kg_doc_sync.lib.incremental_sync import (
+from app.workflows.digest.kg_doc_sync.lib.models import (
     KnowledgeSyncExtractionPayload,
     KnowledgeSyncReport,
     KnowledgeSyncRunContext,

@@ -5,7 +5,7 @@ from __future__ import annotations
 import structlog
 
 from app.shared.infra.database import managed_session
-from app.workflows.digest.kg_doc_sync.lib.incremental_sync import mark_knowledge_graph_sync_run_failed
+from app.workflows.digest.kg_doc_sync.lib.sync_runs import mark_knowledge_graph_sync_run_failed
 from app.workflows.digest.kg_doc_sync.state import DocsSyncState
 
 logger = structlog.get_logger()

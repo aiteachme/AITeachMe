@@ -48,6 +48,7 @@ image_generation -> settings.models.image_generation（默认未配置）
 - 路由层仍保留 `extract` 兼容别名，但新代码不应继续把它当模型槽位使用。
 - `kg_doc_sync` 的 LangGraph 节点本身不直接写死模型，LLM 调用集中在复用的 extractor 内部；`call_purpose + model slot + max_tokens` 统一由 `kg_doc_sync/lib/model_policy.py` 维护。
 - Prompt 文件按真实调用拆分：章节图谱抽取在 `prompts/section_graph.py`，题目 fallback 概念识别在 `prompts/question_concepts.py`，导出聚合在 `prompts/registry.py`。
+- 核心 lib 按职责拆分：`models.py` 放 state/report 数据合同，`sync_runs.py` 放同步批次状态写入，`candidate_quality.py` 放候选过滤规则，`question_blocks.py` 只保留题目 fallback 需要的题块解析。
 
 按当前代码，KG docs-sync 各阶段的大模型使用如下：
 
@@ -62,7 +63,7 @@ image_generation -> settings.models.image_generation（默认未配置）
 | `_extract_chapter_graph_items` 主抽取 | `kg_doc_sync/lib/incremental_sync.py` -> `kg_doc_sync/lib/extraction.py` | 结构化 | `EXTRACT` | `light` | `qwen-flash` | 从单章 Markdown 抽取候选 KnowledgeUnit 和关系 |
 | `_repair_docs_extraction_after_empty` | `kg_doc_sync/lib/extraction.py` | 结构化 | `EXTRACT` | `light` | `qwen-flash` | 当 docs-sync 主抽取为空时做一次极短修复抽取 |
 | `_llm_extract_concepts_from_questions` | `kg_doc_sync/lib/extraction.py` | 结构化 | `DOCGEN_LIGHT` | `light` | `qwen-flash` | 题目密集内容下从题干反推少量概念/方法 |
-| `_filter_docs_candidate_result` | `kg_doc_sync/lib/incremental_sync.py` | 无 LLM | 无 | 无 | 无 | 丢弃学习目标、题型例练、速判口诀、计划句等非知识点 |
+| `filter_docs_candidate_result` | `kg_doc_sync/lib/candidate_quality.py` | 无 LLM | 无 | 无 | 无 | 丢弃学习目标、题型例练、速判口诀、计划句等非知识点 |
 | `_build_backbone_graph_items` | `kg_doc_sync/lib/incremental_sync.py` | 无 LLM | 无 | 无 | 无 | 把 DocGen `document_backbone` 的 glossary/dependency 转成保底节点和边 |
 | `_build_structural_heading_edges` | `kg_doc_sync/lib/incremental_sync.py` | 无 LLM | 无 | 无 | 无 | 用标题层级补结构边 |
 | `_build_cross_section_semantic_edges` | `kg_doc_sync/lib/incremental_sync.py` | 无 LLM | 无 | 无 | 无 | 基于节点上下文补跨章节语义边 |
@@ -389,7 +390,7 @@ _extract_chapter_graph_items
     - topic fallback：LLM 报错或空结果时，用语义标题路径兜底。
     - question fallback：题目密集内容下从题干反推概念/方法。
   过滤：
-    - `_filter_docs_candidate_result` 会丢弃明显不是知识点的候选。
+    - `candidate_quality.filter_docs_candidate_result` 会丢弃明显不是知识点的候选。
     - 典型拒绝项：学习目标、章节导读、本章自检、考前复盘、题型例练、速判口诀、解题入口、解题模板、题干句、任务句、规划句、模块权重排序、知识组合策略等。
   重要边界：
     - LLM 负责语义候选。

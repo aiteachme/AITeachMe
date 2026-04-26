@@ -19,7 +19,7 @@ from app.workflows.digest.kg_doc_sync.lib.model_policy import (
     kg_doc_sync_completion_kwargs_with_metadata,
 )
 from app.workflows.digest.kg_doc_sync.lib.candidate_identity import build_candidate_stable_id
-from app.workflows.digest.kg_doc_sync.lib.chunker import QuestionBlock, parse_question_blocks
+from app.workflows.digest.kg_doc_sync.lib.question_blocks import QuestionBlock, parse_question_blocks
 from app.models.knowledge_taxonomy import (
     normalize_knowledge_unit_type,
     normalize_relation_type,

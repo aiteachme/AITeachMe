@@ -6,6 +6,7 @@ from app.models.knowledge_doc import KnowledgeDocument
 from app.models.knowledge_graph_sync import KnowledgeGraphSourceRef, KnowledgeGraphSyncRun
 from app.models.knowledge_relation import KnowledgeEdge
 from app.models.knowledge_unit import KnowledgeUnit
+from app.workflows.digest.kg_doc_sync.lib.candidate_quality import is_low_quality_docs_unit_name
 from app.workflows.digest.kg_doc_sync.lib.extraction import CandidateNode, ChunkExtractionResult
 import app.workflows.digest.kg_doc_sync.lib.incremental_sync as incremental_sync
 from app.workflows.digest.kg_doc_sync.lib.incremental_sync import sync_markdown_knowledge_graph
@@ -51,32 +52,32 @@ def _docgen_context(*, doc_version_no: int = 3) -> dict[str, object]:
 
 
 def test_docs_sync_rejects_outline_titles_and_speedrun_wrappers():
-    assert incremental_sync._is_low_quality_docs_unit_name(
+    assert is_low_quality_docs_unit_name(
         "一、 一元一次方程建模路径与速判技巧",
         node_type="example",
     )
-    assert incremental_sync._is_low_quality_docs_unit_name("速判技巧", node_type="method")
-    assert incremental_sync._is_low_quality_docs_unit_name("找已知边角关系", node_type="method")
-    assert incremental_sync._is_low_quality_docs_unit_name(
+    assert is_low_quality_docs_unit_name("速判技巧", node_type="method")
+    assert is_low_quality_docs_unit_name("找已知边角关系", node_type="method")
+    assert is_low_quality_docs_unit_name(
         "力学、热学、光学、电学与磁学的主干划分",
         node_type="concept",
     )
-    assert incremental_sync._is_low_quality_docs_unit_name(
+    assert is_low_quality_docs_unit_name(
         "各模块在考试中的权重与认知难度排序",
         node_type="concept",
     )
-    assert incremental_sync._is_low_quality_docs_unit_name(
+    assert is_low_quality_docs_unit_name(
         "实验设计与现象解释的对应关系",
         node_type="concept",
     )
-    assert incremental_sync._is_low_quality_docs_unit_name(
+    assert is_low_quality_docs_unit_name(
         "从现象观察到原理的完整推导链条",
         node_type="concept",
     )
-    assert not incremental_sync._is_low_quality_docs_unit_name("重力", node_type="concept")
-    assert not incremental_sync._is_low_quality_docs_unit_name("权重", node_type="concept")
-    assert not incremental_sync._is_low_quality_docs_unit_name("优先级队列", node_type="concept")
-    assert not incremental_sync._is_low_quality_docs_unit_name("W = F s cosθ", node_type="formula")
+    assert not is_low_quality_docs_unit_name("重力", node_type="concept")
+    assert not is_low_quality_docs_unit_name("权重", node_type="concept")
+    assert not is_low_quality_docs_unit_name("优先级队列", node_type="concept")
+    assert not is_low_quality_docs_unit_name("W = F s cosθ", node_type="formula")
 
 
 def test_docs_sync_uses_docgen_backbone_and_source_refs(monkeypatch):
