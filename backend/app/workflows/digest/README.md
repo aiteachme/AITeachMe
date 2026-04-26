@@ -25,7 +25,7 @@ digest/
 - `kg_docs_sync/`
   负责知识文档和知识图谱的正式同步链路
 - `common/`
-  放跨 lane 共用能力，例如 events、exports、contracts、prepare、material profile、metrics、runtime config、pedagogy
+  放跨 lane 共用能力，例如 events、exports、contracts、prepare、material profile、metrics、runtime config、file status、pedagogy
   以及 subject 级知识产物清理 `cleanup.py`
 - `workflows/support/knowledge_graph/`
   图谱触发、状态更新、总览和查询的 API-facing 用例；不属于 `digest/` 下的新 lane
