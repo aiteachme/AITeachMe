@@ -24,7 +24,7 @@ digest/
 - `docgen/`
   负责根据 confirmed plan 生成知识文档
 - `kg_file_ingest/`
-  历史调试链路，不再作为产品图谱构建入口；短期仅保留 extractor 复用
+  历史调试链路，不再作为产品图谱构建入口；短期仅保留 extractor 复用，后续迁出 extractor 后删除旧 workflow 壳
 - `kg_docs_sync/`
   负责知识文档和知识图谱的正式同步链路
 - `common/`
@@ -63,6 +63,7 @@ from app.workflows.digest.planner import (
 - `planner -> docgen`
 - `docgen publish -> kg_docs_sync`
 
-`kg_file_ingest` 只保留为 legacy/debug-only 包；不要从上层继续调用它的 workflow。
+`kg_file_ingest` 只保留为 legacy/debug-only 包；不要从上层继续调用它的 workflow。后续删除顺序是先迁出
+`lib/extractor.py` 到中性包，再删除旧 workflow 壳。
 
 如果要看具体编排，优先进入各链路下的 `graph.py`、`state.py`；API-facing 构建入口优先看对应 lane 的 `lib/*lifecycle*.py`
