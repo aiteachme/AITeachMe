@@ -49,7 +49,7 @@ def test_export_packs_docgen_cover_but_not_derived_merged_markdown(tmp_path, mon
         assert "knowledge/merged_knowledge_base.md" not in names
 
 
-def test_export_does_not_pack_original_raw_files_even_if_requested(tmp_path, monkeypatch) -> None:
+def test_export_does_not_pack_raw_storage_files_even_if_requested(tmp_path, monkeypatch) -> None:
     monkeypatch.setattr(exports, "get_content_store", lambda: _FakeContentStore())
     output = tmp_path / "subject.zip"
     raw_file = RawFile(
@@ -66,12 +66,13 @@ def test_export_does_not_pack_original_raw_files_even_if_requested(tmp_path, mon
         exports._pack_files(
             zf,
             "users/local/subjects/math",
-            ExportOptions(include_raw_files=True, include_raw_markdowns=False),
+            ExportOptions(include_raw_files=True, include_raw_markdowns=True),
             raw_files=[raw_file],
         )
 
     with zipfile.ZipFile(output, "r") as zf:
         assert not any(name.startswith("files/raw_files/") for name in zf.namelist())
+        assert not any(name.startswith("files/raw_markdowns/") for name in zf.namelist())
 
 
 def test_export_options_skip_unselected_db_groups() -> None:
@@ -104,6 +105,15 @@ def test_include_raw_files_flag_no_longer_exports_raw_metadata() -> None:
 
     assert not exports._should_export(specs["raw_file"], options)
     assert not exports._should_export(specs["subject_file"], options)
+
+
+def test_default_export_options_include_parsed_source_metadata() -> None:
+    options = ExportOptions()
+    specs = {spec.name: spec for spec in exports.TABLE_REGISTRY}
+
+    assert options.include_raw_markdowns
+    assert exports._should_export(specs["raw_file"], options)
+    assert exports._should_export(specs["retrieval_chunk"], options)
 
 
 def test_export_filename_uses_subject_name_and_id() -> None:

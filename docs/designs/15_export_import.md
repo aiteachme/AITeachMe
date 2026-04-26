@@ -65,9 +65,6 @@ subject_export.atmx (ZIP)
 │   ├── user_knowledge_state.json
 │   ├── chat_session.json
 │   └── chat_message.json
-├── files/                     # 可选解析缓存，不包含原始上传文件
-│   └── raw_markdowns/
-│       └── <file_id>/markdown.md
 ├── knowledge/                 # 非 DB 知识文档资产
 │   └── cover.png              # 可选，章节正文从 DB 记录恢复
 └── exam/                      # 考试导出产物（如有）
@@ -111,7 +108,7 @@ subject_export.atmx (ZIP)
   },
   "options": {
     "include_raw_files": false,
-    "include_raw_markdowns": false,
+    "include_raw_markdowns": true,
     "include_knowledge_docs": true,
     "include_chat_history": true,
     "include_exam_history": true,
@@ -147,7 +144,7 @@ subject_export.atmx (ZIP)
 | 数据 | 选项字段 | 默认 | 说明 |
 | --- | --- | --- | --- |
 | 原始文件二进制 | `include_raw_files` | ❌ | 兼容旧 API 字段；当前不再打包 PDF/DOCX/PPT 等原始上传文件 |
-| 解析后 Markdown | `include_raw_markdowns` | ❌ | ingest 产出的原始 Markdown 与检索切块，用于内部迁移场景 |
+| 资料解析缓存 | `include_raw_markdowns` | ✅ | `raw_file.markdown_content` 与 `retrieval_chunk`；不再重复打包 `files/raw_markdowns/*.md` |
 | 知识文档 | `include_knowledge_docs` | ✅ | `knowledge_document` 表中的章节正文与封面资产 |
 | 聊天记录 | `include_chat_history` | ✅ | `chat_session` + `chat_message` |
 | 题库与考试记录 | `include_exam_history` | ✅ | `question_template` + `exam_paper` + `exam_paper_item` |
@@ -155,7 +152,7 @@ subject_export.atmx (ZIP)
 
 **常见用法**：
 
-- **教师分发预构建课程包**：关闭 `include_raw_markdowns`、`include_chat_history`、`include_profile`，只保留知识文档和图谱
+- **教师分发预构建课程包**：默认可保留 `include_raw_markdowns`，如不想携带资料解析记录可关闭；通常关闭 `include_chat_history`、`include_profile`
 - **设备迁移/完整备份**：按需打开解析缓存、对话、考试与画像；原始上传文件仍不导出
 - **只分享构建结果**：保持 `include_raw_files=false` 且关闭 `include_raw_markdowns`
 
@@ -188,7 +185,7 @@ POST /api/v1/subjects/{subject}/export            — 下载导出包
 ```json
 {
   "include_raw_files": false,
-  "include_raw_markdowns": false,
+  "include_raw_markdowns": true,
   "include_knowledge_docs": true,
   "include_chat_history": true,
   "include_exam_history": true,

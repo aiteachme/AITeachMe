@@ -21,7 +21,6 @@ from sqlmodel import Session, SQLModel, func, select
 
 from app.shared.infra.runtime import get_app_version, is_cloud_mode
 from app.shared.infra.storage import (
-    build_file_storage_segment,
     build_subject_storage_scope,
     get_content_store,
     run_store_sync,
@@ -698,20 +697,6 @@ def _pack_files(
         guessed_type, _ = mimetypes.guess_type(latest_cover_key)
         extension = mimetypes.guess_extension(guessed_type or "") or Path(latest_cover_key).suffix or ".png"
         zf.writestr(f"knowledge/cover{extension}", data)
-
-    def _pack_key(key: str | None, archive_name: str) -> None:
-        if not key:
-            return
-        data = run_store_sync(cs.read_bytes, key, default=None)
-        if data is not None:
-            zf.writestr(archive_name, data)
-
-    if options.include_raw_markdowns:
-        for raw_file in raw_files:
-            if raw_file.id is None:
-                continue
-            file_segment = build_file_storage_segment(file_uid=raw_file.uid, filename=raw_file.filename)
-            _pack_key(raw_file.markdown_path, f"files/raw_markdowns/{file_segment}/markdown.md")
 
     # KnowledgeDocument rows already carry the published markdown content. The package only
     # needs non-DB docgen assets such as the cover image.

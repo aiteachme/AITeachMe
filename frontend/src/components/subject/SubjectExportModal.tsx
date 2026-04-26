@@ -12,16 +12,11 @@ import { useToast } from "../ui/Toast";
 
 const DEFAULT_EXPORT_OPTIONS: Required<ExportOptions> = {
   include_raw_files: false,
-  include_raw_markdowns: false,
+  include_raw_markdowns: true,
   include_knowledge_docs: true,
   include_chat_history: true,
   include_exam_history: true,
   include_profile: true,
-};
-
-const PREVIEW_EXPORT_OPTIONS: Required<ExportOptions> = {
-  ...DEFAULT_EXPORT_OPTIONS,
-  include_raw_markdowns: true,
 };
 
 type ExportOptionKey = keyof Required<ExportOptions>;
@@ -35,7 +30,7 @@ async function fetchExportPreview(subject: string): Promise<ExportPreviewData> {
   const response = await apiClient<ApiResponse<ExportPreviewData>>({
     method: "POST",
     url: `/api/v1/subjects/${encodeURIComponent(subject)}/export/preview`,
-    data: PREVIEW_EXPORT_OPTIONS,
+    data: DEFAULT_EXPORT_OPTIONS,
   });
   if (!response.data) {
     throw new Error("导出预览为空");
@@ -70,7 +65,7 @@ export function SubjectExportModal({ subjectId, onClose }: SubjectExportModalPro
       {
         key: "include_raw_markdowns" as const,
         title: "资料解析缓存",
-        description: "解析 Markdown 与检索切片；演示课程通常不需要",
+        description: "资料记录、解析 Markdown 字段与检索切片",
         count: stats?.raw_file_count ?? 0,
         icon: FileText,
       },
