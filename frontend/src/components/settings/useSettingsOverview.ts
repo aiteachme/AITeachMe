@@ -49,6 +49,7 @@ export function useSettingsOverview({ isOpen }: UseSettingsOverviewOptions) {
   const [envDraft, setEnvDraft] = useState<DraftRecord>({});
   const [savedEnvDraft, setSavedEnvDraft] = useState<DraftRecord>({});
   const [defaultEnvDraft, setDefaultEnvDraft] = useState<DraftRecord>({});
+  const [resetRequested, setResetRequested] = useState(false);
 
   const [saveState, setSaveState] = useState<SaveState>("idle");
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -68,6 +69,7 @@ export function useSettingsOverview({ isOpen }: UseSettingsOverviewOptions) {
     setEnvDraft(nextEnvDraft);
     setSavedEnvDraft(nextEnvDraft);
     setDefaultEnvDraft(draftFromEntries(envEntries, "default_value"));
+    setResetRequested(false);
   }, []);
 
   useEffect(() => {
@@ -116,6 +118,7 @@ export function useSettingsOverview({ isOpen }: UseSettingsOverviewOptions) {
 
   const patchServerSetting = useCallback(
     (key: string, value: DraftRecord[string]) => {
+      setResetRequested(false);
       setSettingsDraft((prev) => (prev[key] === value ? prev : { ...prev, [key]: value }));
     },
     [],
@@ -123,6 +126,7 @@ export function useSettingsOverview({ isOpen }: UseSettingsOverviewOptions) {
 
   const patchEnvSetting = useCallback(
     (key: string, value: DraftRecord[string]) => {
+      setResetRequested(false);
       setEnvDraft((prev) => (prev[key] === value ? prev : { ...prev, [key]: value }));
     },
     [],
@@ -131,6 +135,7 @@ export function useSettingsOverview({ isOpen }: UseSettingsOverviewOptions) {
   const resetServerDrafts = useCallback(() => {
     setSettingsDraft(defaultSettingsDraft);
     setEnvDraft(defaultEnvDraft);
+    setResetRequested(true);
     setSaveError(null);
   }, [defaultSettingsDraft, defaultEnvDraft]);
 
@@ -144,7 +149,7 @@ export function useSettingsOverview({ isOpen }: UseSettingsOverviewOptions) {
     setSaveState("saving");
     setSaveError(null);
     try {
-      const reset = sameDraft(settingsDraft, defaultSettingsDraft);
+      const reset = resetRequested;
       const response = await apiClient<ApiEnvelope<SettingsOverviewData>>({
         url: "/api/v1/system/settings",
         method: "PATCH",
@@ -175,6 +180,7 @@ export function useSettingsOverview({ isOpen }: UseSettingsOverviewOptions) {
     hasEnvChanges,
     hasServerChanges,
     savedEnvDraft,
+    resetRequested,
     settingsDraft,
   ]);
 

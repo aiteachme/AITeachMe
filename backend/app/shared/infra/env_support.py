@@ -3,13 +3,13 @@
 This module does not model environment variables as one global settings object.
 It only:
 1. loads repo-local `.env` into `os.environ`
-2. provides a few typed parsing helpers
+2. lets local DB settings override selected env keys at runtime
+3. provides a few typed parsing helpers
 """
 
 from __future__ import annotations
 
 import os
-import re
 import secrets
 from functools import lru_cache
 from pathlib import Path
@@ -21,7 +21,9 @@ _PROJECT_ROOT = Path(__file__).resolve().parents[4]
 _BACKEND_ROOT = _PROJECT_ROOT / "backend"
 _TRUTHY_VALUES = {"1", "true", "yes", "on"}
 _FALSY_VALUES = {"0", "false", "no", "off"}
-_ENV_LINE_RE = re.compile(r"^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=")
+_MISSING_ENV_VALUE = object()
+_RUNTIME_ENV_OVERRIDES: dict[str, str] = {}
+_RUNTIME_ENV_BASE_VALUES: dict[str, str | object] = {}
 
 
 def _configured_data_dir() -> Path | None:
@@ -75,10 +77,44 @@ def load_local_dotenv() -> None:
 
 def get_env(name: str, default: str | None = None) -> str | None:
     load_local_dotenv()
+    if name in _RUNTIME_ENV_OVERRIDES:
+        return _RUNTIME_ENV_OVERRIDES[name]
     value = os.getenv(name)
     if value is None:
         return default
     return value
+
+
+def set_runtime_env_overrides(overrides: Mapping[str, str | None] | None) -> None:
+    """Apply DB-backed local runtime env overrides to this process."""
+
+    load_local_dotenv()
+    normalized = {
+        str(key).strip(): "" if value is None else str(value)
+        for key, value in dict(overrides or {}).items()
+        if str(key or "").strip()
+    }
+
+    previous_keys = set(_RUNTIME_ENV_OVERRIDES)
+    next_keys = set(normalized)
+
+    for key in previous_keys - next_keys:
+        base_value = _RUNTIME_ENV_BASE_VALUES.pop(key, _MISSING_ENV_VALUE)
+        if base_value is _MISSING_ENV_VALUE:
+            os.environ.pop(key, None)
+        else:
+            os.environ[key] = str(base_value)
+
+    for key, value in normalized.items():
+        if key not in _RUNTIME_ENV_BASE_VALUES:
+            _RUNTIME_ENV_BASE_VALUES[key] = os.environ.get(key, _MISSING_ENV_VALUE)
+        if value.strip():
+            os.environ[key] = value
+        else:
+            os.environ.pop(key, None)
+
+    _RUNTIME_ENV_OVERRIDES.clear()
+    _RUNTIME_ENV_OVERRIDES.update(normalized)
 
 
 def get_env_list(name: str, default: list[str] | None = None) -> list[str]:
@@ -171,63 +207,6 @@ def describe_project_settings_source() -> str:
     return str(path) if path is not None else PROJECT_SETTINGS_SOURCE_LABEL
 
 
-def resolve_writable_local_env_path() -> Path:
-    data_dir = _configured_data_dir()
-    if data_dir is not None:
-        return data_dir / ".env"
-
-    for path in _dotenv_candidates():
-        if path.exists():
-            return path
-    return _PROJECT_ROOT / ".env"
-
-
-def write_local_env_updates(updates: Mapping[str, str | None]) -> Path:
-    path = resolve_writable_local_env_path()
-    path.parent.mkdir(parents=True, exist_ok=True)
-
-    try:
-        existing_lines = path.read_text(encoding="utf-8").splitlines()
-    except FileNotFoundError:
-        existing_lines = []
-
-    pending = {key: (None if value is None else str(value)) for key, value in updates.items()}
-    new_lines: list[str] = []
-
-    for line in existing_lines:
-        match = _ENV_LINE_RE.match(line)
-        if not match:
-            new_lines.append(line)
-            continue
-
-        env_key = match.group(1)
-        if env_key not in pending:
-            new_lines.append(line)
-            continue
-
-        value = pending.pop(env_key)
-        if value is None or not value.strip():
-            continue
-        new_lines.append(f"{env_key}={value}")
-
-    for env_key, value in pending.items():
-        if value is None or not value.strip():
-            continue
-        new_lines.append(f"{env_key}={value}")
-
-    content = "\n".join(new_lines).rstrip()
-    path.write_text(f"{content}\n" if content else "", encoding="utf-8")
-
-    load_local_dotenv.cache_clear()
-    for env_key, value in updates.items():
-        if value is None or not str(value).strip():
-            os.environ.pop(env_key, None)
-        else:
-            os.environ[env_key] = str(value)
-
-    return path
-
-
 __all__ = [
     "get_env",
     "get_env_bool",
@@ -240,6 +219,5 @@ __all__ = [
     "load_local_dotenv",
     "describe_project_settings_source",
     "resolve_project_settings_path",
-    "resolve_writable_local_env_path",
-    "write_local_env_updates",
+    "set_runtime_env_overrides",
 ]

@@ -6,11 +6,14 @@ import re
 import yaml
 
 from app.shared.infra.settings import (
+    combine_runtime_settings_payload,
     get_default_settings_values,
     get_project_settings,
     merge_default_settings,
     reset_project_settings_cache,
+    split_runtime_settings_payload,
 )
+from app.shared.infra.env_support import get_env, set_runtime_env_overrides
 from app.shared.infra.settings.support import (
     detect_llm_provider_from_base_url,
     get_llm_provider_model_defaults,
@@ -233,6 +236,37 @@ def test_settings_upgrade_legacy_extract_and_rerank_keys() -> None:
     assert "extract" not in upgraded["models"]
     assert upgraded["models"]["rerank"] == "qwen3-reranker-4b"
     assert "rerank_model" not in upgraded["rag"]
+
+
+def test_runtime_payload_keeps_env_overrides_outside_settings_schema() -> None:
+    payload = combine_runtime_settings_payload(
+        {"models": {"primary": "demo-model"}},
+        {"LLM_API_KEY": "local-key", "MINERU_API_TOKEN": ""},
+    )
+
+    settings_payload, env_overrides = split_runtime_settings_payload(payload)
+
+    assert settings_payload == {"models": {"primary": "demo-model"}}
+    assert env_overrides == {"LLM_API_KEY": "local-key", "MINERU_API_TOKEN": ""}
+
+
+def test_runtime_env_overrides_win_per_key(monkeypatch) -> None:
+    monkeypatch.setenv("MINERU_API_TOKEN", "env-token")
+    set_runtime_env_overrides({})
+
+    try:
+        assert get_env("MINERU_API_TOKEN") == "env-token"
+
+        set_runtime_env_overrides({"MINERU_API_TOKEN": "db-token"})
+        assert get_env("MINERU_API_TOKEN") == "db-token"
+
+        set_runtime_env_overrides({"MINERU_API_TOKEN": ""})
+        assert get_env("MINERU_API_TOKEN") == ""
+
+        set_runtime_env_overrides({})
+        assert get_env("MINERU_API_TOKEN") == "env-token"
+    finally:
+        set_runtime_env_overrides({})
 
 
 def test_env_samples_cover_exposed_env_keys() -> None:
