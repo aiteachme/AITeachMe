@@ -47,6 +47,7 @@ DEFAULT_SETTINGS_VALUES: dict[str, Any] = {
     "ingest": {
         "max_upload_size_mb": 10,
         "max_files_per_upload": 10,
+        "parser_provider": "local",
     },
     "rag": {
         "top_k": 5,

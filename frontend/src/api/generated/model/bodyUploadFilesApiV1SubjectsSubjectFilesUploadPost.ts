@@ -10,6 +10,7 @@ export interface BodyUploadFilesApiV1SubjectsSubjectFilesUploadPost {
   files: Blob[];
   parser_provider?: string | null;
   mineru_api_token?: string | null;
+  paddle_ocr_api_token?: string | null;
   mineru_model_version?: string | null;
   mineru_enable_formula?: boolean | null;
   mineru_enable_table?: boolean | null;

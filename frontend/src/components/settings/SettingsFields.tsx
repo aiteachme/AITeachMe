@@ -51,13 +51,15 @@ export function SectionDivider({ label, compact = false }: SectionDividerProps) 
 
 interface FieldLabelBlockProps {
   label: string;
-  description?: string;
+  description?: ReactNode;
+  helper?: ReactNode;
   htmlFor?: string;
 }
 
 export function FieldLabelBlock({
   label,
   description,
+  helper,
   htmlFor,
 }: FieldLabelBlockProps) {
   const LabelTag = htmlFor ? "label" : "span";
@@ -69,6 +71,7 @@ export function FieldLabelBlock({
       {description ? (
         <p className={SETTINGS_STYLES.field.description}>{description}</p>
       ) : null}
+      {helper ? <div className="mt-2">{helper}</div> : null}
     </div>
   );
 }

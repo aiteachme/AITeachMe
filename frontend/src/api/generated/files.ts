@@ -607,6 +607,9 @@ if(bodyUploadFilesApiV1SubjectsSubjectFilesUploadPost.parser_provider !== undefi
 if(bodyUploadFilesApiV1SubjectsSubjectFilesUploadPost.mineru_api_token !== undefined && bodyUploadFilesApiV1SubjectsSubjectFilesUploadPost.mineru_api_token !== null) {
  formData.append(`mineru_api_token`, bodyUploadFilesApiV1SubjectsSubjectFilesUploadPost.mineru_api_token);
  }
+if(bodyUploadFilesApiV1SubjectsSubjectFilesUploadPost.paddle_ocr_api_token !== undefined && bodyUploadFilesApiV1SubjectsSubjectFilesUploadPost.paddle_ocr_api_token !== null) {
+ formData.append(`paddle_ocr_api_token`, bodyUploadFilesApiV1SubjectsSubjectFilesUploadPost.paddle_ocr_api_token);
+ }
 if(bodyUploadFilesApiV1SubjectsSubjectFilesUploadPost.mineru_model_version !== undefined && bodyUploadFilesApiV1SubjectsSubjectFilesUploadPost.mineru_model_version !== null) {
  formData.append(`mineru_model_version`, bodyUploadFilesApiV1SubjectsSubjectFilesUploadPost.mineru_model_version);
  }

@@ -38,6 +38,7 @@ async def upload_files(
     files: list[UploadFile] = File(...),
     parser_provider: str | None = Form(default=None),
     mineru_api_token: str | None = Form(default=None),
+    paddle_ocr_api_token: str | None = Form(default=None),
     mineru_model_version: str | None = Form(default=None),
     mineru_enable_formula: bool | None = Form(default=None),
     mineru_enable_table: bool | None = Form(default=None),
@@ -49,17 +50,41 @@ async def upload_files(
     get_subject_record(session, normalized_subject, owner_user_id=user.user_id)
 
     parse_request_metadata: dict[str, object] | None = None
-    if parser_provider:
-        parse_request_metadata = {
-            "requested_parser_provider": parser_provider,
-        }
-        if parser_provider == "mineru":
+    if any(
+        value is not None
+        for value in (
+            parser_provider,
+            mineru_api_token,
+            paddle_ocr_api_token,
+            mineru_model_version,
+            mineru_enable_formula,
+            mineru_enable_table,
+            mineru_is_ocr,
+        )
+    ):
+        parse_request_metadata = {}
+        if parser_provider:
+            parse_request_metadata["requested_parser_provider"] = parser_provider
+        if any(
+            value is not None
+            for value in (
+                mineru_api_token,
+                mineru_model_version,
+                mineru_enable_formula,
+                mineru_enable_table,
+                mineru_is_ocr,
+            )
+        ):
             parse_request_metadata["mineru"] = {
                 "api_token": mineru_api_token,
                 "model_version": mineru_model_version,
                 "enable_formula": mineru_enable_formula,
                 "enable_table": mineru_enable_table,
                 "is_ocr": mineru_is_ocr,
+            }
+        if paddle_ocr_api_token is not None:
+            parse_request_metadata["paddle_ocr"] = {
+                "api_token": paddle_ocr_api_token,
             }
 
     data, parse_file_ids = await save_uploaded_files_and_request_parse(
