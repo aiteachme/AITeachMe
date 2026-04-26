@@ -1,5 +1,7 @@
 # kg_docs_sync Flow Design
 
+最后更新：2026-04-27
+
 `kg_docs_sync` 是知识文档发布后的知识图谱同步链路。它不再直接解析用户上传的原始文件，也不再提供独立 debug 构建入口；正式输入只有当前学科已经发布的 `KnowledgeDoc`、DocGen 结构化产物、章节来源映射和 `Subject.document_summary_json`。
 
 当前写入的核心表：
@@ -10,6 +12,10 @@
 - `knowledge_graph_source_ref`
 
 本链路不会创建 `curriculum / teaching_unit / taxonomy_anchor / theme_tree_node / unit_dependency` 等未来大表。节点和关系的可解释来源先由轻量溯源表承接。
+
+LangGraph 节点的 `node_description`、输入输出字段和 metadata 统一通过
+`digest.common.node_tracing` 生成；`sync_markdown_knowledge_graph` 内部再用
+`trace_substep` 标记 anchor 校验、候选抽取和图谱写入三个关键阶段。
 
 ## 1. 流程总览与执行合同
 
@@ -50,9 +56,9 @@ image_generation -> settings.models.image_generation（默认未配置）
 | `load_knowledge_doc_sync_input` | `kg_docs_sync/inputs.py` | 无 LLM | 无 | 无 | 读取 `KnowledgeDoc` rows、DocGen manifest、文档摘要和章节来源映射 | 输入组装必须稳定可复现 |
 | `prepare` | `kg_docs_sync/nodes/prepare.py` | 无 LLM | 无 | 无 | 校验 `subject` 和合并 Markdown | 只做合同检查 |
 | `sync` | `kg_docs_sync/nodes/sync.py` | 间接 LLM | 由内部 extractor 决定 | 见下方 | 打开 DB session，加载学科上下文，调用增量同步 | 图谱复杂逻辑收敛在 support 层 |
-| `_extract_chapter_graph_items` 主抽取 | `support/knowledge_graph/incremental_sync.py` -> `kg_file_ingest/lib/extractor.py` | 结构化 | `extract` | `qwen-flash` | 从单章 Markdown 抽取候选 KnowledgeUnit 和关系 | 章级任务多，抽取结果需要结构化，默认走轻量槽位控延迟 |
-| `_repair_docs_extraction_after_empty` | `kg_file_ingest/lib/extractor.py` | 结构化 | `extract` | `qwen-flash` | 当 docs-sync 主抽取为空时做一次极短修复抽取 | 只补明显漏抽，不重做重推理 |
-| `_llm_extract_concepts_from_questions` | `kg_file_ingest/lib/extractor.py` | 结构化 | `light` | `qwen-flash` | 题目密集内容下从题干反推少量概念/方法 | 这是 fallback，不应成为重成本路径 |
+| `_extract_chapter_graph_items` 主抽取 | `support/knowledge_graph/incremental_sync.py` -> `support/knowledge_graph/extraction.py` | 结构化 | `extract` | `qwen-flash` | 从单章 Markdown 抽取候选 KnowledgeUnit 和关系 | 正式链路只走 support 层抽取入口，不再依赖旧 file-ingest lane |
+| `_repair_docs_extraction_after_empty` | `support/knowledge_graph/extraction.py` | 结构化 | `extract` | `qwen-flash` | 当 docs-sync 主抽取为空时做一次极短修复抽取 | 只补明显漏抽，不重做重推理 |
+| `_llm_extract_concepts_from_questions` | `support/knowledge_graph/extraction.py` | 结构化 | `light` | `qwen-flash` | 题目密集内容下从题干反推少量概念/方法 | 这是 fallback，不应成为重成本路径 |
 | `_filter_docs_candidate_result` | `support/knowledge_graph/incremental_sync.py` | 无 LLM | 无 | 无 | 丢弃学习目标、题型例练、速判口诀、计划句等非知识点 | LLM 负责语义抽取，规则负责硬挡明显坏节点 |
 | `_build_backbone_graph_items` | `support/knowledge_graph/incremental_sync.py` | 无 LLM | 无 | 无 | 把 DocGen `document_backbone` 的 glossary/dependency 转成保底节点和边 | Backbone 是已生成的结构化产物，同步阶段只消费 |
 | `_build_structural_heading_edges` | `support/knowledge_graph/incremental_sync.py` | 无 LLM | 无 | 无 | 用标题层级补结构边 | 结构关系可规则化 |
@@ -96,8 +102,10 @@ sync
   v
 sync_markdown_knowledge_graph
   校验 Markdown anchors。
+  LangSmith 子步骤：`validate_markdown_anchors`。
   创建 KnowledgeGraphSyncRun(status="running")。
   按真实章节切分 Markdown。
+  LangSmith 子步骤：`extract_graph_items`。
   |
   v
 _extract_chapter_with_retries x N
@@ -121,6 +129,7 @@ upsert graph
   写 KnowledgeEdge。
   写 KnowledgeGraphSourceRef。
   标记本轮消失的旧同步节点/边为 deprecated。
+  LangSmith 子步骤：`upsert_graph`。
   |
   v
 finalize
@@ -496,11 +505,11 @@ none           -> 没有可同步输入
 | 节点标题像整本文档标题 | 切章规则没有按 H2 下沉 | `extract_markdown_chapter_chunks`、DocGen 发布 Markdown 标题层级 |
 | 图上边很少 | LLM 边被过滤、endpoint 未解析、方向不合法 | `knowledge_graph_edge_skipped_unresolved_endpoint` 日志、`validate_relation_direction` |
 | source refs 为空 | 写入阶段异常或旧数据来自兼容字段 | `knowledge_graph_source_ref`、`KnowledgeGraphSyncRun.metrics_json` |
-| LangSmith 看不到子调用 | 外层没有 root trace 或 async context 没传递 | `run_graph_docs_sync_after_doc_build`、`_run_async(contextvars.copy_context())` |
+| LangSmith 看不到子调用 | 外层没有 root trace、async context 没传递，或子步骤没有 metadata | `run_graph_docs_sync_after_doc_build`、`trace_substep`、`_run_async(contextvars.copy_context())` |
 
 ## 4. 当前仍需关注的问题
 
-1. `kg_file_ingest/lib/extractor.py` 仍被 docs-sync 复用。现在这是“复用抽取器实现”，不是公开 file-ingest lane。后续更干净的方向是把 extractor 移到 `digest/common/kg_extraction` 或 `support/knowledge_graph/extraction`，再删除旧 workflow 壳和旧测试命名。
+1. 旧 `kg_file_ingest` workflow 已删除；`support/knowledge_graph/extraction.py` 是 docs-sync 的正式抽取实现入口。
 2. docs-sync 的 LLM 主抽取默认走 `extract -> light`，速度可控，但复杂学科的概念归并仍可能偏保守。后续如果要提高质量，应增加一个“章级候选审稿/归并”步骤，而不是放开所有候选直接入图。
 3. 规则过滤只能挡明显坏节点，不能替代 LLM 的语义判断。过滤词表应该短、强、可解释；如果持续出现某类坏节点，优先修 extractor prompt 和候选审稿。
 4. `aliases_json/evidence_refs_json` 仍是兼容字段。新查询应优先使用 `knowledge_graph_source_ref`，等图谱查询稳定后再考虑数据规模化优化。

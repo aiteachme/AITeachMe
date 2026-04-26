@@ -24,6 +24,7 @@ from app.models.knowledge_taxonomy import (
 )
 from app.repositories import knowledge_relation_repo, knowledge_unit_repo
 from app.shared.infra.embedding import aembed_texts
+from app.shared.infra.observability.trace import trace_substep
 from app.shared.infra.search.api import search_knowledge
 from app.utils.knowledge_helpers import normalize_name
 from app.utils.time import utcnow
@@ -34,7 +35,7 @@ from app.workflows.digest.common.markdown_knowledge_anchors import (
     extract_markdown_section_chunks,
     validate_knowledge_unit_anchors,
 )
-from app.workflows.digest.kg_file_ingest.lib.extractor import (
+from app.workflows.support.knowledge_graph.extraction import (
     CandidateExtractionDiagnostics,
     CandidateNode,
     ChunkExtractionResult,
@@ -62,6 +63,11 @@ _ASYNC_BRIDGE_LOOP: asyncio.AbstractEventLoop | None = None
 _ASYNC_BRIDGE_THREAD: threading.Thread | None = None
 
 logger = structlog.get_logger()
+
+
+def _end_trace_substep(run: object | None, outputs: dict[str, object]) -> None:
+    if run is not None:
+        run.end(outputs=outputs)
 
 _DOCS_UNIT_WRAPPER_TERMS = (
     "题型例练",
@@ -424,12 +430,25 @@ def sync_markdown_knowledge_graph(
     """Synchronize knowledge units and knowledge images from Markdown into the graph."""
 
     started_at = perf_counter()
-    validation = validate_knowledge_unit_anchors(markdown)
-    if not validation.ok:
-        raise ValueError(
-            "invalid Markdown KnowledgeUnit anchors: "
-            f"duplicates={validation.duplicate_anchors}, invalid={validation.invalid_anchors}"
+    with trace_substep(
+        "KG docs-sync：校验 Markdown anchors",
+        metadata={"kg_docs_sync_phase": "validate_markdown_anchors"},
+        inputs={"markdown_chars": len(markdown or "")},
+    ) as trace_run:
+        validation = validate_knowledge_unit_anchors(markdown)
+        _end_trace_substep(
+            trace_run,
+            {
+                "ok": validation.ok,
+                "duplicate_anchor_count": len(validation.duplicate_anchors),
+                "invalid_anchor_count": len(validation.invalid_anchors),
+            },
         )
+        if not validation.ok:
+            raise ValueError(
+                "invalid Markdown KnowledgeUnit anchors: "
+                f"duplicates={validation.duplicate_anchors}, invalid={validation.invalid_anchors}"
+            )
 
     structured_context = _structured_context_payload(structured_context)
     revision_no = build_revision_no or _next_revision_no(session, subject)
@@ -442,11 +461,31 @@ def sync_markdown_knowledge_graph(
         graph_revision_no=revision_no,
     )
     try:
-        units, extracted_edges, diagnostics_totals = _extract_markdown_graph_items(
-            markdown,
-            subject_context=subject_context,
-            structured_context=structured_context,
-        )
+        with trace_substep(
+            "KG docs-sync：抽取章节候选",
+            metadata={"kg_docs_sync_phase": "extract_graph_items"},
+            inputs={
+                "markdown_chars": len(markdown or ""),
+                "doc_version_no": doc_version_no,
+                "build_revision_no": revision_no,
+            },
+        ) as trace_run:
+            units, extracted_edges, diagnostics_totals = _extract_markdown_graph_items(
+                markdown,
+                subject_context=subject_context,
+                structured_context=structured_context,
+            )
+            _end_trace_substep(
+                trace_run,
+                {
+                    "unit_count": len(units),
+                    "edge_count": len(extracted_edges),
+                    "chapter_count": int(diagnostics_totals.get("chapter_count", 0) or 0),
+                    "section_count": int(diagnostics_totals.get("section_count", 0) or 0),
+                    "llm_section_count": int(diagnostics_totals.get("llm_section_count", 0) or 0),
+                    "fallback_section_count": int(diagnostics_totals.get("fallback_section_count", 0) or 0),
+                },
+            )
     except Exception as exc:
         _finish_sync_run(
             session,
@@ -476,85 +515,29 @@ def sync_markdown_knowledge_graph(
         backbone_edge_count=int(diagnostics_totals.get("backbone_edge_count", 0) or 0),
         stable_anchor_count=len({item.anchor for item in units if item.anchor}),
     )
-    unit_by_anchor: dict[str, KnowledgeUnit] = {}
     report.knowledge_image_count = sum(len(item.knowledge_images) for item in units)
 
     try:
-        for item in units:
-            unit, created = _upsert_unit(
+        with trace_substep(
+            "KG docs-sync：写入图谱变更",
+            metadata={"kg_docs_sync_phase": "upsert_graph"},
+            inputs={
+                "unit_count": len(units),
+                "edge_count": len(extracted_edges),
+                "build_revision_no": revision_no,
+            },
+        ) as trace_run:
+            _apply_extracted_graph_items(
                 session,
                 subject=subject,
-                item=item,
+                units=units,
+                extracted_edges=extracted_edges,
+                sync_run=sync_run,
                 build_revision_no=revision_no,
                 enable_rag_dedup=enable_rag_dedup,
+                report=report,
             )
-            if unit.id is None:
-                continue
-            unit_by_anchor[item.anchor] = unit
-            if created:
-                report.created_unit_ids.append(unit.id)
-            else:
-                report.updated_unit_ids.append(unit.id)
-            if _create_source_ref_for_unit(session, sync_run=sync_run, subject=subject, unit=unit, item=item):
-                report.source_ref_count += 1
-
-        seen_edge_keys: set[tuple[int, int, str]] = set()
-        for extracted_edge in extracted_edges:
-            source = unit_by_anchor.get(extracted_edge.source_anchor)
-            target = unit_by_anchor.get(extracted_edge.target_anchor)
-            if source is None or target is None or source.id is None or target.id is None:
-                continue
-            if not validate_relation_direction(
-                edge_type=extracted_edge.edge_type,
-                source_type=source.knowledge_unit_type,
-                target_type=target.knowledge_unit_type,
-            ):
-                logger.warning(
-                    "knowledge_docs_sync_edge_skipped_invalid_direction",
-                    edge_type=extracted_edge.edge_type,
-                    source_type=source.knowledge_unit_type,
-                    target_type=target.knowledge_unit_type,
-                    source_anchor=extracted_edge.source_anchor,
-                    target_anchor=extracted_edge.target_anchor,
-                )
-                continue
-            edge, created = _upsert_edge(
-                session,
-                subject=subject,
-                source_node_id=source.id,
-                target_node_id=target.id,
-                edge_type=extracted_edge.edge_type,
-                description=extracted_edge.description,
-                build_revision_no=revision_no,
-            )
-            if edge.id is not None:
-                seen_edge_keys.add((edge.source_node_id, edge.target_node_id, edge.edge_type))
-                (report.created_edge_ids if created else report.updated_edge_ids).append(edge.id)
-                if _create_source_ref_for_edge(
-                    session,
-                    sync_run=sync_run,
-                    subject=subject,
-                    edge=edge,
-                    extracted_edge=extracted_edge,
-                ):
-                    report.source_ref_count += 1
-
-        report.deprecated_unit_ids.extend(
-            _deprecate_removed_anchor_units(
-                session,
-                subject=subject,
-                active_anchors=set(report.synced_unit_keys),
-                build_revision_no=revision_no,
-            )
-        )
-        report.deprecated_edge_ids.extend(
-            _deprecate_removed_sync_edges(
-                session,
-                subject=subject,
-                seen_edge_keys=seen_edge_keys,
-                build_revision_no=revision_no,
-            )
-        )
+            _end_trace_substep(trace_run, _sync_run_metrics(report))
     except Exception as exc:
         _finish_sync_run(
             session,
@@ -588,6 +571,95 @@ def sync_markdown_knowledge_graph(
         elapsed_ms=report.elapsed_ms,
     )
     return report
+
+
+def _apply_extracted_graph_items(
+    session: Session,
+    *,
+    subject: str,
+    units: list[MarkdownKnowledgeUnit],
+    extracted_edges: list[MarkdownExtractedEdge],
+    sync_run: KnowledgeGraphSyncRun,
+    build_revision_no: int,
+    enable_rag_dedup: bool,
+    report: KnowledgeSyncReport,
+) -> None:
+    unit_by_anchor: dict[str, KnowledgeUnit] = {}
+    for item in units:
+        unit, created = _upsert_unit(
+            session,
+            subject=subject,
+            item=item,
+            build_revision_no=build_revision_no,
+            enable_rag_dedup=enable_rag_dedup,
+        )
+        if unit.id is None:
+            continue
+        unit_by_anchor[item.anchor] = unit
+        if created:
+            report.created_unit_ids.append(unit.id)
+        else:
+            report.updated_unit_ids.append(unit.id)
+        if _create_source_ref_for_unit(session, sync_run=sync_run, subject=subject, unit=unit, item=item):
+            report.source_ref_count += 1
+
+    seen_edge_keys: set[tuple[int, int, str]] = set()
+    for extracted_edge in extracted_edges:
+        source = unit_by_anchor.get(extracted_edge.source_anchor)
+        target = unit_by_anchor.get(extracted_edge.target_anchor)
+        if source is None or target is None or source.id is None or target.id is None:
+            continue
+        if not validate_relation_direction(
+            edge_type=extracted_edge.edge_type,
+            source_type=source.knowledge_unit_type,
+            target_type=target.knowledge_unit_type,
+        ):
+            logger.warning(
+                "knowledge_docs_sync_edge_skipped_invalid_direction",
+                edge_type=extracted_edge.edge_type,
+                source_type=source.knowledge_unit_type,
+                target_type=target.knowledge_unit_type,
+                source_anchor=extracted_edge.source_anchor,
+                target_anchor=extracted_edge.target_anchor,
+            )
+            continue
+        edge, created = _upsert_edge(
+            session,
+            subject=subject,
+            source_node_id=source.id,
+            target_node_id=target.id,
+            edge_type=extracted_edge.edge_type,
+            description=extracted_edge.description,
+            build_revision_no=build_revision_no,
+        )
+        if edge.id is not None:
+            seen_edge_keys.add((edge.source_node_id, edge.target_node_id, edge.edge_type))
+            (report.created_edge_ids if created else report.updated_edge_ids).append(edge.id)
+            if _create_source_ref_for_edge(
+                session,
+                sync_run=sync_run,
+                subject=subject,
+                edge=edge,
+                extracted_edge=extracted_edge,
+            ):
+                report.source_ref_count += 1
+
+    report.deprecated_unit_ids.extend(
+        _deprecate_removed_anchor_units(
+            session,
+            subject=subject,
+            active_anchors=set(report.synced_unit_keys),
+            build_revision_no=build_revision_no,
+        )
+    )
+    report.deprecated_edge_ids.extend(
+        _deprecate_removed_sync_edges(
+            session,
+            subject=subject,
+            seen_edge_keys=seen_edge_keys,
+            build_revision_no=build_revision_no,
+        )
+    )
 
 
 def _next_revision_no(session: Session, subject: str) -> int:

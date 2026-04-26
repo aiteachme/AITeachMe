@@ -1,4 +1,4 @@
-"""Stable candidate identity helpers for typed digest resolution."""
+"""Stable candidate identity helpers for knowledge-graph extraction."""
 
 from __future__ import annotations
 
@@ -111,4 +111,3 @@ __all__ = [
     "normalize_scope_name",
     "token_bucket",
 ]
-

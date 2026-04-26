@@ -2,7 +2,7 @@ from sqlmodel import Session, SQLModel, create_engine, select
 
 from app.models.knowledge_relation import KnowledgeEdge
 from app.models.knowledge_unit import KnowledgeUnit
-from app.workflows.digest.kg_file_ingest.lib.extractor import CandidateEdge, CandidateNode, ChunkExtractionResult
+from app.workflows.support.knowledge_graph.extraction import CandidateEdge, CandidateNode, ChunkExtractionResult
 from app.workflows.support.knowledge_graph import incremental_sync
 from app.workflows.support.knowledge_graph.incremental_sync import sync_markdown_knowledge_graph
 

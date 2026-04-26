@@ -18,9 +18,9 @@ from app.workflows.digest.docgen.graph import (
     build_docgen_graph,
 )
 from app.workflows.digest.kg_docs_sync.graph import get_langgraph_dev_kg_docs_sync_graph
-from app.workflows.digest.kg_file_ingest.prompts import KG_PROMPTS
 from app.workflows.digest.planner.lib.steps import STEP_DISPLAY_NAMES
 from app.workflows.digest.planner.graph import get_langgraph_dev_planner_graph
+from app.workflows.support.knowledge_graph.prompts import KG_PROMPTS
 
 PLANNER_PROMPTS = {
     "planner_prompt": "Build-plan prompt used by the planner lane.",

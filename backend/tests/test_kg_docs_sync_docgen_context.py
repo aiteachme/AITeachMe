@@ -6,7 +6,7 @@ from app.models.knowledge_doc import KnowledgeDocument
 from app.models.knowledge_graph_sync import KnowledgeGraphSourceRef, KnowledgeGraphSyncRun
 from app.models.knowledge_relation import KnowledgeEdge
 from app.models.knowledge_unit import KnowledgeUnit
-from app.workflows.digest.kg_file_ingest.lib.extractor import CandidateNode, ChunkExtractionResult
+from app.workflows.support.knowledge_graph.extraction import CandidateNode, ChunkExtractionResult
 from app.workflows.support.knowledge_graph import incremental_sync
 from app.workflows.support.knowledge_graph.incremental_sync import sync_markdown_knowledge_graph
 from app.workflows.support.knowledge_graph.query import get_knowledge_unit_detail

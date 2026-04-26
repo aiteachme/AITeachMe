@@ -1,6 +1,6 @@
 # Digest 模块说明
 
-最后更新：2026-04-17
+最后更新：2026-04-27
 
 `digest/` 负责把原始学习材料组织成可教学、可生成、可追踪的知识产物。
 
@@ -13,7 +13,6 @@ digest/
   common/
   planner/
   docgen/
-  kg_file_ingest/          # legacy/debug-only; only extractor utilities are still reused
   kg_docs_sync/
 ```
 
@@ -23,8 +22,6 @@ digest/
   负责根据文件内容和历史对话生成 confirmed plan
 - `docgen/`
   负责根据 confirmed plan 生成知识文档
-- `kg_file_ingest/`
-  历史调试链路，不再作为产品图谱构建入口；短期仅保留 extractor 复用，后续迁出 extractor 后删除旧 workflow 壳
 - `kg_docs_sync/`
   负责知识文档和知识图谱的正式同步链路
 - `common/`
@@ -52,7 +49,7 @@ from app.workflows.digest.planner import (
 - 新的 API-facing 用例必须进入具体 lane 或 `common/`
 - 新 prompt 放各自链路 `prompts/`
 - 新 helper 放各自链路 `lib/`
-- 跨链路共享能力统一放 `common/`
+- 跨 digest lane 共享能力统一放 `common/`，图谱 support 层共享能力放 `workflows/support/knowledge_graph/`
 - 各链路自己的构建摘要放在对应链路 `lib/reporting.py`
 - 不要再新增顶层伪链路，例如 `runtime.py`、`observability.py`
 
@@ -63,7 +60,7 @@ from app.workflows.digest.planner import (
 - `planner -> docgen`
 - `docgen publish -> kg_docs_sync`
 
-`kg_file_ingest` 只保留为 legacy/debug-only 包；不要从上层继续调用它的 workflow。后续删除顺序是先迁出
-`lib/extractor.py` 到中性包，再删除旧 workflow 壳。
+旧 `kg_file_ingest` 调试链路已经删除。知识图谱同步只保留 `kg_docs_sync`，
+可复用的图谱抽取能力迁入 `workflows/support/knowledge_graph/extraction.py`。
 
 如果要看具体编排，优先进入各链路下的 `graph.py`、`state.py`；API-facing 构建入口优先看对应 lane 的 `lib/*lifecycle*.py`

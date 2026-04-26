@@ -80,7 +80,7 @@ def test_aggregate_runtime_supports_graph_only_builds() -> None:
             build_group_id="group-3",
             build_kind="graph",
             status="running",
-            stage="graph_file_ingest",
+            stage="graph_docs_sync",
             progress_pct=42,
         ),
     )
@@ -89,7 +89,7 @@ def test_aggregate_runtime_supports_graph_only_builds() -> None:
 
     assert aggregate is not None
     assert aggregate.status == "running"
-    assert aggregate.stage == "graph_file_ingest"
+    assert aggregate.stage == "graph_docs_sync"
     assert aggregate.progress_pct >= 42
 
 

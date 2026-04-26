@@ -1,10 +1,10 @@
 from sqlmodel import SQLModel, Session, create_engine
 
-from app.workflows.digest.kg_file_ingest.lib.extractor import (
+from app.workflows.support.knowledge_graph.extraction import (
     CandidateNode,
     ChunkExtractionResult,
 )
-import app.workflows.digest.kg_file_ingest.lib.extractor as extractor
+import app.workflows.support.knowledge_graph.extraction as extractor
 import app.workflows.support.knowledge_graph.incremental_sync as incremental_sync
 from app.workflows.support.knowledge_graph.incremental_sync import (
     sync_markdown_knowledge_graph,

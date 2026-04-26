@@ -23,6 +23,7 @@ from app.workflows.digest.common.events import (
     DocGenRequestedEvent,
 )
 from app.workflows.digest.common.metrics import build_token_summary
+from app.workflows.digest.common.node_tracing import named_route, node_metadata, traced_digest_node
 from app.workflows.digest.docgen.lib.defaults import DEFAULT_DOCGEN_MAX_PARALLEL_CHAPTERS
 from app.workflows.digest.docgen.lib.reporting import build_docgen_lane_summary
 from app.workflows.digest.docgen.nodes import (
@@ -356,47 +357,24 @@ NODE_TRACE_DETAILS: dict[str, dict[str, Any]] = {
 }
 
 
-def _named_route(fn, name: str):
-    """给 LangGraph 条件路由函数设置可读名称，方便图导出和 LangSmith 展示。"""
-
-    fn.__name__ = name
-    fn.__qualname__ = name
-    return fn
-
-
 def _trace_docgen_node(trace, node_key: str, handler, *, timing_field: str | None = None):
     details = NODE_TRACE_DETAILS[node_key]
-    description = str(details["description"])
-    input_keys = list(details.get("input_keys") or [])
-    output_keys = list(details.get("output_keys") or [])
-    metadata = _langgraph_node_metadata(node_key)
-    return trace.node(
-        handler,
-        name=node_key,
-        description=description,
+    return traced_digest_node(
+        trace,
+        node_key=node_key,
+        display_name=node_key,
+        details=details,
+        handler=handler,
         timing_field=timing_field,
-        input_keys=input_keys,
-        output_keys=output_keys,
-        metadata=metadata,
     )
 
 
 def _langgraph_node_metadata(node_key: str) -> dict[str, object]:
-    details = NODE_TRACE_DETAILS[node_key]
-    metadata: dict[str, object] = {
-        "node_key": node_key,
-        "node_display_name": node_key,
-        "node_description": str(details["description"]),
-        "reads": list(details.get("reads") or []),
-        "writes": list(details.get("writes") or []),
-        "state_inputs": list(details.get("input_keys") or []),
-        "state_outputs": list(details.get("output_keys") or []),
-    }
-    for key in ("fanout", "routing"):
-        value = details.get(key)
-        if value:
-            metadata[key] = str(value)
-    return metadata
+    return node_metadata(
+        node_key=node_key,
+        display_name=node_key,
+        details=NODE_TRACE_DETAILS[node_key],
+    )
 
 
 def build_docgen_graph(*, context: WorkflowContext) -> StateGraph:
@@ -668,7 +646,7 @@ def route_after_step_for_trace(state: DocGenState) -> Literal["fail", "continue"
     return route_after_step(state)
 
 
-route_after_step_for_trace = _named_route(route_after_step_for_trace, "检查是否继续")
+route_after_step_for_trace = named_route(route_after_step_for_trace, "检查是否继续")
 
 
 def _child_state_base(state: DocGenState, *, teaching_action: str) -> dict[str, Any]:
@@ -715,7 +693,7 @@ def build_generation_sends_for_trace(state: DocGenState) -> list[Send] | Literal
     return build_generation_sends(state)
 
 
-build_generation_sends_for_trace = _named_route(build_generation_sends_for_trace, "按章节分发生成任务")
+build_generation_sends_for_trace = named_route(build_generation_sends_for_trace, "按章节分发生成任务")
 
 
 def build_review_sends(state: DocGenState) -> list[Send] | Literal["fail"]:
@@ -749,7 +727,7 @@ def build_review_sends_for_trace(state: DocGenState) -> list[Send] | Literal["fa
     return build_review_sends(state)
 
 
-build_review_sends_for_trace = _named_route(build_review_sends_for_trace, "按章节分发复核任务")
+build_review_sends_for_trace = named_route(build_review_sends_for_trace, "按章节分发复核任务")
 
 
 def get_langgraph_dev_docgen_graph() -> StateGraph:

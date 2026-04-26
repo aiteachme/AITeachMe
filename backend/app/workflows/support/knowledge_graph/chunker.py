@@ -1,4 +1,4 @@
-"""Chunking helpers for digest graph extraction."""
+"""Chunking helpers for knowledge-graph extraction."""
 
 from __future__ import annotations
 

@@ -6,6 +6,7 @@ from langgraph.graph import END, StateGraph
 
 from app.shared.infra.workflow import workflow_tracer
 from app.shared.infra.workflow.context import WorkflowContext, create_langgraph_dev_context
+from app.workflows.digest.common.node_tracing import named_route, node_metadata, traced_digest_node
 from app.workflows.digest.kg_docs_sync.nodes import (
     fail_node,
     finalize_node,
@@ -88,12 +89,6 @@ NODE_TRACE_DETAILS: dict[str, dict[str, object]] = {
 }
 
 
-def _named_route(fn, name: str):
-    fn.__name__ = name
-    fn.__qualname__ = name
-    return fn
-
-
 def route_after_prepare(state: DocsSyncState) -> str:
     return "sync" if not state.get("error") else "fail"
 
@@ -106,34 +101,28 @@ def route_after_finalize(state: DocsSyncState) -> str:
     return "end" if not state.get("error") else "fail"
 
 
-route_after_prepare_for_trace = _named_route(route_after_prepare, "检查输入后继续同步")
-route_after_sync_for_trace = _named_route(route_after_sync, "检查同步是否成功")
-route_after_finalize_for_trace = _named_route(route_after_finalize, "检查是否完成")
+route_after_prepare_for_trace = named_route(route_after_prepare, "检查输入后继续同步")
+route_after_sync_for_trace = named_route(route_after_sync, "检查同步是否成功")
+route_after_finalize_for_trace = named_route(route_after_finalize, "检查是否完成")
 
 
 def _trace_docs_sync_node(trace, node_key: str, handler):
     details = NODE_TRACE_DETAILS[node_key]
-    return trace.node(
-        handler,
-        name=NODE_DISPLAY_NAMES[node_key],
-        description=str(details["description"]),
-        input_keys=list(details.get("input_keys") or []),
-        output_keys=list(details.get("output_keys") or []),
-        metadata=_langgraph_node_metadata(node_key),
+    return traced_digest_node(
+        trace,
+        node_key=node_key,
+        display_name=NODE_DISPLAY_NAMES[node_key],
+        details=details,
+        handler=handler,
     )
 
 
 def _langgraph_node_metadata(node_key: str) -> dict[str, object]:
-    details = NODE_TRACE_DETAILS[node_key]
-    return {
-        "node_key": node_key,
-        "node_display_name": NODE_DISPLAY_NAMES[node_key],
-        "node_description": str(details["description"]),
-        "reads": list(details.get("reads") or []),
-        "writes": list(details.get("writes") or []),
-        "state_inputs": list(details.get("input_keys") or []),
-        "state_outputs": list(details.get("output_keys") or []),
-    }
+    return node_metadata(
+        node_key=node_key,
+        display_name=NODE_DISPLAY_NAMES[node_key],
+        details=NODE_TRACE_DETAILS[node_key],
+    )
 
 
 def build_docs_sync_graph(*, context: WorkflowContext) -> StateGraph:

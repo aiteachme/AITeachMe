@@ -1,4 +1,4 @@
-﻿"""Candidate extraction for digest graph workflow."""
+﻿"""Candidate extraction for knowledge-doc graph synchronization."""
 
 from __future__ import annotations
 
@@ -15,8 +15,8 @@ from app.shared.infra.llm_support import acompletion_structured
 from app.shared.infra.llm_support.routing import TaskType
 from app.shared.infra.prompt_loader import populate_prompt
 from app.schemas.llm import ChatMessage, SYSTEM, USER
-from app.workflows.digest.kg_file_ingest.lib.candidate_identity import build_candidate_stable_id
-from app.workflows.digest.kg_file_ingest.lib.chunker import QuestionBlock, parse_question_blocks
+from app.workflows.support.knowledge_graph.candidate_identity import build_candidate_stable_id
+from app.workflows.support.knowledge_graph.chunker import QuestionBlock, parse_question_blocks
 from app.models.knowledge_taxonomy import (
     normalize_knowledge_unit_type,
     normalize_relation_type,
@@ -24,7 +24,7 @@ from app.models.knowledge_taxonomy import (
     validate_relation_direction,
 )
 from app.utils.knowledge_helpers import normalize_name
-from app.workflows.digest.kg_file_ingest.prompts import SYSTEM_PROMPT_KNOWLEDGE_EXTRACT, USER_PROMPT_KNOWLEDGE_EXTRACT
+from app.workflows.support.knowledge_graph.prompts import SYSTEM_PROMPT_KNOWLEDGE_EXTRACT, USER_PROMPT_KNOWLEDGE_EXTRACT
 from app.workflows.digest.common.semantic_titles import (
     DEFAULT_QUESTION_TOPIC,
     choose_semantic_topic_path,

@@ -2,7 +2,7 @@ import asyncio
 
 from sqlmodel import SQLModel, Session, create_engine
 
-from app.workflows.digest.kg_file_ingest.lib.extractor import (
+from app.workflows.support.knowledge_graph.extraction import (
     CandidateExtractionDiagnostics,
     CandidateNode,
     ChunkExtractionResult,

@@ -384,7 +384,8 @@ api -> workflows -> repositories / shared.infra / models / schemas
 planner -> docgen -> kg_docs_sync
 ```
 
-`digest/kg_file_ingest` 是历史调试包，不再作为 canonical lane；仅保留少量 extractor 复用，后续应迁移到中性 common 包。
+旧 `digest/kg_file_ingest` 历史调试包已删除；图谱构建只保留 `digest/kg_docs_sync`，
+抽取实现位于 `workflows/support/knowledge_graph/extraction.py`。
 
 `digest/planner` 是组织样板：
 
