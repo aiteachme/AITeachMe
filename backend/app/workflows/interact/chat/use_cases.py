@@ -266,7 +266,7 @@ def clear_chat_history(
 
 async def chat_stream(
     request: Request,
-    session: Session,
+    session: Session | None,
     *,
     subject: str,
     user_id: str,

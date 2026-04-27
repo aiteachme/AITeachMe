@@ -9,7 +9,7 @@ import re
 import uuid
 
 import structlog
-from fastapi import APIRouter, BackgroundTasks, Body, Depends, Path, Request
+from fastapi import APIRouter, BackgroundTasks, Body, Depends, Path, Request, Response
 from fastapi.responses import StreamingResponse
 from sqlalchemy import or_
 from sqlmodel import Session, select
@@ -51,6 +51,7 @@ from app.workflows.examine import (
     run_question_build_workflow,
 )
 from app.workflows.profile import schedule_reviews, update_mastery_from_exam
+from app.workflows.support.auth import set_guest_cookie_for_user
 from app.workflows.support.subjects.learning_context import load_subject_llm_context
 
 router = APIRouter(prefix="/api/v1/subjects/{subject}/exams", tags=["exams"])
@@ -2101,16 +2102,17 @@ async def question_types(
 )
 async def exam_generation_stream(
     request: Request,
+    response: Response,
     subject: str = Path(...),
     exam_paper_id: int = Path(...),
-    user: CurrentUserContext = Depends(get_current_user_context),
-    session: Session = Depends(get_db),
 ) -> StreamingResponse:
     normalized = normalize_subject_slug(subject)
-    _ensure_subject(session, normalized, user.user_id)
-    paper = exams_repo.get_exam_paper_by_id(session, exam_paper_id)
-    if paper is None or paper.subject != normalized or paper.user_id != user.user_id:
-        _raise_not_found(f"Exam paper `{exam_paper_id}` not found.")
+    with managed_session() as session:
+        user = get_current_user_context(request, response, session)
+        _ensure_subject(session, normalized, user.user_id)
+        paper = exams_repo.get_exam_paper_by_id(session, exam_paper_id)
+        if paper is None or paper.subject != normalized or paper.user_id != user.user_id:
+            _raise_not_found(f"Exam paper `{exam_paper_id}` not found.")
 
     async def event_generator():
         def snapshot_payload() -> dict[str, object]:
@@ -2142,7 +2144,7 @@ async def exam_generation_stream(
                 if event.event == "done":
                     break
 
-    return StreamingResponse(
+    stream_response = StreamingResponse(
         event_generator(),
         media_type="text/event-stream",
         headers={
@@ -2151,6 +2153,8 @@ async def exam_generation_stream(
             "Connection": "keep-alive",
         },
     )
+    set_guest_cookie_for_user(stream_response, user_id=user.user_id)
+    return stream_response
 
 
 @router.get(

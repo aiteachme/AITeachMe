@@ -274,12 +274,14 @@ def knowledge_build_plan_latest(
 )
 async def knowledge_build_plan_create_stream(
     request: Request,
+    response: Response,
     subject: str = Path(...),
     body: BuildPlannerCreateRequest = Body(...),
-    user: CurrentUserContext = Depends(get_current_user_context),
-    session: Session = Depends(get_db),
 ) -> StreamingResponse:
     normalized = normalize_subject_slug(subject)
+    with managed_session() as session:
+        user = get_current_user_context(request, response, session)
+        subject_record = get_subject_record(session, normalized, owner_user_id=user.user_id)
     logger.info(
         "planner_create_stream_requested",
         subject=normalized,
@@ -287,7 +289,6 @@ async def knowledge_build_plan_create_stream(
         file_uid_count=len(body.file_uids or []),
         user_prompt_preview=(body.user_prompt or "")[:80],
     )
-    subject_record = get_subject_record(session, normalized, owner_user_id=user.user_id)
     return _planner_stream_response(
         request=request,
         user_id=user.user_id,
@@ -332,13 +333,15 @@ async def knowledge_build_plan_message(
 )
 async def knowledge_build_plan_message_stream(
     request: Request,
+    response: Response,
     subject: str = Path(...),
     session_id: str = Path(...),
     body: BuildPlannerMessageRequest = Body(...),
-    user: CurrentUserContext = Depends(get_current_user_context),
-    session: Session = Depends(get_db),
 ) -> StreamingResponse:
     normalized = normalize_subject_slug(subject)
+    with managed_session() as session:
+        user = get_current_user_context(request, response, session)
+        subject_record = get_subject_record(session, normalized, owner_user_id=user.user_id)
     logger.info(
         "planner_message_stream_requested",
         subject=normalized,
@@ -346,7 +349,6 @@ async def knowledge_build_plan_message_stream(
         user_id=user.user_id,
         message_preview=(body.message or "")[:80],
     )
-    subject_record = get_subject_record(session, normalized, owner_user_id=user.user_id)
     return _planner_stream_response(
         request=request,
         user_id=user.user_id,

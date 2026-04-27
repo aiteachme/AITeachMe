@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Body, Depends, Path, Request
+from fastapi import APIRouter, Body, Depends, Path, Request, Response
 from fastapi.responses import StreamingResponse
 from sqlmodel import Session
 
@@ -36,6 +36,7 @@ from app.workflows.interact.chat import (
 )
 from app.workflows.support.auth import set_guest_cookie_for_user
 from app.workflows.support.subjects import get_subject_record
+from app.shared.infra.database import managed_session
 from app.utils.subject import GLOBAL_SUBJECT
 
 router = APIRouter(prefix="/api/v1/subjects/{subject}/chats", tags=["chats"])
@@ -60,21 +61,22 @@ def _prepare_chat_subject(
 
 async def _send_chat_response(
     request: Request,
+    response: Response,
     *,
     raw_subject: str | None,
     body: ChatSendRequest,
-    user: CurrentUserContext,
-    session: Session,
 ) -> StreamingResponse:
-    normalized_subject = _prepare_chat_subject(
-        session,
-        raw_subject=raw_subject,
-        user_id=user.user_id,
-    )
+    with managed_session() as session:
+        user = get_current_user_context(request, response, session)
+        normalized_subject = _prepare_chat_subject(
+            session,
+            raw_subject=raw_subject,
+            user_id=user.user_id,
+        )
     stream_response = StreamingResponse(
         chat_stream(
             request,
-            session,
+            None,
             subject=normalized_subject,
             user_id=user.user_id,
             session_id=body.session_id,
@@ -252,17 +254,15 @@ def _delete_chat_session_response(
 )
 async def send_chat(
     request: Request,
+    response: Response,
     subject: str = Path(...),
     body: ChatSendRequest = Body(...),
-    user: CurrentUserContext = Depends(get_current_user_context),
-    session: Session = Depends(get_db),
 ) -> StreamingResponse:
     return await _send_chat_response(
         request,
+        response,
         raw_subject=subject,
         body=body,
-        user=user,
-        session=session,
     )
 
 
@@ -394,16 +394,14 @@ async def delete_chat_session_api(
 )
 async def send_global_chat(
     request: Request,
+    response: Response,
     body: ChatSendRequest = Body(...),
-    user: CurrentUserContext = Depends(get_current_user_context),
-    session: Session = Depends(get_db),
 ) -> StreamingResponse:
     return await _send_chat_response(
         request,
+        response,
         raw_subject=GLOBAL_SUBJECT,
         body=body,
-        user=user,
-        session=session,
     )
 
 
