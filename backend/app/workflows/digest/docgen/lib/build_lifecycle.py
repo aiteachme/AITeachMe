@@ -210,7 +210,25 @@ def _extract_markdown_excerpt(markdown: str, *, max_lines: int = 6, max_chars: i
     return excerpt if len(excerpt) <= max_chars else excerpt[: max_chars - 3].rstrip() + "..."
 
 
-def _load_current_published_markdown(session: Session, *, subject: str) -> tuple[str, datetime | None]:
+def _load_current_published_markdown(
+    session: Session,
+    *,
+    subject: str,
+    subject_scope: SubjectStorageScope,
+    manifest,
+) -> tuple[str, datetime | None]:
+    cs = get_content_store()
+    stored_markdown = normalize_mermaid_blocks(
+        run_store_sync(
+            cs.read_text,
+            subject_scope.knowledge_doc_key("merged_knowledge_base.md"),
+            default="",
+        )
+        or ""
+    ).strip()
+    if stored_markdown:
+        return stored_markdown, manifest.updated_at if manifest is not None else None
+
     docs = get_current_published_docs(session, subject)
     parts: list[str] = []
     updated_at: datetime | None = None
@@ -467,7 +485,6 @@ def get_knowledge_build_runtime_result(
     subject: str,
     subject_scope: SubjectStorageScope | None = None,
 ) -> KnowledgeBuildRuntimeResponse:
-    _markdown, _ = _load_current_published_markdown(session, subject=subject)
     subject_scope = subject_scope or resolve_subject_storage_scope(subject, session=session)
     draft_markdown = normalize_mermaid_blocks(
         run_store_sync(
@@ -1030,9 +1047,14 @@ def get_docgen_result(
     manifest = read_knowledge_manifest(subject, subject_scope=subject_scope)
     runtime = read_knowledge_build_runtime(subject, subject_scope=subject_scope)
     docgen_build_status = runtime.docgen_runtime if runtime is not None else None
-    markdown, db_updated_at = _load_current_published_markdown(session, subject=subject)
+    markdown, published_updated_at = _load_current_published_markdown(
+        session,
+        subject=subject,
+        subject_scope=subject_scope,
+        manifest=manifest,
+    )
     draft_markdown = normalize_mermaid_blocks(run_store_sync(cs.read_text, draft_key, default="") or "")
-    updated_at = db_updated_at or (manifest.updated_at if manifest is not None else None)
+    updated_at = published_updated_at or (manifest.updated_at if manifest is not None else None)
     draft_updated_at = (
         docgen_build_status.draft_updated_at
         if docgen_build_status is not None and docgen_build_status.draft_updated_at is not None
