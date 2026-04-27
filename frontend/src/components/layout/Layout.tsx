@@ -72,7 +72,7 @@ export function Layout() {
             )}
 
             <main className="relative flex min-h-0 w-full flex-1 flex-col overflow-x-hidden overflow-y-auto bg-transparent">
-              {isFullBleed || pathname === "/" ? (
+              {isFullBleed || pathname === "/" || pathname === "/spaces" ? (
                 <div
                   className={cn(
                     "flex min-h-0 w-full flex-1 flex-col",

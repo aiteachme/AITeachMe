@@ -85,26 +85,25 @@ export function LearningSpacesPage() {
   });
 
   const subjectCount = subjects.length;
-
   return (
     <>
-      <div className="min-h-full px-4 pb-12 pt-16 sm:px-6 sm:pt-20 md:px-10 lg:px-12">
-        <div className="mx-auto w-full max-w-[1320px]">
-          <div className="flex flex-col gap-6 2xl:flex-row 2xl:items-end 2xl:justify-between">
-            <div className="max-w-2xl space-y-3">
-              <div className="inline-flex items-center gap-2 rounded-full bg-white/85 px-3 py-1 text-xs font-medium text-slate-500 ring-1 ring-slate-200/80 backdrop-blur dark:bg-slate-800/85 dark:text-slate-400 dark:ring-slate-700/80">
+      <div className="min-h-full px-4 pb-12 pt-10 sm:px-6 md:px-10 lg:px-12 xl:px-16">
+        <div className="mx-auto w-full max-w-[1560px]">
+          <div className="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
+            <div className="max-w-3xl space-y-3">
+              <div className="inline-flex items-center gap-2 rounded-full border border-slate-200/80 bg-white/70 px-3 py-1 text-xs font-medium text-slate-500 backdrop-blur dark:border-slate-700/80 dark:bg-slate-800/70 dark:text-slate-400">
                 <LayoutGrid className="h-3.5 w-3.5" />
                 学习空间
               </div>
               <div>
-                <h1 className="text-2xl font-semibold tracking-tight text-slate-900 dark:text-slate-100 sm:text-[32px]">学习空间</h1>
-                <p className="mt-2 text-sm leading-6 text-slate-500 dark:text-slate-400">
-                  统一管理学科、资料入口和课程包迁移。每个学科都可以直接继续构建、添加资料或导出备份。
+                <h1 className="text-3xl font-semibold text-slate-950 dark:text-slate-100 sm:text-[34px]">学习空间</h1>
+                <p className="mt-2 text-sm leading-6 text-slate-500 dark:text-slate-400 sm:text-[15px]">
+                  管理学科、资料和课程包迁移。每个学科都可以继续构建、查看知识库、导出备份。
                 </p>
               </div>
             </div>
 
-            <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap 2xl:justify-end">
+            <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap xl:justify-end">
               <WorkspaceActionButton
                 variant="primary"
                 icon={<Plus className="h-4 w-4" />}
@@ -127,31 +126,17 @@ export function LearningSpacesPage() {
             </div>
           </div>
 
-          <div className="mt-8 grid grid-cols-1 gap-3 sm:grid-cols-3">
-            {[
-              { label: "学习空间", value: isLoading ? "..." : subjectCount, caption: "已创建学科" },
-              { label: "课程包", value: "ATMX", caption: "支持导入与导出" },
-              { label: "资料入口", value: "Library", caption: "先上传，再关联学科" },
-            ].map((item) => (
-              <div key={item.label} className="rounded-2xl border border-slate-200/80 bg-white/80 px-4 py-3 shadow-sm dark:border-slate-800/80 dark:bg-slate-900/80">
-                <div className="text-xs font-medium text-slate-500 dark:text-slate-400">{item.label}</div>
-                <div className="mt-1 text-2xl font-semibold tracking-tight text-slate-900 dark:text-slate-100">{item.value}</div>
-                <div className="mt-1 text-xs text-slate-400 dark:text-slate-500">{item.caption}</div>
-              </div>
-            ))}
-          </div>
-
-          <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
             <div>
-              <h2 className="text-base font-semibold text-slate-900 dark:text-slate-100">学科列表</h2>
-              <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+              <h2 className="text-lg font-semibold text-slate-950 dark:text-slate-100">学科列表</h2>
+              <p className="mt-1 text-sm leading-6 text-slate-500 dark:text-slate-400">
                 {isLoading ? "正在加载学科..." : subjectCount > 0 ? `${subjectCount} 个学科可继续学习` : "还没有创建学科"}
               </p>
             </div>
           </div>
 
           {isLoading ? (
-            <div className="mt-8 flex min-h-[260px] items-center justify-center rounded-[24px] border border-dashed border-slate-200 bg-white/45 dark:border-slate-800 dark:bg-slate-900/45">
+            <div className="mt-12 flex min-h-[180px] items-center justify-center">
               <div className="flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400">
                 <Loader2 className="h-4 w-4 animate-spin" />
                 正在加载学习空间...
@@ -160,11 +145,11 @@ export function LearningSpacesPage() {
           ) : null}
 
           {!isLoading && subjects.length === 0 ? (
-            <div className="mt-8 flex min-h-[320px] flex-col items-center justify-center rounded-[24px] border border-dashed border-slate-200 bg-white/60 px-6 text-center dark:border-slate-800 dark:bg-slate-900/55">
-              <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400">
-                <LayoutGrid className="h-7 w-7" />
+            <div className="mt-14 flex min-h-[180px] flex-col items-center justify-center px-6 text-center">
+              <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-slate-100/80 text-slate-500 dark:bg-slate-800/80 dark:text-slate-400">
+                <LayoutGrid className="h-5 w-5" />
               </div>
-              <h2 className="mt-5 text-lg font-semibold text-slate-900 dark:text-slate-100">还没有学习空间</h2>
+              <h2 className="mt-4 text-lg font-semibold text-slate-900 dark:text-slate-100">还没有学习空间</h2>
               <p className="mt-2 max-w-md text-sm leading-6 text-slate-500 dark:text-slate-400">
                 可以新建一个空学科，也可以直接导入别人分享的 .atmx 课程包。
               </p>
@@ -181,7 +166,7 @@ export function LearningSpacesPage() {
           ) : null}
 
           {!isLoading && subjects.length > 0 ? (
-            <div className="mt-5 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+            <div className="mt-5 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
               {subjects.map((subject: SubjectWithIcon, index: number) => {
                 const displayName = displaySubjectName(subject);
                 const SubjectIcon = resolveSubjectIcon(subject.icon_key);
@@ -189,7 +174,7 @@ export function LearningSpacesPage() {
                 return (
                   <motion.div
                     key={subject.subject_id}
-                    className="group flex min-h-[240px] flex-col overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm transition duration-200 hover:border-slate-300 hover:shadow-[0_18px_42px_rgba(15,23,42,0.10)] dark:border-slate-800/80 dark:bg-slate-900 dark:hover:border-slate-700 dark:hover:shadow-[0_18px_42px_rgba(0,0,0,0.24)]"
+                    className="group flex min-h-[232px] flex-col overflow-hidden rounded-2xl border border-slate-200/80 bg-white/90 shadow-sm transition duration-200 hover:border-slate-300 hover:shadow-[0_18px_42px_rgba(15,23,42,0.08)] dark:border-slate-800/80 dark:bg-slate-900/90 dark:hover:border-slate-700 dark:hover:shadow-[0_18px_42px_rgba(0,0,0,0.24)]"
                     initial={{ opacity: 0, scale: 0.97, y: 10 }}
                     animate={{ opacity: 1, scale: 1, y: 0 }}
                     transition={{
@@ -200,26 +185,26 @@ export function LearningSpacesPage() {
                     whileHover={{ y: -3 }}
                     whileTap={{ scale: 0.99 }}
                   >
-                    <div className="flex items-start gap-4 border-b border-slate-100 px-5 py-5 dark:border-slate-800">
-                      <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br ${subjectTone(displayName)} text-white shadow-sm`}>
-                        <SubjectIcon className="h-6 w-6" strokeWidth={2.1} />
+                    <div className="flex items-start gap-3 px-4 pb-4 pt-4">
+                      <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br ${subjectTone(displayName)} text-white shadow-sm`}>
+                        <SubjectIcon className="h-5 w-5" strokeWidth={2.1} />
                       </div>
                       <div className="min-w-0 flex-1">
-                        <div className="flex items-start justify-between gap-3">
-                          <h3 className="line-clamp-2 text-lg font-semibold leading-7 tracking-tight text-slate-900 dark:text-slate-100">
+                        <div className="flex items-start justify-between gap-2">
+                          <h3 className="line-clamp-2 text-base font-semibold leading-6 text-slate-950 dark:text-slate-100">
                             {displayName}
                           </h3>
-                          <span className="shrink-0 rounded-full bg-slate-100 px-2 py-1 text-[11px] font-medium text-slate-500 dark:bg-slate-800 dark:text-slate-400">
+                          <span className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-500 dark:bg-slate-800 dark:text-slate-400">
                             学科
                           </span>
                         </div>
-                        <p className="mt-2 line-clamp-2 text-sm leading-6 text-slate-500 dark:text-slate-400">
-                          继续整理资料、生成知识文档、练习考试并查看学习画像。
+                        <p className="mt-1.5 line-clamp-2 text-sm leading-6 text-slate-500 dark:text-slate-400">
+                          整理资料、生成知识文档、练习考试并查看画像。
                         </p>
                       </div>
                     </div>
 
-                    <div className="flex flex-1 flex-col px-5 py-4">
+                    <div className="flex flex-1 flex-col px-4 pb-4">
                       <div className="grid grid-cols-3 gap-2">
                         {[
                           { label: "构建", path: "build" },
@@ -229,14 +214,14 @@ export function LearningSpacesPage() {
                           <Link
                             key={item.path}
                             to={`/subject/${subject.subject_id}/${item.path}`}
-                            className="rounded-xl bg-slate-50 px-3 py-2 text-center text-xs font-medium text-slate-600 transition hover:bg-slate-100 hover:text-slate-900 dark:bg-slate-800/70 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-slate-100"
+                            className="rounded-lg bg-slate-50 px-2 py-2 text-center text-xs font-medium text-slate-600 transition hover:bg-slate-100 hover:text-slate-900 dark:bg-slate-800/70 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-slate-100"
                           >
                             {item.label}
                           </Link>
                         ))}
                       </div>
 
-                      <div className="mt-auto grid grid-cols-2 gap-2 border-t border-slate-100 pt-4 dark:border-slate-800">
+                      <div className="mt-auto grid grid-cols-2 gap-2 border-t border-slate-100 pt-3 dark:border-slate-800">
                         <Link
                           to={`/subject/${subject.subject_id}/build`}
                           className="col-span-2 inline-flex min-h-10 items-center justify-center gap-2 whitespace-nowrap rounded-xl bg-slate-900 px-3 text-sm font-medium text-white transition hover:bg-slate-800 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white"
