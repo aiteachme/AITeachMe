@@ -49,8 +49,8 @@ image_generation -> settings.models.image_generation（默认未配置）
 - KG docs-sync 当前使用 `light` 槽位；抽取任务意图由 `call_purpose=EXTRACT` 表达。
 - 路由层仍保留 `extract` 兼容别名，但新代码不应继续把它当模型槽位使用。
 - `kg_doc_sync` 的 LangGraph 节点本身不直接写死模型，LLM 调用集中在复用的 extractor 内部；`call_purpose + model slot + max_tokens` 统一由 `kg_doc_sync/lib/model_policy.py` 维护。
-- Prompt 文件按真实调用拆分：章节图谱抽取在 `prompts/section_graph.py`，题目 fallback 概念识别在 `prompts/question_concepts.py`，导出聚合在 `prompts/registry.py`。
-- 核心 lib 按职责拆分：`models.py` 放 state/report 数据合同，`sync_runs.py` 放同步批次状态写入，`candidate_quality.py` 放候选过滤规则，`question_blocks.py` 只保留题目 fallback 需要的题块解析。
+- Prompt 文件按真实调用拆分：章节图谱抽取在 `prompts/section_graph.py`，导出聚合在 `prompts/registry.py`。
+- 核心 lib 按职责拆分：`models.py` 放 state/report 数据合同，`sync_runs.py` 放同步批次状态写入，`candidate_quality.py` 放候选过滤规则，`question_blocks.py` 只用于题目块识别和质量判断，不再生成兜底知识点。
 
 按当前代码，KG docs-sync 各阶段的大模型使用如下：
 
@@ -60,11 +60,10 @@ image_generation -> settings.models.image_generation（默认未配置）
 | `load_knowledge_doc_sync_input` | `kg_doc_sync/inputs.py` | 无 LLM | 无 | 无 | 无 | 读取 `KnowledgeDoc` rows、DocGen manifest、文档摘要和章节来源映射 |
 | `prepare` | `kg_doc_sync/nodes/prepare_node.py` | 无 LLM | 无 | 无 | 无 | 校验 `subject` 和合并 Markdown |
 | `init_run` | `kg_doc_sync/nodes/init_run_node.py` | 无 LLM | 无 | 无 | 无 | 校验 Markdown anchors，创建 `knowledge_graph_sync_run`，确定 revision/doc_version |
-| `extract` | `kg_doc_sync/nodes/extract_node.py` | 间接 LLM | 由内部 extractor 决定 | 由 policy 决定 | 见下方 | 加载学科上下文，按章节并发抽取图谱候选并合并 fallback/backbone/结构边 |
+| `extract` | `kg_doc_sync/nodes/extract_node.py` | 间接 LLM | 由内部 extractor 决定 | 由 policy 决定 | 见下方 | 加载学科上下文，按章节并发抽取图谱候选并合并 backbone/结构边 |
 | `persist` | `kg_doc_sync/nodes/persist_node.py` | 无 LLM | 无 | 无 | 无 | 写入节点、关系、source_ref，标记旧同步实体 deprecated，并完成 sync run |
 | `_extract_chapter_graph_items` 主抽取 | `kg_doc_sync/lib/incremental_sync.py` -> `kg_doc_sync/lib/extraction.py` | 结构化 | `EXTRACT` | `light` | `qwen-flash` | 从单章 Markdown 抽取候选 KnowledgeUnit 和关系 |
 | `_repair_docs_extraction_after_empty` | `kg_doc_sync/lib/extraction.py` | 结构化 | `EXTRACT` | `light` | `qwen-flash` | 当 docs-sync 主抽取为空时做一次极短修复抽取 |
-| `_llm_extract_concepts_from_questions` | `kg_doc_sync/lib/extraction.py` | 结构化 | `DOCGEN_LIGHT` | `light` | `qwen-flash` | 题目密集内容下从题干反推少量概念/方法 |
 | `filter_docs_candidate_result` | `kg_doc_sync/lib/candidate_quality.py` | 无 LLM | 无 | 无 | 无 | 丢弃学习目标、题型例练、速判口诀、计划句等非知识点 |
 | `_build_backbone_graph_items` | `kg_doc_sync/lib/incremental_sync.py` | 无 LLM | 无 | 无 | 无 | 把 DocGen `document_backbone` 的 glossary/dependency 转成保底节点和边 |
 | `_build_structural_heading_edges` | `kg_doc_sync/lib/incremental_sync.py` | 无 LLM | 无 | 无 | 无 | 用标题层级补结构边 |
@@ -124,7 +123,7 @@ _extract_chapter_with_retries x N
 fan-in extraction payloads
   合并所有章节候选。
   做全局 anchor 去重。
-  合并 LLM 候选、fallback 候选、DocGen backbone 候选。
+  合并 LLM 候选和 DocGen backbone 候选。
   补结构边和跨章节语义边。
   |
   v
@@ -169,7 +168,7 @@ extract 节点内部
     chapter N ┘
 
 payload fan-in 后
-  LLM/fallback units
+  LLM units
   + DocGen backbone units
   + structural edges
   + cross-section semantic edges
@@ -295,7 +294,7 @@ extract
     - 如果 subject_context 为空，从学科上下文读取。
     - 按真实章节切分 Markdown。
     - 并发抽取图谱候选。
-    - 合并 LLM/fallback units、DocGen backbone、结构边和跨章节语义边。
+    - 合并 LLM units、DocGen backbone、结构边和跨章节语义边。
   失败：
     - 抽取异常写入 error，fail 节点会标记 sync run failed。
   当前模型方案：
@@ -376,7 +375,7 @@ _extract_chapter_with_retries
   当前模型方案：
     - 主抽取走 `KGDocSyncModelStep.SECTION_GRAPH`，即 `call_purpose=EXTRACT + model="light"`，`max_tokens=1600`。
     - docs 空结果修复走 `KGDocSyncModelStep.EMPTY_REPAIR`，即 `call_purpose=EXTRACT + model="light"`，`max_tokens=900`。
-    - 题目 fallback 中的 LLM 概念抽取走 `KGDocSyncModelStep.QUESTION_CONCEPTS`，即 `call_purpose=DOCGEN_LIGHT + model="light"`。
+    - 结构化抽取失败会按章节重试；重试耗尽后让图谱同步失败，不再用标题或题目关键词本地生成 KnowledgeUnit。
 
 _extract_chapter_graph_items
   输入：
@@ -390,9 +389,8 @@ _extract_chapter_graph_items
     - SectionExtractionPayload
   候选来源：
     - LLM structured extraction：主路径。
-    - docs support result：LLM 空结果或节点过少时，用标题、正文和 typed lines 生成兜底。
-    - topic fallback：LLM 报错或空结果时，用语义标题路径兜底。
-    - question fallback：题目密集内容下从题干反推概念/方法。
+    - LLM empty repair：主抽取为空且章节有明显知识信号时，再走一次结构化 LLM 修复。
+    - DocGen backbone：使用 DocGen 已经生成的结构化 backbone 补充 glossary/dependency。
   过滤：
     - `candidate_quality.filter_docs_candidate_result` 会丢弃明显不是知识点的候选。
     - 典型拒绝项：学习目标、章节导读、本章自检、考前复盘、题型例练、速判口诀、解题入口、解题模板、题干句、任务句、规划句、模块权重排序、知识组合策略等。
@@ -490,9 +488,9 @@ fail
 | `created_edge_ids / updated_edge_ids / deprecated_edge_ids` | 边变化 |
 | `section_count / chapter_count` | 实际处理章节数 |
 | `llm_section_count` | 调用过 LLM 的章节数 |
-| `fallback_section_count` | 使用 fallback 的章节数 |
-| `question_fallback_section_count` | 题目 fallback 数 |
-| `topic_fallback_section_count` | topic fallback 数 |
+| `fallback_section_count` | 兼容历史字段；当前本地 fallback 已禁用，正常为 0 |
+| `question_fallback_section_count` | 兼容历史字段；当前本地 fallback 已禁用，正常为 0 |
+| `topic_fallback_section_count` | 兼容历史字段；当前本地 fallback 已禁用，正常为 0 |
 | `total_extracted_node_count / total_extracted_edge_count` | 原始抽取候选计数 |
 | `source_ref_count` | source ref 写入数 |
 | `backbone_unit_count / backbone_edge_count` | DocGen backbone 补入数量 |
@@ -537,7 +535,7 @@ none           -> 没有可同步输入
 1. 重新生成或导入知识文档。
 2. 触发知识文档页上的构建。
 3. 查看 graph lane runtime / LangSmith trace。
-4. 在节点详情里看 `source_refs`，确认节点来自正文抽取、fallback 还是 `docgen_backbone`。
+4. 在节点详情里看 `source_refs`，确认节点来自正文抽取还是 `docgen_backbone`。
 
 常见现象：
 

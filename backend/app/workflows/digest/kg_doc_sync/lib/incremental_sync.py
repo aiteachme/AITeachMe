@@ -34,7 +34,6 @@ from app.workflows.digest.common.markdown_knowledge_anchors import (
 )
 from app.workflows.digest.kg_doc_sync.lib.extraction import (
     CandidateExtractionDiagnostics,
-    CandidateNode,
     ChunkExtractionResult,
     docs_section_llm_max_content_chars,
     docs_section_llm_timeout_s,
@@ -1087,39 +1086,6 @@ async def _extract_candidates_with_diagnostics_adapter(**kwargs) -> tuple[ChunkE
     return await extract_candidates_with_diagnostics(**kwargs)
 
 
-def _merge_missing_chapter_heading_nodes(result: ChunkExtractionResult, chapter) -> ChunkExtractionResult:
-    section_chunks = extract_markdown_section_chunks(chapter.body_markdown)
-    seen_names = {normalize_name(node.name) for node in result.nodes if normalize_name(node.name)}
-    has_extracted_nodes = bool(result.nodes)
-
-    for section in section_chunks:
-        if has_extracted_nodes and section.heading_level <= chapter.heading_level:
-            continue
-        normalized_title = normalize_name(section.title)
-        if not normalized_title or normalized_title in seen_names:
-            continue
-        if is_low_quality_docs_unit_name(section.title, node_type="concept"):
-            continue
-        path_parts = [part.strip() for part in str(section.header_path or "").split(" > ") if part.strip()]
-        parent_title = path_parts[-2] if len(path_parts) >= 2 else ""
-        seen_names.add(normalized_title)
-        result.nodes.append(
-            CandidateNode(
-                candidate_id=section.anchor,
-                anchor_id=section.anchor,
-                name=section.title,
-                knowledge_unit_type="concept",
-                type_source="rule",
-                type_confidence=0.8,
-                local_summary=section.summary or section.title,
-                taxonomy_hint=parent_title or chapter.title,
-                parent_entity_name=parent_title or None,
-            )
-        )
-
-    return result
-
-
 async def _extract_chapter_with_retries(
     chapter_index: int,
     chapter,
@@ -1154,109 +1120,16 @@ async def _extract_chapter_with_retries(
                 break
             await asyncio.sleep(_chapter_retry_delay_s() * attempt)
 
-    logger.warning(
-        "knowledge_docs_sync_chapter_fallback_after_retries",
+    logger.error(
+        "knowledge_docs_sync_chapter_llm_failed_after_retries",
         chapter_index=chapter_index,
         chunk_title=chapter.title,
         header_path=chapter.header_path,
         error_type=(type(last_error).__name__ if last_error is not None else "UnknownError"),
     )
-    return _build_chapter_fallback_payload(chapter_index, chapter, chapter_context=chapter_context)
-
-
-def _build_chapter_fallback_payload(
-    chapter_index: int,
-    chapter,
-    *,
-    chapter_context: ChapterSourceContext | None = None,
-) -> SectionExtractionPayload:
-    chapter_context = chapter_context or ChapterSourceContext(chapter_index=chapter_index)
-    body_markdown = chapter.body_markdown[:8000]
-    primary_anchor = str(chapter.anchor or build_knowledge_unit_anchor(chapter.title))
-    if is_low_quality_docs_unit_name(chapter.title, node_type="concept"):
-        return SectionExtractionPayload(
-            units=[],
-            pending_edges=[],
-            candidate_id_to_anchor={},
-            anchors_by_name={},
-            anchors_by_normalized_name={},
-            node_contexts_by_anchor={},
-            section_context=SectionExtractionContext(
-                section_index=chapter_index,
-                title=chapter.title,
-                header_path=chapter.header_path,
-                body_markdown=body_markdown,
-                knowledge_document_id=chapter_context.knowledge_document_id,
-                source_file_ids=list(chapter_context.source_file_ids),
-            ),
-            diagnostics={
-                "section_count": 0,
-                "llm_section_count": 0,
-                "fallback_section_count": 1,
-                "question_fallback_section_count": 0,
-                "topic_fallback_section_count": 1,
-                "markdown_short_circuit_section_count": 0,
-                "total_extracted_node_count": 0,
-                "total_extracted_edge_count": 0,
-            },
-        )
-    primary_unit = MarkdownKnowledgeUnit(
-        anchor=primary_anchor,
-        name=chapter.title,
-        knowledge_unit_type="concept",
-        summary=chapter.summary or chapter.title,
-        body_markdown=body_markdown,
-        knowledge_images=list(chapter.knowledge_images),
-        prerequisites=[],
-        related=[],
-        line_no=chapter.line_no,
-        heading_level=chapter.heading_level,
-        source_kind="fallback_topic",
-        knowledge_document_id=chapter_context.knowledge_document_id,
-        chapter_index=chapter_context.chapter_index or chapter_index,
-        source_file_ids=list(chapter_context.source_file_ids),
-        quote_text=chapter.summary or chapter.title,
-    )
-    normalized_name = normalize_name(chapter.title)
-    return SectionExtractionPayload(
-        units=[primary_unit],
-        pending_edges=[],
-        candidate_id_to_anchor={},
-        anchors_by_name={chapter.title: [primary_anchor]},
-        anchors_by_normalized_name=({normalized_name: [primary_anchor]} if normalized_name else {}),
-        node_contexts_by_anchor={
-            primary_anchor: {
-                "name": chapter.title,
-                "knowledge_unit_type": "concept",
-                "taxonomy_hint": chapter.title,
-            "parent_entity_name": "",
-            "section_index": chapter_index,
-            "knowledge_document_id": chapter_context.knowledge_document_id,
-            "source_file_ids": list(chapter_context.source_file_ids),
-        }
-    },
-        section_context=SectionExtractionContext(
-            section_index=chapter_index,
-            title=chapter.title,
-            header_path=chapter.header_path,
-            body_markdown=body_markdown,
-            primary_anchor=primary_anchor,
-            primary_name=chapter.title,
-            primary_type="concept",
-            knowledge_document_id=chapter_context.knowledge_document_id,
-            source_file_ids=list(chapter_context.source_file_ids),
-        ),
-        diagnostics={
-            "section_count": 0,
-            "llm_section_count": 0,
-            "fallback_section_count": 1,
-            "question_fallback_section_count": 0,
-            "topic_fallback_section_count": 1,
-            "markdown_short_circuit_section_count": 0,
-            "total_extracted_node_count": 1,
-            "total_extracted_edge_count": 0,
-        },
-    )
+    if last_error is not None:
+        raise last_error
+    raise RuntimeError("knowledge graph chapter extraction failed without an exception")
 
 
 async def _extract_chapter_graph_items(
@@ -1276,7 +1149,6 @@ async def _extract_chapter_graph_items(
         prefer_fast_path=False,
         allow_markdown_anchor_short_circuit=False,
     )
-    result = _merge_missing_chapter_heading_nodes(result, chapter)
     result = filter_docs_candidate_result(result)
     diagnostics.node_count = len(result.nodes)
     diagnostics.edge_count = len(result.edges)
