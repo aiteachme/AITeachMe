@@ -1,9 +1,11 @@
 """Helpers for the persisted runtime settings row.
 
 The `system_runtime_settings` table stores product settings plus local runtime
-environment overrides.  The env override layer lets the local Settings UI avoid
-rewriting `.env`: `.env` remains a bootstrap/default source, and DB values win
-per key once the user edits them in the app.
+environment overrides. The same row also stores an effective settings snapshot
+for diagnostics, but this module only handles the editable override payload.
+The env override layer lets the local Settings UI avoid rewriting `.env`:
+`.env` remains a bootstrap/default source, and DB values win per key once the
+user edits them in the app.
 """
 
 from __future__ import annotations

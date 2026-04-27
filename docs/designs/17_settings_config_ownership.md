@@ -29,6 +29,8 @@ system_runtime_settings.__env_overrides__
 - 本地设置页保存到数据库，不回写 `.env`。
 - 本地保存后的授权、模型网关、搜索和解析配置会优先于 `.env`。
 - 云端普通用户只读，不写全局 `system_runtime_settings`。
+- 用户级非敏感覆盖保存在 `user.runtime_settings_json`，不再使用单独的一对一用户设置表。
+- 当前有效 settings 快照保存在 `system_runtime_settings.effective_settings_json`，不再使用单独快照表。
 
 ## 2. 分层职责
 
@@ -37,7 +39,7 @@ system_runtime_settings.__env_overrides__
 | deployment env / `.env` | 部署、密钥、连接串、首次启动默认值 | `APP_MODE`、`DATABASE_URL`、`AUTH_*`、`S3_*`、`LLM_API_KEY`、`LLM_BASE_URL`、搜索 provider key | 部署平台或本地用户 |
 | code defaults | 项目级默认行为 | 模型路由默认值、上传限制、Planner/DocGen 策略、RAG、搜索画像、图谱同步、观测开关 | 代码 |
 | `PROJECT_SETTINGS_PATH` | 可选外部项目 override | 开发/部署侧临时覆盖非敏感项目策略 | 显式配置者 |
-| `system_runtime_settings` | 本地设置页覆盖 | `models.*`、`ingest.*`、`planner.*`、`docgen.*`、`rag.*`、`search.retriever_profile`、`knowledge_graph.sync_after_docgen`、粗粒度 observability | 设置页/API |
+| `system_runtime_settings` | 本地设置页全局覆盖与有效配置快照 | `models.*`、`ingest.*`、`planner.*`、`docgen.*`、`rag.*`、`search.retriever_profile`、`knowledge_graph.sync_after_docgen`、粗粒度 observability、`settings_hash` | 设置页/API |
 | module constants | 模块内部执行细节 | timeout、并发、cache/fusion、parser chain 常量、LLM token budget、embedding batch | 对应模块代码 |
 
 代码默认值集中在：

@@ -121,10 +121,10 @@ GitHub Actions 的 `deploy.yml` 目前只是触发 Render 部署，它不会替�
 
 由 Alembic 管理，来自当前 SQLModel metadata。
 
-当前初始 migration 覆盖：
+当前 head 业务 schema 覆盖：
 
 - `user`
-- `email_verification_code`
+- `email_confirmation`
 - `subject`
 - `raw_file`
 - `confirmed_build_plan`
@@ -138,8 +138,10 @@ GitHub Actions 的 `deploy.yml` 目前只是触发 Render 部署，它不会替�
 - `user_knowledge_state`
 - `chat_session`
 - `chat_message`
-- `system_settings_snapshot`
-- `user_runtime_settings`
+- `system_runtime_settings`
+
+用户级 settings 覆盖直接保存在 `user.runtime_settings_json`，系统 settings 快照直接保存在
+`system_runtime_settings` 同一行的 `effective_settings_json / settings_hash / settings_source` 字段。
 
 ### 5.2 运行时对象
 

@@ -46,7 +46,6 @@ _REQUIRED_FOREIGN_KEYS = (
     ("exam_paper_item", "question_template_id", "question_template"),
     ("chat_message", "session_id", "chat_session"),
     ("chat_message", "source_chunk_id", "retrieval_chunk"),
-    ("user_runtime_settings", "user_id", "user"),
 )
 
 
