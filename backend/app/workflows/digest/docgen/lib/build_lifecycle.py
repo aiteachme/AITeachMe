@@ -839,7 +839,6 @@ async def run_docgen_background(
             ),
         )
         docgen_published = True
-        graph_error_message: str | None = None
         doc_sync_metrics = _default_doc_sync_metrics()
         if sync_graph_after_docgen:
             try:
@@ -877,9 +876,6 @@ async def run_docgen_background(
                     metrics={"processed_chunks": 0, **doc_sync_metrics},
                 )
                 logger.warning("knowledge_build_graph_followup_failed", subject=subject, error=str(exc))
-        docgen_completion_description = "知识文档已发布完成。"
-        if graph_error_message is not None:
-            docgen_completion_description = "知识文档已发布，图谱同步失败。"
         _write_docgen_status(
             subject,
             requested_at=requested_at,
@@ -892,7 +888,7 @@ async def run_docgen_background(
             digest_mode=resolved_digest_mode,
             error_message=None,
             draft_available=False,
-            current_stage_description=docgen_completion_description,
+            current_stage_description="知识文档已发布完成。",
         )
         _mark_confirmed_plan_status(
             subject=subject,

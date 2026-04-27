@@ -12,9 +12,18 @@ from app.workflows.digest.kg_doc_sync.state import DocsSyncState
 logger = structlog.get_logger()
 
 
+def _resolve_error_message(state: DocsSyncState) -> str:
+    error_message = str(state.get("error") or "").strip()
+    if error_message:
+        return error_message
+    if state.get("extraction_payload") is None:
+        return "docs_sync_extraction_payload_missing"
+    return "docs_sync_failed"
+
+
 def fail_node(state: DocsSyncState) -> DocsSyncState:
     run_context = state.get("sync_run_context")
-    error_message = str(state.get("error") or "docs_sync_failed")
+    error_message = _resolve_error_message(state)
     if run_context is None:
         return with_node_metrics(
             state,
@@ -25,6 +34,7 @@ def fail_node(state: DocsSyncState) -> DocsSyncState:
                 "sync_run_marked_failed": False,
                 "reason": "sync_run_context_missing",
             },
+            error=error_message,
         )
 
     try:
@@ -43,6 +53,7 @@ def fail_node(state: DocsSyncState) -> DocsSyncState:
                 "sync_run_id": run_context.sync_run_id,
                 "sync_run_marked_failed": True,
             },
+            error=error_message,
         )
     except Exception as exc:
         logger.warning(
@@ -61,6 +72,7 @@ def fail_node(state: DocsSyncState) -> DocsSyncState:
                 "sync_run_marked_failed": False,
                 "fail_marker_error": str(exc),
             },
+            error=error_message,
         )
 
 

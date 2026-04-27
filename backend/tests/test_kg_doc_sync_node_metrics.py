@@ -1,6 +1,7 @@
-from app.workflows.digest.kg_doc_sync.graph import create_docs_sync_initial_state
+from app.workflows.digest.kg_doc_sync.graph import create_docs_sync_initial_state, route_after_extract
 from app.workflows.digest.kg_doc_sync.lib.incremental_sync import graph_extraction_parallelism
 from app.workflows.digest.kg_doc_sync.nodes.extract_node import extract_node
+from app.workflows.digest.kg_doc_sync.nodes.fail_node import fail_node
 from app.workflows.digest.kg_doc_sync.nodes.finalize_node import finalize_node
 from app.workflows.digest.kg_doc_sync.nodes.prepare_node import prepare_node
 
@@ -58,6 +59,24 @@ def test_extract_node_missing_run_context_records_parallelism_metrics():
     assert metrics["ok"] is False
     assert metrics["chapter_concurrency_limit"] == parallelism["chapter_concurrency_limit"]
     assert metrics["chapter_max_retries"] == parallelism["chapter_max_retries"]
+
+
+def test_extract_route_fails_when_payload_is_missing():
+    state = create_docs_sync_initial_state(
+        subject="math",
+        markdown="# Algebra",
+        build_revision_no=None,
+    )
+
+    assert route_after_extract(state) == "fail"
+
+    result = fail_node(state)
+    metrics = result["node_metrics"]["fail"]
+
+    assert result["error"] == "docs_sync_extraction_payload_missing"
+    assert metrics["ok"] is False
+    assert metrics["error"] == "docs_sync_extraction_payload_missing"
+    assert metrics["reason"] == "sync_run_context_missing"
 
 
 def test_finalize_node_missing_report_records_error_metrics():

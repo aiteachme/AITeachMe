@@ -65,7 +65,8 @@ NODE_TRACE_DETAILS: dict[str, dict[str, object]] = {
         "description": (
             "把知识文档切成章节任务，大章会继续拆成子章节任务，并以最多 20 路并发调用结构化 LLM "
             "抽取候选 KnowledgeUnit 和关系；随后合并 DocGen backbone、标题结构边和跨章节语义边。"
-            "本节点只产出 extraction_payload，不写图谱表；语义候选必须来自 LLM/LLM 修复或显式结构化来源。"
+            "本节点只产出 extraction_payload，不写图谱表；缺失 payload 会直接进入 fail，不会继续写入。"
+            "语义候选必须来自 LLM/LLM 修复或显式结构化来源。"
         ),
         "reads": ["markdown", "subject_context", "structured_context", "sync_run_context", "Subject.document_summary_json"],
         "writes": ["extraction_payload", "subject_context", "node_metrics.extract", "error"],
@@ -123,7 +124,9 @@ def route_after_init_run(state: DocsSyncState) -> str:
 
 
 def route_after_extract(state: DocsSyncState) -> str:
-    return "persist" if not state.get("error") else "fail"
+    if state.get("error"):
+        return "fail"
+    return "persist" if state.get("extraction_payload") is not None else "fail"
 
 
 def route_after_persist(state: DocsSyncState) -> str:
