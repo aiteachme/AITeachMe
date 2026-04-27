@@ -4,6 +4,7 @@ import pytest
 from pydantic import ValidationError
 
 from app.shared.infra.settings import (
+    RUNTIME_ENV_OVERRIDES_KEY,
     Settings,
     clear_system_settings_override,
     combine_runtime_settings_payload,
@@ -125,6 +126,37 @@ def test_settings_overview_uses_plural_mineru_tokens_env(monkeypatch) -> None:
     assert entries["mineru.api_token"].status == "configured"
     assert entries["mineru.api_token"].value is None
     assert entries["mineru.api_token"].display_value == "已配置"
+
+
+def test_settings_overview_blank_env_override_falls_back_to_dotenv(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "app.workflows.support.system.settings.is_local_mode",
+        lambda: True,
+    )
+    monkeypatch.setattr(
+        "app.workflows.support.system.settings.resolve_app_mode",
+        lambda: "local",
+    )
+    monkeypatch.setattr(
+        "app.workflows.support.system.settings.get_system_settings_override_payload",
+        lambda: {RUNTIME_ENV_OVERRIDES_KEY: {"LLM_BASE_URL": ""}},
+    )
+    monkeypatch.setattr(
+        "app.workflows.support.system.settings.get_env",
+        lambda name, default=None: {
+            "LLM_BASE_URL": "https://env.example.com/v1",
+        }.get(name, default),
+    )
+
+    overview = build_settings_overview_data(session=None, user_id=None)
+    entries = {
+        entry.key: entry
+        for section in overview.sections
+        for entry in section.entries
+    }
+
+    assert entries["llm.base_url"].value == "https://env.example.com/v1"
+    assert entries["llm.base_url"].status == "configured"
 
 
 def test_settings_overview_cloud_mode_is_read_only(monkeypatch) -> None:

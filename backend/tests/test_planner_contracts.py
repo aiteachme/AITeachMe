@@ -1,6 +1,11 @@
 import json
 
 from app.workflows.digest.common.models import DigestMaterialContext, SubjectProfile
+from app.workflows.digest.planner.lib.tracing import (
+    RUN_NAME_PLANNER_APPEND,
+    RUN_NAME_PLANNER_CREATE,
+    planner_trace_run_name,
+)
 from app.workflows.digest.planner.lib.models import PlanIntent, PlannerBrief
 from app.workflows.digest.planner.lib.plans import normalize_planner_draft
 from app.workflows.digest.planner.nodes.stream_and_parse_plan_draft import (
@@ -54,6 +59,12 @@ def test_planner_prompt_subject_hides_subject_id():
     assert "subj_" not in _intent_subject_for_prompt(state)
     assert "subj_" not in _composer_subject_for_prompt(state)
     assert all("subj_" not in item for item in _fallback_plan_queries(state))
+
+
+def test_planner_trace_name_distinguishes_create_and_append_runs():
+    assert planner_trace_run_name("create") == RUN_NAME_PLANNER_CREATE
+    assert planner_trace_run_name("generate_only") == RUN_NAME_PLANNER_CREATE
+    assert planner_trace_run_name("append") == RUN_NAME_PLANNER_APPEND
 
 
 def test_composer_hidden_json_parses_to_initial_outline_payload():

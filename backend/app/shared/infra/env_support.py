@@ -86,14 +86,19 @@ def get_env(name: str, default: str | None = None) -> str | None:
 
 
 def set_runtime_env_overrides(overrides: Mapping[str, str | None] | None) -> None:
-    """Apply DB-backed local runtime env overrides to this process."""
+    """Apply DB-backed local runtime env overrides to this process.
+
+    Blank override values mean "remove the runtime override and fall back to
+    the original process env / `.env` value".
+    """
 
     load_local_dotenv()
-    normalized = {
-        str(key).strip(): "" if value is None else str(value)
-        for key, value in dict(overrides or {}).items()
-        if str(key or "").strip()
-    }
+    normalized: dict[str, str] = {}
+    for raw_key, raw_value in dict(overrides or {}).items():
+        key = str(raw_key or "").strip()
+        value = "" if raw_value is None else str(raw_value)
+        if key and value.strip():
+            normalized[key] = value
 
     previous_keys = set(_RUNTIME_ENV_OVERRIDES)
     next_keys = set(normalized)

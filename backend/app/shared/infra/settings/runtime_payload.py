@@ -2,8 +2,9 @@
 
 The `system_runtime_settings` table stores product settings plus local runtime
 environment overrides.  The env override layer lets the local Settings UI avoid
-rewriting `.env`: `.env` remains a bootstrap/default source, and DB values win
-per key once the user edits them in the app.
+rewriting `.env`: `.env` remains a bootstrap/default source, and non-empty DB
+values win per key once the user edits them in the app.  Blank values are not
+stored as overrides; they mean "fall back to `.env` / process env".
 """
 
 from __future__ import annotations
@@ -23,7 +24,10 @@ def _normalize_env_overrides(value: Any) -> dict[str, str]:
         key = str(raw_key or "").strip()
         if not key:
             continue
-        normalized[key] = "" if raw_value is None else str(raw_value)
+        text = "" if raw_value is None else str(raw_value)
+        if not text.strip():
+            continue
+        normalized[key] = text
     return normalized
 
 

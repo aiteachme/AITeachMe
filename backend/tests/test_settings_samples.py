@@ -238,7 +238,7 @@ def test_settings_upgrade_legacy_extract_and_rerank_keys() -> None:
     assert "rerank_model" not in upgraded["rag"]
 
 
-def test_runtime_payload_keeps_env_overrides_outside_settings_schema() -> None:
+def test_runtime_payload_keeps_non_empty_env_overrides_outside_settings_schema() -> None:
     payload = combine_runtime_settings_payload(
         {"models": {"primary": "demo-model"}},
         {"LLM_API_KEY": "local-key", "MINERU_API_TOKEN": ""},
@@ -247,10 +247,10 @@ def test_runtime_payload_keeps_env_overrides_outside_settings_schema() -> None:
     settings_payload, env_overrides = split_runtime_settings_payload(payload)
 
     assert settings_payload == {"models": {"primary": "demo-model"}}
-    assert env_overrides == {"LLM_API_KEY": "local-key", "MINERU_API_TOKEN": ""}
+    assert env_overrides == {"LLM_API_KEY": "local-key"}
 
 
-def test_runtime_env_overrides_win_per_key(monkeypatch) -> None:
+def test_non_empty_runtime_env_overrides_win_per_key(monkeypatch) -> None:
     monkeypatch.setenv("MINERU_API_TOKEN", "env-token")
     set_runtime_env_overrides({})
 
@@ -261,7 +261,7 @@ def test_runtime_env_overrides_win_per_key(monkeypatch) -> None:
         assert get_env("MINERU_API_TOKEN") == "db-token"
 
         set_runtime_env_overrides({"MINERU_API_TOKEN": ""})
-        assert get_env("MINERU_API_TOKEN") == ""
+        assert get_env("MINERU_API_TOKEN") == "env-token"
 
         set_runtime_env_overrides({})
         assert get_env("MINERU_API_TOKEN") == "env-token"

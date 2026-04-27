@@ -212,18 +212,13 @@ def _first_env_override(
     env_names: tuple[str, ...],
     env_overrides: Mapping[str, str],
 ) -> tuple[bool, str | None]:
-    first_present: str | None = None
-    has_present = False
     for env_name in env_names:
         if env_name not in env_overrides:
             continue
         value = env_overrides[env_name]
         if _has_configured_value(value):
             return True, value
-        if not has_present:
-            first_present = value
-            has_present = True
-    return has_present, first_present
+    return False, None
 
 
 def _require_path(payload: Mapping[str, Any], dotted_key: str) -> Any:
@@ -533,7 +528,11 @@ def update_user_settings_overview_data(
         for env_name, value in env_updates.items():
             if value == SECRET_PRESERVE_SENTINEL:
                 continue
-            env_overrides[env_name] = "" if value is None else str(value)
+            text = "" if value is None else str(value)
+            if text.strip():
+                env_overrides[env_name] = text
+            else:
+                env_overrides.pop(env_name, None)
 
         normalized_payload = _normalize_user_settings_payload(settings_payload)
         combined_payload = combine_runtime_settings_payload(normalized_payload, env_overrides)
