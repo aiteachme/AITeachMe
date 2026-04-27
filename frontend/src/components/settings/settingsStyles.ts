@@ -86,6 +86,8 @@ export const SETTINGS_STYLES = {
     label: "text-[14px] font-medium text-zinc-900 dark:text-zinc-100",
     description: "text-[13px] leading-relaxed text-zinc-500 dark:text-zinc-400",
     note: "text-[12px] leading-relaxed text-zinc-400 dark:text-zinc-500",
+    secretHint: "mt-2 text-[12px] leading-relaxed text-zinc-500 dark:text-zinc-400",
+    secretStatus: "mt-2 text-[12px] leading-relaxed text-emerald-600 dark:text-emerald-400",
     readonlyValue:
       "w-full max-w-full break-all rounded-md border border-zinc-200 dark:border-slate-800 bg-zinc-50 dark:bg-slate-900 px-3 py-2 font-mono text-[13px] text-zinc-600 dark:text-zinc-400",
     control:
@@ -133,6 +135,7 @@ export const SETTINGS_STYLES = {
   section: {
     root: "space-y-10",
     groupBlock: "",
+    groupNote: "mt-1 text-[14px] leading-relaxed text-zinc-500 dark:text-slate-400",
     cardWrapper: "flex flex-col divide-y divide-zinc-100 dark:divide-slate-800/60",
     mixedBlock: "space-y-6",
   },

@@ -146,6 +146,7 @@ interface SecretInputProps {
   onChange: (value: string) => void;
   onBlur?: () => void;
   placeholder?: string;
+  showToggle?: boolean;
 }
 
 export function SecretInput({
@@ -154,6 +155,7 @@ export function SecretInput({
   onChange,
   onBlur,
   placeholder,
+  showToggle = true,
 }: SecretInputProps) {
   const [visible, setVisible] = useState(false);
 
@@ -168,20 +170,22 @@ export function SecretInput({
         placeholder={placeholder}
         autoComplete="off"
         spellCheck={false}
-        className={cn(SETTINGS_STYLES.field.control, "pr-9")}
+        className={cn(SETTINGS_STYLES.field.control, showToggle ? "pr-9" : undefined)}
       />
-      <button
-        type="button"
-        onClick={() => setVisible((prev) => !prev)}
-        className={SETTINGS_STYLES.field.iconButton}
-        aria-label={visible ? "隐藏" : "显示"}
-      >
-        {visible ? (
-          <EyeOff className={SETTINGS_STYLES.field.icon} />
-        ) : (
-          <Eye className={SETTINGS_STYLES.field.icon} />
-        )}
-      </button>
+      {showToggle ? (
+        <button
+          type="button"
+          onClick={() => setVisible((prev) => !prev)}
+          className={SETTINGS_STYLES.field.iconButton}
+          aria-label={visible ? "隐藏" : "显示"}
+        >
+          {visible ? (
+            <EyeOff className={SETTINGS_STYLES.field.icon} />
+          ) : (
+            <Eye className={SETTINGS_STYLES.field.icon} />
+          )}
+        </button>
+      ) : null}
     </div>
   );
 }

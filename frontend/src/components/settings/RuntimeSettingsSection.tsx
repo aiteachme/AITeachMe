@@ -26,7 +26,9 @@ interface PreparedEntryGroup {
 function renderGroupNote(label: string) {
   if (label === "解析服务授权") {
     return (
-      <InfoCard text="请填入解析服务的 API；若均未填入 API 或当前均不可用，系统将自动回退到本地服务解析。" />
+      <p className={SETTINGS_STYLES.section.groupNote}>
+        填入 MinerU 或 PaddleOCR Token 后，支持的文档会优先尝试云端解析；未配置或不可用时自动回退到本地解析。
+      </p>
     );
   }
   return null;

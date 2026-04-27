@@ -113,6 +113,7 @@ const EditableSettingsRow = memo(function EditableSettingsRow({
   const controlId = `settings-${entry.key.replace(/[^a-z0-9]+/gi, "-").toLowerCase()}`;
   const resolvedInputType = resolveEntryInputType(entry, value);
   const isPreservedSecret = entry.secret && value === SECRET_PRESERVE_VALUE;
+  const isConfiguredSecret = Boolean(entry.secret && entry.status === "configured");
   const [localValue, setLocalValue] = useState(() =>
     value === null || isPreservedSecret ? "" : String(value),
   );
@@ -185,19 +186,33 @@ const EditableSettingsRow = memo(function EditableSettingsRow({
             options={selectOptions}
           />
         ) : resolvedInputType === "password" ? (
-          <SecretInput
-            id={controlId}
-            value={localValue}
-            onChange={handleValueChange}
-            onBlur={commitLocalValue}
-            placeholder={
-              entry.secret && entry.status === "configured"
-                ? "已配置，留空保持不变"
-                : entry.default_value === null || entry.default_value === undefined
-                  ? "留空"
-                  : String(entry.default_value)
-            }
-          />
+          <>
+            <SecretInput
+              id={controlId}
+              value={localValue}
+              onChange={handleValueChange}
+              onBlur={commitLocalValue}
+              placeholder={
+                isConfiguredSecret
+                  ? "Token 已保存，留空不变；输入新值可替换"
+                  : entry.default_value === null || entry.default_value === undefined
+                    ? "请输入 Token"
+                    : String(entry.default_value)
+              }
+              showToggle={localValue.length > 0}
+            />
+            <p
+              className={
+                isConfiguredSecret
+                  ? SETTINGS_STYLES.field.secretStatus
+                  : SETTINGS_STYLES.field.secretHint
+              }
+            >
+              {isConfiguredSecret
+                ? "已保存。出于安全不会回显完整 Token，留空保存会继续使用当前配置。"
+                : "保存后页面不会回显完整 Token，只会显示已保存状态。"}
+            </p>
+          </>
         ) : (
           <TextInput
             id={controlId}
