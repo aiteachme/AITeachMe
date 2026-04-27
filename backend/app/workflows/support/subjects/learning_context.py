@@ -120,6 +120,30 @@ def _clean_int_list(value: Any, *, limit: int = _MAX_LIST_ITEMS) -> list[int]:
     return cleaned
 
 
+def _normalize_learning_goal(value: Any, *, max_chars: int = 700) -> str:
+    text = _clean_text(value, max_chars=max_chars)
+    prefixes = (
+        "长期学习意图：",
+        "长期学习意图:",
+        "用户学习意图：",
+        "用户学习意图:",
+        "用户意图是：",
+        "用户意图是:",
+        "用户意图是",
+        "用户希望：",
+        "用户希望:",
+        "用户希望",
+    )
+    changed = True
+    while changed and text:
+        changed = False
+        for prefix in prefixes:
+            if text.startswith(prefix):
+                text = text[len(prefix) :].strip()
+                changed = True
+    return _clean_text(text, max_chars=max_chars)
+
+
 def _load_json_list(raw: str | None) -> list[Any]:
     try:
         payload = json.loads(raw or "[]")
@@ -248,10 +272,33 @@ def _file_summary_snapshot(
                 "concepts": _clean_string_list(item.get("concepts"), limit=10),
                 "question_types": _clean_string_list(item.get("question_types"), limit=8),
                 "high_value_sections": _clean_string_list(item.get("high_value_sections"), limit=8, max_chars=180),
+                "chapter_slices": _source_slices_snapshot(item.get("chapter_slices"), limit=16),
             }
         )
         summaries.append(file_payload)
     return summaries
+
+
+def _source_slices_snapshot(value: Any, *, limit: int = 12) -> list[dict[str, Any]]:
+    slices: list[dict[str, Any]] = []
+    for item in _mapping_items(value, limit=limit):
+        section_ref = _clean_text(item.get("section_ref"), max_chars=180)
+        if not section_ref:
+            continue
+        slices.append(
+            {
+                "chapter_index": _safe_int(item.get("chapter_index"), default=0),
+                "file_id": _safe_int(item.get("file_id"), default=0),
+                "filename": _clean_text(item.get("filename"), max_chars=180),
+                "section_ref": section_ref,
+                "section_title": _clean_text(item.get("section_title"), max_chars=180),
+                "line_start": _safe_int(item.get("line_start"), default=0),
+                "line_end": _safe_int(item.get("line_end"), default=0),
+                "summary": _clean_text(item.get("summary"), max_chars=260),
+                "reason": _clean_text(item.get("reason"), max_chars=220),
+            }
+        )
+    return slices
 
 
 def _confirmed_plan_snapshot(docgen_artifacts: Mapping[str, Any]) -> dict[str, Any]:
@@ -331,6 +378,7 @@ def _build_chapter_snapshots(
             "title": title,
             "summary": _clean_text(chapter.get("summary") or (doc.summary if doc is not None else ""), max_chars=700),
             "objective": _clean_text(plan.get("objective") or plan.get("chapter_goal"), max_chars=300),
+            "source_slices": _source_slices_snapshot(plan.get("source_slices"), limit=12),
         }
         for field_name, limit, max_chars in _CHAPTER_LIST_FIELDS:
             chapter_payload[field_name] = _clean_string_list(plan.get(field_name), limit=limit, max_chars=max_chars)
@@ -378,7 +426,7 @@ def build_subject_learning_context_payload(
     chapter_assignments = _mapping_items(chapter_assignments)
     knowledge_docs = list(knowledge_docs or [])
     confirmed_plan = _confirmed_plan_snapshot(docgen_artifacts)
-    subject_user_intent = _clean_text(subject_user_intent, max_chars=1200)
+    subject_user_intent = _normalize_learning_goal(subject_user_intent, max_chars=1200)
     subject_description = _clean_text(subject_description, max_chars=1200)
 
     display_name = (
@@ -419,27 +467,34 @@ def build_subject_learning_context_payload(
     top_terms = _clean_string_list(top_terms, limit=8, max_chars=80)
     chapter_titles = [chapter["title"] for chapter in chapters if chapter.get("title")]
 
+    learning_goal = _clean_text(
+        confirmed_plan.get("learning_goal") or subject_user_intent or user_prompt,
+        max_chars=700,
+    )
     intent_lines = []
-    if subject_user_intent:
-        intent_lines.append(f"长期学习意图：{subject_user_intent}")
-    if user_prompt:
+    if learning_goal:
+        intent_lines.append(f"学习目标：{learning_goal}")
+    if user_prompt and user_prompt != learning_goal:
         intent_lines.append(f"本次构建请求：{user_prompt}")
     if plan_summary:
-        intent_lines.append(f"构建方案：{plan_summary}")
-    intent_lines.extend(
+        intent_lines.append(f"构建范围：{plan_summary}")
+    if chapter_titles:
+        intent_lines.append("章节范围：" + "、".join(chapter_titles[:10]))
+    style_bits = _clean_string_list(
         [
-            "教学偏好：",
-            f"- 文档风格：{_clean_text(intent_profile.get('document_style')) or 'teaching_notes'}",
-            f"- 讲解深度：{_clean_text(intent_profile.get('explanation_depth')) or 'detailed'}",
-            f"- 定义深度：{_clean_text(intent_profile.get('definition_depth')) or 'standard'}",
-            f"- 例题偏好：{_clean_text(intent_profile.get('example_preference')) or 'balanced'}",
-            f"- 考试导向：{intent_profile.get('exam_orientation', 0.5)}",
-            f"- 复习导向：{intent_profile.get('review_orientation', 0.5)}",
-        ]
+            f"文档风格 {_clean_text(intent_profile.get('document_style'))}" if intent_profile.get("document_style") else "",
+            f"讲解深度 {_clean_text(intent_profile.get('explanation_depth'))}" if intent_profile.get("explanation_depth") else "",
+            f"定义深度 {_clean_text(intent_profile.get('definition_depth'))}" if intent_profile.get("definition_depth") else "",
+            f"例题偏好 {_clean_text(intent_profile.get('example_preference'))}" if intent_profile.get("example_preference") else "",
+        ],
+        limit=6,
+        max_chars=80,
     )
+    if style_bits:
+        intent_lines.append("讲义偏好：" + "；".join(style_bits))
     avoid_list = _clean_string_list(intent_profile.get("avoid_list"), limit=8)
     if avoid_list:
-        intent_lines.append("避免内容：" + "；".join(avoid_list))
+        intent_lines.append("避免：" + "；".join(avoid_list))
     learning_intent_text = _clean_multiline_text("\n".join(intent_lines), max_chars=_MAX_INTENT_TEXT_CHARS)
 
     intro_bits = []
@@ -462,6 +517,7 @@ def build_subject_learning_context_payload(
         "subject_display_name": display_name,
         "subject_description": subject_description,
         "subject_user_intent": subject_user_intent,
+        "learning_goal": learning_goal,
         "version_no": _safe_int(version_no or build_metadata.get("version_no")),
         "build_session_id": build_session_id or _clean_text(build_metadata.get("build_session_id")),
         "planner_session_id": _clean_text(build_metadata.get("planner_session_id")),

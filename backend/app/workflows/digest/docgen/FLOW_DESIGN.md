@@ -274,8 +274,9 @@ prepare_global_seed
     - docgen_history_brief：和文档生成有关的历史修改摘要。
   输出：intent_core / FileMaterialSummary[] / source_affinity_by_chapter / high_confidence_evidence_units
     - intent_core：文档级短意图，只包含 document style、深度、例子偏好、考试导向和 avoid_list。
-    - FileMaterialSummary：文件摘要、核心概念、公式、例题、高价值 section、章节亲和度。
-    - source_affinity_by_chapter：每章优先使用哪些文件和切片。
+    - FileMaterialSummary：文件摘要、核心概念、公式、例题、高价值 section、章节亲和度和 `chapter_slices`。
+    - chapter_slices：文件摘要 LLM 根据切片目录做“章节 -> 原文片段”路由，记录 section_ref、行号、用途、原因和片段摘要。
+    - source_affinity_by_chapter：每章优先使用哪些文件、切片和 LLM 预选 source_slices。
     - high_confidence_evidence_units：高置信证据单元。
   作用：把前置阶段收口成“全局轻准备”，不再在这里生成整本执行大纲。
   当前模型方案：
@@ -287,6 +288,7 @@ prepare_global_seed
       - `call_purpose=DOCGEN_LIGHT`
       - `model="light"`
       - 默认映射到 `qwen-flash`
+      - 同时接收 section catalog，让 LLM 为后续章节写作选择原文切片，而不是只做文件级摘要。
 
 lock_titles_for_chapters
   输入：subject / digest_mode / user_prompt / plan_summary / docgen_history_brief / chapter_assignment
@@ -357,7 +359,7 @@ assemble_chapter_tasks
   ChapterGenerationTask 至少包含：
     - chapter_index / confirmed_title / enhanced_title / objective
     - required_elements / forbidden_scope
-    - retrieval_queries / priority_section_refs / preferred_sources / fallback_policy
+    - retrieval_queries / priority_section_refs / source_slices / preferred_sources / fallback_policy
     - concept_targets / definition_targets / formula_targets / example_targets / pitfall_targets
     - allowed_assets / practice_seed_policy（由规则装配阶段派生，不再由 chapter brief 直接产出）
     - dependency_refs / forward_refs / claim_targets / confusion_targets
@@ -375,23 +377,24 @@ generate_chapters
     - ConflictReport：定义、符号、来源或例子冲突记录。
   作用：每章执行研究、主张抽取、证据对齐、冲突消解和正文草稿生成。
   generate_chapter 内部步骤：
-    1. retrieve_for_chapter：取 retrieval_queries / priority_section_refs，先本地，资料不足时外部补洞。
+    1. hydrate_source_slices：先按 `source_slices` 精确读取原文行并合并切片摘要，作为本章确定性本地上下文。
+    2. retrieve_for_chapter：取 retrieval_queries / priority_section_refs，先本地，资料不足时外部补洞。
        当前模型方案：
          - 子查询规划 `generate_sub_queries` / `generate_gap_queries`
          - `call_purpose=REASONING`
          - `model="reason"`
          - 默认映射到 `qwen-max`
-    2. compress_context：读取命中内容并压缩为 dense_context，同时抽取 evidence_units。
+    3. compress_context：读取命中内容并压缩为 dense_context，同时抽取 evidence_units。
        当前模型方案：
          - 当前主要依赖检索、reader、compressor 规则链。
          - 若触发 `research_purify`，使用：
            - `call_purpose=DOCGEN_LIGHT`
            - `model="light"`
            - 默认映射到 `qwen-flash`
-    3. extract_claims：基于 ChapterGenerationTask、dense_context 和 CanonicalClaimPool 生成 ClaimLedger。
-    4. align_evidence：把 ClaimLedger 映射到 evidence_units，生成 ClaimEvidenceMap 和 EvidenceLedger。
-    5. resolve_conflicts：处理定义冲突、记号冲突、来源口径差异和例子冲突。
-    6. draft_chapter：基于 resolved claims 和 claim-evidence map 写章节草稿，留下增强占位符。
+    4. extract_claims：基于 ChapterGenerationTask、dense_context 和 CanonicalClaimPool 生成 ClaimLedger。
+    5. align_evidence：把 ClaimLedger 映射到 evidence_units，生成 ClaimEvidenceMap 和 EvidenceLedger。
+    6. resolve_conflicts：处理定义冲突、记号冲突、来源口径差异和例子冲突。
+    7. draft_chapter：基于 resolved claims 和 claim-evidence map 写章节草稿，留下增强占位符。
        当前模型方案：
          - writer 主调用：
            - `call_purpose=DOCGEN`
@@ -402,7 +405,7 @@ generate_chapters
            - `call_purpose=DOCGEN_LIGHT`
            - `model="light"`
            - 默认映射到 `qwen-flash`
-    7. critic/rewrite：当前代码仍在单章内做轻量 critic 和最多一次 rewrite；目标上应逐步前移到 review_content。
+    8. critic/rewrite：当前代码仍在单章内做轻量 critic 和最多一次 rewrite；目标上应逐步前移到 review_content。
        当前模型方案：
          - critic 本身是规则判断，不调模型
          - 若触发 rewrite：

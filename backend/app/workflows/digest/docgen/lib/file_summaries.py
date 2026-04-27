@@ -14,11 +14,13 @@ from app.workflows.digest.docgen.lib.defaults import DEFAULT_DOCGEN_FILE_SUMMARY
 from app.workflows.digest.docgen.lib.model_policy import DocGenModelStep, docgen_completion_kwargs_with_metadata
 from app.workflows.digest.common.models import DigestMaterialContext, SectionPacket, SourcePacket
 from app.workflows.digest.docgen.lib.models import (
+    ChapterSourceSlice,
     FileMaterialSummary,
     HighConfidenceEvidenceUnit,
     SourceAffinityByChapter,
     clean_string_list,
 )
+from app.workflows.digest.docgen.lib.source_slices import build_section_catalog_for_file
 from app.workflows.digest.docgen.prompts.file_summaries import build_file_summary_messages
 
 logger = structlog.get_logger(__name__)
@@ -89,6 +91,51 @@ def fallback_file_summary(
     )
 
 
+def _normalize_summary_slices(
+    summary: FileMaterialSummary,
+    *,
+    packet: SourcePacket,
+    sections: Sequence[SectionPacket],
+) -> FileMaterialSummary:
+    catalog_by_ref = {
+        item["section_ref"]: item
+        for item in build_section_catalog_for_file(packet, sections=list(sections))
+        if str(item.get("section_ref") or "").strip()
+    }
+    normalized: list[ChapterSourceSlice] = []
+    seen: set[str] = set()
+    for raw_slice in list(summary.chapter_slices or []):
+        source_slice = raw_slice if isinstance(raw_slice, ChapterSourceSlice) else ChapterSourceSlice.model_validate(raw_slice)
+        catalog_item = catalog_by_ref.get(source_slice.section_ref)
+        if catalog_item is None or int(source_slice.chapter_index or 0) <= 0:
+            continue
+        key = f"{source_slice.chapter_index}:{source_slice.section_ref}"
+        if key in seen:
+            continue
+        seen.add(key)
+        normalized.append(
+            ChapterSourceSlice(
+                chapter_index=source_slice.chapter_index,
+                file_id=int(packet.file_id),
+                filename=packet.filename,
+                section_ref=source_slice.section_ref,
+                section_title=source_slice.section_title or str(catalog_item.get("title") or ""),
+                header_path=source_slice.header_path or str(catalog_item.get("header_path") or ""),
+                line_start=source_slice.line_start or catalog_item.get("line_start"),
+                line_end=source_slice.line_end or catalog_item.get("line_end"),
+                relevance=source_slice.relevance,
+                usage=source_slice.usage,
+                reason=source_slice.reason,
+                summary=source_slice.summary,
+                excerpt=source_slice.excerpt,
+            )
+        )
+        if len(normalized) >= 24:
+            break
+    summary.chapter_slices = normalized
+    return summary
+
+
 def _chapter_terms(chapter: Mapping[str, Any]) -> list[str]:
     return clean_string_list(
         [
@@ -132,10 +179,16 @@ def derive_source_affinity_and_evidence(
     summaries: Sequence[FileMaterialSummary],
     chapters: Sequence[Mapping[str, Any]],
 ) -> tuple[list[SourceAffinityByChapter], list[HighConfidenceEvidenceUnit]]:
-    """Derive stable rule-based source signals for the document backbone."""
+    """Derive source signals, preferring LLM-routed section slices."""
 
     sections = list(material_context.section_packets or [])
     summaries_by_file = {int(summary.file_id): summary for summary in summaries if int(summary.file_id or 0) > 0}
+    llm_slices_by_chapter: dict[int, list[ChapterSourceSlice]] = {}
+    for summary in summaries:
+        for source_slice in list(summary.chapter_slices or []):
+            if int(source_slice.chapter_index or 0) <= 0 or not source_slice.section_ref:
+                continue
+            llm_slices_by_chapter.setdefault(int(source_slice.chapter_index), []).append(source_slice)
     affinity_items: list[SourceAffinityByChapter] = []
     evidence_units: list[HighConfidenceEvidenceUnit] = []
     evidence_seen: set[str] = set()
@@ -143,32 +196,95 @@ def derive_source_affinity_and_evidence(
     for index, chapter in enumerate(chapters, start=1):
         chapter_index = int(chapter.get("chapter_index", index) or index)
         terms = _chapter_terms(chapter)
+        llm_slices = sorted(
+            llm_slices_by_chapter.get(chapter_index, []),
+            key=lambda item: item.relevance,
+            reverse=True,
+        )[:14]
         scored_sections: list[tuple[float, SectionPacket]] = []
-        for section in sections:
-            summary_score = summaries_by_file.get(int(section.source_file_id or 0), FileMaterialSummary()).chapter_affinity.get(chapter_index, 0.0)
-            section_score = _section_score_for_chapter(section, terms)
-            score = max(float(summary_score or 0.0), section_score)
-            if score <= 0 and not terms:
-                score = 0.2
-            if score > 0:
-                scored_sections.append((score, section))
-        scored_sections.sort(key=lambda item: (item[0], item[1].question_block_count, len(item[1].formula_refs), item[1].char_count), reverse=True)
-        section_refs = [section.digest_chunk_uid for score, section in scored_sections if score >= 0.18][:12]
-        file_ids = list(dict.fromkeys(int(section.source_file_id) for _score, section in scored_sections[:16] if int(section.source_file_id or 0) > 0))[:8]
-        if not file_ids:
-            file_ids = [
-                summary.file_id
-                for summary in sorted(summaries, key=lambda item: item.chapter_affinity.get(chapter_index, 0.0), reverse=True)
-                if summary.file_id > 0
-            ][:5]
+        if llm_slices:
+            section_refs = clean_string_list([item.section_ref for item in llm_slices], limit=14)
+            file_ids = []
+            seen_file_ids: set[int] = set()
+            for source_slice in llm_slices:
+                if source_slice.file_id <= 0 or source_slice.file_id in seen_file_ids:
+                    continue
+                seen_file_ids.add(source_slice.file_id)
+                file_ids.append(source_slice.file_id)
+                if len(file_ids) >= 8:
+                    break
+        else:
+            for section in sections:
+                summary_score = summaries_by_file.get(
+                    int(section.source_file_id or 0),
+                    FileMaterialSummary(),
+                ).chapter_affinity.get(chapter_index, 0.0)
+                section_score = _section_score_for_chapter(section, terms)
+                score = max(float(summary_score or 0.0), section_score)
+                if score <= 0 and not terms:
+                    score = 0.2
+                if score > 0:
+                    scored_sections.append((score, section))
+            scored_sections.sort(
+                key=lambda item: (
+                    item[0],
+                    item[1].question_block_count,
+                    len(item[1].formula_refs),
+                    item[1].char_count,
+                ),
+                reverse=True,
+            )
+            section_refs = [section.digest_chunk_uid for score, section in scored_sections if score >= 0.18][:12]
+            file_ids = list(
+                dict.fromkeys(
+                    int(section.source_file_id)
+                    for _score, section in scored_sections[:16]
+                    if int(section.source_file_id or 0) > 0
+                )
+            )[:8]
+            if not file_ids:
+                file_ids = [
+                    summary.file_id
+                    for summary in sorted(summaries, key=lambda item: item.chapter_affinity.get(chapter_index, 0.0), reverse=True)
+                    if summary.file_id > 0
+                ][:5]
         affinity_items.append(
             SourceAffinityByChapter(
                 chapter_index=chapter_index,
                 file_ids=file_ids,
                 section_refs=section_refs,
-                reason="由章节标题、目标、required_elements 与切片标题/正文命中规则派生。",
+                source_slices=llm_slices,
+                reason=(
+                    "由文件摘要阶段 LLM 对切片目录做章节路由后派生。"
+                    if llm_slices
+                    else "LLM 未返回可用切片时，由章节标题、目标、required_elements 与切片标题/正文命中规则派生。"
+                ),
             )
         )
+
+        if llm_slices:
+            for source_slice in llm_slices[:10]:
+                text = (source_slice.summary or source_slice.excerpt or source_slice.reason).strip()
+                if not text:
+                    continue
+                key = f"{source_slice.section_ref}:{text[:80]}".casefold()
+                if key in evidence_seen:
+                    continue
+                evidence_seen.add(key)
+                evidence_units.append(
+                    HighConfidenceEvidenceUnit(
+                        evidence_id=f"ch{chapter_index:02d}_{source_slice.section_ref}_{len(evidence_units) + 1:03d}",
+                        source_ref=f"local://file/{source_slice.file_id}/section/{source_slice.section_ref}",
+                        source_type="local",
+                        evidence_type=source_slice.usage or _evidence_type(text),
+                        text=text[:240],
+                        chapter_affinity={chapter_index: max(0.35, min(0.98, source_slice.relevance))},
+                        confidence=max(0.5, min(0.95, source_slice.relevance + 0.08)),
+                        source_title=source_slice.filename or source_slice.section_title,
+                        source_span=source_slice.section_ref,
+                    )
+                )
+            continue
 
         for score, section in scored_sections[:8]:
             fragments = [
@@ -236,6 +352,8 @@ async def _summarize_one_file(
         for chapter in chapters
         if str(chapter.get("title") or chapter.get("resolved_title") or "").strip()
     ]
+    file_sections = _sections_for_file(sections, int(packet.file_id))
+    section_catalog = build_section_catalog_for_file(packet, sections=file_sections)
     excerpt = str(packet.normalized_content or "").strip()
     if not excerpt.strip():
         return fallback
@@ -249,6 +367,7 @@ async def _summarize_one_file(
                     digest_mode=digest_mode,
                     chapter_titles=chapter_titles,
                     excerpt=excerpt,
+                    section_catalog=section_catalog,
                 ),
                 **docgen_completion_kwargs_with_metadata(
                     DocGenModelStep.FILE_SUMMARY,
@@ -268,6 +387,7 @@ async def _summarize_one_file(
         return fallback
     summary.file_id = int(packet.file_id)
     summary.filename = packet.filename
+    summary = _normalize_summary_slices(summary, packet=packet, sections=file_sections)
     summary.fallback_used = False
     if not summary.high_value_sections:
         summary.high_value_sections = fallback.high_value_sections

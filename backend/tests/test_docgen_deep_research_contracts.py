@@ -5,6 +5,7 @@ from app.workflows.digest.docgen.lib.document_backbone import (
     build_document_backbone,
     fallback_document_backbone,
 )
+from app.workflows.digest.common.models import DigestMaterialContext, SectionPacket, SourcePacket
 from app.shared.infra.tools.builtin.markdown_processing import (
     find_markdown_rendering_issues,
     normalize_markdown_rendering,
@@ -26,6 +27,7 @@ from app.workflows.digest.docgen.lib.query_planning import (
 from app.workflows.digest.docgen.lib.publish import build_merged_markdown
 from app.workflows.digest.docgen.lib.models import (
     BackboneResearchAgenda,
+    ChapterSourceSlice,
     ClaimEvidenceBinding,
     ClaimEvidenceMap,
     ClaimItem,
@@ -38,6 +40,8 @@ from app.workflows.digest.docgen.lib.models import (
     FileMaterialSummary,
     HighConfidenceEvidenceUnit,
 )
+from app.workflows.digest.docgen.lib.file_summaries import derive_source_affinity_and_evidence
+from app.workflows.digest.docgen.lib.source_slices import build_priority_source_context, build_section_catalog_for_file
 from app.workflows.digest.docgen.nodes.generate_chapters import _chapter_plan_for_writer
 
 
@@ -226,6 +230,75 @@ def test_writer_plan_preserves_structured_contract_lists():
     assert len(plan["execution_contract"]["claim_targets"]) == len(claims)
     assert len(plan["execution_contract"]["evidence_bindings"]) == len(bindings)
     assert len(plan["execution_contract"]["conflict_warnings"]) == len(conflicts)
+
+
+def test_llm_source_slices_drive_affinity_and_exact_context():
+    content = """# 计算机组成
+
+主机由 CPU 与内存储器共同构成，是系统的核心运算与存储单元。
+输入设备负责把外部信息送入计算机，输出设备负责呈现处理结果。
+硬盘驱动器既可以读取数据，也可以写入数据，因此属于输入输出双重设备。
+"""
+    packet = SourcePacket(
+        file_id=7,
+        filename="computer.md",
+        filetype="md",
+        markdown_path="computer.md",
+        asset_dir="",
+        normalized_content=content,
+        char_count=len(content),
+        has_formulas=False,
+        has_tables=False,
+        has_images=False,
+    )
+    section = SectionPacket(
+        digest_chunk_uid="rf_7_sec_001_cpu",
+        source_file_id=7,
+        source_filename="computer.md",
+        chunk_index=1,
+        title="主机与输入输出设备",
+        header_path="计算机组成 > 主机与输入输出设备",
+        level=2,
+        normalized_content="\n".join(content.splitlines()[2:5]),
+        preview="主机由 CPU 与内存储器共同构成...",
+        char_count=80,
+        question_block_count=1,
+    )
+    catalog = build_section_catalog_for_file(packet, sections=[section])
+    summary = FileMaterialSummary(
+        file_id=7,
+        filename="computer.md",
+        chapter_slices=[
+            ChapterSourceSlice(
+                chapter_index=1,
+                file_id=7,
+                filename="computer.md",
+                section_ref="rf_7_sec_001_cpu",
+                section_title="主机与输入输出设备",
+                line_start=catalog[0]["line_start"],
+                line_end=catalog[0]["line_end"],
+                relevance=0.93,
+                usage="definition",
+                reason="用于解释主机、输入设备和输出设备的边界。",
+                summary="主机由 CPU 与内存构成，硬盘驱动器具备输入输出双重属性。",
+            )
+        ],
+    )
+    material = DigestMaterialContext(source_documents=[packet], material_sections=[section])
+
+    affinity, evidence_units = derive_source_affinity_and_evidence(
+        material,
+        summaries=[summary],
+        chapters=[{"chapter_index": 1, "title": "主机结构与输入输出设备"}],
+    )
+    context = build_priority_source_context(material, affinity[0].source_slices)
+
+    assert affinity[0].section_refs == ["rf_7_sec_001_cpu"]
+    assert "LLM 对切片目录" in affinity[0].reason
+    assert evidence_units[0].source_span == "rf_7_sec_001_cpu"
+    assert "LLM 预选的本地资料切片" in context.text
+    assert "L3:" in context.text
+    assert context.source_details[0]["url"].startswith("local://file/7/section/rf_7_sec_001_cpu#L")
 
 
 @pytest.mark.anyio

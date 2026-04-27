@@ -123,6 +123,7 @@ def compose_seed_plan_and_backbone_agenda(
         if affinity is not None:
             priority_file_ids = affinity.file_ids or priority_file_ids
             priority_section_refs = affinity.section_refs or priority_section_refs
+        source_slices = list(affinity.source_slices) if affinity is not None else []
         preferred_sources = [f"local://file/{file_id}" for file_id in priority_file_ids]
         preferred_sources.extend(
             unit.source_ref
@@ -142,6 +143,7 @@ def compose_seed_plan_and_backbone_agenda(
                 required_elements=required,
                 retrieval_queries=retrieval_queries,
                 priority_section_refs=priority_section_refs,
+                source_slices=source_slices,
                 preferred_sources=preferred_sources,
                 target_length=mode_profile.seed_target_length,
                 style_rules=list(global_rules),
@@ -247,8 +249,13 @@ def assemble_chapter_generation_plan(
         if affinity is not None:
             priority_file_ids = affinity.file_ids or priority_file_ids
             priority_section_refs = affinity.section_refs or priority_section_refs
+            source_slices = list(affinity.source_slices)
+        else:
+            source_slices = []
         if seed.priority_file_ids:
             priority_file_ids = seed.priority_file_ids
+        if seed.source_slices:
+            source_slices = list(seed.source_slices)
         placeholder_requests: list[dict[str, str]] = []
         visual_terms = " ".join([locked.enhanced_title, *seed.required_elements, *brief.concept_targets])
         if any(marker in visual_terms for marker in ("图", "结构", "流程", "关系", "路径", "层次", "机制", "过程")):
@@ -267,6 +274,7 @@ def assemble_chapter_generation_plan(
             pitfall_targets=clean_string_list(brief.pitfall_targets, limit=4),
             priority_file_ids=priority_file_ids or clean_int_list(chapter.get("source_file_ids", [])),
             priority_section_refs=priority_section_refs or seed.priority_section_refs,
+            source_slices=source_slices,
             retrieval_queries=clean_string_list(brief.retrieval_queries or seed.retrieval_queries, limit=2),
             writing_rules=list(global_rules),
             required_elements=list(seed.required_elements),

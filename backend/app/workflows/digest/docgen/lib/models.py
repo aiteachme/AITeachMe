@@ -140,6 +140,52 @@ class DocGenIntentProfile(DocGenBaseModel):
         return hints
 
 
+class ChapterSourceSlice(DocGenBaseModel):
+    """One LLM-selected source slice assigned to a target chapter."""
+
+    chapter_index: int = 1
+    file_id: int = 0
+    filename: str = ""
+    section_ref: str = ""
+    section_title: str = ""
+    header_path: str = ""
+    line_start: int | None = None
+    line_end: int | None = None
+    relevance: float = 0.5
+    usage: str = "context"
+    reason: str = ""
+    summary: str = ""
+    excerpt: str = ""
+
+    @field_validator("filename", "section_ref", "section_title", "header_path", "usage", "reason", "summary", "excerpt", mode="before")
+    @classmethod
+    def _text(cls, value: Any) -> str:
+        return clean_text(value)
+
+    @field_validator("file_id", mode="before")
+    @classmethod
+    def _file_id(cls, value: Any) -> int:
+        try:
+            parsed = int(value)
+        except (TypeError, ValueError):
+            return 0
+        return parsed if parsed > 0 else 0
+
+    @field_validator("line_start", "line_end", mode="before")
+    @classmethod
+    def _line_no(cls, value: Any) -> int | None:
+        try:
+            parsed = int(value)
+        except (TypeError, ValueError):
+            return None
+        return parsed if parsed > 0 else None
+
+    @field_validator("relevance", mode="before")
+    @classmethod
+    def _relevance(cls, value: Any) -> float:
+        return clean_unit_float(value, default=0.5)
+
+
 class FileMaterialSummary(DocGenBaseModel):
     file_id: int = 0
     filename: str = ""
@@ -152,6 +198,7 @@ class FileMaterialSummary(DocGenBaseModel):
     high_value_sections: list[str] = Field(default_factory=list)
     noise_sections: list[str] = Field(default_factory=list)
     chapter_affinity: dict[int, float] = Field(default_factory=dict)
+    chapter_slices: list[ChapterSourceSlice] = Field(default_factory=list)
     source_quality: float = 0.5
     summary_mode: str = "fallback"
     fallback_used: bool = False
@@ -241,6 +288,7 @@ class SourceAffinityByChapter(DocGenBaseModel):
     chapter_index: int = 1
     file_ids: list[int] = Field(default_factory=list)
     section_refs: list[str] = Field(default_factory=list)
+    source_slices: list[ChapterSourceSlice] = Field(default_factory=list)
     reason: str = ""
 
     @field_validator("file_ids", mode="before")
@@ -325,6 +373,7 @@ class ChapterGenerationTaskSeed(DocGenBaseModel):
     forbidden_scope: list[str] = Field(default_factory=list)
     retrieval_queries: list[str] = Field(default_factory=list)
     priority_section_refs: list[str] = Field(default_factory=list)
+    source_slices: list[ChapterSourceSlice] = Field(default_factory=list)
     preferred_sources: list[str] = Field(default_factory=list)
     fallback_policy: str = "publish_readable_markdown"
     target_length: int = 1200
@@ -427,6 +476,7 @@ class ChapterGenerationTask(DocGenBaseModel):
     pitfall_targets: list[str] = Field(default_factory=list)
     priority_file_ids: list[int] = Field(default_factory=list)
     priority_section_refs: list[str] = Field(default_factory=list)
+    source_slices: list[ChapterSourceSlice] = Field(default_factory=list)
     retrieval_queries: list[str] = Field(default_factory=list)
     writing_rules: list[str] = Field(default_factory=list)
     required_elements: list[str] = Field(default_factory=list)
@@ -1024,6 +1074,7 @@ __all__ = [
     "ChapterReviewActionSuggestion",
     "ChapterReviewReport",
     "ChapterResearchTrace",
+    "ChapterSourceSlice",
     "ClaimEvidenceBinding",
     "ClaimEvidenceMap",
     "ClaimItem",

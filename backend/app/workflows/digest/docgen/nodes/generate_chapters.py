@@ -19,6 +19,7 @@ from app.workflows.digest.docgen.lib.chapter_context import DocGenChapterContext
 from app.workflows.digest.docgen.lib.writer import DocGenWriterRuntime
 from app.workflows.digest.docgen.lib.chapter_planning import build_fallback_chapter_markdown
 from app.workflows.digest.docgen.lib.chapter_revision import critique_chapter, maybe_rewrite_chapter
+from app.workflows.digest.docgen.lib.source_slices import build_priority_source_context
 from app.workflows.digest.docgen.lib.models import (
     ChapterDraft,
     ChapterGenerationTask,
@@ -123,6 +124,7 @@ def _chapter_plan_for_writer(
     task: ChapterGenerationTask,
     *,
     total_chapters: int,
+    source_details: list[dict] | None = None,
     claim_ledger: ClaimLedger | None = None,
     claim_evidence_map: ClaimEvidenceMap | None = None,
     conflict_report: ConflictReport | None = None,
@@ -158,6 +160,8 @@ def _chapter_plan_for_writer(
             conflict_report=conflict_report,
         ),
         "source_file_ids": task.priority_file_ids,
+        "source_details": list(source_details or []),
+        "source_slices": [item.model_dump(mode="json") for item in list(task.source_slices or [])],
         "placeholder_requests": task.placeholder_requests,
     }
 
@@ -200,6 +204,20 @@ def _source_preview_metadata(source_details: list[dict]) -> dict[str, list[str]]
         "source_titles": source_titles,
         "source_urls": source_urls,
     }
+
+
+def _merge_source_details(primary: list[dict], secondary: list[dict]) -> list[dict]:
+    merged: list[dict] = []
+    seen: set[str] = set()
+    for item in [*primary, *secondary]:
+        if not isinstance(item, dict):
+            continue
+        key = str(item.get("url") or item.get("source_ref") or item.get("title") or "").strip()
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        merged.append(item)
+    return merged
 
 
 def _trim_preview_markdown(markdown: str, *, max_chars: int = 1200) -> str:
@@ -407,8 +425,8 @@ def build_generate_chapters_node(*, context: WorkflowContext):
         web_hit_count = 0
         research_started_at = perf_counter()
         fallback_used = False
+        shared_inputs = state.get("shared_inputs")
         try:
-            shared_inputs = state.get("shared_inputs")
             runtime = DocGenChapterContextRuntime(traced_context)
             research = await runtime.run(
                 queries=task.retrieval_queries[: max(1, task.budget_policy.max_local_queries + task.budget_policy.max_web_queries)],
@@ -450,6 +468,26 @@ def build_generate_chapters_node(*, context: WorkflowContext):
             fallback_used = True
             research_trace.stop_reason = f"research_failed:{str(exc)[:160]}"
         research_ms = int((perf_counter() - research_started_at) * 1000)
+
+        priority_context = build_priority_source_context(
+            shared_inputs,
+            list(task.source_slices or []),
+            max_total_chars=max(1800, int(task.budget_policy.max_context_chars * 0.45)),
+        )
+        if priority_context.text:
+            dense_context = "\n\n".join(item for item in [priority_context.text, dense_context] if item.strip()).strip()
+            sources = _unique_strings([*priority_context.sources, *sources])
+            source_details = _merge_source_details(priority_context.source_details, source_details)
+            local_hit_count += priority_context.local_source_count
+            research_trace.opened_contexts = _merge_source_details(
+                priority_context.source_details,
+                list(research_trace.opened_contexts or []),
+            )[: task.budget_policy.max_opened_urls]
+            research_trace.budget_used = {
+                **dict(research_trace.budget_used or {}),
+                "llm_selected_source_slices": priority_context.local_source_count,
+            }
+
         research_preview = _research_preview_markdown(
             title=title,
             dense_context=dense_context,
@@ -612,6 +650,7 @@ def build_generate_chapters_node(*, context: WorkflowContext):
                 chapter_plan=_chapter_plan_for_writer(
                     task,
                     total_chapters=total_chapters,
+                    source_details=source_details,
                     claim_ledger=claim_ledger,
                     claim_evidence_map=claim_evidence_map,
                     conflict_report=conflict_report,
