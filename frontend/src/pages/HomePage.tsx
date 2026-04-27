@@ -681,7 +681,6 @@ export function HomePage() {
 
   // ── Courses query ──
   const shouldShowDemoCourses = settingsOverview?.mode === "cloud";
-  const shouldShowLocalImportShortcut = settingsOverview?.mode === "local";
   const { data: courses = [], isLoading: coursesLoading } = useQuery({
     queryKey: ["available-courses"],
     queryFn: fetchAvailableCourses,
@@ -1070,17 +1069,6 @@ export function HomePage() {
                     <FolderOpen className="h-3.5 w-3.5" />
                     从资料库选
                   </button>
-                  {shouldShowLocalImportShortcut && (
-                    <button
-                      type="button"
-                      onClick={() => setImportOpen(true)}
-                      className="flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-[12px] font-medium text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200"
-                      title="导入 .atmx 课程包"
-                    >
-                      <Package className="h-3.5 w-3.5" />
-                      导入课程包
-                    </button>
-                  )}
                   {isWorking && (
                     <span className="ml-2 flex items-center text-[12px] font-medium text-zinc-500">
                       <Loader2 className="mr-1.5 h-3 w-3 animate-spin" />

@@ -246,7 +246,7 @@ export function LibraryPage() {
       ) : null}
 
       {filesQuery.isLoading ? (
-        <div className="mt-8 flex min-h-[260px] items-center justify-center rounded-[24px] border border-dashed border-slate-200 bg-white/45 dark:border-slate-800 dark:bg-slate-900/45">
+        <div className="mt-12 flex min-h-[180px] items-center justify-center">
           <div className="flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400">
             <Loader2 className="h-4 w-4 animate-spin" />
             正在加载资料库...
@@ -255,15 +255,15 @@ export function LibraryPage() {
       ) : null}
 
       {!filesQuery.isLoading && !hasFiles ? (
-        <div className="mt-8 flex min-h-[300px] flex-col items-center justify-center rounded-[24px] border border-dashed border-slate-200 bg-white/45 px-6 text-center dark:border-slate-800 dark:bg-slate-900/45">
-          <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400">
-            <FolderOpen className="h-7 w-7" />
+        <div className="mt-14 flex min-h-[180px] flex-col items-center justify-center px-6 text-center">
+          <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-slate-100/80 text-slate-500 dark:bg-slate-800/80 dark:text-slate-400">
+            <FolderOpen className="h-5 w-5" />
           </div>
-          <h2 className="mt-5 text-lg font-semibold text-slate-900 dark:text-slate-100">还没有资料</h2>
+          <h2 className="mt-4 text-lg font-semibold text-slate-900 dark:text-slate-100">还没有资料</h2>
           <button
             type="button"
             onClick={() => fileInputRef.current?.click()}
-            className="mt-6 inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:border-slate-600 dark:hover:bg-slate-700"
+            className="mt-5 inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-medium text-white shadow-sm transition hover:bg-slate-800 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white"
           >
             <Upload className="h-4 w-4" />
             上传资料
