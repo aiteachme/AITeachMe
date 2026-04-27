@@ -22,8 +22,13 @@ def test_docgen_mode_profile_splits_total_target_length_by_chapter_count():
     assert sprint.word_budget(
         chapter_count=5,
         depth_level="standard",
-        target_length="8000字到2w字",
-    ) == (1600, 4000)
+        target_length="8000-30000字",
+    ) == (1600, 6000)
+    assert sprint.word_budget(
+        chapter_count=5,
+        depth_level="standard",
+        target_length="8k 到 3w字",
+    ) == (1600, 6000)
     assert sprint.word_budget(
         chapter_count=5,
         depth_level="standard",
@@ -32,8 +37,13 @@ def test_docgen_mode_profile_splits_total_target_length_by_chapter_count():
     assert systematic.word_budget(
         chapter_count=10,
         depth_level="deep",
-        target_length="2w字到5w字",
-    ) == (2000, 5000)
+        target_length="30000-100000字",
+    ) == (3000, 10000)
+    assert systematic.word_budget(
+        chapter_count=10,
+        depth_level="deep",
+        target_length="30000 100000",
+    ) == (3000, 10000)
 
 
 def test_writer_prompt_marks_course_flow_as_non_required():

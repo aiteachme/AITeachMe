@@ -27,14 +27,15 @@ def _parse_target_word_range(target_length: str | None) -> tuple[int, int] | Non
 
     values: list[int] = []
     has_wan_unit = "w" in text or "万" in text
-    for match in re.finditer(r"(\d+(?:\.\d+)?)(\s*(?:w|万))?", text):
+    for match in re.finditer(r"(\d+(?:\.\d+)?)(\s*(?:k|千|w|万))?", text):
         raw_value = float(match.group(1))
         unit = (match.group(2) or "").strip()
-        multiplier = (
-            10000
-            if unit in {"w", "万"} or (has_wan_unit and raw_value < 100)
-            else 1
-        )
+        if unit in {"k", "千"}:
+            multiplier = 1000
+        elif unit in {"w", "万"} or (has_wan_unit and raw_value < 100):
+            multiplier = 10000
+        else:
+            multiplier = 1
         parsed = int(round(raw_value * multiplier))
         if parsed > 0:
             values.append(parsed)
