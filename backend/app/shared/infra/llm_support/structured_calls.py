@@ -5,6 +5,8 @@ from __future__ import annotations
 import asyncio
 import time
 from collections.abc import Mapping
+from copy import deepcopy
+from functools import lru_cache
 from typing import Any
 from typing import TypeVar
 
@@ -37,6 +39,7 @@ from .common import (
 )
 from .observability import _end_langsmith_trace, _langsmith_trace_kwargs
 from .structured import (
+    JSON_OBJECT_RESPONSE_FORMAT,
     _build_structured_fallback_messages,
     _parse_structured_response_text,
     _serialize_structured_result,
@@ -44,6 +47,98 @@ from .structured import (
 
 T = TypeVar("T")
 litellm = load_litellm()
+
+
+@lru_cache(maxsize=512)
+def _supports_json_object_response_format(model: str, provider: str | None) -> bool:
+    """Return whether LiteLLM reports JSON object response_format support."""
+
+    if not model:
+        return False
+    try:
+        supported_params = litellm.get_supported_openai_params(
+            model=model,
+            custom_llm_provider=provider or None,
+        )
+    except Exception as exc:  # pragma: no cover - provider table is external to our code
+        logger.debug(
+            "llm_structured_response_format_support_check_failed",
+            model=model,
+            provider=provider,
+            error=str(exc),
+        )
+        return False
+    return "response_format" in (supported_params or [])
+
+
+def _call_provider(prepared_call_kwargs: Mapping[str, Any], fallback_provider: str) -> str:
+    provider = str(
+        prepared_call_kwargs.get("custom_llm_provider")
+        or fallback_provider
+        or ""
+    ).strip()
+    return provider or "unknown"
+
+
+def _should_use_json_object_response_format(
+    *,
+    call_kwargs: Mapping[str, Any],
+    call_model: str,
+    provider: str,
+) -> bool:
+    configured_format = call_kwargs.get("response_format")
+    if configured_format not in (None, "", {}, []):
+        return (
+            isinstance(configured_format, Mapping)
+            and configured_format.get("type") == JSON_OBJECT_RESPONSE_FORMAT["type"]
+        )
+    return _supports_json_object_response_format(call_model, provider)
+
+
+def _with_json_object_response_format(call_kwargs: dict[str, Any]) -> dict[str, Any]:
+    if call_kwargs.get("response_format") in (None, "", {}, []):
+        call_kwargs["response_format"] = deepcopy(JSON_OBJECT_RESPONSE_FORMAT)
+    return call_kwargs
+
+
+def _is_response_format_unsupported_error(exc: Exception) -> bool:
+    message = str(exc).lower()
+    if "response_format" not in message:
+        return False
+    return any(
+        marker in message
+        for marker in (
+            "unsupported",
+            "not support",
+            "does not support",
+            "unknown",
+            "unrecognized",
+            "invalid",
+            "extra_forbidden",
+        )
+    )
+
+
+def _build_structured_repair_call_kwargs(
+    *,
+    call_kwargs: Mapping[str, Any],
+    response_model: type[T],
+    messages: list[ChatMessage],
+    use_json_response_format: bool,
+) -> dict[str, Any]:
+    repair_kwargs = dict(call_kwargs)
+    repair_kwargs["messages"] = _build_structured_fallback_messages(response_model, messages)
+    if use_json_response_format:
+        _with_json_object_response_format(repair_kwargs)
+    else:
+        repair_kwargs.pop("response_format", None)
+    return repair_kwargs
+
+
+def _structured_mode_label(*, use_instructor: bool, use_json_response_format: bool) -> str:
+    if not use_instructor:
+        return "json_prompt"
+    return "instructor_json" if use_json_response_format else "instructor_tools"
 
 
 async def acompletion_structured(
@@ -64,7 +159,6 @@ async def acompletion_structured(
         model=model,
     )
     use_instructor = instructor is not None
-    client = instructor.from_litellm(litellm.acompletion) if use_instructor else None
     last_error: Exception | None = None
     call_started_at = time.monotonic()
     tracked_model = context.model
@@ -88,13 +182,30 @@ async def acompletion_structured(
                 attempt=attempt,
             )
             tracked_model = prepared.tracked_model
+            provider = _call_provider(prepared.call_kwargs, prepared.provider)
+            use_json_response_format = _should_use_json_object_response_format(
+                call_kwargs=prepared.call_kwargs,
+                call_model=prepared.call_model,
+                provider=provider,
+            )
+            if use_json_response_format:
+                _with_json_object_response_format(prepared.call_kwargs)
+            instructor_mode = None
+            client = None
+            if use_instructor:
+                instructor_mode = instructor.Mode.JSON if use_json_response_format else instructor.Mode.TOOLS
+                client = instructor.from_litellm(litellm.acompletion, mode=instructor_mode)
+            mode_label = _structured_mode_label(
+                use_instructor=use_instructor,
+                use_json_response_format=use_json_response_format,
+            )
             log_attempt_started(
                 "llm_structured_started",
                 attempt=prepared,
                 context=context,
                 extra={
                     "response_model": response_model.__name__,
-                    "mode": "instructor" if use_instructor else "json_prompt",
+                    "mode": mode_label,
                 },
             )
             try:
@@ -104,8 +215,15 @@ async def acompletion_structured(
                 assistant_text = ""
                 trace_messages = messages
                 if not use_instructor:
-                    trace_messages = _build_structured_fallback_messages(response_model, messages)
-                    prepared.call_kwargs["messages"] = trace_messages
+                    repair_call_kwargs = _build_structured_repair_call_kwargs(
+                        call_kwargs=prepared.call_kwargs,
+                        response_model=response_model,
+                        messages=messages,
+                        use_json_response_format=use_json_response_format,
+                    )
+                    prepared.call_kwargs.clear()
+                    prepared.call_kwargs.update(repair_call_kwargs)
+                    trace_messages = prepared.call_kwargs["messages"]
                 with langsmith_trace(
                     name="LLM：结构化生成",
                     run_type="llm",
@@ -141,11 +259,21 @@ async def acompletion_structured(
                             logger.warning(
                                 "llm_structured_instructor_parse_failed_trying_repair",
                                 response_model=response_model.__name__,
+                                mode=mode_label,
                                 error=str(instructor_exc)[:200],
                                 **trace_log_fields(),
                             )
+                            repair_use_json_response_format = use_json_response_format
+                            if _is_response_format_unsupported_error(instructor_exc):
+                                repair_use_json_response_format = False
+                            repair_call_kwargs = _build_structured_repair_call_kwargs(
+                                call_kwargs=prepared.call_kwargs,
+                                response_model=response_model,
+                                messages=messages,
+                                use_json_response_format=repair_use_json_response_format,
+                            )
                             raw_response = await asyncio.wait_for(
-                                litellm.acompletion(**prepared.call_kwargs),
+                                litellm.acompletion(**repair_call_kwargs),
                                 timeout=context_request_timeout_s(context),
                             )
                             prompt_t, completion_t, total_t = extract_usage(raw_response)
@@ -181,7 +309,7 @@ async def acompletion_structured(
                     response_model=response_model.__name__,
                     model=tracked_model,
                     task_type=context.task_type.value,
-                    mode="instructor" if use_instructor else "json_prompt",
+                    mode=mode_label,
                 )
                 track_call(
                     task_type=context.task_type,
@@ -201,7 +329,7 @@ async def acompletion_structured(
                     context=context,
                     extra={
                         "response_model": response_model.__name__,
-                        "mode": "instructor" if use_instructor else "json_prompt",
+                        "mode": mode_label,
                     },
                 )
             except asyncio.CancelledError:
@@ -212,7 +340,7 @@ async def acompletion_structured(
                     context=context,
                     extra={
                         "response_model": response_model.__name__,
-                        "mode": "instructor" if use_instructor else "json_prompt",
+                        "mode": mode_label,
                     },
                 )
                 track_call(
@@ -232,7 +360,7 @@ async def acompletion_structured(
                     error=exc,
                     extra={
                         "response_model": response_model.__name__,
-                        "mode": "instructor" if use_instructor else "json_prompt",
+                        "mode": mode_label,
                     },
                 )
 
