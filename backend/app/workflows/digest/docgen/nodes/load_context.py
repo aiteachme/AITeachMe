@@ -64,6 +64,7 @@ def build_load_context_node(*, context: WorkflowContext):
             return {"error": "已确认的构建方案中没有可执行的章节。"}
         plan_payload = plan_contract.to_payload()
         plan_payload["retrieval_profile"] = retrieval_profile
+        build_constraints = dict(plan_payload.get("build_constraints") or {})
         planner_context = dict(plan_payload.get("planner_context") or {})
         docgen_history_brief = str(
             plan_payload.get("docgen_history_brief")
@@ -83,8 +84,9 @@ def build_load_context_node(*, context: WorkflowContext):
             "plan_summary": str(plan_contract.plan_summary or ""),
             "docgen_history_brief": docgen_history_brief,
             "planner_context": planner_context,
+            "build_constraints": build_constraints,
             "source_strategy": "local_first" if has_local_materials else "web_first",
-            "include_sources": bool((plan_payload.get("build_constraints") or {}).get("include_sources", True)),
+            "include_sources": bool(build_constraints.get("include_sources", True)),
         }
         docgen_context = DocGenContext(
             subject=state["subject"],
@@ -95,8 +97,9 @@ def build_load_context_node(*, context: WorkflowContext):
             plan_summary=str(plan_contract.plan_summary or ""),
             docgen_history_brief=docgen_history_brief,
             planner_context=planner_context,
+            build_constraints=build_constraints,
             source_strategy="local_first" if has_local_materials else "web_first",
-            include_sources=bool((plan_payload.get("build_constraints") or {}).get("include_sources", True)),
+            include_sources=bool(build_constraints.get("include_sources", True)),
             local_source_count=len(shared_inputs.source_packets),
             section_count=len(shared_inputs.section_packets),
         )

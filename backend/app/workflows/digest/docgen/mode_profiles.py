@@ -6,6 +6,7 @@ its writing shape, budgets, thresholds, and prompt behavior in one place.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from typing import Literal
 
@@ -17,6 +18,40 @@ BASE_WRITING_RULES: tuple[str, ...] = (
     "例题若非原始资料或可靠来源，不得称为真题，只能称为自测例题或变式练习。",
     "所有术语、公式和推理必须给出可读解释，避免只抛结论。",
 )
+
+
+def _parse_target_word_range(target_length: str | None) -> tuple[int, int] | None:
+    text = str(target_length or "").strip().lower().replace(",", "")
+    if not text:
+        return None
+
+    values: list[int] = []
+    has_wan_unit = "w" in text or "万" in text
+    for match in re.finditer(r"(\d+(?:\.\d+)?)(\s*(?:w|万))?", text):
+        raw_value = float(match.group(1))
+        unit = (match.group(2) or "").strip()
+        multiplier = (
+            10000
+            if unit in {"w", "万"} or (has_wan_unit and raw_value < 100)
+            else 1
+        )
+        parsed = int(round(raw_value * multiplier))
+        if parsed > 0:
+            values.append(parsed)
+
+    if not values:
+        return None
+    low = min(values)
+    high = max(values)
+    return low, max(low, high)
+
+
+def _positive_int(value: object) -> int | None:
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return None
+    return parsed if parsed > 0 else None
 
 
 @dataclass(frozen=True)
@@ -64,7 +99,27 @@ class DocGenModeProfile:
     def is_sprint(self) -> bool:
         return self.mode == "sprint"
 
-    def word_budget(self, *, chapter_count: int, depth_level: str) -> tuple[int, int]:
+    def word_budget(
+        self,
+        *,
+        chapter_count: int,
+        depth_level: str,
+        target_length: str | None = None,
+        target_total_words: int | None = None,
+    ) -> tuple[int, int]:
+        chapter_total = max(1, int(chapter_count or 1))
+        exact_total = _positive_int(target_total_words)
+        if exact_total is not None:
+            per_chapter = max(1, round(exact_total / chapter_total))
+            return per_chapter, per_chapter
+
+        parsed_range = _parse_target_word_range(target_length)
+        if parsed_range is not None:
+            min_total, target_total = parsed_range
+            min_words = max(1, round(min_total / chapter_total))
+            target_words = max(min_words, round(target_total / chapter_total))
+            return min_words, target_words
+
         depth = str(depth_level or "").strip().lower()
         if self.is_sprint:
             return 520, 850 if depth == "compact" else 1050

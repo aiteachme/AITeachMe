@@ -229,9 +229,12 @@ def assemble_chapter_generation_plan(
             retrieval_queries=seed.retrieval_queries[:2],
             fallback_used=True,
         )
+        build_constraints = dict(docgen_context.build_constraints or {})
         min_words, target_words = mode_profile.word_budget(
             chapter_count=chapter_count,
             depth_level=intent_profile.depth_level,
+            target_length=str(build_constraints.get("target_length") or ""),
+            target_total_words=build_constraints.get("target_total_words"),
         )
         affinity = _affinity_for_chapter(
             chapter_index=chapter_index,
