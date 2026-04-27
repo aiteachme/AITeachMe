@@ -68,6 +68,12 @@ const LIVE_MARKDOWN_FLUSH_INTERVAL_MS = 320;
 const LIVE_MARKDOWN_IMMEDIATE_LENGTH = 1600;
 const LIVE_MARKDOWN_LARGE_JUMP = 4200;
 
+type BuildEventItem = {
+  stage?: string | null;
+  summary?: string | null;
+  created_at?: string | null;
+};
+
 const BUILD_MODE_LABELS: Record<string, string> = {
   confirmed_build_plan: "已确认构建方案",
   search_only_mode: "仅使用联网资料",
@@ -531,51 +537,73 @@ export function BuildView({
 
                   <div className="build-scroll flex-1 overflow-y-auto bg-white px-5 py-6 dark:bg-slate-900 md:px-8 md:py-8">
                     {selectedExcerpt.trim() ? (
-                      <div className="w-full max-w-[980px] space-y-5 pb-12">
-                        {hasPreviewMeta ? (
-                          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-zinc-500 dark:text-slate-400">
-                            {selectedWordCount > 0 ? (
-                              <span>
-                                约 {selectedWordCount} 字
-                              </span>
-                            ) : null}
-                            {selectedSourceCount > 0 ? (
-                              <span>
-                                {selectedSourceCount} 个来源
-                              </span>
-                            ) : null}
-                            {usingMergeFallback ? (
-                              <span className="text-blue-600 dark:text-blue-400">
-                                当前显示整本合并预览
-                              </span>
-                            ) : null}
-                            {usingSseDelta ? (
-                              <span className="text-blue-600 dark:text-blue-400">
-                                实时增量
-                              </span>
-                            ) : null}
-                          </div>
-                        ) : null}
+                      <div
+                        className={cn(
+                          "mx-auto grid w-full gap-8 pb-12",
+                          detailsOpen
+                            ? "max-w-[980px]"
+                            : "max-w-[1280px] 2xl:grid-cols-[minmax(0,920px)_300px]",
+                        )}
+                      >
+                        <div className="min-w-0 space-y-5">
+                          {hasPreviewMeta ? (
+                            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-zinc-500 dark:text-slate-400">
+                              {selectedWordCount > 0 ? (
+                                <span>
+                                  约 {selectedWordCount} 字
+                                </span>
+                              ) : null}
+                              {selectedSourceCount > 0 ? (
+                                <span>
+                                  {selectedSourceCount} 个来源
+                                </span>
+                              ) : null}
+                              {usingMergeFallback ? (
+                                <span className="text-blue-600 dark:text-blue-400">
+                                  当前显示整本合并预览
+                                </span>
+                              ) : null}
+                              {usingSseDelta ? (
+                                <span className="text-blue-600 dark:text-blue-400">
+                                  实时增量
+                                </span>
+                              ) : null}
+                            </div>
+                          ) : null}
 
-                        {selectedHeadings.length > 0 ? (
-                          <p className="max-w-[960px] text-[12px] leading-6 text-zinc-500 dark:text-slate-400">
-                            <span className="text-zinc-400 dark:text-slate-500">生成聚焦：</span>
-                            {selectedHeadings.join(" / ")}
-                          </p>
-                        ) : null}
+                          {selectedHeadings.length > 0 ? (
+                            <p className="max-w-[960px] text-[12px] leading-6 text-zinc-500 dark:text-slate-400">
+                              <span className="text-zinc-400 dark:text-slate-500">生成聚焦：</span>
+                              {selectedHeadings.join(" / ")}
+                            </p>
+                          ) : null}
 
-                        <LiveTextDocument
-                          key={selectedPreviewChapter}
-                          content={selectedExcerpt}
-                          isStreaming={isStreaming}
-                        />
+                          <LiveTextDocument
+                            key={selectedPreviewChapter}
+                            content={selectedExcerpt}
+                            isStreaming={isStreaming}
+                          />
 
-                        {detailsOpen && selectedChapterEvents.length > 0 ? (
-                          <EventTrail events={selectedChapterEvents} selectedPreviewChapter={selectedPreviewChapter} />
+                          {detailsOpen && selectedChapterEvents.length > 0 ? (
+                            <EventTrail events={selectedChapterEvents} selectedPreviewChapter={selectedPreviewChapter} />
+                          ) : null}
+                        </div>
+
+                        {!detailsOpen ? (
+                          <BuildSignalRail
+                            statusLabel={buildChapterStatusLabel(selectedStatus)}
+                            wordCount={selectedWordCount}
+                            sourceCount={selectedSourceCount}
+                            headings={selectedHeadings}
+                            events={selectedChapterEvents}
+                            usingSseDelta={usingSseDelta}
+                            usingMergeFallback={usingMergeFallback}
+                            onOpenDetails={() => setDetailsOpen(true)}
+                          />
                         ) : null}
                       </div>
                     ) : selectedChapterEvents.length > 0 ? (
-                      <div className="w-full max-w-[1120px] space-y-4 pb-10">
+                      <div className="mx-auto w-full max-w-[1120px] space-y-4 pb-10">
                         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-zinc-500 dark:text-slate-400">
                           <span className="text-blue-600 dark:text-blue-400">
                             正在捕获章节执行事件
@@ -672,6 +700,126 @@ export function BuildView({
         ) : null}
       </div>
     </motion.div>
+  );
+}
+
+function BuildSignalRail({
+  statusLabel,
+  wordCount,
+  sourceCount,
+  headings,
+  events,
+  usingSseDelta,
+  usingMergeFallback,
+  onOpenDetails,
+}: {
+  statusLabel: string;
+  wordCount: number;
+  sourceCount: number;
+  headings: string[];
+  events: BuildEventItem[];
+  usingSseDelta: boolean;
+  usingMergeFallback: boolean;
+  onOpenDetails: () => void;
+}) {
+  const visibleEvents = events.slice(0, 4);
+
+  return (
+    <aside className="hidden min-w-0 2xl:block">
+      <div className="sticky top-6 border-l border-zinc-100 pl-5 dark:border-slate-800">
+        <div className="mb-5">
+          <p className="text-[11px] font-medium tracking-[0.18em] text-zinc-400 dark:text-slate-500">
+            本章生成态势
+          </p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <span className="rounded-md bg-zinc-50 px-2 py-1 text-[11px] font-medium text-zinc-600 ring-1 ring-zinc-200 dark:bg-slate-950 dark:text-slate-300 dark:ring-slate-800">
+              {statusLabel}
+            </span>
+            {usingSseDelta ? (
+              <span className="rounded-md bg-blue-50 px-2 py-1 text-[11px] font-medium text-blue-600 ring-1 ring-blue-100 dark:bg-blue-500/10 dark:text-blue-300 dark:ring-blue-500/20">
+                实时增量
+              </span>
+            ) : null}
+            {usingMergeFallback ? (
+              <span className="rounded-md bg-blue-50 px-2 py-1 text-[11px] font-medium text-blue-600 ring-1 ring-blue-100 dark:bg-blue-500/10 dark:text-blue-300 dark:ring-blue-500/20">
+                整本预览
+              </span>
+            ) : null}
+          </div>
+        </div>
+
+        <div className="mb-5 grid grid-cols-2 gap-2">
+          <div className="border-y border-zinc-100 py-3 dark:border-slate-800">
+            <div className="text-[18px] font-semibold tabular-nums text-zinc-900 dark:text-slate-100">
+              {wordCount > 0 ? formatCompactCount(wordCount) : "--"}
+            </div>
+            <div className="mt-1 text-[11px] text-zinc-400 dark:text-slate-500">字数</div>
+          </div>
+          <div className="border-y border-zinc-100 py-3 dark:border-slate-800">
+            <div className="text-[18px] font-semibold tabular-nums text-zinc-900 dark:text-slate-100">
+              {sourceCount > 0 ? formatCompactCount(sourceCount) : "--"}
+            </div>
+            <div className="mt-1 text-[11px] text-zinc-400 dark:text-slate-500">来源</div>
+          </div>
+        </div>
+
+        {headings.length > 0 ? (
+          <div className="mb-5">
+            <p className="text-[11px] font-medium tracking-[0.18em] text-zinc-400 dark:text-slate-500">
+              生成聚焦
+            </p>
+            <div className="mt-3 space-y-2">
+              {headings.slice(0, 5).map((heading) => (
+                <div
+                  key={heading}
+                  className="rounded-md bg-zinc-50 px-2.5 py-2 text-[12px] leading-5 text-zinc-600 ring-1 ring-zinc-100 dark:bg-slate-950 dark:text-slate-300 dark:ring-slate-800"
+                >
+                  {heading}
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
+
+        <div>
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <p className="text-[11px] font-medium tracking-[0.18em] text-zinc-400 dark:text-slate-500">
+              最近事件
+            </p>
+            <button
+              type="button"
+              onClick={onOpenDetails}
+              className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium text-blue-600 transition hover:bg-blue-50 dark:text-blue-300 dark:hover:bg-blue-500/10"
+            >
+              <PanelRightOpen className="h-3 w-3" />
+              全部
+            </button>
+          </div>
+          <div className="space-y-3">
+            {visibleEvents.map((event, index) => {
+              const stage = (event.stage ?? "").trim();
+              const stageLabel = EVENT_STAGE_LABELS[stage] ?? (stage || "事件");
+              return (
+                <div key={`${event.stage}-${event.created_at}-${index}`} className="text-[11.5px] leading-5">
+                  <div className="mb-1 flex items-center justify-between gap-2">
+                    <span className="truncate font-medium text-blue-500 dark:text-blue-400">{stageLabel}</span>
+                    <span className="shrink-0 text-[10px] text-zinc-300 dark:text-slate-600">
+                      {event.created_at ? formatBuildEventTime(event.created_at) : ""}
+                    </span>
+                  </div>
+                  <p className="line-clamp-3 text-zinc-500 dark:text-slate-400">{event.summary}</p>
+                </div>
+              );
+            })}
+            {visibleEvents.length === 0 ? (
+              <div className="py-3 text-[12px] leading-5 text-zinc-400 dark:text-slate-500">
+                正在等待本章事件刷新。
+              </div>
+            ) : null}
+          </div>
+        </div>
+      </div>
+    </aside>
   );
 }
 
