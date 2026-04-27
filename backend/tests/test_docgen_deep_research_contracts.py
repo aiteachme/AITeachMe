@@ -13,6 +13,7 @@ from app.shared.infra.tools.builtin.markdown_processing import (
     normalize_markdown_rendering,
     normalize_mermaid_blocks,
 )
+from app.shared.infra.tools.builtin.latex_processing import validate_latex
 from app.workflows.digest.docgen.lib.asset_requests import (
     ASSET_REQUEST_BEGIN,
     ASSET_REQUEST_END,
@@ -181,6 +182,41 @@ C:\\DOS> dir
     assert find_markdown_rendering_issues(markdown)
     assert "$$\n\\text{内存管理} = \\text{分配} + \\text{回收} + \\text{保护}\n$$" in normalized
     assert "> 实例演示：\n```dos\nC:\\> cd C:\\DOS\nC:\\DOS> dir\n```" in normalized
+
+
+def test_latex_validation_preserves_fence_boundary_when_closing_block_math():
+    markdown = """说明
+$$
+未闭合公式
+```mermaid
+mindmap
+  root((内积与正交))
+```
+"""
+
+    normalized = normalize_mermaid_blocks(normalize_markdown_rendering(validate_latex(markdown)))
+
+    assert "$$```mermaid" not in normalized
+    assert "$$\n```mermaid\nmindmap\n  root((内积与正交))\n```" in normalized
+    assert not find_markdown_rendering_issues(normalized)
+
+
+def test_markdown_normalization_repairs_existing_stuck_math_mermaid_fence():
+    markdown = """说明
+$$```mermaid
+mindmap
+  root((维度与结构))
+```
+后续正文
+"""
+
+    assert "display math 分隔符和代码围栏粘连。" in find_markdown_rendering_issues(markdown)
+
+    normalized = normalize_mermaid_blocks(normalize_markdown_rendering(markdown))
+
+    assert "$$```mermaid" not in normalized
+    assert "$$\n```mermaid\nmindmap\n  root((维度与结构))\n```" in normalized
+    assert "后续正文" in normalized
 
 
 def test_merged_markdown_preserves_chapter_heading_levels():

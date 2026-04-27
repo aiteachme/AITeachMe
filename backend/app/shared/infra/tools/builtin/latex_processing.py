@@ -46,8 +46,12 @@ def _validate_math_segment(segment: str) -> str:
     cleaned = _EMPTY_INLINE_RE.sub("", cleaned)
     cleaned = _separate_block_math(cleaned)
     cleaned = _close_unmatched_block_math(cleaned)
+    keep_trailing_newline = cleaned.endswith("\n")
     lines = [_close_unmatched_inline_math(line) for line in cleaned.splitlines()]
-    return "\n".join(lines)
+    result = "\n".join(lines)
+    if keep_trailing_newline and result and not result.endswith("\n"):
+        result += "\n"
+    return result
 
 
 def _separate_block_math(segment: str) -> str:

@@ -167,6 +167,12 @@ function malformedMermaidFenceBody(line: string): string | null {
   return body && looksLikeMermaidLine(body) ? body : null;
 }
 
+function splitStuckMathFences(markdown: string): string {
+  return markdown.replace(/^(\s*)\$\$[ \t]*(```[ \t]*[A-Za-z0-9_-]*[ \t]*)$/gm, (_match, prefix: string, fence: string) => {
+    return `${prefix}$$\n${prefix}${String(fence).trimEnd()}`;
+  });
+}
+
 /**
  * ReactMarkdown parses fenced code before our `code` renderer runs.
  * If DocGen outputs a malformed Mermaid fence, the parser may swallow
@@ -174,9 +180,10 @@ function malformedMermaidFenceBody(line: string): string | null {
  * render guard: it normalizes broken Mermaid fences before Markdown parse.
  */
 function repairMalformedMermaidFencesForRender(markdown: string): string {
-  if (!markdown.includes("```")) return markdown;
+  const normalizedMarkdown = splitStuckMathFences(markdown);
+  if (!normalizedMarkdown.includes("```")) return normalizedMarkdown;
 
-  const lines = markdown.replace(/\r\n?/g, "\n").split("\n");
+  const lines = normalizedMarkdown.replace(/\r\n?/g, "\n").split("\n");
   const output: string[] = [];
   let inMermaid = false;
   let afterMermaidClose = false;
