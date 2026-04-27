@@ -209,6 +209,8 @@ def build_exam_question_requirement_messages(
 规则：
 - 必须为 1 到 requested_question_count 的每个 item_order 输出且只输出一条记录。
 - 每道题必须选择一个 question_type，可选值只能是：single_choice / multiple_choice / true_false / fill_blank / short_answer。
+- 必须输出一个顶层 rationale，用于整体解释为什么这样排列和分配题型；rationale 不要写到每个 prompts item 里。
+- 顶层 rationale 只解释题型组合、顺序和用户要求之间的关系，不要写知识点分配或难度判断。
 - user_prompt 中的全局风格、整体范围、表达形式等要求，必须写入每一道匹配题目的 generation_prompt。
 - 如果 user_prompt 中包含针对特定题号、题号范围、题目分组或题型的要求，只能把这些要求写入对应题目的 generation_prompt。
 - 这个阶段不要分配 knowledge_unit_ids，也不要输出 difficulty 字段；后续节点会在看到题型后再分配知识单元和难度。
@@ -218,6 +220,7 @@ def build_exam_question_requirement_messages(
 
 只能返回合法 JSON，结构如下：
 {{
+  "rationale": "...",
   "prompts": [
     {{"item_order": 1, "question_type": "single_choice", "generation_prompt": "..."}}
   ]

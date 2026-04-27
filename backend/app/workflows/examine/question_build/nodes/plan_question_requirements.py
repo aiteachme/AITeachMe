@@ -26,7 +26,7 @@ def build_plan_question_requirements_node(*, context: WorkflowContext):
             step="plan_question_requirements",
         )
         try:
-            planned = await plan_exam_question_requirements(
+            planned, rationale = await plan_exam_question_requirements(
                 exam_mode=str(state.get("exam_mode") or "web_practice"),
                 question_count=int(state.get("question_count") or 1),
                 user_prompt=str(state.get("user_prompt") or ""),
@@ -40,10 +40,14 @@ def build_plan_question_requirements_node(*, context: WorkflowContext):
                 detail=f"Planned types and generation constraints for {len(prompt_payload)} questions.",
                 step="plan_question_requirements",
                 elapsed_ms=elapsed_ms,
-                extra={"question_requirement_plans": prompt_payload},
+                extra={
+                    "question_requirement_plans": prompt_payload,
+                    "question_requirement_rationale": rationale,
+                },
             )
             return {
                 "question_requirement_plans": prompt_payload,
+                "question_requirement_rationale": rationale,
                 "requirements_plan_ms": elapsed_ms,
                 "error": "",
             }
@@ -58,6 +62,7 @@ def build_plan_question_requirements_node(*, context: WorkflowContext):
             )
             return {
                 "question_requirement_plans": [],
+                "question_requirement_rationale": "",
                 "requirements_plan_ms": elapsed_ms,
                 "error": "Question prompt planning was cancelled.",
             }
@@ -72,6 +77,7 @@ def build_plan_question_requirements_node(*, context: WorkflowContext):
             )
             return {
                 "question_requirement_plans": [],
+                "question_requirement_rationale": "",
                 "requirements_plan_ms": elapsed_ms,
                 "error": str(exc),
             }

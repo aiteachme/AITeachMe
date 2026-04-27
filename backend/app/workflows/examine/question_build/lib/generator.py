@@ -290,7 +290,13 @@ class ExamQuestionRequirementPlan(BaseModel):
 class ExamQuestionRequirementBatch(BaseModel):
     """Structured response for per-question generation prompts."""
 
+    rationale: str = Field(default="", max_length=1000)
     prompts: list[ExamQuestionRequirementPlan] = Field(default_factory=list, min_length=1)
+
+    @field_validator("rationale")
+    @classmethod
+    def _clean_rationale(cls, value: str) -> str:
+        return " ".join(str(value or "").split()).strip()
 
     @model_validator(mode="before")
     @classmethod
@@ -1066,7 +1072,7 @@ async def plan_exam_question_requirements(
     exam_mode: str,
     question_count: int,
     user_prompt: str = "",
-) -> list[ExamQuestionRequirementPlan]:
+) -> tuple[list[ExamQuestionRequirementPlan], str]:
     """Plan per-question generation prompts from the user's global and item-specific constraints."""
 
     normalized_count = max(1, int(question_count or 1))
@@ -1091,10 +1097,11 @@ async def plan_exam_question_requirements(
             },
         )
         assert isinstance(result, ExamQuestionRequirementBatch)
-        return _validate_generation_prompts(
+        prompts = _validate_generation_prompts(
             generated=result.prompts,
             question_count=normalized_count,
         )
+        return prompts, result.rationale
     except (LLMTimeoutError, TimeoutError):
         raise
     except Exception as exc:

@@ -35,6 +35,7 @@ class QuestionBuildGraphOutput(TypedDict, total=False):
     scope_strict: bool
     filter_strategy: str
     filter_rationale: str
+    question_requirement_rationale: str
     question_requirement_plans: list[dict]
     question_blueprints: list[dict]
     generated_questions: list[dict]
