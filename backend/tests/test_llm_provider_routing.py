@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+import asyncio
+
+from pydantic import BaseModel
+
 from app.shared.infra.llm_support.common import (
     build_completion_context,
     build_litellm_provider_kwargs,
@@ -16,6 +20,13 @@ from app.shared.infra.llm_support.image import (
     _resolve_litellm_image_model,
 )
 from app.shared.infra.llm_support.routing import LLMCallPurpose
+from app.shared.infra.llm_support.structured import JSON_OBJECT_RESPONSE_FORMAT
+from app.shared.infra.llm_support import structured_calls
+from app.shared.infra.llm_support.structured_calls import (
+    _build_structured_repair_call_kwargs,
+    _is_response_format_unsupported_error,
+    _supports_json_object_response_format,
+)
 from app.shared.infra.settings import (
     clear_system_settings_override,
     reset_project_settings_cache,
@@ -81,6 +92,132 @@ def test_build_provider_kwargs_for_openai_compatible_vendor_routes(monkeypatch) 
 
     assert deepseek_kwargs == {"custom_llm_provider": "openai"}
     assert siliconflow_kwargs == {"custom_llm_provider": "openai"}
+
+
+def test_structured_response_format_support_uses_litellm_supported_params(monkeypatch) -> None:
+    _supports_json_object_response_format.cache_clear()
+
+    def fake_supported_params(
+        *,
+        model: str,
+        custom_llm_provider: str | None,
+        request_type: str = "chat_completion",
+    ):
+        assert model == "deepseek-v4-pro"
+        assert custom_llm_provider == "openai"
+        assert request_type == "chat_completion"
+        return ["temperature", "response_format"]
+
+    monkeypatch.setattr(structured_calls.litellm, "get_supported_openai_params", fake_supported_params)
+
+    assert _supports_json_object_response_format("deepseek-v4-pro", "openai") is True
+
+    _supports_json_object_response_format.cache_clear()
+
+
+class _StructuredRouteDemo(BaseModel):
+    answer: str
+
+
+def test_build_structured_repair_kwargs_adds_json_object_response_format() -> None:
+    messages = [{"role": "user", "content": "Return an answer."}]
+
+    kwargs = _build_structured_repair_call_kwargs(
+        call_kwargs={"model": "deepseek-v4-pro", "messages": messages},
+        response_model=_StructuredRouteDemo,
+        messages=messages,
+        use_json_response_format=True,
+    )
+
+    assert kwargs["response_format"] == JSON_OBJECT_RESPONSE_FORMAT
+    assert kwargs["response_format"] is not JSON_OBJECT_RESPONSE_FORMAT
+    assert kwargs["messages"][-1]["role"] == "user"
+    assert "valid JSON" in kwargs["messages"][-1]["content"]
+
+
+def test_build_structured_repair_kwargs_can_remove_response_format_after_provider_rejection() -> None:
+    messages = [{"role": "user", "content": "Return an answer."}]
+
+    kwargs = _build_structured_repair_call_kwargs(
+        call_kwargs={
+            "model": "legacy-model",
+            "messages": messages,
+            "response_format": {"type": "json_object"},
+        },
+        response_model=_StructuredRouteDemo,
+        messages=messages,
+        use_json_response_format=False,
+    )
+
+    assert "response_format" not in kwargs
+    assert "valid JSON" in kwargs["messages"][-1]["content"]
+
+
+def test_response_format_unsupported_error_detection() -> None:
+    assert _is_response_format_unsupported_error(ValueError("Unsupported response_format type")) is True
+    assert _is_response_format_unsupported_error(ValueError("regular validation failed")) is False
+
+
+def test_acompletion_structured_uses_instructor_json_mode_with_response_format(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    class FakeMode:
+        JSON = "json"
+        TOOLS = "tools"
+
+    class FakeCompletions:
+        async def create(self, *, response_model, max_retries: int, **kwargs):
+            captured["max_retries"] = max_retries
+            captured["kwargs"] = kwargs
+            return response_model(answer="ok")
+
+    class FakeChat:
+        completions = FakeCompletions()
+
+    class FakeClient:
+        chat = FakeChat()
+
+    class FakeInstructor:
+        Mode = FakeMode
+
+        @staticmethod
+        def from_litellm(completion, mode):
+            captured["mode"] = mode
+            return FakeClient()
+
+    def fake_supported_params(
+        *,
+        model: str,
+        custom_llm_provider: str | None,
+        request_type: str = "chat_completion",
+    ):
+        return ["response_format"]
+
+    monkeypatch.setenv("LLM_PROVIDER", "ollama")
+    monkeypatch.setenv("LLM_BASE_URL", "http://localhost:11434/v1")
+    monkeypatch.setenv("LLM_API_KEY", "")
+    reset_project_settings_cache()
+    _supports_json_object_response_format.cache_clear()
+    monkeypatch.setattr(structured_calls, "instructor", FakeInstructor)
+    monkeypatch.setattr(structured_calls.litellm, "get_supported_openai_params", fake_supported_params)
+
+    async def run_call() -> _StructuredRouteDemo:
+        return await structured_calls.acompletion_structured(
+            _StructuredRouteDemo,
+            [{"role": "user", "content": "Return an answer."}],
+            model="primary",
+        )
+
+    try:
+        result = asyncio.run(run_call())
+    finally:
+        _supports_json_object_response_format.cache_clear()
+        clear_system_settings_override()
+
+    assert result.answer == "ok"
+    assert captured["mode"] == FakeMode.JSON
+    assert captured["max_retries"] == 0
+    assert captured["kwargs"]["response_format"] == JSON_OBJECT_RESPONSE_FORMAT
 
 
 def test_build_provider_kwargs_prefers_prefixed_model(monkeypatch) -> None:

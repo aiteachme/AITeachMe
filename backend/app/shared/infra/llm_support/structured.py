@@ -11,6 +11,7 @@ from app.shared.infra.exceptions import LLMCallError
 
 T = TypeVar("T")
 
+JSON_OBJECT_RESPONSE_FORMAT: dict[str, str] = {"type": "json_object"}
 _JSON_FENCE_RE = re.compile(r"```(?:json)?\s*(.*?)```", re.IGNORECASE | re.DOTALL)
 
 
