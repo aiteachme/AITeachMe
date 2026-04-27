@@ -14,6 +14,7 @@ import type {
 /* ---- Constants ---- */
 
 export const ACTIVE_DOC_BUILD_STATUSES = new Set(["accepted", "running", "publishing"]);
+export const TERMINAL_DOC_BUILD_READY_STATUSES = new Set(["completed", "partial_failed", "skipped"]);
 
 export const DOC_BUILD_STAGE_PROGRESS: Record<string, number> = {
   build_accepted: 8,
@@ -365,15 +366,16 @@ export function resolveDocBuildStatusText(
     if (hasLiveVersion) return "当前显示已发布的正式版知识文档";
     return "等待发起新的知识文档构建";
   }
-  if (build.status === "partial_failed") {
+  const status = build.status ?? "";
+  if (status === "partial_failed") {
     return build.error_message?.trim() ? `图谱失败：${build.error_message}` : "知识文档已发布，但图谱构建失败";
   }
-  if (build.status === "failed") {
+  if (status === "failed") {
     return build.error_message?.trim() ? `构建失败：${build.error_message}` : "知识构建失败，请稍后重试";
   }
-  if (build.status === "cancelled") return "本轮知识构建已取消";
-  if (build.status === "skipped") return build.current_stage_description?.trim() || "本轮图谱步骤已跳过";
-  if (build.status === "completed") {
+  if (status === "cancelled") return "本轮知识构建已取消";
+  if (status === "skipped") return build.current_stage_description?.trim() || "本轮图谱步骤已跳过";
+  if (TERMINAL_DOC_BUILD_READY_STATUSES.has(status)) {
     return hasLiveVersion ? "最新知识文档已发布" : "构建已完成，正在同步正式文档";
   }
   const stage = build.stage?.trim();
@@ -391,8 +393,8 @@ export function resolveDocBuildProgressFloor(
   hasLiveVersion = false,
 ): number {
   if (!build || build.status === "idle") return hasDraftVersion ? 62 : 0;
-  if (build.status === "partial_failed" || build.status === "skipped") return hasLiveVersion ? 100 : 97;
-  if (build.status === "completed") return hasLiveVersion ? 100 : 97;
+  const status = build.status ?? "";
+  if (TERMINAL_DOC_BUILD_READY_STATUSES.has(status)) return hasLiveVersion ? 100 : 97;
   const stage = build.stage?.trim();
   if (stage && DOC_BUILD_STAGE_PROGRESS[stage] !== undefined) return DOC_BUILD_STAGE_PROGRESS[stage];
   if (hasDraftVersion || build.draft_available) return 62;

@@ -27,7 +27,12 @@ import type {
   DocGenBuildData,
 } from "../api/generated/model";
 import type { ApiResponse } from "../api/types";
-import { ACTIVE_DOC_BUILD_STATUSES, parseIsoTimestamp, useDocBuildProgress } from "../components/knowledge-docs";
+import {
+  ACTIVE_DOC_BUILD_STATUSES,
+  TERMINAL_DOC_BUILD_READY_STATUSES,
+  parseIsoTimestamp,
+  useDocBuildProgress,
+} from "../components/knowledge-docs";
 import { KnowledgeBuildResolutionModal } from "../components/build-plan/KnowledgeBuildResolutionModal";
 import { PlannerPreviewMarkdown } from "../components/build-plan/PlannerPreviewMarkdown";
 import { FullPageDropOverlay } from "../components/ui/FullPageDropOverlay";
@@ -731,19 +736,21 @@ export function BuildPlanPage() {
     refetchInterval: (query) => {
       const data = query.state.data;
       const build = data?.build;
-      const status = build?.status ?? null;
+      const status = (build?.status ?? "").trim();
       const liveMarkdown = data?.markdown ?? "";
       const hasLiveDocMarkdown = Boolean(data?.exists && liveMarkdown.trim().length > 0);
       const targetRequestedAtMs = requestedAtMs ?? parseIsoTimestamp(build?.requested_at ?? null);
       const updatedAtMs = parseIsoTimestamp(data?.updated_at ?? null);
       const hasRequestedLiveDoc =
         hasLiveDocMarkdown &&
-        (targetRequestedAtMs === null || (updatedAtMs !== null && updatedAtMs >= targetRequestedAtMs));
+        (targetRequestedAtMs === null ||
+          TERMINAL_DOC_BUILD_READY_STATUSES.has(status) ||
+          (updatedAtMs !== null && updatedAtMs >= targetRequestedAtMs));
 
       if (status && ACTIVE_DOC_BUILD_STATUSES.has(status)) {
         return 2500;
       }
-      if (status === "completed") {
+      if (TERMINAL_DOC_BUILD_READY_STATUSES.has(status)) {
         return hasRequestedLiveDoc ? false : 1200;
       }
       if (status === "failed" || status === "cancelled") {
@@ -770,12 +777,14 @@ export function BuildPlanPage() {
       const updatedAtMs = parseIsoTimestamp(knowledgeDocState.data?.updated_at ?? null);
       const hasRequestedLiveDoc =
         hasLiveDocMarkdown &&
-        (targetRequestedAtMs === null || (updatedAtMs !== null && updatedAtMs >= targetRequestedAtMs));
+        (targetRequestedAtMs === null ||
+          TERMINAL_DOC_BUILD_READY_STATUSES.has(status) ||
+          (updatedAtMs !== null && updatedAtMs >= targetRequestedAtMs));
 
       if (status && ACTIVE_DOC_BUILD_STATUSES.has(status)) {
         return 2500;
       }
-      if (status === "completed" || status === "partial_failed" || status === "skipped") {
+      if (TERMINAL_DOC_BUILD_READY_STATUSES.has(status)) {
         return hasRequestedLiveDoc ? false : 1200;
       }
       if (status === "failed" || status === "cancelled") {
@@ -815,14 +824,16 @@ export function BuildPlanPage() {
   const targetRequestedAtMs = requestedAtMs ?? buildRequestedAtMs;
   const isBuildActive = Boolean(buildStatus && ACTIVE_DOC_BUILD_STATUSES.has(buildStatus));
   const isBuildFailure = buildStatus === "failed" || buildStatus === "cancelled";
+  const isBuildReadyStatus = Boolean(buildStatus && TERMINAL_DOC_BUILD_READY_STATUSES.has(buildStatus));
   const isRequestedBuildReady =
     targetRequestedAtMs !== null
-      ? hasLiveDocMarkdown && publishedUpdatedAtMs !== null && publishedUpdatedAtMs >= targetRequestedAtMs
+      ? hasLiveDocMarkdown &&
+        (isBuildReadyStatus || (publishedUpdatedAtMs !== null && publishedUpdatedAtMs >= targetRequestedAtMs))
       : hasLiveDocMarkdown;
   const isWaitingForRequestedBuild =
     !isBuildFailure &&
     !isRequestedBuildReady &&
-    (isBuildActive || buildStatus === "completed" || hasDraftDocMarkdown || (targetRequestedAtMs !== null && !hasLiveDocMarkdown));
+    (isBuildActive || isBuildReadyStatus || hasDraftDocMarkdown || (targetRequestedAtMs !== null && !hasLiveDocMarkdown));
   const { buildProgress, buildStatusText } = useDocBuildProgress({
     buildMeta,
     buildStatus,

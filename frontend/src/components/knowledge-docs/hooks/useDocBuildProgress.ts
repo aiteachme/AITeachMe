@@ -4,6 +4,7 @@
 
 import type { DocGenBuildStatus } from "../types";
 import {
+  TERMINAL_DOC_BUILD_READY_STATUSES,
   resolveDocBuildStatusText,
   resolveDocBuildProgressFloor,
 } from "../utils";
@@ -44,19 +45,20 @@ export function useDocBuildProgress(opts: {
   const buildStatusText = resolveDocBuildStatusText(buildMeta, hasLiveDocMarkdown, hasDraftDocMarkdown);
   const fallbackProgress = resolveDocBuildProgressFloor(buildMeta, hasDraftDocMarkdown, hasLiveDocMarkdown);
   const rawPersistedProgress = clampProgress(Number(buildMeta?.progress_pct ?? fallbackProgress));
+  const isBuildReadyStatus = Boolean(buildStatus && TERMINAL_DOC_BUILD_READY_STATUSES.has(buildStatus));
   const persistedProgress =
-    buildStatus === "completed" && !hasLiveDocMarkdown
+    isBuildReadyStatus && !hasLiveDocMarkdown
       ? Math.min(rawPersistedProgress, fallbackProgress)
       : rawPersistedProgress;
   const progressCeiling = !isRequestedBuildReady && (isBuildActive || isWaitingForRequestedBuild)
-    ? buildStatus === "completed" || buildStatus === "partial_failed" || buildStatus === "skipped"
+    ? isBuildReadyStatus
       ? 97
       : 99
     : 100;
   const visiblePersistedProgress = Math.min(persistedProgress, progressCeiling);
   const visibleFallbackProgress = Math.min(fallbackProgress, progressCeiling);
 
-  if (isRequestedBuildReady || (buildStatus === "completed" && hasLiveDocMarkdown)) {
+  if (isRequestedBuildReady || (isBuildReadyStatus && hasLiveDocMarkdown)) {
     return { buildProgress: 100, buildStatusText };
   }
 

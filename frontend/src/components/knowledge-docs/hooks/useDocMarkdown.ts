@@ -25,6 +25,7 @@ import type {
 } from "../types";
 import {
   ACTIVE_DOC_BUILD_STATUSES,
+  TERMINAL_DOC_BUILD_READY_STATUSES,
   cleanKnowledgeMarkdownForDisplay,
   extractFirstMarkdownHeading,
   extractFirstMarkdownParagraph,
@@ -112,10 +113,12 @@ export function useDocMarkdown(): DocMarkdownState {
       const updatedAtMs = parseIsoTimestamp(data?.updated_at ?? null);
       const hasRequestedLiveDoc =
         hasLiveDocMarkdown &&
-        (targetRequestedAtMs === null || (updatedAtMs !== null && updatedAtMs >= targetRequestedAtMs));
+        (targetRequestedAtMs === null ||
+          TERMINAL_DOC_BUILD_READY_STATUSES.has(status) ||
+          (updatedAtMs !== null && updatedAtMs >= targetRequestedAtMs));
 
       if (status && ACTIVE_DOC_BUILD_STATUSES.has(status)) return 2500;
-      if (status === "completed" || status === "partial_failed" || status === "skipped") {
+      if (TERMINAL_DOC_BUILD_READY_STATUSES.has(status)) {
         return hasRequestedLiveDoc ? false : 1200;
       }
       if (status === "failed" || status === "cancelled") return false;
@@ -141,10 +144,12 @@ export function useDocMarkdown(): DocMarkdownState {
       const updatedAtMs = parseIsoTimestamp(docMarkdownQuery.data?.updated_at ?? null);
       const hasRequestedLiveDoc =
         hasLiveDocMarkdown &&
-        (targetRequestedAtMs === null || (updatedAtMs !== null && updatedAtMs >= targetRequestedAtMs));
+        (targetRequestedAtMs === null ||
+          TERMINAL_DOC_BUILD_READY_STATUSES.has(status) ||
+          (updatedAtMs !== null && updatedAtMs >= targetRequestedAtMs));
 
       if (status && ACTIVE_DOC_BUILD_STATUSES.has(status)) return 2500;
-      if (status === "completed" || status === "partial_failed" || status === "skipped") {
+      if (TERMINAL_DOC_BUILD_READY_STATUSES.has(status)) {
         return hasRequestedLiveDoc ? false : 1200;
       }
       if (status === "failed" || status === "cancelled") return false;
@@ -178,9 +183,11 @@ export function useDocMarkdown(): DocMarkdownState {
       : null;
   const isBuildActive = Boolean(buildStatus && ACTIVE_DOC_BUILD_STATUSES.has(buildStatus));
   const isBuildFailure = buildStatus === "failed" || buildStatus === "cancelled";
+  const isBuildReadyStatus = Boolean(buildStatus && TERMINAL_DOC_BUILD_READY_STATUSES.has(buildStatus));
   const isRequestedBuildReady =
     targetRequestedAtMs !== null
-      ? hasLiveDocMarkdown && publishedUpdatedAtMs !== null && publishedUpdatedAtMs >= targetRequestedAtMs
+      ? hasLiveDocMarkdown &&
+        (isBuildReadyStatus || (publishedUpdatedAtMs !== null && publishedUpdatedAtMs >= targetRequestedAtMs))
       : hasLiveDocMarkdown;
   const isWaitingForRequestedBuild =
     !isBuildFailure &&
@@ -188,18 +195,13 @@ export function useDocMarkdown(): DocMarkdownState {
     Boolean(
       hasDraftDocMarkdown ||
       isBuildActive ||
-      buildStatus === "completed" ||
-      buildStatus === "partial_failed" ||
-      buildStatus === "skipped" ||
+      isBuildReadyStatus ||
       (targetRequestedAtMs !== null && !hasLiveDocMarkdown)
     );
 
   useEffect(() => {
     if (!subjectId || isRequestedBuildReady || docMarkdownQuery.isFetching) return;
-    const shouldRefreshDoc =
-      buildStatus === "completed" ||
-      buildStatus === "partial_failed" ||
-      buildStatus === "skipped";
+    const shouldRefreshDoc = isBuildReadyStatus;
     if (!shouldRefreshDoc) return;
     const refreshKey = [
       subjectId,
@@ -215,6 +217,7 @@ export function useDocMarkdown(): DocMarkdownState {
     buildStatus,
     docMarkdownQuery.isFetching,
     docMarkdownQuery.refetch,
+    isBuildReadyStatus,
     isRequestedBuildReady,
     requestedAt,
     subjectId,
@@ -288,13 +291,10 @@ export function useDocMarkdown(): DocMarkdownState {
       setDocViewMode("live");
       return;
     }
-    if (
-      (buildStatus === "completed" || buildStatus === "partial_failed" || buildStatus === "skipped")
-      && hasLiveDocMarkdown
-    ) {
+    if (isBuildReadyStatus && hasLiveDocMarkdown) {
       setDocViewMode("live");
     }
-  }, [buildStatus, hasDraftDocMarkdown, hasLiveDocMarkdown]);
+  }, [hasDraftDocMarkdown, hasLiveDocMarkdown, isBuildReadyStatus]);
 
   const showDocGeneratingState =
     !docMarkdownQuery.isError &&

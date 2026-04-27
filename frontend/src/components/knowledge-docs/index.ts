@@ -8,6 +8,7 @@ export type * from "./types";
 /* Utils */
 export {
   ACTIVE_DOC_BUILD_STATUSES,
+  TERMINAL_DOC_BUILD_READY_STATUSES,
   COMPACT_PANEL_BREAKPOINT,
   formatDocTimestamp,
   parseIsoTimestamp,
