@@ -326,11 +326,6 @@ def _build_runtime_preview(*, build_status, draft_markdown: str, manifest) -> Kn
         total_chunks=(build_status.total_chunks if build_status is not None else 0),
         doc_sync_section_count=(build_status.doc_sync_section_count if build_status is not None else 0),
         doc_sync_llm_section_count=(build_status.doc_sync_llm_section_count if build_status is not None else 0),
-        doc_sync_fallback_section_count=(
-            build_status.doc_sync_fallback_section_count
-            if build_status is not None
-            else 0
-        ),
         discovered_node_count=(build_status.discovered_node_count if build_status is not None else 0),
         discovered_node_types=(dict(build_status.discovered_node_types) if build_status is not None else {}),
         sample_nodes=sample_nodes,

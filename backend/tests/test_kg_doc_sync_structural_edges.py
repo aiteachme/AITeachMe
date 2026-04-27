@@ -136,8 +136,8 @@ Slope of the tangent line.
         report = sync_markdown_knowledge_graph(session, subject="math", markdown=markdown)
         units = list(session.exec(select(KnowledgeUnit)).all())
 
-    assert report.unit_change_count == 2
-    assert {unit.canonical_name for unit in units} == {"Derivative", "Geometric Meaning"}
+    assert report.unit_change_count == 1
+    assert {unit.canonical_name for unit in units} == {"Derivative"}
 
 
 def test_sync_markdown_knowledge_graph_uses_llm_extracted_relation_types(monkeypatch):
@@ -305,7 +305,7 @@ Tangent line gives a geometric interpretation of derivative.
     )
 
 
-def test_sync_markdown_knowledge_graph_builds_structural_edges_from_header_hierarchy(monkeypatch):
+def test_sync_markdown_knowledge_graph_does_not_build_heading_nodes_without_llm_candidates(monkeypatch):
     engine = create_engine("sqlite:///:memory:")
     SQLModel.metadata.create_all(engine)
 
@@ -353,7 +353,5 @@ Tangent line gives a geometric interpretation of derivative.
         report = sync_markdown_knowledge_graph(session, subject="math", markdown=markdown)
         edges = list(session.exec(select(KnowledgeEdge)).all())
 
-    assert report.edge_change_count == 1
-    assert len(edges) == 1
-    assert edges[0].edge_type == "derivation"
-    assert edges[0].description == "markdown_anchor_sync: Tangent Line 属于主题 Derivative。"
+    assert report.edge_change_count == 0
+    assert edges == []

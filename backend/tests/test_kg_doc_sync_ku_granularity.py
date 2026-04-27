@@ -4,7 +4,7 @@ import app.workflows.digest.kg_doc_sync.lib.extraction as extractor
 from app.workflows.digest.kg_doc_sync.lib.extraction import ChunkExtractionResult
 
 
-def test_docs_fallback_qualifies_generic_subsection_heading(monkeypatch):
+def test_docs_empty_llm_result_does_not_build_heading_unit_locally(monkeypatch):
     async def fake_acompletion_structured(*args, **kwargs):
         return ChunkExtractionResult(nodes=[], edges=[])
 
@@ -20,12 +20,11 @@ def test_docs_fallback_qualifies_generic_subsection_heading(monkeypatch):
         )
     )
 
-    assert diagnostics.used_topic_fallback is True
-    assert [node.name for node in result.nodes] == ["导数的几何意义"]
-    assert result.nodes[0].knowledge_unit_type == "remark"
+    assert result.nodes == []
+    assert result.edges == []
 
 
-def test_docs_fallback_does_not_expand_section_into_key_term_shells(monkeypatch):
+def test_docs_empty_llm_result_retries_but_does_not_expand_key_terms(monkeypatch):
     async def fake_acompletion_structured(*args, **kwargs):
         return ChunkExtractionResult(nodes=[], edges=[])
 
@@ -41,7 +40,5 @@ def test_docs_fallback_does_not_expand_section_into_key_term_shells(monkeypatch)
         )
     )
 
-    assert diagnostics.used_topic_fallback is True
-    names = {node.name for node in result.nodes}
-    assert "瞬时变化率" not in names
-    assert names == {"导数", "导数定义", "导数公式"}
+    assert result.nodes == []
+    assert result.edges == []

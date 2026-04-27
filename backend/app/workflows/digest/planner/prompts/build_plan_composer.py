@@ -22,6 +22,14 @@ from app.workflows.digest.planner.prompts.examples import render_composer_exampl
 PLAN_JSON_MARKER = "<PLAN_JSON>"
 PLAN_JSON_END_MARKER = "</PLAN_JSON>"
 DEFAULT_PLAN_INTENT = "围绕用户提示和资料主线，先整理资料边界，再生成可调整的初步大纲。"
+RAW_REPAIR_RESPONSE_LIMIT = 9000
+
+
+def _clip_raw_response(raw_response: str) -> str:
+    text = str(raw_response or "").strip()
+    if len(text) <= RAW_REPAIR_RESPONSE_LIMIT:
+        return text or "模型未返回可解析内容。"
+    return text[:RAW_REPAIR_RESPONSE_LIMIT].rstrip() + "\n...[已截断]"
 
 
 def _render_plan_queries(plan_intent: PlanIntent) -> str:
@@ -161,8 +169,116 @@ few-shot 规律：
     )
 
 
+def build_plan_outline_repair_messages(
+    *,
+    subject: str,
+    user_prompt: str | None = None,
+    digest_mode: str,
+    material_context: DigestMaterialContext,
+    planner_brief: PlannerBrief,
+    plan_intent: PlanIntent,
+    raw_response: str,
+    parse_error: str,
+    message_history: list[str] | None = None,
+    latest_plan: dict[str, Any] | None = None,
+) -> list[dict[str, str]]:
+    """Build a structured repair prompt for malformed composer JSON.
+
+    This is still an LLM path: it repairs the machine contract from the streamed
+    composer response instead of inventing a local rule-based outline.
+    """
+
+    resolved_user_prompt = (user_prompt or "").strip()
+    sketch = planner_brief.markdown.strip() or "暂无可见规划判断"
+    plan_queries = _render_plan_queries(plan_intent)
+    plan_intent_text = plan_intent.plan_intent.strip() or DEFAULT_PLAN_INTENT
+    mode_config = get_planner_mode_runtime_config(digest_mode)
+    system_prompt = """
+你是 AITeachMe 的计划大纲结构修复器。
+你只输出合法 JSON 对象，不输出 Markdown、解释、注释、代码块或额外文本。
+你不能使用本地规则或关键词臆造章节；必须基于用户提示、资料上下文、内部规划意图和原始模型输出，重新生成可解析的大纲合同。
+""".strip()
+    prompt = f"""
+上一轮计划合成模型已经输出过内容，但机器 JSON 合同解析失败。
+请重新生成一个合法 JSON 对象，供后端继续构建 confirmed plan。
+
+解析错误：
+{parse_error}
+
+主题：{subject}
+用户提示：{resolved_user_prompt}
+模式：{digest_mode}
+
+资料画像：
+{render_material_overview(material_context)}
+
+资料上下文：
+{render_material_digest(material_context)}
+
+最近对话与修改意见：
+{render_message_history(message_history)}
+
+上一版方案：
+{render_latest_plan(latest_plan)}
+
+可见规划判断：
+{sketch}
+
+内部规划意图：
+{plan_intent_text}
+
+内部规划抓手：
+{plan_queries}
+
+上一轮原始输出：
+{_clip_raw_response(raw_response)}
+
+只输出合法 JSON，字段必须严格为：
+{{
+  "plan_text": "一小段计划概括",
+  "plan_steps": ["查询或对照什么", "归并或筛选什么", "整理什么", "形成什么"],
+  "chapters": [
+    {{
+      "title": "高度概括的章节方向",
+      "key_points": ["本章后续要继续细化的方向"]
+    }}
+  ]
+}}
+
+字段要求：
+1. plan_text 控制在 140-320 字，必须说明后续会如何查找、对照、整理和判断。
+2. plan_steps 输出 4-7 条动作步骤，不能声称已经完成检索。
+3. chapters 数量必须在 {mode_config.min_chapters}-{mode_config.max_chapters} 章之间。
+4. 每章 key_points 输出 2-4 条，服务后续 DocGen 继续过大模型写正文。
+5. 没有上传资料时，只能基于用户提示生成通用初步计划，不要声称读过具体文件。
+6. 不要输出来源名单、网站名、论文名、后端字段、Markdown 代码块或 {PLAN_JSON_MARKER} 标记。
+""".strip()
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": prompt},
+    ]
+    return trace_prompt_build(
+        "planner_plan_outline_repair",
+        inputs={
+            "subject": subject,
+            "user_prompt_chars": len(resolved_user_prompt),
+            "digest_mode": digest_mode,
+            "message_history_count": len(message_history or []),
+            "material_digest_chars": len(material_context.material_digest or ""),
+            "brief_chars": len(sketch),
+            "plan_intent_chars": len(plan_intent_text),
+            "plan_query_count": len(plan_intent.plan_queries),
+            "raw_response_chars": len(raw_response or ""),
+            "parse_error_chars": len(parse_error or ""),
+            "has_latest_plan": latest_plan is not None,
+        },
+        output=messages,
+    )
+
+
 __all__ = [
     "PLAN_JSON_END_MARKER",
     "PLAN_JSON_MARKER",
     "build_plan_composer_messages",
+    "build_plan_outline_repair_messages",
 ]

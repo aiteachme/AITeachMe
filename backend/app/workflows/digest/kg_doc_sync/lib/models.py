@@ -27,9 +27,6 @@ class KnowledgeSyncReport:
     chapter_task_count: int = 0
     subsection_task_count: int = 0
     llm_section_count: int = 0
-    fallback_section_count: int = 0
-    question_fallback_section_count: int = 0
-    topic_fallback_section_count: int = 0
     markdown_short_circuit_section_count: int = 0
     llm_error_count: int = 0
     empty_llm_result_count: int = 0

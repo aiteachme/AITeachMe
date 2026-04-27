@@ -102,7 +102,7 @@ NODE_TRACE_DETAILS: dict[str, dict[str, Any]] = {
     STEP_COMPOSE_PLAN: {
         "description": (
             "基于 material_context、planner_brief、plan_intent、历史消息和 latest_plan 流式生成可见计划说明，"
-            "同时解析隐藏 JSON 机器合同，得到 build_plan_draft。若模型 JSON 不完整，会用规则兜底生成可继续调整的大纲草稿。"
+            "同时解析隐藏 JSON 机器合同，得到 build_plan_draft。若模型 JSON 不完整，会再走结构化模型修复；修复失败则让 Planner 明确失败。"
         ),
         "reads": ["material_context", "planner_brief", "plan_intent", "message_history", "latest_plan"],
         "writes": ["build_plan_draft", "plan_outline_markdown"],

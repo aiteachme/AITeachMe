@@ -58,7 +58,7 @@ def candidate_scope(candidate: CandidateLike) -> str:
 
 
 def candidate_lookup_keys(candidate: CandidateLike) -> list[str]:
-    """Return candidate ids plus typed fallback lookup keys."""
+    """Return candidate ids plus typed name lookup keys."""
 
     keys: list[str] = []
     if candidate.candidate_id:

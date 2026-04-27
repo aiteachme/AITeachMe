@@ -4,7 +4,7 @@ import app.workflows.digest.kg_doc_sync.lib.extraction as extractor
 from app.workflows.digest.kg_doc_sync.lib.extraction import ChunkExtractionResult
 
 
-def test_docs_section_empty_result_retries_before_fallback(monkeypatch):
+def test_docs_section_empty_result_retries_with_llm_repair(monkeypatch):
     calls = {"count": 0}
 
     async def fake_acompletion_structured(*args, **kwargs):
@@ -36,12 +36,10 @@ def test_docs_section_empty_result_retries_before_fallback(monkeypatch):
     )
 
     assert calls["count"] == 2
-    assert diagnostics.used_topic_fallback is False
-    assert diagnostics.used_question_fallback is False
     assert any(node.name == "Derivative" for node in result.nodes)
 
 
-def test_docs_section_empty_result_without_strong_signal_skips_retry(monkeypatch):
+def test_docs_section_empty_result_without_strong_signal_returns_empty(monkeypatch):
     calls = {"count": 0}
 
     async def fake_acompletion_structured(*args, **kwargs):
@@ -61,11 +59,11 @@ def test_docs_section_empty_result_without_strong_signal_skips_retry(monkeypatch
     )
 
     assert calls["count"] == 1
-    assert diagnostics.used_topic_fallback is True
-    assert len(result.nodes) >= 1
+    assert result.nodes == []
+    assert result.edges == []
 
 
-def test_docs_section_timeout_falls_back_quickly(monkeypatch):
+def test_docs_section_timeout_fails_without_local_fallback(monkeypatch):
     async def fake_acompletion_structured(*args, **kwargs):
         await asyncio.sleep(0.05)
         return ChunkExtractionResult(nodes=[], edges=[])
@@ -73,15 +71,17 @@ def test_docs_section_timeout_falls_back_quickly(monkeypatch):
     monkeypatch.setattr(extractor, "acompletion_structured", fake_acompletion_structured)
     monkeypatch.setattr(extractor, "_DOCS_SYNC_SECTION_LLM_TIMEOUT_S", 0.01)
 
-    result, diagnostics = asyncio.run(
-        extractor.extract_candidates_with_diagnostics(
-            chunk_content="# Short note\nThis is a short paragraph.",
-            chunk_title="Short note",
-            header_path="Short note",
-            doc_source_type="knowledge_doc_markdown",
-            allow_markdown_anchor_short_circuit=False,
+    try:
+        asyncio.run(
+            extractor.extract_candidates_with_diagnostics(
+                chunk_content="# Short note\nThis is a short paragraph.",
+                chunk_title="Short note",
+                header_path="Short note",
+                doc_source_type="knowledge_doc_markdown",
+                allow_markdown_anchor_short_circuit=False,
+            )
         )
-    )
-
-    assert diagnostics.used_topic_fallback is True
-    assert len(result.nodes) >= 1
+    except TimeoutError:
+        pass
+    else:
+        raise AssertionError("expected timeout to fail instead of using local fallback")

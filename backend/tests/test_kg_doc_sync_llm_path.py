@@ -63,11 +63,10 @@ Derivative can represent the slope of a tangent line.
             subject_context="Calculus context for graph extraction.",
         )
 
-    assert report.unit_change_count == 2
+    assert report.unit_change_count == 1
     assert report.chapter_count == 1
     assert report.section_count == 1
     assert report.llm_section_count == 1
-    assert report.fallback_section_count == 0
     assert observed_flags == [False]
     assert observed_contexts == [
         "Calculus context for graph extraction.",

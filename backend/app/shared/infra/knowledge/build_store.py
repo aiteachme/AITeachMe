@@ -30,9 +30,6 @@ _GRAPH_RUNTIME_METRIC_KEYS = {
     "processed_chunks",
     "doc_sync_section_count",
     "doc_sync_llm_section_count",
-    "doc_sync_fallback_section_count",
-    "doc_sync_question_fallback_section_count",
-    "doc_sync_topic_fallback_section_count",
     "doc_sync_unit_changes",
     "doc_sync_edge_changes",
     "doc_sync_elapsed_ms",
@@ -53,9 +50,6 @@ _GRAPH_RUNTIME_INT_METRIC_KEYS = {
     "processed_chunks",
     "doc_sync_section_count",
     "doc_sync_llm_section_count",
-    "doc_sync_fallback_section_count",
-    "doc_sync_question_fallback_section_count",
-    "doc_sync_topic_fallback_section_count",
     "doc_sync_unit_changes",
     "doc_sync_edge_changes",
     "doc_sync_elapsed_ms",
@@ -197,9 +191,6 @@ class KnowledgeBuildRuntimeStatus(BaseModel):
     total_chunks: int = 0
     doc_sync_section_count: int = 0
     doc_sync_llm_section_count: int = 0
-    doc_sync_fallback_section_count: int = 0
-    doc_sync_question_fallback_section_count: int = 0
-    doc_sync_topic_fallback_section_count: int = 0
     sample_cards: list[dict[str, str]] = Field(default_factory=list)
     mode_reason: str | None = None
     plan_summary: str | None = None
@@ -402,9 +393,6 @@ def _normalize_graph_runtime_metrics(status: KnowledgeBuildRuntimeStatus) -> Kno
         "processed_chunks": status.processed_chunks,
         "doc_sync_section_count": status.doc_sync_section_count,
         "doc_sync_llm_section_count": status.doc_sync_llm_section_count,
-        "doc_sync_fallback_section_count": status.doc_sync_fallback_section_count,
-        "doc_sync_question_fallback_section_count": status.doc_sync_question_fallback_section_count,
-        "doc_sync_topic_fallback_section_count": status.doc_sync_topic_fallback_section_count,
     }
     for key, value in legacy_values.items():
         if key not in metrics or metrics.get(key) in (None, ""):
@@ -419,9 +407,6 @@ def _normalize_graph_runtime_metrics(status: KnowledgeBuildRuntimeStatus) -> Kno
     status.processed_chunks = _coerce_graph_metric_int(metrics.get("processed_chunks"))
     status.doc_sync_section_count = _coerce_graph_metric_int(metrics.get("doc_sync_section_count"))
     status.doc_sync_llm_section_count = _coerce_graph_metric_int(metrics.get("doc_sync_llm_section_count"))
-    status.doc_sync_fallback_section_count = _coerce_graph_metric_int(metrics.get("doc_sync_fallback_section_count"))
-    status.doc_sync_question_fallback_section_count = _coerce_graph_metric_int(metrics.get("doc_sync_question_fallback_section_count"))
-    status.doc_sync_topic_fallback_section_count = _coerce_graph_metric_int(metrics.get("doc_sync_topic_fallback_section_count"))
     status.metrics = metrics
     return status
 

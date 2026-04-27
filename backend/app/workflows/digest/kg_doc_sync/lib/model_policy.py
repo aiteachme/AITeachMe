@@ -14,7 +14,6 @@ KGDocSyncModelSlot = Literal["light", "primary"]
 
 
 class KGDocSyncModelStep(str, Enum):
-    QUESTION_CONCEPTS = "kg_doc_sync.question_concepts"
     SECTION_GRAPH = "kg_doc_sync.section_graph"
     EMPTY_REPAIR = "kg_doc_sync.empty_repair"
 
@@ -62,14 +61,6 @@ class KGDocSyncModelPolicy:
 
 
 _POLICIES: dict[KGDocSyncModelStep, KGDocSyncModelPolicy] = {
-    KGDocSyncModelStep.QUESTION_CONCEPTS: KGDocSyncModelPolicy(
-        step=KGDocSyncModelStep.QUESTION_CONCEPTS,
-        call_type="structured",
-        call_purpose=LLMCallPurpose.DOCGEN_LIGHT,
-        model="light",
-        max_tokens=700,
-        note="题目 fallback 的轻量概念识别，只提取少量概念/方法。",
-    ),
     KGDocSyncModelStep.SECTION_GRAPH: KGDocSyncModelPolicy(
         step=KGDocSyncModelStep.SECTION_GRAPH,
         call_type="structured",

@@ -63,15 +63,15 @@ NODE_TRACE_DETAILS: dict[str, dict[str, object]] = {
     },
     NODE_EXTRACT: {
         "description": (
-            "把知识文档先切成顶层章节；当大章内部存在多个有效小节时继续下钻为小节抽取单元。"
-            "抽取单元按 async gather + semaphore 并发执行，硬上限 20；每个单元主路径仍过 LLM，"
-            "再合并可恢复 fallback 候选、DocGen backbone、标题结构边和跨章节语义边。本节点不写图谱表。"
+            "把知识文档切成章节任务，大章会继续拆成子章节任务，并以最多 20 路并发调用结构化 LLM "
+            "抽取候选 KnowledgeUnit 和关系；随后合并 DocGen backbone、标题结构边和跨章节语义边。"
+            "本节点只产出 extraction_payload，不写图谱表；语义候选必须来自 LLM/LLM 修复或显式结构化来源。"
         ),
         "reads": ["markdown", "subject_context", "structured_context", "sync_run_context", "Subject.document_summary_json"],
         "writes": ["extraction_payload", "subject_context", "node_metrics.extract", "error"],
         "input_keys": ["subject", "markdown", "subject_context", "sync_run_context"],
         "output_keys": ["extraction_payload", "subject_context", "node_metrics", "error"],
-        "fanout": "节点内部按章节/小节 async gather + semaphore 并发抽取，并发硬上限 20，完成后 fan-in 为 extraction_payload。",
+        "fanout": "节点内部按章节/子章节构造抽取任务，async gather + semaphore 并发执行，完成后 fan-in 为 extraction_payload。",
     },
     NODE_PERSIST: {
         "description": (
@@ -93,8 +93,8 @@ NODE_TRACE_DETAILS: dict[str, dict[str, object]] = {
     NODE_FINALIZE: {
         "description": (
             "检查同步报告是否存在，并把成功状态交给上层 graph lane runtime。"
-            "报告里包含 unit/edge 变更数、章节/小节处理数、可恢复 LLM error/empty/repair 指标、"
-            "LLM/fallback 统计、source_ref 数量、backbone 命中数、稳定 anchor 数和废弃实体数。"
+            "报告里包含 unit/edge 变更数、章节/子章节任务数、LLM 空结果修复统计、source_ref 数量、"
+            "backbone 命中数、稳定 anchor 数和废弃实体数。"
         ),
         "reads": ["KnowledgeSyncReport"],
         "writes": ["final docs-sync state", "node_metrics.finalize", "error"],
