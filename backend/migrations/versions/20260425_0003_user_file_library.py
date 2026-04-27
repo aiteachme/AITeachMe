@@ -24,6 +24,20 @@ def upgrade() -> None:
     op.create_index("ix_raw_file_user_id", "raw_file", ["user_id"])
     op.alter_column("raw_file", "subject", existing_type=sa.String(), nullable=True)
 
+    op.execute(
+        sa.text(
+            """
+            UPDATE raw_file AS rf
+            SET user_id = s.user_id
+            FROM subject AS s
+            WHERE rf.subject = s.slug
+              AND rf.subject IS NOT NULL
+              AND rf.subject <> ''
+              AND (rf.user_id IS NULL OR rf.user_id = '' OR rf.user_id = 'local')
+            """
+        )
+    )
+
     op.create_table(
         "subject_file",
         sa.Column("id", sa.Integer(), primary_key=True, nullable=False),
@@ -45,9 +59,13 @@ def upgrade() -> None:
         sa.text(
             """
             INSERT INTO subject_file (user_id, subject, raw_file_id, created_at, updated_at)
-            SELECT COALESCE(user_id, 'local'), subject, id, created_at, updated_at
-            FROM raw_file
-            WHERE subject IS NOT NULL AND subject <> ''
+            SELECT rf.user_id, rf.subject, rf.id, rf.created_at, rf.updated_at
+            FROM raw_file AS rf
+            JOIN subject AS s
+              ON s.slug = rf.subject
+             AND s.user_id = rf.user_id
+            WHERE rf.subject IS NOT NULL AND rf.subject <> ''
+              AND rf.user_id IS NOT NULL AND rf.user_id <> ''
             ON CONFLICT ON CONSTRAINT uq_subject_file_user_subject_raw_file DO NOTHING
             """
         )

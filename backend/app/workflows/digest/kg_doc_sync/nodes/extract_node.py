@@ -42,10 +42,17 @@ def _payload_metrics(
         "edge_count": len(payload.extracted_edges),
         "chapter_count": int(diagnostics.get("chapter_count", 0) or 0),
         "section_count": int(diagnostics.get("section_count", 0) or 0),
+        "chapter_split_count": int(diagnostics.get("chapter_split_count", 0) or 0),
+        "chapter_task_count": int(diagnostics.get("chapter_task_count", 0) or 0),
+        "subsection_task_count": int(diagnostics.get("subsection_task_count", 0) or 0),
         "llm_section_count": int(diagnostics.get("llm_section_count", 0) or 0),
         "fallback_section_count": int(diagnostics.get("fallback_section_count", 0) or 0),
         "question_fallback_section_count": int(diagnostics.get("question_fallback_section_count", 0) or 0),
         "topic_fallback_section_count": int(diagnostics.get("topic_fallback_section_count", 0) or 0),
+        "llm_error_count": int(diagnostics.get("llm_error_count", 0) or 0),
+        "empty_llm_result_count": int(diagnostics.get("empty_llm_result_count", 0) or 0),
+        "empty_repair_attempt_count": int(diagnostics.get("empty_repair_attempt_count", 0) or 0),
+        "empty_repair_success_count": int(diagnostics.get("empty_repair_success_count", 0) or 0),
         **graph_extraction_parallelism(),
     }
 

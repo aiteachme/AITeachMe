@@ -201,6 +201,10 @@ class CandidateExtractionDiagnostics:
     elapsed_ms: int = 0
     node_count: int = 0
     edge_count: int = 0
+    llm_error_count: int = 0
+    empty_llm_result_count: int = 0
+    empty_repair_attempt_count: int = 0
+    empty_repair_success_count: int = 0
 
 
 def docs_section_llm_timeout_s() -> int:
@@ -1301,8 +1305,9 @@ async def _extract_candidates_internal(
         else:
             result = await llm_call
     except Exception as exc:
+        diagnostics.llm_error_count += 1
         if question_fallback is not None:
-            logger.warning(
+            logger.info(
                 "knowledge_extract_question_fallback_after_error",
                 chunk_title=chunk_title,
                 header_path=header_path,
@@ -1312,7 +1317,7 @@ async def _extract_candidates_internal(
             result = question_fallback
             used_question_fallback = True
         else:
-            logger.warning(
+            logger.info(
                 "knowledge_extract_topic_fallback_after_error",
                 chunk_title=chunk_title,
                 header_path=header_path,
@@ -1322,18 +1327,23 @@ async def _extract_candidates_internal(
             used_topic_fallback = True
     else:
         if not result.nodes and not result.edges:
+            diagnostics.empty_llm_result_count += 1
             if doc_source_type == "knowledge_doc_markdown" and _should_retry_docs_extraction_after_empty(
                 chunk_content=chunk_content,
                 chunk_title=chunk_title,
             ):
+                diagnostics.empty_repair_attempt_count += 1
                 try:
                     result = await _repair_docs_extraction_after_empty(
                         messages=messages,
                         chunk_title=chunk_title,
                         header_path=header_path,
                     )
+                    if result.nodes or result.edges:
+                        diagnostics.empty_repair_success_count += 1
                 except Exception as exc:
-                    logger.warning(
+                    diagnostics.llm_error_count += 1
+                    logger.info(
                         "knowledge_extract_docs_retry_failed",
                         chunk_title=chunk_title,
                         header_path=header_path,
@@ -1341,7 +1351,7 @@ async def _extract_candidates_internal(
                     )
             if question_fallback is not None:
                 if not result.nodes and not result.edges:
-                    logger.warning(
+                    logger.info(
                         "knowledge_extract_question_fallback_after_empty_result",
                         chunk_title=chunk_title,
                         header_path=header_path,
@@ -1351,7 +1361,7 @@ async def _extract_candidates_internal(
                     used_question_fallback = True
             else:
                 if not result.nodes and not result.edges:
-                    logger.warning(
+                    logger.info(
                         "knowledge_extract_topic_fallback_after_empty_result",
                         chunk_title=chunk_title,
                         header_path=header_path,

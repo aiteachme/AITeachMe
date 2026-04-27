@@ -60,9 +60,9 @@ image_generation -> settings.models.image_generation（默认未配置）
 | `load_knowledge_doc_sync_input` | `kg_doc_sync/inputs.py` | 无 LLM | 无 | 无 | 无 | 读取 `KnowledgeDoc` rows、DocGen manifest、文档摘要和章节来源映射 |
 | `prepare` | `kg_doc_sync/nodes/prepare_node.py` | 无 LLM | 无 | 无 | 无 | 校验 `subject` 和合并 Markdown |
 | `init_run` | `kg_doc_sync/nodes/init_run_node.py` | 无 LLM | 无 | 无 | 无 | 校验 Markdown anchors，创建 `knowledge_graph_sync_run`，确定 revision/doc_version |
-| `extract` | `kg_doc_sync/nodes/extract_node.py` | 间接 LLM | 由内部 extractor 决定 | 由 policy 决定 | 见下方 | 加载学科上下文，按章节并发抽取图谱候选并合并 fallback/backbone/结构边 |
+| `extract` | `kg_doc_sync/nodes/extract_node.py` | 间接 LLM | 由内部 extractor 决定 | 由 policy 决定 | 见下方 | 加载学科上下文，按章节/大章内小节并发抽取图谱候选并合并 fallback/backbone/结构边 |
 | `persist` | `kg_doc_sync/nodes/persist_node.py` | 无 LLM | 无 | 无 | 无 | 写入节点、关系、source_ref，标记旧同步实体 deprecated，并完成 sync run |
-| `_extract_chapter_graph_items` 主抽取 | `kg_doc_sync/lib/incremental_sync.py` -> `kg_doc_sync/lib/extraction.py` | 结构化 | `EXTRACT` | `light` | `qwen-flash` | 从单章 Markdown 抽取候选 KnowledgeUnit 和关系 |
+| `_extract_chapter_graph_items` 主抽取 | `kg_doc_sync/lib/incremental_sync.py` -> `kg_doc_sync/lib/extraction.py` | 结构化 | `EXTRACT` | `light` | `qwen-flash` | 从单个章节/小节 extraction task 抽取候选 KnowledgeUnit 和关系 |
 | `_repair_docs_extraction_after_empty` | `kg_doc_sync/lib/extraction.py` | 结构化 | `EXTRACT` | `light` | `qwen-flash` | 当 docs-sync 主抽取为空时做一次极短修复抽取 |
 | `_llm_extract_concepts_from_questions` | `kg_doc_sync/lib/extraction.py` | 结构化 | `DOCGEN_LIGHT` | `light` | `qwen-flash` | 题目密集内容下从题干反推少量概念/方法 |
 | `filter_docs_candidate_result` | `kg_doc_sync/lib/candidate_quality.py` | 无 LLM | 无 | 无 | 无 | 丢弃学习目标、题型例练、速判口诀、计划句等非知识点 |
@@ -164,9 +164,10 @@ LangGraph 层
 
 extract 节点内部
   extract_markdown_chapter_chunks
-    chapter 1 ┐
-    chapter 2 ├─ async gather + semaphore -> payload fan-in
-    chapter N ┘
+  + 大章内部有效小节下钻
+    extraction task 1 ┐
+    extraction task 2 ├─ async gather + semaphore(max=20) -> payload fan-in
+    extraction task N ┘
 
 payload fan-in 后
   LLM/fallback units
@@ -175,6 +176,7 @@ payload fan-in 后
   + cross-section semantic edges
   -> DB upsert / source refs / deprecate
 ```
+
 
 ### 1.2 长流程执行合同
 
@@ -293,8 +295,8 @@ extract
     - error
   作用：
     - 如果 subject_context 为空，从学科上下文读取。
-    - 按真实章节切分 Markdown。
-    - 并发抽取图谱候选。
+    - 先按真实章节切分 Markdown，再对过大的章节按有效小节下钻成 extraction task。
+    - 并发抽取图谱候选，并发硬上限 20。
     - 合并 LLM/fallback units、DocGen backbone、结构边和跨章节语义边。
   失败：
     - 抽取异常写入 error，fail 节点会标记 sync run failed。
@@ -350,6 +352,22 @@ extract_markdown_chapter_chunks
   设计目的：
     - 避免把整本文档标题或学习总览当成知识点。
 
+_build_extraction_tasks
+  输入：
+    - chapter chunks
+    - structured_context.chapters
+  输出：
+    - extraction task[]
+    - chapter_split_count / chapter_task_count / subsection_task_count
+  规则：
+    - 普通章节：一个 chapter chunk 对应一个 extraction task。
+    - 大章：如果内部至少有 2 个有效小节，且正文较长或小节数不少于 3，则改为按子小节抽取。
+    - 小节有效性：正文、摘要或图片至少有一个能支撑抽取，避免空标题占用 LLM。
+    - 每个 task 仍保留原始 chapter_index/source_file_ids/knowledge_document_id，source ref 不会丢来源。
+  设计目的：
+    - 与 DocGen 的章节并行保持一致：能按章节并行，也能把过大的章节拆细。
+    - 不把并发无限放开；实际 semaphore 上限固定为 20。
+
 _extract_chapter_with_retries
   输入：
     - chapter_index
@@ -359,7 +377,8 @@ _extract_chapter_with_retries
   输出：
     - SectionExtractionPayload
   并发：
-    - `_DOCS_SYNC_CHAPTER_CONCURRENCY_LIMIT = 10`
+    - `_DOCS_SYNC_CHAPTER_CONCURRENCY_LIMIT = 20`
+    - `_DOCS_SYNC_MAX_PARALLEL_EXTRACTIONS = 20`
     - `_DOCS_SYNC_CHAPTER_MAX_RETRIES = 2`
     - `_DOCS_SYNC_CHAPTER_RETRY_DELAY_S = 0.4`
     - `_DOCS_SYNC_SECTION_LLM_TIMEOUT_S = 25`，只作为单章断路保护，不作为提速手段。
@@ -393,6 +412,9 @@ _extract_chapter_graph_items
     - docs support result：LLM 空结果或节点过少时，用标题、正文和 typed lines 生成兜底。
     - topic fallback：LLM 报错或空结果时，用语义标题路径兜底。
     - question fallback：题目密集内容下从题干反推概念/方法。
+  可恢复异常：
+    - 单个 task 的 LLM 报错、空结果和 repair 情况会累计到 diagnostics。
+    - 如果 fallback 成功，workflow 不会失败；LangSmith/Runtime 通过 `llm_error_count`、`empty_llm_result_count`、`empty_repair_*` 判断质量风险。
   过滤：
     - `candidate_quality.filter_docs_candidate_result` 会丢弃明显不是知识点的候选。
     - 典型拒绝项：学习目标、章节导读、本章自检、考前复盘、题型例练、速判口诀、解题入口、解题模板、题干句、任务句、规划句、模块权重排序、知识组合策略等。
@@ -488,11 +510,15 @@ fail
 | `synced_unit_keys` | 本轮 active anchor 列表 |
 | `created_unit_ids / updated_unit_ids / deprecated_unit_ids` | 节点变化 |
 | `created_edge_ids / updated_edge_ids / deprecated_edge_ids` | 边变化 |
-| `section_count / chapter_count` | 实际处理章节数 |
+| `section_count / chapter_count` | 实际抽取 task 数 / 顶层章节数 |
+| `chapter_split_count / chapter_task_count / subsection_task_count` | 大章下钻数量、按整章抽取数量、按小节抽取数量 |
 | `llm_section_count` | 调用过 LLM 的章节数 |
 | `fallback_section_count` | 使用 fallback 的章节数 |
 | `question_fallback_section_count` | 题目 fallback 数 |
 | `topic_fallback_section_count` | topic fallback 数 |
+| `llm_error_count` | 可恢复 LLM 报错次数 |
+| `empty_llm_result_count` | LLM 返回空候选次数 |
+| `empty_repair_attempt_count / empty_repair_success_count` | 空结果修复尝试/成功次数 |
 | `total_extracted_node_count / total_extracted_edge_count` | 原始抽取候选计数 |
 | `source_ref_count` | source ref 写入数 |
 | `backbone_unit_count / backbone_edge_count` | DocGen backbone 补入数量 |
@@ -511,10 +537,16 @@ fail
 | `revision_no` | `report.build_revision_no` |
 | `last_synced_doc_version_no` | 当前文档版本 |
 | `doc_sync_section_count` | `report.section_count` |
+| `doc_sync_chapter_split_count` | `report.chapter_split_count` |
+| `doc_sync_chapter_task_count` | `report.chapter_task_count` |
+| `doc_sync_subsection_task_count` | `report.subsection_task_count` |
 | `doc_sync_llm_section_count` | `report.llm_section_count` |
 | `doc_sync_fallback_section_count` | `report.fallback_section_count` |
 | `doc_sync_question_fallback_section_count` | `report.question_fallback_section_count` |
 | `doc_sync_topic_fallback_section_count` | `report.topic_fallback_section_count` |
+| `doc_sync_llm_error_count` | `report.llm_error_count` |
+| `doc_sync_empty_llm_result_count` | `report.empty_llm_result_count` |
+| `doc_sync_empty_repair_attempt_count / doc_sync_empty_repair_success_count` | `report.empty_repair_*` |
 | `source_ref_count` | `report.source_ref_count` |
 | `backbone_unit_count / backbone_edge_count` | `report.backbone_*` |
 | `stable_anchor_count` | `report.stable_anchor_count` |
@@ -546,6 +578,8 @@ none           -> 没有可同步输入
 | “题型例练 / 速判口诀 / 学习目标”入图 | LLM 抽取太宽或过滤词表没覆盖 | `candidate_quality.filter_docs_candidate_result`、extractor prompt、节点 `source_kind` |
 | 节点来自 `docgen_backbone` 且像规划句 | DocGen `canonical_glossary` 把章节计划词当 term | `document_backbone_snapshot.canonical_glossary` |
 | 节点标题像整本文档标题 | 切章规则没有按 H2 下沉 | `extract_markdown_chapter_chunks`、DocGen 发布 Markdown 标题层级 |
+| LLM output 为空但最终仍有节点 | LLM 返回空候选后触发了 empty repair、docs support、topic fallback 或 DocGen backbone | `doc_sync_empty_llm_result_count`、`doc_sync_empty_repair_*`、`doc_sync_topic_fallback_section_count`、`backbone_unit_count` |
+| trace 里看到 LLM error 但 workflow 成功 | 单个 task 的 LLM 异常被可恢复 fallback 接住，最终写图成功 | `doc_sync_llm_error_count`、`fallback_section_count`、`KnowledgeGraphSyncRun.metrics_json` |
 | 图上边很少 | LLM 边被过滤、endpoint 未解析、方向不合法 | `knowledge_graph_edge_skipped_unresolved_endpoint` 日志、`validate_relation_direction` |
 | source refs 为空 | 写入阶段异常或旧数据来自兼容字段 | `knowledge_graph_source_ref`、`KnowledgeGraphSyncRun.metrics_json` |
 | LangSmith 看不到子调用 | 外层没有 root trace、async context 没传递，或 LLM 调用没有继承 node scope | `run_graph_docs_sync_after_doc_build`、`run_state_graph`、`_run_async(contextvars.copy_context())` |

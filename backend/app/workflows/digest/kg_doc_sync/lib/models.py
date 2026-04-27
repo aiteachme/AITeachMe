@@ -23,11 +23,18 @@ class KnowledgeSyncReport:
     deprecated_edge_ids: list[int] = field(default_factory=list)
     section_count: int = 0
     chapter_count: int = 0
+    chapter_split_count: int = 0
+    chapter_task_count: int = 0
+    subsection_task_count: int = 0
     llm_section_count: int = 0
     fallback_section_count: int = 0
     question_fallback_section_count: int = 0
     topic_fallback_section_count: int = 0
     markdown_short_circuit_section_count: int = 0
+    llm_error_count: int = 0
+    empty_llm_result_count: int = 0
+    empty_repair_attempt_count: int = 0
+    empty_repair_success_count: int = 0
     total_extracted_node_count: int = 0
     total_extracted_edge_count: int = 0
     elapsed_ms: int = 0

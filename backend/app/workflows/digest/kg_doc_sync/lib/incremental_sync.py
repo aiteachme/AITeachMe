@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import contextvars
 import json
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from time import perf_counter
 import threading
 
@@ -27,6 +27,7 @@ from app.utils.knowledge_helpers import normalize_name
 from app.utils.time import utcnow
 from app.workflows.digest.common.markdown_knowledge_anchors import build_knowledge_unit_anchor
 from app.workflows.digest.common.markdown_knowledge_anchors import (
+    MarkdownSectionChunk,
     MarkdownKnowledgeUnit,
     extract_markdown_chapter_chunks,
     extract_markdown_section_chunks,
@@ -67,7 +68,10 @@ _ANCHOR_ALIAS_SOURCE = "markdown_anchor"
 _SYNC_EDGE_MARKER = "markdown_anchor_sync"
 _RAG_DEDUP_TOP_K = 6
 _RAG_DEDUP_SIMILARITY_THRESHOLD = 0.82
-_DEFAULT_DOCS_SYNC_CHAPTER_CONCURRENCY_LIMIT = 10
+_DEFAULT_DOCS_SYNC_CHAPTER_CONCURRENCY_LIMIT = 20
+_DOCS_SYNC_MAX_PARALLEL_EXTRACTIONS = 20
+_DOCS_SYNC_SPLIT_MIN_CHILD_SECTIONS = 2
+_DOCS_SYNC_SPLIT_MIN_CHAPTER_CHARS = 2800
 _DEFAULT_DOCS_SYNC_CHAPTER_MAX_RETRIES = 2
 _DEFAULT_DOCS_SYNC_CHAPTER_RETRY_DELAY_S = 0.4
 _DOCS_SYNC_CHAPTER_CONCURRENCY_LIMIT = _DEFAULT_DOCS_SYNC_CHAPTER_CONCURRENCY_LIMIT
@@ -83,6 +87,17 @@ _ASYNC_BRIDGE_LOOP: asyncio.AbstractEventLoop | None = None
 _ASYNC_BRIDGE_THREAD: threading.Thread | None = None
 
 logger = structlog.get_logger()
+
+
+@dataclass(frozen=True, slots=True)
+class _ExtractionTask:
+    """One LLM extraction unit produced from a published knowledge document."""
+
+    task_index: int
+    source_chapter_index: int
+    chunk: MarkdownSectionChunk
+    chapter_context: ChapterSourceContext
+    source_kind: str
 
 
 def _as_mapping(value: object) -> dict[str, object]:
@@ -291,11 +306,18 @@ def persist_knowledge_graph_items(
         synced_unit_keys=[item.anchor for item in units],
         section_count=int(diagnostics_totals.get("section_count", 0) or 0),
         chapter_count=int(diagnostics_totals.get("chapter_count", 0) or 0),
+        chapter_split_count=int(diagnostics_totals.get("chapter_split_count", 0) or 0),
+        chapter_task_count=int(diagnostics_totals.get("chapter_task_count", 0) or 0),
+        subsection_task_count=int(diagnostics_totals.get("subsection_task_count", 0) or 0),
         llm_section_count=int(diagnostics_totals.get("llm_section_count", 0) or 0),
         fallback_section_count=int(diagnostics_totals.get("fallback_section_count", 0) or 0),
         question_fallback_section_count=int(diagnostics_totals.get("question_fallback_section_count", 0) or 0),
         topic_fallback_section_count=int(diagnostics_totals.get("topic_fallback_section_count", 0) or 0),
         markdown_short_circuit_section_count=int(diagnostics_totals.get("markdown_short_circuit_section_count", 0) or 0),
+        llm_error_count=int(diagnostics_totals.get("llm_error_count", 0) or 0),
+        empty_llm_result_count=int(diagnostics_totals.get("empty_llm_result_count", 0) or 0),
+        empty_repair_attempt_count=int(diagnostics_totals.get("empty_repair_attempt_count", 0) or 0),
+        empty_repair_success_count=int(diagnostics_totals.get("empty_repair_success_count", 0) or 0),
         total_extracted_node_count=int(diagnostics_totals.get("total_extracted_node_count", 0) or 0),
         total_extracted_edge_count=int(diagnostics_totals.get("total_extracted_edge_count", 0) or 0),
         backbone_unit_count=int(diagnostics_totals.get("backbone_unit_count", 0) or 0),
@@ -510,11 +532,18 @@ def _empty_extraction_diagnostics() -> dict[str, int]:
     return {
         "chapter_count": 0,
         "section_count": 0,
+        "chapter_split_count": 0,
+        "chapter_task_count": 0,
+        "subsection_task_count": 0,
         "llm_section_count": 0,
         "fallback_section_count": 0,
         "question_fallback_section_count": 0,
         "topic_fallback_section_count": 0,
         "markdown_short_circuit_section_count": 0,
+        "llm_error_count": 0,
+        "empty_llm_result_count": 0,
+        "empty_repair_attempt_count": 0,
+        "empty_repair_success_count": 0,
         "total_extracted_node_count": 0,
         "total_extracted_edge_count": 0,
         "backbone_unit_count": 0,
@@ -526,7 +555,11 @@ def _chapter_concurrency_limit() -> int:
     configured = _DOCS_SYNC_CHAPTER_CONCURRENCY_LIMIT
     if configured == _DEFAULT_DOCS_SYNC_CHAPTER_CONCURRENCY_LIMIT:
         configured = _DOCS_SYNC_SECTION_CONCURRENCY_LIMIT
-    return max(1, int(configured))
+    return max(1, min(_DOCS_SYNC_MAX_PARALLEL_EXTRACTIONS, int(configured)))
+
+
+def _effective_concurrency_limit(task_count: int) -> int:
+    return max(1, min(task_count or 1, _chapter_concurrency_limit(), _DOCS_SYNC_MAX_PARALLEL_EXTRACTIONS))
 
 
 def _chapter_max_retries() -> int:
@@ -548,10 +581,82 @@ def graph_extraction_parallelism() -> dict[str, int | float]:
 
     return {
         "chapter_concurrency_limit": _chapter_concurrency_limit(),
+        "max_parallel_extractions": _DOCS_SYNC_MAX_PARALLEL_EXTRACTIONS,
+        "split_min_child_sections": _DOCS_SYNC_SPLIT_MIN_CHILD_SECTIONS,
+        "split_min_chapter_chars": _DOCS_SYNC_SPLIT_MIN_CHAPTER_CHARS,
         "chapter_max_retries": _chapter_max_retries(),
         "chapter_retry_delay_s": _chapter_retry_delay_s(),
         "section_llm_timeout_s": docs_section_llm_timeout_s(),
         "section_llm_max_content_chars": docs_section_llm_max_content_chars(),
+    }
+
+
+def _is_extractable_section_chunk(chunk: MarkdownSectionChunk, *, parent_title: str) -> bool:
+    if normalize_name(chunk.title) == normalize_name(parent_title):
+        return False
+    body = str(chunk.body_markdown or "").strip()
+    return bool(chunk.knowledge_images) or len(body) >= 80 or len(str(chunk.summary or "").strip()) >= 24
+
+
+def _chapter_child_chunks(chapter: MarkdownSectionChunk) -> list[MarkdownSectionChunk]:
+    return [
+        chunk
+        for chunk in extract_markdown_section_chunks(chapter.body_markdown)
+        if chunk.heading_level > chapter.heading_level
+        and _is_extractable_section_chunk(chunk, parent_title=chapter.title)
+    ]
+
+
+def _should_split_chapter(chapter: MarkdownSectionChunk, child_chunks: list[MarkdownSectionChunk]) -> bool:
+    if len(child_chunks) < _DOCS_SYNC_SPLIT_MIN_CHILD_SECTIONS:
+        return False
+    if len(child_chunks) >= 3:
+        return True
+    return len(chapter.body_markdown or "") >= _DOCS_SYNC_SPLIT_MIN_CHAPTER_CHARS
+
+
+def _build_extraction_tasks(
+    chapters: list[MarkdownSectionChunk],
+    chapter_contexts: dict[int, ChapterSourceContext],
+) -> tuple[list[_ExtractionTask], dict[str, int]]:
+    tasks: list[_ExtractionTask] = []
+    split_count = 0
+    chapter_task_count = 0
+    subsection_task_count = 0
+
+    for chapter_index, chapter in enumerate(chapters, start=1):
+        chapter_context = _chapter_context_for_index(chapter_contexts, chapter_index)
+        child_chunks = _chapter_child_chunks(chapter)
+        if _should_split_chapter(chapter, child_chunks):
+            split_count += 1
+            for child in child_chunks:
+                tasks.append(
+                    _ExtractionTask(
+                        task_index=len(tasks) + 1,
+                        source_chapter_index=chapter_index,
+                        chunk=child,
+                        chapter_context=chapter_context,
+                        source_kind="subsection",
+                    )
+                )
+                subsection_task_count += 1
+            continue
+
+        tasks.append(
+            _ExtractionTask(
+                task_index=len(tasks) + 1,
+                source_chapter_index=chapter_index,
+                chunk=chapter,
+                chapter_context=chapter_context,
+                source_kind="chapter",
+            )
+        )
+        chapter_task_count += 1
+
+    return tasks, {
+        "chapter_split_count": split_count,
+        "chapter_task_count": chapter_task_count,
+        "subsection_task_count": subsection_task_count,
     }
 
 
@@ -567,22 +672,23 @@ def _extract_markdown_graph_items(
         return [], [], _empty_extraction_diagnostics()
     structured_context = _structured_context_payload(structured_context)
     chapter_contexts = _chapter_context_lookup(structured_context)
+    extraction_tasks, task_metrics = _build_extraction_tasks(chapters, chapter_contexts)
 
     async def _extract_all_chapters() -> list[SectionExtractionPayload]:
-        semaphore = asyncio.Semaphore(_chapter_concurrency_limit())
+        semaphore = asyncio.Semaphore(_effective_concurrency_limit(len(extraction_tasks)))
 
-        async def _extract_with_queue(chapter_index: int, chapter) -> SectionExtractionPayload:
+        async def _extract_with_queue(task: _ExtractionTask) -> SectionExtractionPayload:
             async with semaphore:
                 return await _extract_chapter_with_retries(
-                    chapter_index,
-                    chapter,
+                    task.task_index,
+                    task.chunk,
                     subject_context=subject_context or "",
-                    chapter_context=_chapter_context_for_index(chapter_contexts, chapter_index),
+                    chapter_context=task.chapter_context,
+                    source_chapter_index=task.source_chapter_index,
+                    source_kind=task.source_kind,
                 )
 
-        return await asyncio.gather(
-            *[_extract_with_queue(chapter_index, chapter) for chapter_index, chapter in enumerate(chapters, start=1)]
-        )
+        return await asyncio.gather(*[_extract_with_queue(task) for task in extraction_tasks])
 
     results = _run_async(_extract_all_chapters()) or []
     units: list[MarkdownKnowledgeUnit] = []
@@ -594,7 +700,8 @@ def _extract_markdown_graph_items(
     section_contexts: list[SectionExtractionContext] = []
     diagnostics_totals = _empty_extraction_diagnostics()
     diagnostics_totals["chapter_count"] = len(chapters)
-    diagnostics_totals["section_count"] = len(chapters)
+    diagnostics_totals["section_count"] = len(extraction_tasks)
+    diagnostics_totals.update(task_metrics)
     used_anchors: set[str] = set()
 
     for payload in results:
@@ -1126,6 +1233,8 @@ async def _extract_chapter_with_retries(
     *,
     subject_context: str = "",
     chapter_context: ChapterSourceContext | None = None,
+    source_chapter_index: int | None = None,
+    source_kind: str = "chapter",
 ) -> SectionExtractionPayload:
     last_error: Exception | None = None
     max_retries = _chapter_max_retries()
@@ -1136,6 +1245,8 @@ async def _extract_chapter_with_retries(
                 chapter,
                 subject_context=subject_context,
                 chapter_context=chapter_context,
+                source_chapter_index=source_chapter_index,
+                source_kind=source_kind,
             )
         except asyncio.CancelledError:
             raise
@@ -1161,7 +1272,13 @@ async def _extract_chapter_with_retries(
         header_path=chapter.header_path,
         error_type=(type(last_error).__name__ if last_error is not None else "UnknownError"),
     )
-    return _build_chapter_fallback_payload(chapter_index, chapter, chapter_context=chapter_context)
+    return _build_chapter_fallback_payload(
+        chapter_index,
+        chapter,
+        chapter_context=chapter_context,
+        source_chapter_index=source_chapter_index,
+        source_kind=source_kind,
+    )
 
 
 def _build_chapter_fallback_payload(
@@ -1169,6 +1286,8 @@ def _build_chapter_fallback_payload(
     chapter,
     *,
     chapter_context: ChapterSourceContext | None = None,
+    source_chapter_index: int | None = None,
+    source_kind: str = "chapter",
 ) -> SectionExtractionPayload:
     chapter_context = chapter_context or ChapterSourceContext(chapter_index=chapter_index)
     body_markdown = chapter.body_markdown[:8000]
@@ -1195,11 +1314,16 @@ def _build_chapter_fallback_payload(
                 "fallback_section_count": 1,
                 "question_fallback_section_count": 0,
                 "topic_fallback_section_count": 1,
-                "markdown_short_circuit_section_count": 0,
-                "total_extracted_node_count": 0,
-                "total_extracted_edge_count": 0,
+            "markdown_short_circuit_section_count": 0,
+            "llm_error_count": 0,
+            "empty_llm_result_count": 0,
+            "empty_repair_attempt_count": 0,
+            "empty_repair_success_count": 0,
+            "total_extracted_node_count": 0,
+            "total_extracted_edge_count": 0,
             },
         )
+    resolved_chapter_index = chapter_context.chapter_index or source_chapter_index or chapter_index
     primary_unit = MarkdownKnowledgeUnit(
         anchor=primary_anchor,
         name=chapter.title,
@@ -1211,9 +1335,9 @@ def _build_chapter_fallback_payload(
         related=[],
         line_no=chapter.line_no,
         heading_level=chapter.heading_level,
-        source_kind="fallback_topic",
+        source_kind=f"fallback_{source_kind}",
         knowledge_document_id=chapter_context.knowledge_document_id,
-        chapter_index=chapter_context.chapter_index or chapter_index,
+        chapter_index=resolved_chapter_index,
         source_file_ids=list(chapter_context.source_file_ids),
         quote_text=chapter.summary or chapter.title,
     )
@@ -1253,6 +1377,10 @@ def _build_chapter_fallback_payload(
             "question_fallback_section_count": 0,
             "topic_fallback_section_count": 1,
             "markdown_short_circuit_section_count": 0,
+            "llm_error_count": 0,
+            "empty_llm_result_count": 0,
+            "empty_repair_attempt_count": 0,
+            "empty_repair_success_count": 0,
             "total_extracted_node_count": 1,
             "total_extracted_edge_count": 0,
         },
@@ -1265,8 +1393,11 @@ async def _extract_chapter_graph_items(
     *,
     subject_context: str = "",
     chapter_context: ChapterSourceContext | None = None,
+    source_chapter_index: int | None = None,
+    source_kind: str = "chapter",
 ) -> SectionExtractionPayload:
     chapter_context = chapter_context or ChapterSourceContext(chapter_index=chapter_index)
+    resolved_chapter_index = chapter_context.chapter_index or source_chapter_index or chapter_index
     result, diagnostics = await _extract_candidates_with_diagnostics_adapter(
         chunk_content=chapter.body_markdown,
         chunk_title=chapter.title,
@@ -1308,9 +1439,9 @@ async def _extract_chapter_graph_items(
             related=[],
             line_no=chapter.line_no,
             heading_level=chapter.heading_level,
-            source_kind="llm_section",
+            source_kind=f"llm_{source_kind}",
             knowledge_document_id=chapter_context.knowledge_document_id,
-            chapter_index=chapter_context.chapter_index or chapter_index,
+            chapter_index=resolved_chapter_index,
             source_file_ids=list(chapter_context.source_file_ids),
             quote_text=node.local_summary or chapter.summary or node.name,
         )
@@ -1351,7 +1482,7 @@ async def _extract_chapter_graph_items(
                 description=edge.description,
                 source_kind="llm_relation",
                 knowledge_document_id=chapter_context.knowledge_document_id,
-                chapter_index=chapter_context.chapter_index or chapter_index,
+                chapter_index=resolved_chapter_index,
                 source_file_ids=list(chapter_context.source_file_ids),
                 quote_text=edge.description,
             )
@@ -1382,6 +1513,10 @@ async def _extract_chapter_graph_items(
             "question_fallback_section_count": 1 if diagnostics.used_question_fallback else 0,
             "topic_fallback_section_count": 1 if diagnostics.used_topic_fallback else 0,
             "markdown_short_circuit_section_count": 1 if diagnostics.markdown_anchor_short_circuit_used else 0,
+            "llm_error_count": diagnostics.llm_error_count,
+            "empty_llm_result_count": diagnostics.empty_llm_result_count,
+            "empty_repair_attempt_count": diagnostics.empty_repair_attempt_count,
+            "empty_repair_success_count": diagnostics.empty_repair_success_count,
             "total_extracted_node_count": diagnostics.node_count,
             "total_extracted_edge_count": diagnostics.edge_count,
         },
