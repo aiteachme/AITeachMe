@@ -608,6 +608,7 @@ def create_docgen_initial_state(
     *,
     subject: str,
     file_ids: list[int],
+    user_id: str | None = None,
     user_prompt: str | None,
     requested_at: datetime,
     build_session_id: str | None,
@@ -621,6 +622,7 @@ def create_docgen_initial_state(
 
     return {
         "subject": subject,
+        "user_id": user_id or "",
         "file_ids": file_ids,
         "user_prompt": user_prompt,
         "requested_at": requested_at,
@@ -744,6 +746,7 @@ async def run_docgen_workflow(
     *,
     subject: str,
     file_ids: list[int],
+    user_id: str | None = None,
     user_prompt: str | None = None,
     requested_at: datetime,
     event_bus: InProcessEventBus | None = None,
@@ -784,6 +787,7 @@ async def run_docgen_workflow(
         graph_builder=lambda: build_docgen_graph(context=context),
         initial_state=create_docgen_initial_state(
             subject=subject,
+            user_id=user_id,
             file_ids=file_ids,
             user_prompt=user_prompt,
             requested_at=requested_at,

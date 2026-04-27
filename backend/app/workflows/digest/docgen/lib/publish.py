@@ -16,6 +16,7 @@ from app.shared.infra.database import managed_session
 from app.workflows.digest.common.pedagogy import resolve_effective_chapter_title
 from app.workflows.digest.common.pedagogy import build_document_overview as build_learning_document_overview
 from app.shared.infra.storage import (
+    SubjectStorageScope,
     get_content_store,
     resolve_subject_storage_scope,
     run_store_sync,
@@ -342,6 +343,7 @@ async def stage_knowledge_docs(
     document_context: dict[str, object] | None = None,
     cover_markdown: str | None = None,
     docgen_artifacts: dict[str, Any] | None = None,
+    subject_scope: SubjectStorageScope | None = None,
 ) -> StagedKnowledgeDocs:
     """Write chapter markdown into staging storage."""
 
@@ -349,7 +351,7 @@ async def stage_knowledge_docs(
         return StagedKnowledgeDocs()
 
     cs = get_content_store()
-    subject_scope = resolve_subject_storage_scope(subject)
+    subject_scope = subject_scope or resolve_subject_storage_scope(subject)
     sorted_chapters = _dedupe_chapter_metadatas(
         sorted(chapter_metadatas, key=lambda item: item.get("chapter_index", 0))
     )
@@ -387,6 +389,7 @@ async def stage_knowledge_docs(
 
     update_knowledge_build_status(
         subject,
+        subject_scope=subject_scope,
         status="running",
         stage="doc_lane_staged",
         draft_available=bool(merged_markdown.strip()),
@@ -409,6 +412,7 @@ def publish_staged_knowledge_docs(
     version_no: int = 1,
     build_session_id: str | None = None,
     docgen_artifacts: dict[str, Any] | None = None,
+    subject_scope: SubjectStorageScope | None = None,
 ) -> list[int]:
     """Promote staged chapter markdown to live outputs and persist metadata."""
 
@@ -416,7 +420,7 @@ def publish_staged_knowledge_docs(
         return []
 
     cs = get_content_store()
-    subject_scope = resolve_subject_storage_scope(subject)
+    subject_scope = subject_scope or resolve_subject_storage_scope(subject)
     sorted_chapters = _dedupe_chapter_metadatas(
         sorted(chapter_metadatas, key=lambda item: item.get("chapter_index", 0))
     )
@@ -438,7 +442,7 @@ def publish_staged_knowledge_docs(
         )
         resolved_docgen_artifacts["build_metadata"] = build_metadata
 
-    clear_current_published_knowledge_docs_files(subject)
+    clear_current_published_knowledge_docs_files(subject, subject_scope=subject_scope)
 
     docs_to_create: list[KnowledgeDoc] = []
     for index, chapter in enumerate(sorted_chapters):
@@ -566,10 +570,11 @@ def publish_staged_knowledge_docs(
         manifest.merge_review_report = dict(resolved_docgen_artifacts.get("merge_review_report") or {})
     # Do not mark the build completed until live docs are committed and staging is cleared,
     # otherwise `/knowledge/docs` can briefly report 100% while no readable document is available.
-    write_knowledge_manifest(subject, manifest)
+    write_knowledge_manifest(subject, manifest, subject_scope=subject_scope)
     run_store_sync(cs.delete_prefix, subject_scope.knowledge_build_prefix(), default=0)
     update_knowledge_build_status(
         subject,
+        subject_scope=subject_scope,
         requested_at=requested_at,
         status="completed",
         stage="completed",

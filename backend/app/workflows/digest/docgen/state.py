@@ -16,6 +16,7 @@ class DocGenState(TypedDict, total=False):
     """State carried by the DocGen graph."""
 
     subject: str
+    user_id: str
     file_ids: list[int]
     user_prompt: str | None
     requested_at: datetime

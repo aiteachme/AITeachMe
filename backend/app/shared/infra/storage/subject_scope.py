@@ -143,7 +143,7 @@ class SubjectStorageScope:
         return f"{self.namespace}/knowledge_markdowns/_build/runtime.json"
 
     def build_manifest_key(self) -> str:
-        return f"{self.namespace}/knowledge_markdowns/_build/manifest.json"
+        return f"{self.namespace}/knowledge_markdowns/manifest.json"
 
     def embedding_cache_key(self) -> str:
         return f"{self.namespace}/cache/node_embedding_cache.json"

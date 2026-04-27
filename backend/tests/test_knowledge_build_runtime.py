@@ -72,6 +72,35 @@ def test_aggregate_runtime_marks_graph_failure_as_partial_failed() -> None:
     assert aggregate.error_message == "graph_crashed"
 
 
+def test_aggregate_runtime_keeps_graph_partial_failed_terminal() -> None:
+    envelope = KnowledgeBuildRuntimeEnvelope(
+        build_group_id="group-2b",
+        docgen_runtime=KnowledgeBuildRuntimeStatus(
+            requested_at=_dt(),
+            build_group_id="group-2b",
+            build_kind="docgen",
+            status="completed",
+            stage="completed",
+            progress_pct=100,
+        ),
+        graph_runtime=KnowledgeBuildRuntimeStatus(
+            requested_at=_dt(),
+            build_group_id="group-2b",
+            build_kind="graph",
+            status="partial_failed",
+            stage="partial_failed",
+            error_message="kg_doc_sync_partial_failed",
+            current_stage_description="知识图谱已部分同步完成。",
+        ),
+    )
+
+    aggregate = build_aggregate_knowledge_build_status(envelope)
+
+    assert aggregate is not None
+    assert aggregate.status == "partial_failed"
+    assert aggregate.error_message == "kg_doc_sync_partial_failed"
+
+
 def test_aggregate_runtime_supports_graph_only_builds() -> None:
     envelope = KnowledgeBuildRuntimeEnvelope(
         build_group_id="group-3",

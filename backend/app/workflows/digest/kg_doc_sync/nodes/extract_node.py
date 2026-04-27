@@ -8,7 +8,7 @@ import structlog
 
 from app.shared.infra.database import managed_session
 from app.workflows.digest.kg_doc_sync.lib.incremental_sync import (
-    extract_knowledge_graph_items,
+    extract_knowledge_graph_items_async,
     graph_extraction_parallelism,
 )
 from app.workflows.digest.kg_doc_sync.lib.models import KnowledgeSyncExtractionPayload
@@ -56,7 +56,7 @@ def _payload_metrics(
     }
 
 
-def extract_node(state: DocsSyncState) -> DocsSyncState:
+async def extract_node(state: DocsSyncState) -> DocsSyncState:
     started_at = perf_counter()
     run_context = state.get("sync_run_context")
     if run_context is None:
@@ -69,7 +69,7 @@ def extract_node(state: DocsSyncState) -> DocsSyncState:
 
     try:
         subject_context, subject_context_source = _load_subject_context(state)
-        payload = extract_knowledge_graph_items(
+        payload = await extract_knowledge_graph_items_async(
             markdown=state["markdown"],
             subject_context=subject_context,
             run_context=run_context,
