@@ -45,7 +45,7 @@ _ATTR_TO_MODULE = {
     "run_graph_docs_sync_auto_build": "app.workflows.digest.kg_doc_sync.builds",
     "run_graph_docs_sync_after_doc_build": "app.workflows.digest.kg_doc_sync.builds",
     "run_graph_docs_sync_manual_build": "app.workflows.digest.kg_doc_sync.builds",
-    "run_graph_docs_sync_workflow": "app.workflows.digest.kg_doc_sync.workflow",
+    "run_graph_docs_sync_workflow": "app.workflows.digest.kg_doc_sync.graph",
 }
 
 

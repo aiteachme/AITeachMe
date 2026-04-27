@@ -68,9 +68,9 @@ _DOCS_RETRY_SIGNAL_RE = re.compile(
 class CandidateNode(BaseModel):
     """A candidate knowledge node extracted from a chunk."""
 
-    candidate_id: str = Field(default="", description="Internal stable candidate id.")
-    anchor_id: str = Field(default="", description="Markdown-carried KnowledgeUnit anchor id.")
-    name: str = Field(description="KnowledgeUnit name.")
+    candidate_id: str = Field(default="", description="内部稳定候选 ID。")
+    anchor_id: str = Field(default="", description="Markdown 中已有的 KnowledgeUnit anchor ID。")
+    name: str = Field(description="知识单元名称，要求短、准、可展示。")
     knowledge_unit_type: Literal[
         "concept",
         "definition",
@@ -82,27 +82,27 @@ class CandidateNode(BaseModel):
         "proof_step",
         "remark",
     ] = Field(
-        description="Allowed node type."
+        description="允许的节点类型，必须使用枚举值本身。"
     )
     type_confidence: float = Field(default=1.0, ge=0.0, le=1.0)
     type_source: Literal["rule", "llm", "manual"] = Field(default="llm")
-    local_summary: str = Field(description="Summary grounded in the current chunk.")
-    taxonomy_hint: str = Field(default="", description="Likely parent topic.")
+    local_summary: str = Field(description="只基于当前片段的简短摘要。")
+    taxonomy_hint: str = Field(default="", description="可能的上位主题或分类线索。")
     parent_entity_name: str | None = Field(
         default=None,
-        description="Parent concept, method, or topic for definition/example nodes.",
+        description="定义、公式、例题等节点所属的父概念、方法或主题。",
     )
 
 
 class CandidateEdge(BaseModel):
     """A candidate edge extracted from a chunk."""
 
-    source_name: str = Field(description="Source node name.")
-    target_name: str = Field(description="Target node name.")
-    source_candidate_id: str | None = Field(default=None, description="Resolved source candidate id.")
-    target_candidate_id: str | None = Field(default=None, description="Resolved target candidate id.")
-    source_node_type: str | None = Field(default=None, description="Resolved source node type.")
-    target_node_type: str | None = Field(default=None, description="Resolved target node type.")
+    source_name: str = Field(description="源节点名称，必须匹配本次返回的某个节点名称。")
+    target_name: str = Field(description="目标节点名称，必须匹配本次返回的某个节点名称。")
+    source_candidate_id: str | None = Field(default=None, description="源节点候选 ID；不确定时可留空。")
+    target_candidate_id: str | None = Field(default=None, description="目标节点候选 ID；不确定时可留空。")
+    source_node_type: str | None = Field(default=None, description="源节点类型；不确定时可留空。")
+    target_node_type: str | None = Field(default=None, description="目标节点类型；不确定时可留空。")
     edge_type: Literal[
         "prerequisite",
         "derivation",
@@ -110,8 +110,8 @@ class CandidateEdge(BaseModel):
         "example_of",
         "similar",
         "contrast",
-    ] = Field(description="Allowed edge type.")
-    description: str = Field(description="Short relation description.")
+    ] = Field(description="允许的关系类型，必须使用枚举值本身。")
+    description: str = Field(description="一句话说明这条关系在当前片段中的依据。")
 
 
 class ChunkExtractionResult(BaseModel):
@@ -204,7 +204,7 @@ def _clean_topic_name(chunk_title: str, header_path: str) -> str:
         header_path=header_path,
         fallback_title=chunk_title,
     )
-    return topic_path[-1] if topic_path else "Study material"
+    return topic_path[-1] if topic_path else "学习材料"
 
 
 def _looks_like_question_chunk(chunk_content: str) -> bool:
@@ -222,9 +222,8 @@ async def _repair_docs_extraction_after_empty(
         {
             "role": USER,
             "content": (
-                "The previous extraction was empty. Re-read the chunk and return a non-empty graph if the "
-                "section contains any concept, definition, formula, method, example, theorem, proof step, or note. "
-                "At minimum, include the main concept named by the heading when it is a real topic."
+                "上一次抽取结果为空。请重新阅读片段：如果其中包含任何概念、定义、公式、方法、例题、"
+                "定理、证明步骤或注意事项，请返回非空图谱。若标题本身是一个真实主题，至少包含该主概念。"
             ),
         }
     )
@@ -442,7 +441,7 @@ def _build_markdown_anchor_result(
                 knowledge_unit_type="concept",
                 type_source="manual",
                 type_confidence=0.9,
-                local_summary=f"Markdown tag referenced concept: {name}.",
+                local_summary=f"Markdown 标记引用了概念：{name}。",
                 taxonomy_hint=anchor_topic,
             )
         )
@@ -472,7 +471,7 @@ def _build_markdown_anchor_result(
                     source_name=prerequisite,
                     target_name=unit.name,
                     edge_type="prerequisite",
-                    description=f"{prerequisite} is a prerequisite for {unit.name}.",
+                    description=f"{prerequisite} 是学习 {unit.name} 前需要掌握的前置知识。",
                 )
             )
         for related in unit.related:
@@ -482,7 +481,7 @@ def _build_markdown_anchor_result(
                     source_name=unit.name,
                     target_name=related,
                     edge_type="similar",
-                    description=f"{unit.name} is related to {related}.",
+                    description=f"{unit.name} 与 {related} 存在相关关系。",
                 )
             )
 

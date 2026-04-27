@@ -1023,7 +1023,7 @@ def _build_backbone_graph_items(
                 source_name=source_name,
                 target_name=target_name,
                 edge_type=edge_type,
-                description=reason or f"{source_name} supports {target_name}.",
+                description=reason or f"{source_name} 支撑 {target_name}。",
                 source_kind="docgen_backbone",
                 knowledge_document_id=chapter_context.knowledge_document_id,
                 chapter_index=chapter_index,
@@ -1220,7 +1220,7 @@ def _build_cross_section_semantic_edges(
                     other.primary_name,
                     context.primary_name,
                     relation,
-                    f"{other.primary_name} supports section {context.primary_name}.",
+                    f"{other.primary_name} 支撑小节 {context.primary_name}。",
                     source_context={
                         "knowledge_document_id": context.knowledge_document_id,
                         "section_index": context.section_index,

@@ -126,55 +126,55 @@ _RELATION_EXAMPLE_SOURCE_TYPES = (
 
 LEARNING_GRAPH_ONTOLOGY = LearningGraphOntology(
     name="kg_doc_sync_learning_graph",
-    purpose="Represent reusable study-material knowledge units and their pedagogical relationships.",
+    purpose="表达学习材料中可复用的知识单元，以及它们之间的教学关系。",
     unit_types=(
         KnowledgeUnitTypeSpec(
             KnowledgeUnitType.CONCEPT.value,
-            "one atomic, reusable concept that can stand alone as a Knowledge Unit",
+            "可独立复用的原子概念，适合作为一个 Knowledge Unit 展示",
         ),
         KnowledgeUnitTypeSpec(
             KnowledgeUnitType.DEFINITION.value,
-            "explicit definition or interpretation",
+            "明确的定义、含义解释或概念解释",
         ),
         KnowledgeUnitTypeSpec(
             KnowledgeUnitType.THEOREM.value,
-            "theorem, property, lemma, proposition, axiom",
+            "定理、性质、引理、命题或公理",
         ),
         KnowledgeUnitTypeSpec(
             KnowledgeUnitType.FORMULA.value,
-            "formula, equation, rule, identity",
+            "公式、方程、规则、恒等式或计算关系",
         ),
         KnowledgeUnitTypeSpec(
             KnowledgeUnitType.EXAMPLE.value,
-            "worked example or illustrative case",
+            "例题、示例或说明性案例",
         ),
         KnowledgeUnitTypeSpec(
             KnowledgeUnitType.EXERCISE.value,
-            "question or practice item",
+            "练习题、训练题或需要作答的实践项",
         ),
         KnowledgeUnitTypeSpec(
             KnowledgeUnitType.METHOD.value,
-            "method, strategy, technique, algorithm",
+            "方法、策略、技巧、步骤或算法",
         ),
         KnowledgeUnitTypeSpec(
             KnowledgeUnitType.PROOF_STEP.value,
-            "proof or derivation step",
+            "证明步骤、推导步骤或关键论证环节",
         ),
         KnowledgeUnitTypeSpec(
             KnowledgeUnitType.REMARK.value,
-            "caveat, note, common mistake, condition",
+            "注意事项、边界条件、常见错误或补充说明",
         ),
     ),
     relation_types=(
         KnowledgeRelationTypeSpec(
             KnowledgeRelationType.PREREQUISITE.value,
-            "source is needed before target",
+            "source 是学习 target 前需要先掌握的前置知识",
             source_type_preferences=_RELATION_ENDPOINT_PRIMARY_TYPES,
             target_type_preferences=_RELATION_ENDPOINT_PRIMARY_TYPES,
         ),
         KnowledgeRelationTypeSpec(
             KnowledgeRelationType.DERIVATION.value,
-            "source defines, derives, supports, or belongs under target",
+            "source 定义、推导、支撑 target，或从属于 target",
             source_type_preferences=(
                 KnowledgeUnitType.DEFINITION.value,
                 KnowledgeUnitType.THEOREM.value,
@@ -187,7 +187,7 @@ LEARNING_GRAPH_ONTOLOGY = LearningGraphOntology(
         ),
         KnowledgeRelationTypeSpec(
             KnowledgeRelationType.APPLICATION.value,
-            "source is used in target",
+            "source 会被用于理解、解决或应用 target",
             source_type_preferences=(
                 KnowledgeUnitType.CONCEPT.value,
                 KnowledgeUnitType.METHOD.value,
@@ -201,7 +201,7 @@ LEARNING_GRAPH_ONTOLOGY = LearningGraphOntology(
         ),
         KnowledgeRelationTypeSpec(
             KnowledgeRelationType.EXAMPLE_OF.value,
-            "source is an example or exercise of target",
+            "source 是 target 的例题、练习或说明性案例",
             source_type_preferences=_RELATION_EXAMPLE_SOURCE_TYPES,
             target_type_preferences=(
                 KnowledgeUnitType.CONCEPT.value,
@@ -212,14 +212,15 @@ LEARNING_GRAPH_ONTOLOGY = LearningGraphOntology(
         ),
         KnowledgeRelationTypeSpec(
             KnowledgeRelationType.SIMILAR.value,
-            "source is similar to target",
+            "source 与 target 相似，容易互相迁移或类比",
         ),
         KnowledgeRelationTypeSpec(
             KnowledgeRelationType.CONTRAST.value,
-            "source contrasts with target",
+            "source 与 target 构成对比、区分或易混关系",
         ),
     ),
 )
+
 
 def format_ontology_unit_type_bullets() -> str:
     return "\n".join(f"- `{spec.value}`: {spec.description}" for spec in LEARNING_GRAPH_ONTOLOGY.unit_types)
@@ -232,9 +233,9 @@ def format_ontology_relation_type_bullets() -> str:
 def format_ontology_relation_direction_bullets() -> str:
     lines: list[str] = []
     for spec in LEARNING_GRAPH_ONTOLOGY.relation_types:
-        source_types = ", ".join(f"`{value}`" for value in spec.source_type_preferences) or "any valid non-blocked type"
-        target_types = ", ".join(f"`{value}`" for value in spec.target_type_preferences) or "any valid non-blocked type"
-        lines.append(f"- `{spec.value}`: source prefers {source_types}; target prefers {target_types}.")
+        source_types = ", ".join(f"`{value}`" for value in spec.source_type_preferences) or "任意合法且未被拦截的类型"
+        target_types = ", ".join(f"`{value}`" for value in spec.target_type_preferences) or "任意合法且未被拦截的类型"
+        lines.append(f"- `{spec.value}`：source 优先使用 {source_types}；target 优先使用 {target_types}。")
     return "\n".join(lines)
 
 

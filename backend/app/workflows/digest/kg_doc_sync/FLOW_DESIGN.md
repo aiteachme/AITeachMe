@@ -21,6 +21,15 @@ LangGraph 链路，避免 Trace 列表被 anchor 校验、候选抽取和图谱�
 每个节点都会写入 `node_metrics.<node>`，用于在 trace 和最终 state 中查看本阶段输入规模、
 并发配置、sync_run id、抽取统计、写库变更数和失败标记结果。
 
+目录入口约定：
+
+- `graph.py`：LangGraph 定义、initial state、路由、`run_graph_docs_sync_workflow` 单次运行入口和 LangGraph dev 导出。
+- `builds.py`：DocGen 发布后的自动同步、手动重建、graph lane runtime 与后台任务编排。
+- `inputs.py`：从已发布 `KnowledgeDoc`、manifest 和结构化上下文组装同步输入。
+- `nodes/`：只放 LangGraph 顶层节点。
+- `lib/`：节点内部复用逻辑、抽取合同、候选过滤、增量写库、查询、总览和清理。
+- `prompts/`：只放 prompt builder。当前抽取提示词、ontology 展示文案和结构化 schema 描述统一使用中文；枚举值仍保留英文稳定值，便于落库和关系方向校验。
+
 ## 1. 流程总览与执行合同
 
 ### 1.1 短流程总览
@@ -51,7 +60,7 @@ image_generation -> settings.models.image_generation（默认未配置）
 - KG docs-sync 当前使用 `light` 槽位；抽取任务意图由 `call_purpose=EXTRACT` 表达。
 - 路由层仍保留 `extract` 兼容别名，但新代码不应继续把它当模型槽位使用。
 - `kg_doc_sync` 的 LangGraph 节点本身不直接写死模型，LLM 调用集中在复用的 extractor 内部；`call_purpose + model slot + max_tokens` 统一由 `kg_doc_sync/lib/model_policy.py` 维护。
-- Prompt 文件按真实调用拆分：章节图谱抽取在 `prompts/section_graph.py`，导出聚合在 `prompts/registry.py`。
+- Prompt 文件按真实调用拆分：章节图谱抽取在 `prompts/section_graph.py`，导出聚合在 `prompts/registry.py`；提示词正文必须以中文教学语境为主。
 - 核心 lib 按职责拆分：`models.py` 放 state/report 数据合同，`sync_runs.py` 放同步批次状态写入，`candidate_quality.py` 放候选过滤规则，`question_blocks.py` 只用于题目块识别和质量判断，不再生成兜底知识点。
 
 按当前代码，KG docs-sync 各阶段的大模型使用如下：

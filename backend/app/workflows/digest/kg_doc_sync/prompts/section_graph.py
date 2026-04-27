@@ -1,4 +1,4 @@
-"""Prompts for extracting graph candidates from one knowledge-doc section."""
+"""Prompt builders for extracting graph candidates from one knowledge-doc section."""
 
 from app.workflows.digest.kg_doc_sync.lib.ontology import (
     format_ontology_relation_direction_bullets,
@@ -11,66 +11,66 @@ _ALLOWED_EDGE_TYPE_BULLETS = format_ontology_relation_type_bullets()
 _ALLOWED_EDGE_DIRECTION_BULLETS = format_ontology_relation_direction_bullets()
 
 SYSTEM_PROMPT_KNOWLEDGE_EXTRACT = f"""
-You extract a structured knowledge graph from one study-material chunk.
+你是 AITeachMe 的知识图谱抽取器，负责从一段学习材料中抽取结构化知识图谱候选。
 
-Return only nodes and edges that are directly supported by the chunk.
+只返回当前片段中有明确依据的节点和关系。不要补充片段没有表达的知识。
 
-## Allowed node types
+## 可用节点类型
 {_ALLOWED_NODE_TYPE_BULLETS}
 
-## Allowed edge types
+## 可用关系类型
 {_ALLOWED_EDGE_TYPE_BULLETS}
 
-## Edge direction hints
+## 关系方向提示
 {_ALLOWED_EDGE_DIRECTION_BULLETS}
 
-## Extraction rules
-1. Prefer academically reusable knowledge units, not temporary wording.
-2. Keep names short and canonical. Use LaTeX for math symbols when needed.
-3. `local_summary` must summarize only what this chunk states.
-4. Edge endpoints must exactly match returned node names.
-5. Do not invent nodes or edges not grounded in the chunk.
-6. Use Knowledge Unit granularity: one definition, one formula, one derivation step, one example, or one method step is a good unit.
-7. Do not create nodes for whole chapters, whole sections, reading guides, or container headings unless the heading itself names one atomic concept.
-8. Prefer 1-3 strong nodes over many weak nodes. Do not explode one section into many near-duplicate topic shells.
-9. Reject pedagogical wrappers such as objectives, outlines, review slogans, task instructions, and question stems; extract only explicit reusable concepts or methods.
+## 抽取规则
+1. 优先抽取可复用的学术知识单元，不抽取临时措辞。
+2. 名称要短、规范、适合展示；数学符号需要时使用 LaTeX。
+3. `local_summary` 只能概括当前片段实际说了什么。
+4. 关系端点必须精确匹配本次返回的节点名称。
+5. 不要编造当前片段没有依据的节点或关系。
+6. 使用 Knowledge Unit 粒度：一个定义、一个公式、一个推导步骤、一个例题、一个方法步骤，通常就是合适的单元。
+7. 不要为整章、整节、阅读导语、容器标题建节点，除非标题本身就是一个原子概念。
+8. 宁可返回 1-3 个强节点，也不要返回一堆弱节点；不要把同一小节拆成大量近义主题壳。
+9. 严格拒绝教学包装语，例如学习目标、章节大纲、复习口号、任务指令、题干句；只抽取明确可复用的概念、定义、公式、性质、方法、例题或证明步骤。
 
-## Hierarchy rules
-1. If the chunk heading names a real concept/topic, include that concept unless the chunk is purely procedural noise.
-2. For `definition`, `formula`, `theorem`, `example`, `exercise`, `proof_step`, and `remark`, fill `parent_entity_name` when a parent concept/method is clear.
-3. For `concept` and `method`, fill `taxonomy_hint` with the nearest broader concept when possible.
+## 层级规则
+1. 如果片段标题本身是一个真实概念或主题，且正文不是纯流程噪声，可以包含这个概念。
+2. 对 `definition`、`formula`、`theorem`、`example`、`exercise`、`proof_step`、`remark`，当上位概念或方法清楚时填写 `parent_entity_name`。
+3. 对 `concept` 和 `method`，能判断最近上位概念时填写 `taxonomy_hint`。
 
-## Knowledge-doc specific rules
-When the source is a structured knowledge document section:
-1. Use the heading and body together.
-2. Follow KU granularity strictly: chapter and section containers are usually not KUs; atomic definitions, formulas, proof steps, examples, and method steps usually are.
-3. If the body contains an interpretation, property, formula, method, example, or note, extract it explicitly.
-4. If labeled lines such as `定义:`, `公式:`, `例题:`, `Remark:` appear, convert them into typed nodes instead of leaving the section empty.
-5. If the heading is generic like "几何意义", "性质", "方法", or "注意事项", combine it with the parent topic mentally and return the qualified atomic unit, not the generic heading alone.
-6. It is acceptable to return an empty result when the section only contains objectives, outlines, review checklists, slogans, question stems, or procedural instructions.
-7. Prefer a sparse high-quality graph over a non-empty graph padded with headings or task phrases.
+## 知识文档片段规则
+当来源是结构化知识文档小节时：
+1. 标题和正文要一起看，不能只看标题。
+2. 严格遵守 KU 粒度：章节/小节容器通常不是 KU；原子定义、公式、性质、证明步骤、例题、方法步骤通常是 KU。
+3. 如果正文包含解释、性质、公式、方法、例题或注意事项，要显式抽出对应节点。
+4. 如果出现 `定义:`、`公式:`、`例题:`、`Remark:` 等标注行，要转成相应类型节点，不要轻易返回空结果。
+5. 如果标题是“几何意义”“性质”“方法”“注意事项”等泛化词，要结合父级主题生成限定后的原子单元，不要单独返回泛化标题。
+6. 当片段只有学习目标、大纲、复盘清单、口号、题干或流程指令时，可以返回空结果。
+7. 高质量稀疏图优先于用标题、任务句填充出来的非空图。
 """.strip()
 
 USER_PROMPT_KNOWLEDGE_EXTRACT = """
-## Chunk Metadata
-- Title: {{ chunk_title }}
-- Header path: {{ header_path }}
-{% if doc_source_type %}- Source type: {{ doc_source_type }}{% endif %}
-{% if subject_context %}- Subject context: {{ subject_context }}{% endif %}
-{% if sibling_topics %}- Sibling topics: {{ sibling_topics }}{% endif %}
-{% if digest_mode == "sprint" %}- Digest mode: sprint, prioritize methods, question types, and common mistakes.{% endif %}
-{% if digest_mode == "systematic" %}- Digest mode: systematic, prioritize complete concepts, rigorous definitions, and prerequisite links.{% endif %}
+## 片段元数据
+- 标题：{{ chunk_title }}
+- 标题路径：{{ header_path }}
+{% if doc_source_type %}- 来源类型：{{ doc_source_type }}{% endif %}
+{% if subject_context %}- 学科上下文：{{ subject_context }}{% endif %}
+{% if sibling_topics %}- 相邻主题：{{ sibling_topics }}{% endif %}
+{% if digest_mode == "sprint" %}- 讲义模式：sprint，优先识别方法、题型和常见错误。{% endif %}
+{% if digest_mode == "systematic" %}- 讲义模式：systematic，优先识别完整概念、严谨定义和前置依赖。{% endif %}
 
 {% if doc_source_type == "knowledge_doc_markdown" %}
-## Special Instructions For This Chunk
-- This chunk comes from a heading-scoped knowledge document.
-- Use the heading and body together.
-- If the body is explanatory rather than question-only, avoid returning an empty result.
-- If the section describes a meaning, formula, property, method, example, or warning, extract those items explicitly.
-- Favor KU-quality atomic units over broad section wrappers.
+## 本片段特别要求
+- 这是按标题切出的知识文档片段。
+- 必须结合标题和正文判断。
+- 如果正文是解释性内容，而不是纯题目或流程指令，不要轻易返回空结果。
+- 如果片段描述含义、公式、性质、方法、例题或注意事项，要显式抽取。
+- 优先返回 KU 质量的原子单元，不要返回宽泛的小节包装。
 {% endif %}
 
-## Chunk Content
+## 片段正文
 
 {{ chunk_content }}
 """.strip()
