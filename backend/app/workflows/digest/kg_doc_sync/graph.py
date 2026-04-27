@@ -1,4 +1,8 @@
-﻿"""Docs-sync workflow graph."""
+﻿"""KG docs-sync graph definition and runtime entrypoint.
+
+这里定义 LangGraph 节点、路由、初始 state 和单次运行入口。
+API 触发后的后台任务、构建锁和 graph lane runtime 由 builds.py 处理。
+"""
 
 from __future__ import annotations
 
@@ -6,7 +10,10 @@ from langgraph.graph import END, StateGraph
 
 from app.shared.infra.workflow import workflow_tracer
 from app.shared.infra.workflow.context import WorkflowContext, create_langgraph_dev_context
+from app.shared.infra.workflow.result import WorkflowResult, err_result, ok_result
+from app.shared.infra.workflow.runtime import run_state_graph
 from app.workflows.digest.common.node_tracing import named_route, node_metadata, traced_digest_node
+from app.workflows.digest.kg_doc_sync.lib.models import KnowledgeSyncReport
 from app.workflows.digest.kg_doc_sync.nodes.extract_node import extract_node
 from app.workflows.digest.kg_doc_sync.nodes.fail_node import fail_node
 from app.workflows.digest.kg_doc_sync.nodes.finalize_node import finalize_node
@@ -251,6 +258,92 @@ def create_docs_sync_initial_state(
     }
 
 
+def _normalize_docs_sync_inputs(
+    *,
+    subject: str,
+    markdown: str,
+    build_revision_no: int | None = None,
+) -> tuple[str, str, int | None]:
+    return subject.strip(), markdown or "", build_revision_no
+
+
+async def run_graph_docs_sync_workflow(
+    *,
+    subject: str,
+    markdown: str,
+    build_revision_no: int | None = None,
+    build_session_id: str | None = None,
+    subject_context: str | None = None,
+    structured_context: dict[str, object] | None = None,
+) -> WorkflowResult[KnowledgeSyncReport]:
+    error_subject = str(subject or "").strip()
+    try:
+        normalized_subject, normalized_markdown, normalized_revision = _normalize_docs_sync_inputs(
+            subject=subject,
+            markdown=markdown,
+            build_revision_no=build_revision_no,
+        )
+        error_subject = normalized_subject
+        context = WorkflowContext(
+            workflow_name="digest.kg_doc_sync",
+            subject=normalized_subject,
+            metadata={
+                "build_session_id": build_session_id or "",
+                "lane": "kg_doc_sync",
+                "langsmith_run_name": RUN_NAME_KG_DOC_SYNC,
+                "build_revision_no": normalized_revision,
+            },
+        )
+        result = await run_state_graph(
+            workflow_name="digest.kg_doc_sync",
+            graph_builder=lambda: build_docs_sync_graph(context=context),
+            initial_state=create_docs_sync_initial_state(
+                subject=normalized_subject,
+                markdown=normalized_markdown,
+                build_revision_no=normalized_revision,
+                build_session_id=build_session_id,
+                subject_context=subject_context,
+                structured_context=structured_context,
+            ),
+            context=context,
+        )
+        if result.failed:
+            return err_result(
+                "digest_graph_docs_sync_failed",
+                result.error.detail,
+                metadata={"subject": normalized_subject},
+            )
+
+        final_state: DocsSyncState = result.require_value()
+        state_error = str(final_state.get("error") or "").strip()
+        if state_error:
+            return err_result(
+                "digest_graph_docs_sync_failed",
+                state_error,
+                metadata={"subject": normalized_subject},
+            )
+        report = final_state.get("report")
+        if report is None:
+            return err_result(
+                "digest_graph_docs_sync_failed",
+                "docs_sync_report_missing",
+                metadata={"subject": normalized_subject},
+            )
+        return ok_result(report)
+    except ValueError as exc:
+        return err_result(
+            "digest_graph_docs_sync_invalid_markdown",
+            str(exc),
+            metadata={"subject": error_subject},
+        )
+    except Exception as exc:
+        return err_result(
+            "digest_graph_docs_sync_failed",
+            str(exc),
+            metadata={"subject": error_subject},
+        )
+
+
 def get_langgraph_dev_kg_doc_sync_graph() -> StateGraph:
     return build_docs_sync_graph(context=create_langgraph_dev_context("digest.kg_doc_sync.langgraph_dev"))
 
@@ -260,4 +353,5 @@ __all__ = [
     "build_docs_sync_graph",
     "create_docs_sync_initial_state",
     "get_langgraph_dev_kg_doc_sync_graph",
+    "run_graph_docs_sync_workflow",
 ]
