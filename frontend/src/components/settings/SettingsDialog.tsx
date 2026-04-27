@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
+import { AnimatePresence, motion } from "framer-motion";
 import { X } from "lucide-react";
 
 import { useTheme, type Theme } from "../providers/ThemeProvider";
@@ -91,13 +92,24 @@ export function SettingsDialog({ isOpen, onClose }: SettingsDialogProps) {
 
   const activeSectionConfig = sections.find((section) => section.id === activeSection) ?? sections[0];
 
-  if (!isOpen) return null;
-
   const panel = (
-    <div className={SETTINGS_STYLES.panel.root}>
-      <div className={SETTINGS_STYLES.panel.backdrop} onClick={onClose} />
-      <div className={SETTINGS_STYLES.panel.viewport}>
-        <div className={SETTINGS_STYLES.panel.dialog}>
+    <AnimatePresence>
+      {isOpen ? (
+        <div className={SETTINGS_STYLES.panel.root}>
+          <motion.div
+            className={SETTINGS_STYLES.panel.backdrop}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={onClose}
+          />
+          <div className={SETTINGS_STYLES.panel.viewport}>
+            <motion.div
+              className={SETTINGS_STYLES.panel.dialog}
+              initial={{ opacity: 0, scale: 0.95, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 10 }}
+            >
           <SettingsSidebar
             activeSection={activeSection}
             onSelect={setActiveSection}
@@ -179,9 +191,11 @@ export function SettingsDialog({ isOpen, onClose }: SettingsDialogProps) {
               onSave={() => void saveAll()}
             />
           </div>
+            </motion.div>
+          </div>
         </div>
-      </div>
-    </div>
+      ) : null}
+    </AnimatePresence>
   );
 
   return typeof document !== "undefined" ? createPortal(panel, document.body) : panel;

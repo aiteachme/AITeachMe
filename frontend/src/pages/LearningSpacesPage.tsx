@@ -1,5 +1,6 @@
 import { Link, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
+import { motion } from "framer-motion";
 import { BookOpen, LayoutGrid, Loader2, Plus } from "lucide-react";
 
 import { listSubjectsApiApiV1SubjectsListPost } from "../api/generated/subjects";
@@ -111,61 +112,74 @@ export function LearningSpacesPage() {
 
         {!isLoading && subjects.length > 0 ? (
           <div className="mt-6 grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-3">
-            {subjects.map((subject: SubjectWithIcon) => {
+          {subjects.map((subject: SubjectWithIcon, index: number) => {
               const displayName = displaySubjectName(subject);
               const SubjectIcon = resolveSubjectIcon(subject.icon_key);
 
               return (
-                <Link
+                <motion.div
                   key={subject.subject_id}
-                  to={`/subject/${subject.subject_id}/build`}
-                  className="group flex min-h-[288px] flex-col overflow-hidden rounded-3xl border border-slate-200/80 bg-white shadow-[0_6px_24px_rgba(15,23,42,0.06)] transition duration-300 hover:-translate-y-1 hover:border-slate-300 hover:shadow-[0_20px_48px_rgba(15,23,42,0.12)] dark:border-slate-800/80 dark:bg-slate-900 dark:shadow-[0_6px_24px_rgba(0,0,0,0.2)] dark:hover:border-slate-700 dark:hover:shadow-[0_20px_48px_rgba(0,0,0,0.3)] sm:min-h-[328px] sm:rounded-[30px]"
+                  className="h-full"
+                  initial={{ opacity: 0, scale: 0.95, y: 10 }}
+                  animate={{ opacity: 1, scale: 1, y: 0 }}
+                  transition={{
+                    delay: Math.min(index * 0.04, 0.24),
+                    duration: 0.28,
+                    ease: "easeOut",
+                  }}
+                  whileHover={{ y: -4 }}
+                  whileTap={{ scale: 0.99 }}
                 >
-                  <div className="relative h-[140px] overflow-hidden border-b border-slate-100 bg-[linear-gradient(135deg,#f8fafc_0%,#eef2ff_50%,#f8fafc_100%)] dark:border-slate-800 dark:bg-[linear-gradient(135deg,#0f172a_0%,#1e1b4b_50%,#0f172a_100%)] sm:h-[176px]">
-                    <div className="absolute left-5 top-5 inline-flex items-center gap-2 rounded-full bg-white/92 dark:bg-slate-800/92 px-3 py-1.5 text-xs font-medium text-slate-600 dark:text-slate-300 shadow-sm">
-                      <span className="h-2.5 w-2.5 rounded-full bg-sky-400" />
-                      Ready
-                    </div>
-                    <div className="absolute right-5 top-5 rounded-full bg-white/92 dark:bg-slate-800/92 px-3 py-1.5 text-[11px] font-medium text-slate-500 dark:text-slate-400 shadow-sm">
-                      学科
-                    </div>
-                    <div
-                      className={`absolute left-5 bottom-5 flex h-16 w-16 items-center justify-center rounded-[22px] bg-gradient-to-br ${subjectTone(displayName)} text-2xl font-semibold text-white shadow-lg`}
-                    >
-                      <SubjectIcon className="h-8 w-8" strokeWidth={2.1} />
-                    </div>
-                    <div className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-white/60 dark:from-slate-900/60 to-transparent" />
-                  </div>
-
-                  <div className="flex flex-1 flex-col px-6 pb-6 pt-5">
-                    <h3 className="line-clamp-2 text-[19px] font-semibold leading-8 tracking-tight text-slate-900 dark:text-slate-100">
-                      {displayName}
-                    </h3>
-
-                    <p className="mt-3 text-sm leading-6 text-slate-500 dark:text-slate-400">
-                      打开这个学习空间，继续管理资料、知识结构和学习内容。
-                    </p>
-
-                    <div className="mt-6 flex flex-wrap gap-2">
-                      <span className="rounded-full bg-slate-100 dark:bg-slate-800 px-3 py-1.5 text-xs font-medium text-slate-500 dark:text-slate-400">
-                        已创建
-                      </span>
-                      <span className="rounded-full bg-slate-100 dark:bg-slate-800 px-3 py-1.5 text-xs font-medium text-slate-500 dark:text-slate-400">
-                        可继续学习
-                      </span>
-                    </div>
-
-                    <div className="mt-auto flex items-center justify-between border-t border-slate-100 dark:border-slate-800 pt-6">
-                      <div className="inline-flex items-center gap-2 text-sm font-medium text-slate-500 dark:text-slate-400">
-                        <BookOpen className="h-4 w-4" />
-                        进入学习
+                  <Link
+                    to={`/subject/${subject.subject_id}/build`}
+                    className="group flex min-h-[288px] flex-col overflow-hidden rounded-3xl border border-slate-200/80 bg-white shadow-[0_6px_24px_rgba(15,23,42,0.06)] transition duration-300 hover:border-slate-300 hover:shadow-[0_20px_48px_rgba(15,23,42,0.12)] dark:border-slate-800/80 dark:bg-slate-900 dark:shadow-[0_6px_24px_rgba(0,0,0,0.2)] dark:hover:border-slate-700 dark:hover:shadow-[0_20px_48px_rgba(0,0,0,0.3)] sm:min-h-[328px] sm:rounded-[30px]"
+                  >
+                    <div className="relative h-[140px] overflow-hidden border-b border-slate-100 bg-[linear-gradient(135deg,#f8fafc_0%,#eef2ff_50%,#f8fafc_100%)] dark:border-slate-800 dark:bg-[linear-gradient(135deg,#0f172a_0%,#1e1b4b_50%,#0f172a_100%)] sm:h-[176px]">
+                      <div className="absolute left-5 top-5 inline-flex items-center gap-2 rounded-full bg-white/92 dark:bg-slate-800/92 px-3 py-1.5 text-xs font-medium text-slate-600 dark:text-slate-300 shadow-sm">
+                        <span className="h-2.5 w-2.5 rounded-full bg-sky-400" />
+                        Ready
                       </div>
-                      <span className="rounded-full border border-slate-200 dark:border-slate-700 px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 transition group-hover:border-slate-300 dark:group-hover:border-slate-600 group-hover:bg-slate-50 dark:group-hover:bg-slate-800">
-                        打开
-                      </span>
+                      <div className="absolute right-5 top-5 rounded-full bg-white/92 dark:bg-slate-800/92 px-3 py-1.5 text-[11px] font-medium text-slate-500 dark:text-slate-400 shadow-sm">
+                        学科
+                      </div>
+                      <div
+                        className={`absolute left-5 bottom-5 flex h-16 w-16 items-center justify-center rounded-[22px] bg-gradient-to-br ${subjectTone(displayName)} text-2xl font-semibold text-white shadow-lg`}
+                      >
+                        <SubjectIcon className="h-8 w-8" strokeWidth={2.1} />
+                      </div>
+                      <div className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-white/60 dark:from-slate-900/60 to-transparent" />
                     </div>
-                  </div>
-                </Link>
+
+                    <div className="flex flex-1 flex-col px-6 pb-6 pt-5">
+                      <h3 className="line-clamp-2 text-[19px] font-semibold leading-8 tracking-tight text-slate-900 dark:text-slate-100">
+                        {displayName}
+                      </h3>
+
+                      <p className="mt-3 text-sm leading-6 text-slate-500 dark:text-slate-400">
+                        打开这个学习空间，继续管理资料、知识结构和学习内容。
+                      </p>
+
+                      <div className="mt-6 flex flex-wrap gap-2">
+                        <span className="rounded-full bg-slate-100 dark:bg-slate-800 px-3 py-1.5 text-xs font-medium text-slate-500 dark:text-slate-400">
+                          已创建
+                        </span>
+                        <span className="rounded-full bg-slate-100 dark:bg-slate-800 px-3 py-1.5 text-xs font-medium text-slate-500 dark:text-slate-400">
+                          可继续学习
+                        </span>
+                      </div>
+
+                      <div className="mt-auto flex items-center justify-between border-t border-slate-100 dark:border-slate-800 pt-6">
+                        <div className="inline-flex items-center gap-2 text-sm font-medium text-slate-500 dark:text-slate-400">
+                          <BookOpen className="h-4 w-4" />
+                          进入学习
+                        </div>
+                        <span className="rounded-full border border-slate-200 dark:border-slate-700 px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 transition group-hover:border-slate-300 dark:group-hover:border-slate-600 group-hover:bg-slate-50 dark:group-hover:bg-slate-800">
+                          打开
+                        </span>
+                      </div>
+                    </div>
+                  </Link>
+                </motion.div>
               );
             })}
           </div>
