@@ -74,6 +74,11 @@ type BuildEventItem = {
   created_at?: string | null;
 };
 
+function shouldOpenDetailsByDefault(): boolean {
+  if (typeof window === "undefined") return false;
+  return window.matchMedia("(min-width: 1280px)").matches;
+}
+
 const BUILD_MODE_LABELS: Record<string, string> = {
   confirmed_build_plan: "已确认构建方案",
   search_only_mode: "仅使用联网资料",
@@ -193,7 +198,7 @@ export function BuildView({
   subjectId,
 }: Props) {
   const [selectedPreviewChapter, setSelectedPreviewChapter] = useState<number | null>(null);
-  const [detailsOpen, setDetailsOpen] = useState(false);
+  const [detailsOpen, setDetailsOpen] = useState(shouldOpenDetailsByDefault);
 
   const isBuildActive = Boolean(
     buildStage && !(["completed", "failed", "cancelled"] as string[]).includes(buildStage)
