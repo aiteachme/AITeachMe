@@ -148,6 +148,5 @@ class QuestionKnowledgeUnitLink(SQLModel, table=True):
     exam_paper_item_id: int | None = Field(default=None, foreign_key="exam_paper_item.id", index=True)
     knowledge_unit_id: int = Field(foreign_key="knowledge_unit.id", index=True)
     coverage_weight: float = Field(default=1.0, ge=0.0, le=1.0)
-    role: str = Field(default="primary")
     created_at: datetime = Field(default_factory=utcnow)
     updated_at: datetime = Field(default_factory=utcnow)

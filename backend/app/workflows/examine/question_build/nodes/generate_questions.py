@@ -1,4 +1,4 @@
-"""Generate exam questions and emit compact progress events."""
+﻿"""Generate exam questions and emit compact progress events."""
 
 from __future__ import annotations
 
@@ -26,7 +26,7 @@ def build_generate_questions_node(*, context: WorkflowContext):
         await emit_progress(
             state,
             stage="generate_exam_questions",
-            detail="正在基于知识点生成高质量考题...",
+            detail="Generating exam questions from allocated knowledge units...",
             step="generate_questions",
         )
         try:
@@ -47,7 +47,7 @@ def build_generate_questions_node(*, context: WorkflowContext):
                 await emit_progress(
                     state,
                     stage="generate_exam_questions",
-                    detail=f"已生成第 {question.item_order} 题。",
+                    detail=f"Generated question {question.item_order}.",
                     step="generate_question",
                     extra={
                         "generated_question": question.model_dump(mode="json"),
@@ -64,7 +64,7 @@ def build_generate_questions_node(*, context: WorkflowContext):
                 await emit_progress(
                     state,
                     stage="generate_exam_questions",
-                    detail=f"第 {failure.item_order} 题生成失败，已跳过。",
+                    detail=f"Question {failure.item_order} generation failed and was skipped.",
                     step="generate_question_failed",
                     extra={
                         "failed_question": failed_payload,
@@ -76,6 +76,12 @@ def build_generate_questions_node(*, context: WorkflowContext):
             questions = await generate_exam_questions_for_units(
                 units=list(state.get("units") or []),
                 specs=specs,
+                subject_profile={
+                    "subject_name": str(state.get("subject_name") or ""),
+                    "subject_description": str(state.get("subject_description") or ""),
+                    "user_intent": str(state.get("subject_user_intent") or ""),
+                },
+                system_constraints=str(state.get("system_constraints") or ""),
                 on_question_generated=handle_question_generated,
                 on_question_failed=handle_question_failed,
                 allow_partial=True,
@@ -85,7 +91,7 @@ def build_generate_questions_node(*, context: WorkflowContext):
             await emit_progress(
                 state,
                 stage="generate_exam_questions",
-                detail="考题生成失败，请稍后重试。",
+                detail="Exam question generation failed.",
                 step="generate_questions",
                 elapsed_ms=elapsed_ms,
             )
@@ -101,7 +107,7 @@ def build_generate_questions_node(*, context: WorkflowContext):
         await emit_progress(
             state,
             stage="generate_exam_questions",
-            detail=f"已生成 {len(questions)} 道考题，跳过 {len(failed_questions)} 道失败题。",
+            detail=f"Generated {len(questions)} questions and skipped {len(failed_questions)} failed questions.",
             step="generate_questions",
             elapsed_ms=elapsed_ms,
         )

@@ -172,7 +172,6 @@ class ExamNodeLinkResponse(BaseModel):
     knowledge_unit_id: int
     knowledge_unit_name: str
     coverage_weight: float
-    role: str
     mastery_score: float | None = None
 
 

@@ -266,7 +266,7 @@ def _normalize_legacy_question_refs(raw_refs: object, fallback_unit_id: object =
         except (TypeError, ValueError):
             unit_id = 0
         if unit_id > 0:
-            refs.append({"knowledge_unit_id": unit_id, "coverage_weight": 1.0, "role": "primary"})
+            refs.append({"knowledge_unit_id": unit_id, "coverage_weight": 1.0})
 
     normalized: list[dict[str, object]] = []
     seen: set[int] = set()
@@ -286,7 +286,6 @@ def _normalize_legacy_question_refs(raw_refs: object, fallback_unit_id: object =
             {
                 "knowledge_unit_id": unit_id,
                 "coverage_weight": max(0.0, min(weight, 1.0)),
-                "role": str(ref.get("role", "primary" if not normalized else "secondary") or "secondary"),
             }
         )
     return normalized
@@ -316,15 +315,14 @@ def _migrate_sqlite_question_knowledge_links(engine: sa.Engine) -> None:
                             sa.text(
                                 """
                                 INSERT OR IGNORE INTO question_knowledge_unit_link
-                                (question_template_id, exam_paper_item_id, knowledge_unit_id, coverage_weight, role, created_at, updated_at)
-                                VALUES (:template_id, NULL, :unit_id, :weight, :role, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                                (question_template_id, exam_paper_item_id, knowledge_unit_id, coverage_weight, created_at, updated_at)
+                                VALUES (:template_id, NULL, :unit_id, :weight, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
                                 """
                             ),
                             {
                                 "template_id": int(row["id"]),
                                 "unit_id": int(ref["knowledge_unit_id"]),
                                 "weight": float(ref["coverage_weight"]),
-                                "role": str(ref["role"]),
                             },
                         )
 
@@ -343,17 +341,23 @@ def _migrate_sqlite_question_knowledge_links(engine: sa.Engine) -> None:
                             sa.text(
                                 """
                                 INSERT OR IGNORE INTO question_knowledge_unit_link
-                                (question_template_id, exam_paper_item_id, knowledge_unit_id, coverage_weight, role, created_at, updated_at)
-                                VALUES (NULL, :item_id, :unit_id, :weight, :role, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                                (question_template_id, exam_paper_item_id, knowledge_unit_id, coverage_weight, created_at, updated_at)
+                                VALUES (NULL, :item_id, :unit_id, :weight, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
                                 """
                             ),
                             {
                                 "item_id": int(row["id"]),
                                 "unit_id": int(ref["knowledge_unit_id"]),
                                 "weight": float(ref["coverage_weight"]),
-                                "role": str(ref["role"]),
                             },
                         )
+
+        link_columns = {column["name"] for column in sa.inspect(connection).get_columns("question_knowledge_unit_link")}
+        if "role" in link_columns:
+            try:
+                connection.execute(sa.text("ALTER TABLE question_knowledge_unit_link DROP COLUMN role"))
+            except sa.exc.DatabaseError:
+                logger.warning("sqlite_drop_question_link_role_column_failed")
 
 
 def _sqlite_json_object_text(raw_value: object) -> str:

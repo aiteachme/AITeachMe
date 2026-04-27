@@ -98,12 +98,10 @@ function buildKnowledgeLinks(value: unknown): ExamNodeLinkResponse[] {
     const unitId = toPositiveInt(ref.knowledge_unit_id);
     if (unitId == null) return [];
     const weight = toNumber(ref.coverage_weight) ?? 1;
-    const role = toText(ref.role || "secondary") || "secondary";
     return [{
       knowledge_unit_id: unitId,
       knowledge_unit_name: `#${unitId}`,
       coverage_weight: Math.max(0, Math.min(1, weight)),
-      role,
       mastery_score: null,
     }];
   });

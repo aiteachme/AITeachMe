@@ -42,9 +42,9 @@ def _normalize_link_refs(refs: list[dict[str, object]]) -> list[dict[str, object
             {
                 "knowledge_unit_id": unit_id,
                 "coverage_weight": max(0.0, min(weight, 1.0)),
-                "role": str(ref.get("role", "primary" if not normalized else "secondary") or "secondary"),
             }
         )
+    normalized.sort(key=lambda item: float(item["coverage_weight"]), reverse=True)
     return normalized
 
 
@@ -52,7 +52,6 @@ def _link_payload(link: QuestionKnowledgeUnitLink) -> dict[str, object]:
     return {
         "knowledge_unit_id": int(link.knowledge_unit_id),
         "coverage_weight": float(link.coverage_weight),
-        "role": str(link.role or "secondary"),
     }
 
 
@@ -73,7 +72,6 @@ def replace_question_template_links(
             question_template_id=template_id,
             knowledge_unit_id=int(ref["knowledge_unit_id"]),
             coverage_weight=float(ref["coverage_weight"]),
-            role=str(ref["role"]),
         )
         for ref in _normalize_link_refs(refs)
     ]
@@ -105,7 +103,6 @@ def replace_exam_paper_item_links(
             exam_paper_item_id=item_id,
             knowledge_unit_id=int(ref["knowledge_unit_id"]),
             coverage_weight=float(ref["coverage_weight"]),
-            role=str(ref["role"]),
         )
         for ref in _normalize_link_refs(refs)
     ]
