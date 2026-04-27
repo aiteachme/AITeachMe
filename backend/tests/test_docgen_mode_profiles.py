@@ -15,6 +15,27 @@ def test_docgen_mode_profile_uses_flexible_course_hints():
         assert profile.practice_focuses
 
 
+def test_docgen_mode_profile_splits_total_target_length_by_chapter_count():
+    sprint = get_docgen_mode_profile("sprint")
+    systematic = get_docgen_mode_profile("systematic")
+
+    assert sprint.word_budget(
+        chapter_count=5,
+        depth_level="standard",
+        target_length="10000-20000字",
+    ) == (2000, 4000)
+    assert sprint.word_budget(
+        chapter_count=5,
+        depth_level="standard",
+        target_length="1w-2w字",
+    ) == (2000, 4000)
+    assert systematic.word_budget(
+        chapter_count=10,
+        depth_level="deep",
+        target_length="2w到5w字",
+    ) == (2000, 5000)
+
+
 def test_writer_prompt_marks_course_flow_as_non_required():
     messages = build_docgen_writer_messages(
         title="行列式",

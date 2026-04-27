@@ -68,6 +68,7 @@ class DocGenContext(DocGenBaseModel):
     plan_summary: str = ""
     docgen_history_brief: str = ""
     planner_context: dict[str, Any] = Field(default_factory=dict)
+    build_constraints: dict[str, Any] = Field(default_factory=dict)
     source_strategy: Literal["local_first", "web_first"] = "local_first"
     include_sources: bool = True
     local_source_count: int = 0
