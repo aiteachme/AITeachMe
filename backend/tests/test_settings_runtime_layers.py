@@ -95,6 +95,38 @@ def test_settings_overview_reads_db_env_overrides_without_exposing_secret(
     assert entries["mineru.api_token"].display_value == "已配置"
 
 
+def test_settings_overview_uses_plural_mineru_tokens_env(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "app.workflows.support.system.settings.is_local_mode",
+        lambda: True,
+    )
+    monkeypatch.setattr(
+        "app.workflows.support.system.settings.resolve_app_mode",
+        lambda: "local",
+    )
+    monkeypatch.setattr(
+        "app.workflows.support.system.settings.get_system_settings_override_payload",
+        lambda: {},
+    )
+    monkeypatch.setattr(
+        "app.workflows.support.system.settings.get_env",
+        lambda name, default=None: {
+            "MINERU_API_TOKENS": "token-a,token-b",
+        }.get(name, default),
+    )
+
+    overview = build_settings_overview_data(session=None, user_id=None)
+    entries = {
+        entry.key: entry
+        for section in overview.sections
+        for entry in section.entries
+    }
+
+    assert entries["mineru.api_token"].status == "configured"
+    assert entries["mineru.api_token"].value is None
+    assert entries["mineru.api_token"].display_value == "已配置"
+
+
 def test_settings_overview_cloud_mode_is_read_only(monkeypatch) -> None:
     monkeypatch.setattr(
         "app.workflows.support.system.settings.is_local_mode",

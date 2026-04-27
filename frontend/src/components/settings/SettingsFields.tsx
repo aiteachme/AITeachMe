@@ -148,6 +148,7 @@ interface SecretInputProps {
   onBlur?: () => void;
   placeholder?: string;
   showToggle?: boolean;
+  statusText?: string;
 }
 
 export function SecretInput({
@@ -158,37 +159,49 @@ export function SecretInput({
   onBlur,
   placeholder,
   showToggle = true,
+  statusText,
 }: SecretInputProps) {
   const [visible, setVisible] = useState(false);
+  const shouldMask = !visible && value.length > 0;
+  const textSecurityStyle = shouldMask
+    ? ({ WebkitTextSecurity: "disc" } as CSSProperties & { WebkitTextSecurity: string })
+    : undefined;
 
   return (
-    <div className="relative w-full">
-      <input
-        id={id}
-        type={visible ? "text" : "password"}
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        onFocus={onFocus}
-        onBlur={onBlur}
-        placeholder={placeholder}
-        autoComplete="off"
-        spellCheck={false}
-        className={cn(SETTINGS_STYLES.field.control, showToggle ? "pr-9" : undefined)}
-      />
-      {showToggle ? (
-        <button
-          type="button"
-          onClick={() => setVisible((prev) => !prev)}
-          className={SETTINGS_STYLES.field.iconButton}
-          aria-label={visible ? "隐藏" : "显示"}
-        >
-          {visible ? (
-            <EyeOff className={SETTINGS_STYLES.field.icon} />
-          ) : (
-            <Eye className={SETTINGS_STYLES.field.icon} />
-          )}
-        </button>
-      ) : null}
+    <div className="w-full">
+      <div className="relative w-full">
+        <input
+          id={id}
+          type="text"
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          onFocus={onFocus}
+          onBlur={onBlur}
+          placeholder={placeholder}
+          autoComplete="new-password"
+          autoCapitalize="none"
+          spellCheck={false}
+          data-1p-ignore="true"
+          data-lpignore="true"
+          style={textSecurityStyle}
+          className={cn(SETTINGS_STYLES.field.control, showToggle ? "pr-9" : undefined)}
+        />
+        {showToggle ? (
+          <button
+            type="button"
+            onClick={() => setVisible((prev) => !prev)}
+            className={SETTINGS_STYLES.field.iconButton}
+            aria-label={visible ? "隐藏" : "显示"}
+          >
+            {visible ? (
+              <EyeOff className={SETTINGS_STYLES.field.icon} />
+            ) : (
+              <Eye className={SETTINGS_STYLES.field.icon} />
+            )}
+          </button>
+        ) : null}
+      </div>
+      {statusText ? <p className={SETTINGS_STYLES.field.secretStatus}>{statusText}</p> : null}
     </div>
   );
 }

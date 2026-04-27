@@ -19,8 +19,6 @@ import {
 } from "./settingsHelpers";
 import type { DraftRecord, SettingEntry, SettingPrimitive } from "./settingsTypes";
 
-const SECRET_MASK_VALUE = "••••••••••••••••••••••••••••••••";
-
 function renderEntryHelper(entryKey: string) {
   if (entryKey === "mineru.api_token") {
     return (
@@ -205,22 +203,23 @@ const EditableSettingsRow = memo(function EditableSettingsRow({
         ) : resolvedInputType === "password" ? (
           <SecretInput
             id={controlId}
-            value={
-              isPreservedSecret && !isEditingPreservedSecret
-                ? SECRET_MASK_VALUE
-                : localValue
-            }
+            value={localValue}
             onChange={handleValueChange}
             onFocus={handleSecretFocus}
             onBlur={commitLocalValue}
             placeholder={
               isConfiguredSecret
-                ? "输入新值可替换，留空不变"
+                ? ""
                 : entry.default_value === null || entry.default_value === undefined
                   ? "请输入 Token"
                   : String(entry.default_value)
             }
             showToggle={localValue.length > 0}
+            statusText={
+              isConfiguredSecret && !localValue.trim()
+                ? "当前已保存，留空不会修改。"
+                : undefined
+            }
           />
         ) : (
           <TextInput

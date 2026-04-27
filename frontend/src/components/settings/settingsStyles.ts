@@ -87,11 +87,11 @@ export const SETTINGS_STYLES = {
     description: "text-[13px] leading-relaxed text-zinc-500 dark:text-zinc-400",
     note: "text-[12px] leading-relaxed text-zinc-400 dark:text-zinc-500",
     secretHint: "mt-2 text-[12px] leading-relaxed text-zinc-500 dark:text-zinc-400",
-    secretStatus: "mt-2 text-[12px] leading-relaxed text-emerald-600 dark:text-emerald-400",
+    secretStatus: "mt-2 text-[12px] leading-relaxed text-zinc-500 dark:text-slate-400",
     readonlyValue:
       "w-full max-w-full break-all rounded-md border border-zinc-200 dark:border-slate-800 bg-zinc-50 dark:bg-slate-900 px-3 py-2 font-mono text-[13px] text-zinc-600 dark:text-zinc-400",
     control:
-      "min-h-11 w-full rounded-md border border-zinc-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-[14px] text-zinc-900 dark:text-zinc-100 transition-colors placeholder:text-zinc-400 hover:border-zinc-400 dark:hover:border-slate-600 focus-visible:outline-none focus-visible:border-zinc-900 dark:focus-visible:border-zinc-100 focus-visible:ring-1 focus-visible:ring-zinc-900 dark:focus-visible:ring-zinc-100 disabled:cursor-not-allowed disabled:opacity-50 disabled:bg-zinc-50 dark:disabled:bg-slate-900",
+      "min-h-11 w-full rounded-md border border-zinc-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-[14px] text-zinc-900 dark:text-zinc-100 transition-colors placeholder:text-zinc-400 hover:border-zinc-400 dark:hover:border-slate-600 focus:outline-none focus:border-sky-500 dark:focus:border-sky-400 focus:ring-2 focus:ring-sky-100 dark:focus:ring-sky-500/20 disabled:cursor-not-allowed disabled:opacity-50 disabled:bg-zinc-50 dark:disabled:bg-slate-900",
     select:
       "appearance-none items-center justify-between whitespace-nowrap cursor-pointer bg-[url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20width%3D%2224%22%20height%3D%2224%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%3Cpath%20d%3D%22M6%209L12%2015L18%209%22%20stroke%3D%22%2371717A%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%2F%3E%3C%2Fsvg%3E')] bg-[length:16px_16px] bg-[position:right_10px_center] bg-no-repeat pr-10",
     selectTrigger:

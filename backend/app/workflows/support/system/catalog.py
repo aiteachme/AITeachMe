@@ -17,11 +17,20 @@ class SettingsCatalogEntry:
     ui_group: str = ""
     ui_order: int = 0
     env_name: str | None = None
+    fallback_env_names: tuple[str, ...] = ()
     secret: bool = False
     restart_required: bool = True
     editable_in_local: bool = True
     editable_in_cloud: bool = False
     value_path: str | None = None
+
+    @property
+    def env_names(self) -> tuple[str, ...]:
+        return tuple(
+            env_name
+            for env_name in (self.env_name, *self.fallback_env_names)
+            if env_name
+        )
 
 
 @dataclass(frozen=True)
@@ -66,12 +75,14 @@ def env(
     secret: bool = False,
     restart_required: bool = True,
     value_path: str | None = None,
+    fallback_env_names: tuple[str, ...] = (),
 ) -> SettingsCatalogEntry:
     return SettingsCatalogEntry(
         kind="env",
         key=key,
         label=label,
         env_name=env_name,
+        fallback_env_names=tuple(fallback_env_names),
         description=description,
         ui_group=ui_group,
         ui_order=ui_order,
@@ -274,10 +285,11 @@ SETTINGS_CATALOG: tuple[SettingsCatalogSection, ...] = (
             env(
                 "mineru.api_token",
                 "MinerU API Token",
-                "MINERU_API_TOKEN",
+                "MINERU_API_TOKENS",
                 description="填写后，系统会在支持的文档类型上优先尝试 MinerU；可用英文逗号配置多个 Token，上传解析时随机选择一个。",
                 secret=True,
                 restart_required=False,
+                fallback_env_names=("MINERU_API_TOKEN",),
                 ui_group="解析服务授权",
                 ui_order=40,
             ),

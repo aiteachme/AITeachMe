@@ -197,6 +197,35 @@ def _has_configured_value(value: Any) -> bool:
     return value not in (None, "", [], {})
 
 
+def _first_configured_env_value(env_names: tuple[str, ...]) -> str | None:
+    first_present: str | None = None
+    for env_name in env_names:
+        value = get_env(env_name)
+        if _has_configured_value(value):
+            return value
+        if first_present is None and value is not None:
+            first_present = value
+    return first_present
+
+
+def _first_env_override(
+    env_names: tuple[str, ...],
+    env_overrides: Mapping[str, str],
+) -> tuple[bool, str | None]:
+    first_present: str | None = None
+    has_present = False
+    for env_name in env_names:
+        if env_name not in env_overrides:
+            continue
+        value = env_overrides[env_name]
+        if _has_configured_value(value):
+            return True, value
+        if not has_present:
+            first_present = value
+            has_present = True
+    return has_present, first_present
+
+
 def _require_path(payload: Mapping[str, Any], dotted_key: str) -> Any:
     found, value = _lookup_path(payload, dotted_key)
     if not found:
@@ -270,7 +299,7 @@ def _editable_settings_entry(
 def _env_entry(
     key: str,
     label: str,
-    env_name: str,
+    env_names: tuple[str, ...],
     description: str = "",
     *,
     secret: bool = False,
@@ -281,7 +310,11 @@ def _env_entry(
     ui_group: str = "",
     ui_order: int = 0,
 ) -> SettingEntry:
-    env_value = override_value if has_override else get_env(env_name)
+    env_value = (
+        override_value
+        if has_override
+        else _first_configured_env_value(env_names)
+    )
     configured = _has_configured_value(env_value)
     local_mode = is_local_mode()
     actual_value = env_value if env_value is not None and str(env_value).strip() else value
@@ -351,16 +384,16 @@ def _build_catalog_entry(entry: SettingsCatalogEntry, context: _OverviewContext)
 
     if entry.kind == "env":
         resolved_value = _require_attr_path(context, entry.value_path) if entry.value_path else None
-        env_name = entry.env_name or ""
-        has_override = env_name in context.env_overrides
+        env_names = entry.env_names
+        has_override, override_value = _first_env_override(env_names, context.env_overrides)
         return _env_entry(
             entry.key,
             entry.label,
-            env_name,
+            env_names,
             entry.description,
             secret=entry.secret,
             value=resolved_value,
-            override_value=context.env_overrides.get(env_name),
+            override_value=override_value,
             has_override=has_override,
             restart_required=entry.restart_required,
             ui_group=entry.ui_group,
