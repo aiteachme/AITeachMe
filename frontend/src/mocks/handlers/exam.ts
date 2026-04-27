@@ -327,7 +327,6 @@ function toPublicPaper(paper: InternalPaper): Record<string, unknown> {
           knowledge_unit_id: item.knowledge_unit_id,
           knowledge_unit_name: `KU-${item.knowledge_unit_id}`,
           coverage_weight: 1,
-          role: "primary",
           mastery_score: null,
         },
       ],

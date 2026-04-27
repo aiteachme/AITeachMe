@@ -1,4 +1,4 @@
-"""LangGraph definition and public runtime entrypoint for exam question build."""
+﻿"""LangGraph definition and public runtime entrypoint for exam question build."""
 
 from __future__ import annotations
 
@@ -11,7 +11,8 @@ from app.shared.infra.workflow.runtime import run_state_graph
 from app.workflows.examine.question_build.nodes import (
     build_filter_knowledge_units_node,
     build_generate_questions_node,
-    build_plan_question_blueprints_node,
+    build_plan_question_requirements_node,
+    build_allocate_knowledge_units_node,
 )
 from app.workflows.examine.question_build.state import (
     QuestionBuildGraphInput,
@@ -39,11 +40,19 @@ def build_question_build_graph(*, context: WorkflowContext | None = None) -> Sta
         ),
     )
     workflow.add_node(
-        "plan_question_blueprints",
+        "plan_question_requirements",
         trace.node(
-            build_plan_question_blueprints_node(context=context or create_langgraph_dev_context(workflow_name)),
-            name="plan_question_blueprints",
-            timing_field="plan_ms",
+            build_plan_question_requirements_node(context=context or create_langgraph_dev_context(workflow_name)),
+            name="plan_question_requirements",
+            timing_field="requirements_plan_ms",
+        ),
+    )
+    workflow.add_node(
+        "allocate_knowledge_units",
+        trace.node(
+            build_allocate_knowledge_units_node(context=context or create_langgraph_dev_context(workflow_name)),
+            name="allocate_knowledge_units",
+            timing_field="allocate_ms",
         ),
     )
     workflow.add_node(
@@ -55,8 +64,9 @@ def build_question_build_graph(*, context: WorkflowContext | None = None) -> Sta
         ),
     )
     workflow.set_entry_point("filter_knowledge_units")
-    workflow.add_edge("filter_knowledge_units", "plan_question_blueprints")
-    workflow.add_edge("plan_question_blueprints", "generate_questions")
+    workflow.add_edge("filter_knowledge_units", "plan_question_requirements")
+    workflow.add_edge("plan_question_requirements", "allocate_knowledge_units")
+    workflow.add_edge("allocate_knowledge_units", "generate_questions")
     workflow.add_edge("generate_questions", END)
     return workflow
 

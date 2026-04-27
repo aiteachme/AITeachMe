@@ -297,6 +297,52 @@ def _build_blueprint_paper_preview(
     )
 
 
+def _build_question_requirement_paper_preview(
+    requirement_plans: list[dict[str, object]],
+    *,
+    question_count: int,
+) -> PaperPreview:
+    plans = _normalize_blueprint_item_orders(requirement_plans)
+
+    plan_by_order: dict[int, dict[str, object]] = {}
+    question_types: list[str] = []
+    for plan in plans:
+        try:
+            order = int(plan.get("item_order", 0) or 0)
+        except (TypeError, ValueError):
+            continue
+        if order <= 0:
+            continue
+        plan_by_order[order] = plan
+        question_type = str(plan.get("question_type") or "").strip()
+        if question_type:
+            question_types.append(question_type)
+
+    count = max(1, int(question_count or len(plan_by_order) or 1))
+    rows: list[dict[str, object]] = []
+    for order in range(1, min(count, PAPER_PREVIEW_ROW_LIMIT) + 1):
+        plan = plan_by_order.get(order, {})
+        question_type = str(plan.get("question_type") or "pending")
+        rows.append(
+            {
+                "order": order,
+                "type": question_type,
+                "shape": _preview_shape(question_type),
+                "difficulty": "medium",
+                "density": 2,
+                "result_status": "ungraded",
+                "generation_status": "planned",
+            }
+        )
+
+    return PaperPreview(
+        keywords=[],
+        question_types=_dedupe_preview_keywords(question_types),
+        rows=rows,
+        overflow_count=max(0, count - PAPER_PREVIEW_ROW_LIMIT),
+    )
+
+
 def _normalize_blueprint_item_orders(
     blueprints: list[dict[str, object]],
 ) -> list[dict[str, object]]:
@@ -954,7 +1000,7 @@ def _upsert_generated_template(
     rationale: str = "",
 ) -> QuestionTemplate:
     stem_hash = _hash_stem(stem)
-    refs = knowledge_unit_refs or [{"knowledge_unit_id": unit.id, "coverage_weight": 1.0, "role": "primary"}]
+    refs = knowledge_unit_refs or [{"knowledge_unit_id": unit.id, "coverage_weight": 1.0}]
     selection_hints = {"rationale": rationale.strip()} if rationale.strip() else {}
     existing = exams_repo.find_template_by_stem_hash(session, subject, int(unit.id or 0), stem_hash)
     if existing is not None:
@@ -1184,6 +1230,36 @@ async def _run_exam_generation_background(
                         event_payload["failed_question_count"] = payload["failed_question_count"]
                 _publish_exam_event(subject, paper_id, "snapshot", event_payload)
 
+            requirement_plans = payload.get("question_requirement_plans")
+            if isinstance(requirement_plans, list):
+                requirement_payload = [item for item in requirement_plans if isinstance(item, dict)]
+                requirement_payload = _normalize_blueprint_item_orders(requirement_payload)
+                preview = _build_question_requirement_paper_preview(
+                    requirement_payload,
+                    question_count=question_count,
+                )
+                with managed_session() as session:
+                    paper = exams_repo.get_exam_paper_by_id(session, paper_id)
+                    if paper is None or paper.subject != subject or paper.user_id != user_id:
+                        return
+                    context = _json_dict(paper.selection_context_json)
+                    context["question_requirement_plans"] = requirement_payload
+                    paper.total_items = question_count
+                    paper.total_score = float(question_count)
+                    paper.selection_context_json = json.dumps(context, ensure_ascii=False)
+                    paper.paper_preview_json = preview.model_dump_json()
+                    paper.updated_at = utcnow()
+                    session.add(paper)
+                    session.commit()
+                    session.refresh(paper)
+                    event_payload = _paper_generation_event_payload(
+                        paper,
+                        preview=preview,
+                        stage=str(payload.get("stage") or "plan_question_requirements"),
+                    )
+                    event_payload["question_requirement_plans"] = requirement_payload
+                _publish_exam_event(subject, paper_id, "snapshot", event_payload)
+
             blueprints = payload.get("question_blueprints")
             if not isinstance(blueprints, list):
                 return
@@ -1303,7 +1379,7 @@ async def _run_exam_generation_background(
                 if unit is None:
                     continue
                 if not refs:
-                    refs = [{"knowledge_unit_id": primary_unit_id, "coverage_weight": 1.0, "role": "primary"}]
+                    refs = [{"knowledge_unit_id": primary_unit_id, "coverage_weight": 1.0}]
                 refs_by_order[order] = refs
                 blueprint = blueprint_by_order.get(order, {})
                 rationale = str(blueprint.get("rationale") or "")
@@ -1520,7 +1596,6 @@ def _paper_item_response(
                     else ""
                 ),
                 "coverage_weight": float(ref.get("coverage_weight", 1.0) or 1.0),
-                "role": str(ref.get("role", "primary")),
                 "mastery_score": mastery_by_unit_id.get(knowledge_unit_id),
             }
             for ref in knowledge_unit_refs
@@ -1558,9 +1633,13 @@ def _generated_question_item_responses(
         options_payload = raw_item.get("options")
         options = [str(option) for option in options_payload] if isinstance(options_payload, list) else None
         knowledge_unit_links: list[dict[str, object]] = []
-        for ref in list(raw_item.get("knowledge_unit_refs") or []):
-            if not isinstance(ref, dict):
-                continue
+        refs = [
+            ref
+            for ref in list(raw_item.get("knowledge_unit_refs") or [])
+            if isinstance(ref, dict)
+        ]
+        refs.sort(key=lambda item: float(item.get("coverage_weight", 0.0) or 0.0), reverse=True)
+        for ref in refs:
             knowledge_unit_id = _positive_int(ref.get("knowledge_unit_id"))
             if knowledge_unit_id <= 0:
                 continue
@@ -1570,7 +1649,6 @@ def _generated_question_item_responses(
                     "knowledge_unit_id": knowledge_unit_id,
                     "knowledge_unit_name": unit.canonical_name if unit is not None else "",
                     "coverage_weight": float(ref.get("coverage_weight", 1.0) or 1.0),
-                    "role": str(ref.get("role", "primary") or "primary"),
                     "mastery_score": mastery_by_unit_id.get(knowledge_unit_id),
                 }
             )

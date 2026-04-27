@@ -1,4 +1,4 @@
-"""LLM-backed exam question generation helpers.
+﻿"""LLM-backed exam question generation helpers.
 
 This module owns the structured generation contract for high-quality exam
 questions. It does not persist database rows; callers remain responsible for
@@ -19,6 +19,7 @@ from app.shared.infra.exceptions import LLMTimeoutError
 from app.shared.infra.llm_support import acompletion_with_fallback
 from app.shared.infra.llm_support.routing import LLMCallPurpose
 from app.workflows.examine.question_build.prompts import (
+    build_exam_question_requirement_messages,
     build_exam_knowledge_unit_filter_messages,
     build_exam_question_blueprint_messages,
     build_exam_question_messages,
@@ -37,8 +38,13 @@ T = TypeVar("T")
 
 _BLANK_TOKEN = "{{blank}}"
 _TEXT_UNDERSCORE_PLACEHOLDER_RE = re.compile(r"\\text\{(_+)\}")
-_CHOICE_LABEL_RE = re.compile(r"^\s*([A-Da-d])(?:[\.\)\]．、:：]\s*)(.+)$")
+_CHOICE_LABEL_RE = re.compile(r"^\s*([A-Da-d])(?:[\.\)\]:：、\s]+)(.+)$")
 _INLINE_WHITESPACE_RE = re.compile(r"[ \t\f\v]+")
+_UNIT_REF_ID_RE = re.compile(r"\bknowledge_unit_id\s*[:=]\s*(\d+)\b", re.IGNORECASE)
+_UNIT_REF_WEIGHT_RE = re.compile(
+    r"\b(?:coverage_weight|weight)\s*[:=]\s*([0-9]+(?:\.[0-9]+)?)\b",
+    re.IGNORECASE,
+)
 
 
 def _escape_text_underscore_placeholders(value: str) -> str:
@@ -68,6 +74,33 @@ def _clean_multiline_text(value: object) -> str:
     return "\n".join(cleaned_lines).strip()
 
 
+def _coerce_unit_ref_item(value: object) -> dict[str, object] | None:
+    if isinstance(value, ExamQuestionUnitRef):
+        return value.model_dump(mode="json")
+    if isinstance(value, dict):
+        return value
+    if not isinstance(value, str):
+        return None
+
+    cleaned = " ".join(value.replace("，", ",").split()).strip()
+    if cleaned.casefold() in {"primary", "secondary"}:
+        return None
+
+    unit_match = _UNIT_REF_ID_RE.search(cleaned)
+    if not unit_match:
+        return None
+
+    weight_match = _UNIT_REF_WEIGHT_RE.search(cleaned)
+    try:
+        weight = float(weight_match.group(1)) if weight_match else 1.0
+    except (TypeError, ValueError):
+        weight = 1.0
+    return {
+        "knowledge_unit_id": int(unit_match.group(1)),
+        "coverage_weight": weight,
+    }
+
+
 def _contains_blank_token_inside_latex(value: str) -> bool:
     in_math = False
     delimiter = ""
@@ -94,7 +127,6 @@ class ExamQuestionUnitRef(BaseModel):
 
     knowledge_unit_id: int = Field(ge=1)
     coverage_weight: float = Field(ge=0.0, le=1.0)
-    role: Literal["primary", "secondary"] = "secondary"
 
 
 class ExamKnowledgeUnitSelection(BaseModel):
@@ -105,6 +137,13 @@ class ExamKnowledgeUnitSelection(BaseModel):
     scope_exclude_terms: list[str] = Field(default_factory=list)
     scope_strict: bool = False
     rationale: str = Field(default="", max_length=800)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _coerce_single_unit_id(cls, value: object) -> object:
+        if isinstance(value, dict) and isinstance(value.get("knowledge_unit_ids"), int):
+            return {**value, "knowledge_unit_ids": [value["knowledge_unit_ids"]]}
+        return value
 
     @model_validator(mode="after")
     def _dedupe_unit_ids(self) -> "ExamKnowledgeUnitSelection":
@@ -130,7 +169,15 @@ class ExamQuestionGenerationSpec(BaseModel):
     knowledge_unit_ids: list[int] = Field(default_factory=list)
     question_type: QuestionTypeLiteral
     difficulty: DifficultyLiteral
+    allocation_rationale: str = Field(default="", max_length=500)
     generation_prompt: str = Field(default="", max_length=1200)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _coerce_single_unit_id(cls, value: object) -> object:
+        if isinstance(value, dict) and isinstance(value.get("knowledge_unit_ids"), int):
+            return {**value, "knowledge_unit_ids": [value["knowledge_unit_ids"]]}
+        return value
 
     @model_validator(mode="after")
     def _ensure_unit_ids(self) -> "ExamQuestionGenerationSpec":
@@ -158,6 +205,13 @@ class ExamQuestionBlueprint(BaseModel):
     rationale: str = Field(default="", max_length=500)
     generation_prompt: str = Field(default="", max_length=1200)
 
+    @model_validator(mode="before")
+    @classmethod
+    def _coerce_single_unit_id(cls, value: object) -> object:
+        if isinstance(value, dict) and isinstance(value.get("knowledge_unit_ids"), int):
+            return {**value, "knowledge_unit_ids": [value["knowledge_unit_ids"]]}
+        return value
+
     @model_validator(mode="after")
     def _dedupe_unit_ids(self) -> "ExamQuestionBlueprint":
         ids: list[int] = []
@@ -179,6 +233,7 @@ class ExamQuestionBlueprint(BaseModel):
             knowledge_unit_ids=self.knowledge_unit_ids,
             question_type=self.question_type,
             difficulty=self.difficulty,
+            allocation_rationale=self.rationale,
             generation_prompt=self.generation_prompt,
         )
 
@@ -214,6 +269,55 @@ class ExamQuestionBlueprintBatch(BaseModel):
         normalized["blueprints"] = [
             {**item, "item_order": int(item.get("item_order", 0)) + 1}
             for item in raw_blueprints
+            if isinstance(item, dict)
+        ]
+        return normalized
+
+
+class ExamQuestionRequirementPlan(BaseModel):
+    """Per-question type and prompt constraints derived from the user's exam request."""
+
+    item_order: int = Field(ge=1)
+    question_type: QuestionTypeLiteral
+    generation_prompt: str = Field(min_length=1, max_length=1200)
+
+    @field_validator("generation_prompt")
+    @classmethod
+    def _clean_generation_prompt(cls, value: str) -> str:
+        return " ".join(str(value or "").split()).strip()
+
+
+class ExamQuestionRequirementBatch(BaseModel):
+    """Structured response for per-question generation prompts."""
+
+    prompts: list[ExamQuestionRequirementPlan] = Field(default_factory=list, min_length=1)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _normalize_zero_based_item_orders(cls, value: object) -> object:
+        if not isinstance(value, dict):
+            return value
+        raw_prompts = value.get("prompts")
+        if not isinstance(raw_prompts, list):
+            return value
+
+        orders: list[int] = []
+        for item in raw_prompts:
+            if not isinstance(item, dict):
+                return value
+            try:
+                orders.append(int(item.get("item_order", 0)))
+            except (TypeError, ValueError):
+                return value
+
+        expected_zero_based = set(range(len(raw_prompts)))
+        if set(orders) != expected_zero_based:
+            return value
+
+        normalized = dict(value)
+        normalized["prompts"] = [
+            {**item, "item_order": int(item.get("item_order", 0)) + 1}
+            for item in raw_prompts
             if isinstance(item, dict)
         ]
         return normalized
@@ -296,9 +400,10 @@ class ExamQuestionDraft(BaseModel):
         if isinstance(value, int):
             return [value]
         if isinstance(value, str):
+            normalized_value = value.replace("，", ",").replace("、", ",").replace("；", ",")
             raw_items: list[object] = [
                 item.strip()
-                for item in value.replace("，", ",").replace("、", ",").split(",")
+                for item in normalized_value.split(",")
                 if item.strip()
             ]
         elif isinstance(value, list):
@@ -347,6 +452,32 @@ class ExamQuestionDraft(BaseModel):
         cleaned = [_choice_body(item) for item in cleaned]
         cleaned = [_escape_text_underscore_placeholders(item) for item in cleaned if item]
         return cleaned or None
+
+    @field_validator("knowledge_unit_refs", mode="before")
+    @classmethod
+    def _normalize_knowledge_unit_refs(cls, value: object) -> list[object]:
+        if value is None or value == "":
+            return []
+        raw_items: list[object]
+        if isinstance(value, dict) or isinstance(value, ExamQuestionUnitRef):
+            raw_items = [value]
+        elif isinstance(value, str):
+            raw_items = [
+                item.strip()
+                for item in re.split(r"[;\n]+", value)
+                if item.strip()
+            ]
+        elif isinstance(value, list):
+            raw_items = value
+        else:
+            return []
+
+        normalized: list[object] = []
+        for item in raw_items:
+            coerced = _coerce_unit_ref_item(item)
+            if coerced is not None:
+                normalized.append(coerced)
+        return normalized
 
     @model_validator(mode="after")
     def _validate_shape(self) -> "ExamQuestionDraft":
@@ -490,7 +621,13 @@ def _choice_indices_from_answer(value: str, options: list[str]) -> list[int]:
 
 
 def _split_multi_choice_answer(value: str) -> set[str]:
-    normalized = str(value or "").replace("，", ",").replace("、", ",").replace("；", ",")
+    normalized = (
+        str(value or "")
+        .replace("，", ",")
+        .replace("、", ",")
+        .replace("；", ",")
+        .replace(";", ",")
+    )
     return {
         token.strip().strip(".").strip(")").casefold()
         for token in normalized.split(",")
@@ -500,9 +637,9 @@ def _split_multi_choice_answer(value: str) -> set[str]:
 
 def _normalize_true_false_answer(value: str) -> bool | None:
     normalized = " ".join(str(value or "").casefold().split()).strip()
-    if normalized in {"true", "t", "yes", "y", "正确", "对", "是"}:
+    if normalized in {"true", "t", "yes", "y", "correct", "right", "1"}:
         return True
-    if normalized in {"false", "f", "no", "n", "错误", "错", "否"}:
+    if normalized in {"false", "f", "no", "n", "incorrect", "wrong", "0"}:
         return False
     return None
 
@@ -651,19 +788,18 @@ def _normalize_weight_refs(
             ExamQuestionUnitRef(
                 knowledge_unit_id=unit_id,
                 coverage_weight=max(0.0, min(float(ref.coverage_weight), 1.0)),
-                role="primary" if not cleaned else "secondary",
             )
         )
     if not cleaned and allowed:
-        cleaned.append(ExamQuestionUnitRef(knowledge_unit_id=allowed[0], coverage_weight=1.0, role="primary"))
+        cleaned.append(ExamQuestionUnitRef(knowledge_unit_id=allowed[0], coverage_weight=1.0))
 
+    cleaned.sort(key=lambda item: item.coverage_weight, reverse=True)
     total = sum(item.coverage_weight for item in cleaned)
     if total <= 0:
         return [
             ExamQuestionUnitRef(
                 knowledge_unit_id=item.knowledge_unit_id,
                 coverage_weight=1.0 if index == 0 else 0.0,
-                role="primary" if index == 0 else "secondary",
             )
             for index, item in enumerate(cleaned)
         ]
@@ -671,7 +807,6 @@ def _normalize_weight_refs(
         ExamQuestionUnitRef(
             knowledge_unit_id=item.knowledge_unit_id,
             coverage_weight=round(float(item.coverage_weight) / total, 4),
-            role="primary" if index == 0 else "secondary",
         )
         for index, item in enumerate(cleaned)
     ]
@@ -682,13 +817,22 @@ def _validate_blueprints(
     generated: list[ExamQuestionBlueprint],
     units: list[KnowledgeUnit],
     question_count: int,
+    question_prompt_plans: list[ExamQuestionRequirementPlan] | None = None,
 ) -> list[ExamQuestionBlueprint]:
     unit_ids = {int(unit.id) for unit in units if unit.id is not None}
     by_order = {item.item_order: item for item in generated if item.item_order >= 1}
+    prompt_plan_by_order = {
+        item.item_order: item
+        for item in list(question_prompt_plans or [])
+        if item.item_order >= 1
+    }
     normalized: list[ExamQuestionBlueprint] = []
     for order in range(1, max(1, question_count) + 1):
         item = by_order.get(order)
         if item is None:
+            continue
+        prompt_plan = prompt_plan_by_order.get(order)
+        if prompt_plan is not None and item.question_type != prompt_plan.question_type:
             continue
         ids = [unit_id for unit_id in item.knowledge_unit_ids if unit_id in unit_ids]
         if not ids:
@@ -700,13 +844,39 @@ def _validate_blueprints(
                 question_type=item.question_type,
                 difficulty=item.difficulty,
                 rationale=item.rationale,
-                generation_prompt=item.generation_prompt,
+                generation_prompt=prompt_plan.generation_prompt if prompt_plan is not None else item.generation_prompt,
             )
         )
     if len(normalized) == max(1, question_count):
         return normalized
     raise ValueError(
         "question blueprint planning returned invalid or incomplete items "
+        f"(expected={max(1, question_count)}, usable={len(normalized)})"
+    )
+
+
+def _validate_generation_prompts(
+    *,
+    generated: list[ExamQuestionRequirementPlan],
+    question_count: int,
+) -> list[ExamQuestionRequirementPlan]:
+    by_order = {item.item_order: item for item in generated if item.item_order >= 1}
+    normalized: list[ExamQuestionRequirementPlan] = []
+    for order in range(1, max(1, question_count) + 1):
+        item = by_order.get(order)
+        if item is None:
+            continue
+        normalized.append(
+            ExamQuestionRequirementPlan(
+                item_order=order,
+                question_type=item.question_type,
+                generation_prompt=item.generation_prompt,
+            )
+        )
+    if len(normalized) == max(1, question_count):
+        return normalized
+    raise ValueError(
+        "generation prompt planning returned invalid or incomplete items "
         f"(expected={max(1, question_count)}, usable={len(normalized)})"
     )
 
@@ -831,7 +1001,7 @@ async def select_exam_knowledge_units(
     return selection
 
 
-async def plan_exam_question_blueprints(
+async def allocate_exam_question_knowledge_units(
     *,
     subject: str = "",
     subject_name: str = "",
@@ -841,6 +1011,7 @@ async def plan_exam_question_blueprints(
     units: list[KnowledgeUnit],
     question_count: int,
     mastery_by_unit_id: dict[int, float] | None = None,
+    question_prompt_plans: list[ExamQuestionRequirementPlan] | None = None,
     user_prompt: str = "",
     system_constraints: str = "",
 ) -> list[ExamQuestionBlueprint]:
@@ -858,18 +1029,19 @@ async def plan_exam_question_blueprints(
         requested_question_count=normalized_count,
         user_prompt=user_prompt,
         units=[_unit_payload_with_mastery(unit, mastery_by_unit_id) for unit in units],
+        question_prompt_plans=[item.model_dump(mode="json") for item in list(question_prompt_plans or [])],
         system_constraints=system_constraints,
     )
     try:
         result = await acompletion_with_fallback(
             messages,
-            call_purpose=LLMCallPurpose.REASONING,
-            model="reason",
+            call_purpose=LLMCallPurpose.CLASSIFY,
+            model="light",
             response_model=ExamQuestionBlueprintBatch,
             temperature=0.45,
             max_tokens=max_tokens,
             extra_metadata={
-                "substep": "exam.question_build.plan_blueprints",
+                "substep": "exam.question_build.allocate_knowledge_units",
                 "subject": subject,
                 "exam_mode": exam_mode,
                 "question_count": normalized_count,
@@ -881,6 +1053,7 @@ async def plan_exam_question_blueprints(
             generated=result.blueprints,
             units=units,
             question_count=normalized_count,
+            question_prompt_plans=question_prompt_plans,
         )
     except (LLMTimeoutError, TimeoutError):
         raise
@@ -888,16 +1061,60 @@ async def plan_exam_question_blueprints(
         raise RuntimeError(f"question blueprint planning failed: {exc}") from exc
 
 
+async def plan_exam_question_requirements(
+    *,
+    exam_mode: str,
+    question_count: int,
+    user_prompt: str = "",
+) -> list[ExamQuestionRequirementPlan]:
+    """Plan per-question generation prompts from the user's global and item-specific constraints."""
+
+    normalized_count = max(1, int(question_count or 1))
+    max_tokens = min(6000, max(1200, normalized_count * 180))
+    messages = build_exam_question_requirement_messages(
+        exam_mode=exam_mode,
+        requested_question_count=normalized_count,
+        user_prompt=user_prompt,
+    )
+    try:
+        result = await acompletion_with_fallback(
+            messages,
+            call_purpose=LLMCallPurpose.CLASSIFY,
+            model="light",
+            response_model=ExamQuestionRequirementBatch,
+            temperature=0.2,
+            max_tokens=max_tokens,
+            extra_metadata={
+                "substep": "exam.question_build.plan_question_requirements",
+                "exam_mode": exam_mode,
+                "question_count": normalized_count,
+            },
+        )
+        assert isinstance(result, ExamQuestionRequirementBatch)
+        return _validate_generation_prompts(
+            generated=result.prompts,
+            question_count=normalized_count,
+        )
+    except (LLMTimeoutError, TimeoutError):
+        raise
+    except Exception as exc:
+        raise RuntimeError(f"generation prompt planning failed: {exc}") from exc
+
+
 async def _generate_one_exam_question(
     *,
     unit_by_id: dict[int, KnowledgeUnit],
     spec: ExamQuestionGenerationSpec,
+    subject_profile: dict[str, str] | None = None,
+    system_constraints: str = "",
 ) -> ExamQuestionDraft:
     batch_units = [unit_by_id[unit_id] for unit_id in spec.knowledge_unit_ids if unit_id in unit_by_id]
     messages = build_exam_question_messages(
         units=[_unit_payload(unit) for unit in batch_units],
         spec=_spec_payload(spec),
         generation_prompt=spec.generation_prompt,
+        subject_profile=subject_profile,
+        system_constraints=system_constraints,
     )
     last_error: Exception | None = None
     for attempt, max_tokens in enumerate((2600, 3600), start=1):
@@ -930,6 +1147,8 @@ async def generate_exam_questions_for_units(
     *,
     units: list[KnowledgeUnit],
     specs: list[ExamQuestionGenerationSpec],
+    subject_profile: dict[str, str] | None = None,
+    system_constraints: str = "",
     on_question_generated: Callable[[ExamQuestionDraft], Awaitable[None]] | None = None,
     on_question_failed: Callable[[ExamQuestionGenerationFailure], Awaitable[None]] | None = None,
     allow_partial: bool = False,
@@ -957,6 +1176,8 @@ async def generate_exam_questions_for_units(
             question = await _generate_one_exam_question(
                 unit_by_id=unit_by_id,
                 spec=spec,
+                subject_profile=subject_profile,
+                system_constraints=system_constraints,
             )
             return spec, question
         except Exception as exc:
@@ -1041,6 +1262,8 @@ async def generate_exam_from_text(
 
 __all__ = [
     "ExamKnowledgeUnitSelection",
+    "ExamQuestionRequirementPlan",
+    "ExamQuestionRequirementBatch",
     "ExamQuestionBatch",
     "ExamQuestionBlueprint",
     "ExamQuestionBlueprintBatch",
@@ -1051,6 +1274,7 @@ __all__ = [
     "ExamQuestionUnitRef",
     "generate_exam_from_text",
     "generate_exam_questions_for_units",
-    "plan_exam_question_blueprints",
+    "plan_exam_question_requirements",
+    "allocate_exam_question_knowledge_units",
     "select_exam_knowledge_units",
 ]

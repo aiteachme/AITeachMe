@@ -10,6 +10,5 @@ export interface ExamNodeLinkResponse {
   knowledge_unit_id: number;
   knowledge_unit_name: string;
   coverage_weight: number;
-  role: string;
   mastery_score?: number | null;
 }

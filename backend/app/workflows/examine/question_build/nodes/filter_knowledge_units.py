@@ -1,4 +1,4 @@
-"""Filter KnowledgeUnit candidates before blueprint planning."""
+﻿"""Filter KnowledgeUnit candidates before blueprint planning."""
 
 from __future__ import annotations
 
@@ -17,93 +17,58 @@ EXAM_BLUEPRINT_CANDIDATE_MIN = 24
 EXAM_BLUEPRINT_CANDIDATE_MAX = 60
 EXAM_BLUEPRINT_CANDIDATE_PER_QUESTION = 4
 _STRICT_SCOPE_MARKERS = (
-    "只考",
-    "仅考",
-    "只练",
-    "仅练",
-    "只出",
-    "限定",
-    "考试范围",
-    "考察范围",
-    "考查范围",
-    "范围是",
-    "范围为",
+    "only",
+    "strict",
+    "limited",
+    "scope",
 )
 _INCLUDE_SCOPE_MARKERS = (
-    "只考",
-    "仅考",
-    "重点考",
-    "主要考",
-    "考察",
-    "考查",
-    "围绕",
-    "关于",
-    "针对",
-    "复习",
-    "范围",
-    "章节",
+    "only",
+    "focus",
+    "mainly",
+    "about",
+    "review",
+    "scope",
+    "chapter",
 )
 _EXCLUDE_SCOPE_MARKERS = (
-    "不考",
-    "不要考",
-    "别考",
-    "不练",
-    "不要练",
-    "排除",
-    "避免",
-    "跳过",
-    "除了",
+    "not",
+    "exclude",
+    "avoid",
+    "skip",
+    "except",
 )
-_SCOPE_SPLIT_RE = re.compile(
-    r"[，,。.;；:：、/\\|()\[\]{}<>《》“”\"'`]+|以及|还有|并且|或者|里的|中的|里面|之中|和|与|及|或|的|里|中"
-)
+_SCOPE_SPLIT_RE = re.compile(r"[,;:\\|()\[\]{}<>\s]+|and|or|plus")
 _LATIN_TOKEN_RE = re.compile(r"[a-zA-Z][a-zA-Z0-9_+\-]{1,}")
 _CJK_RE = re.compile(r"[\u4e00-\u9fff]")
 _FILLER_REPLACEMENTS = (
-    "这一部分",
-    "这部分",
-    "相关内容",
-    "相关知识",
-    "中等难度",
-    "高难度",
-    "低难度",
-    "知识点",
-    "内容",
-    "题目",
-    "试题",
-    "练习",
-    "考卷",
-    "试卷",
-    "考试",
-    "测验",
-    "难度",
-    "范围",
-    "章节",
-    "单元",
-    "部分",
+    "content",
+    "question",
+    "exam",
+    "quiz",
+    "practice",
+    "difficulty",
+    "scope",
+    "chapter",
+    "unit",
 )
 _STOP_TERMS = {
-    "请",
-    "帮我",
-    "生成",
-    "生成一套",
-    "一套",
-    "等难度",
-    "创建",
-    "出",
-    "考",
-    "练",
-    "重点",
-    "主要",
-    "只",
-    "仅",
-    "不要",
-    "不用",
-    "难度",
-    "简单",
-    "中等",
-    "困难",
-    "综合",
+    "please",
+    "help",
+    "generate",
+    "create",
+    "question",
+    "exam",
+    "quiz",
+    "practice",
+    "difficulty",
+    "easy",
+    "medium",
+    "hard",
+    "focus",
+    "mainly",
+    "only",
+    "not",
 }
 
 
@@ -182,7 +147,7 @@ def _segments_after_markers(prompt: str, markers: tuple[str, ...]) -> list[str]:
             segment = prompt[index + len(marker) :]
             stop_positions = [
                 pos
-                for delimiter in ["。", "；", ";", "\n"]
+                for delimiter in [",", ";", "\n"]
                 for pos in [segment.find(delimiter)]
                 if pos >= 0
             ]
@@ -443,7 +408,7 @@ def build_filter_knowledge_units_node(*, context: WorkflowContext):
             await emit_progress(
                 state,
                 stage="filter_exam_units",
-                detail="知识点筛选被取消，试卷生成失败。",
+                detail="Knowledge-unit filtering was cancelled.",
                 step="filter_knowledge_units",
                 elapsed_ms=elapsed_ms,
             )

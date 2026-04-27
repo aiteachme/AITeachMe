@@ -1,4 +1,4 @@
-"""State contracts for the examine question-build workflow."""
+﻿"""State contracts for the examine question-build workflow."""
 
 from __future__ import annotations
 
@@ -35,6 +35,7 @@ class QuestionBuildGraphOutput(TypedDict, total=False):
     scope_strict: bool
     filter_strategy: str
     filter_rationale: str
+    question_requirement_plans: list[dict]
     question_blueprints: list[dict]
     generated_questions: list[dict]
     generated_question_count: int
@@ -43,7 +44,8 @@ class QuestionBuildGraphOutput(TypedDict, total=False):
     error: str
     workflow_elapsed_ms: int
     filter_ms: int
-    plan_ms: int
+    requirements_plan_ms: int
+    allocate_ms: int
     generate_ms: int
 
 

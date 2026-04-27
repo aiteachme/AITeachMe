@@ -1,4 +1,4 @@
-"""Prompt builders for LLM-based exam question generation."""
+﻿"""Prompt builders for LLM-based exam question generation."""
 
 from __future__ import annotations
 
@@ -32,11 +32,13 @@ _QUESTION_TYPE_FORMAT_RULES = (
 )
 
 SYSTEM_PROMPT_EXAM_QUESTION_BUILD = """
-你是 AITeachMe 的严谨命题老师。
-你的任务是基于给定学科上下文、用户意图、知识单元与题目规格生成高质量试题。
-题目必须紧扣指定知识单元，不得脱离材料范围自由发散。
-题目要考查理解、辨析、应用、迁移，避免无意义的定义背诵。
-输出必须完全遵守结构化 schema，不要输出任何额外说明。
+You are AITeachMe's careful exam-question writer. Generate high-quality exam
+questions from the provided subject context, user intent, knowledge units, and
+question specification. Each question must stay tightly grounded in the assigned
+knowledge units and must not invent facts outside the supplied material. Prefer
+questions that test understanding, analysis, application, and transfer instead
+of shallow definition recall. Return only data that matches the requested
+structured schema; do not include commentary or extra text.
 """.strip()
 
 
@@ -89,29 +91,34 @@ def build_exam_knowledge_unit_filter_messages(
         },
     }
     prompt = f"""
-请基于给定的轻量知识图谱筛选一批适合进入“试题蓝图规划阶段”的候选知识单元。
-这里只做知识单元筛选，不要生成题目，也不要编排题型。
+Select candidate knowledge units for the later exam-blueprint planning step.
+Do not generate questions and do not assign question types in this step.
 
-图谱输入说明：
-- knowledge_graph.nodes 只包含知识单元 id 和 name。
-- knowledge_graph.edges 只包含 source_id 和 target_id，用来判断知识单元之间的图结构关系。
-- 不要假设图谱之外还有其他知识单元。
+Graph input notes:
+- knowledge_graph.nodes contains the available knowledge-unit IDs and names.
+- knowledge_graph.edges contains source_id and target_id values that show graph
+  relationships between knowledge units.
+- Do not assume any knowledge units outside knowledge_graph.nodes.
 
-你需要理解 user_prompt 中的考察范围倾向：
-- 如果用户说“只考/仅考/范围是/限定”等，strict_scope 应为 true，并且只能选择该范围内的知识单元。
-- 如果用户说“重点考/主要考/围绕/关于/复习”等，应优先选择相关知识单元，但可以补充必要的基础或关联单元。
-- 如果用户说“不考/不要考/排除/避免/跳过”等，不要选择对应知识单元。
-- 如果 user_prompt 没有明确范围，就结合学科目标、exam_mode、priority_knowledge_unit_ids 和 weak_knowledge_unit_ids 选择最值得考察的知识单元。
+Interpret the scope implied by user_prompt:
+- If the user asks to only test a limited scope, set scope_strict to true and
+  choose only units inside that scope.
+- If the user asks to focus on, review, or emphasize a topic, prioritize related
+  units but include necessary foundations or connected units when useful.
+- If the user excludes a topic, do not choose matching knowledge units.
+- If no clear scope is provided, choose units that best fit the subject goals,
+  exam_mode, priority_knowledge_unit_ids, and weak_knowledge_unit_ids.
 
-筛选原则：
-- knowledge_unit_ids 只能来自 knowledge_graph.nodes，不能 invent 新 id。
-- 输出顺序代表推荐优先级，越靠前越应该被蓝图阶段使用。
-- 最多输出 candidate_limit 个 id；如果严格范围内单元较少，可以少于 candidate_limit。
-- 覆盖面要适合 requested_question_count，避免只选一堆同义或高度重复的知识单元。
-- 对 paper_exam，优先兼顾薄弱点与综合覆盖；对 web_practice，优先贴合复习和练习价值。
-- rationale 简要说明选择依据，供后续排查使用。
+Selection rules:
+- knowledge_unit_ids must come only from knowledge_graph.nodes. Never invent IDs.
+- Output order is recommendation priority; earlier IDs are more important.
+- Return at most candidate_limit IDs. Return fewer if strict scope has fewer units.
+- Coverage should fit requested_question_count and avoid near-duplicate units.
+- For paper_exam, prefer weak points and broad coverage. For web_practice,
+  prefer review and practice value.
+- Keep rationale brief for debugging and auditability.
 
-只输出合法 JSON，形如：
+Return valid JSON only, shaped like:
 {{
   "knowledge_unit_ids": [1, 2, 3],
   "scope_include_terms": ["..."],
@@ -120,11 +127,10 @@ def build_exam_knowledge_unit_filter_messages(
   "rationale": "..."
 }}
 
-输入：
-{json.dumps(payload, ensure_ascii=False, indent=2)}
+Input: {json.dumps(payload, ensure_ascii=False, indent=2)}
 """.strip()
     return [
-        {"role": SYSTEM, "content": "你是考试知识单元筛选器，只输出合法 JSON。"},
+        {"role": SYSTEM, "content": "You select exam knowledge-unit candidates. Return valid JSON only."},
         {"role": USER, "content": prompt},
     ]
 
@@ -138,6 +144,7 @@ def build_exam_question_blueprint_messages(
     requested_question_count: int,
     user_prompt: str,
     units: list[dict[str, Any]],
+    question_prompt_plans: list[dict[str, Any]] | None = None,
     system_constraints: str = "",
 ) -> list[ChatMessage]:
     payload = {
@@ -151,28 +158,20 @@ def build_exam_question_blueprint_messages(
         "user_prompt": user_prompt or "",
         "system_constraints": system_constraints or "",
         "knowledge_units": units,
+        "question_prompt_plans": list(question_prompt_plans or []),
     }
     prompt = f"""
-请先编排试题蓝图，不要生成具体题目。
+Plan the knowledge-unit blueprint for this exam. Do not generate concrete questions.
 
-你需要决定每道题：
-1. item_order：从 1 到 requested_question_count 连续编号；
-2. question_type：single_choice / multiple_choice / true_false / fill_blank / short_answer；
-3. difficulty：easy / medium / hard；
-4. knowledge_unit_ids：本题要测试的知识单元，建议 1-3 个；可以多个，但必须能自然放进同一道题；
-5. rationale：为什么这些知识单元、题型和难度适合放在一起。
+For each question decide:
+1. item_order: consecutive numbers from 1 to requested_question_count.
+2. question_type: copy exactly from question_prompt_plans for the same item_order.
+3. difficulty: easy / medium / hard, chosen after considering question_type and knowledge_units.
+4. knowledge_unit_ids: choose IDs from knowledge_units. Do not invent IDs. Prefer 1 unit for true_false/fill_blank, 1-2 for choice questions, and 1-3 for short_answer when the concepts naturally connect.
+5. rationale: brief reason for the unit/type/difficulty combination.
 
-编排原则：
-- 必须从给定 knowledge_units 中选择，不要 invent 新 id。
-- 优先结合 mastery_score、用户意图、user_prompt 来安排重点。
-- 必须为每道题生成 generation_prompt。它是单题生成阶段唯一承接整体要求与本题特殊要求的字段。
-- generation_prompt 要综合 user_prompt（最高优先级）、subject_description、user_intent、exam_mode、system_constraints，并具体说明本题的风格、设计方式、情境、能力层级、避免事项和与整卷的配合。
-- 如果用户对某个题号、某类题、整体风格或难度有要求，要在对应题目的 generation_prompt 中明确落地。
-- 多知识单元题要选择概念相关、方法连续、易混淆或能共同组成应用场景的单元。
-- 不要每题都只覆盖一个知识单元；但也不要把无关单元硬塞在一起。
-- 输出数量必须等于 requested_question_count。
-
-只输出合法 JSON，形如：
+The output count must exactly equal requested_question_count.
+Return valid JSON only, shaped like:
 {{
   "blueprints": [
     {{
@@ -180,17 +179,54 @@ def build_exam_question_blueprint_messages(
       "knowledge_unit_ids": [1, 2],
       "question_type": "single_choice",
       "difficulty": "medium",
-      "rationale": "...",
-      "generation_prompt": "..."
+      "rationale": "..."
     }}
   ]
 }}
 
-输入：
-{json.dumps(payload, ensure_ascii=False, indent=2)}
+Input: {json.dumps(payload, ensure_ascii=False, indent=2)}
 """.strip()
     return [
-        {"role": SYSTEM, "content": "你是考试题目蓝图编排器，只输出合法 JSON。"},
+        {"role": SYSTEM, "content": "You are an exam blueprint planner. Return valid JSON only."},
+        {"role": USER, "content": prompt},
+    ]
+
+
+def build_exam_question_requirement_messages(
+    *,
+    exam_mode: str,
+    requested_question_count: int,
+    user_prompt: str,
+) -> list[ChatMessage]:
+    payload = {
+        "exam_mode": exam_mode,
+        "requested_question_count": requested_question_count,
+        "user_prompt": user_prompt or "",
+    }
+    prompt = f"""
+请把用户的考卷生成要求拆解为每道题的题型和生成要求。
+
+规则：
+- 必须为 1 到 requested_question_count 的每个 item_order 输出且只输出一条记录。
+- 每道题必须选择一个 question_type，可选值只能是：single_choice / multiple_choice / true_false / fill_blank / short_answer。
+- user_prompt 中的全局风格、整体范围、表达形式等要求，必须写入每一道匹配题目的 generation_prompt。
+- 如果 user_prompt 中包含针对特定题号、题号范围、题目分组或题型的要求，只能把这些要求写入对应题目的 generation_prompt。
+- 这个阶段不要分配 knowledge_unit_ids，也不要输出 difficulty 字段；后续节点会在看到题型后再分配知识单元和难度。
+- 这个阶段不要引入学科画像、知识单元详情、多样性运行 ID 或系统约束。
+- 每个 generation_prompt 要简洁，聚焦于用户对该题的生成要求。
+- 如果用户没有为某道题提出任何可写入该题 generation_prompt 的要求，就把该题 generation_prompt 写为“无”，不要自行补充中性要求。
+
+只能返回合法 JSON，结构如下：
+{{
+  "prompts": [
+    {{"item_order": 1, "question_type": "single_choice", "generation_prompt": "..."}}
+  ]
+}}
+
+输入：{json.dumps(payload, ensure_ascii=False, indent=2)}
+""".strip()
+    return [
+        {"role": SYSTEM, "content": "你是考卷生成中的题型和单题要求规划器。只能返回合法 JSON。"},
         {"role": USER, "content": prompt},
     ]
 
@@ -200,33 +236,62 @@ def build_exam_question_messages(
     units: list[dict[str, Any]],
     spec: dict[str, Any],
     generation_prompt: str,
+    subject_profile: dict[str, str] | None = None,
+    system_constraints: str = "",
 ) -> list[ChatMessage]:
     payload = {
+        "subject_profile": subject_profile or {},
+        "system_constraints": system_constraints or "",
         "generation_prompt": generation_prompt or "",
         "knowledge_units": units,
         "question_spec": spec,
     }
     user_prompt_text = f"""
-请按给定知识单元与题目规格生成高质量试题。
+Generate one high-quality exam question from the provided knowledge units and
+question specification.
 
-要求：
-0. generation_prompt 是本题的完整生成要求，必须严格遵守；不要再向外部寻找全局用户要求或学科要求。
-1. 每道题必须匹配对应 item_order、question_type 和 difficulty。
-2. 使用 knowledge_unit_refs 表达本题覆盖的知识单元，不要输出单独的 knowledge_unit_id 字段；knowledge_unit_refs 中的 knowledge_unit_id 必须使用 knowledge_units 中的真实 knowledge_unit_id，且必须来自 question_spec.knowledge_unit_ids。
-3. knowledge_units 中每个对象都包含真实 knowledge_unit_id。不要把“知识单元1/知识单元2”这种位置序号当作 id；如果 generation_prompt 出现这种位置序号，要按 question_spec.knowledge_unit_ids 的顺序映射成真实 id。
-4. knowledge_unit_refs 中必须包含 coverage_weight 和 role。coverage_weight 表示本题对该知识单元的覆盖占比，权重总和应约等于 1.0；最主要知识单元 role 为 primary，其余为 secondary。
-5. 如果 question_spec.knowledge_unit_ids 有多个，本题要自然覆盖这些相关知识点；如果实质只考一个知识点，只返回一个 coverage_weight=1.0 的 primary。
-6. 题干、选项和解析不要暴露“知识单元1/知识单元2”或数据库 id 这类内部索引；需要表达考点时使用知识点名称。
-7. 不要直接泄露答案；解析要说明考点、正确原因和常见误区。
-8. fill_blank stems 使用 `{{{{blank}}}}`，并且 `{{{{blank}}}}` 只能在正文中，不能放进 LaTeX 公式。
-
+Requirements:
+0. generation_prompt is the complete generation instruction for this item.
+   Follow it strictly. Do not look outside this payload for additional global
+   user requirements or subject requirements.
+1. The generated question must match question_spec.item_order,
+   question_spec.question_type, and question_spec.difficulty.
+2. question_spec.allocation_rationale explains why these knowledge units were
+   assigned to this item. Use it as planning context for the tested angle and
+   coverage, but do not quote or expose it in the stem, options, answer, or
+   explanation.
+3. Use knowledge_unit_refs to describe the knowledge units covered by this
+   question. Do not output a separate knowledge_unit_id field.
+   knowledge_unit_refs[*].knowledge_unit_id must be a real knowledge_unit_id
+   from knowledge_units and must also appear in question_spec.knowledge_unit_ids.
+4. Every object in knowledge_units contains a real knowledge_unit_id. Do not
+   treat labels such as "knowledge unit 1" or "knowledge unit 2" as IDs. If
+   generation_prompt references positional unit numbers, map them to real IDs
+   using the order in question_spec.knowledge_unit_ids.
+5. Each knowledge_unit_refs item must include coverage_weight.
+   coverage_weight is this question's coverage share for that unit; weights
+   should sum to about 1.0. Higher coverage_weight means the unit is more
+   central to the question; do not output a separate role field.
+   knowledge_unit_refs must be a JSON array of objects, never strings. Correct:
+    `"knowledge_unit_refs": [{{"knowledge_unit_id": 46, "coverage_weight": 1.0}}]`.
+    Incorrect: `"knowledge_unit_refs": ["primary", "secondary"]`.
+    Incorrect: `"knowledge_unit_refs": ["knowledge_unit_id: 46, coverage_weight: 1.0"]`.
+6. If question_spec.knowledge_unit_ids contains multiple IDs, cover the related
+   concepts naturally. If the question only materially tests one concept, return
+   a single ref with coverage_weight=1.0.
+7. The stem, options, and explanation must not expose internal references such
+   as "knowledge unit 1", "knowledge unit 2", or database IDs. Use knowledge
+   point names when the tested concept needs to be mentioned.
+8. Do not reveal the answer directly in the stem. The explanation should cover
+   the tested point, the correct reasoning, and common mistakes.
+9. For fill_blank stems, use `{{{{blank}}}}` in normal text only. Do not place
+   `{{{{blank}}}}` inside LaTeX math.
 Choice output contract:
 - For single_choice and multiple_choice, `options` must be pure option text only, for example `["option one", "option two", "option three", "option four"]`.
 - For single_choice and multiple_choice, use `correct_indices` only, with zero-based indices, for example `[0]` or `[0, 2]`.
 - Do not put A/B/C/D labels inside options, and do not return `correct_answer` for choice questions.
 
-输入：
-{json.dumps(payload, ensure_ascii=False, indent=2)}
+Input: {json.dumps(payload, ensure_ascii=False, indent=2)}
 """.strip()
     return [
         {"role": SYSTEM, "content": SYSTEM_PROMPT_EXAM_QUESTION_BUILD + _QUESTION_TYPE_FORMAT_RULES + _LATEX_FORMAT_RULES},
@@ -248,8 +313,8 @@ def build_text_exam_messages(
         "knowledge_text": knowledge_text[:12000],
     }
     user_prompt_text = (
-        "请基于给定学习材料直接命制一组高质量试题。\n"
-        "题目要覆盖核心概念、方法和易错点，避免重复，输出结构化结果。\n\n"
+        "Generate a set of high-quality exam questions directly from the given learning material.\n"
+        "Cover core concepts, methods, and common mistakes. Avoid duplicate questions and return structured output.\n\n"
         "For fill_blank stems, use `{{blank}}` for the blank and keep it outside any LaTeX math delimiters.\n\n"
         f"{json.dumps(payload, ensure_ascii=False, indent=2)}"
     )

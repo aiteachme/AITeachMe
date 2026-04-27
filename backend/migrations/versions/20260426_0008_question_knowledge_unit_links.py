@@ -20,7 +20,6 @@ def upgrade() -> None:
         sa.Column("exam_paper_item_id", sa.Integer(), nullable=True),
         sa.Column("knowledge_unit_id", sa.Integer(), nullable=False),
         sa.Column("coverage_weight", sa.Float(), nullable=False, server_default="1.0"),
-        sa.Column("role", sa.String(), nullable=False, server_default="primary"),
         sa.Column("created_at", sa.DateTime(), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")),
         sa.Column("updated_at", sa.DateTime(), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")),
         sa.CheckConstraint(
@@ -42,13 +41,12 @@ def upgrade() -> None:
     op.execute(
         """
         INSERT INTO question_knowledge_unit_link
-            (question_template_id, exam_paper_item_id, knowledge_unit_id, coverage_weight, role, created_at, updated_at)
+            (question_template_id, exam_paper_item_id, knowledge_unit_id, coverage_weight, created_at, updated_at)
         SELECT
             qt.id,
             NULL,
             (ref.value->>'knowledge_unit_id')::integer,
             COALESCE(NULLIF(ref.value->>'coverage_weight', '')::double precision, 1.0),
-            COALESCE(NULLIF(ref.value->>'role', ''), 'secondary'),
             CURRENT_TIMESTAMP,
             CURRENT_TIMESTAMP
         FROM question_template qt
@@ -66,8 +64,8 @@ def upgrade() -> None:
     op.execute(
         """
         INSERT INTO question_knowledge_unit_link
-            (question_template_id, exam_paper_item_id, knowledge_unit_id, coverage_weight, role, created_at, updated_at)
-        SELECT qt.id, NULL, qt.knowledge_unit_id, 1.0, 'primary', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+            (question_template_id, exam_paper_item_id, knowledge_unit_id, coverage_weight, created_at, updated_at)
+        SELECT qt.id, NULL, qt.knowledge_unit_id, 1.0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
         FROM question_template qt
         WHERE qt.knowledge_unit_id IS NOT NULL
         ON CONFLICT DO NOTHING
@@ -76,13 +74,12 @@ def upgrade() -> None:
     op.execute(
         """
         INSERT INTO question_knowledge_unit_link
-            (question_template_id, exam_paper_item_id, knowledge_unit_id, coverage_weight, role, created_at, updated_at)
+            (question_template_id, exam_paper_item_id, knowledge_unit_id, coverage_weight, created_at, updated_at)
         SELECT
             NULL,
             item.id,
             (ref.value->>'knowledge_unit_id')::integer,
             COALESCE(NULLIF(ref.value->>'coverage_weight', '')::double precision, 1.0),
-            COALESCE(NULLIF(ref.value->>'role', ''), 'secondary'),
             CURRENT_TIMESTAMP,
             CURRENT_TIMESTAMP
         FROM exam_paper_item item
@@ -100,8 +97,8 @@ def upgrade() -> None:
     op.execute(
         """
         INSERT INTO question_knowledge_unit_link
-            (question_template_id, exam_paper_item_id, knowledge_unit_id, coverage_weight, role, created_at, updated_at)
-        SELECT NULL, item.id, item.knowledge_unit_id, 1.0, 'primary', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+            (question_template_id, exam_paper_item_id, knowledge_unit_id, coverage_weight, created_at, updated_at)
+        SELECT NULL, item.id, item.knowledge_unit_id, 1.0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
         FROM exam_paper_item item
         WHERE item.knowledge_unit_id IS NOT NULL
         ON CONFLICT DO NOTHING
@@ -152,17 +149,16 @@ def downgrade() -> None:
             SELECT ql.knowledge_unit_id
             FROM question_knowledge_unit_link ql
             WHERE ql.question_template_id = qt.id
-            ORDER BY CASE WHEN ql.role = 'primary' THEN 0 ELSE 1 END, ql.id
+            ORDER BY ql.coverage_weight DESC, ql.id
             LIMIT 1
         ) first_link,
         LATERAL (
             SELECT jsonb_agg(
                 jsonb_build_object(
                     'knowledge_unit_id', ql.knowledge_unit_id,
-                    'coverage_weight', ql.coverage_weight,
-                    'role', ql.role
+                    'coverage_weight', ql.coverage_weight
                 )
-                ORDER BY ql.id
+                ORDER BY ql.coverage_weight DESC, ql.id
             )::text AS refs_json
             FROM question_knowledge_unit_link ql
             WHERE ql.question_template_id = qt.id
@@ -179,17 +175,16 @@ def downgrade() -> None:
             SELECT ql.knowledge_unit_id
             FROM question_knowledge_unit_link ql
             WHERE ql.exam_paper_item_id = item.id
-            ORDER BY CASE WHEN ql.role = 'primary' THEN 0 ELSE 1 END, ql.id
+            ORDER BY ql.coverage_weight DESC, ql.id
             LIMIT 1
         ) first_link,
         LATERAL (
             SELECT jsonb_agg(
                 jsonb_build_object(
                     'knowledge_unit_id', ql.knowledge_unit_id,
-                    'coverage_weight', ql.coverage_weight,
-                    'role', ql.role
+                    'coverage_weight', ql.coverage_weight
                 )
-                ORDER BY ql.id
+                ORDER BY ql.coverage_weight DESC, ql.id
             )::text AS refs_json
             FROM question_knowledge_unit_link ql
             WHERE ql.exam_paper_item_id = item.id
