@@ -1,4 +1,4 @@
-"""Email verification code model."""
+"""Email confirmation model."""
 
 from __future__ import annotations
 
@@ -9,10 +9,10 @@ from sqlmodel import Field, SQLModel
 from app.utils.time import utcnow
 
 
-class EmailVerificationCode(SQLModel, table=True):
-    """One-time email verification code record."""
+class EmailConfirmation(SQLModel, table=True):
+    """One-time email confirmation record."""
 
-    __tablename__ = "email_verification_code"
+    __tablename__ = "email_confirmation"
 
     id: int | None = Field(default=None, primary_key=True)
     email: str = Field(index=True)

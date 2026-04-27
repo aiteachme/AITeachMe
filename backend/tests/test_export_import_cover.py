@@ -6,7 +6,7 @@ import zipfile
 import pytest
 from sqlmodel import Session, SQLModel, create_engine
 
-from app.models import RawFile, Subject
+from app.models import ChatSession, RawFile, Subject
 from app.shared.infra.exceptions import ImportPackageTooLargeError, InvalidImportPackageError
 from app.schemas.export_import import ExportOptions
 from app.workflows.support.export_import import exports
@@ -97,10 +97,57 @@ def test_export_options_skip_unselected_db_groups() -> None:
     assert not exports._should_export(specs["subject_file"], options)
     assert not exports._should_export(specs["retrieval_chunk"], options)
     assert not exports._should_export(specs["knowledge_document"], options)
-    assert not exports._should_export(specs["confirmed_build_plan"], options)
     assert not exports._should_export(specs["chat_session"], options)
     assert not exports._should_export(specs["exam_paper"], options)
     assert not exports._should_export(specs["user_knowledge_state"], options)
+
+
+def test_knowledge_doc_export_includes_planner_sessions_for_confirmed_plans() -> None:
+    options = ExportOptions(include_knowledge_docs=True, include_chat_history=False)
+    specs = {spec.name: spec for spec in exports.TABLE_REGISTRY}
+
+    assert exports._should_export(specs["chat_session"], options)
+
+
+def test_reconcile_imported_planner_metadata_is_idempotent_for_remapped_ids() -> None:
+    engine = create_engine("sqlite:///:memory:")
+    SQLModel.metadata.create_all(engine, tables=[ChatSession.__table__])
+
+    with Session(engine) as session:
+        session.add(
+            ChatSession(
+                id="new-session",
+                subject="math-copy",
+                user_id="local",
+                source="build_planner",
+                meta_json={
+                    "selected_file_ids": [101],
+                    "confirmed_plan_id": "new-plan",
+                    "confirmed_plan": {
+                        "id": "new-plan",
+                        "selected_file_ids_json": [101],
+                        "plan_json": {"selected_file_ids": [101]},
+                    },
+                },
+            )
+        )
+        session.commit()
+
+        imports._reconcile_imported_planner_metadata(
+            session,
+            subject_slug="math-copy",
+            id_map={
+                "raw_file": {1: 101},
+                "confirmed_build_plan": {"old-plan": "new-plan"},
+            },
+        )
+        session.commit()
+        row = session.get(ChatSession, "new-session")
+
+    assert row is not None
+    assert row.meta_json["selected_file_ids"] == [101]
+    assert row.meta_json["confirmed_plan_id"] == "new-plan"
+    assert row.meta_json["confirmed_plan"]["selected_file_ids_json"] == [101]
 
 
 def test_include_raw_files_flag_no_longer_exports_raw_metadata() -> None:

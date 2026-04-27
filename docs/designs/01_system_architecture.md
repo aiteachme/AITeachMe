@@ -144,7 +144,7 @@ shared.infra -> shared.kernel
 | 类型 | 保存位置 | 例子 |
 | --- | --- | --- |
 | 项目默认非敏感 settings | `shared/infra/settings/defaults.py` + 可选 `PROJECT_SETTINGS_PATH` override | 模型名、并发、检索策略 |
-| 用户级非敏感 settings 覆盖 | 用户数据库 `user_runtime_settings` | 用户选择的模型名、top_k |
+| 用户级非敏感 settings 覆盖 | 用户数据库 `user.runtime_settings_json` | 用户选择的模型名、top_k |
 | 环境变量 / 敏感项 | `.env` 或浏览器 localStorage 草稿 | API Key、数据库连接串、SMTP 密码 |
 
 规则：

@@ -14,10 +14,20 @@ import re
 from typing import Any
 
 
-_HEADING_LINE_RE = re.compile(r"^(?P<prefix>#{2,6})\s+(?P<title>.+?)\s*$")
+_HEADING_LINE_RE = re.compile(r"^(?P<prefix>#{1,6})\s+(?P<title>.+?)\s*$")
 _MARKDOWN_DECORATION_RE = re.compile(r"[#*_`>{}\[\]()]")
 _KU_ANCHOR_RE = re.compile(r"\{#ku_[\w-]+\}|<!--\s*ATM_KU:\s*ku_[\w-]+\s*-->")
 _TAG_RE = re.compile(r"\[(?:type|prerequisite|related):[^\]]+\]", re.IGNORECASE)
+_HEADING_NUMBER_TOKEN_RE = r"(?:\d+(?:\.\d+)*|[一二三四五六七八九十百千万]+|[ivxlcdm]+)"
+_HEADING_CHAPTER_PREFIX_RE = re.compile(
+    rf"^\s*第\s*{_HEADING_NUMBER_TOKEN_RE}\s*[章节讲节篇部分]\s*[.)）．、:：\s]*",
+    re.IGNORECASE,
+)
+_HEADING_OUTLINE_PREFIX_RE = re.compile(
+    rf"^\s*(?:[（(]\s*{_HEADING_NUMBER_TOKEN_RE}\s*[)）]\s*[.)）．、:：\s]*|"
+    rf"{_HEADING_NUMBER_TOKEN_RE}(?:\s*[.)）．、:：]\s*|\s+))",
+    re.IGNORECASE,
+)
 
 _CONTENT_HEADING_TERMS = (
     "定义",
@@ -94,7 +104,7 @@ def clean_heading_focus(value: str, *, max_chars: int = 18) -> str:
     text = str(value or "")
     text = _KU_ANCHOR_RE.sub(" ", text)
     text = _TAG_RE.sub(" ", text)
-    text = re.sub(r"^[\s\-*]*[一二三四五六七八九十\d]+[、.．]\s*", "", text)
+    text = strip_heading_number_prefix(text)
     text = re.sub(r"^[\s\-*]*(?:目标|要求|覆盖点|知识点)\s*[:：]\s*", "", text)
     text = re.sub(r"[：:；;。！？!?].*$", "", text)
     text = _MARKDOWN_DECORATION_RE.sub(" ", text)
@@ -147,6 +157,25 @@ def build_textbook_heading(
     return f"{prefix} {resolved_focus}的{suffix}"
 
 
+def strip_heading_number_prefix(value: str) -> str:
+    """Remove display numbering from the beginning of a visible heading title."""
+
+    cleaned = str(value or "").strip()
+    for _ in range(3):
+        next_cleaned = _HEADING_CHAPTER_PREFIX_RE.sub("", cleaned, count=1)
+        next_cleaned = _HEADING_OUTLINE_PREFIX_RE.sub("", next_cleaned, count=1).strip()
+        if next_cleaned == cleaned:
+            break
+        cleaned = next_cleaned
+    return cleaned.strip()
+
+
+def _numberless_fallback_title(fallback_title: str, *, default: str) -> str:
+    cleaned = strip_heading_number_prefix(fallback_title)
+    cleaned = re.sub(r"\s+", " ", cleaned).strip("：:，,。；; ")
+    return cleaned or default
+
+
 def rewrite_textbook_heading_line(
     line: str,
     *,
@@ -159,8 +188,20 @@ def rewrite_textbook_heading_line(
     match = _HEADING_LINE_RE.match(str(line or "").strip())
     if match is None:
         return line
-    heading_title = clean_heading_focus(match.group("title"), max_chars=80)
+    raw_title = match.group("title").strip()
+    numberless_title = strip_heading_number_prefix(raw_title)
+    level = match.group("prefix").count("#")
+    if level == 1:
+        if numberless_title and numberless_title != raw_title:
+            return f"{match.group('prefix')} {numberless_title}"
+        if not numberless_title and fallback_title:
+            return f"{match.group('prefix')} {_numberless_fallback_title(fallback_title, default='未命名章节')}"
+        return line
+
+    heading_title = clean_heading_focus(numberless_title, max_chars=80)
     if not heading_title:
+        if numberless_title != raw_title:
+            return f"{match.group('prefix')} {_numberless_fallback_title(fallback_title, default='本章内容')}"
         return line
     focus = choose_heading_focus(focus_items, fallback=fallback_title)
     kind = _classify_non_textbook_heading(heading_title)
@@ -170,8 +211,10 @@ def rewrite_textbook_heading_line(
             digest_mode=digest_mode,
             focus=focus,
             fallback_title=fallback_title,
-            level=match.group("prefix").count("#"),
+            level=level,
         )
+    if numberless_title and numberless_title != raw_title:
+        return f"{match.group('prefix')} {numberless_title}"
     return line
 
 
@@ -238,15 +281,24 @@ def normalize_textbook_headings(
 ) -> str:
     """Normalize all visible Markdown headings to the textbook style policy."""
 
-    lines = [
-        rewrite_textbook_heading_line(
-            line,
-            digest_mode=digest_mode,
-            fallback_title=fallback_title,
-            focus_items=focus_items,
+    lines: list[str] = []
+    in_code_fence = False
+    for line in str(markdown or "").splitlines():
+        if line.lstrip().startswith("```"):
+            in_code_fence = not in_code_fence
+            lines.append(line)
+            continue
+        if in_code_fence:
+            lines.append(line)
+            continue
+        lines.append(
+            rewrite_textbook_heading_line(
+                line,
+                digest_mode=digest_mode,
+                fallback_title=fallback_title,
+                focus_items=focus_items,
+            )
         )
-        for line in str(markdown or "").splitlines()
-    ]
     return "\n".join(lines)
 
 
@@ -317,4 +369,5 @@ __all__ = [
     "has_worked_example_section",
     "normalize_textbook_headings",
     "rewrite_textbook_heading_line",
+    "strip_heading_number_prefix",
 ]

@@ -19,6 +19,7 @@ from app.workflows.support.auth.sessions import (
     build_session_from_context,
     hash_password,
     login_user,
+    purge_expired_email_confirmations,
     register_user,
     verify_password,
 )
@@ -37,6 +38,7 @@ __all__ = [
     "issue_access_token",
     "issue_guest_token",
     "login_user",
+    "purge_expired_email_confirmations",
     "register_user",
     "resolve_guest_user_from_token",
     "resolve_user_from_token",

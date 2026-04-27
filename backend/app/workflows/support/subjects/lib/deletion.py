@@ -15,7 +15,6 @@ from app.shared.infra.storage import (
 from app.models import (
     ChatMessage,
     ChatSession,
-    ConfirmedBuildPlan,
     ExamPaper,
     ExamPaperItem,
     KnowledgeDocument,
@@ -45,7 +44,6 @@ _EXAM_KEYS = [
     "exam_paper_item",
 ]
 _PROFILE_KEYS = ["user_knowledge_state"]
-_PLANNER_KEYS = ["confirmed_build_plan"]
 _KNOWLEDGE_KEYS = [
     "knowledge_graph_source_ref",
     "knowledge_graph_sync_run",
@@ -101,7 +99,6 @@ def collect_subject_delete_counts(session: Session, *, subject: str) -> dict[str
             KnowledgeGraphSourceRef,
             KnowledgeGraphSourceRef.subject == subject,
         ),
-        "confirmed_build_plan": _count_rows(session, ConfirmedBuildPlan, ConfirmedBuildPlan.subject == subject),
     }
 
 
@@ -138,12 +135,6 @@ def build_subject_delete_preview(session: Session, *, subject: Subject) -> Subje
             label="学习画像",
             count=_sum_counts(detail_counts, _PROFILE_KEYS),
             description="会删除 mastery 与复习状态。",
-        ),
-        SubjectDeleteImpactItem(
-            key="planner",
-            label="构建方案",
-            count=_sum_counts(detail_counts, _PLANNER_KEYS),
-            description="会删除该学科已确认的构建方案。",
         ),
     ]
     return SubjectDeletePreviewData(
@@ -301,7 +292,7 @@ def _clear_subject_vector_index_best_effort(subject: str) -> None:
 
 
 def _delete_planner_records(session: Session, *, subject: str) -> None:
-    _bulk_delete_by_subject(session, ConfirmedBuildPlan, subject=subject)
+    del session, subject
 
 
 def _delete_raw_files_and_artifacts(session: Session, *, subject: str, owner_user_id: str) -> None:

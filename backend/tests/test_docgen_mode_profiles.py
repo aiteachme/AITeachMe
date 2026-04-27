@@ -1,3 +1,4 @@
+from app.workflows.digest.common.pedagogy import clean_generated_chapter_title
 from app.workflows.digest.docgen.lib.chapter_enhancement import _append_practice_section
 from app.workflows.digest.docgen.mode_profiles import get_docgen_mode_profile
 from app.workflows.digest.docgen.prompts.generation import build_docgen_writer_messages
@@ -79,3 +80,60 @@ def test_textbook_heading_policy_rewrites_low_information_headings_by_shape():
     assert "## 行列式性质的核心要点" in normalized
     assert "### 行列式性质的典型判断问题" in normalized
     assert "## 行列式的性质与计算" in normalized
+
+
+def test_docgen_title_cleaning_strips_display_numbering():
+    assert clean_generated_chapter_title("1. 条件概率与独立性") == "条件概率与独立性"
+    assert clean_generated_chapter_title("(1). 条件概率与独立性") == "条件概率与独立性"
+    assert clean_generated_chapter_title("（一）条件概率与独立性") == "条件概率与独立性"
+    assert clean_generated_chapter_title("一、条件概率与独立性") == "条件概率与独立性"
+    assert clean_generated_chapter_title("第 1 章 条件概率与独立性") == "条件概率与独立性"
+    assert clean_generated_chapter_title("第一章 条件概率与独立性") == "条件概率与独立性"
+    assert clean_generated_chapter_title("1.1 条件概率与独立性") == "条件概率与独立性"
+    assert clean_generated_chapter_title("2-范数") == "2-范数"
+
+
+def test_textbook_heading_policy_strips_display_numbering_only_from_headings():
+    markdown = """# 1. 条件概率与独立性
+
+## (1). 条件概率的定义
+
+正文
+
+### 一、独立性的判定方法
+
+1. 这个有序列表应该保留编号。
+
+```python
+# 1. 代码注释里的编号也应该保留
+```
+"""
+
+    normalized = normalize_textbook_headings(
+        markdown,
+        digest_mode="systematic",
+        fallback_title="条件概率与独立性",
+        focus_items=["条件概率", "独立性"],
+    )
+
+    assert "# 条件概率与独立性" in normalized
+    assert "## 条件概率的定义" in normalized
+    assert "### 独立性的判定方法" in normalized
+    assert "1. 这个有序列表应该保留编号。" in normalized
+    assert "# 1. 代码注释里的编号也应该保留" in normalized
+
+    fallback_normalized = normalize_textbook_headings(
+        "# 第 1 章\n\n正文",
+        digest_mode="systematic",
+        fallback_title="第 1 章",
+        focus_items=[],
+    )
+    assert fallback_normalized.startswith("# 未命名章节")
+
+    h2_fallback_normalized = normalize_textbook_headings(
+        "## 第 1 章\n\n正文",
+        digest_mode="systematic",
+        fallback_title="第 1 章",
+        focus_items=[],
+    )
+    assert h2_fallback_normalized.startswith("## 本章内容")

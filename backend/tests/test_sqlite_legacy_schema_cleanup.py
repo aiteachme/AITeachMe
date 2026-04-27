@@ -1,3 +1,5 @@
+import json
+
 import sqlalchemy as sa
 from sqlmodel import create_engine
 
@@ -85,13 +87,259 @@ def test_drop_sqlite_legacy_schema_removes_local_legacy_columns(tmp_path):
         column["name"]
         for column in inspector.get_columns("chat_session")
     }
-    settings_snapshot_columns = {
-        column["name"]
-        for column in inspector.get_columns("system_settings_snapshot")
-    }
+    remaining_tables = set(inspector.get_table_names())
 
     assert "user_goal" not in chat_session_columns
-    assert "settings_path" not in settings_snapshot_columns
+    assert "system_settings_snapshot" not in remaining_tables
+
+
+def test_drop_sqlite_legacy_schema_renames_email_confirmation_table(tmp_path):
+    db_path = tmp_path / "legacy_email.sqlite"
+    engine = create_engine(f"sqlite:///{db_path}")
+
+    with engine.begin() as connection:
+        connection.execute(
+            sa.text(
+                """
+                CREATE TABLE email_verification_code (
+                    id INTEGER PRIMARY KEY,
+                    email TEXT NOT NULL,
+                    purpose TEXT NOT NULL,
+                    code_hash TEXT NOT NULL,
+                    expires_at TEXT NOT NULL,
+                    consumed_at TEXT,
+                    attempt_count INTEGER NOT NULL,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                )
+                """
+            )
+        )
+
+    _drop_sqlite_legacy_schema(engine)
+
+    tables = set(sa.inspect(engine).get_table_names())
+
+    assert "email_confirmation" in tables
+    assert "email_verification_code" not in tables
+
+
+def test_drop_sqlite_legacy_schema_moves_user_runtime_settings_into_user(tmp_path):
+    db_path = tmp_path / "legacy_user_settings.sqlite"
+    engine = create_engine(f"sqlite:///{db_path}")
+
+    with engine.begin() as connection:
+        connection.execute(
+            sa.text(
+                """
+                CREATE TABLE user (
+                    id TEXT PRIMARY KEY,
+                    username TEXT NOT NULL,
+                    profile_json TEXT NOT NULL
+                )
+                """
+            )
+        )
+        connection.execute(
+            sa.text(
+                """
+                CREATE TABLE user_runtime_settings (
+                    user_id TEXT PRIMARY KEY,
+                    settings_json JSON
+                )
+                """
+            )
+        )
+        connection.execute(sa.text("INSERT INTO user (id, username, profile_json) VALUES ('local', 'local', '{}')"))
+        connection.execute(
+            sa.text(
+                """
+                INSERT INTO user_runtime_settings (user_id, settings_json)
+                VALUES ('local', '{"models":{"primary":"unit-test"}}')
+                """
+            )
+        )
+
+    _drop_sqlite_legacy_schema(engine)
+
+    inspector = sa.inspect(engine)
+    user_columns = {column["name"] for column in inspector.get_columns("user")}
+    tables = set(inspector.get_table_names())
+    with engine.connect() as connection:
+        row = connection.execute(
+            sa.text("SELECT runtime_settings_json FROM user WHERE id = 'local'")
+        ).one()
+
+    assert "runtime_settings_json" in user_columns
+    assert "user_runtime_settings" not in tables
+    assert row[0] == '{"models":{"primary":"unit-test"}}'
+
+
+def test_drop_sqlite_legacy_schema_moves_system_snapshot_into_runtime_settings(tmp_path):
+    db_path = tmp_path / "legacy_system_settings.sqlite"
+    engine = create_engine(f"sqlite:///{db_path}")
+
+    with engine.begin() as connection:
+        connection.execute(
+            sa.text(
+                """
+                CREATE TABLE system_runtime_settings (
+                    id TEXT PRIMARY KEY,
+                    settings_json JSON,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                )
+                """
+            )
+        )
+        connection.execute(
+            sa.text(
+                """
+                CREATE TABLE system_settings_snapshot (
+                    id TEXT PRIMARY KEY,
+                    settings_source TEXT NOT NULL,
+                    settings_hash TEXT NOT NULL,
+                    settings_json JSON,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                )
+                """
+            )
+        )
+        connection.execute(
+            sa.text(
+                """
+                INSERT INTO system_runtime_settings (id, settings_json, created_at, updated_at)
+                VALUES ('runtime', '{}', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                """
+            )
+        )
+        connection.execute(
+            sa.text(
+                """
+                INSERT INTO system_settings_snapshot
+                (id, settings_source, settings_hash, settings_json, created_at, updated_at)
+                VALUES ('runtime', 'code defaults', 'hash-a', '{"models":{"primary":"snapshot"}}', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                """
+            )
+        )
+
+    _drop_sqlite_legacy_schema(engine)
+
+    inspector = sa.inspect(engine)
+    runtime_columns = {
+        column["name"]
+        for column in inspector.get_columns("system_runtime_settings")
+    }
+    tables = set(inspector.get_table_names())
+    with engine.connect() as connection:
+        row = connection.execute(
+            sa.text(
+                """
+                SELECT settings_source, settings_hash, effective_settings_json
+                FROM system_runtime_settings
+                WHERE id = 'runtime'
+                """
+            )
+        ).one()
+
+    assert {"settings_source", "settings_hash", "effective_settings_json"} <= runtime_columns
+    assert "system_settings_snapshot" not in tables
+    assert row == ("code defaults", "hash-a", '{"models":{"primary":"snapshot"}}')
+
+
+def test_drop_sqlite_legacy_schema_moves_confirmed_plan_into_planner_session(tmp_path):
+    db_path = tmp_path / "legacy_confirmed_plan.sqlite"
+    engine = create_engine(f"sqlite:///{db_path}")
+
+    with engine.begin() as connection:
+        connection.execute(
+            sa.text(
+                """
+                CREATE TABLE chat_session (
+                    id TEXT PRIMARY KEY,
+                    subject TEXT NOT NULL,
+                    user_id TEXT NOT NULL,
+                    source TEXT,
+                    meta_json JSON,
+                    updated_at TEXT NOT NULL,
+                    last_message_at TEXT NOT NULL
+                )
+                """
+            )
+        )
+        connection.execute(
+            sa.text(
+                """
+                CREATE TABLE confirmed_build_plan (
+                    id TEXT PRIMARY KEY,
+                    subject TEXT NOT NULL,
+                    planner_session_id TEXT,
+                    user_id TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    user_prompt TEXT NOT NULL,
+                    digest_mode TEXT NOT NULL,
+                    selected_file_ids_json JSON,
+                    chapter_plan_json JSON,
+                    build_constraints_json JSON,
+                    plan_summary TEXT NOT NULL,
+                    plan_json JSON,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                )
+                """
+            )
+        )
+        connection.execute(
+            sa.text(
+                """
+                INSERT INTO chat_session
+                (id, subject, user_id, source, meta_json, updated_at, last_message_at)
+                VALUES ('sess_1', 'math', 'local', 'build_planner', '{}', '2026-01-01', '2026-01-01')
+                """
+            )
+        )
+        connection.execute(
+            sa.text(
+                """
+                INSERT INTO confirmed_build_plan
+                (id, subject, planner_session_id, user_id, status, user_prompt, digest_mode,
+                 selected_file_ids_json, chapter_plan_json, build_constraints_json,
+                 plan_summary, plan_json, created_at, updated_at)
+                VALUES
+                (:id, :subject, :planner_session_id, :user_id, :status, :user_prompt, :digest_mode,
+                 :selected_file_ids_json, :chapter_plan_json, :build_constraints_json,
+                 :plan_summary, :plan_json, :created_at, :updated_at)
+                """
+            ),
+            {
+                "id": "plan_1",
+                "subject": "math",
+                "planner_session_id": "sess_1",
+                "user_id": "local",
+                "status": "confirmed",
+                "user_prompt": "learn",
+                "digest_mode": "sprint",
+                "selected_file_ids_json": "[1,2]",
+                "chapter_plan_json": '[{"title":"A"}]',
+                "build_constraints_json": '{"x":1}',
+                "plan_summary": "summary",
+                "plan_json": '{"plan_summary":"summary"}',
+                "created_at": "2026-01-01",
+                "updated_at": "2026-01-02",
+            },
+        )
+
+    _drop_sqlite_legacy_schema(engine)
+
+    tables = set(sa.inspect(engine).get_table_names())
+    with engine.connect() as connection:
+        row = connection.execute(sa.text("SELECT meta_json FROM chat_session WHERE id = 'sess_1'")).one()
+    meta = json.loads(row[0])
+
+    assert "confirmed_build_plan" not in tables
+    assert meta["confirmed_plan_id"] == "plan_1"
+    assert meta["confirmed_plan"]["selected_file_ids_json"] == [1, 2]
 
 
 def test_sqlite_additive_schema_updates_add_subject_text_fields(tmp_path):
@@ -157,8 +405,8 @@ def test_ensure_local_sqlite_schema_rebuilds_engine_after_drift(
         "_inspect_sqlite_schema_drift",
         lambda engine: {
             "unexpected_tables": [],
-            "missing_columns": {"system_settings_snapshot": ["settings_source"]},
-            "unexpected_columns": {"system_settings_snapshot": ["settings_path"]},
+            "missing_columns": {"user": ["runtime_settings_json"]},
+            "unexpected_columns": {"chat_session": ["user_goal"]},
         },
     )
     monkeypatch.setattr(core, "is_local_mode", lambda: True)

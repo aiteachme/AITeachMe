@@ -8,10 +8,10 @@
 
 ### 用户、系统与学科
 
-- `user`：用户主表。
+- `user`：用户主表，同时保存用户级非敏感运行设置覆盖 `runtime_settings_json`。
 - `email_confirmation`：邮箱验证记录。
 - `subject`：学科空间主表，保存标题、描述、学习意图、文档摘要、LLM 上下文与构建锁字段。
-- `system_settings_snapshot`、`system_runtime_settings`、`user_runtime_settings`：系统和用户级运行配置。
+- `system_runtime_settings`：系统级运行设置覆盖；同一行保存当前有效 settings 快照哈希与来源，避免额外快照表。
 
 ### 文件、切片与知识文档
 
@@ -41,8 +41,7 @@
 - `question_template`：题目模板。
 - `exam_paper`、`exam_paper_item`：试卷与试卷题目。
 - `user_knowledge_state`：用户对某个 `knowledge_unit` 的掌握度状态。
-- `chat_session`、`chat_message`：伴读对话会话与消息。
-- `confirmed_build_plan`：构建方案确认后的冻结快照。
+- `chat_session`、`chat_message`：伴读对话会话与消息；Planner 已确认构建方案内联在对应 `chat_session.meta_json.confirmed_plan` 中。
 
 ## 已移除或未来演进
 
@@ -54,6 +53,7 @@
 - `theme_tree_node`
 - `unit_dependency`
 - `graph_digest_job / curriculum_derive_job / question_build_job / exam_generate_job / exam_grade_job`
+- `confirmed_build_plan`：已收敛进 Planner `chat_session.meta_json.confirmed_plan`。
 
 `backend/app/shared/infra/database/core.py` 会主动清理部分旧表和旧字段，避免本地 SQLite 或历史 PostgreSQL schema 误保留过时结构。后续如果 Examine/Profile 确实需要课程版本、教学单元或主题树，应另起 schema 设计和迁移，不混入现有 P0 收敛。
 

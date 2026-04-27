@@ -33,6 +33,7 @@ from app.shared.infra.knowledge.build_store import (
     update_knowledge_build_status,
     write_knowledge_manifest,
 )
+from app.workflows.digest.docgen.lib.textbook_style import normalize_textbook_headings
 from app.workflows.support.subjects.learning_context import update_subject_learning_context_from_docgen
 from app.utils.path_helpers import sanitize_doc_title
 from app.utils.time import utcnow
@@ -68,8 +69,21 @@ def _dedupe_chapter_metadatas(chapters: list[dict]) -> list[dict]:
     return [best_by_index[index] for index in sorted(best_by_index)]
 
 
-def _prepare_chapter_markdown(markdown: str) -> str:
-    return _ensure_chapter_structure(normalize_mermaid_blocks(normalize_markdown_rendering(markdown)))
+def _prepare_chapter_markdown(
+    markdown: str,
+    *,
+    title: str = "",
+    digest_mode: str = "",
+    focus_items: list[str] | None = None,
+) -> str:
+    cleaned = normalize_mermaid_blocks(normalize_markdown_rendering(markdown))
+    cleaned = normalize_textbook_headings(
+        cleaned,
+        digest_mode=digest_mode,
+        fallback_title=title,
+        focus_items=focus_items or [],
+    )
+    return _ensure_chapter_structure(cleaned)
 
 
 def _ensure_chapter_structure(markdown: str) -> str:
@@ -126,7 +140,16 @@ def build_merged_markdown(
     body: list[str] = [overview.strip()]
     all_source_details: list[dict[str, object]] = []
     for chapter in deduped_chapters:
-        markdown = _prepare_chapter_markdown(str(chapter.get("markdown", "")).strip())
+        chapter_index = int(chapter.get("chapter_index", 0) or 0)
+        chapter_title = resolve_effective_chapter_title(chapter, chapter_index=chapter_index)
+        chapter_digest_mode = str(chapter.get("digest_mode") or (document_context or {}).get("digest_mode") or "")
+        focus_items = [str(item) for item in chapter.get("required_elements", []) if str(item).strip()]
+        markdown = _prepare_chapter_markdown(
+            str(chapter.get("markdown", "")).strip(),
+            title=chapter_title,
+            digest_mode=chapter_digest_mode,
+            focus_items=focus_items,
+        )
         all_source_details.extend(list(chapter.get("source_details") or []))
         if markdown:
             body.append(markdown)
@@ -336,7 +359,12 @@ async def stage_knowledge_docs(
     for index, chapter in enumerate(sorted_chapters, start=1):
         chapter_index = int(chapter.get("chapter_index", index))
         chapter_title = resolve_effective_chapter_title(chapter, chapter_index=chapter_index)
-        chapter_markdown = _prepare_chapter_markdown(str(chapter.get("markdown") or ""))
+        chapter_markdown = _prepare_chapter_markdown(
+            str(chapter.get("markdown") or ""),
+            title=chapter_title,
+            digest_mode=str(chapter.get("digest_mode") or (document_context or {}).get("digest_mode") or ""),
+            focus_items=[str(item) for item in chapter.get("required_elements", []) if str(item).strip()],
+        )
         staging_key = _staging_chapter_key(subject_scope.namespace, chapter_index, chapter_title)
         write_tasks.append(asyncio.create_task(cs.write_text(staging_key, chapter_markdown)))
         built_paths.append((chapter_index, chapter_title))
@@ -416,7 +444,12 @@ def publish_staged_knowledge_docs(
     for index, chapter in enumerate(sorted_chapters):
         chapter_index = int(chapter.get("chapter_index", index + 1))
         chapter_title = resolve_effective_chapter_title(chapter, chapter_index=chapter_index)
-        chapter_markdown = _prepare_chapter_markdown(str(chapter.get("markdown") or ""))
+        chapter_markdown = _prepare_chapter_markdown(
+            str(chapter.get("markdown") or ""),
+            title=chapter_title,
+            digest_mode=str(chapter.get("digest_mode") or (document_context or {}).get("digest_mode") or ""),
+            focus_items=[str(item) for item in chapter.get("required_elements", []) if str(item).strip()],
+        )
         summary = str(chapter.get("summary") or "")
         tags = list(chapter.get("tags") or [])
         fallback_assignment = chapter_assignments[index] if index < len(chapter_assignments) else None

@@ -181,15 +181,15 @@ def test_merged_markdown_preserves_chapter_heading_levels():
         [
             {
                 "chapter_index": 1,
-                "title": "第一章",
-                "markdown": "# 第一章\n\n## 核心内容\n\n正文",
+                "title": "1. 导数基础",
+                "markdown": "# 1. 导数基础\n\n## 核心内容\n\n正文",
             }
         ],
         document_context={"subject": "demo", "include_sources": False},
     )
 
-    assert "\n# 第一章\n\n## 核心内容\n\n正文" in merged
-    assert "\n## 第一章\n\n### 核心内容" not in merged
+    assert "\n# 导数基础\n\n## 导数基础的知识结构\n\n正文" in merged
+    assert "\n## 导数基础\n\n### 导数基础的知识结构" not in merged
 
 
 def test_writer_plan_preserves_structured_contract_lists():

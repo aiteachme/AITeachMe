@@ -15,7 +15,7 @@
 - `POST /build/plans/stream`：创建 planner 会话并通过 SSE 返回进度。
 - `POST /build/plans/{session_id}/messages`：追加反馈并重新生成方案。
 - `POST /build/plans/{session_id}/messages/stream`：追加反馈并通过 SSE 返回进度。
-- `POST /build/plans/{session_id}/confirm`：确认方案，生成 `confirmed_build_plan`。
+- `POST /build/plans/{session_id}/confirm`：确认方案，将冻结计划写入 Planner 会话元数据。
 
 ### 知识构建
 

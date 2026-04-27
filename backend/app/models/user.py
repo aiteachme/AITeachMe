@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Any
 
 import sqlalchemy as sa
 from sqlmodel import Field, SQLModel
@@ -23,5 +24,6 @@ class User(SQLModel, table=True):
     is_registered: bool = Field(default=False, index=True)
     last_seen_ip: str | None = None
     profile_json: str = Field(default="{}", sa_column=sa.Column(sa.Text(), nullable=False))
+    runtime_settings_json: dict[str, Any] = Field(default_factory=dict, sa_column=sa.Column(sa.JSON, nullable=False))
     created_at: datetime = Field(default_factory=utcnow)
     updated_at: datetime = Field(default_factory=utcnow)

@@ -110,10 +110,30 @@ def upgrade() -> None:
 
     op.drop_constraint("uq_template_subject_node_stem", "question_template", type_="unique")
     op.create_unique_constraint("uq_template_subject_stem", "question_template", ["subject", "stem_hash"])
-    op.drop_column("question_template", "knowledge_unit_refs_json")
-    op.drop_column("question_template", "knowledge_unit_id")
-    op.drop_column("exam_paper_item", "knowledge_unit_refs_json")
-    op.drop_column("exam_paper_item", "knowledge_unit_id")
+    op.execute(
+        sa.text(
+            "ALTER TABLE question_template DROP COLUMN knowledge_unit_refs_json "
+            "/* atm-allow-destructive-ddl: copied into question_knowledge_unit_link */"
+        )
+    )
+    op.execute(
+        sa.text(
+            "ALTER TABLE question_template DROP COLUMN knowledge_unit_id "
+            "/* atm-allow-destructive-ddl: copied into question_knowledge_unit_link */"
+        )
+    )
+    op.execute(
+        sa.text(
+            "ALTER TABLE exam_paper_item DROP COLUMN knowledge_unit_refs_json "
+            "/* atm-allow-destructive-ddl: copied into question_knowledge_unit_link */"
+        )
+    )
+    op.execute(
+        sa.text(
+            "ALTER TABLE exam_paper_item DROP COLUMN knowledge_unit_id "
+            "/* atm-allow-destructive-ddl: copied into question_knowledge_unit_link */"
+        )
+    )
 
 
 def downgrade() -> None:

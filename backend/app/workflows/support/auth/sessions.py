@@ -18,6 +18,8 @@ from email.utils import formataddr, parseaddr
 
 import structlog
 from fastapi import Response
+from sqlalchemy import delete as sa_delete
+from sqlalchemy import or_
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, select
 
@@ -35,7 +37,7 @@ from app.shared.infra.runtime import (
     resolve_guest_cookie_samesite,
     resolve_guest_cookie_secure,
 )
-from app.models import EmailVerificationCode, User
+from app.models import EmailConfirmation, User
 from app.repositories.user_repo import (
     attach_device_key,
     create_user,
@@ -500,20 +502,42 @@ def _query_latest_pending_verification(
     *,
     email: str,
     purpose: str,
-) -> EmailVerificationCode | None:
+) -> EmailConfirmation | None:
     stmt = (
-        select(EmailVerificationCode)
+        select(EmailConfirmation)
         .where(
-            EmailVerificationCode.email == email,
-            EmailVerificationCode.purpose == purpose,
-            EmailVerificationCode.consumed_at.is_(None),
+            EmailConfirmation.email == email,
+            EmailConfirmation.purpose == purpose,
+            EmailConfirmation.consumed_at.is_(None),
         )
         .order_by(
-            EmailVerificationCode.created_at.desc(),
-            EmailVerificationCode.id.desc(),
+            EmailConfirmation.created_at.desc(),
+            EmailConfirmation.id.desc(),
         )
     )
     return session.exec(stmt).first()
+
+
+def purge_expired_email_confirmations(
+    session: Session,
+    *,
+    now: datetime | None = None,
+) -> int:
+    """Delete stale confirmation rows after their audit window has passed."""
+
+    current_time = now or utcnow()
+    retention_days = max(1, get_env_int("AUTH_EMAIL_CONFIRMATION_RETENTION_DAYS", 7))
+    cutoff = current_time - timedelta(days=retention_days)
+    result = session.exec(
+        sa_delete(EmailConfirmation).where(
+            or_(
+                EmailConfirmation.expires_at <= cutoff,
+                EmailConfirmation.consumed_at <= cutoff,
+            )
+        )
+    )
+    session.commit()
+    return int(getattr(result, "rowcount", 0) or 0)
 
 
 def send_register_email_verification_code(
@@ -533,6 +557,7 @@ def send_register_email_verification_code(
         )
 
     now = utcnow()
+    purge_expired_email_confirmations(session, now=now)
     resend_interval_s = max(1, get_env_int("AUTH_EMAIL_CODE_RESEND_INTERVAL_S", 60))
     latest = _query_latest_pending_verification(
         session,
@@ -556,7 +581,7 @@ def send_register_email_verification_code(
         purpose=_VERIFICATION_PURPOSE_REGISTER,
         code=code,
     )
-    record = EmailVerificationCode(
+    record = EmailConfirmation(
         email=normalized_email,
         purpose=_VERIFICATION_PURPOSE_REGISTER,
         code_hash=code_hash,

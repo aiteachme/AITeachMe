@@ -284,7 +284,7 @@ def _update_planner_session_meta(
     **updates: Any,
 ) -> ChatSession:
     meta = _planner_meta(session_item)
-    meta.update({key: value for key, value in updates.items() if value is not None})
+    meta.update(updates)
     session_item.meta_json = meta
     session_item.updated_at = utcnow()
     session_item.last_message_at = session_item.updated_at
@@ -734,6 +734,7 @@ def prepare_planner_run(state: Mapping[str, Any]) -> dict[str, Any]:
                 record,
                 planner_status="planning",
                 confirmed_plan_id=None,
+                confirmed_plan=None,
             )
             _create_planner_message(
                 session,
@@ -835,6 +836,7 @@ def save_planner_result(
             digest_mode=str(persisted_plan.get("digest_mode") or meta.get("digest_mode") or ""),
             planner_status="draft",
             confirmed_plan_id=None,
+            confirmed_plan=None,
         )
         if generated_title and str(record.title or "").strip() != generated_title:
             record.title = generated_title

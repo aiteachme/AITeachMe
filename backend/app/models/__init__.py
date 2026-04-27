@@ -27,7 +27,7 @@ from app.models.enums import (
     is_web_practice_mode,
     validate_status_transition,
 )
-from app.models.email_verification import EmailVerificationCode
+from app.models.email_confirmation import EmailConfirmation
 from app.models.exam import ExamPaper, ExamPaperItem, QuestionKnowledgeUnitLink, QuestionTemplate, QuestionTypeRegistry
 from app.models.knowledge import RetrievalChunk
 from app.models.knowledge_doc import KnowledgeDoc, KnowledgeDocument
@@ -37,7 +37,7 @@ from app.models.knowledge_unit import KnowledgeAlias, KnowledgeRevision, Knowled
 from app.models.profile import UserKnowledgeState
 from app.models.raw_file import RawFile, RawFileAsset, SubjectFileLink
 from app.models.subject import Subject
-from app.models.system import SystemRuntimeSettings, SystemSettingsSnapshot, UserRuntimeSettings
+from app.models.system import SystemRuntimeSettings
 from app.models.user import User
 
 __all__ = [
@@ -48,7 +48,7 @@ __all__ = [
     "Difficulty",
     "DigestStep",
     "DocGenStep",
-    "EmailVerificationCode",
+    "EmailConfirmation",
     "ErrorCauseLabel",
     "ExamMode",
     "ExamPaper",
@@ -81,9 +81,7 @@ __all__ = [
     "ReviewTaskType",
     "Subject",
     "SubjectFileLink",
-    "SystemSettingsSnapshot",
     "SystemRuntimeSettings",
-    "UserRuntimeSettings",
     "TaskStatus",
     "TemplateNodeRole",
     "User",

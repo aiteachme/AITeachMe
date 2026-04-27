@@ -41,9 +41,8 @@ from app.shared.infra.subject import (
     extract_postgres_subject_index_data_table_name,
 )
 from migrations.seed_data.question_types import BUILTIN_QUESTION_TYPE_ROWS
-from app.models.build_planner import ConfirmedBuildPlan
 from app.models.chat import ChatMessage, ChatSession
-from app.models.email_verification import EmailVerificationCode
+from app.models.email_confirmation import EmailConfirmation
 from app.models.exam import ExamPaper, ExamPaperItem, QuestionKnowledgeUnitLink, QuestionTemplate, QuestionTypeRegistry
 from app.models.knowledge import RetrievalChunk
 from app.models.knowledge_doc import KnowledgeDocument
@@ -53,7 +52,7 @@ from app.models.knowledge_unit import KnowledgeUnit
 from app.models.profile import UserKnowledgeState
 from app.models.raw_file import RawFile, SubjectFileLink
 from app.models.subject import Subject
-from app.models.system import SystemRuntimeSettings, SystemSettingsSnapshot, UserRuntimeSettings
+from app.models.system import SystemRuntimeSettings
 from app.models.user import User
 
 logger = structlog.get_logger()
@@ -61,11 +60,10 @@ logger = structlog.get_logger()
 _engine = None
 _SCHEMA_MODELS = (
     User,
-    EmailVerificationCode,
+    EmailConfirmation,
     Subject,
     RawFile,
     SubjectFileLink,
-    ConfirmedBuildPlan,
     RetrievalChunk,
     KnowledgeDocument,
     KnowledgeUnit,
@@ -81,8 +79,6 @@ _SCHEMA_MODELS = (
     ChatSession,
     ChatMessage,
     SystemRuntimeSettings,
-    SystemSettingsSnapshot,
-    UserRuntimeSettings,
 )
 _SCHEMA_TABLES = [model.__table__ for model in _SCHEMA_MODELS]
 _EXPECTED_SCHEMA_COLUMNS = {
@@ -102,6 +98,10 @@ _ALLOWED_SQLITE_RUNTIME_PREFIXES: tuple[str, ...] = (
     "atm_vec_",
 )
 _REMOVED_POSTGRES_TABLES = (
+    "email_verification_code",
+    "confirmed_build_plan",
+    "system_settings_snapshot",
+    "user_runtime_settings",
     "unit_dependency",
     "theme_tree_node",
     "taxonomy_anchor",
@@ -119,9 +119,11 @@ _REMOVED_SQLITE_TABLES = _REMOVED_POSTGRES_TABLES
 _REMOVED_SQLITE_COLUMNS = {
     **_REMOVED_POSTGRES_COLUMNS,
     "chat_session": ("user_goal",),
-    "system_settings_snapshot": ("settings_path",),
 }
 _SQLITE_ADDITIVE_COLUMNS = {
+    "user": (
+        ("runtime_settings_json", "JSON NOT NULL DEFAULT '{}'"),
+    ),
     "subject": (
         ("description", "TEXT NOT NULL DEFAULT ''"),
         ("user_intent", "TEXT NOT NULL DEFAULT ''"),
@@ -129,6 +131,11 @@ _SQLITE_ADDITIVE_COLUMNS = {
         ("subject_intro_text", "TEXT NOT NULL DEFAULT ''"),
         ("document_summary_json", "JSON NOT NULL DEFAULT '{}'"),
         ("llm_context_text", "TEXT NOT NULL DEFAULT ''"),
+    ),
+    "system_runtime_settings": (
+        ("settings_source", "TEXT NOT NULL DEFAULT ''"),
+        ("settings_hash", "TEXT NOT NULL DEFAULT ''"),
+        ("effective_settings_json", "JSON NOT NULL DEFAULT '{}'"),
     ),
 }
 
@@ -347,8 +354,275 @@ def _migrate_sqlite_question_knowledge_links(engine: sa.Engine) -> None:
                         )
 
 
+def _sqlite_json_object_text(raw_value: object) -> str:
+    return _json_dumps(_sqlite_json_object(raw_value))
+
+
+def _sqlite_json_value(raw_value: object, fallback: object) -> object:
+    if isinstance(raw_value, str):
+        try:
+            return json.loads(raw_value or _json_dumps(fallback))
+        except json.JSONDecodeError:
+            return fallback
+    if raw_value is None:
+        return fallback
+    return raw_value
+
+
+def _sqlite_json_object(raw_value: object) -> dict[str, object]:
+    decoded = _sqlite_json_value(raw_value, {})
+    return dict(decoded) if isinstance(decoded, dict) else {}
+
+
+def _sqlite_json_list(raw_value: object) -> list[object]:
+    decoded = _sqlite_json_value(raw_value, [])
+    return list(decoded) if isinstance(decoded, list) else []
+
+
+def _add_sqlite_column_if_missing(
+    connection: sa.Connection,
+    inspector: sa.Inspector,
+    *,
+    table_name: str,
+    column_name: str,
+    column_sql: str,
+) -> None:
+    existing_columns = {
+        column["name"]
+        for column in inspector.get_columns(table_name)
+    }
+    if column_name in existing_columns:
+        return
+    connection.execute(
+        sa.text(
+            f"ALTER TABLE {quote_sqlite_identifier(table_name)} "
+            f"ADD COLUMN {quote_sqlite_identifier(column_name)} {column_sql}"
+        )
+    )
+
+
+def _migrate_sqlite_email_confirmation(engine: sa.Engine) -> None:
+    inspector = sa.inspect(engine)
+    existing_tables = set(inspector.get_table_names())
+    if "email_verification_code" not in existing_tables or "email_confirmation" in existing_tables:
+        return
+
+    with engine.begin() as connection:
+        connection.execute(
+            sa.text(
+                "ALTER TABLE "
+                f"{quote_sqlite_identifier('email_verification_code')} "
+                f"RENAME TO {quote_sqlite_identifier('email_confirmation')}"
+            )
+        )
+
+
+def _migrate_sqlite_user_runtime_settings(engine: sa.Engine) -> None:
+    inspector = sa.inspect(engine)
+    existing_tables = set(inspector.get_table_names())
+    if "user" not in existing_tables or "user_runtime_settings" not in existing_tables:
+        return
+
+    with engine.begin() as connection:
+        _add_sqlite_column_if_missing(
+            connection,
+            inspector,
+            table_name="user",
+            column_name="runtime_settings_json",
+            column_sql="JSON NOT NULL DEFAULT '{}'",
+        )
+        rows = connection.execute(
+            sa.text("SELECT user_id, settings_json FROM user_runtime_settings")
+        ).mappings()
+        for row in rows:
+            user_id = str(row.get("user_id") or "").strip()
+            if not user_id:
+                continue
+            connection.execute(
+                sa.text(
+                    f"UPDATE {quote_sqlite_identifier('user')} "
+                    "SET runtime_settings_json = :settings_json "
+                    "WHERE id = :user_id"
+                ),
+                {
+                    "settings_json": _sqlite_json_object_text(row.get("settings_json")),
+                    "user_id": user_id,
+                },
+            )
+
+
+def _migrate_sqlite_system_settings_snapshot(engine: sa.Engine) -> None:
+    inspector = sa.inspect(engine)
+    existing_tables = set(inspector.get_table_names())
+    if "system_runtime_settings" not in existing_tables or "system_settings_snapshot" not in existing_tables:
+        return
+
+    snapshot_columns = {
+        column["name"]
+        for column in inspector.get_columns("system_settings_snapshot")
+    }
+    if not snapshot_columns:
+        return
+
+    source_expr = "settings_source" if "settings_source" in snapshot_columns else "'' AS settings_source"
+    hash_expr = "settings_hash" if "settings_hash" in snapshot_columns else "'' AS settings_hash"
+    json_expr = "settings_json" if "settings_json" in snapshot_columns else "'{}' AS settings_json"
+
+    with engine.begin() as connection:
+        _add_sqlite_column_if_missing(
+            connection,
+            inspector,
+            table_name="system_runtime_settings",
+            column_name="settings_source",
+            column_sql="TEXT NOT NULL DEFAULT ''",
+        )
+        _add_sqlite_column_if_missing(
+            connection,
+            inspector,
+            table_name="system_runtime_settings",
+            column_name="settings_hash",
+            column_sql="TEXT NOT NULL DEFAULT ''",
+        )
+        _add_sqlite_column_if_missing(
+            connection,
+            inspector,
+            table_name="system_runtime_settings",
+            column_name="effective_settings_json",
+            column_sql="JSON NOT NULL DEFAULT '{}'",
+        )
+        connection.execute(
+            sa.text(
+                """
+                INSERT OR IGNORE INTO system_runtime_settings
+                (id, settings_json, settings_source, settings_hash, effective_settings_json, created_at, updated_at)
+                VALUES ('runtime', '{}', '', '', '{}', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                """
+            )
+        )
+        snapshot = connection.execute(
+            sa.text(
+                f"""
+                SELECT {source_expr}, {hash_expr}, {json_expr}
+                FROM system_settings_snapshot
+                ORDER BY CASE WHEN id = 'runtime' THEN 0 ELSE 1 END
+                LIMIT 1
+                """
+            )
+        ).mappings().first()
+        if snapshot is None:
+            return
+        connection.execute(
+            sa.text(
+                """
+                UPDATE system_runtime_settings
+                SET settings_source = :settings_source,
+                    settings_hash = :settings_hash,
+                    effective_settings_json = :effective_settings_json,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE id = 'runtime'
+                """
+            ),
+            {
+                "settings_source": str(snapshot.get("settings_source") or ""),
+                "settings_hash": str(snapshot.get("settings_hash") or ""),
+                "effective_settings_json": _sqlite_json_object_text(snapshot.get("settings_json")),
+            },
+        )
+
+
+def _migrate_sqlite_confirmed_build_plans(engine: sa.Engine) -> None:
+    inspector = sa.inspect(engine)
+    existing_tables = set(inspector.get_table_names())
+    if "confirmed_build_plan" not in existing_tables or "chat_session" not in existing_tables:
+        return
+
+    with engine.begin() as connection:
+        plan_rows = list(
+            connection.execute(
+                sa.text(
+                    """
+                    SELECT id, subject, planner_session_id, user_id, status, user_prompt,
+                           digest_mode, selected_file_ids_json, chapter_plan_json,
+                           build_constraints_json, plan_summary, plan_json,
+                           created_at, updated_at
+                    FROM confirmed_build_plan
+                    WHERE planner_session_id IS NOT NULL
+                      AND planner_session_id <> ''
+                    """
+                )
+            ).mappings()
+        )
+        for row in plan_rows:
+            session_row = connection.execute(
+                sa.text(
+                    """
+                    SELECT meta_json
+                    FROM chat_session
+                    WHERE id = :session_id
+                      AND subject = :subject
+                      AND user_id = :user_id
+                      AND source = 'build_planner'
+                    """
+                ),
+                {
+                    "session_id": row.get("planner_session_id"),
+                    "subject": row.get("subject"),
+                    "user_id": row.get("user_id"),
+                },
+            ).mappings().first()
+            if session_row is None:
+                continue
+            meta = _sqlite_json_object(session_row.get("meta_json"))
+            plan_payload = {
+                "id": row.get("id"),
+                "subject": row.get("subject"),
+                "planner_session_id": row.get("planner_session_id"),
+                "user_id": row.get("user_id"),
+                "status": row.get("status") or "confirmed",
+                "user_prompt": row.get("user_prompt") or "",
+                "digest_mode": row.get("digest_mode") or "",
+                "selected_file_ids_json": _sqlite_json_list(row.get("selected_file_ids_json")),
+                "chapter_plan_json": _sqlite_json_list(row.get("chapter_plan_json")),
+                "build_constraints_json": _sqlite_json_object(row.get("build_constraints_json")),
+                "plan_summary": row.get("plan_summary") or "",
+                "plan_json": _sqlite_json_object(row.get("plan_json")),
+                "created_at": str(row.get("created_at") or ""),
+                "updated_at": str(row.get("updated_at") or ""),
+            }
+            meta["confirmed_plan_id"] = row.get("id")
+            meta["confirmed_plan"] = plan_payload
+            connection.execute(
+                sa.text(
+                    """
+                    UPDATE chat_session
+                    SET meta_json = :meta_json,
+                        updated_at = CASE
+                            WHEN :updated_at IS NOT NULL AND (:updated_at > updated_at OR updated_at IS NULL)
+                            THEN :updated_at
+                            ELSE updated_at
+                        END,
+                        last_message_at = CASE
+                            WHEN :updated_at IS NOT NULL AND (:updated_at > last_message_at OR last_message_at IS NULL)
+                            THEN :updated_at
+                            ELSE last_message_at
+                        END
+                    WHERE id = :session_id
+                    """
+                ),
+                {
+                    "meta_json": _json_dumps(meta),
+                    "updated_at": row.get("updated_at"),
+                    "session_id": row.get("planner_session_id"),
+                },
+            )
+
+
 def _drop_sqlite_removed_schema(engine: sa.Engine) -> None:
     _migrate_sqlite_question_knowledge_links(engine)
+    _migrate_sqlite_email_confirmation(engine)
+    _migrate_sqlite_confirmed_build_plans(engine)
+    _migrate_sqlite_user_runtime_settings(engine)
+    _migrate_sqlite_system_settings_snapshot(engine)
     inspector = sa.inspect(engine)
     existing_tables = set(inspector.get_table_names())
     if not existing_tables:
@@ -870,14 +1144,14 @@ def _upsert_settings_snapshot(engine: sa.Engine, settings) -> None:
     settings_source = describe_project_settings_source()
 
     with Session(engine, expire_on_commit=False) as session:
-        snapshot = session.get(SystemSettingsSnapshot, "runtime")
-        if snapshot is None:
-            snapshot = SystemSettingsSnapshot(id="runtime", created_at=now)
-        snapshot.settings_source = settings_source
-        snapshot.settings_hash = settings_hash
-        snapshot.settings_json = payload
-        snapshot.updated_at = now
-        session.add(snapshot)
+        row = session.get(SystemRuntimeSettings, "runtime")
+        if row is None:
+            row = SystemRuntimeSettings(id="runtime", settings_json={}, created_at=now)
+        row.settings_source = settings_source
+        row.settings_hash = settings_hash
+        row.effective_settings_json = payload
+        row.updated_at = now
+        session.add(row)
         session.commit()
 
 

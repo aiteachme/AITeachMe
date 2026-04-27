@@ -18,6 +18,7 @@ def build_chapter_rewrite_messages(
 你是 AITeachMe 的章节审校改写器。
 你只能修复已有章节的主要质量问题，不能改变章节主题、章节顺序或 confirmed plan 语义。
 你只输出改写后的 Markdown，不输出解释。
+所有 Markdown 标题都不要带展示编号，例如“1.”、“(1).”、“（一）”、“一、”、“第 1 章”等；已有编号标题必须改成无编号标题。
 """.strip()
     prompt = f"""
 请在不改变章节主题的前提下，修复下面章节的主要质量问题。
@@ -38,6 +39,7 @@ def build_chapter_rewrite_messages(
 2. 保留学生可读的教学语气。
 3. 不要虚构真题；如果是生成例题，要称为“自测例题”。
 4. systematic 要讲清定义、结构和推理；sprint 要强化题型、速判和易错点。
+5. 标题不要自带编号；正文列表、解析步骤可以继续使用普通有序列表。
 """.strip()
     messages = [
         {"role": "system", "content": system_prompt},
