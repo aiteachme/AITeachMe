@@ -1,4 +1,4 @@
-﻿"""Standard KnowledgeUnit and knowledge relation taxonomy."""
+"""Knowledge graph type helpers for persisted graph models."""
 
 from __future__ import annotations
 
@@ -21,9 +21,20 @@ SECONDARY_KNOWLEDGE_UNIT_TYPES = {
     KnowledgeUnitType.DEFINITION.value,
     KnowledgeUnitType.EXAMPLE.value,
 }
-PARENT_KNOWLEDGE_UNIT_TYPES = PRIMARY_KNOWLEDGE_UNIT_TYPES | {
-    KnowledgeUnitType.DEFINITION.value,
+PARENT_KNOWLEDGE_UNIT_TYPES = PRIMARY_KNOWLEDGE_UNIT_TYPES | {KnowledgeUnitType.DEFINITION.value}
+
+_BLOCKED_ENDPOINT_TYPES_BY_RELATION = {
+    KnowledgeRelationType.PREREQUISITE.value: {KnowledgeUnitType.EXAMPLE.value},
+    KnowledgeRelationType.SIMILAR.value: {KnowledgeUnitType.EXAMPLE.value},
+    KnowledgeRelationType.CONTRAST.value: {KnowledgeUnitType.EXAMPLE.value},
 }
+_ALLOWED_SOURCE_TYPES_BY_RELATION = {
+    KnowledgeRelationType.EXAMPLE_OF.value: {
+        KnowledgeUnitType.EXAMPLE.value,
+        KnowledgeUnitType.EXERCISE.value,
+    },
+}
+
 
 def normalize_knowledge_unit_type(raw_type: str | None, *, default: str = KnowledgeUnitType.CONCEPT.value) -> str:
     normalized = str(raw_type or "").strip()
@@ -57,12 +68,24 @@ def validate_relation_direction(
     source = normalize_knowledge_unit_type(source_type)
     target = normalize_knowledge_unit_type(target_type)
     relation = normalize_relation_type(edge_type)
+    allowed_source_types = _ALLOWED_SOURCE_TYPES_BY_RELATION.get(relation)
+    if allowed_source_types is not None and source not in allowed_source_types:
+        return False
+    blocked_endpoint_types = _BLOCKED_ENDPOINT_TYPES_BY_RELATION.get(relation, set())
+    return source not in blocked_endpoint_types and target not in blocked_endpoint_types
 
-    if relation == KnowledgeRelationType.PREREQUISITE.value:
-        return source != KnowledgeUnitType.EXAMPLE.value and target != KnowledgeUnitType.EXAMPLE.value
-    if relation == KnowledgeRelationType.EXAMPLE_OF.value:
-        return source in {KnowledgeUnitType.EXAMPLE.value, KnowledgeUnitType.EXERCISE.value}
-    if relation in {KnowledgeRelationType.SIMILAR.value, KnowledgeRelationType.CONTRAST.value}:
-        return source != KnowledgeUnitType.EXAMPLE.value and target != KnowledgeUnitType.EXAMPLE.value
-    return True
 
+__all__ = [
+    "PARENT_KNOWLEDGE_UNIT_TYPES",
+    "PRIMARY_KNOWLEDGE_UNIT_TYPES",
+    "SECONDARY_KNOWLEDGE_UNIT_TYPES",
+    "STANDARD_KNOWLEDGE_UNIT_TYPES",
+    "STANDARD_RELATION_TYPES",
+    "STANDARD_TYPE_SOURCES",
+    "is_standard_knowledge_unit_type",
+    "is_standard_relation_type",
+    "normalize_knowledge_unit_type",
+    "normalize_relation_type",
+    "normalize_type_source",
+    "validate_relation_direction",
+]
