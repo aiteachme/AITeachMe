@@ -22,6 +22,7 @@ interface Props {
   sourceFiles: FileRecord[];
   sourceFilesFetching: boolean;
   buildStage: string | null | undefined;
+  isDocumentReady?: boolean;
   className?: string;
   /** Subject ID for SSE streaming — enables live build updates */
   subjectId?: string;
@@ -215,6 +216,7 @@ export function BuildView({
   statusText,
   buildPreview,
   buildStage,
+  isDocumentReady = false,
   className,
   subjectId,
 }: Props) {
@@ -259,8 +261,9 @@ export function BuildView({
   const rawProgress = Math.max(0, Math.min(100, Math.round(
     sseSnapshot?.docgen?.progress_pct ?? progress
   )));
-  const isBuildCompleted = buildStage === "completed" || (rawProgress >= 95 && isCompletionStatusText(statusText));
-  const roundedProgress = isBuildCompleted ? 100 : rawProgress;
+  const isBuildCompleted =
+    isDocumentReady && (buildStage === "completed" || (rawProgress >= 95 && isCompletionStatusText(statusText)));
+  const roundedProgress = isBuildCompleted ? 100 : Math.min(rawProgress, 99);
 
   const draftExcerpt = (
     mergePreview?.draft_excerpt ||

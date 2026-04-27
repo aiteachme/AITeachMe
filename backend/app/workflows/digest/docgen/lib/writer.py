@@ -36,6 +36,23 @@ _PLACEHOLDER_TOKEN_MAP = {
     "asset_request": ASSET_REQUEST_LANGUAGE,
 }
 
+_GENERIC_REQUIREMENT_TOKENS = {
+    "说明",
+    "定义",
+    "适用",
+    "条件",
+    "常见",
+    "问法",
+    "核心",
+    "要点",
+    "典型",
+    "判断",
+    "问题",
+    "应用",
+    "讲清",
+    "分析",
+}
+
 
 class DocGenWriterRuntime(BaseTracedExecution):
     @property
@@ -349,40 +366,39 @@ class DocGenWriterRuntime(BaseTracedExecution):
         mode_profile = get_docgen_mode_profile(digest_mode)
         focus = choose_heading_focus(missing_requirements, fallback=title)
         heading = build_textbook_heading(
-            "coverage",
+            "summary",
             digest_mode=digest_mode,
             focus=focus,
             fallback_title=title,
         )
+        context_points = self._extract_context_points(dense_context, limit=2)
         lines = [
             heading,
             "",
-            f"这一节补齐《{title}》中还需要讲清的知识点，重点放在定义、判断依据和典型问法上。",
+            f"读完《{title}》后，可以把剩下的注意力收回到几个容易漏掉的连接点上。",
         ]
         if objective.strip():
-            lines.append(f"本章目标：{objective.strip()}")
-        lines.extend(["", build_textbook_heading("points", digest_mode=digest_mode, level=3), ""])
-        lines.extend(f"- {item}：说明它的定义、适用条件和在题目中的常见问法。" for item in missing_requirements[:5])
+            lines.append(f"本章目标仍然是：{objective.strip()}")
+        if context_points:
+            lines.extend(["", "可以回看材料中的两条线索："])
+            lines.extend(f"- {item}" for item in context_points)
+        lines.extend(["", "复习时优先检查这些点是否已经能用自己的话讲清："])
+        for item in missing_requirements[:5]:
+            lines.append(
+                f"- **{item}**：它和本章主线是什么关系，在哪类题目或场景里会被触发，最容易和哪个相邻概念混淆。"
+            )
         if mode_profile.is_sprint:
             lines.extend(
                 [
                     "",
-                    build_textbook_heading("questions", digest_mode=digest_mode, level=3),
-                    "",
-                    "- 题目中的哪个条件决定了可以使用这一结论？",
-                    "- 这一类题最短的判断路径是什么？",
-                    "- 换一种问法时，哪些步骤仍然不变？",
+                    "做题前不必重新背一遍整章，先抓住题目给出的结构条件，再判断它对应本章哪一种方法。",
                 ]
             )
         else:
             lines.extend(
                 [
                     "",
-                    build_textbook_heading("questions", digest_mode=digest_mode, level=3),
-                    "",
-                    "- 这一部分的前提、结论和结构关系分别是什么？",
-                    "- 哪一步推理最容易跳步，必须补解释？",
-                    "- 哪个例子最能帮助把抽象结论落到具体情境？",
+                    "如果后续继续系统学习，可以把这些点放回定义、推理和例子的链条中检查，而不是孤立记忆。",
                 ]
             )
         return "\n".join(lines).strip()
@@ -406,35 +422,30 @@ class DocGenWriterRuntime(BaseTracedExecution):
             focus=focus,
             fallback_title=title,
         )
+        context_points = self._extract_context_points(dense_context, limit=2)
         lines = [
             heading,
             "",
-            f"下面把《{title}》里最重要的知识压缩成适合整理笔记的结构。",
-            "",
-            build_textbook_heading("points", digest_mode=digest_mode, level=3),
+            f"为了让《{title}》这一章更完整，可以把正文再向外补一层复习抓手。",
             "",
         ]
-        lines.extend(f"- {item}" for item in focus_items)
+        for item in focus_items:
+            lines.append(f"- **{item}**：回到正文里找到它承担的角色，再确认它对应的条件、步骤或例子。")
+        if context_points:
+            lines.extend(["", "可优先对照的材料线索："])
+            lines.extend(f"- {item}" for item in context_points)
         if mode_profile.is_sprint:
             lines.extend(
                 [
                     "",
-                    build_textbook_heading("questions", digest_mode=digest_mode, level=3),
-                    "",
-                    "- 这一步到底在判断什么条件？",
-                    "- 这个结论什么时候能直接用，什么时候不能硬套？",
-                    "- 题目换一种表述时，判断路径是否仍然成立？",
+                    "突击复习时，把这些抓手压缩成“看条件、选方法、验结论”的三步即可。",
                 ]
             )
         else:
             lines.extend(
                 [
                     "",
-                    build_textbook_heading("links", digest_mode=digest_mode, level=3),
-                    "",
-                    "- 先把定义、符号和成立条件串成一条稳定主线。",
-                    "- 再把推理过程和应用场景对应起来，避免只记孤立结论。",
-                    "- 最后补上边界与反例，避免把结论用到不适用的场景。",
+                    "系统学习时，重点不是把清单背完，而是把概念、推理和应用之间的因果关系串起来。",
                 ]
             )
         return "\n".join(lines).strip()
@@ -500,12 +511,23 @@ class DocGenWriterRuntime(BaseTracedExecution):
         missing_requirements: list[str] = []
         hits = 0
         for requirement in coverage_requirements:
-            needle = self._normalize_blob(requirement)
-            if needle and needle in normalized_markdown:
+            if self._is_requirement_covered(normalized_markdown, requirement):
                 hits += 1
                 continue
             missing_requirements.append(requirement)
         return round(hits / max(1, len(coverage_requirements)), 4), missing_requirements
+
+    def _is_requirement_covered(self, normalized_markdown: str, requirement: str) -> bool:
+        needle = self._normalize_blob(requirement)
+        if needle and needle in normalized_markdown:
+            return True
+        tokens = self._requirement_tokens(requirement)
+        if not tokens:
+            return False
+        matched = [token for token in tokens if self._normalize_blob(token) in normalized_markdown]
+        if len(matched) >= min(2, len(tokens)):
+            return True
+        return any(len(self._normalize_blob(token)) >= 4 for token in matched)
 
     def _estimate_quality_score(self, *, markdown: str, coverage_score: float, min_word_count: int) -> float:
         word_count = count_words(markdown)
@@ -535,6 +557,18 @@ class DocGenWriterRuntime(BaseTracedExecution):
 
     def _normalize_blob(self, value: str) -> str:
         return re.sub(r"\s+", "", str(value or "").strip()).casefold()
+
+    def _requirement_tokens(self, value: str) -> list[str]:
+        tokens: list[str] = []
+        for raw in re.split(r"[\s,，、;；:：/／|｜()（）《》“”\"'`]+|作为|以及|并且|和|与|及|的", str(value or "")):
+            token = raw.strip()
+            if len(token) < 2 or token in _GENERIC_REQUIREMENT_TOKENS:
+                continue
+            if token.endswith("的") and len(token) > 2:
+                token = token[:-1]
+            if token and token not in _GENERIC_REQUIREMENT_TOKENS:
+                tokens.append(token)
+        return list(dict.fromkeys(tokens))
 
 
 __all__ = ["DocGenWriterRuntime"]
