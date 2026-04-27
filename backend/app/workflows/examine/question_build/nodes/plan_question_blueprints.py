@@ -17,6 +17,9 @@ def build_plan_question_blueprints_node(*, context: WorkflowContext):
     del context
 
     async def plan_question_blueprints_node(state: QuestionBuildState) -> dict:
+        if state.get("error"):
+            return {}
+
         started_at = perf_counter()
         await emit_progress(
             state,

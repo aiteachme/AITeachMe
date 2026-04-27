@@ -374,44 +374,31 @@ def build_filter_knowledge_units_node(*, context: WorkflowContext):
             limit = exam_candidate_unit_limit(question_count)
             filter_strategy = "llm_graph"
             filter_rationale = ""
-            try:
-                selection = await select_exam_knowledge_units(
-                    subject=str(state.get("subject") or ""),
-                    subject_name=str(state.get("subject_name") or ""),
-                    subject_description=str(state.get("subject_description") or ""),
-                    subject_user_intent=str(state.get("subject_user_intent") or ""),
-                    exam_mode=exam_mode,
-                    units=input_units,
-                    knowledge_graph_edges=list(state.get("knowledge_graph_edges") or []),
-                    question_count=question_count,
-                    candidate_limit=limit,
-                    mastery_by_unit_id=mastery_by_unit_id,
-                    priority_unit_ids=priority_unit_ids,
-                    user_prompt=user_prompt,
-                    system_constraints=str(state.get("system_constraints") or ""),
-                )
-                unit_by_id = {int(unit.id): unit for unit in input_units if unit.id is not None}
-                filtered = [unit_by_id[unit_id] for unit_id in selection.knowledge_unit_ids if unit_id in unit_by_id]
-                if not filtered and input_units:
-                    raise ValueError("LLM knowledge-unit selection returned no matching units")
-                scope_intent = ScopeIntent(
-                    include_terms=selection.scope_include_terms,
-                    exclude_terms=selection.scope_exclude_terms,
-                    strict=selection.scope_strict,
-                )
-                filter_rationale = selection.rationale
-            except Exception as llm_exc:
-                filtered, limit = _filter_candidate_units(
-                    units=input_units,
-                    exam_mode=exam_mode,
-                    question_count=question_count,
-                    mastery_by_unit_id=mastery_by_unit_id,
-                    priority_unit_ids=priority_unit_ids,
-                    user_prompt=user_prompt,
-                )
-                scope_intent = _extract_scope_intent(user_prompt)
-                filter_strategy = "rules_fallback"
-                filter_rationale = f"LLM selection failed, used rules fallback: {llm_exc}"
+            selection = await select_exam_knowledge_units(
+                subject=str(state.get("subject") or ""),
+                subject_name=str(state.get("subject_name") or ""),
+                subject_description=str(state.get("subject_description") or ""),
+                subject_user_intent=str(state.get("subject_user_intent") or ""),
+                exam_mode=exam_mode,
+                units=input_units,
+                knowledge_graph_edges=list(state.get("knowledge_graph_edges") or []),
+                question_count=question_count,
+                candidate_limit=limit,
+                mastery_by_unit_id=mastery_by_unit_id,
+                priority_unit_ids=priority_unit_ids,
+                user_prompt=user_prompt,
+                system_constraints=str(state.get("system_constraints") or ""),
+            )
+            unit_by_id = {int(unit.id): unit for unit in input_units if unit.id is not None}
+            filtered = [unit_by_id[unit_id] for unit_id in selection.knowledge_unit_ids if unit_id in unit_by_id]
+            if not filtered and input_units:
+                raise ValueError("LLM knowledge-unit selection returned no matching units")
+            scope_intent = ScopeIntent(
+                include_terms=selection.scope_include_terms,
+                exclude_terms=selection.scope_exclude_terms,
+                strict=selection.scope_strict,
+            )
+            filter_rationale = selection.rationale
             candidate_unit_ids = [int(unit.id) for unit in filtered if unit.id is not None]
             elapsed_ms = int((perf_counter() - started_at) * 1000)
             await emit_progress(

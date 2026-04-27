@@ -677,52 +677,11 @@ def _normalize_weight_refs(
     ]
 
 
-def _fallback_blueprints(
-    *,
-    units: list[KnowledgeUnit],
-    question_count: int,
-    exam_mode: str,
-) -> list[ExamQuestionBlueprint]:
-    eligible_units = [unit for unit in units if unit.id is not None]
-    if not eligible_units:
-        return []
-    normalized_count = max(1, int(question_count or len(eligible_units)))
-    difficulty_cycle = ["easy", "medium", "hard"]
-    type_cycle: list[QuestionTypeLiteral] = (
-        ["single_choice", "fill_blank", "short_answer"]
-        if exam_mode == "paper_exam"
-        else ["single_choice", "fill_blank"]
-    )
-    blueprints: list[ExamQuestionBlueprint] = []
-    for index in range(normalized_count):
-        primary = eligible_units[index % len(eligible_units)]
-        related: list[int] = [int(primary.id or 0)]
-        if len(eligible_units) > 1:
-            secondary = eligible_units[(index + 1) % len(eligible_units)]
-            if secondary.id is not None and secondary.id != primary.id:
-                related.append(int(secondary.id))
-        blueprints.append(
-            ExamQuestionBlueprint(
-                item_order=index + 1,
-                knowledge_unit_ids=related[:2],
-                question_type=type_cycle[index % len(type_cycle)],
-                difficulty=difficulty_cycle[index % len(difficulty_cycle)],  # type: ignore[arg-type]
-                rationale="Fallback blueprint based on ordered knowledge units.",
-                generation_prompt=(
-                    "Generate a high-quality exam question for this item. Keep the wording clear, "
-                    "test understanding and application, and avoid copying recent examples."
-                ),
-            )
-        )
-    return blueprints
-
-
 def _validate_blueprints(
     *,
     generated: list[ExamQuestionBlueprint],
     units: list[KnowledgeUnit],
     question_count: int,
-    exam_mode: str,
 ) -> list[ExamQuestionBlueprint]:
     unit_ids = {int(unit.id) for unit in units if unit.id is not None}
     by_order = {item.item_order: item for item in generated if item.item_order >= 1}
@@ -746,10 +705,9 @@ def _validate_blueprints(
         )
     if len(normalized) == max(1, question_count):
         return normalized
-    return _fallback_blueprints(
-        units=units,
-        question_count=question_count,
-        exam_mode=exam_mode,
+    raise ValueError(
+        "question blueprint planning returned invalid or incomplete items "
+        f"(expected={max(1, question_count)}, usable={len(normalized)})"
     )
 
 
@@ -923,16 +881,11 @@ async def plan_exam_question_blueprints(
             generated=result.blueprints,
             units=units,
             question_count=normalized_count,
-            exam_mode=exam_mode,
         )
     except (LLMTimeoutError, TimeoutError):
         raise
-    except Exception:
-        return _fallback_blueprints(
-            units=units,
-            question_count=normalized_count,
-            exam_mode=exam_mode,
-        )
+    except Exception as exc:
+        raise RuntimeError(f"question blueprint planning failed: {exc}") from exc
 
 
 async def _generate_one_exam_question(

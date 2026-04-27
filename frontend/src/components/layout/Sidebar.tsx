@@ -596,13 +596,10 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
                 return (
                   <motion.div
                     key={subject.subject_id}
-                    layout
                     variants={sidebarItemMotion}
                     initial="hidden"
                     animate="visible"
                     exit="exit"
-                    whileHover={{ x: effectiveCollapsed ? 0 : 2 }}
-                    whileTap={{ scale: 0.985 }}
                     className="relative"
                   >
                 <div
@@ -697,46 +694,48 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
                   {!effectiveCollapsed && expanded ? (
                     <motion.div
                       key="modules"
-                      layout
-                      initial={{ opacity: 0, height: 0 }}
-                      animate={{ opacity: 1, height: "auto" }}
-                      exit={{ opacity: 0, height: 0 }}
+                      initial={{ gridTemplateRows: "0fr", opacity: 0 }}
+                      animate={{ gridTemplateRows: "1fr", opacity: 1 }}
+                      exit={{ gridTemplateRows: "0fr", opacity: 0 }}
                       transition={{ duration: 0.18, ease: "easeOut" }}
-                      className="ml-4 mt-1 space-y-0.5 overflow-hidden border-l border-slate-200 pl-2"
+                      className="grid"
                     >
-                      <AnimatePresence initial={false}>
-                        {MODULES.map((moduleItem) => {
-                          const path = `/subject/${subject.subject_id}/${moduleItem.id}`;
-                          const isActive = location.pathname === path;
-                          const Icon = moduleItem.icon;
-                          return (
-                            <motion.div
-                              key={moduleItem.id}
-                              layout
-                              variants={sidebarChildItemMotion}
-                              initial="hidden"
-                              animate="visible"
-                              exit="exit"
-                              whileHover={{ x: 2 }}
-                              whileTap={{ scale: 0.985 }}
-                            >
-                              <Link
-                                to={path}
-                                onClick={() => setIsMobileOpen(false)}
-                                className={cn(
-                                  "flex h-7 items-center overflow-hidden whitespace-nowrap rounded-md px-2 text-xs transition-colors",
-                                  isActive
-                                    ? "bg-[#edf3f8] font-medium text-[#243246] dark:bg-slate-800 dark:text-slate-200"
-                                    : "text-slate-500 hover:bg-slate-50 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-slate-800/40 dark:hover:text-slate-200",
-                                )}
-                              >
-                                <Icon className={cn("mr-2 h-3.5 w-3.5", isActive ? "text-[#556b86] dark:text-slate-300" : undefined)} />
-                                {moduleItem.name}
-                              </Link>
-                            </motion.div>
-                          );
-                        })}
-                      </AnimatePresence>
+                      <div className="min-h-0 overflow-hidden">
+                        <div className="ml-4 mt-1 space-y-0.5 border-l border-slate-200 pl-2">
+                          <AnimatePresence initial={false}>
+                            {MODULES.map((moduleItem) => {
+                              const path = `/subject/${subject.subject_id}/${moduleItem.id}`;
+                              const isActive = location.pathname === path;
+                              const Icon = moduleItem.icon;
+                              return (
+                                <motion.div
+                                  key={moduleItem.id}
+                                  variants={sidebarChildItemMotion}
+                                  initial="hidden"
+                                  animate="visible"
+                                  exit="exit"
+                                  whileHover={{ x: 2 }}
+                                  whileTap={{ scale: 0.985 }}
+                                >
+                                  <Link
+                                    to={path}
+                                    onClick={() => setIsMobileOpen(false)}
+                                    className={cn(
+                                      "flex h-7 items-center overflow-hidden whitespace-nowrap rounded-md px-2 text-xs transition-colors",
+                                      isActive
+                                        ? "bg-[#edf3f8] font-medium text-[#243246] dark:bg-slate-800 dark:text-slate-200"
+                                        : "text-slate-500 hover:bg-slate-50 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-slate-800/40 dark:hover:text-slate-200",
+                                    )}
+                                  >
+                                    <Icon className={cn("mr-2 h-3.5 w-3.5", isActive ? "text-[#556b86] dark:text-slate-300" : undefined)} />
+                                    {moduleItem.name}
+                                  </Link>
+                                </motion.div>
+                              );
+                            })}
+                          </AnimatePresence>
+                        </div>
+                      </div>
                     </motion.div>
                   ) : null}
                 </AnimatePresence>
