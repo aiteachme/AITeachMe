@@ -6,7 +6,7 @@ import asyncio
 import uuid
 
 import structlog
-from fastapi import APIRouter, BackgroundTasks, Body, Depends, Path, Request
+from fastapi import APIRouter, BackgroundTasks, Body, Depends, Path, Request, Response
 from fastapi.responses import StreamingResponse
 from sqlmodel import Session
 
@@ -58,6 +58,7 @@ from app.workflows.digest.kg_doc_sync import (
 from app.workflows.support.subjects import get_subject_record
 from app.workflows.interact.chat.lib.streaming import SSEEventEmitter
 from app.shared.infra.exceptions import AITeachMeError
+from app.shared.infra.database import managed_session
 from app.shared.infra.workflow.live_stream import (
     WorkflowStreamEvent,
     format_sse_event,
@@ -693,16 +694,17 @@ async def knowledge_build_runtime(
 )
 async def knowledge_build_stream(
     request: Request,
+    response: Response,
     subject: str = Path(...),
-    user: CurrentUserContext = Depends(get_current_user_context),
-    session: Session = Depends(get_db),
 ) -> StreamingResponse:
     """SSE endpoint for live build runtime, direct deltas and fallback snapshots."""
     import hashlib
     import json
 
     normalized = normalize_subject_slug(subject)
-    get_subject_record(session, normalized, owner_user_id=user.user_id)
+    with managed_session() as session:
+        user = get_current_user_context(request, response, session)
+        get_subject_record(session, normalized, owner_user_id=user.user_id)
 
     _TERMINAL_STATUSES = {"completed", "failed", "cancelled", "partial_failed", "skipped"}
     _SNAPSHOT_FALLBACK_INTERVAL = 8.0
@@ -766,7 +768,8 @@ async def knowledge_build_stream(
         async def build_snapshot_events(*, force: bool = False) -> tuple[list[str], bool]:
             nonlocal last_hash
             try:
-                result = get_knowledge_build_runtime_result(session, subject=normalized)
+                with managed_session() as snapshot_session:
+                    result = get_knowledge_build_runtime_result(snapshot_session, subject=normalized)
             except Exception:
                 return [], False
 
@@ -828,7 +831,7 @@ async def knowledge_build_stream(
                 if should_forward_direct_event(stream_event):
                     yield format_sse_event(stream_event.event, stream_event.data)
 
-    return StreamingResponse(
+    stream_response = StreamingResponse(
         event_generator(),
         media_type="text/event-stream",
         headers={
@@ -837,6 +840,10 @@ async def knowledge_build_stream(
             "Connection": "keep-alive",
         },
     )
+    for key, value in response.raw_headers:
+        if key.lower() == b"set-cookie":
+            stream_response.raw_headers.append((key, value))
+    return stream_response
 
 
 @router.post(

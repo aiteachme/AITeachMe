@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field
 
 from app.shared.infra.runtime import is_cloud_mode, is_local_mode
 from app.shared.infra.storage import (
+    SubjectStorageScope,
     get_content_store,
     resolve_subject_storage_scope,
     run_store_sync,
@@ -704,16 +705,29 @@ def build_aggregate_knowledge_build_status(
     )
 
 
-def _read_legacy_knowledge_build_status(subject: str) -> KnowledgeBuildRuntimeStatus | None:
+def _subject_scope_or_resolve(subject: str, subject_scope: SubjectStorageScope | None) -> SubjectStorageScope:
+    return subject_scope or resolve_subject_storage_scope(subject)
+
+
+def _read_legacy_knowledge_build_status(
+    subject: str,
+    *,
+    subject_scope: SubjectStorageScope | None = None,
+) -> KnowledgeBuildRuntimeStatus | None:
     cs = get_content_store()
-    key = resolve_subject_storage_scope(subject).build_status_key()
+    key = _subject_scope_or_resolve(subject, subject_scope).build_status_key()
     status = run_store_sync(cs.read_json, key, KnowledgeBuildRuntimeStatus)
     return _hydrate_runtime_status(status) if status is not None else None
 
 
-def _write_legacy_knowledge_build_status(subject: str, status: KnowledgeBuildRuntimeStatus) -> str:
+def _write_legacy_knowledge_build_status(
+    subject: str,
+    status: KnowledgeBuildRuntimeStatus,
+    *,
+    subject_scope: SubjectStorageScope | None = None,
+) -> str:
     cs = get_content_store()
-    key = resolve_subject_storage_scope(subject).build_status_key()
+    key = _subject_scope_or_resolve(subject, subject_scope).build_status_key()
     run_store_sync(cs.write_json, key, status)
     return key
 
@@ -839,16 +853,21 @@ def _cloud_release_build_lock(subject: str) -> None:
             session.commit()
 
 
-def read_knowledge_build_runtime(subject: str) -> KnowledgeBuildRuntimeEnvelope | None:
+def read_knowledge_build_runtime(
+    subject: str,
+    *,
+    subject_scope: SubjectStorageScope | None = None,
+) -> KnowledgeBuildRuntimeEnvelope | None:
     """Read the unified runtime envelope for one subject."""
 
     cs = get_content_store()
-    key = resolve_subject_storage_scope(subject).build_runtime_key()
+    resolved_scope = _subject_scope_or_resolve(subject, subject_scope)
+    key = resolved_scope.build_runtime_key()
     runtime = run_store_sync(cs.read_json, key, KnowledgeBuildRuntimeEnvelope)
     if runtime is not None:
         return _hydrate_runtime_envelope(runtime)
 
-    legacy = _read_legacy_knowledge_build_status(subject)
+    legacy = _read_legacy_knowledge_build_status(subject, subject_scope=resolved_scope)
     if legacy is None:
         return None
     return _hydrate_runtime_envelope(
@@ -869,13 +888,17 @@ def write_knowledge_build_runtime(subject: str, runtime: KnowledgeBuildRuntimeEn
     return key
 
 
-def read_knowledge_build_status(subject: str) -> KnowledgeBuildRuntimeStatus | None:
+def read_knowledge_build_status(
+    subject: str,
+    *,
+    subject_scope: SubjectStorageScope | None = None,
+) -> KnowledgeBuildRuntimeStatus | None:
     """Read the legacy docgen runtime payload used by docs-oriented polling."""
 
-    runtime = read_knowledge_build_runtime(subject)
+    runtime = read_knowledge_build_runtime(subject, subject_scope=subject_scope)
     if runtime is not None and runtime.docgen_runtime is not None:
         return runtime.docgen_runtime
-    return _read_legacy_knowledge_build_status(subject)
+    return _read_legacy_knowledge_build_status(subject, subject_scope=subject_scope)
 
 
 def write_knowledge_build_status(subject: str, status: KnowledgeBuildRuntimeStatus) -> str:
@@ -884,10 +907,16 @@ def write_knowledge_build_status(subject: str, status: KnowledgeBuildRuntimeStat
     return _write_legacy_knowledge_build_status(subject, _hydrate_runtime_status(status))
 
 
-def read_knowledge_build_aggregate_status(subject: str) -> KnowledgeBuildRuntimeStatus | None:
+def read_knowledge_build_aggregate_status(
+    subject: str,
+    *,
+    subject_scope: SubjectStorageScope | None = None,
+) -> KnowledgeBuildRuntimeStatus | None:
     """Read the aggregate runtime status for one subject."""
 
-    return build_aggregate_knowledge_build_status(read_knowledge_build_runtime(subject))
+    return build_aggregate_knowledge_build_status(
+        read_knowledge_build_runtime(subject, subject_scope=subject_scope)
+    )
 
 
 def update_knowledge_build_lane_status(
@@ -1087,13 +1116,17 @@ def clear_knowledge_build_status(subject: str) -> None:
     run_store_sync(cs.delete, resolve_subject_storage_scope(subject).build_runtime_key(), default=None)
 
 
-def read_knowledge_manifest(subject: str) -> KnowledgeDocsManifest | None:
+def read_knowledge_manifest(
+    subject: str,
+    *,
+    subject_scope: SubjectStorageScope | None = None,
+) -> KnowledgeDocsManifest | None:
     """Read the published manifest if it exists."""
 
     cs = get_content_store()
     return run_store_sync(
         cs.read_json,
-        resolve_subject_storage_scope(subject).build_manifest_key(),
+        _subject_scope_or_resolve(subject, subject_scope).build_manifest_key(),
         KnowledgeDocsManifest,
     )
 

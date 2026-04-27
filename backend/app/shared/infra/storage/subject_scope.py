@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
-from sqlmodel import select
+from sqlmodel import Session, select
 
 from app.models.subject import Subject
 from app.shared.infra.database import managed_session
@@ -164,10 +164,19 @@ def build_user_file_storage_scope(*, user_id: str) -> UserFileStorageScope:
     return UserFileStorageScope(user_id=str(user_id or "local"))
 
 
-def resolve_subject_storage_scope(subject: str) -> SubjectStorageScope:
+def resolve_subject_storage_scope(subject: str, *, session: Session | None = None) -> SubjectStorageScope:
     """Resolve a subject slug into its persisted storage scope."""
 
     normalized_subject = validate_subject(subject)
+    if session is not None:
+        record = session.exec(select(Subject).where(Subject.slug == normalized_subject)).first()
+        if record is None:
+            raise SubjectRegistryNotFoundError(normalized_subject)
+        return build_subject_storage_scope(
+            user_id=record.user_id,
+            subject=record.slug,
+        )
+
     with managed_session() as session:
         record = session.exec(select(Subject).where(Subject.slug == normalized_subject)).first()
         if record is None:

@@ -389,9 +389,13 @@ def _default_doc_sync_metrics() -> dict[str, int | str]:
     }
 
 
-def _resolve_runtime_build_status(*, subject: str) -> KnowledgeBuildStatusResponse | None:
+def _resolve_runtime_build_status(
+    *,
+    subject: str,
+    subject_scope=None,
+) -> KnowledgeBuildStatusResponse | None:
     build_lock = read_knowledge_build_lock(subject)
-    runtime = read_knowledge_build_runtime(subject)
+    runtime = read_knowledge_build_runtime(subject, subject_scope=subject_scope)
     effective = build_aggregate_knowledge_build_status(runtime)
     if effective is None and build_lock is not None:
         effective = update_knowledge_build_lane_status(
@@ -404,7 +408,9 @@ def _resolve_runtime_build_status(*, subject: str) -> KnowledgeBuildStatusRespon
             source_file_ids=build_lock.source_file_ids,
             prompt=build_lock.prompt,
         )
-        effective = build_aggregate_knowledge_build_status(read_knowledge_build_runtime(subject))
+        effective = build_aggregate_knowledge_build_status(
+            read_knowledge_build_runtime(subject, subject_scope=subject_scope)
+        )
     if effective is None:
         return None
     return KnowledgeBuildStatusResponse(
@@ -451,15 +457,16 @@ def _build_lane_runtime_response(
 
 def get_knowledge_build_runtime_result(session: Session, *, subject: str) -> KnowledgeBuildRuntimeResponse:
     _markdown, _ = _load_current_published_markdown(session, subject=subject)
+    subject_scope = resolve_subject_storage_scope(subject, session=session)
     draft_markdown = normalize_mermaid_blocks(
         run_store_sync(
             get_content_store().read_text,
-            resolve_subject_storage_scope(subject).knowledge_build_prefix() + "merged_knowledge_base.md",
+            subject_scope.knowledge_build_prefix() + "merged_knowledge_base.md",
             default="",
         ) or ""
     )
-    manifest = read_knowledge_manifest(subject)
-    runtime = read_knowledge_build_runtime(subject)
+    manifest = read_knowledge_manifest(subject, subject_scope=subject_scope)
+    runtime = read_knowledge_build_runtime(subject, subject_scope=subject_scope)
     aggregate_runtime = build_aggregate_knowledge_build_status(runtime)
     docgen_runtime = runtime.docgen_runtime if runtime is not None else None
     graph_runtime = runtime.graph_runtime if runtime is not None else None
@@ -976,10 +983,10 @@ def get_docgen_result(session: Session, *, subject: str) -> DocGenGetResponse:
     """
 
     cs = get_content_store()
-    subject_scope = resolve_subject_storage_scope(subject)
+    subject_scope = resolve_subject_storage_scope(subject, session=session)
     draft_key = subject_scope.knowledge_build_prefix() + "merged_knowledge_base.md"
-    manifest = read_knowledge_manifest(subject)
-    runtime = read_knowledge_build_runtime(subject)
+    manifest = read_knowledge_manifest(subject, subject_scope=subject_scope)
+    runtime = read_knowledge_build_runtime(subject, subject_scope=subject_scope)
     docgen_build_status = runtime.docgen_runtime if runtime is not None else None
     markdown, db_updated_at = _load_current_published_markdown(session, subject=subject)
     draft_markdown = normalize_mermaid_blocks(run_store_sync(cs.read_text, draft_key, default="") or "")
@@ -998,7 +1005,7 @@ def get_docgen_result(session: Session, *, subject: str) -> DocGenGetResponse:
         if manifest is not None
         else []
     )
-    build_response = _resolve_runtime_build_status(subject=subject)
+    build_response = _resolve_runtime_build_status(subject=subject, subject_scope=subject_scope)
     if build_response is not None:
         build_response.draft_available = bool(build_response.draft_available or draft_markdown.strip())
     build_preview = _build_runtime_preview(
