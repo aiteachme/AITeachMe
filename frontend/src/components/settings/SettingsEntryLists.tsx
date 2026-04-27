@@ -19,6 +19,8 @@ import {
 } from "./settingsHelpers";
 import type { DraftRecord, SettingEntry, SettingPrimitive } from "./settingsTypes";
 
+const SECRET_MASK_VALUE = "••••••••••••••••••••••••••••••••";
+
 function renderEntryHelper(entryKey: string) {
   if (entryKey === "mineru.api_token") {
     return (
@@ -117,10 +119,14 @@ const EditableSettingsRow = memo(function EditableSettingsRow({
   const [localValue, setLocalValue] = useState(() =>
     value === null || isPreservedSecret ? "" : String(value),
   );
+  const [isEditingPreservedSecret, setIsEditingPreservedSecret] = useState(false);
 
   useEffect(() => {
     const nextValue = value === null || isPreservedSecret ? "" : String(value);
     setLocalValue((prev) => (prev === nextValue ? prev : nextValue));
+    if (!isPreservedSecret) {
+      setIsEditingPreservedSecret(false);
+    }
   }, [isPreservedSecret, value]);
 
   const handleBooleanToggle = useCallback(() => {
@@ -130,14 +136,25 @@ const EditableSettingsRow = memo(function EditableSettingsRow({
   }, [entry.key, onChange, value]);
 
   const handleValueChange = useCallback((next: string) => {
+    if (isPreservedSecret && !isEditingPreservedSecret) {
+      setIsEditingPreservedSecret(true);
+    }
     setLocalValue((prev) => (prev === next ? prev : next));
-  }, []);
+  }, [isEditingPreservedSecret, isPreservedSecret]);
+
+  const handleSecretFocus = useCallback(() => {
+    if (isPreservedSecret && !isEditingPreservedSecret) {
+      setIsEditingPreservedSecret(true);
+      setLocalValue("");
+    }
+  }, [isEditingPreservedSecret, isPreservedSecret]);
 
   const commitLocalValue = useCallback(() => {
     if (typeof value === "boolean" || selectOptions) {
       return;
     }
     if (isPreservedSecret && !localValue.trim()) {
+      setIsEditingPreservedSecret(false);
       return;
     }
     const parsed = parseInputValue(localValue, isPreservedSecret ? null : value);
@@ -186,33 +203,25 @@ const EditableSettingsRow = memo(function EditableSettingsRow({
             options={selectOptions}
           />
         ) : resolvedInputType === "password" ? (
-          <>
-            <SecretInput
-              id={controlId}
-              value={localValue}
-              onChange={handleValueChange}
-              onBlur={commitLocalValue}
-              placeholder={
-                isConfiguredSecret
-                  ? "Token 已保存，留空不变；输入新值可替换"
-                  : entry.default_value === null || entry.default_value === undefined
-                    ? "请输入 Token"
-                    : String(entry.default_value)
-              }
-              showToggle={localValue.length > 0}
-            />
-            <p
-              className={
-                isConfiguredSecret
-                  ? SETTINGS_STYLES.field.secretStatus
-                  : SETTINGS_STYLES.field.secretHint
-              }
-            >
-              {isConfiguredSecret
-                ? "已保存。出于安全不会回显完整 Token，留空保存会继续使用当前配置。"
-                : "保存后页面不会回显完整 Token，只会显示已保存状态。"}
-            </p>
-          </>
+          <SecretInput
+            id={controlId}
+            value={
+              isPreservedSecret && !isEditingPreservedSecret
+                ? SECRET_MASK_VALUE
+                : localValue
+            }
+            onChange={handleValueChange}
+            onFocus={handleSecretFocus}
+            onBlur={commitLocalValue}
+            placeholder={
+              isConfiguredSecret
+                ? "输入新值可替换，留空不变"
+                : entry.default_value === null || entry.default_value === undefined
+                  ? "请输入 Token"
+                  : String(entry.default_value)
+            }
+            showToggle={localValue.length > 0}
+          />
         ) : (
           <TextInput
             id={controlId}
