@@ -18,6 +18,7 @@ from app.api.deps import (
 from app.api.openapi import build_error_responses
 from app.schemas.common import ApiResponse, ok_response
 from app.schemas.knowledge import (
+    BuildPlannerAdjustClickResponse,
     BuildPlannerConfirmResponse,
     BuildPlannerCreateRequest,
     BuildPlannerMessageRequest,
@@ -37,6 +38,7 @@ from app.workflows.digest.planner import (
     create_build_planner_session,
     get_latest_planner_session,
     mark_confirmed_build_plan_status,
+    record_build_planner_adjust_click,
 )
 from app.workflows.support.auth import set_guest_cookie_for_user
 from app.workflows.digest.docgen import (
@@ -313,6 +315,35 @@ async def knowledge_build_plan_message_stream(
             token_callback=token_callback,
         ),
     )
+
+
+@router.post(
+    "/build/plans/{session_id}/adjust-click",
+    response_model=ApiResponse[BuildPlannerAdjustClickResponse],
+    summary="Record that the user opened planner adjustment mode",
+    responses=build_error_responses([400, 404, 500]),
+)
+def knowledge_build_plan_adjust_click(
+    subject: str = Path(...),
+    session_id: str = Path(...),
+    user: CurrentUserContext = Depends(get_current_user_context),
+    session: Session = Depends(get_db),
+) -> ApiResponse[BuildPlannerAdjustClickResponse]:
+    normalized = normalize_subject_slug(subject)
+    logger.info(
+        "planner_adjust_click_requested",
+        subject=normalized,
+        session_id=session_id,
+        user_id=user.user_id,
+    )
+    subject_record = get_subject_record(session, normalized, owner_user_id=user.user_id)
+    data = record_build_planner_adjust_click(
+        session,
+        subject=subject_record,
+        user_id=user.user_id,
+        session_id=session_id,
+    )
+    return ok_response(BuildPlannerAdjustClickResponse.model_validate(data))
 
 
 @router.post(

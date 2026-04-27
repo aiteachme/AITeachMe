@@ -1090,6 +1090,47 @@ def get_latest_planner_session(
     )
 
 
+def get_planner_adjust_click_context(
+    session: Session,
+    *,
+    subject: Subject,
+    user_id: str,
+    session_id: str,
+) -> dict[str, Any]:
+    """Return sparse session context for tracing the UI adjust entrypoint."""
+
+    record = _get_planner_session(session, subject=subject.slug, session_id=session_id, user_id=user_id)
+    if record is None:
+        raise BuildPlannerSessionNotFoundError(session_id)
+
+    meta = _planner_meta(record)
+    turns = _list_planner_turns(session, session_id=record.id, subject=subject.slug, user_id=user_id)
+    latest_plan = _planner_plan(record)
+    selected_file_ids = _planner_selected_file_ids(record)
+    context = {
+        "subject": subject.slug,
+        "user_id": user_id,
+        "planner_session_id": record.id,
+        "status": _planner_status(record),
+        "digest_mode": str(meta.get("digest_mode") or ""),
+        "turn_count": len(turns),
+        "selected_file_count": len(selected_file_ids),
+        "has_latest_plan": bool(latest_plan),
+        "latest_plan_chapter_count": len(list(latest_plan.get("chapter_plan") or [])),
+        "confirmed_plan_id": meta.get("confirmed_plan_id"),
+    }
+    logger.info(
+        "planner_adjust_click_context_loaded",
+        subject=subject.slug,
+        user_id=user_id,
+        planner_session_id=record.id,
+        status=context["status"],
+        turn_count=context["turn_count"],
+        has_latest_plan=context["has_latest_plan"],
+    )
+    return context
+
+
 def get_confirmed_plan_or_raise(
     session: Session,
     *,
@@ -1131,6 +1172,7 @@ def mark_confirmed_plan_status(
 __all__ = [
     "confirm_planner_session",
     "get_confirmed_plan_or_raise",
+    "get_planner_adjust_click_context",
     "get_latest_planner_session",
     "mark_confirmed_plan_status",
     "mark_planner_session_cancelled",

@@ -1,7 +1,9 @@
 import json
+from pathlib import Path
 
 from app.workflows.digest.common.models import DigestMaterialContext, SubjectProfile
 from app.workflows.digest.planner.lib.tracing import (
+    RUN_NAME_PLANNER_ADJUST_CLICK,
     RUN_NAME_PLANNER_APPEND,
     RUN_NAME_PLANNER_CREATE,
     planner_trace_run_name,
@@ -66,6 +68,15 @@ def test_planner_trace_name_distinguishes_create_and_append_runs():
     assert planner_trace_run_name("create") == RUN_NAME_PLANNER_CREATE
     assert planner_trace_run_name("generate_only") == RUN_NAME_PLANNER_CREATE
     assert planner_trace_run_name("append") == RUN_NAME_PLANNER_APPEND
+    assert planner_trace_run_name("adjust_click") == RUN_NAME_PLANNER_ADJUST_CLICK
+
+
+def test_planner_graph_waits_for_plan_and_title_before_saving():
+    source = (
+        Path(__file__).parents[1] / "app" / "workflows" / "digest" / "planner" / "graph.py"
+    ).read_text(encoding="utf-8")
+
+    assert "workflow.add_edge([STEP_COMPOSE_PLAN, STEP_GENERATE_TITLE], STEP_SAVE_PLAN)" in source
 
 
 def test_composer_hidden_json_parses_to_initial_outline_payload():

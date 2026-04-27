@@ -601,6 +601,17 @@ class BuildPlannerMessageRequest(BaseModel):
     message: str = Field(description="User feedback used to revise the current plan draft.")
 
 
+class BuildPlannerAdjustClickResponse(BaseModel):
+    """Acknowledgement for entering planner adjustment mode."""
+
+    acknowledged: bool = True
+    planner_session_id: str
+    subject: str
+    status: str = ""
+    has_latest_plan: bool = False
+    latest_plan_chapter_count: int = 0
+
+
 class BuildPlannerTurnResponse(BaseModel):
     id: int | None = None
     role: str
