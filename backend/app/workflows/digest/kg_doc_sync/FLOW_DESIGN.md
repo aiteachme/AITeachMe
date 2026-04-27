@@ -13,6 +13,8 @@
 
 本链路不会创建 `curriculum / teaching_unit / taxonomy_anchor / theme_tree_node / unit_dependency` 等未来大表。节点和关系的可解释来源先由轻量溯源表承接。
 
+KG-doc-sync 抽取 ontology 位于 `backend/app/workflows/digest/kg_doc_sync/lib/ontology.py`，集中维护抽取 prompt 展示的 KnowledgeUnit 类型、关系类型、关系端点偏好和跨章节默认边推断。持久化层允许的类型集合、归一化和最终关系方向守卫仍位于 `backend/app/models/knowledge_taxonomy.py`，避免模型层反向依赖 workflow；抽取 prompt 与 extractor 的候选解析规则都从 workflow ontology 读取，测试负责确保两者与枚举保持一致。
+
 LangGraph 节点的 `node_description`、输入输出字段和 metadata 统一通过
 `digest.common.node_tracing` 生成；内部阶段不再额外创建顶层 LangSmith trace，
 避免 Trace 列表被 anchor 校验、候选抽取和图谱写入刷屏。
@@ -107,16 +109,16 @@ init_run
   v
 extract
   如果 subject_context 为空，则从学科 LLM context 读取。
-  按真实章节切分 Markdown。
+  按真实章节切分 Markdown；大章会按子章节继续拆成多个抽取任务。
   LLM 子调用挂在 extract 节点下。
   |
   v
 _extract_chapter_with_retries x N
   单节点内部 async fan-out：
     ├─ chapter 1 extraction
-    ├─ chapter 2 extraction
-    └─ chapter N extraction
-  默认并发 10，每章最多 2 次尝试；单章 LLM 输入会保留开头和结尾并压到固定字符预算内。
+    ├─ chapter 2 / subsection 2.1 extraction
+    └─ chapter N / subsection N.x extraction
+  默认最多 20 路并发，每个抽取任务最多 2 次尝试；单任务 LLM 输入会保留开头和结尾并压到固定字符预算内。
   通过 contextvars 继承外层运行上下文，让 LLM 子调用挂在同一条 trace 下。
   |
   v
@@ -349,6 +351,20 @@ extract_markdown_chapter_chunks
   设计目的：
     - 避免把整本文档标题或学习总览当成知识点。
 
+_build_extraction_tasks
+  输入：
+    - MarkdownSectionChunk[]
+    - ChapterSourceContext 映射
+  输出：
+    - 章节/子章节抽取任务
+  规则：
+    - 章节正文长度达到 `_DOCS_SYNC_SPLIT_MIN_CHAPTER_CHARS = 2800` 且至少有 2 个可抽取子章节时，按子章节拆分。
+    - 不满足拆分条件时，保持整章作为一个 LLM 抽取任务。
+    - 总并发由 `_DOCS_SYNC_MAX_PARALLEL_EXTRACTIONS = 20` 封顶。
+  设计目的：
+    - 章节少但单章很长时，仍然可以并行抽取，减少长章卡住整条链路的情况。
+    - 所有语义候选仍由结构化 LLM 抽取或 LLM 空结果修复产生，不引入本地关键词造点。
+
 _extract_chapter_with_retries
   输入：
     - chapter_index
@@ -358,7 +374,10 @@ _extract_chapter_with_retries
   输出：
     - SectionExtractionPayload
   并发：
-    - `_DOCS_SYNC_CHAPTER_CONCURRENCY_LIMIT = 10`
+    - `_DOCS_SYNC_CHAPTER_CONCURRENCY_LIMIT = 20`
+    - `_DOCS_SYNC_MAX_PARALLEL_EXTRACTIONS = 20`
+    - `_DOCS_SYNC_SPLIT_MIN_CHILD_SECTIONS = 2`
+    - `_DOCS_SYNC_SPLIT_MIN_CHAPTER_CHARS = 2800`
     - `_DOCS_SYNC_CHAPTER_MAX_RETRIES = 2`
     - `_DOCS_SYNC_CHAPTER_RETRY_DELAY_S = 0.4`
     - `_DOCS_SYNC_SECTION_LLM_TIMEOUT_S = 25`，只作为单章断路保护，不作为提速手段。
@@ -375,7 +394,7 @@ _extract_chapter_with_retries
   当前模型方案：
     - 主抽取走 `KGDocSyncModelStep.SECTION_GRAPH`，即 `call_purpose=EXTRACT + model="light"`，`max_tokens=1600`。
     - docs 空结果修复走 `KGDocSyncModelStep.EMPTY_REPAIR`，即 `call_purpose=EXTRACT + model="light"`，`max_tokens=900`。
-    - 结构化抽取失败会按章节重试；重试耗尽后让图谱同步失败，不再用标题或题目关键词本地生成 KnowledgeUnit。
+    - 结构化抽取失败会按任务重试；重试耗尽后让图谱同步失败，不再用标题或题目关键词本地生成 KnowledgeUnit。
 
 _extract_chapter_graph_items
   输入：
@@ -390,13 +409,14 @@ _extract_chapter_graph_items
   候选来源：
     - LLM structured extraction：主路径。
     - LLM empty repair：主抽取为空且章节有明显知识信号时，再走一次结构化 LLM 修复。
-    - DocGen backbone：使用 DocGen 已经生成的结构化 backbone 补充 glossary/dependency。
+    - DocGen backbone：使用 DocGen 已经生成的结构化 backbone 补充 glossary/dependency；它来自 DocGen 结构化产物，不是本地关键词兜底。
   过滤：
     - `candidate_quality.filter_docs_candidate_result` 会丢弃明显不是知识点的候选。
     - 典型拒绝项：学习目标、章节导读、本章自检、考前复盘、题型例练、速判口诀、解题入口、解题模板、题干句、任务句、规划句、模块权重排序、知识组合策略等。
   重要边界：
     - LLM 负责语义候选。
     - 规则过滤只硬挡肉眼确定的坏节点，不替代语义抽取。
+    - LLM 调用失败会按任务重试；重试耗尽后让同步失败，不再用标题、题干或关键词本地生成 KnowledgeUnit。
 
 payload fan-in
   输入：
@@ -486,8 +506,12 @@ fail
 | `synced_unit_keys` | 本轮 active anchor 列表 |
 | `created_unit_ids / updated_unit_ids / deprecated_unit_ids` | 节点变化 |
 | `created_edge_ids / updated_edge_ids / deprecated_edge_ids` | 边变化 |
-| `section_count / chapter_count` | 实际处理章节数 |
-| `llm_section_count` | 调用过 LLM 的章节数 |
+| `section_count / chapter_count` | 实际抽取任务数 / 原始章节数 |
+| `chapter_split_count / chapter_task_count / subsection_task_count` | 被拆分的大章数量、整章任务数、子章节任务数 |
+| `llm_section_count` | 调用过 LLM 的抽取任务数 |
+| `llm_error_count` | LLM 主抽取或空结果修复异常次数 |
+| `empty_llm_result_count` | LLM 返回空候选的任务数 |
+| `empty_repair_attempt_count / empty_repair_success_count` | 空结果 LLM 修复尝试数 / 成功数 |
 | `total_extracted_node_count / total_extracted_edge_count` | 原始抽取候选计数 |
 | `source_ref_count` | source ref 写入数 |
 | `backbone_unit_count / backbone_edge_count` | DocGen backbone 补入数量 |
@@ -506,7 +530,11 @@ fail
 | `revision_no` | `report.build_revision_no` |
 | `last_synced_doc_version_no` | 当前文档版本 |
 | `doc_sync_section_count` | `report.section_count` |
+| `doc_sync_chapter_split_count / doc_sync_chapter_task_count / doc_sync_subsection_task_count` | `report.chapter_split_count / chapter_task_count / subsection_task_count` |
 | `doc_sync_llm_section_count` | `report.llm_section_count` |
+| `doc_sync_llm_error_count` | `report.llm_error_count` |
+| `doc_sync_empty_llm_result_count` | `report.empty_llm_result_count` |
+| `doc_sync_empty_repair_attempt_count / doc_sync_empty_repair_success_count` | `report.empty_repair_attempt_count / empty_repair_success_count` |
 | `source_ref_count` | `report.source_ref_count` |
 | `backbone_unit_count / backbone_edge_count` | `report.backbone_*` |
 | `stable_anchor_count` | `report.stable_anchor_count` |

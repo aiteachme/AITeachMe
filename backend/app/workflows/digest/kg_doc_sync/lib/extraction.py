@@ -18,6 +18,7 @@ from app.workflows.digest.kg_doc_sync.lib.model_policy import (
     KGDocSyncModelStep,
     kg_doc_sync_completion_kwargs_with_metadata,
 )
+from app.workflows.digest.kg_doc_sync.lib.ontology import relation_endpoint_type_preferences
 from app.workflows.digest.kg_doc_sync.lib.candidate_identity import build_candidate_stable_id
 from app.workflows.digest.kg_doc_sync.lib.question_blocks import parse_question_blocks
 from app.models.knowledge_taxonomy import (
@@ -127,6 +128,10 @@ class CandidateExtractionDiagnostics:
     llm_attempted: bool = False
     markdown_anchor_short_circuit_used: bool = False
     question_like_chunk: bool = False
+    llm_error_count: int = 0
+    empty_llm_result_count: int = 0
+    empty_repair_attempt_count: int = 0
+    empty_repair_success_count: int = 0
     elapsed_ms: int = 0
     node_count: int = 0
     edge_count: int = 0
@@ -370,25 +375,6 @@ def _assign_candidate_ids_and_edge_types(result: ChunkExtractionResult) -> Chunk
         if normalized:
             candidates_by_norm_name.setdefault(normalized, []).append(node)
 
-    expected_types_by_edge = {
-        "application": {
-            "source": ("concept", "method", "definition", "formula", "theorem", "exercise", "remark"),
-            "target": ("concept",),
-        },
-        "prerequisite": {
-            "source": ("concept", "method", "definition", "theorem", "formula", "exercise", "proof_step", "remark"),
-            "target": ("concept", "method", "definition", "theorem", "formula", "exercise", "proof_step", "remark"),
-        },
-        "derivation": {
-            "source": ("definition", "theorem", "formula", "proof_step", "concept", "method"),
-            "target": ("concept", "method", "theorem", "formula", "proof_step"),
-        },
-        "example_of": {
-            "source": ("example", "exercise"),
-            "target": ("concept", "method", "theorem", "formula"),
-        },
-    }
-
     def _select_local_candidate(
         name: str,
         *,
@@ -400,7 +386,7 @@ def _assign_candidate_ids_and_edge_types(result: ChunkExtractionResult) -> Chunk
         matches = raw_matches or norm_matches
         if not matches:
             return None
-        expected_types = expected_types_by_edge.get(edge_type, {}).get(endpoint_side, ())
+        expected_types = relation_endpoint_type_preferences(edge_type, endpoint_side)
         for expected_type in expected_types:
             for node in matches:
                 if node.knowledge_unit_type == expected_type:
@@ -599,6 +585,7 @@ async def _extract_candidates_internal(
         else:
             result = await llm_call
     except Exception as exc:
+        diagnostics.llm_error_count += 1
         logger.warning(
             "knowledge_extract_llm_failed",
             chunk_title=chunk_title,
@@ -608,17 +595,22 @@ async def _extract_candidates_internal(
         raise
     else:
         if not result.nodes and not result.edges:
+            diagnostics.empty_llm_result_count += 1
             if doc_source_type == "knowledge_doc_markdown" and _should_retry_docs_extraction_after_empty(
                 chunk_content=chunk_content,
                 chunk_title=chunk_title,
             ):
                 try:
+                    diagnostics.empty_repair_attempt_count += 1
                     result = await _repair_docs_extraction_after_empty(
                         messages=messages,
                         chunk_title=chunk_title,
                         header_path=header_path,
                     )
+                    if result.nodes or result.edges:
+                        diagnostics.empty_repair_success_count += 1
                 except Exception as exc:
+                    diagnostics.llm_error_count += 1
                     logger.warning(
                         "knowledge_extract_docs_retry_failed",
                         chunk_title=chunk_title,

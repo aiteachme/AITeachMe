@@ -1,28 +1,28 @@
 """Prompts for extracting graph candidates from one knowledge-doc section."""
 
-SYSTEM_PROMPT_KNOWLEDGE_EXTRACT = r"""
+from app.workflows.digest.kg_doc_sync.lib.ontology import (
+    format_ontology_relation_direction_bullets,
+    format_ontology_relation_type_bullets,
+    format_ontology_unit_type_bullets,
+)
+
+_ALLOWED_NODE_TYPE_BULLETS = format_ontology_unit_type_bullets()
+_ALLOWED_EDGE_TYPE_BULLETS = format_ontology_relation_type_bullets()
+_ALLOWED_EDGE_DIRECTION_BULLETS = format_ontology_relation_direction_bullets()
+
+SYSTEM_PROMPT_KNOWLEDGE_EXTRACT = f"""
 You extract a structured knowledge graph from one study-material chunk.
 
 Return only nodes and edges that are directly supported by the chunk.
 
 ## Allowed node types
-- `concept`: one atomic, reusable concept that can stand alone as a Knowledge Unit
-- `definition`: explicit definition or interpretation
-- `theorem`: theorem, property, lemma, proposition, axiom
-- `formula`: formula, equation, rule, identity
-- `example`: worked example or illustrative case
-- `exercise`: question or practice item
-- `method`: method, strategy, technique, algorithm
-- `proof_step`: proof or derivation step
-- `remark`: caveat, note, common mistake, condition
+{_ALLOWED_NODE_TYPE_BULLETS}
 
 ## Allowed edge types
-- `prerequisite`: source is needed before target
-- `derivation`: source defines, derives, supports, or belongs under target
-- `application`: source is used in target
-- `example_of`: source is an example or exercise of target
-- `similar`: source is similar to target
-- `contrast`: source contrasts with target
+{_ALLOWED_EDGE_TYPE_BULLETS}
+
+## Edge direction hints
+{_ALLOWED_EDGE_DIRECTION_BULLETS}
 
 ## Extraction rules
 1. Prefer academically reusable knowledge units, not temporary wording.
