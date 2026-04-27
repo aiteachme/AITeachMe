@@ -142,8 +142,12 @@ export function useKnowledgeDocsBuildState(subject: string) {
     queryFn: () => fetchKnowledgeBuildRuntime(subject),
     enabled: Boolean(subject),
     refetchInterval: (query) => {
-      const aggregateStatus = (query.state.data?.aggregate?.status ?? "").trim();
-      return ACTIVE_BUILD_STATUSES.has(aggregateStatus) ? 2500 : 10000;
+      const statuses = [
+        query.state.data?.aggregate?.status,
+        query.state.data?.docgen?.status,
+        query.state.data?.graph?.status,
+      ].map((status) => (status ?? "").trim());
+      return statuses.some((status) => ACTIVE_BUILD_STATUSES.has(status)) ? 2500 : 10000;
     },
   });
 }
