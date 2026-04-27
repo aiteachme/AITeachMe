@@ -1,3 +1,6 @@
-*.py    eol=lf 
-*.md    eol=lf 
+*.py    eol=lf
+*.md    eol=lf
 *.ts    eol=lf
+Dockerfile eol=lf
+.dockerignore eol=lf
+.gitattributes eol=lf

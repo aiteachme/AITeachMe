@@ -115,6 +115,52 @@ ALLOW_CLOUD_VECTOR_REBUILD=false
 
 GitHub Actions 的 `deploy.yml` 目前只是触发 Render 部署，它不会替代 Render Dashboard 上的 pre-deploy command。
 
+### 4.1 LibreOffice / Docker 部署
+
+如果云端需要支持 `.doc` 转 `.docx`，或者 PPT/PPTX 走 OCR 解析链路，后端运行环境必须能找到 `soffice`/`libreoffice`。Render Native Python runtime 更适合纯 Python 依赖；这类系统包建议使用 Docker runtime 固定下来。
+
+当前仓库已提供 `backend/Dockerfile`，它会安装：
+
+- `libreoffice`：提供 `soffice` 命令，服务于 DOC/PPT 转换。
+- `fonts-noto-cjk`：保证中文文档转 PDF/图片时尽量不乱码。
+- `fonts-noto-color-emoji`：减少 emoji 或符号字体缺失。
+
+Render Dashboard 建议配置：
+
+```text
+Runtime / Language: Docker
+Health Check Path: /api/health
+```
+
+如果服务保持仓库根目录作为 Root Directory：
+
+```text
+Dockerfile Path: backend/Dockerfile
+Docker Build Context Directory: backend
+```
+
+如果服务已经把 Root Directory 设置为 `backend`：
+
+```text
+Dockerfile Path: Dockerfile
+Docker Build Context Directory: .
+```
+
+Docker 模式下不需要再配置原来的 Start command，镜像默认命令已经复用：
+
+```bash
+python scripts/start_cloud_app.py --host 0.0.0.0 --port ${PORT:-10000}
+```
+
+部署后可在 Render Shell 或日志中确认：
+
+```bash
+which soffice
+soffice --headless --version
+```
+
+注意：LibreOffice 镜像体积和运行内存都会明显增加。PPT/PDF 转换高峰期如果出现 OOM 或冷启动过慢，优先升级 Render 实例规格，而不是回退到本地关键词/规则式解析。
+
 ## 5. 业务表与运行时对象
 
 ### 5.1 业务表
