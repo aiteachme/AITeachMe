@@ -18,12 +18,14 @@ from app.workflows.digest.planner.nodes.stream_and_parse_plan_draft import (
     _subject_for_prompt as _composer_subject_for_prompt,
 )
 from app.workflows.digest.planner.nodes.stream_brief_and_extract_intent import (
-    _fallback_plan_queries,
     _normalize_plan_queries,
     _subject_for_prompt as _intent_subject_for_prompt,
 )
 from app.workflows.digest.planner.prompts.examples import render_composer_examples, render_plan_intent_examples
-from app.workflows.digest.planner.prompts.build_plan_composer import build_plan_composer_messages
+from app.workflows.digest.planner.prompts.build_plan_composer import (
+    build_plan_composer_messages,
+    build_plan_outline_repair_messages,
+)
 
 
 def test_plan_intent_contract_keeps_only_intent_and_queries():
@@ -58,7 +60,6 @@ def test_planner_prompt_subject_hides_subject_id():
 
     assert "subj_" not in _intent_subject_for_prompt(state)
     assert "subj_" not in _composer_subject_for_prompt(state)
-    assert all("subj_" not in item for item in _fallback_plan_queries(state))
 
 
 def test_planner_trace_name_distinguishes_create_and_append_runs():
@@ -136,6 +137,30 @@ def test_composer_prompt_allows_research_plan_without_claiming_done():
     assert "plan_steps 是 4-7 条动作步骤" in prompt
     assert "plan_text 和 plan_steps 是重点" in prompt
     assert "chapters 是很初步的粗颗粒骨架" in prompt
+
+
+def test_composer_repair_prompt_is_structured_llm_contract():
+    material_context = DigestMaterialContext(
+        learning_domain_profile=SubjectProfile(subject_slug="subj_demo", subject_name="计算机基础")
+    )
+    messages = build_plan_outline_repair_messages(
+        subject="计算机基础",
+        user_prompt="介绍下计算机基础内容",
+        digest_mode="sprint",
+        material_context=material_context,
+        planner_brief=PlannerBrief(markdown="用户想快速了解计算机基础整体框架。"),
+        plan_intent=PlanIntent(
+            plan_intent="入门理解计算机基础",
+            plan_queries=["计算机组成", "操作系统", "网络基础"],
+        ),
+        raw_response="可见计划说明，但缺少机器 JSON。",
+        parse_error="composer response did not contain a JSON object",
+    )
+
+    assert "只输出合法 JSON 对象" in messages[0]["content"]
+    assert "不能使用本地规则或关键词臆造章节" in messages[0]["content"]
+    assert "字段必须严格为" in messages[1]["content"]
+    assert "介绍下计算机基础内容" in messages[1]["content"]
 
 
 def test_plan_intent_examples_include_intent_recognition_shape():

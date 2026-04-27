@@ -73,7 +73,7 @@ _POLICIES: dict[PlannerModelStep, PlannerModelPolicy] = {
         call_purpose=LLMCallPurpose.CLASSIFY,
         model="light",
         max_tokens=700,
-        note="结构化抽取内部规划抓手，输出短且有规则兜底，优先 light 提速。",
+        note="结构化抽取内部规划抓手，输出短，优先 light 提速。",
     ),
     PlannerModelStep.COMPOSE_PLAN: PlannerModelPolicy(
         step=PlannerModelStep.COMPOSE_PLAN,
@@ -97,7 +97,7 @@ _POLICIES: dict[PlannerModelStep, PlannerModelPolicy] = {
         call_purpose=LLMCallPurpose.CLASSIFY,
         model="light",
         max_tokens=20,
-        note="图标候选选择属于分类任务，失败后走本地规则兜底。",
+        note="图标候选选择属于轻量分类任务。",
     ),
 }
 

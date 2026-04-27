@@ -39,7 +39,7 @@ def _subject_for_prompt(state: BuildPlannerState) -> str:
     )
 
 
-async def _stream_planner_brief(state: BuildPlannerState, fallback: PlannerBrief) -> PlannerBrief:
+async def _stream_planner_brief(state: BuildPlannerState, empty_brief: PlannerBrief) -> PlannerBrief:
     material_context = state["material_context"]
     subject_name = _subject_for_prompt(state)
     prompt = build_plan_sketch_prompt(
@@ -93,14 +93,14 @@ async def _stream_planner_brief(state: BuildPlannerState, fallback: PlannerBrief
             event="planner.thinking.failed",
             detail="思考过程生成失败，未得到可展示的规划判断。",
         )
-        return fallback
+        return empty_brief
     if not tokens:
         await emit_planner_event(
             state,
             event="planner.thinking.empty",
             detail="思考过程未返回任何增量内容。",
         )
-        return fallback
+        return empty_brief
     text = "".join(tokens).strip()
     logger.info(
         "planner_brief_llm_completed",
@@ -109,7 +109,7 @@ async def _stream_planner_brief(state: BuildPlannerState, fallback: PlannerBrief
         token_count=len(tokens),
         text_chars=len(text),
     )
-    return parse_planner_brief_text(text, fallback=fallback)
+    return parse_planner_brief_text(text, base_brief=empty_brief)
 
 
 async def _extract_plan_intent(state: BuildPlannerState) -> PlanIntent:
@@ -136,11 +136,11 @@ async def _extract_plan_intent(state: BuildPlannerState) -> PlanIntent:
             ),
             response_model=PlanIntent,
         )
-        plan_intent.plan_queries = _normalize_plan_queries(
-            [*plan_intent.plan_queries, *_fallback_plan_queries(state)]
-        )
+        plan_intent.plan_queries = _normalize_plan_queries(plan_intent.plan_queries)
         if not plan_intent.plan_intent.strip():
-            plan_intent.plan_intent = _fallback_plan_intent(state)
+            raise ValueError("planner PlanIntent returned empty plan_intent")
+        if not plan_intent.plan_queries:
+            raise ValueError("planner PlanIntent returned empty plan_queries")
         logger.info(
             "planner_plan_intent_llm_completed",
             planner_session_id=state.get("planner_session_id") or "",
@@ -175,27 +175,6 @@ def _normalize_plan_queries(queries: list[str]) -> list[str]:
     return cleaned[:8]
 
 
-def _fallback_plan_queries(state: BuildPlannerState) -> list[str]:
-    material_context = state["material_context"]
-    goal = str(state.get("user_prompt") or "").strip()
-    subject = _subject_for_prompt(state)
-    mode = str(state.get("digest_mode") or material_context.course_mode_decision.mode.value)
-    candidates = [
-        f"{goal or '当前主题'} 核心知识簇",
-        f"{goal or '当前主题'} 题型与易错点",
-        f"{goal or '当前主题'} 初步大纲拆分",
-        f"{subject} {mode} 学习计划",
-    ]
-    return [item for item in candidates if item.strip()]
-
-
-def _fallback_plan_intent(state: BuildPlannerState) -> str:
-    material_context = state["material_context"]
-    goal = str(state.get("user_prompt") or "").strip()
-    mode = str(state.get("digest_mode") or material_context.course_mode_decision.mode.value)
-    return f"用户意图暂按 {mode} 学习处理；围绕{goal or '当前学习目标'}和已上传资料，先识别资料主线，再生成可调整的初步大纲。"
-
-
 def build_stream_brief_and_extract_intent_node(*, context: WorkflowContext):
     async def stream_brief_and_extract_intent_node(state: BuildPlannerState) -> dict:
         logger.info(
@@ -203,9 +182,9 @@ def build_stream_brief_and_extract_intent_node(*, context: WorkflowContext):
             planner_session_id=state.get("planner_session_id", ""),
             subject=state.get("subject", ""),
         )
-        fallback_brief = build_empty_planner_brief()
+        empty_brief = build_empty_planner_brief()
         brief, plan_intent = await asyncio.gather(
-            _stream_planner_brief(state, fallback_brief),
+            _stream_planner_brief(state, empty_brief),
             _extract_plan_intent(state),
         )
         await emit_planner_event(
