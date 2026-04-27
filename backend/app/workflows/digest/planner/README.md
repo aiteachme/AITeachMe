@@ -67,7 +67,7 @@ stream_and_parse_plan_draft
   输出：plan_outline_markdown / build_plan_draft
     - plan_outline_markdown：给用户看的计划大纲文本。
     - build_plan_draft：从 `<PLAN_JSON>` 解析出的计划说明、动作步骤和章节草稿。
-  作用：一次 reason 流式调用，同时生成可见计划说明和机器可解析 JSON 初步大纲。
+  作用：一次流式调用，同时生成可见计划说明和机器可解析 JSON 初步大纲。
   内部步骤：
     1. 先流式输出用户可见 Markdown。
     2. 遇到 `<PLAN_JSON>` 后停止向前端透出机器合同。
@@ -136,7 +136,7 @@ flowchart TD
 | --- | --- | --- | --- |
 | `load_planner_materials` | 读取资料 | `nodes/load_planner_materials.py` | 读取 Planner 对话会话、文件和历史消息，生成并打包 `DigestMaterialContext` |
 | `stream_brief_and_extract_intent` | 理解目标 | `nodes/stream_brief_and_extract_intent.py` | 并行做两件事：流式输出思考过程；生成内部 `plan_intent / plan_queries` |
-| `stream_and_parse_plan_draft` | 合成大纲 | `nodes/stream_and_parse_plan_draft.py` | 一次 reason 流式调用，输出可见计划说明和 `<PLAN_JSON>` 初步大纲 |
+| `stream_and_parse_plan_draft` | 合成大纲 | `nodes/stream_and_parse_plan_draft.py` | 一次流式调用，输出可见计划说明和 `<PLAN_JSON>` 初步大纲 |
 | `generate_subject_name` | 生成学科名 | `nodes/generate_subject_name.py` | 在与大纲合成并行的展示分支中，基于 brief、intent 和资料线索生成标题与图标 |
 | `normalize_and_persist_plan` | 保存方案 | `nodes/normalize_and_persist_plan.py` | 规范化 plan，保存 Planner 对话 session 和 assistant message |
 
@@ -146,9 +146,9 @@ flowchart TD
 
 | 顺序 | 步骤 | 模型 | 产物 |
 | --- | --- | --- | --- |
-| 1 | `stream_planner_brief` | `primary` | 用户可见的思考过程 |
-| 2 | `extract_plan_intent` | `primary` | `PlanIntent` |
-| 3 | `stream_and_parse_plan_draft` | `reason` | 可见计划说明 + 极简 JSON 初步大纲 |
+| 1 | `stream_planner_brief` | `light` | 用户可见的思考过程 |
+| 2 | `extract_plan_intent` | `light` | `PlanIntent` |
+| 3 | `stream_and_parse_plan_draft` | `light` | 可见计划说明 + 极简 JSON 初步大纲 |
 | 4 | `generate_subject_name` | `light` | 基于可见判断、规划抓手和资料线索生成学科名 |
 | 5 | `select_subject_icon` | `light` | 为生成的学科名选择图标候选并随机收口 |
 
