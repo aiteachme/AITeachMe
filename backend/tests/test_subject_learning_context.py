@@ -79,11 +79,12 @@ def test_subject_learning_context_published_snapshot_roundtrip():
 
         assert updated is not None
         subject = session.exec(select(Subject).where(Subject.slug == "math")).one()
-        assert "长期学习意图：Prepare for final exam weak points." in subject.learning_intent_text
+        assert "学习目标：Prepare for final exam weak points." in subject.learning_intent_text
         assert "本次构建请求：Focus on exam-ready derivatives." in subject.learning_intent_text
-        assert "\n- 文档风格：" in subject.learning_intent_text
+        assert "讲义偏好：" not in subject.learning_intent_text
         assert subject.document_summary_json["version_no"] == 3
         assert subject.document_summary_json["subject_user_intent"] == "Prepare for final exam weak points."
+        assert subject.document_summary_json["learning_goal"] == "Prepare for final exam weak points."
         assert subject.document_summary_json["confirmed_plan"]["selected_file_ids"] == [7]
         assert subject.document_summary_json["chapters"][0]["source_file_ids"] == [7]
         assert subject.document_summary_json["chapters"][0]["source_raw_file_ids"] == [7]
