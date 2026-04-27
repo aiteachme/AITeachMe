@@ -13,7 +13,7 @@
 
 本链路不会创建 `curriculum / teaching_unit / taxonomy_anchor / theme_tree_node / unit_dependency` 等未来大表。节点和关系的可解释来源先由轻量溯源表承接。
 
-KG-doc-sync 抽取 ontology 位于 `backend/app/workflows/digest/kg_doc_sync/lib/ontology.py`，集中维护抽取 prompt 展示的 KnowledgeUnit 类型与关系类型说明。持久化层允许的类型集合、归一化和关系方向守卫仍位于 `backend/app/models/knowledge_taxonomy.py`，避免模型层反向依赖 workflow；抽取 prompt 从 workflow ontology 自动生成类型清单，测试负责确保两者与枚举保持一致。
+KG-doc-sync 抽取 ontology 位于 `backend/app/workflows/digest/kg_doc_sync/lib/ontology.py`，集中维护抽取 prompt 展示的 KnowledgeUnit 类型、关系类型、关系端点偏好和跨章节默认边推断。持久化层允许的类型集合、归一化和最终关系方向守卫仍位于 `backend/app/models/knowledge_taxonomy.py`，避免模型层反向依赖 workflow；抽取 prompt 与 extractor 的候选解析规则都从 workflow ontology 读取，测试负责确保两者与枚举保持一致。
 
 LangGraph 节点的 `node_description`、输入输出字段和 metadata 统一通过
 `digest.common.node_tracing` 生成；内部阶段不再额外创建顶层 LangSmith trace，

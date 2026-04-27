@@ -1,12 +1,14 @@
 """Prompts for extracting graph candidates from one knowledge-doc section."""
 
 from app.workflows.digest.kg_doc_sync.lib.ontology import (
+    format_ontology_relation_direction_bullets,
     format_ontology_relation_type_bullets,
     format_ontology_unit_type_bullets,
 )
 
 _ALLOWED_NODE_TYPE_BULLETS = format_ontology_unit_type_bullets()
 _ALLOWED_EDGE_TYPE_BULLETS = format_ontology_relation_type_bullets()
+_ALLOWED_EDGE_DIRECTION_BULLETS = format_ontology_relation_direction_bullets()
 
 SYSTEM_PROMPT_KNOWLEDGE_EXTRACT = f"""
 You extract a structured knowledge graph from one study-material chunk.
@@ -18,6 +20,9 @@ Return only nodes and edges that are directly supported by the chunk.
 
 ## Allowed edge types
 {_ALLOWED_EDGE_TYPE_BULLETS}
+
+## Edge direction hints
+{_ALLOWED_EDGE_DIRECTION_BULLETS}
 
 ## Extraction rules
 1. Prefer academically reusable knowledge units, not temporary wording.

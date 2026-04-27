@@ -1,8 +1,11 @@
 from app.models.enums import KnowledgeRelationType, KnowledgeUnitType
 from app.workflows.digest.kg_doc_sync.lib.ontology import (
     LEARNING_GRAPH_ONTOLOGY,
+    default_relation_for_unit_type,
+    format_ontology_relation_direction_bullets,
     format_ontology_relation_type_bullets,
     format_ontology_unit_type_bullets,
+    relation_endpoint_type_preferences,
 )
 from app.models.knowledge_taxonomy import (
     PARENT_KNOWLEDGE_UNIT_TYPES,
@@ -31,9 +34,11 @@ def test_learning_graph_ontology_matches_enum_values():
 def test_section_graph_prompt_uses_canonical_ontology_bullets():
     unit_bullets = format_ontology_unit_type_bullets()
     relation_bullets = format_ontology_relation_type_bullets()
+    direction_bullets = format_ontology_relation_direction_bullets()
 
     assert unit_bullets in SYSTEM_PROMPT_KNOWLEDGE_EXTRACT
     assert relation_bullets in SYSTEM_PROMPT_KNOWLEDGE_EXTRACT
+    assert direction_bullets in SYSTEM_PROMPT_KNOWLEDGE_EXTRACT
     for spec in LEARNING_GRAPH_ONTOLOGY.unit_types:
         assert f"`{spec.value}`" in SYSTEM_PROMPT_KNOWLEDGE_EXTRACT
     for spec in LEARNING_GRAPH_ONTOLOGY.relation_types:
@@ -54,3 +59,14 @@ def test_relation_direction_rules_match_kg_doc_sync_ontology():
             source_type="concept",
             target_type="method",
         )
+        for source_type in relation_endpoint_type_preferences(spec.value, "source"):
+            assert validate_relation_direction(edge_type=spec.value, source_type=source_type, target_type="concept")
+
+
+def test_ontology_supplies_extraction_relation_preferences():
+    assert relation_endpoint_type_preferences("example_of", "source") == ("example", "exercise")
+    assert "concept" in relation_endpoint_type_preferences("derivation", "target")
+    assert default_relation_for_unit_type("example") == "example_of"
+    assert default_relation_for_unit_type("exercise") == "example_of"
+    assert default_relation_for_unit_type("remark") == "application"
+    assert default_relation_for_unit_type("concept") == "derivation"

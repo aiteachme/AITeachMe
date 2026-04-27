@@ -18,6 +18,7 @@ from app.workflows.digest.kg_doc_sync.lib.model_policy import (
     KGDocSyncModelStep,
     kg_doc_sync_completion_kwargs_with_metadata,
 )
+from app.workflows.digest.kg_doc_sync.lib.ontology import relation_endpoint_type_preferences
 from app.workflows.digest.kg_doc_sync.lib.candidate_identity import build_candidate_stable_id
 from app.workflows.digest.kg_doc_sync.lib.question_blocks import parse_question_blocks
 from app.models.knowledge_taxonomy import (
@@ -374,25 +375,6 @@ def _assign_candidate_ids_and_edge_types(result: ChunkExtractionResult) -> Chunk
         if normalized:
             candidates_by_norm_name.setdefault(normalized, []).append(node)
 
-    expected_types_by_edge = {
-        "application": {
-            "source": ("concept", "method", "definition", "formula", "theorem", "exercise", "remark"),
-            "target": ("concept",),
-        },
-        "prerequisite": {
-            "source": ("concept", "method", "definition", "theorem", "formula", "exercise", "proof_step", "remark"),
-            "target": ("concept", "method", "definition", "theorem", "formula", "exercise", "proof_step", "remark"),
-        },
-        "derivation": {
-            "source": ("definition", "theorem", "formula", "proof_step", "concept", "method"),
-            "target": ("concept", "method", "theorem", "formula", "proof_step"),
-        },
-        "example_of": {
-            "source": ("example", "exercise"),
-            "target": ("concept", "method", "theorem", "formula"),
-        },
-    }
-
     def _select_local_candidate(
         name: str,
         *,
@@ -404,7 +386,7 @@ def _assign_candidate_ids_and_edge_types(result: ChunkExtractionResult) -> Chunk
         matches = raw_matches or norm_matches
         if not matches:
             return None
-        expected_types = expected_types_by_edge.get(edge_type, {}).get(endpoint_side, ())
+        expected_types = relation_endpoint_type_preferences(edge_type, endpoint_side)
         for expected_type in expected_types:
             for node in matches:
                 if node.knowledge_unit_type == expected_type:

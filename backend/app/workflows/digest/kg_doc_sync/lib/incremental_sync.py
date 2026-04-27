@@ -55,6 +55,7 @@ from app.workflows.digest.kg_doc_sync.lib.models import (
     SectionExtractionContext,
     SectionExtractionPayload,
 )
+from app.workflows.digest.kg_doc_sync.lib.ontology import default_relation_for_unit_type
 from app.workflows.digest.kg_doc_sync.lib.sync_runs import (
     create_sync_run,
     finish_sync_run,
@@ -1019,15 +1020,6 @@ def _build_structural_heading_edges(
     return pending_edges
 
 
-def _hint_edge_type_for_unit(unit_type: str) -> str:
-    normalized = normalize_knowledge_unit_type(unit_type)
-    if normalized in {"example", "exercise"}:
-        return "example_of"
-    if normalized in {"remark"}:
-        return "application"
-    return "derivation"
-
-
 def _infer_relation_from_section_text(*, body_markdown: str, primary_type: str) -> str | None:
     text = normalize_name(body_markdown or "")
     if not text:
@@ -1112,7 +1104,7 @@ def _build_cross_section_semantic_edges(
             _push_edge(
                 source_name,
                 str(target_context.get("name") or hint_name),
-                _hint_edge_type_for_unit(source_type),
+                default_relation_for_unit_type(source_type),
                 f"{source_name} references {hint_name} across sections via {hint_field}.",
                 source_context=context,
             )

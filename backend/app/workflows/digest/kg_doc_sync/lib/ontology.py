@@ -15,10 +15,13 @@ from app.models.knowledge_taxonomy import (
     PARENT_KNOWLEDGE_UNIT_TYPES,
     PRIMARY_KNOWLEDGE_UNIT_TYPES,
     SECONDARY_KNOWLEDGE_UNIT_TYPES,
+    normalize_knowledge_unit_type,
+    normalize_relation_type,
     validate_relation_direction,
 )
 
 KnowledgeUnitRole = Literal["primary", "secondary"]
+RelationEndpoint = Literal["source", "target"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -47,6 +50,8 @@ class KnowledgeRelationTypeSpec:
 
     value: str
     description: str
+    source_type_preferences: tuple[str, ...] = ()
+    target_type_preferences: tuple[str, ...] = ()
 
     def allows(self, *, source_type: str, target_type: str) -> bool:
         return validate_relation_direction(
@@ -54,6 +59,9 @@ class KnowledgeRelationTypeSpec:
             source_type=source_type,
             target_type=target_type,
         )
+
+    def endpoint_preferences(self, endpoint: RelationEndpoint) -> tuple[str, ...]:
+        return self.source_type_preferences if endpoint == "source" else self.target_type_preferences
 
 
 @dataclass(frozen=True, slots=True)
@@ -84,6 +92,36 @@ class LearningGraphOntology:
     @property
     def parent_unit_type_values(self) -> tuple[str, ...]:
         return tuple(spec.value for spec in self.unit_types if spec.can_be_parent)
+
+    def relation_type_spec(self, value: str) -> KnowledgeRelationTypeSpec:
+        normalized = normalize_relation_type(value)
+        for spec in self.relation_types:
+            if spec.value == normalized:
+                return spec
+        raise ValueError(f"unknown relation type in ontology: {value}")
+
+
+_RELATION_ENDPOINT_PRIMARY_TYPES = (
+    KnowledgeUnitType.CONCEPT.value,
+    KnowledgeUnitType.METHOD.value,
+    KnowledgeUnitType.DEFINITION.value,
+    KnowledgeUnitType.THEOREM.value,
+    KnowledgeUnitType.FORMULA.value,
+    KnowledgeUnitType.EXERCISE.value,
+    KnowledgeUnitType.PROOF_STEP.value,
+    KnowledgeUnitType.REMARK.value,
+)
+_RELATION_PARENT_TARGET_TYPES = (
+    KnowledgeUnitType.CONCEPT.value,
+    KnowledgeUnitType.METHOD.value,
+    KnowledgeUnitType.THEOREM.value,
+    KnowledgeUnitType.FORMULA.value,
+    KnowledgeUnitType.PROOF_STEP.value,
+)
+_RELATION_EXAMPLE_SOURCE_TYPES = (
+    KnowledgeUnitType.EXAMPLE.value,
+    KnowledgeUnitType.EXERCISE.value,
+)
 
 
 LEARNING_GRAPH_ONTOLOGY = LearningGraphOntology(
@@ -131,18 +169,46 @@ LEARNING_GRAPH_ONTOLOGY = LearningGraphOntology(
         KnowledgeRelationTypeSpec(
             KnowledgeRelationType.PREREQUISITE.value,
             "source is needed before target",
+            source_type_preferences=_RELATION_ENDPOINT_PRIMARY_TYPES,
+            target_type_preferences=_RELATION_ENDPOINT_PRIMARY_TYPES,
         ),
         KnowledgeRelationTypeSpec(
             KnowledgeRelationType.DERIVATION.value,
             "source defines, derives, supports, or belongs under target",
+            source_type_preferences=(
+                KnowledgeUnitType.DEFINITION.value,
+                KnowledgeUnitType.THEOREM.value,
+                KnowledgeUnitType.FORMULA.value,
+                KnowledgeUnitType.PROOF_STEP.value,
+                KnowledgeUnitType.CONCEPT.value,
+                KnowledgeUnitType.METHOD.value,
+            ),
+            target_type_preferences=_RELATION_PARENT_TARGET_TYPES,
         ),
         KnowledgeRelationTypeSpec(
             KnowledgeRelationType.APPLICATION.value,
             "source is used in target",
+            source_type_preferences=(
+                KnowledgeUnitType.CONCEPT.value,
+                KnowledgeUnitType.METHOD.value,
+                KnowledgeUnitType.DEFINITION.value,
+                KnowledgeUnitType.FORMULA.value,
+                KnowledgeUnitType.THEOREM.value,
+                KnowledgeUnitType.EXERCISE.value,
+                KnowledgeUnitType.REMARK.value,
+            ),
+            target_type_preferences=(KnowledgeUnitType.CONCEPT.value,),
         ),
         KnowledgeRelationTypeSpec(
             KnowledgeRelationType.EXAMPLE_OF.value,
             "source is an example or exercise of target",
+            source_type_preferences=_RELATION_EXAMPLE_SOURCE_TYPES,
+            target_type_preferences=(
+                KnowledgeUnitType.CONCEPT.value,
+                KnowledgeUnitType.METHOD.value,
+                KnowledgeUnitType.THEOREM.value,
+                KnowledgeUnitType.FORMULA.value,
+            ),
         ),
         KnowledgeRelationTypeSpec(
             KnowledgeRelationType.SIMILAR.value,
@@ -163,11 +229,39 @@ def format_ontology_relation_type_bullets() -> str:
     return "\n".join(f"- `{spec.value}`: {spec.description}" for spec in LEARNING_GRAPH_ONTOLOGY.relation_types)
 
 
+def format_ontology_relation_direction_bullets() -> str:
+    lines: list[str] = []
+    for spec in LEARNING_GRAPH_ONTOLOGY.relation_types:
+        source_types = ", ".join(f"`{value}`" for value in spec.source_type_preferences) or "any valid non-blocked type"
+        target_types = ", ".join(f"`{value}`" for value in spec.target_type_preferences) or "any valid non-blocked type"
+        lines.append(f"- `{spec.value}`: source prefers {source_types}; target prefers {target_types}.")
+    return "\n".join(lines)
+
+
+def relation_endpoint_type_preferences(
+    edge_type: str,
+    endpoint: RelationEndpoint,
+) -> tuple[str, ...]:
+    return LEARNING_GRAPH_ONTOLOGY.relation_type_spec(edge_type).endpoint_preferences(endpoint)
+
+
+def default_relation_for_unit_type(unit_type: str) -> str:
+    normalized = normalize_knowledge_unit_type(unit_type)
+    if normalized in _RELATION_EXAMPLE_SOURCE_TYPES:
+        return KnowledgeRelationType.EXAMPLE_OF.value
+    if normalized == KnowledgeUnitType.REMARK.value:
+        return KnowledgeRelationType.APPLICATION.value
+    return KnowledgeRelationType.DERIVATION.value
+
+
 __all__ = [
     "LEARNING_GRAPH_ONTOLOGY",
     "KnowledgeRelationTypeSpec",
     "KnowledgeUnitTypeSpec",
     "LearningGraphOntology",
+    "default_relation_for_unit_type",
+    "format_ontology_relation_direction_bullets",
     "format_ontology_relation_type_bullets",
     "format_ontology_unit_type_bullets",
+    "relation_endpoint_type_preferences",
 ]
