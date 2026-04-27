@@ -394,25 +394,6 @@ def _build_graph_metrics(*, build_status) -> KnowledgeGraphBuildMetricsResponse:
     return KnowledgeGraphBuildMetricsResponse.model_validate(dict(build_status.metrics or {}))
 
 
-def _default_doc_sync_metrics() -> dict[str, int | str]:
-    return {
-        "knowledge_doc_source": "not_synced",
-        "knowledge_doc_chapter_count": 0,
-        "doc_sync_unit_changes": 0,
-        "doc_sync_edge_changes": 0,
-        "doc_sync_elapsed_ms": 0,
-        "elapsed_ms": 0,
-        "revision_no": 0,
-        "last_synced_doc_version_no": 0,
-        "source_ref_count": 0,
-        "backbone_unit_count": 0,
-        "backbone_edge_count": 0,
-        "stable_anchor_count": 0,
-        "deprecated_unit_count": 0,
-        "deprecated_edge_count": 0,
-    }
-
-
 def _resolve_runtime_build_status(
     *,
     subject: str,
@@ -421,7 +402,7 @@ def _resolve_runtime_build_status(
 ) -> KnowledgeBuildStatusResponse | None:
     build_lock = read_knowledge_build_lock(subject, session=session)
     runtime = read_knowledge_build_runtime(subject, subject_scope=subject_scope)
-    effective = build_aggregate_knowledge_build_status(runtime)
+    effective = runtime.docgen_runtime if runtime is not None else None
     if effective is None and build_lock is not None:
         effective = update_knowledge_build_lane_status(
             subject,
@@ -434,9 +415,8 @@ def _resolve_runtime_build_status(
             source_file_ids=build_lock.source_file_ids,
             prompt=build_lock.prompt,
         )
-        effective = build_aggregate_knowledge_build_status(
-            read_knowledge_build_runtime(subject, subject_scope=subject_scope)
-        )
+        runtime = read_knowledge_build_runtime(subject, subject_scope=subject_scope)
+        effective = runtime.docgen_runtime if runtime is not None else None
     if effective is None:
         return None
     return KnowledgeBuildStatusResponse(
@@ -717,20 +697,19 @@ async def run_docgen_background(
     planner_session_id: str | None = None,
     confirmed_plan_id: str | None = None,
     user_id: str | None = None,
+    background_task_registry: Any | None = None,
 ) -> None:
     """后台执行 DocGen 构建生命周期。
 
     负责把 API 接受的构建请求转成一次真实 workflow run：加载 confirmed
-    plan、可选并发触发 KG ingest、运行 `run_docgen_workflow`、同步文档到
-    KG、更新状态并释放构建锁。异常处理也集中在这里，避免 API 层持有
+    plan、运行 `run_docgen_workflow`、持久化知识文档、
+    更新状态、按设置派发独立图谱同步任务并释放构建锁。异常处理也集中在这里，避免 API 层持有
     长任务细节。
     """
 
     from app.workflows.digest import run_docgen_workflow
     from app.shared.infra.knowledge.build_store import release_knowledge_build_lock
-    from app.workflows.digest.kg_doc_sync.builds import (
-        run_graph_docs_sync_after_doc_build,
-    )
+    from app.workflows.digest.kg_doc_sync.builds import run_graph_docs_sync_auto_build
     build_session_id = _new_build_session_id()
     confirmed_plan_payload = None
     resolved_digest_mode = None
@@ -880,54 +859,64 @@ async def run_docgen_background(
             digest_mode=resolved_digest_mode,
             error_message=None,
             draft_available=False,
-            current_stage_description=(
-                "知识文档已发布完成，正在同步图谱。"
-                if sync_graph_after_docgen
-                else "知识文档已发布完成。"
-            ),
+            current_stage_description="知识文档已发布完成。",
         )
         docgen_published = True
-        doc_sync_metrics = _default_doc_sync_metrics()
         if sync_graph_after_docgen:
-            try:
-                doc_sync_metrics = await run_graph_docs_sync_after_doc_build(
+            graph_coro = run_graph_docs_sync_auto_build(
+                subject=subject,
+                requested_at=requested_at,
+                build_group_id=build_group_id,
+                build_session_id=build_session_id,
+                file_ids=file_ids,
+                prompt=prompt,
+                llm_snapshot=graph_llm_snapshot,
+                docgen_state=final_docgen_state,
+                subject_scope=subject_scope,
+            )
+            if background_task_registry is not None:
+                background_task_registry.spawn(
+                    graph_coro,
+                    kind="knowledge.build.graph",
                     subject=subject,
-                    requested_at=requested_at,
-                    build_group_id=build_group_id,
-                    build_session_id=build_session_id,
-                    file_ids=file_ids,
-                    prompt=prompt,
-                    llm_snapshot=graph_llm_snapshot,
-                    docgen_state=final_docgen_state,
-                    subject_scope=subject_scope,
+                    name=f"knowledge.build.graph:auto:{subject}",
                 )
-                _write_graph_status(
-                    subject,
-                    requested_at=requested_at,
-                    build_group_id=build_group_id,
-                    subject_scope=subject_scope,
-                    status="completed",
-                    stage="completed",
-                    progress_pct=100,
-                    processed_chunks=0,
-                    current_stage_description="知识图谱已同步完成。",
-                    metrics={"processed_chunks": 0, **doc_sync_metrics},
-                )
-            except Exception as exc:
-                graph_error_message = sanitize_knowledge_build_error_message(str(exc), build_kind="graph")
-                _write_graph_status(
-                    subject,
-                    requested_at=requested_at,
-                    build_group_id=build_group_id,
-                    subject_scope=subject_scope,
-                    status="failed",
-                    stage="failed",
-                    error_message=str(exc) or "build_crashed",
-                    processed_chunks=0,
-                    current_stage_description=graph_error_message,
-                    metrics={"processed_chunks": 0, **doc_sync_metrics},
-                )
-                logger.warning("knowledge_build_graph_followup_failed", subject=subject, error=str(exc))
+            else:
+                graph_task = asyncio.create_task(graph_coro, name=f"knowledge.build.graph:auto:{subject}")
+
+                def _log_graph_task_result(task: asyncio.Task[Any]) -> None:
+                    if task.cancelled():
+                        return
+                    try:
+                        exc = task.exception()
+                    except asyncio.CancelledError:
+                        return
+                    if exc is not None:
+                        logger.warning(
+                            "knowledge_graph_auto_task_failed",
+                            subject=subject,
+                            error=str(exc),
+                        )
+
+                graph_task.add_done_callback(_log_graph_task_result)
+            logger.info(
+                "knowledge_graph_auto_build_spawned_after_docgen",
+                subject=subject,
+                build_group_id=build_group_id,
+                registered=background_task_registry is not None,
+            )
+        else:
+            _write_graph_status(
+                subject,
+                requested_at=requested_at,
+                build_group_id=build_group_id,
+                subject_scope=subject_scope,
+                status="skipped",
+                stage="disabled",
+                source_file_ids=file_ids,
+                prompt=prompt,
+                current_stage_description="已关闭文档构建后自动图谱同步，可在知识图谱面板手动构建。",
+            )
         _write_docgen_status(
             subject,
             requested_at=requested_at,
@@ -950,7 +939,7 @@ async def run_docgen_background(
             status="completed",
         )
     except asyncio.CancelledError:
-        if sync_graph_after_docgen:
+        if sync_graph_after_docgen and not docgen_published:
             _write_graph_status(
                 subject,
                 requested_at=requested_at,
@@ -985,7 +974,7 @@ async def run_docgen_background(
         )
         raise
     except Exception:
-        if sync_graph_after_docgen:
+        if sync_graph_after_docgen and not docgen_published:
             _write_graph_status(
                 subject,
                 requested_at=requested_at,

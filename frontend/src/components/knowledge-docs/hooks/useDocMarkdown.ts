@@ -2,7 +2,7 @@
 /*  useDocMarkdown - Data fetching & derived state for knowledge docs  */
 /* ------------------------------------------------------------------ */
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useLocation, useParams } from "react-router-dom";
 
@@ -87,6 +87,7 @@ export function useDocMarkdown(): DocMarkdownState {
   const requestedAtMs = useMemo(() => parseIsoTimestamp(requestedAt), [requestedAt]);
 
   const [docViewMode, setDocViewMode] = useState<DocViewMode>("live");
+  const lastTerminalDocRefreshKeyRef = useRef<string | null>(null);
 
   const docMarkdownQuery = useQuery<DocGenGetResponse>({
     queryKey: ["docgen-content", subjectId, requestedAt],
@@ -101,6 +102,26 @@ export function useDocMarkdown(): DocMarkdownState {
       return response.data;
     },
     enabled: Boolean(subjectId),
+    refetchInterval: (query) => {
+      const data = query.state.data;
+      const build = data?.build;
+      const status = (build?.status ?? "").trim();
+      const liveMarkdown = cleanKnowledgeMarkdownForDisplay(data?.markdown ?? "");
+      const hasLiveDocMarkdown = Boolean(data?.exists && liveMarkdown.trim().length > 0);
+      const targetRequestedAtMs = requestedAtMs ?? parseIsoTimestamp(build?.requested_at ?? null);
+      const updatedAtMs = parseIsoTimestamp(data?.updated_at ?? null);
+      const hasRequestedLiveDoc =
+        hasLiveDocMarkdown &&
+        (targetRequestedAtMs === null || (updatedAtMs !== null && updatedAtMs >= targetRequestedAtMs));
+
+      if (status && ACTIVE_DOC_BUILD_STATUSES.has(status)) return 2500;
+      if (status === "completed" || status === "partial_failed" || status === "skipped") {
+        return hasRequestedLiveDoc ? false : 1200;
+      }
+      if (status === "failed" || status === "cancelled") return false;
+      if (!status || status === "idle") return false;
+      return hasRequestedLiveDoc ? false : 2500;
+    },
   });
 
   const runtimeQuery = useQuery({
@@ -172,6 +193,32 @@ export function useDocMarkdown(): DocMarkdownState {
       buildStatus === "skipped" ||
       (targetRequestedAtMs !== null && !hasLiveDocMarkdown)
     );
+
+  useEffect(() => {
+    if (!subjectId || isRequestedBuildReady || docMarkdownQuery.isFetching) return;
+    const shouldRefreshDoc =
+      buildStatus === "completed" ||
+      buildStatus === "partial_failed" ||
+      buildStatus === "skipped";
+    if (!shouldRefreshDoc) return;
+    const refreshKey = [
+      subjectId,
+      requestedAt ?? "",
+      buildStatus ?? "",
+      buildMeta?.requested_at ?? "",
+    ].join(":");
+    if (lastTerminalDocRefreshKeyRef.current === refreshKey) return;
+    lastTerminalDocRefreshKeyRef.current = refreshKey;
+    void docMarkdownQuery.refetch();
+  }, [
+    buildMeta?.requested_at,
+    buildStatus,
+    docMarkdownQuery.isFetching,
+    docMarkdownQuery.refetch,
+    isRequestedBuildReady,
+    requestedAt,
+    subjectId,
+  ]);
 
   const effectiveDocViewMode: DocViewMode =
     !hasLiveDocMarkdown && hasDraftDocMarkdown

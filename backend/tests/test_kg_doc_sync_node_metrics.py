@@ -66,6 +66,15 @@ def test_extract_node_missing_run_context_records_parallelism_metrics():
     assert metrics["chapter_max_retries"] == parallelism["chapter_max_retries"]
 
 
+def test_graph_extraction_parallelism_uses_ten_worker_pool_and_larger_sections():
+    parallelism = graph_extraction_parallelism()
+
+    assert parallelism["chapter_concurrency_limit"] == 10
+    assert parallelism["max_parallel_extractions"] == 10
+    assert parallelism["split_min_chapter_chars"] == 9000
+    assert parallelism["section_llm_max_content_chars"] == 9000
+
+
 def test_extract_route_fails_when_payload_is_missing():
     state = create_docs_sync_initial_state(
         subject="math",

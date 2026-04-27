@@ -762,11 +762,11 @@ export function BuildPlanPage() {
     enabled: Boolean(subjectId),
     retry: false,
     refetchInterval: (query) => {
-      const aggregate = query.state.data?.aggregate;
-      const status = (aggregate?.status ?? "").trim();
+      const docgen = query.state.data?.docgen ?? query.state.data?.aggregate;
+      const status = (docgen?.status ?? "").trim();
       const liveMarkdown = knowledgeDocState.data?.markdown ?? "";
       const hasLiveDocMarkdown = Boolean(knowledgeDocState.data?.exists && liveMarkdown.trim().length > 0);
-      const targetRequestedAtMs = requestedAtMs ?? parseIsoTimestamp(aggregate?.requested_at ?? null);
+      const targetRequestedAtMs = requestedAtMs ?? parseIsoTimestamp(docgen?.requested_at ?? null);
       const updatedAtMs = parseIsoTimestamp(knowledgeDocState.data?.updated_at ?? null);
       const hasRequestedLiveDoc =
         hasLiveDocMarkdown &&
@@ -797,7 +797,7 @@ export function BuildPlanPage() {
     () => (readyFileUids.length > 0 ? readyFileUids : plannerFileUids),
     [plannerFileUids, readyFileUids],
   );
-  const buildMeta = buildRuntimeQuery.data?.aggregate ?? knowledgeDocState.data?.build ?? null;
+  const buildMeta = buildRuntimeQuery.data?.docgen ?? knowledgeDocState.data?.build ?? null;
   const buildPreview = buildRuntimeQuery.data?.docgen_preview ?? knowledgeDocState.data?.build_preview ?? null;
   const buildStatus = buildMeta?.status ?? null;
   const liveMarkdown = knowledgeDocState.data?.markdown ?? "";

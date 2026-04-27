@@ -59,6 +59,7 @@ image_generation -> settings.models.image_generation（默认未配置）
 | 阶段 / 子步骤 | 当前代码位置 | 调用类型 | call_purpose | 逻辑模型槽位 | 当前默认模型 | 这一步做什么 |
 | --- | --- | --- | --- | --- | --- | --- |
 | `knowledge_graph_build` | `api/knowledge_docs.py` | 无 LLM | 无 | 无 | 无 | 手动图谱重建入口；校验已有发布文档，写 graph lane accepted runtime，并注册可取消的后台任务 |
+| `run_graph_docs_sync_auto_build` | `kg_doc_sync/builds.py` | 无 LLM | 无 | 无 | 无 | DocGen 发布完成后独立注册的自动图谱后台任务，不阻塞知识文档展示 |
 | `run_graph_docs_sync_after_doc_build` | `kg_doc_sync/builds.py` | 无 LLM | 无 | 无 | 无 | 读取发布文档、写 graph lane runtime，并进入 `digest.kg_doc_sync` LangGraph 链路 |
 | `load_knowledge_doc_sync_input` | `kg_doc_sync/inputs.py` | 无 LLM | 无 | 无 | 无 | 读取 `KnowledgeDoc` rows、DocGen manifest、文档摘要和章节来源映射 |
 | `prepare` | `kg_doc_sync/nodes/prepare_node.py` | 无 LLM | 无 | 无 | 无 | 校验 `subject` 和合并 Markdown |
@@ -77,7 +78,8 @@ image_generation -> settings.models.image_generation（默认未配置）
 
 ```text
 run_docgen_background / knowledge_graph_build
-  DocGen 发布完成后，如果 sync_after_docgen 打开，则进入 graph lane。
+  DocGen 发布完成后，docgen lane 立即 completed，页面可直接读取正式 KnowledgeDoc。
+  如果 sync_after_docgen 打开，再注册独立 graph 后台任务进入 graph lane。
   或用户在知识图谱面板点击“构建图谱”，从当前已发布 KnowledgeDoc 手动重建。
   |
   v
@@ -119,7 +121,7 @@ _extract_chapter_with_retries x N
     ├─ chapter 1 extraction
     ├─ chapter 2 / subsection 2.1 extraction
     └─ chapter N / subsection N.x extraction
-  默认最多 20 路并发，每个抽取任务最多 2 次尝试；单任务 LLM 输入会保留开头和结尾并压到固定字符预算内。
+  默认最多 10 路并发，每个抽取任务最多 2 次尝试；单任务 LLM 输入会保留开头和结尾并压到固定字符预算内。
   通过 contextvars 继承外层运行上下文，让 LLM 子调用挂在同一条 trace 下。
   |
   v
@@ -196,6 +198,13 @@ knowledge_graph_build
     - 写入 graph lane `manual_graph_requested` runtime，记录 source_file_ids、prompt、doc_version 和输入来源。
     - 通过后台任务注册 `knowledge.build.graph`，因此 `/knowledge/build/cancel` 可以停止本轮手动图谱构建。
     - 后台任务最终进入 `run_graph_docs_sync_after_doc_build`，LangSmith 中看到的仍是同一条 `digest.kg_doc_sync` 链路。
+
+run_graph_docs_sync_auto_build
+  输入：
+    - DocGen 刚发布完成的 subject、build_group_id、build_session_id、source file ids、prompt、llm_snapshot 和 final docgen_state。
+  作用：
+    - 由 `run_docgen_background` 在 docgen lane 已经 completed 后独立注册，不阻塞知识文档展示和 docgen 构建锁释放。
+    - 最终仍进入 `run_graph_docs_sync_after_doc_build`，与手动重建共用同一条 kg_doc_sync 主链路。
 
 run_graph_docs_sync_after_doc_build
   输入：
@@ -372,9 +381,9 @@ _build_extraction_tasks
   输出：
     - 章节/子章节抽取任务
   规则：
-    - 章节正文长度达到 `_DOCS_SYNC_SPLIT_MIN_CHAPTER_CHARS = 2800` 且至少有 2 个可抽取子章节时，按子章节拆分。
+    - 章节正文长度达到 `_DOCS_SYNC_SPLIT_MIN_CHAPTER_CHARS = 9000` 且至少有 2 个可抽取子章节时，按子章节拆分。
     - 不满足拆分条件时，保持整章作为一个 LLM 抽取任务。
-    - 总并发由 `_DOCS_SYNC_MAX_PARALLEL_EXTRACTIONS = 20` 封顶。
+    - 总并发由 `_DOCS_SYNC_MAX_PARALLEL_EXTRACTIONS = 10` 封顶。
   设计目的：
     - 章节少但单章很长时，仍然可以并行抽取，减少长章卡住整条链路的情况。
     - 所有语义候选仍由结构化 LLM 抽取或 LLM 空结果修复产生，不引入本地关键词造点。
@@ -388,14 +397,14 @@ _extract_chapter_with_retries
   输出：
     - SectionExtractionPayload
   并发：
-    - `_DOCS_SYNC_CHAPTER_CONCURRENCY_LIMIT = 20`
-    - `_DOCS_SYNC_MAX_PARALLEL_EXTRACTIONS = 20`
+    - `_DOCS_SYNC_CHAPTER_CONCURRENCY_LIMIT = 10`
+    - `_DOCS_SYNC_MAX_PARALLEL_EXTRACTIONS = 10`
     - `_DOCS_SYNC_SPLIT_MIN_CHILD_SECTIONS = 2`
-    - `_DOCS_SYNC_SPLIT_MIN_CHAPTER_CHARS = 2800`
+    - `_DOCS_SYNC_SPLIT_MIN_CHAPTER_CHARS = 9000`
     - `_DOCS_SYNC_CHAPTER_MAX_RETRIES = 2`
     - `_DOCS_SYNC_CHAPTER_RETRY_DELAY_S = 0.4`
-    - `_DOCS_SYNC_SECTION_LLM_TIMEOUT_S = 25`，只作为单章断路保护，不作为提速手段。
-    - `_DOCS_SYNC_SECTION_LLM_MAX_CONTENT_CHARS = 5200`，主抽取仍走 LLM，但会限制单章输入窗口。
+    - `_DOCS_SYNC_SECTION_LLM_TIMEOUT_S = 40`，只作为单章断路保护，不作为提速手段。
+    - `_DOCS_SYNC_SECTION_LLM_MAX_CONTENT_CHARS = 9000`，主抽取仍走 LLM，但会限制单章输入窗口。
   SectionExtractionPayload 包含：
     - units：本章候选 MarkdownKnowledgeUnit。
     - pending_edges：尚未解析 endpoint anchor 的边。

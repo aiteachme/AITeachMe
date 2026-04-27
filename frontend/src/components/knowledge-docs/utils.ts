@@ -379,7 +379,7 @@ export function resolveDocBuildStatusText(
   const stage = build.stage?.trim();
   if (stage && DOC_BUILD_STAGE_TEXT[stage]) return DOC_BUILD_STAGE_TEXT[stage];
   if (hasDraftVersion && !hasLiveVersion) {
-    return "本轮草稿已生成，正在等待图谱处理完成";
+    return "本轮草稿已生成，正在发布正式文档";
   }
   if (hasLiveVersion) return "正在更新知识文档";
   return "正在生成知识文档";

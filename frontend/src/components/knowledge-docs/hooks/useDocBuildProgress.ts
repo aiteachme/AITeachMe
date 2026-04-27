@@ -48,17 +48,24 @@ export function useDocBuildProgress(opts: {
     buildStatus === "completed" && !hasLiveDocMarkdown
       ? Math.min(rawPersistedProgress, fallbackProgress)
       : rawPersistedProgress;
+  const progressCeiling = !isRequestedBuildReady && (isBuildActive || isWaitingForRequestedBuild)
+    ? buildStatus === "completed" || buildStatus === "partial_failed" || buildStatus === "skipped"
+      ? 97
+      : 99
+    : 100;
+  const visiblePersistedProgress = Math.min(persistedProgress, progressCeiling);
+  const visibleFallbackProgress = Math.min(fallbackProgress, progressCeiling);
 
   if (isRequestedBuildReady || (buildStatus === "completed" && hasLiveDocMarkdown)) {
     return { buildProgress: 100, buildStatusText };
   }
 
   if (isBuildFailure || (!isBuildActive && !isWaitingForRequestedBuild)) {
-    return { buildProgress: persistedProgress, buildStatusText };
+    return { buildProgress: visiblePersistedProgress, buildStatusText };
   }
 
   return {
-    buildProgress: Math.max(persistedProgress, fallbackProgress),
+    buildProgress: Math.max(visiblePersistedProgress, visibleFallbackProgress),
     buildStatusText,
   };
 }

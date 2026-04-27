@@ -239,6 +239,67 @@ async def run_graph_docs_sync_manual_build(
 ) -> None:
     """Run a user-triggered graph rebuild from the latest persisted knowledge docs."""
 
+    await _run_graph_docs_sync_build(
+        subject=subject,
+        requested_at=requested_at,
+        build_group_id=build_group_id,
+        build_session_id=build_session_id,
+        file_ids=file_ids,
+        prompt=prompt,
+        llm_snapshot=llm_snapshot,
+        docgen_state=None,
+        completed_description="知识图谱已同步完成。",
+        cancelled_description="图谱构建已停止。",
+        failure_log_event="knowledge_graph_manual_build_failed",
+        subject_scope=subject_scope,
+    )
+
+
+async def run_graph_docs_sync_auto_build(
+    *,
+    subject: str,
+    requested_at: datetime,
+    build_group_id: str,
+    build_session_id: str,
+    file_ids: list[int],
+    prompt: str | None,
+    llm_snapshot: LLMRuntimeSnapshot | None = None,
+    docgen_state: dict[str, object] | None = None,
+    subject_scope: SubjectStorageScope | None = None,
+) -> None:
+    """Run an automatic graph sync after DocGen without blocking the doc lane."""
+
+    await _run_graph_docs_sync_build(
+        subject=subject,
+        requested_at=requested_at,
+        build_group_id=build_group_id,
+        build_session_id=build_session_id,
+        file_ids=file_ids,
+        prompt=prompt,
+        llm_snapshot=llm_snapshot,
+        docgen_state=docgen_state,
+        completed_description="知识图谱已自动同步完成。",
+        cancelled_description="自动图谱同步已停止。",
+        failure_log_event="knowledge_graph_auto_build_failed",
+        subject_scope=subject_scope,
+    )
+
+
+async def _run_graph_docs_sync_build(
+    *,
+    subject: str,
+    requested_at: datetime,
+    build_group_id: str,
+    build_session_id: str,
+    file_ids: list[int],
+    prompt: str | None,
+    llm_snapshot: LLMRuntimeSnapshot | None,
+    docgen_state: dict[str, object] | None,
+    completed_description: str,
+    cancelled_description: str,
+    failure_log_event: str,
+    subject_scope: SubjectStorageScope | None = None,
+) -> None:
     doc_sync_metrics = _base_doc_sync_metrics(
         knowledge_doc_source="not_synced",
         chapter_count=0,
@@ -253,6 +314,7 @@ async def run_graph_docs_sync_manual_build(
             file_ids=file_ids,
             prompt=prompt,
             llm_snapshot=llm_snapshot,
+            docgen_state=docgen_state,
             subject_scope=subject_scope,
         )
         _write_graph_status(
@@ -264,7 +326,7 @@ async def run_graph_docs_sync_manual_build(
             stage="completed",
             progress_pct=100,
             processed_chunks=0,
-            current_stage_description="知识图谱已同步完成。",
+            current_stage_description=completed_description,
             metrics={"processed_chunks": 0, **doc_sync_metrics},
         )
     except asyncio.CancelledError:
@@ -277,7 +339,7 @@ async def run_graph_docs_sync_manual_build(
             stage="cancelled",
             error_message="build_cancelled",
             processed_chunks=0,
-            current_stage_description="图谱构建已停止。",
+            current_stage_description=cancelled_description,
             metrics={"processed_chunks": 0, **doc_sync_metrics},
         )
         raise
@@ -295,10 +357,11 @@ async def run_graph_docs_sync_manual_build(
             current_stage_description=graph_error_message,
             metrics={"processed_chunks": 0, **doc_sync_metrics},
         )
-        logger.warning("knowledge_graph_manual_build_failed", subject=subject, error=str(exc))
+        logger.warning(failure_log_event, subject=subject, error=str(exc))
 
 
 __all__ = [
+    "run_graph_docs_sync_auto_build",
     "run_graph_docs_sync_after_doc_build",
     "run_graph_docs_sync_manual_build",
 ]

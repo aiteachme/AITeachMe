@@ -485,6 +485,7 @@ async def knowledge_build(
             planner_session_id=data.planner_session_id,
             confirmed_plan_id=data.confirmed_plan_id,
             user_id=user.user_id,
+            background_task_registry=getattr(request.app.state, "background_task_registry", None),
         ),
         kind="knowledge.build.docs",
         subject=normalized,

@@ -1,5 +1,6 @@
 from app.workflows.digest.common.pedagogy import clean_generated_chapter_title
 from app.workflows.digest.docgen.lib.chapter_enhancement import _append_practice_section
+from app.workflows.digest.docgen.lib.writer import DocGenWriterRuntime
 from app.workflows.digest.docgen.mode_profiles import get_docgen_mode_profile
 from app.workflows.digest.docgen.prompts.generation import build_docgen_writer_messages
 from app.workflows.digest.docgen.lib.textbook_style import normalize_textbook_headings
@@ -63,6 +64,35 @@ def test_writer_prompt_marks_course_flow_as_non_required():
     assert "课程化节奏" in prompt
     assert "不是固定目录" in prompt
     assert "不要为了凑齐参考模块而硬塞小节" in prompt
+
+
+def test_writer_repair_section_avoids_rigid_requirement_template():
+    writer = object.__new__(DocGenWriterRuntime)
+    section = writer._build_repair_section(
+        title="行列式的计算",
+        objective="理解行列式的几何意义与计算判断。",
+        digest_mode="sprint",
+        missing_requirements=["几何意义（体积）", "可逆矩阵的判定"],
+        dense_context="行列式可以表示线性变换造成的面积或体积缩放。可逆矩阵对应非零行列式。",
+    )
+
+    assert "说明它的定义、适用条件和在题目中的常见问法" not in section
+    assert "题目中的哪个条件决定了可以使用这一结论" not in section
+    assert "复习时优先检查" in section
+
+
+def test_writer_coverage_accepts_requirement_token_overlap():
+    writer = object.__new__(DocGenWriterRuntime)
+    score, missing = writer._measure_coverage(
+        "本节说明行列式的几何意义：它可以作为体积缩放因子；可逆矩阵通常用非零行列式来判定。",
+        coverage_requirements=[
+            "行列式作为体积缩放因子的几何意义",
+            "可逆矩阵的判定",
+        ],
+    )
+
+    assert score == 1.0
+    assert missing == []
 
 
 def test_append_practice_section_uses_mode_specific_headings():

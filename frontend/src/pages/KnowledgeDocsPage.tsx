@@ -4910,6 +4910,7 @@ export function KnowledgeDocsPage() {
           sourceFiles={sourceFiles}
           sourceFilesFetching={sourceFilesFetching}
           buildStage={buildMeta?.stage}
+          isDocumentReady={isRequestedBuildReady}
           subjectId={subjectId}
         />
       </div>
@@ -5093,6 +5094,7 @@ export function KnowledgeDocsPage() {
                       sourceFiles={sourceFiles}
                       sourceFilesFetching={sourceFilesFetching}
                       buildStage={buildMeta?.stage}
+                      isDocumentReady={isRequestedBuildReady}
                       subjectId={subjectId}
                     />
                   ) : showDocBuildFailureState ? (
@@ -5397,4 +5399,3 @@ export function KnowledgeDocsPage() {
     </div>
   );
 }
-
