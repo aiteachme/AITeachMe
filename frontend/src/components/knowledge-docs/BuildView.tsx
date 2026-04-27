@@ -72,6 +72,8 @@ type BuildEventItem = {
   stage?: string | null;
   summary?: string | null;
   created_at?: string | null;
+  chapter_index?: number | null;
+  title?: string | null;
 };
 
 function shouldOpenDetailsByDefault(): boolean {
@@ -97,6 +99,25 @@ function formatBuildModeReason(reason?: string | null): string | null {
 
 function formatCompactCount(value: number): string {
   return Math.max(0, Math.round(value)).toLocaleString("zh-CN");
+}
+
+function buildEventIdentity(event: BuildEventItem): string {
+  return [
+    event.stage ?? "",
+    event.chapter_index ?? "",
+    event.title ?? "",
+    event.summary ?? "",
+  ].join("|").trim();
+}
+
+function uniqueBuildEvents<T extends BuildEventItem>(items: T[]): T[] {
+  const seen = new Set<string>();
+  return items.filter((event) => {
+    const key = buildEventIdentity(event);
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 interface LiveMarkdownRenderState {
@@ -217,19 +238,8 @@ export function BuildView({
   const mergedEvents = useMemo(() => {
     const sseEvents = sseSnapshot?.docgen_preview?.recent_events;
     const baseEvents = sseEvents && sseEvents.length > 0 ? sseEvents : buildPreview?.recent_events ?? [];
-    if (buildEvents.length === 0) return baseEvents;
-    const seen = new Set<string>();
-    return [...buildEvents, ...baseEvents].filter((event) => {
-      const key = [
-        event.created_at ?? "",
-        event.stage ?? "",
-        event.chapter_index ?? "",
-        event.summary ?? "",
-      ].join("|");
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    });
+    if (buildEvents.length === 0) return uniqueBuildEvents(baseEvents);
+    return uniqueBuildEvents([...buildEvents, ...baseEvents]);
   }, [sseSnapshot?.docgen_preview?.recent_events, buildPreview?.recent_events, buildEvents]);
 
   const mergedChapterPreviews = useMemo(() => {
@@ -275,7 +285,7 @@ export function BuildView({
 
   const selectedChapterEvents = useMemo(() => {
     if (selectedPreviewChapter === null) return [];
-    return events.filter((event) => event.chapter_index === selectedPreviewChapter).slice(0, 5);
+    return uniqueBuildEvents(events.filter((event) => event.chapter_index === selectedPreviewChapter)).slice(0, 5);
   }, [events, selectedPreviewChapter]);
 
   const recentEvents = events.slice(0, 8);
