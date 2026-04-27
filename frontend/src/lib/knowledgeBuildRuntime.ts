@@ -36,6 +36,24 @@ export interface KnowledgeBuildRuntimeResponse {
   graph_metrics?: KnowledgeGraphBuildMetricsResponse | null;
 }
 
+export interface KnowledgeGraphBuildData {
+  subject?: string;
+  status?: string;
+  requested_at?: string;
+  build_group_id?: string | null;
+  build_session_id?: string | null;
+  source_file_ids?: number[];
+  message?: string;
+}
+
+export interface KnowledgeBuildCancelData {
+  subject?: string;
+  status?: string;
+  cancelled_task_count?: number;
+  requested_at?: string | null;
+  message?: string;
+}
+
 export type KnowledgeBuildPreview = KnowledgeBuildPreviewResponse;
 export type KnowledgeBuildMetrics = KnowledgeBuildMetricsResponse;
 export type KnowledgeGraphBuildMetrics = KnowledgeGraphBuildMetricsResponse;
@@ -56,6 +74,24 @@ export async function fetchKnowledgeBuildRuntime(
   const response = await apiClient<ApiResponse<KnowledgeBuildRuntimeResponse>>({
     method: "POST",
     url: `/api/v1/subjects/${subjectId}/knowledge/build/runtime`,
+  });
+
+  return response.data ?? {};
+}
+
+export async function triggerKnowledgeGraphBuild(subjectId: string): Promise<KnowledgeGraphBuildData> {
+  const response = await apiClient<ApiResponse<KnowledgeGraphBuildData>>({
+    method: "POST",
+    url: `/api/v1/subjects/${subjectId}/knowledge/build/graph`,
+  });
+
+  return response.data ?? {};
+}
+
+export async function cancelKnowledgeBuild(subjectId: string): Promise<KnowledgeBuildCancelData> {
+  const response = await apiClient<ApiResponse<KnowledgeBuildCancelData>>({
+    method: "POST",
+    url: `/api/v1/subjects/${subjectId}/knowledge/build/cancel`,
   });
 
   return response.data ?? {};

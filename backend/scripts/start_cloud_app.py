@@ -1,9 +1,14 @@
 """Start the cloud app after ensuring the current database is ready.
 
 Render free instances do not support a separate pre-deploy command, so this
-script can be used as the service start command:
+script can be used as the service start command. From the repo root with a
+native runtime:
 
     cd backend && python scripts/start_cloud_app.py --host 0.0.0.0 --port $PORT
+
+Inside the Docker image:
+
+    python scripts/start_cloud_app.py --host 0.0.0.0 --port $PORT
 
 It bootstraps the database first, then launches uvicorn. On normal deployments
 the bootstrap step is idempotent.

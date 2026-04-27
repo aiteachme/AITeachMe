@@ -1,4 +1,6 @@
-﻿from app.workflows.digest.kg_doc_sync.inputs import (
+import app.workflows.digest.kg_doc_sync.inputs as kg_doc_sync_inputs
+from app.workflows.digest.kg_doc_sync.inputs import (
+    build_knowledge_doc_sync_input_from_docgen_state,
     extract_doc_chapter_metadatas,
     resolve_graph_input_paths,
 )
@@ -32,4 +34,50 @@ def test_resolve_graph_input_paths_names_actual_sync_sources():
     assert resolve_graph_input_paths(file_ids=[1], knowledge_doc_markdown="# 文档") == [
         "knowledge_doc",
         "source_files",
+    ]
+
+
+def test_build_knowledge_doc_sync_input_from_docgen_state(monkeypatch):
+    monkeypatch.setattr(
+        kg_doc_sync_inputs,
+        "_load_docgen_manifest",
+        lambda subject: {"build_metadata": {"version_no": 4}, "document_backbone_snapshot": {}},
+    )
+    monkeypatch.setattr(
+        kg_doc_sync_inputs,
+        "_load_subject_document_summary",
+        lambda subject: {"summary": "线性代数"},
+    )
+
+    sync_input = build_knowledge_doc_sync_input_from_docgen_state(
+        "math",
+        {
+            "merged_markdown": "# 第一章\n\n矩阵与向量。",
+            "doc_ids": [11],
+            "chapter_metadatas": [
+                {
+                    "chapter_index": 1,
+                    "title": "第一章",
+                    "summary": "矩阵与向量",
+                    "source_file_ids": [7],
+                }
+            ],
+        },
+    )
+
+    assert sync_input is not None
+    assert sync_input.source == "docgen_state"
+    assert sync_input.markdown.startswith("# 第一章")
+    assert sync_input.structured_context["doc_version_no"] == 4
+    assert sync_input.structured_context["document_summary_json"] == {"summary": "线性代数"}
+    assert sync_input.structured_context["chapters"] == [
+        {
+            "knowledge_document_id": 11,
+            "chapter_index": 1,
+            "title": "第一章",
+            "summary": "矩阵与向量",
+            "source_file_ids": [7],
+            "source_scope": {},
+            "manifest": {},
+        }
     ]

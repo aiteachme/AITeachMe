@@ -45,6 +45,8 @@ def _payload_metrics(
         "chapter_split_count": int(diagnostics.get("chapter_split_count", 0) or 0),
         "chapter_task_count": int(diagnostics.get("chapter_task_count", 0) or 0),
         "subsection_task_count": int(diagnostics.get("subsection_task_count", 0) or 0),
+        "successful_section_count": int(diagnostics.get("successful_section_count", 0) or 0),
+        "failed_section_count": int(diagnostics.get("failed_section_count", 0) or 0),
         "llm_section_count": int(diagnostics.get("llm_section_count", 0) or 0),
         "llm_error_count": int(diagnostics.get("llm_error_count", 0) or 0),
         "empty_llm_result_count": int(diagnostics.get("empty_llm_result_count", 0) or 0),
@@ -73,6 +75,19 @@ def extract_node(state: DocsSyncState) -> DocsSyncState:
             run_context=run_context,
         )
         elapsed_ms = int((perf_counter() - started_at) * 1000)
+        if payload is None:
+            return with_node_error(
+                state,
+                "extract",
+                "docs_sync_extraction_payload_missing",
+                metrics={
+                    "elapsed_ms": elapsed_ms,
+                    "subject_context_source": subject_context_source,
+                    **graph_extraction_parallelism(),
+                },
+                subject_context=subject_context,
+                extraction_payload=None,
+            )
         return with_node_metrics(
             state,
             "extract",

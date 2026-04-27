@@ -1,29 +1,38 @@
-version: '3.8'
-
 services:
   backend:
     build:
+      # Compose 文件位于 infra/deployment/compose/，这里回到仓库根目录作为构建上下文。
+      # 后端 Dockerfile 会从根上下文复制 backend/ 下的 pyproject.toml、uv.lock 和源码。
       context: ../../..
       dockerfile: infra/deployment/docker/backend.Dockerfile
     container_name: aiteachme-backend
     ports:
+      # 本机访问 http://localhost:9020/api/health，容器内端口由 PORT=9020 控制。
       - "9020:9020"
     volumes:
-      - ../../backend:/app
-      - ../../models:/app/models
-      - ../../datasets:/app/datasets
-      - ../../configs:/app/configs
+      # 单机/local 模式使用 SQLite 和本地 ContentStore，持久化到 Docker volume。
+      # 云端正式部署应改用 PostgreSQL + S3-compatible OSS，不依赖这个 volume。
+      - backend-data:/app/data
     environment:
-      - PYTHONUNBUFFERED=1
+      # 这份 compose 默认服务本地/单机试运行；Render/Sealos 云端请用 APP_MODE=cloud。
+      APP_MODE: local
+      PORT: 9020
+      PYTHONUNBUFFERED: 1
+      PYTHONUTF8: 1
     restart: unless-stopped
 
   frontend:
     build:
+      # 前端镜像从同一个仓库根目录构建，最终产物由 Nginx 托管。
       context: ../../..
       dockerfile: infra/deployment/docker/frontend.Dockerfile
     container_name: aiteachme-frontend
     ports:
+      # 本机访问 http://localhost，Nginx 会把 /api 反代到 backend:9020。
       - "80:80"
     depends_on:
       - backend
     restart: unless-stopped
+
+volumes:
+  backend-data:

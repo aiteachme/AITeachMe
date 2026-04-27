@@ -2,7 +2,7 @@
 
 最后更新：2026-04-27
 
-`kg_doc_sync` 是知识文档发布后的知识图谱同步链路。它不再直接解析用户上传的原始文件，也不再提供独立 debug 构建入口；正式输入只有当前学科已经发布的 `KnowledgeDoc`、DocGen 结构化产物、章节来源映射和 `Subject.document_summary_json`。
+`kg_doc_sync` 是知识文档发布后的知识图谱同步链路。它不再直接解析用户上传的原始文件；正式输入只有当前学科已经发布的 `KnowledgeDoc`、DocGen 结构化产物、章节来源映射和 `Subject.document_summary_json`。除 DocGen 发布后的自动同步外，前端知识图谱面板可以调用 `/api/v1/subjects/{subject}/knowledge/build/graph` 手动重建图谱；该入口仍然只从已入库的知识文档和 manifest 读取输入，不接收前端临时 Markdown。
 
 当前写入的核心表：
 
@@ -16,8 +16,8 @@
 KG-doc-sync 抽取 ontology 位于 `backend/app/workflows/digest/kg_doc_sync/lib/ontology.py`，集中维护抽取 prompt 展示的 KnowledgeUnit 类型、关系类型、关系端点偏好和跨章节默认边推断。持久化层允许的类型集合、归一化和最终关系方向守卫仍位于 `backend/app/models/knowledge_taxonomy.py`，避免模型层反向依赖 workflow；抽取 prompt 与 extractor 的候选解析规则都从 workflow ontology 读取，测试负责确保两者与枚举保持一致。
 
 LangGraph 节点的 `node_description`、输入输出字段和 metadata 统一通过
-`digest.common.node_tracing` 生成；内部阶段不再额外创建顶层 LangSmith trace，
-避免 Trace 列表被 anchor 校验、候选抽取和图谱写入刷屏。
+`digest.common.node_tracing` 生成；自动同步和手动重建都进入同一个 `digest.kg_doc_sync`
+LangGraph 链路，避免 Trace 列表被 anchor 校验、候选抽取和图谱写入刷屏。
 每个节点都会写入 `node_metrics.<node>`，用于在 trace 和最终 state 中查看本阶段输入规模、
 并发配置、sync_run id、抽取统计、写库变更数和失败标记结果。
 
@@ -58,7 +58,8 @@ image_generation -> settings.models.image_generation（默认未配置）
 
 | 阶段 / 子步骤 | 当前代码位置 | 调用类型 | call_purpose | 逻辑模型槽位 | 当前默认模型 | 这一步做什么 |
 | --- | --- | --- | --- | --- | --- | --- |
-| `run_graph_docs_sync_after_doc_build` | `kg_doc_sync/builds.py` | 无 LLM | 无 | 无 | 无 | 读取发布文档、写 graph lane runtime、挂 LangSmith root trace |
+| `knowledge_graph_build` | `api/knowledge_docs.py` | 无 LLM | 无 | 无 | 无 | 手动图谱重建入口；校验已有发布文档，写 graph lane accepted runtime，并注册可取消的后台任务 |
+| `run_graph_docs_sync_after_doc_build` | `kg_doc_sync/builds.py` | 无 LLM | 无 | 无 | 无 | 读取发布文档、写 graph lane runtime，并进入 `digest.kg_doc_sync` LangGraph 链路 |
 | `load_knowledge_doc_sync_input` | `kg_doc_sync/inputs.py` | 无 LLM | 无 | 无 | 无 | 读取 `KnowledgeDoc` rows、DocGen manifest、文档摘要和章节来源映射 |
 | `prepare` | `kg_doc_sync/nodes/prepare_node.py` | 无 LLM | 无 | 无 | 无 | 校验 `subject` 和合并 Markdown |
 | `init_run` | `kg_doc_sync/nodes/init_run_node.py` | 无 LLM | 无 | 无 | 无 | 校验 Markdown anchors，创建 `knowledge_graph_sync_run`，确定 revision/doc_version |
@@ -75,12 +76,12 @@ image_generation -> settings.models.image_generation（默认未配置）
 当前主线：
 
 ```text
-run_docgen_background
+run_docgen_background / knowledge_graph_build
   DocGen 发布完成后，如果 sync_after_docgen 打开，则进入 graph lane。
+  或用户在知识图谱面板点击“构建图谱”，从当前已发布 KnowledgeDoc 手动重建。
   |
   v
 run_graph_docs_sync_after_doc_build
-  建立 LangSmith root trace。
   读取当前发布知识文档和结构化上下文。
   写入 graph lane running runtime。
   |
@@ -182,6 +183,20 @@ payload fan-in 后
 这一节是 KG docs-sync 的详细执行合同。字段以当前 state/model 为准，重点写清每一步输入、输出和失败边界。
 
 ```text
+knowledge_graph_build
+  输入：
+    - subject：学科 slug。
+  前置校验：
+    - 当前学科必须存在。
+    - docgen lane 不能处于 accepted/running/publishing。
+    - graph lane 不能处于 accepted/running/publishing。
+    - 必须已经有发布版 KnowledgeDoc Markdown。
+  作用：
+    - 只读取数据库中的 `KnowledgeDoc`、`KnowledgeDocsManifest` 和 structured_context。
+    - 写入 graph lane `manual_graph_requested` runtime，记录 source_file_ids、prompt、doc_version 和输入来源。
+    - 通过后台任务注册 `knowledge.build.graph`，因此 `/knowledge/build/cancel` 可以停止本轮手动图谱构建。
+    - 后台任务最终进入 `run_graph_docs_sync_after_doc_build`，LangSmith 中看到的仍是同一条 `digest.kg_doc_sync` 链路。
+
 run_graph_docs_sync_after_doc_build
   输入：
     - subject：学科 slug，所有图谱读写都按 subject 隔离。
@@ -195,12 +210,11 @@ run_graph_docs_sync_after_doc_build
     - dict metrics：写回 graph lane runtime。
     - 如果没有知识文档 Markdown，返回 skipped 风格的零变更 metrics。
   作用：
-    - 建立外层 LangSmith root trace。
     - 读取知识文档同步输入。
     - 写 running runtime。
     - 在 use_llm_runtime_snapshot 下调用 kg_doc_sync workflow。
   失败：
-    - workflow failed 时结束 root trace 并抛 RuntimeError。
+    - workflow failed 时抛 RuntimeError，由自动同步或手动重建的后台任务写入 graph lane failed runtime。
 
 load_knowledge_doc_sync_input
   输入：
@@ -435,6 +449,7 @@ payload fan-in
     5. `concept_dependency_graph` 生成关系：
        - `chapter_order` -> `prerequisite`
        - 其它 relation 走 normalize_relation_type。
+       - 单个章节/子章节 LLM 抽取失败不会让整条图谱链路失败；失败分片会记录为 `failed_section_count` / `llm_error_count`，其它成功分片继续合并并落库。
     6. `_build_structural_heading_edges` 补标题结构边。
     7. `_build_cross_section_semantic_edges` 补保守跨章节语义边。
     8. 解析 pending edge endpoints，不能解析或自环则跳过。
@@ -509,6 +524,7 @@ fail
 | `section_count / chapter_count` | 实际抽取任务数 / 原始章节数 |
 | `chapter_split_count / chapter_task_count / subsection_task_count` | 被拆分的大章数量、整章任务数、子章节任务数 |
 | `llm_section_count` | 调用过 LLM 的抽取任务数 |
+| `successful_section_count / failed_section_count` | 成功/失败的章节或子章节抽取任务数；单分片失败会保留成功分片继续写图谱 |
 | `llm_error_count` | LLM 主抽取或空结果修复异常次数 |
 | `empty_llm_result_count` | LLM 返回空候选的任务数 |
 | `empty_repair_attempt_count / empty_repair_success_count` | 空结果 LLM 修复尝试数 / 成功数 |
@@ -531,6 +547,7 @@ fail
 | `last_synced_doc_version_no` | 当前文档版本 |
 | `doc_sync_section_count` | `report.section_count` |
 | `doc_sync_chapter_split_count / doc_sync_chapter_task_count / doc_sync_subsection_task_count` | `report.chapter_split_count / chapter_task_count / subsection_task_count` |
+| `doc_sync_successful_section_count / doc_sync_failed_section_count` | `report.successful_section_count / failed_section_count` |
 | `doc_sync_llm_section_count` | `report.llm_section_count` |
 | `doc_sync_llm_error_count` | `report.llm_error_count` |
 | `doc_sync_empty_llm_result_count` | `report.empty_llm_result_count` |
@@ -568,7 +585,7 @@ none           -> 没有可同步输入
 | 节点标题像整本文档标题 | 切章规则没有按 H2 下沉 | `extract_markdown_chapter_chunks`、DocGen 发布 Markdown 标题层级 |
 | 图上边很少 | LLM 边被过滤、endpoint 未解析、方向不合法 | `knowledge_graph_edge_skipped_unresolved_endpoint` 日志、`validate_relation_direction` |
 | source refs 为空 | 写入阶段异常或旧数据来自兼容字段 | `knowledge_graph_source_ref`、`KnowledgeGraphSyncRun.metrics_json` |
-| LangSmith 看不到子调用 | 外层没有 root trace、async context 没传递，或 LLM 调用没有继承 node scope | `run_graph_docs_sync_after_doc_build`、`run_state_graph`、`_run_async(contextvars.copy_context())` |
+| LangSmith 看不到子调用 | 没有进入 `run_state_graph`、async context 没传递，或 LLM 调用没有继承 node scope | `run_graph_docs_sync_after_doc_build`、`run_state_graph`、`_run_async(contextvars.copy_context())` |
 
 ## 4. 当前仍需关注的问题
 

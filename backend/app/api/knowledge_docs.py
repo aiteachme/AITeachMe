@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import uuid
 
 import structlog
 from fastapi import APIRouter, BackgroundTasks, Body, Depends, Path, Request
@@ -29,6 +30,7 @@ from app.schemas.knowledge import (
     DocGenBuildRequest,
     DocGenGetResponse,
     KnowledgeBuildRuntimeResponse,
+    KnowledgeGraphBuildData,
     KnowledgeOverviewRequest,
     KnowledgeOverviewResponse,
 )
@@ -50,9 +52,12 @@ from app.workflows.digest.docgen import (
 )
 from app.workflows.digest.kg_doc_sync import (
     get_knowledge_overview,
+    load_knowledge_doc_sync_input,
+    run_graph_docs_sync_manual_build,
 )
 from app.workflows.support.subjects import get_subject_record
 from app.workflows.interact.chat.lib.streaming import SSEEventEmitter
+from app.shared.infra.exceptions import AITeachMeError
 from app.shared.infra.workflow.live_stream import (
     WorkflowStreamEvent,
     format_sse_event,
@@ -61,13 +66,43 @@ from app.shared.infra.workflow.live_stream import (
 from app.shared.infra.knowledge.build_store import (
     build_aggregate_knowledge_build_status,
     read_knowledge_build_runtime,
+    read_knowledge_manifest,
     release_knowledge_build_lock,
     update_knowledge_build_lane_status,
 )
+from app.shared.infra.llm_support.common import capture_llm_runtime_snapshot
 from app.utils.time import utcnow
 
 router = APIRouter(tags=["knowledge"])
 logger = structlog.get_logger(__name__)
+
+_ACTIVE_BUILD_STATUSES = {"accepted", "running", "publishing"}
+
+
+def _collect_graph_source_file_ids(structured_context: dict[str, object]) -> list[int]:
+    """Resolve source file ids from persisted docs-sync context."""
+
+    collected: list[int] = []
+    seen: set[int] = set()
+    chapters = structured_context.get("chapters")
+    if not isinstance(chapters, list):
+        return collected
+    for chapter in chapters:
+        if not isinstance(chapter, dict):
+            continue
+        raw_ids = chapter.get("source_file_ids")
+        if not isinstance(raw_ids, list):
+            continue
+        for raw_id in raw_ids:
+            try:
+                parsed = int(raw_id)
+            except (TypeError, ValueError):
+                continue
+            if parsed <= 0 or parsed in seen:
+                continue
+            seen.add(parsed)
+            collected.append(parsed)
+    return collected
 
 
 async def _spawn_registered_task_after_response(
@@ -456,6 +491,113 @@ async def knowledge_build(
         requested_at=data.requested_at.isoformat(),
     )
     return ok_response(data)
+
+
+@router.post(
+    "/build/graph",
+    response_model=ApiResponse[KnowledgeGraphBuildData],
+    summary="Rebuild the knowledge graph from the latest published knowledge docs",
+    responses=build_error_responses([400, 404, 409, 422, 500]),
+)
+async def knowledge_graph_build(
+    request: Request,
+    background_tasks: BackgroundTasks,
+    subject: str = Path(...),
+    user: CurrentUserContext = Depends(get_current_user_context),
+    session: Session = Depends(get_db),
+) -> ApiResponse[KnowledgeGraphBuildData]:
+    normalized = normalize_subject_slug(subject)
+    get_subject_record(session, normalized, owner_user_id=user.user_id)
+
+    runtime = read_knowledge_build_runtime(normalized)
+    docgen_status = runtime.docgen_runtime if runtime is not None else None
+    graph_status = runtime.graph_runtime if runtime is not None else None
+    if docgen_status is not None and str(docgen_status.status or "").strip() in _ACTIVE_BUILD_STATUSES:
+        raise AITeachMeError(
+            detail="知识文档仍在构建中，请等待文档发布后再重建图谱。",
+            error_code="DOCGEN_BUILD_IN_PROGRESS",
+            status_code=409,
+        )
+    if graph_status is not None and str(graph_status.status or "").strip() in _ACTIVE_BUILD_STATUSES:
+        raise AITeachMeError(
+            detail="知识图谱正在构建中。",
+            error_code="GRAPH_BUILD_IN_PROGRESS",
+            status_code=409,
+        )
+
+    sync_input = load_knowledge_doc_sync_input(normalized)
+    if not sync_input.markdown.strip():
+        raise AITeachMeError(
+            detail="当前还没有已发布的知识文档，请先完成知识文档构建。",
+            error_code="KNOWLEDGE_DOC_REQUIRED_FOR_GRAPH_BUILD",
+            status_code=422,
+        )
+
+    manifest = read_knowledge_manifest(normalized)
+    manifest_source_file_ids = list(manifest.source_file_ids) if manifest is not None else []
+    source_file_ids = manifest_source_file_ids or _collect_graph_source_file_ids(sync_input.structured_context)
+    prompt = manifest.prompt if manifest is not None else None
+    requested_at = utcnow()
+    build_group_id = uuid.uuid4().hex
+    build_session_id = uuid.uuid4().hex
+    doc_version_no = int(sync_input.structured_context.get("doc_version_no") or 0)
+    chapters = sync_input.structured_context.get("chapters")
+    chapter_count = len(chapters) if isinstance(chapters, list) else 0
+    update_knowledge_build_lane_status(
+        normalized,
+        lane="graph",
+        requested_at=requested_at,
+        build_group_id=build_group_id,
+        status="accepted",
+        stage="manual_graph_requested",
+        build_session_id=build_session_id,
+        error_message=None,
+        source_file_ids=source_file_ids,
+        prompt=prompt,
+        metrics={
+            "knowledge_doc_source": sync_input.source,
+            "knowledge_doc_chapter_count": chapter_count,
+            "last_synced_doc_version_no": doc_version_no,
+            "graph_input_paths": ["knowledge_doc"] + (["source_files"] if source_file_ids else []),
+        },
+        current_stage_description="已接收图谱重建请求，准备读取当前知识文档。",
+    )
+    llm_snapshot = capture_llm_runtime_snapshot()
+    background_tasks.add_task(
+        _spawn_registered_task_after_response,
+        request,
+        lambda: run_graph_docs_sync_manual_build(
+            subject=normalized,
+            requested_at=requested_at,
+            build_group_id=build_group_id,
+            build_session_id=build_session_id,
+            file_ids=source_file_ids,
+            prompt=prompt,
+            llm_snapshot=llm_snapshot,
+        ),
+        kind="knowledge.build.graph",
+        subject=normalized,
+        name=f"knowledge.build.graph:{normalized}",
+    )
+    logger.info(
+        "knowledge_graph_build_request_accepted",
+        subject=normalized,
+        user_id=user.user_id,
+        requested_at=requested_at.isoformat(),
+        build_group_id=build_group_id,
+        build_session_id=build_session_id,
+        source_file_count=len(source_file_ids),
+    )
+    return ok_response(
+        KnowledgeGraphBuildData(
+            subject=normalized,
+            status="accepted",
+            requested_at=requested_at,
+            build_group_id=build_group_id,
+            build_session_id=build_session_id,
+            source_file_ids=source_file_ids,
+        )
+    )
 
 
 @router.post(

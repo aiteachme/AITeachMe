@@ -214,7 +214,7 @@ export function DigestBuildProgress({
           </div>
           <p className="mt-1 text-xs leading-5 text-slate-600">
             {state.focus === "graph"
-              ? "文档发布后会自动抽取知识点与关系。"
+              ? "从已发布知识文档抽取知识点与关系，可自动同步，也可手动重建。"
               : state.focus === "docgen"
                 ? "正在整理章节、证据和发布状态。"
                 : "知识文档与知识图谱会按顺序推进。"}

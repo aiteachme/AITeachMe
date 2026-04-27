@@ -89,7 +89,7 @@
 
 ## 4. Render 配置
 
-Render Web Service 建议配置：
+Render Native Python runtime 建议配置：
 
 ```bash
 # Pre-deploy command
@@ -119,7 +119,7 @@ GitHub Actions 的 `deploy.yml` 目前只是触发 Render 部署，它不会替�
 
 如果云端需要支持 `.doc` 转 `.docx`，或者 PPT/PPTX 走 OCR 解析链路，后端运行环境必须能找到 `soffice`/`libreoffice`。Render Native Python runtime 更适合纯 Python 依赖；这类系统包建议使用 Docker runtime 固定下来。
 
-当前仓库已提供 `backend/Dockerfile`，它会安装：
+当前仓库的 canonical 后端镜像定义是 `infra/deployment/docker/backend.Dockerfile`，它会安装：
 
 - `libreoffice`：提供 `soffice` 命令，服务于 DOC/PPT 转换。
 - `fonts-noto-cjk`：保证中文文档转 PDF/图片时尽量不乱码。
@@ -132,17 +132,10 @@ Runtime / Language: Docker
 Health Check Path: /api/health
 ```
 
-如果服务保持仓库根目录作为 Root Directory：
+Render Docker runtime 建议保持仓库根目录作为 Root Directory：
 
 ```text
-Dockerfile Path: backend/Dockerfile
-Docker Build Context Directory: backend
-```
-
-如果服务已经把 Root Directory 设置为 `backend`：
-
-```text
-Dockerfile Path: Dockerfile
+Dockerfile Path: infra/deployment/docker/backend.Dockerfile
 Docker Build Context Directory: .
 ```
 
@@ -151,6 +144,8 @@ Docker 模式下不需要再配置原来的 Start command，镜像默认命令�
 ```bash
 python scripts/start_cloud_app.py --host 0.0.0.0 --port ${PORT:-10000}
 ```
+
+如果 Render 已经把 Root Directory 设置为 `backend`，应改回仓库根目录；否则 Dockerfile 无法复用根目录 `.dockerignore`，也会重新出现多套部署入口问题。
 
 部署后可在 Render Shell 或日志中确认：
 

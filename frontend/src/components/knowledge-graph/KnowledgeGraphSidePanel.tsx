@@ -7,6 +7,8 @@ import {
   Loader2,
   Network,
   Orbit,
+  RefreshCw,
+  Square,
   Trash2,
 } from "lucide-react";
 
@@ -17,7 +19,12 @@ import {
   buildKnowledgeOverviewQueryKey,
   fetchKnowledgeOverview,
 } from "../../lib/knowledgeOverview";
-import { DigestBuildProgress } from "../build-plan/DigestBuildPanel";
+import {
+  buildKnowledgeBuildRuntimeQueryKey,
+  cancelKnowledgeBuild,
+  triggerKnowledgeGraphBuild,
+} from "../../lib/knowledgeBuildRuntime";
+import { DigestBuildProgress, useKnowledgeDocsBuildState } from "../build-plan/DigestBuildPanel";
 import { SubjectVectorNotice } from "./SubjectVectorNotice";
 import { Button } from "../ui/Button";
 import { Modal } from "../ui/Modal";
@@ -31,6 +38,8 @@ const KnowledgeGraphView = lazy(() =>
 
 type KnowledgeViewTab = "semantic-universe" | "knowledge-graph";
 
+const ACTIVE_BUILD_STATUSES = new Set(["accepted", "running", "publishing"]);
+
 const VIEW_TABS: Array<{
   id: KnowledgeViewTab;
   label: string;
@@ -39,15 +48,15 @@ const VIEW_TABS: Array<{
 }> = [
   {
     id: "semantic-universe",
-    label: "语义宇宙",
+    label: "语义星图",
     icon: <Orbit className="h-4 w-4" />,
-    desc: "稳定的语义星图。",
+    desc: "按语义距离聚合的可视化星图。",
   },
   {
     id: "knowledge-graph",
     label: "知识图谱",
     icon: <Network className="h-4 w-4" />,
-    desc: "底层节点与关系图谱。",
+    desc: "可追溯的知识点与关系图谱。",
   },
 ];
 
@@ -68,7 +77,7 @@ export function KnowledgeGraphSidePanel({
   onClose?: () => void;
 }) {
   const queryClient = useQueryClient();
-  const [activeTab, setActiveTab] = useState<KnowledgeViewTab>("semantic-universe");
+  const [activeTab, setActiveTab] = useState<KnowledgeViewTab>("knowledge-graph");
   const [showClearConfirm, setShowClearConfirm] = useState(false);
 
   const overviewInclude = useMemo(() => OVERVIEW_INCLUDE_PRESETS.wordCloud, []);
@@ -96,11 +105,32 @@ export function KnowledgeGraphSidePanel({
     },
   });
 
+  const { data: buildRuntime } = useKnowledgeDocsBuildState(subjectId);
+  const graphStatus = String(buildRuntime?.graph?.status ?? "").trim();
+  const graphIsActive = ACTIVE_BUILD_STATUSES.has(graphStatus);
+
+  const graphBuildMutation = useMutation({
+    mutationFn: () => triggerKnowledgeGraphBuild(subjectId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: buildKnowledgeBuildRuntimeQueryKey(subjectId) });
+      queryClient.invalidateQueries({ queryKey: buildKnowledgeOverviewQueryKey(subjectId, overviewInclude) });
+      queryClient.invalidateQueries({ queryKey: ["knowledge-overview", subjectId] });
+    },
+  });
+
+  const cancelBuildMutation = useMutation({
+    mutationFn: () => cancelKnowledgeBuild(subjectId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: buildKnowledgeBuildRuntimeQueryKey(subjectId) });
+      queryClient.invalidateQueries({ queryKey: ["knowledge-doc-build", subjectId] });
+    },
+  });
+
   const subjectLabel = useMemo(() => {
     if (/^subj_[a-z0-9]+$/i.test(subjectId)) {
-      return "知识宇宙";
+      return "语义星图";
     }
-    return subjectId || "知识宇宙";
+    return subjectId || "语义星图";
   }, [subjectId]);
 
   return (
@@ -141,6 +171,37 @@ export function KnowledgeGraphSidePanel({
           </div>
 
           <div className="flex items-center gap-1.5">
+            {graphIsActive ? (
+              <button
+                type="button"
+                onClick={() => cancelBuildMutation.mutate()}
+                disabled={cancelBuildMutation.isPending}
+                className="inline-flex h-8 items-center gap-1.5 rounded-md border border-amber-200 bg-amber-50 px-2.5 text-[12px] font-medium text-amber-700 transition-colors hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60"
+                title="停止当前图谱构建"
+              >
+                {cancelBuildMutation.isPending ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Square className="h-3.5 w-3.5" />
+                )}
+                <span className="hidden xl:inline">停止构建</span>
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => graphBuildMutation.mutate()}
+                disabled={graphBuildMutation.isPending}
+                className="inline-flex h-8 items-center gap-1.5 rounded-md border border-slate-200 bg-white px-2.5 text-[12px] font-medium text-slate-700 shadow-sm transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                title="从当前已发布知识文档重建知识图谱"
+              >
+                {graphBuildMutation.isPending ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <RefreshCw className="h-3.5 w-3.5" />
+                )}
+                <span className="hidden xl:inline">构建图谱</span>
+              </button>
+            )}
             <button
               type="button"
               onClick={() => setShowClearConfirm(true)}
@@ -154,6 +215,16 @@ export function KnowledgeGraphSidePanel({
 
       <div className="grid gap-3 border-b border-slate-200 bg-slate-50/70 p-3">
           <DigestBuildProgress subject={subjectId} compact focus="graph" />
+          {graphBuildMutation.isError ? (
+            <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
+              {getApiErrorMessage(graphBuildMutation.error, "图谱构建启动失败。")}
+            </div>
+          ) : null}
+          {cancelBuildMutation.isError ? (
+            <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
+              {getApiErrorMessage(cancelBuildMutation.error, "停止构建失败。")}
+            </div>
+          ) : null}
           <SubjectVectorNotice status={overview?.vector_status} />
         </div>
 
@@ -180,7 +251,7 @@ export function KnowledgeGraphSidePanel({
           {!overviewLoading && !overviewIsError ? (
             <>
               {activeTab === "semantic-universe" ? (
-                <Suspense fallback={<TabFallback message="正在加载语义宇宙..." />}>
+                <Suspense fallback={<TabFallback message="正在加载语义星图..." />}>
                   <SemanticUniverse
                     subjectLabel={subjectLabel}
                     overviewGraph={overview?.graph ?? null}

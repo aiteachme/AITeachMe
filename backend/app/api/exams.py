@@ -60,6 +60,7 @@ _HTML_COMMENT_RE = re.compile(r"<!--.*?-->", re.DOTALL)
 _WHITESPACE_RE = re.compile(r"\s+")
 PAPER_PREVIEW_ROW_LIMIT = 7
 RECENT_EXAM_STEM_AVOID_LIMIT = 18
+_SYNC_EDGE_MARKER_PREFIX = "markdown_anchor_sync:"
 
 
 def _exam_stream_channel(subject: str, paper_id: int) -> str:
@@ -703,10 +704,18 @@ def _exam_knowledge_graph_edges(
         target_id = int(edge.target_node_id or 0)
         if source_id not in allowed_ids or target_id not in allowed_ids:
             continue
+        description = _clean_exam_text(edge.description or "")
+        if description.startswith(_SYNC_EDGE_MARKER_PREFIX):
+            description = description[len(_SYNC_EDGE_MARKER_PREFIX) :].strip()
         edges.append(
             {
+                "edge_id": int(edge.id or 0),
                 "source_id": source_id,
                 "target_id": target_id,
+                "edge_type": str(edge.edge_type or "").strip(),
+                "description": description[:240],
+                "weight": round(float(edge.weight or 0.0), 3),
+                "confidence": round(float(edge.confidence or 0.0), 3),
             }
         )
     return edges

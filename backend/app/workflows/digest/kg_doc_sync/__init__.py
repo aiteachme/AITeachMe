@@ -21,6 +21,7 @@ __all__ = [
     "load_knowledge_doc_markdown",
     "resolve_graph_input_paths",
     "run_graph_docs_sync_after_doc_build",
+    "run_graph_docs_sync_manual_build",
     "run_graph_docs_sync_workflow",
 ]
 
@@ -41,6 +42,7 @@ _ATTR_TO_MODULE = {
     "load_knowledge_doc_markdown": "app.workflows.digest.kg_doc_sync.inputs",
     "resolve_graph_input_paths": "app.workflows.digest.kg_doc_sync.inputs",
     "run_graph_docs_sync_after_doc_build": "app.workflows.digest.kg_doc_sync.builds",
+    "run_graph_docs_sync_manual_build": "app.workflows.digest.kg_doc_sync.builds",
     "run_graph_docs_sync_workflow": "app.workflows.digest.kg_doc_sync.workflow",
 }
 

@@ -94,7 +94,7 @@ def build_exam_knowledge_unit_filter_messages(
 
 图谱输入说明：
 - knowledge_graph.nodes 只包含知识单元 id 和 name。
-- knowledge_graph.edges 只包含 source_id 和 target_id，用来判断知识单元之间的图结构关系。
+- knowledge_graph.edges 至少包含 source_id 和 target_id；如果提供 edge_type、description、weight、confidence，要优先用它们判断先修、派生、应用、对比、例题等关系。
 - 不要假设图谱之外还有其他知识单元。
 
 你需要理解 user_prompt 中的考察范围倾向：
@@ -108,6 +108,7 @@ def build_exam_knowledge_unit_filter_messages(
 - 输出顺序代表推荐优先级，越靠前越应该被蓝图阶段使用。
 - 最多输出 candidate_limit 个 id；如果严格范围内单元较少，可以少于 candidate_limit。
 - 覆盖面要适合 requested_question_count，避免只选一堆同义或高度重复的知识单元。
+- 优先让图谱上有强关系的知识单元进入同一候选池，但不要只按边数量机械排序。
 - 对 paper_exam，优先兼顾薄弱点与综合覆盖；对 web_practice，优先贴合复习和练习价值。
 - rationale 简要说明选择依据，供后续排查使用。
 

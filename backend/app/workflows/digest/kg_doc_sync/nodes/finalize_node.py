@@ -18,6 +18,8 @@ def _final_report_metrics(report: KnowledgeSyncReport) -> dict[str, object]:
         "chapter_split_count": report.chapter_split_count,
         "chapter_task_count": report.chapter_task_count,
         "subsection_task_count": report.subsection_task_count,
+        "successful_section_count": report.successful_section_count,
+        "failed_section_count": report.failed_section_count,
         "synced_unit_count": len(report.synced_unit_keys),
         "unit_change_count": report.unit_change_count,
         "edge_change_count": report.edge_change_count,

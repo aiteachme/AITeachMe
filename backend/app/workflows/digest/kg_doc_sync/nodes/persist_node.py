@@ -26,6 +26,8 @@ def _report_metrics(report: KnowledgeSyncReport, *, elapsed_ms: int) -> dict[str
         "chapter_split_count": report.chapter_split_count,
         "chapter_task_count": report.chapter_task_count,
         "subsection_task_count": report.subsection_task_count,
+        "successful_section_count": report.successful_section_count,
+        "failed_section_count": report.failed_section_count,
         "unit_change_count": report.unit_change_count,
         "edge_change_count": report.edge_change_count,
         "created_unit_count": len(report.created_unit_ids),
