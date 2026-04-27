@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ast
 from pathlib import Path
 
 import pytest
@@ -42,7 +43,54 @@ def test_alembic_has_single_head_revision() -> None:
     backend_root = Path(__file__).resolve().parents[1]
     script = ScriptDirectory.from_config(Config(str(backend_root / "alembic.ini")))
 
-    assert script.get_current_head() == "20260426_0008"
+    assert script.get_current_head() == "20260426_0009"
+
+
+def _load_revision_metadata() -> dict[str, tuple[str | tuple[str, ...] | None, Path]]:
+    versions_dir = Path(__file__).resolve().parents[1] / "migrations" / "versions"
+    metadata: dict[str, tuple[str | tuple[str, ...] | None, Path]] = {}
+    for path in sorted(versions_dir.glob("*.py")):
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        revision: str | None = None
+        down_revision: str | tuple[str, ...] | None = None
+        for node in tree.body:
+            if not isinstance(node, ast.Assign):
+                continue
+            targets = [target.id for target in node.targets if isinstance(target, ast.Name)]
+            if "revision" in targets:
+                value = ast.literal_eval(node.value)
+                revision = str(value)
+            if "down_revision" in targets:
+                value = ast.literal_eval(node.value)
+                if value is None or isinstance(value, str):
+                    down_revision = value
+                elif isinstance(value, tuple):
+                    down_revision = tuple(str(item) for item in value)
+                else:
+                    raise AssertionError(f"Unsupported down_revision in {path.name}: {value!r}")
+        assert revision, f"Missing revision in {path.name}"
+        assert revision not in metadata, f"Duplicate Alembic revision {revision!r} in {path.name} and {metadata[revision][1].name}"
+        metadata[revision] = (down_revision, path)
+    return metadata
+
+
+def test_migration_revisions_are_unique_and_have_one_head() -> None:
+    metadata = _load_revision_metadata()
+    referenced: set[str] = set()
+    base_revisions: list[str] = []
+
+    for revision, (down_revision, _path) in metadata.items():
+        if down_revision is None:
+            base_revisions.append(revision)
+            continue
+        parents = (down_revision,) if isinstance(down_revision, str) else down_revision
+        for parent in parents:
+            assert parent in metadata, f"Revision {revision!r} points to missing parent {parent!r}"
+            referenced.add(parent)
+
+    heads = set(metadata) - referenced
+    assert base_revisions == ["20260421_0001"]
+    assert heads == {"20260426_0009"}
 
 
 def test_cloud_postgres_init_does_not_create_tables(monkeypatch: pytest.MonkeyPatch) -> None:
