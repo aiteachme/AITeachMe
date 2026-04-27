@@ -1,8 +1,14 @@
 """Bootstrap the current cloud PostgreSQL database into the expected runtime state.
 
-This script is intended to be the single Render pre-deploy entrypoint:
+This script is intended to be the single cloud pre-deploy entrypoint.
+
+Native runtime from the repo root:
 
     cd backend && python scripts/bootstrap_cloud_db.py
+
+Docker image runtime:
+
+    python scripts/bootstrap_cloud_db.py
 
 Behavior:
 - empty / normal Alembic-managed DB: run upgrade -> prepare -> check

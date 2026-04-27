@@ -1,0 +1,42 @@
+# Docker 构建上下文使用仓库根目录；这里排除不会进入镜像的本地状态和缓存。
+.git
+.gitignore
+.claude
+.history
+.idea
+.pytest_cache
+.vscode
+.venv
+__pycache__
+*.egg-info
+*.pyc
+*.pyo
+*.spec
+
+# 密钥和本地环境变量必须由部署平台注入，不能被 COPY 进镜像。
+.env
+.env.*
+
+# 后端运行时数据、虚拟环境、测试和调试材料不进入生产镜像。
+backend/.venv
+backend/data
+backend/playground
+backend/tests
+backend/uploads
+backend/build
+backend/dist
+
+# 前端依赖和构建产物由前端 Dockerfile 自己生成。
+frontend/node_modules
+frontend/dist
+frontend/release
+frontend/src-tauri/target
+
+# 桌面端打包产物体积大，且与云端镜像无关。
+packaging/artifacts
+packaging/release
+packaging/electron
+packaging/electron-local
+packaging/electron-remote
+packaging/tauri-local
+packaging/tauri-remote
