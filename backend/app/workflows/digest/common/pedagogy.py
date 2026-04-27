@@ -75,7 +75,16 @@ def build_learning_objectives_section(
     return "\n".join(lines).strip()
 
 
-_TITLE_PREFIX_RE = re.compile(r"^\s*(?:第\s*\d+\s*章[\s：:、.-]*)?(?:\d+[\).、：:\-\s]+)?(.+?)\s*$")
+_TITLE_NUMBER_TOKEN_RE = r"(?:\d+(?:\.\d+)*|[一二三四五六七八九十百千万]+|[ivxlcdm]+)"
+_TITLE_CHAPTER_PREFIX_RE = re.compile(
+    rf"^\s*第\s*{_TITLE_NUMBER_TOKEN_RE}\s*[章节讲节篇部分]\s*[.)）．、:：\s]*",
+    re.IGNORECASE,
+)
+_TITLE_OUTLINE_PREFIX_RE = re.compile(
+    rf"^\s*(?:[（(]\s*{_TITLE_NUMBER_TOKEN_RE}\s*[)）]\s*[.)）．、:：\s]*|"
+    rf"{_TITLE_NUMBER_TOKEN_RE}(?:\s*[.)）．、:：]\s*|\s+))",
+    re.IGNORECASE,
+)
 _GENERIC_TEMPLATE_SUFFIX_RE = re.compile(
     r"[:：]\s*(核心概念|公式方法|题型突破|易错辨析|综合迁移|考前速查|主题导入|概念定义|结构公式|方法推理|例题应用|边界辨析|总结延伸)\s*$"
 )
@@ -178,8 +187,14 @@ _SYSTEMATIC_HEADING_KEYWORDS: dict[str, tuple[str, ...]] = {
 
 
 def clean_generated_chapter_title(raw_title: str) -> str:
-    cleaned = _TITLE_PREFIX_RE.sub(r"\1", str(raw_title or "").strip())
+    cleaned = str(raw_title or "").strip()
     cleaned = cleaned.strip().strip("“”\"'`")
+    for _ in range(3):
+        next_cleaned = _TITLE_CHAPTER_PREFIX_RE.sub("", cleaned, count=1)
+        next_cleaned = _TITLE_OUTLINE_PREFIX_RE.sub("", next_cleaned, count=1).strip()
+        if next_cleaned == cleaned:
+            break
+        cleaned = next_cleaned
     cleaned = re.sub(r"\s+", " ", cleaned)
     return cleaned.strip("：:，,。；; ")
 
@@ -252,7 +267,7 @@ def resolve_effective_chapter_title(
 
     if chapter_index is None:
         chapter_index = int(chapter_data.get("chapter_index", 0) or 0) or None
-    return f"第 {chapter_index} 章" if chapter_index else "未命名章节"
+    return "未命名章节"
 
 
 def coerce_resolved_chapter_title(
@@ -292,7 +307,7 @@ def build_chapter_title_resolution_messages(
     system_prompt = """
 你是 AITeachMe 的课程命名助手。
 你的任务是根据教学合同和研究结果生成自然、具体、非模板化的中文章节标题。
-你只输出一个标题，不输出解释、编号或 Markdown。
+你只输出一个标题，不输出解释、编号或 Markdown；标题不要写“1.”、“(1).”、“（一）”、“一、”、“第 1 章”等展示编号。
 """.strip()
     user_prompt = f"""
 请为下面这一章生成一个新的中文章节标题。
@@ -315,7 +330,7 @@ def build_chapter_title_resolution_messages(
 1. 只输出一个中文标题。
 2. 不要出现“全景导论”“总结与延展”“主题导入”“概念定义”等模板化命名。
 3. 标题要像真实讲义章节名，体现知识主线或问题意识。
-4. 不要输出编号，不要输出解释，不要输出 Markdown。
+4. 不要输出编号，不要输出解释，不要输出 Markdown；如果来源标题带编号，只保留语义标题。
 """.strip()
     return [
         {"role": "system", "content": system_prompt},

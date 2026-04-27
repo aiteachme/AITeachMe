@@ -1,10 +1,15 @@
+import { useState } from "react";
+import type { ReactNode } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { BookOpen, LayoutGrid, Loader2, Plus } from "lucide-react";
+import { ArrowRight, BookOpen, Download, LayoutGrid, Loader2, PackagePlus, Plus, Upload } from "lucide-react";
 
 import { listSubjectsApiApiV1SubjectsListPost } from "../api/generated/subjects";
+import { SubjectExportModal } from "../components/subject/SubjectExportModal";
+import { SubjectImportModal } from "../components/subject/SubjectImportModal";
 import { unwrapOrvalResponse } from "../lib/unwrapOrvalResponse";
 import { resolveSubjectIcon } from "../lib/subjectIcons";
+import { cn } from "../lib/utils";
 
 type SubjectWithIcon = {
   subject_id: string;
@@ -34,8 +39,38 @@ function subjectTone(name: string) {
   return tones[Math.abs(hash) % tones.length];
 }
 
+function WorkspaceActionButton({
+  children,
+  icon,
+  onClick,
+  variant = "outline",
+}: {
+  children: ReactNode;
+  icon: ReactNode;
+  onClick: () => void;
+  variant?: "primary" | "outline";
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        "inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-4 text-sm font-medium transition active:scale-[0.98] focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-300 dark:focus-visible:ring-slate-700",
+        variant === "primary"
+          ? "bg-slate-900 text-white shadow-sm hover:bg-slate-800 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white"
+          : "border border-slate-200 bg-white text-slate-700 shadow-sm hover:border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:border-slate-600 dark:hover:bg-slate-800",
+      )}
+    >
+      {icon}
+      {children}
+    </button>
+  );
+}
+
 export function LearningSpacesPage() {
   const navigate = useNavigate();
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+  const [exportSubjectId, setExportSubjectId] = useState<string | null>(null);
 
   const { data: subjects = [], isLoading } = useQuery({
     queryKey: ["subjects"],
@@ -48,129 +83,208 @@ export function LearningSpacesPage() {
       )?.items ?? [],
   });
 
+  const subjectCount = subjects.length;
+
   return (
-    <div className="min-h-full px-4 pb-12 pt-20 sm:px-6 sm:pt-24 md:px-12">
-      <div className="mx-auto w-full max-w-[1400px]">
-        <div className="flex flex-col gap-5 md:flex-row md:items-end md:justify-between">
-          <div className="space-y-3">
-            <div className="inline-flex items-center gap-2 rounded-full bg-white/85 dark:bg-slate-800/85 px-3 py-1 text-xs font-medium text-slate-500 dark:text-slate-400 ring-1 ring-slate-200/80 dark:ring-slate-700/80 backdrop-blur">
-              <LayoutGrid className="h-3.5 w-3.5" />
-              学习空间
+    <>
+      <div className="min-h-full px-4 pb-12 pt-16 sm:px-6 sm:pt-20 md:px-10 lg:px-12">
+        <div className="mx-auto w-full max-w-[1320px]">
+          <div className="flex flex-col gap-6 2xl:flex-row 2xl:items-end 2xl:justify-between">
+            <div className="max-w-2xl space-y-3">
+              <div className="inline-flex items-center gap-2 rounded-full bg-white/85 px-3 py-1 text-xs font-medium text-slate-500 ring-1 ring-slate-200/80 backdrop-blur dark:bg-slate-800/85 dark:text-slate-400 dark:ring-slate-700/80">
+                <LayoutGrid className="h-3.5 w-3.5" />
+                学习空间
+              </div>
+              <div>
+                <h1 className="text-2xl font-semibold tracking-tight text-slate-900 dark:text-slate-100 sm:text-[32px]">学习空间</h1>
+                <p className="mt-2 text-sm leading-6 text-slate-500 dark:text-slate-400">
+                  统一管理学科、资料入口和课程包迁移。每个学科都可以直接继续构建、添加资料或导出备份。
+                </p>
+              </div>
             </div>
+
+            <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap 2xl:justify-end">
+              <WorkspaceActionButton
+                variant="primary"
+                icon={<Plus className="h-4 w-4" />}
+                onClick={() => navigate("/", { state: { newEntryAt: Date.now() } })}
+              >
+                新建学科
+              </WorkspaceActionButton>
+              <WorkspaceActionButton
+                icon={<Upload className="h-4 w-4" />}
+                onClick={() => navigate("/library")}
+              >
+                上传资料
+              </WorkspaceActionButton>
+              <WorkspaceActionButton
+                icon={<PackagePlus className="h-4 w-4" />}
+                onClick={() => setIsImportModalOpen(true)}
+              >
+                导入课程包
+              </WorkspaceActionButton>
+            </div>
+          </div>
+
+          <div className="mt-8 grid grid-cols-1 gap-3 sm:grid-cols-3">
+            {[
+              { label: "学习空间", value: isLoading ? "..." : subjectCount, caption: "已创建学科" },
+              { label: "课程包", value: "ATMX", caption: "支持导入与导出" },
+              { label: "资料入口", value: "Library", caption: "先上传，再关联学科" },
+            ].map((item) => (
+              <div key={item.label} className="rounded-2xl border border-slate-200/80 bg-white/80 px-4 py-3 shadow-sm dark:border-slate-800/80 dark:bg-slate-900/80">
+                <div className="text-xs font-medium text-slate-500 dark:text-slate-400">{item.label}</div>
+                <div className="mt-1 text-2xl font-semibold tracking-tight text-slate-900 dark:text-slate-100">{item.value}</div>
+                <div className="mt-1 text-xs text-slate-400 dark:text-slate-500">{item.caption}</div>
+              </div>
+            ))}
+          </div>
+
+          <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <h1 className="text-2xl font-semibold tracking-tight text-slate-900 dark:text-slate-100 sm:text-[32px]">学习空间</h1>
-              <p className="mt-2 text-sm leading-6 text-slate-500 dark:text-slate-400">
-                这里直接展示你已经创建的学科，每个学科都是一张独立卡片。
+              <h2 className="text-base font-semibold text-slate-900 dark:text-slate-100">学科列表</h2>
+              <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                {isLoading ? "正在加载学科..." : subjectCount > 0 ? `${subjectCount} 个学科可继续学习` : "还没有创建学科"}
               </p>
             </div>
+            {subjectCount > 0 ? (
+              <button
+                type="button"
+                onClick={() => setIsImportModalOpen(true)}
+                className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:border-slate-600 dark:hover:bg-slate-800"
+              >
+                <PackagePlus className="h-4 w-4" />
+                导入更多
+              </button>
+            ) : null}
           </div>
 
-          <button
-            type="button"
-            onClick={() => navigate("/", { state: { newEntryAt: Date.now() } })}
-            className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-slate-900 px-4 py-3 text-sm font-medium text-white transition hover:bg-slate-800 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-white sm:w-auto"
-          >
-            <Plus className="h-4 w-4" />
-            新建学科
-          </button>
-        </div>
-
-        <div className="mt-8 flex items-center justify-between">
-          <h2 className="text-[15px] font-medium text-slate-500 dark:text-slate-400">学科列表</h2>
-          <p className="text-sm text-slate-400 dark:text-slate-500">{isLoading ? "加载中..." : `${subjects.length} 个学科`}</p>
-        </div>
-
-        {isLoading ? (
-          <div className="mt-8 flex min-h-[240px] items-center justify-center rounded-[30px] border border-dashed border-slate-200 dark:border-slate-800 bg-white/45 dark:bg-slate-900/45">
-            <div className="flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400">
-              <Loader2 className="h-4 w-4 animate-spin" />
-              正在加载学习空间...
+          {isLoading ? (
+            <div className="mt-8 flex min-h-[260px] items-center justify-center rounded-[24px] border border-dashed border-slate-200 bg-white/45 dark:border-slate-800 dark:bg-slate-900/45">
+              <div className="flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                正在加载学习空间...
+              </div>
             </div>
-          </div>
-        ) : null}
+          ) : null}
 
-        {!isLoading && subjects.length === 0 ? (
-          <div className="mt-8 flex min-h-[300px] flex-col items-center justify-center rounded-[30px] border border-dashed border-slate-200 dark:border-slate-800 bg-white/45 dark:bg-slate-900/45 px-6 text-center">
-            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400">
-              <LayoutGrid className="h-7 w-7" />
-            </div>
-            <h2 className="mt-5 text-lg font-semibold text-slate-900 dark:text-slate-100">还没有学习空间</h2>
-            <p className="mt-2 max-w-md text-sm leading-6 text-slate-500 dark:text-slate-400">
-              先创建一个学科，创建后它就会以独立卡片的形式出现在这里。
-            </p>
-            <button
-              type="button"
-              onClick={() => navigate("/", { state: { newEntryAt: Date.now() } })}
-              className="mt-6 inline-flex items-center gap-2 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-4 py-3 text-sm font-medium text-slate-700 dark:text-slate-300 transition hover:border-slate-300 dark:hover:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-700"
-            >
-              <Plus className="h-4 w-4" />
-              去新建学科
-            </button>
-          </div>
-        ) : null}
-
-        {!isLoading && subjects.length > 0 ? (
-          <div className="mt-6 grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-3">
-            {subjects.map((subject: SubjectWithIcon) => {
-              const displayName = displaySubjectName(subject);
-              const SubjectIcon = resolveSubjectIcon(subject.icon_key);
-
-              return (
-                <Link
-                  key={subject.subject_id}
-                  to={`/subject/${subject.subject_id}/build`}
-                  className="group flex min-h-[288px] flex-col overflow-hidden rounded-3xl border border-slate-200/80 bg-white shadow-[0_6px_24px_rgba(15,23,42,0.06)] transition duration-300 hover:-translate-y-1 hover:border-slate-300 hover:shadow-[0_20px_48px_rgba(15,23,42,0.12)] dark:border-slate-800/80 dark:bg-slate-900 dark:shadow-[0_6px_24px_rgba(0,0,0,0.2)] dark:hover:border-slate-700 dark:hover:shadow-[0_20px_48px_rgba(0,0,0,0.3)] sm:min-h-[328px] sm:rounded-[30px]"
+          {!isLoading && subjects.length === 0 ? (
+            <div className="mt-8 flex min-h-[320px] flex-col items-center justify-center rounded-[24px] border border-dashed border-slate-200 bg-white/60 px-6 text-center dark:border-slate-800 dark:bg-slate-900/55">
+              <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400">
+                <LayoutGrid className="h-7 w-7" />
+              </div>
+              <h2 className="mt-5 text-lg font-semibold text-slate-900 dark:text-slate-100">还没有学习空间</h2>
+              <p className="mt-2 max-w-md text-sm leading-6 text-slate-500 dark:text-slate-400">
+                可以新建一个空学科，也可以直接导入别人分享的 .atmx 课程包。
+              </p>
+              <div className="mt-6 flex flex-col gap-2 sm:flex-row">
+                <WorkspaceActionButton
+                  variant="primary"
+                  icon={<Plus className="h-4 w-4" />}
+                  onClick={() => navigate("/", { state: { newEntryAt: Date.now() } })}
                 >
-                  <div className="relative h-[140px] overflow-hidden border-b border-slate-100 bg-[linear-gradient(135deg,#f8fafc_0%,#eef2ff_50%,#f8fafc_100%)] dark:border-slate-800 dark:bg-[linear-gradient(135deg,#0f172a_0%,#1e1b4b_50%,#0f172a_100%)] sm:h-[176px]">
-                    <div className="absolute left-5 top-5 inline-flex items-center gap-2 rounded-full bg-white/92 dark:bg-slate-800/92 px-3 py-1.5 text-xs font-medium text-slate-600 dark:text-slate-300 shadow-sm">
-                      <span className="h-2.5 w-2.5 rounded-full bg-sky-400" />
-                      Ready
-                    </div>
-                    <div className="absolute right-5 top-5 rounded-full bg-white/92 dark:bg-slate-800/92 px-3 py-1.5 text-[11px] font-medium text-slate-500 dark:text-slate-400 shadow-sm">
-                      学科
-                    </div>
-                    <div
-                      className={`absolute left-5 bottom-5 flex h-16 w-16 items-center justify-center rounded-[22px] bg-gradient-to-br ${subjectTone(displayName)} text-2xl font-semibold text-white shadow-lg`}
-                    >
-                      <SubjectIcon className="h-8 w-8" strokeWidth={2.1} />
-                    </div>
-                    <div className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-white/60 dark:from-slate-900/60 to-transparent" />
-                  </div>
+                  新建学科
+                </WorkspaceActionButton>
+                <WorkspaceActionButton
+                  icon={<PackagePlus className="h-4 w-4" />}
+                  onClick={() => setIsImportModalOpen(true)}
+                >
+                  导入课程包
+                </WorkspaceActionButton>
+              </div>
+            </div>
+          ) : null}
 
-                  <div className="flex flex-1 flex-col px-6 pb-6 pt-5">
-                    <h3 className="line-clamp-2 text-[19px] font-semibold leading-8 tracking-tight text-slate-900 dark:text-slate-100">
-                      {displayName}
-                    </h3>
+          {!isLoading && subjects.length > 0 ? (
+            <div className="mt-5 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+              {subjects.map((subject: SubjectWithIcon) => {
+                const displayName = displaySubjectName(subject);
+                const SubjectIcon = resolveSubjectIcon(subject.icon_key);
 
-                    <p className="mt-3 text-sm leading-6 text-slate-500 dark:text-slate-400">
-                      打开这个学习空间，继续管理资料、知识结构和学习内容。
-                    </p>
-
-                    <div className="mt-6 flex flex-wrap gap-2">
-                      <span className="rounded-full bg-slate-100 dark:bg-slate-800 px-3 py-1.5 text-xs font-medium text-slate-500 dark:text-slate-400">
-                        已创建
-                      </span>
-                      <span className="rounded-full bg-slate-100 dark:bg-slate-800 px-3 py-1.5 text-xs font-medium text-slate-500 dark:text-slate-400">
-                        可继续学习
-                      </span>
-                    </div>
-
-                    <div className="mt-auto flex items-center justify-between border-t border-slate-100 dark:border-slate-800 pt-6">
-                      <div className="inline-flex items-center gap-2 text-sm font-medium text-slate-500 dark:text-slate-400">
-                        <BookOpen className="h-4 w-4" />
-                        进入学习
+                return (
+                  <div
+                    key={subject.subject_id}
+                    className="group flex min-h-[240px] flex-col overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm transition duration-200 hover:border-slate-300 hover:shadow-[0_18px_42px_rgba(15,23,42,0.10)] dark:border-slate-800/80 dark:bg-slate-900 dark:hover:border-slate-700 dark:hover:shadow-[0_18px_42px_rgba(0,0,0,0.24)]"
+                  >
+                    <div className="flex items-start gap-4 border-b border-slate-100 px-5 py-5 dark:border-slate-800">
+                      <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br ${subjectTone(displayName)} text-white shadow-sm`}>
+                        <SubjectIcon className="h-6 w-6" strokeWidth={2.1} />
                       </div>
-                      <span className="rounded-full border border-slate-200 dark:border-slate-700 px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 transition group-hover:border-slate-300 dark:group-hover:border-slate-600 group-hover:bg-slate-50 dark:group-hover:bg-slate-800">
-                        打开
-                      </span>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-start justify-between gap-3">
+                          <h3 className="line-clamp-2 text-lg font-semibold leading-7 tracking-tight text-slate-900 dark:text-slate-100">
+                            {displayName}
+                          </h3>
+                          <span className="shrink-0 rounded-full bg-slate-100 px-2 py-1 text-[11px] font-medium text-slate-500 dark:bg-slate-800 dark:text-slate-400">
+                            学科
+                          </span>
+                        </div>
+                        <p className="mt-2 line-clamp-2 text-sm leading-6 text-slate-500 dark:text-slate-400">
+                          继续整理资料、生成知识文档、练习考试并查看学习画像。
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex flex-1 flex-col px-5 py-4">
+                      <div className="grid grid-cols-3 gap-2">
+                        {[
+                          { label: "构建", path: "build" },
+                          { label: "知识库", path: "knowledge-docs" },
+                          { label: "画像", path: "profile" },
+                        ].map((item) => (
+                          <Link
+                            key={item.path}
+                            to={`/subject/${subject.subject_id}/${item.path}`}
+                            className="rounded-xl bg-slate-50 px-3 py-2 text-center text-xs font-medium text-slate-600 transition hover:bg-slate-100 hover:text-slate-900 dark:bg-slate-800/70 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-slate-100"
+                          >
+                            {item.label}
+                          </Link>
+                        ))}
+                      </div>
+
+                      <div className="mt-auto grid grid-cols-2 gap-2 border-t border-slate-100 pt-4 dark:border-slate-800">
+                        <Link
+                          to={`/subject/${subject.subject_id}/build`}
+                          className="col-span-2 inline-flex min-h-10 items-center justify-center gap-2 whitespace-nowrap rounded-xl bg-slate-900 px-3 text-sm font-medium text-white transition hover:bg-slate-800 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white"
+                        >
+                          <BookOpen className="h-4 w-4" />
+                          进入学习
+                          <ArrowRight className="h-4 w-4" />
+                        </Link>
+                        <Link
+                          to={`/subject/${subject.subject_id}/build`}
+                          className="inline-flex min-h-10 items-center justify-center gap-2 whitespace-nowrap rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:border-slate-600 dark:hover:bg-slate-800"
+                          title="进入构建页添加资料"
+                        >
+                          <Upload className="h-4 w-4" />
+                          资料
+                        </Link>
+                        <button
+                          type="button"
+                          onClick={() => setExportSubjectId(subject.subject_id)}
+                          className="inline-flex min-h-10 items-center justify-center gap-2 whitespace-nowrap rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:border-slate-600 dark:hover:bg-slate-800"
+                          title="导出课程包"
+                        >
+                          <Download className="h-4 w-4" />
+                          导出
+                        </button>
+                      </div>
                     </div>
                   </div>
-                </Link>
-              );
-            })}
-          </div>
-        ) : null}
+                );
+              })}
+            </div>
+          ) : null}
+        </div>
       </div>
-    </div>
+
+      {isImportModalOpen ? (
+        <SubjectImportModal onClose={() => setIsImportModalOpen(false)} />
+      ) : null}
+
+      {exportSubjectId ? (
+        <SubjectExportModal subjectId={exportSubjectId} onClose={() => setExportSubjectId(null)} />
+      ) : null}
+    </>
   );
 }

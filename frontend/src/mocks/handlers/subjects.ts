@@ -194,4 +194,39 @@ export const subjectHandlers = [
       },
     });
   }),
+
+  http.post("/api/v1/subjects/import", async ({ request }) => {
+    const formData = await request.formData();
+    const file = formData.get("file") as File | null;
+    const customName = String(formData.get("new_subject_name") ?? "").trim();
+    const now = new Date().toISOString();
+    const subjectName =
+      customName ||
+      (file?.name ? file.name.replace(/\.(atmx|zip)$/i, "").trim() : "") ||
+      "导入课程";
+    const newSubject: SubjectItem = {
+      id: nextId++,
+      subject_id: buildMockSubjectId(),
+      name: subjectName,
+      description: "从课程包导入的学科",
+      user_intent: "",
+      icon_key: "book-open",
+      created_at: now,
+      updated_at: now,
+    };
+    mockSubjects.push(newSubject);
+    return HttpResponse.json({
+      code: 0,
+      data: {
+        subject_id: newSubject.subject_id,
+        subject_name: newSubject.name,
+        imported_counts: {
+          subject: 1,
+          knowledge_document: 2,
+          knowledge_unit: 12,
+        },
+        warnings: [],
+      },
+    });
+  }),
 ];

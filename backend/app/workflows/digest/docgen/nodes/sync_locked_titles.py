@@ -12,17 +12,19 @@ from app.shared.infra.knowledge.build_store import (
     update_knowledge_build_merge_preview,
     update_knowledge_build_status,
 )
+from app.workflows.digest.common.pedagogy import clean_generated_chapter_title
 from app.utils.time import utcnow
 from app.workflows.digest.docgen.lib.publish import build_merged_markdown
 from app.workflows.digest.docgen.nodes.common import publish_docgen_progress
 from app.workflows.digest.docgen.state import DocGenState
 
-_GENERIC_TITLE_RE = re.compile(r"^第\s*\d+\s*章$|^untitled", re.IGNORECASE)
+_GENERIC_TITLE_RE = re.compile(r"^第\s*\d+\s*章$|^untitled|^未命名章节$", re.IGNORECASE)
 
 
 def _clean_title(title: str) -> str:
     cleaned = " ".join(str(title or "").strip().split())
     cleaned = re.sub(r"^#+\s*", "", cleaned).strip()
+    cleaned = clean_generated_chapter_title(cleaned)
     return cleaned
 
 
@@ -30,7 +32,7 @@ def _locked_title(*, chapter: dict, chapter_index: int) -> str:
     current = _clean_title(str(chapter.get("resolved_title") or chapter.get("title") or ""))
     if current and not _GENERIC_TITLE_RE.match(current):
         return current
-    return f"第 {chapter_index} 章"
+    return "未命名章节"
 
 
 def _replace_first_h1(markdown: str, title: str) -> str:

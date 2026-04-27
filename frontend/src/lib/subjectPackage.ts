@@ -1,5 +1,14 @@
 import { buildApiUrl, getDeviceKey } from "../api/client";
+import { apiClient } from "../api/client";
 import type { ExportOptions } from "../api/generated/model";
+import type { ApiResponse } from "../api/types";
+
+export interface ImportResultData {
+  subject_id: string;
+  subject_name: string;
+  imported_counts: Record<string, number>;
+  warnings: string[];
+}
 
 function stripQuotes(value: string): string {
   const trimmed = value.trim();
@@ -67,4 +76,24 @@ export async function downloadSubjectPackage(subject: string, options: ExportOpt
   link.click();
   link.remove();
   URL.revokeObjectURL(blobUrl);
+}
+
+export async function importSubjectPackage(file: File, newName?: string): Promise<ImportResultData> {
+  const formData = new FormData();
+  formData.append("file", file);
+  if (newName?.trim()) {
+    formData.append("new_subject_name", newName.trim());
+  }
+
+  const response = await apiClient<ApiResponse<ImportResultData>>({
+    method: "POST",
+    url: "/api/v1/subjects/import",
+    data: formData,
+    headers: { "Content-Type": "multipart/form-data" },
+    timeout: 120000,
+  });
+  if (!response.data) {
+    throw new Error("导入结果为空");
+  }
+  return response.data;
 }
