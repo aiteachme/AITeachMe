@@ -24,9 +24,6 @@ class KnowledgeSyncReport:
     section_count: int = 0
     chapter_count: int = 0
     llm_section_count: int = 0
-    fallback_section_count: int = 0
-    question_fallback_section_count: int = 0
-    topic_fallback_section_count: int = 0
     markdown_short_circuit_section_count: int = 0
     total_extracted_node_count: int = 0
     total_extracted_edge_count: int = 0

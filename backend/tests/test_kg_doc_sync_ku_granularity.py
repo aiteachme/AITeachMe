@@ -20,8 +20,6 @@ def test_docs_empty_llm_result_does_not_build_heading_unit_locally(monkeypatch):
         )
     )
 
-    assert diagnostics.used_topic_fallback is False
-    assert diagnostics.used_question_fallback is False
     assert result.nodes == []
     assert result.edges == []
 
@@ -42,7 +40,5 @@ def test_docs_empty_llm_result_retries_but_does_not_expand_key_terms(monkeypatch
         )
     )
 
-    assert diagnostics.used_topic_fallback is False
-    assert diagnostics.used_question_fallback is False
     assert result.nodes == []
     assert result.edges == []

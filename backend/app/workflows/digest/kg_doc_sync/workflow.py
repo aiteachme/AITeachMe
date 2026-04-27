@@ -32,14 +32,14 @@ async def run_graph_docs_sync_workflow(
     subject_context: str | None = None,
     structured_context: dict[str, object] | None = None,
 ) -> WorkflowResult[KnowledgeSyncReport]:
-    fallback_subject = str(subject or "").strip()
+    error_subject = str(subject or "").strip()
     try:
         normalized_subject, normalized_markdown, normalized_revision = _normalize_docs_sync_inputs(
             subject=subject,
             markdown=markdown,
             build_revision_no=build_revision_no,
         )
-        fallback_subject = normalized_subject
+        error_subject = normalized_subject
         context = WorkflowContext(
             workflow_name="digest.kg_doc_sync",
             subject=normalized_subject,
@@ -90,13 +90,13 @@ async def run_graph_docs_sync_workflow(
         return err_result(
             "digest_graph_docs_sync_invalid_markdown",
             str(exc),
-            metadata={"subject": fallback_subject},
+            metadata={"subject": error_subject},
         )
     except Exception as exc:
         return err_result(
             "digest_graph_docs_sync_failed",
             str(exc),
-            metadata={"subject": fallback_subject},
+            metadata={"subject": error_subject},
         )
 
 

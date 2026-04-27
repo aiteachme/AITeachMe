@@ -410,7 +410,7 @@ payload fan-in
     2. 合并 anchors_by_name / anchors_by_normalized_name。
     3. `_build_backbone_graph_items` 消费 DocGen backbone：
        - `docgen_manifest.document_backbone_snapshot`
-       - fallback: `document_summary_json.document_backbone`
+       - `document_summary_json.document_backbone`
     4. `canonical_glossary` 只补缺失 term，不覆盖已经由正文抽到的同名概念。
     5. `concept_dependency_graph` 生成关系：
        - `chapter_order` -> `prerequisite`
@@ -488,9 +488,6 @@ fail
 | `created_edge_ids / updated_edge_ids / deprecated_edge_ids` | 边变化 |
 | `section_count / chapter_count` | 实际处理章节数 |
 | `llm_section_count` | 调用过 LLM 的章节数 |
-| `fallback_section_count` | 兼容历史字段；当前本地 fallback 已禁用，正常为 0 |
-| `question_fallback_section_count` | 兼容历史字段；当前本地 fallback 已禁用，正常为 0 |
-| `topic_fallback_section_count` | 兼容历史字段；当前本地 fallback 已禁用，正常为 0 |
 | `total_extracted_node_count / total_extracted_edge_count` | 原始抽取候选计数 |
 | `source_ref_count` | source ref 写入数 |
 | `backbone_unit_count / backbone_edge_count` | DocGen backbone 补入数量 |
@@ -510,9 +507,6 @@ fail
 | `last_synced_doc_version_no` | 当前文档版本 |
 | `doc_sync_section_count` | `report.section_count` |
 | `doc_sync_llm_section_count` | `report.llm_section_count` |
-| `doc_sync_fallback_section_count` | `report.fallback_section_count` |
-| `doc_sync_question_fallback_section_count` | `report.question_fallback_section_count` |
-| `doc_sync_topic_fallback_section_count` | `report.topic_fallback_section_count` |
 | `source_ref_count` | `report.source_ref_count` |
 | `backbone_unit_count / backbone_edge_count` | `report.backbone_*` |
 | `stable_anchor_count` | `report.stable_anchor_count` |

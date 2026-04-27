@@ -63,7 +63,7 @@ NODE_TRACE_DETAILS: dict[str, dict[str, object]] = {
     },
     NODE_EXTRACT: {
         "description": (
-            "按章节并发抽取候选 KnowledgeUnit 和关系，合并 LLM 候选、fallback 候选、DocGen backbone、"
+            "按章节并发抽取候选 KnowledgeUnit 和关系，合并 LLM 候选、DocGen backbone、"
             "标题结构边和跨章节语义边；本节点不写图谱表。LLM 子调用集中在 extractor 内部。"
         ),
         "reads": ["markdown", "subject_context", "structured_context", "sync_run_context", "Subject.document_summary_json"],
@@ -92,7 +92,7 @@ NODE_TRACE_DETAILS: dict[str, dict[str, object]] = {
     NODE_FINALIZE: {
         "description": (
             "检查同步报告是否存在，并把成功状态交给上层 graph lane runtime。"
-            "报告里包含 unit/edge 变更数、章节处理数、LLM/fallback 统计、source_ref 数量、backbone 命中数、稳定 anchor 数和废弃实体数。"
+            "报告里包含 unit/edge 变更数、章节处理数、LLM 统计、source_ref 数量、backbone 命中数、稳定 anchor 数和废弃实体数。"
         ),
         "reads": ["KnowledgeSyncReport"],
         "writes": ["final docs-sync state", "node_metrics.finalize", "error"],

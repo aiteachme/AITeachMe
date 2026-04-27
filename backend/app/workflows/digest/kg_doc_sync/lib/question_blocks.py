@@ -1,4 +1,4 @@
-"""Question-block parsing used by KG fallback extraction."""
+"""Question-block parsing used by KG content-shape checks."""
 
 from __future__ import annotations
 

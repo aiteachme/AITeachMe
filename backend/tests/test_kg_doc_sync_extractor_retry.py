@@ -36,8 +36,6 @@ def test_docs_section_empty_result_retries_with_llm_repair(monkeypatch):
     )
 
     assert calls["count"] == 2
-    assert diagnostics.used_topic_fallback is False
-    assert diagnostics.used_question_fallback is False
     assert any(node.name == "Derivative" for node in result.nodes)
 
 
@@ -61,8 +59,6 @@ def test_docs_section_empty_result_without_strong_signal_returns_empty(monkeypat
     )
 
     assert calls["count"] == 1
-    assert diagnostics.used_topic_fallback is False
-    assert diagnostics.used_question_fallback is False
     assert result.nodes == []
     assert result.edges == []
 

@@ -125,8 +125,6 @@ class CandidateExtractionDiagnostics:
     """Lightweight runtime diagnostics for one candidate-extraction pass."""
 
     llm_attempted: bool = False
-    used_question_fallback: bool = False
-    used_topic_fallback: bool = False
     markdown_anchor_short_circuit_used: bool = False
     question_like_chunk: bool = False
     elapsed_ms: int = 0
@@ -643,12 +641,8 @@ async def _extract_candidates_internal(
         header_path=header_path,
         node_count=len(result.nodes),
         edge_count=len(result.edges),
-        used_question_fallback=False,
-        used_topic_fallback=False,
         question_like_chunk=_looks_like_question_chunk(chunk_content),
     )
-    diagnostics.used_question_fallback = False
-    diagnostics.used_topic_fallback = False
     diagnostics.question_like_chunk = _looks_like_question_chunk(chunk_content)
     diagnostics.node_count = len(result.nodes)
     diagnostics.edge_count = len(result.edges)

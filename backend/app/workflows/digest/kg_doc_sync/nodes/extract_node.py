@@ -43,9 +43,6 @@ def _payload_metrics(
         "chapter_count": int(diagnostics.get("chapter_count", 0) or 0),
         "section_count": int(diagnostics.get("section_count", 0) or 0),
         "llm_section_count": int(diagnostics.get("llm_section_count", 0) or 0),
-        "fallback_section_count": int(diagnostics.get("fallback_section_count", 0) or 0),
-        "question_fallback_section_count": int(diagnostics.get("question_fallback_section_count", 0) or 0),
-        "topic_fallback_section_count": int(diagnostics.get("topic_fallback_section_count", 0) or 0),
         **graph_extraction_parallelism(),
     }
 
