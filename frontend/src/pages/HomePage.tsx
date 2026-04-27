@@ -5,14 +5,18 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   AlertCircle,
   ArrowUp,
+  Check,
   CheckCircle2,
   ChevronDown,
   FileCode,
   FileImage,
+  FolderOpen,
   Loader2,
   FileText,
   FileType,
   Paperclip,
+  RefreshCw,
+  Search,
   Upload,
   X,
   FileUp,
@@ -69,14 +73,6 @@ async function fetchFiles(fileUids: string[]): Promise<FilesData> {
     failed_count: 0,
     items: [],
   };
-}
-
-async function deleteFile(uid: string) {
-  await apiClient<ApiResponse<{ deleted_file_uids: string[] }>>({
-    method: "POST",
-    url: `/api/v1/files/delete`,
-    data: { file_uid: uid },
-  });
 }
 
 async function linkFilesToSubject(subject: string, fileUids: string[]): Promise<FilesData> {
@@ -189,6 +185,224 @@ function homeFileStatusMeta(file: Pick<FileRecord, "markdown_ready" | "error_mes
     icon: <Loader2 className="h-3.5 w-3.5 animate-spin text-sky-500" />,
     tone: "text-sky-600",
   };
+}
+
+function LibraryPickerModal({
+  selectedFileUids,
+  onClose,
+  onConfirm,
+}: {
+  selectedFileUids: string[];
+  onClose: () => void;
+  onConfirm: (fileUids: string[], files: FileRecord[]) => void;
+}) {
+  const [searchTerm, setSearchTerm] = useState("");
+  const [selected, setSelected] = useState<Set<string>>(() => new Set(selectedFileUids));
+
+  useEffect(() => {
+    setSelected(new Set(selectedFileUids));
+  }, [selectedFileUids]);
+
+  const filesQuery = useQuery({
+    queryKey: ["files-library"],
+    queryFn: () => fetchFiles([]),
+    refetchInterval: (query) => {
+      const data = query.state.data as FilesData | undefined;
+      return (data?.processing_count ?? 0) > 0 ? 2000 : false;
+    },
+  });
+
+  const files = filesQuery.data?.items ?? [];
+  const normalizedSearchTerm = searchTerm.trim().toLowerCase();
+  const visibleFiles = useMemo(() => {
+    if (!normalizedSearchTerm) {
+      return files;
+    }
+    return files.filter((file) => {
+      const ext = normalizeFileExt(file.filetype);
+      return (
+        file.filename.toLowerCase().includes(normalizedSearchTerm) ||
+        ext.includes(normalizedSearchTerm)
+      );
+    });
+  }, [files, normalizedSearchTerm]);
+
+  const selectedFiles = useMemo(
+    () => files.filter((file) => selected.has(file.uid)),
+    [files, selected],
+  );
+  const selectedCount = selected.size;
+
+  const toggleFileUid = (uid: string) => {
+    setSelected((current) => {
+      const next = new Set(current);
+      if (next.has(uid)) {
+        next.delete(uid);
+      } else {
+        next.add(uid);
+      }
+      return next;
+    });
+  };
+
+  const confirmSelection = () => {
+    onConfirm(Array.from(selected), selectedFiles);
+    onClose();
+  };
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center px-4">
+      <div className="absolute inset-0 modal-backdrop" onClick={onClose} />
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95, y: 10 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.95 }}
+        className="relative z-10 flex max-h-[82vh] w-[640px] max-w-full flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl dark:border-slate-800 dark:bg-slate-900"
+      >
+        <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4 dark:border-slate-800/80">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-900 text-white shadow-sm dark:bg-slate-100 dark:text-slate-900">
+              <FolderOpen className="h-5 w-5" />
+            </div>
+            <div>
+              <h3 className="text-base font-bold text-slate-900 dark:text-slate-100">从资料库选择</h3>
+              <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">把已有资料加入这次新建学科</p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-300"
+            title="关闭"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        <div className="border-b border-slate-100 px-5 py-3 dark:border-slate-800/80">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+            <div className="relative flex-1">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+              <input
+                value={searchTerm}
+                onChange={(event) => setSearchTerm(event.target.value)}
+                placeholder="搜索文件名或格式"
+                className="h-10 w-full rounded-xl border border-slate-200 bg-white pl-9 pr-3 text-sm text-slate-800 outline-none transition focus:border-slate-300 focus:ring-2 focus:ring-slate-900/10 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:ring-slate-100/10"
+              />
+            </div>
+            <button
+              type="button"
+              onClick={() => void filesQuery.refetch()}
+              disabled={filesQuery.isFetching}
+              className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 px-3 text-sm font-medium text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+            >
+              <RefreshCw className={cn("h-4 w-4", filesQuery.isFetching && "animate-spin")} />
+              刷新
+            </button>
+          </div>
+        </div>
+
+        <div className="min-h-[260px] flex-1 overflow-y-auto px-5 py-4">
+          {filesQuery.isLoading ? (
+            <div className="flex min-h-[240px] items-center justify-center text-sm text-slate-500 dark:text-slate-400">
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              正在加载资料库...
+            </div>
+          ) : null}
+
+          {!filesQuery.isLoading && files.length === 0 ? (
+            <div className="flex min-h-[240px] flex-col items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-slate-50/70 px-6 text-center dark:border-slate-800 dark:bg-slate-800/30">
+              <FolderOpen className="h-8 w-8 text-slate-400" />
+              <p className="mt-3 text-sm font-medium text-slate-700 dark:text-slate-300">资料库还没有文件</p>
+              <p className="mt-1 text-xs text-slate-500 dark:text-slate-500">先上传资料后，就可以在这里选择。</p>
+            </div>
+          ) : null}
+
+          {!filesQuery.isLoading && files.length > 0 && visibleFiles.length === 0 ? (
+            <div className="flex min-h-[200px] items-center justify-center text-sm text-slate-500 dark:text-slate-400">
+              没有匹配的资料
+            </div>
+          ) : null}
+
+          {visibleFiles.length > 0 ? (
+            <div className="space-y-2">
+              {visibleFiles.map((file) => {
+                const checked = selected.has(file.uid);
+                const meta = homeFileStatusMeta(file);
+                return (
+                  <label
+                    key={file.uid}
+                    className={cn(
+                      "flex cursor-pointer items-center gap-3 rounded-xl border px-3 py-3 transition",
+                      checked
+                        ? "border-slate-900 bg-slate-50 shadow-sm dark:border-slate-500 dark:bg-slate-800/70"
+                        : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:hover:border-slate-700 dark:hover:bg-slate-800/60",
+                    )}
+                  >
+                    <input
+                      type="checkbox"
+                      className="sr-only"
+                      checked={checked}
+                      onChange={() => toggleFileUid(file.uid)}
+                    />
+                    <span
+                      className={cn(
+                        "flex h-5 w-5 shrink-0 items-center justify-center rounded-md border transition",
+                        checked
+                          ? "border-slate-900 bg-slate-900 text-white dark:border-slate-100 dark:bg-slate-100 dark:text-slate-900"
+                          : "border-slate-300 bg-white dark:border-slate-700 dark:bg-slate-900",
+                      )}
+                    >
+                      {checked ? <Check className="h-3.5 w-3.5" /> : null}
+                    </span>
+                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-slate-100 dark:bg-slate-800">
+                      {homeFileIcon(file)}
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm font-medium text-slate-900 dark:text-slate-100">
+                        {file.filename}
+                      </span>
+                      <span className="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-400 dark:text-slate-500">
+                        <span>{normalizeFileExt(file.filetype).toUpperCase() || "FILE"}</span>
+                        <span>{formatFileSize(file.file_size_bytes)}</span>
+                        {file.estimated_pages ? <span>{file.estimated_pages} 页</span> : null}
+                      </span>
+                    </span>
+                    <span className={cn("flex shrink-0 items-center gap-1 text-xs font-medium", meta.tone)} title={resolveFileProcessingLabel(file)}>
+                      {meta.icon}
+                      {meta.label}
+                    </span>
+                  </label>
+                );
+              })}
+            </div>
+          ) : null}
+        </div>
+
+        <div className="flex items-center justify-between gap-3 border-t border-slate-100 bg-slate-50/70 px-5 py-4 dark:border-slate-800/80 dark:bg-slate-900">
+          <div className="text-xs font-medium text-slate-500 dark:text-slate-400">已选 {selectedCount} 份资料</div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-xl px-4 py-2 text-sm font-medium text-slate-600 transition hover:bg-slate-100 hover:text-slate-800 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+            >
+              取消
+            </button>
+            <button
+              type="button"
+              onClick={confirmSelection}
+              disabled={filesQuery.isLoading && selectedCount === 0}
+              className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2 text-sm font-bold text-white shadow-sm transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white dark:disabled:bg-slate-800 dark:disabled:text-slate-600"
+            >
+              <Check className="h-4 w-4" />
+              确认选择
+            </button>
+          </div>
+        </div>
+      </motion.div>
+    </div>
+  );
 }
 
 /* ── Export Modal ── */
@@ -431,6 +645,7 @@ export function HomePage() {
   // Modal state
   const [exportSubjectId, setExportSubjectId] = useState<string | null>(null);
   const [importOpen, setImportOpen] = useState(false);
+  const [libraryPickerOpen, setLibraryPickerOpen] = useState(false);
   const [renameTarget, setRenameTarget] = useState<{ id: string; name: string } | null>(null);
   const newEntryAt = (location.state as { newEntryAt?: number } | null)?.newEntryAt;
 
@@ -445,6 +660,7 @@ export function HomePage() {
     setIsUploadingFiles(false);
     setUploadingFileNames([]);
     setEntryFileUids([]);
+    setLibraryPickerOpen(false);
     setError(null);
     navigate("/", { replace: true, state: null });
     window.requestAnimationFrame(() => textareaRef.current?.focus());
@@ -465,6 +681,7 @@ export function HomePage() {
 
   // ── Courses query ──
   const shouldShowDemoCourses = settingsOverview?.mode === "cloud";
+  const shouldShowLocalImportShortcut = settingsOverview?.mode === "local";
   const { data: courses = [], isLoading: coursesLoading } = useQuery({
     queryKey: ["available-courses"],
     queryFn: fetchAvailableCourses,
@@ -565,6 +782,7 @@ export function HomePage() {
       setEntryFileUids(nextFileUids);
       syncEntryFilesCache(nextFileUids, uploaded);
       await queryClient.invalidateQueries({ queryKey: HOME_ENTRY_FILES_QUERY_KEY(nextFileUids) });
+      await queryClient.invalidateQueries({ queryKey: ["files-library"] });
     } catch (err: unknown) {
       setError(getApiErrorMessage(err, "文件上传失败"));
     } finally {
@@ -572,6 +790,18 @@ export function HomePage() {
       setUploadingFileNames([]);
     }
   }, [entryFileUids, queryClient, syncEntryFilesCache]);
+
+  const handleSelectLibraryFiles = useCallback((fileUids: string[], files: FileRecord[]) => {
+    const nextFileUids = uniqueStrings(fileUids);
+    setEntryFileUids(nextFileUids);
+    setError(null);
+    if (files.length > 0) {
+      syncEntryFilesCache(nextFileUids, files);
+    }
+    if (nextFileUids.length > 0) {
+      void queryClient.invalidateQueries({ queryKey: HOME_ENTRY_FILES_QUERY_KEY(nextFileUids) });
+    }
+  }, [queryClient, syncEntryFilesCache]);
 
   // ── Handlers ──
   const uploadedFiles = entryFilesData?.items ?? [];
@@ -581,7 +811,7 @@ export function HomePage() {
   const hasEntryFiles = uploadedFiles.length > 0 || optimisticUploadingFiles.length > 0;
   const entryFilesStatusText = useMemo(() => {
     if (isCreatingDraftSubject) {
-      return "正在创建学习空间，并关联已上传资料。";
+      return "正在创建学习空间，并关联已选择资料。";
     }
     if (isUploadingFiles) {
       return "资料正在上传，上传完成后会继续后台解析；文件会保留在这里，除非你手动移除。";
@@ -598,18 +828,18 @@ export function HomePage() {
       uploadedFiles.filter((file) => Boolean(file.error_message?.trim()) || file.status === "failed").length;
 
     if (processingCount > 0) {
-      return `${processingCount} 份资料正在解析中；已上传的资料会持续保留，完成后会自动转为可用状态。`;
+      return `${processingCount} 份资料正在解析中；完成后会自动转为可用状态。`;
     }
     if (readyCount > 0 && failedCount === 0) {
-      return `${readyCount} 份资料已就绪，可以直接开始规划。资料会保留，除非你手动移除。`;
+      return `${readyCount} 份资料已就绪，可以直接开始规划。`;
     }
     if (readyCount > 0 && failedCount > 0) {
-      return `${readyCount} 份资料已就绪，${failedCount} 份资料处理失败；失败文件可删掉后重新上传。`;
+      return `${readyCount} 份资料已就绪，${failedCount} 份资料处理失败；可以先移除失败文件。`;
     }
     if (failedCount > 0) {
-      return `${failedCount} 份资料处理失败；你可以移除后重新上传。`;
+      return `${failedCount} 份资料处理失败；你可以先从本次新建中移除。`;
     }
-    return "资料已上传，会继续在后台解析；文件会保留在这里，除非你手动移除。";
+    return "资料已加入，会继续在后台解析；从这里移除不会删除资料库文件。";
   }, [entryFilesData?.failed_count, entryFilesData?.processing_count, entryFilesData?.ready_count, hasEntryFiles, isCreatingDraftSubject, isUploadingFiles, uploadedFiles]);
   const canGenerate = prompt.trim().length > 0 || hasEntryFiles;
 
@@ -665,19 +895,14 @@ export function HomePage() {
     void uploadPendingFiles(droppedFiles);
   }, [uploadPendingFiles]);
 
-  const deleteEntryFileMutation = useMutation({
-    mutationFn: async (uid: string) => {
-      await deleteFile(uid);
-      return uid;
-    },
-    onSuccess: async (uid) => {
-      setEntryFileUids((current) => current.filter((item) => item !== uid));
-      await queryClient.invalidateQueries({ queryKey: ["home-entry-files"] });
-    },
-    onError: (err: unknown) => {
-      setError(getApiErrorMessage(err, "删除文件失败"));
-    },
-  });
+  const handleRemoveEntryFile = useCallback((uid: string) => {
+    const nextFileUids = entryFileUids.filter((item) => item !== uid);
+    setEntryFileUids(nextFileUids);
+    setError(null);
+    if (nextFileUids.length > 0) {
+      syncEntryFilesCache(nextFileUids, uploadedFiles.filter((file) => file.uid !== uid));
+    }
+  }, [entryFileUids, syncEntryFilesCache, uploadedFiles]);
 
   const isWorking = isCreatingDraftSubject || isStartingBuild || isUploadingFiles;
   const hasDemoCourses = shouldShowDemoCourses && courses.length > 0;
@@ -689,7 +914,7 @@ export function HomePage() {
       onDrop={(droppedFiles) => {
         handleFileDrop(droppedFiles);
       }}
-      disabled={isWorking || Boolean(exportSubjectId) || importOpen || Boolean(renameTarget)}
+      disabled={isWorking || Boolean(exportSubjectId) || importOpen || libraryPickerOpen || Boolean(renameTarget)}
     />
     <div
       className={cn(
@@ -785,9 +1010,8 @@ export function HomePage() {
                         </span>
                         <button
                           type="button"
-                          onClick={() => deleteEntryFileMutation.mutate(file.uid)}
-                          disabled={deleteEntryFileMutation.isPending}
-                          title="移除文件"
+                          onClick={() => handleRemoveEntryFile(file.uid)}
+                          title="从本次新建中移除"
                           className="rounded-md p-0.5 text-zinc-400 transition-colors hover:bg-red-50 hover:text-red-500 disabled:cursor-not-allowed disabled:opacity-50"
                         >
                           <X className="h-3.5 w-3.5" />
@@ -836,6 +1060,27 @@ export function HomePage() {
                     )}
                     {hasEntryFiles ? "添加资料" : "添加资料"}
                   </button>
+                  <button
+                    type="button"
+                    onClick={() => setLibraryPickerOpen(true)}
+                    disabled={isWorking}
+                    className="flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-[12px] font-medium text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-900 disabled:cursor-not-allowed disabled:opacity-60 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+                    title="从我的资料库选择已有文件"
+                  >
+                    <FolderOpen className="h-3.5 w-3.5" />
+                    从资料库选
+                  </button>
+                  {shouldShowLocalImportShortcut && (
+                    <button
+                      type="button"
+                      onClick={() => setImportOpen(true)}
+                      className="flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-[12px] font-medium text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+                      title="导入 .atmx 课程包"
+                    >
+                      <Package className="h-3.5 w-3.5" />
+                      导入课程包
+                    </button>
+                  )}
                   {isWorking && (
                     <span className="ml-2 flex items-center text-[12px] font-medium text-zinc-500">
                       <Loader2 className="mr-1.5 h-3 w-3 animate-spin" />
@@ -1037,6 +1282,14 @@ export function HomePage() {
               variant: "success",
             });
           }}
+        />
+      )}
+      {libraryPickerOpen && (
+        <LibraryPickerModal
+          key="library-picker"
+          selectedFileUids={entryFileUids}
+          onClose={() => setLibraryPickerOpen(false)}
+          onConfirm={handleSelectLibraryFiles}
         />
       )}
       {renameTarget && (

@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { ReactNode } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
+import { motion } from "framer-motion";
 import { ArrowRight, BookOpen, Download, LayoutGrid, Loader2, PackagePlus, Plus, Upload } from "lucide-react";
 
 import { listSubjectsApiApiV1SubjectsListPost } from "../api/generated/subjects";
@@ -197,14 +198,23 @@ export function LearningSpacesPage() {
 
           {!isLoading && subjects.length > 0 ? (
             <div className="mt-5 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-              {subjects.map((subject: SubjectWithIcon) => {
+              {subjects.map((subject: SubjectWithIcon, index: number) => {
                 const displayName = displaySubjectName(subject);
                 const SubjectIcon = resolveSubjectIcon(subject.icon_key);
 
                 return (
-                  <div
+                  <motion.div
                     key={subject.subject_id}
                     className="group flex min-h-[240px] flex-col overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm transition duration-200 hover:border-slate-300 hover:shadow-[0_18px_42px_rgba(15,23,42,0.10)] dark:border-slate-800/80 dark:bg-slate-900 dark:hover:border-slate-700 dark:hover:shadow-[0_18px_42px_rgba(0,0,0,0.24)]"
+                    initial={{ opacity: 0, scale: 0.97, y: 10 }}
+                    animate={{ opacity: 1, scale: 1, y: 0 }}
+                    transition={{
+                      delay: Math.min(index * 0.035, 0.22),
+                      duration: 0.24,
+                      ease: "easeOut",
+                    }}
+                    whileHover={{ y: -3 }}
+                    whileTap={{ scale: 0.99 }}
                   >
                     <div className="flex items-start gap-4 border-b border-slate-100 px-5 py-5 dark:border-slate-800">
                       <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br ${subjectTone(displayName)} text-white shadow-sm`}>
@@ -270,7 +280,7 @@ export function LearningSpacesPage() {
                         </button>
                       </div>
                     </div>
-                  </div>
+                  </motion.div>
                 );
               })}
             </div>
