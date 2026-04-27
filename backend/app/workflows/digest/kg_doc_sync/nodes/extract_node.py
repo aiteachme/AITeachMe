@@ -73,6 +73,19 @@ def extract_node(state: DocsSyncState) -> DocsSyncState:
             run_context=run_context,
         )
         elapsed_ms = int((perf_counter() - started_at) * 1000)
+        if payload is None:
+            return with_node_error(
+                state,
+                "extract",
+                "docs_sync_extraction_payload_missing",
+                metrics={
+                    "elapsed_ms": elapsed_ms,
+                    "subject_context_source": subject_context_source,
+                    **graph_extraction_parallelism(),
+                },
+                subject_context=subject_context,
+                extraction_payload=None,
+            )
         return with_node_metrics(
             state,
             "extract",

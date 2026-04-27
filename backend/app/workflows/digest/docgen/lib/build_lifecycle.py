@@ -820,6 +820,7 @@ async def run_docgen_background(
             )
             logger.error("knowledge_build_failed", subject=subject, error=result.error.detail)
             return
+        final_docgen_state = result.require_value()
         _write_docgen_status(
             subject,
             requested_at=requested_at,
@@ -850,6 +851,7 @@ async def run_docgen_background(
                     file_ids=file_ids,
                     prompt=prompt,
                     llm_snapshot=graph_llm_snapshot,
+                    docgen_state=final_docgen_state,
                 )
                 _write_graph_status(
                     subject,

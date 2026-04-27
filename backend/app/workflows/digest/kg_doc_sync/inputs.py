@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 import json
 
-from sqlmodel import Session, select
+from sqlmodel import select
 
 from app.repositories.knowledge.docgen_repo import get_current_published_docs
 from app.shared.infra.database import managed_session
@@ -40,6 +40,13 @@ def _load_json_list(raw: str | None) -> list[object]:
     except json.JSONDecodeError:
         return []
     return list(payload) if isinstance(payload, list) else []
+
+
+def _safe_int(value: object, *, default: int = 0) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
 
 
 def _clean_int_list(value: object) -> list[int]:
@@ -128,16 +135,95 @@ def _chapter_context_payload(doc: KnowledgeDoc) -> dict[str, object]:
     }
 
 
-def load_knowledge_doc_sync_input(subject: str) -> KnowledgeDocSyncInput:
+def _chapter_context_from_docgen_state(
+    chapter: dict[str, object],
+    *,
+    knowledge_document_id: int | None,
+) -> dict[str, object]:
+    source_scope = dict(chapter.get("source_scope") or {}) if isinstance(chapter.get("source_scope"), dict) else {}
+    manifest = dict(chapter.get("manifest") or {}) if isinstance(chapter.get("manifest"), dict) else {}
+    source_file_ids = _clean_int_list(
+        chapter.get("source_file_ids")
+        or source_scope.get("source_file_ids")
+        or manifest.get("source_file_ids")
+    )
+    return {
+        "knowledge_document_id": knowledge_document_id,
+        "chapter_index": _safe_int(chapter.get("chapter_index")),
+        "title": str(chapter.get("title") or chapter.get("resolved_title") or "").strip(),
+        "summary": str(chapter.get("summary") or "").strip(),
+        "source_file_ids": source_file_ids,
+        "source_scope": source_scope,
+        "manifest": manifest,
+    }
+
+
+def build_knowledge_doc_sync_input_from_docgen_state(
+    subject: str,
+    docgen_state: dict[str, object] | None,
+) -> KnowledgeDocSyncInput | None:
+    """Build graph-sync input directly from the just-finished DocGen state."""
+
+    state = dict(docgen_state or {})
+    markdown = str(state.get("merged_markdown") or state.get("enriched_markdown") or "").strip()
+    if not markdown:
+        return None
+
+    chapter_metadatas = [
+        item
+        for item in list(state.get("chapter_metadatas") or [])
+        if isinstance(item, dict)
+    ]
+    doc_ids = _clean_int_list(state.get("doc_ids"))
+    manifest = _load_docgen_manifest(subject)
+    manifest_build_metadata = (
+        dict(manifest.get("build_metadata"))
+        if isinstance(manifest.get("build_metadata"), dict)
+        else {}
+    )
+    manifest_version_no = _safe_int(manifest_build_metadata.get("version_no"))
+    manifest_record = read_knowledge_manifest(subject) if manifest_version_no <= 0 else None
+    doc_version_no = int(
+        manifest_version_no
+        or (manifest_record.version_no if manifest_record is not None else 0)
+        or 0
+    )
+    structured_context = {
+        "doc_version_no": doc_version_no,
+        "docgen_manifest": manifest,
+        "document_summary_json": _load_subject_document_summary(subject),
+        "chapters": [
+            _chapter_context_from_docgen_state(
+                chapter,
+                knowledge_document_id=doc_ids[index] if index < len(doc_ids) else None,
+            )
+            for index, chapter in enumerate(
+                sorted(chapter_metadatas, key=lambda item: _safe_int(item.get("chapter_index")))
+            )
+        ],
+    }
+    return KnowledgeDocSyncInput(
+        markdown=markdown,
+        source="docgen_state",
+        structured_context=structured_context,
+    )
+
+
+def _load_subject_document_summary(subject: str) -> dict[str, object]:
     with managed_session() as session:
-        docs = get_current_published_docs(session, subject)
-        merged = _merge_doc_markdown(docs).strip()
         subject_record = session.exec(select(Subject).where(Subject.slug == subject)).first()
-        document_summary_json = (
+        return (
             dict(subject_record.document_summary_json)
             if subject_record is not None and isinstance(subject_record.document_summary_json, dict)
             else {}
         )
+
+
+def load_knowledge_doc_sync_input(subject: str) -> KnowledgeDocSyncInput:
+    with managed_session() as session:
+        docs = get_current_published_docs(session, subject)
+        merged = _merge_doc_markdown(docs).strip()
+    document_summary_json = _load_subject_document_summary(subject)
     if merged:
         doc_versions = [int(doc.version_no or doc.version or 0) for doc in docs]
         structured_context = {
@@ -169,6 +255,7 @@ def resolve_graph_input_paths(*, file_ids: list[int], knowledge_doc_markdown: st
 
 
 __all__ = [
+    "build_knowledge_doc_sync_input_from_docgen_state",
     "extract_doc_chapter_metadatas",
     "KnowledgeDocSyncInput",
     "load_knowledge_doc_sync_input",

@@ -16,6 +16,10 @@ def _resolve_error_message(state: DocsSyncState) -> str:
     error_message = str(state.get("error") or "").strip()
     if error_message:
         return error_message
+    extract_metrics = dict((state.get("node_metrics") or {}).get("extract") or {})
+    extract_error = str(extract_metrics.get("error") or "").strip()
+    if extract_error:
+        return extract_error
     if state.get("extraction_payload") is None:
         return "docs_sync_extraction_payload_missing"
     return "docs_sync_failed"
