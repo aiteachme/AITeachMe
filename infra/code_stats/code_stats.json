@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-04-20T02:34:22.223125",
-  "total_commits_analyzed": 766,
+  "generated_at": "2026-04-27T02:48:22.878243",
+  "total_commits_analyzed": 1141,
   "stats": [
     {
       "date": "2026-03-11",
@@ -6129,6 +6129,3006 @@
       "code_lines": 100463,
       "other_lines": 28142,
       "message": "Merge remote-tracking branch 'origin/main' into de"
+    },
+    {
+      "date": "2026-04-18",
+      "commit": "dfb8ced",
+      "total_lines": 126728,
+      "code_lines": 97700,
+      "other_lines": 29028,
+      "message": "feat: add MarkItDown ingest parser option"
+    },
+    {
+      "date": "2026-04-19",
+      "commit": "15b2488",
+      "total_lines": 127710,
+      "code_lines": 99729,
+      "other_lines": 27981,
+      "message": "refactor: 将 DocGen 章节复核改为 LangGraph 并行分发"
+    },
+    {
+      "date": "2026-04-19",
+      "commit": "a480b9b",
+      "total_lines": 127772,
+      "code_lines": 99798,
+      "other_lines": 27974,
+      "message": "docs: 合并 workflows 结构与 LangSmith 规范"
+    },
+    {
+      "date": "2026-04-19",
+      "commit": "6d8ffde",
+      "total_lines": 128067,
+      "code_lines": 100017,
+      "other_lines": 28050,
+      "message": "fix: 保持知识构建刷新后的运行态"
+    },
+    {
+      "date": "2026-04-20",
+      "commit": "4f37cd7",
+      "total_lines": 128171,
+      "code_lines": 100126,
+      "other_lines": 28045,
+      "message": "refactor: 将学科名降级为展示标签"
+    },
+    {
+      "date": "2026-04-20",
+      "commit": "8474ddf",
+      "total_lines": 128196,
+      "code_lines": 100146,
+      "other_lines": 28050,
+      "message": "refactor: 调整新建学科入口为首页对话流"
+    },
+    {
+      "date": "2026-04-20",
+      "commit": "ad77520",
+      "total_lines": 128605,
+      "code_lines": 100463,
+      "other_lines": 28142,
+      "message": "chore: update code statistics [skip ci]"
+    },
+    {
+      "date": "2026-04-20",
+      "commit": "54c2833",
+      "total_lines": 127987,
+      "code_lines": 99958,
+      "other_lines": 28029,
+      "message": "fix: 使用真实构建进度并移除 DocGen 文生图链路"
+    },
+    {
+      "date": "2026-04-20",
+      "commit": "9ba7c66",
+      "total_lines": 127963,
+      "code_lines": 99935,
+      "other_lines": 28028,
+      "message": "fix: 调整构建提示与终止入口位置"
+    },
+    {
+      "date": "2026-04-20",
+      "commit": "c041ed9",
+      "total_lines": 128039,
+      "code_lines": 100003,
+      "other_lines": 28036,
+      "message": "refactor: 统一 Digest 提示词构建追踪"
+    },
+    {
+      "date": "2026-04-20",
+      "commit": "e26559e",
+      "total_lines": 128185,
+      "code_lines": 100137,
+      "other_lines": 28048,
+      "message": "Merge remote-tracking branch 'origin/dev_cy' into "
+    },
+    {
+      "date": "2026-04-20",
+      "commit": "6472aa7",
+      "total_lines": 128106,
+      "code_lines": 100072,
+      "other_lines": 28034,
+      "message": "refactor: 简化站点检索器来源模型"
+    },
+    {
+      "date": "2026-04-20",
+      "commit": "5ea04b5",
+      "total_lines": 128581,
+      "code_lines": 100480,
+      "other_lines": 28101,
+      "message": "Merge branch 'dev_ywl_t' into dev_ywl"
+    },
+    {
+      "date": "2026-04-20",
+      "commit": "70fa030",
+      "total_lines": 128432,
+      "code_lines": 100354,
+      "other_lines": 28078,
+      "message": "style: 前端优化"
+    },
+    {
+      "date": "2026-04-20",
+      "commit": "e76b267",
+      "total_lines": 128828,
+      "code_lines": 100697,
+      "other_lines": 28131,
+      "message": "Merge branch 'dev_ywl' of github.com:aiteachme/AiT"
+    },
+    {
+      "date": "2026-04-20",
+      "commit": "31aa704",
+      "total_lines": 128864,
+      "code_lines": 100725,
+      "other_lines": 28139,
+      "message": "fix: lammaindex优化"
+    },
+    {
+      "date": "2026-04-20",
+      "commit": "092eecc",
+      "total_lines": 128993,
+      "code_lines": 100794,
+      "other_lines": 28199,
+      "message": "feat: 添加反馈"
+    },
+    {
+      "date": "2026-04-20",
+      "commit": "f85a33d",
+      "total_lines": 129119,
+      "code_lines": 100909,
+      "other_lines": 28210,
+      "message": "feat: 支持知识文档导出 Markdown 和 PDF"
+    },
+    {
+      "date": "2026-04-20",
+      "commit": "64e4e15",
+      "total_lines": 129531,
+      "code_lines": 101223,
+      "other_lines": 28308,
+      "message": "Merge branch 'dev_ywl' of github.com:aiteachme/AIT"
+    },
+    {
+      "date": "2026-04-20",
+      "commit": "9ac6467",
+      "total_lines": 129081,
+      "code_lines": 100863,
+      "other_lines": 28218,
+      "message": "feat: 增加浮层"
+    },
+    {
+      "date": "2026-04-20",
+      "commit": "d1bb881",
+      "total_lines": 129092,
+      "code_lines": 100873,
+      "other_lines": 28219,
+      "message": "style: 优化浮层"
+    },
+    {
+      "date": "2026-04-20",
+      "commit": "d9792e8",
+      "total_lines": 127930,
+      "code_lines": 99932,
+      "other_lines": 27998,
+      "message": "docs: 收敛 Search 文档与检索命名"
+    },
+    {
+      "date": "2026-04-20",
+      "commit": "5427589",
+      "total_lines": 129478,
+      "code_lines": 101177,
+      "other_lines": 28301,
+      "message": "fix: 锁定 DocGen 前置标题并移除发布前二次生成"
+    },
+    {
+      "date": "2026-04-20",
+      "commit": "57c4a62",
+      "total_lines": 129302,
+      "code_lines": 101037,
+      "other_lines": 28265,
+      "message": "Merge branch 'dev_ywl_t' into dev_ywl"
+    },
+    {
+      "date": "2026-04-20",
+      "commit": "9f15bcf",
+      "total_lines": 129137,
+      "code_lines": 100913,
+      "other_lines": 28224,
+      "message": "feat: 意见反馈"
+    },
+    {
+      "date": "2026-04-20",
+      "commit": "e1b3240",
+      "total_lines": 129446,
+      "code_lines": 101156,
+      "other_lines": 28290,
+      "message": "Merge branch 'dev_ywl' of github.com:aiteachme/AiT"
+    },
+    {
+      "date": "2026-04-20",
+      "commit": "07b6627",
+      "total_lines": 130421,
+      "code_lines": 101971,
+      "other_lines": 28450,
+      "message": "Merge branch 'dev_ywl'"
+    },
+    {
+      "date": "2026-04-20",
+      "commit": "a3fe5a1",
+      "total_lines": 129431,
+      "code_lines": 101144,
+      "other_lines": 28287,
+      "message": "style: 优化意见反馈"
+    },
+    {
+      "date": "2026-04-20",
+      "commit": "b206b1c",
+      "total_lines": 130406,
+      "code_lines": 101959,
+      "other_lines": 28447,
+      "message": "Merge branch 'dev_ywl'"
+    },
+    {
+      "date": "2026-04-20",
+      "commit": "30c9ddb",
+      "total_lines": 119051,
+      "code_lines": 95735,
+      "other_lines": 23316,
+      "message": "refactor: 统一 Digest 提示词三引号结构"
+    },
+    {
+      "date": "2026-04-20",
+      "commit": "50a20e8",
+      "total_lines": 130362,
+      "code_lines": 101930,
+      "other_lines": 28432,
+      "message": "fix: 更新env support"
+    },
+    {
+      "date": "2026-04-20",
+      "commit": "eb4d470",
+      "total_lines": 130392,
+      "code_lines": 101958,
+      "other_lines": 28434,
+      "message": "refactor: 恢复 AUTH_ENABLED 鉴权覆盖配置"
+    },
+    {
+      "date": "2026-04-21",
+      "commit": "c921924",
+      "total_lines": 130420,
+      "code_lines": 101959,
+      "other_lines": 28461,
+      "message": "Update generated models and API files to reflect o"
+    },
+    {
+      "date": "2026-04-21",
+      "commit": "b298608",
+      "total_lines": 130565,
+      "code_lines": 102073,
+      "other_lines": 28492,
+      "message": "feat: 添加知识图谱导出和文档同步工作流的支持"
+    },
+    {
+      "date": "2026-04-21",
+      "commit": "9d4f224",
+      "total_lines": 130810,
+      "code_lines": 102283,
+      "other_lines": 28527,
+      "message": "feat: 增加对待处理的Markdown提取边的支持，并优化知识图谱同步逻辑"
+    },
+    {
+      "date": "2026-04-21",
+      "commit": "772f17c",
+      "total_lines": 131023,
+      "code_lines": 102467,
+      "other_lines": 28556,
+      "message": "feat: 实现基于LLM的考试问题生成工作流，增加相关模块和测试用例"
+    },
+    {
+      "date": "2026-04-21",
+      "commit": "f7c6a51",
+      "total_lines": 131352,
+      "code_lines": 102653,
+      "other_lines": 28699,
+      "message": "feat: 完善云端 PostgreSQL 迁移与校验链路"
+    },
+    {
+      "date": "2026-04-21",
+      "commit": "b51af84",
+      "total_lines": 131969,
+      "code_lines": 103161,
+      "other_lines": 28808,
+      "message": "Merge remote-tracking branch 'origin/main' into de"
+    },
+    {
+      "date": "2026-04-21",
+      "commit": "6200d5b",
+      "total_lines": 131955,
+      "code_lines": 103184,
+      "other_lines": 28771,
+      "message": "refactor: 规范化 ingest fast_parse 链路边界"
+    },
+    {
+      "date": "2026-04-21",
+      "commit": "558a5fd",
+      "total_lines": 131969,
+      "code_lines": 103197,
+      "other_lines": 28772,
+      "message": "fix: 修复构建页重复插入欢迎语的问题"
+    },
+    {
+      "date": "2026-04-21",
+      "commit": "cb2f3d1",
+      "total_lines": 131417,
+      "code_lines": 102768,
+      "other_lines": 28649,
+      "message": "refactor: 移除知识文档导出链路"
+    },
+    {
+      "date": "2026-04-21",
+      "commit": "f4b04f3",
+      "total_lines": 131648,
+      "code_lines": 102950,
+      "other_lines": 28698,
+      "message": "refactor: 统一学科持久化存储为用户隔离命名空间"
+    },
+    {
+      "date": "2026-04-21",
+      "commit": "800d86b",
+      "total_lines": 130417,
+      "code_lines": 101969,
+      "other_lines": 28448,
+      "message": "style: update settings"
+    },
+    {
+      "date": "2026-04-21",
+      "commit": "54240bc",
+      "total_lines": 131363,
+      "code_lines": 102663,
+      "other_lines": 28700,
+      "message": "Merge branch 'dev_ywl' of github.com:aiteachme/AiT"
+    },
+    {
+      "date": "2026-04-21",
+      "commit": "2d61e92",
+      "total_lines": 133025,
+      "code_lines": 103979,
+      "other_lines": 29046,
+      "message": "refactor: 移除默认 settings 文件并收敛配置来源"
+    },
+    {
+      "date": "2026-04-21",
+      "commit": "52e10e6",
+      "total_lines": 131653,
+      "code_lines": 102954,
+      "other_lines": 28699,
+      "message": "feat: 首页增加演示课程入口 tab"
+    },
+    {
+      "date": "2026-04-21",
+      "commit": "e687e55",
+      "total_lines": 133011,
+      "code_lines": 103969,
+      "other_lines": 29042,
+      "message": "refactor: 收敛配置来源并清理 settings 合并与冲突逻辑"
+    },
+    {
+      "date": "2026-04-21",
+      "commit": "85064e4",
+      "total_lines": 131662,
+      "code_lines": 102963,
+      "other_lines": 28699,
+      "message": "style: 调整侧边栏收缩态居中布局与新建图标尺寸"
+    },
+    {
+      "date": "2026-04-21",
+      "commit": "0c231cb",
+      "total_lines": 131677,
+      "code_lines": 102978,
+      "other_lines": 28699,
+      "message": "style: 修正侧边栏收缩态新建按钮的居中与尺寸"
+    },
+    {
+      "date": "2026-04-21",
+      "commit": "befb13e",
+      "total_lines": 132631,
+      "code_lines": 103578,
+      "other_lines": 29053,
+      "message": "docs: 增加知识文档构建实时可视化与 SSE 规划文档"
+    },
+    {
+      "date": "2026-04-21",
+      "commit": "fcc6f6c",
+      "total_lines": 133169,
+      "code_lines": 104080,
+      "other_lines": 29089,
+      "message": "feat: 为 DocGen 增加抽象横幅封面生成"
+    },
+    {
+      "date": "2026-04-21",
+      "commit": "2269a54",
+      "total_lines": 135005,
+      "code_lines": 105196,
+      "other_lines": 29809,
+      "message": "docs: 补充知识文档构建工作台与过程体验设计"
+    },
+    {
+      "date": "2026-04-21",
+      "commit": "8a5cb1f",
+      "total_lines": 132631,
+      "code_lines": 103578,
+      "other_lines": 29053,
+      "message": "chore: 统一项目默认 LLM Base URL 为 OpenAI 官方地址"
+    },
+    {
+      "date": "2026-04-21",
+      "commit": "d789d2d",
+      "total_lines": 135965,
+      "code_lines": 105833,
+      "other_lines": 30132,
+      "message": "feat: 重构设置面板信息架构并统一中文文案"
+    },
+    {
+      "date": "2026-04-21",
+      "commit": "d182d2d",
+      "total_lines": 135318,
+      "code_lines": 105444,
+      "other_lines": 29874,
+      "message": "docs: 合并设置面板设计到配置归属文档"
+    },
+    {
+      "date": "2026-04-21",
+      "commit": "4082649",
+      "total_lines": 132491,
+      "code_lines": 103464,
+      "other_lines": 29027,
+      "message": "refactor: 删除未使用的兼容转发层并收敛 workflow 导出"
+    },
+    {
+      "date": "2026-04-21",
+      "commit": "eb423b2",
+      "total_lines": 135178,
+      "code_lines": 105330,
+      "other_lines": 29848,
+      "message": "refactor: 合并 dev_ywl_t 并收敛设置面板冲突"
+    },
+    {
+      "date": "2026-04-21",
+      "commit": "f6563f7",
+      "total_lines": 131479,
+      "code_lines": 102761,
+      "other_lines": 28718,
+      "message": "style: 优化社区"
+    },
+    {
+      "date": "2026-04-21",
+      "commit": "9f6c7f1",
+      "total_lines": 135121,
+      "code_lines": 105294,
+      "other_lines": 29827,
+      "message": "Merge branch 'dev_ywl' of github.com:aiteachme/AiT"
+    },
+    {
+      "date": "2026-04-21",
+      "commit": "f5ce234",
+      "total_lines": 135411,
+      "code_lines": 105530,
+      "other_lines": 29881,
+      "message": "chore: 配置digest模型模式"
+    },
+    {
+      "date": "2026-04-21",
+      "commit": "9c9bdad",
+      "total_lines": 135517,
+      "code_lines": 105479,
+      "other_lines": 30038,
+      "message": "docs: docgen docs"
+    },
+    {
+      "date": "2026-04-21",
+      "commit": "17f5a8c",
+      "total_lines": 135023,
+      "code_lines": 105193,
+      "other_lines": 29830,
+      "message": "style: 设置优化"
+    },
+    {
+      "date": "2026-04-21",
+      "commit": "d86f7b0",
+      "total_lines": 135773,
+      "code_lines": 105674,
+      "other_lines": 30099,
+      "message": "Merge branch 'dev_ywl' of github.com:aiteachme/AIT"
+    },
+    {
+      "date": "2026-04-21",
+      "commit": "c3b6b2e",
+      "total_lines": 135000,
+      "code_lines": 105196,
+      "other_lines": 29804,
+      "message": "refactor: 按 planner 规范收敛 workflows 中的 interact 与 p"
+    },
+    {
+      "date": "2026-04-21",
+      "commit": "ff33dbd",
+      "total_lines": 135822,
+      "code_lines": 105723,
+      "other_lines": 30099,
+      "message": "fix: embedding 不可用时降级跳过本地检索与向量写入"
+    },
+    {
+      "date": "2026-04-21",
+      "commit": "71df3f8",
+      "total_lines": 135027,
+      "code_lines": 105197,
+      "other_lines": 29830,
+      "message": "style: 设置部分修改"
+    },
+    {
+      "date": "2026-04-21",
+      "commit": "7360bda",
+      "total_lines": 135829,
+      "code_lines": 105724,
+      "other_lines": 30105,
+      "message": "fix: 调整 docgen 复核走轻量调用档位并优化 embedding 降级"
+    },
+    {
+      "date": "2026-04-21",
+      "commit": "6bfc7a0",
+      "total_lines": 135833,
+      "code_lines": 105728,
+      "other_lines": 30105,
+      "message": "Merge branch 'dev_ywl' of github.com:aiteachme/AIT"
+    },
+    {
+      "date": "2026-04-21",
+      "commit": "252347d",
+      "total_lines": 135655,
+      "code_lines": 105594,
+      "other_lines": 30061,
+      "message": "Merge remote-tracking branch 'origin/dev_ywl' into"
+    },
+    {
+      "date": "2026-04-21",
+      "commit": "52bafda",
+      "total_lines": 135877,
+      "code_lines": 105774,
+      "other_lines": 30103,
+      "message": "fix: 修复 docgen 准备阶段结构化调用超时翻倍与进度无反馈问题"
+    },
+    {
+      "date": "2026-04-21",
+      "commit": "922c826",
+      "total_lines": 136177,
+      "code_lines": 106054,
+      "other_lines": 30123,
+      "message": "style: 设置优化"
+    },
+    {
+      "date": "2026-04-21",
+      "commit": "e1713e4",
+      "total_lines": 136221,
+      "code_lines": 106100,
+      "other_lines": 30121,
+      "message": "Merge branch 'dev_ywl_t' into dev_ywl"
+    },
+    {
+      "date": "2026-04-21",
+      "commit": "cfa6b57",
+      "total_lines": 135292,
+      "code_lines": 105367,
+      "other_lines": 29925,
+      "message": "style: 优化构建动画"
+    },
+    {
+      "date": "2026-04-21",
+      "commit": "f604a1e",
+      "total_lines": 136166,
+      "code_lines": 105977,
+      "other_lines": 30189,
+      "message": "style: resolve git merge conflict and apply glassm"
+    },
+    {
+      "date": "2026-04-21",
+      "commit": "8aa6f4f",
+      "total_lines": 136238,
+      "code_lines": 106113,
+      "other_lines": 30125,
+      "message": "refactor: 移除新增 planner 中断接口并统一中断语义"
+    },
+    {
+      "date": "2026-04-21",
+      "commit": "c58df0f",
+      "total_lines": 136527,
+      "code_lines": 106316,
+      "other_lines": 30211,
+      "message": "Merge branch 'dev_ywl' of github.com:aiteachme/AiT"
+    },
+    {
+      "date": "2026-04-21",
+      "commit": "fa8a9d0",
+      "total_lines": 136508,
+      "code_lines": 106302,
+      "other_lines": 30206,
+      "message": "refactor: 移除模型调用中的 openai 前缀自动补全"
+    },
+    {
+      "date": "2026-04-21",
+      "commit": "461c6d7",
+      "total_lines": 136529,
+      "code_lines": 106317,
+      "other_lines": 30212,
+      "message": "fix: 为裸模型名统一补充 litellm provider 参数"
+    },
+    {
+      "date": "2026-04-22",
+      "commit": "209caf8",
+      "total_lines": 136475,
+      "code_lines": 106271,
+      "other_lines": 30204,
+      "message": "fix: 精简 docgen 发布文档的总览与目录注入"
+    },
+    {
+      "date": "2026-04-22",
+      "commit": "d7a03fa",
+      "total_lines": 136517,
+      "code_lines": 106310,
+      "other_lines": 30207,
+      "message": "feat: 在学科侧边栏菜单中添加 .atmx 导出入口"
+    },
+    {
+      "date": "2026-04-22",
+      "commit": "c2944e2",
+      "total_lines": 136526,
+      "code_lines": 106318,
+      "other_lines": 30208,
+      "message": "fix: 修复 .atmx 导出请求未携带会话上下文导致的 404"
+    },
+    {
+      "date": "2026-04-22",
+      "commit": "11d65fa",
+      "total_lines": 136642,
+      "code_lines": 106425,
+      "other_lines": 30217,
+      "message": "fix: 收敛 infra 模型路由并简化云端默认配置"
+    },
+    {
+      "date": "2026-04-22",
+      "commit": "eb737ff",
+      "total_lines": 136688,
+      "code_lines": 106464,
+      "other_lines": 30224,
+      "message": "refactor: 将 docgen 复核回流改为按章节并行执行"
+    },
+    {
+      "date": "2026-04-22",
+      "commit": "911134d",
+      "total_lines": 136288,
+      "code_lines": 106098,
+      "other_lines": 30190,
+      "message": "style: aggressively simplify BuildView to clean 2-"
+    },
+    {
+      "date": "2026-04-22",
+      "commit": "0c0fd52",
+      "total_lines": 136242,
+      "code_lines": 106058,
+      "other_lines": 30184,
+      "message": "style: remove glassmorphism and extreme radii, ado"
+    },
+    {
+      "date": "2026-04-22",
+      "commit": "32a46d6",
+      "total_lines": 136175,
+      "code_lines": 105995,
+      "other_lines": 30180,
+      "message": "style: deep rebuild UI to match Tosea single-canva"
+    },
+    {
+      "date": "2026-04-22",
+      "commit": "6b81054",
+      "total_lines": 136703,
+      "code_lines": 106480,
+      "other_lines": 30223,
+      "message": "feat: 优化 planner 开始构建后的反馈与跳转体验"
+    },
+    {
+      "date": "2026-04-22",
+      "commit": "5105627",
+      "total_lines": 136200,
+      "code_lines": 106020,
+      "other_lines": 30180,
+      "message": "style: deep redesign of BuildView to exact Tosea s"
+    },
+    {
+      "date": "2026-04-22",
+      "commit": "40f3b55",
+      "total_lines": 136319,
+      "code_lines": 106129,
+      "other_lines": 30190,
+      "message": "feat: split BuildView tabs into files, logs, outli"
+    },
+    {
+      "date": "2026-04-22",
+      "commit": "114f422",
+      "total_lines": 136319,
+      "code_lines": 106129,
+      "other_lines": 30190,
+      "message": "style: move logs tab to the first position as requ"
+    },
+    {
+      "date": "2026-04-22",
+      "commit": "b19d25b",
+      "total_lines": 136912,
+      "code_lines": 106683,
+      "other_lines": 30229,
+      "message": "feat: 优化首页入口上传反馈并调整构建确认跳转体验"
+    },
+    {
+      "date": "2026-04-22",
+      "commit": "d4a6cf8",
+      "total_lines": 136325,
+      "code_lines": 106135,
+      "other_lines": 30190,
+      "message": "feat: move community button to sidebar and refine "
+    },
+    {
+      "date": "2026-04-22",
+      "commit": "a259ca5",
+      "total_lines": 136326,
+      "code_lines": 106136,
+      "other_lines": 30190,
+      "message": "fix: restore missing div tag in TopBar"
+    },
+    {
+      "date": "2026-04-22",
+      "commit": "3029ee9",
+      "total_lines": 136904,
+      "code_lines": 106674,
+      "other_lines": 30230,
+      "message": "feat: 优化首页入口对话框样式并补齐文件上传解析反馈"
+    },
+    {
+      "date": "2026-04-22",
+      "commit": "a0c6b4b",
+      "total_lines": 136326,
+      "code_lines": 106136,
+      "other_lines": 30190,
+      "message": "chore: update figure"
+    },
+    {
+      "date": "2026-04-22",
+      "commit": "3a1d824",
+      "total_lines": 136703,
+      "code_lines": 106494,
+      "other_lines": 30209,
+      "message": "Merge branch 'dev_ywl' of github.com:aiteachme/AiT"
+    },
+    {
+      "date": "2026-04-22",
+      "commit": "5cdc074",
+      "total_lines": 136695,
+      "code_lines": 106487,
+      "other_lines": 30208,
+      "message": "style: convert build logs to terminal stream, remo"
+    },
+    {
+      "date": "2026-04-22",
+      "commit": "6454695",
+      "total_lines": 136695,
+      "code_lines": 106487,
+      "other_lines": 30208,
+      "message": "style: change terminal log to light theme"
+    },
+    {
+      "date": "2026-04-22",
+      "commit": "dd6c192",
+      "total_lines": 136698,
+      "code_lines": 106490,
+      "other_lines": 30208,
+      "message": "style: reduce collapsed sidebar icon sizes to h-6 "
+    },
+    {
+      "date": "2026-04-22",
+      "commit": "6c7dc80",
+      "total_lines": 136708,
+      "code_lines": 106500,
+      "other_lines": 30208,
+      "message": "feat: auto-expand sidebar on collapsed icon click,"
+    },
+    {
+      "date": "2026-04-22",
+      "commit": "0c2686e",
+      "total_lines": 135874,
+      "code_lines": 105822,
+      "other_lines": 30052,
+      "message": "refactor: 收敛设置真相面并改为后端声明驱动"
+    },
+    {
+      "date": "2026-04-22",
+      "commit": "215b7bb",
+      "total_lines": 136721,
+      "code_lines": 106513,
+      "other_lines": 30208,
+      "message": "style: reduce AITeachMe title size and add floatin"
+    },
+    {
+      "date": "2026-04-22",
+      "commit": "230dc19",
+      "total_lines": 136090,
+      "code_lines": 106032,
+      "other_lines": 30058,
+      "message": "fix: 合并首页入口页面冲突并保留上传解析反馈改造"
+    },
+    {
+      "date": "2026-04-22",
+      "commit": "24ccc87",
+      "total_lines": 136722,
+      "code_lines": 106514,
+      "other_lines": 30208,
+      "message": "style: space out title words and improve coordinat"
+    },
+    {
+      "date": "2026-04-22",
+      "commit": "99a103c",
+      "total_lines": 135908,
+      "code_lines": 105872,
+      "other_lines": 30036,
+      "message": "Merge branch 'dev_ywl' of github.com:aiteachme/AiT"
+    },
+    {
+      "date": "2026-04-22",
+      "commit": "74e4a78",
+      "total_lines": 135908,
+      "code_lines": 105872,
+      "other_lines": 30036,
+      "message": "style: reduce sidebar width"
+    },
+    {
+      "date": "2026-04-22",
+      "commit": "cbb4dc4",
+      "total_lines": 135970,
+      "code_lines": 105913,
+      "other_lines": 30057,
+      "message": "chore: update generated models and API files to re"
+    },
+    {
+      "date": "2026-04-22",
+      "commit": "30fbb6d",
+      "total_lines": 136634,
+      "code_lines": 106508,
+      "other_lines": 30126,
+      "message": "fix: 补齐多供应商 LLM 接入闭环"
+    },
+    {
+      "date": "2026-04-22",
+      "commit": "b1a1ffd",
+      "total_lines": 136696,
+      "code_lines": 106549,
+      "other_lines": 30147,
+      "message": "Merge remote-tracking branch 'origin/main' into de"
+    },
+    {
+      "date": "2026-04-22",
+      "commit": "dfdbe40",
+      "total_lines": 136293,
+      "code_lines": 106211,
+      "other_lines": 30082,
+      "message": "Refactor code structure for improved readability a"
+    },
+    {
+      "date": "2026-04-22",
+      "commit": "cb94c97",
+      "total_lines": 136084,
+      "code_lines": 106094,
+      "other_lines": 29990,
+      "message": "refactor: 将云端向量索引改为按学科隔离"
+    },
+    {
+      "date": "2026-04-22",
+      "commit": "71145a2",
+      "total_lines": 137115,
+      "code_lines": 106949,
+      "other_lines": 30166,
+      "message": "chore: 设置逻辑更改"
+    },
+    {
+      "date": "2026-04-22",
+      "commit": "37403eb",
+      "total_lines": 136315,
+      "code_lines": 106226,
+      "other_lines": 30089,
+      "message": "feat: 添加学习空间页面，支持展示和管理已创建的学科"
+    },
+    {
+      "date": "2026-04-22",
+      "commit": "8759a74",
+      "total_lines": 137167,
+      "code_lines": 106996,
+      "other_lines": 30171,
+      "message": "feat: 启动日志输出模型默认配置快照"
+    },
+    {
+      "date": "2026-04-22",
+      "commit": "46e0838",
+      "total_lines": 135799,
+      "code_lines": 105859,
+      "other_lines": 29940,
+      "message": "refactor: 重构本地与云端向量索引为用户学科双层作用域"
+    },
+    {
+      "date": "2026-04-22",
+      "commit": "320b2b2",
+      "total_lines": 137334,
+      "code_lines": 107140,
+      "other_lines": 30194,
+      "message": "refactor: 收缩前端开发环境变量暴露面"
+    },
+    {
+      "date": "2026-04-22",
+      "commit": "ffcb07d",
+      "total_lines": 136315,
+      "code_lines": 106226,
+      "other_lines": 30089,
+      "message": "style: 优化侧边栏按钮样式，增强交互效果"
+    },
+    {
+      "date": "2026-04-22",
+      "commit": "1465279",
+      "total_lines": 136765,
+      "code_lines": 106616,
+      "other_lines": 30149,
+      "message": "chore: 前端改进"
+    },
+    {
+      "date": "2026-04-22",
+      "commit": "0cd3249",
+      "total_lines": 137233,
+      "code_lines": 107135,
+      "other_lines": 30098,
+      "message": "fix: 合并 dev_ywl 分支并解决 settings 与向量作用域冲突"
+    },
+    {
+      "date": "2026-04-22",
+      "commit": "70e95fb",
+      "total_lines": 137364,
+      "code_lines": 107243,
+      "other_lines": 30121,
+      "message": "Merge remote-tracking branch 'origin/dev_ywl' into"
+    },
+    {
+      "date": "2026-04-22",
+      "commit": "a4e2d35",
+      "total_lines": 137367,
+      "code_lines": 107245,
+      "other_lines": 30122,
+      "message": "refactor: 合并环境变量示例为单一 .env.sample 并明确设置页本地持久化行为"
+    },
+    {
+      "date": "2026-04-22",
+      "commit": "2b2ffa7",
+      "total_lines": 136206,
+      "code_lines": 106213,
+      "other_lines": 29993,
+      "message": "Merge branch 'dev_ywl'"
+    },
+    {
+      "date": "2026-04-22",
+      "commit": "7058945",
+      "total_lines": 137331,
+      "code_lines": 107210,
+      "other_lines": 30121,
+      "message": "refactor: 继续收缩设置真相面并移除非核心检索与运行态字段"
+    },
+    {
+      "date": "2026-04-22",
+      "commit": "50dd85c",
+      "total_lines": 137676,
+      "code_lines": 107523,
+      "other_lines": 30153,
+      "message": "Merge remote-tracking branch 'origin/main' into de"
+    },
+    {
+      "date": "2026-04-22",
+      "commit": "a6dc3a8",
+      "total_lines": 136767,
+      "code_lines": 106618,
+      "other_lines": 30149,
+      "message": "style: settings"
+    },
+    {
+      "date": "2026-04-22",
+      "commit": "cf5ea70",
+      "total_lines": 137369,
+      "code_lines": 107247,
+      "other_lines": 30122,
+      "message": "Merge branch 'dev_ywl' of github.com:aiteachme/AiT"
+    },
+    {
+      "date": "2026-04-22",
+      "commit": "fb0b38e",
+      "total_lines": 137678,
+      "code_lines": 107525,
+      "other_lines": 30153,
+      "message": "Merge branch 'dev_ywl'"
+    },
+    {
+      "date": "2026-04-22",
+      "commit": "1213797",
+      "total_lines": 137752,
+      "code_lines": 107582,
+      "other_lines": 30170,
+      "message": "fix: 修复本地 SQLite schema 自愈时缺失 runtime 重置函数"
+    },
+    {
+      "date": "2026-04-22",
+      "commit": "d0ddab6",
+      "total_lines": 137752,
+      "code_lines": 107582,
+      "other_lines": 30170,
+      "message": "style: ui优化"
+    },
+    {
+      "date": "2026-04-22",
+      "commit": "96ea331",
+      "total_lines": 137799,
+      "code_lines": 107596,
+      "other_lines": 30203,
+      "message": "refactor: 收敛环境变量样例并重构模型能力配置"
+    },
+    {
+      "date": "2026-04-22",
+      "commit": "43d1cf8",
+      "total_lines": 137936,
+      "code_lines": 107718,
+      "other_lines": 30218,
+      "message": "fix: 继续优化设置页输入与渲染卡顿"
+    },
+    {
+      "date": "2026-04-22",
+      "commit": "5488eef",
+      "total_lines": 137964,
+      "code_lines": 107742,
+      "other_lines": 30222,
+      "message": "fix: 优化社区二维码弹层打开卡顿"
+    },
+    {
+      "date": "2026-04-22",
+      "commit": "cf77e05",
+      "total_lines": 137992,
+      "code_lines": 107765,
+      "other_lines": 30227,
+      "message": "fix: 优化设置变更后的实时生效体验与弹层动画"
+    },
+    {
+      "date": "2026-04-22",
+      "commit": "9e1c76a",
+      "total_lines": 136543,
+      "code_lines": 106440,
+      "other_lines": 30103,
+      "message": "Refactor code structure for improved readability a"
+    },
+    {
+      "date": "2026-04-23",
+      "commit": "0f15270",
+      "total_lines": 138032,
+      "code_lines": 107805,
+      "other_lines": 30227,
+      "message": "style: 微调侧边栏选中态为更柔和的冷中性色"
+    },
+    {
+      "date": "2026-04-23",
+      "commit": "6b17987",
+      "total_lines": 137976,
+      "code_lines": 107756,
+      "other_lines": 30220,
+      "message": "style: 添加新logo"
+    },
+    {
+      "date": "2026-04-23",
+      "commit": "71907eb",
+      "total_lines": 137956,
+      "code_lines": 107734,
+      "other_lines": 30222,
+      "message": "refactor: 继续收缩设置真相面并精简检索配置展示"
+    },
+    {
+      "date": "2026-04-23",
+      "commit": "8443aad",
+      "total_lines": 136996,
+      "code_lines": 106826,
+      "other_lines": 30170,
+      "message": "feat: 实现考试评分工作流，支持客观题和主观题的自动评分与反馈"
+    },
+    {
+      "date": "2026-04-23",
+      "commit": "efda7a6",
+      "total_lines": 138024,
+      "code_lines": 107797,
+      "other_lines": 30227,
+      "message": "Merge branch 'main' into dev_ywl_t"
+    },
+    {
+      "date": "2026-04-23",
+      "commit": "e10872c",
+      "total_lines": 138044,
+      "code_lines": 107819,
+      "other_lines": 30225,
+      "message": "Merge remote-tracking branch 'origin/dev_ywl'"
+    },
+    {
+      "date": "2026-04-23",
+      "commit": "66ab74a",
+      "total_lines": 138036,
+      "code_lines": 107811,
+      "other_lines": 30225,
+      "message": "Merge branch 'dev_ywl_t'"
+    },
+    {
+      "date": "2026-04-23",
+      "commit": "9aa1d3d",
+      "total_lines": 138021,
+      "code_lines": 107794,
+      "other_lines": 30227,
+      "message": "fix: 修复启动诊断日志换行显示"
+    },
+    {
+      "date": "2026-04-23",
+      "commit": "1abba2e",
+      "total_lines": 138033,
+      "code_lines": 107808,
+      "other_lines": 30225,
+      "message": "Merge remote-tracking branch 'origin/main' into de"
+    },
+    {
+      "date": "2026-04-23",
+      "commit": "c8a5963",
+      "total_lines": 138113,
+      "code_lines": 107792,
+      "other_lines": 30321,
+      "message": "feat: add study guide generation feature for grade"
+    },
+    {
+      "date": "2026-04-23",
+      "commit": "03f056f",
+      "total_lines": 139834,
+      "code_lines": 109377,
+      "other_lines": 30457,
+      "message": "Merge remote-tracking branch 'origin/main' into de"
+    },
+    {
+      "date": "2026-04-23",
+      "commit": "aec9d93",
+      "total_lines": 138084,
+      "code_lines": 107858,
+      "other_lines": 30226,
+      "message": "fix: 修正文档发布完成后正文偶发空白的问题"
+    },
+    {
+      "date": "2026-04-23",
+      "commit": "3145817",
+      "total_lines": 138081,
+      "code_lines": 107855,
+      "other_lines": 30226,
+      "message": "Merge branch 'dev_ywl_t'"
+    },
+    {
+      "date": "2026-04-23",
+      "commit": "6609941",
+      "total_lines": 138051,
+      "code_lines": 107830,
+      "other_lines": 30221,
+      "message": "style: 优化设置"
+    },
+    {
+      "date": "2026-04-23",
+      "commit": "b6247c1",
+      "total_lines": 138096,
+      "code_lines": 107874,
+      "other_lines": 30222,
+      "message": "Merge remote-tracking branch 'origin/dev_ywl'"
+    },
+    {
+      "date": "2026-04-23",
+      "commit": "4eb4012",
+      "total_lines": 139894,
+      "code_lines": 109440,
+      "other_lines": 30454,
+      "message": "Merge branch 'main' of github.com:aiteachme/AITeac"
+    },
+    {
+      "date": "2026-04-23",
+      "commit": "3bcb4f6",
+      "total_lines": 139887,
+      "code_lines": 109437,
+      "other_lines": 30450,
+      "message": "fix: 修复合并后设置页性能回归"
+    },
+    {
+      "date": "2026-04-23",
+      "commit": "80212a7",
+      "total_lines": 139970,
+      "code_lines": 109507,
+      "other_lines": 30463,
+      "message": "feat: 拆分视觉理解模型与文档OCR模型配置"
+    },
+    {
+      "date": "2026-04-23",
+      "commit": "09bb28d",
+      "total_lines": 139963,
+      "code_lines": 109504,
+      "other_lines": 30459,
+      "message": "Merge branch 'dev_ywl_t'"
+    },
+    {
+      "date": "2026-04-23",
+      "commit": "6cc0e5a",
+      "total_lines": 138061,
+      "code_lines": 107840,
+      "other_lines": 30221,
+      "message": "style: build更新"
+    },
+    {
+      "date": "2026-04-23",
+      "commit": "001a267",
+      "total_lines": 140066,
+      "code_lines": 109603,
+      "other_lines": 30463,
+      "message": "fix: 补齐设置页检索授权项并校验 infra.settings 对齐关系"
+    },
+    {
+      "date": "2026-04-23",
+      "commit": "24e0a84",
+      "total_lines": 140070,
+      "code_lines": 109604,
+      "other_lines": 30466,
+      "message": "fix: 移除设置页重复的 rerank 配置入口"
+    },
+    {
+      "date": "2026-04-23",
+      "commit": "1b46ad5",
+      "total_lines": 139988,
+      "code_lines": 109526,
+      "other_lines": 30462,
+      "message": "style: 统一反馈与社区弹窗背景遮罩效果"
+    },
+    {
+      "date": "2026-04-23",
+      "commit": "28cb330",
+      "total_lines": 140088,
+      "code_lines": 109623,
+      "other_lines": 30465,
+      "message": "Merge branch 'dev_ywl_t'"
+    },
+    {
+      "date": "2026-04-23",
+      "commit": "79fadd1",
+      "total_lines": 139904,
+      "code_lines": 109450,
+      "other_lines": 30454,
+      "message": "merge: 合并 origin/main（保留 build-scroll 样式 + hasDraf"
+    },
+    {
+      "date": "2026-04-23",
+      "commit": "d28a560",
+      "total_lines": 139902,
+      "code_lines": 109450,
+      "other_lines": 30452,
+      "message": "chore: 修复"
+    },
+    {
+      "date": "2026-04-23",
+      "commit": "7bbd42a",
+      "total_lines": 139995,
+      "code_lines": 109531,
+      "other_lines": 30464,
+      "message": "fix: 统一意见反馈弹窗与全局模态层级和背景效果"
+    },
+    {
+      "date": "2026-04-23",
+      "commit": "baece9b",
+      "total_lines": 139928,
+      "code_lines": 109452,
+      "other_lines": 30476,
+      "message": "style: 入口优化"
+    },
+    {
+      "date": "2026-04-23",
+      "commit": "fa3b7e6",
+      "total_lines": 140095,
+      "code_lines": 109628,
+      "other_lines": 30467,
+      "message": "Merge branch 'dev_ywl_t'"
+    },
+    {
+      "date": "2026-04-23",
+      "commit": "bf62770",
+      "total_lines": 140192,
+      "code_lines": 109695,
+      "other_lines": 30497,
+      "message": "fix: 继续收敛设置页恢复默认交互的重渲染问题"
+    },
+    {
+      "date": "2026-04-23",
+      "commit": "e9b9a0a",
+      "total_lines": 140166,
+      "code_lines": 109669,
+      "other_lines": 30497,
+      "message": "fix: 恢复设置与弹窗遮罩的毛玻璃效果"
+    },
+    {
+      "date": "2026-04-23",
+      "commit": "f533360",
+      "total_lines": 140340,
+      "code_lines": 109814,
+      "other_lines": 30526,
+      "message": "chore: update generated files to orval v8.8.0 and "
+    },
+    {
+      "date": "2026-04-23",
+      "commit": "c99eeee",
+      "total_lines": 141367,
+      "code_lines": 110618,
+      "other_lines": 30749,
+      "message": "feat: add question templates and types management "
+    },
+    {
+      "date": "2026-04-23",
+      "commit": "1ff46c8",
+      "total_lines": 141413,
+      "code_lines": 110660,
+      "other_lines": 30753,
+      "message": "feat: ctrl+v粘贴"
+    },
+    {
+      "date": "2026-04-23",
+      "commit": "ad30a84",
+      "total_lines": 141405,
+      "code_lines": 110651,
+      "other_lines": 30754,
+      "message": "fix: 修复上传蒙版"
+    },
+    {
+      "date": "2026-04-23",
+      "commit": "8fbc450",
+      "total_lines": 141539,
+      "code_lines": 110802,
+      "other_lines": 30737,
+      "message": "refactor: 规范设置模块命名并收拢主题保存逻辑"
+    },
+    {
+      "date": "2026-04-23",
+      "commit": "b56481b",
+      "total_lines": 141960,
+      "code_lines": 111140,
+      "other_lines": 30820,
+      "message": "refactor: 重构 Digest 构建运行时与图谱联动链路"
+    },
+    {
+      "date": "2026-04-23",
+      "commit": "c95a7b8",
+      "total_lines": 142132,
+      "code_lines": 111324,
+      "other_lines": 30808,
+      "message": "Merge branch 'dev_ywl_t' into dev_ywl"
+    },
+    {
+      "date": "2026-04-23",
+      "commit": "1fa80f1",
+      "total_lines": 142554,
+      "code_lines": 111683,
+      "other_lines": 30871,
+      "message": "refactor: 统一演示课程为线上 OSS 固定目录"
+    },
+    {
+      "date": "2026-04-23",
+      "commit": "5ae0e81",
+      "total_lines": 143088,
+      "code_lines": 112258,
+      "other_lines": 30830,
+      "message": "refactor: 重构 DocGen 前置阶段并收敛并行粒度"
+    },
+    {
+      "date": "2026-04-23",
+      "commit": "2002fb2",
+      "total_lines": 142520,
+      "code_lines": 111655,
+      "other_lines": 30865,
+      "message": "refactor: 精简前端设置状态流与布局判断"
+    },
+    {
+      "date": "2026-04-23",
+      "commit": "8954bcc",
+      "total_lines": 143476,
+      "code_lines": 112589,
+      "other_lines": 30887,
+      "message": "Merge branch 'dev_ywl_t' into dev_ywl"
+    },
+    {
+      "date": "2026-04-23",
+      "commit": "1f5a9bc",
+      "total_lines": 143975,
+      "code_lines": 113022,
+      "other_lines": 30953,
+      "message": "feat: 接入 DocGen 交互页 sidecar 生成与安全预览链路"
+    },
+    {
+      "date": "2026-04-23",
+      "commit": "401d63b",
+      "total_lines": 142570,
+      "code_lines": 111700,
+      "other_lines": 30870,
+      "message": "refactor: 清理 planner 中的 user_prompt 遗留并下放学科名生成"
+    },
+    {
+      "date": "2026-04-23",
+      "commit": "c167e29",
+      "total_lines": 144025,
+      "code_lines": 113067,
+      "other_lines": 30958,
+      "message": "Merge branch 'dev_ywl_t' into dev_ywl"
+    },
+    {
+      "date": "2026-04-23",
+      "commit": "36aeb86",
+      "total_lines": 142933,
+      "code_lines": 111937,
+      "other_lines": 30996,
+      "message": "feat: add delete exam paper API and frontend integ"
+    },
+    {
+      "date": "2026-04-23",
+      "commit": "da2a491",
+      "total_lines": 144120,
+      "code_lines": 113002,
+      "other_lines": 31118,
+      "message": "Merge remote-tracking branch 'origin/main' into de"
+    },
+    {
+      "date": "2026-04-23",
+      "commit": "ae08963",
+      "total_lines": 142602,
+      "code_lines": 111725,
+      "other_lines": 30877,
+      "message": "refactor: 收敛学科运行时目录到 canonical 用户路径"
+    },
+    {
+      "date": "2026-04-23",
+      "commit": "e85fdab",
+      "total_lines": 144057,
+      "code_lines": 113092,
+      "other_lines": 30965,
+      "message": "Merge branch 'dev_ywl_t' into dev_ywl"
+    },
+    {
+      "date": "2026-04-23",
+      "commit": "e822539",
+      "total_lines": 143995,
+      "code_lines": 113036,
+      "other_lines": 30959,
+      "message": "fix: 修复方案规划流式消息空白问题"
+    },
+    {
+      "date": "2026-04-23",
+      "commit": "ec577c6",
+      "total_lines": 144373,
+      "code_lines": 113122,
+      "other_lines": 31251,
+      "message": "chore: update generated models and API files to re"
+    },
+    {
+      "date": "2026-04-23",
+      "commit": "7ea9adc",
+      "total_lines": 144006,
+      "code_lines": 113042,
+      "other_lines": 30964,
+      "message": "fix: 修复 planner 初始化恢复覆盖本地流式消息"
+    },
+    {
+      "date": "2026-04-23",
+      "commit": "8d703b9",
+      "total_lines": 144070,
+      "code_lines": 113095,
+      "other_lines": 30975,
+      "message": "refactor: 恢复 planner 标题生成并行链路并移除标题截断"
+    },
+    {
+      "date": "2026-04-23",
+      "commit": "1baa124",
+      "total_lines": 142691,
+      "code_lines": 111677,
+      "other_lines": 31014,
+      "message": "chore: 暂存改动"
+    },
+    {
+      "date": "2026-04-23",
+      "commit": "d829342",
+      "total_lines": 144350,
+      "code_lines": 113138,
+      "other_lines": 31212,
+      "message": "feat: 增强知识图提取功能，添加知识单元粒度规则和相关测试"
+    },
+    {
+      "date": "2026-04-24",
+      "commit": "5408ba4",
+      "total_lines": 145638,
+      "code_lines": 114434,
+      "other_lines": 31204,
+      "message": "Merge remote-tracking branch 'origin/main' into de"
+    },
+    {
+      "date": "2026-04-24",
+      "commit": "df81ba6",
+      "total_lines": 138941,
+      "code_lines": 108599,
+      "other_lines": 30342,
+      "message": "feat(ingest): add PaddleOCR parse provider"
+    },
+    {
+      "date": "2026-04-24",
+      "commit": "cb33749",
+      "total_lines": 146864,
+      "code_lines": 115548,
+      "other_lines": 31316,
+      "message": "feat: 扩展多平台文生图兼容层并收敛日志截断"
+    },
+    {
+      "date": "2026-04-24",
+      "commit": "2ae9589",
+      "total_lines": 144950,
+      "code_lines": 113817,
+      "other_lines": 31133,
+      "message": "chore: 暂存build改动"
+    },
+    {
+      "date": "2026-04-24",
+      "commit": "dbfe443",
+      "total_lines": 146071,
+      "code_lines": 114793,
+      "other_lines": 31278,
+      "message": "refactor: 收敛 LLM 支持层图片与流式适配"
+    },
+    {
+      "date": "2026-04-24",
+      "commit": "a23a9c6",
+      "total_lines": 141368,
+      "code_lines": 110619,
+      "other_lines": 30749,
+      "message": "fix: 将后端服务端口从8000更改为8010，更新相关文档和配置"
+    },
+    {
+      "date": "2026-04-24",
+      "commit": "d21d3f9",
+      "total_lines": 145639,
+      "code_lines": 114435,
+      "other_lines": 31204,
+      "message": "Merge branch 'dev_wzx' of github.com:aiteachme/AiT"
+    },
+    {
+      "date": "2026-04-24",
+      "commit": "57cd4dc",
+      "total_lines": 146159,
+      "code_lines": 114852,
+      "other_lines": 31307,
+      "message": "fix: 加固数据库漂移检查与存储批量删除"
+    },
+    {
+      "date": "2026-04-24",
+      "commit": "e793ca8",
+      "total_lines": 148245,
+      "code_lines": 116711,
+      "other_lines": 31534,
+      "message": "fix: 修复构建实时流并优化动态生成页"
+    },
+    {
+      "date": "2026-04-24",
+      "commit": "bdb9449",
+      "total_lines": 147540,
+      "code_lines": 116015,
+      "other_lines": 31525,
+      "message": "Merge branch 'dev_ywl' of github.com:aiteachme/AIT"
+    },
+    {
+      "date": "2026-04-24",
+      "commit": "db8b85d",
+      "total_lines": 147544,
+      "code_lines": 116022,
+      "other_lines": 31522,
+      "message": "style: 收敛知识构建页信息层级"
+    },
+    {
+      "date": "2026-04-24",
+      "commit": "17fdb4d",
+      "total_lines": 147730,
+      "code_lines": 116198,
+      "other_lines": 31532,
+      "message": "refactor: build更新，fix小问题"
+    },
+    {
+      "date": "2026-04-24",
+      "commit": "5ff26a4",
+      "total_lines": 147850,
+      "code_lines": 116288,
+      "other_lines": 31562,
+      "message": "feat: 统一伴读对话流式链路与工具计划"
+    },
+    {
+      "date": "2026-04-24",
+      "commit": "a5e8bfe",
+      "total_lines": 147879,
+      "code_lines": 116311,
+      "other_lines": 31568,
+      "message": "refactor: 统一 Interact 链路中文展示与文档"
+    },
+    {
+      "date": "2026-04-24",
+      "commit": "4ad6a42",
+      "total_lines": 147880,
+      "code_lines": 116312,
+      "other_lines": 31568,
+      "message": "Merge branch 'main' of github.com:aiteachme/AiTeac"
+    },
+    {
+      "date": "2026-04-24",
+      "commit": "d6ab88f",
+      "total_lines": 147889,
+      "code_lines": 116322,
+      "other_lines": 31567,
+      "message": "fix: 优化前端移动端适配"
+    },
+    {
+      "date": "2026-04-24",
+      "commit": "833f85f",
+      "total_lines": 145961,
+      "code_lines": 114704,
+      "other_lines": 31257,
+      "message": "feat: integrate Electron support and enhance deskt"
+    },
+    {
+      "date": "2026-04-24",
+      "commit": "8ca03ca",
+      "total_lines": 148202,
+      "code_lines": 116581,
+      "other_lines": 31621,
+      "message": "Merge branch 'main' of github.com:aiteachme/AiTeac"
+    },
+    {
+      "date": "2026-04-24",
+      "commit": "af8baaa",
+      "total_lines": 147918,
+      "code_lines": 116345,
+      "other_lines": 31573,
+      "message": "Merge branch 'dev_ywl' of github.com:aiteachme/AiT"
+    },
+    {
+      "date": "2026-04-24",
+      "commit": "36364a9",
+      "total_lines": 147890,
+      "code_lines": 116323,
+      "other_lines": 31567,
+      "message": "style: 统一对话终止按钮样式"
+    },
+    {
+      "date": "2026-04-24",
+      "commit": "39cea07",
+      "total_lines": 148169,
+      "code_lines": 116546,
+      "other_lines": 31623,
+      "message": "fix: 优化在线检索网页读取降级"
+    },
+    {
+      "date": "2026-04-24",
+      "commit": "f41e4e9",
+      "total_lines": 148170,
+      "code_lines": 116547,
+      "other_lines": 31623,
+      "message": "style: 调整对话停止按钮样式"
+    },
+    {
+      "date": "2026-04-24",
+      "commit": "1d96be9",
+      "total_lines": 148420,
+      "code_lines": 116784,
+      "other_lines": 31636,
+      "message": "fix: 修复学科删除、导入导出与上传浮层问题"
+    },
+    {
+      "date": "2026-04-24",
+      "commit": "09fc1f2",
+      "total_lines": 148701,
+      "code_lines": 117009,
+      "other_lines": 31692,
+      "message": "Merge branch 'dev_ywl' of github.com:aiteachme/AiT"
+    },
+    {
+      "date": "2026-04-24",
+      "commit": "03369e9",
+      "total_lines": 148705,
+      "code_lines": 117012,
+      "other_lines": 31693,
+      "message": "chore: generated更新"
+    },
+    {
+      "date": "2026-04-24",
+      "commit": "42bab7d",
+      "total_lines": 148726,
+      "code_lines": 117023,
+      "other_lines": 31703,
+      "message": "fix: 调整多 API Key 环境变量解析"
+    },
+    {
+      "date": "2026-04-24",
+      "commit": "0e4f7f8",
+      "total_lines": 149049,
+      "code_lines": 117293,
+      "other_lines": 31756,
+      "message": "fix: 解决布局合并冲突并兼容移动端与桌面端 Merge branch 'dev_ywl'"
+    },
+    {
+      "date": "2026-04-24",
+      "commit": "a917404",
+      "total_lines": 149375,
+      "code_lines": 117616,
+      "other_lines": 31759,
+      "message": "feat: improve knowledge docs interactions"
+    },
+    {
+      "date": "2026-04-24",
+      "commit": "0ae5c60",
+      "total_lines": 150222,
+      "code_lines": 118328,
+      "other_lines": 31894,
+      "message": "Merge branch 'lx_0424'"
+    },
+    {
+      "date": "2026-04-24",
+      "commit": "fc76079",
+      "total_lines": 149128,
+      "code_lines": 117353,
+      "other_lines": 31775,
+      "message": "fix: 复用存储同步桥后台事件循环避免 Windows 资源耗尽"
+    },
+    {
+      "date": "2026-04-24",
+      "commit": "986ded8",
+      "total_lines": 150074,
+      "code_lines": 118236,
+      "other_lines": 31838,
+      "message": "feat: improve document AI annotations"
+    },
+    {
+      "date": "2026-04-24",
+      "commit": "cab539d",
+      "total_lines": 149594,
+      "code_lines": 117739,
+      "other_lines": 31855,
+      "message": "fix: 收敛 DocGen 检索源与封面资产路径"
+    },
+    {
+      "date": "2026-04-24",
+      "commit": "4000ca5",
+      "total_lines": 150921,
+      "code_lines": 118948,
+      "other_lines": 31973,
+      "message": "Merge branch 'lx_0424' into main"
+    },
+    {
+      "date": "2026-04-25",
+      "commit": "d4b6962",
+      "total_lines": 148884,
+      "code_lines": 117131,
+      "other_lines": 31753,
+      "message": "Update generated model files to reflect orval vers"
+    },
+    {
+      "date": "2026-04-25",
+      "commit": "743dff1",
+      "total_lines": 151583,
+      "code_lines": 119498,
+      "other_lines": 32085,
+      "message": "Merge remote-tracking branch 'origin/main' into de"
+    },
+    {
+      "date": "2026-04-25",
+      "commit": "23aad5c",
+      "total_lines": 151583,
+      "code_lines": 119498,
+      "other_lines": 32085,
+      "message": "feat: 添加发布工作流，更新构建脚本和文档，优化版本管理"
+    },
+    {
+      "date": "2026-04-24",
+      "commit": "878b65f",
+      "total_lines": 151583,
+      "code_lines": 119498,
+      "other_lines": 32085,
+      "message": "chore: release v0.0.1"
+    },
+    {
+      "date": "2026-04-25",
+      "commit": "2fab251",
+      "total_lines": 151583,
+      "code_lines": 119498,
+      "other_lines": 32085,
+      "message": "feat: 添加环境变量以强制使用 Node.js 24 版本"
+    },
+    {
+      "date": "2026-04-25",
+      "commit": "fadfbc3",
+      "total_lines": 151583,
+      "code_lines": 119498,
+      "other_lines": 32085,
+      "message": "Merge remote-tracking branch 'origin/main' into de"
+    },
+    {
+      "date": "2026-04-25",
+      "commit": "d110958",
+      "total_lines": 151611,
+      "code_lines": 119542,
+      "other_lines": 32069,
+      "message": "chore: 统一前端5180，后端9020"
+    },
+    {
+      "date": "2026-04-25",
+      "commit": "870f124",
+      "total_lines": 151611,
+      "code_lines": 119542,
+      "other_lines": 32069,
+      "message": "chore: 统一前端5180，后端9020"
+    },
+    {
+      "date": "2026-04-25",
+      "commit": "b0ead68",
+      "total_lines": 151611,
+      "code_lines": 119542,
+      "other_lines": 32069,
+      "message": "chore: build改动"
+    },
+    {
+      "date": "2026-04-25",
+      "commit": "2f588d7",
+      "total_lines": 151611,
+      "code_lines": 119542,
+      "other_lines": 32069,
+      "message": "Merge remote-tracking branch 'origin/main' into de"
+    },
+    {
+      "date": "2026-04-25",
+      "commit": "5f5563d",
+      "total_lines": 151628,
+      "code_lines": 119536,
+      "other_lines": 32092,
+      "message": "Update OpenAPI spec version to 0.0.1 across multip"
+    },
+    {
+      "date": "2026-04-25",
+      "commit": "ea7c623",
+      "total_lines": 151656,
+      "code_lines": 119580,
+      "other_lines": 32076,
+      "message": "Merge branch 'main' of github-dramwig:aiteachme/AI"
+    },
+    {
+      "date": "2026-04-25",
+      "commit": "a42c9a5",
+      "total_lines": 151678,
+      "code_lines": 119580,
+      "other_lines": 32098,
+      "message": "chore: update generated models and API files to re"
+    },
+    {
+      "date": "2026-04-25",
+      "commit": "37ad14a",
+      "total_lines": 148372,
+      "code_lines": 116696,
+      "other_lines": 31676,
+      "message": "Update generated models and API files to reflect c"
+    },
+    {
+      "date": "2026-04-25",
+      "commit": "1e7f73b",
+      "total_lines": 151828,
+      "code_lines": 119695,
+      "other_lines": 32133,
+      "message": "Merge branch 'dev_wzx' of github.com:aiteachme/AiT"
+    },
+    {
+      "date": "2026-04-25",
+      "commit": "68d01d9",
+      "total_lines": 151972,
+      "code_lines": 119823,
+      "other_lines": 32149,
+      "message": "feat: update app icons and improve navigation in E"
+    },
+    {
+      "date": "2026-04-25",
+      "commit": "02d7590",
+      "total_lines": 155220,
+      "code_lines": 122321,
+      "other_lines": 32899,
+      "message": "feat: add PowerShell scripts for building Electron"
+    },
+    {
+      "date": "2026-04-25",
+      "commit": "69b1e6c",
+      "total_lines": 155412,
+      "code_lines": 122490,
+      "other_lines": 32922,
+      "message": "feat: add AI interaction provider and window compo"
+    },
+    {
+      "date": "2026-04-25",
+      "commit": "323b993",
+      "total_lines": 155566,
+      "code_lines": 122622,
+      "other_lines": 32944,
+      "message": "feat: enhance markdown processing with chapter ext"
+    },
+    {
+      "date": "2026-04-25",
+      "commit": "2418f89",
+      "total_lines": 153485,
+      "code_lines": 121199,
+      "other_lines": 32286,
+      "message": "feat: support chat selection targets"
+    },
+    {
+      "date": "2026-04-25",
+      "commit": "c3a61de",
+      "total_lines": 156895,
+      "code_lines": 123832,
+      "other_lines": 33063,
+      "message": "Merge branch 'lx_0424'"
+    },
+    {
+      "date": "2026-04-25",
+      "commit": "b57f90c",
+      "total_lines": 151629,
+      "code_lines": 119542,
+      "other_lines": 32087,
+      "message": "fix: 修复 Electron 本地打包接口生成缺失"
+    },
+    {
+      "date": "2026-04-25",
+      "commit": "9854ecb",
+      "total_lines": 150374,
+      "code_lines": 118401,
+      "other_lines": 31973,
+      "message": "fix: 将本地 RAG 向量索引切换为 sqlite-vec"
+    },
+    {
+      "date": "2026-04-25",
+      "commit": "d75f560",
+      "total_lines": 157049,
+      "code_lines": 123964,
+      "other_lines": 33085,
+      "message": "Merge remote-tracking branch 'origin/main' into de"
+    },
+    {
+      "date": "2026-04-25",
+      "commit": "653c313",
+      "total_lines": 158225,
+      "code_lines": 124945,
+      "other_lines": 33280,
+      "message": "fix: 解决导出导入文件打包合并冲突"
+    },
+    {
+      "date": "2026-04-25",
+      "commit": "04ec534",
+      "total_lines": 158490,
+      "code_lines": 125233,
+      "other_lines": 33257,
+      "message": "Merge remote-tracking branch 'origin/main' into de"
+    },
+    {
+      "date": "2026-04-25",
+      "commit": "c0e6db2",
+      "total_lines": 159374,
+      "code_lines": 126012,
+      "other_lines": 33362,
+      "message": "feat: 增加 subject 学习上下文并接入图谱与测验"
+    },
+    {
+      "date": "2026-04-25",
+      "commit": "ee6fb5b",
+      "total_lines": 159500,
+      "code_lines": 126118,
+      "other_lines": 33382,
+      "message": "refactor: 冻结图谱构建的运行时模型配置"
+    },
+    {
+      "date": "2026-04-25",
+      "commit": "14b6d3a",
+      "total_lines": 157564,
+      "code_lines": 124411,
+      "other_lines": 33153,
+      "message": "Add workflow context tests, enhance subject API wi"
+    },
+    {
+      "date": "2026-04-25",
+      "commit": "409eeb3",
+      "total_lines": 158894,
+      "code_lines": 125524,
+      "other_lines": 33370,
+      "message": "Merge remote-tracking branch 'origin/main' into de"
+    },
+    {
+      "date": "2026-04-25",
+      "commit": "6b972bb",
+      "total_lines": 158891,
+      "code_lines": 125521,
+      "other_lines": 33370,
+      "message": "fix: 更新向量表描述为“当前主题范围的向量索引引用，如有” style: 优化侧边栏组件的样式和"
+    },
+    {
+      "date": "2026-04-25",
+      "commit": "edc5319",
+      "total_lines": 159537,
+      "code_lines": 126146,
+      "other_lines": 33391,
+      "message": "fix: 优化 subject 上下文字段与 embedding 默认配置"
+    },
+    {
+      "date": "2026-04-25",
+      "commit": "e4f0eaf",
+      "total_lines": 159728,
+      "code_lines": 126314,
+      "other_lines": 33414,
+      "message": "feat: 优化 DocGen 构建页实时 Markdown 预览"
+    },
+    {
+      "date": "2026-04-25",
+      "commit": "895d79f",
+      "total_lines": 159703,
+      "code_lines": 126289,
+      "other_lines": 33414,
+      "message": "style: 优化 DocGen 构建页文档画布样式"
+    },
+    {
+      "date": "2026-04-25",
+      "commit": "4c30248",
+      "total_lines": 159707,
+      "code_lines": 126291,
+      "other_lines": 33416,
+      "message": "style: 统一课程模式中文展示"
+    },
+    {
+      "date": "2026-04-25",
+      "commit": "e2c4f58",
+      "total_lines": 159707,
+      "code_lines": 126291,
+      "other_lines": 33416,
+      "message": "style: 协调启动页与入口页背景色"
+    },
+    {
+      "date": "2026-04-25",
+      "commit": "f15d0db",
+      "total_lines": 159740,
+      "code_lines": 126319,
+      "other_lines": 33421,
+      "message": "fix: 修正章节资料来源写入学科快照"
+    },
+    {
+      "date": "2026-04-25",
+      "commit": "a0dc3ea",
+      "total_lines": 159740,
+      "code_lines": 126319,
+      "other_lines": 33421,
+      "message": "style: 优化学科侧边栏导航层级"
+    },
+    {
+      "date": "2026-04-25",
+      "commit": "2d3320c",
+      "total_lines": 159005,
+      "code_lines": 125622,
+      "other_lines": 33383,
+      "message": "feat: Implement question blueprint planning and we"
+    },
+    {
+      "date": "2026-04-25",
+      "commit": "a9a27b3",
+      "total_lines": 159818,
+      "code_lines": 126403,
+      "other_lines": 33415,
+      "message": "refactor: 统一上传文件的可读稳定命名"
+    },
+    {
+      "date": "2026-04-25",
+      "commit": "6197e96",
+      "total_lines": 160406,
+      "code_lines": 126912,
+      "other_lines": 33494,
+      "message": "Merge remote-tracking branch 'origin/main' into de"
+    },
+    {
+      "date": "2026-04-25",
+      "commit": "89355a5",
+      "total_lines": 160520,
+      "code_lines": 127013,
+      "other_lines": 33507,
+      "message": "feat: 合并测验蓝图规划与学科上下文"
+    },
+    {
+      "date": "2026-04-26",
+      "commit": "369852f",
+      "total_lines": 159191,
+      "code_lines": 125788,
+      "other_lines": 33403,
+      "message": "feat: 增强考试问题生成逻辑，添加错误处理和响应结构，更新前端组件以改善用户体验"
+    },
+    {
+      "date": "2026-04-26",
+      "commit": "9fd1786",
+      "total_lines": 160705,
+      "code_lines": 127178,
+      "other_lines": 33527,
+      "message": "Merge remote-tracking branch 'origin/main' into de"
+    },
+    {
+      "date": "2026-04-26",
+      "commit": "813ec6a",
+      "total_lines": 159803,
+      "code_lines": 126345,
+      "other_lines": 33458,
+      "message": "refactor: 收口 DocGen 目录与模型策略"
+    },
+    {
+      "date": "2026-04-26",
+      "commit": "d615dc3",
+      "total_lines": 159988,
+      "code_lines": 126510,
+      "other_lines": 33478,
+      "message": "Merge remote-tracking branch 'origin/main'"
+    },
+    {
+      "date": "2026-04-26",
+      "commit": "5b1d341",
+      "total_lines": 160638,
+      "code_lines": 127120,
+      "other_lines": 33518,
+      "message": "fix: 优化学科导出选项并修复长文本字段"
+    },
+    {
+      "date": "2026-04-26",
+      "commit": "c937fc0",
+      "total_lines": 160106,
+      "code_lines": 126617,
+      "other_lines": 33489,
+      "message": "Merge branch 'dev_ywl'"
+    },
+    {
+      "date": "2026-04-26",
+      "commit": "9089cd3",
+      "total_lines": 161324,
+      "code_lines": 127667,
+      "other_lines": 33657,
+      "message": "feat: update generated API files and enhance exam "
+    },
+    {
+      "date": "2026-04-26",
+      "commit": "4a8925d",
+      "total_lines": 160725,
+      "code_lines": 127106,
+      "other_lines": 33619,
+      "message": "Merge remote-tracking branch 'origin/main' into de"
+    },
+    {
+      "date": "2026-04-26",
+      "commit": "c203833",
+      "total_lines": 160105,
+      "code_lines": 126616,
+      "other_lines": 33489,
+      "message": "refactor: 收口 DocGen 结构并修复知识图谱同步状态类型"
+    },
+    {
+      "date": "2026-04-26",
+      "commit": "c366532",
+      "total_lines": 160724,
+      "code_lines": 127105,
+      "other_lines": 33619,
+      "message": "Merge remote-tracking branch 'origin/dev_wzx'"
+    },
+    {
+      "date": "2026-04-26",
+      "commit": "dc8efb1",
+      "total_lines": 160713,
+      "code_lines": 127188,
+      "other_lines": 33525,
+      "message": "fix: 修复导出过滤、迁移链和异常响应"
+    },
+    {
+      "date": "2026-04-26",
+      "commit": "06434d1",
+      "total_lines": 160799,
+      "code_lines": 127173,
+      "other_lines": 33626,
+      "message": "fix: 修复合并后的考试模型与迁移链冲突 Merge branch 'dev_ywl'"
+    },
+    {
+      "date": "2026-04-26",
+      "commit": "8f34af5",
+      "total_lines": 160818,
+      "code_lines": 127189,
+      "other_lines": 33629,
+      "message": "feat: Enhance paper preview functionality by addin"
+    },
+    {
+      "date": "2026-04-26",
+      "commit": "66d08a7",
+      "total_lines": 160892,
+      "code_lines": 127256,
+      "other_lines": 33636,
+      "message": "Merge remote-tracking branch 'origin/main' into de"
+    },
+    {
+      "date": "2026-04-26",
+      "commit": "7c70daf",
+      "total_lines": 160799,
+      "code_lines": 127173,
+      "other_lines": 33626,
+      "message": "chore: logo恢复"
+    },
+    {
+      "date": "2026-04-26",
+      "commit": "39d07d7",
+      "total_lines": 160907,
+      "code_lines": 127273,
+      "other_lines": 33634,
+      "message": "fix: 完善知识图谱链路追踪与进度展示"
+    },
+    {
+      "date": "2026-04-26",
+      "commit": "b7d7d8f",
+      "total_lines": 160951,
+      "code_lines": 127311,
+      "other_lines": 33640,
+      "message": "feat: 添加考试总分、预计用时和已作答题数的计算功能，并优化考试页面布局"
+    },
+    {
+      "date": "2026-04-26",
+      "commit": "9d3f166",
+      "total_lines": 160951,
+      "code_lines": 127311,
+      "other_lines": 33640,
+      "message": "Merge remote-tracking branch 'origin/main' into de"
+    },
+    {
+      "date": "2026-04-26",
+      "commit": "2a1c0a5",
+      "total_lines": 161072,
+      "code_lines": 127406,
+      "other_lines": 33666,
+      "message": "feat: 优化演示课程导入与配置边界"
+    },
+    {
+      "date": "2026-04-26",
+      "commit": "a0ca9bc",
+      "total_lines": 161249,
+      "code_lines": 127553,
+      "other_lines": 33696,
+      "message": "feat: 增强课程包导出元信息"
+    },
+    {
+      "date": "2026-04-26",
+      "commit": "0f7a836",
+      "total_lines": 161337,
+      "code_lines": 127629,
+      "other_lines": 33708,
+      "message": "fix: 修复删除学科时试卷外键失败"
+    },
+    {
+      "date": "2026-04-26",
+      "commit": "a299ba4",
+      "total_lines": 161100,
+      "code_lines": 127437,
+      "other_lines": 33663,
+      "message": "feat: 添加考试结果显示偏好功能，允许用户选择显示分数或完成状态"
+    },
+    {
+      "date": "2026-04-26",
+      "commit": "5116588",
+      "total_lines": 162089,
+      "code_lines": 128337,
+      "other_lines": 33752,
+      "message": "fix: 修复 AI 划词问答与会话历史"
+    },
+    {
+      "date": "2026-04-26",
+      "commit": "bbfcf00",
+      "total_lines": 161164,
+      "code_lines": 127491,
+      "other_lines": 33673,
+      "message": "Refactor code structure for improved readability a"
+    },
+    {
+      "date": "2026-04-26",
+      "commit": "83e3284",
+      "total_lines": 162302,
+      "code_lines": 128517,
+      "other_lines": 33785,
+      "message": "Merge remote-tracking branch 'origin/main' into de"
+    },
+    {
+      "date": "2026-04-26",
+      "commit": "2df2821",
+      "total_lines": 161366,
+      "code_lines": 127643,
+      "other_lines": 33723,
+      "message": "feat: 优化课程包导入导出反馈与打包范围"
+    },
+    {
+      "date": "2026-04-26",
+      "commit": "271940b",
+      "total_lines": 162717,
+      "code_lines": 128849,
+      "other_lines": 33868,
+      "message": "Merge branch 'main' of github.com:aiteachme/AiTeac"
+    },
+    {
+      "date": "2026-04-26",
+      "commit": "c66433d",
+      "total_lines": 161172,
+      "code_lines": 127497,
+      "other_lines": 33675,
+      "message": "fix: 优化 DocGen 课程化生成与来源文件映射"
+    },
+    {
+      "date": "2026-04-26",
+      "commit": "d89ca17",
+      "total_lines": 162707,
+      "code_lines": 128839,
+      "other_lines": 33868,
+      "message": "fix: 调整课程包解析缓存默认导出"
+    },
+    {
+      "date": "2026-04-26",
+      "commit": "756e6c0",
+      "total_lines": 158320,
+      "code_lines": 125222,
+      "other_lines": 33098,
+      "message": "fix: 收敛知识图谱构建契约与进度展示"
+    },
+    {
+      "date": "2026-04-26",
+      "commit": "13e1644",
+      "total_lines": 163097,
+      "code_lines": 129205,
+      "other_lines": 33892,
+      "message": "feat: 支持考题 AI 上下文对话"
+    },
+    {
+      "date": "2026-04-26",
+      "commit": "90d3177",
+      "total_lines": 162445,
+      "code_lines": 128651,
+      "other_lines": 33794,
+      "message": "feat: 添加考试题目解析功能，支持显示用户答案和正确答案"
+    },
+    {
+      "date": "2026-04-26",
+      "commit": "f841411",
+      "total_lines": 163245,
+      "code_lines": 129344,
+      "other_lines": 33901,
+      "message": "Merge remote-tracking branch 'origin/main' into de"
+    },
+    {
+      "date": "2026-04-26",
+      "commit": "4747e82",
+      "total_lines": 158693,
+      "code_lines": 125546,
+      "other_lines": 33147,
+      "message": "Merge branch 'dev_ywl'"
+    },
+    {
+      "date": "2026-04-26",
+      "commit": "0c7db4d",
+      "total_lines": 161183,
+      "code_lines": 127508,
+      "other_lines": 33675,
+      "message": "fix: 去除构建预览状态重复"
+    },
+    {
+      "date": "2026-04-26",
+      "commit": "f764ae0",
+      "total_lines": 159978,
+      "code_lines": 126690,
+      "other_lines": 33288,
+      "message": "feat: 增强知识图谱同步溯源能力"
+    },
+    {
+      "date": "2026-04-26",
+      "commit": "a0325d8",
+      "total_lines": 159978,
+      "code_lines": 126690,
+      "other_lines": 33288,
+      "message": "fix: 修复知识图谱工具栏乱码"
+    },
+    {
+      "date": "2026-04-26",
+      "commit": "b948042",
+      "total_lines": 164924,
+      "code_lines": 130832,
+      "other_lines": 34092,
+      "message": "feat: 优化 AI 对话会话与上下文选择"
+    },
+    {
+      "date": "2026-04-26",
+      "commit": "f8d1ef3",
+      "total_lines": 159999,
+      "code_lines": 126710,
+      "other_lines": 33289,
+      "message": "chore: 优化图谱与文档生成"
+    },
+    {
+      "date": "2026-04-26",
+      "commit": "c80ccd6",
+      "total_lines": 165669,
+      "code_lines": 131432,
+      "other_lines": 34237,
+      "message": "feat: 优化对话场景提示词与启动体验"
+    },
+    {
+      "date": "2026-04-26",
+      "commit": "b9182d5",
+      "total_lines": 165882,
+      "code_lines": 131670,
+      "other_lines": 34212,
+      "message": "Merge remote-tracking branch 'origin/main' into de"
+    },
+    {
+      "date": "2026-04-26",
+      "commit": "338b4e1",
+      "total_lines": 164402,
+      "code_lines": 130597,
+      "other_lines": 33805,
+      "message": "feat: 合并学习闭环能力并优化图谱质量"
+    },
+    {
+      "date": "2026-04-26",
+      "commit": "9d5dff8",
+      "total_lines": 165147,
+      "code_lines": 131197,
+      "other_lines": 33950,
+      "message": "Merge branch 'main' of github.com:aiteachme/AITeac"
+    },
+    {
+      "date": "2026-04-26",
+      "commit": "4935cbc",
+      "total_lines": 165128,
+      "code_lines": 131200,
+      "other_lines": 33928,
+      "message": "fix: 优化知识图谱节点同步质量"
+    },
+    {
+      "date": "2026-04-26",
+      "commit": "461683d",
+      "total_lines": 163548,
+      "code_lines": 129624,
+      "other_lines": 33924,
+      "message": "feat: enhance exam paper preview and navigation fe"
+    },
+    {
+      "date": "2026-04-26",
+      "commit": "3fa5bbb",
+      "total_lines": 166120,
+      "code_lines": 131851,
+      "other_lines": 34269,
+      "message": "Merge remote-tracking branch 'origin/main' into de"
+    },
+    {
+      "date": "2026-04-26",
+      "commit": "ba4bb59",
+      "total_lines": 166187,
+      "code_lines": 131910,
+      "other_lines": 34277,
+      "message": "fix: 修复知识库问问 AI 列导航卡住"
+    },
+    {
+      "date": "2026-04-26",
+      "commit": "f615aa3",
+      "total_lines": 166197,
+      "code_lines": 131916,
+      "other_lines": 34281,
+      "message": "fix: 添加考试试卷删除功能，确保删除时清除相关知识状态的外键引用"
+    },
+    {
+      "date": "2026-04-26",
+      "commit": "e906c2a",
+      "total_lines": 165307,
+      "code_lines": 131299,
+      "other_lines": 34008,
+      "message": "fix: 收敛知识图谱同步入口与节点质量"
+    },
+    {
+      "date": "2026-04-26",
+      "commit": "9fe623d",
+      "total_lines": 166402,
+      "code_lines": 132110,
+      "other_lines": 34292,
+      "message": "fix: clean frontend build warnings"
+    },
+    {
+      "date": "2026-04-26",
+      "commit": "4ca7d91",
+      "total_lines": 165825,
+      "code_lines": 131777,
+      "other_lines": 34048,
+      "message": "Merge branch 'main' of github.com:aiteachme/AITeac"
+    },
+    {
+      "date": "2026-04-26",
+      "commit": "399777e",
+      "total_lines": 166197,
+      "code_lines": 131916,
+      "other_lines": 34281,
+      "message": "feat: 将模型参数从\"primary\"和\"light\"更改为\"reason\"，以优化反馈和问题生"
+    },
+    {
+      "date": "2026-04-26",
+      "commit": "8375f39",
+      "total_lines": 166479,
+      "code_lines": 132175,
+      "other_lines": 34304,
+      "message": "Merge remote-tracking branch 'origin/main' into de"
+    },
+    {
+      "date": "2026-04-26",
+      "commit": "72d76b6",
+      "total_lines": 165836,
+      "code_lines": 131788,
+      "other_lines": 34048,
+      "message": "Merge branch 'main' into dev_ywl"
+    },
+    {
+      "date": "2026-04-26",
+      "commit": "8fb522a",
+      "total_lines": 166031,
+      "code_lines": 132011,
+      "other_lines": 34020,
+      "message": "fix: 对齐知识图谱同步流程与运行态表达"
+    },
+    {
+      "date": "2026-04-26",
+      "commit": "c94833c",
+      "total_lines": 165957,
+      "code_lines": 131882,
+      "other_lines": 34075,
+      "message": "fix: 修复 Planner 模型策略与 LangSmith LLM 追踪"
+    },
+    {
+      "date": "2026-04-26",
+      "commit": "d62d2b6",
+      "total_lines": 166475,
+      "code_lines": 132193,
+      "other_lines": 34282,
+      "message": "feat(ingest): auto-route uploads across parser pro"
+    },
+    {
+      "date": "2026-04-26",
+      "commit": "39d10a4",
+      "total_lines": 165987,
+      "code_lines": 131907,
+      "other_lines": 34080,
+      "message": "fix: 优化学科图标候选解析与随机兜底"
+    },
+    {
+      "date": "2026-04-26",
+      "commit": "23360f8",
+      "total_lines": 166196,
+      "code_lines": 132084,
+      "other_lines": 34112,
+      "message": "fix: 优化 Planner 模型策略与大纲兜底"
+    },
+    {
+      "date": "2026-04-26",
+      "commit": "8e2f47d",
+      "total_lines": 166521,
+      "code_lines": 132447,
+      "other_lines": 34074,
+      "message": "fix: 重构 DocGen 教材化标题与例题策略"
+    },
+    {
+      "date": "2026-04-26",
+      "commit": "d80c799",
+      "total_lines": 166892,
+      "code_lines": 132754,
+      "other_lines": 34138,
+      "message": "Merge branch 'dev_ywl'"
+    },
+    {
+      "date": "2026-04-26",
+      "commit": "35c1077",
+      "total_lines": 167105,
+      "code_lines": 132952,
+      "other_lines": 34153,
+      "message": "Merge branch 'main' of github.com:aiteachme/AITeac"
+    },
+    {
+      "date": "2026-04-26",
+      "commit": "1a3de05",
+      "total_lines": 168656,
+      "code_lines": 134313,
+      "other_lines": 34343,
+      "message": "Merge remote-tracking branch 'origin/dev_cy'"
+    },
+    {
+      "date": "2026-04-26",
+      "commit": "e68e28e",
+      "total_lines": 168656,
+      "code_lines": 134313,
+      "other_lines": 34343,
+      "message": "chore: 修改planner设置"
+    },
+    {
+      "date": "2026-04-26",
+      "commit": "93e1ffc",
+      "total_lines": 166290,
+      "code_lines": 132162,
+      "other_lines": 34128,
+      "message": "refactor: 统一 DocGen 与 Planner 模型策略参数"
+    },
+    {
+      "date": "2026-04-26",
+      "commit": "f42cea3",
+      "total_lines": 168829,
+      "code_lines": 134463,
+      "other_lines": 34366,
+      "message": "fix: 本地设置改为数据库优先保存"
+    },
+    {
+      "date": "2026-04-26",
+      "commit": "5bba9a2",
+      "total_lines": 167458,
+      "code_lines": 133082,
+      "other_lines": 34376,
+      "message": "refactor: remove knowledge_unit_id from API models"
+    },
+    {
+      "date": "2026-04-26",
+      "commit": "32ebf91",
+      "total_lines": 167536,
+      "code_lines": 133159,
+      "other_lines": 34377,
+      "message": "feat: 添加试卷生成失败的预览组件，并优化相关样式"
+    },
+    {
+      "date": "2026-04-26",
+      "commit": "a4bc82f",
+      "total_lines": 169790,
+      "code_lines": 135362,
+      "other_lines": 34428,
+      "message": "Merge remote-tracking branch 'origin/main' into de"
+    },
+    {
+      "date": "2026-04-26",
+      "commit": "4c1554c",
+      "total_lines": 167203,
+      "code_lines": 132831,
+      "other_lines": 34372,
+      "message": "fix: 优化知识文档定位与折叠体验"
+    },
+    {
+      "date": "2026-04-26",
+      "commit": "2ee5f13",
+      "total_lines": 170591,
+      "code_lines": 136083,
+      "other_lines": 34508,
+      "message": "Merge remote-tracking branch 'origin/main' into lx"
+    },
+    {
+      "date": "2026-04-26",
+      "commit": "691a344",
+      "total_lines": 169824,
+      "code_lines": 135390,
+      "other_lines": 34434,
+      "message": "feat: 添加请求超时设置，优化模型调用的超时管理"
+    },
+    {
+      "date": "2026-04-27",
+      "commit": "518da63",
+      "total_lines": 168870,
+      "code_lines": 134501,
+      "other_lines": 34369,
+      "message": "fix: 修复设置弹窗刷新加载状态"
+    },
+    {
+      "date": "2026-04-27",
+      "commit": "4b19155",
+      "total_lines": 170805,
+      "code_lines": 136271,
+      "other_lines": 34534,
+      "message": "Merge branch 'main' of github.com:aiteachme/AiTeac"
+    },
+    {
+      "date": "2026-04-27",
+      "commit": "219d8b6",
+      "total_lines": 170691,
+      "code_lines": 136165,
+      "other_lines": 34526,
+      "message": "chore: 合并主线并解决 DocGen 写作器冲突"
+    },
+    {
+      "date": "2026-04-27",
+      "commit": "cea15ec",
+      "total_lines": 171421,
+      "code_lines": 136884,
+      "other_lines": 34537,
+      "message": "chore: 补齐 Digest 链路节点追踪说明"
+    },
+    {
+      "date": "2026-04-27",
+      "commit": "d2b77eb",
+      "total_lines": 170905,
+      "code_lines": 136353,
+      "other_lines": 34552,
+      "message": "Merge remote-tracking branch 'origin/main' into de"
+    },
+    {
+      "date": "2026-04-27",
+      "commit": "68754ee",
+      "total_lines": 171735,
+      "code_lines": 137154,
+      "other_lines": 34581,
+      "message": "Merge branch 'dev_ywl'"
+    },
+    {
+      "date": "2026-04-27",
+      "commit": "c8c315d",
+      "total_lines": 171735,
+      "code_lines": 137154,
+      "other_lines": 34581,
+      "message": "fix: 修复 Alembic 迁移 revision 冲突"
+    },
+    {
+      "date": "2026-04-27",
+      "commit": "03f25f8",
+      "total_lines": 167438,
+      "code_lines": 133409,
+      "other_lines": 34029,
+      "message": "refactor: 移除旧图谱文件入库链路"
+    },
+    {
+      "date": "2026-04-27",
+      "commit": "a366604",
+      "total_lines": 167438,
+      "code_lines": 133409,
+      "other_lines": 34029,
+      "message": "Merge branch 'dev_ywl' of github.com:aiteachme/AIT"
+    },
+    {
+      "date": "2026-04-27",
+      "commit": "e7a48ee",
+      "total_lines": 169913,
+      "code_lines": 135475,
+      "other_lines": 34438,
+      "message": "Refactor question build workflow: replace assign_q"
+    },
+    {
+      "date": "2026-04-27",
+      "commit": "a6cf986",
+      "total_lines": 170382,
+      "code_lines": 135895,
+      "other_lines": 34487,
+      "message": "feat: 添加生成考试问题的状态管理，优化考试生成流程"
+    },
+    {
+      "date": "2026-04-27",
+      "commit": "512b12b",
+      "total_lines": 167261,
+      "code_lines": 133225,
+      "other_lines": 34036,
+      "message": "refactor: 精简 digest 链路导入边界"
+    },
+    {
+      "date": "2026-04-27",
+      "commit": "bcc06bb",
+      "total_lines": 171791,
+      "code_lines": 137197,
+      "other_lines": 34594,
+      "message": "fix: 本地模式禁用 OSS 演示课程入口"
+    },
+    {
+      "date": "2026-04-27",
+      "commit": "66d7c01",
+      "total_lines": 167570,
+      "code_lines": 133520,
+      "other_lines": 34050,
+      "message": "refactor: 收紧 digest 构建生命周期"
+    },
+    {
+      "date": "2026-04-27",
+      "commit": "a9742b0",
+      "total_lines": 171888,
+      "code_lines": 137266,
+      "other_lines": 34622,
+      "message": "fix: 加固项目安全边界"
+    },
+    {
+      "date": "2026-04-27",
+      "commit": "0df0d5d",
+      "total_lines": 170894,
+      "code_lines": 136356,
+      "other_lines": 34538,
+      "message": "feat: enhance exam question generation with failur"
+    },
+    {
+      "date": "2026-04-27",
+      "commit": "2e68cb4",
+      "total_lines": 171148,
+      "code_lines": 136586,
+      "other_lines": 34562,
+      "message": "feat: 优化考试问题生成流程，添加失败处理和状态管理"
+    },
+    {
+      "date": "2026-04-27",
+      "commit": "f1cfdea",
+      "total_lines": 171944,
+      "code_lines": 137309,
+      "other_lines": 34635,
+      "message": "Merge remote-tracking branch 'origin/dev_ywl' into"
+    },
+    {
+      "date": "2026-04-27",
+      "commit": "1426033",
+      "total_lines": 171187,
+      "code_lines": 136622,
+      "other_lines": 34565,
+      "message": "feat: 添加多行文本清理功能，优化考试问题草稿的干净度"
+    },
+    {
+      "date": "2026-04-27",
+      "commit": "8e37d6d",
+      "total_lines": 167722,
+      "code_lines": 133645,
+      "other_lines": 34077,
+      "message": "refactor: 收拢知识图谱实现到 kg_docs_sync"
+    },
+    {
+      "date": "2026-04-27",
+      "commit": "351a28c",
+      "total_lines": 167722,
+      "code_lines": 133650,
+      "other_lines": 34072,
+      "message": "refactor: 重命名 KG 文档同步链路为 kg_doc_sync"
+    },
+    {
+      "date": "2026-04-27",
+      "commit": "700e146",
+      "total_lines": 171247,
+      "code_lines": 136672,
+      "other_lines": 34575,
+      "message": "feat: 更新考试问题格式规则，优化问题生成逻辑，添加滚动选择功能"
+    },
+    {
+      "date": "2026-04-27",
+      "commit": "5753f07",
+      "total_lines": 173192,
+      "code_lines": 138464,
+      "other_lines": 34728,
+      "message": "Merge remote-tracking branch 'origin/main' into de"
+    },
+    {
+      "date": "2026-04-27",
+      "commit": "9616145",
+      "total_lines": 167721,
+      "code_lines": 133648,
+      "other_lines": 34073,
+      "message": "refactor: 收拢文件用例到 ingest"
+    },
+    {
+      "date": "2026-04-27",
+      "commit": "b815b42",
+      "total_lines": 167930,
+      "code_lines": 133803,
+      "other_lines": 34127,
+      "message": "Merge branch 'dev_ywl' into dev_ywl_t"
+    },
+    {
+      "date": "2026-04-27",
+      "commit": "f357f4d",
+      "total_lines": 167716,
+      "code_lines": 133644,
+      "other_lines": 34072,
+      "message": "refactor: 整理 Ingest 入口与解析目录"
+    },
+    {
+      "date": "2026-04-27",
+      "commit": "367d137",
+      "total_lines": 168244,
+      "code_lines": 134059,
+      "other_lines": 34185,
+      "message": "fix: 加固课程包导入和演示课程下载"
+    },
+    {
+      "date": "2026-04-27",
+      "commit": "ee44a7d",
+      "total_lines": 168386,
+      "code_lines": 134150,
+      "other_lines": 34236,
+      "message": "docs: 清理设计文档目录并归档历史方案"
+    },
+    {
+      "date": "2026-04-27",
+      "commit": "bd56da0",
+      "total_lines": 168381,
+      "code_lines": 134146,
+      "other_lines": 34235,
+      "message": "Merge branch 'dev_ywl' into dev_ywl_t"
+    },
+    {
+      "date": "2026-04-27",
+      "commit": "87c3977",
+      "total_lines": 167963,
+      "code_lines": 133879,
+      "other_lines": 34084,
+      "message": "refactor: 拆分 KG 文档同步节点与提示词"
+    },
+    {
+      "date": "2026-04-27",
+      "commit": "29fceaa",
+      "total_lines": 167821,
+      "code_lines": 133763,
+      "other_lines": 34058,
+      "message": "refactor: 梳理 KG 同步核心库职责"
+    },
+    {
+      "date": "2026-04-27",
+      "commit": "c026093",
+      "total_lines": 168112,
+      "code_lines": 134016,
+      "other_lines": 34096,
+      "message": "refactor: 补强 KG 同步节点阶段指标"
+    },
+    {
+      "date": "2026-04-27",
+      "commit": "f722b31",
+      "total_lines": 168187,
+      "code_lines": 134076,
+      "other_lines": 34111,
+      "message": "test: 补充 KG 同步节点指标测试"
+    },
+    {
+      "date": "2026-04-27",
+      "commit": "29a0e29",
+      "total_lines": 167061,
+      "code_lines": 133250,
+      "other_lines": 33811,
+      "message": "docs: 进一步浓缩设计文档并归档冗余方案"
+    },
+    {
+      "date": "2026-04-27",
+      "commit": "982eecd",
+      "total_lines": 167532,
+      "code_lines": 133682,
+      "other_lines": 33850,
+      "message": "Merge branch 'dev_ywl' into dev_ywl_t"
+    },
+    {
+      "date": "2026-04-27",
+      "commit": "e51dfc8",
+      "total_lines": 168989,
+      "code_lines": 134992,
+      "other_lines": 33997,
+      "message": "Merge branch 'main' of github.com:aiteachme/AITeac"
+    },
+    {
+      "date": "2026-04-27",
+      "commit": "a5c8667",
+      "total_lines": 168221,
+      "code_lines": 134096,
+      "other_lines": 34125,
+      "message": "docs: 梳理 Digest 核心链路介绍口径"
+    },
+    {
+      "date": "2026-04-27",
+      "commit": "ae01c9f",
+      "total_lines": 167566,
+      "code_lines": 133702,
+      "other_lines": 33864,
+      "message": "Merge branch 'dev_ywl_t' into dev_ywl"
+    },
+    {
+      "date": "2026-04-27",
+      "commit": "c1b1053",
+      "total_lines": 169023,
+      "code_lines": 135012,
+      "other_lines": 34011,
+      "message": "Merge branch 'dev_ywl'"
     }
   ]
 }
