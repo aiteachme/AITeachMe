@@ -1,3 +1,5 @@
+import pytest
+
 from app.workflows.digest.kg_doc_sync.graph import create_docs_sync_initial_state, route_after_extract
 from app.workflows.digest.kg_doc_sync.lib.incremental_sync import graph_extraction_parallelism
 from app.workflows.digest.kg_doc_sync.lib.models import (
@@ -49,14 +51,15 @@ def test_prepare_node_records_input_metrics():
     assert metrics["has_document_summary"] is True
 
 
-def test_extract_node_missing_run_context_records_parallelism_metrics():
+@pytest.mark.anyio
+async def test_extract_node_missing_run_context_records_parallelism_metrics():
     state = create_docs_sync_initial_state(
         subject="math",
         markdown="# Algebra",
         build_revision_no=None,
     )
 
-    result = extract_node(state)
+    result = await extract_node(state)
     metrics = result["node_metrics"]["extract"]
     parallelism = graph_extraction_parallelism()
 
@@ -93,19 +96,20 @@ def test_extract_route_fails_when_payload_is_missing():
     assert metrics["reason"] == "sync_run_context_missing"
 
 
-def test_extract_node_records_payload_and_routes_to_persist(monkeypatch):
+@pytest.mark.anyio
+async def test_extract_node_records_payload_and_routes_to_persist(monkeypatch):
     payload = KnowledgeSyncExtractionPayload(
         units=[],
         extracted_edges=[],
         diagnostics_totals={"chapter_count": 1, "section_count": 1},
     )
 
-    def fake_extract_knowledge_graph_items(**kwargs):
+    async def fake_extract_knowledge_graph_items(**kwargs):
         return payload
 
     monkeypatch.setattr(
         extract_node_module,
-        "extract_knowledge_graph_items",
+        "extract_knowledge_graph_items_async",
         fake_extract_knowledge_graph_items,
     )
     state = create_docs_sync_initial_state(
@@ -121,7 +125,7 @@ def test_extract_node_records_payload_and_routes_to_persist(monkeypatch):
         doc_version_no=2,
     )
 
-    result = extract_node(state)
+    result = await extract_node(state)
     metrics = result["node_metrics"]["extract"]
 
     assert result["error"] is None
