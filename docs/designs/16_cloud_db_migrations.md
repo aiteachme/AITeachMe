@@ -104,12 +104,19 @@ cd backend && uvicorn app.main:app --host 0.0.0.0 --port $PORT
 ```env
 APP_MODE=cloud
 DATABASE_URL=postgresql://...
+DB_POOL_SIZE=5
+DB_MAX_OVERFLOW=5
+DB_POOL_TIMEOUT=30
+DB_POOL_RECYCLE=1800
+DB_POOL_USE_LIFO=true
 ALLOW_CLOUD_VECTOR_REBUILD=false
 ```
 
 说明：
 
-- `DATABASE_URL` 建议使用 Render Postgres internal connection string。
+- `DATABASE_URL` 建议优先使用平台提供的 PgBouncer / pooled connection string；没有连接池服务时再使用 Render Postgres internal connection string。
+- 应用侧连接池保持小而可控：总连接预算约等于实例数 * worker 数 * (`DB_POOL_SIZE` + `DB_MAX_OVERFLOW`)。
+- 小规格数据库建议从 `DB_POOL_SIZE=3~5`、`DB_MAX_OVERFLOW=2~5` 开始，观察数据库连接数、请求延迟和排队情况后再调大。
 - `ALLOW_CLOUD_VECTOR_REBUILD` 默认必须是 `false`。
 - 只有在明确知道旧向量可以完全重建时，才临时改为 `true`。
 

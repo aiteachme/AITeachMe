@@ -11,6 +11,7 @@ import {
 
 import {
   buildKnowledgeBuildRuntimeQueryKey,
+  buildRuntimeFailureBackoffMs,
   fetchKnowledgeBuildRuntime,
   type KnowledgeBuildLaneRuntime,
   type KnowledgeBuildRuntimeResponse,
@@ -142,6 +143,8 @@ export function useKnowledgeDocsBuildState(subject: string) {
     queryFn: () => fetchKnowledgeBuildRuntime(subject),
     enabled: Boolean(subject),
     refetchInterval: (query) => {
+      const failureBackoff = buildRuntimeFailureBackoffMs(query.state.fetchFailureCount);
+      if (failureBackoff !== null) return failureBackoff;
       const aggregateStatus = (query.state.data?.aggregate?.status ?? "").trim();
       return ACTIVE_BUILD_STATUSES.has(aggregateStatus) ? 2500 : 10000;
     },

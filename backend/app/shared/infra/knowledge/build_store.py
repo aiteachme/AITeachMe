@@ -9,6 +9,7 @@ from threading import Lock, RLock
 from typing import Literal
 
 from pydantic import BaseModel, Field
+from sqlmodel import Session
 
 from app.shared.infra.runtime import is_cloud_mode, is_local_mode
 from app.shared.infra.storage import (
@@ -741,11 +742,15 @@ def _read_build_lock_path(path: Path) -> KnowledgeBuildLock | None:
         return None
 
 
-def read_knowledge_build_lock(subject: str) -> KnowledgeBuildLock | None:
+def read_knowledge_build_lock(
+    subject: str,
+    *,
+    session: Session | None = None,
+) -> KnowledgeBuildLock | None:
     """Read the subject-level build lock, if present."""
 
     if is_cloud_mode():
-        return _cloud_read_build_lock(subject)
+        return _cloud_read_build_lock(subject, session=session)
     return _read_build_lock_path(build_knowledge_build_lock_path(subject))
 
 
@@ -790,28 +795,40 @@ def is_knowledge_build_locked(subject: str) -> bool:
     return build_knowledge_build_lock_path(subject).exists()
 
 
-def _cloud_read_build_lock(subject: str) -> KnowledgeBuildLock | None:
+def _read_cloud_build_lock_from_session(session: Session, subject: str) -> KnowledgeBuildLock | None:
     from sqlmodel import select
 
     from app.models.subject import Subject
+
+    record = session.exec(select(Subject).where(Subject.slug == subject)).first()
+    if record is None or record.build_lock_holder is None:
+        return None
+    if record.build_lock_at is not None:
+        now = datetime.now(record.build_lock_at.tzinfo) if record.build_lock_at.tzinfo else datetime.utcnow()
+        if now - record.build_lock_at > STALE_BUILD_LOCK_TTL:
+            record.build_lock_holder = None
+            record.build_lock_at = None
+            session.add(record)
+            session.commit()
+            return None
+    try:
+        return KnowledgeBuildLock.model_validate_json(record.build_lock_holder)
+    except Exception:
+        return None
+
+
+def _cloud_read_build_lock(
+    subject: str,
+    *,
+    session: Session | None = None,
+) -> KnowledgeBuildLock | None:
     from app.shared.infra.database import managed_session
 
+    if session is not None:
+        return _read_cloud_build_lock_from_session(session, subject)
+
     with managed_session() as session:
-        record = session.exec(select(Subject).where(Subject.slug == subject)).first()
-        if record is None or record.build_lock_holder is None:
-            return None
-        if record.build_lock_at is not None:
-            now = datetime.now(record.build_lock_at.tzinfo) if record.build_lock_at.tzinfo else datetime.utcnow()
-            if now - record.build_lock_at > STALE_BUILD_LOCK_TTL:
-                record.build_lock_holder = None
-                record.build_lock_at = None
-                session.add(record)
-                session.commit()
-                return None
-        try:
-            return KnowledgeBuildLock.model_validate_json(record.build_lock_holder)
-        except Exception:
-            return None
+        return _read_cloud_build_lock_from_session(session, subject)
 
 
 def _cloud_acquire_build_lock(subject: str, lock: KnowledgeBuildLock) -> bool:
@@ -878,11 +895,16 @@ def read_knowledge_build_runtime(
     )
 
 
-def write_knowledge_build_runtime(subject: str, runtime: KnowledgeBuildRuntimeEnvelope) -> str:
+def write_knowledge_build_runtime(
+    subject: str,
+    runtime: KnowledgeBuildRuntimeEnvelope,
+    *,
+    subject_scope: SubjectStorageScope | None = None,
+) -> str:
     """Persist the unified runtime envelope for one subject."""
 
     cs = get_content_store()
-    key = resolve_subject_storage_scope(subject).build_runtime_key()
+    key = _subject_scope_or_resolve(subject, subject_scope).build_runtime_key()
     run_store_sync(cs.write_json, key, _hydrate_runtime_envelope(runtime))
     publish_workflow_stream_event(subject, "runtime_dirty", {"reason": "runtime_write"})
     return key
@@ -901,10 +923,19 @@ def read_knowledge_build_status(
     return _read_legacy_knowledge_build_status(subject, subject_scope=subject_scope)
 
 
-def write_knowledge_build_status(subject: str, status: KnowledgeBuildRuntimeStatus) -> str:
+def write_knowledge_build_status(
+    subject: str,
+    status: KnowledgeBuildRuntimeStatus,
+    *,
+    subject_scope: SubjectStorageScope | None = None,
+) -> str:
     """Persist the legacy docgen runtime payload."""
 
-    return _write_legacy_knowledge_build_status(subject, _hydrate_runtime_status(status))
+    return _write_legacy_knowledge_build_status(
+        subject,
+        _hydrate_runtime_status(status),
+        subject_scope=subject_scope,
+    )
 
 
 def read_knowledge_build_aggregate_status(
@@ -923,12 +954,16 @@ def update_knowledge_build_lane_status(
     subject: str,
     *,
     lane: Literal["docgen", "graph"],
+    subject_scope: SubjectStorageScope | None = None,
     **kwargs: object,
 ) -> KnowledgeBuildRuntimeStatus:
     """Merge updates into one runtime lane and refresh the persisted envelope."""
 
     with _get_status_lock(subject):
-        runtime = read_knowledge_build_runtime(subject) or KnowledgeBuildRuntimeEnvelope()
+        runtime = (
+            read_knowledge_build_runtime(subject, subject_scope=subject_scope)
+            or KnowledgeBuildRuntimeEnvelope()
+        )
         attr_name = _lane_attr_name(lane)
         existing = getattr(runtime, attr_name)
         requested_at = kwargs.get("requested_at")
@@ -970,10 +1005,10 @@ def update_knowledge_build_lane_status(
             or runtime.build_group_id
         )
         runtime = _hydrate_runtime_envelope(runtime)
-        write_knowledge_build_runtime(subject, runtime)
+        write_knowledge_build_runtime(subject, runtime, subject_scope=subject_scope)
 
         if lane == "docgen":
-            write_knowledge_build_status(subject, updated)
+            write_knowledge_build_status(subject, updated, subject_scope=subject_scope)
 
         return updated
 

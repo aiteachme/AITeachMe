@@ -124,6 +124,55 @@ def test_cloud_postgres_init_does_not_create_tables(monkeypatch: pytest.MonkeyPa
     core._init_postgres_db(Settings())
 
 
+def test_postgres_pool_config_uses_bounded_env_overrides(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.shared.infra.database import core
+
+    for name in (
+        "DB_POOL_SIZE",
+        "DB_MAX_OVERFLOW",
+        "DB_POOL_TIMEOUT",
+        "DB_POOL_RECYCLE",
+        "DB_POOL_USE_LIFO",
+    ):
+        monkeypatch.delenv(name, raising=False)
+
+    assert core._postgres_pool_config() == {
+        "pool_size": 5,
+        "max_overflow": 5,
+        "pool_timeout": 30,
+        "pool_recycle": 1800,
+        "pool_use_lifo": True,
+    }
+
+    monkeypatch.setenv("DB_POOL_SIZE", "12")
+    monkeypatch.setenv("DB_MAX_OVERFLOW", "20")
+    monkeypatch.setenv("DB_POOL_TIMEOUT", "8")
+    monkeypatch.setenv("DB_POOL_RECYCLE", "600")
+    monkeypatch.setenv("DB_POOL_USE_LIFO", "false")
+
+    assert core._postgres_pool_config() == {
+        "pool_size": 12,
+        "max_overflow": 20,
+        "pool_timeout": 8,
+        "pool_recycle": 600,
+        "pool_use_lifo": False,
+    }
+
+    monkeypatch.setenv("DB_POOL_SIZE", "0")
+    monkeypatch.setenv("DB_MAX_OVERFLOW", "-1")
+    monkeypatch.setenv("DB_POOL_TIMEOUT", "0")
+    monkeypatch.setenv("DB_POOL_RECYCLE", "1")
+    monkeypatch.setenv("DB_POOL_USE_LIFO", "yes")
+
+    assert core._postgres_pool_config() == {
+        "pool_size": 1,
+        "max_overflow": 0,
+        "pool_timeout": 1,
+        "pool_recycle": 30,
+        "pool_use_lifo": True,
+    }
+
+
 def test_cloud_postgres_schema_not_ready_raises(monkeypatch: pytest.MonkeyPatch) -> None:
     from app.shared.infra.database import core
 

@@ -33,6 +33,8 @@ from app.shared.infra.settings import (
 from app.shared.infra.env_support import (
     describe_project_settings_source,
     get_env,
+    get_env_bool,
+    get_env_int,
     set_runtime_env_overrides,
 )
 from app.shared.infra.runtime import get_backend_root, is_cloud_mode, is_local_mode
@@ -779,6 +781,23 @@ def _build_sqlite_engine() -> sa.Engine:
     return engine
 
 
+def _bounded_env_int(name: str, default: int, *, min_value: int, max_value: int) -> int:
+    return max(min_value, min(max_value, get_env_int(name, default)))
+
+
+def _postgres_pool_config() -> dict[str, int | bool]:
+    """Return PostgreSQL pool settings constrained to sane deployment bounds."""
+
+    pool_recycle = get_env_int("DB_POOL_RECYCLE", 1800)
+    return {
+        "pool_size": _bounded_env_int("DB_POOL_SIZE", 5, min_value=1, max_value=50),
+        "max_overflow": _bounded_env_int("DB_MAX_OVERFLOW", 5, min_value=0, max_value=100),
+        "pool_timeout": _bounded_env_int("DB_POOL_TIMEOUT", 30, min_value=1, max_value=120),
+        "pool_recycle": -1 if pool_recycle < 0 else max(30, min(86400, pool_recycle)),
+        "pool_use_lifo": get_env_bool("DB_POOL_USE_LIFO", True),
+    }
+
+
 def _build_postgres_engine(settings) -> sa.Engine:
     """创建 PostgreSQL 引擎（云端模式）。"""
 
@@ -789,15 +808,15 @@ def _build_postgres_engine(settings) -> sa.Engine:
             "Example: postgresql+psycopg://user:pass@host:5432/dbname"
         )
 
+    pool_config = _postgres_pool_config()
     engine = create_engine(
         database_url,
-        pool_size=5,
-        max_overflow=10,
+        **pool_config,
         pool_pre_ping=True,
         json_serializer=_json_dumps,
         json_deserializer=_json_loads,
     )
-    logger.info("database_engine_created", dialect="postgresql")
+    logger.info("database_engine_created", dialect="postgresql", **pool_config)
     return engine
 
 

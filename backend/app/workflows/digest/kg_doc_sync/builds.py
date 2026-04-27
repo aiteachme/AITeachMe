@@ -11,6 +11,7 @@ from app.shared.infra.llm_support.common import (
     LLMRuntimeSnapshot,
     use_llm_runtime_snapshot,
 )
+from app.shared.infra.storage import SubjectStorageScope
 from app.shared.infra.knowledge.build_store import (
     read_knowledge_manifest,
     sanitize_knowledge_build_error_message,
@@ -26,10 +27,19 @@ from app.workflows.digest.kg_doc_sync.inputs import (
 logger = structlog.get_logger(__name__)
 
 
-def _write_graph_status(subject: str, *, requested_at: datetime, status: str, stage: str, **extra: object) -> None:
+def _write_graph_status(
+    subject: str,
+    *,
+    requested_at: datetime,
+    status: str,
+    stage: str,
+    subject_scope: SubjectStorageScope | None = None,
+    **extra: object,
+) -> None:
     update_knowledge_build_lane_status(
         subject,
         lane="graph",
+        subject_scope=subject_scope,
         requested_at=requested_at,
         status=status,
         stage=stage,
@@ -37,8 +47,12 @@ def _write_graph_status(subject: str, *, requested_at: datetime, status: str, st
     )
 
 
-def _current_doc_version_no(subject: str) -> int:
-    manifest = read_knowledge_manifest(subject)
+def _current_doc_version_no(
+    subject: str,
+    *,
+    subject_scope: SubjectStorageScope | None = None,
+) -> int:
+    manifest = read_knowledge_manifest(subject, subject_scope=subject_scope)
     return int(manifest.version_no or 0) if manifest is not None else 0
 
 
@@ -128,18 +142,26 @@ async def run_graph_docs_sync_after_doc_build(
     prompt: str | None,
     llm_snapshot: LLMRuntimeSnapshot | None = None,
     docgen_state: dict[str, object] | None = None,
+    subject_scope: SubjectStorageScope | None = None,
 ) -> dict[str, int | str]:
     """Re-sync knowledge units and knowledge images from the latest knowledge document."""
 
     from app.workflows.digest.kg_doc_sync import run_graph_docs_sync_workflow
 
-    sync_input = build_knowledge_doc_sync_input_from_docgen_state(subject, docgen_state)
+    sync_input = build_knowledge_doc_sync_input_from_docgen_state(
+        subject,
+        docgen_state,
+        subject_scope=subject_scope,
+    )
     if sync_input is None:
-        sync_input = load_knowledge_doc_sync_input(subject)
+        sync_input = load_knowledge_doc_sync_input(subject, subject_scope=subject_scope)
     knowledge_doc_markdown = sync_input.markdown
     knowledge_doc_source = sync_input.source
     doc_chapter_metadatas = extract_doc_chapter_metadatas(knowledge_doc_markdown)
-    doc_version_no = int(sync_input.structured_context.get("doc_version_no") or _current_doc_version_no(subject))
+    doc_version_no = int(
+        sync_input.structured_context.get("doc_version_no")
+        or _current_doc_version_no(subject, subject_scope=subject_scope)
+    )
     if not knowledge_doc_markdown.strip():
         return _base_doc_sync_metrics(
             knowledge_doc_source=knowledge_doc_source,
@@ -151,6 +173,7 @@ async def run_graph_docs_sync_after_doc_build(
         subject,
         requested_at=requested_at,
         build_group_id=build_group_id,
+        subject_scope=subject_scope,
         status="running",
         stage="graph_docs_sync",
         build_session_id=build_session_id,
@@ -212,13 +235,14 @@ async def run_graph_docs_sync_manual_build(
     file_ids: list[int],
     prompt: str | None,
     llm_snapshot: LLMRuntimeSnapshot | None = None,
+    subject_scope: SubjectStorageScope | None = None,
 ) -> None:
     """Run a user-triggered graph rebuild from the latest persisted knowledge docs."""
 
     doc_sync_metrics = _base_doc_sync_metrics(
         knowledge_doc_source="not_synced",
         chapter_count=0,
-        doc_version_no=_current_doc_version_no(subject),
+        doc_version_no=_current_doc_version_no(subject, subject_scope=subject_scope),
     )
     try:
         doc_sync_metrics = await run_graph_docs_sync_after_doc_build(
@@ -229,11 +253,13 @@ async def run_graph_docs_sync_manual_build(
             file_ids=file_ids,
             prompt=prompt,
             llm_snapshot=llm_snapshot,
+            subject_scope=subject_scope,
         )
         _write_graph_status(
             subject,
             requested_at=requested_at,
             build_group_id=build_group_id,
+            subject_scope=subject_scope,
             status="completed",
             stage="completed",
             progress_pct=100,
@@ -246,6 +272,7 @@ async def run_graph_docs_sync_manual_build(
             subject,
             requested_at=requested_at,
             build_group_id=build_group_id,
+            subject_scope=subject_scope,
             status="cancelled",
             stage="cancelled",
             error_message="build_cancelled",
@@ -260,6 +287,7 @@ async def run_graph_docs_sync_manual_build(
             subject,
             requested_at=requested_at,
             build_group_id=build_group_id,
+            subject_scope=subject_scope,
             status="failed",
             stage="failed",
             error_message=str(exc) or "build_crashed",

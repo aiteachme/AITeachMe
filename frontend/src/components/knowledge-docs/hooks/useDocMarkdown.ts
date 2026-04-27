@@ -10,6 +10,7 @@ import { apiClient } from "../../../api/client";
 import type { FileRecord } from "../../../api/generated/model";
 import {
   buildKnowledgeBuildRuntimeQueryKey,
+  buildRuntimeFailureBackoffMs,
   fetchKnowledgeBuildRuntime,
 } from "../../../lib/knowledgeBuildRuntime";
 import { formatDigestModeLabel } from "../../../lib/digestMode";
@@ -109,6 +110,8 @@ export function useDocMarkdown(): DocMarkdownState {
     queryFn: () => fetchKnowledgeBuildRuntime(subjectId as string),
     enabled: Boolean(subjectId),
     refetchInterval: (query) => {
+      const failureBackoff = buildRuntimeFailureBackoffMs(query.state.fetchFailureCount);
+      if (failureBackoff !== null) return failureBackoff;
       const docgen = query.state.data?.docgen ?? query.state.data?.aggregate;
       const status = (docgen?.status ?? "").trim();
       const liveMarkdown = cleanKnowledgeMarkdownForDisplay(docMarkdownQuery.data?.markdown ?? "");

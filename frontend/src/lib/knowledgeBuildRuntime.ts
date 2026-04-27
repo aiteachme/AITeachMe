@@ -68,6 +68,12 @@ export function buildKnowledgeBuildRuntimeQueryKey(subjectId: string) {
   return ["knowledge-doc-build", subjectId] as const;
 }
 
+export function buildRuntimeFailureBackoffMs(fetchFailureCount: number): number | null {
+  if (fetchFailureCount <= 0) return null;
+  const cappedFailures = Math.min(fetchFailureCount - 1, 3);
+  return Math.min(30_000, 5_000 * 2 ** cappedFailures);
+}
+
 export async function fetchKnowledgeBuildRuntime(
   subjectId: string,
 ): Promise<KnowledgeBuildRuntimeResponse> {

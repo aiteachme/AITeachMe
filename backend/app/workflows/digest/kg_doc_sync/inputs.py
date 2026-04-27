@@ -5,12 +5,12 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 import json
 
-from sqlmodel import select
+from sqlmodel import Session, select
 
 from app.repositories.knowledge.docgen_repo import get_current_published_docs
 from app.shared.infra.database import managed_session
 from app.shared.infra.knowledge.build_store import read_knowledge_manifest
-from app.shared.infra.storage import get_content_store, run_store_sync
+from app.shared.infra.storage import SubjectStorageScope, get_content_store, run_store_sync
 from app.shared.infra.tools.builtin.markdown_processing import normalize_mermaid_blocks
 from app.models.knowledge_doc import KnowledgeDoc
 from app.models.subject import Subject
@@ -104,8 +104,12 @@ def _merge_doc_markdown(docs: list[KnowledgeDoc]) -> str:
     return ("\n\n---\n\n".join(parts)).strip()
 
 
-def _load_docgen_manifest(subject: str) -> dict[str, object]:
-    manifest = read_knowledge_manifest(subject)
+def _load_docgen_manifest(
+    subject: str,
+    *,
+    subject_scope: SubjectStorageScope | None = None,
+) -> dict[str, object]:
+    manifest = read_knowledge_manifest(subject, subject_scope=subject_scope)
     if manifest is None or not manifest.docgen_manifest_key:
         return {}
     payload = run_store_sync(
@@ -114,6 +118,15 @@ def _load_docgen_manifest(subject: str) -> dict[str, object]:
         default=None,
     )
     return dict(payload) if isinstance(payload, dict) else {}
+
+
+def _load_docgen_manifest_for_scope(
+    subject: str,
+    subject_scope: SubjectStorageScope | None,
+) -> dict[str, object]:
+    if subject_scope is None:
+        return _load_docgen_manifest(subject)
+    return _load_docgen_manifest(subject, subject_scope=subject_scope)
 
 
 def _chapter_context_payload(doc: KnowledgeDoc) -> dict[str, object]:
@@ -161,6 +174,9 @@ def _chapter_context_from_docgen_state(
 def build_knowledge_doc_sync_input_from_docgen_state(
     subject: str,
     docgen_state: dict[str, object] | None,
+    *,
+    subject_scope: SubjectStorageScope | None = None,
+    document_summary_json: dict[str, object] | None = None,
 ) -> KnowledgeDocSyncInput | None:
     """Build graph-sync input directly from the just-finished DocGen state."""
 
@@ -175,14 +191,18 @@ def build_knowledge_doc_sync_input_from_docgen_state(
         if isinstance(item, dict)
     ]
     doc_ids = _clean_int_list(state.get("doc_ids"))
-    manifest = _load_docgen_manifest(subject)
+    manifest = _load_docgen_manifest_for_scope(subject, subject_scope)
     manifest_build_metadata = (
         dict(manifest.get("build_metadata"))
         if isinstance(manifest.get("build_metadata"), dict)
         else {}
     )
     manifest_version_no = _safe_int(manifest_build_metadata.get("version_no"))
-    manifest_record = read_knowledge_manifest(subject) if manifest_version_no <= 0 else None
+    manifest_record = (
+        read_knowledge_manifest(subject, subject_scope=subject_scope)
+        if manifest_version_no <= 0
+        else None
+    )
     doc_version_no = int(
         manifest_version_no
         or (manifest_record.version_no if manifest_record is not None else 0)
@@ -191,7 +211,9 @@ def build_knowledge_doc_sync_input_from_docgen_state(
     structured_context = {
         "doc_version_no": doc_version_no,
         "docgen_manifest": manifest,
-        "document_summary_json": _load_subject_document_summary(subject),
+        "document_summary_json": document_summary_json
+        if document_summary_json is not None
+        else _load_subject_document_summary(subject),
         "chapters": [
             _chapter_context_from_docgen_state(
                 chapter,
@@ -209,26 +231,42 @@ def build_knowledge_doc_sync_input_from_docgen_state(
     )
 
 
+def _read_subject_document_summary(session: Session, subject: str) -> dict[str, object]:
+    subject_record = session.exec(select(Subject).where(Subject.slug == subject)).first()
+    return (
+        dict(subject_record.document_summary_json)
+        if subject_record is not None and isinstance(subject_record.document_summary_json, dict)
+        else {}
+    )
+
+
 def _load_subject_document_summary(subject: str) -> dict[str, object]:
     with managed_session() as session:
-        subject_record = session.exec(select(Subject).where(Subject.slug == subject)).first()
-        return (
-            dict(subject_record.document_summary_json)
-            if subject_record is not None and isinstance(subject_record.document_summary_json, dict)
-            else {}
-        )
+        return _read_subject_document_summary(session, subject)
 
 
-def load_knowledge_doc_sync_input(subject: str) -> KnowledgeDocSyncInput:
-    with managed_session() as session:
-        docs = get_current_published_docs(session, subject)
-        merged = _merge_doc_markdown(docs).strip()
-    document_summary_json = _load_subject_document_summary(subject)
+def load_knowledge_doc_sync_input(
+    subject: str,
+    *,
+    session: Session | None = None,
+    subject_scope: SubjectStorageScope | None = None,
+) -> KnowledgeDocSyncInput:
+    if session is None:
+        with managed_session() as managed:
+            return load_knowledge_doc_sync_input(
+                subject,
+                session=managed,
+                subject_scope=subject_scope,
+            )
+
+    docs = get_current_published_docs(session, subject)
+    merged = _merge_doc_markdown(docs).strip()
+    document_summary_json = _read_subject_document_summary(session, subject)
     if merged:
         doc_versions = [int(doc.version_no or doc.version or 0) for doc in docs]
         structured_context = {
             "doc_version_no": max(doc_versions or [0]),
-            "docgen_manifest": _load_docgen_manifest(subject),
+            "docgen_manifest": _load_docgen_manifest_for_scope(subject, subject_scope),
             "document_summary_json": document_summary_json,
             "chapters": [_chapter_context_payload(doc) for doc in docs],
         }

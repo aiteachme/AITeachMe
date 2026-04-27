@@ -55,7 +55,13 @@ from app.shared.infra.knowledge.build_store import (
 )
 from app.shared.infra.llm_support.common import capture_llm_runtime_snapshot
 from app.shared.infra.settings import get_settings
-from app.shared.infra.storage import get_content_store, resolve_subject_storage_scope, run_store_sync
+from app.shared.infra.storage import (
+    SubjectStorageScope,
+    build_subject_storage_scope,
+    get_content_store,
+    resolve_subject_storage_scope,
+    run_store_sync,
+)
 from app.shared.infra.subject import (
     get_subject_vector_status_by_slug,
     inspect_subject_build_precheck,
@@ -132,10 +138,19 @@ def _clear_docgen_staging_safely(subject: str) -> None:
         logger.exception("knowledge_build_cleanup_failed", subject=subject)
 
 
-def _write_docgen_status(subject: str, *, requested_at: datetime, status: str, stage: str, **extra: object) -> None:
+def _write_docgen_status(
+    subject: str,
+    *,
+    requested_at: datetime,
+    status: str,
+    stage: str,
+    subject_scope: SubjectStorageScope | None = None,
+    **extra: object,
+) -> None:
     update_knowledge_build_lane_status(
         subject,
         lane="docgen",
+        subject_scope=subject_scope,
         requested_at=requested_at,
         status=status,
         stage=stage,
@@ -143,10 +158,19 @@ def _write_docgen_status(subject: str, *, requested_at: datetime, status: str, s
     )
 
 
-def _write_graph_status(subject: str, *, requested_at: datetime, status: str, stage: str, **extra: object) -> None:
+def _write_graph_status(
+    subject: str,
+    *,
+    requested_at: datetime,
+    status: str,
+    stage: str,
+    subject_scope: SubjectStorageScope | None = None,
+    **extra: object,
+) -> None:
     update_knowledge_build_lane_status(
         subject,
         lane="graph",
+        subject_scope=subject_scope,
         requested_at=requested_at,
         status=status,
         stage=stage,
@@ -392,15 +416,17 @@ def _default_doc_sync_metrics() -> dict[str, int | str]:
 def _resolve_runtime_build_status(
     *,
     subject: str,
-    subject_scope=None,
+    session: Session | None = None,
+    subject_scope: SubjectStorageScope | None = None,
 ) -> KnowledgeBuildStatusResponse | None:
-    build_lock = read_knowledge_build_lock(subject)
+    build_lock = read_knowledge_build_lock(subject, session=session)
     runtime = read_knowledge_build_runtime(subject, subject_scope=subject_scope)
     effective = build_aggregate_knowledge_build_status(runtime)
     if effective is None and build_lock is not None:
         effective = update_knowledge_build_lane_status(
             subject,
             lane="docgen",
+            subject_scope=subject_scope,
             requested_at=build_lock.requested_at,
             build_group_id=build_lock.build_group_id,
             status="running",
@@ -455,9 +481,14 @@ def _build_lane_runtime_response(
     )
 
 
-def get_knowledge_build_runtime_result(session: Session, *, subject: str) -> KnowledgeBuildRuntimeResponse:
+def get_knowledge_build_runtime_result(
+    session: Session,
+    *,
+    subject: str,
+    subject_scope: SubjectStorageScope | None = None,
+) -> KnowledgeBuildRuntimeResponse:
     _markdown, _ = _load_current_published_markdown(session, subject=subject)
-    subject_scope = resolve_subject_storage_scope(subject, session=session)
+    subject_scope = subject_scope or resolve_subject_storage_scope(subject, session=session)
     draft_markdown = normalize_mermaid_blocks(
         run_store_sync(
             get_content_store().read_text,
@@ -624,9 +655,11 @@ def trigger_docgen_build(
     if not acquire_knowledge_build_lock(subject.slug, build_lock):
         raise SubjectBuildLockConflictError(subject.slug)
     _clear_docgen_staging_safely(subject.slug)
+    subject_scope = build_subject_storage_scope(user_id=subject.user_id, subject=subject.slug)
     update_knowledge_build_lane_status(
         subject.slug,
         lane="docgen",
+        subject_scope=subject_scope,
         requested_at=requested_at,
         build_group_id=build_group_id,
         status="accepted",
@@ -739,6 +772,7 @@ async def run_docgen_background(
     )
     planner_session_id = planner_session_id or plan.planner_session_id
     resolved_digest_mode = plan.digest_mode
+    subject_scope = build_subject_storage_scope(user_id=user_id, subject=subject)
     _mark_confirmed_plan_status(
         subject=subject,
         user_id=user_id,
@@ -751,6 +785,7 @@ async def run_docgen_background(
             subject,
             requested_at=requested_at,
             build_group_id=build_group_id,
+            subject_scope=subject_scope,
             status="running",
             stage="prepare_shared",
             build_session_id=build_session_id,
@@ -767,6 +802,7 @@ async def run_docgen_background(
                 subject,
                 requested_at=requested_at,
                 build_group_id=build_group_id,
+                subject_scope=subject_scope,
                 status="accepted",
                 stage="queued_after_docgen",
                 source_file_ids=file_ids,
@@ -778,6 +814,7 @@ async def run_docgen_background(
                 subject,
                 requested_at=requested_at,
                 build_group_id=build_group_id,
+                subject_scope=subject_scope,
                 status="skipped",
                 stage="disabled",
                 source_file_ids=file_ids,
@@ -801,6 +838,7 @@ async def run_docgen_background(
                     subject,
                     requested_at=requested_at,
                     build_group_id=build_group_id,
+                    subject_scope=subject_scope,
                     status="skipped",
                     stage="blocked_by_docgen_failure",
                     current_stage_description="知识文档构建失败，未继续图谱同步。",
@@ -810,6 +848,7 @@ async def run_docgen_background(
                 subject,
                 requested_at=requested_at,
                 build_group_id=build_group_id,
+                subject_scope=subject_scope,
                 status="failed",
                 stage="failed",
                 build_session_id=build_session_id,
@@ -832,6 +871,7 @@ async def run_docgen_background(
             subject,
             requested_at=requested_at,
             build_group_id=build_group_id,
+            subject_scope=subject_scope,
             status="completed",
             stage="completed",
             build_session_id=build_session_id,
@@ -859,11 +899,13 @@ async def run_docgen_background(
                     prompt=prompt,
                     llm_snapshot=graph_llm_snapshot,
                     docgen_state=final_docgen_state,
+                    subject_scope=subject_scope,
                 )
                 _write_graph_status(
                     subject,
                     requested_at=requested_at,
                     build_group_id=build_group_id,
+                    subject_scope=subject_scope,
                     status="completed",
                     stage="completed",
                     progress_pct=100,
@@ -877,6 +919,7 @@ async def run_docgen_background(
                     subject,
                     requested_at=requested_at,
                     build_group_id=build_group_id,
+                    subject_scope=subject_scope,
                     status="failed",
                     stage="failed",
                     error_message=str(exc) or "build_crashed",
@@ -889,6 +932,7 @@ async def run_docgen_background(
             subject,
             requested_at=requested_at,
             build_group_id=build_group_id,
+            subject_scope=subject_scope,
             status="completed",
             stage="completed",
             build_session_id=build_session_id,
@@ -911,6 +955,7 @@ async def run_docgen_background(
                 subject,
                 requested_at=requested_at,
                 build_group_id=build_group_id,
+                subject_scope=subject_scope,
                 status="cancelled",
                 stage="cancelled",
                 error_message="build_cancelled",
@@ -922,6 +967,7 @@ async def run_docgen_background(
                 subject,
                 requested_at=requested_at,
                 build_group_id=build_group_id,
+                subject_scope=subject_scope,
                 status="cancelled",
                 stage="cancelled",
                 build_session_id=build_session_id,
@@ -944,6 +990,7 @@ async def run_docgen_background(
                 subject,
                 requested_at=requested_at,
                 build_group_id=build_group_id,
+                subject_scope=subject_scope,
                 status="skipped",
                 stage="blocked_by_docgen_failure",
                 current_stage_description="知识文档构建异常失败，未完成图谱同步。",
@@ -954,6 +1001,7 @@ async def run_docgen_background(
                 subject,
                 requested_at=requested_at,
                 build_group_id=build_group_id,
+                subject_scope=subject_scope,
                 status="failed",
                 stage="failed",
                 build_session_id=build_session_id,
@@ -975,7 +1023,12 @@ async def run_docgen_background(
         release_knowledge_build_lock(subject)
 
 
-def get_docgen_result(session: Session, *, subject: str) -> DocGenGetResponse:
+def get_docgen_result(
+    session: Session,
+    *,
+    subject: str,
+    subject_scope: SubjectStorageScope | None = None,
+) -> DocGenGetResponse:
     """组装知识文档页面轮询所需的当前状态。
 
     读取已发布 Markdown、构建中草稿、manifest、build status、preview 和
@@ -983,7 +1036,7 @@ def get_docgen_result(session: Session, *, subject: str) -> DocGenGetResponse:
     """
 
     cs = get_content_store()
-    subject_scope = resolve_subject_storage_scope(subject, session=session)
+    subject_scope = subject_scope or resolve_subject_storage_scope(subject, session=session)
     draft_key = subject_scope.knowledge_build_prefix() + "merged_knowledge_base.md"
     manifest = read_knowledge_manifest(subject, subject_scope=subject_scope)
     runtime = read_knowledge_build_runtime(subject, subject_scope=subject_scope)
@@ -1005,7 +1058,11 @@ def get_docgen_result(session: Session, *, subject: str) -> DocGenGetResponse:
         if manifest is not None
         else []
     )
-    build_response = _resolve_runtime_build_status(subject=subject, subject_scope=subject_scope)
+    build_response = _resolve_runtime_build_status(
+        subject=subject,
+        session=session,
+        subject_scope=subject_scope,
+    )
     if build_response is not None:
         build_response.draft_available = bool(build_response.draft_available or draft_markdown.strip())
     build_preview = _build_runtime_preview(

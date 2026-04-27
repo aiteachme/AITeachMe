@@ -17,6 +17,7 @@ from app.api.deps import (
     normalize_subject_slug,
 )
 from app.api.openapi import build_error_responses
+from app.models import Subject
 from app.schemas.common import ApiResponse, ok_response
 from app.schemas.knowledge import (
     BuildPlannerAdjustClickResponse,
@@ -72,6 +73,7 @@ from app.shared.infra.knowledge.build_store import (
     update_knowledge_build_lane_status,
 )
 from app.shared.infra.llm_support.common import capture_llm_runtime_snapshot
+from app.shared.infra.storage import SubjectStorageScope, build_subject_storage_scope
 from app.utils.time import utcnow
 
 router = APIRouter(tags=["knowledge"])
@@ -104,6 +106,12 @@ def _collect_graph_source_file_ids(structured_context: dict[str, object]) -> lis
             seen.add(parsed)
             collected.append(parsed)
     return collected
+
+
+def _storage_scope_for_subject_record(subject: Subject) -> SubjectStorageScope:
+    """Build storage scope from the already-authorized subject record."""
+
+    return build_subject_storage_scope(user_id=subject.user_id, subject=subject.slug)
 
 
 async def _spawn_registered_task_after_response(
@@ -508,9 +516,10 @@ async def knowledge_graph_build(
     session: Session = Depends(get_db),
 ) -> ApiResponse[KnowledgeGraphBuildData]:
     normalized = normalize_subject_slug(subject)
-    get_subject_record(session, normalized, owner_user_id=user.user_id)
+    subject_record = get_subject_record(session, normalized, owner_user_id=user.user_id)
+    subject_scope = _storage_scope_for_subject_record(subject_record)
 
-    runtime = read_knowledge_build_runtime(normalized)
+    runtime = read_knowledge_build_runtime(normalized, subject_scope=subject_scope)
     docgen_status = runtime.docgen_runtime if runtime is not None else None
     graph_status = runtime.graph_runtime if runtime is not None else None
     if docgen_status is not None and str(docgen_status.status or "").strip() in _ACTIVE_BUILD_STATUSES:
@@ -526,7 +535,11 @@ async def knowledge_graph_build(
             status_code=409,
         )
 
-    sync_input = load_knowledge_doc_sync_input(normalized)
+    sync_input = load_knowledge_doc_sync_input(
+        normalized,
+        session=session,
+        subject_scope=subject_scope,
+    )
     if not sync_input.markdown.strip():
         raise AITeachMeError(
             detail="当前还没有已发布的知识文档，请先完成知识文档构建。",
@@ -534,7 +547,7 @@ async def knowledge_graph_build(
             status_code=422,
         )
 
-    manifest = read_knowledge_manifest(normalized)
+    manifest = read_knowledge_manifest(normalized, subject_scope=subject_scope)
     manifest_source_file_ids = list(manifest.source_file_ids) if manifest is not None else []
     source_file_ids = manifest_source_file_ids or _collect_graph_source_file_ids(sync_input.structured_context)
     prompt = manifest.prompt if manifest is not None else None
@@ -547,6 +560,7 @@ async def knowledge_graph_build(
     update_knowledge_build_lane_status(
         normalized,
         lane="graph",
+        subject_scope=subject_scope,
         requested_at=requested_at,
         build_group_id=build_group_id,
         status="accepted",
@@ -575,6 +589,7 @@ async def knowledge_graph_build(
             file_ids=source_file_ids,
             prompt=prompt,
             llm_snapshot=llm_snapshot,
+            subject_scope=subject_scope,
         ),
         kind="knowledge.build.graph",
         subject=normalized,
@@ -614,8 +629,9 @@ async def knowledge_build_cancel(
     session: Session = Depends(get_db),
 ) -> ApiResponse[DocGenBuildCancelData]:
     normalized = normalize_subject_slug(subject)
-    get_subject_record(session, normalized, owner_user_id=user.user_id)
-    runtime = read_knowledge_build_runtime(normalized)
+    subject_record = get_subject_record(session, normalized, owner_user_id=user.user_id)
+    subject_scope = _storage_scope_for_subject_record(subject_record)
+    runtime = read_knowledge_build_runtime(normalized, subject_scope=subject_scope)
     aggregate_status = build_aggregate_knowledge_build_status(runtime)
     docgen_status = runtime.docgen_runtime if runtime is not None else None
     graph_status = runtime.graph_runtime if runtime is not None else None
@@ -639,6 +655,7 @@ async def knowledge_build_cancel(
         update_knowledge_build_lane_status(
             normalized,
             lane="docgen",
+            subject_scope=subject_scope,
             requested_at=requested_at,
             build_group_id=docgen_status.build_group_id,
             status="cancelled",
@@ -654,6 +671,7 @@ async def knowledge_build_cancel(
         update_knowledge_build_lane_status(
             normalized,
             lane="graph",
+            subject_scope=subject_scope,
             requested_at=requested_at,
             build_group_id=graph_status.build_group_id,
             status="cancelled",
@@ -683,8 +701,9 @@ async def knowledge_build_runtime(
     session: Session = Depends(get_db),
 ) -> ApiResponse[KnowledgeBuildRuntimeResponse]:
     normalized = normalize_subject_slug(subject)
-    get_subject_record(session, normalized, owner_user_id=user.user_id)
-    return ok_response(get_knowledge_build_runtime_result(session, subject=normalized))
+    subject_record = get_subject_record(session, normalized, owner_user_id=user.user_id)
+    subject_scope = _storage_scope_for_subject_record(subject_record)
+    return ok_response(get_knowledge_build_runtime_result(session, subject=normalized, subject_scope=subject_scope))
 
 
 @router.get(
@@ -704,7 +723,8 @@ async def knowledge_build_stream(
     normalized = normalize_subject_slug(subject)
     with managed_session() as session:
         user = get_current_user_context(request, response, session)
-        get_subject_record(session, normalized, owner_user_id=user.user_id)
+        subject_record = get_subject_record(session, normalized, owner_user_id=user.user_id)
+        subject_scope = _storage_scope_for_subject_record(subject_record)
 
     _TERMINAL_STATUSES = {"completed", "failed", "cancelled", "partial_failed", "skipped"}
     _SNAPSHOT_FALLBACK_INTERVAL = 8.0
@@ -769,7 +789,11 @@ async def knowledge_build_stream(
             nonlocal last_hash
             try:
                 with managed_session() as snapshot_session:
-                    result = get_knowledge_build_runtime_result(snapshot_session, subject=normalized)
+                    result = get_knowledge_build_runtime_result(
+                        snapshot_session,
+                        subject=normalized,
+                        subject_scope=subject_scope,
+                    )
             except Exception:
                 return [], False
 
@@ -858,8 +882,9 @@ async def knowledge_docs(
     session: Session = Depends(get_db),
 ) -> ApiResponse[DocGenGetResponse]:
     normalized = normalize_subject_slug(subject)
-    get_subject_record(session, normalized, owner_user_id=user.user_id)
-    return ok_response(get_docgen_result(session, subject=normalized))
+    subject_record = get_subject_record(session, normalized, owner_user_id=user.user_id)
+    subject_scope = _storage_scope_for_subject_record(subject_record)
+    return ok_response(get_docgen_result(session, subject=normalized, subject_scope=subject_scope))
 
 
 @router.post(

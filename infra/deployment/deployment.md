@@ -79,7 +79,12 @@ Health Check Path: /api/health
 
 ```env
 APP_MODE=cloud
-DATABASE_URL=<Render PostgreSQL internal connection string>
+DATABASE_URL=<Render/PostgreSQL pooled connection string preferred>
+DB_POOL_SIZE=5
+DB_MAX_OVERFLOW=5
+DB_POOL_TIMEOUT=30
+DB_POOL_RECYCLE=1800
+DB_POOL_USE_LIFO=true
 STORAGE_BACKEND=s3
 S3_BUCKET=<bucket>
 S3_ENDPOINT=<s3 endpoint>
@@ -92,6 +97,12 @@ AUTH_ENABLED=true
 LLM_API_KEY=<model api key>
 LLM_BASE_URL=<model api base url>
 ```
+
+数据库连接建议：
+
+- 生产优先使用 PgBouncer 或平台提供的 pooled connection string，让后端只维护小连接池。
+- 总连接预算约等于实例数 * worker 数 * (`DB_POOL_SIZE` + `DB_MAX_OVERFLOW`)；小规格库先从 `3~5` 常驻连接和 `2~5` 溢出连接开始。
+- SSE、轮询和后台 workflow 不应长期持有 DB session；接口只在读取/写入状态时短暂取连接。
 
 迁移有两种口径：
 
