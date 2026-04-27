@@ -7,6 +7,7 @@ import {
   Sparkles,
   Trash2,
 } from "lucide-react";
+import { AnimatePresence, motion, type Variants } from "framer-motion";
 
 import { apiClient, getApiErrorMessage } from "../../api/client";
 import type {
@@ -28,6 +29,31 @@ type ConversationKind = "document" | "question" | "builder" | "general";
 
 const GLOBAL_SUBJECT_ID = "global";
 const RECENT_SECTION_EXPANDED_STORAGE_KEY = "aiteachme.aiConversations.recentExpanded";
+
+const conversationListMotion: Variants = {
+  visible: {
+    transition: {
+      staggerChildren: 0.025,
+      delayChildren: 0.02,
+    },
+  },
+};
+
+const conversationItemMotion: Variants = {
+  hidden: { opacity: 0, x: -8, scale: 0.985 },
+  visible: {
+    opacity: 1,
+    x: 0,
+    scale: 1,
+    transition: { type: "spring", stiffness: 420, damping: 34 },
+  },
+  exit: {
+    opacity: 0,
+    x: -8,
+    scale: 0.985,
+    transition: { duration: 0.14, ease: "easeOut" },
+  },
+};
 
 const CONVERSATION_KIND_STYLES: Record<ConversationKind, {
   label: string;
@@ -348,8 +374,18 @@ export function AiConversationSidebarSection({
         </button>
       </div>
 
-      {isExpanded ? (
-        <div className="space-y-0.5 pb-2">
+      <AnimatePresence initial={false}>
+        {isExpanded ? (
+          <motion.div
+            key="conversation-list"
+            layout
+            variants={conversationListMotion}
+            initial={{ opacity: 0, height: 0 }}
+            animate="visible"
+            exit={{ opacity: 0, height: 0 }}
+            transition={{ duration: 0.18, ease: "easeOut" }}
+            className="space-y-0.5 overflow-hidden pb-2"
+          >
           {error ? (
             <p className="mx-1 rounded-md border border-red-200 bg-red-50 px-2 py-1.5 text-[11px] leading-4 text-red-600 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300">
               {error}
@@ -357,9 +393,16 @@ export function AiConversationSidebarSection({
           ) : null}
 
           {hasActiveEmptyConversation ? (
-            <button
+            <motion.button
               type="button"
               onClick={openNewConversation}
+              layout
+              variants={conversationItemMotion}
+              initial="hidden"
+              animate="visible"
+              exit="exit"
+              whileHover={{ x: 2 }}
+              whileTap={{ scale: 0.985 }}
               className={cn(
                 "group relative flex h-7 w-full items-center gap-1.5 overflow-hidden rounded-md px-2 text-left",
                 activeEmptyStyle.selectedClassName,
@@ -371,24 +414,32 @@ export function AiConversationSidebarSection({
                 {activeEmptyStyle.label}
               </span>
               <span className="min-w-0 flex-1 truncate text-xs font-medium">新会话</span>
-            </button>
+            </motion.button>
           ) : null}
 
-          {visibleSessions.map((session) => {
-            const sessionId = getSessionId(session);
-            const isSelected = isSidebarOpen && sessionId !== null && activeConversationSessionId === sessionId;
-            const kindStyle = CONVERSATION_KIND_STYLES[getSessionKind(session)];
-            const subjectLabel = getSessionSubjectLabel(session);
-            return (
-              <div
-                key={sessionId ?? `${getSessionSubjectId(session)}-${session.title}-${session.last_message_at}`}
-                className={cn(
-                  "group relative overflow-hidden rounded-md transition-colors",
-                  isSelected
-                    ? kindStyle.selectedClassName
-                    : "text-slate-700 hover:bg-[#eef3f8] hover:text-slate-950 dark:text-slate-400 dark:hover:bg-slate-800/60 dark:hover:text-slate-200",
-                )}
-              >
+          <AnimatePresence initial={false}>
+            {visibleSessions.map((session) => {
+              const sessionId = getSessionId(session);
+              const isSelected = isSidebarOpen && sessionId !== null && activeConversationSessionId === sessionId;
+              const kindStyle = CONVERSATION_KIND_STYLES[getSessionKind(session)];
+              const subjectLabel = getSessionSubjectLabel(session);
+              return (
+                <motion.div
+                  key={sessionId ?? `${getSessionSubjectId(session)}-${session.title}-${session.last_message_at}`}
+                  layout
+                  variants={conversationItemMotion}
+                  initial="hidden"
+                  animate="visible"
+                  exit="exit"
+                  whileHover={{ x: 2 }}
+                  whileTap={{ scale: 0.985 }}
+                  className={cn(
+                    "group relative overflow-hidden rounded-md transition-colors",
+                    isSelected
+                      ? kindStyle.selectedClassName
+                      : "text-slate-700 hover:bg-[#eef3f8] hover:text-slate-950 dark:text-slate-400 dark:hover:bg-slate-800/60 dark:hover:text-slate-200",
+                  )}
+                >
                 {isSelected ? (
                   <>
                     <span className={cn("absolute bottom-1.5 left-0 top-1.5 w-0.5 rounded-r-full", kindStyle.stripClassName)} />
@@ -430,11 +481,13 @@ export function AiConversationSidebarSection({
                 >
                   <Trash2 className="h-3.5 w-3.5" />
                 </button>
-              </div>
-            );
-          })}
-        </div>
-      ) : null}
+                </motion.div>
+              );
+            })}
+          </AnimatePresence>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
     </section>
   );
 }

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
+import { AnimatePresence, motion, type Variants } from "framer-motion";
 import {
   BarChart3,
   BookOpen,
@@ -58,6 +59,45 @@ const COLOR_CLASSES = [
 ];
 
 const LOGO_SRC = publicAssetPath("logo.svg");
+
+const sidebarListContainerMotion: Variants = {
+  visible: {
+    transition: {
+      staggerChildren: 0.035,
+      delayChildren: 0.02,
+    },
+  },
+};
+
+const sidebarItemMotion: Variants = {
+  hidden: { opacity: 0, x: -8, scale: 0.98 },
+  visible: {
+    opacity: 1,
+    x: 0,
+    scale: 1,
+    transition: { type: "spring", stiffness: 420, damping: 34 },
+  },
+  exit: {
+    opacity: 0,
+    x: -8,
+    scale: 0.98,
+    transition: { duration: 0.14, ease: "easeOut" },
+  },
+};
+
+const sidebarChildItemMotion: Variants = {
+  hidden: { opacity: 0, y: -4 },
+  visible: {
+    opacity: 1,
+    y: 0,
+    transition: { type: "spring", stiffness: 420, damping: 32 },
+  },
+  exit: {
+    opacity: 0,
+    y: -4,
+    transition: { duration: 0.12, ease: "easeOut" },
+  },
+};
 
 type SubjectWithIcon = SubjectItem & { icon_key?: string | null };
 
@@ -540,14 +580,31 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
             <p className="-mt-1 overflow-hidden whitespace-nowrap px-4 py-0 text-[11px] text-slate-300 dark:text-slate-600">暂无学科</p>
           ) : null}
 
-          {groupedSubjects.map((subject) => {
-            const expanded = expandedSubjects.has(subject.subject_id);
-            const displayName = displaySubjectName(subject);
-            const badgeClass = colorClassForSubject(subject.name || subject.subject_id);
-            const SubjectIcon = resolveSubjectIcon((subject as SubjectWithIcon).icon_key);
+          <motion.div
+            className="space-y-0.5"
+            variants={sidebarListContainerMotion}
+            initial="hidden"
+            animate="visible"
+          >
+            <AnimatePresence initial={false}>
+              {groupedSubjects.map((subject) => {
+                const expanded = expandedSubjects.has(subject.subject_id);
+                const displayName = displaySubjectName(subject);
+                const badgeClass = colorClassForSubject(subject.name || subject.subject_id);
+                const SubjectIcon = resolveSubjectIcon((subject as SubjectWithIcon).icon_key);
 
-            return (
-              <div key={subject.subject_id} className="relative">
+                return (
+                  <motion.div
+                    key={subject.subject_id}
+                    layout
+                    variants={sidebarItemMotion}
+                    initial="hidden"
+                    animate="visible"
+                    exit="exit"
+                    whileHover={{ x: effectiveCollapsed ? 0 : 2 }}
+                    whileTap={{ scale: 0.985 }}
+                    className="relative"
+                  >
                 <div
                   className={cn(
                     "group flex items-center gap-1 rounded-md transition-colors",
@@ -636,34 +693,58 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
                   ) : null}
                 </div>
 
-                {!effectiveCollapsed && expanded ? (
-                  <div className="ml-4 mt-1 space-y-0.5 border-l border-slate-200 pl-2">
-                    {MODULES.map((moduleItem) => {
-                      const path = `/subject/${subject.subject_id}/${moduleItem.id}`;
-                      const isActive = location.pathname === path;
-                      const Icon = moduleItem.icon;
-                      return (
-                        <Link
-                          key={moduleItem.id}
-                          to={path}
-                          onClick={() => setIsMobileOpen(false)}
-                          className={cn(
-                            "flex h-7 items-center overflow-hidden whitespace-nowrap rounded-md px-2 text-xs transition-colors",
-                            isActive
-                              ? "bg-[#edf3f8] font-medium text-[#243246] dark:bg-slate-800 dark:text-slate-200"
-                              : "text-slate-500 hover:bg-slate-50 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-slate-800/40 dark:hover:text-slate-200",
-                          )}
-                        >
-                          <Icon className={cn("mr-2 h-3.5 w-3.5", isActive ? "text-[#556b86] dark:text-slate-300" : undefined)} />
-                          {moduleItem.name}
-                        </Link>
-                      );
-                    })}
-                  </div>
-                ) : null}
-              </div>
-            );
-          })}
+                <AnimatePresence initial={false}>
+                  {!effectiveCollapsed && expanded ? (
+                    <motion.div
+                      key="modules"
+                      layout
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: "auto" }}
+                      exit={{ opacity: 0, height: 0 }}
+                      transition={{ duration: 0.18, ease: "easeOut" }}
+                      className="ml-4 mt-1 space-y-0.5 overflow-hidden border-l border-slate-200 pl-2"
+                    >
+                      <AnimatePresence initial={false}>
+                        {MODULES.map((moduleItem) => {
+                          const path = `/subject/${subject.subject_id}/${moduleItem.id}`;
+                          const isActive = location.pathname === path;
+                          const Icon = moduleItem.icon;
+                          return (
+                            <motion.div
+                              key={moduleItem.id}
+                              layout
+                              variants={sidebarChildItemMotion}
+                              initial="hidden"
+                              animate="visible"
+                              exit="exit"
+                              whileHover={{ x: 2 }}
+                              whileTap={{ scale: 0.985 }}
+                            >
+                              <Link
+                                to={path}
+                                onClick={() => setIsMobileOpen(false)}
+                                className={cn(
+                                  "flex h-7 items-center overflow-hidden whitespace-nowrap rounded-md px-2 text-xs transition-colors",
+                                  isActive
+                                    ? "bg-[#edf3f8] font-medium text-[#243246] dark:bg-slate-800 dark:text-slate-200"
+                                    : "text-slate-500 hover:bg-slate-50 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-slate-800/40 dark:hover:text-slate-200",
+                                )}
+                              >
+                                <Icon className={cn("mr-2 h-3.5 w-3.5", isActive ? "text-[#556b86] dark:text-slate-300" : undefined)} />
+                                {moduleItem.name}
+                              </Link>
+                            </motion.div>
+                          );
+                        })}
+                      </AnimatePresence>
+                    </motion.div>
+                  ) : null}
+                </AnimatePresence>
+                  </motion.div>
+                );
+              })}
+            </AnimatePresence>
+          </motion.div>
 
           <AiConversationSidebarSection
             collapsed={effectiveCollapsed}
