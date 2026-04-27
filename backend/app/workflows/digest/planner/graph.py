@@ -15,7 +15,12 @@ from sqlmodel import Session
 
 from app.models.subject import Subject
 from app.schemas.knowledge import BuildPlannerCreateRequest, BuildPlannerMessageRequest, BuildPlannerSessionResponse
-from app.shared.infra.observability.trace import langsmith_trace, sanitize_langsmith_input, sanitize_langsmith_output
+from app.shared.infra.observability.trace import (
+    langsmith_trace,
+    sanitize_langsmith_input,
+    sanitize_langsmith_output,
+    suppress_langsmith_child_runs,
+)
 from app.shared.infra.workflow import workflow_tracer
 from app.shared.infra.workflow.context import WorkflowContext, create_langgraph_dev_context
 from app.shared.infra.workflow.result import WorkflowError, WorkflowResult
@@ -438,6 +443,7 @@ async def run_build_planner_workflow(
             "planner_operation": normalized_operation,
             "planner_session_id": planner_session_id,
             "digest_mode": digest_mode,
+            "suppress_child_langsmith_runs": True,
         },
     )
     initial_state = create_planner_initial_state(
@@ -484,12 +490,13 @@ async def run_build_planner_workflow(
         },
         extra_tags=[f"planner_operation:{normalized_operation}"],
     ) as trace_run:
-        result = await run_state_graph(
-            workflow_name="digest.planner",
-            graph_builder=lambda: build_planner_graph(context=context),
-            initial_state=initial_state,
-            context=context,
-        )
+        with suppress_langsmith_child_runs():
+            result = await run_state_graph(
+                workflow_name="digest.planner",
+                graph_builder=lambda: build_planner_graph(context=context),
+                initial_state=initial_state,
+                context=context,
+            )
         _end_planner_root_trace(trace_run, result)
     logger.info(
         "planner_workflow_finished",

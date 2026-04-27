@@ -63,6 +63,7 @@ class LLMTraceContext:
 
 
 _TRACE_CONTEXT: ContextVar[LLMTraceContext | None] = ContextVar("llm_trace_context", default=None)
+_SUPPRESS_LANGSMITH_CHILD_RUNS: ContextVar[bool] = ContextVar("suppress_langsmith_child_runs", default=False)
 _LANGSMITH_REACHABILITY_CACHE: dict[str, tuple[float, bool]] = {}
 
 
@@ -70,6 +71,12 @@ def get_llm_trace_context() -> LLMTraceContext:
     """Return the current ambient LLM trace context."""
 
     return _TRACE_CONTEXT.get() or LLMTraceContext()
+
+
+def langsmith_child_runs_suppressed() -> bool:
+    """Whether nested workflow/prompt/LLM runs should avoid LangSmith emission."""
+
+    return bool(_SUPPRESS_LANGSMITH_CHILD_RUNS.get())
 
 
 def langsmith_tracing_requested() -> bool:
@@ -391,6 +398,17 @@ def build_langsmith_extra(
 
 
 @contextmanager
+def suppress_langsmith_child_runs() -> Iterator[None]:
+    """Suppress nested LangSmith runs while keeping an already-open root run."""
+
+    token = _SUPPRESS_LANGSMITH_CHILD_RUNS.set(True)
+    try:
+        yield
+    finally:
+        _SUPPRESS_LANGSMITH_CHILD_RUNS.reset(token)
+
+
+@contextmanager
 def llm_trace_scope(
     *,
     subject: str = "",
@@ -466,6 +484,10 @@ def langsmith_trace(
     extra_tags: list[str] | None = None,
 ) -> Iterator[Any | None]:
     """Create a LangSmith run when tracing is enabled."""
+
+    if langsmith_child_runs_suppressed():
+        yield None
+        return
 
     if not langsmith_tracing_enabled():
         yield None
@@ -655,6 +677,7 @@ __all__ = [
     "get_langsmith_max_text_chars",
     "get_langsmith_project_name",
     "get_llm_trace_context",
+    "langsmith_child_runs_suppressed",
     "langsmith_capture_inputs_enabled",
     "langsmith_capture_outputs_enabled",
     "langsmith_trace",
@@ -667,6 +690,7 @@ __all__ = [
     "sanitize_langsmith_output",
     "sanitize_langsmith_text",
     "sanitize_langsmith_value",
+    "suppress_langsmith_child_runs",
     "trace_substep",
     "traceable_with_context",
 ]

@@ -1,6 +1,7 @@
 import json
 from pathlib import Path
 
+from app.shared.infra.observability.trace import langsmith_child_runs_suppressed, suppress_langsmith_child_runs
 from app.workflows.digest.common.models import DigestMaterialContext, SubjectProfile
 from app.workflows.digest.planner.lib.tracing import (
     RUN_NAME_PLANNER_ADJUST_CLICK,
@@ -77,6 +78,16 @@ def test_planner_graph_waits_for_plan_and_title_before_saving():
     ).read_text(encoding="utf-8")
 
     assert "workflow.add_edge([STEP_COMPOSE_PLAN, STEP_GENERATE_TITLE], STEP_SAVE_PLAN)" in source
+    assert "suppress_child_langsmith_runs" in source
+
+
+def test_langsmith_child_run_suppression_is_scoped():
+    assert not langsmith_child_runs_suppressed()
+
+    with suppress_langsmith_child_runs():
+        assert langsmith_child_runs_suppressed()
+
+    assert not langsmith_child_runs_suppressed()
 
 
 def test_composer_hidden_json_parses_to_initial_outline_payload():
