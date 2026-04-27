@@ -20,6 +20,7 @@ dependencies = [
     "langsmith>=0.7.31",
     "Jinja2>=3.1.0",
     "lxml>=6.1.0",
+    "markdown-it-py>=4.0.0",
     "markitdown[all]>=0.0.1",
     "pymupdf4llm>=0.0.5",
     "pydantic-settings>=2.2.0",

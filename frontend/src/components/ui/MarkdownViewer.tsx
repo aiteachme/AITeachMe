@@ -450,10 +450,17 @@ function malformedMermaidFenceBody(line: string): string | null {
   return body && looksLikeMermaidLine(body) ? body : null;
 }
 
-function repairMalformedMermaidFencesForRender(markdown: string): string {
-  if (!markdown.includes("```")) return markdown;
+function splitStuckMathFences(markdown: string): string {
+  return markdown.replace(/^(\s*)\$\$[ \t]*(```[ \t]*[A-Za-z0-9_-]*[ \t]*)$/gm, (_match, prefix: string, fence: string) => {
+    return `${prefix}$$\n${prefix}${String(fence).trimEnd()}`;
+  });
+}
 
-  const lines = markdown.replace(/\r\n?/g, "\n").split("\n");
+function repairMalformedMermaidFencesForRender(markdown: string): string {
+  const normalizedMarkdown = splitStuckMathFences(markdown);
+  if (!normalizedMarkdown.includes("```")) return normalizedMarkdown;
+
+  const lines = normalizedMarkdown.replace(/\r\n?/g, "\n").split("\n");
   const output: string[] = [];
   let inMermaid = false;
   let afterMermaidClose = false;

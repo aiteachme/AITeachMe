@@ -6,6 +6,8 @@ import re
 from collections.abc import Mapping
 from urllib.parse import urlparse
 
+from markdown_it import MarkdownIt
+
 MERMAID_PLACEHOLDER_PATTERN = re.compile(r"<!--\s*\[MERMAID:\s*(.+?)\]\s*-->")
 IMAGE_PLACEHOLDER_PATTERN = re.compile(r"<!--\s*\[IMAGE:\s*(.+?)\]\s*-->")
 HEADER_PATTERN = re.compile(r"^(#{1,6})\s+(.+?)\s*$", re.MULTILINE)
@@ -22,10 +24,22 @@ MERMAID_KEYWORD_PATTERN = re.compile(
     r"^(mindmap|graph|flowchart|sequencediagram|classdiagram|statediagram(?:-v2)?|erdiagram|gantt|pie|journey|timeline|gitgraph)\b",
     re.IGNORECASE,
 )
+MERMAID_INFO_PATTERN = re.compile(
+    r"^(mermaid|mindmap|graph|flowchart|sequencediagram|classdiagram|statediagram(?:-v2)?|erdiagram|gantt|pie|journey|timeline|gitgraph)\b",
+    re.IGNORECASE,
+)
+RAW_MERMAID_FENCE_PATTERN = re.compile(
+    r"(?m)^\s{0,3}```\s*(?:mermaid|mindmap|graph|flowchart|sequenceDiagram|classDiagram|stateDiagram(?:-v2)?|erDiagram|gantt|pie|journey|timeline|gitGraph)\b",
+    re.IGNORECASE,
+)
 MALFORMED_MERMAID_FENCE_PATTERN = re.compile(r"^\s*```\s*(?P<trailing>.+)$")
 INLINE_FENCE_PATTERN = re.compile(r"^(?P<prefix>.*\S)\s*```\s*(?P<lang>[A-Za-z0-9_-]*)\s*$")
+STUCK_MATH_FENCE_PATTERN = re.compile(
+    r"(?m)^(?P<prefix>\s*)\$\$[ \t]*(?P<fence>```[ \t]*[A-Za-z0-9_-]*[ \t]*)$"
+)
 BLOCKQUOTE_PREFIX_PATTERN = re.compile(r"^\s*>\s?")
 MATH_FENCE_PATTERN = re.compile(r"^\s*(?:>\s*)?\$\$\s*$")
+_MARKDOWN_PARSER = MarkdownIt("commonmark")
 
 
 
@@ -115,7 +129,7 @@ def _append_mermaid_block(output_lines: list[str], block_lines: list[str]) -> No
 
 
 def normalize_mermaid_blocks(markdown: str) -> str:
-    text = str(markdown or "")
+    text = _split_stuck_math_fences(str(markdown or ""))
     if "```" not in text:
         return text
 
@@ -234,7 +248,7 @@ def normalize_markdown_rendering(markdown: str) -> str:
     不改知识内容，只修可渲染结构。
     """
 
-    text = str(markdown or "").replace("\r\n", "\n").replace("\r", "\n")
+    text = _split_stuck_math_fences(str(markdown or "").replace("\r\n", "\n").replace("\r", "\n"))
     if not text:
         return ""
 
@@ -308,7 +322,33 @@ def find_markdown_rendering_issues(markdown: str) -> list[str]:
         issues.append("Markdown fenced code block 数量不成对。")
     if text.count("$$") % 2 != 0:
         issues.append("display math 分隔符数量不成对。")
+    if STUCK_MATH_FENCE_PATTERN.search(text):
+        issues.append("display math 分隔符和代码围栏粘连。")
+    if _raw_mermaid_fence_count(text) != _parsed_mermaid_fence_count(text):
+        issues.append("Mermaid 代码围栏未被 Markdown 解析为独立代码块。")
     return list(dict.fromkeys(issues))
+
+
+def _split_stuck_math_fences(markdown: str) -> str:
+    return STUCK_MATH_FENCE_PATTERN.sub(
+        lambda match: f"{match.group('prefix')}$$\n{match.group('prefix')}{match.group('fence').rstrip()}",
+        str(markdown or ""),
+    )
+
+
+def _raw_mermaid_fence_count(markdown: str) -> int:
+    return len(RAW_MERMAID_FENCE_PATTERN.findall(str(markdown or "")))
+
+
+def _parsed_mermaid_fence_count(markdown: str) -> int:
+    count = 0
+    for token in _MARKDOWN_PARSER.parse(str(markdown or "")):
+        if token.type != "fence":
+            continue
+        info = str(token.info or "").strip()
+        if MERMAID_INFO_PATTERN.match(info):
+            count += 1
+    return count
 
 
 
