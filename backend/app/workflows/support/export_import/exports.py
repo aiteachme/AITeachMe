@@ -28,7 +28,6 @@ from app.shared.infra.storage import (
 from app.models import (
     ChatMessage,
     ChatSession,
-    ConfirmedBuildPlan,
     ExamPaper,
     ExamPaperItem,
     KnowledgeDocument,
@@ -263,13 +262,6 @@ TABLE_REGISTRY: list[_TableSpec] = [
         optional_group="chat",
     ),
     _TableSpec(
-        "confirmed_build_plan",
-        ConfirmedBuildPlan,
-        id_type="uuid",
-        fk_remap={"planner_session_id": "chat_session"},
-        optional_group="knowledge_docs",
-    ),
-    _TableSpec(
         "chat_message",
         ChatMessage,
         fk_remap={
@@ -308,7 +300,7 @@ def preview_export(
         knowledge_edge_count=_count(session, KnowledgeEdge, subject_slug),
         knowledge_graph_sync_run_count=_count(session, KnowledgeGraphSyncRun, subject_slug),
         knowledge_graph_source_ref_count=_count(session, KnowledgeGraphSourceRef, subject_slug),
-        confirmed_build_plan_count=_count(session, ConfirmedBuildPlan, subject_slug)
+        confirmed_build_plan_count=_count_embedded_confirmed_plans(session, subject_slug)
         if options.include_knowledge_docs
         else 0,
         question_type_registry_count=_count(session, QuestionTypeRegistry, subject_slug)
@@ -318,7 +310,13 @@ def preview_export(
         if options.include_exam_history
         else 0,
         exam_paper_count=_count(session, ExamPaper, subject_slug) if options.include_exam_history else 0,
-        chat_session_count=_count(session, ChatSession, subject_slug) if options.include_chat_history else 0,
+        chat_session_count=_count(session, ChatSession, subject_slug)
+        if options.include_chat_history
+        else (
+            _count_planner_sessions_with_embedded_plans(session, subject_slug)
+            if options.include_knowledge_docs
+            else 0
+        ),
         user_knowledge_state_count=_count(session, UserKnowledgeState, subject_slug)
         if options.include_profile
         else 0,
@@ -354,7 +352,7 @@ def export_subject(
             for spec in TABLE_REGISTRY:
                 if not _should_export(spec, options):
                     continue
-                records = _query_table(session, spec, subject_slug, exported)
+                records = _query_table(session, spec, subject_slug, exported, options)
                 exported[spec.name] = records
                 zf.writestr(
                     f"db/{spec.name}.json",
@@ -406,7 +404,33 @@ def _count(session: Session, model: type, subject_slug: str) -> int:
     )
 
 
+def _has_embedded_confirmed_plan(record: ChatSession | dict[str, Any]) -> bool:
+    meta = record.get("meta_json") if isinstance(record, dict) else record.meta_json
+    if isinstance(meta, str):
+        try:
+            meta = json.loads(meta)
+        except Exception:
+            meta = {}
+    return isinstance((meta or {}).get("confirmed_plan"), dict)
+
+
+def _count_planner_sessions_with_embedded_plans(session: Session, subject_slug: str) -> int:
+    rows = session.exec(
+        select(ChatSession).where(
+            ChatSession.subject == subject_slug,
+            ChatSession.source == "build_planner",
+        )
+    ).all()
+    return sum(1 for row in rows if _has_embedded_confirmed_plan(row))
+
+
+def _count_embedded_confirmed_plans(session: Session, subject_slug: str) -> int:
+    return _count_planner_sessions_with_embedded_plans(session, subject_slug)
+
+
 def _should_export(spec: _TableSpec, options: ExportOptions) -> bool:
+    if spec.name == "chat_session" and options.include_knowledge_docs:
+        return True
     if spec.optional_group is None:
         return True
     return {
@@ -428,6 +452,7 @@ def _query_table(
     spec: _TableSpec,
     subject_slug: str,
     exported: dict[str, list[dict]],
+    options: ExportOptions,
 ) -> list[dict]:
     def _ordered(stmt):
         order_col = getattr(spec.model, spec.id_field, None)
@@ -437,6 +462,16 @@ def _query_table(
 
     if spec.name == "raw_file":
         rows = list_all_raw_files_by_subject(session, subject_slug)
+    elif spec.name == "chat_session" and not options.include_chat_history:
+        rows = session.exec(
+            _ordered(
+                select(ChatSession).where(
+                    ChatSession.subject == subject_slug,
+                    ChatSession.source == "build_planner",
+                )
+            )
+        ).all()
+        rows = [row for row in rows if _has_embedded_confirmed_plan(row)]
     elif spec.subject_field == "slug":
         rows = session.exec(_ordered(select(spec.model).where(spec.model.slug == subject_slug))).all()
     elif spec.subject_field:
@@ -562,15 +597,8 @@ def _import_table(
                 continue
             _remap_fk(record_data, fk_field, ref_table, id_map, spec.name, warnings)
 
-        if spec.name == "confirmed_build_plan":
-            _remap_id_list_field(
-                record_data,
-                "selected_file_ids_json",
-                "raw_file",
-                id_map,
-                spec.name,
-                warnings,
-            )
+        if spec.name == "chat_session":
+            _remap_planner_meta(record_data, new_slug=new_slug, user_id=user_id, id_map=id_map, warnings=warnings)
         elif spec.name == "knowledge_graph_source_ref":
             _remap_graph_source_ref_entity(record_data, id_map, warnings)
             _remap_json_int_list_text_field(
@@ -737,6 +765,59 @@ def _remap_json_int_list_text_field(
     record[field_name] = json.dumps(remapped, ensure_ascii=False)
 
 
+def _remap_planner_meta(
+    record: dict,
+    *,
+    new_slug: str,
+    user_id: str,
+    id_map: dict[str, dict[Any, Any]],
+    warnings: list[str],
+) -> None:
+    raw_meta = record.get("meta_json") or {}
+    if isinstance(raw_meta, str):
+        try:
+            raw_meta = json.loads(raw_meta)
+        except Exception:
+            raw_meta = {}
+    meta = dict(raw_meta or {}) if isinstance(raw_meta, dict) else {}
+    if not meta:
+        return
+
+    if "selected_file_ids" in meta:
+        _remap_id_list_field(meta, "selected_file_ids", "raw_file", id_map, "chat_session.meta_json", warnings)
+
+    confirmed_plan = meta.get("confirmed_plan")
+    if not isinstance(confirmed_plan, dict):
+        record["meta_json"] = meta
+        return
+
+    confirmed_plan = dict(confirmed_plan)
+    confirmed_plan["id"] = str(uuid.uuid4().hex)
+    confirmed_plan["subject"] = new_slug
+    confirmed_plan["user_id"] = user_id
+    confirmed_plan["planner_session_id"] = str(record.get("id") or "")
+    _remap_id_list_field(
+        confirmed_plan,
+        "selected_file_ids_json",
+        "raw_file",
+        id_map,
+        "chat_session.meta_json.confirmed_plan",
+        warnings,
+    )
+    plan_json = confirmed_plan.get("plan_json")
+    if isinstance(plan_json, dict):
+        plan_json = dict(plan_json)
+        plan_json["subject"] = new_slug
+        plan_json["selected_file_ids"] = list(confirmed_plan.get("selected_file_ids_json") or [])
+        plan_json["planner_session_id"] = confirmed_plan["planner_session_id"]
+        plan_json["confirmed_plan_id"] = confirmed_plan["id"]
+        confirmed_plan["plan_json"] = plan_json
+
+    meta["confirmed_plan_id"] = confirmed_plan["id"]
+    meta["confirmed_plan"] = confirmed_plan
+    record["meta_json"] = meta
+
+
 def _remap_graph_source_ref_entity(
     record: dict,
     id_map: dict[str, dict[Any, Any]],
@@ -831,7 +912,11 @@ def _build_manifest(
             knowledge_edge_count=len(exported.get("knowledge_edge", [])),
             knowledge_graph_sync_run_count=len(exported.get("knowledge_graph_sync_run", [])),
             knowledge_graph_source_ref_count=len(exported.get("knowledge_graph_source_ref", [])),
-            confirmed_build_plan_count=len(exported.get("confirmed_build_plan", [])),
+            confirmed_build_plan_count=sum(
+                1
+                for record in exported.get("chat_session", [])
+                if _has_embedded_confirmed_plan(record)
+            ),
             question_type_registry_count=len(exported.get("question_type_registry", [])),
             question_template_count=len(exported.get("question_template", [])),
             exam_paper_count=len(exported.get("exam_paper", [])),

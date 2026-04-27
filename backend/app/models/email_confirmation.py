@@ -9,7 +9,7 @@ from sqlmodel import Field, SQLModel
 from app.utils.time import utcnow
 
 
-class EmailVerificationCode(SQLModel, table=True):
+class EmailConfirmation(SQLModel, table=True):
     """One-time email confirmation record."""
 
     __tablename__ = "email_confirmation"

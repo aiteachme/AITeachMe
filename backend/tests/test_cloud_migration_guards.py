@@ -53,7 +53,7 @@ def test_alembic_has_single_head_revision() -> None:
     backend_root = Path(__file__).resolve().parents[1]
     script = ScriptDirectory.from_config(Config(str(backend_root / "alembic.ini")))
 
-    assert script.get_current_head() == "20260427_0010"
+    assert script.get_current_head() == "20260427_0011"
 
 
 def _load_revision_metadata() -> dict[str, tuple[str | tuple[str, ...] | None, Path]]:
@@ -100,7 +100,7 @@ def test_migration_revisions_are_unique_and_have_one_head() -> None:
 
     heads = set(metadata) - referenced
     assert base_revisions == ["20260421_0001"]
-    assert heads == {"20260427_0010"}
+    assert heads == {"20260427_0011"}
 
 
 def test_cloud_postgres_init_does_not_create_tables(monkeypatch: pytest.MonkeyPatch) -> None:

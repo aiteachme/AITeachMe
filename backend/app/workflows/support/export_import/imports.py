@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import tempfile
+import uuid
 import zipfile
 from pathlib import Path
 from typing import Any
@@ -102,6 +103,17 @@ def import_subject(
                 )
                 imported_counts[spec.name] = count
 
+            legacy_plan_count = _import_legacy_confirmed_build_plans(
+                session,
+                tmpdir=tmpdir,
+                subject_slug=new_slug,
+                user_id=user_id,
+                id_map=id_map,
+                warnings=warnings,
+            )
+            if legacy_plan_count:
+                imported_counts["confirmed_build_plan"] = legacy_plan_count
+
             _require_imported_subject(
                 session,
                 subject_slug=new_slug,
@@ -161,22 +173,122 @@ def _reconcile_imported_planner_metadata(
 
     sessions = list(session.exec(select(ChatSession).where(ChatSession.subject == subject_slug)).all())
     for item in sessions:
-        meta = dict(item.meta_json or {})
+        raw_meta = item.meta_json or {}
+        if isinstance(raw_meta, str):
+            try:
+                raw_meta = json.loads(raw_meta)
+            except Exception:
+                raw_meta = {}
+        meta = dict(raw_meta or {}) if isinstance(raw_meta, dict) else {}
         selected_file_ids = meta.get("selected_file_ids")
         if isinstance(selected_file_ids, list):
             remapped_ids = []
             for old_id in selected_file_ids:
-                new_id = _lookup_imported_id(old_id, file_id_map)
+                new_id = _lookup_imported_or_existing_id(old_id, file_id_map)
                 if new_id is not None:
                     remapped_ids.append(new_id)
             meta["selected_file_ids"] = remapped_ids
 
         confirmed_plan_id = meta.get("confirmed_plan_id")
-        if confirmed_plan_id is not None:
-            meta["confirmed_plan_id"] = _lookup_imported_id(confirmed_plan_id, plan_id_map)
+        if confirmed_plan_id is not None and plan_id_map:
+            meta["confirmed_plan_id"] = _lookup_imported_or_existing_id(confirmed_plan_id, plan_id_map)
+
+        confirmed_plan = meta.get("confirmed_plan")
+        if isinstance(confirmed_plan, dict) and file_id_map:
+            selected_file_ids = confirmed_plan.get("selected_file_ids_json")
+            if isinstance(selected_file_ids, list):
+                confirmed_plan["selected_file_ids_json"] = [
+                    new_id
+                    for old_id in selected_file_ids
+                    if (new_id := _lookup_imported_or_existing_id(old_id, file_id_map)) is not None
+                ]
+            plan_json = confirmed_plan.get("plan_json")
+            if isinstance(plan_json, dict):
+                plan_json["selected_file_ids"] = list(confirmed_plan.get("selected_file_ids_json") or [])
+            meta["confirmed_plan"] = confirmed_plan
 
         item.meta_json = meta
         session.add(item)
+
+
+def _import_legacy_confirmed_build_plans(
+    session: Session,
+    *,
+    tmpdir: Path,
+    subject_slug: str,
+    user_id: str,
+    id_map: dict[str, dict[Any, Any]],
+    warnings: list[str],
+) -> int:
+    db_file = tmpdir / "db" / "confirmed_build_plan.json"
+    if not db_file.exists():
+        return 0
+
+    records = _read_table_records(db_file, "confirmed_build_plan")
+    if not records:
+        return 0
+
+    session_id_map = id_map.get("chat_session") or {}
+    file_id_map = id_map.get("raw_file") or {}
+    plan_id_map: dict[Any, Any] = {}
+    id_map["confirmed_build_plan"] = plan_id_map
+    imported_count = 0
+
+    for record in records:
+        old_session_id = record.get("planner_session_id")
+        new_session_id = _lookup_imported_id(old_session_id, session_id_map)
+        if not new_session_id:
+            warnings.append(f"confirmed_build_plan: planner_session_id {old_session_id!r} not found in chat_session")
+            continue
+        session_item = session.get(ChatSession, str(new_session_id))
+        if session_item is None:
+            continue
+
+        old_plan_id = record.get("id")
+        new_plan_id = uuid.uuid4().hex
+        plan_id_map[old_plan_id] = new_plan_id
+
+        selected_file_ids = []
+        for old_file_id in list(record.get("selected_file_ids_json") or []):
+            new_file_id = _lookup_imported_id(old_file_id, file_id_map)
+            if new_file_id is not None:
+                selected_file_ids.append(new_file_id)
+
+        plan_json = dict(record.get("plan_json") or {})
+        plan_json["subject"] = subject_slug
+        plan_json["selected_file_ids"] = selected_file_ids
+        plan_json["planner_session_id"] = str(new_session_id)
+        plan_json["confirmed_plan_id"] = new_plan_id
+
+        raw_meta = session_item.meta_json or {}
+        if isinstance(raw_meta, str):
+            try:
+                raw_meta = json.loads(raw_meta)
+            except Exception:
+                raw_meta = {}
+        meta = dict(raw_meta or {}) if isinstance(raw_meta, dict) else {}
+        meta["confirmed_plan_id"] = new_plan_id
+        meta["confirmed_plan"] = {
+            "id": new_plan_id,
+            "subject": subject_slug,
+            "planner_session_id": str(new_session_id),
+            "user_id": user_id,
+            "status": record.get("status") or "confirmed",
+            "user_prompt": record.get("user_prompt") or "",
+            "digest_mode": record.get("digest_mode") or "",
+            "selected_file_ids_json": selected_file_ids,
+            "chapter_plan_json": list(record.get("chapter_plan_json") or []),
+            "build_constraints_json": dict(record.get("build_constraints_json") or {}),
+            "plan_summary": record.get("plan_summary") or "",
+            "plan_json": plan_json,
+            "created_at": record.get("created_at"),
+            "updated_at": record.get("updated_at"),
+        }
+        session_item.meta_json = meta
+        session.add(session_item)
+        imported_count += 1
+
+    return imported_count
 
 
 def _lookup_imported_id(old_id: Any, value_map: dict[Any, Any]) -> Any | None:
@@ -186,6 +298,17 @@ def _lookup_imported_id(old_id: Any, value_map: dict[Any, Any]) -> Any | None:
     if new_id is None and isinstance(old_id, int):
         new_id = value_map.get(str(old_id))
     return new_id
+
+
+def _lookup_imported_or_existing_id(old_id: Any, value_map: dict[Any, Any]) -> Any | None:
+    new_id = _lookup_imported_id(old_id, value_map)
+    if new_id is not None:
+        return new_id
+    old_text = str(old_id)
+    for mapped_id in value_map.values():
+        if old_id == mapped_id or old_text == str(mapped_id):
+            return old_id
+    return None
 
 
 def _safe_extract_archive(zf: zipfile.ZipFile, target_dir: Path) -> None:

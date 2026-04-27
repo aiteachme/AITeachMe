@@ -40,8 +40,7 @@ subject_export.atmx
 │   ├── exam_paper_item.json
 │   ├── user_knowledge_state.json
 │   ├── chat_session.json
-│   ├── chat_message.json
-│   └── confirmed_build_plan.json
+│   └── chat_message.json
 ├── knowledge/
 │   └── cover.<ext>              # 可选，当前 DocGen 封面稳定资产
 └── files/                       # 当前导出器不写入；导入器保留兼容读取能力
@@ -71,9 +70,9 @@ subject_export.atmx
 - `user_knowledge_state`
 - `chat_session`
 - `chat_message`
-- `confirmed_build_plan`
 
 知识图谱当前由 `knowledge_unit + knowledge_edge` 表达，并通过 `knowledge_graph_sync_run + knowledge_graph_source_ref` 保留同步批次和章节/源文件溯源。旧设计中的 `knowledge_node` 不再作为导出表名。
+Planner 已确认构建方案随 `chat_session.meta_json.confirmed_plan` 导出；导入器仍兼容读取旧包中的 `db/confirmed_build_plan.json`。
 
 ---
 
@@ -151,17 +150,16 @@ subject
 -> user_knowledge_state
 -> chat_session
 -> chat_message
--> confirmed_build_plan
 ```
 
 重点规则：
 
 - `subject.slug` 导入时始终生成新 slug，避免覆盖现有课程。
 - `raw_file.uid` 会重新生成，避免跨环境唯一约束冲突。
-- `confirmed_build_plan.id` 等 UUID 型主键会重新生成。
+- Planner 已确认计划内联在 `chat_session.meta_json.confirmed_plan`，导入时会重新生成 `confirmed_plan_id`。
 - `retrieval_chunk.document_id`、`knowledge_edge.source_node_id / target_node_id`、试题和画像中的 `knowledge_unit_id` 必须按新 ID 重映射。
 - `knowledge_graph_source_ref.sync_run_id / knowledge_document_id / entity_id / source_file_ids_json` 必须按导入后的同步记录、知识文档、节点/关系和源文件 ID 重映射。
-- `confirmed_build_plan.selected_file_ids_json` 需要按 `raw_file` 新 ID 重映射。
+- `chat_session.meta_json.confirmed_plan.selected_file_ids_json` 需要按 `raw_file` 新 ID 重映射。
 - 所有 `user_id` 字段映射为导入端当前用户。
 
 ---

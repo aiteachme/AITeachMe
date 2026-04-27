@@ -1,3 +1,5 @@
+import json
+
 import sqlalchemy as sa
 from sqlmodel import create_engine
 
@@ -244,6 +246,100 @@ def test_drop_sqlite_legacy_schema_moves_system_snapshot_into_runtime_settings(t
     assert {"settings_source", "settings_hash", "effective_settings_json"} <= runtime_columns
     assert "system_settings_snapshot" not in tables
     assert row == ("code defaults", "hash-a", '{"models":{"primary":"snapshot"}}')
+
+
+def test_drop_sqlite_legacy_schema_moves_confirmed_plan_into_planner_session(tmp_path):
+    db_path = tmp_path / "legacy_confirmed_plan.sqlite"
+    engine = create_engine(f"sqlite:///{db_path}")
+
+    with engine.begin() as connection:
+        connection.execute(
+            sa.text(
+                """
+                CREATE TABLE chat_session (
+                    id TEXT PRIMARY KEY,
+                    subject TEXT NOT NULL,
+                    user_id TEXT NOT NULL,
+                    source TEXT,
+                    meta_json JSON,
+                    updated_at TEXT NOT NULL,
+                    last_message_at TEXT NOT NULL
+                )
+                """
+            )
+        )
+        connection.execute(
+            sa.text(
+                """
+                CREATE TABLE confirmed_build_plan (
+                    id TEXT PRIMARY KEY,
+                    subject TEXT NOT NULL,
+                    planner_session_id TEXT,
+                    user_id TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    user_prompt TEXT NOT NULL,
+                    digest_mode TEXT NOT NULL,
+                    selected_file_ids_json JSON,
+                    chapter_plan_json JSON,
+                    build_constraints_json JSON,
+                    plan_summary TEXT NOT NULL,
+                    plan_json JSON,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                )
+                """
+            )
+        )
+        connection.execute(
+            sa.text(
+                """
+                INSERT INTO chat_session
+                (id, subject, user_id, source, meta_json, updated_at, last_message_at)
+                VALUES ('sess_1', 'math', 'local', 'build_planner', '{}', '2026-01-01', '2026-01-01')
+                """
+            )
+        )
+        connection.execute(
+            sa.text(
+                """
+                INSERT INTO confirmed_build_plan
+                (id, subject, planner_session_id, user_id, status, user_prompt, digest_mode,
+                 selected_file_ids_json, chapter_plan_json, build_constraints_json,
+                 plan_summary, plan_json, created_at, updated_at)
+                VALUES
+                (:id, :subject, :planner_session_id, :user_id, :status, :user_prompt, :digest_mode,
+                 :selected_file_ids_json, :chapter_plan_json, :build_constraints_json,
+                 :plan_summary, :plan_json, :created_at, :updated_at)
+                """
+            ),
+            {
+                "id": "plan_1",
+                "subject": "math",
+                "planner_session_id": "sess_1",
+                "user_id": "local",
+                "status": "confirmed",
+                "user_prompt": "learn",
+                "digest_mode": "sprint",
+                "selected_file_ids_json": "[1,2]",
+                "chapter_plan_json": '[{"title":"A"}]',
+                "build_constraints_json": '{"x":1}',
+                "plan_summary": "summary",
+                "plan_json": '{"plan_summary":"summary"}',
+                "created_at": "2026-01-01",
+                "updated_at": "2026-01-02",
+            },
+        )
+
+    _drop_sqlite_legacy_schema(engine)
+
+    tables = set(sa.inspect(engine).get_table_names())
+    with engine.connect() as connection:
+        row = connection.execute(sa.text("SELECT meta_json FROM chat_session WHERE id = 'sess_1'")).one()
+    meta = json.loads(row[0])
+
+    assert "confirmed_build_plan" not in tables
+    assert meta["confirmed_plan_id"] == "plan_1"
+    assert meta["confirmed_plan"]["selected_file_ids_json"] == [1, 2]
 
 
 def test_sqlite_additive_schema_updates_add_subject_text_fields(tmp_path):
