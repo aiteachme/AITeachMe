@@ -148,16 +148,6 @@ export function LearningSpacesPage() {
                 {isLoading ? "正在加载学科..." : subjectCount > 0 ? `${subjectCount} 个学科可继续学习` : "还没有创建学科"}
               </p>
             </div>
-            {subjectCount > 0 ? (
-              <button
-                type="button"
-                onClick={() => setIsImportModalOpen(true)}
-                className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:border-slate-600 dark:hover:bg-slate-800"
-              >
-                <PackagePlus className="h-4 w-4" />
-                导入更多
-              </button>
-            ) : null}
           </div>
 
           {isLoading ? (
@@ -186,18 +176,12 @@ export function LearningSpacesPage() {
                 >
                   新建学科
                 </WorkspaceActionButton>
-                <WorkspaceActionButton
-                  icon={<PackagePlus className="h-4 w-4" />}
-                  onClick={() => setIsImportModalOpen(true)}
-                >
-                  导入课程包
-                </WorkspaceActionButton>
               </div>
             </div>
           ) : null}
 
           {!isLoading && subjects.length > 0 ? (
-            <div className="mt-5 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+            <div className="mt-5 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
               {subjects.map((subject: SubjectWithIcon, index: number) => {
                 const displayName = displaySubjectName(subject);
                 const SubjectIcon = resolveSubjectIcon(subject.icon_key);

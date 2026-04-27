@@ -17,7 +17,6 @@ import {
   Settings,
   Sparkles,
   Trash2,
-  Upload,
   X,
   MessageCircle,
 } from "lucide-react";
@@ -31,7 +30,6 @@ import {
 import type { SubjectDeletePreviewData, SubjectItem } from "../../api/generated/model";
 import { apiClient, getApiErrorMessage } from "../../api/client";
 import { unwrapOrvalResponse } from "../../lib/unwrapOrvalResponse";
-import { buildUnsupportedFilesMessage, FILE_ACCEPT, partitionUploadFiles } from "../../lib/fileUpload";
 import { resolveSubjectIcon } from "../../lib/subjectIcons";
 import { cn } from "../../lib/utils";
 import { publicAssetPath } from "../../lib/publicAsset";
@@ -42,8 +40,6 @@ import { CommunityModal, ensureCommunityQrPreloaded } from "./CommunityPanel";
 import { AiConversationSidebarSection } from "../interaction/AiConversationSidebarSection";
 
 import { Button } from "../ui/Button";
-import { useToast } from "../ui/Toast";
-import type { FilesUploadData } from "../../types/files";
 
 const MODULES = [
   { id: "build", name: "构建", icon: Sparkles },
@@ -147,20 +143,6 @@ function displaySubjectName(subject: SubjectItem): string {
   return subject.name?.trim() || "无标题";
 }
 
-async function uploadLibraryFiles(files: File[]): Promise<FilesUploadData> {
-  const formData = new FormData();
-  for (const file of files) {
-    formData.append("files", file);
-  }
-  const response = await apiClient<{ code: number; data: FilesUploadData }>({
-    method: "POST",
-    url: "/api/v1/files/upload",
-    data: formData,
-    headers: { "Content-Type": "multipart/form-data" },
-  });
-  return response.data;
-}
-
 export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
   const [expandedSubjects, setExpandedSubjects] = useState<Set<string>>(new Set());
   const [isMobileOpen, setIsMobileOpen] = useState(false);
@@ -176,11 +158,9 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
 
   const menuRef = useRef<HTMLDivElement>(null);
-  const libraryUploadInputRef = useRef<HTMLInputElement>(null);
   const location = useLocation();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const { toast } = useToast();
   const effectiveCollapsed = !isMobileOpen && isCollapsed;
   const isCreateSubjectActive = location.pathname === "/";
   const isMyLearningSpaceActive = location.pathname === "/spaces";
@@ -253,26 +233,6 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
     },
   });
 
-  const uploadMutation = useMutation({
-    mutationFn: uploadLibraryFiles,
-    onSuccess: async (result) => {
-      await queryClient.invalidateQueries({ queryKey: ["files-library"] });
-      const uploadedCount = result.uploaded_items?.length ?? result.filenames?.length ?? 0;
-      toast({
-        title: "资料已上传",
-        description: uploadedCount > 0 ? `${uploadedCount} 份资料已进入资料库解析。` : "资料已进入资料库解析。",
-        variant: "success",
-      });
-    },
-    onError: (error) => {
-      toast({
-        title: "上传失败",
-        description: getApiErrorMessage(error, "资料上传失败，请重试"),
-        variant: "error",
-      });
-    },
-  });
-
   const groupedSubjects = useMemo(() => subjects as SubjectItem[], [subjects]);
   const expandNavigationSidebar = useCallback(() => {
     setIsCollapsed(false);
@@ -305,23 +265,6 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
     deletePreviewMutation.reset();
     deleteMutation.reset();
     deletePreviewMutation.mutate(subject.subject_id);
-  };
-
-  const handleLibraryUploadSelect = (files: File[]) => {
-    if (!files.length) {
-      return;
-    }
-    const { supportedFiles, unsupportedFiles } = partitionUploadFiles(files);
-    if (unsupportedFiles.length > 0) {
-      toast({
-        title: "有文件暂不支持",
-        description: buildUnsupportedFilesMessage(unsupportedFiles),
-        variant: "error",
-      });
-    }
-    if (supportedFiles.length > 0) {
-      uploadMutation.mutate(supportedFiles);
-    }
   };
 
   return (
@@ -576,30 +519,6 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
               <span className="whitespace-nowrap text-[11px] font-medium tracking-[0.08em] text-slate-400">学科</span>
               {isLoading ? <Loader2 className="h-3 w-3 animate-spin text-slate-400 dark:text-slate-500" /> : null}
               <div className="ml-auto flex items-center gap-1">
-                <input
-                  ref={libraryUploadInputRef}
-                  type="file"
-                  multiple
-                  accept={FILE_ACCEPT}
-                  className="hidden"
-                  onChange={(event) => {
-                    const files = Array.from(event.target.files ?? []);
-                    if (libraryUploadInputRef.current) {
-                      libraryUploadInputRef.current.value = "";
-                    }
-                    handleLibraryUploadSelect(files);
-                  }}
-                />
-                <button
-                  type="button"
-                  onClick={() => libraryUploadInputRef.current?.click()}
-                  disabled={uploadMutation.isPending}
-                  className="flex h-7 w-7 items-center justify-center rounded-md text-slate-400 transition hover:bg-[#eef3f8] hover:text-slate-700 disabled:cursor-not-allowed disabled:opacity-50 dark:text-slate-500 dark:hover:bg-slate-800/60 dark:hover:text-slate-200"
-                  title="上传资料到资料库"
-                  aria-label="上传资料到资料库"
-                >
-                  {uploadMutation.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
-                </button>
                 <button
                   type="button"
                   onClick={() => setIsImportModalOpen(true)}
