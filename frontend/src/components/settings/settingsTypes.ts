@@ -25,6 +25,7 @@ export interface SettingEntry {
   value?: unknown;
   default_value?: unknown;
   display_value?: string | null;
+  reveal_value?: string | null;
   status: SettingStatus;
   secret?: boolean;
   editable?: boolean;

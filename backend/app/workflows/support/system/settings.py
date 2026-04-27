@@ -315,6 +315,11 @@ def _env_entry(
     actual_value = env_value if env_value is not None and str(env_value).strip() else value
     safe_secret = bool(secret)
     safe_value = None if safe_secret else actual_value
+    reveal_value = (
+        str(actual_value)
+        if local_mode and safe_secret and _has_configured_value(actual_value)
+        else None
+    )
     if safe_secret and configured:
         display_value = "已配置"
     elif safe_secret:
@@ -326,6 +331,7 @@ def _env_entry(
         label=label,
         source="env",
         value=safe_value,
+        reveal_value=reveal_value,
         display_value=display_value,
         status="configured" if configured else "missing",
         secret=safe_secret,

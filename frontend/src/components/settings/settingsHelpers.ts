@@ -7,6 +7,11 @@ import type {
 } from "./settingsTypes";
 
 export const SECRET_PRESERVE_VALUE = "__AITM_SECRET_PRESERVE__";
+export const SECRET_DISPLAY_MASK = "••••••••••••••••";
+
+export function isConfiguredSecretEntry(entry: SettingEntry): boolean {
+  return Boolean(entry.secret && entry.status === "configured");
+}
 
 export function isCredentialKey(key: string): boolean {
   const normalizedKey = key.toLowerCase();
@@ -56,7 +61,7 @@ export function draftFromEntries(
 ): DraftRecord {
   return Object.fromEntries(
     entries.map((entry) => {
-      if (source === "value" && entry.secret && entry.status === "configured") {
+      if (source === "value" && isConfiguredSecretEntry(entry)) {
         return [entry.key, SECRET_PRESERVE_VALUE];
       }
       return [entry.key, isPrimitive(entry[source]) ? entry[source] : null];

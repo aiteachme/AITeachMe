@@ -74,6 +74,13 @@ const LOGO_SRC = publicAssetPath("logo.svg");
 const PLANNER_STATE_VERSION = 4;
 const LEGACY_WELCOME_MESSAGE_CONTENT =
   "可以直接告诉我你的学习目标，也可以先上传资料。我会先思考资料边界，再给出几条计划大纲，你确认后再正式开始知识文档构建。";
+const TRANSIENT_PLANNER_ERROR_SNIPPETS = [
+  "上游模型调用失败",
+  "主模型调用失败",
+  "Incorrect API key",
+  "AuthenticationError",
+  "apikey-error",
+];
 
 interface BuildPlanLocationState {
   initialFiles?: File[];
@@ -151,6 +158,10 @@ function sanitizePlannerMessages(messages: ChatMessage[]): ChatMessage[] {
         message.role === "assistant" &&
         message.content === LEGACY_WELCOME_MESSAGE_CONTENT &&
         !message.plan
+      ) &&
+      !(
+        message.role === "system" &&
+        TRANSIENT_PLANNER_ERROR_SNIPPETS.some((snippet) => message.content.includes(snippet))
       ),
   );
 }

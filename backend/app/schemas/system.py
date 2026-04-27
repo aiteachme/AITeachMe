@@ -49,6 +49,7 @@ class SettingEntry(BaseModel):
     value: Any | None = Field(default=None, description="可安全展示的当前值。")
     default_value: Any | None = Field(default=None, description="项目默认值。")
     user_value: Any | None = Field(default=None, description="当前用户覆盖值。")
+    reveal_value: str | None = Field(default=None, description="本地模式下可按需查看的敏感配置明文。")
     display_value: str | None = Field(default=None, description="格式化展示值。")
     status: SettingStatus = Field(description="当前配置状态。")
     secret: bool = Field(default=False, description="是否为敏感配置。")

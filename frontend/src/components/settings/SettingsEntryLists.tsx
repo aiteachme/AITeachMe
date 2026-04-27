@@ -12,12 +12,26 @@ import {
 import { SETTING_SELECT_OPTIONS, SETTINGS_STYLES } from "./settingsStyles";
 import {
   displayValue,
+  isConfiguredSecretEntry,
   isPrimitive,
   parseInputValue,
   resolveEntryInputType,
+  SECRET_DISPLAY_MASK,
   SECRET_PRESERVE_VALUE,
 } from "./settingsHelpers";
 import type { DraftRecord, SettingEntry, SettingPrimitive } from "./settingsTypes";
+
+function displayDraftValue(value: SettingPrimitive, isSavedSecretDraft: boolean): string {
+  if (isSavedSecretDraft) return SECRET_DISPLAY_MASK;
+  if (value === null) return "";
+  return String(value);
+}
+
+function revealSecretValue(entry: SettingEntry): string | null {
+  return typeof entry.reveal_value === "string" && entry.reveal_value.length > 0
+    ? entry.reveal_value
+    : null;
+}
 
 function renderEntryHelper(entryKey: string) {
   if (entryKey === "mineru.api_token") {
@@ -112,20 +126,23 @@ const EditableSettingsRow = memo(function EditableSettingsRow({
   const selectOptions = useMemo(() => SETTING_SELECT_OPTIONS[entry.key], [entry.key]);
   const controlId = `settings-${entry.key.replace(/[^a-z0-9]+/gi, "-").toLowerCase()}`;
   const resolvedInputType = resolveEntryInputType(entry, value);
-  const isPreservedSecret = entry.secret && value === SECRET_PRESERVE_VALUE;
-  const isConfiguredSecret = Boolean(entry.secret && entry.status === "configured");
+  const isConfiguredSecret = isConfiguredSecretEntry(entry);
+  const isSavedSecretDraft = isConfiguredSecret && value === SECRET_PRESERVE_VALUE;
+  const isSecretInput = resolvedInputType === "password";
+  const secretRevealValue = revealSecretValue(entry);
   const [localValue, setLocalValue] = useState(() =>
-    value === null || isPreservedSecret ? "" : String(value),
+    displayDraftValue(value, isSavedSecretDraft),
   );
-  const [isEditingPreservedSecret, setIsEditingPreservedSecret] = useState(false);
+  const [isReplacingSavedSecret, setIsReplacingSavedSecret] = useState(false);
+  const isShowingSavedSecretMask = Boolean(isSavedSecretDraft && !isReplacingSavedSecret);
 
   useEffect(() => {
-    const nextValue = value === null || isPreservedSecret ? "" : String(value);
+    const nextValue = displayDraftValue(value, isSavedSecretDraft);
     setLocalValue((prev) => (prev === nextValue ? prev : nextValue));
-    if (!isPreservedSecret) {
-      setIsEditingPreservedSecret(false);
+    if (!isSavedSecretDraft) {
+      setIsReplacingSavedSecret(false);
     }
-  }, [isPreservedSecret, value]);
+  }, [isSavedSecretDraft, value]);
 
   const handleBooleanToggle = useCallback(() => {
     if (typeof value === "boolean") {
@@ -134,33 +151,66 @@ const EditableSettingsRow = memo(function EditableSettingsRow({
   }, [entry.key, onChange, value]);
 
   const handleValueChange = useCallback((next: string) => {
-    if (isPreservedSecret && !isEditingPreservedSecret) {
-      setIsEditingPreservedSecret(true);
+    if (!isSecretInput) {
+      setLocalValue((prev) => (prev === next ? prev : next));
+      return;
     }
-    setLocalValue((prev) => (prev === next ? prev : next));
-  }, [isEditingPreservedSecret, isPreservedSecret]);
+
+    let nextSecret = next;
+    if (isSavedSecretDraft && !isReplacingSavedSecret) {
+      const isUserReplacingMask = next !== SECRET_DISPLAY_MASK;
+      nextSecret = nextSecret.replace(SECRET_DISPLAY_MASK, "");
+      setIsReplacingSavedSecret(isUserReplacingMask);
+    }
+
+    setLocalValue((prev) => (prev === nextSecret ? prev : nextSecret));
+    if (isSavedSecretDraft && !isReplacingSavedSecret && next === SECRET_DISPLAY_MASK) {
+      onChange(entry.key, SECRET_PRESERVE_VALUE);
+      return;
+    }
+    onChange(entry.key, parseInputValue(nextSecret, isSavedSecretDraft ? null : value));
+  }, [
+    entry.key,
+    isSavedSecretDraft,
+    isSecretInput,
+    isReplacingSavedSecret,
+    onChange,
+    value,
+  ]);
 
   const handleSecretFocus = useCallback(() => {
-    if (isPreservedSecret && !isEditingPreservedSecret) {
-      setIsEditingPreservedSecret(true);
-      setLocalValue("");
+    if (isShowingSavedSecretMask) {
+      setLocalValue(SECRET_DISPLAY_MASK);
     }
-  }, [isEditingPreservedSecret, isPreservedSecret]);
+  }, [isShowingSavedSecretMask]);
 
   const commitLocalValue = useCallback(() => {
     if (typeof value === "boolean" || selectOptions) {
       return;
     }
-    if (isPreservedSecret && !localValue.trim()) {
-      setIsEditingPreservedSecret(false);
+    if (
+      isSavedSecretDraft &&
+      (!isReplacingSavedSecret || localValue === SECRET_DISPLAY_MASK)
+    ) {
+      setIsReplacingSavedSecret(false);
+      setLocalValue(SECRET_DISPLAY_MASK);
+      onChange(entry.key, SECRET_PRESERVE_VALUE);
       return;
     }
-    const parsed = parseInputValue(localValue, isPreservedSecret ? null : value);
+    const parsed = parseInputValue(localValue, isSavedSecretDraft ? null : value);
     if (parsed === value) {
       return;
     }
     onChange(entry.key, parsed);
-  }, [entry.key, isPreservedSecret, localValue, onChange, selectOptions, value]);
+  }, [
+    entry.key,
+    isSavedSecretDraft,
+    isReplacingSavedSecret,
+    localValue,
+    onChange,
+    selectOptions,
+    value,
+  ]);
 
   const handleSelectChange = useCallback(
     (next: string) => {
@@ -169,6 +219,12 @@ const EditableSettingsRow = memo(function EditableSettingsRow({
     },
     [entry.key, onChange],
   );
+
+  const secretStatusText = isShowingSavedSecretMask
+    ? "当前已保存，留空不会修改。"
+    : isConfiguredSecret && isReplacingSavedSecret && !localValue.trim()
+      ? "保存后将清空设置页覆盖，并回落到 .env 或默认值。"
+      : undefined;
 
   if (typeof value === "boolean") {
     return (
@@ -209,17 +265,18 @@ const EditableSettingsRow = memo(function EditableSettingsRow({
             onBlur={commitLocalValue}
             placeholder={
               isConfiguredSecret
-                ? ""
+                ? "输入新值可替换"
                 : entry.default_value === null || entry.default_value === undefined
                   ? "请输入 Token"
                   : String(entry.default_value)
             }
-            showToggle={localValue.length > 0}
-            statusText={
-              isConfiguredSecret && !localValue.trim()
-                ? "当前已保存，留空不会修改。"
-                : undefined
+            revealValue={isShowingSavedSecretMask ? secretRevealValue : undefined}
+            selectOnFocus={isShowingSavedSecretMask}
+            showToggle={
+              (isShowingSavedSecretMask && secretRevealValue !== null) ||
+              (!isShowingSavedSecretMask && localValue.length > 0)
             }
+            statusText={secretStatusText}
           />
         ) : (
           <TextInput

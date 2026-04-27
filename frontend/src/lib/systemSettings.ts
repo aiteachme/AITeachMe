@@ -40,11 +40,29 @@ function normalizeSettingsOverview(raw: unknown): SettingsOverviewData | null {
   };
 }
 
+function stripSecretRevealValues(overview: SettingsOverviewData): SettingsOverviewData {
+  return {
+    ...overview,
+    sections: (overview.sections ?? []).map((section) => ({
+      ...section,
+      entries: (section.entries ?? []).map((entry) => {
+        const { reveal_value: _revealValue, ...safeEntry } = entry as typeof entry & {
+          reveal_value?: unknown;
+        };
+        return safeEntry;
+      }),
+    })),
+  };
+}
+
 export function storeSystemSettingsOverview(overview: SettingsOverviewData | null): void {
   currentOverview = overview;
   if (typeof window !== "undefined") {
     if (overview) {
-      window.localStorage.setItem(SYSTEM_SETTINGS_STORAGE_KEY, JSON.stringify(overview));
+      window.localStorage.setItem(
+        SYSTEM_SETTINGS_STORAGE_KEY,
+        JSON.stringify(stripSecretRevealValues(overview)),
+      );
     } else {
       window.localStorage.removeItem(SYSTEM_SETTINGS_STORAGE_KEY);
     }

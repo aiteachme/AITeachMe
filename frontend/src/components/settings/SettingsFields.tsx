@@ -1,4 +1,14 @@
-import { useEffect, useId, useLayoutEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from "react";
+import {
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type FocusEvent,
+  type KeyboardEvent,
+  type ReactNode,
+} from "react";
 import { createPortal } from "react-dom";
 import { Check, ChevronDown, Eye, EyeOff } from "lucide-react";
 
@@ -147,6 +157,8 @@ interface SecretInputProps {
   onFocus?: () => void;
   onBlur?: () => void;
   placeholder?: string;
+  revealValue?: string | null;
+  selectOnFocus?: boolean;
   showToggle?: boolean;
   statusText?: string;
 }
@@ -158,11 +170,14 @@ export function SecretInput({
   onFocus,
   onBlur,
   placeholder,
+  revealValue,
+  selectOnFocus = false,
   showToggle = true,
   statusText,
 }: SecretInputProps) {
   const [visible, setVisible] = useState(false);
-  const shouldMask = !visible && value.length > 0;
+  const displayValue = visible && typeof revealValue === "string" ? revealValue : value;
+  const shouldMask = !visible && displayValue.length > 0;
   const textSecurityStyle = shouldMask
     ? ({ WebkitTextSecurity: "disc" } as CSSProperties & { WebkitTextSecurity: string })
     : undefined;
@@ -173,9 +188,15 @@ export function SecretInput({
         <input
           id={id}
           type="text"
-          value={value}
+          value={displayValue}
           onChange={(event) => onChange(event.target.value)}
-          onFocus={onFocus}
+          onFocus={(event: FocusEvent<HTMLInputElement>) => {
+            onFocus?.();
+            if (selectOnFocus) {
+              const input = event.currentTarget;
+              window.requestAnimationFrame(() => input.select());
+            }
+          }}
           onBlur={onBlur}
           placeholder={placeholder}
           autoComplete="new-password"
