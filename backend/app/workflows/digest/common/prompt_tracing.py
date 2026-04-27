@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any, TypeVar
 
+from app.shared.infra.env_support import get_env_bool
 from app.shared.infra.observability.trace import (
     langsmith_trace,
     sanitize_langsmith_input,
@@ -20,6 +21,9 @@ def trace_prompt_build(
     output: T,
 ) -> T:
     """Trace one prompt-building step and return the original prompt object."""
+
+    if not get_env_bool("AITM_TRACE_PROMPT_BUILDERS", False):
+        return output
 
     with langsmith_trace(
         name=f"Prompt：{name}",

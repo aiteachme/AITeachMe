@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import uuid
+from contextlib import nullcontext
 from datetime import datetime
 from typing import Any
 
@@ -35,6 +36,7 @@ from app.schemas.knowledge import (
     KnowledgeBuildPreviewResponse,
     KnowledgeBuildRuntimeResponse,
     KnowledgeBuildStatusResponse,
+    SubjectVectorStatusResponse,
 )
 from app.shared.infra.database import managed_session
 from app.shared.infra.exceptions import (
@@ -131,9 +133,17 @@ def _new_build_session_id() -> str:
     return uuid.uuid4().hex
 
 
-def _clear_docgen_staging_safely(subject: str) -> None:
+def _session_context(session: Session | None):
+    return nullcontext(session) if session is not None else managed_session()
+
+
+def _clear_docgen_staging_safely(
+    subject: str,
+    *,
+    subject_scope: SubjectStorageScope | None = None,
+) -> None:
     try:
-        clear_docgen_staging(subject)
+        clear_docgen_staging(subject, subject_scope=subject_scope)
     except Exception:
         logger.exception("knowledge_build_cleanup_failed", subject=subject)
 
@@ -211,7 +221,7 @@ def _extract_markdown_excerpt(markdown: str, *, max_lines: int = 6, max_chars: i
 
 
 def _load_current_published_markdown(
-    session: Session,
+    session: Session | None,
     *,
     subject: str,
     subject_scope: SubjectStorageScope,
@@ -229,7 +239,8 @@ def _load_current_published_markdown(
     if stored_markdown:
         return stored_markdown, manifest.updated_at if manifest is not None else None
 
-    docs = get_current_published_docs(session, subject)
+    with _session_context(session) as db_session:
+        docs = get_current_published_docs(db_session, subject)
     parts: list[str] = []
     updated_at: datetime | None = None
     for doc in docs:
@@ -418,9 +429,12 @@ def _resolve_runtime_build_status(
     session: Session | None = None,
     subject_scope: SubjectStorageScope | None = None,
 ) -> KnowledgeBuildStatusResponse | None:
-    build_lock = read_knowledge_build_lock(subject, session=session)
     runtime = read_knowledge_build_runtime(subject, subject_scope=subject_scope)
     effective = runtime.docgen_runtime if runtime is not None else None
+    if effective is None:
+        build_lock = read_knowledge_build_lock(subject, session=session)
+    else:
+        build_lock = None
     if effective is None and build_lock is not None:
         effective = update_knowledge_build_lane_status(
             subject,
@@ -480,7 +494,7 @@ def _build_lane_runtime_response(
 
 
 def get_knowledge_build_runtime_result(
-    session: Session,
+    session: Session | None = None,
     *,
     subject: str,
     subject_scope: SubjectStorageScope | None = None,
@@ -651,8 +665,8 @@ def trigger_docgen_build(
     )
     if not acquire_knowledge_build_lock(subject.slug, build_lock):
         raise SubjectBuildLockConflictError(subject.slug)
-    _clear_docgen_staging_safely(subject.slug)
     subject_scope = build_subject_storage_scope(user_id=subject.user_id, subject=subject.slug)
+    _clear_docgen_staging_safely(subject.slug, subject_scope=subject_scope)
     update_knowledge_build_lane_status(
         subject.slug,
         lane="docgen",
@@ -776,7 +790,7 @@ async def run_docgen_background(
         status="building",
     )
     try:
-        _clear_docgen_staging_safely(subject)
+        _clear_docgen_staging_safely(subject, subject_scope=subject_scope)
         _write_docgen_status(
             subject,
             requested_at=requested_at,
@@ -819,6 +833,7 @@ async def run_docgen_background(
             )
         result = await run_docgen_workflow(
             subject=subject,
+            user_id=user_id,
             file_ids=file_ids,
             user_prompt=prompt,
             requested_at=requested_at,
@@ -839,7 +854,7 @@ async def run_docgen_background(
                     stage="blocked_by_docgen_failure",
                     current_stage_description="知识文档构建失败，未继续图谱同步。",
             )
-            _clear_docgen_staging_safely(subject)
+            _clear_docgen_staging_safely(subject, subject_scope=subject_scope)
             _write_docgen_status(
                 subject,
                 requested_at=requested_at,
@@ -968,7 +983,7 @@ async def run_docgen_background(
                 current_stage_description="图谱构建已取消。",
         )
         if not docgen_published:
-            _clear_docgen_staging_safely(subject)
+            _clear_docgen_staging_safely(subject, subject_scope=subject_scope)
             _write_docgen_status(
                 subject,
                 requested_at=requested_at,
@@ -1002,7 +1017,7 @@ async def run_docgen_background(
                 current_stage_description="知识文档构建异常失败，未完成图谱同步。",
         )
         if not docgen_published:
-            _clear_docgen_staging_safely(subject)
+            _clear_docgen_staging_safely(subject, subject_scope=subject_scope)
             _write_docgen_status(
                 subject,
                 requested_at=requested_at,
@@ -1030,7 +1045,7 @@ async def run_docgen_background(
 
 
 def get_docgen_result(
-    session: Session,
+    session: Session | None = None,
     *,
     subject: str,
     subject_scope: SubjectStorageScope | None = None,
@@ -1047,12 +1062,21 @@ def get_docgen_result(
     manifest = read_knowledge_manifest(subject, subject_scope=subject_scope)
     runtime = read_knowledge_build_runtime(subject, subject_scope=subject_scope)
     docgen_build_status = runtime.docgen_runtime if runtime is not None else None
-    markdown, published_updated_at = _load_current_published_markdown(
-        session,
-        subject=subject,
-        subject_scope=subject_scope,
-        manifest=manifest,
-    )
+    try:
+        markdown, published_updated_at = _load_current_published_markdown(
+            session,
+            subject=subject,
+            subject_scope=subject_scope,
+            manifest=manifest,
+        )
+    except Exception as exc:
+        logger.warning(
+            "docgen_result_published_markdown_degraded",
+            subject=subject,
+            error_type=type(exc).__name__,
+            error=str(exc),
+        )
+        markdown, published_updated_at = "", None
     draft_markdown = normalize_mermaid_blocks(run_store_sync(cs.read_text, draft_key, default="") or "")
     updated_at = published_updated_at or (manifest.updated_at if manifest is not None else None)
     draft_updated_at = (
@@ -1060,20 +1084,36 @@ def get_docgen_result(
         if docgen_build_status is not None and docgen_build_status.draft_updated_at is not None
         else None
     )
-    source_file_uids = (
-        _resolve_file_uids_from_ids(
-            session,
+    source_file_uids: list[str] = []
+    if manifest is not None:
+        try:
+            with _session_context(session) as db_session:
+                source_file_uids = _resolve_file_uids_from_ids(
+                    db_session,
+                    subject=subject,
+                    file_ids=manifest.source_file_ids,
+                )
+        except Exception as exc:
+            logger.warning(
+                "docgen_result_source_files_degraded",
+                subject=subject,
+                error_type=type(exc).__name__,
+                error=str(exc),
+            )
+    try:
+        build_response = _resolve_runtime_build_status(
             subject=subject,
-            file_ids=manifest.source_file_ids,
+            session=session,
+            subject_scope=subject_scope,
         )
-        if manifest is not None
-        else []
-    )
-    build_response = _resolve_runtime_build_status(
-        subject=subject,
-        session=session,
-        subject_scope=subject_scope,
-    )
+    except Exception as exc:
+        logger.warning(
+            "docgen_result_build_status_degraded",
+            subject=subject,
+            error_type=type(exc).__name__,
+            error=str(exc),
+        )
+        build_response = None
     if build_response is not None:
         build_response.draft_available = bool(build_response.draft_available or draft_markdown.strip())
     build_preview = _build_runtime_preview(
@@ -1082,6 +1122,18 @@ def get_docgen_result(
         manifest=manifest,
     )
     build_metrics = _build_runtime_metrics(build_status=docgen_build_status)
+    try:
+        with _session_context(session) as db_session:
+            vector_status = get_subject_vector_status_by_slug(db_session, subject)
+    except Exception as exc:
+        logger.warning(
+            "docgen_result_vector_status_degraded",
+            subject=subject,
+            error_type=type(exc).__name__,
+            error=str(exc),
+        )
+        vector_status = SubjectVectorStatusResponse()
+
     return DocGenGetResponse(
         exists=bool(markdown.strip()),
         markdown=markdown,
@@ -1093,7 +1145,7 @@ def get_docgen_result(
         build=build_response,
         build_preview=build_preview,
         build_metrics=build_metrics,
-        vector_status=get_subject_vector_status_by_slug(session, subject),
+        vector_status=vector_status,
         planner_session_id=(build_response.planner_session_id if build_response is not None else None),
         confirmed_plan_id=(build_response.confirmed_plan_id if build_response is not None else None),
         digest_mode=(build_response.digest_mode if build_response is not None else None),

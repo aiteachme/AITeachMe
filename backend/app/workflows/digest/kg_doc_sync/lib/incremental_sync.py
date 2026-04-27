@@ -283,6 +283,29 @@ def extract_knowledge_graph_items(
     )
 
 
+async def extract_knowledge_graph_items_async(
+    *,
+    markdown: str,
+    subject_context: str | None,
+    run_context: KnowledgeSyncRunContext,
+) -> KnowledgeSyncExtractionPayload:
+    """Async extraction entry used by LangGraph nodes.
+
+    The sync facade above is retained for existing tests and utility callers.
+    """
+
+    units, extracted_edges, diagnostics_totals = await _extract_markdown_graph_items_async(
+        markdown,
+        subject_context=subject_context,
+        structured_context=run_context.structured_context,
+    )
+    return KnowledgeSyncExtractionPayload(
+        units=units,
+        extracted_edges=extracted_edges,
+        diagnostics_totals=diagnostics_totals,
+    )
+
+
 def persist_knowledge_graph_items(
     session: Session,
     *,
@@ -665,7 +688,7 @@ def _build_extraction_tasks(
     return tasks, metrics
 
 
-def _extract_markdown_graph_items(
+async def _extract_markdown_graph_items_async(
     markdown: str,
     *,
     subject_context: str | None = None,
@@ -707,7 +730,7 @@ def _extract_markdown_graph_items(
 
         return await asyncio.gather(*[_extract_with_queue(task) for task in extraction_tasks])
 
-    results = _run_async(_extract_all_chapters()) or []
+    results = await _extract_all_chapters()
     units: list[MarkdownKnowledgeUnit] = []
     pending_edges: list[PendingMarkdownExtractedEdge] = []
     candidate_id_to_anchor: dict[str, str] = {}
@@ -831,6 +854,21 @@ def _extract_markdown_graph_items(
             )
         )
     return units, edges, diagnostics_totals
+
+
+def _extract_markdown_graph_items(
+    markdown: str,
+    *,
+    subject_context: str | None = None,
+    structured_context: dict[str, object] | None = None,
+) -> tuple[list[MarkdownKnowledgeUnit], list[MarkdownExtractedEdge], dict[str, int]]:
+    return _run_async(
+        _extract_markdown_graph_items_async(
+            markdown,
+            subject_context=subject_context,
+            structured_context=structured_context,
+        )
+    )
 
 
 def _empty_failed_section_payload(
@@ -1819,6 +1857,7 @@ __all__ = [
     "KnowledgeSyncReport",
     "KnowledgeSyncRunContext",
     "extract_knowledge_graph_items",
+    "extract_knowledge_graph_items_async",
     "graph_extraction_parallelism",
     "initialize_knowledge_graph_sync_run",
     "mark_knowledge_graph_sync_run_failed",

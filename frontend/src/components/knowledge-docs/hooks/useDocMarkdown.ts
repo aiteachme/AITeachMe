@@ -109,6 +109,7 @@ export function useDocMarkdown(): DocMarkdownState {
       const status = (build?.status ?? "").trim();
       const liveMarkdown = cleanKnowledgeMarkdownForDisplay(data?.markdown ?? "");
       const hasLiveDocMarkdown = Boolean(data?.exists && liveMarkdown.trim().length > 0);
+      if (hasLiveDocMarkdown) return false;
       const targetRequestedAtMs = requestedAtMs ?? parseIsoTimestamp(build?.requested_at ?? null);
       const updatedAtMs = parseIsoTimestamp(data?.updated_at ?? null);
       const hasRequestedLiveDoc =
@@ -140,6 +141,7 @@ export function useDocMarkdown(): DocMarkdownState {
       const status = (docgen?.status ?? "").trim();
       const liveMarkdown = cleanKnowledgeMarkdownForDisplay(docMarkdownQuery.data?.markdown ?? "");
       const hasLiveDocMarkdown = Boolean(docMarkdownQuery.data?.exists && liveMarkdown.trim().length > 0);
+      if (hasLiveDocMarkdown) return false;
       const targetRequestedAtMs = requestedAtMs ?? parseIsoTimestamp(docgen?.requested_at ?? null);
       const updatedAtMs = parseIsoTimestamp(docMarkdownQuery.data?.updated_at ?? null);
       const hasRequestedLiveDoc =
@@ -173,23 +175,16 @@ export function useDocMarkdown(): DocMarkdownState {
     () => parseIsoTimestamp(buildMeta?.requested_at),
     [buildMeta?.requested_at],
   );
-  const publishedUpdatedAtMs = useMemo(
-    () => parseIsoTimestamp(liveUpdatedAt),
-    [liveUpdatedAt],
-  );
   const targetRequestedAtMs =
     buildStatus && buildStatus !== "idle"
       ? requestedAtMs ?? buildRequestedAtMs
       : null;
-  const isBuildActive = Boolean(buildStatus && ACTIVE_DOC_BUILD_STATUSES.has(buildStatus));
+  const isBuildActive = Boolean(!hasLiveDocMarkdown && buildStatus && ACTIVE_DOC_BUILD_STATUSES.has(buildStatus));
   const isBuildFailure = buildStatus === "failed" || buildStatus === "cancelled";
   const isBuildReadyStatus = Boolean(buildStatus && TERMINAL_DOC_BUILD_READY_STATUSES.has(buildStatus));
-  const isRequestedBuildReady =
-    targetRequestedAtMs !== null
-      ? hasLiveDocMarkdown &&
-        (isBuildReadyStatus || (publishedUpdatedAtMs !== null && publishedUpdatedAtMs >= targetRequestedAtMs))
-      : hasLiveDocMarkdown;
+  const isRequestedBuildReady = hasLiveDocMarkdown;
   const isWaitingForRequestedBuild =
+    !hasLiveDocMarkdown &&
     !isBuildFailure &&
     !isRequestedBuildReady &&
     Boolean(
@@ -316,7 +311,7 @@ export function useDocMarkdown(): DocMarkdownState {
   const showDocUpdatingBanner =
     !docMarkdownQuery.isError &&
     hasRenderedMarkdown &&
-    (isBuildActive || effectiveDocViewMode === "draft" || (!hasLiveDocMarkdown && hasDraftDocMarkdown));
+    (effectiveDocViewMode === "draft" || (!hasLiveDocMarkdown && hasDraftDocMarkdown));
 
   return {
     subjectId,

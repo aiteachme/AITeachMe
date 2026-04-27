@@ -699,14 +699,16 @@ async def knowledge_build_cancel(
     responses=build_error_responses([400, 404, 500]),
 )
 async def knowledge_build_runtime(
+    request: Request,
+    response: Response,
     subject: str = Path(...),
-    user: CurrentUserContext = Depends(get_current_user_context),
-    session: Session = Depends(get_db),
 ) -> ApiResponse[KnowledgeBuildRuntimeResponse]:
     normalized = normalize_subject_slug(subject)
-    subject_record = get_subject_record(session, normalized, owner_user_id=user.user_id)
-    subject_scope = _storage_scope_for_subject_record(subject_record)
-    return ok_response(get_knowledge_build_runtime_result(session, subject=normalized, subject_scope=subject_scope))
+    with managed_session() as session:
+        user = get_current_user_context(request, response, session)
+        subject_record = get_subject_record(session, normalized, owner_user_id=user.user_id)
+        subject_scope = _storage_scope_for_subject_record(subject_record)
+    return ok_response(get_knowledge_build_runtime_result(subject=normalized, subject_scope=subject_scope))
 
 
 @router.get(
@@ -880,14 +882,16 @@ async def knowledge_build_stream(
     responses=build_error_responses([400, 404, 500]),
 )
 async def knowledge_docs(
+    request: Request,
+    response: Response,
     subject: str = Path(...),
-    user: CurrentUserContext = Depends(get_current_user_context),
-    session: Session = Depends(get_db),
 ) -> ApiResponse[DocGenGetResponse]:
     normalized = normalize_subject_slug(subject)
-    subject_record = get_subject_record(session, normalized, owner_user_id=user.user_id)
-    subject_scope = _storage_scope_for_subject_record(subject_record)
-    return ok_response(get_docgen_result(session, subject=normalized, subject_scope=subject_scope))
+    with managed_session() as session:
+        user = get_current_user_context(request, response, session)
+        subject_record = get_subject_record(session, normalized, owner_user_id=user.user_id)
+        subject_scope = _storage_scope_for_subject_record(subject_record)
+    return ok_response(get_docgen_result(subject=normalized, subject_scope=subject_scope))
 
 
 @router.post(

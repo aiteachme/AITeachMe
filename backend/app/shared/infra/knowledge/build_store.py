@@ -672,12 +672,12 @@ def build_aggregate_knowledge_build_status(
             progress_pct=max(docgen_runtime.progress_pct, graph_runtime.progress_pct),
         )
 
-    if graph_runtime.status in {"failed", "cancelled"}:
+    if graph_runtime.status in {"failed", "cancelled", "partial_failed"}:
         return _new(
             requested_at=docgen_runtime.requested_at,
             status="partial_failed",
             stage=graph_runtime.stage,
-            description=graph_runtime.current_stage_description or "知识文档已发布，但图谱构建失败。",
+            description=graph_runtime.current_stage_description or "知识文档已发布，但图谱构建未完全成功。",
             started_at=docgen_runtime.started_at,
             finished_at=graph_runtime.finished_at or docgen_runtime.finished_at,
             error_message=graph_runtime.error_message,
@@ -708,6 +708,10 @@ def build_aggregate_knowledge_build_status(
 
 def _subject_scope_or_resolve(subject: str, subject_scope: SubjectStorageScope | None) -> SubjectStorageScope:
     return subject_scope or resolve_subject_storage_scope(subject)
+
+
+def _legacy_build_manifest_key(subject_scope: SubjectStorageScope) -> str:
+    return f"{subject_scope.knowledge_build_prefix()}manifest.json"
 
 
 def _read_legacy_knowledge_build_status(
@@ -1025,11 +1029,12 @@ def upsert_knowledge_build_chapter_progress(
     *,
     chapter_progress: dict[str, object],
     requested_at: datetime | None = None,
+    subject_scope: SubjectStorageScope | None = None,
 ) -> KnowledgeBuildRuntimeStatus:
     """Merge one chapter progress entry into the runtime build status."""
 
     with _get_status_lock(subject):
-        runtime = read_knowledge_build_runtime(subject) or KnowledgeBuildRuntimeEnvelope()
+        runtime = read_knowledge_build_runtime(subject, subject_scope=subject_scope) or KnowledgeBuildRuntimeEnvelope()
         existing = runtime.docgen_runtime
         if existing is None:
             existing = KnowledgeBuildRuntimeStatus(requested_at=requested_at or utcnow())
@@ -1047,8 +1052,8 @@ def upsert_knowledge_build_chapter_progress(
         existing = _hydrate_runtime_status(existing)
         runtime.docgen_runtime = existing
         runtime.build_group_id = runtime.build_group_id or existing.build_group_id
-        write_knowledge_build_runtime(subject, runtime)
-        write_knowledge_build_status(subject, existing)
+        write_knowledge_build_runtime(subject, runtime, subject_scope=subject_scope)
+        write_knowledge_build_status(subject, existing, subject_scope=subject_scope)
         return existing
 
 
@@ -1057,11 +1062,12 @@ def upsert_knowledge_build_chapter_preview(
     *,
     chapter_preview: dict[str, object],
     requested_at: datetime | None = None,
+    subject_scope: SubjectStorageScope | None = None,
 ) -> KnowledgeBuildRuntimeStatus:
     """Merge one chapter preview entry into the runtime build status."""
 
     with _get_status_lock(subject):
-        runtime = read_knowledge_build_runtime(subject) or KnowledgeBuildRuntimeEnvelope()
+        runtime = read_knowledge_build_runtime(subject, subject_scope=subject_scope) or KnowledgeBuildRuntimeEnvelope()
         existing = runtime.docgen_runtime
         if existing is None:
             existing = KnowledgeBuildRuntimeStatus(requested_at=requested_at or utcnow())
@@ -1070,8 +1076,8 @@ def upsert_knowledge_build_chapter_preview(
             existing = _hydrate_runtime_status(existing)
             runtime.docgen_runtime = existing
             runtime.build_group_id = runtime.build_group_id or existing.build_group_id
-            write_knowledge_build_runtime(subject, runtime)
-            write_knowledge_build_status(subject, existing)
+            write_knowledge_build_runtime(subject, runtime, subject_scope=subject_scope)
+            write_knowledge_build_status(subject, existing, subject_scope=subject_scope)
             return existing
         current = {
             int(item.get("chapter_index", 0) or 0): dict(item)
@@ -1086,8 +1092,8 @@ def upsert_knowledge_build_chapter_preview(
         existing = _hydrate_runtime_status(existing)
         runtime.docgen_runtime = existing
         runtime.build_group_id = runtime.build_group_id or existing.build_group_id
-        write_knowledge_build_runtime(subject, runtime)
-        write_knowledge_build_status(subject, existing)
+        write_knowledge_build_runtime(subject, runtime, subject_scope=subject_scope)
+        write_knowledge_build_status(subject, existing, subject_scope=subject_scope)
         return existing
 
 
@@ -1097,11 +1103,12 @@ def append_knowledge_build_recent_event(
     event: dict[str, object],
     requested_at: datetime | None = None,
     limit: int = 24,
+    subject_scope: SubjectStorageScope | None = None,
 ) -> KnowledgeBuildRuntimeStatus:
     """Append one recent event into the runtime build status."""
 
     with _get_status_lock(subject):
-        runtime = read_knowledge_build_runtime(subject) or KnowledgeBuildRuntimeEnvelope()
+        runtime = read_knowledge_build_runtime(subject, subject_scope=subject_scope) or KnowledgeBuildRuntimeEnvelope()
         existing = runtime.docgen_runtime
         if existing is None:
             existing = KnowledgeBuildRuntimeStatus(requested_at=requested_at or utcnow())
@@ -1111,8 +1118,8 @@ def append_knowledge_build_recent_event(
         existing = _hydrate_runtime_status(existing)
         runtime.docgen_runtime = existing
         runtime.build_group_id = runtime.build_group_id or existing.build_group_id
-        write_knowledge_build_runtime(subject, runtime)
-        write_knowledge_build_status(subject, existing)
+        write_knowledge_build_runtime(subject, runtime, subject_scope=subject_scope)
+        write_knowledge_build_status(subject, existing, subject_scope=subject_scope)
         publish_workflow_stream_event(subject, "build_event", normalized)
         return existing
 
@@ -1122,11 +1129,12 @@ def update_knowledge_build_merge_preview(
     *,
     merge_preview: dict[str, object],
     requested_at: datetime | None = None,
+    subject_scope: SubjectStorageScope | None = None,
 ) -> KnowledgeBuildRuntimeStatus:
     """Merge whole-document preview content into the runtime build status."""
 
     with _get_status_lock(subject):
-        runtime = read_knowledge_build_runtime(subject) or KnowledgeBuildRuntimeEnvelope()
+        runtime = read_knowledge_build_runtime(subject, subject_scope=subject_scope) or KnowledgeBuildRuntimeEnvelope()
         existing = runtime.docgen_runtime
         if existing is None:
             existing = KnowledgeBuildRuntimeStatus(requested_at=requested_at or utcnow())
@@ -1138,17 +1146,22 @@ def update_knowledge_build_merge_preview(
         existing = _hydrate_runtime_status(existing)
         runtime.docgen_runtime = existing
         runtime.build_group_id = runtime.build_group_id or existing.build_group_id
-        write_knowledge_build_runtime(subject, runtime)
-        write_knowledge_build_status(subject, existing)
+        write_knowledge_build_runtime(subject, runtime, subject_scope=subject_scope)
+        write_knowledge_build_status(subject, existing, subject_scope=subject_scope)
         return existing
 
 
-def clear_knowledge_build_status(subject: str) -> None:
+def clear_knowledge_build_status(
+    subject: str,
+    *,
+    subject_scope: SubjectStorageScope | None = None,
+) -> None:
     """Remove runtime build-status metadata."""
 
     cs = get_content_store()
-    run_store_sync(cs.delete, resolve_subject_storage_scope(subject).build_status_key(), default=None)
-    run_store_sync(cs.delete, resolve_subject_storage_scope(subject).build_runtime_key(), default=None)
+    resolved_scope = _subject_scope_or_resolve(subject, subject_scope)
+    run_store_sync(cs.delete, resolved_scope.build_status_key(), default=None)
+    run_store_sync(cs.delete, resolved_scope.build_runtime_key(), default=None)
 
 
 def read_knowledge_manifest(
@@ -1159,27 +1172,45 @@ def read_knowledge_manifest(
     """Read the published manifest if it exists."""
 
     cs = get_content_store()
+    resolved_scope = _subject_scope_or_resolve(subject, subject_scope)
+    manifest = run_store_sync(
+        cs.read_json,
+        resolved_scope.build_manifest_key(),
+        KnowledgeDocsManifest,
+    )
+    if manifest is not None:
+        return manifest
     return run_store_sync(
         cs.read_json,
-        _subject_scope_or_resolve(subject, subject_scope).build_manifest_key(),
+        _legacy_build_manifest_key(resolved_scope),
         KnowledgeDocsManifest,
     )
 
 
-def write_knowledge_manifest(subject: str, manifest: KnowledgeDocsManifest) -> str:
+def write_knowledge_manifest(
+    subject: str,
+    manifest: KnowledgeDocsManifest,
+    *,
+    subject_scope: SubjectStorageScope | None = None,
+) -> str:
     """Persist the published manifest."""
 
     cs = get_content_store()
-    key = resolve_subject_storage_scope(subject).build_manifest_key()
+    key = _subject_scope_or_resolve(subject, subject_scope).build_manifest_key()
     run_store_sync(cs.write_json, key, manifest)
     return key
 
 
-def clear_docgen_staging(subject: str) -> None:
+def clear_docgen_staging(
+    subject: str,
+    *,
+    subject_scope: SubjectStorageScope | None = None,
+) -> None:
     """Remove the current knowledge-markdown build directory."""
 
     cs = get_content_store()
-    run_store_sync(cs.delete_prefix, resolve_subject_storage_scope(subject).knowledge_build_prefix(), default=0)
+    resolved_scope = _subject_scope_or_resolve(subject, subject_scope)
+    run_store_sync(cs.delete_prefix, resolved_scope.knowledge_build_prefix(), default=0)
 
     if is_local_mode():
         intermediate_dir = build_docgen_intermediate_latest_dir(subject)
@@ -1187,12 +1218,16 @@ def clear_docgen_staging(subject: str) -> None:
             shutil.rmtree(intermediate_dir, ignore_errors=True)
 
 
-def clear_published_knowledge_docs_files(subject: str) -> None:
+def clear_published_knowledge_docs_files(
+    subject: str,
+    *,
+    subject_scope: SubjectStorageScope | None = None,
+) -> None:
     """Remove all published knowledge-doc files, including archived versions."""
 
     cs = get_content_store()
-    subject_scope = resolve_subject_storage_scope(subject)
-    prefix = subject_scope.knowledge_doc_key("")
+    resolved_scope = _subject_scope_or_resolve(subject, subject_scope)
+    prefix = resolved_scope.knowledge_doc_key("")
     keys = run_store_sync(cs.list_prefix, prefix, default=[])
     for key in keys:
         relative = key.removeprefix(prefix)
@@ -1206,12 +1241,16 @@ def clear_published_knowledge_docs_files(subject: str) -> None:
             run_store_sync(cs.delete, key, default=None)
 
 
-def clear_current_published_knowledge_docs_files(subject: str) -> None:
+def clear_current_published_knowledge_docs_files(
+    subject: str,
+    *,
+    subject_scope: SubjectStorageScope | None = None,
+) -> None:
     """Remove only the current published chapter markdown files."""
 
     cs = get_content_store()
-    subject_scope = resolve_subject_storage_scope(subject)
-    prefix = subject_scope.knowledge_doc_key("")
+    resolved_scope = _subject_scope_or_resolve(subject, subject_scope)
+    prefix = resolved_scope.knowledge_doc_key("")
     keys = run_store_sync(cs.list_prefix, prefix, default=[])
     for key in keys:
         relative = key.removeprefix(prefix)
@@ -1222,15 +1261,21 @@ def clear_current_published_knowledge_docs_files(subject: str) -> None:
             run_store_sync(cs.delete, key, default=None)
 
 
-def clear_knowledge_runtime_artifacts(subject: str) -> None:
+def clear_knowledge_runtime_artifacts(
+    subject: str,
+    *,
+    subject_scope: SubjectStorageScope | None = None,
+) -> None:
     """Remove published and staging knowledge-doc artifacts for one subject."""
 
-    clear_docgen_staging(subject)
-    clear_knowledge_build_status(subject)
-    clear_published_knowledge_docs_files(subject)
+    resolved_scope = _subject_scope_or_resolve(subject, subject_scope)
+    clear_docgen_staging(subject, subject_scope=resolved_scope)
+    clear_knowledge_build_status(subject, subject_scope=resolved_scope)
+    clear_published_knowledge_docs_files(subject, subject_scope=resolved_scope)
 
     cs = get_content_store()
-    run_store_sync(cs.delete, resolve_subject_storage_scope(subject).build_manifest_key(), default=None)
+    run_store_sync(cs.delete, resolved_scope.build_manifest_key(), default=None)
+    run_store_sync(cs.delete, _legacy_build_manifest_key(resolved_scope), default=None)
 
     release_knowledge_build_lock(subject)
 

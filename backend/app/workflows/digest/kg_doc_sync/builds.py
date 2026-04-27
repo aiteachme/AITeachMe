@@ -11,6 +11,7 @@ from app.shared.infra.llm_support.common import (
     LLMRuntimeSnapshot,
     use_llm_runtime_snapshot,
 )
+from app.shared.infra.observability.trace import langsmith_trace
 from app.shared.infra.storage import SubjectStorageScope
 from app.shared.infra.knowledge.build_store import (
     read_knowledge_manifest,
@@ -23,6 +24,7 @@ from app.workflows.digest.kg_doc_sync.inputs import (
     load_knowledge_doc_sync_input,
     resolve_graph_input_paths,
 )
+from app.workflows.digest.kg_doc_sync.graph import RUN_NAME_KG_DOC_SYNC
 
 logger = structlog.get_logger(__name__)
 
@@ -207,17 +209,49 @@ async def run_graph_docs_sync_after_doc_build(
         },
         current_stage_description="正在从最新知识文档同步知识点、知识图像和关系。",
     )
-    with use_llm_runtime_snapshot(llm_snapshot):
-        sync_result = await run_graph_docs_sync_workflow(
-            subject=subject,
-            markdown=knowledge_doc_markdown,
-            build_session_id=build_session_id,
-            structured_context=sync_input.structured_context,
-        )
+    with langsmith_trace(
+        name=RUN_NAME_KG_DOC_SYNC,
+        run_type="chain",
+        subject=subject,
+        build_session_id=build_session_id,
+        workflow="digest.kg_doc_sync",
+        lane="kg_doc_sync",
+        inputs={
+            "subject": subject,
+            "build_group_id": build_group_id,
+            "knowledge_doc_source": knowledge_doc_source,
+            "chapter_count": len(doc_chapter_metadatas),
+            "doc_version_no": doc_version_no,
+        },
+        extra_metadata={
+            "build_group_id": build_group_id,
+            "doc_version_no": doc_version_no,
+            "knowledge_doc_source": knowledge_doc_source,
+        },
+        extra_tags=["workflow:digest.kg_doc_sync", "lane:kg_doc_sync"],
+    ) as trace_run:
+        with use_llm_runtime_snapshot(llm_snapshot):
+            sync_result = await run_graph_docs_sync_workflow(
+                subject=subject,
+                markdown=knowledge_doc_markdown,
+                build_session_id=build_session_id,
+                structured_context=sync_input.structured_context,
+            )
     if sync_result.failed:
+        if trace_run is not None:
+            trace_run.end(outputs={"status": "failed", "error": sync_result.error.detail})
         raise RuntimeError(sync_result.error.detail)
 
     sync_report = sync_result.require_value()
+    if trace_run is not None:
+        trace_run.end(
+            outputs={
+                "status": "completed",
+                "unit_change_count": sync_report.unit_change_count,
+                "edge_change_count": sync_report.edge_change_count,
+                "failed_section_count": sync_report.failed_section_count,
+            }
+        )
     return _completed_doc_sync_metrics(
         knowledge_doc_source=knowledge_doc_source,
         chapter_count=len(doc_chapter_metadatas),
@@ -317,16 +351,24 @@ async def _run_graph_docs_sync_build(
             docgen_state=docgen_state,
             subject_scope=subject_scope,
         )
+        failed_section_count = int(doc_sync_metrics.get("doc_sync_failed_section_count") or 0)
+        completion_status = "partial_failed" if failed_section_count > 0 else "completed"
+        completion_description = (
+            f"知识图谱已部分同步完成，{failed_section_count} 个章节片段抽取失败，可稍后手动重试。"
+            if failed_section_count > 0
+            else completed_description
+        )
         _write_graph_status(
             subject,
             requested_at=requested_at,
             build_group_id=build_group_id,
             subject_scope=subject_scope,
-            status="completed",
-            stage="completed",
+            status=completion_status,
+            stage=completion_status,
+            error_message="kg_doc_sync_partial_failed" if failed_section_count > 0 else None,
             progress_pct=100,
             processed_chunks=0,
-            current_stage_description=completed_description,
+            current_stage_description=completion_description,
             metrics={"processed_chunks": 0, **doc_sync_metrics},
         )
     except asyncio.CancelledError:
