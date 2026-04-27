@@ -22,7 +22,6 @@ from app.models.knowledge_taxonomy import (
 )
 from app.repositories import knowledge_relation_repo, knowledge_unit_repo
 from app.shared.infra.embedding import aembed_texts
-from app.shared.infra.observability.trace import trace_substep
 from app.shared.infra.search.api import search_knowledge
 from app.utils.knowledge_helpers import normalize_name
 from app.utils.time import utcnow
@@ -37,6 +36,8 @@ from app.workflows.digest.kg_doc_sync.lib.extraction import (
     CandidateExtractionDiagnostics,
     CandidateNode,
     ChunkExtractionResult,
+    docs_section_llm_max_content_chars,
+    docs_section_llm_timeout_s,
     extract_candidates,
     extract_candidates_with_diagnostics,
 )
@@ -66,7 +67,7 @@ _ANCHOR_ALIAS_SOURCE = "markdown_anchor"
 _SYNC_EDGE_MARKER = "markdown_anchor_sync"
 _RAG_DEDUP_TOP_K = 6
 _RAG_DEDUP_SIMILARITY_THRESHOLD = 0.82
-_DEFAULT_DOCS_SYNC_CHAPTER_CONCURRENCY_LIMIT = 6
+_DEFAULT_DOCS_SYNC_CHAPTER_CONCURRENCY_LIMIT = 10
 _DEFAULT_DOCS_SYNC_CHAPTER_MAX_RETRIES = 2
 _DEFAULT_DOCS_SYNC_CHAPTER_RETRY_DELAY_S = 0.4
 _DOCS_SYNC_CHAPTER_CONCURRENCY_LIMIT = _DEFAULT_DOCS_SYNC_CHAPTER_CONCURRENCY_LIMIT
@@ -83,10 +84,6 @@ _ASYNC_BRIDGE_THREAD: threading.Thread | None = None
 
 logger = structlog.get_logger()
 
-
-def _end_trace_substep(run: object | None, outputs: dict[str, object]) -> None:
-    if run is not None:
-        run.end(outputs=outputs)
 
 def _as_mapping(value: object) -> dict[str, object]:
     return dict(value) if isinstance(value, dict) else {}
@@ -224,25 +221,12 @@ def initialize_knowledge_graph_sync_run(
 ) -> KnowledgeSyncRunContext:
     """Validate Markdown anchors and create a running sync-run row."""
 
-    with trace_substep(
-        "KG docs-sync：校验 Markdown anchors",
-        metadata={"kg_doc_sync_phase": "validate_markdown_anchors"},
-        inputs={"markdown_chars": len(markdown or "")},
-    ) as trace_run:
-        validation = validate_knowledge_unit_anchors(markdown)
-        _end_trace_substep(
-            trace_run,
-            {
-                "ok": validation.ok,
-                "duplicate_anchor_count": len(validation.duplicate_anchors),
-                "invalid_anchor_count": len(validation.invalid_anchors),
-            },
+    validation = validate_knowledge_unit_anchors(markdown)
+    if not validation.ok:
+        raise ValueError(
+            "invalid Markdown KnowledgeUnit anchors: "
+            f"duplicates={validation.duplicate_anchors}, invalid={validation.invalid_anchors}"
         )
-        if not validation.ok:
-            raise ValueError(
-                "invalid Markdown KnowledgeUnit anchors: "
-                f"duplicates={validation.duplicate_anchors}, invalid={validation.invalid_anchors}"
-            )
 
     normalized_context = _structured_context_payload(structured_context)
     revision_no = build_revision_no or _next_revision_no(session, subject)
@@ -274,31 +258,11 @@ def extract_knowledge_graph_items(
 ) -> KnowledgeSyncExtractionPayload:
     """Extract units and edges without writing graph rows."""
 
-    with trace_substep(
-        "KG docs-sync：抽取章节候选",
-        metadata={"kg_doc_sync_phase": "extract_graph_items"},
-        inputs={
-            "markdown_chars": len(markdown or ""),
-            "doc_version_no": run_context.doc_version_no,
-            "build_revision_no": run_context.build_revision_no,
-        },
-    ) as trace_run:
-        units, extracted_edges, diagnostics_totals = _extract_markdown_graph_items(
-            markdown,
-            subject_context=subject_context,
-            structured_context=run_context.structured_context,
-        )
-        _end_trace_substep(
-            trace_run,
-            {
-                "unit_count": len(units),
-                "edge_count": len(extracted_edges),
-                "chapter_count": int(diagnostics_totals.get("chapter_count", 0) or 0),
-                "section_count": int(diagnostics_totals.get("section_count", 0) or 0),
-                "llm_section_count": int(diagnostics_totals.get("llm_section_count", 0) or 0),
-                "fallback_section_count": int(diagnostics_totals.get("fallback_section_count", 0) or 0),
-            },
-        )
+    units, extracted_edges, diagnostics_totals = _extract_markdown_graph_items(
+        markdown,
+        subject_context=subject_context,
+        structured_context=run_context.structured_context,
+    )
     return KnowledgeSyncExtractionPayload(
         units=units,
         extracted_edges=extracted_edges,
@@ -341,26 +305,16 @@ def persist_knowledge_graph_items(
     report.knowledge_image_count = sum(len(item.knowledge_images) for item in units)
 
     try:
-        with trace_substep(
-            "KG docs-sync：写入图谱变更",
-            metadata={"kg_doc_sync_phase": "upsert_graph"},
-            inputs={
-                "unit_count": len(units),
-                "edge_count": len(extracted_edges),
-                "build_revision_no": run_context.build_revision_no,
-            },
-        ) as trace_run:
-            _apply_extracted_graph_items(
-                session,
-                subject=run_context.subject,
-                units=units,
-                extracted_edges=extracted_edges,
-                sync_run=sync_run,
-                build_revision_no=run_context.build_revision_no,
-                enable_rag_dedup=enable_rag_dedup,
-                report=report,
-            )
-            _end_trace_substep(trace_run, sync_run_metrics(report))
+        _apply_extracted_graph_items(
+            session,
+            subject=run_context.subject,
+            units=units,
+            extracted_edges=extracted_edges,
+            sync_run=sync_run,
+            build_revision_no=run_context.build_revision_no,
+            enable_rag_dedup=enable_rag_dedup,
+            report=report,
+        )
     except Exception as exc:
         finish_sync_run(
             session,
@@ -596,6 +550,8 @@ def graph_extraction_parallelism() -> dict[str, int | float]:
         "chapter_concurrency_limit": _chapter_concurrency_limit(),
         "chapter_max_retries": _chapter_max_retries(),
         "chapter_retry_delay_s": _chapter_retry_delay_s(),
+        "section_llm_timeout_s": docs_section_llm_timeout_s(),
+        "section_llm_max_content_chars": docs_section_llm_max_content_chars(),
     }
 
 

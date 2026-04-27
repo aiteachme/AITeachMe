@@ -123,8 +123,8 @@ def filter_docs_candidate_result(result: ChunkExtractionResult) -> ChunkExtracti
         for edge in result.edges
         if edge.source_candidate_id not in dropped_candidate_ids
         and edge.target_candidate_id not in dropped_candidate_ids
-        and edge.source not in dropped_names
-        and edge.target not in dropped_names
+        and edge.source_name not in dropped_names
+        and edge.target_name not in dropped_names
     ]
     return result.model_copy(update={"nodes": kept_nodes, "edges": kept_edges})
 

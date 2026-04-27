@@ -14,8 +14,8 @@
 本链路不会创建 `curriculum / teaching_unit / taxonomy_anchor / theme_tree_node / unit_dependency` 等未来大表。节点和关系的可解释来源先由轻量溯源表承接。
 
 LangGraph 节点的 `node_description`、输入输出字段和 metadata 统一通过
-`digest.common.node_tracing` 生成；阶段 API 内部再用 `trace_substep`
-标记 anchor 校验、候选抽取和图谱写入三个关键阶段。
+`digest.common.node_tracing` 生成；内部阶段不再额外创建顶层 LangSmith trace，
+避免 Trace 列表被 anchor 校验、候选抽取和图谱写入刷屏。
 每个节点都会写入 `node_metrics.<node>`，用于在 trace 和最终 state 中查看本阶段输入规模、
 并发配置、sync_run id、抽取统计、写库变更数和失败标记结果。
 
@@ -109,7 +109,7 @@ init_run
 extract
   如果 subject_context 为空，则从学科 LLM context 读取。
   按真实章节切分 Markdown。
-  LangSmith 子步骤：`extract_graph_items`。
+  LLM 子调用挂在 extract 节点下。
   |
   v
 _extract_chapter_with_retries x N
@@ -117,7 +117,7 @@ _extract_chapter_with_retries x N
     ├─ chapter 1 extraction
     ├─ chapter 2 extraction
     └─ chapter N extraction
-  默认并发 6，每章最多 2 次尝试。
+  默认并发 10，每章最多 2 次尝试；单章 LLM 输入会保留开头和结尾并压到固定字符预算内。
   通过 contextvars 继承外层运行上下文，让 LLM 子调用挂在同一条 trace 下。
   |
   v
@@ -134,7 +134,6 @@ persist
   写 KnowledgeEdge。
   写 KnowledgeGraphSourceRef。
   标记本轮消失的旧同步节点/边为 deprecated。
-  LangSmith 子步骤：`upsert_graph`。
   |
   v
 finalize
@@ -360,9 +359,11 @@ _extract_chapter_with_retries
   输出：
     - SectionExtractionPayload
   并发：
-    - `_DOCS_SYNC_CHAPTER_CONCURRENCY_LIMIT = 6`
+    - `_DOCS_SYNC_CHAPTER_CONCURRENCY_LIMIT = 10`
     - `_DOCS_SYNC_CHAPTER_MAX_RETRIES = 2`
     - `_DOCS_SYNC_CHAPTER_RETRY_DELAY_S = 0.4`
+    - `_DOCS_SYNC_SECTION_LLM_TIMEOUT_S = 25`，只作为单章断路保护，不作为提速手段。
+    - `_DOCS_SYNC_SECTION_LLM_MAX_CONTENT_CHARS = 5200`，主抽取仍走 LLM，但会限制单章输入窗口。
   SectionExtractionPayload 包含：
     - units：本章候选 MarkdownKnowledgeUnit。
     - pending_edges：尚未解析 endpoint anchor 的边。
@@ -373,8 +374,8 @@ _extract_chapter_with_retries
     - section_context：本章主节点和来源上下文。
     - diagnostics：本章抽取计数。
   当前模型方案：
-    - 主抽取走 `KGDocSyncModelStep.SECTION_GRAPH`，即 `call_purpose=EXTRACT + model="light"`。
-    - docs 空结果修复走 `KGDocSyncModelStep.EMPTY_REPAIR`，即 `call_purpose=EXTRACT + model="light"`。
+    - 主抽取走 `KGDocSyncModelStep.SECTION_GRAPH`，即 `call_purpose=EXTRACT + model="light"`，`max_tokens=1600`。
+    - docs 空结果修复走 `KGDocSyncModelStep.EMPTY_REPAIR`，即 `call_purpose=EXTRACT + model="light"`，`max_tokens=900`。
     - 题目 fallback 中的 LLM 概念抽取走 `KGDocSyncModelStep.QUESTION_CONCEPTS`，即 `call_purpose=DOCGEN_LIGHT + model="light"`。
 
 _extract_chapter_graph_items
@@ -547,7 +548,7 @@ none           -> 没有可同步输入
 | 节点标题像整本文档标题 | 切章规则没有按 H2 下沉 | `extract_markdown_chapter_chunks`、DocGen 发布 Markdown 标题层级 |
 | 图上边很少 | LLM 边被过滤、endpoint 未解析、方向不合法 | `knowledge_graph_edge_skipped_unresolved_endpoint` 日志、`validate_relation_direction` |
 | source refs 为空 | 写入阶段异常或旧数据来自兼容字段 | `knowledge_graph_source_ref`、`KnowledgeGraphSyncRun.metrics_json` |
-| LangSmith 看不到子调用 | 外层没有 root trace、async context 没传递，或子步骤没有 metadata | `run_graph_docs_sync_after_doc_build`、`trace_substep`、`_run_async(contextvars.copy_context())` |
+| LangSmith 看不到子调用 | 外层没有 root trace、async context 没传递，或 LLM 调用没有继承 node scope | `run_graph_docs_sync_after_doc_build`、`run_state_graph`、`_run_async(contextvars.copy_context())` |
 
 ## 4. 当前仍需关注的问题
 

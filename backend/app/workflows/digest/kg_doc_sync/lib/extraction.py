@@ -53,6 +53,8 @@ _MAX_EXAMPLE_NAME_CHARS = 48
 _MAX_EXAMPLE_SUMMARY_CHARS = 800
 _MAX_TOPIC_SUMMARY_CHARS = 240
 _DOCS_SYNC_SECTION_LLM_TIMEOUT_S = 25
+_DOCS_SYNC_SECTION_LLM_MAX_CONTENT_CHARS = 5200
+_DOCS_SYNC_SUBJECT_CONTEXT_MAX_CHARS = 1600
 
 # ── 知识点提取相关模式 ──────────────────────────────────────────
 # 中文学科概念词（2-8字，排除常见停用词）
@@ -201,10 +203,45 @@ class CandidateExtractionDiagnostics:
     edge_count: int = 0
 
 
+def docs_section_llm_timeout_s() -> int:
+    return _DOCS_SYNC_SECTION_LLM_TIMEOUT_S
+
+
+def docs_section_llm_max_content_chars() -> int:
+    return _DOCS_SYNC_SECTION_LLM_MAX_CONTENT_CHARS
+
+
 def _normalize_text(text: str) -> str:
     text = _MARKDOWN_DECORATION_RE.sub(" ", text)
     text = normalize_semantic_whitespace(text)
     return _MULTISPACE_RE.sub(" ", text).strip()
+
+
+def _limit_llm_text(text: str, *, max_chars: int) -> str:
+    cleaned = str(text or "").strip()
+    if len(cleaned) <= max_chars:
+        return cleaned
+    head_chars = max_chars * 2 // 3
+    tail_chars = max(0, max_chars - head_chars - 36)
+    return (
+        cleaned[:head_chars].rstrip()
+        + "\n\n...[中间内容已压缩，保留开头和结尾]...\n\n"
+        + cleaned[-tail_chars:].lstrip()
+    )
+
+
+def _prepare_llm_chunk_content(chunk_content: str) -> str:
+    return _limit_llm_text(
+        chunk_content,
+        max_chars=_DOCS_SYNC_SECTION_LLM_MAX_CONTENT_CHARS,
+    )
+
+
+def _prepare_llm_subject_context(subject_context: str | None) -> str:
+    return _limit_llm_text(
+        subject_context or "",
+        max_chars=_DOCS_SYNC_SUBJECT_CONTEXT_MAX_CHARS,
+    )
 
 
 # ── 知识点提取函数 ──────────────────────────────────────────────
@@ -612,6 +649,26 @@ def _should_retry_docs_extraction_after_empty(
         return True
     key_terms = _extract_key_terms(chunk_content)
     return len(key_terms) >= 2
+
+
+def _finalize_candidate_result(
+    result: ChunkExtractionResult,
+    *,
+    chunk_title: str,
+    header_path: str,
+    chapter_topic_hints: list[str] | None,
+    subject_context: str | None,
+    question_mode: bool,
+) -> ChunkExtractionResult:
+    result = _sanitize_candidate_graph(
+        result,
+        chunk_title=chunk_title,
+        header_path=header_path,
+        chapter_topic_hints=chapter_topic_hints,
+        subject_context=subject_context,
+        question_mode=question_mode,
+    )
+    return _assign_candidate_ids_and_edge_types(result)
 
 
 def _fallback_question_support_name(
@@ -1152,13 +1209,15 @@ async def _extract_candidates_internal(
             diagnostics.elapsed_ms = int((perf_counter() - started_at) * 1000)
             return result, diagnostics
 
+    llm_chunk_content = _prepare_llm_chunk_content(chunk_content)
+    llm_subject_context = _prepare_llm_subject_context(subject_context)
     user_content = populate_prompt(
         USER_PROMPT_KNOWLEDGE_EXTRACT,
-        chunk_content=chunk_content,
+        chunk_content=llm_chunk_content,
         chunk_title=chunk_title,
         header_path=header_path,
         doc_source_type=doc_source_type or "",
-        subject_context=subject_context or "",
+        subject_context=llm_subject_context,
         sibling_topics=sibling_topics,
         digest_mode=digest_mode,
     )
@@ -1230,6 +1289,11 @@ async def _extract_candidates_internal(
                 header_path=header_path,
                 doc_source_type=doc_source_type,
                 digest_mode=digest_mode,
+                chunk_chars=len(chunk_content),
+                llm_chunk_chars=len(llm_chunk_content),
+                subject_context_chars=len(subject_context or ""),
+                llm_subject_context_chars=len(llm_subject_context),
+                section_timeout_s=_DOCS_SYNC_SECTION_LLM_TIMEOUT_S,
             ),
         )
         if doc_source_type == "knowledge_doc_markdown":
@@ -1302,7 +1366,7 @@ async def _extract_candidates_internal(
         if concept_like_count == 0 or len(result.nodes) <= 1 or (not result.edges and docs_section_support is not None):
             result = _merge_candidate_results(result, docs_section_support)
 
-    result = _sanitize_candidate_graph(
+    result = _finalize_candidate_result(
         result,
         chunk_title=chunk_title,
         header_path=header_path,
@@ -1310,7 +1374,6 @@ async def _extract_candidates_internal(
         subject_context=subject_context,
         question_mode=question_fallback is not None or _looks_like_question_chunk(chunk_content),
     )
-    result = _assign_candidate_ids_and_edge_types(result)
 
     logger.info(
         "knowledge_extract_complete",
@@ -1393,6 +1456,8 @@ __all__ = [
     "CandidateEdge",
     "CandidateNode",
     "ChunkExtractionResult",
+    "docs_section_llm_max_content_chars",
+    "docs_section_llm_timeout_s",
     "extract_candidates",
     "extract_candidates_with_diagnostics",
     "has_conceptual_content",

@@ -75,15 +75,15 @@ _POLICIES: dict[KGDocSyncModelStep, KGDocSyncModelPolicy] = {
         call_type="structured",
         call_purpose=LLMCallPurpose.EXTRACT,
         model="light",
-        max_tokens=2600,
-        note="从单个知识文档章节抽取候选知识单元和关系，用 EXTRACT profile + light 模型层级。",
+        max_tokens=1600,
+        note="从单个知识文档章节抽取候选知识单元和关系；KG 主路径仍过 LLM，输出预算保持克制以避免结构化响应过大。",
     ),
     KGDocSyncModelStep.EMPTY_REPAIR: KGDocSyncModelPolicy(
         step=KGDocSyncModelStep.EMPTY_REPAIR,
         call_type="structured",
         call_purpose=LLMCallPurpose.EXTRACT,
         model="light",
-        max_tokens=1200,
+        max_tokens=900,
         note="主抽取为空时的极短修复抽取，只补明显漏掉的知识点。",
     ),
 }

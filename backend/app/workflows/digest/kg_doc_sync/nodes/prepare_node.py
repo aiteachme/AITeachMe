@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+
 from app.workflows.digest.kg_doc_sync.nodes.node_state import with_node_error, with_node_metrics
 from app.workflows.digest.kg_doc_sync.state import DocsSyncState
 
@@ -31,7 +33,7 @@ def _markdown_metrics(markdown: str) -> dict[str, object]:
         "markdown_chars": len(markdown),
         "markdown_lines": len(lines),
         "heading_count": sum(1 for line in lines if line.lstrip().startswith("#")),
-        "knowledge_anchor_count": markdown.count("<!-- atm-ku:"),
+        "knowledge_anchor_count": len(re.findall(r"<!--\s*ATM[-_]KU\s*:", markdown, flags=re.IGNORECASE)),
     }
 
 
