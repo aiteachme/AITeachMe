@@ -1,3 +1,5 @@
+import asyncio
+
 import pytest
 
 from app.workflows.digest.docgen.lib.document_backbone import (
@@ -17,6 +19,7 @@ from app.workflows.digest.docgen.lib.asset_requests import (
     ASSET_REQUEST_LANGUAGE,
     build_asset_request_block,
     replace_asset_requests,
+    replace_asset_requests_with_results,
 )
 from app.workflows.digest.docgen.lib.query_planning import (
     QUERY_CONTEXT_ITEM_CHAR_BUDGET,
@@ -368,3 +371,29 @@ async def test_asset_request_protocol_tolerates_fenced_description():
     assert ASSET_REQUEST_END not in replaced
     assert "```mermaid\ngraph LR\nA[发现] --> B[验证]\n```" in replaced
     assert "## 正文" in replaced
+
+
+@pytest.mark.anyio
+async def test_asset_request_replacement_renders_matching_requests_concurrently():
+    first = build_asset_request_block("mermaid", "graph LR\nA --> B")
+    second = build_asset_request_block("mermaid", "graph LR\nC --> D")
+    markdown = f"## 图一\n{first}\n## 图二\n{second}\n"
+    active = 0
+    max_active = 0
+
+    async def render(request):
+        nonlocal active, max_active
+        active += 1
+        max_active = max(max_active, active)
+        try:
+            await asyncio.sleep(0.01)
+            return f"```mermaid\n{request.description}\n```", request.request_id
+        finally:
+            active -= 1
+
+    replaced, request_ids = await replace_asset_requests_with_results(markdown, kind="mermaid", renderer=render)
+
+    assert max_active > 1
+    assert len(request_ids) == 2
+    assert "A --> B" in replaced
+    assert replaced.index("A --> B") < replaced.index("C --> D")

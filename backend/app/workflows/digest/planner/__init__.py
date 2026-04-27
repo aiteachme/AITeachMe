@@ -18,6 +18,7 @@ __all__ = [
     "mark_confirmed_build_plan_status",
     "normalize_planner_draft",
     "normalize_planner_payload",
+    "record_build_planner_adjust_click",
     "run_build_planner_workflow",
 ]
 
@@ -35,6 +36,7 @@ _ATTR_TO_MODULE = {
     "mark_confirmed_build_plan_status": "app.workflows.digest.planner.lib.store",
     "normalize_planner_draft": "app.workflows.digest.planner.lib.plans",
     "normalize_planner_payload": "app.workflows.digest.planner.lib.plans",
+    "record_build_planner_adjust_click": "app.workflows.digest.planner.graph",
     "run_build_planner_workflow": "app.workflows.digest.planner.graph",
 }
 

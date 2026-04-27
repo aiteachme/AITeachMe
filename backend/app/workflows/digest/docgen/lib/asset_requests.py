@@ -7,10 +7,12 @@ enhancement stage before publishing.
 
 from __future__ import annotations
 
+import asyncio
 import re
 import uuid
 from collections.abc import Awaitable, Callable, Iterable
 from dataclasses import dataclass
+from typing import TypeVar
 
 ASSET_REQUEST_LANGUAGE = "atm-docgen-internal-asset-request-v1"
 ASSET_REQUEST_BEGIN = "ATM_DOCGEN_ASSET_REQUEST_V1_BEGIN::7A9F2E19E30B4B9DA0D2A9B1F6C8E7D3"
@@ -22,6 +24,7 @@ _ASSET_REQUEST_FENCE_RE = re.compile(
     rf"(?P<body>.*?{re.escape(ASSET_REQUEST_END)}\s*)```",
     re.IGNORECASE | re.DOTALL,
 )
+_RenderMetadata = TypeVar("_RenderMetadata")
 
 
 @dataclass(frozen=True)
@@ -157,24 +160,54 @@ async def replace_asset_requests(
     kind: str,
     renderer: Callable[[str], Awaitable[str]],
 ) -> str:
+    async def render_request(request: AssetRequest) -> tuple[str, None]:
+        return await renderer(request.description), None
+
+    processed, _metadata = await replace_asset_requests_with_results(
+        markdown,
+        kind=kind,
+        renderer=render_request,
+    )
+    return processed
+
+
+async def replace_asset_requests_with_results(
+    markdown: str,
+    *,
+    kind: str,
+    renderer: Callable[[AssetRequest], Awaitable[tuple[str, _RenderMetadata]]],
+) -> tuple[str, list[_RenderMetadata]]:
     normalized_kind = normalize_asset_kind(kind)
     if not normalized_kind:
-        return str(markdown or "")
-    output: list[str] = []
+        return str(markdown or ""), []
+    parts: list[str | int] = []
+    render_tasks: list[Awaitable[tuple[str, _RenderMetadata]]] = []
     last_index = 0
     text = str(markdown or "")
     for match in _ASSET_REQUEST_FENCE_RE.finditer(text):
-        output.append(text[last_index : match.start()])
+        parts.append(text[last_index : match.start()])
         parsed = _parse_asset_request_body(match.group("body"), raw_block=match.group(0))
         if parsed is not None and parsed.kind == normalized_kind:
-            output.append(await renderer(parsed.description))
+            parts.append(len(render_tasks))
+            render_tasks.append(renderer(parsed))
         elif parsed is None:
-            output.append("")
+            parts.append("")
         else:
-            output.append(match.group(0))
+            parts.append(match.group(0))
         last_index = match.end()
-    output.append(text[last_index:])
-    return "".join(output)
+    parts.append(text[last_index:])
+
+    rendered_results = await asyncio.gather(*render_tasks) if render_tasks else []
+    output: list[str] = []
+    metadata: list[_RenderMetadata] = []
+    for part in parts:
+        if isinstance(part, int):
+            rendered_text, rendered_metadata = rendered_results[part]
+            output.append(rendered_text)
+            metadata.append(rendered_metadata)
+            continue
+        output.append(part)
+    return "".join(output), metadata
 
 
 __all__ = [
@@ -186,6 +219,7 @@ __all__ = [
     "iter_asset_requests",
     "normalize_asset_kind",
     "replace_asset_requests",
+    "replace_asset_requests_with_results",
     "sanitize_asset_description",
     "strip_asset_requests",
 ]

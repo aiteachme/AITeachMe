@@ -11,10 +11,16 @@ from typing import Any
 
 import structlog
 from langgraph.graph import END, StateGraph
+from sqlmodel import Session
 
 from app.models.subject import Subject
 from app.schemas.knowledge import BuildPlannerCreateRequest, BuildPlannerMessageRequest, BuildPlannerSessionResponse
-from app.shared.infra.observability.trace import langsmith_trace, sanitize_langsmith_input, sanitize_langsmith_output
+from app.shared.infra.observability.trace import (
+    langsmith_trace,
+    sanitize_langsmith_input,
+    sanitize_langsmith_output,
+    suppress_langsmith_child_runs,
+)
 from app.shared.infra.workflow import workflow_tracer
 from app.shared.infra.workflow.context import WorkflowContext, create_langgraph_dev_context
 from app.shared.infra.workflow.result import WorkflowError, WorkflowResult
@@ -22,6 +28,7 @@ from app.shared.infra.workflow.runtime import run_state_graph
 from app.workflows.digest.common.node_tracing import named_route, node_metadata, traced_digest_node
 from app.workflows.digest.common.runtime_config import get_teaching_runtime_config
 from app.workflows.digest.planner.lib.store import (
+    get_planner_adjust_click_context,
     mark_planner_session_cancelled,
     mark_planner_session_draft,
     mark_planner_session_failed,
@@ -278,8 +285,7 @@ def build_planner_graph(*, context: WorkflowContext) -> StateGraph:
     )
     workflow.add_edge(STEP_UNDERSTAND_GOAL, STEP_COMPOSE_PLAN)
     workflow.add_edge(STEP_UNDERSTAND_GOAL, STEP_GENERATE_TITLE)
-    workflow.add_edge(STEP_COMPOSE_PLAN, STEP_SAVE_PLAN)
-    workflow.add_edge(STEP_GENERATE_TITLE, STEP_SAVE_PLAN)
+    workflow.add_edge([STEP_COMPOSE_PLAN, STEP_GENERATE_TITLE], STEP_SAVE_PLAN)
     workflow.add_edge(STEP_SAVE_PLAN, END)
     return workflow
 
@@ -437,6 +443,7 @@ async def run_build_planner_workflow(
             "planner_operation": normalized_operation,
             "planner_session_id": planner_session_id,
             "digest_mode": digest_mode,
+            "suppress_child_langsmith_runs": True,
         },
     )
     initial_state = create_planner_initial_state(
@@ -483,12 +490,13 @@ async def run_build_planner_workflow(
         },
         extra_tags=[f"planner_operation:{normalized_operation}"],
     ) as trace_run:
-        result = await run_state_graph(
-            workflow_name="digest.planner",
-            graph_builder=lambda: build_planner_graph(context=context),
-            initial_state=initial_state,
-            context=context,
-        )
+        with suppress_langsmith_child_runs():
+            result = await run_state_graph(
+                workflow_name="digest.planner",
+                graph_builder=lambda: build_planner_graph(context=context),
+                initial_state=initial_state,
+                context=context,
+            )
         _end_planner_root_trace(trace_run, result)
     logger.info(
         "planner_workflow_finished",
@@ -616,6 +624,81 @@ async def append_build_planner_message(
     return response
 
 
+def record_build_planner_adjust_click(
+    session: Session,
+    *,
+    subject: Subject,
+    user_id: str,
+    session_id: str,
+) -> dict[str, object]:
+    """Record that the user opened the plan-adjust UI without mutating the plan."""
+
+    context = get_planner_adjust_click_context(
+        session,
+        subject=subject,
+        user_id=user_id,
+        session_id=session_id,
+    )
+    run_name = planner_trace_run_name("adjust_click")
+    trace_inputs = sanitize_langsmith_input(
+        {
+            "event": "click_adjust_plan",
+            "subject": subject.slug,
+            "user_id": user_id,
+            "planner_session_id": session_id,
+            "status": context.get("status"),
+            "digest_mode": context.get("digest_mode"),
+            "turn_count": context.get("turn_count"),
+            "has_latest_plan": context.get("has_latest_plan"),
+            "latest_plan_chapter_count": context.get("latest_plan_chapter_count"),
+        },
+        field_name="planner_adjust_click_inputs",
+    )
+    with langsmith_trace(
+        name=run_name,
+        run_type="chain",
+        inputs=trace_inputs,
+        subject=subject.slug,
+        build_session_id=session_id,
+        workflow="digest.planner",
+        lane="planner",
+        extra_metadata={
+            "planner_operation": "adjust_click",
+            "planner_session_id": session_id,
+            "digest_mode": context.get("digest_mode"),
+            "ui_event": "click_adjust_plan",
+        },
+        extra_tags=["planner_operation:adjust_click", "ui_event:click_adjust_plan"],
+    ) as trace_run:
+        if trace_run is not None:
+            trace_run.end(
+                outputs=sanitize_langsmith_output(
+                    {
+                        "acknowledged": True,
+                        "planner_session_id": session_id,
+                        "status": context.get("status"),
+                        "has_latest_plan": context.get("has_latest_plan"),
+                    },
+                    field_name="planner_adjust_click_outputs",
+                )
+            )
+    logger.info(
+        "planner_adjust_click_recorded",
+        subject=subject.slug,
+        user_id=user_id,
+        planner_session_id=session_id,
+        has_latest_plan=context.get("has_latest_plan"),
+    )
+    return {
+        "acknowledged": True,
+        "planner_session_id": session_id,
+        "subject": subject.slug,
+        "status": str(context.get("status") or ""),
+        "has_latest_plan": bool(context.get("has_latest_plan")),
+        "latest_plan_chapter_count": int(context.get("latest_plan_chapter_count") or 0),
+    }
+
+
 def _log_planner_runtime(*, subject: str, response: BuildPlannerSessionResponse) -> None:
     runtime_stats = response.runtime_stats
     if runtime_stats is None:
@@ -656,6 +739,7 @@ __all__ = [
     "create_build_planner_session",
     "create_planner_initial_state",
     "get_langgraph_dev_planner_graph",
+    "record_build_planner_adjust_click",
     "route_after_step",
     "run_build_planner_workflow",
 ]

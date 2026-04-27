@@ -1,5 +1,11 @@
 from __future__ import annotations
 
+import asyncio
+import time
+from types import SimpleNamespace
+
+import pytest
+
 from app.shared.infra.settings.support import get_retriever_profiles
 from app.shared.infra.execution import TracedExecutionContext
 from app.shared.infra.search.types import SearchResult
@@ -62,3 +68,62 @@ def test_docgen_research_filters_oi_wiki_outside_oi_profile() -> None:
 
     allowed = runtime._filter_search_results(results, allow_oi_wiki_sources=True)
     assert [item.url for item in allowed] == [item.url for item in results]
+
+
+@pytest.mark.anyio
+async def test_docgen_research_round_runs_round_queries_concurrently() -> None:
+    tracker = {"active": 0, "max_active": 0}
+
+    class FakeRetriever:
+        name = "local_rag"
+
+        async def traced_search(self, query: str, *, max_results: int) -> list[SearchResult]:
+            del max_results
+            tracker["active"] += 1
+            tracker["max_active"] = max(tracker["max_active"], tracker["active"])
+            try:
+                await asyncio.sleep(0.01)
+                return [
+                    SearchResult(
+                        url=f"local://section/{query}",
+                        title=query,
+                        snippet=f"{query} 本地材料",
+                        source=self.name,
+                    )
+                ]
+            finally:
+                tracker["active"] -= 1
+
+    runtime = DocGenChapterContextRuntime(TracedExecutionContext(subject="math"))
+    executed_queries: list[str] = []
+    fallback_queries: list[str] = []
+    retriever_stats: dict[str, dict] = {}
+    all_results: list[SearchResult] = []
+
+    result = await runtime._run_research_round(
+        round_index=1,
+        round_queries=["函数", "导数", "积分"],
+        search_domain="zh",
+        query_limit=3,
+        settings=SimpleNamespace(local_rag=SimpleNamespace(min_results=2)),
+        local_retriever=FakeRetriever(),
+        other_retrievers=[],
+        local_hits_total=0,
+        web_hits_total=0,
+        fallback_queries_total=fallback_queries,
+        executed_queries=executed_queries,
+        retriever_stats=retriever_stats,
+        all_results=all_results,
+        retrieval_started_at=time.monotonic(),
+        retrieval_budget_s=5.0,
+        provider_budget_s=2.0,
+        allow_oi_wiki_sources=False,
+    )
+
+    assert tracker["max_active"] > 1
+    assert executed_queries == ["函数", "导数", "积分"]
+    assert fallback_queries == ["函数", "导数", "积分"]
+    assert result["round_local_hits"] == 3
+    assert result["round_web_hits"] == 0
+    assert len(all_results) == 3
+    assert retriever_stats["local_rag"]["query_count"] == 3

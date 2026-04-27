@@ -3,15 +3,18 @@
 from __future__ import annotations
 
 import asyncio
+from contextlib import nullcontext
 from time import perf_counter
 from typing import Any
 
 import structlog
+from langsmith import tracing_context
 
 from app.shared.infra.observability.trace import (
     build_langsmith_metadata,
     build_langsmith_tags,
     get_langsmith_project_name,
+    langsmith_child_runs_suppressed,
     langsmith_tracing_enabled,
     llm_trace_scope,
 )
@@ -70,6 +73,14 @@ def _apply_graph_runtime_limits(config: dict[str, Any], metadata: dict[str, Any]
         config["max_concurrency"] = max_concurrency
 
 
+def _graph_tracing_context():
+    """Disable LangGraph auto child runs when a workflow owns the root trace."""
+
+    if langsmith_child_runs_suppressed():
+        return tracing_context(enabled=False)
+    return nullcontext()
+
+
 async def cancel_tasks_and_drain(tasks: list[asyncio.Task[Any]]) -> None:
     """Cancel spawned tasks and await their termination."""
 
@@ -101,15 +112,16 @@ async def invoke_state_graph(
         extra_metadata=extra_metadata,
     )
     _apply_graph_runtime_limits(config, extra_metadata or {})
-    with llm_trace_scope(
-        subject=subject,
-        build_session_id=build_session_id,
-        workflow=workflow_name,
-        lane=lane,
-    ):
-        graph = graph_builder()
-        compiled = graph.compile()
-        return await compiled.ainvoke(initial_state, config=config)
+    with _graph_tracing_context():
+        with llm_trace_scope(
+            subject=subject,
+            build_session_id=build_session_id,
+            workflow=workflow_name,
+            lane=lane,
+        ):
+            graph = graph_builder()
+            compiled = graph.compile()
+            return await compiled.ainvoke(initial_state, config=config)
 
 
 async def run_state_graph(
@@ -138,15 +150,16 @@ async def run_state_graph(
     _apply_graph_runtime_limits(config, dict(context.metadata))
 
     try:
-        with llm_trace_scope(
-            subject=context.subject,
-            build_session_id=build_session_id,
-            workflow=workflow_name,
-            lane=lane,
-        ):
-            graph = graph_builder()
-            compiled = graph.compile()
-            final_state = await compiled.ainvoke(initial_state, config=config)
+        with _graph_tracing_context():
+            with llm_trace_scope(
+                subject=context.subject,
+                build_session_id=build_session_id,
+                workflow=workflow_name,
+                lane=lane,
+            ):
+                graph = graph_builder()
+                compiled = graph.compile()
+                final_state = await compiled.ainvoke(initial_state, config=config)
 
         elapsed_ms = int((perf_counter() - started_at) * 1000)
         workflow_logger.info("workflow_completed", workflow_name=workflow_name, elapsed_ms=elapsed_ms)

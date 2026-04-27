@@ -560,6 +560,13 @@ async function confirmPlannerSession(subject: string, sessionId: string) {
   return response.data;
 }
 
+async function recordPlannerAdjustClick(subject: string, sessionId: string) {
+  await apiClient<ApiResponse<Record<string, unknown>>>({
+    method: "POST",
+    url: `/api/v1/subjects/${subject}/knowledge/build/plans/${sessionId}/adjust-click`,
+  });
+}
+
 async function cancelKnowledgeBuild(subject: string): Promise<DocGenBuildCancelData> {
   const response = await apiClient<ApiResponse<DocGenBuildCancelData>>({
     method: "POST",
@@ -1203,6 +1210,15 @@ export function BuildPlanPage() {
       plannerSessionId,
       hasCurrentPlan: Boolean(currentPlan),
     });
+    if (subjectId && plannerSessionId && currentPlan) {
+      void recordPlannerAdjustClick(subjectId, plannerSessionId).catch((error) => {
+        logPlannerDebug("record_adjust_click_failed", {
+          subjectId,
+          plannerSessionId,
+          error: getApiErrorMessage(error),
+        });
+      });
+    }
     setIsRevisingPlan(true);
     setInputValue((prev) => (prev.trim() ? prev : "请帮我调整方案："));
     focusComposer();
