@@ -194,9 +194,9 @@ LLM_PROVIDER_MODEL_DEFAULTS: dict[str, dict[str, Any]] = {
         embedding=None,
     ),
     "qwen": _provider_model_defaults(
-        reason="qwen-max",
-        primary="qwen-flash",
-        light="qwen-flash",
+        reason="Qwen3.6-Max-Preview",
+        primary="Qwen3.6-Plus",
+        light="Qwen3.6-Flash",
         embedding="text-embedding-v4",
     ),
     "deepseek": _provider_model_defaults(
