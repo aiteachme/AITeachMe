@@ -5,7 +5,11 @@ from __future__ import annotations
 import re
 
 from app.shared.infra.execution import BaseTracedExecution, TracedExecutionContext, TracedExecutionResult
-from app.workflows.digest.docgen.lib.asset_requests import replace_asset_requests, strip_asset_requests
+from app.workflows.digest.docgen.lib.asset_requests import (
+    AssetRequest,
+    replace_asset_requests_with_results,
+    strip_asset_requests,
+)
 from app.workflows.digest.docgen.lib.model_policy import DocGenModelStep, docgen_completion_kwargs_with_metadata
 from app.workflows.digest.docgen.prompts.generation import build_docgen_mermaid_prompt
 
@@ -164,10 +168,6 @@ def _build_simple_mindmap(topic: str, source_text: str) -> str:
     return "\n".join(lines)
 
 
-async def _replace_mermaid_placeholders(markdown: str, renderer) -> str:
-    return await replace_asset_requests(markdown, kind="mermaid", renderer=renderer)
-
-
 def _sanitize_mindmap_body(body: str, *, topic: str) -> str:
     normalized = _extract_mermaid_body(body)
     if not normalized.lower().startswith("mindmap"):
@@ -270,14 +270,12 @@ class _MermaidPlaceholderRuntime(BaseTracedExecution):
         return processed
 
     async def process_placeholders_with_reports(self, markdown: str) -> tuple[str, list[dict[str, object]]]:
-        reports: list[dict[str, object]] = []
-
-        async def render(placeholder: str) -> str:
-            result = await self.run(topic=placeholder, context=markdown)
+        async def render(request: AssetRequest) -> tuple[str, dict[str, object]]:
+            result = await self.run(topic=request.description, context=markdown)
             metadata = dict(result.metadata or {})
-            reports.append(
+            report = (
                 {
-                    "source_placeholder": placeholder,
+                    "source_placeholder": request.description,
                     "fallback_used": bool(metadata.get("fallback_used", False)),
                     "from_raw_placeholder": bool(metadata.get("from_raw_placeholder", False)),
                     "sanitized": bool(metadata.get("sanitized", False)),
@@ -285,9 +283,9 @@ class _MermaidPlaceholderRuntime(BaseTracedExecution):
                     "body_preview": str(metadata.get("body_preview") or "")[:240],
                 }
             )
-            return result.content
+            return result.content, report
 
-        processed = await _replace_mermaid_placeholders(markdown, render)
+        processed, reports = await replace_asset_requests_with_results(markdown, kind="mermaid", renderer=render)
         return processed, reports
 
     def _fallback_mermaid(self, topic: str, context: str) -> str:

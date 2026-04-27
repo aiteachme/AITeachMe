@@ -394,11 +394,10 @@ class DocGenChapterContextRuntime(BaseTracedExecution):
         round_fallback_queries: list[str] = []
         round_external_queries: list[str] = []
 
-        for query in round_queries:
-            executed_queries.append(query)
-            local_results = self._filter_search_results(
+        async def _search_and_filter(retriever, *, query: str) -> list[SearchResult]:
+            return self._filter_search_results(
                 await self._search_with_budget(
-                    local_retriever,
+                    retriever,
                     query=query,
                     max_results=query_limit,
                     provider_budget_s=provider_budget_s,
@@ -407,6 +406,19 @@ class DocGenChapterContextRuntime(BaseTracedExecution):
                 ),
                 allow_oi_wiki_sources=allow_oi_wiki_sources,
             )
+
+        local_searches = await asyncio.gather(
+            *[
+                _search_and_filter(local_retriever, query=query)
+                for query in round_queries
+            ]
+        )
+
+        results_by_query: dict[str, list[SearchResult]] = {}
+        external_jobs: list[tuple[str, Any, str]] = []
+
+        for query, local_results in zip(round_queries, local_searches, strict=False):
+            executed_queries.append(query)
             self._record_retriever_call(
                 retriever_stats,
                 retriever_name=local_retriever.name,
@@ -415,47 +427,48 @@ class DocGenChapterContextRuntime(BaseTracedExecution):
             )
             local_hits_total += len(local_results)
             round_local_hits += len(local_results)
-            combined_results = list(local_results)
+            results_by_query[query] = list(local_results)
 
             should_query_external = bool(other_retrievers) and len(local_results) < settings.local_rag.min_results
-            if should_query_external:
-                round_external_queries.append(query)
-                if len(local_results) < settings.local_rag.min_results:
-                    fallback_queries_total.append(query)
-                    round_fallback_queries.append(query)
-                expanded_queries = enrich_queries_for_education([query], domain=search_domain)
-                for retriever in other_retrievers:
-                    for expanded_query in expanded_queries:
-                        provider_results = self._filter_search_results(
-                            await self._search_with_budget(
-                                retriever,
-                                query=expanded_query,
-                                max_results=query_limit,
-                                provider_budget_s=provider_budget_s,
-                                retrieval_started_at=retrieval_started_at,
-                                retrieval_budget_s=retrieval_budget_s,
-                            ),
-                            allow_oi_wiki_sources=allow_oi_wiki_sources,
-                        )
-                        self._record_retriever_call(
-                            retriever_stats,
-                            retriever_name=retriever.name,
-                            query=expanded_query,
-                            results=provider_results,
-                        )
-                        if provider_results:
-                            web_hits_total += len(provider_results)
-                            round_web_hits += len(provider_results)
-                            combined_results.extend(provider_results)
-                        if len(self._dedupe_results(combined_results)) >= query_limit:
-                            break
-                    if len(self._dedupe_results(combined_results)) >= query_limit:
-                        break
-
-            if len(local_results) < settings.local_rag.min_results and not should_query_external:
+            if len(local_results) < settings.local_rag.min_results:
                 fallback_queries_total.append(query)
                 round_fallback_queries.append(query)
+            if should_query_external:
+                round_external_queries.append(query)
+                expanded_queries = enrich_queries_for_education([query], domain=search_domain)
+                query_external_jobs: list[tuple[str, Any, str]] = []
+                for retriever in other_retrievers:
+                    for expanded_query in expanded_queries:
+                        query_external_jobs.append((query, retriever, expanded_query))
+                external_jobs.extend(
+                    query_external_jobs[: max(1, min(query_limit, int(DEFAULT_DOCGEN_IO_PARALLELISM)))]
+                )
 
+        if external_jobs:
+            search_semaphore = asyncio.Semaphore(max(1, int(DEFAULT_DOCGEN_IO_PARALLELISM)))
+
+            async def _run_external_job(job: tuple[str, Any, str]) -> tuple[str, Any, str, list[SearchResult]]:
+                base_query, retriever, expanded_query = job
+                async with search_semaphore:
+                    provider_results = await _search_and_filter(retriever, query=expanded_query)
+                return base_query, retriever, expanded_query, provider_results
+
+            external_results = await asyncio.gather(*[_run_external_job(job) for job in external_jobs])
+            for base_query, retriever, expanded_query, provider_results in external_results:
+                self._record_retriever_call(
+                    retriever_stats,
+                    retriever_name=retriever.name,
+                    query=expanded_query,
+                    results=provider_results,
+                )
+                if not provider_results:
+                    continue
+                web_hits_total += len(provider_results)
+                round_web_hits += len(provider_results)
+                results_by_query.setdefault(base_query, []).extend(provider_results)
+
+        for query in round_queries:
+            combined_results = results_by_query.get(query, [])
             all_results.extend(self._dedupe_results(combined_results, max_results=query_limit))
 
         return {
