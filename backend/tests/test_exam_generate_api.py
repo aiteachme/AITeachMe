@@ -1,8 +1,11 @@
 import json
 
+from sqlmodel import SQLModel, Session, create_engine
+
 from app.api.exams import (
     _build_paper_preview,
     _effective_exam_paper_status,
+    _exam_knowledge_graph_edges,
     _generated_question_item_responses,
     _paper_generation_event_payload,
     _paper_preview_for_response,
@@ -10,6 +13,7 @@ from app.api.exams import (
     _require_generated_questions_by_order,
 )
 from app.models import ExamPaper, ExamPaperItem
+from app.models.knowledge_relation import KnowledgeEdge
 from app.models.knowledge_unit import KnowledgeUnit
 from app.shared.infra.exceptions import AITeachMeError
 from app.shared.infra.workflow.result import err_result, ok_result
@@ -93,6 +97,77 @@ def test_question_type_for_order_only_returns_single_choice_and_fill_blank():
     }
 
     assert generated == {"single_choice", "fill_blank"}
+
+
+def test_exam_knowledge_graph_edges_include_relation_payload_and_filter_by_units():
+    engine = create_engine("sqlite:///:memory:")
+    SQLModel.metadata.create_all(engine)
+    with Session(engine) as session:
+        session.add_all(
+            [
+                KnowledgeUnit(
+                    id=101,
+                    subject="math",
+                    knowledge_unit_type="concept",
+                    canonical_name="Limit",
+                    normalized_name="limit",
+                    status="active",
+                ),
+                KnowledgeUnit(
+                    id=102,
+                    subject="math",
+                    knowledge_unit_type="concept",
+                    canonical_name="Derivative",
+                    normalized_name="derivative",
+                    status="active",
+                ),
+                KnowledgeUnit(
+                    id=103,
+                    subject="math",
+                    knowledge_unit_type="concept",
+                    canonical_name="Integral",
+                    normalized_name="integral",
+                    status="active",
+                ),
+            ]
+        )
+        session.add_all(
+            [
+                KnowledgeEdge(
+                    subject="math",
+                    source_node_id=101,
+                    target_node_id=102,
+                    edge_type="prerequisite",
+                    description="markdown_anchor_sync: Limit supports derivative definition.",
+                    weight=0.8,
+                    confidence=0.97,
+                    status="active",
+                ),
+                KnowledgeEdge(
+                    subject="math",
+                    source_node_id=102,
+                    target_node_id=103,
+                    edge_type="application",
+                    description="Derivative leads to integral intuition.",
+                    status="active",
+                ),
+            ]
+        )
+        session.commit()
+
+        edges = _exam_knowledge_graph_edges(session, subject="math", unit_ids=[101, 102])
+
+    assert edges == [
+        {
+            "edge_id": 1,
+            "source_id": 101,
+            "target_id": 102,
+            "edge_type": "prerequisite",
+            "description": "Limit supports derivative definition.",
+            "weight": 0.8,
+            "confidence": 0.97,
+        }
+    ]
 
 
 def _preview_item(

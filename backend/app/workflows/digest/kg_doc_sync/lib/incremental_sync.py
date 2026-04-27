@@ -307,6 +307,8 @@ def persist_knowledge_graph_items(
         chapter_split_count=int(diagnostics_totals.get("chapter_split_count", 0) or 0),
         chapter_task_count=int(diagnostics_totals.get("chapter_task_count", 0) or 0),
         subsection_task_count=int(diagnostics_totals.get("subsection_task_count", 0) or 0),
+        successful_section_count=int(diagnostics_totals.get("successful_section_count", 0) or 0),
+        failed_section_count=int(diagnostics_totals.get("failed_section_count", 0) or 0),
         llm_section_count=int(diagnostics_totals.get("llm_section_count", 0) or 0),
         markdown_short_circuit_section_count=int(diagnostics_totals.get("markdown_short_circuit_section_count", 0) or 0),
         llm_error_count=int(diagnostics_totals.get("llm_error_count", 0) or 0),
@@ -435,6 +437,17 @@ def _apply_extracted_graph_items(
             ):
                 report.source_ref_count += 1
 
+    if report.failed_section_count > 0:
+        logger.warning(
+            "knowledge_docs_sync_deprecation_skipped_after_partial_extraction",
+            subject=subject,
+            sync_run_id=sync_run.id,
+            failed_section_count=report.failed_section_count,
+            synced_unit_count=len(report.synced_unit_keys),
+            seen_edge_count=len(seen_edge_keys),
+        )
+        return
+
     report.deprecated_unit_ids.extend(
         _deprecate_removed_anchor_units(
             session,
@@ -527,6 +540,8 @@ def _empty_extraction_diagnostics() -> dict[str, int]:
         "chapter_split_count": 0,
         "chapter_task_count": 0,
         "subsection_task_count": 0,
+        "successful_section_count": 0,
+        "failed_section_count": 0,
         "llm_section_count": 0,
         "markdown_short_circuit_section_count": 0,
         "llm_error_count": 0,
@@ -669,14 +684,26 @@ def _extract_markdown_graph_items(
 
         async def _extract_with_queue(task: _ExtractionTask) -> SectionExtractionPayload:
             async with semaphore:
-                return await _extract_chapter_with_retries(
-                    task.task_index,
-                    task.chunk,
-                    subject_context=subject_context or "",
-                    chapter_context=task.chapter_context,
-                    source_chapter_index=task.source_chapter_index,
-                    source_kind=task.source_kind,
-                )
+                try:
+                    return await _extract_chapter_with_retries(
+                        task.task_index,
+                        task.chunk,
+                        subject_context=subject_context or "",
+                        chapter_context=task.chapter_context,
+                        source_chapter_index=task.source_chapter_index,
+                        source_kind=task.source_kind,
+                    )
+                except Exception as exc:
+                    logger.warning(
+                        "knowledge_docs_sync_section_extraction_failed",
+                        task_index=task.task_index,
+                        chunk_title=task.chunk.title,
+                        header_path=task.chunk.header_path,
+                        source_chapter_index=task.source_chapter_index,
+                        source_kind=task.source_kind,
+                        error_type=type(exc).__name__,
+                    )
+                    return _empty_failed_section_payload(task, exc)
 
         return await asyncio.gather(*[_extract_with_queue(task) for task in extraction_tasks])
 
@@ -804,6 +831,46 @@ def _extract_markdown_graph_items(
             )
         )
     return units, edges, diagnostics_totals
+
+
+def _empty_failed_section_payload(
+    task: _ExtractionTask,
+    exc: Exception,
+) -> SectionExtractionPayload:
+    del exc
+    chapter_context = task.chapter_context
+    resolved_chapter_index = chapter_context.chapter_index or task.source_chapter_index or task.task_index
+    return SectionExtractionPayload(
+        units=[],
+        pending_edges=[],
+        candidate_id_to_anchor={},
+        anchors_by_name={},
+        anchors_by_normalized_name={},
+        node_contexts_by_anchor={},
+        section_context=SectionExtractionContext(
+            section_index=task.task_index,
+            title=task.chunk.title,
+            header_path=task.chunk.header_path,
+            body_markdown=(task.chunk.body_markdown or "")[:8000],
+            knowledge_document_id=chapter_context.knowledge_document_id,
+            source_file_ids=list(chapter_context.source_file_ids),
+        ),
+        diagnostics={
+            "section_count": 0,
+            "successful_section_count": 0,
+            "failed_section_count": 1,
+            "llm_section_count": 1,
+            "markdown_short_circuit_section_count": 0,
+            "llm_error_count": 1,
+            "empty_llm_result_count": 0,
+            "empty_repair_attempt_count": 0,
+            "empty_repair_success_count": 0,
+            "total_extracted_node_count": 0,
+            "total_extracted_edge_count": 0,
+            "failed_chapter_index": resolved_chapter_index,
+            "failed_task_index": task.task_index,
+        },
+    )
 
 
 def _make_payload_anchors_unique(
@@ -1350,6 +1417,8 @@ async def _extract_chapter_graph_items(
         ),
         diagnostics={
             "section_count": 0,
+            "successful_section_count": 1,
+            "failed_section_count": 0,
             "llm_section_count": 1 if diagnostics.llm_attempted else 0,
             "markdown_short_circuit_section_count": 1 if diagnostics.markdown_anchor_short_circuit_used else 0,
             "llm_error_count": diagnostics.llm_error_count,

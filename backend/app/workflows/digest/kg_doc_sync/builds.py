@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime
+
+import structlog
 
 from app.shared.infra.llm_support.common import (
     LLMRuntimeSnapshot,
@@ -10,6 +13,7 @@ from app.shared.infra.llm_support.common import (
 )
 from app.shared.infra.knowledge.build_store import (
     read_knowledge_manifest,
+    sanitize_knowledge_build_error_message,
     update_knowledge_build_lane_status,
 )
 from app.workflows.digest.kg_doc_sync.inputs import (
@@ -18,6 +22,8 @@ from app.workflows.digest.kg_doc_sync.inputs import (
     load_knowledge_doc_sync_input,
     resolve_graph_input_paths,
 )
+
+logger = structlog.get_logger(__name__)
 
 
 def _write_graph_status(subject: str, *, requested_at: datetime, status: str, stage: str, **extra: object) -> None:
@@ -55,6 +61,8 @@ def _base_doc_sync_metrics(
         "doc_sync_chapter_split_count": 0,
         "doc_sync_chapter_task_count": 0,
         "doc_sync_subsection_task_count": 0,
+        "doc_sync_successful_section_count": 0,
+        "doc_sync_failed_section_count": 0,
         "doc_sync_llm_section_count": 0,
         "doc_sync_llm_error_count": 0,
         "doc_sync_empty_llm_result_count": 0,
@@ -92,6 +100,8 @@ def _completed_doc_sync_metrics(
             "doc_sync_chapter_split_count": sync_report.chapter_split_count,
             "doc_sync_chapter_task_count": sync_report.chapter_task_count,
             "doc_sync_subsection_task_count": sync_report.subsection_task_count,
+            "doc_sync_successful_section_count": sync_report.successful_section_count,
+            "doc_sync_failed_section_count": sync_report.failed_section_count,
             "doc_sync_llm_section_count": sync_report.llm_section_count,
             "doc_sync_llm_error_count": sync_report.llm_error_count,
             "doc_sync_empty_llm_result_count": sync_report.empty_llm_result_count,
@@ -159,6 +169,8 @@ async def run_graph_docs_sync_after_doc_build(
             "doc_sync_chapter_split_count": 0,
             "doc_sync_chapter_task_count": 0,
             "doc_sync_subsection_task_count": 0,
+            "doc_sync_successful_section_count": 0,
+            "doc_sync_failed_section_count": 0,
             "doc_sync_llm_error_count": 0,
             "doc_sync_empty_llm_result_count": 0,
             "doc_sync_empty_repair_attempt_count": 0,
@@ -191,6 +203,74 @@ async def run_graph_docs_sync_after_doc_build(
     )
 
 
+async def run_graph_docs_sync_manual_build(
+    *,
+    subject: str,
+    requested_at: datetime,
+    build_group_id: str,
+    build_session_id: str,
+    file_ids: list[int],
+    prompt: str | None,
+    llm_snapshot: LLMRuntimeSnapshot | None = None,
+) -> None:
+    """Run a user-triggered graph rebuild from the latest persisted knowledge docs."""
+
+    doc_sync_metrics = _base_doc_sync_metrics(
+        knowledge_doc_source="not_synced",
+        chapter_count=0,
+        doc_version_no=_current_doc_version_no(subject),
+    )
+    try:
+        doc_sync_metrics = await run_graph_docs_sync_after_doc_build(
+            subject=subject,
+            requested_at=requested_at,
+            build_group_id=build_group_id,
+            build_session_id=build_session_id,
+            file_ids=file_ids,
+            prompt=prompt,
+            llm_snapshot=llm_snapshot,
+        )
+        _write_graph_status(
+            subject,
+            requested_at=requested_at,
+            build_group_id=build_group_id,
+            status="completed",
+            stage="completed",
+            progress_pct=100,
+            processed_chunks=0,
+            current_stage_description="知识图谱已同步完成。",
+            metrics={"processed_chunks": 0, **doc_sync_metrics},
+        )
+    except asyncio.CancelledError:
+        _write_graph_status(
+            subject,
+            requested_at=requested_at,
+            build_group_id=build_group_id,
+            status="cancelled",
+            stage="cancelled",
+            error_message="build_cancelled",
+            processed_chunks=0,
+            current_stage_description="图谱构建已停止。",
+            metrics={"processed_chunks": 0, **doc_sync_metrics},
+        )
+        raise
+    except Exception as exc:
+        graph_error_message = sanitize_knowledge_build_error_message(str(exc), build_kind="graph")
+        _write_graph_status(
+            subject,
+            requested_at=requested_at,
+            build_group_id=build_group_id,
+            status="failed",
+            stage="failed",
+            error_message=str(exc) or "build_crashed",
+            processed_chunks=0,
+            current_stage_description=graph_error_message,
+            metrics={"processed_chunks": 0, **doc_sync_metrics},
+        )
+        logger.warning("knowledge_graph_manual_build_failed", subject=subject, error=str(exc))
+
+
 __all__ = [
     "run_graph_docs_sync_after_doc_build",
+    "run_graph_docs_sync_manual_build",
 ]

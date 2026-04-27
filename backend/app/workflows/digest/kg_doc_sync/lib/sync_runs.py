@@ -58,6 +58,8 @@ def sync_run_metrics(report: KnowledgeSyncReport) -> dict[str, int]:
         "chapter_split_count": report.chapter_split_count,
         "chapter_task_count": report.chapter_task_count,
         "subsection_task_count": report.subsection_task_count,
+        "successful_section_count": report.successful_section_count,
+        "failed_section_count": report.failed_section_count,
         "llm_section_count": report.llm_section_count,
         "llm_error_count": report.llm_error_count,
         "empty_llm_result_count": report.empty_llm_result_count,

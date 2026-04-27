@@ -26,6 +26,8 @@ class KnowledgeSyncReport:
     chapter_split_count: int = 0
     chapter_task_count: int = 0
     subsection_task_count: int = 0
+    successful_section_count: int = 0
+    failed_section_count: int = 0
     llm_section_count: int = 0
     markdown_short_circuit_section_count: int = 0
     llm_error_count: int = 0

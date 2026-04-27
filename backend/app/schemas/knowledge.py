@@ -184,6 +184,18 @@ class DocGenBuildCancelData(BaseModel):
     message: str = "已终止当前知识构建。"
 
 
+class KnowledgeGraphBuildData(BaseModel):
+    """Knowledge graph rebuild response data."""
+
+    subject: str = Field(description="Subject slug.")
+    status: str = Field(default="accepted", description="accepted / running")
+    requested_at: datetime = Field(description="Graph build request timestamp.")
+    build_group_id: str | None = Field(default=None, description="Runtime build group id.")
+    build_session_id: str | None = Field(default=None, description="Graph sync session id.")
+    source_file_ids: list[int] = Field(default_factory=list, description="Persisted source raw file ids from the docs manifest.")
+    message: str = Field(default="已开始重建知识图谱。", description="User-facing response message.")
+
+
 class BuildSampleCardResponse(BaseModel):
     """Lightweight preview card shown while digest is building."""
 

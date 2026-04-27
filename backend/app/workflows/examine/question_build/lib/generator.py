@@ -554,10 +554,25 @@ def _edge_graph_payload(edge: Mapping[str, object]) -> dict[str, object] | None:
     target_id = int(edge.get("target_id") or edge.get("target_node_id") or 0)
     if source_id <= 0 or target_id <= 0:
         return None
-    return {
+    payload: dict[str, object] = {
         "source_id": source_id,
         "target_id": target_id,
     }
+    edge_type = str(edge.get("edge_type") or edge.get("relation_type") or "").strip()
+    if edge_type:
+        payload["edge_type"] = edge_type
+    description = " ".join(str(edge.get("description") or "").split()).strip()
+    if description:
+        payload["description"] = description[:240]
+    for key in ("weight", "confidence"):
+        raw_value = edge.get(key)
+        if raw_value is None or raw_value == "":
+            continue
+        try:
+            payload[key] = round(float(raw_value), 3)
+        except (TypeError, ValueError):
+            continue
+    return payload
 
 
 def _normalize_selection(

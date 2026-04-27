@@ -6,6 +6,7 @@ from app.models.knowledge_unit import KnowledgeUnit
 from app.shared.infra.exceptions import LLMTimeoutError
 from app.workflows.examine.question_build.lib import generator
 from app.workflows.examine.question_build.lib.generator import (
+    ExamKnowledgeUnitSelection,
     ExamQuestionBlueprint,
     ExamQuestionBlueprintBatch,
     ExamQuestionDraft,
@@ -13,6 +14,7 @@ from app.workflows.examine.question_build.lib.generator import (
     ExamSingleQuestionResponse,
     generate_exam_questions_for_units,
     plan_exam_question_blueprints,
+    select_exam_knowledge_units,
 )
 
 
@@ -117,6 +119,75 @@ async def test_generate_exam_questions_for_units_returns_validated_llm_questions
     assert "knowledge_unit_ids" in payload["question_spec"]
     assert "knowledge_unit_id" not in payload["question_spec"]
     assert "generation_prompt" not in payload["question_spec"]
+
+
+@pytest.mark.anyio
+async def test_select_exam_knowledge_units_passes_graph_relation_payload(monkeypatch):
+    observed_messages = []
+
+    async def fake_acompletion_with_fallback(*args, **kwargs):
+        assert kwargs["response_model"] is ExamKnowledgeUnitSelection
+        observed_messages.extend(args[0])
+        return ExamKnowledgeUnitSelection(
+            knowledge_unit_ids=[101, 102],
+            scope_include_terms=["Derivative"],
+            scope_strict=False,
+            rationale="Use prerequisite relation from graph.",
+        )
+
+    monkeypatch.setattr(generator, "acompletion_with_fallback", fake_acompletion_with_fallback)
+
+    selection = await select_exam_knowledge_units(
+        subject="subj_math",
+        subject_name="Calculus",
+        subject_description="Differential calculus practice.",
+        subject_user_intent="Prepare for finals.",
+        exam_mode="paper_exam",
+        units=[
+            KnowledgeUnit(
+                id=101,
+                subject="math",
+                knowledge_unit_type="concept",
+                canonical_name="Limit",
+                normalized_name="limit",
+            ),
+            KnowledgeUnit(
+                id=102,
+                subject="math",
+                knowledge_unit_type="concept",
+                canonical_name="Derivative",
+                normalized_name="derivative",
+            ),
+        ],
+        knowledge_graph_edges=[
+            {
+                "source_id": 101,
+                "target_id": 102,
+                "edge_type": "prerequisite",
+                "description": "Limit supports derivative definition.",
+                "weight": 0.8,
+                "confidence": 0.97,
+            }
+        ],
+        question_count=1,
+        candidate_limit=2,
+    )
+
+    assert selection.knowledge_unit_ids == [101, 102]
+    prompt = observed_messages[1]["content"]
+    payload_start = prompt.find('{\n  "subject_profile"')
+    assert payload_start >= 0
+    payload = json.loads(prompt[payload_start:])
+    assert payload["knowledge_graph"]["edges"] == [
+        {
+            "source_id": 101,
+            "target_id": 102,
+            "edge_type": "prerequisite",
+            "description": "Limit supports derivative definition.",
+            "weight": 0.8,
+            "confidence": 0.97,
+        }
+    ]
 
 
 @pytest.mark.anyio
