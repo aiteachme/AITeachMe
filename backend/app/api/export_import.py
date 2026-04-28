@@ -5,7 +5,7 @@ from __future__ import annotations
 import tempfile
 from pathlib import Path
 
-from fastapi import APIRouter, Body, Depends, File, Form, Path, UploadFile
+from fastapi import APIRouter, Body, Depends, File, Form, Path, Response, UploadFile
 from fastapi.responses import FileResponse
 from sqlmodel import Session
 
@@ -138,9 +138,10 @@ async def import_subject_api(
     summary="列出可导入课程",
     responses=build_error_responses([500, 502]),
 )
-async def list_courses_api() -> ApiResponse[list[CoursePackageItem]]:
+async def list_courses_api(response: Response) -> ApiResponse[list[CoursePackageItem]]:
     """列出线上演示课程目录中的课程包。"""
 
+    response.headers["Cache-Control"] = "no-store"
     return ok_response(list_available_courses())
 
 
