@@ -39,6 +39,24 @@ STUCK_MATH_FENCE_PATTERN = re.compile(
 )
 BLOCKQUOTE_PREFIX_PATTERN = re.compile(r"^\s*>\s?")
 MATH_FENCE_PATTERN = re.compile(r"^\s*(?:>\s*)?\$\$\s*$")
+CALLOUT_LINE_PATTERN = re.compile(
+    r"^(?P<indent>\s*)(?P<quote>>\s*)?\[!(?P<kind>NOTE|TIP|IMPORTANT|WARNING|CAUTION)\](?P<rest>.*)$",
+    re.IGNORECASE,
+)
+BARE_CALLOUT_PATTERN = re.compile(
+    r"(?m)^(?!\s*>)\s*\[!(?:NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]",
+    re.IGNORECASE,
+)
+MATH_MARKDOWN_BOUNDARY_PATTERN = re.compile(
+    r"^(?:#{1,6}\s+\S|[-*+]\s+(?:\*\*|`|\[|.{12,})|\d+\.\s+\S|>\s*\S|"
+    r"\[!(?:NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]|\|.+\|.+\||```)",
+    re.IGNORECASE,
+)
+INLINE_MATH_MARKDOWN_PATTERN = re.compile(
+    r"(^|\n)\s*(?:#{1,6}\s+\S|[-*+]\s+(?:\*\*|`|\[|.{12,})|\d+\.\s+\S|>\s*\S|"
+    r"\[!(?:NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]|\|.+\|.+\||```)",
+    re.IGNORECASE,
+)
 _MARKDOWN_PARSER = MarkdownIt("commonmark")
 
 
@@ -240,6 +258,225 @@ def _strip_quote_prefix(line: str) -> str:
     return BLOCKQUOTE_PREFIX_PATTERN.sub("", str(line or ""), count=1).rstrip()
 
 
+def _is_markdown_boundary_inside_math(line: str) -> bool:
+    stripped = _strip_quote_prefix(line).strip()
+    if not stripped:
+        return False
+    return bool(MATH_MARKDOWN_BOUNDARY_PATTERN.match(stripped))
+
+
+def _repair_display_math_boundaries(markdown: str) -> str:
+    """Close display math before obvious Markdown blocks leak into it."""
+
+    lines = str(markdown or "").split("\n")
+    fixed: list[str] = []
+    in_math = False
+    for raw_line in lines:
+        line = raw_line.rstrip()
+        if MATH_FENCE_PATTERN.match(line):
+            fixed.append("$$")
+            in_math = not in_math
+            continue
+        if in_math and _is_markdown_boundary_inside_math(line):
+            if not fixed or fixed[-1] != "$$":
+                fixed.append("$$")
+            in_math = False
+        fixed.append(line)
+    if in_math:
+        fixed.append("$$")
+    return "\n".join(fixed)
+
+
+def _normalize_bare_callouts(markdown: str) -> str:
+    """Convert bare GitHub callout markers to blockquote syntax."""
+
+    lines = str(markdown or "").split("\n")
+    output: list[str] = []
+    in_fence = False
+    index = 0
+    while index < len(lines):
+        line = lines[index].rstrip()
+        stripped = line.strip()
+        if stripped.startswith("```"):
+            in_fence = not in_fence
+            output.append(line)
+            index += 1
+            continue
+        if in_fence:
+            output.append(line)
+            index += 1
+            continue
+
+        match = CALLOUT_LINE_PATTERN.match(line)
+        if match is None or match.group("quote"):
+            output.append(line)
+            index += 1
+            continue
+
+        kind = str(match.group("kind") or "").upper()
+        rest = str(match.group("rest") or "").strip()
+        output.append(f"> [!{kind}]")
+        if rest:
+            output.append(f"> {rest}")
+            index += 1
+            continue
+
+        index += 1
+        while index < len(lines):
+            body_line = lines[index].rstrip()
+            body_stripped = body_line.strip()
+            if not body_stripped:
+                output.append(">")
+                index += 1
+                break
+            if body_stripped.startswith("```") or re.match(r"^#{1,6}\s+\S", body_stripped):
+                break
+            if CALLOUT_LINE_PATTERN.match(body_line):
+                break
+            output.append(f"> {body_line}" if body_line else ">")
+            index += 1
+    return "\n".join(output)
+
+
+def _unescaped_single_dollar_positions(line: str) -> list[int]:
+    positions: list[int] = []
+    index = 0
+    while index < len(line):
+        if line[index] != "$":
+            index += 1
+            continue
+        if index + 1 < len(line) and line[index + 1] == "$":
+            index += 2
+            continue
+        if index > 0 and line[index - 1] == "\\":
+            index += 1
+            continue
+        positions.append(index)
+        index += 1
+    return positions
+
+
+def _inline_math_body_is_unsafe(body: str) -> bool:
+    if "\n" in body:
+        return True
+    if len(body) > 240:
+        return True
+    if INLINE_MATH_MARKDOWN_PATTERN.search(body):
+        return True
+    return any(marker in body for marker in ("```", "`", "**", "[!", "<div", "</", "<table"))
+
+
+def _find_unsafe_inline_math_spans(markdown: str) -> list[str]:
+    issues: list[str] = []
+    lines = str(markdown or "").replace("\r\n", "\n").replace("\r", "\n").split("\n")
+    in_fence = False
+    in_math = False
+    for line in lines:
+        stripped = line.strip()
+        if stripped.startswith("```"):
+            in_fence = not in_fence
+            continue
+        if in_fence:
+            continue
+        if MATH_FENCE_PATTERN.match(line):
+            in_math = not in_math
+            continue
+        if in_math:
+            continue
+        positions = _unescaped_single_dollar_positions(line)
+        if len(positions) % 2 != 0:
+            issues.append("存在未成对的单美元内联公式分隔符。")
+            continue
+        for left, right in zip(positions[0::2], positions[1::2], strict=False):
+            if _inline_math_body_is_unsafe(line[left + 1 : right]):
+                issues.append("内联公式疑似吞入 Markdown 正文。")
+                break
+    return issues
+
+
+def _escape_unpaired_inline_dollars(markdown: str) -> str:
+    """Escape dangling single dollar delimiters outside code/display math."""
+
+    lines = str(markdown or "").split("\n")
+    fixed: list[str] = []
+    in_fence = False
+    in_math = False
+    for raw_line in lines:
+        line = raw_line.rstrip()
+        stripped = line.strip()
+        if stripped.startswith("```"):
+            in_fence = not in_fence
+            fixed.append(line)
+            continue
+        if in_fence:
+            fixed.append(line)
+            continue
+        if MATH_FENCE_PATTERN.match(line):
+            in_math = not in_math
+            fixed.append("$$")
+            continue
+        if in_math:
+            fixed.append(line)
+            continue
+
+        positions = _unescaped_single_dollar_positions(line)
+        if len(positions) % 2 == 0:
+            fixed.append(line)
+            continue
+        dangling = positions[-1]
+        fixed.append(line[:dangling] + r"\$" + line[dangling + 1 :])
+    return "\n".join(fixed)
+
+
+def _escape_unsafe_inline_math_spans(markdown: str) -> str:
+    """Escape paired inline math spans that clearly contain Markdown blocks."""
+
+    lines = str(markdown or "").split("\n")
+    fixed: list[str] = []
+    in_fence = False
+    in_math = False
+    for raw_line in lines:
+        line = raw_line.rstrip()
+        stripped = line.strip()
+        if stripped.startswith("```"):
+            in_fence = not in_fence
+            fixed.append(line)
+            continue
+        if in_fence:
+            fixed.append(line)
+            continue
+        if MATH_FENCE_PATTERN.match(line):
+            in_math = not in_math
+            fixed.append("$$")
+            continue
+        if in_math:
+            fixed.append(line)
+            continue
+
+        positions = _unescaped_single_dollar_positions(line)
+        if len(positions) < 2 or len(positions) % 2 != 0:
+            fixed.append(line)
+            continue
+
+        rebuilt: list[str] = []
+        cursor = 0
+        changed = False
+        for left, right in zip(positions[0::2], positions[1::2], strict=False):
+            body = line[left + 1 : right]
+            rebuilt.append(line[cursor:left])
+            if _inline_math_body_is_unsafe(body):
+                rebuilt.append(r"\$")
+                rebuilt.append(body)
+                rebuilt.append(r"\$")
+                changed = True
+            else:
+                rebuilt.append(line[left : right + 1])
+            cursor = right + 1
+        rebuilt.append(line[cursor:])
+        fixed.append("".join(rebuilt) if changed else line)
+    return "\n".join(fixed)
+
+
 def normalize_markdown_rendering(markdown: str) -> str:
     """修复学生文档里最容易破坏渲染的 Markdown 结构。
 
@@ -249,6 +486,10 @@ def normalize_markdown_rendering(markdown: str) -> str:
     """
 
     text = _split_stuck_math_fences(str(markdown or "").replace("\r\n", "\n").replace("\r", "\n"))
+    text = _repair_display_math_boundaries(text)
+    text = _escape_unpaired_inline_dollars(text)
+    text = _escape_unsafe_inline_math_spans(text)
+    text = _normalize_bare_callouts(text)
     if not text:
         return ""
 
@@ -324,9 +565,25 @@ def find_markdown_rendering_issues(markdown: str) -> list[str]:
         issues.append("display math 分隔符数量不成对。")
     if STUCK_MATH_FENCE_PATTERN.search(text):
         issues.append("display math 分隔符和代码围栏粘连。")
+    if _display_math_contains_markdown(text):
+        issues.append("display math 疑似吞入 Markdown 正文。")
+    if BARE_CALLOUT_PATTERN.search(text):
+        issues.append("GitHub callout 未使用 blockquote 语法。")
+    issues.extend(_find_unsafe_inline_math_spans(text))
     if _raw_mermaid_fence_count(text) != _parsed_mermaid_fence_count(text):
         issues.append("Mermaid 代码围栏未被 Markdown 解析为独立代码块。")
     return list(dict.fromkeys(issues))
+
+
+def _display_math_contains_markdown(markdown: str) -> bool:
+    in_math = False
+    for line in str(markdown or "").split("\n"):
+        if MATH_FENCE_PATTERN.match(line):
+            in_math = not in_math
+            continue
+        if in_math and _is_markdown_boundary_inside_math(line):
+            return True
+    return False
 
 
 def _split_stuck_math_fences(markdown: str) -> str:

@@ -5,7 +5,6 @@ import remarkMath from "remark-math";
 import rehypeHighlight from "rehype-highlight";
 import rehypeKatex from "rehype-katex";
 import { ChevronRight } from "lucide-react";
-import "katex/dist/katex.min.css";
 
 import { cn } from "../../lib/utils";
 import { MermaidBlock } from "./MermaidBlock";
@@ -18,6 +17,22 @@ const MERMAID_LANGUAGE_ALIASES = new Set(["mermaid", "maymaid", "mermaind", "mer
 const BLANK_TOKEN = "{{blank}}";
 const BLANK_NODE_CLASS =
   "mx-1 inline-block h-[0.9em] min-w-16 border-b-2 border-current align-baseline";
+const BARE_LATEX_TEXT_COMMANDS: Record<string, string> = {
+  times: "×",
+  cdot: "·",
+  div: "÷",
+  le: "≤",
+  leq: "≤",
+  ge: "≥",
+  geq: "≥",
+  neq: "≠",
+  approx: "≈",
+  pm: "±",
+  mp: "∓",
+  to: "→",
+  rightarrow: "→",
+  leftarrow: "←",
+};
 
 type MarkdownAstNode = {
   type?: string;
@@ -260,7 +275,112 @@ export function preprocessLaTeX(content: string): string {
   processed = processed.replace(/\\text\{(_+)\}/g, (_match, underscores: string) => {
     return `\\text{${"\\_".repeat(underscores.length)}}`;
   });
-  return processed;
+  return normalizeBareLatexTextCommands(processed);
+}
+
+function replaceBareLatexTextCommands(text: string): string {
+  return text.replace(/\\([A-Za-z]+)\b/g, (match, command: string) => {
+    return BARE_LATEX_TEXT_COMMANDS[command] ?? match;
+  });
+}
+
+function findNextUnescaped(source: string, token: string, fromIndex: number): number {
+  let index = source.indexOf(token, fromIndex);
+  while (index >= 0) {
+    let slashCount = 0;
+    for (let cursor = index - 1; cursor >= 0 && source[cursor] === "\\"; cursor -= 1) {
+      slashCount += 1;
+    }
+    if (slashCount % 2 === 0) {
+      return index;
+    }
+    index = source.indexOf(token, index + token.length);
+  }
+  return -1;
+}
+
+function replaceOutsideInlineMathAndCode(markdown: string): string {
+  const source = String(markdown || "");
+  const output: string[] = [];
+  let index = 0;
+
+  while (index < source.length) {
+    const char = source[index];
+    if (char === "`") {
+      const fence = source.slice(index).match(/^`+/)?.[0] ?? "`";
+      const end = source.indexOf(fence, index + fence.length);
+      if (end >= 0) {
+        output.push(source.slice(index, end + fence.length));
+        index = end + fence.length;
+        continue;
+      }
+    }
+
+    if (source.startsWith("$$", index)) {
+      const end = findNextUnescaped(source, "$$", index + 2);
+      if (end >= 0) {
+        output.push(source.slice(index, end + 2));
+        index = end + 2;
+        continue;
+      }
+    }
+
+    if (char === "$") {
+      const end = findNextUnescaped(source, "$", index + 1);
+      if (end >= 0) {
+        output.push(source.slice(index, end + 1));
+        index = end + 1;
+        continue;
+      }
+    }
+
+    const nextSpecialIndexes = [
+      source.indexOf("`", index + 1),
+      source.indexOf("$", index + 1),
+    ].filter((value) => value >= 0);
+    const next = nextSpecialIndexes.length > 0 ? Math.min(...nextSpecialIndexes) : source.length;
+    output.push(replaceBareLatexTextCommands(source.slice(index, next)));
+    index = next;
+  }
+
+  return output.join("");
+}
+
+function normalizeBareLatexTextCommands(markdown: string): string {
+  const lines = String(markdown || "").replace(/\r\n?/g, "\n").split("\n");
+  const output: string[] = [];
+  let activeFence: string | null = null;
+  let plainChunk: string[] = [];
+
+  const flushPlainChunk = () => {
+    if (plainChunk.length === 0) return;
+    output.push(replaceOutsideInlineMathAndCode(plainChunk.join("\n")));
+    plainChunk = [];
+  };
+
+  for (const line of lines) {
+    const fenceMatch = line.match(/^(```|~~~)/);
+    if (fenceMatch) {
+      flushPlainChunk();
+      if (activeFence === fenceMatch[1]) {
+        activeFence = null;
+      } else if (activeFence === null) {
+        activeFence = fenceMatch[1];
+      }
+      output.push(line);
+      continue;
+    }
+
+    if (activeFence) {
+      output.push(line);
+      continue;
+    }
+
+    plainChunk.push(line);
+  }
+
+  flushPlainChunk();
+  return output.join("\n");
 }
 
 function createBlankNode(): MarkdownAstNode {
@@ -360,6 +480,43 @@ function preprocessCalloutSyntax(content: string): string {
       continue;
     }
 
+    const bareCallout = line.match(new RegExp(`^\\s*\\[!(${CALLOUT_PATTERN})\\]\\s*(.*)$`, "i"));
+    if (bareCallout) {
+      const kind = bareCallout[1];
+      const inlineBody = bareCallout[2]?.trim();
+      if (inlineBody) {
+        pushCanonicalCallout(output, kind, [inlineBody]);
+        continue;
+      }
+
+      const body: string[] = [];
+      let cursor = index + 1;
+      while (cursor < lines.length) {
+        const current = lines[cursor];
+        const next = lines[cursor + 1] ?? "";
+
+        if (!current.trim() && body.length === 0) {
+          cursor += 1;
+          continue;
+        }
+
+        if (!current.trim() && isCalloutBoundary(next)) {
+          break;
+        }
+
+        if (body.length > 0 && isCalloutBoundary(current)) {
+          break;
+        }
+
+        body.push(current);
+        cursor += 1;
+      }
+
+      pushCanonicalCallout(output, kind, body);
+      index = cursor - 1;
+      continue;
+    }
+
     const directiveMatch = line.match(new RegExp(`^:::\\s*(${CALLOUT_PATTERN})\\s*$`, "i"));
     if (directiveMatch) {
       const body: string[] = [];
@@ -454,6 +611,152 @@ function splitStuckMathFences(markdown: string): string {
   return markdown.replace(/^(\s*)\$\$[ \t]*(```[ \t]*[A-Za-z0-9_-]*[ \t]*)$/gm, (_match, prefix: string, fence: string) => {
     return `${prefix}$$\n${prefix}${String(fence).trimEnd()}`;
   });
+}
+
+function isDisplayMathDelimiterLine(line: string): boolean {
+  return /^\s*(?:>\s*)?\$\$\s*$/.test(line);
+}
+
+function isMarkdownBoundaryInsideMath(line: string): boolean {
+  const stripped = line.replace(/^\s*>\s?/, "").trim();
+  if (!stripped) return false;
+  return new RegExp(
+    `^(?:#{1,6}\\s+\\S|[-*+]\\s+(?:\\*\\*|\`|\\[|.{12,})|\\d+\\.\\s+\\S|>\\s*\\S|\\[!(?:${CALLOUT_PATTERN})\\]|\\|.+\\|.+\\||\`\`\`)`,
+    "i",
+  ).test(stripped);
+}
+
+function repairDisplayMathBoundariesForRender(markdown: string): string {
+  const lines = String(markdown || "").replace(/\r\n?/g, "\n").split("\n");
+  const output: string[] = [];
+  let inDisplayMath = false;
+
+  for (const rawLine of lines) {
+    const line = rawLine.trimEnd();
+    if (isDisplayMathDelimiterLine(line)) {
+      output.push("$$");
+      inDisplayMath = !inDisplayMath;
+      continue;
+    }
+
+    if (inDisplayMath && isMarkdownBoundaryInsideMath(line)) {
+      if (output[output.length - 1] !== "$$") {
+        output.push("$$");
+      }
+      inDisplayMath = false;
+    }
+
+    output.push(line);
+  }
+
+  if (inDisplayMath) {
+    output.push("$$");
+  }
+
+  return output.join("\n");
+}
+
+function isEscapedAt(source: string, index: number): boolean {
+  let slashCount = 0;
+  for (let cursor = index - 1; cursor >= 0 && source[cursor] === "\\"; cursor -= 1) {
+    slashCount += 1;
+  }
+  return slashCount % 2 === 1;
+}
+
+function unescapedSingleDollarPositions(line: string): number[] {
+  const positions: number[] = [];
+  for (let index = 0; index < line.length; index += 1) {
+    if (line[index] !== "$") continue;
+    if (line[index + 1] === "$") {
+      index += 1;
+      continue;
+    }
+    if (isEscapedAt(line, index)) continue;
+    positions.push(index);
+  }
+  return positions;
+}
+
+function inlineMathBodyLooksUnsafe(body: string): boolean {
+  if (body.length > 240) return true;
+  if (/[`]|<\/?[a-z][\s>]/i.test(body)) return true;
+  if (body.includes("**") || body.includes("[!") || body.includes("```")) return true;
+  return new RegExp(
+    `(^|\\n)\\s*(?:#{1,6}\\s+\\S|[-*+]\\s+(?:\\*\\*|\`|\\[|.{12,})|\\d+\\.\\s+\\S|>\\s*\\S|\\[!(?:${CALLOUT_PATTERN})\\]|\\|.+\\|.+\\|)`,
+    "i",
+  ).test(body);
+}
+
+function repairInlineMathLineForRender(line: string): string {
+  let working = line;
+  let positions = unescapedSingleDollarPositions(working);
+  if (positions.length % 2 !== 0) {
+    const dangling = positions[positions.length - 1];
+    working = `${working.slice(0, dangling)}\\$${working.slice(dangling + 1)}`;
+    positions = unescapedSingleDollarPositions(working);
+  }
+
+  if (positions.length < 2) return working;
+
+  const output: string[] = [];
+  let cursor = 0;
+  let changed = false;
+  for (let index = 0; index + 1 < positions.length; index += 2) {
+    const left = positions[index];
+    const right = positions[index + 1];
+    const body = working.slice(left + 1, right);
+    output.push(working.slice(cursor, left));
+    if (inlineMathBodyLooksUnsafe(body)) {
+      output.push("\\$", body, "\\$");
+      changed = true;
+    } else {
+      output.push(working.slice(left, right + 1));
+    }
+    cursor = right + 1;
+  }
+  output.push(working.slice(cursor));
+  return changed ? output.join("") : working;
+}
+
+function repairInlineMathForRender(markdown: string): string {
+  const lines = String(markdown || "").replace(/\r\n?/g, "\n").split("\n");
+  const output: string[] = [];
+  let activeFence: string | null = null;
+  let inDisplayMath = false;
+
+  for (const rawLine of lines) {
+    const line = rawLine.trimEnd();
+    const fenceMatch = line.match(/^(```|~~~)/);
+    if (fenceMatch) {
+      if (activeFence === fenceMatch[1]) {
+        activeFence = null;
+      } else if (activeFence === null) {
+        activeFence = fenceMatch[1];
+      }
+      output.push(line);
+      continue;
+    }
+
+    if (activeFence) {
+      output.push(line);
+      continue;
+    }
+
+    if (isDisplayMathDelimiterLine(line)) {
+      inDisplayMath = !inDisplayMath;
+      output.push("$$");
+      continue;
+    }
+
+    output.push(inDisplayMath ? line : repairInlineMathLineForRender(line));
+  }
+
+  return output.join("\n");
+}
+
+function repairMathDelimitersForRender(markdown: string): string {
+  return repairInlineMathForRender(repairDisplayMathBoundariesForRender(markdown));
 }
 
 function repairMalformedMermaidFencesForRender(markdown: string): string {
@@ -561,8 +864,14 @@ function repairMalformedMermaidFencesForRender(markdown: string): string {
   return output.join("\n");
 }
 
+export function preprocessMarkdownForRender(content: string): string {
+  return repairMalformedMermaidFencesForRender(
+    repairMathDelimitersForRender(preprocessLaTeX(preprocessCalloutSyntax(content))),
+  );
+}
+
 function preprocessMarkdownContent(content: string): string {
-  return repairMalformedMermaidFencesForRender(preprocessLaTeX(preprocessCalloutSyntax(content)));
+  return preprocessMarkdownForRender(content);
 }
 
 function textToId(text: string): string {
@@ -1108,7 +1417,7 @@ export function MarkdownViewer({
   return (
     <ReactMarkdown
       remarkPlugins={[remarkGfm, remarkMath, remarkBlankTokens, headingStructurePlugin]}
-      rehypePlugins={[rehypeKatex, rehypeHighlight]}
+      rehypePlugins={[[rehypeKatex, { throwOnError: false, strict: false, errorColor: "#1F2329" }], rehypeHighlight]}
       components={{
         h1: makeHeading(1),
         h2: makeHeading(2),
