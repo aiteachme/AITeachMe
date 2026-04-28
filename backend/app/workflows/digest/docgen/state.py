@@ -17,7 +17,7 @@ class DocGenState(TypedDict, total=False):
 
     subject: str
     user_id: str
-    file_ids: list[int]
+    file_ids: list[str]
     user_prompt: str | None
     requested_at: datetime
     build_session_id: str

@@ -299,8 +299,8 @@ def _dedupe_retrieval_results(results: list[RetrievedContext]) -> list[Retrieved
 
 
 def _retrieval_identity(result: RetrievedContext) -> str:
-    if result.chunk_id and result.document_id:
-        return f"chunk:{result.document_id}:{result.chunk_id}"
+    if result.chunk_id and result.file_id:
+        return f"chunk:{result.file_id}:{result.chunk_id}"
     normalized = " ".join((result.content or "").split())
     if normalized:
         digest = hashlib.sha1(normalized.encode("utf-8")).hexdigest()

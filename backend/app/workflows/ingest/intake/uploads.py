@@ -36,7 +36,7 @@ SUPPORTED_UPLOAD_EXTENSIONS = frozenset({".txt", ".doc", ".docx", ".pdf", ".ppt"
 DEFAULT_PARSE_REQUEST_SIGNATURE = "default"
 
 
-def _generate_file_uid() -> str:
+def _generate_file_id() -> str:
     return f"file_{uuid.uuid4().hex}"
 
 
@@ -128,9 +128,9 @@ def build_parse_request_signature(metadata: dict[str, object] | None) -> str:
     return f"sha256:{hashlib.sha256(serialized.encode('utf-8')).hexdigest()}"
 
 
-def _unique_file_ids(raw_files: list[RawFile], *, status: str | None = None) -> list[int]:
-    seen: set[int] = set()
-    file_ids: list[int] = []
+def _unique_file_ids(raw_files: list[RawFile], *, status: str | None = None) -> list[str]:
+    seen: set[str] = set()
+    file_ids: list[str] = []
     for raw_file in raw_files:
         if status is not None and raw_file.status != status:
             continue
@@ -209,7 +209,7 @@ async def save_uploaded_file(
     if reusable_raw_file is not None:
         return reusable_raw_file
 
-    file_uid = _generate_file_uid()
+    file_id = _generate_file_id()
     temp_dir = build_temp_dir(normalized_subject or "library", user_id=owner_user_id)
     temp_dir.mkdir(parents=True, exist_ok=True)
     temp_path = temp_dir / f"{uuid.uuid4().hex}{extension}"
@@ -226,7 +226,7 @@ async def save_uploaded_file(
         raw_file = create_raw_file(
             session,
             RawFile(
-                uid=file_uid,
+                id=file_id,
                 subject=normalized_subject,
                 user_id=owner_user_id,
                 filename=filename,
@@ -257,9 +257,9 @@ async def save_uploaded_file(
         if reusable_raw_file is not None:
             return reusable_raw_file
         raise
-    raw_file_key = scope.raw_file_key(file_uid=file_uid, filename=filename, extension=extension)
-    raw_markdown_key = scope.raw_markdown_key(file_uid=file_uid, filename=filename)
-    asset_prefix = scope.asset_prefix(file_uid=file_uid, filename=filename)
+    raw_file_key = scope.raw_file_key(file_id=file_id, filename=filename, extension=extension)
+    raw_markdown_key = scope.raw_markdown_key(file_id=file_id, filename=filename)
+    asset_prefix = scope.asset_prefix(file_id=file_id, filename=filename)
 
     try:
         await cs.write_file(raw_file_key, temp_path)
@@ -310,7 +310,7 @@ async def save_uploaded_files_and_request_parse(
     owner_user_id: str,
     files: list[UploadFile],
     parse_request_metadata: dict[str, object] | None = None,
-) -> tuple[FilesUploadData, list[int]]:
+) -> tuple[FilesUploadData, list[str]]:
     saved = await _save_uploaded_raw_files(
         session,
         subject=subject,

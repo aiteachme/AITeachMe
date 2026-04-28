@@ -20,7 +20,7 @@ from app.workflows.digest.docgen.lib.quality import build_merge_review_report
 from app.workflows.digest.docgen.nodes.common import publish_docgen_progress
 from app.workflows.digest.docgen.state import DocGenState
 
-_LOCAL_SOURCE_FILE_RE = re.compile(r"^local://file/(\d+)(?:/|$)")
+_LOCAL_SOURCE_FILE_RE = re.compile(r"^local://file/([^/]+)(?:/|$)")
 
 
 def _dedupe_enhanced(chapters: list[EnhancedChapterDraft]) -> list[EnhancedChapterDraft]:
@@ -32,19 +32,16 @@ def _dedupe_enhanced(chapters: list[EnhancedChapterDraft]) -> list[EnhancedChapt
     return [best[index] for index in sorted(best)]
 
 
-def _source_file_id_from_url(value: object) -> int | None:
+def _source_file_id_from_url(value: object) -> str | None:
     match = _LOCAL_SOURCE_FILE_RE.match(str(value or "").strip())
     if match is None:
         return None
-    try:
-        file_id = int(match.group(1))
-    except (TypeError, ValueError):
-        return None
-    return file_id if file_id > 0 else None
+    file_id = match.group(1).strip()
+    return file_id or None
 
 
-def _source_file_ids_from_chapter(chapter: EnhancedChapterDraft) -> list[int]:
-    file_ids: list[int] = []
+def _source_file_ids_from_chapter(chapter: EnhancedChapterDraft) -> list[str]:
+    file_ids: list[str] = []
     for source in list(chapter.sources or []):
         file_id = _source_file_id_from_url(source)
         if file_id is not None:

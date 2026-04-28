@@ -1,4 +1,4 @@
-﻿"""Knowledge docs API routes."""
+"""Knowledge docs API routes."""
 
 from __future__ import annotations
 
@@ -286,7 +286,7 @@ async def knowledge_build_plan_create_stream(
         "planner_create_stream_requested",
         subject=normalized,
         user_id=user.user_id,
-        file_uid_count=len(body.file_uids or []),
+        file_id_count=len(body.file_ids or []),
         user_prompt_preview=(body.user_prompt or "")[:80],
     )
     return _planner_stream_response(
@@ -449,7 +449,7 @@ async def knowledge_build(
         user_id=user.user_id,
         build_type=body.build_type,
         confirmed_plan_id=body.confirmed_plan_id,
-        file_uid_count=len(body.file_uids or []),
+        file_id_count=len(body.file_ids or []),
     )
     subject_record = get_subject_record(
         session,
@@ -461,7 +461,7 @@ async def knowledge_build(
         session,
         subject=subject_record,
         user_id=user.user_id,
-        file_uids=body.file_uids,
+        file_ids=body.file_ids,
         prompt=body.prompt,
         embedding_resolution=body.embedding_resolution,
         confirmed_plan_id=body.confirmed_plan_id,

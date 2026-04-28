@@ -41,8 +41,7 @@ class RawFile(SQLModel, table=True):
         ),
     )
 
-    id: int | None = Field(default=None, primary_key=True)
-    uid: str = Field(index=True, unique=True)
+    id: str = Field(primary_key=True, index=True)
     user_id: str = Field(default="local", foreign_key="user.id", index=True)
     subject: str | None = Field(default=None, index=True)
     filename: str
@@ -190,13 +189,13 @@ class SubjectFileLink(SQLModel, table=True):
 
     __tablename__ = "subject_file"
     __table_args__ = (
-        sa.UniqueConstraint("user_id", "subject", "raw_file_id", name="uq_subject_file_user_subject_raw_file"),
+        sa.UniqueConstraint("user_id", "subject", "file_id", name="uq_subject_file_user_subject_file"),
     )
 
     id: int | None = Field(default=None, primary_key=True)
     user_id: str = Field(default="local", foreign_key="user.id", index=True)
     subject: str = Field(foreign_key="subject.slug", index=True)
-    raw_file_id: int = Field(foreign_key="raw_file.id", index=True)
+    file_id: str = Field(foreign_key="raw_file.id", index=True)
     created_at: datetime = Field(default_factory=utcnow)
     updated_at: datetime = Field(default_factory=utcnow)
 
@@ -205,7 +204,7 @@ class RawFileAsset(SQLModel):
     """Compatibility asset descriptor derived from the filesystem, not a DB table."""
 
     id: int | None = None
-    raw_file_id: int
+    file_id: str
     asset_name: str
     asset_kind: str = "image"
     storage_backend: str = "local"

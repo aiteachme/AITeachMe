@@ -59,7 +59,7 @@ async def _materialize_stored_assets(
 async def _run_deep_enhance_background(
     *,
     user_id: str,
-    file_id: int,
+    file_id: str,
     subject: str = "",
 ) -> None:
     """Background Phase 2: LLM Vision OCR enhancement.
@@ -89,12 +89,12 @@ async def _run_deep_enhance_background(
                 file_path = await cs.materialize(raw_file.file_path or raw_file.storage_key, _temp_dir)
                 # Materialize markdown to temp for Phase 2 parsing
                 md_key = raw_file.markdown_path or file_scope.raw_markdown_key(
-                    file_uid=raw_file.uid,
+                    file_id=raw_file.id,
                     filename=raw_file.original_filename,
                 )
                 persisted_asset_prefix = (
                     raw_file.asset_dir.rstrip("/") + "/" if raw_file.asset_dir else file_scope.asset_prefix(
-                        file_uid=raw_file.uid,
+                        file_id=raw_file.id,
                         filename=raw_file.original_filename,
                     )
                 )
@@ -112,7 +112,6 @@ async def _run_deep_enhance_background(
                 asset_dir.mkdir(parents=True, exist_ok=True)
                 asset_name_prefix = build_asset_name_prefix(
                     filename=raw_file.original_filename,
-                    file_uid=raw_file.uid,
                     file_id=file_id,
                 )
 
@@ -235,7 +234,7 @@ async def _run_deep_enhance_background(
             # Overwrite markdown with enhanced version and persist assets together.
             markdown_path.write_text(enhance_result.markdown, encoding="utf-8")
             md_key = raw_file.markdown_path or file_scope.raw_markdown_key(
-                file_uid=raw_file.uid,
+                file_id=raw_file.id,
                 filename=raw_file.original_filename,
             )
             await cs.write_text(md_key, enhance_result.markdown)
@@ -243,7 +242,7 @@ async def _run_deep_enhance_background(
             uploaded_asset_count = await cs.upload_dir(asset_dir, asset_prefix)
             asset_storage_dir = asset_prefix.rstrip("/")
             asset_rows = _build_asset_rows(
-                raw_file_id=file_id,
+                file_id=file_id,
                 asset_dir=asset_dir,
                 asset_storage_dir=asset_storage_dir,
                 storage_backend=original_storage_backend,
@@ -253,7 +252,7 @@ async def _run_deep_enhance_background(
             with managed_session() as session:
                 raw_file = get_raw_file_by_id(session, file_id)
                 if raw_file is not None and raw_file.user_id == user_id:
-                    replace_raw_file_assets(session, raw_file_id=file_id, assets=asset_rows)
+                    replace_raw_file_assets(session, file_id=file_id, assets=asset_rows)
                     # Update parse_metadata with OCR stats and asset persistence stats.
                     parse_metadata = {}
                     if raw_file.parse_metadata_json:

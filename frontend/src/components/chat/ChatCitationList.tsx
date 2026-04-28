@@ -18,7 +18,7 @@ export function ChatCitationList({ contexts, onOpenContext }: ChatCitationListPr
       <div className="grid gap-2">
         {contexts.map((context) => (
           <button
-            key={`${context.chunk_id}-${context.document_id}`}
+            key={`${context.chunk_id}-${context.file_id}`}
             type="button"
             onClick={() => onOpenContext(context.chunk_id)}
             className="group rounded-2xl border border-slate-200 bg-white px-4 py-3 text-left shadow-sm transition hover:border-slate-300 hover:shadow-md dark:border-slate-800 dark:bg-slate-950/80 dark:hover:border-slate-700 dark:hover:shadow-[0_18px_40px_-28px_rgba(0,0,0,0.72)]"

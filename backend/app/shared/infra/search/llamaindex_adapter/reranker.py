@@ -72,7 +72,7 @@ class ATMReranker(BaseNodePostprocessor):
             metadata = node.metadata or {}
             chunk = RetrievedChunk(
                 chunk_id=int(metadata.get("chunk_id", idx)),
-                document_id=int(metadata.get("document_id", 0)),
+                file_id=str(metadata.get("file_id") or metadata.get("document_id") or ""),
                 title=str(metadata.get("title", "")),
                 header_path=str(metadata.get("header_path", "")),
                 content=node.get_content(metadata_mode=MetadataMode.NONE),

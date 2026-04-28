@@ -45,7 +45,7 @@ def build_section_catalog_for_file(
         catalog.append(
             {
                 "section_ref": section.digest_chunk_uid,
-                "file_id": int(packet.file_id),
+                "file_id": packet.file_id,
                 "filename": packet.filename,
                 "title": section.title,
                 "header_path": section.header_path,
@@ -71,15 +71,15 @@ def index_sections_by_ref(material_context: DigestMaterialContext) -> dict[str, 
     }
 
 
-def index_sources_by_file_id(material_context: DigestMaterialContext) -> dict[int, SourcePacket]:
+def index_sources_by_file_id(material_context: DigestMaterialContext) -> dict[str, SourcePacket]:
     return {
-        int(packet.file_id): packet
+        packet.file_id: packet
         for packet in list(material_context.source_packets or [])
-        if int(packet.file_id or 0) > 0
+        if packet.file_id
     }
 
 
-def _source_url(*, file_id: int, section_ref: str, start_line: int | None, end_line: int | None) -> str:
+def _source_url(*, file_id: str, section_ref: str, start_line: int | None, end_line: int | None) -> str:
     suffix = f"#L{start_line}-L{end_line}" if start_line and end_line else ""
     return f"local://file/{file_id}/section/{section_ref}{suffix}"
 
@@ -112,14 +112,14 @@ def build_priority_source_context(
 
     for raw_slice in source_slices:
         section_ref = str(_slice_value(raw_slice, "section_ref", "") or "").strip()
-        file_id = int(_slice_value(raw_slice, "file_id", 0) or 0)
+        file_id = str(_slice_value(raw_slice, "file_id", "") or "").strip()
         if not section_ref:
             continue
         section = sections_by_ref.get(section_ref)
         if section is None:
             continue
-        if file_id <= 0:
-            file_id = int(section.source_file_id or 0)
+        if not file_id:
+            file_id = section.source_file_id
         packet = sources_by_file.get(file_id)
         if packet is None:
             continue

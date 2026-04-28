@@ -72,7 +72,7 @@ class MarkdownExtractedEdge:
     source_kind: str = "llm_relation"
     knowledge_document_id: int | None = None
     chapter_index: int = 0
-    source_file_ids: list[int] = field(default_factory=list)
+    source_file_ids: list[str] = field(default_factory=list)
     quote_text: str = ""
 
 
@@ -89,7 +89,7 @@ class PendingMarkdownExtractedEdge:
     source_kind: str = "llm_relation"
     knowledge_document_id: int | None = None
     chapter_index: int = 0
-    source_file_ids: list[int] = field(default_factory=list)
+    source_file_ids: list[str] = field(default_factory=list)
     quote_text: str = ""
 
 
@@ -105,7 +105,7 @@ class SectionExtractionContext:
     primary_name: str = ""
     primary_type: str = ""
     knowledge_document_id: int | None = None
-    source_file_ids: list[int] = field(default_factory=list)
+    source_file_ids: list[str] = field(default_factory=list)
 
 
 @dataclass(slots=True, frozen=True)
@@ -116,7 +116,7 @@ class ChapterSourceContext:
     chapter_index: int = 0
     title: str = ""
     summary: str = ""
-    source_file_ids: list[int] = field(default_factory=list)
+    source_file_ids: list[str] = field(default_factory=list)
 
 
 @dataclass(slots=True)

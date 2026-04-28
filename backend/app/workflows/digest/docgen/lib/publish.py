@@ -282,16 +282,13 @@ def _build_source_scope(chapter: dict) -> dict[str, object]:
     }
 
 
-def _clean_source_file_ids(value: object) -> list[int]:
+def _clean_source_file_ids(value: object) -> list[str]:
     raw_items = value if isinstance(value, list) else ([] if value is None else [value])
-    cleaned: list[int] = []
-    seen: set[int] = set()
+    cleaned: list[str] = []
+    seen: set[str] = set()
     for item in raw_items:
-        try:
-            file_id = int(item)
-        except (TypeError, ValueError):
-            continue
-        if file_id <= 0 or file_id in seen:
+        file_id = str(item or "").strip()
+        if not file_id or file_id in seen:
             continue
         seen.add(file_id)
         cleaned.append(file_id)
@@ -318,13 +315,8 @@ def _resolve_published_chapter_source_file_ids(
     chapter_index: int,
     fallback_assignment: dict | None,
     assignments_by_index: dict[int, dict],
-) -> list[int]:
-    """Resolve internal RawFile.id values for a published chapter.
-
-    DocGen stores public file selection as RawFile.uid at API boundaries, but
-    persisted chapter/source manifests use RawFile.id because parsed markdown
-    rows and retrieval chunks are keyed by the database id.
-    """
+) -> list[str]:
+    """Resolve RawFile string IDs for a published chapter."""
 
     ids = _clean_source_file_ids(chapter.get("source_file_ids"))
     if ids:
@@ -413,7 +405,7 @@ def publish_staged_knowledge_docs(
     build_session_id: str | None = None,
     docgen_artifacts: dict[str, Any] | None = None,
     subject_scope: SubjectStorageScope | None = None,
-) -> list[int]:
+) -> list[str]:
     """Promote staged chapter markdown to live outputs and persist metadata."""
 
     if not chapter_metadatas:
@@ -550,7 +542,7 @@ def publish_staged_knowledge_docs(
         version_no=resolved_version_no,
         source_file_ids=sorted(
             {
-                int(file_id)
+                file_id
                 for chapter in sorted_chapters
                 for file_id in _clean_source_file_ids(chapter.get("source_file_ids"))
             }

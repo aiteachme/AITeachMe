@@ -78,7 +78,7 @@ def _bulk_delete_by_subject(session: Session, model: type, *, subject: str) -> N
 
 
 def _raw_file_subject_membership_condition(subject: str):
-    linked_file_ids = select(SubjectFileLink.raw_file_id).where(SubjectFileLink.subject == subject)
+    linked_file_ids = select(SubjectFileLink.file_id).where(SubjectFileLink.subject == subject)
     return sa.or_(
         RawFile.subject == subject,
         RawFile.id.in_(linked_file_ids),
@@ -363,7 +363,7 @@ def _delete_raw_files_and_artifacts(session: Session, *, subject: str, owner_use
         select(SubjectFileLink.subject)
         .where(
             SubjectFileLink.user_id == owner_user_id,
-            SubjectFileLink.raw_file_id == RawFile.id,
+            SubjectFileLink.file_id == RawFile.id,
         )
         .order_by(SubjectFileLink.created_at.asc(), SubjectFileLink.id.asc())  # type: ignore[union-attr]
         .limit(1)

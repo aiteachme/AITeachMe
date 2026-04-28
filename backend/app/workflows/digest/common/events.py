@@ -14,7 +14,7 @@ class DigestBuildRequestedEvent:
     event_name: ClassVar[str] = "digest.build.requested"
     subject: str
     job_id: int
-    file_ids: list[int]
+    file_ids: list[str]
     occurred_at: datetime = field(default_factory=utcnow)
 
 
@@ -23,7 +23,7 @@ class DigestGraphCompletedEvent:
     event_name: ClassVar[str] = "digest.graph.completed"
     subject: str
     job_id: int
-    file_ids: list[int]
+    file_ids: list[str]
     chunk_count: int
     occurred_at: datetime = field(default_factory=utcnow)
 
@@ -33,7 +33,7 @@ class DigestGraphFailedEvent:
     event_name: ClassVar[str] = "digest.graph.failed"
     subject: str
     job_id: int
-    file_ids: list[int]
+    file_ids: list[str]
     error_message: str
     occurred_at: datetime = field(default_factory=utcnow)
 
@@ -43,7 +43,7 @@ class DocGenRequestedEvent:
     event_name: ClassVar[str] = "digest.docgen.requested"
     subject: str
     requested_at: datetime
-    file_ids: list[int]
+    file_ids: list[str]
     occurred_at: datetime = field(default_factory=utcnow)
 
 

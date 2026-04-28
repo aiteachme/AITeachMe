@@ -100,7 +100,7 @@ class MarkdownKnowledgeUnit:
     source_kind: str = "markdown"
     knowledge_document_id: int | None = None
     chapter_index: int = 0
-    source_file_ids: list[int] = field(default_factory=list)
+    source_file_ids: list[str] = field(default_factory=list)
     quote_text: str = ""
 
 

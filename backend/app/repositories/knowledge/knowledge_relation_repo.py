@@ -147,7 +147,7 @@ def create_evidence_link(
     auto_commit: bool = True,
 ) -> EvidenceLink:
     payload = {
-        "document_id": link.document_id,
+        "file_id": link.file_id,
         "chunk_id": link.chunk_id,
         "quote_text": link.quote_text,
         "source_span_start": link.source_span_start,
@@ -207,7 +207,7 @@ def list_evidence_by_entity(
                 subject="",
                 entity_type=entity_type,
                 entity_id=entity_id,
-                document_id=int(item.get("document_id", 0)),
+                file_id=str(item.get("file_id") or item.get("document_id") or ""),
                 chunk_id=int(item.get("chunk_id", 0)),
                 quote_text=str(item.get("quote_text", "")),
                 source_span_start=item.get("source_span_start"),
@@ -223,4 +223,3 @@ def list_evidence_by_entity(
 
 def count_active_evidence(session: Session, entity_type: str, entity_id: int) -> int:
     return len(list_evidence_by_entity(session, entity_type, entity_id, is_active=True))
-

@@ -145,6 +145,18 @@ def _clean_int_list(value: object) -> list[int]:
     return cleaned
 
 
+def _clean_string_list(value: object) -> list[str]:
+    cleaned: list[str] = []
+    seen: set[str] = set()
+    for item in _as_list(value) if isinstance(value, (list, tuple)) else ([] if value is None else [value]):
+        text = str(item or "").strip()
+        if not text or text in seen:
+            continue
+        seen.add(text)
+        cleaned.append(text)
+    return cleaned
+
+
 def _json_dumps(value: object) -> str:
     return json.dumps(value, ensure_ascii=False)
 
@@ -172,7 +184,7 @@ def _chapter_context_lookup(structured_context: dict[str, object]) -> dict[int, 
             chapter_index=chapter_index,
             title=str(payload.get("title") or "").strip(),
             summary=str(payload.get("summary") or "").strip(),
-            source_file_ids=_clean_int_list(payload.get("source_file_ids")),
+            source_file_ids=_clean_string_list(payload.get("source_file_ids")),
         )
     return lookup
 
@@ -535,7 +547,7 @@ def _create_source_ref_for_unit(
         chapter_index=int(item.chapter_index or 0),
         anchor=item.anchor,
         source_kind=item.source_kind,
-        source_file_ids_json=_json_dumps(_clean_int_list(item.source_file_ids)),
+        source_file_ids_json=_json_dumps(_clean_string_list(item.source_file_ids)),
         quote_text=_source_quote(item.quote_text or item.summary or item.body_markdown),
         confidence=1.0,
     )
@@ -563,7 +575,7 @@ def _create_source_ref_for_edge(
         chapter_index=int(extracted_edge.chapter_index or 0),
         anchor=f"{extracted_edge.source_anchor}->{extracted_edge.target_anchor}",
         source_kind=extracted_edge.source_kind,
-        source_file_ids_json=_json_dumps(_clean_int_list(extracted_edge.source_file_ids)),
+        source_file_ids_json=_json_dumps(_clean_string_list(extracted_edge.source_file_ids)),
         quote_text=_source_quote(extracted_edge.quote_text or extracted_edge.description),
         confidence=1.0,
     )
@@ -1307,7 +1319,7 @@ def _build_cross_section_semantic_edges(
                     _safe_int(source_context.get("knowledge_document_id")) or None
                 ),
                 chapter_index=_safe_int(source_context.get("section_index")),
-                source_file_ids=_clean_int_list(source_context.get("source_file_ids")),
+                source_file_ids=_clean_string_list(source_context.get("source_file_ids")),
                 quote_text=description,
             )
         )

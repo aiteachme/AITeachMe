@@ -174,7 +174,7 @@ def build_fast_parse_graph(
     return workflow
 
 
-def create_parse_file_initial_state(*, user_id: str, subject: str, file_id: int) -> IngestParseState:
+def create_parse_file_initial_state(*, user_id: str, subject: str, file_id: str) -> IngestParseState:
     return {
         "user_id": user_id,
         "subject": subject,
@@ -200,7 +200,7 @@ def _build_error_metadata(state: IngestParseState) -> dict[str, object]:
     return {
         "user_id": state.get("user_id", ""),
         "subject": state.get("subject", ""),
-        "file_id": state.get("file_id", 0),
+        "file_id": state.get("file_id", ""),
         "filename": state.get("filename", ""),
         "filetype": state.get("filetype", ""),
         "parse_mode": parse_plan.mode if parse_plan else "",
@@ -211,7 +211,7 @@ def _build_error_metadata(state: IngestParseState) -> dict[str, object]:
 async def run_parse_file_workflow(
     *,
     user_id: str,
-    file_id: int,
+    file_id: str,
     subject: str = "",
 ) -> WorkflowResult[IngestParseState]:
     """Run one ingest file parse workflow and normalize result handling."""

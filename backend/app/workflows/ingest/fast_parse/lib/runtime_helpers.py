@@ -77,7 +77,7 @@ def _read_image_dimensions(path: Path) -> tuple[int | None, int | None]:
 
 def _build_asset_rows(
     *,
-    raw_file_id: int,
+    file_id: str,
     asset_dir: Path,
     asset_storage_dir: str,
     storage_backend: str,
@@ -91,7 +91,7 @@ def _build_asset_rows(
         width, height = _read_image_dimensions(path)
         rows.append(
             RawFileAsset(
-                raw_file_id=raw_file_id,
+                file_id=file_id,
                 asset_name=path.name,
                 asset_kind=_guess_asset_kind(path.name),
                 storage_backend=storage_backend,

@@ -21,12 +21,10 @@ from app.repositories.files_repo import (
     list_raw_files_by_ids_for_user,
     list_raw_files_by_subject,
     list_raw_files_by_user,
-    list_raw_files_by_uids,
-    list_raw_files_by_uids_for_user,
     raw_file_belongs_to_subject,
 )
 from app.schemas.files import FileAssetItem, FileRecord, FilesData
-from app.utils.presenters import require_id, require_uid
+from app.utils.presenters import require_id
 
 
 def _is_markdown_ready(raw_file: RawFile) -> bool:
@@ -64,16 +62,16 @@ def _quote_path_parts(path_value: str) -> str:
     return "/".join(quote(part) for part in Path(path_value).parts if part)
 
 
-def _build_runtime_asset_url(*, file_uid: str, asset_relative_path: str | None) -> str | None:
+def _build_runtime_asset_url(*, file_id: str, asset_relative_path: str | None) -> str | None:
     if not asset_relative_path:
         return None
 
-    return f"/api/v1/files/assets/{quote(file_uid)}/{_quote_path_parts(asset_relative_path)}"
+    return f"/api/v1/files/assets/{quote(file_id)}/{_quote_path_parts(asset_relative_path)}"
 
 
 def _build_asset_items(
     *,
-    file_uid: str,
+    file_id: str,
     asset_dir_value: str | None,
 ) -> list[FileAssetItem]:
     if not asset_dir_value:
@@ -85,7 +83,7 @@ def _build_asset_items(
     assets: list[FileAssetItem] = []
     for key in keys:
         relative_path = _to_file_relative_storage_path(asset_dir_value=asset_dir_value, storage_key=key)
-        asset_url = _build_runtime_asset_url(file_uid=file_uid, asset_relative_path=relative_path)
+        asset_url = _build_runtime_asset_url(file_id=file_id, asset_relative_path=relative_path)
         if not asset_url:
             continue
 
@@ -122,19 +120,19 @@ def _read_markdown(markdown_path_value: str | None, *, markdown_content: str | N
 
 
 def build_file_record(raw_file: RawFile) -> FileRecord:
-    file_uid = require_uid(raw_file.uid, "RawFile.uid")
+    file_id = require_id(raw_file.id, "RawFile.id")
     markdown_ready = _is_markdown_ready(raw_file)
     asset_dir_value = raw_file.asset_dir
     if not asset_dir_value:
         scope = get_content_store().user_file_scope(user_id=raw_file.user_id or "local")
-        asset_dir_value = scope.asset_prefix(file_uid=file_uid, filename=raw_file.filename).rstrip("/")
+        asset_dir_value = scope.asset_prefix(file_id=file_id, filename=raw_file.filename).rstrip("/")
     assets = _build_asset_items(
-        file_uid=file_uid,
+        file_id=file_id,
         asset_dir_value=asset_dir_value,
     )
-    asset_base_url = f"/api/v1/files/assets/{quote(file_uid)}/" if assets else None
+    asset_base_url = f"/api/v1/files/assets/{quote(file_id)}/" if assets else None
     return FileRecord(
-        uid=file_uid,
+        id=file_id,
         filename=raw_file.filename,
         filetype=raw_file.filetype,
         status=raw_file.status,
@@ -177,7 +175,7 @@ def _count_file_states(records: list[FileRecord]) -> tuple[int, int, int]:
     return ready_count, processing_count, failed_count
 
 
-def get_subject_file_or_raise(session: Session, *, subject: str, file_id: int) -> RawFile:
+def get_subject_file_or_raise(session: Session, *, subject: str, file_id: str) -> RawFile:
     raw_file = get_raw_file_by_id(session, file_id)
     if raw_file is None or not raw_file_belongs_to_subject(session, raw_file=raw_file, subject=subject):
         raise RawFileNotFoundError(file_id)
@@ -188,7 +186,7 @@ def get_user_files_or_raise(
     session: Session,
     *,
     owner_user_id: str,
-    file_ids: list[int],
+    file_ids: list[str],
 ) -> list[RawFile]:
     items = list_raw_files_by_ids_for_user(session, user_id=owner_user_id, file_ids=file_ids)
     found_ids = {require_id(item.id, "RawFile.id") for item in items}
@@ -204,7 +202,7 @@ def get_subject_files_or_raise(
     session: Session,
     *,
     subject: str,
-    file_ids: list[int],
+    file_ids: list[str],
 ) -> list[RawFile]:
     items = list_raw_files_by_ids(session, subject, file_ids)
     found_ids = {require_id(item.id, "RawFile.id") for item in items}
@@ -214,38 +212,6 @@ def get_subject_files_or_raise(
 
     order = {file_id: index for index, file_id in enumerate(file_ids)}
     return sorted(items, key=lambda item: order[require_id(item.id, "RawFile.id")])
-
-
-def get_subject_files_by_uid_or_raise(
-    session: Session,
-    *,
-    subject: str,
-    file_uids: list[str],
-) -> list[RawFile]:
-    items = list_raw_files_by_uids(session, subject, file_uids)
-    found_uids = {require_uid(item.uid, "RawFile.uid") for item in items}
-    missing = [file_uid for file_uid in file_uids if file_uid not in found_uids]
-    if missing:
-        raise RawFileNotFoundError(missing[0])
-
-    order = {file_uid: index for index, file_uid in enumerate(file_uids)}
-    return sorted(items, key=lambda item: order[require_uid(item.uid, "RawFile.uid")])
-
-
-def get_user_files_by_uid_or_raise(
-    session: Session,
-    *,
-    owner_user_id: str,
-    file_uids: list[str],
-) -> list[RawFile]:
-    items = list_raw_files_by_uids_for_user(session, user_id=owner_user_id, file_uids=file_uids)
-    found_uids = {require_uid(item.uid, "RawFile.uid") for item in items}
-    missing = [file_uid for file_uid in file_uids if file_uid not in found_uids]
-    if missing:
-        raise RawFileNotFoundError(missing[0])
-
-    order = {file_uid: index for index, file_uid in enumerate(file_uids)}
-    return sorted(items, key=lambda item: order[require_uid(item.uid, "RawFile.uid")])
 
 
 def list_subject_files(
@@ -276,12 +242,12 @@ def list_user_files(
     session: Session,
     *,
     owner_user_id: str,
-    file_uids: list[str] | None = None,
+    file_ids: list[str] | None = None,
 ) -> FilesData:
     raw_files, total = list_raw_files_by_user(
         session,
         user_id=owner_user_id,
-        file_uids=file_uids,
+        file_ids=file_ids,
         limit=1000,
         offset=0,
         status=None,
@@ -301,9 +267,7 @@ def list_user_files(
 __all__ = [
     "build_file_record",
     "get_subject_file_or_raise",
-    "get_subject_files_by_uid_or_raise",
     "get_subject_files_or_raise",
-    "get_user_files_by_uid_or_raise",
     "get_user_files_or_raise",
     "list_subject_files",
     "list_user_files",

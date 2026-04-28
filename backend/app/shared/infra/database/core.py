@@ -122,13 +122,18 @@ _REMOVED_POSTGRES_TABLES = (
     "build_planner_session",
 )
 _REMOVED_POSTGRES_COLUMNS = {
+    "raw_file": ("uid",),
     "question_template": ("curriculum_version_id", "knowledge_unit_id", "knowledge_unit_refs_json"),
     "exam_paper": ("curriculum_version_id", "theme_tree_node_id"),
     "exam_paper_item": ("knowledge_unit_id", "knowledge_unit_refs_json"),
 }
 _REMOVED_SQLITE_TABLES = _REMOVED_POSTGRES_TABLES
 _REMOVED_SQLITE_COLUMNS = {
-    **_REMOVED_POSTGRES_COLUMNS,
+    **{
+        table_name: column_names
+        for table_name, column_names in _REMOVED_POSTGRES_COLUMNS.items()
+        if table_name != "raw_file"
+    },
     "chat_session": ("user_goal",),
 }
 _SQLITE_ADDITIVE_COLUMNS = {
@@ -825,11 +830,11 @@ def _backfill_sqlite_raw_file_parse_signatures(engine: sa.Engine) -> None:
             )
         ).mappings()
         seen: set[tuple[object, object, object, object]] = set()
-        duplicate_ids: list[int] = []
+        duplicate_ids: list[str] = []
         for row in rows:
             key = (row["user_id"], row["content_hash"], row["file_size_bytes"], row["filetype"])
             if key in seen:
-                duplicate_ids.append(int(row["id"]))
+                duplicate_ids.append(str(row["id"]))
             else:
                 seen.add(key)
         for raw_file_id in duplicate_ids:

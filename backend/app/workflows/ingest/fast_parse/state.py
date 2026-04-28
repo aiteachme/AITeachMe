@@ -18,7 +18,7 @@ class IngestParseGraphInput(TypedDict):
 
     user_id: str
     subject: str
-    file_id: int
+    file_id: str
 
 
 class IngestParseGraphOutput(TypedDict, total=False):
@@ -26,7 +26,7 @@ class IngestParseGraphOutput(TypedDict, total=False):
 
     user_id: str
     subject: str
-    file_id: int
+    file_id: str
     filename: str
     filetype: str
     parser_used: str | None
@@ -40,7 +40,7 @@ class IngestParseState(TypedDict, total=False):
 
     user_id: str
     subject: str
-    file_id: int
+    file_id: str
     filename: str
     filetype: str
     file_path: str

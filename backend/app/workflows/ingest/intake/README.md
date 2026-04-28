@@ -13,8 +13,8 @@
 
 - This module is part of the Ingest engine, but it is not a LangGraph lane.
 - It is not a generic file service; it owns RawFile intake and hands parsing off to `workflows/ingest/fast_parse`.
-- Persisted upload artifacts are keyed by stable file uid plus a sanitized filename stem:
-  `users/{user}/files/{file_uid}__{safe_stem}/raw.ext`, `markdown.md`, and `assets/`.
+- Persisted upload artifacts are keyed by stable file ID plus a sanitized filename stem:
+  `users/{user}/files/{file_id}__{safe_stem}/raw.ext`, `markdown.md`, and `assets/`.
   The database keeps the original filename for display; storage keys should not use bare auto-increment ids.
-- Subject import/export packages use the same `{file_uid}__{safe_stem}` segment for raw files,
+- Subject import/export packages use the same `{file_id}__{safe_stem}` segment for raw files,
   parsed markdown, and extracted assets inside the archive.

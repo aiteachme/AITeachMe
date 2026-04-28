@@ -46,7 +46,7 @@ class IndexedChunk:
     """One chunk payload stored as a LlamaIndex node."""
 
     chunk_id: int
-    document_id: int
+    file_id: str
     subject: str
     title: str
     header_path: str
@@ -95,7 +95,7 @@ def _node_metadata(chunk: IndexedChunk) -> dict[str, Any]:
     return {
         "subject": chunk.subject,
         "chunk_id": int(chunk.chunk_id),
-        "document_id": int(chunk.document_id),
+        "file_id": chunk.file_id,
         "title": chunk.title,
         "header_path": chunk.header_path,
         "digest_chunk_uid": chunk.digest_chunk_uid,
@@ -109,8 +109,8 @@ def _to_text_node(chunk: IndexedChunk, embedding: list[float]) -> TextNode:
         text=chunk.content,
         embedding=embedding,
         metadata=_node_metadata(chunk),
-        excluded_embed_metadata_keys=["subject", "chunk_id", "document_id", "source"],
-        excluded_llm_metadata_keys=["subject", "chunk_id", "document_id", "source"],
+        excluded_embed_metadata_keys=["subject", "chunk_id", "file_id", "source"],
+        excluded_llm_metadata_keys=["subject", "chunk_id", "file_id", "source"],
     )
 
 
