@@ -768,6 +768,13 @@ export function HomePage() {
       ? buildUnsupportedFilesMessage(unsupportedFiles)
       : null;
     setError(unsupportedMessage);
+    if (unsupportedMessage) {
+      toast({
+        title: "文件类型暂不支持",
+        description: unsupportedMessage,
+        variant: "error",
+      });
+    }
     if (!supportedFiles.length) {
       return;
     }
@@ -788,7 +795,7 @@ export function HomePage() {
       setIsUploadingFiles(false);
       setUploadingFileNames([]);
     }
-  }, [entryFileUids, queryClient, syncEntryFilesCache]);
+  }, [entryFileUids, queryClient, syncEntryFilesCache, toast]);
 
   const handleSelectLibraryFiles = useCallback((fileUids: string[], files: FileRecord[]) => {
     const nextFileUids = uniqueStrings(fileUids);

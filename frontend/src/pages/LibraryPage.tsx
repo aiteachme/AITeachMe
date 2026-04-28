@@ -16,6 +16,7 @@ import {
 
 import { apiClient, getApiErrorMessage } from "../api/client";
 import { resolveFileProcessingLabel } from "../components/knowledge-docs";
+import { useToast } from "../components/ui/Toast";
 import { buildUnsupportedFilesMessage, FILE_ACCEPT, partitionUploadFiles } from "../lib/fileUpload";
 import { cn } from "../lib/utils";
 import type { FileRecord, FilesData, FilesUploadData } from "../types/files";
@@ -111,6 +112,7 @@ function statusMeta(file: FileRecord) {
 export function LibraryPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const queryClient = useQueryClient();
+  const { toast } = useToast();
   const [uploadingNames, setUploadingNames] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
 
@@ -190,7 +192,17 @@ export function LibraryPage() {
               if (fileInputRef.current) fileInputRef.current.value = "";
               if (selected.length > 0) {
                 const { supportedFiles, unsupportedFiles } = partitionUploadFiles(selected);
-                setError(unsupportedFiles.length ? buildUnsupportedFilesMessage(unsupportedFiles) : null);
+                const unsupportedMessage = unsupportedFiles.length
+                  ? buildUnsupportedFilesMessage(unsupportedFiles)
+                  : null;
+                setError(unsupportedMessage);
+                if (unsupportedMessage) {
+                  toast({
+                    title: "文件类型暂不支持",
+                    description: unsupportedMessage,
+                    variant: "error",
+                  });
+                }
                 if (supportedFiles.length > 0) {
                   uploadMutation.mutate(supportedFiles);
                 }

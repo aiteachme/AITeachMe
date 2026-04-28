@@ -1,24 +1,33 @@
 /**
- * Shared file-upload constants & helpers used by HomePage and BuildPlanPage.
+ * Shared file-upload constants & helpers used by HomePage, BuildPlanPage and LibraryPage.
  */
 
-/** Single source of truth for accepted file extensions. */
-const ACCEPTED_EXTENSIONS = ["pdf", "docx", "doc", "ppt", "pptx", "md", "txt"] as const;
+/**
+ * File picker includes a few legacy extensions on purpose so we can show a
+ * targeted toast instead of silently hiding them from the user.
+ */
+const PICKER_EXTENSIONS = ["pdf", "docx", "doc", "ppt", "pptx", "md", "txt"] as const;
 
-export const SUPPORTED_UPLOAD_FORMAT_LABEL = "txt、doc、docx、pdf、ppt、pptx、md";
+/** Real upload support matrix used by the frontend before calling the backend. */
+const SUPPORTED_EXTENSIONS = ["pdf", "docx", "md", "txt"] as const;
 
-/** For <input accept="..."> attributes — dot-prefixed, comma-separated. */
-export const FILE_ACCEPT = ACCEPTED_EXTENSIONS.map((ext) => `.${ext}`).join(",");
+const PRESENTATION_EXTENSIONS = new Set<string>(["ppt", "pptx"]);
+const LEGACY_WORD_EXTENSIONS = new Set<string>(["doc"]);
 
-/** Set for fast look-up during clipboard paste. */
-const ACCEPTED_EXT_SET = new Set<string>(ACCEPTED_EXTENSIONS);
+export const SUPPORTED_UPLOAD_FORMAT_LABEL = "txt、docx、pdf、md";
+
+/** For <input accept="..."> attributes: dot-prefixed, comma-separated. */
+export const FILE_ACCEPT = PICKER_EXTENSIONS.map((ext) => `.${ext}`).join(",");
+
+/** Set for fast look-up during clipboard paste and drag/drop filtering. */
+const SUPPORTED_EXT_SET = new Set<string>(SUPPORTED_EXTENSIONS);
 
 function getFileExtension(file: File): string {
   return file.name.split(".").pop()?.toLowerCase() ?? "";
 }
 
 export function isSupportedUploadFile(file: File): boolean {
-  return ACCEPTED_EXT_SET.has(getFileExtension(file));
+  return SUPPORTED_EXT_SET.has(getFileExtension(file));
 }
 
 export function partitionUploadFiles(files: File[]): {
@@ -43,10 +52,29 @@ export function buildUnsupportedFilesMessage(files: File[]): string {
   if (!files.length) {
     return `暂时仅支持 ${SUPPORTED_UPLOAD_FORMAT_LABEL} 格式。`;
   }
+
+  const extensions = files.map(getFileExtension);
+  const hasPresentation = extensions.some((ext) => PRESENTATION_EXTENSIONS.has(ext));
+  const hasLegacyDoc = extensions.some((ext) => LEGACY_WORD_EXTENSIONS.has(ext));
+  const hasOtherUnsupported = extensions.some(
+    (ext) => !PRESENTATION_EXTENSIONS.has(ext) && !LEGACY_WORD_EXTENSIONS.has(ext),
+  );
+
+  const notices: string[] = [];
+  if (hasPresentation) {
+    notices.push("暂时不支持 ppt/pptx，请先转为 pdf 以获得更好的效果。");
+  }
+  if (hasLegacyDoc) {
+    notices.push("暂时不支持 doc，请先转为 docx 以获得更好的效果。");
+  }
+  if (hasOtherUnsupported) {
+    notices.push(`暂时仅支持 ${SUPPORTED_UPLOAD_FORMAT_LABEL} 格式。`);
+  }
+
   const names = files.map((file) => file.name);
   const preview = names.slice(0, 3).join("、");
   const suffix = names.length > 3 ? ` 等 ${names.length} 个文件` : "";
-  return `暂时仅支持 ${SUPPORTED_UPLOAD_FORMAT_LABEL} 格式，以下文件未上传：${preview}${suffix}。`;
+  return `${notices.join("")} 未上传文件：${preview}${suffix}。`;
 }
 
 /**

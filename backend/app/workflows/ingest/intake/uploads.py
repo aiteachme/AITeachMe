@@ -32,8 +32,9 @@ from app.workflows.ingest.intake.parse_dispatch import _start_parse_for_files
 #   可以先不读那些未出现在这个集合里的 parser/provider 代码。
 # 当前策略调整：
 # - .doc 已停用，视为不支持格式；
+# - .ppt / .pptx 已停用，建议用户先转为 .pdf；
 # - .docx 保留上传，但只走本地解析，不再自动尝试外部 provider。
-SUPPORTED_UPLOAD_EXTENSIONS = frozenset({".txt", ".docx", ".pdf", ".ppt", ".pptx", ".md"})
+SUPPORTED_UPLOAD_EXTENSIONS = frozenset({".txt", ".docx", ".pdf", ".md"})
 
 
 def _generate_file_uid() -> str:
@@ -95,12 +96,11 @@ async def save_uploaded_file(
     scope = cs.user_file_scope(user_id=owner_user_id)
     normalized_subject = validate_subject(subject) if subject else None
     content = await file.read()
+    filename = file.filename or "unknown"
+    extension = _validate_upload_extension(filename)
     max_upload_size_mb = settings.ingest.max_upload_size_mb
     if len(content) > max_upload_size_mb * 1024 * 1024:
         raise FileTooLargeError(max_upload_size_mb)
-
-    filename = file.filename or "unknown"
-    extension = _validate_upload_extension(filename)
     file_uid = _generate_file_uid()
     content_hash = hashlib.sha256(content).hexdigest()
     temp_dir = build_temp_dir(normalized_subject or "library", user_id=owner_user_id)
