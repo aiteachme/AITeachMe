@@ -368,7 +368,7 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
         <div
           className={cn(
             "flex h-12 shrink-0 items-center border-b border-slate-100 dark:border-slate-800/50",
-            effectiveCollapsed ? "justify-center px-0" : "justify-between px-4",
+            effectiveCollapsed ? "justify-center px-0" : "justify-between px-3",
           )}
         >
           {effectiveCollapsed ? (
@@ -389,7 +389,7 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
             </div>
           ) : (
             <>
-              <Link to="/" className="flex items-center gap-2 text-slate-900 dark:text-slate-100">
+              <Link to="/" className="flex items-center gap-2 pl-2 text-slate-900 dark:text-slate-100">
                 <img src={LOGO_SRC} alt="AITeachMe" className="h-5 w-auto dark:invert dark:opacity-90" />
               </Link>
               <button
@@ -404,7 +404,7 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
           )}
         </div>
 
-        <div className={cn("shrink-0 space-y-1", effectiveCollapsed ? "px-0 pb-2 pt-1" : "px-2 pb-2 pt-1")}>
+        <div className={cn("shrink-0 space-y-1", effectiveCollapsed ? "px-0 pb-2 pt-1" : "px-3 pb-2 pt-1")}>
           {effectiveCollapsed ? (
             <div className="flex flex-col items-center gap-1">
               <button
@@ -811,7 +811,12 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
         </div>
 
         {/* Bottom actions */}
-        <div className="z-10 mt-auto shrink-0 space-y-1 border-t border-slate-200/80 p-2 dark:border-slate-800/50">
+        <div
+          className={cn(
+            "z-10 mt-auto shrink-0 space-y-1 border-t border-slate-200/80 dark:border-slate-800/50",
+            effectiveCollapsed ? "p-2" : "px-3 py-2",
+          )}
+        >
           <button
             type="button"
             onClick={() => setIsCommunityModalOpen(true)}
