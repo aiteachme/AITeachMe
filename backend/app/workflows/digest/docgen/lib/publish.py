@@ -14,7 +14,6 @@ from app.models.knowledge_doc import KnowledgeDoc
 from app.repositories.knowledge import docgen_repo
 from app.shared.infra.database import managed_session
 from app.workflows.digest.common.pedagogy import resolve_effective_chapter_title
-from app.workflows.digest.common.pedagogy import build_document_overview as build_learning_document_overview
 from app.shared.infra.storage import (
     SubjectStorageScope,
     get_content_store,
@@ -126,19 +125,8 @@ def build_merged_markdown(
 
     deduped_chapters = _dedupe_chapter_metadatas(chapters)
     include_sources = bool((document_context or {}).get("include_sources", True))
-    overview = _ensure_document_overview_structure(
-        build_learning_document_overview(
-        subject=str((document_context or {}).get("subject") or "未命名学科"),
-        subject_display_name=str((document_context or {}).get("subject_display_name") or ""),
-        digest_mode=str((document_context or {}).get("digest_mode") or ""),
-        user_prompt=str((document_context or {}).get("user_prompt") or ""),
-        plan_summary=str((document_context or {}).get("plan_summary") or ""),
-        source_strategy=str((document_context or {}).get("source_strategy") or ""),
-        chapters=deduped_chapters,
-        )
-    )
     separator = "\n\n---\n\n"
-    body: list[str] = [overview.strip()]
+    body: list[str] = []
     all_source_details: list[dict[str, object]] = []
     for chapter in deduped_chapters:
         chapter_index = int(chapter.get("chapter_index", 0) or 0)
@@ -162,31 +150,6 @@ def build_merged_markdown(
     if str(cover_markdown or "").strip():
         merged = f"{str(cover_markdown).strip()}\n\n{merged.lstrip()}".strip()
     return normalize_mermaid_blocks(merged.strip()) + "\n"
-
-
-def _ensure_document_overview_structure(markdown: str) -> str:
-    cleaned = str(markdown or "").strip()
-    if not cleaned.startswith("# "):
-        cleaned = "# 知识文档总览\n\n" + cleaned.lstrip("# \n")
-    if "\n## 目录" not in cleaned and "\n## 目錄" not in cleaned:
-        cleaned = _insert_toc_after_overview_intro(cleaned)
-    return cleaned.strip()
-
-
-def _insert_toc_after_overview_intro(markdown: str) -> str:
-    lines = str(markdown or "").splitlines()
-    if not lines:
-        return "# 知识文档总览\n\n## 目录\n\n"
-    insert_at = len(lines)
-    for index, line in enumerate(lines[1:], start=1):
-        if line.startswith("## "):
-            insert_at = index
-            break
-    while insert_at > 0 and not lines[insert_at - 1].strip():
-        insert_at -= 1
-    toc_block = ["", "## 目录", ""]
-    lines[insert_at:insert_at] = toc_block
-    return "\n".join(lines).strip() + "\n"
 
 
 

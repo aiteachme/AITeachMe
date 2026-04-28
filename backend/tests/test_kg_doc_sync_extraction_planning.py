@@ -2,7 +2,9 @@ import asyncio
 
 from app.workflows.digest.common.markdown_knowledge_anchors import extract_markdown_chapter_chunks
 from app.workflows.digest.common.markdown_knowledge_anchors import MarkdownKnowledgeUnit
+from app.workflows.digest.docgen.lib.publish import build_merged_markdown
 from app.workflows.digest.kg_doc_sync.lib import incremental_sync
+from app.workflows.digest.kg_doc_sync.lib.extraction import ChunkExtractionResult
 from app.workflows.digest.kg_doc_sync.lib.incremental_sync import _build_extraction_tasks
 from app.workflows.digest.kg_doc_sync.lib.models import (
     SectionExtractionContext,
@@ -87,8 +89,82 @@ def test_many_chapters_keep_chapter_tasks_and_limit_parallel_lanes() -> None:
     tasks, metrics = _build_extraction_tasks(chapters, {})
 
     assert len(tasks) == len(chapters)
-    assert metrics["planned_task_limit"] == 20
+    assert metrics["planned_task_limit"] == 32
     assert metrics["chapter_split_count"] == 0
+
+
+def test_published_knowledge_doc_starts_with_first_chapter_without_overview() -> None:
+    markdown = build_merged_markdown(
+        [
+            {
+                "chapter_index": 1,
+                "title": "行列式",
+                "markdown": "# 行列式\n\n## 几何意义\n\n行列式描述有向面积或体积。",
+            }
+        ],
+        document_context={"subject": "线性代数", "digest_mode": "sprint"},
+    )
+
+    assert "\n## 目录\n" not in markdown
+    assert "# 知识文档总览" not in markdown
+    assert markdown.startswith("# 行列式")
+
+
+def test_medium_chapters_with_many_sections_split_into_subsection_tasks() -> None:
+    markdown = "\n\n".join(
+        [
+            "# C1\n"
+            + "\n".join(f"## C1-S{index}\n" + ("x" * 420) for index in range(1, 7)),
+            "# C2\n"
+            + "\n".join(f"## C2-S{index}\n" + ("x" * 420) for index in range(1, 7)),
+            "# C3\n"
+            + "\n".join(f"## C3-S{index}\n" + ("x" * 420) for index in range(1, 7)),
+            "# C4\n"
+            + "\n".join(f"## C4-S{index}\n" + ("x" * 420) for index in range(1, 7)),
+        ]
+    )
+
+    chapters = extract_markdown_chapter_chunks(markdown, max_body_chars=None)
+    tasks, metrics = _build_extraction_tasks(chapters, {})
+
+    assert len(chapters) == 4
+    assert len(tasks) > len(chapters)
+    assert len(tasks) <= metrics["planned_task_limit"]
+    assert metrics["chapter_split_count"] == 4
+    assert metrics["subsection_task_count"] == len(tasks)
+
+
+def test_invalid_remark_edge_type_is_normalized_before_validation() -> None:
+    result = ChunkExtractionResult.model_validate(
+        {
+            "nodes": [
+                {
+                    "candidate_id": "method",
+                    "name": "主成分分析方法",
+                    "knowledge_unit_type": "method",
+                    "local_summary": "通过特征值和特征向量选择主成分。",
+                },
+                {
+                    "candidate_id": "remark",
+                    "name": "主成分分析前需标准化数据提醒",
+                    "knowledge_unit_type": "remark",
+                    "local_summary": "未标准化会导致量纲大的变量主导主成分方向。",
+                },
+            ],
+            "edges": [
+                {
+                    "source_name": "主成分分析方法",
+                    "target_name": "主成分分析前需标准化数据提醒",
+                    "source_candidate_id": "method",
+                    "target_candidate_id": "remark",
+                    "edge_type": "remark",
+                    "description": "提醒是方法实施的补充。",
+                }
+            ],
+        }
+    )
+
+    assert result.edges[0].edge_type == "application"
 
 
 def test_prefetched_section_payload_is_reused_and_context_is_finalized() -> None:

@@ -33,7 +33,6 @@ export { BuildChapterProgress } from "./BuildChapterProgress";
 export { BuildResearchSources } from "./BuildResearchSources";
 export { BuildMaterialPipeline } from "./BuildMaterialPipeline";
 export { BuildLiveDraft } from "./BuildLiveDraft";
-export { BuildMetricsBadges } from "./BuildMetricsBadges";
 
 /* Doc Reader Components */
 export { DocHeader } from "./DocHeader";

@@ -752,7 +752,7 @@ export function HomePage() {
         subject: "library",
         total: nextItems.length,
         ready_count: nextItems.filter((item) => item.markdown_ready).length,
-        processing_count: nextItems.filter((item) => !item.markdown_ready && !item.error_message?.trim()).length,
+        processing_count: nextItems.filter((item) => !item.markdown_ready && item.status !== "failed" && !item.error_message?.trim()).length,
         failed_count: nextItems.filter((item) => Boolean(item.error_message?.trim()) || item.status === "failed").length,
         items: nextItems,
       };
@@ -821,7 +821,7 @@ export function HomePage() {
     const readyCount = entryFilesData?.ready_count ?? uploadedFiles.filter((file) => file.markdown_ready).length;
     const processingCount =
       entryFilesData?.processing_count ??
-      uploadedFiles.filter((file) => !file.markdown_ready && !file.error_message?.trim()).length;
+      uploadedFiles.filter((file) => !file.markdown_ready && file.status !== "failed" && !file.error_message?.trim()).length;
     const failedCount =
       entryFilesData?.failed_count ??
       uploadedFiles.filter((file) => Boolean(file.error_message?.trim()) || file.status === "failed").length;

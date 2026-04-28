@@ -7,7 +7,7 @@ import re
 from typing import Literal
 from time import perf_counter
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 import structlog
 
 from app.shared.infra.llm_support import acompletion_structured
@@ -95,6 +95,16 @@ class CandidateNode(BaseModel):
         description="定义、公式、例题等节点所属的父概念、方法或主题。",
     )
 
+    @field_validator("knowledge_unit_type", mode="before")
+    @classmethod
+    def _normalize_knowledge_unit_type(cls, value: object) -> str:
+        return normalize_knowledge_unit_type(str(value or ""))
+
+    @field_validator("type_source", mode="before")
+    @classmethod
+    def _normalize_type_source(cls, value: object) -> str:
+        return normalize_type_source(str(value or ""))
+
 
 class CandidateEdge(BaseModel):
     """A candidate edge extracted from a chunk."""
@@ -114,6 +124,13 @@ class CandidateEdge(BaseModel):
         "contrast",
     ] = Field(description="允许的关系类型，必须使用枚举值本身。")
     description: str = Field(description="一句话说明这条关系在当前片段中的依据。")
+
+    @field_validator("edge_type", mode="before")
+    @classmethod
+    def _normalize_edge_type(cls, value: object) -> str:
+        # Some providers occasionally echo a node type such as "remark" as a relation.
+        # Normalize before Literal validation so the section can still be salvaged.
+        return normalize_relation_type(str(value or ""))
 
 
 class ChunkExtractionResult(BaseModel):

@@ -19,7 +19,6 @@ from app.shared.infra.observability.trace import (
     langsmith_trace,
     sanitize_langsmith_input,
     sanitize_langsmith_output,
-    suppress_langsmith_child_runs,
 )
 from app.shared.infra.workflow import workflow_tracer
 from app.shared.infra.workflow.context import WorkflowContext, create_langgraph_dev_context
@@ -341,67 +340,6 @@ def get_langgraph_dev_planner_graph() -> StateGraph:
     return build_planner_graph(context=create_langgraph_dev_context("digest.planner.langgraph_dev"))
 
 
-def _planner_trace_inputs(
-    *,
-    subject: str,
-    file_ids: list[int],
-    user_prompt: str,
-    planner_session_id: str,
-    digest_mode: str,
-    message_history: list[str],
-    user_id: str,
-    planner_operation: str,
-    requested_file_uids: list[str] | None,
-    session_title: str,
-    feedback_message: str,
-    latest_plan: dict | None,
-) -> dict[str, object]:
-    return sanitize_langsmith_input(
-        {
-            "subject": subject,
-            "user_id": user_id,
-            "planner_session_id": planner_session_id,
-            "planner_operation": normalize_planner_operation(planner_operation),
-            "file_id_count": len(file_ids),
-            "requested_file_uid_count": len(requested_file_uids or []),
-            "digest_mode": digest_mode,
-            "message_history_count": len(message_history),
-            "session_title_preview": session_title[:120],
-            "user_prompt_preview": user_prompt[:240],
-            "feedback_preview": feedback_message[:240],
-            "has_latest_plan": bool(latest_plan),
-            "latest_plan_chapter_count": len(list((latest_plan or {}).get("chapter_plan") or [])),
-        },
-        field_name="planner_trace_inputs",
-    )
-
-
-def _planner_trace_outputs(result: WorkflowResult[BuildPlannerState]) -> dict[str, object]:
-    state = result.value if isinstance(result.value, dict) else {}
-    return sanitize_langsmith_output(
-        {
-            "failed": result.failed,
-            "error": str(result.error) if result.error else str(state.get("error") or ""),
-            "planner_session_id": str(state.get("planner_session_id") or ""),
-            "has_plan": bool(state.get("plan")),
-            "plan_chapter_count": len(list((state.get("plan") or {}).get("chapter_plan") or []))
-            if isinstance(state.get("plan"), dict)
-            else 0,
-            "workflow_elapsed_ms": int(state.get("workflow_elapsed_ms") or 0),
-        },
-        field_name="planner_trace_outputs",
-    )
-
-
-def _end_planner_root_trace(trace_run: object | None, result: WorkflowResult[BuildPlannerState]) -> None:
-    if trace_run is None:
-        return
-    try:
-        trace_run.end(outputs=_planner_trace_outputs(result))
-    except Exception:
-        logger.exception("planner_root_trace_end_failed")
-
-
 async def run_build_planner_workflow(
     *,
     subject: str,
@@ -443,7 +381,6 @@ async def run_build_planner_workflow(
             "planner_operation": normalized_operation,
             "planner_session_id": planner_session_id,
             "digest_mode": digest_mode,
-            "suppress_child_langsmith_runs": True,
         },
     )
     initial_state = create_planner_initial_state(
@@ -462,42 +399,12 @@ async def run_build_planner_workflow(
         progress_callback=progress_callback,
         token_callback=token_callback,
     )
-    with langsmith_trace(
-        name=run_name,
-        run_type="chain",
-        inputs=_planner_trace_inputs(
-            subject=subject,
-            user_id=user_id,
-            file_ids=file_ids,
-            user_prompt=user_prompt,
-            planner_session_id=planner_session_id,
-            digest_mode=digest_mode,
-            message_history=message_history,
-            planner_operation=normalized_operation,
-            requested_file_uids=requested_file_uids,
-            session_title=session_title,
-            feedback_message=feedback_message,
-            latest_plan=latest_plan,
-        ),
-        subject=subject,
-        build_session_id=planner_session_id,
-        workflow="digest.planner",
-        lane="planner",
-        extra_metadata={
-            "planner_operation": normalized_operation,
-            "planner_session_id": planner_session_id,
-            "digest_mode": digest_mode,
-        },
-        extra_tags=[f"planner_operation:{normalized_operation}"],
-    ) as trace_run:
-        with suppress_langsmith_child_runs():
-            result = await run_state_graph(
-                workflow_name="digest.planner",
-                graph_builder=lambda: build_planner_graph(context=context),
-                initial_state=initial_state,
-                context=context,
-            )
-        _end_planner_root_trace(trace_run, result)
+    result = await run_state_graph(
+        workflow_name="digest.planner",
+        graph_builder=lambda: build_planner_graph(context=context),
+        initial_state=initial_state,
+        context=context,
+    )
     logger.info(
         "planner_workflow_finished",
         subject=subject,

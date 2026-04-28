@@ -432,6 +432,17 @@
   100% { background-position: -200% 0; }
 }
 
+@keyframes progress-breathing {
+  0%, 100% {
+    opacity: 0.78;
+    box-shadow: 0 0 0 rgba(59, 130, 246, 0);
+  }
+  50% {
+    opacity: 1;
+    box-shadow: 0 0 16px rgba(59, 130, 246, 0.28);
+  }
+}
+
 .progress-bar-active {
   background-image: linear-gradient(
     90deg,
@@ -441,6 +452,12 @@
   );
   background-size: 200% 100%;
   animation: progress-shimmer 2.5s ease-in-out infinite;
+}
+
+.progress-bar-breathing {
+  animation:
+    progress-shimmer 2.5s ease-in-out infinite,
+    progress-breathing 1.8s ease-in-out infinite;
 }
 
 .dark .progress-bar-active {
@@ -686,6 +703,8 @@
 
 .build-live-markdown h2 {
   margin-top: 1.75rem;
+  padding-left: 0.8rem;
+  border-left: 3px solid #3370ff;
   font-size: 20px;
   line-height: 1.45;
   letter-spacing: 0;
@@ -701,6 +720,40 @@
 .build-live-markdown li {
   font-size: 15px;
   line-height: 1.78;
+}
+
+.build-live-markdown strong {
+  color: #1456f0;
+  font-weight: 650;
+}
+
+.build-live-markdown li::marker {
+  color: #3370ff;
+}
+
+.build-live-markdown aside {
+  box-shadow: 0 14px 34px -28px rgba(15, 23, 42, 0.42);
+}
+
+.build-live-markdown table {
+  font-size: 14px;
+}
+
+.build-live-markdown thead {
+  background: #f5f7fb;
+}
+
+.dark .build-live-markdown h2 {
+  border-left-color: #60a5fa;
+}
+
+.dark .build-live-markdown strong,
+.dark .build-live-markdown li::marker {
+  color: #93c5fd;
+}
+
+.dark .build-live-markdown thead {
+  background: rgba(15, 23, 42, 0.92);
 }
 
 @supports (content-visibility: auto) {

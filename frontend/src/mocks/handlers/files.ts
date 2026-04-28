@@ -98,13 +98,14 @@ function buildFilesResponse(subject: string): FilesData {
   const items = [...mockFiles]
     .sort((left, right) => right.created_at.localeCompare(left.created_at))
     .map((file) => serializeFile(subject, file));
+  const hasFileError = (item: FileRecord) => item.status === "failed" || Boolean(item.error_message?.trim());
 
   return {
     subject,
     total: items.length,
     ready_count: items.filter((item) => item.markdown_ready).length,
-    processing_count: items.filter((item) => !item.markdown_ready && item.status !== "failed").length,
-    failed_count: items.filter((item) => item.status === "failed").length,
+    processing_count: items.filter((item) => !item.markdown_ready && !hasFileError(item)).length,
+    failed_count: items.filter((item) => hasFileError(item)).length,
     items,
   };
 }

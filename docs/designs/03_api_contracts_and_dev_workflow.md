@@ -20,11 +20,12 @@
 ### 知识构建
 
 - `POST /build`：启动知识文档构建。公开 `build_type` 只允许省略或 `"docs"`。
+- `POST /build/graph`：从当前已发布知识文档手动触发知识图谱重建，主要用于维护、补偿和排查；不是旧版调试构建模式。
 - `POST /build/cancel`：取消当前构建。
 - `POST /build/runtime`：读取聚合、DocGen、Graph 三个 lane 的运行态。
 - `GET /build/stream`：SSE 推送构建快照、预览增量和构建事件。
 
-`/build` 不再暴露单独的图谱调试构建模式。知识图谱同步由 `sync_after_docgen` 设置控制；开启 `prefetch_during_docgen` 时，DocGen 期间会先做内存预抽取，知识文档发布后再校验缓存并统一落库。
+`/build` 本身只承载知识文档构建。知识图谱同步由 `sync_after_docgen` 设置控制；开启 `prefetch_during_docgen` 时，DocGen 期间会先做内存预抽取，知识文档发布后再校验缓存并统一落库。`/build/graph` 仅保留为面向已发布文档的手动重建入口，前端不应把它当成可自由传文件的图谱调试接口。
 
 ### 知识文档与概览
 

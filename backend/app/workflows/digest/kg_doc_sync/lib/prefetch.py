@@ -121,21 +121,21 @@ def start_docgen_kg_prefetch(
     chapters: list[dict[str, Any]],
     document_backbone: dict[str, Any] | None = None,
     llm_snapshot: LLMRuntimeSnapshot | None = None,
-) -> None:
+) -> bool:
     """Start a non-blocking KG prefetch task for enhanced DocGen chapters."""
 
     settings = get_settings()
     if not settings.knowledge_graph.sync_after_docgen:
-        return
+        return False
     if not settings.knowledge_graph.prefetch_during_docgen:
-        return
+        return False
     subject = str(subject or "").strip()
     build_session_id = str(build_session_id or "").strip()
     if not subject or not build_session_id:
-        return
+        return False
     markdown = _prefetch_markdown(chapters)
     if not markdown:
-        return
+        return False
     key = _key(subject, build_session_id)
     with _LOCK:
         existing = _CACHES.pop(key, None)
@@ -210,6 +210,7 @@ def start_docgen_kg_prefetch(
         chapter_count=len(chapters),
         concurrency=concurrency,
     )
+    return True
 
 
 async def consume_docgen_kg_prefetch(

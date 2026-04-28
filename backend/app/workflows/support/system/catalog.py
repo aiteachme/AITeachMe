@@ -386,14 +386,14 @@ SETTINGS_CATALOG: tuple[SettingsCatalogSection, ...] = (
             setting(
                 "knowledge_graph.prefetch_concurrency",
                 "图谱预抽取并发",
-                description="DocGen 仍在运行时，知识图谱预抽取最多占用的 LLM 并发路数；默认 4 路。",
+                description="DocGen 仍在运行时，知识图谱预抽取最多占用的 LLM 并发路数；默认 6 路。",
                 ui_group="图谱联动",
                 ui_order=150,
             ),
             setting(
                 "knowledge_graph.max_parallel_extractions",
                 "图谱最大抽取并发",
-                description="发布后正式图谱同步的最大章节/子章节抽取并发；仍会受全局 LLM 并发限制。",
+                description="发布后正式图谱同步的最大章节/子章节抽取并发；默认 32，仍会受全局 LLM 并发限制。",
                 ui_group="图谱联动",
                 ui_order=155,
             ),

@@ -78,8 +78,7 @@ type BuildEventItem = {
 };
 
 function shouldOpenDetailsByDefault(): boolean {
-  if (typeof window === "undefined") return false;
-  return window.matchMedia("(min-width: 1280px)").matches;
+  return false;
 }
 
 const BUILD_MODE_LABELS: Record<string, string> = {
@@ -367,7 +366,7 @@ export function BuildView({
                     "relative h-full overflow-hidden rounded-sm",
                     roundedProgress === 100
                       ? "bg-gradient-to-r from-emerald-400 via-emerald-500 to-teal-500"
-                      : "bg-blue-500"
+                      : "bg-blue-500 progress-bar-active progress-bar-breathing"
                   )}
                   initial={{ width: 0 }}
                   animate={{
@@ -607,18 +606,6 @@ export function BuildView({
                           ) : null}
                         </div>
 
-                        {!detailsOpen ? (
-                          <BuildSignalRail
-                            statusLabel={buildChapterStatusLabel(selectedStatus)}
-                            wordCount={selectedWordCount}
-                            sourceCount={selectedSourceCount}
-                            headings={selectedHeadings}
-                            events={selectedChapterEvents}
-                            usingSseDelta={usingSseDelta}
-                            usingMergeFallback={usingMergeFallback}
-                            onOpenDetails={() => setDetailsOpen(true)}
-                          />
-                        ) : null}
                       </div>
                     ) : selectedChapterEvents.length > 0 ? (
                       <div className="mx-auto w-full max-w-[1120px] space-y-4 pb-10">
@@ -718,126 +705,6 @@ export function BuildView({
         ) : null}
       </div>
     </motion.div>
-  );
-}
-
-function BuildSignalRail({
-  statusLabel,
-  wordCount,
-  sourceCount,
-  headings,
-  events,
-  usingSseDelta,
-  usingMergeFallback,
-  onOpenDetails,
-}: {
-  statusLabel: string;
-  wordCount: number;
-  sourceCount: number;
-  headings: string[];
-  events: BuildEventItem[];
-  usingSseDelta: boolean;
-  usingMergeFallback: boolean;
-  onOpenDetails: () => void;
-}) {
-  const visibleEvents = events.slice(0, 4);
-
-  return (
-    <aside className="hidden min-w-0 2xl:block">
-      <div className="sticky top-6 border-l border-zinc-100 pl-5 dark:border-slate-800">
-        <div className="mb-5">
-          <p className="text-[11px] font-medium tracking-[0.18em] text-zinc-400 dark:text-slate-500">
-            本章生成态势
-          </p>
-          <div className="mt-3 flex flex-wrap gap-2">
-            <span className="rounded-md bg-zinc-50 px-2 py-1 text-[11px] font-medium text-zinc-600 ring-1 ring-zinc-200 dark:bg-slate-950 dark:text-slate-300 dark:ring-slate-800">
-              {statusLabel}
-            </span>
-            {usingSseDelta ? (
-              <span className="rounded-md bg-blue-50 px-2 py-1 text-[11px] font-medium text-blue-600 ring-1 ring-blue-100 dark:bg-blue-500/10 dark:text-blue-300 dark:ring-blue-500/20">
-                实时增量
-              </span>
-            ) : null}
-            {usingMergeFallback ? (
-              <span className="rounded-md bg-blue-50 px-2 py-1 text-[11px] font-medium text-blue-600 ring-1 ring-blue-100 dark:bg-blue-500/10 dark:text-blue-300 dark:ring-blue-500/20">
-                整本预览
-              </span>
-            ) : null}
-          </div>
-        </div>
-
-        <div className="mb-5 grid grid-cols-2 gap-2">
-          <div className="border-y border-zinc-100 py-3 dark:border-slate-800">
-            <div className="text-[18px] font-semibold tabular-nums text-zinc-900 dark:text-slate-100">
-              {wordCount > 0 ? formatCompactCount(wordCount) : "--"}
-            </div>
-            <div className="mt-1 text-[11px] text-zinc-400 dark:text-slate-500">字数</div>
-          </div>
-          <div className="border-y border-zinc-100 py-3 dark:border-slate-800">
-            <div className="text-[18px] font-semibold tabular-nums text-zinc-900 dark:text-slate-100">
-              {sourceCount > 0 ? formatCompactCount(sourceCount) : "--"}
-            </div>
-            <div className="mt-1 text-[11px] text-zinc-400 dark:text-slate-500">来源</div>
-          </div>
-        </div>
-
-        {headings.length > 0 ? (
-          <div className="mb-5">
-            <p className="text-[11px] font-medium tracking-[0.18em] text-zinc-400 dark:text-slate-500">
-              生成聚焦
-            </p>
-            <div className="mt-3 space-y-2">
-              {headings.slice(0, 5).map((heading) => (
-                <div
-                  key={heading}
-                  className="rounded-md bg-zinc-50 px-2.5 py-2 text-[12px] leading-5 text-zinc-600 ring-1 ring-zinc-100 dark:bg-slate-950 dark:text-slate-300 dark:ring-slate-800"
-                >
-                  {heading}
-                </div>
-              ))}
-            </div>
-          </div>
-        ) : null}
-
-        <div>
-          <div className="mb-3 flex items-center justify-between gap-3">
-            <p className="text-[11px] font-medium tracking-[0.18em] text-zinc-400 dark:text-slate-500">
-              最近事件
-            </p>
-            <button
-              type="button"
-              onClick={onOpenDetails}
-              className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium text-blue-600 transition hover:bg-blue-50 dark:text-blue-300 dark:hover:bg-blue-500/10"
-            >
-              <PanelRightOpen className="h-3 w-3" />
-              全部
-            </button>
-          </div>
-          <div className="space-y-3">
-            {visibleEvents.map((event, index) => {
-              const stage = (event.stage ?? "").trim();
-              const stageLabel = EVENT_STAGE_LABELS[stage] ?? (stage || "事件");
-              return (
-                <div key={`${event.stage}-${event.created_at}-${index}`} className="text-[11.5px] leading-5">
-                  <div className="mb-1 flex items-center justify-between gap-2">
-                    <span className="truncate font-medium text-blue-500 dark:text-blue-400">{stageLabel}</span>
-                    <span className="shrink-0 text-[10px] text-zinc-300 dark:text-slate-600">
-                      {event.created_at ? formatBuildEventTime(event.created_at) : ""}
-                    </span>
-                  </div>
-                  <p className="line-clamp-3 text-zinc-500 dark:text-slate-400">{event.summary}</p>
-                </div>
-              );
-            })}
-            {visibleEvents.length === 0 ? (
-              <div className="py-3 text-[12px] leading-5 text-zinc-400 dark:text-slate-500">
-                正在等待本章事件刷新。
-              </div>
-            ) : null}
-          </div>
-        </div>
-      </div>
-    </aside>
   );
 }
 

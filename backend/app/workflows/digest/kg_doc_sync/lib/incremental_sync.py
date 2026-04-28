@@ -72,11 +72,11 @@ _ANCHOR_ALIAS_SOURCE = "markdown_anchor"
 _SYNC_EDGE_MARKER = "markdown_anchor_sync"
 _RAG_DEDUP_TOP_K = 6
 _RAG_DEDUP_SIMILARITY_THRESHOLD = 0.82
-_DEFAULT_DOCS_SYNC_CHAPTER_CONCURRENCY_LIMIT = 20
-_DEFAULT_DOCS_SYNC_MAX_PARALLEL_EXTRACTIONS = 20
+_DEFAULT_DOCS_SYNC_CHAPTER_CONCURRENCY_LIMIT = 32
+_DEFAULT_DOCS_SYNC_MAX_PARALLEL_EXTRACTIONS = 32
 _DOCS_SYNC_SPLIT_MIN_CHILD_SECTIONS = 2
-_DOCS_SYNC_SPLIT_MIN_CHAPTER_CHARS = 9000
-_DOCS_SYNC_SPLIT_TARGET_TASK_CHARS = 7000
+_DOCS_SYNC_SPLIT_MIN_CHAPTER_CHARS = 2400
+_DOCS_SYNC_SPLIT_TARGET_TASK_CHARS = 1800
 _DEFAULT_DOCS_SYNC_CHAPTER_MAX_RETRIES = 2
 _DEFAULT_DOCS_SYNC_CHAPTER_RETRY_DELAY_S = 0.4
 _DOCS_SYNC_CHAPTER_MAX_RETRIES = _DEFAULT_DOCS_SYNC_CHAPTER_MAX_RETRIES
@@ -680,10 +680,10 @@ def _chapter_child_chunks(chapter: MarkdownSectionChunk) -> list[MarkdownSection
 
 
 def _should_split_chapter(chapter: MarkdownSectionChunk, child_chunks: list[MarkdownSectionChunk]) -> bool:
-    return (
-        len(child_chunks) >= _DOCS_SYNC_SPLIT_MIN_CHILD_SECTIONS
-        and len(chapter.body_markdown or "") >= _DOCS_SYNC_SPLIT_MIN_CHAPTER_CHARS
-    )
+    if len(child_chunks) < _DOCS_SYNC_SPLIT_MIN_CHILD_SECTIONS:
+        return False
+    chapter_chars = len(chapter.body_markdown or "")
+    return chapter_chars >= _DOCS_SYNC_SPLIT_MIN_CHAPTER_CHARS or len(child_chunks) >= 4
 
 
 def _chunk_chars(chunk: MarkdownSectionChunk) -> int:
@@ -1687,6 +1687,29 @@ async def _extract_chapter_with_retries(
     raise RuntimeError("knowledge graph chapter extraction failed without an exception")
 
 
+def _build_section_subject_context(
+    subject_context: str,
+    *,
+    chapter,
+    chapter_context: ChapterSourceContext,
+    source_kind: str,
+) -> str:
+    """Give each small KG extraction the DocGen outline context without enlarging the chunk."""
+
+    base_context = str(subject_context or "").strip()
+    hints: list[str] = []
+    if chapter_context.title:
+        hints.append(f"所属章节：{chapter_context.title}")
+    if chapter_context.summary:
+        hints.append(f"章节摘要：{chapter_context.summary}")
+    if source_kind != "chapter" and getattr(chapter, "header_path", ""):
+        hints.append(f"当前小节路径：{chapter.header_path}")
+    if not hints:
+        return base_context
+    hint_text = "知识文档结构上下文：\n" + "\n".join(f"- {hint}" for hint in hints)
+    return f"{base_context}\n\n{hint_text}".strip() if base_context else hint_text
+
+
 async def _extract_chapter_graph_items(
     chapter_index: int,
     chapter,
@@ -1698,12 +1721,18 @@ async def _extract_chapter_graph_items(
 ) -> SectionExtractionPayload:
     chapter_context = chapter_context or ChapterSourceContext(chapter_index=chapter_index)
     resolved_chapter_index = chapter_context.chapter_index or source_chapter_index or chapter_index
+    section_subject_context = _build_section_subject_context(
+        subject_context,
+        chapter=chapter,
+        chapter_context=chapter_context,
+        source_kind=source_kind,
+    )
     result, diagnostics = await _extract_candidates_with_diagnostics_adapter(
         chunk_content=chapter.body_markdown,
         chunk_title=chapter.title,
         header_path=chapter.header_path,
         doc_source_type="knowledge_doc_markdown",
-        subject_context=subject_context,
+        subject_context=section_subject_context,
         prefer_fast_path=False,
         allow_markdown_anchor_short_circuit=False,
     )
