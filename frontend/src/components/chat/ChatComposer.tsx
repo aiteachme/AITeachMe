@@ -70,7 +70,7 @@ export function ChatComposer({
     <div className="w-full bg-gradient-to-t from-white via-white to-white/80 px-4 pb-5 pt-3 dark:from-slate-950 dark:via-slate-950 dark:to-slate-950/80 md:px-8">
       <div className="mx-auto w-full max-w-3xl xl:max-w-4xl 2xl:max-w-5xl">
         <div className="rounded-3xl border border-zinc-200/80 bg-white/95 backdrop-blur-xl shadow-[0_8px_24px_-8px_rgba(0,0,0,0.12),0_16px_48px_-16px_rgba(0,0,0,0.12)] transition-[border-color,box-shadow,background-color] focus-within:border-zinc-300 focus-within:bg-white focus-within:shadow-[0_12px_32px_-12px_rgba(0,0,0,0.16),0_24px_64px_-20px_rgba(0,0,0,0.16)] dark:border-slate-800/80 dark:bg-slate-950/92 dark:shadow-[0_18px_40px_-18px_rgba(0,0,0,0.72)] dark:focus-within:border-slate-700 dark:focus-within:bg-slate-950">
-          <div className="flex items-end gap-3 px-3 py-2.5">
+          <div className="flex items-end gap-2 px-3 py-2.5 sm:gap-3">
             <textarea
               ref={textareaRef}
               rows={1}
@@ -82,6 +82,15 @@ export function ChatComposer({
               className="h-12 min-h-12 max-h-40 flex-1 resize-none overflow-y-hidden bg-transparent px-3 py-3 text-[14px] leading-6 text-zinc-800 outline-none placeholder:text-zinc-400 disabled:cursor-not-allowed disabled:opacity-60 dark:text-slate-100 dark:placeholder:text-slate-500"
               style={{ maxHeight: `${TEXTAREA_MAX_HEIGHT}px` }}
             />
+
+            {modelValue && onModelChange ? (
+              <ChatModelSelect
+                value={modelValue}
+                onChange={onModelChange}
+                disabled={disabled || isStreaming}
+                className="mb-1 hidden sm:inline-flex"
+              />
+            ) : null}
 
             {isStreaming ? (
               <button
@@ -109,17 +118,18 @@ export function ChatComposer({
               </button>
             )}
           </div>
-        </div>
 
-        {modelValue && onModelChange ? (
-          <div className="mt-2.5 flex px-2">
-            <ChatModelSelect
-              value={modelValue}
-              onChange={onModelChange}
-              disabled={disabled || isStreaming}
-            />
-          </div>
-        ) : null}
+          {modelValue && onModelChange ? (
+            <div className="flex items-center px-5 pb-3 pt-0 sm:hidden">
+              <ChatModelSelect
+                value={modelValue}
+                onChange={onModelChange}
+                disabled={disabled || isStreaming}
+                className="h-7"
+              />
+            </div>
+          ) : null}
+        </div>
 
         <div className="mt-2.5 flex items-center justify-between gap-3 px-2 text-[11px] font-medium tracking-wide text-zinc-400 dark:text-slate-500">
           <span className="hidden sm:inline-block">Enter 发送，Shift + Enter 换行</span>

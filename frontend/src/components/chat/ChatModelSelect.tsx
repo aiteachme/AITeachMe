@@ -1,5 +1,5 @@
 import { useId } from "react";
-import { SlidersHorizontal } from "lucide-react";
+import { ChevronDown, Cpu } from "lucide-react";
 
 import { cn } from "../../lib/utils";
 
@@ -38,32 +38,42 @@ export function ChatModelSelect({
   className,
 }: ChatModelSelectProps) {
   const selectId = useId();
+  const isUsingOverride = value !== DEFAULT_CHAT_MODEL_CHOICE;
 
   return (
     <div
+      title="选择本轮模型"
       className={cn(
-        "inline-flex h-8 min-w-0 items-center gap-1.5 rounded-lg border border-zinc-200/80 bg-white/80 px-2 text-zinc-500 shadow-sm transition-colors focus-within:border-zinc-300 focus-within:ring-4 focus-within:ring-zinc-900/5 dark:border-slate-700/80 dark:bg-slate-900/80 dark:text-slate-400 dark:focus-within:border-slate-600 dark:focus-within:ring-slate-100/5",
-        disabled && "opacity-60",
+        "group relative inline-flex h-8 max-w-full shrink-0 items-center gap-1.5 rounded-full border px-2.5 text-[12px] font-medium shadow-none transition-all",
+        "focus-within:ring-4 focus-within:ring-zinc-900/5 dark:focus-within:ring-slate-100/5",
+        isUsingOverride
+          ? "border-indigo-200/80 bg-indigo-50/80 text-indigo-700 hover:border-indigo-300 hover:bg-indigo-50 dark:border-indigo-400/20 dark:bg-indigo-400/10 dark:text-indigo-200 dark:hover:border-indigo-300/30"
+          : "border-transparent bg-zinc-100/70 text-zinc-500 hover:bg-zinc-100 hover:text-zinc-700 dark:bg-slate-800/70 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200",
+        disabled && "opacity-55",
         className,
       )}
     >
-      <SlidersHorizontal className="h-3.5 w-3.5 shrink-0" />
+      <Cpu className="h-3.5 w-3.5 shrink-0" />
       <label htmlFor={selectId} className="sr-only">
         选择模型
       </label>
-      <select
-        id={selectId}
-        value={value}
-        onChange={(event) => onChange(toChatModelChoice(event.target.value))}
-        disabled={disabled}
-        className="h-full min-w-0 cursor-pointer bg-transparent text-[12px] font-medium text-zinc-600 outline-none disabled:cursor-not-allowed dark:text-slate-300"
-      >
-        {CHAT_MODEL_OPTIONS.map((option) => (
-          <option key={option.value} value={option.value}>
-            {option.label}
-          </option>
-        ))}
-      </select>
+      <span className="relative inline-flex min-w-0 items-center">
+        <select
+          id={selectId}
+          value={value}
+          onChange={(event) => onChange(toChatModelChoice(event.target.value))}
+          disabled={disabled}
+          aria-label="选择本轮模型"
+          className="h-7 max-w-[146px] cursor-pointer appearance-none truncate bg-transparent pr-5 text-[12px] font-medium leading-none text-current outline-none disabled:cursor-not-allowed sm:max-w-[168px]"
+        >
+          {CHAT_MODEL_OPTIONS.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+        <ChevronDown className="pointer-events-none absolute right-0 h-3.5 w-3.5 text-current opacity-55 transition-opacity group-hover:opacity-80" />
+      </span>
     </div>
   );
 }

@@ -1759,7 +1759,7 @@ export function BuildPlanPage() {
                   </div>
                 )}
 
-                <div className="flex items-end justify-between gap-2 px-1">
+                <div className="flex flex-wrap items-end justify-between gap-2 px-1">
                   <div className="flex flex-1 flex-wrap items-center gap-2">
                     <input
                       type="file"
@@ -1787,12 +1787,6 @@ export function BuildPlanPage() {
                       {uploadMutation.isPending ? "上传中" : "添加资料"}
                     </label>
 
-                    <ChatModelSelect
-                      value={chatModel}
-                      onChange={setChatModel}
-                      disabled={isBuilding || plannerStreaming}
-                    />
-
                     {plannerNeedsRefresh && (
                       <span className="rounded-full bg-amber-50 px-2.5 py-0.5 text-[11px] font-medium text-amber-700">
                         资料已变化
@@ -1800,38 +1794,45 @@ export function BuildPlanPage() {
                     )}
                   </div>
 
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (isBuilding) {
-                        handleCancelBuild();
-                        return;
+                  <div className="ml-2 flex shrink-0 items-center gap-2">
+                    <ChatModelSelect
+                      value={chatModel}
+                      onChange={setChatModel}
+                      disabled={isBuilding || plannerStreaming}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (isBuilding) {
+                          handleCancelBuild();
+                          return;
+                        }
+                        void handleSend();
+                      }}
+                      disabled={
+                        (isBuilding && !isBuildActive) ||
+                        cancelBuildMutation.isPending ||
+                        (!isBuilding && !plannerStreaming && (!inputValue.trim() || confirmPlannerMutation.isPending))
                       }
-                      void handleSend();
-                    }}
-                    disabled={
-                      (isBuilding && !isBuildActive) ||
-                      cancelBuildMutation.isPending ||
-                      (!isBuilding && !plannerStreaming && (!inputValue.trim() || confirmPlannerMutation.isPending))
-                    }
-                    title={isBuilding ? "终止当前构建" : plannerStreaming ? "停止当前生成" : "发送"}
-                    className={
-                      "flex h-11 w-11 shrink-0 items-center justify-center rounded-xl transition-all sm:h-9 sm:w-9 " +
-                      (isBuilding || plannerStreaming
-                        ? "rounded-full bg-zinc-100 text-zinc-950 shadow-sm hover:bg-zinc-200 focus:outline-none focus:ring-4 focus:ring-zinc-900/10 active:scale-[0.98]"
-                        : (!inputValue.trim() || confirmPlannerMutation.isPending)
-                        ? "cursor-not-allowed bg-zinc-100 text-zinc-300"
-                        : "bg-zinc-900 text-white shadow-sm hover:bg-zinc-800 focus:outline-none focus:ring-4 focus:ring-zinc-900/10 active:scale-[0.98]")
-                    }
-                  >
-                    {cancelBuildMutation.isPending ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : isBuilding || plannerStreaming ? (
-                      <Square className="h-3.5 w-3.5 fill-current stroke-0" />
-                    ) : (
-                      <ArrowUp className="h-4 w-4" />
-                    )}
-                  </button>
+                      title={isBuilding ? "终止当前构建" : plannerStreaming ? "停止当前生成" : "发送"}
+                      className={
+                        "flex h-11 w-11 shrink-0 items-center justify-center rounded-xl transition-all sm:h-9 sm:w-9 " +
+                        (isBuilding || plannerStreaming
+                          ? "rounded-full bg-zinc-100 text-zinc-950 shadow-sm hover:bg-zinc-200 focus:outline-none focus:ring-4 focus:ring-zinc-900/10 active:scale-[0.98]"
+                          : (!inputValue.trim() || confirmPlannerMutation.isPending)
+                          ? "cursor-not-allowed bg-zinc-100 text-zinc-300"
+                          : "bg-zinc-900 text-white shadow-sm hover:bg-zinc-800 focus:outline-none focus:ring-4 focus:ring-zinc-900/10 active:scale-[0.98]")
+                      }
+                    >
+                      {cancelBuildMutation.isPending ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : isBuilding || plannerStreaming ? (
+                        <Square className="h-3.5 w-3.5 fill-current stroke-0" />
+                      ) : (
+                        <ArrowUp className="h-4 w-4" />
+                      )}
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>

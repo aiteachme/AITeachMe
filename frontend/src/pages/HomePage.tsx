@@ -1044,7 +1044,7 @@ export function HomePage() {
                 </div>
               )}
 
-              <div className="flex items-center justify-between px-1">
+              <div className="flex flex-wrap items-center justify-between gap-2 px-1">
                 <div className="flex flex-1 flex-wrap items-center gap-2">
                   <input 
                     type="file" 
@@ -1077,11 +1077,6 @@ export function HomePage() {
                     <FolderOpen className="h-3.5 w-3.5" />
                     从资料库选
                   </button>
-                  <ChatModelSelect
-                    value={chatModel}
-                    onChange={setChatModel}
-                    disabled={isWorking}
-                  />
                   {isWorking && (
                     <span className="ml-2 flex items-center text-[12px] font-medium text-zinc-500">
                       <Loader2 className="mr-1.5 h-3 w-3 animate-spin" />
@@ -1090,18 +1085,25 @@ export function HomePage() {
                   )}
                 </div>
 
-                <button
-                  onClick={handleGenerate}
-                  disabled={!canGenerate || isWorking}
-                  className={cn(
-                    "flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition-all focus:outline-none focus:ring-4 focus:ring-zinc-900/10 active:scale-[0.98]",
-                    canGenerate && !isWorking
-                      ? "bg-zinc-900 text-white shadow-sm hover:bg-zinc-800 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white"
-                      : "cursor-not-allowed bg-zinc-100 text-zinc-300 dark:bg-slate-800 dark:text-slate-600"
-                  )}
-                >
-                  <ArrowUp className="h-4 w-4" />
-                </button>
+                <div className="ml-2 flex shrink-0 items-center gap-2">
+                  <ChatModelSelect
+                    value={chatModel}
+                    onChange={setChatModel}
+                    disabled={isWorking}
+                  />
+                  <button
+                    onClick={handleGenerate}
+                    disabled={!canGenerate || isWorking}
+                    className={cn(
+                      "flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition-all focus:outline-none focus:ring-4 focus:ring-zinc-900/10 active:scale-[0.98]",
+                      canGenerate && !isWorking
+                        ? "bg-zinc-900 text-white shadow-sm hover:bg-zinc-800 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white"
+                        : "cursor-not-allowed bg-zinc-100 text-zinc-300 dark:bg-slate-800 dark:text-slate-600"
+                    )}
+                  >
+                    <ArrowUp className="h-4 w-4" />
+                  </button>
+                </div>
               </div>
             </div>
           </div>
