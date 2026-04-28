@@ -197,7 +197,7 @@ async def dispatch_web_search(
     query: str,
     *,
     top_k: int = 5,
-    subject: str | None = None,
+    subject_id: str | None = None,
     local_sections: list[object] | None = None,
     profile: str | None = None,
     total_timeout_s: float | None = None,
@@ -214,7 +214,7 @@ async def dispatch_web_search(
         top_k: Final number of fused results to return. This is not the same as
             per-provider result count; each provider is asked for up to
             ``top_k`` candidates and the fused result is capped again.
-        subject: Optional subject slug. When present, ``local_rag`` can query
+        subject_id: Optional subject ID. When present, ``local_rag`` can query
             indexed uploaded materials for that subject before web providers.
         local_sections: Optional in-memory local material snippets. This lets a
             workflow pass local context that is not yet in the subject vector
@@ -241,7 +241,7 @@ async def dispatch_web_search(
 
     started_at = time.monotonic()
     retrievers = get_retrievers_for_subject(
-        subject=subject,
+        subject_id=subject_id,
         local_sections=local_sections,
         profile=profile,
     )

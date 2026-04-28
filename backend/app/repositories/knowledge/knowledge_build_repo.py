@@ -29,8 +29,8 @@ def _store_settings(subject_record: Subject, payload: dict[str, object]) -> None
     subject_record.settings_json = json.dumps(payload, ensure_ascii=False)
 
 
-def _get_subject(session: Session, subject: str) -> Subject | None:
-    return session.exec(select(Subject).where(Subject.slug == subject)).first()
+def _get_subject(session: Session, subject_id: str) -> Subject | None:
+    return session.exec(select(Subject).where(Subject.id == subject_id)).first()
 
 
 def _find_subject_by_job_id(session: Session, job_id: int) -> Subject | None:
@@ -57,12 +57,12 @@ def _lock_expired(lock_payload: dict[str, object], *, ttl_minutes: int) -> bool:
 
 def acquire_subject_build_lock(
     session: Session,
-    subject: str,
+    subject_id: str,
     job_id: int,
     *,
     ttl_minutes: int = 30,
 ) -> bool:
-    subject_record = _get_subject(session, subject)
+    subject_record = _get_subject(session, subject_id)
     if subject_record is None:
         return False
 
@@ -83,8 +83,8 @@ def acquire_subject_build_lock(
     return True
 
 
-def release_subject_build_lock(session: Session, subject: str) -> None:
-    subject_record = _get_subject(session, subject)
+def release_subject_build_lock(session: Session, subject_id: str) -> None:
+    subject_record = _get_subject(session, subject_id)
     if subject_record is None:
         return
     settings = _load_settings(subject_record)
@@ -100,10 +100,10 @@ def update_digest_job(
     session: Session,
     job_id: int,
     *,
-    subject: str | None = None,
+    subject_id: str | None = None,
     **kwargs: object,
 ) -> None:
-    subject_record = _get_subject(session, subject) if subject else _find_subject_by_job_id(session, job_id)
+    subject_record = _get_subject(session, subject_id) if subject_id else _find_subject_by_job_id(session, job_id)
     if subject_record is None:
         return
 

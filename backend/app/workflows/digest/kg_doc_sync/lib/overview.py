@@ -9,7 +9,7 @@ from app.schemas.knowledge import (
     KnowledgeOverviewResponse,
     KnowledgeOverviewStats,
 )
-from app.shared.infra.subject import get_subject_vector_status_by_slug
+from app.shared.infra.subject import get_subject_vector_status_by_id
 from app.utils.time import utcnow
 from app.workflows.digest.kg_doc_sync.lib.query import get_full_graph
 
@@ -28,7 +28,7 @@ def _resolve_sections(include: list[str] | None, full: bool) -> set[str]:
 def get_knowledge_overview(
     session: Session,
     *,
-    subject: str,
+    subject_id: str,
     include: list[str] | None = None,
     full: bool = True,
 ) -> KnowledgeOverviewResponse:
@@ -45,7 +45,7 @@ def get_knowledge_overview(
     graph: FullGraphResponse | None = None
 
     if need_graph:
-        graph = get_full_graph(session, subject=subject)
+        graph = get_full_graph(session, subject_id=subject_id)
 
     stats = KnowledgeOverviewStats(
         node_count=len(graph.nodes) if graph is not None else 0,
@@ -53,11 +53,11 @@ def get_knowledge_overview(
     )
 
     return KnowledgeOverviewResponse(
-        subject=subject,
+        subject_id=subject_id,
         generated_at=utcnow(),
         graph=graph if "graph" in sections else None,
         stats=stats if "stats" in sections else KnowledgeOverviewStats(),
-        vector_status=get_subject_vector_status_by_slug(session, subject),
+        vector_status=get_subject_vector_status_by_id(session, subject_id),
     )
 
 

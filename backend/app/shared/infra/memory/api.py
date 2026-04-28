@@ -287,7 +287,7 @@ async def log_learning_event(
     user_id: str,
     *,
     event_type: str,
-    subject: str = "",
+    subject_id: str = "",
     summary: str,
     metadata: dict | None = None,
 ) -> None:
@@ -296,21 +296,21 @@ async def log_learning_event(
     Args:
         user_id: 用户标识。
         event_type: 事件类型（"chat" / "exam" / "review" / "study"）。
-        subject: 学科标识。
+        subject_id: 学科标识。
         summary: 事件摘要。
         metadata: 附加元数据。
 
     Example::
 
         from app.shared.infra.memory.api import log_learning_event
-        await log_learning_event("u1", event_type="exam", subject="math",
+        await log_learning_event("u1", event_type="exam", subject_id="math",
                                  summary="完成概率论测验，得分 85")
     """
 
     entry = LearningLogEntry(
         user_id=user_id,
         event_type=event_type,
-        subject=subject,
+        subject_id=subject_id,
         summary=summary,
         metadata=metadata or {},
     )

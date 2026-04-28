@@ -23,7 +23,7 @@ _TOKEN_RE = re.compile(r"[\w]+|[\u4e00-\u9fff]", re.UNICODE)
 def _trace_retrieval_inputs(inputs: dict[str, object]) -> dict[str, object]:
     query = str(inputs.get("query") or "")
     return {
-        "subject": inputs.get("subject"),
+        "subject_id": inputs.get("subject_id"),
         "query_preview": query[:500],
         "query_chars": len(query),
         "top_k": inputs.get("top_k"),
@@ -68,7 +68,7 @@ async def retrieve_context(
     *,
     session: Session,
     query: str,
-    subject: str,
+    subject_id: str,
     top_k: int,
     similarity_threshold: float,
     user_id: str = "local",
@@ -85,10 +85,10 @@ async def retrieve_context(
     normalized_query = query.strip()
     if not normalized_query or top_k <= 0:
         return []
-    if not subject.strip():
+    if not subject_id.strip():
         logger.info(
             "interact_retrieval_skipped",
-            subject=subject,
+            subject_id=subject_id,
             reason="global_chat_scope",
         )
         return []
@@ -96,7 +96,7 @@ async def retrieve_context(
     graph_results = _retrieve_knowledge_unit_context(
         session,
         query=normalized_query,
-        subject=subject,
+        subject_id=subject_id,
         top_k=top_k,
         user_id=user_id,
         similarity_threshold=similarity_threshold,
@@ -104,7 +104,7 @@ async def retrieve_context(
     if graph_results:
         logger.info(
             "interact_kg_retrieval_done",
-            subject=subject,
+            subject_id=subject_id,
             query_len=len(normalized_query),
             result_count=len(graph_results),
         )
@@ -113,13 +113,13 @@ async def retrieve_context(
     vector_results = await _retrieve_vector_context(
         session=session,
         query=normalized_query,
-        subject=subject,
+        subject_id=subject_id,
         top_k=top_k,
         similarity_threshold=similarity_threshold,
     )
     logger.info(
         "interact_retrieval_done",
-        subject=subject,
+        subject_id=subject_id,
         query_len=len(normalized_query),
         result_count=len(vector_results),
         source="vector_fallback",
@@ -137,14 +137,14 @@ def _retrieve_knowledge_unit_context(
     session: Session,
     *,
     query: str,
-    subject: str,
+    subject_id: str,
     top_k: int,
     user_id: str,
     similarity_threshold: float,
 ) -> list[RetrievedContext]:
     units, _ = knowledge_unit_repo.list_knowledge_units_by_subject(
         session,
-        subject,
+        subject_id,
         status="active",
         limit=500,
         offset=0,
@@ -164,7 +164,7 @@ def _retrieve_knowledge_unit_context(
     center_count = max(1, min(3, top_k))
     center_ids = {unit.id for unit, _ in ranked[:center_count] if unit.id is not None}
     unit_by_id = {unit.id: unit for unit in units if unit.id is not None}
-    edges = knowledge_relation_repo.list_all_edges_by_subject(session, subject)
+    edges = knowledge_relation_repo.list_all_edges_by_subject(session, subject_id)
     selected_scores: dict[int, float] = {
         int(unit.id): score for unit, score in ranked[:top_k] if unit.id is not None
     }
@@ -176,7 +176,7 @@ def _retrieve_knowledge_unit_context(
         if edge.target_node_id in center_ids and edge.source_node_id in unit_by_id:
             _add_related_unit(edge.source_node_id, edge, unit_by_id, selected_scores, relation_paths, selected_scores[edge.target_node_id])
 
-    mastery = _mastery_by_unit_id(session, subject=subject, user_id=user_id)
+    mastery = _mastery_by_unit_id(session, subject_id=subject_id, user_id=user_id)
     ordered_ids = sorted(
         selected_scores,
         key=lambda unit_id: (
@@ -248,13 +248,13 @@ def _tokens(text: str) -> list[str]:
     return [match.group(0).casefold() for match in _TOKEN_RE.finditer(text)]
 
 
-def _mastery_by_unit_id(session: Session, *, subject: str, user_id: str) -> dict[int, float]:
+def _mastery_by_unit_id(session: Session, *, subject_id: str, user_id: str) -> dict[int, float]:
     return {
         int(state.knowledge_unit_id): float(state.mastery_score)
         for state in profile_repo.list_knowledge_states(
             session,
             user_id=user_id,
-            subject=subject,
+            subject_id=subject_id,
             target_kind="node",
         )
         if state.knowledge_unit_id is not None
@@ -277,7 +277,7 @@ def _context_from_unit(
     chunk_id = int(evidence["chunk_id"] or 0)
     file_id = str(evidence["file_id"] or "")
 
-    if chunk is not None and chunk.subject == unit.subject:
+    if chunk is not None and chunk.subject_id == unit.subject_id:
         content = chunk.content
         title = chunk.title or unit.canonical_name
         header_path = chunk.header_path or unit.canonical_name
@@ -328,15 +328,15 @@ async def _retrieve_vector_context(
     *,
     session: Session,
     query: str,
-    subject: str,
+    subject_id: str,
     top_k: int,
     similarity_threshold: float,
 ) -> list[RetrievedContext]:
-    search_notice = get_subject_vector_search_notice(session, subject_slug=subject)
+    search_notice = get_subject_vector_search_notice(session, subject_id=subject_id)
     if search_notice is not None:
         logger.info(
             "interact_vector_retrieval_skipped",
-            subject=subject,
+            subject_id=subject_id,
             reason=search_notice,
         )
         return []
@@ -344,12 +344,12 @@ async def _retrieve_vector_context(
     from app.shared.infra.search.llamaindex_adapter import build_knowledge_retriever
 
     try:
-        retriever = build_knowledge_retriever(subject=subject, top_k=top_k)
+        retriever = build_knowledge_retriever(subject_id=subject_id, top_k=top_k)
         nodes = await retriever.aretrieve(query)
     except Exception as exc:
         logger.warning(
             "interact_vector_retrieval_soft_failed",
-            subject=subject,
+            subject_id=subject_id,
             error=str(exc),
             fallback="graph_only",
         )

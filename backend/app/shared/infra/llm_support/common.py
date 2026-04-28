@@ -343,8 +343,8 @@ def trace_log_fields() -> dict[str, str]:
 
     trace = get_llm_trace_context()
     fields: dict[str, str] = {}
-    if trace.subject:
-        fields["subject"] = trace.subject
+    if trace.subject_id:
+        fields["subject_id"] = trace.subject_id
     if trace.build_session_id:
         fields["build_session_id"] = trace.build_session_id
     if trace.workflow:
@@ -540,7 +540,7 @@ def track_call(
         latency_s=round(time.monotonic() - start, 3),
         success=success,
         error=error,
-        subject=trace_context.subject,
+        subject_id=trace_context.subject_id,
         build_session_id=trace_context.build_session_id,
         workflow=trace_context.workflow,
         lane=trace_context.lane,

@@ -8,7 +8,7 @@ from app.models.knowledge_unit import KnowledgeUnit
 
 
 class QuestionBuildGraphInput(TypedDict, total=False):
-    subject: str
+    subject_id: str
     subject_name: str
     subject_description: str
     subject_user_intent: str

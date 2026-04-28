@@ -1,4 +1,4 @@
-import { useRef, useState, useEffect, useMemo } from "react";
+﻿import { useRef, useState, useEffect, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import * as d3 from "d3";
 import {
@@ -12,7 +12,7 @@ import {
   ExternalLink,
 } from "lucide-react";
 
-import { graphKnowledgeUnitDetailApiV1SubjectsSubjectKnowledgeGraphKnowledgeUnitsDetailPost } from "../../api/generated/knowledge";
+import { graphKnowledgeUnitDetailApiV1SubjectsSubjectIdKnowledgeGraphKnowledgeUnitsDetailPost } from "../../api/generated/knowledge";
 import type { FullGraphResponse } from "../../api/generated/model";
 import { unwrapOrvalResponse } from "../../lib/unwrapOrvalResponse";
 import { MarkdownViewer } from "../ui/MarkdownViewer";
@@ -67,7 +67,7 @@ function NodeDetailSidebar({
     queryKey: ["graph-node-detail", subject, nodeId],
     queryFn: async () =>
       unwrapOrvalResponse(
-        await graphKnowledgeUnitDetailApiV1SubjectsSubjectKnowledgeGraphKnowledgeUnitsDetailPost(subject, {
+        await graphKnowledgeUnitDetailApiV1SubjectsSubjectIdKnowledgeGraphKnowledgeUnitsDetailPost(subject, {
           knowledge_unit_id: nodeId,
         }),
       ) ?? null,

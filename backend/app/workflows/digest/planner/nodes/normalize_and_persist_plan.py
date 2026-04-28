@@ -1,4 +1,4 @@
-﻿"""Normalize the plan contract and persist planner session state."""
+"""Normalize the plan contract and persist planner session state."""
 
 from __future__ import annotations
 
@@ -29,7 +29,7 @@ def build_normalize_and_persist_plan_node(*, context: WorkflowContext):
         logger.info(
             "planner_normalize_started",
             planner_session_id=state.get("planner_session_id", ""),
-            subject=state.get("subject", ""),
+            subject_id=state.get("subject_id", ""),
             has_build_plan_draft=bool(state.get("build_plan_draft")),
             state_error=state.get("error"),
         )
@@ -38,7 +38,7 @@ def build_normalize_and_persist_plan_node(*, context: WorkflowContext):
         # 上一个节点已经完成“生成”；这里把极简 JSON 合同补齐成 API/DocGen 稳定结构并落库。
         draft = normalize_planner_draft(
             state.get("build_plan_draft") or {},
-            subject=state["subject"],
+            subject_id=state["subject_id"],
             user_prompt=state.get("user_prompt") or "",
             requested_digest_mode=digest_mode,
             shared_inputs=material_context,
@@ -46,7 +46,7 @@ def build_normalize_and_persist_plan_node(*, context: WorkflowContext):
         )
         generated_subject_name = str(state.get("generated_subject_name") or "").strip()
         if generated_subject_name:
-            draft.subject = generated_subject_name
+            draft.subject_name = generated_subject_name
         logger.info(
             "planner_normalize_completed",
             planner_session_id=state.get("planner_session_id", ""),

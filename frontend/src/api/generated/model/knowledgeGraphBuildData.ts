@@ -10,8 +10,8 @@
  * Knowledge graph rebuild response data.
  */
 export interface KnowledgeGraphBuildData {
-  /** Subject slug. */
-  subject: string;
+  /** Subject ID. */
+  subject_id: string;
   /** accepted / running */
   status?: string;
   /** Graph build request timestamp. */

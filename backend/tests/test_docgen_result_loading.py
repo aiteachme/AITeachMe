@@ -34,7 +34,7 @@ class _FakeJsonContentStore:
 
 
 def test_load_current_published_markdown_prefers_live_merged_store(monkeypatch) -> None:
-    subject_scope = build_subject_storage_scope(user_id="user_a", subject="linear-algebra")
+    subject_scope = build_subject_storage_scope(user_id="user_a", subject_id="subj_linearalg012")
     manifest = KnowledgeDocsManifest(
         updated_at=datetime(2026, 4, 28, tzinfo=timezone.utc),
         version_no=3,
@@ -50,7 +50,7 @@ def test_load_current_published_markdown_prefers_live_merged_store(monkeypatch) 
 
     markdown, updated_at = build_lifecycle._load_current_published_markdown(
         object(),
-        subject="linear-algebra",
+        subject_id="subj_linearalg012",
         subject_scope=subject_scope,
         manifest=manifest,
     )
@@ -60,7 +60,7 @@ def test_load_current_published_markdown_prefers_live_merged_store(monkeypatch) 
 
 
 def test_knowledge_manifest_is_written_outside_staging_prefix(monkeypatch) -> None:
-    subject_scope = build_subject_storage_scope(user_id="user_a", subject="linear-algebra")
+    subject_scope = build_subject_storage_scope(user_id="user_a", subject_id="subj_linearalg012")
     manifest = KnowledgeDocsManifest(
         updated_at=datetime(2026, 4, 28, tzinfo=timezone.utc),
         version_no=3,
@@ -70,18 +70,18 @@ def test_knowledge_manifest_is_written_outside_staging_prefix(monkeypatch) -> No
     monkeypatch.setattr(build_store, "get_content_store", lambda: fake_store)
 
     key = build_store.write_knowledge_manifest(
-        "linear-algebra",
+        "subj_linearalg012",
         manifest,
         subject_scope=subject_scope,
     )
 
     assert key == subject_scope.build_manifest_key()
     assert not key.startswith(subject_scope.knowledge_build_prefix())
-    assert build_store.read_knowledge_manifest("linear-algebra", subject_scope=subject_scope) == manifest
+    assert build_store.read_knowledge_manifest("subj_linearalg012", subject_scope=subject_scope) == manifest
 
 
 def test_knowledge_manifest_read_migrates_staged_manifest(monkeypatch) -> None:
-    subject_scope = build_subject_storage_scope(user_id="user_a", subject="linear-algebra")
+    subject_scope = build_subject_storage_scope(user_id="user_a", subject_id="subj_linearalg012")
     manifest = KnowledgeDocsManifest(
         updated_at=datetime(2026, 4, 28, tzinfo=timezone.utc),
         version_no=2,
@@ -91,6 +91,6 @@ def test_knowledge_manifest_read_migrates_staged_manifest(monkeypatch) -> None:
     fake_store.payloads[f"{subject_scope.knowledge_build_prefix()}manifest.json"] = manifest.model_dump_json()
     monkeypatch.setattr(build_store, "get_content_store", lambda: fake_store)
 
-    assert build_store.read_knowledge_manifest("linear-algebra", subject_scope=subject_scope) == manifest
+    assert build_store.read_knowledge_manifest("subj_linearalg012", subject_scope=subject_scope) == manifest
     assert subject_scope.build_manifest_key() in fake_store.payloads
     assert f"{subject_scope.knowledge_build_prefix()}manifest.json" not in fake_store.payloads

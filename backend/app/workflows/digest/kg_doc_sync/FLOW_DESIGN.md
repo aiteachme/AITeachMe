@@ -221,7 +221,7 @@ payload fan-in 后
 ```text
 knowledge_graph_build
   输入：
-    - subject：学科 slug。
+    - subject_id：学科主键，形如 subj_xxx。
   前置校验：
     - 当前学科必须存在。
     - docgen lane 不能处于 accepted/running/publishing。
@@ -242,7 +242,7 @@ run_graph_docs_sync_auto_build
 
 run_graph_docs_sync_after_doc_build
   输入：
-    - subject：学科 slug，所有图谱读写都按 subject 隔离。
+    - subject_id：学科主键，所有图谱读写都按 subject_id 隔离。
     - requested_at：DocGen build 发起时间，用于写 build runtime。
     - build_group_id：同一次 docgen/graph 构建的分组 ID。
     - build_session_id：LangSmith、sync run、source ref 的关联 ID。

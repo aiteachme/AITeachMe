@@ -11,7 +11,7 @@
  */
 export interface KnowledgeUnitResponse {
   id: number;
-  subject: string;
+  subject_id: string;
   knowledge_unit_type: string;
   canonical_name: string;
   status: string;

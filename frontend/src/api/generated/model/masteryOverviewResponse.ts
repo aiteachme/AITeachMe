@@ -10,7 +10,7 @@ import type { SubjectProfileSummary } from './subjectProfileSummary';
 import type { UserProfileSummary } from './userProfileSummary';
 
 export interface MasteryOverviewResponse {
-  subject: string;
+  subject_id: string;
   user_id: string;
   weak_knowledge_unit_count: number;
   knowledge_unit_states?: MasteryStateResponse[];

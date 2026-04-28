@@ -49,7 +49,7 @@ def get_knowledge_unit_by_id(session: Session, knowledge_unit_id: int) -> Knowle
 
 def find_knowledge_unit_by_normalized_name(
     session: Session,
-    subject: str,
+    subject_id: str,
     normalized_name: str,
     knowledge_unit_type: str,
     *,
@@ -60,7 +60,7 @@ def find_knowledge_unit_by_normalized_name(
     if include_pending:
         allowed.append("pending")
     stmt = select(KnowledgeUnit).where(
-        KnowledgeUnit.subject == subject,
+        KnowledgeUnit.subject_id == subject_id,
         KnowledgeUnit.normalized_name == normalized_name,
         KnowledgeUnit.knowledge_unit_type == knowledge_unit_type,
         KnowledgeUnit.status.in_(allowed),
@@ -70,13 +70,13 @@ def find_knowledge_unit_by_normalized_name(
 
 def find_knowledge_units_by_alias(
     session: Session,
-    subject: str,
+    subject_id: str,
     normalized_alias: str,
     knowledge_unit_type: str,
 ) -> list[KnowledgeUnit]:
     knowledge_unit_type = normalize_knowledge_unit_type(knowledge_unit_type)
     stmt = select(KnowledgeUnit).where(
-        KnowledgeUnit.subject == subject,
+        KnowledgeUnit.subject_id == subject_id,
         KnowledgeUnit.knowledge_unit_type == knowledge_unit_type,
         KnowledgeUnit.status.in_(["active", "pending"]),
     )
@@ -91,15 +91,15 @@ def find_knowledge_units_by_alias(
 
 def list_knowledge_units_by_subject(
     session: Session,
-    subject: str,
+    subject_id: str,
     *,
     knowledge_unit_type: str | None = None,
     status: str | None = "active",
     limit: int = 50,
     offset: int = 0,
 ) -> tuple[list[KnowledgeUnit], int]:
-    base = select(KnowledgeUnit).where(KnowledgeUnit.subject == subject)
-    count_base = select(func.count(KnowledgeUnit.id)).where(KnowledgeUnit.subject == subject)
+    base = select(KnowledgeUnit).where(KnowledgeUnit.subject_id == subject_id)
+    count_base = select(func.count(KnowledgeUnit.id)).where(KnowledgeUnit.subject_id == subject_id)
 
     if status is not None:
         base = base.where(KnowledgeUnit.status == status)
@@ -164,11 +164,11 @@ def create_alias(
     return alias
 
 
-def find_alias(session: Session, subject: str, normalized_alias: str) -> list[KnowledgeAlias]:
+def find_alias(session: Session, subject_id: str, normalized_alias: str) -> list[KnowledgeAlias]:
     nodes = list(
         session.exec(
             select(KnowledgeUnit).where(
-                KnowledgeUnit.subject == subject,
+                KnowledgeUnit.subject_id == subject_id,
                 KnowledgeUnit.status.in_(["active", "pending"]),
             )
         ).all()
@@ -243,4 +243,3 @@ def create_knowledge_revision(
 
 def deactivate_old_knowledge_unit_revisions(session: Session, knowledge_unit_id: int) -> None:
     del session, knowledge_unit_id
-

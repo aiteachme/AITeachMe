@@ -1,4 +1,4 @@
-import { lazy, Suspense, useMemo, useState, type ReactNode } from "react";
+﻿import { lazy, Suspense, useMemo, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertCircle,
@@ -12,7 +12,7 @@ import {
   Trash2,
 } from "lucide-react";
 
-import { knowledgeClearApiV1SubjectsSubjectKnowledgeClearPost } from "../../api/generated/knowledge";
+import { knowledgeClearApiV1SubjectsSubjectIdKnowledgeClearPost } from "../../api/generated/knowledge";
 import { getApiErrorMessage } from "../../api/client";
 import {
   OVERVIEW_INCLUDE_PRESETS,
@@ -95,7 +95,7 @@ export function KnowledgeGraphSidePanel({
   });
 
   const clearMutation = useMutation({
-    mutationFn: () => knowledgeClearApiV1SubjectsSubjectKnowledgeClearPost(subjectId),
+    mutationFn: () => knowledgeClearApiV1SubjectsSubjectIdKnowledgeClearPost(subjectId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["knowledge-overview", subjectId] });
       queryClient.invalidateQueries({ queryKey: ["graph-node-detail", subjectId] });

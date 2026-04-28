@@ -175,9 +175,9 @@ def _count_file_states(records: list[FileRecord]) -> tuple[int, int, int]:
     return ready_count, processing_count, failed_count
 
 
-def get_subject_file_or_raise(session: Session, *, subject: str, file_id: str) -> RawFile:
+def get_subject_file_or_raise(session: Session, *, subject_id: str, file_id: str) -> RawFile:
     raw_file = get_raw_file_by_id(session, file_id)
-    if raw_file is None or not raw_file_belongs_to_subject(session, raw_file=raw_file, subject=subject):
+    if raw_file is None or not raw_file_belongs_to_subject(session, raw_file=raw_file, subject_id=subject_id):
         raise RawFileNotFoundError(file_id)
     return raw_file
 
@@ -201,10 +201,10 @@ def get_user_files_or_raise(
 def get_subject_files_or_raise(
     session: Session,
     *,
-    subject: str,
+    subject_id: str,
     file_ids: list[str],
 ) -> list[RawFile]:
-    items = list_raw_files_by_ids(session, subject, file_ids)
+    items = list_raw_files_by_ids(session, subject_id, file_ids)
     found_ids = {require_id(item.id, "RawFile.id") for item in items}
     missing = [file_id for file_id in file_ids if file_id not in found_ids]
     if missing:
@@ -213,15 +213,14 @@ def get_subject_files_or_raise(
     order = {file_id: index for index, file_id in enumerate(file_ids)}
     return sorted(items, key=lambda item: order[require_id(item.id, "RawFile.id")])
 
-
 def list_subject_files(
     session: Session,
     *,
-    subject: str,
+    subject_id: str,
 ) -> FilesData:
     raw_files, total = list_raw_files_by_subject(
         session,
-        subject,
+        subject_id,
         limit=1000,
         offset=0,
         status=None,
@@ -229,7 +228,7 @@ def list_subject_files(
     records = [build_file_record(item) for item in raw_files]
     ready_count, processing_count, failed_count = _count_file_states(records)
     return FilesData(
-        subject=subject,
+        subject_id=subject_id,
         total=total,
         ready_count=ready_count,
         processing_count=processing_count,
@@ -255,7 +254,7 @@ def list_user_files(
     records = [build_file_record(item) for item in raw_files]
     ready_count, processing_count, failed_count = _count_file_states(records)
     return FilesData(
-        subject="library",
+        subject_id=None,
         total=total,
         ready_count=ready_count,
         processing_count=processing_count,

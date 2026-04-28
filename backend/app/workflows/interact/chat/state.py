@@ -18,7 +18,7 @@ from app.workflows.interact.chat.lib.types import (
 
 
 class InteractWorkflowState(TypedDict, total=False):
-    subject: str
+    subject_id: str
     user_id: str
     session_id: str | None
     session_title: str | None

@@ -746,65 +746,65 @@ export const useDeleteGlobalChatSessionApiApiV1ChatsSessionsDeletePost = <TError
       return useMutation(getDeleteGlobalChatSessionApiApiV1ChatsSessionsDeletePostMutationOptions(options), queryClient);
     }
     /**
- * 保留原生 SSE 返回。
- * @summary 发送消息
+ * Returns native SSE.
+ * @summary Send subject chat message
  */
-export type sendChatApiV1SubjectsSubjectChatsSendPostResponse200 = {
+export type sendChatApiV1SubjectsSubjectIdChatsSendPostResponse200 = {
   data: unknown
   status: 200
 }
 
-export type sendChatApiV1SubjectsSubjectChatsSendPostResponse400 = {
+export type sendChatApiV1SubjectsSubjectIdChatsSendPostResponse400 = {
   data: ErrorResponse
   status: 400
 }
 
-export type sendChatApiV1SubjectsSubjectChatsSendPostResponse404 = {
+export type sendChatApiV1SubjectsSubjectIdChatsSendPostResponse404 = {
   data: ErrorResponse
   status: 404
 }
 
-export type sendChatApiV1SubjectsSubjectChatsSendPostResponse422 = {
+export type sendChatApiV1SubjectsSubjectIdChatsSendPostResponse422 = {
   data: HTTPValidationError
   status: 422
 }
 
-export type sendChatApiV1SubjectsSubjectChatsSendPostResponse500 = {
+export type sendChatApiV1SubjectsSubjectIdChatsSendPostResponse500 = {
   data: ErrorResponse
   status: 500
 }
 
-export type sendChatApiV1SubjectsSubjectChatsSendPostResponse502 = {
+export type sendChatApiV1SubjectsSubjectIdChatsSendPostResponse502 = {
   data: ErrorResponse
   status: 502
 }
 
-export type sendChatApiV1SubjectsSubjectChatsSendPostResponse503 = {
+export type sendChatApiV1SubjectsSubjectIdChatsSendPostResponse503 = {
   data: ErrorResponse
   status: 503
 }
 
-export type sendChatApiV1SubjectsSubjectChatsSendPostResponseSuccess = (sendChatApiV1SubjectsSubjectChatsSendPostResponse200) & {
+export type sendChatApiV1SubjectsSubjectIdChatsSendPostResponseSuccess = (sendChatApiV1SubjectsSubjectIdChatsSendPostResponse200) & {
   headers: Headers;
 };
-export type sendChatApiV1SubjectsSubjectChatsSendPostResponseError = (sendChatApiV1SubjectsSubjectChatsSendPostResponse400 | sendChatApiV1SubjectsSubjectChatsSendPostResponse404 | sendChatApiV1SubjectsSubjectChatsSendPostResponse422 | sendChatApiV1SubjectsSubjectChatsSendPostResponse500 | sendChatApiV1SubjectsSubjectChatsSendPostResponse502 | sendChatApiV1SubjectsSubjectChatsSendPostResponse503) & {
+export type sendChatApiV1SubjectsSubjectIdChatsSendPostResponseError = (sendChatApiV1SubjectsSubjectIdChatsSendPostResponse400 | sendChatApiV1SubjectsSubjectIdChatsSendPostResponse404 | sendChatApiV1SubjectsSubjectIdChatsSendPostResponse422 | sendChatApiV1SubjectsSubjectIdChatsSendPostResponse500 | sendChatApiV1SubjectsSubjectIdChatsSendPostResponse502 | sendChatApiV1SubjectsSubjectIdChatsSendPostResponse503) & {
   headers: Headers;
 };
 
-export type sendChatApiV1SubjectsSubjectChatsSendPostResponse = (sendChatApiV1SubjectsSubjectChatsSendPostResponseSuccess | sendChatApiV1SubjectsSubjectChatsSendPostResponseError)
+export type sendChatApiV1SubjectsSubjectIdChatsSendPostResponse = (sendChatApiV1SubjectsSubjectIdChatsSendPostResponseSuccess | sendChatApiV1SubjectsSubjectIdChatsSendPostResponseError)
 
-export const getSendChatApiV1SubjectsSubjectChatsSendPostUrl = (subject: string,) => {
-
-
+export const getSendChatApiV1SubjectsSubjectIdChatsSendPostUrl = (subjectId: string,) => {
 
 
-  return `/api/v1/subjects/${subject}/chats/send`
+
+
+  return `/api/v1/subjects/${subjectId}/chats/send`
 }
 
-export const sendChatApiV1SubjectsSubjectChatsSendPost = async (subject: string,
-    chatSendRequest: ChatSendRequest, options?: RequestInit): Promise<sendChatApiV1SubjectsSubjectChatsSendPostResponse> => {
+export const sendChatApiV1SubjectsSubjectIdChatsSendPost = async (subjectId: string,
+    chatSendRequest: ChatSendRequest, options?: RequestInit): Promise<sendChatApiV1SubjectsSubjectIdChatsSendPostResponse> => {
 
-  return orvalApiClient<sendChatApiV1SubjectsSubjectChatsSendPostResponse>(getSendChatApiV1SubjectsSubjectChatsSendPostUrl(subject),
+  return orvalApiClient<sendChatApiV1SubjectsSubjectIdChatsSendPostResponse>(getSendChatApiV1SubjectsSubjectIdChatsSendPostUrl(subjectId),
   {
     ...options,
     method: 'POST',
@@ -817,11 +817,11 @@ export const sendChatApiV1SubjectsSubjectChatsSendPost = async (subject: string,
 
 
 
-export const getSendChatApiV1SubjectsSubjectChatsSendPostMutationOptions = <TError = ErrorResponse | HTTPValidationError,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof sendChatApiV1SubjectsSubjectChatsSendPost>>, TError,{subject: string;data: ChatSendRequest}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
-): UseMutationOptions<Awaited<ReturnType<typeof sendChatApiV1SubjectsSubjectChatsSendPost>>, TError,{subject: string;data: ChatSendRequest}, TContext> => {
+export const getSendChatApiV1SubjectsSubjectIdChatsSendPostMutationOptions = <TError = ErrorResponse | HTTPValidationError,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof sendChatApiV1SubjectsSubjectIdChatsSendPost>>, TError,{subjectId: string;data: ChatSendRequest}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
+): UseMutationOptions<Awaited<ReturnType<typeof sendChatApiV1SubjectsSubjectIdChatsSendPost>>, TError,{subjectId: string;data: ChatSendRequest}, TContext> => {
 
-const mutationKey = ['sendChatApiV1SubjectsSubjectChatsSendPost'];
+const mutationKey = ['sendChatApiV1SubjectsSubjectIdChatsSendPost'];
 const {mutation: mutationOptions, request: requestOptions} = options ?
       options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
       options
@@ -831,10 +831,10 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
 
 
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof sendChatApiV1SubjectsSubjectChatsSendPost>>, {subject: string;data: ChatSendRequest}> = (props) => {
-          const {subject,data} = props ?? {};
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof sendChatApiV1SubjectsSubjectIdChatsSendPost>>, {subjectId: string;data: ChatSendRequest}> = (props) => {
+          const {subjectId,data} = props ?? {};
 
-          return  sendChatApiV1SubjectsSubjectChatsSendPost(subject,data,requestOptions)
+          return  sendChatApiV1SubjectsSubjectIdChatsSendPost(subjectId,data,requestOptions)
         }
 
 
@@ -844,72 +844,72 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
   return  { mutationFn, ...mutationOptions }}
 
-    export type SendChatApiV1SubjectsSubjectChatsSendPostMutationResult = NonNullable<Awaited<ReturnType<typeof sendChatApiV1SubjectsSubjectChatsSendPost>>>
-    export type SendChatApiV1SubjectsSubjectChatsSendPostMutationBody = ChatSendRequest
-    export type SendChatApiV1SubjectsSubjectChatsSendPostMutationError = ErrorResponse | HTTPValidationError
+    export type SendChatApiV1SubjectsSubjectIdChatsSendPostMutationResult = NonNullable<Awaited<ReturnType<typeof sendChatApiV1SubjectsSubjectIdChatsSendPost>>>
+    export type SendChatApiV1SubjectsSubjectIdChatsSendPostMutationBody = ChatSendRequest
+    export type SendChatApiV1SubjectsSubjectIdChatsSendPostMutationError = ErrorResponse | HTTPValidationError
 
     /**
- * @summary 发送消息
+ * @summary Send subject chat message
  */
-export const useSendChatApiV1SubjectsSubjectChatsSendPost = <TError = ErrorResponse | HTTPValidationError,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof sendChatApiV1SubjectsSubjectChatsSendPost>>, TError,{subject: string;data: ChatSendRequest}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
+export const useSendChatApiV1SubjectsSubjectIdChatsSendPost = <TError = ErrorResponse | HTTPValidationError,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof sendChatApiV1SubjectsSubjectIdChatsSendPost>>, TError,{subjectId: string;data: ChatSendRequest}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
  , queryClient?: QueryClient): UseMutationResult<
-        Awaited<ReturnType<typeof sendChatApiV1SubjectsSubjectChatsSendPost>>,
+        Awaited<ReturnType<typeof sendChatApiV1SubjectsSubjectIdChatsSendPost>>,
         TError,
-        {subject: string;data: ChatSendRequest},
+        {subjectId: string;data: ChatSendRequest},
         TContext
       > => {
-      return useMutation(getSendChatApiV1SubjectsSubjectChatsSendPostMutationOptions(options), queryClient);
+      return useMutation(getSendChatApiV1SubjectsSubjectIdChatsSendPostMutationOptions(options), queryClient);
     }
     /**
- * @summary 聊天记录列表
+ * @summary 鑱婂ぉ璁板綍鍒楄〃
  */
-export type listChatApiApiV1SubjectsSubjectChatsListPostResponse200 = {
+export type listChatApiApiV1SubjectsSubjectIdChatsListPostResponse200 = {
   data: ApiResponsePaginatedDataChatMessageItem
   status: 200
 }
 
-export type listChatApiApiV1SubjectsSubjectChatsListPostResponse400 = {
+export type listChatApiApiV1SubjectsSubjectIdChatsListPostResponse400 = {
   data: ErrorResponse
   status: 400
 }
 
-export type listChatApiApiV1SubjectsSubjectChatsListPostResponse404 = {
+export type listChatApiApiV1SubjectsSubjectIdChatsListPostResponse404 = {
   data: ErrorResponse
   status: 404
 }
 
-export type listChatApiApiV1SubjectsSubjectChatsListPostResponse422 = {
+export type listChatApiApiV1SubjectsSubjectIdChatsListPostResponse422 = {
   data: HTTPValidationError
   status: 422
 }
 
-export type listChatApiApiV1SubjectsSubjectChatsListPostResponse500 = {
+export type listChatApiApiV1SubjectsSubjectIdChatsListPostResponse500 = {
   data: ErrorResponse
   status: 500
 }
 
-export type listChatApiApiV1SubjectsSubjectChatsListPostResponseSuccess = (listChatApiApiV1SubjectsSubjectChatsListPostResponse200) & {
+export type listChatApiApiV1SubjectsSubjectIdChatsListPostResponseSuccess = (listChatApiApiV1SubjectsSubjectIdChatsListPostResponse200) & {
   headers: Headers;
 };
-export type listChatApiApiV1SubjectsSubjectChatsListPostResponseError = (listChatApiApiV1SubjectsSubjectChatsListPostResponse400 | listChatApiApiV1SubjectsSubjectChatsListPostResponse404 | listChatApiApiV1SubjectsSubjectChatsListPostResponse422 | listChatApiApiV1SubjectsSubjectChatsListPostResponse500) & {
+export type listChatApiApiV1SubjectsSubjectIdChatsListPostResponseError = (listChatApiApiV1SubjectsSubjectIdChatsListPostResponse400 | listChatApiApiV1SubjectsSubjectIdChatsListPostResponse404 | listChatApiApiV1SubjectsSubjectIdChatsListPostResponse422 | listChatApiApiV1SubjectsSubjectIdChatsListPostResponse500) & {
   headers: Headers;
 };
 
-export type listChatApiApiV1SubjectsSubjectChatsListPostResponse = (listChatApiApiV1SubjectsSubjectChatsListPostResponseSuccess | listChatApiApiV1SubjectsSubjectChatsListPostResponseError)
+export type listChatApiApiV1SubjectsSubjectIdChatsListPostResponse = (listChatApiApiV1SubjectsSubjectIdChatsListPostResponseSuccess | listChatApiApiV1SubjectsSubjectIdChatsListPostResponseError)
 
-export const getListChatApiApiV1SubjectsSubjectChatsListPostUrl = (subject: string,) => {
-
-
+export const getListChatApiApiV1SubjectsSubjectIdChatsListPostUrl = (subjectId: string,) => {
 
 
-  return `/api/v1/subjects/${subject}/chats/list`
+
+
+  return `/api/v1/subjects/${subjectId}/chats/list`
 }
 
-export const listChatApiApiV1SubjectsSubjectChatsListPost = async (subject: string,
-    chatListRequest: ChatListRequest, options?: RequestInit): Promise<listChatApiApiV1SubjectsSubjectChatsListPostResponse> => {
+export const listChatApiApiV1SubjectsSubjectIdChatsListPost = async (subjectId: string,
+    chatListRequest: ChatListRequest, options?: RequestInit): Promise<listChatApiApiV1SubjectsSubjectIdChatsListPostResponse> => {
 
-  return orvalApiClient<listChatApiApiV1SubjectsSubjectChatsListPostResponse>(getListChatApiApiV1SubjectsSubjectChatsListPostUrl(subject),
+  return orvalApiClient<listChatApiApiV1SubjectsSubjectIdChatsListPostResponse>(getListChatApiApiV1SubjectsSubjectIdChatsListPostUrl(subjectId),
   {
     ...options,
     method: 'POST',
@@ -922,11 +922,11 @@ export const listChatApiApiV1SubjectsSubjectChatsListPost = async (subject: stri
 
 
 
-export const getListChatApiApiV1SubjectsSubjectChatsListPostMutationOptions = <TError = ErrorResponse | HTTPValidationError,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof listChatApiApiV1SubjectsSubjectChatsListPost>>, TError,{subject: string;data: ChatListRequest}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
-): UseMutationOptions<Awaited<ReturnType<typeof listChatApiApiV1SubjectsSubjectChatsListPost>>, TError,{subject: string;data: ChatListRequest}, TContext> => {
+export const getListChatApiApiV1SubjectsSubjectIdChatsListPostMutationOptions = <TError = ErrorResponse | HTTPValidationError,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof listChatApiApiV1SubjectsSubjectIdChatsListPost>>, TError,{subjectId: string;data: ChatListRequest}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
+): UseMutationOptions<Awaited<ReturnType<typeof listChatApiApiV1SubjectsSubjectIdChatsListPost>>, TError,{subjectId: string;data: ChatListRequest}, TContext> => {
 
-const mutationKey = ['listChatApiApiV1SubjectsSubjectChatsListPost'];
+const mutationKey = ['listChatApiApiV1SubjectsSubjectIdChatsListPost'];
 const {mutation: mutationOptions, request: requestOptions} = options ?
       options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
       options
@@ -936,10 +936,10 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
 
 
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof listChatApiApiV1SubjectsSubjectChatsListPost>>, {subject: string;data: ChatListRequest}> = (props) => {
-          const {subject,data} = props ?? {};
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof listChatApiApiV1SubjectsSubjectIdChatsListPost>>, {subjectId: string;data: ChatListRequest}> = (props) => {
+          const {subjectId,data} = props ?? {};
 
-          return  listChatApiApiV1SubjectsSubjectChatsListPost(subject,data,requestOptions)
+          return  listChatApiApiV1SubjectsSubjectIdChatsListPost(subjectId,data,requestOptions)
         }
 
 
@@ -949,72 +949,72 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
   return  { mutationFn, ...mutationOptions }}
 
-    export type ListChatApiApiV1SubjectsSubjectChatsListPostMutationResult = NonNullable<Awaited<ReturnType<typeof listChatApiApiV1SubjectsSubjectChatsListPost>>>
-    export type ListChatApiApiV1SubjectsSubjectChatsListPostMutationBody = ChatListRequest
-    export type ListChatApiApiV1SubjectsSubjectChatsListPostMutationError = ErrorResponse | HTTPValidationError
+    export type ListChatApiApiV1SubjectsSubjectIdChatsListPostMutationResult = NonNullable<Awaited<ReturnType<typeof listChatApiApiV1SubjectsSubjectIdChatsListPost>>>
+    export type ListChatApiApiV1SubjectsSubjectIdChatsListPostMutationBody = ChatListRequest
+    export type ListChatApiApiV1SubjectsSubjectIdChatsListPostMutationError = ErrorResponse | HTTPValidationError
 
     /**
- * @summary 聊天记录列表
+ * @summary 鑱婂ぉ璁板綍鍒楄〃
  */
-export const useListChatApiApiV1SubjectsSubjectChatsListPost = <TError = ErrorResponse | HTTPValidationError,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof listChatApiApiV1SubjectsSubjectChatsListPost>>, TError,{subject: string;data: ChatListRequest}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
+export const useListChatApiApiV1SubjectsSubjectIdChatsListPost = <TError = ErrorResponse | HTTPValidationError,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof listChatApiApiV1SubjectsSubjectIdChatsListPost>>, TError,{subjectId: string;data: ChatListRequest}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
  , queryClient?: QueryClient): UseMutationResult<
-        Awaited<ReturnType<typeof listChatApiApiV1SubjectsSubjectChatsListPost>>,
+        Awaited<ReturnType<typeof listChatApiApiV1SubjectsSubjectIdChatsListPost>>,
         TError,
-        {subject: string;data: ChatListRequest},
+        {subjectId: string;data: ChatListRequest},
         TContext
       > => {
-      return useMutation(getListChatApiApiV1SubjectsSubjectChatsListPostMutationOptions(options), queryClient);
+      return useMutation(getListChatApiApiV1SubjectsSubjectIdChatsListPostMutationOptions(options), queryClient);
     }
     /**
- * @summary 清空聊天记录
+ * @summary 娓呯┖鑱婂ぉ璁板綍
  */
-export type clearChatApiApiV1SubjectsSubjectChatsClearPostResponse200 = {
+export type clearChatApiApiV1SubjectsSubjectIdChatsClearPostResponse200 = {
   data: ApiResponseChatClearData
   status: 200
 }
 
-export type clearChatApiApiV1SubjectsSubjectChatsClearPostResponse400 = {
+export type clearChatApiApiV1SubjectsSubjectIdChatsClearPostResponse400 = {
   data: ErrorResponse
   status: 400
 }
 
-export type clearChatApiApiV1SubjectsSubjectChatsClearPostResponse404 = {
+export type clearChatApiApiV1SubjectsSubjectIdChatsClearPostResponse404 = {
   data: ErrorResponse
   status: 404
 }
 
-export type clearChatApiApiV1SubjectsSubjectChatsClearPostResponse422 = {
+export type clearChatApiApiV1SubjectsSubjectIdChatsClearPostResponse422 = {
   data: HTTPValidationError
   status: 422
 }
 
-export type clearChatApiApiV1SubjectsSubjectChatsClearPostResponse500 = {
+export type clearChatApiApiV1SubjectsSubjectIdChatsClearPostResponse500 = {
   data: ErrorResponse
   status: 500
 }
 
-export type clearChatApiApiV1SubjectsSubjectChatsClearPostResponseSuccess = (clearChatApiApiV1SubjectsSubjectChatsClearPostResponse200) & {
+export type clearChatApiApiV1SubjectsSubjectIdChatsClearPostResponseSuccess = (clearChatApiApiV1SubjectsSubjectIdChatsClearPostResponse200) & {
   headers: Headers;
 };
-export type clearChatApiApiV1SubjectsSubjectChatsClearPostResponseError = (clearChatApiApiV1SubjectsSubjectChatsClearPostResponse400 | clearChatApiApiV1SubjectsSubjectChatsClearPostResponse404 | clearChatApiApiV1SubjectsSubjectChatsClearPostResponse422 | clearChatApiApiV1SubjectsSubjectChatsClearPostResponse500) & {
+export type clearChatApiApiV1SubjectsSubjectIdChatsClearPostResponseError = (clearChatApiApiV1SubjectsSubjectIdChatsClearPostResponse400 | clearChatApiApiV1SubjectsSubjectIdChatsClearPostResponse404 | clearChatApiApiV1SubjectsSubjectIdChatsClearPostResponse422 | clearChatApiApiV1SubjectsSubjectIdChatsClearPostResponse500) & {
   headers: Headers;
 };
 
-export type clearChatApiApiV1SubjectsSubjectChatsClearPostResponse = (clearChatApiApiV1SubjectsSubjectChatsClearPostResponseSuccess | clearChatApiApiV1SubjectsSubjectChatsClearPostResponseError)
+export type clearChatApiApiV1SubjectsSubjectIdChatsClearPostResponse = (clearChatApiApiV1SubjectsSubjectIdChatsClearPostResponseSuccess | clearChatApiApiV1SubjectsSubjectIdChatsClearPostResponseError)
 
-export const getClearChatApiApiV1SubjectsSubjectChatsClearPostUrl = (subject: string,) => {
-
-
+export const getClearChatApiApiV1SubjectsSubjectIdChatsClearPostUrl = (subjectId: string,) => {
 
 
-  return `/api/v1/subjects/${subject}/chats/clear`
+
+
+  return `/api/v1/subjects/${subjectId}/chats/clear`
 }
 
-export const clearChatApiApiV1SubjectsSubjectChatsClearPost = async (subject: string,
-    chatClearRequest: ChatClearRequest, options?: RequestInit): Promise<clearChatApiApiV1SubjectsSubjectChatsClearPostResponse> => {
+export const clearChatApiApiV1SubjectsSubjectIdChatsClearPost = async (subjectId: string,
+    chatClearRequest: ChatClearRequest, options?: RequestInit): Promise<clearChatApiApiV1SubjectsSubjectIdChatsClearPostResponse> => {
 
-  return orvalApiClient<clearChatApiApiV1SubjectsSubjectChatsClearPostResponse>(getClearChatApiApiV1SubjectsSubjectChatsClearPostUrl(subject),
+  return orvalApiClient<clearChatApiApiV1SubjectsSubjectIdChatsClearPostResponse>(getClearChatApiApiV1SubjectsSubjectIdChatsClearPostUrl(subjectId),
   {
     ...options,
     method: 'POST',
@@ -1027,11 +1027,11 @@ export const clearChatApiApiV1SubjectsSubjectChatsClearPost = async (subject: st
 
 
 
-export const getClearChatApiApiV1SubjectsSubjectChatsClearPostMutationOptions = <TError = ErrorResponse | HTTPValidationError,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof clearChatApiApiV1SubjectsSubjectChatsClearPost>>, TError,{subject: string;data: ChatClearRequest}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
-): UseMutationOptions<Awaited<ReturnType<typeof clearChatApiApiV1SubjectsSubjectChatsClearPost>>, TError,{subject: string;data: ChatClearRequest}, TContext> => {
+export const getClearChatApiApiV1SubjectsSubjectIdChatsClearPostMutationOptions = <TError = ErrorResponse | HTTPValidationError,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof clearChatApiApiV1SubjectsSubjectIdChatsClearPost>>, TError,{subjectId: string;data: ChatClearRequest}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
+): UseMutationOptions<Awaited<ReturnType<typeof clearChatApiApiV1SubjectsSubjectIdChatsClearPost>>, TError,{subjectId: string;data: ChatClearRequest}, TContext> => {
 
-const mutationKey = ['clearChatApiApiV1SubjectsSubjectChatsClearPost'];
+const mutationKey = ['clearChatApiApiV1SubjectsSubjectIdChatsClearPost'];
 const {mutation: mutationOptions, request: requestOptions} = options ?
       options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
       options
@@ -1041,10 +1041,10 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
 
 
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof clearChatApiApiV1SubjectsSubjectChatsClearPost>>, {subject: string;data: ChatClearRequest}> = (props) => {
-          const {subject,data} = props ?? {};
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof clearChatApiApiV1SubjectsSubjectIdChatsClearPost>>, {subjectId: string;data: ChatClearRequest}> = (props) => {
+          const {subjectId,data} = props ?? {};
 
-          return  clearChatApiApiV1SubjectsSubjectChatsClearPost(subject,data,requestOptions)
+          return  clearChatApiApiV1SubjectsSubjectIdChatsClearPost(subjectId,data,requestOptions)
         }
 
 
@@ -1054,72 +1054,72 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
   return  { mutationFn, ...mutationOptions }}
 
-    export type ClearChatApiApiV1SubjectsSubjectChatsClearPostMutationResult = NonNullable<Awaited<ReturnType<typeof clearChatApiApiV1SubjectsSubjectChatsClearPost>>>
-    export type ClearChatApiApiV1SubjectsSubjectChatsClearPostMutationBody = ChatClearRequest
-    export type ClearChatApiApiV1SubjectsSubjectChatsClearPostMutationError = ErrorResponse | HTTPValidationError
+    export type ClearChatApiApiV1SubjectsSubjectIdChatsClearPostMutationResult = NonNullable<Awaited<ReturnType<typeof clearChatApiApiV1SubjectsSubjectIdChatsClearPost>>>
+    export type ClearChatApiApiV1SubjectsSubjectIdChatsClearPostMutationBody = ChatClearRequest
+    export type ClearChatApiApiV1SubjectsSubjectIdChatsClearPostMutationError = ErrorResponse | HTTPValidationError
 
     /**
- * @summary 清空聊天记录
+ * @summary 娓呯┖鑱婂ぉ璁板綍
  */
-export const useClearChatApiApiV1SubjectsSubjectChatsClearPost = <TError = ErrorResponse | HTTPValidationError,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof clearChatApiApiV1SubjectsSubjectChatsClearPost>>, TError,{subject: string;data: ChatClearRequest}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
+export const useClearChatApiApiV1SubjectsSubjectIdChatsClearPost = <TError = ErrorResponse | HTTPValidationError,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof clearChatApiApiV1SubjectsSubjectIdChatsClearPost>>, TError,{subjectId: string;data: ChatClearRequest}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
  , queryClient?: QueryClient): UseMutationResult<
-        Awaited<ReturnType<typeof clearChatApiApiV1SubjectsSubjectChatsClearPost>>,
+        Awaited<ReturnType<typeof clearChatApiApiV1SubjectsSubjectIdChatsClearPost>>,
         TError,
-        {subject: string;data: ChatClearRequest},
+        {subjectId: string;data: ChatClearRequest},
         TContext
       > => {
-      return useMutation(getClearChatApiApiV1SubjectsSubjectChatsClearPostMutationOptions(options), queryClient);
+      return useMutation(getClearChatApiApiV1SubjectsSubjectIdChatsClearPostMutationOptions(options), queryClient);
     }
     /**
- * @summary 会话列表
+ * @summary 浼氳瘽鍒楄〃
  */
-export type listChatSessionsApiApiV1SubjectsSubjectChatsSessionsListPostResponse200 = {
+export type listChatSessionsApiApiV1SubjectsSubjectIdChatsSessionsListPostResponse200 = {
   data: ApiResponsePaginatedDataChatSessionItem
   status: 200
 }
 
-export type listChatSessionsApiApiV1SubjectsSubjectChatsSessionsListPostResponse400 = {
+export type listChatSessionsApiApiV1SubjectsSubjectIdChatsSessionsListPostResponse400 = {
   data: ErrorResponse
   status: 400
 }
 
-export type listChatSessionsApiApiV1SubjectsSubjectChatsSessionsListPostResponse404 = {
+export type listChatSessionsApiApiV1SubjectsSubjectIdChatsSessionsListPostResponse404 = {
   data: ErrorResponse
   status: 404
 }
 
-export type listChatSessionsApiApiV1SubjectsSubjectChatsSessionsListPostResponse422 = {
+export type listChatSessionsApiApiV1SubjectsSubjectIdChatsSessionsListPostResponse422 = {
   data: HTTPValidationError
   status: 422
 }
 
-export type listChatSessionsApiApiV1SubjectsSubjectChatsSessionsListPostResponse500 = {
+export type listChatSessionsApiApiV1SubjectsSubjectIdChatsSessionsListPostResponse500 = {
   data: ErrorResponse
   status: 500
 }
 
-export type listChatSessionsApiApiV1SubjectsSubjectChatsSessionsListPostResponseSuccess = (listChatSessionsApiApiV1SubjectsSubjectChatsSessionsListPostResponse200) & {
+export type listChatSessionsApiApiV1SubjectsSubjectIdChatsSessionsListPostResponseSuccess = (listChatSessionsApiApiV1SubjectsSubjectIdChatsSessionsListPostResponse200) & {
   headers: Headers;
 };
-export type listChatSessionsApiApiV1SubjectsSubjectChatsSessionsListPostResponseError = (listChatSessionsApiApiV1SubjectsSubjectChatsSessionsListPostResponse400 | listChatSessionsApiApiV1SubjectsSubjectChatsSessionsListPostResponse404 | listChatSessionsApiApiV1SubjectsSubjectChatsSessionsListPostResponse422 | listChatSessionsApiApiV1SubjectsSubjectChatsSessionsListPostResponse500) & {
+export type listChatSessionsApiApiV1SubjectsSubjectIdChatsSessionsListPostResponseError = (listChatSessionsApiApiV1SubjectsSubjectIdChatsSessionsListPostResponse400 | listChatSessionsApiApiV1SubjectsSubjectIdChatsSessionsListPostResponse404 | listChatSessionsApiApiV1SubjectsSubjectIdChatsSessionsListPostResponse422 | listChatSessionsApiApiV1SubjectsSubjectIdChatsSessionsListPostResponse500) & {
   headers: Headers;
 };
 
-export type listChatSessionsApiApiV1SubjectsSubjectChatsSessionsListPostResponse = (listChatSessionsApiApiV1SubjectsSubjectChatsSessionsListPostResponseSuccess | listChatSessionsApiApiV1SubjectsSubjectChatsSessionsListPostResponseError)
+export type listChatSessionsApiApiV1SubjectsSubjectIdChatsSessionsListPostResponse = (listChatSessionsApiApiV1SubjectsSubjectIdChatsSessionsListPostResponseSuccess | listChatSessionsApiApiV1SubjectsSubjectIdChatsSessionsListPostResponseError)
 
-export const getListChatSessionsApiApiV1SubjectsSubjectChatsSessionsListPostUrl = (subject: string,) => {
-
-
+export const getListChatSessionsApiApiV1SubjectsSubjectIdChatsSessionsListPostUrl = (subjectId: string,) => {
 
 
-  return `/api/v1/subjects/${subject}/chats/sessions/list`
+
+
+  return `/api/v1/subjects/${subjectId}/chats/sessions/list`
 }
 
-export const listChatSessionsApiApiV1SubjectsSubjectChatsSessionsListPost = async (subject: string,
-    chatSessionListRequest: ChatSessionListRequest, options?: RequestInit): Promise<listChatSessionsApiApiV1SubjectsSubjectChatsSessionsListPostResponse> => {
+export const listChatSessionsApiApiV1SubjectsSubjectIdChatsSessionsListPost = async (subjectId: string,
+    chatSessionListRequest: ChatSessionListRequest, options?: RequestInit): Promise<listChatSessionsApiApiV1SubjectsSubjectIdChatsSessionsListPostResponse> => {
 
-  return orvalApiClient<listChatSessionsApiApiV1SubjectsSubjectChatsSessionsListPostResponse>(getListChatSessionsApiApiV1SubjectsSubjectChatsSessionsListPostUrl(subject),
+  return orvalApiClient<listChatSessionsApiApiV1SubjectsSubjectIdChatsSessionsListPostResponse>(getListChatSessionsApiApiV1SubjectsSubjectIdChatsSessionsListPostUrl(subjectId),
   {
     ...options,
     method: 'POST',
@@ -1132,11 +1132,11 @@ export const listChatSessionsApiApiV1SubjectsSubjectChatsSessionsListPost = asyn
 
 
 
-export const getListChatSessionsApiApiV1SubjectsSubjectChatsSessionsListPostMutationOptions = <TError = ErrorResponse | HTTPValidationError,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof listChatSessionsApiApiV1SubjectsSubjectChatsSessionsListPost>>, TError,{subject: string;data: ChatSessionListRequest}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
-): UseMutationOptions<Awaited<ReturnType<typeof listChatSessionsApiApiV1SubjectsSubjectChatsSessionsListPost>>, TError,{subject: string;data: ChatSessionListRequest}, TContext> => {
+export const getListChatSessionsApiApiV1SubjectsSubjectIdChatsSessionsListPostMutationOptions = <TError = ErrorResponse | HTTPValidationError,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof listChatSessionsApiApiV1SubjectsSubjectIdChatsSessionsListPost>>, TError,{subjectId: string;data: ChatSessionListRequest}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
+): UseMutationOptions<Awaited<ReturnType<typeof listChatSessionsApiApiV1SubjectsSubjectIdChatsSessionsListPost>>, TError,{subjectId: string;data: ChatSessionListRequest}, TContext> => {
 
-const mutationKey = ['listChatSessionsApiApiV1SubjectsSubjectChatsSessionsListPost'];
+const mutationKey = ['listChatSessionsApiApiV1SubjectsSubjectIdChatsSessionsListPost'];
 const {mutation: mutationOptions, request: requestOptions} = options ?
       options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
       options
@@ -1146,10 +1146,10 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
 
 
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof listChatSessionsApiApiV1SubjectsSubjectChatsSessionsListPost>>, {subject: string;data: ChatSessionListRequest}> = (props) => {
-          const {subject,data} = props ?? {};
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof listChatSessionsApiApiV1SubjectsSubjectIdChatsSessionsListPost>>, {subjectId: string;data: ChatSessionListRequest}> = (props) => {
+          const {subjectId,data} = props ?? {};
 
-          return  listChatSessionsApiApiV1SubjectsSubjectChatsSessionsListPost(subject,data,requestOptions)
+          return  listChatSessionsApiApiV1SubjectsSubjectIdChatsSessionsListPost(subjectId,data,requestOptions)
         }
 
 
@@ -1159,72 +1159,72 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
   return  { mutationFn, ...mutationOptions }}
 
-    export type ListChatSessionsApiApiV1SubjectsSubjectChatsSessionsListPostMutationResult = NonNullable<Awaited<ReturnType<typeof listChatSessionsApiApiV1SubjectsSubjectChatsSessionsListPost>>>
-    export type ListChatSessionsApiApiV1SubjectsSubjectChatsSessionsListPostMutationBody = ChatSessionListRequest
-    export type ListChatSessionsApiApiV1SubjectsSubjectChatsSessionsListPostMutationError = ErrorResponse | HTTPValidationError
+    export type ListChatSessionsApiApiV1SubjectsSubjectIdChatsSessionsListPostMutationResult = NonNullable<Awaited<ReturnType<typeof listChatSessionsApiApiV1SubjectsSubjectIdChatsSessionsListPost>>>
+    export type ListChatSessionsApiApiV1SubjectsSubjectIdChatsSessionsListPostMutationBody = ChatSessionListRequest
+    export type ListChatSessionsApiApiV1SubjectsSubjectIdChatsSessionsListPostMutationError = ErrorResponse | HTTPValidationError
 
     /**
- * @summary 会话列表
+ * @summary 浼氳瘽鍒楄〃
  */
-export const useListChatSessionsApiApiV1SubjectsSubjectChatsSessionsListPost = <TError = ErrorResponse | HTTPValidationError,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof listChatSessionsApiApiV1SubjectsSubjectChatsSessionsListPost>>, TError,{subject: string;data: ChatSessionListRequest}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
+export const useListChatSessionsApiApiV1SubjectsSubjectIdChatsSessionsListPost = <TError = ErrorResponse | HTTPValidationError,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof listChatSessionsApiApiV1SubjectsSubjectIdChatsSessionsListPost>>, TError,{subjectId: string;data: ChatSessionListRequest}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
  , queryClient?: QueryClient): UseMutationResult<
-        Awaited<ReturnType<typeof listChatSessionsApiApiV1SubjectsSubjectChatsSessionsListPost>>,
+        Awaited<ReturnType<typeof listChatSessionsApiApiV1SubjectsSubjectIdChatsSessionsListPost>>,
         TError,
-        {subject: string;data: ChatSessionListRequest},
+        {subjectId: string;data: ChatSessionListRequest},
         TContext
       > => {
-      return useMutation(getListChatSessionsApiApiV1SubjectsSubjectChatsSessionsListPostMutationOptions(options), queryClient);
+      return useMutation(getListChatSessionsApiApiV1SubjectsSubjectIdChatsSessionsListPostMutationOptions(options), queryClient);
     }
     /**
- * @summary 划词问答轮次列表
+ * @summary 鍒掕瘝闂瓟杞鍒楄〃
  */
-export type listChatThreadsApiApiV1SubjectsSubjectChatsThreadsListPostResponse200 = {
+export type listChatThreadsApiApiV1SubjectsSubjectIdChatsThreadsListPostResponse200 = {
   data: ApiResponsePaginatedDataChatThreadTurnItem
   status: 200
 }
 
-export type listChatThreadsApiApiV1SubjectsSubjectChatsThreadsListPostResponse400 = {
+export type listChatThreadsApiApiV1SubjectsSubjectIdChatsThreadsListPostResponse400 = {
   data: ErrorResponse
   status: 400
 }
 
-export type listChatThreadsApiApiV1SubjectsSubjectChatsThreadsListPostResponse404 = {
+export type listChatThreadsApiApiV1SubjectsSubjectIdChatsThreadsListPostResponse404 = {
   data: ErrorResponse
   status: 404
 }
 
-export type listChatThreadsApiApiV1SubjectsSubjectChatsThreadsListPostResponse422 = {
+export type listChatThreadsApiApiV1SubjectsSubjectIdChatsThreadsListPostResponse422 = {
   data: HTTPValidationError
   status: 422
 }
 
-export type listChatThreadsApiApiV1SubjectsSubjectChatsThreadsListPostResponse500 = {
+export type listChatThreadsApiApiV1SubjectsSubjectIdChatsThreadsListPostResponse500 = {
   data: ErrorResponse
   status: 500
 }
 
-export type listChatThreadsApiApiV1SubjectsSubjectChatsThreadsListPostResponseSuccess = (listChatThreadsApiApiV1SubjectsSubjectChatsThreadsListPostResponse200) & {
+export type listChatThreadsApiApiV1SubjectsSubjectIdChatsThreadsListPostResponseSuccess = (listChatThreadsApiApiV1SubjectsSubjectIdChatsThreadsListPostResponse200) & {
   headers: Headers;
 };
-export type listChatThreadsApiApiV1SubjectsSubjectChatsThreadsListPostResponseError = (listChatThreadsApiApiV1SubjectsSubjectChatsThreadsListPostResponse400 | listChatThreadsApiApiV1SubjectsSubjectChatsThreadsListPostResponse404 | listChatThreadsApiApiV1SubjectsSubjectChatsThreadsListPostResponse422 | listChatThreadsApiApiV1SubjectsSubjectChatsThreadsListPostResponse500) & {
+export type listChatThreadsApiApiV1SubjectsSubjectIdChatsThreadsListPostResponseError = (listChatThreadsApiApiV1SubjectsSubjectIdChatsThreadsListPostResponse400 | listChatThreadsApiApiV1SubjectsSubjectIdChatsThreadsListPostResponse404 | listChatThreadsApiApiV1SubjectsSubjectIdChatsThreadsListPostResponse422 | listChatThreadsApiApiV1SubjectsSubjectIdChatsThreadsListPostResponse500) & {
   headers: Headers;
 };
 
-export type listChatThreadsApiApiV1SubjectsSubjectChatsThreadsListPostResponse = (listChatThreadsApiApiV1SubjectsSubjectChatsThreadsListPostResponseSuccess | listChatThreadsApiApiV1SubjectsSubjectChatsThreadsListPostResponseError)
+export type listChatThreadsApiApiV1SubjectsSubjectIdChatsThreadsListPostResponse = (listChatThreadsApiApiV1SubjectsSubjectIdChatsThreadsListPostResponseSuccess | listChatThreadsApiApiV1SubjectsSubjectIdChatsThreadsListPostResponseError)
 
-export const getListChatThreadsApiApiV1SubjectsSubjectChatsThreadsListPostUrl = (subject: string,) => {
-
-
+export const getListChatThreadsApiApiV1SubjectsSubjectIdChatsThreadsListPostUrl = (subjectId: string,) => {
 
 
-  return `/api/v1/subjects/${subject}/chats/threads/list`
+
+
+  return `/api/v1/subjects/${subjectId}/chats/threads/list`
 }
 
-export const listChatThreadsApiApiV1SubjectsSubjectChatsThreadsListPost = async (subject: string,
-    chatThreadListRequest: ChatThreadListRequest, options?: RequestInit): Promise<listChatThreadsApiApiV1SubjectsSubjectChatsThreadsListPostResponse> => {
+export const listChatThreadsApiApiV1SubjectsSubjectIdChatsThreadsListPost = async (subjectId: string,
+    chatThreadListRequest: ChatThreadListRequest, options?: RequestInit): Promise<listChatThreadsApiApiV1SubjectsSubjectIdChatsThreadsListPostResponse> => {
 
-  return orvalApiClient<listChatThreadsApiApiV1SubjectsSubjectChatsThreadsListPostResponse>(getListChatThreadsApiApiV1SubjectsSubjectChatsThreadsListPostUrl(subject),
+  return orvalApiClient<listChatThreadsApiApiV1SubjectsSubjectIdChatsThreadsListPostResponse>(getListChatThreadsApiApiV1SubjectsSubjectIdChatsThreadsListPostUrl(subjectId),
   {
     ...options,
     method: 'POST',
@@ -1237,11 +1237,11 @@ export const listChatThreadsApiApiV1SubjectsSubjectChatsThreadsListPost = async 
 
 
 
-export const getListChatThreadsApiApiV1SubjectsSubjectChatsThreadsListPostMutationOptions = <TError = ErrorResponse | HTTPValidationError,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof listChatThreadsApiApiV1SubjectsSubjectChatsThreadsListPost>>, TError,{subject: string;data: ChatThreadListRequest}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
-): UseMutationOptions<Awaited<ReturnType<typeof listChatThreadsApiApiV1SubjectsSubjectChatsThreadsListPost>>, TError,{subject: string;data: ChatThreadListRequest}, TContext> => {
+export const getListChatThreadsApiApiV1SubjectsSubjectIdChatsThreadsListPostMutationOptions = <TError = ErrorResponse | HTTPValidationError,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof listChatThreadsApiApiV1SubjectsSubjectIdChatsThreadsListPost>>, TError,{subjectId: string;data: ChatThreadListRequest}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
+): UseMutationOptions<Awaited<ReturnType<typeof listChatThreadsApiApiV1SubjectsSubjectIdChatsThreadsListPost>>, TError,{subjectId: string;data: ChatThreadListRequest}, TContext> => {
 
-const mutationKey = ['listChatThreadsApiApiV1SubjectsSubjectChatsThreadsListPost'];
+const mutationKey = ['listChatThreadsApiApiV1SubjectsSubjectIdChatsThreadsListPost'];
 const {mutation: mutationOptions, request: requestOptions} = options ?
       options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
       options
@@ -1251,10 +1251,10 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
 
 
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof listChatThreadsApiApiV1SubjectsSubjectChatsThreadsListPost>>, {subject: string;data: ChatThreadListRequest}> = (props) => {
-          const {subject,data} = props ?? {};
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof listChatThreadsApiApiV1SubjectsSubjectIdChatsThreadsListPost>>, {subjectId: string;data: ChatThreadListRequest}> = (props) => {
+          const {subjectId,data} = props ?? {};
 
-          return  listChatThreadsApiApiV1SubjectsSubjectChatsThreadsListPost(subject,data,requestOptions)
+          return  listChatThreadsApiApiV1SubjectsSubjectIdChatsThreadsListPost(subjectId,data,requestOptions)
         }
 
 
@@ -1264,72 +1264,72 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
   return  { mutationFn, ...mutationOptions }}
 
-    export type ListChatThreadsApiApiV1SubjectsSubjectChatsThreadsListPostMutationResult = NonNullable<Awaited<ReturnType<typeof listChatThreadsApiApiV1SubjectsSubjectChatsThreadsListPost>>>
-    export type ListChatThreadsApiApiV1SubjectsSubjectChatsThreadsListPostMutationBody = ChatThreadListRequest
-    export type ListChatThreadsApiApiV1SubjectsSubjectChatsThreadsListPostMutationError = ErrorResponse | HTTPValidationError
+    export type ListChatThreadsApiApiV1SubjectsSubjectIdChatsThreadsListPostMutationResult = NonNullable<Awaited<ReturnType<typeof listChatThreadsApiApiV1SubjectsSubjectIdChatsThreadsListPost>>>
+    export type ListChatThreadsApiApiV1SubjectsSubjectIdChatsThreadsListPostMutationBody = ChatThreadListRequest
+    export type ListChatThreadsApiApiV1SubjectsSubjectIdChatsThreadsListPostMutationError = ErrorResponse | HTTPValidationError
 
     /**
- * @summary 划词问答轮次列表
+ * @summary 鍒掕瘝闂瓟杞鍒楄〃
  */
-export const useListChatThreadsApiApiV1SubjectsSubjectChatsThreadsListPost = <TError = ErrorResponse | HTTPValidationError,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof listChatThreadsApiApiV1SubjectsSubjectChatsThreadsListPost>>, TError,{subject: string;data: ChatThreadListRequest}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
+export const useListChatThreadsApiApiV1SubjectsSubjectIdChatsThreadsListPost = <TError = ErrorResponse | HTTPValidationError,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof listChatThreadsApiApiV1SubjectsSubjectIdChatsThreadsListPost>>, TError,{subjectId: string;data: ChatThreadListRequest}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
  , queryClient?: QueryClient): UseMutationResult<
-        Awaited<ReturnType<typeof listChatThreadsApiApiV1SubjectsSubjectChatsThreadsListPost>>,
+        Awaited<ReturnType<typeof listChatThreadsApiApiV1SubjectsSubjectIdChatsThreadsListPost>>,
         TError,
-        {subject: string;data: ChatThreadListRequest},
+        {subjectId: string;data: ChatThreadListRequest},
         TContext
       > => {
-      return useMutation(getListChatThreadsApiApiV1SubjectsSubjectChatsThreadsListPostMutationOptions(options), queryClient);
+      return useMutation(getListChatThreadsApiApiV1SubjectsSubjectIdChatsThreadsListPostMutationOptions(options), queryClient);
     }
     /**
- * @summary 创建会话
+ * @summary 鍒涘缓浼氳瘽
  */
-export type createChatSessionApiApiV1SubjectsSubjectChatsSessionsCreatePostResponse200 = {
+export type createChatSessionApiApiV1SubjectsSubjectIdChatsSessionsCreatePostResponse200 = {
   data: ApiResponseChatSessionCreateData
   status: 200
 }
 
-export type createChatSessionApiApiV1SubjectsSubjectChatsSessionsCreatePostResponse400 = {
+export type createChatSessionApiApiV1SubjectsSubjectIdChatsSessionsCreatePostResponse400 = {
   data: ErrorResponse
   status: 400
 }
 
-export type createChatSessionApiApiV1SubjectsSubjectChatsSessionsCreatePostResponse404 = {
+export type createChatSessionApiApiV1SubjectsSubjectIdChatsSessionsCreatePostResponse404 = {
   data: ErrorResponse
   status: 404
 }
 
-export type createChatSessionApiApiV1SubjectsSubjectChatsSessionsCreatePostResponse422 = {
+export type createChatSessionApiApiV1SubjectsSubjectIdChatsSessionsCreatePostResponse422 = {
   data: HTTPValidationError
   status: 422
 }
 
-export type createChatSessionApiApiV1SubjectsSubjectChatsSessionsCreatePostResponse500 = {
+export type createChatSessionApiApiV1SubjectsSubjectIdChatsSessionsCreatePostResponse500 = {
   data: ErrorResponse
   status: 500
 }
 
-export type createChatSessionApiApiV1SubjectsSubjectChatsSessionsCreatePostResponseSuccess = (createChatSessionApiApiV1SubjectsSubjectChatsSessionsCreatePostResponse200) & {
+export type createChatSessionApiApiV1SubjectsSubjectIdChatsSessionsCreatePostResponseSuccess = (createChatSessionApiApiV1SubjectsSubjectIdChatsSessionsCreatePostResponse200) & {
   headers: Headers;
 };
-export type createChatSessionApiApiV1SubjectsSubjectChatsSessionsCreatePostResponseError = (createChatSessionApiApiV1SubjectsSubjectChatsSessionsCreatePostResponse400 | createChatSessionApiApiV1SubjectsSubjectChatsSessionsCreatePostResponse404 | createChatSessionApiApiV1SubjectsSubjectChatsSessionsCreatePostResponse422 | createChatSessionApiApiV1SubjectsSubjectChatsSessionsCreatePostResponse500) & {
+export type createChatSessionApiApiV1SubjectsSubjectIdChatsSessionsCreatePostResponseError = (createChatSessionApiApiV1SubjectsSubjectIdChatsSessionsCreatePostResponse400 | createChatSessionApiApiV1SubjectsSubjectIdChatsSessionsCreatePostResponse404 | createChatSessionApiApiV1SubjectsSubjectIdChatsSessionsCreatePostResponse422 | createChatSessionApiApiV1SubjectsSubjectIdChatsSessionsCreatePostResponse500) & {
   headers: Headers;
 };
 
-export type createChatSessionApiApiV1SubjectsSubjectChatsSessionsCreatePostResponse = (createChatSessionApiApiV1SubjectsSubjectChatsSessionsCreatePostResponseSuccess | createChatSessionApiApiV1SubjectsSubjectChatsSessionsCreatePostResponseError)
+export type createChatSessionApiApiV1SubjectsSubjectIdChatsSessionsCreatePostResponse = (createChatSessionApiApiV1SubjectsSubjectIdChatsSessionsCreatePostResponseSuccess | createChatSessionApiApiV1SubjectsSubjectIdChatsSessionsCreatePostResponseError)
 
-export const getCreateChatSessionApiApiV1SubjectsSubjectChatsSessionsCreatePostUrl = (subject: string,) => {
-
-
+export const getCreateChatSessionApiApiV1SubjectsSubjectIdChatsSessionsCreatePostUrl = (subjectId: string,) => {
 
 
-  return `/api/v1/subjects/${subject}/chats/sessions/create`
+
+
+  return `/api/v1/subjects/${subjectId}/chats/sessions/create`
 }
 
-export const createChatSessionApiApiV1SubjectsSubjectChatsSessionsCreatePost = async (subject: string,
-    chatSessionCreateRequest: ChatSessionCreateRequest, options?: RequestInit): Promise<createChatSessionApiApiV1SubjectsSubjectChatsSessionsCreatePostResponse> => {
+export const createChatSessionApiApiV1SubjectsSubjectIdChatsSessionsCreatePost = async (subjectId: string,
+    chatSessionCreateRequest: ChatSessionCreateRequest, options?: RequestInit): Promise<createChatSessionApiApiV1SubjectsSubjectIdChatsSessionsCreatePostResponse> => {
 
-  return orvalApiClient<createChatSessionApiApiV1SubjectsSubjectChatsSessionsCreatePostResponse>(getCreateChatSessionApiApiV1SubjectsSubjectChatsSessionsCreatePostUrl(subject),
+  return orvalApiClient<createChatSessionApiApiV1SubjectsSubjectIdChatsSessionsCreatePostResponse>(getCreateChatSessionApiApiV1SubjectsSubjectIdChatsSessionsCreatePostUrl(subjectId),
   {
     ...options,
     method: 'POST',
@@ -1342,11 +1342,11 @@ export const createChatSessionApiApiV1SubjectsSubjectChatsSessionsCreatePost = a
 
 
 
-export const getCreateChatSessionApiApiV1SubjectsSubjectChatsSessionsCreatePostMutationOptions = <TError = ErrorResponse | HTTPValidationError,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createChatSessionApiApiV1SubjectsSubjectChatsSessionsCreatePost>>, TError,{subject: string;data: ChatSessionCreateRequest}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
-): UseMutationOptions<Awaited<ReturnType<typeof createChatSessionApiApiV1SubjectsSubjectChatsSessionsCreatePost>>, TError,{subject: string;data: ChatSessionCreateRequest}, TContext> => {
+export const getCreateChatSessionApiApiV1SubjectsSubjectIdChatsSessionsCreatePostMutationOptions = <TError = ErrorResponse | HTTPValidationError,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createChatSessionApiApiV1SubjectsSubjectIdChatsSessionsCreatePost>>, TError,{subjectId: string;data: ChatSessionCreateRequest}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
+): UseMutationOptions<Awaited<ReturnType<typeof createChatSessionApiApiV1SubjectsSubjectIdChatsSessionsCreatePost>>, TError,{subjectId: string;data: ChatSessionCreateRequest}, TContext> => {
 
-const mutationKey = ['createChatSessionApiApiV1SubjectsSubjectChatsSessionsCreatePost'];
+const mutationKey = ['createChatSessionApiApiV1SubjectsSubjectIdChatsSessionsCreatePost'];
 const {mutation: mutationOptions, request: requestOptions} = options ?
       options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
       options
@@ -1356,10 +1356,10 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
 
 
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createChatSessionApiApiV1SubjectsSubjectChatsSessionsCreatePost>>, {subject: string;data: ChatSessionCreateRequest}> = (props) => {
-          const {subject,data} = props ?? {};
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createChatSessionApiApiV1SubjectsSubjectIdChatsSessionsCreatePost>>, {subjectId: string;data: ChatSessionCreateRequest}> = (props) => {
+          const {subjectId,data} = props ?? {};
 
-          return  createChatSessionApiApiV1SubjectsSubjectChatsSessionsCreatePost(subject,data,requestOptions)
+          return  createChatSessionApiApiV1SubjectsSubjectIdChatsSessionsCreatePost(subjectId,data,requestOptions)
         }
 
 
@@ -1369,72 +1369,72 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
   return  { mutationFn, ...mutationOptions }}
 
-    export type CreateChatSessionApiApiV1SubjectsSubjectChatsSessionsCreatePostMutationResult = NonNullable<Awaited<ReturnType<typeof createChatSessionApiApiV1SubjectsSubjectChatsSessionsCreatePost>>>
-    export type CreateChatSessionApiApiV1SubjectsSubjectChatsSessionsCreatePostMutationBody = ChatSessionCreateRequest
-    export type CreateChatSessionApiApiV1SubjectsSubjectChatsSessionsCreatePostMutationError = ErrorResponse | HTTPValidationError
+    export type CreateChatSessionApiApiV1SubjectsSubjectIdChatsSessionsCreatePostMutationResult = NonNullable<Awaited<ReturnType<typeof createChatSessionApiApiV1SubjectsSubjectIdChatsSessionsCreatePost>>>
+    export type CreateChatSessionApiApiV1SubjectsSubjectIdChatsSessionsCreatePostMutationBody = ChatSessionCreateRequest
+    export type CreateChatSessionApiApiV1SubjectsSubjectIdChatsSessionsCreatePostMutationError = ErrorResponse | HTTPValidationError
 
     /**
- * @summary 创建会话
+ * @summary 鍒涘缓浼氳瘽
  */
-export const useCreateChatSessionApiApiV1SubjectsSubjectChatsSessionsCreatePost = <TError = ErrorResponse | HTTPValidationError,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createChatSessionApiApiV1SubjectsSubjectChatsSessionsCreatePost>>, TError,{subject: string;data: ChatSessionCreateRequest}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
+export const useCreateChatSessionApiApiV1SubjectsSubjectIdChatsSessionsCreatePost = <TError = ErrorResponse | HTTPValidationError,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createChatSessionApiApiV1SubjectsSubjectIdChatsSessionsCreatePost>>, TError,{subjectId: string;data: ChatSessionCreateRequest}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
  , queryClient?: QueryClient): UseMutationResult<
-        Awaited<ReturnType<typeof createChatSessionApiApiV1SubjectsSubjectChatsSessionsCreatePost>>,
+        Awaited<ReturnType<typeof createChatSessionApiApiV1SubjectsSubjectIdChatsSessionsCreatePost>>,
         TError,
-        {subject: string;data: ChatSessionCreateRequest},
+        {subjectId: string;data: ChatSessionCreateRequest},
         TContext
       > => {
-      return useMutation(getCreateChatSessionApiApiV1SubjectsSubjectChatsSessionsCreatePostMutationOptions(options), queryClient);
+      return useMutation(getCreateChatSessionApiApiV1SubjectsSubjectIdChatsSessionsCreatePostMutationOptions(options), queryClient);
     }
     /**
- * @summary 删除会话
+ * @summary 鍒犻櫎浼氳瘽
  */
-export type deleteChatSessionApiApiV1SubjectsSubjectChatsSessionsDeletePostResponse200 = {
+export type deleteChatSessionApiApiV1SubjectsSubjectIdChatsSessionsDeletePostResponse200 = {
   data: ApiResponseChatSessionDeleteData
   status: 200
 }
 
-export type deleteChatSessionApiApiV1SubjectsSubjectChatsSessionsDeletePostResponse400 = {
+export type deleteChatSessionApiApiV1SubjectsSubjectIdChatsSessionsDeletePostResponse400 = {
   data: ErrorResponse
   status: 400
 }
 
-export type deleteChatSessionApiApiV1SubjectsSubjectChatsSessionsDeletePostResponse404 = {
+export type deleteChatSessionApiApiV1SubjectsSubjectIdChatsSessionsDeletePostResponse404 = {
   data: ErrorResponse
   status: 404
 }
 
-export type deleteChatSessionApiApiV1SubjectsSubjectChatsSessionsDeletePostResponse422 = {
+export type deleteChatSessionApiApiV1SubjectsSubjectIdChatsSessionsDeletePostResponse422 = {
   data: HTTPValidationError
   status: 422
 }
 
-export type deleteChatSessionApiApiV1SubjectsSubjectChatsSessionsDeletePostResponse500 = {
+export type deleteChatSessionApiApiV1SubjectsSubjectIdChatsSessionsDeletePostResponse500 = {
   data: ErrorResponse
   status: 500
 }
 
-export type deleteChatSessionApiApiV1SubjectsSubjectChatsSessionsDeletePostResponseSuccess = (deleteChatSessionApiApiV1SubjectsSubjectChatsSessionsDeletePostResponse200) & {
+export type deleteChatSessionApiApiV1SubjectsSubjectIdChatsSessionsDeletePostResponseSuccess = (deleteChatSessionApiApiV1SubjectsSubjectIdChatsSessionsDeletePostResponse200) & {
   headers: Headers;
 };
-export type deleteChatSessionApiApiV1SubjectsSubjectChatsSessionsDeletePostResponseError = (deleteChatSessionApiApiV1SubjectsSubjectChatsSessionsDeletePostResponse400 | deleteChatSessionApiApiV1SubjectsSubjectChatsSessionsDeletePostResponse404 | deleteChatSessionApiApiV1SubjectsSubjectChatsSessionsDeletePostResponse422 | deleteChatSessionApiApiV1SubjectsSubjectChatsSessionsDeletePostResponse500) & {
+export type deleteChatSessionApiApiV1SubjectsSubjectIdChatsSessionsDeletePostResponseError = (deleteChatSessionApiApiV1SubjectsSubjectIdChatsSessionsDeletePostResponse400 | deleteChatSessionApiApiV1SubjectsSubjectIdChatsSessionsDeletePostResponse404 | deleteChatSessionApiApiV1SubjectsSubjectIdChatsSessionsDeletePostResponse422 | deleteChatSessionApiApiV1SubjectsSubjectIdChatsSessionsDeletePostResponse500) & {
   headers: Headers;
 };
 
-export type deleteChatSessionApiApiV1SubjectsSubjectChatsSessionsDeletePostResponse = (deleteChatSessionApiApiV1SubjectsSubjectChatsSessionsDeletePostResponseSuccess | deleteChatSessionApiApiV1SubjectsSubjectChatsSessionsDeletePostResponseError)
+export type deleteChatSessionApiApiV1SubjectsSubjectIdChatsSessionsDeletePostResponse = (deleteChatSessionApiApiV1SubjectsSubjectIdChatsSessionsDeletePostResponseSuccess | deleteChatSessionApiApiV1SubjectsSubjectIdChatsSessionsDeletePostResponseError)
 
-export const getDeleteChatSessionApiApiV1SubjectsSubjectChatsSessionsDeletePostUrl = (subject: string,) => {
-
-
+export const getDeleteChatSessionApiApiV1SubjectsSubjectIdChatsSessionsDeletePostUrl = (subjectId: string,) => {
 
 
-  return `/api/v1/subjects/${subject}/chats/sessions/delete`
+
+
+  return `/api/v1/subjects/${subjectId}/chats/sessions/delete`
 }
 
-export const deleteChatSessionApiApiV1SubjectsSubjectChatsSessionsDeletePost = async (subject: string,
-    chatSessionDeleteRequest: ChatSessionDeleteRequest, options?: RequestInit): Promise<deleteChatSessionApiApiV1SubjectsSubjectChatsSessionsDeletePostResponse> => {
+export const deleteChatSessionApiApiV1SubjectsSubjectIdChatsSessionsDeletePost = async (subjectId: string,
+    chatSessionDeleteRequest: ChatSessionDeleteRequest, options?: RequestInit): Promise<deleteChatSessionApiApiV1SubjectsSubjectIdChatsSessionsDeletePostResponse> => {
 
-  return orvalApiClient<deleteChatSessionApiApiV1SubjectsSubjectChatsSessionsDeletePostResponse>(getDeleteChatSessionApiApiV1SubjectsSubjectChatsSessionsDeletePostUrl(subject),
+  return orvalApiClient<deleteChatSessionApiApiV1SubjectsSubjectIdChatsSessionsDeletePostResponse>(getDeleteChatSessionApiApiV1SubjectsSubjectIdChatsSessionsDeletePostUrl(subjectId),
   {
     ...options,
     method: 'POST',
@@ -1447,11 +1447,11 @@ export const deleteChatSessionApiApiV1SubjectsSubjectChatsSessionsDeletePost = a
 
 
 
-export const getDeleteChatSessionApiApiV1SubjectsSubjectChatsSessionsDeletePostMutationOptions = <TError = ErrorResponse | HTTPValidationError,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteChatSessionApiApiV1SubjectsSubjectChatsSessionsDeletePost>>, TError,{subject: string;data: ChatSessionDeleteRequest}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
-): UseMutationOptions<Awaited<ReturnType<typeof deleteChatSessionApiApiV1SubjectsSubjectChatsSessionsDeletePost>>, TError,{subject: string;data: ChatSessionDeleteRequest}, TContext> => {
+export const getDeleteChatSessionApiApiV1SubjectsSubjectIdChatsSessionsDeletePostMutationOptions = <TError = ErrorResponse | HTTPValidationError,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteChatSessionApiApiV1SubjectsSubjectIdChatsSessionsDeletePost>>, TError,{subjectId: string;data: ChatSessionDeleteRequest}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteChatSessionApiApiV1SubjectsSubjectIdChatsSessionsDeletePost>>, TError,{subjectId: string;data: ChatSessionDeleteRequest}, TContext> => {
 
-const mutationKey = ['deleteChatSessionApiApiV1SubjectsSubjectChatsSessionsDeletePost'];
+const mutationKey = ['deleteChatSessionApiApiV1SubjectsSubjectIdChatsSessionsDeletePost'];
 const {mutation: mutationOptions, request: requestOptions} = options ?
       options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
       options
@@ -1461,10 +1461,10 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
 
 
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteChatSessionApiApiV1SubjectsSubjectChatsSessionsDeletePost>>, {subject: string;data: ChatSessionDeleteRequest}> = (props) => {
-          const {subject,data} = props ?? {};
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteChatSessionApiApiV1SubjectsSubjectIdChatsSessionsDeletePost>>, {subjectId: string;data: ChatSessionDeleteRequest}> = (props) => {
+          const {subjectId,data} = props ?? {};
 
-          return  deleteChatSessionApiApiV1SubjectsSubjectChatsSessionsDeletePost(subject,data,requestOptions)
+          return  deleteChatSessionApiApiV1SubjectsSubjectIdChatsSessionsDeletePost(subjectId,data,requestOptions)
         }
 
 
@@ -1474,20 +1474,20 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
   return  { mutationFn, ...mutationOptions }}
 
-    export type DeleteChatSessionApiApiV1SubjectsSubjectChatsSessionsDeletePostMutationResult = NonNullable<Awaited<ReturnType<typeof deleteChatSessionApiApiV1SubjectsSubjectChatsSessionsDeletePost>>>
-    export type DeleteChatSessionApiApiV1SubjectsSubjectChatsSessionsDeletePostMutationBody = ChatSessionDeleteRequest
-    export type DeleteChatSessionApiApiV1SubjectsSubjectChatsSessionsDeletePostMutationError = ErrorResponse | HTTPValidationError
+    export type DeleteChatSessionApiApiV1SubjectsSubjectIdChatsSessionsDeletePostMutationResult = NonNullable<Awaited<ReturnType<typeof deleteChatSessionApiApiV1SubjectsSubjectIdChatsSessionsDeletePost>>>
+    export type DeleteChatSessionApiApiV1SubjectsSubjectIdChatsSessionsDeletePostMutationBody = ChatSessionDeleteRequest
+    export type DeleteChatSessionApiApiV1SubjectsSubjectIdChatsSessionsDeletePostMutationError = ErrorResponse | HTTPValidationError
 
     /**
- * @summary 删除会话
+ * @summary 鍒犻櫎浼氳瘽
  */
-export const useDeleteChatSessionApiApiV1SubjectsSubjectChatsSessionsDeletePost = <TError = ErrorResponse | HTTPValidationError,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteChatSessionApiApiV1SubjectsSubjectChatsSessionsDeletePost>>, TError,{subject: string;data: ChatSessionDeleteRequest}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
+export const useDeleteChatSessionApiApiV1SubjectsSubjectIdChatsSessionsDeletePost = <TError = ErrorResponse | HTTPValidationError,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteChatSessionApiApiV1SubjectsSubjectIdChatsSessionsDeletePost>>, TError,{subjectId: string;data: ChatSessionDeleteRequest}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
  , queryClient?: QueryClient): UseMutationResult<
-        Awaited<ReturnType<typeof deleteChatSessionApiApiV1SubjectsSubjectChatsSessionsDeletePost>>,
+        Awaited<ReturnType<typeof deleteChatSessionApiApiV1SubjectsSubjectIdChatsSessionsDeletePost>>,
         TError,
-        {subject: string;data: ChatSessionDeleteRequest},
+        {subjectId: string;data: ChatSessionDeleteRequest},
         TContext
       > => {
-      return useMutation(getDeleteChatSessionApiApiV1SubjectsSubjectChatsSessionsDeletePostMutationOptions(options), queryClient);
+      return useMutation(getDeleteChatSessionApiApiV1SubjectsSubjectIdChatsSessionsDeletePostMutationOptions(options), queryClient);
     }

@@ -87,14 +87,14 @@ def list_edges_by_knowledge_unit(
 
 def list_edges_by_type(
     session: Session,
-    subject: str,
+    subject_id: str,
     edge_type: str,
     *,
     status: str | None = "active",
 ) -> list[KnowledgeEdge]:
     edge_type = normalize_relation_type(edge_type)
     stmt = select(KnowledgeEdge).where(
-        KnowledgeEdge.subject == subject,
+        KnowledgeEdge.subject_id == subject_id,
         KnowledgeEdge.edge_type == edge_type,
     )
     if status is not None:
@@ -104,11 +104,11 @@ def list_edges_by_type(
 
 def list_all_edges_by_subject(
     session: Session,
-    subject: str,
+    subject_id: str,
     *,
     status: str | None = "active",
 ) -> list[KnowledgeEdge]:
-    stmt = select(KnowledgeEdge).where(KnowledgeEdge.subject == subject)
+    stmt = select(KnowledgeEdge).where(KnowledgeEdge.subject_id == subject_id)
     if status is not None:
         stmt = stmt.where(KnowledgeEdge.status == status)
     return list(session.exec(stmt).all())
@@ -204,7 +204,7 @@ def list_evidence_by_entity(
         items.append(
             EvidenceLink(
                 id=index,
-                subject="",
+                subject_id="",
                 entity_type=entity_type,
                 entity_id=entity_id,
                 file_id=str(item.get("file_id") or item.get("document_id") or ""),

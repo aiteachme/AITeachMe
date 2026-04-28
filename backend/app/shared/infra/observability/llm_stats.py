@@ -30,7 +30,7 @@ class LLMCallRecord:
     error: str | None = None
     call_id: str = field(default_factory=lambda: uuid4().hex[:12])
     timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
-    subject: str = ""
+    subject_id: str = ""
     build_session_id: str = ""
     workflow: str = ""
     lane: str = ""
@@ -57,7 +57,7 @@ class LLMCallTracker:
             tokens=rec.total_tokens,
             latency=round(rec.latency_s, 2),
             ok=rec.success,
-            subject=rec.subject,
+            subject_id=rec.subject_id,
             build_session_id=rec.build_session_id,
             workflow=rec.workflow,
             lane=rec.lane,
@@ -68,14 +68,14 @@ class LLMCallTracker:
         self,
         *,
         build_session_id: str | None = None,
-        subject: str | None = None,
+        subject_id: str | None = None,
         workflow: str | None = None,
         lane: str | None = None,
         node: str | None = None,
     ) -> dict[str, Any]:
         records = self._filter_records(
             build_session_id=build_session_id,
-            subject=subject,
+            subject_id=subject_id,
             workflow=workflow,
             lane=lane,
             node=node,
@@ -183,7 +183,7 @@ class LLMCallTracker:
         self,
         *,
         build_session_id: str | None,
-        subject: str | None,
+        subject_id: str | None,
         workflow: str | None,
         lane: str | None,
         node: str | None,
@@ -192,7 +192,7 @@ class LLMCallTracker:
             record
             for record in self._records
             if (build_session_id is None or record.build_session_id == build_session_id)
-            and (subject is None or record.subject == subject)
+            and (subject_id is None or record.subject_id == subject_id)
             and (workflow is None or record.workflow == workflow)
             and (lane is None or record.lane == lane)
             and (node is None or record.node == node)

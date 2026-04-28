@@ -36,7 +36,7 @@ class _ExtractedChunk:
     file_id: str
     title: str
     header_path: str
-    subject: str
+    subject_id: str
     content: str
     score: float
 
@@ -44,7 +44,7 @@ class _ExtractedChunk:
 class ATMVectorStore(BasePydanticVectorStore):
     """LlamaIndex VectorStore compatibility wrapper over the managed subject index."""
 
-    subject: str = ""
+    subject_id: str = ""
     stores_text: bool = True
     is_embedding_query: bool = True
 
@@ -90,13 +90,13 @@ class ATMVectorStore(BasePydanticVectorStore):
         from app.shared.infra.search.llamaindex_index import query_subject_index
 
         query_embedding = query.query_embedding
-        if not query_embedding or not self.subject:
+        if not query_embedding or not self.subject_id:
             return VectorStoreQueryResult(nodes=[], similarities=[], ids=[])
 
         top_k = query.similarity_top_k or 5
 
         hits = query_subject_index(
-            self.subject,
+            self.subject_id,
             query_embedding,
             top_k=top_k,
         )
@@ -112,7 +112,7 @@ class ATMVectorStore(BasePydanticVectorStore):
             
             for hit in hits:
                 chunk = chunk_by_id.get(hit.chunk_id)
-                if chunk is None or chunk.subject != self.subject:
+                if chunk is None or chunk.subject_id != self.subject_id:
                     continue
                 extracted.append(
                     _ExtractedChunk(
@@ -120,7 +120,7 @@ class ATMVectorStore(BasePydanticVectorStore):
                         file_id=chunk.file_id,
                         title=chunk.title,
                         header_path=chunk.header_path,
-                        subject=chunk.subject,
+                        subject_id=chunk.subject_id,
                         content=chunk.content,
                         score=hit.score,
                     )
@@ -140,11 +140,11 @@ class ATMVectorStore(BasePydanticVectorStore):
                     "file_id": item.file_id,
                     "title": item.title,
                     "header_path": item.header_path,
-                    "subject": item.subject,
+                    "subject_id": item.subject_id,
                     "source": "vector",
                 },
-                excluded_embed_metadata_keys=["chunk_id", "file_id", "subject", "source"],
-                excluded_llm_metadata_keys=["chunk_id", "file_id", "subject", "source"],
+                excluded_embed_metadata_keys=["chunk_id", "file_id", "subject_id", "source"],
+                excluded_llm_metadata_keys=["chunk_id", "file_id", "subject_id", "source"],
             )
             nodes.append(node)
             similarities.append(item.score)
@@ -152,7 +152,7 @@ class ATMVectorStore(BasePydanticVectorStore):
 
         logger.info(
             "llamaindex_vector_query",
-            subject=self.subject,
+            subject_id=self.subject_id,
             top_k=top_k,
             result_count=len(nodes),
         )

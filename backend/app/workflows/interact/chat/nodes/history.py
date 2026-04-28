@@ -46,11 +46,12 @@ def build_load_history_state_node(*, context: WorkflowContext, session: Session 
 
     def load_history_state(state: InteractWorkflowState) -> InteractWorkflowState:
         with _node_session(session) as db_session:
+            subject_id = state["subject_id"]
             recent_messages = [
                 RecentMessage(role=item.role, content=item.content)
                 for item in get_recent_turns(
                     db_session,
-                    state["subject"],
+                    subject_id,
                     user_id=state["user_id"],
                     n_turns=settings.interact.history_turns,
                     session_id=state.get("session_id"),
@@ -59,7 +60,7 @@ def build_load_history_state_node(*, context: WorkflowContext, session: Session 
             weak_points_from_mastery = profile_repo.list_weak_knowledge_unit_summaries(
                 db_session,
                 user_id=state["user_id"],
-                subject=state["subject"],
+                subject_id=subject_id,
                 limit=10,
             )
             weak_points = [
@@ -73,13 +74,13 @@ def build_load_history_state_node(*, context: WorkflowContext, session: Session 
             recent_mistakes_raw = profile_repo.list_recent_wrong_attempt_summaries(
                 db_session,
                 user_id=state["user_id"],
-                subject=state["subject"],
+                subject_id=subject_id,
                 limit=5,
             )
             recent_mistakes = [MistakeSummary.model_validate(item) for item in recent_mistakes_raw]
             subject_context = _load_subject_context(
                 db_session,
-                subject=state["subject"],
+                subject_id=subject_id,
                 user_id=state["user_id"],
             )
         workflow_logger.info(
@@ -103,21 +104,21 @@ def build_load_history_state_node(*, context: WorkflowContext, session: Session 
 def _load_subject_context(
     session: Session,
     *,
-    subject: str,
+    subject_id: str,
     user_id: str,
 ) -> SubjectContextSummary:
-    record = subject_repo.get_subject_by_slug(session, subject, owner_user_id=user_id)
+    record = subject_repo.get_subject_by_id(session, subject_id, owner_user_id=user_id)
     if record is None:
-        record = subject_repo.get_subject_by_slug(session, subject)
+        record = subject_repo.get_subject_by_id(session, subject_id)
 
     try:
-        profile = build_subject_profile_summary(session, subject=subject, user_id=user_id)
+        profile = build_subject_profile_summary(session, subject_id=subject_id, user_id=user_id)
     except Exception:
         profile = None
 
     return SubjectContextSummary(
-        subject_id=subject,
-        subject_name=(record.name if record and record.name else subject),
+        subject_id=subject_id,
+        subject_name=(record.name if record and record.name else "未命名学科"),
         description=record.description if record else "",
         user_intent=record.user_intent if record else "",
         learning_intent=record.learning_intent_text if record else "",

@@ -226,7 +226,7 @@ def build_material_profile(
         )
 
     profile = MaterialProfile(
-        subject=semantic_subject,
+        subject_name=semantic_subject,
         sub_subjects=subject_profile.key_topics[:5] if subject_profile else [],
         material_types=material_types,
         stats=stats,
@@ -236,7 +236,7 @@ def build_material_profile(
 
     logger.info(
         "material_profile_built",
-        subject=profile.subject,
+        subject_name=profile.subject_name,
         total_sources=stats.total_sources,
         total_sections=stats.total_sections,
         formula_density=stats.formula_density,

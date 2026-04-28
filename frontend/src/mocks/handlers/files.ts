@@ -101,7 +101,7 @@ function buildFilesResponse(subject: string): FilesData {
   const hasFileError = (item: FileRecord) => item.status === "failed" || Boolean(item.error_message?.trim());
 
   return {
-    subject,
+    subject_id: subject === "library" ? null : subject,
     total: items.length,
     ready_count: items.filter((item) => item.markdown_ready).length,
     processing_count: items.filter((item) => !item.markdown_ready && !hasFileError(item)).length,

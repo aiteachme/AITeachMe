@@ -6,8 +6,8 @@ from alembic import op
 import sqlalchemy as sa
 
 
-revision = "20260428_0017"
-down_revision = "20260428_0016"
+revision = "20260428_0018"
+down_revision = "20260428_0017"
 branch_labels = None
 depends_on = None
 
@@ -31,7 +31,7 @@ def upgrade() -> None:
                 ) THEN
                     ALTER TABLE retrieval_chunk
                     ADD CONSTRAINT uq_retrieval_chunk_subject_file_id_chunk_index
-                    UNIQUE (subject, file_id, chunk_index);
+                    UNIQUE (subject_id, file_id, chunk_index);
                 END IF;
             END $$;
             """

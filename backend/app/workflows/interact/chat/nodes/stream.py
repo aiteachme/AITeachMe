@@ -65,18 +65,18 @@ def _build_stream_state(
     return next_state
 
 
-def _build_response_stream(state: InteractWorkflowState, *, subject: str):
+def _build_response_stream(state: InteractWorkflowState, *, subject_id: str):
     execution_mode = state.get("execution_mode", InteractExecutionMode.SINGLE_PASS)
     tool_plan = resolve_interact_tool_plan(
         execution_mode=execution_mode,
-        subject=subject,
+        subject_id=subject_id,
         retrieval_results=state.get("retrieval_results", []),
     )
     if tool_plan.uses_tools:
         return run_agent_loop_stream(
             state["messages"],
             tools=tool_plan.tool_names,
-            config=build_agent_loop_config(tool_plan=tool_plan, subject=subject),
+            config=build_agent_loop_config(tool_plan=tool_plan, subject_id=subject_id),
         )
     return acompletion_stream(
         state["messages"],
@@ -100,11 +100,11 @@ def build_stream_answer_node(
             return state
 
         collected_tokens: list[str] = []
-        subject = str(state.get("subject") or context.subject or "")
+        subject_id = str(state.get("subject_id") or context.subject_id or "")
         execution_mode = state.get("execution_mode", InteractExecutionMode.SINGLE_PASS)
         tool_plan = resolve_interact_tool_plan(
             execution_mode=execution_mode,
-            subject=subject,
+            subject_id=subject_id,
             retrieval_results=state.get("retrieval_results", []),
         )
         await _emit_status(
@@ -115,7 +115,7 @@ def build_stream_answer_node(
             tools=tool_plan.tool_names,
             model=INTERACT_MODEL_SELECTOR,
         )
-        stream = _build_response_stream(state, subject=subject)
+        stream = _build_response_stream(state, subject_id=subject_id)
         try:
             async for token in stream:
                 if await _is_disconnected(request):

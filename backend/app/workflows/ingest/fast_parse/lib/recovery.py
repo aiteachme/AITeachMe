@@ -56,26 +56,26 @@ async def recover_stalled_enhancements(*, task_registry=None) -> int:
                         file_id=raw_file.id,
                     )
                     continue
-                subject = (raw_file.subject or "").strip()
-                registry_subject = subject or f"files:{user_id}"
+                subject_id = (raw_file.origin_subject_id or "").strip()
+                registry_subject = subject_id or f"files:{user_id}"
 
                 logger.info(
                     "recover_stalled_dispatching",
                     file_id=raw_file.id,
-                    subject=subject,
+                    subject_id=subject_id,
                     user_id=user_id,
                     current_status=raw_file.ingest_status,
                 )
                 enhance_coro = _run_deep_enhance_background(
                     user_id=user_id,
-                    subject=subject,
+                    subject_id=subject_id,
                     file_id=raw_file.id,
                 )
                 if task_registry is not None:
                     task_registry.spawn(
                         enhance_coro,
                         kind="ingest.enhance.recovery",
-                        subject=registry_subject,
+                        subject_id=registry_subject,
                         name=f"ingest.enhance.recover:{registry_subject}:{raw_file.id}",
                     )
                 else:

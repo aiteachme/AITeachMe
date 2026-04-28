@@ -15,7 +15,8 @@ from typing import Annotated, Any, TypedDict
 class DocGenState(TypedDict, total=False):
     """State carried by the DocGen graph."""
 
-    subject: str
+    subject_id: str
+    subject_name: str
     user_id: str
     file_ids: list[str]
     user_prompt: str | None

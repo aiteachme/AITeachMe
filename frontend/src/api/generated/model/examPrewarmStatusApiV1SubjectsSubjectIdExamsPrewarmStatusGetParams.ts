@@ -6,7 +6,7 @@
  * OpenAPI spec version: 0.0.1
  */
 
-export type ExamPrewarmStatusApiV1SubjectsSubjectExamsPrewarmStatusGetParams = {
+export type ExamPrewarmStatusApiV1SubjectsSubjectIdExamsPrewarmStatusGetParams = {
 exam_mode?: string;
 /**
  * @minimum 1

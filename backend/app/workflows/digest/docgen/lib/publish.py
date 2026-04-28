@@ -1,4 +1,4 @@
-"""Helpers for staging and publishing knowledge docs."""
+﻿"""Helpers for staging and publishing knowledge docs."""
 
 from __future__ import annotations
 
@@ -293,7 +293,7 @@ def _resolve_published_chapter_source_file_ids(
 
 async def stage_knowledge_docs(
     *,
-    subject: str,
+    subject_id: str,
     chapter_metadatas: list[dict],
     document_context: dict[str, object] | None = None,
     cover_markdown: str | None = None,
@@ -306,7 +306,7 @@ async def stage_knowledge_docs(
         return StagedKnowledgeDocs()
 
     cs = get_content_store()
-    subject_scope = subject_scope or resolve_subject_storage_scope(subject)
+    subject_scope = subject_scope or resolve_subject_storage_scope(subject_id)
     sorted_chapters = _dedupe_chapter_metadatas(
         sorted(chapter_metadatas, key=lambda item: item.get("chapter_index", 0))
     )
@@ -343,7 +343,7 @@ async def stage_knowledge_docs(
         await cs.write_json_raw(subject_scope.knowledge_build_prefix() + "docgen_manifest.json", docgen_artifacts)
 
     update_knowledge_build_status(
-        subject,
+        subject_id,
         subject_scope=subject_scope,
         status="running",
         stage="doc_lane_staged",
@@ -357,7 +357,7 @@ async def stage_knowledge_docs(
 
 def publish_staged_knowledge_docs(
     *,
-    subject: str,
+    subject_id: str,
     chapter_metadatas: list[dict],
     chapter_assignments: list[dict],
     document_context: dict[str, object] | None,
@@ -375,14 +375,14 @@ def publish_staged_knowledge_docs(
         return []
 
     cs = get_content_store()
-    subject_scope = subject_scope or resolve_subject_storage_scope(subject)
+    subject_scope = subject_scope or resolve_subject_storage_scope(subject_id)
     sorted_chapters = _dedupe_chapter_metadatas(
         sorted(chapter_metadatas, key=lambda item: item.get("chapter_index", 0))
     )
     with managed_session() as session:
-        latest_version_no = docgen_repo.get_latest_version_no(session, subject)
+        latest_version_no = docgen_repo.get_latest_version_no(session, subject_id)
     resolved_version_no = max(int(version_no or 0), latest_version_no + 1)
-    package_key = f"{subject}:docgen:v{resolved_version_no:04d}"
+    package_key = f"{subject_id}:docgen:v{resolved_version_no:04d}"
     published_at = utcnow()
     assignments_by_index = _assignments_by_chapter_index(chapter_assignments)
     resolved_docgen_artifacts: dict[str, Any] | None = None
@@ -397,7 +397,7 @@ def publish_staged_knowledge_docs(
         )
         resolved_docgen_artifacts["build_metadata"] = build_metadata
 
-    clear_current_published_knowledge_docs_files(subject, subject_scope=subject_scope)
+    clear_current_published_knowledge_docs_files(subject_id, subject_scope=subject_scope)
 
     docs_to_create: list[KnowledgeDoc] = []
     for index, chapter in enumerate(sorted_chapters):
@@ -436,7 +436,7 @@ def publish_staged_knowledge_docs(
 
         docs_to_create.append(
             KnowledgeDoc(
-                subject=subject,
+                subject_id=subject_id,
                 chapter_index=chapter_index,
                 title=chapter_title,
                 summary=summary,
@@ -472,7 +472,7 @@ def publish_staged_knowledge_docs(
         run_store_sync(cs.write_json_raw, current_manifest_key, resolved_docgen_artifacts)
 
     with managed_session() as session:
-        current_docs = docgen_repo.get_docs_by_subject(session, subject, only_current=True)
+        current_docs = docgen_repo.get_docs_by_subject(session, subject_id, only_current=True)
         for doc in current_docs:
             doc.is_current = False
             doc.status = "superseded"
@@ -484,7 +484,7 @@ def publish_staged_knowledge_docs(
         session.flush()
         update_subject_learning_context_from_docgen(
             session,
-            subject=subject,
+            subject_id=subject_id,
             document_context=document_context,
             chapter_metadatas=sorted_chapters,
             chapter_assignments=chapter_assignments,
@@ -525,10 +525,10 @@ def publish_staged_knowledge_docs(
         manifest.merge_review_report = dict(resolved_docgen_artifacts.get("merge_review_report") or {})
     # Do not mark the build completed until live docs are committed and staging is cleared,
     # otherwise `/knowledge/docs` can briefly report 100% while no readable document is available.
-    write_knowledge_manifest(subject, manifest, subject_scope=subject_scope)
+    write_knowledge_manifest(subject_id, manifest, subject_scope=subject_scope)
     run_store_sync(cs.delete_prefix, subject_scope.knowledge_build_prefix(), default=0)
     update_knowledge_build_status(
-        subject,
+        subject_id,
         subject_scope=subject_scope,
         requested_at=requested_at,
         status="completed",

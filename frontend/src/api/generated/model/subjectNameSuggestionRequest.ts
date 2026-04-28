@@ -7,8 +7,8 @@
  */
 
 export interface SubjectNameSuggestionRequest {
-  /** 用户输入的学习目标。 */
+  /** User input learning goal. */
   prompt?: string | null;
-  /** 上传的文件名列表。 */
+  /** Uploaded filenames. */
   filenames?: string[] | null;
 }

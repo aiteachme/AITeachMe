@@ -49,10 +49,10 @@ class ContentStore:
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
     @staticmethod
-    def subject_scope(*, user_id: str, subject: str) -> SubjectStorageScope:
+    def subject_scope(*, user_id: str, subject_id: str) -> SubjectStorageScope:
         """Return the canonical persisted storage scope for one subject."""
 
-        return build_subject_storage_scope(user_id=user_id, subject=subject)
+        return build_subject_storage_scope(user_id=user_id, subject_id=subject_id)
 
     @staticmethod
     def user_file_scope(*, user_id: str) -> UserFileStorageScope:

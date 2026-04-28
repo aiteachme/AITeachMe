@@ -7,6 +7,6 @@
  */
 
 /**
- * 本次删除涉及的记录统计。
+ * Deleted record counts.
  */
 export type SubjectDeleteDataDeletedCounts = {[key: string]: number};

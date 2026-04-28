@@ -13,7 +13,7 @@ export interface QuestionTypeRegistryItemResponse {
   type_key: string;
   display_name: string;
   scope: string;
-  subject: string;
+  subject_id: string;
   description: string;
   answer_format: string;
   grading_method: string;

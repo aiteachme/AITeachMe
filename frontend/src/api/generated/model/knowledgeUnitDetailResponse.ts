@@ -16,7 +16,7 @@ import type { NodeRevisionItem } from './nodeRevisionItem';
  */
 export interface KnowledgeUnitDetailResponse {
   id: number;
-  subject: string;
+  subject_id: string;
   knowledge_unit_type: string;
   canonical_name: string;
   normalized_name: string;

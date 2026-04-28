@@ -7,15 +7,15 @@
  */
 
 export interface SubjectDeleteImpactItem {
-  /** 影响项唯一标识。 */
+  /** Impact item key. */
   key: string;
-  /** 影响项展示名称。 */
+  /** Impact item label. */
   label: string;
   /**
-     * 影响数量。
+     * Impact count.
      * @minimum 0
      */
   count: number;
-  /** 影响项说明。 */
+  /** Impact description. */
   description: string;
 }

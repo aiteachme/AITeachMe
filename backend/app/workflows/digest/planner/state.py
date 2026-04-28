@@ -15,7 +15,7 @@ from app.workflows.digest.common.models import DigestMaterialContext
 
 class BuildPlannerState(TypedDict, total=False):
     # Stable graph input
-    subject: str
+    subject_id: str
     user_id: str
     planner_operation: str
     requested_file_ids: list[str]
@@ -62,7 +62,7 @@ BuildPlannerGraphInput = project_typed_dict_schema(
     BuildPlannerState,
     name="BuildPlannerGraphInput",
     fields=[
-        "subject",
+        "subject_id",
         "user_id",
         "planner_operation",
         "requested_file_ids",

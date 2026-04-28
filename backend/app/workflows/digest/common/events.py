@@ -12,7 +12,7 @@ from app.utils.time import utcnow
 @dataclass(slots=True)
 class DigestBuildRequestedEvent:
     event_name: ClassVar[str] = "digest.build.requested"
-    subject: str
+    subject_id: str
     job_id: int
     file_ids: list[str]
     occurred_at: datetime = field(default_factory=utcnow)
@@ -21,7 +21,7 @@ class DigestBuildRequestedEvent:
 @dataclass(slots=True)
 class DigestGraphCompletedEvent:
     event_name: ClassVar[str] = "digest.graph.completed"
-    subject: str
+    subject_id: str
     job_id: int
     file_ids: list[str]
     chunk_count: int
@@ -31,7 +31,7 @@ class DigestGraphCompletedEvent:
 @dataclass(slots=True)
 class DigestGraphFailedEvent:
     event_name: ClassVar[str] = "digest.graph.failed"
-    subject: str
+    subject_id: str
     job_id: int
     file_ids: list[str]
     error_message: str
@@ -41,7 +41,7 @@ class DigestGraphFailedEvent:
 @dataclass(slots=True)
 class DocGenRequestedEvent:
     event_name: ClassVar[str] = "digest.docgen.requested"
-    subject: str
+    subject_id: str
     requested_at: datetime
     file_ids: list[str]
     occurred_at: datetime = field(default_factory=utcnow)
@@ -50,7 +50,7 @@ class DocGenRequestedEvent:
 @dataclass(slots=True)
 class DocGenCompletedEvent:
     event_name: ClassVar[str] = "digest.docgen.completed"
-    subject: str
+    subject_id: str
     requested_at: datetime
     staged_chapter_count: int
     draft_available: bool
@@ -61,7 +61,7 @@ class DocGenCompletedEvent:
 @dataclass(slots=True)
 class DocGenFailedEvent:
     event_name: ClassVar[str] = "digest.docgen.failed"
-    subject: str
+    subject_id: str
     requested_at: datetime
     error_message: str
     occurred_at: datetime = field(default_factory=utcnow)

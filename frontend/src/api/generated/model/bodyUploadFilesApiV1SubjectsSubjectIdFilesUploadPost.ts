@@ -6,7 +6,7 @@
  * OpenAPI spec version: 0.0.1
  */
 
-export interface BodyUploadFilesApiV1SubjectsSubjectFilesUploadPost {
+export interface BodyUploadFilesApiV1SubjectsSubjectIdFilesUploadPost {
   files: Blob[];
   parser_provider?: string | null;
   mineru_api_token?: string | null;

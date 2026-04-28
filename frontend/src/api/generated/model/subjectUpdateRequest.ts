@@ -7,12 +7,12 @@
  */
 
 export interface SubjectUpdateRequest {
-  /** 学科外部标识。 */
+  /** Subject id. */
   subject_id: string;
-  /** 展示名称。 */
+  /** Display name. */
   name?: string | null;
-  /** 学科简单介绍。 */
+  /** Short subject description. */
   description?: string | null;
-  /** 用户目标/意图描述。 */
+  /** User learning goal or intent. */
   user_intent?: string | null;
 }

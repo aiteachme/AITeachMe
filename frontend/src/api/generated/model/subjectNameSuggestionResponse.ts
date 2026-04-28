@@ -7,6 +7,6 @@
  */
 
 export interface SubjectNameSuggestionResponse {
-  /** AI 生成的学科名称。 */
+  /** AI-generated subject name. */
   name: string;
 }

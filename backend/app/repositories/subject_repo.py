@@ -13,8 +13,8 @@ def create_subject(session: Session, subject: Subject) -> Subject:
     return subject
 
 
-def get_subject_by_slug(session: Session, slug: str, *, owner_user_id: str | None = None) -> Subject | None:
-    stmt = select(Subject).where(Subject.slug == slug)
+def get_subject_by_id(session: Session, subject_id: str, *, owner_user_id: str | None = None) -> Subject | None:
+    stmt = select(Subject).where(Subject.id == subject_id)
     if owner_user_id is not None:
         stmt = stmt.where(Subject.user_id == owner_user_id)
     return session.exec(stmt).first()

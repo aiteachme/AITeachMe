@@ -9,7 +9,7 @@
 export interface ReviewTaskResponse {
   id: number;
   user_id: string;
-  subject: string;
+  subject_id: string;
   knowledge_unit_id: number;
   knowledge_unit_name?: string | null;
   knowledge_unit_type?: string | null;

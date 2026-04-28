@@ -26,8 +26,8 @@ def _parse_json_object(raw: str | None) -> dict[str, object]:
     return decoded if isinstance(decoded, dict) else {}
 
 
-def _load_subject_record(session: Session, *, subject: str) -> Subject | None:
-    return session.exec(select(Subject).where(Subject.slug == subject)).first()
+def _load_subject_record(session: Session, *, subject_id: str) -> Subject | None:
+    return session.exec(select(Subject).where(Subject.id == subject_id)).first()
 
 
 def _average_mastery(states: list[UserKnowledgeState]) -> float | None:
@@ -154,14 +154,14 @@ def _build_notes(
 def _load_recent_exam_items(
     session: Session,
     *,
-    subject: str,
+    subject_id: str,
     user_id: str,
 ) -> list[ExamPaperItem]:
     stmt = (
         select(ExamPaperItem)
         .join(ExamPaper, ExamPaperItem.exam_paper_id == ExamPaper.id)
         .where(
-            ExamPaper.subject == subject,
+            ExamPaper.subject_id == subject_id,
             ExamPaper.user_id == user_id,
             ExamPaperItem.is_correct.is_not(None),
         )
@@ -174,19 +174,19 @@ def _load_recent_exam_items(
 def build_subject_profile_summary(
     session: Session,
     *,
-    subject: str,
+    subject_id: str,
     user_id: str,
 ) -> SubjectProfileSummary:
     knowledge_unit_states = profile_repo.list_knowledge_states(
         session,
         user_id=user_id,
-        subject=subject,
+        subject_id=subject_id,
         target_kind="knowledge_unit",
     )
     pending_reviews = profile_repo.list_pending_reviews(
         session,
         user_id=user_id,
-        subject=subject,
+        subject_id=subject_id,
     )
     now = utcnow()
     due_review_count = sum(
@@ -197,7 +197,7 @@ def build_subject_profile_summary(
 
     recent_items = _load_recent_exam_items(
         session,
-        subject=subject,
+        subject_id=subject_id,
         user_id=user_id,
     )
     type_totals: Counter[str] = Counter()
@@ -231,7 +231,7 @@ def build_subject_profile_summary(
     )
 
     return SubjectProfileSummary(
-        subject=subject,
+        subject_id=subject_id,
         generated_at=now,
         avg_mastery=avg_mastery,
         weak_knowledge_unit_count=weak_knowledge_unit_count,
@@ -262,9 +262,9 @@ def build_subject_profile_summary(
 def load_subject_profile_summary(
     session: Session,
     *,
-    subject: str,
+    subject_id: str,
 ) -> SubjectProfileSummary | None:
-    subject_record = _load_subject_record(session, subject=subject)
+    subject_record = _load_subject_record(session, subject_id=subject_id)
     if subject_record is None:
         return None
 
@@ -281,16 +281,16 @@ def load_subject_profile_summary(
 def refresh_subject_profile_summary(
     session: Session,
     *,
-    subject: str,
+    subject_id: str,
     auto_commit: bool = True,
 ) -> SubjectProfileSummary:
-    subject_record = _load_subject_record(session, subject=subject)
+    subject_record = _load_subject_record(session, subject_id=subject_id)
     if subject_record is None:
-        raise ValueError(f"Subject `{subject}` not found.")
+        raise ValueError(f"Subject `{subject_id}` not found.")
 
     summary = build_subject_profile_summary(
         session,
-        subject=subject,
+        subject_id=subject_id,
         user_id=subject_record.user_id,
     )
     subject_record.profile_json = summary.model_dump_json()

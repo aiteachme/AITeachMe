@@ -1,4 +1,4 @@
-﻿"""DocGen graph definition and runtime entrypoint.
+"""DocGen graph definition and runtime entrypoint.
 
 这个文件对齐 Planner 的组织方式：上半部分定义 LangGraph 节点与
 fan-out/fan-in 路由，下半部分提供单次 `run_docgen_workflow` 运行入口。
@@ -79,7 +79,8 @@ NODE_TRACE_DETAILS: dict[str, dict[str, Any]] = {
         "reads": ["confirmed_plan", "shared_inputs", "planner_context", "build_session"],
         "writes": ["docgen_context", "document_context", "chapter_assignments", "retrieval_profile"],
         "input_keys": [
-            "subject",
+            "subject_id",
+            "subject_name",
             "file_ids",
             "user_prompt",
             "confirmed_plan",
@@ -103,7 +104,7 @@ NODE_TRACE_DETAILS: dict[str, dict[str, Any]] = {
             "source_affinity_by_chapter",
             "high_confidence_evidence_units",
         ],
-        "input_keys": ["subject", "docgen_context", "chapter_assignments", "shared_inputs", "digest_mode"],
+        "input_keys": ["subject_id", "subject_name", "docgen_context", "chapter_assignments", "shared_inputs", "digest_mode"],
         "output_keys": [
             "intent_core",
             "intent_profile",
@@ -119,10 +120,11 @@ NODE_TRACE_DETAILS: dict[str, dict[str, Any]] = {
             "根据学科、用户目标、confirmed plan、资料摘要和 intent_profile 生成可选封面 sidecar。"
             "封面是 best-effort 辅助资产，失败或未配置图像模型时不阻断正文生成链路。"
         ),
-        "reads": ["subject", "user_prompt", "document_context", "confirmed_plan", "file_summaries", "intent_profile"],
+        "reads": ["subject_id", "subject_name", "user_prompt", "document_context", "confirmed_plan", "file_summaries", "intent_profile"],
         "writes": ["cover_artifact", "cover_markdown"],
         "input_keys": [
-            "subject",
+            "subject_id",
+            "subject_name",
             "build_session_id",
             "user_prompt",
             "document_context",
@@ -140,7 +142,7 @@ NODE_TRACE_DETAILS: dict[str, dict[str, Any]] = {
         ),
         "reads": ["chapter_assignments", "docgen_context", "confirmed_plan"],
         "writes": ["locked_titles"],
-        "input_keys": ["subject", "chapter_assignments", "docgen_context", "build_session_id"],
+        "input_keys": ["subject_id", "subject_name", "chapter_assignments", "docgen_context", "build_session_id"],
         "output_keys": ["locked_titles", "title_lock_ms", "llm_calls_total", "error"],
         "fanout": "internal_async_per_chapter",
     },
@@ -183,7 +185,7 @@ NODE_TRACE_DETAILS: dict[str, dict[str, Any]] = {
         ),
         "reads": ["chapter_task_seeds", "document_backbone", "intent_core"],
         "writes": ["chapter_execution_briefs"],
-        "input_keys": ["subject", "chapter_task_seeds", "document_backbone", "intent_core", "digest_mode"],
+        "input_keys": ["subject_id", "subject_name", "chapter_task_seeds", "document_backbone", "intent_core", "digest_mode"],
         "output_keys": ["chapter_execution_briefs", "chapter_prepare_ms", "llm_calls_total", "error"],
         "fanout": "internal_async_per_chapter",
     },
@@ -607,7 +609,8 @@ def build_docgen_graph(*, context: WorkflowContext) -> StateGraph:
 
 def create_docgen_initial_state(
     *,
-    subject: str,
+    subject_id: str,
+    subject_name: str | None = None,
     file_ids: list[str],
     user_id: str | None = None,
     user_prompt: str | None,
@@ -622,7 +625,8 @@ def create_docgen_initial_state(
     """Create initial state for the DocGen graph."""
 
     return {
-        "subject": subject,
+        "subject_id": subject_id,
+        "subject_name": (subject_name or "").strip(),
         "user_id": user_id or "",
         "file_ids": file_ids,
         "user_prompt": user_prompt,
@@ -636,7 +640,7 @@ def create_docgen_initial_state(
         "retrieval_profile": resolve_docgen_retrieval_profile(
             digest_mode,
             user_prompt=user_prompt,
-            subject_name=subject,
+            subject_name=subject_name,
         ),
         "teaching_action": "docgen_build",
         "document_context": None,
@@ -658,7 +662,8 @@ route_after_step_for_trace = named_route(route_after_step_for_trace, "检查是�
 
 def _child_state_base(state: DocGenState, *, teaching_action: str) -> dict[str, Any]:
     return {
-        "subject": state["subject"],
+        "subject_id": state["subject_id"],
+        "subject_name": state.get("subject_name", ""),
         "requested_at": state["requested_at"],
         "build_session_id": state.get("build_session_id", ""),
         "planner_session_id": state.get("planner_session_id", ""),
@@ -745,7 +750,8 @@ def get_langgraph_dev_docgen_graph() -> StateGraph:
 
 async def run_docgen_workflow(
     *,
-    subject: str,
+    subject_id: str,
+    subject_name: str | None = None,
     file_ids: list[str],
     user_id: str | None = None,
     user_prompt: str | None = None,
@@ -766,11 +772,11 @@ async def run_docgen_workflow(
     """
 
     bus = event_bus or InProcessEventBus()
-    await bus.publish(DocGenRequestedEvent(subject=subject, requested_at=requested_at, file_ids=file_ids))
+    await bus.publish(DocGenRequestedEvent(subject_id=subject_id, requested_at=requested_at, file_ids=file_ids))
 
     context = WorkflowContext(
         workflow_name="digest.docgen",
-        subject=subject,
+        subject_id=subject_id,
         event_bus=bus,
         metadata={
             "requested_at": requested_at.isoformat(),
@@ -787,7 +793,8 @@ async def run_docgen_workflow(
         workflow_name="digest.docgen",
         graph_builder=lambda: build_docgen_graph(context=context),
         initial_state=create_docgen_initial_state(
-            subject=subject,
+            subject_id=subject_id,
+            subject_name=subject_name,
             user_id=user_id,
             file_ids=file_ids,
             user_prompt=user_prompt,
@@ -814,7 +821,7 @@ async def run_docgen_workflow(
         )
         await bus.publish(
             DocGenFailedEvent(
-                subject=subject,
+                subject_id=subject_id,
                 requested_at=requested_at,
                 error_message=result.error.detail,
             )
@@ -839,7 +846,7 @@ async def run_docgen_workflow(
     if error_message:
         await bus.publish(
             DocGenFailedEvent(
-                subject=subject,
+                subject_id=subject_id,
                 requested_at=requested_at,
                 error_message=error_message,
             )
@@ -847,12 +854,12 @@ async def run_docgen_workflow(
         return err_result(
             "digest_docgen_failed",
             error_message,
-            metadata={"requested_at": requested_at.isoformat(), "subject": subject},
+            metadata={"requested_at": requested_at.isoformat(), "subject_id": subject_id},
         )
 
     await bus.publish(
         DocGenCompletedEvent(
-            subject=subject,
+            subject_id=subject_id,
             requested_at=requested_at,
             staged_chapter_count=len(final_state.get("chapter_metadatas", [])),
             draft_available=bool(str(final_state.get("merged_markdown", "")).strip()),

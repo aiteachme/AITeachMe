@@ -18,24 +18,24 @@ class SubjectCreateRequest(BaseModel):
         }
     )
 
-    name: str = Field(default="", description="展示名称。可留空，Planner 会在首次对话后自动命名。")
-    description: str = Field(default="", description="学科简单介绍。")
-    user_intent: str = Field(default="", description="用户目标/意图描述。")
+    name: str = Field(default="", description="Display name. Planner may fill it after the first conversation.")
+    description: str = Field(default="", description="Short subject description.")
+    user_intent: str = Field(default="", description="User learning goal or intent.")
 
 
 class SubjectDetailRequest(BaseModel):
-    subject_id: str = Field(description="学科外部标识。")
+    subject_id: str = Field(description="Subject id.")
 
 
 class SubjectUpdateRequest(BaseModel):
-    subject_id: str = Field(description="学科外部标识。")
-    name: str | None = Field(default=None, min_length=1, description="展示名称。")
-    description: str | None = Field(default=None, description="学科简单介绍。")
-    user_intent: str | None = Field(default=None, description="用户目标/意图描述。")
+    subject_id: str = Field(description="Subject id.")
+    name: str | None = Field(default=None, min_length=1, description="Display name.")
+    description: str | None = Field(default=None, description="Short subject description.")
+    user_intent: str | None = Field(default=None, description="User learning goal or intent.")
 
 
 class SubjectDeleteRequest(SubjectDetailRequest):
-    force: bool = Field(default=False, description="是否确认级联删除学科下的全部内容。")
+    force: bool = Field(default=False, description="Whether to confirm cascading deletion of subject content.")
 
 
 class SubjectDeletePreviewRequest(SubjectDetailRequest):
@@ -47,45 +47,44 @@ class SubjectListRequest(PageParams):
 
 
 class SubjectItem(BaseModel):
-    id: int = Field(description="学科 ID。")
-    subject_id: str = Field(description="学科外部标识。")
-    name: str = Field(description="展示名称。")
-    description: str = Field(description="学科简单介绍。")
-    user_intent: str = Field(description="用户目标/意图描述。")
-    icon_key: str | None = Field(default=None, description="学科图标 key。")
-    created_at: datetime = Field(description="创建时间。")
-    updated_at: datetime = Field(description="更新时间。")
+    subject_id: str = Field(description="Subject id.")
+    name: str = Field(description="Display name.")
+    description: str = Field(description="Short subject description.")
+    user_intent: str = Field(description="User learning goal or intent.")
+    icon_key: str | None = Field(default=None, description="Subject icon key.")
+    created_at: datetime = Field(description="Created time.")
+    updated_at: datetime = Field(description="Updated time.")
 
 
 class SubjectDeleteData(BaseModel):
-    deleted: bool = Field(description="是否删除成功。")
-    subject_id: str = Field(description="学科外部标识。")
-    deleted_counts: dict[str, int] = Field(default_factory=dict, description="本次删除涉及的记录统计。")
+    deleted: bool = Field(description="Whether deletion succeeded.")
+    subject_id: str = Field(description="Subject id.")
+    deleted_counts: dict[str, int] = Field(default_factory=dict, description="Deleted record counts.")
 
 
 class SubjectDeleteImpactItem(BaseModel):
-    key: str = Field(description="影响项唯一标识。")
-    label: str = Field(description="影响项展示名称。")
-    count: int = Field(description="影响数量。", ge=0)
-    description: str = Field(description="影响项说明。")
+    key: str = Field(description="Impact item key.")
+    label: str = Field(description="Impact item label.")
+    count: int = Field(description="Impact count.", ge=0)
+    description: str = Field(description="Impact description.")
 
 
 class SubjectDeletePreviewData(BaseModel):
-    subject_id: str = Field(description="学科外部标识。")
-    subject_name: str = Field(description="学科名称。")
-    has_content: bool = Field(description="学科下是否仍有关联内容。")
-    total_related_records: int = Field(description="关联记录总数。", ge=0)
+    subject_id: str = Field(description="Subject id.")
+    subject_name: str = Field(description="Subject name.")
+    has_content: bool = Field(description="Whether the subject has related content.")
+    total_related_records: int = Field(description="Total related record count.", ge=0)
     impact_items: list[SubjectDeleteImpactItem] = Field(
         default_factory=list,
-        description="用户可读的删除影响列表。",
+        description="Human-readable deletion impact items.",
     )
-    detail_counts: dict[str, int] = Field(default_factory=dict, description="内部明细统计。")
+    detail_counts: dict[str, int] = Field(default_factory=dict, description="Internal detail counts.")
 
 
 class SubjectNameSuggestionRequest(BaseModel):
-    prompt: str | None = Field(default=None, description="用户输入的学习目标。")
-    filenames: list[str] | None = Field(default=None, description="上传的文件名列表。")
+    prompt: str | None = Field(default=None, description="User input learning goal.")
+    filenames: list[str] | None = Field(default=None, description="Uploaded filenames.")
 
 
 class SubjectNameSuggestionResponse(BaseModel):
-    name: str = Field(description="AI 生成的学科名称。")
+    name: str = Field(description="AI-generated subject name.")

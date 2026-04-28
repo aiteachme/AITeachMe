@@ -91,13 +91,13 @@ def test_duplicate_subject_upload_links_once_and_starts_parse_once(monkeypatch) 
     fake_store = _install_fake_store(monkeypatch)
     with _session() as session:
         session.add(User(id="user_a", username="user_a"))
-        session.add(Subject(user_id="user_a", slug="math", name="Math"))
+        session.add(Subject(user_id="user_a", id="subj_math00000000", name="Math"))
         session.commit()
 
         data, parse_ids = asyncio.run(
             uploads.save_uploaded_files_and_request_parse(
                 session,
-                subject="math",
+                subject_id="subj_math00000000",
                 owner_user_id="user_a",
                 files=[
                     _upload("chapter.pdf", b"same pdf bytes"),

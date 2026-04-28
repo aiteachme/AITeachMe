@@ -11,6 +11,6 @@ import type { ClearKnowledgeResponseDeletedCounts } from './clearKnowledgeRespon
  * Knowledge clear response.
  */
 export interface ClearKnowledgeResponse {
-  subject: string;
+  subject_id: string;
   deleted_counts?: ClearKnowledgeResponseDeletedCounts;
 }

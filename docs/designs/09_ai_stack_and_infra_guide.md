@@ -99,12 +99,12 @@ from app.shared.infra.search import search_knowledge, web_search
 results = await web_search(
     "高等数学 导数 定义",
     top_k=5,
-    subject=subject_slug,
+    subject_id=subject_id,
 )
 
 chunks = await search_knowledge(
     "导数的几何意义",
-    subject_id=subject_slug,
+    subject_id=subject_id,
     top_k=5,
 )
 ```
@@ -117,7 +117,7 @@ from app.shared.infra.search.web import dispatch_web_search
 results = await dispatch_web_search(
     "线性代数 矩阵 特征值",
     top_k=5,
-    subject=subject_slug,
+    subject_id=subject_id,
     profile="docgen_zh_math",
 )
 ```

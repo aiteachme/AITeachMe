@@ -32,7 +32,7 @@ def _recent_error_stats_by_knowledge_unit(
     session: Session,
     *,
     user_id: str,
-    subject: str,
+    subject_id: str,
 ) -> dict[int, tuple[int, int]]:
     now = utcnow()
     since = now - timedelta(days=30)
@@ -42,7 +42,7 @@ def _recent_error_stats_by_knowledge_unit(
             .join(ExamPaper, ExamPaperItem.exam_paper_id == ExamPaper.id)
             .where(
                 ExamPaper.user_id == user_id,
-                ExamPaper.subject == subject,
+                ExamPaper.subject_id == subject_id,
                 ExamPaperItem.is_correct.is_not(None),
                 ExamPaperItem.answered_at >= since,
             )
@@ -93,17 +93,22 @@ def _pick_reason(
 def analyze_weakness(
     session: Session,
     user_id: str,
-    subject: str,
+    subject_id: str,
     top_n: int = 20,
 ) -> list[WeaknessItem]:
     if top_n <= 0:
         return []
 
-    states = list(profile_repo.list_knowledge_states(session, user_id=user_id, subject=subject, target_kind="knowledge_unit"))
+    states = list(profile_repo.list_knowledge_states(
+        session,
+        user_id=user_id,
+        subject_id=subject_id,
+        target_kind="knowledge_unit",
+    ))
     if not states:
         return []
 
-    error_stats = _recent_error_stats_by_knowledge_unit(session, user_id=user_id, subject=subject)
+    error_stats = _recent_error_stats_by_knowledge_unit(session, user_id=user_id, subject_id=subject_id)
     now = utcnow()
     items: list[WeaknessItem] = []
     for state in states:

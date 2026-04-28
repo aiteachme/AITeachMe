@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import sqlalchemy as sa
-from alembic import op
+from alembic import context, op
 
 
 revision = "20260428_0015"
@@ -81,7 +81,13 @@ def upgrade() -> None:
         "raw_file",
         sa.Column("parse_request_signature", sa.String(length=80), nullable=False, server_default="default"),
     )
-    _backfill_duplicate_default_signatures()
+    if context.is_offline_mode():
+        op.execute(
+            "UPDATE raw_file SET parse_request_signature = 'default' "
+            "WHERE parse_request_signature IS NULL OR parse_request_signature = ''"
+        )
+    else:
+        _backfill_duplicate_default_signatures()
     op.create_index(
         "uq_raw_file_user_hash_size_type_signature_active",
         "raw_file",

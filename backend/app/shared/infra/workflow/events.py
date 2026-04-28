@@ -18,7 +18,7 @@ class WorkflowEvent(Protocol):
     """Protocol implemented by workflow events."""
 
     event_name: ClassVar[str]
-    subject: str
+    subject_id: str
 
 
 EventHandler = Callable[[WorkflowEvent], Awaitable[None] | None]
@@ -30,7 +30,7 @@ class LoggedWorkflowEvent:
 
     event_name: ClassVar[str] = "workflow.logged"
 
-    subject: str
+    subject_id: str
     workflow_name: str
     payload: dict[str, Any]
 
@@ -52,7 +52,7 @@ class InProcessEventBus:
         logger.info(
             "workflow_event_published",
             event_name=event.event_name,
-            subject=event.subject,
+            subject_id=event.subject_id,
         )
         for handler in self._handlers.get(event.event_name, []):
             result = handler(event)

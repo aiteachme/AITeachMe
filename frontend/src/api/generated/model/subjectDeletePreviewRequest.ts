@@ -7,6 +7,6 @@
  */
 
 export interface SubjectDeletePreviewRequest {
-  /** 学科外部标识。 */
+  /** Subject id. */
   subject_id: string;
 }

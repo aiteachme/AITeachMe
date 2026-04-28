@@ -6,7 +6,7 @@
  * OpenAPI spec version: 0.0.1
  */
 
-export type ExamHistoryApiV1SubjectsSubjectExamsHistoryGetParams = {
+export type ExamHistoryApiV1SubjectsSubjectIdExamsHistoryGetParams = {
 page?: number;
 size?: number;
 };

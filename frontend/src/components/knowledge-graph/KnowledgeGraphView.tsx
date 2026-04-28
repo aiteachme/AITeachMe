@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+﻿import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   Loader2,
@@ -13,7 +13,7 @@ import {
   ExternalLink,
 } from "lucide-react";
 import {
-  graphKnowledgeUnitDetailApiV1SubjectsSubjectKnowledgeGraphKnowledgeUnitsDetailPost,
+  graphKnowledgeUnitDetailApiV1SubjectsSubjectIdKnowledgeGraphKnowledgeUnitsDetailPost,
 } from "../../api/generated/knowledge";
 import type { FullGraphResponse, KnowledgeUnitResponse } from "../../api/generated/model";
 import { unwrapOrvalResponse } from "../../lib/unwrapOrvalResponse";
@@ -52,7 +52,7 @@ function NodeDetailPanel({
     queryKey: ["graph-node-detail", subject, nodeId],
     queryFn: async () =>
       unwrapOrvalResponse(
-        await graphKnowledgeUnitDetailApiV1SubjectsSubjectKnowledgeGraphKnowledgeUnitsDetailPost(subject, {
+        await graphKnowledgeUnitDetailApiV1SubjectsSubjectIdKnowledgeGraphKnowledgeUnitsDetailPost(subject, {
           knowledge_unit_id: nodeId,
         }),
       ) ?? null,

@@ -9,7 +9,7 @@ import type { BuildPlannerChapterPlanResponse } from './buildPlannerChapterPlanR
 import type { BuildPlannerPlanResponseBuildConstraints } from './buildPlannerPlanResponseBuildConstraints';
 
 export interface BuildPlannerPlanResponse {
-  subject: string;
+  subject_id: string;
   selected_file_ids?: string[];
   user_prompt: string;
   digest_mode: string;

@@ -526,7 +526,7 @@ async function fetchFiles(subject: string): Promise<FilesData> {
     url: `/api/v1/subjects/${subject}/files`,
   });
   return response.data ?? {
-    subject,
+    subject_id: subject,
     total: 0,
     ready_count: 0,
     processing_count: 0,
@@ -544,7 +544,7 @@ async function uploadFiles(subject: string, files: File[]): Promise<FilesUploadD
     url: `/api/v1/subjects/${subject}/files/upload`,
     data,
   });
-  return response.data ?? { subject, filenames: [], uploaded_items: [], started_parse_count: 0 };
+  return response.data ?? { subject_id: subject, filenames: [], uploaded_items: [], started_parse_count: 0 };
 }
 
 async function deleteFile(subject: string, id: string) {
@@ -579,7 +579,7 @@ async function cancelKnowledgeBuild(subject: string): Promise<DocGenBuildCancelD
     url: `/api/v1/subjects/${subject}/knowledge/build/cancel`,
   });
   return response.data ?? {
-    subject,
+    subject_id: subject,
     status: "cancelled",
     cancelled_task_count: 0,
     message: "已终止当前知识构建。",

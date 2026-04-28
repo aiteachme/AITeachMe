@@ -47,47 +47,47 @@ type SecondParameter<T extends (...args: never) => unknown> = Parameters<T>[1];
  * 获取学科导出内容摘要。
  * @summary 导出预览
  */
-export type exportPreviewApiApiV1SubjectsSubjectExportPreviewPostResponse200 = {
+export type exportPreviewApiApiV1SubjectsSubjectIdExportPreviewPostResponse200 = {
   data: ApiResponseExportPreviewData
   status: 200
 }
 
-export type exportPreviewApiApiV1SubjectsSubjectExportPreviewPostResponse404 = {
+export type exportPreviewApiApiV1SubjectsSubjectIdExportPreviewPostResponse404 = {
   data: ErrorResponse
   status: 404
 }
 
-export type exportPreviewApiApiV1SubjectsSubjectExportPreviewPostResponse422 = {
+export type exportPreviewApiApiV1SubjectsSubjectIdExportPreviewPostResponse422 = {
   data: HTTPValidationError
   status: 422
 }
 
-export type exportPreviewApiApiV1SubjectsSubjectExportPreviewPostResponse500 = {
+export type exportPreviewApiApiV1SubjectsSubjectIdExportPreviewPostResponse500 = {
   data: ErrorResponse
   status: 500
 }
 
-export type exportPreviewApiApiV1SubjectsSubjectExportPreviewPostResponseSuccess = (exportPreviewApiApiV1SubjectsSubjectExportPreviewPostResponse200) & {
+export type exportPreviewApiApiV1SubjectsSubjectIdExportPreviewPostResponseSuccess = (exportPreviewApiApiV1SubjectsSubjectIdExportPreviewPostResponse200) & {
   headers: Headers;
 };
-export type exportPreviewApiApiV1SubjectsSubjectExportPreviewPostResponseError = (exportPreviewApiApiV1SubjectsSubjectExportPreviewPostResponse404 | exportPreviewApiApiV1SubjectsSubjectExportPreviewPostResponse422 | exportPreviewApiApiV1SubjectsSubjectExportPreviewPostResponse500) & {
+export type exportPreviewApiApiV1SubjectsSubjectIdExportPreviewPostResponseError = (exportPreviewApiApiV1SubjectsSubjectIdExportPreviewPostResponse404 | exportPreviewApiApiV1SubjectsSubjectIdExportPreviewPostResponse422 | exportPreviewApiApiV1SubjectsSubjectIdExportPreviewPostResponse500) & {
   headers: Headers;
 };
 
-export type exportPreviewApiApiV1SubjectsSubjectExportPreviewPostResponse = (exportPreviewApiApiV1SubjectsSubjectExportPreviewPostResponseSuccess | exportPreviewApiApiV1SubjectsSubjectExportPreviewPostResponseError)
+export type exportPreviewApiApiV1SubjectsSubjectIdExportPreviewPostResponse = (exportPreviewApiApiV1SubjectsSubjectIdExportPreviewPostResponseSuccess | exportPreviewApiApiV1SubjectsSubjectIdExportPreviewPostResponseError)
 
-export const getExportPreviewApiApiV1SubjectsSubjectExportPreviewPostUrl = (subject: string,) => {
-
-
+export const getExportPreviewApiApiV1SubjectsSubjectIdExportPreviewPostUrl = (subjectId: string,) => {
 
 
-  return `/api/v1/subjects/${subject}/export/preview`
+
+
+  return `/api/v1/subjects/${subjectId}/export/preview`
 }
 
-export const exportPreviewApiApiV1SubjectsSubjectExportPreviewPost = async (subject: string,
-    exportOptions: ExportOptions, options?: RequestInit): Promise<exportPreviewApiApiV1SubjectsSubjectExportPreviewPostResponse> => {
+export const exportPreviewApiApiV1SubjectsSubjectIdExportPreviewPost = async (subjectId: string,
+    exportOptions: ExportOptions, options?: RequestInit): Promise<exportPreviewApiApiV1SubjectsSubjectIdExportPreviewPostResponse> => {
 
-  return orvalApiClient<exportPreviewApiApiV1SubjectsSubjectExportPreviewPostResponse>(getExportPreviewApiApiV1SubjectsSubjectExportPreviewPostUrl(subject),
+  return orvalApiClient<exportPreviewApiApiV1SubjectsSubjectIdExportPreviewPostResponse>(getExportPreviewApiApiV1SubjectsSubjectIdExportPreviewPostUrl(subjectId),
   {
     ...options,
     method: 'POST',
@@ -100,11 +100,11 @@ export const exportPreviewApiApiV1SubjectsSubjectExportPreviewPost = async (subj
 
 
 
-export const getExportPreviewApiApiV1SubjectsSubjectExportPreviewPostMutationOptions = <TError = ErrorResponse | HTTPValidationError,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof exportPreviewApiApiV1SubjectsSubjectExportPreviewPost>>, TError,{subject: string;data: ExportOptions}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
-): UseMutationOptions<Awaited<ReturnType<typeof exportPreviewApiApiV1SubjectsSubjectExportPreviewPost>>, TError,{subject: string;data: ExportOptions}, TContext> => {
+export const getExportPreviewApiApiV1SubjectsSubjectIdExportPreviewPostMutationOptions = <TError = ErrorResponse | HTTPValidationError,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof exportPreviewApiApiV1SubjectsSubjectIdExportPreviewPost>>, TError,{subjectId: string;data: ExportOptions}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
+): UseMutationOptions<Awaited<ReturnType<typeof exportPreviewApiApiV1SubjectsSubjectIdExportPreviewPost>>, TError,{subjectId: string;data: ExportOptions}, TContext> => {
 
-const mutationKey = ['exportPreviewApiApiV1SubjectsSubjectExportPreviewPost'];
+const mutationKey = ['exportPreviewApiApiV1SubjectsSubjectIdExportPreviewPost'];
 const {mutation: mutationOptions, request: requestOptions} = options ?
       options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
       options
@@ -114,10 +114,10 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
 
 
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof exportPreviewApiApiV1SubjectsSubjectExportPreviewPost>>, {subject: string;data: ExportOptions}> = (props) => {
-          const {subject,data} = props ?? {};
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof exportPreviewApiApiV1SubjectsSubjectIdExportPreviewPost>>, {subjectId: string;data: ExportOptions}> = (props) => {
+          const {subjectId,data} = props ?? {};
 
-          return  exportPreviewApiApiV1SubjectsSubjectExportPreviewPost(subject,data,requestOptions)
+          return  exportPreviewApiApiV1SubjectsSubjectIdExportPreviewPost(subjectId,data,requestOptions)
         }
 
 
@@ -127,68 +127,68 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
   return  { mutationFn, ...mutationOptions }}
 
-    export type ExportPreviewApiApiV1SubjectsSubjectExportPreviewPostMutationResult = NonNullable<Awaited<ReturnType<typeof exportPreviewApiApiV1SubjectsSubjectExportPreviewPost>>>
-    export type ExportPreviewApiApiV1SubjectsSubjectExportPreviewPostMutationBody = ExportOptions
-    export type ExportPreviewApiApiV1SubjectsSubjectExportPreviewPostMutationError = ErrorResponse | HTTPValidationError
+    export type ExportPreviewApiApiV1SubjectsSubjectIdExportPreviewPostMutationResult = NonNullable<Awaited<ReturnType<typeof exportPreviewApiApiV1SubjectsSubjectIdExportPreviewPost>>>
+    export type ExportPreviewApiApiV1SubjectsSubjectIdExportPreviewPostMutationBody = ExportOptions
+    export type ExportPreviewApiApiV1SubjectsSubjectIdExportPreviewPostMutationError = ErrorResponse | HTTPValidationError
 
     /**
  * @summary 导出预览
  */
-export const useExportPreviewApiApiV1SubjectsSubjectExportPreviewPost = <TError = ErrorResponse | HTTPValidationError,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof exportPreviewApiApiV1SubjectsSubjectExportPreviewPost>>, TError,{subject: string;data: ExportOptions}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
+export const useExportPreviewApiApiV1SubjectsSubjectIdExportPreviewPost = <TError = ErrorResponse | HTTPValidationError,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof exportPreviewApiApiV1SubjectsSubjectIdExportPreviewPost>>, TError,{subjectId: string;data: ExportOptions}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
  , queryClient?: QueryClient): UseMutationResult<
-        Awaited<ReturnType<typeof exportPreviewApiApiV1SubjectsSubjectExportPreviewPost>>,
+        Awaited<ReturnType<typeof exportPreviewApiApiV1SubjectsSubjectIdExportPreviewPost>>,
         TError,
-        {subject: string;data: ExportOptions},
+        {subjectId: string;data: ExportOptions},
         TContext
       > => {
-      return useMutation(getExportPreviewApiApiV1SubjectsSubjectExportPreviewPostMutationOptions(options), queryClient);
+      return useMutation(getExportPreviewApiApiV1SubjectsSubjectIdExportPreviewPostMutationOptions(options), queryClient);
     }
     /**
  * 将学科全部产物打包为 .atmx 文件下载。
  * @summary 导出学科
  */
-export type exportSubjectApiApiV1SubjectsSubjectExportPostResponse200 = {
+export type exportSubjectApiApiV1SubjectsSubjectIdExportPostResponse200 = {
   data: unknown
   status: 200
 }
 
-export type exportSubjectApiApiV1SubjectsSubjectExportPostResponse404 = {
+export type exportSubjectApiApiV1SubjectsSubjectIdExportPostResponse404 = {
   data: ErrorResponse
   status: 404
 }
 
-export type exportSubjectApiApiV1SubjectsSubjectExportPostResponse422 = {
+export type exportSubjectApiApiV1SubjectsSubjectIdExportPostResponse422 = {
   data: HTTPValidationError
   status: 422
 }
 
-export type exportSubjectApiApiV1SubjectsSubjectExportPostResponse500 = {
+export type exportSubjectApiApiV1SubjectsSubjectIdExportPostResponse500 = {
   data: ErrorResponse
   status: 500
 }
 
-export type exportSubjectApiApiV1SubjectsSubjectExportPostResponseSuccess = (exportSubjectApiApiV1SubjectsSubjectExportPostResponse200) & {
+export type exportSubjectApiApiV1SubjectsSubjectIdExportPostResponseSuccess = (exportSubjectApiApiV1SubjectsSubjectIdExportPostResponse200) & {
   headers: Headers;
 };
-export type exportSubjectApiApiV1SubjectsSubjectExportPostResponseError = (exportSubjectApiApiV1SubjectsSubjectExportPostResponse404 | exportSubjectApiApiV1SubjectsSubjectExportPostResponse422 | exportSubjectApiApiV1SubjectsSubjectExportPostResponse500) & {
+export type exportSubjectApiApiV1SubjectsSubjectIdExportPostResponseError = (exportSubjectApiApiV1SubjectsSubjectIdExportPostResponse404 | exportSubjectApiApiV1SubjectsSubjectIdExportPostResponse422 | exportSubjectApiApiV1SubjectsSubjectIdExportPostResponse500) & {
   headers: Headers;
 };
 
-export type exportSubjectApiApiV1SubjectsSubjectExportPostResponse = (exportSubjectApiApiV1SubjectsSubjectExportPostResponseSuccess | exportSubjectApiApiV1SubjectsSubjectExportPostResponseError)
+export type exportSubjectApiApiV1SubjectsSubjectIdExportPostResponse = (exportSubjectApiApiV1SubjectsSubjectIdExportPostResponseSuccess | exportSubjectApiApiV1SubjectsSubjectIdExportPostResponseError)
 
-export const getExportSubjectApiApiV1SubjectsSubjectExportPostUrl = (subject: string,) => {
-
-
+export const getExportSubjectApiApiV1SubjectsSubjectIdExportPostUrl = (subjectId: string,) => {
 
 
-  return `/api/v1/subjects/${subject}/export`
+
+
+  return `/api/v1/subjects/${subjectId}/export`
 }
 
-export const exportSubjectApiApiV1SubjectsSubjectExportPost = async (subject: string,
-    exportOptions: ExportOptions, options?: RequestInit): Promise<exportSubjectApiApiV1SubjectsSubjectExportPostResponse> => {
+export const exportSubjectApiApiV1SubjectsSubjectIdExportPost = async (subjectId: string,
+    exportOptions: ExportOptions, options?: RequestInit): Promise<exportSubjectApiApiV1SubjectsSubjectIdExportPostResponse> => {
 
-  return orvalApiClient<exportSubjectApiApiV1SubjectsSubjectExportPostResponse>(getExportSubjectApiApiV1SubjectsSubjectExportPostUrl(subject),
+  return orvalApiClient<exportSubjectApiApiV1SubjectsSubjectIdExportPostResponse>(getExportSubjectApiApiV1SubjectsSubjectIdExportPostUrl(subjectId),
   {
     ...options,
     method: 'POST',
@@ -201,11 +201,11 @@ export const exportSubjectApiApiV1SubjectsSubjectExportPost = async (subject: st
 
 
 
-export const getExportSubjectApiApiV1SubjectsSubjectExportPostMutationOptions = <TError = ErrorResponse | HTTPValidationError,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof exportSubjectApiApiV1SubjectsSubjectExportPost>>, TError,{subject: string;data: ExportOptions}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
-): UseMutationOptions<Awaited<ReturnType<typeof exportSubjectApiApiV1SubjectsSubjectExportPost>>, TError,{subject: string;data: ExportOptions}, TContext> => {
+export const getExportSubjectApiApiV1SubjectsSubjectIdExportPostMutationOptions = <TError = ErrorResponse | HTTPValidationError,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof exportSubjectApiApiV1SubjectsSubjectIdExportPost>>, TError,{subjectId: string;data: ExportOptions}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
+): UseMutationOptions<Awaited<ReturnType<typeof exportSubjectApiApiV1SubjectsSubjectIdExportPost>>, TError,{subjectId: string;data: ExportOptions}, TContext> => {
 
-const mutationKey = ['exportSubjectApiApiV1SubjectsSubjectExportPost'];
+const mutationKey = ['exportSubjectApiApiV1SubjectsSubjectIdExportPost'];
 const {mutation: mutationOptions, request: requestOptions} = options ?
       options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
       options
@@ -215,10 +215,10 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
 
 
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof exportSubjectApiApiV1SubjectsSubjectExportPost>>, {subject: string;data: ExportOptions}> = (props) => {
-          const {subject,data} = props ?? {};
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof exportSubjectApiApiV1SubjectsSubjectIdExportPost>>, {subjectId: string;data: ExportOptions}> = (props) => {
+          const {subjectId,data} = props ?? {};
 
-          return  exportSubjectApiApiV1SubjectsSubjectExportPost(subject,data,requestOptions)
+          return  exportSubjectApiApiV1SubjectsSubjectIdExportPost(subjectId,data,requestOptions)
         }
 
 
@@ -228,22 +228,22 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
   return  { mutationFn, ...mutationOptions }}
 
-    export type ExportSubjectApiApiV1SubjectsSubjectExportPostMutationResult = NonNullable<Awaited<ReturnType<typeof exportSubjectApiApiV1SubjectsSubjectExportPost>>>
-    export type ExportSubjectApiApiV1SubjectsSubjectExportPostMutationBody = ExportOptions
-    export type ExportSubjectApiApiV1SubjectsSubjectExportPostMutationError = ErrorResponse | HTTPValidationError
+    export type ExportSubjectApiApiV1SubjectsSubjectIdExportPostMutationResult = NonNullable<Awaited<ReturnType<typeof exportSubjectApiApiV1SubjectsSubjectIdExportPost>>>
+    export type ExportSubjectApiApiV1SubjectsSubjectIdExportPostMutationBody = ExportOptions
+    export type ExportSubjectApiApiV1SubjectsSubjectIdExportPostMutationError = ErrorResponse | HTTPValidationError
 
     /**
  * @summary 导出学科
  */
-export const useExportSubjectApiApiV1SubjectsSubjectExportPost = <TError = ErrorResponse | HTTPValidationError,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof exportSubjectApiApiV1SubjectsSubjectExportPost>>, TError,{subject: string;data: ExportOptions}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
+export const useExportSubjectApiApiV1SubjectsSubjectIdExportPost = <TError = ErrorResponse | HTTPValidationError,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof exportSubjectApiApiV1SubjectsSubjectIdExportPost>>, TError,{subjectId: string;data: ExportOptions}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
  , queryClient?: QueryClient): UseMutationResult<
-        Awaited<ReturnType<typeof exportSubjectApiApiV1SubjectsSubjectExportPost>>,
+        Awaited<ReturnType<typeof exportSubjectApiApiV1SubjectsSubjectIdExportPost>>,
         TError,
-        {subject: string;data: ExportOptions},
+        {subjectId: string;data: ExportOptions},
         TContext
       > => {
-      return useMutation(getExportSubjectApiApiV1SubjectsSubjectExportPostMutationOptions(options), queryClient);
+      return useMutation(getExportSubjectApiApiV1SubjectsSubjectIdExportPostMutationOptions(options), queryClient);
     }
     /**
  * 从上传的 .atmx 文件导入学科。

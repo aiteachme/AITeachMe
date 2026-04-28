@@ -9,7 +9,7 @@ import type { SubjectProfileSummaryDifficultyAccuracy } from './subjectProfileSu
 import type { SubjectProfileSummaryQuestionTypeAccuracy } from './subjectProfileSummaryQuestionTypeAccuracy';
 
 export interface SubjectProfileSummary {
-  subject: string;
+  subject_id: string;
   generated_at: string;
   avg_mastery?: number | null;
   weak_knowledge_unit_count?: number;

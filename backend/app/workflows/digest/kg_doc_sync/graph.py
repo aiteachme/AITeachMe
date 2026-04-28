@@ -50,8 +50,8 @@ NODE_TRACE_DETAILS: dict[str, dict[str, object]] = {
         ),
         "reads": ["KnowledgeDoc markdown", "structured_context", "Subject.document_summary_json"],
         "writes": ["validated docs-sync state", "node_metrics.prepare", "error"],
-        "input_keys": ["subject", "markdown", "structured_context", "subject_context", "build_revision_no"],
-        "output_keys": ["subject", "markdown", "structured_context", "node_metrics", "error"],
+        "input_keys": ["subject_id", "markdown", "structured_context", "subject_context", "build_revision_no"],
+        "output_keys": ["subject_id", "markdown", "structured_context", "node_metrics", "error"],
     },
     NODE_INIT_RUN: {
         "description": (
@@ -66,7 +66,7 @@ NODE_TRACE_DETAILS: dict[str, dict[str, object]] = {
             "knowledge_edge",
         ],
         "writes": ["knowledge_graph_sync_run", "sync_run_context", "node_metrics.init_run", "error"],
-        "input_keys": ["subject", "markdown", "structured_context", "build_revision_no", "build_session_id"],
+        "input_keys": ["subject_id", "markdown", "structured_context", "build_revision_no", "build_session_id"],
         "output_keys": ["sync_run_context", "build_revision_no", "structured_context", "node_metrics", "error"],
     },
     NODE_EXTRACT: {
@@ -78,7 +78,7 @@ NODE_TRACE_DETAILS: dict[str, dict[str, object]] = {
         ),
         "reads": ["markdown", "subject_context", "structured_context", "sync_run_context", "Subject.document_summary_json"],
         "writes": ["extraction_payload", "subject_context", "node_metrics.extract", "error"],
-        "input_keys": ["subject", "markdown", "subject_context", "sync_run_context"],
+        "input_keys": ["subject_id", "markdown", "subject_context", "sync_run_context"],
         "output_keys": ["extraction_payload", "subject_context", "node_metrics", "error"],
         "fanout": "节点内部按章节/子章节构造抽取任务，async gather + semaphore 并发执行，完成后 fan-in 为 extraction_payload。",
     },
@@ -115,9 +115,9 @@ NODE_TRACE_DETAILS: dict[str, dict[str, object]] = {
             "统一记录 kg_doc_sync 失败状态。上游可能来自输入缺失、增量同步异常、DB 写入异常或报告缺失；"
             "这里不再吞掉错误，只把 error 留在 state 中让 workflow result 和 graph runtime 显示失败。"
         ),
-        "reads": ["error", "subject", "build_session_id", "sync_run_context"],
+        "reads": ["error", "subject_id", "build_session_id", "sync_run_context"],
         "writes": ["error", "knowledge_graph_sync_run", "node_metrics.fail"],
-        "input_keys": ["subject", "build_session_id", "sync_run_context", "error"],
+        "input_keys": ["subject_id", "build_session_id", "sync_run_context", "error"],
         "output_keys": ["node_metrics", "error"],
     },
 }
@@ -237,7 +237,7 @@ def build_docs_sync_graph(*, context: WorkflowContext) -> StateGraph:
 
 def create_docs_sync_initial_state(
     *,
-    subject: str,
+    subject_id: str,
     markdown: str,
     build_revision_no: int | None,
     build_session_id: str | None = None,
@@ -246,7 +246,7 @@ def create_docs_sync_initial_state(
     prefetched_sections: list[SectionExtractionRecord] | None = None,
 ) -> DocsSyncState:
     return {
-        "subject": subject,
+        "subject_id": subject_id,
         "markdown": markdown,
         "subject_context": subject_context or "",
         "structured_context": dict(structured_context or {}),
@@ -263,16 +263,16 @@ def create_docs_sync_initial_state(
 
 def _normalize_docs_sync_inputs(
     *,
-    subject: str,
+    subject_id: str,
     markdown: str,
     build_revision_no: int | None = None,
 ) -> tuple[str, str, int | None]:
-    return str(subject or "").strip(), str(markdown or ""), build_revision_no
+    return str(subject_id or "").strip(), str(markdown or ""), build_revision_no
 
 
 async def run_graph_docs_sync_workflow(
     *,
-    subject: str,
+    subject_id: str,
     markdown: str,
     build_revision_no: int | None = None,
     build_session_id: str | None = None,
@@ -281,14 +281,14 @@ async def run_graph_docs_sync_workflow(
     prefetched_sections: list[SectionExtractionRecord] | None = None,
     trace_metadata: dict[str, object] | None = None,
 ) -> WorkflowResult[KnowledgeSyncReport]:
-    error_subject = str(subject or "").strip()
+    error_subject_id = str(subject_id or "").strip()
     try:
-        normalized_subject, normalized_markdown, normalized_revision = _normalize_docs_sync_inputs(
-            subject=subject,
+        normalized_subject_id, normalized_markdown, normalized_revision = _normalize_docs_sync_inputs(
+            subject_id=subject_id,
             markdown=markdown,
             build_revision_no=build_revision_no,
         )
-        error_subject = normalized_subject
+        error_subject_id = normalized_subject_id
         context_metadata: dict[str, object] = {
             "build_session_id": build_session_id or "",
             "lane": "kg_doc_sync",
@@ -300,14 +300,14 @@ async def run_graph_docs_sync_workflow(
                 context_metadata[key] = value
         context = WorkflowContext(
             workflow_name="digest.kg_doc_sync",
-            subject=normalized_subject,
+            subject_id=normalized_subject_id,
             metadata=context_metadata,
         )
         result = await run_state_graph(
             workflow_name="digest.kg_doc_sync",
             graph_builder=lambda: build_docs_sync_graph(context=context),
             initial_state=create_docs_sync_initial_state(
-                subject=normalized_subject,
+                subject_id=normalized_subject_id,
                 markdown=normalized_markdown,
                 build_revision_no=normalized_revision,
                 build_session_id=build_session_id,
@@ -321,7 +321,7 @@ async def run_graph_docs_sync_workflow(
             return err_result(
                 "digest_graph_docs_sync_failed",
                 result.error.detail,
-                metadata={"subject": normalized_subject},
+                metadata={"subject_id": normalized_subject_id},
             )
 
         final_state: DocsSyncState = result.require_value()
@@ -330,27 +330,27 @@ async def run_graph_docs_sync_workflow(
             return err_result(
                 "digest_graph_docs_sync_failed",
                 state_error,
-                metadata={"subject": normalized_subject},
+                metadata={"subject_id": normalized_subject_id},
             )
         report = final_state.get("report")
         if report is None:
             return err_result(
                 "digest_graph_docs_sync_failed",
                 "docs_sync_report_missing",
-                metadata={"subject": normalized_subject},
+                metadata={"subject_id": normalized_subject_id},
             )
         return ok_result(report)
     except ValueError as exc:
         return err_result(
             "digest_graph_docs_sync_invalid_markdown",
             str(exc),
-            metadata={"subject": error_subject},
+            metadata={"subject_id": error_subject_id},
         )
     except Exception as exc:
         return err_result(
             "digest_graph_docs_sync_failed",
             str(exc),
-            metadata={"subject": error_subject},
+            metadata={"subject_id": error_subject_id},
         )
 
 

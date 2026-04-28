@@ -11,7 +11,7 @@
  */
 export interface KnowledgeRelationResponse {
   id: number;
-  subject: string;
+  subject_id: string;
   source_node_id: number;
   source_node_name: string;
   source_node_type: string;

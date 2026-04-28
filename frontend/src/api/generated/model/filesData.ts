@@ -11,8 +11,8 @@ import type { FileRecord } from './fileRecord';
  * Aggregated files response.
  */
 export interface FilesData {
-  /** Subject slug, or library scope for unassigned files. */
-  subject: string;
+  /** Subject ID, or null for the user library. */
+  subject_id?: string | null;
   /** Total file count. */
   total: number;
   /** Count of markdown-ready files. */

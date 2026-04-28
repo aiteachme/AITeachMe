@@ -54,34 +54,34 @@ _CHAT_CONTEXT_LIST_ADAPTER = TypeAdapter(list[ChatContextItem])
 def list_chat_sessions(
     session: Session,
     *,
-    subject: str,
+    subject_id: str,
     user_id: str,
     page: int,
     size: int,
 ) -> PaginatedData[ChatSessionItem]:
     items, total = list_sessions_by_subject(
         session,
-        subject,
+        subject_id,
         user_id=user_id,
         limit=size,
         offset=(page - 1) * size,
     )
     counts = count_messages_by_session_ids(
         session,
-        subject=subject,
+        subject_id=subject_id,
         user_id=user_id,
         session_ids=[item.id for item in items],
     )
     selection_heads = list_session_selection_heads_by_session_ids(
         session,
-        subject=subject,
+        subject_id=subject_id,
         user_id=user_id,
         session_ids=[item.id for item in items],
     )
     subject_names = _load_subject_names(
         session,
         user_id=user_id,
-        subject_ids={item.subject for item in items},
+        subject_ids={item.subject_id for item in items},
     )
     return build_paginated_data(
         items=[
@@ -89,7 +89,7 @@ def list_chat_sessions(
                 item,
                 message_count=counts.get(item.id, 0),
                 selection_head=selection_heads.get(item.id),
-                subject_name=subject_names.get(item.subject),
+                subject_name=subject_names.get(item.subject_id),
             )
             for item in items
         ],
@@ -125,7 +125,7 @@ def list_recent_chat_sessions(
     subject_names = _load_subject_names(
         session,
         user_id=user_id,
-        subject_ids={item.subject for item in items},
+        subject_ids={item.subject_id for item in items},
     )
     return build_paginated_data(
         items=[
@@ -133,7 +133,7 @@ def list_recent_chat_sessions(
                 item,
                 message_count=counts.get(item.id, 0),
                 selection_head=selection_heads.get(item.id),
-                subject_name=subject_names.get(item.subject),
+                subject_name=subject_names.get(item.subject_id),
             )
             for item in items
         ],
@@ -146,14 +146,14 @@ def list_recent_chat_sessions(
 def create_session(
     session: Session,
     *,
-    subject: str,
+    subject_id: str,
     user_id: str,
     title: str | None = None,
     source: str | None = None,
 ) -> ChatSessionItem:
     created = create_chat_session(
         session,
-        subject=subject,
+        subject_id=subject_id,
         user_id=user_id,
         source=source,
         title=(title or "New Chat").strip() or "New Chat",
@@ -164,7 +164,7 @@ def create_session(
 def list_chat_threads(
     session: Session,
     *,
-    subject: str,
+    subject_id: str,
     user_id: str,
     page: int,
     size: int,
@@ -172,7 +172,7 @@ def list_chat_threads(
 ) -> PaginatedData[ChatThreadTurnItem]:
     turn_heads, total = list_thread_turn_heads_by_subject(
         session,
-        subject,
+        subject_id,
         user_id=user_id,
         limit=size,
         offset=(page - 1) * size,
@@ -182,7 +182,7 @@ def list_chat_threads(
     turn_ids = [item.turn_id for item in turn_heads]
     messages = list_messages_by_turn_ids(
         session,
-        subject=subject,
+        subject_id=subject_id,
         user_id=user_id,
         turn_ids=turn_ids,
     )
@@ -207,13 +207,13 @@ def list_chat_threads(
 def delete_session(
     session: Session,
     *,
-    subject: str,
+    subject_id: str,
     user_id: str,
     session_id: str,
 ) -> ChatSessionDeleteData:
     deleted_message_count = delete_chat_session(
         session,
-        subject=subject,
+        subject_id=subject_id,
         user_id=user_id,
         session_id=session_id,
     )
@@ -226,7 +226,7 @@ def delete_session(
 def list_chat_history(
     session: Session,
     *,
-    subject: str,
+    subject_id: str,
     user_id: str,
     page: int,
     size: int,
@@ -234,7 +234,7 @@ def list_chat_history(
 ) -> PaginatedData[ChatMessageItem]:
     items, total = list_messages_by_subject(
         session,
-        subject,
+        subject_id,
         user_id=user_id,
         limit=size,
         offset=(page - 1) * size,
@@ -251,13 +251,13 @@ def list_chat_history(
 def clear_chat_history(
     session: Session,
     *,
-    subject: str,
+    subject_id: str,
     user_id: str,
     session_id: str | None = None,
 ) -> ChatClearData:
     deleted_count = clear_messages_by_subject(
         session,
-        subject,
+        subject_id,
         user_id=user_id,
         session_id=session_id,
     )
@@ -268,7 +268,7 @@ async def chat_stream(
     request: Request,
     session: Session | None,
     *,
-    subject: str,
+    subject_id: str,
     user_id: str,
     session_id: str | None,
     question: str,
@@ -282,7 +282,7 @@ async def chat_stream(
     async for payload in stream_chat_workflow(
         request=request,
         session=session,
-        subject=subject,
+        subject_id=subject_id,
         user_id=user_id,
         session_id=_clean_optional(session_id),
         question=question,
@@ -298,13 +298,13 @@ async def chat_stream(
 
 async def _generate_session_title(
     *,
-    subject: str,
+    subject_name: str,
     question: str,
     selected_text: str | None,
     assistant_response: str,
 ) -> str:
     return await generate_session_title(
-        subject=subject,
+        subject_name=subject_name,
         question=question,
         selected_text=selected_text,
         assistant_response=assistant_response,
@@ -359,7 +359,7 @@ def _to_chat_session_item(
     return ChatSessionItem(
         id=item.id,
         title=item.title,
-        subject_id=item.subject,
+        subject_id=item.subject_id,
         subject_name=subject_name,
         source=item.source or (selection_head.source if selection_head else None),
         anchor_id=selection_head.anchor_id if selection_head else None,
@@ -388,10 +388,10 @@ def _load_subject_names(
 
     stmt = select(Subject).where(
         Subject.user_id == user_id,
-        Subject.slug.in_(lookup_ids),
+        Subject.id.in_(lookup_ids),
     )
     for item in session.exec(stmt).all():
-        result[item.slug] = item.name or item.slug
+        result[item.id] = item.name or "未命名学科"
     return result
 
 

@@ -33,7 +33,7 @@ def build_load_context_node(*, context: WorkflowContext):
         shared_inputs = state.get("shared_inputs")
         if shared_inputs is None:
             shared_inputs = await prepare_shared_inputs(
-                state["subject"],
+                state["subject_id"],
                 state.get("file_ids", []),
                 user_prompt=state.get("user_prompt"),
             )
@@ -73,10 +73,10 @@ def build_load_context_node(*, context: WorkflowContext):
         ).strip()
 
         has_local_materials = bool(shared_inputs.source_packets)
-        plan_subject_label = str(plan_contract.subject or plan_contract.user_prompt or "").strip()
+        plan_subject_label = str(plan_contract.subject_name or plan_contract.user_prompt or "").strip()
         document_context = {
-            "subject": state["subject"],
-            "subject_display_name": plan_subject_label,
+            "subject_id": state["subject_id"],
+            "subject_name": plan_subject_label,
             "digest_mode": digest_mode,
             "retrieval_profile": retrieval_profile,
             "teaching_action": str(state.get("teaching_action") or "docgen_build"),
@@ -89,8 +89,8 @@ def build_load_context_node(*, context: WorkflowContext):
             "include_sources": bool(build_constraints.get("include_sources", True)),
         }
         docgen_context = DocGenContext(
-            subject=state["subject"],
-            subject_display_name=plan_subject_label,
+            subject_id=state["subject_id"],
+            subject_name=plan_subject_label,
             digest_mode=digest_mode,
             retrieval_profile=retrieval_profile,
             user_prompt=str(plan_contract.user_prompt or state.get("user_prompt") or ""),
@@ -105,7 +105,7 @@ def build_load_context_node(*, context: WorkflowContext):
         )
 
         update_knowledge_build_status(
-            state["subject"],
+            state["subject_id"],
             requested_at=state["requested_at"],
             status="running",
             stage="planner_confirmed",
@@ -141,7 +141,7 @@ def build_load_context_node(*, context: WorkflowContext):
             ],
         )
         append_knowledge_build_recent_event(
-            state["subject"],
+            state["subject_id"],
             requested_at=state["requested_at"],
             event={
                 "stage": "planner_confirmed",
@@ -170,6 +170,7 @@ def build_load_context_node(*, context: WorkflowContext):
             "shared_inputs": shared_inputs,
             "raw_chunks": [serialize_section(section) for section in shared_inputs.section_packets],
             "subject_profile": shared_inputs.subject_profile.model_dump(mode="json"),
+            "subject_name": plan_subject_label,
             "chapter_assignments": assignments,
             "confirmed_plan": plan_payload,
             "docgen_context": docgen_context.model_dump(mode="json"),

@@ -15,7 +15,7 @@ def build_prompt_node(*, context: WorkflowContext):
 
     def build_prompt(state: InteractWorkflowState) -> InteractWorkflowState:
         messages = build_chat_messages(
-            subject=state["subject"] or "global",
+            subject_id=state["subject_id"] or "global",
             strategy_mode=state["strategy_mode"],
             retrieval_results=state.get("retrieval_results", []),
             recent_messages=state.get("recent_messages", []),

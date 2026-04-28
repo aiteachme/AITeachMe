@@ -28,7 +28,7 @@ def _build_graph_config(
     *,
     workflow_name: str,
     run_name: str | None = None,
-    subject: str = "",
+    subject_id: str = "",
     build_session_id: str = "",
     lane: str = "",
     extra_metadata: dict[str, Any] | None = None,
@@ -36,7 +36,7 @@ def _build_graph_config(
     """Build LangGraph invoke config that propagates to LangSmith."""
 
     metadata = build_langsmith_metadata(
-        subject=subject,
+        subject_id=subject_id,
         build_session_id=build_session_id,
         workflow=workflow_name,
         lane=lane,
@@ -96,7 +96,7 @@ async def invoke_state_graph(
     workflow_name: str,
     graph_builder,
     initial_state: Any,
-    subject: str = "",
+    subject_id: str = "",
     build_session_id: str = "",
     lane: str = "",
     extra_metadata: dict[str, Any] | None = None,
@@ -106,7 +106,7 @@ async def invoke_state_graph(
     config = _build_graph_config(
         workflow_name=workflow_name,
         run_name=str((extra_metadata or {}).get("langsmith_run_name") or workflow_name),
-        subject=subject,
+        subject_id=subject_id,
         build_session_id=build_session_id,
         lane=lane,
         extra_metadata=extra_metadata,
@@ -114,7 +114,7 @@ async def invoke_state_graph(
     _apply_graph_runtime_limits(config, extra_metadata or {})
     with _graph_tracing_context():
         with llm_trace_scope(
-            subject=subject,
+            subject_id=subject_id,
             build_session_id=build_session_id,
             workflow=workflow_name,
             lane=lane,
@@ -142,7 +142,7 @@ async def run_state_graph(
     config = _build_graph_config(
         workflow_name=workflow_name,
         run_name=str(context.metadata.get("langsmith_run_name") or workflow_name),
-        subject=context.subject,
+        subject_id=context.subject_id,
         build_session_id=build_session_id,
         lane=lane,
         extra_metadata={"context_metadata": dict(context.metadata)},
@@ -152,7 +152,7 @@ async def run_state_graph(
     try:
         with _graph_tracing_context():
             with llm_trace_scope(
-                subject=context.subject,
+                subject_id=context.subject_id,
                 build_session_id=build_session_id,
                 workflow=workflow_name,
                 lane=lane,

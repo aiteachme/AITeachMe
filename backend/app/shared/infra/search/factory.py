@@ -25,12 +25,12 @@ from app.shared.infra.search.retrievers.base import BaseRetriever, get_registere
 def get_retriever(
     name: str,
     *,
-    subject: str | None = None,
+    subject_id: str | None = None,
     local_sections: list[object] | None = None,
 ) -> BaseRetriever:
     """Resolve one retriever by registered name.
 
-    Local RAG retrievers need runtime context (subject / in-memory sections),
+    Local RAG retrievers need runtime context (subject id / in-memory sections),
     while external retrievers are stateless wrappers around provider APIs.
     """
 
@@ -42,7 +42,7 @@ def get_retriever(
         reason = retriever_type.availability_reason() or "retriever is unavailable"
         raise ValueError(f"Retriever `{normalized}` is unavailable: {reason}")
     if issubclass(retriever_type, LocalRAGRetriever):
-        return retriever_type(subject=subject, local_sections=local_sections)
+        return retriever_type(subject_id=subject_id, local_sections=local_sections)
     return retriever_type()
 
 
@@ -108,22 +108,22 @@ def get_external_retriever_names(*, profile: str | None = None) -> list[str]:
 
 def get_retrievers_for_subject(
     *,
-    subject: str | None = None,
+    subject_id: str | None = None,
     local_sections: list[object] | None = None,
     profile: str | None = None,
     include_local_rag: bool | None = None,
     include_external: bool = True,
     include_fallback: bool = True,
 ) -> list[BaseRetriever]:
-    """Build retriever instances for one subject / runtime context.
+    """Build retriever instances for one subject id / runtime context.
 
-    If neither ``subject`` nor ``local_sections`` is provided, ``local_rag`` is
+    If neither ``subject_id`` nor ``local_sections`` is provided, ``local_rag`` is
     disabled even when the profile includes it. That avoids a confusing
     no-context local search attempt from generic web search tools.
     """
 
     should_include_local_rag = include_local_rag
-    if not (subject or local_sections):
+    if not (subject_id or local_sections):
         should_include_local_rag = False
 
     retrievers: list[BaseRetriever] = []
@@ -134,7 +134,7 @@ def get_retrievers_for_subject(
         include_fallback=include_fallback,
     ):
         try:
-            retrievers.append(get_retriever(name, subject=subject, local_sections=local_sections))
+            retrievers.append(get_retriever(name, subject_id=subject_id, local_sections=local_sections))
         except ValueError:
             continue
     return retrievers

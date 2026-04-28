@@ -7,8 +7,8 @@
  */
 
 export interface SubjectDeleteRequest {
-  /** 学科外部标识。 */
+  /** Subject id. */
   subject_id: string;
-  /** 是否确认级联删除学科下的全部内容。 */
+  /** Whether to confirm cascading deletion of subject content. */
   force?: boolean;
 }

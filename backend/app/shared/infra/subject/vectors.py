@@ -137,17 +137,17 @@ def get_runtime_embedding_config() -> RuntimeEmbeddingConfig:
     )
 
 
-def get_subject_record_by_slug(session: Session, subject_slug: str) -> Subject | None:
-    """Return one subject record by slug."""
+def get_subject_record_by_id(session: Session, subject_id: str) -> Subject | None:
+    """Return one subject record by its stable subject_id."""
 
-    return session.exec(select(Subject).where(Subject.slug == subject_slug)).first()
+    return session.exec(select(Subject).where(Subject.id == subject_id)).first()
 
 
-def subject_has_retrieval_chunks(session: Session, subject_slug: str) -> bool:
+def subject_has_retrieval_chunks(session: Session, subject_id: str) -> bool:
     """Return whether a subject currently has materialized retrieval chunks."""
 
     count = session.exec(
-        select(func.count(RetrievalChunk.id)).where(RetrievalChunk.subject == subject_slug)
+        select(func.count(RetrievalChunk.id)).where(RetrievalChunk.subject_id == subject_id)
     ).one()
     return int(count or 0) > 0
 
@@ -262,7 +262,7 @@ def get_subject_vector_capability(
             writable=False,
         )
     if not binding.vector_table or binding.vector_table != expected_ref:
-        if not subject_has_retrieval_chunks(session, subject.slug):
+        if not subject_has_retrieval_chunks(session, subject.id):
             return SubjectVectorCapability(
                 binding=binding,
                 status=status,
@@ -284,10 +284,10 @@ def get_subject_vector_capability(
         from app.shared.infra.search.llamaindex_index import subject_index_exists
 
         connection = None
-        index_exists = subject_index_exists(subject.slug)
+        index_exists = subject_index_exists(subject.id)
 
     if not index_exists:
-        if not subject_has_retrieval_chunks(session, subject.slug):
+        if not subject_has_retrieval_chunks(session, subject.id):
             return SubjectVectorCapability(
                 binding=binding,
                 status=status,
@@ -323,13 +323,13 @@ def get_subject_vector_status(
     return get_subject_vector_capability(session, subject).status
 
 
-def get_subject_vector_status_by_slug(
+def get_subject_vector_status_by_id(
     session: Session,
-    subject_slug: str,
+    subject_id: str,
 ) -> SubjectVectorStatusResponse:
-    """Return the vector status for one subject slug."""
+    """Return the vector status for one subject ID."""
 
-    subject = get_subject_record_by_slug(session, subject_slug)
+    subject = get_subject_record_by_id(session, subject_id)
     if subject is None:
         return SubjectVectorStatusResponse()
     return get_subject_vector_status(session, subject)
@@ -338,11 +338,11 @@ def get_subject_vector_status_by_slug(
 def should_generate_subject_embeddings(
     session: Session,
     *,
-    subject_slug: str,
+    subject_id: str,
 ) -> bool:
     """Return whether the current build should generate embeddings."""
 
-    subject = get_subject_record_by_slug(session, subject_slug)
+    subject = get_subject_record_by_id(session, subject_id)
     if subject is None:
         return False
 
@@ -353,11 +353,11 @@ def should_generate_subject_embeddings(
 def get_subject_vector_search_notice(
     session: Session,
     *,
-    subject_slug: str,
+    subject_id: str,
 ) -> str | None:
     """Return one stable search notice when vector retrieval is unavailable."""
 
-    subject = get_subject_record_by_slug(session, subject_slug)
+    subject = get_subject_record_by_id(session, subject_id)
     if subject is None:
         return None
 
@@ -377,11 +377,11 @@ __all__ = [
     "SubjectVectorCapability",
     "build_subject_vector_status",
     "get_runtime_embedding_config",
-    "get_subject_record_by_slug",
+    "get_subject_record_by_id",
     "get_subject_vector_capability",
     "get_subject_vector_search_notice",
     "get_subject_vector_status",
-    "get_subject_vector_status_by_slug",
+    "get_subject_vector_status_by_id",
     "should_generate_subject_embeddings",
     "subject_has_retrieval_chunks",
 ]

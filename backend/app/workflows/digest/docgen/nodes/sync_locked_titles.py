@@ -100,7 +100,7 @@ def build_sync_locked_titles_node(*, context: WorkflowContext):
         )
         elapsed_ms = int((perf_counter() - started_at) * 1000)
         update_knowledge_build_status(
-            state["subject"],
+            state["subject_id"],
             requested_at=state["requested_at"],
             status="running",
             stage="titles_finalized",
@@ -110,7 +110,7 @@ def build_sync_locked_titles_node(*, context: WorkflowContext):
             current_stage_description="章节标题已按前置执行合同同步。",
         )
         update_knowledge_build_merge_preview(
-            state["subject"],
+            state["subject_id"],
             requested_at=state["requested_at"],
             merge_preview={
                 "latest_chapter_titles": [chapter["title"] for chapter in updated_chapters],
@@ -118,7 +118,7 @@ def build_sync_locked_titles_node(*, context: WorkflowContext):
             },
         )
         append_knowledge_build_recent_event(
-            state["subject"],
+            state["subject_id"],
             requested_at=state["requested_at"],
             event={
                 "stage": "titles_finalized",

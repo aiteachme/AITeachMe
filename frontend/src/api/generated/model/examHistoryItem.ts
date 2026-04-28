@@ -9,7 +9,7 @@ import type { PaperPreview } from './paperPreview';
 
 export interface ExamHistoryItem {
   id: number;
-  subject: string;
+  subject_id: string;
   user_id: string;
   exam_mode: string;
   status: string;

@@ -71,7 +71,7 @@ def build_review_chapter_node(*, context: WorkflowContext):
         conflict_reports_by_chapter = _by_chapter(ConflictReport, list(state.get("conflict_reports") or []))
 
         update_knowledge_build_status(
-            state["subject"],
+            state["subject_id"],
             requested_at=state["requested_at"],
             status="running",
             stage="reviewing_content",
@@ -79,12 +79,12 @@ def build_review_chapter_node(*, context: WorkflowContext):
             current_stage_description="正在并行复核章节覆盖、证据支撑和写作质量。",
         )
         upsert_knowledge_build_chapter_progress(
-            state["subject"],
+            state["subject_id"],
             requested_at=state["requested_at"],
             chapter_progress={"chapter_index": draft.chapter_index, "title": draft.title, "status": "reviewing"},
         )
         upsert_knowledge_build_chapter_preview(
-            state["subject"],
+            state["subject_id"],
             requested_at=state["requested_at"],
             chapter_preview={
                 "chapter_index": draft.chapter_index,
@@ -102,12 +102,12 @@ def build_review_chapter_node(*, context: WorkflowContext):
         )
         elapsed_ms = int((perf_counter() - started_at) * 1000)
         upsert_knowledge_build_chapter_progress(
-            state["subject"],
+            state["subject_id"],
             requested_at=state["requested_at"],
             chapter_progress={"chapter_index": draft.chapter_index, "title": draft.title, "status": "reviewed"},
         )
         upsert_knowledge_build_chapter_preview(
-            state["subject"],
+            state["subject_id"],
             requested_at=state["requested_at"],
             chapter_preview={
                 "chapter_index": draft.chapter_index,
@@ -120,7 +120,7 @@ def build_review_chapter_node(*, context: WorkflowContext):
             },
         )
         append_knowledge_build_recent_event(
-            state["subject"],
+            state["subject_id"],
             requested_at=state["requested_at"],
             event={
                 "stage": "chapter_reviewed",
@@ -190,7 +190,7 @@ def build_document_consistency_review_node(*, context: WorkflowContext):
         )
         elapsed_ms = int((perf_counter() - started_at) * 1000)
         update_knowledge_build_status(
-            state["subject"],
+            state["subject_id"],
             requested_at=state["requested_at"],
             status="running",
             stage="content_reviewed",
@@ -198,7 +198,7 @@ def build_document_consistency_review_node(*, context: WorkflowContext):
             current_stage_description=f"内容复核完成，决策 {review_decision}，记录 {len(actions)} 条回流建议。",
         )
         append_knowledge_build_recent_event(
-            state["subject"],
+            state["subject_id"],
             requested_at=state["requested_at"],
             event={
                 "stage": "content_reviewed",

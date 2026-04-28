@@ -24,7 +24,7 @@ def _load_subject_context(state: DocsSyncState) -> tuple[str, str]:
     if subject_context:
         return subject_context, "state"
     with managed_session() as session:
-        return load_subject_llm_context(session, subject=state["subject"]), "database"
+        return load_subject_llm_context(session, subject_id=state["subject_id"]), "database"
 
 
 def _payload_metrics(
@@ -121,7 +121,7 @@ async def extract_node(state: DocsSyncState) -> DocsSyncState:
         elapsed_ms = int((perf_counter() - started_at) * 1000)
         logger.warning(
             "kg_doc_sync_extract_failed",
-            subject=state.get("subject"),
+            subject_id=state.get("subject_id"),
             build_session_id=state.get("build_session_id"),
             sync_run_id=run_context.sync_run_id,
             error_type=type(exc).__name__,

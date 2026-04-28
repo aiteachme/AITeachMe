@@ -7,20 +7,18 @@
  */
 
 export interface SubjectItem {
-  /** 学科 ID。 */
-  id: number;
-  /** 学科外部标识。 */
+  /** Subject id. */
   subject_id: string;
-  /** 展示名称。 */
+  /** Display name. */
   name: string;
-  /** 学科简单介绍。 */
+  /** Short subject description. */
   description: string;
-  /** 用户目标/意图描述。 */
+  /** User learning goal or intent. */
   user_intent: string;
-  /** 学科图标 key。 */
+  /** Subject icon key. */
   icon_key?: string | null;
-  /** 创建时间。 */
+  /** Created time. */
   created_at: string;
-  /** 更新时间。 */
+  /** Updated time. */
   updated_at: string;
 }

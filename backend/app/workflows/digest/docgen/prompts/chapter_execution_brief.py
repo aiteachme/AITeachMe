@@ -11,7 +11,7 @@ from app.workflows.digest.docgen.mode_profiles import get_docgen_mode_profile
 
 def build_chapter_execution_brief_messages(
     *,
-    subject: str,
+    subject_name: str,
     digest_mode: str,
     chapter: Mapping[str, Any],
     locked_title: str,
@@ -31,7 +31,7 @@ def build_chapter_execution_brief_messages(
     prompt = f"""
 请为下面这一章生成简短执行 brief。
 
-主题：{subject}
+主题：{subject_name}
 模式：{profile.mode}（{profile.prompt_label}）
 锁定标题：{locked_title}
 
@@ -82,7 +82,7 @@ def build_chapter_execution_brief_messages(
     return trace_prompt_build(
         "chapter_execution_brief",
         inputs={
-            "subject": subject,
+            "subject_name": subject_name,
             "digest_mode": digest_mode,
             "chapter_index": int(chapter.get("chapter_index", 0) or 0),
             "glossary_count": len(list(glossary_terms or [])),

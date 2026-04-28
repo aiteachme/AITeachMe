@@ -86,11 +86,11 @@ class WorkflowTraceBinding:
         @functools.wraps(handler)
         async def wrapper(state):
             state_mapping = state if isinstance(state, Mapping) else {}
-            subject = str(state_mapping.get("subject", "") or "")
+            subject_id = str(state_mapping.get("subject_id", "") or "")
             build_session_id = _resolve_build_session_id(state_mapping)
             started_at = perf_counter()
             node_metadata = build_langsmith_metadata(
-                subject=subject,
+                subject_id=subject_id,
                 build_session_id=build_session_id,
                 workflow=workflow_name,
                 lane=lane,
@@ -108,7 +108,7 @@ class WorkflowTraceBinding:
                 tags=node_tags,
             ):
                 with llm_trace_scope(
-                    subject=subject,
+                    subject_id=subject_id,
                     build_session_id=build_session_id,
                     workflow=workflow_name,
                     lane=lane,
@@ -124,7 +124,7 @@ class WorkflowTraceBinding:
                             workflow=workflow_name,
                             lane=lane,
                             node=name,
-                            subject=subject,
+                            subject_id=subject_id,
                             build_session_id=build_session_id,
                         ).exception("workflow_node_failed", elapsed_ms=elapsed_ms)
                         raise
@@ -138,7 +138,7 @@ class WorkflowTraceBinding:
                 workflow=workflow_name,
                 lane=lane,
                 node=name,
-                subject=subject,
+                subject_id=subject_id,
                 build_session_id=build_session_id,
             ).info(
                 "workflow_node_completed",

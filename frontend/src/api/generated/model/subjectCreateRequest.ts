@@ -7,10 +7,10 @@
  */
 
 export interface SubjectCreateRequest {
-  /** 展示名称。可留空，Planner 会在首次对话后自动命名。 */
+  /** Display name. Planner may fill it after the first conversation. */
   name?: string;
-  /** 学科简单介绍。 */
+  /** Short subject description. */
   description?: string;
-  /** 用户目标/意图描述。 */
+  /** User learning goal or intent. */
   user_intent?: string;
 }

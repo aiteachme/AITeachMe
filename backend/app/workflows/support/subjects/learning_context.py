@@ -396,7 +396,7 @@ def _build_chapter_snapshots(
 
 def build_subject_learning_context_payload(
     *,
-    subject: str,
+    subject_id: str,
     subject_name: str | None = None,
     document_context: Mapping[str, Any] | None = None,
     chapter_metadatas: Sequence[Mapping[str, Any]] | None = None,
@@ -425,10 +425,10 @@ def build_subject_learning_context_payload(
     subject_description = _clean_text(subject_description, max_chars=1200)
 
     display_name = (
-        _clean_text(document_context.get("subject_display_name"))
+        _clean_text(document_context.get("subject_name"))
+        or _clean_text(document_context.get("subject_display_name"))
         or _clean_text(subject_name)
-        or _clean_text(document_context.get("subject"))
-        or subject
+        or "未命名学科"
     )
     digest_mode = _clean_text(document_context.get("digest_mode") or docgen_context.get("digest_mode"))
     plan_summary = _clean_text(
@@ -509,7 +509,7 @@ def build_subject_learning_context_payload(
         "generated_at": utcnow().isoformat(),
         "requested_at": requested_at.isoformat() if requested_at is not None else None,
         "subject": subject,
-        "subject_display_name": display_name,
+        "subject_name": display_name,
         "subject_description": subject_description,
         "subject_user_intent": subject_user_intent,
         "learning_goal": learning_goal,
@@ -614,7 +614,7 @@ def render_subject_llm_context(
 def update_subject_learning_context_from_docgen(
     session: Session,
     *,
-    subject: str,
+    subject_id: str,
     document_context: Mapping[str, Any] | None,
     chapter_metadatas: Sequence[Mapping[str, Any]],
     chapter_assignments: Sequence[Mapping[str, Any]] | None = None,
@@ -624,13 +624,13 @@ def update_subject_learning_context_from_docgen(
     build_session_id: str | None = None,
     requested_at: datetime | None = None,
 ) -> Subject | None:
-    record = session.exec(select(Subject).where(Subject.slug == subject)).first()
+    record = session.exec(select(Subject).where(Subject.id == subject_id)).first()
     if record is None:
         return None
 
     source_file_lookup = _build_source_file_lookup(
         session,
-        subject=subject,
+        subject_id=subject_id,
         chapter_metadatas=chapter_metadatas,
         chapter_assignments=chapter_assignments,
         knowledge_docs=knowledge_docs,
@@ -639,7 +639,7 @@ def update_subject_learning_context_from_docgen(
 
     learning_intent_text, subject_intro_text, document_summary_json, llm_context_text = (
         build_subject_learning_context_payload(
-            subject=subject,
+            subject_id=subject_id,
             subject_name=record.name,
             document_context=document_context,
             chapter_metadatas=chapter_metadatas,
@@ -688,7 +688,7 @@ def _collect_source_file_ids_for_lookup(
 def _build_source_file_lookup(
     session: Session,
     *,
-    subject: str,
+    subject_id: str,
     chapter_metadatas: Sequence[Mapping[str, Any]] | None,
     chapter_assignments: Sequence[Mapping[str, Any]] | None,
     knowledge_docs: Sequence[KnowledgeDoc] | None,
@@ -705,7 +705,7 @@ def _build_source_file_lookup(
     try:
         from app.repositories.files_repo import list_raw_files_by_ids
 
-        raw_files = list_raw_files_by_ids(session, subject, source_file_ids)
+        raw_files = list_raw_files_by_ids(session, subject_id, source_file_ids)
     except Exception:
         return {}
     lookup: dict[str, dict[str, Any]] = {}
@@ -721,8 +721,8 @@ def _build_source_file_lookup(
     return lookup
 
 
-def clear_subject_learning_context(session: Session, *, subject: str) -> bool:
-    record = session.exec(select(Subject).where(Subject.slug == subject)).first()
+def clear_subject_learning_context(session: Session, *, subject_id: str) -> bool:
+    record = session.exec(select(Subject).where(Subject.id == subject_id)).first()
     if record is None:
         return False
     record.learning_intent_text = ""
@@ -734,8 +734,8 @@ def clear_subject_learning_context(session: Session, *, subject: str) -> bool:
     return True
 
 
-def load_subject_llm_context(session: Session, *, subject: str, max_chars: int = _MAX_LLM_CONTEXT_CHARS) -> str:
-    record = session.exec(select(Subject).where(Subject.slug == subject)).first()
+def load_subject_llm_context(session: Session, *, subject_id: str, max_chars: int = _MAX_LLM_CONTEXT_CHARS) -> str:
+    record = session.exec(select(Subject).where(Subject.id == subject_id)).first()
     if record is None:
         return ""
     return _truncate_text(record.llm_context_text, max_chars=max_chars)

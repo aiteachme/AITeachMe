@@ -12,7 +12,7 @@
 export interface BuildPlannerAdjustClickResponse {
   acknowledged?: boolean;
   planner_session_id: string;
-  subject: string;
+  subject_id: string;
   status?: string;
   has_latest_plan?: boolean;
   latest_plan_chapter_count?: number;

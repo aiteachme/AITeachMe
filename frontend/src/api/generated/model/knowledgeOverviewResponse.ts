@@ -13,7 +13,7 @@ import type { SubjectVectorStatusResponse } from './subjectVectorStatusResponse'
  * Knowledge overview aggregated payload for summary tabs.
  */
 export interface KnowledgeOverviewResponse {
-  subject: string;
+  subject_id: string;
   generated_at: string;
   graph?: FullGraphResponse | null;
   stats?: KnowledgeOverviewStats;

@@ -166,7 +166,7 @@ def build_merge_review_node(*, context: WorkflowContext):
         )
         elapsed_ms = int((perf_counter() - started_at) * 1000)
         update_knowledge_build_status(
-            state["subject"],
+            state["subject_id"],
             requested_at=state["requested_at"],
             status="running",
             stage="merge_reviewed",
@@ -180,7 +180,7 @@ def build_merge_review_node(*, context: WorkflowContext):
             draft_available=bool(merged_markdown.strip()),
         )
         update_knowledge_build_merge_preview(
-            state["subject"],
+            state["subject_id"],
             requested_at=state["requested_at"],
             merge_preview={
                 "latest_chapter_titles": [chapter["title"] for chapter in chapter_metadatas],
@@ -188,7 +188,7 @@ def build_merge_review_node(*, context: WorkflowContext):
             },
         )
         append_knowledge_build_recent_event(
-            state["subject"],
+            state["subject_id"],
             requested_at=state["requested_at"],
             event={
                 "stage": "merge_reviewed",

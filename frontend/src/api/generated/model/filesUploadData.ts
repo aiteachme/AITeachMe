@@ -11,8 +11,8 @@ import type { FileRecord } from './fileRecord';
  * Upload response.
  */
 export interface FilesUploadData {
-  /** Subject slug, or library scope for unassigned files. */
-  subject: string;
+  /** Subject ID, or null for the user library. */
+  subject_id?: string | null;
   /** Uploaded filenames. */
   filenames: string[];
   /** Uploaded file records. */

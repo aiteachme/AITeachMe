@@ -77,7 +77,7 @@ def persist_node(state: DocsSyncState) -> DocsSyncState:
         elapsed_ms = int((perf_counter() - started_at) * 1000)
         logger.warning(
             "kg_doc_sync_persist_failed",
-            subject=state.get("subject"),
+            subject_id=state.get("subject_id"),
             build_session_id=state.get("build_session_id"),
             sync_run_id=run_context.sync_run_id,
             error_type=type(exc).__name__,

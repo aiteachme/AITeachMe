@@ -85,11 +85,11 @@ def _pick_recent_subject_ids(recent_papers: list[ExamPaper]) -> list[str]:
     ordered: list[str] = []
     seen: set[str] = set()
     for paper in recent_papers:
-        subject = (paper.subject or "").strip()
-        if not subject or subject in seen:
+        subject_id = (paper.subject_id or "").strip()
+        if not subject_id or subject_id in seen:
             continue
-        seen.add(subject)
-        ordered.append(subject)
+        seen.add(subject_id)
+        ordered.append(subject_id)
         if len(ordered) >= 5:
             break
     return ordered
@@ -234,7 +234,7 @@ def build_user_profile_summary(
         user_id=user_id,
         generated_at=generated_at,
         active_subject_count=len(subjects),
-        active_subject_ids=[subject.slug for subject in subjects if subject.slug],
+        active_subject_ids=[subject.id for subject in subjects if subject.id],
         recent_subject_ids=_pick_recent_subject_ids(recent_papers),
         preferred_question_types=preferred_question_types,
         preferred_exam_modes=preferred_exam_modes,

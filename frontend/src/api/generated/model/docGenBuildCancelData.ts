@@ -10,7 +10,7 @@
  * Result of cancelling the active knowledge build.
  */
 export interface DocGenBuildCancelData {
-  subject: string;
+  subject_id: string;
   status?: string;
   cancelled_task_count?: number;
   requested_at?: string | null;

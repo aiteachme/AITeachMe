@@ -79,7 +79,7 @@ def get_langgraph_dev_question_build_graph() -> StateGraph:
 
 def create_question_build_initial_state(
     *,
-    subject: str,
+    subject_id: str,
     subject_name: str = "",
     subject_description: str = "",
     subject_user_intent: str = "",
@@ -95,7 +95,7 @@ def create_question_build_initial_state(
     progress_callback: object | None = None,
 ) -> QuestionBuildState:
     return {
-        "subject": subject,
+        "subject_id": subject_id,
         "subject_name": subject_name,
         "subject_description": subject_description,
         "subject_user_intent": subject_user_intent,
@@ -123,7 +123,7 @@ def require_success_state(result: WorkflowResult[QuestionBuildState]) -> Questio
 
 async def run_question_build_workflow(
     *,
-    subject: str,
+    subject_id: str,
     subject_name: str = "",
     subject_description: str = "",
     subject_user_intent: str = "",
@@ -140,7 +140,7 @@ async def run_question_build_workflow(
 ) -> WorkflowResult[QuestionBuildState]:
     context = WorkflowContext(
         workflow_name="examine.question_build",
-        subject=subject,
+        subject_id=subject_id,
         metadata={
             "lane": "question_build",
             "langsmith_run_name": RUN_NAME_EXAM_QUESTION_BUILD,
@@ -152,7 +152,7 @@ async def run_question_build_workflow(
         workflow_name="examine.question_build",
         graph_builder=lambda: build_question_build_graph(context=context),
         initial_state=create_question_build_initial_state(
-            subject=subject,
+            subject_id=subject_id,
             subject_name=subject_name,
             subject_description=subject_description,
             subject_user_intent=subject_user_intent,

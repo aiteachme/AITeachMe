@@ -14,7 +14,7 @@ export interface ChatSessionItem {
   id: string;
   /** Session title. */
   title: string;
-  /** Subject slug this session belongs to. */
+  /** Subject ID this session belongs to. */
   subject_id?: string | null;
   /** Display name of the subject this session belongs to. */
   subject_name?: string | null;

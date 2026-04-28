@@ -47,7 +47,7 @@ class IndexedChunk:
 
     chunk_id: int
     file_id: str
-    subject: str
+    subject_id: str
     title: str
     header_path: str
     content: str
@@ -64,8 +64,8 @@ class SubjectIndexHit:
     source: str = "llamaindex"
 
 
-def _subject_lock(subject: str) -> RLock:
-    normalized = subject.strip()
+def _subject_lock(subject_id: str) -> RLock:
+    normalized = subject_id.strip()
     with _SUBJECT_LOCKS_GUARD:
         lock = _SUBJECT_LOCKS.get(normalized)
         if lock is None:
@@ -74,9 +74,9 @@ def _subject_lock(subject: str) -> RLock:
         return lock
 
 
-def _local_index_prefix(subject: str) -> str:
-    normalized_subject = subject.strip()
-    scope = resolve_subject_storage_scope(normalized_subject)
+def _local_index_prefix(subject_id: str) -> str:
+    normalized_subject_id = subject_id.strip()
+    scope = resolve_subject_storage_scope(normalized_subject_id)
     return f"{scope.namespace}/rag_index/"
 
 
@@ -93,7 +93,7 @@ def _chunk_id_from_node_id(node_id: str) -> int | None:
 
 def _node_metadata(chunk: IndexedChunk) -> dict[str, Any]:
     return {
-        "subject": chunk.subject,
+        "subject_id": chunk.subject_id,
         "chunk_id": int(chunk.chunk_id),
         "file_id": chunk.file_id,
         "title": chunk.title,
@@ -109,24 +109,24 @@ def _to_text_node(chunk: IndexedChunk, embedding: list[float]) -> TextNode:
         text=chunk.content,
         embedding=embedding,
         metadata=_node_metadata(chunk),
-        excluded_embed_metadata_keys=["subject", "chunk_id", "file_id", "source"],
-        excluded_llm_metadata_keys=["subject", "chunk_id", "file_id", "source"],
+        excluded_embed_metadata_keys=["subject_id", "chunk_id", "file_id", "source"],
+        excluded_llm_metadata_keys=["subject_id", "chunk_id", "file_id", "source"],
     )
 
 
 def _load_local_store(
-    subject: str,
+    subject_id: str,
     *,
     embedding_dim: int | None = None,
 ) -> SQLiteVecVectorStore:
     return SQLiteVecVectorStore(
-        subject=subject.strip(),
+        subject_id=subject_id.strip(),
         embedding_dim=embedding_dim,
     )
 
 
-def _subject_filter(subject: str) -> MetadataFilters:
-    return MetadataFilters(filters=[MetadataFilter(key="subject", value=subject.strip())])
+def _subject_filter(subject_id: str) -> MetadataFilters:
+    return MetadataFilters(filters=[MetadataFilter(key="subject_id", value=subject_id.strip())])
 
 
 def _sync_database_url() -> str:
@@ -140,40 +140,40 @@ def _postgres_identifier_is_safe(identifier: str | None) -> bool:
     return bool(identifier and re.fullmatch(r"[a-z_][a-z0-9_]*", identifier))
 
 
-def _subject_record_snapshot(subject: str):
+def _subject_record_snapshot(subject_id: str):
     from sqlmodel import Session, select
 
     from app.models.subject import Subject
     from app.shared.infra.database import get_engine
 
-    normalized_subject = subject.strip()
-    if not normalized_subject:
+    normalized_subject_id = subject_id.strip()
+    if not normalized_subject_id:
         return None
 
     with Session(get_engine()) as session:
         return session.exec(
-            select(Subject).where(Subject.slug == normalized_subject)
+            select(Subject).where(Subject.id == normalized_subject_id)
         ).first()
 
 
-def _subject_binding_snapshot(subject: str):
-    subject_row = _subject_record_snapshot(subject)
+def _subject_binding_snapshot(subject_id: str):
+    subject_row = _subject_record_snapshot(subject_id)
     if subject_row is None:
         return None
     return get_subject_embedding_binding(subject_row)
 
 
 def _subject_store_spec(
-    subject: str,
+    subject_id: str,
     *,
     embedding_dim: int | None = None,
 ) -> tuple[str, int]:
-    subject_row = _subject_record_snapshot(subject)
+    subject_row = _subject_record_snapshot(subject_id)
     if subject_row is None:
-        raise RuntimeError(f"Subject '{subject.strip()}' not found for vector-store resolution.")
+        raise RuntimeError(f"Subject '{subject_id.strip()}' not found for vector-store resolution.")
     binding = get_subject_embedding_binding(subject_row)
     index_name = build_postgres_subject_index_name(
-        subject_row.slug,
+        subject_row.id,
         owner_user_id=subject_row.user_id,
     )
     resolved_dim = (
@@ -183,14 +183,14 @@ def _subject_store_spec(
     )
     if resolved_dim is None or int(resolved_dim) <= 0:
         raise RuntimeError(
-            f"Cannot resolve embedding dimension for subject '{subject.strip()}'."
+            f"Cannot resolve embedding dimension for subject '{subject_id.strip()}'."
         )
     return index_name, int(resolved_dim)
 
 
 def _load_postgres_store(
     *,
-    subject: str,
+    subject_id: str,
     embedding_dim: int | None = None,
 ):
     try:
@@ -201,7 +201,7 @@ def _load_postgres_store(
         ) from exc
 
     index_name, resolved_dim = _subject_store_spec(
-        subject,
+        subject_id,
         embedding_dim=embedding_dim,
     )
     sync_url = make_url(_sync_database_url()).set(drivername="postgresql+psycopg2")
@@ -223,19 +223,19 @@ def _load_postgres_store(
 
 def prepare_postgres_store(
     *,
-    subject: str | None = None,
+    subject_id: str | None = None,
     embedding_dim: int | None = None,
 ) -> None:
     """Initialize or verify cloud PGVectorStore support.
 
-    When ``subject`` is omitted, this only verifies that the PostgreSQL
+    When ``subject_id`` is omitted, this only verifies that the PostgreSQL
     vector-store dependency and connection string are usable. When a subject is
     supplied, its subject-scoped PGVectorStore table is initialized on demand.
     """
 
     if not is_cloud_mode():
         return
-    if not subject:
+    if not subject_id:
         try:
             from llama_index.vector_stores.postgres import PGVectorStore
         except ImportError as exc:  # pragma: no cover - depends on cloud extras
@@ -247,40 +247,40 @@ def prepare_postgres_store(
         logger.info("llamaindex_postgres_store_support_ready")
         return
 
-    index_name, resolved_dim = _subject_store_spec(subject, embedding_dim=embedding_dim)
+    index_name, resolved_dim = _subject_store_spec(subject_id, embedding_dim=embedding_dim)
     _load_postgres_store(
-        subject=subject,
+        subject_id=subject_id,
         embedding_dim=resolved_dim,
     )
     logger.info(
         "llamaindex_postgres_store_prepared",
-        subject=subject.strip(),
+        subject_id=subject_id.strip(),
         table_name=index_name,
         embedding_dim=resolved_dim,
     )
 
 
 def _load_store(
-    subject: str,
+    subject_id: str,
     *,
     embedding_dim: int | None = None,
 ):
     if is_cloud_mode():
         return _load_postgres_store(
-            subject=subject,
+            subject_id=subject_id,
             embedding_dim=embedding_dim,
         )
-    return _load_local_store(subject, embedding_dim=embedding_dim)
+    return _load_local_store(subject_id, embedding_dim=embedding_dim)
 
 
-def _delete_node_ids(vector_store: Any, chunk_ids: list[int], *, subject: str) -> None:
+def _delete_node_ids(vector_store: Any, chunk_ids: list[int], *, subject_id: str) -> None:
     node_ids = [_node_id(chunk_id) for chunk_id in chunk_ids]
     if not node_ids:
         return
 
     delete_nodes = getattr(vector_store, "delete_nodes", None)
     if callable(delete_nodes):
-        delete_nodes(node_ids=node_ids, filters=_subject_filter(subject))
+        delete_nodes(node_ids=node_ids, filters=_subject_filter(subject_id))
         return
 
     for node_id in node_ids:
@@ -289,11 +289,11 @@ def _delete_node_ids(vector_store: Any, chunk_ids: list[int], *, subject: str) -
             delete(ref_doc_id=node_id)
 
 
-def upsert_chunks(subject: str, chunks: list[IndexedChunk]) -> None:
+def upsert_chunks(subject_id: str, chunks: list[IndexedChunk]) -> None:
     """Upsert pre-embedded chunks into the active LlamaIndex vector store."""
 
-    normalized_subject = subject.strip()
-    if not normalized_subject or not chunks:
+    normalized_subject_id = subject_id.strip()
+    if not normalized_subject_id or not chunks:
         return
 
     nodes: list[TextNode] = []
@@ -313,67 +313,67 @@ def upsert_chunks(subject: str, chunks: list[IndexedChunk]) -> None:
             )
         nodes.append(_to_text_node(chunk, chunk.embedding))
 
-    with _subject_lock(normalized_subject):
+    with _subject_lock(normalized_subject_id):
         vector_store = _load_store(
-            normalized_subject,
+            normalized_subject_id,
             embedding_dim=embedding_dim,
         )
         _delete_node_ids(
             vector_store,
             [chunk.chunk_id for chunk in chunks],
-            subject=normalized_subject,
+            subject_id=normalized_subject_id,
         )
         vector_store.add(nodes)
 
     logger.info(
         "llamaindex_chunks_upserted",
-        subject=normalized_subject,
+        subject_id=normalized_subject_id,
         chunk_count=len(chunks),
         backend="postgres" if is_cloud_mode() else "sqlite-vec",
     )
 
 
-def rebuild_subject_index(subject: str, chunks: list[IndexedChunk]) -> None:
+def rebuild_subject_index(subject_id: str, chunks: list[IndexedChunk]) -> None:
     """Replace one subject index with the supplied pre-embedded chunks."""
 
-    clear_subject_index(subject)
-    upsert_chunks(subject, chunks)
+    clear_subject_index(subject_id)
+    upsert_chunks(subject_id, chunks)
 
 
-def delete_chunks(subject: str, chunk_ids: list[int]) -> None:
+def delete_chunks(subject_id: str, chunk_ids: list[int]) -> None:
     """Delete selected chunks from the active LlamaIndex vector store."""
 
-    normalized_subject = subject.strip()
+    normalized_subject_id = subject_id.strip()
     normalized_ids = [int(chunk_id) for chunk_id in chunk_ids if chunk_id is not None]
-    if not normalized_subject or not normalized_ids:
+    if not normalized_subject_id or not normalized_ids:
         return
-    if not subject_index_exists(normalized_subject):
+    if not subject_index_exists(normalized_subject_id):
         return
 
-    with _subject_lock(normalized_subject):
-        vector_store = _load_store(normalized_subject)
-        _delete_node_ids(vector_store, normalized_ids, subject=normalized_subject)
+    with _subject_lock(normalized_subject_id):
+        vector_store = _load_store(normalized_subject_id)
+        _delete_node_ids(vector_store, normalized_ids, subject_id=normalized_subject_id)
 
     logger.info(
         "llamaindex_chunks_deleted",
-        subject=normalized_subject,
+        subject_id=normalized_subject_id,
         chunk_count=len(normalized_ids),
     )
 
 
-def clear_subject_index(subject: str) -> None:
+def clear_subject_index(subject_id: str) -> None:
     """Remove all vector-index entries for one subject."""
 
-    normalized_subject = subject.strip()
-    if not normalized_subject:
+    normalized_subject_id = subject_id.strip()
+    if not normalized_subject_id:
         return
-    with _subject_lock(normalized_subject):
+    with _subject_lock(normalized_subject_id):
         if is_cloud_mode():
-            if not subject_index_exists(normalized_subject):
+            if not subject_index_exists(normalized_subject_id):
                 return
             from app.shared.infra.database import get_engine
 
-            subject_row = _subject_record_snapshot(normalized_subject)
+            subject_row = _subject_record_snapshot(normalized_subject_id)
             if subject_row is None:
                 return
             vector_ref = build_subject_index_ref_for_subject(subject_row)
@@ -383,51 +383,51 @@ def clear_subject_index(subject: str) -> None:
             with get_engine().begin() as connection:
                 connection.execute(sa.text(f"DROP TABLE IF EXISTS public.{data_table}"))
         else:
-            vector_store = _load_local_store(normalized_subject)
+            vector_store = _load_local_store(normalized_subject_id)
             vector_store.clear()
             # Remove legacy SimpleVectorStore JSON payloads from older builds.
             try:
                 cs = get_content_store()
-                run_store_sync(cs.delete_prefix, _local_index_prefix(normalized_subject), default=0)
+                run_store_sync(cs.delete_prefix, _local_index_prefix(normalized_subject_id), default=0)
             except Exception as exc:  # pragma: no cover - legacy cleanup only
                 logger.warning(
                     "llamaindex_legacy_local_store_cleanup_failed",
-                    subject=normalized_subject,
+                    subject_id=normalized_subject_id,
                     error=str(exc),
                 )
 
-    logger.info("llamaindex_subject_index_cleared", subject=normalized_subject)
+    logger.info("llamaindex_subject_index_cleared", subject_id=normalized_subject_id)
 
 
-def subject_index_exists(subject: str) -> bool:
+def subject_index_exists(subject_id: str) -> bool:
     """Return whether a subject has any persisted LlamaIndex index payload."""
 
-    normalized_subject = subject.strip()
-    if not normalized_subject:
+    normalized_subject_id = subject_id.strip()
+    if not normalized_subject_id:
         return False
     if is_cloud_mode():
         from app.shared.infra.database import get_engine, vector_table_exists
 
-        subject_row = _subject_record_snapshot(normalized_subject)
+        subject_row = _subject_record_snapshot(normalized_subject_id)
         if subject_row is None:
             return False
         expected_ref = build_subject_index_ref_for_subject(subject_row)
         with get_engine().connect() as connection:
             return vector_table_exists(connection, expected_ref)
-    return _load_local_store(normalized_subject).subject_has_rows()
+    return _load_local_store(normalized_subject_id).subject_has_rows()
 
 
-def count_indexed_chunks(subject: str, chunk_ids: list[int]) -> int:
+def count_indexed_chunks(subject_id: str, chunk_ids: list[int]) -> int:
     """Count indexed chunk IDs for local consistency checks."""
 
-    normalized_subject = subject.strip()
+    normalized_subject_id = subject_id.strip()
     normalized_ids = {_node_id(chunk_id) for chunk_id in chunk_ids if chunk_id is not None}
-    if not normalized_subject or not normalized_ids:
+    if not normalized_subject_id or not normalized_ids:
         return 0
     if is_cloud_mode():
         from app.shared.infra.database import get_engine, vector_table_exists
 
-        subject_row = _subject_record_snapshot(normalized_subject)
+        subject_row = _subject_record_snapshot(normalized_subject_id)
         if subject_row is None:
             return 0
         vector_ref = build_subject_index_ref_for_subject(subject_row)
@@ -448,26 +448,26 @@ def count_indexed_chunks(subject: str, chunk_ids: list[int]) -> int:
             ).scalar_one()
         return int(result or 0)
 
-    vector_store = _load_local_store(normalized_subject)
+    vector_store = _load_local_store(normalized_subject_id)
     return vector_store.count_node_ids(normalized_ids)
 
 
 def query_subject_index(
-    subject: str,
+    subject_id: str,
     query_embedding: list[float],
     *,
     top_k: int = 5,
 ) -> list[SubjectIndexHit]:
     """Query the active vector store with a precomputed embedding."""
 
-    normalized_subject = subject.strip()
-    if not normalized_subject or not query_embedding or top_k <= 0:
+    normalized_subject_id = subject_id.strip()
+    if not normalized_subject_id or not query_embedding or top_k <= 0:
         return []
-    if not subject_index_exists(normalized_subject):
+    if not subject_index_exists(normalized_subject_id):
         return []
 
     if is_cloud_mode():
-        binding = _subject_binding_snapshot(normalized_subject)
+        binding = _subject_binding_snapshot(normalized_subject_id)
         if (
             binding is not None
             and binding.embedding_dim is not None
@@ -475,20 +475,20 @@ def query_subject_index(
         ):
             logger.warning(
                 "llamaindex_query_embedding_dimension_mismatch",
-                subject=normalized_subject,
+                subject_id=normalized_subject_id,
                 expected_dim=int(binding.embedding_dim),
                 actual_dim=len(query_embedding),
             )
             return []
 
     vector_store = _load_store(
-        normalized_subject,
+        normalized_subject_id,
         embedding_dim=len(query_embedding),
     )
     query = VectorStoreQuery(
         query_embedding=query_embedding,
         similarity_top_k=top_k,
-        filters=_subject_filter(normalized_subject),
+        filters=_subject_filter(normalized_subject_id),
     )
     result = vector_store.query(query)
 
@@ -505,7 +505,7 @@ def query_subject_index(
 
 
 async def retrieve_subject_chunks(
-    subject: str,
+    subject_id: str,
     query: str,
     *,
     top_k: int = 5,
@@ -521,7 +521,7 @@ async def retrieve_subject_chunks(
     if embedding is None:
         from app.shared.infra.embedding import aembed_texts
 
-        binding = _subject_binding_snapshot(subject)
+        binding = _subject_binding_snapshot(subject_id)
         model_name = binding.embedding_model if binding is not None else None
         vectors = await aembed_texts(
             [normalized_query],
@@ -533,11 +533,11 @@ async def retrieve_subject_chunks(
     if is_cloud_mode():
         return await asyncio.to_thread(
             query_subject_index,
-            subject,
+            subject_id,
             embedding,
             top_k=top_k,
         )
-    return query_subject_index(subject, embedding, top_k=top_k)
+    return query_subject_index(subject_id, embedding, top_k=top_k)
 
 
 __all__ = [

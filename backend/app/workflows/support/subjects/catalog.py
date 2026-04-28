@@ -8,14 +8,13 @@ from app.shared.infra.exceptions import SubjectRegistryNotFoundError
 from app.models import Subject
 from app.repositories.subject_repo import (
     create_subject,
-    get_subject_by_slug,
+    get_subject_by_id,
     list_subjects,
     save_subject,
     update_subject,
 )
 from app.schemas.common import PaginatedData, build_paginated_data
 from app.schemas.subject import SubjectItem
-from app.utils.presenters import require_id
 from app.utils.subject import generate_subject_id, validate_subject_id
 from app.workflows.support.subjects.icons import get_subject_icon_key, set_subject_icon_key
 
@@ -23,14 +22,13 @@ from app.workflows.support.subjects.icons import get_subject_icon_key, set_subje
 def _create_unique_subject_id(session: Session) -> str:
     while True:
         subject_id = generate_subject_id()
-        if get_subject_by_slug(session, subject_id) is None:
+        if get_subject_by_id(session, subject_id) is None:
             return subject_id
 
 
 def _to_subject_item(subject: Subject) -> SubjectItem:
     return SubjectItem(
-        id=require_id(subject.id, "Subject.id"),
-        subject_id=subject.slug,
+        subject_id=subject.id,
         name=subject.name,
         description=subject.description,
         user_intent=subject.user_intent,
@@ -50,8 +48,8 @@ def create_subject_record(
     icon_key: str | None = None,
 ) -> SubjectItem:
     subject = Subject(
+        id=_create_unique_subject_id(session),
         user_id=owner_user_id,
-        slug=_create_unique_subject_id(session),
         name=name.strip(),
         description=description.strip(),
         user_intent=user_intent.strip(),
@@ -69,7 +67,7 @@ def get_subject_record(
     owner_user_id: str,
 ) -> Subject:
     normalized_subject_id = validate_subject_id(subject_id)
-    subject = get_subject_by_slug(
+    subject = get_subject_by_id(
         session,
         normalized_subject_id,
         owner_user_id=owner_user_id,

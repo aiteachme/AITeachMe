@@ -73,7 +73,7 @@ PACKAGE_KIND = "subject_export"
 class _ManifestSubject(BaseModel):
     model_config = ConfigDict(extra="allow")
 
-    slug: str
+    subject_id: str
     name: str
     description: str = ""
     user_intent: str = ""
@@ -146,8 +146,8 @@ class _TableSpec:
 
     name: str
     model: type[SQLModel]
-    # How to filter by subject: field name | "slug" (Subject itself) | None (filter via parent table)
-    subject_field: str | None = "subject"
+    # How to filter by subject: field name | "id" (Subject itself) | None (filter via parent table)
+    subject_field: str | None = "subject_id"
     id_field: str = "id"
     # id 类型："auto" (自增) | "uuid" (字符串 UUID)
     id_type: str = "auto"
@@ -163,8 +163,8 @@ class _TableSpec:
 
 # Tables must be ordered by dependency: referenced tables come first.
 TABLE_REGISTRY: list[_TableSpec] = [
-    _TableSpec("subject", Subject, subject_field="slug"),
-    _TableSpec("raw_file", RawFile, optional_group="raw_file_metadata"),
+    _TableSpec("subject", Subject, subject_field="id"),
+    _TableSpec("raw_file", RawFile, subject_field=None, optional_group="raw_file_metadata"),
     _TableSpec(
         "subject_file",
         SubjectFileLink,
@@ -281,48 +281,48 @@ TABLE_REGISTRY: list[_TableSpec] = [
 def preview_export(
     session: Session,
     *,
-    subject_slug: str,
+    subject_id: str,
     options: ExportOptions | None = None,
 ) -> ExportPreviewData:
     """Build an export preview for one subject."""
 
     options = options or ExportOptions()
-    subject = _require_subject(session, subject_slug)
-    raw_files = list_all_raw_files_by_subject(session, subject_slug)
+    subject = _require_subject(session, subject_id)
+    raw_files = list_all_raw_files_by_subject(session, subject_id)
 
     stats = ExportPreviewStats(
         raw_file_count=len(raw_files) if _exports_raw_file_metadata(options) else 0,
         total_raw_file_size_bytes=0,
-        knowledge_document_count=_count(session, KnowledgeDocument, subject_slug)
+        knowledge_document_count=_count(session, KnowledgeDocument, subject_id)
         if options.include_knowledge_docs
         else 0,
-        knowledge_unit_count=_count(session, KnowledgeUnit, subject_slug),
-        knowledge_edge_count=_count(session, KnowledgeEdge, subject_slug),
-        knowledge_graph_sync_run_count=_count(session, KnowledgeGraphSyncRun, subject_slug),
-        knowledge_graph_source_ref_count=_count(session, KnowledgeGraphSourceRef, subject_slug),
-        confirmed_build_plan_count=_count_embedded_confirmed_plans(session, subject_slug)
+        knowledge_unit_count=_count(session, KnowledgeUnit, subject_id),
+        knowledge_edge_count=_count(session, KnowledgeEdge, subject_id),
+        knowledge_graph_sync_run_count=_count(session, KnowledgeGraphSyncRun, subject_id),
+        knowledge_graph_source_ref_count=_count(session, KnowledgeGraphSourceRef, subject_id),
+        confirmed_build_plan_count=_count_embedded_confirmed_plans(session, subject_id)
         if options.include_knowledge_docs
         else 0,
-        question_type_registry_count=_count(session, QuestionTypeRegistry, subject_slug)
+        question_type_registry_count=_count(session, QuestionTypeRegistry, subject_id)
         if options.include_exam_history
         else 0,
-        question_template_count=_count(session, QuestionTemplate, subject_slug)
+        question_template_count=_count(session, QuestionTemplate, subject_id)
         if options.include_exam_history
         else 0,
-        exam_paper_count=_count(session, ExamPaper, subject_slug) if options.include_exam_history else 0,
-        chat_session_count=_count(session, ChatSession, subject_slug)
+        exam_paper_count=_count(session, ExamPaper, subject_id) if options.include_exam_history else 0,
+        chat_session_count=_count(session, ChatSession, subject_id)
         if options.include_chat_history
         else (
-            _count_planner_sessions_with_embedded_plans(session, subject_slug)
+            _count_planner_sessions_with_embedded_plans(session, subject_id)
             if options.include_knowledge_docs
             else 0
         ),
-        user_knowledge_state_count=_count(session, UserKnowledgeState, subject_slug)
+        user_knowledge_state_count=_count(session, UserKnowledgeState, subject_id)
         if options.include_profile
         else 0,
     )
     return ExportPreviewData(
-        subject_id=subject.slug,
+        subject_id=subject.id,
         subject_name=subject.name,
         stats=stats,
         estimated_size_bytes=0,
@@ -332,27 +332,27 @@ def preview_export(
 def export_subject(
     session: Session,
     *,
-    subject_slug: str,
+    subject_id: str,
     options: ExportOptions | None = None,
 ) -> Path:
     """Package one subject into a temporary .atmx archive."""
 
     options = options or ExportOptions()
-    subject = _require_subject(session, subject_slug)
+    subject = _require_subject(session, subject_id)
 
     tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".atmx")
     tmp.close()
     tmp_path = Path(tmp.name)
 
     try:
-        subject_scope = build_subject_storage_scope(user_id=subject.user_id, subject=subject.slug)
+        subject_scope = build_subject_storage_scope(user_id=subject.user_id, subject_id=subject.id)
         with zipfile.ZipFile(tmp_path, "w", zipfile.ZIP_DEFLATED) as zf:
             exported: dict[str, list[dict]] = {}
 
             for spec in TABLE_REGISTRY:
                 if not _should_export(spec, options):
                     continue
-                records = _query_table(session, spec, subject_slug, exported, options)
+                records = _query_table(session, spec, subject_id, exported, options)
                 exported[spec.name] = records
                 zf.writestr(
                     f"db/{spec.name}.json",
@@ -362,13 +362,13 @@ def export_subject(
                     ),
                 )
 
-            raw_files = list_all_raw_files_by_subject(session, subject_slug)
+            raw_files = list_all_raw_files_by_subject(session, subject_id)
             _pack_files(zf, subject_scope.namespace, options, raw_files=raw_files)
 
             manifest = _build_manifest(subject, exported, options)
             zf.writestr("manifest.json", manifest.model_dump_json(indent=2))
 
-        logger.info("subject_exported", subject=subject_slug, path=str(tmp_path))
+        logger.info("subject_exported", subject_id=subject_id, subject_name=subject.name, path=str(tmp_path))
         return tmp_path
 
     except Exception:
@@ -380,26 +380,26 @@ def build_subject_export_filename(subject: Subject) -> str:
     """Build a readable download filename anchored by subject name and id."""
 
     name = sanitize_doc_title(subject.name or "未命名学科")
-    subject_id = sanitize_doc_title(subject.slug or str(subject.id or "subject"))
-    return f"{name}-{subject_id}.atmx"
+    subject_id_stem = sanitize_doc_title(subject.id or str(subject.id or "subject"))
+    return f"{name}-{subject_id_stem}.atmx"
 # ===================================================================
 # Internal: DB helpers
 # ===================================================================
 
 
-def _require_subject(session: Session, slug: str) -> Subject:
+def _require_subject(session: Session, subject_id: str) -> Subject:
     from app.shared.infra.exceptions import SubjectRegistryNotFoundError
 
-    subject = session.exec(select(Subject).where(Subject.slug == slug)).first()
+    subject = session.exec(select(Subject).where(Subject.id == subject_id)).first()
     if subject is None:
-        raise SubjectRegistryNotFoundError(slug)
+        raise SubjectRegistryNotFoundError(subject_id)
     return subject
 
 
-def _count(session: Session, model: type, subject_slug: str) -> int:
+def _count(session: Session, model: type, subject_id: str) -> int:
     return int(
         session.exec(
-            select(func.count()).select_from(model).where(model.subject == subject_slug)
+            select(func.count()).select_from(model).where(model.subject_id == subject_id)
         ).one()
     )
 
@@ -414,18 +414,18 @@ def _has_embedded_confirmed_plan(record: ChatSession | dict[str, Any]) -> bool:
     return isinstance((meta or {}).get("confirmed_plan"), dict)
 
 
-def _count_planner_sessions_with_embedded_plans(session: Session, subject_slug: str) -> int:
+def _count_planner_sessions_with_embedded_plans(session: Session, subject_id: str) -> int:
     rows = session.exec(
         select(ChatSession).where(
-            ChatSession.subject == subject_slug,
+            ChatSession.subject_id == subject_id,
             ChatSession.source == "build_planner",
         )
     ).all()
     return sum(1 for row in rows if _has_embedded_confirmed_plan(row))
 
 
-def _count_embedded_confirmed_plans(session: Session, subject_slug: str) -> int:
-    return _count_planner_sessions_with_embedded_plans(session, subject_slug)
+def _count_embedded_confirmed_plans(session: Session, subject_id: str) -> int:
+    return _count_planner_sessions_with_embedded_plans(session, subject_id)
 
 
 def _should_export(spec: _TableSpec, options: ExportOptions) -> bool:
@@ -450,7 +450,7 @@ def _exports_raw_file_metadata(options: ExportOptions) -> bool:
 def _query_table(
     session: Session,
     spec: _TableSpec,
-    subject_slug: str,
+    subject_id: str,
     exported: dict[str, list[dict]],
     options: ExportOptions,
 ) -> list[dict]:
@@ -461,22 +461,22 @@ def _query_table(
         return stmt.order_by(order_col)
 
     if spec.name == "raw_file":
-        rows = list_all_raw_files_by_subject(session, subject_slug)
+        rows = list_all_raw_files_by_subject(session, subject_id)
     elif spec.name == "chat_session" and not options.include_chat_history:
         rows = session.exec(
             _ordered(
                 select(ChatSession).where(
-                    ChatSession.subject == subject_slug,
+                    ChatSession.subject_id == subject_id,
                     ChatSession.source == "build_planner",
                 )
             )
         ).all()
         rows = [row for row in rows if _has_embedded_confirmed_plan(row)]
-    elif spec.subject_field == "slug":
-        rows = session.exec(_ordered(select(spec.model).where(spec.model.slug == subject_slug))).all()
+    elif spec.subject_field == "id":
+        rows = session.exec(_ordered(select(spec.model).where(spec.model.id == subject_id))).all()
     elif spec.subject_field:
         col = getattr(spec.model, spec.subject_field)
-        rows = session.exec(_ordered(select(spec.model).where(col == subject_slug))).all()
+        rows = session.exec(_ordered(select(spec.model).where(col == subject_id))).all()
     elif spec.name == "question_knowledge_unit_link":
         template_ids = {r["id"] for r in exported.get("question_template", [])}
         item_ids = {r["id"] for r in exported.get("exam_paper_item", [])}
@@ -539,12 +539,12 @@ def _decode_settings_json(raw_value: Any) -> dict[str, Any]:
 # ===================================================================
 
 
-def _create_unique_slug(session: Session) -> str:
+def _create_unique_subject_id(session: Session) -> str:
     for _ in range(100):
-        slug = generate_subject_id()
-        if session.exec(select(Subject).where(Subject.slug == slug)).first() is None:
-            return slug
-    raise RuntimeError("Cannot generate unique subject slug after 100 attempts")
+        subject_id = generate_subject_id()
+        if session.exec(select(Subject).where(Subject.id == subject_id)).first() is None:
+            return subject_id
+    raise RuntimeError("Cannot generate unique subject id after 100 attempts")
 
 
 def _import_table(
@@ -553,7 +553,7 @@ def _import_table(
     records: list[dict],
     *,
     id_map: dict[str, dict[Any, Any]],
-    new_slug: str,
+    new_subject_id: str,
     new_name: str,
     user_id: str,
     warnings: list[str],
@@ -577,14 +577,14 @@ def _import_table(
 
         # 更新 subject
         if spec.name == "subject":
-            record_data["slug"] = new_slug
+            record_data["id"] = new_subject_id
             record_data["name"] = new_name
             record_data["normalized_name"] = None
             record_data["created_at"] = imported_at
             record_data["updated_at"] = imported_at
             _ensure_subject_icon(record_data, new_name)
-        elif spec.subject_field and spec.subject_field != "slug":
-            record_data[spec.subject_field] = new_slug
+        elif spec.subject_field and spec.subject_field != "id":
+            record_data[spec.subject_field] = new_subject_id
 
         # 更新 user_id
         if "user_id" in record_data:
@@ -607,7 +607,7 @@ def _import_table(
             _remap_fk(record_data, fk_field, ref_table, id_map, spec.name, warnings)
 
         if spec.name == "chat_session":
-            _remap_planner_meta(record_data, new_slug=new_slug, user_id=user_id, id_map=id_map, warnings=warnings)
+            _remap_planner_meta(record_data, new_subject_id=new_subject_id, user_id=user_id, id_map=id_map, warnings=warnings)
         elif spec.name == "knowledge_graph_source_ref":
             _remap_graph_source_ref_entity(record_data, id_map, warnings)
             _remap_json_int_list_text_field(
@@ -623,6 +623,8 @@ def _import_table(
         legacy_uid = record_data.pop("uid", None) if spec.name == "raw_file" else None
         if spec.name == "raw_file":
             record_data["id"] = f"file_{uuid.uuid4().hex}"  # Prevent identity conflicts
+            record_data["origin_subject_id"] = new_subject_id
+            record_data["origin_subject_name"] = new_name
             record_data["markdown_path"] = None
             record_data["asset_dir"] = None
             record_data["storage_uri"] = None
@@ -648,18 +650,18 @@ def _import_table(
         # Rebuild storage keys under the new subject namespace.
         cs = get_content_store()
         if spec.name == "raw_file" and isinstance(new_id, str):
-            subject_scope = build_subject_storage_scope(user_id=user_id, subject=new_slug)
+            file_scope = cs.user_file_scope(user_id=user_id)
             ext = instance.filetype if instance.filetype.startswith(".") else f".{instance.filetype}"
-            instance.file_path = subject_scope.raw_file_key(
+            instance.file_path = file_scope.raw_file_key(
                 file_id=instance.id,
                 filename=instance.filename,
                 extension=ext,
             )
-            instance.markdown_path = subject_scope.raw_markdown_key(
+            instance.markdown_path = file_scope.raw_markdown_key(
                 file_id=instance.id,
                 filename=instance.filename,
             )
-            instance.asset_dir = subject_scope.asset_prefix(
+            instance.asset_dir = file_scope.asset_prefix(
                 file_id=instance.id,
                 filename=instance.filename,
             ).rstrip("/")
@@ -777,7 +779,7 @@ def _remap_json_int_list_text_field(
 def _remap_planner_meta(
     record: dict,
     *,
-    new_slug: str,
+    new_subject_id: str,
     user_id: str,
     id_map: dict[str, dict[Any, Any]],
     warnings: list[str],
@@ -802,7 +804,7 @@ def _remap_planner_meta(
 
     confirmed_plan = dict(confirmed_plan)
     confirmed_plan["id"] = str(uuid.uuid4().hex)
-    confirmed_plan["subject"] = new_slug
+    confirmed_plan["subject"] = new_subject_id
     confirmed_plan["user_id"] = user_id
     confirmed_plan["planner_session_id"] = str(record.get("id") or "")
     _remap_id_list_field(
@@ -816,7 +818,7 @@ def _remap_planner_meta(
     plan_json = confirmed_plan.get("plan_json")
     if isinstance(plan_json, dict):
         plan_json = dict(plan_json)
-        plan_json["subject"] = new_slug
+        plan_json["subject"] = new_subject_id
         plan_json["selected_file_ids"] = list(confirmed_plan.get("selected_file_ids_json") or [])
         plan_json["planner_session_id"] = confirmed_plan["planner_session_id"]
         plan_json["confirmed_plan_id"] = confirmed_plan["id"]
@@ -904,7 +906,7 @@ def _build_manifest(
             capabilities=_manifest_capabilities(options),
         ),
         subject=_ManifestSubject(
-            slug=subject.slug,
+            subject_id=subject.id,
             name=subject.name,
             description=subject.description,
             user_intent=subject.user_intent,

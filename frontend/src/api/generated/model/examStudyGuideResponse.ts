@@ -9,7 +9,7 @@ import type { ExamStudyGuideFocusUnit } from './examStudyGuideFocusUnit';
 
 export interface ExamStudyGuideResponse {
   exam_paper_id: number;
-  subject: string;
+  subject_name: string;
   generated_at: string;
   overall_summary: string;
   strengths?: string[];

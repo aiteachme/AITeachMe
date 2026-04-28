@@ -13,7 +13,7 @@ from app.workflows.digest.kg_doc_sync.lib.models import (
 
 
 class DocsSyncState(TypedDict, total=False):
-    subject: str
+    subject_id: str
     markdown: str
     subject_context: str
     structured_context: dict[str, object]

@@ -7,6 +7,6 @@
  */
 
 /**
- * 内部明细统计。
+ * Internal detail counts.
  */
 export type SubjectDeletePreviewDataDetailCounts = {[key: string]: number};

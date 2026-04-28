@@ -11,7 +11,7 @@ import type { BuildPlannerTurnResponse } from './buildPlannerTurnResponse';
 
 export interface BuildPlannerSessionResponse {
   session_id: string;
-  subject: string;
+  subject_id: string;
   title: string;
   status: string;
   revision: number;

@@ -9,19 +9,19 @@ import type { SubjectDeleteImpactItem } from './subjectDeleteImpactItem';
 import type { SubjectDeletePreviewDataDetailCounts } from './subjectDeletePreviewDataDetailCounts';
 
 export interface SubjectDeletePreviewData {
-  /** 学科外部标识。 */
+  /** Subject id. */
   subject_id: string;
-  /** 学科名称。 */
+  /** Subject name. */
   subject_name: string;
-  /** 学科下是否仍有关联内容。 */
+  /** Whether the subject has related content. */
   has_content: boolean;
   /**
-     * 关联记录总数。
+     * Total related record count.
      * @minimum 0
      */
   total_related_records: number;
-  /** 用户可读的删除影响列表。 */
+  /** Human-readable deletion impact items. */
   impact_items?: SubjectDeleteImpactItem[];
-  /** 内部明细统计。 */
+  /** Internal detail counts. */
   detail_counts?: SubjectDeletePreviewDataDetailCounts;
 }

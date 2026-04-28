@@ -69,7 +69,7 @@ NODE_TRACE_DETAILS = {
         "reads": ["chat_session"],
         "writes": ["chat_session(create when missing)"],
         "emits": ["status:session_resolved"],
-        "input_keys": ["subject", "user_id", "session_id", "question", "source"],
+        "input_keys": ["subject_id", "user_id", "session_id", "question", "source"],
         "output_keys": ["session_id", "session_title", "session_created"],
     },
     NODE_LOAD_HISTORY: {
@@ -77,7 +77,7 @@ NODE_TRACE_DETAILS = {
         "reads": ["chat_message", "subject", "user_knowledge_state", "exam_question_result"],
         "writes": [],
         "emits": [],
-        "input_keys": ["subject", "user_id", "session_id"],
+        "input_keys": ["subject_id", "user_id", "session_id"],
         "output_keys": ["recent_messages", "subject_context", "weak_points", "recent_mistakes"],
     },
     NODE_RETRIEVE_CONTEXT: {
@@ -85,7 +85,7 @@ NODE_TRACE_DETAILS = {
         "reads": ["knowledge_unit", "knowledge_relation", "retrieval_chunk", "vector_index"],
         "writes": [],
         "emits": [],
-        "input_keys": ["subject", "user_id", "question", "selected_context", "selection_context"],
+        "input_keys": ["subject_id", "user_id", "question", "selected_context", "selection_context"],
         "output_keys": ["retrieval_results", "contexts"],
     },
     NODE_SELECT_STRATEGY: {
@@ -110,7 +110,7 @@ NODE_TRACE_DETAILS = {
         "writes": [],
         "emits": [],
         "input_keys": [
-            "subject",
+            "subject_id",
             "subject_context",
             "question",
             "selection_context",
@@ -137,7 +137,7 @@ NODE_TRACE_DETAILS = {
         "writes": ["chat_message(user)", "chat_message(assistant)"],
         "emits": [],
         "input_keys": [
-            "subject",
+            "subject_id",
             "user_id",
             "session_id",
             "question",
@@ -155,7 +155,7 @@ NODE_TRACE_DETAILS = {
         "reads": ["chat_session", "LLM provider(optional title)"],
         "writes": ["chat_session(title)", "chat_session(last_message_at)"],
         "emits": [],
-        "input_keys": ["subject", "user_id", "session_id", "question", "assistant_response", "turn_id"],
+        "input_keys": ["subject_id", "user_id", "session_id", "question", "assistant_response", "turn_id"],
         "output_keys": ["session_title"],
     },
 }
@@ -473,7 +473,7 @@ def get_langgraph_dev_interact_graph() -> StateGraph:
 
 def create_interact_initial_state(
     *,
-    subject: str,
+    subject_id: str,
     user_id: str,
     session_id: str | None,
     question: str,
@@ -487,7 +487,7 @@ def create_interact_initial_state(
     """Create the initial state for one interact workflow run."""
 
     return {
-        "subject": subject,
+        "subject_id": subject_id,
         "user_id": user_id,
         "session_id": session_id,
         "question": question,
@@ -504,7 +504,7 @@ def create_interact_initial_state(
 
 async def run_interact_workflow(
     *,
-    subject: str,
+    subject_id: str,
     user_id: str,
     session_id: str | None,
     question: str,
@@ -522,10 +522,10 @@ async def run_interact_workflow(
     """Run the interact workflow once."""
 
     bus = event_bus or InProcessEventBus()
-    await bus.publish(InteractRequestedEvent(subject=subject))
+    await bus.publish(InteractRequestedEvent(subject_id=subject_id))
     context = WorkflowContext(
         workflow_name="interact.chat",
-        subject=subject,
+        subject_id=subject_id,
         event_bus=bus,
     )
     result = await run_state_graph(
@@ -537,7 +537,7 @@ async def run_interact_workflow(
             emitter=emitter,
         ),
         initial_state=create_interact_initial_state(
-            subject=subject,
+            subject_id=subject_id,
             user_id=user_id,
             session_id=session_id,
             question=question,
@@ -553,7 +553,7 @@ async def run_interact_workflow(
     if result.failed:
         await bus.publish(
             InteractFailedEvent(
-                subject=subject,
+                subject_id=subject_id,
                 error_message=result.error.detail,
             )
         )
@@ -564,18 +564,18 @@ async def run_interact_workflow(
     if error_message:
         await bus.publish(
             InteractFailedEvent(
-                subject=subject,
+                subject_id=subject_id,
                 error_message=error_message,
             )
         )
         return err_result(
             "interact_workflow_failed",
             error_message,
-            metadata={"subject": subject},
+            metadata={"subject_id": subject_id},
         )
 
     if not final_state.get("stream_interrupted"):
-        await bus.publish(InteractCompletedEvent(subject=subject))
+        await bus.publish(InteractCompletedEvent(subject_id=subject_id))
     return result
 
 
@@ -583,7 +583,7 @@ async def stream_chat_workflow(
     *,
     request: Request,
     session: Session | None,
-    subject: str,
+    subject_id: str,
     user_id: str,
     session_id: str | None,
     question: str,
@@ -612,7 +612,7 @@ async def stream_chat_workflow(
             selection_context=selection_context,
             session=session,
             source_chunk_id=source_chunk_id,
-            subject=subject,
+            subject_id=subject_id,
             user_id=user_id,
         )
     )
@@ -634,12 +634,12 @@ async def _execute_interact_workflow(
     selection_context: ChatSelectionContext | None,
     session: Session | None,
     source_chunk_id: int | None,
-    subject: str,
+    subject_id: str,
     user_id: str,
 ) -> None:
     try:
         result = await run_interact_workflow(
-            subject=subject,
+            subject_id=subject_id,
             user_id=user_id,
             session_id=session_id,
             question=question,

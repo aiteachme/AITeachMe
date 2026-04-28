@@ -291,7 +291,7 @@ def _langsmith_trace_kwargs(
     }
     return {
         "inputs": _langsmith_inputs(call_model=call_model, messages=messages, tools=tools),
-        "subject": trace_context.subject,
+        "subject_id": trace_context.subject_id,
         "build_session_id": trace_context.build_session_id,
         "workflow": trace_context.workflow,
         "lane": trace_context.lane,

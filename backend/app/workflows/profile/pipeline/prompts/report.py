@@ -8,7 +8,7 @@ SYSTEM_PROMPT_REPORT_SUGGESTIONS = """
 3. 不要空话，要能直接执行
 
 学科：
-{{ subject }}
+{{ subject_name }}
 
 整体掌握度：
 {{ overall_mastery }}

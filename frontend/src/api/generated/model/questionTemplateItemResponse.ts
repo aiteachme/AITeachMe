@@ -10,7 +10,7 @@ import type { QuestionTemplateItemResponseSelectionHints } from './questionTempl
 
 export interface QuestionTemplateItemResponse {
   id: number;
-  subject: string;
+  subject_id: string;
   question_type: string;
   difficulty: string;
   stem: string;

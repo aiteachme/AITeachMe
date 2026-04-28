@@ -5,11 +5,11 @@ from __future__ import annotations
 import tempfile
 from pathlib import Path
 
-from fastapi import APIRouter, Body, Depends, File, Form, UploadFile
+from fastapi import APIRouter, Body, Depends, File, Form, Path, UploadFile
 from fastapi.responses import FileResponse
 from sqlmodel import Session
 
-from app.api.deps import CurrentUserContext, get_current_user_context, get_db, normalize_subject_slug
+from app.api.deps import CurrentUserContext, get_current_user_context, get_db, normalize_subject_id
 from app.api.openapi import build_error_responses
 from app.schemas.common import ApiResponse, ok_response
 from app.schemas.export_import import (
@@ -46,40 +46,40 @@ _SUPPORTED_IMPORT_SUFFIXES = {".atmx", ".zip"}
 
 
 @router.post(
-    "/subjects/{subject}/export/preview",
+    "/subjects/{subject_id}/export/preview",
     response_model=ApiResponse[ExportPreviewData],
     summary="导出预览",
     responses=build_error_responses([404, 500]),
 )
 async def export_preview_api(
-    subject: str,
+    subject_id: str = Path(...),
     body: ExportOptions = Body(default=ExportOptions()),
     user: CurrentUserContext = Depends(get_current_user_context),
     session: Session = Depends(get_db),
 ) -> ApiResponse[ExportPreviewData]:
     """获取学科导出内容摘要。"""
 
-    normalized = normalize_subject_slug(subject)
+    normalized = normalize_subject_id(subject_id)
     subject_record = get_subject_record(session, normalized, owner_user_id=user.user_id)
-    return ok_response(preview_export(session, subject_slug=subject_record.slug, options=body))
+    return ok_response(preview_export(session, subject_id=subject_record.id, options=body))
 
 
 @router.post(
-    "/subjects/{subject}/export",
+    "/subjects/{subject_id}/export",
     summary="导出学科",
     responses=build_error_responses([404, 500]),
 )
 async def export_subject_api(
-    subject: str,
+    subject_id: str = Path(...),
     body: ExportOptions = Body(default=ExportOptions()),
     user: CurrentUserContext = Depends(get_current_user_context),
     session: Session = Depends(get_db),
 ) -> FileResponse:
     """将学科全部产物打包为 .atmx 文件下载。"""
 
-    normalized = normalize_subject_slug(subject)
+    normalized = normalize_subject_id(subject_id)
     subject_record = get_subject_record(session, normalized, owner_user_id=user.user_id)
-    tmp_path = export_subject(session, subject_slug=subject_record.slug, options=body)
+    tmp_path = export_subject(session, subject_id=subject_record.id, options=body)
     filename = build_subject_export_filename(subject_record)
     return FileResponse(
         path=tmp_path,

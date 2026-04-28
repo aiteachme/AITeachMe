@@ -18,7 +18,7 @@ def get_data_dir() -> Path:
     return get_runtime_data_dir()
 
 
-def _canonical_subject_dir(subject: str, *, user_id: str | None = None) -> Path:
+def _canonical_subject_dir(subject_id: str, *, user_id: str | None = None) -> Path:
     """Return the canonical subject directory under `users/<user>/subjects/`.
 
     Falls back to the legacy `data/<subject>/` layout only when the user scope
@@ -29,62 +29,62 @@ def _canonical_subject_dir(subject: str, *, user_id: str | None = None) -> Path:
         if user_id is not None:
             from app.shared.infra.storage import build_subject_storage_scope
 
-            scope = build_subject_storage_scope(user_id=user_id, subject=subject)
+            scope = build_subject_storage_scope(user_id=user_id, subject_id=subject_id)
         else:
             from app.shared.infra.storage import resolve_subject_storage_scope
 
-            scope = resolve_subject_storage_scope(subject)
+            scope = resolve_subject_storage_scope(subject_id)
         return get_data_dir() / scope.namespace
     except Exception:
-        return get_data_dir() / subject
+        return get_data_dir() / subject_id
 
 
-def build_subject_dir(subject: str, *, user_id: str | None = None) -> Path:
+def build_subject_dir(subject_id: str, *, user_id: str | None = None) -> Path:
     """Return the subject data directory."""
 
-    return _canonical_subject_dir(subject, user_id=user_id)
+    return _canonical_subject_dir(subject_id, user_id=user_id)
 
 
-def build_temp_dir(subject: str, *, user_id: str | None = None) -> Path:
+def build_temp_dir(subject_id: str, *, user_id: str | None = None) -> Path:
     """Return the temp directory."""
 
-    return build_subject_dir(subject, user_id=user_id) / "temp"
+    return build_subject_dir(subject_id, user_id=user_id) / "temp"
 
 
-def build_debug_dir(subject: str, *, user_id: str | None = None) -> Path:
+def build_debug_dir(subject_id: str, *, user_id: str | None = None) -> Path:
     """Return the subject-level debug directory."""
 
-    return build_subject_dir(subject, user_id=user_id) / "debug"
+    return build_subject_dir(subject_id, user_id=user_id) / "debug"
 
 
-def build_exam_dir(subject: str, *, user_id: str | None = None) -> Path:
+def build_exam_dir(subject_id: str, *, user_id: str | None = None) -> Path:
     """Return the subject-level exam export directory."""
 
-    return build_subject_dir(subject, user_id=user_id) / "exam"
+    return build_subject_dir(subject_id, user_id=user_id) / "exam"
 
 
-def build_knowledge_markdown_dir(subject: str, *, user_id: str | None = None) -> Path:
+def build_knowledge_markdown_dir(subject_id: str, *, user_id: str | None = None) -> Path:
     """Return the published knowledge-markdown directory."""
 
-    return build_subject_dir(subject, user_id=user_id) / "knowledge_markdowns"
+    return build_subject_dir(subject_id, user_id=user_id) / "knowledge_markdowns"
 
 
-def build_knowledge_docs_dir(subject: str) -> Path:
+def build_knowledge_docs_dir(subject_id: str) -> Path:
     """Compatibility alias for the published knowledge-markdown directory."""
 
-    return build_knowledge_markdown_dir(subject)
+    return build_knowledge_markdown_dir(subject_id)
 
 
-def build_knowledge_markdown_build_dir(subject: str) -> Path:
+def build_knowledge_markdown_build_dir(subject_id: str) -> Path:
     """Return the knowledge-markdown build/intermediate directory."""
 
-    return build_knowledge_markdown_dir(subject) / "_build"
+    return build_knowledge_markdown_dir(subject_id) / "_build"
 
 
-def build_knowledge_docs_build_dir(subject: str) -> Path:
+def build_knowledge_docs_build_dir(subject_id: str) -> Path:
     """Compatibility alias for the knowledge-markdown build directory."""
 
-    return build_knowledge_markdown_build_dir(subject)
+    return build_knowledge_markdown_build_dir(subject_id)
 
 
 _INVALID_FILENAME_CHARS_RE = re.compile(r'[<>:"/\\|?*\r\n\t]+')
@@ -106,72 +106,72 @@ def sanitize_doc_title(title: str) -> str:
 _sanitize_doc_title = sanitize_doc_title
 
 
-def build_knowledge_doc_path(subject: str, chapter_index: int, title: str) -> Path:
+def build_knowledge_doc_path(subject_id: str, chapter_index: int, title: str) -> Path:
     """Build the published chapter markdown path."""
 
     filename = f"chapter_{chapter_index:02d}_{_sanitize_doc_title(title)}.md"
-    return build_knowledge_markdown_dir(subject) / filename
+    return build_knowledge_markdown_dir(subject_id) / filename
 
 
-def build_knowledge_doc_build_path(subject: str, chapter_index: int, title: str) -> Path:
+def build_knowledge_doc_build_path(subject_id: str, chapter_index: int, title: str) -> Path:
     """Build the staging chapter markdown path."""
 
     filename = f"chapter_{chapter_index:02d}_{_sanitize_doc_title(title)}.md"
-    return build_knowledge_markdown_build_dir(subject) / filename
+    return build_knowledge_markdown_build_dir(subject_id) / filename
 
 
-def build_merged_knowledge_base_path(subject: str) -> Path:
+def build_merged_knowledge_base_path(subject_id: str) -> Path:
     """Return the published merged knowledge markdown path."""
 
-    return build_knowledge_markdown_dir(subject) / "merged_knowledge_base.md"
+    return build_knowledge_markdown_dir(subject_id) / "merged_knowledge_base.md"
 
 
-def build_merged_knowledge_base_build_path(subject: str) -> Path:
+def build_merged_knowledge_base_build_path(subject_id: str) -> Path:
     """Return the staging merged knowledge markdown path."""
 
-    return build_knowledge_markdown_build_dir(subject) / "merged_knowledge_base.md"
+    return build_knowledge_markdown_build_dir(subject_id) / "merged_knowledge_base.md"
 
 
-def build_knowledge_manifest_path(subject: str) -> Path:
+def build_knowledge_manifest_path(subject_id: str) -> Path:
     """Return the knowledge docs manifest path."""
 
-    return build_knowledge_markdown_dir(subject) / "manifest.json"
+    return build_knowledge_markdown_dir(subject_id) / "manifest.json"
 
 
-def build_knowledge_build_status_path(subject: str) -> Path:
+def build_knowledge_build_status_path(subject_id: str) -> Path:
     """Return the runtime build-status path for knowledge docs."""
 
-    return build_knowledge_markdown_dir(subject) / "build_status.json"
+    return build_knowledge_markdown_dir(subject_id) / "build_status.json"
 
 
-def build_knowledge_build_lock_path(subject: str) -> Path:
+def build_knowledge_build_lock_path(subject_id: str) -> Path:
     """Return the subject-level knowledge docs lock path."""
 
-    return build_knowledge_markdown_dir(subject) / ".build.lock"
+    return build_knowledge_markdown_dir(subject_id) / ".build.lock"
 
 
-def build_knowledge_unit_embedding_cache_path(subject: str) -> Path:
+def build_knowledge_unit_embedding_cache_path(subject_id: str) -> Path:
     """Return the persistent node-embedding cache path."""
 
-    return build_knowledge_markdown_dir(subject) / "node_embedding_cache.json"
+    return build_knowledge_markdown_dir(subject_id) / "node_embedding_cache.json"
 
 
-def build_knowledge_chunk_manifest_path(subject: str) -> Path:
+def build_knowledge_chunk_manifest_path(subject_id: str) -> Path:
     """Return the incremental canonical chunk manifest path."""
 
-    return build_knowledge_markdown_dir(subject) / "chunk_manifest.json"
+    return build_knowledge_markdown_dir(subject_id) / "chunk_manifest.json"
 
 
-def build_docgen_intermediate_dir(subject: str) -> Path:
+def build_docgen_intermediate_dir(subject_id: str) -> Path:
     """Return the docgen intermediate directory."""
 
-    return build_knowledge_markdown_build_dir(subject)
+    return build_knowledge_markdown_build_dir(subject_id)
 
 
-def build_docgen_intermediate_latest_dir(subject: str) -> Path:
+def build_docgen_intermediate_latest_dir(subject_id: str) -> Path:
     """Return the current build intermediate directory."""
 
-    return build_docgen_intermediate_dir(subject)
+    return build_docgen_intermediate_dir(subject_id)
 
 
 def _sanitize_storage_token(value: str) -> str:
@@ -234,16 +234,16 @@ def _sanitize_debug_segment(value: str) -> str:
     return value.replace("/", "_").replace("\\", "_").replace(" ", "_")
 
 
-def build_workflow_debug_dir(subject: str, workflow_name: str) -> Path:
+def build_workflow_debug_dir(subject_id: str, workflow_name: str) -> Path:
     """Return the workflow debug root directory."""
 
-    return build_debug_dir(subject) / _sanitize_debug_segment(workflow_name)
+    return build_debug_dir(subject_id) / _sanitize_debug_segment(workflow_name)
 
 
-def build_workflow_run_debug_dir(subject: str, workflow_name: str, run_or_job_id: str | int) -> Path:
+def build_workflow_run_debug_dir(subject_id: str, workflow_name: str, run_or_job_id: str | int) -> Path:
     """Return the debug directory for one workflow run."""
 
-    return build_workflow_debug_dir(subject, workflow_name) / _sanitize_debug_segment(str(run_or_job_id))
+    return build_workflow_debug_dir(subject_id, workflow_name) / _sanitize_debug_segment(str(run_or_job_id))
 
 
 def to_storage_key(path: str | Path) -> str:

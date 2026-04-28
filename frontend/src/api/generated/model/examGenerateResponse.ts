@@ -12,7 +12,7 @@ export interface ExamGenerateResponse {
   error_message?: string | null;
   created_at: string;
   updated_at: string;
-  subject: string;
+  subject_id: string;
   user_id: string;
   exam_mode: string;
   num_questions: number;

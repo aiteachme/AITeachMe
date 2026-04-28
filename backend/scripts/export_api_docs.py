@@ -27,7 +27,10 @@ def _normalize_generated_typescript(root: Path) -> int:
     for path in root.rglob("*.ts"):
         original = path.read_text(encoding="utf-8")
         has_final_newline = original.endswith(("\n", "\r"))
-        cleaned = "\n".join(line.rstrip(" \t") for line in original.splitlines())
+        lines = [line.rstrip(" \t") for line in original.splitlines()]
+        while lines and lines[-1] == "":
+            lines.pop()
+        cleaned = "\n".join(lines)
         if has_final_newline:
             cleaned += "\n"
         if cleaned == original:

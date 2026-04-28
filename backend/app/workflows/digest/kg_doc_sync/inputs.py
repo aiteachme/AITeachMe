@@ -118,11 +118,11 @@ def _merge_doc_markdown(docs: list[KnowledgeDoc]) -> str:
 
 
 def _load_docgen_manifest(
-    subject: str,
+    subject_id: str,
     *,
     subject_scope: SubjectStorageScope | None = None,
 ) -> dict[str, object]:
-    manifest = read_knowledge_manifest(subject, subject_scope=subject_scope)
+    manifest = read_knowledge_manifest(subject_id, subject_scope=subject_scope)
     if manifest is None or not manifest.docgen_manifest_key:
         return {}
     payload = run_store_sync(
@@ -134,12 +134,12 @@ def _load_docgen_manifest(
 
 
 def _load_docgen_manifest_for_scope(
-    subject: str,
+    subject_id: str,
     subject_scope: SubjectStorageScope | None,
 ) -> dict[str, object]:
     if subject_scope is None:
-        return _load_docgen_manifest(subject)
-    return _load_docgen_manifest(subject, subject_scope=subject_scope)
+        return _load_docgen_manifest(subject_id)
+    return _load_docgen_manifest(subject_id, subject_scope=subject_scope)
 
 
 def _chapter_context_payload(doc: KnowledgeDoc) -> dict[str, object]:
@@ -185,7 +185,7 @@ def _chapter_context_from_docgen_state(
 
 
 def build_knowledge_doc_sync_input_from_docgen_state(
-    subject: str,
+    subject_id: str,
     docgen_state: dict[str, object] | None,
     *,
     subject_scope: SubjectStorageScope | None = None,
@@ -204,7 +204,7 @@ def build_knowledge_doc_sync_input_from_docgen_state(
         if isinstance(item, dict)
     ]
     doc_ids = _clean_int_list(state.get("doc_ids"))
-    manifest = _load_docgen_manifest_for_scope(subject, subject_scope)
+    manifest = _load_docgen_manifest_for_scope(subject_id, subject_scope)
     manifest_build_metadata = (
         dict(manifest.get("build_metadata"))
         if isinstance(manifest.get("build_metadata"), dict)
@@ -212,7 +212,7 @@ def build_knowledge_doc_sync_input_from_docgen_state(
     )
     manifest_version_no = _safe_int(manifest_build_metadata.get("version_no"))
     manifest_record = (
-        read_knowledge_manifest(subject, subject_scope=subject_scope)
+        read_knowledge_manifest(subject_id, subject_scope=subject_scope)
         if manifest_version_no <= 0
         else None
     )
@@ -226,7 +226,7 @@ def build_knowledge_doc_sync_input_from_docgen_state(
         "docgen_manifest": manifest,
         "document_summary_json": document_summary_json
         if document_summary_json is not None
-        else _load_subject_document_summary(subject),
+        else _load_subject_document_summary(subject_id),
         "chapters": [
             _chapter_context_from_docgen_state(
                 chapter,
@@ -244,8 +244,8 @@ def build_knowledge_doc_sync_input_from_docgen_state(
     )
 
 
-def _read_subject_document_summary(session: Session, subject: str) -> dict[str, object]:
-    subject_record = session.exec(select(Subject).where(Subject.slug == subject)).first()
+def _read_subject_document_summary(session: Session, subject_id: str) -> dict[str, object]:
+    subject_record = session.exec(select(Subject).where(Subject.id == subject_id)).first()
     return (
         dict(subject_record.document_summary_json)
         if subject_record is not None and isinstance(subject_record.document_summary_json, dict)
@@ -253,13 +253,13 @@ def _read_subject_document_summary(session: Session, subject: str) -> dict[str, 
     )
 
 
-def _load_subject_document_summary(subject: str) -> dict[str, object]:
+def _load_subject_document_summary(subject_id: str) -> dict[str, object]:
     with managed_session() as session:
-        return _read_subject_document_summary(session, subject)
+        return _read_subject_document_summary(session, subject_id)
 
 
 def load_knowledge_doc_sync_input(
-    subject: str,
+    subject_id: str,
     *,
     session: Session | None = None,
     subject_scope: SubjectStorageScope | None = None,
@@ -267,19 +267,19 @@ def load_knowledge_doc_sync_input(
     if session is None:
         with managed_session() as managed:
             return load_knowledge_doc_sync_input(
-                subject,
+                subject_id,
                 session=managed,
                 subject_scope=subject_scope,
             )
 
-    docs = get_current_published_docs(session, subject)
+    docs = get_current_published_docs(session, subject_id)
     merged = _merge_doc_markdown(docs).strip()
-    document_summary_json = _read_subject_document_summary(session, subject)
+    document_summary_json = _read_subject_document_summary(session, subject_id)
     if merged:
         doc_versions = [int(doc.version_no or doc.version or 0) for doc in docs]
         structured_context = {
             "doc_version_no": max(doc_versions or [0]),
-            "docgen_manifest": _load_docgen_manifest_for_scope(subject, subject_scope),
+            "docgen_manifest": _load_docgen_manifest_for_scope(subject_id, subject_scope),
             "document_summary_json": document_summary_json,
             "chapters": [_chapter_context_payload(doc) for doc in docs],
         }
@@ -291,8 +291,8 @@ def load_knowledge_doc_sync_input(
     return KnowledgeDocSyncInput()
 
 
-def load_knowledge_doc_markdown(subject: str) -> tuple[str, str]:
-    sync_input = load_knowledge_doc_sync_input(subject)
+def load_knowledge_doc_markdown(subject_id: str) -> tuple[str, str]:
+    sync_input = load_knowledge_doc_sync_input(subject_id)
     return sync_input.markdown, sync_input.source
 
 

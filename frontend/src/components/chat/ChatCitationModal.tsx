@@ -1,7 +1,7 @@
-import { useQuery } from "@tanstack/react-query";
+﻿import { useQuery } from "@tanstack/react-query";
 import { BookOpen, FileText, Loader2 } from "lucide-react";
 
-import { chunkContextApiV1SubjectsSubjectKnowledgeChunksContextPost } from "../../api/generated/knowledge";
+import { chunkContextApiV1SubjectsSubjectIdKnowledgeChunksContextPost } from "../../api/generated/knowledge";
 import { unwrapOrvalResponse } from "../../lib/unwrapOrvalResponse";
 import { Modal } from "../ui/Modal";
 import { MarkdownViewer } from "../ui/MarkdownViewer";
@@ -23,7 +23,7 @@ export function ChatCitationModal({
     queryKey: ["chat-chunk-context", subject, chunkId],
     queryFn: async () =>
       unwrapOrvalResponse(
-        await chunkContextApiV1SubjectsSubjectKnowledgeChunksContextPost(subject, {
+        await chunkContextApiV1SubjectsSubjectIdKnowledgeChunksContextPost(subject, {
           chunk_id: chunkId!,
         }),
       ),

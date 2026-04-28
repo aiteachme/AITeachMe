@@ -13,7 +13,7 @@ from fastapi import APIRouter
 from app.api.knowledge_docs import router as knowledge_docs_router
 from app.api.knowledge_graph import router as knowledge_graph_router
 
-router = APIRouter(prefix="/api/v1/subjects/{subject}/knowledge", tags=["knowledge"])
+router = APIRouter(prefix="/api/v1/subjects/{subject_id}/knowledge", tags=["knowledge"])
 router.include_router(knowledge_docs_router)
 router.include_router(knowledge_graph_router)
 

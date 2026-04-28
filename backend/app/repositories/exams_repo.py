@@ -189,12 +189,12 @@ def find_templates_by_node(
 
 def find_template_by_stem_hash(
     session: Session,
-    subject: str,
+    subject_id: str,
     unit_id: int,
     stem_hash: str,
 ) -> QuestionTemplate | None:
     stmt = select(QuestionTemplate).where(
-        QuestionTemplate.subject == subject,
+        QuestionTemplate.subject_id == subject_id,
         QuestionTemplate.stem_hash == stem_hash,
     )
     rows = list(session.exec(stmt).all())
@@ -267,7 +267,7 @@ def list_items_by_paper(session: Session, paper_id: int) -> list[ExamPaperItem]:
 def list_exam_papers(
     session: Session,
     *,
-    subject: str,
+    subject_id: str,
     user_id: str,
     limit: int,
     offset: int,
@@ -276,7 +276,7 @@ def list_exam_papers(
         select(func.count())
         .select_from(ExamPaper)
         .where(
-            ExamPaper.subject == subject,
+            ExamPaper.subject_id == subject_id,
             ExamPaper.user_id == user_id,
             ExamPaper.visibility != "hidden",
         )
@@ -285,7 +285,7 @@ def list_exam_papers(
         session.exec(
             select(ExamPaper)
             .where(
-                ExamPaper.subject == subject,
+                ExamPaper.subject_id == subject_id,
                 ExamPaper.user_id == user_id,
                 ExamPaper.visibility != "hidden",
             )
@@ -300,7 +300,7 @@ def list_exam_papers(
 def claim_prepared_exam_paper(
     session: Session,
     *,
-    subject: str,
+    subject_id: str,
     user_id: str,
     config_hash: str,
 ) -> ExamPaper | None:
@@ -310,7 +310,7 @@ def claim_prepared_exam_paper(
     stmt = (
         select(ExamPaper)
         .where(
-            ExamPaper.subject == subject,
+            ExamPaper.subject_id == subject_id,
             ExamPaper.user_id == user_id,
             ExamPaper.visibility == "hidden",
             ExamPaper.status.in_(("ready", "generating")),
@@ -337,7 +337,7 @@ def claim_prepared_exam_paper(
 def has_active_prepared_exam(
     session: Session,
     *,
-    subject: str,
+    subject_id: str,
     user_id: str,
     config_hash: str,
 ) -> bool:
@@ -346,7 +346,7 @@ def has_active_prepared_exam(
     existing = session.exec(
         select(ExamPaper.id)
         .where(
-            ExamPaper.subject == subject,
+            ExamPaper.subject_id == subject_id,
             ExamPaper.user_id == user_id,
             ExamPaper.visibility == "hidden",
             ExamPaper.config_hash == config_hash,
@@ -361,7 +361,7 @@ def has_active_prepared_exam(
 def get_prepared_exam_candidate(
     session: Session,
     *,
-    subject: str,
+    subject_id: str,
     user_id: str,
     config_hash: str,
 ) -> ExamPaper | None:
@@ -370,7 +370,7 @@ def get_prepared_exam_candidate(
         session.exec(
             select(ExamPaper)
             .where(
-                ExamPaper.subject == subject,
+                ExamPaper.subject_id == subject_id,
                 ExamPaper.user_id == user_id,
                 ExamPaper.visibility == "hidden",
                 ExamPaper.config_hash == config_hash,
@@ -402,7 +402,7 @@ def get_prepared_exam_candidate(
 def list_stale_hidden_exam_paper_ids(
     session: Session,
     *,
-    subject: str,
+    subject_id: str,
     user_id: str,
     limit: int = 20,
 ) -> list[int]:
@@ -410,7 +410,7 @@ def list_stale_hidden_exam_paper_ids(
     rows = session.exec(
         select(ExamPaper.id)
         .where(
-            ExamPaper.subject == subject,
+            ExamPaper.subject_id == subject_id,
             ExamPaper.user_id == user_id,
             ExamPaper.visibility == "hidden",
             sa.or_(
@@ -427,7 +427,7 @@ def list_stale_hidden_exam_paper_ids(
 def count_active_question_templates(
     session: Session,
     *,
-    subject: str,
+    subject_id: str,
     question_types: set[str] | None = None,
     difficulty: str | None = None,
 ) -> int:
@@ -435,7 +435,7 @@ def count_active_question_templates(
         select(func.count())
         .select_from(QuestionTemplate)
         .where(
-            QuestionTemplate.subject == subject,
+            QuestionTemplate.subject_id == subject_id,
             QuestionTemplate.status == "active",
         )
     )
@@ -449,13 +449,13 @@ def count_active_question_templates(
 def list_active_question_templates(
     session: Session,
     *,
-    subject: str,
+    subject_id: str,
     unit_ids: set[int] | None = None,
     question_types: set[str] | None = None,
     difficulty: str | None = None,
 ) -> list[QuestionTemplate]:
     stmt = select(QuestionTemplate).where(
-        QuestionTemplate.subject == subject,
+        QuestionTemplate.subject_id == subject_id,
         QuestionTemplate.status == "active",
     )
     if unit_ids:
@@ -473,7 +473,7 @@ def list_active_question_templates(
 def list_exam_item_snapshots_by_user(
     session: Session,
     *,
-    subject: str,
+    subject_id: str,
     user_id: str,
     limit: int | None = None,
 ) -> list[tuple[ExamPaperItem, datetime, int]]:
@@ -481,7 +481,7 @@ def list_exam_item_snapshots_by_user(
         select(ExamPaperItem, ExamPaper.created_at, ExamPaper.id)
         .join(ExamPaper, ExamPaperItem.exam_paper_id == ExamPaper.id)
         .where(
-            ExamPaper.subject == subject,
+            ExamPaper.subject_id == subject_id,
             ExamPaper.user_id == user_id,
         )
         .order_by(ExamPaper.created_at.desc(), ExamPaper.id.desc(), ExamPaperItem.item_order.asc())
@@ -537,7 +537,7 @@ def upsert_study_guide_cache(
     session: Session,
     *,
     exam_paper_id: int,
-    subject: str,
+    subject_id: str,
     user_id: str,
     status: str,
     guide_json: str,
@@ -549,7 +549,7 @@ def upsert_study_guide_cache(
     if cache is None:
         cache = ExamStudyGuideCache(
             exam_paper_id=exam_paper_id,
-            subject=subject,
+            subject_id=subject_id,
             user_id=user_id,
             created_at=now,
         )
@@ -567,7 +567,7 @@ def upsert_study_guide_cache(
 def list_recent_exam_template_ids_for_user(
     session: Session,
     user_id: str,
-    subject: str,
+    subject_id: str,
     *,
     limit: int = 3,
 ) -> list[int]:
@@ -576,7 +576,7 @@ def list_recent_exam_template_ids_for_user(
 
     recent_exam_ids_subquery = (
         select(ExamPaper.id)
-        .where(ExamPaper.user_id == user_id, ExamPaper.subject == subject)
+        .where(ExamPaper.user_id == user_id, ExamPaper.subject_id == subject_id)
         .order_by(ExamPaper.created_at.desc())
         .limit(limit)
         .subquery()

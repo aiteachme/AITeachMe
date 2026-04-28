@@ -35,7 +35,7 @@ class ExamStudyGuidePayload(BaseModel):
 def _fallback_study_guide(
     *,
     exam_paper_id: int,
-    subject: str,
+    subject_name: str,
     generated_at: datetime,
     weak_points: list[dict[str, str]],
     pending_reviews: list[dict[str, str]],
@@ -51,7 +51,7 @@ def _fallback_study_guide(
     ]
     return ExamStudyGuideResponse(
         exam_paper_id=exam_paper_id,
-        subject=subject,
+        subject_name=subject_name,
         generated_at=generated_at,
         overall_summary="本次考卷已经暴露出当前知识掌握中的薄弱环节，建议先从错题相关知识点切入，再配合待复习任务完成查漏补缺。",
         strengths=["已经完成整份考卷并形成了可用于复盘的作答记录。"] if not weak_points else ["已经明确暴露出本轮最需要优先处理的薄弱区。"],
@@ -78,7 +78,7 @@ def _fallback_study_guide(
     metadata_factory=lambda **kwargs: {
         "substep": "exam.study_guide.generate",
         "exam_paper_id": kwargs.get("exam_paper_id"),
-        "subject": kwargs.get("subject"),
+        "subject_name": kwargs.get("subject_name"),
         "wrong_question_count": len(kwargs.get("wrong_question_summaries") or []),
         "weak_point_count": len(kwargs.get("weak_points") or []),
         "pending_review_count": len(kwargs.get("pending_reviews") or []),
@@ -91,7 +91,7 @@ def _fallback_study_guide(
 async def generate_exam_study_guide(
     *,
     exam_paper_id: int,
-    subject: str,
+    subject_name: str,
     exam_title: str,
     score_summary: str,
     wrong_question_summaries: list[dict[str, str]],
@@ -102,7 +102,7 @@ async def generate_exam_study_guide(
     try:
         result = await acompletion_with_fallback(
             build_study_guide_messages(
-                subject=subject,
+                subject_name=subject_name,
                 exam_title=exam_title,
                 score_summary=score_summary,
                 wrong_question_summaries=wrong_question_summaries,
@@ -116,14 +116,14 @@ async def generate_exam_study_guide(
             max_tokens=1400,
             extra_metadata={
                 "substep": "exam.study_guide",
-                "subject": subject,
+                "subject_name": subject_name,
                 "exam_paper_id": exam_paper_id,
             },
         )
         assert isinstance(result, ExamStudyGuidePayload)
         return ExamStudyGuideResponse(
             exam_paper_id=exam_paper_id,
-            subject=subject,
+            subject_name=subject_name,
             generated_at=generated_at,
             overall_summary=result.overall_summary,
             strengths=result.strengths,
@@ -135,7 +135,7 @@ async def generate_exam_study_guide(
     except Exception:
         return _fallback_study_guide(
             exam_paper_id=exam_paper_id,
-            subject=subject,
+            subject_name=subject_name,
             generated_at=generated_at,
             weak_points=weak_points,
             pending_reviews=pending_reviews,

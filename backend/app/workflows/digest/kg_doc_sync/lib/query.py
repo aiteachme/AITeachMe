@@ -38,7 +38,7 @@ from app.schemas.knowledge import (
 def _to_unit_response(knowledge_unit: KnowledgeUnit) -> KnowledgeUnitResponse:
     return KnowledgeUnitResponse(
         id=knowledge_unit.id,  # type: ignore[arg-type]
-        subject=knowledge_unit.subject,
+        subject_id=knowledge_unit.subject_id,
         knowledge_unit_type=knowledge_unit.knowledge_unit_type,
         canonical_name=knowledge_unit.canonical_name,
         status=knowledge_unit.status,
@@ -50,9 +50,9 @@ def _to_unit_response(knowledge_unit: KnowledgeUnit) -> KnowledgeUnitResponse:
     )
 
 
-def _require_unit(session: Session, subject: str, knowledge_unit_id: int) -> KnowledgeUnit:
+def _require_unit(session: Session, subject_id: str, knowledge_unit_id: int) -> KnowledgeUnit:
     unit = session.get(KnowledgeUnit, knowledge_unit_id)
-    if unit is None or unit.subject != subject:
+    if unit is None or unit.subject_id != subject_id:
         raise KnowledgeUnitNotFoundError(knowledge_unit_id)
     return unit
 
@@ -62,7 +62,7 @@ def _to_relation_response(session: Session, edge) -> KnowledgeRelationResponse:
     target = session.get(KnowledgeUnit, edge.target_node_id)
     return KnowledgeRelationResponse(
         id=edge.id,  # type: ignore[arg-type]
-        subject=edge.subject,
+        subject_id=edge.subject_id,
         source_node_id=edge.source_node_id,
         source_node_name=source.canonical_name if source else f"node#{edge.source_node_id}",
         source_node_type=source.knowledge_unit_type if source else "unknown",
@@ -97,7 +97,7 @@ def _json_string_list(raw: str | None) -> list[str]:
 def _list_source_refs_by_entity(
     session: Session,
     *,
-    subject: str,
+    subject_id: str,
     entity_type: str,
     entity_id: int,
     limit: int = 12,
@@ -106,7 +106,7 @@ def _list_source_refs_by_entity(
         session.exec(
             select(KnowledgeGraphSourceRef)
             .where(
-                KnowledgeGraphSourceRef.subject == subject,
+                KnowledgeGraphSourceRef.subject_id == subject_id,
                 KnowledgeGraphSourceRef.entity_type == entity_type,
                 KnowledgeGraphSourceRef.entity_id == entity_id,
             )
@@ -147,7 +147,7 @@ def _list_source_refs_by_entity(
 def get_knowledge_units(
     session: Session,
     *,
-    subject: str,
+    subject_id: str,
     knowledge_unit_type: str | None = None,
     page: int = 1,
     size: int = 20,
@@ -155,7 +155,7 @@ def get_knowledge_units(
     offset = (page - 1) * size
     knowledge_units, total = knowledge_unit_repo.list_knowledge_units_by_subject(
         session,
-        subject,
+        subject_id,
         knowledge_unit_type=knowledge_unit_type,
         limit=size,
         offset=offset,
@@ -167,7 +167,7 @@ def get_knowledge_units(
 def get_knowledge_unit_detail(
     session: Session,
     *,
-    subject: str,
+    subject_id: str,
     knowledge_unit_id: int,
 ) -> KnowledgeUnitDetailResponse:
     result = knowledge_unit_repo.get_knowledge_unit_with_current_revision(session, knowledge_unit_id)
@@ -175,7 +175,7 @@ def get_knowledge_unit_detail(
         raise KnowledgeUnitNotFoundError(knowledge_unit_id)
 
     node, revision = result
-    if node.subject != subject:
+    if node.subject_id != subject_id:
         raise KnowledgeUnitNotFoundError(knowledge_unit_id)
 
     current_rev = NodeRevisionItem(
@@ -238,7 +238,7 @@ def get_knowledge_unit_detail(
 
     return KnowledgeUnitDetailResponse(
         id=node.id,  # type: ignore[arg-type]
-        subject=node.subject,
+        subject_id=node.subject_id,
         knowledge_unit_type=node.knowledge_unit_type,
         canonical_name=node.canonical_name,
         normalized_name=node.normalized_name,
@@ -251,7 +251,7 @@ def get_knowledge_unit_detail(
         evidence=evidence,
         source_refs=_list_source_refs_by_entity(
             session,
-            subject=subject,
+            subject_id=subject_id,
             entity_type="unit",
             entity_id=knowledge_unit_id,
         ),
@@ -264,15 +264,15 @@ def get_knowledge_unit_detail(
 def get_full_graph(
     session: Session,
     *,
-    subject: str,
+    subject_id: str,
 ) -> FullGraphResponse:
     nodes_raw, _ = knowledge_unit_repo.list_knowledge_units_by_subject(
         session,
-        subject,
+        subject_id,
         limit=5000,
         offset=0,
     )
-    edges_raw = knowledge_relation_repo.list_all_edges_by_subject(session, subject)
+    edges_raw = knowledge_relation_repo.list_all_edges_by_subject(session, subject_id)
 
     nodes = [_to_unit_response(node) for node in nodes_raw]
     edges = [
@@ -292,16 +292,16 @@ def get_full_graph(
 def get_knowledge_unit_relations(
     session: Session,
     *,
-    subject: str,
+    subject_id: str,
     knowledge_unit_id: int,
     direction: str = "both",
     edge_type: str | None = None,
 ) -> list[KnowledgeRelationResponse]:
-    _require_unit(session, subject, knowledge_unit_id)
+    _require_unit(session, subject_id, knowledge_unit_id)
     edges = knowledge_relation_repo.list_edges_by_knowledge_unit(session, knowledge_unit_id)
     filtered = []
     for edge in edges:
-        if edge.subject != subject:
+        if edge.subject_id != subject_id:
             continue
         if edge_type and edge.edge_type != edge_type:
             continue
@@ -316,21 +316,21 @@ def get_knowledge_unit_relations(
 def find_knowledge_path(
     session: Session,
     *,
-    subject: str,
+    subject_id: str,
     source_knowledge_unit_id: int,
     target_knowledge_unit_id: int,
     edge_type: str | None = None,
     max_depth: int = 4,
 ) -> KnowledgePathResponse:
-    _require_unit(session, subject, source_knowledge_unit_id)
-    _require_unit(session, subject, target_knowledge_unit_id)
+    _require_unit(session, subject_id, source_knowledge_unit_id)
+    _require_unit(session, subject_id, target_knowledge_unit_id)
     if source_knowledge_unit_id == target_knowledge_unit_id:
-        unit = _require_unit(session, subject, source_knowledge_unit_id)
+        unit = _require_unit(session, subject_id, source_knowledge_unit_id)
         return KnowledgePathResponse(found=True, nodes=[_to_unit_response(unit)], edges=[])
 
     edges = [
         edge
-        for edge in knowledge_relation_repo.list_all_edges_by_subject(session, subject)
+        for edge in knowledge_relation_repo.list_all_edges_by_subject(session, subject_id)
         if edge_type is None or edge.edge_type == edge_type
     ]
     adjacency: dict[int, list[object]] = {}
@@ -374,26 +374,26 @@ def find_knowledge_path(
 def get_focus_subgraph(
     session: Session,
     *,
-    subject: str,
+    subject_id: str,
     center_knowledge_unit_id: int | None = None,
     topic: str | None = None,
     edge_type: str | None = None,
     hops: int = 1,
     limit: int = 80,
 ) -> KnowledgeSubgraphResponse:
-    all_edges = knowledge_relation_repo.list_all_edges_by_subject(session, subject)
+    all_edges = knowledge_relation_repo.list_all_edges_by_subject(session, subject_id)
     if edge_type:
         all_edges = [edge for edge in all_edges if edge.edge_type == edge_type]
 
     center_ids: set[int] = set()
     if center_knowledge_unit_id is not None:
-        _require_unit(session, subject, center_knowledge_unit_id)
+        _require_unit(session, subject_id, center_knowledge_unit_id)
         center_ids.add(center_knowledge_unit_id)
     if topic:
         topic_text = topic.casefold()
         units, _ = knowledge_unit_repo.list_knowledge_units_by_subject(
             session,
-            subject,
+            subject_id,
             status="active",
             limit=limit,
             offset=0,
@@ -411,7 +411,7 @@ def get_focus_subgraph(
     if not center_ids:
         units, _ = knowledge_unit_repo.list_knowledge_units_by_subject(
             session,
-            subject,
+            subject_id,
             status="active",
             limit=limit,
             offset=0,
@@ -464,7 +464,7 @@ def get_focus_subgraph(
 def explain_relation_path(
     session: Session,
     *,
-    subject: str,
+    subject_id: str,
     source_knowledge_unit_id: int,
     target_knowledge_unit_id: int,
     edge_type: str | None = None,
@@ -472,7 +472,7 @@ def explain_relation_path(
 ) -> KnowledgeRelationExplanationResponse:
     path = find_knowledge_path(
         session,
-        subject=subject,
+        subject_id=subject_id,
         source_knowledge_unit_id=source_knowledge_unit_id,
         target_knowledge_unit_id=target_knowledge_unit_id,
         edge_type=edge_type,
@@ -509,7 +509,7 @@ def explain_relation_path(
 def get_chunk_context(
     session: Session,
     *,
-    subject: str,
+    subject_id: str,
     chunk_id: int,
 ) -> ChunkContextResponse:
     chunk = knowledge_repo.get_chunk_by_id(session, chunk_id)
@@ -517,7 +517,7 @@ def get_chunk_context(
         raise KnowledgeChunkNotFoundError(chunk_id)
 
     document = knowledge_repo.get_document_by_id(session, chunk.file_id)
-    if document is None or document.subject != subject:
+    if document is None or chunk.subject_id != subject_id:
         raise KnowledgeChunkNotFoundError(chunk_id)
 
     return ChunkContextResponse(

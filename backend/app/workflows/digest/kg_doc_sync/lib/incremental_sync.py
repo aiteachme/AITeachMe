@@ -323,7 +323,7 @@ def _document_backbone_payload(structured_context: dict[str, object]) -> dict[st
 def sync_markdown_knowledge_graph(
     session: Session,
     *,
-    subject: str,
+    subject_id: str,
     markdown: str,
     build_revision_no: int | None = None,
     enable_rag_dedup: bool = False,
@@ -336,7 +336,7 @@ def sync_markdown_knowledge_graph(
     started_at = perf_counter()
     run_context = initialize_knowledge_graph_sync_run(
         session,
-        subject=subject,
+        subject_id=subject_id,
         markdown=markdown,
         build_revision_no=build_revision_no,
         structured_context=structured_context,
@@ -368,7 +368,7 @@ def sync_markdown_knowledge_graph(
 def initialize_knowledge_graph_sync_run(
     session: Session,
     *,
-    subject: str,
+    subject_id: str,
     markdown: str,
     build_revision_no: int | None = None,
     structured_context: dict[str, object] | None = None,
@@ -385,11 +385,11 @@ def initialize_knowledge_graph_sync_run(
         )
 
     normalized_context = _structured_context_payload(structured_context)
-    revision_no = build_revision_no or _next_revision_no(session, subject)
+    revision_no = build_revision_no or _next_revision_no(session, subject_id)
     doc_version_no = _safe_int(normalized_context.get("doc_version_no"))
     sync_run = create_sync_run(
         session,
-        subject=subject,
+        subject_id=subject_id,
         build_session_id=build_session_id,
         doc_version_no=doc_version_no,
         graph_revision_no=revision_no,
@@ -397,7 +397,7 @@ def initialize_knowledge_graph_sync_run(
     if sync_run.id is None:
         raise RuntimeError("knowledge_graph_sync_run_id_missing")
     return KnowledgeSyncRunContext(
-        subject=subject,
+        subject_id=subject_id,
         build_revision_no=revision_no,
         sync_run_id=sync_run.id,
         doc_version_no=doc_version_no,
@@ -467,7 +467,7 @@ def persist_knowledge_graph_items(
     diagnostics_totals = payload.diagnostics_totals
     sync_run = get_sync_run_or_raise(session, run_context.sync_run_id)
     report = KnowledgeSyncReport(
-        subject=run_context.subject,
+        subject_id=run_context.subject_id,
         build_revision_no=run_context.build_revision_no,
         sync_run_id=sync_run.id,
         doc_version_no=run_context.doc_version_no,
@@ -501,7 +501,7 @@ def persist_knowledge_graph_items(
     try:
         _apply_extracted_graph_items(
             session,
-            subject=run_context.subject,
+            subject_id=run_context.subject_id,
             units=units,
             extracted_edges=extracted_edges,
             sync_run=sync_run,
@@ -524,7 +524,7 @@ def persist_knowledge_graph_items(
     session.commit()
     logger.info(
         "knowledge_docs_sync_complete",
-        subject=run_context.subject,
+        subject_id=run_context.subject_id,
         build_revision_no=run_context.build_revision_no,
         sync_run_id=sync_run.id,
         doc_version_no=report.doc_version_no,
@@ -544,7 +544,7 @@ def persist_knowledge_graph_items(
 def _apply_extracted_graph_items(
     session: Session,
     *,
-    subject: str,
+    subject_id: str,
     units: list[MarkdownKnowledgeUnit],
     extracted_edges: list[MarkdownExtractedEdge],
     sync_run: KnowledgeGraphSyncRun,
@@ -556,7 +556,7 @@ def _apply_extracted_graph_items(
     for item in units:
         unit, created = _upsert_unit(
             session,
-            subject=subject,
+            subject_id=subject_id,
             item=item,
             build_revision_no=build_revision_no,
             enable_rag_dedup=enable_rag_dedup,
@@ -568,7 +568,7 @@ def _apply_extracted_graph_items(
             report.created_unit_ids.append(unit.id)
         else:
             report.updated_unit_ids.append(unit.id)
-        if _create_source_ref_for_unit(session, sync_run=sync_run, subject=subject, unit=unit, item=item):
+        if _create_source_ref_for_unit(session, sync_run=sync_run, subject_id=subject_id, unit=unit, item=item):
             report.source_ref_count += 1
 
     seen_edge_keys: set[tuple[int, int, str]] = set()
@@ -593,7 +593,7 @@ def _apply_extracted_graph_items(
             continue
         edge, created = _upsert_edge(
             session,
-            subject=subject,
+            subject_id=subject_id,
             source_node_id=source.id,
             target_node_id=target.id,
             edge_type=extracted_edge.edge_type,
@@ -606,7 +606,7 @@ def _apply_extracted_graph_items(
             if _create_source_ref_for_edge(
                 session,
                 sync_run=sync_run,
-                subject=subject,
+                subject_id=subject_id,
                 edge=edge,
                 extracted_edge=extracted_edge,
             ):
@@ -615,7 +615,7 @@ def _apply_extracted_graph_items(
     if report.failed_section_count > 0:
         logger.warning(
             "knowledge_docs_sync_deprecation_skipped_after_partial_extraction",
-            subject=subject,
+            subject_id=subject_id,
             sync_run_id=sync_run.id,
             failed_section_count=report.failed_section_count,
             synced_unit_count=len(report.synced_unit_keys),
@@ -626,7 +626,7 @@ def _apply_extracted_graph_items(
     report.deprecated_unit_ids.extend(
         _deprecate_removed_anchor_units(
             session,
-            subject=subject,
+            subject_id=subject_id,
             active_anchors=set(report.synced_unit_keys),
             build_revision_no=build_revision_no,
         )
@@ -634,16 +634,16 @@ def _apply_extracted_graph_items(
     report.deprecated_edge_ids.extend(
         _deprecate_removed_sync_edges(
             session,
-            subject=subject,
+            subject_id=subject_id,
             seen_edge_keys=seen_edge_keys,
             build_revision_no=build_revision_no,
         )
     )
 
 
-def _next_revision_no(session: Session, subject: str) -> int:
-    units = session.exec(select(KnowledgeUnit).where(KnowledgeUnit.subject == subject)).all()
-    edges = session.exec(select(KnowledgeEdge).where(KnowledgeEdge.subject == subject)).all()
+def _next_revision_no(session: Session, subject_id: str) -> int:
+    units = session.exec(select(KnowledgeUnit).where(KnowledgeUnit.subject_id == subject_id)).all()
+    edges = session.exec(select(KnowledgeEdge).where(KnowledgeEdge.subject_id == subject_id)).all()
     current = max(
         [0]
         + [int(item.build_revision_no or 0) for item in units]
@@ -656,14 +656,14 @@ def _create_source_ref_for_unit(
     session: Session,
     *,
     sync_run: KnowledgeGraphSyncRun,
-    subject: str,
+    subject_id: str,
     unit: KnowledgeUnit,
     item: MarkdownKnowledgeUnit,
 ) -> bool:
     if unit.id is None:
         return False
     source_ref = KnowledgeGraphSourceRef(
-        subject=subject,
+        subject_id=subject_id,
         entity_type="unit",
         entity_id=unit.id,
         sync_run_id=sync_run.id,
@@ -684,14 +684,14 @@ def _create_source_ref_for_edge(
     session: Session,
     *,
     sync_run: KnowledgeGraphSyncRun,
-    subject: str,
+    subject_id: str,
     edge: KnowledgeEdge,
     extracted_edge: MarkdownExtractedEdge,
 ) -> bool:
     if edge.id is None:
         return False
     source_ref = KnowledgeGraphSourceRef(
-        subject=subject,
+        subject_id=subject_id,
         entity_type="edge",
         entity_id=edge.id,
         sync_run_id=sync_run.id,
@@ -2025,31 +2025,31 @@ def _resolve_edge_anchor(
 def _upsert_unit(
     session: Session,
     *,
-    subject: str,
+    subject_id: str,
     item: MarkdownKnowledgeUnit,
     build_revision_no: int,
     enable_rag_dedup: bool = False,
 ) -> tuple[KnowledgeUnit, bool]:
     knowledge_unit_type = normalize_knowledge_unit_type(item.knowledge_unit_type)
     normalized_name = normalize_name(item.name)
-    unit = _find_unit_by_anchor(session, subject=subject, anchor=item.anchor)
+    unit = _find_unit_by_anchor(session, subject_id=subject_id, anchor=item.anchor)
     if unit is None:
         unit = _find_unit_by_exact_name(
             session,
-            subject=subject,
+            subject_id=subject_id,
             item=item,
             knowledge_unit_type=knowledge_unit_type,
         )
     if unit is None and enable_rag_dedup:
         unit = _find_unit_with_rag(
             session,
-            subject=subject,
+            subject_id=subject_id,
             item=item,
             knowledge_unit_type=knowledge_unit_type,
         )
     name_conflict_unit = knowledge_unit_repo.find_knowledge_unit_by_normalized_name(
         session,
-        subject,
+        subject_id,
         normalized_name,
         knowledge_unit_type,
     )
@@ -2058,14 +2058,14 @@ def _upsert_unit(
     if unit is None:
         unit = knowledge_unit_repo.find_knowledge_unit_by_normalized_name(
             session,
-            subject,
+            subject_id,
             normalized_name,
             knowledge_unit_type,
         )
     created = unit is None
     if unit is None:
         unit = KnowledgeUnit(
-            subject=subject,
+            subject_id=subject_id,
             knowledge_unit_type=knowledge_unit_type,
             canonical_name=item.name,
             normalized_name=normalized_name,
@@ -2093,7 +2093,7 @@ def _upsert_unit(
 def _upsert_edge(
     session: Session,
     *,
-    subject: str,
+    subject_id: str,
     source_node_id: int,
     target_node_id: int,
     edge_type: str,
@@ -2109,7 +2109,7 @@ def _upsert_edge(
     )
     created = existing is None
     edge = existing or KnowledgeEdge(
-        subject=subject,
+        subject_id=subject_id,
         source_node_id=source_node_id,
         target_node_id=target_node_id,
         edge_type=normalized_type,
@@ -2128,10 +2128,10 @@ def _upsert_edge(
     return edge, created
 
 
-def _find_unit_by_anchor(session: Session, *, subject: str, anchor: str) -> KnowledgeUnit | None:
+def _find_unit_by_anchor(session: Session, *, subject_id: str, anchor: str) -> KnowledgeUnit | None:
     candidates = session.exec(
         select(KnowledgeUnit).where(
-            KnowledgeUnit.subject == subject,
+            KnowledgeUnit.subject_id == subject_id,
             KnowledgeUnit.status.in_(["active", "pending", "deprecated"]),
         )
     ).all()
@@ -2145,7 +2145,7 @@ def _find_unit_by_anchor(session: Session, *, subject: str, anchor: str) -> Know
 def _find_unit_by_exact_name(
     session: Session,
     *,
-    subject: str,
+    subject_id: str,
     item: MarkdownKnowledgeUnit,
     knowledge_unit_type: str,
 ) -> KnowledgeUnit | None:
@@ -2154,7 +2154,7 @@ def _find_unit_by_exact_name(
         return None
     return knowledge_unit_repo.find_knowledge_unit_by_normalized_name(
         session,
-        subject,
+        subject_id,
         normalized_name,
         knowledge_unit_type,
     )
@@ -2163,7 +2163,7 @@ def _find_unit_by_exact_name(
 def _find_unit_with_rag(
     session: Session,
     *,
-    subject: str,
+    subject_id: str,
     item: MarkdownKnowledgeUnit,
     knowledge_unit_type: str,
 ) -> KnowledgeUnit | None:
@@ -2174,7 +2174,7 @@ def _find_unit_with_rag(
     rag_hits = _run_async(
         search_knowledge(
             query,
-            subject,
+            subject_id,
             top_k=_RAG_DEDUP_TOP_K,
             enable_rerank=False,
         )
@@ -2184,7 +2184,7 @@ def _find_unit_with_rag(
 
     candidates = session.exec(
         select(KnowledgeUnit).where(
-            KnowledgeUnit.subject == subject,
+            KnowledgeUnit.subject_id == subject_id,
             KnowledgeUnit.knowledge_unit_type == knowledge_unit_type,
             KnowledgeUnit.status.in_(["active", "pending"]),
         )
@@ -2309,14 +2309,14 @@ def _load_aliases(raw_aliases: str) -> list[dict[str, object]]:
 def _deprecate_removed_anchor_units(
     session: Session,
     *,
-    subject: str,
+    subject_id: str,
     active_anchors: set[str],
     build_revision_no: int,
 ) -> list[int]:
     deprecated: list[int] = []
     units = session.exec(
         select(KnowledgeUnit).where(
-            KnowledgeUnit.subject == subject,
+            KnowledgeUnit.subject_id == subject_id,
             KnowledgeUnit.status == "active",
         )
     ).all()
@@ -2342,14 +2342,14 @@ def _deprecate_removed_anchor_units(
 def _deprecate_removed_sync_edges(
     session: Session,
     *,
-    subject: str,
+    subject_id: str,
     seen_edge_keys: set[tuple[int, int, str]],
     build_revision_no: int,
 ) -> list[int]:
     deprecated: list[int] = []
     edges = session.exec(
         select(KnowledgeEdge).where(
-            KnowledgeEdge.subject == subject,
+            KnowledgeEdge.subject_id == subject_id,
             KnowledgeEdge.status == "active",
             KnowledgeEdge.description.startswith(f"{_SYNC_EDGE_MARKER}:"),
         )

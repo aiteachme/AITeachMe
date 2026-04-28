@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 
 from app.workflows.digest.common.runtime_config import get_planner_mode_runtime_config, get_teaching_runtime_config
 from app.workflows.digest.common.models import FastTopicHints, SharedInputs, SubjectProfile
@@ -22,7 +22,9 @@ class PlannerChapterPlan(BaseModel):
 class BuildPlannerDraft(BaseModel):
     """Stable planner payload consumed by API and DocGen."""
 
-    subject: str
+    model_config = ConfigDict(populate_by_name=True)
+
+    subject_name: str = Field(default="", validation_alias=AliasChoices("subject_name", "subject"))
     user_prompt: str
     digest_mode: str = "systematic"
     chapter_plan: list[PlannerChapterPlan] = Field(default_factory=list)
@@ -50,8 +52,8 @@ def _strings(value: Any) -> list[str]:
     return cleaned
 
 
-def _topic_strings(shared_inputs: SharedInputs, *, user_prompt: str, subject: str) -> list[str]:
-    subject_hint = "" if _text(subject).lower().startswith("subj_") else subject
+def _topic_strings(shared_inputs: SharedInputs, *, user_prompt: str, subject_name: str) -> list[str]:
+    subject_hint = _text(subject_name)
     values: list[Any] = [
         *shared_inputs.fast_hints.chapter_candidates,
         *[name for name, _count in shared_inputs.fast_hints.high_freq_terms],
@@ -91,27 +93,27 @@ def _normalize_digest_mode(value: Any) -> str:
     return "sprint" if mode == "sprint" else "systematic"
 
 
-def _minimal_shared_inputs(subject: str) -> SharedInputs:
+def _minimal_shared_inputs(subject_id: str) -> SharedInputs:
     return SharedInputs(
         fast_hints=FastTopicHints(),
-        subject_profile=SubjectProfile(subject_slug=subject, subject_name=""),
+        subject_profile=SubjectProfile(subject_id=subject_id, subject_name=""),
     )
 
 
-def _resolve_subject_display_name(
-    subject: str,
+def _resolve_subject_name(
+    subject_id: str,
     *,
     shared_inputs: SharedInputs | None,
     user_prompt: str = "",
 ) -> str:
-    shared = shared_inputs or _minimal_shared_inputs(subject)
+    shared = shared_inputs or _minimal_shared_inputs(subject_id)
     for candidate in [
         shared.subject_profile.sub_discipline,
         shared.subject_profile.discipline,
         *shared.fast_hints.chapter_candidates[:3],
         *shared.subject_profile.key_topics[:3],
         user_prompt,
-        subject if not _text(subject).lower().startswith("subj_") else "",
+        subject_id if not _text(subject_id).lower().startswith("subj_") else "",
     ]:
         text = _text(candidate)
         if text:
@@ -169,7 +171,7 @@ def _pad_chapters_to_minimum(
     digest_mode: str,
     shared_inputs: SharedInputs,
     user_prompt: str,
-    subject: str,
+    subject_name: str,
 ) -> list[PlannerChapterPlan]:
     config = get_planner_mode_runtime_config(digest_mode)
     if len(chapters) >= config.min_chapters:
@@ -178,7 +180,7 @@ def _pad_chapters_to_minimum(
     existing_titles = {_text(chapter.title).casefold() for chapter in chapters}
     topics = [
         topic
-        for topic in _topic_strings(shared_inputs, user_prompt=user_prompt, subject=subject)
+        for topic in _topic_strings(shared_inputs, user_prompt=user_prompt, subject_name=subject_name)
         if topic.casefold() not in existing_titles
     ]
     if not topics:
@@ -228,7 +230,7 @@ def _build_constraints(*, digest_mode: str, chapter_count: int, shared_inputs: S
 def normalize_planner_draft(
     draft: BuildPlannerDraft | Mapping[str, Any] | None,
     *,
-    subject: str,
+    subject_id: str,
     user_prompt: str | None = None,
     requested_digest_mode: str,
     shared_inputs: SharedInputs | None = None,
@@ -240,12 +242,12 @@ def normalize_planner_draft(
     和 build constraints。输出会被保存为 latest_plan，并最终冻结给 DocGen。
     """
 
-    shared = shared_inputs or _minimal_shared_inputs(subject)
+    shared = shared_inputs or _minimal_shared_inputs(subject_id)
     resolved_user_prompt = _text(user_prompt)
     current = _mapping(draft)
     previous = _mapping(latest_plan)
     mode = _normalize_digest_mode(requested_digest_mode or current.get("digest_mode") or previous.get("digest_mode"))
-    display_subject = _resolve_subject_display_name(subject, shared_inputs=shared, user_prompt=resolved_user_prompt)
+    display_subject = _resolve_subject_name(subject_id, shared_inputs=shared, user_prompt=resolved_user_prompt)
 
     current_chapters = _chapter_items(current.get("chapter_plan"))
     previous_chapters = _chapter_items(previous.get("chapter_plan"))
@@ -259,7 +261,7 @@ def normalize_planner_draft(
         digest_mode=mode,
         shared_inputs=shared,
         user_prompt=resolved_user_prompt,
-        subject=display_subject,
+        subject_name=display_subject,
     )
     plan_summary = _text(current.get("plan_summary") or previous.get("plan_summary"))
     if not plan_summary:
@@ -267,7 +269,7 @@ def normalize_planner_draft(
     plan_steps = _strings(current.get("plan_steps") or previous.get("plan_steps"))
 
     return BuildPlannerDraft(
-        subject=display_subject,
+        subject_name=display_subject,
         user_prompt=resolved_user_prompt,
         digest_mode=mode,
         chapter_plan=chapters,
@@ -280,7 +282,7 @@ def normalize_planner_draft(
 def normalize_planner_payload(
     payload: BuildPlannerDraft | Mapping[str, Any] | None,
     *,
-    subject: str,
+    subject_id: str,
     user_prompt: str | None = None,
     requested_digest_mode: str,
     shared_inputs: SharedInputs | None = None,
@@ -288,7 +290,7 @@ def normalize_planner_payload(
 ) -> dict[str, Any]:
     return normalize_planner_draft(
         payload,
-        subject=subject,
+        subject_id=subject_id,
         user_prompt=user_prompt,
         requested_digest_mode=requested_digest_mode,
         shared_inputs=shared_inputs,
@@ -299,7 +301,7 @@ def normalize_planner_payload(
 __all__ = [
     "BuildPlannerDraft",
     "PlannerChapterPlan",
-    "_resolve_subject_display_name",
+    "_resolve_subject_name",
     "normalize_planner_draft",
     "normalize_planner_payload",
 ]

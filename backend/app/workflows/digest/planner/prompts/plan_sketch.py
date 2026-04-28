@@ -14,7 +14,7 @@ from app.workflows.digest.planner.prompts.context import (
 
 def build_plan_sketch_prompt(
     *,
-    subject: str,
+    subject_name: str,
     user_prompt: str,
     digest_mode: str,
     material_context: DigestMaterialContext,
@@ -26,7 +26,7 @@ def build_plan_sketch_prompt(
 你是 AITeachMe 的学习规划助手。请先输出一段自然的思考过程，让用户知道你正在如何理解资料。
 不要输出正式计划，不要输出初步大纲，也不要写知识文档正文。
 
-学科/主题：{subject}
+学科/主题：{subject_name}
 用户提示：{user_prompt}
 模式：{digest_mode}
 
@@ -60,7 +60,7 @@ def build_plan_sketch_prompt(
     return trace_prompt_build(
         "planner_plan_sketch",
         inputs={
-            "subject": subject,
+            "subject_name": subject_name,
             "user_prompt_chars": len(user_prompt or ""),
             "digest_mode": digest_mode,
             "message_history_count": len(message_history),
