@@ -380,7 +380,7 @@ export function AiConversationSidebarSection({
           <span className="truncate">最近</span>
           <ChevronRight
             className={cn(
-              "h-3 w-3 shrink-0 transition-transform",
+              "h-3 w-3 shrink-0 opacity-0 transition-[opacity,transform] group-hover:opacity-100 group-focus-visible:opacity-100",
               isExpanded && "rotate-90",
             )}
           />
