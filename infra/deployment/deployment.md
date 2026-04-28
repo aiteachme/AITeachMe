@@ -230,6 +230,18 @@ python -m uvicorn app.main:app --host 0.0.0.0 --port $PORT
 - 推荐：继续使用 Cloudflare Pages，构建时设置 `VITE_API_URL=https://<sealos-backend-public-address>`。
 - 或者：使用 `infra/deployment/docker/frontend.Dockerfile` 构建前端 Nginx 镜像，并确保 `/api` 能反代到后端服务地址；如果后端服务名不是 `backend`，需要同步调整 `infra/deployment/nginx/default.conf`。
 
+## 云端上线核对清单
+
+正式切流前至少确认：
+
+- 后端健康检查返回正常：`GET /api/health`。
+- 容器内 LibreOffice 可用：`which soffice` 与 `soffice --headless --version`。
+- 对象存储配置完整：`STORAGE_BACKEND=s3`、`S3_BUCKET`、`S3_ENDPOINT`、`S3_ACCESS_KEY`、`S3_SECRET_KEY`。
+- 首次接入新 OSS 时临时打开 `S3_STARTUP_SMOKE_TEST=true`，确认启动日志里没有 bucket 读写/权限错误；稳定后可关闭。
+- PostgreSQL 已通过 `python scripts/bootstrap_cloud_db.py` 完成 Alembic migration、运行时对象准备和 schema 检查。
+- 多副本部署时只让独立 Job 执行 `bootstrap_cloud_db.py`；Web 容器启动命令保持为 `python -m uvicorn app.main:app --host 0.0.0.0 --port $PORT`。
+- 前端环境变量 `VITE_API_URL` 指向后端公网地址，且后端 `CORS_ALLOWED_ORIGINS` 包含前端域名。
+
 ## 参考文档
 
 - Render Docker: https://render.com/docs/docker
