@@ -22,30 +22,58 @@ def _backfill_duplicate_default_signatures() -> None:
             "WHERE parse_request_signature IS NULL OR parse_request_signature = ''"
         )
     )
-    rows = connection.execute(
-        sa.text(
-            "SELECT id, user_id, content_hash, file_size_bytes, filetype "
-            "FROM raw_file "
-            "WHERE status != 'failed' "
-            "AND content_hash IS NOT NULL "
-            "AND file_size_bytes IS NOT NULL "
-            "AND parse_request_signature = 'default' "
-            "ORDER BY created_at ASC, id ASC"
-        )
-    ).mappings()
-    seen: set[tuple[object, object, object, object]] = set()
-    duplicate_ids: list[int] = []
-    for row in rows:
-        key = (row["user_id"], row["content_hash"], row["file_size_bytes"], row["filetype"])
-        if key in seen:
-            duplicate_ids.append(int(row["id"]))
-        else:
-            seen.add(key)
-    for raw_file_id in duplicate_ids:
+
+    if op.get_context().dialect.name == "sqlite":
         connection.execute(
-            sa.text("UPDATE raw_file SET parse_request_signature = :signature WHERE id = :raw_file_id"),
-            {"signature": f"legacy:{raw_file_id}", "raw_file_id": raw_file_id},
+            sa.text(
+                """
+                WITH duplicate_defaults AS (
+                    SELECT id,
+                           row_number() OVER (
+                               PARTITION BY user_id, content_hash, file_size_bytes, filetype
+                               ORDER BY created_at ASC, id ASC
+                           ) AS row_rank
+                    FROM raw_file
+                    WHERE status != 'failed'
+                      AND content_hash IS NOT NULL
+                      AND file_size_bytes IS NOT NULL
+                      AND parse_request_signature = 'default'
+                )
+                UPDATE raw_file
+                SET parse_request_signature = 'legacy:' || id
+                WHERE id IN (
+                    SELECT id
+                    FROM duplicate_defaults
+                    WHERE row_rank > 1
+                )
+                """
+            )
         )
+        return
+
+    connection.execute(
+        sa.text(
+            """
+            WITH duplicate_defaults AS (
+                SELECT id,
+                       row_number() OVER (
+                           PARTITION BY user_id, content_hash, file_size_bytes, filetype
+                           ORDER BY created_at ASC, id ASC
+                       ) AS row_rank
+                FROM raw_file
+                WHERE status != 'failed'
+                  AND content_hash IS NOT NULL
+                  AND file_size_bytes IS NOT NULL
+                  AND parse_request_signature = 'default'
+            )
+            UPDATE raw_file AS target
+            SET parse_request_signature = 'legacy:' || target.id::text
+            FROM duplicate_defaults AS duplicate
+            WHERE target.id = duplicate.id
+              AND duplicate.row_rank > 1
+            """
+        )
+    )
 
 
 def upgrade() -> None:

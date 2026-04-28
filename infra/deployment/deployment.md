@@ -18,6 +18,13 @@ infra/deployment/
 └── deployment.md              # 本文档
 ```
 
+## 当前部署结论
+
+- 后端部署优先使用 Docker 镜像；镜像内已安装 LibreOffice，便于后续在 Linux 环境处理本地转格式链路。
+- 云端正式环境使用 PostgreSQL + pgvector，不使用本地 SQLite。
+- 文件与生成产物通过 `STORAGE_BACKEND=s3` 接入 S3-compatible OSS，Render 和 Sealos 都按同一组 `S3_*` 变量配置。
+- Render 可以用 Pre-deploy command 跑 `bootstrap_cloud_db.py`；Sealos 多副本时建议用独立 Job 跑迁移和准备脚本，后端容器只启动 Web 服务。
+
 ## 🚀 单机 Compose 配置步骤
 
 当前 `compose/docker-compose.yml` 面向单机本地/自托管试运行，默认使用：

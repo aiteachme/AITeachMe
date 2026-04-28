@@ -1,6 +1,6 @@
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
-import { Check, CheckCircle2, ChevronRight, Code2, FileText, Loader2, PanelRightClose, PanelRightOpen, PlayCircle } from "lucide-react";
+import { Activity, Check, CheckCircle2, ChevronRight, Clock3, Code2, FileText, Files, Gauge, Loader2, PanelRightClose, PanelRightOpen, PlayCircle } from "lucide-react";
 
 import { cn } from "../../lib/utils";
 import type { FileRecord } from "../../api/generated/model";
@@ -100,6 +100,20 @@ function formatBuildModeReason(reason?: string | null): string | null {
 
 function formatCompactCount(value: number): string {
   return Math.max(0, Math.round(value)).toLocaleString("zh-CN");
+}
+
+function formatDurationMs(value: number | null | undefined): string {
+  const normalized = Number(value ?? 0);
+  if (!Number.isFinite(normalized) || normalized <= 0) return "--";
+  if (normalized < 1000) return `${Math.round(normalized)} ms`;
+  return `${(normalized / 1000).toFixed(normalized < 10_000 ? 1 : 0)} s`;
+}
+
+function summarizeSourceFiles(files: FileRecord[]): string {
+  const names = files.map((file) => file.filename).filter(Boolean);
+  if (names.length === 0) return "等待资料接入";
+  const visible = names.slice(0, 2).join("、");
+  return names.length > 2 ? `${visible} 等 ${names.length} 份` : visible;
 }
 
 function buildEventIdentity(event: BuildEventItem): string {
@@ -215,6 +229,9 @@ export function BuildView({
   progress,
   statusText,
   buildPreview,
+  buildMetrics,
+  sourceFiles,
+  sourceFilesFetching,
   buildStage,
   isDocumentReady = false,
   className,
@@ -258,6 +275,10 @@ export function BuildView({
   const chapters = mergedChapters;
   const events = mergedEvents;
   const chapterPreviews = mergedChapterPreviews;
+  const sourceFileCount = sourceFiles.length;
+  const llmTotalCalls = buildMetrics?.llm_total_calls ?? 0;
+  const failedLlmCalls = buildMetrics?.failed_llm_call_count ?? 0;
+  const avgLlmLatencyLabel = formatDurationMs(buildMetrics?.llm_avg_latency_ms);
   const rawProgress = Math.max(0, Math.min(100, Math.round(
     sseSnapshot?.docgen?.progress_pct ?? progress
   )));
@@ -293,6 +314,42 @@ export function BuildView({
 
   const recentEvents = events.slice(0, 8);
   const buildModeLabel = formatBuildModeReason(buildPreview?.mode_reason);
+  const overviewItems = [
+    {
+      key: "sources",
+      label: "资料",
+      value: sourceFilesFetching ? "同步中" : sourceFileCount > 0 ? `${formatCompactCount(sourceFileCount)} 份` : "暂无",
+      detail: sourceFilesFetching ? "正在读取资料列表" : summarizeSourceFiles(sourceFiles),
+      icon: <Files className="h-4 w-4" />,
+      tone: "text-sky-600 bg-sky-50 ring-sky-100 dark:text-sky-300 dark:bg-sky-500/10 dark:ring-sky-500/20",
+    },
+    {
+      key: "chapters",
+      label: "章节",
+      value: chapters.length > 0 ? `${formatCompactCount(chapters.length)} 章` : "--",
+      detail: spotlightChapter?.title ? `当前：${spotlightChapter.title}` : "等待章节计划",
+      icon: <FileText className="h-4 w-4" />,
+      tone: "text-blue-600 bg-blue-50 ring-blue-100 dark:text-blue-300 dark:bg-blue-500/10 dark:ring-blue-500/20",
+    },
+    {
+      key: "llm-calls",
+      label: "模型调用",
+      value: llmTotalCalls > 0 ? `${formatCompactCount(llmTotalCalls)} 次` : "--",
+      detail: failedLlmCalls > 0 ? `${formatCompactCount(failedLlmCalls)} 次失败已记录` : "暂无失败调用",
+      icon: <Activity className="h-4 w-4" />,
+      tone: failedLlmCalls > 0
+        ? "text-amber-700 bg-amber-50 ring-amber-100 dark:text-amber-300 dark:bg-amber-500/10 dark:ring-amber-500/20"
+        : "text-emerald-700 bg-emerald-50 ring-emerald-100 dark:text-emerald-300 dark:bg-emerald-500/10 dark:ring-emerald-500/20",
+    },
+    {
+      key: "latency",
+      label: "平均耗时",
+      value: avgLlmLatencyLabel,
+      detail: "LLM 调用平均延迟",
+      icon: avgLlmLatencyLabel === "--" ? <Gauge className="h-4 w-4" /> : <Clock3 className="h-4 w-4" />,
+      tone: "text-zinc-600 bg-zinc-50 ring-zinc-200 dark:text-slate-300 dark:bg-slate-900 dark:ring-slate-800",
+    },
+  ];
 
   useEffect(() => {
     if (chapters.length === 0) {
@@ -381,6 +438,29 @@ export function BuildView({
               <span className="w-12 rounded-md bg-zinc-50 px-2 py-1 text-right text-[13px] font-semibold tabular-nums text-zinc-900 ring-1 ring-zinc-200 dark:bg-slate-900 dark:text-zinc-100 dark:ring-slate-800">
                 {roundedProgress}%
               </span>
+            </div>
+            <div className="mt-4 grid grid-cols-2 gap-2 xl:grid-cols-4">
+              {overviewItems.map((item) => (
+                <div
+                  key={item.key}
+                  className="min-w-0 border border-zinc-100 bg-zinc-50/60 px-3 py-2.5 dark:border-slate-800 dark:bg-slate-900/60"
+                >
+                  <div className="mb-2 flex items-center justify-between gap-2">
+                    <span className="truncate text-[11px] font-medium text-zinc-400 dark:text-slate-500">
+                      {item.label}
+                    </span>
+                    <span className={cn("inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md ring-1", item.tone)}>
+                      {item.icon}
+                    </span>
+                  </div>
+                  <div className="truncate text-[17px] font-semibold tabular-nums text-zinc-950 dark:text-slate-100">
+                    {item.value}
+                  </div>
+                  <div className="mt-1 truncate text-[11px] text-zinc-500 dark:text-slate-400" title={item.detail}>
+                    {item.detail}
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
         </div>

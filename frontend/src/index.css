@@ -686,6 +686,8 @@
 
 .build-live-markdown h2 {
   margin-top: 1.75rem;
+  padding-left: 0.8rem;
+  border-left: 3px solid #3370ff;
   font-size: 20px;
   line-height: 1.45;
   letter-spacing: 0;
@@ -701,6 +703,40 @@
 .build-live-markdown li {
   font-size: 15px;
   line-height: 1.78;
+}
+
+.build-live-markdown strong {
+  color: #1456f0;
+  font-weight: 650;
+}
+
+.build-live-markdown li::marker {
+  color: #3370ff;
+}
+
+.build-live-markdown aside {
+  box-shadow: 0 14px 34px -28px rgba(15, 23, 42, 0.42);
+}
+
+.build-live-markdown table {
+  font-size: 14px;
+}
+
+.build-live-markdown thead {
+  background: #f5f7fb;
+}
+
+.dark .build-live-markdown h2 {
+  border-left-color: #60a5fa;
+}
+
+.dark .build-live-markdown strong,
+.dark .build-live-markdown li::marker {
+  color: #93c5fd;
+}
+
+.dark .build-live-markdown thead {
+  background: rgba(15, 23, 42, 0.92);
 }
 
 @supports (content-visibility: auto) {

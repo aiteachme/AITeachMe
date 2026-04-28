@@ -1,6 +1,6 @@
 # 05. Digest 织网引擎
 
-最后更新：2026-04-19
+最后更新：2026-04-28
 
 Digest 负责把 Ingest 产出的材料组织成可教学、可追踪、可复用的知识资产。
 
@@ -20,7 +20,6 @@ backend/app/workflows/digest/
   README.md
   planner/
   docgen/
-  kg_file_ingest/      # legacy/debug-only; only extractor utilities are still reused
   kg_doc_sync/
   common/
 ```
@@ -29,7 +28,6 @@ backend/app/workflows/digest/
 
 - `planner/`：确认式学习方案生成。
 - `docgen/`：知识文档生成。
-- `kg_file_ingest/`：历史调试链路，不再作为产品图谱构建入口。
 - `kg_doc_sync/`：知识文档和知识图谱同步的正式链路。
 - `common/`：跨 lane 共享能力。
 - `workflows/support/knowledge_graph/`：图谱触发、状态、总览和查询用例，不是 digest lane。
@@ -146,7 +144,7 @@ Search 层只负责找来源和读来源，不直接生成最终答案。
 - `kg_doc_sync/`
 - `workflows/support/knowledge_graph/`
 
-`kg_file_ingest/` 已移除，后续新增图谱构建逻辑优先进入 `kg_doc_sync/` 或明确的 common 包；API-facing 查询和触发也收口在 `kg_doc_sync`。
+旧的 `kg_file_ingest` 文件级图谱入口已退出产品主线。后续新增图谱构建逻辑优先进入 `kg_doc_sync/` 或明确的 common 包；API-facing 查询和触发也收口在 `kg_doc_sync` 与 `workflows/support/knowledge_graph/`。
 
 ## 8. common 使用规则
 
