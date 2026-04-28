@@ -608,6 +608,14 @@ def _build_dynamic_langsmith_extra(
     return extra or None
 
 
+def _default_traceable_inputs(inputs: dict[str, Any]) -> Any:
+    return sanitize_langsmith_value(inputs, capture_text=True, field_name="inputs")
+
+
+def _default_traceable_outputs(outputs: Any) -> Any:
+    return sanitize_langsmith_value(outputs, capture_text=True, field_name="outputs")
+
+
 def traceable_with_context(
     *,
     name: str,
@@ -623,8 +631,8 @@ def traceable_with_context(
     traced = traceable(
         name=name,
         run_type=run_type,
-        process_inputs=process_inputs,
-        process_outputs=process_outputs,
+        process_inputs=process_inputs or _default_traceable_inputs,
+        process_outputs=process_outputs or _default_traceable_outputs,
     )
 
     def decorator(func):

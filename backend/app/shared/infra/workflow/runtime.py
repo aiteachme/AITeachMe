@@ -74,9 +74,9 @@ def _apply_graph_runtime_limits(config: dict[str, Any], metadata: dict[str, Any]
 
 
 def _graph_tracing_context():
-    """Disable LangGraph auto child runs when a workflow owns the root trace."""
+    """Disable LangGraph tracing when the shared runtime says tracing is off."""
 
-    if langsmith_child_runs_suppressed():
+    if langsmith_child_runs_suppressed() or not langsmith_tracing_enabled():
         return tracing_context(enabled=False)
     return nullcontext()
 

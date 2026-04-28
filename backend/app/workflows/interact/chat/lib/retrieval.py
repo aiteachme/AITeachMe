@@ -6,12 +6,12 @@ import math
 import re
 
 import structlog
-from langsmith import traceable
 from sqlmodel import Session
 
 from app.models.knowledge_relation import KnowledgeEdge
 from app.models.knowledge_unit import KnowledgeUnit
 from app.repositories import knowledge_relation_repo, knowledge_repo, knowledge_unit_repo, profile_repo
+from app.shared.infra.observability.trace import traceable_with_context as traceable
 from app.shared.infra.subject import get_subject_vector_search_notice
 from app.workflows.interact.chat.lib.types import RetrievedContext
 

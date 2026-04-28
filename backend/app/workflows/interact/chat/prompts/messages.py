@@ -6,10 +6,9 @@ import hashlib
 import re
 from typing import Literal
 
-from langsmith import traceable
-
 from app.schemas.chats import ChatSelectionContext
 from app.schemas.llm import ASSISTANT, ChatMessage, USER
+from app.shared.infra.observability.trace import traceable_with_context as traceable
 from app.shared.infra.prompt_loader import populate_prompt
 from app.shared.infra.strategies import StrategyMode
 from app.shared.infra.llm_support.context_window import ContextWindowManager
