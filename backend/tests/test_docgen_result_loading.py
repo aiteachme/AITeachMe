@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 import app.shared.infra.knowledge.build_store as build_store
+from app.models.build_planner import ConfirmedBuildPlan
 from app.shared.infra.knowledge.build_store import KnowledgeDocsManifest
 from app.shared.infra.storage import build_subject_storage_scope
 from app.workflows.digest.docgen.lib import build_lifecycle
@@ -94,3 +95,35 @@ def test_knowledge_manifest_read_migrates_staged_manifest(monkeypatch) -> None:
     assert build_store.read_knowledge_manifest("subj_linearalg012", subject_scope=subject_scope) == manifest
     assert subject_scope.build_manifest_key() in fake_store.payloads
     assert f"{subject_scope.knowledge_build_prefix()}manifest.json" not in fake_store.payloads
+
+
+def test_confirmed_plan_payload_keeps_subject_name_from_plan_json() -> None:
+    plan = ConfirmedBuildPlan(
+        id="plan_a",
+        subject_id="subj_a",
+        user_prompt="学习计算机网络",
+        plan_json={"subject_name": "计算机网络与安全基础"},
+    )
+
+    payload = build_lifecycle._build_confirmed_plan_payload(
+        plan,
+        fallback_subject_name="兜底主题",
+    )
+
+    assert payload["subject_name"] == "计算机网络与安全基础"
+
+
+def test_confirmed_plan_payload_uses_fallback_subject_name() -> None:
+    plan = ConfirmedBuildPlan(
+        id="plan_b",
+        subject_id="subj_b",
+        user_prompt="学习计算机网络",
+        plan_json={},
+    )
+
+    payload = build_lifecycle._build_confirmed_plan_payload(
+        plan,
+        fallback_subject_name="计算机网络",
+    )
+
+    assert payload["subject_name"] == "计算机网络"
