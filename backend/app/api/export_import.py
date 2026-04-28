@@ -24,6 +24,7 @@ from app.workflows.support.export_import import (
     build_subject_export_filename,
     download_course_package,
     export_subject,
+    get_demo_courses_index_url,
     import_subject,
     list_available_courses,
     preview_export,
@@ -141,8 +142,13 @@ async def import_subject_api(
 async def list_courses_api(response: Response) -> ApiResponse[list[CoursePackageItem]]:
     """列出线上演示课程目录中的课程包。"""
 
-    response.headers["Cache-Control"] = "no-store"
-    return ok_response(list_available_courses())
+    courses = list_available_courses()
+    _set_no_store_headers(response)
+    response.headers["X-Demo-Courses-Count"] = str(len(courses))
+    catalog_url = get_demo_courses_index_url()
+    if catalog_url:
+        response.headers["X-Demo-Courses-Catalog"] = catalog_url
+    return ok_response(courses)
 
 
 @router.post(
@@ -183,6 +189,12 @@ def _cleanup_task(path: Path):
     from starlette.background import BackgroundTask
 
     return BackgroundTask(lambda: path.unlink(missing_ok=True))
+
+
+def _set_no_store_headers(response: Response) -> None:
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
 
 
 def _validate_import_package_filename(filename: str) -> None:
