@@ -19,7 +19,10 @@ from app.shared.infra.observability.trace import (
     langsmith_trace,
     sanitize_langsmith_input,
     sanitize_langsmith_output,
-    suppress_langsmith_child_runs,
+)
+from app.shared.infra.llm_support.model_choices import (
+    normalize_runtime_model_override,
+    use_runtime_model_override,
 )
 from app.shared.infra.workflow import workflow_tracer
 from app.shared.infra.workflow.context import WorkflowContext, create_langgraph_dev_context
@@ -428,6 +431,7 @@ async def run_build_planner_workflow(
 ) -> WorkflowResult[BuildPlannerState]:
     """Run the planner lane and return the final workflow state."""
 
+    model_override = normalize_runtime_model_override(model)
     logger.info(
         "planner_workflow_starting",
         subject_id=subject_id,
@@ -436,7 +440,7 @@ async def run_build_planner_workflow(
         file_id_count=len(file_ids),
         requested_file_id_count=len(requested_file_ids or []),
         digest_mode=digest_mode,
-        model_override=model,
+        model_override=model_override,
         user_prompt_preview=user_prompt[:80],
     )
     normalized_operation = normalize_planner_operation(planner_operation)
@@ -451,7 +455,7 @@ async def run_build_planner_workflow(
             "planner_operation": normalized_operation,
             "planner_session_id": planner_session_id,
             "digest_mode": digest_mode,
-            "model_override": model,
+            "model_override": model_override,
         },
     )
     initial_state = create_planner_initial_state(
@@ -466,7 +470,7 @@ async def run_build_planner_workflow(
         digest_mode=digest_mode,
         planner_session_id=planner_session_id,
         message_history=message_history,
-        model=model,
+        model=model_override,
         latest_plan=latest_plan,
         progress_callback=progress_callback,
         token_callback=token_callback,
@@ -481,7 +485,7 @@ async def run_build_planner_workflow(
             user_prompt=user_prompt,
             planner_session_id=planner_session_id,
             digest_mode=digest_mode,
-            model=model,
+            model=model_override,
             message_history=message_history,
             planner_operation=normalized_operation,
             requested_file_ids=requested_file_ids,
@@ -497,11 +501,11 @@ async def run_build_planner_workflow(
             "planner_operation": normalized_operation,
             "planner_session_id": planner_session_id,
             "digest_mode": digest_mode,
-            "model_override": model,
+            "model_override": model_override,
         },
         extra_tags=[f"planner_operation:{normalized_operation}"],
     ) as trace_run:
-        with suppress_langsmith_child_runs():
+        with use_runtime_model_override(model_override):
             result = await run_state_graph(
                 workflow_name="digest.planner",
                 graph_builder=lambda: build_planner_graph(context=context),

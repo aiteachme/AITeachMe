@@ -15,6 +15,10 @@ from langgraph.graph import END, StateGraph
 from sqlmodel import Session
 
 from app.schemas.chats import ChatSelectionContext
+from app.shared.infra.llm_support.model_choices import (
+    normalize_runtime_model_override,
+    use_runtime_model_override,
+)
 from app.shared.infra.workflow import workflow_tracer
 from app.shared.infra.workflow.context import WorkflowContext, create_langgraph_dev_context
 from app.shared.infra.workflow.events import InProcessEventBus
@@ -526,34 +530,39 @@ async def run_interact_workflow(
 
     bus = event_bus or InProcessEventBus()
     await bus.publish(InteractRequestedEvent(subject_id=subject_id))
+    model_override = normalize_runtime_model_override(model)
     context = WorkflowContext(
         workflow_name="interact.chat",
         subject_id=subject_id,
         event_bus=bus,
+        metadata={
+            "model_override": model_override,
+        },
     )
-    result = await run_state_graph(
-        workflow_name="interact.chat",
-        graph_builder=lambda: build_interact_workflow_graph(
+    with use_runtime_model_override(model_override):
+        result = await run_state_graph(
+            workflow_name="interact.chat",
+            graph_builder=lambda: build_interact_workflow_graph(
+                context=context,
+                session=session,
+                request=request,
+                emitter=emitter,
+            ),
+            initial_state=create_interact_initial_state(
+                subject_id=subject_id,
+                user_id=user_id,
+                session_id=session_id,
+                question=question,
+                source=source,
+                model=model_override,
+                anchor_id=anchor_id,
+                selected_text=selected_text,
+                selected_context=selected_context,
+                selection_context=selection_context,
+                source_chunk_id=source_chunk_id,
+            ),
             context=context,
-            session=session,
-            request=request,
-            emitter=emitter,
-        ),
-        initial_state=create_interact_initial_state(
-            subject_id=subject_id,
-            user_id=user_id,
-            session_id=session_id,
-            question=question,
-            source=source,
-            model=model,
-            anchor_id=anchor_id,
-            selected_text=selected_text,
-            selected_context=selected_context,
-            selection_context=selection_context,
-            source_chunk_id=source_chunk_id,
-        ),
-        context=context,
-    )
+        )
     if result.failed:
         await bus.publish(
             InteractFailedEvent(

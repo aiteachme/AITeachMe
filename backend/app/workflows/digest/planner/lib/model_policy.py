@@ -34,10 +34,12 @@ class PlannerModelPolicy:
     def completion_kwargs(self, *, model_override: str | None = None) -> dict[str, object]:
         """Return kwargs shared by Planner text/structured/stream call sites."""
 
-        resolved_model = normalize_runtime_model_override(model_override) or self.model
+        # Runtime model overrides patch settings.models at the workflow boundary.
+        # Individual calls should keep their logical slot for trace readability.
+        _ = model_override
         kwargs: dict[str, object] = {
             "call_purpose": self.call_purpose,
-            "model": resolved_model,
+            "model": self.model,
         }
         if self.max_tokens is not None:
             kwargs["max_tokens"] = self.max_tokens

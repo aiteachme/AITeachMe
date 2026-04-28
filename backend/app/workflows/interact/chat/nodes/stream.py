@@ -12,7 +12,7 @@ from fastapi import Request
 
 from app.shared.infra.agent_loop import run_agent_loop_stream
 from app.shared.infra.llm_support import acompletion_stream
-from app.shared.infra.llm_support.model_choices import resolve_runtime_model_selector
+from app.shared.infra.llm_support.model_choices import normalize_runtime_model_override
 from app.shared.infra.llm_support.routing import LLMCallPurpose
 from app.shared.infra.workflow.context import WorkflowContext
 from app.workflows.interact.chat.state import InteractWorkflowState
@@ -66,13 +66,6 @@ def _build_stream_state(
     return next_state
 
 
-def _resolve_chat_model_selector(state: InteractWorkflowState) -> str:
-    return resolve_runtime_model_selector(
-        state.get("model_override"),
-        default_selector=INTERACT_MODEL_SELECTOR,
-    )
-
-
 def _build_response_stream(state: InteractWorkflowState, *, subject_id: str, model_selector: str):
     execution_mode = state.get("execution_mode", InteractExecutionMode.SINGLE_PASS)
     tool_plan = resolve_interact_tool_plan(
@@ -113,7 +106,7 @@ def build_stream_answer_node(
 
         collected_tokens: list[str] = []
         subject_id = str(state.get("subject_id") or context.subject_id or "")
-        model_selector = _resolve_chat_model_selector(state)
+        model_selector = INTERACT_MODEL_SELECTOR
         execution_mode = state.get("execution_mode", InteractExecutionMode.SINGLE_PASS)
         tool_plan = resolve_interact_tool_plan(
             execution_mode=execution_mode,
@@ -127,6 +120,7 @@ def build_stream_answer_node(
             execution_mode=execution_mode.value,
             tools=tool_plan.tool_names,
             model=model_selector,
+            model_override=normalize_runtime_model_override(state.get("model_override")),
         )
         stream = _build_response_stream(state, subject_id=subject_id, model_selector=model_selector)
         try:
@@ -156,6 +150,7 @@ def build_stream_answer_node(
             streaming_enabled=emitter is not None,
             execution_mode=state.get("execution_mode", InteractExecutionMode.SINGLE_PASS).value,
             model=model_selector,
+            model_override=normalize_runtime_model_override(state.get("model_override")),
         )
         return _build_stream_state(
             state,
