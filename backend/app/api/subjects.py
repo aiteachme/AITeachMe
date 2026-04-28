@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Body, Depends
+from fastapi import APIRouter, Body, Depends, Request
 from sqlmodel import Session
 
 from app.api.deps import CurrentUserContext, get_current_user_context, get_db
@@ -102,6 +102,7 @@ async def preview_delete_subject_api(
     responses=build_error_responses([400, 404, 409, 500]),
 )
 async def delete_subject_api(
+    request: Request,
     body: SubjectDeleteRequest = Body(...),
     user: CurrentUserContext = Depends(get_current_user_context),
     session: Session = Depends(get_db),
@@ -112,6 +113,7 @@ async def delete_subject_api(
             owner_user_id=user.user_id,
             subject_id=body.subject_id,
             force=body.force,
+            background_task_registry=getattr(request.app.state, "background_task_registry", None),
         )
     )
 

@@ -1,6 +1,9 @@
 ﻿from __future__ import annotations
 
+import asyncio
+import re
 import shutil
+from typing import Any
 
 import sqlalchemy as sa
 import structlog
@@ -28,14 +31,15 @@ from app.models import (
     RawFile,
     RetrievalChunk,
     Subject,
+    SubjectFileLink,
     UserKnowledgeState,
 )
-import app.repositories.knowledge.knowledge_repo as knowledge_repo
-from app.repositories.files_repo import list_all_raw_files_by_subject, unlink_raw_files_from_subject
 from app.schemas.subject import SubjectDeleteImpactItem, SubjectDeletePreviewData
+from app.utils.time import utcnow
 from app.utils.path_helpers import build_subject_dir, get_data_dir
 
 logger = structlog.get_logger()
+_POSTGRES_IDENTIFIER_RE = re.compile(r"[a-z_][a-z0-9_]*")
 
 _EXAM_KEYS = [
     "question_template",
@@ -66,12 +70,28 @@ def _sum_counts(counts: dict[str, int], keys: list[str]) -> int:
 
 
 def _bulk_delete_by_subject(session: Session, model: type, *, subject: str) -> None:
-    session.exec(sa.delete(model).where(model.subject == subject))
+    session.exec(
+        sa.delete(model)
+        .where(model.subject == subject)
+        .execution_options(synchronize_session=False)
+    )
+
+
+def _raw_file_subject_membership_condition(subject: str):
+    linked_file_ids = select(SubjectFileLink.raw_file_id).where(SubjectFileLink.subject == subject)
+    return sa.or_(
+        RawFile.subject == subject,
+        RawFile.id.in_(linked_file_ids),
+    )
+
+
+def _count_raw_files_by_subject(session: Session, *, subject: str) -> int:
+    return _count_rows(session, RawFile, _raw_file_subject_membership_condition(subject))
 
 
 def collect_subject_delete_counts(session: Session, *, subject: str) -> dict[str, int]:
     return {
-        "raw_file": len(list_all_raw_files_by_subject(session, subject)),
+        "raw_file": _count_raw_files_by_subject(session, subject=subject),
         "retrieval_chunk": _count_rows(session, RetrievalChunk, RetrievalChunk.subject == subject),
         "knowledge_document": _count_rows(
             session,
@@ -147,17 +167,22 @@ def build_subject_delete_preview(session: Session, *, subject: Subject) -> Subje
     )
 
 
-def delete_subject_with_all_content(session: Session, *, subject: Subject) -> dict[str, int]:
+def delete_subject_with_all_content(
+    session: Session,
+    *,
+    subject: Subject,
+    background_task_registry: Any | None = None,
+    counts: dict[str, int] | None = None,
+) -> dict[str, int]:
     subject_slug = subject.slug
     owner_user_id = subject.user_id
-    counts = collect_subject_delete_counts(session, subject=subject_slug)
+    counts = dict(counts) if counts is not None else collect_subject_delete_counts(session, subject=subject_slug)
     try:
         _delete_profiles(session, subject=subject_slug)
         _delete_exam_records(session, subject=subject_slug)
         _delete_chat_messages(session, subject=subject_slug)
         _delete_knowledge_and_curriculum(session, subject=subject_slug)
         _delete_documents_and_chunks(session, subject=subject_slug)
-        _clear_subject_vector_index_best_effort(subject_slug)
         _delete_planner_records(session, subject=subject_slug)
         _delete_raw_files_and_artifacts(session, subject=subject_slug, owner_user_id=owner_user_id)
         session.delete(subject)
@@ -166,7 +191,11 @@ def delete_subject_with_all_content(session: Session, *, subject: Subject) -> di
         session.rollback()
         raise
 
-    _delete_subject_artifacts_best_effort(subject_slug, user_id=owner_user_id)
+    _schedule_subject_external_cleanup(
+        subject_slug,
+        owner_user_id=owner_user_id,
+        background_task_registry=background_task_registry,
+    )
     deleted_counts = {"subject": 1, **counts}
     logger.info("subject_deleted_with_all_content", subject=subject_slug, deleted_counts=deleted_counts)
     return deleted_counts
@@ -196,51 +225,65 @@ def _delete_subject_artifacts_best_effort(subject_slug: str, *, user_id: str | N
     _delete_subject_directory(subject_slug, user_id=user_id)
 
 
-def _delete_exam_records(session: Session, *, subject: str) -> None:
-    paper_ids = [
-        paper_id
-        for paper_id in session.exec(select(ExamPaper.id).where(ExamPaper.subject == subject)).all()
-        if paper_id is not None
-    ]
-    template_ids = [
-        template_id
-        for template_id in session.exec(select(QuestionTemplate.id).where(QuestionTemplate.subject == subject)).all()
-        if template_id is not None
-    ]
+def _schedule_subject_external_cleanup(
+    subject_slug: str,
+    *,
+    owner_user_id: str | None,
+    background_task_registry: Any | None,
+) -> None:
+    if background_task_registry is None:
+        _delete_subject_external_artifacts_best_effort(subject_slug, user_id=owner_user_id)
+        return
 
-    if paper_ids:
-        item_ids = [
-            item_id
-            for item_id in session.exec(select(ExamPaperItem.id).where(ExamPaperItem.exam_paper_id.in_(paper_ids))).all()
-            if item_id is not None
-        ]
-        if item_ids:
-            session.exec(
-                sa.delete(QuestionKnowledgeUnitLink).where(
-                    QuestionKnowledgeUnitLink.exam_paper_item_id.in_(item_ids)
-                )
-            )
-        session.exec(sa.delete(ExamPaperItem).where(ExamPaperItem.exam_paper_id.in_(paper_ids)))
-    if template_ids:
-        template_item_ids = [
-            item_id
-            for item_id in session.exec(
-                select(ExamPaperItem.id).where(ExamPaperItem.question_template_id.in_(template_ids))
-            ).all()
-            if item_id is not None
-        ]
-        if template_item_ids:
-            session.exec(
-                sa.delete(QuestionKnowledgeUnitLink).where(
-                    QuestionKnowledgeUnitLink.exam_paper_item_id.in_(template_item_ids)
-                )
-            )
-        session.exec(
-            sa.delete(QuestionKnowledgeUnitLink).where(
-                QuestionKnowledgeUnitLink.question_template_id.in_(template_ids)
+    background_task_registry.spawn(
+        _delete_subject_external_artifacts_async(subject_slug, user_id=owner_user_id),
+        kind="subjects.delete.cleanup",
+        subject=subject_slug,
+        name=f"subjects.delete.cleanup:{subject_slug}",
+    )
+
+
+async def _delete_subject_external_artifacts_async(subject_slug: str, *, user_id: str | None) -> None:
+    await asyncio.to_thread(
+        _delete_subject_external_artifacts_best_effort,
+        subject_slug,
+        user_id=user_id,
+    )
+
+
+def _delete_subject_external_artifacts_best_effort(subject_slug: str, *, user_id: str | None) -> None:
+    _clear_subject_vector_index_best_effort(subject_slug, user_id=user_id)
+    _delete_subject_artifacts_best_effort(subject_slug, user_id=user_id)
+    logger.info("subject_external_artifacts_cleanup_finished", subject=subject_slug, user_id=user_id)
+
+
+def _delete_exam_records(session: Session, *, subject: str) -> None:
+    paper_ids = select(ExamPaper.id).where(ExamPaper.subject == subject)
+    template_ids = select(QuestionTemplate.id).where(QuestionTemplate.subject == subject)
+    paper_item_ids = select(ExamPaperItem.id).where(ExamPaperItem.exam_paper_id.in_(paper_ids))
+    template_item_ids = select(ExamPaperItem.id).where(ExamPaperItem.question_template_id.in_(template_ids))
+
+    session.exec(
+        sa.delete(QuestionKnowledgeUnitLink)
+        .where(
+            sa.or_(
+                QuestionKnowledgeUnitLink.exam_paper_item_id.in_(paper_item_ids),
+                QuestionKnowledgeUnitLink.exam_paper_item_id.in_(template_item_ids),
+                QuestionKnowledgeUnitLink.question_template_id.in_(template_ids),
             )
         )
-        session.exec(sa.delete(ExamPaperItem).where(ExamPaperItem.question_template_id.in_(template_ids)))
+        .execution_options(synchronize_session=False)
+    )
+    session.exec(
+        sa.delete(ExamPaperItem)
+        .where(
+            sa.or_(
+                ExamPaperItem.exam_paper_id.in_(paper_ids),
+                ExamPaperItem.question_template_id.in_(template_ids),
+            )
+        )
+        .execution_options(synchronize_session=False)
+    )
 
     _bulk_delete_by_subject(session, ExamPaper, subject=subject)
     _bulk_delete_by_subject(session, QuestionTemplate, subject=subject)
@@ -275,18 +318,30 @@ def _delete_knowledge_and_curriculum(session: Session, *, subject: str) -> None:
 
 
 def _delete_documents_and_chunks(session: Session, *, subject: str) -> None:
-    chunks = list(session.exec(select(RetrievalChunk).where(RetrievalChunk.subject == subject)).all())
-    chunk_ids = [chunk.id for chunk in chunks if chunk.id is not None]
-    if chunk_ids:
-        knowledge_repo.delete_embeddings_by_chunk_ids(session, subject=subject, chunk_ids=chunk_ids)
     _bulk_delete_by_subject(session, RetrievalChunk, subject=subject)
 
 
-def _clear_subject_vector_index_best_effort(subject: str) -> None:
+def _clear_subject_vector_index_best_effort(subject: str, *, user_id: str | None) -> None:
     try:
-        from app.shared.infra.search.llamaindex_index import clear_subject_index
+        from app.shared.infra.runtime import is_cloud_mode
 
-        clear_subject_index(subject)
+        if is_cloud_mode():
+            from app.shared.infra.database import get_engine
+            from app.shared.infra.subject import (
+                build_subject_index_ref,
+                extract_postgres_subject_index_data_table_name,
+            )
+
+            vector_ref = build_subject_index_ref(subject, owner_user_id=user_id or "local")
+            data_table = extract_postgres_subject_index_data_table_name(vector_ref)
+            if not data_table or not _POSTGRES_IDENTIFIER_RE.fullmatch(data_table):
+                return
+            with get_engine().begin() as connection:
+                connection.execute(sa.text(f"DROP TABLE IF EXISTS public.{data_table}"))
+        else:
+            from app.shared.infra.search.llamaindex_index import clear_subject_index
+
+            clear_subject_index(subject)
     except Exception as exc:  # pragma: no cover - best-effort index cleanup
         logger.warning("subject_vector_index_cleanup_failed", subject=subject, error=str(exc))
 
@@ -296,16 +351,32 @@ def _delete_planner_records(session: Session, *, subject: str) -> None:
 
 
 def _delete_raw_files_and_artifacts(session: Session, *, subject: str, owner_user_id: str) -> None:
-    raw_files = list_all_raw_files_by_subject(session, subject)
-    if not raw_files:
-        return
-
-    unlink_raw_files_from_subject(
-        session,
-        owner_user_id=owner_user_id,
-        subject=subject,
-        raw_files=raw_files,
-        commit=False,
+    session.exec(
+        sa.delete(SubjectFileLink)
+        .where(
+            SubjectFileLink.user_id == owner_user_id,
+            SubjectFileLink.subject == subject,
+        )
+        .execution_options(synchronize_session=False)
+    )
+    next_subject = (
+        select(SubjectFileLink.subject)
+        .where(
+            SubjectFileLink.user_id == owner_user_id,
+            SubjectFileLink.raw_file_id == RawFile.id,
+        )
+        .order_by(SubjectFileLink.created_at.asc(), SubjectFileLink.id.asc())  # type: ignore[union-attr]
+        .limit(1)
+        .scalar_subquery()
+    )
+    session.exec(
+        sa.update(RawFile)
+        .where(
+            RawFile.user_id == owner_user_id,
+            RawFile.subject == subject,
+        )
+        .values(subject=next_subject, updated_at=utcnow())
+        .execution_options(synchronize_session=False)
     )
 
 

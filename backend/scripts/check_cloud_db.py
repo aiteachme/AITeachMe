@@ -25,7 +25,7 @@ _REQUIRED_UNIQUE_CONSTRAINTS = (
     ("retrieval_chunk", "uq_retrieval_chunk_subject_digest_chunk_uid"),
     ("knowledge_unit", "uq_unit_subject_type_name"),
     ("knowledge_edge", "uq_edge_subject_src_tgt_type"),
-    ("question_template", "uq_template_subject_node_stem"),
+    ("question_template", "uq_template_subject_stem"),
     ("exam_paper_item", "uq_paper_item_order"),
 )
 _REQUIRED_UNIQUE_INDEXES = (

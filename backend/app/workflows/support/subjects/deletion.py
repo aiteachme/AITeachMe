@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from sqlmodel import Session
 
 from app.shared.infra.exceptions import SubjectInUseError
@@ -32,15 +34,26 @@ def delete_subject_record(
     owner_user_id: str,
     subject_id: str,
     force: bool = False,
+    background_task_registry: Any | None = None,
 ) -> SubjectDeleteData:
     subject = get_subject_record(session, subject_id, owner_user_id=owner_user_id)
     preview = build_subject_delete_preview(session, subject=subject)
     if preview.has_content and not force:
         raise SubjectInUseError(subject.slug)
     deleted_counts = (
-        delete_subject_with_all_content(session, subject=subject)
+        delete_subject_with_all_content(
+            session,
+            subject=subject,
+            background_task_registry=background_task_registry,
+            counts=preview.detail_counts,
+        )
         if force
-        else _delete_empty_subject(session, subject)
+        else _delete_empty_subject(
+            session,
+            subject,
+            background_task_registry=background_task_registry,
+            counts=preview.detail_counts,
+        )
     )
     return SubjectDeleteData(
         deleted=True,
@@ -49,8 +62,19 @@ def delete_subject_record(
     )
 
 
-def _delete_empty_subject(session: Session, subject: Subject) -> dict[str, int]:
-    return delete_subject_with_all_content(session, subject=subject)
+def _delete_empty_subject(
+    session: Session,
+    subject: Subject,
+    *,
+    background_task_registry: Any | None = None,
+    counts: dict[str, int] | None = None,
+) -> dict[str, int]:
+    return delete_subject_with_all_content(
+        session,
+        subject=subject,
+        background_task_registry=background_task_registry,
+        counts=counts,
+    )
 
 
 __all__ = [
