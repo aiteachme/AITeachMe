@@ -6,7 +6,7 @@ import asyncio
 import uuid
 
 import structlog
-from fastapi import APIRouter, BackgroundTasks, Body, Depends, Path, Request, Response
+from fastapi import APIRouter, Body, Depends, Path, Request, Response
 from fastapi.responses import StreamingResponse
 from sqlmodel import Session
 
@@ -109,24 +109,6 @@ def _storage_scope_for_subject_record(subject: Subject) -> SubjectStorageScope:
     """Build storage scope from the already-authorized subject record."""
 
     return build_subject_storage_scope(user_id=subject.user_id, subject_id=subject.id)
-
-
-async def _spawn_registered_task_after_response(
-    request: Request,
-    coro_factory,
-    *,
-    kind: str,
-    subject_id: str,
-    name: str,
-) -> None:
-    """Register a long-running workflow only after the HTTP response is flushed."""
-
-    request.app.state.background_task_registry.spawn(
-        coro_factory(),
-        kind=kind,
-        subject_id=subject_id,
-        name=name,
-    )
 
 
 def _planner_stream_response(
@@ -433,7 +415,6 @@ def knowledge_build_plan_confirm(
 )
 async def knowledge_build(
     request: Request,
-    background_tasks: BackgroundTasks,
     subject_id: str = Path(...),
     body: DocGenBuildRequest = Body(...),
     user: CurrentUserContext = Depends(get_current_user_context),
@@ -472,10 +453,8 @@ async def knowledge_build(
         accepted_file_count=len(accepted_file_ids),
         requested_at=data.requested_at.isoformat(),
     )
-    background_tasks.add_task(
-        _spawn_registered_task_after_response,
-        request,
-        lambda: run_docgen_background(
+    request.app.state.background_task_registry.spawn(
+        run_docgen_background(
             subject_id=normalized,
             subject_name=subject_record.name,
             file_ids=accepted_file_ids,
@@ -511,7 +490,6 @@ async def knowledge_build(
 )
 async def knowledge_graph_build(
     request: Request,
-    background_tasks: BackgroundTasks,
     subject_id: str = Path(...),
     user: CurrentUserContext = Depends(get_current_user_context),
     session: Session = Depends(get_db),
@@ -579,10 +557,8 @@ async def knowledge_graph_build(
         current_stage_description="已接收图谱重建请求，准备读取当前知识文档。",
     )
     llm_snapshot = capture_llm_runtime_snapshot()
-    background_tasks.add_task(
-        _spawn_registered_task_after_response,
-        request,
-        lambda: run_graph_docs_sync_manual_build(
+    request.app.state.background_task_registry.spawn(
+        run_graph_docs_sync_manual_build(
             subject_id=normalized,
             requested_at=requested_at,
             build_group_id=build_group_id,
