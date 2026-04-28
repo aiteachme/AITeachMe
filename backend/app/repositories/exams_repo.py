@@ -10,10 +10,12 @@ from sqlmodel import Session, func, select
 from app.models import (
     ExamPaper,
     ExamPaperItem,
+    ExamStudyGuideCache,
     QuestionKnowledgeUnitLink,
     QuestionTemplate,
     UserKnowledgeState,
 )
+from app.utils.time import ensure_utc_datetime, utcnow
 
 
 def create_question_template(session: Session, template: QuestionTemplate) -> QuestionTemplate:
@@ -273,18 +275,153 @@ def list_exam_papers(
     total = session.exec(
         select(func.count())
         .select_from(ExamPaper)
-        .where(ExamPaper.subject == subject, ExamPaper.user_id == user_id)
+        .where(
+            ExamPaper.subject == subject,
+            ExamPaper.user_id == user_id,
+            ExamPaper.visibility != "hidden",
+        )
     ).one()
     rows = list(
         session.exec(
             select(ExamPaper)
-            .where(ExamPaper.subject == subject, ExamPaper.user_id == user_id)
+            .where(
+                ExamPaper.subject == subject,
+                ExamPaper.user_id == user_id,
+                ExamPaper.visibility != "hidden",
+            )
             .order_by(ExamPaper.created_at.desc())
             .offset(offset)
             .limit(limit)
         ).all()
     )
     return rows, total
+
+
+def claim_prepared_exam_paper(
+    session: Session,
+    *,
+    subject: str,
+    user_id: str,
+    config_hash: str,
+) -> ExamPaper | None:
+    """Atomically-ish claim the oldest hidden active paper matching the config."""
+
+    now = utcnow()
+    stmt = (
+        select(ExamPaper)
+        .where(
+            ExamPaper.subject == subject,
+            ExamPaper.user_id == user_id,
+            ExamPaper.visibility == "hidden",
+            ExamPaper.status.in_(("ready", "generating")),
+            ExamPaper.config_hash == config_hash,
+            sa.or_(ExamPaper.expires_at.is_(None), ExamPaper.expires_at > now),
+        )
+        .order_by(ExamPaper.created_at.asc(), ExamPaper.id.asc())
+        .limit(1)
+    )
+    paper = session.exec(stmt).first()
+    if paper is None:
+        return None
+    paper.visibility = "visible"
+    paper.generation_origin = "prewarm"
+    paper.claimed_at = now
+    paper.expires_at = None
+    paper.updated_at = now
+    session.add(paper)
+    session.commit()
+    session.refresh(paper)
+    return paper
+
+
+def has_active_prepared_exam(
+    session: Session,
+    *,
+    subject: str,
+    user_id: str,
+    config_hash: str,
+) -> bool:
+    now = utcnow()
+    active_statuses = ("generating", "ready")
+    existing = session.exec(
+        select(ExamPaper.id)
+        .where(
+            ExamPaper.subject == subject,
+            ExamPaper.user_id == user_id,
+            ExamPaper.visibility == "hidden",
+            ExamPaper.config_hash == config_hash,
+            ExamPaper.status.in_(active_statuses),
+            sa.or_(ExamPaper.expires_at.is_(None), ExamPaper.expires_at > now),
+        )
+        .limit(1)
+    ).first()
+    return existing is not None
+
+
+def get_prepared_exam_candidate(
+    session: Session,
+    *,
+    subject: str,
+    user_id: str,
+    config_hash: str,
+) -> ExamPaper | None:
+    now = utcnow()
+    candidates = list(
+        session.exec(
+            select(ExamPaper)
+            .where(
+                ExamPaper.subject == subject,
+                ExamPaper.user_id == user_id,
+                ExamPaper.visibility == "hidden",
+                ExamPaper.config_hash == config_hash,
+            )
+            .order_by(ExamPaper.updated_at.desc(), ExamPaper.id.desc())
+            .limit(20)
+        ).all()
+    )
+    if not candidates:
+        return None
+
+    def is_active(paper: ExamPaper) -> bool:
+        expires_at = ensure_utc_datetime(paper.expires_at)
+        return expires_at is None or expires_at > now
+
+    for status in ("ready", "generating"):
+        match = next((paper for paper in candidates if paper.status == status and is_active(paper)), None)
+        if match is not None:
+            return match
+
+    failed = next((paper for paper in candidates if paper.status == "failed" and is_active(paper)), None)
+    if failed is not None:
+        return failed
+
+    stale = next((paper for paper in candidates if not is_active(paper)), None)
+    return stale or candidates[0]
+
+
+def list_stale_hidden_exam_paper_ids(
+    session: Session,
+    *,
+    subject: str,
+    user_id: str,
+    limit: int = 20,
+) -> list[int]:
+    now = utcnow()
+    rows = session.exec(
+        select(ExamPaper.id)
+        .where(
+            ExamPaper.subject == subject,
+            ExamPaper.user_id == user_id,
+            ExamPaper.visibility == "hidden",
+            sa.or_(
+                ExamPaper.status == "failed",
+                sa.and_(ExamPaper.expires_at.is_not(None), ExamPaper.expires_at <= now),
+            ),
+        )
+        .order_by(ExamPaper.updated_at.asc(), ExamPaper.id.asc())
+        .limit(max(1, limit))
+    ).all()
+    return [int(item) for item in rows if item is not None]
 
 
 def count_active_question_templates(
@@ -388,6 +525,43 @@ def delete_exam_paper_cascade(session: Session, *, paper_id: int) -> bool:
     session.delete(paper)
     session.commit()
     return True
+
+
+def get_study_guide_cache(session: Session, *, exam_paper_id: int) -> ExamStudyGuideCache | None:
+    return session.exec(
+        select(ExamStudyGuideCache).where(ExamStudyGuideCache.exam_paper_id == exam_paper_id)
+    ).first()
+
+
+def upsert_study_guide_cache(
+    session: Session,
+    *,
+    exam_paper_id: int,
+    subject: str,
+    user_id: str,
+    status: str,
+    guide_json: str,
+    error_message: str = "",
+    generated_at: datetime | None = None,
+) -> ExamStudyGuideCache:
+    now = utcnow()
+    cache = get_study_guide_cache(session, exam_paper_id=exam_paper_id)
+    if cache is None:
+        cache = ExamStudyGuideCache(
+            exam_paper_id=exam_paper_id,
+            subject=subject,
+            user_id=user_id,
+            created_at=now,
+        )
+    cache.status = status
+    cache.guide_json = guide_json
+    cache.error_message = error_message
+    cache.generated_at = generated_at
+    cache.updated_at = now
+    session.add(cache)
+    session.commit()
+    session.refresh(cache)
+    return cache
 
 
 def list_recent_exam_template_ids_for_user(

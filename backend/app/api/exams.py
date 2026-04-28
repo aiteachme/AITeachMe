@@ -7,9 +7,10 @@ import hashlib
 import json
 import re
 import uuid
+from datetime import timedelta
 
 import structlog
-from fastapi import APIRouter, BackgroundTasks, Body, Depends, Path, Request, Response
+from fastapi import APIRouter, BackgroundTasks, Body, Depends, Path, Query, Request, Response
 from fastapi.responses import StreamingResponse
 from sqlalchemy import or_
 from sqlmodel import Session, select
@@ -30,6 +31,7 @@ from app.schemas.exams import (
     ExamPaperDeleteResponse,
     ExamPaperDetailResponse,
     ExamPaperItemResponse,
+    ExamPrewarmStatusResponse,
     QuestionTemplateItemResponse,
     QuestionTypeRegistryItemResponse,
     PaperPreview,
@@ -44,7 +46,7 @@ from app.shared.infra.workflow.live_stream import (
     publish_workflow_stream_event,
     subscribe_workflow_stream,
 )
-from app.utils.time import utcnow
+from app.utils.time import ensure_utc_datetime, utcnow
 from app.workflows.examine import (
     run_exam_grade_workflow,
     run_exam_study_guide_workflow,
@@ -62,6 +64,9 @@ _WHITESPACE_RE = re.compile(r"\s+")
 PAPER_PREVIEW_ROW_LIMIT = 7
 RECENT_EXAM_STEM_AVOID_LIMIT = 18
 _SYNC_EDGE_MARKER_PREFIX = "markdown_anchor_sync:"
+EXAM_PREWARM_CONFIG_VERSION = 1
+EXAM_PREWARM_TTL_DAYS = 2
+DEFAULT_AUTO_PREWARM_QUESTION_COUNT = 8
 
 
 def _exam_stream_channel(subject: str, paper_id: int) -> str:
@@ -125,6 +130,90 @@ def _build_exam_diversity_prompt(*, run_id: str, recent_stems: list[str]) -> str
 
 def _build_exam_title(paper: ExamPaper) -> str:
     return f"{paper.exam_mode} · {paper.created_at.strftime('%m/%d %H:%M')}"
+
+
+def _normalized_sample_file_uids(values: list[str] | None) -> list[str]:
+    seen: set[str] = set()
+    normalized: list[str] = []
+    for value in values or []:
+        item = str(value or "").strip()
+        if not item or item in seen:
+            continue
+        seen.add(item)
+        normalized.append(item)
+    return sorted(normalized)
+
+
+def _normalize_exam_user_prompt(value: str | None) -> str:
+    return _WHITESPACE_RE.sub(" ", str(value or "")).strip()
+
+
+def _stable_json_hash(payload: object) -> str:
+    serialized = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
+
+
+def _exam_mastery_fingerprint(session: Session, *, subject: str, user_id: str) -> str:
+    states = profile_repo.list_knowledge_states(
+        session,
+        user_id=user_id,
+        subject=subject,
+        target_kind="knowledge_unit",
+    )
+    payload = [
+        {
+            "knowledge_unit_id": int(state.knowledge_unit_id),
+            "mastery_score": round(float(state.mastery_score), 4),
+            "total_attempts": int(state.total_attempts),
+            "correct_attempts": int(state.correct_attempts),
+            "updated_at": state.updated_at.isoformat() if state.updated_at else "",
+        }
+        for state in states
+        if state.knowledge_unit_id is not None
+    ]
+    payload.sort(key=lambda item: int(item["knowledge_unit_id"]))
+    return _stable_json_hash(payload)
+
+
+def _build_exam_config_snapshot(
+    *,
+    subject: str,
+    user_id: str,
+    exam_mode: str,
+    question_count: int,
+    user_prompt: str | None,
+    sample_file_uids: list[str] | None,
+    knowledge_unit_ids: list[int],
+    mastery_fingerprint: str,
+) -> dict[str, object]:
+    return {
+        "version": EXAM_PREWARM_CONFIG_VERSION,
+        "subject": subject,
+        "user_id": user_id,
+        "exam_mode": exam_mode,
+        "num_questions": int(question_count),
+        "user_prompt": _normalize_exam_user_prompt(user_prompt),
+        "sample_file_uids": _normalized_sample_file_uids(sample_file_uids),
+        "knowledge_unit_ids": sorted({int(unit_id) for unit_id in knowledge_unit_ids if int(unit_id or 0) > 0}),
+        "mastery_fingerprint": mastery_fingerprint,
+    }
+
+
+def _exam_config_hash(config_snapshot: dict[str, object]) -> str:
+    return _stable_json_hash(config_snapshot)
+
+
+def _is_hidden_exam_paper(paper: ExamPaper | None) -> bool:
+    return paper is None or str(getattr(paper, "visibility", "visible") or "visible") == "hidden"
+
+
+def _is_active_prepared_exam_candidate(paper: ExamPaper | None) -> bool:
+    if paper is None or str(getattr(paper, "visibility", "visible") or "visible") != "hidden":
+        return False
+    if paper.status not in {"ready", "generating"}:
+        return False
+    expires_at = ensure_utc_datetime(paper.expires_at)
+    return expires_at is None or expires_at > utcnow()
 
 
 def _preview_density(difficulty: str | None) -> int:
@@ -842,6 +931,9 @@ def _build_exam_selection_context(
     knowledge_unit_ids: list[int],
     user_prompt: str | None,
     sample_file_uids: list[str],
+    config_hash: str | None = None,
+    config_snapshot: dict[str, object] | None = None,
+    generation_origin: str = "user",
     generation_status: str = "generating",
     error_message: str | None = None,
 ) -> str:
@@ -850,8 +942,13 @@ def _build_exam_selection_context(
         "knowledge_unit_ids": knowledge_unit_ids,
         "user_prompt": user_prompt,
         "sample_file_uids": sample_file_uids,
+        "generation_origin": generation_origin,
         "generation_status": generation_status,
     }
+    if config_hash:
+        payload["config_hash"] = config_hash
+    if config_snapshot:
+        payload["config_snapshot"] = config_snapshot
     if error_message:
         payload["error_message"] = error_message
     return json.dumps(payload, ensure_ascii=False)
@@ -889,7 +986,11 @@ def _set_exam_generation_status(
         context.pop("error_message", None)
     paper.selection_context_json = json.dumps(context, ensure_ascii=False)
     paper.status = status
-    paper.updated_at = utcnow()
+    now = utcnow()
+    if status == "ready" and str(getattr(paper, "visibility", "visible") or "visible") == "hidden":
+        paper.prepared_at = paper.prepared_at or now
+        paper.expires_at = paper.expires_at or now + timedelta(days=EXAM_PREWARM_TTL_DAYS)
+    paper.updated_at = now
     session.add(paper)
     session.commit()
     session.refresh(paper)
@@ -1047,6 +1148,181 @@ def _upsert_generated_template(
     return template
 
 
+def _create_exam_generation_paper(
+    session: Session,
+    *,
+    subject: str,
+    user_id: str,
+    exam_mode: str,
+    question_count: int,
+    user_prompt: str | None,
+    sample_file_uids: list[str] | None,
+    unit_ids: list[int],
+    config_snapshot: dict[str, object],
+    config_hash: str,
+    visibility: str,
+    generation_origin: str,
+) -> ExamPaper:
+    now = utcnow()
+    initial_preview = _build_placeholder_paper_preview(question_count=question_count)
+    hidden = visibility == "hidden"
+    return exams_repo.create_exam_paper(
+        session,
+        ExamPaper(
+            subject=subject,
+            user_id=user_id,
+            exam_mode=exam_mode,
+            status="generating",
+            visibility=visibility,
+            generation_origin=generation_origin,
+            config_hash=config_hash,
+            config_snapshot_json=json.dumps(config_snapshot, ensure_ascii=False),
+            total_items=question_count,
+            total_score=float(question_count),
+            paper_preview_json=initial_preview.model_dump_json(),
+            selection_context_json=_build_exam_selection_context(
+                source="knowledge_unit_pool",
+                knowledge_unit_ids=unit_ids,
+                user_prompt=user_prompt,
+                sample_file_uids=_normalized_sample_file_uids(sample_file_uids),
+                config_hash=config_hash,
+                config_snapshot=config_snapshot,
+                generation_origin=generation_origin,
+            ),
+            expires_at=now + timedelta(days=EXAM_PREWARM_TTL_DAYS) if hidden else None,
+        ),
+    )
+
+
+def _reserve_exam_prewarm_paper(
+    session: Session,
+    *,
+    subject: str,
+    user_id: str,
+    exam_mode: str,
+    question_count: int,
+    user_prompt: str | None,
+    sample_file_uids: list[str] | None,
+    unit_ids: list[int],
+    config_snapshot: dict[str, object],
+    config_hash: str,
+) -> tuple[ExamPaper, bool]:
+    candidate = exams_repo.get_prepared_exam_candidate(
+        session,
+        subject=subject,
+        user_id=user_id,
+        config_hash=config_hash,
+    )
+    if _is_active_prepared_exam_candidate(candidate):
+        return candidate, False
+
+    paper = _create_exam_generation_paper(
+        session,
+        subject=subject,
+        user_id=user_id,
+        exam_mode=exam_mode,
+        question_count=question_count,
+        user_prompt=user_prompt,
+        sample_file_uids=sample_file_uids,
+        unit_ids=unit_ids,
+        config_snapshot=config_snapshot,
+        config_hash=config_hash,
+        visibility="hidden",
+        generation_origin="prewarm",
+    )
+    return paper, True
+
+
+def _delete_stale_hidden_exams(*, subject: str, user_id: str) -> None:
+    with managed_session() as session:
+        stale_ids = exams_repo.list_stale_hidden_exam_paper_ids(
+            session,
+            subject=subject,
+            user_id=user_id,
+        )
+        for paper_id in stale_ids:
+            exams_repo.delete_exam_paper_cascade(session, paper_id=paper_id)
+
+
+def _schedule_exam_prewarm_task(
+    background_task_registry,
+    *,
+    subject: str,
+    user_id: str,
+    exam_mode: str,
+    unit_ids: list[int],
+    question_count: int,
+    user_prompt: str | None,
+    sample_file_uids: list[str] | None,
+    config_snapshot: dict[str, object],
+    config_hash: str,
+) -> None:
+    if background_task_registry is None:
+        return
+    background_task_registry.spawn(
+        _run_exam_prewarm_background(
+            subject=subject,
+            user_id=user_id,
+            exam_mode=exam_mode,
+            unit_ids=unit_ids,
+            question_count=question_count,
+            user_prompt=user_prompt,
+            sample_file_uids=sample_file_uids,
+            config_snapshot=config_snapshot,
+            config_hash=config_hash,
+        ),
+        kind="exam.prewarm",
+        subject=subject,
+        name=f"exam.prewarm:{subject}:{config_hash[:12]}",
+    )
+
+
+async def _run_exam_prewarm_background(
+    *,
+    subject: str,
+    user_id: str,
+    exam_mode: str,
+    unit_ids: list[int],
+    question_count: int,
+    user_prompt: str | None,
+    sample_file_uids: list[str] | None,
+    config_snapshot: dict[str, object],
+    config_hash: str,
+) -> None:
+    _delete_stale_hidden_exams(subject=subject, user_id=user_id)
+    with managed_session() as session:
+        paper, reserved = _reserve_exam_prewarm_paper(
+            session,
+            subject=subject,
+            user_id=user_id,
+            exam_mode=exam_mode,
+            question_count=question_count,
+            user_prompt=user_prompt,
+            sample_file_uids=sample_file_uids,
+            unit_ids=unit_ids,
+            config_snapshot=config_snapshot,
+            config_hash=config_hash,
+        )
+        if not reserved:
+            return
+        paper_id = int(paper.id or 0)
+
+    await _run_exam_generation_background(
+        subject=subject,
+        user_id=user_id,
+        paper_id=paper_id,
+        exam_mode=exam_mode,
+        unit_ids=unit_ids,
+        question_count=question_count,
+        user_prompt=user_prompt,
+        sample_file_uids=sample_file_uids,
+        config_snapshot=config_snapshot,
+        config_hash=config_hash,
+        schedule_replacement=False,
+        background_task_registry=None,
+    )
+
+
 async def _run_exam_generation_background(
     *,
     subject: str,
@@ -1056,6 +1332,11 @@ async def _run_exam_generation_background(
     unit_ids: list[int],
     question_count: int,
     user_prompt: str | None,
+    sample_file_uids: list[str] | None = None,
+    config_snapshot: dict[str, object] | None = None,
+    config_hash: str = "",
+    schedule_replacement: bool = False,
+    background_task_registry=None,
 ) -> None:
     _publish_exam_event(
         subject,
@@ -1487,6 +1768,19 @@ async def _run_exam_generation_background(
             "done",
             done_payload,
         )
+        if schedule_replacement and config_snapshot and config_hash:
+            _schedule_exam_prewarm_task(
+                background_task_registry,
+                subject=subject,
+                user_id=user_id,
+                exam_mode=exam_mode,
+                unit_ids=unit_ids,
+                question_count=question_count,
+                user_prompt=user_prompt,
+                sample_file_uids=sample_file_uids,
+                config_snapshot=config_snapshot,
+                config_hash=config_hash,
+            )
     except asyncio.CancelledError:
         error_message = "Exam question generation was cancelled during the planning stage."
         logger.exception(
@@ -1563,6 +1857,10 @@ async def _spawn_exam_generation_after_response(
     unit_ids: list[int],
     question_count: int,
     user_prompt: str | None,
+    sample_file_uids: list[str] | None,
+    config_snapshot: dict[str, object],
+    config_hash: str,
+    schedule_replacement: bool,
 ) -> None:
     request.app.state.background_task_registry.spawn(
         _run_exam_generation_background(
@@ -1573,10 +1871,42 @@ async def _spawn_exam_generation_after_response(
             unit_ids=unit_ids,
             question_count=question_count,
             user_prompt=user_prompt,
+            sample_file_uids=sample_file_uids,
+            config_snapshot=config_snapshot,
+            config_hash=config_hash,
+            schedule_replacement=schedule_replacement,
+            background_task_registry=getattr(request.app.state, "background_task_registry", None),
         ),
         kind="exam.generate",
         subject=subject,
         name=f"exam.generate:{subject}:{paper_id}",
+    )
+
+
+async def _spawn_exam_prewarm_after_response(
+    request: Request,
+    *,
+    subject: str,
+    user_id: str,
+    exam_mode: str,
+    unit_ids: list[int],
+    question_count: int,
+    user_prompt: str | None,
+    sample_file_uids: list[str] | None,
+    config_snapshot: dict[str, object],
+    config_hash: str,
+) -> None:
+    _schedule_exam_prewarm_task(
+        getattr(request.app.state, "background_task_registry", None),
+        subject=subject,
+        user_id=user_id,
+        exam_mode=exam_mode,
+        unit_ids=unit_ids,
+        question_count=question_count,
+        user_prompt=user_prompt,
+        sample_file_uids=sample_file_uids,
+        config_snapshot=config_snapshot,
+        config_hash=config_hash,
     )
 
 
@@ -1822,6 +2152,18 @@ def _paper_detail(session: Session, paper: ExamPaper) -> ExamPaperDetailResponse
 
 
 async def _study_guide_detail(session: Session, paper: ExamPaper) -> ExamStudyGuideResponse:
+    cache = exams_repo.get_study_guide_cache(session, exam_paper_id=int(paper.id or 0))
+    if cache is not None and cache.status == "completed" and cache.guide_json.strip():
+        try:
+            return ExamStudyGuideResponse.model_validate_json(cache.guide_json)
+        except Exception:
+            logger.warning(
+                "exam_study_guide_cache_invalid",
+                subject=paper.subject,
+                user_id=paper.user_id,
+                paper_id=paper.id,
+            )
+
     items = exams_repo.list_items_by_paper(session, paper.id or 0)
     links_by_item_id = _links_for_items(session, items)
     knowledge_unit_ids = {
@@ -1914,7 +2256,76 @@ async def _study_guide_detail(session: Session, paper: ExamPaper) -> ExamStudyGu
             if item.knowledge_unit_name.strip():
                 normalized_focus_units.append(item)
         response.focus_units = normalized_focus_units
+    exams_repo.upsert_study_guide_cache(
+        session,
+        exam_paper_id=int(paper.id or 0),
+        subject=paper.subject,
+        user_id=paper.user_id,
+        status="completed",
+        guide_json=response.model_dump_json(),
+        error_message="",
+        generated_at=response.generated_at,
+    )
     return response
+
+
+async def _run_exam_study_guide_background(
+    *,
+    subject: str,
+    user_id: str,
+    paper_id: int,
+) -> None:
+    try:
+        with managed_session() as session:
+            paper = exams_repo.get_exam_paper_by_id(session, paper_id)
+            if paper is None or paper.subject != subject or paper.user_id != user_id or _is_hidden_exam_paper(paper):
+                return
+            if paper.status != "graded":
+                return
+            cache = exams_repo.get_study_guide_cache(session, exam_paper_id=paper_id)
+            if cache is not None and cache.status == "completed" and cache.guide_json.strip():
+                return
+            await _study_guide_detail(session, paper)
+    except asyncio.CancelledError:
+        raise
+    except Exception as exc:
+        logger.exception(
+            "exam_study_guide_background_failed",
+            subject=subject,
+            user_id=user_id,
+            paper_id=paper_id,
+            error=str(exc),
+        )
+        with managed_session() as session:
+            exams_repo.upsert_study_guide_cache(
+                session,
+                exam_paper_id=paper_id,
+                subject=subject,
+                user_id=user_id,
+                status="failed",
+                guide_json="{}",
+                error_message=str(exc),
+                generated_at=None,
+            )
+
+
+async def _spawn_exam_study_guide_after_response(
+    request: Request,
+    *,
+    subject: str,
+    user_id: str,
+    paper_id: int,
+) -> None:
+    request.app.state.background_task_registry.spawn(
+        _run_exam_study_guide_background(
+            subject=subject,
+            user_id=user_id,
+            paper_id=paper_id,
+        ),
+        kind="exam.study_guide",
+        subject=subject,
+        name=f"exam.study_guide:{subject}:{paper_id}",
+    )
 
 
 async def _grade_exam(session: Session, paper: ExamPaper) -> ExamGradeResponse:
@@ -2001,24 +2412,69 @@ async def generate_exam(
         )
 
     mode = exam_mode_value(body.exam_mode)
-    initial_preview = _build_placeholder_paper_preview(question_count=question_count)
-    paper = exams_repo.create_exam_paper(
+    unit_ids = [int(unit.id or 0) for unit in exam_units]
+    config_snapshot = _build_exam_config_snapshot(
+        subject=normalized,
+        user_id=user.user_id,
+        exam_mode=mode,
+        question_count=question_count,
+        user_prompt=body.user_prompt,
+        sample_file_uids=body.sample_file_uids,
+        knowledge_unit_ids=unit_ids,
+        mastery_fingerprint=_exam_mastery_fingerprint(session, subject=normalized, user_id=user.user_id),
+    )
+    config_hash = _exam_config_hash(config_snapshot)
+    paper = exams_repo.claim_prepared_exam_paper(
         session,
-        ExamPaper(
+        subject=normalized,
+        user_id=user.user_id,
+        config_hash=config_hash,
+    )
+    served_from_prepared = paper is not None
+    if paper is not None:
+        paper_id = int(paper.id or 0)
+        background_tasks.add_task(
+            _spawn_exam_prewarm_after_response,
+            request,
             subject=normalized,
             user_id=user.user_id,
             exam_mode=mode,
-            status="generating",
-            total_items=question_count,
-            total_score=float(question_count),
-            paper_preview_json=initial_preview.model_dump_json(),
-            selection_context_json=_build_exam_selection_context(
-                source="knowledge_unit_pool",
-                knowledge_unit_ids=[int(unit.id or 0) for unit in exam_units],
-                user_prompt=body.user_prompt,
+            unit_ids=unit_ids,
+            question_count=question_count,
+            user_prompt=body.user_prompt,
+            sample_file_uids=body.sample_file_uids or [],
+            config_snapshot=config_snapshot,
+            config_hash=config_hash,
+        )
+        return ok_response(
+            ExamGenerateResponse(
+                id=paper_id,
+                status=paper.status,
+                error_message=None,
+                created_at=paper.created_at,
+                updated_at=paper.updated_at,
+                subject=paper.subject,
+                user_id=paper.user_id,
+                exam_mode=paper.exam_mode,
+                num_questions=paper.total_items or question_count,
+                exam_paper_id=paper_id,
                 sample_file_uids=body.sample_file_uids or [],
-            ),
-        ),
+            )
+        )
+
+    paper = _create_exam_generation_paper(
+        session,
+        subject=normalized,
+        user_id=user.user_id,
+        exam_mode=mode,
+        question_count=question_count,
+        user_prompt=body.user_prompt,
+        sample_file_uids=body.sample_file_uids,
+        unit_ids=unit_ids,
+        config_snapshot=config_snapshot,
+        config_hash=config_hash,
+        visibility="visible",
+        generation_origin="user",
     )
     paper_id = paper.id or 0
     background_tasks.add_task(
@@ -2028,9 +2484,13 @@ async def generate_exam(
         user_id=user.user_id,
         paper_id=paper_id,
         exam_mode=mode,
-        unit_ids=[int(unit.id or 0) for unit in exam_units],
+        unit_ids=unit_ids,
         question_count=question_count,
         user_prompt=body.user_prompt,
+        sample_file_uids=body.sample_file_uids or [],
+        config_snapshot=config_snapshot,
+        config_hash=config_hash,
+        schedule_replacement=not served_from_prepared,
     )
     return ok_response(
         ExamGenerateResponse(
@@ -2049,6 +2509,122 @@ async def generate_exam(
     )
 
 
+def _prewarm_status_from_candidate(paper: ExamPaper | None) -> str:
+    if paper is None:
+        return "missing"
+    now = utcnow()
+    expires_at = ensure_utc_datetime(paper.expires_at)
+    if expires_at is not None and expires_at <= now:
+        return "stale"
+    if paper.status == "ready":
+        return "ready"
+    if paper.status == "generating":
+        return "preparing"
+    if paper.status == "failed":
+        return "failed"
+    return "missing"
+
+
+@router.get(
+    "/prewarm-status",
+    response_model=ApiResponse[ExamPrewarmStatusResponse],
+    summary="Get background-prepared exam status for the current generation options",
+    responses=build_error_responses([400, 404, 500]),
+)
+async def exam_prewarm_status(
+    request: Request,
+    background_tasks: BackgroundTasks,
+    subject: str = Path(...),
+    exam_mode: str = Query("web_practice"),
+    num_questions: int = Query(DEFAULT_AUTO_PREWARM_QUESTION_COUNT, ge=1, le=200),
+    user_prompt: str | None = Query(default=None),
+    sample_file_uids: list[str] | None = Query(default=None),
+    user: CurrentUserContext = Depends(get_current_user_context),
+    session: Session = Depends(get_db),
+) -> ApiResponse[ExamPrewarmStatusResponse]:
+    normalized = normalize_subject_slug(subject)
+    _ensure_subject(session, normalized, user.user_id)
+    mode = exam_mode_value(exam_mode)
+    question_count = max(1, int(num_questions or DEFAULT_AUTO_PREWARM_QUESTION_COUNT))
+    units = _list_exam_eligible_units(session, subject=normalized)
+    unit_ids = [int(unit.id or 0) for unit in units if unit.id is not None]
+    if not unit_ids:
+        return ok_response(
+            ExamPrewarmStatusResponse(
+                status="missing",
+                exam_mode=mode,
+                num_questions=question_count,
+                error_message="No active KnowledgeUnits are available for exam generation.",
+            )
+        )
+
+    config_snapshot = _build_exam_config_snapshot(
+        subject=normalized,
+        user_id=user.user_id,
+        exam_mode=mode,
+        question_count=question_count,
+        user_prompt=user_prompt,
+        sample_file_uids=sample_file_uids or [],
+        knowledge_unit_ids=unit_ids,
+        mastery_fingerprint=_exam_mastery_fingerprint(session, subject=normalized, user_id=user.user_id),
+    )
+    config_hash = _exam_config_hash(config_snapshot)
+    candidate = exams_repo.get_prepared_exam_candidate(
+        session,
+        subject=normalized,
+        user_id=user.user_id,
+        config_hash=config_hash,
+    )
+    status = _prewarm_status_from_candidate(candidate)
+    background_requested = False
+    if status in {"missing", "failed", "stale"}:
+        candidate, reserved = _reserve_exam_prewarm_paper(
+            session,
+            subject=normalized,
+            user_id=user.user_id,
+            exam_mode=mode,
+            question_count=question_count,
+            user_prompt=user_prompt,
+            sample_file_uids=sample_file_uids or [],
+            unit_ids=unit_ids,
+            config_snapshot=config_snapshot,
+            config_hash=config_hash,
+        )
+        status = _prewarm_status_from_candidate(candidate)
+        background_requested = reserved
+    if background_requested and candidate is not None and candidate.id is not None:
+        background_tasks.add_task(
+            _spawn_exam_generation_after_response,
+            request,
+            subject=normalized,
+            user_id=user.user_id,
+            paper_id=int(candidate.id),
+            exam_mode=mode,
+            unit_ids=unit_ids,
+            question_count=question_count,
+            user_prompt=user_prompt,
+            sample_file_uids=sample_file_uids or [],
+            config_snapshot=config_snapshot,
+            config_hash=config_hash,
+            schedule_replacement=False,
+        )
+
+    return ok_response(
+        ExamPrewarmStatusResponse(
+            status="preparing" if background_requested and status != "ready" else status,
+            exam_mode=mode,
+            num_questions=question_count,
+            prepared_at=candidate.prepared_at if candidate is not None else None,
+            expires_at=candidate.expires_at if candidate is not None else None,
+            updated_at=candidate.updated_at if candidate is not None else None,
+            background_requested=background_requested,
+            error_message=str(_json_dict(candidate.selection_context_json).get("error_message") or "")
+            if candidate is not None and status == "failed"
+            else None,
+        )
+    )
+
+
 @router.get(
     "/history",
     response_model=ApiResponse[PaginatedData[ExamHistoryItem]],
@@ -2056,6 +2632,8 @@ async def generate_exam(
     responses=build_error_responses([400, 404, 500]),
 )
 async def exam_history(
+    request: Request,
+    background_tasks: BackgroundTasks,
     subject: str = Path(...),
     page: int = 1,
     size: int = 20,
@@ -2064,6 +2642,39 @@ async def exam_history(
 ) -> ApiResponse[PaginatedData[ExamHistoryItem]]:
     normalized = normalize_subject_slug(subject)
     _ensure_subject(session, normalized, user.user_id)
+    default_units = _list_exam_eligible_units(session, subject=normalized)
+    default_unit_ids = [int(unit.id or 0) for unit in default_units if unit.id is not None]
+    if default_unit_ids:
+        default_config_snapshot = _build_exam_config_snapshot(
+            subject=normalized,
+            user_id=user.user_id,
+            exam_mode="web_practice",
+            question_count=DEFAULT_AUTO_PREWARM_QUESTION_COUNT,
+            user_prompt=None,
+            sample_file_uids=[],
+            knowledge_unit_ids=default_unit_ids,
+            mastery_fingerprint=_exam_mastery_fingerprint(session, subject=normalized, user_id=user.user_id),
+        )
+        default_config_hash = _exam_config_hash(default_config_snapshot)
+        if not exams_repo.has_active_prepared_exam(
+            session,
+            subject=normalized,
+            user_id=user.user_id,
+            config_hash=default_config_hash,
+        ):
+            background_tasks.add_task(
+                _spawn_exam_prewarm_after_response,
+                request,
+                subject=normalized,
+                user_id=user.user_id,
+                exam_mode="web_practice",
+                unit_ids=default_unit_ids,
+                question_count=DEFAULT_AUTO_PREWARM_QUESTION_COUNT,
+                user_prompt=None,
+                sample_file_uids=[],
+                config_snapshot=default_config_snapshot,
+                config_hash=default_config_hash,
+            )
     rows, total = exams_repo.list_exam_papers(
         session,
         subject=normalized,
@@ -2189,7 +2800,7 @@ async def exam_generation_stream(
         user = get_current_user_context(request, response, session)
         _ensure_subject(session, normalized, user.user_id)
         paper = exams_repo.get_exam_paper_by_id(session, exam_paper_id)
-        if paper is None or paper.subject != normalized or paper.user_id != user.user_id:
+        if paper is None or paper.subject != normalized or paper.user_id != user.user_id or _is_hidden_exam_paper(paper):
             _raise_not_found(f"Exam paper `{exam_paper_id}` not found.")
 
     async def event_generator():
@@ -2250,7 +2861,7 @@ async def exam_detail(
     normalized = normalize_subject_slug(subject)
     _ensure_subject(session, normalized, user.user_id)
     paper = exams_repo.get_exam_paper_by_id(session, exam_paper_id)
-    if paper is None or paper.subject != normalized or paper.user_id != user.user_id:
+    if paper is None or paper.subject != normalized or paper.user_id != user.user_id or _is_hidden_exam_paper(paper):
         _raise_not_found(f"Exam paper `{exam_paper_id}` not found.")
     return ok_response(_paper_detail(session, paper))
 
@@ -2270,7 +2881,7 @@ async def delete_exam_paper(
     normalized = normalize_subject_slug(subject)
     _ensure_subject(session, normalized, user.user_id)
     paper = exams_repo.get_exam_paper_by_id(session, exam_paper_id)
-    if paper is None or paper.subject != normalized or paper.user_id != user.user_id:
+    if paper is None or paper.subject != normalized or paper.user_id != user.user_id or _is_hidden_exam_paper(paper):
         _raise_not_found(f"Exam paper `{exam_paper_id}` not found.")
 
     exams_repo.delete_exam_paper_cascade(session, paper_id=exam_paper_id)
@@ -2292,7 +2903,7 @@ async def exam_study_guide(
     normalized = normalize_subject_slug(subject)
     _ensure_subject(session, normalized, user.user_id)
     paper = exams_repo.get_exam_paper_by_id(session, exam_paper_id)
-    if paper is None or paper.subject != normalized or paper.user_id != user.user_id:
+    if paper is None or paper.subject != normalized or paper.user_id != user.user_id or _is_hidden_exam_paper(paper):
         _raise_not_found(f"Exam paper `{exam_paper_id}` not found.")
     if paper.status != "graded":
         raise AITeachMeError(
@@ -2310,6 +2921,8 @@ async def exam_study_guide(
     responses=build_error_responses([400, 404, 409, 500]),
 )
 async def submit_exam(
+    request: Request,
+    background_tasks: BackgroundTasks,
     subject: str = Path(...),
     exam_paper_id: int = Path(...),
     body: ExamSubmitRequest = Body(...),
@@ -2319,7 +2932,7 @@ async def submit_exam(
     normalized = normalize_subject_slug(subject)
     _ensure_subject(session, normalized, user.user_id)
     paper = exams_repo.get_exam_paper_by_id(session, exam_paper_id)
-    if paper is None or paper.subject != normalized or paper.user_id != user.user_id:
+    if paper is None or paper.subject != normalized or paper.user_id != user.user_id or _is_hidden_exam_paper(paper):
         _raise_not_found(f"Exam paper `{exam_paper_id}` not found.")
     if paper.status == "generating":
         raise AITeachMeError(detail="Exam is still generating.", error_code="EXAM_STILL_GENERATING", status_code=409)
@@ -2342,4 +2955,12 @@ async def submit_exam(
     session.add(paper)
     session.commit()
     session.refresh(paper)
-    return ok_response(await _grade_exam(session, paper))
+    grade_response = await _grade_exam(session, paper)
+    background_tasks.add_task(
+        _spawn_exam_study_guide_after_response,
+        request,
+        subject=normalized,
+        user_id=user.user_id,
+        paper_id=exam_paper_id,
+    )
+    return ok_response(grade_response)

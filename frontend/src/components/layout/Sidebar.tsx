@@ -4,6 +4,7 @@ import { AnimatePresence, motion, type Variants } from "framer-motion";
 import {
   BarChart3,
   BookOpen,
+  ChevronRight,
   Download,
   Edit3,
   FileText,
@@ -59,6 +60,7 @@ const COLOR_CLASSES = [
 ];
 
 const LOGO_SRC = publicAssetPath("logo.svg");
+const SUBJECT_SECTION_EXPANDED_STORAGE_KEY = "aiteachme.sidebar.subjectsExpanded";
 
 const sidebarListContainerMotion: Variants = {
   visible: {
@@ -183,8 +185,31 @@ function displaySubjectName(subject: SubjectItem): string {
   return subject.name?.trim() || "无标题";
 }
 
+function readSubjectSectionExpanded(): boolean {
+  if (typeof window === "undefined") {
+    return true;
+  }
+  try {
+    return window.localStorage.getItem(SUBJECT_SECTION_EXPANDED_STORAGE_KEY) !== "false";
+  } catch {
+    return true;
+  }
+}
+
+function writeSubjectSectionExpanded(value: boolean) {
+  if (typeof window === "undefined") {
+    return;
+  }
+  try {
+    window.localStorage.setItem(SUBJECT_SECTION_EXPANDED_STORAGE_KEY, value ? "true" : "false");
+  } catch {
+    // Keep the in-memory state when storage is unavailable in restricted webviews.
+  }
+}
+
 export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
   const [expandedSubjects, setExpandedSubjects] = useState<Set<string>>(new Set());
+  const [isSubjectSectionExpanded, setIsSubjectSectionExpanded] = useState(readSubjectSectionExpanded);
   const [isMobileOpen, setIsMobileOpen] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [subjectActionError, setSubjectActionError] = useState<string>();
@@ -217,6 +242,14 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
       )?.items ?? [],
   });
 
+  const updateSubjectSectionExpanded = useCallback((next: boolean | ((current: boolean) => boolean)) => {
+    setIsSubjectSectionExpanded((current) => {
+      const value = typeof next === "function" ? next(current) : next;
+      writeSubjectSectionExpanded(value);
+      return value;
+    });
+  }, []);
+
   useEffect(() => {
     if (!openMenuId) {
       return;
@@ -236,8 +269,9 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
       return;
     }
     setExpandedSubjects((prev) => new Set([...prev, match[1]]));
+    updateSubjectSectionExpanded(true);
     setIsCollapsed(false);
-  }, [location.pathname]);
+  }, [location.pathname, updateSubjectSectionExpanded]);
 
   const deletePreviewMutation = useMutation({
     mutationFn: async (subjectId: string) =>
@@ -274,6 +308,7 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
   });
 
   const groupedSubjects = useMemo(() => subjects as SubjectItem[], [subjects]);
+  const shouldShowSubjectList = effectiveCollapsed || isSubjectSectionExpanded;
   const expandNavigationSidebar = useCallback(() => {
     setIsCollapsed(false);
   }, []);
@@ -333,7 +368,7 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
         <div
           className={cn(
             "flex h-12 shrink-0 items-center border-b border-slate-100 dark:border-slate-800/50",
-            effectiveCollapsed ? "justify-center px-0" : "justify-between px-4",
+            effectiveCollapsed ? "justify-center px-0" : "justify-between px-3",
           )}
         >
           {effectiveCollapsed ? (
@@ -354,7 +389,7 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
             </div>
           ) : (
             <>
-              <Link to="/" className="flex items-center gap-2 text-slate-900 dark:text-slate-100">
+              <Link to="/" className="flex items-center gap-2 pl-2 text-slate-900 dark:text-slate-100">
                 <img src={LOGO_SRC} alt="AITeachMe" className="h-5 w-auto dark:invert dark:opacity-90" />
               </Link>
               <button
@@ -369,7 +404,7 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
           )}
         </div>
 
-        <div className={cn("shrink-0 space-y-1", effectiveCollapsed ? "px-0 pb-2 pt-1" : "px-2 pb-2 pt-1")}>
+        <div className={cn("shrink-0 space-y-1", effectiveCollapsed ? "px-0 pb-2 pt-1" : "px-3 pb-2 pt-1")}>
           {effectiveCollapsed ? (
             <div className="flex flex-col items-center gap-1">
               <button
@@ -555,20 +590,31 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
 
         <div className={cn("min-h-0 flex-1 space-y-0.5 overflow-y-auto overflow-x-hidden pb-4 scrollbar-thin scrollbar-webkit", effectiveCollapsed ? "px-2" : "px-3")}>
           {!effectiveCollapsed ? (
-            <div className="flex items-center gap-1.5 px-2 pb-2 pt-1">
-              <span className="whitespace-nowrap text-[11px] font-medium tracking-[0.08em] text-slate-400">学科</span>
-              {isLoading ? <Loader2 className="h-3 w-3 animate-spin text-slate-400 dark:text-slate-500" /> : null}
-              <div className="ml-auto flex items-center gap-1">
-                <button
-                  type="button"
-                  onClick={() => setIsImportModalOpen(true)}
-                  className="flex h-7 w-7 items-center justify-center rounded-md text-slate-400 transition hover:bg-[#eef3f8] hover:text-slate-700 dark:text-slate-500 dark:hover:bg-slate-800/60 dark:hover:text-slate-200"
-                  title="导入课程包"
-                  aria-label="导入课程包"
-                >
-                  <PackagePlus className="h-3.5 w-3.5" />
-                </button>
-              </div>
+            <div className="flex h-7 items-center gap-1">
+              <button
+                type="button"
+                onClick={() => updateSubjectSectionExpanded((value) => !value)}
+                className="group flex min-w-0 flex-1 items-center gap-1 rounded-md px-2 text-left text-[11px] font-medium text-slate-400 transition-colors hover:bg-[#eef3f8] hover:text-slate-700 dark:text-slate-500 dark:hover:bg-slate-800/60 dark:hover:text-slate-300"
+                aria-expanded={isSubjectSectionExpanded}
+              >
+                <span className="truncate">学科</span>
+                <ChevronRight
+                  className={cn(
+                    "h-3 w-3 shrink-0 opacity-0 transition-[opacity,transform] group-hover:opacity-100 group-focus-visible:opacity-100",
+                    isSubjectSectionExpanded && "rotate-90",
+                  )}
+                />
+                {isLoading ? <Loader2 className="h-3 w-3 animate-spin text-current opacity-70" /> : null}
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsImportModalOpen(true)}
+                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-slate-400 transition hover:bg-[#eef3f8] hover:text-sky-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#9fb0c4]/45 dark:text-slate-500 dark:hover:bg-slate-800/60 dark:hover:text-sky-300"
+                title="导入课程包"
+                aria-label="导入课程包"
+              >
+                <PackagePlus className="h-3.5 w-3.5" />
+              </button>
             </div>
           ) : (
             <div className="flex h-6 items-center px-1">
@@ -576,17 +622,27 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
             </div>
           )}
 
-          {!isLoading && groupedSubjects.length === 0 && !effectiveCollapsed ? (
+          {!isLoading && groupedSubjects.length === 0 && !effectiveCollapsed && isSubjectSectionExpanded ? (
             <p className="-mt-1 overflow-hidden whitespace-nowrap px-4 py-0 text-[11px] text-slate-300 dark:text-slate-600">暂无学科</p>
           ) : null}
 
-          <motion.div
-            className="space-y-0.5"
-            variants={sidebarListContainerMotion}
-            initial="hidden"
-            animate="visible"
-          >
-            <AnimatePresence initial={false}>
+          <AnimatePresence initial={false}>
+            {shouldShowSubjectList ? (
+              <motion.div
+                key="subjects-list"
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: "auto" }}
+                exit={{ opacity: 0, height: 0 }}
+                transition={{ duration: 0.18, ease: "easeOut" }}
+                className="overflow-hidden"
+              >
+                <motion.div
+                  className="space-y-0.5"
+                  variants={sidebarListContainerMotion}
+                  initial="hidden"
+                  animate="visible"
+                >
+                  <AnimatePresence initial={false}>
               {groupedSubjects.map((subject) => {
                 const expanded = expandedSubjects.has(subject.subject_id);
                 const displayName = displaySubjectName(subject);
@@ -604,7 +660,7 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
                   >
                 <div
                   className={cn(
-                    "group flex items-center gap-1 rounded-md transition-colors",
+                    "group flex h-7 items-center gap-1 rounded-md transition-colors",
                     !effectiveCollapsed ? "hover:bg-[#eef3f8] dark:hover:bg-slate-800/60" : "",
                   )}
                 >
@@ -642,7 +698,7 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
                       <button
                         type="button"
                         onClick={() => setOpenMenuId((prev) => (prev === subject.subject_id ? null : subject.subject_id))}
-                        className="flex h-7 w-7 items-center justify-center rounded-md text-slate-400 opacity-100 transition hover:bg-slate-100 hover:text-slate-700 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-300 sm:opacity-0 sm:group-hover:opacity-100"
+                        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-slate-400 opacity-100 transition hover:bg-slate-100 hover:text-slate-700 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-300 sm:opacity-0 sm:group-hover:opacity-100"
                         title="更多操作"
                       >
                         <MoreVertical className="h-3.5 w-3.5" />
@@ -714,7 +770,6 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
                                   initial="hidden"
                                   animate="visible"
                                   exit="exit"
-                                  whileHover={{ x: 2 }}
                                   whileTap={{ scale: 0.985 }}
                                 >
                                   <Link
@@ -742,8 +797,11 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
                   </motion.div>
                 );
               })}
-            </AnimatePresence>
-          </motion.div>
+                  </AnimatePresence>
+                </motion.div>
+              </motion.div>
+            ) : null}
+          </AnimatePresence>
 
           <AiConversationSidebarSection
             collapsed={effectiveCollapsed}
@@ -753,7 +811,12 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
         </div>
 
         {/* Bottom actions */}
-        <div className="z-10 mt-auto shrink-0 space-y-1 border-t border-slate-200/80 p-2 dark:border-slate-800/50">
+        <div
+          className={cn(
+            "z-10 mt-auto shrink-0 space-y-1 border-t border-slate-200/80 dark:border-slate-800/50",
+            effectiveCollapsed ? "p-2" : "px-3 py-2",
+          )}
+        >
           <button
             type="button"
             onClick={() => setIsCommunityModalOpen(true)}

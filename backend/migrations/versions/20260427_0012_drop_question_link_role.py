@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from alembic import op
+from alembic import context, op
 import sqlalchemy as sa
 
 
@@ -19,11 +19,24 @@ def _has_column(table_name: str, column_name: str) -> bool:
 
 
 def upgrade() -> None:
+    if context.is_offline_mode():
+        op.execute(
+            "ALTER TABLE question_knowledge_unit_link "
+            "DROP COLUMN IF EXISTS role "
+            "/* atm-allow-destructive-ddl: redundant role copied into coverage-only links */"
+        )
+        return
     if _has_column("question_knowledge_unit_link", "role"):
         op.drop_column("question_knowledge_unit_link", "role")
 
 
 def downgrade() -> None:
+    if context.is_offline_mode():
+        op.execute(
+            "ALTER TABLE question_knowledge_unit_link "
+            "ADD COLUMN IF NOT EXISTS role VARCHAR DEFAULT 'secondary' NOT NULL"
+        )
+        return
     if not _has_column("question_knowledge_unit_link", "role"):
         op.add_column(
             "question_knowledge_unit_link",

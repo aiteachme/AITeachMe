@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type MouseEvent, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, BookOpen, ChevronDown, Eye, FileText, Layers3, Loader2, MoreVertical, Plus, Sparkles, Tags } from "lucide-react";
+import { ArrowLeft, BookOpen, CheckCircle2, ChevronDown, CloudOff, Eye, FileText, Layers3, Loader2, MoreVertical, Plus, Sparkles, Tags } from "lucide-react";
 import { useNavigate, useParams } from "react-router-dom";
 
 import {
@@ -71,6 +71,19 @@ interface QuestionTypeRegistryItem {
   updated_at: string;
 }
 
+type ExamPrewarmStatusValue = "ready" | "preparing" | "missing" | "failed" | "stale";
+
+interface ExamPrewarmStatusResponse {
+  status: ExamPrewarmStatusValue;
+  exam_mode: string;
+  num_questions: number;
+  prepared_at?: string | null;
+  expires_at?: string | null;
+  updated_at?: string | null;
+  background_requested?: boolean;
+  error_message?: string | null;
+}
+
 
 async function deleteExamPaper(subjectId: string, paperId: number) {
   return orvalApiClient<{ data?: { code?: number; message?: string; data?: ExamPaperDeleteResponse } }>(
@@ -101,6 +114,76 @@ async function getQuestionTypes(subjectId: string, signal?: AbortSignal) {
   );
 }
 
+async function getExamPrewarmStatus(
+  subjectId: string,
+  config: ReturnType<typeof loadCreateExamConfig>,
+  signal?: AbortSignal,
+) {
+  const params = new URLSearchParams();
+  params.set("exam_mode", config.examMode);
+  params.set("num_questions", String(config.numQuestions));
+  const userPrompt = config.userPrompt.trim();
+  if (userPrompt) {
+    params.set("user_prompt", userPrompt);
+  }
+  return orvalApiClient<{ data?: { code?: number; message?: string; data?: ExamPrewarmStatusResponse } }>(
+    `/api/v1/subjects/${encodeURIComponent(subjectId)}/exams/prewarm-status?${params.toString()}`,
+    {
+      method: "GET",
+      signal,
+    },
+  );
+}
+
+function ExamPrewarmStatusIcon({
+  status,
+  isFetching,
+  hasError,
+}: {
+  status?: ExamPrewarmStatusResponse | null;
+  isFetching: boolean;
+  hasError: boolean;
+}) {
+  const effectiveStatus: ExamPrewarmStatusValue = hasError
+    ? "failed"
+    : status?.status ?? (isFetching ? "preparing" : "missing");
+  const title =
+    effectiveStatus === "ready"
+      ? "后台已备好一份考卷"
+      : effectiveStatus === "preparing"
+        ? "后台正在准备考卷"
+        : effectiveStatus === "stale"
+          ? "后台预生成已过期，正在刷新"
+          : effectiveStatus === "failed"
+            ? "后台预生成暂不可用"
+            : "后台尚未备好考卷";
+  const toneClass =
+    effectiveStatus === "ready"
+      ? "border-emerald-200 bg-emerald-50 text-emerald-600 dark:border-emerald-900/60 dark:bg-emerald-950/30 dark:text-emerald-300"
+      : effectiveStatus === "preparing"
+        ? "border-sky-200 bg-sky-50 text-sky-600 dark:border-sky-900/60 dark:bg-sky-950/30 dark:text-sky-300"
+        : effectiveStatus === "failed" || effectiveStatus === "stale"
+          ? "border-amber-200 bg-amber-50 text-amber-600 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-300"
+          : "border-slate-200 bg-slate-50 text-slate-400 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-500";
+
+  return (
+    <span
+      className={`inline-grid h-6 w-6 shrink-0 place-items-center rounded-full border ${toneClass}`}
+      title={title}
+      aria-label={title}
+      role="status"
+    >
+      {effectiveStatus === "ready" ? (
+        <CheckCircle2 className="h-3.5 w-3.5" />
+      ) : effectiveStatus === "preparing" ? (
+        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+      ) : (
+        <CloudOff className="h-3.5 w-3.5" />
+      )}
+    </span>
+  );
+}
+
 
 export function ExamsPage() {
   const { subjectId } = useParams();
@@ -109,9 +192,31 @@ export function ExamsPage() {
   const { toast } = useToast();
   const { mode: examResultDisplayMode } = useExamResultDisplayPreference();
   const [isCreateConfigOpen, setIsCreateConfigOpen] = useState(false);
+  const [createConfigRevision, setCreateConfigRevision] = useState(0);
   const [expandedGroups, setExpandedGroups] = useState({
     active: true,
     completed: true,
+  });
+
+  const currentCreateConfig = useMemo(
+    () => (subjectId ? loadCreateExamConfig(subjectId) : null),
+    [createConfigRevision, subjectId],
+  );
+  const prewarmStatusQuery = useQuery({
+    queryKey: [
+      "exam-prewarm-status",
+      subjectId,
+      currentCreateConfig?.examMode,
+      currentCreateConfig?.numQuestions,
+      currentCreateConfig?.userPrompt.trim(),
+    ],
+    enabled: Boolean(subjectId && currentCreateConfig),
+    queryFn: async ({ signal }) => {
+      if (!subjectId || !currentCreateConfig) return null;
+      const response = await getExamPrewarmStatus(subjectId, currentCreateConfig, signal);
+      return unwrapOrvalResponse<ExamPrewarmStatusResponse>(response);
+    },
+    refetchInterval: 8000,
   });
 
   const historyQuery = useExamHistoryApiV1SubjectsSubjectExamsHistoryGet(subjectId ?? "", { page: 1, size: 24 });
@@ -226,6 +331,7 @@ export function ExamsPage() {
         await queryClient.invalidateQueries({
           queryKey: getExamHistoryApiV1SubjectsSubjectExamsHistoryGetQueryKey(subjectId ?? "", { page: 1, size: 24 }),
         });
+        await queryClient.invalidateQueries({ queryKey: ["exam-prewarm-status", subjectId ?? ""] });
         navigate(`/subject/${subjectId}/exams/${created.exam_paper_id}`);
         toast({
           title: "试卷已创建",
@@ -245,15 +351,16 @@ export function ExamsPage() {
 
   const handleCreateExam = () => {
     if (!subjectId || generateExam.isPending) return;
+    const config = currentCreateConfig ?? loadCreateExamConfig(subjectId);
     generateExam.mutate({
       subject: subjectId,
-      data: toExamGenerateRequest(loadCreateExamConfig(subjectId)),
+      data: toExamGenerateRequest(config),
     });
   };
 
   if (!subjectId) {
     return (
-      <div className="min-h-full bg-[#f7f8fc] px-6 py-8">
+      <div className="min-h-full px-6 py-8">
         <div className="mx-auto max-w-5xl rounded-[28px] border border-amber-200 bg-amber-50 px-5 py-4 text-amber-900 shadow-sm">
           缺少学科标识，暂时无法加载考试中心。
         </div>
@@ -263,7 +370,7 @@ export function ExamsPage() {
 
   return (
     <>
-      <div className="min-h-full bg-[linear-gradient(180deg,#fbfcff_0%,#f4f7fb_55%,#eef3f8_100%)] dark:bg-none dark:bg-slate-900 px-4 py-6 sm:px-6 lg:px-8">
+      <div className="min-h-full px-4 py-6 sm:px-6 lg:px-8">
         <div className="mx-auto flex max-w-7xl flex-col gap-6">
           <section className="overflow-hidden px-2 py-4 sm:px-4 lg:px-6">
             <div className="flex flex-col gap-8 lg:flex-row lg:items-center lg:justify-between">
@@ -282,29 +389,36 @@ export function ExamsPage() {
                 </p>
 
                 <div className="mt-8 flex flex-wrap gap-7">
-                  <div className="inline-flex h-12 w-full overflow-hidden rounded-[10px] bg-black text-white shadow-sm transition-colors hover:bg-slate-900 sm:w-auto">
-                    <button
-                      type="button"
-                      className="flex min-w-0 flex-1 items-center justify-center gap-2 px-6 text-sm font-semibold focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2 focus-visible:ring-offset-white active:scale-[0.99] sm:flex-none"
-                      onClick={handleCreateExam}
-                      disabled={generateExam.isPending}
-                    >
-                      {generateExam.isPending ? (
-                        <Loader2 className="h-4 w-4 shrink-0 animate-spin" />
-                      ) : (
-                        <Plus className="h-4 w-4 shrink-0" />
-                      )}
-                      <span className="whitespace-nowrap">{generateExam.isPending ? "创建中..." : "创建新考卷"}</span>
-                    </button>
-                    <button
-                      type="button"
-                      className="grid h-full w-10 shrink-0 place-items-center border-l border-white/20 text-white/85 transition-colors hover:bg-white/10 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
-                      onClick={() => setIsCreateConfigOpen(true)}
-                      aria-label="更多考卷设置"
-                      title="更多设置"
-                    >
-                      <MoreVertical className="h-4 w-4" />
-                    </button>
+                  <div className="flex w-full items-center gap-2 sm:w-auto">
+                    <div className="inline-flex h-12 w-full overflow-hidden rounded-[10px] bg-black text-white shadow-sm transition-colors hover:bg-slate-900 sm:w-auto">
+                      <button
+                        type="button"
+                        className="flex min-w-0 flex-1 items-center justify-center gap-2 px-6 text-sm font-semibold focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2 focus-visible:ring-offset-white active:scale-[0.99] sm:flex-none"
+                        onClick={handleCreateExam}
+                        disabled={generateExam.isPending}
+                      >
+                        {generateExam.isPending ? (
+                          <Loader2 className="h-4 w-4 shrink-0 animate-spin" />
+                        ) : (
+                          <Plus className="h-4 w-4 shrink-0" />
+                        )}
+                        <span className="whitespace-nowrap">{generateExam.isPending ? "创建中..." : "创建新考卷"}</span>
+                      </button>
+                      <button
+                        type="button"
+                        className="grid h-full w-10 shrink-0 place-items-center border-l border-white/20 text-white/85 transition-colors hover:bg-white/10 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
+                        onClick={() => setIsCreateConfigOpen(true)}
+                        aria-label="更多考卷设置"
+                        title="更多设置"
+                      >
+                        <MoreVertical className="h-4 w-4" />
+                      </button>
+                    </div>
+                    <ExamPrewarmStatusIcon
+                      status={prewarmStatusQuery.data}
+                      isFetching={prewarmStatusQuery.isFetching}
+                      hasError={prewarmStatusQuery.isError}
+                    />
                   </div>
                   <Button
                     size="lg"
@@ -416,7 +530,10 @@ export function ExamsPage() {
       <CreateExamModal
         open={isCreateConfigOpen}
         subjectId={subjectId}
-        onClose={() => setIsCreateConfigOpen(false)}
+        onClose={() => {
+          setIsCreateConfigOpen(false);
+          setCreateConfigRevision((current) => current + 1);
+        }}
       />
     </>
   );
@@ -786,7 +903,7 @@ function ExamCatalogShell({
 }) {
   const navigate = useNavigate();
   return (
-    <div className="min-h-full bg-[linear-gradient(180deg,#fbfcff_0%,#f4f7fb_55%,#eef3f8_100%)] dark:bg-none dark:bg-slate-900 px-4 py-6 sm:px-6 lg:px-8">
+    <div className="min-h-full px-4 py-6 sm:px-6 lg:px-8">
       <div className="mx-auto flex max-w-7xl flex-col gap-6">
         <header className="px-2 py-4 sm:px-4 lg:px-6">
           <button
@@ -858,7 +975,7 @@ export function QuestionTemplatesPage() {
 
   if (!subjectId) {
     return (
-      <div className="min-h-full bg-[#f7f8fc] px-6 py-8">
+      <div className="min-h-full px-6 py-8">
         <div className="mx-auto max-w-5xl rounded-[28px] border border-amber-200 bg-amber-50 px-5 py-4 text-amber-900 shadow-sm">
           缺少学科标识，暂时无法加载题库。
         </div>
@@ -930,7 +1047,7 @@ export function QuestionTypesPage() {
 
   if (!subjectId) {
     return (
-      <div className="min-h-full bg-[#f7f8fc] px-6 py-8">
+      <div className="min-h-full px-6 py-8">
         <div className="mx-auto max-w-5xl rounded-[28px] border border-amber-200 bg-amber-50 px-5 py-4 text-amber-900 shadow-sm">
           缺少学科标识，暂时无法加载题型。
         </div>
@@ -1003,7 +1120,7 @@ export function ExamPaperPage() {
 
   if (!subjectId || !examPaperId || Number.isNaN(Number(examPaperId))) {
     return (
-      <div className="min-h-full bg-[#f7f8fc] px-6 py-8">
+      <div className="min-h-full px-6 py-8">
         <div className="mx-auto max-w-5xl rounded-[28px] border border-amber-200 bg-amber-50 px-5 py-4 text-amber-900 shadow-sm">
           缺少考卷信息，暂时无法进入考试页面。
         </div>

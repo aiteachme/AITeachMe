@@ -45,7 +45,14 @@ from app.shared.infra.subject import (
 from migrations.seed_data.question_types import BUILTIN_QUESTION_TYPE_ROWS
 from app.models.chat import ChatMessage, ChatSession
 from app.models.email_confirmation import EmailConfirmation
-from app.models.exam import ExamPaper, ExamPaperItem, QuestionKnowledgeUnitLink, QuestionTemplate, QuestionTypeRegistry
+from app.models.exam import (
+    ExamPaper,
+    ExamPaperItem,
+    ExamStudyGuideCache,
+    QuestionKnowledgeUnitLink,
+    QuestionTemplate,
+    QuestionTypeRegistry,
+)
 from app.models.knowledge import RetrievalChunk
 from app.models.knowledge_doc import KnowledgeDocument
 from app.models.knowledge_graph_sync import KnowledgeGraphSourceRef, KnowledgeGraphSyncRun
@@ -77,6 +84,7 @@ _SCHEMA_MODELS = (
     ExamPaper,
     ExamPaperItem,
     QuestionKnowledgeUnitLink,
+    ExamStudyGuideCache,
     UserKnowledgeState,
     ChatSession,
     ChatMessage,
@@ -138,6 +146,15 @@ _SQLITE_ADDITIVE_COLUMNS = {
         ("settings_source", "TEXT NOT NULL DEFAULT ''"),
         ("settings_hash", "TEXT NOT NULL DEFAULT ''"),
         ("effective_settings_json", "JSON NOT NULL DEFAULT '{}'"),
+    ),
+    "exam_paper": (
+        ("visibility", "TEXT NOT NULL DEFAULT 'visible'"),
+        ("generation_origin", "TEXT NOT NULL DEFAULT 'user'"),
+        ("config_hash", "TEXT NOT NULL DEFAULT ''"),
+        ("config_snapshot_json", "TEXT NOT NULL DEFAULT '{}'"),
+        ("prepared_at", "DATETIME NULL"),
+        ("claimed_at", "DATETIME NULL"),
+        ("expires_at", "DATETIME NULL"),
     ),
 }
 
