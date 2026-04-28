@@ -179,7 +179,7 @@ LLM_PROVIDER_MODEL_DEFAULTS: dict[str, dict[str, Any]] = {
         reason="qwen-max",
         primary="qwen-flash",
         light="qwen-flash",
-        embedding="text-embedding-3-small",
+        embedding="text-embedding-v4",
     ),
     "vllm": _provider_model_defaults(
         reason="Qwen/Qwen2.5-7B-Instruct",
