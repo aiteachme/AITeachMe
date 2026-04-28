@@ -25,7 +25,15 @@ from app.workflows.ingest.intake.catalog import build_file_record
 from app.workflows.ingest.intake.parse_dispatch import _start_parse_for_files
 
 
-SUPPORTED_UPLOAD_EXTENSIONS = frozenset({".txt", ".doc", ".docx", ".pdf", ".ppt", ".pptx", ".md"})
+# 当前产品入口真正开放的 ingest 文件类型白名单。
+# AI 提示：
+# - 先以这里为准理解“当前可用链路”。
+# - 如果任务没有明确要求“恢复旧链路 / 扩大上传类型 / 检查未扩展 demo 代码”，
+#   可以先不读那些未出现在这个集合里的 parser/provider 代码。
+# 当前策略调整：
+# - .doc 已停用，视为不支持格式；
+# - .docx 保留上传，但只走本地解析，不再自动尝试外部 provider。
+SUPPORTED_UPLOAD_EXTENSIONS = frozenset({".txt", ".docx", ".pdf", ".ppt", ".pptx", ".md"})
 
 
 def _generate_file_uid() -> str:

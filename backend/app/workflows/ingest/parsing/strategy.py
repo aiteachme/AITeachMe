@@ -123,10 +123,12 @@ def _preferred_parser_order(
     classification: ClassificationResult | None,
     image_vision_enabled: bool,
 ) -> list[str]:
-    if is_image_extension(extension):
-        if not image_vision_enabled:
-            return []
-        return ["llm_vision"]
+    # 未扩展链路：当前上传白名单不开放原始图片直传。
+    # AI 提示：除非任务明确要求恢复图片上传，否则可以先跳过这段分支。
+    # if is_image_extension(extension):
+    #     if not image_vision_enabled:
+    #         return []
+    #     return ["llm_vision"]
 
     if is_text_extension(extension):
         return ["text_native"]
@@ -140,20 +142,23 @@ def _preferred_parser_order(
         # markitdown (Microsoft) 对 LLM 场景最优化，mammoth 语义保留好作为 fallback
         return ["markitdown", "mammoth", "docx_native"]
 
-    if extension == ".doc":
-        # Convert DOC to DOCX first, then reuse the DOCX parser chain.
-        return ["doc_markitdown", "doc_mammoth", "doc_native"]
+    # 旧链路：.doc 已停用，不再支持上传和解析。
+    # if extension == ".doc":
+    #     # Convert DOC to DOCX first, then reuse the DOCX parser chain.
+    #     return ["doc_markitdown", "doc_mammoth", "doc_native"]
 
     if extension in {".ppt", ".pptx"}:
         if file_mb >= 15 or estimated_pages >= _LARGE_SLIDE_COUNT:
             return ["python_pptx_native", "markitdown"]
         return _classification_first(classification, extension)
 
-    if is_audio_extension(extension):
-        return ["audio_transcription"]
+    # 功能尚未扩展链路：当前上传白名单不开放音频直传。
+    # if is_audio_extension(extension):
+    #     return ["audio_transcription"]
 
-    if is_markitdown_generic_extension(extension):
-        return ["markitdown_generic"]
+    # demo / 未扩展链路：当前上传白名单不开放通用 MarkItDown 格式上传。
+    # if is_markitdown_generic_extension(extension):
+    #     return ["markitdown_generic"]
 
     return _classification_first(classification, extension)
 
@@ -178,12 +183,14 @@ def _decide_mode_and_options(
     document_ocr_enabled: bool,
     options: ParserRunOptions,
 ) -> tuple[str, str]:
-    if is_image_extension(extension):
-        if file_mb > _VISION_MAX_MB:
-            options.timeout_s = max(options.timeout_s, 150)
-            return "vision_large_image", "Image file routed to LLM vision with extended timeout."
-        options.asset_image_limit = 1
-        return "vision_image", "Image file routed directly to LLM vision."
+    # 未扩展链路：当前上传白名单不开放原始图片直传。
+    # AI 提示：如果不是恢复图片上传，这段 mode 设计可以先不读。
+    # if is_image_extension(extension):
+    #     if file_mb > _VISION_MAX_MB:
+    #         options.timeout_s = max(options.timeout_s, 150)
+    #         return "vision_large_image", "Image file routed to LLM vision with extended timeout."
+    #     options.asset_image_limit = 1
+    #     return "vision_image", "Image file routed directly to LLM vision."
 
     if is_text_extension(extension):
         options.asset_image_limit = 0
@@ -247,16 +254,17 @@ def _decide_mode_and_options(
         options.asset_vision_ocr_limit = 8
         return "balanced_docx", "DOCX uses balanced parser ordering."
 
-    if extension == ".doc":
-        if file_mb >= 10 or estimated_pages >= _LARGE_DOCX_PAGE_COUNT:
-            options.asset_image_limit = 10
-            options.skip_image_supplement = True
-            options.enable_asset_vision_ocr = document_ocr_enabled
-            options.asset_vision_ocr_limit = 6
-            return "fast_doc_via_docx", "Large DOC converts to DOCX first, then uses the DOCX parser chain."
-        options.enable_asset_vision_ocr = document_ocr_enabled
-        options.asset_vision_ocr_limit = 8
-        return "balanced_doc_via_docx", "DOC converts to DOCX first, then uses the DOCX parser chain."
+    # 旧链路：.doc 已停用，不再支持上传和解析。
+    # if extension == ".doc":
+    #     if file_mb >= 10 or estimated_pages >= _LARGE_DOCX_PAGE_COUNT:
+    #         options.asset_image_limit = 10
+    #         options.skip_image_supplement = True
+    #         options.enable_asset_vision_ocr = document_ocr_enabled
+    #         options.asset_vision_ocr_limit = 6
+    #         return "fast_doc_via_docx", "Large DOC converts to DOCX first, then uses the DOCX parser chain."
+    #     options.enable_asset_vision_ocr = document_ocr_enabled
+    #     options.asset_vision_ocr_limit = 8
+    #     return "balanced_doc_via_docx", "DOC converts to DOCX first, then uses the DOCX parser chain."
 
     if extension in {".ppt", ".pptx"}:
         if file_mb >= 15 or estimated_pages >= _LARGE_SLIDE_COUNT:
