@@ -16,6 +16,15 @@ class RawFile(SQLModel, table=True):
     """User-uploaded source material."""
 
     __tablename__ = "raw_file"
+    __table_args__ = (
+        sa.Index(
+            "ix_raw_file_user_hash_size_type",
+            "user_id",
+            "content_hash",
+            "file_size_bytes",
+            "filetype",
+        ),
+    )
 
     id: int | None = Field(default=None, primary_key=True)
     uid: str = Field(index=True, unique=True)

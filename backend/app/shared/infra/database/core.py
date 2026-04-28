@@ -157,6 +157,14 @@ _SQLITE_ADDITIVE_COLUMNS = {
         ("expires_at", "DATETIME NULL"),
     ),
 }
+_SQLITE_ADDITIVE_INDEXES = {
+    "raw_file": (
+        (
+            "ix_raw_file_user_hash_size_type",
+            ("user_id", "content_hash", "file_size_bytes", "filetype"),
+        ),
+    ),
+}
 
 
 def _get_db_path():
@@ -738,6 +746,41 @@ def _apply_sqlite_additive_schema_updates(engine: sa.Engine) -> None:
                 )
 
 
+def _apply_sqlite_additive_index_updates(engine: sa.Engine) -> None:
+    inspector = sa.inspect(engine)
+    existing_tables = set(inspector.get_table_names())
+    if not existing_tables:
+        return
+
+    with engine.begin() as connection:
+        for table_name, indexes in _SQLITE_ADDITIVE_INDEXES.items():
+            if table_name not in existing_tables:
+                continue
+            existing_index_names = {
+                str(index.get("name") or "")
+                for index in inspector.get_indexes(table_name)
+            }
+            for index_name, column_names in indexes:
+                if index_name in existing_index_names:
+                    continue
+                columns_sql = ", ".join(
+                    quote_sqlite_identifier(column_name)
+                    for column_name in column_names
+                )
+                connection.execute(
+                    sa.text(
+                        f"CREATE INDEX IF NOT EXISTS {quote_sqlite_identifier(index_name)} "
+                        f"ON {quote_sqlite_identifier(table_name)} ({columns_sql})"
+                    )
+                )
+                existing_index_names.add(index_name)
+                logger.info(
+                    "sqlite_additive_index_added",
+                    table_name=table_name,
+                    index_name=index_name,
+                )
+
+
 def _drop_sqlite_legacy_schema(engine: sa.Engine) -> None:
     """Backward-compatible alias for older tests and local tooling."""
 
@@ -751,6 +794,7 @@ def _ensure_local_sqlite_schema(engine: sa.Engine) -> sa.Engine:
 
     _drop_sqlite_removed_schema(engine)
     _apply_sqlite_additive_schema_updates(engine)
+    _apply_sqlite_additive_index_updates(engine)
     drift = _inspect_sqlite_schema_drift(engine)
     if drift is None:
         return engine
