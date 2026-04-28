@@ -12,4 +12,6 @@
 export interface BuildPlannerMessageRequest {
   /** User feedback used to revise the current plan draft. */
   message: string;
+  /** Optional per-request planner model. Omit or use settings for configured defaults. */
+  model?: string | null;
 }

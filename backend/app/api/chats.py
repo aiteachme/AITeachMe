@@ -82,6 +82,7 @@ async def _send_chat_response(
             session_id=body.session_id,
             question=body.question,
             source=body.source,
+            model=body.model,
             anchor_id=body.anchor_id,
             selected_text=body.selected_text,
             selected_context=body.selected_context,

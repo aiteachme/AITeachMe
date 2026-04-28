@@ -43,7 +43,7 @@ class RawFile(SQLModel, table=True):
 
     id: str = Field(primary_key=True, index=True)
     user_id: str = Field(default="local", foreign_key="user.id", index=True)
-    origin_subject_id: str | None = Field(default=None, foreign_key="subject.id", index=True)
+    origin_subject_id: str | None = Field(default=None, index=True)
     origin_subject_name: str | None = Field(default=None, index=True)
     filename: str
     filetype: str

@@ -7,6 +7,7 @@ from enum import Enum
 from typing import Literal
 
 from app.shared.infra.llm_support.routing import LLMCallPurpose
+from app.shared.infra.llm_support.model_choices import normalize_runtime_model_override
 from app.workflows.digest.common.model_policy import compact_metadata
 
 PlannerModelSlot = Literal["light", "primary", "reason"]
@@ -30,12 +31,13 @@ class PlannerModelPolicy:
     temperature_override: float | None = None
     note: str = ""
 
-    def completion_kwargs(self) -> dict[str, object]:
+    def completion_kwargs(self, *, model_override: str | None = None) -> dict[str, object]:
         """Return kwargs shared by Planner text/structured/stream call sites."""
 
+        resolved_model = normalize_runtime_model_override(model_override) or self.model
         kwargs: dict[str, object] = {
             "call_purpose": self.call_purpose,
-            "model": self.model,
+            "model": resolved_model,
         }
         if self.max_tokens is not None:
             kwargs["max_tokens"] = self.max_tokens
@@ -43,18 +45,27 @@ class PlannerModelPolicy:
             kwargs["temperature"] = self.temperature_override
         return kwargs
 
-    def metadata(self) -> dict[str, object]:
+    def metadata(self, *, model_override: str | None = None) -> dict[str, object]:
         """Return stable observability metadata for one Planner LLM call."""
 
-        return {
+        metadata: dict[str, object] = {
             "planner_model_step": self.step.value,
             "planner_model_slot": self.model,
             "planner_call_type": self.call_type,
         }
+        resolved_override = normalize_runtime_model_override(model_override)
+        if resolved_override:
+            metadata["planner_model_override"] = resolved_override
+        return metadata
 
-    def completion_kwargs_with_metadata(self, **extra_metadata: object) -> dict[str, object]:
-        kwargs = self.completion_kwargs()
-        kwargs["extra_metadata"] = compact_metadata(extra_metadata, self.metadata())
+    def completion_kwargs_with_metadata(
+        self,
+        *,
+        model_override: str | None = None,
+        **extra_metadata: object,
+    ) -> dict[str, object]:
+        kwargs = self.completion_kwargs(model_override=model_override)
+        kwargs["extra_metadata"] = compact_metadata(extra_metadata, self.metadata(model_override=model_override))
         return kwargs
 
 
@@ -107,15 +118,20 @@ def get_planner_model_policy(step: PlannerModelStep | str) -> PlannerModelPolicy
     return _POLICIES[resolved_step]
 
 
-def planner_completion_kwargs(step: PlannerModelStep | str) -> dict[str, object]:
-    return get_planner_model_policy(step).completion_kwargs()
+def planner_completion_kwargs(step: PlannerModelStep | str, *, model_override: str | None = None) -> dict[str, object]:
+    return get_planner_model_policy(step).completion_kwargs(model_override=model_override)
 
 
 def planner_completion_kwargs_with_metadata(
     step: PlannerModelStep | str,
+    *,
+    model_override: str | None = None,
     **extra_metadata: object,
 ) -> dict[str, object]:
-    return get_planner_model_policy(step).completion_kwargs_with_metadata(**extra_metadata)
+    return get_planner_model_policy(step).completion_kwargs_with_metadata(
+        model_override=model_override,
+        **extra_metadata,
+    )
 
 
 __all__ = [

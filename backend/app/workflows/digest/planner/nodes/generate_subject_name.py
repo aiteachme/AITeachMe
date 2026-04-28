@@ -91,6 +91,7 @@ def build_generate_subject_name_node(*, context: WorkflowContext):
                 [{"role": "user", "content": prompt}],
                 **planner_completion_kwargs_with_metadata(
                     PlannerModelStep.SUBJECT_NAME,
+                    model_override=state.get("model_override"),
                     planner_session_id=state.get("planner_session_id") or "",
                     substep="生成学科标题",
                 ),
@@ -116,6 +117,7 @@ def build_generate_subject_name_node(*, context: WorkflowContext):
                 hints=topic_hints,
                 completion_kwargs=planner_completion_kwargs_with_metadata(
                     PlannerModelStep.SUBJECT_ICON,
+                    model_override=state.get("model_override"),
                     planner_session_id=state.get("planner_session_id") or "",
                     substep="选择学科图标",
                 ),

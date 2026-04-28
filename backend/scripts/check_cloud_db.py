@@ -40,7 +40,6 @@ _REQUIRED_FOREIGN_KEYS = (
     ("retrieval_chunk", "subject_id", "subject"),
     ("subject_file", "subject_id", "subject"),
     ("subject_file", "file_id", "raw_file"),
-    ("raw_file", "origin_subject_id", "subject"),
     ("retrieval_chunk", "file_id", "raw_file"),
     ("knowledge_edge", "source_node_id", "knowledge_unit"),
     ("knowledge_edge", "target_node_id", "knowledge_unit"),
@@ -48,6 +47,14 @@ _REQUIRED_FOREIGN_KEYS = (
     ("exam_paper_item", "question_template_id", "question_template"),
     ("chat_message", "session_id", "chat_session"),
     ("chat_message", "source_chunk_id", "retrieval_chunk"),
+)
+_FORBIDDEN_FOREIGN_KEYS = (
+    ("raw_file", "origin_subject_id", "subject"),
+)
+_FORBIDDEN_COLUMNS = (
+    ("raw_file", "subject"),
+    ("raw_file", "uid"),
+    ("subject", "slug"),
 )
 
 
@@ -82,6 +89,37 @@ def _index_exists(connection: sa.Connection, index_name: str) -> bool:
             """
         ),
         {"index_name": index_name},
+    ).first()
+    return row is not None
+
+
+def _table_exists(connection: sa.Connection, table_name: str) -> bool:
+    row = connection.execute(
+        sa.text(
+            """
+            SELECT 1
+            FROM information_schema.tables
+            WHERE table_schema = current_schema()
+              AND table_name = :table_name
+            """
+        ),
+        {"table_name": table_name},
+    ).first()
+    return row is not None
+
+
+def _column_exists(connection: sa.Connection, *, table_name: str, column_name: str) -> bool:
+    row = connection.execute(
+        sa.text(
+            """
+            SELECT 1
+            FROM information_schema.columns
+            WHERE table_schema = current_schema()
+              AND table_name = :table_name
+              AND column_name = :column_name
+            """
+        ),
+        {"table_name": table_name, "column_name": column_name},
     ).first()
     return row is not None
 
@@ -137,18 +175,16 @@ def _collect_deep_schema_errors(connection: sa.Connection) -> list[str]:
     errors: list[str] = []
 
     for table in _SCHEMA_TABLES:
-        if not connection.execute(
-            sa.text(
-                """
-                SELECT 1
-                FROM information_schema.tables
-                WHERE table_schema = current_schema()
-                  AND table_name = :table_name
-                """
-            ),
-            {"table_name": table.name},
-        ).first():
+        if not _table_exists(connection, table.name):
             errors.append(f"missing table: {table.name}")
+            continue
+        for column in table.columns:
+            if not _column_exists(connection, table_name=table.name, column_name=column.name):
+                errors.append(f"missing column: {table.name}.{column.name}")
+
+    for table_name, column_name in _FORBIDDEN_COLUMNS:
+        if _column_exists(connection, table_name=table_name, column_name=column_name):
+            errors.append(f"unexpected legacy column: {table_name}.{column_name}")
 
     for table_name, constraint_name in _REQUIRED_UNIQUE_CONSTRAINTS:
         if not _constraint_exists(connection, table_name, constraint_name):
@@ -170,6 +206,17 @@ def _collect_deep_schema_errors(connection: sa.Connection) -> list[str]:
         ):
             errors.append(
                 f"missing foreign key: {table_name}.{column_name} -> {referenced_table}"
+            )
+
+    for table_name, column_name, referenced_table in _FORBIDDEN_FOREIGN_KEYS:
+        if _foreign_key_exists(
+            connection,
+            table_name=table_name,
+            column_name=column_name,
+            referenced_table=referenced_table,
+        ):
+            errors.append(
+                f"unexpected foreign key: {table_name}.{column_name} -> {referenced_table}"
             )
 
     return errors

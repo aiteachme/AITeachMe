@@ -162,3 +162,13 @@ def test_graph_source_file_id_fallback_keeps_string_ids() -> None:
             ]
         }
     ) == ["file_alpha", "file_beta", "42"]
+
+
+def test_raw_file_origin_subject_is_audit_data_not_membership_fk() -> None:
+    subject_foreign_key_columns = {
+        fk.parent.name
+        for fk in RawFile.__table__.foreign_keys
+        if fk.column.table.name == "subject"
+    }
+
+    assert "origin_subject_id" not in subject_foreign_key_columns

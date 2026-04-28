@@ -34,6 +34,7 @@ if str(BACKEND_ROOT) not in sys.path:
 from app.shared.infra.database import get_engine, reset_postgres_public_schema  # noqa: E402
 from app.shared.infra.database.core import (  # noqa: E402
     _SCHEMA_TABLES,
+    _get_alembic_head_revision,
     _get_postgres_alembic_revision,
     _postgres_table_exists,
 )
@@ -48,7 +49,7 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--reset-db",
         action="store_true",
-        help="Allow wiping a legacy dirty database before rerunning migrations.",
+        help="Permit wiping only a legacy dirty database without Alembic versioning.",
     )
     return parser
 
@@ -64,6 +65,10 @@ def _run_script(script_name: str, *script_args: str) -> None:
 def _run_alembic_upgrade_head() -> None:
     config = Config(str(BACKEND_ROOT / "alembic.ini"))
     command.upgrade(config, "head")
+
+
+def _format_revision(value: str | None) -> str:
+    return value or "missing"
 
 
 def _inspect_database_state() -> tuple[str | None, list[str]]:
@@ -86,6 +91,14 @@ def main(argv: list[str] | None = None) -> int:
     args = _build_arg_parser().parse_args(argv)
     allow_reset = bool(args.reset_db) or get_env_bool(ALLOW_RESET_ENV, False)
     current_revision, existing_tables = _inspect_database_state()
+    expected_revision = _get_alembic_head_revision()
+    print(
+        "cloud database bootstrap starting "
+        f"(current_revision={_format_revision(current_revision)}, "
+        f"expected_revision={expected_revision}, "
+        f"existing_app_tables={len(existing_tables)}, "
+        f"legacy_reset_allowed={str(allow_reset).lower()})"
+    )
 
     # Dirty legacy DB: existing application tables but no Alembic version table.
     if current_revision is None and existing_tables:
@@ -98,10 +111,17 @@ def main(argv: list[str] | None = None) -> int:
                 file=sys.stderr,
             )
             return 4
+        print("legacy unversioned cloud database detected; resetting public schema before migrations")
         reset_postgres_public_schema()
 
     try:
         _run_alembic_upgrade_head()
+        upgraded_revision, _ = _inspect_database_state()
+        print(
+            "cloud database migration completed "
+            f"(current_revision={_format_revision(upgraded_revision)}, "
+            f"expected_revision={expected_revision})"
+        )
         _run_script("prepare_cloud_db.py")
         _run_script("check_cloud_db.py")
     except subprocess.CalledProcessError as exc:

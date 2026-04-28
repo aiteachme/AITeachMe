@@ -611,12 +611,14 @@ class BuildPlannerCreateRequest(BaseModel):
     user_prompt: str = Field(description="Learner prompt or requested document target.")
     digest_mode: Literal["sprint", "systematic"] | None = Field(default=None, description="Optional requested digest mode.")
     title: str | None = Field(default=None, description="Optional planner session title.")
+    model: str | None = Field(default=None, description="Optional per-request planner model. Omit or use settings for configured defaults.")
 
 
 class BuildPlannerMessageRequest(BaseModel):
     """Append one planner revision message."""
 
     message: str = Field(description="User feedback used to revise the current plan draft.")
+    model: str | None = Field(default=None, description="Optional per-request planner model. Omit or use settings for configured defaults.")
 
 
 class BuildPlannerAdjustClickResponse(BaseModel):

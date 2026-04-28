@@ -207,6 +207,7 @@ async def _stream_composer_response(
             ),
             **planner_completion_kwargs_with_metadata(
                 PlannerModelStep.COMPOSE_PLAN,
+                model_override=state.get("model_override"),
                 planner_session_id=state.get("planner_session_id") or "",
                 substep="合成计划大纲",
             ),
@@ -290,6 +291,7 @@ async def _repair_outline_sketch_with_llm(
         ),
         **planner_completion_kwargs_with_metadata(
             PlannerModelStep.COMPOSE_PLAN,
+            model_override=state.get("model_override"),
             planner_session_id=state.get("planner_session_id") or "",
             substep="修复计划大纲结构",
             repair_reason="composer_json_parse_failed",

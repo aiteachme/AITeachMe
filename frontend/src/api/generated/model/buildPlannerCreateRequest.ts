@@ -18,4 +18,6 @@ export interface BuildPlannerCreateRequest {
   digest_mode?: 'sprint' | 'systematic' | null;
   /** Optional planner session title. */
   title?: string | null;
+  /** Optional per-request planner model. Omit or use settings for configured defaults. */
+  model?: string | null;
 }

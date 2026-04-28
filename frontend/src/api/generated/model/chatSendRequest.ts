@@ -17,6 +17,8 @@ export interface ChatSendRequest {
   session_id?: string | null;
   /** Optional source tag, e.g. quick_chat, exam_question, or build_assistant. */
   source?: string | null;
+  /** Optional per-message chat model. Omit or use settings for configured defaults. */
+  model?: string | null;
   /** Optional doc heading or exam-question anchor for highlighted QA. */
   anchor_id?: string | null;
   /** Exact highlighted text or question preview for display and persistence. */
