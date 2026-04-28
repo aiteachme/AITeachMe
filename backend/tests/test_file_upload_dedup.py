@@ -8,7 +8,7 @@ from fastapi import UploadFile
 from sqlalchemy.pool import StaticPool
 from sqlmodel import Session, SQLModel, create_engine, select
 
-from app.models import RawFile, Subject, SubjectFileLink, User
+from app.models import RawFile, Subject, SubjectFileLink, TaskStatus, User
 from app.repositories.files_repo import list_raw_files_by_user
 from app.shared.infra.storage.subject_scope import build_user_file_storage_scope
 from app.workflows.ingest.intake import catalog, uploads
@@ -84,6 +84,7 @@ def test_duplicate_user_upload_reuses_existing_file(monkeypatch) -> None:
     assert first_data.started_parse_count == 1
     assert second_data.started_parse_count == 0
     assert second_data.uploaded_items[0].uid == first_data.uploaded_items[0].uid
+    assert raw_files[0].parse_request_signature == "default"
 
 
 def test_duplicate_subject_upload_links_once_and_starts_parse_once(monkeypatch) -> None:
@@ -115,3 +116,160 @@ def test_duplicate_subject_upload_links_once_and_starts_parse_once(monkeypatch) 
     assert data.started_parse_count == 1
     assert len(data.uploaded_items) == 2
     assert data.uploaded_items[0].uid == data.uploaded_items[1].uid
+
+
+def test_duplicate_with_different_explicit_parser_creates_parse_variant(monkeypatch) -> None:
+    fake_store = _install_fake_store(monkeypatch)
+    with _session() as session:
+        mineru_data, mineru_parse_ids = asyncio.run(
+            uploads.save_uploaded_files_and_request_parse(
+                session,
+                owner_user_id="user_a",
+                files=[_upload("notes.pdf", b"same pdf bytes")],
+                parse_request_metadata={"requested_parser_provider": "mineru"},
+            )
+        )
+        paddle_data, paddle_parse_ids = asyncio.run(
+            uploads.save_uploaded_files_and_request_parse(
+                session,
+                owner_user_id="user_a",
+                files=[_upload("notes.pdf", b"same pdf bytes")],
+                parse_request_metadata={"requested_parser_provider": "paddle_ocr"},
+            )
+        )
+        raw_files, total = list_raw_files_by_user(session, user_id="user_a", limit=100, offset=0)
+
+    assert total == 2
+    assert len(raw_files) == 2
+    assert len(fake_store.writes) == 2
+    assert mineru_parse_ids != paddle_parse_ids
+    assert mineru_data.uploaded_items[0].uid != paddle_data.uploaded_items[0].uid
+    assert len({item.parse_request_signature for item in raw_files}) == 2
+
+
+def test_duplicate_with_same_explicit_parser_reuses_signature(monkeypatch) -> None:
+    fake_store = _install_fake_store(monkeypatch)
+    first_metadata = {
+        "requested_parser_provider": "paddle_ocr",
+        "paddle_ocr": {"api_token": "token-a"},
+    }
+    second_metadata = {
+        "requested_parser_provider": "paddle-ocr",
+        "paddle_ocr": {"api_token": "token-b"},
+    }
+    first_signature = uploads.build_parse_request_signature(first_metadata)
+    second_signature = uploads.build_parse_request_signature(second_metadata)
+    assert first_signature == second_signature
+    assert uploads.build_parse_request_signature({"api_token": "token-a"}) == (
+        uploads.build_parse_request_signature({"access_token": "token-b"})
+    )
+    assert "token-a" not in uploads.build_parse_request_signature(first_metadata)
+
+    with _session() as session:
+        first_data, first_parse_ids = asyncio.run(
+            uploads.save_uploaded_files_and_request_parse(
+                session,
+                owner_user_id="user_a",
+                files=[_upload("notes.pdf", b"same pdf bytes")],
+                parse_request_metadata=first_metadata,
+            )
+        )
+        second_data, second_parse_ids = asyncio.run(
+            uploads.save_uploaded_files_and_request_parse(
+                session,
+                owner_user_id="user_a",
+                files=[_upload("renamed.pdf", b"same pdf bytes")],
+                parse_request_metadata=second_metadata,
+            )
+        )
+        raw_files, total = list_raw_files_by_user(session, user_id="user_a", limit=100, offset=0)
+
+    assert total == 1
+    assert len(fake_store.writes) == 1
+    assert first_parse_ids == [raw_files[0].id]
+    assert second_parse_ids == []
+    assert first_data.uploaded_items[0].uid == second_data.uploaded_items[0].uid
+    assert raw_files[0].parse_request_signature.startswith("sha256:")
+
+
+def test_default_upload_reuses_best_completed_parse_variant(monkeypatch) -> None:
+    fake_store = _install_fake_store(monkeypatch)
+    with _session() as session:
+        asyncio.run(
+            uploads.save_uploaded_files_and_request_parse(
+                session,
+                owner_user_id="user_a",
+                files=[_upload("notes.pdf", b"same pdf bytes")],
+                parse_request_metadata={"requested_parser_provider": "mineru"},
+            )
+        )
+        mineru_file = session.exec(select(RawFile).where(RawFile.user_id == "user_a")).first()
+        assert mineru_file is not None
+        mineru_file.status = TaskStatus.COMPLETED.value
+        mineru_file.parse_metadata_json = '{"parser_used":"mineru"}'
+        session.add(mineru_file)
+        session.commit()
+
+        asyncio.run(
+            uploads.save_uploaded_files_and_request_parse(
+                session,
+                owner_user_id="user_a",
+                files=[_upload("notes.pdf", b"same pdf bytes")],
+                parse_request_metadata={"requested_parser_provider": "paddle_ocr"},
+            )
+        )
+        paddle_file = session.exec(
+            select(RawFile).where(RawFile.user_id == "user_a", RawFile.id != mineru_file.id)
+        ).first()
+        assert paddle_file is not None
+        paddle_file.status = TaskStatus.COMPLETED.value
+        paddle_file.parse_metadata_json = '{"parser_used":"paddle_ocr"}'
+        session.add(paddle_file)
+        session.commit()
+
+        default_data, default_parse_ids = asyncio.run(
+            uploads.save_uploaded_files_and_request_parse(
+                session,
+                owner_user_id="user_a",
+                files=[_upload("default.pdf", b"same pdf bytes")],
+            )
+        )
+        raw_files, total = list_raw_files_by_user(session, user_id="user_a", limit=100, offset=0)
+
+    assert total == 2
+    assert len(fake_store.writes) == 2
+    assert default_parse_ids == []
+    assert default_data.uploaded_items[0].uid == paddle_file.uid
+    assert len(raw_files) == 2
+
+
+def test_failed_duplicate_does_not_block_retry(monkeypatch) -> None:
+    fake_store = _install_fake_store(monkeypatch)
+    with _session() as session:
+        first_data, first_parse_ids = asyncio.run(
+            uploads.save_uploaded_files_and_request_parse(
+                session,
+                owner_user_id="user_a",
+                files=[_upload("notes.pdf", b"same pdf bytes")],
+            )
+        )
+        failed_file = session.get(RawFile, first_parse_ids[0])
+        assert failed_file is not None
+        failed_file.status = TaskStatus.FAILED.value
+        session.add(failed_file)
+        session.commit()
+
+        second_data, second_parse_ids = asyncio.run(
+            uploads.save_uploaded_files_and_request_parse(
+                session,
+                owner_user_id="user_a",
+                files=[_upload("notes.pdf", b"same pdf bytes")],
+            )
+        )
+        raw_files, total = list_raw_files_by_user(session, user_id="user_a", limit=100, offset=0)
+
+    assert total == 2
+    assert len(fake_store.writes) == 2
+    assert first_parse_ids != second_parse_ids
+    assert first_data.uploaded_items[0].uid != second_data.uploaded_items[0].uid
+    assert len(raw_files) == 2

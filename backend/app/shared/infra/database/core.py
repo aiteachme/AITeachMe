@@ -156,12 +156,23 @@ _SQLITE_ADDITIVE_COLUMNS = {
         ("claimed_at", "DATETIME NULL"),
         ("expires_at", "DATETIME NULL"),
     ),
+    "raw_file": (
+        ("parse_request_signature", "TEXT NOT NULL DEFAULT 'default'"),
+    ),
 }
 _SQLITE_ADDITIVE_INDEXES = {
     "raw_file": (
         (
             "ix_raw_file_user_hash_size_type",
             ("user_id", "content_hash", "file_size_bytes", "filetype"),
+            False,
+            "",
+        ),
+        (
+            "uq_raw_file_user_hash_size_type_signature_active",
+            ("user_id", "content_hash", "file_size_bytes", "filetype", "parse_request_signature"),
+            True,
+            "status != 'failed' AND content_hash IS NOT NULL AND file_size_bytes IS NOT NULL",
         ),
     ),
 }
@@ -746,6 +757,52 @@ def _apply_sqlite_additive_schema_updates(engine: sa.Engine) -> None:
                 )
 
 
+def _backfill_sqlite_raw_file_parse_signatures(engine: sa.Engine) -> None:
+    inspector = sa.inspect(engine)
+    if "raw_file" not in set(inspector.get_table_names()):
+        return
+    existing_columns = {
+        column["name"]
+        for column in inspector.get_columns("raw_file")
+    }
+    if "parse_request_signature" not in existing_columns:
+        return
+
+    with engine.begin() as connection:
+        connection.execute(
+            sa.text(
+                "UPDATE raw_file SET parse_request_signature = 'default' "
+                "WHERE parse_request_signature IS NULL OR parse_request_signature = ''"
+            )
+        )
+        rows = connection.execute(
+            sa.text(
+                "SELECT id, user_id, content_hash, file_size_bytes, filetype "
+                "FROM raw_file "
+                "WHERE status != 'failed' "
+                "AND content_hash IS NOT NULL "
+                "AND file_size_bytes IS NOT NULL "
+                "AND parse_request_signature = 'default' "
+                "ORDER BY created_at ASC, id ASC"
+            )
+        ).mappings()
+        seen: set[tuple[object, object, object, object]] = set()
+        duplicate_ids: list[int] = []
+        for row in rows:
+            key = (row["user_id"], row["content_hash"], row["file_size_bytes"], row["filetype"])
+            if key in seen:
+                duplicate_ids.append(int(row["id"]))
+            else:
+                seen.add(key)
+        for raw_file_id in duplicate_ids:
+            connection.execute(
+                sa.text(
+                    "UPDATE raw_file SET parse_request_signature = :signature WHERE id = :raw_file_id"
+                ),
+                {"signature": f"legacy:{raw_file_id}", "raw_file_id": raw_file_id},
+            )
+
+
 def _apply_sqlite_additive_index_updates(engine: sa.Engine) -> None:
     inspector = sa.inspect(engine)
     existing_tables = set(inspector.get_table_names())
@@ -760,17 +817,19 @@ def _apply_sqlite_additive_index_updates(engine: sa.Engine) -> None:
                 str(index.get("name") or "")
                 for index in inspector.get_indexes(table_name)
             }
-            for index_name, column_names in indexes:
+            for index_name, column_names, unique, where_clause in indexes:
                 if index_name in existing_index_names:
                     continue
                 columns_sql = ", ".join(
                     quote_sqlite_identifier(column_name)
                     for column_name in column_names
                 )
+                unique_sql = "UNIQUE " if unique else ""
+                where_sql = f" WHERE {where_clause}" if where_clause else ""
                 connection.execute(
                     sa.text(
-                        f"CREATE INDEX IF NOT EXISTS {quote_sqlite_identifier(index_name)} "
-                        f"ON {quote_sqlite_identifier(table_name)} ({columns_sql})"
+                        f"CREATE {unique_sql}INDEX IF NOT EXISTS {quote_sqlite_identifier(index_name)} "
+                        f"ON {quote_sqlite_identifier(table_name)} ({columns_sql}){where_sql}"
                     )
                 )
                 existing_index_names.add(index_name)
@@ -794,6 +853,7 @@ def _ensure_local_sqlite_schema(engine: sa.Engine) -> sa.Engine:
 
     _drop_sqlite_removed_schema(engine)
     _apply_sqlite_additive_schema_updates(engine)
+    _backfill_sqlite_raw_file_parse_signatures(engine)
     _apply_sqlite_additive_index_updates(engine)
     drift = _inspect_sqlite_schema_drift(engine)
     if drift is None:
