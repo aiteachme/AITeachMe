@@ -11,7 +11,7 @@
 - `user`：用户主表，同时保存用户级非敏感运行设置覆盖 `runtime_settings_json`。
 - `email_confirmation`：邮箱验证记录。
 - `subject`：学科空间主表，保存标题、描述、学习意图、文档摘要、LLM 上下文与构建锁字段。
-- `system_runtime_settings`：系统级运行设置覆盖；同一行保存当前有效 settings 快照哈希与来源，避免额外快照表。
+- `system_runtime_settings`：系统级运行设置覆盖与状态快照表；这是一张单行表，正常只有 `id = "runtime"` 一行。同一行保存当前有效 settings 快照哈希与来源，避免额外快照表。
 
 ### 文件、切片与知识文档
 

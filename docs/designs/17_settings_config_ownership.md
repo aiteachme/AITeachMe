@@ -38,7 +38,7 @@ system_runtime_settings.__env_overrides__
 | --- | --- | --- | --- |
 | deployment env / `.env` | 部署、密钥、连接串、首次启动默认值 | `APP_MODE`、`DATABASE_URL`、`AUTH_*`、`S3_*`、`LLM_API_KEY`、`LLM_BASE_URL`、搜索 provider key | 部署平台或本地用户 |
 | code defaults | 项目级默认行为 | 模型路由默认值、上传限制、Planner/DocGen 策略、RAG、搜索画像、图谱同步、观测开关 | 代码 |
-| `PROJECT_SETTINGS_PATH` | 可选外部项目 override | 开发/部署侧临时覆盖非敏感项目策略 | 显式配置者 |
+| `PROJECT_SETTINGS_PATH` | 可选外部项目 override | 线上部署侧覆盖非敏感项目策略；Render 可指向 Secret File，本地默认不需要；私有 YAML 应写全当前 `Settings` schema | 显式配置者 |
 | `system_runtime_settings` | 本地设置页全局覆盖与有效配置快照 | `models.*`、`ingest.*`、`planner.*`、`docgen.*`、`rag.*`、`search.retriever_profile`、`knowledge_graph.sync_after_docgen`、粗粒度 observability、`settings_hash` | 设置页/API |
 | module constants | 模块内部执行细节 | timeout、并发、cache/fusion、parser chain 常量、LLM token budget、embedding batch | 对应模块代码 |
 
@@ -84,6 +84,8 @@ system_runtime_settings.__env_overrides__
 3. `learning`
 4. `search`
 5. `observability`
+
+本地开发默认不额外叠加 settings 文件，避免 `.env`、设置页数据库覆盖与文件覆盖同时存在。线上如需统一固定模型路由，可通过根目录 `settings.private.yaml` 或 Render 同名 Secret File 提供私有 YAML，并让 `PROJECT_SETTINGS_PATH` 指向该文件路径；本机用 `.git/info/exclude` 排除这个真实私有 YAML。
 
 ## 5. 一句话
 
