@@ -40,6 +40,7 @@ import { SubjectImportModal } from "../subject/SubjectImportModal";
 import { SubjectDeleteConfirmModal } from "./SubjectDeleteConfirmModal";
 import { CommunityModal, ensureCommunityQrPreloaded } from "./CommunityPanel";
 import { AiConversationSidebarSection } from "../interaction/AiConversationSidebarSection";
+import { useAiInteraction } from "../interaction";
 
 import { Button } from "../ui/Button";
 
@@ -226,6 +227,11 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
   const location = useLocation();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const {
+    activeScope,
+    closeAiInteraction,
+    notifyConversationSessionsChanged,
+  } = useAiInteraction();
   const effectiveCollapsed = !isMobileOpen && isCollapsed;
   const isCreateSubjectActive = location.pathname === "/";
   const isMyLearningSpaceActive = location.pathname === "/spaces";
@@ -294,6 +300,10 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
     },
     onSuccess: (_, subjectId) => {
       void queryClient.invalidateQueries({ queryKey: ["subjects"] });
+      notifyConversationSessionsChanged();
+      if (activeScope?.type === "subject" && activeScope.subjectId === subjectId) {
+        closeAiInteraction();
+      }
       setSubjectActionError(undefined);
       setIsDeleteModalOpen(false);
       setDeleteTarget(null);

@@ -6,10 +6,12 @@ import uuid
 from datetime import datetime
 from typing import Any
 
+import sqlalchemy as sa
 from sqlmodel import Session, func, select
 
-from app.models import ChatMessage, ChatSession
+from app.models import ChatMessage, ChatSession, Subject
 from app.utils.time import utcnow
+from app.utils.subject import GLOBAL_SUBJECT
 
 
 def create_chat_session(
@@ -125,14 +127,23 @@ def list_sessions_by_user(
     offset: int,
     user_id: str = "local",
 ) -> tuple[list[ChatSession], int]:
+    subject_exists = (
+        select(Subject.id)
+        .where(
+            Subject.user_id == user_id,
+            Subject.slug == ChatSession.subject,
+        )
+        .exists()
+    )
+    visible_session = sa.or_(ChatSession.subject == GLOBAL_SUBJECT, subject_exists)
     total = session.exec(
         select(func.count())
         .select_from(ChatSession)
-        .where(ChatSession.user_id == user_id)
+        .where(ChatSession.user_id == user_id, visible_session)
     ).one()
     stmt = (
         select(ChatSession)
-        .where(ChatSession.user_id == user_id)
+        .where(ChatSession.user_id == user_id, visible_session)
         .order_by(ChatSession.last_message_at.desc(), ChatSession.created_at.desc())
         .offset(offset)
         .limit(limit)
