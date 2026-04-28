@@ -280,6 +280,8 @@ LangSmith 是研发排障的唯一 trace 真相源。progress 只给前端展示
 
 同一次产品动作只应该对应一条 workflow root trace；这条 trace 下面用多个 LangGraph node span 展示阶段。不要为每个节点、每个内部 helper 或同一条链路的后台续跑再手写一个平级 root trace。确实拆成独立后台任务时，必须用 `subject / build_session_id / lane` 元数据把它和触发动作关联起来。
 
+后台续跑也应走同一套入口：把 `langsmith_run_name`、`build_session_id`、`lane` 和必要业务元数据放进 `WorkflowContext.metadata`，再调用 `run_state_graph(...)`，不要在调度层额外包一层 `langsmith_trace(...)`。
+
 Workflow 作者只需要记住 3 个入口：
 
 ```python

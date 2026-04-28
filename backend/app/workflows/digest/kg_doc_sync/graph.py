@@ -275,6 +275,7 @@ async def run_graph_docs_sync_workflow(
     build_session_id: str | None = None,
     subject_context: str | None = None,
     structured_context: dict[str, object] | None = None,
+    trace_metadata: dict[str, object] | None = None,
 ) -> WorkflowResult[KnowledgeSyncReport]:
     error_subject = str(subject or "").strip()
     try:
@@ -284,15 +285,19 @@ async def run_graph_docs_sync_workflow(
             build_revision_no=build_revision_no,
         )
         error_subject = normalized_subject
+        context_metadata: dict[str, object] = {
+            "build_session_id": build_session_id or "",
+            "lane": "kg_doc_sync",
+            "langsmith_run_name": RUN_NAME_KG_DOC_SYNC,
+            "build_revision_no": normalized_revision,
+        }
+        for key, value in dict(trace_metadata or {}).items():
+            if value is not None and key not in context_metadata:
+                context_metadata[key] = value
         context = WorkflowContext(
             workflow_name="digest.kg_doc_sync",
             subject=normalized_subject,
-            metadata={
-                "build_session_id": build_session_id or "",
-                "lane": "kg_doc_sync",
-                "langsmith_run_name": RUN_NAME_KG_DOC_SYNC,
-                "build_revision_no": normalized_revision,
-            },
+            metadata=context_metadata,
         )
         result = await run_state_graph(
             workflow_name="digest.kg_doc_sync",

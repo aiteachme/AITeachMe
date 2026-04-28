@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 from datetime import datetime
-from typing import Any
 
 import structlog
 
@@ -12,7 +11,6 @@ from app.shared.infra.llm_support.common import (
     LLMRuntimeSnapshot,
     use_llm_runtime_snapshot,
 )
-from app.shared.infra.observability.trace import langsmith_trace
 from app.shared.infra.storage import SubjectStorageScope
 from app.shared.infra.knowledge.build_store import (
     read_knowledge_manifest,
@@ -25,14 +23,8 @@ from app.workflows.digest.kg_doc_sync.inputs import (
     load_knowledge_doc_sync_input,
     resolve_graph_input_paths,
 )
-from app.workflows.digest.kg_doc_sync.graph import RUN_NAME_KG_DOC_SYNC
 
 logger = structlog.get_logger(__name__)
-
-
-def _end_trace_run(trace_run: Any | None, outputs: dict[str, Any]) -> None:
-    if trace_run is not None:
-        trace_run.end(outputs=outputs)
 
 
 def _write_graph_status(
@@ -197,47 +189,31 @@ async def run_graph_docs_sync_after_doc_build(
         metrics={"processed_chunks": 0, **base_metrics},
         current_stage_description="正在从最新知识文档同步知识点、知识图像和关系。",
     )
-    with langsmith_trace(
-        name=RUN_NAME_KG_DOC_SYNC,
-        run_type="chain",
-        subject=subject,
-        build_session_id=build_session_id,
-        workflow="digest.kg_doc_sync",
-        lane="kg_doc_sync",
-        inputs={
-            "subject": subject,
-            "build_group_id": build_group_id,
-            "knowledge_doc_source": knowledge_doc_source,
-            "chapter_count": len(doc_chapter_metadatas),
-            "doc_version_no": doc_version_no,
-        },
-        extra_metadata={
-            "build_group_id": build_group_id,
-            "doc_version_no": doc_version_no,
-            "knowledge_doc_source": knowledge_doc_source,
-        },
-        extra_tags=["workflow:digest.kg_doc_sync", "lane:kg_doc_sync"],
-    ) as trace_run:
-        with use_llm_runtime_snapshot(llm_snapshot):
-            sync_result = await run_graph_docs_sync_workflow(
-                subject=subject,
-                markdown=knowledge_doc_markdown,
-                build_session_id=build_session_id,
-                structured_context=sync_input.structured_context,
-            )
-        if sync_result.failed:
-            _end_trace_run(trace_run, {"status": "failed", "error": sync_result.error.detail})
-            raise RuntimeError(sync_result.error.detail)
-
-        sync_report = sync_result.require_value()
-        completed_metrics = _completed_doc_sync_metrics(
-            knowledge_doc_source=knowledge_doc_source,
-            chapter_count=len(doc_chapter_metadatas),
-            doc_version_no=doc_version_no,
-            sync_report=sync_report,
+    with use_llm_runtime_snapshot(llm_snapshot):
+        sync_result = await run_graph_docs_sync_workflow(
+            subject=subject,
+            markdown=knowledge_doc_markdown,
+            build_revision_no=doc_version_no,
+            build_session_id=build_session_id,
+            structured_context=sync_input.structured_context,
+            trace_metadata={
+                "build_group_id": build_group_id,
+                "doc_version_no": doc_version_no,
+                "knowledge_doc_source": knowledge_doc_source,
+                "chapter_count": len(doc_chapter_metadatas),
+            },
         )
-        _end_trace_run(trace_run, {"status": "completed", **completed_metrics})
-        return completed_metrics
+    if sync_result.failed:
+        raise RuntimeError(sync_result.error.detail)
+
+    sync_report = sync_result.require_value()
+    completed_metrics = _completed_doc_sync_metrics(
+        knowledge_doc_source=knowledge_doc_source,
+        chapter_count=len(doc_chapter_metadatas),
+        doc_version_no=doc_version_no,
+        sync_report=sync_report,
+    )
+    return completed_metrics
 
 
 async def run_graph_docs_sync_manual_build(
