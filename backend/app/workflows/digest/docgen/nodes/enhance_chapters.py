@@ -139,6 +139,15 @@ def build_enhance_chapters_node(*, context: WorkflowContext):
             build_session_id=state.get("build_session_id", ""),
             chapters=[item.model_dump(mode="json") for item in enhanced_items],
             document_backbone=state.get("document_backbone") or {},
+            docgen_manifest={
+                "intent_profile": dict(state.get("intent_profile") or state.get("intent_core") or {}),
+                "chapter_task_seeds": list(state.get("chapter_task_seeds") or []),
+                "chapter_execution_briefs": list(state.get("chapter_execution_briefs") or []),
+                "chapter_generation_plan": dict(state.get("chapter_generation_plan") or {}),
+                "chapter_generation_plan_seed": dict(state.get("chapter_generation_plan_seed") or {}),
+                "document_backbone_snapshot": dict(state.get("document_backbone") or {}),
+                "digest_mode": str(state.get("digest_mode") or ""),
+            },
         )
         if kg_prefetch_started:
             append_knowledge_build_recent_event(

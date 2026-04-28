@@ -91,6 +91,23 @@
   body {
     min-width: 100%;
   }
+
+  .katex .katex-mathml {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  .katex-display {
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding: 0.35rem 0;
+  }
 }
 
 .electron-window-frame {

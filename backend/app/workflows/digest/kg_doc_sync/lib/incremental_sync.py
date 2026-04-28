@@ -44,10 +44,6 @@ from app.workflows.digest.kg_doc_sync.lib.extraction import (
     extract_candidates,
     extract_candidates_with_diagnostics,
 )
-from app.workflows.digest.kg_doc_sync.lib.candidate_quality import (
-    filter_docs_candidate_result,
-    is_low_quality_docs_unit_name,
-)
 from app.workflows.digest.kg_doc_sync.lib.models import (
     ChapterSourceContext,
     KnowledgeSyncExtractionPayload,
@@ -143,22 +139,154 @@ def _source_quote(text: str, *, max_chars: int = 500) -> str:
     return cleaned
 
 
+def _clean_context_list(value: object, *, limit: int = 6, max_chars: int = 100) -> list[str]:
+    cleaned: list[str] = []
+    seen: set[str] = set()
+    for item in _as_list(value) if isinstance(value, (list, tuple)) else ([] if value is None else [value]):
+        text = _source_quote(str(item or ""), max_chars=max_chars)
+        if not text:
+            continue
+        key = text.casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        cleaned.append(text)
+        if len(cleaned) >= limit:
+            break
+    return cleaned
+
+
+def _source_confidence_for_kind(source_kind: str) -> float:
+    kind = str(source_kind or "").strip().casefold()
+    if kind.startswith("llm_") or kind == "llm_relation":
+        return 0.86
+    if kind == "docgen_backbone":
+        return 0.58
+    if kind == "structural_heading":
+        return 0.72
+    if kind == "cross_section_semantic":
+        return 0.68
+    if kind == "markdown":
+        return 0.82
+    return 0.75
+
+
+def _unit_type_source_for_kind(source_kind: str) -> tuple[str, float]:
+    kind = str(source_kind or "").strip().casefold()
+    if kind.startswith("llm_"):
+        return "llm", _source_confidence_for_kind(kind)
+    if kind in {"docgen_backbone", "structural_heading", "cross_section_semantic", "markdown"}:
+        return "rule", _source_confidence_for_kind(kind)
+    return "manual", 1.0
+
+
 def _structured_context_payload(value: dict[str, object] | None) -> dict[str, object]:
     return dict(value or {})
 
 
+def _docgen_chapter_payloads_by_index(structured_context: dict[str, object]) -> dict[int, list[dict[str, object]]]:
+    manifest = _as_mapping(structured_context.get("docgen_manifest"))
+    summary = _as_mapping(structured_context.get("document_summary_json"))
+    lookup: dict[int, list[dict[str, object]]] = {}
+
+    def _add_items(items: object, *, chapter_key: str = "chapter_index") -> None:
+        for fallback_index, item in enumerate(_as_list(items), start=1):
+            payload = _as_mapping(item)
+            if not payload:
+                continue
+            chapter_index = _safe_int(payload.get(chapter_key) or payload.get("target_chapter") or fallback_index)
+            if chapter_index <= 0:
+                continue
+            lookup.setdefault(chapter_index, []).append(payload)
+
+    _add_items(summary.get("chapters"))
+    _add_items(_as_mapping(summary.get("confirmed_plan")).get("chapter_plan"))
+    _add_items(_as_mapping(manifest.get("confirmed_plan")).get("chapter_plan"))
+    _add_items(_as_mapping(manifest.get("chapter_generation_plan_seed")).get("chapters"))
+    _add_items(manifest.get("chapter_task_seeds"))
+    _add_items(manifest.get("chapter_execution_briefs"))
+    _add_items(_as_mapping(manifest.get("chapter_generation_plan")).get("chapters"))
+    return lookup
+
+
+def _first_context_text(payloads: list[dict[str, object]], *keys: str, max_chars: int = 220) -> str:
+    for payload in payloads:
+        for key in keys:
+            text = _source_quote(str(payload.get(key) or ""), max_chars=max_chars)
+            if text:
+                return text
+    return ""
+
+
+def _merged_context_values(
+    payloads: list[dict[str, object]],
+    *keys: str,
+    limit: int = 6,
+    max_chars: int = 100,
+) -> list[str]:
+    merged: list[str] = []
+    seen: set[str] = set()
+    for payload in payloads:
+        for key in keys:
+            for item in _clean_context_list(payload.get(key), limit=limit, max_chars=max_chars):
+                normalized = item.casefold()
+                if normalized in seen:
+                    continue
+                seen.add(normalized)
+                merged.append(item)
+                if len(merged) >= limit:
+                    return merged
+    return merged
+
+
+def _chapter_docgen_hints(payloads: list[dict[str, object]]) -> tuple[str, list[str]]:
+    if not payloads:
+        return "", []
+    digest_mode = _first_context_text(payloads, "digest_mode", "mode", max_chars=40)
+    hints: list[str] = []
+    objective = _first_context_text(payloads, "objective", "chapter_goal", "learning_objective", max_chars=220)
+    if objective:
+        hints.append(f"章节目标：{objective}")
+    concept_targets = _merged_context_values(
+        payloads,
+        "concept_targets",
+        "content_points",
+        "required_elements",
+        "key_points",
+        "knowledge_points",
+        limit=8,
+        max_chars=90,
+    )
+    if concept_targets:
+        hints.append("候选概念线索：" + "、".join(concept_targets))
+    formula_targets = _merged_context_values(payloads, "formula_targets", "definition_targets", limit=6, max_chars=90)
+    if formula_targets:
+        hints.append("定义/公式线索：" + "、".join(formula_targets))
+    example_targets = _merged_context_values(payloads, "example_targets", "pitfall_targets", limit=6, max_chars=110)
+    if example_targets:
+        hints.append("例题/易错线索：" + "、".join(example_targets))
+    outline = _merged_context_values(payloads, "teaching_outline", limit=4, max_chars=120)
+    if outline:
+        hints.append("讲解路径：" + "；".join(outline))
+    return digest_mode, hints[:5]
+
+
 def _chapter_context_lookup(structured_context: dict[str, object]) -> dict[int, ChapterSourceContext]:
     lookup: dict[int, ChapterSourceContext] = {}
+    docgen_payloads_by_index = _docgen_chapter_payloads_by_index(structured_context)
     for item in _as_list(structured_context.get("chapters")):
         payload = _as_mapping(item)
         chapter_index = _safe_int(payload.get("chapter_index"))
         if chapter_index <= 0:
             continue
+        digest_mode, docgen_hints = _chapter_docgen_hints(docgen_payloads_by_index.get(chapter_index, []))
         lookup[chapter_index] = ChapterSourceContext(
             knowledge_document_id=(_safe_int(payload.get("knowledge_document_id")) or None),
             chapter_index=chapter_index,
             title=str(payload.get("title") or "").strip(),
             summary=str(payload.get("summary") or "").strip(),
+            digest_mode=str(payload.get("digest_mode") or digest_mode or "").strip(),
+            docgen_hints=docgen_hints,
             source_file_ids=_clean_int_list(payload.get("source_file_ids")),
         )
     return lookup
@@ -533,7 +661,7 @@ def _create_source_ref_for_unit(
         source_kind=item.source_kind,
         source_file_ids_json=_json_dumps(_clean_int_list(item.source_file_ids)),
         quote_text=_source_quote(item.quote_text or item.summary or item.body_markdown),
-        confidence=1.0,
+        confidence=_source_confidence_for_kind(item.source_kind),
     )
     session.add(source_ref)
     session.flush()
@@ -561,7 +689,7 @@ def _create_source_ref_for_edge(
         source_kind=extracted_edge.source_kind,
         source_file_ids_json=_json_dumps(_clean_int_list(extracted_edge.source_file_ids)),
         quote_text=_source_quote(extracted_edge.quote_text or extracted_edge.description),
-        confidence=1.0,
+        confidence=_source_confidence_for_kind(extracted_edge.source_kind),
     )
     session.add(source_ref)
     session.flush()
@@ -839,14 +967,25 @@ def _section_task_key(task: _ExtractionTask) -> str:
     return f"ch{task.source_chapter_index}:{task.source_kind}:{identity}"
 
 
+def _hashable_section_body(markdown: str) -> str:
+    lines = [
+        line.rstrip()
+        for line in str(markdown or "").replace("\r\n", "\n").replace("\r", "\n").split("\n")
+        if not line.lstrip().startswith("#")
+    ]
+    while lines and not lines[0].strip():
+        lines.pop(0)
+    while lines and not lines[-1].strip():
+        lines.pop()
+    return "\n".join(lines)
+
+
 def _section_task_content_hash(task: _ExtractionTask) -> str:
     payload = "\n".join(
         [
             str(task.source_chapter_index),
             task.source_kind,
-            task.chunk.title or "",
-            task.chunk.header_path or "",
-            task.chunk.body_markdown or "",
+            _hashable_section_body(task.chunk.body_markdown or ""),
         ]
     )
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
@@ -935,12 +1074,21 @@ async def _collect_section_payloads_async(
     on_record: object | None = None,
 ) -> tuple[list[SectionExtractionPayload], dict[str, int]]:
     prefetch_lookup: dict[tuple[str, str], SectionExtractionRecord] = {}
+    prefetch_hash_lookup: dict[str, SectionExtractionRecord] = {}
+    duplicate_hashes: set[str] = set()
     failed_prefetch_count = 0
     for record in list(prefetched_records or []):
         if record.payload is None:
             failed_prefetch_count += 1
             continue
-        prefetch_lookup[(record.section_key, record.content_hash)] = record
+        record_key = (record.section_key, record.content_hash)
+        prefetch_lookup[record_key] = record
+        if record.content_hash in prefetch_hash_lookup:
+            duplicate_hashes.add(record.content_hash)
+        else:
+            prefetch_hash_lookup[record.content_hash] = record
+    for content_hash in duplicate_hashes:
+        prefetch_hash_lookup.pop(content_hash, None)
     used_prefetch_keys: set[tuple[str, str]] = set()
     prefetch_enabled = prefetched_records is not None
     semaphore = asyncio.Semaphore(
@@ -949,9 +1097,9 @@ async def _collect_section_payloads_async(
 
     async def _extract_with_queue(task: _ExtractionTask) -> SectionExtractionPayload:
         key = (_section_task_key(task), _section_task_content_hash(task))
-        prefetched = prefetch_lookup.get(key)
+        prefetched = prefetch_lookup.get(key) or prefetch_hash_lookup.get(key[1])
         if prefetched is not None and prefetched.payload is not None:
-            used_prefetch_keys.add(key)
+            used_prefetch_keys.add((prefetched.section_key, prefetched.content_hash))
             return _apply_task_context_to_payload(prefetched.payload, task)
 
         async with semaphore:
@@ -1044,7 +1192,6 @@ def _combine_section_payloads(
     backbone_units, backbone_edges = _build_backbone_graph_items(
         structured_context=structured_context,
         chapter_contexts=chapter_contexts,
-        used_anchors=used_anchors,
         existing_normalized_names=set(anchors_by_normalized_name),
     )
     if backbone_units:
@@ -1331,7 +1478,6 @@ def _build_backbone_graph_items(
     *,
     structured_context: dict[str, object],
     chapter_contexts: dict[int, ChapterSourceContext],
-    used_anchors: set[str],
     existing_normalized_names: set[str] | None = None,
 ) -> tuple[list[MarkdownKnowledgeUnit], list[PendingMarkdownExtractedEdge]]:
     backbone = _document_backbone_payload(structured_context)
@@ -1346,39 +1492,10 @@ def _build_backbone_graph_items(
         term = str(payload.get("term") or "").strip()
         if not term:
             continue
-        if is_low_quality_docs_unit_name(term, node_type="concept"):
-            continue
         target_chapters = _clean_int_list(payload.get("target_chapters"))
         normalized_term = normalize_name(term)
-        target_chapters_by_term[normalized_term] = target_chapters
         if normalized_term and normalized_term in existing_normalized_names:
-            continue
-        chapter_index = target_chapters[0] if target_chapters else 0
-        chapter_context = chapter_contexts.get(chapter_index) or ChapterSourceContext(chapter_index=chapter_index)
-        definition = str(payload.get("definition") or "").strip()
-        anchor = build_knowledge_unit_anchor(
-            f"docgen ch{chapter_index} concept {term}",
-            used=used_anchors,
-        )
-        units.append(
-            MarkdownKnowledgeUnit(
-                anchor=anchor,
-                name=term,
-                knowledge_unit_type="concept",
-                summary=definition or term,
-                body_markdown=definition or term,
-                knowledge_images=[],
-                prerequisites=[],
-                related=[],
-                line_no=0,
-                heading_level=1,
-                source_kind="docgen_backbone",
-                knowledge_document_id=chapter_context.knowledge_document_id,
-                chapter_index=chapter_index,
-                source_file_ids=list(chapter_context.source_file_ids),
-                quote_text=definition or str(payload.get("source_hint") or ""),
-            )
-        )
+            target_chapters_by_term[normalized_term] = target_chapters
 
     edges: list[PendingMarkdownExtractedEdge] = []
     seen_edges: set[tuple[str, str, str]] = set()
@@ -1388,14 +1505,13 @@ def _build_backbone_graph_items(
         target_name = str(payload.get("to_concept") or "").strip()
         if not source_name or not target_name:
             continue
-        if is_low_quality_docs_unit_name(source_name, node_type="concept") or is_low_quality_docs_unit_name(
-            target_name,
-            node_type="concept",
-        ):
-            continue
         raw_relation = str(payload.get("relation") or "").strip()
         edge_type = "prerequisite" if raw_relation == "chapter_order" else normalize_relation_type(raw_relation)
-        key = (normalize_name(source_name), normalize_name(target_name), edge_type)
+        source_key = normalize_name(source_name)
+        target_key = normalize_name(target_name)
+        if source_key not in existing_normalized_names or target_key not in existing_normalized_names:
+            continue
+        key = (source_key, target_key, edge_type)
         if not key[0] or not key[1] or key[0] == key[1] or key in seen_edges:
             continue
         seen_edges.add(key)
@@ -1702,12 +1818,18 @@ def _build_section_subject_context(
         hints.append(f"所属章节：{chapter_context.title}")
     if chapter_context.summary:
         hints.append(f"章节摘要：{chapter_context.summary}")
+    for hint in chapter_context.docgen_hints[:5]:
+        if hint:
+            hints.append(f"DocGen辅助信号：{hint}")
     if source_kind != "chapter" and getattr(chapter, "header_path", ""):
         hints.append(f"当前小节路径：{chapter.header_path}")
     if not hints:
         return base_context
-    hint_text = "知识文档结构上下文：\n" + "\n".join(f"- {hint}" for hint in hints)
-    return f"{base_context}\n\n{hint_text}".strip() if base_context else hint_text
+    hint_text = (
+        "知识文档结构上下文（只用于消歧和确定抽取重点，不能作为节点证据）：\n"
+        + "\n".join(f"- {hint}" for hint in hints)
+    )
+    return f"{hint_text}\n\n{base_context}".strip() if base_context else hint_text
 
 
 async def _extract_chapter_graph_items(
@@ -1733,10 +1855,10 @@ async def _extract_chapter_graph_items(
         header_path=chapter.header_path,
         doc_source_type="knowledge_doc_markdown",
         subject_context=section_subject_context,
+        digest_mode=chapter_context.digest_mode,
         prefer_fast_path=False,
         allow_markdown_anchor_short_circuit=False,
     )
-    result = filter_docs_candidate_result(result)
     diagnostics.node_count = len(result.nodes)
     diagnostics.edge_count = len(result.edges)
 
@@ -1943,8 +2065,7 @@ def _upsert_unit(
     unit.summary = item.summary or item.name
     unit.body_markdown = item.body_markdown or item.summary or item.name
     unit.body = unit.body_markdown
-    unit.type_source = "manual"
-    unit.type_confidence = 1.0
+    unit.type_source, unit.type_confidence = _unit_type_source_for_kind(item.source_kind)
     unit.status = "active"
     unit.build_revision_no = build_revision_no
     unit.updated_at = utcnow()

@@ -174,8 +174,16 @@ export function useDocMarkdown(): DocMarkdownState {
     },
   });
 
-  const liveMarkdown = cleanKnowledgeMarkdownForDisplay(docMarkdownQuery.data?.markdown ?? "");
-  const draftMarkdown = cleanKnowledgeMarkdownForDisplay(docMarkdownQuery.data?.draft_markdown ?? "");
+  const rawLiveMarkdown = docMarkdownQuery.data?.markdown ?? "";
+  const rawDraftMarkdown = docMarkdownQuery.data?.draft_markdown ?? "";
+  const liveMarkdown = useMemo(
+    () => cleanKnowledgeMarkdownForDisplay(rawLiveMarkdown),
+    [rawLiveMarkdown],
+  );
+  const draftMarkdown = useMemo(
+    () => cleanKnowledgeMarkdownForDisplay(rawDraftMarkdown),
+    [rawDraftMarkdown],
+  );
   const buildMeta = runtimeQuery.data?.docgen ?? docMarkdownQuery.data?.build ?? null;
   const buildPreview = runtimeQuery.data?.docgen_preview ?? docMarkdownQuery.data?.build_preview ?? null;
   const buildMetrics = runtimeQuery.data?.docgen_metrics ?? docMarkdownQuery.data?.build_metrics ?? null;
@@ -248,16 +256,19 @@ export function useDocMarkdown(): DocMarkdownState {
   );
 
   const renderedDigestModeLabel = formatDigestModeLabel(buildPreview?.digest_mode);
-  const renderedChapterHighlights = (buildPreview?.latest_chapter_titles ?? []).slice(0, 4);
+  const renderedChapterHighlights = useMemo(
+    () => (buildPreview?.latest_chapter_titles ?? []).slice(0, 4),
+    [buildPreview?.latest_chapter_titles],
+  );
   const renderedSubjectLabel = (subjectId ?? "知识文档").replace(/[-_]+/g, " ");
-  const renderedDocTitle =
-    extractFirstMarkdownHeading(renderedMarkdown) ??
-    renderedChapterHighlights[0] ??
-    renderedSubjectLabel;
-  const renderedDocSummary =
-    extractFirstMarkdownParagraph(renderedMarkdown) ??
-    buildPreview?.plan_summary?.trim() ??
-    "正在整理知识文档...";
+  const renderedDocTitle = useMemo(
+    () => extractFirstMarkdownHeading(renderedMarkdown) ?? renderedChapterHighlights[0] ?? renderedSubjectLabel,
+    [renderedChapterHighlights, renderedMarkdown, renderedSubjectLabel],
+  );
+  const renderedDocSummary = useMemo(
+    () => extractFirstMarkdownParagraph(renderedMarkdown) ?? buildPreview?.plan_summary?.trim() ?? "正在整理知识文档...",
+    [buildPreview?.plan_summary, renderedMarkdown],
+  );
 
   const sourceFilesQuery = useQuery({
     queryKey: ["knowledge-build-source-files", subjectId],

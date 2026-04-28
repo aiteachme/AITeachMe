@@ -121,6 +121,8 @@ class ChapterSourceContext:
     chapter_index: int = 0
     title: str = ""
     summary: str = ""
+    digest_mode: str = ""
+    docgen_hints: list[str] = field(default_factory=list)
     source_file_ids: list[int] = field(default_factory=list)
 
 

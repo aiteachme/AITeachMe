@@ -62,7 +62,7 @@ image_generation -> settings.models.image_generation（默认未配置）
 - 路由层仍保留 `extract` 兼容别名，但新代码不应继续把它当模型槽位使用。
 - `kg_doc_sync` 的 LangGraph 节点本身不直接写死模型，LLM 调用集中在复用的 extractor 内部；`call_purpose + model slot + max_tokens` 统一由 `kg_doc_sync/lib/model_policy.py` 维护。
 - Prompt 文件按真实调用拆分：章节图谱抽取在 `prompts/section_graph.py`，导出聚合在 `prompts/registry.py`；提示词正文必须以中文教学语境为主。
-- 核心 lib 按职责拆分：`models.py` 放 state/report 数据合同，`sync_runs.py` 放同步批次状态写入，`candidate_quality.py` 放候选过滤规则，`question_blocks.py` 只用于题目块识别和质量判断，不再生成兜底知识点。
+- 核心 lib 按职责拆分：`models.py` 放 state/report 数据合同，`sync_runs.py` 放同步批次状态写入，`question_blocks.py` 只用于题目块识别和抽取辅助判断，不再生成兜底知识点。
 
 按当前代码，KG docs-sync 各阶段的大模型使用如下：
 
@@ -79,8 +79,7 @@ image_generation -> settings.models.image_generation（默认未配置）
 | `persist` | `kg_doc_sync/nodes/persist_node.py` | 无 LLM | 无 | 无 | 无 | 写入节点、关系、source_ref，标记旧同步实体 deprecated，并完成 sync run |
 | `_extract_chapter_graph_items` 主抽取 | `kg_doc_sync/lib/incremental_sync.py` -> `kg_doc_sync/lib/extraction.py` | 结构化 | `EXTRACT` | `light` | `qwen-flash` | 从单章 Markdown 抽取候选 KnowledgeUnit 和关系 |
 | `_repair_docs_extraction_after_empty` | `kg_doc_sync/lib/extraction.py` | 结构化 | `EXTRACT` | `light` | `qwen-flash` | 当 docs-sync 主抽取为空时做一次极短修复抽取 |
-| `filter_docs_candidate_result` | `kg_doc_sync/lib/candidate_quality.py` | 无 LLM | 无 | 无 | 无 | 丢弃学习目标、题型例练、速判口诀、计划句等非知识点 |
-| `_build_backbone_graph_items` | `kg_doc_sync/lib/incremental_sync.py` | 无 LLM | 无 | 无 | 无 | 把 DocGen `document_backbone` 的 glossary/dependency 转成保底节点和边 |
+| `_build_backbone_graph_items` | `kg_doc_sync/lib/incremental_sync.py` | 无 LLM | 无 | 无 | 无 | 只用 DocGen `document_backbone` 给已抽取节点补关系，不创建保底节点 |
 | `_build_structural_heading_edges` | `kg_doc_sync/lib/incremental_sync.py` | 无 LLM | 无 | 无 | 无 | 用标题层级补结构边 |
 | `_build_cross_section_semantic_edges` | `kg_doc_sync/lib/incremental_sync.py` | 无 LLM | 无 | 无 | 无 | 基于节点上下文补跨章节语义边 |
 | upsert / source ref / deprecate | `kg_doc_sync/lib/incremental_sync.py` | 无 LLM | 无 | 无 | 无 | 写入节点、关系、同步批次、来源引用和过期标记 |
@@ -90,6 +89,7 @@ image_generation -> settings.models.image_generation（默认未配置）
 ```text
 DocGen enhance_chapters
   如果 sync_after_docgen + prefetch_during_docgen 开启，启动 kg_prefetch sidecar。
+  sidecar 读取增强章节 Markdown、document_backbone、intent_profile、chapter_task_seeds、chapter_execution_briefs 和 chapter_generation_plan。
   sidecar 只缓存 section_key + content_hash + SectionExtractionPayload，不写图谱表。
   默认 prefetch_concurrency = 6，仍受全局 LLM semaphore 限制，并先让后续 DocGen review 调度。
   |
@@ -275,9 +275,16 @@ load_knowledge_doc_sync_input
         chapter_index
         title
         summary
+        digest_mode
         source_file_ids
         source_scope
         manifest
+    - ChapterSourceContext 会额外从 docgen_manifest / document_summary_json 合并章级辅助信号：
+        intent_profile
+        chapter_task_seeds
+        chapter_execution_briefs
+        chapter_generation_plan / chapter_generation_plan_seed
+        Subject.learning_intent_text 渲染后的 llm_context_text
   作用：
     - 把数据库里的发布文档和 DocGen 结构化产物变成同步输入。
     - graph runtime 章节预览复用 extract_markdown_chapter_chunks，避免和真实同步切章规则不一致。
@@ -352,8 +359,9 @@ extract
   作用：
     - 如果 subject_context 为空，从学科上下文读取。
     - 按真实章节切分 Markdown。
+    - 将 DocGen 章级中间产物放在每个 section prompt 的上下文开头，避免被截断；这些信号只用于消歧和抽取重点，不作为节点证据。
     - 并发抽取图谱候选。
-    - 合并 LLM units、DocGen backbone、结构边和跨章节语义边。
+    - 合并 LLM units、DocGen backbone 关系、结构边和跨章节语义边。
   失败：
     - 抽取异常写入 error，fail 节点会标记 sync run failed。
   当前模型方案：
@@ -452,7 +460,7 @@ _extract_chapter_with_retries
     - section_context：本章主节点和来源上下文。
     - diagnostics：本章抽取计数。
   当前模型方案：
-    - 主抽取走 `KGDocSyncModelStep.SECTION_GRAPH`，即 `call_purpose=EXTRACT + model="light"`，`max_tokens=2600`。
+    - 主抽取走 `KGDocSyncModelStep.SECTION_GRAPH`，即 `call_purpose=EXTRACT + model="light"`，`max_tokens=2200`，并限制单片段最多 8 个节点、10 条关系。
     - docs 空结果修复走 `KGDocSyncModelStep.EMPTY_REPAIR`，即 `call_purpose=EXTRACT + model="light"`，`max_tokens=900`。
     - 结构化抽取失败会按任务重试；重试耗尽后让图谱同步失败，不再用标题或题目关键词本地生成 KnowledgeUnit。
 
@@ -464,18 +472,20 @@ _extract_chapter_graph_items
     - digest_mode
     - chapter_topic_hints
     - ChapterSourceContext
+      - title / summary
+      - digest_mode
+      - docgen_hints：由 chapter_task_seeds、chapter_execution_briefs、chapter_generation_plan 和 document_summary_json 汇总的章级目标、候选概念、定义/公式、例题/易错线索
   输出：
     - SectionExtractionPayload
   候选来源：
     - LLM structured extraction：主路径。
     - LLM empty repair：主抽取为空且章节有明显知识信号时，再走一次结构化 LLM 修复。
-    - DocGen backbone：使用 DocGen 已经生成的结构化 backbone 补充 glossary/dependency；它来自 DocGen 结构化产物，不是本地关键词兜底。
-  过滤：
-    - `candidate_quality.filter_docs_candidate_result` 会丢弃明显不是知识点的候选。
-    - 典型拒绝项：学习目标、章节导读、本章自检、考前复盘、题型例练、速判口诀、解题入口、解题模板、题干句、任务句、规划句、模块权重排序、知识组合策略等。
+    - DocGen backbone：只作为保底结构信号。它是 DocGen 的 rule-first 结构化产物，不等价于 section 级 LLM 抽取；同步入图时不再创建 KnowledgeUnit，只能给已经存在的正文抽取节点补关系。
+  后处理：
+    - 不做语义词表过滤；LLM 返回的候选会保留，方便暴露和追踪抽取质量问题。
+    - 只做结构性收口：schema 枚举、名称/摘要长度、关系类型归一化、关系方向校验、endpoint 解析和去重。
   重要边界：
     - LLM 负责语义候选。
-    - 规则过滤只硬挡肉眼确定的坏节点，不替代语义抽取。
     - LLM 调用失败会按任务重试；重试耗尽后让同步失败，不再用标题、题干或关键词本地生成 KnowledgeUnit。
 
 payload fan-in
@@ -491,8 +501,8 @@ payload fan-in
     3. `_build_backbone_graph_items` 消费 DocGen backbone：
        - `docgen_manifest.document_backbone_snapshot`
        - `document_summary_json.document_backbone`
-    4. `canonical_glossary` 只补缺失 term，不覆盖已经由正文抽到的同名概念。
-    5. `concept_dependency_graph` 生成关系：
+    4. `canonical_glossary` 只记录和已存在节点的章节映射，不创建缺失 term；纯 confirmed plan / required_elements 词条不会直接入图。
+    5. `concept_dependency_graph` 只在 source/target 两端都已经由正文抽取存在时生成关系：
        - `chapter_order` -> `prerequisite`
        - 其它 relation 走 normalize_relation_type。
        - 单个章节/子章节 LLM 抽取失败不会让整条图谱链路失败；失败分片会记录为 `failed_section_count` / `llm_error_count`，其它成功分片继续合并并落库。
@@ -576,7 +586,7 @@ fail
 | `empty_repair_attempt_count / empty_repair_success_count` | 空结果 LLM 修复尝试数 / 成功数 |
 | `total_extracted_node_count / total_extracted_edge_count` | 原始抽取候选计数 |
 | `source_ref_count` | source ref 写入数 |
-| `backbone_unit_count / backbone_edge_count` | DocGen backbone 补入数量 |
+| `backbone_unit_count / backbone_edge_count` | DocGen backbone 补入数量；unit 当前应为 0，edge 只连接已抽取节点 |
 | `stable_anchor_count` | 本轮稳定 anchor 数 |
 | `elapsed_ms` | 同步耗时 |
 
@@ -599,7 +609,7 @@ fail
 | `doc_sync_empty_llm_result_count` | `report.empty_llm_result_count` |
 | `doc_sync_empty_repair_attempt_count / doc_sync_empty_repair_success_count` | `report.empty_repair_attempt_count / empty_repair_success_count` |
 | `source_ref_count` | `report.source_ref_count` |
-| `backbone_unit_count / backbone_edge_count` | `report.backbone_*` |
+| `backbone_unit_count / backbone_edge_count` | `report.backbone_*`；unit 兼容保留，edge 表示 backbone 给已抽取节点补的关系 |
 | `stable_anchor_count` | `report.stable_anchor_count` |
 | `deprecated_unit_count / deprecated_edge_count` | `report.deprecated_*` |
 
@@ -626,8 +636,8 @@ none           -> 没有可同步输入
 
 | 现象 | 高概率原因 | 优先检查 |
 | --- | --- | --- |
-| “题型例练 / 速判口诀 / 学习目标”入图 | LLM 抽取太宽或过滤词表没覆盖 | `candidate_quality.filter_docs_candidate_result`、extractor prompt、节点 `source_kind` |
-| 节点来自 `docgen_backbone` 且像规划句 | DocGen `canonical_glossary` 把章节计划词当 term | `document_backbone_snapshot.canonical_glossary` |
+| “题型例练 / 速判口诀 / 学习目标”入图 | LLM 抽取太宽、上下文误导，或 chunk 本身是教学包装段 | extractor prompt、DocGen 辅助上下文、节点 `source_kind` |
+| 节点来自 `docgen_backbone` 且像规划句 | 不应再发生；backbone 不创建节点，只补已抽取节点之间的关系 | `_build_backbone_graph_items`、`document_backbone_snapshot.concept_dependency_graph` |
 | 节点标题像整本文档标题 | 切章规则没有按 H2 下沉 | `extract_markdown_chapter_chunks`、DocGen 发布 Markdown 标题层级 |
 | 图上边很少 | LLM 边被过滤、endpoint 未解析、方向不合法 | `knowledge_graph_edge_skipped_unresolved_endpoint` 日志、`validate_relation_direction` |
 | source refs 为空 | 写入阶段异常或旧数据来自兼容字段 | `knowledge_graph_source_ref`、`KnowledgeGraphSyncRun.metrics_json` |
@@ -637,5 +647,5 @@ none           -> 没有可同步输入
 
 1. 旧 `kg_file_ingest` workflow 已删除；`kg_doc_sync/lib/extraction.py` 是 docs-sync 的正式抽取实现入口。
 2. docs-sync 的 LLM 主抽取默认走 `call_purpose=EXTRACT + model="light"`，速度可控，但复杂学科的概念归并仍可能偏保守。后续如果要提高质量，应增加一个“章级候选审稿/归并”步骤，而不是放开所有候选直接入图。
-3. 规则过滤只能挡明显坏节点，不能替代 LLM 的语义判断。过滤词表应该短、强、可解释；如果持续出现某类坏节点，优先修 extractor prompt 和候选审稿。
+3. 当前不再用语义词表过滤候选节点；如果持续出现某类坏节点，优先修 extractor prompt、DocGen 辅助上下文或增加 LLM 审稿/归并步骤。
 4. `aliases_json/evidence_refs_json` 仍是兼容字段。新查询应优先使用 `knowledge_graph_source_ref`，等图谱查询稳定后再考虑数据规模化优化。

@@ -5,8 +5,12 @@ from app.workflows.digest.common.markdown_knowledge_anchors import MarkdownKnowl
 from app.workflows.digest.docgen.lib.publish import build_merged_markdown
 from app.workflows.digest.kg_doc_sync.lib import incremental_sync
 from app.workflows.digest.kg_doc_sync.lib.extraction import ChunkExtractionResult
-from app.workflows.digest.kg_doc_sync.lib.incremental_sync import _build_extraction_tasks
+from app.workflows.digest.kg_doc_sync.lib.incremental_sync import (
+    _build_backbone_graph_items,
+    _build_extraction_tasks,
+)
 from app.workflows.digest.kg_doc_sync.lib.models import (
+    ChapterSourceContext,
     SectionExtractionContext,
     SectionExtractionPayload,
 )
@@ -219,3 +223,80 @@ def test_stale_prefetch_payload_falls_back_to_catchup(monkeypatch) -> None:
     assert diagnostics["prefetch_catchup_section_count"] == 1
     assert diagnostics["prefetch_stale_section_count"] == 1
     assert [unit.anchor for unit in units] == ["ku_new"]
+
+
+def test_prefetch_payload_reused_when_only_heading_changes() -> None:
+    original_markdown = "# Old heading\nSame body"
+    final_markdown = "# New heading\nSame body"
+    original_chapters = extract_markdown_chapter_chunks(original_markdown, max_body_chars=None)
+    original_tasks, _metrics = _build_extraction_tasks(original_chapters, {})
+    record = incremental_sync._section_record_for_task(original_tasks[0], payload=_payload("ku_a"))
+
+    units, _edges, diagnostics = asyncio.run(
+        incremental_sync._extract_markdown_graph_items_async(
+            final_markdown,
+            prefetched_records=[record],
+        )
+    )
+
+    assert diagnostics["prefetch_reused_section_count"] == 1
+    assert diagnostics["prefetch_stale_section_count"] == 0
+    assert [unit.anchor for unit in units] == ["ku_a"]
+
+
+def test_docgen_backbone_only_links_existing_units() -> None:
+    structured_context = {
+        "docgen_manifest": {
+            "document_backbone_snapshot": {
+                "canonical_glossary": [
+                    {"term": "Alpha", "target_chapters": [1]},
+                    {"term": "Beta", "target_chapters": [1]},
+                    {"term": "Gamma", "target_chapters": [1]},
+                ],
+                "concept_dependency_graph": [
+                    {"from_concept": "Alpha", "to_concept": "Beta", "relation": "chapter_order"},
+                    {"from_concept": "Alpha", "to_concept": "Gamma", "relation": "chapter_order"},
+                ],
+            }
+        }
+    }
+
+    units, edges = _build_backbone_graph_items(
+        structured_context=structured_context,
+        chapter_contexts={1: ChapterSourceContext(chapter_index=1, title="Chapter 1")},
+        existing_normalized_names={"alpha", "beta"},
+    )
+
+    assert units == []
+    assert len(edges) == 1
+    assert edges[0].source_name == "Alpha"
+    assert edges[0].target_name == "Beta"
+    assert edges[0].source_kind == "docgen_backbone"
+
+
+def test_chunk_extraction_result_caps_candidate_counts() -> None:
+    result = ChunkExtractionResult.model_validate(
+        {
+            "nodes": [
+                {
+                    "candidate_id": f"n{index}",
+                    "name": f"Node {index}",
+                    "knowledge_unit_type": "concept",
+                    "local_summary": "summary",
+                }
+                for index in range(12)
+            ],
+            "edges": [
+                {
+                    "source_name": "Node 0",
+                    "target_name": "Node 1",
+                    "edge_type": "prerequisite",
+                    "description": "description",
+                }
+                for _index in range(14)
+            ],
+        }
+    )
+
+    assert len(result.nodes) == 8
+    assert len(result.edges) == 10

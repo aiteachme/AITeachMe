@@ -89,7 +89,12 @@ def get_langsmith_project_name() -> str | None:
 
 
 def get_langsmith_max_text_chars() -> int:
-    return max(32, int(DEFAULT_LANGSMITH_MAX_TEXT_CHARS))
+    try:
+        raw_value = get_env("LANGSMITH_MAX_TEXT_CHARS", str(DEFAULT_LANGSMITH_MAX_TEXT_CHARS))
+        value = int(raw_value or DEFAULT_LANGSMITH_MAX_TEXT_CHARS)
+    except ValueError:
+        value = DEFAULT_LANGSMITH_MAX_TEXT_CHARS
+    return max(32, value)
 
 
 def get_langsmith_endpoint() -> str:

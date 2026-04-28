@@ -95,18 +95,20 @@ def _structured_context(
     *,
     chapters: list[dict[str, Any]],
     document_backbone: dict[str, Any] | None,
+    docgen_manifest: dict[str, Any] | None = None,
 ) -> dict[str, object]:
+    manifest = dict(docgen_manifest or {})
+    manifest.setdefault("document_backbone_snapshot", dict(document_backbone or {}))
     return {
         "doc_version_no": 0,
-        "docgen_manifest": {
-            "document_backbone_snapshot": dict(document_backbone or {}),
-        },
+        "docgen_manifest": manifest,
         "chapters": [
             {
                 "knowledge_document_id": None,
                 "chapter_index": int(chapter.get("chapter_index") or index),
                 "title": str(chapter.get("title") or "").strip(),
                 "summary": str(chapter.get("summary") or chapter.get("summary_draft") or "").strip(),
+                "digest_mode": str(chapter.get("digest_mode") or manifest.get("digest_mode") or "").strip(),
                 "source_file_ids": _chapter_source_file_ids(chapter),
             }
             for index, chapter in enumerate(chapters, start=1)
@@ -120,6 +122,7 @@ def start_docgen_kg_prefetch(
     build_session_id: str,
     chapters: list[dict[str, Any]],
     document_backbone: dict[str, Any] | None = None,
+    docgen_manifest: dict[str, Any] | None = None,
     llm_snapshot: LLMRuntimeSnapshot | None = None,
 ) -> bool:
     """Start a non-blocking KG prefetch task for enhanced DocGen chapters."""
@@ -145,7 +148,11 @@ def start_docgen_kg_prefetch(
         _CACHES[key] = cache
 
     snapshot = llm_snapshot or capture_llm_runtime_snapshot()
-    structured_context = _structured_context(chapters=chapters, document_backbone=document_backbone)
+    structured_context = _structured_context(
+        chapters=chapters,
+        document_backbone=document_backbone,
+        docgen_manifest=docgen_manifest,
+    )
     concurrency = max(1, int(settings.knowledge_graph.prefetch_concurrency or 1))
 
     def _on_record(record: SectionExtractionRecord) -> None:
